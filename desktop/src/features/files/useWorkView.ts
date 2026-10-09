@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { connectEngine, engineChanges, engineEditors, engineEditorTarget, engineFileDiff, EngineError, readEngine, readEngineFile, readEngineText, statEnginePaths, watchEngine, type EngineEditor, type EngineEditorTarget, type EngineFile, type EngineFileDiff, type EngineTextFile } from '../chat/engine-client';
 import { hostName } from '../../design/native';
+import { settleImage } from './imageFile';
 import { fileEventTouches, fileRefreshDelay, fileStatInterval, fileVersion, sameWorkspaceFile } from './fileRefresh';
 
 export type Load<T> = { status: 'loading' } | { status: 'ready'; value: T } | { status: 'failed'; message: string };
@@ -53,13 +54,19 @@ export function useFileText(session: string | undefined, path: string, enabled: 
 
 /**
  * The file as a picture, through the existing confined read. `enabled` is false until the File view of a
- * picture asks. The answer carries the path it was read for, so a late answer for a path the tab has since
- * left shows loading instead of the wrong picture.
+ * picture asks. Every answer, a failure included, carries the full session and path key it was read for, so a
+ * late or held answer for another path or another session shows loading, never the wrong picture, and a
+ * missing session or a disabled read shows loading in the same render.
  */
 export function useFileImage(session: string | undefined, path: string, enabled: boolean, refresh = 0): Load<EngineFile> {
-  const state = useLoad(session && enabled ? `${session}\0${path}` : null, async () => ({ path, file: await readEngineFile(session!, path) }), refresh);
-  if (state.status !== 'ready') return state;
-  return state.value.path === path ? { status: 'ready', value: state.value.file } : loading;
+  const key = session && enabled ? `${session}\0${path}` : null;
+  const state = useLoad<{ key: string; file?: EngineFile; message?: string }>(key, async () => {
+    try { return { key: key!, file: await readEngineFile(session!, path) }; } catch (reason) { return { key: key!, message: messageOf(reason) }; }
+  }, refresh);
+  const settled = settleImage(key, state);
+  if (settled.status !== 'ready') return settled;
+  const { file, message } = settled.value;
+  return file ? { status: 'ready', value: file } : { status: 'failed', message: message! };
 }
 
 const streamBackoff = [1000, 2000, 5000, 10000];

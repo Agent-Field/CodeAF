@@ -4,14 +4,16 @@ import { plainReply } from './support/scenarios';
 import { send } from './support/conversation';
 
 // The File view of a raster picture (design gap TF11): the existing confined read, fitted in the body.
-// 400x100 and 60x120 PNGs, a 4:1 and a 1:2 picture, so the aspect assertions can tell them apart.
-const WIDE = 'iVBORw0KGgoAAAANSUhEUgAAAZAAAABkCAIAAAAnqfEgAAABZUlEQVR4nO3UQQkAMAzAwAqrfyZrFvYbgYMTkFfm7AIkzPcCgEeGBWQYFpBhWECGYQEZhgVkGBaQYVhAhmEBGYYFZBgWkGFYQIZhARmGBWQYFpBhWECGYQEZhgVkGBaQYVhAhmEBGYYFZBgWkGFYQIZhARmGBWQYFpBhWECGYQEZhgVkGBaQYVhAhmEBGYYFZBgWkGFYQIZhARmGBWQYFpBhWECGYQEZhgVkGBaQYVhAhmEBGYYFZBgWkGFYQIZhARmGBWQYFpBhWECGYQEZhgVkGBaQYVhAhmEBGYYFZBgWkGFYQIZhARmGBWQYFpBhWECGYQEZhgVkGBaQYVhAhmEBGYYFZBgWkGFYQIZhARmGBWQYFpBxAfw9W25Hz8fiAAAAAElFTkSuQmCC';
-const TALL = 'iVBORw0KGgoAAAANSUhEUgAAADwAAAB4CAIAAAAhVwZfAAAAgUlEQVR4nO3OAQkAIBAAsQ/2/TGWMTxhsACb3fOdeT6QDpOWlg6QlpYOkJaWDpCWlg6QlpYOkJaWDpCWlg6QlpYOkJaWDpCWlg6QlpYOkJaWDpCWlg6QlpYOkJaWDpCWlg6QlpYOkJaWDpCWlg6QlpYOkJaWDpCWlg6QlpYO+DJ9ATp7Kg69Drg7AAAAAElFTkSuQmCC';
+// 400x100 and 60x120 PNGs, a 4:1 and a 1:2 picture, so the aspect assertions can tell them apart. Each is two flat
+// halves (wide: red then blue across; tall: green then amber down) and decodes cleanly: WebKit draws nothing for a PNG
+// whose zlib checksum is wrong while still reporting its natural width, so a damaged fixture passes without a picture.
+const WIDE = 'iVBORw0KGgoAAAANSUhEUgAAAZAAAABkCAIAAAAnqfEgAAABkklEQVR42u3UQQkAAAgAMYsJJrKnrSzhSwarcBdTCeeyB86FtDAsDAvDAsPCsDAsMCwMC8MCw8KwMCwwLAwLwwLDwrAwLDAsDAvDAsPCsDAsMCwMC8MCw8KwMCwwLAwLwwLDwrAwLDAsDAvDAsPCsDAsMCwMC8MCw8KwMCwwLAwLwwLDwrAwLDAsDAvDwrDUhWFhWBgWGBaGhWGBYWFYGBYYFoaFYYFhYVgYFhgWhoVhgWFhWBgWGBaGhWGBYWFYGBYYFoaFYYFhYVgYFhgWhoVhgWFhWBgWGBaGhWGBYWFYGBYYFoaFYYFhYVgYFhgWhoVhgWFhWBgWhqUuDAvDwrDAsDAsDAsMC8PCsMCwMCwMCwwLw8KwwLAwLAwLDAvDwrDAsDAsDAsMC8PCsMCwMCwMCwwLw8KwwLAwLAwLDAvDwrDAsDAsDAsMC8PCsMCwMCwMCwwLw8KwwLAwLAwLDAvDwrAwLDAsDAvDAsPCsDAsMCwMC8MCw8KwMCwwLAwLwwLDwrAwLDAsDAvDAsPCsPhrATBSD7yKWiaDAAAAAElFTkSuQmCC';
+const TALL = 'iVBORw0KGgoAAAANSUhEUgAAADwAAAB4CAIAAAAhVwZfAAAAeklEQVR42u3OQQkAQAgAMItZ5IL5to6troUgDBZgkf3OCWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWlpaWnplfRUniMtLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tveIDRdW5elZ2EIgAAAAASUVORK5CYII=';
 const png = (dataBase64: string) => ({ mime: 'image/png', dataBase64 });
 
 /** Starts a conversation (a file tab reads through its session) and returns the file reads seen so far. */
 async function start(page: Page, files: Record<string, { mime: string; dataBase64: string }>) {
-  await installMockEngine(page, { ...plainReply(), files: { 'bin/tool.bin': { mime: 'application/octet-stream', dataBase64: btoa('ab\0cd') }, ...files } });
+  const engine = await installMockEngine(page, { ...plainReply(), files: { 'bin/tool.bin': { mime: 'application/octet-stream', dataBase64: btoa('ab\0cd') }, ...files } });
   const reads: string[] = [];
   page.on('request', request => {
     const url = new URL(request.url());
@@ -20,7 +22,7 @@ async function start(page: Page, files: Record<string, { mime: string; dataBase6
   await page.goto('/');
   await send(page, 'Where are the pictures?');
   await expect(page.getByRole('tab').first()).toBeVisible();
-  return reads;
+  return Object.assign(reads, { engine });
 }
 
 /** Opens a file tab the way a person does: the new tab's field, a part of the name, the matching row. */
@@ -35,6 +37,14 @@ async function openFile(page: Page, path: string) {
 const body = (page: Page) => page.locator('.file-body');
 const picture = (page: Page) => body(page).locator('.file-picture');
 const width = (page: Page) => picture(page).evaluate((img: HTMLImageElement) => img.complete ? img.naturalWidth : 0);
+/** The colour the decoded picture holds at a pixel, read back through a canvas, so a picture the browser never drew fails. */
+const pixel = (page: Page, x: number, y: number) => picture(page).evaluate((img: HTMLImageElement, [x, y]) => {
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+  const context = canvas.getContext('2d')!;
+  context.drawImage(img, 0, 0);
+  return Array.from(context.getImageData(x, y, 1, 1).data.slice(0, 3));
+}, [x, y]);
 const toggle = (page: Page, name: 'Changes' | 'File') => page.locator('.file-head').getByRole('radio', { name });
 
 for (const theme of ['light', 'dark'] as const) {
@@ -47,6 +57,8 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(body(page)).toHaveAttribute('aria-label', 'Contents of wide.png');
     await expect(picture(page)).toHaveAttribute('alt', 'wide.png');
     await expect.poll(() => width(page)).toBe(400);
+    expect(await pixel(page, 100, 99)).toEqual([201, 64, 61]);
+    expect(await pixel(page, 300, 99)).toEqual([61, 110, 201]);
     for (const viewport of [1200, 320]) {
       await page.setViewportSize({ width: viewport, height: 700 });
       const [box, around] = await Promise.all([picture(page).boundingBox(), body(page).boundingBox()]);
@@ -98,7 +110,7 @@ test('an unsafe, oversize or corrupt picture is one muted line and an Open in me
     'art/corrupt.png': png(btoa('this is not a picture')),
     'art/vector.png': { mime: 'image/svg+xml', dataBase64: btoa('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>') },
     'art/page.png': { mime: 'text/html', dataBase64: btoa('<script>alert(1)</script>') },
-    'art/huge.png': png('A'.repeat(12_000_000)),
+    'art/huge.png': png('A'.repeat(22_400_000)),
   });
   const line = async (path: string, text: string | RegExp) => {
     await openFile(page, path);
@@ -112,4 +124,33 @@ test('an unsafe, oversize or corrupt picture is one muted line and an Open in me
   await line('art/vector.png', 'Binary file');
   await line('art/page.png', 'Binary file');
   await line('art/huge.png', /^Too large to show · /);
+});
+
+test('a corrupt picture hands off to the Open in menu, and a repaired file recovers without leaving the tab', async ({ page }) => {
+  const { engine } = await start(page, { 'art/fix.png': png(btoa('this is not a picture')) });
+  await openFile(page, 'art/fix.png');
+  await expect(body(page)).toHaveText('This image cannot be shown.');
+  await page.locator('.file-head').getByRole('button', { name: 'Open in' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Copy path' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  engine.replaceFile('art/fix.png', png(WIDE));
+  await expect(picture(page)).toBeVisible({ timeout: 15_000 });
+  await expect.poll(() => width(page)).toBe(400);
+  await expect(body(page)).not.toHaveText('This image cannot be shown.');
+});
+
+test('a held read for the old target never paints over the new one', async ({ page }) => {
+  await start(page, { 'art/wide.png': png(WIDE), 'art/tall.png': png(TALL) });
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route(/\/files\?path=art%2Fwide\.png/, async route => { await held; await route.fallback(); });
+  await openFile(page, 'art/wide.png');
+  await expect(body(page)).toHaveText('Loading…');
+  await openFile(page, 'art/tall.png');
+  await expect.poll(() => width(page)).toBe(60);
+  release();
+  await page.getByRole('tab', { name: 'wide.png', exact: true }).click();
+  await expect.poll(() => width(page)).toBe(400);
+  await page.getByRole('tab', { name: 'tall.png', exact: true }).click();
+  await expect.poll(() => width(page)).toBe(60);
 });

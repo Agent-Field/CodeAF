@@ -125,7 +125,7 @@ All are under `/sessions/{id}` and take the same bearer token. Refusals are
   required (non-blank) for note and amend, else 400. Engine refusals ("that task's
   run has ended") are 409. Success is `{accepted:true}` and a snapshot follows.
 - GET `/files?path=` returns `{name,mime,size,hash,inline,dataBase64}` through the
-  engine's confined FetchFile (16MB cap). `inline` is false for svg, html and xml
+  engine's confined FetchFile (16 MiB cap, `16 << 20` bytes; the File view's `maxImageBytes` is the same bound). `inline` is false for svg, html and xml
   (filedoor's allowlist): treat those as data to save or show as text, never render.
   Outside the workspace is 403, missing or not a file is 404.
 - POST `/files/stat` with `{paths:[<=64]}` returns

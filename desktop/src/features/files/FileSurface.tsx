@@ -6,7 +6,7 @@ import { DiffBody } from './DiffBody';
 import { FileHeader, type FileView } from './FileHeader';
 import { FileLines, linesOf } from './FileLines';
 import { splitFilePath } from './fileTarget';
-import { imageVerdict, isRasterImagePath } from './imageFile';
+import { imageVerdictOf, isRasterImagePath } from './imageFile';
 import type { Handoff, Load } from './useWorkView';
 import './files.css';
 
@@ -64,26 +64,21 @@ function FileView({ text, deleted }: { text?: Load<EngineTextFile>; deleted: boo
   return <FileLines lines={lines}/>;
 }
 
-const imageRefusal = (file: EngineFile): string | null => {
-  const verdict = imageVerdict(file);
-  if (verdict.ok) return null;
-  return verdict.reason === 'too-large' ? `Too large to show · ${formatBytes(file.size)}` : 'Binary file';
-};
+const brokenLine = 'This image cannot be shown.';
 
-/** One raster picture, fitted inside the body with its aspect ratio kept. A picture that will not decode says so in one line. */
-function Picture({ url, name }: { url: string; name: string }) {
-  const [broken, setBroken] = useState<string | null>(null);
-  if (broken === url) return <Message>This image cannot be shown.</Message>;
-  return <img className="file-picture" src={url} alt={name} onError={() => setBroken(url)}/>;
+/** The one muted line a picture earns instead of showing, or null when it can be drawn. `broken` is the url that failed to decode. */
+function imageLine(image: Load<EngineFile> | undefined, broken: string | null): { line: string | null; url?: string } | undefined {
+  if (image?.status !== 'ready') return undefined;
+  const verdict = imageVerdictOf(image.value);
+  if (!verdict.ok) return { line: verdict.reason === 'too-large' ? `Too large to show · ${formatBytes(image.value.size)}` : 'Binary file' };
+  return { line: broken === verdict.url ? brokenLine : null, url: verdict.url };
 }
 
-function ImageView({ image, name, deleted }: { image?: Load<EngineFile>; name: string; deleted: boolean }) {
+function ImageView({ image, state, name, deleted, onBroken }: { image?: Load<EngineFile>; state: ReturnType<typeof imageLine>; name: string; deleted: boolean; onBroken: (url: string) => void }) {
   if (!image || image.status === 'loading') return <Message>Loading…</Message>;
   if (image.status === 'failed') return <Message>{deleted ? 'This file was deleted.' : plain(image.message)}</Message>;
-  const refusal = imageRefusal(image.value);
-  const verdict = imageVerdict(image.value);
-  if (refusal || !verdict.ok) return <Message>{refusal}</Message>;
-  return <Picture url={verdict.url} name={name}/>;
+  if (state?.line) return <Message>{state.line}</Message>;
+  return <img className="file-picture" src={state!.url} alt={name} onError={() => onBroken(state!.url!)}/>;
 }
 
 /**
@@ -98,11 +93,11 @@ export function FileSurface({ path, workspace, view, onView, diff, text, onNeedT
   const folder = outsideGit ? (dir ? `${dir} · not in git` : 'not in git') : dir;
   const shown: FileView = change && !git ? 'file' : view;
   const picture = isRasterImagePath(path) && !!onNeedImage;
-  const refused = shown === 'file' && (picture
-    ? image?.status === 'ready' && !!imageRefusal(image.value)
-    : text?.status === 'ready' && !!text.value.refusal);
+  const [broken, setBroken] = useState<string | null>(null);
+  const pictureState = shown === 'file' && picture ? imageLine(image, broken) : undefined;
+  const refused = shown === 'file' && (picture ? !!pictureState?.line : text?.status === 'ready' && !!text.value.refusal);
   useEffect(() => { if (shown === 'file') (picture ? onNeedImage : onNeedText)?.(); }, [shown, picture, path]);
-  const showing = shown === 'file' && picture && image?.status === 'ready' && !imageRefusal(image.value);
+  const showing = !!pictureState && !pictureState.line;
   const counts = git ? change : undefined;
   return <div className="file-surface">
     <FileHeader name={name} dir={folder} added={counts?.added} deleted={counts?.deleted} view={git ? shown : null} onView={onView} path={path} workspace={workspace} handoff={handoff} refused={refused} keys={keys}/>
@@ -112,7 +107,7 @@ export function FileSurface({ path, workspace, view, onView, diff, text, onNeedT
       {shown === 'changes' && diff?.status === 'failed' && <Message>{plain(diff.message)}</Message>}
       {shown === 'changes' && change && <ChangesView diff={change} text={text} onNeedText={onNeedText}/>}
       {shown === 'file' && !picture && <FileView text={text} deleted={change?.status === 'deleted'}/>}
-      {shown === 'file' && picture && <ImageView image={image} name={name} deleted={change?.status === 'deleted'}/>}
+      {shown === 'file' && picture && <ImageView image={image} state={pictureState} name={name} deleted={change?.status === 'deleted'} onBroken={setBroken}/>}
     </div>
   </div>;
 }

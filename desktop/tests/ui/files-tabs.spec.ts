@@ -5,6 +5,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { installMockEngine, type MockEngine, type Scenario } from './support/mock-engine';
 import { richReply } from './support/scenarios-v2';
 import { openApp, send } from './support/conversation';
+import { savedWorkspace } from './support/synced-workspace';
 
 // File and diff tabs (Shell 3e): opened from file chips, changes first, a toggle to the whole file, a handoff to the editor.
 const FILE = 'internal/auth/auth_test.go';
@@ -125,11 +126,13 @@ test('the toggle shows the whole file, the choice survives a reload and a second
 test('a file the engine cannot show is one muted line and an Open in menu with Copy path', async ({ page }) => {
   await openWithDiff(page);
   await openDiffTab(page);
-  const current = await page.evaluate(() => JSON.parse(localStorage.getItem('codeaf.desktop.workspace.v1')!));
-  const source = current.tabs.find((tab: { kind: string }) => tab.kind === 'diff');
-  current.tabs.push({ ...source, id: 'binary-tab', title: 'tool.bin', kind: 'file', file: { path: 'bin/tool.bin', view: 'file' } });
-  current.activeId = 'binary-tab';
-  await page.evaluate(state => localStorage.setItem('codeaf.desktop.workspace.v1', JSON.stringify(state)), current);
+  await page.getByRole('button', { name: 'New tab', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Search or start' }).fill('tool');
+  await page.getByRole('option', { name: /tool\.bin/ }).click();
+  await expect(page.getByRole('tab', { name: 'tool.bin', exact: true })).toHaveAttribute('aria-selected', 'true');
+  // The window's real saved copy (not the frozen v1 import) records the tab the person opened.
+  const saved = await savedWorkspace(page);
+  expect(saved.tabs.find(tab => tab.title === 'tool.bin')?.file?.path).toBe('bin/tool.bin');
   await page.reload();
   await expect(page.locator('.file-body')).toHaveText('Binary file');
   await page.locator('.file-head').getByRole('button', { name: 'Open in' }).click();
