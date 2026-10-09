@@ -1,0 +1,3 @@
+/* The Design system specimen for terminal and job tabs: two cards on the frame ground, like a tab's content card. */
+.terminal-specimens { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(var(--specimen-card-min), 100%), 1fr)); gap: var(--space-4); padding: var(--specimen-pad); border-radius: var(--specimen-radius); background: var(--frame); }
+.terminal-specimen-card { display: flex; height: var(--terminal-specimen-height); min-width: 0; border-radius: var(--radius-pane); background: var(--canvas); box-shadow: var(--sh-1); overflow: hidden; }

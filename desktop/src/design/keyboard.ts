@@ -52,3 +52,7 @@ export function isCopyPathShortcut(event: KeyEvent) {
  const primary = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
  return primary && event.shiftKey && !event.altKey && event.key.toLowerCase() === 'c';
 }
+
+/** Interactive shell tabs: Control-backtick is identical on every platform. */
+export const newTerminalShortcut = isMac ? '⌃`' : 'Ctrl `';
+export const isNewTerminalShortcut = (event: KeyEvent) => event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.code === 'Backquote';
