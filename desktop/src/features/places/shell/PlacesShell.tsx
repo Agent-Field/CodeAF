@@ -185,8 +185,10 @@ export function usePlacesShellController(): PlacesShell {
     if (id === 'root') { openAllPlaces(); return; }
     if (id === 'now') { setPlace('now'); setArrival(n => n + 1); return; }
     if (!isWindowPlace(id)) throw new Error('That is not a place codeaf knows.');
-    const target = index?.byId.get(id);
-    if (index && !target) throw new Error('That place no longer exists.');
+    // A just-created Place can precede this render's graph refresh. Confirm
+    // unknown targets with the canonical graph before rejecting or navigating.
+    const target = index?.byId.get(id) ?? (await client.graph({ archived: true })).places.find(place => place.id === id);
+    if (!target) throw new Error('That place no longer exists.');
     if (target?.archived) throw new Error(`“${target.name}” is archived. Restore it from All places first.`);
     setPlace(id);
     setArrival(n => n + 1);
