@@ -15,15 +15,14 @@ async function openNavigation(page: Page) {
  }
 }
 
+// One test per theme and width: the Design system specimen is large, so a single session over every width
+// is slow in webkit and cannot run in parallel.
 for (const theme of ['Light', 'Dark']) {
- test(`${theme}: layouts stay usable from 320px browser to native minimum`, async ({ page }) => {
-  // This matrix runs fifteen page/accessibility checks in one browser session, and the Design system
-  // page checks every control specimen (the v3 controls panel included) at each width.
-  test.setTimeout(90_000);
-  await page.goto('/');
-  await page.getByRole('combobox', { name: 'Theme' }).click();
-  await page.getByRole('option', { name: `${theme} appearance`, exact: true }).click();
-  for (const width of [320, 480, 600, design.nativeWindow.minWidth, 1200]) {
+ for (const width of [320, 480, 600, design.nativeWindow.minWidth, 1200]) {
+  test(`${theme}: layouts stay usable from 320px browser to native minimum at ${width}px`, async ({ page }) => {
+   await page.goto('/');
+   await page.getByRole('combobox', { name: 'Theme' }).click();
+   await page.getByRole('option', { name: `${theme} appearance`, exact: true }).click();
    await page.setViewportSize({ width, height: width < design.nativeWindow.minWidth ? 480 : design.nativeWindow.minHeight });
    for (const name of ['Workspace', 'Activity', 'Design system']) {
     await openNavigation(page);
@@ -43,8 +42,8 @@ for (const theme of ['Light', 'Dark']) {
      await expect(page.locator('.page-title')).toHaveText('Activity');
     }
    }
-  }
- });
+  });
+ }
 }
 
 test('narrow navigation traps focus, themes nested menus, dismisses, and preserves desktop preference', async ({ page }) => {
