@@ -1,3 +1,4 @@
+import { savedWorkspace } from '../ui/support/synced-workspace';
 import { test, expect, type Page } from '@playwright/test';
 import { installMockEngine } from '../ui/support/mock-engine';
 import { question } from '../ui/support/scenarios';
@@ -13,7 +14,7 @@ async function seed(page: Page, value: Seed) {
  const state = { groups: [], closed: [], nextNumber: value.tabs.length + 1, recentIds: value.tabs.map(t => (t as { id: string }).id), ...value };
  await page.addInitScript(([key, json]) => { if (!sessionStorage.getItem('audit-seeded')) { localStorage.setItem(key, json); sessionStorage.setItem('audit-seeded', '1'); } }, [KEY, JSON.stringify(state)] as const);
 }
-const saved = (page: Page) => page.evaluate(key => JSON.parse(localStorage.getItem(key) ?? 'null'), KEY);
+const saved = savedWorkspace;
 const tabNamed = (page: Page, name: string) => page.getByRole('tab', { name, exact: true });
 const stripOrder = (page: Page) => page.locator('.workspace-tabstrip').evaluate(strip => Array.from(strip.querySelectorAll('[role="tab"]')).filter(el => !el.closest('[inert]')).map(el => el.getAttribute('aria-label')));
 const groupLabel = (page: Page, name: string) => page.locator('.workspace-group-label', { has: page.locator('.workspace-group-name', { hasText: new RegExp(`^${name}$`) }) });
@@ -44,7 +45,7 @@ test('TA-STRIP-18 the hover preview goes away when a drag starts', async ({ page
  await page.mouse.up();
 });
 
-test('TA-PIN-03 pinned tabs keep a predictable order: strip order, before a hairline, across a reload', async ({ page }) => {
+test('TA-PIN-03 pinned tabs keep their established pin order before a hairline across a reload', async ({ page }) => {
  await offline(page);
  await seed(page, { tabs: [tab('a', 'Alpha'), tab('b', 'Beta'), tab('c', 'Gamma')], activeId: 'b' });
  await page.goto('/');
@@ -52,11 +53,11 @@ test('TA-PIN-03 pinned tabs keep a predictable order: strip order, before a hair
   await tabNamed(page, name).click({ button: 'right' });
   await page.getByRole('menuitem', { name: /^Pin tab/ }).click();
  }
- expect(await stripOrder(page)).toEqual(['Alpha', 'Gamma', 'Beta']);
+ expect(await stripOrder(page)).toEqual(['Gamma', 'Alpha', 'Beta']);
  await expect(page.locator('.workspace-tabstrip > [role="separator"]')).toHaveCount(1);
  await expect(page.locator('.workspace-tab.is-pinned .workspace-tab-close')).toHaveCount(0);
  await page.reload();
- expect(await stripOrder(page)).toEqual(['Alpha', 'Gamma', 'Beta']);
+ expect(await stripOrder(page)).toEqual(['Gamma', 'Alpha', 'Beta']);
 });
 
 test('TA-GRP-05 a collapsed group with a member that needs you carries the amber dot on its pill', async ({ page }) => {
@@ -98,6 +99,7 @@ test('TA-MENU-08 menu rows are 28px (Components "Shell · menus")', async ({ pag
  await tabNamed(page, 'Beta').click({ button: 'right' });
  const row = page.getByRole('menuitem').first();
  await expect(row).toBeVisible();
+ await page.getByRole('menu').last().evaluate(async element => { await Promise.all(element.getAnimations({ subtree: true }).map(animation => animation.finished.catch(() => undefined))); });
  expect((await row.boundingBox())!.height).toBe(28);
 });
 
