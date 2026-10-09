@@ -22,6 +22,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // This local surface door reuses the same persistent engine and wire as the
@@ -96,6 +97,7 @@ func runDesktopBridge(args []string) error {
 	})
 	defer bridge.Close()
 	bridge.UseModels(&desktopbridge.Models{ProfileDir: profileDir, Catalog: desktopCatalog(profileDir)})
+	bridge.UseHistory(&desktopbridge.History{Root: session.PlacesRoot()})
 	listener, err := net.Listen("tcp", *address)
 	if err != nil {
 		return err

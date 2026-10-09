@@ -161,6 +161,7 @@ type Bridge struct {
 	closeOnce sync.Once
 	icons     *faviconCache
 	models    *Models
+	history   *History
 }
 
 func New(token string, open Open) *Bridge {
@@ -499,6 +500,9 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if b.modelRoutes(w, r, path) {
+		return
+	}
+	if b.historyRoutes(w, r, path) {
 		return
 	}
 	if path == "/sessions" && r.Method == http.MethodPost {

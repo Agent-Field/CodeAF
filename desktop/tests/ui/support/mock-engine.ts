@@ -1,4 +1,5 @@
 import type { Page, Route } from '@playwright/test';
+import { historyRoutes, type HistoryHandle, type MockHistory } from './history-engine';
 import type { EngineEntry, EngineEvent, EngineFile, EngineFileDiff, EngineSnapshot, EngineTaskPage, TerminalInfo } from '../../../src/features/chat/engine-client';
 
 export const MODEL = 'deepseek/deepseek-v4.1-flash';
@@ -28,6 +29,8 @@ export type MockDiff = Pick<EngineFileDiff, 'hunks'> & Partial<Pick<EngineFileDi
 export type MockTerminal = Partial<TerminalInfo> & { id: string; output?: string };
 
 export type Scenario = {
+  /** Conversations the History routes serve (list, recap, messages, search, archive). */
+  history?: MockHistory;
   /** Terminals and jobs served under /terminals; a POST /terminals adds more. */
   terminals?: MockTerminal[];
   /** State returned by POST /sessions and GET /sessions/{id}. */
@@ -52,6 +55,8 @@ export type Call = { method: string; path: string; body: Record<string, unknown>
 
 export type MockEngine = {
   calls: Call[];
+  /** What the History archive route changed, in order. */
+  history: HistoryHandle;
   /** The conversation model in force at the moment each accepted turn arrived. */
   turnModels: string[];
   snapshot: () => EngineSnapshot;
@@ -359,6 +364,8 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     return json(route, roleView(role));
   };
 
+  const history = historyRoutes(scenario.history, json);
+
   await page.route('**/api/engine/**', async route => {
     const request = route.request();
     const url = new URL(request.url());
@@ -372,8 +379,9 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
       return status ? json(route, { error: `Mock engine forced ${key} failure` }, status) : undefined;
     };
     if (root === 'models') return models(route, parts, method, body);
+    if (root === 'history') return history.handle(route, parts, method, body, url);
     if (root !== 'sessions') return json(route, { error: 'unknown route' }, 404);
-    if (!id) return forced('create') ?? json(route, state);
+    if (!id) return forced('create') ?? json(route, history.titleOf(body.sessionFile) ? { ...state, title: history.titleOf(body.sessionFile) } : state);
     if (id !== state.id) return json(route, { error: 'reattach this conversation' }, 404);
     if (!action) return forced('read') ?? json(route, state);
     if (action === 'events') return forced('events') ?? events(route, Number(url.searchParams.get('after') ?? 0));
@@ -408,5 +416,5 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     return json(route, { error: 'unknown action' }, 404);
   });
 
-  return { calls, turnModels, snapshot: () => state, advance, update };
+  return { calls, turnModels, history: { archived: history.archived }, snapshot: () => state, advance, update };
 }

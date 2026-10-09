@@ -55,9 +55,19 @@ Shell). On any conflict, the design files win over code and older docs.
 | Q32 | Diff "@@ hunk" header inside an edit's diff (the engine builds edit diffs from the edit, not from git) | **Designer: keep.** No hunk header on edit diffs; file/diff tabs (from git) keep it. |
 | Q33 | Elapsed time on the live thinking row ("4s") | **Designer: keep.** Not shown until thinking ends; the engine gives no time before then. |
 | Q34 | Icons the design uses that the animated icon set lacks: circle-slash, pencil-line, file-code-2 | **Designer: keep.** Nearest set icons: ban, pencil, the plain file icons. |
+| Q30 | ⌘1–3: the Conversation page says they switch pinned models, the Shell spec says ⌘1–9 jump to tabs | **Decided** (latest Interactions): ⌘1–9 jump to tabs and ⌥⌘1–3 switch the pinned models. |
 
 ## Open: for the designer
 
 | # | Question | Assumption the app ships now |
 |---|---|---|
-| Q30 | ⌘1–3: the Conversation page says they switch pinned models, the Shell spec says ⌘1–9 jump to tabs | ⌘1–3 switch pinned models while a conversation composer is on screen; ⌘4–9 jump to tabs. Tabs 1–3 are reached with ⌃Tab or a click. |
+| Q35 | History: what a conversation with no recap yet says on its row (Components draws only rows that have a sentence) | The row shows its title and its stamp and no second line. Nothing is invented; the recap fills in the next time a turn settles. |
+| Q36 | History search: when is there "a best match"? The design draws one for a question | Only when one recap sentence the engine already wrote covers at least 60% of the question's content words and no other conversation is within 1.5x of its score. Otherwise the page goes straight to Decisions, Discussed and Files. The answer is never composed. |
+| Q37 | History search: which words get the accent mark? The design marks "lexer" but not "decided" for "what did we decide about the lexer" | Whole words only. A term that only matches the start of a longer word (decide, decided) is not marked, so a mark never ends mid-word. |
+| Q38 | History: what the tab is called while searching | "History · <last content word of the question>" (the design's "History · lexer"); plain "History" when the field is empty. |
+| Q39 | History filters while a search is running (Decisions, Files, Tasks, Open) | They scope the search the same way they scope the list: the field and the pills are one query. |
+| Q40 | 12-hour auto-archive: when a tab that was running or waiting on you becomes idle | The 12 hours start when it stopped running or waiting, not when it last looked busy. Only tabs with a saved conversation archive; pinned, active, empty and held tabs never do. |
+| Q41 | History row menu: "Archive" on a conversation that is running or waiting on you, or already archived | Disabled while running or waiting (the 12-hour archive never takes those either); absent once archived. Archiving takes a tab holding the conversation off the strip. |
+| Q42 | History: continuing an archived conversation | Continue takes it back out of the archive, as Restore all does. |
+| Q43 | History row menu: "Add to place" and "Delete" | Absent until a place graph and an engine delete exist; the menu shows Continue, Read conversation and Archive. |
+| Q44 | Auto-archive toast duration: Components says every toast sits 6s and always offers Undo; 4c's archive toast offers Review and Restore all | 6s (`historyToastMs`), paused while hovered or focused; Restore all is its undo. |

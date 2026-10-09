@@ -38,6 +38,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where is the desktop settings page for choosing a model per job", "starting-codeaf"},
 		{"what do command 1 2 and 3 do in the desktop model picker", "starting-codeaf"},
 
+		// The desktop's History tab (history.md).
+		{"where do I find my old conversations in the desktop app", "history"},
+		{"how do I search what we decided last week in the desktop history", "history"},
+		{"does the desktop archive my conversations after twelve hours idle", "history"},
+		{"which model writes the recap under each conversation", "history"},
+		{"can I read an old conversation without opening it", "history"},
+		{"how do I archive a conversation myself in the desktop history", "history"},
+		{"what does restore all do on the archived tabs message", "history"},
+
 		{"what can you do", "what-i-can-do"},
 		{"why does a wrapped help line stay under its key", "keys"},
 		// The conversations view and its teams (conversations-and-teams.md).

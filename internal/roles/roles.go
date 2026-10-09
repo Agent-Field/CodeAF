@@ -193,6 +193,13 @@ const (
 	// and nothing downstream is decided from it. Registered from
 	// internal/session/caption.go, which owns the call.
 	RoleCaption Role = "caption"
+	// RoleRecap writes the short account of a conversation that the desktop's
+	// History tab lists: one sentence for a list row, what was discussed, what
+	// was decided. LOW, for the title's reason — a wrong recap costs a glance,
+	// the conversation itself is one click away and nothing downstream is
+	// decided from it. Registered from internal/session/recap.go, which owns
+	// the call.
+	RoleRecap Role = "recap"
 	// RoleShaper turns the words somebody typed after /task into the brief the
 	// worker is actually handed: it reads one request and writes the paragraphs
 	// and the done-condition around it. It sits HIGH for the auditor's reason
@@ -439,6 +446,7 @@ var roleDescriptions = map[Role]string{
 	RoleTaskName:      "the two or three words a task is called",
 	RoleJobName:       "the three or four words a background job is called",
 	RoleCaption:       "the discrete step title over a live tool batch",
+	RoleRecap:         "the short account of a conversation that History shows",
 }
 
 var (
@@ -553,7 +561,7 @@ var vocabulary = []Role{
 	RoleAuditor, RoleCaption, RoleCareful, RoleConsolidate,
 	RoleDesigner, RoleDivision, RoleGuardian, RoleHandoff,
 	RoleImageGen, RoleIntake, RoleJobName, RoleMarkReader,
-	RolePlanner, RoleReflex, RoleRepair, RoleRouter,
+	RolePlanner, RoleRecap, RoleReflex, RoleRepair, RoleRouter,
 	RoleRouterConfirm, RoleSentinel, RoleShaper, RoleSpeech,
 	RoleSpellOut, RoleTaskName, RoleTitle, RoleVideo,
 	RoleVision, RoleWorker,
