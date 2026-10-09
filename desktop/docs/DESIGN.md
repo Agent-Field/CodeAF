@@ -59,7 +59,15 @@ System sans is used everywhere except real code/terminal content, which uses sys
 | activity | Activity | Activity and engine status |
 | grid | LayoutGrid | Design system / layout |
 | search / plus / settings / arrow | Search / Plus / Settings / ArrowRight | Shared actions |
-
+| search / plus / settings / arrow | Search / Plus / Settings / ArrowRight | Shared actions |
+| attach / send / stop | Paperclip / ArrowUp / CircleStop | Composer actions |
+| queued / running / failed / alert / cancelled | CircleDashed / CircleDot / CircleX / CircleAlert / CircleMinus | Still state marks for tasks, steps and tabs |
+| check / close / chevron / chevronRight / chevronLeft | Check / X / ChevronDown / ChevronRight / ChevronLeft | Completion, dismissal, disclosure, navigation |
+| back / arrowDown | ArrowLeft / ArrowDown | Task breadcrumb Back; New messages pill |
+| tasks / checklist | ListTree / ListChecks | Task panel toggle; checks list |
+| terminal / file / edit / web / findFiles / tool | Terminal / FileText / FilePen / Globe / FileSearch / Wrench | Tool step family icons |
+| thinking | Brain | Reasoning line |
+| tab / pin / folder / more / split | MessageSquare / Pin / Folder / Ellipsis / PanelLeft | Tabs, groups and overflow |
 Sizes: xs 13px for trailing hints, sm 14px for navigation, md 16px for controls, lg 17px for favorites. The central stroke is 1.6 in a 24-unit viewBox, with rounded caps/joins. Use currentColor only. Navigation and utility glyphs stay still. Explicit directional action arrows translate 2px over 280ms; disclosure chevrons rotate only with open state. No upstream default glyph animation. Do not introduce idle animations or increase icon size to compensate for a poor glyph. Icon controls are 28px; compact sidebar actions are 32–34px high. This is desktop density, not a touch-optimized interface.
 
 ## Components and specimens
@@ -173,86 +181,30 @@ Mac also uses Command+Shift+[ / ] for adjacent tabs and Command+Shift+\ for
 the overview, following Safari's horizontal-tab conventions. Linux uses
 Control+PageUp / PageDown for adjacent tabs and Control+Shift+A for overview.
 
-## Work document tabs
+## Conversation
 
-The final Tab States wireframe defines a continuous document rather than a stack
-of chat bubbles. Adapt its hierarchy to the existing theme; do not copy its raw
-colors, fonts, icons, gradients or arbitrary dimensions. The product owns the ask
-row, section gaps, folding controls and input hairline. Result content owns its
-normal document structure. Shared system typography, Lucide icons, control states
-and central geometry apply to both.
+[CHAT.md](CHAT.md) is the authoritative spec for the conversation surface. It
+replaces the retired work-document wireframe: natural chat with sectional
+folding, quiet one-line tool groups, a right task panel and a single rounded
+composer. Rules for tabs, hover previews and indicators above still apply.
 
-A fresh tab is quiet with an immediately usable instruction line, without a hero
-heading or promotional empty card. The input rests against one hairline and grows
-only as the user writes. Context and model controls appear in the active composer;
-model and effort use three tab-local presets: Auto, Fast and Thorough. Cycle the
-preset from its label, or open its adjacent picker. Advanced model/effort choices
-remain in the shared searchable picker. Presets in this scaffold are interaction
-previews, not claims of automatic model routing, availability, prices or latency.
+Geometry and color come only from tokens in `src/design/tokens.json`:
 
-Completed sections fold to ask → digest. Opening the result is independent of
-showing the original instruction. Literal user words and all steering amendments
-appear behind the shared quotation bar only when explicitly requested. Live steers
-are footnotes, and their count remains visible as amended ×n after folding. Do not
-invent an AI ask or digest from an arbitrary submitted instruction. A locally staged
-instruction stays visibly staged until the canonical engine supplies a result.
+| Token | Role |
+| --- | --- |
+| chat-column-max-width (720px) | Centred reading column |
+| chat-bubble-max-width (80%) | User bubble width within the column |
+| radius-bubble (16px) | User message bubble |
+| radius-composer (18px) | Composer field |
+| task-panel-width (280px) | Right task panel |
+| chat-gutter (28px) | Left gutter holding the fold chevron |
+| chat-user-clamp-lines (8) | User message clamp before Show more |
+| colors.bubble | Soft translucent fill for the user bubble, light and dark |
+| colors.composer-surface | Composer field fill |
 
-The footer presents work state, next-action suggestions or a pending question using
-the same themed line. Suggestions and decision answers are separate actions; show
-a choice only for the actual pending question, preserve its identity, and acknowledge
-local preview selection honestly. Never fabricate progress, time estimates, results
-or provider capability. Named Pricing research and Vendor reconcile samples are
-explicitly labeled fixtures and do not run AI. New input, queues and sample state
-remain local UI previews; unsent drafts retain the existing tab persistence contract.
-
-Enter continues an idle document or steers its current work; Shift+Enter inserts a
-newline. Command+Enter on Mac / Control+Enter on Linux starts a new section, replacing
-the previous compact-composer Queue proposal. Queue remains a distinct explicit
-menu action; Mac Control+Enter can queue. Command/Control+L focuses the instruction
-line, Command/Control+Period cycles presets, and Command/Control+Shift+F folds all
-sections. Shortcut platform
-matching and hints live in keyboard.ts. IME composition never submits. Escape
-dismisses overlays before stopping a working preview; Stop remains an explicit
-button as well. These desktop
-choices require deliberate mapping to canonical TUI operations during integration.
-
-Preserve document reading position, focus and drafts when switching tabs or opening
-menus. Disclosure motion uses central shared durations and reduced-motion behavior;
-no decorative cursor blinking, gradient text or per-screen keyframes. All actions
-remain usable by keyboard and at 320px browser width, including short windows and
-long instructions. Test folding, verbatim recovery, steering, pending decisions,
-model presets and tab-local isolation alongside shared theme/accessibility contracts.
-
-The final input states are mandatory: resting is a hairline with a ghost suggestion
-and Tab cue; focused-empty shows next-step pills without model/attachment controls;
-typing reveals the split preset chip, Attach, outlined New section and primary
-Continue/Steer. Fresh tabs keep Auto inline. First submission moves the box to the
-bottom and thins it using duration-work and ease-layout, without scaling text.
-Reduced motion docks immediately. Held shortcut hints are quiet text, not a card.
-
-Tab identity is stable across execution steps. Keep a clear active surface, medium
-label weight and a tab joined to the content surface; selection and work status are separate. Show
-one still, named state indicator for receiving, working, waiting, completed, stopped
-or failure. No decorative spinner or invented percentage. Delayed hover and keyboard
-previews reveal the full title, latest section and a relative recorded-activity time.
-Do not put timestamps, changing step titles or badges across the tab strip.
-
-Workspace and document consume one persisted state: tab indicators must survive
-switching, closing/reopening and reload. Activity timestamps change on meaningful
-state events, not scrolling, focus or opening a menu. Samples say sample and marked
-time rather than implying a real execution finished. Retry/Stop keep the draft and
-partial result; retry samples make no request. A pointer click on the input uses a
-quiet border; keyboard text focus uses the composer’s thin lower edge. Avoid a bright
-box selection treatment and do not remove keyboard focus. Fresh tabs expose a real
-file-picker action; never fabricate attachments, resumable jobs or activity history.
-
-The active tab joins the document: upper corners only, same surface as the pane,
-no persistent accent outline or underlined rounded pill. Its label remains medium
-weight; keyboard focus remains distinct. Tab changes may fade and settle the document
-with shared document-enter motion, without scaling text or resetting the composer.
-Hover previews are a compact hierarchy: full title, at most one two-line draft or
-named-work summary, then one status/time line. Omit generic staged-result messages,
-redundant section labels and empty paragraphs. Hover is a quick orientation aid.
+User messages are literal text in the bubble; assistant text is unframed
+Markdown. The Design system screen shows these as a specimen, labeled
+Specimen. Do not add chat-only literal colors or sizes in feature CSS.
 
 ## Task plan direction
 
@@ -293,9 +245,9 @@ Tab entry fades without scaling or changing its hit area. When the strip overflo
 
 ## Connected conversations
 
-Unconnected tabs retain the final wireframe as a local preview. Connect engine creates or attaches the canonical persistent session. The live chip says DeepSeek v4.1 Flash and exposes no pretend Auto/Fast/Thorough routing. Actual transcript user entries, assistant text, separated engine notes and progressively disclosed tool calls form the work document. Sending, steering, queuing and Stop cross the canonical typed transport; rejected sends preserve words. Closing only detaches. Background open tabs observe completion; reopening reads the same canonical sessionFile. Pending approvals/questions require the TUI until their answer protocol is implemented.
+New tabs are quiet and local. The first send creates the canonical persistent session, and saved tabs reattach their sessionFile automatically; there is no Connect button. The composer shows the fixed model label (DeepSeek v4.1 Flash) and no pretend routing. Transcript entries, engine notes and tool steps follow [CHAT.md](CHAT.md). Sending, steering, queuing and Stop cross the canonical typed transport; rejected sends preserve words. Closing only detaches. Background open tabs observe completion; reopening reads the same canonical sessionFile. Pending questions and approvals appear as a card above the composer and are answered through the engine.
 
-Plan is a quiet footer action. At widths up to the compact breakpoint it opens an explicit modal drawer; wider windows reserve a consistent right column. Selection pins details and suppresses the redundant hover preview. Escape closes the drawer and restores focus. Completed items use the shared muted check. Ready, Assigned, Running, holds, paused/waiting and stopped/interrupted remain distinct. Leaf counts avoid counting parents twice; canonical run counters label aggregate activity as active, not executing. The labeled task fixture remains exclusively under UI preview.
+The task panel is a right column; at widths up to the compact breakpoint it becomes an overlay sheet. Selection pins details and suppresses the redundant hover preview. Escape closes the drawer and restores focus. Completed items use the shared muted check. Ready, Assigned, Running, holds, paused/waiting and stopped/interrupted remain distinct. Leaf counts avoid counting parents twice; canonical run counters label aggregate activity as active, not executing. Task fixtures exist only in tests and the Specimen.
 
 ## Assistant Markdown
 
@@ -327,12 +279,9 @@ read-only with the TUI route visible.
 
 ## Conversation and task hierarchy workspace
 
-The hierarchy is a calm navigation rail beside the work document. It shows parent/child ownership with compact text rows, quiet state marks and explicit branch disclosure. It does not turn tasks into cards or make a dependency canvas the default. Filtering is available on demand. Typed prerequisites and dependents remain secondary task context, distinct from parent/child containment.
-
-A normal task click opens its recorded conversation in the same tab. Parent and child use the same continuous work-document interface, including ask rows, folding, original instruction, Markdown and composer. The task identity changes; the interface language does not. Each child keeps its own draft and reading/folding state while the parent draft remains intact. A background tab opened for the same captured task shares its task document under the originating conversation/task identity; do not clone divergent corrections. Tab route history and root drafts remain independent. Recorded task excerpts are labeled as captures, and preview corrections never claim live execution. A named root breadcrumb and Back/Forward controls preserve orientation. Modifier-click opens a background task tab while keeping the current work in place. Route history, current task, drafts and reading context stay local to the tab. On compact screens, Plan and Conversation switch one readable view at a time; selecting a task moves into Conversation and returning to Plan retains its current marker. Updates never navigate automatically or steal focus.
-
-The prototype uses authentic captured task rows and saved task text with visible provenance. Missing records are disclosed rather than reconstructed. It creates no AI request and does not claim captured work is running now. Fresh tabs remain fresh, preview links preserve existing engine attachments and drafts, and read failures do not substitute fixtures. Canonical task identity and relationship types remain intact; leaf counts avoid counting parents twice. All rows, controls, spacing, type and motion use the shared design system.
-
+Superseded by [CHAT.md](CHAT.md) section 5: a right task panel (indentation only,
+no cards or connector lines) and a task view drawn as a conversation. The
+breadcrumb appears only in task view.
 
 ## Semantic typography contract
 

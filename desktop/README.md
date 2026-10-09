@@ -14,11 +14,11 @@ npm run check        # TypeScript/build + Go contract tests
 npm run desktop:build
 ```
 
-Browser preview supports navigation, appearance, and the command palette; the engine check explicitly requires the desktop app. No agent execution or project persistence is implemented yet.
+Browser preview needs the engine bridge (`npm run engine:dev`, see [ENGINE.md](docs/ENGINE.md)). A new conversation is quiet: the first send creates the engine session, and saved tabs reattach automatically. The conversation surface is specified in [CHAT.md](docs/CHAT.md).
 
 ## Architecture
 
-`src/` is React, `src/design/tokens.json` owns design values and generates `src/styles/tokens.css`, and `src-tauri/` is the native shell. The shell bundles the canonical root `bin/codeaf`, rather than an independent AI implementation. A narrow native command starts its authenticated loopback desktop transport; browser previews reach the same transport through Vite. Chat, streaming, Stop and read-only plan data use the existing persistent session engine. Closing a tab leaves that work running. See [ENGINE.md](docs/ENGINE.md) for startup, the fixed model and current limitations.
+`src/` is React, `src/design/tokens.json` owns design values and generates `src/styles/tokens.css`, and `src-tauri/` is the native shell. The shell bundles the canonical root `bin/codeaf`, rather than an independent AI implementation. A narrow native command starts its authenticated loopback desktop transport; browser previews reach the same transport through Vite. Chat, streaming, Stop and read-only task data use the existing persistent session engine. Closing a tab leaves that work running. See [ENGINE.md](docs/ENGINE.md) for startup, the fixed model and current limitations.
 
 The build script generates a sidecar matching the Rust target triple. Set `CARGO_BUILD_TARGET` to build the corresponding Go target; native shell builds still require the platform toolchain. Go binaries alone can be cross-compiled; Linux builds do not produce a validated macOS application.
 
