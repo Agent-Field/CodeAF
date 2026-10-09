@@ -94,21 +94,24 @@ type ChatTasks struct {
 
 // ChatRow is one conversation on a place's Home.
 type ChatRow struct {
-	ID        string             `json:"id"`
-	Title     string             `json:"title"`
-	Project   string             `json:"project"`
-	Workspace string             `json:"workspace"`
-	At        time.Time          `json:"at,omitzero"`
-	Created   time.Time          `json:"created,omitzero"`
-	Model     string             `json:"model,omitempty"`
-	Archived  bool               `json:"archived"`
-	Live      bool               `json:"live"`
-	Doing     string             `json:"doing"`
-	NeedsYou  bool               `json:"needsYou"`
-	Reason    string             `json:"reason,omitempty"`
-	Tasks     ChatTasks          `json:"tasks"`
-	Places    []ChatPlace        `json:"places"`
-	AddedBy   placegraph.AddedBy `json:"addedBy,omitempty"`
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Project   string `json:"project"`
+	Workspace string `json:"workspace"`
+	// SessionFile is the conversation's journal, the path a window reattaches with (POST /sessions). It is how a Home
+	// row opens the chat it names; nothing else is derived from it.
+	SessionFile string             `json:"sessionFile,omitempty"`
+	At          time.Time          `json:"at,omitzero"`
+	Created     time.Time          `json:"created,omitzero"`
+	Model       string             `json:"model,omitempty"`
+	Archived    bool               `json:"archived"`
+	Live        bool               `json:"live"`
+	Doing       string             `json:"doing"`
+	NeedsYou    bool               `json:"needsYou"`
+	Reason      string             `json:"reason,omitempty"`
+	Tasks       ChatTasks          `json:"tasks"`
+	Places      []ChatPlace        `json:"places"`
+	AddedBy     placegraph.AddedBy `json:"addedBy,omitempty"`
 }
 
 // Attention is one thing in a place that is running or waiting on the person.
@@ -360,7 +363,7 @@ func (x *placeIndex) chatRow(id string, in string) (ChatRow, bool) {
 		return ChatRow{}, false
 	}
 	row := ChatRow{
-		ID: r.ID, Title: r.Title, Project: r.Project, Workspace: r.Workspace, At: r.At, Created: r.Created, Model: r.Model,
+		ID: r.ID, Title: r.Title, Project: r.Project, Workspace: r.Workspace, SessionFile: r.Transcript, At: r.At, Created: r.Created, Model: r.Model,
 		Archived: r.Archived, Live: r.Live, Doing: r.Doing(), NeedsYou: r.NeedsPerson(), Reason: r.Reason(),
 		Tasks:  ChatTasks{Running: r.Tasks.Running, Incomplete: r.Tasks.Incomplete, Done: r.Tasks.Done, Failed: r.Tasks.Failed},
 		Places: []ChatPlace{},

@@ -183,14 +183,20 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 /* Split panes (Shell 3b): the full composer grows out of the 36px compact field. */
 @keyframes composer-expand { from { max-height: var(--compact-composer-height); opacity: var(--opacity-subtle); } to { max-height: var(--composer-expand-max-height); opacity: var(--opacity-opaque); } }
 
-/* The shared toast (design 3l step 3): 40px, radius 12, surface, sh-2. Posted through design/toasts.ts, drawn once by ToastRegion. */
-.toast-region { position: fixed; inset: auto 0 var(--toast-offset); z-index: var(--z-toast); display: flex; justify-content: center; padding: 0 var(--space-4); pointer-events: none; }
-.toast { display: inline-flex; align-items: center; gap: var(--toast-gap); height: var(--toast-height); max-width: 100%; padding: 0 var(--toast-pad-end) 0 var(--space-row); border-radius: var(--radius-card); background: var(--surface); color: var(--ink); box-shadow: var(--sh-2); font-size: var(--font-size-body); pointer-events: auto; animation: surface-enter var(--duration-overlay) var(--ease-overlay); }
-.toast-dot { flex: none; width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--accent); }
-.toast-dot[data-tone="danger"] { background: var(--danger); }
-.toast-text { min-width: 0; overflow: hidden; white-space: nowrap; padding-right: var(--tab-title-fade); margin-right: calc(var(--tab-title-fade) * -1); mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
-.toast-strong { font-weight: var(--font-weight-medium); }
-.toast .toast-action.button { flex: none; min-height: var(--toast-action-height); padding: 0 var(--toast-action-pad); border-radius: var(--radius-segment-item); font-size: var(--font-size-body); font-weight: var(--font-weight-medium); color: var(--ink-2); }
-.toast .toast-action.button-quiet { background: var(--field); color: var(--ink); }
-.toast .toast-action.button-ghost:hover:not(:disabled) { color: var(--ink); }
-@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+/* The ONE toast (design 3l step 3, Components "Overlays", "Toast · closed running work"), posted through design/toasts.ts
+   and drawn once by ToastRegion: a 40px pill on surface at sh-2, bottom-centre, newest at
+   the bottom. A leading dot (accent for news, amber for a refusal), 12px text with the subject in medium weight, then
+   26px actions: the secondary ones bare in ink-2, the primary one (Undo) on field. It enters with the shared
+   document-enter motion, which the reduced-motion tokens turn into an instant appearance. Narrow windows wrap the
+   sentence inside the pill; the pill never grows wider than the window less its gutters. */
+.toast-region { position: fixed; inset-inline: 0; bottom: var(--toast-offset); z-index: var(--z-toast); display: flex; flex-direction: column; align-items: center; gap: var(--toast-stack-gap); width: fit-content; max-width: calc(100vw - var(--toast-gutter) * 2); margin-inline: auto; pointer-events: none; }
+.toast { display: flex; align-items: center; gap: var(--toast-gap); box-sizing: border-box; min-height: var(--toast-height); max-width: 100%; padding: var(--space-tight) var(--toast-pad-end) var(--space-tight) var(--toast-pad-start); border-radius: var(--toast-radius); background: var(--surface); box-shadow: var(--sh-2); color: var(--ink); font-family: var(--sans); font-size: var(--type-label-size); line-height: var(--type-label-leading); pointer-events: auto; animation: document-enter var(--duration-overlay) var(--ease-overlay); }
+.toast-dot { flex: none; width: var(--toast-dot); height: var(--toast-dot); border-radius: var(--radius-pill); background: var(--accent); }
+.toast[data-tone="warning"] .toast-dot { background: var(--amber); }
+.toast[data-tone="danger"] .toast-dot { background: var(--danger); }
+.toast-text { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.toast-strong { font-weight: var(--type-label-strong); }
+.toast-action.button { flex: none; min-height: var(--toast-action-height); height: var(--toast-action-height); padding: 0 var(--toast-action-pad); border-radius: var(--toast-action-radius); font-weight: var(--type-label-strong); }
+.toast-action.button-ghost { color: var(--ink-2); }
+.toast-action.button-quiet { background: var(--field); color: var(--ink); }
+.toast-action.button-ghost:hover:not(:disabled), .toast-action.button-ghost:active:not(:disabled) { color: var(--ink); }

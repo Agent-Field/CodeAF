@@ -4,7 +4,11 @@
 
 export type WorldTask = { id: string; label: string; state: string; phase?: string };
 export type WorldRow = {
- session: string; title: string; project: string; workspace?: string; sourceFolders: string[]; model?: string;
+ session: string; title: string; project: string; workspace?: string;
+ /** The conversation's journal, the path a window reattaches with; absent when unknown. */
+ sessionFile?: string;
+ /** Filesystem folders the conversation referred to. NOT design-graph places. */
+ sourceFolders: string[]; model?: string;
  /** The presence file's own word ("working", "waiting on you", "idle"), or "open" / "closed". */
  state: string;
  live: boolean; open: boolean; running: boolean; needsYou: boolean; failed: number;

@@ -18,8 +18,8 @@ test.describe('with the engine away', () => {
 
  test('the New tab button opens an empty card with one centred field and no engine call', async ({ page }) => {
   const calls: string[] = [];
-  // The window-wide world feed (engine-wide attention for the Inbox and the dock badge) is not the tab's call: it runs from load and retries while the engine is away.
-  page.on('request', request => { if (request.url().includes('/api/engine/') && !/\/api\/engine\/(world|events)\b/.test(request.url())) calls.push(request.url()); });
+  // The window's own reads of the place graph and the world stream (engine-wide attention for the Inbox and the dock badge) are not the tab's; a new tab must add none.
+  page.on('request', request => { if (request.url().includes('/api/engine/') && !/\/api\/engine\/(places|events|world)\b/.test(request.url())) calls.push(request.url()); });
   await page.goto('/');
   calls.length = 0;
   await openField(page);

@@ -17,6 +17,18 @@ export function requestLeaveKind(kind: ShellKind) {
   window.dispatchEvent(new CustomEvent<ShellKind>(shellLeaveEvent, { detail: kind }));
 }
 
+let activeHome: string | undefined;
+const homeListeners = new Set<() => void>();
+/** The place of the focused Home tab (`root` for All places), or undefined when the focused tab is not a Home. */
+export function publishActiveHome(place: string | undefined) {
+  if (place === activeHome) return;
+  activeHome = place;
+  homeListeners.forEach(listener => listener());
+}
+export function useActiveHome(): string | undefined {
+  return useSyncExternalStore(listener => { homeListeners.add(listener); return () => { homeListeners.delete(listener); }; }, () => activeHome);
+}
+
 let activeKind: TabKind = 'conversation';
 const listeners = new Set<() => void>();
 export function publishActiveKind(kind: TabKind) {

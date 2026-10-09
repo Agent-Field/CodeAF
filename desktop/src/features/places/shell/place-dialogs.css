@@ -1,0 +1,26 @@
+/* The Places shell's sheets (instructions, files and links, a name). A native modal dialog on overlay-surface at sh-3 over
+   the Quick Look scrim (Components "Overlays": sheets sit at sh-3), a 14px radius like Quick Look, the shared 30px field and
+   controls inside. Layout only: every control keeps its shared look. */
+.place-dialog { width: min(var(--places-dialog-width), calc(100% - var(--space-8))); max-height: calc(100% - var(--space-8)); box-sizing: border-box; padding: 0; border: 0; border-radius: var(--places-quicklook-radius); background: var(--overlay-surface); color: var(--ink); box-shadow: var(--sh-3); overflow: hidden; animation: surface-enter var(--duration-overlay) var(--ease-overlay); }
+.place-dialog[open] { display: flex; flex-direction: column; }
+.place-dialog::backdrop { background: var(--places-quicklook-scrim); }
+.place-dialog-head { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-section) var(--space-6) 0; }
+.place-dialog-title { overflow-wrap: anywhere; }
+.place-dialog-lede { color: var(--ink-2); }
+.place-dialog-body { display: flex; flex-direction: column; gap: var(--space-3); min-height: 0; padding: var(--space-4) var(--space-6) var(--space-section); overflow-y: auto; }
+.place-dialog-area.text-area { box-sizing: border-box; width: 100%; resize: vertical; padding: var(--space-2) var(--field-pad); border-radius: var(--radius-control); background: var(--field); color: var(--ink); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); }
+.place-dialog-area.text-area:focus-visible { background: var(--surface); }
+.place-dialog-area.text-area::placeholder { color: var(--ink-3); }
+.place-dialog-label { font-size: var(--type-label-size); font-weight: var(--type-label-strong); color: var(--ink-2); }
+.place-dialog-error { margin: 0; color: var(--danger); overflow-wrap: anywhere; }
+.place-dialog-quiet { margin: 0; color: var(--ink-3); }
+.place-dialog-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-tight); }
+
+/* Files and links: one line per source, the kind (and a missing or unreadable state) muted after the label. */
+.place-dialog-sources { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.place-dialog-source { display: flex; align-items: center; gap: var(--space-3); min-height: var(--row-height-v3); min-width: 0; }
+.place-dialog-source-label { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: var(--type-prose-size); }
+.place-dialog-source-meta { flex: none; font-size: var(--type-caption-size); color: var(--ink-3); }
+.place-dialog-pickers { display: flex; flex-wrap: wrap; gap: var(--space-tight); }
+.place-dialog-add { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-tight); }
+.place-dialog-add-field.text-input { flex: 1 1 var(--places-dialog-field-basis); }

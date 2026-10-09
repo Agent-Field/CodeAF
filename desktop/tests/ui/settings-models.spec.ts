@@ -71,7 +71,7 @@ test('a pinned slot takes a catalog model and the composer picker follows in ord
   await page.getByRole('listbox', { name: 'Models' }).getByRole('option', { name: 'Kimi K3' }).click();
   await expect.poll(() => puts(engine.calls).at(-1)?.body).toEqual({ models: [GLM_FLASH, MODEL, OTHER] });
   await expect(page.getByRole('button', { name: 'Reset pinned models' })).toBeVisible();
-  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
+  await page.getByRole('button', { name: 'Now', exact: true }).click();
   await send(page, 'hello');
   await chip(page, 'DeepSeek v4.1 Flash').click();
   await expect(page.getByRole('radiogroup', { name: 'Pinned models', exact: true }).getByRole('radio')).toHaveText(['GLM Flash', 'DS Flash', 'kimi-k3']);
