@@ -339,7 +339,9 @@ by changing the file on the main branch.
 
 The common bounds, in every case:
 
-- a stage is one word (`a stage is one word · "do through" is two`);
+- a stage is one word (`a stage is one word · "do through" is two`); an item saved before this
+  bound is read with each name made one word, its first word that can be a name past a `do`
+  (`do through` is `through`, a requested-changes `prove 2` is `prove2`);
 - no two stages share a name, and an item has at most nine stages
   (`the run has nine stages already`);
 - an added stage is a conversation with an ask, and an ask is at most 240 cells
@@ -1615,7 +1617,14 @@ folder, so four items running at once never write over each other. The item's lo
 `branch: factory/12-total-double-counts` once, when the worktree is made.
 
 The branch starts from your remote's default branch (`origin/HEAD`) when git knows it, else
-from the branch your checkout is on. **Your checkout is never touched**: uncommitted changes
+from the branch your checkout is on. **A pull request's branch starts at the pull request's
+head**: codeaf fetches `refs/pull/<number>/head` from `origin` (GitHub serves it for a fork's
+pull request too) with the base branch beside it, so the change is `git diff origin/<base>...HEAD`
+in the worktree. A worktree made before that, or one whose pull request was pushed to since, is
+moved to the head the next round when nothing of its own is on it, and the log says
+`at the head of #12: <commit>`; one a step already committed into stays where it is. A
+repository with no `origin` cuts a pull request's branch the way it cuts an issue's, and a fetch
+that fails says `could not fetch the head of #12: <git's last line>` and the stage does not run. **Your checkout is never touched**: uncommitted changes
 in it stay where they are, are not an error, and do not follow the item.
 
 A `pr` post stage pushes the branch first, with `git push -u origin <branch>` and never with
