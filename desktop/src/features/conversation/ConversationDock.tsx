@@ -19,6 +19,8 @@ type TrayProps = {
   onAnswer: (answer: EngineAnswer) => Promise<boolean>;
   onHold: (question: { kind: string; id: number; ref?: string }) => void;
   focusKey?: string;
+  compact?: boolean;
+  onReview?: () => void;
 };
 
 type QueueProps = { items: QueuedItem[]; onRemove: (id: string) => void; removedHere: boolean };

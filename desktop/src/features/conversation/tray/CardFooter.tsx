@@ -14,7 +14,7 @@ type FooterProps = {
 };
 
 function waitingNote(question: Question): string | null {
-  if (question.blocking?.turn) return 'The reply is waiting on this';
+  // That the reply is waiting is said once, in the tray head; only held-up tasks are named here.
   const tasks = question.blocking?.tasks ?? [];
   return tasks.length ? `Holding up ${tasks.join(', ')}` : null;
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../../components/ui';
 import type { EngineAnswer } from '../../chat/engine-client';
 import { bulkAnswers } from './answers';
@@ -7,8 +7,11 @@ import type { Question } from './form';
 import { layoutTabs, questionKey, type Tab } from './layout';
 import { QuestionCardV2 } from './QuestionCardV2';
 import { BulkCard, ReviewPanel } from './SetPanels';
-import { panelDomId, tabDomId, TrayTabs } from './TrayTabs';
+import { TrayCompact } from './TrayCompact';
+import { TrayHeader } from './TrayHeader';
+import { useMoreBelow } from './useBodyFade';
 import './tray.css';
+import './tray-shell.css';
 
 export type DecisionTrayProps = {
   questions: Question[];
@@ -23,6 +26,10 @@ export type DecisionTrayProps = {
   renderImage?: RenderImage;
   /** Set to a questionKey to bring that question forward (a receipt line was clicked). */
   focusKey?: string;
+  /** The reader is scrolled away from the tray: draw the 40px bar instead of the card (1b). */
+  compact?: boolean;
+  /** Review on the compact bar; the host brings the tray back into view. */
+  onReview?: () => void;
 };
 
 function tabHolds(tab: Tab | undefined, key: string): boolean {
@@ -31,13 +38,14 @@ function tabHolds(tab: Tab | undefined, key: string): boolean {
   return tab.members.some((member) => questionKey(member) === key);
 }
 
-export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, renderImage, focusKey }: DecisionTrayProps) {
+export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, renderImage, focusKey, compact, onReview }: DecisionTrayProps) {
   const [later, setLater] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [held, setHeld] = useState<Record<string, EngineAnswer>>({});
   const [clockStopped, setClockStopped] = useState<Set<string>>(new Set());
   const [wanted, setWanted] = useState('');
   const [foldedOpen, setFoldedOpen] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const { tabs, folded } = useMemo(() => layoutTabs(questions, expanded, later), [questions, expanded, later]);
 
   useEffect(() => {
@@ -46,14 +54,17 @@ export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, render
     setWanted(focusKey);
   }, [focusKey]);
 
-  if (!tabs.length && !folded.length) return null;
   const active = tabs.find((tab) => tab.id === wanted) ?? tabs.find((tab) => tabHolds(tab, wanted)) ?? tabs[0];
+  const moreBelow = useMoreBelow(bodyRef, active?.id ?? '');
+
+  if (!tabs.length && !folded.length) return null;
   const inSet = new Set(tabs.flatMap((tab) => (tab.kind === 'review' ? [tab.batch] : [])));
   const busy = (key: string) => busyKey === key;
 
-  function next() {
-    const index = tabs.findIndex((tab) => tab.id === active?.id);
-    setWanted(tabs[Math.min(index + 1, tabs.length - 1)]?.id ?? '');
+  const index = tabs.findIndex((tab) => tab.id === active?.id);
+
+  function page(step: -1 | 1) {
+    setWanted(tabs[Math.max(0, Math.min(index + step, tabs.length - 1))]?.id ?? '');
   }
 
   function holdClock(question: Question) {
@@ -71,7 +82,7 @@ export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, render
   function commit(question: Question) {
     return (answer: EngineAnswer) => {
       setHeld((before) => ({ ...before, [questionKey(question)]: answer }));
-      next();
+      page(1);
       return Promise.resolve(true);
     };
   }
@@ -120,37 +131,42 @@ export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, render
     );
   }
 
+  const shown = active?.kind === 'question' ? active.question : (active?.members[0] as Question | undefined);
+  const standing = tabs.filter((tab) => tab.kind !== 'review').length + folded.length;
+  const nonBlocking = active?.kind === 'question' && !active.question.blocking?.turn;
+
   return (
-    <section className="decision-tray" aria-label="Waiting on you">
-      <TrayTabs
-        tabs={tabs}
-        activeId={active?.id ?? ''}
-        answeredIds={new Set(Object.keys(held))}
-        folded={folded}
-        foldedOpen={foldedOpen}
-        onSelect={setWanted}
-        onToggleFolded={() => setFoldedOpen((open) => !open)}
-      />
-      {foldedOpen && folded.length > 0 && (
-        <ul className="tray-folded">
-          {folded.map((question) => (
-            <li key={questionKey(question)} className="tray-folded-row">
-              <span className="tray-review-head">{question.head}</span>
-              <Button onClick={() => unfold(question)}>Answer now</Button>
-            </li>
-          ))}
-        </ul>
+    <>
+      {compact && (
+        <TrayCompact count={standing} summary={(active?.label ?? '').replace(/`/g, '')} onReview={() => onReview?.()} />
       )}
-      {active && (
-        <div
-          className="tray-body"
-          role={tabs.length > 1 ? 'tabpanel' : undefined}
-          id={panelDomId(active.id)}
-          aria-labelledby={tabs.length > 1 ? tabDomId(active.id) : undefined}
-        >
-          {body(active)}
-        </div>
-      )}
-    </section>
+      <section className="decision-tray" aria-label="Waiting on you" hidden={compact}>
+        <TrayHeader
+          question={shown}
+          index={index + 1}
+          count={tabs.length}
+          laterCount={folded.length}
+          laterOpen={foldedOpen}
+          onPage={page}
+          onToggleLater={() => setFoldedOpen((open) => !open)}
+        />
+        {foldedOpen && folded.length > 0 && (
+          <ul className="tray-folded">
+            {folded.map((question) => (
+              <li key={questionKey(question)} className="tray-folded-row">
+                <span className="tray-review-head">{question.head}</span>
+                <Button onClick={() => unfold(question)}>Answer now</Button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {active && (
+          <div className="tray-body" ref={bodyRef} data-more={moreBelow || undefined}>
+            {body(active)}
+          </div>
+        )}
+        {nonBlocking && <p className="tray-foot">Doesn't block this reply</p>}
+      </section>
+    </>
   );
 }
