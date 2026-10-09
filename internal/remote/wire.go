@@ -749,6 +749,16 @@ const (
 	// It is batched — one call per burst of new rows, never one per word.
 	MethodStatPaths = "Stat.Paths" // StatPathsArgs → []PathFact
 
+	// The four work-view doors (workview.go) feed the desktop's file and diff
+	// tabs. They are read-only getters under the same law as [MethodFetchFile]:
+	// the WORKSPACE only (not the session folder), symlinks resolved first.
+	// An older engine answers "no such method", which a surface reads as "this
+	// engine cannot show files", never as "nothing changed".
+	MethodReadText    = "File.Text"    // ReadTextArgs → TextFile
+	MethodFindFiles   = "File.Find"    // FindFilesArgs → FoundFiles
+	MethodDiffChanges = "Diff.Changes" // DiffChangesArgs → ChangedFiles
+	MethodDiffFile    = "Diff.File"    // DiffFileArgs → FileDiff
+
 	// MethodDepositFile is [MethodFetchFile] walked backwards: a file going
 	// from the surface's machine to the engine's, and NOT AS A MESSAGE.
 	//

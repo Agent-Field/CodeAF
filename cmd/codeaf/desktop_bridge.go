@@ -89,7 +89,7 @@ func runDesktopBridge(args []string) error {
 			pipe.Close()
 			return desktopbridge.Connection{}, err
 		}
-		return desktopbridge.Connection{Agent: client.Agent(), Welcome: client.Welcome(), Follow: client.Follow(), Take: client.Take, FetchFile: client.FetchFile, StatPaths: client.StatPaths, Close: func() { _ = client.Close() }}, nil
+		return desktopbridge.Connection{Agent: client.Agent(), Welcome: client.Welcome(), Follow: client.Follow(), Take: client.Take, FetchFile: client.FetchFile, StatPaths: client.StatPaths, ReadText: client.ReadText, FindFiles: client.FindFiles, DiffChanges: client.DiffChanges, DiffFile: client.DiffFile, Local: true, Close: func() { _ = client.Close() }}, nil
 	})
 	defer bridge.Close()
 	listener, err := net.Listen("tcp", *address)

@@ -2612,6 +2612,17 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	case MethodStatPaths:
 		return s.statPaths(call)
 
+	// The desktop's file and diff tabs (workview.go): text, matching names,
+	// what changed, and one file's hunks. Same boundary, workspace only.
+	case MethodReadText:
+		return s.readText(call)
+	case MethodFindFiles:
+		return s.findFiles(call)
+	case MethodDiffChanges:
+		return s.diffChanges(call)
+	case MethodDiffFile:
+		return s.diffFile(call)
+
 	// And the one door that WRITES without anybody saying anything: a file
 	// dropped on the browse page, kept in this session's attachments and
 	// nowhere else. It opens no turn, which is the whole of why it is not
