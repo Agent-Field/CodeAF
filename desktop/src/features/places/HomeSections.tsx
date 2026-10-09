@@ -1,0 +1,252 @@
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { Button, Icon, IconButton, Row, RowActions, SectionLabel, Text } from '../../components/ui';
+import { AttentionList, AttentionRow } from './components/AttentionRow';
+import { ChatList, ChatRow } from './components/ChatRow';
+import { PlaceTile, PlaceTileGrid } from './components/PlaceTile';
+import type { TintName } from './components/PlaceSwatch';
+import { childMeta, nameProblem, shortTime, type HomeAttention, type HomeChat, type HomeSource, type HomeChild, type HomeConnection, type HomeDeleteImpact } from './home-model';
+import { canDropOn, chatMenu, dropMode, placeMenu, readDrag, writeDrag, deleteSentence, type DropPayload, type PlaceActions } from './place-actions';
+import './home.css';
+
+/** Runs an owner's callback and keeps its failure as a sentence. The store's errors are already readable ("That would put “A” inside “B”."),
+ * so they are shown as they come; a half-finished multi-step write is the owner's to describe in its message. */
+export function useRunner() {
+  const [error, setError] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const run = useCallback(async (job: () => void | Promise<void>): Promise<boolean> => {
+    setError(undefined);
+    setBusy(true);
+    try { await job(); return true; }
+    catch (failure) { setError(failure instanceof Error && failure.message ? failure.message : 'That did not work. Nothing was changed.'); return false; }
+    finally { setBusy(false); }
+  }, []);
+  return { run, error, busy, clear: () => setError(undefined) };
+}
+export type Runner = ReturnType<typeof useRunner>;
+
+/** The item being dragged, kept in state because a browser hides drag data from the drop target until the drop itself. */
+export type DragState = { payload: DropPayload | undefined; set: (payload: DropPayload | undefined) => void };
+export function useDragState(): DragState {
+  const [payload, set] = useState<DropPayload | undefined>();
+  return { payload, set };
+}
+
+export function HomeRecap({ label, text }: { label: string; text: string }) {
+  return <section className="home-section home-recap" aria-label={label}>
+    <SectionLabel>{label}</SectionLabel>
+    <p className="home-recap-text">{text}</p>
+  </section>;
+}
+
+/** Needs-you first, then failures, then running; the engine's order is kept inside each group. */
+const attentionRank = { waiting: 0, failed: 1, running: 2 } as const;
+
+export function HomeAttentionSection({ items: given, actions, readOnly }: { items: readonly HomeAttention[]; actions: PlaceActions; readOnly?: boolean }) {
+  if (!given.length) return null;
+  const items = [...given].sort((a, b) => attentionRank[a.status] - attentionRank[b.status]);
+  return <section className="home-section" aria-label="Needs you and running">
+    <AttentionList label="Needs you and running">
+      {items.map(item => <AttentionRow key={`${item.status}:${item.id}`} id={item.id} title={item.title} placeName={item.placeName} status={item.status} statusText={item.statusText}
+        disabled={!actions.openChat || readOnly} onOpen={() => void actions.openChat?.(item.id)} onOpenInNewTab={actions.openChatInNewTab && (() => void actions.openChatInNewTab?.(item.id))}/>)}
+    </AttentionList>
+  </section>;
+}
+
+function moveFocus(event: KeyboardEvent<HTMLButtonElement>) {
+  const step = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
+  if (!step) return;
+  const rows = [...event.currentTarget.closest('ul')!.querySelectorAll<HTMLButtonElement>('.places-row-main:not(:disabled)')];
+  const next = rows[rows.indexOf(event.currentTarget) + step];
+  if (next) { event.preventDefault(); next.focus(); }
+}
+
+export function HomeChatsSection({ label, chats, truncated, actions, readOnly, inPlaceId, drag, now }: {
+  label: string; chats: readonly HomeChat[]; truncated?: boolean; actions: PlaceActions; readOnly?: boolean; inPlaceId?: string; drag: DragState; now: Date;
+}) {
+  if (!chats.length) return null;
+  const draggable = !readOnly && !!actions.file;
+  return <section className="home-section home-chats" aria-label={label}>
+    <SectionLabel>{label}</SectionLabel>
+    <ChatList label={label}>
+      {chats.map(chat => <ChatRow key={chat.id} id={chat.id} title={chat.title || 'Untitled chat'} excerpt={chat.excerpt} status={chat.status} model={chat.model}
+        timeLabel={shortTime(chat.at, now)} timeIso={chat.at} disabled={!actions.openChat} onKeyDown={moveFocus}
+        onOpen={() => void actions.openChat?.(chat.id)} onOpenInNewTab={actions.openChatInNewTab && (() => void actions.openChatInNewTab?.(chat.id))}
+        menu={chatMenu(chat.id, actions, { readOnly, inPlaceId })} draggable={draggable} dragging={drag.payload?.kind === 'chat' && drag.payload.ids.includes(chat.id)}
+        onDragStart={event => { const payload: DropPayload = { kind: 'chat', ids: [chat.id] }; writeDrag(event, payload); drag.set(payload); }} onDragEnd={() => drag.set(undefined)}/>)}
+    </ChatList>
+    {truncated && <p className="home-quiet">Showing the most recent chats.</p>}
+  </section>;
+}
+
+/** The tile grid for a place's children, or a root's top-level places, or a search's results. It owns the inline create/rename tile and every drop. */
+export function HomePlacesSection({ label, places, parentId, parentName, parentTint, actions, readOnly, siblings, runner, drag, onDelete, allowNew = true, showLabel = true, newLabel, extraTiles, restore }: {
+  label: string; places: readonly HomeChild[]; parentId?: string; parentName?: string; parentTint?: TintName;
+  actions: PlaceActions; readOnly?: boolean; siblings: readonly string[]; runner: Runner; drag: DragState; onDelete?: (place: HomeChild) => void; allowNew?: boolean; showLabel?: boolean; newLabel?: string; extraTiles?: ReactNode;
+  /** Archived tiles offer Restore instead of Go to's neighbours: drawn as the same tiles, with their menu alone changed. */
+  restore?: boolean;
+}) {
+  const [selected, setSelected] = useState<string>();
+  const [dropOn, setDropOn] = useState<string>();
+  const [creating, setCreating] = useState<{ name: string; tint: TintName } | undefined>();
+  const [renaming, setRenaming] = useState<{ id: string; name: string; tint: TintName; original: string; originalTint: TintName } | undefined>();
+  const showNew = allowNew && !!actions.create;
+  if (!places.length && !showNew && !creating && !extraTiles) return null;
+
+  const createProblem = creating ? nameProblem(creating.name, siblings) : undefined;
+  const renameProblem = renaming ? nameProblem(renaming.name, siblings, renaming.original) : undefined;
+  const submitCreate = async () => {
+    if (!creating || createProblem) return;
+    const ok = await runner.run(() => actions.create?.({ name: creating.name.trim(), tint: creating.tint === 'graphite' ? undefined : creating.tint, parent: parentId }));
+    if (ok) setCreating(undefined);
+  };
+  const submitRename = async () => {
+    if (!renaming || renameProblem) return;
+    const { id, name, tint, original, originalTint } = renaming;
+    const ok = await runner.run(async () => {
+      if (name.trim() !== original) await actions.rename?.(id, name.trim());
+      if (tint !== originalTint && tint !== 'graphite') await actions.setTint?.(id, tint);
+    });
+    if (ok) setRenaming(undefined);
+  };
+
+  return <section className="home-section home-places" aria-label={label}>
+    {showLabel && <SectionLabel>{label}</SectionLabel>}
+    <PlaceTileGrid label={parentName ? `Places in ${parentName}` : label}>
+      {places.map(place => {
+        if (renaming?.id === place.id) {
+          return <PlaceTile key={place.id} mode="creating" name={renaming.name} tint={renaming.tint} invalid={!!renameProblem} hint={renameProblem ?? '↵ rename · Esc cancel'}
+            onNameChange={name => setRenaming(previous => previous && { ...previous, name })} onTintChange={tint => setRenaming(previous => previous && { ...previous, tint })}
+            onSubmit={() => void submitRename()} onCancel={() => setRenaming(undefined)}/>;
+        }
+        const accepts = canDropOn(drag.payload, place.id, actions) && !readOnly && !place.archived;
+        return <PlaceTile key={place.id} id={place.id} name={place.name} tint={place.tint} tintSource={place.tintSource} meta={childMeta(place)} status={place.status}
+          selected={selected === place.id} dragging={drag.payload?.kind === 'place' && drag.payload.ids.includes(place.id)} dropTarget={dropOn === place.id && accepts} disabled={!actions.goTo}
+          onGoTo={() => void runner.run(() => actions.goTo?.(place.id))} onOpenInNewWindow={actions.goToInNewWindow && (() => void runner.run(() => actions.goToInNewWindow?.(place.id)))}
+          onQuickLook={actions.quickLook && (() => { setSelected(place.id); actions.quickLook?.(place.id); })}
+          menu={placeMenu({ id: place.id, name: place.name, tint: place.tint, pinned: place.pinned, archived: place.archived || restore }, actions, {
+            readOnly, canRename: !place.path, startRename: id => setRenaming({ id, name: place.name, tint: place.tintSource === 'own' ? place.tint : 'graphite', original: place.name, originalTint: place.tintSource === 'own' ? place.tint : 'graphite' }),
+            startDelete: onDelete && (() => onDelete(place)) })}
+          draggable={!readOnly && !!actions.file && !place.archived}
+          onDragStart={event => { const payload: DropPayload = { kind: 'place', ids: [place.id] }; writeDrag(event, payload); drag.set(payload); }} onDragEnd={() => { drag.set(undefined); setDropOn(undefined); }}
+          onDragEnter={event => { if (accepts) { event.preventDefault(); setDropOn(place.id); } }}
+          onDragOver={event => { if (accepts) { event.preventDefault(); event.dataTransfer.dropEffect = dropMode(event) === 'move' ? 'move' : 'copy'; } }}
+          onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropOn(undefined); }}
+          onDrop={event => {
+            setDropOn(undefined);
+            const payload = readDrag(event) ?? drag.payload;
+            if (!canDropOn(payload, place.id, actions) || readOnly || place.archived) return;
+            event.preventDefault();
+            drag.set(undefined);
+            void runner.run(() => actions.file?.(payload as DropPayload, place.id, dropMode(event)));
+          }}/>;
+      })}
+      {creating
+        ? <PlaceTile mode="creating" name={creating.name} tint={creating.tint} invalid={!!createProblem && !!creating.name.trim()} hint={creating.name.trim() && createProblem ? createProblem : '↵ create · Esc cancel'}
+            onNameChange={name => setCreating(previous => previous && { ...previous, name })} onTintChange={tint => setCreating(previous => previous && { ...previous, tint })}
+            onSubmit={() => void submitCreate()} onCancel={() => setCreating(undefined)}/>
+        : showNew && <PlaceTile mode="new" label={newLabel} disabled={readOnly || runner.busy} onCreate={() => setCreating({ name: '', tint: parentTint ?? 'graphite' })}/>}
+      {extraTiles}
+    </PlaceTileGrid>
+  </section>;
+}
+
+const sourceWords: Record<NonNullable<HomeSource['state']>, string> = { ok: '', missing: 'missing', unreadable: 'unreadable', unknown: '' };
+
+/** The place's own sources, quietly, with Remove. Hidden when there are none. Remove needs the owner's verb and a place that can be written to. */
+export function HomeSourcesSection({ placeId, sources, actions, readOnly }: { placeId: string; sources: readonly HomeSource[]; actions: PlaceActions; readOnly?: boolean }) {
+  if (!sources.length) return null;
+  const remove = actions.removeSource && !readOnly ? actions.removeSource : undefined;
+  return <section className="home-section home-sources" aria-label="Sources">
+    <SectionLabel>Sources</SectionLabel>
+    <ul className="home-source-list" aria-label="Sources">
+      {sources.map(source => <li key={source.id}><Row className="home-source" data-source-id={source.id} data-state={source.state}>
+        <span className="home-source-label">{source.label}</span>
+        <span className="home-source-note">{[source.kind, source.state ? sourceWords[source.state] : ''].filter(Boolean).join(' · ')}</span>
+        {remove && <RowActions><IconButton size="row" icon="close" iconSize="xs" label={`Remove ${source.label}`} onClick={() => void remove(placeId, source.id)}/></RowActions>}
+      </Row></li>)}
+    </ul>
+  </section>;
+}
+
+/** The empty place of 8b: one sentence, the two optional actions that are wired, and the context line the engine wrote. Nothing else. */
+export function HomeEmptyPlace({ placeId, contextLine, actions, readOnly }: { placeId: string; contextLine?: string; actions: PlaceActions; readOnly?: boolean }) {
+  const add = actions.addSources && !readOnly, write = actions.writeInstructions && !readOnly;
+  return <>
+    <section className="home-empty" aria-label="Empty place">
+      <p className="home-empty-sentence">Nothing here yet. Start a chat below, drag chats in from anywhere, or drop in what this place should know.</p>
+      {(add || write) && <div className="home-empty-actions">
+        {add && <Button variant="quiet" onClick={() => actions.addSources?.(placeId)}><Icon name="attach" size="xs"/>Add files or links</Button>}
+        {write && <Button variant="quiet" onClick={() => actions.writeInstructions?.(placeId)}><Icon name="pencil" size="xs"/>Write instructions</Button>}
+      </div>}
+    </section>
+    {contextLine && <p className="home-quiet home-context">{contextLine}</p>}
+  </>;
+}
+
+/** Loading, a read that failed, and the engine being out of reach. With a page already on screen the last good one stays, read-only. */
+export function HomeNotice({ connection, hasView, onRetry }: { connection: HomeConnection; hasView: boolean; onRetry?: () => void }) {
+  if (connection.state === 'ready') return null;
+  if (connection.state === 'loading') return hasView ? null : <p className="home-notice" role="status" aria-live="polite">Loading places</p>;
+  const message = connection.state === 'error' ? connection.message
+    : connection.message ?? (hasView ? 'Can’t reach codeaf right now. This is the last page it loaded, so changes are paused.' : 'Can’t reach codeaf right now.');
+  return <div className="home-notice" role={connection.state === 'error' ? 'alert' : 'status'} data-connection={connection.state}>
+    <Text tone="default">{message}</Text>
+    {onRetry && <Button variant="quiet" onClick={onRetry}>Retry</Button>}
+  </div>;
+}
+
+export function HomeBanner({ message, onDismiss }: { message: string | undefined; onDismiss: () => void }) {
+  if (!message) return null;
+  return <div className="home-notice" role="alert" data-connection="action">
+    <Text tone="default">{message}</Text>
+    <Button variant="quiet" onClick={onDismiss}>Dismiss</Button>
+  </div>;
+}
+
+export type DeleteState = { id: string; name: string; phase: 'loading' | 'ready' | 'error'; impact?: HomeDeleteImpact; message?: string };
+
+/** The inline "Delete place…" confirmation: it reads the published delete preview first, says what will happen, and only then offers Delete. */
+export function HomeDeleteConfirm({ state, onConfirm, onCancel, busy }: { state: DeleteState; onConfirm: () => void; onCancel: () => void; busy: boolean }): ReactNode {
+  const box = useRef<HTMLDivElement>(null);
+  // The menu that started this gives focus back to the place that opened it once its exit animation ends. For that short window Cancel takes
+  // focus back from the opener only, never from something the person chose.
+  useEffect(() => {
+    const claim = () => box.current?.querySelector<HTMLButtonElement>('[data-cancel]')?.focus();
+    const reclaim = (event: FocusEvent) => { const target = event.target as Element; if (target === document.body || target.hasAttribute('aria-haspopup') || target.hasAttribute('data-places-tile-focusable')) claim(); };
+    document.addEventListener('focusin', reclaim);
+    const first = setTimeout(claim, 0);
+    const done = setTimeout(() => document.removeEventListener('focusin', reclaim), 1000);
+    return () => { clearTimeout(first); clearTimeout(done); document.removeEventListener('focusin', reclaim); };
+  }, []);
+  return <div ref={box} className="home-confirm" role="group" aria-label={`Delete ${state.name}`} data-phase={state.phase}>
+    <Text tone="default" role={state.phase === 'error' ? 'alert' : 'status'}>
+      {state.phase === 'loading' ? `Checking what deleting “${state.name}” would change` : state.phase === 'error' ? state.message ?? 'Could not check what deleting would change.' : deleteSentence(state.name, state.impact as HomeDeleteImpact)}
+    </Text>
+    <div className="home-confirm-actions">
+      <Button variant="quiet" data-cancel onClick={onCancel}>Cancel</Button>
+      {state.phase === 'ready' && <Button variant="danger" loading={busy} onClick={onConfirm}>Delete place</Button>}
+    </div>
+  </div>;
+}
+
+/** Delete flow: preview first, confirm second. Only offered when the owner wired both the preview and the delete. */
+export function useDeleteFlow(actions: PlaceActions, runner: Runner) {
+  const [state, setState] = useState<DeleteState>();
+  const start = actions.loadDeletePreview && actions.remove ? (place: { id: string; name: string }) => {
+    setState({ id: place.id, name: place.name, phase: 'loading' });
+    actions.loadDeletePreview?.(place.id).then(
+      impact => setState(current => current?.id === place.id ? { ...current, phase: 'ready', impact } : current),
+      failure => setState(current => current?.id === place.id ? { ...current, phase: 'error', message: failure instanceof Error ? failure.message : undefined } : current));
+  } : undefined;
+  const confirm = async () => { if (state && await runner.run(() => actions.remove?.(state.id))) setState(undefined); };
+  return { state, start, confirm, cancel: () => setState(undefined) };
+}
+
+/** The page frame both Homes share: the scrolling column with the design's bottom fade, and the composer slot under it. `⌘[` or `Ctrl [` goes up a level. */
+export function HomeFrame({ label, children, composer, onUp }: { label: string; children: ReactNode; composer?: ReactNode; onUp?: () => void }) {
+  return <section className="home-page" aria-label={label}
+    onKeyDown={event => { if (onUp && (event.metaKey || event.ctrlKey) && !event.altKey && event.key === '[') { event.preventDefault(); onUp(); } }}>
+    <div className="home-scroll" tabIndex={-1}><div className="home-column">{children}</div></div>
+    {composer && <div className="home-composer">{composer}</div>}
+  </section>;
+}

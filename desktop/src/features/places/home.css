@@ -1,0 +1,57 @@
+/* Layout only for a Places Home (Places 8a to 8e). The rows, tiles and heading style themselves in components/places-components.css;
+   this file places them in the page column, so nothing here sets a colour, a font or a length that tokens.json does not own. */
+.home-page { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--canvas); color: var(--ink); font-family: var(--sans); }
+.home-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; align-items: center; mask-image: linear-gradient(to bottom, black calc(100% - var(--places-home-fade)), transparent); outline: none; }
+.home-column { width: 100%; max-width: var(--content-max-width); padding: var(--places-home-pad-top) var(--places-home-pad-inline) var(--places-home-fade); box-sizing: border-box; display: flex; flex-direction: column; gap: var(--places-home-gap); }
+.home-composer { padding: 0 var(--places-home-pad-inline) var(--space-5); }
+.home-section { display: flex; flex-direction: column; gap: var(--space-compact); }
+.home-section.home-chats { gap: var(--space-half); }
+.home-recap { gap: var(--space-2); }
+.home-recap-text { margin: 0; font-size: var(--places-home-recap-size); line-height: var(--type-prose-leading); text-wrap: pretty; }
+.home-quiet { margin: 0; font-size: var(--type-label-size); color: var(--ink-3); }
+.home-context { margin-top: calc(var(--places-home-gap) * -0.5); }
+
+/* The empty place (8b): a sentence, up to two quiet buttons, then the context line. */
+.home-empty { display: flex; flex-direction: column; gap: var(--space-row); padding: var(--places-home-empty-pad-top) 0 var(--space-2); }
+.home-empty-sentence { margin: 0; max-width: var(--places-home-sentence-max); font-size: var(--places-home-sentence-size); line-height: var(--type-prose-leading); color: var(--ink-2); text-wrap: pretty; }
+.home-empty-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+/* Loading, error, offline and a failed action: one quiet line and, when it can help, one button. */
+.home-notice { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.home-notice .type-body { flex: 1; min-width: 0; }
+.home-confirm { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) var(--places-row-pad); border-radius: var(--places-row-radius); background: var(--field); }
+.home-confirm-actions { display: flex; flex-wrap: wrap; gap: var(--space-tight); }
+
+/* All places: the title row carries the search at its right; the count line sits under it. */
+.all-places-heading { display: flex; flex-direction: column; gap: var(--space-compact); }
+.all-places-title-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.all-places-title-row .type-home-title { flex: 1; min-width: 0; margin: 0; }
+.all-places-search { position: relative; display: flex; align-items: center; width: var(--places-home-search-width); max-width: 100%; color: var(--ink-3); }
+.all-places-search > .app-icon { position: absolute; inset-inline-start: var(--space-compact); pointer-events: none; }
+.all-places-search .all-places-search-input.text-input { width: 100%; padding-inline-start: calc(var(--space-compact) + var(--icon-xs) + var(--space-2)); }
+.home-search-empty { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.home-archived-toggle.button { align-self: flex-start; min-height: 0; padding: 0 var(--space-half); gap: var(--space-tight); color: var(--ink-3); font-size: var(--type-label-size); font-weight: var(--font-weight-regular); }
+.home-suggestion { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; padding-top: var(--space-1); font-size: var(--type-label-size); color: var(--ink-2); }
+.home-suggestion > .app-icon { color: var(--ink-3); }
+.home-suggestion-action.button { min-height: 0; padding: 0 var(--space-half); background: transparent; color: var(--ink); font-size: var(--type-label-size); font-weight: var(--font-weight-medium); }
+
+/* Quick Look (8d): a read-only Home in a sheet over a scrim. */
+.home-quicklook { width: min(var(--places-quicklook-width), calc(100% - var(--space-8))); max-height: calc(100% - var(--space-8)); padding: 0; border: 0; border-radius: var(--places-quicklook-radius); background: var(--canvas); color: var(--ink); box-shadow: var(--sh-3); overflow: hidden; }
+.home-quicklook[open] { display: flex; flex-direction: column; }
+.home-quicklook::backdrop { background: var(--places-quicklook-scrim); }
+.home-quicklook-body { display: flex; flex-direction: column; gap: var(--space-row); padding: var(--places-quicklook-pad-top) var(--space-6) var(--places-quicklook-pad-bottom); overflow-y: auto; min-height: 0; }
+.home-quicklook-head { display: flex; align-items: center; gap: var(--space-compact); }
+.home-quicklook-title { margin: 0; flex: 1; min-width: 0; font-size: var(--type-title-size); font-weight: var(--type-title-weight); line-height: var(--type-title-leading); }
+.home-quicklook-hint { font-size: var(--type-caption-size); color: var(--ink-3); }
+.home-quicklook-recap { margin: 0; font-size: var(--type-prose-size); line-height: var(--type-prose-leading); color: var(--ink-2); }
+.home-quicklook-foot { display: flex; flex-wrap: wrap; gap: var(--space-tight); padding: var(--space-3) var(--space-6); border-top: var(--border-width) solid var(--line); }
+.home-quicklook .places-chat-list[data-variant="home"] { margin-top: 0; }
+
+/* Sources: a quiet list of 30px rows; Remove shows on hover or focus and always on touch (the shared Row does that). */
+.home-source-list { margin: 0 var(--places-row-bleed); padding: 0; list-style: none; display: flex; flex-direction: column; }
+.home-source.row { gap: var(--space-3); padding-inline: var(--places-row-pad); }
+.home-source-label { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; font-size: var(--type-prose-size); mask-image: linear-gradient(to right, black calc(100% - var(--places-text-fade)), transparent); }
+.home-source-note { font-size: var(--type-caption-size); color: var(--ink-3); white-space: nowrap; }
+
+/* Narrow windows: the column keeps the 16px page gutter (Places plan, P-CMP-18). */
+@media (max-width: 600px) { .home-column { padding-inline: var(--space-4); } .home-composer { padding-inline: var(--space-4); } }
