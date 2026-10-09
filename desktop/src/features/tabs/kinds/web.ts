@@ -1,6 +1,6 @@
-import { placeholderPane } from './Placeholder';
+import { WebPane } from '../../web/WebPane';
 import { WebPreview } from '../preview/bodies';
 import type { KindDef } from './slots';
 
-/** Placeholder. No browser surface or favicon fetch exists; the tab draws a monogram (see KindIcon) and a 2px load line (LoadingLine). */
-export const webKind: KindDef = { kind: 'web', label: 'Web', icon: 'web', backed: false, pane: placeholderPane('Web', 'web'), preview: WebPreview };
+/** A page in a native child view (src-tauri/src/web.rs); outside the desktop app the pane says so and offers the browser. Its hover card and overview body are the shared preview's web card. */
+export const webKind: KindDef = { kind: 'web', label: 'Web', icon: 'web', backed: true, pane: WebPane, preview: WebPreview };

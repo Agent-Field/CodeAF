@@ -6,6 +6,7 @@ import { withTabMenu } from './hosts/menuHost';
 import { withPreview } from './hosts/previewHost';
 import { focusedPane, panesOf, type Tab } from './model';
 import { SplitTab } from './SplitTab';
+import { monogramOf } from '../web/address';
 import { Tab as TabView, type TabState } from './Tab';
 
 
@@ -35,11 +36,11 @@ export function TabItem({ api, tab, order, inGroup = false }: { api: TabsApi; ta
   const frame = tabDragProps(api, tab);
   if (tab.split) {
     const { panes, focus } = tab.split;
-    const segments = panes.map(pane => ({ id: pane.id, kind: pane.kind, title: pane.title, state: stateOfMark(api.summaries[pane.id]?.mark) }));
+    const segments = panes.map(pane => ({ id: pane.id, kind: pane.kind, title: pane.title, monogram: monogramOf(pane), state: stateOfMark(api.summaries[pane.id]?.mark) }));
     return withTabMenu(api, tab, <SplitTab segments={segments} focus={focus} active={active} frame={frame} onSelectPane={index => api.dispatch({ type: 'select', id: panes[index].id })} onClose={() => api.closeTab(tab.id)}/>);
   }
   return withTabMenu(api, tab, (
-    <TabView kind={tab.kind} title={tab.title} active={active} pinned={tab.pinned} inGroup={inGroup} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame}
+    <TabView kind={tab.kind} title={tab.title} monogram={monogramOf(focusedPane(tab))} active={active} pinned={tab.pinned} inGroup={inGroup} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame}
       onSelect={() => api.dispatch({ type: 'select', id: tab.id })} onClose={() => api.closeTab(tab.id)} onRename={() => api.startRename(tab.id)}
       onKeyDown={navigate(api, order, tab)} wrapSelect={select => withPreview(api, tab, select)}/>
   ));

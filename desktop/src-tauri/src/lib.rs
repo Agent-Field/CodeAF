@@ -3,6 +3,9 @@ mod dialogs;
 mod menu;
 mod native;
 mod notifications;
+// Public only so the native smoke test (tests/web_smoke.rs) can drive it.
+#[doc(hidden)]
+pub mod web;
 mod windows;
 
 use std::sync::Mutex;
@@ -152,7 +155,15 @@ pub fn run() {
             notifications::notify_permission,
             notifications::notify_request_permission,
             notifications::notify_attention,
-            notifications::badge_set
+            notifications::badge_set,
+            web::web_open,
+            web::web_navigate,
+            web::web_bounds,
+            web::web_visible,
+            web::web_history,
+            web::web_close,
+            web::web_snapshot,
+            web::web_list
         ])
         .run(tauri::generate_context!())
         .expect("error while running codeaf");

@@ -3,7 +3,7 @@ import './loading-line.css';
 /**
  * The 2px line along the top of a card while a web page loads (3j: the tab itself never shows a spinner).
  * Pass `progress` (0..1) when the page reports it, otherwise it runs as an indeterminate sweep.
- * Component only: no web tab is opened in the live app until a browser surface is backed.
+ * The web tab (features/web/WebPane) draws it while its native view reports a load.
  */
 export function LoadingLine({ active = true, progress }: { active?: boolean; progress?: number }) {
   if (!active) return null;
