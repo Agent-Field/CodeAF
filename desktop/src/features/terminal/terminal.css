@@ -30,3 +30,6 @@ html:not([data-input="pointer"]) .terminal-ask-field:has(.terminal-ask-input:foc
 .terminal-ask-send.icon-button[data-ready] { color: var(--ink); }
 
 .terminal-action-error { flex: none; margin: 0 var(--terminal-header-pad-end) var(--space-2) var(--terminal-header-pad-start); color: var(--ink-2); }
+
+/* The job specimen fades old log lines. A shell prompt starts at the top and must stay legible. */
+.terminal-field[data-kind="terminal"] { mask-image: none; }

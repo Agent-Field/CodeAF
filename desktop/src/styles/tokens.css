@@ -2,8 +2,8 @@
 :root {
   color-scheme: light;
   --h: 240; --a: .13;
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --font-sans: var(--sans);
+  --font-mono: var(--mono);
   --radius-sm: 6px;
   --radius-md: 9px;
   --radius-lg: 12px;
@@ -626,6 +626,17 @@
   --terminal-note-pad: 20px;
   --terminal-specimen-height: 380px;
   --specimen-card-min: 420px;
+  --rail-toggle-size: 26px;
+  --radius-rail-toggle: 7px;
+  --icon-rail-toggle: 15px;
+  --shell-hotzone: 8px;
+  --z-shell-peek: 20;
+  --rail-peek-tint: 88%;
+  --rail-row-height: 32px;
+  --rail-row-font: 13px;
+  --rail-row-gap: 1px;
+  --rail-group-gap: 16px;
+  --rail-peek-delay: 300ms;
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);

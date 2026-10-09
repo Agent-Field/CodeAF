@@ -48,12 +48,14 @@ export function useTerminalFeed(binding: { sessionFile?: string; terminalId?: st
     const { signal } = abort;
     (async () => {
       let sessionId: string;
+      let job = false;
       try {
         sessionId = (await sessionFor(binding?.sessionFile)).id;
         if (signal.aborted) return;
         const record = await readTerminal(sessionId, terminalId);
         if (signal.aborted) return;
         targetRef.current = { sessionId, terminalId }; setTarget(targetRef.current);
+        job = record.kind === 'job';
         setInfo(record); setNote(undefined);
         // The engine started the program at its own default size; tell it the size the screen really has.
         const { cols, rows } = screen.size();
@@ -67,7 +69,7 @@ export function useTerminalFeed(binding: { sessionFile?: string; terminalId?: st
         try {
           await watchTerminal(sessionId, terminalId, after, (bytes, end, cut) => {
             if (cut) { screen.reset(); first = true; }
-            if (first && infoRef.current?.kind === 'job') screen.pad();
+            if (first && job) screen.pad();
             if (cut) screen.write(`\x1b[2m${trimmedLine}\x1b[0m\r\n`);
             first = false;
             screen.write(bytes); after = end;

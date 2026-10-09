@@ -93,7 +93,7 @@ export function TerminalPane({ pane, focused, actions }: PaneRenderProps) {
       title={info?.title ?? pane.title} meta={info ? metaLine(info) : ''} words={info ? terminalStateWords(info, now) : ''} tone={info ? toneOf(info) : undefined}
       canStop={running} onRerun={rerun} removeLabel={removeLabel(info?.kind ?? 'terminal')} onStop={() => void stop()} readOutput={readOutput} onRemove={() => void remove()}/>
     {actionError && <Text className="terminal-action-error" role="alert">{actionError}</Text>}
-    <div className="terminal-field" data-note={refusal ? '' : undefined}>
+    <div className="terminal-field" data-kind={info?.kind} data-note={refusal ? '' : undefined}>
       {refusal
         ? <div className="terminal-note"><Text>{refusal.text}</Text>{refusal.retry && <Button onClick={refusal.retry}>Try again</Button>}</div>
         : <TerminalScreen label={`${info?.title ?? pane.title} terminal`} interactive={running} cursor={running} onData={feed.send} onResize={feed.resize} onReady={setScreen}/>}

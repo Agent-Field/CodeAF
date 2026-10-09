@@ -88,6 +88,7 @@ test('the new terminal key opens a shell under the conversation, types into it a
   await expect(tabs(page)).toHaveCount(2);
   await expect(page.getByRole('tab', { name: 'zsh', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(header(page).locator('.terminal-meta')).toHaveText('/mock-workspace · terminal');
+  await expect(page.locator('.terminal-field')).toHaveCSS('mask-image', 'none');
   await expect(screenText(page)).toContainText('mock$');
   const start = engine.calls.filter(c => c.method === 'POST' && c.path.endsWith('/terminals'));
   expect(start).toHaveLength(1);
@@ -255,6 +256,7 @@ test('the new-tab terminal action starts an interactive shell without sending a 
   await page.getByRole('button', { name: 'New tab', exact: true }).click();
   await page.getByRole('option', { name: /New terminal/ }).click();
   await expect(header(page).locator('.terminal-meta')).toHaveText('/mock-workspace · terminal');
+  await expect(page.locator('.terminal-field')).toHaveCSS('mask-image', 'none');
   await expect(screenText(page)).toContainText('mock$');
   expect(engine.calls.filter(c => c.method === 'POST' && c.path.endsWith('/terminals'))).toHaveLength(1);
   expect(engine.calls.filter(c => c.method === 'POST' && c.path.endsWith('/send'))).toHaveLength(0);

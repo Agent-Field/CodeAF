@@ -3,7 +3,8 @@ import { newTab } from '../tabs/helpers';
 import { focusedPane, tabHolding, type WorkspaceAction, type WorkspaceState } from '../tabs/model';
 import { bindingOf } from './bindings';
 import { closePaneEvent, openConversationEvent, openTerminalEvent, type ClosePaneDetail, type OpenConversationDetail, type OpenTerminalDetail } from './events';
-import { isNewTerminalShortcut } from './keys';
+import { shortcutLayer } from '../../design/keyboard';
+import { useShortcuts } from '../../design/useShortcuts';
 import { openTerminalTab } from './open';
 
 /** The conversation the active pane belongs to: the terminal opens under it (16 live terminals per conversation, Q6). */
@@ -21,12 +22,12 @@ export function activeSessionFile(state: WorkspaceState): string | undefined {
 export function useTerminalTabs({ enabled, state, dispatch }: { enabled: boolean; state: WorkspaceState; dispatch: Dispatch<WorkspaceAction> }) {
   const live = useRef(state);
   live.current = state;
+  useShortcuts(shortcutLayer.workspace, shortcut => {
+    if (shortcut.id !== 'terminal' || document.querySelector('dialog[open]')) return false;
+    void openTerminalTab({ sessionFile: activeSessionFile(live.current) }).then(tab => dispatch({ type: 'open', tab, background: false }));
+    return true;
+  }, enabled);
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (!enabled || !isNewTerminalShortcut(event) || document.querySelector('dialog[open]')) return;
-      event.preventDefault();
-      void openTerminalTab({ sessionFile: activeSessionFile(live.current) }).then(tab => dispatch({ type: 'open', tab, background: false }));
-    };
     const onConversation = (event: Event) => {
       const { sessionFile, title } = (event as CustomEvent<OpenConversationDetail>).detail;
       dispatch({ type: 'open', tab: newTab({ kind: 'conversation', title, titleSource: 'message', sessionFile }), background: false });
@@ -41,10 +42,9 @@ export function useTerminalTabs({ enabled, state, dispatch }: { enabled: boolean
       if (!holder) return;
       dispatch(holder.split ? { type: 'split-close-pane', id: holder.id, paneId } : { type: 'close', id: holder.id });
     };
-    window.addEventListener('keydown', onKey);
     window.addEventListener(openConversationEvent, onConversation);
     window.addEventListener(openTerminalEvent, onTerminal);
     window.addEventListener(closePaneEvent, onClose);
-    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener(openConversationEvent, onConversation); window.removeEventListener(openTerminalEvent, onTerminal); window.removeEventListener(closePaneEvent, onClose); };
+    return () => { window.removeEventListener(openConversationEvent, onConversation); window.removeEventListener(openTerminalEvent, onTerminal); window.removeEventListener(closePaneEvent, onClose); };
   }, [enabled, dispatch]);
 }
