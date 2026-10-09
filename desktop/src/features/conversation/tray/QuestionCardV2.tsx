@@ -5,7 +5,8 @@ import { answerFor, canPress, canSend, decideAnswer, initialDraft, submitAnswer,
 import { CardEvidence, CompareTable, type RenderImage } from './CardEvidence';
 import { CardFooter } from './CardFooter';
 import { deadlineAt } from './clock';
-import { formOf, hasWordsField, needsWords, type Option, type Question } from './form';
+import { formOf, hasWordsField, isIrreversible, needsWords, type Option, type Question } from './form';
+import { IrreversibleAnswers, PermissionAnswers } from './AnswerForms';
 import { BlankFields, CheckList, DialField, Declines, PairRows, WordsField, type FormProps } from './InputForms';
 import { OptionList, ScopeChoice, WordsPanel } from './OptionActions';
 
@@ -17,6 +18,8 @@ export type QuestionCardProps = {
   onAnswer: (answer: EngineAnswer) => Promise<boolean>;
   onHold: () => void;
   onLater?: () => void;
+  /** The only question waiting: no pager, so Enter chooses the primary. */
+  single?: boolean;
   renderImage?: RenderImage;
 };
 
@@ -32,6 +35,17 @@ function Fields({ form, props, send }: { form: string; props: FormProps; send: (
   return <WordsField {...props} onEnter={send} />;
 }
 
+type AnswersProps = { question: Question; locked: boolean; single?: boolean; onPress: (option: Option) => void; renderImage?: RenderImage };
+
+/** Permission and irreversible questions have their own rows; everything else lists its options. */
+function Answers({ question, locked, single, onPress, renderImage }: AnswersProps) {
+  const form = formOf(question);
+  const risky = isIrreversible(question) && (form === 'permission' || form === 'choice');
+  if (risky) return <IrreversibleAnswers question={question} locked={locked} onPress={onPress} />;
+  if (form === 'permission') return <PermissionAnswers question={question} locked={locked} single={single} onPress={onPress} />;
+  return <OptionList question={question} locked={locked} onPress={onPress} renderImage={renderImage} />;
+}
+
 function Heading({ question }: { question: Question }) {
   const from = question.asker?.kind === 'task' ? question.asker.name : '';
   return (
@@ -43,7 +57,7 @@ function Heading({ question }: { question: Question }) {
   );
 }
 
-export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, onLater, renderImage }: QuestionCardProps) {
+export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, onLater, single, renderImage }: QuestionCardProps) {
   const [draft, setDraft] = useState<Draft>(() => initialDraft(question));
   const [panel, setPanel] = useState<Panel>(null);
   const [state, setState] = useState<'idle' | 'sending' | 'failed'>('idle');
@@ -97,7 +111,7 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
           </div>
         </>
       ) : (
-        <OptionList question={question} locked={locked} onPress={press} renderImage={renderImage} />
+        <Answers question={question} locked={locked} single={single} onPress={press} renderImage={renderImage} />
       )}
       {form === 'permission' && (
         <TextArea
