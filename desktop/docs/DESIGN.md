@@ -8,7 +8,7 @@ Sidebar 216px (190px for smaller windows), 6px outer frame, 6px content corners.
 
 ## Typography and colors
 
-System sans only: SF Pro on macOS, system-ui on Linux. Interface 12px, supporting labels 10–11px, page heading 25px with medium weight. System monospace for code. Warm sand/peach chrome in light mode; warm charcoal in dark mode. White/off-white content is opaque. The primary accent is graphite: reserve stronger color for meaningful status or actual project identities. All visual values originate in `src/design/tokens.json`; `src/styles/tokens.css` is generated. Screens consume semantic variables, not literal values.
+System sans only: SF Pro on macOS, system-ui on Linux, and the system monospace for code. The type roles are the design's Foundations scale: title 20/1.3 600, heading 17, 15 and 13, prose 13/1.6, label 12/1.45, caption 11/1.4 500, mono 12/1.5. One palette, tinted by the place hue (`--h`): frame, canvas, surface, field, field-2, line, ink, ink-2, ink-3, accent, amber and danger, in light and dark. Nothing is drawn in a warm or untinted grey; the old chrome names (`text`, `muted`, `border`, `overlay-surface`, `control-hover`, `focus-ring`, …) remain only as aliases that resolve to those design tokens. Colour carries state only on 6px glyphs. All visual values originate in `src/design/tokens.json`; `src/styles/tokens.css` is generated. Screens consume semantic variables, not literal values.
 
 ## Native materials
 
@@ -89,11 +89,11 @@ Sources: [AnimateIcons](https://github.com/Avijit07x/animateicons), [Lucide](htt
 
 ## Motion and interaction states
 
-All timings, curves, travel and scale originate in tokens. Control colors settle over 220ms. Sidebar layout changes over 320ms with a gentle decelerating curve; hidden controls become inert. Shared overlay entry is 240ms, moving only 3px and scaling from 0.985; exit fades over 220ms. Shared keyframes live in ui.css, never in feature styles. Reduced motion sets durations and travel to zero while keeping state changes immediate.
+All timings, curves, travel and scale originate in tokens (Foundations, Motion). Hover fills settle over the fast step, 120ms ease. Popovers (menus, choices, hover cards) fade in from 0.98 scale at their origin over 120ms, with no rise, and fade out over 120ms. Sidebar layout changes over 320ms with a gentle decelerating curve; hidden controls become inert. Dialogs and sheets keep the shared 240ms entry that moves 3px and scales from 0.985. Shared keyframes live in ui.css, never in feature styles. Reduced motion sets durations, travel and scale to rest while keeping state changes immediate.
 
 Design v3 controls (docs/COMPONENTS.md) follow the designer's interaction states: hover changes only the fill, press darkens it one step for 80ms, focus-visible is a 2px accent ring with a 4px soft halo for keyboard input only, disabled is 40% opacity of the whole control (the only permitted use of opacity besides fading in hidden row and message actions), and tooltips on icon-only buttons and truncated text appear after 500ms with sh-2 and 11px text. The sidebar, tab strip, overview, switcher, rename dialog, page toolbar and palette keep their previous control look through the scoped legacy block in ui.css until the chrome is restyled. Elsewhere, hover is quiet neutral feedback; pressed is slightly stronger. Favorite tiles indicate the active view with aria-pressed; navigation uses aria-current. Secondary buttons have hover, press, visible keyboard focus and disabled states. Selection is meaningful state, not a permanent highlight on every control.
 
-App-owned choices use shared Select; action menus use shared ContextMenu and DropdownMenu with token-colored popups, highlights and checkmarks; the background is inert while open. Keyboard focus uses a thin ring; the palette search uses a subtle underline instead of a large box. Native OS dialogs retain their platform appearance.
+App-owned choices use shared Select; action menus use shared ContextMenu and DropdownMenu (Components "Context menu": surface sheet, radius 10, sh-2, 5px padding, no border; 28px rows with radius 6, 13px labels, 10px gaps, a field-2 hover, hairline separators, right-aligned 12px ink-3 shortcuts, destructive rows in red text only); the background is inert while open. Keyboard focus uses a thin ring; the palette search uses a subtle underline instead of a large box. Native OS dialogs retain their platform appearance.
 
 ## Browser regression gate
 
