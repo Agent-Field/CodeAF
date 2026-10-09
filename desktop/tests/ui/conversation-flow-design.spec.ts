@@ -66,7 +66,8 @@ for (const scheme of ['light', 'dark'] as const) {
       const failed = work.locator('.work-call[data-state="failed"] .work-call-time').first();
       expect(await style(failed, 'color')).toBe(danger);
       await expect(work.locator('.work-call[data-state="failed"] .work-call-text').first()).toHaveCSS('font-family', /mono|Menlo|Consolas/i);
-      const output = work.locator('.work-term-body .type-code').first();
+      const output = work.locator('.work-term-body .type-code:not(.work-term-command)').first();
+      expect(await style(work.locator('.work-term-command').first(), 'color')).toBe(await rootColor(page, '--ink'));
       await expect(output).toHaveCSS('font-size', '11.5px');
       expect(await style(output, 'color')).toBe(await rootColor(page, '--ink-2'));
     });
