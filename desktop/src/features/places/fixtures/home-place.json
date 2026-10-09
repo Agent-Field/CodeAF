@@ -83,6 +83,7 @@
   ],
   "chatsTruncated": false,
   "children": [],
+  "contextLine": "1 source",
   "counts": {
     "chats": 2,
     "chatsInclusive": 2,

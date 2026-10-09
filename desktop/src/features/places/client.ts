@@ -72,6 +72,17 @@ export type Attention = {
   kind: 'needsYou' | 'running'; chatId: string; chatTitle: string; placeId: string; placeName: string;
   text: string; taskId?: string; since?: string;
 };
+/** One conversation the "Since yesterday" roll-up quotes. */
+export type RecapItem = {
+  chatId: string; chatTitle: string; placeId?: string; placeName?: string; at: string;
+  line: string; outcome?: string; attention?: 'needsYou' | 'running';
+};
+/** The engine's roll-up of what this Home's conversations wrote about themselves in the last day. Absent when there is no evidence. */
+export type HomeRecap = {
+  label: string; text: string; since: string; chats: number; items: RecapItem[];
+  /** Waiting or running chats with no readable recap; the text says nothing about them. */
+  unsummarised: number;
+};
 export type Crumb = { id: string; name: string; tint: Tint };
 export type HomeDigest = {
   kind: 'place' | 'root' | 'now'; title: string;
@@ -79,6 +90,10 @@ export type HomeDigest = {
   place?: PlaceDetail;
   breadcrumb: Crumb[]; children: PlaceView[]; chats: ChatRow[]; chatsTruncated: boolean;
   attention: Attention[]; status: StatusRollup; counts: PlaceCounts; missingChats: number;
+  /** "Since yesterday". Absent unless a recent conversation wrote a recap. */
+  recap?: HomeRecap;
+  /** What a place carries into a chat, in counts ("Instructions · 3 sources · 1 missing"). Absent when nothing, and for root and Now. */
+  contextLine?: string;
   revision: number; readAt: string;
 };
 
@@ -195,6 +210,12 @@ function home(v: unknown): HomeDigest {
   for (const a of v.attention) if (!isObject(a) || (a.kind !== 'needsYou' && a.kind !== 'running') || typeof a.chatId !== 'string' || typeof a.text !== 'string') bad('attention item');
   if (v.kind === 'place' ? v.place === undefined : v.place !== undefined) bad('Home');
   if (v.place !== undefined) placeDetail(v.place);
+  if (v.contextLine !== undefined && typeof v.contextLine !== 'string') bad('Home');
+  if (v.recap !== undefined) {
+    const r = v.recap;
+    if (!isObject(r) || typeof r.label !== 'string' || typeof r.text !== 'string' || !r.text || !isInt(r.chats) || !isInt(r.unsummarised) || !Array.isArray(r.items)
+      || !r.items.every(i => isObject(i) && typeof i.chatId === 'string' && typeof i.line === 'string')) bad('recap');
+  }
   return v as unknown as HomeDigest;
 }
 function mutation(v: unknown): Mutation {

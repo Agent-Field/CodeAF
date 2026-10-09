@@ -512,8 +512,14 @@ type digestResponse struct {
 	Status         StatusRollup      `json:"status"`
 	Counts         placegraph.Counts `json:"counts"`
 	MissingChats   int               `json:"missingChats"`
-	Revision       uint64            `json:"revision"`
-	ReadAt         time.Time         `json:"readAt"`
+	// Recap is "Since yesterday": a roll-up of what this Home's conversations
+	// wrote about themselves in the last day. Absent when there is no evidence.
+	Recap *placegraph.Digest `json:"recap,omitempty"`
+	// ContextLine is what the place carries into a chat, in counts. Absent for a
+	// place with no instructions and no sources, and for root and Now.
+	ContextLine string    `json:"contextLine,omitempty"`
+	Revision    uint64    `json:"revision"`
+	ReadAt      time.Time `json:"readAt"`
 }
 
 // digest is a place's Home (and All places' and Now's): its children as tiles,
@@ -574,6 +580,10 @@ func (p *Places) digest(w http.ResponseWriter, id string) {
 		}
 	}
 	out.Attention = x.attention(attn, subtree)
+	if out.Kind == "place" {
+		out.ContextLine = contextLine(*out.Place)
+	}
+	out.Recap = p.sinceYesterday(x, attn, subtree)
 	out.Status = x.rollup(ids)
 	write(w, out)
 }
