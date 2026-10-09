@@ -2,11 +2,12 @@ import { useRef, useState, type KeyboardEvent } from 'react';
 import { isMac } from '../../../design/keyboard';
 import { connectEngine, sendEngine, sendEngineWithFiles, type EngineSnapshot, type OutgoingFile } from '../../chat/engine-client';
 import { Composer } from '../../conversation/Composer';
-import { DEFAULT_MODEL_LABEL, DEFAULT_MODEL_SHORT, useConversationModel } from '../../conversation/composer/useConversationModel';
+import { useConversationModel } from '../../conversation/composer/useConversationModel';
 import { newTab } from '../../tabs/helpers';
 import type { WorkspaceAction } from '../../tabs/model';
 import { chatIdFromSessionFile } from '../client';
 import type { PlacesShell } from './PlacesShell';
+import { useEffectiveModel } from './useEffectiveModel';
 
 type HomeComposerProps = {
   shell: PlacesShell;
@@ -33,7 +34,15 @@ const titleOf = (text: string) => text.split('\n').find(line => line.trim())?.tr
  * leaving another empty one behind.
  */
 export function HomeComposer({ shell, placeId, placeName, draft, onDraft, dispatch, offline }: HomeComposerProps) {
-  const model = useConversationModel(undefined, true);
+  // The chip names the model the first message will really run on: the places' decision when they make one, else the
+  // saved Conversation role. While that is unknown it names nothing, because a guessed model is a wrong one.
+  const effective = useEffectiveModel(shell.client, placeId, shell.places.graph?.revision, offline);
+  const say = effective.kind === 'known' ? effective.say : undefined;
+  const decided = say?.state === 'applies' && say.model ? { model: say.model, by: say.decidedBy?.name ?? 'a place' } : undefined;
+  const model = useConversationModel(undefined, true, decided);
+  const settled = effective.kind === 'known';
+  // When places disagree nothing is applied; the chip's tooltip says so rather than a paragraph above the composer.
+  const disagree = say?.state === 'needsPick' && say.wanted?.length ? `${say.wanted.map(place => place.name).join(' and ')} choose different models, so you pick one in the chat.` : undefined;
   const background = useRef(false);
   const created = useRef<{ snapshot: EngineSnapshot; filed: boolean }>(undefined);
   const [error, setError] = useState<string>();
@@ -72,6 +81,6 @@ export function HomeComposer({ shell, placeId, placeName, draft, onDraft, dispat
     {error && <p className="home-composer-error" role="alert">{error}</p>}
     <Composer variant="home" draft={draft} onDraft={onDraft} onSend={onSend} onStop={() => undefined} running={false} docked
       disabledReason={offline ? 'Reconnecting to the engine…' : undefined}
-      placeholder={`Start something in ${placeName}`} model={model} modelLabel={DEFAULT_MODEL_LABEL} modelShort={DEFAULT_MODEL_SHORT} autoFocus={false}/>
+      placeholder={`Start something in ${placeName}`} model={settled && model ? { ...model, hint: model.hint ?? disagree } : undefined} autoFocus={false}/>
   </div>;
 }
