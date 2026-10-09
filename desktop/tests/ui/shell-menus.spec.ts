@@ -49,9 +49,9 @@ test.describe('tab and group menus (3g)', () => {
     // A capability that cannot work is left off the menu.
     expect(await labels(menu)).toEqual(['Open in split', 'Add to group', 'Pin tab', 'Duplicate', 'Rename tab', 'Close tab', 'Close other tabs', 'Close tabs to the right']);
     await expect(menu.getByRole('menuitem', { name: /^Close tab\b/ }).locator('kbd')).toHaveText(mac ? '⌘W' : 'Ctrl W');
-    // Components "Context menu": 240px, radius 10, 5px padding, 28px rows, 13px text, hairline separators, no border.
+    // Detailed Shell 3g: 240px content plus 5px padding each side (250px outer), radius 10, 28px rows.
     // Layout width, not the bounding box: the entry animation scales the surface for a few frames.
-    expect(await menu.evaluate(el => (el as HTMLElement).offsetWidth)).toBe(px('menu-wide-min-width'));
+    expect(await menu.evaluate(el => (el as HTMLElement).offsetWidth)).toBe(px('menu-wide-min-width') + 2 * px('menu-pad'));
     await expect(menu).toHaveCSS('border-top-left-radius', f['radius-menu']);
     await expect(menu).toHaveCSS('padding-top', f['menu-pad']);
     await expect(menu).toHaveCSS('border-top-width', '0px');
@@ -128,7 +128,7 @@ test.describe('tab and group menus (3g)', () => {
     expect(await labels(menu)).toEqual(['Rename', 'Open as split', 'Collapse', 'Ungroup', 'Close 2 tabs']);
     const danger = menu.getByRole('menuitem', { name: 'Close 2 tabs' });
     await expect(danger).toHaveCSS('color', await tokenColor(page, 'danger'));
-    expect(await menu.evaluate(el => (el as HTMLElement).offsetWidth)).toBe(px('menu-popup-min-width'));
+    expect(await menu.evaluate(el => (el as HTMLElement).offsetWidth)).toBe(px('menu-popup-min-width') + 2 * px('menu-pad'));
     await expectThemedSurface(page, menu, menuSurface);
     await menu.getByRole('menuitem', { name: 'Collapse' }).click();
     await expect(label).toHaveAttribute('aria-expanded', 'false');

@@ -301,3 +301,7 @@ The History lane numbered these Q35–Q44 on its branch; the file and terminal l
 
 ### Preview geometry from rendered reference
 Detailed Shell 3k and Components §15 declare width 300px with 14px horizontal padding in content-box sizing: rendered text cards are 328px wide. The app preserves that content width through a shared inline-padding token and a derived border-box width. Web screenshot cards have no outer padding and remain 300px. The catalogue prose calls these “300px cards”; this is treated as nominal content width, with the detailed rendered geometry authoritative. Narrow windows still clamp the whole card to the available space.
+
+### Context menu nominal width
+
+The rendered detailed Shell 3g uses content-box widths: the tab context menu is 240px content plus two 5px insets (250px outer); the group context menu and submenu are 200px content plus insets (210px outer). Shared context/submenu rules derive these outer widths from the existing tokens. Ordinary dropdown roots retain their current 200px width. Native collision bounds and viewport limits still apply.
