@@ -20,6 +20,8 @@ import { TabsApiContext, type TabsApi } from './context';
 import type { PaneActions } from './kinds/slots';
 import { NewTabHostContext } from './kinds/newtab/api';
 import { kindDef } from './kinds/registry';
+import { newTab } from './helpers';
+import { worldStore } from '../chat/world-store';
 import { focusedPane, freshWorkspace, panesOf, parseWorkspace, readWorkspace, visibleTabs, workspaceKey, workspaceReducer, type Pane, type Tab, type WorkspaceState } from './model';
 import { FirstTurnContext, type BeforeFirstTurn } from '../conversation/firstTurn';
 import type { TintName } from '../places/components/PlaceSwatch';
@@ -50,7 +52,7 @@ type Props = {
   placeMenu?: MenuEntry[];
   /** While the rail is put away, the Home tab is the place switcher. */
   placeSwitcher?: { items: MenuEntry[]; alert?: string };
-  /** Opens a conversation by its chat id (the shell's Places navigation owns this). The Inbox lists work with no tab here and can only offer it a click when this is given. */
+  /** Opens a conversation by its chat id. Absent, the strip opens it itself from the world feed (`openChatHere`). */
   onOpenChat?: (chatId: string) => void;
 };
 
@@ -79,6 +81,17 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   function openTaskTab(source: Pane, taskId: string, title: string) {
     const tab: Tab = { id: crypto.randomUUID(), kind: 'task', title, titleSource: 'manual', pinned: false, draft: '', sessionFile: source.sessionFile, route: { taskId, back: [''], forward: [] } };
     dispatch({ type: 'open', tab, background: true });
+  }
+  /**
+   * Opens a saved conversation by its chat id, the way a Home row does: the tab already showing its journal is selected,
+   * otherwise a conversation tab reattaches it. The journal comes from the engine-wide world feed; a conversation the
+   * engine has not placed on disk cannot be reattached, and that is said rather than an empty tab opened.
+   */
+  function openChatHere(chatId: string) {
+    const row = worldStore.getState().rows.find(candidate => candidate.session === chatId);
+    if (!row?.sessionFile) { toasts.show({ message: ['That conversation cannot be opened here: the engine did not say where it is saved.'], tone: 'warning' }); return; }
+    const existing = state.tabs.flatMap(tab => panesOf(tab)).find(pane => pane.sessionFile === row.sessionFile);
+    dispatch(existing ? { type: 'select', id: existing.id } : { type: 'open', background: false, tab: newTab({ kind: 'conversation', title: row.title || 'Untitled chat', titleSource: 'engine', sessionFile: row.sessionFile }) });
   }
   function openFile(source: Pane, path: string, kind: FileTabKind) {
     const tab = fileTab(source, path, kind, crypto.randomUUID());
@@ -168,7 +181,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const historyHost = useHistoryWorkspace(state, dispatch);
   const [archived, dismissArchived] = useAutoArchive(state, dispatch, summaries);
 
-  const api: TabsApi = { state, dispatch, summaries, now, closeTab, closeAndStop, isRunning: closing.isRunning, background, markFailedSeen, openChat: onOpenChat, actions, reopenClosed: closing.reopenClosed, startRename, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename,
+  const api: TabsApi = { state, dispatch, summaries, now, closeTab, closeAndStop, isRunning: closing.isRunning, background, markFailedSeen, openChat: onOpenChat ?? openChatHere, actions, reopenClosed: closing.reopenClosed, startRename, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename,
     placeTint: place === 'now' ? undefined : placeTint, placeMenu, placeSwitcher };
   const newTabHost = { state, summaries, dispatch, closeTab };
   const actionsFor = (pane: Pane): PaneActions => ({
