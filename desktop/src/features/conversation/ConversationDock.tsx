@@ -2,7 +2,6 @@
 // messages and the composer, in that order from the top.
 
 import type { ComponentProps } from 'react';
-import { Text } from '../../components/ui';
 import type { EngineAnswer, EngineQuestion } from '../chat/engine-client';
 import { ImageFigure } from './assets';
 import { QueuedRows, type QueuedItem } from './blocks/QueuedRows';
@@ -23,7 +22,7 @@ type TrayProps = {
   onReview?: () => void;
 };
 
-type QueueProps = { items: QueuedItem[]; onRemove: (id: string) => void; removedHere: boolean };
+type QueueProps = { items: QueuedItem[]; onRemove: (id: string) => void; onEdit: (id: string, text: string) => void; onMove: (id: string, to: number) => void };
 
 type Props = { tray: TrayProps; queue: QueueProps; composer: ComponentProps<typeof Composer> };
 
@@ -43,16 +42,7 @@ function Tray({ tray }: { tray: TrayProps }) {
 }
 
 function Queue({ queue }: { queue: QueueProps }) {
-  return (
-    <>
-      <QueuedRows items={queue.items} onRemove={queue.onRemove} />
-      {queue.removedHere && (
-        <Text className="queued-note" role="status">
-          Removed here only. codeaf still sends a queued message after this turn.
-        </Text>
-      )}
-    </>
-  );
+  return <QueuedRows items={queue.items} onRemove={queue.onRemove} onEdit={queue.onEdit} onMove={queue.onMove} />;
 }
 
 export function ConversationDock({ tray, queue, composer }: Props) {

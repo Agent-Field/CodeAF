@@ -484,6 +484,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// faults, on every door rather than only the one that starts a session
 		// here (#404).
 		{"where does codeaf write its log file", "starting-codeaf"},
+		{"can I edit a queued message in the desktop app", "starting-codeaf"},
+		{"how do I reorder the messages I queued", "starting-codeaf"},
+		{"I queued a message by mistake, can I take it back or change it", "starting-codeaf"},
 		{"what is chat.log", "starting-codeaf"},
 		{"does status show background checks on the remote machine", "keeping-an-eye"},
 		// The ↻ line, asked the way somebody meets it: they saw a piece of work

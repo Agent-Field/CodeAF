@@ -125,14 +125,18 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     const turns = scenario.turns ?? [];
     return turns[Math.min(turnIndex++, turns.length - 1)];
   };
-  // A queued message is recorded as the person's next message once the turn ends.
-  let queued: EngineEntry[] = [];
+  // A queued message waits in the snapshot's queue and is recorded as the person's next
+  // message once the turn ends; until then it can be edited, moved and removed, and the
+  // engine refuses (409) any change to one whose turn has started.
+  let queued: { id: string; text: string }[] = [];
+  let queuedSeq = 0;
+  const publishQueue = () => update({ queue: queued.map(item => ({ ...item })) });
   const apply = (turn: ScriptedTurn | undefined) => {
     turn?.stream?.forEach(emit);
     turn?.events?.forEach(emitEvent);
-    const entries = [...state.entries, ...(turn?.entries ?? []), ...queued];
+    const entries = [...state.entries, ...(turn?.entries ?? []), ...queued.map((item): EngineEntry => ({ Role: 'user', Text: item.text }))];
     queued = [];
-    state = { ...state, ...turn?.patch, running: false, entries };
+    state = { ...state, ...turn?.patch, running: false, entries, queue: [] };
     publish();
   };
   const advance = () => {
@@ -157,7 +161,8 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     const text = String(body.text ?? '');
     turnModels.push(state.model);
     if (state.running && body.mode === 'queue') {
-      queued.push({ Role: 'user', Text: text });
+      queued.push({ id: `q${++queuedSeq}`, text });
+      publishQueue();
       return json(route, { accepted: true });
     }
     if (state.running && body.mode === 'steer') {
@@ -172,6 +177,24 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     publish();
     if (scenario.manual) pending = nextTurn();
     else apply(nextTurn());
+    return json(route, { accepted: true });
+  };
+
+  const queueAction = (route: Route, action: string, body: Record<string, unknown>) => {
+    const from = queued.findIndex(item => item.id === body.id);
+    if (from < 0) return json(route, { error: 'that message has already been sent' }, 409);
+    if (action === 'queue-edit') {
+      const text = String(body.text ?? '').trim();
+      if (!text) return json(route, { error: 'a queued message cannot be empty' }, 400);
+      queued[from] = { ...queued[from], text };
+    } else if (action === 'queue-remove') {
+      queued.splice(from, 1);
+    } else {
+      // `to` is where the message ends up in the queue that remains without it.
+      const [item] = queued.splice(from, 1);
+      queued.splice(Math.min(Math.max(Number(body.to) || 0, 0), queued.length), 0, item);
+    }
+    publishQueue();
     return json(route, { accepted: true });
   };
 
@@ -339,10 +362,12 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     if (!action) return forced('read') ?? json(route, state);
     if (action === 'events') return forced('events') ?? events(route, Number(url.searchParams.get('after') ?? 0));
     if (action === 'turn') return forced('turn') ?? turn(route, body);
+    if (action === 'queue-edit' || action === 'queue-move' || action === 'queue-remove') return forced('queue') ?? queueAction(route, action, body);
     if (action === 'stop') {
       if (scenario.fail?.stop) return forced('stop');
       pending = undefined;
-      update({ running: false });
+      queued = [];
+      update({ running: false, queue: [] });
       return json(route, { accepted: true });
     }
     if (action === 'answer') {

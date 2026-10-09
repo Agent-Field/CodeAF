@@ -40,7 +40,11 @@ and symlink escapes are refused. Replies are `{output,full}` with a 1 MiB UTF-8
 display cap. `full` is false for compact inline or capped output, never a claim
 that a partial result is complete. Unavailable or pending results remain errors.
 POST `/sessions/{id}/turn` takes `{text,mode}` where mode is submit, steer or queue;
-POST `/sessions/{id}/stop` explicitly stops work. Those operations return
+POST `/sessions/{id}/queue-edit` `{id,text}`, `/queue-move` `{id,to}` (`to` is the
+index in the queue that remains without the message) and `/queue-remove` `{id}` change a
+message queued with mode queue; the snapshot's `queue` (`[{id,text}]`) lists them in run
+order. Each answers 409 "that message has already been sent" once the message's turn has
+started, and an empty edit is 400. POST `/sessions/{id}/stop` explicitly stops work. Those operations return
 `{accepted:true}`; eventual state arrives through SSE/snapshot. External terminal
 turns, asynchronous generated titles, background task updates and pending questions
 use the existing remote subscriptions. While a view is subscribed, chat-scoped
