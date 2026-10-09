@@ -37,6 +37,11 @@ type QuestionOutcome struct {
 	// outcome was read from.
 	By string
 	At time.Time
+	// CallID is the tool call the question was about, copied from the question's
+	// subject. The decision record and the replayed history both carry it, so a
+	// window reopened later can put the receipt back under the call that asked.
+	// It is empty for a question about no call.
+	CallID string
 }
 
 // questionWithdrawals is the session's short memory of withdrawn questions.
@@ -73,7 +78,7 @@ func withdrawnOutcome(q Question) QuestionOutcome {
 	return QuestionOutcome{
 		Kind: q.Kind, Token: q.Token(), Head: q.Head,
 		Outcome: QuestionWithdrawn, Words: words,
-		By: string(q.Withdrawn.By), At: q.Withdrawn.At,
+		By: string(q.Withdrawn.By), At: q.Withdrawn.At, CallID: q.Subject.CallID,
 	}
 }
 
@@ -87,7 +92,7 @@ func decidedOutcome(record DecisionRecord) QuestionOutcome {
 	return QuestionOutcome{
 		Kind: record.Kind, Token: token, Head: record.Head,
 		Outcome: QuestionDecided, Words: sentenceCase(record.Words()),
-		By: string(record.By), At: record.At,
+		By: string(record.By), At: record.At, CallID: record.Subject.CallID,
 	}
 }
 

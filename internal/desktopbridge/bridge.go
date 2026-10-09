@@ -85,6 +85,9 @@ type OutcomeWire struct {
 	Words   string `json:"words"`
 	By      string `json:"by"`
 	At      string `json:"at"`
+	// CallID is the call the question was about, so a reloaded window can put the
+	// receipt back in the turn that asked. Old engines omit it.
+	CallID string `json:"callId,omitempty"`
 }
 
 // recentOutcomes reads the session's receipts when the engine keeps them. An
@@ -98,7 +101,7 @@ func recentOutcomes(a any) []OutcomeWire {
 	}
 	var wire []OutcomeWire
 	for _, o := range door.RecentQuestionOutcomes(20) {
-		wire = append(wire, OutcomeWire{Kind: string(o.Kind), Token: o.Token, Head: o.Head, Outcome: o.Outcome, Words: o.Words, By: o.By, At: o.At.UTC().Format(time.RFC3339)})
+		wire = append(wire, OutcomeWire{Kind: string(o.Kind), Token: o.Token, Head: o.Head, Outcome: o.Outcome, Words: o.Words, By: o.By, At: o.At.UTC().Format(time.RFC3339), CallID: o.CallID})
 	}
 	return wire
 }

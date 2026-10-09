@@ -63,6 +63,24 @@ test('an outcome stays out of the flow when this window never saw its question',
   assert.equal(turns.flatMap((t) => receipts(t.blocks)).length, 0);
 });
 
+test('a replayed outcome that names its call lands in the turn that asked', () => {
+  const at = new Date(2026, 8, 9, 9, 25).toISOString();
+  const outcome: QuestionOutcome = { kind: 'consent', token: '4', outcome: 'decided', words: 'Allow once', by: 'person', at, callId: 'c1' };
+  const { turns } = projectTurnsV2({ ...snap(entries), recentOutcomes: [outcome] } as never);
+  assert.deepEqual(receipts(turns[0].blocks).map((r) => [r.state, r.text]), [['decided', 'Allow once · you · 09:25']]);
+  assert.equal(receipts(turns[1].blocks).length, 0);
+});
+
+test('live and replay put the same outcome in the same turn', () => {
+  const outcome: QuestionOutcome = { kind: 'consent', token: '4', outcome: 'decided', words: 'Allow once', by: 'person', callId: 'c1' };
+  const places = new Map<string, string>();
+  projectTurnsV2(snap(entries, { questions: [consent()] as never }), undefined, places);
+  const s = { ...snap(entries), recentOutcomes: [outcome] } as never;
+  const live = projectTurnsV2(s, undefined, places).turns.map((t) => receipts(t.blocks).length);
+  const replay = projectTurnsV2(s).turns.map((t) => receipts(t.blocks).length);
+  assert.deepEqual(replay, live);
+});
+
 test('a withdrawn outcome speaks the engine words, or the plain wording without them', () => {
   const places = new Map([['fuel:2', 'f.jsonl:3'], ['ask:a1', 'f.jsonl:3']]);
   const outcomes: QuestionOutcome[] = [

@@ -14,22 +14,24 @@ func TestRecentQuestionOutcomesHoldDecisionsAndWithdrawals(t *testing.T) {
 	earlier := time.Now().Add(-time.Minute)
 	agent.recordDecision(DecisionRecord{
 		ID: 7, Kind: QuestionConsent, Head: "needs your ok to run bash",
-		Picked: []string{"1"}, Labels: []string{"allow once"}, By: DecidedByPerson, At: earlier,
+		Subject: SubjectRef{Kind: SubjectCall, CallID: "c1"},
+		Picked:  []string{"1"}, Labels: []string{"allow once"}, By: DecidedByPerson, At: earlier,
 	})
 	agent.sayWithdrawn(Question{
 		ID: 9, Kind: QuestionTask, Head: "wants to start a task: X",
-		Asker: Asker{Kind: AskerTask},
+		Asker:   Asker{Kind: AskerTask},
+		Subject: SubjectRef{Kind: SubjectCall, CallID: "c2"},
 	}, "the work is no longer waiting on it")
 
 	got := agent.RecentQuestionOutcomes(10)
 	if len(got) != 2 {
 		t.Fatalf("outcomes = %+v, want two", got)
 	}
-	if got[0].Outcome != QuestionWithdrawn || got[0].Token != "9" ||
+	if got[0].Outcome != QuestionWithdrawn || got[0].Token != "9" || got[0].CallID != "c2" ||
 		got[0].Words != "No longer needed — the work is no longer waiting on it" {
 		t.Fatalf("newest = %+v", got[0])
 	}
-	if got[1].Outcome != QuestionDecided || got[1].Token != "7" || got[1].Words != "Allow once" || got[1].By != "person" {
+	if got[1].Outcome != QuestionDecided || got[1].Token != "7" || got[1].CallID != "c1" || got[1].Words != "Allow once" || got[1].By != "person" {
 		t.Fatalf("older = %+v", got[1])
 	}
 	if one := agent.RecentQuestionOutcomes(1); len(one) != 1 || one[0].Token != "9" {

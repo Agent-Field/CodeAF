@@ -1,7 +1,8 @@
 // Question receipts: a quiet line in the flow where a question was asked.
 // Waiting questions come from snapshot.questions, endings from recentOutcomes.
-// An outcome names no call, so it lands where this window saw its question
-// wait (`places`); one this window never saw has no known place and is skipped.
+// An outcome lands where this window saw its question wait (`places`), or else
+// in the turn holding the call it names, which is how a reloaded window finds it.
+// One with neither has no known place and is skipped.
 
 import type { EngineSnapshot } from '../../chat/engine-client.ts';
 import type { TurnBlock, TurnV2 } from '../types.ts';
@@ -42,7 +43,7 @@ function ended(o: QuestionOutcome): Asked {
   const key = `${o.kind}:${o.token}`;
   const decided = o.outcome === 'decided';
   const text = decided ? decidedText(o) : o.words || MOVED_ON;
-  return { key, receipt: { kind: 'receipt', questionKey: key, state: decided ? 'decided' : 'withdrawn', text } };
+  return { key, callId: o.callId || undefined, receipt: { kind: 'receipt', questionKey: key, state: decided ? 'decided' : 'withdrawn', text } };
 }
 
 function outcomesOf(snapshot: EngineSnapshot): Asked[] {
@@ -72,7 +73,8 @@ export function addReceipts(turns: TurnV2[], snapshot: EngineSnapshot, places: R
     turn?.blocks.push({ ...asked.receipt, id: `${turn.id}:q:${asked.key}` });
   }
   for (const asked of outcomes) {
-    const turn = turns.find((t) => t.id === places.get(asked.key));
+    // The call is the same anchor the waiting line used, so live and replay agree.
+    const turn = turns.find((t) => t.id === places.get(asked.key)) ?? callTurn(turns, asked.callId);
     turn?.blocks.push({ ...asked.receipt, id: `${turn.id}:q:${asked.key}` });
   }
 }
