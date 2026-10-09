@@ -885,9 +885,10 @@ Answer in the manager's chat at any time, in any words (`sqlite`, `use jsonl, it
 with the floor's answer keys; the chat says `answered: …` and the stage goes on with your words.
 The question and its answer go on the run's notes, so the stages after it read them too.
 
-A pause keeps the question on the item: answer it while paused and the answer is kept for the
-stage's next round (`noted for plan: …`); the question also survives codeaf being closed, and an
-answer given then is read by the next run. Unanswered, it is dropped when the stage's round
+A pause keeps the question on the item: answer it while paused and the answer is kept
+(`noted for plan: …`), the item shows paused again rather than needs you, and when you run it the
+step carries on in its own chat, told your answer. The question also survives codeaf being
+closed, and an answer given then is kept the same way. Unanswered, it is dropped when the stage's round
 starts again, and the stage asks again if it still needs to. Permission prompts never take
 this road. One question at a time: a second one waits for the first.
 

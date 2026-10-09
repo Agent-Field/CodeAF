@@ -234,3 +234,51 @@ func TestAStepsQuestionTakesAnyWords(t *testing.T) {
 		}
 	}
 }
+
+// PAUSED ON A QUESTION, ANSWERED AFTER A RESTART: the item does not stay
+// `needs you` with no question; it is paused and running again, its step no
+// longer waits, and run carries the step on in its own chat, told the answer.
+func TestAQuestionAnsweredWhilePausedReachesTheResumedChat(t *testing.T) {
+	p := newPauseExec()
+	g := newRig(t, map[factory.StageKind]Executor{factory.StageChat: p}, nil)
+	id := g.add("one", chat("write"))
+	if err := g.st.Update(id, func(it *factory.Item) error {
+		it.State = factory.StateNeedsYou
+		it.Question, it.QKind = "write asks: which storage shape?", qkindStep
+		it.Asking = &factory.Asked{Stage: "write", Question: "which storage shape?", With: factory.AskedYou}
+		it.Stream = &factory.Stream{Paused: true, Phases: []factory.Phase{{Name: "write", Kind: factory.StageChat, State: factory.PhaseWaiting, Round: 1, Chat: "chat-x"}}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.r.Answer(id, false, "sqlite"); err != nil {
+		t.Fatal(err)
+	}
+	it, err := g.st.Get(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "write asked: which storage shape? · the person answered: sqlite"
+	if it.State != factory.StateRunning || it.Question != "" || !storedPaused(it) {
+		t.Fatalf("after the answer the item is %s, question %q, paused %v", it.State, it.Question, storedPaused(it))
+	}
+	if ph := it.Stream.Phases[0]; ph.State != factory.PhaseRunning || len(ph.Carry) != 1 || ph.Carry[0] != want {
+		t.Fatalf("the step after the answer: %+v", ph)
+	}
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	waitStarted(t, p)
+	j := p.job(0)
+	if j.Resume != "chat-x" || len(j.CarryOn) != 1 || j.CarryOn[0] != want {
+		t.Fatalf("the resumed round: resume %q, carry-on %q", j.Resume, j.CarryOn)
+	}
+	if b := carryOnBrief(j.CarryOn); !strings.Contains(b, stageWhilePaused+want) || !strings.HasSuffix(b, briefClosing) {
+		t.Fatalf("the carry-on note is %q", b)
+	}
+	close(p.release)
+	it = g.waitState(id, factory.StateLanded)
+	if len(it.Stream.Phases[0].Carry) != 0 {
+		t.Fatalf("the carried answer stays on the step: %q", it.Stream.Phases[0].Carry)
+	}
+}

@@ -210,12 +210,28 @@ func (lp *floorLoop) keepAnswer(c *loopCtl, id int, a loopAnswer) error {
 		if q == nil {
 			return fmt.Errorf("%s is not waiting on you", it.Ref())
 		}
-		it.Notes = append(it.Notes, fmt.Sprintf(noteAnswered, q.Stage, q.Question, "the person", word))
+		note := fmt.Sprintf(noteAnswered, q.Stage, q.Question, "the person", word)
+		it.Notes = append(it.Notes, note)
 		it.Asking = nil
 		if it.QKind == qkindStep {
+			// THE ITEM WAITS ON NOTHING NOW, with or without a run holding
+			// it (after a restart, none does): it is running again, paused
+			// where a pause cut it, never `needs you` with no question.
 			it.Question, it.QKind = "", ""
-			if c != nil && it.State == factory.StateNeedsYou {
+			if it.State == factory.StateNeedsYou {
 				it.State = factory.StateRunning
+			}
+		}
+		// THE STEP'S OWN CHAT HEARS THE ANSWER when it carries on in the
+		// same conversation (a pause's resume reads no fresh brief): kept on
+		// the step, which waits no more.
+		if s := it.Stream; s != nil {
+			if i := askingPhase(s, q.Stage); i >= 0 {
+				ph := &s.Phases[i]
+				if ph.State == factory.PhaseWaiting {
+					ph.State = factory.PhaseRunning
+				}
+				ph.Carry = append(ph.Carry, note)
 			}
 		}
 		loopSay(it, now, "said", fmt.Sprintf(sayKept, q.Stage, word))
@@ -226,6 +242,21 @@ func (lp *floorLoop) keepAnswer(c *loopCtl, id int, a loopAnswer) error {
 	}
 	lp.tell(id, fmt.Sprintf(sayAnswered, word))
 	return nil
+}
+
+// askingPhase is the phase of the step named stage that asked: the current
+// one when it bears the name, else the first of that name not finished; -1
+// for none.
+func askingPhase(s *factory.Stream, stage string) int {
+	if s.Cur >= 0 && s.Cur < len(s.Phases) && s.Phases[s.Cur].Name == stage {
+		return s.Cur
+	}
+	for i, ph := range s.Phases {
+		if ph.Name == stage && ph.State != factory.PhaseDone && ph.State != factory.PhaseFailed {
+			return i
+		}
+	}
+	return -1
 }
 
 // dropStaleAsk takes a step's question off an item whose round is starting

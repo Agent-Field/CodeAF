@@ -747,6 +747,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		resume := c.carry
 		c.carry, c.opened = "", ""
 		lp.mu.Unlock()
+		var carried []string
 		if err := lp.move(c, name, kind, text, func(it *factory.Item) error {
 			it.State = factory.StateRunning
 			it.Stream.Cur = i
@@ -757,8 +758,12 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			ph.State = factory.PhaseRunning
 			ph.Round = round
 			if resume == "" {
+				// A fresh chat reads the answers in its brief's notes.
 				ph.Chat = ""
+			} else {
+				carried = ph.Carry
 			}
+			ph.Carry = nil
 			if round > 1 {
 				loopSay(it, now, "thought", text)
 			}
@@ -774,7 +779,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			lp.tell(c.id, fmt.Sprintf(sayStarted, name))
 		}
 		job := lp.job(c, st, index, i, round)
-		job.Resume, job.Opened = resume, lp.opened(c, i)
+		job.Resume, job.Opened, job.CarryOn = resume, lp.opened(c, i), carried
 		res, again, err := lp.round(c, exec, job)
 		if c.ctx.Err() != nil {
 			return false

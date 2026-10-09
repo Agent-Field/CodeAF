@@ -119,7 +119,25 @@ const (
 	// person's. stageNoResume is the log line when the chat cannot be reopened.
 	stageCarryOn  = "You were paused and the person has run you again. Carry on with this stage from exactly where you stopped, in this same conversation; do not start over. " + briefClosing
 	stageNoResume = "the stage's chat could not be reopened, starting it again: "
+	// stageWhilePaused leads what was answered while the stage was paused.
+	stageWhilePaused = "While you were paused, your question was answered: "
 )
+
+// carryOnBrief is the note a paused stage is carried on with: [stageCarryOn],
+// with what was answered while it was paused before its closing line.
+func carryOnBrief(lines []string) string {
+	var kept []string
+	for _, l := range lines {
+		if l = oneLine(l); l != "" {
+			kept = append(kept, l)
+		}
+	}
+	if len(kept) == 0 {
+		return stageCarryOn
+	}
+	head := strings.TrimSuffix(stageCarryOn, briefClosing)
+	return head + stageWhilePaused + strings.Join(kept, "; ") + ". " + briefClosing
+}
 
 // briefBodyMost is how much of the item's body the brief carries, in
 // characters. The conversation can read the rest where the item lives.
@@ -176,7 +194,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 	// rather than failing a round the person only paused.
 	if job.Resume != "" {
 		resume := spec
-		resume.Resume, resume.Brief = job.Resume, stageCarryOn
+		resume.Resume, resume.Brief = job.Resume, carryOnBrief(job.CarryOn)
 		if conv, err = e.maker.Open(ctx, resume); err != nil {
 			if ctx.Err() != nil {
 				return factory.StageResult{}, ctx.Err()

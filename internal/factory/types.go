@@ -250,6 +250,11 @@ type Phase struct {
 	// the room a person walks into from the phase strip.
 	Chat   string
 	Handle string
+	// Carry is what happened while the step was paused that its chat is told
+	// when it carries on in the same conversation: the answer to the question
+	// a pause cut short (internal/factory/run's inbox.go). Taken by the round
+	// that resumes the step.
+	Carry []string `json:",omitempty"`
 }
 
 // LogLine is one line of a stream's grain: a thought, a shell call, a test,
