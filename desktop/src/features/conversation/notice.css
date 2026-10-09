@@ -2,15 +2,17 @@
 .state-mark[data-tone="muted"] { color: var(--muted); }
 .state-mark[data-tone="warning"] { color: var(--danger); }
 
-.task-notice-line { display: flex; align-items: center; gap: var(--space-1); }
-.button.task-notice-row { justify-content: flex-start; white-space: normal; flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-tight) var(--space-2); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); text-align: left; font-size: var(--font-size-prose); }
-.button.task-notice-row:hover { background: var(--hover); }
+.task-notice-line { display: flex; align-items: center; gap: var(--space-1); border-radius: var(--radius-sm); }
+.task-notice-line:hover, .task-notice-line:focus-within { background: var(--hover); }
+.button.task-notice-row { justify-content: flex-start; white-space: normal; flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-2); min-height: var(--task-outline-row-height); padding: var(--space-half) var(--space-2); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); text-align: left; font-size: var(--font-size-prose); }
+.button.task-notice-row:hover { background: transparent; }
 .button.task-notice-row:focus-visible { outline: var(--border-width) solid var(--focus-ring); }
 .task-notice-title { flex-shrink: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: var(--font-weight-medium); }
 .task-notice-summary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.button.task-notice-row > .app-icon { margin-left: auto; flex-shrink: 0; }
-.task-notice-disclosure { flex-shrink: 0; }
-.task-notice[data-open] .task-notice-disclosure .app-icon { transform: rotate(var(--motion-ask-open)); }
+.button.task-notice-row > .app-icon { margin-left: auto; flex-shrink: 0; opacity: var(--opacity-transparent); transition: opacity var(--duration-fast) var(--ease); }
+.task-notice-line:hover .task-notice-row > .app-icon, .task-notice-row:focus-visible > .app-icon { opacity: var(--opacity-opaque); }
+@media (pointer: coarse) { .button.task-notice-row > .app-icon { opacity: var(--opacity-opaque); } }
+.button.task-notice-report { flex-shrink: 0; margin-right: var(--space-1); padding-inline: var(--space-2); color: var(--muted); font-size: var(--font-size-label); }
 .task-notice-body { margin: var(--space-1) var(--space-2) 0; padding: var(--space-2) var(--space-3); max-height: var(--notice-body-max-height); overflow: auto; white-space: pre-wrap; color: var(--muted); font-size: var(--font-size-body); line-height: var(--line-height-body); }
 
 .question-card { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); border-radius: var(--radius-lg); background: var(--overlay-surface); box-shadow: var(--shadow); }

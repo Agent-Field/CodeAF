@@ -4,9 +4,8 @@ import { goBack, goForward, navigate, type TabRoute } from '../tabs/view-state';
 import { Breadcrumb, type BreadcrumbSegment } from './Breadcrumb';
 import { taskTrail } from './taskTree';
 import { TaskView } from './TaskView';
-import { TurnView } from './TurnView';
 import type { OpenTask } from './itemRenderer';
-import type { Turn, TurnItem } from './types';
+import type { TurnItem } from './types';
 
 type Props = {
   sessionId?: string;
@@ -15,8 +14,6 @@ type Props = {
   rootLabel: string;
   route: TabRoute;
   onRoute: (route: TabRoute) => void;
-  folded: Record<string, boolean>;
-  onToggleFold: (turnId: string) => void;
   renderItem: (item: TurnItem) => ReactNode;
   onOpenTask: OpenTask;
 };
@@ -27,18 +24,9 @@ function segmentsFor(tasks: EngineTaskRow[], taskId: string, rootLabel: string):
   return [{ id: null, label: rootLabel }, ...trail, ...own];
 }
 
-/** A task drawn as a conversation, with the same turn and item components. */
+/** A task drawn as a page: title, result, the work, the brief; no composer. */
 export function TaskRoute(props: Props) {
-  const { sessionId, taskId, route, onRoute, folded, onToggleFold, renderItem } = props;
-  const renderTurn = (turn: Turn, options: { userFormat: 'literal' | 'markdown' }) => (
-    <TurnView
-      turn={turn}
-      folded={Boolean(folded[turn.id])}
-      onToggleFold={() => onToggleFold(turn.id)}
-      renderItem={renderItem}
-      userMarkdown={options.userFormat === 'markdown'}
-    />
-  );
+  const { sessionId, taskId, route, onRoute, renderItem } = props;
   return (
     <div className="task-route">
       <Breadcrumb
@@ -49,7 +37,7 @@ export function TaskRoute(props: Props) {
         onBack={() => onRoute(goBack(route))}
         onForward={() => onRoute(goForward(route))}
       />
-      {sessionId && <TaskView sessionId={sessionId} taskId={taskId} renderTurn={renderTurn} onOpenTask={props.onOpenTask} />}
+      {sessionId && <TaskView sessionId={sessionId} taskId={taskId} renderItem={renderItem} onOpenTask={props.onOpenTask} />}
     </div>
   );
 }
