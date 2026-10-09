@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from 'react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 import { Button, KeyboardShortcut, PageHeading, SectionHeading, Segmented, Text, TextInput, ThemeSelect } from '../../components/ui';
 import type { CatalogModel, ModelRole, PlacesSetting } from '../chat/engine-client';
 import { groupRoles, roleStateLine } from './groups';
@@ -66,19 +66,21 @@ function RoleRow({ role, settings }: { role: ModelRole; settings: ModelSettings 
 function NumberSetting({ setting, onSave }: { setting: PlacesSetting; onSave: (value: number) => Promise<boolean> }) {
   const saved = String(setting.value);
   const [text, setText] = useState(saved);
+  const draftVersion = useRef(0);
   const commit = () => {
     const value = Number(text);
     if (text.trim() === '' || !Number.isInteger(value) || value === setting.value) { setText(saved); return; }
-    void onSave(value).then(ok => { if (!ok) setText(saved); });
+    const version = draftVersion.current;
+    void onSave(value).then(ok => { if (!ok && draftVersion.current === version) setText(saved); });
   };
   const keys = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') commit();
-    if (event.key === 'Escape') setText(saved);
+    if (event.key === 'Escape') { draftVersion.current++; setText(saved); }
   };
   return (
     <span className="settings-number">
       <TextInput appearance="field" type="number" inputMode="numeric" min={setting.min} max={setting.max} step={1} aria-label={setting.name}
-        value={text} onChange={event => setText(event.target.value)} onBlur={commit} onKeyDown={keys} />
+        value={text} onChange={event => { draftVersion.current++; setText(event.target.value); }} onBlur={commit} onKeyDown={keys} />
       {setting.unit && <span className="settings-unit">{setting.unit}</span>}
     </span>
   );
