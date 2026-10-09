@@ -573,6 +573,10 @@ const (
 	MethodPlanSpend    = "PlanSpend"    // PlanSpendArgs → []session.PlanSpendLine
 	MethodPlanTasks    = "PlanTasks"    // nothing → []session.PlanTaskRow
 	MethodPlanTaskPage = "PlanTaskPage" // PlanTaskPageArgs → PlanTaskPageResult
+	// MethodRecentQuestionOutcomes is the receipts of questions that ended, newest
+	// first. It rides this version for [MethodPlanSpend]'s reason: an engine that
+	// does not know it answers "no such method" and the surface draws no receipts.
+	MethodRecentQuestionOutcomes = "RecentQuestionOutcomes" // RecentQuestionOutcomesArgs → []session.QuestionOutcome
 	// MethodPlanTaskWork is the task room's work tab: the difference in the
 	// run's working copy. It rides this version rather than moving it, for
 	// [MethodPlanSpend]'s reason — an engine that does not know it answers
@@ -1921,6 +1925,12 @@ type PlanPriorityArgs struct {
 // PlanTaskPageArgs names the task whose complete page is requested.
 type PlanTaskPageArgs struct {
 	ID string
+}
+
+// RecentQuestionOutcomesArgs names how many receipts are wanted; zero asks for
+// the engine's default.
+type RecentQuestionOutcomesArgs struct {
+	Limit int
 }
 
 // PlanTaskPageResult preserves both the page and whether the task belongs to the plan.

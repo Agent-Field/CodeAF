@@ -131,6 +131,12 @@ type sessionEntry struct {
 	// and a reader of a new one see the same lines for the same conversation.
 	Parts []journalPart `json:"parts,omitempty"`
 
+	// Files are the files the person attached to this message: paths, never
+	// bytes, and kept apart from Parts because a file is not a content part and a
+	// replay must not try to rebuild one into the transcript. Absent on every
+	// message without files and in every file written before they were recorded.
+	Files []journalPart `json:"files,omitempty"`
+
 	// Note marks a user-role line the SESSION wrote rather than the person: a
 	// task's completion note and the other news that rides the steering queue
 	// (agent.go's [Agent.enqueueNote]). The message is user-role because that is
@@ -1181,6 +1187,10 @@ type sessionFile struct {
 	// already dropped.
 	images map[string]string
 
+	// files is the files attached to this conversation's messages, keyed by the
+	// sentence that names them in the message's words ([rememberFiles]).
+	files map[string][]journalPart
+
 	// notes is WHICH user-role messages the session wrote itself, under the same
 	// kind of fingerprint the pictures use ([noteKey]).
 	//
@@ -1805,6 +1815,7 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 	journal.shortTitle = replayed.shortTitle
 	journal.id = replayed.id
 	journal.images = replayed.images
+	journal.files = replayed.files
 	journal.notes = replayed.notes
 	journal.presentation = replayed.presentation
 	if journal.presentation == nil {
@@ -1967,6 +1978,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 	// compaction marker for the same reason the title does — where a picture came
 	// from is a fact about the file, not about the tail of the transcript.
 	images := make(map[string]string)
+	files := make(map[string][]journalPart)
 	// And the note index with it, for the same reason and in the same pass: the
 	// mark is on the LINE, and once the line has been rebuilt into a message
 	// there is nothing left to read it off (see [sessionFile.notes]).
@@ -2063,6 +2075,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			}
 			presentation.remember(message, mark)
 			rememberParts(images, message, entry.Parts)
+			rememberFiles(files, entry.Files)
 			if entry.Note {
 				rememberNote(notes, message)
 				rememberReplyTags(replyTags, message, entry.ReplyTags)
@@ -2349,6 +2362,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		shortTitle:     shortTitle,
 		id:             id,
 		images:         images,
+		files:          files,
 		notes:          notes,
 		presentation:   presentation,
 		replyTags:      replyTags,
@@ -2537,6 +2551,8 @@ type replayedSession struct {
 	// images is where this file's pictures came from, keyed by [partKey] — the
 	// index [sessionFile.images] is opened holding.
 	images map[string]string
+	// files is which files those messages carried, keyed by [rememberFiles].
+	files map[string][]journalPart
 	// notes is which of those messages the session wrote itself, keyed by
 	// [noteKey] — the index [sessionFile.notes] is opened holding.
 	notes        map[string]bool
@@ -2870,7 +2886,9 @@ func (s *sessionFile) appendWithReasoning(message ai.Message, note bool, refs []
 	// shaping in THIS process, long before anybody resumes the file. The same is
 	// true of a note: the woken turn it belongs to is drawn in THIS process, and
 	// a /compact or a rewind can put its line back through the shaping.
+	refs, files := splitFileParts(refs)
 	s.rememberParts(message, refs)
+	s.rememberFileParts(files)
 	if note {
 		s.mu.Lock()
 		if s.notes == nil {
@@ -2937,6 +2955,7 @@ func (s *sessionFile) appendWithReasoning(message ai.Message, note bool, refs []
 		ReasoningDetails: append(json.RawMessage(nil), reasoning.Details...),
 		ReasoningModel:   reasoning.Model,
 		Parts:            refs,
+		Files:            files,
 		Note:             note,
 		ReplyTags:        tags,
 		NoteFacts:        facts,
