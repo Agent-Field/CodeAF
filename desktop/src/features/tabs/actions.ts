@@ -4,6 +4,7 @@
 import type { NativeControls, PlaceKey } from '../../design/nativeControls.ts';
 import type { Toasts } from '../../design/toasts.ts';
 import type { Tab } from './model.ts';
+import { linkForTab } from './links/deepLinks.ts';
 
 /** The slice of the native adapter these actions use; the real one is `nativeControls()`. */
 export type NativeForTabs = Pick<NativeControls, 'desktop' | 'currentWindow' | 'openPlaceWindow' | 'moveTabToWindow'>;
@@ -29,13 +30,13 @@ export type TabActionsDeps = {
 
 export type TabActions = {
   /**
-   * The canonical link that reopens this tab, or undefined when there is none. TODAY THERE IS NONE: the desktop shell
-   * registers no deep-link scheme (src-tauri/tauri.conf.json has no deep-link plugin or schemes), and a tab's route lives
-   * in its window's own state. A menu therefore leaves "Copy link" OFF rather than drawing it disabled, and nothing may
-   * invent a `codeaf://` address. When a scheme lands, this is the one function that changes.
+   * The link that reopens this tab, or undefined when there is none (links/deepLinks.ts says what each kind copies).
+   * A saved conversation, task, file, diff or terminal copies a `codeaf://` link to its DURABLE target; a web tab copies
+   * its own address. A new tab, Settings, History, the Inbox and a conversation never sent have none, and the menu then
+   * leaves "Copy link" OFF rather than drawing it disabled. An absolute path is never offered as a link.
    */
   linkFor(tab: Tab): string | undefined;
-  /** Copies `linkFor(tab)`. False when there is no link or the clipboard refused. */
+  /** Copies `linkFor(tab)` and says so in the shared toast. False when there is no link or the clipboard refused. */
   copyLink(tab: Tab): Promise<boolean>;
   /** True when the tab can travel: the desktop app, one pane (a split is separated first), and not the Inbox. */
   canMove(tab: Tab): boolean;
@@ -60,11 +61,17 @@ export function createTabActions({ native, toasts, writeClipboard = text => navi
     setTimer(() => { if (stillHere(tab.id)) toasts.show({ message: [{ strong: tab.title }, ` was not taken by ${where}. It is still here.`], tone: 'danger' }); }, HANDOFF_CLAIM_WAIT_MS);
   };
   return {
-    linkFor: () => undefined,
+    linkFor: linkForTab,
     async copyLink(tab) {
-      const link = this.linkFor(tab);
+      const link = linkForTab(tab);
       if (!link) return false;
-      try { await writeClipboard(link); return true; } catch { return false; }
+      try { await writeClipboard(link); }
+      catch {
+        toasts.show({ message: ['Could not copy the link to ', { strong: tab.title }], tone: 'danger' });
+        return false;
+      }
+      toasts.show({ message: ['Copied the link to ', { strong: tab.title }] });
+      return true;
     },
     canMove,
     async moveToNewWindow(tab) {

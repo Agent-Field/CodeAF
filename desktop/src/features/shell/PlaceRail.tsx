@@ -1,5 +1,5 @@
 import { useState, type DragEvent, type MouseEvent, type ReactNode } from 'react';
-import { BrandMark, Button, ContextMenu, Icon, IconButton, NavigationItem, SidebarAction, ThemeSelect, type IconName, type MenuEntry } from '../../components/ui';
+import { Button, ContextMenu, IconButton, NavigationItem, ThemeSelect, type IconName, type MenuEntry } from '../../components/ui';
 import { choosableTints, PlaceSwatch, tintLabel, type TintName } from '../places/components/PlaceSwatch';
 import type { PlaceRowModel } from '../places/shell/contracts';
 import { chatDragType, placeDragType, readDrag, writeDrag } from '../places/place-actions';
@@ -74,7 +74,7 @@ function Section({ label, action, children }: { label: string; action?: ReactNod
  * draws nothing). On first launch, with no places at all, there is no Places heading of any kind.
  */
 export function PlaceRail(props: PlaceRailProps) {
-  const { inert, paletteOpen, peeking, onToggle, onSearch, inbox, now, sections, current, emptyHint, notice, allPlaces, actions, tabCount, slotShortcut, closeShortcut, newWindowShortcut, appItems } = props;
+  const { inert, peeking, onToggle, inbox, now, sections, current, emptyHint, notice, allPlaces, actions, tabCount, slotShortcut, closeShortcut, newWindowShortcut, appItems } = props;
   const [over, setOver] = useState<string>();
   const pinnedIds = sections?.pinned.map(place => place.id) ?? [];
   const slotOf = (id: string) => { const order = [...pinnedIds, ...(sections?.open.map(place => place.id) ?? [])]; const at = order.indexOf(id); return at >= 0 && at < 9 ? at + 1 : undefined; };
@@ -151,7 +151,6 @@ export function PlaceRail(props: PlaceRailProps) {
     <div className="rail-head" data-tauri-drag-region>
       <RailToggle placement="rail" collapsed={peeking} onClick={onToggle}/>
     </div>
-    <SidebarAction variant="address" aria-haspopup="dialog" aria-expanded={paletteOpen} onClick={onSearch}><BrandMark/><span>codeaf</span><Icon name="search" size="xs"/></SidebarAction>
     <nav className="rail-nav" aria-label="Places">
       <div className="rail-group">
         {inbox && <NavigationItem icon="inbox" active={inbox.active} onClick={inbox.onOpen} trail={inbox.count > 0 ? <Dot status="waiting" label={`${inbox.count} ${inbox.count === 1 ? 'needs' : 'need'} you`}/> : undefined}>Inbox</NavigationItem>}
@@ -169,8 +168,8 @@ export function PlaceRail(props: PlaceRailProps) {
     <div className="rail-foot">
       {allPlaces && <NavigationItem icon="allPlaces" active={allPlaces.active} onClick={event => (primaryClick(event) && allPlaces.onOpenInNewTab ? allPlaces.onOpenInNewTab() : allPlaces.onOpen())}
         trail={<span className="rail-meta">{allPlaces.shortcut}</span>}>All places</NavigationItem>}
-      <nav className="rail-nav rail-app" aria-label="App">{appItems.map(item => <NavigationItem key={item.label} icon={item.icon} active={item.active} data-hover={item.hover || undefined} onClick={item.onSelect}>{item.label}</NavigationItem>)}</nav>
-      <div className="sidebar-bottom"><ThemeSelect/></div>
+      {appItems.length > 0 && <nav className="rail-nav rail-app" aria-label="App">{appItems.map(item => <NavigationItem key={item.label} icon={item.icon} active={item.active} data-hover={item.hover || undefined} onClick={item.onSelect}>{item.label}</NavigationItem>)}</nav>}
+      {appItems.length > 0 && <div className="sidebar-bottom"><ThemeSelect/></div>}
     </div>
   </aside>;
 }

@@ -1,3 +1,4 @@
+import { engineFetch } from '../../design/engineFetch.ts';
 /**
  * Typed client for the engine's tab-set routes (internal/desktopbridge/workspaces.go).
  *
@@ -120,7 +121,7 @@ async function defaultTransport(path: string, request: WorkspaceRequest): Promis
   request.signal?.addEventListener('abort', forward, { once: true });
   init.signal = clock.signal;
   let response: Response;
-  try { response = await fetch(url, init); }
+  try { response = await engineFetch(url, init); }
   catch (error) {
     if (request.signal?.aborted) throw error;
     throw new WorkspaceSyncError('codeaf engine is not running', 0, '', true);

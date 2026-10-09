@@ -35,7 +35,7 @@ import { useShortcuts } from './design/useShortcuts';
 
 /** Settings is a tab of the workspace (its own kind), so it is not a page here: its rail item opens that tab. */
 type Page = 'Workspace' | 'Activity' | 'Design system';
-const commands = ['Workspace', 'Activity', 'Settings', 'Design system'] as const;
+const commands: readonly string[] = import.meta.env.DEV ? ['Workspace', 'Activity', 'Settings', 'Design system'] : ['Workspace', 'Settings'];
 const desktop = isTauri();
 const mac = desktop && /Mac/.test(navigator.platform);
 document.documentElement.dataset.environment = mac ? 'mac-desktop' : desktop ? 'desktop' : 'browser';
@@ -64,10 +64,10 @@ function App() {
   if (shortcut.id === 'palette') { setDrawerOpen(false); setPalette(p => !p); return true; }
   if (shortcut.id === 'rail') { toggleSidebar(); return true; }
   if (shortcut.id === 'focus') { frame.toggleFocus(); return true; }
-  if (shortcut.id === 'settings') { requestOpenKind('settings'); return true; }
+  if (shortcut.id === 'settings') { setDrawerOpen(false); setPage('Workspace'); requestOpenKind('settings'); return true; }
   return false;
  });
- function select(command: string) { if (command === 'Settings') requestOpenKind('settings'); else navigate(command as Page); }
+ function select(command: string) { if (command === 'Settings') { navigate('Workspace'); requestOpenKind('settings'); } else navigate(command as Page); }
  async function health() {
   setBusy(true);
   try { const h = await checkEngine(); setEngine(`${h.status} · v${h.version} · ${h.platform}`); }
@@ -82,11 +82,7 @@ function App() {
  usePlaceKeys(shell, enterWorkspace);
  useWindowTint(shell);
  const attention = useAttentionNotices();
- const appItems: RailItem[] = [
-  { label: 'Activity', icon: 'activity', active: page === 'Activity', onSelect: () => navigate('Activity') },
-  { label: 'Settings', icon: 'sliders', active: settingsOpen, onSelect: () => select('Settings') },
-  { label: 'Design system', icon: 'grid', active: page === 'Design system', onSelect: () => navigate('Design system') },
- ];
+ const appItems: RailItem[] = [];
  const rail = usePlaceRail(shell, {
   inert: narrow ? !drawerOpen : sidebarHidden && frame.peek !== 'rail', paletteOpen: palette, peeking: frame.peek === 'rail',
   onToggle: () => narrow ? setDrawerOpen(false) : toggleSidebar(), onSearch: openPalette, appItems,

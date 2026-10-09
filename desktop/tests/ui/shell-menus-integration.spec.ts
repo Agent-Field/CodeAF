@@ -1,3 +1,4 @@
+import { savedWorkspace } from './support/synced-workspace';
 import { test, expect, type Page } from '@playwright/test';
 import { expectAccessible, tokenColor } from './contracts';
 import { installMockEngine } from './support/mock-engine';
@@ -143,7 +144,7 @@ test.describe('the Inbox from the engine world feed', () => {
 });
 
 test.describe('the tab menu offers only what can work', () => {
-  test('in a browser there is no Copy link and no Move to new window, and nothing is disabled in their place', async ({ page }) => {
+  test('in a browser a tab never sent has no Copy link and no Move to new window, and nothing is disabled in their place', async ({ page }) => {
     await page.route('**/api/engine/**', route => route.abort());
     await seed(page, [{ id: 'a', title: 'Config stack' }, { id: 'b', title: 'lexer.go' }], 'a');
     await page.goto('/');
@@ -164,7 +165,7 @@ async function seedRaw(page: Page, tabs: RawTab[], groups: { id: string; title: 
   const state = { tabs, groups: groups.map(g => ({ collapsed: false, ...g })), closed: [], activeId: active, nextNumber: tabs.length + 1, recentIds: tabs.map(t => t.id) };
   await page.addInitScript(value => { if (!localStorage.getItem('codeaf.desktop.workspace.v1')) localStorage.setItem('codeaf.desktop.workspace.v1', value); }, JSON.stringify(state));
 }
-const saved = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('codeaf.desktop.workspace.v1') ?? 'null') as { tabs: { id: string; groupId?: string; split?: { panes: { id: string; draft: string }[] } }[]; groups: { id: string; title: string; collapsed: boolean }[] });
+const saved = savedWorkspace;
 const order = async (page: Page) => (await saved(page)).tabs.map(t => t.id);
 const split = (id: string, over: RawTab = {}): RawTab => ({ ...conv(id, 'Pair', over), split: { layout: '1x2', focus: 1, panes: [conv(`${id}1`, 'Left'), conv(`${id}2`, 'Right')] } });
 
@@ -177,7 +178,7 @@ test.describe('bulk closes have one structural Undo', () => {
     const before = await order(page);
     await page.locator('.workspace-group-label').click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Close 2 tabs' }).click();
-    const toast = page.locator('.toast');
+    const toast = page.locator('.toast').filter({ hasText: /^Closed / });
     await expect(toast).toContainText('Closed 2 tabs');
     expect(await toast.getByRole('button').allTextContents()).toEqual(['Undo']);
     await expect(page.locator('.workspace-group-label')).toHaveCount(0);
@@ -199,7 +200,7 @@ test.describe('bulk closes have one structural Undo', () => {
     for (const [item, title] of [['Close other tabs', 'Two'], ['Close tabs to the right', 'One']] as const) {
       await page.getByRole('tab', { name: title, exact: true }).click({ button: 'right' });
       await page.getByRole('menuitem', { name: item, exact: true }).click();
-      const toast = page.locator('.toast');
+      const toast = page.locator('.toast').filter({ hasText: /^Closed / });
       await expect(toast).toContainText(/Closed \d tabs?/);
       const undo = toast.getByRole('button', { name: 'Undo' });
       await undo.focus();
@@ -210,19 +211,16 @@ test.describe('bulk closes have one structural Undo', () => {
     }
   });
 
-  test('a bulk-close toast fits and passes accessibility at 320px, light and dark', async ({ page }) => {
-    for (const scheme of ['light', 'dark'] as const) {
+  for (const scheme of ['light', 'dark'] as const) test(`a bulk-close toast fits and passes accessibility at 320px ${scheme}`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: scheme });
       await page.setViewportSize({ width: 320, height: 640 });
       await seedRaw(page, [conv('a', 'Solo'), conv('b', 'Config stack', { groupId: 'g' }), conv('c', 'Fixtures', { groupId: 'g' })], [{ id: 'g', title: 'Trailing commas' }], 'a');
       await page.goto('/');
       await page.locator('.workspace-group-label').click({ button: 'right' });
       await page.getByRole('menuitem', { name: 'Close 2 tabs' }).click();
-      await expect(page.locator('.toast')).toBeVisible();
+      await expect(page.locator('.toast').filter({ hasText: /^Closed / })).toBeVisible();
       expect(await noOverflow(page)).toBe(true);
       await expectAccessible(page);
-      await page.evaluate(() => localStorage.clear());
-    }
   });
 });
 

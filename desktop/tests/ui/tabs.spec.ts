@@ -1,3 +1,4 @@
+import { openPage } from './support/shell-navigation';
 import { test, expect, type Page } from '@playwright/test';
 import { newConversation } from './support/new-tab';
 import { expectAccessible, expectNoUnstyledControls, expectThemedSurface, menuSurface, tokenColor } from './contracts';
@@ -201,7 +202,7 @@ test('platform tab shortcuts create, close, reopen, navigate and open overview',
 
 test('native tab actions attach to workspace without invoking the engine', async ({ page }) => {
  await page.goto('/');
- await page.getByRole('button', { name: 'Activity', exact: true }).click();
+ await openPage(page, 'Activity');
  await page.evaluate(() => window.dispatchEvent(new CustomEvent('codeaf:desktop-tab-action', { detail: 'new' })));
  await expect(page.getByRole('tab')).toHaveCount(2);
  await expect(page.getByRole('tab').nth(1)).toHaveAttribute('aria-selected', 'true');

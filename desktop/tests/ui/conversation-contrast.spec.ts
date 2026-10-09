@@ -1,3 +1,4 @@
+import { openPage } from './support/shell-navigation';
 import { test, expect, type Page } from '@playwright/test';
 import type { EngineQuestion } from '../../src/features/chat/engine-client';
 import { installMockEngine } from './support/mock-engine';
@@ -33,7 +34,7 @@ for (const scheme of ['light', 'dark'] as const) {
 
     test('Design system specimen', async ({ page }) => {
       await page.goto('/');
-      await page.getByRole('button', { name: 'Design system', exact: true }).click();
+      await openPage(page, 'Design system');
       await expect(page.locator('.page-title')).toHaveText('Design system');
       await expectAccessible(page);
     });

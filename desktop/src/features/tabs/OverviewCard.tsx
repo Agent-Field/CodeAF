@@ -1,7 +1,7 @@
 // One overview card (design 3h): kind and state line, title, key content, footer. Readable text, never a
 // miniature screenshot. The body is the kind's `preview` renderer when the kind has one; otherwise the draft or
 // the latest answer, which is what the engine actually knows.
-import type { MouseEvent } from 'react';
+import type { DragEvent, MouseEvent } from 'react';
 import { Button, ContextMenu, Icon, IconButton, type MenuEntry } from '../../components/ui';
 import { isMac } from '../../design/keyboard';
 import { isBackgroundPress } from './overview-model';
@@ -70,13 +70,36 @@ type Props = {
   /** ⌘-click or middle-click: Interactions "Background tab". The tab is already open, so this opens nothing. */
   onBackground: () => void;
   onClose?: () => void;
+  /** A card dragged onto this one lands before it (left half) or after it (right half), in this card's section. */
+  onDropTab?: (id: string, after: boolean) => void;
 };
 
-export function OverviewCard({ tab, summaries, now, active, cursor, menu, onOpen, onBackground, onClose }: Props) {
+/** Which half of the card a drag is over: the left half drops before the card, the right half after it. */
+const halfOf = (event: DragEvent<HTMLElement>) => { const box = event.currentTarget.getBoundingClientRect(); return event.clientX - box.left > box.width / 2 ? 'after' : 'before'; };
+
+export function OverviewCard({ tab, summaries, now, active, cursor, menu, onOpen, onBackground, onClose, onDropTab }: Props) {
+  const drop = onDropTab && {
+    onDragOver: (event: DragEvent<HTMLElement>) => {
+      if (!event.dataTransfer.types.includes(tabDragType)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      event.currentTarget.dataset.drop = halfOf(event);
+    },
+    onDragLeave: (event: DragEvent<HTMLElement>) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) delete event.currentTarget.dataset.drop; },
+    onDrop: (event: DragEvent<HTMLElement>) => {
+      const id = event.dataTransfer.getData(tabDragType);
+      const after = halfOf(event) === 'after';
+      delete event.currentTarget.dataset.drop;
+      if (!id) return;
+      // The section under the card sees the drop too (it clears its own highlight) and leaves a handled drop alone.
+      event.preventDefault();
+      if (id !== tab.id) onDropTab(id, after);
+    },
+  };
   const mark = tabMark(tab, summaries);
   const updated = summaries[focusedPane(tab).id]?.updatedAt;
   const card = (
-    <article className="overview-card" draggable onDragStart={event => { event.dataTransfer.setData(tabDragType, tab.id); event.dataTransfer.effectAllowed = 'move'; }} data-active={active} data-cursor={cursor} data-card-id={tab.id} data-kind={tab.split ? 'split' : tab.kind}>
+    <article className="overview-card" draggable {...drop} onDragStart={event => { event.dataTransfer.setData(tabDragType, tab.id); event.dataTransfer.effectAllowed = 'move'; }} data-active={active} data-cursor={cursor} data-card-id={tab.id} data-kind={tab.split ? 'split' : tab.kind}>
       <Button className="overview-card-open" aria-label={`Open ${tab.title}`} aria-current={active || undefined} {...backgroundPress(onOpen, onBackground)}/>
       <div className="overview-card-face">
         <div className="overview-card-head">

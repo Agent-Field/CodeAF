@@ -1,3 +1,4 @@
+import { openPage } from './support/shell-navigation';
 import { mkdirSync } from 'node:fs';
 import { test, expect, type Page } from '@playwright/test';
 import { installMockEngine, type MockEngine, type Scenario } from './support/mock-engine';
@@ -186,7 +187,7 @@ test('a diff with no recorded start says only that it is against the latest comm
 
 test('the Design system page draws every file tab state', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Design system' }).first().click();
+  await openPage(page, 'Design system');
   const cases = page.locator('[data-files-specimen]');
   await expect(cases).toHaveCount(6);
   await expect(page.locator('[data-files-specimen="Changes"] .file-hunk').first()).toHaveText('@@ 84,10 +84,16 @@ func (l *Lexer) next() Token');
@@ -330,13 +331,13 @@ test('edge shots for the file follow-up', async ({ page }, testInfo) => {
   mkdirSync(dir!, { recursive: true });
   const shot = async (name: string) => page.screenshot({ path: `${dir}/${name}.png` });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Design system' }).first().click();
+  await openPage(page, 'Design system');
   await expect(page.locator('[data-files-specimen="Too large"]')).toContainText('Too large to show · 3.4 MB');
   for (const theme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: theme });
     await page.evaluate(value => localStorage.setItem('codeaf-theme', value), theme);
     await page.reload();
-    await page.getByRole('button', { name: 'Design system' }).first().click();
+    await openPage(page, 'Design system');
     for (const label of ['Too large', 'Outside git', 'Base gone']) {
       await page.locator(`[data-files-specimen="${label}"]`).screenshot({ path: `${dir}/${theme}-${label.replace(/ /g, '-').toLowerCase()}.png` });
     }

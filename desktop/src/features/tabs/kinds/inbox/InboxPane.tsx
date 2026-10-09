@@ -85,7 +85,7 @@ export function InboxPane() {
   const opener = (item: { tabId?: string; chatId?: string; failed?: number; failure?: FailureId }, section: 'running' | 'needsYou' | 'failed') => {
     const { tabId, chatId } = item;
     const go = tabId ? () => (api.state.tabs.some(t => t.id === tabId) ? api.dispatch({ type: 'select', id: tabId }) : api.reopenClosed(tabId))
-      : chatId && openChat ? () => openChat(chatId) : undefined;
+      : chatId && openChat && (api.canOpenChat?.(chatId) ?? true) ? () => openChat(chatId) : undefined;
     if (!go) return undefined;
     // Opening a failure is looking at it.
     return section === 'failed' && chatId && item.failed ? () => { markFailedSeen(chatId, item.failed!, item.failure); go(); } : go;

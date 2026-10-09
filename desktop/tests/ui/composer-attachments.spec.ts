@@ -1,3 +1,4 @@
+import { openPage } from './support/shell-navigation';
 import { test, expect, type Locator } from '@playwright/test';
 import { installMockEngine } from './support/mock-engine';
 import { plainReply } from './support/scenarios';
@@ -13,7 +14,7 @@ const chips = (section: Locator) => section.getByRole('list', { name: 'Attachmen
 test('picker, paste and drop add chips; removal and limits behave; send carries the files', async ({ page }) => {
   const engine = await installMockEngine(page, { ...plainReply(), initial: { id: 'specimen', entries: [] } });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Design system', exact: true }).click();
+  await openPage(page, 'Design system');
   const section = page.getByLabel('Attachment try-out');
   await section.scrollIntoViewIfNeeded();
 
@@ -70,7 +71,7 @@ test('picker, paste and drop add chips; removal and limits behave; send carries 
 test('a refused send keeps the attachments', async ({ page }) => {
   await installMockEngine(page, { ...plainReply(), initial: { id: 'specimen', entries: [] }, fail: { turn: 500 } });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Design system', exact: true }).click();
+  await openPage(page, 'Design system');
   const section = page.getByLabel('Attachment try-out');
   await section.getByTestId('composer-file-input').setInputFiles([{ name: 'a.txt', mimeType: 'text/plain', buffer: Buffer.from('a') }]);
   await section.getByRole('button', { name: 'Send', exact: true }).click();

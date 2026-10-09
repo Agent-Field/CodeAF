@@ -3,7 +3,7 @@
 // its action type to WorkspaceAction and its function to `slices` below. Nothing here touches React.
 import { cleanView } from './view-state.ts';
 import { kindOrDefault } from './kinds/types.ts';
-import { arrange, clampRatio, initialWorkspace, isArranged, layoutFits, makeSplit, titleRank, withSplitTitle, splitCapacity } from './helpers.ts';
+import { arrange, mintWith, clampRatio, initialWorkspace, isArranged, layoutFits, makeSplit, titleRank, withSplitTitle, splitCapacity } from './helpers.ts';
 import { reduceNewTab, type NewTabAction } from './reducers/newtab.ts';
 import { reduceGroups, type GroupAction } from './reducers/groups.ts';
 import { reduceHistory, type HistoryAction } from './reducers/history.ts';
@@ -12,6 +12,7 @@ import { reduceClosing, type ClosingAction } from './reducers/closing.ts';
 import { reduceHandoff, type HandoffAction } from './reducers/handoff.ts';
 import { reduceTabs, type TabAction } from './reducers/tabs.ts';
 import { reduceHome, type HomeAction } from './reducers/home.ts';
+import { reduceUndo, type UndoAction } from './reducers/undo.ts';
 import type { ClosedPlace, ClosedTab, Pane, SplitLayout, Tab, TabGroup, TitleSource, WorkspaceState } from './types.ts';
 
 export type { ClosedPlace, ClosedTab, Pane, Split, SplitLayout, Tab, TabGroup, TitleSource, WorkspaceState } from './types.ts';
@@ -131,13 +132,18 @@ export function parseWorkspace(text: string | null): WorkspaceState | undefined 
   } catch { return undefined; }
 }
 
-export type WorkspaceAction = TabAction | GroupAction | SplitAction | NewTabAction | HistoryAction | ClosingAction | HandoffAction | HomeAction;
+export type WorkspaceAction = (TabAction | GroupAction | SplitAction | NewTabAction | HistoryAction | ClosingAction | HandoffAction | HomeAction | UndoAction) & { mint?: readonly string[] };
 type Slice = (state: WorkspaceState, action: { type: string }) => WorkspaceState | undefined;
 // The Home slice goes first: it refuses the moves a place's Home may not make before the other slices see them.
-const slices: readonly Slice[] = [reduceHome, reduceTabs, reduceGroups, reduceSplit, reduceNewTab, reduceHistory, reduceClosing, reduceHandoff];
+const slices: readonly Slice[] = [reduceHome, reduceTabs, reduceGroups, reduceSplit, reduceNewTab, reduceHistory, reduceClosing, reduceHandoff, reduceUndo];
 
 /** Runs the slice that owns the action, then holds the strip's laws (helpers `arrange`) whatever that slice did. */
 export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState {
+  if (action.mint) return mintWith(action.mint, () => applySlices(state, action)).result;
+  return applySlices(state, action);
+}
+
+function applySlices(state: WorkspaceState, action: WorkspaceAction): WorkspaceState {
   for (const slice of slices) {
     const next = slice(state, action);
     if (next) return next === state ? state : arrange(next);

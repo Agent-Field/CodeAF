@@ -12,7 +12,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { WorkspaceAction, WorkspaceState } from '../tabs/model';
 import { createWorkspaceClient, type WorkspaceClient, type WorkspaceKey } from './client';
 import { createWorkspaceController, type SyncStatus, type WorkspaceController } from './controller';
-import { adoptOrphans, holdWindow, readPersisted, renameWindow, safeLocal, windowWriter, writePersisted } from './windowStore';
+import { adoptOrphans, holdCurrentWindow, readPersisted, renameWindow, safeLocal, windowWriter, writePersisted } from './windowStore';
 
 export type WorkspaceSyncOptions = {
   /** The window's place: `now` or a place-graph id. A new key is a new tab set. */
@@ -74,7 +74,7 @@ export function useWorkspaceSync(options: WorkspaceSyncOptions): WorkspaceSync {
     active.start();
     void (async () => {
       let writer = active.writer();
-      let hold = await holdWindow(writer);
+      let hold = await holdCurrentWindow(writer);
       if (!live) return hold.release();
       if (hold.held === false) {
         // A duplicated browser tab copied this window's name: it takes a new one. The changes it inherited are
@@ -82,7 +82,7 @@ export function useWorkspaceSync(options: WorkspaceSyncOptions): WorkspaceSync {
         writer = renameWindow();
         const renamed = writer;
         active.rename(renamed, state => writePersisted(storage, key, renamed, state));
-        hold = await holdWindow(writer);
+        hold = await holdCurrentWindow(writer);
         if (!live) return hold.release();
       }
       release = hold.release;

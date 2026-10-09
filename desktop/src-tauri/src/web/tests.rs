@@ -25,6 +25,7 @@ impl AsRef<Webview<MockRuntime>> for View {
 
 fn app() -> App<MockRuntime> {
     mock_builder()
+        .plugin(tauri_plugin_http::init())
         .invoke_handler(tauri::generate_handler![reached, web_list, web_open])
         .build(tauri::generate_context!(test = true))
         .expect("mock app")
@@ -76,6 +77,11 @@ fn a_web_page_reaches_no_command_and_no_plugin() {
         "engine_connection",
         "plugin:event|listen",
         "plugin:shell|spawn",
+        "plugin:http|fetch",
+        "plugin:http|fetch_send",
+        "plugin:http|fetch_read_body",
+        "plugin:http|fetch_cancel",
+        "plugin:http|fetch_cancel_body",
     ] {
         let refused = get_ipc_response(&child, request(cmd, PAGE));
         assert!(refused.is_err(), "{cmd} was answered for a remote page");
@@ -198,4 +204,44 @@ fn a_view_belongs_to_the_window_that_opened_it() {
         0,
         "a second window must not list the first window's views"
     );
+}
+
+/// The native HTTP transport has the engine's narrow loopback scope; even an
+/// app view cannot turn it into a general web or local-file client. Fetch only
+/// allocates a request here, so this test sends no network traffic.
+#[test]
+fn native_http_accepts_only_engine_routes_on_loopback() {
+    let app = app();
+    let (main, child) = main_with_child(&app);
+    let fetch = |view: &View, origin: &str, url: &str| {
+        let mut req = request("plugin:http|fetch", origin);
+        req.body = InvokeBody::Json(serde_json::json!({"clientConfig": {
+            "method": "GET", "url": url, "headers": [], "maxRedirections": 0
+        }}));
+        get_ipc_response(view, req)
+    };
+    for url in [
+        "http://127.0.0.1:14999/api/engine/world",
+        "http://localhost:14999/api/engine/workspaces/now?after=1&wait=1",
+    ] {
+        assert!(
+            fetch(&main, APP, url).is_ok(),
+            "engine route refused: {url}"
+        );
+        assert!(
+            fetch(&child, PAGE, url).is_err(),
+            "remote web page reached native HTTP"
+        );
+    }
+    for url in [
+        "https://example.com/api/engine/world",
+        "http://example.com/api/engine/world",
+        "http://127.0.0.1:14999/private",
+        "file:///etc/passwd",
+    ] {
+        assert!(
+            fetch(&main, APP, url).is_err(),
+            "outside-engine URL admitted: {url}"
+        );
+    }
 }

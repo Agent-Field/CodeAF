@@ -43,6 +43,7 @@ Start with Appearance, Models and jobs, Permissions and privacy, Places and cont
 | File changes | Compare against conversation start commit; documented latest-commit fallback when absent/gone. Binary or >1MB gets an honest refusal and external-open path. | User-selectable comparison base, file-size override and editor preference. |
 | New tab | Quiet until first send or explicit action; offline draft retained. | Startup landing page, history suggestion policy and draft retention. |
 | Native web | Separate native webview being implemented; external pages must not gain engine credentials or privileged app commands. | Default external/internal opening, history/cookies/storage clearing, page-read consent. |
+| Links | Scheme `codeaf`. Copy link copies a durable target: conversation folder id, task id, workspace-relative path, or engine terminal id. A web tab copies its own http(s) address. A tab with none omits the command. Opening focuses the existing tab or opens one, and never starts a chat, a turn, or a terminal. | Whether a public web redirect should exist later. Development registration of the scheme stays opt-in (`CODEAF_DESKTOP_REGISTER_LINKS=1`). |
 
 ## Settings defaults still deliberately undecided
 
@@ -186,3 +187,10 @@ Decisions made while building `src/features/places/components/` where the design
 ## Shared edits outside the new folder
 
 Additive only: `tokens.json` (`places-*`, `type-home-title-*`, `type-section-label-*`, theme `places-swatch-*`), regenerated `tokens.css`, `HomeTitle` and `SectionLabel` in `Typography.tsx` and `index.ts`, two type rules in `ui.css`, and the `test:places-components` script.
+
+
+## Normal shell and provisional Appearance
+
+The normal rail follows the Places shell: Inbox, Now, Places rows and All places. Extra workspace search/address, Activity, Settings, Design system and the theme footer are absent from the reference and are removed from this rail. Settings remains available through ⌘/Ctrl-comma and the native menu; development Activity and component specimens remain in the development command palette. The provisional Settings tab exposes the existing shared ThemeSelect under Appearance, with System as its default and Light/Dark overrides persisted per device. The designer should decide whether the final Settings entry belongs in a native menu alone or another specified shell control.
+
+Pinning multiple tabs preserves the order in which they entered the pinned section. The source specifies a pinned section but does not specify whether later pins should follow original strip order instead; this remains a designer choice.

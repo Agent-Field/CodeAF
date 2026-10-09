@@ -1,3 +1,4 @@
+import { openAppearance } from './support/shell-navigation';
 import { test, expect, type Page } from '@playwright/test';
 import { expectAccessible } from './contracts';
 import { installMockEngine, type MockEngine, type Scenario } from './support/mock-engine';
@@ -470,7 +471,7 @@ test('inbox: the rail’s Inbox lists the waiting question and opens its convers
 });
 
 async function setTheme(page: Page, theme: 'Light' | 'Dark') {
-  await page.getByRole('combobox', { name: 'Theme' }).click();
+  await openAppearance(page);
   await page.getByRole('option', { name: `${theme} appearance`, exact: true }).click();
 }
 

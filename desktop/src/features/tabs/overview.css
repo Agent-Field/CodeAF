@@ -88,3 +88,9 @@
 @media (hover: none), (pointer: coarse) { .overview-card .overview-card-close.icon-button { opacity: var(--opacity-opaque); } }
 @media (max-width: 600px) { .overview-bar { gap: var(--space-2); padding: 0 var(--space-3); } .overview-body { padding-inline: var(--space-3); } .overview-bar .segmented-option { padding: 0 var(--space-2); } }
 @media (prefers-reduced-motion: reduce) { .tab-overview[open], .overview-film-item { animation: none; transition: none; } }
+
+/* Dragging a card (Interactions, overview card: "drag regroups"): the section it would join names itself in accent, and
+   the card it is over shows the side it would land on with the strip's own 1.5px accent drop line. */
+.overview-section[data-drop] .overview-section-title { color: var(--accent); }
+.overview-card[data-drop="before"] { box-shadow: var(--sh-1), inset var(--pane-ring-width) 0 0 var(--accent); }
+.overview-card[data-drop="after"] { box-shadow: var(--sh-1), inset calc(var(--pane-ring-width) * -1) 0 0 var(--accent); }

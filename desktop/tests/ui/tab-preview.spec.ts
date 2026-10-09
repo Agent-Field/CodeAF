@@ -1,3 +1,4 @@
+import { openPage } from './support/shell-navigation';
 import { test, expect, type Page } from '@playwright/test';
 import type { EngineQuestion } from '../../src/features/chat/engine-client';
 import design from '../../src/design/tokens.json' with { type: 'json' };
@@ -122,7 +123,7 @@ test('the card is a text surface: surface ground, radius 12, 13px title, 12px bo
 
 test('the Design system page shows every preview card', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Design system', exact: true }).click();
+  await openPage(page, 'Design system');
   const specimen = page.locator('[data-preview-specimen]');
   await expect(specimen.locator('.preview-card')).toHaveCount(10);
   await expect(specimen.getByRole('button', { name: 'Allow all', exact: true })).toHaveCount(2);

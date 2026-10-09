@@ -19,7 +19,8 @@ const readView = (): View => { try { return localStorage.getItem(viewKey) === 'f
 type Props = {
   summaries: Readonly<Record<string, TabSummary>>; now: number; open: boolean; tabs: readonly Tab[]; groups: readonly TabGroup[]; activeId: string;
   onClose: () => void; onSelect: (id: string) => void;
-  onMoveGroup: (id: string, groupId?: string) => void;
+  /** Regroups a tab; `beside` is the card it was dropped on (before it, or `after` it). */
+  onMoveGroup: (id: string, groupId?: string, beside?: { id: string; after?: boolean }) => void;
   onCloseTab?: (id: string) => void; onSplitGroup: (groupId: string) => void;
   /** A card's right-click menu: the strip's own tab menu (hosts/menuHost), so the two can never differ. Absent for a tab with no menu. */
   menuFor?: (tab: Tab) => MenuEntry[] | undefined;
@@ -114,8 +115,9 @@ export function TabOverview({ summaries, now, open, tabs, groups, activeId, onCl
           // Dropping a card on a group's section regroups it; "Other tabs" ungroups it. Pinned tabs sit outside groups.
           const target = section.kind === 'pinned' ? undefined : section.kind === 'group' ? section.id : null;
           const drop = target === undefined ? {} : {
-            onDragOver: (event: DragEvent) => { if (event.dataTransfer.types.includes(tabDragType)) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; } },
-            onDrop: (event: DragEvent) => { const id = event.dataTransfer.getData(tabDragType); if (id) { event.preventDefault(); onMoveGroup(id, target ?? undefined); } },
+            onDragOver: (event: DragEvent<HTMLElement>) => { if (event.dataTransfer.types.includes(tabDragType)) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; event.currentTarget.dataset.drop = 'section'; } },
+            onDragLeave: (event: DragEvent<HTMLElement>) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) delete event.currentTarget.dataset.drop; },
+            onDrop: (event: DragEvent<HTMLElement>) => { delete event.currentTarget.dataset.drop; const id = event.dataTransfer.getData(tabDragType); if (id && !event.defaultPrevented) { event.preventDefault(); onMoveGroup(id, target ?? undefined); } },
           };
           return <section key={section.id} className="overview-section" aria-label={section.title} {...drop}>
             <div className="overview-section-head">
@@ -123,7 +125,7 @@ export function TabOverview({ summaries, now, open, tabs, groups, activeId, onCl
               {section.kind === 'group' && <Button className="overview-split" disabled={splittable < 2} onClick={() => { onSplitGroup(section.id); onClose(); }}><Icon name="grid" size="micro"/>Open as split</Button>}
             </div>
             <div className="overview-grid">
-              {section.tabs.map(tab => <OverviewCard key={tab.id} tab={tab} summaries={summaries} now={now} active={tab.id === activeId} cursor={tab.id === cursorId} menu={menuFor?.(tab)} onOpen={() => openTab(tab.id)} onBackground={() => move(tab.id, false)} onClose={onCloseTab && (() => { move(moveCursor(ids, tab.id, 1), false); onCloseTab(tab.id); })}/>)}
+              {section.tabs.map(tab => <OverviewCard key={tab.id} tab={tab} summaries={summaries} now={now} active={tab.id === activeId} cursor={tab.id === cursorId} menu={menuFor?.(tab)} onDropTab={target === undefined ? undefined : (id, after) => onMoveGroup(id, target ?? undefined, { id: tab.id, after })} onOpen={() => openTab(tab.id)} onBackground={() => move(tab.id, false)} onClose={onCloseTab && (() => { move(moveCursor(ids, tab.id, 1), false); onCloseTab(tab.id); })}/>)}
             </div>
           </section>;
         })}

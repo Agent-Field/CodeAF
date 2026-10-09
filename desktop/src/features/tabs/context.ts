@@ -33,6 +33,8 @@ export type TabsApi = {
   markFailedSeen: (chatId: string, count: number, failure?: FailureId) => void;
   /** Opens a conversation that has no tab here, by chat id. Absent until the shell supplies it; the Inbox then shows such rows without a click. */
   openChat?: (chatId: string) => void;
+  /** Whether an external Inbox row has a durable journal the opener can attach. */
+  canOpenChat?: (chatId: string) => boolean;
   /** What a tab can do beyond the workspace: copy a link (when one exists) and move to another window. */
   actions: TabActions;
   /** Reopens a closed tab where it was (its place in the strip and its group). */

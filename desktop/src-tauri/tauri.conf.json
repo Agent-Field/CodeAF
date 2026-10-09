@@ -39,5 +39,17 @@
     "externalBin": [
       "binaries/codeaf-engine"
     ]
+  },
+  "plugins": {
+    "http": {
+      "scopeRedirects": true
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "codeaf"
+        ]
+      }
+    }
   }
 }

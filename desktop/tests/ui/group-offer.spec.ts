@@ -1,3 +1,4 @@
+import { openPage } from './support/shell-navigation';
 import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { expectNoUnstyledControls } from './contracts';
@@ -12,7 +13,7 @@ test.beforeEach(async ({ page }) => { await page.route('**/api/engine/**', route
 
 async function openDesignSystem(page: Page) {
   if (page.viewportSize()!.width <= design.breakpoints.small) await page.getByRole('button', { name: 'Show sidebar' }).click();
-  await page.getByRole('button', { name: 'Design system', exact: true }).click();
+  await openPage(page, 'Design system');
 }
 // Axe over the specimen alone: other specimens on the same page are not this feature's to certify.
 async function expectSpecimenAccessible(page: Page) {

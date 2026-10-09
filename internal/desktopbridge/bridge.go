@@ -22,6 +22,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/workspacestore"
@@ -87,6 +88,8 @@ type Snapshot struct {
 	Queue     []QueuedWire `json:"queue"`
 	UpdatedAt string       `json:"updatedAt,omitempty"`
 	Seq       uint64       `json:"seq"`
+	// WorkingFolder says where a chat started in a place works, when the place had folders to say it about.
+	WorkingFolder *WorkingFolder `json:"workingFolder,omitempty"`
 }
 
 // OutcomeWire is one ended question as the window reads it. It carries the
@@ -153,6 +156,8 @@ type conversation struct {
 	planError  string
 	icons      *faviconCache
 	terms      *terminalSet
+	// folder is where a new place chat was told it works (workingfolder.go); nil says nothing.
+	folder *WorkingFolder
 	// afterTurn is told each primary stream that ended, and whether the
 	// engine said its turn was done (places_advice.go); nil is nobody
 	// listening.
@@ -174,6 +179,8 @@ type Bridge struct {
 	world *WorldFeed
 	// advice schedules place offers (places_advice.go); nil makes none.
 	advice *PlaceAdvice
+	// openIn opens a new chat in another folder (workingfolder.go); nil keeps every chat in the bridge's workspace.
+	openIn OpenIn
 }
 
 func New(token string, open Open) *Bridge {
@@ -343,7 +350,7 @@ func (s *conversation) snapshot() Snapshot {
 	if !stamp.IsZero() {
 		updatedAt = stamp.UTC().Format(time.RFC3339)
 	}
-	return Snapshot{ID: s.id, SessionFile: w.SessionFile, Workspace: w.Workspace, Model: a.Model(), Persistent: w.Persistent, Running: running, NeedsPerson: a.NeedsPerson(), Title: a.Title(), Questions: questions, RecentOutcomes: recentOutcomes(a), PlanError: planError, Entries: entries, Tasks: tasks, Usage: a.Usage(), Queue: s.queueWire(), Seq: seq, UpdatedAt: updatedAt}
+	return Snapshot{ID: s.id, SessionFile: w.SessionFile, Workspace: w.Workspace, Model: a.Model(), Persistent: w.Persistent, Running: running, NeedsPerson: a.NeedsPerson(), Title: a.Title(), Questions: questions, RecentOutcomes: recentOutcomes(a), PlanError: planError, Entries: entries, Tasks: tasks, Usage: a.Usage(), Queue: s.queueWire(), Seq: seq, UpdatedAt: updatedAt, WorkingFolder: s.folder}
 }
 func (s *conversation) publish(r Record) {
 	s.mu.Lock()
@@ -578,7 +585,31 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		conn, err := b.open(ask.SessionFile)
+		var folder *WorkingFolder
+		var conn Connection
+		var err error
+		// A new place chat takes the place's first usable folder. A saved
+		// conversation takes the folder its own record names. Anything else,
+		// including a record that no longer qualifies, stays on the launch host.
+		dir := ""
+		switch {
+		case places != nil:
+			dir, folder = b.folderFor(places, ask.Place)
+		case b.openIn != nil:
+			dir = recordedFolder(home.Dir(), ask.SessionFile, b.folderPolicy())
+		}
+		if dir != "" {
+			conn, err = b.openIn(dir, ask.SessionFile)
+			if err == nil && !sameFolder(dir, conn.Welcome.Workspace) {
+				if conn.Close != nil {
+					conn.Close()
+				}
+				fail(w, 409, "The engine opened this chat in "+conn.Welcome.Workspace+" instead of "+dir+".")
+				return
+			}
+		} else {
+			conn, err = b.open(ask.SessionFile)
+		}
 		if err != nil {
 			fail(w, 502, err.Error())
 			return
@@ -605,7 +636,7 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if conn.DiffStart != nil {
 			_, _ = conn.DiffStart() // diffs compare against where this conversation began; best effort
 		}
-		s := &conversation{conn: conn, id: id, changed: make(chan struct{}), done: make(chan struct{}), icons: b.icons}
+		s := &conversation{conn: conn, id: id, changed: make(chan struct{}), done: make(chan struct{}), icons: b.icons, folder: folder}
 		b.sessions[id] = s
 		s.afterTurn = b.adviseAfterTurn
 		_, events, stop := conn.Agent.AttachReplay()

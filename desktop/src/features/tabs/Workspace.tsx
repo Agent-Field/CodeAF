@@ -17,6 +17,7 @@ import { useCloseStopKey } from './closing/useCloseStopKey';
 import { inboxFocus } from './closing/inboxFocus';
 import { useBackground } from './closing/useBackground';
 import { useClosing } from './closing/useClosing';
+import { useStructuralUndo } from './undo/useStructuralUndo';
 import { TabsApiContext, type TabsApi } from './context';
 import type { PaneActions } from './kinds/slots';
 import { tabMenuFor } from './hosts/menuHost';
@@ -45,6 +46,7 @@ import { useTerminalTabs } from '../terminal/useTerminalTabs';
 import { useWorkspaceWeb } from '../web/useWorkspaceWeb';
 import { useDesktopTabActions, useTabKeys, type Switcher } from './useTabKeys';
 import { useWindowHandoff } from './useWindowHandoff';
+import { useTabLinks } from './links/useTabLinks';
 import './workspace.css';
 
 type Props = {
@@ -74,7 +76,8 @@ function initialFor(place: string, title: string): WorkspaceState {
 
 export function Workspace({ enabled, onActivate, leading, place = 'now', placeTitle, placeTint, arrival = 0, firstTurn, placeMenu, placeSwitcher, onOpenChat }: Props) {
   const sync = useWorkspaceSync({ key: place as WorkspaceKey, initial: () => initialFor(place, placeTitle ?? 'Home'), focus: new URLSearchParams(window.location.search).get('focusTab') ?? undefined });
-  const { state, dispatch: rawDispatch } = sync;
+  const { state } = sync;
+  const { dispatch: rawDispatch } = useStructuralUndo({ state, dispatch: sync.dispatch, enabled });
   const dispatch = useCallback((action: WorkspaceAction) => { if (action.type === 'open-inbox') inboxFocus.request(); rawDispatch(action); }, [rawDispatch]);
   const shell = usePlacesShell();
   const [usingApi] = useState(createUsingClient);
@@ -172,6 +175,8 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const latestState = useRef(state);
   latestState.current = state;
   const [actions] = useState(() => createTabActions({ native: nativeControls(), toasts, place: () => placeNow.current, handoffView: id => { syncNow.current.handoff(id); }, stillHere: id => latestState.current.tabs.some(tab => tab.id === id) }));
+  // Incoming durable links reuse canonical dispatch and never start work.
+  useTabLinks({ enabled, state, dispatch, actions });
   useCloseStopKey(enabled, () => closeAndStop(state.activeId));
   function startRename(id: string, group = false) { setRename({ id, group, value: (group ? state.groups : state.tabs).find(item => item.id === id)?.title ?? '' }); }
   useTabKeys({ enabled, state, dispatch, visible, overviewOpen, setOverviewOpen, closeTab, switcherRef, setSwitcher });
@@ -182,7 +187,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const historyHost = useHistoryWorkspace(state, dispatch);
   const [archived, dismissArchived] = useAutoArchive(state, dispatch, summaries);
 
-  const api: TabsApi = { state, dispatch, summaries, now, closeTab, closeAndStop, closeMany: closing.closeMany, isRunning: closing.isRunning, background, markFailedSeen, openChat: onOpenChat ?? openChatHere, actions, reopenClosed: closing.reopenClosed, startRename, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename,
+  const api: TabsApi = { state, dispatch, summaries, now, closeTab, closeAndStop, closeMany: closing.closeMany, isRunning: closing.isRunning, background, markFailedSeen, openChat: onOpenChat ?? openChatHere, canOpenChat: id => !!worldStore.getState().rows.find(row => row.session === id)?.sessionFile, actions, reopenClosed: closing.reopenClosed, startRename, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename,
     placeTint: place === 'now' ? undefined : placeTint, placeMenu, placeSwitcher };
   const newTabHost = { state, summaries, dispatch, closeTab };
   const actionsFor = (pane: Pane): PaneActions => ({
@@ -209,7 +214,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
       {switcher.ids.map((id, index) => { const tab = state.tabs.find(t => t.id === id); return tab ? <Button key={id} id={`switcher-${id}`} className="workspace-switcher-item" role="option" aria-selected={index === switcher.index} tabIndex={-1} onClick={() => { dispatch({ type: 'select', id }); switcherRef.current = null; setSwitcher(null); }}><Icon name={tab.pinned ? 'pin' : kindDef(focusedPane(tab).kind).icon} size="sm"/><span>{tab.title}</span></Button> : null; })}
     </div><Text>Release Ctrl to switch · Escape to cancel</Text>
     </div>}
-    <TabOverview summaries={summaries} now={now} returnFocus={overviewTrigger} open={overviewOpen} tabs={state.tabs} groups={state.groups} activeId={state.activeId} onSplitGroup={groupId => dispatch({ type: 'split-group', groupId })} onClose={() => setOverviewOpen(false)} onSelect={id => dispatch({ type: 'select', id })} menuFor={tab => tabMenuFor(api, tab)} onMoveGroup={(id, groupId) => dispatch({ type: 'move-group', id, groupId })} onCloseTab={closeTab}/>
+    <TabOverview summaries={summaries} now={now} returnFocus={overviewTrigger} open={overviewOpen} tabs={state.tabs} groups={state.groups} activeId={state.activeId} onSplitGroup={groupId => dispatch({ type: 'split-group', groupId })} onClose={() => setOverviewOpen(false)} onSelect={id => dispatch({ type: 'select', id })} menuFor={tab => tabMenuFor(api, tab)} onMoveGroup={(id, groupId, beside) => dispatch({ type: 'move-group', id, groupId, beside })} onCloseTab={closeTab}/>
     <dialog ref={renameDialog} className="workspace-rename" aria-label={rename?.group ? 'Rename group' : 'Rename tab'} onCancel={() => setRename(null)} onClose={() => setRename(null)}>
       <form onSubmit={event => { event.preventDefault(); if (rename) dispatch({ type: rename.group ? 'rename-group' : 'rename', id: rename.id, title: rename.value }); setRename(null); }}><TextInput ref={renameInput} aria-label="Name" value={rename?.value ?? ''} maxLength={80} onChange={event => setRename(current => current ? { ...current, value: event.target.value } : null)}/><div className="workspace-rename-actions"><Button onClick={() => setRename(null)}>Cancel</Button><Button type="submit" variant="quiet">Save</Button></div></form>
     </dialog>

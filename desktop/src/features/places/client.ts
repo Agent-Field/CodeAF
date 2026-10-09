@@ -1,3 +1,4 @@
+import { engineFetch } from '../../design/engineFetch.ts';
 /**
  * Typed client for the engine's Places routes (internal/desktopbridge/places*.go).
  *
@@ -250,7 +251,7 @@ async function defaultTransport(path: string, request: PlacesRequest): Promise<u
   request.signal?.addEventListener('abort', () => clock.abort(), { once: true });
   init.signal = clock.signal;
   let response: Response;
-  try { response = await fetch(url, init); }
+  try { response = await engineFetch(url, init); }
   catch (error) {
     if (request.signal?.aborted) throw error;
     throw new PlacesError('codeaf engine is not running', 0, '', [], undefined, true);

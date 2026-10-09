@@ -1,3 +1,4 @@
+import { savedWorkspace } from './support/synced-workspace';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { expectAccessible } from './contracts';
 import { installMockEngine } from './support/mock-engine';
@@ -23,7 +24,7 @@ const tabsOf = (...tabs: Seed[]) => tabs.map(make);
 const stripTab = (page: Page, title: string) => page.getByRole('tab', { name: title, exact: true });
 const tooltip = (page: Page) => page.getByRole('tooltip');
 const preview = (page: Page, title: string) => page.getByRole('group', { name: `Preview of ${title}`, exact: true });
-const saved = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('codeaf.desktop.workspace.v1') ?? 'null'));
+const saved = savedWorkspace;
 const stops = (engine: { calls: { method: string; path: string }[] }) => engine.calls.filter(call => call.method === 'POST' && call.path.endsWith('/stop')).length;
 
 /** Samples the page for `ms` and reports whether a tooltip and a preview card were ever on screen together. */
