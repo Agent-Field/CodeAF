@@ -1,6 +1,6 @@
 /* Specimen-only stand-ins for pieces other lanes draw (work block, attachments). */
-.specimen-work { margin: 0; padding-left: var(--work-indent); border-left: var(--border-width) solid var(--work-guide); color: var(--muted); font-size: var(--font-size-label); }
-.specimen-thumb { display: block; width: 100%; height: 100%; background: var(--field); border: var(--border-width) solid var(--border); box-sizing: border-box; }
+.specimen-work { margin: 0; padding-left: var(--work-indent); border-left: var(--border-width) solid var(--guide); color: var(--ink-2); font-size: var(--font-size-label); }
+.specimen-thumb { display: block; width: 100%; height: 100%; background: var(--field); border: var(--border-width) solid var(--line); box-sizing: border-box; }
 .specimen-chip { display: inline-flex; align-items: center; gap: var(--space-1); height: var(--chip-height); padding-inline: var(--space-2); border-radius: var(--radius-chip); background: var(--field); font-size: var(--font-size-label); }
 
 /* Task detail specimen: the pane at its real width, one full and one bare. */

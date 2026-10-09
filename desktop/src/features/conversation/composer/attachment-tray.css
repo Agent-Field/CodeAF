@@ -24,7 +24,7 @@
   height: 100%;
   object-fit: cover;
   border-radius: var(--radius-md);
-  border: var(--border-width) solid var(--border);
+  border: var(--border-width) solid var(--line);
 }
 
 .attachment-file {
@@ -34,8 +34,8 @@
   padding: 0 var(--space-half) 0 var(--space-2);
   border-radius: var(--radius-chip);
   background: var(--field);
-  border: var(--border-width) solid var(--border);
-  color: var(--text);
+  border: var(--border-width) solid var(--line);
+  color: var(--ink);
 }
 
 .attachment-name.type-body {
@@ -47,7 +47,7 @@
 
 .attachment-size.type-body {
   flex: none;
-  color: var(--muted);
+  color: var(--ink-2);
   font-size: var(--font-size-label);
 }
 
@@ -60,8 +60,8 @@
   height: var(--icon-md);
   min-width: 0;
   border-radius: 50%;
-  background: var(--composer-surface);
-  border: var(--border-width) solid var(--border);
+  background: var(--surface);
+  border: var(--border-width) solid var(--line);
 }
 
 .attachment-file .attachment-remove.icon-button {

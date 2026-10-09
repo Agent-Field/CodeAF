@@ -71,12 +71,3 @@ export function blocksComposer(questions: Question[]): boolean {
 }
 
 export type Receipt = { state: 'waiting' | 'answered' | 'withdrawn'; text: string };
-
-/** The line left in the conversation flow at the point a question was asked. */
-export function waitingReceipt(question: Question): Receipt {
-  return { state: 'waiting', text: `Waiting on you: ${question.head}` };
-}
-
-export function withdrawnReceipt(): Receipt {
-  return { state: 'withdrawn', text: 'No longer needed. The turn moved on.' };
-}

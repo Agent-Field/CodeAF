@@ -36,10 +36,6 @@ export type ConversationViewProps = {
 
 const MODEL_LABEL = 'DeepSeek v4.1 Flash';
 
-function folderName(path?: string): string {
-  return path?.split(/[\\/]/).filter(Boolean).pop() ?? '';
-}
-
 /** The task panel: a column on wide panes, a sheet the person opens on narrow ones. */
 function useTaskPanel(hasTasks: boolean, closed: boolean, onView: ConversationViewProps['onView']) {
   const sheet = useMediaQuery(`(max-width: ${design.breakpoints.planSplit}px)`);
@@ -130,7 +126,6 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   const modelLabel = !snapshot || snapshot.model === ENGINE_MODEL ? MODEL_LABEL : snapshot.model;
   const showJump = unanchored && (behind || model.running) && !inTask;
   const showFooter = !inTask || conversation.unreachable;
-  const greeting = empty ? folderName(snapshot?.workspace) : '';
 
   return (
     <EngineAssetProvider sessionId={sessionId} workspace={snapshot?.workspace ?? ''}>
@@ -152,7 +147,6 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
         <div className="conversation-main" data-empty={empty || undefined} hidden={tasksView}>
           <div ref={scroller} className="conversation-scroll" data-scrolled={scrolled || undefined}>
             <div ref={content} className="conversation-column">
-              {greeting && <p className="conversation-greeting">{greeting}</p>}
               {taskId ? (
                 <TaskRoute
                   sessionId={sessionId}
