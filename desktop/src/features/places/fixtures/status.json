@@ -1,0 +1,88 @@
+{
+  "now": {
+    "chats": 1,
+    "status": {
+      "chats": 1,
+      "failedTasks": 0,
+      "incomplete": 0,
+      "needsYou": 0,
+      "running": 0
+    }
+  },
+  "places": {
+    "pl_0000000000000001": {
+      "status": {
+        "chats": 0,
+        "failedTasks": 0,
+        "incomplete": 0,
+        "needsYou": 0,
+        "running": 0
+      },
+      "statusInclusive": {
+        "chats": 3,
+        "failedTasks": 0,
+        "incomplete": 0,
+        "needsYou": 1,
+        "running": 1
+      }
+    },
+    "pl_0000000000000003": {
+      "status": {
+        "chats": 0,
+        "failedTasks": 0,
+        "incomplete": 0,
+        "needsYou": 0,
+        "running": 0
+      },
+      "statusInclusive": {
+        "chats": 1,
+        "failedTasks": 0,
+        "incomplete": 0,
+        "needsYou": 0,
+        "running": 0
+      }
+    },
+    "pl_0000000000000005": {
+      "status": {
+        "chats": 2,
+        "failedTasks": 0,
+        "incomplete": 0,
+        "needsYou": 1,
+        "running": 1
+      },
+      "statusInclusive": {
+        "chats": 2,
+        "failedTasks": 0,
+        "incomplete": 0,
+        "needsYou": 1,
+        "running": 1
+      }
+    },
+    "pl_0000000000000007": {
+      "status": {
+        "chats": 1,
+        "failedTasks": 0,
+        "incomplete": 0,
+        "needsYou": 0,
+        "running": 0
+      },
+      "statusInclusive": {
+        "chats": 1,
+        "failedTasks": 0,
+        "incomplete": 0,
+        "needsYou": 0,
+        "running": 0
+      }
+    }
+  },
+  "readAt": "2026-10-09T12:01:00Z",
+  "revision": 10,
+  "totals": {
+    "missingChats": 0,
+    "needsYou": 1,
+    "placed": 3,
+    "places": 4,
+    "running": 1,
+    "unplaced": 1
+  }
+}

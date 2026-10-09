@@ -1,0 +1,76 @@
+{
+  "open": [
+    {
+      "alsoIn": [],
+      "archived": false,
+      "counts": {
+        "chats": 2,
+        "chatsInclusive": 2,
+        "children": 0,
+        "descendants": 0
+      },
+      "createdAt": "2026-10-09T12:01:00Z",
+      "effectiveTint": "iris",
+      "hasInstructions": false,
+      "id": "pl_0000000000000005",
+      "lastOpenedAt": "2026-10-09T12:01:00Z",
+      "name": "Config parser",
+      "parents": [
+        "pl_0000000000000001"
+      ],
+      "pinned": false,
+      "sourceCount": 1,
+      "status": {
+        "chats": 2,
+        "failedTasks": 0,
+        "incomplete": 0,
+        "needsYou": 1,
+        "running": 1
+      },
+      "statusInclusive": {
+        "chats": 2,
+        "failedTasks": 0,
+        "incomplete": 0,
+        "needsYou": 1,
+        "running": 1
+      },
+      "tint": ""
+    }
+  ],
+  "openWindowHours": 12,
+  "pinned": [
+    {
+      "alsoIn": [],
+      "archived": false,
+      "counts": {
+        "chats": 0,
+        "chatsInclusive": 3,
+        "children": 2,
+        "descendants": 2
+      },
+      "createdAt": "2026-10-09T12:01:00Z",
+      "effectiveTint": "iris",
+      "hasInstructions": true,
+      "id": "pl_0000000000000001",
+      "name": "Software",
+      "parents": [],
+      "pinned": true,
+      "sourceCount": 0,
+      "status": {
+        "chats": 0,
+        "failedTasks": 0,
+        "incomplete": 0,
+        "needsYou": 0,
+        "running": 0
+      },
+      "statusInclusive": {
+        "chats": 3,
+        "failedTasks": 0,
+        "incomplete": 0,
+        "needsYou": 1,
+        "running": 1
+      },
+      "tint": "iris"
+    }
+  ]
+}
