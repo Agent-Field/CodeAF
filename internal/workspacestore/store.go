@@ -162,6 +162,8 @@ type Store struct {
 
 	// beforeRename is a test seam run after the temp file is complete.
 	beforeRename func() error
+	// afterGetRead is a test seam for recovery racing a read-only projection.
+	afterGetRead func()
 	// pairFault and syncDir are test seams for the pair journal (pair.go).
 	pairFault func(stage string) error
 	syncDir   func(dir string) error
@@ -204,11 +206,17 @@ func (s *Store) Get(key string) (Record, error) {
 	if !ValidKey(key) {
 		return Record{}, ErrInvalidKey
 	}
+	// Capture publication before the file: recovery may remove the journal
+	// after a stale physical read, but this Get still owes the committed view.
+	journal, _ := s.readJournal()
 	rec, _, err := s.read(key)
 	if err != nil {
 		return Record{}, err
 	}
-	return s.overlay(rec), nil
+	if s.afterGetRead != nil {
+		s.afterGetRead()
+	}
+	return s.overlay(rec, journal), nil
 }
 
 // read returns the record and, for a damaged file, why it was unreadable.
@@ -461,22 +469,34 @@ func (s *Store) writeLocked(key string, doc *file) error {
 
 // FileSignature identifies the current atomic workspace file without reading
 // its drafts. It is only a cache hint; callers periodically re-read unchanged
-// files too. Missing keys have the zero signature. Reads create nothing.
+// files too. Missing keys without a pending publication have the zero signature.
+// Pending logical publications invalidate even before physical materialization.
+// Reads create nothing.
 type FileSignature struct {
 	Bytes    int64
 	Modified int64
+	Pair     string
 }
 
 func (s *Store) Signature(key string) (FileSignature, error) {
 	if !ValidKey(key) {
 		return FileSignature{}, ErrInvalidKey
 	}
+	pair := s.PairStamp()
+	if pair == "-/-" {
+		pair = ""
+	}
 	info, err := os.Stat(s.path(key))
 	if errors.Is(err, os.ErrNotExist) {
-		return FileSignature{}, nil
+		// A completion ledger only carries relocation hints, never a missing
+		// workspace document. Do not force every absent Place to decode it.
+		if pair == "" || strings.HasPrefix(pair, "-/") {
+			return FileSignature{}, nil
+		}
+		return FileSignature{Pair: pair}, nil
 	}
 	if err != nil {
 		return FileSignature{}, err
 	}
-	return FileSignature{Bytes: info.Size(), Modified: info.ModTime().UnixNano()}, nil
+	return FileSignature{Bytes: info.Size(), Modified: info.ModTime().UnixNano(), Pair: pair}, nil
 }
