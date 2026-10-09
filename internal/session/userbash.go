@@ -174,6 +174,7 @@ func (a *Agent) runUserBash(ctx context.Context, hub *eventHub, command string) 
 	event.Kind, event.Hint, event.Output = EventToolEnd, "", displayToolOutput(call.ID, output)
 	if failed {
 		event.Kind = EventToolFailed
+		a.file.appendFailed(call.ID)
 	}
 	hub.send(event)
 	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started, a.Model())})

@@ -4704,6 +4704,13 @@ type DisplayEntry struct {
 	// page speaks about them differently.
 	Answered bool
 
+	// Failed is whether the record says this call came back a FAILURE: the same
+	// fact that sent EventToolFailed live. It is answered from the journal's own
+	// `failed` mark and never from the output's words, so a replayed row and the
+	// live row agree; false for a call that has not returned and for every file
+	// written before the mark existed.
+	Failed bool
+
 	// Args and Output are a TOOL entry's payload, in exactly the two shapes a
 	// live surface already holds them in ([Event.Args] and [Event.Output]): the
 	// arguments the model sent, compacted onto one line and capped, and the text
@@ -5008,6 +5015,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 				Args:     argsText(*call),
 				Output:   displayToolOutput(call.ID, result),
 				Answered: answered,
+				Failed:   journal.callFailed(call.ID),
 				// And the call's own duration, off the journal's `took` line —
 				// the same figure EventToolFinished carried while the window was
 				// open. Zero when the file never recorded one.

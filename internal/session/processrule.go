@@ -422,6 +422,7 @@ func (a *Agent) withholdSubmission(hub *eventHub, calls []ai.ToolCall, hold rule
 			ToolCallID: call.ID,
 			Content:    []ai.ContentPart{{Type: "text", Text: demand}},
 		})
+		a.file.appendFailed(call.ID)
 		hub.send(Event{
 			Kind:        EventToolFailed,
 			Tool:        call.Function.Name,
