@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -77,18 +78,14 @@ func (d *sayDoor) say(ctx context.Context, id int, words string) error {
 		}
 	}
 	key := sameFileKey(chat)
-	d.mu.Lock()
-	conv, held := d.kept[key]
-	d.mu.Unlock()
+	conv, held := d.held(key)
 	if held {
 		if err := saySubmit(conv.Agent, words); err == nil {
 			return nil
 		}
 		// A KEPT CONVERSATION THAT REFUSES has ended under the door (its
 		// engine went away): it is let go and opened again, once.
-		d.mu.Lock()
-		delete(d.kept, key)
-		d.mu.Unlock()
+		d.forget(key)
 	}
 	conv, err = d.open(d.folder(chat), chat)
 	if err != nil {
@@ -97,13 +94,45 @@ func (d *sayDoor) say(ctx context.Context, id int, words string) error {
 	if conv.Agent == nil {
 		return errors.New("the item's conversation did not open")
 	}
+	d.keep(key, conv)
+	return saySubmit(conv.Agent, words)
+}
+
+// held is the conversation this door keeps under key, when it keeps one.
+func (d *sayDoor) held(key string) (tui3.Conversation, bool) {
 	d.mu.Lock()
+	defer d.mu.Unlock()
+	conv, ok := d.kept[key]
+	return conv, ok
+}
+
+// keep records a conversation this door opened, so the next say finds it.
+func (d *sayDoor) keep(key string, conv tui3.Conversation) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	if d.kept == nil {
 		d.kept = map[string]tui3.Conversation{}
 	}
 	d.kept[key] = conv
-	d.mu.Unlock()
-	return saySubmit(conv.Agent, words)
+}
+
+// forget lets a kept conversation go.
+func (d *sayDoor) forget(key string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	delete(d.kept, key)
+}
+
+// take hands a kept conversation over and forgets it, answering whether one
+// was kept.
+func (d *sayDoor) take(key string) (tui3.Conversation, bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	conv, ok := d.kept[key]
+	if ok {
+		delete(d.kept, key)
+	}
+	return conv, ok
 }
 
 // saySubmit puts the words in and lets the turn run: its events are drained
@@ -114,10 +143,10 @@ func saySubmit(turn sayTurn, words string) error {
 		return err
 	}
 	if events != nil {
-		go func() {
+		guard.Go("factory/say-drain", func() {
 			for range events {
 			}
-		}()
+		})
 	}
 	return nil
 }
@@ -129,13 +158,7 @@ func saySubmit(turn sayTurn, words string) error {
 func (d *sayDoor) adopt(open func(workspace, transcript string) (tui3.Conversation, error)) func(workspace, transcript string) (tui3.Conversation, error) {
 	return func(workspace, transcript string) (tui3.Conversation, error) {
 		key := sameFileKey(transcript)
-		d.mu.Lock()
-		conv, ok := d.kept[key]
-		if ok {
-			delete(d.kept, key)
-		}
-		d.mu.Unlock()
-		if ok {
+		if conv, ok := d.take(key); ok {
 			return conv, nil
 		}
 		return open(workspace, transcript)

@@ -119,9 +119,7 @@ func startFactoryRunner(st *store.Store, workspace, profileDir string, parent se
 			mb := st.Mailbox()
 			_ = mb.Clear()
 			setFactoryRunner(r, lock)
-			factoryRunner.mu.Lock()
-			factoryRunner.shape = shape
-			factoryRunner.mu.Unlock()
+			setFactoryShape(shape)
 			guard.Go("factory/run-mailbox", func() {
 				drainFactoryMailbox(context.Background(), mb, r, shape, factoryMailboxEvery)
 			})
@@ -325,4 +323,11 @@ func answerFactoryAsks(mb *store.Mailbox, r factory.RunnerDoors, shape func(cont
 		}
 		_ = mb.Answer(ask.Seq, factory.Carry(r, ask))
 	}
+}
+
+// setFactoryShape records the shape door the owner answers the mailbox with.
+func setFactoryShape(shape func(ctx context.Context, id int) (string, error)) {
+	factoryRunner.mu.Lock()
+	defer factoryRunner.mu.Unlock()
+	factoryRunner.shape = shape
 }
