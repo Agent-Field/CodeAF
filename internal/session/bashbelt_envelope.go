@@ -129,6 +129,7 @@ func (a *Agent) rejectBashEnvelope(hub *eventHub, calls []ai.ToolCall, diagnosti
 				ToolCallID: call.ID,
 				Content:    []ai.ContentPart{{Type: "text", Text: diagnostic}},
 			})
+			a.file.appendFailed(call.ID)
 			hub.send(Event{
 				Kind:        EventToolFailed,
 				Tool:        call.Function.Name,
