@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { EngineTaskRow } from '../chat/engine-client';
-import { branchCounts, buildTaskTree, holdsTask, splitFinished, taskCounts, taskProgress, taskTrail, waitTitles } from './taskTree.ts';
+import { branchCounts, buildTaskTree, foldDefault, holdsTask, splitFinished, taskCounts, taskProgress, taskTrail, waitTitles } from './taskTree.ts';
 
 const row = (ID: string, Status: string, extra: Partial<EngineTaskRow> = {}): EngineTaskRow => ({
   ID,
@@ -100,4 +100,12 @@ test('a parent counts what is done below it, and only whole done families leave 
 test('a queued row names only the unfinished tasks it waits on', () => {
   const rows = [row('a', 'done', { Title: 'Parse config' }), row('b', 'running', { Title: 'Load schema' }), row('c', 'pending', { Waits: ['a', 'b', 'gone'] })];
   assert.deepEqual(waitTitles(rows, rows[2]), ['Load schema']);
+});
+
+test('the Finished fold opens by default only when nothing is live or it holds the open task', () => {
+  const allDone = splitFinished(buildTaskTree([row('a', 'done'), row('b', 'done')]));
+  assert.equal(foldDefault(allDone.live.length, false), true);
+  const mixed = splitFinished(buildTaskTree([row('a', 'done'), row('b', 'running')]));
+  assert.equal(foldDefault(mixed.live.length, false), false);
+  assert.equal(foldDefault(mixed.live.length, true), true);
 });

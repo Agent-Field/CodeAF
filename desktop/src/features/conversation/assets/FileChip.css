@@ -1,9 +1,10 @@
 /* File chip (design v3, "File chip"): the shared 20px Chip. Name in ink, directory muted. */
 /* The pill itself (height, fill, padding, gap, hover, focus) is the shared ChipButton. */
-.chip.file-chip { line-height: var(--line-height-tight); cursor: pointer; }
+/* A chip is one line: nothing inside it wraps. The directory shrinks first and ends in an ellipsis. */
+.chip.file-chip { line-height: var(--line-height-tight); cursor: pointer; white-space: nowrap; }
 .file-chip > .app-icon { width: var(--file-chip-icon); height: var(--file-chip-icon); color: var(--ink-2); }
 .file-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: var(--asset-name-max-width); font-weight: var(--type-label-strong); }
-.file-chip-dir { min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: var(--asset-dir-max-width); color: var(--ink-2); }
+.file-chip-dir { flex-shrink: 100; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: var(--asset-dir-max-width); color: var(--ink-2); }
 .file-chip-stat { display: inline-flex; gap: var(--file-chip-gap); font-family: var(--mono); font-size: var(--type-mono-small-size); font-variant-numeric: tabular-nums; }
 .file-chip-added { color: var(--success-text); }
 .file-chip-removed { color: var(--danger); }

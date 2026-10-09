@@ -75,9 +75,15 @@ function titleOf(batch: Batch, done: boolean): Pick<WorkStep, 'title' | 'titleSo
   return { title: composedTitle(batch.calls, done), titleSource: 'composed' };
 }
 
+/**
+ * The time a call spent working. An `ask` call parks inside its Execute until
+ * the person answers, so its whole Took is waiting on them, not work.
+ */
+export const workedMs = (call: ToolStep): number => (call.tool === 'ask' ? 0 : (call.tookMs ?? 0));
+
 /** A batch's calls run side by side, so the step took as long as its longest call. */
 function stepTook(calls: ToolStep[]): number | undefined {
-  const longest = Math.max(0, ...calls.map((call) => call.tookMs ?? 0));
+  const longest = Math.max(0, ...calls.map(workedMs));
   return longest > 0 ? longest : undefined;
 }
 
@@ -91,6 +97,20 @@ export function finishStep(batch: Batch, ctx: StepCtx): WorkStep {
     tookMs: stepTook(batch.calls),
     state,
   };
+}
+
+/**
+ * A failed call that a later call of the same tool at the same target
+ * (hint, else args) completed is a retry that worked: it is not a failure.
+ * `calls` are in record order.
+ */
+export function unresolvedFailures(calls: ToolStep[]): ToolStep[] {
+  const target = (c: ToolStep) => `${c.tool}\0${c.hint || c.args}`;
+  return calls.filter((call, at) => {
+    if (call.state !== 'failed') return false;
+    const key = target(call);
+    return !calls.slice(at + 1).some((later) => later.state === 'done' && target(later) === key);
+  });
 }
 
 export function summarize(steps: WorkStep[], thoughtSeconds?: number): {
@@ -107,6 +127,6 @@ export function summarize(steps: WorkStep[], thoughtSeconds?: number): {
     thoughtSeconds,
     steps: steps.length,
     calls: calls.length,
-    failed: calls.filter((c) => c.state === 'failed').length,
+    failed: unresolvedFailures(calls).length,
   };
 }
