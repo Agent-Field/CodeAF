@@ -59,7 +59,7 @@ Shared, change with care and keep edits small: `tokens.json` (add keys, never re
 - **Overview card menu** is `tabMenuFor(api, tab)` from `hosts/menuHost.tsx`, the strip's own builder, passed down as `TabOverview`'s `menuFor`. There is no second menu array; the Inbox has no menu in either place. `ToastRegion` draws inside an open modal dialog so a toast posted from the overview is seen.
 ## Group suggestion
 
-`offerRules.ts` (pure, node-tested: `findOffers`, the 30-day memory), `useGroupOffer.ts` (shown-this-launch, decide), `GroupOffer.tsx` (`GroupOffer` takes the `TabsApi`; `GroupOfferPill` is the drawing) and `group-offer.css`. It dispatches the reducer's own `group` action and owns no tab state. Decisions GO1 to GO8 in `docs/DESIGN-QUESTIONS.md`; wiring in the report `tab-group-offer-api.md`.
+`offerRules.ts` (pure, node-tested: `findOffers`, canonical chat ids, the 30-day memory), `canonicalOffers.ts` (`canonicalGroupOffers`), `useGroupOffer.ts` (settled once-per-set ask, shown-this-launch, decide), `GroupOffer.tsx` (`GroupOffer` takes the `TabsApi`; `GroupOfferPill` is the drawing) and `group-offer.css`. It dispatches the reducer's own `group` action and owns no tab state. Decisions GO1 to GO8 in `docs/DESIGN-QUESTIONS.md`; wiring in the report `tab-group-offer-api.md` and `tab-group-offer-completion-api.md`.
 
 ## Primitives and specimens
 

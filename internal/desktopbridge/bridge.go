@@ -181,6 +181,8 @@ type Bridge struct {
 	advice *PlaceAdvice
 	// openIn opens a new chat in another folder (workingfolder.go); nil keeps every chat in the bridge's workspace.
 	openIn OpenIn
+	// groups answers tab-group offers (tabgroups.go); nil makes none.
+	groups *TabGroups
 }
 
 func New(token string, open Open) *Bridge {
