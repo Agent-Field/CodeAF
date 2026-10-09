@@ -306,3 +306,24 @@ test('a first-ever offline launch preserves its seed, pending new tabs and draft
   assert.deepEqual(ids(reloaded.getState()), ['fresh-import', 'queued-chat']);
   reloaded.stop();
 });
+
+
+test('structural Undo minted ids stay stable through canonical replay and persisted queue reload', async () => {
+  const { engine, time, a, b, saved, make } = await twoWindows('t1', 't2', 't3');
+  engine.setDown(true);
+  a.dispatch({ type: 'group', id: 't1', ids: ['t2'], title: 'Deterministic', mint: ['undo-group-id'] });
+  await time.advance(200);
+  assert.equal(a.getState().groups[0]?.id, 'undo-group-id');
+  a.stop();
+  assert.deepEqual(saved['win-a'].pending[0]?.action.mint, ['undo-group-id']);
+  const reopened = make('win-a', saved['win-a']);
+  reopened.start();
+  b.dispatch({ type: 'rename', id: 't3', title: 'Other window words' });
+  engine.setDown(false);
+  await time.advance(10000);
+  assert.equal(reopened.getState().groups[0]?.id, 'undo-group-id');
+  assert.equal(b.getState().groups[0]?.id, 'undo-group-id');
+  assert.equal(reopened.getState().tabs.find(t => t.id === 't3')?.title, 'Other window words');
+  reopened.stop();
+  b.stop();
+});

@@ -57,8 +57,8 @@ test.describe('one strip order (finding 5)', () => {
   await seed(page, { tabs: [tab('a', 'Alpha'), tab('b', 'Beta'), tab('c', 'Gamma')], activeId: 'a' });
   await page.goto('/');
   await tabNamed(page, 'Alpha').click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Move to group', exact: true }).hover();
-  await page.getByRole('menuitem', { name: 'Create group', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Add to group', exact: true }).hover();
+  await page.getByRole('menuitem', { name: /^New group…/ }).click();
   await expect.poll(() => strip(page)).toEqual(['[New group: Alpha]', 'Beta', 'Gamma']);
   await page.getByRole('button', { name: 'New tab', exact: true }).click();
   await expect(tabNamed(page, 'New tab')).toHaveAttribute('aria-selected', 'true');
@@ -163,8 +163,8 @@ test('a task opened from a grouped conversation joins its group', async ({ page 
  await expect(panel).toBeVisible();
  const title = (await page.getByRole('tab').first().getAttribute('aria-label'))!;
  await tabNamed(page, title).click({ button: 'right' });
- await page.getByRole('menuitem', { name: 'Move to group', exact: true }).hover();
- await page.getByRole('menuitem', { name: 'Create group', exact: true }).click();
+ await page.getByRole('menuitem', { name: 'Add to group', exact: true }).hover();
+ await page.getByRole('menuitem', { name: /^New group…/ }).click();
  await expect(page.locator('.workspace-tab-group')).toHaveCount(1);
  await panel.getByRole('button', { name: /^(?!Collapse|Expand).*Port the form fields/ }).click({ modifiers: [await primary(page)] });
  await expect(page.getByRole('tab')).toHaveCount(2);

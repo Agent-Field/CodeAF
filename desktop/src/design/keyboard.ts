@@ -9,6 +9,8 @@ export const tabShortcuts = {
  reopen: formatShortcut('⌘/Ctrl ⇧ T'),
  /** Groups the active tab with the tabs picked by ⌘-click (Interactions, Shortcuts: "⌘G Group selected tabs"). */
  group: formatShortcut('⌘/Ctrl G'),
+ /** Takes back the last structural tab action (Interactions, Shortcuts: "⌘Z Undo structural action"). */
+ undo: formatShortcut('⌘/Ctrl Z'),
  switch: isMac ? '⌃ Tab' : 'Ctrl Tab',
  switchBack: isMac ? '⌃ ⇧ Tab' : 'Ctrl Shift Tab',
 };
