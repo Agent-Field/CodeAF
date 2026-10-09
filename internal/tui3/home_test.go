@@ -1899,6 +1899,95 @@ func TestHomeBeatStopsWhenHomeCloses(t *testing.T) {
 	}
 }
 
+// A conversation door in flight ([app.conversationLater]'s window) is exactly
+// when the rescan must not run: the walk and the rebuild would steal the update
+// loop from the door the person is waiting on. Beats that land inside the window
+// are deferred and coalesced — however many arrive, the settle is one rescan —
+// and the clock keeps turning through the window.
+func TestHomeBeatDefersItsRescanWhileAConversationOpens(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	work := lab.workspace("mine")
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "old conversation", work, now)
+	a := lab.app(mine)
+	openHomeOn(a, mine)
+	entered, release := make(chan struct{}), make(chan struct{})
+	t.Cleanup(func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	})
+	next := &fakeAgent{model: "m"}
+	a.open = func(workspace, file string) (Conversation, error) {
+		close(entered)
+		<-release
+		return Conversation{Agent: next, Workspace: workspace, SessionFile: file}, nil
+	}
+	line := homeLine{row: a.home.world.Projects[0].Sessions[0]}
+	line.row.Transcript = "/different/transcript.jsonl"
+	cmd := a.homeOpenDoor(line)
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		close(release)
+		t.Fatal("opening never reached its callback")
+	}
+	if !a.conversationOpening {
+		t.Fatal("the door did not open its window")
+	}
+	// A conversation another window saved lands on the disk while the door is in
+	// flight. The beats that arrive inside the window must not read it.
+	lab.session("-tmp-alpha", "aaaa000000000002", "arrived during the door", work, now.Add(-time.Minute))
+	for i := 0; i < 2; i++ {
+		if cmd := a.homeBeat(a.homeGen); cmd == nil {
+			t.Fatal("a beat inside the window stopped the clock")
+		}
+		if strings.Contains(homeText(a), "Arrived During") {
+			t.Fatal("a beat inside the window ran the rescan the window defers")
+		}
+	}
+	// The window closes with home still up — esc cancelled the door — and the
+	// next beat settles what the skipped ones owed, once.
+	a.cancelConversationOpening()
+	close(release)
+	spend(t, a, cmd)
+	if a.conversationOpening {
+		t.Fatal("the cancelled door left its window open")
+	}
+	if cmd := a.homeBeat(a.homeGen); cmd == nil {
+		t.Fatal("the settling beat did not ask for the next one")
+	}
+	if got := strings.Count(homeText(a), "Arrived During"); got != 1 {
+		t.Fatalf("the settling rescan did not run exactly once: %d rows", got)
+	}
+}
+
+// The event roads onto the rescan ([app.refreshHome]'s callers beside the beat)
+// hold the same law: inside the window they mark the screen owed instead of
+// rescanning under the door's feet, and the next road out settles it, once.
+func TestHomeEventRescanDefersWhileAConversationOpens(t *testing.T) {
+	lab := newHomeLab(t)
+	now := time.Now()
+	mine := lab.session("-tmp-alpha", "aaaa000000000001", "old conversation", "/tmp/alpha", now)
+	a := lab.app(mine)
+	openHomeOn(a, mine)
+	a.conversationOpening = true
+	lab.session("-tmp-alpha", "aaaa000000000002", "arrived while owed", "/tmp/alpha", now.Add(-time.Minute))
+	for i := 0; i < 2; i++ {
+		a.refreshHome()
+		if strings.Contains(homeText(a), "Arrived While") {
+			t.Fatal("a rescan ran inside the window the door holds")
+		}
+	}
+	a.conversationOpening = false
+	a.refreshHome()
+	if got := strings.Count(homeText(a), "Arrived While"); got != 1 {
+		t.Fatalf("the settle after the window did not run exactly once: %d rows", got)
+	}
+}
+
 // ── the landing ─────────────────────────────────────────────────────────────
 
 // A person opening codeaf on a machine they have worked on is greeted by home,
@@ -2708,7 +2797,7 @@ func TestTheDoorOpensWhenThisWindowStartsASecondConversation(t *testing.T) {
 	if !started {
 		t.Fatal("/new refused to open a second conversation")
 	}
-	runCmd(renewed)
+	unfold(t, a, renewed)
 	if a.file == mine {
 		t.Fatal("/new did not move the surface onto another conversation")
 	}

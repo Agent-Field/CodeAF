@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -639,6 +640,13 @@ func (r *Reconciler) reconcileImportedSkills(projectDir, homeDir string) {
 	ReconcileImportedSkills(r.store, projectDir, homeDir)
 }
 
+// importedSkillsPass serializes the pass: the resident reconciler's gated
+// tick and a chat door's launch pass run the same scan, and two concurrent
+// runs would double-scan the same disks and contend the store's writes
+// (#1659). The pass is idempotent, so the second runner over an unchanged
+// disk journals nothing — the lock only keeps them from running at once.
+var importedSkillsPass sync.Mutex
+
 // ReconcileImportedSkills makes the fact shelf agree with the foreign roots:
 // every discovered skill that is not shadowed gets one active fact whose
 // artifact is the ORIGINAL directory, and every previously imported fact
@@ -653,6 +661,8 @@ func (r *Reconciler) reconcileImportedSkills(projectDir, homeDir string) {
 // half-imported is a state the next pass repairs and a failed pass is one
 // nothing repairs.
 func ReconcileImportedSkills(st *store.Store, projectDir, homeDir string) {
+	importedSkillsPass.Lock()
+	defer importedSkillsPass.Unlock()
 	discovered, err := skills.Discover(skills.Options{ProjectDir: projectDir, HomeDir: homeDir})
 	if err != nil {
 		return

@@ -342,14 +342,17 @@ func (a *app) homeSlash(line string) tea.Cmd {
 		// used to compact a conversation behind the screen, and `/files` opened a
 		// shelf over one. Both are now about the conversation this line is
 		// opening, which is the conversation the rule above the box named.
-		started, opened := a.homeOpenAt(target)
+		// AND THE DISPATCH RUNS AGAINST THE NEW AGENT. The swap happens in the
+		// fold now (#1659), so the dispatch rides it: [app.homeOpenAt] runs
+		// `settle` after the swap, and [app.slash] acts on the conversation
+		// that just opened.
+		started, opened := a.homeOpenAt(target, func() tea.Cmd {
+			return a.slash(line)
+		})
 		if !opened {
 			return nil
 		}
-		// AND THE DISPATCH RUNS AGAINST THE NEW AGENT. Both roads into
-		// [app.homeOpenAtTarget] swap the agent synchronously, so `a.agent` here
-		// is the conversation that just opened and [app.slash] acts on it.
-		return tea.Batch(started, a.slash(line))
+		return started
 	}
 	// AND THE ANSWER OF EVERYTHING ELSE IS ECHOED WHERE IT WAS TYPED. /help,
 	// /status, /cost, /crew, /budget 20 and `there is no command called

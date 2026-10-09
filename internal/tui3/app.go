@@ -8448,17 +8448,50 @@ func (a *app) renew() (tea.Cmd, bool) { return a.renewRefusing(a.note) }
 // the new conversation's entry line, because by then that conversation is what is
 // on screen.
 func (a *app) renewRefusing(say func(string)) (tea.Cmd, bool) {
+	return a.renewRefusingAfter(say, nil)
+}
+
+// renewRefusingAfter is [app.renewRefusing] with the door moved off the update
+// loop (#1659) and ONE hook. The shared legacy connection used to run the
+// whole launch assembly — subharness wiring, the memory graph, the
+// foreign-skill pass — inside the enter keystroke, and the loop froze for as
+// long as the engine took. The ask runs off the loop now, on the door line
+// every other door uses, and only the commit stays on it: the in-place swap a
+// shared handle needs is [app.finishRenew] in the fold, on the loop, exactly
+// where the synchronous road ran it. `say` is called from the fold for a door
+// that failed, so it lands while the caller's surface is still what the ask
+// was made from; `after` runs on the loop after the commit, keeping the order
+// the synchronous road gave the caller's own closing steps (home closes after
+// the swap, pins land after the attach).
+func (a *app) renewRefusingAfter(say func(string), after func() tea.Cmd) (tea.Cmd, bool) {
 	if !a.canStart() {
 		say(newUnavailableWord)
 		return nil, false
 	}
 	replacing := a.renewReplaces()
-	conv, whole, err := a.nextConversation()
-	if err != nil {
-		say("new session failed: " + err.Error())
+	ask, whole := a.startDoor("")
+	// THE DOOR'S OWN FAILURE KEEPS ITS WORD. [app.startDoor] hands back the raw
+	// engine error; the synchronous road prefixed it before saying, and the
+	// fold says the same sentence.
+	wrapped := func() (Conversation, error) {
+		conv, err := ask()
+		if err != nil {
+			return conv, errors.New("new session failed: " + err.Error())
+		}
+		return conv, nil
+	}
+	cmd := a.conversationLater(wrapped, say, func(conv Conversation) tea.Cmd {
+		started := a.finishRenew(conv, whole, replacing)
+		if after != nil {
+			return tea.Batch(started, after())
+		}
+		return started
+	})
+	if cmd == nil {
+		// An opening is already in flight; the guard said nothing and so do we.
 		return nil, false
 	}
-	return a.finishRenew(conv, whole, replacing), true
+	return cmd, true
 }
 
 // finishRenew commits a prepared conversation on the update loop. Opening it

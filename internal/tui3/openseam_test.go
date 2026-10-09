@@ -134,7 +134,11 @@ func TestTheSeamIsAskedAboutThisConversationsOwnWorkspace(t *testing.T) {
 		return Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: transcript}, nil
 	}
 
-	a.renew()
+	renewed, started2 := a.renew()
+	if !started2 {
+		t.Fatal("/new was refused")
+	}
+	unfold(t, a, renewed)
 	if len(started) != 1 || started[0] != "" {
 		t.Fatalf("/new asked for %v, want this conversation's own workspace", started)
 	}
@@ -165,7 +169,11 @@ func TestTakingUpAConversationRebindsEverythingThatCameWithIt(t *testing.T) {
 			RecentSessions: func() []Session { return []Session{{File: "/elsewhere/one.jsonl"}} },
 		}, nil
 	}
-	a.renew()
+	renewed, started := a.renew()
+	if !started {
+		t.Fatal("/new was refused")
+	}
+	unfold(t, a, renewed)
 
 	if a.workspace != "/elsewhere/repo" || a.place != "repo" {
 		t.Fatalf("the place is %q at %q", a.place, a.workspace)
