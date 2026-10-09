@@ -29,6 +29,7 @@ import { useTerminalTabs } from '../terminal/useTerminalTabs';
 import { useWorkspaceWeb } from '../web/useWorkspaceWeb';
 import { useDesktopTabActions, useTabKeys, type Switcher } from './useTabKeys';
 import { useWindowHandoff } from './useWindowHandoff';
+import { useTabLinks } from './links/useTabLinks';
 import './workspace.css';
 
 type Props = {
@@ -101,6 +102,8 @@ export function Workspace({ enabled, onActivate, leading, onOpenChat }: Props) {
   useEffect(() => { if (inboxWanted) dispatch({ type: 'ensure-inbox' }); }, [inboxWanted]);
   useWindowHandoff(dispatch);
   const [actions] = useState(() => createTabActions({ native: nativeControls(), toasts }));
+  // Copy link's chord, and codeaf links opened from outside the app: each focuses or opens one tab, never starts work.
+  useTabLinks({ enabled, state, dispatch, actions });
   useCloseStopKey(enabled, () => closeAndStop(state.activeId));
   function startRename(id: string, group = false) { setRename({ id, group, value: (group ? state.groups : state.tabs).find(item => item.id === id)?.title ?? '' }); }
   useTabKeys({ enabled, state, dispatch, visible, overviewOpen, setOverviewOpen, closeTab, switcherRef, setSwitcher });

@@ -39,5 +39,14 @@
     "externalBin": [
       "binaries/codeaf-engine"
     ]
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "codeaf"
+        ]
+      }
+    }
   }
 }
