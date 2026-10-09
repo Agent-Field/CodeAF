@@ -22,6 +22,7 @@ export type TurnItem =
   | { kind: 'tools'; id: string; steps: ToolStep[] } // consecutive calls grouped
   | { kind: 'task'; id: string; taskId?: string; title: string; status: string; summary: string; body: string } // a task's completion aside
   | { kind: 'note'; id: string; text: string } // engine note (e.g. compaction)
+  | { kind: 'steer'; id: string; text: string } // the person's words typed into the running turn; literal
   | { kind: 'error'; id: string; text: string };
 
 /** One exchange: the person's message and everything that answered it. */

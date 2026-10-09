@@ -33,6 +33,8 @@ export type EngineEntry = {
  Tool?: string; Hint?: string; CallID?: string; Answered?: boolean; Failed?: boolean;
  Args?: string; Output?: string; Caption?: string; CaptionCategory?: string;
  TaskIDs?: string[] | null;
+ /** Set on a user line typed into the running turn rather than starting one. */
+ Steer?: { At?: string; Consumed?: boolean; Landing?: string } | null;
 };
 export type EngineTaskRow = PlanTaskRow & { Depth?: number; USD?: number; Model?: string; Tokens?: number; LiveParts?: unknown[]; Folder?: string; TrajectoryPath?: string };
 export type EngineSnapshot = {

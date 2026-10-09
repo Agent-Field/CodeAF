@@ -126,15 +126,39 @@ test('task aside becomes a task item', () => {
   assert.equal(item.taskId, 't-7');
 });
 
-test('a run report (ask, blank line, status line) becomes a task item', () => {
-  const text = 'Count the words.\n\ndone · ran 1m 8s · Produced word-count.txt with the total. More detail. · nothing to land';
-  const model = projectConversation(snap([entry({ Role: 'user', Text: 'go' }), entry({ Role: 'aside', Text: text })]));
+test('a run report takes its title from the task whose note it carries, never from the ask', () => {
+  const note = 'done · ran 1m 8s · Produced word-count.txt with the total. More detail.';
+  const text = `Count the words, then list the files and summarise.\n\n${note} · nothing to land`;
+  const model = projectConversation(
+    snap([entry({ Role: 'user', Text: 'go' }), entry({ Role: 'aside', Text: text })], false, [
+      { ID: 't-1', Title: 'List files', Status: 'done', Note: 'done · ran 2s · Listed.' },
+      { ID: 't-2', Title: 'Count words', Status: 'done', Note: note },
+    ]),
+  );
   const item = model.turns[0].items[0];
   assert.equal(item.kind, 'task');
   if (item.kind !== 'task') return;
-  assert.equal(item.title, 'Count the words.');
+  assert.equal(item.title, 'Count words');
+  assert.equal(item.taskId, 't-2');
   assert.equal(item.status, 'done');
   assert.equal(item.summary, 'Produced word-count.txt with the total.');
+});
+
+test('a notice summary never ends inside code and drops code marks', () => {
+  const note = 'done · ran 6s · Created files.txt via `find . -type f | sort`. Verified.';
+  const model = projectConversation(
+    snap([entry({ Role: 'user', Text: 'go' }), entry({ Role: 'aside', Text: `Ask.\n\n${note}` })], false, [
+      { ID: 't-1', Title: 'List files', Status: 'done', Note: note },
+    ]),
+  );
+  const item = model.turns[0].items[0];
+  assert.equal(item.kind === 'task' && item.summary, 'Created files.txt via find . -type f | sort.');
+});
+
+test('a run report with no matching task is a note, not a notice titled by the ask', () => {
+  const text = 'Count the words.\n\ndone · ran 1m 8s · Produced word-count.txt with the total.';
+  const model = projectConversation(snap([entry({ Role: 'user', Text: 'go' }), entry({ Role: 'aside', Text: text })]));
+  assert.equal(model.turns[0].items[0].kind, 'note');
 });
 
 test('structured task fields win; other asides are notes', () => {
@@ -264,4 +288,28 @@ test('a call the record marks Failed is a failed step, answered or not', () => {
   const item = model.turns[0].items[0];
   assert.equal(item.kind === 'tools' && item.steps[0].state, 'failed');
   assert.equal(item.kind === 'tools' && item.steps[1].state, 'done');
+});
+
+test('a steer stays inside the turn it was typed into', () => {
+  const model = projectConversation(
+    snap([
+      entry({ Role: 'user', Text: 'run the job' }),
+      call('a', true, { Output: 'ok' }),
+      { ...entry({ Role: 'user', Text: 'also say banana' }), Steer: { Consumed: true } } as EngineEntry,
+      entry({ Role: 'assistant', Text: 'Done, banana.' }),
+    ]),
+  );
+  assert.equal(model.turns.length, 1);
+  assert.deepEqual(model.turns[0].items.map((i) => i.kind), ['tools', 'steer', 'text']);
+  assert.equal(model.turns[0].digest, 'Done, banana.');
+});
+
+test('thinking stops streaming once the answer starts', () => {
+  const entries = [entry({ Role: 'user', Text: 'go' })];
+  let overlay = reduceLiveEvent(emptyOverlay(), event('thinking', 'hmm'), 1);
+  const thinking = (o: typeof overlay) => projectConversation(snap(entries, true), o).turns[0].items[0];
+  assert.equal(thinking(overlay).kind === 'thinking' && thinking(overlay).streaming, true);
+  overlay = reduceLiveEvent(overlay, event('text', 'Hello'), 1);
+  const item = thinking(overlay);
+  assert.equal(item.kind === 'thinking' && item.streaming, false);
 });

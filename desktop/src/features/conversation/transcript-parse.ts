@@ -45,9 +45,19 @@ export function digestOf(markdown: string): string {
   return '';
 }
 
+/** Where the first sentence ends: a stop followed by space, never inside `code`. */
+function sentenceEnd(text: string): number {
+  let code = false;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '`') code = !code;
+    else if (!code && '.!?'.includes(text[i]) && /\s/.test(text[i + 1] ?? ' ')) return i + 1;
+  }
+  return text.length;
+}
+
+/** The first sentence as one plain line: code marks dropped, words kept. */
 export function firstSentence(text: string): string {
-  const match = text.match(/^.*?[.!?](?=\s|$)/);
-  return clip((match ? match[0] : text).trim(), DIGEST_LIMIT);
+  return clip(stripMarks(text.slice(0, sentenceEnd(text))), DIGEST_LIMIT);
 }
 
 function asideOf(title: string, status: string, segments: string[], fallback: string, text: string): TaskAside {
@@ -64,12 +74,13 @@ function inlineAside(lines: string[], text: string): TaskAside | undefined {
   return asideOf(head[1].trim(), head[2], segments.slice(1), next, text);
 }
 
-/** A run's report: the ask it came from, then a line `<status> · <summary> · …`. */
+/** A run's report: the ask it came from, then a line `<status> · <summary> · …`.
+ * The ask is the person's request, not the task's name, so it never titles the notice. */
 function reportAside(lines: string[], text: string): TaskAside | undefined {
   for (const line of lines.slice(1)) {
     const segments = line.split(' · ').map((s) => s.trim());
     if (segments.length > 1 && TASK_STATUSES.includes(segments[0])) {
-      return asideOf(lines[0].trim(), segments[0], segments.slice(1), '', text);
+      return asideOf('', segments[0], segments.slice(1), '', text);
     }
   }
   return undefined;
