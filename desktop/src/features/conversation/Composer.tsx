@@ -10,6 +10,7 @@ import { ModelPicker } from './composer/ModelPicker';
 import { toOutgoing } from './composer/attachments';
 import { useAttachments } from './composer/useAttachments';
 import { useFileDrop } from './composer/useFileDrop';
+import { useKeyboardFocus } from './composer/useKeyboardFocus';
 import './composer.css';
 
 export type SendMode = 'submit' | 'steer' | 'queue';
@@ -32,6 +33,8 @@ export type ComposerProps = {
   /** Forces the drag appearance; for specimens, since real drags are global to the window. */
   dropState?: 'page' | 'over';
 };
+
+const START_PLACEHOLDER = 'Ask codeaf, or type @ to reference a file';
 
 const { composerMinRows, composerMaxRows } = design.interaction;
 
@@ -62,6 +65,7 @@ export function Composer(props: ComposerProps) {
   const { draft, onDraft, onSend, onStop, running, docked, disabledReason, autoFocus } = props;
   const field = useRef<HTMLTextAreaElement>(null);
   const autosize = useAutosize(field, draft);
+  const focus = useKeyboardFocus();
   const [pastes, setPastes] = useState<string[]>([]);
   const latestDraft = useRef(draft);
   latestDraft.current = draft;
@@ -148,9 +152,12 @@ export function Composer(props: ComposerProps) {
           ref={field}
           className="composer-field"
           data-faded={autosize.faded || undefined}
+          data-keyboard={focus.keyboard || undefined}
+          onFocus={focus.onFocus}
+          onBlur={focus.onBlur}
           onScroll={autosize.onScroll}
           aria-label="Message"
-          placeholder={disabledReason ?? (running ? 'Steer, or queue a message' : 'Ask codeaf')}
+          placeholder={disabledReason ?? (running ? 'Steer, or queue a message' : docked ? 'Ask codeaf' : START_PLACEHOLDER)}
           value={draft}
           disabled={disabled}
           autoFocus={autoFocus}
