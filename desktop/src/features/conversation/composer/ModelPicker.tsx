@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { Button, Icon } from '../../../components/ui';
+import { useTooltip } from '../../../components/ui/Tooltip';
 import { shortcutLayer } from '../../../design/keyboard';
 import { useShortcuts } from '../../../design/useShortcuts';
 import { ModelPopover, type EffortControl } from './ModelPopover';
@@ -23,6 +24,8 @@ export type ModelPickerProps = {
   effort?: EffortControl;
   /** How many leading models are pinned segments and take ⌥⌘1-3; three unless the list says fewer. */
   pinnedCount?: number;
+  /** Why the chip reads as it does when that is not obvious (a place decides the model); shown as the shared tooltip. */
+  hint?: string;
 };
 
 export { PINNED_LIMIT };
@@ -33,7 +36,8 @@ const shortName = (model: ModelOption) => model.short ?? model.label.split(' ').
  * models directly and ⌘/ opens the list; a swap applies to the next message. Everything the
  * engine cannot do yet (more than one model, an effort setting) is absent, not disabled.
  */
-export function ModelPicker({ models, selectedId, onSelect, effort, pinnedCount = PINNED_LIMIT }: ModelPickerProps) {
+export function ModelPicker({ models, selectedId, onSelect, effort, pinnedCount = PINNED_LIMIT, hint }: ModelPickerProps) {
+  const tip = useTooltip(hint ?? '', {}, { describe: true });
   const chip = useRef<HTMLSpanElement>(null);
   const [open, setOpen] = useState(false);
   const selected = models.find(model => model.id === selectedId);
@@ -52,6 +56,7 @@ export function ModelPicker({ models, selectedId, onSelect, effort, pinnedCount 
   return (
     <span ref={chip} className="model-picker-anchor">
       <Button
+        {...(hint ? tip.props : {})}
         className="model-picker"
         aria-label={`Model: ${selected.label}`}
         aria-haspopup="dialog"
@@ -62,6 +67,7 @@ export function ModelPicker({ models, selectedId, onSelect, effort, pinnedCount 
         <span className="model-picker-label">{shortName(selected)}</span>
         <Icon name="chevron" size="xs" />
       </Button>
+      {hint && tip.element}
       {open && (
         <ModelPopover
           anchor={chip}

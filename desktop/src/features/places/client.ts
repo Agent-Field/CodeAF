@@ -113,6 +113,19 @@ export type ChatPlacesAnswer = {
   places: { id: string; name: string; tint: Tint; addedBy: AddedBy; at?: string; archived: boolean }[];
 };
 export type UndoAnswer = { revision: number; undone: number };
+/** A place named by the model rule: who decided, or who wanted what. */
+export type EffectiveModelPlace = { id: string; name: string; model?: string };
+/**
+ * Which model the first message typed on a place's Home would run on, as the engine's own place rule decides it.
+ * `applies` overrides the Conversation role; `needsPick` applies nothing (the role's model runs and the chat asks);
+ * `none` and `unavailable` leave the role's model in charge.
+ */
+export type EffectiveModel = {
+  placeId: string; revision: number;
+  state: 'none' | 'applies' | 'needsPick' | 'unavailable';
+  model?: string; decidedBy?: EffectiveModelPlace; outcome?: 'agreed' | 'decided';
+  wanted?: EffectiveModelPlace[]; reason?: string;
+};
 
 export type CreatePlaceAsk = { name: string; parent?: string; parents?: string[]; tint?: Tint; instructions?: string; ifRevision?: number };
 export type UpdatePlaceAsk = { name?: string; tint?: Tint | ''; instructions?: string; policy?: PlacePolicy; ifRevision?: number };
@@ -295,6 +308,13 @@ export function createPlacesClient(transport: PlacesTransport = defaultTransport
       const v = await get(`/places/${enc(id)}/delete-preview`);
       if (!isObject(v) || !isInt(v.children) || !isInt(v.chatsHere) || !Array.isArray(v.wouldBeUnplaced)) return bad('delete preview');
       return v as DeleteImpact;
+    },
+    /** What a new chat started on this place's Home would run on (read-only; no session is made). */
+    effectiveModel: async (id: string, signal?: AbortSignal): Promise<EffectiveModel> => {
+      const v = await get(`/places/${enc(id)}/effective-model`, signal);
+      if (!isObject(v) || typeof v.placeId !== 'string' || !isInt(v.revision) || !['none', 'applies', 'needsPick', 'unavailable'].includes(v.state as string)) return bad('model answer');
+      if (v.state === 'applies' && (typeof v.model !== 'string' || !v.model)) return bad('model answer');
+      return v as unknown as EffectiveModel;
     },
     chatPlaces: async (chatId: string): Promise<ChatPlacesAnswer> => {
       const v = await get(`/chats/${enc(chatId)}/places`);
