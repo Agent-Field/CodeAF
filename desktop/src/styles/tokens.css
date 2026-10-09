@@ -181,6 +181,12 @@
   --preview-sheet-width: 520px;
   --favicon-size: 16px;
   --step-row-height: 26px;
+  --tool-row-lead: 16px;
+  --tool-forming-opacity: .55;
+  --tool-term-radius: 10px;
+  --tool-term-size: 11.5px;
+  --tool-term-leading: 1.65;
+  --tool-term-footer-height: 30px;
   --work-fade: 60%;
   --asset-dir-max-width: 140px;
   --asset-name-max-width: 220px;
