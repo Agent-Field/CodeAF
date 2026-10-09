@@ -4,19 +4,31 @@ import { compactAge, type BackgroundWork } from '../../closing/background';
 import { useTabsApi } from '../../context';
 import './inbox.css';
 
-type ListProps = BackgroundWork & {
+type RowItem = BackgroundWork['running'][number] | BackgroundWork['needsYou'][number] | BackgroundWork['failed'][number];
+type ListProps = Omit<BackgroundWork, 'failed'> & Partial<Pick<BackgroundWork, 'failed'>> & {
   now: number;
-  onReopen?: (id: string) => void;
-  onSelect?: (id: string) => void;
+  /** Where a row goes when clicked, or undefined when it can go nowhere: such a row is plain text, never a dead button. */
+  opener?: (item: RowItem, section: 'running' | 'needsYou' | 'failed') => (() => void) | undefined;
+  /** Clears a failure from the list without opening it. */
+  onSeen?: (item: BackgroundWork['failed'][number]) => void;
 };
 
+type RowProps = { state: 'running' | 'waiting' | 'failed'; title: string; meta?: string; stale?: boolean; onClick?: () => void };
+function InboxRow({ state, title, meta, stale, onClick }: RowProps) {
+  const body = <><span className="inbox-dot" aria-hidden="true"/><span className="inbox-title">{title}</span>{meta && <span className="inbox-meta">{meta}</span>}</>;
+  return onClick
+    ? <Button className="inbox-row" data-state={state} data-stale={stale || undefined} onClick={onClick}>{body}</Button>
+    : <div className="inbox-row inbox-row-static" data-state={state} data-stale={stale || undefined}>{body}</div>;
+}
+
 /**
- * The Inbox card (design 3l "Inbox, background work"). "Running in the background" lists closed tabs whose work
- * goes on; a click reopens the tab where it was. "Needs you" lists open tabs waiting on a question. With neither,
- * one muted line says what arrives here. Presentational: the pane and the Design system specimen both draw it.
+ * The Inbox card (design 3l "Inbox, background work"). "Running in the background" lists conversations whose work goes on
+ * with no tab open for them; a click reopens the tab where it was. "Needs you" lists conversations waiting on a question.
+ * "Failed" lists recent task failures not yet looked at. With none of them, one muted line says what arrives here.
+ * Presentational: the pane and the Design system specimen both draw it.
  */
-export function InboxList({ running, needsYou, now, onReopen, onSelect }: ListProps) {
-  const empty = !running.length && !needsYou.length;
+export function InboxList({ running, needsYou, failed = [], notice, now, opener, onSeen }: ListProps) {
+  const empty = !running.length && !needsYou.length && !failed.length;
   const uid = useId();
   return (
     <div className="inbox-card" role="region" aria-label="Inbox">
@@ -26,11 +38,7 @@ export function InboxList({ running, needsYou, now, onReopen, onSelect }: ListPr
           <ul className="inbox-list">
             {running.map(item => (
               <li key={item.id}>
-                <Button className="inbox-row" data-state={item.state} onClick={() => onReopen?.(item.id)}>
-                  <span className="inbox-dot" aria-hidden="true"/>
-                  <span className="inbox-title">{item.title}</span>
-                  <span className="inbox-meta">{item.state === 'waiting' ? 'needs you' : item.since ? compactAge(now - item.since) : ''}</span>
-                </Button>
+                <InboxRow state={item.state} title={item.title} stale={item.stale} meta={item.state === 'waiting' ? 'needs you' : item.since ? compactAge(now - item.since) : ''} onClick={opener?.(item, 'running')}/>
               </li>
             ))}
           </ul>
@@ -42,23 +50,47 @@ export function InboxList({ running, needsYou, now, onReopen, onSelect }: ListPr
           <ul className="inbox-list">
             {needsYou.map(item => (
               <li key={item.id}>
-                <Button className="inbox-row" data-state="waiting" onClick={() => onSelect?.(item.id)}>
-                  <span className="inbox-dot" aria-hidden="true"/>
-                  <span className="inbox-title">{item.title}</span>
-                  <span className="inbox-meta">needs you</span>
-                </Button>
+                <InboxRow state="waiting" title={item.title} stale={item.stale} meta="needs you" onClick={opener?.(item, 'needsYou')}/>
               </li>
             ))}
           </ul>
         </section>
       )}
-      {empty && <Text className="inbox-empty">Work that needs you, or keeps running after you close its tab, lands here.</Text>}
+      {failed.length > 0 && (
+        <section className="inbox-section" aria-labelledby={`${uid}-failed`}>
+          <h3 className="inbox-head" id={`${uid}-failed`}>Failed</h3>
+          <ul className="inbox-list">
+            {failed.map(item => (
+              <li key={item.id} className="inbox-failed">
+                <InboxRow state="failed" title={item.title} stale={item.stale} meta={item.failed === 1 ? '1 task' : `${item.failed} tasks`} onClick={opener?.(item, 'failed')}/>
+                {onSeen && <Button variant="ghost" className="inbox-seen" aria-label={`Mark failure in ${item.title} as seen`} onClick={() => onSeen(item)}>Seen</Button>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {notice && <Text className="inbox-notice" role="status">{notice}</Text>}
+      {empty && !notice && <Text className="inbox-empty">Work that needs you, or keeps running after you close its tab, lands here.</Text>}
     </div>
   );
 }
 
-/** The Inbox tab's body: the card, fed by the workspace's real session reads. */
+/** The Inbox tab's body: the card, fed by the workspace's real session reads and the engine's world feed. */
 export function InboxPane() {
   const api = useTabsApi();
-  return <div className="inbox"><InboxList {...api.background} now={api.now} onReopen={api.reopenClosed} onSelect={id => api.dispatch({ type: 'select', id })}/></div>;
+  const { background, openChat, markFailedSeen } = api;
+  /** Goes to the conversation: its tab if this window has one (reopened if closed), else the shell's opener, else nowhere. */
+  const opener = (item: { tabId?: string; chatId?: string; failed?: number }, section: 'running' | 'needsYou' | 'failed') => {
+    const { tabId, chatId } = item;
+    const go = tabId ? () => (api.state.tabs.some(t => t.id === tabId) ? api.dispatch({ type: 'select', id: tabId }) : api.reopenClosed(tabId))
+      : chatId && openChat ? () => openChat(chatId) : undefined;
+    if (!go) return undefined;
+    // Opening a failure is looking at it.
+    return section === 'failed' && chatId && item.failed ? () => { markFailedSeen(chatId, item.failed!); go(); } : go;
+  };
+  return (
+    <div className="inbox">
+      <InboxList {...background} now={api.now} opener={opener} onSeen={item => markFailedSeen(item.chatId!, item.failed)}/>
+    </div>
+  );
 }

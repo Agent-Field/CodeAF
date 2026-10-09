@@ -1,6 +1,6 @@
 // What "running" means for closing (design 3l): a pane the engine is working on, or holding for the person.
-import type { TabSummary } from '../../conversation/tabSummary';
-import { panesOf, type Tab } from '../model';
+import type { TabSummary } from '../../conversation/tabSummary.ts';
+import { panesOf, type Tab } from '../model.ts';
 
 export type Summaries = Readonly<Record<string, TabSummary>>;
 

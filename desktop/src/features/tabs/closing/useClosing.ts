@@ -1,8 +1,8 @@
 // Closing running work (design 3l). Closing detaches the view and keeps the engine work going; stopping is a
 // separate, explicit act (the stop square, "Close and stop", or "Stop it" in the toast). Nothing here stops work implicitly.
 import { useRef, useState, type Dispatch } from 'react';
+import { toasts } from '../../../design/toasts';
 import { panesOf, type Tab, type TabGroup, type WorkspaceAction, type WorkspaceState } from '../model';
-import type { ClosingToastModel } from './ClosingToast';
 import { paneRunning, tabRunning, type Summaries } from './running';
 import { stopPanes } from './stopWork';
 
@@ -18,19 +18,26 @@ export function useClosing(options: Options) {
   const latest = useRef(options);
   latest.current = options;
   const places = useRef(new Map<string, Place>());
-  const [toast, setToast] = useState<ClosingToastModel | null>(null);
-  const toastId = useRef(0);
   // Closed tabs whose stop was asked for leave the Inbox at once; the list would otherwise show them until the next read.
   const [stopping, setStopping] = useState<ReadonlySet<string>>(new Set());
   const mark = (id: string, on: boolean) => setStopping(current => { const next = new Set(current); if (on) next.add(id); else next.delete(id); return next; });
 
   const isRunning = (tab: Tab) => tabRunning(tab, latest.current.summaries);
 
+  /**
+   * Asks the engine to stop a closed tab's work. A failure is NEVER swallowed: the work is still running, so the tab
+   * goes back on the Inbox's running list at once and a toast says so, with Try again and Undo (which reopens the tab).
+   */
   async function stop(tab: Tab) {
     mark(tab.id, true);
     const ok = await stopPanes(panesOf(tab).filter(pane => paneRunning(latest.current.summaries, pane.id)));
-    if (!ok) mark(tab.id, false);
-    if (!ok) setToast({ id: ++toastId.current, tabId: tab.id, title: tab.title, kind: 'stop-failed' });
+    if (ok) return;
+    mark(tab.id, false);
+    toasts.show({
+      message: ['Could not stop ', { strong: tab.title }, '. It is still running.'], tone: 'danger',
+      actions: [{ label: 'Try again', onSelect: () => void stop(tab) }],
+      undo: () => reopenClosed(tab.id),
+    });
   }
 
   function close(id: string, stopWork: boolean) {
@@ -47,7 +54,7 @@ export function useClosing(options: Options) {
     if (restore) restoreStripFocus();
     if (!running) return;
     if (stopWork) void stop(tab);
-    else setToast({ id: ++toastId.current, tabId: id, title: tab.title, kind: 'closed' });
+    else toasts.show({ message: [{ strong: tab.title }, ' closed and still running'], actions: [{ label: 'Stop it', onSelect: () => void stop(tab) }], undo: () => reopenClosed(id) });
   }
 
   /** Puts a closed tab back where it was and makes it active. */
@@ -56,25 +63,12 @@ export function useClosing(options: Options) {
     latest.current.dispatch({ type: 'reopen-id', id, before: place?.before, after: place?.after, group: place?.group });
   }
 
-  const closedTab = (id: string) => latest.current.state.closed.find(t => t.id === id);
   return {
-    toast,
     stopping,
-    dismissToast: () => setToast(null),
     closeTab: (id: string) => close(id, false),
     closeAndStop: (id: string) => close(id, true),
     isRunning,
     reopenClosed,
-    /** "Stop it" (or "Try again") on the toast. */
-    stopFromToast() {
-      const tab = toast && closedTab(toast.tabId);
-      setToast(null);
-      if (tab) void stop(tab);
-    },
-    undoFromToast() {
-      if (toast) reopenClosed(toast.tabId);
-      setToast(null);
-    },
     /** When this window first saw the tab close, for the Inbox's age column. Unknown after a reload. */
     sinceOf: (id: string) => places.current.get(id)?.since,
   };

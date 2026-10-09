@@ -43,10 +43,9 @@ test.describe('tab and group menus (3g)', () => {
     await seed(page, [{ id: 'a', title: 'Config stack' }, { id: 'b', title: 'lexer.go' }, { id: 'c', title: 'Release v2.4', groupId: 'g' }], { groups: [{ id: 'g', title: 'Trailing commas' }], active: 'a' });
     await page.goto('/');
     const menu = await openMenu(page, 'lexer.go');
-    expect(await labels(menu)).toEqual(['Open in split', 'Add to group', 'Pin tab', 'Duplicate', 'Rename tab', 'Copy link', 'Move to new window', 'Close tab', 'Close other tabs', 'Close tabs to the right']);
-    // Both entries wait on a backing the app does not have; they are listed and disabled, never faked.
-    await expect(menu.getByRole('menuitem', { name: /^Copy link/ })).toHaveAttribute('aria-disabled', 'true');
-    await expect(menu.getByRole('menuitem', { name: 'Move to new window' })).toHaveAttribute('aria-disabled', 'true');
+    // Copy link and Move to new window are ABSENT in a browser, not disabled: there is no canonical link scheme, and a
+    // tab moves only in the desktop app. A capability that cannot work is left off the menu.
+    expect(await labels(menu)).toEqual(['Open in split', 'Add to group', 'Pin tab', 'Duplicate', 'Rename tab', 'Close tab', 'Close other tabs', 'Close tabs to the right']);
     await expect(menu.getByRole('menuitem', { name: /^Close tab\b/ }).locator('kbd')).toHaveText(mac ? '⌘W' : 'Ctrl W');
     // Components "Context menu": 240px, radius 10, 5px padding, 28px rows, 13px text, hairline separators, no border.
     // Layout width, not the bounding box: the entry animation scales the surface for a few frames.
@@ -191,7 +190,7 @@ test.describe('closing running work (3l)', () => {
     await expect.poll(() => stops(engine)).toBe(1);
     expect(engine.snapshot().running).toBe(false);
     // Stopping is not leaving work behind: no toast, no Inbox.
-    await expect(page.locator('.closing-toast')).toHaveCount(0);
+    await expect(page.locator('.toast')).toHaveCount(0);
     await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
   });
 
@@ -227,7 +226,7 @@ test.describe('closing running work (3l)', () => {
     await expect.poll(() => engine.calls.some(call => call.path.endsWith('/sessions'))).toBe(true);
     await slot(page, 'Config stack').hover();
     await closeButton(page, 'Config stack').click();
-    const toast = page.locator('.closing-toast');
+    const toast = page.locator('.toast');
     await expect(toast).toContainText('Config stack closed and still running');
     expect(await toast.getByRole('button').allTextContents()).toEqual(['Stop it', 'Undo']);
     // Design 3l: 40px tall, radius 12, surface and sh-2, placed at the bottom.
@@ -254,7 +253,7 @@ test.describe('closing running work (3l)', () => {
     await expect.poll(() => engine.calls.some(call => call.path.endsWith('/sessions'))).toBe(true);
     await slot(page, 'Config stack').hover();
     await closeButton(page, 'Config stack').click();
-    const toast = page.locator('.closing-toast');
+    const toast = page.locator('.toast');
     await toast.getByRole('button', { name: 'Stop it' }).click();
     await expect(toast).toHaveCount(0);
     await expect.poll(() => stops(engine)).toBe(1);
@@ -311,7 +310,7 @@ test.describe('closing running work (3l)', () => {
     await page.getByRole('tab', { name: 'Inbox', exact: true }).click();
     const card = page.getByRole('region', { name: 'Inbox' });
     await expect(card.getByRole('button', { name: /Config stack/ })).toBeVisible();
-    await page.locator('.closing-toast').getByRole('button', { name: 'Stop it' }).click();
+    await page.locator('.toast').getByRole('button', { name: 'Stop it' }).click();
     await expect(card.getByRole('button', { name: /Config stack/ })).toHaveCount(0, { timeout: 8000 });
     await expect(card).toContainText('lands here');
   });
@@ -348,7 +347,8 @@ test('the Design system page shows the menus, the closing states and the Inbox, 
     await expect(sheet.locator('.closing-specimen-menu')).toHaveCount(4);
     await expect(sheet.locator('.closing-specimen-menu').first()).toHaveCSS('border-top-left-radius', '10px');
     await expect(sheet.locator('.menu-item-danger')).toHaveCSS('color', await tokenColor(page, 'danger'));
-    await expect(sheet.locator('.closing-toast')).toHaveCSS('height', '40px');
+    await expect(sheet.locator('.toast')).toHaveCount(2);
+    await expect(sheet.locator('.toast').first()).toHaveCSS('height', '40px');
     await expect(sheet.locator('[data-close-mode="stop"]')).toHaveCount(1);
     await expect(sheet.locator('.inbox-card')).toHaveCount(2);
     await expectAccessible(page); await expectNoUnstyledControls(page);
