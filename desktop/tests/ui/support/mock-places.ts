@@ -114,7 +114,8 @@ export type MockPlaces = {
   snoozes: () => Record<string, string>;
 };
 
-export async function installMockPlaces(page: Page, seed: PlacesSeed = {}): Promise<MockPlaces> {
+/** `alsoServe` are more windows on the same engine: they answer from this same state, as two app windows share one engine. */
+export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoServe: Page[] = []): Promise<MockPlaces> {
   let counter = 0;
   const nextId = (prefix: string) => `${prefix}_${hex(++counter)}`;
   const now = () => new Date().toISOString();
@@ -616,7 +617,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}): Prom
     return verb as RouteKey;
   };
 
-  await page.route('**/api/engine/**', async route => {
+  const serve = async (route: Route) => {
     const request = route.request();
     const url = new URL(request.url());
     const parts = url.pathname.replace(/^.*\/api\/engine/, '').split('/').filter(Boolean).map(decodeURIComponent);
@@ -691,7 +692,8 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}): Prom
       if (failure instanceof Refusal) return json(route, { error: failure.message, code: failure.code, ...failure.extra }, failure.status);
       throw failure;
     }
-  });
+  };
+  for (const window of [page, ...alsoServe]) await window.route('**/api/engine/**', serve);
 
   const nudge = () => { worldSeq += 1; };
   return {

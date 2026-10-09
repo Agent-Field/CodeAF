@@ -168,6 +168,19 @@ and this page together. (This page used to say this rule lived in
   writes, with their receipts and Undo) and Not now; it never archives, merges or deletes.
 - **Routes:** `GET /places/stale` (longest untouched first, at most 20) and
   `POST /places/{id}/stale-snooze`. Both are absent (404) on a bridge with no snooze file.
+- **Where it appears:** design 6d says "on Home and in ⌘P". "Home" here is the root Home,
+  **All places**, and nowhere else: no individual place's Home and no other surface draws
+  the line, and that is intentional (the suggestion is about the set of places, not about
+  one place's contents). The other door is the ⌘P sheet, shown only while its search is empty.
+- **Across windows:** a snooze moves no graph revision and sends no world broadcast, so the
+  graph reading cannot carry it. The supported contract: another window drops the line when
+  it regains focus or becomes visible, and within 30 seconds (`STALE_REREAD_MS`,
+  `useStale.ts`) while it is visible and a line is on screen. A hidden window reads nothing;
+  a window with no line does not poll. Not a setting. Tested with two windows in
+  `desktop/tests/ui/stale-places.spec.ts`.
+- **A damaged snooze file** (bad JSON, unknown version, bad id or times, duplicates, more than
+  `MaxStaleSnoozes` records, or over about 600 KB) reads as no snoozes: at worst a suggestion
+  repeats. The next "Not now" keeps the bytes aside as `.damaged-<unix>` and starts fresh.
 
 ## 5. What is wired and what is not
 

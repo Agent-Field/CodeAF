@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Browser, type Page } from '@playwright/test';
+import { STALE_REREAD_MS } from '../../src/features/places/shell/useStale';
 import { expectAccessible } from './contracts';
 import { installMockEngine } from './support/mock-engine';
 import { installMockPlaces, type MockPlaces, type PlacesSeed } from './support/mock-places';
@@ -121,6 +122,45 @@ test.describe('All places', () => {
     await line(page).getByRole('button', { name: 'Not now' }).click();
     await expect(page.getByText('That place doesn’t exist any more.')).toBeVisible();
     await expect(line(page)).toContainText(launch);
+  });
+});
+
+test.describe('two windows', () => {
+  async function twoWindows(browser: Browser) {
+    const context = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+    const a = await context.newPage();
+    const b = await context.newPage();
+    await a.clock.install();
+    for (const page of [a, b]) await installMockEngine(page, { initial: { entries: [], title: '' }, turns: [] });
+    const places = await installMockPlaces(a, crowded(), [b]);
+    for (const page of [a, b]) { await page.goto('/'); await expect(page.locator('.workspace-tabstrip')).toBeVisible(); await allPlaces(page); }
+    return { context, a, b, places };
+  }
+
+  test('Not now in one visible window clears the line in the other within the re-read interval, with no graph change', async ({ browser }) => {
+    const { context, a, b, places } = await twoWindows(browser);
+    await expect(line(a)).toContainText(launch);
+    await expect(line(b)).toContainText(launch);
+    const revision = places.state().revision;
+    await line(b).getByRole('button', { name: 'Not now' }).click();
+    await expect(line(b)).toContainText(notes);
+    // Window A has not been touched and nothing moved the graph: it still shows the old line until its re-read.
+    await expect(line(a)).toContainText(launch);
+    expect(places.state().revision).toBe(revision);
+    await a.clock.runFor(STALE_REREAD_MS + 1_000);
+    await expect(line(a)).toContainText(notes);
+    await expect(line(a)).not.toContainText('Launch week');
+    await context.close();
+  });
+
+  test('a window that comes back into focus settles at once', async ({ browser }) => {
+    const { context, a, b } = await twoWindows(browser);
+    await line(b).getByRole('button', { name: 'Not now' }).click();
+    await expect(line(b)).toContainText(notes);
+    await expect(line(a)).toContainText(launch);
+    await a.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(line(a)).toContainText(notes);
+    await context.close();
   });
 });
 

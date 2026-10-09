@@ -45,6 +45,12 @@ const (
 	// MaxStaleSnoozes bounds the snooze file. Expired snoozes are dropped on every
 	// write, so reaching it takes more live snoozes than there can be places.
 	MaxStaleSnoozes = MaxPlaces
+	// maxStaleBytes bounds what a read will hold in memory: MaxStaleSnoozes
+	// records at their widest (a MaxIDBytes id, two RFC 3339 instants, JSON
+	// framing) plus the document's own framing. It is independent of the graph's
+	// MaxFileBytes on purpose, so a corrupt or hostile sidecar cannot cost tens of
+	// megabytes; the read takes one byte more to tell "full" from "over".
+	maxStaleBytes = MaxStaleSnoozes*(MaxIDBytes+192) + 1024
 
 	staleVersion = 1
 	day          = 24 * time.Hour
@@ -241,12 +247,17 @@ func (b *StaleBook) Snooze(placeID string, now time.Time) (StaleSnooze, error) {
 }
 
 func readStaleDoc(path string) (staleDoc, error) {
-	data, err := readCapped(path)
+	f, err := os.Open(path)
 	if err != nil {
-		if errors.Is(err, errOversize) {
-			return staleDoc{}, fmt.Errorf("%w: snooze file over %d bytes", ErrTooLarge, MaxFileBytes)
-		}
 		return staleDoc{}, err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, maxStaleBytes+1))
+	if err != nil {
+		return staleDoc{}, err
+	}
+	if len(data) > maxStaleBytes {
+		return staleDoc{}, fmt.Errorf("%w: snooze file over %d bytes", ErrTooLarge, maxStaleBytes)
 	}
 	var doc staleDoc
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -259,30 +270,80 @@ func readStaleDoc(path string) (staleDoc, error) {
 	if doc.Version > staleVersion {
 		return staleDoc{}, fmt.Errorf("%w (snooze version %d)", ErrUnsupportedVersion, doc.Version)
 	}
+	if doc.Version != staleVersion {
+		return staleDoc{}, fmt.Errorf("%w: snooze file version %d", ErrInvalid, doc.Version)
+	}
+	if len(doc.Snoozes) > MaxStaleSnoozes {
+		return staleDoc{}, fmt.Errorf("%w: %d snoozes, at most %d", ErrTooLarge, len(doc.Snoozes), MaxStaleSnoozes)
+	}
+	seen := make(map[string]struct{}, len(doc.Snoozes))
+	for _, s := range doc.Snoozes {
+		if err := validID(s.PlaceID); err != nil {
+			return staleDoc{}, fmt.Errorf("%w: snooze for %q: %v", ErrInvalid, s.PlaceID, err)
+		}
+		if s.At.IsZero() || s.Until.IsZero() || s.Until.Before(s.At) {
+			return staleDoc{}, fmt.Errorf("%w: snooze for %q has no sensible times", ErrInvalid, s.PlaceID)
+		}
+		if _, dup := seen[s.PlaceID]; dup {
+			return staleDoc{}, fmt.Errorf("%w: two snoozes for %q", ErrInvalid, s.PlaceID)
+		}
+		seen[s.PlaceID] = struct{}{}
+	}
 	return doc, nil
 }
 
+// staleFileOps is the seam the failure-injection test uses: the three steps
+// after the temp file exists. Production leaves them as the real calls.
+var staleFileOps = struct {
+	write  func(*os.File, []byte) (int, error)
+	sync   func(*os.File) error
+	rename func(from, to string) error
+}{
+	write:  func(f *os.File, b []byte) (int, error) { return f.Write(b) },
+	sync:   func(f *os.File) error { return f.Sync() },
+	rename: os.Rename,
+}
+
+// writeStaleDoc replaces the file whole: a complete temp file beside it, fsynced,
+// then renamed. EVERY STEP'S ERROR LEAVES THE OLD FILE IN PLACE AND REMOVES THE
+// TEMP: a short write or a failed sync must never be renamed over a good file.
 func writeStaleDoc(path string, doc staleDoc) error {
 	data, err := json.MarshalIndent(doc, "", " ")
 	if err != nil {
 		return err
+	}
+	if len(data) > maxStaleBytes {
+		return ErrTooLarge
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".places-stale-*.tmp")
 	if err != nil {
 		return err
 	}
 	name := tmp.Name()
-	if _, err := tmp.Write(data); err == nil {
-		err = tmp.Sync()
-	}
-	if cerr := tmp.Close(); err == nil {
-		err = cerr
-	}
-	if err == nil {
-		err = os.Rename(name, path)
-	}
-	if err != nil {
+	fail := func(err error) error {
+		_ = tmp.Close()
 		_ = os.Remove(name)
+		return err
 	}
-	return err
+	if n, err := staleFileOps.write(tmp, data); err != nil {
+		return fail(err)
+	} else if n != len(data) {
+		return fail(io.ErrShortWrite)
+	}
+	if err := staleFileOps.sync(tmp); err != nil {
+		return fail(err)
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	if err := staleFileOps.rename(name, path); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	if d, err := os.Open(filepath.Dir(path)); err == nil {
+		_ = d.Sync()
+		_ = d.Close()
+	}
+	return nil
 }
