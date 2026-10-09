@@ -756,6 +756,10 @@ type v3Options struct {
 	// session still starts on one model, but the roles the person has chosen for
 	// answer from their own choice instead of the conversation's model.
 	DesktopRoles bool
+	// PlaceGraph is the desktop's place graph file, carried in the desktop's
+	// hello ([remote.LaunchShape.PlaceGraph]). Empty — every terminal door —
+	// is a session that reads no places.
+	PlaceGraph string
 	// Budget is the ceiling an unattended session carries its own work on
 	// under: hours, dollars, or both (internal/session's principal.go). THE
 	// ZERO BUDGET IS THE DEFAULT AND IS NOT A CEILING OF ZERO — it is the
@@ -1149,6 +1153,17 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// its sessions write one when a turn settles. The terminal never shows
 		// it and so never pays for it.
 		cfg.Recaps = true
+	}
+	// The desktop's places, through the one door the bridge builds its own
+	// half from, so the Using list and message[0] read the same two files
+	// under the same source policy. A path that is not absolute is refused
+	// here rather than resolved against wherever this process stands.
+	if opts.PlaceGraph != "" {
+		door, err := session.PlaceGraphDoorFor(opts.PlaceGraph)
+		if err != nil {
+			return nil, err
+		}
+		cfg.PlaceGraph = door
 	}
 	// AND WHO THIS SESSION IS WORKING FOR (internal/session's
 	// principal.go): the unattended flag and its ceiling, plus the door's own

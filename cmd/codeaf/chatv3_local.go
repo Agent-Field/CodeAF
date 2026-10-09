@@ -557,6 +557,9 @@ func launchShapeWords(shape *remote.LaunchShape) string {
 	if shape.Interactive {
 		said = append(said, "interactive chat")
 	}
+	if shape.PlaceGraph != "" {
+		said = append(said, "desktop places")
+	}
 	return strings.Join(said, " ")
 }
 
