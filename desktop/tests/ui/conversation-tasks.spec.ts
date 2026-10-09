@@ -27,7 +27,8 @@ async function startWithTasks(page: Page) {
 test('panel shows counts and nested rows, closes, and reopens from the composer toggle', async ({ page }) => {
   await startWithTasks(page);
   const tasks = panel(page);
-  await expect(tasks.getByText('1 of 3')).toBeVisible();
+  // Every visible row counts once, parents included.
+  await expect(tasks.getByText('1 of 4')).toBeVisible();
   await expect(tasks.getByRole('button', { name: /^(?!Collapse|Expand).*Migrate the settings screen/ })).toBeVisible();
   await expect(tasks.getByRole('button', { name: /^(?!Collapse|Expand).*Port the form fields/ })).toBeVisible();
   await expect(tasks.getByText('npm run typecheck')).toBeVisible();
@@ -42,7 +43,12 @@ test('a task notice opens the task in the same tab; Back and Ctrl+[ return', asy
   const notice = () => page.locator('.turn').getByRole('button', { name: /Migrate the settings screen/ });
   await notice().click();
   await expect(crumbs(page)).toBeVisible();
-  await expect(page.getByText('Move the settings screen onto the shared form primitives.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Migrate the settings screen' })).toBeVisible();
+  // The worker brief is secondary: folded under Instructions until asked for.
+  const brief = page.getByText('Move the settings screen onto the shared form primitives.');
+  await expect(brief).toHaveCount(0);
+  await page.getByRole('button', { name: 'Instructions' }).click();
+  await expect(brief).toBeVisible();
   await expect(page.getByRole('tab')).toHaveCount(1);
   await crumbs(page).getByRole('button', { name: 'Back' }).click();
   await expect(crumbs(page)).toHaveCount(0);
