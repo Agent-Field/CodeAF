@@ -6,6 +6,10 @@
 .conversation-scroll { mask-image: linear-gradient(to bottom, black, black); transition: mask-image var(--dur-fast) var(--ease); }
 .conversation-scroll[data-scrolled] { mask-image: linear-gradient(to bottom, transparent var(--scroll-fade-top-clear), black var(--scroll-fade-top-solid)); }
 .conversation-main[hidden] { display: none; }
+/* Task view (design 1c): the column is the design's 640px reading width, and the note composer rests on the pane's foot. */
+.conversation-scroll[data-task] { display: flex; flex-direction: column; padding-block-end: 0; }
+.conversation-scroll[data-task] .conversation-column { flex: 1 0 auto; display: flex; flex-direction: column; }
+.conversation-scroll[data-task] .conversation-column { max-width: calc(var(--task-view-column-width) + var(--chat-gutter) * 2); }
 .conversation-main[data-empty] { justify-content: center; }
 /* The expanded tasks view takes the pane the conversation had; the conversation stays mounted underneath. */
 .expanded-tasks { display: flex; flex: 1; min-width: 0; min-height: 0; }
@@ -24,5 +28,5 @@
 .engine-notice { display: flex; align-items: center; justify-content: center; gap: var(--space-2); max-width: var(--chat-column-max-width); margin: 0 auto var(--space-2); color: var(--muted); font-size: var(--font-size-label); }
 .engine-notice .button { font-size: var(--font-size-label); }
 
-.task-route { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.task-route { display: flex; flex: 1; flex-direction: column; gap: var(--space-4); min-width: 0; }
 .conversation-specimen { display: flex; flex-direction: column; gap: var(--space-2); width: 100%; min-width: 0; padding-block: var(--space-3); border-top: var(--border-width) solid var(--border); }

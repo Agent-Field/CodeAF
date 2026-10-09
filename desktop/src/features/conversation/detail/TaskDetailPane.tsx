@@ -26,7 +26,7 @@ function StateLine({ row, now }: Pick<TaskDetailPaneProps, 'row' | 'now'>) {
   const progress = progressText(row, kind, now);
   return (
     <span className="task-detail-state">
-      <TaskMark status={row.Status} {...rowFlags(row)} />
+      <TaskMark dense status={row.Status} {...rowFlags(row)} />
       <span className="task-detail-state-word">{taskMark(row.Status, rowFlags(row)).label}</span>
       {progress && <span>{progress}</span>}
     </span>

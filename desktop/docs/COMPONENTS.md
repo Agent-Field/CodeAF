@@ -100,7 +100,7 @@ Import from `src/components/ui`. Features compose these; they never restyle them
 | Field | `<TextInput appearance="field">` | TextInput.tsx | field; focus surface + accent ring + accent-soft halo |
 | Tags (Suggested, Reversible, Irreversible, key) | `<Tag tone="accent" / "neutral" / "danger" / "key">` | Chip.tsx | accent-soft, field, danger-soft, surface + line |
 | Chip base (file chip, link chip) | `<Chip>` static, `<ChipButton>` interactive, `muted` for missing/outside | Chip.tsx | field, hover field-2, ink, ink-3 |
-| Status mark (Running … Incomplete) | `<StatusMark status label>` | StatusMark.tsx | mark-* roles |
+| Status mark (Running … Incomplete) | `<StatusMark status label dense?>` (dense: rows of work, 6px footprint, failure as a red dot) | StatusMark.tsx | mark-* roles |
 | Row · tree, table (rest none, hover field, selected field) | `<Row selected>` with `<RowActions>` | RowActions.tsx | field, radius-control |
 | Copy feedback | `<CopyButton>` | CopyButton.tsx | (IconButton) |
 | Menus, Select, delayed tab preview | `DropdownMenu`, `ContextMenu`, `Select`, `HoverPreview` | Menu.tsx, Select.tsx, HoverPreview.tsx | legacy chrome roles (not restyled in v3 yet) |
