@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type RefObject } from 'react';
 import { Button, Icon, IconButton, Text, TextArea, TextInput } from '../../components/ui';
 import design from '../../design/tokens.json';
+import { composerShortcuts } from '../../design/keyboard';
 import type { OutgoingFile } from '../chat/engine-client';
 import { PasteCard } from './composer/PasteCard';
 import { encodePasted, countLines, isLongPaste, splitPasted } from './composer/pastedText';
@@ -187,7 +188,7 @@ export function Composer(props: ComposerProps) {
             )}
             {steering && (
               <>
-                <Button className="composer-queue" onClick={() => void send('queue')}>Queue ⌥↵</Button>
+                <Button className="composer-queue" onClick={() => void send('queue')}>Queue {composerShortcuts.queue}</Button>
                 <Button className="composer-steer" disabled={disabled} onClick={() => void send('steer')}>
                   <Icon name="steer" size="xs" />
                   Steer

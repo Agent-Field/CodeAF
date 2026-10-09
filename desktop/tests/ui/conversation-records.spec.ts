@@ -69,7 +69,7 @@ test('a step is titled from its tools when the narration is a lone word; paralle
   await expect(timed.locator('.work-time')).toHaveText('6.1s');
   await timed.click();
   // Each call shows the duration the record kept for it.
-  await expect(page.locator('.work-call .work-time')).toHaveText(['6.1s', '6.1s']);
+  await expect(page.locator('.work-call .work-call-time')).toHaveText(['6.1s', '6.1s']);
 });
 
 const fileName: EngineQuestion = {

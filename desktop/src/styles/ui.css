@@ -20,7 +20,8 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .button-primary { padding-inline: var(--control-pad-primary); background: var(--accent); color: var(--accent-ink); }
 .button-raised { background: var(--surface); box-shadow: var(--sh-1); }
 .button-quiet { background: var(--field); }
-.button-ghost { padding-inline: var(--control-pad-ghost); color: var(--ink-3); }
+/* The design draws ghost text in ink-3 (3.6:1 on surface); ink-2 is the quietest ink that meets WCAG AA for label text. */
+.button-ghost { padding-inline: var(--control-pad-ghost); color: var(--ink-2); }
 .button-danger { background: var(--danger-soft); color: var(--danger); }
 .button-primary:hover:not(:disabled), .button-danger:hover:not(:disabled) { filter: brightness(var(--brightness-hover)); }
 .button-primary:active:not(:disabled), .button-danger:active:not(:disabled) { filter: brightness(var(--brightness-press)); }
