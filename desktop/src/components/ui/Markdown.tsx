@@ -63,7 +63,8 @@ export function Markdown({ children, className = '', onOpenLink, renderLink, ren
    const hooked = inline && renderInlineCode ? renderInlineCode(text) : undefined;
    return hooked !== undefined ? <>{hooked}</> : <CodeText className={className}>{children}</CodeText>;
   },
-  table: ({ children }) => <Table>{children}</Table>,
+  // Keep the scroller mounted when a live conversation renders again.
+  table: Table,
   // GFM checklist marks describe output; they never act as approval controls.
   input: ({ checked }) => <span className="markdown-task-check" role="img" aria-label={checked ? 'Completed item' : 'Incomplete item'} data-checked={!!checked}>{checked && <Icon name="check" size="xs"/>}</span>,
   th: ({ children, style }) => <th scope="col" data-align={style?.textAlign}>{children}</th>,

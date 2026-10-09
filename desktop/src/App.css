@@ -27,7 +27,7 @@ small { font-size: var(--font-size-caption); color: var(--muted); }.type-sample 
 /* Media thresholds mirror tokens.json: CSS variables cannot be used in media conditions. */
 @media (max-width: 850px) { .app-shell:not(.sidebar-collapsed) { grid-template-columns: var(--sidebar-width-compact) minmax(0,1fr); }.theme-select { width: var(--select-width-compact); } }
 @media (max-width: 600px) {
- .app-shell { grid-template-columns: 0 minmax(0,1fr); padding-left: var(--shell-card-inset); }
+ .app-shell, .app-shell:not(.sidebar-collapsed) { grid-template-columns: 0 minmax(0,1fr); padding-left: var(--shell-card-inset); transition: none; }
  .sidebar-drawer { position: fixed; inset: var(--frame-inset) auto var(--frame-inset) var(--frame-inset); margin: 0; width: min(var(--drawer-max-width),calc(100vw - var(--space-6))); height: calc(100dvh - var(--frame-inset) * 2); max-height: none; max-width: none; border: 0; border-radius: var(--radius-md); padding: 0; background: var(--sidebar); color: var(--text); box-shadow: var(--palette-shadow); }
  .sidebar-drawer[open] { display: flex; animation: surface-enter var(--duration-overlay) var(--ease-overlay); }
  .sidebar-drawer::backdrop { background: var(--palette-backdrop); backdrop-filter: blur(var(--palette-blur)); }
