@@ -1087,6 +1087,10 @@ var OperatorEnvPins = []string{
 	// and the footer names them and never shows a value.
 	"CODEAF_MODEL_API",
 	"CODEAF_MODEL_TOKEN",
+	// The bearer token the desktop bridge (cmd/codeaf/desktop_bridge.go)
+	// demands of the desktop app. The app's launcher sets it and the bridge
+	// reads it; it is a credential, so plumbing, and its value is never shown.
+	"CODEAF_DESKTOP_TOKEN",
 	// The mark codeaf sets on a program's process so that, if the program's
 	// engine is killed outright, the processes its commands left behind can
 	// still be found and ended (internal/processgroup). codeaf sets it and reads
