@@ -11,9 +11,16 @@ import './split-zones.css';
  */
 export function SplitZones({ hostId, guestId, dispatch }: { hostId: string; guestId: string; dispatch: Dispatch<WorkspaceAction> }) {
   const [over, setOver] = useState<EdgeZone | null>(null);
-  const hover = (zone: EdgeZone) => (event: DragEvent) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setOver(zone); };
+  const hover = (zone: EdgeZone) => (event: DragEvent) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'move'; setOver(zone); };
+  const leave = (zone: EdgeZone) => (event: DragEvent) => {
+    const next = event.relatedTarget instanceof Element ? event.relatedTarget.closest<HTMLElement>('.split-zone-band, .split-zone-preview') : null;
+    // Entering the highlighted half (or its pill) keeps the same drop intent.
+    if (next?.dataset.zone === zone) return;
+    setOver(current => current === zone ? null : current);
+  };
   const drop = (zone: EdgeZone) => (event: DragEvent) => {
     event.preventDefault();
+    event.stopPropagation();
     const withId = event.dataTransfer.getData(tabDragType) || guestId;
     setOver(null);
     endTabDrag();
@@ -21,8 +28,8 @@ export function SplitZones({ hostId, guestId, dispatch }: { hostId: string; gues
   };
   return (
     <div className="split-zones" aria-hidden="true">
-      {edgeZones.map(zone => <div key={zone} className="split-zone-band" data-zone={zone} data-over={over === zone || undefined} onDragEnter={hover(zone)} onDragOver={hover(zone)} onDragLeave={() => setOver(current => (current === zone ? null : current))} onDrop={drop(zone)}/>)}
-      {over && <div className="split-zone-preview" data-zone={over}><span className="split-zone-pill"><Icon name="split" size="xs"/>{edgeLabel[over]}</span></div>}
+      {edgeZones.map(zone => <div key={zone} className="split-zone-band" data-zone={zone} data-over={over === zone || undefined} onDragEnter={hover(zone)} onDragOver={hover(zone)} onDragLeave={leave(zone)} onDrop={drop(zone)}/>)}
+      {over && <div className="split-zone-preview" data-zone={over} onDragEnter={hover(over)} onDragOver={hover(over)} onDragLeave={leave(over)} onDrop={drop(over)}><span className="split-zone-pill"><Icon name="split" size="xs"/>{edgeLabel[over]}</span></div>}
     </div>
   );
 }

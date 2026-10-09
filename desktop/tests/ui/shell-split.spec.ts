@@ -2,11 +2,11 @@ import { openPage } from './support/shell-navigation';
 import { test, expect, type Page } from '@playwright/test';
 import { expectAccessible } from './contracts';
 import { installMockEngine } from './support/mock-engine';
-import { pendingQuestion } from './support/scenarios';
+import { plainReply, pendingQuestion } from './support/scenarios';
 
 // Shell 2g (drag to split / group), 2h (focus keys, resize) and 3b (compact composer), measured against the design.
 // Tests that need a live conversation install the mock engine; the rest run with no engine at all.
-test.beforeEach(async ({ page }) => { await page.route('**/api/engine/**', route => route.abort()); });
+test.beforeEach(async ({ page }) => { await installMockEngine(page, plainReply()); });
 
 const pane = (id: string, title: string, over: Record<string, unknown> = {}) => ({ id, title, draft: '', kind: 'conversation', ...over });
 const plain = (id: string, title: string) => ({ id, title, draft: '', pinned: false, titleSource: 'manual' });
@@ -15,7 +15,7 @@ async function seed(page: Page, tabs: unknown[], activeId: string) {
   await page.addInitScript(value => { if (!sessionStorage.getItem('seeded')) { localStorage.setItem('codeaf.desktop.workspace.v1', value); sessionStorage.setItem('seeded', '1'); } }, JSON.stringify(state));
 }
 const split = (panes: unknown[], over: Record<string, unknown> = {}) => ({ id: 'sp', title: 'Split', draft: '', pinned: false, kind: 'conversation', titleSource: 'manual', split: { layout: '1x2', focus: 0, panes, ...over } });
-const saved = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('codeaf.desktop.workspace.v1')!));
+const saved = (page: Page) => page.evaluate(async () => (await (await fetch('/api/engine/workspaces/now')).json()).workspace);
 
 /** Starts dragging the tab with this name and leaves the button down at `to`. */
 async function dragTab(page: Page, name: string, to: { x: number; y: number }) {
@@ -48,6 +48,7 @@ test('dragging a tab to the content edge shows the split zone and pill, and drop
   const titles = await page.locator('.pane-title').allTextContents();
   expect(titles).toEqual(['Config stack', 'Release v2.4']);
   await expect(page.locator('.workspace-pane').nth(1)).toHaveAttribute('data-focused', 'true');
+  await expect.poll(async () => (await saved(page))?.tabs.some((t: { split?: unknown }) => !!t.split)).toBe(true);
   const model = await saved(page);
   expect(model.tabs.find((t: { split?: unknown }) => t.split).split.panes.map((p: { id: string }) => p.id)).toEqual(['a', 'b']);
 });
@@ -87,6 +88,7 @@ test('dragging onto another tab shows the Group target and groups both', async (
   expect(await tab.evaluate(el => getComputedStyle(el, '::after').content)).toBe('"Group"');
   await page.mouse.up();
   await expect(page.locator('.workspace-tab-group .workspace-tab')).toHaveCount(2);
+  await expect.poll(async () => (await saved(page))?.groups.length).toBe(1);
   const model = await saved(page);
   expect(model.groups).toHaveLength(1);
   expect(model.tabs.every((t: { groupId?: string }) => t.groupId === model.groups[0].id)).toBe(true);
@@ -99,7 +101,7 @@ test('the outer quarter of a tab reorders instead of grouping', async ({ page })
   await dragTab(page, 'Three', { x: target.x + 6, y: target.y + target.height / 2 });
   await expect(page.locator('.workspace-tab[data-drop="before"]')).toHaveCount(1);
   await page.mouse.up();
-  expect((await saved(page)).tabs.map((t: { id: string }) => t.id)).toEqual(['c', 'a', 'b']);
+  await expect.poll(async () => (await saved(page))?.tabs.map((t: { id: string }) => t.id)).toEqual(['c', 'a', 'b']);
 });
 
 test('control+alt arrows move focus between panes and the pane takes the keyboard', async ({ page }) => {
@@ -227,7 +229,7 @@ test('double-clicking a divider equalizes the panes', async ({ page }) => {
   await handle.dblclick();
   await expect.poll(async () => Math.abs((await first.boundingBox())!.width - (await page.locator('.workspace-pane').nth(1).boundingBox())!.width)).toBeLessThan(2);
   expect((await first.boundingBox())!.width).toBeLessThan(wide - 100);
-  expect((await saved(page)).tabs[0].split.ratios.col).toBe(0.5);
+  await expect.poll(async () => (await saved(page))?.tabs[0].split.ratios.col).toBe(0.5);
 });
 
 test('dragging a divider resizes the panes and the ratio persists', async ({ page }) => {
@@ -247,6 +249,7 @@ test('dragging a divider resizes the panes and the ratio persists', async ({ pag
   const after = (await page.locator('.workspace-pane').first().boundingBox())!;
   expect(after.width).toBeGreaterThan(before.width + 100);
   expect(Math.abs(after.width / (area.width - 8) - 0.7)).toBeLessThan(0.02);
+  await expect.poll(async () => (await saved(page))?.tabs[0].split.ratios?.col).toBeGreaterThan(0.68);
   const ratios = (await saved(page)).tabs[0].split.ratios;
   expect(ratios.col).toBeGreaterThan(0.68);
   expect(ratios.col).toBeLessThan(0.72);
@@ -256,7 +259,7 @@ test('dragging a divider resizes the panes and the ratio persists', async ({ pag
   // The divider also moves with the arrow keys, and never past the 20% floor.
   await handle.focus();
   for (let i = 0; i < 40; i++) await page.keyboard.press('ArrowLeft');
-  expect((await saved(page)).tabs[0].split.ratios.col).toBeCloseTo(0.2, 5);
+  await expect.poll(async () => (await saved(page))?.tabs[0].split.ratios.col).toBeCloseTo(0.2, 5);
   await expectAccessible(page);
 });
 
