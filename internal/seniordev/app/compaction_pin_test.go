@@ -85,12 +85,12 @@ func TestContextOverflowPinsCapacityUnderTheWindowPolicy(t *testing.T) {
 	// Fixture output limit 12,000 is the reservation: 131,072 − 12,000. The
 	// fixture's own input window (220,000 − 12,000 = 208,000) is wider, so
 	// the pin is what tightens.
-	pinned, ok := backend.pinnedCapacityFor("ses-pin")
+	pinned, ok := backend.pinnedCapacityFor("openrouter", "fixture/vendor-model")
 	if !ok || pinned != 119_072 {
 		t.Fatalf("pinned capacity = %v,%v want 119072", pinned, ok)
 	}
-	if _, ok := backend.pinnedCapacityFor("ses-other"); ok {
-		t.Fatal("a pin must be per session")
+	if _, ok := backend.pinnedCapacityFor("openrouter", "fixture/other-model"); ok {
+		t.Fatal("a pin must be per model, not global")
 	}
 	got := events.String()
 	for _, want := range []string{
@@ -103,22 +103,24 @@ func TestContextOverflowPinsCapacityUnderTheWindowPolicy(t *testing.T) {
 			t.Errorf("pinned event lacks %s: %s", want, got)
 		}
 	}
-	// The session's compaction config now carries the pin as capacity_tokens,
-	// and the project config is untouched for other sessions.
-	cfg, err := backend.overflowConfigFor("ses-pin")
+	// The model's compaction config now carries the pin as capacity_tokens,
+	// so a different session on the same model inherits it, while a
+	// different model is untouched.
+	cfg, err := backend.overflowConfigFor("openrouter", "fixture/vendor-model")
 	if err != nil || cfg.Compaction.CapacityTokens == nil || *cfg.Compaction.CapacityTokens != 119_072 {
-		t.Fatalf("session config = %+v, %v", cfg.Compaction, err)
+		t.Fatalf("model config = %+v, %v", cfg.Compaction, err)
 	}
-	other, _ := backend.overflowConfigFor("ses-other")
+	other, _ := backend.overflowConfigFor("openrouter", "fixture/other-model")
 	if other.Compaction.CapacityTokens != nil {
-		t.Fatalf("other session inherited the pin: %+v", other.Compaction)
+		t.Fatalf("other model inherited the pin: %+v", other.Compaction)
 	}
-	// A later rejection naming a larger limit never raises the pin.
+	// A later rejection from another session on the same model and naming a
+	// larger limit never raises the pin.
 	backend.client = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		return recordedResponse(request, 400, "application/json", `{"error":{"message":"maximum context length is 262144 tokens","code":400}}`), nil
 	})}
-	_ = overflowStream(t, backend, "ses-pin")
-	if pinned, _ := backend.pinnedCapacityFor("ses-pin"); pinned != 119_072 {
+	_ = overflowStream(t, backend, "ses-pin-2")
+	if pinned, _ := backend.pinnedCapacityFor("openrouter", "fixture/vendor-model"); pinned != 119_072 {
 		t.Fatalf("pin was raised to %v", pinned)
 	}
 	// And the configured event for a later turn in that session records it.
@@ -138,14 +140,14 @@ func TestContextOverflowWithoutANumberPinsNothing(t *testing.T) {
 	if err := overflowStream(t, backend, "ses-unparsed"); err == nil {
 		t.Fatal("expected the rejection to pass through")
 	}
-	if _, ok := backend.pinnedCapacityFor("ses-unparsed"); ok {
+	if _, ok := backend.pinnedCapacityFor("openrouter", "fixture/vendor-model"); ok {
 		t.Fatal("an unparsed rejection must not pin")
 	}
 	got := events.String()
 	if !strings.Contains(got, `"status":"overflow-unpinned"`) || !strings.Contains(got, `"source":"unparsed"`) {
 		t.Fatalf("unparsed rejection not recorded: %s", got)
 	}
-	cfg, _ := backend.overflowConfigFor("ses-unparsed")
+	cfg, _ := backend.overflowConfigFor("openrouter", "fixture/vendor-model")
 	if cfg.Compaction.CapacityTokens != nil {
 		t.Fatalf("config changed without a pin: %+v", cfg.Compaction)
 	}
@@ -157,7 +159,7 @@ func TestNonOverflowErrorsDoNotPin(t *testing.T) {
 	if err := overflowStream(t, backend, "ses-429"); err == nil {
 		t.Fatal("expected the error to pass through")
 	}
-	if _, ok := backend.pinnedCapacityFor("ses-429"); ok || strings.Contains(events.String(), "compaction-capacity") {
+	if _, ok := backend.pinnedCapacityFor("openrouter", "fixture/vendor-model"); ok || strings.Contains(events.String(), "compaction-capacity") {
 		t.Fatalf("a non-overflow error pinned or emitted: %s", events.String())
 	}
 }

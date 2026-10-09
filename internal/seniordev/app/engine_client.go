@@ -158,39 +158,107 @@ func (models seniorDevModels) projection(
 }
 
 func (models seniorDevModels) catalogModel(providerID, modelID string) (calc.Model, error) {
-	if models.backend.catalog != nil && len(models.backend.catalog) == 0 {
-		// Unknown metadata must leave enough room for the baked prompt while
-		// limiting each request conservatively. codeaf's model API still prices
-		// actual usage; these zero prices never enter its ledger.
-		return calc.Model{
-			Cost:         &calc.ModelCost{Cache: &calc.CacheCost{}},
-			Limit:        calc.ModelLimit{Context: 16_384, Output: 2_048},
-			Capabilities: calc.ModelCapabilities{ToolCall: true, Temperature: true},
-		}, nil
-	}
-	if models.backend.catalog != nil {
-		metadata, err := models.backend.catalog.Resolve(providerID, modelID)
+	metadata, _, err := models.sizedModel(providerID, modelID)
+	return metadata, err
+}
+
+// Where a model's limits came from ([seniorDevModels.sizedModel]).
+const (
+	// sizedByModelsDev: senior-dev's own catalog, models.dev.
+	sizedByModelsDev = "models.dev"
+	// sizedByCodeaf: the model catalog codeaf keeps for this profile, which
+	// answers when models.dev cannot be reached or has never heard of the model.
+	sizedByCodeaf = "codeaf"
+	// sizedByConfig: neither catalog knows the model, and senior-dev's own
+	// config names it; its `limit` block is the only figure there is.
+	sizedByConfig = "config"
+	// sizedByGuess: nothing knew the model, and the conservative guess below
+	// stands in for its window. A run on a guess is told so (run.go).
+	sizedByGuess = "guess"
+)
+
+// Unknown metadata must leave enough room for the baked prompt while limiting
+// each request conservatively. codeaf's model API still prices actual usage;
+// these zero prices never enter its ledger.
+const (
+	guessedContextTokens = 16_384
+	guessedOutputTokens  = 2_048
+)
+
+// sizedModel is a model's metadata and where its limits came from. models.dev
+// answers first; when it cannot (the site was unreachable, or it has never
+// listed the model), the catalog codeaf keeps for this profile is asked for
+// the model's window ([modelAPIBackend.windowFor]); and only when neither
+// knows does a config-defined model run on its config, or anything else on
+// the guess.
+//
+// THE GUESS USED TO BE THE WHOLE ANSWER OFFLINE. With models.dev out of reach
+// every model was sized at 16,384 tokens, although codeaf had the real window
+// on disk the whole time: a 1M-token model compacted every few thousand
+// tokens and a CyberGym run spent 25 minutes re-reading its own brief.
+func (models seniorDevModels) sizedModel(providerID, modelID string) (calc.Model, string, error) {
+	catalog := models.backend.catalog
+	var resolveErr error
+	if len(catalog) > 0 {
+		metadata, err := catalog.Resolve(providerID, modelID)
 		if err == nil {
-			return metadata, nil
+			return metadata, sizedByModelsDev, nil
 		}
+		resolveErr = err
+	}
+	if window := models.backend.codeafWindow(providerID, modelID); window > 0 {
+		return calc.Model{
+			Cost:  &calc.ModelCost{Cache: &calc.CacheCost{}},
+			Limit: calc.ModelLimit{Context: window},
+			// Unknown capabilities are permissive.
+			Capabilities: calc.ModelCapabilities{ToolCall: true, Temperature: true},
+		}, sizedByCodeaf, nil
+	}
+	if catalog == nil {
+		// A nil catalog is an explicit seam for injected engine tests. Every
+		// shipped CLI backend receives a loaded (possibly disabled/empty) catalog.
+		return calc.Model{
+			Cost: &calc.ModelCost{Cache: &calc.CacheCost{}},
+			// Unknown capabilities are permissive.
+			Capabilities: calc.ModelCapabilities{ToolCall: true, Temperature: true},
+		}, sizedByConfig, nil
+	}
+	if len(catalog) > 0 {
 		if len(models.backend.config.model(providerID, modelID)) == 0 {
-			return calc.Model{}, err
+			return calc.Model{}, "", resolveErr
 		}
-		// A config-defined model absent from models.dev gets zero cost and zero
+		// A config-defined model neither catalog knows gets zero cost and zero
 		// context/output limits unless the config block supplies them.
 		return calc.Model{
 			Cost: &calc.ModelCost{Cache: &calc.CacheCost{}},
 			// Unknown capabilities are permissive.
 			Capabilities: calc.ModelCapabilities{ToolCall: true, Temperature: true},
-		}, nil
+		}, sizedByConfig, nil
 	}
-	// A nil catalog is an explicit seam for injected engine tests. Every
-	// shipped CLI backend receives a loaded (possibly disabled/empty) catalog.
+	// models.dev could not be read and codeaf's catalog does not know the
+	// model either. A config block's limits still override the guess
+	// ([seniorDevModels.projection]).
 	return calc.Model{
-		Cost: &calc.ModelCost{Cache: &calc.CacheCost{}},
-		// Unknown capabilities are permissive.
+		Cost:         &calc.ModelCost{Cache: &calc.CacheCost{}},
+		Limit:        calc.ModelLimit{Context: guessedContextTokens, Output: guessedOutputTokens},
 		Capabilities: calc.ModelCapabilities{ToolCall: true, Temperature: true},
-	}, nil
+	}, sizedByGuess, nil
+}
+
+// codeafWindow is the model's window in the catalog codeaf keeps for this
+// profile, zero when it cannot say or when the backend was built without a
+// lookup (an injected engine test). A model senior-dev files under codeaf's
+// model API ([normalizeModelRef]) is asked about by the id under that API, so
+// a connected service's own prefix still finds that service's list.
+func (backend *modelAPIBackend) codeafWindow(providerID, modelID string) float64 {
+	if backend == nil || backend.windowFor == nil {
+		return 0
+	}
+	ref := modelID
+	if providerID != orclient.Service {
+		ref = providerID + "/" + modelID
+	}
+	return float64(backend.windowFor(ref))
 }
 
 // normalizeModelRef files a model under the service codeaf's model API speaks

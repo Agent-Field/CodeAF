@@ -1101,6 +1101,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"who writes the commit message for senior-dev's work", "senior-dev"},
 		{"how much does a senior-dev run cost", "senior-dev"},
 		{"which model is my senior-dev run using", "senior-dev"},
+		{"why does senior-dev keep compacting every few steps", "senior-dev"},
+		{"senior-dev refused my model as too small", "senior-dev"},
+		{"senior-dev says it could not learn how much its model holds", "senior-dev"},
 		{"how do I read the whole brief senior-dev was given", "senior-dev"},
 		{"scroll senior-dev's brief", "senior-dev"},
 		{"senior-dev finished my new file but it is not on the branch", "senior-dev"},
@@ -3392,6 +3395,33 @@ func TestTheCallLogPageSaysWhyAFigureIsMissingFromARow(t *testing.T) {
 		}
 	}
 	t.Fatalf("the question does not reach a section that says %q; a row missing a figure reads as a broken row", said)
+}
+
+// A senior-dev run on a project whose build it could not find ends with a
+// sentence a person pastes back as a question, and a person with a harness of
+// their own asks how to hand it over. Both reach the section that names the
+// flags, and the CMake shape reaches the section that names its default.
+func TestTheUndiscoveredBuildQuestionsReachTheVerifyFlags(t *testing.T) {
+	for _, probe := range []struct {
+		asked string
+		says  string
+	}{
+		{"senior-dev says no build entrypoint could be discovered", "--verify-test"},
+		{"how do I tell senior-dev which command runs my tests", "--verify-test"},
+		{"senior-dev failed verification on my fuzz target harness", "--verify-build"},
+		{"does senior-dev build a cmake project and run ctest", "cmake-build"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == "senior-dev" && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach a senior-dev section that says %q", probe.asked, probe.says)
+		}
+	}
 }
 
 // A person whose reply vanished asks in their own words, and there is exactly

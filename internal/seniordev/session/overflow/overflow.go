@@ -35,3 +35,7 @@ func Watermarks(input UsableInput) CompactionWatermarks {
 func IsOverflow(input OverflowInput) bool {
 	return calc.IsOverflow(input)
 }
+
+// MaxOutputTokens is the most a single reply from model may hold, which is
+// also the most a generated summary can be.
+func MaxOutputTokens(model Model) float64 { return calc.MaxOutputTokens(model) }
