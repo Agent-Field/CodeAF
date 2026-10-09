@@ -2,7 +2,7 @@ import { useEffect, useImperativeHandle, useRef, type Ref } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import { isNewTerminalShortcut, isSwitchShortcut } from './keys';
+import { isTerminalShortcut } from './keys';
 import { lineHeightFor, readTerminalTheme, tokenFont, tokenNumber, watchAppearance } from './theme';
 import './terminal-screen.css';
 
@@ -67,8 +67,8 @@ export function TerminalScreen({ ref, label, interactive, cursor, onData, onResi
     t.loadAddon(fit);
     t.open(element);
     t.textarea?.setAttribute('aria-label', label);
-    // Our own shortcuts (a new terminal, the recent-tab switcher) belong to the workspace, not the shell.
-    t.attachCustomKeyEventHandler(event => !(isNewTerminalShortcut(event) || isSwitchShortcut(event)));
+    // The workspace's terminal-context chords (see terminalShortcutOf) are not for the shell; every other key is.
+    t.attachCustomKeyEventHandler(event => !isTerminalShortcut(event));
     t.onData(data => latest.current.onData?.(data));
     t.onResize(({ cols, rows }) => latest.current.onResize?.(cols, rows));
     term.current = t;
