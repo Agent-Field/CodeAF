@@ -1814,6 +1814,7 @@ func (a *Agent) sayWithdrawn(q Question, reason string) {
 		By:     q.Asker.Kind,
 		At:     time.Now(),
 	}
+	a.withdrawals.remember(withdrawnOutcome(q))
 	a.emitQuestion(EventQuestionWithdrawn, q, nil)
 	// AND EVERY OTHER WINDOW LEARNS AT ONCE, for the reason the raise does
 	// ([Agent.raiseQuestion]): a question that is no longer being asked must not

@@ -100,9 +100,25 @@ var imageMediaTypes = map[string]string{
 // No images is exactly Submit, so a surface with an empty attachment tray can
 // call one method for both.
 func (a *Agent) SubmitImage(ctx context.Context, text string, images []Image) (<-chan Event, error) {
+	return a.submitImages(ctx, text, images, nil)
+}
+
+// SubmitAttached is [Agent.SubmitImage] for a message that also names files. It
+// writes the model-facing sentence ([AttachedSentence]) itself and records the
+// paths in the journal beside the message, so a page drawn from the record shows
+// the person's words with the files as attachments instead of as a sentence.
+func (a *Agent) SubmitAttached(ctx context.Context, text string, files []string, images []Image) (<-chan Event, error) {
+	said := AttachedSentence(strings.TrimSpace(text), files)
+	return a.submitImages(ctx, said, images, fileJournalParts(files))
+}
+
+// submitImages is SubmitImage's body, with the files the words name carried to
+// the journal. A vision-fallback turn records no files: that door writes its own
+// marker into the words, and a record it cannot match would be worse than none.
+func (a *Agent) submitImages(ctx context.Context, text string, images []Image, files []journalPart) (<-chan Event, error) {
 	text = strings.TrimSpace(text)
 	if len(images) == 0 {
-		return a.Submit(ctx, text)
+		return a.submitText(ctx, text, files)
 	}
 
 	// The gate reads the model the NEXT turn will ride, which is the model this
@@ -129,6 +145,7 @@ func (a *Agent) SubmitImage(ctx context.Context, text string, images []Image) (<
 	if digest := a.planDigest(); digest != "" {
 		user = planDigestedParts(digest, user)
 	}
+	user.files = files
 
 	a.mu.Lock()
 	if a.closed {

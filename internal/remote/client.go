@@ -2277,6 +2277,21 @@ func (a *Agent) ReadPlanTaskPage(id string) (session.PlanTaskPage, bool, error) 
 	return result.Page, result.OK, nil
 }
 
+// RecentQuestionOutcomes reads the receipts of the questions that ended, newest
+// first. An engine without the door, or a link that fails, answers none: a
+// window with no receipts draws nothing where they would go.
+func (a *Agent) RecentQuestionOutcomes(limit int) []session.QuestionOutcome {
+	payload, err := a.c.call(nil, MethodRecentQuestionOutcomes, RecentQuestionOutcomesArgs{Limit: limit})
+	if err != nil {
+		return nil
+	}
+	var outcomes []session.QuestionOutcome
+	if json.Unmarshal(payload, &outcomes) != nil {
+		return nil
+	}
+	return outcomes
+}
+
 // PlanTaskWork reads the run's working copy over the wire. An engine that
 // has no such door answers "no such method", which is [PlanTaskWork.NoDoor]:
 // the work tab draws its absence sentence, the same one it draws for an

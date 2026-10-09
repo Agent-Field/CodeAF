@@ -986,6 +986,11 @@ func (a *Agent) SetContextWindow(tokens int) {
 // surface holding both channels sees each event on each, which is what a
 // per-message caller wants and what a whole-session reader must de-duplicate.
 func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
+	return a.submitText(ctx, text, nil)
+}
+
+// submitText is Submit with the journal's record of the files the words name.
+func (a *Agent) submitText(ctx context.Context, text string, files []journalPart) (<-chan Event, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, errors.New("session: empty message")
@@ -1005,12 +1010,14 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 	if digest := a.planDigest(); digest != "" {
 		user := planDigested(digest, text)
 		user.said = said
+		user.files = files
 		return a.submitUser(ctx, user)
 	}
 	user := userText(text)
 	if text != said {
 		user.said = said
 	}
+	user.files = files
 	return a.submitUser(ctx, user)
 }
 
@@ -1210,6 +1217,10 @@ type userMessage struct {
 	bash    string
 	message ai.Message
 	refs    []journalPart
+	// files are the files the person attached, as the journal records them. They
+	// are apart from refs because refs line up with content parts and a file is
+	// never one; the model is told the path in the message's words.
+	files []journalPart
 	// replyTags names finished tasks whose reports this message carries. It is
 	// empty on every person's message and every other authored note.
 	replyTags []TaskReplyTag
@@ -2758,7 +2769,7 @@ func (a *Agent) recordUserLocked(user userMessage) {
 		a.stampUserLocked(messageContentText(kept))
 		return
 	}
-	durable = a.file.appendMessage(kept, user.refs...)
+	durable = a.file.appendMessage(kept, append(append([]journalPart(nil), user.refs...), user.files...)...)
 	// AND THE FOLDER LEARNS THE PERSON WAS HERE. Resume order is on when the
 	// person last spoke and not on file mtime (place.go's [Meta.LastUserAt]),
 	// and this line — the one place the person's own words reach the journal —
@@ -4797,6 +4808,14 @@ type DisplayEntry struct {
 	// the paths are the JOURNAL's record, and a conversation that lives only in
 	// memory never wrote one.
 	ImageRefs []string
+	// Attachments are everything the person attached to a user message, pictures
+	// first and files after, each with a name and type a surface can draw without
+	// opening it. Files come from the journal's structured record, so a message
+	// that has one shows the person's own words in Text with the model-facing
+	// "attached file:" sentence taken off. Nil for every message that carried
+	// nothing and for every message from a file written before files were
+	// recorded; those keep the sentence in Text, because nothing says it is one.
+	Attachments []AttachmentRef
 	// ReplyTags label the assistant entry that answers finished task notes. They
 	// are nil on every ordinary reply.
 	ReplyTags []TaskReplyTag
@@ -4987,6 +5006,10 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 		if role == "user" {
 			displayText = presentation.personWords(msg)
 		}
+		var attachments []AttachmentRef
+		if role == "user" {
+			displayText, attachments = journal.attachmentsOf(displayText, journal.imageRefs(msg))
+		}
 		interrupted, explicitlyHuman := false, false
 		if mark := presentation.of(msg); role == "assistant" && mark != nil {
 			interrupted = mark.Interrupted
@@ -5025,6 +5048,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			Interrupted: interrupted,
 			Text:        displayText,
 			ImageRefs:   journal.imageRefs(msg),
+			Attachments: attachments,
 			ReplyTags:   tags,
 			TaskIDs:     taskIDs,
 			AsideKind:   facts.Kind,
