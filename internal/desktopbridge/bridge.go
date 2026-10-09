@@ -174,7 +174,8 @@ type Bridge struct {
 	places    *Places
 	history   *History
 	// workspaces holds each window place's tab set (workspaces.go).
-	workspaces *workspacestore.Store
+	workspaces    *workspacestore.Store
+	openElsewhere *workspaceOpenIndex
 	// world is the engine-wide feed (worldstream.go); nil until first used.
 	world *WorldFeed
 	// advice schedules place offers (places_advice.go); nil makes none.

@@ -18,14 +18,16 @@ function Actions({ ask, act }: { ask: Ask; act: PreviewRenderProps['act'] }) {
 }
 
 /** A conversation or a task: the state, then what it asks or its last reply. A card that needs you carries its primary action. */
-export function SessionPreview({ pane, title, summary, act }: PreviewRenderProps) {
+export function SessionPreview({ pane, title, summary, act, openElsewhere }: PreviewRenderProps) {
+  const otherPlaces = pane.kind === 'conversation' ? openElsewhere : undefined;
+  const contextNote = otherPlaces?.length ? `also open in ${otherPlaces[0].name}${otherPlaces.length > 1 ? ` and ${otherPlaces.length - 1} other ${otherPlaces.length === 2 ? 'place' : 'places'}` : ''}` : undefined;
   const taskId = pane.kind === 'task' && pane.route ? routeTask(pane.route) : undefined;
   const state = stateOf(summary, taskId);
   const ask = askOf(questionsFor(summary, taskId));
   const draft = pane.draft.trim();
   const body = ask?.text ?? (summary?.digest ? `Last reply: “${summary.digest}”` : draft ? `Draft: ${draft}` : '');
   return (
-    <PreviewCard kind={pane.kind} lead={state.lead} title={title} state={state.words && <PreviewState dot={state.dot}>{state.words}</PreviewState>} actions={ask && <Actions ask={ask} act={act}/>}>
+    <PreviewCard kind={pane.kind} lead={state.lead} title={title} contextNote={contextNote} state={state.words && <PreviewState dot={state.dot}>{state.words}</PreviewState>} actions={ask && <Actions ask={ask} act={act}/>}>
       {body && <PreviewText>{body}</PreviewText>}
       {act.error && <PreviewError>{act.error}</PreviewError>}
     </PreviewCard>

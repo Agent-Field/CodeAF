@@ -37,3 +37,6 @@
 .tab-preview[data-state="open"][data-swap] { animation: none; }
 .tab-preview[data-state="closed"] { animation: surface-exit var(--duration) var(--chrome-ease); }
 @media (prefers-reduced-motion: reduce) { .tab-preview[data-state] { animation: none; } }
+
+/* The6e small other-Place view note reuses the preview header typography. */
+.preview-context { font-size: var(--font-size-label); color: var(--ink-3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

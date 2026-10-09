@@ -34,7 +34,7 @@ export type PreviewActions = {
   review: () => void;
 };
 /** The preview renderer slot: the text card a hover preview or an overview card draws for this kind (Shell 3k). */
-export type PreviewRenderProps = { pane: Pane; title: string; summary?: TabSummary; now: number; act: PreviewActions };
+export type PreviewRenderProps = { pane: Pane; title: string; summary?: TabSummary; now: number; act: PreviewActions; /** Canonical stored-open views in other real Places, never membership. */ openElsewhere?: readonly { id: string; name: string }[] };
 
 export type KindDef = {
   kind: TabKind;
