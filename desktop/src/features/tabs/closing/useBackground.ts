@@ -2,7 +2,7 @@
 // chat/world-store.ts), the failures this window has already seen, and the OS-level signals (notification, badge) that
 // follow the same attention list. Nothing here polls; the feed is a stream and the signals fire when the list changes.
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { nativeControls, needsYouCount, type AttentionItem as NativeAttention } from '../../../design/nativeControls';
+import { nativeControls, needsYouCount, noticeTarget, type AttentionItem as NativeAttention } from '../../../design/nativeControls';
 import { worldStore } from '../../chat/world-store';
 import { engineTransport, type FailureId } from '../../chat/world-client';
 import { toasts } from '../../../design/toasts';
@@ -41,12 +41,15 @@ export function useBackground({ tabs, closed, summaries, since, stopping, now }:
 
   const background = buildBackgroundWork({ tabs, closed, summaries, since: Object.fromEntries(closed.flatMap(tab => { const at = since(tab.id); return at ? [[tab.id, at]] : []; })), stopping, world, seen, pending, now });
 
-  // The signals describe the whole machine's attention, not this window's tabs, so they read the feed directly.
+  // The signals describe the whole machine's attention, not this window's tabs, so they read the feed directly. Each
+  // names the conversation (and the question) a click on its notification opens. This is the ONE place a window posts
+  // them: Rust treats an item missing from a list as answered, so a second list without the failures would forget them
+  // and announce them again.
   const signals = useMemo<NativeAttention[]>(() => {
     if (world.status !== 'live') return [];
     const titles = new Map(world.rows.map(row => [row.session, row.title] as const));
-    const asked = world.items.map(item => ({ id: item.key, kind: 'needsYou' as const, chatTitle: clip(item.title || titles.get(item.session) || 'Conversation', 120), text: clip(item.text, 200) }));
-    const failed = background.failed.map(item => ({ id: item.id, kind: 'failed' as const, chatTitle: clip(item.title, 120), text: 'A task failed' }));
+    const asked = world.items.map(item => ({ id: item.key, kind: 'needsYou' as const, chatTitle: clip(item.title || titles.get(item.session) || 'Conversation', 120), text: clip(item.text, 200), ...noticeTarget(item.session, item) }));
+    const failed = background.failed.map(item => ({ id: item.id, kind: 'failed' as const, chatTitle: clip(item.title, 120), text: 'A task failed', ...noticeTarget(item.chatId) }));
     return [...asked, ...failed];
   }, [world.status, world.rows, world.items, background.failed]);
   const signature = signals.map(item => `${item.kind}:${item.id}`).join('|');

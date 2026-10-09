@@ -22,6 +22,24 @@ The Overview model footer is a concrete remaining wiring gap, while inactive
 keyboard-preview navigation is a recorded design question. Historical `partial`
 or `missing` rows are neither automatically accepted nor assumed still absent.
 
+Notification click (CV-289, BE-INB-06, the click half of PL-254, and assumption 9
+below) no longer rests on that assumption. The notification plugin still drops click
+actions on desktop, so `src-tauri/src/activation.rs` posts through the platform's
+own service and keeps, per notification, the conversation and question the renderer
+named when it was posted. Only the platform's activation of that notification opens
+it: a freedesktop `ActionInvoked` default action from the server that posted it, the
+macOS notification-center delegate's content click, or a Windows toast's `Activated`
+event. The addressed window claims the target, the conversation opens through the
+link path and its tray brings that question forward; a grouped notification opens
+its first question still waiting, and one whose questions were all answered opens
+the conversation only. Proof: a Linux click over a private session bus and display
+(`tests/notification_click_smoke.rs`), browser routing in
+`tests/ui/notification-clicks.spec.ts`, macOS compilation and unit tests, and a
+Windows type-check of the toast module only. A click is not yet proven against a
+real desktop shell's notification server, a signed macOS bundle, or Windows. A
+notification is not withdrawn when its question is answered elsewhere. A macOS
+development build posts as Terminal, so the system brings Terminal forward there.
+
 ## 1. Bottom line
 
 - **1131 design items are scored.** 143 are complete, 290 partial, 486 missing and 196 in flight in

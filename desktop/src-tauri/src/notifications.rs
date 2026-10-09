@@ -10,17 +10,19 @@
 //! desktop answers every permission question with "granted" without asking the
 //! operating system, and posts on a background task whose failure it discards.
 //! So `verified` is false on desktop: the system may still silence codeaf, and
-//! the badge and the Inbox stay the source of truth. Grouping and click actions
-//! are ignored by the plugin on desktop, so codeaf groups by place itself, and a
-//! click brings the app forward the way the system chooses, not to a question.
+//! the badge and the Inbox stay the source of truth. Grouping is ignored by the
+//! plugin on desktop, so codeaf groups by place itself. The plugin also drops
+//! click actions, so codeaf posts through the platform's own notification
+//! service and a click opens the question it names (activation.rs).
 
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Runtime, UserAttentionType, Webview};
-use tauri_plugin_notification::{NotificationExt, PermissionState};
+use tauri_plugin_notification::PermissionState;
 
+use crate::activation::{is_chat_id, Activation, Question, Target};
 use crate::windows::{app_window, app_windows, trusted};
 
 /// Enough to remember every open question for a long day without growing.
@@ -51,6 +53,21 @@ pub struct AttentionItem {
     pub place_id: Option<String>,
     #[serde(default)]
     pub place_name: Option<String>,
+    /// The conversation a click on this item opens.
+    #[serde(default)]
+    pub chat_id: Option<String>,
+    /// The question a click focuses in that conversation's tray.
+    #[serde(default)]
+    pub question: Option<Question>,
+}
+
+impl AttentionItem {
+    fn target(&self) -> Option<Target> {
+        Some(Target {
+            chat_id: self.chat_id.clone()?,
+            question: self.question.clone(),
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -89,6 +106,8 @@ pub struct Note {
     pub group: String,
     pub title: String,
     pub body: String,
+    /// Where a click goes, by attention item, in the order the body names them.
+    pub targets: Vec<(String, Target)>,
 }
 
 #[derive(Default)]
@@ -142,6 +161,10 @@ fn checked(items: &[AttentionItem]) -> Result<(), String> {
             !i.id.is_empty()
                 && i.id.len() <= MAX_ID
                 && i.place_id.as_deref().is_none_or(|p| p.len() <= MAX_ID)
+                && i.chat_id.as_deref().is_none_or(is_chat_id)
+                && i.question
+                    .as_ref()
+                    .is_none_or(|q| q.sound() && i.chat_id.is_some())
         });
     if ok {
         Ok(())
@@ -213,7 +236,16 @@ pub fn compose(items: &[&AttentionItem]) -> Vec<Note> {
                     }
                 }
             };
-            Note { group, title, body }
+            let targets = items
+                .iter()
+                .filter_map(|i| Some((i.id.clone(), i.target()?)))
+                .collect();
+            Note {
+                group,
+                title,
+                body,
+                targets,
+            }
         })
         .collect()
 }
@@ -283,6 +315,13 @@ pub fn notify_request_permission<R: Runtime>(
     Ok(permission(&app, true))
 }
 
+/// The attention items still waiting, as the last list from the renderer had them.
+pub fn pending<R: Runtime>(app: &AppHandle<R>) -> HashSet<String> {
+    app.try_state::<Attention>()
+        .and_then(|state| state.0.lock().ok().map(|seen| seen.ids.clone()))
+        .unwrap_or_default()
+}
+
 fn app_focused<R: Runtime>(app: &AppHandle<R>) -> bool {
     app_windows(app)
         .iter()
@@ -305,6 +344,8 @@ pub fn notify_attention<R: Runtime>(
     // Remember what is pending even while focused, so switching away later does
     // not announce a question the person already saw in the window.
     let new = fresh(&mut seen, &items);
+    // Released before posting: a click's handler reads what is pending.
+    drop(seen);
     if app_focused(&app) {
         return Ok(Posted {
             posted: 0,
@@ -328,17 +369,14 @@ pub fn notify_attention<R: Runtime>(
             skipped: Some(Skipped::Denied),
         });
     }
+    let routes = app.state::<Activation>();
     let mut posted = 0;
     for note in &notes {
-        let sent = app
-            .notification()
-            .builder()
-            .title(&note.title)
-            .body(&note.body)
-            .group(&note.group)
-            .show();
-        if sent.is_ok() {
+        let token = routes.register(note.targets.clone());
+        if crate::activation::show(&app, &note.title, &note.body, token) {
             posted += 1;
+        } else if let Some(token) = token {
+            routes.forget(token);
         }
     }
     if posted < notes.len() {
@@ -353,7 +391,7 @@ pub fn notify_attention<R: Runtime>(
 
 /// The fallback when a notification cannot be posted: the dock icon bounces once
 /// on macOS, and the window is marked urgent on Linux.
-fn attract<R: Runtime>(app: &AppHandle<R>) {
+pub fn attract<R: Runtime>(app: &AppHandle<R>) {
     let window =
         app_window(app, "main").or_else(|| app_windows(app).into_iter().next().map(|(_, w)| w));
     if let Some(window) = window {
@@ -426,6 +464,19 @@ mod tests {
             text: "Which branch should I use?".into(),
             place_id: place.map(|p| p.0.into()),
             place_name: place.map(|p| p.1.into()),
+            chat_id: None,
+            question: None,
+        }
+    }
+
+    fn asking(id: &str, chat: &str, kind: &str, question: u64) -> AttentionItem {
+        AttentionItem {
+            chat_id: Some(chat.into()),
+            question: Some(Question {
+                kind: kind.into(),
+                id: question,
+            }),
+            ..item(id, AttentionKind::NeedsYou, MKT, chat)
         }
     }
 
@@ -536,6 +587,56 @@ mod tests {
         let wire =
             serde_json::json!({"id": "a", "kind": "needsYou", "chatTitle": "x", "text": "y"});
         assert!(serde_json::from_value::<AttentionItem>(wire).is_ok());
+    }
+
+    #[test]
+    fn each_notification_carries_the_targets_it_names_in_order() {
+        let a = asking("s1:consent:7", "s1", "consent", 7);
+        let b = asking("s2:choice:3", "s2", "choice", 3);
+        let bare = item("c", AttentionKind::Failed, None, "Nightly");
+        let notes = compose(&[&a, &bare, &b]);
+        let mkt = notes
+            .iter()
+            .find(|n| n.group == "pl_00000000000000aa")
+            .unwrap();
+        let ids: Vec<&str> = mkt.targets.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(ids, ["s1:consent:7", "s2:choice:3"]);
+        assert_eq!(
+            mkt.targets[0].1,
+            Target {
+                chat_id: "s1".into(),
+                question: Some(Question {
+                    kind: "consent".into(),
+                    id: 7
+                })
+            }
+        );
+        // An item that names no conversation gives its notification nowhere to go.
+        let now = notes.iter().find(|n| n.group == "now").unwrap();
+        assert!(now.targets.is_empty());
+    }
+
+    #[test]
+    fn targets_are_checked_before_anything_is_posted() {
+        assert!(checked(&[asking("a", "9446cc2627f3deae", "consent", 7)]).is_ok());
+        assert!(checked(&[asking("a", "../../etc", "consent", 7)]).is_err());
+        assert!(checked(&[asking("a", "s1", "consent", 0)]).is_err());
+        assert!(checked(&[asking("a", "s1", "rm -rf", 7)]).is_err());
+        let orphan = AttentionItem {
+            chat_id: None,
+            ..asking("a", "s1", "consent", 7)
+        };
+        assert!(
+            checked(&[orphan]).is_err(),
+            "a question needs its conversation"
+        );
+        let wire = serde_json::json!({"id": "a", "kind": "needsYou", "chatTitle": "x", "text": "y",
+            "chatId": "s1", "question": {"kind": "consent", "id": 7}});
+        let parsed = serde_json::from_value::<AttentionItem>(wire).unwrap();
+        assert_eq!(parsed.chat_id.as_deref(), Some("s1"));
+        let extra = serde_json::json!({"id": "a", "kind": "needsYou", "chatTitle": "x", "text": "y",
+            "chatId": "s1", "question": {"kind": "consent", "id": 7, "url": "x"}});
+        assert!(serde_json::from_value::<AttentionItem>(extra).is_err());
     }
 
     #[test]
