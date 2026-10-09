@@ -1,0 +1,169 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import type { TurnBlock, WorkBlock } from '../types.ts';
+import { projectTurnsV2 } from './project.ts';
+import { entry, final, narrate, snap, tool, update, user } from './testkit.ts';
+
+const kinds = (blocks: TurnBlock[]) => blocks.map((b) => b.kind);
+const works = (blocks: TurnBlock[]) => blocks.filter((b): b is WorkBlock => b.kind === 'work');
+const first = (entries: ReturnType<typeof user>[]) => projectTurnsV2(snap(entries)).turns[0];
+
+test('interim updates and the final answer are told apart by flags, not position', () => {
+  const turn = first([
+    user('fix the bug'),
+    update('Found it, fixing now.'),
+    tool('edit', 'c1', { path: 'a.go', edits: [{ oldText: 'a', newText: 'b' }] }),
+    final('Fixed.\n\nDetails below.'),
+  ]);
+  assert.deepEqual(kinds(turn.blocks), ['update', 'work', 'answer', 'deliverable']);
+  assert.equal(turn.digest, 'Fixed.');
+});
+
+test('an interrupted [update] is a cut update; the turn is stopped', () => {
+  const cut = update('Half a thou', { Answer: false, Interrupted: true });
+  const turn = first([user('go'), cut]);
+  assert.deepEqual(turn.blocks[0], { kind: 'update', id: 'f.jsonl:0:1', text: 'Half a thou', cut: true, streaming: false });
+  assert.equal(turn.state, 'stopped');
+});
+
+test('narration titles the step that follows; it is never an answer', () => {
+  const turn = first([
+    user('look around'),
+    narrate('Let me read the loader.'),
+    tool('read', 'c1', { path: 'internal/x/a.go' }),
+    final('Done.'),
+  ]);
+  const [work] = works(turn.blocks);
+  assert.equal(work.steps[0].title, 'Let me read the loader');
+  assert.equal(work.steps[0].titleSource, 'narration');
+  assert.deepEqual(kinds(turn.blocks), ['work', 'answer']);
+});
+
+test('calls after one assistant entry are one batch; a new assistant entry starts another', () => {
+  const turn = first([
+    user('go'),
+    narrate('Reading both files.'),
+    tool('read', 'a', { path: 'x/a.go' }, { Caption: 'Reading the sources', CaptionCategory: 'read', Took: 2_000_000 }),
+    tool('read', 'b', { path: 'x/b.go' }, { Took: 3_000_000 }),
+    narrate(''),
+    tool('bash', 'c', { command: 'ls' }),
+    tool('bash', 'd', { command: 'pwd' }),
+    final('ok'),
+  ]);
+  const [work] = works(turn.blocks);
+  assert.equal(work.steps.length, 2);
+  assert.equal(work.steps[0].calls.length, 2);
+  assert.equal(work.steps[0].tookMs, 5);
+  assert.equal(work.steps[1].title, 'Ran 2 commands');
+  assert.equal(work.steps[1].titleSource, 'composed');
+  assert.equal(work.steps[1].category, 'run');
+  assert.deepEqual(work.summary, { seconds: 1, thoughtSeconds: undefined, steps: 2, calls: 4, failed: 0 });
+});
+
+test('caption beats composed when there is no narration', () => {
+  const turn = first([
+    user('go'),
+    narrate(''),
+    tool('bash', 'a', { command: 'go test ./...' }, { Caption: 'Checking the suite', CaptionCategory: 'test' }),
+    final('ok'),
+  ]);
+  const step = works(turn.blocks)[0].steps[0];
+  assert.deepEqual([step.title, step.titleSource, step.category], ['Checking the suite', 'caption', 'test']);
+});
+
+test('consecutive work between conversation blocks is one work block with its notes', () => {
+  const turn = first([
+    user('go'),
+    narrate('One.'),
+    tool('bash', 'a', { command: 'ls' }),
+    entry({ Role: 'note', Text: 'Earlier messages summarized' }),
+    narrate('Two.'),
+    tool('bash', 'b', { command: 'pwd' }),
+    entry({ Role: 'aside', Text: 'log tail', AsideKind: 'job', AsideTitle: 'make watch' }),
+    final('done'),
+  ]);
+  const blocks = works(turn.blocks);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].steps.length, 2);
+  assert.deepEqual(blocks[0].notes.map((n) => n.kind), ['note', 'aside']);
+});
+
+test('an update splits the work into two blocks', () => {
+  const turn = first([
+    user('go'),
+    narrate('A'),
+    tool('bash', 'a', { command: 'ls' }),
+    update('Halfway there.'),
+    narrate('B'),
+    tool('bash', 'b', { command: 'pwd' }),
+    final('end'),
+  ]);
+  assert.deepEqual(kinds(turn.blocks), ['work', 'update', 'work', 'answer']);
+});
+
+test('narration with no tool after it is kept as a quiet work line', () => {
+  const turn = first([user('go'), narrate('Thinking aloud with nothing to run.'), final('x')]);
+  const [work] = works(turn.blocks);
+  assert.equal(work.steps.length, 0);
+  assert.equal(work.notes[0].kind, 'note');
+});
+
+test('a steer user entry joins the turn, not a new one', () => {
+  const steer = user('also check the tests', { Steer: { Landing: 'waiting for the running step', Consumed: true } });
+  const turn = projectTurnsV2(snap([user('go'), narrate('A'), tool('bash', 'a', { command: 'ls' }), steer, final('ok')])).turns;
+  assert.equal(turn.length, 1);
+  assert.deepEqual(turn[0].steer[0], { id: 'f.jsonl:0:3', text: 'also check the tests', landing: 'waiting for the running step', consumed: true });
+});
+
+test('failed and stopped calls colour their step', () => {
+  const entries = [
+    user('go'),
+    narrate('A'),
+    tool('bash', 'a', { command: 'false' }, { Failed: true }),
+    narrate('B'),
+    tool('bash', 'b', { command: 'sleep 9' }, { Answered: false, Interrupted: true }),
+  ];
+  const turn = first(entries);
+  const [work] = works(turn.blocks);
+  assert.deepEqual(work.steps.map((s) => s.state), ['failed', 'stopped']);
+  assert.equal(work.summary.failed, 1);
+  assert.equal(turn.state, 'stopped');
+});
+
+test('the in-flight call of a running snapshot is running', () => {
+  const turn = projectTurnsV2(snap([user('go'), narrate('A'), tool('bash', 'a', {}, { Answered: false })], { running: true })).turns[0];
+  assert.equal(works(turn.blocks)[0].steps[0].state, 'running');
+  assert.equal(turn.state, 'working');
+});
+
+test('task asides become task blocks; the canonical row names them', () => {
+  const aside = entry({ Role: 'aside', Text: 'Parse config done · wrote the loader · took 3m', TaskIDs: ['t-7'] });
+  const tasks = [{ ID: 't-7', Title: 'Parse config', Status: 'done' }];
+  const turn = projectTurnsV2(snap([user('go'), aside], { tasks: tasks as never })).turns[0];
+  const block = turn.blocks[0];
+  assert.equal(block.kind, 'task');
+  assert.deepEqual(block.kind === 'task' && [block.taskId, block.title, block.status], ['t-7', 'Parse config', 'done']);
+});
+
+test('an unnamed aside is only a work note', () => {
+  const turn = first([user('go'), entry({ Role: 'aside', Text: 'some long machine text' })]);
+  assert.equal(works(turn.blocks)[0].notes[0].kind, 'note');
+});
+
+test('records before the first user message are the preface', () => {
+  const { turns, preface } = projectTurnsV2(snap([entry({ Role: 'note', Text: 'Resumed' }), user('hi'), final('hello')]));
+  assert.equal(turns.length, 1);
+  assert.deepEqual(preface.map((p) => p.kind), ['note']);
+});
+
+test('a repeated CallID updates the call instead of adding a row', () => {
+  const turn = first([
+    user('go'),
+    narrate('A'),
+    tool('bash', 'a', { command: 'ls' }, { Answered: false }),
+    tool('bash', 'a', { command: 'ls' }, { Output: 'x' }),
+  ]);
+  const calls = works(turn.blocks)[0].steps[0].calls;
+  assert.equal(calls.length, 1);
+  assert.deepEqual([calls[0].state, calls[0].output], ['done', 'x']);
+});
