@@ -1,8 +1,8 @@
 /* Task detail pane: the right half of the expanded tasks view (design 1d). */
 .task-detail { display: flex; flex-direction: column; gap: var(--space-5); flex: none; min-height: 0; overflow-y: auto; width: calc(var(--task-detail-width) + var(--space-6) * 2); max-width: 100%; box-sizing: border-box; padding: var(--space-6); border-radius: var(--tasks-radius); background: var(--surface); box-shadow: var(--sh-1); color: var(--ink); }
 .task-detail-head { display: flex; flex-direction: column; gap: var(--space-tight); min-width: 0; }
-.task-detail-crumb { margin: 0; color: var(--ink-3); font-size: var(--type-label-size); line-height: var(--type-label-leading); overflow-wrap: anywhere; }
-.task-detail-title { margin: 0; color: var(--ink); font-size: var(--task-detail-title-size); font-weight: var(--type-title-weight); letter-spacing: var(--task-detail-title-tracking); line-height: var(--type-title-leading); overflow-wrap: anywhere; }
+.task-detail-crumb.type-body { margin: 0; color: var(--ink-3); font-size: var(--type-label-size); line-height: var(--type-label-leading); overflow-wrap: anywhere; }
+.task-detail-title.type-title { margin: 0; color: var(--ink); font-size: var(--task-detail-title-size); font-weight: var(--type-title-weight); letter-spacing: var(--task-detail-title-tracking); line-height: var(--type-title-leading); overflow-wrap: anywhere; }
 .task-detail-state { display: flex; align-items: center; gap: var(--space-2); color: var(--ink-3); font-size: var(--type-label-size); line-height: var(--type-label-leading); font-variant-numeric: tabular-nums; }
 .task-detail-state-word { color: var(--ink-2); }
 
