@@ -263,7 +263,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
   const identity = (path: string) => ({ path: relative(path), ...split(relative(path)), abs: `${state.workspace}/${relative(path)}` });
   const fileDiff = (path: string) => {
     const diff = scenario.diffs?.[relative(path)];
-    return diff && { ...identity(path), git: true, status: diff.status ?? 'modified', lines: diff.lines ?? 0, binary: diff.binary, truncated: diff.truncated, hunks: diff.hunks, ...counts(diff) };
+    return diff && { ...identity(path), git: true, base: { kind: 'start', sha: 'abc1234' }, status: diff.status ?? 'modified', lines: diff.lines ?? 0, binary: diff.binary, truncated: diff.truncated, hunks: diff.hunks, ...counts(diff) };
   };
   const refusal = (route: Route, path: string) => json(route, { error: outside(path) ? "engine: outside this conversation's workspace" : `engine: no such file: ${path}` }, outside(path) ? 403 : 404);
   const workView = (route: Route, action: string, arg: string | undefined, url: URL) => {
@@ -271,7 +271,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     if (action === 'changes') {
       const only = url.searchParams.getAll('path').map(relative);
       const rows = Object.keys(scenario.diffs ?? {}).filter(p => !only.length || only.includes(p)).sort().map(p => { const d = fileDiff(p)!; return { path: d.path, name: d.name, dir: d.dir, status: d.status, added: d.added, deleted: d.deleted, binary: d.binary }; });
-      return json(route, { git: true, base: 'abc1234', branch: 'main', files: rows, added: rows.reduce((n, r) => n + r.added, 0), deleted: rows.reduce((n, r) => n + r.deleted, 0) });
+      return json(route, { git: true, base: { kind: 'start', sha: 'abc1234' }, branch: 'main', files: rows, added: rows.reduce((n, r) => n + r.added, 0), deleted: rows.reduce((n, r) => n + r.deleted, 0) });
     }
     if (action === 'diff') {
       if (outside(path)) return refusal(route, path);

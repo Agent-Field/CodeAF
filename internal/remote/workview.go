@@ -7,9 +7,13 @@ package remote
 // compared. Unlike [MethodFetchFile] the session's own folder is NOT reachable
 // here; a tab shows the person's work, not the engine's records.
 //
-// THE BASE IS GIT'S HEAD. The engine keeps no second ledger of "what the run
-// changed": the working tree against HEAD is what a person's editor and a
-// landing both see. A workspace outside git answers Git=false and no files.
+// THE BASE IS THE COMMIT THE CONVERSATION STARTED ON, when one was recorded
+// ([server.diffStart]) and is still an ancestor of HEAD, so a diff shows what
+// THIS conversation changed: commits made since plus the working tree. With no
+// record, or after history was rewritten past it, the base is git's HEAD and the
+// answer says so in [DiffBase]. The engine keeps no second ledger of "what the
+// run changed" beyond that one sha. A workspace outside git answers Git=false
+// and no files.
 
 import (
 	"bytes"
@@ -100,10 +104,26 @@ type ChangedFile struct {
 	Binary  bool   `json:"binary,omitempty"`
 }
 
+// DiffBase says what a diff was measured against. Kind is "start" (the commit
+// the conversation began on) or "head" (the latest commit: no start was
+// recorded, or it is no longer reachable from HEAD). Sha is the short commit,
+// empty on an unborn branch.
+type DiffBase struct {
+	Kind string `json:"kind"`
+	Sha  string `json:"sha,omitempty"`
+}
+
+// DiffStart is the answer to [MethodDiffStart]: whether the workspace is in git
+// and the full sha recorded as the conversation's start ("" while unborn).
+type DiffStart struct {
+	Git    bool   `json:"git"`
+	Commit string `json:"commit,omitempty"`
+}
+
 // ChangedFiles is the list plus what it was measured against.
 type ChangedFiles struct {
 	Git       bool          `json:"git"`
-	Base      string        `json:"base,omitempty"` // short HEAD, "" when unborn
+	Base      *DiffBase     `json:"base,omitempty"`
 	Branch    string        `json:"branch,omitempty"`
 	Files     []ChangedFile `json:"files"`
 	Added     int           `json:"added"`
@@ -146,6 +166,7 @@ type FileDiff struct {
 	Dir       string     `json:"dir"`
 	Abs       string     `json:"abs"`
 	Git       bool       `json:"git"`
+	Base      *DiffBase  `json:"base,omitempty"`
 	Status    string     `json:"status"` // clean, modified, added, deleted, untracked
 	Added     int        `json:"added"`
 	Deleted   int        `json:"deleted"`
@@ -424,8 +445,8 @@ func runGit(dir string, args ...string) ([]byte, error) {
 	return out, nil
 }
 
-// gitBase is what the diff is measured against: HEAD, or the empty tree on an
-// unborn branch.
+// gitBase is the HEAD side of the base: HEAD, or the empty tree on an unborn
+// branch.
 func gitBase(root string) (ref, short string, err error) {
 	if _, err = runGit(root, "rev-parse", "--is-inside-work-tree"); err != nil {
 		return "", "", err
@@ -438,6 +459,107 @@ func gitBase(root string) (ref, short string, err error) {
 		return "", "", err
 	}
 	return strings.TrimSpace(string(out)), "", nil
+}
+
+// startDoc is the file beside the transcript that remembers the start commit.
+type startDoc struct {
+	Commit string `json:"commit"`
+}
+
+func (s *server) startCommit() string {
+	_, place := s.session.folder()
+	path := place.DiffBase()
+	if path == "" {
+		return ""
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	var doc startDoc
+	if json.Unmarshal(raw, &doc) != nil {
+		return ""
+	}
+	return strings.TrimSpace(doc.Commit)
+}
+
+// resolveBase picks what to diff against: the recorded start commit while it is
+// an ancestor of HEAD (committed and uncommitted work since it), else HEAD.
+func (s *server) resolveBase(root string) (ref string, base DiffBase, err error) {
+	ref, short, err := gitBase(root)
+	if err != nil {
+		return "", DiffBase{}, err
+	}
+	if start := s.startCommit(); start != "" && short != "" {
+		if _, e := runGit(root, "merge-base", "--is-ancestor", start+"^{commit}", "HEAD"); e == nil {
+			if out, e := runGit(root, "rev-parse", "--verify", "--short", start+"^{commit}"); e == nil {
+				return start, DiffBase{Kind: "start", Sha: strings.TrimSpace(string(out))}, nil
+			}
+		}
+	}
+	return ref, DiffBase{Kind: "head", Sha: short}, nil
+}
+
+// diffStart records the commit the conversation is starting on, once. A
+// recorded start is never replaced; an unborn branch records nothing (the next
+// open tries again once there is a commit).
+func (s *server) diffStart(Frame) (json.RawMessage, error) {
+	root, err := s.workspaceRoot()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := runGit(root, "rev-parse", "--is-inside-work-tree"); err != nil {
+		return json.Marshal(DiffStart{})
+	}
+	out := DiffStart{Git: true, Commit: s.startCommit()}
+	if out.Commit != "" {
+		return json.Marshal(out)
+	}
+	head, err := runGit(root, "rev-parse", "--verify", "HEAD^{commit}")
+	if err != nil {
+		return json.Marshal(out) // unborn
+	}
+	out.Commit = strings.TrimSpace(string(head))
+	_, place := s.session.folder()
+	if path := place.DiffBase(); path != "" {
+		raw, _ := json.Marshal(startDoc{Commit: out.Commit})
+		if err := writeAtomic(path, raw); err != nil {
+			out.Commit = "" // not persisted: do not claim a record
+		}
+	}
+	return json.Marshal(out)
+}
+
+func writeAtomic(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".diffbase-*.json")
+	if err != nil {
+		return err
+	}
+	_, werr := tmp.Write(data)
+	cerr := tmp.Close()
+	if werr != nil || cerr != nil {
+		os.Remove(tmp.Name())
+		return errors.Join(werr, cerr)
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	return nil
+}
+
+// changedStatus maps git's name-status letter to the wire word.
+func changedStatus(letter string) string {
+	switch letter {
+	case "D":
+		return "deleted"
+	case "A":
+		return "added"
+	}
+	return "modified"
 }
 
 // gitTop converts git's top-level-relative path to workspace-relative, false
@@ -461,12 +583,12 @@ func (s *server) diffChanges(call Frame) (json.RawMessage, error) {
 		return nil, err
 	}
 	out := ChangedFiles{Files: []ChangedFile{}}
-	base, short, err := gitBase(root)
+	base, info, err := s.resolveBase(root)
 	if err != nil {
 		return json.Marshal(out) // not a work tree: Git=false, no files
 	}
-	out.Git, out.Base = true, short
-	if branch, e := runGit(root, "rev-parse", "--abbrev-ref", "HEAD"); e == nil && short != "" {
+	out.Git, out.Base = true, &info
+	if branch, e := runGit(root, "rev-parse", "--abbrev-ref", "HEAD"); e == nil && info.Sha != "" {
 		out.Branch = strings.TrimSpace(string(branch))
 	}
 	topOut, err := runGit(root, "rev-parse", "--show-toplevel")
@@ -491,28 +613,23 @@ func (s *server) diffChanges(call Frame) (json.RawMessage, error) {
 		rows[rel] = &ChangedFile{Path: rel, Name: name, Dir: dir, Status: status}
 		order = append(order, rel)
 	}
-	status, err := runGit(root, "status", "--porcelain=v1", "-z", "-uall", "--no-renames", "--", ".")
+	tracked, err := runGit(root, "diff", base, "--name-status", "-z", "--no-renames", "--no-ext-diff", "--", ".")
 	if err != nil {
 		return nil, err
 	}
-	for _, entry := range strings.Split(string(status), "\x00") {
-		if len(entry) < 4 {
-			continue
+	fields := strings.Split(string(tracked), "\x00")
+	for i := 0; i+1 < len(fields); i += 2 {
+		if rel, ok := gitRel(root, top, fields[i+1]); ok {
+			add(rel, changedStatus(fields[i]))
 		}
-		xy, path := entry[:2], entry[3:]
-		rel, ok := gitRel(root, top, path)
-		if !ok {
-			continue
-		}
-		switch {
-		case xy == "??":
+	}
+	untracked, err := runGit(root, "ls-files", "--others", "--exclude-standard", "--full-name", "-z", "--", ".")
+	if err != nil {
+		return nil, err
+	}
+	for _, path := range strings.Split(string(untracked), "\x00") {
+		if rel, ok := gitRel(root, top, path); ok && path != "" {
 			add(rel, "untracked")
-		case strings.Contains(xy, "D"):
-			add(rel, "deleted")
-		case strings.Contains(xy, "A"):
-			add(rel, "added")
-		default:
-			add(rel, "modified")
 		}
 	}
 	numstat, err := runGit(root, "diff", base, "--numstat", "-z", "--no-renames", "--no-ext-diff", "--", ".")
@@ -600,30 +717,26 @@ func (s *server) diffFile(call Frame) (json.RawMessage, error) {
 			diff.Lines = countLines(data)
 		}
 	}
-	base, _, err := gitBase(root)
+	base, baseInfo, err := s.resolveBase(root)
 	if err != nil {
 		return json.Marshal(diff)
 	}
-	diff.Git = true
-	state, err := runGit(root, "status", "--porcelain=v1", "-z", "--no-renames", "--", rel)
+	diff.Git, diff.Base = true, &baseInfo
+	state, err := runGit(root, "diff", base, "--name-status", "-z", "--no-renames", "--no-ext-diff", "--", rel)
 	if err != nil {
 		return nil, err
 	}
-	xy := ""
-	if len(state) >= 2 {
-		xy = string(state[:2])
-	}
-	switch {
-	case xy == "":
-		return json.Marshal(diff)
-	case xy == "??":
+	if letter, _, _ := strings.Cut(string(state), "\x00"); letter != "" {
+		diff.Status = changedStatus(letter)
+	} else {
+		fresh, err := runGit(root, "ls-files", "--others", "--exclude-standard", "-z", "--", rel)
+		if err != nil {
+			return nil, err
+		}
+		if len(fresh) == 0 {
+			return json.Marshal(diff)
+		}
 		return json.Marshal(untrackedDiff(diff, abs, info))
-	case strings.Contains(xy, "D"):
-		diff.Status = "deleted"
-	case strings.Contains(xy, "A"):
-		diff.Status = "added"
-	default:
-		diff.Status = "modified"
 	}
 	context := args.Context
 	if context <= 0 || context > 50 {

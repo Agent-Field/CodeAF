@@ -2622,6 +2622,8 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return s.diffChanges(call)
 	case MethodDiffFile:
 		return s.diffFile(call)
+	case MethodDiffStart:
+		return s.diffStart(call)
 
 	// And the one door that WRITES without anybody saying anything: a file
 	// dropped on the browse page, kept in this session's attachments and
