@@ -395,3 +395,192 @@ func sameFileKey(path string) string {
 	}
 	return filepath.Clean(path)
 }
+
+// ── THE MANAGER READS THE ISSUE WHEN ITS PAGE OPENS ─────────────────────────
+//
+// The owner's decision of 2026-10-08: the first time an item page opens on an
+// item the manager has never shaped and the person has never talked to, the
+// manager takes its shaping turn at once, as it does at `r`, so the stages are
+// set before the person presses anything. This is the floor's Shape door
+// ([factory.Seam.Shape]): the conversation is made when the item has none
+// ([managerMaker]), the turn is the launch's own ([shapeTurns.Shape], nothing
+// said, through the window's conversation when this process holds it), and
+// its edit is applied as the launch applies it ([factoryrun.ApplyShape])
+// under the store's write. `r` afterwards does not shape again, because the
+// item is then shaped by the manager.
+//
+// THE RECIPE STANDING IS A SHAPING TOO: an edit that changes nothing is
+// recorded as [shapeKeptRecord] on the item, so the launch knows the manager
+// read it and does not spend a second turn on it. A turn that did not answer,
+// or an edit refused, records nothing, and `r` gives the manager its turn
+// again.
+//
+// It runs regardless of a checkout: the turn reads the item and the recipe the
+// item already carries (its stages), and the recipe file when one is known.
+
+// shapeKeptRecord is the line an item's record ([factory.Item.Adapted]) keeps
+// when the manager read it and kept the recipe. It starts with the manager's
+// name, which is how [factoryrun.ShapedByManager] knows it.
+const shapeKeptRecord = factory.ByManager + " kept the recipe"
+
+// shapeDoor is the floor's Shape door over one store.
+type shapeDoor struct {
+	st interface {
+		Get(id int) (factory.Item, error)
+		Update(id int, change func(*factory.Item) error) error
+	}
+	// turn is the shaping turn ([shapeTurns.Shape]).
+	turn func(ctx context.Context, it factory.Item, said []string) (factory.RunEdit, string, error)
+	// make is the item's manager conversation, made when it has none.
+	make func(ctx context.Context, it factory.Item) (string, error)
+	// say writes a progress line into a conversation.
+	say func(transcript, line string) error
+	// spoke says whether the person has said anything in a conversation.
+	spoke func(transcript string) bool
+	// recipe is the item's recipe.
+	recipe func(it factory.Item) factory.Recipe
+	wait   time.Duration
+	now    func() time.Time
+
+	mu     sync.Mutex
+	inTurn map[int]bool
+}
+
+// factoryShapeDoor is this process's Shape door, over the shaping turns the
+// runner shapes with.
+func factoryShapeDoor(st *store.Store, workspace, profileDir string, turns *shapeTurns) func(ctx context.Context, id int) (string, error) {
+	if st == nil || turns == nil {
+		return nil
+	}
+	dirs := factoryRepoDirs(st, workspace)
+	d := &shapeDoor{
+		st:   st,
+		turn: turns.Shape,
+		make: managerMaker(st, workspace, profileDir),
+		say:  sessionTalk{}.Say,
+		spoke: func(transcript string) bool {
+			lines, _ := session.PersonLines(transcript, time.Time{})
+			return len(lines) > 0
+		},
+		recipe: func(it factory.Item) factory.Recipe { return factoryItemRecipe(dirs, it) },
+	}
+	return d.Shape
+}
+
+// shapeOwed says whether the item is owed its shaping turn at open: it never
+// ran, and the manager never shaped it.
+func shapeOwed(it factory.Item) bool {
+	if s := it.Stream; s != nil && (!s.Started.IsZero() || len(s.Phases) > 0) {
+		return false
+	}
+	return !factoryrun.ShapedByManager(it)
+}
+
+// Shape is the door: one turn for item id, or [factory.ShapeAlready].
+func (d *shapeDoor) Shape(ctx context.Context, id int) (string, error) {
+	// ONE TURN PER ITEM AT A TIME: two windows opening the same page ask
+	// once; the second hears it already shaped.
+	d.mu.Lock()
+	if d.inTurn == nil {
+		d.inTurn = map[int]bool{}
+	}
+	if d.inTurn[id] {
+		d.mu.Unlock()
+		return factory.ShapeAlready, nil
+	}
+	d.inTurn[id] = true
+	d.mu.Unlock()
+	defer func() {
+		d.mu.Lock()
+		delete(d.inTurn, id)
+		d.mu.Unlock()
+	}()
+
+	it, err := d.st.Get(id)
+	if err != nil {
+		return "", err
+	}
+	chat := strings.TrimSpace(it.Talk)
+	// THE PERSON TALKED FIRST: what they said is the manager's to act on, in
+	// its own turn there, and the launch carries their words. Nothing here.
+	if !shapeOwed(it) || (chat != "" && d.spoke != nil && d.spoke(chat)) {
+		return factory.ShapeAlready, nil
+	}
+	if chat == "" {
+		made, err := d.make(ctx, it)
+		if err != nil {
+			return "", err
+		}
+		if made = strings.TrimSpace(made); made == "" {
+			return "", errors.New("the item's conversation could not be made")
+		}
+		// THE FIRST CONVERSATION WRITTEN IS THE ITEM'S, as the Talk door keeps it.
+		if err := d.st.Update(id, func(x *factory.Item) error {
+			if strings.TrimSpace(x.Talk) == "" {
+				x.Talk = made
+			}
+			return nil
+		}); err != nil {
+			return "", err
+		}
+		if it, err = d.st.Get(id); err != nil {
+			return "", err
+		}
+		chat = strings.TrimSpace(it.Talk)
+	}
+	wait := d.wait
+	if wait <= 0 {
+		wait = time.Minute
+	}
+	turnCtx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
+	edit, _, err := d.turn(turnCtx, it, nil)
+	if err != nil {
+		line := factoryrun.ShapeFailLine(err)
+		d.tell(chat, line)
+		return line, errors.New(line)
+	}
+	now := time.Now()
+	if d.now != nil {
+		now = d.now()
+	}
+	line := ""
+	var refused error
+	if err := d.st.Update(id, func(x *factory.Item) error {
+		// A LAUNCH THAT CAME IN DURING THE TURN shaped it itself.
+		if !shapeOwed(*x) {
+			line = factory.ShapeAlready
+			return nil
+		}
+		l, err := factoryrun.ApplyShape(x, edit, d.recipe(*x), false, now)
+		if err != nil {
+			refused = err
+			return nil
+		}
+		if l == "" {
+			x.Adapted = append(append([]string(nil), x.Adapted...), shapeKeptRecord)
+			l = factoryrun.SayShapeStands
+		}
+		line = l
+		return nil
+	}); err != nil {
+		return "", err
+	}
+	if refused != nil {
+		line := factoryrun.ShapeRefusedLine(refused)
+		d.tell(chat, line)
+		return line, errors.New(line)
+	}
+	if line != factory.ShapeAlready {
+		d.tell(chat, line)
+	}
+	return line, nil
+}
+
+// tell writes line into the conversation, once; a conversation that cannot
+// take it now misses it (the item's record keeps what was set).
+func (d *shapeDoor) tell(chat, line string) {
+	if d.say != nil && chat != "" && strings.TrimSpace(line) != "" {
+		_ = d.say(chat, line)
+	}
+}

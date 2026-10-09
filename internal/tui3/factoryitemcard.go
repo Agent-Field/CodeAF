@@ -550,8 +550,9 @@ func (a *app) openFactoryItemCard(i int) (tea.Cmd, bool) {
 	}
 	cmd := a.showPage(pageFactory)
 	a.factoryFocus(it.ID)
+	var shape tea.Cmd
 	if cur, ok := a.factoryCursorItem(); ok && cur.ID == it.ID {
-		a.factoryOpenItem()
+		shape, _ = a.factoryOpenItem()
 	}
-	return tea.Batch(cmd, a.factoryRead()), true
+	return tea.Batch(cmd, shape, a.factoryRead()), true
 }

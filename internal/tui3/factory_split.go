@@ -257,7 +257,8 @@ func (a *app) factoryPointer(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 		return nil, true
 	}
 	if a.countClick(m.X, m.Y) >= 2 {
-		a.factoryOpenItem()
+		cmd, _ := a.factoryOpenItem()
+		return cmd, true
 	}
 	return nil, true
 }
