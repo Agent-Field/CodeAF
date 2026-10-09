@@ -267,6 +267,7 @@ type stateAgent struct {
 	titles        chan session.Event
 	questionsLane chan session.Event
 	answered      session.Answer
+	outcomes      []session.QuestionOutcome
 	entries       []session.DisplayEntry
 }
 
@@ -289,6 +290,11 @@ func (a *stateAgent) OpenQuestions() []session.Question {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return append([]session.Question(nil), a.questions...)
+}
+func (a *stateAgent) RecentQuestionOutcomes(limit int) []session.QuestionOutcome {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]session.QuestionOutcome(nil), a.outcomes...)
 }
 func (a *stateAgent) ResolveQuestion(answer session.Answer) error {
 	a.mu.Lock()
@@ -481,5 +487,49 @@ func TestToolOutputDisplayLimitPreservesUTF8(t *testing.T) {
 	var roundtrip ToolOutput
 	if err := json.Unmarshal([]byte(`{"output":"`+output.Output+`","full":false}`), &roundtrip); err != nil {
 		t.Fatal("UTF8broken")
+	}
+}
+
+func TestAnswerKeepsAskerOnlyWhereTheQuestionHasAPick(t *testing.T) {
+	b, a, id := stateFixture(t)
+	path := "/api/engine/sessions/" + id + "/answer"
+	for _, tc := range []struct {
+		name string
+		pick *session.Pick
+		want session.DecidedBy
+	}{{"with pick", &session.Pick{Key: "1"}, session.DecidedByAsker}, {"without pick", nil, session.DecidedByPerson}} {
+		a.mu.Lock()
+		a.questions = []session.Question{{ID: 7, Kind: session.QuestionConsent, Head: "Keep going?", Options: []session.AnswerOption{{Key: "1", Label: "Yes"}}, Pick: tc.pick}}
+		a.mu.Unlock()
+		if w := request(b, "POST", path, `{"kind":"consent","id":7,"key":"1","decidedBy":"asker"}`); w.Code != 200 {
+			t.Fatalf("%s: %s", tc.name, w.Body.String())
+		}
+		a.mu.Lock()
+		got := a.answered.DecidedBy
+		a.mu.Unlock()
+		if got != tc.want {
+			t.Fatalf("%s: decidedBy = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestSnapshotCarriesRecentOutcomesOnlyWhenThereAreSome(t *testing.T) {
+	b, a, id := stateFixture(t)
+	path := "/api/engine/sessions/" + id
+	if w := request(b, "GET", path, ""); strings.Contains(w.Body.String(), "recentOutcomes") {
+		t.Fatalf("empty outcomes were not omitted: %s", w.Body.String())
+	}
+	at := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	a.mu.Lock()
+	a.outcomes = []session.QuestionOutcome{{Kind: session.QuestionConsent, Token: "9", Head: "Run it?", Outcome: session.QuestionDecided, Words: "Allow once", By: "person", At: at}}
+	a.mu.Unlock()
+	w := request(b, "GET", path, "")
+	var snapshot Snapshot
+	if err := json.Unmarshal(w.Body.Bytes(), &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	want := OutcomeWire{Kind: "consent", Token: "9", Head: "Run it?", Outcome: "decided", Words: "Allow once", By: "person", At: "2026-10-09T12:00:00Z"}
+	if len(snapshot.RecentOutcomes) != 1 || snapshot.RecentOutcomes[0] != want {
+		t.Fatalf("recent outcomes = %+v", snapshot.RecentOutcomes)
 	}
 }
