@@ -497,6 +497,12 @@ func (a *app) chatFrameLines(width, height int) ([]string, int, int) {
 		}
 		rows = append(rows, drawn[:n]...)
 	}
+	// AND THE FACTORY ITEM PAGE'S TOP BAR, while its center hosts this chat:
+	// its rows are held here, charged in [app.topHeight] on the same terms as
+	// the task strip, and drawn over at the full width (factory_host.go).
+	for range a.factoryHostTopHeight() {
+		rows = append(rows, "")
+	}
 	if len(head) > 0 {
 		rows = append(rows, head...)
 		// AND THE FAMILY UNDER IT, dim, where this node has one: who handed the
@@ -1053,10 +1059,11 @@ func (a *app) rule(width int) string {
 // nothing at all.
 func (a *app) size() (int, int) {
 	width, height := a.width, a.height
-	// THE TEAMS PAGE LENDS ITS MANAGER A RECTANGLE (teamspagehost.go): while the
-	// pane hosts the conversation, the conversation's width is the terminal's
-	// less the rail, so every layout and hit test it makes resolves against the
-	// cells it is really drawn in.
+	// THE FACTORY'S ITEM PAGE LENDS ITS CHAT A RECTANGLE (factory_host.go):
+	// while the center hosts the chat, the chat's width is the terminal's less
+	// the page's left column, so every layout and hit test it makes resolves
+	// against the cells it is really drawn in.
+	width -= a.factoryHostLeft()
 	if width < 8 {
 		width = 8
 	}
@@ -1266,7 +1273,7 @@ func (a *app) startPageBody() int {
 // about where the body starts. Neither of the two may ask [app.viewHeight] back,
 // which is why both answer from the terminal's size alone.
 func (a *app) topHeight() int {
-	return a.headHeight() + a.stripHeight()
+	return a.headHeight() + a.stripHeight() + a.factoryHostTopHeight()
 }
 
 // headHeight is what the pinned focus header costs the body region: one row

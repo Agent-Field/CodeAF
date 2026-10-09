@@ -39,13 +39,13 @@ func TestFactoryAdaptedLineUnderTheStages(t *testing.T) {
 		}
 		return out
 	}
-	// THE HEAD IS TWO ROWS AND A BLANK on every item; what plan changed is
-	// in the issue pane, beside the stages it changed.
+	// THE BAR IS ONE ROW AND A BLANK on an item asking nothing; what plan
+	// changed is in the issue pane, beside the stages it changed.
 	page := head(10)
-	if strings.TrimSpace(page[2]) != "" || !strings.Contains(strings.Join(page[3:], "\n"), factoryAdaptedWords) {
+	if strings.TrimSpace(page[1]) != "" || !strings.Contains(strings.Join(page[2:], "\n"), factoryAdaptedWords) {
 		t.Fatalf("the adapted line is not in the issue pane under a two-row head:\n%s", strings.Join(page, "\n"))
 	}
-	if page := head(9); strings.Contains(strings.Join(page, "\n"), "plan added") || strings.TrimSpace(page[2]) != "" {
+	if page := head(9); strings.Contains(strings.Join(page, "\n"), "plan added") || strings.TrimSpace(page[1]) != "" {
 		t.Fatalf("an item plan never changed grew a head row:\n%s", strings.Join(page[:5], "\n"))
 	}
 }

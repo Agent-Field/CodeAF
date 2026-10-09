@@ -59,9 +59,10 @@ func TestFactoryTalkWithNoDoorDrawsNoKey(t *testing.T) {
 }
 
 // `T` OPENS THE ITEM'S CONVERSATION AND `esc` COMES BACK: the door is asked,
-// the person lands in the conversation it answered, and `esc` on its empty box
-// is the floor again on the same row, with the item page still open when `T`
-// was pressed there. The way back is taken once.
+// and from the floor the person lands in the conversation it answered, and
+// `esc` on its empty box is the floor again on the same row; the way back is
+// taken once. ON THE ITEM PAGE `T` is the manager's chat in the center, the
+// keys in its box, and the page never leaves (factory_host.go).
 func TestFactoryTalkOpensTheChatAndEscReturnsToTheSameRow(t *testing.T) {
 	for _, page := range []bool{false, true} {
 		f := &factoryFake{}
@@ -77,13 +78,17 @@ func TestFactoryTalkOpensTheChatAndEscReturnsToTheSameRow(t *testing.T) {
 		if page {
 			drive(t, a, key("enter"))
 		}
-		if words := factoryVerbsShown(t, a); !strings.Contains(words, "T chat") {
-			t.Fatalf("the verbs do not name T chat (item page %v): %q", page, words)
-		}
 		drive(t, a, key("T"))
 		if *made != 1 || opened != chat {
 			t.Fatalf("T made %d conversations and opened %q, want one and %q", *made, opened, chat)
 		}
+		if page {
+			if !a.at(pageFactory) || !a.fp.open || !a.factoryHosting() || !a.fp.box {
+				t.Fatalf("T on the item page: factory %v, page %v, hosting %v, box %v", a.at(pageFactory), a.fp.open, a.factoryHosting(), a.fp.box)
+			}
+			continue
+		}
+
 		if a.pageShowing() || a.convKey(a.file) != a.convKey(chat) {
 			t.Fatalf("T did not land in the conversation: page %v, file %q", a.page, a.file)
 		}
@@ -232,11 +237,12 @@ func factoryIssueHint(t *testing.T, a *app) string {
 	return (placeFactory{}).hint(a)
 }
 
-// `ENTER` ON THE ISSUE ROW OF A NEW ITEM OPENS ITS OWN CONVERSATION, exactly
-// as `T` does (owner, 2026-10-08: "enter does not seem to take me to a
-// conversation"): the Talk door is asked, the person lands in the chat, and
-// `esc` comes back to the item page. The hint on the row starts with
-// `enter chat` and still names `T chat`.
+// `ENTER` ON THE ISSUE ROW OF A NEW ITEM OPENS ITS OWN CONVERSATION, IN THE
+// CENTER (owner, 2026-10-08: "enter does not seem to take me to a
+// conversation"; owner's layout, 2026-10-09: the manager's chat is the
+// center): the Talk door is asked, the cursor lands on the manager row, the
+// chat is the center with the keys in its box, and the page never leaves.
+// `esc` gives the keys back to the page.
 func TestFactoryEnterOnTheIssueRowOpensTheItemsConversation(t *testing.T) {
 	f := &factoryFake{}
 	a := factoryVerbLab(t, f)
@@ -253,19 +259,23 @@ func TestFactoryEnterOnTheIssueRowOpensTheItemsConversation(t *testing.T) {
 		t.Fatal("enter on the floor row did not open the item page")
 	}
 	hint := factoryIssueHint(t, a)
-	if !strings.Contains(hint, " · enter chat · ") || !strings.Contains(factoryVerbsShown(t, a), "T chat") {
-		t.Fatalf("the issue row's hint does not say enter chat, or its verbs lost T chat: %q", hint)
+	if !strings.Contains(hint, " · enter chat · ") {
+		t.Fatalf("the issue row's hint does not say enter chat: %q", hint)
 	}
 	drive(t, a, key("enter"))
 	if got := f.said(); len(got) != 1 || !strings.HasPrefix(got[0], "Talk(4") {
 		t.Fatalf("enter on the issue row asked %v, want the Talk door for #1662", got)
 	}
-	if *made != 1 || opened != chat || a.pageShowing() {
-		t.Fatalf("enter on the issue row made %d and opened %q (page showing %v), want %q", *made, opened, a.pageShowing(), chat)
+	it, _ := a.factoryCursorItem()
+	if r, _ := a.factoryPageRowAt(it); r.kind != factoryPageManager {
+		t.Fatalf("enter on the issue row left the cursor on %v, not the manager", r.kind)
+	}
+	if *made != 1 || opened != chat || !a.at(pageFactory) || !a.factoryHosting() || !a.fp.box {
+		t.Fatalf("enter on the issue row made %d and opened %q (factory %v, hosting %v, box %v), want %q", *made, opened, a.at(pageFactory), a.factoryHosting(), a.fp.box, chat)
 	}
 	drive(t, a, key("esc"))
-	if !a.at(pageFactory) || !a.fp.open {
-		t.Fatalf("esc did not come back to the item page (page %v, open %v)", a.page, a.fp.open)
+	if !a.at(pageFactory) || !a.fp.open || a.fp.box {
+		t.Fatalf("esc did not give the keys back on the item page (page %v, open %v, box %v)", a.page, a.fp.open, a.fp.box)
 	}
 }
 

@@ -317,10 +317,7 @@ func (a *app) factorySignOffLine(it factory.Item, measure int) string {
 		return ""
 	}
 	seam := a.factory
-	// WITH THE VERBS ON THE RIGHT the line is the count alone: the column
-	// names approve and request changes, and the pane does not name them
-	// twice (factory_verbs.go).
-	landed := it.State == factory.StateLanded && !a.factoryVerbsDrawn()
+	landed := it.State == factory.StateLanded
 	var parts []string
 	if bad == 0 {
 		parts = append(parts, "all "+itoa(all)+" shown")
@@ -385,7 +382,7 @@ func (a *app) factoryItemQuestion(it factory.Item, measure int) string {
 	}
 	right := ""
 	if a.factory.Has("answer") {
-		right = pal.dim(factoryAnswerKeys)
+		right = pal.dim(factoryAnswerClauses())
 	}
 	if factoryIsShaping(it) {
 		// The head keeps its two rows: the question alone, and the stages are
