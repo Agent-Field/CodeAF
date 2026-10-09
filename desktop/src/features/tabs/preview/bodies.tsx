@@ -1,4 +1,4 @@
-import { bindingOf } from '../../terminal/bindings';
+import { bindingFor } from '../../terminal/target';
 import { sessionFor } from '../../terminal/open';
 // The preview body of each tab kind (Shell 3k): kind, state, title, then the one piece that matters.
 // Conversation and task are live from the engine's summary; file, diff and terminal read through the engine
@@ -33,7 +33,7 @@ export function SessionPreview({ pane, title, summary, act }: PreviewRenderProps
 
 export function TerminalPreview({ pane, title, summary, now }: PreviewRenderProps) {
   const target = targetOf(pane);
-  const binding = bindingOf(pane.id);
+  const binding = bindingFor(pane);
   const terminalId = target.terminalId ?? binding?.terminalId;
   const session = target.sessionId ?? summary?.sessionId;
   const saved = binding?.sessionFile ?? pane.sessionFile;
