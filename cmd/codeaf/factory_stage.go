@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -69,11 +70,10 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	if err != nil {
 		return nil, err
 	}
-	place, err := v3MintSession(bucket, where, v3StampLaunchDir(v3LaunchDir(), where), false)
-	if err != nil {
-		return nil, err
-	}
-	cfg, err := v3PointAt(m.parent, place)
+	// A RESUMED STAGE REOPENS ITS OWN CHAT: the transcript a pause cut short,
+	// not a new folder. It is a member of its team already.
+	resumed := strings.TrimSpace(spec.Resume) != ""
+	cfg, err := m.stageConfig(spec, bucket, where)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +99,7 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	if err != nil {
 		return nil, err
 	}
-	if team := strings.TrimSpace(spec.Team); team != "" {
+	if team := strings.TrimSpace(spec.Team); team != "" && !resumed {
 		if err := stageJoinTeam(m.profileDir, team, cfg.SessionFile, where, spec.Name); err != nil {
 			_ = agent.Close()
 			return nil, err
@@ -111,7 +111,11 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 		captions: make(chan string, 256),
 		done:     make(chan struct{}),
 	}
-	events, err := agent.Submit(context.WithoutCancel(ctx), spec.Brief)
+	brief := spec.Brief
+	if resumed {
+		brief = session.CarryOn(brief)
+	}
+	events, err := agent.Submit(context.WithoutCancel(ctx), brief)
 	if err != nil {
 		_ = agent.Close()
 		return nil, err
@@ -119,6 +123,22 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	c.wakes, c.stopWakes = agent.WatchWakes()
 	guard.Go("factory/stage-conversation", func() { c.follow(events) })
 	return c, nil
+}
+
+// stageConfig aims the launch's config at the stage's conversation: the
+// folder a pause cut short when the spec resumes one, else a new folder.
+func (m stageMaker) stageConfig(spec factoryrun.ConversationSpec, bucket, where string) (session.Config, error) {
+	if resume := strings.TrimSpace(spec.Resume); resume != "" {
+		if _, err := os.Stat(resume); err != nil {
+			return m.parent, err
+		}
+		return v3Reopen(m.parent, resume, where)
+	}
+	place, err := v3MintSession(bucket, where, v3StampLaunchDir(v3LaunchDir(), where), false)
+	if err != nil {
+		return m.parent, err
+	}
+	return v3PointAt(m.parent, place)
 }
 
 // factoryPostureEnv pins the posture a stage conversation runs at, in the

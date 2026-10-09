@@ -69,6 +69,15 @@ type Job struct {
 	Log func(line string)
 	// Spend reports model cost the round incurred, in dollars, as it happens.
 	Spend func(usd float64)
+	// Resume names the conversation a pause cut short (a chat stage's
+	// Phase.Chat), "" for a round that starts fresh. A chat stage then
+	// continues that conversation with a short carry-on note instead of
+	// opening a new one, and opens fresh only when it cannot be reopened.
+	Resume string
+	// Opened is told the conversation's id the moment a chat stage has one,
+	// so the item keeps the stage's chat before the round ends and a pause or
+	// a restart can come back to it. Nil is nobody listening.
+	Opened func(chat string)
 
 	// dirErr is why Options.Workdir could not answer a folder. The round is
 	// then not run: it fails with this sentence, because a round run in the
