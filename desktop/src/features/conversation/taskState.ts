@@ -4,13 +4,14 @@
 import type { IconName } from '../../components/ui/Icon';
 
 export type TaskMark = {
-  icon: IconName | 'indicator';
+  icon: IconName;
   label: string;
   tone: 'muted' | 'normal' | 'warning';
 };
 
 const done: TaskMark = { icon: 'check', label: 'Done', tone: 'muted' };
-const running: TaskMark = { icon: 'indicator', label: 'Running', tone: 'normal' };
+// Still on purpose: a calm dot reads as "in progress" without pulling the eye.
+const running: TaskMark = { icon: 'running', label: 'Running', tone: 'normal' };
 const queued: TaskMark = { icon: 'queued', label: 'Queued', tone: 'muted' };
 const failed: TaskMark = { icon: 'failed', label: 'Failed', tone: 'warning' };
 const cancelled: TaskMark = { icon: 'cancelled', label: 'Cancelled', tone: 'muted' };

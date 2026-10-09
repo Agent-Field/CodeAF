@@ -28,7 +28,6 @@ export type ConversationViewProps = {
 };
 
 const MODEL_LABEL = 'DeepSeek v4.1 Flash';
-const TASK_REASON = 'Message the main conversation to change this task';
 
 function folderName(path?: string): string {
   return path?.split(/[\\/]/).filter(Boolean).pop() ?? '';
@@ -50,7 +49,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   const route = tab.route ?? rootRoute;
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
-  const { behind, jump } = useStickToBottom(scroller, content, contentSignature(model));
+  const { behind, jump } = useStickToBottom(scroller, content, contentSignature(model), route.taskId ?? '');
   const hasTasks = model.tasks.some((row) => !row.Archived) || Boolean(model.planError);
   const panel = useTaskPanel(hasTasks, Boolean(tab.tasksClosed), onView);
   const setRoute = (next: typeof route) => onView({ route: next });
@@ -89,6 +88,8 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   const { done, total } = taskCounts(model.tasks);
   const tasksToggle = hasTasks && !panel.shown ? { label: `Tasks · ${done}/${total}`, onClick: panel.open } : undefined;
   const modelLabel = !snapshot || snapshot.model === ENGINE_MODEL ? MODEL_LABEL : snapshot.model;
+  const showJump = behind && !inTask;
+  const showFooter = !inTask || conversation.unreachable;
   const greeting = empty ? folderName(snapshot?.workspace) : '';
 
   return (
@@ -105,8 +106,6 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
                 rootLabel={label}
                 route={route}
                 onRoute={setRoute}
-                folded={folded}
-                onToggleFold={toggleFold}
                 renderItem={renderItem}
                 onOpenTask={openTask}
               />
@@ -124,30 +123,33 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
             )}
           </div>
         </div>
-        <div className="conversation-footer conversation-column">
-          {behind && (
-            <Button className="conversation-jump" onClick={jump}>
-              <Icon name="arrowDown" size="xs" />
-              <span>New messages</span>
-            </Button>
-          )}
-          {conversation.unreachable && <EngineNotice onRetry={() => void retry()} />}
-          <Composer
-            draft={inTask ? '' : tab.draft}
-            onDraft={onDraft}
-            onSend={conversation.send}
-            onStop={() => void conversation.stop()}
-            running={model.running}
-            docked={!empty}
-            disabledReason={inTask ? TASK_REASON : undefined}
-            reasonAction={inTask ? { label: 'Back to conversation', onClick: () => setRoute(navigate(route)) } : undefined}
-            modelLabel={modelLabel}
-            tasksToggle={tasksToggle}
-            recallLast={() => model.turns[model.turns.length - 1]?.user}
-            autoFocus={!inTask}
-          />
-        </div>
+        {showFooter && (
+          <div className="conversation-footer conversation-column">
+            {showJump && (
+              <Button className="conversation-jump" onClick={jump}>
+                <Icon name="arrowDown" size="xs" />
+                <span>New messages</span>
+              </Button>
+            )}
+            {conversation.unreachable && <EngineNotice onRetry={() => void retry()} />}
+            {!inTask && (
+              <Composer
+                draft={tab.draft}
+                onDraft={onDraft}
+                onSend={conversation.send}
+                onStop={() => void conversation.stop()}
+                running={model.running}
+                docked={!empty}
+                modelLabel={modelLabel}
+                tasksToggle={tasksToggle}
+                recallLast={() => model.turns[model.turns.length - 1]?.user}
+                autoFocus
+              />
+            )}
+          </div>
+        )}
       </div>
+      {panel.shown && panel.sheet && <div className="task-panel-backdrop" aria-hidden="true" onClick={panel.close} />}
       {panel.shown && (
         <TaskPanel
           tasks={model.tasks}

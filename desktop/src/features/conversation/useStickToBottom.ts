@@ -19,8 +19,10 @@ export function contentSignature(model: ConversationModel): string {
  * Follows new content only while the reader is at the bottom; otherwise it
  * reports that something arrived below so the view can offer a jump.
  */
-export function useStickToBottom(scroller: RefObject<HTMLElement | null>, content: RefObject<HTMLElement | null>, signature: string) {
+export function useStickToBottom(scroller: RefObject<HTMLElement | null>, content: RefObject<HTMLElement | null>, signature: string, pageKey?: string) {
   const atBottom = useRef(true);
+  const onPage = useRef(Boolean(pageKey));
+  onPage.current = Boolean(pageKey);
   const [behind, setBehind] = useState(false);
 
   useEffect(() => {
@@ -28,7 +30,7 @@ export function useStickToBottom(scroller: RefObject<HTMLElement | null>, conten
     const inner = content.current;
     if (!element || !inner) return;
     const onScroll = () => {
-      atBottom.current = distanceToEnd(element) <= SLACK;
+      atBottom.current = !onPage.current && distanceToEnd(element) <= SLACK;
       if (atBottom.current) setBehind(false);
     };
     const follow = () => {
@@ -49,6 +51,14 @@ export function useStickToBottom(scroller: RefObject<HTMLElement | null>, conten
     if (atBottom.current) element.scrollTop = element.scrollHeight;
     else setBehind(true);
   }, [scroller, signature]);
+
+  // A task page is read from its top; the conversation itself returns to its end.
+  useLayoutEffect(() => {
+    const element = scroller.current;
+    if (!element || pageKey === undefined) return;
+    atBottom.current = !pageKey;
+    element.scrollTop = pageKey ? 0 : element.scrollHeight;
+  }, [scroller, pageKey]);
 
   const jump = useCallback(() => {
     const element = scroller.current;
