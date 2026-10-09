@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { installMockEngine, type Scenario } from './support/mock-engine';
-import { openApp, send } from './support/conversation';
+import { openApp, posts, send } from './support/conversation';
 
 // Design 1f, Scroll edges and Scroll behaviour: anchor, top mask, Latest pill.
 const LONG = Array.from({ length: 60 }, (_, at) => `Paragraph ${at + 1} of a long reply that fills the reading column.`).join('\n\n');
@@ -42,6 +42,9 @@ test('a running turn offers Latest with the live Working label while the reader 
   const engine = await installMockEngine(page, { initial: { title: 'Long', entries: [] }, turns: [{}], manual: true });
   await openApp(page);
   await send(page, 'Write a lot');
+  // The reply must land after the engine has the message, or it would belong to an
+  // earlier, settled turn, which folds to its digest.
+  await expect.poll(() => posts(engine, '/turn').length).toBe(1);
   engine.update({ running: true, entries: [{ Role: 'user', Text: 'Write a lot' }, { Role: 'assistant', Text: LONG, Answer: true }] });
   await expect(page.getByText('Paragraph 60 of a long reply', { exact: false })).toBeVisible();
   await expect(pill(page)).toHaveCount(0);

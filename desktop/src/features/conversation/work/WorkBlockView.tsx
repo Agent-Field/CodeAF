@@ -43,6 +43,13 @@ function Summary({ block, now }: { block: WorkBlock; now: number }) {
   );
 }
 
+/** The summary as one spoken name: the visible dots are drawn apart, so the name carries its own. */
+function summaryLabel(block: WorkBlock, now: number): string {
+  if (!block.live) return summaryParts(block.summary).map((part) => part.text).join(' · ');
+  const seconds = block.startedAt ? Math.floor((now - block.startedAt) / 1000) : undefined;
+  return seconds === undefined ? 'Working' : `Working ${spoken(seconds)}`;
+}
+
 /** Everything between two conversation items, in the quieter work rhythm. */
 export function WorkBlockView({ block, open, onToggle, now: given, ...render }: Props) {
   const auto = useWorkOpen(block.live);
@@ -54,7 +61,7 @@ export function WorkBlockView({ block, open, onToggle, now: given, ...render }: 
   const thought = thinking && <ThinkingView text={thinking.text} streaming={thinking.streaming} seconds={thinking.seconds} />;
   return (
     <div className="work-block" data-live={block.live || undefined}>
-      <Button className="work-toggle" aria-expanded={isOpen} onClick={onToggle ?? auto.toggle}>
+      <Button className="work-toggle" aria-expanded={isOpen} aria-label={summaryLabel(block, now)} onClick={onToggle ?? auto.toggle}>
         <Icon name="chevron" size="xs" motion="disclosure" />
         <Summary block={block} now={now} />
       </Button>
