@@ -49,3 +49,14 @@ test('tab digits follow the key rule: 1 to 8, then 9 for the last', () => {
   assert.deepEqual([tabDigit(0, 3), tabDigit(7, 12), tabDigit(8, 12), tabDigit(11, 12)], [1, 8, undefined, 9]);
   assert.equal(tabDigit(8, 9), 9);
 });
+
+test('an address puts a web row ahead of the conversation row; ordinary words do not', () => {
+  const rows = flatRows(buildSections(input({ query: 'pkg.go.dev/encoding/json' })));
+  assert.deepEqual(rows.slice(0, 3).map(r => r.id), ['web', 'ask', 'openfile']);
+  assert.equal(rows[0].label, 'Open pkg.go.dev/encoding/json in a web tab');
+  assert.equal(rows[0].target, 'https://pkg.go.dev/encoding/json');
+  assert.equal(rows[1].hint, undefined);
+  assert.deepEqual(flatRows(buildSections(input({ query: 'why is the lexer slow' }))).map(r => r.id).slice(0, 2), ['ask', 'openfile']);
+  assert.equal(flatRows(buildSections(input({ query: 'ftp://example.com/x' })))[0].id, 'ask');
+  assert.equal(flatRows(buildSections(input({ query: 'a.b c.d' })))[0].id, 'ask');
+});

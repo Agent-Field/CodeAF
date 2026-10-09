@@ -86,6 +86,8 @@ function isFileTarget(value: unknown): value is FileTarget {
 /** Keeps only the view fields that validate. */
 export function cleanView(value: Record<string, unknown>): TabView {
   const view: TabView = {};
+  const target = cleanTarget(value.target);
+  if (target) view.target = target;
   if (typeof value.sessionFile === 'string' && value.sessionFile) view.sessionFile = value.sessionFile;
   if (typeof value.path === 'string' && value.path) view.path = value.path;
   if (isRoute(value.route)) view.route = value.route;
@@ -94,8 +96,6 @@ export function cleanView(value: Record<string, unknown>): TabView {
   if (isFlagMap(value.open)) view.open = value.open;
   if (typeof value.tasksClosed === 'boolean') view.tasksClosed = value.tasksClosed;
   if (typeof value.tasksSelected === 'string' && value.tasksSelected) view.tasksSelected = value.tasksSelected;
-  const target = cleanTarget(value.target);
-  if (target) view.target = target;
   return view;
 }
 

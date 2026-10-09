@@ -18,7 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["macos-private-api"] }
+tauri = { version = "2", features = ["macos-private-api", "unstable"] }
 tauri-plugin-shell = "2"
 # Native choosers and notifications are reached only through codeaf's own typed
 # commands (dialogs.rs, notifications.rs); the renderer is granted neither plugin.
@@ -27,9 +27,28 @@ tauri-plugin-notification = "2.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# The mock runtime drives the native-controls commands through real IPC in tests.
+# Native web tabs read history, failures and snapshots from the platform view
+# Tauri already embeds (web.rs). These crates are already in the graph through
+# wry; listing them only names the features web.rs calls.
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = "2.0"
+gtk = "0.18"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSDictionary", "NSError", "NSValue", "NSString", "NSObject", "NSThread"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSResponder", "NSView"] }
+objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "objc2-app-kit", "block2", "WKWebView", "WKSnapshotConfiguration", "WKNavigation"] }
+
+# The mock runtime drives the native-controls and native-web commands through real IPC in tests.
 [dev-dependencies]
-tauri = { version = "2", features = ["macos-private-api", "test"] }
+tauri = { version = "2", features = ["macos-private-api", "unstable", "test"] }
+
+# A real window with a real child webview; it needs a display and runs only
+# with CODEAF_WEB_SMOKE=1 (see the file).
+[[test]]
+name = "web_smoke"
+harness = false
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

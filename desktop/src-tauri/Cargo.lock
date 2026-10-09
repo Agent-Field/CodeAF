@@ -476,6 +476,11 @@ dependencies = [
 name = "codeaf-app"
 version = "0.1.0"
 dependencies = [
+ "block2",
+ "gtk",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "objc2-web-kit",
  "serde",
  "serde_json",
  "tauri",
@@ -483,6 +488,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-notification",
  "tauri-plugin-shell",
+ "webkit2gtk",
 ]
 
 [[package]]
