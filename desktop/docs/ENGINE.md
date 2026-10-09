@@ -72,6 +72,40 @@ conversation with another model, missing OneModel, or a nonpersistent engine.
 Changed-model sends are refused, never silently rerouted. Verify actual recorded
 usage/model attribution in live tests, not just the UI picker label.
 
+## Conversation endpoints (contract v2)
+
+All are under `/sessions/{id}` and take the same bearer token. Refusals are
+`{error}` carrying the engine's own sentence.
+
+- POST `/tasks/{taskId}/{note|amend|pause|resume|cancel}` with `{text?}`. Text is
+  required (non-blank) for note and amend, else 400. Engine refusals ("that task's
+  run has ended") are 409. Success is `{accepted:true}` and a snapshot follows.
+- GET `/files?path=` returns `{name,mime,size,hash,inline,dataBase64}` through the
+  engine's confined FetchFile (16MB cap). `inline` is false for svg, html and xml
+  (filedoor's allowlist): treat those as data to save or show as text, never render.
+  Outside the workspace is 403, missing or not a file is 404.
+- POST `/files/stat` with `{paths:[<=64]}` returns
+  `[{path,exists,dir,size,modTime?,outside?}]`. `modTime` is RFC 3339. `outside`
+  is true when the path does not exist because it lies beyond the workspace and
+  the conversation folder (a lexical reading of the engine's refusal).
+- POST `/turn` also takes `files:[{name,mime,dataBase64}]` with mode submit only.
+  Images (png, jpeg, webp, gif) go as pictures, the rest as files. At most 10MB
+  per picture and 20MB in total; larger is 413 with a sentence. Text may be blank
+  when files are present.
+- POST `/questions/hold` with `{kind,id,ref}` stops that question's clock; 409 when
+  it is no longer open.
+- GET `/favicon?domain=` returns `{dataUrl}` or `{}`. Only hosts that appear in
+  this conversation's web_fetch or web_search arguments or results are fetched
+  (`https://<domain>/favicon.ico`, 3 s, at most 64KB, image types except svg,
+  same-host redirects only, public addresses only), cached per bridge.
+
+Event `kind` names now cover caption, steerAccepted, steerConsumed,
+steerFellThrough, toolAnnounced, toolForming, toolFinished, toolOutput, retrying,
+notice, compacting, compacted, taskProposal, taskUpdate, taskPhase, jobUpdate,
+questionWithdrawn, questionAnswered and titleChanged; any other stays `other`
+with the raw kind number in `raw.Kind`. A steer that falls through (its turn
+ended first) publishes the follow-up turn its words started.
+
 ## Current limits
 
 Pending questions and tool approvals retain their canonical Question objects in
