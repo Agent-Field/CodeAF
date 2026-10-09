@@ -101,8 +101,9 @@ async function openAsking(page: Page, questions: EngineQuestion[]): Promise<Mock
 test('option labels keep the engine\'s case for paths and file names', async ({ page }) => {
   await openAsking(page, [fileName]);
   const card = page.getByRole('region', { name: 'Which name should the new file have?' });
-  await expect(card.getByRole('button', { name: 'src/c.txt', exact: true })).toBeVisible();
-  await expect(card.getByRole('button', { name: 'notes.md', exact: true })).toBeVisible();
+  // Choices are option cards (design v3 tray): each radio is named by its label first, in the engine's case.
+  await expect(card.getByRole('radio', { name: /^src\/c\.txt\b/ })).toBeVisible();
+  await expect(card.getByRole('radio', { name: /^notes\.md\b/ })).toBeVisible();
   await expect(card.getByText(/Src\/c\.txt|Notes\.md/)).toHaveCount(0);
 });
 

@@ -1,11 +1,12 @@
-/* The composer's model label: quiet ink-3 text that lifts to a field fill on hover. */
+/* The composer's model label: quiet text that lifts to a field fill on hover.
+   The design draws it in ink-3, which reads 3.6:1 on the dock; ink-2 is the quietest ink that meets WCAG AA. */
 .model-picker.button {
   min-height: var(--control-height);
   min-width: 0;
   padding: 0 var(--control-pad-ghost);
   gap: var(--space-1);
   border-radius: var(--radius-control);
-  color: var(--ink-3);
+  color: var(--ink-2);
   font-size: var(--type-label-size);
   line-height: var(--type-label-leading);
   font-weight: var(--type-label-weight);
@@ -15,7 +16,7 @@
 .model-picker.button:hover:not(:disabled),
 .model-picker.button[data-state='open'] {
   background: var(--field);
-  color: var(--ink-2);
+  color: var(--ink);
 }
 
 .model-picker-label {
