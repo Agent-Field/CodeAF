@@ -262,6 +262,17 @@
   --focus-halo-width: 6px;
   --opacity-control-disabled: 0.4;
   --hairline: .5px;
+  --queue-row-height: 30px;
+  --queue-edit-height: 34px;
+  --queue-more-height: 28px;
+  --queue-radius: 10px;
+  --queue-mark-size: 12px;
+  --queue-action-size: 24px;
+  --queue-action-radius: 6px;
+  --queue-save-height: 26px;
+  --queue-save-radius: 7px;
+  --queue-focus-ring: 1px;
+  --queue-focus-halo: 4px;
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);

@@ -83,6 +83,8 @@ const turns: TurnV2[] = [
 
 const queued: QueuedItem[] = [
   { id: 'q1', text: 'After that, update the changelog' },
+  { id: 'q3', text: 'And bump the patch version' },
+  { id: 'q4', text: 'Tag the release as v2.4.1' },
   { id: 'q2', text: 'A much longer queued message that should be cut to a single line instead of wrapping under the remove button' },
 ];
 
@@ -100,6 +102,13 @@ const renderAttachment = (f: FileRef) =>
       {f.path}
     </span>
   );
+
+function moved(items: QueuedItem[], id: string, to: number): QueuedItem[] {
+  const item = items.find((candidate) => candidate.id === id);
+  if (!item) return items;
+  const rest = items.filter((candidate) => candidate.id !== id);
+  return [...rest.slice(0, to), item, ...rest.slice(to)];
+}
 
 export function TurnViewV2Specimen() {
   const [folded, setFolded] = useState<Record<string, boolean>>({ 'v2:1': true });
@@ -125,7 +134,12 @@ export function TurnViewV2Specimen() {
         renderAttachment={renderAttachment}
       />
       <TurnFooter state="done" retrying />
-      <QueuedRows items={items} onRemove={(id) => setItems(items.filter((item) => item.id !== id))} />
+      <QueuedRows
+        items={items}
+        onRemove={(id) => setItems(items.filter((item) => item.id !== id))}
+        onEdit={(id, text) => setItems(items.map((item) => (item.id === id ? { ...item, text } : item)))}
+        onMove={(id, to) => setItems(moved(items, id, to))}
+      />
     </div>
   );
 }
