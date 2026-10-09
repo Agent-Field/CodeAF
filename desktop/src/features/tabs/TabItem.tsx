@@ -10,6 +10,7 @@ import { withPreview } from './hosts/previewHost';
 import { withSegmentTooltip, withTitleTooltip } from './hosts/titleTooltipHost';
 import { focusedPane, panesOf, type Tab } from './model';
 import { SplitTab } from './SplitTab';
+import { useWebFavicons } from '../web/favicons';
 import { monogramOf } from '../web/address';
 import { DropdownMenu } from '../../components/ui';
 import { isPlaceHome } from './reducers/home';
@@ -42,6 +43,7 @@ const picks = (event: MouseEvent) => (isMac ? event.metaKey && !event.ctrlKey : 
 /** One strip item: the tab primitive composed with the menu, preview and drag hosts. */
 export function TabItem({ api, tab, order, inGroup = false }: { api: TabsApi; tab: Tab; order: readonly Tab[]; inGroup?: boolean }) {
   const active = tab.id === api.state.activeId;
+  const favicons = useWebFavicons(api.workspaceKey, panesOf(tab));
   const drag = tabDragProps(api, tab);
   // Design 3l: Alt turns a running tab's close into a stop square, but only under the pointer or focus. An idle tab ignores Alt.
   const [engaged, setEngaged] = useState(false);
@@ -52,12 +54,12 @@ export function TabItem({ api, tab, order, inGroup = false }: { api: TabsApi; ta
   const frame = { ...drag, 'data-picked': picked || undefined, onPointerEnter: () => setEngaged(true), onPointerLeave: () => setEngaged(false), onFocus: () => setEngaged(true), onBlur: () => setEngaged(false) };
   if (tab.split) {
     const { panes, focus } = tab.split;
-    const segments = panes.map(pane => ({ id: pane.id, kind: pane.kind, title: pane.title, monogram: monogramOf(pane), state: stateOfMark(api.summaries[pane.id]?.mark) }));
+    const segments = panes.map(pane => ({ id: pane.id, kind: pane.kind, title: pane.title, monogram: monogramOf(pane), favicon: favicons.get(pane.id), state: stateOfMark(api.summaries[pane.id]?.mark) }));
     return withTabMenu(api, tab, <SplitTab segments={segments} focus={focus} active={active} frame={frame} onSelectPane={(index, event) => choose(panes[index].id)(event)} wrapSegment={(segment, button) => withSegmentTooltip(api, tab, segment.title, button)} onClose={() => api.closeTab(tab.id)}/>);
   }
   const switcher = isPlaceHome(tab) ? api.placeSwitcher : undefined;
   const view = (
-    <TabView kind={tab.kind} title={tab.title} monogram={monogramOf(focusedPane(tab))} active={active} pinned={tab.pinned} placeTint={isPlaceHome(tab) ? api.placeTint ?? 'graphite' : undefined} inGroup={inGroup} picked={picked} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame} badge={tab.kind === 'inbox' && (api.background.needsYou.length > 0 ? 'needsYou' : api.background.failed.length > 0 ? 'failed' : false)}
+    <TabView favicon={favicons.get(tab.id)} kind={tab.kind} title={tab.title} monogram={monogramOf(focusedPane(tab))} active={active} pinned={tab.pinned} placeTint={isPlaceHome(tab) ? api.placeTint ?? 'graphite' : undefined} inGroup={inGroup} picked={picked} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame} badge={tab.kind === 'inbox' && (api.background.needsYou.length > 0 ? 'needsYou' : api.background.failed.length > 0 ? 'failed' : false)}
       closeMode={stop ? 'stop' : 'close'} closeHint={stop ? 'Close and stop' : running ? 'Close · keeps running' : 'Close'} closeShortcut={stop ? closeStopShortcut : closeShortcutFor(tab.kind)}
       onSelect={choose(tab.id)} onClose={() => (stop ? api.closeAndStop(tab.id) : api.closeTab(tab.id))} onRename={() => api.startRename(tab.id)}
       onKeyDown={navigate(api, order, tab)} wrapSelect={select => (switcher ? <DropdownMenu label="Place switcher" items={switcher.items}>{select}</DropdownMenu> : withTitleTooltip(api, tab, select, trigger => withPreview(api, tab, trigger)))} switcher={switcher && { alert: switcher.alert }}/>
