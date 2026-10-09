@@ -10,7 +10,7 @@ export function LinesBlock({ text, rows, label }: { text: string; rows: number; 
   const shown = all ? lines : lines.slice(0, rows);
   return (
     <div className="work-excerpt">
-      <pre className="work-pre" aria-label={label}>
+      <pre className="work-pre" aria-label={label} tabIndex={0}>
         <CodeText>{shown.join('\n')}</CodeText>
       </pre>
       {lines.length > shown.length && (
