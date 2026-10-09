@@ -1,7 +1,7 @@
 // @ts-nocheck -- the app tsconfig has no node types; this file runs under node --test.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { durationText, isTaskRunning, modelName, taskPageModel } from './taskPageTurn.ts';
+import { costPart, durationText, isTaskRunning, modelName, modelTier, taskPageModel } from './taskPageTurn.ts';
 import { logSummary, tookText } from './tasks/logLines.ts';
 
 const NOW = Date.parse('2026-10-09T10:05:00Z');
@@ -28,7 +28,7 @@ test('state line: only known parts, in order state step elapsed model', () => {
   const page = running({ Live: { Step: 7, Command: 'make build', Since: '2026-10-09T10:04:48Z' } });
   const model = taskPageModel(page, NOW);
   assert.equal(model.mark.label, 'Running');
-  assert.deepEqual(model.stateParts, ['step 7', '5m 0s', 'Deepseek v4.1 Flash']);
+  assert.deepEqual(model.stateParts, ['step 7', '5m 0s', 'Flash']);
   const bare = taskPageModel(base({ Row: { ID: 'a', Title: '', Status: 'running' } }), NOW);
   assert.deepEqual(bare.stateParts, []);
 });
@@ -161,4 +161,15 @@ test('an empty page has nothing to show', () => {
 test('model names read as words', () => {
   assert.equal(modelName('deepseek/deepseek-v4.1-flash'), 'Deepseek v4.1 Flash');
   assert.equal(modelName(undefined), '');
+});
+
+test('state line carries the model tier and a cost only when the engine sent one', () => {
+  assert.equal(modelTier('deepseek/deepseek-v4.1-flash'), 'Flash');
+  assert.equal(modelTier('acme/oss-120b'), 'Oss 120b');
+  assert.equal(modelTier(undefined), '');
+  assert.equal(costPart(0.0612), '$0.06');
+  assert.equal(costPart(0), '');
+  assert.equal(costPart(undefined), '');
+  const priced = taskPageModel(running({ Row: { ID: 'a', Title: '', Status: 'running', Model: 'deepseek/deepseek-v4.1-flash', USD: 0.06 } }), NOW);
+  assert.deepEqual(priced.stateParts.slice(-2), ['Flash', '$0.06']);
 });
