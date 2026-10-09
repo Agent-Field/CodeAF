@@ -92,6 +92,18 @@ func LiveAgentFor(path string) (*Agent, bool) {
 	return a, true
 }
 
+// Closed says the conversation has been closed: a view attached to it (the
+// factory item page hosting a running step's chat) lets go and opens the
+// journal again rather than offering a box that can no longer take a word.
+func (a *Agent) Closed() bool {
+	if a == nil {
+		return true
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.closed
+}
+
 // TurnRunning says whether a turn is in flight on the conversation: the
 // person's, a wake, or a factory runner's shaping turn. A closed conversation
 // runs nothing.

@@ -73,6 +73,12 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	// A RESUMED STAGE REOPENS ITS OWN CHAT: the transcript a pause cut short,
 	// not a new folder. It is a member of its team already.
 	resumed := strings.TrimSpace(spec.Resume) != ""
+	if resumed {
+		// A window's view of the paused chat lets go first (factory_embed.go).
+		if err := stageTakeJournal(spec.Resume); err != nil {
+			return nil, err
+		}
+	}
 	cfg, err := m.stageConfig(spec, bucket, where)
 	if err != nil {
 		return nil, err
