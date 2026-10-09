@@ -119,11 +119,12 @@ func (a *Agent) refreshPlaceGraphLocked() {
 		return
 	}
 	text := placeGraphBlock(bundle, strings.TrimSpace(a.config.Workspace))
-	for _, change := range placegraph.Changes(a.placeGraphBundle, bundle) {
-		var receipts []string
-		if a.placeGraphBundle != nil {
-			receipts = placegraph.ContextUndoReceipt(door.Path, a.placeGraphBundle.Revision, bundle.Revision)
-		}
+	changes := placegraph.Changes(a.placeGraphBundle, bundle)
+	var receipts []string
+	if len(changes) > 0 && a.placeGraphBundle != nil {
+		receipts = placegraph.ContextUndoReceipt(door.Path, a.placeGraphBundle.Revision, bundle.Revision)
+	}
+	for _, change := range changes {
 		a.queuePlaceNoteWithUndoLocked(change.Text, receipts)
 	}
 	a.placeGraphStamp, a.placeGraphRead, a.placeGraphBundle = stamp, true, bundle
