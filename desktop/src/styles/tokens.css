@@ -380,6 +380,7 @@
   --tray-compact-pad-end: 6px;
   --tray-body-max-height: 40vh;
   --tray-fade: 16px;
+  --tray-shadow-room: 24px;
   --tray-mark-radius: 99px;
   --queue-row-height: 30px;
   --queue-edit-height: 34px;

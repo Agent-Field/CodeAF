@@ -2,6 +2,7 @@
 .choice-cards { display: flex; flex-direction: column; gap: var(--space-1); margin-right: var(--space-2); }
 .choice-card { position: relative; display: flex; flex-direction: column; gap: var(--choice-card-gap); padding: var(--choice-card-pad-y) var(--space-3); border-radius: var(--choice-card-radius); background: var(--field); color: var(--ink); cursor: pointer; transition: background-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease); }
 .choice-card:hover { background: var(--field-2); }
+.choice-card:active:not(.choice-card-chosen):not(:has(:disabled)) { filter: brightness(var(--brightness-press)); }
 .choice-card-chosen, .choice-card-chosen:hover { background: var(--accent-soft); box-shadow: inset 0 0 0 var(--choice-rule-width) var(--accent-rule); }
 .choice-card:has(:focus-visible) { outline: var(--focus-ring-width) solid var(--accent); outline-offset: var(--focus-ring-width); }
 .choice-card:has(:disabled) { opacity: var(--opacity-control-disabled); cursor: default; }
@@ -16,5 +17,6 @@
 .button.choice-choose:hover:not(:disabled) { background: var(--accent); }
 .button.choice-choose:disabled { opacity: var(--opacity-control-disabled); }
 .choice-clock { margin: 0; font-size: var(--type-label-size); line-height: var(--type-label-leading); color: var(--ink-2); font-variant-numeric: tabular-nums; }
-.button.choice-hold { height: auto; min-height: 0; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: var(--type-label-size); font-weight: var(--type-label-strong); }
-.button.choice-hold:hover:not(:disabled) { background: transparent; color: var(--ink); }
+.button.choice-hold { height: var(--row-action-size); min-height: 0; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-row-action); background: transparent; color: var(--ink-2); font-size: var(--type-label-size); font-weight: var(--type-label-strong); }
+.button.choice-hold:hover:not(:disabled) { background: var(--field); color: var(--ink); }
+.button.choice-hold:active:not(:disabled) { background: var(--field-2); color: var(--ink); }
