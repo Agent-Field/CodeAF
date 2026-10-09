@@ -147,7 +147,6 @@ func TestFactorySettingsPane(t *testing.T) {
 		values[c.label] = c.value
 	}
 	want := []string{
-		lead + factoryPad(wordAskAt, labelW) + factoryPad(values[wordAskAt], factorySetValueW) + keyAskAt,
 		lead + factoryPad(wordThinking, labelW) + factoryPad(values[wordThinking], factorySetValueW) + keyThinking,
 		lead + factoryPad(wordBudget, labelW) + factoryPad(values[wordBudget], factorySetValueW) + keyBudget,
 		"",
@@ -170,7 +169,6 @@ func TestFactorySettingsPane(t *testing.T) {
 	t.Logf("the settings pane at 120:\n%s", strings.Join(lines, "\n"))
 	f.said()
 	for _, c := range []struct{ key, want string }{
-		{"t", "SetGate(4," + string(factoryNextGate(it.Gate)) + ")"},
 		{"c", "SetCap(4,"},
 		{"e", "SetEffort(4,"},
 		{"1", "SetStage(4,0,"},
@@ -201,7 +199,7 @@ func TestFactorySettingsPaneRunning(t *testing.T) {
 			continue
 		}
 		last := f[len(f)-1]
-		if last == keyAskAt || last == keyBudget {
+		if last == keyBudget {
 			t.Fatalf("a running item's settings offer %q: %q", last, line)
 		}
 		if f[0] == "1" {
@@ -408,7 +406,7 @@ func TestFactoryAlignFacets(t *testing.T) {
 				keys++
 			}
 		}
-		if values == 0 || keys != 3 {
+		if values == 0 || keys != 2 {
 			t.Errorf("at %d the settings drew %d values and %d keys:\n%s", width, values, keys, strings.Join(lines, "\n"))
 		}
 		for _, line := range lines {

@@ -17,7 +17,7 @@ import (
 )
 
 func reviewJob() Job {
-	stages := factory.DefaultRecipe().Stages
+	stages := factory.ApproveForGate(factory.DefaultRecipe().Stages, factory.GateNone)
 	return Job{
 		Item: factory.Item{
 			ID: 3, Num: 12, Repo: "ledger", Title: "fix the ledger double count",
@@ -298,7 +298,7 @@ func TestTheBriefSaysWhichStageOfTheRunThisIs(t *testing.T) {
 	if brief := stageBrief(job); !strings.Contains(brief, want) {
 		t.Fatalf("the brief does not say where plan stands:\n%s", brief)
 	}
-	job.Stage = factory.DefaultRecipe().Stages[5]
+	job.Stage = factory.DefaultRecipe().Stages[6]
 	if brief := stageBrief(job); !strings.Contains(brief, "· this is proof, the last: do this stage's part") {
 		t.Fatalf("the last stage is not told it is the last:\n%s", brief)
 	}

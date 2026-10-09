@@ -43,7 +43,6 @@ const (
 	sayShapeBusy    = "the manager was busy in the window · the recipe stands"
 	sayShapeAway    = "the manager is open in another window · the recipe stands"
 	sayShapeRefused = "the manager's change was not applied: %s · the recipe stands"
-	sayShapeAsk     = "run these stages? %s"
 	sayTailRefused  = "the manager's change was not applied: %s"
 )
 
@@ -95,8 +94,8 @@ func (lp *floorLoop) shapeWait() time.Duration {
 }
 
 // shape is the manager's first act of a run: one turn, its edit applied
-// before the run, its line said, and with ask me at plan the person's yes
-// before the first stage. It answers false when the item was stopped.
+// before the run, and its line said. It answers false when the item was
+// stopped.
 func (lp *floorLoop) shape(c *loopCtl) bool {
 	shapeFn := lp.r.opts.Shape
 	if shapeFn == nil {
@@ -112,87 +111,37 @@ func (lp *floorLoop) shape(c *loopCtl) bool {
 		return true
 	}
 	said := append([]string(nil), c.said...)
-	for {
-		edit, err := lp.turn(c, func(ctx context.Context) (factory.RunEdit, string, error) {
-			return shapeFn(ctx, it, said)
-		})
-		if c.ctx.Err() != nil {
-			return false
-		}
-		if err != nil {
-			line := shapeFailLine(err)
-			lp.say(c, "fail", line)
-			lp.tell(c.id, line)
-			return true
-		}
-		line, err := lp.applyEdit(c, edit, false)
-		if c.ctx.Err() != nil {
-			return false
-		}
-		if err != nil {
-			refused := fmt.Sprintf(sayShapeRefused, loopFirstLine(err.Error()))
-			lp.say(c, "fail", refused)
-			lp.tell(c.id, refused)
-			return true
-		}
-		if line == "" {
-			lp.say(c, "said", sayShapeStands)
-			lp.tell(c.id, sayShapeStands)
-			return true
-		}
+	edit, err := lp.turn(c, func(ctx context.Context) (factory.RunEdit, string, error) {
+		return shapeFn(ctx, it, said)
+	})
+	if c.ctx.Err() != nil {
+		return false
+	}
+	if err != nil {
+		line := shapeFailLine(err)
+		lp.say(c, "fail", line)
 		lp.tell(c.id, line)
-		cur, err := lp.r.opts.Store.Get(c.id)
-		if err != nil {
-			return false
-		}
-		if cur.Gate != factory.GatePlan {
-			return true
-		}
-		// ASK ME AT PLAN IS ASKED HERE FIRST: the person sees the stages the
-		// manager set before any of them runs. Words shape it again.
-		a, ok := lp.ask(c, -1, "plan", "plan", fmt.Sprintf(sayShapeAsk, line), factory.PhaseWaiting, "", "")
-		if !ok {
-			return false
-		}
-		if a.yes {
-			return true
-		}
-		if a.words == "" {
-			// NO KEEPS THE RECIPE: the stages go back to what they were before
-			// the manager set them, and the run goes on.
-			lp.keepRecipe(c, it)
-			return c.ctx.Err() == nil
-		}
-		lp.addNote(c.id, a.words)
-		said = []string{a.words}
-		if it, err = lp.r.opts.Store.Get(c.id); err != nil {
-			return false
-		}
+		return true
 	}
-}
-
-// keepRecipe puts the item's stages back as they stood before the manager's
-// edit (before), says `the recipe stands`, and compiles the phases again.
-func (lp *floorLoop) keepRecipe(c *loopCtl, before factory.Item) {
-	now := lp.r.now()
-	if lp.write(c, func(it *factory.Item) error {
-		stages := before.Stages
-		if len(stages) == 0 {
-			kind := it.Kind
-			if kind == "" {
-				kind = factory.KindIssue
-			}
-			stages = lp.recipe(it.Repo).For(kind)
-		}
-		it.Stages = factory.CopyStages(stages)
-		it.Adapted = append([]string(nil), before.Adapted...)
-		// NOTHING HAS RUN YET, so the phases are the stages compiled afresh.
-		it.Stream.Phases = loopPhases(*it)
-		loopSay(it, now, "said", sayShapeStands)
-		return nil
-	}) == nil {
+	line, err := lp.applyEdit(c, edit, false)
+	if c.ctx.Err() != nil {
+		return false
+	}
+	if err != nil {
+		refused := fmt.Sprintf(sayShapeRefused, loopFirstLine(err.Error()))
+		lp.say(c, "fail", refused)
+		lp.tell(c.id, refused)
+		return true
+	}
+	if line == "" {
+		lp.say(c, "said", sayShapeStands)
 		lp.tell(c.id, sayShapeStands)
+		return true
 	}
+	// THE PERSON READS THE SHAPED STAGES AT THE FIRST APPROVE STEP: the
+	// shaping itself never stops the run.
+	lp.tell(c.id, line)
+	return true
 }
 
 // reshape gives the manager one turn on what the person just said during a
@@ -365,7 +314,9 @@ func shapedByManager(it factory.Item) bool {
 func tailPhases(it factory.Item, phases []factory.Phase) ([]factory.Phase, bool) {
 	last := -1
 	for i, p := range phases {
-		if p.State != "" && p.State != factory.PhasePending {
+		// A PHASE THAT HAS RUN A ROUND IS STARTED, pending or not: one an
+		// approve step sent back keeps its round ([floorLoop.back]).
+		if (p.State != "" && p.State != factory.PhasePending) || p.Round > 0 {
 			last = i
 		}
 	}

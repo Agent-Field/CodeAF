@@ -202,7 +202,7 @@ func TestFactoryAlignItemPage(t *testing.T) {
 			// item's chips stand; with the verbs on the right the chips are
 			// the column's, and the second row draws none.
 			it, _ := a.factoryCursorItem()
-			second := wordAskAt
+			second := wordBudget
 			switch {
 			case it.State == factory.StateNeedsYou:
 				second = "?"
@@ -212,7 +212,7 @@ func TestFactoryAlignItemPage(t *testing.T) {
 			if !strings.HasPrefix(strings.TrimSpace(body[0]), "Factory ›") || !strings.HasPrefix(strings.TrimSpace(body[1]), second) || strings.TrimSpace(body[2]) != "" {
 				t.Errorf("at %d item %d's head is not crumbs, chips, blank:\n%s", width, id, strings.Join(body[:4], "\n"))
 			}
-			if a.factoryVerbsDrawn() && it.State != factory.StateNeedsYou && strings.Contains(body[1], wordAskAt) {
+			if a.factoryVerbsDrawn() && it.State != factory.StateNeedsYou && strings.Contains(body[1], wordBudget) {
 				t.Errorf("at %d item %d's second row keeps the chips beside the verbs: %q", width, id, body[1])
 			}
 			left, right, div := factorySplitAt(body[3])
@@ -236,7 +236,7 @@ func TestFactoryAlignChips(t *testing.T) {
 		at := map[string]int{}
 		for _, id := range []int{1, 2, 4, 9} {
 			row := ansi.Strip(a.factoryChipRow(*factoryPaneItem(t, a, id), keys, 120))
-			for _, label := range []string{wordAskAt, wordBudget, wordThinking} {
+			for _, label := range []string{wordBudget, wordThinking} {
 				x := strings.Index(row, label+"  ")
 				if x < 0 {
 					t.Fatalf("item %d's chips have no %s: %q", id, label, row)

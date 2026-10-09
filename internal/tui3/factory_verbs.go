@@ -16,10 +16,10 @@ import (
 // line to know what the page can do.
 //
 //	do                      the item's verbs for its state: the strip's list
-//	                        ([app.factoryVerbRows]) without `ask me at`
+//	                        ([app.factoryVerbRows])
 //	also                    open on github, refresh, dismiss
 //
-// THE KNOBS ARE NOT HERE: ask me at, thinking, budget and the stages are the
+// THE KNOBS ARE NOT HERE: thinking, budget and the stages are the
 // `settings` row's, on the left (factory_item.go's [app.factorySettingsPane]),
 // where the item page is the issue's map (owner decision, 2026-10-08).
 //
@@ -73,10 +73,6 @@ func (a *app) factoryVerbsDrawn() bool { return a.fp.open && a.fp.verbX > 0 }
 func (a *app) factoryVerbGroups(it factory.Item) []factoryVerbGroup {
 	var do, also []factoryVerbRow
 	for _, r := range a.factoryVerbRows(it) {
-		if r.key == keyAskAt {
-			// `ask me at` is a setting, and stands in the settings row.
-			continue
-		}
 		do = append(do, factoryVerbRow{word: r.word, key: r.key})
 	}
 	var sheet []factorySheetRow

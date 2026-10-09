@@ -9,8 +9,8 @@ const thinBelow = 55
 
 // Fits says whether a stage's [Stage.When] fits an item, which is how a
 // banked recipe adapts to the item in front of it without anybody touching the
-// recipe. It reads [Stage.When] alone and never [Stage.GateWhen], which says
-// when the stage's gate stops the item, not whether the stage runs. A stage
+// recipe. It reads [Stage.When] alone; an approve step's when is the same
+// knob, so `approve when large` holds only a large item. A stage
 // that does not fit is skipped, and the surface draws it dim
 // with its reason rather than leaving it out, so a person can see what the
 // recipe would have done.
@@ -24,24 +24,7 @@ func Fits(st Stage, it Item) bool {
 	return whenFits(st.When, it)
 }
 
-// GateApplies says whether a stage's gate stops the item on this run: the
-// stage carries a gate that is not none, and its [Stage.GateWhen] fits the
-// item. `gate plan when large` is a stage that runs on every item and asks the
-// person first only on a large one, so the condition is the gate's and never
-// the stage's.
-//
-// THE CONDITION IS READ WITH THE SAME PREDICATE [Fits] READS A STAGE'S WHEN
-// WITH, so a word means one thing whichever knob carries it, and a word nobody
-// taught it applies the gate rather than silently dropping a person's stop.
-func GateApplies(s Stage, it Item) bool {
-	if s.Gate == "" || s.Gate == GateNone {
-		return false
-	}
-	return whenFits(s.GateWhen, it)
-}
-
-// whenFits is the one predicate a condition word is read with, for a stage's
-// when and a gate's when alike.
+// whenFits is the one predicate a condition word is read with.
 func whenFits(cond string, it Item) bool {
 	switch strings.ToLower(strings.TrimSpace(cond)) {
 	case "", "always":

@@ -189,7 +189,7 @@ func (a *Agent) ResolveRecipe(id string, answer RecipeAnswer) {
 // ── the item card ───────────────────────────────────────────────────────────
 
 // ItemDoor is the one thing a conversation may do to one item already on the
-// floor: change its stages, where the run asks (the field is Gate), its budget (Cap) or its thinking (Effort), or leave its
+// floor: change its stages (an approve step among them is where the run holds for the person), its budget (Cap) or its thinking (Effort), or leave its
 // stages a note. The launch implements it over the store (cmd/codeaf's
 // factory_talk.go), and the change itself is [ApplyItemChange], WHICH IS WHERE
 // EVERY BOUND IS HELD: the stages go through [factory.Adapt], never a prompt.
@@ -216,9 +216,6 @@ func (c Config) mayItem() bool { return c.FactoryItem != nil }
 type ItemChange struct {
 	// Edit is the stages: sentences to add, names to skip or switch on.
 	Edit factory.PlanEdit
-	// Gate is plan, ship or none; "" leaves it. The person calls it `ask me at`
-	// (plan, pull request, never).
-	Gate factory.Gate
 	// Cap is the item's budget in dollars (the person's word); zero leaves it.
 	Cap float64
 	// Effort is cheap, strong or default (the knee, stored as ""); "" leaves
@@ -231,15 +228,14 @@ type ItemChange struct {
 
 // Empty says the change changes nothing.
 func (c ItemChange) Empty() bool {
-	return c.Edit.Empty() && c.Gate == "" && c.Cap == 0 && c.Effort == "" && strings.TrimSpace(c.Note) == ""
+	return c.Edit.Empty() && c.Cap == 0 && c.Effort == "" && strings.TrimSpace(c.Note) == ""
 }
 
 // ItemFacts is one item as the card compares it, before and after: the stages
-// it runs, its gate, its cap and its effort (`ask me at`, `budget`, `thinking` on the card). EVERY FIELD IS THE FLOOR'S OWN
+// it runs, its cap and its effort (`budget`, `thinking` on the card). EVERY FIELD IS THE FLOOR'S OWN
 // SPELLING; the card draws `—` where a field is empty.
 type ItemFacts struct {
 	Stages []string
-	Gate   string
 	Cap    float64
 	Effort string
 }
@@ -260,9 +256,8 @@ type ItemNotice struct {
 	Add  []string
 	Skip []string
 	On   []string
-	// Gate, Cap and Effort are the chips as the model asked; empty or zero is
+	// Cap and Effort are the chips as the model asked; empty or zero is
 	// unchanged.
-	Gate   string
 	Cap    float64
 	Effort string
 	// Note is the sentence the stages will read, and Why the model's one

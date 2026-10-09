@@ -14,7 +14,7 @@ import (
 // ── THE FACTORY'S VERBS ─────────────────────────────────────────────────────
 //
 // The keys that change the floor: run, stop, pause, answer, steer,
-// approve, request changes, ask me at, the budget, the thinking and the stages
+// approve, request changes, the budget, the thinking and the stages
 // (their words are factory_words.go's). place_factory.go routes a key here
 // once the rail has had its own keys; this file reads the item under the
 // cursor, picks the door its state allows, and asks it.
@@ -46,9 +46,6 @@ const factoryHabitSentence = "factory PRs from your own issues self-ship when th
 
 // factoryCaps is the ladder `c` climbs, and it wraps to its first rung.
 var factoryCaps = []float64{2, 5, 8, 15, 30}
-
-// factoryGates is the order `t` cycles the gate in.
-var factoryGates = []factory.Gate{factory.GatePlan, factory.GateShip, factory.GateNone}
 
 // factoryEfforts is the order `e` cycles a stage's effort in. The empty word is
 // the knee: the crew picks the effort it would for this class of work.
@@ -116,7 +113,7 @@ type factoryActs struct {
 }
 
 // factoryLaunchNote is a launch whose note waits on the floor's next read:
-// the item, and what the note says after its state (`· ask me at plan`).
+// the item, and what the note says after its state.
 type factoryLaunchNote struct {
 	id   int
 	tail string
@@ -383,7 +380,7 @@ func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	if k == "n" && (!ok || it.State != factory.StateNeedsYou) {
 		if a.factory.Has("new") && a.factoryConnected() {
-			a.factoryOpenAsk(factoryAsk{kind: factoryAskNew, repo: a.factoryNewRepo(), label: "new work ›", example: "“fix the meter at midnight, $5, ask me at the plan”"})
+			a.factoryOpenAsk(factoryAsk{kind: factoryAskNew, repo: a.factoryNewRepo(), label: "new work ›", example: "“fix the meter at midnight, $5, plan first”"})
 			return nil, true
 		}
 		return nil, false
@@ -467,9 +464,9 @@ func (a *app) factoryNewKey(it factory.Item, k string) (tea.Cmd, bool) {
 	seam, id := a.factory, it.ID
 	switch k {
 	case keyRun:
-		// `r` RUNS THE ITEM AS IT STANDS: every stage, stopping where its
-		// `ask me at` says ([factoryGateWord]). There is no second run key; `t`
-		// moves the stop (owner decision, 2026-10-08).
+		// `r` RUNS THE ITEM AS IT STANDS: every stage, holding at each
+		// approve step. There is no second run key (owner decision,
+		// 2026-10-08).
 		// AND NEVER WITHOUT A CHECKOUT: the gate asks to clone first
 		// (factory_clone.go).
 		if a.factoryCanRun() {
@@ -485,11 +482,6 @@ func (a *app) factoryNewKey(it factory.Item, k string) (tea.Cmd, bool) {
 				return nil, true
 			}
 			return a.factoryRunIDs([]int{id}, factoryRunOne), true
-		}
-	case "t":
-		if seam.Has("setgate") {
-			g := factoryNextGate(it.Gate)
-			return a.factoryDo(func(s factory.Seam) error { return s.SetGate(id, g) }, nil), true
 		}
 	case "c":
 		if seam.Has("setcap") {
@@ -520,8 +512,8 @@ func (a *app) factoryNewKey(it factory.Item, k string) (tea.Cmd, bool) {
 			return nil, true
 		}
 	case "w":
-		if seam.Has("steer") || seam.Has("setgate") || seam.Has("setcap") || seam.Has("seteffort") {
-			a.factoryOpenAsk(factoryAsk{kind: factoryAskWords, id: id, label: "in words ›", example: "“$8, ask me at the plan, stronger”"})
+		if seam.Has("steer") || seam.Has("setcap") || seam.Has("seteffort") {
+			a.factoryOpenAsk(factoryAsk{kind: factoryAskWords, id: id, label: "in words ›", example: "“$8, stronger”"})
 			return nil, true
 		}
 	case "b":
@@ -736,17 +728,8 @@ func factoryEffortStage(snap factory.Snapshot, it factory.Item) int {
 	return -1
 }
 
-// factoryNextGate, factoryNextCap and factoryNextEffort are the gate's, the cap's and the effort's
+// factoryNextCap and factoryNextEffort are the cap's and the effort's
 // ladders, each wrapping to its first rung.
-func factoryNextGate(g factory.Gate) factory.Gate {
-	for i, x := range factoryGates {
-		if x == g {
-			return factoryGates[(i+1)%len(factoryGates)]
-		}
-	}
-	return factoryGates[0]
-}
-
 func factoryNextCap(usd float64) float64 {
 	for _, c := range factoryCaps {
 		if c > usd {
@@ -883,7 +866,12 @@ func (a *app) factorySubmit(ask factoryAsk, words string) tea.Cmd {
 			return "steered " + it.Ref()
 		})
 	case factoryAskAnswer:
-		return a.factoryVerb(id, func(s factory.Seam) error { return s.Answer(id, false, words) }, func(it factory.Item) string {
+		// AT AN APPROVE STEP WORDS ARE CONTINUE WITH THEM as the person's
+		// note (`n` is the one that sends the run back); elsewhere the yes
+		// travels with words as it always did.
+		cur, _ := a.factoryItemByID(id)
+		yes := cur.QKind == factory.QKindApprove
+		return a.factoryVerb(id, func(s factory.Seam) error { return s.Answer(id, yes, words) }, func(it factory.Item) string {
 			return "answered " + it.Ref() + " in words"
 		})
 	case factoryAskSendBack:
@@ -924,7 +912,7 @@ func (a *app) factoryWords(id int, words string, seam factory.Seam) tea.Cmd {
 	if ok && it.Stream != nil && seam.Has("steer") {
 		return a.factoryDo(func(s factory.Seam) error { return s.Steer(id, words) }, nil)
 	}
-	gate, usd, rounds, effort, rest := factory.LiftChips(words)
+	usd, rounds, effort, rest := factory.LiftChips(words)
 	at := -1
 	if ok {
 		at = factoryEffortStage(a.fp.snap, it)
@@ -936,13 +924,8 @@ func (a *app) factoryWords(id int, words string, seam factory.Seam) tea.Cmd {
 	if rest != "" {
 		kept = append(kept, "“"+rest+"”")
 	}
-	none := (gate == nil || !seam.Has("setgate")) && (usd == nil || !seam.Has("setcap")) && (effort == "" || at < 0 || !seam.Has("seteffort"))
+	none := (usd == nil || !seam.Has("setcap")) && (effort == "" || at < 0 || !seam.Has("seteffort"))
 	return a.factoryDo(func(s factory.Seam) error {
-		if gate != nil && s.SetGate != nil {
-			if err := s.SetGate(id, *gate); err != nil {
-				return err
-			}
-		}
 		if usd != nil && s.SetCap != nil {
 			if err := s.SetCap(id, *usd); err != nil {
 				return err
@@ -958,7 +941,7 @@ func (a *app) factoryWords(id int, words string, seam factory.Seam) tea.Cmd {
 		switch {
 		case err != nil:
 		case none:
-			a.factorySay("those words set nothing · say where to ask you, a $budget or how hard to think")
+			a.factorySay("those words set nothing · say a $budget or how hard to think")
 		case len(kept) > 0:
 			a.factorySay(strings.Join(kept, " and ") + " wait for a stream · S steers it once it runs")
 		}
@@ -1095,8 +1078,8 @@ func (a *app) factoryOpenForge(it factory.Item) tea.Cmd {
 // factoryCanRun says whether `r run` does anything on this seam: a launch to
 // start the item. It is the one predicate the hint line and the peek's key
 // line both ask, so the two cannot offer different keys for the same item.
-// THE RUN NO LONGER SETS THE GATE (owner decision, 2026-10-08): it stops
-// where the item's `ask me at` says, and `t` is what changes that.
+// THE RUN HOLDS AT EACH APPROVE STEP among the item's stages, and the
+// stages are what change that.
 func (a *app) factoryCanRun() bool {
 	return a.factory.Has("launch")
 }
@@ -1105,7 +1088,7 @@ func (a *app) factoryCanRun() bool {
 // the `enter` clause first, then the verbs of the item's state in the order
 // a person reaches for them (owner decision, 2026-10-08):
 //
-//	new      enter open · r run · T chat · space select · t ask me at plan
+//	new      enter open · r run · T chat · space select
 //	running  enter open · x stop · T chat · space pause · S steer
 //	needs    enter open · y yes · n no · a in words · T chat
 //	landed   enter proof · s approve · B request changes · v re-run checks · T chat
@@ -1149,7 +1132,6 @@ func (a *app) factoryVerbRows(it factory.Item) []factorySheetRow {
 		chat()
 		add(it.State == factory.StateNew, keySelect, wordSelect)
 		add(seam.Has("launch") && len(a.factoryMarkedIDs()) > 0, keyRunSelected, wordRunSelected)
-		add(seam.Has("setgate"), keyAskAt, factoryAskAtOf(it.Gate))
 	case factory.StateQueued, factory.StateRunning:
 		add(seam.Has("stop"), keyStop, wordStop)
 		chat()
@@ -1175,15 +1157,6 @@ func (a *app) factoryVerbRows(it factory.Item) []factorySheetRow {
 		chat()
 	}
 	return out
-}
-
-// factoryAskAtOf is the gate's word as the `t` clause says it: `ask me at
-// plan`, and `ask me at` alone on an item with no gate yet.
-func factoryAskAtOf(g factory.Gate) string {
-	if w := factoryAskAtWords(g); w != "" {
-		return w
-	}
-	return wordAskAt
 }
 
 // factoryVerbHint is the item's verbs without the `enter` clause: the item

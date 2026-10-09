@@ -73,8 +73,10 @@ func TestLocalNewLiftsChips(t *testing.T) {
 	if it.ID != id || it.Title != "fix the ledger double count" {
 		t.Fatalf("title = %q", it.Title)
 	}
-	if it.Gate != factory.GatePlan || it.Cap != 8 {
-		t.Fatalf("gate %q cap %v; want plan, 8", it.Gate, it.Cap)
+	// `plan first` is an approve step after plan, which the default already
+	// has: one, never two.
+	if it.Cap != 8 || len(it.Stages) < 2 || it.Stages[1].Name != factory.ApproveName || factory.StageIndex(it.Stages, "approve2") >= 0 {
+		t.Fatalf("stages %+v cap %v; want approve after plan, 8", it.Stages, it.Cap)
 	}
 	if it.Origin != factory.OriginTerminal || it.State != factory.StateNew || it.Tier != factory.TierOwner || it.Kind != factory.KindIssue || it.Num != 0 {
 		t.Fatalf("New = %+v", it)
@@ -116,13 +118,12 @@ func TestLocalDoorsPersistAcrossOpen(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	must(seam.SetGate(keep, factory.GateNone))
 	must(seam.SetCap(keep, 12.5))
 	must(seam.SetStage(keep, 0, false))
 	must(seam.AddStage(keep, "after review, make it neater"))
-	must(seam.SetEffort(keep, 1, "strong"))
+	must(seam.SetEffort(keep, 2, "strong"))
 	must(seam.Dismiss(id))
-	if seam.SetGate(keep, "sideways") == nil || seam.SetCap(keep, -1) == nil || seam.SetStage(keep, 99, true) == nil ||
+	if seam.SetCap(keep, -1) == nil || seam.SetStage(keep, 99, true) == nil ||
 		seam.AddStage(keep, "after review") == nil || seam.SetEffort(keep, 0, "furious") == nil {
 		t.Fatal("a door took a value it cannot mean")
 	}
@@ -136,7 +137,7 @@ func TestLocalDoorsPersistAcrossOpen(t *testing.T) {
 		t.Fatalf("dismissed item reads back %q", gone.State)
 	}
 	it, _ := again.Get(keep)
-	if it.Gate != factory.GateNone || it.Cap != 12.5 || it.Stages[0].On || it.Stages[1].Effort != "strong" {
+	if it.Cap != 12.5 || it.Stages[0].On || it.Stages[2].Effort != "strong" {
 		t.Fatalf("chips did not persist: %+v", it)
 	}
 	at := factory.StageIndex(it.Stages, "make")
@@ -164,7 +165,7 @@ func TestLocalSeamEngineDoorsAbsent(t *testing.T) {
 			t.Errorf("door %s is present on the local seam", door)
 		}
 	}
-	for _, door := range []string{"load", "new", "dismiss", "setgate", "setcap", "setstage", "addstage", "seteffort"} {
+	for _, door := range []string{"load", "new", "dismiss", "setcap", "setstage", "addstage", "seteffort"} {
 		if !seam.Has(door) {
 			t.Errorf("door %s is missing from the local seam", door)
 		}

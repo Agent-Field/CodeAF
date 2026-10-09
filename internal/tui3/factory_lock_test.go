@@ -80,15 +80,15 @@ func TestFactorySettingsPaneLocksAFixedStage(t *testing.T) {
 			t.Fatalf("at %d the lock stands at %d, the next row's on at %d:\n%s\n%s", width, at, want, row, next)
 		}
 		f.said()
-		drive(t, a, key("4"))
+		drive(t, a, key("5"))
 		if got := f.said(); len(got) != 0 {
 			t.Fatalf("at %d the fixed stage's digit asked %v", width, got)
 		}
 		if want := factoryFixedWords("review"); a.pageMsg != want {
 			t.Fatalf("at %d the note says %q, want %q", width, a.pageMsg, want)
 		}
-		drive(t, a, key("5"))
-		if got := strings.Join(f.said(), " "); got != "SetStage(8,4,false)" {
+		drive(t, a, key("6"))
+		if got := strings.Join(f.said(), " "); got != "SetStage(8,5,false)" {
 			t.Fatalf("at %d the stage beside it asked %q", width, got)
 		}
 	}

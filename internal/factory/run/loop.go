@@ -524,19 +524,94 @@ func (lp *floorLoop) ask(c *loopCtl, i int, pending, qkind, question string, sta
 	return a, err == nil
 }
 
-// gate is a person's yes before a stage: yes goes on, words go on with the
-// words in the notes, no stops the item.
-func (lp *floorLoop) gate(c *loopCtl, i int, name string) bool {
-	a, ok := lp.ask(c, i, "gate", "gate", name+" is ready · go, or change it?", factory.PhaseWaiting, "", "")
+// approve holds the run at the approve step i until the person answers
+// (approve.go in internal/factory): yes is continue, and words with it are
+// handed to the steps after as the person's note; no sends the run back to
+// the step before with the words. The question stands on the item (pending,
+// needs you) and the manager is told, so it can explain what it waits on.
+//
+// AN APPROVE STEP WITH NOTHING AFTER IT IS THE LANDING: it passes quietly and
+// the item lands, where the proof sheet's approval is the person's answer.
+// One with no step before it has nothing to send back to, and no stops.
+func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
+	it, err := lp.r.opts.Store.Get(c.id)
+	if err != nil || it.Stream == nil || i >= len(it.Stream.Phases) {
+		return false
+	}
+	ph := it.Stream.Phases
+	prev := -1
+	for k := i - 1; k >= 0; k-- {
+		if ph[k].Kind != factory.StageGate && ph[k].State == factory.PhaseDone {
+			prev = k
+			break
+		}
+	}
+	last := true
+	for _, p := range ph[i+1:] {
+		if p.State != factory.PhaseDone && p.State != factory.PhaseFailed {
+			last = false
+			break
+		}
+	}
+	if last {
+		return lp.write(c, func(it *factory.Item) error {
+			it.Stream.Phases[i].State = factory.PhaseDone
+			return nil
+		}) == nil
+	}
+	prevName := ""
+	if prev >= 0 {
+		prevName = ph[prev].Name
+	}
+	a, ok := lp.ask(c, i, "approve", factory.QKindApprove, factory.ApproveQuestion(prevName), factory.PhaseWaiting, "", "")
 	if !ok {
 		return false
 	}
-	if !a.yes && a.words == "" {
+	switch {
+	case a.yes:
+		lp.addNote(c.id, a.words)
+		return lp.finish(c, i, name, "")
+	case prev < 0:
 		lp.stop(c)
 		return false
 	}
-	lp.addNote(c.id, a.words)
+	return lp.back(c, i, prev, a.words)
+}
+
+// back sends the run from the approve step at i to the step at prev with the
+// person's words: prev runs again in a new round, its loop whole, with the
+// words in its brief, and the approve step waits again after it.
+func (lp *floorLoop) back(c *loopCtl, i, prev int, words string) bool {
+	lp.addNote(c.id, words)
+	now := lp.r.now()
+	name := ""
+	err := lp.write(c, func(it *factory.Item) error {
+		for _, k := range []int{prev, i} {
+			it.Stream.Phases[k].State = factory.PhasePending
+			it.Stream.Phases[k].Left = 0
+		}
+		ph := &it.Stream.Phases[prev]
+		name = ph.Name
+		ph.Round = max(ph.Round, 1) + 1
+		it.Stream.Cur = prev
+		loopSay(it, now, "said", backLine(name, words))
+		return nil
+	})
+	if err != nil {
+		return false
+	}
+	c.phase = -1
+	lp.emit(c.id, name, EventRound, backLine(name, words))
+	lp.tell(c.id, backLine(name, words))
 	return true
+}
+
+// backLine is `sent back to plan: use the other file`, or `sent back to plan`.
+func backLine(name, words string) string {
+	if words = strings.TrimSpace(words); words != "" {
+		return fmt.Sprintf(sayBack, name) + ": " + words
+	}
+	return fmt.Sprintf(sayBack, name)
 }
 
 func (lp *floorLoop) addNote(id int, words string) {
@@ -591,7 +666,7 @@ func (lp *floorLoop) skip(c *loopCtl, i int, name string) bool {
 	}) == nil
 }
 
-// runPhase runs one phase to its end: its gate, then rounds until the
+// runPhase runs one phase to its end: an approve step's answer, or rounds until the
 // stage's until is met, or the person says how to go on. It answers false
 // when the item stopped.
 func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
@@ -602,19 +677,9 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 	st, index := lp.stageAt(it, i)
 	name := st.Name
 
-	// A GATE STAGE IS A PERSON, so its answer is the stage: nothing runs it.
+	// AN APPROVE STEP IS A PERSON, so their answer is the step: nothing runs it.
 	if st.Kind == factory.StageGate {
-		if !lp.gate(c, i, name) {
-			return false
-		}
-		return lp.finish(c, i, name, "")
-	}
-	// A SHIP GATE IS THE SIGN-OFF ON THE LANDED ITEM, never a stop before
-	// its stage, so a proof stage that carries one runs straight through.
-	if st.Gate != factory.GateShip && factory.GateApplies(st, it) {
-		if !lp.gate(c, i, name) {
-			return false
-		}
+		return lp.approve(c, i, name)
 	}
 
 	exec := lp.r.opts.Exec[kindOf(st)]
@@ -633,7 +698,11 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 
 	round := max(it.Stream.Phases[i].Round, 1)
 	limit := max(st.Max, 1)
-	planAsked := false
+	if round > 1 && it.Stream.Phases[i].State == factory.PhasePending {
+		// SENT BACK FROM AN APPROVE STEP ([floorLoop.back]): the step has its
+		// whole loop again from the round it starts on.
+		limit += round - 1
+	}
 	for {
 		if !lp.held(c) {
 			return false
@@ -696,39 +765,13 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		if res.Spent > 0 {
 			job.Spend(res.Spent)
 		}
-		adaptedAsk := lp.fold(c, it, st, i, res)
+		lp.fold(c, it, st, i, res)
 		if !lp.capCheck(c, i, name) {
 			return false
 		}
+		// WHERE THE PERSON READS A STEP BEFORE THE RUN GOES ON IS AN APPROVE
+		// STEP after it, never a question the step asks of itself.
 		if factory.Met(st, res) {
-			cur, err := lp.r.opts.Store.Get(c.id)
-			if err != nil {
-				return false
-			}
-			q := ""
-			switch {
-			case adaptedAsk:
-				q = "plan changed the stages · go, or change it?"
-			case name == "plan" && cur.Gate == factory.GatePlan && !planAsked:
-				q = "plan is ready · go, or change it?"
-			}
-			if q != "" {
-				planAsked = true
-				a, ok := lp.ask(c, i, "plan", "plan", q, factory.PhaseWaiting, "", "")
-				if !ok {
-					return false
-				}
-				if !a.yes && a.words == "" {
-					lp.stop(c)
-					return false
-				}
-				if a.words != "" {
-					lp.addNote(c.id, a.words)
-					round++
-					limit = max(limit, round)
-					continue
-				}
-			}
 			return lp.finish(c, i, name, "")
 		}
 		if round >= limit {
@@ -927,9 +970,10 @@ func (lp *floorLoop) capCheck(c *loopCtl, i int, name string) bool {
 
 // fold writes what a round said onto the item: its result for the stages
 // after it, its notes, its claims, its conversation, the first line of what
-// it put out, and a plan's edit through Adapt. It answers whether the edit
-// was applied under ask, so the person ratifies it before anything else runs.
-func (lp *floorLoop) fold(c *loopCtl, before factory.Item, st factory.Stage, i int, res factory.StageResult) (adaptedAsk bool) {
+// it put out, and a plan's edit through Adapt. An edit applied under the
+// recipe's ask word stands an approve step after plan ([factory.Edit]), so
+// the person ratifies it before anything else runs.
+func (lp *floorLoop) fold(c *loopCtl, before factory.Item, st factory.Stage, i int, res factory.StageResult) {
 	lp.mu.Lock()
 	if lp.results[c.id] == nil {
 		lp.results[c.id] = map[int]factory.StageResult{}
@@ -994,10 +1038,8 @@ func (lp *floorLoop) fold(c *loopCtl, before factory.Item, st factory.Stage, i i
 		*it = next
 		it.Stream.Phases = retail(*it, it.Stream.Phases, i)
 		loopSay(it, now, "said", "plan changed the stages: "+strings.Join(lines, " · "))
-		adaptedAsk = recipe.AdaptFor(it.Kind) == factory.AdaptAsk
 		return nil
 	})
-	return adaptedAsk
 }
 
 // retail rebuilds the phases after phase i from the item's stages as they
@@ -1089,8 +1131,9 @@ func loopFirstLine(s string) string {
 	return s
 }
 
-// land puts the proof sheet up and waits for the approval. An item whose gate
-// is none, with every claim shown, ships itself: that is a banked habit.
+// land puts the proof sheet up and waits for the approval. An item with no
+// approve step ([factory.HasApprove]) and a proof sheet with every claim
+// shown ships itself: that is a banked habit. No sheet is no green proof.
 func (lp *floorLoop) land(c *loopCtl) {
 	now := lp.r.now()
 	shipped := false
@@ -1102,7 +1145,7 @@ func (lp *floorLoop) land(c *loopCtl) {
 		if n := len(it.Stream.Phases); n > 0 {
 			it.Stream.Cur = n - 1
 		}
-		if it.Gate == factory.GateNone && clean(*it) {
+		if !factory.HasApprove(*it) && len(it.Proof) > 0 && clean(*it) {
 			it.State = factory.StateShipped
 			shipped = true
 			loopSay(it, now, "ok", "shipped · habit · proof all green")

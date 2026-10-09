@@ -90,7 +90,7 @@ func TestFactoryVerbsOnTheRightOfANewItem(t *testing.T) {
 		t.Fatalf("the new item's column at 120 is\n%s\nwant\n%s", got, want)
 	}
 	body := factoryBodyPlain(a, a.width, a.height-placeHeadRows-1)
-	if strings.Contains(body[1], wordAskAt) || strings.Contains(body[1], wordBudget) {
+	if strings.Contains(body[1], wordBudget) {
 		t.Fatalf("the head's second row keeps the chips beside the column: %q", body[1])
 	}
 	for _, row := range body {
@@ -125,7 +125,7 @@ func TestFactoryVerbsByState(t *testing.T) {
 			t.Errorf("item %d's column is\n%s\nwant in order\n%s", c.id, strings.Join(got, "\n"), strings.Join(c.want, "\n"))
 		}
 		for _, row := range got {
-			if row == wordGroupSet || strings.HasPrefix(row, wordAskAt) || strings.HasPrefix(row, wordBudget) || strings.HasPrefix(row, wordThinking) || strings.HasPrefix(row, wordStages) {
+			if row == wordGroupSet || strings.HasPrefix(row, wordBudget) || strings.HasPrefix(row, wordThinking) || strings.HasPrefix(row, wordStages) {
 				t.Errorf("item %d's column draws the `set` group's %q: %v", c.id, row, got)
 			}
 		}
@@ -141,7 +141,7 @@ func TestFactoryVerbsNotDrawnWhenNarrow(t *testing.T) {
 		t.Fatalf("at 90 the page drew the column: %v", factoryVerbsText(a))
 	}
 	body := factoryBodyPlain(a, a.width, a.height-placeHeadRows-1)
-	if !strings.HasPrefix(strings.TrimSpace(body[1]), wordAskAt) {
+	if !strings.HasPrefix(strings.TrimSpace(body[1]), wordBudget) {
 		t.Fatalf("at 90 the chips are not on the head's second row: %q", body[1])
 	}
 	if !strings.Contains(strings.Join(body, "\n"), factoryHintClause(keyRun, wordRun)) {
