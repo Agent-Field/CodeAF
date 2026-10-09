@@ -12,7 +12,9 @@ package tui3
 import (
 	"errors"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -354,16 +356,20 @@ func TestAHostedWakeAfterThisWindowsOwnTurnIsStillDrawn(t *testing.T) {
 func TestAHandOverAfterThisWindowsOwnTurnIsStillHeard(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.host = "devbox"
-	asked := 0
+	var asked atomic.Int32
+	changed := make(chan struct{}, 1)
+	changed <- struct{}{}
+	rearmed := make(chan struct{}, 1)
+	// The harness may leave the next watcher waiting after its deadline. Give
+	// that synthetic connection a lifetime, and release it when this test ends.
+	t.Cleanup(func() { close(changed) })
 	a.link = LinkSeam{
 		Driving: func() Driving { return Driving{Yours: true} },
 		DrivingChanged: func() <-chan struct{} {
-			asked++
-			ch := make(chan struct{}, 1)
-			if asked == 1 {
-				ch <- struct{}{}
+			if asked.Add(1) == 2 {
+				rearmed <- struct{}{}
 			}
-			return ch
+			return changed
 		},
 	}
 	armed := a.watchDriving()
@@ -375,7 +381,9 @@ func TestAHandOverAfterThisWindowsOwnTurnIsStillHeard(t *testing.T) {
 	drive(t, a, runCmd(a.takeStream(own))...)
 
 	drive(t, a, runCmd(armed)...)
-	if asked < 2 {
-		t.Fatalf("the keyboard wait was not armed again after this window's own turn: asked %d", asked)
+	select {
+	case <-rearmed:
+	case <-time.After(time.Second):
+		t.Fatalf("the keyboard wait was not armed again after this window's own turn: asked %d", asked.Load())
 	}
 }
