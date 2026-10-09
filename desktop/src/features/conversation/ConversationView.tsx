@@ -124,7 +124,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
             )}
           </div>
         </div>
-        <div className="conversation-footer">
+        <div className="conversation-footer conversation-column">
           {behind && (
             <Button className="conversation-jump" onClick={jump}>
               <Icon name="arrowDown" size="xs" />

@@ -86,7 +86,8 @@ function asideItem(entry: EngineEntry, id: string, ctx: Ctx): TurnItem {
 }
 
 function itemFor(entry: EngineEntry, id: string, ctx: Ctx): TurnItem | undefined {
-  if (entry.Role === 'assistant') return { kind: 'text', id, text: entry.Text, streaming: false };
+  // A blank assistant record only opens a tool round; drawing it would split one group of steps.
+  if (entry.Role === 'assistant') return entry.Text.trim() ? { kind: 'text', id, text: entry.Text, streaming: false } : undefined;
   if (entry.Role === 'note') return { kind: 'note', id, text: entry.Text };
   if (entry.Role === 'aside') return asideItem(entry, id, ctx);
   return undefined;

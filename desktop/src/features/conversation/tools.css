@@ -1,6 +1,8 @@
 .tool-group { display: flex; flex-direction: column; align-items: flex-start; max-width: 100%; }
 .tool-toggle.button { min-height: var(--row-height); padding-inline: var(--space-half); gap: var(--space-tight); max-width: 100%; justify-content: flex-start; font-size: var(--font-size-body); }
-.tool-toggle[aria-expanded="true"] .app-icon[data-motion="disclosure"] { transform: rotate(var(--motion-chevron-open)); }
+/* Closed points at the line it opens (›); open points down (⌄). */
+.tool-toggle .app-icon[data-motion="disclosure"] { transform: rotate(calc(var(--motion-ask-open) * -1)); }
+.tool-toggle[aria-expanded="true"] .app-icon[data-motion="disclosure"] { transform: none; }
 .tool-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tool-failed-count { color: var(--warning); white-space: nowrap; }
 .tool-list { display: flex; flex-direction: column; width: 100%; }

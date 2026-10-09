@@ -54,6 +54,21 @@ test('consecutive calls group; text splits groups', () => {
   assert.equal(first.kind === 'tools' && first.steps.length, 2);
 });
 
+test('blank assistant records do not split a group of steps', () => {
+  const model = projectConversation(
+    snap([
+      entry({ Role: 'user', Text: 'go' }),
+      entry({ Role: 'assistant', Text: '' }),
+      call('a', true),
+      entry({ Role: 'assistant', Text: '  ' }),
+      call('b', true),
+    ]),
+  );
+  const items = model.turns[0].items;
+  assert.deepEqual(items.map((i) => i.kind), ['tools']);
+  assert.equal(items[0].kind === 'tools' && items[0].steps.length, 2);
+});
+
 test('raw results without a tool name are skipped', () => {
   const model = projectConversation(
     snap([
@@ -91,6 +106,17 @@ test('task aside becomes a task item', () => {
   assert.equal(item.summary, 'Counted words in README.md and produced word-count.txt.');
   assert.equal(item.body, text);
   assert.equal(item.taskId, 't-7');
+});
+
+test('a run report (ask, blank line, status line) becomes a task item', () => {
+  const text = 'Count the words.\n\ndone · ran 1m 8s · Produced word-count.txt with the total. More detail. · nothing to land';
+  const model = projectConversation(snap([entry({ Role: 'user', Text: 'go' }), entry({ Role: 'aside', Text: text })]));
+  const item = model.turns[0].items[0];
+  assert.equal(item.kind, 'task');
+  if (item.kind !== 'task') return;
+  assert.equal(item.title, 'Count the words.');
+  assert.equal(item.status, 'done');
+  assert.equal(item.summary, 'Produced word-count.txt with the total.');
 });
 
 test('structured task fields win; other asides are notes', () => {
