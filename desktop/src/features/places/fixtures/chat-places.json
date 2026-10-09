@@ -10,5 +10,6 @@
       "name": "Config parser",
       "tint": "iris"
     }
-  ]
+  ],
+  "workspace": "/w"
 }
