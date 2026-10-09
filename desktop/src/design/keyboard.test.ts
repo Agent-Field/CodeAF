@@ -81,3 +81,11 @@ test('Places keys: ⌘P, ⌘⇧P, ⌘0, ⌘⇧W, ⌘N, ⌘Z outside fields, and 
   assert.deepEqual(linux(key('3', { code: 'Digit3', ctrlKey: true })), { id: 'jump', index: 3 });
   assert.deepEqual(mac(key('3', { code: 'Digit3', metaKey: true })), { id: 'jump', index: 3 });
 });
+
+test('⌘G (Ctrl G on Linux) groups the selected tabs; ⌘⇧G and ⌥⌘G mean nothing here', () => {
+  assert.deepEqual(mac(key('g', { metaKey: true })), { id: 'group' });
+  assert.deepEqual(linux(key('g', { ctrlKey: true })), { id: 'group' });
+  assert.equal(mac(key('g', { ctrlKey: true })), undefined);
+  assert.equal(mac(key('G', { metaKey: true, shiftKey: true })), undefined);
+  assert.equal(mac(key('©', { code: 'KeyG', metaKey: true, altKey: true })), undefined);
+});

@@ -3,7 +3,7 @@
 // its action type to WorkspaceAction and its function to `slices` below. Nothing here touches React.
 import { cleanView } from './view-state.ts';
 import { kindOrDefault } from './kinds/types.ts';
-import { clampRatio, initialWorkspace, layoutFits, makeSplit, titleRank, withSplitTitle, splitCapacity } from './helpers.ts';
+import { arrange, clampRatio, initialWorkspace, isArranged, layoutFits, makeSplit, titleRank, withSplitTitle, splitCapacity } from './helpers.ts';
 import { reduceNewTab, type NewTabAction } from './reducers/newtab.ts';
 import { reduceGroups, type GroupAction } from './reducers/groups.ts';
 import { reduceHistory, type HistoryAction } from './reducers/history.ts';
@@ -12,10 +12,10 @@ import { reduceClosing, type ClosingAction } from './reducers/closing.ts';
 import { reduceHandoff, type HandoffAction } from './reducers/handoff.ts';
 import { reduceTabs, type TabAction } from './reducers/tabs.ts';
 import { reduceHome, type HomeAction } from './reducers/home.ts';
-import type { Pane, SplitLayout, Tab, TabGroup, TitleSource, WorkspaceState } from './types.ts';
+import type { ClosedPlace, ClosedTab, Pane, SplitLayout, Tab, TabGroup, TitleSource, WorkspaceState } from './types.ts';
 
-export type { Pane, Split, SplitLayout, Tab, TabGroup, TitleSource, WorkspaceState } from './types.ts';
-export { initialWorkspace, panesOf, focusedPane, isSplit, visibleTabs, tabHolding, splitCapacity } from './helpers.ts';
+export type { ClosedPlace, ClosedTab, Pane, Split, SplitLayout, Tab, TabGroup, TitleSource, WorkspaceState } from './types.ts';
+export { initialWorkspace, panesOf, focusedPane, isSplit, visibleTabs, stripItems, tabHolding, splitCapacity, type StripItem } from './helpers.ts';
 export const storageKey = 'codeaf.desktop.workspace.v1';
 
 /**
@@ -75,6 +75,30 @@ const isGroup = (value: unknown): value is TabGroup => {
   return isString(group.id) && !!group.id && isString(group.title) && typeof group.collapsed === 'boolean';
 };
 
+/** A closed tab's recorded place; a place that does not validate is dropped and the tab reopens at the end. */
+function readPlace(value: unknown): ClosedPlace | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const p = value as Partial<Record<keyof ClosedPlace, unknown>>;
+  const id = (v: unknown) => (isString(v) && v ? v : undefined);
+  return { before: id(p.before), after: id(p.after), group: isGroup(p.group) ? p.group : undefined };
+}
+
+function readClosed(value: unknown): ClosedTab | undefined {
+  const tab = readTab(value);
+  const stood = tab && readPlace((value as { stood?: unknown }).stood);
+  return tab && stood ? { ...tab, stood } : tab;
+}
+
+/**
+ * A save from before the strip's laws (helpers `arrange`) drew pinned tabs, then loose tabs, then each group in
+ * `groups` order, whatever order `tabs` held. Such a save is put into exactly that order once, so a person sees the
+ * strip they left.
+ */
+function drawnOrder(tabs: Tab[], groups: readonly TabGroup[]): Tab[] {
+  if (isArranged(tabs)) return tabs;
+  return [...tabs.filter(t => t.pinned), ...tabs.filter(t => !t.pinned && !t.groupId), ...groups.flatMap(g => tabs.filter(t => !t.pinned && t.groupId === g.id))];
+}
+
 const unique = (ids: string[]) => new Set(ids).size === ids.length;
 
 /** Reads the saved workspace; anything that does not validate yields a fresh one. v1 saves (no kind, no split) load as conversations. */
@@ -90,20 +114,20 @@ export function parseWorkspace(text: string | null): WorkspaceState | undefined 
     const saved = JSON.parse(text ?? 'null') as Partial<WorkspaceState> | null;
     if (!saved || !Array.isArray(saved.tabs) || !saved.tabs.length || !Array.isArray(saved.groups) || !Array.isArray(saved.closed)) return undefined;
     const read = saved.tabs.map(readTab);
-    const closed = saved.closed.map(readTab);
+    const closed = saved.closed.map(readClosed);
     if (read.some(t => !t) || closed.some(t => !t) || !saved.groups.every(isGroup)) return undefined;
     const tabsIn = read as Tab[];
-    const closedIn = closed as Tab[];
+    const closedIn = closed as ClosedTab[];
     if (!unique(tabsIn.flatMap(t => [t.id, ...(t.split?.panes.map(p => p.id) ?? [])])) || !unique(tabsIn.map(t => t.id)) || !unique(saved.groups.map(g => g.id)) || !unique(closedIn.map(t => t.id)) || closedIn.some(t => tabsIn.some(open => open.id === t.id))) return undefined;
     const groupIds = new Set(saved.groups.map(g => g.id));
-    const tabs = tabsIn.map(tab => ({ ...tab, groupId: !tab.pinned && tab.groupId && groupIds.has(tab.groupId) ? tab.groupId : undefined }));
+    const tabs = drawnOrder(tabsIn.map(tab => ({ ...tab, groupId: !tab.pinned && tab.groupId && groupIds.has(tab.groupId) ? tab.groupId : undefined })), saved.groups);
     const activeId = tabs.some(tab => tab.id === saved.activeId) ? saved.activeId! : tabs[0].id;
-    return {
+    return arrange({
       tabs, groups: saved.groups.filter(g => tabs.some(t => t.groupId === g.id)), closed: closedIn.slice(-20),
       recentIds: [...new Set([activeId, ...(Array.isArray(saved.recentIds) ? saved.recentIds.filter(id => isString(id) && tabs.some(t => t.id === id)) : []), ...tabs.map(t => t.id)])],
       activeId,
       nextNumber: Number.isSafeInteger(saved.nextNumber) && saved.nextNumber! > 0 && saved.nextNumber! < 1000000 ? saved.nextNumber! : tabs.length + 1,
-    };
+    });
   } catch { return undefined; }
 }
 
@@ -112,10 +136,11 @@ type Slice = (state: WorkspaceState, action: { type: string }) => WorkspaceState
 // The Home slice goes first: it refuses the moves a place's Home may not make before the other slices see them.
 const slices: readonly Slice[] = [reduceHome, reduceTabs, reduceGroups, reduceSplit, reduceNewTab, reduceHistory, reduceClosing, reduceHandoff];
 
+/** Runs the slice that owns the action, then holds the strip's laws (helpers `arrange`) whatever that slice did. */
 export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState {
   for (const slice of slices) {
     const next = slice(state, action);
-    if (next) return next;
+    if (next) return next === state ? state : arrange(next);
   }
   return state;
 }

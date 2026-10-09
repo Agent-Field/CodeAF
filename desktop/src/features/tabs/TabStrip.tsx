@@ -4,10 +4,10 @@ import design from '../../design/tokens.json';
 import { overviewShortcut, tabShortcuts } from '../../design/keyboard';
 import type { TabsApi } from './context';
 import { GroupCapsule, MemberSlot } from './GroupCapsule';
-import { groupDropProps } from './hosts/dragHost';
+import { groupDragProps } from './hosts/dragHost';
 import { overflowItems, withGroupMenu } from './hosts/menuHost';
 import { stateOfMark, TabItem, tabDomIds } from './TabItem';
-import { focusedPane, visibleTabs, type Tab } from './model';
+import { focusedPane, stripItems, visibleTabs, type Tab } from './model';
 import './strip.css';
 
 /**
@@ -20,8 +20,10 @@ export function TabStrip({ api, leading, overviewTrigger, onOverview }: { api: T
   const strip = useRef<HTMLDivElement>(null);
   const [edge, setEdge] = useState({ end: false, hidden: 0 });
   const order = visibleTabs(state);
+  // The strip draws `state.tabs` as it stands (the reducer keeps pinned tabs first and each group one run), so what a
+  // person sees, what the arrow keys walk and what ⌘1–9 count are one order.
   const pinned = state.tabs.filter(t => t.pinned);
-  const loose = state.tabs.filter(t => !t.pinned && !t.groupId);
+  const items = stripItems(state);
   // The strip only re-measures when its shape changes, never on a draft keystroke.
   const shape = JSON.stringify([state.activeId, state.groups, state.tabs.map(t => [t.id, t.title, t.pinned, t.groupId, t.split?.panes.map(p => [p.id, p.title])])]);
   const item = (tab: Tab, inGroup = false) => <TabItem key={tab.id} api={api} tab={tab} order={order} inGroup={inGroup}/>;
@@ -63,12 +65,12 @@ export function TabStrip({ api, leading, overviewTrigger, onOverview }: { api: T
       <div ref={strip} className="workspace-tabstrip" aria-label="Conversation tabs" data-fade-end={edge.end || undefined}>
         {pinned.map(tab => item(tab))}
         {pinned.length > 0 && <span className="workspace-tab-divider" role="separator" aria-orientation="vertical"/>}
-        {loose.map(tab => item(tab))}
-        {state.groups.filter(g => state.tabs.some(t => t.groupId === g.id)).map(group => {
-          const members = state.tabs.filter(t => t.groupId === group.id);
+        {items.map(entry => {
+          if (entry.kind === 'tab') return item(entry.tab);
+          const { group, members } = entry;
           return (
             <GroupCapsule key={group.id} title={group.title} count={members.length} collapsed={group.collapsed} needsYou={members.some(t => stateOfMark(api.summaries[focusedPane(t).id]?.mark) === 'waiting')}
-              onToggle={() => dispatch({ type: 'collapse-group', id: group.id })} {...groupDropProps(api, group)} wrapLabel={label => withGroupMenu(api, group, label)}>
+              onToggle={() => dispatch({ type: 'collapse-group', id: group.id })} labelProps={groupDragProps(api, group)} wrapLabel={label => withGroupMenu(api, group, label)}>
               {members.map(tab => <MemberSlot key={tab.id} hidden={group.collapsed && tab.id !== state.activeId}>{item(tab, !group.collapsed)}</MemberSlot>)}
             </GroupCapsule>
           );

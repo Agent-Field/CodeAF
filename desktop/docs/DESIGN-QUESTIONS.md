@@ -126,7 +126,7 @@ Shell). On any conflict, the design files win over code and older docs.
 | NT7 | New tab: the empty field | Shows the hint "↵ to start a conversation" as in the specimen and lists only the Start rows. Enter on the empty field does what the highlighted Start row does; it never starts an empty conversation. |
 | NT8 | New tab: Esc with text typed | The first Esc clears the text; Esc on the empty field closes the tab (the design states only the second). |
 | NT9 | New tab: choosing an open tab row | Jumps to that tab and closes the new tab, so a jump leaves no empty field behind. |
-| NT10 | New tab: choosing a recently closed row | The new tab becomes that tab (same session, draft and kind) and the tab leaves the closed list. |
+| NT10 | New tab: choosing a recently closed row | Superseded by TI10: the closed tab comes back whole where it stood, and the field goes. |
 | NT11 | New tab: Enter on the first row while the engine is away | The tab becomes a conversation anyway and keeps the typed words as its draft, with the composer's own Retry line. Nothing is lost. |
 | NT12 | New tab: a file row | The tab becomes kind `file` with its path and the session that can read it. The file viewer is not backed yet, so the tab shows the file placeholder until the file lane lands. `path` was added to the persisted tab view for this. |
 | NT13 | New tab rows: the design draws square-terminal and file-code-2 at 15px | The set's terminal and file-code icons at 15px (a size on the row only). |
@@ -218,3 +218,27 @@ R3 above is superseded: the rail now draws the Places sections from the engine's
 | PS10 | The Home composer's model | The chip shows the Conversation role's default (DS Flash) read-only; the chat's own picker takes over once it has a session. |
 | PS11 | "Ask codeaf about this output" from a terminal inside a place | It still starts an unplaced conversation (the terminal lane's own call). Filing it in the place needs that call to go through the place strip. |
 | PS12 | Now in graphite (Places 9d) | Graphite keeps the tint formula's frame chroma (.035) and drops ink-2 on the frame to 4.46:1 (overview filmstrip labels), failing the 4.5:1 contract. Now keeps the root palette; a place window takes its own tint. Needs a graphite frame with less chroma, or a ruling that Now stays untinted. |
+
+## Tab order, groups and reopen (tab integrity)
+
+Sources: Shell 2b (eighteen tabs: loose tabs drawn on both sides of the collapsed group "Release v2.4 3"), Shell
+"Groups, split, overview, rail" ("You make one by dragging a tab onto a tab (the target shows "Group"), or by
+⌘-selecting and pressing ⌘G … Tasks opened from a conversation join its group automatically"), Shell 3g (Add to group
+▸ "New group… ⌘G"), Interactions (Tab: "drag reorders, onto a tab groups"; Group label: "Drag moves the whole group";
+Shortcuts: "⌘G Group selected tabs", "⌘⇧T Reopen closed tab"). The tabs audit (findings 3, 4, 5) named the defects.
+
+| # | Where the design is silent or the code disagreed | What ships |
+| --- | --- | --- |
+| TI1 | Strip order. 2b draws a group between loose tabs; the strip drew pinned, then every loose tab, then every group | `state.tabs` IS the strip order, as in a browser. The reducer keeps two laws after every action: pinned tabs first and in no group, each group's members one run. The strip, ← →, ⌘1–9, Close's next tab and the overview's group order all read that one order; no renderer re-sorts. A save from before the laws loads in the order its strip drew. |
+| TI2 | Where a new tab, a new group and a joining tab land | A new tab: last. A new tab in a group, "Add to group" and a drop on a group label: the end of that group. A new group: where the first of its tabs stood. "No group": just after the group it leaves. |
+| TI3 | What a drop at a group's outer edge means (it used to always join) | A tab dropped between two members joins. At the outer edge of a group, only a member stays in: a loose tab dropped after a group's last member sits after the group. Joining is the middle of a member (the "Group" target) or the label. The last member of a group carries the group with it. |
+| TI4 | Pinning during a drag | A drag never pins or unpins. A loose tab dropped on a pinned tab goes to the head of the loose tabs; a pinned tab stays among the pinned. Pin and Unpin are the menu's. |
+| TI5 | "Drag moves the whole group": where it may go | Before or after a loose tab, before or after a whole other group (dropped on its label, before it), never among the pinned. Groups never nest, so a dragged group has no middle target. No keyboard path is drawn; the menu's per-tab "Move to group" stays the keyboard way to regroup. |
+| TI6 | "⌘-selecting": what a ⌘-click does to a tab and how a pick looks | ⌘-click (Ctrl-click on Linux) picks or unpicks a tab without selecting it; the active tab is always part of the selection. A picked tab takes the field fill and "Selected" for a screen reader. A plain click, and ⌘G, drop the picks. Picks are never saved. |
+| TI7 | ⌘G ("New group… ⌘G") with or without picks, and its name | Groups the active tab with every picked tab where the first of them stands, under the next free "New group" name, without a naming dialog (the same as Create group; Rename is on the label menu). With nothing picked it groups the active tab alone. The Inbox never joins a group. |
+| TI8 | Which tasks "join its group automatically" | A task tab opened from a conversation pane joins that tab's group, at the end. A task opened from a loose conversation opens last, as before. |
+| TI9 | ⌘⇧T placement (it appended at the end and dropped a group closing had emptied) | Close records where the tab stood (the tab after it, the tab before it, its group) in the closed list, which is saved. Reopen puts it before the tab that followed it, else after the tab that preceded it, else last; never inside another group's run; in its group, made again with its name if closing emptied it, and opened if collapsed. A pane closed out of a split reopens just after the split. The closing toast's Undo is the same action with the place it remembered. |
+| TI10 | Reopening a closed split from the new-tab field (it kept one pane) | The closed tab comes back whole under its own ids, exactly as ⌘⇧T would: every pane with its draft, session and terminal binding, the layout, the dividers and the focused pane, where it stood and in its group. The field goes and is not a closed tab. A field that is itself a pane of a split takes in a closed plain tab as that pane; a closed split reopens as its own tab and the field pane leaves the split. (Supersedes NT10's "the new tab becomes that tab".) |
+| TI11 | An emptied group name | Takes the next "New group" name no other group has. |
+| TI12 | The group suggestion pill (2b "Group the 3 bench tabs as Benchmarks?") | Absent. "3 or more tabs on one repo or topic" needs a repo or topic for every tab and a name for the set; no tab carries a repo and the desktop makes no AI call of its own. It waits for an engine source. |
+

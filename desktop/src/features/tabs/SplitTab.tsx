@@ -1,4 +1,4 @@
-import type { HTMLAttributes, Ref } from 'react';
+import type { HTMLAttributes, MouseEvent, Ref } from 'react';
 import { Button, IconButton } from '../../components/ui';
 import { TabGlyph, type TabState } from './Tab';
 import type { TabKind } from './kinds/types';
@@ -13,14 +13,14 @@ export type SplitSegment = { id: string; kind: TabKind; title: string; /** A web
  */
 export function SplitTab({ segments, focus, active, hover = false, specimen = false, onSelectPane, onClose, frame, ...rest }: {
   segments: readonly SplitSegment[]; focus: number; active?: boolean; hover?: boolean; specimen?: boolean;
-  onSelectPane?: (index: number) => void; onClose?: () => void;
+  onSelectPane?: (index: number, event: MouseEvent<HTMLButtonElement>) => void; onClose?: () => void;
   frame?: HTMLAttributes<HTMLDivElement> & { draggable?: boolean };
 } & Omit<HTMLAttributes<HTMLDivElement>, 'onSelect'> & { ref?: Ref<HTMLDivElement> }) {
   const name = segments.map(s => s.title).join(' and ');
   return (
     <div {...rest} {...frame} className={`workspace-tab workspace-split-tab ${frame?.className ?? ''}`} data-active={!!active} data-hover={hover || undefined} role="group" aria-label={`Split: ${name}`}>
       {segments.map((segment, index) => (
-        <Button key={segment.id} className="workspace-split-segment" role={specimen ? undefined : 'tab'} id={`tab-${segment.id}`} aria-controls={specimen ? undefined : 'workspace-tab-panel'} aria-selected={specimen ? undefined : !!active && index === focus} aria-label={segment.title} data-focused={!!active && index === focus} tabIndex={active && index === focus ? 0 : -1} onClick={() => onSelectPane?.(index)}>
+        <Button key={segment.id} className="workspace-split-segment" role={specimen ? undefined : 'tab'} id={`tab-${segment.id}`} aria-controls={specimen ? undefined : 'workspace-tab-panel'} aria-selected={specimen ? undefined : !!active && index === focus} aria-label={segment.title} data-focused={!!active && index === focus} tabIndex={active && index === focus ? 0 : -1} onClick={event => onSelectPane?.(index, event)}>
           <TabGlyph kind={segment.kind} title={segment.title} monogram={segment.monogram} state={segment.state}/>
           <span className="workspace-tab-title">{segment.title}</span>
         </Button>

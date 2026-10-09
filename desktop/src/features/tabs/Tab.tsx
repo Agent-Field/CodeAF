@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactElement, Ref } from 'react';
+import type { HTMLAttributes, MouseEvent, ReactElement, Ref } from 'react';
 import { Button, Icon, IconButton } from '../../components/ui';
 import { kindDef } from './kinds/registry';
 import { PlaceSwatch, type TintName } from '../places/components/PlaceSwatch';
@@ -53,6 +53,8 @@ export type TabProps = FrameProps & {
   compressed?: boolean;
   /** Forces the hover look, for specimens. */
   hover?: boolean;
+  /** Picked with ⌘-click (Ctrl-click on Linux) for ⌘G: a field fill, and "Selected" for a screen reader. */
+  picked?: boolean;
   /** Alt held: the close slot becomes a stop square (close and stop). */
   closeMode?: 'close' | 'stop';
   /** The close button's tooltip text ("Close · keeps running") and its muted shortcut. */
@@ -61,7 +63,8 @@ export type TabProps = FrameProps & {
   tabIndex?: number;
   /** Wraps the select button; the preview lane puts the hover card here. */
   wrapSelect?: (select: ReactElement) => ReactElement;
-  onSelect?: () => void;
+  /** The click, so the caller can tell a ⌘-click (pick) from a plain one (select). */
+  onSelect?: (event: MouseEvent<HTMLButtonElement>) => void;
   onClose?: () => void;
   onRename?: () => void;
   onKeyDown?: HTMLAttributes<HTMLButtonElement>['onKeyDown'];
@@ -81,10 +84,10 @@ export type TabProps = FrameProps & {
  * One tab, per design 2h "Tabs": 30px, radius 8, 13px kind glyph, 12px title faded over its last 20px,
  * a close in a fixed 20px slot. All state is props; the primitive owns no data and no menus.
  */
-export function Tab({ kind, title, monogram, active = false, pinned = false, state, badge = false, compressed = false, hover = false, closeMode = 'close', closeHint, closeShortcut, tabIndex, wrapSelect, onSelect, onClose, onRename, onKeyDown, frame, id, inGroup = false, specimen = false, placeTint, switcher, ...rest }: TabProps) {
+export function Tab({ kind, title, monogram, active = false, pinned = false, state, picked = false, badge = false, compressed = false, hover = false, closeMode = 'close', closeHint, closeShortcut, tabIndex, wrapSelect, onSelect, onClose, onRename, onKeyDown, frame, id, inGroup = false, specimen = false, placeTint, switcher, ...rest }: TabProps) {
   const home = !!placeTint;
   const select = (
-    <Button className="workspace-tab-select" role={specimen ? undefined : 'tab'} id={id} aria-controls={specimen ? undefined : 'workspace-tab-panel'} aria-selected={specimen ? undefined : active} aria-current={specimen && active ? true : undefined} aria-label={title} aria-description={state ? tabStateLabel[state] : badge ? 'Needs you' : undefined} tabIndex={tabIndex ?? (active ? 0 : -1)} onClick={onSelect} onDoubleClick={onRename} onKeyDown={onKeyDown}>
+    <Button className="workspace-tab-select" role={specimen ? undefined : 'tab'} id={id} aria-controls={specimen ? undefined : 'workspace-tab-panel'} aria-selected={specimen ? undefined : active} aria-current={specimen && active ? true : undefined} aria-label={title} aria-description={[state && tabStateLabel[state], picked && 'Selected', !state && badge && 'Needs you'].filter(Boolean).join(', ') || undefined} tabIndex={tabIndex ?? (active ? 0 : -1)} onClick={onSelect} onDoubleClick={onRename} onKeyDown={onKeyDown}>
       {home && !state ? <PlaceSwatch tint={placeTint} role="rail"/> : <TabGlyph kind={kind} title={title} monogram={monogram} state={state}/>}
       {(home || (!pinned && !compressed)) && <span className="workspace-tab-title">{title}</span>}
       {home && switcher && <>{switcher.alert && <span className="tab-dot" data-state="waiting" role="img" aria-label={switcher.alert}/>}<Icon name="switcher" size="micro"/></>}
@@ -93,7 +96,7 @@ export function Tab({ kind, title, monogram, active = false, pinned = false, sta
   );
   const stop = closeMode === 'stop';
   return (
-    <div {...rest} {...frame} className={`workspace-tab ${pinned && !home ? 'is-pinned' : ''} ${home ? 'is-place-home' : ''} ${frame?.className ?? ''}`} data-active={active} data-kind={kind} data-state={state} data-hover={hover || undefined} data-compressed={compressed || undefined} data-in-group={inGroup || undefined}>
+    <div {...rest} {...frame} className={`workspace-tab ${pinned && !home ? 'is-pinned' : ''} ${home ? 'is-place-home' : ''} ${frame?.className ?? ''}`} data-active={active} data-kind={kind} data-state={state} data-hover={hover || undefined} data-compressed={compressed || undefined} data-in-group={inGroup || undefined} data-picked={picked || undefined}>
       {wrapSelect ? wrapSelect(select) : select}
       {!pinned && !compressed && onClose && <span className="workspace-tab-close-slot"><IconButton className="workspace-tab-close" label={stop ? `Close and stop ${title}` : `Close ${title}`} title={closeHint} shortcut={closeShortcut} data-close-mode={closeMode} icon={stop ? 'stop' : 'close'} iconSize="micro" tabIndex={active ? 0 : -1} onClick={onClose}/></span>}
     </div>
