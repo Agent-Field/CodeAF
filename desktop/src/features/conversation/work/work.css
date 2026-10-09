@@ -1,14 +1,8 @@
-/* Work rhythm (ELEMENTS §0): quieter ink, 12px labels, a guide line at the left, 4px between rows. Layout only. */
-.work-block { display: flex; flex-direction: column; align-items: flex-start; max-width: 100%; margin-block: var(--space-work-block); color: var(--muted); font-size: var(--font-size-body); line-height: var(--line-height-tight); }
-.work-toggle.button, .work-step-head.button { min-height: var(--step-row-height); padding-inline: var(--space-half); gap: var(--space-tight); max-width: 100%; justify-content: flex-start; font-size: var(--font-size-body); text-align: left; }
+/* Work rhythm (ELEMENTS §0). The block container and its guide live in workBlock.css. */
+.work-step-head.button { min-height: var(--step-row-height); padding-inline: var(--space-half); gap: var(--space-tight); max-width: 100%; justify-content: flex-start; font-size: var(--font-size-body); text-align: left; }
 .work-step-head.button { width: 100%; }
-.work-toggle.button { align-self: flex-start; }
-.work-toggle .app-icon[data-motion="disclosure"] { transform: rotate(calc(var(--motion-ask-open) * -1)); }
-.work-toggle[aria-expanded="true"] .app-icon[data-motion="disclosure"] { transform: none; }
-.work-summary-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [data-tone="warning"] { color: var(--warning); }
 
-.work-body { display: flex; flex-direction: column; gap: var(--space-work-row); align-self: stretch; min-width: 0; box-sizing: border-box; margin-inline-start: calc(var(--icon-xs) / 2); padding-inline-start: calc(var(--work-indent) - var(--icon-xs) / 2); border-inline-start: var(--border-width) solid var(--work-guide); }
 .work-step { display: flex; flex-direction: column; min-width: 0; }
 .work-step-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .work-step[data-state="forming"] .work-step-title { opacity: var(--opacity-disabled); }
