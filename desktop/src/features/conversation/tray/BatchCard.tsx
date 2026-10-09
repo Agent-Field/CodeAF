@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Button, Icon, IconButton, Text } from '../../../components/ui';
+import { Button, Icon, IconButton } from '../../../components/ui';
 import type { EngineAnswer } from '../../chat/engine-client';
 import { bulkAnswers } from './answers';
 import type { Question } from './form';
 import { questionKey } from './layout';
+import { NonBlockingNote, doesNotBlock } from './NonBlockingNote';
 import './batch.css';
 
 type Role = 'allow' | 'deny';
@@ -15,9 +16,6 @@ type BatchProps = {
   /** Sends the members' answers in order; resolves true when the engine took them all. */
   onSend: (answers: EngineAnswer[]) => Promise<boolean>;
 };
-
-/** The batch is one question: it only holds the reply up when one of its members does. */
-const blocksReply = (members: Question[]) => members.some((member) => member.blocking?.turn);
 
 const isOpen = (member: Question, decided: Decided) => !decided[questionKey(member)];
 
@@ -89,7 +87,7 @@ export function BatchCard({ members, busy, onSend }: BatchProps) {
             <Button variant="primary" className="batch-allow" disabled={busy} onClick={() => sendAll('allow')}>Allow all</Button>
             <Button variant="quiet" className="batch-deny" disabled={busy} onClick={() => sendAll('deny')}>Deny all</Button>
             <Button className="batch-more" disabled={busy} onClick={() => setPaging(true)}>One by one</Button>
-            {!blocksReply(members) && <Text className="batch-note">Doesn&rsquo;t block this reply</Text>}
+            {doesNotBlock(members) && <NonBlockingNote />}
           </div>
         </>
       )}

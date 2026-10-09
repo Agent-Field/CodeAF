@@ -43,5 +43,4 @@ Shell). On any conflict, the design files win over code and older docs.
 | Q18 | Colour of "Later" / "You decide" on the permission card footer | ink-2 as in Components; the clarification card uses ink-3 as in Conversation 1e. |
 | Q19 | Step row ink: Conversation 1a draws settled steps ink-3, Components draws live work-block steps ink-2 | Settled steps ink-3, running step ink, failed step ink-2. |
 | Q20 | "Holding up <tasks>" footer note on a question (engine data, no design) | Shown as one muted line in the tray foot. |
-| Q21 | Where "Doesn't block this reply" sits | In the tray foot under the card (design 1a puts it right of the actions); to be moved if the designer confirms 1a. |
 | Q22 | Ink for queued, stopped and interrupted rows in the task panel | Queued faint as in 1c; stopped and interrupted use the settled-row ink. |

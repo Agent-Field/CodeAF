@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Button } from '../../../components/ui';
 import { needsWords, optionLabel, permissionRoles, visibleOptions, type Option, type Question } from './form';
 import './answer-forms.css';
@@ -9,6 +9,8 @@ type FormProps = {
   /** Only one question is waiting: no pager, so Enter chooses the primary. */
   single?: boolean;
   onPress: (option: Option) => void;
+  /** Drawn at the right end of the answer row. */
+  note?: ReactNode;
 };
 
 const TYPING = 'input, textarea, select, button, a, [contenteditable="true"]';
@@ -47,7 +49,7 @@ function Answer({ kind, locked, onClick, children }: AnswerProps) {
 }
 
 /** Allow once is the loud answer; Deny sits beside it; "Always allow…" stays quiet. */
-export function PermissionAnswers({ question, locked, single, why, onPress }: FormProps & { why: WhyToggle }) {
+export function PermissionAnswers({ question, locked, single, why, note, onPress }: FormProps & { why: WhyToggle }) {
   const { allow, deny, always } = permissionRoles(question);
   useEnterChooses(allow, Boolean(single) && !locked, onPress);
   const answer = (option: Option | undefined, kind: AnswerProps['kind'], label?: string) =>
@@ -62,6 +64,7 @@ export function PermissionAnswers({ question, locked, single, why, onPress }: Fo
       {answer(deny, 'field')}
       {answer(always, 'ghost', 'Always allow…')}
       {deny && <Button variant="ghost" className="answer-why" aria-expanded={why.open} disabled={locked} onClick={why.toggle}>and say why</Button>}
+      {note}
     </div>
   );
 }
@@ -75,7 +78,7 @@ function irreversibleKind(question: Question, option: Option): AnswerProps['kind
 const KIND_ORDER = ['field', 'danger', 'ghost'];
 
 /** Cannot be undone: no Always, no clock, and the destructive answer is never the primary. */
-export function IrreversibleAnswers({ question, locked, onPress }: FormProps) {
+export function IrreversibleAnswers({ question, locked, note, onPress }: FormProps) {
   const rows = visibleOptions(question).map((option) => ({ option, kind: irreversibleKind(question, option) }));
   rows.sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind));
   return (
@@ -85,6 +88,7 @@ export function IrreversibleAnswers({ question, locked, onPress }: FormProps) {
           {optionLabel(question, option)}
         </Answer>
       ))}
+      {note}
     </div>
   );
 }

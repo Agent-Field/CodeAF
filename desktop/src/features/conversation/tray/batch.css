@@ -11,7 +11,6 @@
 .batch-commands { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; color: var(--ink-2); font-family: var(--font-mono); font-size: var(--type-mono-size); line-height: var(--batch-commands-leading); overflow-wrap: anywhere; }
 
 .batch-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-tight); }
-.batch-note { margin-left: auto; padding-right: var(--space-2); color: var(--ink-3); font-size: var(--type-caption-size); }
 
 .batch-pager { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-half); padding-right: var(--space-2); color: var(--ink-3); font-size: var(--type-caption-size); }
 .batch-pager .icon-button { width: var(--row-action-size); height: var(--row-action-size); border-radius: var(--radius-row-action); color: var(--ink-2); }
