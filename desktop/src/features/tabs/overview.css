@@ -1,1 +1,90 @@
-/* Tab overview appearance is owned by styles/ui.css. */
+/* The overview (design 3h grid, 3i filmstrip). A full-window layer on the frame ground; every value is a token. */
+.tab-overview { position: fixed; inset: 0; width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: var(--frame); color: var(--ink); box-shadow: none; overflow: hidden; }
+.tab-overview[open] { display: flex; flex-direction: column; animation: surface-enter var(--duration-overlay) var(--ease-overlay); }
+.tab-overview::backdrop { background: transparent; }
+
+/* Top bar: 56px, search centred, view switch, Done. */
+.overview-bar { flex: none; display: flex; align-items: center; gap: var(--overview-bar-gap); height: var(--overview-bar-height); padding: 0 var(--overview-bar-pad); }
+.overview-lights { flex: none; width: var(--overview-lights-gutter); }
+.overview-search { display: flex; align-items: center; gap: var(--overview-search-gap); width: var(--overview-search-width); max-width: 100%; min-width: 0; height: var(--overview-search-height); padding: 0 var(--overview-search-pad); margin: 0 auto; border-radius: var(--radius-search); background: var(--tab); box-shadow: var(--sh-1); color: var(--ink-3); }
+.overview-search .app-icon { flex: none; width: var(--overview-search-icon); height: var(--overview-search-icon); }
+.overview-search .text-input { flex: 1; width: 100%; min-width: 0; min-height: 0; padding: 0; border: 0; background: transparent; color: var(--ink); font-size: var(--font-size-input); }
+.overview-search .text-input::placeholder { color: var(--ink-3); }
+.overview-search .text-input:focus-visible { outline: none; box-shadow: none; }
+/* The ring is for keyboard focus only (owner D6): a click or typing leaves the field as drawn. */
+:root:not([data-input="pointer"]) .overview-search:has(.text-input:focus-visible) { box-shadow: var(--sh-1), 0 0 0 var(--focus-width) var(--focus-ring); }
+.overview-view { display: contents; }
+.overview-bar .segmented { flex: none; border-radius: var(--radius-segment); background: var(--tab-hover); }
+.overview-bar .segmented-option { height: var(--overview-toggle-height); font-size: var(--font-size-body); color: var(--ink-2); }
+.overview-bar .segmented-option:hover:not(:disabled), .overview-bar .segmented-option:active:not(:disabled) { background: var(--tab-hover); color: var(--ink); }
+.overview-bar .segmented-option[aria-checked="true"], .overview-bar .segmented-option[aria-checked="true"]:hover:not(:disabled) { background: var(--canvas); box-shadow: var(--sh-1); color: var(--ink); font-weight: var(--font-weight-medium); }
+.overview-bar .overview-done.button { flex: none; min-height: 0; height: var(--overview-done-height); padding: 0 var(--overview-done-pad); border: 0; border-radius: var(--radius-control); background: transparent; color: var(--ink-2); font-size: var(--font-size-body); font-weight: var(--font-weight-medium); }
+.overview-bar .overview-done.button:hover:not(:disabled) { background: var(--tab-hover); color: var(--ink); }
+.overview-bar .overview-done.button:active:not(:disabled) { background: var(--tab-hover); }
+
+/* Grid: sections by group, a mask fades the last 60px. */
+.overview-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: var(--overview-body-gap); padding: var(--overview-body-pad-top) var(--overview-body-pad-inline) var(--overview-body-fade); mask-image: linear-gradient(to bottom, black calc(100% - var(--overview-body-fade)), transparent); }
+.overview-section { display: flex; flex-direction: column; gap: var(--overview-body-gap); }
+.overview-section-head { display: flex; align-items: center; gap: var(--overview-section-gap); font-size: var(--font-size-input); }
+.overview-section-head .overview-section-title { margin: 0; font-size: var(--font-size-input); font-weight: var(--font-weight-semibold); color: var(--ink); }
+.overview-section-count { color: var(--ink-3); }
+.overview-section-head .overview-split.button { margin-left: auto; min-height: 0; height: var(--overview-action-height); gap: var(--overview-action-gap); padding: 0 var(--overview-action-pad); border: 0; border-radius: var(--radius-segment-item); background: var(--tab-hover); color: var(--ink-2); font-size: var(--font-size-body); }
+.overview-section-head .overview-split.button:hover:not(:disabled) { background: var(--field-2); color: var(--ink); }
+.overview-split .app-icon { width: var(--overview-action-icon); height: var(--overview-action-icon); }
+.overview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--overview-grid-min)), 1fr)); gap: var(--overview-grid-gap); }
+
+/* A card: 168px, surface, sh-1; the active tab adds a 2px accent ring. The open button covers it, the face sits above. */
+.overview-card { position: relative; height: var(--overview-card-height); min-width: 0; border-radius: var(--radius-overview-card); background: var(--surface); box-shadow: var(--sh-1); overflow: hidden; transition: background-color var(--dur-fast) var(--ease); }
+.overview-card[data-active="true"] { box-shadow: var(--sh-1), 0 0 0 var(--overview-card-ring) var(--accent); }
+.overview-card:hover, .overview-card[data-cursor="true"] { background: var(--field); }
+.overview-card-open.button { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; padding: 0; border: 0; border-radius: inherit; background: transparent; }
+.overview-card-open.button:hover:not(:disabled), .overview-card-open.button:active:not(:disabled) { background: transparent; }
+.overview-card-open.button:focus-visible { outline-offset: calc(var(--motion-rest) - var(--focus-offset)); }
+.overview-card-face { position: relative; display: flex; flex-direction: column; gap: var(--overview-card-gap); height: 100%; padding: var(--overview-card-pad-block) var(--overview-card-pad-inline); pointer-events: none; }
+.overview-card-head { display: flex; align-items: center; gap: var(--overview-card-head-gap); font-size: var(--font-size-label); color: var(--ink-3); }
+.overview-card-head .app-icon { width: var(--overview-card-head-icon); height: var(--overview-card-head-icon); }
+.overview-card-state { margin-left: auto; display: flex; align-items: center; gap: var(--overview-action-gap); }
+.overview-dot { flex: none; width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--accent); }
+.overview-dot[data-state="waiting"] { background: var(--amber); }
+.overview-dot[data-state="failed"] { background: var(--danger); }
+.overview-card-title { margin-top: var(--overview-card-title-top); font-size: var(--font-size-input); font-weight: var(--font-weight-medium); line-height: var(--line-height-tight); white-space: nowrap; overflow: hidden; mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
+.overview-card-body { min-height: 0; flex: 0 1 auto; overflow: hidden; }
+.overview-card-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--overview-card-lines); overflow: hidden; overflow-wrap: anywhere; font-size: var(--font-size-body); line-height: var(--overview-card-leading); color: var(--ink-2); }
+.overview-card-empty { color: var(--ink-3); }
+.overview-card-panes { display: flex; flex-direction: column; font-size: var(--font-size-body); line-height: var(--overview-card-leading); color: var(--ink-2); }
+.overview-card-pane { white-space: nowrap; overflow: hidden; mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
+.overview-card-foot { margin-top: auto; font-size: var(--font-size-label); color: var(--ink-3); }
+/* Close shows on hover or keyboard focus, and always on coarse pointers. */
+.overview-card .overview-card-close.icon-button { position: absolute; top: var(--overview-close-inset); right: var(--overview-close-inset); width: var(--overview-close-size); height: var(--overview-close-size); border-radius: var(--radius-tab-close); color: var(--ink-3); opacity: var(--opacity-transparent); transition: opacity var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.overview-card:hover .overview-card-close, .overview-card:focus-within .overview-card-close { opacity: var(--opacity-opaque); }
+.overview-card .overview-card-close.icon-button:hover:not(:disabled) { background: var(--field-2); color: var(--ink); }
+.overview-card .overview-card-close.icon-button:active:not(:disabled) { background: var(--field-2); }
+.overview-card-head:has(.overview-card-state) { padding-right: 0; }
+.overview-no-results { padding: var(--space-6) var(--overview-body-pad-inline); }
+
+/* Filmstrip: real panes at half scale, the centre card larger, the neighbours fading at the window edges. */
+.overview-film { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; }
+.overview-film-position { align-self: center; font-size: var(--font-size-label); font-weight: var(--font-weight-medium); color: var(--ink-3); }
+.overview-film-track { position: relative; display: flex; align-items: center; gap: var(--overview-film-gap); overflow: hidden; padding: var(--overview-film-gap) calc(50% - var(--overview-film-width) / 2); mask-image: linear-gradient(to right, transparent, black var(--overview-film-fade), black calc(100% - var(--overview-film-fade)), transparent); }
+.overview-film-item { flex: none; display: flex; flex-direction: column; align-items: center; gap: var(--overview-film-label-gap); transform: scale(var(--overview-film-side-scale)); opacity: var(--overview-film-side-opacity); transition: transform var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease); }
+.overview-film-item[data-cursor="true"] { transform: none; opacity: var(--opacity-opaque); }
+.overview-film-frame { position: relative; border-radius: var(--radius-overview-card); box-shadow: var(--sh-2); }
+.overview-film-item[data-active="true"] .overview-film-frame { box-shadow: var(--sh-2), 0 0 0 var(--overview-card-ring) var(--accent); }
+.overview-film-viewport { position: relative; width: var(--overview-film-width); height: var(--overview-film-height); border-radius: var(--radius-overview-card); overflow: hidden; background: var(--canvas); }
+.overview-film-pane { position: absolute; left: 0; top: 0; width: var(--overview-film-pane-width); height: var(--overview-film-pane-height); transform: scale(var(--overview-film-scale)); transform-origin: 0 0; background: var(--canvas); display: flex; flex-direction: column; }
+.overview-live { flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; pointer-events: none; user-select: none; }
+.overview-live > .workspace-conversation { padding: var(--pane-gap); }
+.overview-film-open.button { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; padding: 0; border: 0; border-radius: inherit; background: transparent; }
+.overview-film-open.button:hover:not(:disabled), .overview-film-open.button:active:not(:disabled) { background: transparent; }
+.overview-film-open.button:focus-visible { outline-offset: calc(var(--motion-rest) - var(--focus-offset)); }
+.overview-film-label { display: flex; align-items: center; gap: var(--overview-film-label-icon-gap); max-width: var(--overview-film-width); font-size: var(--font-size-input); color: var(--ink-2); }
+.overview-film-label > span:last-child { white-space: nowrap; overflow: hidden; mask-image: linear-gradient(to right, black calc(var(--overview-film-width) - var(--tab-title-fade)), transparent var(--overview-film-width)); }
+.overview-film-label .app-icon { color: var(--ink-3); }
+.overview-film-label .overview-dot { margin: 0 var(--tab-dot-margin); }
+.overview-film-item[data-cursor="true"] .overview-film-label { color: var(--ink); font-weight: var(--font-weight-medium); }
+.overview-film-item[data-cursor="true"] .overview-film-label .app-icon { color: var(--ink-2); }
+.overview-film-hint { display: flex; justify-content: center; gap: var(--overview-film-hint-gap); font-size: var(--font-size-label); color: var(--ink-3); }
+
+@media (hover: none), (pointer: coarse) { .overview-card .overview-card-close.icon-button { opacity: var(--opacity-opaque); } }
+@media (max-width: 600px) { .overview-bar { gap: var(--space-2); padding: 0 var(--space-3); } .overview-body { padding-inline: var(--space-3); } .overview-bar .segmented-option { padding: 0 var(--space-2); } }
+@media (prefers-reduced-motion: reduce) { .tab-overview[open], .overview-film-item { animation: none; transition: none; } }
