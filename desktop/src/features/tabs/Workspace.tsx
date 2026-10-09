@@ -35,7 +35,7 @@ export function Workspace({ enabled, onActivate, leading }: Props) {
   }
   function openTaskTab(source: Pane, taskId: string, title: string) {
     const tab: Tab = { id: crypto.randomUUID(), kind: 'task', title, titleSource: 'manual', pinned: false, draft: '', sessionFile: source.sessionFile, route: { taskId, back: [''], forward: [] } };
-    dispatch({ type: 'open', tab, background: true });
+    dispatch({ type: 'open-task', tab, background: true, from: source.id });
   }
   function openFile(source: Pane, path: string, kind: FileTabKind) {
     const tab = fileTab(source, path, kind, crypto.randomUUID());

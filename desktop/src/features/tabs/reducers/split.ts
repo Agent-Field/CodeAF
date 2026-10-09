@@ -2,6 +2,7 @@
 // Merging, closing a pane, moving focus, changing layout and unmerging are all pure here; the drag
 // gestures that call them belong to the split lane.
 import { clampRatio, createId, defaultLayout, layoutFits, makeSplit, normalize, paneOf, splitCapacity, tabOf, withSplitTitle } from '../helpers.ts';
+import { closedRecord } from './tabs.ts';
 import type { SplitLayout, Tab, WorkspaceState } from '../types.ts';
 
 export type SplitAction =
@@ -60,7 +61,9 @@ export function reduceSplit(state: WorkspaceState, action: { type: string }): Wo
       const index = split ? split.panes.findIndex(p => p.id === a.paneId) : -1;
       if (!tab || !split || index < 0) return state;
       const panes = split.panes.filter(p => p.id !== a.paneId);
-      const closed = [...state.closed.slice(-19), tabOf(split.panes[index])];
+      // A pane closed out of a split reopens as its own tab just after the split (or the tab the split falls back to), in the split's group.
+      const after = panes.length === 1 ? panes[0].id : tab.id;
+      const closed = [...state.closed.slice(-19), closedRecord(tabOf(split.panes[index], { groupId: tab.groupId }), { after, group: state.groups.find(g => g.id === tab.groupId) })];
       if (panes.length === 1) {
         // Back to the plain tab it was: same strip place, pin and group, the surviving pane's content and id.
         const rest = tabOf(panes[0], { pinned: tab.pinned, groupId: tab.groupId });

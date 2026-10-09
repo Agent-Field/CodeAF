@@ -7,6 +7,8 @@ export const tabShortcuts = {
  new: formatShortcut('⌘/Ctrl T'),
  close: formatShortcut('⌘/Ctrl W'),
  reopen: formatShortcut('⌘/Ctrl ⇧ T'),
+ /** Groups the active tab with the tabs picked by ⌘-click (Interactions, Shortcuts: "⌘G Group selected tabs"). */
+ group: formatShortcut('⌘/Ctrl G'),
  switch: isMac ? '⌃ Tab' : 'Ctrl Tab',
  switchBack: isMac ? '⌃ ⇧ Tab' : 'Ctrl Shift Tab',
 };
@@ -32,7 +34,7 @@ type KeyEvent = Pick<KeyboardEvent, 'key' | 'code' | 'metaKey' | 'ctrlKey' | 'sh
  * messages in a chat. ⌘/Ctrl B for the rail keeps working beside ⌘S.
  */
 export type ShortcutId =
- | 'new' | 'close' | 'reopen' | 'next' | 'previous' | 'switch' | 'switch-back' | 'jump'
+ | 'new' | 'close' | 'reopen' | 'group' | 'next' | 'previous' | 'switch' | 'switch-back' | 'jump'
  | 'terminal' | 'overview' | 'turn-previous' | 'turn-next' | 'history' | 'tasks' | 'rail' | 'focus' | 'palette' | 'models' | 'model-pin' | 'settings';
 export type Shortcut = { id: ShortcutId; index?: number };
 
@@ -71,6 +73,7 @@ export function shortcutOf(event: KeyEvent, mac = isMac): Shortcut | undefined {
  }
  if (key === 't') return { id: 'new' };
  if (key === 'w') return { id: 'close' };
+ if (key === 'g') return { id: 'group' };
  if (key === 's' || key === 'b') return { id: 'rail' };
  if (key === 'y') return { id: 'history' };
  if (key === 'k') return { id: 'palette' };

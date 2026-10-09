@@ -303,7 +303,8 @@ test('dragging onto a collapsed group label groups the tab and preserves its dra
  await page.getByRole('menuitem', { name: 'Move to group', exact: true }).hover();
  await page.getByRole('menuitem', { name: 'Create group', exact: true }).click();
  await newConversation(page);
- await rename(page, 0, 'Incoming');
+ // The new tab opens last, after the group (design 2b), so it is the second tab.
+ await rename(page, 1, 'Incoming');
  await page.getByRole('textbox', { name: 'Message', exact: true }).fill('Keep my context');
  const group = page.locator('.workspace-group-label');
  await group.click(); await expect(group).toHaveAttribute('aria-expanded', 'false');
