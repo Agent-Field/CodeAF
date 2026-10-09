@@ -30,6 +30,9 @@ function useEnterChooses(option: Option | undefined, enabled: boolean, onPress: 
   }, [enabled, option, onPress]);
 }
 
+/** The "and say why" hint after Deny (Components, Decision tray): it opens the optional reason field. */
+export type WhyToggle = { open: boolean; toggle: () => void };
+
 type AnswerProps = { kind: 'primary' | 'field' | 'danger' | 'ghost'; locked: boolean; onClick: () => void; children: string };
 
 /** Fill, hover and press come from the shared Button variants. */
@@ -44,7 +47,7 @@ function Answer({ kind, locked, onClick, children }: AnswerProps) {
 }
 
 /** Allow once is the loud answer; Deny sits beside it; "Always allow…" stays quiet. */
-export function PermissionAnswers({ question, locked, single, onPress }: FormProps) {
+export function PermissionAnswers({ question, locked, single, why, onPress }: FormProps & { why: WhyToggle }) {
   const { allow, deny, always } = permissionRoles(question);
   useEnterChooses(allow, Boolean(single) && !locked, onPress);
   const answer = (option: Option | undefined, kind: AnswerProps['kind'], label?: string) =>
@@ -58,6 +61,7 @@ export function PermissionAnswers({ question, locked, single, onPress }: FormPro
       {answer(allow, 'primary')}
       {answer(deny, 'field')}
       {answer(always, 'ghost', 'Always allow…')}
+      {deny && <Button variant="ghost" className="answer-why" aria-expanded={why.open} disabled={locked} onClick={why.toggle}>and say why</Button>}
     </div>
   );
 }

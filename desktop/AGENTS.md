@@ -111,7 +111,7 @@ remain available to macOS. Menu hints must describe the host platform.
 
 Choice cards in the tray tag the engine's pick "Suggested" and show the countdown and Hold only when the question has a deadline; a batch of permissions is one card ("Allow N actions?") with a One by one pager.
 
-Accessibility deviation from the design: where axe flags `ink-3` text as under WCAG AA (4.5:1; the designed ink-3 is about 3.6:1), the text is drawn in `ink-2` (ghost Button labels, the model label, tray crumb and foot, clarification links). Never loosen the axe checks to keep the designed colour; see docs/COMPONENTS.md.
+The design wins over this document: text that the design draws in `ink-3` (placeholders, ghost and link buttons, step rows at rest, times, digests, receipts, hints) is drawn in `ink-3`. Axe `color-contrast` is disabled only on those selectors in tests/ui/conversation-contrast.spec.ts; every other axe rule stays on.
 
 Tool calls are one quiet line per group ("Worked · 3 steps", or the live step while running) that expands to one row per step with args and output in capped monospace and explicit Show full output. Failed steps color only the mark. Thinking is one muted expandable line. Task notices are compact rows that open the task. Errors are inline with Retry that resends the last message. No machine-describing labels ("Engine connected", "Original instruction", "UI preview", "sample").
 
@@ -119,7 +119,7 @@ The composer is one rounded field (radius-composer) with autosizing textarea (1 
 
 Tab identity is stable across execution steps. Keep a clear active surface, medium label weight and a tab joined to the content surface; selection and work status are separate. The tab label is title only, with one still, named state indicator at the leading edge (working, needs you, failed); completed shows nothing extra. No decorative spinner or invented percentage. Delayed hover and keyboard previews show the full title, at most one two-line draft or summary, and one status/time line; omit empty paragraphs. Do not put timestamps, changing step titles or badges across the tab strip.
 
-Tab indicators survive switching, closing/reopening and reload. Activity timestamps change on meaningful state events, not scrolling, focus or opening a menu. The active tab has upper corners only, the pane's surface and no persistent accent outline. Tab changes may fade and settle the conversation with shared document-enter motion, without scaling text or resetting the composer. Pointer focus on the input uses a quiet border; never remove keyboard focus.
+Tab indicators survive switching, closing/reopening and reload. Activity timestamps change on meaningful state events, not scrolling, focus or opening a menu. The active tab has upper corners only, the pane's surface and no persistent accent outline. Tab changes may fade and settle the conversation with shared document-enter motion, without scaling text or resetting the composer. A mouse click in an input draws no border or ring; keyboard focus draws the one shared 2px accent ring with a 4px soft halo (1f), never removed.
 
 At the start of each development session and before completion, fetch upstream dev
 and check whether it is an ancestor of HEAD. Incorporate new dev commits on the

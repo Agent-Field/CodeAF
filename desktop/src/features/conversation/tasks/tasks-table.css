@@ -3,7 +3,7 @@
 
 .tasks-table-head { display: flex; align-items: center; gap: var(--space-2); flex: none; height: var(--space-12); padding: var(--space-0) var(--space-3); }
 .tasks-table-heading { font-weight: var(--type-label-strong); }
-.tasks-table-totals { display: flex; align-items: center; gap: var(--space-4); margin-inline-start: auto; padding-inline-end: var(--space-tight); color: var(--ink-2); font-size: var(--type-label-size); }
+.tasks-table-totals { display: flex; align-items: center; gap: var(--space-4); margin-inline-start: auto; padding-inline-end: var(--space-tight); color: var(--ink-3); font-size: var(--type-label-size); }
 
 .tasks-table-body { display: flex; flex: 1; gap: var(--space-2); min-height: var(--space-0); padding: var(--space-0) var(--space-2) var(--space-2); }
 .tasks-table-main { display: flex; flex-direction: column; flex: 1; min-width: var(--space-0); padding: var(--space-2) var(--space-8) var(--space-0) var(--space-2xl); overflow: hidden; }
@@ -13,13 +13,13 @@
 .tasks-table .tasks-table-tab.button { display: flex; align-items: center; gap: var(--space-tight); min-height: var(--control-height); padding: var(--space-0) var(--space-3); border: 0; border-radius: var(--radius-control); background: transparent; color: var(--ink-2); font-size: var(--type-prose-size); font-weight: var(--type-label-weight); }
 .tasks-table .tasks-table-tab.button:hover:not(:disabled) { background: var(--field); color: var(--ink); }
 .tasks-table .tasks-table-tab.button[aria-pressed="true"] { background: var(--field); color: var(--ink); font-weight: var(--type-label-strong); }
-.tasks-table-tab-count { color: var(--ink-2); font-size: var(--type-label-size); font-weight: var(--type-label-weight); font-variant-numeric: tabular-nums; }
+.tasks-table-tab-count { color: var(--ink-3); font-size: var(--type-label-size); font-weight: var(--type-label-weight); font-variant-numeric: tabular-nums; }
 .tasks-table-tab-dot { width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--amber); }
 
 .tasks-table-search-open.icon-button, .tasks-table-search { margin-inline-start: auto; }
 .tasks-table-search { display: flex; align-items: center; gap: var(--space-tight); width: var(--tasks-table-search-width); height: var(--control-height); padding-inline: var(--space-2) var(--space-1); border-radius: var(--radius-control); background: var(--field); color: var(--ink-3); }
 .tasks-table-search .text-input { flex: 1; min-height: var(--space-0); padding: var(--space-0); color: var(--ink); font-size: var(--type-label-size); }
-.tasks-table-search .text-input:focus-visible { outline: none; }
+.tasks-table-search .text-input:focus-visible { outline: none; box-shadow: none; }
 
 /* The cells of one state join into one rounded bar; the last of each carries the gap to the next, as in the panel's strip. */
 .tasks-table-strip { display: flex; flex: none; height: var(--tasks-table-strip-height); margin-block-end: var(--space-4); }
@@ -52,11 +52,11 @@
 .tasks-table-title-cell { gap: var(--space-3); }
 .tasks-table-text { display: flex; flex-direction: column; gap: var(--tasks-table-line-gap); min-width: var(--space-0); }
 .tasks-table-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.tasks-table-detail { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink-2); font-size: var(--type-label-size); font-weight: var(--type-label-weight); }
+.tasks-table-detail { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink-3); font-size: var(--type-label-size); font-weight: var(--type-label-weight); }
 .tasks-table-command.type-code { font-size: var(--type-mono-small-size); }
-.tasks-table-group-count, .tasks-table-state { color: var(--ink-2); font-size: var(--type-label-size); }
+.tasks-table-group-count, .tasks-table-state { color: var(--ink-3); font-size: var(--type-label-size); }
 .tasks-table-state { color: var(--ink-2); }
-.tasks-table-age { color: var(--ink-2); font-size: var(--type-label-size); font-variant-numeric: tabular-nums; text-align: end; }
+.tasks-table-age { color: var(--ink-3); font-size: var(--type-label-size); font-variant-numeric: tabular-nums; text-align: end; }
 
 /* Still marks: a dot per state, a ring while queued; waiting-on-you reads in amber, failure in red. */
 
