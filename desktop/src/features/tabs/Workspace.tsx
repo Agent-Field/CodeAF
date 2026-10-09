@@ -1,14 +1,17 @@
 // The workspace: owns the reducer state and composes the strip, the content card and the dialogs.
 // Everything with a lane of its own lives in a sibling file (see ARCHITECTURE.md).
 import { useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
-import { Button, Icon, Text, TextInput } from '../../components/ui';
+import { Button, Icon, Text, TextInput, ToastRegion } from '../../components/ui';
+import { nativeControls } from '../../design/nativeControls';
 import design from '../../design/tokens.json';
+import { toasts } from '../../design/toasts';
 import { summarize, type TabSummary } from '../conversation/tabSummary';
 import { useBackgroundSessions } from '../conversation/useBackgroundSessions';
 import { fileTab, findFileTab, type FileTabKind } from '../files/fileTarget';
-import { backgroundItems, needsYouItems, observedClosedPanes } from './closing/background';
-import { ClosingToast } from './closing/ClosingToast';
+import { createTabActions } from './actions';
+import { observedClosedPanes } from './closing/background';
 import { useCloseStopKey } from './closing/useCloseStopKey';
+import { useBackground } from './closing/useBackground';
 import { useClosing } from './closing/useClosing';
 import { TabsApiContext, type TabsApi } from './context';
 import type { PaneActions } from './kinds/slots';
@@ -21,11 +24,16 @@ import { TabOverview } from './TabOverview';
 import { TabStrip } from './TabStrip';
 import { useTerminalTabs } from '../terminal/useTerminalTabs';
 import { useDesktopTabActions, useTabKeys, type Switcher } from './useTabKeys';
+import { useWindowHandoff } from './useWindowHandoff';
 import './workspace.css';
 
-type Props = { enabled: boolean; onActivate: () => void; leading?: ReactNode };
+type Props = {
+  enabled: boolean; onActivate: () => void; leading?: ReactNode;
+  /** Opens a conversation by its chat id (the shell's Places navigation owns this). The Inbox lists work with no tab here and can only offer it a click when this is given. */
+  onOpenChat?: (chatId: string) => void;
+};
 
-export function Workspace({ enabled, onActivate, leading }: Props) {
+export function Workspace({ enabled, onActivate, leading, onOpenChat }: Props) {
   const [state, dispatch] = useReducer(workspaceReducer, undefined, readWorkspace);
   const [summaries, setSummaries] = useState<Record<string, TabSummary>>({});
   const [now, setNow] = useState(Date.now);
@@ -83,17 +91,19 @@ export function Workspace({ enabled, onActivate, leading }: Props) {
 
   const closing = useClosing({ state, dispatch, summaries });
   const { closeTab, closeAndStop } = closing;
-  const background = { running: backgroundItems(state.closed.filter(tab => !closing.stopping.has(tab.id)), summaries, Object.fromEntries(state.closed.flatMap(tab => { const since = closing.sinceOf(tab.id); return since ? [[tab.id, since]] : []; }))), needsYou: needsYouItems(state.tabs, summaries) };
+  const { background, markFailedSeen } = useBackground({ tabs: state.tabs, closed: state.closed, summaries, since: closing.sinceOf, stopping: closing.stopping, now });
   // The Inbox appears the first time work outlives its tab or waits on the person.
-  const inboxWanted = background.running.length > 0 || background.needsYou.length > 0;
+  const inboxWanted = background.running.length > 0 || background.needsYou.length > 0; // Failures alone do not summon the Inbox: they never go away on their own.
   useEffect(() => { if (inboxWanted) dispatch({ type: 'ensure-inbox' }); }, [inboxWanted]);
+  useWindowHandoff(dispatch);
+  const [actions] = useState(() => createTabActions({ native: nativeControls(), toasts }));
   useCloseStopKey(enabled, () => closeAndStop(state.activeId));
   function startRename(id: string, group = false) { setRename({ id, group, value: (group ? state.groups : state.tabs).find(item => item.id === id)?.title ?? '' }); }
   useTabKeys({ enabled, state, dispatch, visible, overviewOpen, setOverviewOpen, closeTab, switcherRef, setSwitcher });
   useTerminalTabs({ enabled, state, dispatch });
   useDesktopTabActions({ state, dispatch, visible, renaming: !!rename, onActivate, closeTab, setOverviewOpen });
 
-  const api: TabsApi = { state, dispatch, summaries, now, closeTab, closeAndStop, isRunning: closing.isRunning, background, reopenClosed: closing.reopenClosed, startRename, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename };
+  const api: TabsApi = { state, dispatch, summaries, now, closeTab, closeAndStop, isRunning: closing.isRunning, background, markFailedSeen, openChat: onOpenChat, actions, reopenClosed: closing.reopenClosed, startRename, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename };
   const newTabHost = { state, summaries, dispatch, closeTab };
   const actionsFor = (pane: Pane): PaneActions => ({
     onDraft: draft => dispatch({ type: 'draft', id: pane.id, draft }),
@@ -113,6 +123,6 @@ export function Workspace({ enabled, onActivate, leading }: Props) {
     <dialog ref={renameDialog} className="workspace-rename" aria-label={rename?.group ? 'Rename group' : 'Rename tab'} onCancel={() => setRename(null)} onClose={() => setRename(null)}>
       <form onSubmit={event => { event.preventDefault(); if (rename) dispatch({ type: rename.group ? 'rename-group' : 'rename', id: rename.id, title: rename.value }); setRename(null); }}><TextInput ref={renameInput} aria-label="Name" value={rename?.value ?? ''} maxLength={80} onChange={event => setRename(current => current ? { ...current, value: event.target.value } : null)}/><div className="workspace-rename-actions"><Button onClick={() => setRename(null)}>Cancel</Button><Button type="submit" variant="quiet">Save</Button></div></form>
     </dialog>
-    {closing.toast && <ClosingToast toast={closing.toast} onStop={closing.stopFromToast} onUndo={closing.undoFromToast} onDismiss={closing.dismissToast}/>}
+    <ToastRegion/>
   </section></TabsApiContext.Provider>;
 }

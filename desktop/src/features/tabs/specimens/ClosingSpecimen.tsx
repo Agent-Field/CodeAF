@@ -1,6 +1,5 @@
-import { Icon, KeyboardShortcut, type IconName } from '../../../components/ui';
-import { closeShortcut, closeStopShortcut, copyLinkShortcut, newGroupShortcut } from '../closing/shortcuts';
-import { ClosingToastView } from '../closing/ClosingToast';
+import { Icon, KeyboardShortcut, ToastView, type IconName } from '../../../components/ui';
+import { closeShortcut, closeStopShortcut, newGroupShortcut } from '../closing/shortcuts';
 import { Tab } from '../Tab';
 import { InboxList } from '../kinds/inbox/InboxPane';
 import './closing-specimen.css';
@@ -27,7 +26,6 @@ const tabMenu: Row[] = [
   { id: 'pin', label: 'Pin tab', icon: 'pin' },
   { id: 'duplicate', label: 'Duplicate', icon: 'copy' },
   'separator',
-  { id: 'link', label: 'Copy link', icon: 'link', shortcut: copyLinkShortcut },
   { id: 'window', label: 'Move to new window', icon: 'appWindow' },
   'separator',
   { id: 'close', label: 'Close tab', shortcut: closeShortcut },
@@ -81,7 +79,11 @@ export function ClosingSpecimen() {
       </div>
       <div className="closing-specimen-cell">
         <Note>3 · After closing a running tab</Note>
-        <ClosingToastView toast={{ id: 0, tabId: 'x', title: 'Config stack', kind: 'closed' }}/>
+        <ToastView toast={{ message: [{ strong: 'Config stack' }, ' closed and still running'], tone: 'info', actions: [{ label: 'Stop it', onSelect: () => {} }], undo: () => {} }}/>
+      </div>
+      <div className="closing-specimen-cell">
+        <Note>3 · When stopping fails</Note>
+        <ToastView toast={{ message: ['Could not stop ', { strong: 'Config stack' }, '. It is still running.'], tone: 'danger', actions: [{ label: 'Try again', onSelect: () => {} }], undo: () => {} }}/>
       </div>
       <div className="closing-specimen-cell">
         <Note>Idle tab</Note>
@@ -92,7 +94,7 @@ export function ClosingSpecimen() {
     <span className="tabs-specimen-label">Inbox · background work and what needs you</span>
     <div className="closing-specimen-row">
       <div className="closing-specimen-cell">
-        <InboxList now={0} running={[{ id: 'a', title: 'Config stack', state: 'running', since: -120000 }, { id: 'b', title: 'Port fix to v1', state: 'waiting' }]} needsYou={[]}/>
+        <InboxList now={0} running={[{ id: 'a', title: 'Config stack', state: 'running', since: -120000 }, { id: 'b', title: 'Port fix to v1', state: 'waiting' }]} needsYou={[]} failed={[{ id: 'f', title: 'Lexer rewrite', failed: 2 }]} opener={() => noop} onSeen={noop}/>
       </div>
       <div className="closing-specimen-cell"><InboxList now={0} running={[]} needsYou={[]}/></div>
     </div>

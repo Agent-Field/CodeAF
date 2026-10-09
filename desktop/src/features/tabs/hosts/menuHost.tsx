@@ -3,7 +3,7 @@
 import type { ReactElement } from 'react';
 import { ContextMenu, type MenuEntry } from '../../../components/ui';
 import { tabShortcuts } from '../../../design/keyboard';
-import { closeShortcut, closeStopShortcut, copyLinkShortcut, newGroupShortcut } from '../closing/shortcuts';
+import { closeShortcut, closeStopShortcut, newGroupShortcut } from '../closing/shortcuts';
 import type { TabsApi } from '../context';
 import { kindDef } from '../kinds/registry';
 import { splitCapacity, visibleTabs, type Tab, type TabGroup } from '../model';
@@ -34,6 +34,18 @@ function groupEntry(api: TabsApi, tab: Tab): MenuEntry {
   };
 }
 
+/**
+ * Copy link and Move to new window are present only where they can work. A capability that cannot work is ABSENT, not
+ * disabled: there is no canonical link scheme today (actions.ts says why), and a tab moves only in the desktop app.
+ */
+function transferEntries(api: TabsApi, tab: Tab): MenuEntry[] {
+  const { actions } = api;
+  const entries: MenuEntry[] = [];
+  if (actions.linkFor(tab)) entries.push({ id: 'copy-link', label: 'Copy link', icon: 'link', onSelect: () => void actions.copyLink(tab) });
+  if (actions.canMove(tab)) entries.push({ id: 'new-window', label: 'Move to new window', icon: 'appWindow', onSelect: () => void actions.moveToNewWindow(tab) });
+  return entries.length ? [separator('link-separator'), ...entries] : [];
+}
+
 export function tabMenuItems(api: TabsApi, tab: Tab): MenuEntry[] {
   const { state, dispatch } = api;
   const toTheRight = visibleTabs(state).slice(visibleTabs(state).findIndex(t => t.id === tab.id) + 1).filter(t => !t.pinned && t.kind !== 'inbox');
@@ -44,10 +56,7 @@ export function tabMenuItems(api: TabsApi, tab: Tab): MenuEntry[] {
     { id: 'duplicate', label: 'Duplicate', icon: 'copy', onSelect: () => dispatch({ type: 'duplicate', id: tab.id }) },
     { id: 'rename', label: 'Rename tab', icon: 'pencil', onSelect: () => api.startRename(tab.id) },
     ...(tab.split ? [{ id: 'unmerge', label: 'Separate split', onSelect: () => dispatch({ type: 'split-unmerge', id: tab.id }) }] : []),
-    separator('link-separator'),
-    // Both need a backing the app does not have yet (a link scheme, a second window); they are listed, and disabled, as the design draws them.
-    { id: 'copy-link', label: 'Copy link', icon: 'link', shortcut: copyLinkShortcut, disabled: true, onSelect: () => {} },
-    { id: 'new-window', label: 'Move to new window', icon: 'appWindow', disabled: true, onSelect: () => {} },
+    ...transferEntries(api, tab),
     separator('close-separator'),
     { id: 'close', label: 'Close tab', shortcut: closeShortcut, onSelect: () => api.closeTab(tab.id) },
     // The explicit path for people who never hold Option (3l). Nothing running means nothing to stop, so it is not offered.

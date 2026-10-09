@@ -1,8 +1,8 @@
 /* Specimens for menus and closing running work (design 3g, 3l). The menus are the shared classes, drawn open. */
 .closing-specimen { display: flex; flex-direction: column; gap: var(--space-4); }
 .closing-specimen-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-6); }
-.closing-specimen-cell { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-tight); }
+.closing-specimen-cell { min-width: 0; max-width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-tight); }
 .closing-specimen-note { font-size: var(--type-caption-size); font-weight: var(--font-weight-medium); color: var(--ink-3); }
 .closing-specimen-menu { position: static; }
 .closing-specimen .tooltip.closing-specimen-tip { position: static; display: inline-flex; align-items: center; }
-.closing-specimen .closing-toast { animation: none; }
+.closing-specimen .toast { animation: none; }

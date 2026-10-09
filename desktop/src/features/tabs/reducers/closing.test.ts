@@ -94,3 +94,12 @@ test('open-inbox creates the Inbox when absent and focuses it; with it present i
   assert.deepEqual(ids(again), ['inbox', 'a', 'b']);
   assert.equal(again.activeId, 'inbox');
 });
+
+test('release-moved removes the tab without a closed record, and leaves split tabs and unknown ids alone', () => {
+  const s = state([tab('a'), tab('b')], { activeId: 'a' });
+  const moved = run(s, { type: 'release-moved', id: 'a' });
+  assert.deepEqual(moved.tabs.map(t => t.id), ['b']);
+  assert.equal(moved.closed.some(t => t.id === 'a'), false);
+  assert.equal(moved.activeId, 'b');
+  assert.equal(run(s, { type: 'release-moved', id: 'zzz' }), s);
+});

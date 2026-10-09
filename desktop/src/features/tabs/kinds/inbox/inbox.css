@@ -10,3 +10,10 @@
 .inbox-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-align: left; mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
 .inbox-meta { flex: none; color: var(--ink-3); }
 .inbox-empty { padding: var(--space-compact); color: var(--ink-3); }
+.inbox-row-static { display: flex; align-items: center; min-height: var(--inbox-row-height); padding: 0 var(--space-compact); gap: var(--space-compact); }
+.inbox-row[data-state="failed"] .inbox-dot { background: var(--danger); }
+.inbox-row[data-stale] { color: var(--ink-2); }
+.inbox-failed { display: flex; align-items: center; gap: var(--space-1); }
+.inbox-failed > .inbox-row { flex: 1; min-width: 0; }
+.inbox-card .inbox-seen.button { flex: none; min-height: var(--toast-action-height); padding: 0 var(--toast-action-pad); border-radius: var(--radius-segment-item); font-size: var(--type-caption-size); color: var(--ink-3); }
+.inbox-notice { padding: var(--space-compact); color: var(--ink-3); }
