@@ -7,6 +7,7 @@ import { MarkdownSpecimen } from './Markdown.specimen';
 import { SystemNotesSpecimen } from './SystemNotes.specimen';
 import { TaskNoticeSpecimen } from './TaskNotice.specimen';
 import { TaskPanelSpecimen } from './TaskPanel.specimen';
+import { TasksTableSpecimen } from './TasksTable.specimen';
 import { TaskViewSpecimen } from './TaskView.specimen';
 import { TurnViewV2Specimen } from './TurnViewV2.specimen';
 import { UserMessageSpecimen } from './UserMessage.specimen';
@@ -24,6 +25,7 @@ const specimens = [
   { name: 'Decision tray', View: DecisionTraySpecimen },
   { name: 'Composer', View: ComposerSpecimen },
   { name: 'Task panel', View: TaskPanelSpecimen },
+  { name: 'Tasks table', View: TasksTableSpecimen },
   { name: 'Task view', View: TaskViewSpecimen },
 ];
 
