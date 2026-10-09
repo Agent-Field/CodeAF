@@ -152,19 +152,21 @@ export function HomePlacesSection({ label, places, parentId, parentName, parentT
 
 const sourceWords: Record<NonNullable<HomeSource['state']>, string> = { ok: '', missing: 'missing', unreadable: 'unreadable', unknown: '' };
 
-/** The place's own sources, quietly, with Remove. Hidden when there are none. Remove needs the owner's verb and a place that can be written to. */
-export function HomeSourcesSection({ placeId, sources, actions, readOnly }: { placeId: string; sources: readonly HomeSource[]; actions: PlaceActions; readOnly?: boolean }) {
-  if (!sources.length) return null;
+/** The place's own sources, with its existing add verb available even after the empty Home disappears. */
+export function HomeSourcesSection({ placeId, sources, actions, readOnly, showAdd }: { placeId: string; sources: readonly HomeSource[]; actions: PlaceActions; readOnly?: boolean; showAdd?: boolean }) {
+  const add = showAdd && actions.addSources && !readOnly;
+  if (!sources.length && !add) return null;
   const remove = actions.removeSource && !readOnly ? actions.removeSource : undefined;
   return <section className="home-section home-sources" aria-label="Sources">
     <SectionLabel>Sources</SectionLabel>
-    <ul className="home-source-list" aria-label="Sources">
+    {sources.length > 0 && <ul className="home-source-list" aria-label="Sources">
       {sources.map(source => <li key={source.id}><Row className="home-source" data-source-id={source.id} data-state={source.state}>
         <span className="home-source-label">{source.label}</span>
         <span className="home-source-note">{[source.kind, source.state ? sourceWords[source.state] : ''].filter(Boolean).join(' · ')}</span>
         {remove && <RowActions><IconButton size="row" icon="close" iconSize="xs" label={`Remove ${source.label}`} onClick={() => void remove(placeId, source.id)}/></RowActions>}
       </Row></li>)}
-    </ul>
+    </ul>}
+    {add && <div className="home-empty-actions"><Button variant="quiet" onClick={() => actions.addSources?.(placeId)}><Icon name="attach" size="xs"/>Add files or links</Button></div>}
   </section>;
 }
 

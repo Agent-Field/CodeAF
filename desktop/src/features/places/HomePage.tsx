@@ -66,7 +66,7 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
       actions={actions} readOnly={readOnly} siblings={siblings} runner={runner} drag={drag} onDelete={deletion.start}/>}
     <HomeChatsSection label={isPlace ? 'Chats' : 'Not in any place'} chats={view.chats} truncated={view.chatsTruncated} actions={actions} readOnly={readOnly}
       inPlaceId={isPlace ? view.id : undefined} drag={drag} now={clock}/>
-    {isPlace && view.sources && <HomeSourcesSection placeId={view.id} sources={view.sources} actions={actions} readOnly={readOnly}/>}
+    {isPlace && <HomeSourcesSection placeId={view.id} sources={view.sources ?? []} actions={actions} readOnly={readOnly} showAdd={!nothingYet}/>}
     {nothingYet && <HomeEmptyPlace placeId={view.id} contextLine={view.contextLine} actions={actions} readOnly={readOnly}/>}
     {isPlace && !nothingYet && view.contextLine && <p className="home-quiet home-context">{view.contextLine}</p>}
   </HomeFrame>;
