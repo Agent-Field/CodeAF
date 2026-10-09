@@ -286,6 +286,12 @@ type Meta struct {
 	// ArchivedTasks hides individual task rows without changing their execution
 	// or putting away the conversation that owns them. IDs are local to this session.
 	ArchivedTasks map[string]bool `json:"archivedTasks,omitempty"`
+	// Recap is the short account of this conversation the desktop's History tab
+	// lists (recap.go). It is a citation like everything else here: the
+	// transcript is the record, and an absent field is a conversation nobody has
+	// summarised yet, which is every conversation until a turn settles on a
+	// door that asks for recaps.
+	Recap *ConversationRecap `json:"recap,omitempty"`
 }
 
 // LoadMeta reads a session folder's identity. A missing file, an unparsable

@@ -367,6 +367,7 @@ var callSiteRoles = map[string]lane.Role{
 	"taskname": lane.RoleAuxiliary,
 	"jobname":  lane.RoleAuxiliary,
 	"caption":  lane.RoleAuxiliary,
+	"recap":    lane.RoleAuxiliary,
 	"shaper":   lane.RoleAuxiliary,
 	"intake":   lane.RoleAuxiliary,
 	"careful":  lane.RoleAuxiliary,

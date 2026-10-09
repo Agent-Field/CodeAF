@@ -1145,6 +1145,10 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	}
 	if opts.OneModel && opts.DesktopRoles {
 		cfg.RolesSource = config.DesktopRolesSource(settings.ProfileDir)
+		// The desktop lists conversations with a recap beside each (History), so
+		// its sessions write one when a turn settles. The terminal never shows
+		// it and so never pays for it.
+		cfg.Recaps = true
 	}
 	// AND WHO THIS SESSION IS WORKING FOR (internal/session's
 	// principal.go): the unattended flag and its ceiling, plus the door's own
