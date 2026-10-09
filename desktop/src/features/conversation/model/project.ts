@@ -117,7 +117,7 @@ function addAside(input: Input, acc: Acc) {
 
 function addNote({ entry, index }: Input, acc: Acc) {
   if (!entry.Text.trim()) return;
-  openWork(acc, index).notes.push({ kind: 'note', id: `${acc.turn.id}:${index}`, text: entry.Text });
+  openWork(acc, index).notes.push({ kind: 'note', id: `${acc.turn.id}:${index}`, text: entry.Text, tone: 'compaction' });
 }
 
 function consume(input: Input, acc: Acc) {
@@ -133,7 +133,7 @@ function prefaceItem({ entry, index, snapshot }: Input): TurnItem | undefined {
   if (!entry.Text.trim()) return undefined;
   const id = `preface:${index}`;
   if (entry.Role === 'assistant') return { kind: 'text', id, text: entry.Text, streaming: false };
-  if (entry.Role === 'note') return { kind: 'note', id, text: entry.Text };
+  if (entry.Role === 'note') return { kind: 'note', id, text: entry.Text, tone: 'compaction' };
   return entry.Role === 'aside' ? asideItem(entry, id, snapshot) : undefined;
 }
 

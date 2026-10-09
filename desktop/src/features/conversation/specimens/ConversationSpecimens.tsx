@@ -3,6 +3,7 @@ import { DecisionTraySpecimen } from '../tray/specimens/DecisionTray.specimen';
 import { AssetsSpecimen } from './Assets.specimen';
 import { ComposerSpecimen } from './Composer.specimen';
 import { MarkdownSpecimen } from './Markdown.specimen';
+import { SystemNotesSpecimen } from './SystemNotes.specimen';
 import { TaskNoticeSpecimen } from './TaskNotice.specimen';
 import { TaskPanelSpecimen } from './TaskPanel.specimen';
 import { TaskViewSpecimen } from './TaskView.specimen';
@@ -16,6 +17,7 @@ const specimens = [
   { name: 'Replies', View: MarkdownSpecimen },
   { name: 'Work', View: WorkSpecimen },
   { name: 'Assets', View: AssetsSpecimen },
+  { name: 'System notes', View: SystemNotesSpecimen },
   { name: 'Task notices', View: TaskNoticeSpecimen },
   { name: 'Decision tray', View: DecisionTraySpecimen },
   { name: 'Composer', View: ComposerSpecimen },
