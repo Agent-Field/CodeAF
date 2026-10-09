@@ -1,7 +1,7 @@
 // The reads behind a file or diff tab. Every byte comes from the engine through the tab's session,
 // because the engine may be on another machine (docs/ENGINE.md "File and diff tabs").
 import { useEffect, useRef, useState } from 'react';
-import { connectEngine, engineChanges, engineEditors, engineEditorTarget, engineFileDiff, EngineError, readEngine, readEngineText, statEnginePaths, watchEngine, type EngineEditor, type EngineEditorTarget, type EngineFileDiff, type EngineTextFile } from '../chat/engine-client';
+import { connectEngine, engineChanges, engineEditors, engineEditorTarget, engineFileDiff, EngineError, readEngine, readEngineFile, readEngineText, statEnginePaths, watchEngine, type EngineEditor, type EngineEditorTarget, type EngineFile, type EngineFileDiff, type EngineTextFile } from '../chat/engine-client';
 import { hostName } from '../../design/native';
 import { fileEventTouches, fileRefreshDelay, fileStatInterval, fileVersion, sameWorkspaceFile } from './fileRefresh';
 
@@ -49,6 +49,17 @@ export function useFileDiff(session: string | undefined, path: string, refresh =
 /** The whole file as text. `enabled` is false until a view needs it. */
 export function useFileText(session: string | undefined, path: string, enabled: boolean, refresh = 0): Load<EngineTextFile> {
   return useLoad(session && enabled ? `${session}\0${path}` : null, () => readEngineText(session!, path), refresh);
+}
+
+/**
+ * The file as a picture, through the existing confined read. `enabled` is false until the File view of a
+ * picture asks. The answer carries the path it was read for, so a late answer for a path the tab has since
+ * left shows loading instead of the wrong picture.
+ */
+export function useFileImage(session: string | undefined, path: string, enabled: boolean, refresh = 0): Load<EngineFile> {
+  const state = useLoad(session && enabled ? `${session}\0${path}` : null, async () => ({ path, file: await readEngineFile(session!, path) }), refresh);
+  if (state.status !== 'ready') return state;
+  return state.value.path === path ? { status: 'ready', value: state.value.file } : loading;
 }
 
 const streamBackoff = [1000, 2000, 5000, 10000];
