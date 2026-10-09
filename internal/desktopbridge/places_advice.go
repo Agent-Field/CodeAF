@@ -105,6 +105,16 @@ type PlaceAdvice struct {
 	// Passed through, the Recommender's folder rule would offer every chat the
 	// same place, without a model, forever after two chats were filed there.
 	SharedWorkspace string
+	// NotProjects are folders that hold a person's conversations without
+	// being a project: their home folder, where a terminal opens and where
+	// `codeaf` is typed first, and the filesystem root. Like SharedWorkspace
+	// they are left out of a chat's evidence. MEASURED: on 40 real saved
+	// conversations from two machines, 17 ran in the home folder and were
+	// about eleven unrelated things — a code-scanning fix, a haircut nearby, a
+	// banner image — and the folder rule offered them as ONE new place named
+	// after the account, at 90%, without asking the model. Only an exact match
+	// is dropped: a project folder inside the home folder is still a project.
+	NotProjects []string
 	// Detached opens a READING connection ([remote.Hello.Watch]) onto one
 	// EXISTING saved conversation, for a model ask when no window holds one
 	// (places_detached.go). It must never mint a conversation. Nil leaves such
@@ -130,6 +140,7 @@ type PlaceAdvice struct {
 	jobAsk   *AskRecord // the ask made by the job running now, if any
 	// bg is the one cached background connection; bgFailed* the last attach
 	// that failed; opened counts attaches made (tests read it).
+	openings     openingCache
 	bg           *detachedDoor
 	bgFailedFile string
 	bgFailedAt   time.Time
@@ -588,6 +599,8 @@ func chatEvidence(s *conversation, now time.Time) placegraph.ChatEvidence {
 // top. A chat counts as having replied once its meta carries a finished turn's
 // tokens or spend, which the session stamps at the end of every turn, or a
 // recap of an exchange; it never counts more than the one reply that proves.
+// A saved chat's opening message is read from its own transcript
+// (places_opening.go), as an open chat's is from its live one.
 func (a *PlaceAdvice) library() []placegraph.ChatEvidence {
 	a.b.mu.Lock()
 	places := a.b.places
@@ -624,8 +637,15 @@ func (a *PlaceAdvice) library() []placegraph.ChatEvidence {
 		if row.Tokens > 0 || row.Spend > 0 || recapSawReply(recap) {
 			replies = 1
 		}
+		// A conversation that owns its folder (its own work/ directory) runs
+		// in a place no other conversation shares, so the folder says nothing
+		// about what it is about.
+		folder := a.workspace(row.Workspace)
+		if row.Owned {
+			folder = ""
+		}
 		out = append(out, placegraph.ChatEvidence{ChatID: row.ID, Title: row.Title, Summary: recapSummary(recap),
-			Workspace: a.workspace(row.Workspace), Replies: replies, UpdatedAt: row.At})
+			FirstMessage: a.openings.of(row.ID, row.Transcript), Workspace: folder, Replies: replies, UpdatedAt: row.At})
 	}
 	for id, e := range live {
 		if !seen[id] && len(out) < maxLibrary {
@@ -690,10 +710,19 @@ func recapSawReply(r *session.ConversationRecap) bool {
 }
 
 // workspace is folder, or "" when it is the folder every conversation here
-// runs in.
+// runs in, or one of the folders that are not a project at all.
 func (a *PlaceAdvice) workspace(folder string) string {
-	if a.SharedWorkspace != "" && filepath.Clean(folder) == filepath.Clean(a.SharedWorkspace) {
+	if strings.TrimSpace(folder) == "" {
 		return ""
+	}
+	clean := filepath.Clean(folder)
+	if a.SharedWorkspace != "" && clean == filepath.Clean(a.SharedWorkspace) {
+		return ""
+	}
+	for _, not := range a.NotProjects {
+		if strings.TrimSpace(not) != "" && clean == filepath.Clean(not) {
+			return ""
+		}
 	}
 	return folder
 }

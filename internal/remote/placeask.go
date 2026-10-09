@@ -118,10 +118,12 @@ func (a *Agent) AskPlaces(ctx context.Context, req placegraph.ModelRequest) (ses
 	if !ok {
 		return session.PlacesAnswer{}, context.DeadlineExceeded
 	}
-	payload, err := a.c.call(ctx, MethodPlacesAsk, PlacesAskArgs{
+	// A model question may take the advertised minute; the ordinary ten-second
+	// getter deadline must not discard its answer while the engine is spending.
+	payload, err := a.c.callWithin(ctx, MethodPlacesAsk, PlacesAskArgs{
 		Request: PlacesQuestion{Role: req.Role, System: req.System, User: req.User},
 		Budget:  budget,
-	})
+	}, placeAskCeiling)
 	if err != nil {
 		return session.PlacesAnswer{}, err
 	}
