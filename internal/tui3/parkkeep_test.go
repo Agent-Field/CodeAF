@@ -58,7 +58,7 @@ func parkedKeeperLab(t *testing.T, parks []parked) (*app, *switchAgent, *fakeAge
 // Attach is the authority behind follow-up priority.
 func landHeld(t *testing.T, a *app, agent *switchAgent, key string, held *kept, running bool) {
 	t.Helper()
-	agent.running = running
+	agent.setRunning(running)
 	held.watch.landed.Store(true)
 	held.watch.armed.Store(true)
 	drive(t, a, runCmd(a.behindStir(behindStirMsg{key: key}))...)
@@ -186,7 +186,7 @@ func TestHeldWaitingMessagesGoOnePerLandingAfterSessionFollowUpsAndNeverTwice(t 
 
 func TestComingBackDuringAHeldSendNeverSendsItTwice(t *testing.T) {
 	a, agent, _, key, held := parkedKeeperLab(t, []parked{{text: "only once"}})
-	agent.running = false
+	agent.setRunning(false)
 	cmd := a.sendBehindParked(key, held)
 	if cmd == nil || !held.side.parkSending || !held.side.parks[0].sending {
 		t.Fatal("the held send did not mark its queue head before crossing")

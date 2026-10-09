@@ -516,14 +516,37 @@ func TestOneCommandCarriesEveryAnswerInTheFrame(t *testing.T) {
 // goroutine and one pass back, not three commands and three frames.
 func TestTheListIsOneTripOffTheLoop(t *testing.T) {
 	lab, all := batchLab(t, 3)
+	entered, release := make(chan struct{}), make(chan struct{})
+	original := lab.agent.answer
+	lab.agent.answer = func(answer session.Answer) error {
+		select {
+		case <-entered:
+		default:
+			close(entered)
+		}
+		<-release
+		return original(answer)
+	}
+	defer func() {
+		if release != nil {
+			close(release)
+		}
+	}()
 	cmd := lab.a.answerQuestions(all)
 	if cmd == nil {
 		t.Fatal("the list handed back no command, so nothing would ever be sent")
 	}
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("the answer batch never left the update loop")
+	}
 	if len(lab.answer) != 0 {
 		t.Fatalf("the door was asked from the update loop: %+v", lab.answer)
 	}
+	close(release)
 	msgs := runCmd(cmd)
+	release = nil
 	if len(msgs) != 1 {
 		t.Fatalf("the list became %d messages, want one door trip", len(msgs))
 	}

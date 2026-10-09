@@ -23,8 +23,9 @@ type switchAgent struct {
 	// backlog is what a turn already in flight has said. Attach hands it over in
 	// order and then stays open, which is what the real hub does under one hold
 	// of its lock.
-	backlog []session.Event
-	running bool
+	backlog   []session.Event
+	runningMu sync.Mutex
+	running   bool
 	// pending is the approval questions the engine is still holding.
 	pending []uint64
 	stops   int
@@ -35,7 +36,15 @@ type switchAgent struct {
 	leftOnce sync.Once
 }
 
+func (s *switchAgent) setRunning(running bool) {
+	s.runningMu.Lock()
+	defer s.runningMu.Unlock()
+	s.running = running
+}
+
 func (s *switchAgent) Attach() (<-chan session.Event, bool, func()) {
+	s.runningMu.Lock()
+	defer s.runningMu.Unlock()
 	if !s.running {
 		return nil, false, func() {}
 	}
