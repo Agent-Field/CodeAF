@@ -6,7 +6,7 @@ import { TaskProgressStrip } from './tasks/TaskProgress';
 import { TaskTree } from './tasks/TaskTree';
 import { useNow } from './tasks/useNow';
 import { useScrollEdges } from './tasks/useScrollEdges';
-import { buildTaskTree, holdsTask, splitFinished, taskProgress } from './taskTree';
+import { buildTaskTree, foldDefault, holdsTask, splitFinished, taskProgress } from './taskTree';
 import './task-panel.css';
 
 export type TaskPanelProps = {
@@ -79,7 +79,10 @@ export function TaskPanel(props: TaskPanelProps) {
   const scroller = useRef<HTMLDivElement>(null);
   const { live, finished, finishedCount } = useMemo(() => splitFinished(buildTaskTree(tasks)), [tasks]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [foldOpen, setFoldOpen] = useState(() => finished.some((node) => holdsTask(node, currentTaskId)));
+  const [heldAtOpen] = useState(() => finished.some((node) => holdsTask(node, currentTaskId)));
+  const [foldChoice, setFoldChoice] = useState<boolean | undefined>(undefined);
+  // With nothing live the tree would be an empty middle, so the finished work is the panel.
+  const foldOpen = foldChoice ?? foldDefault(live.length, heldAtOpen);
   const now = useNow(taskProgress(tasks).running > 0, props.now);
   const edges = useScrollEdges(scroller);
   useSheetFocus(variant, panel);
@@ -123,7 +126,7 @@ export function TaskPanel(props: TaskPanelProps) {
           {foldOpen && <TaskTree {...tree} nodes={finished} />}
         </div>
       </div>
-      {finishedCount > 0 && <FinishedFold count={finishedCount} open={foldOpen} onToggle={() => setFoldOpen((open) => !open)} />}
+      {finishedCount > 0 && <FinishedFold count={finishedCount} open={foldOpen} onToggle={() => setFoldChoice(!foldOpen)} />}
     </aside>
   );
 }

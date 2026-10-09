@@ -111,6 +111,9 @@ export function splitFinished(tree: TaskNode[]): { live: TaskNode[]; finished: T
   return { live: tree.filter((node) => !isFinished(node)), finished, finishedCount: flatten(finished).length };
 }
 
+/** The Finished fold opens by itself when nothing is live (else the panel is an empty middle), or when the open task sits inside it. */
+export const foldDefault = (liveCount: number, holdsCurrent: boolean): boolean => liveCount === 0 || holdsCurrent;
+
 /** Whether the node, or anything below it, is the task. */
 export const holdsTask = (node: TaskNode, taskId: string | undefined): boolean =>
   node.row.ID === taskId || node.children.some((child) => holdsTask(child, taskId));

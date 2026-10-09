@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createStatCache } from './stat-cache.ts';
-import { aspectOf, fileKind, looksLikePath, localPathFromHref, middleTruncate, monogramHue, registrableDomain, relativePath, splitPath } from './paths.ts';
+import { aspectOf, displayDir, fileKind, looksLikePath, localPathFromHref, middleTruncate, monogramHue, registrableDomain, relativePath, splitPath } from './paths.ts';
 
 test('paths split, classify and relativise', () => {
   assert.deepEqual(splitPath('src/app/main.go'), { name: 'main.go', dir: 'src/app' });
@@ -13,6 +13,15 @@ test('paths split, classify and relativise', () => {
   assert.equal(relativePath('/etc/passwd', '/w/proj'), null);
   assert.equal(relativePath('../x', '/w/proj'), null);
   assert.equal(relativePath('./a.ts', '/w/proj'), 'a.ts');
+});
+
+test('a chip shows a workspace-relative directory, and none for a file at the root', () => {
+  assert.equal(displayDir('/w/proj/notes/deep', '/w/proj'), 'notes/deep');
+  assert.equal(displayDir('/w/proj', '/w/proj'), '');
+  assert.equal(displayDir('/etc', '/w/proj'), '/etc');
+  assert.equal(displayDir('/w/projector', '/w/proj'), '/w/projector');
+  assert.equal(displayDir('src/a', '/w/proj'), 'src/a');
+  assert.equal(displayDir('/w/proj/a', ''), '/w/proj/a');
 });
 
 test('middle truncation keeps both ends', () => {
