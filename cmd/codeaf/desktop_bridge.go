@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/desktopbridge"
+	"github.com/Agent-Field/codeaf/internal/desktoplaunch"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -34,6 +35,7 @@ import (
 func runDesktopBridge(args []string) error {
 	flags := commandFlags("desktop-bridge")
 	address := flags.String("listen", "127.0.0.1:1423", "loopback address for the desktop transport")
+	gui := flags.Bool("gui", false, "use the packaged application launch context")
 	workspace := flags.String("workspace", "", "working directory shared with the terminal")
 	placesFile := flags.String("places", "", "place graph file (default: the desktop folder of the codeaf state root)")
 	if err := parseCommandFlags(flags, args); err != nil {
@@ -50,9 +52,12 @@ func runDesktopBridge(args []string) error {
 	if ip == nil || !ip.IsLoopback() {
 		return errors.New("desktop transport must listen on a loopback address")
 	}
-	if strings.TrimSpace(*workspace) == "" {
-		*workspace, err = os.Getwd()
-		if err != nil {
+	*workspace, err = desktoplaunch.Workspace(*workspace, *gui)
+	if err != nil {
+		return err
+	}
+	if *gui {
+		if err := os.Setenv("PATH", desktoplaunch.Path(true)); err != nil {
 			return err
 		}
 	}
