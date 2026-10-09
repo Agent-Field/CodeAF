@@ -61,6 +61,7 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
       renaming={renaming} onRenameCancel={() => setRenaming(false)}
       onRename={name => void runner.run(() => actions.rename?.(view.id, name)).then(ok => { if (ok) setRenaming(false); })}/>
     {notices}
+    {suggestion}
     {view.recap && <HomeRecap label={view.recap.label} text={view.recap.text}/>}
     <HomeAttentionSection items={view.attention} actions={actions} readOnly={readOnly}/>
     {isPlace && !nothingYet && <HomePlacesSection label="Places" places={view.children} parentId={view.id} parentName={view.title} parentTint={view.tintSource === 'own' ? view.tint : undefined}

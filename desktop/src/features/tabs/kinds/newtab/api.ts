@@ -1,3 +1,4 @@
+import type { WorkspaceController } from '../../../workspace-sync/controller';
 import { createContext, useContext, type Dispatch } from 'react';
 import type { TabSummary } from '../../../conversation/tabSummary';
 import type { WorkspaceAction, WorkspaceState } from '../../model';
@@ -9,6 +10,7 @@ export type NewTabHost = {
   dispatch: Dispatch<WorkspaceAction>;
   /** Closes with focus restoration. */
   closeTab: (id: string) => void;
+  receiveTransfer?: WorkspaceController['receiveTransfer'];
 };
 
 export const NewTabHostContext = createContext<NewTabHost | null>(null);

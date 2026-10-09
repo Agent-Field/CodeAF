@@ -24,7 +24,18 @@ export type WorkspaceRecord = {
   workspace?: SharedWorkspace;
   /** The saved file could not be read; it is set aside, never deleted, by the next write. */
   damaged?: boolean;
+  /** Canonical destination for panes moved out of this tab set; used to preserve late drafts. */
+  movedTo?: Record<string, WorkspaceKey>;
 };
+
+export type WorkspaceTransferRequest = {
+  intent: string; writer: string; destination: WorkspaceKey;
+  sourceRevision: number; destinationRevision: number;
+  sourceWorkspace: SharedWorkspace; destinationWorkspace: SharedWorkspace;
+};
+export type WorkspaceTransferResult =
+  | { kind: 'saved'; intent: string; already: boolean; source: WorkspaceRecord; destination: WorkspaceRecord }
+  | { kind: 'conflict'; source: WorkspaceRecord; destination: WorkspaceRecord };
 
 export type PutResult = { kind: 'saved'; record: WorkspaceRecord } | { kind: 'conflict'; current: WorkspaceRecord };
 
@@ -41,7 +52,7 @@ export class WorkspaceSyncError extends Error {
   }
 }
 
-export type WorkspaceRequest = { method: 'GET' | 'PUT'; body?: unknown; signal?: AbortSignal };
+export type WorkspaceRequest = { method: 'GET' | 'PUT' | 'POST'; body?: unknown; signal?: AbortSignal };
 /** Sends one request to /api/engine{path}; answers the status and the parsed JSON body (null when there was none). */
 export type WorkspaceTransport = (path: string, request: WorkspaceRequest) => Promise<{ status: number; body: unknown }>;
 
@@ -62,6 +73,10 @@ export function parseRecord(value: unknown, key: WorkspaceKey): WorkspaceRecord 
     if (!workspace) throw new WorkspaceSyncError('The engine returned an invalid tab set.');
     record.workspace = workspace;
   } else if (record.revision > 0) throw new WorkspaceSyncError('The engine returned an invalid tab set.');
+  if (value.movedTo !== undefined) {
+    if (!isObject(value.movedTo) || Object.entries(value.movedTo).some(([id, target]) => !id || !isWorkspaceKey(target) || target === key)) throw new WorkspaceSyncError('The engine returned an invalid tab relocation.');
+    record.movedTo = value.movedTo as Record<string, WorkspaceKey>;
+  }
   return record;
 }
 
@@ -86,6 +101,18 @@ export function createWorkspaceClient(transport: WorkspaceTransport = defaultTra
       const { status, body } = await transport(`${path(key)}?after=${after}&wait=1`, { method: 'GET', signal });
       if (status !== 200) throw refusal(status, body);
       return parseRecord(body, key);
+    },
+    /** Atomically publishes both tab sets. The same committed intent is safe to retry after a lost answer. */
+    async transfer(source: WorkspaceKey, request: WorkspaceTransferRequest, signal?: AbortSignal): Promise<WorkspaceTransferResult> {
+      if (source === request.destination) throw new WorkspaceSyncError('Choose a different destination for these tabs.');
+      const { status, body } = await transport(`${path(source)}/transfer`, { method: 'POST', body: request, signal });
+      if ((status === 200 || (status === 409 && isObject(body) && body.code === 'conflict')) && isObject(body)) {
+        const pair = { source: parseRecord(body.source, source), destination: parseRecord(body.destination, request.destination) };
+        if (status === 409) return { kind: 'conflict', ...pair };
+        if (body.intent !== request.intent || typeof body.already !== 'boolean') throw new WorkspaceSyncError('The engine returned an invalid tab transfer.');
+        return { kind: 'saved', ...pair, intent: request.intent, already: body.already };
+      }
+      throw refusal(status, body);
     },
     /** Saves `workspace` if the engine still holds `revision`; otherwise answers the current record. */
     async put(key: WorkspaceKey, revision: number, writer: string, workspace: SharedWorkspace, signal?: AbortSignal): Promise<PutResult> {
