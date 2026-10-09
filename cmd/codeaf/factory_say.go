@@ -154,11 +154,18 @@ func saySubmit(turn sayTurn, words string) error {
 // adopt is the window's Open door with this door in front of it: a transcript
 // this door opened and keeps is handed over, and the door forgets it (the
 // window holds it now, and the next say finds it live or asks the window's
-// door again); every other transcript is opened as before.
+// door again); one another owner in this process holds live is lent as a
+// view ([liveConversation]); every other transcript is opened as before.
 func (d *sayDoor) adopt(open func(workspace, transcript string) (tui3.Conversation, error)) func(workspace, transcript string) (tui3.Conversation, error) {
 	return func(workspace, transcript string) (tui3.Conversation, error) {
 		key := sameFileKey(transcript)
 		if conv, ok := d.take(key); ok {
+			return conv, nil
+		}
+		// A CONVERSATION THIS PROCESS ALREADY HOLDS ON THE JOURNAL (a running
+		// step's own agent) is lent as a view, live, instead of a second open
+		// its lock would refuse (factory_embed.go).
+		if conv, ok := liveConversation(workspace, transcript); ok {
 			return conv, nil
 		}
 		return open(workspace, transcript)
