@@ -7,6 +7,7 @@ import type { EngineAnswer, EngineQuestion } from '../chat/engine-client';
 import { ImageFigure } from './assets';
 import { QueuedRows, type QueuedItem } from './blocks/QueuedRows';
 import { Composer } from './Composer';
+import { EmptyStart } from './EmptyStart';
 import { deadlineAt } from './tray/clock';
 import { DecisionTray } from './tray/DecisionTray';
 import { blocksComposer } from './tray/layout';
@@ -58,6 +59,7 @@ export function ConversationDock({ tray, queue, composer }: Props) {
     <>
       <Tray tray={tray} />
       <Queue queue={queue} />
+      {!composer.docked && <EmptyStart />}
       <Composer {...composer} disabledReason={blocked ? BLOCKED : composer.disabledReason} />
     </>
   );
