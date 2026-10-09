@@ -27,6 +27,7 @@ for (const theme of ['light', 'dark']) {
    await expect(mark).toHaveCSS('width','13px');
   }
   await expect(page.locator('#tab-web img.tab-monogram')).toHaveAttribute('src',png);
+  await expect(page.locator('#tab-web img.tab-monogram')).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
   await expect.poll(() => page.locator('#tab-web img.tab-monogram').evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(16);
   await expect(page.locator('#tab-split-web img.tab-monogram')).toHaveAttribute('src',png);
   await expect(page.locator('.web-address img.tab-monogram')).toHaveAttribute('src',png);

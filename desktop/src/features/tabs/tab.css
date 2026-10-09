@@ -18,6 +18,7 @@
 .tab-dot[data-state="failed"] { background: var(--danger); }
 .tab-monogram { flex: none; width: var(--monogram-size); height: var(--monogram-size); border-radius: var(--radius-xs); background: var(--site-icon-hue-1); color: var(--on-accent); font-family: var(--sans); font-size: var(--monogram-font); font-weight: var(--font-weight-bold); line-height: var(--monogram-size); text-align: center; object-fit: cover; }
 .tab-monogram[data-hue="2"] { background: var(--site-icon-hue-2); }.tab-monogram[data-hue="3"] { background: var(--site-icon-hue-3); }.tab-monogram[data-hue="4"] { background: var(--site-icon-hue-4); }.tab-monogram[data-hue="5"] { background: var(--site-icon-hue-5); }.tab-monogram[data-hue="6"] { background: var(--site-icon-hue-6); }
+img.tab-monogram { background: transparent; object-fit: contain; }
 
 /* Close lives in a fixed 20px slot, so revealing it never changes the title's width. */
 .workspace-tab-close-slot { flex: none; display: grid; place-items: center; width: var(--tab-close-slot); height: var(--tab-close-slot); margin-right: var(--tab-pad-end); }
