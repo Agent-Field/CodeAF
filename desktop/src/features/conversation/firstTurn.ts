@@ -10,3 +10,6 @@ import { createContext } from 'react';
  */
 export type BeforeFirstTurn = (sessionFile: string) => Promise<void>;
 export const FirstTurnContext = createContext<BeforeFirstTurn | undefined>(undefined);
+
+/** The place must be supplied when the host is created, before its working folder is chosen. Saved attachments ignore it. */
+export const NewConversationPlaceContext = createContext<string | undefined>(undefined);

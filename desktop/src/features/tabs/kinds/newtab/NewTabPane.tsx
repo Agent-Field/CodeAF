@@ -6,7 +6,7 @@ import { isMac, shellShortcuts, shortcutLayer, isSeeAllHistoryShortcut, seeAllHi
 import { useHistoryHost } from '../../../history/host';
 import { useShortcuts } from '../../../../design/useShortcuts';
 import { connectEngine, sendEngine } from '../../../chat/engine-client';
-import { FirstTurnContext } from '../../../conversation/firstTurn';
+import { FirstTurnContext, NewConversationPlaceContext } from '../../../conversation/firstTurn';
 import { panesOf, tabHolding, visibleTabs } from '../../model';
 import { historyKind } from '../history';
 import { terminalKind, newTerminalShortcut } from '../terminal';
@@ -44,6 +44,7 @@ function NewTabField({ host, paneId, focused, draft, onDraft }: { host: NewTabHo
   const [filing, setFiling] = useState(false);
   const [busy, setBusy] = useState(false);
   const beforeFirstTurn = useContext(FirstTurnContext);
+  const newConversationPlace = useContext(NewConversationPlaceContext);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { if (focused) input.current?.focus(); }, [focused]);
 
@@ -72,7 +73,7 @@ function NewTabField({ host, paneId, focused, draft, onDraft }: { host: NewTabHo
     let sessionFile: string | undefined;
     let draft = text;
     try {
-      const snapshot = await connectEngine();
+      const snapshot = await connectEngine(undefined, newConversationPlace);
       sessionFile = snapshot.sessionFile;
       // A question asked from a place's new tab is filed in that place before its first turn, exactly as the
       // conversation's own first send is; if filing is refused the conversation opens holding the words, unsent.
