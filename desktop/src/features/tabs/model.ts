@@ -1,4 +1,7 @@
-export type Tab = { id: string; title: string; pinned: boolean; titleSource?: 'manual' | 'engine'; groupId?: string; draft: string };
+import { cleanView, type TabView } from './view-state';
+
+export type TitleSource = 'message' | 'engine' | 'manual';
+export type Tab = { id: string; title: string; pinned: boolean; titleSource?: TitleSource; groupId?: string; draft: string } & TabView;
 export type TabGroup = { id: string; title: string; collapsed: boolean };
 export type WorkspaceState = { tabs: Tab[]; groups: TabGroup[]; activeId: string; closed: Tab[]; nextNumber: number; recentIds: string[] };
 export const storageKey = 'codeaf.desktop.workspace.v1';
@@ -16,7 +19,14 @@ export function initialWorkspace(): WorkspaceState {
 const isTab = (value: unknown): value is Tab => {
  if (!value || typeof value !== 'object') return false;
  const tab = value as Partial<Tab>;
- return typeof tab.id === 'string' && !!tab.id && typeof tab.title === 'string' && typeof tab.draft === 'string' && typeof tab.pinned === 'boolean' && (tab.titleSource === undefined || ['manual','engine'].includes(tab.titleSource)) && (tab.groupId === undefined || typeof tab.groupId === 'string');
+ return typeof tab.id === 'string' && !!tab.id && typeof tab.title === 'string' && typeof tab.draft === 'string' && typeof tab.pinned === 'boolean' && (tab.titleSource === undefined || titleRank[tab.titleSource] !== undefined) && (tab.groupId === undefined || typeof tab.groupId === 'string');
+};
+// A title only replaces one of equal or lower rank: the person's name always wins.
+const titleRank: Record<TitleSource, number> = { message: 1, engine: 2, manual: 3 };
+const rankOf = (tab: Tab) => (tab.titleSource ? titleRank[tab.titleSource] : 0);
+const withView = (tab: Tab): Tab => {
+ const base: Tab = { id: tab.id, title: tab.title, pinned: tab.pinned, titleSource: tab.titleSource, groupId: tab.groupId, draft: tab.draft };
+ return { ...base, ...cleanView(tab as unknown as Record<string, unknown>) };
 };
 const isGroup = (value: unknown): value is TabGroup => {
  if (!value || typeof value !== 'object') return false;
@@ -30,10 +40,10 @@ export function readWorkspace(): WorkspaceState {
   if (!saved.tabs.every(isTab) || !saved.groups.every(isGroup) || !saved.closed.every(isTab)) return initialWorkspace();
   if (new Set(saved.tabs.map(t => t.id)).size !== saved.tabs.length || new Set(saved.groups.map(g => g.id)).size !== saved.groups.length || new Set(saved.closed.map(t => t.id)).size !== saved.closed.length || saved.closed.some(t => saved.tabs?.some(open => open.id === t.id))) return initialWorkspace();
   const groupIds = new Set(saved.groups.map(g => g.id));
-  const tabs = saved.tabs.map(tab => ({ ...tab, groupId: !tab.pinned && tab.groupId && groupIds.has(tab.groupId) ? tab.groupId : undefined }));
+  const tabs = saved.tabs.map(withView).map(tab => ({ ...tab, groupId: !tab.pinned && tab.groupId && groupIds.has(tab.groupId) ? tab.groupId : undefined }));
   const activeId = tabs.some(tab => tab.id === saved.activeId) ? saved.activeId! : tabs[0].id;
   return {
-   tabs, groups: saved.groups.filter(g => tabs.some(t => t.groupId === g.id)), closed: saved.closed.slice(-20),
+   tabs, groups: saved.groups.filter(g => tabs.some(t => t.groupId === g.id)), closed: saved.closed.slice(-20).map(withView),
    recentIds: [...new Set([activeId, ...(Array.isArray(saved.recentIds) ? saved.recentIds.filter(id => typeof id === 'string' && tabs.some(t => t.id === id)) : []), ...tabs.map(t => t.id)])],
    activeId,
    nextNumber: Number.isSafeInteger(saved.nextNumber) && saved.nextNumber! > 0 && saved.nextNumber! < 1000000 ? saved.nextNumber! : tabs.length + 1,
@@ -51,7 +61,8 @@ export type WorkspaceAction =
  | { type: 'reopen' }
  | { type: 'pin'; id: string }
  | { type: 'rename'; id: string; title: string }
- | { type: 'engine-title'; id: string; title: string }
+ | { type: 'title'; id: string; title: string; source: 'message' | 'engine' }
+ | { type: 'view'; id: string; change: TabView }
  | { type: 'draft'; id: string; draft: string }
  | { type: 'group'; id: string }
  | { type: 'move-group'; id: string; groupId?: string }
@@ -62,7 +73,7 @@ export type WorkspaceAction =
 export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState {
  switch (action.type) {
   case 'new': {
-   const tab: Tab = { id: createId(), title: `New conversation ${state.nextNumber}`, draft: '', pinned: false, groupId: action.groupId };
+   const tab: Tab = { id: createId(), title: 'New conversation', draft: '', pinned: false, groupId: action.groupId };
    return { ...state, tabs: [...state.tabs, tab], activeId: tab.id, recentIds: [tab.id, ...state.recentIds], nextNumber: state.nextNumber + 1, groups: state.groups.map(g => g.id === action.groupId ? { ...g, collapsed: false } : g) };
   }
   case 'open-task': return { ...state, tabs: [...state.tabs, action.tab], activeId: action.background ? state.activeId : action.tab.id, recentIds: action.background ? [...state.recentIds, action.tab.id] : [action.tab.id, ...state.recentIds] };
@@ -86,7 +97,13 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
   }
   case 'pin': return normalize({ ...state, tabs: state.tabs.map(t => t.id === action.id ? { ...t, pinned: !t.pinned, groupId: undefined } : t) });
   case 'rename': return { ...state, tabs: state.tabs.map(t => t.id === action.id ? { ...t, title: action.title.trim() || 'New conversation', titleSource: 'manual' } : t) };
-  case 'engine-title': return { ...state, tabs: state.tabs.map(t => t.id === action.id && t.titleSource !== 'manual' && (t.titleSource === 'engine' || /^New conversation(?: \d+)?$/.test(t.title)) && action.title.trim() ? { ...t, title: action.title.trim(), titleSource: 'engine' } : t) };
+  case 'title': {
+   const title = action.title.trim();
+   const replaces = (t: Tab) => t.id === action.id && !!title && t.title !== title && rankOf(t) <= titleRank[action.source];
+   if (!state.tabs.some(replaces)) return state;
+   return { ...state, tabs: state.tabs.map(t => replaces(t) ? { ...t, title, titleSource: action.source } : t) };
+  }
+  case 'view': return { ...state, tabs: state.tabs.map(t => t.id === action.id ? { ...t, ...action.change } : t) };
   case 'draft': return { ...state, tabs: state.tabs.map(t => t.id === action.id ? { ...t, draft: action.draft } : t) };
   case 'group': {
    if (!state.tabs.some(tab => tab.id === action.id)) return state;

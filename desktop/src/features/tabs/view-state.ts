@@ -1,0 +1,67 @@
+// Per-tab view state: which session the tab shows, where it is inside that
+// session, and what the reader folded. Persisted with the tab and validated on
+// read; an invalid field is dropped rather than discarding the whole tab.
+
+export type TabRoute = { taskId?: string; back: string[]; forward: string[] };
+
+export type TabView = {
+  sessionFile?: string;
+  route?: TabRoute;
+  folded?: Record<string, boolean>;
+  open?: Record<string, boolean>;
+  tasksClosed?: boolean;
+};
+
+export const rootRoute: TabRoute = { back: [], forward: [] };
+
+const isStringList = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === 'string');
+
+function isFlagMap(value: unknown): value is Record<string, boolean> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return Object.values(value).every((flag) => typeof flag === 'boolean');
+}
+
+function isRoute(value: unknown): value is TabRoute {
+  if (!value || typeof value !== 'object') return false;
+  const route = value as Partial<TabRoute>;
+  const taskOk = route.taskId === undefined || (typeof route.taskId === 'string' && route.taskId !== '');
+  return taskOk && isStringList(route.back) && isStringList(route.forward);
+}
+
+/** Keeps only the view fields that validate. */
+export function cleanView(value: Record<string, unknown>): TabView {
+  const view: TabView = {};
+  if (typeof value.sessionFile === 'string' && value.sessionFile) view.sessionFile = value.sessionFile;
+  if (isRoute(value.route)) view.route = value.route;
+  if (isFlagMap(value.folded)) view.folded = value.folded;
+  if (isFlagMap(value.open)) view.open = value.open;
+  if (typeof value.tasksClosed === 'boolean') view.tasksClosed = value.tasksClosed;
+  return view;
+}
+
+/** Back and forward stacks hold task ids; '' is the conversation itself. */
+export function navigate(route: TabRoute, taskId?: string): TabRoute {
+  if ((route.taskId ?? '') === (taskId ?? '')) return route;
+  return { taskId, back: [...route.back, route.taskId ?? ''], forward: [] };
+}
+
+export function goBack(route: TabRoute): TabRoute {
+  if (!route.back.length) return route;
+  const target = route.back[route.back.length - 1];
+  return { taskId: target || undefined, back: route.back.slice(0, -1), forward: [route.taskId ?? '', ...route.forward] };
+}
+
+export function goForward(route: TabRoute): TabRoute {
+  if (!route.forward.length) return route;
+  const [target, ...rest] = route.forward;
+  return { taskId: target || undefined, back: [...route.back, route.taskId ?? ''], forward: rest };
+}
+
+/** Flips one flag; only true flags are kept so the persisted map stays small. */
+export function toggleFlag(flags: Record<string, boolean> | undefined, id: string): Record<string, boolean> {
+  const next = { ...flags };
+  if (next[id]) delete next[id];
+  else next[id] = true;
+  return next;
+}

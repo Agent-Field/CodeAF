@@ -2,38 +2,39 @@ import { useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import { Button, Icon, IconButton, Text, TextInput, HoverPreview, ContextMenu, DropdownMenu, WorkStateIndicator, type MenuEntry } from '../../components/ui';
 import { readWorkspace, storageKey, workspaceReducer, type Tab } from './model';
 import './workspace.css';
-import { WorkDocumentView } from '../chat/WorkDocument';
-import { readDocuments, documentKey, emptyDocument, type WorkDocument } from '../chat/work-model';
-import { capturedTaskDocument, taskDocumentKey } from '../tasks/captured-task-document';
-import { graphFixture } from '../tasks/graph-fixture';
-import { phaseFor, activityLabel, activityMeta } from '../chat/activity';
 import { desktopTabEvent, isDesktopTabAction } from '../../lib/desktopTabs';
-import { useBackgroundEngine } from '../chat/use-background-engine';
-import { engineDocumentChange } from '../chat/engine-document';
+import { ConversationView } from '../conversation/ConversationView';
+import { relativeTime, summarize, type TabMark, type TabSummary } from '../conversation/tabSummary';
+import { useBackgroundSessions } from '../conversation/useBackgroundSessions';
 import { TabOverview } from './TabOverview';
 import design from '../../design/tokens.json';
 import { tabShortcuts, overviewShortcut, isOverviewShortcut, sequentialTabDirection, tabActionShortcut } from '../../design/keyboard';
 
-type Props = { enabled: boolean; onExplore: () => void; onActivate: () => void; leading?: ReactNode };
-export function Workspace({ enabled, onExplore, onActivate, leading }: Props) {
- const [state, dispatch] = useReducer(workspaceReducer, undefined, () => {const saved=readWorkspace();if(new URLSearchParams(window.location.search).get('preview')!=='plan')return saved;const existing=readDocuments();const tab=saved.tabs.find(tab=>existing[tab.id]?.planWorkspacePreview);return tab?workspaceReducer(saved,{type:'select',id:tab.id}):workspaceReducer(saved,{type:'new'});});
- const prototypeTarget=useRef(new URLSearchParams(window.location.search).get('preview')==='plan'?state.activeId:undefined);
- const [documents,setDocuments]=useState(readDocuments);
- function viewedDocument(tab:Tab){const source=documents[tab.id];if(!source?.planWorkspacePreview)return source;const route=source.planNavigation;const row=graphFixture.rows.find(row=>row.ID===route?.ids[route.index]);return row?documents[taskDocumentKey(source.planOriginTabId??tab.id,row.ID)]??capturedTaskDocument(row):source;}
- const viewedDocuments=Object.fromEntries(state.tabs.map(tab=>[tab.id,viewedDocument(tab)]));
- const overviewTabs=state.tabs.map(tab=>({...tab,draft:viewedDocuments[tab.id]?.taskDraft??tab.draft}));
- const [now,setNow]=useState(Date.now);
- useEffect(()=>{const timer=window.setInterval(()=>setNow(Date.now()),design.interaction.activityRefreshInterval);return()=>window.clearInterval(timer);},[]);
- useEffect(()=>{try{localStorage.setItem(documentKey,JSON.stringify(documents));}catch{/* The current workspace remains usable without persistence. */}},[documents]);
- function openTaskTab(id:string){
-  const task=graphFixture.rows.find(row=>row.ID===id);if(!task)return;
-  const tab:Tab={id:crypto.randomUUID(),title:task.Title,titleSource:'manual',pinned:false,draft:''};
-  const source=documents[state.activeId];if(!source?.planWorkspacePreview || source.engine)return;
-  setDocuments(current=>({...current,[tab.id]:{...source,planOriginTabId:source.planOriginTabId??state.activeId,planNavigation:{ids:[null,id],index:1},scroll:0,context:[],queue:[]}}));
-  dispatch({type:'open-task',tab,background:true});
+type Props = { enabled: boolean; onActivate: () => void; leading?: ReactNode };
+const markPhase: Record<TabMark, { phase: 'working' | 'waiting' | 'failed'; label: string }> = {
+ working: { phase: 'working', label: 'Working' },
+ waiting: { phase: 'waiting', label: 'Needs you' },
+ failed: { phase: 'failed', label: 'Failed' },
+};
+/** One still mark at the tab's leading edge; a finished conversation shows none. */
+function TabMarkIcon({ mark, pinned }: { mark?: TabMark; pinned: boolean }) {
+ if (mark) return <WorkStateIndicator phase={markPhase[mark].phase} label={markPhase[mark].label}/>;
+ return pinned ? <Icon name="pin" size="xs"/> : null;
+}
+export function Workspace({ enabled, onActivate, leading }: Props) {
+ const [state, dispatch] = useReducer(workspaceReducer, undefined, readWorkspace);
+ const [summaries, setSummaries] = useState<Record<string, TabSummary>>({});
+ const [now, setNow] = useState(Date.now);
+ useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), design.interaction.activityRefreshInterval); return () => window.clearInterval(timer); }, []);
+ function receiveSummary(id: string, summary: TabSummary) {
+  setSummaries(current => ({ ...current, [id]: summary }));
+  if (summary.title) dispatch({ type: 'title', id, title: summary.title, source: 'engine' });
+  else if (summary.firstLine) dispatch({ type: 'title', id, title: summary.firstLine, source: 'message' });
  }
- function updateDocument(id:string,change:Partial<WorkDocument>){if(change.planWorkspacePreview && /^New conversation(?: \d+)?$/.test(state.tabs.find(tab=>tab.id===id)?.title??''))dispatch({type:'rename',id,title:`${graphFixture.title} · preview`});setDocuments(current=>({...current,[id]:{...(current[id]??emptyDocument()),...change}}));}
- useEffect(()=>{for(const tab of state.tabs){const title=documents[tab.id]?.engineTitle;if(title && title!==tab.title && tab.titleSource!=='manual' && (tab.titleSource==='engine' || /^New conversation(?: \d+)?$/.test(tab.title)))dispatch({type:'engine-title',id:tab.id,title});}},[documents,state.tabs]);
+ function openTaskTab(source: Tab, taskId: string, title: string) {
+  const tab: Tab = { id: crypto.randomUUID(), title, titleSource: 'manual', pinned: false, draft: '', sessionFile: source.sessionFile, route: { taskId, back: [''], forward: [] } };
+  dispatch({ type: 'open-task', tab, background: true });
+ }
  const [overviewOpen, setOverviewOpen] = useState(false);
  const [switcher, setSwitcher] = useState<{ ids: string[]; index: number } | null>(null);
  const switcherRef = useRef<typeof switcher>(null);
@@ -46,7 +47,7 @@ export function Workspace({ enabled, onExplore, onActivate, leading }: Props) {
  const overviewTrigger = useRef<HTMLButtonElement>(null);
  const [scrollEdges, setScrollEdges] = useState({ left: false, right: false });
  const active = state.tabs.find(tab => tab.id === state.activeId) ?? state.tabs[0];
- useBackgroundEngine(documents,state.activeId,state.tabs.map(tab=>tab.id),(id,snapshot)=>setDocuments(previous=>{const before=previous[id]??emptyDocument();return {...previous,[id]:{...before,...engineDocumentChange(snapshot,before)}};}));
+ useBackgroundSessions(state.tabs.filter(tab => tab.id !== state.activeId && tab.sessionFile).map(tab => ({ id: tab.id, sessionFile: tab.sessionFile! })), (id, snapshot) => receiveSummary(id, summarize(snapshot)));
  const visible = [...state.tabs.filter(t => t.pinned), ...state.tabs.filter(t => !t.pinned && !t.groupId), ...state.groups.flatMap(g => state.tabs.filter(t => t.groupId === g.id && (!g.collapsed || t.id === state.activeId)))];
  useEffect(() => { try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch { /* A full or unavailable store must not interrupt local tab navigation. */ } }, [state]);
  useEffect(() => {
@@ -169,15 +170,14 @@ export function Workspace({ enabled, onExplore, onActivate, leading }: Props) {
   ];
  }
  function renderTab(tab: Tab) {
-  const work=viewedDocuments[tab.id];
-  const latest=work?.sections[work.sections.length-1];
-  const phase=phaseFor(work);
+  const summary = summaries[tab.id];
+  const meta = [summary?.updatedAt ? relativeTime(summary.updatedAt, now) : '', tab.groupId ? state.groups.find(g => g.id === tab.groupId)?.title : tab.pinned ? 'Pinned tab' : ''].filter(Boolean).join(' · ');
   return <ContextMenu key={tab.id} label={`Actions for ${tab.title}`} items={tabItems(tab)}><div className={`workspace-tab ${tab.pinned ? 'is-pinned' : ''}`} data-active={tab.id === state.activeId} draggable onDragStart={event => { event.dataTransfer.setData('application/codeaf-tab', tab.id); event.dataTransfer.effectAllowed = 'move'; }} onDragOver={event => { if (event.dataTransfer.types.includes('application/codeaf-tab')) event.preventDefault(); }} onDrop={event => { const id = event.dataTransfer.getData('application/codeaf-tab'); if (id) { event.preventDefault(); dispatch({ type: 'reorder', id, targetId: tab.id }); } }}>
-   <HoverPreview disabled={!!switcher || overviewOpen || !!rename} title={tab.title} description={work?.taskDraft?.trim() || (latest?.originalFormat==='markdown'?latest.digest:tab.draft || (latest?.sample ? latest.title : ''))} meta={[activityMeta(work,now),tab.groupId ? state.groups.find(g => g.id === tab.groupId)?.title : tab.pinned ? 'Pinned tab' : undefined].filter(Boolean).join(' · ')}><Button className="workspace-tab-select" role="tab" id={`tab-${tab.id}`} aria-controls="workspace-tab-panel" aria-selected={tab.id === state.activeId} tabIndex={tab.id === state.activeId ? 0 : -1} aria-label={tab.title} onClick={() => dispatch({ type: 'select', id: tab.id })} onKeyDown={event => {
+   <HoverPreview disabled={!!switcher || overviewOpen || !!rename} title={tab.title} description={tab.draft.trim() || summary?.digest || ''} meta={meta}><Button className="workspace-tab-select" role="tab" id={`tab-${tab.id}`} aria-controls="workspace-tab-panel" aria-selected={tab.id === state.activeId} tabIndex={tab.id === state.activeId ? 0 : -1} aria-label={tab.title} onClick={() => dispatch({ type: 'select', id: tab.id })} onKeyDown={event => {
     const index = visible.findIndex(t => t.id === tab.id);
     const target = event.key === 'ArrowRight' ? visible[(index + 1) % visible.length] : event.key === 'ArrowLeft' ? visible[(index - 1 + visible.length) % visible.length] : event.key === 'Home' ? visible[0] : event.key === 'End' ? visible[visible.length - 1] : undefined;
     if (target) { event.preventDefault(); dispatch({ type: 'select', id: target.id }); requestAnimationFrame(() => document.getElementById(`tab-${target.id}`)?.focus()); }
-   }}>{phase?<WorkStateIndicator phase={phase} label={activityLabel(work)}/>:<Icon name={tab.pinned ? 'pin' : 'tab'} size="xs"/>}<span>{tab.title}</span></Button></HoverPreview>
+   }}><TabMarkIcon mark={summary?.mark} pinned={tab.pinned}/><span>{tab.title}</span></Button></HoverPreview>
    {!tab.pinned && <IconButton className="workspace-tab-close" label={`Close ${tab.title}`} icon="close" iconSize="xs" tabIndex={tab.id === state.activeId ? 0 : -1} onClick={() => closeTab(tab.id)}/>}
   </div></ContextMenu>;
  }
@@ -206,13 +206,13 @@ export function Workspace({ enabled, onExplore, onActivate, leading }: Props) {
    <div className="workspace-tab-actions"><IconButton label="New tab" title={`New tab (${tabShortcuts.new})`} icon="plus" onClick={() => dispatch({ type: 'new' })}/><IconButton ref={overviewTrigger} label="All tabs" title={`All tabs (${overviewShortcut})`} icon="grid" onClick={() => setOverviewOpen(true)}/><DropdownMenu label="Tab actions" items={overflowItems}><IconButton label="Tab actions" icon="more"/></DropdownMenu></div>
   </div>
   <div className="workspace-conversation" role="tabpanel" id="workspace-tab-panel" aria-labelledby={`tab-${active.id}`} tabIndex={0}>
-   <WorkDocumentView taskDocuments={documents} onTaskDocumentChange={(id,change,initial)=>setDocuments(current=>({...current,[id]:{...(current[id]??initial),...change}}))} onOpenTaskTab={openTaskTab} prototypeRequested={prototypeTarget.current===active.id} document={documents[active.id]??emptyDocument()} onDocumentChange={change=>updateDocument(active.id,change)} resumeTabs={state.tabs.filter(tab => tab.id !== active.id)} onResume={id => dispatch({ type: 'select', id })} tabId={active.id} title={active.title} draft={active.draft} onDraft={draft => dispatch({ type: 'draft', id: active.id, draft })} onExplore={onExplore}/>
+   <ConversationView key={active.id} tab={active} label={active.title} onDraft={draft => dispatch({ type: 'draft', id: active.id, draft })} onView={change => dispatch({ type: 'view', id: active.id, change })} onSummary={summary => receiveSummary(active.id, summary)} onOpenTaskTab={(taskId, title) => openTaskTab(active, taskId, title)}/>
   </div>
   {switcher && <div className="workspace-switcher"><div ref={switcherFocus} className="workspace-switcher-list" role="listbox" tabIndex={0} aria-label="Switch tabs" aria-activedescendant={`switcher-${switcher.ids[switcher.index]}`}>
    {switcher.ids.map((id, index) => { const tab = state.tabs.find(t => t.id === id); return tab ? <Button key={id} id={`switcher-${id}`} className="workspace-switcher-item" role="option" aria-selected={index === switcher.index} tabIndex={-1} onClick={() => { dispatch({ type: 'select', id }); switcherRef.current = null; setSwitcher(null); }}><Icon name={tab.pinned ? 'pin' : 'tab'} size="sm"/><span>{tab.title}</span></Button> : null; })}
    </div><Text>Release Ctrl to switch · Escape to cancel</Text>
   </div>}
-  <TabOverview documents={viewedDocuments} returnFocus={overviewTrigger} open={overviewOpen} tabs={overviewTabs} groups={state.groups} activeId={state.activeId} onClose={() => setOverviewOpen(false)} onSelect={id => dispatch({ type: 'select', id })} onNew={() => dispatch({ type: 'new' })} onPin={id => dispatch({ type: 'pin', id })} onMoveGroup={(id, groupId) => dispatch({ type: 'move-group', id, groupId })} onCreateGroup={id => dispatch({ type: 'group', id })} onCloseTab={id => dispatch({ type: 'close', id })}/>
+  <TabOverview summaries={summaries} returnFocus={overviewTrigger} open={overviewOpen} tabs={state.tabs} groups={state.groups} activeId={state.activeId} onClose={() => setOverviewOpen(false)} onSelect={id => dispatch({ type: 'select', id })} onNew={() => dispatch({ type: 'new' })} onPin={id => dispatch({ type: 'pin', id })} onMoveGroup={(id, groupId) => dispatch({ type: 'move-group', id, groupId })} onCreateGroup={id => dispatch({ type: 'group', id })} onCloseTab={id => dispatch({ type: 'close', id })}/>
   <dialog ref={renameDialog} className="workspace-rename" aria-label={rename?.group ? 'Rename group' : 'Rename tab'} onCancel={() => setRename(null)} onClose={() => setRename(null)}>
    <form onSubmit={event => { event.preventDefault(); if (rename) dispatch({ type: rename.group ? 'rename-group' : 'rename', id: rename.id, title: rename.value }); setRename(null); }}><TextInput ref={renameInput} aria-label="Name" value={rename?.value ?? ''} maxLength={80} onChange={event => setRename(current => current ? { ...current, value: event.target.value } : null)}/><div className="workspace-rename-actions"><Button onClick={() => setRename(null)}>Cancel</Button><Button type="submit" variant="secondary">Save</Button></div></form>
   </dialog>
