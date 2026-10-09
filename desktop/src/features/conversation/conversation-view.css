@@ -2,9 +2,18 @@
 .conversation-view { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; }
 .conversation-main { background: var(--canvas); display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
 .conversation-scroll { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; padding-block: var(--space-6) calc(var(--scroll-fade-dock) + var(--scroll-dock-clearance)); }
-/* Top edge: a mask, on only once content sits above it (design 1f, Scroll edges). Never an overlay. */
-.conversation-scroll { mask-image: linear-gradient(to bottom, black, black); transition: mask-image var(--dur-fast) var(--ease); }
-.conversation-scroll[data-scrolled] { mask-image: linear-gradient(to bottom, transparent var(--scroll-fade-top-clear), black var(--scroll-fade-top-solid)); }
+/* Top edge: a mask, on only once content sits above it (design 1f, Scroll edges). Never an overlay.
+   Two layers add up: the ramp (transparent at 40, opaque at 96) and a solid layer that covers the
+   whole edge at rest. Scrolled, the solid layer shrinks away over 120ms and the ramp shows. */
+.conversation-scroll {
+  mask-image: linear-gradient(to bottom, transparent var(--scroll-fade-top-clear), black var(--scroll-fade-top-solid)), linear-gradient(black, black);
+  mask-repeat: no-repeat;
+  mask-position: left top, left bottom;
+  mask-size: 100% 100%, 100% 100%;
+  transition: mask-size var(--dur-fast) var(--ease);
+}
+.conversation-scroll[data-scrolled] { mask-size: 100% 100%, 100% 0%; }
+@media (prefers-reduced-motion: reduce) { .conversation-scroll { transition: none; } }
 .conversation-main[hidden] { display: none; }
 /* Task view (design 1c): the column is the design's 640px reading width, and the note composer rests on the pane's foot. */
 .conversation-scroll[data-task] { display: flex; flex-direction: column; padding-block-end: 0; }
