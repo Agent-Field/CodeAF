@@ -3,6 +3,7 @@
 
 import type { ToolStep } from '../types.ts';
 import { argString, argsOf, baseName, dirName, firstLine } from './args.ts';
+import { withoutMarks } from '../transcript-parse.ts';
 
 const NARRATION_LIMIT = 90;
 
@@ -37,8 +38,7 @@ const isPhrase = (line: string) => /\S\s+\S/.test(line);
 
 /** The narration line as a title: first line, no marks, no closing stop; '' when it is not a phrase. */
 export function narrationTitle(text: string): string {
-  const line = firstLine(text)
-    .replace(/[*_`~]+/g, '')
+  const line = withoutMarks(firstLine(text))
     .replace(/[.!?;:]+$/, '')
     .trim();
   if (!isPhrase(line)) return '';

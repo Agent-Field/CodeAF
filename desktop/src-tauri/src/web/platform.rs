@@ -236,17 +236,14 @@ mod layer {
     use gtk::prelude::*;
     use tauri::{Runtime, Webview};
 
-    /// Fills the overlay less four margins, so the page covers exactly `rect`.
-    /// A size request alone is not enough: an overlay child gets its natural
-    /// size, and WebKit reports its last content size as natural.
-    fn position(page: &gtk::Widget, rect: Rect) {
-        let Some(overlay) = page.parent() else { return };
-        let base = overlay
-            .downcast_ref::<gtk::Overlay>()
-            .and_then(|o| o.child())
-            .map(|app| (app.allocated_width(), app.allocated_height()));
-        let width = overlay.allocated_width().max(base.map_or(0, |b| b.0));
-        let height = overlay.allocated_height().max(base.map_or(0, |b| b.1));
+    /// Where each page remembers the rectangle it was last asked to cover, so
+    /// the overlay can place it again whenever the overlay's own size changes.
+    const RECT: &str = "codeaf-web-rect";
+
+    /// Fills `width` x `height` less four margins, so the page covers exactly
+    /// `rect`. A size request alone is not enough: an overlay child gets its
+    /// natural size, and WebKit reports its last content size as natural.
+    fn margins(page: &gtk::Widget, rect: Rect, width: i32, height: i32) {
         let (x, y) = (rect.x as i32, rect.y as i32);
         let (w, h) = ((rect.width as i32).max(1), (rect.height as i32).max(1));
         page.set_halign(gtk::Align::Fill);
@@ -255,6 +252,42 @@ mod layer {
         page.set_margin_top(y);
         page.set_margin_end((width - x - w).max(0));
         page.set_margin_bottom((height - y - h).max(0));
+    }
+
+    fn position(page: &gtk::Widget, rect: Rect) {
+        // SAFETY: the key is private to this module and always holds a `Rect`.
+        unsafe { page.set_data(RECT, rect) };
+        let Some(overlay) = page.parent() else { return };
+        let base = overlay
+            .downcast_ref::<gtk::Overlay>()
+            .and_then(|o| o.child())
+            .map(|app| (app.allocated_width(), app.allocated_height()));
+        let width = overlay.allocated_width().max(base.map_or(0, |b| b.0));
+        let height = overlay.allocated_height().max(base.map_or(0, |b| b.1));
+        // An overlay made a moment ago has no size yet, and margins measured
+        // against nothing leave the end and bottom at zero: the first page ran
+        // to the window's edge until something resized it. Its size-allocate
+        // handler places the page once the size is known.
+        if width <= 1 || height <= 1 {
+            return;
+        }
+        margins(page, rect, width, height);
+    }
+
+    /// Places every page on `overlay` again against the overlay's new size.
+    /// Margins that already match change nothing, so this settles at once.
+    fn reflow(overlay: &gtk::Overlay, width: i32, height: i32) {
+        let app = overlay.child();
+        for page in overlay.children() {
+            if app.as_ref() == Some(&page) {
+                continue;
+            }
+            // SAFETY: only `position` writes this key, and always a `Rect`.
+            let Some(rect) = (unsafe { page.data::<Rect>(RECT) }) else {
+                continue;
+            };
+            margins(&page, unsafe { *rect.as_ref() }, width, height);
+        }
     }
 
     /// Moves `view` out of the window's box onto an overlay above `main`.
@@ -274,6 +307,18 @@ mod layer {
                 .position(|c| c == &app)
                 .unwrap_or(0);
             let overlay = gtk::Overlay::new();
+            // A margin set inside an allocation is not laid out until something
+            // else asks, so the overlay places its pages once allocation is over.
+            overlay.connect_size_allocate(|overlay, _| {
+                let overlay = overlay.clone();
+                gtk::glib::idle_add_local_once(move || {
+                    reflow(
+                        &overlay,
+                        overlay.allocated_width(),
+                        overlay.allocated_height(),
+                    )
+                });
+            });
             column.remove(&app);
             overlay.add(&app);
             column.pack_start(&overlay, true, true, 0);

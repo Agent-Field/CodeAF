@@ -86,6 +86,12 @@ test('digestOf strips marks and clips', () => {
   assert.ok(digestOf('x'.repeat(300)).length <= 140);
 });
 
+test('digestOf keeps underscores and tildes that belong to words and paths', () => {
+  assert.equal(digestOf('LINUX_NATIVE_REPLY_OK'), 'LINUX_NATIVE_REPLY_OK');
+  assert.equal(digestOf('Renamed `load_config` in ~/notes, _really_ and ~~not~~ __twice__'),
+    'Renamed load_config in ~/notes, really and not twice');
+});
+
 // The record shape of a hand-off landing (session task_run.go taskNote, batched by
 // "while you worked:"): the engine's instruction to the model, the task head with a
 // transcript link, then the report. The task is a quick hand-off with no plan row.
