@@ -842,7 +842,9 @@ job starts on `deepseek/deepseek-v4.1-flash`. The jobs are named in plain words:
 - **Tasks** does the steps of a task.
 - **Planning** plans a task and rewrites the plan as steps finish.
 - **Checking** decides whether finished-looking work is really finished.
-- **Titles and summaries** writes the short names for chats, tasks and jobs.
+- **Chat titles** names each chat from its opening exchange.
+- **Task and job names** writes the short names for tasks and background jobs, and the step captions. It follows the Chat titles choice until you give it its own.
+- **Summaries** writes the recaps History shows (see `history`). It also follows the Chat titles choice until you give it its own.
 - **Memory** reads each turn for things worth remembering.
 - **Turn routing** judges whether a message should become a task.
 - **Safety checks** reads one tool call and says whether it is safe to run.
@@ -864,6 +866,9 @@ The rest of the provider's list sits under "All models…" (⌘/) in the picker.
 A pinned model the provider does not offer is left out of the picker. The
 pinned list is saved in your profile next to the job choices, and the terminal
 does not use it.
+
+Another desktop key: **⌘Y** (Ctrl Y on Windows and Linux) opens **History**, the
+list of past conversations with a recap beside each (see `history`).
 
 A choice is saved in your profile, not in the window, and it applies to the next
 time that job runs: an open chat sends its next message on the new Conversation

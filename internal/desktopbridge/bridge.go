@@ -166,6 +166,7 @@ type Bridge struct {
 	icons     *faviconCache
 	models    *Models
 	places    *Places
+	history   *History
 	// world is the engine-wide feed (worldstream.go); nil until first used.
 	world *WorldFeed
 	// advice schedules place offers (places_advice.go); nil makes none.
@@ -532,6 +533,9 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if b.placesRoutes(w, r, path) {
+		return
+	}
+	if b.historyRoutes(w, r, path) {
 		return
 	}
 	if b.worldRoutes(w, r, path) {

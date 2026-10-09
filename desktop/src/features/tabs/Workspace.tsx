@@ -6,6 +6,9 @@ import design from '../../design/tokens.json';
 import { summarize, type TabSummary } from '../conversation/tabSummary';
 import { useBackgroundSessions } from '../conversation/useBackgroundSessions';
 import { fileTab, findFileTab, type FileTabKind } from '../files/fileTarget';
+import { ArchiveToast } from '../history/ArchiveToast';
+import { HistoryHostContext, restoreArchived, useAutoArchive, useHistoryWorkspace } from '../history/host';
+import { openKindAction } from '../shell/openKind';
 import type { TabsApi } from './context';
 import type { PaneActions } from './kinds/slots';
 import { NewTabHostContext } from './kinds/newtab/api';
@@ -84,6 +87,8 @@ export function Workspace({ enabled, onActivate, leading }: Props) {
   useTabKeys({ enabled, state, dispatch, visible, overviewOpen, setOverviewOpen, closeTab, switcherRef, setSwitcher });
   useTerminalTabs({ enabled, state, dispatch });
   useDesktopTabActions({ state, dispatch, visible, renaming: !!rename, onActivate, closeTab, setOverviewOpen });
+  const historyHost = useHistoryWorkspace(state, dispatch);
+  const [archived, dismissArchived] = useAutoArchive(state, dispatch, summaries);
 
   const api: TabsApi = { state, dispatch, summaries, now, closeTab, startRename, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename };
   const newTabHost = { state, summaries, dispatch, closeTab };
@@ -96,7 +101,8 @@ export function Workspace({ enabled, onActivate, leading }: Props) {
   });
   return <section className="tab-workspace" aria-label="Conversation workspace">
     <TabStrip api={api} leading={leading} overviewTrigger={overviewTrigger} onOverview={() => setOverviewOpen(true)}/>
-    <NewTabHostContext.Provider value={newTabHost}><PaneGrid tab={active} tabs={state.tabs} dispatch={dispatch} actionsFor={actionsFor}/></NewTabHostContext.Provider>
+    <NewTabHostContext.Provider value={newTabHost}><HistoryHostContext.Provider value={historyHost}><PaneGrid tab={active} tabs={state.tabs} dispatch={dispatch} actionsFor={actionsFor}/></HistoryHostContext.Provider></NewTabHostContext.Provider>
+    {archived && <ArchiveToast count={archived.tabs.length} onDismiss={dismissArchived} onReview={() => { dispatch(openKindAction(state, 'history')); dismissArchived(); }} onRestore={() => { restoreArchived(archived, dispatch); dismissArchived(); }}/>}
     {switcher && <div className="workspace-switcher"><div ref={switcherFocus} className="workspace-switcher-list" role="listbox" tabIndex={0} aria-label="Switch tabs" aria-activedescendant={`switcher-${switcher.ids[switcher.index]}`}>
       {switcher.ids.map((id, index) => { const tab = state.tabs.find(t => t.id === id); return tab ? <Button key={id} id={`switcher-${id}`} className="workspace-switcher-item" role="option" aria-selected={index === switcher.index} tabIndex={-1} onClick={() => { dispatch({ type: 'select', id }); switcherRef.current = null; setSwitcher(null); }}><Icon name={tab.pinned ? 'pin' : kindDef(focusedPane(tab).kind).icon} size="sm"/><span>{tab.title}</span></Button> : null; })}
     </div><Text>Release Ctrl to switch · Escape to cancel</Text>

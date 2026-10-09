@@ -55,6 +55,7 @@ Shell). On any conflict, the design files win over code and older docs.
 | Q32 | Diff "@@ hunk" header inside an edit's diff (the engine builds edit diffs from the edit, not from git) | **Designer: keep.** No hunk header on edit diffs; file/diff tabs (from git) keep it. |
 | Q33 | Elapsed time on the live thinking row ("4s") | **Designer: keep.** Not shown until thinking ends; the engine gives no time before then. |
 | Q34 | Icons the design uses that the animated icon set lacks: circle-slash, pencil-line, file-code-2 | **Designer: keep.** Nearest set icons: ban, pencil, the plain file icons. |
+| Q30 | ⌘1–3: the Conversation page says they switch pinned models, the Shell spec says ⌘1–9 jump to tabs | **Decided** (latest Interactions): ⌘1–9 jump to tabs and ⌥⌘1–3 switch the pinned models. |
 
 ## Open: for the designer
 
@@ -168,3 +169,20 @@ Shell). On any conflict, the design files win over code and older docs.
 | R2 | ⌘B for the rail: the design lists only ⌘S | ⌘/Ctrl B keeps working beside ⌘S, because it was the key before the shell design. Say if it should go. |
 | R3 | The rail the design draws holds Inbox, Now, Places and All places; the engine has no places or inbox endpoint yet | The rail ships Workspace, Activity, Settings and Design system as 32px rail rows (Places `rr` geometry), with the palette field above them. ⌘0, ⌘P, ⌘⇧P and ⌃1–9 are not bound until places exist. |
 | R4 | Focus mode: the top 8px brings the strip back (Shell 2h) with no dwell named, while the rail's left-edge peek waits 300ms (Places 9e) | The strip comes back at once on the top 8px; the rail only after resting 300ms on the left 8px. Both are overlays tinted with the frame at 88% and go away when the pointer leaves them; a menu opened from the revealed strip keeps it up until the menu closes. |
+
+## History lane notes
+
+The History lane numbered these Q35–Q44 on its branch; the file and terminal lanes had already used those numbers, so they are H1–H10 here.
+
+| ID | Question | Assumption |
+|---|---|---|
+| H1 | History: what a conversation with no recap yet says on its row (Components draws only rows that have a sentence) | The row shows its title and its stamp and no second line. Nothing is invented; the recap fills in the next time a turn settles. |
+| H2 | History search: when is there "a best match"? The design draws one for a question | Only when one recap sentence the engine already wrote covers at least 60% of the question's content words and no other conversation is within 1.5x of its score. Otherwise the page goes straight to Decisions, Discussed and Files. The answer is never composed. |
+| H3 | History search: which words get the accent mark? The design marks "lexer" but not "decided" for "what did we decide about the lexer" | Whole words only. A term that only matches the start of a longer word (decide, decided) is not marked, so a mark never ends mid-word. |
+| H4 | History: what the tab is called while searching | "History · <last content word of the question>" (the design's "History · lexer"); plain "History" when the field is empty. |
+| H5 | History filters while a search is running (Decisions, Files, Tasks, Open) | They scope the search the same way they scope the list: the field and the pills are one query. |
+| H6 | 12-hour auto-archive: when a tab that was running or waiting on you becomes idle | The 12 hours start when it stopped running or waiting, not when it last looked busy. Only tabs with a saved conversation archive; pinned, active, empty and held tabs never do. |
+| H7 | History row menu: "Archive" on a conversation that is running or waiting on you, or already archived | Disabled while running or waiting (the 12-hour archive never takes those either); absent once archived. Archiving takes a tab holding the conversation off the strip. |
+| H8 | History: continuing an archived conversation | Continue takes it back out of the archive, as Restore all does. |
+| H9 | History row menu: "Add to place" and "Delete" | Absent. The place graph and its routes now exist (Places lane), but the History row menu is not wired to them yet, and there is no engine delete route. The menu shows Continue, Read conversation and Archive. |
+| H10 | Auto-archive toast duration: Components says every toast sits 6s and always offers Undo; 4c's archive toast offers Review and Restore all | 6s (`historyToastMs`), paused while hovered or focused; Restore all is its undo. |
