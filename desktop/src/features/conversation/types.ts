@@ -18,12 +18,15 @@ export type ToolStep = {
   startedAt?: number; // epoch ms the call began, live only; lets a row show elapsed time
 };
 
+/** How an engine note is drawn: a compaction marker or a retry in flight; absent is a plain session note. */
+export type NoteTone = 'compaction' | 'retry';
+
 /** What sits inside one assistant reply, in record order. */
 export type TurnItem =
   | { kind: 'text'; id: string; text: string; streaming: boolean } // Markdown
   | { kind: 'task'; id: string; taskId?: string; title: string; status: string; summary: string; body: string } // a task's completion aside
   | { kind: 'aside'; id: string; aside: 'job' | 'watch'; title: string; body: string } // a background job or watch notice; body is literal
-  | { kind: 'note'; id: string; text: string; long?: boolean } // engine note (e.g. compaction); long: model-directed text, drawn collapsed
+  | { kind: 'note'; id: string; text: string; long?: boolean; tone?: NoteTone } // engine note; long: model-directed text, drawn collapsed
   | { kind: 'steer'; id: string; text: string } // the person's words typed into the running turn; literal
   | { kind: 'error'; id: string; text: string };
 
