@@ -381,7 +381,8 @@ When it submits, its submission receipt names the change, for example
 `across 3 file(s), tree <id>`. In a plain folder it counts changed files but does not
 produce patch text, so no byte size is shown; a measured patch in a git repository says,
 for example, `128 bytes across 3 file(s), tree <id>`. The run's last line is its ending
-sentence, such as that it submitted a change and the project's own build and tests passed.
+sentence, such as `submitted a change, and the project's own build and tests passed`,
+which it says only when at least one of their commands ran.
 
 **On Windows it is absent**: there is no `/senior-dev` and no `codeaf senior-dev`. Its
 engine needs a Unix shell, process groups and file locks, so Windows builds leave it out
@@ -500,6 +501,32 @@ codeaf senior-dev run --verify-test '/scripts/validate.py --poc /tmp/poc' -- <br
 have found. senior-dev runs them itself on the submitted tree, with the same strict
 settings and time limit, and a non-zero exit fails the check. Naming one never
 excuses the other. Only the command line sets them; senior-dev's own model cannot.
+
+## senior-dev found no build or tests to run — a folder with only a README, nothing was checked, did it pass
+
+A folder that does not look like a project — no manifest, no `Makefile`, no
+`CMakeLists.txt`, no `test/` folder, only a README or loose files — has no build or
+tests for senior-dev to find, so its own check runs no command. Its `verify` step says
+`found no build or tests to run`.
+
+A change it submits there is still finished work, and its ending says only what was
+checked:
+`finished: submitted a change; the project has no build or tests it could find to run`.
+At a shell, the observation printed beneath it says the same:
+`senior-dev observed: the project has no build or tests it could find to run`.
+It never says the project's build and tests passed when none ran; that sentence,
+`submitted a change, and the project's own build and tests passed`, is kept for a run
+where at least one of their commands did.
+
+To the chat the run still counts as passed (see what codeaf does when senior-dev ends):
+it reads the change and offers to merge the branch without any check of its own having
+run, so look at the change yourself before taking it.
+
+A folder that does look like a project but has no command senior-dev can find is
+different: its check fails with `no build entrypoint could be discovered` (or `test`),
+and the change is still handed in (see how senior-dev finds a project's build and
+tests). To have a folder checked by something it cannot find, name the check yourself
+with `--verify-test` or `--verify-build` on `codeaf senior-dev run`.
 
 ## Can I run senior-dev in a folder that is not a git repo — a plain folder, no git, --in-place, operation not permitted, .Trash
 
@@ -1204,8 +1231,9 @@ senior-dev had finished but that codeaf closed under before the run was over rea
 A run ends in one of these ways, and the task's ending says which:
 
 - `finished: …` — it submitted a change, and the words after say what its own check of the
-  project's build and tests found on the frozen tree, passed or not: a change handed in is
-  finished work, and a check that did not pass is looked into by the chat, not acted on;
+  project's build and tests found on the frozen tree, passed or not, or that it found none
+  to run: a change handed in is finished work, and a check that did not pass is looked
+  into by the chat, not acted on;
 - `senior-dev did not finish: …` — it ended without submitting. It is not drawn as a fault,
   what it made is still on its branch, and the chat acts on it (see what codeaf does when
   senior-dev ends);

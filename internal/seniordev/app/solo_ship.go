@@ -86,9 +86,16 @@ func (runner *pipeline) soloShip(
 		// while recording no command at all, so counting commands would call a
 		// project whose suite was never found -- the vacuous-green shape -- a
 		// verified pass.
+		// A project with nothing discoverable to run passes having run no
+		// command, and its reason says that rather than that anything passed
+		// (run.go's messageOf says the same of the ending's sentence).
 		outcome.Status = "pass"
+		checked := "its build and tests passed"
+		if len(verification.Commands) == 0 {
+			checked = "found no build or tests to run"
+		}
 		endingReason = fmt.Sprintf(
-			"submitted, and its build and tests passed: %s (%s)", candidate.describe(), candidate.Reason,
+			"submitted, and %s: %s (%s)", checked, candidate.describe(), candidate.Reason,
 		)
 	default:
 		// The candidate does not verify. It is still what ships: it is the only
