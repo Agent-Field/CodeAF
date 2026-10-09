@@ -43,7 +43,7 @@ test('a folded turn warms on hover and shows its unfold chevron; a mouse click l
 });
 
 test('an answer table fades its right edge only while more lies that way', async ({ page }) => {
-  await installMockEngine(page, plainReply());
+  const engine = await installMockEngine(page, plainReply());
   await openApp(page);
   await send(page, 'Explain the add helper');
   const scroll = page.locator('.markdown-table-scroll');
@@ -53,5 +53,10 @@ test('an answer table fades its right edge only while more lies that way', async
   await expect(scroll).toHaveAttribute('data-more', 'true');
   await expect.poll(() => scroll.evaluate((el) => String(el.scrollLeft + el.clientWidth < el.scrollWidth - 1) === el.getAttribute('data-more'))).toBe(true);
   await scroll.evaluate((el) => (el.scrollLeft = el.scrollWidth));
+  await expect(scroll).toHaveAttribute('data-more', 'false');
+  const position = await scroll.evaluate(el => el.scrollLeft);
+  await engine.update({ title: 'Add helper explained' });
+  await expect(page.getByRole('tab', { name: 'Add helper explained', exact: true })).toBeVisible();
+  await expect.poll(() => scroll.evaluate(el => el.scrollLeft)).toBe(position);
   await expect(scroll).toHaveAttribute('data-more', 'false');
 });

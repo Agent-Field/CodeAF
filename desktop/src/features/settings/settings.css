@@ -29,7 +29,7 @@
   padding: var(--space-row) 0;
   border-top: var(--border-width) solid var(--line);
 }
-.settings-row-inline { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--space-4); }
+.settings-row-inline { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-4); }
 .settings-row-head, .settings-row-text { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .settings-row-head { justify-content: space-between; }
 .settings-row-name { font-size: var(--type-h3-size); line-height: var(--type-h3-leading); font-weight: var(--type-label-strong); }
@@ -41,7 +41,7 @@
 .settings-page .settings-reset:hover:not(:disabled) { background: var(--field); color: var(--ink); }
 
 /* The searchable model choice. */
-.model-select { position: relative; display: inline-flex; max-width: 100%; }
+.model-select { position: relative; display: inline-flex; min-width: 0; max-width: 100%; }
 .model-select .model-select-trigger {
   min-height: var(--control-height);
   max-width: 100%;
