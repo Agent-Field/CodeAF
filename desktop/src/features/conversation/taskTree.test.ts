@@ -16,9 +16,14 @@ test('nests children under their parent in row order', () => {
   assert.deepEqual(tree[0].children.map((n) => n.row.ID), ['b', 'c']);
 });
 
-test('drops archived rows and promotes rows with missing parents', () => {
-  const tree = buildTaskTree([row('a', 'done', { Archived: true }), row('b', 'done', { Parent: 'a' })]);
-  assert.deepEqual(tree.map((n) => n.row.ID), ['b']);
+test('keeps ended-run rows, promotes rows with missing parents', () => {
+  const tree = buildTaskTree([row('a', 'done', { Archived: true }), row('b', 'done', { Parent: 'z' })]);
+  assert.deepEqual(tree.map((n) => n.row.ID), ['a', 'b']);
+});
+
+test('a repeated id shows once, as its newest record', () => {
+  const rows = buildTaskTree([row('a', 'cancelled', { Archived: true }), row('a', 'running')]);
+  assert.deepEqual(rows.map((n) => n.row.Status), ['running']);
 });
 
 test('a cycle does not hide rows or recurse forever', () => {
@@ -27,10 +32,11 @@ test('a cycle does not hide rows or recurse forever', () => {
   assert.deepEqual(ids.sort(), ['a', 'b']);
 });
 
-test('counts every visible row, parents included, archived never', () => {
+test('counts every visible row once, parents included', () => {
   const rows = [row('p', 'running'), row('x', 'done', { Parent: 'p' }), row('y', 'failed', { Parent: 'p' }), row('z', 'done')];
   assert.deepEqual(taskCounts(rows), { done: 2, total: 4 });
-  assert.deepEqual(taskCounts([...rows, row('old', 'done', { Archived: true })]), { done: 2, total: 4 });
+  assert.deepEqual(taskCounts([...rows, row('old', 'done', { Archived: true })]), { done: 3, total: 5 });
+  assert.deepEqual(taskCounts([row('z', 'done', { Archived: true }), ...rows]), { done: 2, total: 4 });
   assert.deepEqual(taskCounts([row('p', 'running'), row('c', 'running', { Parent: 'p' })]), { done: 0, total: 2 });
 });
 

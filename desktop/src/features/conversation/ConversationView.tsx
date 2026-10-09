@@ -50,7 +50,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const { behind, jump } = useStickToBottom(scroller, content, contentSignature(model), route.taskId ?? '');
-  const hasTasks = model.tasks.some((row) => !row.Archived) || Boolean(model.planError);
+  const hasTasks = model.tasks.length > 0 || Boolean(model.planError);
   const panel = useTaskPanel(hasTasks, Boolean(tab.tasksClosed), onView);
   const setRoute = (next: typeof route) => onView({ route: next });
 
