@@ -20,6 +20,10 @@ A damaged file is never deleted. Unparseable or structurally invalid (cycle, dup
 - Sibling names are unique, case-insensitively.
 - Undo needs the graph to be exactly as the receipt's commit left it (`ErrRevisionConflict` otherwise). Place visits (`TouchOpened`) do not move the revision.
 
+## Untouched places
+
+`stale.go` holds the design's 60-day "merge or archive" suggestion and its 30-day "Not now" (constants `StaleAfterDays`, `StaleSnoozeDays`; not settings: see `docs/AI-ROLES-AND-PLACES-POLICY.md`, "Critical cleanup policy"). `StalePlaces` is pure date arithmetic over a snapshot and an injected clock. Snoozes live in their own file, `places-stale.json` beside the graph (`StaleBook`), so a snooze never moves the graph's revision or an undo; a damaged file reads as empty and is set aside on the next write, and a file from a newer version is never rewritten.
+
 ## Bounds
 
-`MaxPlaces` 2000, `MaxMemberships` 50000, `MaxParents` 16, `MaxPinned` 50, `MaxChatPlaces` 64, `MaxNameRunes` 120, `MaxInstructions` 64 KiB, `MaxSources` 200, `MaxFileBytes` 32 MiB. Changing one changes this list in the same commit.
+`MaxPlaces` 2000, `MaxMemberships` 50000, `MaxParents` 16, `MaxPinned` 50, `MaxChatPlaces` 64, `MaxNameRunes` 120, `MaxInstructions` 64 KiB, `MaxSources` 200, `MaxFileBytes` 32 MiB, `MaxStaleListed` 20, `MaxStaleSnoozes` = `MaxPlaces`. Changing one changes this list in the same commit.

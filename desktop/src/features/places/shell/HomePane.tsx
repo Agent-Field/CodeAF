@@ -11,6 +11,7 @@ import { buildHomeActions } from './homeActions';
 import { HomeComposer } from './HomeComposer';
 import { usePlacesShell } from './PlacesShell';
 import { homeViewFromDigest } from './selectors';
+import { useStale } from './useStale';
 import './home-pane.css';
 
 type Read = { digest?: HomeDigest; unplaced?: HomeDigest; failure?: PlacesError | Error };
@@ -72,11 +73,16 @@ export function HomePane({ pane, actions: paneActions }: PaneRenderProps) {
   const read = useHomeRead(id);
   const [looking, setLooking] = useState<string>();
   const now = useMemo(() => new Date(), [read.digest, read.unplaced]);
-  const view = useMemo(() => (read.digest ? homeViewFromDigest(read.digest, shell?.places.graph, read.unplaced) : undefined), [read.digest, read.unplaced, shell?.places.graph]);
+  const stale = useStale(id === 'root' ? shell : undefined);
+  const view = useMemo(() => {
+    if (!read.digest) return undefined;
+    const home = homeViewFromDigest(read.digest, shell?.places.graph, read.unplaced);
+    return stale.places[0] ? { ...home, stale: stale.places[0] } : home;
+  }, [read.digest, read.unplaced, shell?.places.graph, stale.places]);
   const homeActions = useMemo(() => shell ? buildHomeActions({
     shell, homeId: id, digests: [read.digest, read.unplaced], strip: strip ? { state: strip.state, dispatch: strip.dispatch } : undefined,
-    quickLook: setLooking, retry: read.retry,
-  }) : {}, [shell, id, read.digest, read.unplaced, strip?.state, strip?.dispatch]);
+    quickLook: setLooking, retry: read.retry, snoozeStale: id === 'root' ? stale.snooze : undefined,
+  }) : {}, [shell, id, read.digest, read.unplaced, strip?.state, strip?.dispatch, stale.snooze]);
   const connection = connectionOf(read);
 
   if (!shell) return <div className="home-pane"><p className="home-quiet">Places are not available in this window.</p></div>;

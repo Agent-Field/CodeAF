@@ -22,6 +22,8 @@ export type HomeActionDeps = {
   strip?: { state: WorkspaceState; dispatch: (action: WorkspaceAction) => void };
   quickLook: (placeId: string) => void;
   retry: () => void;
+  /** Wired for All places only: "Not now" on the untouched-place suggestion. */
+  snoozeStale?: (placeId: string) => Promise<void>;
 };
 
 const quoted = (name: string | undefined) => (name ? `“${name}”` : 'the place');
@@ -32,7 +34,7 @@ function tabShowing(state: WorkspaceState, sessionFile: string): string | undefi
   return undefined;
 }
 
-export function buildHomeActions({ shell, homeId, digests, strip, quickLook, retry }: HomeActionDeps): PlaceActions {
+export function buildHomeActions({ shell, homeId, digests, strip, quickLook, retry, snoozeStale }: HomeActionDeps): PlaceActions {
   const name = (id: string) => (id === 'root' ? 'All places' : id === 'now' ? 'Now' : shell.index?.byId.get(id)?.name);
   const chatTitle = (chatId: string) => {
     for (const digest of digests) { const row = digest?.chats.find(chat => chat.id === chatId); if (row) return row.title || 'Untitled chat'; }
@@ -102,6 +104,7 @@ export function buildHomeActions({ shell, homeId, digests, strip, quickLook, ret
     addSources: placeId => shell.openDialog({ kind: 'sources', placeId }),
     writeInstructions: placeId => shell.openDialog({ kind: 'instructions', placeId }),
     openFolderAsPlace: shell.native.desktop ? () => { void createFromFolder(shell).catch(shell.warn); } : undefined,
+    snoozeStale,
     retry,
   };
 }

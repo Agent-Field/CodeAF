@@ -30,6 +30,8 @@ export type SeedPlace = {
   archived?: boolean;
   /** 'now' stamps the current instant, so the place is in the rail's Open list. */
   lastOpenedAt?: string | 'now';
+  /** Created and last opened this many days ago, so the untouched-place rule (60 days) can be met or missed exactly. */
+  untouchedDays?: number;
   instructions?: string;
   sources?: { kind: SourceKind; ref: string; label?: string }[];
 };
@@ -61,7 +63,7 @@ export type PlacesSeed = {
 export type Forced = 'abort' | { status: number; error: string; code?: string };
 export type RouteKey =
   | 'graph' | 'status' | 'rail' | 'home' | 'delete-preview' | 'chat-places' | 'create' | 'update' | 'parents' | 'archive' | 'restore' | 'delete'
-  | 'merge' | 'pin' | 'unpin' | 'sources' | 'sources/remove' | 'members' | 'members/remove' | 'visit' | 'undo' | 'world' | 'events';
+  | 'merge' | 'pin' | 'unpin' | 'sources' | 'sources/remove' | 'members' | 'members/remove' | 'visit' | 'undo' | 'world' | 'events' | 'stale' | 'stale-snooze';
 
 export type PlacesCall = { method: string; path: string; body: Record<string, unknown> };
 
@@ -104,12 +106,18 @@ export type MockPlaces = {
   nudge: () => void;
   /** POSTs whose path ends with the suffix. */
   posts: (suffix: string) => PlacesCall[];
+  /** The "Not now" snoozes the engine holds: place id to the ISO instant each ends. Survives a page reload, as the engine's file does. */
+  snoozes: () => Record<string, string>;
 };
 
 export async function installMockPlaces(page: Page, seed: PlacesSeed = {}): Promise<MockPlaces> {
   let counter = 0;
   const nextId = (prefix: string) => `${prefix}_${hex(++counter)}`;
   const now = () => new Date().toISOString();
+  const DAY = 86_400_000;
+  const daysAgo = (days: number) => new Date(Date.now() - days * DAY).toISOString();
+  /** Place id to the instant its "Not now" ends; lives in this mock, so it outlasts a page reload like the engine's snooze file. */
+  const snoozed = new Map<string, string>();
   let revision = 0;
   let store: Store = { places: [], pins: [], members: [], chats: [] };
   const overrides = new Map<string, Partial<StatusRollup>>();
@@ -130,7 +138,8 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}): Prom
     const id = s.id ?? nextId('pl');
     store.places.push({
       id, name: s.name, parents: (s.parents ?? []).map(ref => byName(ref)?.id ?? ref), tint: s.tint ?? '', archived: !!s.archived,
-      createdAt: '2026-10-01T09:00:00Z', lastOpenedAt: s.lastOpenedAt === 'now' ? now() : s.lastOpenedAt, archivedAt: s.archived ? '2026-10-05T09:00:00Z' : undefined,
+      createdAt: s.untouchedDays !== undefined ? daysAgo(s.untouchedDays) : '2026-10-01T09:00:00Z',
+      lastOpenedAt: s.untouchedDays !== undefined ? daysAgo(s.untouchedDays) : s.lastOpenedAt === 'now' ? now() : s.lastOpenedAt, archivedAt: s.archived ? '2026-10-05T09:00:00Z' : undefined,
       instructions: s.instructions ?? '', policy: {},
       sources: (s.sources ?? []).map(source => ({ id: nextId('src'), kind: source.kind, ref: source.ref, label: source.label ?? source.ref.split('/').filter(Boolean).pop(), addedBy: 'you', at: '2026-10-01T09:00:00Z', check: { state: 'ok' } })),
     });
@@ -260,6 +269,32 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}): Prom
     const place = must(id);
     return { ...base, kind: 'place', title: place.name, place: detail(place), breadcrumb: ancestry(place), children: childrenOf(id).map(view),
       chats: newest(chatsIn(id)).map(c => chatRow(c, id)), attention: attention([id, ...descendants(id)]), status: statusOf(id), counts: countsOf(id) };
+  }
+
+  // ---- the untouched-place suggestion (internal/placegraph/stale.go: 60 days untouched, 30 days of "Not now") ------------
+  const STALE_AFTER = 60, STALE_SNOOZE = 30;
+  const touchedAt = (place: Place) => {
+    const stamps = [place, ...[...descendants(place.id)].map(get).filter((p): p is Place => !!p)].flatMap(p => [p.createdAt, p.lastOpenedAt, ...chatsIn(p.id).map(c => c.at)]);
+    return Math.max(...stamps.filter((t): t is string => !!t).map(t => Date.parse(t)).filter(t => !Number.isNaN(t)));
+  };
+  const staleAnswer = () => {
+    const at = Date.now();
+    const places = active().filter(place => {
+      if (store.pins.includes(place.id)) return false;
+      const busy = statusInclusiveOf(place.id);
+      if (busy.running > 0 || busy.needsYou > 0) return false;
+      const until = snoozed.get(place.id);
+      if (until && at < Date.parse(until)) return false;
+      return at - touchedAt(place) >= STALE_AFTER * DAY;
+    }).map(place => ({ id: place.id, name: place.name, touchedAt: new Date(touchedAt(place)).toISOString(), daysUntouched: Math.floor((at - touchedAt(place)) / DAY) }))
+      .sort((a, b) => a.touchedAt.localeCompare(b.touchedAt) || a.name.localeCompare(b.name));
+    return { revision, readAt: now(), afterDays: STALE_AFTER, snoozeDays: STALE_SNOOZE, places };
+  };
+  function staleSnooze(id: string) {
+    must(id);
+    const until = new Date(Date.now() + STALE_SNOOZE * DAY).toISOString();
+    snoozed.set(id, until);
+    return { ok: true, placeId: id, until };
   }
 
   // ---- writes ---------------------------------------------------------------------------------------------------------
@@ -567,7 +602,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}): Prom
     if (root === 'world') return 'world';
     if (root === 'events') return 'events';
     if (root === 'chats') return 'chat-places';
-    if (method === 'GET') return !id ? 'graph' : id === 'status' ? 'status' : id === 'rail' ? 'rail' : verb === 'delete-preview' ? 'delete-preview' : 'home';
+    if (method === 'GET') return !id ? 'graph' : id === 'status' ? 'status' : id === 'rail' ? 'rail' : id === 'stale' ? 'stale' : verb === 'delete-preview' ? 'delete-preview' : 'home';
     if (!id) return 'create';
     if (id === 'undo') return 'undo';
     if (!verb) return 'update';
@@ -606,6 +641,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}): Prom
           return json(route, { revision, readAt: now(), places, now: nowView(), totals: totals() });
         }
         if (id === 'rail') return json(route, rail());
+        if (id === 'stale') return json(route, staleAnswer());
         if (verb === 'delete-preview') { must(id); return json(route, impact(id)); }
         if (verb) return json(route, { error: 'unknown route', code: 'not_found' }, 404);
         return json(route, home(id));
@@ -626,6 +662,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}): Prom
         case 'sources': return json(route, addSource(id, body));
         case 'members': return json(route, members(id, body));
         case 'visit': return json(route, visit(id));
+        case 'stale-snooze': return json(route, staleSnooze(id));
         default: return json(route, { error: 'unknown route', code: 'not_found' }, 404);
       }
     } catch (failure) {
@@ -643,5 +680,6 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}): Prom
     fail: (key, value) => { if (value) forced.set(key, value); else forced.delete(key); },
     nudge,
     posts: suffix => calls.filter(call => call.method === 'POST' && call.path.endsWith(suffix)),
+    snoozes: () => Object.fromEntries(snoozed),
   };
 }
