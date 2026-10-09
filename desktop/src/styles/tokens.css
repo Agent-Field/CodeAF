@@ -134,6 +134,14 @@
   --composer-writing-min-height: 28px;
   --composer-writing-max-height: 210px;
   --composer-queue-max-height: 112px;
+  --composer-fade-top: 28px;
+  --paste-card-width: 240px;
+  --paste-card-preview-height: 30px;
+  --paste-card-preview-size: 10.5px;
+  --paste-card-preview-leading: 1.55;
+  --paste-card-fade: 20%;
+  --paste-sent-preview-height: 48px;
+  --paste-sent-fade: 25%;
   --model-picker-width: 320px;
   --model-picker-max-height: 360px;
   --work-dock-width: 744px;

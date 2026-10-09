@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Composer } from '../Composer';
 import { ComposerAttachmentsSpecimen } from './ComposerAttachments.specimen';
+import { ComposerPasteSpecimen } from './ComposerPaste.specimen';
 
 
 function Case(props: { title: string; initial: string; running?: boolean; reason?: string }) {
@@ -33,6 +34,7 @@ export function ComposerSpecimen() {
       <Case title="Running, with text (Steer)" initial="Also skip the vendor folder" running />
       <Case title="Disabled" initial="" reason="Message the main conversation to change this task" />
       <ComposerAttachmentsSpecimen />
+      <ComposerPasteSpecimen />
     </div>
   );
 }
