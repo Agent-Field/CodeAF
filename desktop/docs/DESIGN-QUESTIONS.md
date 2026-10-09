@@ -61,3 +61,14 @@ Shell). On any conflict, the design files win over code and older docs.
 | # | Question | Assumption the app ships now |
 |---|---|---|
 | Q30 | ⌘1–3: the Conversation page says they switch pinned models, the Shell spec says ⌘1–9 jump to tabs | ⌘1–3 switch pinned models while a conversation composer is on screen; ⌘4–9 jump to tabs. Tabs 1–3 are reached with ⌃Tab or a click. |
+| Q-P1 | Hover delay: Shell 2h says 500ms, the old token said 650ms | 500ms (`interaction.previewOpenDelay`), the same as the tooltip delay. Close grace stays 100ms so the pointer can cross a gap or reach the card. |
+| Q-P2 | Hovering the active tab | No card: a preview is for "the thing you'd switch for" (Shell 2h). The old preview on the active tab is gone. |
+| Q-P3 | Is the card interactive, and how does the pointer reach it | Yes, because it carries Allow all / Review. The card stays open while the pointer is on it and closes 100ms after it leaves. It is `role="group"` named "Preview of <title>", not a tooltip. Its buttons are not in the Tab order: a keyboard user answers from the tray. |
+| Q-P4 | "4 running": what counts | Tasks the engine reports as running (taskState "running"), whole session. With none running but the turn working, the card says "Working". |
+| Q-P5 | Which questions a task tab's card asks | Every pending question of its session, not only those that block that task (the design shows one question). A set of permissions reads "Allow N actions?" and offers Allow all + Review; a lone permission offers Allow + Review; any other question form offers Review only. |
+| Q-P6 | A conversation that needs you | Same card as a Task that needs you: amber dot instead of the kind icon, "Needs you", the question and the actions (3k draws only the task). |
+| Q-P7 | A conversation with no reply yet | "Draft: <text>" when a draft is typed, otherwise only kind and title. A failed conversation uses a red dot and "Failed". |
+| Q-P8 | Web card with no screenshot or address (no browser surface exists yet) | The screenshot area keeps its 120px light ground and draws nothing; the address line is omitted. Web, file, diff and terminal tabs are not opened in the live app yet, so these cards ship as specimens plus bodies that read a `target` on the pane (see report). |
+| Q-P9 | Terminal and file lines in the card | Last 3 non-empty lines (newest in full ink); first 3 non-empty lines of a file; first 2 changed lines of a diff (design 3k shows 2). ANSI escapes are stripped; the 60% chroma rule is for terminal tabs, not this mono field. |
+| Q-P10 | Preview cards on split tabs and on collapsed group pills | Not shown: a split tab's segments and a collapsed group pill open no card. Design draws neither. |
+| Q-P11 | Swap animation | No enter animation when a card replaces a neighbour's (data-swap); a first open uses the shared overlay enter. |

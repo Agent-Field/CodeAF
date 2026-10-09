@@ -16,8 +16,17 @@ export type PaneActions = {
 
 /** The pane renderer slot: the body a kind draws inside the card (or inside one pane of a split). */
 export type PaneRenderProps = { pane: Pane; label: string; focused: boolean; split: boolean; actions: PaneActions };
-/** The preview renderer slot: the text body of a hover preview or an overview card for this kind. */
-export type PreviewRenderProps = { pane: Pane; summary?: TabSummary };
+/** What a preview card may do for the person: answer what is asked, or open the tab. Built by the preview host. */
+export type PreviewActions = {
+  /** True while an answer is on its way, so the buttons wait. */
+  busy: boolean;
+  /** Answers every permission the tab is asking, by role. */
+  allowAll: () => void;
+  /** Opens the tab, where the full question is. */
+  review: () => void;
+};
+/** The preview renderer slot: the text card a hover preview or an overview card draws for this kind (Shell 3k). */
+export type PreviewRenderProps = { pane: Pane; title: string; summary?: TabSummary; now: number; act: PreviewActions };
 
 export type KindDef = {
   kind: TabKind;
@@ -28,6 +37,6 @@ export type KindDef = {
   /** True when the engine or bridge backs this kind today. Unbacked kinds are built and specimened, never opened in the live app. */
   backed: boolean;
   pane: ComponentType<PaneRenderProps>;
-  /** Null until the hover-preview lane fills it; consumers then fall back to the title and draft. */
-  preview: ComponentType<PreviewRenderProps> | null;
+  /** The text card for this kind: kind, state, title and the one piece that matters. */
+  preview: ComponentType<PreviewRenderProps>;
 };

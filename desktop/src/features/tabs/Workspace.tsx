@@ -73,7 +73,7 @@ export function Workspace({ enabled, onActivate, leading }: Props) {
   useTabKeys({ enabled, state, dispatch, visible, overviewOpen, setOverviewOpen, closeTab, switcherRef, setSwitcher });
   useDesktopTabActions({ state, dispatch, visible, renaming: !!rename, onActivate, closeTab, setOverviewOpen });
 
-  const api: TabsApi = { state, dispatch, summaries, now, closeTab, startRename, overlayOpen: !!switcher || overviewOpen || !!rename };
+  const api: TabsApi = { state, dispatch, summaries, now, closeTab, startRename, receiveSummary, overlayOpen: !!switcher || overviewOpen || !!rename };
   const actionsFor = (pane: Pane): PaneActions => ({
     onDraft: draft => dispatch({ type: 'draft', id: pane.id, draft }),
     onView: change => dispatch({ type: 'view', id: pane.id, change }),
