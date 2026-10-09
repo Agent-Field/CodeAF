@@ -137,8 +137,20 @@ workspace, and kept in the session folder so a reload keeps it); the diff shows
 commits since then plus the working tree. With no record, or when history was
 rewritten and the start is no longer reachable from HEAD, the base is HEAD (the
 empty tree on an unborn branch, which records nothing). Both `/changes` and
-`/diff` answer `base: {kind: 'start'|'head', sha?}` so the UI can say which one
-was used. Outside git, `git:false` and no files.
+`/diff` answer `base: {kind: 'start'|'head', sha?, startGone?}` so the UI can say
+which one was used. `startGone` is true only when a start was recorded and history
+no longer reaches it; a `head` base without it means no start was ever recorded.
+The tab says "Compared with the latest commit." for the second and adds "The commit
+this conversation started on is no longer in history." for the first. Outside git,
+`git:false` and no files.
+
+An open file or diff tab re-reads on two signals and never on a timer of its own:
+a stream event that edits the path (or a finished turn whose changes list names it),
+and the file's version from POST `/files/stat` (size and modification time, whole
+seconds). The stat asks about that one path every 2 seconds while the tab and the
+window are visible, and once more when the window returns to the front; a hidden or
+closed tab asks nothing. That is what catches a shell command or a save in another
+editor. A rewrite inside the same second at the same size is not seen.
 
 - GET `/files/text?path=` returns `{path,name,dir,abs,size,hash,language,lines,text}`.
   Over 1MB or binary: `text` is empty and `refusal` is `too-large` or `binary`
@@ -161,3 +173,14 @@ was used. Outside git, `git:false` and no files.
   `abs` is a path on the ENGINE's disk. The app opens an editor only when `local`
   is true (the bridge started the engine as its own child) and `host` equals the
   app's own machine name; otherwise it hides the handoff or offers Copy path.
+- GET `/editors?path=` returns `{editors:[{id,name,default}],local,open,reason?}`:
+  the applications registered on the ENGINE machine for that file, default first,
+  at most 8. Linux reads `.desktop` entries for the file's type and its
+  shared-mime-info parents (TryExec must be installed; Exec is never read). macOS
+  asks Launch Services for the file's handlers, plus the plain-text editors when the
+  bytes are text. A remote engine answers an empty list; a machine with no display
+  answers `open:false`.
+- POST `/editors/open` with `{path,id}` starts that editor on the file. The id must
+  be in a fresh listing for that path; there is no command line in the body. Launch
+  is `gtk-launch`/`gio launch` on Linux and `open -b <id> -- <abs>` on macOS, argv
+  only. Remote or no display is 409.

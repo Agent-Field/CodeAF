@@ -6,6 +6,7 @@ package desktopbridge
 // passes a renderer string to a shell.
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const editorCap = 8
@@ -434,38 +436,110 @@ func mimeListed(field, mime string) bool {
 	return false
 }
 
-// discoverDarwin asks Launch Services for the default application only, through
-// a fixed JavaScript that receives the path as an argument. A full handler
-// list is not available from a bounded helper here, so anything short of one
-// real bundle id is an empty list rather than a guessed name.
+// discoverDarwin asks Launch Services, through one fixed JavaScript that
+// receives the path and a "text" flag as arguments, for the file's default
+// application and every application registered for it. A file whose bytes are
+// text also gets the editors registered for public.plain-text, and when it has
+// no default of its own, the plain-text default: a Go source on a Mac with no
+// Go tooling has a dynamic type no application claims, and TextEdit can still
+// open it. Every row is a real bundle id Launch Services returned.
 func discoverDarwin(abs string) ([]Editor, error) {
 	path, err := lookPath("osascript")
 	if err != nil {
 		return nil, errNoList
 	}
-	out, err := runCmd(path, "-l", "JavaScript", "-e", darwinDefaultScript, abs)
+	flag := ""
+	if looksText(abs) {
+		flag = "text"
+	}
+	out, err := runCmd(path, "-l", "JavaScript", "-e", darwinEditorsScript, abs, flag)
 	if err != nil {
 		return nil, errNoList
 	}
-	id, name, ok := strings.Cut(strings.TrimSpace(string(out)), "\t")
-	if !ok || !safeEditorID(id) || name == "" || strings.ContainsAny(name, "\r\n") {
-		return []Editor{}, nil
-	}
-	return []Editor{{ID: id, Name: name, Default: true}}, nil
+	return parseDarwinRows(string(out)), nil
 }
 
-const darwinDefaultScript = `function run(argv) {
+// parseDarwinRows reads "bundle-id TAB name TAB 0|1" lines. A row whose id or
+// name is not plain is dropped rather than repaired.
+func parseDarwinRows(out string) []Editor {
+	found := []Editor{}
+	seen := map[string]bool{}
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		fields := strings.Split(strings.TrimRight(line, "\r"), "\t")
+		if len(fields) != 3 {
+			continue
+		}
+		id, name := strings.TrimSpace(fields[0]), strings.TrimSpace(fields[1])
+		if !safeEditorID(id) || name == "" || strings.ContainsAny(name, "\r\n") || seen[id] {
+			continue
+		}
+		seen[id] = true
+		found = append(found, Editor{ID: id, Name: name, Default: fields[2] == "1"})
+	}
+	return found
+}
+
+// looksText reads at most 8 KB: valid UTF-8 with no NUL byte is text. It is the
+// same test a plain-text editor makes before it agrees to open a file.
+func looksText(abs string) bool {
+	file, err := os.Open(abs)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	buf := make([]byte, 8192)
+	n, _ := file.Read(buf)
+	head := buf[:n]
+	if bytes.IndexByte(head, 0) >= 0 {
+		return false
+	}
+	// A read may cut a multi-byte rune at the end; only the bytes before it count.
+	for cut := 0; cut < 4 && len(head) > 0 && !utf8.Valid(head); cut++ {
+		head = head[:len(head)-1]
+	}
+	return utf8.Valid(head)
+}
+
+const darwinEditorsScript = `function run(argv) {
   ObjC.import('AppKit');
   ObjC.import('Foundation');
+  ObjC.import('CoreServices');
   var path = argv[0];
+  var text = argv[1] === 'text';
   if (!path) return '';
+  var ws = $.NSWorkspace.sharedWorkspace;
   var url = $.NSURL.fileURLWithPath(path);
-  var app = $.NSWorkspace.sharedWorkspace.URLForApplicationToOpenURL(url);
-  if (!app || app.isNil()) return '';
-  var bundle = $.NSBundle.bundleWithURL(app);
-  if (!bundle || bundle.isNil() || !bundle.bundleIdentifier || bundle.bundleIdentifier.isNil()) return '';
-  var name = $.NSFileManager.defaultManager.displayNameAtPath(app.path);
-  return bundle.bundleIdentifier.js + '\t' + name.js;
+  var rows = [], seen = {};
+  function addURL(app, isDefault) {
+    if (!app || app.isNil()) return;
+    var bundle = $.NSBundle.bundleWithURL(app);
+    if (!bundle || bundle.isNil() || !bundle.bundleIdentifier || bundle.bundleIdentifier.isNil()) return;
+    var id = bundle.bundleIdentifier.js;
+    if (seen[id]) return;
+    seen[id] = true;
+    var name = $.NSFileManager.defaultManager.displayNameAtPath(app.path).js.replace(/\.app$/, '');
+    rows.push(id + '\t' + name + '\t' + (isDefault ? '1' : '0'));
+  }
+  function addID(id, isDefault) {
+    if (!id || seen[id]) return;
+    addURL(ws.URLForApplicationWithBundleIdentifier(id), isDefault);
+  }
+  var own = ws.URLForApplicationToOpenURL(url);
+  if (own && !own.isNil()) addURL(own, true);
+  else if (text) {
+    var def = $.LSCopyDefaultRoleHandlerForContentType($('public.plain-text'), $.kLSRolesAll);
+    if (def) addID(ObjC.unwrap(ObjC.castRefToObject(def)), true);
+  }
+  var list = ws.URLsForApplicationsToOpenURL(url);
+  for (var i = 0; i < list.count; i++) addURL(list.objectAtIndex(i), false);
+  if (text) {
+    var ids = $.LSCopyAllRoleHandlersForContentType($('public.plain-text'), $.kLSRolesEditor);
+    if (ids) {
+      var arr = ObjC.castRefToObject(ids);
+      for (var j = 0; j < arr.count; j++) addID(ObjC.unwrap(arr.objectAtIndex(j)), false);
+    }
+  }
+  return rows.join('\n');
 }`
 
 func startEditorOS(id, abs string) error {

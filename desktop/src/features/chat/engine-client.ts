@@ -277,7 +277,8 @@ export type EngineChangeStatus = 'modified' | 'added' | 'deleted' | 'untracked';
 /** One row of "what changed": header "lexer.go internal/parse +12 −3" is name, dir, added, deleted. */
 export type EngineChangedFile = { path: string; name: string; dir: string; status: EngineChangeStatus; added: number; deleted: number; binary?: boolean };
 /** What a diff was measured against: `start` is the commit the conversation began on; `head` is the latest commit (no start recorded, or history was rewritten past it). */
-export type EngineDiffBase = { kind: 'start' | 'head'; sha?: string };
+/** `startGone` is set only when a start commit was recorded and history no longer reaches it; a `head` base without it means no start was ever recorded. */
+export type EngineDiffBase = { kind: 'start' | 'head'; sha?: string; startGone?: boolean };
 export type EngineChangedFiles = { git: boolean; base?: EngineDiffBase; branch?: string; files: EngineChangedFile[]; added: number; deleted: number; truncated?: boolean };
 /** Unified-diff row: `old`/`new` are the two line-number columns (absent = blank). */
 export type EngineDiffLine = { kind: 'context' | 'add' | 'del'; old?: number; new?: number; text: string };
