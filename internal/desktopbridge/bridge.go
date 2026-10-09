@@ -162,6 +162,8 @@ type Bridge struct {
 	icons     *faviconCache
 	models    *Models
 	places    *Places
+	// world is the engine-wide feed (worldstream.go); nil until first used.
+	world *WorldFeed
 }
 
 func New(token string, open Open) *Bridge {
@@ -176,6 +178,9 @@ func (b *Bridge) Close() {
 	b.closeOnce.Do(func() {
 		b.mu.Lock()
 		defer b.mu.Unlock()
+		if b.world != nil {
+			b.world.Close()
+		}
 		for _, s := range b.sessions {
 			close(s.done)
 			s.terminals().closeAll()
@@ -503,6 +508,9 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if b.placesRoutes(w, r, path) {
+		return
+	}
+	if b.worldRoutes(w, r, path) {
 		return
 	}
 	if path == "/sessions" && r.Method == http.MethodPost {
