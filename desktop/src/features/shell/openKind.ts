@@ -6,9 +6,9 @@ import type { TabKind } from '../tabs/kinds/types.ts';
 import type { Tab, WorkspaceAction, WorkspaceState } from '../tabs/model.ts';
 
 /** The kinds the shell opens by name. Each is a singleton tab. */
-export type ShellKind = Extract<TabKind, 'settings' | 'history'>;
+export type ShellKind = Extract<TabKind, 'settings' | 'history' | 'inbox'>;
 
-const titles: Record<ShellKind, string> = { settings: SETTINGS_TAB_TITLE, history: 'History' };
+const titles: Record<ShellKind, string> = { settings: SETTINGS_TAB_TITLE, history: 'History', inbox: 'Inbox' };
 
 const holdsKind = (tab: Tab, kind: ShellKind) => panesOf(tab).some(pane => pane.kind === kind);
 
@@ -20,6 +20,8 @@ export function leaveKindAction(state: WorkspaceState, kind: ShellKind): Workspa
 
 /** The action that shows the tab of `kind`: select it when it exists, open it (and focus it) when it does not. */
 export function openKindAction(state: WorkspaceState, kind: ShellKind): WorkspaceAction {
+  // The Inbox is created pinned by the workspace itself, and opening it from the rail lands on the oldest question.
+  if (kind === 'inbox') return { type: 'open-inbox' };
   const existing = state.tabs.find(tab => holdsKind(tab, kind));
   if (existing) return { type: 'select', id: panesOf(existing).find(pane => pane.kind === kind)!.id };
   return { type: 'open', background: false, tab: newTab({ kind, title: titles[kind], titleSource: 'manual' }) };

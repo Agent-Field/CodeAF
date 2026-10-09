@@ -1,6 +1,7 @@
-import { useId } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { Button, Text } from '../../../../components/ui';
 import { compactAge, type BackgroundWork } from '../../closing/background';
+import { inboxFocus } from '../../closing/inboxFocus';
 import { useTabsApi } from '../../context';
 import './inbox.css';
 
@@ -45,7 +46,7 @@ export function InboxList({ running, needsYou, failed = [], notice, now, opener,
         </section>
       )}
       {needsYou.length > 0 && (
-        <section className="inbox-section" aria-labelledby={`${uid}-needs`}>
+        <section className="inbox-section" data-section="needsYou" aria-labelledby={`${uid}-needs`}>
           <h3 className="inbox-head" id={`${uid}-needs`}>Needs you</h3>
           <ul className="inbox-list">
             {needsYou.map(item => (
@@ -88,8 +89,16 @@ export function InboxPane() {
     // Opening a failure is looking at it.
     return section === 'failed' && chatId && item.failed ? () => { markFailedSeen(chatId, item.failed!); go(); } : go;
   };
+  const root = useRef<HTMLDivElement>(null);
+  // "Open the Inbox" from the rail lands on the question that has waited longest (the list is already oldest first).
+  const waiting = background.needsYou.length;
+  useEffect(() => {
+    const answer = () => { if (inboxFocus.take()) root.current?.querySelector<HTMLElement>('[data-section="needsYou"] li button')?.focus(); };
+    answer();
+    return inboxFocus.subscribe(answer);
+  }, [waiting]);
   return (
-    <div className="inbox">
+    <div className="inbox" ref={root}>
       <InboxList {...background} now={api.now} opener={opener} onSeen={item => markFailedSeen(item.chatId!, item.failed)}/>
     </div>
   );
