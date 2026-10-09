@@ -262,6 +262,10 @@
   --focus-halo-width: 6px;
   --opacity-control-disabled: 0.4;
   --hairline: .5px;
+  --choice-card-pad-y: 9px;
+  --choice-card-radius: 10px;
+  --choice-card-gap: 1px;
+  --choice-rule-width: 1px;
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);
