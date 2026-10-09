@@ -1,0 +1,70 @@
+/* The expanded tasks table (design v3 1d, 1f "Expanded table"). Layout and roles only; values are tokens. */
+.tasks-table { display: flex; flex-direction: column; flex: 1; min-width: var(--motion-rest); min-height: var(--motion-rest); background: var(--canvas); color: var(--ink); font-size: var(--type-prose-size); }
+
+.tasks-table-head { display: flex; align-items: center; gap: var(--space-2); flex: none; height: var(--space-12); padding: var(--motion-rest) var(--space-3); }
+.tasks-table-heading { font-weight: var(--type-label-strong); }
+.tasks-table-totals { display: flex; align-items: center; gap: var(--space-4); margin-inline-start: auto; padding-inline-end: var(--space-tight); color: var(--ink-3); font-size: var(--type-label-size); }
+
+.tasks-table-body { display: flex; flex: 1; gap: var(--space-2); min-height: var(--motion-rest); padding: var(--motion-rest) var(--space-2) var(--space-2); }
+.tasks-table-main { display: flex; flex-direction: column; flex: 1; min-width: var(--motion-rest); padding: var(--space-2) var(--space-8) var(--motion-rest) var(--space-2xl); overflow: hidden; }
+
+.tasks-table-bar { display: flex; align-items: center; gap: var(--space-1); margin-block-end: var(--space-3); }
+.tasks-table-filters { display: flex; align-items: center; gap: var(--space-1); }
+.tasks-table .tasks-table-tab.button { display: flex; align-items: center; gap: var(--space-tight); min-height: var(--control-height); padding: var(--motion-rest) var(--space-3); border: 0; border-radius: var(--radius-control); background: transparent; color: var(--ink-2); font-size: var(--type-prose-size); font-weight: var(--type-label-weight); }
+.tasks-table .tasks-table-tab.button:hover:not(:disabled) { background: var(--field); color: var(--ink); }
+.tasks-table .tasks-table-tab.button[aria-pressed="true"] { background: var(--field); color: var(--ink); font-weight: var(--type-label-strong); }
+.tasks-table-tab-count { color: var(--ink-3); font-size: var(--type-label-size); font-weight: var(--type-label-weight); font-variant-numeric: tabular-nums; }
+.tasks-table-tab-dot { width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--amber); }
+
+.tasks-table-search-open.icon-button, .tasks-table-search { margin-inline-start: auto; }
+.tasks-table-search { display: flex; align-items: center; gap: var(--space-tight); width: var(--tasks-table-search-width); height: var(--control-height); padding-inline: var(--space-2) var(--space-1); border-radius: var(--radius-control); background: var(--field); color: var(--ink-3); }
+.tasks-table-search .text-input { flex: 1; min-height: var(--motion-rest); padding: var(--motion-rest); color: var(--ink); font-size: var(--type-label-size); }
+.tasks-table-search .text-input:focus-visible { outline: none; }
+
+.tasks-table-strip { display: flex; gap: var(--space-half); flex: none; height: var(--tasks-table-strip-height); margin-block-end: var(--space-4); }
+.tasks-table-strip-cell { flex: 1 1 0; min-width: var(--motion-rest); border-radius: var(--space-half); background: var(--field-2); }
+.tasks-table-strip-cell[data-segment="done"] { background: var(--ink-3); }
+.tasks-table-strip-cell[data-segment="running"] { background: var(--accent); }
+.tasks-table-strip-cell[data-segment="needs"] { background: var(--amber); }
+.tasks-table-strip-cell[data-segment="failed"] { background: var(--danger); }
+
+/* The list scrolls under a 48px fade that shows only while more is beneath; the head, filters and strip stay put. */
+.tasks-table-scroll { flex: 1; min-height: var(--motion-rest); overflow-y: auto; }
+.tasks-table-scroll[data-more] { mask-image: linear-gradient(to bottom, black calc(100% - var(--tasks-table-mask)), transparent); }
+.tasks-table-list { list-style: none; margin: var(--motion-rest); padding: var(--motion-rest); }
+.tasks-table-item[data-group]:not(:first-child) { margin-block-start: var(--space-compact); }
+.tasks-table-children { margin-inline-start: var(--tasks-table-guide-inset); border-inline-start: var(--border-width) solid var(--line); }
+
+/* One grid for every row so title, state word and duration line up down the table. */
+.tasks-table .tasks-table-group.button, .tasks-table .tasks-table-row.button { display: grid; grid-template-columns: minmax(0, 1fr) var(--tasks-table-state-width) var(--tasks-table-age-width); align-items: center; gap: var(--space-4); width: 100%; border: 0; background: transparent; color: var(--ink); font-size: var(--type-prose-size); text-align: start; }
+.tasks-table .tasks-table-group.button { min-height: var(--tasks-table-group-height); padding: var(--motion-rest) var(--space-3); border-radius: var(--radius-control); font-weight: var(--type-label-strong); }
+.tasks-table .tasks-table-row.button { min-height: var(--tasks-table-row-height); padding: var(--motion-rest) var(--space-3) var(--motion-rest) var(--space-row); border-radius: var(--motion-rest) var(--tasks-table-row-radius) var(--tasks-table-row-radius) var(--motion-rest); font-weight: var(--type-label-weight); }
+.tasks-table .tasks-table-group.button:hover:not(:disabled), .tasks-table .tasks-table-row.button:hover:not(:disabled), .tasks-table .tasks-table-row.button[aria-current] { background: var(--field); color: var(--ink); }
+
+.tasks-table-group-title, .tasks-table-title-cell { display: flex; align-items: center; gap: var(--space-2); min-width: var(--motion-rest); }
+.tasks-table-group-title { color: var(--ink); }
+.tasks-table-group-title .app-icon { color: var(--ink-3); }
+.tasks-table-title-cell { gap: var(--space-3); }
+.tasks-table-text { display: flex; flex-direction: column; gap: var(--tasks-table-line-gap); min-width: var(--motion-rest); }
+.tasks-table-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tasks-table-detail { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink-3); font-size: var(--type-label-size); font-weight: var(--type-label-weight); }
+.tasks-table-command.type-code { font-size: var(--type-mono-small-size); }
+.tasks-table-group-count, .tasks-table-state { color: var(--ink-3); font-size: var(--type-label-size); }
+.tasks-table-state { color: var(--ink-2); }
+.tasks-table-age { color: var(--ink-3); font-size: var(--type-label-size); font-variant-numeric: tabular-nums; text-align: end; }
+
+/* Still marks: a dot per state, a ring while queued; waiting-on-you reads in amber, failure in red. */
+.tasks-table-mark { flex: none; width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--mark-done); }
+.tasks-table-mark[data-kind="running"] { background: var(--mark-running); }
+.tasks-table-mark[data-kind="yourcall"] { background: var(--mark-waiting); }
+.tasks-table-mark[data-kind="incomplete"] { background: var(--mark-failed); }
+.tasks-table-mark[data-kind="stopped"], .tasks-table-mark[data-kind="interrupted"] { background: var(--mark-stopped); }
+.tasks-table-mark[data-kind="queued"] { background: transparent; box-shadow: inset 0 0 0 var(--mark-ring-width) var(--mark-queued); }
+
+/* Waiting work steps back: the title drops to the second ink. */
+.tasks-table-row[data-kind="queued"] { color: var(--ink-3); }
+.tasks-table-row[data-kind="queued"] .tasks-table-title { color: var(--ink-2); }
+.tasks-table-row[data-kind="queued"] .tasks-table-state { color: var(--ink-3); }
+
+/* The specimen needs a window to stand in. */
+.specimen-tasks-table { display: flex; height: var(--tasks-table-specimen-height); border-radius: var(--radius-card); overflow: hidden; }
