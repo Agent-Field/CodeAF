@@ -7,6 +7,7 @@ import { PasteCard } from './composer/PasteCard';
 import { encodePasted, countLines, isLongPaste, splitPasted } from './composer/pastedText';
 import { AttachmentTray } from './composer/AttachmentTray';
 import { ModelPicker } from './composer/ModelPicker';
+import type { ConversationModel } from './composer/useConversationModel';
 import { toOutgoing } from './composer/attachments';
 import { useAttachments } from './composer/useAttachments';
 import { useFileDrop } from './composer/useFileDrop';
@@ -27,6 +28,8 @@ export type ComposerProps = {
   /** The one way out when the field is disabled, e.g. back to the conversation. */
   reasonAction?: { label: string; onClick: () => void };
   modelLabel?: string;
+  /** The engine's model for the Conversation role; when present it replaces the read-only chip. */
+  model?: ConversationModel;
   tasksToggle?: { label: string; onClick: () => void };
   recallLast?: () => string | undefined;
   autoFocus?: boolean;
@@ -188,7 +191,9 @@ export function Composer(props: ComposerProps) {
               disabled={disabled}
               onClick={() => picker.current?.click()}
             />
-            {props.modelLabel && (
+            {props.model ? (
+              <ModelPicker models={props.model.models} selectedId={props.model.selectedId} onSelect={props.model.onSelect} effort={props.model.effort} />
+            ) : props.modelLabel && (
               <ModelPicker models={[{ id: props.modelLabel, label: props.modelLabel }]} selectedId={props.modelLabel} />
             )}
             {props.tasksToggle && <Button className="composer-tasks" onClick={props.tasksToggle.onClick}>{props.tasksToggle.label}</Button>}

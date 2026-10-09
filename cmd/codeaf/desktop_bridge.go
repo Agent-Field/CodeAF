@@ -16,6 +16,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/desktopbridge"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -62,6 +64,7 @@ func runDesktopBridge(args []string) error {
 	if len(token) < 32 {
 		return errors.New("desktop transport token must contain at least 32 characters")
 	}
+	profileDir := config.ProfileDir()
 	binary, err := os.Executable()
 	if err != nil {
 		return err
@@ -84,7 +87,7 @@ func runDesktopBridge(args []string) error {
 			return desktopbridge.Connection{}, err
 		}
 		pipe := &desktopPipe{Reader: output, Writer: input, command: command}
-		client, err := remote.Dial(pipe, "local desktop", remote.Hello{Version: remote.Version, Workspace: resolved, Session: file, New: file == "", Model: desktopbridge.Model, Surface: "desktop", Launch: &remote.LaunchShape{OneModel: true, Interactive: true}})
+		client, err := remote.Dial(pipe, "local desktop", remote.Hello{Version: remote.Version, Workspace: resolved, Session: file, New: file == "", Model: conversationModel(profileDir), Surface: "desktop", Launch: &remote.LaunchShape{OneModel: true, Interactive: true}})
 		if err != nil {
 			pipe.Close()
 			return desktopbridge.Connection{}, err
@@ -92,6 +95,7 @@ func runDesktopBridge(args []string) error {
 		return desktopbridge.Connection{Agent: client.Agent(), Welcome: client.Welcome(), Follow: client.Follow(), Take: client.Take, FetchFile: client.FetchFile, StatPaths: client.StatPaths, Close: func() { _ = client.Close() }}, nil
 	})
 	defer bridge.Close()
+	bridge.UseModels(&desktopbridge.Models{ProfileDir: profileDir, Catalog: desktopCatalog(profileDir)})
 	listener, err := net.Listen("tcp", *address)
 	if err != nil {
 		return err
@@ -129,4 +133,36 @@ func (p *desktopPipe) Close() error {
 		guard.Go("desktop-bridge-reap", func() { _ = p.command.Wait() })
 	})
 	return nil
+}
+
+// conversationModel is the model a new desktop conversation opens on: the
+// person's choice for the Conversation role, or the default.
+func conversationModel(profileDir string) string {
+	model, _, _ := config.DesktopRoleChoice(profileDir, config.DesktopRoleConversation)
+	return model
+}
+
+// desktopCatalog lists the provider's models through the engine's own catalog
+// code, so the settings page offers exactly the models the engine can resolve.
+func desktopCatalog(profileDir string) func(context.Context) ([]desktopbridge.CatalogModel, error) {
+	return func(ctx context.Context) ([]desktopbridge.CatalogModel, error) {
+		settings, err := config.LoadKeyless()
+		if err != nil {
+			return nil, err
+		}
+		listed, err := catalog.Refresh(ctx, catalog.Options{
+			BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: profileDir,
+			HTTPClient: config.CatalogHTTPClient(settings.Sources.Default()),
+		})
+		if listed == nil {
+			return nil, err
+		}
+		defer listed.Close()
+		models := listed.ModelsNow()
+		out := make([]desktopbridge.CatalogModel, 0, len(models))
+		for _, model := range models {
+			out = append(out, desktopbridge.CatalogModel{ID: model.ID, Name: model.Name, ContextLength: model.ContextLength, Efforts: model.Reasoning.Efforts})
+		}
+		return out, err
+	}
 }
