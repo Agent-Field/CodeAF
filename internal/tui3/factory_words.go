@@ -160,11 +160,11 @@ const (
 // a press does where the run stands, and what a step held for a person says
 // on the left column.
 const (
-	keyControl        = "space"
-	wordContinue      = "continue"
+	keyControl   = "space"
+	wordContinue = "continue"
 	// wordSendBack is `n` at an approve step: the run goes back to the step
 	// before it.
-	wordSendBack = "send back"
+	wordSendBack      = "send back"
 	wordWaitingForYou = "waiting for you"
 	wordTypeHere      = "type here"
 )
