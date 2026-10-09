@@ -1121,6 +1121,11 @@ func (a *Agent) confirmRouteAhead(ctx context.Context, asked string) (routeVerdi
 // things this function decides — a done-condition, a place on the ground
 // ladder, a name, a width to arm — are the things a quick node does not have.
 func (a *Agent) launchRouteTask(hub *eventHub, verdict routeVerdict, title string, drawn drawnDivision, ahead *nameAhead) (string, uint64) {
+	// Automatic handoffs owe the same no as a model's next proposal. This
+	// door has no card and never passes through the tool approval gate.
+	if a.taskWorkDeclined() {
+		return declinedProposalRefusal, 0
+	}
 	// THE LAST LINE OF THE FLOOR (spawnfloor.go). Both roads into this function
 	// already return above on a one-command ask; a reserved id for work that
 	// must not start would be the floor leaking a node number into a conversation
