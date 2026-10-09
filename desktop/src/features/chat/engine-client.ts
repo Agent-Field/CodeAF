@@ -33,6 +33,10 @@ export type EngineEntry = {
  Tool?: string; Hint?: string; CallID?: string; Answered?: boolean; Failed?: boolean;
  Args?: string; Output?: string; Caption?: string; CaptionCategory?: string;
  TaskIDs?: string[] | null;
+ /** What wrote an aside: "task" | "job" | "watch" | "resume"; absent when unknown. */
+ AsideKind?: string;
+ /** A job aside's own short name (its label or command); absent when it has none. */
+ AsideTitle?: string;
  /** Set on a user line typed into the running turn rather than starting one. */
  Steer?: { At?: string; Consumed?: boolean; Landing?: string } | null;
 };

@@ -49,7 +49,15 @@ the task notice lane. Reads make no AI call and do not fabricate activity times.
 Failed plan reads expose planError and retain the last successful rows.
 
 Aside entries carry `TaskIDs`, the tasks they concern, so a task notice in the
-conversation can open its task. Tool entries carry `Failed` when present; the UI
+conversation can open its task; this holds for run reports as well as task
+landings. They also carry `AsideKind` (`"task"`, `"job"`, `"watch"` or `"resume"`,
+absent when the note has no single author, as in a mixed "while you worked"
+batch) and, for a job, `AsideTitle`, the job's own label or command. All three
+come from the journal's own mark, identical live and on replay; older journals
+simply omit them, and the UI draws nothing for an absent field. A tool call the
+person's Stop cut short carries `Interrupted` and is never `Failed`: stopped is
+not broken. A call cut by another door (a takeover, a closing session) keeps its
+old marking. Tool entries carry `Failed` when present; the UI
 marks only the step, never the whole group. The desktop creates a session on the
 first send (`POST /sessions` with `{}`) and automatically reattaches a saved tab's
 `sessionFile`; no model call happens before the person sends. Conversation titles

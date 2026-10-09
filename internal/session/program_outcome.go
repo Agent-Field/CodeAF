@@ -334,6 +334,7 @@ func (a *Agent) programLandingNote(run *beltRun, summary RunSummary, line string
 		document = owedLandingDocument(task, text)
 	}
 	note := wakeNote(document.text())
+	note.facts = taskFacts(run.row)
 	note.landingQuestion, note.landingOutcome = document.landingQuestion, document.landingOutcome
 	note.batch = false
 	note.settle, note.settleCeiling, note.settleWindow = true, programOutcomeCallCeiling, programOutcomeWindow
@@ -506,6 +507,7 @@ func (a *Agent) programOutcomeUnansweredLocked(hub *eventHub, completed, personS
 		outcome.program, why, outcome.program, outcome.account)
 	note := userText(text)
 	note.authored = true
+	note.facts = taskFacts(outcome.row)
 	a.recordUserLocked(note)
 	event := Event{Kind: EventNotice, Text: text}
 	hub.send(event)

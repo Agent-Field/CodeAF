@@ -489,6 +489,11 @@ type jobRegistry struct {
 	// whether anybody has to answer; it does not reshape the news first
 	// ([jobNote] states the law).
 	notify func(string)
+	// notifyJob is [jobRegistry.notify] with the job's short name beside the
+	// note, for the lane that can hand it to a surface as structured data. It is
+	// optional: a registry without it reports through notify alone and the note
+	// simply carries no title ([jobRegistry.tell]).
+	notifyJob func(note, title string)
 	// notifyWatch carries a watch's news, and the bool is WHICH KIND OF NEWS IT
 	// IS: false for a periodic tick, true for the tick that ENDED the watch —
 	// `until` matched, the output went quiet, the command failed its way out
@@ -1016,7 +1021,7 @@ func (r *jobRegistry) finish(done *job, code int, note string) {
 	if note == "" {
 		return
 	}
-	r.notify(note)
+	r.tell(note, done)
 }
 
 // adoption is what the road taking a running command over knows about it. Both
@@ -1168,7 +1173,7 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 					strconv.Itoa(jobExitTailLines) + " lines · " + watched.sink.completionFooter(watched.logPath) + "]"
 			}
 		}
-		r.notify(note)
+		r.tell(note, watched)
 		return
 	}
 	// A REGISTRY WITH NO LANE TO REPORT INTO HAS NO NOTE FOR THE RELEASE TO RIDE
@@ -1178,6 +1183,26 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 	if owed {
 		r.releaseParked()
 	}
+}
+
+// tell reports one job's news through the lane that knows the job's name, and
+// through the plain lane when the registry was built without one.
+//
+// THE TITLE IS READ OFF THE JOB, never out of the note's words: it is the same
+// label the job's own row wears ([JobNotice.Label]), so a surface that draws the
+// ending beside the row names it identically.
+func (r *jobRegistry) tell(note string, one *job) {
+	if r.notifyJob == nil || one == nil {
+		r.notify(note)
+		return
+	}
+	r.notifyJob(note, jobTitle(one))
+}
+
+// jobTitle is the short name one job is called in a note's header, empty when
+// it has none: the emptiness law, not a fabricated "job 3".
+func jobTitle(one *job) string {
+	return clip(strings.TrimSpace(noticeOf(one.info()).Label()), 60)
 }
 
 func (r *jobRegistry) all() []*job {
