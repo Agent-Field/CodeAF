@@ -2,12 +2,14 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -199,6 +201,41 @@ func TestOnlyThePlacelessDirectoriesOwnTheirWorkspace(t *testing.T) {
 	// borrowing.
 	if project, owned := v3Workspace("/home/somebody", "/srv/api"); project != "/srv/api" || owned {
 		t.Fatalf("a named workspace resolved to %q, owned=%v", project, owned)
+	}
+}
+
+// A place folder that sits inside a repository is that folder. Naming it is
+// asking to work there; climbing to the repository would hand the chat a
+// wider tree than the place listed.
+func TestANamedSubdirectoryDoesNotClimbToTheRepositoryAroundIt(t *testing.T) {
+	if !gitHere(t) {
+		t.Skip("git is not installed")
+	}
+	root := t.TempDir()
+	command := exec.Command("git", "init")
+	command.Dir = root
+	if out, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v %s", err, out)
+	}
+	sub := filepath.Join(root, "pkg")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "marker.txt"), []byte("pkg"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	project, owned := v3Workspace(sub, sub)
+	if project != sub || owned {
+		t.Fatalf("named subdirectory resolved to %q, owned=%v", project, owned)
+	}
+	if got := bare.ResolvePath("marker.txt", project); got != filepath.Join(sub, "marker.txt") {
+		t.Fatalf("a relative tool path resolved to %s", got)
+	}
+	walked, _ := v3Workspace(sub, "")
+	wantRoot, _ := filepath.EvalSymlinks(root)
+	gotRoot, _ := filepath.EvalSymlinks(walked)
+	if gotRoot != wantRoot {
+		t.Fatalf("an unnamed subdirectory resolved to %q, want the repository %s", walked, root)
 	}
 }
 

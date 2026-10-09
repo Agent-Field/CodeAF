@@ -90,8 +90,12 @@ func runDesktopBridge(args []string) error {
 	}
 	// dial is the one way this door reaches an engine: a child `codeaf engine`
 	// on this machine, which joins (or starts) the workspace's session host.
-	dial := func(hello remote.Hello) (desktopbridge.Connection, error) {
-		command := exec.Command(binary, "engine", "--workspace", resolved)
+	//
+	// dialIn names the workspace because a session host holds exactly one: a conversation in
+	// another folder is a connection to THAT folder's host, never a change of directory inside
+	// this one's.
+	dialIn := func(workspace string, hello remote.Hello) (desktopbridge.Connection, error) {
+		command := exec.Command(binary, "engine", "--workspace", workspace)
 		command.Stderr = os.Stderr
 		input, err := command.StdinPipe()
 		if err != nil {
@@ -115,10 +119,16 @@ func runDesktopBridge(args []string) error {
 		}
 		return desktopbridge.Connection{Agent: client.Agent(), Welcome: client.Welcome(), Follow: client.Follow(), Take: client.Take, FetchFile: client.FetchFile, StatPaths: client.StatPaths, ReadText: client.ReadText, FindFiles: client.FindFiles, DiffChanges: client.DiffChanges, DiffFile: client.DiffFile, DiffStart: client.DiffStart, Local: true, Close: func() { _ = client.Close() }}, nil
 	}
+	dial := func(hello remote.Hello) (desktopbridge.Connection, error) { return dialIn(resolved, hello) }
 	bridge := desktopbridge.New(token, func(file string) (desktopbridge.Connection, error) {
 		return dial(desktopHello(resolved, file, conversationModel(profileDir), placeDoor.Path))
 	})
 	defer bridge.Close()
+	// A new chat started in a place works in that place's first usable folder (Places Architecture
+	// Q-P9); everything else opens on the workspace this bridge was launched on.
+	bridge.UseOpenIn(func(workspace, file string) (desktopbridge.Connection, error) {
+		return dialIn(workspace, desktopHello(workspace, file, conversationModel(profileDir), placeDoor.Path))
+	})
 	bridge.UseModels(&desktopbridge.Models{ProfileDir: profileDir, Catalog: desktopCatalog(profileDir)})
 	placeStore, err := placegraph.Open(placegraph.Options{Path: placeDoor.Path})
 	if err != nil {

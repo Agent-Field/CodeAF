@@ -62,6 +62,14 @@ export type EngineEntry = {
 export type EngineTaskRow = PlanTaskRow & { Depth?: number; USD?: number; Model?: string; Tokens?: number; LiveParts?: unknown[]; Folder?: string; TrajectoryPath?: string };
 /** One message waiting behind the running turn. The id names it to edit, move and remove until its turn starts. */
 export type EngineQueued = { id: string; text: string };
+/** Where a chat started in a place works, present only when that place listed a folder. */
+export type WorkingFolderReport = {
+ from: 'place' | 'launch';
+ path?: string;
+ label?: string;
+ skipped?: { sourceId: string; ref: string; reason: string }[];
+ note?: string;
+};
 export type EngineSnapshot = {
  id: string; sessionFile: string; workspace: string; model: string; persistent: boolean;
  running: boolean; needsPerson: boolean; questions?: EngineQuestion[]; planError?: string; entries: EngineEntry[]; tasks: EngineTaskRow[];
@@ -69,6 +77,8 @@ export type EngineSnapshot = {
  /** Messages queued behind the running turn, in the order they will run. */
  queue?: EngineQueued[];
  title: string; seq: number; updatedAt?: string;
+ /** Absent when the place listed no folder, and on a reopened saved conversation. */
+ workingFolder?: WorkingFolderReport;
 };
 export type EngineEvent = { kind: string; text: string; tool: string; hint: string; error?: string; raw: Record<string, unknown> };
 export type EngineTaskPage = PlanTaskPage & { Folder?: string; Live?: PlanTaskRow['Live']; Children?: EngineTaskRow[] | null; WaitRows?: EngineTaskRow[] | null; Program?: unknown };
