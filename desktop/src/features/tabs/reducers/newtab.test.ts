@@ -59,3 +59,10 @@ test('the field works inside a split', () => {
   assert.equal(s.tabs.length, 1);
   assert.equal(s.tabs.flatMap(t => t.split?.panes ?? [t]).find(p => p.id === 'f')?.kind, 'conversation');
 });
+
+test('the field can become a web tab that carries its address', () => {
+  const s = run(state([tab('f', { kind: 'newtab', title: 'New tab' })]), { type: 'newtab-become', id: 'f', kind: 'web', title: 'pkg.go.dev', titleSource: 'message', target: { url: 'https://pkg.go.dev/x' } });
+  assert.equal(s.tabs[0].kind, 'web');
+  assert.deepEqual(s.tabs[0].target, { url: 'https://pkg.go.dev/x' });
+  assert.equal(s.tabs[0].draft, '');
+});

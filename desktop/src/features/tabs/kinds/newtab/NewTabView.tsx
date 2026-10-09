@@ -4,7 +4,7 @@ import { splitMatch, type NewTabRow, type NewTabSection } from './rows';
 import './newtab.css';
 
 function RowLabel({ row, query }: { row: NewTabRow; query: string }) {
-  const [before, match, after] = row.kind === 'ask' ? [row.label, '', ''] : splitMatch(row.label, query);
+  const [before, match, after] = row.kind === 'ask' || row.kind === 'web' ? [row.label, '', ''] : splitMatch(row.label, query);
   return <span className="newtab-row-label">{before}{match && <b>{match}</b>}{after}{row.detail && <>{' '}<span className="newtab-row-detail">{row.detail}</span></>}</span>;
 }
 
@@ -17,19 +17,21 @@ export type NewTabViewProps = {
   sections: NewTabSection[];
   activeRowId?: string;
   caption: string;
+  /** What Enter does for the highlighted row; the conversation row by default. */
+  enterHint?: string;
   /** Live only: pointer and click wiring. A specimen leaves it out and draws a still card. */
   onHover?: (row: NewTabRow) => void;
   onPick?: (row: NewTabRow) => void;
 };
 
 /** The drawing of the new tab (design 3f / Components "Command field"): shared by the live pane and the Design system specimen. */
-export function NewTabView({ id, field, query, sections, activeRowId, caption, onHover, onPick }: NewTabViewProps) {
+export function NewTabView({ id, field, query, sections, activeRowId, caption, enterHint = '↵ to start a conversation', onHover, onPick }: NewTabViewProps) {
   return <div className="newtab">
     <div className="newtab-field">
       <div className="newtab-input-row">
         <Icon name="search"/>
         {field}
-        <span className="newtab-hint">↵ to start a conversation</span>
+        <span className="newtab-hint">{enterHint}</span>
       </div>
       <div className="newtab-rule"/>
       <div className="newtab-list" id={`newtab-${id}`} role="listbox" aria-label="Suggestions">
