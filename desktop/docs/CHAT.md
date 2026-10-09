@@ -76,7 +76,7 @@ leaves when it is not. No labels that describe the machine ("Engine connected",
   After the first send it docks to the bottom (shared layout motion, reduced-motion
   instant).
 - One rounded field (radius-lg, hairline border, overlay shadow token on focus only).
-  Autosizing textarea, 1 → 10 lines then scroll. Placeholder: `Message codeaf`.
+  Autosizing textarea, 1 → 10 lines then scroll. Placeholder: `Ask codeaf` (`Steer, or queue a message` while working).
 - Bottom row inside the field: left = Attach (paperclip IconButton) and the model
   label (muted, e.g. `DeepSeek v4.1 Flash`, a Select only when real routing exists);
   right = Send (arrow-up, primary round IconButton). While running: Send becomes
