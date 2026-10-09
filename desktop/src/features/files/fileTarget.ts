@@ -33,12 +33,13 @@ export function findFileTab(tabs: readonly Tab[], candidate: Pick<Pane, 'kind' |
 
 /**
  * The file tab's type icon (Shell 2h, "File: by type: file-code-2, file-json, file-text, image").
- * The one icon package has no file-json or file-code-2, so JSON and code both draw file-code; prose and
- * anything unknown draw file-text, and pictures draw image (FILES-FOLLOWUP-QUESTIONS FF10).
+ * JSON draws file-json and source code draws file-code-2, both from the pinned Lucide package behind
+ * the central Icon; prose and anything unknown draw file-text, and pictures draw image (FF10).
  */
 export function fileTypeIcon(name: string): IconName {
   const kind = fileKind(name);
   if (kind === 'image') return 'image';
-  if (kind === 'code' || extensionOf(name) === 'json') return 'fileCode';
+  if (extensionOf(name) === 'json') return 'fileJson';
+  if (kind === 'code') return 'fileCode2';
   return 'file';
 }

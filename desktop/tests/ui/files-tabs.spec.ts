@@ -68,6 +68,14 @@ test('a changed-file chip opens a diff tab: header, two line-number columns, red
   await expect(page.getByRole('button', { name: 'Show 29 unchanged lines' })).toBeVisible();
 });
 
+test('a Go file tab draws file-code-2 from the central Icon in its header', async ({ page }) => {
+  await openWithDiff(page);
+  await openDiffTab(page);
+  const glyph = page.locator('.file-head .app-icon[data-icon="fileCode2"]');
+  await expect(glyph).toHaveCount(1);
+  await expect(glyph.locator('svg')).toHaveClass(/lucide-file-code2/);
+});
+
 test('a plain click on a file chip opens the preview sheet; Command-click or a middle click opens the tab (Interactions)', async ({ page }) => {
   await openWithDiff(page);
   await page.getByRole('button', { name: /^Changed 1 file/ }).click();
