@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as Reac
 import { Button, Icon, KeyboardShortcut, TextInput } from '../../../components/ui';
 import { isMac } from '../../../design/keyboard';
 import { PlaceSwatch } from '../components/PlaceSwatch';
+import { SuggestionLine } from '../components/SuggestionLine';
 import { chooserTitle, chooserView, countLabel, firstChoosable, parentRowKey, step, type ChooserRow } from './chooserModel';
 import type { ChooserMode, ChooserProps } from './contracts';
 import './go-to-chooser.css';
@@ -29,7 +30,7 @@ function spokenRow(row: ChooserRow): string {
  * The same sheet answers merge, second-parent and filing questions; it never fetches and never writes by itself. Every
  * write is the owner's callback, and while one is pending the rows hold still; a refusal is read out inside the sheet.
  */
-export function GoToChooser({ open, mode, places, childrenOf, total, now, onChoose, onChooseInNewWindow, onCreate, onClose }: ChooserProps) {
+export function GoToChooser({ open, mode, places, childrenOf, total, now, onChoose, onChooseInNewWindow, onCreate, suggestion, onClose }: ChooserProps) {
   const dialog = useRef<HTMLDialogElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -73,6 +74,7 @@ export function GoToChooser({ open, mode, places, childrenOf, total, now, onChoo
     if (openRef.current) onClose();
   };
 
+  const sentence = (error: unknown) => (error instanceof Error && error.message ? error.message : typeof error === 'string' && error ? error : fallbackFailure);
   const run = async (action: () => void | Promise<void>) => {
     if (pending) return;
     setPending(true); setFailure('');
@@ -80,10 +82,17 @@ export function GoToChooser({ open, mode, places, childrenOf, total, now, onChoo
       await action();
       if (openRef.current) onClose();
     } catch (error) {
-      setFailure(error instanceof Error && error.message ? error.message : typeof error === 'string' && error ? error : fallbackFailure);
+      setFailure(sentence(error));
     } finally {
       setPending(false);
     }
+  };
+  /** The suggestion line's verbs leave the sheet open: Archive and "Not now" change what the sheet lists, and Merge swaps the sheet's question,
+   * so closing it after them (as `run` does) would shut the merge chooser they just opened. A refusal is read out the same way. */
+  const runSuggestion = async (action: () => void | Promise<void>) => {
+    if (pending) return;
+    setPending(true); setFailure('');
+    try { await action(); } catch (error) { setFailure(sentence(error)); } finally { setPending(false); }
   };
   const choose = (row: ChooserRow | undefined) => { if (row && !row.disabled) void run(() => onChoose(row.place.id)); };
   const create = () => { if (onCreate && typed) void run(() => onCreate(typed)); };
@@ -179,6 +188,7 @@ export function GoToChooser({ open, mode, places, childrenOf, total, now, onChoo
         {section('Recent', view.recent, 'recent')}
         {view.searching ? section('Matching places', view.results, 'results', false) : section('All', view.tree, 'all')}
       </div>
+      {suggestion && mode.kind === 'go' && !view.searching && <SuggestionLine className="goto-suggestion" text={suggestion.text} actions={suggestion.actions} run={runSuggestion} busy={pending}/>}
       {failure && <p role="alert" className="goto-failure">{failure}</p>}
       <div className="goto-hints">
         <span><KeyboardShortcut label="↵"/> {enterVerb[mode.kind]}</span>

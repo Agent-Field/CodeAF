@@ -142,6 +142,11 @@ func runDesktopBridge(args []string) error {
 	if err := places.UseDoor(placeDoor); err != nil {
 		return fmt.Errorf("places: %w", err)
 	}
+	// "Not now" on an untouched-place suggestion is remembered beside the graph, so
+	// every window agrees (placegraph/stale.go).
+	if places.Stale, err = placegraph.OpenStale(filepath.Join(filepath.Dir(placeDoor.Path), "places-stale.json")); err != nil {
+		return fmt.Errorf("places: %w", err)
+	}
 	bridge.UsePlaces(places)
 	// Offers about places keep their own ledger beside the graph, and read the
 	// person's Places settings fresh on every job.

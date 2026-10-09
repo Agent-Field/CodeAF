@@ -37,6 +37,9 @@ type Places struct {
 	// "Since yesterday". Nil reads each conversation's own meta.json
 	// (places_digest.go); a test injects a fixture.
 	Recaps RecapReader
+	// Stale remembers "Not now" for the untouched-place suggestion (places_stale.go).
+	// Nil leaves both of its routes absent.
+	Stale *placegraph.StaleBook
 
 	// live lists the chat ids of conversations this bridge holds open. A
 	// conversation the person just started may not be in the world yet; it is
@@ -183,6 +186,12 @@ func (p *Places) serve(w http.ResponseWriter, r *http.Request, parts []string) {
 			if needPost(w, r) {
 				p.undo(w, r)
 			}
+		case "stale":
+			if p.Stale == nil {
+				fail(w, 404, "unknown engine action")
+			} else if needGet(w, r) {
+				p.staleList(w)
+			}
 		default:
 			switch {
 			case get:
@@ -240,6 +249,12 @@ func (p *Places) action(w http.ResponseWriter, r *http.Request, id, verb string)
 		p.pin(w, r, id, verb == "pin")
 	case "visit":
 		p.visit(w, r, id)
+	case "stale-snooze":
+		if p.Stale == nil {
+			fail(w, 404, "unknown engine action")
+			return
+		}
+		p.staleSnooze(w, r, id)
 	default:
 		fail(w, 404, "unknown engine action")
 	}

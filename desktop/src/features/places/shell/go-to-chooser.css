@@ -52,6 +52,7 @@
 .goto-empty { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-2) var(--space-3); }
 .goto-empty-line { margin: 0; min-width: 0; font-size: var(--font-size-input); color: var(--ink-2); overflow-wrap: anywhere; }
 .goto-empty .button { max-width: 100%; overflow: hidden; }
+.goto-suggestion { flex: none; padding: var(--space-1) var(--space-3); }
 .goto-failure { flex: none; margin: 0; padding: var(--space-1) var(--space-3); font-size: var(--font-size-body); color: var(--danger); overflow-wrap: anywhere; }
 .goto-hints { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-4); padding: var(--space-2) var(--space-3); font-size: var(--font-size-label); color: var(--ink-3); }
 .goto-hints .keyboard-shortcut { font-size: inherit; }

@@ -6,6 +6,7 @@ import { PlaceQuickLook } from './HomePane';
 import { InstructionsDialog, NameDialog, SourcesDialog } from './PlaceDialogs';
 import type { DialogRequest, PlacesShell } from './PlacesShell';
 import { placeRow } from './selectors';
+import { staleLineFor, useStale } from './useStale';
 
 const quoted = (name: string | undefined) => (name ? `“${name}”` : 'the place');
 
@@ -91,8 +92,10 @@ export function PlacesOverlays({ shell }: { shell: PlacesShell }) {
   const name = (id: string) => shell.index?.byId.get(id)?.name;
   const mode = shell.chooser;
   const now = useMemo(() => new Date(), [mode, graph]);
+  const stale = useStale(shell);
+  const suggestion = mode?.kind === 'go' ? staleLineFor(shell, stale) : undefined;
   return <>
-    {mode && <GoToChooser open mode={mode} places={rows} childrenOf={shell.index?.childrenOf ?? new Map()} total={rows.length} now={now}
+    {mode && <GoToChooser key={mode.kind} open mode={mode} suggestion={suggestion} places={rows} childrenOf={shell.index?.childrenOf ?? new Map()} total={rows.length} now={now}
       onClose={shell.closeChooser}
       onChoose={chooseFor(shell, mode, name)}
       onChooseInNewWindow={mode.kind === 'go' ? async id => { shell.closeChooser(); await shell.goToInNewWindow(id); } : undefined}
