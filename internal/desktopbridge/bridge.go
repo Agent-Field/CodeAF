@@ -49,6 +49,7 @@ type Connection struct {
 	Agent     Agent
 	Welcome   remote.Welcome
 	FetchFile func(string) (remote.FetchedFile, error)
+	StatPaths func([]string) ([]remote.PathFact, error)
 	Close     func()
 }
 type Open func(sessionFile string) (Connection, error)
@@ -99,6 +100,7 @@ type conversation struct {
 	observers  int
 	lastTasks  []session.PlanTaskRow
 	planError  string
+	icons      *faviconCache
 }
 type Bridge struct {
 	token     string
@@ -106,10 +108,11 @@ type Bridge struct {
 	mu        sync.Mutex
 	sessions  map[string]*conversation
 	closeOnce sync.Once
+	icons     *faviconCache
 }
 
 func New(token string, open Open) *Bridge {
-	return &Bridge{token: token, open: open, sessions: map[string]*conversation{}}
+	return &Bridge{token: token, open: open, sessions: map[string]*conversation{}, icons: newFaviconCache()}
 }
 func Token() (string, error) {
 	var b [32]byte
@@ -328,6 +331,19 @@ func (s *conversation) queued(events <-chan session.Event) {
 	}()
 	s.pump(tail, func() {})
 }
+
+// A steer's own stream is the same turn the primary stream already publishes,
+// so it is drained unpublished until the steer falls through. From that event
+// on the stream carries the follow-up turn its words started, which nobody else
+// publishes, so it is pumped like any queued turn.
+func (s *conversation) steered(events <-chan session.Event) {
+	for ev := range events {
+		if ev.Kind == session.EventSteerFellThrough {
+			s.queued(events)
+			return
+		}
+	}
+}
 func eventKind(k session.EventKind) string {
 	switch k {
 	case session.EventTextDelta:
@@ -352,6 +368,53 @@ func eventKind(k session.EventKind) string {
 		return "consent"
 	case session.EventQuestion:
 		return "question"
+	default:
+		return laterKind(k)
+	}
+}
+
+// laterKind names the rest of the kinds the renderer reads by name; anything
+// else stays "other" with the raw kind number on the wire event.
+func laterKind(k session.EventKind) string {
+	switch k {
+	case session.EventCaption:
+		return "caption"
+	case session.EventSteerAccepted:
+		return "steerAccepted"
+	case session.EventSteerConsumed:
+		return "steerConsumed"
+	case session.EventSteerFellThrough:
+		return "steerFellThrough"
+	case session.EventToolAnnounced:
+		return "toolAnnounced"
+	case session.EventToolForming:
+		return "toolForming"
+	case session.EventToolFinished:
+		return "toolFinished"
+	case session.EventToolOutput:
+		return "toolOutput"
+	case session.EventRetrying:
+		return "retrying"
+	case session.EventNotice:
+		return "notice"
+	case session.EventCompacting:
+		return "compacting"
+	case session.EventCompacted:
+		return "compacted"
+	case session.EventTaskProposal:
+		return "taskProposal"
+	case session.EventTaskUpdate:
+		return "taskUpdate"
+	case session.EventTaskPhase:
+		return "taskPhase"
+	case session.EventJobUpdate:
+		return "jobUpdate"
+	case session.EventQuestionWithdrawn:
+		return "questionWithdrawn"
+	case session.EventQuestionAnswered:
+		return "questionAnswered"
+	case session.EventTitleChanged:
+		return "titleChanged"
 	default:
 		return "other"
 	}
@@ -409,7 +472,7 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail(w, 500, "cannot create session identity")
 			return
 		}
-		s := &conversation{conn: conn, id: id, changed: make(chan struct{}), done: make(chan struct{})}
+		s := &conversation{conn: conn, id: id, changed: make(chan struct{}), done: make(chan struct{}), icons: b.icons}
 		b.sessions[id] = s
 		_, events, stop := conn.Agent.AttachReplay()
 		s.running = events != nil
@@ -481,6 +544,9 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		write(w, page)
 		return
 	}
+	if s.extra(w, r, parts) {
+		return
+	}
 	if len(parts) != 3 {
 		fail(w, 404, "unknown engine action")
 		return
@@ -537,15 +603,21 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail(w, 405, "POST required")
 			return
 		}
-		var ask struct {
-			Text string `json:"text"`
-			Mode string `json:"mode"`
-		}
-		if !decode(w, r, &ask) {
+		var ask turnAsk
+		if !decodeMax(w, r, &ask, maxTurnBody) {
 			return
 		}
-		if strings.TrimSpace(ask.Text) == "" {
+		if strings.TrimSpace(ask.Text) == "" && len(ask.Files) == 0 {
 			fail(w, 400, "instruction required")
+			return
+		}
+		attachments, status, err := ask.attachments()
+		if err != nil {
+			fail(w, status, err.Error())
+			return
+		}
+		if attachments.any() && ask.Mode != "" && ask.Mode != "submit" {
+			fail(w, 409, "files can only be sent with a new message")
 			return
 		}
 		if s.conn.Agent.Model() != Model {
@@ -570,10 +642,9 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.mu.Unlock()
 		var events <-chan session.Event
-		var err error
 		switch ask.Mode {
 		case "", "submit":
-			events, err = s.conn.Agent.Submit(context.Background(), ask.Text)
+			events, err = s.submit(ask.Text, attachments)
 		case "steer":
 			events, err = s.conn.Agent.Steer(ask.Text)
 		case "queue":
@@ -597,10 +668,7 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			primary := s.primary
 			s.mu.Unlock()
 			if events != primary {
-				go func() {
-					for range events {
-					}
-				}()
+				go s.steered(events)
 			}
 		} else {
 			go s.pump(events, func() {})
@@ -687,13 +755,23 @@ func (s *conversation) events(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
+	return decodeMax(w, r, v, 1<<20)
+}
+
+// decodeMax is decode with a body ceiling; a body over it is 413, not "invalid".
+func decodeMax(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 		fail(w, 415, "JSON required")
 		return false
 	}
-	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	d.DisallowUnknownFields()
 	if err := d.Decode(v); err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			fail(w, 413, "that message is larger than the desktop can carry; send fewer or smaller files")
+			return false
+		}
 		fail(w, 400, "invalid request")
 		return false
 	}
