@@ -120,7 +120,11 @@ func (a *Agent) refreshPlaceGraphLocked() {
 	}
 	text := placeGraphBlock(bundle, strings.TrimSpace(a.config.Workspace))
 	for _, change := range placegraph.Changes(a.placeGraphBundle, bundle) {
-		a.queuePlaceNoteLocked(change.Text)
+		var receipts []string
+		if a.placeGraphBundle != nil {
+			receipts = placegraph.ContextUndoReceipt(door.Path, a.placeGraphBundle.Revision, bundle.Revision)
+		}
+		a.queuePlaceNoteWithUndoLocked(change.Text, receipts)
 	}
 	a.placeGraphStamp, a.placeGraphRead, a.placeGraphBundle = stamp, true, bundle
 	a.placeGraphText = text
@@ -156,6 +160,10 @@ func PlaceGraphUsing(snap *placegraph.Snapshot, chatID string, choices []placegr
 // replay where the change took effect. It is [Agent.enqueueNote] for a caller
 // already holding a.mu, and it never wakes a turn: one is opening.
 func (a *Agent) queuePlaceNoteLocked(text string) {
+	a.queuePlaceNoteWithUndoLocked(text, nil)
+}
+
+func (a *Agent) queuePlaceNoteWithUndoLocked(text string, receipts []string) {
 	text = strings.TrimSpace(text)
 	if text == "" || a.closed {
 		return
@@ -163,7 +171,7 @@ func (a *Agent) queuePlaceNoteLocked(text string) {
 	note := userText(text)
 	note.message = textMessage("user", text)
 	note.authored = true
-	note.facts = noteFacts{Kind: NoteKindPlaces}
+	note.facts = noteFacts{Kind: NoteKindPlaces, UndoReceipts: append([]string(nil), receipts...)}
 	a.steering = append(a.steering, note)
 }
 

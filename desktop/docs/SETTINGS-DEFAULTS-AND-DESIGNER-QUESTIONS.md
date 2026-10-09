@@ -194,3 +194,7 @@ Additive only: `tokens.json` (`places-*`, `type-home-title-*`, `type-section-lab
 The normal rail follows the Places shell: Inbox, Now, Places rows and All places. Extra workspace search/address, Activity, Settings, Design system and the theme footer are absent from the reference and are removed from this rail. Settings remains available through ⌘/Ctrl-comma and the native menu; development Activity and component specimens remain in the development command palette. The provisional Settings tab exposes the existing shared ThemeSelect under Appearance, with System as its default and Light/Dark overrides persisted per device. The designer should decide whether the final Settings entry belongs in a native menu alone or another specified shell control.
 
 Pinning multiple tabs preserves the order in which they entered the pinned section. The source specifies a pinned section but does not specify whether later pins should follow original strip order instead; this remains a designer choice.
+
+### Context-change note Undo authority
+
+“Now also using” / “No longer using” notes stay chronological and visible outside collapsed work. Undo uses only the exact committed graph receipt recorded with that note; it never undoes the latest unrelated change or directly removes an inherited place. A newer graph mutation causes a truthful refusal; a restarted store expires receipts. Changes made externally or spanning multiple commits carry no unambiguous per-note authority, so they omit Undo. No Settings toggle or model default is introduced.

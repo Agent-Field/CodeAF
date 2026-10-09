@@ -204,7 +204,10 @@ func TestTheChangeLineIsJournaledAndReplays(t *testing.T) {
 	f.file(t, agent.id, parser)
 	turn(t, agent, completer, "first")
 
-	f.file(t, agent.id, release)
+	_, receipt, err := f.store.AddChat(agent.id, release.ID, placegraph.AddedByYou)
+	if err != nil {
+		t.Fatal(err)
+	}
 	at := turn(t, agent, completer, "second")
 	const line = "Now also using Release: brand-voice.md"
 	seen := false
@@ -224,6 +227,9 @@ func TestTheChangeLineIsJournaledAndReplays(t *testing.T) {
 		t.Helper()
 		for _, e := range entries {
 			if e.Role == "aside" && e.AsideKind == NoteKindPlaces && strings.Contains(e.Text, line) {
+				if len(e.UndoReceipts) != 1 || e.UndoReceipts[0] != receipt.ID {
+					t.Fatalf("%s wrong undo provenance: %v", where, e.UndoReceipts)
+				}
 				return
 			}
 		}

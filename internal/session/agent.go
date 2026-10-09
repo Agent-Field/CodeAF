@@ -4865,6 +4865,8 @@ type DisplayEntry struct {
 	// a file written before the mark was kept: a surface reads that as "say
 	// nothing about the author".
 	AsideKind string
+	// UndoReceipts names only the exact context mutation, persisted in note facts.
+	UndoReceipts []string
 	// AsideTitle is a job aside's short name, the label its own row wears, so a
 	// surface can head the entry without reading the sentence. It is empty for
 	// every other kind and whenever the job had no name.
@@ -5071,17 +5073,18 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			displayText, update = UserFacingUpdate(displayText)
 		}
 		entries = append(entries, DisplayEntry{
-			Role:        role,
-			Answer:      role == "assistant" && !interrupted && (len(msg.ToolCalls) == 0 || update),
-			Addressed:   role == "assistant" && (update || interrupted && explicitlyHuman),
-			Interrupted: interrupted,
-			Text:        displayText,
-			ImageRefs:   journal.imageRefs(msg),
-			Attachments: attachments,
-			ReplyTags:   tags,
-			TaskIDs:     taskIDs,
-			AsideKind:   facts.Kind,
-			AsideTitle:  facts.Title,
+			Role:         role,
+			Answer:       role == "assistant" && !interrupted && (len(msg.ToolCalls) == 0 || update),
+			Addressed:    role == "assistant" && (update || interrupted && explicitlyHuman),
+			Interrupted:  interrupted,
+			Text:         displayText,
+			ImageRefs:    journal.imageRefs(msg),
+			Attachments:  attachments,
+			ReplyTags:    tags,
+			TaskIDs:      taskIDs,
+			AsideKind:    facts.Kind,
+			UndoReceipts: append([]string(nil), facts.UndoReceipts...),
+			AsideTitle:   facts.Title,
 			// The journal is the only thing that remembers a user line was typed
 			// INTO the turn above it rather than opening one of its own: the
 			// message itself is an ordinary user message, because that is what the

@@ -5,7 +5,7 @@ import type { EngineEntry } from '../chat/engine-client.ts';
 import { personWords } from './sessionNote.ts';
 import type { TurnItem } from './types.ts';
 
-export type AsideKind = 'task' | 'job' | 'watch' | 'resume' | '';
+export type AsideKind = 'task' | 'job' | 'watch' | 'resume' | 'places' | '';
 // The Go side adds these to the record; the type stays optional so older engines compile.
 type KindFields = { AsideKind?: AsideKind; AsideTitle?: string };
 
@@ -34,6 +34,7 @@ export function noteItem(id: string, text: string, fromAside: boolean): TurnItem
 /** job, watch and resume notices; undefined for task or an unlabelled aside. */
 export function kindedAside(entry: EngineEntry, id: string): TurnItem | undefined {
   const kind = asideKindOf(entry);
+  if (kind === 'places') return { kind: 'note', id, text: entry.Text, undoReceipts: entry.UndoReceipts?.filter(id => typeof id === 'string' && id.length > 0) };
   if (kind === 'resume') return { kind: 'note', id, text: entry.Text };
   if (kind !== 'job' && kind !== 'watch') return undefined;
   return { kind: 'aside', id, aside: kind, title: asideTitleOf(entry), body: entry.Text };

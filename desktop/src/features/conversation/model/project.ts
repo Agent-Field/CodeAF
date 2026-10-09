@@ -112,7 +112,8 @@ function addAside(input: Input, acc: Acc) {
   const { entry, index, snapshot } = input;
   if (!entry.Text.trim()) return;
   const item = asideItem(entry, `${acc.turn.id}:${index}`, snapshot);
-  if (item.kind === 'task') push(acc, index, { ...item, kind: 'task' });
+  if (entry.AsideKind === 'places' && item.kind === 'note') push(acc,index,{kind:'context-note',id:item.id,text:item.text,undoReceipts:item.undoReceipts});
+  else if (item.kind === 'task') push(acc, index, { ...item, kind: 'task' });
   else openWork(acc, index).notes.push(item);
 }
 

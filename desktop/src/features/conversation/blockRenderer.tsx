@@ -4,6 +4,7 @@
 import type { ReactNode } from 'react';
 import type { EngineTaskRow } from '../chat/engine-client';
 import { DeliverableView, FileChip, ImageGrid, LinkChip, type FigureItem } from './assets';
+import { NoteItem } from './NoteItem';
 import { TaskNotice, type OpenTask } from './TaskNotice';
 import { displayCommand } from './tasks/displayCommand';
 import { ReceiptLine, type ReceiptState } from './tray/ReceiptLine';
@@ -106,6 +107,7 @@ export function blockRenderer(ctx: BlockContext) {
   return (turn: TurnV2) =>
     function renderBlock(block: TurnBlock): ReactNode {
       switch (block.kind) {
+        case 'context-note': return <NoteItem text={block.text} undoReceipts={block.undoReceipts}/>;
         case 'work':
           return <WorkBlock block={block} ctx={ctx} />;
         case 'task':

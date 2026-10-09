@@ -41,10 +41,13 @@ type noteFacts struct {
 	// Tasks are the finished tasks the note reports, as the decimal strings a
 	// surface keys its task rows by.
 	Tasks []string `json:"tasks,omitempty"`
+	// UndoReceipts is exact context mutation provenance, never recovered from text.
+	// Mixed batched notes deliberately drop this authority.
+	UndoReceipts []string `json:"undoReceipts,omitempty"`
 }
 
 func (f noteFacts) empty() bool {
-	return f.Kind == "" && f.Title == "" && len(f.Tasks) == 0
+	return f.Kind == "" && f.Title == "" && len(f.Tasks) == 0 && len(f.UndoReceipts) == 0
 }
 
 // taskFacts is the facts of a note reporting the given tasks as finished.
@@ -66,6 +69,9 @@ func taskFacts(ids ...uint64) noteFacts {
 // it is not. Tasks are the union in note order, and a title survives only when
 // exactly one distinct title was given.
 func mergeNoteFacts(all []noteFacts) noteFacts {
+	if len(all) == 1 {
+		return all[0]
+	}
 	var merged noteFacts
 	titles := map[string]bool{}
 	for index, facts := range all {

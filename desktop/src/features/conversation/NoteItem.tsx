@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Button, Icon } from '../../components/ui';
 import { SystemNote, type SystemNoteKind } from './SystemNote';
 import type { NoteTone } from './types';
+import { usePlacesShell } from '../places/shell/PlacesShell';
+import { toasts } from '../../design/toasts';
 
-type NoteItemProps = { text: string; long?: boolean; tone?: NoteTone };
+type NoteItemProps = { text: string; long?: boolean; tone?: NoteTone; undoReceipts?: string[] };
 
 const KIND: Record<NoteTone, SystemNoteKind> = { compaction: 'compaction', retry: 'retrying' };
 
@@ -23,8 +25,20 @@ function FoldedNote({ text }: { text: string }) {
   );
 }
 
-export function NoteItem({ text, long, tone }: NoteItemProps) {
+export function NoteItem({ text, long, tone, undoReceipts }: NoteItemProps) {
+  const shell = usePlacesShell();
+  const [pending, setPending] = useState(false);
+  const inFlight = useRef(false);
+  const [undone, setUndone] = useState(false);
+  const undo = async () => {
+    if (!shell || inFlight.current || undone || !undoReceipts?.length) return;
+    inFlight.current = true;
+    setPending(true);
+    try { await shell.client.undo(undoReceipts); setUndone(true); await shell.refresh(); }
+    catch (error) { toasts.show({ message: [error instanceof Error ? error.message : 'That change could not be undone.'], tone: 'warning' }); }
+    finally { inFlight.current = false; setPending(false); }
+  };
   if (!text) return null;
   if (long) return <FoldedNote text={text} />;
-  return <SystemNote kind={tone ? KIND[tone] : 'info'}>{text}</SystemNote>;
+  return <SystemNote kind={tone ? KIND[tone] : 'info'} action={shell && undoReceipts?.length && !undone ? { label: pending ? 'Undoing…' : 'Undo', onClick: () => void undo() } : undefined}>{text}</SystemNote>;
 }
