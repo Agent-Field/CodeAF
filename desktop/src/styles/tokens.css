@@ -190,6 +190,7 @@
   --tree-indent: 14px;
   --chip-height: 20px;
   --file-chip-gap: 5px;
+  --file-stat-leading: normal;
   --file-chip-icon: 12px;
   --radius-chip: 6px;
   --radius-figure: 10px;
