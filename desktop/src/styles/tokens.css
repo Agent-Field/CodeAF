@@ -422,6 +422,7 @@
   --field-focus-halo: 4px;
   --specimen-pad: 28px;
   --specimen-radius: 16px;
+  --tasks-ring-width: 1.25px;
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);
