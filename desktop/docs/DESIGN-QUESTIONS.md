@@ -317,3 +317,7 @@ Matched Components tab-title and Latest-label leaves inherit normal leading in 3
 ### Paste card catalogue and detailed screen differ
 
 The Components catalogue shows a 260px content-width composer paste with a 32px preview and a quote icon. Detailed Conversation long-input uses 240px content width, 10px side padding (260px outer), a 30px preview, and no quote icon. The detailed screen is the implementation authority: shared width derives from nominal content width plus existing padding; header text uses normal leading, and the close control uses the central 12px icon tier. Sent pastes retain their separate full bubble layout and 48px preview. Rail names use normal leading in their unchanged 32px rows; shared HomeTitle uses normal leading for the reference 28px/600 system-font heading, including rename.
+
+### Tooltip geometry and wrapped titles
+
+Detailed component tooltip is24px tall,11px normal-leading text,8px horizontal inset,0 vertical inset and8px shortcut gap. Shared Tooltip uses that minimum height and flex alignment; it keeps height automatic for wrapped full titles in narrow windows and preserves collision padding, delay, focus/hover/Escape behavior and platform-native shortcuts. The caption typography token remains unchanged elsewhere.
