@@ -259,13 +259,75 @@ func (a *app) factoryViewNow() factoryView {
 // factoryRows is the rail's rows as the page stands now. EVERY CURSOR, LINE
 // AND PRESS ON THE PAGE READS THESE, never the bare [factoryRailRows], so a
 // narrowed rail and the walk the cursor counts in are the same list.
+//
+// THEY ARE LAID OUT ONCE PER FLOOR AND VIEW, NOT ONCE PER QUESTION (owner's
+// floor, 2026-10-09). The cursor's item is asked for dozens of times a
+// message — every layout of the hosted chat asks the top bar's height, which
+// asks the cursor's item — and each ask laid three hundred items out again,
+// filtered, grouped and sorted: on the item page that was 40% of the loop's
+// time under a moving pointer. The memo is keyed on everything the layout
+// reads (the snapshot's items and clock, the view, the places), so a fold, a
+// narrowing or a new place lays them out again and nothing else does. THE
+// SLICES ARE SHARED, so no caller may write into them.
 func (a *app) factoryRows() []factoryRailRow {
-	return factoryRailRows(a.fp.snap, a.factoryViewNow())
+	return a.factoryRowsNow().rows
 }
 
 // factoryWalkNow is [factoryWalk] under the page's own view.
 func (a *app) factoryWalkNow() []int {
-	return factoryWalk(a.fp.snap, a.factoryViewNow())
+	return a.factoryRowsNow().walk
+}
+
+// factoryRowsMemo is the rail laid out once ([app.factoryRowsNow]): the key
+// it was laid out under, and what it said.
+type factoryRowsMemo struct {
+	ok      bool
+	snapGen int
+	posGen  int
+	items   *factory.Item
+	n       int
+	now     time.Time
+	view    factoryViewKey
+	rows    []factoryRailRow
+	walk    []int
+}
+
+// factoryViewKey is a [factoryView] without its places, which are a map and
+// are compared by [factoryPage.posGen] instead.
+type factoryViewKey struct {
+	repo, query            string
+	typing, backlog, comfy bool
+	order                  factoryOrder
+	titleW                 int
+}
+
+// factoryRowsNow is the rail's rows and walk under the page's view, from the
+// memo when nothing they read has moved. The view's places are compared by
+// [factoryPage.posGen], which every change to them bumps, and the items by
+// their backing array as well as by [factoryPage.snapGen], so a snapshot
+// put in place without a fold is laid out again too.
+func (a *app) factoryRowsNow() *factoryRowsMemo {
+	v := a.factoryViewNow()
+	snap := &a.fp.snap
+	var first *factory.Item
+	if len(snap.Items) > 0 {
+		first = &snap.Items[0]
+	}
+	m := &a.fp.rowsMemo
+	key := factoryViewKey{repo: v.repo, query: v.query, typing: v.typing, backlog: v.backlog, comfy: v.comfy, order: v.order, titleW: v.titleW}
+	if m.ok && m.snapGen == a.fp.snapGen && m.posGen == a.fp.posGen && m.items == first && m.n == len(snap.Items) &&
+		m.now.Equal(snap.Now) && m.view == key {
+		return m
+	}
+	rows := factoryRailRows(*snap, v)
+	var walk []int
+	for _, r := range rows {
+		if r.kind == factoryRowItem {
+			walk = append(walk, r.item)
+		}
+	}
+	*m = factoryRowsMemo{ok: true, snapGen: a.fp.snapGen, posGen: a.fp.posGen, items: first, n: len(snap.Items), now: snap.Now, view: key, rows: rows, walk: walk}
+	return m
 }
 
 // factoryNarrowed says whether anything narrows the rail that `esc` would

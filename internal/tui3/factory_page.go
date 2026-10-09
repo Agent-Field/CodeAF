@@ -235,6 +235,16 @@ type factoryPage struct {
 	// gridMemo is the row grid the frame measured once for all its rows
 	// (factory_grid.go's [app.factoryGridAt]).
 	gridMemo factoryGridMemo
+	// rowsMemo is the rail's rows and walk as last laid out, and the floor
+	// and view they were laid out for (factory_rail.go's [app.factoryRows]);
+	// snapGen counts the snapshots folded in and posGen the places handed
+	// out, so a memo laid out before either moved is never read again.
+	rowsMemo factoryRowsMemo
+	snapGen  int
+	posGen   int
+	// md is every item text the page rendered as Markdown, by what it was
+	// rendered from (factory_forge.go's [app.factoryMarkdown]).
+	md map[factoryMDKey][]string
 	// titleCols is the title column the last rail draw measured, which the
 	// comfortable density wraps a long title at ([factoryRowTitle2]).
 	titleCols int
@@ -348,6 +358,7 @@ func (a *app) factoryFold(snap factory.Snapshot) {
 	was, had := a.factoryCursorItem()
 	a.factoryFoldStoreMarks(a.fp.snap, &snap)
 	a.fp.snap, a.fp.loaded, a.fp.err = snap, true, nil
+	a.fp.snapGen++
 	a.fp.snapAt = a.now()
 	a.factoryGridForget()
 	a.factoryPlace(false)
