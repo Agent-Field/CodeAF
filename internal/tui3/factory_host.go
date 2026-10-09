@@ -2,11 +2,17 @@ package tui3
 
 import (
 	"context"
+	"errors"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── THE CENTER OF THE ITEM PAGE IS THE REAL CHAT ────────────────────────────
@@ -31,11 +37,15 @@ import (
 // THE CHAT IS BROUGHT IN FRONT BY SELECTING ITS ROW ([app.factoryHostSync],
 // after every message): the manager's chat is the item's own conversation
 // ([factory.Item.Talk]), a step's is its phase's ([factory.Phase.Chat]).
-// It is opened the way a stage room has always been opened, through the
-// window's own door ([Options.Open]), off the loop for the folder and on it
-// for the open; the conversation that was in front goes on running behind,
-// one tab away. One attempt per selection: a refusal is said in the center,
-// and choosing the row again asks again.
+// It is opened through the window's own door ([Options.Open]), the folder
+// read and the conversation built OFF THE LOOP and off the door line, and only
+// the attach done on it ([app.factoryHostBring]); the conversation that was in
+// front goes on running behind, one tab away. A RUNNING STEP'S CHAT IS THE
+// STEP'S OWN AGENT, LIVE: the door hands the conversation this process already
+// holds on that journal (cmd/codeaf's factory_embed.go) rather than a second
+// one its lock would refuse, so the center streams the step as it works. One
+// attempt per selection: a refusal, or an open that does not answer, is said
+// in the center, and choosing the row again asks again.
 //
 // THE KEYS WALK THE PAGE UNTIL THE BOX HAS THEM. `→`, `tab`, `enter` on the
 // row, or a press on the chat puts them in the box ([factoryPage.box]);
@@ -263,6 +273,19 @@ func (a *app) factoryHostSync() tea.Cmd {
 		return let
 	}
 	if h.wantKey != "" && h.wantKey == a.frontTabKey() {
+		if a.factoryFrontEnded() {
+			// THE CHAT IN FRONT ENDED UNDER THE PAGE: the live view of a
+			// running step whose round has closed. It is let go of and the
+			// transcript asked for again, which opens it from the journal,
+			// box and all.
+			if back, ok := a.leaveFront(factoryLetGoOff, false); ok {
+				delete(h.opened, h.wantKey)
+				h.key, h.why, h.asked = "", "", want
+				a.fp.box = false
+				a.touch()
+				return tea.Batch(let, back, a.factoryHostBring(want))
+			}
+		}
 		if h.key != h.wantKey {
 			h.key, h.why = h.wantKey, ""
 			a.touch()
@@ -285,38 +308,213 @@ func (a *app) factoryHostSync() tea.Cmd {
 }
 
 // factoryHostBring brings transcript chat in front without leaving the page:
-// at once when this window holds it behind, and otherwise its folder read
-// off the loop and the open asked on it, only if the page still wants it
-// when the folder comes back.
+// at once when this window holds it behind, and otherwise the whole open asked
+// OFF THE LOOP AND OFF THE DOOR LINE, landing only if the page still wants it.
+//
+// THE OPEN IS NOT A GESTURE'S DOOR, so it does not stand in the ordered line
+// ([app.besideLine]): it is the cursor resting on a row, and nothing a person
+// does next depends on it having been asked first. In the line it waited
+// behind whatever stood there, and the center said `opening the chat…` for as
+// long as that took, which on the owner's run (2026-10-09) was for good. And
+// the open itself is a real conversation being built (a launch for the step's
+// folder, its journal replayed), so it is asked on the ask's goroutine and
+// only the attach is done on the loop: the page never stops drawing for it.
+//
+// AN OPEN THAT DOES NOT ANSWER IS SAID TO HAVE FAILED after
+// [factoryHostOpenWait], never left spinning: one output, one meaning. What
+// it opens after that is let go of where it lands.
 func (a *app) factoryHostBring(chat string) tea.Cmd {
 	if a.holding(chat) {
 		cmd, _ := a.bringForward(chat)
 		a.touch()
 		return cmd
 	}
-	return a.offLoop(func() func(bool) tea.Cmd {
+	if a.open == nil || a.shared {
+		// THE OLDER DOOR (a whole-window swap, or the resume shape) keeps the
+		// open on the loop, where its swap of the conversation in front
+		// belongs.
+		return a.besideLine(func() func(bool) tea.Cmd {
+			where := factoryChatFolder(chat)
+			return func(bool) tea.Cmd {
+				h := &a.fp.host
+				if h.want != chat || !a.at(pageFactory) || !a.fp.open {
+					if h.asked == chat {
+						h.asked = ""
+					}
+					return nil
+				}
+				cmd, refusal := a.openBeside(where, chat)
+				if refusal != "" {
+					h.why = refusal
+				} else {
+					a.factoryHostOpened(chat)
+				}
+				a.touch()
+				return cmd
+			}
+		})
+	}
+	open, wait := a.open, factoryHostOpenWait
+	return a.besideLine(func() func(bool) tea.Cmd {
 		where := factoryChatFolder(chat)
-		return func(bool) tea.Cmd {
-			h := &a.fp.host
-			if h.want != chat || !a.at(pageFactory) || !a.fp.open {
-				if h.asked == chat {
-					h.asked = ""
-				}
-				return nil
-			}
-			cmd, refusal := a.openBeside(where, chat)
-			if refusal != "" {
-				h.why = refusal
-			} else if key := a.convKey(chat); key != "" {
-				if h.opened == nil {
-					h.opened = map[string]string{}
-				}
-				h.opened[key] = chat
-			}
-			a.touch()
-			return cmd
+		conv, err := factoryOpenWithin(open, where, chat, wait)
+		return func(bool) tea.Cmd { return a.factoryHostLanded(chat, conv, err) }
+	})
+}
+
+// factoryHostOpenWait is how long the center waits on an open before it says
+// the chat did not open. A var so a test can shorten it.
+var factoryHostOpenWait = 30 * time.Second
+
+// errFactoryHostSlow is an open that did not answer within the wait.
+var errFactoryHostSlow = errors.New("nothing answered within " + strconv.Itoa(int(factoryHostOpenWait/time.Second)) + "s" + rowSep + "choose the row again to try again")
+
+// factoryOpenWithin asks open, and answers [errFactoryHostSlow] when it has
+// not answered within wait. A conversation that opens after that is let go of
+// as it lands, so a late open holds no journal nobody is showing.
+func factoryOpenWithin(open func(where, chat string) (Conversation, error), where, chat string, wait time.Duration) (Conversation, error) {
+	type answer struct {
+		conv Conversation
+		err  error
+	}
+	got := make(chan answer, 1)
+	var mu sync.Mutex
+	gone := false
+	guard.Go("tui3/factory-host-open", func() {
+		conv, err := open(where, chat)
+		if late := factoryOpenLand(&mu, &gone, got, answer{conv, err}); late && err == nil && conv.Agent != nil {
+			leaveAgent(conv.Agent)
 		}
 	})
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case r := <-got:
+		return r.conv, r.err
+	case <-timer.C:
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	select {
+	case r := <-got:
+		return r.conv, r.err
+	default:
+	}
+	gone = true
+	return Conversation{}, errFactoryHostSlow
+}
+
+// factoryOpenLand hands an open's answer to the asker, and reports true when
+// the asker has stopped waiting, so the answer is the opener's to let go of.
+func factoryOpenLand[T any](mu *sync.Mutex, gone *bool, got chan T, v T) bool {
+	mu.Lock()
+	defer mu.Unlock()
+	if *gone {
+		return true
+	}
+	got <- v
+	return false
+}
+
+// factoryHostLanded folds an open asked by [app.factoryHostBring] in, on the
+// loop: the conversation goes in front when the page still wants it, its
+// refusal is said in the center when it refused, and a conversation nobody
+// wants any more is let go of rather than left holding its journal.
+func (a *app) factoryHostLanded(chat string, conv Conversation, err error) tea.Cmd {
+	h := &a.fp.host
+	wanted := h.want == chat && a.at(pageFactory) && a.fp.open
+	if err != nil {
+		if wanted {
+			h.why = factoryHostRefusal(err)
+		} else if h.asked == chat {
+			h.asked = ""
+		}
+		a.touch()
+		return nil
+	}
+	if !wanted || a.holding(chat) {
+		if h.asked == chat && !wanted {
+			h.asked = ""
+		}
+		if conv.Agent != nil && !a.holdsAgent(conv.Agent) {
+			factoryLetGoOff(conv.Agent)
+		}
+		if !wanted {
+			return nil
+		}
+		// BROUGHT IN ANOTHER WAY while this open was out: that one stays.
+		cmd, _ := a.bringForward(chat)
+		a.touch()
+		return cmd
+	}
+	cmd := a.takeBeside(conv)
+	a.factoryHostOpened(chat)
+	a.touch()
+	return cmd
+}
+
+// factoryHostOpened records a chat the page opened itself, so it is let go of
+// when the cursor leaves it.
+func (a *app) factoryHostOpened(chat string) {
+	key := a.convKey(chat)
+	if key == "" {
+		return
+	}
+	h := &a.fp.host
+	if h.opened == nil {
+		h.opened = map[string]string{}
+	}
+	h.opened[key] = chat
+}
+
+// holdsAgent says whether agent is the conversation in front or one this
+// window keeps behind.
+func (a *app) holdsAgent(agent Agent) bool {
+	if a.agent == agent {
+		return true
+	}
+	for _, held := range a.behind {
+		if held != nil && held.conv.Agent == agent {
+			return true
+		}
+	}
+	return false
+}
+
+// factoryHostRefusal is an open's refusal as the center says it.
+func factoryHostRefusal(err error) string {
+	if errors.Is(err, session.ErrSessionLocked) {
+		return sessionBusyWord
+	}
+	if words := strings.TrimSpace(err.Error()); words != "" {
+		return words
+	}
+	return "it gave no reason"
+}
+
+// factoryLetGoOff lets go of a conversation away from the loop: a detach where
+// the work outlives the view (a step's live chat), the ordinary close where it
+// does not. Closing can wait on a turn ending; a keystroke is not charged for
+// it.
+func factoryLetGoOff(agent Agent) {
+	if agent == nil {
+		return
+	}
+	guard.Go("tui3/factory-host-let-go", func() { leaveAgent(agent) })
+}
+
+// endedAgent is a conversation that can say it has closed under its view: an
+// in-process one whose owner (a step's round) ended it.
+type endedAgent interface {
+	Closed() bool
+}
+
+// factoryFrontEnded says the conversation in front has closed under the page:
+// the step's round that owned it ended, and what the center shows can no
+// longer take a word. It asks the agent alone, under its own lock.
+func (a *app) factoryFrontEnded() bool {
+	ended, ok := a.agent.(endedAgent)
+	return ok && ended.Closed()
 }
 
 // factoryHostLetGo lets go of every chat the page opened that the person did
@@ -332,7 +530,7 @@ func (a *app) factoryHostLetGo(want string, all bool) tea.Cmd {
 			continue
 		}
 		if held := a.behind[key]; held != nil {
-			a.letGoKept(key, held, leaveAgent)
+			a.letGoKept(key, held, factoryLetGoOff)
 			delete(h.opened, key)
 			continue
 		}
