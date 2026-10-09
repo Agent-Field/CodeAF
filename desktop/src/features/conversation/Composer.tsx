@@ -3,6 +3,7 @@ import { Button, DropdownMenu, IconButton, Text, TextArea, TextInput, type MenuE
 import design from '../../design/tokens.json';
 import type { OutgoingFile } from '../chat/engine-client';
 import { AttachmentTray } from './composer/AttachmentTray';
+import { ModelPicker } from './composer/ModelPicker';
 import { toOutgoing } from './composer/attachments';
 import { useAttachments } from './composer/useAttachments';
 import { useFileDrop } from './composer/useFileDrop';
@@ -152,7 +153,9 @@ export function Composer(props: ComposerProps) {
               disabled={disabled}
               onClick={() => picker.current?.click()}
             />
-            {props.modelLabel && <Text className="composer-model">{props.modelLabel}</Text>}
+            {props.modelLabel && (
+              <ModelPicker models={[{ id: props.modelLabel, label: props.modelLabel }]} selectedId={props.modelLabel} />
+            )}
             {props.tasksToggle && <Button className="composer-tasks" onClick={props.tasksToggle.onClick}>{props.tasksToggle.label}</Button>}
           </div>
           <div className="composer-actions">
