@@ -199,3 +199,6 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .toast-action.button { flex: none; min-height: var(--toast-action-height); height: var(--toast-action-height); padding: 0 var(--toast-action-pad); border-radius: var(--toast-action-radius); font-weight: var(--type-label-strong); }
 .toast-action.button-ghost { color: var(--ink-2); }
 .toast-action.button-ghost:hover:not(:disabled), .toast-action.button-ghost:active:not(:disabled) { color: var(--ink); }
+
+/* Inline command spans share the same field treatment as question receipts. */
+.inline-code { padding: var(--border-width) var(--space-tiny); border-radius: var(--radius-xs); background: var(--field); font-size: var(--type-mono-small-size); }
