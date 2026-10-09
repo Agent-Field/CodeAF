@@ -413,8 +413,12 @@ image, diagram) · Answers · Words field · Footer (countdown, Later, You decid
   A paste over 12 lines becomes a card and is sent as a `<pasted-text>` block.
   While running with text: a **Queue** button (Alt/⌥ Enter) beside an accent
   **Steer** pill; there is no send-options menu.
-- Queued messages: listed above the composer in muted rows with a remove action
-  (no edit or reorder: the engine cannot take a queued message back).
+- Queued messages: listed above the composer in muted rows, in the order the
+  engine will run them (the snapshot's `queue`). Hover or focus shows a drag
+  handle, a pencil (the row becomes a field with Esc and Save) and a remove mark.
+  Drag a row, or press Alt+↑ / Alt+↓ on a focused row, to reorder. Two rows show,
+  the rest fold into "N more queued". Every change is refused (409) once the
+  message's turn has started.
 - Decision tray sits above everything else in the dock.
 - Task composer: §4.4.
 

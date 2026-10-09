@@ -127,7 +127,7 @@ test('typing while a send is in flight keeps the new draft when the send lands',
   await expect(message(page)).toHaveValue('second thoughts');
 });
 
-test('a queued message waits above the composer until the engine records it; removing it says it stays queued', async ({ page }) => {
+test('a queued message waits above the composer until the engine records it; removing it takes it back from the engine', async ({ page }) => {
   const engine = await installMockEngine(page, { ...streaming(), manual: true });
   await openApp(page);
   await send(page, 'Say hello');
@@ -142,7 +142,8 @@ test('a queued message waits above the composer until the engine records it; rem
   await expect(queued.getByRole('listitem')).toHaveCount(2);
   await queued.getByRole('button', { name: 'Remove queued message' }).last().click();
   await expect(queued.getByRole('listitem')).toHaveCount(1);
-  await expect(page.getByRole('status').filter({ hasText: 'Removed here only' })).toBeVisible();
+  expect(engine.calls.filter(c => c.path.endsWith('/queue-remove'))).toHaveLength(1);
+  expect(engine.snapshot().queue).toHaveLength(1);
   engine.advance();
   await expect(async () => {
     await page.reload();

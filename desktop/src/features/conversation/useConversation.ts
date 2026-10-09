@@ -5,9 +5,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   answerEngine,
   connectEngine,
+  editQueued,
   EngineError,
   holdQuestion,
+  moveQueued,
+  readEngine,
   readToolResult,
+  removeQueued,
   sendEngine,
   sendEngineWithFiles,
   stopEngine,
@@ -204,6 +208,25 @@ export function useConversation({ sessionFile, onSessionFile }: Options) {
     if (target) void holdQuestion(target.id, question).catch(() => undefined);
   }
 
+  /**
+   * One change to a queued message. A refusal is the race with delivery (the turn
+   * already started): the snapshot is re-read so the row shows what really happened,
+   * and the engine's sentence is said once.
+   */
+  async function changeQueue(change: (id: string) => Promise<EngineSnapshot>) {
+    const target = current.current;
+    if (!target) return;
+    try {
+      receive(await change(target.id));
+    } catch (reason) {
+      await readEngine(target.id).then(receive, () => undefined);
+      setFailed({ text: '', mode: 'submit', message: messageOf(reason) });
+    }
+  }
+  const editQueue = (queued: string, text: string) => changeQueue((id) => editQueued(id, queued, text));
+  const moveQueue = (queued: string, to: number) => changeQueue((id) => moveQueued(id, queued, to));
+  const removeQueue = (queued: string) => changeQueue((id) => removeQueued(id, queued));
+
   async function controlTask(taskId: string, action: TaskAction) {
     const target = current.current;
     if (!target) return;
@@ -235,5 +258,5 @@ export function useConversation({ sessionFile, onSessionFile }: Options) {
   // Once the engine has recorded anything newer than the send, the real message takes over.
   const sending = writing && (snapshot?.entries.length ?? 0) <= writing.at ? writing.text : undefined;
 
-  return { model, snapshot, sending, online, connecting, unreachable, failed, busyKey, send, stop, answer, hold, controlTask, retry, readFull };
+  return { model, snapshot, sending, online, connecting, unreachable, failed, busyKey, send, stop, answer, hold, controlTask, retry, readFull, editQueue, moveQueue, removeQueue };
 }

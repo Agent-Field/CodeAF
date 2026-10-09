@@ -38,3 +38,8 @@ Shell). On any conflict, the design files win over code and older docs.
 | Q13 | "N need you" count | Number of pending questions, the same number the tray shows. |
 | Q14 | Message "sending" state | The sent message shows at 60% opacity until the engine records it (plain text sends only). |
 | Q15 | Engine data the design shows but the engine does not yet send | Cost per task, "Read at step N", per-step receipts: drawn only when the engine sends them (empty otherwise). |
+| Q16 | Taking a queued message back (the design draws a remove mark but not what it does) | It really removes the message from the engine, so it never runs. The old line "Removed here only. codeaf still sends a queued message after this turn." is gone. |
+| Q17 | A change to a queued message whose turn has already started | The engine refuses (409). The row leaves the queue, and the composer's muted error line says "that message has already been sent". No toast. |
+| Q18 | Where a dragged queued row lands | On the row it is dropped on: it takes that row's place and the others shift. No drop line is drawn. Only the visible rows (two, or all when expanded) accept a drop. |
+| Q19 | Keyboard reorder | A focused row moves one place with Alt+↑ / Alt+↓ and keeps focus; moving below the second row opens "N more queued". A screen reader hears "Moved to position N of M". |
+| Q20 | Editing a queued message that holds a pasted-text card | The field edits the whole stored text, including the `<pasted-text>` block, as plain text. |

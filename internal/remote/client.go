@@ -1840,6 +1840,46 @@ func (a *Agent) UnqueueFollowUp(ch <-chan session.Event) bool {
 	return answered
 }
 
+// EditFollowUp replaces the words of ONE queued follow-up, named by the stream
+// the surface has held since it queued. [session.ErrFollowUpGone] is the real
+// answer when the turn drained the message first; any other error is the road
+// (or an engine that predates the door), and the receipt stays good.
+func (a *Agent) EditFollowUp(ch <-chan session.Event, text string) error {
+	id, ok := a.c.followRefs.peek(ch)
+	if !ok {
+		return session.ErrFollowUpGone
+	}
+	out, err := a.c.call(nil, MethodEditFollowUp, EditQueueArgs{Stream: id, Text: text})
+	if err != nil {
+		return err
+	}
+	var edited bool
+	if json.Unmarshal(out, &edited) != nil {
+		return errors.New("remote: unreadable answer to an edit")
+	}
+	if !edited {
+		return session.ErrFollowUpGone
+	}
+	return nil
+}
+
+// MoveFollowUp puts the queued follow-up named by ch directly before the one
+// named by before (nil is the end) and reports whether it was still queued. A
+// call that could not be made reads as false, like [Agent.UnqueueFollowUp].
+func (a *Agent) MoveFollowUp(ch, before <-chan session.Event) bool {
+	id, ok := a.c.followRefs.peek(ch)
+	if !ok {
+		return false
+	}
+	beforeID, _ := a.c.followRefs.peek(before)
+	out, err := a.c.call(nil, MethodMoveFollowUp, MoveQueueArgs{Stream: id, Before: beforeID})
+	if err != nil {
+		return false
+	}
+	var moved bool
+	return json.Unmarshal(out, &moved) == nil && moved
+}
+
 // followRefs is the stream receipts, as a map with its own lock so the Client
 // needs no extra guarding on this field.
 type followRefs struct {
@@ -1854,6 +1894,15 @@ func (f *followRefs) add(ch <-chan session.Event, id uint64) {
 		f.byCh = map[<-chan session.Event]uint64{}
 	}
 	f.byCh[ch] = id
+}
+
+// peek reads a receipt without spending it, for the calls that change a queued
+// message in place and leave it queued.
+func (f *followRefs) peek(ch <-chan session.Event) (uint64, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	id, ok := f.byCh[ch]
+	return id, ok
 }
 
 func (f *followRefs) take(ch <-chan session.Event) (uint64, bool) {

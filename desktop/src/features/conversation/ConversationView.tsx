@@ -22,7 +22,6 @@ import { TaskRoute, TaskRouteBar } from './TaskRoute';
 import { taskCounts, taskProgress } from './taskTree';
 import { useConversation } from './useConversation';
 import { readEngineText } from './tasks/readText';
-import { useQueued } from './useQueued';
 import { contentSignature, useStickToBottom } from './useStickToBottom';
 import { useFoldAnchor, useTurnJump } from './turnScroll';
 import './conversation-view.css';
@@ -51,7 +50,6 @@ function useTaskPanel(hasTasks: boolean, closed: boolean, onView: ConversationVi
 export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpenTaskTab }: ConversationViewProps) {
   const conversation = useConversation({ sessionFile: tab.sessionFile, onSessionFile: (sessionFile) => onView({ sessionFile }) });
   const { model, snapshot, failed } = conversation;
-  const queued = useQueued(snapshot?.entries ?? []);
   const [focusKey, setFocusKey] = useState<string>();
   const route = tab.route ?? rootRoute;
   const scroller = useRef<HTMLDivElement>(null);
@@ -81,9 +79,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   // The person's own message always brings the end of the conversation into view.
   async function sendAndFollow(text: string, mode: SendMode, files?: OutgoingFile[]) {
     jump();
-    const sent = await conversation.send(text, mode, files);
-    if (sent && mode === 'queue') queued.add(text);
-    return sent;
+    return conversation.send(text, mode, files);
   }
 
   // A receipt brings its question forward; clearing first lets the same receipt work twice.
@@ -190,7 +186,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
                 {!inTask && (
                   <ConversationDock
                     tray={{ questions: model.questions, busyKey: conversation.busyKey, onAnswer: conversation.answer, onHold: conversation.hold, focusKey, compact: away, onReview: jump }}
-                    queue={{ items: queued.items, onRemove: queued.remove, removedHere: queued.removedHere }}
+                    queue={{ items: snapshot?.queue ?? [], onRemove: conversation.removeQueue, onEdit: conversation.editQueue, onMove: conversation.moveQueue }}
                     composer={{
                       draft: tab.draft,
                       onDraft,
