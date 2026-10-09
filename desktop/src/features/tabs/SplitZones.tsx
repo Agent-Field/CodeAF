@@ -16,6 +16,11 @@ export function SplitZones({ hostId, guestId, dispatch }: { hostId: string; gues
     const next = event.relatedTarget instanceof Element ? event.relatedTarget.closest<HTMLElement>('.split-zone-band, .split-zone-preview') : null;
     // Entering the highlighted half (or its pill) keeps the same drop intent.
     if (next?.dataset.zone === zone) return;
+    // Native WebKit may omit relatedTarget between the band and its overlaid preview.
+    // Retain only while the real pointer still lies inside that visible target.
+    const preview = event.currentTarget.parentElement?.querySelector<HTMLElement>(`.split-zone-preview[data-zone="${zone}"]`);
+    const bounds = preview?.getBoundingClientRect();
+    if (bounds && event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= bounds.top && event.clientY <= bounds.bottom) return;
     setOver(current => current === zone ? null : current);
   };
   const drop = (zone: EdgeZone) => (event: DragEvent) => {
