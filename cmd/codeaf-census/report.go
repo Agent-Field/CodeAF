@@ -521,7 +521,12 @@ func surprises(out io.Writer, rows, finishes []row) {
 		}
 		if r.Served != "" && r.Lane != "" {
 			attributed++
-			if !strings.EqualFold(r.Served, r.Lane) {
+			// A SET THE CHOOSER ADMITTED IS NOT A SINGLE RANKED NAME. When the
+			// row carries the demanded set, served being INSIDE it is the router
+			// picking a member of the choice we made, not routing around it - so
+			// only served landing OUTSIDE the set (or outside the lone name, on
+			// a row with no set) counts as asked != served (calllog's Lanes).
+			if !servedWasAdmitted(r) {
 				disagreed++
 			}
 		}
@@ -647,6 +652,25 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// servedWasAdmitted reports whether the machine that served was one the request
+// would have accepted. On a row that carries the demanded set ([calllog.Record]'s
+// Lanes) that means served is a MEMBER of the set, because the chooser told the
+// router it may serve any of them; on a row with no set it means served matches
+// the single ranked name in Lane, which is the only machine such a row named.
+// Both comparisons are case-insensitive, as the rest of this file reads machine
+// names.
+func servedWasAdmitted(r row) bool {
+	if len(r.Lanes) > 0 {
+		for _, lane := range r.Lanes {
+			if strings.EqualFold(r.Served, lane) {
+				return true
+			}
+		}
+		return false
+	}
+	return strings.EqualFold(r.Served, r.Lane)
 }
 
 // cell makes one string safe to sit in a markdown table: a pipe inside a cell

@@ -449,6 +449,7 @@ func (c *Client) record(facts recordFacts) {
 	// the row of the request it rescued says what happened to that one.
 	if wait, watched := streamWatchFrom(facts.ctx).facts(); watched {
 		record.Lane = recordedLane(body, wait.lane)
+		record.Lanes = demandedLanes(body)
 		record.HazardCeilingMs = wait.deadline.Milliseconds()
 		// WHAT WAS PLANNED AND WHAT HAPPENED ARE TWO FIELDS, AND THE ROW MAY
 		// CARRY BOTH. The ceiling above is when the watch was going to start
@@ -685,6 +686,37 @@ func soleDemandedLane(knobs callKnobs) string {
 		return strings.TrimSpace(knobs.laneChoice.Only[0])
 	}
 	return ""
+}
+
+// demandedLanes is the SET this attempt's body demanded, and "" (an absent
+// field) when it demanded nothing or demanded exactly one. It is the whole of
+// `laneChoice.Only` - every machine the chooser admitted and told the router it
+// may not leave - and it is read under the same discipline as [soleDemandedLane]:
+// only when the demand is still being SENT ([callKnobs.carriesTheDemand]), never
+// off knobs the widen has already relaxed, so the row cannot claim a set a
+// retired pin's bare retry no longer carries.
+//
+// A single-machine demand is left to [Lane] alone, which already answers it; a
+// hedge demands its one arm and is the same single case. This field exists for
+// the one thing [Lane] cannot say - that served being a DIFFERENT member of the
+// set was the router choosing inside the choice, not routing around it.
+func demandedLanes(knobs callKnobs) []string {
+	if !knobs.carriesTheDemand() {
+		return nil
+	}
+	if knobs.laneChoice == nil || len(knobs.laneChoice.Only) < 2 {
+		return nil
+	}
+	lanes := make([]string, 0, len(knobs.laneChoice.Only))
+	for _, name := range knobs.laneChoice.Only {
+		if name = strings.TrimSpace(name); name != "" {
+			lanes = append(lanes, name)
+		}
+	}
+	if len(lanes) < 2 {
+		return nil
+	}
+	return lanes
 }
 
 // recordedLane is the machine THIS ATTEMPT'S preference asked for: the head of
