@@ -258,6 +258,12 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 						it.Files = in.Files
 					}
 					it.CheckRuns = in.CheckRuns
+					if in.Base != "" {
+						it.Base, it.Head = in.Base, in.Head
+					}
+					if in.HeadSHA != "" {
+						it.HeadSHA = in.HeadSHA
+					}
 				}
 				if in.Tier != "" {
 					it.Tier = in.Tier
@@ -313,6 +319,11 @@ func forgeChanged(old, in factory.Item) bool {
 		return true
 	}
 	if in.Kind == factory.KindPR && ((in.Files != nil && !reflect.DeepEqual(old.Files, in.Files)) || !reflect.DeepEqual(old.CheckRuns, in.CheckRuns)) {
+		return true
+	}
+	// A pushed head moves the commit a step reviews, and an item read before
+	// the refs were kept learns them.
+	if in.Kind == factory.KindPR && ((in.HeadSHA != "" && old.HeadSHA != in.HeadSHA) || (in.Base != "" && (old.Base != in.Base || old.Head != in.Head))) {
 		return true
 	}
 	return false

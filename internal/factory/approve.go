@@ -195,5 +195,6 @@ func (it *Item) UnmarshalJSON(data []byte) error {
 	}
 	*it = Item(p)
 	MigrateGates(it)
+	NormalizeStageNames(it)
 	return nil
 }

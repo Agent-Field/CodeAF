@@ -43,7 +43,7 @@ type fixture struct {
 func newFixture() *fixture {
 	return &fixture{
 		t0:        time.Date(2026, 10, 7, 9, 0, 0, 0, time.UTC),
-		issueBody: strings.Repeat("words ", 500),
+		issueBody: strings.Repeat("words ", 1500),
 		issueTag:  `"i1"`,
 		pullTag:   `"p1"`,
 		checksRun: true,
@@ -539,5 +539,19 @@ func TestIssueTypeReadsLabelsThenTitle(t *testing.T) {
 		if got := issueType(forge.Issue{Title: c.title}); got != c.want {
 			t.Errorf("unlabelled %q = %q, want %q", c.title, got, c.want)
 		}
+	}
+}
+
+// A fork's pull request names its head as `owner:branch`; one from the
+// repository itself names the branch alone.
+func TestPullHeadNamesAForksOwner(t *testing.T) {
+	if got := pullHead("acme", "api", forge.Pull{Head: "fix", HeadRepo: "alice/api"}); got != "alice:fix" {
+		t.Errorf("fork head = %q", got)
+	}
+	if got := pullHead("acme", "api", forge.Pull{Head: "fix", HeadRepo: "Acme/API"}); got != "fix" {
+		t.Errorf("own head = %q", got)
+	}
+	if got := pullHead("acme", "api", forge.Pull{}); got != "" {
+		t.Errorf("no head = %q", got)
 	}
 }
