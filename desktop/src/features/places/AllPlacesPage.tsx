@@ -73,8 +73,8 @@ export function AllPlacesPage({ view, actions, readOnly, runner, drag, onDelete,
         </>}
 
     {!searching && view.chats.length > 0 && <HomeChatsSection label={`Not in any place · ${unplacedTotal}`} chats={view.chats} truncated={view.chatsTruncated} actions={actions} readOnly={readOnly} drag={drag} now={now}/>}
-    {!searching && view.suggestion && actions.acceptSuggestion && !readOnly && <p className="home-suggestion">
+    {!searching && view.suggestion && actions.acceptSuggestion && !readOnly && <div className="home-suggestion">
       <Icon name="sparkles" size="micro"/>{view.suggestion.text} · <Button variant="ghost" className="home-suggestion-action" onClick={() => void runner.run(() => actions.acceptSuggestion?.())}>{view.suggestion.action}</Button>
-    </p>}
+    </div>}
   </>;
 }
