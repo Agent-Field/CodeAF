@@ -64,7 +64,7 @@ export function Breadcrumb({ segments, onNavigate, canBack, onBack }: Props) {
   let ellipsisShown = false;
   return (
     <nav className="breadcrumb" aria-label="Breadcrumb" ref={ref}>
-      <IconButton icon="back" label="Back" disabled={!canBack} onClick={onBack} />
+      <IconButton className="breadcrumb-back" icon="back" iconSize="sm" label="Back" disabled={!canBack} onClick={onBack} />
       <ol className="breadcrumb-list">
         {visibleSegments(segments, narrow).map(({ segment, index, collapsed }) => {
           if (collapsed && ellipsisShown) return null;

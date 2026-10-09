@@ -2,7 +2,6 @@ import { useState } from 'react';
 import type { EngineTaskPage } from '../../chat/engine-client';
 import { Breadcrumb } from '../Breadcrumb';
 import { TaskPageBody } from '../TaskView';
-import type { Turn } from '../types';
 
 const page: EngineTaskPage = {
   Row: { ID: 't-2', Title: 'Tighten the retry loop', Status: 'done' },
@@ -17,16 +16,6 @@ const page: EngineTaskPage = {
   Children: [{ ID: 't-3', Title: 'Add a retry test', Status: 'done' }],
 };
 
-function plainTurn(turn: Turn) {
-  return (
-    <div>
-      <p>{turn.user}</p>
-      {turn.items.map((item) => (
-        <p key={item.id}>{item.kind === 'text' ? item.text : item.kind}</p>
-      ))}
-    </div>
-  );
-}
 
 export function TaskViewSpecimen() {
   const [opened, setOpened] = useState('');
@@ -44,7 +33,7 @@ export function TaskViewSpecimen() {
         onBack={() => setOpened('back')}
         onForward={() => setOpened('forward')}
       />
-      <TaskPageBody page={page} renderTurn={plainTurn} onOpenTask={(id) => setOpened(id)} />
+      <TaskPageBody page={page} renderItem={(item) => <p>{item.kind}</p>} onOpenTask={(id) => setOpened(id)} />
       {opened && <p>{opened}</p>}
     </div>
   );

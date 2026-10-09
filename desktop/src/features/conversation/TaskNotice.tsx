@@ -1,5 +1,5 @@
 import type { MouseEvent } from 'react';
-import { Button, Icon, IconButton } from '../../components/ui';
+import { Button, Icon } from '../../components/ui';
 import { isMac } from '../../design/keyboard';
 import { StateMark } from './StateMark';
 import type { TurnItem } from './types';
@@ -34,26 +34,16 @@ export function TaskNotice({ item, open, onToggle, onOpenTask }: TaskNoticeProps
   return (
     <div className="task-notice" data-open={open || undefined}>
       <div className="task-notice-line">
-        <Button
-          className="task-notice-row"
-          aria-expanded={opensTask ? undefined : open}
-          onClick={activate}
-        >
+        <Button className="task-notice-row" aria-expanded={opensTask ? undefined : open} onClick={activate}>
           <StateMark status={item.status} />
           <span className="task-notice-title">{item.title}</span>
           {item.summary && <span className="task-notice-summary">{item.summary}</span>}
           <Icon name="chevronRight" size="xs" />
         </Button>
         {opensTask && item.body && (
-          <IconButton
-            label="Show report"
-            icon="chevron"
-            iconSize="xs"
-            aria-expanded={open}
-            aria-controls={bodyId}
-            className="task-notice-disclosure"
-            onClick={onToggle}
-          />
+          <Button className="task-notice-report" aria-expanded={open} aria-controls={bodyId} onClick={onToggle}>
+            Report
+          </Button>
         )}
       </div>
       {open && item.body && (
