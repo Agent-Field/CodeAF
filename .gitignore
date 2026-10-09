@@ -41,3 +41,4 @@ internal/manual/pages.pack.gz
 .furrow/
 bench/idle-surface/runs/
 work/
+!desktop/src/features/conversation/work/
