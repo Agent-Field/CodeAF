@@ -25,6 +25,6 @@ export async function expectNoUnstyledControls(page: Page) {
  const selects = page.locator('select:not([aria-hidden="true"])');
  for (const control of await selects.all()) await expect(control).not.toBeVisible();
  for (const control of await page.locator('button,input:not([type=hidden]),textarea').all()) {
-  if (await control.isVisible()) await expect(control).toHaveAttribute('class', /(?:button|nav-item|address-field|favorite-button|new-item|select-trigger|palette-close|command-item|text-input)/);
+  if (await control.isVisible()) await expect(control).toHaveAttribute('class', /(?:button|nav-item|address-field|favorite-button|new-item|select-trigger|palette-close|command-item|text-input|segmented-option|chip-button)/);
  }
 }

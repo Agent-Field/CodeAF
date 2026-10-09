@@ -72,7 +72,7 @@ Sizes: xs 13px for trailing hints, sm 14px for navigation, md 16px for controls,
 
 ## Components and specimens
 
-The app uses Button (quiet/secondary/primary/loading/disabled), IconButton, NavigationItem, SidebarAction, TextInput, TextArea, Select, ThemeSelect, ContextMenu, DropdownMenu, HoverPreview, Typography, Surface, Separator, KeyboardShortcut, BrandMark and CommandPalette. The Design system screen presents live colors, fonts, monospaced text, icon choices, button states and spacing. Add new reusable primitives there before using them widely.
+The app uses Button (primary/raised/quiet/ghost/danger, loading, disabled), IconButton (control/row/message sizes with the shared tooltip), Segmented, Chip, Tag, StatusMark, Row/RowActions, NavigationItem, SidebarAction, TextInput, TextArea, Select, ThemeSelect, ContextMenu, DropdownMenu, HoverPreview, Typography, Surface, Separator, KeyboardShortcut, BrandMark and CommandPalette. The Design system screen presents live colors, fonts, monospaced text, icon choices, button states and spacing. Add new reusable primitives there before using them widely.
 
 ## Brand
 
@@ -88,7 +88,7 @@ Sources: [AnimateIcons](https://github.com/Avijit07x/animateicons), [Lucide](htt
 
 All timings, curves, travel and scale originate in tokens. Control colors settle over 220ms. Sidebar layout changes over 320ms with a gentle decelerating curve; hidden controls become inert. Shared overlay entry is 240ms, moving only 3px and scaling from 0.985; exit fades over 220ms. Shared keyframes live in ui.css, never in feature styles. Reduced motion sets durations and travel to zero while keeping state changes immediate.
 
-Hover is quiet neutral feedback; pressed is slightly stronger. Favorite tiles indicate the active view with aria-pressed; navigation uses aria-current. Secondary buttons have hover, press, visible keyboard focus and disabled states. Selection is meaningful state, not a permanent highlight on every control.
+Design v3 controls (docs/COMPONENTS.md) follow the designer's interaction states: hover changes only the fill, press darkens it one step for 80ms, focus-visible is a 2px accent ring with a 4px soft halo for keyboard input only, disabled is 40% opacity of the whole control (the only permitted use of opacity besides fading in hidden row and message actions), and tooltips on icon-only buttons and truncated text appear after 500ms with sh-2 and 11px text. The sidebar, tab strip, overview, switcher, rename dialog, page toolbar and palette keep their previous control look through the scoped legacy block in ui.css until the chrome is restyled. Elsewhere, hover is quiet neutral feedback; pressed is slightly stronger. Favorite tiles indicate the active view with aria-pressed; navigation uses aria-current. Secondary buttons have hover, press, visible keyboard focus and disabled states. Selection is meaningful state, not a permanent highlight on every control.
 
 App-owned choices use shared Select; action menus use shared ContextMenu and DropdownMenu with token-colored popups, highlights and checkmarks; the background is inert while open. Keyboard focus uses a thin ring; the palette search uses a subtle underline instead of a large box. Native OS dialogs retain their platform appearance.
 
