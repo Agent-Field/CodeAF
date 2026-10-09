@@ -1073,6 +1073,15 @@ func (lp *floorLoop) fold(c *loopCtl, before factory.Item, st factory.Stage, i i
 		if res.Chat != "" {
 			ph.Chat = res.Chat
 		}
+		// THE RESULT OUTLIVES THE PROCESS: a run revived after a restart
+		// reads it back ([Runner.revive]), so later steps keep their
+		// `before this stage` lines.
+		kept := res
+		kept.Edit = nil
+		if len(kept.Output) > factory.ResultOutputMost {
+			kept.Output = strings.ToValidUTF8(kept.Output[:factory.ResultOutputMost], "")
+		}
+		ph.Result = &kept
 		it.Stream.Findings = res.Findings
 		sheet := makesSheet(st)
 		for _, cl := range res.Claims {
@@ -1420,7 +1429,21 @@ func (r *Runner) revive(it factory.Item) error {
 	}
 	lp.ctls[id] = c
 	if lp.results[id] == nil {
+		// WHAT THE STEPS BEFORE LEFT comes back from the item, where each
+		// round's result was kept, with the notes they left.
 		lp.results[id] = map[int]factory.StageResult{}
+		lp.notes[id] = nil
+		for i, ph := range it.Stream.Phases {
+			if ph.Result == nil {
+				continue
+			}
+			lp.results[id][i] = *ph.Result
+			for _, n := range ph.Result.Notes {
+				if n = strings.TrimSpace(n); n != "" {
+					lp.notes[id] = append(lp.notes[id], n)
+				}
+			}
+		}
 	}
 	lp.mu.Unlock()
 	now := r.now()
