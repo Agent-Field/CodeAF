@@ -1,0 +1,5 @@
+/* The hover-preview specimen on the Design system page: the designer's frame sheet. */
+.preview-specimen { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--specimen-pad); border-radius: var(--specimen-radius); background: var(--frame); box-shadow: var(--sh-3); color: var(--ink); min-width: 0; }
+.preview-specimen-grid { display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: flex-start; }
+.preview-specimen-grid > .preview-card { max-width: 100%; }
+.preview-specimen-grid { min-width: 0; }

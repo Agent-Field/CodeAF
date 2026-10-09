@@ -16,7 +16,7 @@ export { TextInput } from './TextInput';
 export { Select } from './Select';
 export { ContextMenu, DropdownMenu, type MenuEntry } from './Menu';
 export { TextArea } from './TextArea';
-export { HoverPreview } from './HoverPreview';
+export { HoverCard, HoverPreview } from './HoverPreview';
 export { WorkStateIndicator } from './WorkStateIndicator';
 export { Markdown, safeMarkdownUrl, type MarkdownProps, type MarkdownHooks } from './Markdown';
 export { CopyButton, type CopyButtonProps } from './CopyButton';
