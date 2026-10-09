@@ -108,7 +108,6 @@ export function Composer(props: ComposerProps) {
 
   return (
     <div className="composer-dock" data-docked={docked}>
-      {!docked && <p className="composer-greeting">What should we work on?</p>}
       <div
         className="composer"
         data-running={running}
@@ -122,7 +121,7 @@ export function Composer(props: ComposerProps) {
           ref={field}
           className="composer-field"
           aria-label="Message"
-          placeholder={disabledReason ?? 'Message codeaf'}
+          placeholder={disabledReason ?? 'Ask codeaf'}
           value={draft}
           disabled={disabled}
           autoFocus={autoFocus}
