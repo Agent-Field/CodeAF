@@ -22,9 +22,9 @@ async function seed(page: Page, tabs: { id: string; title: string; sessionFile?:
   await page.addInitScript(value => { if (!localStorage.getItem('codeaf.desktop.workspace.v1')) localStorage.setItem('codeaf.desktop.workspace.v1', value); }, JSON.stringify(state));
 }
 
-async function open(page: Page) {
+async function open(page: Page, world?: Parameters<typeof installMockEngine>[1]['world']) {
   await installDeepLinkMock(page);
-  const engine = await installMockEngine(page, { history, initial: { sessionFile: SESSION, title: 'Fix the parser', entries: [], needsPerson: true, running: true, questions: trayQuestions() } });
+  const engine = await installMockEngine(page, { history, ...(world ? { world } : {}), initial: { sessionFile: SESSION, title: 'Fix the parser', entries: [], needsPerson: true, running: true, questions: trayQuestions() } });
   await seed(page, [{ id: 'a', title: 'Intro' }, { id: 'b', title: 'Fix the parser', sessionFile: SESSION }], 'a');
   await page.goto('/');
   await expect(page.getByRole('tab', { name: 'Intro', exact: true })).toHaveAttribute('aria-selected', 'true');
@@ -51,4 +51,22 @@ test('a click on a notification whose question was answered opens the conversati
   await expect(tray(page).getByRole('status')).toHaveText(/^1 of 2$/);
   await expect(tray(page).getByRole('region', { name: 'Pick a database' })).toBeVisible();
   expect(turns(engine)).toBe(0);
+});
+
+test('the attention list and the badge name the world-feed reading they came from', async ({ page }) => {
+  const landed = new Date(Date.now() - 60_000).toISOString();
+  await open(page, {
+    rows: [{ session: CHAT, title: 'Fix the parser', project: 'p', sourceFolders: [], state: 'idle', live: false, open: false, running: false, needsYou: true, failed: 1, unseenFailed: 1, failure: { task: 't1', at: landed }, tasks: { running: 0, incomplete: 0, done: 0, failed: 1, total: 1 }, at: landed }],
+    items: [{ key: `${CHAT}:consent:2`, session: CHAT, kind: 'consent', id: 2, text: 'Run it?', sourceFolders: [], answerable: true }],
+  });
+  // Rust lets only the newest reading any window reported say what is pending; without the sequence it cannot tell.
+  const posted = () => page.evaluate(() => (window as unknown as { __linkMock: { calls: { cmd: string; args: Record<string, unknown> }[] } }).__linkMock.calls
+    .filter(call => call.cmd === 'notify_attention' || call.cmd === 'badge_set').map(call => ({ cmd: call.cmd, seq: call.args.seq, ids: (call.args.items as { id: string }[] | undefined)?.map(item => item.id) })));
+  await expect.poll(async () => (await posted()).map(call => call.cmd)).toEqual(expect.arrayContaining(['notify_attention', 'badge_set']));
+  const calls = await posted();
+  for (const call of calls) expect(Number.isSafeInteger(call.seq) && (call.seq as number) > 0, `${call.cmd} ${String(call.seq)}`).toBe(true);
+  const last = (cmd: string) => calls.filter(call => call.cmd === cmd).at(-1);
+  expect(last('badge_set')?.seq).toBe(last('notify_attention')?.seq);
+  // The failure is named by the engine's own landing instant, the same in every window.
+  expect(last('notify_attention')?.ids).toEqual([`${CHAT}:consent:2`, `failed:${CHAT}:${landed}`]);
 });

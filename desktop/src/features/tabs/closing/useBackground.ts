@@ -2,7 +2,7 @@
 // chat/world-store.ts), the failures this window has already seen, and the OS-level signals (notification, badge) that
 // follow the same attention list. Nothing here polls; the feed is a stream and the signals fire when the list changes.
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { nativeControls, needsYouCount, noticeTarget, type AttentionItem as NativeAttention } from '../../../design/nativeControls';
+import { nativeControls, needsYouCount } from '../../../design/nativeControls';
 import { worldStore } from '../../chat/world-store';
 import { engineTransport, type FailureId } from '../../chat/world-client';
 import { toasts } from '../../../design/toasts';
@@ -11,6 +11,7 @@ import { buildBackgroundWork, type BackgroundWork } from './background';
 import { markFailedSeen, readFailedSeen, saveFailedSeen, type FailedSeen } from './failedSeen';
 import { createSeenMarks } from './seenMarks';
 import type { Summaries } from './running';
+import { attentionSignals } from './signals';
 
 type Options = {
   tabs: readonly Tab[];
@@ -20,8 +21,6 @@ type Options = {
   stopping: ReadonlySet<string>;
   now: number;
 };
-
-const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text).replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ');
 
 export function useBackground({ tabs, closed, summaries, since, stopping, now }: Options): { background: BackgroundWork; markFailedSeen: (chatId: string, count: number, failure?: FailureId) => void } {
   const world = useSyncExternalStore(worldStore.subscribe, worldStore.getState);
@@ -41,24 +40,18 @@ export function useBackground({ tabs, closed, summaries, since, stopping, now }:
 
   const background = buildBackgroundWork({ tabs, closed, summaries, since: Object.fromEntries(closed.flatMap(tab => { const at = since(tab.id); return at ? [[tab.id, at]] : []; })), stopping, world, seen, pending, now });
 
-  // The signals describe the whole machine's attention, not this window's tabs, so they read the feed directly. Each
-  // names the conversation (and the question) a click on its notification opens. This is the ONE place a window posts
-  // them: Rust treats an item missing from a list as answered, so a second list without the failures would forget them
-  // and announce them again.
-  const signals = useMemo<NativeAttention[]>(() => {
-    if (world.status !== 'live') return [];
-    const titles = new Map(world.rows.map(row => [row.session, row.title] as const));
-    const asked = world.items.map(item => ({ id: item.key, kind: 'needsYou' as const, chatTitle: clip(item.title || titles.get(item.session) || 'Conversation', 120), text: clip(item.text, 200), ...noticeTarget(item.session, item) }));
-    const failed = background.failed.map(item => ({ id: item.id, kind: 'failed' as const, chatTitle: clip(item.title, 120), text: 'A task failed', ...noticeTarget(item.chatId) }));
-    return [...asked, ...failed];
-  }, [world.status, world.rows, world.items, background.failed]);
+  // The signals describe the whole machine's attention, not this window's tabs, so they come from the feed alone
+  // (signals.ts says why never from the Inbox's own list). Each names the conversation (and the question) a click on its
+  // notification opens. This is the ONE place a window posts them: Rust treats an item missing from the newest list as
+  // answered. The feed sequence goes with the list, so a window behind another's reading cannot undo it.
+  const signals = useMemo(() => attentionSignals(world, seen, now), [world, seen, now]);
   const signature = signals.map(item => `${item.kind}:${item.id}`).join('|');
   useEffect(() => {
     const native = nativeControls();
     if (!native.desktop || world.status !== 'live') return;
     // Rust announces only what is new and only while no codeaf window is focused; the badge is the needs-you count.
-    void native.notifyAttention(signals).catch(() => undefined);
-    void native.setBadge(needsYouCount(signals)).catch(() => undefined);
+    void native.notifyAttention(signals, world.seq).catch(() => undefined);
+    void native.setBadge(needsYouCount(signals), world.seq).catch(() => undefined);
   }, [signature, world.status]);
 
   return { background, markFailedSeen: mark };
