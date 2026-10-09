@@ -1,43 +1,30 @@
-/* Breadcrumb: text sits on the reading column's edge; Back hangs in the gutter like the fold chevron. */
-.breadcrumb { position: relative; display: flex; align-items: center; min-width: 0; min-height: var(--icon-button-size); }
-.breadcrumb-back { position: absolute; right: 100%; margin-right: var(--motion-rest); color: var(--muted); }
-.breadcrumb-list { display: flex; align-items: center; flex: 1; min-width: 0; margin: 0 0 0 calc(var(--space-1) * -1); padding: 0; list-style: none; font-size: var(--font-size-body); }
+/* Breadcrumb: Back and the trail share one quiet line of ink-3 text; the current task is ink at medium weight. */
+.breadcrumb { display: flex; align-items: center; gap: var(--space-2); min-width: 0; min-height: var(--control-height); }
+.breadcrumb-back.icon-button { flex: none; width: var(--control-height); height: var(--control-height); margin-inline-start: calc(var(--space-2) * -1); border-radius: var(--radius-control); color: var(--ink-3); }
+.breadcrumb-list { display: flex; align-items: center; flex: 1; min-width: 0; margin: 0; padding: 0; list-style: none; font-size: var(--type-h3-size); font-weight: var(--font-weight-regular); }
 .breadcrumb-item { display: flex; align-items: center; min-width: 0; flex: 0 1 auto; }
 .breadcrumb-item[data-current] { flex-shrink: 1; }
-.breadcrumb-sep, .breadcrumb-ellipsis { flex: 0 0 auto; padding: 0 var(--space-half); color: var(--muted); }
+.breadcrumb-sep, .breadcrumb-ellipsis { flex: 0 0 auto; padding: 0 var(--space-tight); color: var(--ink-3); }
 .breadcrumb-link, .breadcrumb-current { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: inherit; }
 /* A block box, not the button's centred flex row, so a long name ends in an ellipsis instead of losing its start. */
-.breadcrumb-link { display: block; text-align: start; padding: var(--space-half) var(--space-1); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); }
-.breadcrumb-link:hover { background: var(--control-hover); color: var(--text); }
-.breadcrumb-link:active { background: var(--control-pressed); color: var(--text); }
+.breadcrumb-link { display: block; text-align: start; padding: var(--space-half) var(--space-1); border: 0; border-radius: var(--radius-chip); background: transparent; color: var(--ink-3); }
+.breadcrumb-link:hover { background: var(--field); color: var(--ink); }
+.breadcrumb-link:active { background: var(--field-2); color: var(--ink); }
 .breadcrumb-link:focus-visible { outline: var(--focus-style); outline-offset: var(--focus-offset); }
-.breadcrumb-current { padding: var(--space-half) var(--space-1); color: var(--text); font-weight: var(--font-weight-medium); }
+.breadcrumb-current { padding: var(--space-half) var(--space-1); color: var(--ink); font-weight: var(--type-label-strong); }
 
-.task-view { display: flex; flex-direction: column; gap: var(--space-answer); min-width: 0; }
-.task-view-body { display: flex; flex-direction: column; gap: var(--space-answer); min-width: 0; }
-.task-view-head { display: flex; flex-direction: column; gap: var(--space-1); }
-.task-view-title.type-title { margin: 0; font-size: var(--font-size-document-h1); }
-.task-view-status { display: flex; align-items: center; gap: var(--space-tight); margin: 0; color: var(--muted); font-size: var(--font-size-body); }
-.task-view-status[data-tone="attention"] { color: var(--attention); }
-.task-view-reason { margin: 0; color: var(--muted); font-size: var(--font-size-body); }
-.task-view-quiet { color: var(--muted); font-size: var(--font-size-label); }
+.task-view { display: flex; flex-direction: column; gap: var(--space-6); min-width: 0; }
+.task-view-body { display: flex; flex-direction: column; gap: var(--space-6); min-width: 0; }
+.task-view-quiet { color: var(--ink-3); font-size: var(--type-label-size); }
 .task-view-error { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
-.task-view-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-inline-start: calc(var(--space-2) * -1); }
-.task-view-action.button { min-height: var(--icon-button-size); gap: var(--space-1); padding-inline: var(--space-2); font-size: var(--font-size-body); }
-.task-view-action-error { margin: 0; color: var(--warning); font-size: var(--font-size-label); }
 
 /* Conversation rhythm: the result and the files it changed read at full ink. */
 .task-view-result { min-width: 0; }
-.task-view-last { margin: 0; padding-inline-start: var(--space-3); border-inline-start: var(--border-width) solid var(--border); color: var(--muted); font-size: var(--font-size-body); line-height: var(--line-height-body); white-space: pre-wrap; overflow-wrap: anywhere; }
+.task-view-last { margin: 0; padding-inline-start: var(--space-3); border-inline-start: var(--border-width) solid var(--line); color: var(--ink-2); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); white-space: pre-wrap; overflow-wrap: anywhere; }
 .task-view-changed { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
-.task-view-eyebrow { margin: 0; color: var(--muted); font-size: var(--font-size-label); font-weight: var(--font-weight-medium); }
+.task-view-eyebrow { margin: 0; color: var(--ink-3); font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); }
 .task-view-files { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
 
-.task-view-instructions { display: flex; flex-direction: column; align-items: flex-start; margin-block: calc(var(--space-1) * -1); }
-.task-view-disclosure.button { min-height: var(--row-height); padding-inline: var(--space-half); gap: var(--space-tight); font-size: var(--font-size-body); }
-.task-view-disclosure .app-icon[data-motion="disclosure"] { transform: rotate(calc(var(--motion-ask-open) * -1)); }
-.task-view-disclosure[aria-expanded="true"] .app-icon[data-motion="disclosure"] { transform: none; }
-.task-view-brief { width: 100%; padding-inline-start: var(--space-3); border-inline-start: var(--border-width) solid var(--border); color: var(--muted); font-size: var(--font-size-body); }
 .task-view-list { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
-.task-view-check { display: flex; align-items: flex-start; gap: var(--space-2); color: var(--muted); font-size: var(--font-size-body); }
+.task-view-check { display: flex; align-items: flex-start; gap: var(--space-2); color: var(--ink-2); font-size: var(--type-label-size); }
 .task-view-check .app-icon { margin-top: var(--space-half); }

@@ -18,7 +18,7 @@ export type TaskPageModel = {
   kind: TaskKind;
   mark: TaskMark;
   ended: boolean;
-  /** The parts after the state word, each one known: step, elapsed, model. */
+  /** The parts after the state word, each one known: step, elapsed, model tier, cost. */
   stateParts: string[];
   result: string;
   /** Why it ended and what the worker said last; for tasks that ended without a result. */
@@ -52,6 +52,18 @@ function capital(word: string): string {
   return /^v?\d/.test(word) ? word : word.charAt(0).toUpperCase() + word.slice(1);
 }
 
+/** "deepseek/deepseek-v4.1-flash" reads "Flash": the tier a person tells models apart by; a name without one reads whole. */
+export function modelTier(model?: string): string {
+  const whole = modelName(model);
+  const last = whole.split(' ').pop() ?? '';
+  return whole.includes(' ') && /^[A-Z]/.test(last) ? last : whole;
+}
+
+/** "$0.06"; empty for an unknown or zero cost (the emptiness law). */
+export function costPart(usd?: number): string {
+  return usd && usd > 0 ? `$${usd.toFixed(2)}` : '';
+}
+
 function stepPart(page: TaskPage, kind: TaskKind): string {
   if (kind !== 'running') return '';
   const step = page.Live?.Step ?? page.Row.Steps;
@@ -67,7 +79,7 @@ function elapsedPart(page: TaskPage, kind: TaskKind, now: number): string {
 
 /** Only the parts the engine knows; an unknown one leaves no gap. */
 export function stateParts(page: TaskPage, kind: TaskKind, now: number): string[] {
-  return [stepPart(page, kind), elapsedPart(page, kind, now), modelName(page.Row.Model)].filter(Boolean);
+  return [stepPart(page, kind), elapsedPart(page, kind, now), modelTier(page.Row.Model), costPart(page.Row.USD)].filter(Boolean);
 }
 
 function resultOf(page: TaskPage, ended: boolean): string {

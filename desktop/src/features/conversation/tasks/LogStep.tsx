@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Button, CodeText, Icon } from '../../../components/ui';
+import { Button, CodeText } from '../../../components/ui';
 import { sinceMs, spanText } from './taskClock';
 import type { LogLine } from './taskTypes';
 
@@ -7,29 +7,26 @@ export type ReadFile = (path: string) => Promise<string>;
 
 type Props = { line: LogLine; now: number; readFile?: ReadFile };
 
+/** A state dot with a spoken name; colour only reinforces it. */
+function Dot({ label }: { label: string }) {
+  return <span className="task-log-dot" role="img" aria-label={label} />;
+}
+
 /** The right edge of a line: how it ended, or how long it has been running. */
 function Outcome({ line, now }: Pick<Props, 'line' | 'now'>) {
+  if (line.state === 'refused') return <span className="task-log-outcome" data-state="refused">refused</span>;
   if (line.state === 'running') {
     const clock = spanText(sinceMs(line.since, now));
     return (
       <span className="task-log-outcome" data-state="running">
-        <span className="task-log-mark" role="img" aria-label="Running"><Icon name="running" size="xs" /></span>
-        {clock && <span>{`running ${clock}`}</span>}
+        <Dot label="Running" />
+        {clock && <span>{clock}</span>}
       </span>
     );
   }
-  if (line.state === 'refused') {
-    return (
-      <span className="task-log-outcome" data-state="refused">
-        <span className="task-log-mark" role="img" aria-label="Refused"><Icon name="cancelled" size="xs" /></span>
-        <span>refused</span>
-      </span>
-    );
-  }
-  const failed = line.state === 'failed';
   return (
     <span className="task-log-outcome" data-state={line.state}>
-      <span className="task-log-mark" role="img" aria-label={failed ? 'Failed' : 'Done'}><Icon name={failed ? 'failed' : 'check'} size="xs" /></span>
+      {line.state === 'failed' && <Dot label="Failed" />}
       {line.took && <span>{line.took}</span>}
     </span>
   );
@@ -77,8 +74,10 @@ function Observation({ line, readFile }: { line: LogLine; readFile?: ReadFile })
 function Head({ line, now }: Pick<Props, 'line' | 'now'>): ReactNode {
   return (
     <>
-      <CodeText className="task-log-prompt" aria-hidden="true">$</CodeText>
-      <CodeText className="task-log-command">{line.command}</CodeText>
+      <CodeText className="task-log-command">
+        <span className="task-log-prompt" aria-hidden="true">$ </span>
+        <span className="task-log-text">{line.command}</span>
+      </CodeText>
       <Outcome line={line} now={now} />
     </>
   );

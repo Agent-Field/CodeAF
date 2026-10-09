@@ -51,7 +51,6 @@ function Frame({ page, last }: { page: TaskPage; last: string }) {
     <div className="specimen-task">
       <Breadcrumb
         segments={[
-          { id: null, label: 'Fix the client' },
           { id: 't-1', label: 'Reliability' },
           { id: page.Row.ID, label: page.Row.Title },
         ]}
@@ -66,16 +65,13 @@ function Frame({ page, last }: { page: TaskPage; last: string }) {
         now={SPECIMEN_NOW}
         onOpenTask={() => undefined}
         actions={{ onPause: () => undefined, onStop: () => undefined }}
+        onAmend={(text) => setSent(text)}
         renderFile={(path) => <File path={path} />}
         readFile={async () => 'the complete output of the command'}
       />
       <TaskComposer
         ended={page.Row.Status === 'done'}
-        paused={false}
         onNote={(text) => setSent(text)}
-        onAmend={(text) => setSent(text)}
-        onPause={() => undefined}
-        onStop={() => undefined}
         onMessageConversation={() => setSent(last)}
       />
       {sent && <p>{sent}</p>}

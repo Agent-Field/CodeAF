@@ -399,6 +399,16 @@
   --choice-card-radius: 10px;
   --choice-card-gap: 1px;
   --choice-rule-width: 1px;
+  --task-view-title-size: 22px;
+  --task-view-title-tracking: -.018em;
+  --task-view-card-pad-block: 14px;
+  --task-view-clamp-lines: 3;
+  --task-view-shimmer-size: 250%;
+  --task-view-shimmer-duration: 2.4s;
+  --task-composer-max-width: 592px;
+  --task-composer-pad-start: 16px;
+  --task-note-pad-block: 7px;
+  --task-note-pad-inline: 13px;
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);
