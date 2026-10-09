@@ -27,7 +27,7 @@ export function secondsLeft(question: Question, now: number): number | null {
   return at === null ? null : Math.max(0, Math.ceil((at - now) / 1000));
 }
 
-function span(seconds: number): string {
+export function span(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
   return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`;
 }

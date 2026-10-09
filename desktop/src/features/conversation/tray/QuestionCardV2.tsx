@@ -5,6 +5,7 @@ import { answerFor, canPress, canSend, decideAnswer, initialDraft, submitAnswer,
 import { CardEvidence, CompareTable, type RenderImage } from './CardEvidence';
 import { CardFooter } from './CardFooter';
 import { ClarifyForm } from './ClarifyForm';
+import { ChoiceForm, wantsCards } from './ChoiceForm';
 import { deadlineAt } from './clock';
 import { formOf, hasWordsField, isIrreversible, needsWords, type Option, type Question } from './form';
 import { IrreversibleAnswers, PermissionAnswers } from './AnswerForms';
@@ -91,6 +92,7 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
   const decline = (key: string) => press((question.options ?? []).find((option) => option.key === key)!);
   const clocked = deadlineAt(question) !== null;
   const clarifying = form === 'text';
+  const cards = wantsCards(question);
   const stopClock = () => clocked && !held && onHold();
 
   return (
@@ -119,6 +121,8 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
             <Declines question={question} locked={locked} onPress={decline} />
           </div>
         </>
+      ) : cards ? (
+        <ChoiceForm question={question} now={now} held={held} locked={locked} onChoose={press} onHold={onHold} renderImage={renderImage} />
       ) : (
         <Answers question={question} locked={locked} single={single} onPress={press} renderImage={renderImage} />
       )}
@@ -159,6 +163,7 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
         held={held}
         locked={locked}
         canDecide={Boolean(decide) && !clarifying}
+        clock={!cards}
         onHold={onHold}
         onLater={clarifying ? undefined : onLater}
         onDecide={() => decide && void send(decide)}

@@ -30,7 +30,8 @@ test('a question sits in the tray; choosing answers canonically and leaves a rec
   await expect(page.getByRole('button', { name: 'Waiting on you: Pick a database' })).toBeVisible();
   // Not blocking the turn: the composer stays open.
   await expect(message(page)).toBeEnabled();
-  await card.getByRole('button', { name: 'Postgres' }).click();
+  await card.getByRole('radio', { name: /Postgres/ }).check();
+  await card.getByRole('button', { name: 'Choose' }).click();
   await expect.poll(() => posts(engine, '/answer').length).toBe(1);
   expect(posts(engine, '/answer')[0].body).toMatchObject({ kind: 'choice', id: 7, key: 'postgres', picked: ['postgres'] });
   await expect(tray(page)).toHaveCount(0);
