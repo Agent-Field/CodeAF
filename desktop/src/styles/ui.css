@@ -150,7 +150,8 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 /* One surface and state system for tab context menus and toolbar dropdowns. */
 /* Design Components "Context menu": surface, radius 10, sh-2, 5px padding, 28px rows, no border. */
 .app-menu { z-index: var(--z-menu); min-width: var(--menu-popup-min-width); max-width: min(var(--menu-max-width),calc(100vw - var(--space-6))); max-height: var(--menu-max-height); overflow: auto; padding: var(--menu-pad); border-radius: var(--radius-menu); background: var(--surface); color: var(--ink); box-shadow: var(--sh-2); }
-.app-menu-wide { min-width: var(--menu-wide-min-width); }
+.app-menu-context, .app-menu-submenu { min-width: calc(var(--menu-popup-min-width) + var(--menu-pad) * 2); }
+.app-menu-context.app-menu-wide { min-width: calc(var(--menu-wide-min-width) + var(--menu-pad) * 2); }
 .app-menu-context { transform-origin: var(--radix-context-menu-content-transform-origin); max-height: min(var(--menu-max-height),var(--radix-context-menu-content-available-height)); }
 .app-menu-dropdown { transform-origin: var(--radix-dropdown-menu-content-transform-origin); max-height: min(var(--menu-max-height),var(--radix-dropdown-menu-content-available-height)); }
 .app-menu[data-state="open"] { animation: popover-enter var(--dur-fast) var(--chrome-ease); }.app-menu[data-state="closed"] { animation: surface-exit var(--dur-fast) var(--chrome-ease); }
