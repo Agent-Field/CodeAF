@@ -181,6 +181,10 @@
   --work-indent: 20px;
   --tree-indent: 14px;
   --chip-height: 20px;
+  --file-chip-gap: 5px;
+  --file-chip-pad-start: 5px;
+  --file-chip-pad-end: 7px;
+  --file-chip-icon: 12px;
   --radius-chip: 6px;
   --figure-max-width: 480px;
   --thumb-size: 64px;
