@@ -84,17 +84,27 @@ async function endpoint(path: string): Promise<{ url: string; headers: Headers }
  headers.set('Authorization', `Bearer ${connection.token}`);
  return { url: `${base.origin}/api/engine${path}`, headers };
 }
-async function fetchEngine(path: string, init?: RequestInit): Promise<Response> {
+/**
+ * How long one request (never a stream) may wait for the engine to answer. A
+ * request the browser never sends, or the engine never answers, must surface as
+ * the unreachable line with the draft kept, never as a send that hangs silently.
+ */
+export const ENGINE_REQUEST_TIMEOUT_MS = 30_000;
+/** Only a stream reader holds its connection open, so only it runs without the request clock. */
+async function fetchEngine(path: string, init?: RequestInit, stream = false): Promise<Response> {
  const target = await endpoint(path);
  const headers = target.headers;
  new Headers(init?.headers).forEach((value, name) => headers.set(name, value));
  if (init?.body) headers.set('Content-Type', 'application/json');
+ const clock = new AbortController();
+ const timer = stream ? undefined : setTimeout(() => clock.abort(), ENGINE_REQUEST_TIMEOUT_MS);
  let response: Response;
- try { response = await fetch(target.url, { ...init, headers, cache: 'no-store' }); }
+ try { response = await fetch(target.url, { ...init, headers, cache: 'no-store', signal: stream ? init?.signal : clock.signal }); }
  catch (error) {
   if (init?.signal?.aborted) throw error;
   throw new EngineError('codeaf engine is not running', 0, true);
  }
+ finally { clearTimeout(timer); }
  if (!response.ok) {
   const body = await response.json().catch(() => null) as { error?: unknown } | null;
   // The engine always explains itself in JSON; a bare gateway failure means nothing answered.
@@ -119,8 +129,23 @@ function snapshotFrom(value: unknown): EngineSnapshot {
  return { ...s, questions, entries, tasks: tasks.map(row => ({ ...row, Waits: row.Waits ?? [] })) };
 }
 const sessionPath = (id: string) => `/sessions/${encodeURIComponent(id)}`;
-export async function connectEngine(sessionFile?: string): Promise<EngineSnapshot> {
- const response = await fetchEngine('/sessions', { method: 'POST', body: JSON.stringify(sessionFile ? { sessionFile } : {}) });
+/**
+ * Attaches a saved conversation once however many views ask at the same moment:
+ * the open tab, its background observer and React's development remount share
+ * the one POST in flight. A new conversation (no sessionFile) is never shared,
+ * because each empty POST creates a session of its own.
+ */
+const attaching = new Map<string, Promise<EngineSnapshot>>();
+export function connectEngine(sessionFile?: string): Promise<EngineSnapshot> {
+ if (!sessionFile) return openSession({});
+ const pending = attaching.get(sessionFile);
+ if (pending) return pending;
+ const attach = openSession({ sessionFile }).finally(() => attaching.delete(sessionFile));
+ attaching.set(sessionFile, attach);
+ return attach;
+}
+async function openSession(body: { sessionFile?: string }): Promise<EngineSnapshot> {
+ const response = await fetchEngine('/sessions', { method: 'POST', body: JSON.stringify(body) });
  return snapshotFrom(await response.json());
 }
 export async function readEngine(id: string): Promise<EngineSnapshot> {
@@ -152,7 +177,7 @@ export async function readToolResult(id: string, callId: string): Promise<{outpu
 // detaches this reader. Stop is a separate, explicit POST.
 export async function watchEngine(snapshot: EngineSnapshot, onSnapshot: (snapshot: EngineSnapshot) => void, onEvent: (event: EngineEvent) => void, signal: AbortSignal): Promise<void> {
  let after = snapshot.seq;
- const response = await fetchEngine(`${sessionPath(snapshot.id)}/events?after=${after}`, { signal, headers: { Accept: 'text/event-stream' } });
+ const response = await fetchEngine(`${sessionPath(snapshot.id)}/events?after=${after}`, { signal, headers: { Accept: 'text/event-stream' } }, true);
  if (!response.body || !response.headers.get('content-type')?.includes('text/event-stream')) throw new EngineError('The engine did not open a conversation stream.');
  const reader = response.body.getReader();
  const decoder = new TextDecoder();

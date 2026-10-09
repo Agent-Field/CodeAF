@@ -1,9 +1,18 @@
 import { useEffect, useRef } from 'react';
-import { connectEngine, watchEngine, type EngineSnapshot } from '../chat/engine-client';
+import { connectEngine, readEngine, type EngineSnapshot } from '../chat/engine-client';
 
 export type SessionTarget = { id: string; sessionFile: string };
 
-/** Inactive open tabs keep observing their sessions. Closing a tab only aborts its reader. */
+/**
+ * How often an inactive tab re-reads its session. Inactive tabs READ, they never
+ * hold a stream: a browser allows only six connections to one host, so six saved
+ * tabs each holding an idle stream left no connection for a new tab's first send,
+ * which then waited forever with its text still in the composer. Only the open
+ * tab streams; every other tab costs one short request per interval.
+ */
+export const BACKGROUND_READ_INTERVAL_MS = 2000;
+
+/** Inactive open tabs keep observing their sessions. Closing a tab only stops its reads. */
 export function useBackgroundSessions(targets: SessionTarget[], onSnapshot: (id: string, snapshot: EngineSnapshot) => void) {
   const readers = useRef(new Map<string, AbortController>());
   const receive = useRef(onSnapshot);
@@ -34,17 +43,27 @@ export function useBackgroundSessions(targets: SessionTarget[], onSnapshot: (id:
 
 type Receiver = { current: (id: string, snapshot: EngineSnapshot) => void };
 
+/** Attaches once, then re-reads; a failed read attaches again on the next interval. */
 function observe(target: SessionTarget, receive: Receiver): AbortController {
   const controller = new AbortController();
-  const deliver = (snapshot: EngineSnapshot) => {
-    if (!controller.signal.aborted) receive.current(target.id, snapshot);
-  };
-  // Transport loss never invents a finished state; the tab reattaches when opened.
-  void connectEngine(target.sessionFile)
-    .then((snapshot) => {
-      deliver(snapshot);
-      return watchEngine(snapshot, deliver, () => undefined, controller.signal);
-    })
-    .catch(() => undefined);
+  let session: string | undefined;
+  let seen: number | undefined;
+  let timer: number | undefined;
+  async function read() {
+    try {
+      const snapshot = session ? await readEngine(session) : await connectEngine(target.sessionFile);
+      if (controller.signal.aborted) return;
+      session = snapshot.id;
+      // Only a changed session reaches the tab, so idle reads cost no render.
+      if (snapshot.seq !== seen) receive.current(target.id, snapshot);
+      seen = snapshot.seq;
+    } catch {
+      // Transport loss never invents a finished state; the tab reattaches when opened.
+      session = undefined;
+    }
+    if (!controller.signal.aborted) timer = window.setTimeout(() => void read(), BACKGROUND_READ_INTERVAL_MS);
+  }
+  controller.signal.addEventListener('abort', () => window.clearTimeout(timer));
+  void read();
   return controller;
 }
