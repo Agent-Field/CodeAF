@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { Button, Icon, KeyboardShortcut } from '../../../components/ui';
-import { isMac } from '../../../design/keyboard';
+import { isMac, shellShortcuts } from '../../../design/keyboard';
 import design from '../../../design/tokens.json';
 import type { ModelOption } from './ModelPicker';
 
@@ -115,7 +115,7 @@ function navigate(event: KeyboardEvent<HTMLDivElement>, onClose: () => void) {
 
 /**
  * The design's quick-swap popover (1e): pinned segments, an Effort row when the engine takes
- * one, the model list with ⌘1-3, and "All models…  ⌘/" when more models exist than are pinned.
+ * one, the model list with ⌥⌘1-3, and "All models…  ⌘/" when more models exist than are pinned.
  */
 export function ModelPopover({ anchor, models, pinnedCount, shortName, selectedId, canSwap, effort, onSwap, onClose, onDismiss }: ModelPopoverProps) {
   const popover = useRef<HTMLDivElement>(null);
@@ -139,7 +139,7 @@ export function ModelPopover({ anchor, models, pinnedCount, shortName, selectedI
       <div className="model-popover-rule" />
       <div role="radiogroup" aria-label="Models" className="model-popover-list">
         {listed.map((model, index) => (
-          <ModelRow key={model.id} model={model} checked={model.id === selectedId} shortcut={canSwap && index < pinnedCount ? chord(String(index + 1)) : undefined} onPick={() => pick(model.id)} />
+          <ModelRow key={model.id} model={model} checked={model.id === selectedId} shortcut={canSwap && index < pinnedCount ? shellShortcuts.pinnedModel(index + 1) : undefined} onPick={() => pick(model.id)} />
         ))}
       </div>
       {hasMore && !all && (

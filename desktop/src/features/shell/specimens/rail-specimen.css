@@ -1,0 +1,5 @@
+/* The rail specimen sits on the frame, like the window does. */
+.rail-specimen { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-6); padding: var(--space-4); border-radius: var(--radius-pane); background: var(--frame); color: var(--ink); }
+.rail-specimen-frame { width: var(--sidebar-width); }
+.rail-specimen-frame .sidebar { height: auto; padding-bottom: var(--space-3); }
+.rail-specimen-strip { display: flex; align-items: center; height: var(--tab-strip-height); padding: 0 var(--space-2); }

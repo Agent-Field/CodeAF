@@ -157,3 +157,14 @@ Shell). On any conflict, the design files win over code and older docs.
 | Q45 | Components "Finished job · tab menu" lists Open log · Run again · Close tab ⌘W · Remove job, but the tab context menu belongs to the menus lane and "Open log" has no meaning distinct from selecting the tab | Run again and Remove job live in the terminal header's More menu (this lane). The tab context menu rows wait for the menus lane to read the kind; Open log is taken to mean "select this tab" until the designer says otherwise. |
 | Q46 | Where "… earlier output trimmed to the last 512 KB" draws | As the first, dim line of the log, whenever the engine's stream says its kept window no longer starts at byte 0 (`cut`). 512 KB is the engine's `scrollbackBytes`. |
 | Q47 | Terminal tab state glyph (3j lists the kind with needs-you and failed) | Failed (red 6px dot) when the program exited with a non-zero code; running stays silent; a terminal never needs you (no engine question is tied to a terminal). A tab learns the exit when its pane has been shown in this window; background terminals have no engine summary feed yet. |
+
+## Rail and shortcut reconciliation
+
+| ID | Question | Decision / assumption |
+|---|---|---|
+| D4 | Pinned models (⌥⌘1–3) | GLM Flash `z-ai/glm-5.3-flash`, DS Flash `deepseek/deepseek-v4.1-flash`, GLM 5.3 `z-ai/glm-5.3`. Every role defaults to DS Flash. |
+| Q30 | ⌘1–3 as pinned models or as tab jumps | **Designer (Interactions, Shortcuts): ⌘1–9 jump to tabs everywhere; ⌥⌘1–3 switch the pinned models; ⌘/ opens all models.** Linux spells them Ctrl 1–9 and Ctrl Alt 1–3. |
+| R1 | Linux spellings of ⌥⌘1–3 (pinned models) and ⌘⇧\ (tab overview): the design names only the Mac chords | Ctrl Alt 1–3 and Ctrl Shift A. Several Linux desktops reserve Ctrl Alt digits for workspaces; if so the Models popover is the way in. |
+| R2 | ⌘B for the rail: the design lists only ⌘S | ⌘/Ctrl B keeps working beside ⌘S, because it was the key before the shell design. Say if it should go. |
+| R3 | The rail the design draws holds Inbox, Now, Places and All places; the engine has no places or inbox endpoint yet | The rail ships Workspace, Activity, Settings and Design system as 32px rail rows (Places `rr` geometry), with the palette field above them. ⌘0, ⌘P, ⌘⇧P and ⌃1–9 are not bound until places exist. |
+| R4 | Focus mode: the top 8px brings the strip back (Shell 2h) with no dwell named, while the rail's left-edge peek waits 300ms (Places 9e) | The strip comes back at once on the top 8px; the rail only after resting 300ms on the left 8px. Both are overlays tinted with the frame at 88% and go away when the pointer leaves them; a menu opened from the revealed strip keeps it up until the menu closes. |

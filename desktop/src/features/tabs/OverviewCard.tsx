@@ -37,7 +37,7 @@ const overviewActions = { busy: false, allowAll: () => {}, review: () => {} };
 function CardBody({ tab, summaries, now }: { tab: Tab; summaries: Readonly<Record<string, TabSummary>>; now: number }) {
   if (tab.split) return <span className="overview-card-panes">{tab.split.panes.map(pane => <span key={pane.id} className="overview-card-pane">{pane.title}</span>)}</span>;
   const known = summaries[tab.id];
-  if (['conversation', 'task', 'newtab', 'settings', 'history', 'inbox'].includes(tab.kind) && !tab.draft.trim() && !known?.digest && known?.mark !== 'waiting') return <span className="overview-card-text overview-card-empty">No work yet</span>;
+  if (['conversation', 'task', 'newtab', 'inbox'].includes(tab.kind) && !tab.draft.trim() && !known?.digest && known?.mark !== 'waiting') return <span className="overview-card-text overview-card-empty">No work yet</span>;
   const Preview = kindDef(tab.kind).preview;
   if (Preview) return <PreviewContents><Preview pane={tab} title={tab.title} summary={summaries[tab.id]} now={now} act={overviewActions}/></PreviewContents>;
   const text = cardText(tab, summaries);

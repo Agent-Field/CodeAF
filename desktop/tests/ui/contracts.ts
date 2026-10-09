@@ -46,6 +46,7 @@ export const INK3_TEXT = [
  '.markdown-code-lang', '.turn-folded', '.update-eyebrow', '.answer-worked', '.receipt-rest', '.receipt[data-state="withdrawn"]', '.work-step-caption', '.file-chip-added', '.changes-added', '.work-add', '.work-diff-sign',
  '.newtab-hint', '.newtab-section', '.newtab-row-detail', '.newtab-row-hint', '.newtab-caption',
  '.terminal-meta', '.terminal-ask-note',
+ '.rail .new-item kbd',
 ];
 async function isDesignInk3(page: Page, target: unknown) {
  const selector = Array.isArray(target) ? String(target[target.length - 1]) : String(target);

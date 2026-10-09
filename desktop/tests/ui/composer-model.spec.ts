@@ -6,7 +6,7 @@ import { openApp } from './support/conversation';
 const fresh = () => ({ ...plainReply(), initial: { entries: [], title: '' } });
 const chip = (page: Page) => page.getByRole('button', { name: 'Model: DeepSeek v4.1 Flash' });
 
-test('the model chip says Flash and opens the quick-swap popover with only what the engine has', async ({ page }) => {
+test('the model chip says DS Flash from a fresh tab and opens the quick-swap popover with only what the engine has', async ({ page }) => {
   await installMockEngine(page, fresh());
   await openApp(page);
   await expect(chip(page)).toHaveText('DS Flash');
@@ -81,6 +81,6 @@ test('with routing and effort the popover shows pinned segments, Effort, shortcu
   await popover.getByRole('radio', { name: 'Sonnet' }).last().click();
   await expect(popover).toHaveCount(0);
   await expect(section.getByRole('button', { name: 'Model: Claude Sonnet' })).toHaveText('Sonnet');
-  await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+2`);
+  await page.keyboard.press(`${process.platform === 'darwin' ? 'Alt+Meta' : 'Alt+Control'}+2`);
   await expect(section.getByRole('button', { name: 'Model: DeepSeek v4.1 Pro' })).toHaveText('Pro');
 });
