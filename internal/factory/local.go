@@ -192,6 +192,7 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 	}
 	localSettings(&seam, st, o)
 	localRunner(&seam, o)
+	localShape(&seam, o)
 	// THE FLOOR'S OWN MARKS, kept by the store when it keeps them (marks.go).
 	localMarks(&seam, st)
 	if o.talk != nil {
@@ -254,6 +255,16 @@ func WithRepoDirs(dir func(repo string) string) LocalOption {
 	return func(o *localOptions) { o.dirs = dir }
 }
 
+// WithShape gives the local seam its [Seam.Shape] door directly: shape is the
+// manager's shaping turn for one item, built where the session engine is
+// (cmd/codeaf's factory_shape.go), because THIS PACKAGE IMPORTS NEITHER the
+// engine nor the runner. A seam without it, but with a [WithMailbox], asks
+// the process that runs the floor through the mailbox ([VerbShape]); with
+// neither it has no Shape door, and opening an item page shapes nothing.
+func WithShape(shape func(ctx context.Context, id int) (string, error)) LocalOption {
+	return func(o *localOptions) { o.shape = shape }
+}
+
 // WithTalk gives the local seam its [Seam.Talk] door: maker is what makes an
 // item's conversation and answers its session file. It is a func handed in
 // rather than anything this package builds, because a conversation is the
@@ -271,6 +282,7 @@ type localOptions struct {
 	dirs    func(repo string) string
 	lister  RepoLister
 	talk    func(ctx context.Context, it Item) (string, error)
+	shape   func(ctx context.Context, id int) (string, error)
 	refetch func(ctx context.Context, it Item) error
 }
 
@@ -821,7 +833,16 @@ const (
 	VerbSignOff  = "signoff"
 	VerbSendBack = "sendback"
 	VerbReverify = "reverify"
+	// VerbShape is the manager's shaping turn when an item page opens
+	// ([Seam.Shape]). It is not a runner door: the owner carries it beside
+	// the drain, because a turn takes up to a minute and the drain must not
+	// wait on it, and the window waits [ShapeMailboxWait] for its reply.
+	VerbShape = "shape"
 )
+
+// ShapeMailboxWait is how long a window waits for the owner's reply to a
+// [VerbShape] ask: the shaping turn's own minute, and the drain's passes.
+var ShapeMailboxWait = 75 * time.Second
 
 // Ask is one runner verb a window asked of the process that runs the floor.
 // Yes, Words and Edited are the door's own arguments, each read only by the
@@ -838,11 +859,12 @@ type Ask struct {
 }
 
 // Reply is the owner's answer to the ask numbered Seq: the door's refusal in
-// its own words ("" when it did what was asked), and for a sign-off whether a
-// habit is due to be offered. At is when it was written.
+// its own words ("" when it did what was asked), for a sign-off whether a
+// habit is due to be offered, and for a shaping turn the line it answered. At is when it was written.
 type Reply struct {
 	Seq      int       `json:"seq"`
 	Err      string    `json:"err,omitempty"`
+	Line     string    `json:"line,omitempty"`
 	HabitDue bool      `json:"habitDue,omitempty"`
 	At       time.Time `json:"at"`
 }
@@ -962,4 +984,32 @@ func localRunner(seam *Seam, o localOptions) {
 	}
 	seam.SendBack = func(id int, words string) error { return plain(Ask{ID: id, Verb: VerbSendBack, Words: words}) }
 	seam.Reverify = func(id int) error { return plain(Ask{ID: id, Verb: VerbReverify}) }
+}
+
+// localShape hangs the Shape door: the one handed in, or, in a window whose
+// process does not run the floor, the same turn asked of the process that
+// does through the mailbox.
+func localShape(seam *Seam, o localOptions) {
+	if o.shape != nil {
+		seam.Shape = o.shape
+		return
+	}
+	m := o.mailbox
+	if m == nil || o.runner != nil {
+		return
+	}
+	seam.Shape = func(_ context.Context, id int) (string, error) {
+		seq, err := m.Post(Ask{ID: id, Verb: VerbShape})
+		if err != nil {
+			return "", err
+		}
+		reply, err := m.Wait(seq, ShapeMailboxWait)
+		if err != nil {
+			return "", err
+		}
+		if reply.Err != "" {
+			return reply.Line, errors.New(reply.Err)
+		}
+		return reply.Line, nil
+	}
 }

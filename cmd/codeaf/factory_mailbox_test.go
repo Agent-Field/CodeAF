@@ -72,7 +72,7 @@ func TestEveryDoorFromAWindowReachesTheRunner(t *testing.T) {
 	r := &doorRunner{due: true}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go drainFactoryMailbox(ctx, st.Mailbox(), r, 5*time.Millisecond)
+	go drainFactoryMailbox(ctx, st.Mailbox(), r, nil, 5*time.Millisecond)
 	seam := factory.LocalSeam(st, time.Now(), factory.WithMailbox(st.Mailbox()))
 
 	cases := []struct {
@@ -145,7 +145,7 @@ func TestTheOwnerDrainsInOrderAndDropsWhatNobodyWaitsFor(t *testing.T) {
 		seqs = append(seqs, seq)
 	}
 	r := &doorRunner{}
-	answerFactoryAsks(mb, r, now)
+	answerFactoryAsks(mb, r, nil, now)
 	want := []string{"launch 2", "pause 2", "stop 3"}
 	if got := r.seen(); fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("the owner carried %v, want %v", got, want)
