@@ -104,6 +104,69 @@ test('the new terminal key opens a shell under the conversation, types into it a
   await expect(screenText(page)).toContainText('mock$ ls');
 });
 
+const sent = (engine: Awaited<ReturnType<typeof installMockEngine>>) => engine.calls.filter(c => c.path.endsWith('/input')).map(c => Buffer.from(String((c.body as { dataBase64: string }).dataBase64), 'base64').toString()).join('');
+
+test('Linux: plain Ctrl editing chords typed into xterm reach the shell and never act on the app', async ({ page }) => {
+  const engine = await installMockEngine(page, scenario());
+  await page.goto('/');
+  await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toBeVisible();
+  await page.keyboard.press('Control+Backquote');
+  await expect(header(page)).toBeVisible();
+  await expect(screenText(page)).toContainText('mock$');
+  await page.locator('.xterm-helper-textarea').focus();
+  for (const k of ['w', 't', 'k', 's', 'b', 'y', '1', '9']) await page.keyboard.press(`Control+${k}`);
+  // W T K S B Y are the shell's own control codes; the digits (jump-to-tab on the app side) must not switch tabs either.
+  await expect.poll(() => sent(engine).startsWith('\x17\x14\x0b\x13\x02\x19')).toBe(true);
+  await expect(tabs(page)).toHaveCount(2);
+  await expect(header(page)).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+test('Linux: Ctrl+Shift+T and Ctrl+Shift+W are the desktop new and close chords in a terminal, Ctrl+Backquote still opens a shell', async ({ page }) => {
+  const engine = await installMockEngine(page, scenario());
+  await page.goto('/');
+  await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toBeVisible();
+  await page.keyboard.press('Control+Backquote');
+  await expect(tabs(page)).toHaveCount(2);
+  await page.locator('.xterm-helper-textarea').focus();
+  await page.keyboard.press('Control+Shift+T');
+  await expect(tabs(page)).toHaveCount(3);
+  await page.getByRole('tab', { name: 'zsh', exact: true }).first().click();
+  await page.locator('.xterm-helper-textarea').focus();
+  await page.keyboard.press('Control+Shift+W');
+  await expect(tabs(page)).toHaveCount(2);
+  expect(sent(engine)).toBe('');
+});
+
+test('Linux: outside a terminal Ctrl+W still closes the tab', async ({ page }) => {
+  await installMockEngine(page, scenario());
+  await page.goto('/');
+  await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toBeVisible();
+  await page.keyboard.press('Control+Backquote');
+  await expect(tabs(page)).toHaveCount(2);
+  await page.getByRole('tab').first().click();
+  await page.getByRole('textbox', { name: 'Message', exact: true }).focus();
+  await page.keyboard.press('Control+T');
+  await expect(tabs(page)).toHaveCount(3);
+  await page.keyboard.press('Control+W');
+  await expect(tabs(page)).toHaveCount(2);
+});
+
+test.describe('Mac', () => {
+  test.beforeEach(async ({ page }) => { await page.addInitScript(() => Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true })); });
+  test('Cmd+W from inside a terminal still closes the tab and nothing is typed', async ({ page }) => {
+    const engine = await installMockEngine(page, scenario());
+    await page.goto('/');
+    await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toBeVisible();
+    await page.keyboard.press('Control+Backquote');
+    await expect(tabs(page)).toHaveCount(2);
+    await page.locator('.xterm-helper-textarea').focus();
+    await page.keyboard.press('Meta+W');
+    await expect(tabs(page)).toHaveCount(1);
+    expect(sent(engine)).toBe('');
+  });
+});
+
 test('the screen size reaches the engine: once on attach, again when the window changes', async ({ page }) => {
   const engine = await installMockEngine(page, scenario());
   await openOn(page, 'job-1', 'nightly-bench');
