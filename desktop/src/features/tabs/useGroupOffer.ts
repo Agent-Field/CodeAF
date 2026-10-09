@@ -1,6 +1,6 @@
 // The group suggestion's state: which offer is showing, what this launch has already shown, and what was decided.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { findOffers, nextOffer, readMemory, remember, writeMemory, type GroupOffer, type OfferMemory } from './offerRules.ts';
+import { findOffers, looseChatIDs, mergeOffers, nextOffer, offerSettleMs, readMemory, remember, shouldAskCanonical, tabOffersForChats, writeMemory, canonicalSetKey, type ChatSummary, type GroupOffer, type OfferMemory } from './offerRules.ts';
 import type { Tab } from './types.ts';
 
 export type GroupOfferState = {
@@ -16,6 +16,15 @@ type Options = {
   tabs: readonly Tab[];
   /** The ONE way a group is made: the caller dispatches the reducer's own `group` action. Nothing here builds a group. */
   onGroup: (ids: string[], title?: string) => void;
+  /** Engine summaries keyed by tab id. The chat id is read from here, never from a path. */
+  summaries?: Readonly<Record<string, ChatSummary | undefined>>;
+  /**
+   * Asks the engine about one settled set of canonical chat ids. Absent in a specimen that has no engine.
+   * The ids it returns are chat ids; this hook maps them onto tabs.
+   */
+  ask?: (ids: readonly string[]) => Promise<readonly GroupOffer[]>;
+  /** How long the set must sit still. The default is [offerSettleMs]. */
+  settleMs?: number;
   /** Drawn nothing while a modal layer (switcher, overview, rename) is open. The offer is kept, not spent. */
   suspended?: boolean;
   storage?: Storage;
@@ -25,11 +34,33 @@ type Options = {
 const defaultStorage = () => (typeof localStorage === 'undefined' ? undefined : localStorage);
 
 /** A set is shown at most once per launch (`shown`), and never again once decided (the persisted memory). */
-export function useGroupOffer({ tabs, onGroup, suspended = false, storage = defaultStorage(), now = Date.now }: Options): GroupOfferState {
+export function useGroupOffer({ tabs, onGroup, summaries = {}, ask, settleMs = offerSettleMs, suspended = false, storage = defaultStorage(), now = Date.now }: Options): GroupOfferState {
   const [memory, setMemory] = useState<OfferMemory>(() => readMemory(storage, now()));
   const shown = useRef(new Set<string>());
+  const asked = useRef(new Set<string>());
   const [currentKey, setCurrentKey] = useState<string>();
-  const offers = useMemo(() => findOffers(tabs), [tabs]);
+  const [raw, setRaw] = useState<readonly GroupOffer[]>([]);
+  const chatIDs = useMemo(() => looseChatIDs(tabs, summaries), [tabs, summaries]);
+  const setKey = canonicalSetKey(chatIDs);
+  const idsRef = useRef(chatIDs);
+  idsRef.current = chatIDs;
+  // The effect follows the SET, not the tab array. A selection, a draft or another tab that does not change which
+  // chats are open leaves an in-flight question alone, and does not start a second one.
+  useEffect(() => {
+    const ids = idsRef.current;
+    if (!ask || !shouldAskCanonical(ids, asked.current)) {
+      if (ids.length < 3) setRaw(current => current.length ? [] : current);
+      return;
+    }
+    let liveCall = true;
+    const timer = window.setTimeout(() => {
+      if (!liveCall || !shouldAskCanonical(ids, asked.current)) return;
+      asked.current.add(setKey);
+      ask(ids).then(offers => { if (liveCall) setRaw(offers); }).catch(() => { if (liveCall) setRaw([]); });
+    }, settleMs);
+    return () => { liveCall = false; window.clearTimeout(timer); };
+  }, [ask, setKey, settleMs]);
+  const offers = useMemo(() => mergeOffers(findOffers(tabs), tabOffersForChats(tabs, summaries, raw)), [tabs, summaries, raw]);
   const live = offers.find(offer => offer.key === currentKey && !(offer.key in memory));
 
   useEffect(() => {
