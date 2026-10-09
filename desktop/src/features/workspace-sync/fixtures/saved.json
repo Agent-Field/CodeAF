@@ -1,0 +1,21 @@
+{
+  "key": "now",
+  "revision": 1,
+  "updatedAt": "2026-10-09T12:00:00Z",
+  "workspace": {
+    "closed": [],
+    "groups": [],
+    "nextNumber": 2,
+    "schema": 1,
+    "tabs": [
+      {
+        "draft": "",
+        "id": "a",
+        "kind": "conversation",
+        "pinned": false,
+        "title": "Tab a"
+      }
+    ]
+  },
+  "writer": "win-a"
+}

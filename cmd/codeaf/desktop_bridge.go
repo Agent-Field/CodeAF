@@ -26,6 +26,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/placegraph"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/workspacestore"
 )
 
 // This local surface door reuses the same persistent engine and wire as the
@@ -128,6 +129,14 @@ func runDesktopBridge(args []string) error {
 	}
 	bridge.UsePlaces(places)
 	bridge.UseHistory(&desktopbridge.History{Root: session.PlacesRoot()})
+	// Each window place's tab set lives beside the place graph, in a folder the
+	// bridge is handed rather than one it picks: so a --places file in a test or
+	// a throwaway home carries its tab sets with it.
+	workspaces, err := workspacestore.Open(workspacestore.Options{Dir: desktopWorkspacesDir(placeDoor.Path)})
+	if err != nil {
+		return fmt.Errorf("tab sets: %w", err)
+	}
+	bridge.UseWorkspaces(workspaces)
 	listener, err := net.Listen("tcp", *address)
 	if err != nil {
 		return err
@@ -160,6 +169,12 @@ func desktopPlacesPath(flag string) (string, error) {
 		path = home.Join("desktop", "places.json")
 	}
 	return filepath.Abs(path)
+}
+
+// desktopWorkspacesDir is where the tab sets of each window place are kept:
+// a "workspaces" folder next to the place graph (PLACES-ARCHITECTURE §3.4).
+func desktopWorkspacesDir(graphPath string) string {
+	return filepath.Join(filepath.Dir(graphPath), "workspaces")
 }
 
 // desktopHello is the hello a desktop conversation is opened with. The place
