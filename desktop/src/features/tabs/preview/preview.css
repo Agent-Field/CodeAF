@@ -1,5 +1,5 @@
 /* The tab hover preview and the overview card (Shell 3k, Components "Tab hover preview · overview card"). Values are tokens. */
-.preview-card { display: flex; flex-direction: column; gap: var(--preview-card-gap); width: var(--preview-card-width); max-width: calc(100vw - var(--space-6)); padding: var(--preview-card-pad); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--sh-2); color: var(--ink); font-family: var(--sans); text-align: left; }
+.preview-card { display: flex; flex-direction: column; gap: var(--preview-card-gap); width: calc(var(--preview-card-width) + var(--preview-card-inline-padding) * 2); max-width: calc(100vw - var(--space-6)); padding: var(--preview-card-pad); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--sh-2); color: var(--ink); font-family: var(--sans); text-align: left; }
 .preview-head { display: flex; align-items: center; gap: var(--preview-head-gap); font-size: var(--type-caption-size); color: var(--ink-3); }
 .preview-kind { flex: none; }
 .preview-state { display: flex; align-items: center; gap: var(--preview-count-gap); min-width: 0; margin-left: auto; font-family: inherit; }
@@ -21,7 +21,7 @@
 .preview-actions .preview-action.button[data-quiet] { padding: 0 var(--preview-action-pad-quiet); }
 
 /* The web card has no header: a screenshot area, then a two-line caption. */
-.preview-card-shot { gap: 0; padding: 0; overflow: hidden; }
+.preview-card-shot { width: var(--preview-card-width); gap: 0; padding: 0; overflow: hidden; }
 .preview-shot { display: flex; flex-direction: column; gap: var(--preview-shot-gap); height: var(--preview-shot-height); padding: var(--preview-shot-pad); background: var(--preview-page-ground); overflow: hidden; }
 .preview-shot-image { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; }
 .preview-shot[data-note] { align-items: center; justify-content: center; }
