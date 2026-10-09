@@ -9,5 +9,5 @@ interface NavigationItemProps extends ButtonHTMLAttributes<HTMLButtonElement> {
  trail?: ReactNode;
 }
 export function NavigationItem({ icon, active, lead, trail, children, className = '', ...props }: NavigationItemProps) {
- return <button {...props} type="button" className={`nav-item ${active ? 'active' : ''} ${className}`} aria-current={active ? 'page' : undefined}>{lead ?? (icon && <Icon name={icon} size="sm"/>)}<span>{children}</span>{trail}</button>;
+ return <button {...props} type="button" className={`nav-item ${active ? 'active' : ''} ${className}`} aria-current={active ? 'page' : undefined}>{lead ?? (icon && <Icon name={icon} size="sm"/>)}<span className="nav-label">{children}</span>{trail}</button>;
 }

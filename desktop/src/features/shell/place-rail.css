@@ -15,7 +15,7 @@
 /* A place row: tint square, name with its parent muted, then the one status dot. The × replaces the dot's slot on hover. */
 .rail-row { position: relative; border-radius: var(--radius-control); }
 .place-rail .nav-item { gap: var(--space-compact); }
-.place-rail .nav-item > span { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: var(--space-tight); overflow: hidden; }
+.place-rail .nav-label { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: var(--space-tight); overflow: hidden; }
 .rail-place.nav-item { padding: 0 var(--space-tight) 0 var(--space-2); }
 .rail-place-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .rail-place-path { font-weight: var(--font-weight-regular); color: var(--ink-3); white-space: nowrap; }

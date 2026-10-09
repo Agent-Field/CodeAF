@@ -46,7 +46,9 @@ export function createPlacesStore(options: Options = {}) {
 
   async function read(): Promise<void> {
     if (inflight) { again = true; return inflight; }
-    if (state.status === 'idle' || (state.status !== 'ready' && !state.graph)) set({ ...state, status: 'loading' });
+    // Only the first read says "loading": a retry after a failure keeps the failure on screen until it has an answer,
+    // so the rail's notice and its Retry do not blink out under the pointer on every focus or world change.
+    if (state.status === 'idle') set({ ...state, status: 'loading' });
     inflight = (async () => {
       try {
         const graph = await client.graph({ archived: true });
@@ -55,7 +57,7 @@ export function createPlacesStore(options: Options = {}) {
         const error = failure instanceof Error ? failure.message : 'Places could not be read.';
         // A bridge without the Places routes answers 404: Places are then absent, not broken.
         const status: PlacesStatus = failure instanceof PlacesError && failure.unreachable ? 'offline' : failure instanceof PlacesError && failure.status === 404 ? 'unavailable' : 'error';
-        set({ ...state, status, error });
+        if (status !== state.status || error !== state.error) set({ ...state, status, error });
       } finally {
         inflight = undefined;
       }

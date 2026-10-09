@@ -44,7 +44,8 @@ export function TabItem({ api, tab, order, inGroup = false }: { api: TabsApi; ta
   const view = (
     <TabView kind={tab.kind} title={tab.title} active={active} pinned={tab.pinned} placeTint={isPlaceHome(tab) ? api.placeTint ?? 'graphite' : undefined} inGroup={inGroup} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame}
       onSelect={() => api.dispatch({ type: 'select', id: tab.id })} onClose={() => api.closeTab(tab.id)} onRename={() => api.startRename(tab.id)}
-      onKeyDown={navigate(api, order, tab)} wrapSelect={select => (switcher ? select : withPreview(api, tab, select))} switcher={switcher && { alert: switcher.alert }}/>
+      onKeyDown={navigate(api, order, tab)} wrapSelect={select => (switcher ? <DropdownMenu label="Place switcher" items={switcher.items}>{select}</DropdownMenu> : withPreview(api, tab, select))} switcher={switcher && { alert: switcher.alert }}/>
   );
-  return withTabMenu(api, tab, switcher ? <DropdownMenu label="Place switcher" items={switcher.items}>{view}</DropdownMenu> : view);
+  // The switcher menu hangs on the tab's own button, so its popup attributes land on a control and not on the frame.
+  return withTabMenu(api, tab, view);
 }

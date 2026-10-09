@@ -7,6 +7,15 @@ export async function tokenColor(page: Page, token: string) {
   const color = getComputedStyle(probe).color; probe.remove(); return color;
  }, token);
 }
+// A token as it resolves inside one subtree: a window place tints the body and a specimen may carry its own tint, so a
+// control is compared with the palette it actually sits in rather than the document's.
+export async function tokenColorIn(scope: Locator, token: string) {
+ return scope.evaluate((root, name) => {
+  const probe = document.createElement('span');
+  probe.style.color = `var(--${name})`; root.append(probe);
+  const color = getComputedStyle(probe).color; probe.remove(); return color;
+ }, token);
+}
 export async function expectThemedSurface(page: Page, surface: Locator) {
  await expect(surface).toHaveCSS('opacity','1');
  await expect(surface).toHaveCSS('background-color', await tokenColor(page, 'overlay-surface'));
@@ -47,6 +56,11 @@ export const INK3_TEXT = [
  '.newtab-hint', '.newtab-section', '.newtab-row-detail', '.newtab-row-hint', '.newtab-caption',
  '.terminal-meta', '.terminal-ask-note',
  '.rail .new-item kbd', '.rail-section-label', '.rail-place-path', '.rail-hint', '.rail-meta',
+ // The live place Home and All places draw these in ink-3 (Places 8a to 8e); the Places suites waive the same list.
+ '.home-quiet', '.home-quicklook-hint', '.all-places-search', '.places-tile-hint', '.home-archived-toggle', '.home-notice',
+ '.places-row-aside', '.places-row-muted', '.places-chat-excerpt', '.places-chat-time', '.places-tile-meta', '.places-crumb', '.type-section-label', '.places-heading-menu', '.places-chat-lead', '.places-tile-main',
+ // The Go to chooser and the place dialogs (Places 4a to 4e, Interactions "Go to"): counts, section labels, times, hints.
+ '.goto-count', '.goto-section', '.goto-meta', '.goto-hints', '.goto-context', '.place-dialog-quiet', '.place-dialog-source-meta',
 ];
 async function isDesignInk3(page: Page, target: unknown) {
  const selector = Array.isArray(target) ? String(target[target.length - 1]) : String(target);
