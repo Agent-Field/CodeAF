@@ -34,7 +34,7 @@ func TestCompletionCannotRecommissionEvenIfProviderReturnsTools(t *testing.T) {
 	question := "Start a background task: sleep 30 and write the marker. Return immediately."
 	c := &landingAuthorityCompleter{scriptedCompleter: scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolResponse("repeat-task", "propose_task", `{"instruction":"repeat original request"}`), nil
+			return toolResponse("repeat-task", "propose_task", `{"title":"Repeat marker","summary":"Repeat the already finished marker command.","brief":"Run sleep 30 and write the marker again.","acceptance":"Marker contains NATIVE_REATTACH_DONE.","deliverable":"native-reattach-marker.txt"}`), nil
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) {
 			return toolResponse("repeat-command", "landing_probe", `{}`), nil
@@ -64,6 +64,9 @@ func TestCompletionCannotRecommissionEvenIfProviderReturnsTools(t *testing.T) {
 	a.deliverBeltRunLanding(&beltRun{store: store, root: store.RootID()}, RunSummary{Outcome: beltRunOutcomeDone, Result: "The marker was written."}, RunLanding{})
 	stream := <-wakes
 	for range stream {
+	}
+	if rows := a.PlanTasks(); len(rows) != 0 {
+		t.Fatalf("completion created new tasks: %#v", rows)
 	}
 	if executed.Load() != 0 {
 		t.Fatal("completion executed a new action")
@@ -127,5 +130,32 @@ func TestCompletionRestrictionDoesNotSwallowAnotherQueuedDecision(t *testing.T) 
 	wake, ok := a.settleWakeLocked()
 	if !ok || wake.answerOnly {
 		t.Fatal("completion restricted another landing decision")
+	}
+}
+
+func TestProgramOutcomeKeepsItsActionableVerificationAuthority(t *testing.T) {
+	a, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	question := "Repair the parser and verify it."
+	store, err := plandb.Open(filepath.Join(t.TempDir(), planStoreFilename), "run", "1", "Repair", question)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err = store.Revise(store.RootID(), plandb.TaskPatch{Question: &question}); err != nil {
+		t.Fatal(err)
+	}
+	note := a.programLandingNote(&beltRun{store: store, root: store.RootID()}, RunSummary{Outcome: "unverified"}, "Run the verification checks before accepting the result.")
+	if note.settleAnswerOnly || note.settlePrompt != programOutcomePrompt || !strings.Contains(note.text(), "Run the verification checks") {
+		t.Fatalf("program action authority lost: %#v", note)
+	}
+	if strings.Contains(note.text(), "do not commission or execute it again") {
+		t.Fatal("completion restriction leaked into actionable program outcome")
+	}
+	a.mu.Lock()
+	a.steering = []userMessage{note}
+	wake, _ := a.settleWakeLocked()
+	a.mu.Unlock()
+	if a.answerOnlyLanding(withSettleWake(context.Background(), wake)) {
+		t.Fatal("program verification tools were disabled")
 	}
 }
