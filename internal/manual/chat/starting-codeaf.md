@@ -832,7 +832,7 @@ reaches a conversation when you next open it or switch models;
 `OPENROUTER_API_KEY` still wins. `your key was not accepted for this model` means
 the provider refused the key; doctor helps find the source to replace.
 
-## Choosing the model for each kind of job in the desktop
+## Choosing the model for each kind of job in the desktop · the pinned models · the desktop settings page · ⌘1-3 in the model picker
 
 In the desktop app you can change which model does each kind of job, and every
 job starts on `deepseek/deepseek-v4.1-flash`. The jobs are named in plain words:
@@ -846,6 +846,24 @@ job starts on `deepseek/deepseek-v4.1-flash`. The jobs are named in plain words:
 - **Memory** reads each turn for things worth remembering.
 - **Turn routing** judges whether a message should become a task.
 - **Safety checks** reads one tool call and says whether it is safe to run.
+
+The desktop's Settings page (the **Settings** entry in the sidebar; its tab
+reads "Models") is where you make these choices. It has one row per job above,
+each with a searchable model list, an effort choice when the model takes one,
+and a quiet **Reset** that appears only when the job differs from the default.
+Every change is saved at once and the page says "Saved · applies to the next
+call"; there is no Save button.
+
+The page also holds the **pinned models**: three models that the message box's
+model picker shows as its segmented control and that the keys ⌘1, ⌘2 and ⌘3
+(Ctrl 1, 2 and 3 on Linux) switch to. Until you change them they are, in this
+order, `z-ai/glm-5.3-flash` ("GLM Flash"), `deepseek/deepseek-v4.1-flash`
+("DS Flash") and `z-ai/glm-5.3` ("GLM 5.3"). Pick any other model in a pinned
+slot and it takes that place; picking one that is already pinned swaps the two.
+The rest of the provider's list sits under "All models…" (⌘/) in the picker.
+A pinned model the provider does not offer is left out of the picker. The
+pinned list is saved in your profile next to the job choices, and the terminal
+does not use it.
 
 A choice is saved in your profile, not in the window, and it applies to the next
 time that job runs: an open chat sends its next message on the new Conversation

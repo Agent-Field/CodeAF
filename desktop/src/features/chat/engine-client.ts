@@ -425,3 +425,18 @@ export async function setModelRole(role: string, choice: { model: string; effort
  const response = await fetchEngine(`/models/roles/${encodeURIComponent(role)}`, { method: 'PUT', body: JSON.stringify({ model: choice.model, effort: choice.effort ?? '' }) });
  return await response.json() as ModelRole;
 }
+/** One pinned model: its id and the short word the composer's segmented control shows for it. */
+export type PinnedModel = { id: string; label: string };
+export type PinnedModels = { pinned: PinnedModel[]; chosen: boolean };
+/** Fired on the window after a model choice is saved, so the composer's picker reads the lists again. */
+export const MODELS_CHANGED = 'codeaf:models-changed';
+export async function readPinnedModels(): Promise<PinnedModels> {
+ const view = await (await fetchEngine('/models/pinned')).json() as PinnedModels;
+ if (!view || !Array.isArray(view.pinned)) throw new EngineError('The engine returned an invalid pinned list.');
+ return view;
+}
+/** Pins exactly three catalog models in segment order; an empty list puts the pins back on the default three. */
+export async function setPinnedModels(models: string[]): Promise<PinnedModels> {
+ const response = await fetchEngine('/models/pinned', { method: 'PUT', body: JSON.stringify({ models }) });
+ return await response.json() as PinnedModels;
+}
