@@ -36,6 +36,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/offpath"
+	"github.com/Agent-Field/codeaf/internal/placegraph"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/search"
@@ -1523,6 +1524,11 @@ type Config struct {
 	// Nil is off: no belt tool, no card, no ticking from this process.
 	Standing *Standing
 
+	// PlaceGraph is where the desktop's place graph lives
+	// (placegraphcontext.go). Nil is a conversation filed under no place, which
+	// is every conversation outside the desktop: nothing is read or rendered.
+	PlaceGraph *PlaceGraphDoor
+
 	// standingItems overrides where [Standing.Store] would be read, and it is
 	// unexported because it exists for THIS PACKAGE'S TESTS and for nothing
 	// else: the store is a concrete *standing.Store on the seam a door fills,
@@ -2940,6 +2946,16 @@ type Agent struct {
 	// Empty is the ordinary state and renders nothing at all, which is nearly
 	// every conversation: a person who has attached no folder is told about none.
 	placesText string
+	// placeGraphText is the `# Places this conversation belongs to` block
+	// message[0] currently carries (placegraphcontext.go): what the places this
+	// conversation is filed under say to it. It is re-resolved at a turn's
+	// opening only when the graph or choices file moved (placeGraphStamp), and
+	// placeGraphBundle is the resolution it was rendered from, kept to say what
+	// changed the next time. Empty is a conversation in no place.
+	placeGraphText   string
+	placeGraphStamp  placeGraphStamp
+	placeGraphRead   bool
+	placeGraphBundle *placegraph.Bundle
 	// recordText is the `the record` block as the file now stands (question.go's
 	// [DecisionsSection]), re-rendered off every lock by [Agent.takeRecord] when
 	// the session opens and when a decision is written.
