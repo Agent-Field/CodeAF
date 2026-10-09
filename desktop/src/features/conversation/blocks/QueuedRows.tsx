@@ -3,7 +3,7 @@
 // passes remove alone and the rows then show only that.
 
 import { useState } from 'react';
-import { Button, Icon, IconButton } from '../../../components/ui';
+import { Button, Icon, IconButton, RowActions } from '../../../components/ui';
 import { plainMessage } from '../composer/pastedText';
 import { QueuedEdit } from './QueuedEdit';
 import './queued.css';
@@ -59,7 +59,7 @@ export function QueuedRows({ items, onRemove, onEdit, onMove }: Props) {
             onDragOver={(event) => dragging && event.preventDefault()}
             onDrop={() => drop(index)}
           >
-            <div className="queued-row" data-movable={!!onMove || undefined}>
+            <div className="queued-row" data-actions-host="" data-movable={!!onMove || undefined}>
               <span className="queued-mark">
                 <Icon name="clock" size="xs" />
               </span>
@@ -69,10 +69,10 @@ export function QueuedRows({ items, onRemove, onEdit, onMove }: Props) {
                 </span>
               )}
               <span className="queued-text">{plainMessage(item.text)}</span>
-              <span className="queued-actions">
-                {onEdit && <IconButton label="Edit queued message" icon="pencil" iconSize="xs" className="queued-action" onClick={() => setEditing(item.id)} />}
-                <IconButton label="Remove queued message" icon="close" iconSize="xs" className="queued-action" onClick={() => onRemove(item.id)} />
-              </span>
+              <RowActions className="queued-actions">
+                {onEdit && <IconButton label="Edit queued message" icon="pencil" size="row" iconSize="xs" onClick={() => setEditing(item.id)} />}
+                <IconButton label="Remove queued message" icon="close" size="row" iconSize="xs" onClick={() => onRemove(item.id)} />
+              </RowActions>
             </div>
           </li>
         ),

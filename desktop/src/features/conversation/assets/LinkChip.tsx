@@ -27,7 +27,7 @@ export function LinkChip({ href, title }: LinkChipProps) {
   const domain = hostnameOf(href);
   if (!domain) return <span className="asset-plain">{title ?? href}</span>;
   return (
-    <a className="link-chip" href={href} title={href} target="_blank" rel="noopener noreferrer" onClick={event => open(event, href, assets.openUrl)}>
+    <a className="chip link-chip" href={href} title={href} target="_blank" rel="noopener noreferrer" onClick={event => open(event, href, assets.openUrl)}>
       <SiteIcon domain={domain} />
       <span className="link-chip-title">{title || domain}</span>
       {title && <span className="link-chip-domain">{domain}</span>}

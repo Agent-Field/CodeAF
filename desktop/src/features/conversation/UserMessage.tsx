@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { Button, CopyButton, Markdown } from '../../components/ui';
+import { Button, CopyButton, Markdown, RowActions } from '../../components/ui';
 import './user-message.css';
 import { PasteCard } from './composer/PasteCard';
 import { splitPasted } from './composer/pastedText';
@@ -26,7 +26,7 @@ export function UserMessage({ text: message, markdown = false, attachments }: Us
 
   if (!text && !attachments && pastes.length === 0) return null;
   return (
-    <div className="user-message">
+    <div className="user-message" data-actions-host="">
       <div className="user-message-bubble" data-attached={Boolean(attachments) || undefined} data-pasted={pastes.length > 0 || undefined}>
         {attachments}
         {pastes.map((paste, index) => (
@@ -44,9 +44,9 @@ export function UserMessage({ text: message, markdown = false, attachments }: Us
         )}
       </div>
       {text && (
-        <div className="user-message-actions">
-          <CopyButton text={text} label="Copy message" />
-        </div>
+        <RowActions className="user-message-actions">
+          <CopyButton text={text} label="Copy message" size="message" iconSize="xs" />
+        </RowActions>
       )}
     </div>
   );

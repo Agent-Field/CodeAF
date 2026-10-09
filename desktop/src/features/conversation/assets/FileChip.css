@@ -1,25 +1,6 @@
-/* File chip (design v3, "File chip"): a 20px pill on the field fill. Name in ink, directory muted. */
-.button.file-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--file-chip-gap);
-  max-width: 100%;
-  height: var(--chip-height);
-  min-height: var(--chip-height);
-  padding: 0 var(--file-chip-pad-end) 0 var(--file-chip-pad-start);
-  vertical-align: middle;
-  border: 0;
-  border-radius: var(--radius-chip);
-  background: var(--field);
-  color: var(--ink);
-  font-size: var(--type-label-size);
-  line-height: var(--line-height-tight);
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background var(--dur-fast) var(--ease);
-}
-.button.file-chip:hover:not(:disabled),
-.button.file-chip:active:not(:disabled) { background: var(--field-2); }
+/* File chip (design v3, "File chip"): the shared 20px Chip. Name in ink, directory muted. */
+/* The pill itself (height, fill, padding, gap, hover, focus) is the shared ChipButton. */
+.chip.file-chip { line-height: var(--line-height-tight); cursor: pointer; }
 .file-chip > .app-icon { width: var(--file-chip-icon); height: var(--file-chip-icon); color: var(--ink-2); }
 .file-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: var(--asset-name-max-width); font-weight: var(--type-label-strong); }
 .file-chip-dir { min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: var(--asset-dir-max-width); color: var(--ink-3); }

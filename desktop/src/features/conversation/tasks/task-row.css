@@ -24,13 +24,11 @@
 .task-row[data-kind="queued"], .task-row[data-kind="stopped"], .task-row[data-kind="interrupted"] { color: var(--ink-3); }
 
 /* Hover actions cover the right end of the row, so the title never moves. */
-.task-row-actions { position: absolute; inset-block: 0; inset-inline-end: var(--row-pad); display: flex; align-items: center; padding-inline-start: var(--space-1); border-radius: var(--radius-control); background: var(--field); opacity: var(--opacity-transparent); transition: opacity var(--dur-fast) var(--ease); }
-.task-row-actions .icon-button { width: var(--row-action-size); height: var(--row-action-size); border-radius: var(--radius-row-action); color: var(--ink-3); }
-.task-row-actions .icon-button:hover:not(:disabled) { background: var(--field-2); color: var(--ink); }
+/* The shared RowActions (reveal, row-size buttons), laid over the meta on the row's own fill. */
+.task-row-actions.row-actions { position: absolute; inset-block: 0; inset-inline-end: var(--row-pad); padding-inline-start: var(--space-1); border-radius: var(--radius-control); background: var(--field); }
 .task-row-actions .app-icon { width: var(--row-action-icon); height: var(--row-action-icon); }
-.task-row:hover .task-row-actions, .task-row:focus-within .task-row-actions { opacity: var(--opacity-opaque); }
 .task-row:hover .task-row-meta, .task-row:focus-within .task-row-meta { opacity: var(--opacity-transparent); }
 @media (pointer: coarse) {
-  .task-row-actions { position: static; opacity: var(--opacity-opaque); padding: 0; background: transparent; }
+  .task-row-actions.row-actions { position: static; padding: 0; background: transparent; }
   .task-row-meta { display: none; }
 }
