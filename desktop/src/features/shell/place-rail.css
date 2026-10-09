@@ -1,0 +1,37 @@
+/* The Places rail (Places 6a, 10a; helpers PRAIL and rr). Rows are the rail's 32px rows (rail.css); this file adds
+   the section labels, the two marks per place row, the hover close and the foot. Layout only, tokens only. */
+.place-rail .rail-nav { min-height: 0; overflow-y: auto; gap: var(--rail-group-gap); scrollbar-width: none; }
+.place-rail .rail-group, .place-rail .rail-rows { display: flex; flex-direction: column; gap: var(--rail-row-gap); }
+.rail-section-label { display: flex; align-items: center; min-height: var(--type-caption-size); padding: 0 var(--space-2) var(--space-tight); font-size: var(--type-caption-size); font-weight: var(--font-weight-medium); line-height: var(--line-height-tight); color: var(--ink-3); }
+.rail-section-label > span { flex: 1; min-width: 0; }
+/* "Close all" sits on the Open header and shows with the section's hover or keyboard focus; touch always shows it. */
+.rail-section-action.button { height: auto; min-height: 0; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: inherit; font-weight: inherit; line-height: inherit; }
+.rail-section-action.button:hover:not(:disabled) { background: transparent; color: var(--ink); }
+.rail-section-action.button:active:not(:disabled) { background: transparent; color: var(--ink); }
+.rail-section-label .rail-section-action { opacity: var(--opacity-transparent); transition: opacity var(--dur-fast) var(--ease); }
+.rail-group:hover .rail-section-action, .rail-group:focus-within .rail-section-action { opacity: var(--opacity-opaque); }
+@media (hover: none) { .rail-section-label .rail-section-action { opacity: var(--opacity-opaque); } }
+
+/* A place row: tint square, name with its parent muted, then the one status dot. The × replaces the dot's slot on hover. */
+.rail-row { position: relative; border-radius: var(--radius-control); }
+.place-rail .nav-item { gap: var(--space-compact); }
+.place-rail .nav-item > span { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: var(--space-tight); overflow: hidden; }
+.rail-place.nav-item { padding: 0 var(--space-tight) 0 var(--space-2); }
+.rail-place-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.rail-place-path { font-weight: var(--font-weight-regular); color: var(--ink-3); white-space: nowrap; }
+.rail-place-closed { flex: none; font-size: var(--type-caption-size); }
+.rail-row[data-busy-closed] .rail-place { color: var(--ink-3); }
+.rail-row[data-drop] { box-shadow: inset 0 0 0 var(--places-tile-ring-drop) var(--accent); }
+.rail-dot { flex: none; width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--amber); }
+.rail-dot[data-state="failed"] { background: var(--danger); }
+.rail-meta { flex: none; font-size: var(--type-caption-size); color: var(--ink-3); }
+.rail-row-close.icon-button { position: absolute; top: 50%; right: var(--space-1); transform: translateY(-50%); width: var(--tab-close-size); height: var(--tab-close-size); color: var(--ink-3); background: var(--tab-hover); opacity: var(--opacity-transparent); pointer-events: none; }
+.rail-row:hover .rail-row-close, .rail-row:focus-within .rail-row-close { opacity: var(--opacity-opaque); pointer-events: auto; }
+.rail-row-close.icon-button:hover:not(:disabled) { color: var(--ink); background: var(--field-2); }
+@media (hover: none) { .rail-row-close.icon-button { opacity: var(--opacity-opaque); pointer-events: auto; } }
+.rail-row:hover .rail-dot, .rail-row:focus-within .rail-dot { visibility: hidden; }
+.rail-hint { margin: 0; padding: 0 var(--space-2); font-size: var(--type-caption-size); line-height: var(--line-height-tight); color: var(--ink-3); }
+
+/* The foot: All places, then the window's other pages, then the theme. */
+.rail-foot { margin-top: auto; display: flex; flex-direction: column; gap: var(--rail-row-gap); }
+.rail-foot .sidebar-bottom { margin-top: var(--space-2); }

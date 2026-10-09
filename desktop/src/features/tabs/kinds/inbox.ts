@@ -1,6 +1,6 @@
-import { placeholderPane } from './Placeholder';
+import { InboxPane } from '../../inbox/InboxPane';
 import { PlainPreview } from '../preview/bodies';
 import type { KindDef } from './slots';
 
-/** Placeholder. The pinned Inbox (3j) needs an engine-wide feed of work that needs you; not opened in the live app until that exists. */
-export const inboxKind: KindDef = { kind: 'inbox', label: 'Inbox', icon: 'inbox', backed: false, pane: placeholderPane('Inbox', 'inbox'), preview: PlainPreview };
+/** The Inbox (Places 6a rail, Shell 3j): what needs the person and what runs in the background, from the engine-wide world stream. */
+export const inboxKind: KindDef = { kind: 'inbox', label: 'Inbox', icon: 'inbox', backed: true, pane: InboxPane, preview: PlainPreview };

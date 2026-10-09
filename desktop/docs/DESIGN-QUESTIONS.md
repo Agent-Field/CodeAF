@@ -168,3 +168,21 @@ Shell). On any conflict, the design files win over code and older docs.
 | R2 | ⌘B for the rail: the design lists only ⌘S | ⌘/Ctrl B keeps working beside ⌘S, because it was the key before the shell design. Say if it should go. |
 | R3 | The rail the design draws holds Inbox, Now, Places and All places; the engine has no places or inbox endpoint yet | The rail ships Workspace, Activity, Settings and Design system as 32px rail rows (Places `rr` geometry), with the palette field above them. ⌘0, ⌘P, ⌘⇧P and ⌃1–9 are not bound until places exist. |
 | R4 | Focus mode: the top 8px brings the strip back (Shell 2h) with no dwell named, while the rail's left-edge peek waits 300ms (Places 9e) | The strip comes back at once on the top 8px; the rail only after resting 300ms on the left 8px. Both are overlays tinted with the frame at 88% and go away when the pointer leaves them; a menu opened from the revealed strip keeps it up until the menu closes. |
+
+## Places shell integration (2026-10-09)
+
+R3 above is superseded: the rail now draws the Places sections from the engine's Places routes.
+
+| ID | Question | Assumption shipped |
+|---|---|---|
+| PS1 | The Places rail (6a, 10a) has no rows for Activity, Settings or the Design system page, and no palette field | They stay, quieter, under All places (Activity, Settings, Design system, then the theme), and the "codeaf" field keeps opening the ⌘K command palette. Say if any should leave the rail. |
+| PS2 | What the "3" beside Now counts (6a draws "Now 3", 8c draws "Not in any place · 38") | Nothing is drawn beside Now: no count the engine reports matches it. Now carries the amber dot when an unplaced chat needs you, like any place row. |
+| PS3 | ⌃1–9 on Linux, where Ctrl 1–9 is already the tab jump (⌘1–9 on a Mac) | Alt 1–9 switch places and Alt 0 goes to Now on Linux and Windows; ⌃1–9 / ⌃0 on a Mac. |
+| PS4 | A red rail/tile dot for "failed": the engine's roll-up `failedTasks` is all-time, never "new" | A place with any failed task shows red until its chats are archived. A "new since you looked" rule needs an engine field. |
+| PS5 | Closing a place (10a): the engine keeps no "closed" state; Open is derived (visited in 12h, or busy) | Closing is remembered per machine in this app's storage; going to the place again reopens it with its tabs (Q-P4 "closed by the person: tabs restored"). A closed place with running or waiting work stays muted with "closed · still running". |
+| PS6 | Per-place tab sets live in the engine (Architecture §3.4) but there is no workspace route yet | Tab sets are kept per place in this app's storage (Now keeps the v1 key); two windows on one place mirror through the storage event. They do not follow the engine to another machine. |
+| PS7 | Inbox: the design says you answer in Inbox without switching | The Inbox lists the engine's questions, failures and background work and opens the conversation; answering happens in its tray. Answering in place needs the engine's answer route without an attached view. |
+| PS8 | Notifications group "per place"; the world stream carries a chat's source folders, not its places | Notifications are posted per question with the chat's title and no place name; no folder is named as a place. |
+| PS9 | Home tab menu (Interactions "Place menu") | Open in new window, Rename, Tint, Add to another place…, Merge into…, Pin/Unpin, then Close place ⌘⇧W. Archive and Delete stay on the Home page's own ⋯ menu, where the delete confirmation is drawn. |
+| PS10 | The Home composer's model | The chip shows the Conversation role's default (DS Flash) read-only; the chat's own picker takes over once it has a session. |
+| PS11 | "Ask codeaf about this output" from a terminal inside a place | It still starts an unplaced conversation (the terminal lane's own call). Filing it in the place needs that call to go through the place strip. |

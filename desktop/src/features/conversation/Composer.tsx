@@ -37,6 +37,8 @@ export type ComposerProps = {
   autoFocus?: boolean;
   /** Forces the drag appearance; for specimens, since real drags are global to the window. */
   dropState?: 'page' | 'over';
+  /** The idle prompt in the empty field when the surface has its own words ("Start something in codeaf" on a place's Home). */
+  placeholder?: string;
 };
 
 const START_PLACEHOLDER = 'Ask codeaf, or type @ to reference a file';
@@ -162,7 +164,7 @@ export function Composer(props: ComposerProps) {
           onBlur={focus.onBlur}
           onScroll={autosize.onScroll}
           aria-label="Message"
-          placeholder={disabledReason ?? (running ? 'Steer, or queue a message' : docked ? 'Ask codeaf' : START_PLACEHOLDER)}
+          placeholder={disabledReason ?? (running ? 'Steer, or queue a message' : props.placeholder ?? (docked ? 'Ask codeaf' : START_PLACEHOLDER))}
           value={draft}
           disabled={disabled}
           autoFocus={autoFocus}

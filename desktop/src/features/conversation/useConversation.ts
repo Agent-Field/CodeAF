@@ -2,6 +2,7 @@
 // is created until the person sends, and detaching never stops the work.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { BeforeFirstTurn } from './firstTurn';
 import {
   answerEngine,
   connectEngine,
@@ -31,7 +32,7 @@ import type { ConversationModel } from './types';
 
 export type FailedSend = { text: string; mode: SendMode; message: string; files?: OutgoingFile[] };
 
-type Options = { sessionFile?: string; onSessionFile: (sessionFile: string) => void };
+type Options = { sessionFile?: string; onSessionFile: (sessionFile: string) => void; beforeFirstTurn?: BeforeFirstTurn };
 
 const BACKOFF_MS = [1000, 2000, 5000, 10000];
 
@@ -55,7 +56,7 @@ function deliver(id: string, text: string, mode: SendMode, files?: OutgoingFile[
   return files?.length ? sendEngineWithFiles(id, text, files) : sendEngine(id, text, mode);
 }
 
-export function useConversation({ sessionFile, onSessionFile }: Options) {
+export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn }: Options) {
   const [snapshot, setSnapshot] = useState<EngineSnapshot>();
   const [live, setLive] = useState<LiveOverlayV2>(emptyLive());
   const [online, setOnline] = useState(false);
@@ -75,6 +76,10 @@ export function useConversation({ sessionFile, onSessionFile }: Options) {
   file.current = sessionFile;
   const announce = useRef(onSessionFile);
   announce.current = onSessionFile;
+  const firstTurn = useRef(beforeFirstTurn);
+  firstTurn.current = beforeFirstTurn;
+  // Once the first-turn step has succeeded for this conversation it is never repeated.
+  const firstTurnDone = useRef(false);
 
   function receive(value: EngineSnapshot) {
     current.current = value;
@@ -160,6 +165,11 @@ export function useConversation({ sessionFile, onSessionFile }: Options) {
       const target = await attached();
       if (!target || own !== generation.current) return false;
       if (blocksComposer(target.questions ?? [])) throw new Error('Answer the question above first. Your message is kept.');
+      if (firstTurn.current && !firstTurnDone.current && target.entries.length === 0) {
+        await firstTurn.current(target.sessionFile);
+        firstTurnDone.current = true;
+        if (own !== generation.current) return false;
+      }
       if (mode !== 'queue') setLive(emptyLive(target.entries.length));
       if (mode === 'submit' && text.trim()) setWriting({ text, at: target.entries.length });
       const value = await deliver(target.id, text, mode, files);

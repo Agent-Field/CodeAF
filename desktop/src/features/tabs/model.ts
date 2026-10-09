@@ -8,11 +8,25 @@ import { reduceNewTab, type NewTabAction } from './reducers/newtab.ts';
 import { reduceGroups, type GroupAction } from './reducers/groups.ts';
 import { reduceSplit, type SplitAction } from './reducers/split.ts';
 import { reduceTabs, type TabAction } from './reducers/tabs.ts';
+import { reduceHome, type HomeAction } from './reducers/home.ts';
 import type { Pane, SplitLayout, Tab, TabGroup, TitleSource, WorkspaceState } from './types.ts';
 
 export type { Pane, Split, SplitLayout, Tab, TabGroup, TitleSource, WorkspaceState } from './types.ts';
 export { initialWorkspace, panesOf, focusedPane, isSplit, visibleTabs, tabHolding, splitCapacity } from './helpers.ts';
 export const storageKey = 'codeaf.desktop.workspace.v1';
+
+/**
+ * Where a window place's tab set is saved. Now keeps the v1 key, so the tabs a person had before Places existed are
+ * Now's tabs; each design-graph place has its own key. Two windows on one place share the key, and so the tabs.
+ */
+export const workspaceKey = (place: string) => (place === 'now' ? storageKey : `${storageKey}:${place}`);
+
+/** A strip nobody has opened yet: Now starts with one quiet new conversation, a place with only its Home. */
+export function freshWorkspace(place?: { id: string; title: string }): WorkspaceState {
+  if (!place) return initialWorkspace();
+  const home = { ...initialWorkspace().tabs[0], kind: 'home' as const, place: place.id, title: place.title, titleSource: 'manual' as const, pinned: true };
+  return { tabs: [home], groups: [], activeId: home.id, closed: [], nextNumber: 1, recentIds: [home.id] };
+}
 
 const isString = (value: unknown): value is string => typeof value === 'string';
 
@@ -61,16 +75,23 @@ const isGroup = (value: unknown): value is TabGroup => {
 const unique = (ids: string[]) => new Set(ids).size === ids.length;
 
 /** Reads the saved workspace; anything that does not validate yields a fresh one. v1 saves (no kind, no split) load as conversations. */
-export function readWorkspace(): WorkspaceState {
+export function readWorkspace(key: string = storageKey, fresh: () => WorkspaceState = initialWorkspace): WorkspaceState {
   try {
-    const saved = JSON.parse(localStorage.getItem(storageKey) ?? 'null') as Partial<WorkspaceState> | null;
-    if (!saved || !Array.isArray(saved.tabs) || !saved.tabs.length || !Array.isArray(saved.groups) || !Array.isArray(saved.closed)) return initialWorkspace();
+    return parseWorkspace(localStorage.getItem(key)) ?? fresh();
+  } catch { return fresh(); }
+}
+
+/** Validates a saved tab set; undefined when it does not (the caller then starts fresh). Also reads another window's write. */
+export function parseWorkspace(text: string | null): WorkspaceState | undefined {
+  try {
+    const saved = JSON.parse(text ?? 'null') as Partial<WorkspaceState> | null;
+    if (!saved || !Array.isArray(saved.tabs) || !saved.tabs.length || !Array.isArray(saved.groups) || !Array.isArray(saved.closed)) return undefined;
     const read = saved.tabs.map(readTab);
     const closed = saved.closed.map(readTab);
-    if (read.some(t => !t) || closed.some(t => !t) || !saved.groups.every(isGroup)) return initialWorkspace();
+    if (read.some(t => !t) || closed.some(t => !t) || !saved.groups.every(isGroup)) return undefined;
     const tabsIn = read as Tab[];
     const closedIn = closed as Tab[];
-    if (!unique(tabsIn.flatMap(t => [t.id, ...(t.split?.panes.map(p => p.id) ?? [])])) || !unique(tabsIn.map(t => t.id)) || !unique(saved.groups.map(g => g.id)) || !unique(closedIn.map(t => t.id)) || closedIn.some(t => tabsIn.some(open => open.id === t.id))) return initialWorkspace();
+    if (!unique(tabsIn.flatMap(t => [t.id, ...(t.split?.panes.map(p => p.id) ?? [])])) || !unique(tabsIn.map(t => t.id)) || !unique(saved.groups.map(g => g.id)) || !unique(closedIn.map(t => t.id)) || closedIn.some(t => tabsIn.some(open => open.id === t.id))) return undefined;
     const groupIds = new Set(saved.groups.map(g => g.id));
     const tabs = tabsIn.map(tab => ({ ...tab, groupId: !tab.pinned && tab.groupId && groupIds.has(tab.groupId) ? tab.groupId : undefined }));
     const activeId = tabs.some(tab => tab.id === saved.activeId) ? saved.activeId! : tabs[0].id;
@@ -80,12 +101,13 @@ export function readWorkspace(): WorkspaceState {
       activeId,
       nextNumber: Number.isSafeInteger(saved.nextNumber) && saved.nextNumber! > 0 && saved.nextNumber! < 1000000 ? saved.nextNumber! : tabs.length + 1,
     };
-  } catch { return initialWorkspace(); }
+  } catch { return undefined; }
 }
 
-export type WorkspaceAction = TabAction | GroupAction | SplitAction | NewTabAction;
+export type WorkspaceAction = TabAction | GroupAction | SplitAction | NewTabAction | HomeAction;
 type Slice = (state: WorkspaceState, action: { type: string }) => WorkspaceState | undefined;
-const slices: readonly Slice[] = [reduceTabs, reduceGroups, reduceSplit, reduceNewTab];
+// The Home slice goes first: it refuses the moves a place's Home may not make before the other slices see them.
+const slices: readonly Slice[] = [reduceHome, reduceTabs, reduceGroups, reduceSplit, reduceNewTab];
 
 export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState {
   for (const slice of slices) {
