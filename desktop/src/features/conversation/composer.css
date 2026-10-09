@@ -8,6 +8,7 @@
 }
 
 .composer {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -111,4 +112,35 @@
   .composer {
     transition: none;
   }
+}
+
+.composer[data-drop='over'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Dragging over the page: the composer quietly offers itself, and only the composer. */
+.composer[data-drop] > .composer-drop-hint {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: inherit;
+  background: var(--composer-surface);
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.composer[data-drop='over'] > .composer-drop-hint {
+  color: var(--text);
+}
+
+.composer-error.type-body {
+  font-size: var(--font-size-label);
+}
+
+.composer-file-input.text-input {
+  display: none;
 }

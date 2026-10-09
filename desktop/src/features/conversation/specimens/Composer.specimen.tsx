@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { Composer } from '../Composer';
+import { ComposerAttachmentsSpecimen } from './ComposerAttachments.specimen';
+
 
 function Case(props: { title: string; initial: string; running?: boolean; reason?: string }) {
   const [draft, setDraft] = useState(props.initial);
@@ -15,7 +17,6 @@ function Case(props: { title: string; initial: string; running?: boolean; reason
         docked
         disabledReason={props.reason}
         modelLabel="DeepSeek v4.1 Flash"
-        onAttach={() => undefined}
         tasksToggle={{ label: 'Tasks · 3/5', onClick: () => undefined }}
         recallLast={() => 'Count the words in README.md'}
       />
@@ -31,6 +32,7 @@ export function ComposerSpecimen() {
       <Case title="Running, empty (Stop)" initial="" running />
       <Case title="Running, with text (Steer)" initial="Also skip the vendor folder" running />
       <Case title="Disabled" initial="" reason="Message the main conversation to change this task" />
+      <ComposerAttachmentsSpecimen />
     </div>
   );
 }
