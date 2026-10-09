@@ -1,0 +1,117 @@
+/* Places primitives (Places 8a, 8b, 8f; Components "Place tile", "History row", "Places · page"). Geometry and colour come only from
+   tokens.json: every places-* name there is measured from the design. Screen CSS lays these out; it never restyles them. */
+
+/* ---- Swatch: a tint square, radius 0.3 of its side. Colour is the places-swatch-* token per tint. ---- */
+.place-swatch { flex: none; display: inline-block; }
+.place-swatch[data-tint-name="tide"] { background: var(--places-swatch-tide); }
+.place-swatch[data-tint-name="iris"] { background: var(--places-swatch-iris); }
+.place-swatch[data-tint-name="rose"] { background: var(--places-swatch-rose); }
+.place-swatch[data-tint-name="sand"] { background: var(--places-swatch-sand); }
+.place-swatch[data-tint-name="sage"] { background: var(--places-swatch-sage); }
+.place-swatch[data-tint-name="graphite"] { background: var(--places-swatch-graphite); }
+.place-swatch[data-role="rail"] { width: var(--places-swatch-rail); height: var(--places-swatch-rail); border-radius: calc(var(--places-swatch-rail) * var(--places-swatch-radius-ratio)); }
+.place-swatch[data-role="tile"] { width: var(--places-swatch-tile); height: var(--places-swatch-tile); border-radius: calc(var(--places-swatch-tile) * var(--places-swatch-radius-ratio)); }
+.place-swatch[data-role="sheet"] { width: var(--places-swatch-sheet); height: var(--places-swatch-sheet); border-radius: calc(var(--places-swatch-sheet) * var(--places-swatch-radius-ratio)); }
+.place-swatch[data-role="title"] { width: var(--places-swatch-title); height: var(--places-swatch-title); border-radius: calc(var(--places-swatch-title) * var(--places-swatch-radius-ratio)); }
+.place-swatch[data-role="card"] { width: var(--places-swatch-card); height: var(--places-swatch-card); border-radius: calc(var(--places-swatch-card) * var(--places-swatch-radius-ratio)); }
+.place-swatch[data-role="choice"] { width: var(--places-swatch-choice); height: var(--places-swatch-choice); border-radius: var(--places-swatch-radius-choice); }
+.place-swatch[data-role="menu"] { width: var(--places-swatch-menu); height: var(--places-swatch-menu); border-radius: var(--places-swatch-radius-menu); }
+.place-swatch[data-dimmed] { opacity: var(--places-swatch-dim); }
+/* The chosen swatch is ringed in its own colour, with a surface-coloured gap so the ring never touches the square. */
+.place-swatch[data-role="choice"][data-selected] { box-shadow: 0 0 0 var(--places-swatch-gap-choice) var(--surface), 0 0 0 var(--places-swatch-ring-choice) currentColor; }
+.place-swatch[data-role="menu"][data-selected] { box-shadow: 0 0 0 var(--places-swatch-gap-menu) var(--surface), 0 0 0 var(--places-swatch-ring-menu) currentColor; }
+.place-swatch[data-tint-name="tide"] { color: var(--places-swatch-tide); }
+.place-swatch[data-tint-name="iris"] { color: var(--places-swatch-iris); }
+.place-swatch[data-tint-name="rose"] { color: var(--places-swatch-rose); }
+.place-swatch[data-tint-name="sand"] { color: var(--places-swatch-sand); }
+.place-swatch[data-tint-name="sage"] { color: var(--places-swatch-sage); }
+.place-swatch[data-tint-name="graphite"] { color: var(--places-swatch-graphite); }
+
+/* ---- Shared by the three kinds of row: the frame carries the fill; the shared Button inside carries focus and activation. ---- */
+.places-attention-row, .places-chat-row, .places-tile { list-style: none; transition: background-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease); }
+.places-attention-list, .places-chat-list, .places-tile-grid { margin: 0; padding: 0; list-style: none; }
+.places-row-main.button { display: grid; align-items: center; justify-content: stretch; gap: var(--places-row-gap); width: 100%; min-height: 0; padding: 0 var(--places-row-pad); border-radius: inherit; background: transparent; color: var(--ink); font-size: var(--places-row-text-size); font-weight: var(--font-weight-regular); line-height: var(--line-height-tight); text-align: left; white-space: normal; }
+.places-row-main.button:hover:not(:disabled), .places-row-main.button:active:not(:disabled) { background: transparent; color: var(--ink); }
+.places-row-text, .places-chat-title, .places-chat-excerpt, .places-tile-name { min-width: 0; overflow: hidden; white-space: nowrap; text-align: left; mask-image: linear-gradient(to right, black calc(100% - var(--places-text-fade)), transparent); }
+.places-row-muted { color: var(--ink-3); }
+.places-row-aside { font-size: var(--places-row-aside-size); color: var(--ink-3); white-space: nowrap; }
+.places-attention-row[data-disabled], .places-chat-row[data-disabled], .places-tile[data-disabled] { opacity: var(--opacity-control-disabled); }
+.places-attention-row[data-dragging], .places-chat-row[data-dragging], .places-tile[data-dragging] { opacity: var(--places-drag-opacity); }
+/* A forced focus look for the specimen: the same ring the global :focus-visible rule draws. */
+.places-row-main[data-force="focus"], .places-tile-main[data-force="focus"] { box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
+
+/* ---- Attention row: 36px, 9px radius, glyph + neutral text + right-hand words (8a). ---- */
+.places-attention-list { display: flex; flex-direction: column; gap: var(--places-row-list-gap); margin-inline: var(--places-row-bleed); }
+.places-attention-row { height: var(--places-attention-height); border-radius: var(--places-row-radius); }
+.places-attention-main.button { height: 100%; grid-template-columns: var(--mark-dot) minmax(0, 1fr) auto; }
+.places-attention-row:hover:not([data-disabled]), .places-attention-row[data-force="hover"] { background: var(--field); }
+.places-attention-row:active:not([data-disabled]), .places-attention-row[data-force="pressed"] { background: var(--field-2); }
+
+/* ---- Chat row: 44px on a Home; the History row is taller and leads with the excerpt (Components "History row"). ---- */
+.places-chat-list { display: flex; flex-direction: column; }
+.places-chat-list[data-variant="home"] { margin: var(--places-chat-list-top) var(--places-row-bleed) 0; }
+.places-chat-list[data-variant="history"] { gap: var(--places-history-gap); }
+.places-chat-row { border-radius: var(--places-row-radius); }
+.places-chat-row[data-variant="home"] { height: var(--places-chat-height); }
+.places-chat-main.button { grid-template-columns: var(--places-chat-lead) minmax(0, 1fr) var(--places-chat-time); }
+.places-chat-row[data-variant="home"] .places-chat-main.button { height: 100%; }
+.places-chat-lead { display: grid; place-items: center; color: var(--ink-3); }
+.places-chat-text { display: flex; flex-direction: column; min-width: 0; text-align: left; }
+.places-chat-title { font-size: var(--places-row-text-size); color: var(--ink); }
+.places-chat-excerpt { font-size: var(--places-chat-sub-size); color: var(--ink-3); }
+.places-chat-time { font-size: var(--places-chat-sub-size); color: var(--ink-3); text-align: right; white-space: nowrap; }
+.places-chat-row[data-variant="history"] { border-radius: var(--places-history-radius); }
+.places-chat-row[data-variant="history"] .places-chat-main.button { grid-template-columns: var(--places-chat-lead) minmax(0, 1fr) var(--places-history-time); align-items: start; padding: var(--places-history-pad-block) var(--places-history-pad-inline); }
+.places-chat-row[data-variant="history"] .places-chat-lead { height: var(--places-history-lead-height); }
+.places-chat-row[data-variant="history"] .places-chat-text { gap: var(--places-history-gap); }
+.places-chat-row[data-variant="history"] .places-chat-title { font-weight: var(--places-chat-title-weight); }
+.places-chat-row[data-variant="history"] .places-chat-excerpt { font-size: var(--places-history-excerpt-size); line-height: var(--places-history-excerpt-leading); color: var(--ink-2); }
+.places-chat-row[data-variant="history"] .places-chat-time { padding-top: var(--places-history-time-pad); }
+.places-chat-details { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-tight); margin-top: var(--space-half); }
+.places-chat-row:hover:not([data-disabled]), .places-chat-row[data-force="hover"] { background: var(--field); }
+.places-chat-row:active:not([data-disabled]), .places-chat-row[data-force="pressed"] { background: var(--field-2); }
+.places-chat-row[data-selected] { background: var(--field); }
+.places-chat-row[data-selected]:hover:not([data-disabled]) { background: var(--field-2); }
+/* The History row is a card on the canvas: the same fills, 10px radius, no height of its own. */
+
+/* ---- Tile: 84px, surface + sh-1 (Components "Place tile"). Hover fills with --field and a press with --field-2 (the design draws no tile hover: Q-T1). ---- */
+.places-tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--places-tile-min), 1fr)); gap: var(--places-tile-grid-gap); }
+.places-tile { position: relative; height: var(--places-tile-height); border-radius: var(--places-tile-radius); background: var(--surface); box-shadow: var(--sh-1); }
+.places-tile:hover:not([data-disabled]):not([data-drop]), .places-tile[data-force="hover"] { background: var(--field); }
+.places-tile:active:not([data-disabled]):not([data-drop]), .places-tile[data-force="pressed"] { background: var(--field-2); }
+.places-tile[data-selected] { box-shadow: var(--sh-1), 0 0 0 var(--places-tile-ring-selected) var(--accent); }
+.places-tile[data-drop] { background: var(--accent-soft); box-shadow: var(--sh-1), 0 0 0 var(--places-tile-ring-drop) var(--accent); }
+.places-tile-main.button { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: var(--places-tile-gap); width: 100%; height: 100%; min-height: 0; padding: var(--places-tile-pad-block) var(--places-tile-pad-inline); border-radius: inherit; background: transparent; color: var(--ink); line-height: var(--line-height-tight); text-align: left; white-space: normal; }
+.places-tile-main.button:hover:not(:disabled), .places-tile-main.button:active:not(:disabled) { background: transparent; color: var(--ink); }
+.places-tile-head { display: flex; align-items: center; gap: var(--places-tile-head-gap); }
+.places-tile-status { display: inline-flex; margin-left: auto; }
+.places-tile-name { margin-top: auto; font-size: var(--places-tile-name-size); font-weight: var(--places-tile-name-weight); }
+.places-tile-meta { font-size: var(--places-tile-meta-size); font-weight: var(--font-weight-regular); color: var(--ink-3); white-space: nowrap; overflow: hidden; mask-image: linear-gradient(to right, black calc(100% - var(--places-text-fade)), transparent); }
+.places-tile-drop { position: absolute; right: var(--places-tile-drop-inset); bottom: var(--places-tile-drop-inset); font-size: var(--places-tile-drop-size); font-weight: var(--font-weight-medium); color: var(--accent); }
+/* The tile that ends the grid: no fill of its own, only the 1px line inside its edge. */
+.places-tile[data-mode="new"] { background: transparent; box-shadow: inset 0 0 0 var(--border-width) var(--line); }
+.places-tile[data-mode="new"]:hover:not([data-disabled]), .places-tile[data-mode="new"][data-force="hover"] { background: var(--field); }
+.places-tile[data-mode="new"]:active:not([data-disabled]), .places-tile[data-mode="new"][data-force="pressed"] { background: var(--field-2); }
+.places-tile[data-mode="new"] .places-tile-main.button { align-items: center; justify-content: center; gap: var(--places-tile-new-gap); color: var(--ink-3); }
+.places-tile-new-label { font-size: var(--places-tile-new-size); font-weight: var(--font-weight-regular); }
+.places-tile[data-mode="creating"] { box-shadow: var(--sh-1), 0 0 0 var(--places-tile-ring-selected) var(--accent); }
+.places-tile-form { display: flex; flex-direction: column; gap: var(--places-tile-creating-gap); height: 100%; padding: var(--places-tile-pad-block) var(--places-tile-pad-inline); }
+.places-tile-choices { display: flex; gap: var(--places-tile-choice-gap); }
+.places-tile-choice.button { min-height: 0; padding: 0; border-radius: var(--places-swatch-radius-choice); background: transparent; }
+.places-tile-choice.button:hover:not(:disabled), .places-tile-choice.button:active:not(:disabled) { background: transparent; }
+.places-tile .places-tile-field.text-input { margin-top: auto; height: auto; padding: 0; background: transparent; color: var(--ink); font-size: var(--places-tile-name-size); font-weight: var(--places-tile-name-weight); line-height: var(--line-height-tight); caret-color: var(--accent); }
+.places-tile .places-tile-field.text-input:focus-visible { box-shadow: none; outline: none; }
+.places-tile-hint { font-size: var(--places-tile-meta-size); color: var(--ink-3); }
+
+/* ---- Page heading: breadcrumb over swatch + 28px title + menu (8a). ---- */
+.places-heading { display: flex; flex-direction: column; gap: var(--places-heading-gap); }
+.places-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--places-crumb-gap); margin: 0; padding: 0; list-style: none; font-size: var(--places-crumb-size); color: var(--ink-3); }
+.places-crumb-item { display: inline-flex; align-items: center; gap: var(--places-crumb-gap); }
+.places-crumb.button { min-height: 0; padding: 0 var(--space-half); border-radius: var(--radius-xs); background: transparent; color: var(--ink-3); font-size: var(--places-crumb-size); font-weight: var(--font-weight-regular); line-height: var(--line-height-tight); }
+.places-crumb.button:hover:not(:disabled) { background: var(--field); color: var(--ink-3); }
+.places-crumb.button:active:not(:disabled) { background: var(--field-2); color: var(--ink-3); }
+.places-heading-row { display: flex; align-items: center; gap: var(--places-heading-row-gap); min-width: 0; }
+.places-heading-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to right, black calc(100% - var(--places-text-fade)), transparent); }
+.places-heading-rename.text-input { flex: 1; min-width: 0; padding: 0; background: transparent; line-height: var(--type-home-title-leading); font-size: var(--type-home-title-size); font-weight: var(--type-home-title-weight); letter-spacing: var(--type-home-title-tracking); caret-color: var(--accent); }
+.places-heading-menu.icon-button { margin-left: auto; color: var(--ink-3); }
+.places-heading-menu.icon-button:hover:not(:disabled) { color: var(--ink); }
