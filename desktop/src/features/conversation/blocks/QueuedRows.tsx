@@ -4,6 +4,7 @@
 
 import { useState } from 'react';
 import { Button, Icon, IconButton } from '../../../components/ui';
+import { plainMessage } from '../composer/pastedText';
 import { QueuedEdit } from './QueuedEdit';
 import './queued.css';
 
@@ -67,7 +68,7 @@ export function QueuedRows({ items, onRemove, onEdit, onMove }: Props) {
                   <Icon name="grip" size="xs" />
                 </span>
               )}
-              <span className="queued-text">{item.text}</span>
+              <span className="queued-text">{plainMessage(item.text)}</span>
               <span className="queued-actions">
                 {onEdit && <IconButton label="Edit queued message" icon="pencil" iconSize="xs" className="queued-action" onClick={() => setEditing(item.id)} />}
                 <IconButton label="Remove queued message" icon="close" iconSize="xs" className="queued-action" onClick={() => onRemove(item.id)} />

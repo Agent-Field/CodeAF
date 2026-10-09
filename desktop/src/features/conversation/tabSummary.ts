@@ -2,6 +2,7 @@
 // Pure: built from the canonical snapshot, never from the view.
 
 import type { EngineSnapshot } from '../chat/engine-client.ts';
+import { plainMessage } from './composer/pastedText.ts';
 import { digestOf } from './transcript-parse.ts';
 
 export type TabMark = 'working' | 'waiting' | 'failed';
@@ -39,7 +40,7 @@ export function summarize(snapshot: EngineSnapshot, failed = false): TabSummary 
   const stamp = Date.parse(snapshot.updatedAt ?? '');
   return {
     title: snapshot.title.trim(),
-    firstLine: first ? labelLine(first.Text) : '',
+    firstLine: first ? labelLine(plainMessage(first.Text)) : '',
     digest: lastAnswer(snapshot),
     mark: markOf(snapshot, failed),
     updatedAt: Number.isFinite(stamp) ? stamp : undefined,
