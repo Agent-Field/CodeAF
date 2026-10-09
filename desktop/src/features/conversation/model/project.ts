@@ -9,7 +9,7 @@ import { noteItem } from '../aside-kind.ts';
 import { digestOf } from '../transcript-parse.ts';
 import { attachmentsOf } from './attachments.ts';
 import { placeDeliverables } from './deliverables.ts';
-import { asRich, questionsOf, type RichEntry } from './entry.ts';
+import { asRich, waitingCalls, type RichEntry } from './entry.ts';
 import { receiptOutcomes } from './outcomes.ts';
 import { decisionsOf } from './decisions.ts';
 import { addReceipts, type ReceiptPlaces } from './receipts.ts';
@@ -151,7 +151,7 @@ function finishTurn(acc: Acc, index: number): TurnV2 {
 }
 
 function stepContext(snapshot: EngineSnapshot, entries: RichEntry[]): StepCtx {
-  const waiting = new Set(questionsOf(snapshot).flatMap((q) => (q.subject?.callId ? [q.subject.callId] : [])));
+  const waiting = waitingCalls(snapshot);
   return { sessionFile: snapshot.sessionFile, running: snapshot.running, lastUnanswered: lastUnansweredCall(entries), waiting, decisions: decisionsOf(snapshot) };
 }
 

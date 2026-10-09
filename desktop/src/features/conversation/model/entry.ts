@@ -40,3 +40,13 @@ export const questionsOf = (snapshot: EngineSnapshot): RichQuestion[] => (snapsh
 export function questionKey(q: { kind: string; id: number; ref?: string }): string {
   return `${q.kind}:${q.ref || q.id}`;
 }
+
+/** Only foreground questions can pause this conversation's tool rows. Older records without
+ * scope metadata still associate by canonical call id; explicit task-only and withdrawn questions do not. */
+export function waitingCalls(snapshot: EngineSnapshot): Set<string> {
+  return new Set(questionsOf(snapshot).flatMap(q => {
+    if (q.withdrawn || q.blocking?.turn === false) return [];
+    if (q.blocking?.turn !== true && (q.blocking?.tasks?.length || q.asker?.kind === 'task')) return [];
+    return q.subject?.callId ? [q.subject.callId] : [];
+  }));
+}
