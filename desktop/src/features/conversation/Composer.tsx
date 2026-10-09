@@ -63,6 +63,8 @@ export function Composer(props: ComposerProps) {
   const field = useRef<HTMLTextAreaElement>(null);
   const autosize = useAutosize(field, draft);
   const [pastes, setPastes] = useState<string[]>([]);
+  const latestDraft = useRef(draft);
+  latestDraft.current = draft;
   const disabled = !!disabledReason;
   const attachments = useAttachments();
   const picker = useRef<HTMLInputElement>(null);
@@ -73,12 +75,16 @@ export function Composer(props: ComposerProps) {
   async function send(mode: SendMode) {
     if (blank || disabled) return;
     const { items } = attachments;
+    const sent = draft;
     const text = encodePasted(pastes, draft.trim());
     const accepted = items.length ? await onSend(text, mode, await toOutgoing(items)) : await onSend(text, mode);
     if (!accepted) return;
-    onDraft('');
-    setPastes([]);
-    attachments.clear();
+    // Typing while the send was in flight must survive: clear only the text that went out.
+    if (latestDraft.current === sent) {
+      onDraft('');
+      setPastes([]);
+      attachments.clear();
+    }
   }
 
   function onPaste(event: ClipboardEvent) {
