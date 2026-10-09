@@ -152,6 +152,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
                 <TaskRoute
                   sessionId={sessionId}
                   taskId={taskId}
+                  tasks={model.tasks}
                   route={route}
                   onRoute={setRoute}
                   renderFile={(path) => renderFile(path)}

@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { Button, Icon, PageHeading, Text } from '../../../components/ui';
 import type { EngineTaskRow } from '../../chat/engine-client';
 import { rowFlags, rowKind, taskMark } from '../taskState';
 import { QuestionCardV2, type QuestionCardProps } from '../tray/QuestionCardV2';
 import { factsOf, progressText } from './taskDetail';
+import { parseBrief } from '../tasks/brief';
+import { FullBrief } from '../tasks/FullBrief';
 import { TaskMark } from '../tasks/TaskMark';
 import './task-detail.css';
 
@@ -50,6 +53,8 @@ function Facts({ row }: { row: EngineTaskRow }) {
 
 /** The right half of the expanded tasks view: one task, its question, its facts, its brief. */
 export function TaskDetailPane({ row, parentTitle, instructions, question, now, onOpenTask }: TaskDetailPaneProps) {
+  const [full, setFull] = useState(false);
+  const brief = instructions ? parseBrief(instructions) : undefined;
   return (
     <aside className="task-detail" aria-label={`Task: ${row.Title}`}>
       <header className="task-detail-head">
@@ -63,10 +68,16 @@ export function TaskDetailPane({ row, parentTitle, instructions, question, now, 
         </div>
       )}
       <Facts row={row} />
-      {instructions && (
+      {brief && (
         <section className="task-detail-brief" aria-label="Instructions">
           <h3 className="task-detail-label">Instructions</h3>
-          <Text className="task-detail-text">{instructions}</Text>
+          <Text className="task-detail-text">{brief.summary}</Text>
+          {brief.sections.length > 1 && (
+            <>
+              <Button className="task-detail-full" aria-expanded={full} onClick={() => setFull(!full)}>Full brief</Button>
+              {full && <FullBrief sections={brief.sections} />}
+            </>
+          )}
         </section>
       )}
       <Button className="task-detail-open" onClick={(event) => onOpenTask(row.ID, event.metaKey || event.ctrlKey)}>
