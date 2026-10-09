@@ -427,6 +427,7 @@
   --scroll-fade-dock: 36px;
   --scroll-dock-clearance: 24px;
   --latest-height: 30px;
+  --latest-leading: normal;
   --latest-overlap: 6px;
   --latest-rise: 4px;
   --latest-shimmer-duration: 2.4s;
@@ -475,6 +476,7 @@
   --newtab-section-pad: 10px 12px 4px;
   --newtab-gutter: 16px;
   --tab-title-fade: 20px;
+  --tab-title-leading: normal;
   --tab-strip-fade: 40px;
   --tab-divider-height: 16px;
   --tab-compressed-width: 44px;
