@@ -280,7 +280,7 @@ func TestFactoryPeekNeedsYouLadder(t *testing.T) {
 	}
 	// THE AMBER IS ON THE MARK, the words are ink.
 	it := *factoryPaneItem(t, a, 1)
-	row := a.factoryPeekQuestion(it, 60, 8)[0]
+	row := a.factoryPeekQuestion(it, 60)[0]
 	if !strings.HasPrefix(row, a.pal.ask(a.icon(tokens.GNeedsHuman))) || !strings.Contains(row, a.pal.ink(factory.ApproveQuestion("plan"))) {
 		t.Fatalf("the question is not an amber mark and ink words: %q", row)
 	}

@@ -205,19 +205,11 @@ const (
 	wordWhyLabel = "why:"
 )
 
-// The shaping question's words: after the manager shapes a run whose `ask me
-// at` is plan, the runner pauses on `run these stages? <what it set>` of kind
-// `plan` (factory_shaping.go draws it as the stages it asks about). Only
-// wordRunTheseStages, wordKeepTheRecipe and wordManagerSet are drawn by the
-// floor; the rest are the runner's lines in the run's stream and are spelled
-// here so the vocabulary and the e2e words table (internal/e2e/tuiwords_test.go)
-// name them once.
+// The runner's words about the manager's shaping. They are the runner's
+// lines in the run's stream, spelled here so the vocabulary and the e2e words
+// table (internal/e2e/tuiwords_test.go) name them once. (The shaping question
+// `run these stages?` went with `ask me at`: an approve step holds instead.)
 const (
-	// wordRunTheseStages is the question's head; the runner writes it, the
-	// floor recognises it, and the draw leads with it alone.
-	wordRunTheseStages = "run these stages?"
-	// wordKeepTheRecipe is what `n` does on that question.
-	wordKeepTheRecipe = "keep the recipe"
 	// wordManagerSet leads the Adapted line the manager's edit writes.
 	wordManagerSet = "manager set"
 	// wordRecipeStands is the stream line after `n`, or after the manager
