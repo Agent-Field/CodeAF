@@ -1,25 +1,32 @@
-import type { TurnV2 } from '../types';
+import { Icon } from '../../../components/ui';
+import type { TurnItem, TurnV2 } from '../types';
+import './steer.css';
 
 type SteerEntry = TurnV2['steer'][number];
 
-/** A message typed into a running turn: an elbow line, with the landing clause until it is consumed. */
-export function Steer({ entry }: { entry: SteerEntry }) {
+/** A message typed into a running turn: a small elbowed line on the right, not a bubble.
+ * Pending, it leads with where it will land; consumed, only the elbow and the words remain. */
+export function Steer({ entry }: { entry: Pick<SteerEntry, 'text' | 'landing' | 'consumed'> }) {
+  const pending = !entry.consumed;
   return (
     <p className="steer" data-consumed={entry.consumed}>
+      {pending && entry.landing && <span className="steer-landing">{entry.landing}</span>}
       <span className="steer-elbow" aria-hidden="true">
-        {'↳'}
+        <Icon name="cornerDownRight" size="xs" />
       </span>
       <span className="steer-text">{entry.text}</span>
-      {entry.landing && <span className="steer-landing">{entry.landing}</span>}
     </p>
   );
 }
 
-export function Steers({ steer }: { steer: TurnV2['steer'] }) {
-  if (steer.length === 0) return null;
+/** Steers that no work block holds (typed before any work began) stand on their own under the message. */
+export function Steers({ steer, inWork }: { steer: TurnV2['steer']; inWork: TurnItem[] }) {
+  const held = new Set(inWork.map((item) => item.id));
+  const loose = steer.filter((entry) => !held.has(entry.id));
+  if (loose.length === 0) return null;
   return (
     <div className="steers">
-      {steer.map((entry) => (
+      {loose.map((entry) => (
         <Steer key={entry.id} entry={entry} />
       ))}
     </div>
