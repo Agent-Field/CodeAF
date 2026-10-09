@@ -56,7 +56,7 @@ export function ReadView({ id, now, at, onBack, onContinue }: Props) {
     <div className="history-read-bar"><Button variant="ghost" className="history-back" onClick={onBack}><Icon name="back" size="xs"/>History</Button></div>
     {failed && <p className="history-empty" role="alert">{failed}</p>}
     {detail && <div className="history-read-recap"><RecapPane detail={detail} now={now} onContinue={event => onContinue(detail, event)}/></div>}
-    <div ref={scroller} className="history-read-scroll" tabIndex={0} aria-label="Conversation, read only">
+    <div ref={scroller} className="history-read-scroll" data-scroll-key="history-read" tabIndex={0} aria-label="Conversation, read only">
       <div className="history-read-column">
         {hasEarlier && <Button variant="ghost" className="history-earlier" onClick={() => void loadEarlier()}>Earlier messages</Button>}
         {messages.map(message => <div key={message.index} ref={message.index === at ? target : undefined} className="history-message" data-role={message.role} data-target={message.index === at || undefined}>

@@ -2,6 +2,7 @@ import { useEffect, useImperativeHandle, useRef, type Ref } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { useScrollAdapter, type Scroller } from '../tabs/scroll/useScrollRestore';
 import { isTerminalShortcut } from './keys';
 import { lineHeightFor, readTerminalTheme, tokenFont, tokenNumber, watchAppearance } from './theme';
 import './terminal-screen.css';
@@ -33,6 +34,21 @@ type Props = {
 };
 
 /**
+ * The screen's scroll place for the pane that holds it, read and written through xterm's public buffer API and never by the viewport's DOM offset
+ * (which xterm owns). `top` is a buffer line. A saved line is only reachable once the replay of the engine's kept output has grown the buffer to it,
+ * so the restore waits for the replay; nothing here writes to the program.
+ */
+function screenScroller(term: { current: Terminal | null }): Scroller {
+  const at = () => { const buffer = term.current?.buffer.active; return { line: buffer?.viewportY ?? 0, base: buffer?.baseY ?? 0 }; };
+  return {
+    read: () => { const { line, base } = at(); return { top: line, left: 0, end: line >= base }; },
+    reachable: spot => !!term.current && (spot.end || at().base >= spot.top),
+    write: spot => { if (spot.end) term.current?.scrollToBottom(); else term.current?.scrollToLine(spot.top); },
+    settled: spot => (spot.end ? at().line >= at().base : at().line === spot.top),
+  };
+}
+
+/**
  * One xterm.js screen with the DOM renderer, themed from the interface tokens (ANSI hues at about 60%
  * chroma, Q3) and sized by the fit addon. Everything else about a terminal lives in the pane.
  */
@@ -51,6 +67,9 @@ export function TerminalScreen({ ref, label, interactive, cursor, onData, onResi
     focus: () => term.current?.focus(),
   });
   useImperativeHandle(ref, () => handle.current, []);
+  const scrolled = useScrollAdapter('terminal', screenScroller(term));
+  const onScrolled = useRef(scrolled);
+  onScrolled.current = scrolled;
 
   useEffect(() => {
     const element = host.current;
@@ -71,6 +90,7 @@ export function TerminalScreen({ ref, label, interactive, cursor, onData, onResi
     t.attachCustomKeyEventHandler(event => !isTerminalShortcut(event));
     t.onData(data => latest.current.onData?.(data));
     t.onResize(({ cols, rows }) => latest.current.onResize?.(cols, rows));
+    t.onScroll(() => onScrolled.current());
     term.current = t;
     fit.fit();
     let frame = 0;

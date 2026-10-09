@@ -77,7 +77,7 @@ export function FileSurface({ path, workspace, view, onView, diff, text, onNeedT
   return <div className="file-surface">
     <FileHeader name={name} dir={folder} added={counts?.added} deleted={counts?.deleted} view={git ? shown : null} onView={onView} path={path} workspace={workspace} handoff={handoff} refused={refused} keys={keys}/>
     {shown === 'changes' && change?.base?.kind === 'head' && <Text className="file-base">{change.base.startGone ? baseGoneNote : baseHeadNote}</Text>}
-    <div className="file-body" role="region" tabIndex={0} aria-label={shown === 'changes' ? `Changes to ${name}` : `Contents of ${name}`}>
+    <div className="file-body" data-scroll-key="file-body" role="region" tabIndex={0} aria-label={shown === 'changes' ? `Changes to ${name}` : `Contents of ${name}`}>
       {shown === 'changes' && (!diff || diff.status === 'loading') && <Message>Loading…</Message>}
       {shown === 'changes' && diff?.status === 'failed' && <Message>{plain(diff.message)}</Message>}
       {shown === 'changes' && change && <ChangesView diff={change} text={text} onNeedText={onNeedText}/>}

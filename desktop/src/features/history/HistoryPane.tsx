@@ -118,7 +118,7 @@ export function HistoryPane({ pane, focused, actions }: PaneRenderProps) {
   // One card holds the field in both modes, in the same place in the tree, so typing never loses focus.
   const body = searching
     ? (search.error ? <p className="history-empty" role="alert">{search.error}</p>
-      : search.result ? <div className="history-results-scroll"><SearchResults result={search.result} now={now} onRecap={id => showRecap(id)} onJump={(id, index) => setReading({ id, at: index })} onContinue={openConversation}/></div> : null)
+      : search.result ? <div className="history-results-scroll" data-scroll-key="history-results"><SearchResults result={search.result} now={now} onRecap={id => showRecap(id)} onJump={(id, index) => setReading({ id, at: index })} onContinue={openConversation}/></div> : null)
     : error ? <p className="history-empty" role="alert">{error}</p>
     : items.length ? <HistoryList items={items} now={now} selectedId={selectedId} label="Conversations" listRef={node => { list.current = node; }}
         onSelect={item => { setSelectedId(item.id); if (compact) setRecapOpen(true); }} onOpen={openConversation}

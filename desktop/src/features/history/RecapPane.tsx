@@ -20,7 +20,7 @@ export function RecapPane({ detail, now, onContinue, onRead, onBack, headingId }
   const { item, recap } = detail;
   const files = recap?.files.length ? recap.files : item.files;
   const press = (act: (event: { newTab: boolean }) => void) => (event: { metaKey: boolean; ctrlKey: boolean }) => act({ newTab: event.metaKey || event.ctrlKey });
-  return <aside className="history-recap" aria-label="Recap">
+  return <aside className="history-recap" data-scroll-key="history-recap" aria-label="Recap">
     <div className="history-recap-head">
       {onBack && <Button className="history-back" variant="ghost" onClick={onBack}><Icon name="back" size="xs"/>History</Button>}
       <span className="history-recap-meta">{metaLine(item, now)}</span>
