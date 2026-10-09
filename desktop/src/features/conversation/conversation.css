@@ -1,0 +1,108 @@
+/* Conversation layout. Tokens only; colours and sizes come from tokens.css. */
+.conversation-column {
+  width: 100%;
+  max-width: var(--chat-column-max-width);
+  margin-inline: auto;
+  padding-inline: max(var(--space-3), var(--chat-gutter));
+  box-sizing: border-box;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.turn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.turn + .turn { margin-top: var(--space-xl); }
+.turn-item { min-width: 0; }
+
+/* Fold chevron sits in the left gutter and appears on hover or focus. */
+.turn-fold {
+  position: absolute;
+  top: var(--space-1);
+  right: 100%;
+  margin-right: var(--space-1);
+  opacity: var(--opacity-transparent);
+  transition: opacity var(--duration-fast) var(--ease), background var(--duration) var(--ease), color var(--duration) var(--ease);
+}
+.turn:hover .turn-fold,
+.turn:focus-within .turn-fold,
+.turn-fold:focus-visible { opacity: var(--opacity-opaque); }
+@media (pointer: coarse) {
+  .turn-fold { opacity: var(--opacity-opaque); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .turn-fold { transition: none; }
+}
+
+.turn-working {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--font-size-body);
+}
+
+/* Folded row is one button. */
+.turn-folded.button {
+  display: grid;
+  grid-template-columns: var(--icon-button-size) minmax(0, 1fr);
+  column-gap: var(--space-1);
+  align-items: center;
+  width: 100%;
+  padding: var(--space-1) 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  text-align: start;
+  font-size: var(--font-size-body);
+}
+
+.turn-folded-chevron { grid-row: span 2; display: grid; place-items: center; color: var(--muted); }
+.turn-folded-user,
+.turn-folded-digest { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.turn-folded-digest { grid-column: 2; color: var(--muted); }
+
+/* User message. */
+.user-message { display: flex; justify-content: flex-end; min-width: 0; }
+.user-message-bubble {
+  max-width: var(--chat-bubble-max-width);
+  min-width: 0;
+  padding: var(--space-compact) var(--space-row);
+  border-radius: var(--radius-bubble);
+  background: var(--bubble);
+  color: var(--text);
+  font-size: var(--font-size-prose);
+  line-height: var(--line-height-body);
+}
+.user-message-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.user-message-text[data-clamped="true"] {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--chat-user-clamp-lines);
+  line-clamp: var(--chat-user-clamp-lines);
+  overflow: hidden;
+}
+.user-message-toggle.button { margin-top: var(--space-1); min-height: var(--icon-button-size); padding: 0 var(--space-2); font-size: var(--font-size-label); }
+
+/* Note: centred caption between hairlines. */
+.note-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--muted);
+  font-size: var(--font-size-label);
+}
+.note-item::before,
+.note-item::after { content: ""; flex: 1; border-top: var(--border-width) solid var(--border); }
+.note-item-text { max-width: 80%; text-align: center; }
+
+/* Error: warning text with an optional retry. */
+.error-item { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); color: var(--warning); font-size: var(--font-size-body); }
+.error-item-text { min-width: 0; }

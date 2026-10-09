@@ -162,6 +162,9 @@
   --radius-composer: 18px;
   --task-panel-width: 280px;
   --chat-gutter: 28px;
+  --chat-user-clamp-lines: 8;
+  --tool-output-max-height: 240px;
+  --notice-body-max-height: 240px;
   --canvas: #f0e4d0;
   --sidebar: #e9d9c2;
   --surface: #fdfdfc;
