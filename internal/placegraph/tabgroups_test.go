@@ -99,7 +99,7 @@ func TestCanonicalRepoIsTheGitRootAndNotTheHomeDirectory(t *testing.T) {
 	}
 }
 
-func TestThreeChatsInOneRepoOfferAndHomeChatsStayLoose(t *testing.T) {
+func TestThreeChatsInOneRepoOfferAndUnrelatedHomeChatsStayLoose(t *testing.T) {
 	repo := gitRepo(t, "https://example.com/acme/widgets.git")
 	if err := os.MkdirAll(filepath.Join(repo, "cmd"), 0o700); err != nil {
 		t.Fatal(err)
@@ -108,7 +108,7 @@ func TestThreeChatsInOneRepoOfferAndHomeChatsStayLoose(t *testing.T) {
 		t.Fatal(err)
 	}
 	home := gitRepo(t, "https://example.com/acme/house.git")
-	ask := &countingAsk{raw: `{"belong":true,"chats":["c1","c2","c3"],"name":"Should not run"}`}
+	ask := &countingAsk{raw: `{"belong":false,"chats":[],"name":""}`}
 	chats := []TabChat{
 		{ID: "aaaa000000000001", Title: "Lexer", Recap: "Strict mode", Workspace: filepath.Join(repo, "cmd")},
 		{ID: "bbbb000000000002", Title: "Parser", Recap: "Errors", Workspace: repo},
@@ -118,8 +118,8 @@ func TestThreeChatsInOneRepoOfferAndHomeChatsStayLoose(t *testing.T) {
 		{ID: "ffff000000000006", Title: "Recipes", Recap: "Also home", Workspace: home},
 	}
 	offers := GroupOffers(context.Background(), home, chats, ask.ask, openGate(6, 0))
-	if ask.n() != 0 {
-		t.Fatalf("the model was asked %d times for a set one repository already explains", ask.n())
+	if ask.n() != 1 {
+		t.Fatalf("unclaimed home chats need one semantic check, got %d", ask.n())
 	}
 	if len(offers) != 1 || offers[0].Basis != "repo" || len(offers[0].IDs) != 3 || offers[0].Title != filepath.Base(repo) {
 		t.Fatalf("offers = %+v", offers)
@@ -134,7 +134,7 @@ func TestThreeChatsInOneRepoOfferAndHomeChatsStayLoose(t *testing.T) {
 		{ID: "eeee000000000005", Title: "Garden", Recap: "Also home", Workspace: home},
 		{ID: "ffff000000000006", Title: "Recipes", Recap: "Also home", Workspace: home},
 	}
-	if got := GroupOffers(context.Background(), home, homeOnly, ask.ask, openGate(6, 0)); len(got) != 0 || ask.n() != 0 {
+	if got := GroupOffers(context.Background(), home, homeOnly, ask.ask, openGate(6, 0)); len(got) != 0 || ask.n() != 2 {
 		t.Fatalf("home chats offered %+v after %d model calls", got, ask.n())
 	}
 }
@@ -266,5 +266,50 @@ func TestTopicQuestionUsesTheOrganizingRole(t *testing.T) {
 	req := TopicQuestion(threeLoose())
 	if req.Role != "placesuggest" || !strings.Contains(req.User, "c1: Alpha — First") || strings.Contains(req.User, "/work/a") {
 		t.Fatalf("question = %+v", req)
+	}
+}
+
+func TestHomeWorkspaceTopicGroupsConcreteSubjectOnly(t *testing.T) {
+	home := t.TempDir()
+	chats := []TabChat{
+		{ID: "1111111111111111", Title: "Tomato drip timing", Workspace: home},
+		{ID: "2222222222222222", Title: "Drip emitter clogs", Workspace: home},
+		{ID: "3333333333333333", Title: "Garden tubing pressure", Workspace: home},
+		{ID: "4444444444444444", Title: "Drip timer rain delay", Workspace: home},
+		{ID: "5555555555555555", Title: "Drip irrigation zones", Workspace: home},
+		{ID: "6666666666666666", Title: "Roth conversion", Workspace: home},
+		{ID: "7777777777777777", Title: "Buttermilk biscuits", Workspace: home},
+		{ID: "8888888888888888", Title: "Hip stretching", Workspace: home},
+	}
+	ask := &countingAsk{raw: `{"belong":true,"chats":["c1","c2","c3","c4","c5"],"name":"Drip irrigation"}`}
+	gate := openGate(6, 0)
+	offers := GroupOffers(context.Background(), home, chats, ask.ask, gate)
+	if len(offers) != 1 || offers[0].Basis != "topic" || len(offers[0].IDs) != 5 || ask.n() != 1 {
+		t.Fatalf("home topic: %+v calls=%d", offers, ask.n())
+	}
+	if strings.Contains(ask.last.User, home) || !strings.Contains(ask.last.System, "Sharing a tool") {
+		t.Fatal("question must use semantic evidence, not the common home folder")
+	}
+	for i, id := range offers[0].IDs {
+		if id != chats[i].ID {
+			t.Fatalf("unrelated chat grouped: %+v", offers)
+		}
+	}
+	GroupOffers(context.Background(), home, chats, ask.ask, gate)
+	if ask.n() != 1 {
+		t.Fatalf("same home set asked again: %d", ask.n())
+	}
+}
+
+func TestRepoOnlyOfferSpendsNoModelCall(t *testing.T) {
+	repo := gitRepo(t, "https://example.com/acme/widgets.git")
+	chats := threeLoose()
+	for i := range chats {
+		chats[i].Workspace = repo
+	}
+	ask := &countingAsk{raw: `{"belong":false,"chats":[],"name":""}`}
+	offers := GroupOffers(context.Background(), t.TempDir(), chats, ask.ask, openGate(6, 0))
+	if len(offers) != 1 || offers[0].Basis != "repo" || ask.n() != 0 {
+		t.Fatalf("repo-only offers=%+v calls=%d", offers, ask.n())
 	}
 }
