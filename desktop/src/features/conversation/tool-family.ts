@@ -2,10 +2,11 @@ import type { IconName } from '../../components/ui';
 
 const families: Array<[RegExp, IconName]> = [
   [/^(bash|shell|run|exec|terminal)/, 'terminal'],
-  [/^(read|view|cat|open)/, 'file'],
-  [/^(write|edit|patch|apply|replace)/, 'edit'],
+  [/^(read|view|cat|open)/, 'book'],
+  [/^(write|edit|patch|apply|replace)/, 'pencil'],
   [/^(ls|list|glob|find|dir|tree)/, 'folder'],
-  [/^(grep|search|rg)/, 'findFiles'],
+  [/^(grep|search|rg)/, 'search'],
+  [/^generate_image/, 'sparkles'],
   [/^(web|fetch|browse|http)/, 'web'],
   [/^(task|propose_task|plan)/, 'tasks'],
 ];

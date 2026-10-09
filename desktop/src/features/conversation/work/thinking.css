@@ -1,6 +1,6 @@
 /* Thinking (components §3.4): a 24px row, then at most three live lines fading at the top. */
-.thinking { display: flex; flex-direction: column; min-width: 0; font-size: var(--font-size-body); }
-.thinking-row.button { gap: var(--thinking-gap); width: 100%; min-height: var(--thinking-row-height); padding: 0; justify-content: flex-start; font-size: var(--font-size-body); color: var(--ink-2); text-align: left; }
+.thinking { display: flex; flex-direction: column; gap: var(--space-tight); min-width: 0; font-size: var(--font-size-body); }
+.thinking-row.button { gap: var(--thinking-gap); width: 100%; min-height: var(--thinking-row-height); padding: 0; justify-content: flex-start; font-size: var(--font-size-body); font-weight: var(--type-label-weight); color: var(--ink-2); text-align: left; }
 .thinking-row.button:disabled { cursor: default; opacity: var(--opacity-opaque); }
 .thinking-live { display: flex; align-items: center; gap: var(--thinking-gap); min-height: var(--thinking-row-height); color: var(--ink-2); }
 .thinking-mark { display: grid; place-items: center; flex: none; width: var(--thinking-mark-box); height: var(--thinking-mark-box); }

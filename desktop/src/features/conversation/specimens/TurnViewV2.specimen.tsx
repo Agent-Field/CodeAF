@@ -124,6 +124,7 @@ export function TurnViewV2Specimen() {
           renderBlock={renderBlock}
           renderAttachment={renderAttachment}
           onRetry={() => undefined}
+          onOpenWork={() => undefined}
         />
       ))}
       <TurnViewV2
