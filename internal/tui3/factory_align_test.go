@@ -35,9 +35,9 @@ func factoryAlignLab(t *testing.T, width int) (*app, []string) {
 }
 
 // factorySplitAt is a body row cut at the divider: the rows' column and the
-// peek's, and the divider's cell (-1 for a row with none). On an item page
-// wide enough for the verbs on the right, the right column stops at the
-// second rule: it is the pane, and [factoryVerbsAt] is the column past it.
+// peek's (on the item page, the left column and the center), and the
+// divider's cell (-1 for a row with none). A second rule on the row ends the
+// right column.
 func factorySplitAt(row string) (left, right string, div int) {
 	r := []rune(row)
 	for i, c := range r {
@@ -50,17 +50,6 @@ func factorySplitAt(row string) (left, right string, div int) {
 		}
 	}
 	return row, "", -1
-}
-
-// factoryVerbsAt is the verbs' column of an item page's body row, past its
-// second rule, and false for a row with no second rule.
-func factoryVerbsAt(row string) (string, bool) {
-	_, rest, ok := strings.Cut(row, "│")
-	if !ok {
-		return "", false
-	}
-	_, verbs, ok := strings.Cut(rest, "│")
-	return verbs, ok
 }
 
 // factoryFirstInk is the cell of a row's first character that is not air, -1
@@ -189,8 +178,10 @@ func TestFactoryAlignRhythm(t *testing.T) {
 	}
 }
 
-// (f) THE ITEM PAGE'S RAIL AND PANE SHARE THEIR TOP ROW, row 3: the crumbs on
-// row 0, the chips on row 1, a blank between.
+// (f) THE ITEM PAGE IS ITS TOP BAR AND THEN ITS COLUMNS (owner's layout,
+// 2026-10-09): the bar on row 0 with the crumbs, the question on row 1 of a
+// parked item, a blank, and then the left column and the center starting on
+// one row, the center's text at the margin past the rule.
 func TestFactoryAlignItemPage(t *testing.T) {
 	for _, width := range factoryAlignWidths {
 		a, _ := factoryAlignLab(t, width)
@@ -198,29 +189,20 @@ func TestFactoryAlignItemPage(t *testing.T) {
 			factoryOn(t, a, id)
 			drive(t, a, key("enter"))
 			body := factoryBodyPlain(a, width, 40)
-			// A PARKED ITEM'S SECOND ROW IS ITS QUESTION, where every other
-			// item's chips stand; with the verbs on the right the chips are
-			// the column's, and the second row draws none.
 			it, _ := a.factoryCursorItem()
-			second := wordBudget
-			switch {
-			case it.State == factory.StateNeedsYou:
-				second = "?"
-			case a.factoryVerbsDrawn():
-				second = ""
+			top := a.fp.railTop
+			if !strings.Contains(body[0], "Factory ›") || strings.TrimSpace(body[top-1]) != "" {
+				t.Errorf("at %d item %d's head is not the bar and a blank:\n%s", width, id, strings.Join(body[:top+1], "\n"))
 			}
-			if !strings.HasPrefix(strings.TrimSpace(body[0]), "Factory ›") || !strings.HasPrefix(strings.TrimSpace(body[1]), second) || strings.TrimSpace(body[2]) != "" {
-				t.Errorf("at %d item %d's head is not crumbs, chips, blank:\n%s", width, id, strings.Join(body[:4], "\n"))
+			if it.State == factory.StateNeedsYou && !strings.HasPrefix(strings.TrimSpace(body[1]), "?") {
+				t.Errorf("at %d the parked item %d's second row is not its question: %q", width, id, body[1])
 			}
-			if a.factoryVerbsDrawn() && it.State != factory.StateNeedsYou && strings.Contains(body[1], wordBudget) {
-				t.Errorf("at %d item %d's second row keeps the chips beside the verbs: %q", width, id, body[1])
-			}
-			left, right, div := factorySplitAt(body[3])
-			if div < 0 || strings.TrimSpace(left) == "" || strings.TrimSpace(right) == "" {
-				t.Errorf("at %d item %d's rail and pane do not both start on row 3: %q", width, id, body[3])
+			left, right, div := factorySplitAt(body[top])
+			if div != factoryItemColW || strings.TrimSpace(left) == "" || strings.TrimSpace(right) == "" {
+				t.Errorf("at %d item %d's column and center do not both start on row %d: %q", width, id, top, body[top])
 			}
 			if x := factoryFirstInk(right); div >= 0 && x != factoryMargin {
-				t.Errorf("at %d item %d's pane starts %d past the rule, not %d", width, id, x, factoryMargin)
+				t.Errorf("at %d item %d's center starts %d past the rule, not %d", width, id, x, factoryMargin)
 			}
 			drive(t, a, key("esc"))
 		}

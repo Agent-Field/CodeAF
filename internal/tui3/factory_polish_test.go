@@ -459,7 +459,7 @@ func TestFactoryBreadcrumbs(t *testing.T) {
 	factoryOn(t, a, 2)
 	drive(t, a, key("enter"))
 	rows := factoryBodyPlain(a, 150, 30)
-	if !strings.HasPrefix(rows[0], factoryMarginPad()+"Factory › codeaf › #1551 filters lost on compact") || !strings.HasSuffix(strings.TrimRight(rows[0], " "), "running 26m  $1.42 / $5") {
+	if !strings.Contains(rows[0], "Factory › codeaf › #1551 filters lost on compact") || !strings.HasSuffix(strings.TrimRight(rows[0], " "), "review · round 1/2 · $1.42 / $5") {
 		t.Fatalf("the crumbs row is %q", rows[0])
 	}
 	drive(t, a, key("esc"))

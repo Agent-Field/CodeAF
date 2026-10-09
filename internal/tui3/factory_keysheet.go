@@ -47,13 +47,23 @@ func (a *app) factorySheet() []factorySheetGroup {
 		}
 	}
 	it, ok := a.factoryCursorItem()
+	// ON THE ITEM PAGE `space` IS THE TOP BAR'S CONTROL (factory_bar.go), and
+	// the sheet names it first, by what it does now; select and pause are the
+	// floor's.
+	page := ok && a.fp.open
+	if page {
+		if c := a.factoryControlOf(it); c != factoryControlNone {
+			_, word, _ := strings.Cut(ansi.Strip(a.factoryControlLabel(c)), " ")
+			row(&do, true, keyControl, word)
+		}
+	}
 	if ok {
 		chat := seam.Has("talk")
 		switch it.State {
 		case factory.StateNew, factory.StateDismissed:
 			row(&do, a.factoryCanRun(), keyRun, wordRun)
 			row(&do, chat, keyChat, wordChat)
-			row(&do, it.State == factory.StateNew, keySelect, wordSelect)
+			row(&do, it.State == factory.StateNew && !page, keySelect, wordSelect)
 			row(&do, seam.Has("launch"), keyRunSelected, wordRunSelected)
 			row(&do, seam.Has("askauthor") && len(nonEmpty(it.Triage.Questions)) > 0, keyAskAuthor, wordAskAuthor)
 			row(&set, seam.Has("setcap"), keyBudget, wordBudget)
@@ -67,7 +77,7 @@ func (a *app) factorySheet() []factorySheetGroup {
 		case factory.StateQueued, factory.StateRunning:
 			row(&do, seam.Has("stop"), keyStop, wordStop)
 			row(&do, chat, keyChat, wordChat)
-			row(&do, seam.Has("pause") && it.State == factory.StateRunning, keyPause, wordPause+" or "+wordResume)
+			row(&do, seam.Has("pause") && it.State == factory.StateRunning && !page, keyPause, wordPause+" or "+wordResume)
 			row(&do, a.factorySteerable(it), keySteer, wordSteer)
 			row(&set, seam.Has("seteffort"), keyThinking, wordThinking)
 		case factory.StateNeedsYou:

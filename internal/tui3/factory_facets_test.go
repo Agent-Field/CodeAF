@@ -14,8 +14,9 @@ import (
 // ── THE ITEM PAGE IS THE ISSUE'S MAP ────────────────────────────────────────
 //
 // The item page's left column is one row per facet of the item (owner
-// decision, 2026-10-08): issue, manager, run with its stages and its log
-// nested under it, result, settings.
+// decision, 2026-10-08; re-ordered by the owner's layout, 2026-10-09):
+// issue, manager, steps with each step nested under it, log, result,
+// settings, and the item's own actions under them.
 
 // factoryFacetsOf is the left column for the item under the cursor as words,
 // a nested row led by two spaces.
@@ -34,10 +35,10 @@ func factoryFacetsOf(a *app) []string {
 	return out
 }
 
-// THE ROWS FOR A NEW, A RUNNING AND A LANDED ITEM, in order, with the stages
-// and the log nested under `run`: the issue, the manager where the Talk door
-// is, the run and its stages, the log once the stream said anything, the
-// result once something came out, and the settings last.
+// THE ROWS FOR A NEW, A RUNNING AND A LANDED ITEM, in order, with the steps
+// nested under `steps`: the issue, the manager where the Talk door is, the
+// steps, the log once the stream said anything, the result once something
+// came out, the settings, and the actions whose doors are there.
 func TestFactoryFacetRowsByState(t *testing.T) {
 	a := factoryVerbsLab(t, &factoryFake{}, 150)
 	for _, c := range []struct {
@@ -46,17 +47,20 @@ func TestFactoryFacetRowsByState(t *testing.T) {
 	}{{4, false, false}, {2, true, false}, {9, true, true}} {
 		factoryVerbsOpen(t, a, c.id)
 		it, _ := a.factoryCursorItem()
-		want := []string{wordFacetIssue, wordFacetManager, wordFacetRun}
+		want := []string{wordFacetIssue, wordFacetManager, wordFacetSteps}
 		for _, st := range factoryStages(a.fp.snap, it) {
 			want = append(want, "  "+st.Name)
 		}
 		if c.log {
-			want = append(want, "  "+wordFacetLog)
+			want = append(want, wordFacetLog)
 		}
 		if c.works {
 			want = append(want, wordFacetResult)
 		}
 		want = append(want, wordFacetSettings)
+		for _, v := range a.factoryItemActions() {
+			want = append(want, v.word)
+		}
 		if got := factoryFacetsOf(a); strings.Join(got, "|") != strings.Join(want, "|") {
 			t.Errorf("item %d (%s): the rows are\n%q\nwant\n%q", c.id, it.State, got, want)
 		}
@@ -80,7 +84,7 @@ func TestFactoryFacetRowsAbsentWithNothingBehind(t *testing.T) {
 	}
 }
 
-// THE RUN ROW CARRIES THE RUN'S FACTS, `running 4m · $0.31`, dropped from the
+// THE STEPS ROW CARRIES THE RUN'S FACTS, `running 4m · $0.31`, dropped from the
 // right whole when the column is too narrow, and a new item's run row says
 // nothing after its word.
 func TestFactoryFacetRunFacts(t *testing.T) {
@@ -208,8 +212,9 @@ func TestFactorySettingsPaneRunning(t *testing.T) {
 	}
 }
 
-// `enter` ON THE MANAGER PUTS THE KEYS IN ITS BOX, and asks no door; `T`
-// still opens the conversation; on the result `enter` does nothing.
+// `enter` ON THE MANAGER ASKS THE TALK DOOR FOR ITS CHAT, and with none to
+// host puts the keys in its box; `T` asks the same; on the result `enter`
+// does nothing.
 func TestFactoryFacetEnter(t *testing.T) {
 	f := &factoryFake{}
 	a := factoryVerbsLab(t, f, 150)
@@ -221,8 +226,8 @@ func TestFactoryFacetEnter(t *testing.T) {
 	}
 	factoryRowNamed(t, a, wordFacetManager)
 	drive(t, a, key("enter"))
-	if got := f.said(); len(got) != 0 || !a.factoryBoxFocused() {
-		t.Fatalf("enter on the manager asked %v (box focused %v)", got, a.factoryBoxFocused())
+	if got := strings.Join(f.said(), " "); !strings.Contains(got, "Talk") || !a.factoryBoxFocused() {
+		t.Fatalf("enter on the manager asked %q (box focused %v)", got, a.factoryBoxFocused())
 	}
 	drive(t, a, key("esc"))
 	drive(t, a, key("T"))
@@ -361,16 +366,17 @@ func TestFactoryAlignFacets(t *testing.T) {
 		it, _ := a.factoryCursorItem()
 		rows := a.factoryItemRows(it)
 		body := factoryBodyPlain(a, width, a.height-placeHeadRows-1)
-		for i, r := range rows {
-			if i >= a.fp.railShown {
-				break
+		for line, i := range a.fp.geo.lines {
+			if i < 0 {
+				continue
 			}
-			left, _, div := factorySplitAt(body[a.fp.railTop+i])
-			if div != factoryRailW {
-				t.Errorf("at %d row %d's rule stands at %d, not %d", width, i, div, factoryRailW)
+			r := rows[i]
+			left, _, div := factorySplitAt(body[a.fp.railTop+line])
+			if div != factoryItemColW {
+				t.Errorf("at %d row %d's rule stands at %d, not %d", width, i, div, factoryItemColW)
 			}
 			want := factoryMargin
-			if r.kind == factoryPageStage || r.kind == factoryPageLog {
+			if r.kind == factoryPageStage {
 				want += factoryNestW
 			}
 			if x := factoryFirstInk(left); x != want {

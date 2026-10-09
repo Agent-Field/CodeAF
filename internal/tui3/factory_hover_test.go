@@ -124,8 +124,9 @@ func TestFactoryPointerOffTheRowsClearsTheHover(t *testing.T) {
 	}
 }
 
-// THE ITEM PAGE'S STAGE RAIL ANSWERS THE POINTER TOO: resting on a rail row
-// selects that stage, and resting on the page beside it moves nothing.
+// THE ITEM PAGE'S LEFT COLUMN ANSWERS THE POINTER TOO: resting on a row
+// highlights it and leaves the cursor where it was (owner's layout,
+// 2026-10-09), and resting on the page beside it highlights nothing there.
 func TestFactoryStageRailAnswersThePointer(t *testing.T) {
 	a := factoryHoverLab(t)
 	y := factoryRowY(t, a, 0)
@@ -144,8 +145,11 @@ func TestFactoryStageRailAnswersThePointer(t *testing.T) {
 		t.Fatalf("the pointer on the page beside the rail moved the stage to %d", a.fp.stage)
 	}
 	drive(t, a, tea.MouseMotionMsg{X: 3, Y: ry})
-	if a.fp.stage != a.fp.railFirst+2 || !a.fp.open {
-		t.Fatalf("the pointer on the rail's third row left the stage at %d", a.fp.stage)
+	if a.fp.stage != was || !a.fp.open {
+		t.Fatalf("the pointer resting on the column's third row moved the cursor to %d", a.fp.stage)
+	}
+	if a.fp.hot.kind != factoryHotRow || a.fp.hot.row != a.fp.railFirst+2 {
+		t.Fatalf("the pointer on the column's third row highlights %+v", a.fp.hot)
 	}
 }
 

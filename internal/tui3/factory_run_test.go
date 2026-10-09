@@ -64,9 +64,10 @@ func factoryStageChat(t *testing.T) string {
 	return chat
 }
 
-// A STAGE IS A ROOM: the rail marks it with the conversation's mark, the
-// crumbs go one deeper on it, `enter` opens its conversation and `esc` on the
-// empty box comes back to the item page on the same row.
+// A STEP WITH A CHAT IS ITS CHAT, IN THE CENTER: the column marks it with the
+// conversation's mark, selecting it opens the chat beside the page without
+// leaving it, `enter` puts the keys in the chat's box, `esc` gives them back
+// and a second `esc` puts the floor back on the same row.
 func TestFactoryStageRoomOpensAndEscComesBack(t *testing.T) {
 	chat := factoryStageChat(t)
 	f := &factoryFake{}
@@ -79,11 +80,8 @@ func TestFactoryStageRoomOpensAndEscComesBack(t *testing.T) {
 	}
 	factoryOn(t, a, 2)
 	drive(t, a, key("enter"))
-	factoryRowNamed(t, a, "plan")
+	was := a.fp.cursor
 	body := factoryBodyPlain(a, a.width, 30)
-	if !strings.HasPrefix(strings.TrimSpace(body[0]), "Factory › codeaf › #1551 › plan") {
-		t.Fatalf("the crumbs do not go one deeper on a room: %q", body[0])
-	}
 	room := a.icon(tokens.GActionCommunicate)
 	planRow, writeRow := "", ""
 	for _, row := range body {
@@ -96,30 +94,30 @@ func TestFactoryStageRoomOpensAndEscComesBack(t *testing.T) {
 		}
 	}
 	if !strings.Contains(planRow, room) || strings.Contains(writeRow, room) {
-		t.Fatalf("the rail marks the wrong stages with a room: plan %q, write %q", planRow, writeRow)
+		t.Fatalf("the column marks the wrong steps with a chat: plan %q, write %q", planRow, writeRow)
+	}
+	factoryRowNamed(t, a, "plan")
+	drive(t, a, key("down"), key("up"))
+	if opened != chat || !a.at(pageFactory) || !a.fp.open || !a.factoryHosting() {
+		t.Fatalf("selecting plan opened %q (factory %v, page %v, hosting %v), want %q", opened, a.at(pageFactory), a.fp.open, a.factoryHosting(), chat)
 	}
 	if hint := (placeFactory{}).hint(a); !strings.Contains(hint, "enter conversation") {
-		t.Fatalf("the hint does not name the room: %q", hint)
-	}
-	// THE FIRST `enter` DIVES INTO THE STAGE'S STORY in the centre
-	// (factory_timeline.go); the second opens the conversation itself.
-	drive(t, a, key("enter"))
-	if !a.fp.tl.diving || opened != "" {
-		t.Fatalf("the first enter did not dive in (diving %v, opened %q)", a.fp.tl.diving, opened)
+		t.Fatalf("the hint does not name the chat: %q", hint)
 	}
 	drive(t, a, key("enter"))
-	if opened != chat || a.pageShowing() {
-		t.Fatalf("enter on the room opened %q (page showing %v), want %q", opened, a.pageShowing(), chat)
+	if !a.fp.box {
+		t.Fatal("enter on the step did not put the keys in its chat's box")
 	}
 	drive(t, a, key("esc"))
-	if !a.at(pageFactory) || !a.fp.open {
-		t.Fatalf("esc in the room did not come back to the item page (page %v, open %v)", a.page, a.fp.open)
+	if a.fp.box || !a.fp.open {
+		t.Fatalf("esc in the box: box %v, page open %v", a.fp.box, a.fp.open)
 	}
-	if it, _ := a.factoryCursorItem(); it.ID != 2 {
-		t.Fatalf("back on %s, not #1551", it.Ref())
+	drive(t, a, key("esc"))
+	if a.fp.open || !a.at(pageFactory) || a.fp.cursor != was {
+		t.Fatalf("esc on the page: open %v, factory %v, cursor %d want %d", a.fp.open, a.at(pageFactory), a.fp.cursor, was)
 	}
 	if got := f.said(); len(got) != 0 {
-		t.Fatalf("walking into a room asked the doors %v", got)
+		t.Fatalf("walking into a step's chat asked the doors %v", got)
 	}
 }
 
@@ -233,12 +231,8 @@ func TestFactoryLogPaneThreeKinds(t *testing.T) {
 			pane = append(pane, strings.TrimSpace(right))
 		}
 	}
-	// The newest line is the pane's last, over the action line when the
-	// page is too narrow for the verbs on the right.
+	// The newest line is the pane's last.
 	newest := len(pane) - 1
-	if !a.factoryVerbsDrawn() {
-		newest--
-	}
 	if len(pane) < 2 || !strings.HasPrefix(pane[0], thought.At.Format("15:04")) || !strings.Contains(pane[newest], "steer: keep the old flag") {
 		t.Fatalf("the log pane is not oldest first, newest last, stamped:\n%s", strings.Join(pane, "\n"))
 	}
@@ -315,21 +309,6 @@ func TestFactoryProofSheetBothWays(t *testing.T) {
 		want := "1 of 6 not shown · e approve with changes · B request changes"
 		if clean {
 			want = "all 6 shown · s approve"
-		}
-		// WITH THE VERBS ON THE RIGHT the line is its count, and the keys are
-		// the column's: the sheet's line does not name them a second time.
-		if a.factoryVerbsDrawn() {
-			count, keys, _ := strings.Cut(want, " · ")
-			for _, clause := range strings.Split(keys, " · ") {
-				_, word, _ := strings.Cut(clause, " ")
-				if !strings.Contains(text, word) {
-					t.Fatalf("clean %v: the verbs on the right do not name %q:\n%s", clean, word, text)
-				}
-			}
-			if strings.Contains(text, want) {
-				t.Fatalf("clean %v: the sheet's line names the column's keys again:\n%s", clean, text)
-			}
-			want = count
 		}
 		if !strings.Contains(text, want) {
 			t.Fatalf("clean %v: the sheet does not end %q:\n%s", clean, want, text)
@@ -410,7 +389,13 @@ func TestFactoryRunKeysAbsentWithoutDoors(t *testing.T) {
 func TestFactoryQuestionInTheItemPageHead(t *testing.T) {
 	q := "review is not clean after 2 rounds: 3 findings · one more round, or go on as is?"
 	f := &factoryFake{}
-	factoryShapeItem(f, 1, func(it *factory.Item) { it.Question = q })
+	factoryShapeItem(f, 1, func(it *factory.Item) {
+		// held at review's round question, not at the approve step.
+		s := *it.Stream
+		s.Phases = append([]factory.Phase(nil), s.Phases...)
+		s.Phases[1].State, s.Phases[4].State = factory.PhaseDone, factory.PhaseWaiting
+		it.Stream, it.Question, it.QKind = &s, q, ""
+	})
 	a := factoryVerbLab(t, f)
 	factoryOn(t, a, 1)
 	drive(t, a, key("enter"))
@@ -420,7 +405,7 @@ func TestFactoryQuestionInTheItemPageHead(t *testing.T) {
 		t.Fatalf("the question's paint is wrong: %q", row)
 	}
 	body := factoryBodyPlain(a, a.width, 30)
-	if !strings.Contains(body[1], q) || !strings.Contains(body[1], factoryAnswerKeys) {
+	if !strings.Contains(body[1], q) || !strings.Contains(body[1], factoryAnswerClauses()) {
 		t.Fatalf("the head's second row is not the question with its answers: %q", body[1])
 	}
 }

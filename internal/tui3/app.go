@@ -3657,6 +3657,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if bring := a.teamsSync(); bring != nil {
 		cmd = tea.Batch(cmd, bring)
 	}
+	// AND THE FACTORY ITEM PAGE SETTLES WHICH CHAT ITS CENTER HOSTS, after
+	// every message that could have moved the cursor or the front
+	// (factory_host.go).
+	if bring := a.factoryHostSync(); bring != nil {
+		cmd = tea.Batch(cmd, bring)
+	}
 	// AND THE TERMINAL'S TITLE IS ASKED AFTER EVERY MESSAGE, because this is
 	// the one place every change to where a person stands has already happened
 	// by — a place entered, a name arriving, a question coming up — and it is
@@ -3692,6 +3698,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// CONVERSATION it hosts (teamspagehost.go). One comparison on every other
 	// place.
 	if cmd, took := a.teamsRoute(msg); took {
+		return a, cmd
+	}
+	// AND THE FACTORY ITEM PAGE HANDS ITS HOSTED CHAT WHAT IS THE CHAT'S
+	// (factory_host.go). One comparison on every other place.
+	if cmd, took := a.factoryRoute(msg); took {
 		return a, cmd
 	}
 	switch msg := msg.(type) {

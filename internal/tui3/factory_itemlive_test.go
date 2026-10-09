@@ -158,11 +158,11 @@ func TestFactoryItemPageSecondBeat(t *testing.T) {
 func TestFactoryItemPageElapsedCounts(t *testing.T) {
 	a, _, now, _ := factoryPlanLab(t)
 	*now = now.Add(15 * time.Second)
-	if cell := factoryPlanCell(t, a); !strings.Contains(cell, "plan · 15s") {
+	if cell := factoryPlanCell(t, a); !strings.Contains(cell, "plan 15s") {
 		t.Fatalf("fifteen seconds in, the plan row says %q", cell)
 	}
 	*now = now.Add(time.Second)
-	if cell := factoryPlanCell(t, a); !strings.Contains(cell, "plan · 16s") {
+	if cell := factoryPlanCell(t, a); !strings.Contains(cell, "plan 16s") {
 		t.Fatalf("a second later with no read, the plan row says %q", cell)
 	}
 }
