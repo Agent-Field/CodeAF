@@ -45,3 +45,15 @@ the desktop and root gates before you review and push. No automatic rebase
 or publication occurs. See ../../docs/DESKTOP.md for the engine boundaries.
 
 For a browser-only engine preview, run `npm run engine:dev` first, then `npm run dev`. Provider credentials remain in the canonical engine profile. [ENGINE.md](ENGINE.md) documents the local transport and fixed-model verification.
+
+## Native shell against a forwarded engine
+
+A Mac without a provider key can still run the native shell against an engine
+that runs on another machine. Forward that engine's loopback port to the Mac
+(`ssh -N -L 127.0.0.1:1423:127.0.0.1:1423 <engine-host>` from the Mac, or `-R`
+from the engine host), copy only its transport connection file (URL, local
+token, model — never a provider key) to a mode-0600 file on the Mac, and start
+the shell with `CODEAF_DESKTOP_CONNECTION=<that file> npm run desktop:dev`.
+The shell then attaches to that engine instead of starting its own sidecar; it
+accepts only an authenticated loopback URL. Conversations and tasks run in the
+engine host's workspace.
