@@ -14,8 +14,18 @@
 //! plugin on desktop, so codeaf groups by place itself. The plugin also drops
 //! click actions, so codeaf posts through the platform's own notification
 //! service and a click opens the question it names (activation.rs).
+//!
+//! WHICH WINDOW IS RIGHT. Every window reads the engine's world feed on a stream
+//! of its own and posts its whole list, so two windows can disagree for a moment:
+//! one has applied a record the other has not. Each list therefore carries the
+//! feed sequence it was derived from, and only a list at the newest sequence any
+//! open window has reported may say what is pending. An older list is ignored
+//! rather than merged, because merging would bring an answered question back and
+//! announce it again. The engine numbers its feed per process, so a window whose
+//! own sequence goes backwards has seen the engine restart, and that restarts the
+//! count for every window.
 
-use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -91,6 +101,8 @@ pub enum Skipped {
     Focused,
     NothingNew,
     Denied,
+    /// Another window has already reported a newer reading of the feed.
+    Stale,
 }
 
 #[derive(Debug, Serialize)]
@@ -112,13 +124,14 @@ pub struct Note {
 
 #[derive(Default)]
 struct Seen {
-    ids: HashSet<String>,
+    /// Each remembered id with the kind it was announced as.
+    ids: HashMap<String, AttentionKind>,
     order: VecDeque<String>,
 }
 
 impl Seen {
-    fn insert(&mut self, id: &str) -> bool {
-        if self.ids.contains(id) {
+    fn insert(&mut self, id: &str, kind: AttentionKind) -> bool {
+        if self.ids.contains_key(id) {
             return false;
         }
         if self.order.len() >= REMEMBERED {
@@ -126,20 +139,67 @@ impl Seen {
                 self.ids.remove(&old);
             }
         }
-        self.ids.insert(id.to_string());
+        self.ids.insert(id.to_string(), kind);
         self.order.push_back(id.to_string());
         true
     }
 
-    /// An item that is no longer pending may come back later as a new question.
-    fn keep_only(&mut self, pending: &HashSet<&str>) {
-        self.order.retain(|id| pending.contains(id.as_str()));
-        self.ids.retain(|id| pending.contains(id.as_str()));
+    /// Forgets the questions no longer pending, so one put again is new. Failures
+    /// stay remembered (see `fresh`).
+    fn keep_only(&mut self, pending: &HashSet<String>) {
+        let ids = &mut self.ids;
+        self.order.retain(|id| {
+            let keep = pending.contains(id) || ids.get(id) == Some(&AttentionKind::Failed);
+            if !keep {
+                ids.remove(id);
+            }
+            keep
+        });
     }
 }
 
+/// The feed sequence each open window last reported.
 #[derive(Default)]
-pub struct Attention(Mutex<Seen>);
+struct Feed {
+    windows: HashMap<String, u64>,
+}
+
+impl Feed {
+    /// Whether `window`'s list at `seq` is the newest reading, recording it either
+    /// way. `open` names the windows still open; a closed window's reading no
+    /// longer outranks anyone, so the map never outgrows the open windows.
+    fn accept(&mut self, window: &str, seq: u64, open: &HashSet<String>) -> bool {
+        self.windows
+            .retain(|label, _| open.contains(label) || label == window);
+        if self.windows.get(window).is_some_and(|&mine| seq < mine) {
+            // Only an engine that restarted numbers this window's feed lower than
+            // before: the other windows' readings belong to the engine that is gone.
+            self.windows.clear();
+        }
+        self.windows.insert(window.to_string(), seq);
+        self.windows.values().all(|&other| other <= seq)
+    }
+
+    /// Whether a list at `seq` from `window` would still be the newest reading.
+    fn current(&self, window: &str, seq: u64) -> bool {
+        self.windows
+            .iter()
+            .all(|(label, &other)| label == window || other <= seq)
+    }
+}
+
+/// Everything the app remembers about the attention feed, across all windows.
+#[derive(Default)]
+struct Book {
+    /// What has been announced (or seen while a window was focused).
+    seen: Seen,
+    /// The ids the newest list named: what a click may still focus.
+    pending: HashSet<String>,
+    feed: Feed,
+}
+
+#[derive(Default)]
+pub struct Attention(Mutex<Book>);
 
 fn clean(text: &str, max: usize) -> String {
     let flat: String = text
@@ -258,17 +318,19 @@ fn verb(kind: AttentionKind) -> &'static str {
 }
 
 /// Records what is pending and returns only the items never announced before.
-fn fresh<'a>(seen: &mut Seen, items: &'a [AttentionItem]) -> Vec<&'a AttentionItem> {
-    let pending: HashSet<&str> = items
-        .iter()
-        .filter(|i| notifies(i))
-        .map(|i| i.id.as_str())
-        .collect();
-    seen.keep_only(&pending);
-    items
-        .iter()
-        .filter(|i| notifies(i))
-        .filter(|i| seen.insert(&i.id))
+///
+/// A question that leaves the list was answered, and the same question may be
+/// put again later. A failure that leaves the list is never announced again
+/// while it is remembered: the engine names a failure by the instant it landed,
+/// so its id never returns as a new failure, and a window whose clock ages it out
+/// a moment before another's must not make the other announce it twice.
+fn fresh<'a>(book: &mut Book, items: &'a [AttentionItem]) -> Vec<&'a AttentionItem> {
+    let wanted: Vec<&AttentionItem> = items.iter().filter(|i| notifies(i)).collect();
+    book.pending = wanted.iter().map(|i| i.id.clone()).collect();
+    book.seen.keep_only(&book.pending);
+    wanted
+        .into_iter()
+        .filter(|i| book.seen.insert(&i.id, i.kind))
         .collect()
 }
 
@@ -315,11 +377,18 @@ pub fn notify_request_permission<R: Runtime>(
     Ok(permission(&app, true))
 }
 
-/// The attention items still waiting, as the last list from the renderer had them.
+/// The attention items still waiting, as the newest list had them.
 pub fn pending<R: Runtime>(app: &AppHandle<R>) -> HashSet<String> {
     app.try_state::<Attention>()
-        .and_then(|state| state.0.lock().ok().map(|seen| seen.ids.clone()))
+        .and_then(|state| state.0.lock().ok().map(|book| book.pending.clone()))
         .unwrap_or_default()
+}
+
+fn open_windows<R: Runtime>(app: &AppHandle<R>) -> HashSet<String> {
+    app_windows(app)
+        .into_iter()
+        .map(|(label, _)| label)
+        .collect()
 }
 
 fn app_focused<R: Runtime>(app: &AppHandle<R>) -> bool {
@@ -333,19 +402,30 @@ pub fn notify_attention<R: Runtime>(
     app: AppHandle<R>,
     webview: Webview<R>,
     items: Vec<AttentionItem>,
+    seq: u64,
 ) -> Result<Posted, String> {
-    trusted(&webview)?;
+    let me = trusted(&webview)?;
     checked(&items)?;
+    let open = open_windows(&app);
     let state = app.state::<Attention>();
-    let mut seen = state
+    let mut book = state
         .0
         .lock()
         .map_err(|_| "Notifications are unavailable")?;
+    // A window behind the newest reading may neither announce nor change what is
+    // pending: its list can still hold a question answered since.
+    if !book.feed.accept(&me, seq, &open) {
+        return Ok(Posted {
+            posted: 0,
+            groups: 0,
+            skipped: Some(Skipped::Stale),
+        });
+    }
     // Remember what is pending even while focused, so switching away later does
     // not announce a question the person already saw in the window.
-    let new = fresh(&mut seen, &items);
+    let new = fresh(&mut book, &items);
     // Released before posting: a click's handler reads what is pending.
-    drop(seen);
+    drop(book);
     if app_focused(&app) {
         return Ok(Posted {
             posted: 0,
@@ -415,8 +495,21 @@ pub fn badge_set<R: Runtime>(
     app: AppHandle<R>,
     webview: Webview<R>,
     count: u32,
+    seq: u64,
 ) -> Result<BadgeAnswer, String> {
-    trusted(&webview)?;
+    let me = trusted(&webview)?;
+    // The badge follows the same newest reading as the notifications; a window
+    // behind it would put back a count that has already gone down.
+    let stale = app
+        .try_state::<Attention>()
+        .and_then(|state| state.0.lock().ok().map(|book| !book.feed.current(&me, seq)))
+        .unwrap_or(false);
+    if stale {
+        return Ok(BadgeAnswer {
+            applied: false,
+            reason: Some("stale"),
+        });
+    }
     if cfg!(windows) {
         return Ok(BadgeAnswer {
             applied: false,
@@ -484,40 +577,176 @@ mod tests {
 
     #[test]
     fn the_same_item_never_announces_twice() {
-        let mut seen = Seen::default();
+        let mut book = Book::default();
         let items = vec![item("a", AttentionKind::NeedsYou, MKT, "Launch")];
-        assert_eq!(fresh(&mut seen, &items).len(), 1);
-        assert_eq!(fresh(&mut seen, &items).len(), 0);
+        assert_eq!(fresh(&mut book, &items).len(), 1);
+        assert_eq!(fresh(&mut book, &items).len(), 0);
     }
 
     #[test]
     fn running_never_notifies_and_failed_does() {
-        let mut seen = Seen::default();
+        let mut book = Book::default();
         let items = vec![
             item("r", AttentionKind::Running, MKT, "Build"),
             item("f", AttentionKind::Failed, MKT, "Deploy"),
         ];
-        let got = fresh(&mut seen, &items);
+        let got = fresh(&mut book, &items);
         assert_eq!(got.iter().map(|i| i.id.as_str()).collect::<Vec<_>>(), ["f"]);
+        assert_eq!(book.pending, HashSet::from(["f".to_string()]));
     }
 
     #[test]
     fn an_answered_question_can_come_back_as_new() {
-        let mut seen = Seen::default();
+        let mut book = Book::default();
         let a = vec![item("a", AttentionKind::NeedsYou, None, "Launch")];
-        assert_eq!(fresh(&mut seen, &a).len(), 1);
-        assert_eq!(fresh(&mut seen, &[]).len(), 0);
-        assert_eq!(fresh(&mut seen, &a).len(), 1);
+        assert_eq!(fresh(&mut book, &a).len(), 1);
+        assert_eq!(fresh(&mut book, &[]).len(), 0);
+        assert!(book.pending.is_empty());
+        assert_eq!(fresh(&mut book, &a).len(), 1);
+    }
+
+    #[test]
+    fn a_failure_that_left_the_list_is_not_announced_again() {
+        let mut book = Book::default();
+        let f = vec![item("failed:s1:t", AttentionKind::Failed, None, "Nightly")];
+        assert_eq!(fresh(&mut book, &f).len(), 1);
+        // Marked seen, or aged out by one window's clock a moment before another's.
+        assert_eq!(fresh(&mut book, &[]).len(), 0);
+        assert!(
+            book.pending.is_empty(),
+            "it is no longer something a click focuses"
+        );
+        assert_eq!(fresh(&mut book, &f).len(), 0);
     }
 
     #[test]
     fn memory_is_bounded() {
         let mut seen = Seen::default();
         for i in 0..REMEMBERED + 10 {
-            seen.insert(&i.to_string());
+            seen.insert(&i.to_string(), AttentionKind::Failed);
         }
         assert_eq!(seen.ids.len(), REMEMBERED);
-        assert!(seen.insert("0"), "the oldest was forgotten");
+        assert_eq!(seen.order.len(), REMEMBERED);
+        assert!(
+            seen.insert("0", AttentionKind::Failed),
+            "the oldest was forgotten"
+        );
+    }
+
+    fn open(labels: &[&str]) -> HashSet<String> {
+        labels.iter().map(|l| l.to_string()).collect()
+    }
+
+    /// One window's post as notify_attention handles it, without a platform.
+    fn post<'a>(
+        book: &mut Book,
+        window: &str,
+        seq: u64,
+        items: &'a [AttentionItem],
+    ) -> Option<Vec<&'a str>> {
+        let windows = open(&["main", "w-2"]);
+        if !book.feed.accept(window, seq, &windows) {
+            return None;
+        }
+        Some(fresh(book, items).iter().map(|i| i.id.as_str()).collect())
+    }
+
+    fn failed(id: &str) -> AttentionItem {
+        item(id, AttentionKind::Failed, None, "Nightly")
+    }
+
+    #[test]
+    fn two_windows_alternating_announce_each_question_and_failure_once() {
+        let mut book = Book::default();
+        let both = vec![
+            asking("s1:consent:7", "s1", "consent", 7),
+            failed("failed:s9:t1"),
+        ];
+        let answered = vec![failed("failed:s9:t1")];
+        let marked = vec![];
+        // Both windows read seq 10; the first to post announces, the second repeats it.
+        assert_eq!(
+            post(&mut book, "main", 10, &both),
+            Some(vec!["s1:consent:7", "failed:s9:t1"])
+        );
+        assert_eq!(post(&mut book, "w-2", 10, &both), Some(vec![]));
+        // main reads the answer at 11; w-2, still at 10, posts its old list again.
+        assert_eq!(post(&mut book, "main", 11, &answered), Some(vec![]));
+        assert_eq!(
+            post(&mut book, "w-2", 10, &both),
+            None,
+            "a stale list is ignored"
+        );
+        assert_eq!(book.pending, HashSet::from(["failed:s9:t1".to_string()]));
+        // w-2 catches up; then the failure is marked seen and main is behind.
+        assert_eq!(post(&mut book, "w-2", 11, &answered), Some(vec![]));
+        assert_eq!(post(&mut book, "w-2", 12, &marked), Some(vec![]));
+        assert_eq!(post(&mut book, "main", 11, &answered), None);
+        assert_eq!(post(&mut book, "main", 12, &marked), Some(vec![]));
+        assert!(book.pending.is_empty());
+        // Nothing was announced twice across the whole alternation.
+    }
+
+    #[test]
+    fn a_stale_window_cannot_point_a_grouped_click_at_an_answered_question() {
+        use crate::activation::Routes;
+        let mut book = Book::default();
+        let mut routes = Routes::default();
+        let a = asking("s1:consent:7", "s1", "consent", 7);
+        let b = asking("s2:choice:3", "s2", "choice", 3);
+        let first = vec![a.clone(), b.clone()];
+        let new = post(&mut book, "main", 5, &first).unwrap();
+        assert_eq!(new.len(), 2);
+        let token = routes.register(
+            compose(&first.iter().collect::<Vec<_>>())[0]
+                .targets
+                .clone(),
+        );
+        // s1's question is answered: main reads it at 6, then w-2 posts its reading from 5.
+        assert!(post(&mut book, "main", 6, std::slice::from_ref(&b)).is_some());
+        assert!(post(&mut book, "w-2", 5, &first).is_none());
+        assert_eq!(
+            routes.resolve(token.unwrap(), &book.pending),
+            Some(Target {
+                chat_id: "s2".into(),
+                question: Some(Question {
+                    kind: "choice".into(),
+                    id: 3
+                })
+            }),
+            "the click goes to the question still waiting, not the answered one"
+        );
+    }
+
+    #[test]
+    fn an_engine_restart_restarts_the_count_for_every_window() {
+        let mut book = Book::default();
+        let q = vec![asking("s1:consent:7", "s1", "consent", 7)];
+        assert!(post(&mut book, "main", 900, &q).is_some());
+        assert!(post(&mut book, "w-2", 900, &q).is_some());
+        // The engine restarts; main reconnects first and is reset to seq 3.
+        assert!(
+            post(&mut book, "main", 3, &[]).is_some(),
+            "main's own count went backwards"
+        );
+        assert!(book.pending.is_empty());
+        // w-2 was reset too; its new reading is not outranked by the old engine's.
+        assert!(post(&mut book, "w-2", 3, &[]).is_some());
+    }
+
+    #[test]
+    fn a_closed_window_no_longer_outranks_anyone() {
+        let mut feed = Feed::default();
+        assert!(feed.accept("w-7", 50, &open(&["main", "w-7"])));
+        assert!(!feed.accept("main", 40, &open(&["main", "w-7"])));
+        assert!(feed.accept("main", 40, &open(&["main"])), "w-7 closed");
+        assert_eq!(
+            feed.windows.len(),
+            1,
+            "readings are kept for open windows only"
+        );
+        assert!(feed.current("main", 40));
+        assert!(!feed.current("w-9", 39));
     }
 
     #[test]

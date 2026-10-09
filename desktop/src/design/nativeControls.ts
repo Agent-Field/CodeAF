@@ -53,9 +53,9 @@ export type NoticeQuestion = { kind: string; id: number };
 export type NoticeTarget = { chatId: string; question?: NoticeQuestion };
 export type AttentionItem = { id: string; kind: AttentionKind; chatTitle: string; text: string; placeId?: string; placeName?: string } & Partial<NoticeTarget>;
 export type NotificationPermission = { state: 'granted' | 'denied' | 'unavailable'; verified: boolean };
-export type NotifyResult = { posted: number; groups: number; skipped: 'focused' | 'nothing-new' | 'denied' | 'unavailable' | null };
+export type NotifyResult = { posted: number; groups: number; skipped: 'focused' | 'nothing-new' | 'denied' | 'stale' | 'unavailable' | null };
 /** On Linux `applied` means the launcher was asked; whether it draws a count depends on the desktop. */
-export type BadgeResult = { applied: boolean; reason?: 'unavailable' | 'launcher-dependent' };
+export type BadgeResult = { applied: boolean; reason?: 'unavailable' | 'launcher-dependent' | 'stale' };
 
 // ---------------------------------------------------------------------------
 // Limits, the same numbers windows.rs enforces.
@@ -165,6 +165,9 @@ export function claimedTarget(raw: unknown): NoticeTarget | undefined {
 }
 
 /** The badge counts questions waiting on the person; failures and running work do not. */
+/** A world-feed sequence as Rust accepts it: a non-negative safe integer, else 0 (the oldest reading). */
+export const feedSeq = (seq: number): number => (Number.isSafeInteger(seq) && seq > 0 ? seq : 0);
+
 export function needsYouCount(items: readonly AttentionItem[]): number {
   return new Set(items.filter(item => item.kind === 'needsYou').map(item => item.id)).size;
 }
@@ -328,11 +331,13 @@ export function createNativeControls(bridge: NativeBridge = defaultBridge()) {
     /**
      * Hands the whole current attention list to Rust, which announces only what
      * is new, only while no codeaf window is focused, one notification per place.
-     * Send the full list every time: an item missing from it counts as answered.
+     * Send the full list every time: an item missing from it counts as answered. `seq` is the world-feed sequence the
+     * list was derived from; a window behind another window's reading is ignored ('stale'), so it cannot bring an
+     * answered question back.
      */
-    async notifyAttention(items: readonly AttentionItem[]): Promise<NotifyResult> {
+    async notifyAttention(items: readonly AttentionItem[], seq: number): Promise<NotifyResult> {
       if (!bridge.desktop) return { posted: 0, groups: 0, skipped: 'unavailable' };
-      return bridge.invoke<NotifyResult>('notify_attention', { items });
+      return bridge.invoke<NotifyResult>('notify_attention', { items, seq: feedSeq(seq) });
     },
 
     /**
@@ -351,11 +356,11 @@ export function createNativeControls(bridge: NativeBridge = defaultBridge()) {
       return bridge.listen(NOTICE_ACTIVATED_EVENT, () => handler());
     },
 
-    /** Sets the dock or launcher badge to the needs-you count; 0 clears it. */
-    async setBadge(count: number): Promise<BadgeResult> {
+    /** Sets the dock or launcher badge to the needs-you count; 0 clears it. `seq` is as for notifyAttention. */
+    async setBadge(count: number, seq: number): Promise<BadgeResult> {
       if (!bridge.desktop) return { applied: false, reason: 'unavailable' };
       const value = Number.isFinite(count) ? Math.max(0, Math.min(9999, Math.floor(count))) : 0;
-      return bridge.invoke<BadgeResult>('badge_set', { count: value });
+      return bridge.invoke<BadgeResult>('badge_set', { count: value, seq: feedSeq(seq) });
     },
   };
 

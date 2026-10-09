@@ -35,10 +35,26 @@ its first question still waiting, and one whose questions were all answered open
 the conversation only. Proof: a Linux click over a private session bus and display
 (`tests/notification_click_smoke.rs`), browser routing in
 `tests/ui/notification-clicks.spec.ts`, macOS compilation and unit tests, and a
-Windows type-check of the toast module only. A click is not yet proven against a
-real desktop shell's notification server, a signed macOS bundle, or Windows. A
-notification is not withdrawn when its question is answered elsewhere. A macOS
-development build posts as Terminal, so the system brings Terminal forward there.
+Windows type-check of the toast module only. A real notification server (dunst
+1.9.2, X11, its own session bus) drew the grouped notification and a pointer click
+on it opened the question still waiting (`scripts/notification-server-smoke.sh`);
+GNOME Shell, KDE Plasma, Wayland, a signed macOS bundle and Windows are still
+unproven. A notification is not withdrawn when its question is answered elsewhere.
+A macOS development build posts as Terminal, so the system brings Terminal forward
+there.
+
+Several windows post the attention list, each from its own stream of the engine's
+world feed. Each list carries the feed sequence it was read at, and Rust lets only
+the newest reading any open window has reported say what is pending, so a window a
+reading behind can neither announce an answered question again nor point a grouped
+click at it; a window whose own sequence goes backwards marks an engine restart.
+Failures in that list come from the engine's `unseenFailed` and the newest
+failure's landing instant, not from the Inbox's optimistic seen marks, its five-row
+limit or a window's count record, and a failure is announced once. Two limits stay:
+an engine that predates the seen mark leaves failures to each window's own record,
+so two windows can disagree about one (it is still announced once); and the badge
+and pending set follow whichever window read the feed last, with no engine-wide
+answer to "what is pending" beyond that sequence.
 
 ## 1. Bottom line
 
