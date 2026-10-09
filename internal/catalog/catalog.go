@@ -232,6 +232,10 @@ type cache struct {
 	Base      string    `json:"base,omitempty"`
 }
 
+// FetchTimeout bounds one listing request on the default HTTP client. A caller
+// that waits for a catalog to resolve waits no longer than this.
+const FetchTimeout = 15 * time.Second
+
 // Options describes the one catalog fetch. Dir is the codeaf configuration
 // directory (CODEAF_PROFILE_DIR when configured, ~/.codeaf otherwise).
 type Options struct {
@@ -1197,7 +1201,7 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 	}
 	client := options.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: 15 * time.Second}
+		client = &http.Client{Timeout: FetchTimeout}
 	}
 	response, err := client.Do(request)
 	if err != nil {

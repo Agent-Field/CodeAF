@@ -90,6 +90,7 @@ func (backend *modelAPIBackend) runEngine(
 	tasks := newSeniorDevCompactionController(
 		store, seniorDevSummaryClient{owner: client}, models, request.Workspace,
 		backend, system, request.Tools, request.CompactionDecisions, sessionID,
+		providerID, modelID,
 	)
 	loop := steploop.Loop{
 		Store: store, Client: client, Models: models,

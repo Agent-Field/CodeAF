@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"net/http"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
@@ -45,6 +47,9 @@ func (r *pairRig) enrol(t *testing.T, door *approvalsDoor, name string) {
 // then the list names both, A is Self, and Revoke stops B.
 func TestApprovalsDoorApprovesListsAndRevokes(t *testing.T) {
 	rig := newPairRig(t)
+	if _, err := devname.Set(rig.homeB, "laptop"); err != nil {
+		t.Fatal(err)
+	}
 	screen, done := rig.asking(t)
 	link := screen.waitFor(t, `https://codeaf\.agentfield\.ai/p/\S+#\S+`)[0]
 	door := rig.approvalsAt(rig.homeA)
@@ -55,7 +60,7 @@ func TestApprovalsDoorApprovesListsAndRevokes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Name != "laptop" || p.Platform != "linux" || len(p.Check) != 4 || p.Device == "" {
+	if p.Name != "laptop" || p.Platform != runtime.GOOS || len(p.Check) != 4 || p.Device == "" {
 		t.Fatalf("pending = %+v", p)
 	}
 	if err := door.Approve(ctx, p); err != nil {
