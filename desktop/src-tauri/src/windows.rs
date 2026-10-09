@@ -342,6 +342,8 @@ fn window_url(place: &str) -> WebviewUrl {
 pub struct OpenRequest {
     pub place_key: String,
     #[serde(default)]
+    pub focus_tab: Option<String>,
+    #[serde(default)]
     pub handoff: Option<TabHandoff>,
     #[serde(default)]
     pub at: Option<Point>,
@@ -364,6 +366,7 @@ fn build<R: Runtime>(
     label: &str,
     place: &str,
     at: Option<Point>,
+    focus_tab: Option<&str>,
 ) -> Result<WebviewWindow<R>, String> {
     let mut config = app
         .config()
@@ -374,7 +377,10 @@ fn build<R: Runtime>(
         .cloned()
         .ok_or("The main window configuration is missing")?;
     config.label = label.into();
-    config.url = window_url(place);
+    config.url = match focus_tab {
+        Some(id) => WebviewUrl::App(format!("index.html?place={place}&focusTab={id}").into()),
+        None => window_url(place),
+    };
     config.center = false;
     let position = match at {
         Some(point) => LogicalPosition::new(point.x, point.y),
@@ -403,6 +409,15 @@ pub async fn window_open<R: Runtime>(
 ) -> Result<Opened, String> {
     let from = trusted(&webview)?;
     let place = checked_place(&request.place_key)?.to_string();
+    if request.focus_tab.as_deref().is_some_and(|id| {
+        id.is_empty()
+            || id.len() > 128
+            || !id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    }) {
+        return Err("That tab cannot be focused".into());
+    }
     if let Some(tab) = &request.handoff {
         tab.check()?;
     }
@@ -419,7 +434,14 @@ pub async fn window_open<R: Runtime>(
         book.places.insert(label.clone(), place.clone());
         (label, id)
     };
-    if let Err(error) = build(&app, &caller, &label, &place, request.at) {
+    if let Err(error) = build(
+        &app,
+        &caller,
+        &label,
+        &place,
+        request.at,
+        request.focus_tab.as_deref(),
+    ) {
         if let Ok(mut book) = book(&app) {
             book.forget(&label);
         }

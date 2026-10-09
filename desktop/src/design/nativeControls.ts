@@ -208,8 +208,9 @@ export function createNativeControls(bridge: NativeBridge = defaultBridge()) {
      * new window has claimed it. In a browser a tab opens on the place; nothing
      * can be moved there, so `moved` is false.
      */
-    async openPlaceWindow(placeKey: PlaceKey, options: { pane?: Pane; at?: Point } = {}): Promise<{ label?: string; handoffId?: string; moved: boolean }> {
+    async openPlaceWindow(placeKey: PlaceKey, options: { pane?: Pane; at?: Point; focusTab?: string } = {}): Promise<{ label?: string; handoffId?: string; moved: boolean }> {
       if (!isPlaceKey(placeKey)) throw new Error('That is not a place codeaf knows');
+      if (options.focusTab !== undefined && !idLike(options.focusTab)) throw new Error('That tab cannot be focused');
       const handoff = options.pane ? handoffFromPane(options.pane) : undefined;
       const problem = handoff && handoffProblem(handoff);
       if (problem) throw new Error(problem);
@@ -220,6 +221,7 @@ export function createNativeControls(bridge: NativeBridge = defaultBridge()) {
       const request: Record<string, unknown> = { placeKey };
       if (handoff) request.handoff = handoff;
       if (options.at) request.at = options.at;
+      if (options.focusTab) request.focusTab = options.focusTab;
       const opened = await bridge.invoke<{ label: string; handoffId?: string }>('window_open', { request });
       if (opened.handoffId && options.pane) started.set(opened.handoffId, options.pane.id);
       return { label: opened.label, handoffId: opened.handoffId, moved: Boolean(opened.handoffId) };

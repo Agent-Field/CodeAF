@@ -427,6 +427,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     return json(route, roleView(role));
   };
 
+  const workspaces = new Map<string, { key: string; revision: number; workspace: unknown }>();
   const history = historyRoutes(scenario.history, json);
 
   await page.route('**/api/engine/**', async route => {
@@ -438,13 +439,25 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     const [root, id, action, arg] = parts;
     // The window's own reads of the place graph and the world stream are not a conversation's calls; the Places
     // mock (support/mock-places.ts) records those. A tab that must make no engine call is judged on the rest.
-    if (!['places', 'chats', 'world', 'events'].includes(root)) calls.push({ method, path: url.pathname, body });
+    if (!['places', 'chats', 'world', 'events', 'workspaces'].includes(root)) calls.push({ method, path: url.pathname, body });
     const forced = (key: keyof NonNullable<Scenario['fail']>) => {
       const status = scenario.fail?.[key];
       return status ? json(route, { error: `Mock engine forced ${key} failure` }, status) : undefined;
     };
     if (world && root === 'world') return json(route, { seq: worldSeq, ...structuredClone(world) });
     if (world && root === 'events') return worldEvents(route, Number(url.searchParams.get('after') ?? 0));
+    // Fixture workspace CAS mirrors the real route; workspace reads never count as conversation calls.
+    if (root === 'workspaces' && id) {
+      const current = workspaces.get(id) ?? { key: id, revision: 0, workspace: null };
+      if (method === 'PUT') {
+        if (body.revision !== current.revision) return json(route, { error: 'Tabs changed in another window', code: 'conflict', current }, 409);
+        const saved = { key: id, revision: current.revision + 1, workspace: body.workspace };
+        workspaces.set(id, saved);
+        return json(route, saved);
+      }
+      if (url.searchParams.get('wait')) await new Promise(resolve => setTimeout(resolve, 250));
+      return json(route, workspaces.get(id) ?? current);
+    }
     if (root === 'models') return models(route, parts, method, body);
     if (root === 'places' && parts[1] === 'policy') return placesPolicy(route, parts, method, body);
     if (root === 'history') return history.handle(route, parts, method, body, url);

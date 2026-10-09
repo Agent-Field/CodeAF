@@ -22,6 +22,8 @@ export type TabActionsDeps = {
   place?: () => string | undefined;
   /** True while this window still holds the tab. A claimed tab has been released and a closed one is no longer ours to report. */
   stillHere?: (tabId: string) => boolean;
+  /** Opens another view of the same canonical tab set, without copying or closing a shared tab. */
+  handoffView?: (tabId: string) => void;
   setTimer?: (fn: () => void, ms: number) => unknown;
 };
 
@@ -48,9 +50,9 @@ export type TabActions = {
   moveToWindow(tab: Tab, label: string): Promise<boolean>;
 };
 
-export function createTabActions({ native, toasts, writeClipboard = text => navigator.clipboard.writeText(text), place, stillHere, setTimer = (fn, ms) => setTimeout(fn, ms) }: TabActionsDeps): TabActions {
+export function createTabActions({ native, toasts, writeClipboard = text => navigator.clipboard.writeText(text), place, stillHere, handoffView, setTimer = (fn, ms) => setTimeout(fn, ms) }: TabActionsDeps): TabActions {
   // A place's Home never leaves its strip; the Inbox is the window's own.
-  const canMove = (tab: Tab) => native.desktop && !tab.split && tab.kind !== 'inbox' && tab.kind !== 'home';
+  const canMove = (tab: Tab) => native.desktop && (handoffView !== undefined || !tab.split) && tab.kind !== 'inbox' && tab.kind !== 'home';
   const failed = (tab: Tab, what: string) => toasts.show({ message: ['Could not move ', { strong: tab.title }, ` ${what}. It is still here.`], tone: 'danger' });
   /** Said once, and only if nothing claimed the tab: the source kept it, so nothing is lost, but the person is told the window did not take it. */
   const watch = (tab: Tab, where: string) => {
@@ -69,6 +71,11 @@ export function createTabActions({ native, toasts, writeClipboard = text => navi
       if (!canMove(tab)) return false;
       try {
         const placeKey = (place?.() as PlaceKey | undefined) ?? (await native.currentWindow()).placeKey;
+        if (handoffView) {
+          await native.openPlaceWindow(placeKey, { focusTab: tab.id });
+          handoffView(tab.id);
+          return true;
+        }
         const opened = await native.openPlaceWindow(placeKey, { pane: tab });
         if (opened.moved) { watch(tab, 'the new window'); return true; }
       } catch { /* said below */ }

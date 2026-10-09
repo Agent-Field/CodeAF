@@ -12,12 +12,12 @@
 import { cleanView } from '../tabs/view-state.ts';
 import { kindOrDefault } from '../tabs/kinds/types.ts';
 import { clampRatio, layoutFits, makeSplit, titleRank, visibleTabs } from '../tabs/helpers.ts';
-import type { Pane, SplitLayout, Tab, TabGroup, TitleSource, WorkspaceState } from '../tabs/model.ts';
+import type { ClosedTab, Pane, SplitLayout, Tab, TabGroup, TitleSource, WorkspaceState } from '../tabs/model.ts';
 import { limits } from './limits.ts';
 
 /** A split as it is shared: no focused pane. */
 export type SharedSplit = Omit<NonNullable<Tab['split']>, 'focus'>;
-export type SharedTab = Omit<Tab, 'split'> & { split?: SharedSplit };
+export type SharedTab = Omit<ClosedTab, 'split'> & { split?: SharedSplit };
 
 /** The document the engine stores for one place (internal/workspacestore). */
 export type SharedWorkspace = {
@@ -56,7 +56,7 @@ export const sharedText = (state: WorkspaceState) => JSON.stringify(sharedOf(sta
 /** The window-local half, merged over what the window already kept (scroll is never in WorkspaceState). */
 export function localOf(state: WorkspaceState, previous: WindowLocal): WindowLocal {
   const focus: Record<string, number> = {};
-  for (const tab of state.tabs) if (tab.split && tab.split.focus > 0) focus[tab.id] = tab.split.focus;
+  for (const tab of [...state.tabs, ...state.closed]) if (tab.split && tab.split.focus > 0) focus[tab.id] = tab.split.focus;
   return { activeId: state.activeId, recentIds: state.recentIds, focus, scroll: previous.scroll };
 }
 
@@ -67,7 +67,7 @@ export function localOf(state: WorkspaceState, previous: WindowLocal): WindowLoc
  */
 export function compose(shared: SharedWorkspace, local: WindowLocal, before?: WorkspaceState): WorkspaceState {
   const tabs: Tab[] = shared.tabs.map(tab => (tab.split ? { ...tab, split: makeSplit(tab.split.panes, local.focus[tab.id] ?? 0, tab.split.layout, tab.split.ratios) } : (tab as Tab)));
-  const closed: Tab[] = shared.closed.map(tab => (tab.split ? { ...tab, split: makeSplit(tab.split.panes, 0, tab.split.layout, tab.split.ratios) } : (tab as Tab)));
+  const closed: Tab[] = shared.closed.map(tab => (tab.split ? { ...tab, split: makeSplit(tab.split.panes, local.focus[tab.id] ?? 0, tab.split.layout, tab.split.ratios) } : (tab as Tab)));
   const holds = (id: string | undefined) => !!id && tabs.some(tab => tab.id === id);
   let activeId = local.activeId;
   if (!holds(activeId)) {
@@ -110,7 +110,9 @@ function readPane(value: unknown): Pane | undefined {
 function readTab(value: unknown): SharedTab | undefined {
   const pane = readPane(value);
   if (!pane || !isObject(value) || typeof value.pinned !== 'boolean' || (value.groupId !== undefined && !isString(value.groupId))) return undefined;
-  const tab: SharedTab = { ...pane, pinned: value.pinned, ...(isString(value.groupId) ? { groupId: value.groupId } : {}) };
+  const stood = isObject(value.stood) ? value.stood : undefined;
+  const position = stood && (stood.before === undefined || isString(stood.before)) && (stood.after === undefined || isString(stood.after)) && (stood.group === undefined || isGroup(stood.group)) ? { before: stood.before as string | undefined, after: stood.after as string | undefined, group: stood.group as TabGroup | undefined } : undefined;
+  const tab: SharedTab = { ...pane, ...(position ? { stood: position } : {}), pinned: value.pinned, ...(isString(value.groupId) ? { groupId: value.groupId } : {}) };
   const s = value.split;
   if (!isObject(s) || !Array.isArray(s.panes)) return tab;
   const panes = s.panes.map(readPane);

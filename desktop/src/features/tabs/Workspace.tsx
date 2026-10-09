@@ -1,6 +1,6 @@
 // The workspace: owns the reducer state and composes the strip, the content card and the dialogs.
 // Everything with a lane of its own lives in a sibling file (see ARCHITECTURE.md).
-import { useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button, Icon, Text, TextInput, type MenuEntry } from '../../components/ui';
 import { nativeControls } from '../../design/nativeControls';
 import design from '../../design/tokens.json';
@@ -24,11 +24,18 @@ import { NewTabHostContext } from './kinds/newtab/api';
 import { kindDef } from './kinds/registry';
 import { newTab } from './helpers';
 import { worldStore } from '../chat/world-store';
-import { focusedPane, freshWorkspace, panesOf, parseWorkspace, readWorkspace, visibleTabs, workspaceKey, workspaceReducer, type Pane, type Tab, type WorkspaceState, type WorkspaceAction } from './model';
+import { focusedPane, freshWorkspace, panesOf, readWorkspace, visibleTabs, workspaceKey, workspaceReducer, type Pane, type Tab, type WorkspaceState, type WorkspaceAction } from './model';
 import { FirstTurnContext, type BeforeFirstTurn } from '../conversation/firstTurn';
 import type { TintName } from '../places/components/PlaceSwatch';
 import { onWorkspaceRequest } from '../places/shell/workspaceBus';
-import { sharedShape } from './reducers/home';
+import { useWorkspaceSync } from '../workspace-sync/useWorkspaceSync';
+import type { WorkspaceKey } from '../workspace-sync/client';
+import { GroupOffer } from './GroupOffer';
+import { createUsingClient } from '../places/using-client';
+import { usePlacesShell } from '../places/shell/PlacesShell';
+import { chatIdFromSessionFile } from '../places/client';
+import type { SourceHandoff } from '../places/using-types';
+import { openPath } from '../../design/native';
 import { publishActiveHome } from '../shell/shellState';
 import { PaneGrid } from './PaneGrid';
 import { createPreviewStore } from './preview/previewStore';
@@ -66,11 +73,11 @@ function initialFor(place: string, title: string): WorkspaceState {
 }
 
 export function Workspace({ enabled, onActivate, leading, place = 'now', placeTitle, placeTint, arrival = 0, firstTurn, placeMenu, placeSwitcher, onOpenChat }: Props) {
-  const key = workspaceKey(place);
-  const [state, rawDispatch] = useReducer(workspaceReducer, undefined, () => initialFor(place, placeTitle ?? 'Home'));
-  // A tab set adopted from another window is not written back: that window already saved it.
-  const adopted = useRef<string | undefined>(undefined);
-  const dispatch = useCallback((action: WorkspaceAction) => { if (action.type === 'open-inbox') inboxFocus.request(); rawDispatch(action); }, []);
+  const sync = useWorkspaceSync({ key: place as WorkspaceKey, initial: () => initialFor(place, placeTitle ?? 'Home'), focus: new URLSearchParams(window.location.search).get('focusTab') ?? undefined });
+  const { state, dispatch: rawDispatch } = sync;
+  const dispatch = useCallback((action: WorkspaceAction) => { if (action.type === 'open-inbox') inboxFocus.request(); rawDispatch(action); }, [rawDispatch]);
+  const shell = usePlacesShell();
+  const [usingApi] = useState(createUsingClient);
   const [summaries, setSummaries] = useState<Record<string, TabSummary>>({});
   const [now, setNow] = useState(Date.now);
   const [previews] = useState(() => createPreviewStore(design.interaction.previewCloseDelay));
@@ -116,22 +123,6 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   // Closed tabs whose work goes on keep being read too, so the Inbox follows them to the end.
   const watched = [...state.tabs.filter(tab => tab.id !== active.id).flatMap(tab => panesOf(tab)), ...observedClosedPanes(state.closed, summaries)];
   useBackgroundSessions(watched.filter(pane => pane.sessionFile).map(pane => ({ id: pane.id, sessionFile: pane.sessionFile! })), (id, snapshot) => receiveSummary(id, summarize(snapshot)));
-  useEffect(() => {
-    if (adopted.current === sharedShape(state)) return;
-    try { localStorage.setItem(key, JSON.stringify(state)); } catch { /* A full or unavailable store must not interrupt local tab navigation. */ }
-  }, [state, key]);
-  // Two windows on one place show one tab set (Places 6d): another window's save arrives as a storage event.
-  useEffect(() => {
-    const onStorage = (event: StorageEvent) => {
-      if (event.key !== key) return;
-      const incoming = parseWorkspace(event.newValue);
-      if (!incoming) return;
-      adopted.current = sharedShape(incoming);
-      dispatch({ type: 'adopt', state: incoming });
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, [key]);
   // The Home tab carries the place's current name; Go to (even to the place already shown) lands on it.
   // A strip mounted by a Go to (arrival already moved) lands on its Home; one mounted by a reload keeps its saved focus.
   const arrived = useRef(arrival > 0 ? -1 : arrival);
@@ -141,7 +132,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
     arrived.current = arrival;
     dispatch({ type: 'home-ensure', place, title: placeTitle, focus });
   }, [place, placeTitle, arrival]);
-  useEffect(() => onWorkspaceRequest(dispatch), []);
+  useEffect(() => onWorkspaceRequest(dispatch), [dispatch]);
   const focused = focusedPane(state.tabs.find(tab => tab.id === state.activeId) ?? state.tabs[0]);
   useEffect(() => publishActiveHome(focused.kind === 'home' ? focused.place : undefined), [focused.kind, focused.place]);
 
@@ -171,12 +162,15 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const inboxWanted = background.running.length > 0 || background.needsYou.length > 0 || background.failed.length > 0;
   useEffect(() => { if (inboxWanted) dispatch({ type: 'ensure-inbox' }); }, [inboxWanted]);
   useWindowHandoff(dispatch);
+  useEffect(() => { if (sync.status.error) toasts.show({ key: `workspace-status-${place}`, message: [sync.status.error], tone: 'warning', actions: [{ label: 'Try again', onSelect: sync.retry }] }); }, [sync.status.error, place]);
   // A tab moves to a new window on THIS strip's place, which a Places window can change after it opened.
   const placeNow = useRef(place);
   placeNow.current = place;
+  const syncNow = useRef(sync);
+  syncNow.current = sync;
   const latestState = useRef(state);
   latestState.current = state;
-  const [actions] = useState(() => createTabActions({ native: nativeControls(), toasts, place: () => placeNow.current, stillHere: id => latestState.current.tabs.some(tab => tab.id === id) }));
+  const [actions] = useState(() => createTabActions({ native: nativeControls(), toasts, place: () => placeNow.current, handoffView: id => { syncNow.current.handoff(id); }, stillHere: id => latestState.current.tabs.some(tab => tab.id === id) }));
   useCloseStopKey(enabled, () => closeAndStop(state.activeId));
   function startRename(id: string, group = false) { setRename({ id, group, value: (group ? state.groups : state.tabs).find(item => item.id === id)?.title ?? '' }); }
   useTabKeys({ enabled, state, dispatch, visible, overviewOpen, setOverviewOpen, closeTab, switcherRef, setSwitcher });
@@ -196,16 +190,25 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
     onSummary: summary => receiveSummary(pane.id, summary),
     onOpenTaskTab: (taskId, title) => openTaskTab(pane, taskId, title),
     onOpenFile: (path, kind) => openFile(pane, path, kind),
+    usingApi,
+    onOpenSource: (source: SourceHandoff) => {
+      if (source.kind === 'chat') (onOpenChat ?? openChatHere)(source.chatId);
+      else if (source.kind === 'url') dispatch({ type: 'open', background: false, tab: newTab({ kind: 'web', title: source.url, target: { url: source.url } }) });
+      else if (source.kind === 'file') openFile(pane, source.path, 'file');
+      else void openPath(source.path, source.repoRoot ?? source.path).catch(error => toasts.show({ message: [error instanceof Error ? error.message : 'Could not open that source'], tone: 'warning' }));
+    },
+    onAddToPlace: shell && pane.sessionFile ? () => { const chatId = chatIdFromSessionFile(pane.sessionFile!); if (chatId) shell.openChooser({ kind: 'file', chatIds: [chatId], chatTitle: pane.title, exclude: [] }); } : undefined,
   });
   return <TabsApiContext.Provider value={api}><section className="tab-workspace" aria-label="Conversation workspace">
     <TabStrip api={api} leading={leading} overviewTrigger={overviewTrigger} onOverview={() => setOverviewOpen(true)}/>
-    <FirstTurnContext.Provider value={firstTurn}><NewTabHostContext.Provider value={newTabHost}><HistoryHostContext.Provider value={historyHost}><PaneGrid tab={active} tabs={state.tabs} dispatch={dispatch} actionsFor={actionsFor}/></HistoryHostContext.Provider></NewTabHostContext.Provider></FirstTurnContext.Provider>
+    <FirstTurnContext.Provider value={firstTurn}><NewTabHostContext.Provider value={newTabHost}><HistoryHostContext.Provider value={historyHost}><PaneGrid tab={active} tabs={state.tabs} dispatch={dispatch} actionsFor={actionsFor} retainedPaneIds={state.closed.flatMap(tab => panesOf(tab).map(pane => pane.id))}/></HistoryHostContext.Provider></NewTabHostContext.Provider></FirstTurnContext.Provider>
+    <GroupOffer api={api}/>
     {archived && <ArchiveToast count={archived.tabs.length} onDismiss={dismissArchived} onReview={() => { dispatch(openKindAction(state, 'history')); dismissArchived(); }} onRestore={() => { restoreArchived(archived, dispatch); dismissArchived(); }}/>}
     {switcher && <div className="workspace-switcher"><div ref={switcherFocus} className="workspace-switcher-list" role="listbox" tabIndex={0} aria-label="Switch tabs" aria-activedescendant={`switcher-${switcher.ids[switcher.index]}`}>
       {switcher.ids.map((id, index) => { const tab = state.tabs.find(t => t.id === id); return tab ? <Button key={id} id={`switcher-${id}`} className="workspace-switcher-item" role="option" aria-selected={index === switcher.index} tabIndex={-1} onClick={() => { dispatch({ type: 'select', id }); switcherRef.current = null; setSwitcher(null); }}><Icon name={tab.pinned ? 'pin' : kindDef(focusedPane(tab).kind).icon} size="sm"/><span>{tab.title}</span></Button> : null; })}
     </div><Text>Release Ctrl to switch · Escape to cancel</Text>
     </div>}
-    <TabOverview summaries={summaries} now={now} returnFocus={overviewTrigger} open={overviewOpen} tabs={state.tabs} groups={state.groups} activeId={state.activeId} onSplitGroup={groupId => dispatch({ type: 'split-group', groupId })} onClose={() => setOverviewOpen(false)} onSelect={id => dispatch({ type: 'select', id })} menuFor={tab => tabMenuFor(api, tab)} onMoveGroup={(id, groupId) => dispatch({ type: 'move-group', id, groupId })} onCloseTab={id => dispatch({ type: 'close', id })}/>
+    <TabOverview summaries={summaries} now={now} returnFocus={overviewTrigger} open={overviewOpen} tabs={state.tabs} groups={state.groups} activeId={state.activeId} onSplitGroup={groupId => dispatch({ type: 'split-group', groupId })} onClose={() => setOverviewOpen(false)} onSelect={id => dispatch({ type: 'select', id })} menuFor={tab => tabMenuFor(api, tab)} onMoveGroup={(id, groupId) => dispatch({ type: 'move-group', id, groupId })} onCloseTab={closeTab}/>
     <dialog ref={renameDialog} className="workspace-rename" aria-label={rename?.group ? 'Rename group' : 'Rename tab'} onCancel={() => setRename(null)} onClose={() => setRename(null)}>
       <form onSubmit={event => { event.preventDefault(); if (rename) dispatch({ type: rename.group ? 'rename-group' : 'rename', id: rename.id, title: rename.value }); setRename(null); }}><TextInput ref={renameInput} aria-label="Name" value={rename?.value ?? ''} maxLength={80} onChange={event => setRename(current => current ? { ...current, value: event.target.value } : null)}/><div className="workspace-rename-actions"><Button onClick={() => setRename(null)}>Cancel</Button><Button type="submit" variant="quiet">Save</Button></div></form>
     </dialog>
