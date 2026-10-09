@@ -1261,6 +1261,8 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		WrapUp: true,
 		// The two model asks are the agent's, so they are asked of it.
 		TeamAsk: teamAskKnown(sess.agent),
+		// And the places ask, asked of the agent for the same reason.
+		PlaceAsk: placeAskKnown(sess.agent),
 		// This revision checks it in the handler, for every engine behind it
 		// ([Session.agentOf]), so the answer is about the wire and not the agent.
 		SteerOwner: true,
@@ -3268,6 +3270,9 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		return payload, err
 	}
 	if payload, handled, err := teamAskCall(agent, call); handled {
+		return payload, err
+	}
+	if payload, handled, err := placeAskCall(agent, call); handled {
 		return payload, err
 	}
 	return nil, fmt.Errorf("engine: no such method %q", call.Method)

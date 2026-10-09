@@ -1,0 +1,96 @@
+{
+ "source": "desktop-bridge, isolated profile, every role on deepseek/deepseek-v4.1-flash via OpenRouter, 2026-10-09; titles and recaps exactly as saved in meta.json",
+ "chats": [
+  {
+   "group": "garden",
+   "chatId": "6ca50cdb2324cbc6",
+   "title": "Tomato drip emitter mineral clogs",
+   "line": "Recommended pressure-compensating hard-water emitters, regular flushing, and filter or acid treatment for severe mineral clogging.",
+   "discussed": "The person asked how to stop tomato drip emitters from clogging with mineral deposits. codeaf explained that scale builds fastest in slow-flow areas and where evaporation concentrates salts at the outlet. codeaf recommended pressure-compensating hard-water-rated emitters, regular line flushing, and for very hard water a filter, acid injection, or replaceable drip tape."
+  },
+  {
+   "group": "garden",
+   "chatId": "eaaa7fe547180f0b",
+   "title": "Tomato drip irrigation in July",
+   "line": "Advised daily early-morning drip irrigation for tomatoes in hot July, adding a second cycle only in extreme heat or for containers.",
+   "discussed": "The person asked how often to run drip irrigation for tomatoes during hot July, requesting a two-sentence answer without tools. Codeaf recommended daily early-morning watering long enough to soak the root zone 6–8 inches deep, roughly 30–60 minutes for most drip lines. It also suggested an extra late-afternoon cycle above about 95°F or for containers, and checking soil moisture before following a fixed schedule."
+  },
+  {
+   "group": "garden",
+   "chatId": "2293fe85b0222ead",
+   "title": "Morning or evening drip timer",
+   "line": "Codeaf recommended morning as safer default for vegetable bed drip timer, with late-afternoon compromise for fast-drying beds.",
+   "discussed": "The person asked whether a vegetable bed drip timer should run in the morning or evening. Codeaf said morning is safer because cooler air reduces evaporation and wet foliage dries during the day, while evening keeps root-zone moisture longer. It suggested late afternoon as a compromise for fast-drying beds and advised aiming emitters at soil, not leaves."
+  },
+  {
+   "group": "garden",
+   "chatId": "4b91bb87156d4dbf",
+   "title": "Hose bib drip pressure regulator",
+   "line": "Found that a 25 psi pressure regulator is needed at the hose bib, as household pressure exceeds drip system limits.",
+   "discussed": "The person asked whether a pressure regulator is required between the hose bib and drip lines. Codeaf explained that household water pressure (40–80 psi) is higher than drip system design pressure (20–30 psi), risking blown fittings. Codeaf recommended installing a 25 psi regulator at the bib before any timer, filter, or drip line."
+  },
+  {
+   "group": "garden",
+   "chatId": "ef9d1af5e7d5b8bf",
+   "title": "Half-inch vs quarter-inch drip tubing",
+   "line": "Recommended half-inch for main drip lines in raised beds, quarter-inch for short spurs to plants.",
+   "discussed": "The conversation covered choosing between half-inch and quarter-inch tubing for drip irrigation in raised garden beds. Codeaf explained that half-inch main lines maintain enough flow for distant emitters, while quarter-inch would starve longer runs. Quarter-inch is best limited to short spurs feeding individual plants."
+  },
+  {
+   "group": "wifi",
+   "chatId": "35e267d7b857cf92",
+   "title": "Evening 5 GHz Wi-Fi drops",
+   "line": "Discussed evening 5 GHz Wi-Fi drops; likely interference/congestion, suggested changing channel/width or testing 2.4 GHz.",
+   "discussed": "The person reported that their home Wi-Fi drops every evening on the 5 GHz band. codeaf said evening-only 5 GHz drops often come from interference or congestion, such as nearby networks, cordless phones, or neighbors' gear. codeaf suggested changing the 5 GHz channel and width, moving the router, or switching the device to 2.4 GHz to confirm the band is the issue."
+  },
+  {
+   "group": "wifi",
+   "chatId": "bc2a6c87ad2a61a6",
+   "title": "Router Wi-Fi channel choice",
+   "line": "Discussed auto vs fixed Wi-Fi channel; codeaf advised auto unless issues, then fix with analyzer.",
+   "discussed": "The person asked whether to set their router to a fixed Wi-Fi channel or leave it on auto. codeaf recommended auto unless the connection regularly drops or slows, and then fixing the channel by scanning with an analyzer and pinning the clearest one, typically 1, 6, or 11 on 2.4 GHz."
+  },
+  {
+   "group": "wifi",
+   "chatId": "7740bbb7ccb2239e",
+   "title": "Mesh versus range extender dead zone",
+   "line": "Mesh is generally better for an upstairs dead zone; range extender only if small and Ethernet backhaul is available.",
+   "discussed": "The person asked whether a mesh system or a range extender is better for an upstairs dead zone. codeaf said mesh is generally better because nodes use dedicated backhaul and hand devices off cleanly, giving one network name and consistent speed. It noted extenders are cheaper but rebroadcast on the same radio, roughly halving throughput and often creating a separate SSID, and are fine only for small dead zones with Ethernet backhaul."
+  },
+  {
+   "group": "wifi",
+   "chatId": "c78dc4ff598a7292",
+   "title": "Laptop prefers 2.4 GHz network",
+   "line": "Discussed laptop choosing 2.4 GHz over 5 GHz; codeaf suggested fixes but no decision made.",
+   "discussed": "The person asked why their laptop keeps selecting the 2.4 GHz network instead of 5 GHz at home. codeaf explained that the laptop picks the stronger signal, and with one shared SSID, band-steering or client choice often lands on 2.4 GHz because it reaches further through walls and 5 GHz may drop in the evenings. codeaf suggested splitting the bands into separate SSIDs and connecting only to 5 GHz, or setting 5 GHz as preferred on the router while keeping the laptop close."
+  },
+  {
+   "group": "wifi",
+   "chatId": "0bfb0b9babf7cf98",
+   "title": "Wi-Fi interference from neighbours",
+   "line": "Discussed diagnosing neighbour Wi-Fi interference; codeaf suggested channel-overlap checks, but no approach was chosen.",
+   "discussed": "The person asked how to determine whether neighbours' networks are interfering with their home Wi-Fi, requesting two sentences and no tools. Codeaf advised using a Wi-Fi analyzer or router channel scan to spot overlapping networks and confirming by changing channel or band. The answer was diagnostic guidance, not a selected plan."
+  },
+  {
+   "group": "single",
+   "chatId": "282abd304d7d1f62",
+   "title": "Buttermilk substitute for pancakes",
+   "line": "Recommended acidified milk as closest buttermilk substitute for pancakes, with thinned yogurt or sour cream as alternative.",
+   "discussed": "The person asked for a good buttermilk substitute for pancakes in two sentences and without tools. codeaf explained acidifying milk with lemon juice or white vinegar, and offered thinned yogurt or sour cream as another option. It covered measurements and the need to keep tang and tenderness."
+  },
+  {
+   "group": "single",
+   "chatId": "2eb55a6e847f43cb",
+   "title": "Roth versus traditional IRA",
+   "line": "Explained Roth IRA after-tax vs traditional IRA pre-tax deductions and taxed withdrawals; no personal situation details saved.",
+   "discussed": "The person asked for the difference between a Roth IRA and a traditional IRA in two sentences. codeaf explained that Roth contributions are after-tax and withdrawals are tax-free, while traditional contributions may be deductible and withdrawals are taxed as ordinary income. codeaf noted that the question was general knowledge and nothing about the person's situation was worth saving."
+  },
+  {
+   "group": "single",
+   "chatId": "6796df6d0f81d45a",
+   "title": "Stretching after a 5k run",
+   "line": "Codeaf recommended a post-5k routine: cool-down walk, then 20–30 second static stretches for calves, quads, hamstrings, hips, glutes, and lower back.",
+   "discussed": "The person asked for a stretching routine to do after a 5k run, limited to two sentences and no tools. Codeaf provided a cool-down and static stretching sequence targeting major lower-body areas. It emphasized holding each stretch 20–30 seconds, breathing steadily, and stopping short of pain."
+  }
+ ]
+}

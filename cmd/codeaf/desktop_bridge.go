@@ -88,7 +88,9 @@ func runDesktopBridge(args []string) error {
 	if err != nil {
 		return err
 	}
-	bridge := desktopbridge.New(token, func(file string) (desktopbridge.Connection, error) {
+	// dial is the one way this door reaches an engine: a child `codeaf engine`
+	// on this machine, which joins (or starts) the workspace's session host.
+	dial := func(hello remote.Hello) (desktopbridge.Connection, error) {
 		command := exec.Command(binary, "engine", "--workspace", resolved)
 		command.Stderr = os.Stderr
 		input, err := command.StdinPipe()
@@ -106,12 +108,15 @@ func runDesktopBridge(args []string) error {
 			return desktopbridge.Connection{}, err
 		}
 		pipe := &desktopPipe{Reader: output, Writer: input, command: command}
-		client, err := remote.Dial(pipe, "local desktop", desktopHello(resolved, file, conversationModel(profileDir), placeDoor.Path))
+		client, err := remote.Dial(pipe, "local desktop", hello)
 		if err != nil {
 			pipe.Close()
 			return desktopbridge.Connection{}, err
 		}
 		return desktopbridge.Connection{Agent: client.Agent(), Welcome: client.Welcome(), Follow: client.Follow(), Take: client.Take, FetchFile: client.FetchFile, StatPaths: client.StatPaths, ReadText: client.ReadText, FindFiles: client.FindFiles, DiffChanges: client.DiffChanges, DiffFile: client.DiffFile, DiffStart: client.DiffStart, Local: true, Close: func() { _ = client.Close() }}, nil
+	}
+	bridge := desktopbridge.New(token, func(file string) (desktopbridge.Connection, error) {
+		return dial(desktopHello(resolved, file, conversationModel(profileDir), placeDoor.Path))
 	})
 	defer bridge.Close()
 	bridge.UseModels(&desktopbridge.Models{ProfileDir: profileDir, Catalog: desktopCatalog(profileDir)})
@@ -127,6 +132,24 @@ func runDesktopBridge(args []string) error {
 		return fmt.Errorf("places: %w", err)
 	}
 	bridge.UsePlaces(places)
+	// Offers about places keep their own ledger beside the graph, and read the
+	// person's Places settings fresh on every job.
+	ledger, err := placegraph.OpenLedger(filepath.Join(filepath.Dir(placeDoor.Path), "places-ai.json"))
+	if err != nil {
+		return fmt.Errorf("places: %w", err)
+	}
+	if err := bridge.UsePlaceAdvice(&desktopbridge.PlaceAdvice{Ledger: ledger, SharedWorkspace: resolved, Policy: func() placegraph.RecommendPolicy {
+		return config.DesktopPlacesPolicy(profileDir)
+	}, Detached: func(file string) (desktopbridge.Connection, error) {
+		// An empty session would mean "this workspace's latest", which mints
+		// one in a workspace with none; a reader names a file or nothing.
+		if strings.TrimSpace(file) == "" {
+			return desktopbridge.Connection{}, errors.New("a background reader needs a saved conversation")
+		}
+		return dial(desktopReader(resolved, file, placeDoor.Path))
+	}}); err != nil {
+		return fmt.Errorf("places: %w", err)
+	}
 	bridge.UseHistory(&desktopbridge.History{Root: session.PlacesRoot()})
 	listener, err := net.Listen("tcp", *address)
 	if err != nil {
@@ -171,6 +194,18 @@ func desktopHello(workspace, file, model, graph string) remote.Hello {
 		Surface: "desktop",
 		Launch:  &remote.LaunchShape{OneModel: true, Interactive: true, PlaceGraph: graph},
 	}
+}
+
+// desktopReader is the hello of a background reader: the desktop's own launch
+// shape, onto ONE EXISTING transcript, as a watcher. It names no model, so a
+// conversation it boots keeps its own; it is never New, so it cannot mint one;
+// and a watcher never drives, so a window the person has open keeps the
+// keyboard and no turn is started (internal/desktopbridge's places_detached.go).
+func desktopReader(workspace, file, graph string) remote.Hello {
+	hello := desktopHello(workspace, file, "", graph)
+	hello.New = false
+	hello.Watch = true
+	return hello
 }
 
 type desktopPipe struct {
