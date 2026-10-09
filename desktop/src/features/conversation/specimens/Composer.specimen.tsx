@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Composer } from '../Composer';
+import { ModelPicker } from '../composer/ModelPicker';
 import { ComposerAttachmentsSpecimen } from './ComposerAttachments.specimen';
 import { ComposerPasteSpecimen } from './ComposerPaste.specimen';
 
@@ -25,6 +26,25 @@ function Case(props: { title: string; initial: string; running?: boolean; reason
   );
 }
 
+const SPECIMEN_MODELS = [
+  { id: 'flash', label: 'DeepSeek v4.1 Flash' },
+  { id: 'pro', label: 'DeepSeek v4.1 Pro' },
+  { id: 'sonnet', label: 'Claude Sonnet' },
+];
+const SPECIMEN_EFFORT = [{ value: 'low', label: 'Low' }, { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High' }];
+
+/** The model popover with the routing and effort the live engine does not expose yet (design 1e). */
+function ModelPickerCase() {
+  const [model, setModel] = useState('flash');
+  const [effort, setEffort] = useState('medium');
+  return (
+    <section aria-label="Model popover try-out">
+      <p>Model popover, specimen routing and effort</p>
+      <ModelPicker models={SPECIMEN_MODELS} selectedId={model} onSelect={setModel} effort={{ value: effort, options: SPECIMEN_EFFORT, onChange: setEffort }} />
+    </section>
+  );
+}
+
 export function ComposerSpecimen() {
   return (
     <div>
@@ -33,6 +53,7 @@ export function ComposerSpecimen() {
       <Case title="Running, empty (Stop)" initial="" running />
       <Case title="Running, with text (Steer)" initial="Also skip the vendor folder" running />
       <Case title="Disabled" initial="" reason="Message the main conversation to change this task" />
+      <ModelPickerCase />
       <ComposerAttachmentsSpecimen />
       <ComposerPasteSpecimen />
     </div>
