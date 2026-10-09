@@ -51,3 +51,5 @@ Shell). On any conflict, the design files win over code and older docs.
 | Q27 | Where a dragged queued row lands | On the row it is dropped on: it takes that row's place and the others shift. No drop line is drawn. Only the visible rows (two, or all when expanded) accept a drop. |
 | Q28 | Keyboard reorder | A focused row moves one place with Alt+↑ / Alt+↓ and keeps focus; moving below the second row opens "N more queued". A screen reader hears "Moved to position N of M". |
 | Q29 | Editing a queued message that holds a pasted-text card | The field edits the whole stored text, including the `<pasted-text>` block, as plain text. |
+| Q30 | ⌘1–3: the Conversation page says they switch pinned models, the Shell spec says ⌘1–9 jump to tabs | ⌘1–3 switch pinned models while a conversation composer is on screen; ⌘4–9 jump to tabs. Tabs 1–3 are reached with ⌃Tab or a click. |
+| Q31 | Segment label for a pinned model outside the three defaults | The tail of the model name (for example "kimi-k3"). |
