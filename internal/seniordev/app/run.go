@@ -169,11 +169,14 @@ func runWith(ctx context.Context, host delegate.Host, options Options, notes io.
 	if recorder, ok := host.(delegate.Recorder); ok {
 		records = recorder.Records()
 	}
-	stateDir, refusal := stateDirectory(options.StateDir, workspace, records)
+	stateDir, refusal := stateDirectory(options.StateDir, workspace)
 	if refusal != "" {
 		return refused(refusal)
 	}
 	args.StateDir = stateDir
+	if stateDir == "" {
+		args.RecordStore = recordStoreBase(records, workspace)
+	}
 	loadedConfig, err := loadSeniorDevConfig(workspace)
 	if err != nil {
 		return refused("load config: " + err.Error())

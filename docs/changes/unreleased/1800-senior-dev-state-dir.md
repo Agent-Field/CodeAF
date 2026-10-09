@@ -20,10 +20,11 @@ store and the conversation with it. Neither deleting step reached the action
 log, because the store died before the step could be written.
 
 A store that is itself removed or emptied still ends the run, now saying `its
-store <dir> was removed while the run was working, with the conversation in
-it`. The store holds its directory, its database and its records open and
-compares them with what is at their paths before every read and write: in a
-fresh directory the next turn would make the session again under the same id
-and the model would carry on from a conversation that starts where the removal
-happened. Holding them open also keeps ext4 and overlayfs from handing a
-removed directory's inode number to the next one made at the same path.
+store <dir> was removed while the run was working, with the conversation in it`.
+The store holds its directory, its database and its records open and compares
+them with what is at their paths before every write and every read of the
+conversation: in a fresh directory the next turn would make the session again
+under the same id and the model would carry on from a conversation that starts
+where the removal happened. Holding them open also keeps ext4 and overlayfs from
+handing a removed directory's inode number to the next one made at the same
+path.

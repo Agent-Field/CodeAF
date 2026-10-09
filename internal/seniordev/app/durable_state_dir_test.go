@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/seniordev/session/sessioncore"
@@ -94,7 +95,7 @@ func TestStateDirRootsTheStoreOutsideTheWorkspace(t *testing.T) {
 			case testCase.variable:
 				t.Setenv(StateDirEnv, stateDir)
 			}
-			dir, refusal := stateDirectory(flagged, workspace, "")
+			dir, refusal := stateDirectory(flagged, workspace)
 			if refusal != "" {
 				t.Fatalf("refused: %s", refusal)
 			}
@@ -160,12 +161,12 @@ func TestAStateDirInsideTheFolderIsRefused(t *testing.T) {
 		filepath.Join(outside, "into-the-folder"),
 		filepath.Join(outside, "into-the-folder", "deeper", "store"),
 	} {
-		if _, refusal := stateDirectory(refusedDir, workspace, ""); !strings.Contains(refusal, "--state-dir "+refusedDir+" is inside the folder") {
+		if _, refusal := stateDirectory(refusedDir, workspace); !strings.Contains(refusal, "--state-dir "+refusedDir+" is inside the folder") {
 			t.Errorf("--state-dir %s: refusal = %q, want it refused as inside the folder", refusedDir, refusal)
 		}
 	}
 	t.Setenv(StateDirEnv, filepath.Join(workspace, "state"))
-	if _, refusal := stateDirectory("", workspace, ""); !strings.HasPrefix(refusal, StateDirEnv+" ") {
+	if _, refusal := stateDirectory("", workspace); !strings.HasPrefix(refusal, StateDirEnv+" ") {
 		t.Errorf("refusal = %q, want it to name %s, which is where the directory came from", refusal, StateDirEnv)
 	}
 	t.Setenv(StateDirEnv, "")
@@ -183,7 +184,7 @@ func TestAStateDirInsideTheFolderIsRefused(t *testing.T) {
 		filepath.Join(workspace, seniorDevDataDirectory, "store"),
 		filepath.Join(workspace, "out-of-the-folder", "store"),
 	} {
-		if _, refusal := stateDirectory(kept, workspace, ""); refusal != "" {
+		if _, refusal := stateDirectory(kept, workspace); refusal != "" {
 			t.Errorf("--state-dir %s was refused: %s", kept, refusal)
 		}
 	}
@@ -196,7 +197,7 @@ func TestAStateDirInsideTheFolderIsRefused(t *testing.T) {
 	respelled := filepath.Join(filepath.Dir(cased), "FOLDER")
 	if same, err := os.Stat(respelled); err == nil {
 		if original, _ := os.Stat(cased); os.SameFile(same, original) {
-			if _, refusal := stateDirectory(filepath.Join(respelled, "state"), cased, ""); !strings.Contains(refusal, "is inside the folder") {
+			if _, refusal := stateDirectory(filepath.Join(respelled, "state"), cased); !strings.Contains(refusal, "is inside the folder") {
 				t.Errorf("--state-dir %s/state: refusal = %q, want the folder %s refused however it is spelled", respelled, refusal, cased)
 			}
 			if _, err := os.Lstat(filepath.Join(cased, "state")); !errors.Is(err, fs.ErrNotExist) {
@@ -208,7 +209,7 @@ func TestAStateDirInsideTheFolderIsRefused(t *testing.T) {
 	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, refusal := stateDirectory(filepath.Join(blocker, "store"), workspace, ""); !strings.Contains(refusal, "cannot be made") {
+	if _, refusal := stateDirectory(filepath.Join(blocker, "store"), workspace); !strings.Contains(refusal, "cannot be made") {
 		t.Errorf("refusal = %q, want a directory that cannot be made refused as one", refusal)
 	}
 }
@@ -317,44 +318,35 @@ func TestARemovedStoreEndsTheRunWithoutAFreshOne(t *testing.T) {
 
 // A RUN CODEAF CARRIES KEEPS ITS STORE IN ITS RECORD FOLDER WHEN NOTHING ELSE
 // NAMES ONE. The folder is the work's, and what the work runs can delete it;
-// the record folder is codeaf's. Each launch gets a directory of its own there
-// — a task's folder outlives a run — the flag and the variable still win, a
-// run nobody carried keeps the folder's .senior-dev, and a record folder
-// inside the workspace (a run in the home folder) is not used and not made.
+// the record folder is codeaf's. Where is decided early and made only when the
+// store opens, so a launch refused in between leaves nothing there; each
+// launch gets a directory of its own — a task's folder outlives a run — a run
+// nobody carried keeps the folder's .senior-dev, and a record folder inside
+// the workspace (a run in the home folder) is not used and not made.
 func TestTheRecordFolderHoldsTheStoreWhenNothingElseNamesOne(t *testing.T) {
 	workspace := t.TempDir()
 	records := filepath.Join(t.TempDir(), "carried", "senior-dev", "20261009-120000.000000")
-	t.Setenv(StateDirEnv, "")
 
-	first, refusal := stateDirectory("", workspace, records)
-	if refusal != "" || first != realDirectory(filepath.Join(records, "store")) {
-		t.Fatalf("store = %q (%q), want %s/store", first, refusal, records)
+	base := recordStoreBase(records, workspace)
+	if base != resolvedPath(filepath.Join(records, "store")) {
+		t.Fatalf("the record folder's store = %q, want %s/store", base, records)
 	}
-	second, _ := stateDirectory("", workspace, records)
-	if second != realDirectory(filepath.Join(records, "store.1")) {
+	if _, err := os.Lstat(records); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("deciding where the store goes made %s (%v); it is made when the store opens", records, err)
+	}
+	if first := claimRecordStore(base); first != realDirectory(filepath.Join(records, "store")) {
+		t.Fatalf("the first launch's store = %q, want %s/store", first, records)
+	}
+	if second := claimRecordStore(base); second != realDirectory(filepath.Join(records, "store.1")) {
 		t.Fatalf("a second launch's store = %q, want %s/store.1 beside the first", second, records)
 	}
 
-	flagged := filepath.Join(t.TempDir(), "flagged")
-	if dir, _ := stateDirectory(flagged, workspace, records); dir != realDirectory(flagged) {
-		t.Errorf("with --state-dir the store = %q, want %s", dir, flagged)
-	}
-	variable := t.TempDir()
-	t.Setenv(StateDirEnv, variable)
-	if dir, _ := stateDirectory("", workspace, records); dir != realDirectory(variable) {
-		t.Errorf("with %s the store = %q, want %s", StateDirEnv, dir, variable)
-	}
-	t.Setenv(StateDirEnv, "")
-	if _, err := os.Lstat(filepath.Join(records, "store.2")); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("the flag or the variable still made a store in the record folder (%v)", err)
-	}
-
-	if dir, _ := stateDirectory("", workspace, ""); dir != "" {
-		t.Errorf("with no record folder the store = %q, want the folder's own .senior-dev", dir)
+	if base := recordStoreBase("", workspace); base != "" || claimRecordStore(base) != "" {
+		t.Errorf("with no record folder the store = %q, want the folder's own .senior-dev", base)
 	}
 	inside := filepath.Join(workspace, ".codeaf", "v3", "carried", "senior-dev", "run")
-	if dir, _ := stateDirectory("", workspace, inside); dir != "" {
-		t.Errorf("with the record folder inside the workspace the store = %q, want the folder's own .senior-dev", dir)
+	if base := recordStoreBase(inside, workspace); base != "" {
+		t.Errorf("with the record folder inside the workspace the store = %q, want the folder's own .senior-dev", base)
 	}
 	if _, err := os.Lstat(filepath.Join(workspace, ".codeaf")); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("a record folder inside the workspace was made (%v)", err)
@@ -397,5 +389,51 @@ func TestARemovedNoteIsWrittenBackFromWhatTheRunLastRead(t *testing.T) {
 	}
 	if _, err := os.Lstat(filepath.Join(notes, "pinned.txt")); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("a pinned command the run never read was made up (%v)", err)
+	}
+}
+
+// A WRITE-BACK NEVER OVERWRITES WHAT THE MODEL WROTE MEANWHILE. Tool calls run
+// at once: one call's command has just removed the checklist and its
+// write-back runs while another call writes the model's new checklist and
+// reads it. Whichever lands first, the file ends as the model wrote it and the
+// run keeps that, never the old copy.
+func TestAWriteBackNeverOverwritesAFileWrittenMeanwhile(t *testing.T) {
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, filepath.FromSlash(seniorDevChecklist))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for round := 0; round < 500; round++ {
+		runner := &pipeline{workspace: workspace}
+		if err := os.WriteFile(path, []byte("- [ ] old\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := runner.readNote(seniorDevChecklist); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		var group sync.WaitGroup
+		group.Add(2)
+		go func() {
+			defer group.Done()
+			_, _ = runner.readNote(seniorDevChecklist)
+		}()
+		go func() {
+			defer group.Done()
+			_ = os.WriteFile(path, []byte("- [x] new\n"), 0o644)
+			_, _ = runner.readNote(seniorDevChecklist)
+		}()
+		group.Wait()
+		if data, _ := os.ReadFile(path); string(data) != "- [x] new\n" {
+			t.Fatalf("round %d: the checklist is %q after a write-back ran beside the model's write; want the model's", round, data)
+		}
+		if kept := string(runner.kept.files[seniorDevChecklist]); kept != "- [x] new\n" {
+			t.Fatalf("round %d: the run kept %q; want the model's checklist", round, kept)
+		}
+	}
+	if leftovers, _ := filepath.Glob(filepath.Join(filepath.Dir(path), ".write-back-*")); len(leftovers) != 0 {
+		t.Errorf("write-backs left %d files of their own in .senior-dev", len(leftovers))
 	}
 }

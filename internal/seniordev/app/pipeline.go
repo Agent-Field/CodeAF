@@ -136,7 +136,13 @@ func newPipeline(args cliArgs, workspace string, deps pipelineDeps) *pipeline {
 	if aware, ok := deps.Backend.(adaptiveRouterBackend); ok {
 		aware.setAdaptiveRouter(router)
 	}
-	runtime := newConfiguredRuntime(workspace, args.StateDir, deps.Backend, deps.Config)
+	// The record folder's store is made only now, when the store opens and
+	// every refusal is behind the run.
+	stateDir := args.StateDir
+	if stateDir == "" {
+		stateDir = claimRecordStore(args.RecordStore)
+	}
+	runtime := newConfiguredRuntime(workspace, stateDir, deps.Backend, deps.Config)
 	runtime.now = now
 	runtime.events = deps.Events
 	if deps.Events != nil && runtime.bus != nil {

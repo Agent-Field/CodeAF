@@ -498,6 +498,59 @@ func TestACarriedRunKeepsItsStoreInTheRecordFolder(t *testing.T) {
 	assertNotesOnly(t, workspace)
 }
 
+// A LAUNCH REFUSED BEFORE ITS FIRST CALL LEAVES NO STORE BEHIND. Where the
+// store goes is decided early, but its directory is made only when the store
+// opens, after every refusal, so the next launch of the task gets store and
+// not store.1 beside an empty one.
+func TestARefusedLaunchLeavesNoStoreInTheRecordFolder(t *testing.T) {
+	workspace, _ := hermeticRun(t)
+	record := t.TempDir()
+	t.Setenv(delegate.EnvRecords, record)
+	api := httptest.NewServer(&modelAPIServer{})
+	t.Cleanup(api.Close)
+	host := &recordingHost{
+		workspace: workspace,
+		api:       delegate.ModelAPI{BaseURL: api.URL + "/v1", Token: runToken},
+	}
+
+	_ = runBody(t, context.Background(), host,
+		"--asked", "--high", "openrouter/nobody/knows-this-model", "--", "Add", "the", "feature.")
+	records := host.snapshot()
+	if ending := records[len(records)-1].ending; ending.Status != delegate.StatusCrashed {
+		t.Fatalf("ending = %+v, want the launch refused", ending)
+	}
+	if entries, _ := os.ReadDir(record); len(entries) != 0 {
+		t.Errorf("a refused launch left %d entries in the record folder", len(entries))
+	}
+}
+
+// SENIOR_DEV_STATE_DIR WINS OVER THE RECORD FOLDER, as --state-dir does: a
+// directory a person named is where the store goes, and the record folder
+// gets none.
+func TestTheStateDirVariableWinsOverTheRecordFolder(t *testing.T) {
+	workspace, _ := hermeticRun(t)
+	record, variable := t.TempDir(), filepath.Join(t.TempDir(), "named")
+	t.Setenv(delegate.EnvRecords, record)
+	t.Setenv(app.StateDirEnv, variable)
+	api := httptest.NewServer(&modelAPIServer{})
+	t.Cleanup(api.Close)
+	host := &recordingHost{
+		workspace: workspace,
+		api:       delegate.ModelAPI{BaseURL: api.URL + "/v1", Token: runToken},
+	}
+
+	if err := runBody(t, context.Background(), host,
+		"--high", "openrouter/fixture/vendor-model", "--", "Add", "the", "feature."); err != nil {
+		t.Fatalf("the body answered an error: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(variable, "senior-dev.db")); err != nil {
+		t.Errorf("the store is not where %s named: %v", app.StateDirEnv, err)
+	}
+	if entries, _ := os.ReadDir(record); len(entries) != 0 {
+		t.Errorf("the record folder holds %d entries although %s named another directory", len(entries), app.StateDirEnv)
+	}
+}
+
 // A RUN NOBODY CARRIED KEEPS ITS STORE IN THE FOLDER'S .senior-dev, as before:
 // with no record folder there is nowhere else that is the run's own.
 func TestARunWithNoRecordFolderKeepsItsStoreInTheFolder(t *testing.T) {

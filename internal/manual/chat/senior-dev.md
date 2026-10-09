@@ -613,7 +613,7 @@ and one rescue to **250 MiB** total. If a file or the total exceeds the limit,
 senior-dev refuses the restore before changing the folder; the ending says it
 could not be put back and that the folder holds later changes nothing checked.
 
-## Its notes — .senior-dev, its checklist, its session database, moved out when it ends
+## Its notes — .senior-dev, its checklist, moved out when it ends; its session database in the record folder
 
 senior-dev keeps the files it and its model work from in `.senior-dev/` in the folder it
 works in (its copy, in a repository): the brief, its checklist, the command it pinned,
