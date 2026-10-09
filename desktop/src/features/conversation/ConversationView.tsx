@@ -56,7 +56,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   const route = tab.route ?? rootRoute;
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
-  const { behind, jump } = useStickToBottom(scroller, content, contentSignature(model), route.taskId ?? '');
+  const { behind, away, jump } = useStickToBottom(scroller, content, contentSignature(model), route.taskId ?? '');
   const hasTasks = model.tasks.length > 0 || Boolean(model.planError);
   const panel = useTaskPanel(hasTasks, Boolean(tab.tasksClosed), onView);
   const setRoute = (next: typeof route) => onView({ route: next });
@@ -160,7 +160,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
               {conversation.unreachable && <EngineNotice onRetry={() => void retry()} />}
               {!inTask && (
                 <ConversationDock
-                  tray={{ questions: model.questions, busyKey: conversation.busyKey, onAnswer: conversation.answer, onHold: conversation.hold, focusKey }}
+                  tray={{ questions: model.questions, busyKey: conversation.busyKey, onAnswer: conversation.answer, onHold: conversation.hold, focusKey, compact: away, onReview: jump }}
                   queue={{ items: queued.items, onRemove: queued.remove, removedHere: queued.removedHere }}
                   composer={{
                     draft: tab.draft,
