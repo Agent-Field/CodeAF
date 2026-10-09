@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -180,6 +181,12 @@ func TestShapingFallsBackToTheRecipe(t *testing.T) {
 		{"nothing", func(context.Context, factory.Item, []string) (factory.RunEdit, string, error) {
 			return factory.RunEdit{}, "the recipe fits", nil
 		}, sayShapeStands},
+		{"busy", func(context.Context, factory.Item, []string) (factory.RunEdit, string, error) {
+			return factory.RunEdit{}, "", fmt.Errorf("asked twice: %w", ErrManagerBusy)
+		}, sayShapeBusy},
+		{"away", func(context.Context, factory.Item, []string) (factory.RunEdit, string, error) {
+			return factory.RunEdit{}, "", fmt.Errorf("held: %w", ErrManagerAway)
+		}, sayShapeAway},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			rec := &ranRecorder{}
@@ -199,6 +206,30 @@ func TestShapingFallsBackToTheRecipe(t *testing.T) {
 				t.Fatalf("ran %s", got)
 			}
 		})
+	}
+}
+
+// THE PERSON'S WORDS REACH THE NOTES WHATEVER THE SHAPING TURN DID: a manager
+// another window holds is said by name, and the brief still carries the words.
+func TestTheWordsReachTheNotesWhenTheManagerIsAway(t *testing.T) {
+	talk := newFakeTalk()
+	rec := &ranRecorder{}
+	g, _ := managed(t, map[factory.StageKind]Executor{factory.StageChat: rec.exec()}, talk, time.Hour)
+	g.r.opts.Shape = func(context.Context, factory.Item, []string) (factory.RunEdit, string, error) {
+		return factory.RunEdit{}, "", ErrManagerAway
+	}
+	id := g.add("fix the ledger", chat("write"))
+	talk.typed("manager-"+strconv.Itoa(id), "keep the fix tiny and prove it at the CLI")
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	it := g.waitState(id, factory.StateLanded)
+	if !logHas(it, sayShapeAway) {
+		t.Fatalf("the log does not say %q: %+v", sayShapeAway, it.Stream.Log)
+	}
+	talk.waitSaid(t, "manager-"+strconv.Itoa(id), sayShapeAway)
+	if len(it.Notes) != 1 || it.Notes[0] != "keep the fix tiny and prove it at the CLI" {
+		t.Fatalf("notes %q", it.Notes)
 	}
 }
 

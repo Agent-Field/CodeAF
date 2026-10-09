@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -214,7 +215,7 @@ func (a *Agent) factoryRunTool() bare.Tool {
 			if edit.Empty() {
 				return "Invalid arguments: factory_run needs something to change: set, add, on or skip.", true, nil
 			}
-			_, lines, err := a.config.FactoryRun.EditRun(ctx, a.config.SessionFile, edit)
+			_, lines, err := a.runDoorForTurn().EditRun(ctx, a.config.SessionFile, edit)
 			if err != nil {
 				return runRefusedLead + strings.Join(strings.Fields(err.Error()), " "), true, nil
 			}
@@ -238,4 +239,111 @@ func (a *Agent) SubmitRunnerNote(ctx context.Context, text string) (<-chan Event
 		return nil, errors.New("session: empty message")
 	}
 	return a.submitUser(ctx, briefNote(text))
+}
+
+// ── A SHAPING TURN THROUGH A CONVERSATION THE WINDOW HOLDS ──────────────────
+//
+// When the person has the item's manager open in a window of this process,
+// the runner's shaping turn cannot open the conversation a second time (the
+// journal's lock refuses it). It runs as a turn of THAT conversation instead,
+// so the window shows the manager thinking, and `factory_run` on that ONE turn
+// answers through the runner's collecting door rather than the floor's: the
+// runner applies the edit itself, as it does on its own road.
+//
+// THE DOOR BELONGS TO THE TURN, NOT TO THE AGENT. It is kept beside the turn's
+// number ([Agent.teamTurnSerial]) and read under the agent's lock, so the next
+// turn (the person's own, a follow-up, a wake) gets the floor's door again
+// without anybody having to put it back, and there is no moment between the
+// shaping turn's end and a restore in which a person's turn could reach the
+// collecting door. A person's line said INTO the shaping turn steers it, and
+// what the manager sets on that line is collected with the rest.
+
+// turnRunDoor is a door lent to one turn.
+type turnRunDoor struct {
+	door   RunDoor
+	serial uint64
+}
+
+// turnRunDoors is the door lent to an agent's turn, by *Agent.
+var turnRunDoors sync.Map
+
+// runDoorForTurn is the door `factory_run` answers through on the turn in
+// flight: the one lent to it, else the conversation's own.
+func (a *Agent) runDoorForTurn() RunDoor {
+	a.mu.Lock()
+	running, serial := a.running, a.teamTurnSerial
+	a.mu.Unlock()
+	if v, ok := turnRunDoors.Load(a); ok {
+		lent := v.(turnRunDoor)
+		if running && lent.serial == serial {
+			return lent.door
+		}
+		turnRunDoors.CompareAndDelete(a, lent)
+	}
+	return a.config.FactoryRun
+}
+
+// SubmitRunnerNoteThrough starts a turn on the runner's words, as
+// [Agent.SubmitRunnerNote] does, with door as `factory_run` FOR THAT TURN
+// ONLY, and the turn handed to every window watching this conversation
+// ([Agent.WatchWakes]) so the person sees the manager think. It never steers a
+// turn in flight: a conversation mid-turn answers [ErrConversationBusy], and
+// the caller waits ([Agent.WaitIdle]) and asks again. The thinking is the
+// conversation's own, the person's setting; this road does not change it.
+func (a *Agent) SubmitRunnerNoteThrough(ctx context.Context, text string, door RunDoor) (<-chan Event, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil, errors.New("session: empty message")
+	}
+	user := briefNote(text)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return nil, errors.New("session: agent is closed")
+	}
+	if a.running {
+		return nil, ErrConversationBusy
+	}
+	if err := a.resumeWorkLocked(); err != nil {
+		return nil, err
+	}
+	a.attachTurnSkillsLocked(&user)
+	if err := a.railBlockLocked(); err != nil {
+		return refusedStream(err), nil
+	}
+	// THE WINDOW DRAWS THE TURN from its first delta, as it draws a wake: the
+	// stream is handed over before the turn starts, and a lane too far behind
+	// is skipped rather than waited on, for [Agent.wakeLocked]'s reason.
+	watchers := make([]*eventStream, 0, len(a.wakeLanes))
+	for _, lane := range a.wakeLanes {
+		stream := newEventStream()
+		select {
+		case lane <- stream.out:
+			watchers = append(watchers, stream)
+		default:
+			stream.close()
+		}
+	}
+	events := a.startTurnLocked(ctx, user, nil, watchers...)
+	if door != nil {
+		turnRunDoors.Store(a, turnRunDoor{door: door, serial: a.teamTurnSerial})
+	}
+	return events, nil
+}
+
+// WaitIdle waits until no turn is in flight, or ctx ends.
+func (a *Agent) WaitIdle(ctx context.Context) error {
+	for {
+		a.mu.Lock()
+		done, closed := a.done, a.closed
+		a.mu.Unlock()
+		if done == nil || closed {
+			return nil
+		}
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }

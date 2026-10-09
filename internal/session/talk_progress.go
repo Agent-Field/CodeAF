@@ -67,8 +67,34 @@ func rememberLiveJournal(path string, a *Agent) {
 	}
 }
 
+// LiveAgentFor answers the conversation open in this process on the journal
+// at path, when one is. A factory runner's shaping turn goes THROUGH it rather
+// than opening the journal a second time, which its lock would refuse.
+func LiveAgentFor(path string) (*Agent, bool) {
+	key := journalKey(path)
+	if key == "" {
+		return nil, false
+	}
+	v, ok := liveJournals.Load(key)
+	if !ok {
+		return nil, false
+	}
+	a, _ := v.(*Agent)
+	if a == nil {
+		return nil, false
+	}
+	a.mu.Lock()
+	closed := a.closed
+	a.mu.Unlock()
+	if closed {
+		return nil, false
+	}
+	return a, true
+}
+
 // forgetLiveJournal takes a closing conversation off the registry.
 func forgetLiveJournal(a *Agent) {
+	turnRunDoors.Delete(a)
 	liveJournals.Range(func(key, value any) bool {
 		if value == a {
 			liveJournals.CompareAndDelete(key, a)
