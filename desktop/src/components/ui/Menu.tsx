@@ -45,7 +45,7 @@ function MenuItems({ items, type, container }: { items: readonly MenuEntry[]; ty
   if (entry.kind === 'separator') return <P.Separator key={entry.id} className="menu-separator"/>;
   if (entry.kind === 'submenu') return <P.Sub key={entry.id}>
    <P.SubTrigger className="menu-item" disabled={entry.disabled}><EntryContents entry={entry}/></P.SubTrigger>
-   <P.Portal container={container}><P.SubContent onFocusCapture={focusFirstItem} className={`app-menu app-menu-${type}`} sideOffset={design.overlay.subMenuOffset} alignOffset={design.overlay.subMenuAlign} collisionPadding={design.overlay.collisionPadding}>
+   <P.Portal container={container}><P.SubContent onFocusCapture={focusFirstItem} className={`app-menu app-menu-${type} app-menu-submenu`} sideOffset={design.overlay.subMenuOffset} alignOffset={design.overlay.subMenuAlign} collisionPadding={design.overlay.collisionPadding}>
     <MenuItems items={entry.items} type={type} container={container}/>
    </P.SubContent></P.Portal>
   </P.Sub>;
