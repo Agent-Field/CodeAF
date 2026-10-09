@@ -246,6 +246,9 @@ async function defaultTransport(path: string, request: PlacesRequest): Promise<u
   return body;
 }
 
+/** The loopback transport every Places door shares (using-client.ts reuses it). */
+export const placesTransport: PlacesTransport = defaultTransport;
+
 // ---- the client ------------------------------------------------------------
 
 const enc = encodeURIComponent;

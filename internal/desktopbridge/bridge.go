@@ -508,9 +508,25 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if path == "/sessions" && r.Method == http.MethodPost {
 		var ask struct {
 			SessionFile string `json:"sessionFile"`
+			// Place is the place a NEW conversation is started in (using.go):
+			// checked before the engine is opened, filed before the first turn.
+			Place string `json:"place"`
 		}
 		if !decode(w, r, &ask) {
 			return
+		}
+		var places *Places
+		if ask.Place != "" {
+			if ask.SessionFile != "" {
+				failPlaces(w, 400, "invalid", "Only a new chat is started in a place; file an existing one from its place.")
+				return
+			}
+			var status int
+			var code, sentence string
+			if places, status, code, sentence = b.newChatPlace(ask.Place); status != 0 {
+				failPlaces(w, status, code, sentence)
+				return
+			}
 		}
 		b.mu.Lock()
 		defer b.mu.Unlock()
@@ -529,6 +545,14 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			conn.Close()
 			fail(w, 409, "this conversation must use the single-model persistent engine; open a new conversation")
 			return
+		}
+		if places != nil {
+			if err := places.fileNewChat(conn, ask.Place); err != nil {
+				conn.Close()
+				status, code, sentence := storeFailure(err, "")
+				failPlaces(w, status, code, sentence)
+				return
+			}
 		}
 		id, err := Token()
 		if err != nil {
@@ -609,6 +633,9 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		write(w, page)
+		return
+	}
+	if b.usingRoutes(w, r, s, parts) {
 		return
 	}
 	if s.extra(w, r, parts) {
