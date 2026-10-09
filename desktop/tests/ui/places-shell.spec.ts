@@ -679,3 +679,82 @@ test('Home model label follows the saved Conversation role before a host exists'
   await expect(page.locator('.home-composer .model-picker')).toHaveAccessibleName('Model: Fixture Alternate');
   expect(rig.engine.calls.filter(isCreate)).toHaveLength(0);
 });
+
+
+// The Home chip names the model the first message will really run on. Two things can decide it — the saved Conversation
+// role and the place's own default (Policy.Model) — so all four pairings are driven: a place that decides wins over any
+// role, and a place that decides nothing leaves the role in charge. Every model here is a fixture id; none is called.
+const ROLE_DEFAULT = 'deepseek/deepseek-v4.1-flash';
+const ROLE_CHANGED = 'fixture/alternate';
+const PLACE_MODEL = 'fixture/placed';
+const CATALOG = [{ id: ROLE_DEFAULT, name: 'DeepSeek V4.1 Flash' }, { id: ROLE_CHANGED, name: 'Fixture Alternate' }, { id: PLACE_MODEL, name: 'Fixture Placed' }];
+const roleCases = [{ role: 'default', model: ROLE_DEFAULT, word: 'DS Flash', name: 'DeepSeek v4.1 Flash' }, { role: 'changed', model: ROLE_CHANGED, word: 'Alternate', name: 'Fixture Alternate' }];
+
+for (const { role, model, word, name } of roleCases) {
+  for (const placed of [false, true]) {
+    test(`Home model caption · role ${role} · place ${placed ? 'sets a model' : 'sets none'}`, async ({ page }) => {
+      const seed = garden();
+      if (placed) seed.places![0].model = PLACE_MODEL;
+      const sample = fresh();
+      sample.models = CATALOG;
+      const rig = await boot(page, seed, sample);
+      await page.route('**/models/roles', route => route.fulfill({ json: { default: ROLE_DEFAULT, roles: [{ id: 'conversation', model }] } }));
+      await railPlace(page, 'Marketing').click();
+      await page.evaluate(() => window.dispatchEvent(new Event('codeaf:models-changed')));
+      const chip = page.locator('.home-composer .model-picker');
+      if (placed) {
+        // The place decides: its model, whatever the role says, with no swap that would pretend to change it.
+        await expect(chip).toHaveAccessibleName('Model: Fixture Placed');
+        await expect(chip).toHaveText('Placed');
+        await expect(page.locator('.home-composer-note')).toHaveText('Model set by Marketing.');
+        await chip.click();
+        const rows = page.getByRole('dialog').getByRole('option');
+        await expect(page.getByRole('dialog').getByText('Fixture Alternate')).toHaveCount(0);
+        expect(await rows.count()).toBeLessThanOrEqual(1);
+        await page.keyboard.press('Escape');
+      } else {
+        await expect(chip).toHaveAccessibleName(`Model: ${name}`);
+        await expect(chip).toHaveText(word);
+        await expect(page.locator('.home-composer-note')).toHaveCount(0);
+      }
+      expect(rig.engine.calls.filter(isCreate)).toHaveLength(0);
+      // A typed first send is unchanged by any of it: the session is made first, the chat filed, then the turn.
+      const composer = page.getByRole('textbox', { name: 'Message', exact: true });
+      await composer.fill('Plan the launch');
+      await composer.press('Enter');
+      await expect(tabs(page).filter({ hasText: 'Plan the launch' })).toHaveAttribute('aria-selected', 'true');
+      const [create, file, turn] = order(rig, isCreate, isFiling(rig.places.id('Marketing')), isTurn);
+      expect(create).toBeGreaterThanOrEqual(0);
+      expect(file).toBeGreaterThan(create);
+      expect(turn).toBeGreaterThan(file);
+    });
+  }
+}
+
+test('Home model caption follows a role change only while no place decides, and never names a guess', async ({ page }) => {
+  const seed = garden();
+  seed.places![1].model = PLACE_MODEL; // Software decides; its child Config parser inherits.
+  seed.places![2].pinned = true; // so the rail lists it
+  const sample = fresh();
+  sample.models = CATALOG;
+  let role = ROLE_DEFAULT;
+  const rig = await boot(page, seed, sample);
+  await page.route('**/models/roles', route => route.fulfill({ json: { default: ROLE_DEFAULT, roles: [{ id: 'conversation', model: role }] } }));
+  const chip = page.locator('.home-composer .model-picker');
+  await railPlace(page, 'Marketing').click();
+  await expect(chip).toHaveText('DS Flash');
+  role = ROLE_CHANGED;
+  await page.evaluate(() => window.dispatchEvent(new Event('codeaf:models-changed')));
+  await expect(chip).toHaveText('Alternate');
+  await railPlace(page, 'Config parser').click();
+  await expect(chip).toHaveAccessibleName('Model: Fixture Placed');
+  role = ROLE_DEFAULT;
+  await page.evaluate(() => window.dispatchEvent(new Event('codeaf:models-changed')));
+  await expect(chip).toHaveAccessibleName('Model: Fixture Placed');
+  // The engine cannot say: no model is named at all.
+  rig.places.fail('effective-model', { status: 503, error: 'The engine is busy.' });
+  await railPlace(page, 'Marketing').click();
+  await railPlace(page, 'Config parser').click();
+  await expect(page.locator('.home-composer')).toBeVisible();
+  await expect(chip).toHaveCount(0);
+});

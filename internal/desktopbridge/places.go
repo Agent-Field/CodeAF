@@ -209,6 +209,12 @@ func (p *Places) serve(w http.ResponseWriter, r *http.Request, parts []string) {
 			}
 			return
 		}
+		if parts[1] == "effective-model" {
+			if needGet(w, r) {
+				p.effectiveModel(w, parts[0])
+			}
+			return
+		}
 		if needPost(w, r) {
 			p.action(w, r, parts[0], parts[1])
 		}

@@ -34,6 +34,8 @@ export type SeedPlace = {
   /** Created and last opened this many days ago, so the untouched-place rule (60 days) can be met or missed exactly. */
   untouchedDays?: number;
   instructions?: string;
+  /** The place's own default model (Policy.Model). Fixture ids only: no test here reaches a real model. */
+  model?: string;
   sources?: { kind: SourceKind; ref: string; label?: string }[];
 };
 
@@ -64,7 +66,7 @@ export type PlacesSeed = {
 /** A forced answer for one route: `abort` drops the connection (the engine is unreachable). */
 export type Forced = 'abort' | { status: number; error: string; code?: string };
 export type RouteKey =
-  | 'graph' | 'status' | 'rail' | 'home' | 'delete-preview' | 'chat-places' | 'create' | 'update' | 'parents' | 'archive' | 'restore' | 'delete'
+  | 'graph' | 'status' | 'rail' | 'home' | 'delete-preview' | 'effective-model' | 'chat-places' | 'create' | 'update' | 'parents' | 'archive' | 'restore' | 'delete'
   | 'merge' | 'pin' | 'unpin' | 'sources' | 'sources/remove' | 'members' | 'members/remove' | 'visit' | 'undo' | 'world' | 'events' | 'stale' | 'stale-snooze';
 
 export type PlacesCall = { method: string; path: string; body: Record<string, unknown> };
@@ -146,7 +148,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}): Prom
       id, name: s.name, parents: (s.parents ?? []).map(ref => byName(ref)?.id ?? ref), tint: s.tint ?? '', archived: !!s.archived,
       createdAt: s.untouchedDays !== undefined ? daysAgo(s.untouchedDays) : '2026-10-01T09:00:00Z',
       lastOpenedAt: s.untouchedDays !== undefined ? daysAgo(s.untouchedDays) : s.lastOpenedAt === 'now' ? now() : s.lastOpenedAt, archivedAt: s.archived ? '2026-10-05T09:00:00Z' : undefined,
-      instructions: s.instructions ?? '', policy: {},
+      instructions: s.instructions ?? '', policy: s.model ? { model: s.model } : {},
       sources: (s.sources ?? []).map(source => ({ id: nextId('src'), kind: source.kind, ref: source.ref, label: source.label ?? source.ref.split('/').filter(Boolean).pop(), addedBy: 'you', at: '2026-10-01T09:00:00Z', check: { state: 'ok' } })),
     });
     if (s.pinned) store.pins.push(id);
@@ -608,7 +610,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}): Prom
     if (root === 'world') return 'world';
     if (root === 'events') return 'events';
     if (root === 'chats') return 'chat-places';
-    if (method === 'GET') return !id ? 'graph' : id === 'status' ? 'status' : id === 'rail' ? 'rail' : id === 'stale' ? 'stale' : verb === 'delete-preview' ? 'delete-preview' : 'home';
+    if (method === 'GET') return !id ? 'graph' : id === 'status' ? 'status' : id === 'rail' ? 'rail' : id === 'stale' ? 'stale' : verb === 'delete-preview' ? 'delete-preview' : verb === 'effective-model' ? 'effective-model' : 'home';
     if (!id) return 'create';
     if (id === 'undo') return 'undo';
     if (!verb) return 'update';
@@ -665,6 +667,14 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}): Prom
         if (id === 'rail') return json(route, rail());
         if (id === 'stale') return json(route, staleAnswer());
         if (verb === 'delete-preview') { must(id); return json(route, impact(id)); }
+        if (verb === 'effective-model') {
+          // The nearest place at or above this one that names a model decides, as the engine's rule does for a single parent line.
+          must(id);
+          for (let at: Place | undefined = get(id), hops = 0; at && hops < 3; at = get(at.parents[0] ?? ''), hops++) {
+            if (at.policy.model) return json(route, { placeId: id, revision, state: 'applies', model: at.policy.model, outcome: 'agreed', decidedBy: { id: at.id, name: at.name, model: at.policy.model } });
+          }
+          return json(route, { placeId: id, revision, state: 'none' });
+        }
         if (verb) return json(route, { error: 'unknown route', code: 'not_found' }, 404);
         return json(route, home(id));
       }
