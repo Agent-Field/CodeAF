@@ -21,6 +21,11 @@ import (
 // own worktree copy", which did not exist. An ask the stage is refused the
 // means to follow is a sentence that makes the report untrue.
 //
+// AN APPROVE STEP SITS BETWEEN PLAN AND WRITE (approve.go): the person reads
+// the plan before any code is written. A pull request and a red main have no
+// plan, and end on one instead, which is their landing: what `ask me at
+// pull request` said before approve steps did.
+//
 // SECURITY IS BANKED OFF and switched on per item, so an item that asks for a
 // security pass gains the stage without the recipe changing. THIS IS THE ONE
 // PLACE THE DEFAULT STAGES ARE SPELLED: the local seam starts from it, so no
@@ -29,11 +34,12 @@ func DefaultRecipe() Recipe {
 	return Recipe{
 		Stages: []Stage{
 			{Name: "plan", Ask: "read the issue and say how", Until: "done", On: true},
+			{Name: ApproveName, Kind: StageGate, On: true},
 			{Name: "write", Ask: "make the change in the checkout", Fanout: "per-file", Until: "done", On: true},
 			{Name: "test", Ask: "run what the change implies", Until: "green", Max: 2, On: true},
 			{Name: "review", Ask: "read it as a stranger would", Fanout: "per-finding", Until: "clean", Max: 1, On: true},
 			{Name: "security", Ask: "secrets, injection and authz", Until: "clean", On: false},
-			{Name: "proof", Ask: "show each claim in its own medium", Until: "proven", Gate: GateShip, On: true},
+			{Name: "proof", Ask: "show each claim in its own medium", Until: "proven", On: true},
 		},
 		ByKind: map[Kind][]Stage{
 			KindPR: {
@@ -41,13 +47,15 @@ func DefaultRecipe() Recipe {
 				{Name: "checks", Ask: "run what the claims imply", Fanout: "per-claim", Until: "done", On: true},
 				{Name: "review", Ask: "findings as a comment", Fanout: "per-finding", Until: "clean", Max: 1, On: true},
 				{Name: "security", Ask: "secrets, injection and authz", Until: "clean", On: false},
-				{Name: "proof", Ask: "the sheet", Until: "proven", Gate: GateShip, On: true},
+				{Name: "proof", Ask: "the sheet", Until: "proven", On: true},
+				{Name: ApproveName, Kind: StageGate, On: true},
 			},
 			KindCI: {
 				{Name: "bisect", Ask: "the three red runs", Until: "done", On: true},
 				{Name: "fix", Ask: "the smallest change that turns them green", Until: "done", On: true},
 				{Name: "test", Ask: "the red test and its neighbours", Until: "green", Max: 2, On: true},
-				{Name: "proof", Ask: "the sheet", Until: "proven", Gate: GateShip, On: true},
+				{Name: "proof", Ask: "the sheet", Until: "proven", On: true},
+				{Name: ApproveName, Kind: StageGate, On: true},
 			},
 		},
 	}

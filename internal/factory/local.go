@@ -94,17 +94,6 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 				return nil
 			})
 		},
-		SetGate: func(id int, g Gate) error {
-			switch g {
-			case GatePlan, GateShip, GateNone:
-			default:
-				return fmt.Errorf("%q is not a gate", g)
-			}
-			return st.Update(id, func(it *Item) error {
-				it.Gate = g
-				return nil
-			})
-		},
 		SetCap: func(id int, usd float64) error {
 			if usd < 0 {
 				return errors.New("a budget is never below nothing")
@@ -548,7 +537,7 @@ func localLoad(st ItemStore, started, now time.Time, recipe func(repo string) Re
 }
 
 // localNew makes an item from words typed on the floor. The chips lift out
-// (a cap, a gate, a round count, an effort, a security pass) and what is left,
+// (a cap, a gate word, a round count, an effort, a security pass) and what is left,
 // tidied, is the title. The stages are the repo's recipe for an issue, with
 // the chips written onto them: rounds onto review, the effort onto write,
 // security switched on.
@@ -574,12 +563,21 @@ func localNew(st ItemStore, repo, words string, now time.Time, recipe Recipe) (i
 		Created: now,
 		Changed: now,
 		Cap:     c.Cap,
-		Gate:    c.Gate,
 		Triage:  Triage{Type: GuessType(title)},
 		Stages:  CopyStages(recipe.For(KindIssue)),
 	}
-	if it.Gate == "" {
-		it.Gate = GateShip
+	// THE GATE WORDS PLACE APPROVE STEPS ([ApproveForGate]): `plan first`
+	// one after plan, `ship it` one before the result, `self-ship` none, so
+	// the item ships itself on green proof. A fixed approve stays.
+	if c.Gate == GateNone {
+		for i, s := range it.Stages {
+			if IsApprove(s) && StageFixed(it.Stages, i, recipe, KindIssue) {
+				return 0, FixedRefusal(s.Name)
+			}
+		}
+	}
+	if c.Gate != "" {
+		it.Stages = ApproveForGate(it.Stages, c.Gate)
 	}
 	// A CHIP IS THE PERSON'S EDIT, under the same bound: rounds or thinking
 	// laid on a stage the recipe fixes is refused in the one sentence, while

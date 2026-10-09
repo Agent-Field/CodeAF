@@ -82,25 +82,22 @@ func TestLaunchShapesTheRunBeforeTheFirstStage(t *testing.T) {
 	}
 }
 
-// WITH ASK ME AT PLAN the run waits on `run these stages? <line>` before its
-// first stage; yes runs it.
-func TestShapingPausesOnAskMeAtPlan(t *testing.T) {
+// SHAPING NEVER STOPS THE RUN: the person reads the shaped stages at the first
+// approve step, here before any stage, and continue runs them.
+func TestShapedStagesAreReadAtTheFirstApproveStep(t *testing.T) {
 	rec := &ranRecorder{}
 	g := newRig(t, map[factory.StageKind]Executor{factory.StageChat: rec.exec()}, func(o *Options) {
 		o.Shape = func(context.Context, factory.Item, []string) (factory.RunEdit, string, error) {
 			return shapeEdit(), "", nil
 		}
 	})
-	id := g.add("fix the ledger", chat("write"))
-	if err := g.st.Update(id, func(it *factory.Item) error { it.Gate = factory.GatePlan; return nil }); err != nil {
-		t.Fatal(err)
-	}
+	id := g.add("fix the ledger", factory.Stage{Name: factory.ApproveName, Kind: factory.StageGate}, chat("write"))
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	it := g.asked(id, "run these stages? "+shapedLine)
-	if it.QKind != "plan" || rec.got() != "" {
-		t.Fatalf("kind %q; ran before the yes: %s", it.QKind, rec.got())
+	it := g.asked(id, factory.ApproveQuestion(""))
+	if it.QKind != factory.QKindApprove || rec.got() != "" || !logHas(it, shapedLine) {
+		t.Fatalf("kind %q; ran before the yes: %s; log %+v", it.QKind, rec.got(), it.Stream.Log)
 	}
 	if err := g.r.Answer(id, true, ""); err != nil {
 		t.Fatal(err)
@@ -108,32 +105,6 @@ func TestShapingPausesOnAskMeAtPlan(t *testing.T) {
 	g.waitState(id, factory.StateLanded)
 	if got := rec.got(); got != "write=change only the ledger, arch=say whether the shape holds" {
 		t.Fatalf("ran %s", got)
-	}
-}
-
-// NO TO `run these stages?` KEEPS THE RECIPE: the stages go back and the run
-// goes on.
-func TestNoToTheShapingQuestionKeepsTheRecipe(t *testing.T) {
-	rec := &ranRecorder{}
-	g := newRig(t, map[factory.StageKind]Executor{factory.StageChat: rec.exec()}, func(o *Options) {
-		o.Shape = func(context.Context, factory.Item, []string) (factory.RunEdit, string, error) {
-			return shapeEdit(), "", nil
-		}
-	})
-	id := g.add("fix the ledger", chat("write"))
-	if err := g.st.Update(id, func(it *factory.Item) error { it.Gate = factory.GatePlan; return nil }); err != nil {
-		t.Fatal(err)
-	}
-	if err := g.r.Launch(id); err != nil {
-		t.Fatal(err)
-	}
-	g.asked(id, "run these stages? "+shapedLine)
-	if err := g.r.Answer(id, false, ""); err != nil {
-		t.Fatal(err)
-	}
-	it := g.waitState(id, factory.StateLanded)
-	if got := rec.got(); got != "write=do write" || !logHas(it, sayShapeStands) || len(it.Adapted) != 0 {
-		t.Fatalf("ran %s; adapted %v; log %+v", got, it.Adapted, it.Stream.Log)
 	}
 }
 

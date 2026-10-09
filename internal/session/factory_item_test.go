@@ -32,7 +32,7 @@ type fakeItemDoor struct {
 
 func newFakeItemDoor() *fakeItemDoor {
 	return &fakeItemDoor{
-		item:   factory.Item{ID: 1, Repo: "factory-demo", Kind: factory.KindIssue, Title: "Total double-counts an entry added twice", State: factory.StateNew, Gate: factory.GateShip, Cap: 5},
+		item:   factory.Item{ID: 1, Repo: "factory-demo", Kind: factory.KindIssue, Title: "Total double-counts an entry added twice", State: factory.StateNew, Cap: 5},
 		recipe: factory.DefaultRecipe(),
 	}
 }
@@ -90,7 +90,7 @@ func newItemAgent(t *testing.T, door ItemDoor, window time.Duration) *Agent {
 	return agent
 }
 
-const itemArgs = `{"item":1,"gate":"plan","cap":8,"why":"the person wants the plan before any code"}`
+const itemArgs = `{"item":1,"cap":8,"why":"the stages need room for a second review"}`
 
 func runFactoryItem(t *testing.T, agent *Agent, ctx context.Context, args string) <-chan string {
 	t.Helper()
@@ -164,10 +164,9 @@ func TestFactoryItemRefusesBeforeAnyCard(t *testing.T) {
 	tool := agent.factoryItemTool()
 	for _, c := range []struct{ args, want string }{
 		{`{"item":1}`, "needs something to change"},
-		{`{"gate":"plan"}`, "needs the floor id"},
+		{`{"cap":8}`, "needs the floor id"},
 		{`{"item":7,"skip":["review"]}`, "nothing changed: there is no item 7"},
 		{`{"item":1,"add":["after review"]}`, "needs to say what it does"},
-		{`{"item":1,"gate":"later"}`, "gate is one of plan, ship, none"},
 		{`{"item":1,"effort":"huge"}`, "effort is one of cheap, strong, default"},
 		{`{"item":1,"cap":-3}`, "cap is a number of dollars"},
 		{`{"item":1,"skip":["proof"]}`, "nothing changed: plan may not skip proof"},
@@ -178,7 +177,7 @@ func TestFactoryItemRefusesBeforeAnyCard(t *testing.T) {
 		}
 	}
 	// A change that leaves the item exactly as it is asks nothing.
-	if out, _, _ := tool.Execute(context.Background(), json.RawMessage(`{"item":1,"gate":"ship","cap":5}`)); out != "nothing changed: the item already runs that way" {
+	if out, _, _ := tool.Execute(context.Background(), json.RawMessage(`{"item":1,"cap":5}`)); out != "nothing changed: the item already runs that way" {
 		t.Errorf("a no-op change = %q", out)
 	}
 	// AND UNDER A FIXED RECIPE A STAGE CHANGE IS REFUSED IN ADAPT'S OWN WORDS,
@@ -221,21 +220,24 @@ func TestFactoryItemHeadAndRowsForEachChange(t *testing.T) {
 		rows   []string
 	}{
 		{"skip", ItemChange{Edit: factory.PlanEdit{Skip: []string{"review"}}}, "", "#1 · skip the review stage?",
-			[]string{"now: plan · write · test · review · proof", "after: plan · write · test · proof"}},
+			[]string{"now: plan · approve · write · test · review · proof", "after: plan · approve · write · test · proof"}},
 		{"on", ItemChange{Edit: factory.PlanEdit{On: []string{"security"}}}, "touches auth", "#1 · add a security stage?",
-			[]string{"now: plan · write · test · review · proof", "after: plan · write · test · review · +security · proof", "why: touches auth"}},
+			[]string{"now: plan · approve · write · test · review · proof", "after: plan · approve · write · test · review · +security · proof", "why: touches auth"}},
 		{"add", ItemChange{Edit: factory.PlanEdit{Add: []factory.Stage{{Ask: "after test, read it for auth holes"}}}}, "", "#1 · add a " + security + " stage?",
-			[]string{"now: plan · write · test · review · proof", "after: plan · write · test · +" + security + " · review · proof"}},
-		{"gate and cap", ItemChange{Gate: factory.GatePlan, Cap: 8}, "", "#1 · ask me at plan, budget $8?",
-			[]string{"ask me at  pull request → plan", "budget  $5 → $8"}},
-		{"gate", ItemChange{Gate: factory.GateNone}, "", "#1 · let green proof ship it?", []string{"ask me at  pull request → never"}},
+			[]string{"now: plan · approve · write · test · review · proof", "after: plan · approve · write · test · +" + security + " · review · proof"}},
+		// WHERE THE RUN HOLDS FOR THE PERSON IS AN APPROVE STEP, added or
+		// skipped like any stage.
+		{"approve", ItemChange{Edit: factory.PlanEdit{Add: []factory.Stage{{Ask: "after test, approve"}}}}, "", "#1 · add an approve step?",
+			[]string{"now: plan · approve · write · test · review · proof", "after: plan · approve · write · test · +approve2 · review · proof"}},
+		{"no approve", ItemChange{Edit: factory.PlanEdit{Skip: []string{"approve"}}}, "", "#1 · skip the approve step?",
+			[]string{"now: plan · approve · write · test · review · proof", "after: plan · write · test · review · proof"}},
 		{"cap up", ItemChange{Cap: 12.5}, "", "#1 · raise the budget to $12.50?", []string{"budget  $5 → $12.50"}},
 		{"cap down", ItemChange{Cap: 3}, "", "#1 · lower the budget to $3?", []string{"budget  $5 → $3"}},
 		{"effort", ItemChange{Effort: "strong"}, "", "#1 · think strong?", []string{"thinking  — → strong"}},
 		{"note", ItemChange{Note: "the fixture in testdata is flaky"}, "", "#1 · add a note for the stages?",
 			[]string{"note: the fixture in testdata is flaky"}},
 		{"several", ItemChange{Edit: factory.PlanEdit{Skip: []string{"review"}}, Cap: 8, Note: "keep it small"}, "small change", "#1 · change the plan?",
-			[]string{"now: plan · write · test · review · proof", "after: plan · write · test · proof", "budget  $5 → $8", "note: keep it small", "why: small change"}},
+			[]string{"now: plan · approve · write · test · review · proof", "after: plan · approve · write · test · proof", "budget  $5 → $8", "note: keep it small", "why: small change"}},
 	} {
 		n := itemCard(t, c.change, c.why)
 		if got := ItemHead(n); got != c.head {
@@ -252,22 +254,22 @@ func TestFactoryItemHeadAndRowsForEachChange(t *testing.T) {
 // stage change WHOLE — no chip changes either.
 func TestFactoryItemChangeAppliesEachFieldAndRefusesUnderFixed(t *testing.T) {
 	recipe := factory.DefaultRecipe()
-	it := factory.Item{ID: 1, Kind: factory.KindIssue, Gate: factory.GateShip, Cap: 5, Notes: []string{"first"},
+	it := factory.Item{ID: 1, Kind: factory.KindIssue, Cap: 5, Notes: []string{"first"},
 		Stream: &factory.Stream{Phases: []factory.Phase{{Name: "plan", State: factory.PhaseDone}}}}
-	next, err := ApplyItemChange(it, ItemChange{Edit: factory.PlanEdit{Skip: []string{"review"}}, Gate: factory.GatePlan, Cap: 8, Effort: "strong", Note: "second"}, recipe)
+	next, err := ApplyItemChange(it, ItemChange{Edit: factory.PlanEdit{Skip: []string{"review"}}, Cap: 8, Effort: "strong", Note: "second"}, recipe)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if next.Gate != factory.GatePlan || next.Cap != 8 {
-		t.Errorf("gate/cap = %s/%v", next.Gate, next.Cap)
+	if next.Cap != 8 {
+		t.Errorf("cap = %v", next.Cap)
 	}
 	if i := factory.StageIndex(next.Stages, "review"); i < 0 || next.Stages[i].On {
 		t.Errorf("review still runs: %+v", next.Stages)
 	}
 	for _, st := range next.Stages {
 		want := "strong"
-		if st.Name == "plan" {
-			want = "" // it has run, and effort means nothing to it now
+		if st.Name == "plan" || st.Kind == factory.StageGate {
+			want = "" // it has run, or is a person: effort means nothing to it
 		}
 		if st.Effort != want {
 			t.Errorf("%s effort = %q, want %q", st.Name, st.Effort, want)
@@ -310,10 +312,10 @@ func TestFactoryItemCardAsksWithItsHeadAndTwoAnswers(t *testing.T) {
 	results := runFactoryItem(t, agent, ctx, itemArgs)
 
 	q := awaitItemQuestion(t, questions)
-	if q.Head != "#1 · ask me at plan, budget $8?" {
+	if q.Head != "#1 · raise the budget to $8?" {
 		t.Errorf("head = %q", q.Head)
 	}
-	if q.Reason != "ask me at  pull request → plan; budget  $5 → $8; why: the person wants the plan before any code" {
+	if q.Reason != "budget  $5 → $8; why: the stages need room for a second review" {
 		t.Errorf("reason = %q", q.Reason)
 	}
 	if !q.Deadline.IsZero() || q.Pick != nil {
@@ -345,17 +347,17 @@ func TestFactoryItemYesAppliesTheChangeOnce(t *testing.T) {
 	t.Cleanup(stopQ)
 	lane, stopT := agent.WatchTaskUpdates()
 	t.Cleanup(stopT)
-	results := runFactoryItem(t, agent, context.Background(), `{"item":1,"skip":["review"],"gate":"plan","cap":8,"note":"the fixture is flaky"}`)
+	results := runFactoryItem(t, agent, context.Background(), `{"item":1,"skip":["review"],"cap":8,"note":"the fixture is flaky"}`)
 	q := awaitItemQuestion(t, questions)
 	if err := agent.ResolveQuestion(Answer{Kind: QuestionItem, Ref: q.Ref, Key: "1"}); err != nil {
 		t.Fatal(err)
 	}
-	want := "#1 now: plan · write · test · proof · ask me at plan · budget $8\n" +
+	want := "#1 now: plan · approve · write · test · proof · budget $8\n" +
 		"The person said yes and the floor has the change; there is nothing left to answer. The note is kept on the item for its stages."
 	if out := awaitResult(t, results); out != want {
 		t.Errorf("result = %q, want %q", out, want)
 	}
-	if got := door.changes(); len(got) != 1 || got[0].Gate != factory.GatePlan || got[0].Cap != 8 || got[0].Note != "the fixture is flaky" {
+	if got := door.changes(); len(got) != 1 || got[0].Cap != 8 || got[0].Note != "the fixture is flaky" {
 		t.Fatalf("applied = %+v", got)
 	}
 	if strings.Join(door.item.Notes, "|") != "the fixture is flaky" {
@@ -367,7 +369,7 @@ func TestFactoryItemYesAppliesTheChangeOnce(t *testing.T) {
 		case event := <-lane:
 			if event.Kind == EventItemChanged {
 				n := event.FactoryItem
-				if n == nil || n.ID != q.Ref || n.Now == nil || n.Now.Gate != factory.GatePlan || strings.Join(n.After.Stages, " ") != "plan write test proof" {
+				if n == nil || n.ID != q.Ref || n.Now == nil || n.Now.Cap != 8 || strings.Join(n.After.Stages, " ") != "plan approve write test proof" {
 					t.Fatalf("changed news = %+v", n)
 				}
 				return
@@ -466,7 +468,7 @@ func TestFactoryItemCardIsReplayedToALateTaskLane(t *testing.T) {
 	select {
 	case event := <-late:
 		n := event.FactoryItem
-		if event.Kind != EventItemProposal || n == nil || n.ID != q.Ref || n.Decided != nil || n.Before.Gate != "ship" || n.After.Cap != 8 {
+		if event.Kind != EventItemProposal || n == nil || n.ID != q.Ref || n.Decided != nil || n.Before.Cap != 5 || n.After.Cap != 8 {
 			t.Fatalf("the late lane was handed %v / %+v, want the standing card", event.Kind, n)
 		}
 	case <-time.After(5 * time.Second):
@@ -521,37 +523,35 @@ func TestFactoryAddedNewsCarriesTheItem(t *testing.T) {
 	}
 }
 
-// THE CARD AND THE TOOL SPEAK THE FLOOR'S WORDS (`ask me at`, `budget`,
-// `thinking`, `approval`), while the schema keeps its field names (gate, cap,
-// effort) and tells the model which word the person uses for each.
+// THE CARD AND THE TOOL SPEAK THE FLOOR'S WORDS (`budget`, `thinking`), while
+// the schema keeps its field names (cap, effort) and tells the model which
+// word the person uses for each. `ask me at` is gone: where the run holds for
+// the person is an approve step among the stages.
 func TestFactoryItemCardUsesTheFloorsWords(t *testing.T) {
-	ship := ItemNotice{Ref: "#1", Before: ItemFacts{Gate: "plan"}, After: ItemFacts{Gate: "ship"}}
-	if got := ItemHead(ship); got != "#1 · wait for your approval?" {
-		t.Errorf("head = %q", got)
-	}
-	both := ItemNotice{Ref: "#1", Before: ItemFacts{Gate: "ship", Cap: 5}, After: ItemFacts{Gate: "ship", Cap: 8}}
-	both.Before.Gate = "plan"
-	if got := ItemHead(both); got != "#1 · ask me at pull request, budget $8?" {
-		t.Errorf("head = %q", got)
-	}
-	rows := strings.Join(ItemRows(ItemNotice{Before: ItemFacts{Gate: "ship", Cap: 5}, After: ItemFacts{Gate: "plan", Cap: 8, Effort: "strong"}}), "\n")
-	for _, want := range []string{"ask me at  pull request → plan", "budget  $5 → $8", "thinking  — → strong"} {
+	rows := strings.Join(ItemRows(ItemNotice{Before: ItemFacts{Cap: 5}, After: ItemFacts{Cap: 8, Effort: "strong"}}), "\n")
+	for _, want := range []string{"budget  $5 → $8", "thinking  — → strong"} {
 		if !strings.Contains(rows, want) {
 			t.Errorf("rows lack %q:\n%s", want, rows)
 		}
 	}
-	for _, old := range []string{"plan first", "sign-off", "sign off", "gate  ", "cap  ", "effort  "} {
-		if strings.Contains(rows+ItemHead(ship)+ItemHead(both), old) {
+	for _, old := range []string{"plan first", "sign-off", "sign off", "gate  ", "cap  ", "effort  ", "ask me at"} {
+		if strings.Contains(rows, old) {
 			t.Errorf("the card still says %q", old)
 		}
 	}
 	schema := factoryItemSchemaJSON()
-	for _, field := range []string{`"gate"`, `"cap"`, `"effort"`} {
+	for _, field := range []string{`"cap"`, `"effort"`} {
 		if !strings.Contains(schema, field) {
 			t.Errorf("the schema lost the field %s", field)
 		}
 	}
-	for _, word := range []string{"ask me at", "budget", "thinking"} {
+	if strings.Contains(schema, `"gate"`) || strings.Contains(schema, "ask me at") || strings.Contains(factoryItemDescription, "ask me at") {
+		t.Error("the tool still offers ask me at")
+	}
+	if !strings.Contains(factoryItemDescription, "approve step") {
+		t.Error("the description does not tell the model where the run holds for the person")
+	}
+	for _, word := range []string{"budget", "thinking"} {
 		if !strings.Contains(factoryItemDescription, `"`+word+`"`) {
 			t.Errorf("the description does not tell the model the person's word %q", word)
 		}

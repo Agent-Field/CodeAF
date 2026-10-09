@@ -4,7 +4,7 @@ package session
 //
 // An item's own conversation (the floor's `T`, cmd/codeaf's talk maker) is the
 // item's hub: where a person thinks out loud about it — "skip review on this
-// one", "ask me at plan, budget $8", "tell the stages the fixture is flaky" —
+// one", "hold for me after plan, budget $8", "tell the stages the fixture is flaky" —
 // and `factory_item` is the one verb that carries what they settle on to the
 // item. It replaces `factory_stages`, which could change the stages and
 // nothing else, and it carries every change as a QUESTION, never as a write:
@@ -15,7 +15,7 @@ package session
 //
 //   - EVERY CARD IS A QUESTION IN THE PERSON'S WORDS, WITH BEFORE AND AFTER AND
 //     THE WHY. The head is one question built from what changes (`#1 · skip the
-//     review stage?`, `#1 · ask me at plan, budget $8?`); the body says the
+//     review stage?`, `#1 · add an approve step?`); the body says the
 //     item's stages now and after, each chip as `before → after`, the note and
 //     the reason, and nothing about a field the change leaves alone.
 //
@@ -24,8 +24,8 @@ package session
 //     changes the item without that answer.
 //
 //   - THE BOUNDS ARE HELD IN CODE. The stages go through [factory.Adapt] inside
-//     [ApplyItemChange], which refuses a skipped proof, a skipped gate, a stage a
-//     policy names, anything before a stage that already ran, and every stage
+//     [ApplyItemChange], which refuses a skipped proof, a stage a
+//     policy names, a fixed stage, anything before a stage that already ran, and every stage
 //     change at all under a `fixed` recipe. The door previews the change BEFORE
 //     the card is raised, so a refused change is never offered, and a refusal
 //     comes back in Adapt's own sentence. A CHANGE IS WHOLE OR NOTHING: a card
@@ -75,7 +75,7 @@ const (
 	// returns, with no card raised: there is nothing for a person to decide.
 	itemAlready = "nothing changed: the item already runs that way"
 	// itemNowLead sits between the item's name and its facts after a yes:
-	// `#1 now: plan · write · test · proof · ask me at plan · budget $8`.
+	// `#1 now: plan · approve · write · test · proof · budget $8`.
 	itemNowLead = " now: "
 	// itemDone is the line under the facts a yes returns.
 	itemDone = "The person said yes and the floor has the change; there is nothing left to answer."
@@ -97,20 +97,17 @@ const itemNone = "—"
 // before: `plan · write · +security · test · proof`.
 const itemAddedMark = "+"
 
-// itemGates and itemEfforts are the schema's enums, held once so the schema
-// and the handler's check read the same lists. `default` is the thinking word
-// for the knee, which the floor stores as nothing.
-var (
-	itemGates   = []string{string(factory.GatePlan), string(factory.GateShip), string(factory.GateNone)}
-	itemEfforts = []string{"cheap", "strong", "default"}
-)
+// itemEfforts is the schema's enum, held once so the schema and the
+// handler's check read the same list. `default` is the thinking word for the
+// knee, which the floor stores as nothing.
+var itemEfforts = []string{"cheap", "strong", "default"}
 
-const factoryItemDescription = "Offer to change the ONE factory item this conversation is about, when the person settles on it: its stages (\"skip review on this one\", \"add a security pass\"), where the run stops to ask the person (the field is gate; the person calls it \"ask me at\": plan: come back with the plan first; ship: run to a result and wait for their approval, which the person calls \"pull request\"; none: ship by itself when proof is green, which the person calls \"never\"), its budget in dollars (the field is cap; the person calls it \"budget\"), how hard the stages think (the field is effort; the person calls it \"thinking\": cheap, strong, default), or a note the item's stages will read (\"the fixture in testdata is flaky\"). " +
+const factoryItemDescription = "Offer to change the ONE factory item this conversation is about, when the person settles on it: its stages (\"skip review on this one\", \"add a security pass\"; where the run holds for the person is an approve step: add \"after plan, approve\" or skip \"approve\", and an item with no approve step ships itself when its proof is green), its budget in dollars (the field is cap; the person calls it \"budget\"), how hard the stages think (the field is effort; the person calls it \"thinking\": cheap, strong, default), or a note the item's stages will read (\"the fixture in testdata is flaky\"). " +
 	"This conversation is the item's hub: change it with this tool, leave notes here, and once the item runs, its stages report into this conversation. " +
 	"Use it only for the item this conversation was opened for; never for another item. The floor id goes in the item field and nowhere else: in words, name the item by its ref (#12), never by its floor id. " +
 	"add is new stage sentences, a place word first when it matters (\"after test, read it for auth holes\"); skip and on are stage names the item already has. Give only what changes. " +
 	"NOTHING CHANGES BY CALLING THIS: the person is shown a card with the item before and after, and only their `yes` changes anything. Nothing launches either; that is the person's, on the floor. " +
-	"The recipe's bounds hold whatever is asked: proof, a person's gate and a stage the policy names are never skipped, a stage that already ran is never touched, and a `fixed` recipe refuses every stage change; a refusal comes back with its reason before any card. " +
+	"The recipe's bounds hold whatever is asked: proof and a stage the policy names are never skipped, a stage that already ran is never touched, and a `fixed` recipe refuses every stage change; a refusal comes back with its reason before any card. " +
 	"If they type a change instead, nothing changes and you are told their words: propose again with them."
 
 func factoryItemSchemaJSON() string {
@@ -126,7 +123,6 @@ func factoryItemSchemaJSON() string {
 		`"add":{"type":"array","items":{"type":"string"},"description":"Stage sentences to add, e.g. \"after review, read it for auth holes\"."},` +
 		`"skip":{"type":"array","items":{"type":"string"},"description":"Stage names to switch off for this item."},` +
 		`"on":{"type":"array","items":{"type":"string"},"description":"Stage names to switch on for this item."},` +
-		`"gate":{"type":"string","enum":[` + quoted(itemGates) + `],"description":"Where the run stops to ask the person; the person calls this \"ask me at\": plan (ask at the plan), ship (ask at the pull request, for their approval), none (never ask; green proof ships itself)."},` +
 		`"cap":{"type":"number","description":"The item's budget in dollars: the most it may spend; the person calls this \"budget\"."},` +
 		`"effort":{"type":"string","enum":[` + quoted(itemEfforts) + `],"description":"How hard the stages that have not run yet think; the person calls this \"thinking\"."},` +
 		`"note":{"type":"string","description":"One sentence the item's stages will read."},` +
@@ -167,7 +163,7 @@ func ItemStaged(it factory.Item, recipe factory.Recipe) factory.Item {
 // floor cannot disagree about what a yes does.
 //
 // THE STAGES GO THROUGH [factory.Adapt] AND ONLY THROUGH IT, which is where
-// every bound is held; a refusal there refuses the whole change. The gate,
+// every bound is held; a refusal there refuses the whole change. The
 // cap and effort are checked here against the floor's own words, and the note
 // is appended to [factory.Item.Notes].
 func ApplyItemChange(it factory.Item, change ItemChange, recipe factory.Recipe) (factory.Item, error) {
@@ -175,12 +171,6 @@ func ApplyItemChange(it factory.Item, change ItemChange, recipe factory.Recipe) 
 	next, _, err := factory.Adapt(it, change.Edit, recipe)
 	if err != nil {
 		return it, err
-	}
-	if g := strings.TrimSpace(string(change.Gate)); g != "" {
-		if !oneOf(g, itemGates) {
-			return it, fmt.Errorf("%q is not a gate", g)
-		}
-		next.Gate = factory.Gate(g)
 	}
 	if change.Cap < 0 {
 		return it, errors.New("a budget is never below nothing")
@@ -251,7 +241,7 @@ func ItemEffort(it factory.Item) string {
 
 // ItemFactsOf is the item as the card compares it.
 func ItemFactsOf(it factory.Item) ItemFacts {
-	f := ItemFacts{Gate: string(it.Gate), Cap: it.Cap, Effort: ItemEffort(it)}
+	f := ItemFacts{Cap: it.Cap, Effort: ItemEffort(it)}
 	for _, st := range it.Stages {
 		if st.On {
 			f.Stages = append(f.Stages, st.Name)
@@ -271,14 +261,13 @@ func itemRef(n ItemNotice) string {
 	return "#" + strconv.Itoa(n.Item)
 }
 
-// itemStagesMoved, itemGateMoved and the rest say which parts of the item the
+// itemStagesMoved, itemCapMoved and the rest say which parts of the item the
 // card changes, read off before and after rather than off the ask, so a
 // switch-on of a stage that is already on is no change at all.
 func itemStagesMoved(n ItemNotice) bool {
 	return strings.Join(n.Before.Stages, "\x00") != strings.Join(n.After.Stages, "\x00")
 }
-func itemGateMoved(n ItemNotice) bool { return n.Before.Gate != n.After.Gate }
-func itemCapMoved(n ItemNotice) bool  { return n.Before.Cap != n.After.Cap }
+func itemCapMoved(n ItemNotice) bool { return n.Before.Cap != n.After.Cap }
 func itemEffortMoved(n ItemNotice) bool {
 	return n.Before.Effort != n.After.Effort
 }
@@ -286,8 +275,7 @@ func itemHasNote(n ItemNotice) bool { return strings.TrimSpace(n.Note) != "" }
 
 // ItemHead is the card's head: the item's ref and ONE question in words, built
 // from what changes. One kind of change asks about itself (`skip the review
-// stage?`, `raise the budget to $8?`), a gate and a cap together are one phrase
-// (`ask me at plan, budget $8?`), and anything more is `change the plan?`.
+// stage?`, `raise the budget to $8?`), and anything more is `change the plan?`.
 func ItemHead(n ItemNotice) string {
 	return itemRef(n) + DecisionSep + itemQuestionWords(n)
 }
@@ -296,9 +284,6 @@ func itemQuestionWords(n ItemNotice) string {
 	var kinds []string
 	if itemStagesMoved(n) {
 		kinds = append(kinds, "stages")
-	}
-	if itemGateMoved(n) {
-		kinds = append(kinds, "gate")
 	}
 	if itemCapMoved(n) {
 		kinds = append(kinds, "cap")
@@ -312,10 +297,6 @@ func itemQuestionWords(n ItemNotice) string {
 	switch strings.Join(kinds, "+") {
 	case "stages":
 		return itemStagesQuestion(n)
-	case "gate":
-		return itemGatePhrase(n.After.Gate) + "?"
-	case "gate+cap":
-		return itemAskAt(n.After.Gate) + ", budget " + itemMoney(n.After.Cap) + "?"
 	case "cap":
 		switch {
 		case n.Before.Cap <= 0:
@@ -333,36 +314,6 @@ func itemQuestionWords(n ItemNotice) string {
 		return "add a note for the stages?"
 	}
 	return "change the plan?"
-}
-
-// ItemGateWord is a stored gate (the recipe file's `plan`, `ship`, `none`) in
-// the screen's words (`plan`, `pull request`, `never`); the same three words
-// the floor draws (internal/tui3/factory_words.go). A value that is none of
-// the three comes back as it is, and nothing is a dash.
-func ItemGateWord(g string) string {
-	switch factory.Gate(strings.TrimSpace(g)) {
-	case factory.GatePlan:
-		return "plan"
-	case factory.GateShip:
-		return "pull request"
-	case factory.GateNone:
-		return "never"
-	}
-	return itemOr(g)
-}
-
-// itemAskAt is the gate as the floor's phrase, `ask me at plan`.
-func itemAskAt(g string) string { return "ask me at " + ItemGateWord(g) }
-
-// itemGatePhrase is a gate as the thing the person is asked to agree to.
-func itemGatePhrase(g string) string {
-	switch factory.Gate(g) {
-	case factory.GatePlan:
-		return itemAskAt(g)
-	case factory.GateNone:
-		return "let green proof ship it"
-	}
-	return "wait for your approval"
 }
 
 // itemStagesQuestion is a stages-only change as one question: what was added,
@@ -387,6 +338,10 @@ func itemStagesQuestion(n ItemNotice) string {
 		}
 	}
 	switch {
+	case len(lost) == 0 && len(gained) == 1 && factory.ApproveWord(gained[0]):
+		return "add an approve step?"
+	case len(gained) == 0 && len(lost) == 1 && factory.ApproveWord(lost[0]):
+		return "skip the approve step?"
 	case len(gained) == 0 && len(lost) == 1:
 		return "skip the " + lost[0] + " stage?"
 	case len(gained) == 0 && len(lost) > 1:
@@ -409,15 +364,12 @@ func itemAnd(list []string) string {
 
 // ItemRows is the card's body, one row per thing that changes and nothing
 // about what does not: `now:` and `after:` when the stages move, then
-// `ask me at  pull request → plan`, `budget  $5 → $8`, `thinking  — → strong`, the note and the
+// `budget  $5 → $8`, `thinking  — → strong`, the note and the
 // reason.
 func ItemRows(n ItemNotice) []string {
 	var rows []string
 	if itemStagesMoved(n) {
 		rows = append(rows, "now: "+itemList(n.Before.Stages), "after: "+itemAfterList(n.Before.Stages, n.After.Stages))
-	}
-	if itemGateMoved(n) {
-		rows = append(rows, "ask me at  "+ItemGateWord(n.Before.Gate)+" → "+ItemGateWord(n.After.Gate))
 	}
 	if itemCapMoved(n) {
 		rows = append(rows, "budget  "+itemMoneyOr(n.Before.Cap)+" → "+itemMoneyOr(n.After.Cap))
@@ -483,14 +435,11 @@ func itemMoney(v float64) string {
 }
 
 // itemNow is the sentence a yes returns: the item's facts after the change,
-// only what is set: `#1 now: plan · write · test · proof · ask me at plan · budget $8`.
+// only what is set: `#1 now: plan · approve · write · test · proof · budget $8`.
 func itemNow(n ItemNotice) string {
 	parts := []string{}
 	if len(n.After.Stages) > 0 {
 		parts = append(parts, strings.Join(n.After.Stages, DecisionSep))
-	}
-	if g := strings.TrimSpace(n.After.Gate); g != "" {
-		parts = append(parts, "ask me at "+ItemGateWord(g))
 	}
 	if n.After.Cap > 0 {
 		parts = append(parts, "budget "+itemMoney(n.After.Cap))
@@ -513,7 +462,6 @@ func itemNow(n ItemNotice) string {
 func itemChange(n ItemNotice) ItemChange {
 	change := ItemChange{
 		Edit:   factory.PlanEdit{On: n.On, Skip: n.Skip, Why: n.Why},
-		Gate:   factory.Gate(n.Gate),
 		Cap:    n.Cap,
 		Effort: n.Effort,
 		Note:   n.Note,
@@ -549,7 +497,6 @@ func (a *Agent) factoryItemTool() bare.Tool {
 				Add    []string `json:"add"`
 				Skip   []string `json:"skip"`
 				On     []string `json:"on"`
-				Gate   string   `json:"gate"`
 				Cap    float64  `json:"cap"`
 				Effort string   `json:"effort"`
 				Note   string   `json:"note"`
@@ -565,7 +512,6 @@ func (a *Agent) factoryItemTool() bare.Tool {
 				Add:    cleanNames(parsed.Add),
 				Skip:   cleanNames(parsed.Skip),
 				On:     cleanNames(parsed.On),
-				Gate:   strings.ToLower(strings.TrimSpace(parsed.Gate)),
 				Cap:    parsed.Cap,
 				Effort: strings.ToLower(strings.TrimSpace(parsed.Effort)),
 				Note:   strings.Join(strings.Fields(parsed.Note), " "),
@@ -573,9 +519,6 @@ func (a *Agent) factoryItemTool() bare.Tool {
 			}
 			if notice.Item <= 0 {
 				return "Invalid arguments: factory_item needs the floor id of the item this conversation is about.", true, nil
-			}
-			if notice.Gate != "" && !oneOf(notice.Gate, itemGates) {
-				return "Invalid arguments: gate is one of " + strings.Join(itemGates, ", ") + ", or left out.", true, nil
 			}
 			if notice.Effort != "" && !oneOf(notice.Effort, itemEfforts) {
 				return "Invalid arguments: effort is one of " + strings.Join(itemEfforts, ", ") + ", or left out.", true, nil
@@ -590,7 +533,7 @@ func (a *Agent) factoryItemTool() bare.Tool {
 			}
 			change := itemChange(notice)
 			if change.Empty() {
-				return "Invalid arguments: factory_item needs something to change: add, skip, on, gate, cap, effort or note.", true, nil
+				return "Invalid arguments: factory_item needs something to change: add, skip, on, cap, effort or note.", true, nil
 			}
 			door := a.config.FactoryItem
 			// THE CHANGE IS PREVIEWED BEFORE ANY CARD, so the card shows the item
@@ -602,7 +545,7 @@ func (a *Agent) factoryItemTool() bare.Tool {
 			}
 			notice.Ref = before.Ref()
 			notice.Before, notice.After = ItemFactsOf(before), ItemFactsOf(after)
-			if !itemStagesMoved(notice) && !itemGateMoved(notice) && !itemCapMoved(notice) && !itemEffortMoved(notice) && !itemHasNote(notice) {
+			if !itemStagesMoved(notice) && !itemCapMoved(notice) && !itemEffortMoved(notice) && !itemHasNote(notice) {
 				return itemAlready, false, nil
 			}
 			answer, err := a.askItem(ctx, &notice)

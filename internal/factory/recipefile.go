@@ -18,14 +18,20 @@ import (
 //	# factory recipe · codeaf
 //
 //	## issue · ask
-//	1. plan · chat · read the issue and say how · gate plan when large
-//	2. write · chat · fanout 3
+//	1. plan · chat · read the issue and say how
+//	2. approve · gate · when large
+//	3. write · chat · fanout 3
 //
 //	## policy
 //	- tests pass before anything posts
 //
 //	## habits
 //	- factory PRs from your own issues self-ship when the proof is green
+//
+// AN APPROVE STEP IS A STAGE LINE TOO, `N. approve` (its kind is gate), and
+// `## approve` on a line of its own inside a kind's section is the same step
+// at that place. An old file's `gate plan` / `gate ship` knob is read into an
+// approve step at its place ([ExpandGates]) and written back as one.
 //
 // A stage line is `N. name · kind · ask · knob · knob …`. The kind is optional
 // and chat when absent; the ask is the first segment that is neither a kind nor
@@ -100,6 +106,18 @@ func Parse(text string) (Recipe, []Problem) {
 		switch {
 		case line == "":
 			continue
+		case strings.HasPrefix(line, "## ") && sectionName(line) == ApproveName && knownKind(section) && !skip:
+			// `## approve` INSIDE A KIND'S SECTION is an approve step at that
+			// place, the way a person marks where the run holds for them.
+			switch {
+			case len(got[Kind(section)]) >= StageMost:
+				bad(ErrNineStages.Error())
+			default:
+				st := Approve(got[Kind(section)])
+				st.Fixed = sectionFixed
+				got[Kind(section)] = append(got[Kind(section)], st)
+			}
+			continue
 		case strings.HasPrefix(line, "## "):
 			name, word := sectionWord(line)
 			skip = true
@@ -161,9 +179,17 @@ func Parse(text string) (Recipe, []Problem) {
 				if sectionFixed {
 					st.Fixed = true
 				}
+				if IsApprove(st) && StageIndex(got[Kind(section)], st.Name) >= 0 {
+					st.Name = approveName(got[Kind(section)])
+				}
 				got[Kind(section)] = append(got[Kind(section)], st)
 			}
 		}
+	}
+	// AN OLD FILE'S `gate` KNOBS ARE APPROVE STEPS NOW ([ExpandGates]), and
+	// the file is written back without them.
+	for k, ss := range got {
+		got[k] = ExpandGates(ss)
 	}
 	r := DefaultRecipe()
 	if s := got[KindIssue]; len(s) > 0 {
@@ -292,6 +318,10 @@ func parseStageLine(k Kind, line string) (st Stage, whys []string, ok bool) {
 	if kind != "" {
 		st.Kind = kind
 	}
+	if st.Kind == "" && ApproveWord(name) {
+		// `N. approve` is the person's gate without saying gate.
+		st.Kind = StageGate
+	}
 	if st.Kind == "" {
 		st.Kind = StageChat
 	}
@@ -300,6 +330,21 @@ func parseStageLine(k Kind, line string) (st Stage, whys []string, ok bool) {
 		f(&st)
 	}
 	return st, whys, true
+}
+
+// ApproveWord says whether a stage name is an approve step's: `approve`, or
+// `approve2` and on.
+func ApproveWord(name string) bool {
+	rest, ok := strings.CutPrefix(name, ApproveName)
+	if !ok {
+		return false
+	}
+	for _, r := range rest {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func oneOfKind(k StageKind) bool {
@@ -369,12 +414,12 @@ func parseKnob(seg string) (knob func(*Stage), isKnob bool, why string) {
 		if cond != "" && !oneOf(cond, WhenWords) {
 			return nil, true, "a gate's when is one of " + strings.Join(WhenWords, ", ")
 		}
-		// THE CONDITION IS THE GATE'S, NEVER THE STAGE'S: `gate plan when
-		// large` runs plan on every item and stops for the person only on a
-		// large one ([GateApplies]).
+		// AN OLD FILE'S GATE IS READ, NEVER WRITTEN: [Parse] turns it into an
+		// approve step at its place ([ExpandGates]), its condition the
+		// approve's when, and [Format] writes the approve step instead.
 		return func(s *Stage) {
-			s.Gate = Gate(g)
-			s.GateWhen = cond
+			s.OldGate = Gate(g)
+			s.OldGateWhen = cond
 		}, true, ""
 	case "effort":
 		if !oneOf(rest, EffortWords) {
@@ -504,9 +549,8 @@ func StageLines(stages []Stage) []string {
 }
 
 // stageLine is one stage after its number. The knobs come in one order: when,
-// until, max, fanout, gate, effort, proof, off, fixed. A gate with a condition of its
-// own ([Stage.GateWhen]) writes it as `gate plan when large`, the way the owner
-// spells it, and the stage's own when stays its own knob.
+// until, max, fanout, effort, proof, off, fixed. An approve step is
+// `approve · gate`, with its when when it has one.
 func stageLine(s Stage) string {
 	kind := s.Kind
 	if kind == "" {
@@ -527,13 +571,6 @@ func stageLine(s Stage) string {
 	}
 	if s.Fanout != "" {
 		parts = append(parts, "fanout "+strings.ReplaceAll(s.Fanout, "-", " "))
-	}
-	if s.Gate != "" {
-		g := "gate " + string(s.Gate)
-		if s.GateWhen != "" {
-			g += " when " + s.GateWhen
-		}
-		parts = append(parts, g)
 	}
 	if s.Effort != "" {
 		parts = append(parts, "effort "+s.Effort)

@@ -66,10 +66,10 @@ func TestFactoryMarkAPausedItemIsNotRunning(t *testing.T) {
 	if got := ansi.Strip(a.itemLeadMark(it)); got != pause {
 		t.Fatalf("a paused item's lead is %q, want the pause mark %q", got, pause)
 	}
-	if got, _ := a.phaseMark(it, 3); got != pause {
+	if got, _ := a.phaseMark(it, 4); got != pause {
 		t.Fatalf("the held phase wears %q, want %q", got, pause)
 	}
-	if got := phaseWord(it, 3, 2); got != "review 1/2 · paused" {
+	if got := phaseWord(it, 4, 2); got != "review 1/2 · paused" {
 		t.Fatalf("the held phase says %q", got)
 	}
 	a.fp.phaseSince[factoryPausedKey(2)] = a.fp.snap.Now.Add(-13 * time.Minute)
@@ -99,8 +99,8 @@ func TestFactoryMarkAStoppedItemIsNotFailed(t *testing.T) {
 				it := &s.Items[i]
 				it.State = factory.StateNew
 				it.Stream.Ended = s.Now
-				it.Stream.Phases[3].State = factory.PhaseFailed
-				it.Stream.Phases[3].Note = "TestRelay failed"
+				it.Stream.Phases[4].State = factory.PhaseFailed
+				it.Stream.Phases[4].Note = "TestRelay failed"
 			}
 		}
 	})
@@ -109,7 +109,7 @@ func TestFactoryMarkAStoppedItemIsNotFailed(t *testing.T) {
 	if got := ansi.Strip(a.itemLeadMark(it)); got != stop {
 		t.Fatalf("a stopped item's lead is %q, want %q", got, stop)
 	}
-	if got, _ := a.phaseMark(it, 3); got != stop {
+	if got, _ := a.phaseMark(it, 4); got != stop {
 		t.Fatalf("the stopped phase wears %q, want %q", got, stop)
 	}
 	if st, _ := a.factoryStateFact(it); st.plain != "stopped · branch kept" {
@@ -122,7 +122,7 @@ func TestFactoryMarkAStoppedItemIsNotFailed(t *testing.T) {
 	if strings.Contains(strip, fail) {
 		t.Fatalf("the row's strip still draws a failure: %q", strip)
 	}
-	if seg, _ := a.factoryPhaseCell(it, 3, 2); strings.Contains(ansi.Strip(seg), fail) || !strings.Contains(ansi.Strip(seg), "stopped") {
+	if seg, _ := a.factoryPhaseCell(it, 4, 2); strings.Contains(ansi.Strip(seg), fail) || !strings.Contains(ansi.Strip(seg), "stopped") {
 		t.Fatalf("the peek's cell for the stopped phase is %q", ansi.Strip(seg))
 	}
 	if cell := factoryStageCellText(t, a, it, "review"); !strings.HasPrefix(cell, stop+" ") {
@@ -137,19 +137,19 @@ func TestFactoryMarkASkippedStageIsNotToCome(t *testing.T) {
 		for i := range s.Items {
 			if s.Items[i].ID == 2 {
 				// test was passed over: review runs after it.
-				s.Items[i].Stream.Phases[2].State = factory.PhasePending
+				s.Items[i].Stream.Phases[3].State = factory.PhasePending
 			}
 		}
 	})
 	skip, pending := a.icon(tokens.GSkipped), a.icon(tokens.GStepPending)
 	it := factoryMarkItem(t, a, 2)
-	if got, _ := a.phaseMark(it, 2); got != skip {
+	if got, _ := a.phaseMark(it, 3); got != skip {
 		t.Fatalf("a passed-over phase wears %q, want %q", got, skip)
 	}
-	if got := phaseWord(it, 2, 1); got != "test · skipped" {
+	if got := phaseWord(it, 3, 1); got != "test · skipped" {
 		t.Fatalf("a passed-over phase says %q", got)
 	}
-	if got, _ := a.phaseMark(it, 4); got != pending {
+	if got, _ := a.phaseMark(it, 5); got != pending {
 		t.Fatalf("a phase still to come wears %q, want %q", got, pending)
 	}
 	if cell := factoryStageCellText(t, a, it, "test"); cell != skip+" test · skipped" {

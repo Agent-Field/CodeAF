@@ -79,12 +79,12 @@ The keys themselves:
 The peek's last row names what you can do to the item under the cursor, **at most five**, in the
 order a person reaches for them, and only keys the floor can do:
 
-- **New:** `enter open · r run · T chat · space select · t ask me at plan` (the last one says
-  where this item's run will stop: `ask me at pull request`, `ask me at never`). While a row is
-  selected, `L run selected` takes the fifth place.
+- **New:** `enter open · r run · T chat · space select`. While a row is selected,
+  `L run selected` takes the fifth place.
 - **Running:** `enter open · x stop · T chat · space pause · S steer` (`space resume` while
   paused). Queued: the same without pause.
-- **Needs you:** `enter open · y yes · n no · a in words · T chat`.
+- **Needs you:** `enter open · y yes · n no · a in words · T chat`. At an approve step, `y`
+  continues, `n` sends the run back to the step before, and `a` continues with your words.
 - **Landed:** `enter proof · s approve · B request changes · v re-run checks · T chat`, with
   `e approve with changes` in place of `s approve` when a row on the sheet was not shown.
 
@@ -202,7 +202,9 @@ A stage can repeat until a condition holds (until green, until clean, until prov
 number of rounds, and then it stops and asks you. A second round fixes what the first found, then
 checks again: its brief names what the last round found and says to fix it in the checkout, run
 the tests, and look again, so a review that found one thing does not just find it twice. Nothing inside a stage can add a stage, except plan, within the
-bounds its recipe word allows (see who may change an item's stages). A stage can also be a gate, which is where `ask me at` stops: `plan` comes back with the plan before any code, and `ship` (the screen's `pull request`) waits for you to approve.
+bounds its recipe word allows (see who may change an item's stages). A stage can also be an
+**approve** step, which is where the run holds for you: codeaf's default runs plan → approve →
+write, so you read the plan before any code (see approve steps).
 
 The peek shows a new item's stages as one line of names and a running item's as a strip of
 marks; the item page lists them down its stage rail. A stage can carry a condition (`thin`,
@@ -279,7 +281,9 @@ and its recipe is read from then on.
 
 In a `.codeaf/factory.md` stage line, after the name:
 
-- **kind**: `chat`, `check`, `gate` or `post`; `chat` when absent.
+- **kind**: `chat`, `check`, `gate` or `post`; `chat` when absent. A line named `approve`
+  (`3. approve`) is a gate without saying so: the run holds there for you (see approve steps).
+  `## approve` on a line of its own inside a kind's section is the same step at that place.
 - **ask**: the first segment that is not a kind and not a knob. `check` runs it as a command.
 - `when always`, `when thin`, `when large`, `when touches auth`, `when has ui`: the stage is
   skipped on an item the condition does not fit.
@@ -288,15 +292,13 @@ In a `.codeaf/factory.md` stage line, after the name:
   green: the check's command exited 0.
 - `max N` (or `rounds N`): rounds before it stops and asks you.
 - `fanout 3`, `fanout one`, `fanout per finding`, `fanout per file`, `fanout per claim`.
-- `gate plan`, `gate ship`, `gate none`; `gate plan when large` makes only the gate conditional:
-  the stage runs on every item and stops for you only on a large one. It leaves the stage's own
-  `when` alone, so `when thin · gate plan when large` is a stage for thin items that asks first
-  when one is also large.
 - `effort cheap` or `effort strong`.
+- An older file's `gate plan` / `gate ship` / `gate none` is read as an approve step and written
+  back as one: `gate plan` on plan is an approve after plan, `gate ship` an approve after its
+  stage, `gate none` nothing; `gate plan when large` is `approve · when large`.
 
-The file keeps these words; the screen says them its own way. `gate plan`, `gate ship` and
-`gate none` are `ask me at plan`, `ask me at pull request` and `ask me at never` on the floor and
-the item page, `effort` is `thinking`, and an item's `cap` is its `budget`.
+The file keeps these words; the screen says them its own way: `effort` is `thinking`, and an
+item's `cap` is its `budget`.
 - `proof a test, a screenshot`: what the stage must show, separated by commas.
 - `off`: the stage is written but does not run. Every other stage is on.
 - `fixed`: the team's law. Nobody may change the stage's ask, thinking or rounds, or switch it
@@ -406,9 +408,9 @@ stays there while the rows scroll under the cursor, so the peek keeps its whole 
    words in ink) and, where the floor can answer, `[y] yes · [n] no · [a] in words`.
 3. The factory's one-sentence read, or `⠋ reading…` while the first read is out.
 4. Facts, dim: `touches money`, `maybe a duplicate of #7`, `thin`, `stranger`.
-5. Where it asks you, the budget and the thinking in fixed slots, so their values line up from
-   item to item: `ask me at  pull request`, `budget  $5`, `thinking  —`. A budget of nothing is
-   a blank slot.
+5. The budget and the thinking in fixed slots, so their values line up from item to item:
+   `budget  $5`, `thinking  —`. A budget of nothing is a blank slot. Where the run holds for
+   you is an approve step among the stages, never a slot here.
 6. The stages: `●` done, `◐` running, `?` waiting on you, `✕` failed, `○` to come, the pause
    mark held, the stop square where a person stopped it, and `–` skipped, every cell of the
    strip one width (its longest name, at most 16 columns; a longer name ends in `…`), with the
@@ -503,9 +505,9 @@ column:
 - `×2`: the most rounds the stage may take, before it runs (only where it may take more than one).
 - `1/2`: the round it is on over its most, once it runs, in place of `×2`.
 - `+`, dim: the manager, the plan or you added or changed this stage; the recipe did not set it.
-- `?`, dim: the run stops to ask you here: a stage that is a person, a stage whose own gate
-  applies, the plan stage under `ask me at plan`, and the last stage that runs for the sign-off
-  (unless `ask me at` is `never`). Where both apply, `?` is shown. The amber `?` mark at the
+- `?`, dim: the run stops to ask you here: an approve step, and the last stage that runs for
+  the sign-off on an item that has an approve step (one with none ships itself when its proof is
+  green). The amber `?` mark at the
   start of a row is different: that stage is waiting on you now.
 
 A running stage keeps how long it has run after its name, `⠋ plan · 2m`, where it fits.
@@ -516,7 +518,7 @@ A running stage keeps how long it has run after its name, `⠋ plan · 2m`, wher
 - `run`: where the run stands, how long and what it spent; under it each stage with its mark
   (see paused, stopped and skipped) and `log` once the run has said anything (see the log).
 - `result`: the proof sheet, then the diff and the checks, once something came out.
-- `settings`: ask me at, thinking, budget and which stages are on (see the settings of an item).
+- `settings`: thinking, budget and which stages are on (see the settings of an item).
 
 The center shows the row under the cursor; for `manager`, `run` and every stage it is the run's
 story. The page opens on the stage waiting on you, else the running stage, else `result` for a
@@ -542,40 +544,40 @@ item, in two groups, each row with its key at the right edge:
   `request changes B`, `re-run checks v`, `chat T`.
 - **also:** `open on github g`, `refresh u`, `dismiss d`.
 
-There is no `set` group: ask me at, thinking, budget and the stages are the `settings` row on
-the left (see the settings of an item).
+There is no `set` group: thinking, budget and the stages are the `settings` row on the left
+(see the settings of an item).
 
 Click a row or press its key: a click does exactly what the key does. Resting the pointer on a
 row highlights it. While the manager's box has your keys the column is dimmed: every key types
 then, and a click on a dimmed row does nothing (see typing to the manager). The column has no cursor, because every row already has its key. Only what
 works is listed, and a group with nothing in it is not drawn. On a page narrower than 100
-columns there is no column: ask me at, the budget and the thinking stand on the head's second
+columns there is no column: the budget and the thinking stand on the head's second
 row with their keys, and the pane's last row names the verbs. `?` lists every key either way.
 
-## the settings of an item — where to change the budget, ask me at, thinking, which stages run
+## the settings of an item — where to change the budget, thinking, which stages run, add or remove an approve step
 
 Open the item and walk to its last row, `settings`. The center is a table:
 
 ```
-ask me at  plan          t
 thinking   —             e
 budget     $3            c
 
 1 plan     on
-2 write    on
-3 test     off
+2 approve  on
+3 write    on
+4 test     off
 
 1-9 stages · s add a stage · w set in words · b save stages as the recipe
 ```
 
-`t` moves where the run stops to ask (plan, pull request, never), `e` turns how hard the model
-thinks, `c` raises the budget, `1` to `9` switch that stage on or off, `s` adds a stage in
-words, `w` sets them in words and `b` saves the stages as the repository's recipe. `t`, `e` and
-`c` work from any row of the page. `1-9`, `s`, `w` and `b` answer on this row only: on any other
+`e` turns how hard the model thinks, `c` raises the budget, `1` to `9` switch that stage on or
+off (an approve step too: switched off, the run goes on past it), `s` adds a stage in words
+(`after test, approve` adds an approve step after test), `w` sets them in words and `b` saves
+the stages as the repository's recipe. `e` and `c` work from any row of the page. `1-9`, `s`, `w` and `b` answer on this row only: on any other
 row they do nothing at all, so a letter typed toward the manager never opens
 `+ stage › “after review, make it neater”`. A key is
-shown only where it works: a running item's ask me at and budget have no key, because they
-cannot change mid-run, and its stages carry no numbers. `enter` here does nothing.
+shown only where it works: a running item's budget has no key, because it cannot change
+mid-run, and its stages carry no numbers. `enter` here does nothing.
 
 A stage the recipe file fixes is the team's law, and it shows it: the lock `§` stands where its
 `on` would, the row is dim, and its number does not switch it off. Pressing it says
@@ -711,17 +713,17 @@ in it, never a second copy.
 
 A run stops and asks when it cannot go on alone, and the item moves to **needs you**. The
 question is the run's own sentence, drawn as is in the peek (under the title) and on the item
-page's second row, its `?` amber: `plan is ready · go, or change it?`,
+page's second row, its `?` amber: `plan is ready · continue, or send it back?`,
 `review is not clean after 2 rounds: 3 findings · one more round, or go on as is?` (one round
 is `after 1 round`, one finding `1 finding`),
 `budget of $5 reached · $5 more, or stop?`, `review did not finish: … · skip it, or stop?`.
 
-- `y` answers yes: go on, one more round, $5 more, skip it. The bottom line says
+- `y` answers yes: continue, one more round, $5 more, skip it. The bottom line says
   `answered #12 · yes`.
-- `n` answers no: for a plan or a spent budget that stops the item; for rounds it goes on as is. It says
-  `answered #12 · no`.
+- `n` answers no: at an approve step it sends the run back to the step before; for a spent
+  budget it stops the item; for rounds it goes on as is. It says `answered #12 · no`.
 - `a` opens `answer ›` for words (`go, but keep the old flag`); they reach the next round's
-  brief and it says `answered #12 in words`.
+  brief (at an approve step: the run continues with them) and it says `answered #12 in words`.
 
 `[y] yes · [n] no · [a] in words` is drawn only where the floor can answer. `y`, or `a`, on an
 item that is not waiting says `#12 is not waiting on you` on the bottom line and changes nothing
@@ -750,8 +752,8 @@ goes on:
 - when the bounds refuse what it set, the line is
   `the manager's change was not applied: <why> · the recipe stands`.
 
-With `ask me at` plan and a change made, the run then stops before the first stage on
-`run these stages? <what it set>` (see run these stages?). An item the manager already shaped
+Shaping never stops the run: you read what the manager set at the first approve step (see approve
+steps). An item the manager already shaped
 because you talked to it first (see tell the manager what you want before it runs) is not shaped
 again: that is the run's shape.
 
@@ -798,40 +800,44 @@ Nothing is running, so the manager sets it at once with `factory_run` and no car
 stages on the item page redraw, and the manager says what it set in three lines at most. Each
 stage is one lowercase word (`review`, `arch`, `e2e`), at most nine of them, and each has an ask
 that says what done looks like; the manager changes asks before it adds stages, and adds a stage
-only for work no stage covers. It never drops proof or a gate stage.
+only for work no stage covers. It never drops proof. It may add an approve step after a stage
+you want to read first (`hold for me after test`), or skip one when you ask it to; a fixed one
+stays.
 
-Budget, ask me at, thinking for every stage and notes for the stages still go through
+Budget, thinking for every stage and notes for the stages still go through
 `factory_item`'s card (see changing an item from its conversation). `factory_run` is on the
 manager's belt only; a stage's own conversation does not have it, and a conversation that manages no
 item is told `this conversation is not the manager of any item on the floor`.
 
-## run these stages? — what the manager set, y runs, n keeps the recipe, a says it in words
+## approve steps — where the run holds for you, continue, send it back, plan approve write
 
-When the manager has shaped a run and `ask me at` is plan, the run stops before the first stage
-and asks `run these stages?`. The item moves to **needs you**, and the peek and the item page draw
-the question as the stages it asks about, not one long line:
+An **approve** step is a stage that is you. codeaf's default recipe runs plan → approve →
+write → test → review → proof, so the run holds after the plan until you say continue; a pull
+request and a red main end on one instead. When the run reaches an approve step the item moves to
+**needs you**, the step's mark is the amber `?`, and the question is the step before it:
+`plan is ready · continue, or send it back?` (`ready to start · continue?` when nothing ran
+before it). The manager says the same into its conversation, `asking you: …`, and can explain
+what it waits on if you ask it there.
 
-```
-? run these stages?
-  1 read · the diff and its claims
-  2 review · thorough on security, code and architecture
-  manager set review: thorough on security, code and architecture · why: touches the call row
-  y run · n keep the recipe · a in words
-```
+- `y` (or `continue` said to the manager) continues. `answered #12 · yes`.
+- `a` with words (`keep the old flag`) continues with your words handed to the steps after as
+  your note.
+- `n` (or `no, use the other file` said to the manager) sends the run back to the step before
+  with your words: that step runs again in a new round with them in its brief, the log says
+  `sent back to plan: use the other file`, and the approve step holds again after it. With
+  nothing before it, `n` stops the item.
 
-Each stage line is its number (the key that switches it on the item page), its one-word name and
-its ask. A stage switched off is not drawn and its number is not reused. The dim line under the
-stages is what the manager changed, `manager set …`, and why. A pane with too few rows cuts the
-asks first and then ends the stages on `… 4 more`.
+An approve step with nothing after it is the landing itself: the run lands and the proof sheet
+waits for your approval (see approve, request changes, re-run checks). An item with no approve
+step at all ships itself when its proof is all green.
 
-- `y` runs the stages as drawn. The bottom line says `answered #12 · yes`.
-- `n` keeps the recipe: the stages go back to what the recipe has and the run goes on. The stream
-  says `the recipe stands`.
-- `a` opens `answer ›` for words (`drop review, add arch`); your words go to the manager, and the
-  bottom line says `answered #12 in words`.
-
-If the manager has not set anything, the question is the ordinary `plan is ready · go, or change
-it?` described under answering a question.
+The recipe file places approve steps (`3. approve`, or a line `## approve` inside a kind's
+section; see the recipe file), the manager may add or remove one, and so may you: `s` on the item
+page with `after test, approve`, or a digit on its row in settings to switch it off. They replace
+the old `ask me at`: an item or recipe that still says it is read as approve steps (plan is an
+approve after plan, pull request one before the result, never none).
+The shaping question `run these stages?` went with it: you read what the manager set at the
+first approve step.
 
 ## approve, request changes, re-run checks — s, B, v, how do I approve a landed item
 
@@ -886,12 +892,12 @@ the one `factory` team), and each stage's conversation joins that team as a memb
 rail and the team menu show the manager above its stages.
 
 Its opening brief tells it so, in five blocks, before the item's facts (its read, its stages with
-their asks and loops, the recipe's policy and habits, ask me at, budget and thinking):
+their asks and loops, the recipe's policy and habits, budget and thinking):
 
     You are the manager of #12 in acme/web.
     You know: the issue and its comments, what codeaf read of it, the repository's recipe, policy and habits, the checkout, and what the person has said here.
-    You do: shape the run, start it when asked, report each stage here, answer the person, and ask only when ask-me-at says so.
-    Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. Never drop proof or a gate stage. Nothing posts outward before ask-me-at.
+    You do: shape the run, start it when asked, report each stage here, answer the person, and hold at each approve step until the person says continue, saying what you wait on.
+    Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. Never drop proof. An approve step is where the run holds until the person says continue: keep the recipe's, add one (named approve) after a stage the person wants to read first, and skip one only when the person asks. Nothing posts outward before an approve step.
     Say what you set in three lines at most, then stop. Do not narrate.
 
 What the manager does:
@@ -901,7 +907,7 @@ What the manager does:
   listed under what the manager hears (the stage conversations page).
 - **What you type there reaches the run** as its brief or its steer (see talk to the manager).
 - **It shapes the run with `factory_run`** (see the manager shapes the run), with no card; the
-  budget, ask me at, thinking and notes go through `factory_item`, whose card still asks you
+  budget, thinking and notes go through `factory_item`, whose card still asks you
   before anything lands. It cannot run, stop, approve or post: those stay your keys on the floor.
 
 An item whose chat cannot be made (no folder known for it) runs without a manager; its log says
@@ -909,18 +915,16 @@ An item whose chat cannot be made (no folder known for it) runs without a manage
 
 ## the factory's verbs, keys that change an item
 
-On your own floor the keys that change an item's own settings always work (`n`, `t` ask me at,
-`c` budget, `e` thinking, `w`, the stages, `space`, `d`), and `r` and `L` run it (see running an
+On your own floor the keys that change an item's own settings always work (`n`, `c` budget, `e` thinking, `w`, the stages, `space`, `d`), and `r` and `L` run it (see running an
 item). Stop, pause, answers, steering, approve, request changes and re-run checks work in every
 window too, whichever process runs the floor's items. `enter` on a row never runs anything; it
 opens the item page. The peek names at most five of these for the row's state (see the peek's
 verbs); `?` lists them all.
 
-- **New:** `r` runs it. `t` sets where the run stops to ask you: it cycles `ask me at plan`,
-  `ask me at pull request`, `ask me at never`. `c` sets the **budget**, the most it may spend:
-  $2, $5, $8, $15, $30. `e` sets the **thinking**, how hard the first stage's model thinks:
-  none, cheap, strong. `w` opens `in words ›` for all three at once
-  (`$8, ask me at the plan, stronger`). The digit keys `1` to `9` switch a stage on or off and
+- **New:** `r` runs it; it holds at each approve step (see approve steps). `c` sets the
+  **budget**, the most it may spend: $2, $5, $8, $15, $30. `e` sets the **thinking**, how hard
+  the first stage's model thinks: none, cheap, strong. `w` opens `in words ›` for both at once
+  (`$8, stronger`). The digit keys `1` to `9` switch a stage on or off and
   `s` adds a stage (named on the `?` sheet). `space` selects, `L` runs the selected (see select
   new items). On a terminal-made item `g` puts it on github too, or takes it off; on any other
   item with a page on github, `g` opens that page. `a` asks a thin item's author its questions.
@@ -945,25 +949,19 @@ became of the item (`#12 is running`, `#12 stopped · branch kept`); a refusal, 
 
 ## what does ask me at mean, how do I make it stop after the plan
 
-`ask me at` is where an item's run stops to ask you. On the item page it reads
-`ask me at  plan  t` in the verbs on the right (`ask me at  plan [t]` on the second row of a
-page narrower than 100 columns), and `t`, or a click on it, cycles it:
-
-- `ask me at plan`: the run comes back with the plan before any code, and waits for `y`.
-- `ask me at pull request` (the default): every stage runs, and it stops before the pull
-  request, on the proof sheet, for you to approve.
-- `ask me at never`: a banked habit; a green proof ships by itself.
-
-So to make a run stop after the plan, press `t` until it says `ask me at plan`, then `r`.
-There is no separate key for it: `r` always runs, and stops where `ask me at` says. The recipe
-file still spells these `gate plan`, `gate ship` and `gate none` (see recipe file knobs).
+`ask me at` is gone (2026-10-09): where an item's run stops to ask you is an **approve** step
+among its stages (see approve steps). codeaf's default already stops after the plan: plan →
+approve → write. To stop somewhere else, add one there: `s` on the item page with
+`after test, approve`, or ask the manager to (`hold for me after test`). To let a run go
+without stopping, switch its approve steps off on the settings row; with none, a green proof
+ships by itself. An item or recipe that still says `ask me at` (or `gate plan`, `gate ship`,
+`gate none`) is read as approve steps.
 
 ## what is chat on an item, what was talk on the factory floor, what is select, what is dismiss — the floor's words
 
 The floor names each key by what it does:
 
-- `r` **run**: run every stage; it stops where `ask me at` says.
-- `t` **ask me at**: plan, pull request or never.
+- `r` **run**: run every stage; it holds at each approve step.
 - `T` **chat**: a conversation about this item with the issue loaded (see chat about an item).
 - `space` **select**: tick the row to run several together; `L` **run selected**.
 - `e` **thinking**: how hard the model thinks, the chat's Thinking dial.
@@ -976,13 +974,14 @@ The floor names each key by what it does:
 
 These replaced older words on 2026-10-08: `T` was talk, `space` was mark, `t` was gate, `c` was
 cap, `e` was effort, `u` was read again, `d` was hide, and the landed keys were sign off, send
-back and check again; `p` (plan first) is gone, because `t` and `r` do it.
+back and check again; `p` (plan first) is gone, because the approve step after plan and `r` do
+it. On 2026-10-09 `t` (ask me at) went too: an approve step is where the run holds.
 
 ## the ? key sheet — what the question mark key shows, every key on the factory floor and the item page
 
 `?` on the floor or on the item page opens the key sheet over the page: every key that works
-where you stand, beside its word, in four groups, `do` (the row's verbs), `set` (ask me at,
-budget, thinking, stages, in words, and on the item page `↑↓ settings`, the row they stand on), `also` (open on github, refresh, dismiss, new, foreman,
+where you stand, beside its word, in four groups, `do` (the row's verbs), `set` (budget,
+thinking, stages, in words, and on the item page `↑↓ settings`, the row they stand on), `also` (open on github, refresh, dismiss, new, foreman,
 refresh all, handover, repos, recipe, rail, backlog, density, order, repo, the split, scroll)
 and `move` (walk, or `↑↓ rows` on the item page, open, filter, tab next place, esc back, ? keys). Only keys the floor can do are
 listed. The hint says `esc close`; `esc` or `?` puts it away and leaves you where you were. Other
@@ -1195,34 +1194,34 @@ conversation changes its item with `factory_item`, and to ask about the whole fl
 foreman with `m`. `m` does nothing over `--host` or `--at`, from `--once`, or on the still made-up
 floor.
 
-## changing an item from its conversation — factory_item, skip a stage, ask me at the plan, raise the budget, leave a note
+## changing an item from its conversation — factory_item, skip a stage, add an approve step, raise the budget, leave a note
 
 An item's own conversation (`T`) is the item's hub. In it codeaf can propose a change to that
-item with the `factory_item` tool: stages to add (`after review, read it for auth holes`), skip
-or switch on; where it asks you (the tool's `gate`: `plan`, `ship` for the pull request,
-`none` for never); its budget in dollars (the tool's `cap`); its thinking (the tool's `effort`:
-`cheap`, `strong`, `default`); or a note its stages will read. The card speaks the floor's words: `ask me at`, `budget` and `thinking`; only the tool's own
-field names (`gate`, `cap`, `effort`) are the engine's. It is for the item the conversation is
+item with the `factory_item` tool: stages to add (`after review, read it for auth holes`, or
+`after test, approve` for an approve step where the run holds for you), skip or switch on; its
+budget in dollars (the tool's `cap`); its thinking (the tool's `effort`: `cheap`, `strong`,
+`default`); or a note its stages will read. The card speaks the floor's words: `budget` and
+`thinking`; only the tool's own field names (`cap`, `effort`) are the engine's. It is for the item the conversation is
 about, and it is on the belt wherever `factory_add` is. (It replaced `factory_stages`, which
 could change only the stages.)
 
 **Nothing changes before `1`.** A card asks one question built from what changes:
-`#1 · skip the review stage?`, `#1 · ask me at plan, budget $8?`, `#1 · add a note for the stages?`,
+`#1 · skip the review stage?`, `#1 · add an approve step?`, `#1 · raise the budget to $8?`, `#1 · add a note for the stages?`,
 or `#1 · change the plan?` for several. Its body is only what changes: `now:` and `after:` for the
-stages, `ask me at  pull request → plan`, `budget  $5 → $8`, `thinking  — → strong`, `note: …` and `why: …`.
+stages, `budget  $5 → $8`, `thinking  — → strong`, `note: …` and `why: …`.
 It answers to `1 yes`, `2 keep it`, or words (`say what to change… (enter sends it)`). There is
 no clock on it.
 
 - **`yes`** applies it and codeaf is told the item now, only what is set:
-  `#1 now: plan · write · test · proof · ask me at plan · budget $8`, and that the change is made. The
+  `#1 now: plan · approve · write · test · proof · budget $8`, and that the change is made. The
   card says `changed`.
 - **`keep it`**: `nothing changed: the person said no.` (card: `kept as it was`).
 - **Words**: `the person changed it: <your words>` and `Nothing changed. Propose it again with that`.
 - **No answer** for fifteen minutes: `nothing changed: the card was never answered`.
 - A change that leaves the item as it is asks nothing: `nothing changed: the item already runs that way`.
 
-The recipe's bounds hold before any card: proof, a person's gate and a stage the policy names are
-never skipped, a stage that has run is never touched, and under `fixed` a stage change is refused
+The recipe's bounds hold before any card: proof and a stage the policy names are never skipped,
+a fixed stage never changes, a stage that has run is never touched, and under `fixed` a stage change is refused
 with `nothing changed: the recipe for issue is fixed; plan may not change the stages` (and nothing
 else in that card changes). Notes are kept on the item, and every stage's brief opens with them.
 Nothing launches from it.
@@ -1231,8 +1230,8 @@ Nothing launches from it.
 
 Wherever a conversation is about an item on the floor, the item is drawn as one live card:
 `▤ #1 <title>` with `repo · kind · size` on the right, and under it where it stands —
-`new · ask me at pull request · budget $5`, `running 24m · $1.42 / $5`, `? plan is ready`, `landed · 3✓ 1✕`,
-`shipped · $1.90` — with its stages on the right (`○ plan  ○ write  ○ test  ○ proof`, the running
+`new · budget $5`, `running 24m · $1.42 / $5`, `? plan is ready`, `landed · 3✓ 1✕`,
+`shipped · $1.90` — with its stages on the right (`○ plan  ○ approve  ○ write  ○ test  ○ proof`, the running
 one lit).
 
 It appears in three places: after `factory_add` adds the item (as that card's body); at the top
@@ -1560,15 +1559,14 @@ Be plain about this when asked:
 
 ## running an item — r and L, where the run stops
 
-`r` runs the item under the cursor: every stage, stopping where its `ask me at` says (`t` sets
-that; see what does ask me at mean). `L` runs every selected item (or this one). There is no
-plan-first key any more: set `ask me at plan` and press `r`. The bottom line says `#12 is running`
-once the floor's next read sees it start (`#12 is running · ask me at plan` when it will stop
-after the plan), and `#12 is queued · a bench frees it` only when that read still finds it queued
+`r` runs the item under the cursor: every stage, holding at each approve step (see approve
+steps). `L` runs every selected item (or this one). There is no plan-first key: the default
+holds after the plan already. The bottom line says `#12 is running` once the floor's next read
+sees it start, and `#12 is queued · a bench frees it` only when that read still finds it queued
 behind full benches. A run item is `queued`, takes one of the floor's
 benches (four at once; `CODEAF_FACTORY_BENCHES` pins another number) and runs its stages in
-order. It lands with its proof sheet for you to approve, or ships by itself on `ask me at never`
-when every claim was shown.
+order. It lands with its proof sheet for you to approve, or, with no approve step among its
+stages, ships by itself when every claim was shown.
 
 **What runs today:**
 

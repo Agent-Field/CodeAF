@@ -46,7 +46,7 @@ import (
 //
 // The conversation's belt is every other conversation's on this launch: the
 // factory tools, and `factory_item` beside them ([itemDoor]), which is how the
-// conversation proposes a change to the item — ask me at, budget, thinking, or a
+// conversation proposes a change to the item — budget, thinking, or a
 // note for its stages — and the person's key makes it; and `factory_run` beside
 // that ([runDoor]), the manager's own pen on the run's stages, which raises no
 // card. THE CONVERSATION IS THE MANAGER OF THE RUN, and its brief is the
@@ -62,8 +62,8 @@ const factoryTeamName = "factory"
 const (
 	talkBlockWho   = "You are the manager of %s in %s."
 	talkBlockKnow  = "You know: the issue and its comments, what codeaf read of it, the repository's recipe, policy and habits, the checkout, and what the person has said here."
-	talkBlockDo    = "You do: shape the run, start it when asked, report each stage here, answer the person, and ask only when ask-me-at says so."
-	talkBlockShape = "Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. Never drop proof or a gate stage. Nothing posts outward before ask-me-at."
+	talkBlockDo    = "You do: shape the run, start it when asked, report each stage here, answer the person, and hold at each approve step until the person says continue, saying what you wait on."
+	talkBlockShape = "Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. Never drop proof. An approve step is where the run holds until the person says continue: keep the recipe's, add one (named approve) after a stage the person wants to read first, and skip one only when the person asks. Nothing posts outward before an approve step."
 	talkBlockSay   = "Say what you set in three lines at most, then stop. Do not narrate."
 )
 
@@ -78,8 +78,8 @@ func talkBlocks(it factory.Item) []string {
 }
 
 // talkItemDoor is the brief's one sentence about `factory_item`, which keeps
-// what is not the stages: the budget, ask me at, thinking and notes.
-const talkItemDoor = "factory_item changes the budget (its field is cap), ask me at (its field is gate), the thinking of every stage (its field is effort) and notes for the stages, behind a card the person answers. Its item field is %d; never say that number, call the item %s."
+// what is not the stages: the budget, thinking and notes.
+const talkItemDoor = "factory_item changes the budget (its field is cap), the thinking of every stage (its field is effort) and notes for the stages, behind a card the person answers. Its item field is %d; never say that number, call the item %s."
 
 // talkMaker is the Talk door's maker for this machine's floor: st is the store
 // the item lives in, workspace the window's own folder, and profileDir the
@@ -277,7 +277,7 @@ func factoryItemRecipe(dirs func(string) string, it factory.Item) factory.Recipe
 
 // talkBrief is the opening note: the marker, the manager's five blocks
 // ([talkBlocks]), and then the item as the floor knows it: its name and
-// facts, ask me at, budget and thinking, its body, what codeaf read of it,
+// facts, budget and thinking, its body, what codeaf read of it,
 // its stages with their asks and loops, the recipe's policy and habits, the
 // notes for its stages, and the one sentence about `factory_item`.
 //
@@ -315,7 +315,7 @@ func talkBrief(it factory.Item, recipe factory.Recipe) string {
 	add("tier ", string(it.Tier))
 	line(strings.Join(facts, " · "))
 	staged := session.ItemStaged(it, recipe)
-	// THE GATE AND THE CAP ARE SAID AS WHAT THEY ARE, `ask me at pull request · budget $5`,
+	// THE CAP AND THE THINKING ARE SAID AS WHAT THEY ARE, `budget $5 · thinking strong`,
 	// and the labels on a line of their own: the conversation is read by a
 	// model and by a person, and neither knows a "chip" as anything but a
 	// shape some screen draws.
@@ -324,9 +324,6 @@ func talkBrief(it factory.Item, recipe factory.Recipe) string {
 		if s = strings.TrimSpace(s); s != "" {
 			*list = append(*list, s)
 		}
-	}
-	if it.Gate != "" {
-		add2(&set, "ask me at "+session.ItemGateWord(string(it.Gate)))
 	}
 	if it.Cap > 0 {
 		add2(&set, "budget $"+strconv.FormatFloat(it.Cap, 'f', -1, 64))

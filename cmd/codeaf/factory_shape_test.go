@@ -15,13 +15,13 @@ import (
 
 // THE MANAGER'S BRIEF is the marker, the owner's five blocks word for word, and
 // then the item's facts: its read, its stages with their asks and loops, the
-// recipe's policy and habits, ask me at, budget and thinking.
+// recipe's policy and habits, budget and thinking.
 func TestTheManagersBriefIsTheFiveBlocksThenTheFacts(t *testing.T) {
 	recipe := factory.DefaultRecipe()
 	recipe.Policy = []string{"tests pass before anything posts"}
 	recipe.Habits = []string{"keep the changelog"}
 	it := factory.Item{ID: 12, Repo: "acme/web", Title: "fix the ledger double count", Body: "refunds count twice",
-		Gate: factory.GatePlan, Cap: 5, Triage: factory.Triage{Read: "a small fix in the ledger", Size: "M"}}
+		Cap: 5, Triage: factory.Triage{Read: "a small fix in the ledger", Size: "M"}}
 	it.Stages = factory.CopyStages(recipe.Stages)
 	for i := range it.Stages {
 		it.Stages[i].Effort = "strong"
@@ -32,8 +32,8 @@ func TestTheManagersBriefIsTheFiveBlocksThenTheFacts(t *testing.T) {
 		"[factory item #12]",
 		"You are the manager of #12 in acme/web.",
 		"You know: the issue and its comments, what codeaf read of it, the repository's recipe, policy and habits, the checkout, and what the person has said here.",
-		"You do: shape the run, start it when asked, report each stage here, answer the person, and ask only when ask-me-at says so.",
-		"Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. Never drop proof or a gate stage. Nothing posts outward before ask-me-at.",
+		"You do: shape the run, start it when asked, report each stage here, answer the person, and hold at each approve step until the person says continue, saying what you wait on.",
+		"Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. Never drop proof. An approve step is where the run holds until the person says continue: keep the recipe's, add one (named approve) after a stage the person wants to read first, and skip one only when the person asks. Nothing posts outward before an approve step.",
 		"Say what you set in three lines at most, then stop. Do not narrate.",
 		talkRecipeLaw,
 		"",
@@ -47,8 +47,8 @@ func TestTheManagersBriefIsTheFiveBlocksThenTheFacts(t *testing.T) {
 			t.Errorf("line %d = %q, want %q", i+1, lines[i], w)
 		}
 	}
-	for _, fact := range []string{"ask me at plan · budget $5 · thinking strong", "refunds count twice", "codeaf read it: a small fix in the ledger",
-		"stages:", "2. write · chat · make the change in the checkout · until done · fanout per file", "policy:\n- tests pass before anything posts",
+	for _, fact := range []string{"budget $5 · thinking strong", "refunds count twice", "codeaf read it: a small fix in the ledger",
+		"stages:", "3. write · chat · make the change in the checkout · until done · fanout per file", "policy:\n- tests pass before anything posts",
 		"habits:\n- keep the changelog", "Its item field is 12"} {
 		if !strings.Contains(brief, fact) {
 			t.Errorf("the facts lack %q:\n%s", fact, brief)
@@ -112,7 +112,7 @@ func TestOneShapingTurnCollectsTheManagersEdit(t *testing.T) {
 	if !turn.closed || refused != nil {
 		t.Fatalf("closed %v, refused %v", turn.closed, refused)
 	}
-	if it.Stages[3].Ask != "read it as a stranger would" {
+	if it.Stages[4].Ask != "read it as a stranger would" {
 		t.Fatal("the shaping turn wrote the item")
 	}
 	it.Triage.Size = "L"

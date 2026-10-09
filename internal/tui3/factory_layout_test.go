@@ -252,7 +252,7 @@ func TestFactoryLayoutItemPageOpensOnTheRightStage(t *testing.T) {
 	for _, c := range []struct {
 		id    int
 		stage string
-	}{{2, "review"}, {9, "result"}, {1, "plan"}, {4, "issue"}, {10, "issue"}, {3, "issue"}} {
+	}{{2, "review"}, {9, "result"}, {1, "approve"}, {4, "issue"}, {10, "issue"}, {3, "issue"}} {
 		for at, i := range a.factoryWalkNow() {
 			if a.fp.snap.Items[i].ID == c.id {
 				a.fp.cursor = at
@@ -417,12 +417,12 @@ func TestFactoryLayoutItemPageIsExact(t *testing.T) {
 	it, _ := a.factoryCursorItem()
 	strip := ansi.Strip(strings.Join(func() []string {
 		var out []string
-		for _, r := range a.factoryItemBody(it, 60, 20) {
+		for _, r := range a.factoryItemBody(it, 60, 26) {
 			out = append(out, r.text)
 		}
 		return out
 	}(), "\n"))
-	if strings.Contains(strip, "│") || !strings.Contains(strip, "test") || !strings.Contains(strip, "issue") {
+	if strings.Contains(strip, "│") || !strings.Contains(strip, "test") || !strings.Contains(strip, "review") {
 		t.Fatalf("under the stage floor the rail is not one line of stages:\n%s", strip)
 	}
 }

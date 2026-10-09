@@ -17,10 +17,10 @@ import (
 // Every test below asserts what is on the screen and what the floor is asked
 // (factoryitemcard.go).
 
-// liveItem is #1 on the demo repository, new, gated at ship with a $5 cap.
+// liveItem is #1 on the demo repository, new, with a $5 cap.
 func liveItem() factory.Item {
 	return factory.Item{ID: 1, Repo: "factory-demo", Kind: factory.KindIssue, Title: "Total double-counts an entry added twice",
-		State: factory.StateNew, Gate: factory.GateShip, Cap: 5, Triage: factory.Triage{Type: "bug", Size: "S"},
+		State: factory.StateNew, Cap: 5, Triage: factory.Triage{Type: "bug", Size: "S"},
 		Stages: factory.CopyStages(factory.DefaultRecipe().For(factory.KindIssue)), Changed: factoryTestNow}
 }
 
@@ -72,7 +72,7 @@ func TestFactoryItemCardRowsPerState(t *testing.T) {
 		!strings.HasSuffix(strings.TrimRight(rows[0], " "), "factory-demo · bug · S") {
 		t.Fatalf("the head row is %q", rows[0])
 	}
-	if !strings.Contains(rows[1], "new · ask me at pull request · budget $5") {
+	if !strings.Contains(rows[1], "new · budget $5") {
 		t.Fatalf("a new item's row is %q", rows[1])
 	}
 	pending := a.icon(tokens.GStepPending)
@@ -126,7 +126,7 @@ func TestFactoryItemCardReplacesTheBriefsMarker(t *testing.T) {
 	// AND ONCE THE FLOOR IS READ IT IS THE FLOOR'S ROW.
 	liveFloor(a, liveItem())
 	rows = questionPlainRows(FactoryCardRows(a, blocks[0].fac, 110, false))
-	if !strings.Contains(strings.Join(rows, "\n"), "new · ask me at pull request · budget $5") {
+	if !strings.Contains(strings.Join(rows, "\n"), "new · budget $5") {
 		t.Fatalf("the card does not follow the floor:\n%s", strings.Join(rows, "\n"))
 	}
 	if _, ok := factoryMarkerCard("an ordinary first message"); ok {
@@ -232,7 +232,7 @@ func TestFactoryItemCardStaysLive(t *testing.T) {
 		t.Fatal("the first look is not stale, or the second is")
 	}
 	moved := liveItem()
-	moved.Gate, moved.Changed = factory.GatePlan, factoryTestNow.Add(time.Minute)
+	moved.Cap, moved.Changed = 8, factoryTestNow.Add(time.Minute)
 	a.factoryFold(factory.Snapshot{Now: factoryTestNow, Items: []factory.Item{moved}})
 	if !a.factoryLiveStale(e) {
 		t.Fatal("a moved item left the card's rows cached")
@@ -251,10 +251,10 @@ func TestFactoryItemCardStaysLive(t *testing.T) {
 	far := newQuestionLab(t).a
 	far.entries = append(far.entries, entry{kind: entryFactory, fac: &factoryCard{live: &factoryItemLive{id: 1, ref: "#1", title: "Total double-counts an entry added twice"}, liveOnly: true}})
 	changed := liveItem()
-	changed.Gate, changed.Cap = factory.GatePlan, 8
+	changed.Cap = 8
 	far.itemChanged(session.Event{Kind: session.EventItemChanged, FactoryItem: &session.ItemNotice{ID: "g9", Item: 1, Now: &changed}})
 	rows := questionPlainRows(FactoryCardRows(far, far.entries[0].fac, 110, false))
-	if len(rows) < 2 || !strings.Contains(rows[1], "new · ask me at plan · budget $8") {
+	if len(rows) < 2 || !strings.Contains(rows[1], "new · budget $8") {
 		t.Fatalf("the card did not take the news:\n%s", strings.Join(rows, "\n"))
 	}
 }

@@ -391,7 +391,6 @@ func FloorItemText(snap factory.Snapshot, it factory.Item, now time.Time) string
 	}
 	fact("author ", it.Author)
 	fact("tier ", string(it.Tier))
-	fact("ask me at ", floorGateWord(it.Gate))
 	if it.Cap > 0 {
 		fact("budget ", floorDollars(it.Cap))
 	}
@@ -496,13 +495,4 @@ func floorCut(s string, n int) string {
 		return s
 	}
 	return strings.TrimSpace(string(r[:n])) + "…"
-}
-
-// floorGateWord is a stored gate in the floor's screen words (`plan`,
-// `pull request`, `never`), the same as the card's ([ItemGateWord]).
-func floorGateWord(g factory.Gate) string {
-	if g == "" {
-		return ""
-	}
-	return ItemGateWord(string(g))
 }

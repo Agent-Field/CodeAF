@@ -43,8 +43,12 @@ type Chips struct {
 	Rest string
 }
 
-// Lift reads the four chips out of words.
-func Lift(words string) Chips {
+// Lift reads the four chips out of words. The gate words (`plan first`, `ship
+// it`, `self-ship`) are read for a new item, whose approve steps they place
+// ([ApproveForGate]).
+func Lift(words string) Chips { return lift(words, true) }
+
+func lift(words string, gate bool) Chips {
 	var c Chips
 	rest := words
 	if m := reCap.FindStringSubmatch(rest); m != nil {
@@ -61,7 +65,7 @@ func Lift(words string) Chips {
 		}
 		rest = strings.Replace(rest, m[0], "", 1)
 	}
-	if m := reGate.FindStringSubmatch(rest); m != nil {
+	if m := reGate.FindStringSubmatch(rest); gate && m != nil {
 		switch strings.ToLower(m[1]) {
 		case "plan first", "plan gate", "design first":
 			c.Gate = GatePlan
@@ -96,13 +100,10 @@ func TidyWords(rest string) string {
 
 // LiftChips is [Lift] in the shape a caller with one door per chip wants: a nil
 // pointer is a chip that was not said, and rest is the tidied words that were
-// not a chip.
-func LiftChips(words string) (gate *Gate, cap *float64, rounds *int, effort string, rest string) {
-	c := Lift(words)
-	if c.Gate != "" {
-		g := c.Gate
-		gate = &g
-	}
+// not a chip. THE GATE WORDS STAY IN REST: an item that exists changes where it
+// holds for the person by its approve steps, never by a chip.
+func LiftChips(words string) (cap *float64, rounds *int, effort string, rest string) {
+	c := lift(words, false)
 	if c.Cap > 0 {
 		f := c.Cap
 		cap = &f
@@ -111,7 +112,7 @@ func LiftChips(words string) (gate *Gate, cap *float64, rounds *int, effort stri
 		n := c.Rounds
 		rounds = &n
 	}
-	return gate, cap, rounds, c.Effort, TidyWords(c.Rest)
+	return cap, rounds, c.Effort, TidyWords(c.Rest)
 }
 
 // reSecurity is a request for a security pass: `security`, `with security`,

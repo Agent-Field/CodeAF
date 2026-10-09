@@ -184,14 +184,14 @@ const (
 
 // THE ITEM PAGE'S LEFT COLUMN IS THE ISSUE'S MAP (factory_item.go): one row
 // per facet, the stages and the log nested under `run` by [factoryNestW].
-// THE SETTINGS FACET is a table of three knobs and then one line per stage:
+// THE SETTINGS FACET is a table of two knobs and then one line per stage:
 //
 //	│label      │value       │key
-//	│ask me at  │plan        │t
+//	│thinking   │—           │e
 //	│1 plan     │on          │
 //	      11          14
 //
-// The label column holds `ask me at` and its air, or a stage's number and
+// The label column holds `thinking` and its air, or a stage's number and
 // name when a stage name is longer ([app.factorySettingsPane] widens it for
 // every line at once, so the values start at one cell); the value column
 // holds `pull request` whole and two cells of air before the key.

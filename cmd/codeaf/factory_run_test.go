@@ -53,8 +53,8 @@ func newRunRig(t *testing.T) runRig {
 func (g runRig) checkItem(t *testing.T) int {
 	t.Helper()
 	id, err := g.st.Add(context.Background(), factory.Item{
-		Title: "prove it builds", Repo: "api", Tier: factory.TierOwner, Gate: factory.GateShip,
-		Stages: []factory.Stage{{Name: "test", Kind: factory.StageCheck, Ask: "true", On: true}},
+		Title: "prove it builds", Repo: "api", Tier: factory.TierOwner,
+		Stages: []factory.Stage{{Name: "test", Kind: factory.StageCheck, Ask: "true", On: true}, {Name: factory.ApproveName, Kind: factory.StageGate, On: true}},
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -69,13 +69,18 @@ const (
 	StateDismissed State = "dismissed"
 )
 
-// Gate is where a person sits in a run.
+// Gate is the old `ask me at` word (plan, ship, none), READ AND NEVER
+// WRITTEN: an approve step ([StageGate], [Approve]) is where a person sits in a
+// run now. An item or a recipe written with a gate is read into approve steps
+// ([MigrateGates], [ApproveForGate]): plan is an approve after plan, ship an
+// approve before the result (before the first post step, else last), none is
+// no approve at all.
 type Gate string
 
 const (
-	GatePlan Gate = "plan" // comes back with the plan before any code
-	GateShip Gate = "ship" // runs to a result; the person signs off
-	GateNone Gate = "none" // a banked habit; green proof ships itself
+	GatePlan Gate = "plan"
+	GateShip Gate = "ship"
+	GateNone Gate = "none"
 )
 
 // StageKind is what runs a stage. There are four and there will not be a fifth:
@@ -102,12 +107,13 @@ type Stage struct {
 	Fanout string    // one · per-file · per-finding · per-claim
 	Until  string    // done · clean · green · proven
 	Max    int       // rounds before it stops and asks; 0 means one
-	Gate   Gate      // none · plan (ask before going on) · ship (sign-off)
-	// GateWhen is the condition under which Gate stops the item, read by
-	// [GateApplies]; "" is always. The stage itself runs whatever it says.
-	GateWhen string
-	Proof    []string // what this stage must show
-	On       bool     // an item may switch a banked stage off
+	// OldGate and OldGateWhen are a stage's gate as a file or a document
+	// written before approve steps said it (`gate plan when large`). They are
+	// read, turned into approve steps ([ExpandGates]) and never written.
+	OldGate     Gate     `json:"Gate,omitempty"`
+	OldGateWhen string   `json:"GateWhen,omitempty"`
+	Proof       []string // what this stage must show
+	On          bool     // an item may switch a banked stage off
 	// Why is one line saying why this stage is here, or changed, for this
 	// item; "" for the recipe's own stage.
 	Why string
@@ -281,25 +287,28 @@ type Claim struct {
 
 // Item is one row on the floor.
 type Item struct {
-	ID       int
-	Repo     string   // the repo it arrived on
-	Product  string   // the product team that owns it
-	Places   []string // every repo it touches; Repo alone until the plan says more
-	Num      int
-	Kind     Kind
-	Title    string
-	Body     string
-	Author   string
-	Tier     Tier
-	Origin   Origin
-	Synced   bool
-	Created  time.Time
-	Changed  time.Time
-	State    State
-	Triage   Triage
-	Stages   []Stage // the item's copy of the recipe, toggled
-	Cap      float64
-	Gate     Gate
+	ID      int
+	Repo    string   // the repo it arrived on
+	Product string   // the product team that owns it
+	Places  []string // every repo it touches; Repo alone until the plan says more
+	Num     int
+	Kind    Kind
+	Title   string
+	Body    string
+	Author  string
+	Tier    Tier
+	Origin  Origin
+	Synced  bool
+	Created time.Time
+	Changed time.Time
+	State   State
+	Triage  Triage
+	Stages  []Stage // the item's copy of the recipe, toggled
+	Cap     float64
+	// OldGate is the item's `ask me at` from before approve steps, read
+	// into its stages when the item is ([Item.UnmarshalJSON]) and never
+	// written: "" on every item in memory.
+	OldGate  Gate `json:"Gate,omitempty"`
 	Stream   *Stream
 	Question string
 	QKind    string // plan · cap · scope
