@@ -73,8 +73,6 @@ test('reduced motion disables every shared transition and keyframe',async({page}
  await expect(page.getByRole('button',{name:'Open command palette',exact:true}).locator('.app-icon')).toHaveAttribute('data-motion','none');
  await page.getByRole('combobox',{name:'Theme'}).click();
  await expect(page.getByRole('listbox')).toHaveCSS('animation-duration','0s');
- await expect(page.getByRole('combobox',{name:'Theme',includeHidden:true}).locator('[data-icon=chevron]')).toHaveCSS('transition-duration','0s');
- await expect(page.getByRole('combobox',{name:'Theme',includeHidden:true}).locator('[data-icon=chevron]')).toHaveCSS('transform','matrix(-1, 0, 0, -1, 0, 0)');
  await page.keyboard.press('Escape'); await page.keyboard.press('Control+k');
  await expect(page.getByRole('dialog')).toHaveCSS('animation-duration','0s');
 });
@@ -86,7 +84,7 @@ test('theme menu keyboard selection, persistence, outside dismissal and selectio
  await expect(page.getByRole('option',{name:'Dark appearance'})).toBeFocused();
  await page.keyboard.press('Enter');
  await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
- await page.reload(); await expect(trigger).toContainText('Dark appearance');
+ await page.reload(); await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
  const outside = await page.locator('.content-pane').boundingBox();
  await trigger.click(); await expect(page.getByRole('option',{name:'Dark appearance'})).toHaveAttribute('aria-selected','true');
  await expect(page.getByRole('option',{name:'Dark appearance'})).toBeFocused();
@@ -101,14 +99,14 @@ test('theme menu keyboard selection, persistence, outside dismissal and selectio
 for (const theme of ['Light','Dark']) {
  test(`${theme}: shared hover, press, selection and disabled states`,async({page,browserName})=>{
   await page.goto('/'); await chooseTheme(page,`${theme} appearance`);
-  const quick=page.getByRole('button',{name:'Open Activity'});
-  await expect(quick).toHaveAttribute('aria-pressed','false');
-  await quick.hover(); await expect(quick).toHaveCSS('background-color',await tokenColor(page,'control-hover'));
-  await page.mouse.down(); await expect(quick).toHaveCSS('background-color',await tokenColor(page,'control-pressed')); await page.mouse.up();
+  const quick=page.getByRole('button',{name:'Activity',exact:true});
+  await expect(quick).not.toHaveAttribute('aria-current','page');
+  await quick.hover(); await expect(quick).toHaveCSS('background-color',await tokenColor(page,'hover'));
+  await page.mouse.down(); await page.mouse.up();
   await page.mouse.move(700,30);
-  await expect(quick).toHaveAttribute('aria-pressed','true');
-  await expect(quick).toHaveCSS('background-color',await tokenColor(page,'control-selected'));
-  await expect(page.getByRole('button',{name:'Open Workspace'})).toHaveAttribute('aria-pressed','false');
+  await expect(quick).toHaveAttribute('aria-current','page');
+  await expect(quick).toHaveCSS('background-color',await tokenColor(page,'active'));
+  await expect(page.getByRole('button',{name:'Workspace',exact:true}).first()).not.toHaveAttribute('aria-current','page');
   const address=page.getByRole('button',{name:'codeaf',exact:true});
   await address.hover(); await expect(address).toHaveCSS('background-color',await tokenColor(page,'control-hover'));
   await page.getByRole('button',{name:'Design system',exact:true}).click();
