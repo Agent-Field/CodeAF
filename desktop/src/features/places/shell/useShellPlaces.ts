@@ -108,9 +108,13 @@ export function usePlaceKeys(shell: PlacesShell, onEnterWorkspace: () => void) {
   }), [shell, order, onEnterWorkspace]);
 }
 
-/** The frame and accent take the window place's tint; Now is graphite (Places 9d). Portalled menus inherit it from the body. */
+/**
+ * The frame and accent take the window place's tint. Portalled menus inherit it from the body. Places 9d draws Now in
+ * graphite, but graphite's frame takes ink-2 below 4.5:1 (the overview filmstrip's labels measure 4.46:1), so Now keeps
+ * the root palette until the designer answers DESIGN-QUESTIONS PS12. Its Home-less tab strip draws no swatch either way.
+ */
 export function useWindowTint(shell: PlacesShell) {
-  const tint = shell.place === 'now' ? 'graphite' : shell.index?.byId.get(shell.place)?.effectiveTint;
+  const tint = shell.place === 'now' ? undefined : shell.index?.byId.get(shell.place)?.effectiveTint;
   useEffect(() => {
     if (!tint) return;
     document.body.dataset.tint = tint;
