@@ -1,0 +1,46 @@
+ [38;5;252m>[38;5;179m●[39m [1m[38;5;110mcodeaf[0m  [38;5;110m home  teams [1m[38;5;146m chats [0m[38;5;110m sessions  spend  settings [39m                                                                                                                                  [38;5;243msat 6:32pm[39m
+
+ [38;5;243m [1m[38;5;237m[48;5;252m   triage retry failures × [0m[38;5;243m  +   ▦[38;5;110m All [39m
+[38;5;243m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+[39m     [38;5;235m tab            go back to the last conversation, with an empty box[39m                                                                                        [38;5;235m│ Tasks 0[39m                          [38;5;235malt+l
+[39m     [38;5;235m alt+1…8        go to a place · in the tab bar's own order: home teams chats sessions spend settings standing memory[39m                                       [38;5;235m│ + /task[39m
+     [38;5;235m alt+.          on a place: what else is here · every key that place has, drawn[39m                                                                            [38;5;235m│ [39m
+                    [38;5;235m on a place, tab is the next place · esc back[39m                                                                                               [38;5;235m│ [39m
+     [38;5;235m alt+enter      open a line · enter sends[39m                                                                                                                  [38;5;235m│ [39m
+     [38;5;235m ctrl+r         over a draft: spell it out · what it means · enter adds it to yours[39m                                                                        [38;5;235m│ [39m
+     [38;5;235m ctrl+o         expand this turn's tool calls · click one to open it · in a task, scroll up does too[39m                                                       [38;5;235m│ [39m
+     [38;5;235m ctrl+b         copy mode · ↑↓ move · v marks · a takes the block · y yanks[39m                                                                                [38;5;235m│ [39m
+     [38;5;235m ctrl+s         drag to select with your mouse · any key ends it[39m                                                                                           [38;5;235m│ [39m
+      [38;5;243m[48;5;234m╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[39m[49m      [38;5;235m│ [39m
+      [38;5;243m[48;5;234m│[39m                                                                                                                                                  [38;5;243m│[39m[49m      [38;5;235m│ [39m
+      [38;5;243m[48;5;234m│[39m   [38;5;243mopen[39m                                                                         [38;5;243m1 of 2 · enter open · esc cancel · ↑↓ choose · ctrl+w close tab[39m   [38;5;243m│[39m[49m      [38;5;235m│ [39m
+      [38;5;243m[48;5;234m│[39m                                                                                                                                                  [38;5;243m│[39m[49m      [38;5;235m│ [39m
+      [38;5;243m[48;5;234m│[38;5;252m[48;5;237m>[39m  [38;5;243m1 ○ [1m[38;5;252mtriage retry failures[0m[48;5;237m                                           [38;5;103myou are here[39m                                           [38;5;243m pr1747-demo   5m[39m   [38;5;243m[48;5;234m│[39m[49m      [38;5;235m│ [39m
+      [38;5;243m[48;5;234m│[39m   [38;5;243m→ show closed[39m                                                                                                                                  [38;5;243m│[39m[49m      [38;5;235m│ [39m
+      [38;5;243m[48;5;234m│[39m                                                                                                                                                  [38;5;243m│[39m[49m      [38;5;235m│ [39m
+      [38;5;243m[48;5;234m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m[49m      [38;5;235m│ [39m
+     [38;5;235m ctrl+shift+t   reopen the last closed tab · when the terminal sends this distinct chord[39m                                                                   [38;5;235m│ [39m
+     [38;5;235m alt+t          the task roster · ↑↓ move · ←→ tasks/traffic · enter opens · esc back[39m                                                                      [38;5;235m│ [39m
+     [38;5;235m ctrl+.         every task this project has run · /history · type to filter[39m                                                                                [38;5;235m│ [39m
+     [38;5;235m ctrl+g         close the roster's column, or bring it back · remembered[39m                                                                                   [38;5;235m│ [39m
+     [38;5;235m ctrl+l         back to the latest · the chip above the box says so too[39m                                                                                    [38;5;235m│ [39m
+     [38;5;235m alt+k          choose a conversation · enter open · esc cancel[39m                                                                                            [38;5;235m│ [39m
+                    [38;5;235m → reaches every other one on this machine · ctrl+w closes one[39m                                                                              [38;5;235m│ [39m
+     [38;5;235m → ←            over an empty box: into a running task, and back out[39m                                                                                       [38;5;235m│ [39m
+     [38;5;235m ← ←            out of a task room · the conversation, at the live edge[39m                                                                                    [38;5;235m│ [39m
+     [38;5;235m space space    over an empty box: home · ]8;;file:///home\/home]8;;\ · esc back[39m                                                                                                 [38;5;235m│ [39m
+     [38;5;235m alt+backspace  delete the word behind the caret · ctrl+u the line · ctrl+k the rest of it[39m                                                                 [38;5;235m│ [39m
+     [38;5;235m ctrl+,         open settings[39m                                                                                                                              [38;5;235m│ [39m
+     [38;5;235m d[39m              [38;5;235min /permissions: drop the line under the cursor · press it twice[39m                                                                           [38;5;235m│ [39m
+     [38;5;235m p s n          in /standing: pause one · stop it · keep it out of here[39m                                                                                    [38;5;235m│ [39m
+     [38;5;235m s c w n o M m p r d u  in /teams: settings · close · wall · new team · organize · manager · move · members · reopen · delete · undo[39m                       [38;5;235m│ [39m
+     [38;5;235m alt+↑↓         in /teams: onto the page's buttons while the manager has the box · esc back[39m                                                                [38;5;235m│ [39m
+     [38;5;235m ctrl+r ctrl+y  in /files: reveal the folder it is in · copy it somewhere[39m                                                                                  [38;5;235m│ [39m
+     [38;5;235m session · ]8;;file:///tmp/codeaf-home-1747/.codeaf/v3/projects/-tmp-pr1747-demo/a1747aaaa00010001/transcript.jsonl\~/.codeaf/v3/projects/-tmp-pr1747-demo/a1747aaaa00010001/transcript.jsonl[39m]8;;\                                                                       [38;5;235m│ [39m
+
+[38;5;243m─ [1m[38;5;116m~deepseek/deepseek-v4-flash-latest[0m[38;5;243m:auto · [38;5;173m◇ YOLO[38;5;243m ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────── [39m   [38;5;243m$0.00   5.6k/1M · 1%[39m   [38;5;243midle ─
+[39m [38;5;243m› [39m
+
+
+ [38;5;116malt+e[38;5;243m effort · [38;5;116malt+a[38;5;243m approvals · [38;5;116malt+k[38;5;243m chats · [38;5;116m/[38;5;243m commands · [38;5;116mspace[38;5;243m [38;5;116mspace[38;5;243m home[39m                                                                                   💡 [38;5;116mspace[38;5;243m [38;5;116mspace[38;5;243m takes you back to home[39m [38;5;243m[39m
