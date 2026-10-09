@@ -121,8 +121,10 @@ export function ModelPopover({ anchor, models, pinnedCount, shortName, selectedI
   const popover = useRef<HTMLDivElement>(null);
   const [all, setAll] = useState(false);
   const pinned = models.slice(0, pinnedCount);
-  const listed = all ? models : pinned;
-  const hasMore = models.length > pinned.length;
+  // A model in use that is not pinned stays on the list, checked, so the popover never hides the current choice.
+  const current = models.find(model => model.id === selectedId);
+  const listed = all ? models : current && !pinned.includes(current) ? [...pinned, current] : pinned;
+  const hasMore = models.length > listed.length;
   usePlacement(anchor, popover);
   useDismiss(popover, anchor, onDismiss);
   useEffect(() => {

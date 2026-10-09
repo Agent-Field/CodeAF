@@ -34,6 +34,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"I changed or unset my API key in the shell but codeaf still uses the old one", "starting-codeaf"},
 		{"your key was not accepted for this model", "starting-codeaf"},
 		{"codeaf ignores my OPENAI_API_KEY", "starting-codeaf"},
+		{"which models are pinned in the desktop model picker", "starting-codeaf"},
+		{"where is the desktop settings page for choosing a model per job", "starting-codeaf"},
+		{"what do command 1 2 and 3 do in the desktop model picker", "starting-codeaf"},
 
 		{"what can you do", "what-i-can-do"},
 		{"why does a wrapped help line stay under its key", "keys"},

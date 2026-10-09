@@ -165,6 +165,8 @@ func (b *Bridge) modelRoutes(w http.ResponseWriter, r *http.Request, path string
 		}
 	case len(parts) == 3 && parts[1] == "roles":
 		b.putRole(w, r, models, parts[2])
+	case len(parts) == 2 && parts[1] == "pinned":
+		b.pinnedRoute(w, r, models)
 	default:
 		fail(w, 404, "unknown engine action")
 	}

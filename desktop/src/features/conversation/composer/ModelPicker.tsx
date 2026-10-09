@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Icon } from '../../../components/ui';
 import { isMac } from '../../../design/keyboard';
 import { ModelPopover, type EffortControl } from './ModelPopover';
+import { PINNED_LIMIT } from './modelOrder';
 import './model-picker.css';
 
 export type ModelOption = {
@@ -19,10 +20,11 @@ export type ModelPickerProps = {
   onSelect?: (id: string) => void;
   /** Absent when the engine accepts no effort setting, so the Effort row does not render. */
   effort?: EffortControl;
+  /** How many leading models are pinned segments and take ⌘1-3; three unless the list says fewer. */
+  pinnedCount?: number;
 };
 
-/** Models pinned to the segmented control and to ⌘1-3. */
-export const PINNED_LIMIT = 3;
+export { PINNED_LIMIT };
 const shortName = (model: ModelOption) => model.short ?? model.label.split(' ').pop() ?? model.label;
 const isSwapKey = (event: KeyboardEvent) => (isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey) && !event.altKey && !event.shiftKey;
 
@@ -31,7 +33,7 @@ const isSwapKey = (event: KeyboardEvent) => (isMac ? event.metaKey && !event.ctr
  * models directly and ⌘/ opens the list; a swap applies to the next message. Everything the
  * engine cannot do yet (more than one model, an effort setting) is absent, not disabled.
  */
-export function ModelPicker({ models, selectedId, onSelect, effort }: ModelPickerProps) {
+export function ModelPicker({ models, selectedId, onSelect, effort, pinnedCount = PINNED_LIMIT }: ModelPickerProps) {
   const chip = useRef<HTMLSpanElement>(null);
   const [open, setOpen] = useState(false);
   const selected = models.find(model => model.id === selectedId);
@@ -41,14 +43,16 @@ export function ModelPicker({ models, selectedId, onSelect, effort }: ModelPicke
     const onKey = (event: KeyboardEvent) => {
       if (!isSwapKey(event)) return;
       if (event.key === '/') { event.preventDefault(); setOpen(true); return; }
-      const pinned = onSelect ? models.slice(0, PINNED_LIMIT)[Number(event.key) - 1] : undefined;
+      const pinned = onSelect ? models.slice(0, pinnedCount)[Number(event.key) - 1] : undefined;
       if (!pinned) return;
       event.preventDefault();
+      // The design gives ⌘1-3 to the pinned models; the workspace's tab-by-number keys must not also act on them.
+      event.stopPropagation();
       swap(pinned.id);
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [models, onSelect, swap]);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [models, onSelect, swap, pinnedCount]);
   if (!selected) return null;
   return (
     <span ref={chip} className="model-picker-anchor">
@@ -67,7 +71,7 @@ export function ModelPicker({ models, selectedId, onSelect, effort }: ModelPicke
         <ModelPopover
           anchor={chip}
           models={models}
-          pinnedCount={PINNED_LIMIT}
+          pinnedCount={pinnedCount}
           shortName={shortName}
           selectedId={selectedId}
           canSwap={Boolean(onSelect)}

@@ -2,6 +2,10 @@ import type { Page, Route } from '@playwright/test';
 import type { EngineEntry, EngineEvent, EngineFile, EngineFileDiff, EngineSnapshot, EngineTaskPage, TerminalInfo } from '../../../src/features/chat/engine-client';
 
 export const MODEL = 'deepseek/deepseek-v4.1-flash';
+export const GLM_FLASH = 'z-ai/glm-5.3-flash';
+export const GLM = 'z-ai/glm-5.3';
+/** The segment words the engine reports for the three default pins. */
+const PIN_LABELS: Record<string, string> = { [GLM_FLASH]: 'GLM Flash', [MODEL]: 'DS Flash', [GLM]: 'GLM 5.3' };
 
 export type StreamRecord = { seq: number; type: 'snapshot' | 'event'; snapshot?: EngineSnapshot; event?: EngineEvent };
 
@@ -306,9 +310,21 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
   // Model roles: the choice is held here like the engine holds it in the profile.
   const chosen: Record<string, { model: string; effort?: string }> = {};
   const roleView = ([id, name, controls]: string[]) => ({ id, name, controls, model: chosen[id]?.model ?? MODEL, default: MODEL, effort: chosen[id]?.effort, chosen: Boolean(chosen[id]) });
+  let pins = [GLM_FLASH, MODEL, GLM];
+  let pinsChosen = false;
+  const pinsView = () => ({ pinned: pins.map(id => ({ id, label: PIN_LABELS[id] ?? id.slice(id.lastIndexOf('/') + 1) })), chosen: pinsChosen });
   const models = (route: Route, parts: string[], method: string, body: Record<string, unknown>) => {
     const listed = scenario.models ?? [{ id: MODEL, name: 'DeepSeek V4.1 Flash' }];
     if (!parts[1]) return json(route, { models: listed });
+    if (parts[1] === 'pinned') {
+      if (method === 'PUT') {
+        const ids = (body.models ?? []) as string[];
+        if (ids.length && (ids.length !== 3 || new Set(ids).size !== 3 || ids.some(id => !listed.some(row => row.id === id)))) return json(route, { error: 'pin three different models' }, 400);
+        pinsChosen = ids.length > 0;
+        pins = ids.length ? ids : [GLM_FLASH, MODEL, GLM];
+      }
+      return json(route, pinsView());
+    }
     if (!parts[2]) return json(route, { default: MODEL, roles: ROLES.map(roleView) });
     const role = ROLES.find(row => row[0] === parts[2]);
     if (!role || method !== 'PUT') return json(route, { error: 'unknown model role' }, 404);
