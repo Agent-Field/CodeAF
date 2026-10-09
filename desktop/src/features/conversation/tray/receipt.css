@@ -1,6 +1,6 @@
 /* ReceiptLine: the quiet line left in the flow where a question was asked (design 1e). */
 .receipt { display: flex; align-items: center; gap: var(--receipt-gap); max-width: 100%; min-width: 0; min-height: 0; padding: 0; border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: var(--type-label-size); line-height: var(--type-label-leading); text-align: left; }
-.button.receipt { justify-content: flex-start; height: auto; padding: 0; font-weight: var(--type-label-weight); }
+.button.receipt { justify-content: flex-start; height: auto; min-height: 0; padding: 0; font-weight: var(--type-label-weight); }
 button.receipt { cursor: pointer; border-radius: var(--radius-chip); }
 button.receipt:hover .receipt-label { color: var(--ink); }
 .receipt[data-state="waiting"] { color: var(--ink); }

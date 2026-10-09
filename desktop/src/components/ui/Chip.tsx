@@ -8,8 +8,8 @@ export function ChipButton({ className = '', type = 'button', ...props }: Button
  return <button {...props} type={type} className={`chip chip-button ${className}`}/>;
 }
 
-/** The 18px tag: suggested (accent), neutral, irreversible (danger) or a key hint. */
-export type TagTone = 'accent' | 'neutral' | 'danger' | 'key';
+/** Shared tags: plain suggested labels, pills, irreversible warnings and key hints. */
+export type TagTone = 'accent' | 'neutral' | 'danger' | 'key' | 'plain';
 export function Tag({ tone = 'neutral', className = '', ...props }: HTMLAttributes<HTMLSpanElement> & { tone?: TagTone }) {
  return <span {...props} className={`tag ${className}`} data-tone={tone}/>;
 }

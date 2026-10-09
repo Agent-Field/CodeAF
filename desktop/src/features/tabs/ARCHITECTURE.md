@@ -53,7 +53,7 @@ Shared, change with care and keep edits small: `tokens.json` (add keys, never re
 
 ## Frame (`App.tsx`, `App.css`)
 
-`.app-shell` is the frame (`--frame` ground), `Rail` is 232px (`--sidebar-width`), `.content-pane` is the column with the strip and the card(s), padded 8px right and bottom. A workspace tab draws `.workspace-pane` cards (radius 10, canvas, sh-1); other pages sit in `.content-card`. A split adds a 40px `.pane-header` per pane and a 1.5px accent-soft ring on the focused pane.
+`.app-shell` is the frame (`--frame` ground), `Rail` is 252px (`--sidebar-width`: the design's 232px row column plus 10px padding each side), `.content-pane` is the column with the strip and the card(s), padded 8px right and bottom. A workspace tab draws `.workspace-pane` cards (radius 10, canvas, sh-1); other pages sit in `.content-card`. A split adds a 40px `.pane-header` per pane and a 1.5px accent-soft ring on the focused pane.
 
 ## Rules that bind every lane
 

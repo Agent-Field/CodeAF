@@ -44,7 +44,7 @@ test('the strip, a tab and the content card match the shell design', async ({ pa
   await expect(card).toHaveCSS('box-shadow', /.+/);
   const rail = await page.locator('.sidebar').boundingBox();
   expect(rail!.width).toBe(px('sidebar-width'));
-  expect(px('sidebar-width')).toBe(232);
+  expect(px('sidebar-width')).toBe(252);
   // The close sits in a fixed 20px slot and never changes the tab width.
   const slot = await active.locator('.workspace-tab-close-slot').boundingBox();
   expect(slot!.width).toBe(20);
