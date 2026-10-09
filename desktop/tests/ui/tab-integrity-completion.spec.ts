@@ -217,3 +217,29 @@ test.describe('⌘Z, the window\'s structural Undo (Interactions, Undo)', () => 
   expect(engine.calls.filter(call => call.method === 'POST' && call.path.endsWith('/stop'))).toEqual([]);
  });
 });
+
+for (const theme of ['light', 'dark'] as const) {
+ test(`Overview Done keeps a running close toast visible and Undo usable · ${theme}`, async ({ page }, info) => {
+  await page.addInitScript(value => localStorage.setItem('codeaf-theme', value), theme);
+  const engine = await installMockEngine(page, { initial: { running: true, title: '', entries: [{ Role: 'user', Text: 'Trailing commas' }] } });
+  await seed(page, { tabs: [tab('a', 'Intro'), tab('b', 'Config stack', { sessionFile: SESSION }), tab('c', 'lexer.go')], activeId: 'a' });
+  await page.goto('/');
+  await expect.poll(() => engine.calls.some(call => call.path.endsWith('/sessions'))).toBe(true);
+  await page.getByRole('button', { name: 'All tabs', exact: true }).click();
+  const overview = page.getByRole('dialog', { name: 'All tabs overview' });
+  const closingCard = overview.locator('.overview-card[data-card-id="b"]');
+  await closingCard.hover();
+  await closingCard.getByRole('button', { name: 'Close Config stack' }).click();
+  const toast = page.locator('.toast');
+  await expect(toast).toContainText('Config stack closed and still running');
+  await expect(overview.locator('.toast-region')).toHaveCount(1);
+  await overview.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(overview).not.toBeVisible();
+  await expect(toast).toBeVisible();
+  await expect(page.locator('dialog .toast-region')).toHaveCount(0);
+  if (process.env.TOAST_SHOTS) await page.screenshot({ path: `${process.env.TOAST_SHOTS}/overview-done-${theme}-${info.project.name}.png` });
+  await toast.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(tabNamed(page, 'Config stack')).toBeVisible();
+  expect(engine.calls.filter(call => call.method === 'POST' && call.path.endsWith('/stop'))).toEqual([]);
+ });
+}
