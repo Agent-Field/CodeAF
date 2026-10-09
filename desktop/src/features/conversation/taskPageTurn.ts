@@ -66,7 +66,7 @@ export function costPart(usd?: number): string {
 
 function stepPart(page: TaskPage, kind: TaskKind): string {
   if (kind !== 'running') return '';
-  const step = page.Live?.Step ?? page.Row.Steps;
+  const step = page.Live?.Step && page.Live.Step > 0 ? page.Live.Step : page.Row.Steps;
   return step ? `step ${step}` : '';
 }
 
