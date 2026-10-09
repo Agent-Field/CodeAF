@@ -35,7 +35,8 @@ export function useStickToBottom(scroller: RefObject<HTMLElement | null>, conten
     if (!element || !inner) return;
     const onScroll = () => {
       atBottom.current = !onPage.current && distanceToEnd(element) <= SLACK;
-      setAway(!atBottom.current && !onPage.current);
+      // 1f Tray compaction: only more than one viewport from the end; the window height is steady while the tray changes shape.
+      setAway(!onPage.current && distanceToEnd(element) > window.innerHeight);
       if (atBottom.current) setBehind(false);
       setUnanchored(!atBottom.current);
       setScrolled(element.scrollTop > 0);

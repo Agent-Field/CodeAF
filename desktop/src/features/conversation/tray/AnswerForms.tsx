@@ -32,9 +32,12 @@ function useEnterChooses(option: Option | undefined, enabled: boolean, onPress: 
 
 type AnswerProps = { kind: 'primary' | 'field' | 'danger' | 'ghost'; locked: boolean; onClick: () => void; children: string };
 
+/** Fill, hover and press come from the shared Button variants. */
+const ANSWER_VARIANT = { primary: 'primary', field: 'quiet', danger: 'danger', ghost: 'ghost' } as const;
+
 function Answer({ kind, locked, onClick, children }: AnswerProps) {
   return (
-    <Button variant={kind === 'primary' ? 'primary' : 'quiet'} className={`answer answer-${kind}`} disabled={locked} onClick={onClick}>
+    <Button variant={ANSWER_VARIANT[kind]} className={`answer answer-${kind}`} disabled={locked} onClick={onClick}>
       {children}
     </Button>
   );

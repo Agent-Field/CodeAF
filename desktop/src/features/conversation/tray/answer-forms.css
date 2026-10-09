@@ -1,11 +1,4 @@
-/* Permission and irreversible answer rows (conversation.dc 1e): exact control geometry from the tokens. */
+/* Permission and irreversible answer rows (conversation.dc 1e): exact control geometry from the tokens.
+   Fill, hover and press come from the Button variants (primary, quiet, danger, ghost); only size lives here. */
 .answer-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-tight); }
-.button.answer { min-height: var(--control-height); height: var(--control-height); padding: 0 var(--control-pad); border: 0; border-radius: var(--radius-control); font-family: var(--sans); font-size: var(--type-label-size); font-weight: var(--type-label-strong); line-height: var(--type-label-leading); }
-.button.answer:disabled { opacity: var(--opacity-control-disabled); }
-.button.answer:focus-visible { outline: var(--focus-ring-width) solid var(--accent); outline-offset: var(--space-half); }
-.button.answer-primary { padding: 0 var(--control-pad-primary); background: var(--accent); color: var(--accent-ink); }
-.button.answer-field { background: var(--field); color: var(--ink); }
-.button.answer-field:hover:not(:disabled) { background: var(--field-2); color: var(--ink); }
-.button.answer-danger { background: var(--danger-soft); color: var(--danger); }
-.button.answer-ghost { padding: 0 var(--control-pad-ghost); background: transparent; color: var(--ink-2); }
-.button.answer-ghost:hover:not(:disabled) { background: var(--field); color: var(--ink-2); }
+.button.answer { min-height: var(--control-height); height: var(--control-height); }
