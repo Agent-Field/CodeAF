@@ -12,7 +12,8 @@ export type ToolStep = {
   hint: string; // the engine's own one-line gloss of the call
   args: string;
   output: string; // compact inline output; full output is fetched on demand
-  state: 'running' | 'done' | 'failed';
+  state: 'running' | 'done' | 'failed' | 'stopped'; // stopped: cancelled by the person's Stop
+  entryIndex?: number; // record position; lets the live overlay tell a call is already recorded
 };
 
 /** What sits inside one assistant reply, in record order. */
@@ -21,7 +22,8 @@ export type TurnItem =
   | { kind: 'thinking'; id: string; text: string; streaming: boolean }
   | { kind: 'tools'; id: string; steps: ToolStep[] } // consecutive calls grouped
   | { kind: 'task'; id: string; taskId?: string; title: string; status: string; summary: string; body: string } // a task's completion aside
-  | { kind: 'note'; id: string; text: string } // engine note (e.g. compaction)
+  | { kind: 'aside'; id: string; aside: 'job' | 'watch'; title: string; body: string } // a background job or watch notice; body is literal
+  | { kind: 'note'; id: string; text: string; long?: boolean } // engine note (e.g. compaction); long: model-directed text, drawn collapsed
   | { kind: 'steer'; id: string; text: string } // the person's words typed into the running turn; literal
   | { kind: 'error'; id: string; text: string };
 

@@ -118,6 +118,16 @@
   overflow: hidden;
 }
 
+/* Folded note: one muted line with Show; the body opens below it. */
+.note-folded { display: flex; flex-direction: column; gap: var(--space-1); color: var(--muted); font-size: var(--font-size-label); }
+.note-folded-line { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.note-folded-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-folded-body { padding: var(--space-2) var(--space-3); max-height: var(--notice-body-max-height); overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--font-size-body); line-height: var(--line-height-body); }
+.button.note-folded-toggle { flex-shrink: 0; margin-inline-start: auto; min-height: var(--icon-button-size); padding-inline: var(--space-2); color: var(--muted); font-size: var(--font-size-label); }
+
+/* Stopped: one muted line at the end of the reply. */
+.turn-stopped { display: flex; align-items: center; gap: var(--space-2); margin: 0; color: var(--muted); font-size: var(--font-size-body); }
+
 /* Error: warning text with an optional retry. */
 .error-item { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); color: var(--warning); font-size: var(--font-size-body); }
 .error-item-text { min-width: 0; }
