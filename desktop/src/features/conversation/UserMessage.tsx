@@ -1,12 +1,12 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import { Button } from '../../components/ui';
+import { Button, Markdown } from '../../components/ui';
 
 /** True when the clamped text is taller than its visible box. */
 function isClipped(element: HTMLElement): boolean {
   return element.scrollHeight > element.clientHeight;
 }
 
-export function UserMessage({ text }: { text: string }) {
+export function UserMessage({ text, markdown = false }: { text: string; markdown?: boolean }) {
   const body = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [overflowing, setOverflowing] = useState(false);
@@ -21,8 +21,8 @@ export function UserMessage({ text }: { text: string }) {
   return (
     <div className="user-message">
       <div className="user-message-bubble">
-        <div ref={body} className="user-message-text" data-clamped={!expanded}>
-          {text}
+        <div ref={body} className="user-message-text" data-clamped={!expanded} data-markdown={markdown || undefined}>
+          {markdown ? <Markdown>{text}</Markdown> : text}
         </div>
         {overflowing && (
           <Button

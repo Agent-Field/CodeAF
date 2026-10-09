@@ -13,6 +13,8 @@ export type ComposerProps = {
   running: boolean;
   docked: boolean;
   disabledReason?: string;
+  /** The one way out when the field is disabled, e.g. back to the conversation. */
+  reasonAction?: { label: string; onClick: () => void };
   modelLabel?: string;
   onAttach?: () => void;
   tasksToggle?: { label: string; onClick: () => void };
@@ -117,7 +119,11 @@ export function Composer(props: ComposerProps) {
           </div>
         </div>
       </div>
-      {disabledReason && <Text className="composer-reason" role="status">{disabledReason}</Text>}
+      {props.reasonAction && (
+        <div className="composer-reason">
+          <Button onClick={props.reasonAction.onClick}>{props.reasonAction.label}</Button>
+        </div>
+      )}
     </div>
   );
 }

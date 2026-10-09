@@ -25,25 +25,32 @@ export function isTaskRunning(page: EngineTaskPage | undefined): boolean {
   return page ? RUNNING.has(page.Row.Status) && turnStateOf(page.Row) === 'working' : false;
 }
 
+// Every recorded worker step is a shell command (session.PlanStep's `kind` is
+// always "step"), so the tool family is the terminal one.
+const STEP_TOOL = 'bash';
+
 function stepOf(step: PageStep, index: number): ToolStep {
   const command = step.command ?? '';
   return {
     id: `step-${step.step ?? index}`,
-    tool: 'bash',
+    tool: STEP_TOOL,
     hint: command,
     args: command,
     output: step.observation ?? '',
-    state: 'done',
+    state: step.refused ? 'failed' : 'done',
   };
 }
 
+/** A not-run step without a refusal is the harness correcting a reply's form: no step a person reads. */
+const isReadable = (step: PageStep) => !step.not_run || Boolean(step.refused);
+
 function liveStepOf(live: NonNullable<EngineTaskPage['Live']>, index: number): ToolStep {
   const command = live.Command ?? '';
-  return { id: `step-live-${live.Step ?? index}`, tool: 'bash', hint: command, args: command, output: '', state: 'running' };
+  return { id: `step-live-${live.Step ?? index}`, tool: STEP_TOOL, hint: command, args: command, output: '', state: 'running' };
 }
 
 function stepsOf(page: EngineTaskPage): ToolStep[] {
-  const done = (page.Steps ?? []).map(stepOf);
+  const done = (page.Steps ?? []).filter(isReadable).map(stepOf);
   const live = page.Live?.Command ? [liveStepOf(page.Live, done.length)] : [];
   return [...done, ...live];
 }

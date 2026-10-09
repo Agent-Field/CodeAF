@@ -1,6 +1,22 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
-import type { WorkSection } from './work-model';
-import type { PlanTaskRow, PlanTaskPage } from '../tasks/plan-model';
+
+/** Canonical read-only transport from session.PlanTaskRow. No engine policy lives here. */
+export type PlanTaskRow = {
+ ID: string; Title: string; Status: string; Parent?: string; Hold?: string;
+ Stopped?: boolean; Interrupted?: boolean; Archived?: boolean;
+ Paused?: boolean; Waiting?: boolean; Waits?: readonly string[];
+ Seat?: string; Note?: string; Steps?: number; Started?: string; Ended?: string;
+ Program?: string; Stage?: string;
+ Live?: { Step?: number; Command?: string; Since?: string };
+ Done?: number; Running?: number; Queued?: number; Failed?: number; Total?: number;
+};
+/** One recorded worker step. not_run/refused mirror session.PlanStep. */
+export type PlanStep = { kind?: string; step?: number; command?: string; observation?: string; not_run?: boolean; refused?: boolean };
+export type PlanTaskPage = {
+ Row: PlanTaskRow; Description?: string; Result?: string; Checks?: readonly string[];
+ Notes?: readonly { Author?: string; Person?: boolean; Body: string; At?: string }[];
+ Steps?: readonly PlanStep[];
+};
 
 export const ENGINE_MODEL = 'deepseek/deepseek-v4.1-flash';
 export type EngineQuestionBlock = { kind: string; title?: string; body?: string; rows?: string[][]; path?: string };
@@ -16,6 +32,7 @@ export type EngineEntry = {
  Answer?: boolean; Addressed?: boolean; Interrupted?: boolean;
  Tool?: string; Hint?: string; CallID?: string; Answered?: boolean;
  Args?: string; Output?: string; Caption?: string; CaptionCategory?: string;
+ TaskIDs?: string[] | null;
 };
 export type EngineTaskRow = PlanTaskRow & { Depth?: number; USD?: number; Model?: string; Tokens?: number; LiveParts?: unknown[]; Folder?: string; TrajectoryPath?: string };
 export type EngineSnapshot = {
@@ -28,7 +45,9 @@ export type EngineEvent = { kind: string; text: string; tool: string; hint: stri
 export type EngineTaskPage = PlanTaskPage & { Folder?: string; Live?: PlanTaskRow['Live']; Children?: EngineTaskRow[] | null; WaitRows?: EngineTaskRow[] | null; Program?: unknown };
 export class EngineError extends Error {
  readonly status: number;
- constructor(message: string, status = 0) { super(message); this.name = 'EngineError'; this.status = status; }
+ /** True when nothing answered: the engine is not running or the proxy cannot reach it. */
+ readonly unreachable: boolean;
+ constructor(message: string, status = 0, unreachable = false) { super(message); this.name = 'EngineError'; this.status = status; this.unreachable = unreachable; }
 }
 type Connection = { url: string; token: string; model: string };
 async function endpoint(path: string): Promise<{ url: string; headers: Headers }> {
@@ -50,10 +69,12 @@ async function fetchEngine(path: string, init?: RequestInit): Promise<Response> 
  try { response = await fetch(target.url, { ...init, headers, cache: 'no-store' }); }
  catch (error) {
   if (init?.signal?.aborted) throw error;
-  throw new EngineError('Cannot reach the CodeAF engine. Reconnect this conversation to its saved session.');
+  throw new EngineError('codeaf engine is not running', 0, true);
  }
  if (!response.ok) {
   const body = await response.json().catch(() => null) as { error?: unknown } | null;
+  // The engine always explains itself in JSON; a bare gateway failure means nothing answered.
+  if (typeof body?.error !== 'string' && response.status >= 500) throw new EngineError('codeaf engine is not running', response.status, true);
   throw new EngineError(typeof body?.error === 'string' ? body.error : `The engine request failed (${response.status}).`, response.status);
  }
  return response;
@@ -149,32 +170,4 @@ export async function watchEngine(snapshot: EngineSnapshot, onSnapshot: (snapsho
   }
  } catch (error) { if (!signal.aborted) throw error; }
  finally { await reader.cancel().catch(() => undefined); reader.releaseLock(); }
-}
-
-// Only a person's canonical user entry creates an instruction section. System
-// asides, notes and tool outputs never become instructions or assistant answers.
-export function projectEngineSections(snapshot: EngineSnapshot, existingSections: readonly WorkSection[]): WorkSection[] {
- const existing = new Map(existingSections.map(section => [section.id, section]));
- type ProjectedSection = WorkSection & { recordedSteps?: { callId?: string; tool: string; hint: string; args: string; output: string; answered: boolean }[]; engineNotes?: string[] };
- const sections: ProjectedSection[] = [];
- const pendingNotes: string[] = [];
- snapshot.entries.forEach((entry, index) => {
-  if (entry.Role === 'user') {
-   const id = `engine:${snapshot.sessionFile}:${index}`;
-   const previous = existing.get(id);
-   sections.push({ id, title: entry.Text.split(/\r?\n/)[0], original: entry.Text, digest: '', blocks: [], amendments: previous?.amendments ?? [], folded: previous?.folded ?? false, originalOpen: previous?.originalOpen ?? false, stepsOpen: previous?.stepsOpen ?? false, sample: false, context: previous?.context, toolGroupsOpen: previous?.toolGroupsOpen, timeline: [], recordedSteps: [], engineNotes: pendingNotes.splice(0) });
-  } else if (entry.Role === 'tool' && entry.Tool && sections.length) {
-   const section=sections[sections.length-1];
-   section.timeline?.push({kind:'tool',index:section.recordedSteps?.length??0});
-   section.recordedSteps?.push({ ...(entry.CallID?{callId:entry.CallID}:{}), tool: entry.Tool ?? '', hint: entry.Hint ?? entry.Caption ?? '', args: entry.Args ?? '', output: entry.Output ?? '', answered: entry.Answered === true });
-  } else if ((entry.Role === 'note' || entry.Role === 'aside') && entry.Text) {
-   if (sections.length) {const section=sections[sections.length-1];section.timeline?.push({kind:'note',index:section.engineNotes?.length??0});section.engineNotes?.push(entry.Text);} else pendingNotes.push(entry.Text);
-  } else if (entry.Role === 'assistant' && entry.Text && sections.length) {
-   const section = sections[sections.length - 1];
-   section.timeline?.push({kind:'text',index:section.blocks.length});
-   section.blocks.push({ kind: 'paragraph', text: entry.Text });
-   if (entry.Answer || entry.Addressed || !section.digest) section.digest = (entry.Text.split(/\r?\n/).find(line => line.trim()) ?? '').replace(/^#{1,6}\s+/, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/[*_`]/g, '');
-  }
- });
- return sections;
 }

@@ -52,3 +52,18 @@ test('children, checks and notes', () => {
   assert.deepEqual(model.checks, ['tests pass']);
   assert.deepEqual(model.notes, ['hello']);
 });
+
+test('refused steps read as failed; harness corrections are not steps', () => {
+  const model = taskPageModel(
+    base({
+      Steps: [
+        { step: 1, command: 'rm -rf /', refused: true, not_run: true },
+        { step: 2, command: 'reply form', not_run: true },
+        { step: 3, command: 'ls' },
+      ],
+    }),
+  );
+  const tools = model.turn.items[0];
+  assert.equal(tools.kind, 'tools');
+  if (tools.kind === 'tools') assert.deepEqual(tools.steps.map((s) => s.state), ['failed', 'done']);
+});
