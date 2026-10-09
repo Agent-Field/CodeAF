@@ -18,21 +18,18 @@ export type RichQuestion = EngineQuestion & {
   withdrawn?: { reason?: string; by?: string; at?: string } | null;
 };
 
-/** How a question ended, as the snapshot's recent decisions say it. */
+/** How a question ended, as the snapshot's `recentOutcomes` says it (session.QuestionOutcome). */
 export type QuestionOutcome = {
   kind: string;
-  id: number;
-  ref?: string;
+  token: string; // the question's ref, or its id as text
   head?: string;
-  callId?: string; // the call the question was about, when it was about one
-  state: 'decided' | 'withdrawn';
-  label?: string; // "Allowed once"
-  decidedBy?: string; // person | dial | record | asker | window
+  outcome: 'decided' | 'withdrawn';
+  words?: string; // "Allow once", or "No longer needed — the turn moved on"
+  by?: string; // person | dial | record | asker | window, or who withdrew it
   at?: string; // ISO time
-  reason?: string; // withdrawn: why
 };
 
-export type RichSnapshot = EngineSnapshot & { recentOutcomes?: QuestionOutcome[] };
+export type RichSnapshot = EngineSnapshot & { recentOutcomes?: QuestionOutcome[] | null };
 
 export const asRich = (entry: EngineEntry): RichEntry => entry as RichEntry;
 export const questionsOf = (snapshot: EngineSnapshot): RichQuestion[] => (snapshot.questions ?? []) as RichQuestion[];

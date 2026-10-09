@@ -10,8 +10,18 @@ export type PlanTaskRow = {
  Live?: { Step?: number; Command?: string; Since?: string };
  Done?: number; Running?: number; Queued?: number; Failed?: number; Total?: number;
 };
-/** One recorded worker step. not_run/refused mirror session.PlanStep. */
-export type PlanStep = { kind?: string; step?: number; command?: string; observation?: string; not_run?: boolean; refused?: boolean };
+/** One quote-aware command part (session.PlanCommandPart; no json tags, so PascalCase). */
+export type PlanCommandPart = { Command?: string; Separator?: string; Start?: number; End?: number; SepEnd?: number; RecordAddressed?: boolean; RunCopyPrefix?: boolean };
+/** One recorded worker step, as session.PlanStep's json tags spell it. */
+export type PlanStep = {
+ kind?: string; step?: number; command?: string; observation?: string;
+ /** Path of the file holding the whole output; observation is only its head. */
+ full_output?: string;
+ writes?: string[]; children?: string[];
+ not_run?: boolean; refused?: boolean;
+ parts?: PlanCommandPart[];
+ observation_head_withheld?: boolean;
+};
 export type PlanTaskPage = {
  Row: PlanTaskRow; Description?: string; Result?: string; Checks?: readonly string[];
  Notes?: readonly { Author?: string; Person?: boolean; Body: string; At?: string }[];

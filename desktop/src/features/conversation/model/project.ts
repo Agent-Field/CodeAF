@@ -10,7 +10,7 @@ import { digestOf } from '../transcript-parse.ts';
 import { attachmentsOf } from './attachments.ts';
 import { placeDeliverables } from './deliverables.ts';
 import { asRich, questionsOf, type RichEntry } from './entry.ts';
-import { addReceipts } from './receipts.ts';
+import { addReceipts, type ReceiptPlaces } from './receipts.ts';
 import { finishStep, lastUnansweredCall, newBatch, summarize, toolStep, type Batch, type StepCtx } from './steps.ts';
 import { asideItem } from './tasks.ts';
 import type { LiveOverlayV2 } from './live.ts';
@@ -152,7 +152,8 @@ function stepContext(snapshot: EngineSnapshot, entries: RichEntry[]): StepCtx {
   return { sessionFile: snapshot.sessionFile, running: snapshot.running, lastUnanswered: lastUnansweredCall(entries), waiting };
 }
 
-export function projectTurnsV2(snapshot: EngineSnapshot, live?: LiveOverlayV2): { turns: TurnV2[]; preface: TurnItem[] } {
+/** `places` remembers where each question's receipt was drawn, so its outcome lands there too. */
+export function projectTurnsV2(snapshot: EngineSnapshot, live?: LiveOverlayV2, places?: ReceiptPlaces): { turns: TurnV2[]; preface: TurnItem[] } {
   const entries = snapshot.entries.map(asRich);
   const ctx = stepContext(snapshot, entries);
   const accs: Acc[] = [];
@@ -171,6 +172,6 @@ export function projectTurnsV2(snapshot: EngineSnapshot, live?: LiveOverlayV2): 
   const turns = accs.map((acc) => finishTurn(acc, entries.length));
   const last = turns[turns.length - 1];
   if (snapshot.running && last) applyLive(last, snapshot, live);
-  addReceipts(turns, snapshot);
+  addReceipts(turns, snapshot, places);
   return { turns, preface };
 }

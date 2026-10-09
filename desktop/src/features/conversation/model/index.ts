@@ -3,4 +3,6 @@ export { projectTurnsV2 } from './project.ts';
 export { emptyLive, reduceLive } from './live.ts';
 export type { LiveCall, LiveOverlayV2, LiveSteer } from './live.ts';
 export type { QuestionOutcome, RichSnapshot } from './entry.ts';
+export type { ReceiptPlaces } from './receipts.ts';
+export { questionsOf } from './entry.ts';
 export { digestOf } from '../transcript-parse.ts';

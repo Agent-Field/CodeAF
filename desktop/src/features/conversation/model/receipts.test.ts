@@ -47,18 +47,30 @@ test('a withdrawn question says why, in the engine words', () => {
   ]);
 });
 
-test('a recent outcome replaces the waiting line with what was decided', () => {
+test('a recent outcome replaces the waiting line where this window saw it wait', () => {
   const at = new Date(2026, 8, 9, 14, 2).toISOString();
-  const outcome: QuestionOutcome = { kind: 'consent', id: 4, callId: 'c1', state: 'decided', label: 'Allowed once', decidedBy: 'person', at };
-  const s = { ...snap(entries, { questions: [consent()] as never }), recentOutcomes: [outcome] };
-  const { turns } = projectTurnsV2(s);
-  assert.deepEqual(receipts(turns[0].blocks).map((r) => [r.state, r.text]), [['decided', 'Allowed once · you · 14:02']]);
+  const places = new Map<string, string>();
+  projectTurnsV2(snap(entries, { questions: [consent()] as never }), undefined, places);
+  const outcome: QuestionOutcome = { kind: 'consent', token: '4', outcome: 'decided', words: 'Allow once', by: 'person', at };
+  const s = { ...snap(entries), recentOutcomes: [outcome] };
+  const { turns } = projectTurnsV2(s, undefined, places);
+  assert.deepEqual(receipts(turns[0].blocks).map((r) => [r.state, r.text]), [['decided', 'Allow once · you · 14:02']]);
 });
 
-test('a withdrawn outcome without a reason gets the plain wording', () => {
-  const outcome: QuestionOutcome = { kind: 'fuel', id: 2, state: 'withdrawn' };
+test('an outcome stays out of the flow when this window never saw its question', () => {
+  const outcome: QuestionOutcome = { kind: 'consent', token: '4', outcome: 'decided', words: 'Allow once', by: 'person' };
   const { turns } = projectTurnsV2({ ...snap(entries), recentOutcomes: [outcome] } as never);
-  assert.equal(receipts(turns[1].blocks)[0].text, 'No longer needed — the turn moved on');
+  assert.equal(turns.flatMap((t) => receipts(t.blocks)).length, 0);
+});
+
+test('a withdrawn outcome speaks the engine words, or the plain wording without them', () => {
+  const places = new Map([['fuel:2', 'f.jsonl:3'], ['ask:a1', 'f.jsonl:3']]);
+  const outcomes: QuestionOutcome[] = [
+    { kind: 'fuel', token: '2', outcome: 'withdrawn' },
+    { kind: 'ask', token: 'a1', outcome: 'withdrawn', words: 'No longer needed — the task ended' },
+  ];
+  const { turns } = projectTurnsV2({ ...snap(entries), recentOutcomes: outcomes } as never, undefined, places);
+  assert.deepEqual(receipts(turns[1].blocks).map((r) => r.text), ['No longer needed — the turn moved on', 'No longer needed — the task ended']);
 });
 
 test('a waiting call shows its step as waiting', () => {
