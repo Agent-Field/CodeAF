@@ -1159,20 +1159,21 @@ program it carries four flags:
 senior-dev's own flags on `run`:
 
 - `--variant NAME` — how hard the coder thinks: `low`, `medium`, `high`, `xhigh`, `max`,
-  or `none` for the model's own default; `high` when unset;
+  or `none` for the model's own default; `high` when unset. Its history summaries send
+  none;
 - `--in-place` — work without git even inside a repository: no commits, and its
-  checkpoints kept outside the folder. A folder with no git history needs no flag;
-  codeaf passes it itself under a repository at your home folder;
+  checkpoints kept outside the folder. A folder with no git history is worked that way
+  without it; codeaf passes it itself under a repository at your home folder;
 - `--high`, `--low` — comma-separated models it routes among; `--low` (its history
   summaries) falls back to `--high`. On a shell run, each `--high` entry accepts a
   bare OpenRouter id, service-prefixed id, or short `/crew` model word;
 - `--asked` — the `--high` models were chosen by name, so one senior-dev cannot
   size ends the run before its first call rather than being skipped;
 - `--verify-build CMD`, `--verify-test CMD` — the project's own build or test command,
-  run by senior-dev on the submitted tree instead of the one it would have found;
-- `--state-dir DIR` — keep its session database and conversation in DIR, outside the
-  folder (`SENIOR_DEV_STATE_DIR` when unset); a new one for each run;
-- `--frontier` — accepted; no call uses that tier;
+  run by senior-dev on the submitted tree instead of the one it would have found (see
+  how senior-dev finds a project's build and tests);
+- `--state-dir DIR` — its session store in DIR, outside the folder (`SENIOR_DEV_STATE_DIR`);
+- `--frontier` — accepted, and changes nothing: no call senior-dev makes uses that tier;
 - `--crew` — the models came from a conversation's crew: one its catalog cannot size is
   left out instead of failing the run. codeaf passes it with the crew's models.
 

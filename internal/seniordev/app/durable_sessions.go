@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -66,10 +67,11 @@ type durableSessions struct {
 	unsubscribe      func()
 	projector        *projectors.Store
 	lockPath         string
-	// storeDir is the store's real path, and storeInfo the directory found
-	// there when it was opened ([durableSessions.storeStillThere]).
-	storeDir  string
-	storeInfo os.FileInfo
+	// storeDir is the store's real path, and storeHandle the directory found
+	// there when it was opened, held open for as long as the store is
+	// ([durableSessions.storeStillThere]).
+	storeDir    string
+	storeHandle *os.File
 
 	operationMu     sync.Mutex
 	projectionMu    sync.Mutex
@@ -105,23 +107,26 @@ func openDurableSessionsIn(ctx context.Context, workspace, stateDir string) (*du
 		return nil, fmt.Errorf("senior-dev sessions: create data directory: %w", err)
 	}
 	dataDir = realDirectory(dataDir)
-	storeInfo, err := os.Stat(dataDir)
+	storeHandle, err := os.Open(dataDir)
 	if err != nil {
 		return nil, fmt.Errorf("senior-dev sessions: read data directory: %w", err)
 	}
 
 	projectInfo, _, err := project.Discover(ctx, workspace)
 	if err != nil {
+		_ = storeHandle.Close()
 		return nil, fmt.Errorf("senior-dev sessions: discover project: %w", err)
 	}
 	projectID := string(projectInfo.ID)
 	dbPath := filepath.Join(dataDir, seniorDevDatabaseFile)
 	db, err := projectors.Open(ctx, dbPath, projectors.BusyRetryOptions{Log: io.Discard})
 	if err != nil {
+		_ = storeHandle.Close()
 		return nil, err
 	}
 	closeOnError := func(err error) (*durableSessions, error) {
 		_ = db.Close()
+		_ = storeHandle.Close()
 		return nil, err
 	}
 	if err := applyProjectSchema(ctx, db); err != nil {
@@ -142,7 +147,7 @@ func openDurableSessionsIn(ctx context.Context, workspace, stateDir string) (*du
 		projectID: projectID, workspace: workspace,
 		projector: projectors.NewStore(db, projectors.StoreOptions{}),
 		lockPath:  filepath.Join(dataDir, "projection.lock"),
-		storeDir:  dataDir, storeInfo: storeInfo,
+		storeDir:  dataDir, storeHandle: storeHandle,
 	}
 	durable.projectionSource = durable.store
 	sessions, err := sessioncore.New(sessioncore.Options{
@@ -1049,18 +1054,36 @@ func (durable *durableSessions) withStoreLock(fn func() error) error {
 // session, makes one under the same id, and the model reads a conversation
 // that starts where the removal happened. The run ends instead, naming the
 // store where it was.
+//
+// THE STORE'S DIRECTORY IS HELD OPEN, BECAUSE AN INODE NUMBER IS NOT A NAME
+// FOREVER. Identity is the device and inode number, and ext4 and overlayfs —
+// the benchmark's container, the CI runner — hand a removed directory's number
+// to the next directory made, so `rm -rf` and `mkdir` of the same path can
+// look like the same directory. An open handle keeps the removed directory's
+// inode allocated until the store closes, so the number cannot be given out
+// again while the run could still be fooled by it. It used to be held by
+// accident, by the database file sqlite keeps open; nothing promised that.
 func (durable *durableSessions) storeStillThere() error {
-	if durable.storeInfo == nil {
+	if durable.storeHandle == nil {
 		return nil
+	}
+	opened, err := durable.storeHandle.Stat()
+	if err != nil {
+		return fmt.Errorf("senior-dev sessions: read its store %s: %w", durable.storeDir, err)
 	}
 	current, err := os.Stat(durable.storeDir)
 	switch {
-	case err == nil && os.SameFile(durable.storeInfo, current):
+	case err == nil && os.SameFile(opened, current):
 		return nil
 	case err == nil:
 		return fmt.Errorf("senior-dev sessions: its store %s was removed while the run was working, "+
 			"with the conversation in it; the directory there now is a new one", durable.storeDir)
 	default:
+		// The path is already in the sentence; the reason is all the stat adds.
+		var pathErr *fs.PathError
+		if errors.As(err, &pathErr) {
+			err = pathErr.Err
+		}
 		return fmt.Errorf("senior-dev sessions: its store %s was removed while the run was working, "+
 			"with the conversation in it: %w", durable.storeDir, err)
 	}
@@ -1091,5 +1114,8 @@ func (durable *durableSessions) Close() {
 	}
 	if durable.db != nil {
 		_ = durable.db.Close()
+	}
+	if durable.storeHandle != nil {
+		_ = durable.storeHandle.Close()
 	}
 }

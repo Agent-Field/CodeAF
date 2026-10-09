@@ -138,7 +138,8 @@ func TestStateDirRootsTheStoreOutsideTheWorkspace(t *testing.T) {
 // tree, and would carry the database and the conversation with them — a
 // checkpoint restored under an open database would rewrite it. The folder's
 // own .senior-dev is the one place in it they already leave alone, and a link
-// is judged by where it leads.
+// is judged by where it leads. A refused directory is never made: the empty
+// levels of one would be in the tree for the next checkpoint to carry.
 func TestAStateDirInsideTheFolderIsRefused(t *testing.T) {
 	workspace := t.TempDir()
 	outside := t.TempDir()
@@ -155,7 +156,9 @@ func TestAStateDirInsideTheFolderIsRefused(t *testing.T) {
 	for _, refusedDir := range []string{
 		workspace,
 		filepath.Join(workspace, "state"),
+		filepath.Join(workspace, "a", "b", "c"),
 		filepath.Join(outside, "into-the-folder"),
+		filepath.Join(outside, "into-the-folder", "deeper", "store"),
 	} {
 		if _, refusal := stateDirectory(refusedDir, workspace); !strings.Contains(refusal, "--state-dir "+refusedDir+" is inside the folder") {
 			t.Errorf("--state-dir %s: refusal = %q, want it refused as inside the folder", refusedDir, refusal)
@@ -166,6 +169,15 @@ func TestAStateDirInsideTheFolderIsRefused(t *testing.T) {
 		t.Errorf("refusal = %q, want it to name %s, which is where the directory came from", refusal, StateDirEnv)
 	}
 	t.Setenv(StateDirEnv, "")
+	for _, unmade := range []string{
+		filepath.Join(workspace, "state"),
+		filepath.Join(workspace, "a"),
+		filepath.Join(workspace, "kept", "deeper"),
+	} {
+		if _, err := os.Lstat(unmade); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("a refusal left %s in the folder (%v)", unmade, err)
+		}
+	}
 	for _, kept := range []string{
 		filepath.Join(workspace, seniorDevDataDirectory),
 		filepath.Join(workspace, seniorDevDataDirectory, "store"),
@@ -173,6 +185,23 @@ func TestAStateDirInsideTheFolderIsRefused(t *testing.T) {
 	} {
 		if _, refusal := stateDirectory(kept, workspace); refusal != "" {
 			t.Errorf("--state-dir %s was refused: %s", kept, refusal)
+		}
+	}
+	// Where the file system folds case, the folder spelled another way is
+	// still the folder.
+	cased := filepath.Join(t.TempDir(), "Folder")
+	if err := os.Mkdir(cased, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	respelled := filepath.Join(filepath.Dir(cased), "FOLDER")
+	if same, err := os.Stat(respelled); err == nil {
+		if original, _ := os.Stat(cased); os.SameFile(same, original) {
+			if _, refusal := stateDirectory(filepath.Join(respelled, "state"), cased); !strings.Contains(refusal, "is inside the folder") {
+				t.Errorf("--state-dir %s/state: refusal = %q, want the folder %s refused however it is spelled", respelled, refusal, cased)
+			}
+			if _, err := os.Lstat(filepath.Join(cased, "state")); !errors.Is(err, fs.ErrNotExist) {
+				t.Errorf("a refusal left state in the folder (%v)", err)
+			}
 		}
 	}
 	blocker := filepath.Join(outside, "a-file")
@@ -191,6 +220,14 @@ func TestAStateDirInsideTheFolderIsRefused(t *testing.T) {
 // happened. In the folder's own .senior-dev the directory is made again by
 // whatever writes the model's files there next, so the lock is not what can
 // be trusted to notice: the store checks it is still the directory it opened.
+//
+// The "alone" cases close the database first, so that nothing but the store
+// itself holds anything in the directory open. ext4 and overlayfs give a
+// directory made where one was just removed the removed one's inode number
+// back unless something keeps that inode allocated; the database file sqlite
+// keeps open used to do it by accident, and these cases fail on Linux when
+// the store does not hold its own directory open. APFS never reuses an inode
+// number, so on a Mac they pass either way.
 func TestARemovedStoreEndsTheRunWithoutAFreshOne(t *testing.T) {
 	ctx := context.Background()
 	for _, testCase := range []struct {
@@ -200,11 +237,15 @@ func TestARemovedStoreEndsTheRunWithoutAFreshOne(t *testing.T) {
 		linked bool
 		// remade is what is made where the store was, after it is removed.
 		remade string
-		said   string
+		// alone closes the database before the store is removed.
+		alone bool
+		said  string
 	}{
-		{name: "gone", linked: true, said: ": stat {store}: no such file or directory"},
+		{name: "gone", linked: true, said: ": no such file or directory"},
 		{name: "replaced", linked: true, remade: ".", said: "; the directory there now is a new one"},
 		{name: "in the folder, remade by a write under it", remade: "tool-output", said: "; the directory there now is a new one"},
+		{name: "replaced, alone", linked: true, remade: ".", alone: true, said: "; the directory there now is a new one"},
+		{name: "in the folder, remade by a write under it, alone", remade: "tool-output", alone: true, said: "; the directory there now is a new one"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			workspace := t.TempDir()
@@ -225,6 +266,11 @@ func TestARemovedStoreEndsTheRunWithoutAFreshOne(t *testing.T) {
 				t.Fatal(err)
 			}
 			store := durable.storeDir
+			if testCase.alone {
+				if err := durable.db.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
 			if err := os.RemoveAll(store); err != nil {
 				t.Fatal(err)
 			}
@@ -236,7 +282,7 @@ func TestARemovedStoreEndsTheRunWithoutAFreshOne(t *testing.T) {
 
 			err = durable.TouchSession(ctx, session.ID)
 			want := "senior-dev sessions: its store " + store + " was removed while the run was working, with the conversation in it" +
-				strings.ReplaceAll(testCase.said, "{store}", store)
+				testCase.said
 			if err == nil || err.Error() != want {
 				t.Fatalf("touch after the store was removed = %v, want %q", err, want)
 			}
