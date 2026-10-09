@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"context"
 	"io"
 	"os"
 	"slices"
@@ -42,11 +43,15 @@ import (
 // stage is one dim line, and a stage waiting on you shows its question and
 // its keys under its head.
 //
-// THE MANAGER SPEAKS BETWEEN THE SECTIONS. The progress lines the runner
-// writes into the item's own conversation, marked `factory-progress` by
-// their producer ([session.DisplayEntry.Kind]), are drawn as dim
-// `manager · …` lines after the section they are about, and the person's
-// replies there as `you · …`. An item with no conversation draws none.
+// THE STORY IS THE MANAGER'S CONVERSATION (owner decision, 2026-10-08). The
+// item's own conversation is drawn into it in transcript order: the progress
+// lines the runner writes there, marked `factory-progress` by their producer
+// ([session.DisplayEntry.Kind]), as dim `manager · …` lines after the section
+// they are about; every reply of the manager as `manager · ` and its prose in
+// ink, at most [factoryTLReplyRows] rows; each tool it called as one dim line;
+// and the person's words as `you · …`. While a turn runs on it the story's
+// last line is `⠋ manager is thinking`. An item with no conversation draws
+// none of it.
 //
 // THE BOX IS THE PANE'S LAST ROW: `› enter or click to talk to the manager`
 // (`› enter or click to talk · r runs it` before a run). THE BOX HAS A FOCUS
@@ -57,10 +62,11 @@ import (
 // the bottom bar says `type · enter send · esc back to keys`. Its typing row
 // is the floor's own ([factoryAsk], kind [factoryAskManager]), empty it says
 // `› say it`, and `esc` gives the keys back with the words kept as the box's
-// draft, which the next focus shows again. `enter` opens the item's
-// conversation the way `T` does with the words typed in its box, for the
-// person to send there: the seam has no door that appends to the
-// conversation and wakes it.
+// draft, which the next focus shows again. `enter` SENDS IN PLACE through
+// the seam's Say door: the box clears, `you · …` and `manager is thinking`
+// show at once, and the reply streams into the story. A seam with no Say door
+// opens the item's conversation the way `T` does instead, with the words typed
+// in its box for the person to send there.
 //
 // DIVE IN: `enter` on a head, or a click on `▸ 14 steps`, shows that stage's
 // whole conversation in the centre, through the transcript renderer the
@@ -168,6 +174,27 @@ type factoryTimeline struct {
 	// draft is the words the manager's box held when `esc` gave the keys
 	// back, shown again when the box takes them next.
 	draft string
+	// thinking is the items whose manager has a turn running as a setter said
+	// ([app.factoryManagerThinking]), each with how many entries its
+	// conversation held when it was set, so a reply after them ends it.
+	// liveTurn is the items whose conversation the last read found open in
+	// this process with a turn in flight, and sawRun the flagged items whose
+	// turn a read has seen running, so the read that finds it stopped ends
+	// the flag. pending is the person's words the box sent that the
+	// transcript has not shown yet. ALL FOUR ARE KEPT BY ITEM, across items,
+	// because a turn goes on running while the page shows another item.
+	thinking map[int]int
+	liveTurn map[int]bool
+	sawRun   map[int]bool
+	pending  map[int][]factoryTLPending
+}
+
+// factoryTLPending is one thing the person sent from the box, drawn as `you ·
+// …` at once and until the transcript holds it: the words, and how many
+// entries the conversation held when they were sent.
+type factoryTLPending struct {
+	words string
+	from  int
 }
 
 // factoryTL is the timeline's state for item it, started afresh when the
@@ -175,8 +202,7 @@ type factoryTimeline struct {
 func (a *app) factoryTL(it factory.Item) *factoryTimeline {
 	tl := &a.fp.tl
 	if tl.id != it.ID {
-		files := tl.files
-		*tl = factoryTimeline{id: it.ID, files: files}
+		*tl = factoryTimeline{id: it.ID, files: tl.files, thinking: tl.thinking, liveTurn: tl.liveTurn, sawRun: tl.sawRun, pending: tl.pending}
 	}
 	return tl
 }
@@ -190,6 +216,141 @@ func (a *app) factoryTimelineAt() (int, bool) {
 		return 0, false
 	}
 	return tl.at, true
+}
+
+// ── the manager is thinking ─────────────────────────────────────────────────
+//
+// WHILE A TURN RUNS ON THE MANAGER'S CONVERSATION the story's last line is
+// `⠋ manager is thinking`, on the factory's spinner, and the page's beat reads
+// the conversation every second so the reply streams in as it lands. Two
+// things say a turn runs, and either is enough:
+//
+//   - a setter ([app.factoryManagerThinking]): the box's send, and the item
+//     page's own shaping turn when it opens. The flag ends when the setter
+//     says so, when the conversation's last entry is a reply written after
+//     the flag was set, or when a read that saw the turn running sees it
+//     stopped;
+//   - the conversation open in THIS process with a turn in flight
+//     ([session.LiveTurnRunning]), read off the loop with the transcripts, so
+//     a turn started on the chat page or by the runner shows too.
+
+// factoryManagerThinking says a turn on item id's manager conversation has
+// started (on) or ended (off). It is the one setter every road that starts
+// such a turn calls, and the story draws what it says.
+func (a *app) factoryManagerThinking(id int, on bool) {
+	tl := &a.fp.tl
+	if !on {
+		delete(tl.thinking, id)
+		delete(tl.sawRun, id)
+		a.touch()
+		return
+	}
+	if tl.thinking == nil {
+		tl.thinking = map[int]int{}
+	}
+	tl.thinking[id] = a.factoryTLTalkEntries(id)
+	a.touch()
+}
+
+// factoryTLTalkEntries is how many entries item id's conversation held as
+// last read, 0 when it has none or it was not read.
+func (a *app) factoryTLTalkEntries(id int) int {
+	it, ok := a.factoryItemByID(id)
+	if !ok {
+		return 0
+	}
+	rec, ok := a.factoryTLRecord(it.Talk)
+	if !ok {
+		return 0
+	}
+	return len(rec.Entries)
+}
+
+// factoryTLThinking says whether a turn runs on item it's manager
+// conversation now, as far as this window can tell.
+func (a *app) factoryTLThinking(it factory.Item) bool {
+	tl := &a.fp.tl
+	if tl.liveTurn[it.ID] {
+		return true
+	}
+	from, on := tl.thinking[it.ID]
+	if !on {
+		return false
+	}
+	if rec, ok := a.factoryTLRecord(it.Talk); ok && factoryTLReplied(rec, from) {
+		return false
+	}
+	return true
+}
+
+// factoryTLReplied says whether the conversation's last entry is the
+// manager's reply in words, written at or after entry from: the turn that
+// was asked for has answered.
+func factoryTLReplied(rec session.Record, from int) bool {
+	n := len(rec.Entries)
+	if n == 0 || n-1 < from {
+		return false
+	}
+	e := rec.Entries[n-1]
+	return e.Role == "assistant" && e.Kind != factoryProgressKind && strings.TrimSpace(e.Text) != ""
+}
+
+// factoryTLFoldTurn takes what a read found of item id's conversation in this
+// process: a turn in flight, or none. A flag whose turn was seen running and
+// is not any more is ended.
+func (a *app) factoryTLFoldTurn(id int, running bool) bool {
+	tl := &a.fp.tl
+	was := tl.liveTurn[id]
+	if running {
+		if tl.liveTurn == nil {
+			tl.liveTurn = map[int]bool{}
+		}
+		tl.liveTurn[id] = true
+		if _, on := tl.thinking[id]; on {
+			if tl.sawRun == nil {
+				tl.sawRun = map[int]bool{}
+			}
+			tl.sawRun[id] = true
+		}
+		return !was
+	}
+	delete(tl.liveTurn, id)
+	if tl.sawRun[id] {
+		delete(tl.sawRun, id)
+		delete(tl.thinking, id)
+		return true
+	}
+	return was
+}
+
+// factoryTLFoldPending lets go of the words the box sent that item id's
+// conversation now holds, read as the person's line at or after the moment
+// they were sent.
+func (a *app) factoryTLFoldPending(id int, rec session.Record) {
+	tl := &a.fp.tl
+	kept := tl.pending[id][:0]
+	for _, p := range tl.pending[id] {
+		if !factoryTLHolds(rec, p) {
+			kept = append(kept, p)
+		}
+	}
+	if len(kept) == 0 {
+		delete(tl.pending, id)
+		return
+	}
+	tl.pending[id] = kept
+}
+
+// factoryTLHolds says whether the conversation holds the sent words p as a
+// person's line at or after the entry they were sent at.
+func factoryTLHolds(rec session.Record, p factoryTLPending) bool {
+	for i := max(p.from, 0); i < len(rec.Entries); i++ {
+		e := rec.Entries[i]
+		if e.Role == "user" && strings.TrimSpace(e.Text) == p.words {
+			return true
+		}
+	}
+	return false
 }
 
 // ── reading the transcripts ─────────────────────────────────────────────────
@@ -246,7 +407,11 @@ func (a *app) factoryTimelineWake() tea.Cmd {
 			fresh = true
 		}
 	}
-	due := factoryTLLive(it) && a.now().Sub(tl.readAt) >= factoryReadSoonEvery
+	// THE MANAGER'S CONVERSATION IS READ ON THE BEAT whenever the item has
+	// one, not only while a run moves: it is where the replies land, and a
+	// turn started on the chat page shows here too.
+	talk := strings.TrimSpace(it.Talk)
+	due := (factoryTLLive(it) || talk != "" || a.factoryTLThinking(it)) && a.now().Sub(tl.readAt) >= factoryReadSoonEvery
 	if !fresh && !due {
 		return nil
 	}
@@ -265,6 +430,7 @@ func (a *app) factoryTimelineWake() tea.Cmd {
 		for p, f := range jobs {
 			got[p] = factoryTLGrow(p, f)
 		}
+		running := talk != "" && session.LiveTurnRunning(talk)
 		return func(bool) tea.Cmd {
 			tl := &a.fp.tl
 			tl.reading = false
@@ -280,6 +446,14 @@ func (a *app) factoryTimelineWake() tea.Cmd {
 				}
 				f := f
 				tl.files[p] = &f
+			}
+			if talk != "" {
+				if a.factoryTLFoldTurn(id, running) {
+					changed = true
+				}
+				if f, ok := got[talk]; ok && f.read {
+					a.factoryTLFoldPending(id, f.rec)
+				}
 			}
 			if changed && tl.id == id {
 				a.touch()
@@ -432,27 +606,50 @@ type factoryTLLine struct {
 	btn    bool
 }
 
-// factoryTLManagerLine is one line from the item's conversation: who said it
-// and what, and the phase it is drawn after (-1 for after the last that
-// started).
+// factoryTLReplyRows is the most rows one reply of the manager takes in the
+// story; a longer one is cut, its last row a dim `… ▸ T for the whole chat`.
+const factoryTLReplyRows = 8
+
+// factoryTLTopAnchor is the anchor of the lines said before the run's first
+// progress line: they stand above the run's first section, in order.
+const factoryTLTopAnchor = -2
+
+// factoryTLSay is what one line of the item's conversation is in the story.
+type factoryTLSay int
+
+const (
+	factoryTLSayYou      factoryTLSay = iota // the person's words
+	factoryTLSayProgress                     // the runner's line, one dim line
+	factoryTLSayReply                        // the manager's reply in words
+	factoryTLSayCall                         // a tool the manager called
+)
+
+// factoryTLManagerLine is one line from the item's conversation: what it is,
+// its words (a reply's whole prose, a call's object), the call's tool, and
+// the phase it is drawn after (-1 for after the last that started,
+// [factoryTLTopAnchor] for above the first section).
 type factoryTLManagerLine struct {
-	you    bool
+	say    factoryTLSay
 	words  string
+	tool   string
 	anchor int
 }
 
-// factoryTLManager is the item's conversation as the timeline draws it. While
-// a run stands, the runner's progress lines and the person's words after the
-// first of them; before a run, everything the person and the manager said.
-// EACH PROGRESS LINE IS DRAWN AFTER THE SECTION IT IS ABOUT, which is the
-// phase its first word names (`test failed 1 of 2 · asking you`), else after
-// the last section that started; the person's words follow the line before
-// them.
+// factoryTLManager is the item's conversation as the timeline draws it: THE
+// STORY IS THE MANAGER'S CONVERSATION (owner decision, 2026-10-08), so every
+// thing the person and the manager said is drawn, in transcript order, and
+// every tool the manager called is one dim line. The opening brief and the
+// session's own notes are never drawn. The words the box sent that the
+// transcript does not hold yet follow at the foot.
+//
+// BEFORE A RUN everything stands in order under the issue's line. WHILE A RUN
+// STANDS, what was said before the runner's first progress line stands above
+// the first section; each progress line is drawn after the section it is
+// about, which is the phase its first word names (`test failed 1 of 2 ·
+// asking you`), else after the last section that started; and every other
+// line follows the line before it.
 func (a *app) factoryTLManager(it factory.Item) []factoryTLManagerLine {
 	rec, ok := a.factoryTLRecord(it.Talk)
-	if !ok {
-		return nil
-	}
 	run := it.Stream != nil && len(it.Stream.Phases) > 0
 	latest := -1
 	if run {
@@ -476,38 +673,117 @@ func (a *app) factoryTLManager(it factory.Item) []factoryTLManagerLine {
 		return latest
 	}
 	var out []factoryTLManagerLine
-	progress, anchor := false, latest
-	for _, e := range rec.Entries {
-		words := strings.TrimSpace(firstLine(e.Text))
-		if words == "" {
+	anchor := -1
+	if run {
+		anchor = factoryTLTopAnchor
+	}
+	if ok {
+		for _, e := range rec.Entries {
+			switch e.Role {
+			case "user":
+				words := strings.TrimSpace(firstLine(e.Text))
+				// THE OPENING BRIEF is the session's own note, read as the
+				// person's line from a file written before the mark; it is
+				// never the person's words, and neither is a carry-on.
+				if words == "" || reFactoryMarker.MatchString(words) || strings.HasPrefix(words, factoryTLCarryOn) {
+					continue
+				}
+				out = append(out, factoryTLManagerLine{say: factoryTLSayYou, words: words, anchor: anchor})
+			case "assistant":
+				words := strings.TrimSpace(e.Text)
+				if words == "" {
+					continue
+				}
+				if e.Kind == factoryProgressKind {
+					words = strings.TrimSpace(firstLine(words))
+					if run {
+						anchor = anchorOf(words)
+					}
+					out = append(out, factoryTLManagerLine{say: factoryTLSayProgress, words: words, anchor: anchor})
+					continue
+				}
+				out = append(out, factoryTLManagerLine{say: factoryTLSayReply, words: words, anchor: anchor})
+			case "tool":
+				tool := strings.TrimSpace(e.Tool)
+				if tool == "" {
+					continue
+				}
+				obj := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(e.Hint), tool))
+				out = append(out, factoryTLManagerLine{say: factoryTLSayCall, words: obj, tool: tool, anchor: anchor})
+			}
+		}
+	}
+	for _, p := range a.fp.tl.pending[it.ID] {
+		if ok && factoryTLHolds(rec, p) {
 			continue
 		}
-		switch {
-		case e.Role == "assistant" && e.Kind == factoryProgressKind:
-			progress = true
-			anchor = latest
-			if run {
-				anchor = anchorOf(words)
-			}
-			out = append(out, factoryTLManagerLine{words: words, anchor: anchor})
-		case e.Role == "assistant" && !run:
-			out = append(out, factoryTLManagerLine{words: words, anchor: -1})
-		case e.Role == "user" && (!run || progress):
-			out = append(out, factoryTLManagerLine{you: true, words: words, anchor: anchor})
-		}
+		out = append(out, factoryTLManagerLine{say: factoryTLSayYou, words: p.words, anchor: anchor})
 	}
 	return out
 }
 
-// factoryTLManagerRow is one manager line as the story draws it: `manager ·
-// …` dim whole, and `you · …` with the person's words in ink, because they
-// are the one line on it a person wrote.
-func (a *app) factoryTLManagerRow(l factoryTLManagerLine, measure int) factoryTLLine {
+// factoryTLCarryOn opens a line codeaf writes in the person's seat to make
+// the model carry on (internal/session's checkpoint), never the person's.
+const factoryTLCarryOn = "[carry on]"
+
+// factoryTLManagerRows is one line of the conversation as the story draws
+// it. `you · …` with the person's words in ink, because they are the lines a
+// person wrote; a progress line `manager · plan done · …` dim whole; a call
+// in the step gutter's family mark, `factory_run · manager set …`, dim; and a
+// reply as `manager · ` and its prose in ink, wrapped to the measure under
+// itself, at most [factoryTLReplyRows] rows, the last of a cut one a dim
+// `… ▸ T for the whole chat`.
+func (a *app) factoryTLManagerRows(l factoryTLManagerLine, measure int) []factoryTLLine {
 	pal := a.pal
-	if l.you {
-		return factoryTLLine{left: fit(pal.dim(wordYou+rowSep)+pal.ink(l.words), measure), phase: -1}
+	switch l.say {
+	case factoryTLSayYou:
+		return []factoryTLLine{{left: fit(pal.dim(wordYou+rowSep)+pal.ink(l.words), measure), phase: -1}}
+	case factoryTLSayProgress:
+		return []factoryTLLine{{left: pal.dim(fit(wordManager+rowSep+l.words, measure)), phase: -1}}
+	case factoryTLSayCall:
+		mark := a.actionMarkFor(session.ActionCategoryForTool(l.tool))
+		words := mark + " " + l.tool
+		if l.words != "" {
+			words += rowSep + l.words
+		}
+		return []factoryTLLine{{left: pal.dim(fit(words, measure)), phase: -1}}
 	}
-	return factoryTLLine{left: pal.dim(fit(wordManager+rowSep+l.words, measure)), phase: -1}
+	lead := wordManager + rowSep
+	leadW := ansi.StringWidth(lead)
+	inner := max(measure-leadW, 1)
+	var prose []string
+	for _, line := range wrap(strings.TrimSpace(l.words), inner) {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		prose = append(prose, line)
+	}
+	cut := len(prose) > factoryTLReplyRows
+	if cut {
+		prose = prose[:factoryTLReplyRows-1]
+	}
+	indent := factorySpaces(leadW)
+	out := make([]factoryTLLine, 0, len(prose)+1)
+	for i, line := range prose {
+		head := indent
+		if i == 0 {
+			head = pal.dim(lead)
+		}
+		out = append(out, factoryTLLine{left: head + pal.ink(fit(line, inner)), phase: -1})
+	}
+	if cut {
+		tail := "… " + a.linearMark(tokens.GlyphCollapsed, ">") + " " + keyChat + " " + wordForTheWholeChat
+		out = append(out, factoryTLLine{left: indent + pal.dim(fit(tail, inner)), phase: -1})
+	}
+	return out
+}
+
+// factoryTLThinkingRow is the story's last line while a turn runs on the
+// manager's conversation: `⠋ manager is thinking`, the spinner in the
+// running stage's paint.
+func (a *app) factoryTLThinkingRow(measure int) factoryTLLine {
+	_, paint := a.factoryKindMark(factoryMarkRunning)
+	return factoryTLLine{left: paint(a.factorySpin()) + " " + a.pal.muted(fit(wordManager+" "+wordIsThinking, max(measure-factoryLeadW, 0))), phase: -1}
 }
 
 // factoryTLDefaultOpen says whether a section stands open before any click:
@@ -552,8 +828,12 @@ func (a *app) factoryTLStory(it factory.Item, measure int) []factoryTLLine {
 		if len(mgr) > 0 {
 			gap()
 			for _, l := range mgr {
-				out = append(out, a.factoryTLManagerRow(l, measure))
+				out = append(out, a.factoryTLManagerRows(l, measure)...)
 			}
+		}
+		if a.factoryTLThinking(it) {
+			gap()
+			out = append(out, a.factoryTLThinkingRow(measure))
 		}
 		return out
 	}
@@ -569,9 +849,10 @@ func (a *app) factoryTLStory(it factory.Item, measure int) []factoryTLLine {
 				gap()
 				first = false
 			}
-			out = append(out, a.factoryTLManagerRow(l, measure))
+			out = append(out, a.factoryTLManagerRows(l, measure)...)
 		}
 	}
+	said(factoryTLTopAnchor)
 	lastOne := false // the line above is a one-line dim section
 	for i := 0; i < len(phases); {
 		kind := factoryPhaseKind(it, i)
@@ -613,8 +894,13 @@ func (a *app) factoryTLStory(it factory.Item, measure int) []factoryTLLine {
 		said(i)
 		i++
 	}
-	// A LINE ABOUT NO SECTION THAT STARTED stands at the foot of the story.
+	// A LINE ABOUT NO SECTION THAT STARTED stands at the foot of the story,
+	// and the manager thinking is the story's last line.
 	said(-1)
+	if a.factoryTLThinking(it) {
+		gap()
+		out = append(out, a.factoryTLThinkingRow(measure))
+	}
 	return out
 }
 
@@ -1319,15 +1605,65 @@ func (a *app) factoryBoxFocused() bool {
 	return ask != nil && ask.kind == factoryAskManager
 }
 
-// factoryTimelineSend is `enter` in the manager's box: the item's own
-// conversation opens the way `T` opens it ([app.factoryTalkSaying]), with the
-// words typed in its box for the person to send there.
+// factoryTimelineSend is `enter` in the manager's box. WITH A SAY DOOR THE
+// WORDS ARE SENT IN PLACE ([factory.Seam.Say]): the page stays, the story
+// shows `you · …` at once and `manager is thinking`, and the reply streams in
+// on the beat. Without one, the item's own conversation opens the way `T`
+// opens it ([app.factoryTalkSaying]), with the words typed in its box for
+// the person to send there.
 func (a *app) factoryTimelineSend(id int, words string) tea.Cmd {
 	it, ok := a.factoryItemByID(id)
 	if !ok || !a.factory.Has("talk") {
 		return nil
 	}
-	return a.factoryTalkSaying(it, words)
+	if !a.factory.Has("say") {
+		return a.factoryTalkSaying(it, words)
+	}
+	words = strings.TrimSpace(words)
+	tl := &a.fp.tl
+	if tl.pending == nil {
+		tl.pending = map[int][]factoryTLPending{}
+	}
+	tl.pending[id] = append(tl.pending[id], factoryTLPending{words: words, from: a.factoryTLTalkEntries(id)})
+	a.factoryManagerThinking(id, true)
+	if tl.id == id {
+		// THE NEWEST LINES ARE IN VIEW: the cursor stands on the box, the
+		// story's foot, where the words and the reply land.
+		tl.at, tl.set, tl.free = -1, true, false
+	}
+	seam := a.factory
+	return a.offLoop(func() func(bool) tea.Cmd {
+		err := seam.Say(context.Background(), id, words)
+		// THE FLOOR IS READ IN THE SAME ASK: the first words to an item with
+		// no conversation made one, and the page learns its transcript here.
+		var snap factory.Snapshot
+		var lerr error
+		if seam.Load != nil {
+			snap, lerr = seam.Load()
+		}
+		return func(bool) tea.Cmd {
+			switch {
+			case lerr != nil:
+				a.fp.err = lerr
+			case seam.Load != nil:
+				a.factoryFold(snap)
+			}
+			if err != nil {
+				a.factoryManagerThinking(id, false)
+				tl := &a.fp.tl
+				if ps := tl.pending[id]; len(ps) > 0 {
+					tl.pending[id] = ps[:len(ps)-1]
+				}
+				a.pageMsg = strings.TrimSpace(err.Error())
+				a.touch()
+				return nil
+			}
+			// AND THE CONVERSATION IS READ AT ONCE, not on the next beat.
+			a.fp.tl.readAt = time.Time{}
+			a.touch()
+			return a.factoryTimelineWake()
+		}
+	})
 }
 
 // factoryTLHitAt is the spot the last draw put at pane cell (x, y).

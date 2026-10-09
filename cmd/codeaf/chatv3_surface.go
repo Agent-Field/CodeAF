@@ -44,6 +44,9 @@ var (
 // it would lack is everything below, which is why [TestOnlyTheSurfaceHelperRunsTheV3Surface]
 // reads this package's sources rather than trusting the next door to remember.
 func runSurface(ctx context.Context, options tui3.Options) error {
+	// THE FACTORY PAGE'S BOX SENDS IN PLACE on every door that can open a
+	// conversation, and `T` then attaches to what it opened (factory_say.go).
+	factoryWireSay(&options)
 	revision := surfaceRevision()
 	executable, executableErr := surfaceRunningExecutable()
 	curl := codeupdate.CurlCommand
