@@ -316,7 +316,16 @@ rules' own words. It can read:
 - `you said yes to "<phrase>"`
 - `"<phrase>" is set to ask first`
 
-The same sentence is what the model is told when a call is refused.
+These are policy rules, not replacement commands. The card labels a critical
+match as a safety-policy pattern and shows the actual full shell command and
+working folder separately. For example, `rm -rf /*` can match a request to
+remove `/tmp/stars`; it does not change that request into deleting `/`.
+Allow once releases only that pending call. It does not grant blanket shell
+permission, and a critical request never offers a standing approval.
+
+The raw rule is what the model is told when a call is refused. An older engine
+may lack full command evidence; the card says so rather than substituting a
+policy pattern or a neighbouring tool's command.
 
 ## The countdown: silence waits — why an unanswered approval is not denied, and whether an approval question expires while you are in another chat
 
