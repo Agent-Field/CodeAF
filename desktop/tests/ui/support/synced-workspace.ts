@@ -20,8 +20,8 @@ export async function savedWorkspace(page: Page): Promise<WorkspaceState> {
    const persisted = { ...saved, base: saved.base ?? sharedOf(readWorkspace()) };
    const state = createWorkspaceController({ key: 'now', writer, initial: readWorkspace, persisted, client: {} }).getState();
    const panes = state.tabs.flatMap((tab: { split?: { panes: {id:string;title:string}[] };id:string;title:string }) => tab.split?.panes ?? [tab]);
-   const actual = [...document.querySelectorAll('.workspace-tabstrip [role="tab"]')].map(node => [node.id, node.getAttribute('aria-label')]);
-   const wanted = panes.map((pane: {id:string;title:string}) => [`tab-${pane.id}`, pane.title]);
+   const actual = [...document.querySelectorAll('.workspace-tabstrip [role="tab"]')].map(node => [node.id, node.getAttribute('aria-label'), node.closest('.workspace-tab-group')?.querySelector('.workspace-group-name')?.textContent ?? null, node.closest('.workspace-tab')?.classList.contains('is-pinned') ?? false]);
+   const wanted = panes.map((pane: {id:string;title:string}) => { const owner = state.tabs.find((tab: {id:string;split?:{panes:{id:string}[]}}) => tab.id === pane.id || tab.split?.panes.some(p => p.id === pane.id)); return [`tab-${pane.id}`, pane.title, state.groups.find((group: {id:string;title:string}) => group.id === owner?.groupId)?.title ?? null, !!owner?.pinned]; });
    const groups = [...document.querySelectorAll('.workspace-group-name')].map(node => node.textContent);
    return { state, matches: JSON.stringify(actual) === JSON.stringify(wanted) && JSON.stringify(groups) === JSON.stringify(state.groups.map((group: {title:string}) => group.title)) };
   });

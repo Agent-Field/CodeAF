@@ -12,7 +12,7 @@ export function CommandPalette({ open, onClose, commands, onSelect }: { open: bo
   } else if (!open) { dialog.current?.close(); setQuery(''); }
  }, [open]);
  const matches = commands.filter(p => p.toLowerCase().includes(query.toLowerCase()));
- return <dialog ref={dialog} className="command-palette" onCancel={onClose} onClose={() => { onClose(); lastFocused.current?.focus(); }} aria-label="Command palette">
+ return <dialog ref={dialog} className="command-palette" onCancel={onClose} onClose={() => { if (dialog.current?.open) return; onClose(); lastFocused.current?.focus(); }} aria-label="Command palette">
   <div className="palette-search"><Icon name="search"/><TextInput ref={search} aria-label="Search commands" placeholder="Search your space…" value={query} onChange={e => setQuery(e.target.value)}/><button type="button" className="palette-close" onClick={onClose} aria-label="Close command palette"><KeyboardShortcut label="esc"/></button></div>
   <div className="commands">{matches.map(p => <button type="button" className="command-item" key={p} onClick={() => {onSelect(p);onClose();}}>Go to {p}<Icon name="arrow" size="xs"/></button>)}{!matches.length && <Text className="no-results">No matching commands</Text>}</div>
  </dialog>;

@@ -1,3 +1,4 @@
+import { openPage } from './support/shell-navigation';
 import { test, expect, type Page } from '@playwright/test';
 import { expectAccessible, expectNoUnstyledControls, tokenColor } from './contracts';
 import { installMockEngine } from './support/mock-engine';
@@ -202,7 +203,7 @@ test.describe('with a conversation engine', () => {
 test('the Design system page shows the field typed and empty', async ({ page }) => {
  await page.route('**/api/engine/**', route => route.abort());
  await page.goto('/');
- await page.getByRole('button', { name: 'Design system', exact: true }).click();
+ await openPage(page, 'Design system');
  const specimen = page.locator('[data-newtab-specimen]');
  await specimen.scrollIntoViewIfNeeded();
  await expect(specimen.getByRole('option', { name: /Ask “fix” in a new conversation/ })).toHaveAttribute('aria-selected', 'true');

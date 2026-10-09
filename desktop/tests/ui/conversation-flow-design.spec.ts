@@ -1,3 +1,4 @@
+import { openPage } from './support/shell-navigation';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { installMockEngine } from './support/mock-engine';
 import { plainReply } from './support/scenarios';
@@ -11,7 +12,7 @@ async function openSpecimen(page: Page, name: string, scheme: 'light' | 'dark'):
   await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
   await installMockEngine(page, { ...plainReply(), initial: { id: 'specimen', entries: [] } });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Design system', exact: true }).click();
+  await openPage(page, 'Design system');
   const section = page.locator(`section[aria-label="${name} specimen"]`);
   await section.scrollIntoViewIfNeeded();
   return section;

@@ -1,3 +1,4 @@
+import { openPage } from './support/shell-navigation';
 import { test, expect, type Page } from '@playwright/test';
 import { expectAccessible, expectNoUnstyledControls, tokenColor } from './contracts';
 import { installMockEngine, GLM, GLM_FLASH, MODEL } from './support/mock-engine';
@@ -26,7 +27,7 @@ test('the rail is 252px (232px rows plus 10px padding), drawn like the design, w
   await expect(toggle).toHaveCSS('border-top-left-radius', '7px');
   await expect(toggle).toHaveCSS('color', await tokenColor(page, 'ink-3'));
   await expect(toggle.locator('.app-icon')).toHaveCSS('width', '15px');
-  for (const name of ['Now', 'Activity', 'Settings', 'Design system']) {
+  for (const name of ['Now', 'Inbox']) {
     const row = rail(page).getByRole('button', { name, exact: true });
     expect((await row.boundingBox())!.height).toBe(px('rail-row-height'));
     await expect(row).toHaveCSS('border-top-left-radius', '8px');
@@ -45,7 +46,7 @@ test('the rail is 252px (232px rows plus 10px padding), drawn like the design, w
   await expect(open).toHaveCSS('box-shadow', /.+/);
   await expect(open).toHaveCSS('font-weight', '500');
   await expect(open).toHaveCSS('color', await tokenColor(page, 'ink'));
-  const other = rail(page).getByRole('button', { name: 'Activity', exact: true });
+  const other = rail(page).getByRole('button', { name: 'Inbox', exact: true });
   await expect(other).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(other).toHaveCSS('color', await tokenColor(page, 'ink-2'));
   await expect(other).toHaveCSS('font-weight', '400');
@@ -235,7 +236,7 @@ test('⌥⌘1–3 pick pinned models; ⌘1–9 always jump to tabs, composer or 
   await page.keyboard.press(`Alt+${mod}+3`);
   expect(await selectedIndex(page)).toBe(2);
   // On the Settings tab there is no composer, so ⌥⌘1 does nothing and ⌘1 jumps to the first tab.
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openPage(page, 'Settings');
   await expect(page.getByRole('heading', { name: 'Models', level: 1 })).toBeVisible();
   await page.keyboard.press(`Alt+${mod}+1`);
   await expect(page.getByRole('heading', { name: 'Models', level: 1 })).toBeVisible();
@@ -245,7 +246,7 @@ test('⌥⌘1–3 pick pinned models; ⌘1–9 always jump to tabs, composer or 
 
 test('⌘, opens the Settings tab once, from any page', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Activity', exact: true }).click();
+  await openPage(page, 'Activity');
   await page.keyboard.press(`${mod}+,`);
   await expect(page.getByRole('heading', { name: 'Models', level: 1 })).toBeVisible();
   await page.keyboard.press(`${mod}+,`);
@@ -255,16 +256,16 @@ test('⌘, opens the Settings tab once, from any page', async ({ page }) => {
 test('Settings is a tab: the rail item opens it once, lights while it shows, and Now leaves it', async ({ page }) => {
   await installMockEngine(page, { ...plainReply(), initial: { entries: [], title: '' } });
   await openApp(page);
-  const item = rail(page).getByRole('button', { name: 'Settings', exact: true });
-  await item.click();
+  await expect(rail(page).getByRole('button', { name: 'Settings', exact: true })).toHaveCount(0);
+  await openPage(page, 'Settings');
   await expect(page.getByRole('heading', { name: 'Models', level: 1 })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Models', exact: true })).toHaveAttribute('aria-selected', 'true');
-  await expect(item).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('combobox', { name: 'Theme' })).toBeVisible();
   await expect(rail(page).getByRole('button', { name: 'Now', exact: true })).not.toHaveAttribute('aria-current', 'page');
   // A second request focuses the tab that is open.
   await page.getByRole('tab').first().click();
   await expect(page.getByRole('heading', { name: 'Models', level: 1 })).toHaveCount(0);
-  await item.click();
+  await openPage(page, 'Settings');
   await expect(page.getByRole('tab', { name: 'Models', exact: true })).toHaveCount(1);
   await expect(page.getByRole('heading', { name: 'Models', level: 1 })).toBeVisible();
   // The command palette goes to the same tab.
@@ -288,7 +289,7 @@ test('the rail, the strip toggle and Focus mode are accessible in light and dark
     await page.keyboard.press(`${mod}+s`);
     await expectAccessible(page);
     await page.keyboard.press(`${mod}+s`);
-    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await openPage(page, 'Settings');
     await expectAccessible(page);
   }
 });
@@ -297,7 +298,7 @@ test('the Design system page shows the rail specimen, light and dark', async ({ 
   for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.goto('/');
-    await page.getByRole('button', { name: 'Design system', exact: true }).click();
+    await openPage(page, 'Design system');
     const specimen = page.locator('[data-rail-specimen]');
     await specimen.scrollIntoViewIfNeeded();
     await expect(specimen.locator('.nav-item')).toHaveCount(8);
@@ -308,7 +309,7 @@ test('the Design system page shows the rail specimen, light and dark', async ({ 
 
 test('shrinking the window to 320px does not animate the rail column away, so nothing overflows at any instant', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Activity', exact: true }).click();
+  await openPage(page, 'Activity');
   await expect(page.getByRole('heading', { name: 'Activity' })).toBeVisible();
   await page.setViewportSize({ width: 320, height: 700 });
   await expect(page.locator('.app-shell.sidebar-collapsed')).toHaveCount(1);

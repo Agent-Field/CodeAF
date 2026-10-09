@@ -1,3 +1,4 @@
+import { openPage } from './support/shell-navigation';
 import { test, expect, type Page } from '@playwright/test';
 import { installMockEngine } from './support/mock-engine';
 import { plainReply } from './support/scenarios';
@@ -67,7 +68,7 @@ test('arrows move between controls, Enter closes with focus on the chip, and a s
 test('with routing and effort the popover shows pinned segments, Effort, shortcuts, and the chord swaps directly', async ({ page }) => {
   await installMockEngine(page, fresh());
   await page.goto('/');
-  await page.getByRole('button', { name: 'Design system', exact: true }).click();
+  await openPage(page, 'Design system');
   const section = page.getByLabel('Model popover try-out');
   await section.scrollIntoViewIfNeeded();
   await section.getByRole('button', { name: /^Model:/ }).click();

@@ -1,3 +1,4 @@
+import { openPage } from './support/shell-navigation';
 import { test, expect, type Page } from '@playwright/test';
 import { expectAccessible, expectNoUnstyledControls } from './contracts';
 import design from '../../src/design/tokens.json' with { type: 'json' };
@@ -107,7 +108,7 @@ test('the Design system page shows every tab kind and state, light and dark', as
   for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.goto('/');
-    await page.getByRole('button', { name: 'Design system', exact: true }).click();
+    await openPage(page, 'Design system');
     const sheet = page.locator('[data-tab-specimen]');
     await sheet.scrollIntoViewIfNeeded();
     // 8 kinds x 5 columns minus the four n/a cells.

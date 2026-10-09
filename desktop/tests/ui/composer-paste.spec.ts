@@ -1,3 +1,4 @@
+import { openPage } from './support/shell-navigation';
 import { test, expect } from '@playwright/test';
 import { installMockEngine } from './support/mock-engine';
 import { plainReply } from './support/scenarios';
@@ -16,7 +17,7 @@ async function paste(field: import('@playwright/test').Locator, text: string) {
 test('a paste over 12 lines becomes a removable card and is sent as tagged text', async ({ page }) => {
   const engine = await installMockEngine(page, { ...plainReply(), initial: { id: 'specimen', entries: [] } });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Design system', exact: true }).click();
+  await openPage(page, 'Design system');
   const section = page.getByLabel('Attachment try-out');
   await section.scrollIntoViewIfNeeded();
   const field = section.getByRole('textbox', { name: 'Message' });
@@ -42,7 +43,7 @@ test('a paste over 12 lines becomes a removable card and is sent as tagged text'
 test('typed text caps at 8 lines and scrolls', async ({ page }) => {
   await installMockEngine(page, { ...plainReply(), initial: { id: 'specimen', entries: [] } });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Design system', exact: true }).click();
+  await openPage(page, 'Design system');
   const field = page.getByLabel('Attachment try-out').getByRole('textbox', { name: 'Message' });
   await field.fill(lines(8));
   const eight = (await field.boundingBox())!.height;
