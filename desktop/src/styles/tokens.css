@@ -298,6 +298,18 @@
   --control-pad-ghost: 10px;
   --field-height: 30px;
   --field-pad: 10px;
+  --model-popover-width: 300px;
+  --model-popover-left: 0px;
+  --model-popover-bottom: 0px;
+  --model-popover-radius: 14px;
+  --model-popover-pad: 6px;
+  --model-popover-gap: 6px;
+  --model-popover-row: 32px;
+  --model-popover-row-radius: 8px;
+  --model-popover-row-pad: 8px;
+  --model-popover-segment-height: 30px;
+  --model-popover-segment-radius: 8px;
+  --model-popover-effort-gap: 12px;
   --segment-height: 24px;
   --segment-inset: 2px;
   --segment-pad: 10px;
