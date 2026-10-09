@@ -2,6 +2,8 @@ import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Icon } from './Icon';
 import { CodeText } from './Typography';
+import { CopyButton } from './CopyButton';
+import type { ReactElement, ReactNode } from 'react';
 import '../../styles/markdown.css';
 
 export type MarkdownProps = { children: string; className?: string; onOpenLink?: (url: string) => void };
@@ -15,8 +17,25 @@ export function safeMarkdownUrl(value: string): string {
   return ['http:', 'https:', 'mailto:'].includes(parsed.protocol) ? safe : '';
  } catch { return ''; }
 }
+function textOf(node: ReactNode): string {
+ if (typeof node === 'string' || typeof node === 'number') return String(node);
+ if (Array.isArray(node)) return node.map(textOf).join('');
+ return '';
+}
+function CodeBlock({ children }: { children?: ReactNode }) {
+ const code = children as ReactElement<{ className?: string; children?: ReactNode }> | undefined;
+ const language = /language-([\w+#.-]+)/.exec(code?.props?.className ?? '')?.[1];
+ return <div className="markdown-code">
+  <div className="markdown-code-head">
+   <span className="markdown-code-lang">{language}</span>
+   <CopyButton text={textOf(code?.props?.children)} label="Copy code"/>
+  </div>
+  <pre>{children}</pre>
+ </div>;
+}
 export function Markdown({ children, className = '', onOpenLink }: MarkdownProps) {
  return <div className={`markdown ${className}`}><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml urlTransform={safeMarkdownUrl} components={{
+  pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
   code: ({ children, className }) => <CodeText className={className}>{children}</CodeText>,
   // Tables keep real table semantics and a named keyboard-scrollable viewport.
   table: ({ children }) => <div className="markdown-table-scroll" role="region" aria-label="Response table" tabIndex={0}><table>{children}</table></div>,

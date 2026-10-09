@@ -1,16 +1,17 @@
 /* Shared document content. Product chrome remains in ui.css; no chat bubbles. */
 .markdown { min-width: 0; max-width: 100%; color: var(--text); font-family: var(--font-sans); font-size: var(--font-size-prose); line-height: var(--line-height-body); overflow-wrap: anywhere; }
 .markdown > :first-child { margin-top: 0; }
+.markdown > .markdown-code:last-child { margin-bottom: 0; }
 .markdown > :last-child { margin-bottom: 0; }
-.markdown p, .markdown ul, .markdown ol, .markdown blockquote, .markdown pre, .markdown .markdown-table-scroll { margin: 0 0 var(--space-3); }
-.markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 { margin: var(--space-6) 0 var(--space-2); font-size: var(--font-size-prose); font-weight: var(--font-weight-medium); line-height: var(--line-height-tight); }
+.markdown p, .markdown ul, .markdown ol, .markdown blockquote, .markdown .markdown-table-scroll { margin: 0 0 var(--space-3); }
+.markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 { margin: var(--space-section) 0 var(--space-2); font-size: var(--font-size-prose); font-weight: var(--font-weight-medium); line-height: var(--line-height-tight); }
 .markdown h1 { font-size: var(--font-size-document-h1); }
 .markdown h2 { font-size: var(--font-size-document-h2); }
 .markdown h3 { font-size: var(--font-size-document-h3); }
 .markdown strong { font-weight: var(--font-weight-strong); }
 .markdown ul, .markdown ol { padding-left: var(--space-6); }
 .markdown li { padding-left: var(--space-half); }
-.markdown li + li { margin-top: var(--space-1); }
+.markdown li + li { margin-top: var(--space-half); }
 .markdown li > p { margin-bottom: var(--space-1); }
 .markdown li > ul, .markdown li > ol { margin-top: var(--space-1); margin-bottom: 0; }
 .markdown blockquote { padding-left: var(--space-3); border-left: var(--border-width) solid var(--focus-ring); color: var(--muted); }
@@ -18,12 +19,36 @@
 .markdown a { color: var(--text); text-decoration: underline; text-decoration-color: var(--muted); text-underline-offset: var(--space-three-quarter); border-radius: var(--radius-xs); transition: color var(--duration) var(--ease), background-color var(--duration) var(--ease); }
 .markdown a:hover { background: var(--control-hover); text-decoration-color: var(--text); }
 .markdown a:active { background: var(--control-pressed); }
-.markdown code { background: var(--field); border-radius: var(--radius-xs); padding: 0 var(--space-1); }
+.markdown code { background: var(--field); border-radius: var(--radius-sm); padding: var(--space-half) var(--space-tight); }
+.markdown .markdown-code { margin: 0 0 var(--space-3); min-width: 0; max-width: 100%; background: var(--field); border-radius: var(--radius-md); overflow: hidden; }
+.markdown-code-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: var(--icon-button-size); padding: 0 var(--space-1) 0 var(--space-3); color: var(--muted); font-size: var(--font-size-label); }
+.markdown-code-lang { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.markdown .markdown-code pre { margin: 0; padding: 0 var(--space-3) var(--space-3); min-width: 0; max-width: 100%; background: transparent; border-radius: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.markdown pre code { padding: 0; background: transparent; border-radius: 0; white-space: inherit; }
+.copy-button { display: inline-flex; align-items: center; gap: var(--space-1); }
+.copy-button-status { font-size: var(--font-size-label); color: var(--muted); }
+.markdown-table-scroll { margin: 0 0 var(--space-3); }
+.markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 { margin: var(--space-section) 0 var(--space-2); font-size: var(--font-size-prose); font-weight: var(--font-weight-medium); line-height: var(--line-height-tight); }
+.markdown h1 { font-size: var(--font-size-document-h1); }
+.markdown h2 { font-size: var(--font-size-document-h2); }
+.markdown h3 { font-size: var(--font-size-document-h3); }
+.markdown strong { font-weight: var(--font-weight-strong); }
+.markdown ul, .markdown ol { padding-left: var(--space-6); }
+.markdown li { padding-left: var(--space-half); }
+.markdown li + li { margin-top: var(--space-half); }
+.markdown li > p { margin-bottom: var(--space-1); }
+.markdown li > ul, .markdown li > ol { margin-top: var(--space-1); margin-bottom: 0; }
+.markdown blockquote { padding-left: var(--space-3); border-left: var(--border-width) solid var(--focus-ring); color: var(--muted); }
+.markdown blockquote > :last-child { margin-bottom: 0; }
+.markdown a { color: var(--text); text-decoration: underline; text-decoration-color: var(--muted); text-underline-offset: var(--space-three-quarter); border-radius: var(--radius-xs); transition: color var(--duration) var(--ease), background-color var(--duration) var(--ease); }
+.markdown a:hover { background: var(--control-hover); text-decoration-color: var(--text); }
+.markdown a:active { background: var(--control-pressed); }
+.markdown code { background: var(--field); border-radius: var(--radius-sm); padding: var(--space-half) var(--space-tight); }
 .markdown pre { min-width: 0; max-width: 100%; background: var(--field); padding: var(--space-3); border-radius: var(--radius-sm); white-space: pre-wrap; overflow-wrap: anywhere; }
 .markdown pre code { padding: 0; background: transparent; border-radius: 0; white-space: inherit; }
 .markdown-table-scroll { max-width: 100%; overflow-x: auto; border-radius: var(--radius-sm); }
-.markdown table { width: 100%; border-collapse: collapse; text-align: left; }
-.markdown th { font-weight: var(--font-weight-medium); }
+.markdown table { width: 100%; font-size: var(--font-size-label); border-collapse: collapse; text-align: left; }
+.markdown th { font-weight: var(--font-weight-medium); color: var(--muted); }
 .markdown th, .markdown td { padding: var(--space-2); border-bottom: var(--border-width) solid var(--border); vertical-align: top; overflow-wrap: anywhere; }
 .markdown hr { border: 0; border-top: var(--border-width) solid var(--border); margin: var(--space-6) 0; }
 .markdown-task-check { display: inline-flex; align-items: center; justify-content: center; width: var(--icon-sm); height: var(--icon-sm); margin-right: var(--space-tight); border: var(--border-width) solid var(--border); border-radius: var(--radius-xs); color: var(--muted); vertical-align: text-bottom; }
