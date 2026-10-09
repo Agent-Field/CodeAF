@@ -30,6 +30,13 @@ type teamsDraw struct {
 	a       *app
 	targets []teamsTarget
 	cards   []teamsCardSpot
+	// Only the body supplies a viewport. Isolated card renderers draw whole.
+	window      bool
+	first, last int
+}
+
+func (d *teamsDraw) visible(y, height int) bool {
+	return !d.window || y < d.last && y+height > d.first
 }
 
 // lit reports whether the target named r wears a ground, and which.
@@ -988,22 +995,29 @@ func (a *app) teamsBody(width, room int) []placeRow {
 	}
 	top := len(lines)
 	mark := len(d.targets)
-	pane := a.teamsTop(d, paneW-1)
-	if !a.teamsAny() {
-		pane = append(pane, a.teamsAllCards(d, paneW-1, len(pane))...)
-		emptyMark, emptyY := len(d.targets), len(pane)
-		empty := a.teamsEmpty(d, paneW-1, 0)
-		d.shift(emptyMark, 0, emptyY)
-		pane = append(pane, empty...)
-	} else {
-		pane = append(pane, a.teamsPaneRest(d, paneW-1, len(pane))...)
+	vis := max(room-top, 0)
+	d.window, d.first, d.last = true, a.tp.paneOffset, a.tp.paneOffset+vis
+	drawPane := func() []string {
+		d.targets = d.targets[:mark]
+		d.cards = nil
+		pane := a.teamsTop(d, paneW-1)
+		if !a.teamsAny() {
+			pane = append(pane, a.teamsAllCards(d, paneW-1, len(pane))...)
+			emptyMark, emptyY := len(d.targets), len(pane)
+			empty := a.teamsEmpty(d, paneW-1, 0)
+			d.shift(emptyMark, 0, emptyY)
+			pane = append(pane, empty...)
+		} else {
+			pane = append(pane, a.teamsPaneRest(d, paneW-1, len(pane))...)
+		}
+		return pane
 	}
+	pane := drawPane()
 	for i := mark; i < len(d.targets); i++ {
 		d.targets[i].line = top + d.targets[i].y
 	}
 	// Physical scrolling retains its offset through redraws. Keyboard walks
 	// reveal only the newly focused target, including controls below a card.
-	vis := max(room-top, 0)
 	a.tp.paneRows, a.tp.paneRoom, a.tp.paneTop = len(pane), vis, top
 	off := min(a.tp.paneOffset, max(len(pane)-vis, 0))
 	if !a.tp.paneWheel && vis > 0 {
@@ -1021,6 +1035,15 @@ func (a *app) teamsBody(width, room int) []placeRow {
 				off = min(max(a.tp.table.y+a.tp.table.h-vis, 0), max(len(pane)-vis, 0))
 			}
 			break
+		}
+	}
+	// A keyboard stop or a shrinking overview can reveal a previously hidden
+	// card. Paint that final viewport in this same frame, before publishing hits.
+	if off != d.first {
+		d.first, d.last = off, off+vis
+		pane = drawPane()
+		for i := mark; i < len(d.targets); i++ {
+			d.targets[i].line = top + d.targets[i].y
 		}
 	}
 	a.tp.paneOffset = off

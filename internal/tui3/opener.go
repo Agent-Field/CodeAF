@@ -20,7 +20,8 @@ import (
 //   - WRITE IT DOWN. The link is drawn as text, always, whether or not the
 //     handoff worked — and the text is wrapped in OSC 8 where the sequence is
 //     safe, so a terminal that understands hyperlinks makes it clickable and one
-//     that does not shows exactly the characters a person can select and copy.
+//     that does not keeps the plain label. Sign-in cards and the setup copy
+//     shortcut also hand back the complete target without relying on hyperlinks.
 //     THIS IS THE SSH CASE and it is not an edge: a browser opened on the far
 //     end of a connection is a browser nobody is sitting at.
 //
@@ -109,6 +110,9 @@ func linkOpen(uri string) string {
 // two halves of a link are spelled by the same package, and a caller can never
 // close with bytes that do not match what opened.
 func linkClose() string { return ansi.ResetHyperlink() }
+
+// Short visible text keeps a browser sign-in on one row; its target stays whole.
+const signInLinkWord = "open sign-in page"
 
 // linkify wraps a label as a hyperlink to uri, and returns the label untouched
 // when the sequence would not be safe.

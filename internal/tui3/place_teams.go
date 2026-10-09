@@ -54,6 +54,7 @@ func (placeTeams) tick(a *app, now time.Time) (bool, tea.Cmd) {
 // close drops what the page drew; the selection and the
 // fold are kept for the next visit, as a place's views are.
 func (placeTeams) close(a *app) {
+	a.tp.previewRows = nil
 	a.tp.focus, a.tp.targets = false, nil
 	if a.wall.org.on {
 		a.wallOrganizeClose()

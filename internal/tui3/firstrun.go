@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/credits"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 )
 
 // THE FIRST-RUN SETUP, AND THE MODEL DOOR THAT MAY COME BACK.
@@ -19,7 +20,7 @@ import (
 // A fresh install used to open on an empty chat and the first thing the product
 // said was a provider error. Now the door lets that launch open with no key
 // (cmd/codeaf's chatv3.go) and this screen asks for what a first day needs, in
-// TWO steps: the key every model call rides, and then one screen of controls —
+// A provider choice precedes TWO steps: its connection, and one screen of controls —
 // the day's spending limit and the model you talk to. The crew is not asked:
 // a task's crew is picked per task, and /crew is where it is seen. Under a
 // minute; every control opens on the value already in force; the way out is
@@ -48,9 +49,9 @@ import (
 //     only before anything has been typed. A returning key door may stand over
 //     an existing conversation, but an attempted send opens it before the draft
 //     is cleared, so connecting and pressing enter again sends the same words.
-//   - IT SPENDS NOTHING. A pasted key is checked only for shape. The browser
-//     exchange creates a key but makes no model call, so no prompt is sent and
-//     no model charge can be made during setup.
+//   - THE CONNECTION USES ITS EXISTING CHECKS. OpenRouter checks a pasted key
+//     only for shape, Ollama lists installed models, and direct providers use
+//     the same account checks as /connect, including their small model probes.
 //
 // IT PRECEDES THE WELCOME BOX. The box is what an empty conversation shows; this
 // is what it shows before that, and the box's arrival animation starts fresh the
@@ -73,6 +74,16 @@ const (
 // had one, which is every launch but the first.
 type setupFlow struct {
 	open bool
+	// A later provider connection returns to its menu without completing setup.
+	connection bool
+	returnAdd  bool
+	// Provider selection precedes the numbered connection and controls steps.
+	provider        string
+	providerAt      int
+	providerHits    []setupProviderHit
+	providerAttempt *setupProviderAttempt
+	providerBusy    bool
+	providerLink    string
 	// steps is the questions still worth asking, in order; at is the index of
 	// the one on screen.
 	steps []setupStep
@@ -248,9 +259,27 @@ func (a *app) endSetup(skipped bool) tea.Cmd {
 	if !a.setup.open {
 		return nil
 	}
+	if a.setup.connection {
+		fromAdd := a.setup.returnAdd
+		a.cancelSetupAuth()
+		a.cancelSetupProvider()
+		a.setup = setupFlow{}
+		var menu tea.Cmd
+		if fromAdd {
+			menu = a.openAddProvider(false)
+		} else {
+			a.openModelConnection(modelsource.DefaultID)
+		}
+		a.touch()
+		if !skipped {
+			return tea.Batch(menu, a.modelServiceMenuChoice(modelsource.DefaultID, "refresh"))
+		}
+		return menu
+	}
 	dir := strings.TrimSpace(a.profileDir)
 	_ = config.MarkSetupSeen(dir, a.now())
 	a.cancelSetupAuth()
+	a.cancelSetupProvider()
 	// THE QUESTIONS THIS ESC WALKED PAST GET A DOOR. `setup_seen_at` is stamped
 	// whichever way this screen ended and only the key-only form ever reopens,
 	// so the chat model and the day's limit are retired here — silently, until this
@@ -312,6 +341,9 @@ const setupNoKeyWord = "no openrouter key yet · paste one into /settings, or ex
 // ([app.endSetup]).
 const setupSkipKeysWord = "esc skips setup"
 
+// Browser providers name the same action before opening the sign-in page.
+const setupBrowserConnectKeysWord = "enter connects in browser"
+
 // setupLaterWord leads the line [app.endSetup] leaves behind when esc walked
 // past a question. The doors follow it, and only the doors onto questions this
 // person was NOT asked — a line naming a question somebody just answered would
@@ -338,7 +370,7 @@ func setupStepLater(step setupStep) string {
 // setupNoKeyConnectWord is the local default-provider form. It points at the
 // next ordinary act rather than at a buried settings row: the draft is kept,
 // and enter brings the browser connection back before anything is submitted.
-const setupNoKeyConnectWord = "openrouter is not connected · enter on your message connects in a browser, or export " + config.APIKeyEnv
+const setupNoKeyConnectWord = "no model provider is connected · enter on your message chooses a provider, or use /connect"
 
 // ── the keyboard ────────────────────────────────────────────────────────────
 
@@ -355,6 +387,26 @@ func (a *app) setupKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	s := &a.setup
 	name := msg.String()
+	if s.step() == setupKey {
+		link := s.providerLink
+		if s.provider == modelsource.DefaultID {
+			link = s.authLink
+		}
+		if name == "ctrl+y" && link != "" {
+			s.refusal = "sign-in link copied"
+			a.touch()
+			return tea.Raw(osc52(link, a.tmux)), true
+		}
+		if s.provider == "" {
+			return a.setupProviderKey(msg), true
+		}
+		if name == "alt+left" {
+			return a.backSetupProvider(), true
+		}
+		if s.provider != modelsource.DefaultID {
+			return a.setupServiceKey(msg), true
+		}
+	}
 	if s.step() == setupKey && (s.authStarting || s.authFlow != nil) {
 		if name == "esc" {
 			a.cancelSetupAuth()
@@ -485,6 +537,17 @@ func (a *app) setupPaste(text string) bool {
 		if a.setup.control == controlLimit && !a.setup.anyOpen() {
 			a.setup.limitText += strings.TrimSpace(text)
 			a.setup.limitTyped = true
+			a.setup.refusal = ""
+			a.touch()
+		}
+		return true
+	}
+	if a.setup.provider == "" {
+		return true
+	}
+	if a.setup.provider != modelsource.DefaultID {
+		if entry := a.connPanel.entry; entry != nil && !entry.choosing() && !a.setup.providerBusy {
+			entry.box.insert(strings.TrimSpace(text))
 			a.setup.refusal = ""
 			a.touch()
 		}
@@ -623,6 +686,10 @@ func (a *app) setupCommit() bool {
 	s := &a.setup
 	key := strings.TrimSpace(s.text)
 	if key == "" {
+		if s.connection {
+			s.refusal = "paste a key to connect"
+			return false
+		}
 		return true
 	}
 	if !config.LooksLikeAPIKey(key) {
@@ -738,6 +805,12 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 	if s.step() == setupControls {
 		return a.setupControlsFrame(width, height)
 	}
+	if s.provider == "" {
+		return a.setupProvidersFrame(width, height)
+	}
+	if s.provider != modelsource.DefaultID {
+		return a.setupServiceFrame(width, height)
+	}
 	// ── ONE RULE, ONE MEASURE, FOR THE TWO SCREENS THE WORDMARK IS DRAWN ON ───
 	//
 	// This block and the greeting that replaces it are the ONLY two screens that
@@ -803,9 +876,7 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 			}
 			if s.authLink != "" {
 				add("")
-				for _, line := range wrap(s.authLink, inner) {
-					add(pal.dim(linkify(line, s.authLink)))
-				}
+				add(pal.dim(linkify(fit(signInLinkWord, inner), s.authLink)))
 			}
 		default:
 			heading := "your openrouter key"
@@ -833,6 +904,7 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 	} else {
 		add("")
 	}
+	add(pal.dim("Back · alt+left"))
 	add(pal.dim(a.setupKeysWord()))
 
 	// A SHADE ABOVE THE MIDDLE, WHICH IS WHERE A CENTRED THING LOOKS CENTRED, and
@@ -866,6 +938,7 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 		lines = lines[over:]
 		caretY -= over
 	}
+	a.setup.providerHits = []setupProviderHit{{x: lead, y: top + len(body) - 2 - max(0, top+len(body)-height), width: inner, at: -1}}
 	a.caret = caretRow >= 0
 	return lines, lead + caretX, caretY
 }
@@ -915,6 +988,9 @@ const setupLead = "› "
 // setupTitle is the dim line over the question: where in the flow this is, in
 // the fewest words. One question needs no count.
 func setupTitle(s *setupFlow) string {
+	if s.connection {
+		return "connect a provider"
+	}
 	if len(s.steps) <= 1 {
 		return "setting up"
 	}
@@ -949,26 +1025,31 @@ const (
 // (onboarding.go's [app.setupControlsKeys]).
 func (a *app) setupKeysWord() string {
 	s := &a.setup
+	exit := setupSkipKeysWord
+	if s.connection {
+		exit = "esc close"
+	}
 	if s.step() == setupControls {
 		width, _ := a.size()
 		return a.setupControlsKeys(max(width-2*setupMargin, 1))
 	}
 	if s.authStarting || s.authFlow != nil {
+		if s.authLink != "" {
+			return "ctrl+y copies link · esc cancel"
+		}
 		return "esc cancel"
 	}
 	if strings.TrimSpace(s.text) == "" {
 		if a.routerConnect != nil {
-			// `esc skips setup`, IN THE SAME WORDS AS EVERY OTHER BRANCH. It read
-			// `esc not now` here alone, which is a promise about a later — and
-			// what esc actually does is stamp `setup_seen_at` and retire the
-			// controls screen for good ([app.endSetup]). The key is named for what
-			// it does, and the note it leaves behind says where those choices live
-			// afterwards.
-			return "enter connects in browser · paste a key · " + setupSkipKeysWord
+			// Onboarding skips; a later connection returns to its provider menu.
+			return setupBrowserConnectKeysWord + " · paste a key · " + exit
 		}
-		return "enter goes on without a key · " + setupSkipKeysWord
+		if s.connection {
+			return "paste a key · " + exit
+		}
+		return "enter goes on without a key · " + exit
 	}
-	return "enter saves it · " + setupSkipKeysWord
+	return "enter saves it · " + exit
 }
 
 // maskTyped is the key as it is being typed: one bullet per character and the
@@ -994,16 +1075,26 @@ func maskTyped(text string) string {
 // the environment still outranks the file and the session must get the one
 // Load would.
 func (a *app) handAPIKey() {
-	if a.applyAPIKey == nil {
-		return
-	}
 	key := config.APIKeyAt(a.profileDir)
-	if key == "" {
+	// A KEY WRITE CHANGES THE PICKER'S ACCESS TOO. The resolved default row
+	// otherwise retains its launch-time key until another provider connects.
+	a.sources = a.sources.WithDefaultKey(key)
+	if a.applyModelSources != nil {
+		a.applyModelSources(a.sources)
+	}
+	if a.at(pageSettings) {
+		a.sheet.sources = a.sources
+		a.sheet.build()
+	}
+	a.ensureAvailableModel()
+	if a.applyAPIKey == nil {
 		return
 	}
 	if err := a.applyAPIKey(key); err != nil {
 		a.note("the key is saved but this conversation could not take it · " + err.Error())
 	}
-	a.refreshCreditWarnings()
-	a.askCredits(credits.KeyChanged)
+	if key != "" {
+		a.refreshCreditWarnings()
+		a.askCredits(credits.KeyChanged)
+	}
 }

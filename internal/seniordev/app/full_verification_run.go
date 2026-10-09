@@ -42,18 +42,32 @@ type verificationObservation struct {
 }
 
 func newProjectVerificationRun(runner *pipeline, ctx context.Context) *projectVerificationRun {
+	// What the person named with --verify-build and --verify-test replaces
+	// discovery for its kind (fullverification/declared.go).
+	plan := fullverification.Discover(runner.workspace).Declare(fullverification.Declared{
+		Build: runner.args.VerifyBuild, Test: runner.args.VerifyTest,
+	})
+	lines := []string{
+		"# Independent full project verification",
+		"senior-dev independently discovered and ran the standard project entrypoints",
+		"below in fresh Bash subprocesses. These are process-derived command/exit",
+		"observations, not the model's claims. Consult them, but still run and cite",
+		"your own fresh verification commands.",
+	}
+	for _, entrypoint := range plan.Entrypoints {
+		if entrypoint.IsDeclared() {
+			lines = append(lines, "A command whose source is "+fullverification.DeclaredBuildSource+
+				" or "+fullverification.DeclaredTestSource+" was named by the person who started this run as the",
+				"project's own check, in place of discovery; it is the one this run is judged by.")
+			break
+		}
+	}
 	return &projectVerificationRun{
 		runner: runner,
 		ctx:    ctx,
-		plan:   fullverification.Discover(runner.workspace),
+		plan:   plan,
 		result: projectVerificationResult{Commands: []any{}},
-		lines: []string{
-			"# Independent full project verification",
-			"senior-dev independently discovered and ran the standard project entrypoints",
-			"below in fresh Bash subprocesses. These are process-derived command/exit",
-			"observations, not the model's claims. Consult them, but still run and cite",
-			"your own fresh verification commands.",
-		},
+		lines:  lines,
 		issues: []string{},
 	}
 }

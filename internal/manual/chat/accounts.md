@@ -71,12 +71,13 @@ Browser accounts open the account's sign-in page; key accounts collect a key in 
 message box without starting a browser trip. Neither route writes a credential into
 the conversation.
 
-## Signing in through a browser — it opens and the address stays on screen
+## Signing in through a browser — open or copy the sign-in link
 
 codeaf starts a loopback listener, opens the sign-in address with this machine's
-browser, and writes the address down under `waiting in your browser…` as well. The two
-are not alternatives: if this machine has no browser, the written address is still a
-way through. The waiting card has a copy affordance; after it is copied the card reads
+browser, and shows **open sign-in page** under `waiting in your browser…`. The short
+text links to the complete authorization URL without wrapping it across rows. If this
+machine has no browser, follow that link in a terminal that supports hyperlinks, or
+click the waiting card to copy the full URL. After it is copied the card reads
 `copied — paste it wherever you can sign in`.
 
 The loopback addresses tried, in order, are `127.0.0.1:8765`,

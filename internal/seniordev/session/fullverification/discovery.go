@@ -552,9 +552,50 @@ func ecosystemDefaults(workspace string) []Entrypoint {
 				add(KindTest, unittestDiscoveryCommand(workspace), "Python test files")
 			}
 		}
+	case fileExists(filepath.Join(workspace, "CMakeLists.txt")):
+		// A CMAKE PROJECT IS HELD TO THE FLOOR, SO IT IS GIVEN A WAY TO MEET IT.
+		// CMakeLists.txt has always made a workspace accountable, which demands
+		// a build and a test, while nothing here could name either: a project
+		// whose CI and README say no recognized command — a header-only library,
+		// most of them — failed verification for want of a command nobody
+		// looked for, with its own ctest suite sitting in the tree. It comes
+		// after every other ecosystem, so a project that already had a default
+		// keeps exactly the one it had.
+		//
+		// The build tree is senior-dev's own folder, which neither recorder
+		// nor the fingerprint ever reads, so configuring a project never puts
+		// a build directory into the answer and a later pass builds on the last
+		// one instead of from nothing.
+		//
+		// THE BUILD IS AS WIDE AS THE MACHINE, AND NO WIDER. A bare --parallel
+		// hands Makefiles an unlimited -j, which on ArduinoJson's test suite
+		// started every compiler at once and had them killed for memory; a
+		// serial build of the same suite does not fit the verification ceiling.
+		//
+		// THE TEST BUILDS ITS OWN TREE, as every other ecosystem's test default
+		// does (`go test` compiles, `mvn test` packages). Discover picks each kind
+		// on its own, so a CMake project whose README names a build and no test
+		// is paired with that build and this test; a ctest that assumed the
+		// default build had run would fail on a directory nothing configured,
+		// and the run would chase a red test that is really a missing folder.
+		// When the default build did run, configuring and building again is an
+		// incremental no-op. ctest runs from inside the tree rather than with
+		// --test-dir, which needs CMake 3.20 and older distributions do not ship.
+		add(KindBuild, cmakeConfigureAndBuild, "CMakeLists.txt")
+		add(KindTest, cmakeConfigureAndBuild+" && cd "+cmakeBuildDirectory+" && ctest --output-on-failure", "CMakeLists.txt")
 	}
 	return entries
 }
+
+// cmakeConfigureAndBuild configures and builds the CMake project in
+// [cmakeBuildDirectory], one job per processor.
+const cmakeConfigureAndBuild = "cmake -S . -B " + cmakeBuildDirectory + " && cmake --build " + cmakeBuildDirectory +
+	` --parallel "$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"`
+
+// cmakeBuildDirectory is where the CMake default configures and builds,
+// relative to the workspace: inside senior-dev's own folder, which is never
+// part of the tree a run compares, freezes, restores or ships.
+const cmakeBuildDirectory = ".senior-dev/cmake-build"
 
 // unittestDiscoveryCommand names each top-level test folder that actually
 // holds tests. Python 3.10 cannot use -t . for a folder without __init__.py:

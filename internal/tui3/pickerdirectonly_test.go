@@ -11,7 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-func TestDirectOnlyPickerKeepsTheUnkeyedDefaultHeadingAndManual(t *testing.T) {
+func TestDirectOnlyPickerOmitsTheUnkeyedDefaultAndExplainsItsModels(t *testing.T) {
 	t.Setenv(config.APIKeyEnv, "")
 	t.Setenv("OPENAI_API_KEY", "")
 	dir := t.TempDir()
@@ -41,12 +41,11 @@ func TestDirectOnlyPickerKeepsTheUnkeyedDefaultHeadingAndManual(t *testing.T) {
 	}
 	a.openPicker()
 	frame := plain(strings.Join(a.pick.rows(100, a.pick.height(100), a.pal, -1, func(string) string { return "" }), "\n"))
-	defaultAt, directAt := strings.Index(frame, "openrouter"), strings.Index(frame, "ollama")
-	if defaultAt < 0 || directAt <= defaultAt || !strings.Contains(frame, "fake-small") {
-		t.Fatalf("direct-only picker lost its default-first headings:\n%s", frame)
+	if strings.Contains(frame, "openrouter") || strings.Contains(frame, config.DefaultModel) || !strings.Contains(frame, "ollama/fake-small") {
+		t.Fatalf("direct-only picker must offer only the connected local model:\n%s", frame)
 	}
 	page, ok := manual.Chat().Page("commands")
-	if !ok || !strings.Contains(page, "even without its key") || !strings.Contains(page, "Ollama") {
-		t.Fatal("manual does not explain why a direct-only picker retains both headings")
+	if !ok || !strings.Contains(page, "OpenRouter is\nabsent without its key") || !strings.Contains(page, "only Ollama connected") {
+		t.Fatal("manual does not explain why a direct-only picker omits the unconnected provider")
 	}
 }

@@ -34,13 +34,11 @@ import (
 //   - It is bottom-anchored and takes the input line's place. The conversation
 //     shrinks above it; nothing pops up over the middle of what somebody was
 //     reading.
-//   - ENTER APPLIES AND THE LIST STAYS UP; esc only closes, and undoes nothing.
-//     Two models can be compared on their prices, chosen between and changed
-//     back without the list going away ([app.pickerKey] argues it). What esc
-//     does give back is the draft that was being typed and the frame — the
-//     picker holds its own filter text, and the person's half-written sentence
-//     is never in it. It used to close on enter and restore the model in use,
-//     which made every comparison a round trip.
+//   - ENTER ON A MODEL APPLIES AND CLOSES; esc closes without choosing a model.
+//     Both return the draft and the frame because the picker holds its own
+//     filter text; the person's half-written sentence is never in it. A
+//     confirmed choice is immediately visible in the conversation or parent
+//     page, and another comparison starts by reopening the list.
 const pickerRows = 12
 
 // picker is the overlay's whole state. The zero value is closed.
@@ -164,9 +162,8 @@ type picker struct {
 	// underneath may move it, which is the whole of the freeze on this list.
 	//
 	// THE ONE THING THAT MOVES IT IS THE PERSON ([picker.restate]). Enter
-	// chooses and leaves the list up, so the model in use can change while it
-	// is open; a mark left on the row they had just left would be the one thing
-	// on this list that was no longer true.
+	// on a provider can also choose its model while leaving the controls open;
+	// the mark must follow that choice until the list is closed.
 	current string
 
 	// held is each model's row facts, frozen the first time this list drew
@@ -2907,14 +2904,14 @@ func (a *app) openTaskPicker(id uint64) {
 
 // modelList is the source order stated in models.go, applied once here: the
 // door's list (the catalog, when it can answer without a fetch), then the disk
-// cache, then the built-ins. Each rung is tried only if the one above it came
+// cache. Each rung is tried only if the one above it came
 // back empty, and none of them can block.
 //
 // EVERY RUNG IS FILTERED THE SAME WAY ([chatModels]): a row on offer here is a
 // model you can talk to. The filter sits at the join rather than on any one
-// source because all three of them have carried a drawing model at some point —
+// source because both have carried a drawing model at some point —
 // the door's catalog publishes them, the cache is a file the door wrote before
-// this rule existed — and a rule enforced at two of three places is a rule with
+// this rule existed — and a rule enforced on only one source is a rule with
 // a way round it.
 func (a *app) modelList() []Model { return a.modelsFor(chatModel) }
 
@@ -2945,11 +2942,25 @@ func (a *app) modelPickerList() []Model {
 // model falls through for /model.
 func (a *app) modelsFor(keep modelFilter) []Model {
 	services := a.sources.All()
-	if len(services) < 2 {
+	if len(services) == 0 {
+		// Older doors supply their catalog without service metadata. Local
+		// launches always resolve a set and take the access checks below.
+		return a.modelsForDefault(keep)
+	}
+	if len(services) == 1 {
+		if !services[0].HasCredentials() {
+			return nil
+		}
 		return a.modelsForDefault(keep)
 	}
 	grouped := make([]Model, 0)
 	for order, service := range services {
+		// ACCESS COMES BEFORE THE CATALOG AND ITS CACHE. The default service
+		// is always in the routing set, even with no key, and a disconnected
+		// account's cached names are not models this person can choose.
+		if !service.HasCredentials() {
+			continue
+		}
 		var models []Model
 		if order == 0 {
 			models = a.modelsForDefault(keep)
@@ -2997,18 +3008,22 @@ func (a *app) modelsFor(keep modelFilter) []Model {
 	return grouped
 }
 
-// modelsForDefault is the exact pre-service ladder. Keeping it whole makes the
-// one-service path and each slot's fallback byte-for-byte what they were.
+// modelsForDefault reads the default provider's known catalog or cache. No
+// built-in model is evidence that this account can use it, so a cold list stays
+// empty until discovery answers.
 func (a *app) modelsForDefault(keep modelFilter) []Model {
 	if a.models != nil {
-		if list := keepModels(a.models(), keep); len(list) > 0 {
-			return list
+		if models := a.models(); models != nil {
+			// A known catalog is authoritative even when this slot has no
+			// matches; older cached rows must not enlarge what it serves.
+			return keepModels(cleanModels(models), keep)
 		}
 	}
-	if list := keepModels(a.cachedModels(), keep); len(list) > 0 {
-		return list
+	if !a.sources.Empty() {
+		service := a.sources.Default()
+		return keepModels(a.cachedModelsFor(service.Source.ID, service.Address), keep)
 	}
-	return keepModels(BuiltinModels(), keep)
+	return keepModels(a.cachedModels(), keep)
 }
 
 // nonChatWarning is what `/model <slug>` says instead of switching, and it is
@@ -3182,17 +3197,10 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "esc":
 		a.pick.close()
 
-	// ── ENTER CHOOSES AND THE LIST STAYS OPEN ───────────────────────────────
-	//
-	// It used to close on the press, which made every choice final and every
-	// comparison a round trip: pick a model, watch the list vanish, type
-	// `/model` again to see what the other one cost. The list is a TABLE now —
-	// a thing built to be read down and compared — and a table that shuts the
-	// moment you touch a row is a table you can use once.
-	//
-	// So enter applies and leaves it up, and `esc` is the way out. Applying is
-	// safe to repeat: switching a model twice lands on the second, and pinning
-	// a provider twice writes the second row.
+	// ENTER CONFIRMS A MODEL AND CLOSES THE LIST, so the next keystroke belongs
+	// to the draft again and the completed choice is visible in the conversation.
+	// Provider rows retain their navigation because a container can open another
+	// level instead of choosing a model.
 	case "enter":
 		chosen, ok := a.pick.choice()
 		task := a.pick.task
@@ -3215,7 +3223,7 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 		if ok {
 			// THE LAST ROW IS NOT A MODEL. It is the door to connect another
 			// provider, and enter on it opens that flow with the list behind
-			// it — a model row applies and stays, this row opens and leaves.
+			// it; neither kind of choice leaves this model list open.
 			if chosen.AddProvider {
 				a.pick.close()
 				return a.openAddProvider(false)
@@ -3228,7 +3236,7 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 			} else {
 				a.switchModel(chosen.ID, chosen.ContextLength)
 			}
-			a.restatePicker(&a.pick, a.model)
+			a.pick.close()
 		}
 
 	// The reasoning cycle sits above the filter's default branch on purpose: it

@@ -205,6 +205,7 @@ func (a *app) modelsFetched(msg modelsFetchedMsg) {
 		// The completion is also a refresh boundary for doors without a live
 		// subscription and for notifications still queued behind this message.
 		a.modelLists.refresh()
+		a.ensureAvailableModel()
 		if a.pick.open {
 			a.pick.restock(a.modelPickerList())
 		}
@@ -233,8 +234,9 @@ func (a *app) modelsFetched(msg modelsFetchedMsg) {
 	//
 	// IT IS AFTER THE FAILURE CHECK because a fetch that failed wrote nothing:
 	// dropping the memo there would throw away a good reading to punish a bad
-	// call, and the next frame would fall to the built-ins.
+	// call, leaving the next frame with no known rows.
 	a.forgetModelList("", modelcatalog.DefaultBaseURL)
+	a.ensureAvailableModel()
 	a.refreshCreditWarnings()
 	if a.pick.open && a.pick.refresh {
 		a.pick.restock(a.modelPickerList())

@@ -109,14 +109,14 @@ func TestTheSetupOpensOnAnOrdinaryLaunchWithNoKey(t *testing.T) {
 				t.Fatal("a fresh install launched the ordinary way was shown no setup at all")
 			}
 			screen := ordinaryScreen(a)
-			if !strings.Contains(screen, "connect openrouter") {
+			if !strings.Contains(screen, setupProviderHeading) {
 				t.Fatalf("the provider-connection step is not on the screen:\n%s", screen)
 			}
 			if !strings.Contains(screen, "setting up") {
 				t.Fatalf("the setup's own title is not on the screen:\n%s", screen)
 			}
-			if !strings.Contains(screen, "default provider") {
-				t.Fatalf("the OpenRouter connection was not scoped to the default provider:\n%s", screen)
+			if !strings.Contains(screen, setupProviderSentence) {
+				t.Fatalf("the chooser did not explain connecting a provider:\n%s", screen)
 			}
 		})
 	}

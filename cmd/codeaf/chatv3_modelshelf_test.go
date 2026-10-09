@@ -245,3 +245,25 @@ func TestTheShelfTakesTodaysListAndKeepsYesterdaysOnFailure(t *testing.T) {
 		t.Fatalf("~/.codeaf/v3/models.json is not today's list: %+v", cached)
 	}
 }
+
+func TestPickerModelsExcludeCapabilityFallbacksUntilAProviderListsThem(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	options := catalog.Options{BaseURL: catalog.DefaultBaseURL, Dir: t.TempDir(), HTTPClient: shelfRouter("", errors.New("offline"))}
+	models := catalog.Load(t.Context(), options)
+	shelf := newV3ModelShelf(models, options)
+	if len(v3Models(shelf)) == 0 {
+		t.Fatal("the fixture must carry engine capability fallbacks")
+	}
+	if offered := shelf.pickerModels(); len(offered) != 0 {
+		t.Fatalf("unlisted capability fallbacks reached the picker: %+v", offered)
+	}
+	options.HTTPClient = shelfRouter(shelfNewRow, nil)
+	listed, err := catalog.Refresh(t.Context(), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shelf.current.Store(listed)
+	if offered := shelf.pickerModels(); len(offered) != 1 || offered[0].ID != "vendor/shipped-this-morning" {
+		t.Fatalf("listed provider rows did not reach the picker: %+v", offered)
+	}
+}

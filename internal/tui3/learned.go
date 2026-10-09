@@ -28,11 +28,9 @@ package tui3
 //
 //     WHAT THAT IS, IS THE CALLER'S OWN FALLBACK AND NOT ALWAYS ABSENCE. A
 //     picture nobody has stat'd draws the nothing it already drew for a file it
-//     could not stat. A model list nobody has read falls to the rung BELOW it,
-//     which is [BuiltinModels] — five names rather than none — so a frame that
-//     met that miss shows different rows, not an empty box. Both are the answer
-//     the caller already had for "the list is not here"; neither is a blank
-//     where something used to be.
+//     could not stat. A model list nobody has read offers no invented rows;
+//     its provider's discovery can fill the list on the next frame. Both are
+//     the caller's own answer for a fact that has not arrived yet.
 //
 //   - [learned.learn] IS THE LOOP'S DOOR. It reads the name NOW, on the calling
 //     goroutine, and files what came back. Every caller of it is `open`, a tick,

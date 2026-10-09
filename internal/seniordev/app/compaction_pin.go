@@ -72,31 +72,33 @@ func overflowText(err error) string {
 	return strings.Join(parts, "\n")
 }
 
-// pinnedCapacityFor is the session's pinned capacity, if a rejection set one.
-func (backend *modelAPIBackend) pinnedCapacityFor(sessionID string) (float64, bool) {
+// pinnedCapacityFor is the model's pinned capacity, if a rejection set one.
+// The pin is keyed by model, not session: every session routed to the same
+// endpoint faces the same window, so the rejection tax is paid once per run.
+func (backend *modelAPIBackend) pinnedCapacityFor(providerID, modelID string) (float64, bool) {
 	if backend == nil {
 		return 0, false
 	}
 	backend.pinMu.Lock()
 	defer backend.pinMu.Unlock()
-	value, ok := backend.pinnedCapacity[sessionID]
+	value, ok := backend.pinnedCapacity[providerID+"/"+modelID]
 	return value, ok
 }
 
-// overflowConfigFor is the compaction config a session runs under: the project
-// config, with a pinned capacity folded in as a minimum.
-func (backend *modelAPIBackend) overflowConfigFor(sessionID string) (overflow.Config, error) {
+// overflowConfigFor is the compaction config a model's sessions run under: the
+// project config, with a pinned capacity folded in as a minimum.
+func (backend *modelAPIBackend) overflowConfigFor(providerID, modelID string) (overflow.Config, error) {
 	cfg, err := backend.config.overflowConfig()
 	if err != nil {
 		return cfg, err
 	}
-	return backend.withPinnedCapacity(cfg, sessionID), nil
+	return backend.withPinnedCapacity(cfg, providerID, modelID), nil
 }
 
-// withPinnedCapacity folds the session's pin into a compaction config as a
-// capacity_tokens minimum. Unpinned sessions get cfg back as is.
-func (backend *modelAPIBackend) withPinnedCapacity(cfg overflow.Config, sessionID string) overflow.Config {
-	pinned, ok := backend.pinnedCapacityFor(sessionID)
+// withPinnedCapacity folds the model's pin into a compaction config as a
+// capacity_tokens minimum. Unpinned models get cfg back as is.
+func (backend *modelAPIBackend) withPinnedCapacity(cfg overflow.Config, providerID, modelID string) overflow.Config {
+	pinned, ok := backend.pinnedCapacityFor(providerID, modelID)
 	if !ok {
 		return cfg
 	}
@@ -164,16 +166,17 @@ func (backend *modelAPIBackend) pinCapacityOnOverflow(
 	if backend.pinnedCapacity == nil {
 		backend.pinnedCapacity = map[string]float64{}
 	}
-	if previous, exists := backend.pinnedCapacity[sessionID]; exists && previous < pinned {
+	key := providerID + "/" + modelID
+	if previous, exists := backend.pinnedCapacity[key]; exists && previous < pinned {
 		pinned = previous
 	}
-	backend.pinnedCapacity[sessionID] = pinned
+	backend.pinnedCapacity[key] = pinned
 	backend.pinMu.Unlock()
 	data["source"] = "parsed"
 	data["limit_tokens"] = limit
 	data["reservation_tokens"] = reservation
 	data["pinned_capacity_tokens"] = pinned
-	if pinnedCfg, err := backend.overflowConfigFor(sessionID); err == nil {
+	if pinnedCfg, err := backend.overflowConfigFor(providerID, modelID); err == nil {
 		if _, model, projErr := (seniorDevModels{backend: backend, agent: agent}).projection(providerID, modelID); projErr == nil {
 			marks := overflow.Watermarks(overflow.UsableInput{Cfg: pinnedCfg, Model: model})
 			data["capacity_tokens"] = marks.Capacity
