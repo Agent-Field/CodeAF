@@ -13,6 +13,7 @@ import './blocks.css';
 
 export type TurnViewV2Props = {
   turn: TurnV2;
+  afterReply?: ReactNode;
   folded: boolean;
   onToggleFold: () => void;
   /** Draws the kinds this view does not own: work, task, deliverable, receipt. */
@@ -88,6 +89,7 @@ export function TurnViewV2(props: TurnViewV2Props) {
         <Block key={block.id} block={block} renderBlock={renderBlock} onRetry={onRetry} worked={block === lastAnswer ? worked : undefined} />
       ))}
       <TurnFooter state={footerState(turn)} onRetry={onRetry} retrying={retrying} />
+      {props.afterReply}
     </section>
   );
 }

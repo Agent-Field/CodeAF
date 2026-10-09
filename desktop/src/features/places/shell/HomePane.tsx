@@ -12,6 +12,8 @@ import { HomeComposer } from './HomeComposer';
 import { usePlacesShell } from './PlacesShell';
 import { homeViewFromDigest } from './selectors';
 import './home-pane.css';
+import { usePlaceOffers } from '../usePlaceOffers';
+import { PlaceOfferLine } from '../PlaceOfferLine';
 
 type Read = { digest?: HomeDigest; unplaced?: HomeDigest; failure?: PlacesError | Error };
 
@@ -65,11 +67,14 @@ export function PlaceQuickLook({ id, onClose, actions }: { id: string; onClose: 
  * draws the page the Places Home feature built, fed by the engine's digest and wired to the shell. The composer
  * starts a chat in this place; All places has none, because a chat started there would belong to no place.
  */
-export function HomePane({ pane, actions: paneActions }: PaneRenderProps) {
+export function HomePane({ pane, focused, actions: paneActions }: PaneRenderProps) {
   const shell = usePlacesShell();
   const strip = useContext(NewTabHostContext);
   const id = pane.place ?? 'root';
   const read = useHomeRead(id);
+  const offers = usePlaceOffers(id === 'root', id, false, focused);
+  const proposal = offers.offers.find(offer => (offer.kind === 'move' || offer.kind === 'create') && (offer.chatIds?.length ?? 0) > 0);
+  const offerName = proposal?.kind === 'create' ? proposal.name : proposal?.placeId ? shell?.index?.byId.get(proposal.placeId)?.name : undefined;
   const [looking, setLooking] = useState<string>();
   const now = useMemo(() => new Date(), [read.digest, read.unplaced]);
   const view = useMemo(() => (read.digest ? homeViewFromDigest(read.digest, shell?.places.graph, read.unplaced) : undefined), [read.digest, read.unplaced, shell?.places.graph]);
@@ -84,7 +89,7 @@ export function HomePane({ pane, actions: paneActions }: PaneRenderProps) {
     ? <HomeComposer shell={shell} placeId={view.id} placeName={view.title} draft={pane.draft} onDraft={paneActions.onDraft} dispatch={strip.dispatch} offline={connection.state === 'offline'}/>
     : undefined;
   return <div className="home-pane">
-    <HomePage view={view} connection={connection} actions={homeActions} composer={composer} now={now} newWindowHint={placeShortcuts.openInNewWindow}/>
+    <HomePage view={view} connection={connection} actions={homeActions} composer={composer} now={now} newWindowHint={placeShortcuts.openInNewWindow} suggestion={proposal && offerName && connection.state === 'ready' ? <PlaceOfferLine key={proposal.id} proposal={proposal} text={`${proposal.chatIds?.length} of these look like they belong in ${offerName}`} action={proposal.kind === 'create' ? `Create ${offerName}` : 'Move them'} onSettled={offers.refresh}/> : undefined}/>
     {looking && <PlaceQuickLook id={looking} actions={homeActions} onClose={() => setLooking(undefined)}/>}
   </div>;
 }
