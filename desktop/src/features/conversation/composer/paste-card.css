@@ -1,0 +1,84 @@
+.paste-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-2) var(--space-compact) 0;
+  border-radius: var(--radius-lg);
+  background: var(--field);
+}
+
+.paste-card[data-variant='composer'] {
+  width: var(--paste-card-width);
+  max-width: 100%;
+}
+
+.paste-card[data-variant='sent'] {
+  gap: var(--space-tight);
+  padding: var(--space-compact) var(--space-3) 0;
+  background: var(--surface);
+}
+
+.paste-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-tight);
+}
+
+.paste-card[data-variant='sent'] .paste-card-head {
+  gap: var(--space-2);
+}
+
+.paste-card-name.type-body {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+}
+
+.paste-card-lines.type-body {
+  font-size: var(--font-size-body);
+  color: var(--ink-3);
+}
+
+.paste-card-remove.icon-button {
+  margin-left: auto;
+  flex: none;
+  width: var(--icon-md);
+  height: var(--icon-md);
+  min-width: 0;
+  color: var(--ink-3);
+}
+
+.paste-card-preview {
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--mono);
+  color: var(--ink-3);
+  white-space: pre;
+  height: var(--paste-card-preview-height);
+  font-size: var(--paste-card-preview-size);
+  line-height: var(--paste-card-preview-leading);
+  -webkit-mask-image: linear-gradient(to bottom, black var(--paste-card-fade), transparent);
+  mask-image: linear-gradient(to bottom, black var(--paste-card-fade), transparent);
+}
+
+/* Sent, the preview is three lines at the bubble's own rhythm. */
+.paste-card[data-variant='sent'] .paste-card-preview {
+  height: var(--paste-sent-preview-height);
+  font-size: var(--font-size-label);
+  line-height: var(--line-height-body);
+  -webkit-mask-image: linear-gradient(to bottom, black var(--paste-sent-fade), transparent);
+  mask-image: linear-gradient(to bottom, black var(--paste-sent-fade), transparent);
+}
+
+/* A bubble holding a paste hugs its card; the typed words indent to sit under the card's own text. */
+.user-message-bubble[data-pasted] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-tiny) var(--space-tiny) var(--space-nav-inset);
+}
+
+.user-message-bubble[data-pasted] > .user-message-text,
+.user-message-bubble[data-pasted] > .user-message-toggle {
+  padding-inline: var(--space-nav-inset);
+}
