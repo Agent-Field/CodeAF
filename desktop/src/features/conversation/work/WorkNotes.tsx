@@ -22,8 +22,8 @@ export function WorkNotes({ notes }: { notes: TurnItem[] }) {
   return (
     <>
       {shown.map((item) =>
-        item.kind === 'note' && item.long ? (
-          <NoteItem key={item.id} text={item.text} long />
+        item.kind === 'note' ? (
+          <NoteItem key={item.id} text={item.text} long={item.long} tone={item.tone} />
         ) : (
           <p key={item.id} className="work-note" data-kind={item.kind}>
             {item.kind === 'steer' ? `↳ ${words(item)}` : words(item)}

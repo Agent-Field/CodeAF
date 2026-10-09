@@ -75,7 +75,7 @@ function addWork(turn: TurnV2, live: LiveOverlayV2, fresh: LiveCall[], waiting: 
   const block = tailWork(turn);
   block.steps.push(...liveSteps(fresh, waiting));
   if (thought) block.thinking = { text: thinking.text, streaming: thinking.seconds === undefined, seconds: thinking.seconds };
-  if (live.retry) block.notes.push({ kind: 'note', id: `${turn.id}:retry`, text: `Retrying — ${live.retry}` });
+  if (live.retry) block.notes.push({ kind: 'note', id: `${turn.id}:retry`, text: `Retrying — ${live.retry}`, tone: 'retry' });
   block.summary = summarize(block.steps, thinking.seconds);
 }
 

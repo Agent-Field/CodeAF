@@ -262,6 +262,8 @@
   --focus-halo-width: 6px;
   --opacity-control-disabled: 0.4;
   --hairline: .5px;
+  --radius-note-action: 7px;
+  --system-note-rule-gap: 14px;
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);
