@@ -73,12 +73,13 @@ export function PreviewField({ lines, label }: { lines: readonly FieldLine[]; la
 }
 
 /** The web card, whole: a real screenshot area on a light page (a page is light whatever the theme), then title and address. */
-export function PreviewShot({ title, address, image, heading, excerpt }: { title: string; address: string; image?: string; heading?: string; excerpt?: string }) {
+export function PreviewShot({ title, address, image, heading, excerpt, note }: { title: string; address: string; image?: string; heading?: string; excerpt?: string; /** Said when there is no picture; a sentence about the picture, never drawn as page content. */ note?: string }) {
   const contents = useContext(bodyOnly);
   return (
     <div className={contents ? 'preview-card-shot' : 'preview-card preview-card-shot'} data-kind="web">
-      <div className="preview-shot" aria-hidden={image ? undefined : true}>
+      <div className="preview-shot" aria-hidden={image || note ? undefined : true} data-note={!image && note ? true : undefined}>
         {image ? <img src={image} alt="" className="preview-shot-image"/> : <>{heading && <span className="preview-shot-heading">{heading}</span>}{excerpt && <span className="preview-shot-body">{excerpt}</span>}</>}
+        {!image && note && <span className="preview-shot-note">{note}</span>}
       </div>
       {!contents && <div className="preview-caption"><span className="preview-title">{title}</span><span className="preview-address">{address}</span></div>}
     </div>

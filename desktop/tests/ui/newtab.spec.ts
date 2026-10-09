@@ -109,10 +109,11 @@ test.describe('with the engine away', () => {
   expect((await saved(page)).tabs.at(-1).kind).toBe('conversation');
  });
 
- test('Escape clears the text, then closes the empty field; a URL is a question for now', async ({ page }) => {
+ test('Escape clears the text, then closes the empty field; a URL is offered as a page first and a question second', async ({ page }) => {
   await page.goto('/'); await openField(page);
   await field(page).fill('https://pkg.go.dev/encoding/json');
-  expect((await rowNames(page))[0]).toMatch(/^Ask “https:\/\/pkg\.go\.dev\/encoding\/json” in a new conversation/);
+  expect((await rowNames(page))[0]).toMatch(/^Open pkg\.go\.dev\/encoding\/json in a web tab/);
+  expect((await rowNames(page))[1]).toMatch(/^Ask “https:\/\/pkg\.go\.dev\/encoding\/json” in a new conversation/);
   await field(page).press('Escape');
   await expect(field(page)).toHaveValue('');
   await expect(page.getByRole('tab')).toHaveCount(2);
