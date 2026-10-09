@@ -4,7 +4,12 @@
 
 export type TabRoute = { taskId?: string; back: string[]; forward: string[] };
 
+/** What a file or diff tab shows: a workspace-relative path, and which view of it (Changes or File). */
+export type FileTarget = { path: string; view?: 'changes' | 'file' };
+
 export type TabView = {
+  /** The file a file or diff tab shows. It reads through the session in `sessionFile`. */
+  file?: FileTarget;
   sessionFile?: string;
   route?: TabRoute;
   folded?: Record<string, boolean>;
@@ -42,11 +47,18 @@ function isRoute(value: unknown): value is TabRoute {
   return taskOk && isStringList(route.back) && isStringList(route.forward);
 }
 
+function isFileTarget(value: unknown): value is FileTarget {
+  if (!value || typeof value !== 'object') return false;
+  const file = value as Partial<FileTarget>;
+  return typeof file.path === 'string' && file.path !== '' && (file.view === undefined || file.view === 'changes' || file.view === 'file');
+}
+
 /** Keeps only the view fields that validate. */
 export function cleanView(value: Record<string, unknown>): TabView {
   const view: TabView = {};
   if (typeof value.sessionFile === 'string' && value.sessionFile) view.sessionFile = value.sessionFile;
   if (isRoute(value.route)) view.route = value.route;
+  if (isFileTarget(value.file)) view.file = { path: value.file.path, ...(value.file.view ? { view: value.file.view } : {}) };
   if (isFlagMap(value.folded)) view.folded = value.folded;
   if (isFlagMap(value.open)) view.open = value.open;
   if (typeof value.tasksClosed === 'boolean') view.tasksClosed = value.tasksClosed;

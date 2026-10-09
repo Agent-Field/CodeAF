@@ -12,6 +12,8 @@ export type PaneActions = {
   onSummary: (summary: TabSummary) => void;
   /** Opens a task from this pane as a background task tab. */
   onOpenTaskTab: (taskId: string, title: string) => void;
+  /** Opens a workspace file from this pane as a file tab, or its changes as a diff tab. */
+  onOpenFile: (path: string, kind: 'file' | 'diff') => void;
 };
 
 /** The pane renderer slot: the body a kind draws inside the card (or inside one pane of a split). */
