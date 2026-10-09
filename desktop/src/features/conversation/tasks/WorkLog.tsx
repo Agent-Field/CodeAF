@@ -14,7 +14,7 @@ type Props = {
   readFile?: ReadFile;
 };
 
-/** The worker's commands as a terminal log: work rhythm, folded once the task is over. */
+/** The worker's commands as a terminal log. While the task runs the rows stand alone; once it is over they fold under one summary line. */
 export function WorkLog({ steps, live, ended, now, readFile }: Props) {
   const [chosen, setChosen] = useState<boolean>();
   const summary = logSummary(steps, live, ended);
@@ -22,10 +22,12 @@ export function WorkLog({ steps, live, ended, now, readFile }: Props) {
   const open = chosen ?? !ended;
   return (
     <section className="task-log" aria-label="Work log">
-      <Button className="task-log-toggle" aria-expanded={open} onClick={() => setChosen(!open)}>
-        <Icon name="chevron" size="xs" motion="disclosure" />
-        <span>{summary}</span>
-      </Button>
+      {ended && (
+        <Button className="task-log-toggle" aria-expanded={open} onClick={() => setChosen(!open)}>
+          <Icon name="chevron" size="xs" motion="disclosure" />
+          <span>{summary}</span>
+        </Button>
+      )}
       {open && (
         <ol className="task-log-list">
           {[...steps, ...(live ? [live] : [])].map((line) => (

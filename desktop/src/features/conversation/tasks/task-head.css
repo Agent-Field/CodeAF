@@ -1,0 +1,17 @@
+/* Task head: title with its two row actions, then one status line. Design v3 conversation 1c. */
+.task-view-head { display: flex; flex-direction: column; gap: var(--space-tight); }
+.task-view-titlebar { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.task-view-title.type-title { flex: 1; min-width: 0; margin: 0; font-size: var(--task-view-title-size); line-height: var(--type-title-leading); font-weight: var(--type-title-weight); letter-spacing: var(--task-view-title-tracking); overflow-wrap: anywhere; }
+.task-view-actions { display: flex; flex: none; gap: var(--space-half); }
+.task-view-action.icon-button { width: var(--control-height); height: var(--control-height); border-radius: var(--radius-control); color: var(--ink-3); }
+.task-view-action.icon-button:hover:not(:disabled), .task-view-action.icon-button:active:not(:disabled) { background: var(--field); color: var(--ink); }
+
+.task-view-status { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin: 0; color: var(--ink-3); font-size: var(--type-label-size); line-height: var(--type-label-leading); font-variant-numeric: tabular-nums; }
+.task-view-state-word { color: var(--ink-2); }
+.task-view-state-parts { min-width: 0; }
+.task-view-mark { display: inline-flex; align-items: center; justify-content: center; flex: none; color: var(--ink-3); }
+.task-view-dot { width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--mark-running); }
+.task-view-mark[data-kind="yourcall"] .task-view-dot { background: var(--mark-waiting); }
+.task-view-mark[data-kind="incomplete"] .task-view-dot { background: var(--mark-failed); }
+.task-view-reason { margin: 0; color: var(--ink-2); font-size: var(--type-label-size); line-height: var(--type-label-leading); }
+.task-view-action-error { margin: 0; color: var(--danger); font-size: var(--type-label-size); }
