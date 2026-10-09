@@ -370,7 +370,10 @@ var callSiteRoles = map[string]lane.Role{
 	"shaper":   lane.RoleAuxiliary,
 	"intake":   lane.RoleAuxiliary,
 	"careful":  lane.RoleAuxiliary,
-	"distill":  lane.RoleAuxiliary,
+	// internal/placegraph's two offers: errands nobody is waiting on.
+	"placefile":    lane.RoleAuxiliary,
+	"placesuggest": lane.RoleAuxiliary,
+	"distill":      lane.RoleAuxiliary,
 }
 
 // requestOf turns a replayed request into the one a chooser is asked.

@@ -93,3 +93,9 @@
   .settings-page { padding: var(--space-8) var(--space-4) var(--space-6); }
   .settings-row-inline { flex-wrap: wrap; }
 }
+
+/* A role nothing calls yet, a role following another, a provisional default: one quiet line. */
+.settings-row-state { margin: 0; color: var(--ink-2); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); }
+.settings-number { display: inline-flex; align-items: center; gap: var(--space-2); }
+.settings-number .text-input-field { width: var(--settings-number-width); }
+.settings-unit { color: var(--ink-2); font-size: var(--type-label-size); }
