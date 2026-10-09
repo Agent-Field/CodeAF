@@ -40,7 +40,8 @@ type QuestionOutcome struct {
 	// CallID is the tool call the question was about, copied from the question's
 	// subject. The decision record and the replayed history both carry it, so a
 	// window reopened later can put the receipt back under the call that asked.
-	// It is empty for a question about no call.
+	// A question about no call falls back to the `ask` call that raised it, and
+	// is empty only for a question nothing in the history asked.
 	CallID string
 }
 
@@ -67,6 +68,17 @@ func (w *questionWithdrawals) list() []QuestionOutcome {
 	return append([]QuestionOutcome(nil), w.kept...)
 }
 
+// anchorCall is the call a receipt hangs under. The call a question is about
+// wins, because that is the row the question points at; a plain question has no
+// such row, so the call that asked it stands in. Both are rows the replayed
+// history also draws, which is what makes the place the same after a reload.
+func anchorCall(subject SubjectRef, askedIn string) string {
+	if subject.CallID != "" {
+		return subject.CallID
+	}
+	return askedIn
+}
+
 // withdrawnOutcome is the receipt for a question that stopped being asked. The
 // reason is the asker's own clause ("the turn moved on without it"), joined to
 // the plain statement that nothing is owed any more.
@@ -78,7 +90,7 @@ func withdrawnOutcome(q Question) QuestionOutcome {
 	return QuestionOutcome{
 		Kind: q.Kind, Token: q.Token(), Head: q.Head,
 		Outcome: QuestionWithdrawn, Words: words,
-		By: string(q.Withdrawn.By), At: q.Withdrawn.At, CallID: q.Subject.CallID,
+		By: string(q.Withdrawn.By), At: q.Withdrawn.At, CallID: anchorCall(q.Subject, q.AskedIn),
 	}
 }
 
@@ -92,7 +104,7 @@ func decidedOutcome(record DecisionRecord) QuestionOutcome {
 	return QuestionOutcome{
 		Kind: record.Kind, Token: token, Head: record.Head,
 		Outcome: QuestionDecided, Words: sentenceCase(record.Words()),
-		By: string(record.By), At: record.At, CallID: record.Subject.CallID,
+		By: string(record.By), At: record.At, CallID: anchorCall(record.Subject, record.AskedIn),
 	}
 }
 

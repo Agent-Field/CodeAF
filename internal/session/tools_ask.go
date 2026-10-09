@@ -168,7 +168,7 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 	// `blocking.turn`, which is how a model says it has work in hand that does
 	// not depend on the answer. Either of them is enough to let the call carry on.
 	waits := in.Kind.Waits() && in.Blocking.waits()
-	q := Question{ID: id, Kind: QuestionAsk, Ask: in.Kind, Form: in.Form, Asker: Asker{Kind: AskerModel}, Head: in.Head, Reason: in.Reason, Subject: in.Subject, Options: in.Options, Input: in.Input, Pick: in.Pick, Stakes: in.Stakes, Scope: in.Scope, Attach: in.Attach,
+	q := Question{ID: id, Kind: QuestionAsk, Ask: in.Kind, Form: in.Form, Asker: Asker{Kind: AskerModel}, Head: in.Head, Reason: in.Reason, Subject: in.Subject, AskedIn: callIDFrom(ctx), Options: in.Options, Input: in.Input, Pick: in.Pick, Stakes: in.Stakes, Scope: in.Scope, Attach: in.Attach,
 		// AND WHICH STEP ASKED IT. A model may call `ask` three times in one
 		// batch, and those three questions are one moment to a person
 		// (question.go's [Question.Batch]).

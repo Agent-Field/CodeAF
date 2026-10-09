@@ -532,4 +532,10 @@ func TestSnapshotCarriesRecentOutcomesOnlyWhenThereAreSome(t *testing.T) {
 	if len(snapshot.RecentOutcomes) != 1 || snapshot.RecentOutcomes[0] != want {
 		t.Fatalf("recent outcomes = %+v", snapshot.RecentOutcomes)
 	}
+	a.mu.Lock()
+	a.outcomes[0].CallID = ""
+	a.mu.Unlock()
+	if w := request(b, "GET", path, ""); strings.Contains(w.Body.String(), "callId") {
+		t.Fatalf("an outcome with no call must omit callId: %s", w.Body.String())
+	}
 }
