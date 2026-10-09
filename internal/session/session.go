@@ -1567,6 +1567,13 @@ type Config struct {
 	// model — roles.Resolve's floor, not a failure.
 	RolesSource func(key string) (string, bool)
 
+	// Recaps asks the session to write a short recap of itself whenever a turn
+	// settles on a changed conversation, and keep it in meta.json (recap.go).
+	// Only a door that LISTS recaps sets it — today the desktop — because the
+	// call is a small but real bill on every changed conversation and the
+	// terminal would never show the result.
+	Recaps bool
+
 	// RouteCrew picks one task's crew — worker, planner and checker — for the
 	// task in the ask (internal/config's RouteCrew over this profile, wired by
 	// the surface). NIL IS NO ROUTER: the run's seats are then the role
@@ -3602,6 +3609,13 @@ type Agent struct {
 
 	title      string
 	titleTried bool
+
+	// recapSeen is the fingerprint of the last conversation this session asked a
+	// recap for, and recapBusy marks the one errand that may be running
+	// (recap.go). Both are guarded by mu: the attempt is marked before the
+	// errand so no second door buys a second call for the same words.
+	recapSeen string
+	recapBusy bool
 
 	// titleCtx is the lifetime of the naming errand and titleJobs counts the one
 	// that may be running. They are memoryCtx's bargain above, for the same
