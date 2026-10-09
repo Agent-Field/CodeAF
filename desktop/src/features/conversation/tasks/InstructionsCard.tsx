@@ -78,7 +78,7 @@ export function InstructionsCard({ text, onAmend }: InstructionsCardProps) {
         />
       ) : (
         <div className="instructions-body" data-open={open || undefined}>
-          <Markdown>{brief.summary}</Markdown>
+          <Markdown tone="secondary">{brief.summary}</Markdown>
         </div>
       )}
       {open && !editing && brief.sections.length > 1 && (

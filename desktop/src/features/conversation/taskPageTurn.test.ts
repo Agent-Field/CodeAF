@@ -173,3 +173,8 @@ test('state line carries the model tier and a cost only when the engine sent one
   const priced = taskPageModel(running({ Row: { ID: 'a', Title: '', Status: 'running', Model: 'deepseek/deepseek-v4.1-flash', USD: 0.06 } }), NOW);
   assert.deepEqual(priced.stateParts.slice(-2), ['Flash', '$0.06']);
 });
+
+test('between live commands the summary retains known completed steps', () => {
+  const page = running({ Row: { ID: 'a', Title: 'Work', Status: 'running', Steps: 3 }, Live: { Step: 0 } });
+  assert.deepEqual(taskPageModel(page, NOW).stateParts, ['step 3']);
+});

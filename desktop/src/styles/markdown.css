@@ -57,3 +57,6 @@
 .markdown-task-check[data-checked="true"] { background: var(--accent); box-shadow: none; }
 .markdown-task-check .app-icon { width: var(--task-check-icon); height: var(--task-check-icon); }
 .markdown .footnotes { margin-top: var(--space-4); color: var(--ink-2); font-size: var(--type-label-size); }
+
+/* Secondary documents share the same renderer, typography and controls. */
+.markdown[data-tone="secondary"], .markdown[data-tone="secondary"] a, .markdown[data-tone="secondary"] .markdown-code pre { color: var(--ink-2); }

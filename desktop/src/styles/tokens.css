@@ -837,6 +837,7 @@
   --home-composer-pad-end: var(--space-2);
   --home-composer-radius: 20px;
   --home-composer-leading: normal;
+  --task-detail-brief-max-height: 240px;
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);

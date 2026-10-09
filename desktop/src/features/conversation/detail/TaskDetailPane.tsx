@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Icon, PageHeading, Text } from '../../../components/ui';
+import { Button, Icon, Markdown, PageHeading, Text } from '../../../components/ui';
 import type { EngineTaskRow } from '../../chat/engine-client';
 import { rowFlags, rowKind } from '../taskState';
 import { QuestionCardV2, type QuestionCardProps } from '../tray/QuestionCardV2';
@@ -72,13 +72,15 @@ export function TaskDetailPane({ row, parentTitle, instructions, question, now, 
       {brief && (
         <section className="task-detail-brief" aria-label="Instructions">
           <h3 className="task-detail-label">Instructions</h3>
-          <Text className="task-detail-text">{brief.summary}</Text>
-          {brief.sections.length > 1 && (
-            <>
-              <Button className="task-detail-full" aria-expanded={full} onClick={() => setFull(!full)}>Full brief</Button>
-              {full && <FullBrief sections={brief.sections} />}
-            </>
-          )}
+          <div className="task-detail-instructions-scroll" role="region" aria-label="Task instructions" tabIndex={0}>
+            <Markdown tone="secondary" className="task-detail-text">{brief.summary}</Markdown>
+            {brief.sections.length > 1 && (
+              <>
+                <Button className="task-detail-full" aria-expanded={full} onClick={() => setFull(!full)}>Full brief</Button>
+                {full && <FullBrief sections={brief.sections} />}
+              </>
+            )}
+          </div>
         </section>
       )}
       <Button className="task-detail-open" onClick={(event) => onOpenTask(row.ID, event.metaKey || event.ctrlKey)}>
