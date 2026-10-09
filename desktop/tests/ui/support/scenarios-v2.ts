@@ -107,4 +107,22 @@ export function waitingConsent(): EngineQuestion {
 
 export const waitingTurn: WireEntry[] = [narrate('Removing the old build.'), call('c1', 'bash', { command: 'rm -rf build' }, '', { Answered: false })];
 
+// The notes internal/session/readhandoff.go writes when a batch of reads goes to a quick task.
+const HANDED =
+  "[This reading was handed to quick task 1, which finished it and returned the distilled answer below — the raw reads never entered this conversation. If you need one file's exact text to defend the answer, read that one file directly.]";
+const COVERED = '[Covered by the handoff to quick task 1 — the distilled answer is on the first call of this batch.]';
+export const HANDOFF_ANSWER = "What I've learned: README.md says the folder is a scratch workspace for the codeaf desktop app.";
+
+/** A read batch the engine handed to a quick task: the answer rides on the first call, the list call is only covered. */
+export function handoffReply(): Scenario {
+  const reply: WireEntry[] = [
+    narrate('Reading the sandbox.'),
+    call('h1', 'read', { path: '/home/santosh/sandbox/README.md' }, `${HANDED}\n\n${HANDOFF_ANSWER}`, { Hint: 'handed to quick task 1' }),
+    call('h2', 'ls', { path: '/home/santosh/sandbox/notes' }, COVERED, { Hint: 'handed to quick task 1' }),
+    call('h3', 'mystery_probe', { path: '/home/santosh/sandbox/notes', depth: 2 }, 'probed 3 entries'),
+    answer('The sandbox is a scratch workspace.'),
+  ];
+  return { initial: { title: 'Sandbox', entries: [] }, turns: [{ entries: reply }], tools: {}, files: {} };
+}
+
 export { user };
