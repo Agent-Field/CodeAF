@@ -116,3 +116,27 @@ test('a failed turn keeps the draft and offers Retry', async ({ page }) => {
   await expect(message(page)).toHaveValue('please keep me');
   expect(posts(engine, '/turn').length).toBeGreaterThanOrEqual(1);
 });
+
+test('a queued message waits above the composer until the engine records it; removing it says it stays queued', async ({ page }) => {
+  const engine = await installMockEngine(page, { ...streaming(), manual: true });
+  await openApp(page);
+  await send(page, 'Say hello');
+  const queued = page.getByRole('list', { name: 'Queued messages' });
+  for (const [index, text] of ['then update the changelog', 'and tag the release'].entries()) {
+    await message(page).fill(text);
+    await page.getByRole('button', { name: 'More send options' }).click();
+    await page.getByRole('menuitem', { name: /Queue/ }).click();
+    await expect(queued.getByRole('listitem')).toHaveCount(index + 1);
+    await expect(message(page)).toHaveValue('');
+  }
+  await expect(queued.getByRole('listitem')).toHaveCount(2);
+  await queued.getByRole('button', { name: 'Remove queued message' }).last().click();
+  await expect(queued.getByRole('listitem')).toHaveCount(1);
+  await expect(page.getByRole('status').filter({ hasText: 'Removed here only' })).toBeVisible();
+  engine.advance();
+  await expect(async () => {
+    await page.reload();
+    await expect(page.getByText('then update the changelog', { exact: true })).toBeVisible({ timeout: 1500 });
+  }).toPass({ timeout: 15_000 });
+  await expect(queued).toHaveCount(0);
+});

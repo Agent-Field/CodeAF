@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { installMockEngine } from './support/mock-engine';
 import { withTasks } from './support/scenarios';
-import { openApp, send } from './support/conversation';
+import { openApp, posts, send } from './support/conversation';
 
 const panel = (page: Page) => page.getByRole('complementary', { name: 'Tasks' });
 const crumbs = (page: Page) => page.getByRole('navigation', { name: 'Breadcrumb' });
@@ -40,7 +40,7 @@ test('panel shows counts and nested rows, closes, and reopens from the composer 
 
 test('a task notice opens the task in the same tab; Back and Ctrl+[ return', async ({ page }) => {
   await startWithTasks(page);
-  const notice = () => page.locator('.turn').getByRole('button', { name: /Migrate the settings screen/ });
+  const notice = () => page.locator('.turn-v2').getByRole('button', { name: /Migrate the settings screen/ });
   await notice().click();
   await expect(crumbs(page)).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Migrate the settings screen' })).toBeVisible();
@@ -66,4 +66,24 @@ test('modifier-click on a task row opens a background tab', async ({ page }) => 
   await expect(page.getByRole('tab')).toHaveCount(2);
   await expect(crumbs(page)).toHaveCount(0);
   await expect(page.getByRole('tab').first()).toHaveAttribute('aria-selected', 'true');
+});
+
+test('a note sent from the task view reaches the task and shows as the person\'s note', async ({ page }) => {
+  const engine = await startWithTasks(page);
+  await page.locator('.turn-v2').getByRole('button', { name: /Migrate the settings screen/ }).click();
+  const note = page.getByRole('textbox', { name: 'Note to this task' });
+  await note.fill('also cover the empty case');
+  await page.getByRole('button', { name: 'Send note' }).click();
+  await expect.poll(() => posts(engine, '/tasks/2/note').length).toBe(1);
+  expect(posts(engine, '/tasks/2/note')[0].body).toEqual({ text: 'also cover the empty case' });
+  await expect(page.getByRole('list', { name: 'Notes' })).toContainText('also cover the empty case');
+});
+
+test('a running task row pauses its task through the engine', async ({ page }) => {
+  const engine = await startWithTasks(page);
+  const row = panel(page).locator('.task-row', { has: page.locator('[data-task-id="2.2"]') });
+  await row.hover();
+  await row.getByRole('button', { name: 'Pause' }).click();
+  await expect.poll(() => posts(engine, '/pause').length).toBe(1);
+  expect(posts(engine, '/pause')[0].path).toMatch(/\/sessions\/mock-1\/tasks\/2\.2\/pause$/);
 });
