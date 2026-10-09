@@ -1377,6 +1377,14 @@ func engineWorkspace(path string) (string, error) {
 		expanded = filepath.Join(home, expanded)
 	}
 	expanded = filepath.Clean(expanded)
+	// A WORKSPACE IS NAMED BY ITS RESOLVED PATH, so a folder reached through a
+	// symlink keys the same project, conversation history and engine host as
+	// the folder it points at. Clean alone leaves both spellings distinct and
+	// sha256(Clean(...)) in enginehost.where then builds one host directory per
+	// spelling — two engines, two histories, one folder.
+	if resolved, err := filepath.EvalSymlinks(expanded); err == nil {
+		expanded = resolved
+	}
 	info, err := os.Stat(expanded)
 	if err != nil {
 		return "", fmt.Errorf("open %s: %w", expanded, err)
