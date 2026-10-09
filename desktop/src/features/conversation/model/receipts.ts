@@ -14,8 +14,15 @@ type Asked = { key: string; callId?: string; receipt: Omit<Receipt, 'id'> };
 /** Question key -> the id of the turn its receipt was drawn in. */
 export type ReceiptPlaces = Map<string, string>;
 
-const MOVED_ON = 'No longer needed — the turn moved on';
-const withdrawnText = (reason?: string) => (reason ? `No longer needed — ${reason}` : MOVED_ON);
+const MOVED_ON = 'No longer needed. The turn moved on.';
+
+/** The engine's reason as its own sentence after the fixed lead, in the engine's words. */
+function withdrawnText(reason?: string): string {
+  const said = reason?.trim();
+  if (!said) return MOVED_ON;
+  const sentence = said[0].toUpperCase() + said.slice(1);
+  return `No longer needed. ${/[.!?]$/.test(sentence) ? sentence : `${sentence}.`}`;
+}
 
 const DECIDERS: Record<string, string> = { person: 'you', window: 'you', asker: 'codeaf' };
 
