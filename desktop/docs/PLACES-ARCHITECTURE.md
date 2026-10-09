@@ -175,6 +175,11 @@ type Bundle struct {
 - `features/tabs/model.ts` keeps the reducer pure. Only its persistence adapter
   (`readWorkspace` / save effect) changes, behind `t-d5-prim-workspace-sync`. On
   first run the v1 `localStorage` key is imported into `now` and then left alone.
+- **As built** (`WORKSPACE-SYNC.md`): the expected revision travels in the PUT body, not
+  `If-Match`; a 409 answers `{code:"conflict", current}`; a long poll
+  (`GET …?after=N&wait=1`) mirrors other windows' writes instead of a `workspace`
+  world record, which today's world reader would reject. `split.focus` is window-local
+  as well.
 
 ### 3.5 Engine-wide stream
 
