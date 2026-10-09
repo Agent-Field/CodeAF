@@ -734,6 +734,13 @@ type v3Options struct {
 	// Session is an explicit transcript to open; empty resumes this
 	// directory's most recent, or makes one.
 	Session string
+	// Fresh is a launch that asked for a conversation of its own (a desktop
+	// window's new chat, [remote.Hello.New]). It mints EXACTLY ONE folder and
+	// resolves nothing: resolving "this workspace's latest" first minted a
+	// folder of its own in a workspace with none, and the new chat was then
+	// minted beside it, leaving an empty meta.json folder behind for every
+	// first chat in a workspace.
+	Fresh bool
 	// NoCompact and Yolo are the two flags that change what a session may do.
 	NoCompact bool
 	Yolo      bool
@@ -756,6 +763,10 @@ type v3Options struct {
 	// session still starts on one model, but the roles the person has chosen for
 	// answer from their own choice instead of the conversation's model.
 	DesktopRoles bool
+	// PlaceGraph is the desktop's place graph file, carried in the desktop's
+	// hello ([remote.LaunchShape.PlaceGraph]). Empty — every terminal door —
+	// is a session that reads no places.
+	PlaceGraph string
 	// Budget is the ceiling an unattended session carries its own work on
 	// under: hours, dollars, or both (internal/session's principal.go). THE
 	// ZERO BUDGET IS THE DEFAULT AND IS NOT A CEILING OF ZERO — it is the
@@ -859,6 +870,9 @@ type v3Launch struct {
 	// bucket is the list of this project's conversations.
 	Place  session.Place
 	Bucket string
+	// Fresh says Place was minted for this launch alone ([v3Options.Fresh]),
+	// so a door that wanted a new conversation already has it.
+	Fresh bool
 	// Subharnesses is the assembly the four seams on Config were taken from
 	// (chatv3_subharness.go). It is carried out of the launch for ONE thing the
 	// config cannot hold: the belt watch, which is a question about an agent that
@@ -882,8 +896,14 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	launchDir := proc.LaunchDir
 
 	project, owned := v3Workspace(launchDir, opts.Workspace)
-	found, err := v3ResolveSession(strings.TrimSpace(opts.Session), project,
-		v3StampLaunchDir(launchDir, project), owned)
+	var found v3Session
+	var err error
+	if opts.Fresh && strings.TrimSpace(opts.Session) == "" {
+		found, err = v3FreshSession(project, v3StampLaunchDir(launchDir, project), owned)
+	} else {
+		found, err = v3ResolveSession(strings.TrimSpace(opts.Session), project,
+			v3StampLaunchDir(launchDir, project), owned)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1145,6 +1165,21 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	}
 	if opts.OneModel && opts.DesktopRoles {
 		cfg.RolesSource = config.DesktopRolesSource(settings.ProfileDir)
+		// The desktop lists conversations with a recap beside each (History), so
+		// its sessions write one when a turn settles. The terminal never shows
+		// it and so never pays for it.
+		cfg.Recaps = true
+	}
+	// The desktop's places, through the one door the bridge builds its own
+	// half from, so the Using list and message[0] read the same two files
+	// under the same source policy. A path that is not absolute is refused
+	// here rather than resolved against wherever this process stands.
+	if opts.PlaceGraph != "" {
+		door, err := session.PlaceGraphDoorFor(opts.PlaceGraph)
+		if err != nil {
+			return nil, err
+		}
+		cfg.PlaceGraph = door
 	}
 	// AND WHO THIS SESSION IS WORKING FOR (internal/session's
 	// principal.go): the unattended flag and its ceiling, plus the door's own
@@ -1236,6 +1271,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		Resumed:      resumed,
 		Place:        found.Place,
 		Bucket:       found.Bucket,
+		Fresh:        opts.Fresh && strings.TrimSpace(opts.Session) == "",
 		Subharnesses: subharnesses,
 	}, nil
 }

@@ -131,7 +131,7 @@ test('a job nothing calls yet says so, and a split job follows the one it came f
   await page.reload();
   await openSettings(page);
   await expect(page.getByRole('button', { name: 'Model for Summaries' })).toHaveText('Kimi K3');
-  await expect(page.locator('[data-role="summaries"]')).toContainText('Not in use yet');
+  await expect(page.locator('[data-role="summaries"]')).not.toContainText('Not in use yet');
 });
 
 test('the Places organization choices save at once, refuse what they cannot hold, and reset', async ({ page }) => {

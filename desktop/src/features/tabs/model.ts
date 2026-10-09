@@ -6,6 +6,7 @@ import { kindOrDefault } from './kinds/types.ts';
 import { arrange, clampRatio, initialWorkspace, isArranged, layoutFits, makeSplit, titleRank, withSplitTitle, splitCapacity } from './helpers.ts';
 import { reduceNewTab, type NewTabAction } from './reducers/newtab.ts';
 import { reduceGroups, type GroupAction } from './reducers/groups.ts';
+import { reduceHistory, type HistoryAction } from './reducers/history.ts';
 import { reduceSplit, type SplitAction } from './reducers/split.ts';
 import { reduceTabs, type TabAction } from './reducers/tabs.ts';
 import type { ClosedPlace, ClosedTab, Pane, SplitLayout, Tab, TabGroup, TitleSource, WorkspaceState } from './types.ts';
@@ -107,9 +108,9 @@ export function readWorkspace(): WorkspaceState {
   } catch { return initialWorkspace(); }
 }
 
-export type WorkspaceAction = TabAction | GroupAction | SplitAction | NewTabAction;
+export type WorkspaceAction = TabAction | GroupAction | SplitAction | NewTabAction | HistoryAction;
 type Slice = (state: WorkspaceState, action: { type: string }) => WorkspaceState | undefined;
-const slices: readonly Slice[] = [reduceTabs, reduceGroups, reduceSplit, reduceNewTab];
+const slices: readonly Slice[] = [reduceTabs, reduceGroups, reduceSplit, reduceNewTab, reduceHistory];
 
 /** Runs the slice that owns the action, then holds the strip's laws (helpers `arrange`) whatever that slice did. */
 export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState {

@@ -50,17 +50,29 @@ func init() {
 }
 
 // words is the set of meaningful lowercase words in s. Plurals fold onto the
-// singular so "parsers" meets "parser".
+// singular so "parsers" meets "parser". A hyphenated word also counts joined,
+// because its halves are often too short to count at all: "Wi-Fi" was two
+// two-letter fragments and said nothing, where "wifi" is the topic.
 func words(s string) map[string]bool {
 	out := map[string]bool{}
-	for _, w := range strings.FieldsFunc(strings.ToLower(s), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
+	add := func(w string) {
 		if len([]rune(w)) < 3 || stopWords[w] {
-			continue
+			return
 		}
 		if len(w) > 4 && strings.HasSuffix(w, "s") && !strings.HasSuffix(w, "ss") {
 			w = strings.TrimSuffix(w, "s")
 		}
 		out[w] = true
+	}
+	notWord := func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }
+	lower := strings.ToLower(s)
+	for _, w := range strings.FieldsFunc(lower, notWord) {
+		add(w)
+	}
+	for _, run := range strings.FieldsFunc(lower, func(r rune) bool { return r != '-' && notWord(r) }) {
+		if parts := strings.FieldsFunc(run, notWord); len(parts) > 1 {
+			add(strings.Join(parts, ""))
+		}
 	}
 	return out
 }
@@ -252,7 +264,21 @@ func findClusters(chats []ChatEvidence, minSize int) []cluster {
 			loose = append(loose, group...)
 		}
 	}
-	out = append(out, wordClusters(loose, minSize)...)
+	byWords := wordClusters(loose, minSize)
+	out = append(out, byWords...)
+	grouped := map[string]bool{}
+	for _, cl := range byWords {
+		for _, c := range cl.chats {
+			grouped[c.ChatID] = true
+		}
+	}
+	var rest []ChatEvidence
+	for _, c := range loose {
+		if !grouped[c.ChatID] {
+			rest = append(rest, c)
+		}
+	}
+	out = append(out, anchorClusters(rest, minSize)...)
 	sort.SliceStable(out, func(i, j int) bool {
 		if len(out[i].chats) != len(out[j].chats) {
 			return len(out[i].chats) > len(out[j].chats)
@@ -266,7 +292,12 @@ func wordClusters(chats []ChatEvidence, minSize int) []cluster {
 	sort.SliceStable(chats, func(i, j int) bool { return chats[i].ChatID < chats[j].ChatID })
 	sets := make([]map[string]bool, len(chats))
 	for i, c := range chats {
-		sets[i] = words(clipRunes(c.Title, 200) + " " + clipRunes(c.Summary, 600))
+		// TITLES ONLY. A recap is written in its writer's own vocabulary —
+		// "discussed", "recommended", "codeaf" — so two recaps share words
+		// whatever they are about, and a pairwise rule over them links chats
+		// that have nothing in common. Recaps reach grouping through
+		// [anchorClusters], whose title rule is what keeps that vocabulary out.
+		sets[i] = words(clipRunes(c.Title, 200))
 	}
 	parent := make([]int, len(chats))
 	for i := range parent {
@@ -319,11 +350,101 @@ func wordClusters(chats []ChatEvidence, minSize int) []cluster {
 	return out
 }
 
+// anchorClusters groups chats around ONE TOPIC WORD, which is the shape real
+// chats about one thing actually have.
+//
+// MEASURED, NOT ASSUMED. On thirteen real conversations (two groups of five
+// and three strays, every title and recap written by
+// deepseek/deepseek-v4.1-flash on 2026-10-09) the pairwise rule above linked
+// none of the twenty same-group pairs: short titles about one subject share
+// one word, not a third of their words — "Tomato drip emitter mineral clogs"
+// and "Half-inch vs quarter-inch drip tubing" share "drip" and nothing else.
+// Adding the recaps to the pairwise sets made it worse, because a longer text
+// has a larger union. No threshold separates those groups, so none was moved.
+//
+// THE RULE: a word anchors a group when the chats that use it — in their
+// title, their recap or their opening message — number at least minSize, AND
+// at least half of them use it IN THEIR TITLE. The title is what a chat is
+// about; the recap is what was said in it. Requiring the title is what keeps a
+// recap's own vocabulary ("discussed", "recommended", "codeaf") from anchoring
+// anything, since no title says it, while still letting a recap bring in a
+// chat whose title named the subject another way. Groups are taken largest
+// first and a chat joins at most one; the model is still asked whether the
+// group belongs together before anything is offered.
+func anchorClusters(chats []ChatEvidence, minSize int) []cluster {
+	if len(chats) < minSize {
+		return nil
+	}
+	sort.SliceStable(chats, func(i, j int) bool { return chats[i].ChatID < chats[j].ChatID })
+	type anchor struct {
+		word    string
+		members []int
+	}
+	reach := map[string][]int{}
+	inTitle := map[string]int{}
+	titles := make([]map[string]bool, len(chats))
+	for i, c := range chats {
+		title := words(clipRunes(c.Title, 200))
+		titles[i] = title
+		for w := range title {
+			inTitle[w]++
+		}
+		said := words(clipRunes(c.Summary, 600) + " " + clipRunes(c.FirstMessage, 600))
+		for w := range title {
+			said[w] = true
+		}
+		for w := range said {
+			reach[w] = append(reach[w], i)
+		}
+	}
+	var anchors []anchor
+	for w, members := range reach {
+		if len(members) >= minSize && inTitle[w]*2 >= len(members) {
+			anchors = append(anchors, anchor{w, members})
+		}
+	}
+	sort.Slice(anchors, func(i, j int) bool {
+		if len(anchors[i].members) != len(anchors[j].members) {
+			return len(anchors[i].members) > len(anchors[j].members)
+		}
+		return anchors[i].word < anchors[j].word
+	})
+	taken := make([]bool, len(chats))
+	var out []cluster
+	for _, a := range anchors {
+		var group []ChatEvidence
+		titled := 0
+		for _, i := range a.members {
+			if !taken[i] {
+				group = append(group, chats[i])
+				if titles[i][a.word] {
+					titled++
+				}
+			}
+		}
+		// The title rule holds for what is LEFT, so a group cannot be the
+		// recap-only remainder of a topic a larger group already took.
+		if len(group) < minSize || titled*2 < len(group) {
+			continue
+		}
+		for _, i := range a.members {
+			taken[i] = true
+		}
+		core := coreWords(group)
+		core[a.word] = true
+		out = append(out, cluster{chats: group, core: core})
+	}
+	return out
+}
+
 // coreWords are the words at least clusterCoreShare of the chats share.
 func coreWords(chats []ChatEvidence) map[string]bool {
 	count := map[string]int{}
 	for _, c := range chats {
-		for w := range chatWords(c) {
+		// Title and opening message only, for [wordClusters]' reason: the
+		// core is matched against place names, and a recap's vocabulary
+		// would match a place called "Recommendations".
+		for w := range words(clipRunes(c.Title, 200) + " " + clipRunes(c.FirstMessage, 600)) {
 			count[w]++
 		}
 	}

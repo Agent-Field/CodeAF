@@ -48,6 +48,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"did deleting the place delete my chats", "desktop-places"},
 		{"can a place give the chat my ssh folder as a source", "desktop-places"},
 		{"is the place's folder the working directory or an attached folder", "desktop-places"},
+		{"why is my new chat in Release on a different model", "desktop-places"},
+		{"the place says allow but the chat still asks me before running commands", "desktop-places"},
+		{"I picked a model in the chat will the place change it back", "desktop-places"},
+
+		// The desktop's History tab (history.md).
+		{"where do I find my old conversations in the desktop app", "history"},
+		{"how do I search what we decided last week in the desktop history", "history"},
+		{"does the desktop archive my conversations after twelve hours idle", "history"},
+		{"which model writes the recap under each conversation", "history"},
+		{"can I read an old conversation without opening it", "history"},
+		{"how do I archive a conversation myself in the desktop history", "history"},
+		{"what does restore all do on the archived tabs message", "history"},
 
 		{"what can you do", "what-i-can-do"},
 		{"why does a wrapped help line stay under its key", "keys"},

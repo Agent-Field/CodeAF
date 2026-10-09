@@ -162,7 +162,10 @@ func classify(method string) callClass {
 		// The wall's two model asks are reads of the naming role, asked off the
 		// update loop and bounded by the wall; queued behind a turn they would
 		// wait out the wall's patience and answer nobody.
-		MethodTeamsName, MethodTeamsPropose:
+		MethodTeamsName, MethodTeamsPropose,
+		// And the places ask, for the same reason: a model's opinion on where a
+		// chat belongs is worth nothing once the turn it waited behind is over.
+		MethodPlacesAsk:
 		return classGetter
 	case MethodQuestionResolve, MethodQuestionHold,
 		MethodConsent, MethodConsentRemember,
