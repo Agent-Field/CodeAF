@@ -18,7 +18,8 @@ test.describe('with the engine away', () => {
 
  test('the New tab button opens an empty card with one centred field and no engine call', async ({ page }) => {
   const calls: string[] = [];
-  page.on('request', request => { if (request.url().includes('/api/engine/')) calls.push(request.url()); });
+  // The window-wide world feed (engine-wide attention for the Inbox and the dock badge) is not the tab's call: it runs from load and retries while the engine is away.
+  page.on('request', request => { if (request.url().includes('/api/engine/') && !/\/api\/engine\/(world|events)\b/.test(request.url())) calls.push(request.url()); });
   await page.goto('/');
   calls.length = 0;
   await openField(page);
@@ -71,7 +72,7 @@ test.describe('with the engine away', () => {
   await page.getByRole('dialog', { name: 'Rename tab' }).getByRole('button', { name: 'Save' }).click();
   await newConversation(page, 'Fix it in the lexer');
   await page.getByRole('tab', { name: 'Fix it in the lexer', exact: true }).click({ button: 'right' });
-  await page.getByRole('menuitem', { name: /^Close tab/ }).click();
+  await page.getByRole('menuitem', { name: /^Close tab\b/ }).click();
   await openField(page);
   await field(page).fill('fix');
   const key = await mod(page);
@@ -125,7 +126,7 @@ test.describe('with the engine away', () => {
   await page.goto('/');
   await newConversation(page, 'Fix it in the lexer');
   await page.getByRole('tab', { name: 'Fix it in the lexer', exact: true }).click({ button: 'right' });
-  await page.getByRole('menuitem', { name: /^Close tab/ }).click();
+  await page.getByRole('menuitem', { name: /^Close tab\b/ }).click();
   await openField(page);
   await field(page).fill('lexer');
   await page.getByRole('option', { name: /Fix it in the lexer/ }).click();

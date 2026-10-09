@@ -44,3 +44,12 @@ test('⌘G (Ctrl G on Linux) groups the selected tabs; ⌘⇧G and ⌥⌘G mean 
   assert.equal(mac(key('G', { metaKey: true, shiftKey: true })), undefined);
   assert.equal(mac(key('©', { code: 'KeyG', metaKey: true, altKey: true })), undefined);
 });
+
+test('⌘O and Ctrl O are the new-tab field\'s Open file…; Shift or Alt makes them something else', () => {
+  assert.deepEqual(mac(key('o', { metaKey: true })), { id: 'open-file' });
+  assert.deepEqual(linux(key('o', { ctrlKey: true })), { id: 'open-file' });
+  assert.equal(mac(key('o', { ctrlKey: true })), undefined);
+  assert.equal(linux(key('o', { metaKey: true })), undefined);
+  assert.equal(linux(key('O', { ctrlKey: true, shiftKey: true })), undefined);
+  assert.equal(linux(key('o', { ctrlKey: true, altKey: true, code: 'KeyO' })), undefined);
+});

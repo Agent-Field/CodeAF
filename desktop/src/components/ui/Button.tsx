@@ -12,10 +12,10 @@ export function Button({ variant = 'ghost', loading = false, disabled, className
 
 /** control: 28px toolbar button. row: 24px action inside a hovered row. message: 26px message action. */
 export type IconButtonSize = 'control' | 'row' | 'message';
-type IconButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children' | 'aria-label'> & { ref?: Ref<HTMLButtonElement>; label: string; icon: IconName; iconSize?: IconSize; size?: IconButtonSize };
+type IconButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children' | 'aria-label'> & { ref?: Ref<HTMLButtonElement>; label: string;  /** Muted shortcut hint after the tooltip text. */ shortcut?: string; icon: IconName; iconSize?: IconSize; size?: IconButtonSize };
 /** Icon-only, so it always carries an accessible name and the shared delayed tooltip (title text or the label). */
-export function IconButton({ label, icon, iconSize = 'md', size = 'control', className = '', type = 'button', title, onPointerEnter, onPointerLeave, onPointerDown, onFocus, onBlur, ...props }: IconButtonProps) {
- const tooltip = useTooltip(title ?? label, { onPointerEnter, onPointerLeave, onPointerDown, onFocus, onBlur });
+export function IconButton({ label, icon, iconSize = 'md', size = 'control', className = '', type = 'button', title, shortcut, onPointerEnter, onPointerLeave, onPointerDown, onFocus, onBlur, ...props }: IconButtonProps) {
+ const tooltip = useTooltip(title ?? label, { onPointerEnter, onPointerLeave, onPointerDown, onFocus, onBlur }, shortcut);
  return <>
   <button {...props} {...tooltip.props} type={type} aria-label={label} data-size={size} className={`icon-button ${className}`}><Icon name={icon} size={iconSize}/></button>
   {tooltip.element}

@@ -2,7 +2,8 @@ import { startFor, startSentence } from '../../../terminal/open';
 import { bind, bindingOf } from '../../../terminal/bindings';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { TextInput } from '../../../../components/ui';
-import { isMac } from '../../../../design/keyboard';
+import { isMac, shellShortcuts, shortcutLayer } from '../../../../design/keyboard';
+import { useShortcuts } from '../../../../design/useShortcuts';
 import { connectEngine, sendEngine } from '../../../chat/engine-client';
 import { tabHolding, visibleTabs } from '../../model';
 import { terminalKind, newTerminalShortcut } from '../terminal';
@@ -14,7 +15,7 @@ import { NewTabView } from './NewTabView';
 
 const shortcut = (digit?: number) => (digit === undefined ? undefined : isMac ? `⌘${digit}` : `Ctrl ${digit}`);
 const terminalShortcut = newTerminalShortcut;
-const fileShortcut = isMac ? '⌘O' : 'Ctrl O';
+const fileShortcut = shellShortcuts.openFile;
 const caption = 'Type a question, a file, a URL, or a command.';
 const fileCaption = 'Type part of a file name.';
 
@@ -82,6 +83,12 @@ function NewTabField({ host, paneId, focused }: { host: NewTabHost; paneId: stri
     else if (row.kind === 'tab') { dispatch({ type: 'select', id: row.target! }); closeSelf(); }
     else dispatch({ type: 'newtab-reopen', id: paneId, closedId: row.target! });
   }
+  // ⌘/Ctrl O is the Open file… row's chord: the focused field only, through the one registry, and the same pick the row makes.
+  useShortcuts(shortcutLayer.surface, shortcut => {
+    if (shortcut.id !== 'open-file' || document.querySelector('dialog[open]')) return false;
+    pick(rows.find(row => row.kind === 'openfile'));
+    return true;
+  }, focused);
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.nativeEvent.isComposing) return;
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
