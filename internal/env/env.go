@@ -76,6 +76,25 @@ func EnvironWithout(names ...string) []string {
 	return kept
 }
 
+// EnvironWithoutOwnedSecrets returns the process environment minus every
+// codeaf-owned variable (either spelling) whose name says it holds a token, key
+// or secret. WHAT IT IS FOR: a shell the person types into on the engine host
+// is theirs, and the bridge's own connection credentials are not.
+func EnvironWithoutOwnedSecrets() []string {
+	environ := os.Environ()
+	kept := make([]string, 0, len(environ))
+	for _, entry := range environ {
+		name, _, _ := strings.Cut(entry, "=")
+		upper := strings.ToUpper(name)
+		owned := strings.HasPrefix(upper, prefix) || strings.HasPrefix(upper, legacyPrefix)
+		if owned && (strings.Contains(upper, "TOKEN") || strings.Contains(upper, "KEY") || strings.Contains(upper, "SECRET")) {
+			continue
+		}
+		kept = append(kept, entry)
+	}
+	return kept
+}
+
 // Spelling names the spelling that supplied an owned variable's value: the
 // current one when it is set and non-empty, the former one when only it is
 // set. A receipt that says which variable answered has to say the one the

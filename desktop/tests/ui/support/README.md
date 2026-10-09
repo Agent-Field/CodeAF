@@ -47,4 +47,10 @@ POST /tasks/{id}/{note|amend|pause|resume|cancel} are accepted and logged (a
 note is added to the task page). Answering removes that question and records
 its decision in `recentOutcomes`. While running, `mode: 'queue'` holds the
 message until the reply lands and `mode: 'steer'` records a steer entry.
+Terminals: `scenario.terminals` seeds terminals and jobs (`id`, optional
+`command`, `state`, `exitCode`, `output` as raw terminal text). The mock serves
+`/terminals` list, start, state, `stream` (finite body from `?after`), `output`
+(plain text), `input` (appended to the log), `resize`, `close` and `remove`.
+`terminal-client.spec.ts` shows them through the typed client.
+
 `mock-engine.spec.ts` shows each endpoint through `fetch` only.
