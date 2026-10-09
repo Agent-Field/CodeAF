@@ -246,7 +246,7 @@ export function useDeleteFlow(actions: PlaceActions, runner: Runner) {
 export function HomeFrame({ label, children, composer, onUp }: { label: string; children: ReactNode; composer?: ReactNode; onUp?: () => void }) {
   return <section className="home-page" aria-label={label}
     onKeyDown={event => { if (onUp && (event.metaKey || event.ctrlKey) && !event.altKey && event.key === '[') { event.preventDefault(); onUp(); } }}>
-    <div className="home-scroll" tabIndex={-1}><div className="home-column">{children}</div></div>
+    <div className="home-scroll" data-scroll-key="home" tabIndex={-1}><div className="home-column">{children}</div></div>
     {composer && <div className="home-composer">{composer}</div>}
   </section>;
 }

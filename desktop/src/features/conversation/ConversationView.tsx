@@ -183,7 +183,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
               {taskId ? <TaskRouteBar taskId={taskId} tasks={model.tasks} route={route} onRoute={setRoute} /> : <span className="conversation-bar-title">{barTitle}</span>}
             </ConversationBar>
           )}
-          <div ref={scroller} className="conversation-scroll" data-scrolled={scrolled || undefined} data-task={inTask || undefined}>
+          <div ref={scroller} className="conversation-scroll" data-scroll-key={inTask ? 'task-page' : 'conversation'} data-scrolled={scrolled || undefined} data-task={inTask || undefined}>
             <div ref={content} className="conversation-column">
               {taskId ? (
                 <TaskRoute
