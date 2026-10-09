@@ -1,27 +1,28 @@
 //! Native tab accelerators belong to the app menu on macOS, before WebKit handles keys.
+use crate::menu_route::{action_of, target_label};
 use tauri::{
     menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
     AppHandle, Emitter, Manager, Runtime,
 };
 
-#[derive(Clone, serde::Serialize)]
-#[serde(rename_all = "lowercase")]
-enum TabAction {
-    New,
-    Close,
-    Reopen,
-    Overview,
-    Next,
-    Previous,
-}
-
 pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     // Keep native application, Edit, Services, fullscreen and Help behaviors.
     let menu = Menu::default(app)?;
-    for item in menu.items()? {
+    for (index, item) in menu.items()?.into_iter().enumerate() {
         let Some(submenu) = item.as_submenu() else {
             continue;
         };
+        if cfg!(target_os = "macos") && index == 0 {
+            // The application menu: Settings sits directly under About, where macOS puts it.
+            submenu.insert_items(
+                &[
+                    &PredefinedMenuItem::separator(app)?,
+                    &MenuItem::with_id(app, "app-settings", "Settings…", true, Some("Cmd+Comma"))?,
+                ],
+                1,
+            )?;
+            continue;
+        }
         match submenu.text()?.as_str() {
             "File" => {
                 // Default CloseWindow reserves Cmd+W, which must close the tab instead.
@@ -29,8 +30,16 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                     submenu.remove(&item)?;
                 }
                 submenu.append_items(&[
+                    &MenuItem::with_id(app, "window-new", "New Window", true, Some("Cmd+N"))?,
                     &MenuItem::with_id(app, "tab-new", "New Tab", true, Some("Cmd+T"))?,
                     &MenuItem::with_id(app, "tab-close", "Close Tab", true, Some("Cmd+W"))?,
+                    &MenuItem::with_id(
+                        app,
+                        "tab-close-stop",
+                        "Close and Stop",
+                        true,
+                        Some("Alt+Cmd+W"),
+                    )?,
                     &MenuItem::with_id(
                         app,
                         "tab-reopen",
@@ -77,6 +86,9 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             "View" => {
                 submenu.append_items(&[
                     &PredefinedMenuItem::separator(app)?,
+                    &MenuItem::with_id(app, "view-sidebar", "Toggle Sidebar", true, Some("Cmd+S"))?,
+                    &MenuItem::with_id(app, "view-focus", "Focus Mode", true, Some("Cmd+Shift+F"))?,
+                    &MenuItem::with_id(app, "view-history", "History", true, Some("Cmd+Y"))?,
                     &MenuItem::with_id(
                         app,
                         "tab-overview",
@@ -93,27 +105,26 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 }
 
 pub fn handle<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
-    let action = match event.id().as_ref() {
-        "tab-new" => TabAction::New,
-        "tab-close" => TabAction::Close,
-        "tab-reopen" => TabAction::Reopen,
-        "tab-overview" => TabAction::Overview,
-        "tab-next" => TabAction::Next,
-        "tab-previous" => TabAction::Previous,
-        "window-close" => {
-            let focused = crate::windows::app_windows(app)
-                .into_iter()
-                .map(|(_, window)| window)
-                .find(|window| window.is_focused().unwrap_or(false));
-            if let Some(window) = focused.or_else(|| crate::windows::app_window(app, "main")) {
-                let _ = window.close();
-            }
-            return;
+    let windows = crate::windows::app_windows(app);
+    let focused = windows
+        .iter()
+        .find(|(_, window)| window.is_focused().unwrap_or(false))
+        .map(|(label, _)| label.clone());
+    let Some(label) = target_label(focused, windows.iter().map(|(l, _)| l.clone()).collect())
+    else {
+        return;
+    };
+    if event.id().as_ref() == "window-close" {
+        if let Some(window) = crate::windows::app_window(app, &label) {
+            let _ = window.close();
         }
-        _ => return,
+        return;
+    }
+    let Some(action) = action_of(event.id().as_ref()) else {
+        return;
     };
     // UI-only command: no model, tool, session or engine execution crosses this boundary.
-    if let Err(error) = app.emit_to("main", "desktop-tab-action", action) {
+    if let Err(error) = app.emit_to(label.as_str(), "desktop-tab-action", action) {
         eprintln!("Unable to deliver desktop tab action: {error}");
     }
 }

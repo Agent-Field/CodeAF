@@ -83,11 +83,11 @@ export function useTabKeys({ enabled, state, dispatch, visible, overviewOpen, se
 
 type MenuOptions = {
   state: WorkspaceState; dispatch: Dispatch<WorkspaceAction>; visible: readonly Tab[]; renaming: boolean;
-  onActivate: () => void; closeTab: (id: string) => void; setOverviewOpen: (update: boolean | ((open: boolean) => boolean)) => void;
+  onActivate: () => void; closeTab: (id: string) => void; closeAndStop: (id: string) => void; setOverviewOpen: (update: boolean | ((open: boolean) => boolean)) => void;
 };
 
 /** Native menu items and the rail's "open this kind" request arrive as window events; they act on the workspace even from another page. */
-export function useDesktopTabActions({ state, dispatch, visible, renaming, onActivate, closeTab, setOverviewOpen }: MenuOptions) {
+export function useDesktopTabActions({ state, dispatch, visible, renaming, onActivate, closeTab, closeAndStop, setOverviewOpen }: MenuOptions) {
   useEffect(() => {
     const onMenuAction = (event: Event) => {
       const action: unknown = (event as CustomEvent).detail;
@@ -95,6 +95,7 @@ export function useDesktopTabActions({ state, dispatch, visible, renaming, onAct
       onActivate();
       if (action === 'overview') setOverviewOpen(open => !open);
       else if (action === 'close') { setOverviewOpen(false); closeTab(state.activeId); }
+      else if (action === 'close-stop') { setOverviewOpen(false); closeAndStop(state.activeId); }
       else if (action === 'new' || action === 'reopen') { setOverviewOpen(false); dispatch({ type: action }); }
       else { setOverviewOpen(false); dispatch({ type: 'select', id: neighbour(visible, state.activeId, action === 'next' ? 1 : -1).id }); }
     };
