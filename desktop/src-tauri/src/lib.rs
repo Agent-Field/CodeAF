@@ -1,6 +1,9 @@
+mod dialogs;
 #[cfg(target_os = "macos")]
 mod menu;
 mod native;
+mod notifications;
+mod windows;
 
 use std::sync::Mutex;
 use tauri::Manager;
@@ -121,14 +124,35 @@ pub fn run() {
     let builder = builder.menu(menu::build).on_menu_event(menu::handle);
     builder
         .manage(EngineRuntime::default())
+        .manage(windows::Windows::default())
+        .manage(notifications::Attention::default())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                windows::on_destroyed(window.app_handle(), window.label());
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             engine_health,
             engine_connection,
             native::open_path,
             native::reveal_path,
             native::host_name,
-            native::open_url
+            native::open_url,
+            windows::window_open,
+            windows::window_move_tab,
+            windows::window_claim_handoff,
+            windows::window_list,
+            windows::window_focus,
+            windows::window_set_title,
+            windows::window_context,
+            dialogs::dialog_pick,
+            notifications::notify_permission,
+            notifications::notify_request_permission,
+            notifications::notify_attention,
+            notifications::badge_set
         ])
         .run(tauri::generate_context!())
         .expect("error while running codeaf");
