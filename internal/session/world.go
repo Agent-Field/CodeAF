@@ -272,6 +272,9 @@ type SessionRow struct {
 	Archived bool
 	// ArchivedTasks is the person's per-task visibility choice from metadata.
 	ArchivedTasks map[string]bool
+	// FailuresSeen is [Meta.FailuresSeen]: failures that landed at or before it
+	// have been looked at ([SessionRow.UnseenFailures]).
+	FailuresSeen time.Time
 }
 
 // NeedsPerson reports that this conversation is stopped waiting on somebody. It
@@ -559,6 +562,7 @@ func (w *World) Adopt(root string, seed SessionRow, now time.Time) bool {
 		Open:          InUse(transcript),
 		Archived:      meta.Archived,
 		ArchivedTasks: meta.ArchivedTasks,
+		FailuresSeen:  meta.FailuresSeen,
 		Places:        metaPlaces(meta),
 	}
 	row.Presence, row.Live = ReadSessionPresence(dir, now)
@@ -758,6 +762,7 @@ func readSessionRow(dir, id string, now time.Time) (SessionRow, bool) {
 		Live:            live,
 		Archived:        meta.Archived,
 		ArchivedTasks:   meta.ArchivedTasks,
+		FailuresSeen:    meta.FailuresSeen,
 		Places:          metaPlaces(meta),
 	}, true
 }

@@ -1,9 +1,9 @@
 // The Inbox's data (design 3l "Inbox, background work"): closed tabs whose work goes on, and open tabs that need the person.
-import type { WorldRow, AttentionItem as WorldAttention } from '../../chat/world-client.ts';
+import type { FailureId, WorldRow, AttentionItem as WorldAttention } from '../../chat/world-client.ts';
 import type { WorldState } from '../../chat/world-store.ts';
 import { chatIdFromSessionFile } from '../../places/client.ts';
 import { panesOf, type Pane, type Tab } from '../model.ts';
-import { hasUnseenFailure, type FailedSeen } from './failedSeen.ts';
+import { rowHasUnseenFailure, type FailedSeen, type PendingSeen } from './failedSeen.ts';
 import { paneRunning, type Summaries } from './running.ts';
 
 /**
@@ -15,7 +15,8 @@ type Row = { id: string; title: string; chatId?: string; tabId?: string; stale?:
 export type BackgroundItem = Row & { state: 'running' | 'waiting'; since?: number };
 /** `asked` is when the question was put (ms), from the engine's own stamp; absent when nothing says. */
 export type NeedsYouItem = Row & { text?: string; asked?: number };
-export type FailedItem = Row & { failed: number };
+/** `failure` is the newest failure's identity when the engine sent one: what marking it seen must name. */
+export type FailedItem = Row & { failed: number; failure?: FailureId };
 export type BackgroundWork = {
   running: readonly BackgroundItem[];
   needsYou: readonly NeedsYouItem[];
@@ -91,6 +92,8 @@ type Build = {
   stopping: ReadonlySet<string>;
   world: Pick<WorldState, 'status' | 'rows' | 'items'>;
   seen: FailedSeen;
+  /** Marks sent and not yet echoed by the feed; absent means none. */
+  pending?: PendingSeen;
   now: number;
 };
 
@@ -102,7 +105,7 @@ const chatsOf = (tab: Tab) => panesOf(tab).flatMap(pane => (pane.sessionFile ? [
  * window cannot see (work in other windows, or in no window) and fills in a closed tab it has not read yet.
  */
 export function buildBackgroundWork(input: Build): BackgroundWork {
-  const { tabs, closed, summaries, since, stopping, world, seen, now } = input;
+  const { tabs, closed, summaries, since, stopping, world, seen, pending, now } = input;
   const stale = world.status === 'unavailable' && world.rows.length > 0;
   const rows = new Map<string, WorldRow>(world.rows.filter(row => !row.archived && !row.deletionPending).map(row => [row.session, row] as const));
   const openChats = new Map<string, Tab>(tabs.flatMap(tab => chatsOf(tab).map(chat => [chat, tab] as const)));
@@ -123,9 +126,9 @@ export function buildBackgroundWork(input: Build): BackgroundWork {
     .map(item => ({ id: `chat:${item.session}:${item.key}`, title: item.title || rows.get(item.session)?.title || 'Conversation', chatId: item.session, text: item.text, ...askedAt(item.asked), ...(stale ? { stale } : {}) }));
 
   const failed: FailedItem[] = [...rows.values()]
-    .filter(row => row.failed > 0 && hasUnseenFailure(seen, row.session, row.failed) && row.at && now - Date.parse(row.at) <= recentFailureMs)
+    .filter(row => rowHasUnseenFailure(row, seen, pending) && row.at && now - Date.parse(row.at) <= recentFailureMs)
     .sort((a, b) => Date.parse(b.at!) - Date.parse(a.at!)).slice(0, failedListLimit)
-    .map(row => ({ id: `failed:${row.session}`, title: row.title, chatId: row.session, failed: row.failed, tabId: (openChats.get(row.session) ?? closedChats.get(row.session))?.id, ...(stale ? { stale } : {}) }));
+    .map(row => ({ id: `failed:${row.session}`, title: row.title, chatId: row.session, failed: row.unseenFailed ?? row.failed, ...(row.failure ? { failure: row.failure } : {}), tabId: (openChats.get(row.session) ?? closedChats.get(row.session))?.id, ...(stale ? { stale } : {}) }));
 
   return {
     running: [...fromTabs, ...fromFeed, ...elsewhere],

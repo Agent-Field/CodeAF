@@ -162,6 +162,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const inboxWanted = background.running.length > 0 || background.needsYou.length > 0 || background.failed.length > 0;
   useEffect(() => { if (inboxWanted) dispatch({ type: 'ensure-inbox' }); }, [inboxWanted]);
   useWindowHandoff(dispatch);
+  useEffect(() => { if (sync.status.overtaken > 0) toasts.show({ key: `workspace-overtaken-${place}`, message: [`Another window changed ${sync.status.overtaken} of your tab edits. Your latest tab set is shown.`], tone: 'warning', onSettled: sync.acknowledge }); }, [sync.status.overtaken, place]);
   useEffect(() => { if (sync.status.error) toasts.show({ key: `workspace-status-${place}`, message: [sync.status.error], tone: 'warning', actions: [{ label: 'Try again', onSelect: sync.retry }] }); }, [sync.status.error, place]);
   // A tab moves to a new window on THIS strip's place, which a Places window can change after it opened.
   const placeNow = useRef(place);
