@@ -1,8 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
+import { writeFileSync } from 'node:fs';
 import { installMockEngine, type Scenario } from './support/mock-engine';
 import { openApp, send, expectNoHorizontalOverflow } from './support/conversation';
 import type { EngineQuestion, EngineTaskPage, EngineTaskRow } from '../../src/features/chat/engine-client';
-import { expectAccessible } from './contracts';
+import { expectAccessible, tokenColor } from './contracts';
 
 const at = '2026-10-09T10:00:00Z';
 const row = (ID: string, Title: string, Status: string, extra: Partial<EngineTaskRow> = {}): EngineTaskRow => ({
@@ -198,5 +199,46 @@ for (const theme of ['light', 'dark'] as const) {
     await page.setViewportSize({ width: 1200, height: 480 });
     await expect.poll(() => pane.evaluate(el => el.getBoundingClientRect().bottom <= innerHeight)).toBeTruthy();
     await expectNoHorizontalOverflow(page);
+  });
+}
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`${scheme}: task detail heading retains the design 1d typography over shared title defaults`, async ({ page }, testInfo) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    await openExpanded(page);
+    await rowButton(page, '1.1').click();
+    const pane = detail(page, 'Read the current screen');
+    const heading = pane.getByRole('heading', { name: 'Read the current screen' });
+    await expect(heading).toBeVisible();
+    const typography = await heading.evaluate((node) => {
+      const css = getComputedStyle(node);
+      return { size: css.fontSize, weight: css.fontWeight, leading: css.lineHeight, tracking: css.letterSpacing, margin: css.margin, family: css.fontFamily };
+    });
+    const roles = await pane.evaluate((node) => Object.fromEntries(['.task-detail-crumb', '.task-detail-facts', '.task-detail-label', '.task-detail-text', '.task-detail-text p'].map((selector) => {
+      const css = getComputedStyle(node.querySelector(selector)!);
+      return [selector, { size: css.fontSize, weight: css.fontWeight, leading: css.lineHeight, color: css.color }];
+    })));
+    if (process.env.CODEAF_UI_RESULTS) {
+      writeFileSync(`${process.env.CODEAF_UI_RESULTS}/task-title-${testInfo.project.name}-${scheme}.json`, JSON.stringify({ typography, roles }, null, 2));
+      await pane.screenshot({ path: `${process.env.CODEAF_UI_RESULTS}/task-title-${testInfo.project.name}-${scheme}.png` });
+    }
+    expect(typography.size).toBe('18px');
+    expect(typography.weight).toBe('600');
+    expect(parseFloat(typography.leading)).toBeCloseTo(23.4, 2);
+    expect(parseFloat(typography.tracking)).toBeCloseTo(-0.216, 3);
+    expect(typography.margin).toBe('0px');
+    expect(roles['.task-detail-crumb'].size).toBe('12px');
+    expect(parseFloat(roles['.task-detail-crumb'].leading)).toBeCloseTo(17.4, 2);
+    expect(roles['.task-detail-crumb'].color).toBe(await tokenColor(page, 'ink-3'));
+    expect(roles['.task-detail-facts'].size).toBe('12px');
+    expect(roles['.task-detail-label'].size).toBe('11px');
+    expect(roles['.task-detail-label'].weight).toBe('500');
+    for (const selector of ['.task-detail-text', '.task-detail-text p']) {
+      expect(roles[selector].size).toBe('13px');
+      expect(parseFloat(roles[selector].leading)).toBeCloseTo(20.8, 2);
+      expect(roles[selector].color).toBe(await tokenColor(page, 'ink-2'));
+    }
+    await expect(pane).toHaveCSS('padding', '24px');
+    await expect(pane).toHaveCSS('width', '428px');
   });
 }
