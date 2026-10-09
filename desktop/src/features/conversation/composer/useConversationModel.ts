@@ -5,6 +5,8 @@ import { orderModels } from './modelOrder';
 import type { EffortControl } from './ModelPopover';
 
 export const DEFAULT_MODEL_LABEL = 'DeepSeek v4.1 Flash';
+/** The default model's pinned short label (owner decision D4), shipped so a fresh tab reads it with no engine call. */
+export const DEFAULT_MODEL_SHORT = 'DS Flash';
 
 /** The default model reads as its design name; every other model reads as the provider names it. */
 const labelOf = (model: CatalogModel): string => (model.id === ENGINE_MODEL ? DEFAULT_MODEL_LABEL : model.name || model.id);

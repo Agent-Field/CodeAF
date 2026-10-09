@@ -10,6 +10,9 @@ button.receipt:hover .receipt-label { color: var(--ink); }
 .receipt-dot { width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--mark-waiting); }
 .receipt-ring { width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; box-shadow: inset 0 0 0 var(--receipt-ring-width) currentColor; }
 .receipt-label { color: var(--ink-2); }
+/* Who and when read quieter than the verdict, the check mark is ink-3, and a withdrawn line is ink-3 throughout (design v3 Receipts in the flow). */
+.receipt-rest, .receipt[data-state="answered"] .receipt-mark { color: var(--ink-3); }
+.receipt[data-state="withdrawn"] { color: var(--ink-3); }
 /* A command in a receipt is a small field chip, as inline code is in prose (design v3 Receipts in the flow). */
 .receipt-code { padding: var(--border-width) var(--space-tiny); border-radius: var(--radius-xs); background: var(--field); font-family: var(--mono); font-size: var(--type-mono-small-size); color: var(--ink); }
 .receipt-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -507,7 +507,6 @@
   --danger: oklch(.55 .17 28);
   --danger-soft: oklch(.55 .17 28 / .09);
   --success: oklch(.56 .11 155);
-  --success-text: oklch(.5 .11 155);
   --term: oklch(.968 .004 var(--h));
   --sh-1: 0 1px 2px oklch(0 0 0 / .05),0 0 0 .5px oklch(0 0 0 / .07);
   --sh-2: 0 6px 20px -4px oklch(0 0 0 / .1),0 1px 3px oklch(0 0 0 / .05),0 0 0 .5px oklch(0 0 0 / .07);
@@ -634,7 +633,6 @@
   --danger: oklch(.72 .15 28);
   --danger-soft: oklch(.72 .15 28 / .12);
   --success: oklch(.76 .11 155);
-  --success-text: var(--success);
   --term: oklch(.165 .005 var(--h));
   --sh-1: 0 1px 2px oklch(0 0 0 / .3),0 0 0 .5px oklch(1 0 0 / .07);
   --sh-2: 0 8px 24px -4px oklch(0 0 0 / .45),0 0 0 .5px oklch(1 0 0 / .08);
@@ -727,7 +725,6 @@
   --danger: oklch(.72 .15 28);
   --danger-soft: oklch(.72 .15 28 / .12);
   --success: oklch(.76 .11 155);
-  --success-text: var(--success);
   --term: oklch(.165 .005 var(--h));
   --sh-1: 0 1px 2px oklch(0 0 0 / .3),0 0 0 .5px oklch(1 0 0 / .07);
   --sh-2: 0 8px 24px -4px oklch(0 0 0 / .45),0 0 0 .5px oklch(1 0 0 / .08);

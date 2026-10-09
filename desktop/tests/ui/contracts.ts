@@ -38,11 +38,11 @@ export const INK3_TEXT = [
  '.paste-card-lines', '.paste-card-preview', '.file-chip-dir', '.file-chip[data-state="missing"]', '.file-chip[data-state="outside"]', '.link-chip-domain',
  '.steer-landing', '.queued-esc', '.queued-more', '.queued-note', '.update-cut', '.turn-footer', '.work-live-time', '.work-time',
  '.work-step-head', '.work-step-tail', '.thinking-text', '.thinking-body', '.work-call-head', '.work-stat', '.work-call-time', '.work-call-status', '.work-call-text',
- '.task-notice-live', '.tray-header', '.clarify-link', '.choice-clock', '.tray-note', '.batch-pager',
+ '.task-notice-live', '.tray-header', '.choice-clock', '.tray-note', '.batch-pager',
  '.tasks-table-totals', '.tasks-table-tab-count', '.tasks-table-detail', '.tasks-table-group-count', '.tasks-table-state', '.tasks-table-age',
  '.task-row-meta', '.task-log-outcome', '.task-note-receipt', '.task-note-author', '.instructions-toggle', '.instructions-edit', '.breadcrumb-link',
  '.task-detail-crumb', '.task-detail-state', '.task-detail-fact dt', '.task-detail-label', '.button-ghost', '.text-input-field', '.task-composer-field',
- '.markdown-code-lang', '.turn-folded', '.file-chip-added', '.changes-added', '.work-add', '.work-diff-sign',
+ '.markdown-code-lang', '.turn-folded', '.update-eyebrow', '.answer-worked', '.receipt-rest', '.receipt[data-state="withdrawn"]', '.work-step-caption', '.file-chip-added', '.changes-added', '.work-add', '.work-diff-sign',
 ];
 async function isDesignInk3(page: Page, target: unknown) {
  const selector = Array.isArray(target) ? String(target[target.length - 1]) : String(target);

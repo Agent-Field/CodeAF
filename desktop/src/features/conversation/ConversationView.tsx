@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMediaQuery } from '../../design/useMediaQuery';
 import design from '../../design/tokens.json';
 import { ENGINE_MODEL } from '../chat/engine-client';
-import { useConversationModel } from './composer/useConversationModel';
+import { DEFAULT_MODEL_SHORT, useConversationModel } from './composer/useConversationModel';
 import type { Pane } from '../tabs/model';
 import { goBack, goForward, navigate, rootRoute, routeTask, TASKS_VIEW, toggleFlag, type TabView } from '../tabs/view-state';
 import { useHistoryKeys } from './Breadcrumb';
@@ -127,6 +127,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   const barTitle = tab.titleSource ? label : '';
   const showBar = inTask || Boolean(barTitle) || hasTasks;
   const modelLabel = !snapshot || snapshot.model === ENGINE_MODEL ? MODEL_LABEL : snapshot.model;
+  const modelShort = modelLabel === MODEL_LABEL ? DEFAULT_MODEL_SHORT : undefined;
   const conversationModel = useConversationModel(snapshot?.model);
   const showJump = unanchored && (behind || model.running) && !inTask;
   const showFooter = !inTask || conversation.unreachable;
@@ -197,6 +198,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
                       running: model.running,
                       docked: !empty,
                       modelLabel,
+                      modelShort,
                       model: conversationModel,
                       recallLast: () => model.turns[model.turns.length - 1]?.user,
                       autoFocus,
