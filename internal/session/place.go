@@ -297,6 +297,12 @@ type Meta struct {
 	// summarised yet, which is every conversation until a turn settles on a
 	// door that asks for recaps.
 	Recap *ConversationRecap `json:"recap,omitempty"`
+	// FailuresSeen is the landing instant of the newest failed task the person
+	// has looked at, on any window or device that shares this machine's state
+	// (failuresseen.go). It is a watermark and not a list: a failure that lands
+	// later is past it and unseen again with nobody doing anything. Absent is
+	// "nothing seen", which is every conversation until somebody looks.
+	FailuresSeen time.Time `json:"failuresSeen,omitzero"`
 }
 
 // LoadMeta reads a session folder's identity. A missing file, an unparsable

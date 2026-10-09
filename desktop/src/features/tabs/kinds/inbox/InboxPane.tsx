@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef } from 'react';
+import type { FailureId } from '../../../chat/world-client';
 import { Button, Text } from '../../../../components/ui';
 import { compactAge, type BackgroundWork } from '../../closing/background';
 import { inboxFocus } from '../../closing/inboxFocus';
@@ -81,13 +82,13 @@ export function InboxPane() {
   const api = useTabsApi();
   const { background, openChat, markFailedSeen } = api;
   /** Goes to the conversation: its tab if this window has one (reopened if closed), else the shell's opener, else nowhere. */
-  const opener = (item: { tabId?: string; chatId?: string; failed?: number }, section: 'running' | 'needsYou' | 'failed') => {
+  const opener = (item: { tabId?: string; chatId?: string; failed?: number; failure?: FailureId }, section: 'running' | 'needsYou' | 'failed') => {
     const { tabId, chatId } = item;
     const go = tabId ? () => (api.state.tabs.some(t => t.id === tabId) ? api.dispatch({ type: 'select', id: tabId }) : api.reopenClosed(tabId))
       : chatId && openChat ? () => openChat(chatId) : undefined;
     if (!go) return undefined;
     // Opening a failure is looking at it.
-    return section === 'failed' && chatId && item.failed ? () => { markFailedSeen(chatId, item.failed!); go(); } : go;
+    return section === 'failed' && chatId && item.failed ? () => { markFailedSeen(chatId, item.failed!, item.failure); go(); } : go;
   };
   const root = useRef<HTMLDivElement>(null);
   // "Open the Inbox" from the rail lands on the question that has waited longest (the list is already oldest first).
@@ -99,7 +100,7 @@ export function InboxPane() {
   }, [waiting]);
   return (
     <div className="inbox" ref={root}>
-      <InboxList {...background} now={api.now} opener={opener} onSeen={item => markFailedSeen(item.chatId!, item.failed)}/>
+      <InboxList {...background} now={api.now} opener={opener} onSeen={item => markFailedSeen(item.chatId!, item.failed, item.failure)}/>
     </div>
   );
 }

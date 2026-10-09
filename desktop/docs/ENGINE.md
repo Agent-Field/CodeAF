@@ -52,6 +52,20 @@ plan rows also refresh every three seconds to catch worker CLI writes outside
 the task notice lane. Reads make no AI call and do not fabricate activity times.
 Failed plan reads expose planError and retain the last successful rows.
 
+## Failed-task Seen (shared by every window and device)
+
+A `GET /world` row (and every `world` record on `/events`) carries `failed` (the count of landed-failed tasks, unchanged),
+`unseenFailed` (those that landed after the shared mark) and `failure {task, at}` (the newest landed failure, `at` in RFC 3339
+with nanoseconds). POST `/world/failures/seen` `{session, at, task?}` records that failure, and every one before it, as looked
+at: 200 `{session, through, changed, unseenFailed}`; 400 malformed; 404 no such conversation; 409 `that failure is no longer on
+record` when no failed task of that conversation landed at `at` (a stale or invented reading; nothing is written). It is
+authenticated like every route, idempotent, monotonic and attaches nothing. The mark is the watermark `failuresSeen` in the
+conversation's own `meta.json`, written under the same lock as the rest of the identity, so a restart, a second window and a
+second device agree, and a failure that lands later is unseen again with no client action. It never changes `running`,
+`needsYou`, `liveTasks` or `failed`. A failed task with no landing instant (a rebuilt or very old index row) has no version to
+mark and is never counted unseen. The client is `markFailureSeen` in `src/features/chat/world-client.ts`; the closing seam is
+`closing/seenMarks.ts` (optimistic, withdrawn with a toast if the engine refuses).
+
 Aside entries carry `TaskIDs`, the tasks they concern, so a task notice in the
 conversation can open its task; this holds for run reports as well as task
 landings. They also carry `AsideKind` (`"task"`, `"job"`, `"watch"` or `"resume"`,

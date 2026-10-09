@@ -1,4 +1,5 @@
 import { createContext, useContext, type Dispatch } from 'react';
+import type { FailureId } from '../chat/world-client';
 import type { TabSummary } from '../conversation/tabSummary';
 import type { TabActions } from './actions';
 import type { BackgroundWork } from './closing/background';
@@ -22,8 +23,12 @@ export type TabsApi = {
   isRunning: (tab: Tab) => boolean;
   /** Work that outlived its tab, and open tabs that need the person: what the Inbox lists. */
   background: BackgroundWork;
-  /** Records that this many failures of a conversation were looked at, so the Inbox stops listing them. Window-local (see closing/failedSeen.ts). */
-  markFailedSeen: (chatId: string, count: number) => void;
+  /**
+   * Records that a conversation's failure was looked at, so the Inbox stops listing it. With `failure` (the identity the world feed
+   * sent) the engine keeps the mark for every window and device and a refusal is shown; without it, only this window's own
+   * record is possible (an engine that predates the mark). See closing/failedSeen.ts and closing/seenMarks.ts.
+   */
+  markFailedSeen: (chatId: string, count: number, failure?: FailureId) => void;
   /** Opens a conversation that has no tab here, by chat id. Absent until the shell supplies it; the Inbox then shows such rows without a click. */
   openChat?: (chatId: string) => void;
   /** What a tab can do beyond the workspace: copy a link (when one exists) and move to another window. */
