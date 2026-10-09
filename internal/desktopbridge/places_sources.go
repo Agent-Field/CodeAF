@@ -1,11 +1,13 @@
 package desktopbridge
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/placegraph"
 )
@@ -145,17 +147,35 @@ func (p *Places) addSource(w http.ResponseWriter, r *http.Request, id string) {
 		failPlaces(w, status, "invalid_source", sentence)
 		return
 	}
-	for _, have := range pl.Context.Sources {
-		if have.Kind == ask.Kind && have.Ref == ref {
-			failPlaces(w, 409, "duplicate_source", "That is already in this place.")
+	// THE ENGINE'S OWN CHECK DECIDES WHAT IS STORED (placegraph.NewSource,
+	// under the source policy the engine resolves with), so a source this
+	// route accepts is one the engine will give: credential and codeaf
+	// folders are refused here, before and after symlinks, rather than
+	// stored and then refused at every turn. The checks above stay because
+	// they answer a person in the words this route always has.
+	src, err := placegraph.NewSource(ask.Kind, ref, placegraph.AddedByYou, p.sourcePolicy())
+	if err != nil {
+		if errors.Is(err, placegraph.ErrSourceRefused) {
+			failPlaces(w, 422, "refused_source", refusedSentence(err))
 			return
 		}
+		p.failStore(w, err, "", nil)
+		return
+	}
+	// The id and the stamp are the store's to give, from its own id source and
+	// clock, like every other record it holds.
+	src.ID, src.At = "", time.Time{}
+	if src.Kind == placegraph.SourceChat {
+		src.Label = label
 	}
 	if strings.TrimSpace(ask.Label) != "" {
-		label = strings.TrimSpace(ask.Label)
+		src.Label = strings.TrimSpace(ask.Label)
 	}
-	c := pl.Context
-	c.Sources = append(append([]placegraph.Source{}, c.Sources...), placegraph.Source{Kind: ask.Kind, Ref: ref, Label: label, AddedBy: placegraph.AddedByYou})
+	c, added := placegraph.WithSource(pl.Context, src)
+	if !added {
+		failPlaces(w, 409, "duplicate_source", "That is already in this place.")
+		return
+	}
 	rc, err := p.Store.SetContext(id, c)
 	if err != nil {
 		p.failStore(w, err, "", nil)
