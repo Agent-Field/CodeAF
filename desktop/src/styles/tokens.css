@@ -156,6 +156,12 @@
   --font-size-document-h1: 18px;
   --font-size-document-h2: 16px;
   --font-size-document-h3: 14px;
+  --chat-column-max-width: 720px;
+  --chat-bubble-max-width: 80%;
+  --radius-bubble: 16px;
+  --radius-composer: 18px;
+  --task-panel-width: 280px;
+  --chat-gutter: 28px;
   --canvas: #f0e4d0;
   --sidebar: #e9d9c2;
   --surface: #fdfdfc;
@@ -193,6 +199,7 @@
   --group-mark: #716b62;
   --composer-surface: #f8f6f1;
   --overlay-surface: #f3f0e9;
+  --bubble: #7c61320f;
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -233,6 +240,7 @@
   --group-mark: #aaa39a;
   --composer-surface: #292725;
   --overlay-surface: #2b2927;
+  --bubble: #ffffff12;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]):not([data-theme="dark"]) {
@@ -274,6 +282,7 @@
   --group-mark: #aaa39a;
   --composer-surface: #292725;
   --overlay-surface: #2b2927;
+  --bubble: #ffffff12;
   }
 }
 @media (prefers-reduced-motion: reduce) {
