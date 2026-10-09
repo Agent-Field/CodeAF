@@ -6,6 +6,7 @@ import { useAssets, usePathFact } from './AssetContext';
 import { fileMenu, type FileAvailability } from './FileActions';
 import { fileKind, middleTruncate, relativePath, splitPath, type FileKind } from './paths';
 import { PreviewSheet } from './PreviewSheet';
+import './FileChip.css';
 
 const dirBudget = 28;
 
@@ -36,6 +37,8 @@ function availabilityOf(path: string, workspace: string, fact?: EnginePathFact):
   return 'exists';
 }
 
+const availabilityIcon: Partial<Record<FileAvailability, IconName>> = { missing: 'fileMissing', outside: 'fileLock' };
+
 const stateNote: Record<FileAvailability, string> = { exists: '', missing: 'not found', outside: 'outside this workspace' };
 
 function Stat({ added, removed, capped }: Pick<FileChipProps, 'added' | 'removed' | 'capped'>) {
@@ -58,7 +61,7 @@ export function FileChip({ path, stat, source, added, removed, capped }: FileChi
   if (!assets.available) return <span className="asset-plain">{name}</span>;
   const availability = availabilityOf(path, assets.workspace, fact);
   const kind = fileKind(name, fact?.dir);
-  const icon: IconName = availability === 'missing' ? 'fileMissing' : kindIcon[kind];
+  const icon = availabilityIcon[availability] ?? kindIcon[kind];
   const note = stateNote[availability];
   const canOpen = availability === 'exists' && !fact?.dir;
   return (
@@ -73,7 +76,7 @@ export function FileChip({ path, stat, source, added, removed, capped }: FileChi
           aria-disabled={!canOpen || undefined}
           onClick={() => canOpen && setOpen(true)}
         >
-          <Icon name={icon} size="sm" />
+          <Icon name={icon} size="xs" />
           <span className="file-chip-name">{name}</span>
           {note ? <span className="file-chip-dir">{note}</span> : dir && <span className="file-chip-dir">{middleTruncate(dir, dirBudget)}</span>}
           <Stat added={added} removed={removed} capped={capped} />

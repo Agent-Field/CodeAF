@@ -2,37 +2,6 @@
 
 .asset-plain { overflow-wrap: anywhere; }
 
-/* File chip: an inline pill in the field fill. */
-.button.file-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  max-width: 100%;
-  height: var(--chip-height);
-  min-height: var(--chip-height);
-  padding: 0 var(--space-tight);
-  vertical-align: middle;
-  border: 0;
-  border-radius: var(--radius-chip);
-  background: var(--field);
-  color: var(--text);
-  font-size: var(--font-size-label);
-  line-height: var(--line-height-tight);
-  white-space: nowrap;
-}
-.button.file-chip:hover:not(:disabled) { background: var(--control-hover); }
-.button.file-chip:active:not(:disabled) { background: var(--control-pressed); }
-.file-chip > .app-icon { color: var(--muted); }
-.file-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: var(--asset-name-max-width); }
-.file-chip-dir { min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: var(--asset-dir-max-width); color: var(--muted); }
-.file-chip-stat { display: inline-flex; gap: var(--space-1); font-variant-numeric: tabular-nums; }
-.file-chip-added, .changes-added { color: var(--success); }
-.file-chip-removed, .changes-removed { color: var(--danger); }
-.file-chip[data-state="missing"], .file-chip[data-state="outside"] { color: var(--muted); cursor: default; }
-.file-chip[data-state="missing"] .file-chip-name { color: var(--muted); }
-.file-chip[data-state="missing"] > .app-icon { color: var(--danger); }
-.file-chip[aria-disabled="true"] { cursor: default; }
-
 /* Site icon and link chip. */
 .site-icon { display: inline-grid; place-items: center; flex: 0 0 auto; width: var(--favicon-size); height: var(--favicon-size); border-radius: var(--radius-xs); vertical-align: middle; }
 .site-icon-mono { background: var(--asset-mono-1); color: var(--on-accent); font-size: var(--font-size-caption); font-weight: var(--font-weight-strong); line-height: var(--line-height-tight); }
@@ -153,3 +122,6 @@
 /* Specimen layout. */
 .asset-specimen { display: flex; flex-direction: column; gap: var(--space-section); min-width: 0; }
 .asset-specimen-row { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+
+.changes-added { color: var(--success); }
+.changes-removed { color: var(--danger); }
