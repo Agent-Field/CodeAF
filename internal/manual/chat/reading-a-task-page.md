@@ -723,7 +723,7 @@ that those files were not sent with the correction.
 The `under it` section is the whole subtree in store order, not only the direct
 children, and every row in it is drawn exactly as the rail draws a task: the
 state mark (the spinner while it works), the name, its `#id` at the end, and the
-tree's own connectors (`├─`, `└─`). A part that is running says the command it is
+tree's own connectors (`├ `, `└ `). A part that is running says the command it is
 on, such as `bash go test ./...`, and under that how long it has run and what it
 has cost, each left out when the store has not got it.
 
