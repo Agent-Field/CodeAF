@@ -69,11 +69,12 @@ export function tabMenuItems(api: TabsApi, tab: Tab): MenuEntry[] {
   ];
 }
 
-/** The Inbox is the pinned tab that is always there: it has no menu. A place's Home without a place menu has none either. */
+/** The Inbox is the pinned tab that is always there: it has no menu. Strip and overview both ask here, so they can never disagree. */
+export const tabMenuFor = (api: TabsApi, tab: Tab): MenuEntry[] | undefined => (tab.kind === 'inbox' ? undefined : tabMenuItems(api, tab));
+
 export const withTabMenu = (api: TabsApi, tab: Tab, node: ReactElement): ReactElement => {
-  if (tab.kind === 'inbox') return node;
-  const items = tabMenuItems(api, tab);
-  return items.length ? <ContextMenu key={tab.id} wide label={`Actions for ${tab.title}`} items={items}>{node}</ContextMenu> : node;
+  const items = tabMenuFor(api, tab);
+  return items?.length ? <ContextMenu key={tab.id} wide label={`Actions for ${tab.title}`} items={items}>{node}</ContextMenu> : node;
 };
 
 export function groupMenuItems(api: TabsApi, group: TabGroup): MenuEntry[] {

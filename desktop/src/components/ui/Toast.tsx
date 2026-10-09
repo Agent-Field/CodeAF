@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type FocusEvent, type KeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
 import design from '../../design/tokens.json';
 import { toasts as windowToasts, TOAST_LIMIT, type Toast as ChannelToast, type ToastAction as ChannelAction, type ToastPart, type ToastTone, type Toasts } from '../../design/toasts';
 import { Button } from './Button';
@@ -108,9 +109,11 @@ function RegionToast({ toast, channel }: { toast: ChannelToast; channel: Toasts 
  */
 export function ToastRegion({ channel = windowToasts }: { channel?: Toasts }) {
   const list = useSyncExternalStore(channel.subscribe, channel.getToasts);
-  return <section className="toast-region" aria-label="Notifications">
+  const region = <section className="toast-region" aria-label="Notifications">
     {list.map(toast => <RegionToast key={toast.id} toast={toast} channel={channel}/>)}
   </section>;
+  const modal = document.querySelector<HTMLElement>('dialog:modal');
+  return modal ? createPortal(region, modal) : region;
 }
 
 /** The Places shell's door onto the window channel: a sentence and its subject in, a toast in the one region out.

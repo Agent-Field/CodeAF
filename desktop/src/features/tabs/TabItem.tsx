@@ -7,6 +7,7 @@ import type { TabsApi } from './context';
 import { tabDragProps } from './hosts/dragHost';
 import { withTabMenu } from './hosts/menuHost';
 import { withPreview } from './hosts/previewHost';
+import { withSegmentTooltip, withTitleTooltip } from './hosts/titleTooltipHost';
 import { focusedPane, panesOf, type Tab } from './model';
 import { SplitTab } from './SplitTab';
 import { monogramOf } from '../web/address';
@@ -52,14 +53,14 @@ export function TabItem({ api, tab, order, inGroup = false }: { api: TabsApi; ta
   if (tab.split) {
     const { panes, focus } = tab.split;
     const segments = panes.map(pane => ({ id: pane.id, kind: pane.kind, title: pane.title, monogram: monogramOf(pane), state: stateOfMark(api.summaries[pane.id]?.mark) }));
-    return withTabMenu(api, tab, <SplitTab segments={segments} focus={focus} active={active} frame={frame} onSelectPane={(index, event) => choose(panes[index].id)(event)} onClose={() => api.closeTab(tab.id)}/>);
+    return withTabMenu(api, tab, <SplitTab segments={segments} focus={focus} active={active} frame={frame} onSelectPane={(index, event) => choose(panes[index].id)(event)} wrapSegment={(segment, button) => withSegmentTooltip(api, tab, segment.title, button)} onClose={() => api.closeTab(tab.id)}/>);
   }
   const switcher = isPlaceHome(tab) ? api.placeSwitcher : undefined;
   const view = (
     <TabView kind={tab.kind} title={tab.title} monogram={monogramOf(focusedPane(tab))} active={active} pinned={tab.pinned} placeTint={isPlaceHome(tab) ? api.placeTint ?? 'graphite' : undefined} inGroup={inGroup} picked={picked} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame} badge={tab.kind === 'inbox' && (api.background.needsYou.length > 0 ? 'needsYou' : api.background.failed.length > 0 ? 'failed' : false)}
       closeMode={stop ? 'stop' : 'close'} closeHint={stop ? 'Close and stop' : running ? 'Close · keeps running' : 'Close'} closeShortcut={stop ? closeStopShortcut : closeShortcutFor(tab.kind)}
       onSelect={choose(tab.id)} onClose={() => (stop ? api.closeAndStop(tab.id) : api.closeTab(tab.id))} onRename={() => api.startRename(tab.id)}
-      onKeyDown={navigate(api, order, tab)} wrapSelect={select => (switcher ? <DropdownMenu label="Place switcher" items={switcher.items}>{select}</DropdownMenu> : withPreview(api, tab, select))} switcher={switcher && { alert: switcher.alert }}/>
+      onKeyDown={navigate(api, order, tab)} wrapSelect={select => (switcher ? <DropdownMenu label="Place switcher" items={switcher.items}>{select}</DropdownMenu> : withTitleTooltip(api, tab, select, trigger => withPreview(api, tab, trigger)))} switcher={switcher && { alert: switcher.alert }}/>
   );
   // The switcher menu hangs on the tab's own button, so its popup attributes land on a control and not on the frame.
   return withTabMenu(api, tab, view);
