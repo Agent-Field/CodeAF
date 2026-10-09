@@ -7,10 +7,12 @@ import { TaskNoticeSpecimen } from './TaskNotice.specimen';
 import { TaskPanelSpecimen } from './TaskPanel.specimen';
 import { TaskViewSpecimen } from './TaskView.specimen';
 import { TurnViewV2Specimen } from './TurnViewV2.specimen';
+import { UserMessageSpecimen } from './UserMessage.specimen';
 import { WorkSpecimen } from './Work.specimen';
 
 const specimens = [
   { name: 'Turns', View: TurnViewV2Specimen },
+  { name: 'User message', View: UserMessageSpecimen },
   { name: 'Replies', View: MarkdownSpecimen },
   { name: 'Work', View: WorkSpecimen },
   { name: 'Assets', View: AssetsSpecimen },

@@ -49,28 +49,6 @@
 .turn-folded-sep { flex: none; white-space: pre; color: var(--muted); }
 .turn-folded-digest { flex: 1 1 0; color: var(--muted); }
 
-/* User message. */
-.user-message { display: flex; justify-content: flex-end; min-width: 0; }
-.user-message-bubble {
-  max-width: var(--chat-bubble-max-width);
-  min-width: 0;
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-bubble);
-  background: var(--bubble);
-  color: var(--text);
-  font-size: var(--font-size-prose);
-  line-height: var(--line-height-body);
-}
-.user-message-text { white-space: pre-wrap; overflow-wrap: anywhere; }
-.user-message-text[data-clamped="true"] {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: var(--chat-user-clamp-lines);
-  line-clamp: var(--chat-user-clamp-lines);
-  overflow: hidden;
-}
-.user-message-toggle.button { margin-top: var(--space-1); min-height: var(--icon-button-size); padding: 0 var(--space-2); font-size: var(--font-size-label); }
-
 /* Note: centred caption between hairlines. */
 .note-item {
   display: flex;
@@ -103,4 +81,3 @@
 .error-item { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); color: var(--warning); font-size: var(--font-size-body); }
 .error-item-text { min-width: 0; }
 
-.user-message-text[data-markdown] { white-space: normal; }
