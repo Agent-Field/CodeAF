@@ -145,6 +145,7 @@ export function createWorkspaceController(options: ControllerOptions) {
   let pending: Entry[] = [...(saved?.pending ?? []), ...(options.adopted ?? [])];
   let inflight: Entry[] | null = null;
   let local: WindowLocal = saved?.local ? { ...emptyLocal(), ...saved.local } : emptyLocal();
+  let requestedFocus = options.focus;
   if (options.focus) local = { ...local, activeId: options.focus };
   /** Before the engine has answered once, a window with nothing saved shows the import seed. */
   let view: WorkspaceState = base ? compose(base, local) : options.initial();
@@ -192,7 +193,9 @@ export function createWorkspaceController(options: ControllerOptions) {
   function rebuild() {
     if (!base) return;
     const before = view;
-    let state = compose(base, local, before);
+    const requested = requestedFocus && base.tabs.some(tab => tab.id === requestedFocus || tab.split?.panes.some(pane => pane.id === requestedFocus));
+    let state = compose(base, requested ? { ...local, activeId: requestedFocus } : local, before);
+    if (requested) requestedFocus = undefined;
     const kept: Entry[] = [];
     let overtaken = 0;
     for (const entry of pending) {

@@ -267,3 +267,14 @@ test('two windows typing into the same draft at once: the later typing wins, and
   assert.equal(drafts[0], drafts[1], 'one composer');
   assert.equal(a.getStatus().overtaken + b.getStatus().overtaken, 1, 'the overwritten words are counted once');
 });
+
+test('native focused-view arrival survives an automatic Inbox insertion before canonical load', async () => {
+  const { engine, time, a } = await twoWindows('first', 'web-target');
+  const incoming = createWorkspaceController({ key: 'now', client: engine.client(), writer: 'win-incoming', initial: seed('fresh-import'), focus: 'web-target', clock: time.clock });
+  incoming.dispatch({ type: 'ensure-inbox' });
+  incoming.start();
+  await time.advance(100);
+  assert.equal(incoming.getState().activeId, 'web-target');
+  assert.deepEqual(ids(incoming.getState()), ['inbox', 'first', 'web-target']);
+  assert.equal(a.getState().activeId, 'first', 'source focus stays window-local');
+});
