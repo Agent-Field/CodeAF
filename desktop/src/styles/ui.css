@@ -206,3 +206,4 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 
 /* Opening tabs must not scale their hit area or the scroll viewport. */
 @keyframes tab-enter { from { opacity: var(--opacity-transparent); } to { opacity: var(--opacity-opaque); } }
+.app-icon[data-icon="panelRight"] { transform: scaleX(-1); }

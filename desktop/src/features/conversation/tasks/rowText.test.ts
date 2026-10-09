@@ -25,6 +25,8 @@ test('the Go zero time means never', () => {
 test('a running row counts up, an ended row shows how long it took, a queued row is blank', () => {
   assert.equal(rowAge(row(), 'running', NOW), '40s');
   assert.equal(rowAge(row({ Status: 'done', Ended: '2026-10-09T10:06:20Z' }), 'done', NOW), '2m');
+  // A task that took no measurable time says nothing rather than "0s".
+  assert.equal(rowAge(row({ Status: 'done', Ended: row().Started }), 'done', NOW), '');
   assert.equal(rowAge(row({ Status: 'pending' }), 'queued', NOW), '');
   assert.equal(rowAge(row({ Status: 'paused' }), 'yourcall', NOW), '');
 });
