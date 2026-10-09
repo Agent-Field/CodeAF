@@ -245,20 +245,62 @@ func factoryIsSteer(l factory.LogLine) bool {
 // person wrote; and every other line is muted with its mark in its tone's
 // colour (a failure's, a success's, a question's amber).
 func (a *app) factoryLogRow(l factory.LogLine, measure int) string {
-	pal := a.pal
+	mark, markPaint, text := a.factoryLogPaints(l)
+	return fit(a.factoryLogStamp(l)+markPaint(mark)+" "+text(l.Text), measure)
+}
+
+// factoryLogStamp is a log line's time at the margin, `12:04` and its air,
+// dim, or [factoryStampW] of air for a line with no time.
+func (a *app) factoryLogStamp(l factory.LogLine) string {
+	if l.At.IsZero() {
+		return factorySpaces(factoryStampW)
+	}
+	return a.pal.dim(l.At.Format("15:04")) + factorySpaces(factoryStampW-len("15:04"))
+}
+
+// factoryLogRows is one line of the log as [app.factoryLogRow] draws it, but
+// WRAPPED, never cut: its words run on under themselves, past the time and
+// the mark, so a long line on the item page is read whole.
+func (a *app) factoryLogRows(l factory.LogLine, measure int) []string {
+	mark, markPaint, text := a.factoryLogPaints(l)
+	lead := factoryStampW + ansi.StringWidth(mark) + 1
+	words := wrap(strings.TrimSpace(l.Text), max(measure-lead, 1))
+	if len(words) <= 1 || measure-lead < factoryLedMin {
+		return []string{a.factoryLogRow(l, measure)}
+	}
+	out := []string{a.factoryLogStamp(l) + markPaint(mark) + " " + text(words[0])}
+	for _, w := range words[1:] {
+		out = append(out, factorySpaces(lead)+text(w))
+	}
+	return out
+}
+
+// factoryLogPaints is a log line's paints: its mark's and its words'.
+func (a *app) factoryLogPaints(l factory.LogLine) (string, func(string) string, func(string) string) {
 	mark, markPaint, _ := a.factoryTone(l)
-	text := pal.muted
+	text := a.pal.muted
 	switch {
 	case l.Tone == "thought":
-		markPaint, text = pal.dim, pal.dim
+		markPaint, text = a.pal.dim, a.pal.dim
 	case factoryIsSteer(l):
-		text = pal.ink
+		text = a.pal.ink
 	}
-	stamp := factorySpaces(factoryStampW)
-	if !l.At.IsZero() {
-		stamp = pal.dim(l.At.Format("15:04")) + factorySpaces(factoryStampW-len("15:04"))
+	return mark, markPaint, text
+}
+
+// factoryLogTail is the newest log lines, wrapped, that fit in room rows,
+// oldest at the top: a line too long for what is left is cut from its top,
+// so the newest words always stand at the foot.
+func (a *app) factoryLogTail(log []factory.LogLine, measure, room int) []string {
+	var out []string
+	for i := len(log) - 1; i >= 0 && len(out) < room; i-- {
+		rows := a.factoryLogRows(log[i], measure)
+		if left := room - len(out); len(rows) > left {
+			rows = rows[len(rows)-left:]
+		}
+		out = append(rows, out...)
 	}
-	return fit(stamp+markPaint(mark)+" "+text(l.Text), measure)
+	return out
 }
 
 // factoryLogPane is the `log` row's pane: the stream's log, oldest at the top
@@ -276,13 +318,7 @@ func (a *app) factoryLogPane(it factory.Item, measure, room int) []string {
 	if it.Stream != nil {
 		log = it.Stream.Log
 	}
-	if len(log) > avail {
-		log = log[len(log)-max(avail, 0):]
-	}
-	lines := make([]string, 0, len(log))
-	for _, l := range log {
-		lines = append(lines, a.factoryLogRow(l, measure))
-	}
+	lines := a.factoryLogTail(log, measure, max(avail, 0))
 	return factoryPaneLadder([][]string{lines}, action, room)
 }
 

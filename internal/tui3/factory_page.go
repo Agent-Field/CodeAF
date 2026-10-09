@@ -210,6 +210,9 @@ type factoryPage struct {
 	// pointer rests on.
 	crumbHits  []factoryCrumbHit
 	crumbHover factoryCrumb
+	// stripHot says the pointer rests on the narrowed floor's `Factory`
+	// crumb, the button that puts every repo back (factory_rail.go).
+	stripHot bool
 
 	// THE SPLIT (factory_split.go). split is the rows' share of the width in
 	// percent, 0 for [factoryRowsShare]; splitRead says the remembered one has
@@ -796,6 +799,15 @@ func (a *app) factoryHover(x, y int) bool {
 		// ONE THING UNDER THE POINTER WEARS ITS GROUND, and it never moves
 		// the cursor (factory_item.go's [app.factoryItemHover]).
 		return a.factoryItemHover(x, y)
+	}
+	// THE NARROWED FLOOR'S `Factory` CRUMB wears the pointer's ground while
+	// the pointer rests on it, and nothing else moves.
+	if hot := a.factoryStripAt(x, y); hot != a.fp.stripHot {
+		a.fp.stripHot = hot
+		a.touch()
+	}
+	if a.fp.stripHot {
+		return true
 	}
 	next := -1
 	if a.fp.bodyW-a.fp.rowsW-1 <= 0 || x < a.fp.rowsW-1 {

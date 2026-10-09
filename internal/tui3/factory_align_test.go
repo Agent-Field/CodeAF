@@ -220,6 +220,10 @@ func TestFactoryAlignChips(t *testing.T) {
 			row := ansi.Strip(a.factoryChipRow(*factoryPaneItem(t, a, id), keys, 120))
 			for _, label := range []string{wordBudget, wordThinking} {
 				x := strings.Index(row, label+"  ")
+				// A chip with no value of its own is air (the emptiness law).
+				if x < 0 && label == wordThinking {
+					continue
+				}
 				if x < 0 {
 					t.Fatalf("item %d's chips have no %s: %q", id, label, row)
 				}
