@@ -39,6 +39,8 @@ export type PlaceActions = {
   removeSource?: (placeId: string, sourceId: string) => void | Promise<void>;
   writeInstructions?: (placeId: string) => void;
   acceptSuggestion?: () => void | Promise<void>;
+  /** "Not now" on the untouched-place suggestion: the engine hides that place's offer for 30 days, in every window. */
+  snoozeStale?: (placeId: string) => void | Promise<void>;
   /** First launch: the native folder picker that turns a repo or folder into a place. Absent where the shell has none. */
   openFolderAsPlace?: () => void;
   retry?: () => void;

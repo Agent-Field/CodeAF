@@ -139,9 +139,35 @@ hand-edited file is clamped to the bounds.
 | `clusterCallsPerDay` | 6 | 0–200 | provisional |
 | `organizeEveryMinutes` | 60 | 5–1440 | provisional |
 
-Related, owned elsewhere: the 60-day idle "merge or archive" suggestion and its 30-day
-snooze (`t-d5-be-pg-suggest-stale`, `internal/placegraph/suggest.go`); the ≥3-tab group
-suggestion in the shell (`t-d5-sh-group-suggest-model`).
+Related, owned elsewhere: the ≥3-tab group suggestion in the shell
+(`t-d5-sh-group-suggest-model`).
+
+### Critical cleanup policy: untouched places (design 6d, 6e) — NOT a setting
+
+Design 6d: "Places untouched for 60 days get a quiet suggestion to merge or archive them,
+on Home and in ⌘P." Interactions: "Not now hides it for 30 days." Both figures are the
+designer's own, so they are **constants, not rows of the table above and not Settings
+knobs**: `placegraph.StaleAfterDays = 60` and `placegraph.StaleSnoozeDays = 30`
+(`internal/placegraph/stale.go`). `declineSnoozeDays` does not govern this suggestion; it
+snoozes the model's offers, and the two may be tuned separately only by editing the code
+and this page together. (This page used to say this rule lived in
+`internal/placegraph/suggest.go`; that file never existed and no such rule ran before.)
+
+- **Untouched** means no sign of life for 60 days, counted in 24-hour blocks and inclusive
+  at the boundary: the newest of the place's creation, the last time anyone went to it,
+  the last time the person spoke in a chat filed in it, and the same three for any active
+  place under it. A place with none of those dates is never suggested.
+- **Never suggested:** archived places, pinned places, a place with work running or a chat
+  waiting on the person in it or under it, and a place whose "Not now" is still running.
+- **Not now** is written by the engine to `places-stale.json` beside the graph, so every
+  window agrees and a reload keeps it. It ends exactly 30 days later; an ended snooze is
+  dropped on the next write. It is not a structural change: no revision, no receipt, no Undo.
+- **No model is called.** It is date arithmetic on the bridge's clock; tests inject the
+  clock and pin the boundaries to the nanosecond.
+- **Nothing happens by itself.** The line offers Merge and Archive (the place menu's own
+  writes, with their receipts and Undo) and Not now; it never archives, merges or deletes.
+- **Routes:** `GET /places/stale` (longest untouched first, at most 20) and
+  `POST /places/{id}/stale-snooze`. Both are absent (404) on a bridge with no snooze file.
 
 ## 5. What is wired and what is not
 
