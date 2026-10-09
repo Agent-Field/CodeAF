@@ -55,13 +55,6 @@
   min-width: 0;
 }
 
-.composer-model.type-body {
-  font-size: var(--font-size-label);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .composer-tasks.button {
   min-height: var(--icon-button-size);
   padding: 0 var(--space-2);

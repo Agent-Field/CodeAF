@@ -1,0 +1,25 @@
+/* The composer's model label: quiet ink-3 text that lifts to a field fill on hover. */
+.model-picker.button {
+  min-height: var(--control-height);
+  min-width: 0;
+  padding: 0 var(--control-pad-ghost);
+  gap: var(--space-1);
+  border-radius: var(--radius-control);
+  color: var(--ink-3);
+  font-size: var(--type-label-size);
+  line-height: var(--type-label-leading);
+  font-weight: var(--type-label-weight);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.model-picker.button:hover:not(:disabled),
+.model-picker.button[data-state='open'] {
+  background: var(--field);
+  color: var(--ink-2);
+}
+
+.model-picker-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
