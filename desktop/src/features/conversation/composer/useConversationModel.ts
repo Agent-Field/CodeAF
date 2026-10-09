@@ -19,14 +19,14 @@ export type ConversationModel = { models: ModelOption[]; pinnedCount: number; se
  * a pick is saved in the profile and moves every open chat, and the next message is sent on it.
  * Returns nothing while the engine cannot say (the chip then shows the model without offering a swap).
  */
-export function useConversationModel(current: string | undefined): ConversationModel | undefined {
+export function useConversationModel(current: string | undefined, readBeforeSession = false): ConversationModel | undefined {
   const [catalog, setCatalog] = useState<CatalogModel[]>();
   const [role, setRole] = useState<ModelRole>();
   const [pinned, setPinned] = useState<PinnedModel[]>([]);
   const [reads, setReads] = useState(0);
   const [picked, setPicked] = useState<string>();
-  // A new tab makes no engine call, so the list and the role are read only once a session exists.
-  const attached = current !== undefined;
+  // Blank conversation tabs defer reads; Home opts in to the saved role before creating its first session.
+  const attached = current !== undefined || readBeforeSession;
   useEffect(() => {
     if (!attached) return;
     let live = true;

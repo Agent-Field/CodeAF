@@ -17,6 +17,8 @@ import './composer.css';
 export type SendMode = 'submit' | 'steer' | 'queue';
 
 export type ComposerProps = {
+  /** Places Home uses the same send, attachment and model controls in one inline row. */
+  variant?: 'home';
   draft: string;
   onDraft: (value: string) => void;
   /** `files` is passed only when something is attached; attachments clear only if this resolves true. */
@@ -60,9 +62,9 @@ function useAutosize(ref: RefObject<HTMLTextAreaElement | null>, draft: string) 
     if (!field) return;
     field.rows = composerMinRows;
     const style = getComputedStyle(field);
-    const line = parseFloat(style.lineHeight);
-    if (!line) return;
     const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    const line = style.lineHeight === 'normal' ? field.clientHeight - padding : parseFloat(style.lineHeight);
+    if (!line) return;
     // scrollHeight is rounded to whole pixels, so a lone line can read a hair over one.
     const lines = Math.round((field.scrollHeight - padding) / line);
     field.rows = Math.min(composerMaxRows, Math.max(composerMinRows, lines));
@@ -147,7 +149,7 @@ export function Composer(props: ComposerProps) {
   const steering = running && !blank;
 
   return (
-    <div className="composer-dock" data-docked={docked}>
+    <div className="composer-dock" data-docked={docked} data-variant={props.variant}>
       <div
         className="composer"
         data-running={running}
@@ -198,14 +200,14 @@ export function Composer(props: ComposerProps) {
               data-testid="composer-file-input"
               onChange={event => onPicked(event.currentTarget)}
             />
-            <IconButton
+            {props.variant !== 'home' && <IconButton
               className="composer-attach"
               label="Attach files"
               icon="plus"
               iconSize="sm"
               disabled={disabled}
               onClick={() => picker.current?.click()}
-            />
+            />}
             {props.model ? (
               <ModelPicker models={props.model.models} selectedId={props.model.selectedId} onSelect={props.model.onSelect} effort={props.model.effort} pinnedCount={props.model.pinnedCount} />
             ) : props.modelLabel && (

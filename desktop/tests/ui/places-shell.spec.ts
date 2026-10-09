@@ -607,3 +607,75 @@ for (const theme of ['light', 'dark'] as const) {
  });
 
 }
+
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`Home composer exact inline geometry and retained draft controls · ${theme}`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.addInitScript(value => localStorage.setItem('codeaf-theme', value), theme);
+    await boot(page);
+    await railPlace(page, 'Marketing').click();
+    const surface = page.locator('.home-composer .composer');
+    const field = surface.getByRole('textbox', { name: 'Message' });
+    const send = surface.getByRole('button', { name: 'Send', exact: true });
+    await expect(surface).toHaveCSS('border-radius', '20px');
+    await expect(surface).toHaveCSS('padding', '10px 8px 10px 16px');
+    await expect(surface).toHaveCSS('column-gap', '8px');
+    expect((await surface.boundingBox())!.width).toBe(616);
+    expect((await surface.boundingBox())!.height).toBe(48);
+    await expect(field).toHaveCSS('font-size', '13px');
+    await expect(field).toHaveCSS('line-height', 'normal');
+    await expect(surface.locator('.model-picker')).toHaveText('DS Flash');
+    await expect(surface.locator('.model-picker')).toHaveCSS('font-size', '12px');
+    await expect(surface.getByRole('button', { name: 'Attach files' })).toHaveCount(0);
+    await expect(send).toBeDisabled();
+    if (process.env.HOME_COMPOSER_SHOTS) await surface.screenshot({ path: `${process.env.HOME_COMPOSER_SHOTS}/actual-${theme}-${test.info().project.name}.png` });
+    const fieldBox = (await field.boundingBox())!;
+    const sendBox = (await send.boundingBox())!;
+    expect(sendBox.width).toBe(28); expect(sendBox.height).toBe(28);
+    expect(Math.abs(fieldBox.y + fieldBox.height / 2 - sendBox.y - sendBox.height / 2)).toBeLessThan(1);
+    await field.click();
+    await expect(field).not.toHaveAttribute('data-keyboard', 'true');
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(field).toHaveAttribute('data-keyboard', 'true');
+    await expect(field).not.toHaveCSS('box-shadow', 'none');
+    if (process.env.HOME_COMPOSER_SHOTS) await surface.screenshot({ path: `${process.env.HOME_COMPOSER_SHOTS}/focus-${theme}-${test.info().project.name}.png` });
+    await field.fill('First line\nSecond line\nThird line');
+    expect((await field.boundingBox())!.height).toBeGreaterThan(fieldBox.height);
+    await expect(send).toBeEnabled();
+    await field.fill('');
+    await field.evaluate(el => {
+      const paste = new DataTransfer(); paste.setData('text/plain', Array.from({ length: 40 }, (_, i) => `Line ${i}`).join('\n'));
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: paste, bubbles: true, cancelable: true }));
+    });
+    await expect(surface.locator('.paste-card')).toBeVisible();
+    if (process.env.HOME_COMPOSER_SHOTS) await surface.screenshot({ path: `${process.env.HOME_COMPOSER_SHOTS}/paste-${theme}-${test.info().project.name}.png` });
+    await expect(send).toBeEnabled();
+    await surface.getByRole('button', { name: 'Remove pasted text' }).click();
+    await expect(send).toBeDisabled();
+    await surface.getByTestId('composer-file-input').setInputFiles({ name: 'context.txt', mimeType: 'text/plain', buffer: Buffer.from('A source for this draft') });
+    await expect(surface.getByRole('list', { name: 'Attachments' })).toBeVisible();
+    if (process.env.HOME_COMPOSER_SHOTS) await surface.screenshot({ path: `${process.env.HOME_COMPOSER_SHOTS}/attachment-${theme}-${test.info().project.name}.png` });
+    await surface.getByRole('button', { name: 'Remove context.txt' }).click();
+    await page.setViewportSize({ width: 320, height: 800 });
+    await expect(send).toBeVisible();
+    await field.fill('A long unbroken draft ' + 'word'.repeat(100));
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+    expect((await surface.boundingBox())!.width).toBeLessThanOrEqual(320);
+    if (process.env.HOME_COMPOSER_SHOTS) await surface.screenshot({ path: `${process.env.HOME_COMPOSER_SHOTS}/narrow-long-${theme}-${test.info().project.name}.png` });
+  });
+}
+
+
+test('Home model label follows the saved Conversation role before a host exists', async ({ page }) => {
+  const sample = fresh();
+  sample.models = [{ id: 'deepseek/deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash' }, { id: 'fixture/alternate', name: 'Fixture Alternate' }];
+  const rig = await boot(page, garden(), sample);
+  await page.route('**/models/roles', route => route.fulfill({ json: { default: 'deepseek/deepseek-v4.1-flash', roles: [{ id: 'conversation', model: 'fixture/alternate' }] } }));
+  await railPlace(page, 'Marketing').click();
+  await page.evaluate(() => window.dispatchEvent(new Event('codeaf:models-changed')));
+  await expect(page.locator('.home-composer .model-picker')).toHaveText('Alternate');
+  await expect(page.locator('.home-composer .model-picker')).toHaveAccessibleName('Model: Fixture Alternate');
+  expect(rig.engine.calls.filter(isCreate)).toHaveLength(0);
+});
