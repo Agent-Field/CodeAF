@@ -53,7 +53,7 @@ export function FilesSpecimen() {
     <div className="files-specimen">
       <Case label="Changes" note="engine on this machine: Open in editor ↗" />
       <Case label="File" note="the same file, whole" view="file"/>
-      <Case label="Base gone" note="start commit no longer in history" diff={ready({ ...diff, base: { kind: 'head' } })}/>
+      <Case label="Base gone" note="start commit no longer in history" diff={ready({ ...diff, base: { kind: 'head', startGone: true } })}/>
       <Case label="Remote engine" note="Open in ⌄ with Copy path" handoff={remote}/>
       <Case label="Too large" note="refused: one muted line and the Open in menu" view="file" path="testdata/huge.json" diff={ready(outsideGit)} text={ready(tooLarge)}/>
       <Case label="Outside git" note="file view only, no toggle, no counts" view="file" diff={ready(outsideGit)}/>

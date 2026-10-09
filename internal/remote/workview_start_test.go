@@ -44,7 +44,7 @@ func TestDiffBaseIsTheStartCommit(t *testing.T) {
 	first := gitOut(t, workspace, "rev-parse", "HEAD")
 
 	// Before anything is recorded the base is HEAD.
-	if c, err := loop.Client.DiffChanges(nil); err != nil || c.Base == nil || c.Base.Kind != "head" {
+	if c, err := loop.Client.DiffChanges(nil); err != nil || c.Base == nil || c.Base.Kind != "head" || c.Base.StartGone {
 		t.Fatalf("no record: %+v %v", c, err)
 	}
 	st, err := loop.Client.DiffStart()
@@ -95,7 +95,7 @@ func TestDiffStartUnborn(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(folder, "diffbase.json")); err == nil {
 		t.Error("an unborn branch wrote a record")
 	}
-	if c, _ := loop.Client.DiffChanges(nil); c.Base == nil || c.Base.Kind != "head" || len(c.Files) != 1 {
+	if c, _ := loop.Client.DiffChanges(nil); c.Base == nil || c.Base.Kind != "head" || c.Base.StartGone || len(c.Files) != 1 {
 		t.Errorf("unborn changes: %+v", c)
 	}
 }
@@ -113,11 +113,11 @@ func TestDiffStartUnreachableFallsBack(t *testing.T) {
 	gitIn(t, workspace, "commit", "-q", "-m", "rewritten", "--allow-empty")
 	write(t, filepath.Join(workspace, "extra.txt"), "x\n")
 	c, err := loop.Client.DiffChanges(nil)
-	if err != nil || c.Base == nil || c.Base.Kind != "head" || c.Base.Sha == "" {
+	if err != nil || c.Base == nil || c.Base.Kind != "head" || c.Base.Sha == "" || !c.Base.StartGone {
 		t.Fatalf("fallback: %+v %v", c, err)
 	}
 	d, err := loop.Client.DiffFile("extra.txt")
-	if err != nil || d.Base == nil || d.Base.Kind != "head" || d.Status != "untracked" {
+	if err != nil || d.Base == nil || d.Base.Kind != "head" || d.Status != "untracked" || !d.Base.StartGone {
 		t.Errorf("file fallback: %+v %v", d, err)
 	}
 }

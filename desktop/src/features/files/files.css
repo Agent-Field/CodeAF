@@ -1,10 +1,11 @@
 /* File and diff tab (Shell 3e): a 48px head, then a terminal-ground body with two line-number columns. */
-.file-surface { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+.file-live { display: contents; }
+.file-surface { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
 .file-head { flex: none; min-height: var(--file-head-height); display: flex; flex-wrap: wrap; align-items: center; gap: var(--control-gap); padding-block: var(--space-1); padding-inline: var(--file-head-pad-start) var(--file-head-pad-end); font-size: var(--font-size-input); }
 .file-id { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: var(--control-gap); }
 .file-id > .app-icon { color: var(--ink-2); }
 .file-name { flex: 0 1 auto; min-width: 0; font-weight: var(--font-weight-medium); white-space: nowrap; overflow: hidden; }
-.file-dir { flex: 0 1 auto; min-width: 0; font-size: var(--font-size-body); color: var(--ink-3); white-space: nowrap; overflow: hidden; }
+.file-dir { flex: 1 4 auto; min-width: 0; font-size: var(--font-size-body); color: var(--ink-3); white-space: nowrap; overflow: hidden; }
 .file-fade[data-cut] { -webkit-mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
 .file-count { flex: none; font-family: var(--mono); font-size: var(--font-size-label); font-variant-numeric: tabular-nums; }
 .file-count[data-sign="add"] { color: var(--diff-count-add); }
@@ -32,4 +33,8 @@
 .file-hunk { padding: 0 var(--file-row-pad) var(--file-hunk-gap); color: var(--ink-3); white-space: pre; }
 .button.file-fold { display: flex; justify-content: flex-start; width: 100%; height: auto; padding: var(--file-fold-pad) var(--file-row-pad); border-radius: 0; font-family: var(--mono); font-size: var(--font-size-code); line-height: var(--file-row-leading); color: var(--ink-3); }
 .button.file-fold:hover:not(:disabled) { color: var(--ink-2); }
+@media (max-width: 600px) {
+  .file-id { flex-basis: 100%; }
+  .file-actions { flex-basis: 100%; margin-inline-start: 0; flex-wrap: wrap; }
+}
 

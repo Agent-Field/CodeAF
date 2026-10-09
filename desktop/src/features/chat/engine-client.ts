@@ -277,7 +277,8 @@ export type EngineChangeStatus = 'modified' | 'added' | 'deleted' | 'untracked';
 /** One row of "what changed": header "lexer.go internal/parse +12 −3" is name, dir, added, deleted. */
 export type EngineChangedFile = { path: string; name: string; dir: string; status: EngineChangeStatus; added: number; deleted: number; binary?: boolean };
 /** What a diff was measured against: `start` is the commit the conversation began on; `head` is the latest commit (no start recorded, or history was rewritten past it). */
-export type EngineDiffBase = { kind: 'start' | 'head'; sha?: string };
+/** `startGone` is set only when a start commit was recorded and history no longer reaches it; a `head` base without it means no start was ever recorded. */
+export type EngineDiffBase = { kind: 'start' | 'head'; sha?: string; startGone?: boolean };
 export type EngineChangedFiles = { git: boolean; base?: EngineDiffBase; branch?: string; files: EngineChangedFile[]; added: number; deleted: number; truncated?: boolean };
 /** Unified-diff row: `old`/`new` are the two line-number columns (absent = blank). */
 export type EngineDiffLine = { kind: 'context' | 'add' | 'del'; old?: number; new?: number; text: string };
@@ -310,6 +311,23 @@ export async function engineFileDiff(id: string, path: string): Promise<EngineFi
 /** Absolute path for "Open in editor"; 404 when the file is gone, 403 outside the workspace. */
 export async function engineEditorTarget(id: string, path: string): Promise<EngineEditorTarget> {
  return (await (await fetchEngine(`${sessionPath(id)}/files/locate?path=${encodeURIComponent(path)}`)).json()) as EngineEditorTarget;
+}
+/** One editor registered on the engine machine. `id` is a desktop name or a bundle id, never a command. */
+export type EngineEditor = { id: string; name: string; default?: boolean };
+/** `open` is false when the engine cannot start a program (another machine, or no display). */
+export type EngineEditors = { editors: EngineEditor[]; local: boolean; open: boolean; reason?: string };
+function editorListFrom(value: unknown): EngineEditors {
+ const body = value as EngineEditors | null;
+ if (!body || !Array.isArray(body.editors) || body.editors.some(editor => !editor || typeof editor.id !== 'string' || typeof editor.name !== 'string' || !editor.id || !editor.name)) throw new EngineError('The engine returned an invalid editor list.');
+ return { editors: body.editors, local: body.local === true, open: body.open === true, reason: typeof body.reason === 'string' ? body.reason : undefined };
+}
+/** Editors for a workspace file, default first, at most the engine's own cap. An empty list is a real answer. */
+export async function engineEditors(id: string, path: string): Promise<EngineEditors> {
+ return editorListFrom(await (await fetchEngine(`${sessionPath(id)}/editors?path=${encodeURIComponent(path)}`)).json());
+}
+/** Start one editor from that list. The id is checked again on the engine; this sends no command line. */
+export async function openEngineEditor(id: string, path: string, editorId: string): Promise<void> {
+ await fetchEngine(`${sessionPath(id)}/editors/open`, { method: 'POST', body: JSON.stringify({ path, id: editorId }) });
 }
 /** E3: send a message with attachments. Files are base64 in the body (≤20MB total). */
 export type OutgoingFile = { name: string; mime: string; dataBase64: string };

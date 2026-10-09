@@ -1,0 +1,30 @@
+# File and diff follow-ups
+
+Questions and gaps from the file/diff follow-up. Root consolidates these into `DESIGN-QUESTIONS.md`. This page does not edit that file.
+
+The design's edge copy that this change could match is matched. What follows is what the product still cannot say, or says differently, and why.
+
+| ID | What is still open | What the code does |
+| --- | --- | --- |
+| FF1 | The design draws only the gone case. | Fixed in the engine: `base.startGone` is true only when a start was recorded and is no longer reachable. Gone: the design's two sentences. Never recorded (or an unborn branch): "Compared with the latest commit." alone, the design sentence's first half. Question: should the never-recorded case say anything at all? |
+| FF2 | The Open in menu in the specimen is about 220px wide, and its highlight reads as field-2. | The shared menu stays 180–320px (`--menu-min-width`, `--menu-max-width`) and highlights with `--menu-highlight`. This change does not restyle every menu. |
+| FF3 | The specimen's Open in row is "Copy path ⌘⇧C" and does not show "Copy relative path". | "Copy relative path" stays, under Copy path. It was already the handoff, and removing it would drop a shipped action. |
+| FF4 | The outside-git example is "~/scratch · not in git". | The directory is the workspace-relative parent, then " · not in git" (middle dot). A file with no parent is "not in git". The specimen path is `internal/parse/lexer.go`, so that card reads "internal/parse · not in git". |
+| FF5 | A headless or remote engine might want the reason drawn in the menu. | The menu does not draw a reason sentence. Remote: empty editor list, copy items only. Headless: the list may still be returned with `open: false`, and the menu does not offer to launch. The reason is on the API response for a caller that can show it. |
+| FF6 | Every editor that can open the file, default first. | Linux reads `.desktop` handlers (Name, MimeType, TryExec) for the file's type and its shared-mime-info parents; `mimeapps.list` added associations are not read. macOS asks Launch Services for the file's handlers and, when the bytes are text, the plain-text editors; with no default of its own the plain-text default comes first. Verified on a Mac Studio (macOS 26.4): `main.go` lists Cursor (default), Numbers, TextEdit, and `POST /editors/open` with TextEdit started TextEdit. `Exec=` is never read; no command line is accepted. |
+| FF7 | The tab should refresh when the file on disk changes. | Two signals: named edits on the session stream, and the file's stat version (size, modification time) asked about every 2 s for the one open path while the tab and window are visible, and on return to the front. A hidden or closed tab asks nothing. A rewrite inside the same second at the same size is missed; there is no file-system watch on the engine. |
+| FF8 | The file chip's full path should be announced. | The shared tooltip now takes `describe`: the trigger's `aria-describedby` points at the tooltip id, and while the tooltip is closed a hidden copy with that id carries the text, so keyboard focus hears it at once. The file chip and an IconButton whose title differs from its label use it; a tooltip that repeats the name does not. |
+| FF9 | One discovered editor versus several. | One launchable editor keeps the "Open in editor" button and starts that editor. Several become "Open in", default first, with the word "default" after the name. When the editor route is missing, the previous opener remains if this machine is the engine's machine, so an older bridge does not lose the handoff. |
+| FF10 | Type icons and an image view for a file tab. | Type icons: Shell 2h names file-code-2, file-json, file-text and image. The one icon package has no file-json or file-code-2, so code and JSON draw file-code, prose and unknown draw file-text, pictures draw image, on the file tab, the overview and the header. The tab-switcher list still draws the kind icon (Workspace.tsx is not this lane's). Image view: the design does not draw an image in a file tab; an image chip keeps the preview sheet and Command-click does not open a tab. Question: draw a file-json icon, and should an image open a tab? |
+| FF12 | Refresh matches paths. | Two relative paths match only when equal; an absolute path matches the relative path it ends with. An edit of `cmd/a.go` does not refresh a tab showing the root `a.go`. |
+| FF14 | `TestToolOutputFetchesOnlyNamedCanonicalCallStub` failed on macOS. | The test expected the temp path before link resolution (`/var` vs `/private/var`); it now resolves the link first. Test-only. |
+| FF13 | The files unit tests were outside the gate. | `npm run files:test` runs `src/features/files/*.test.ts` and `npm run check` runs it. |
+| FF11 | Header wrap at 320 and 560, and the compact breakpoint. | The header wraps at the declared small breakpoint, 600px, so 320 and 560 both wrap. Nothing new happens at 850. The directory shrinks before the file name and fades with the existing mask. |
+
+## Editor API (see also docs/ENGINE.md)
+
+`GET /sessions/{id}/editors?path=` answers `{ editors: [{ id, name, default }], local, open, reason? }`.
+
+`POST /sessions/{id}/editors/open` takes `{ path, id }`. The id must be one this process just listed for that path. The body has no command line. Launch is `gtk-launch` or `gio launch` on Linux, and `open -b` on macOS. A path outside the workspace is refused the same way file locate refuses it. Another machine answers 409 and does not list this machine's editors. No display answers 409 and does not start a program.
+
+At most eight editors. The default is first. A machine that cannot list editors returns an empty list and says so. Nothing here is a made-up Photoshop or Preview.

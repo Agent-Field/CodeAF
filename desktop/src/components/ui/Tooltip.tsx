@@ -24,10 +24,16 @@ type TriggerHandlers<E extends HTMLElement> = {
  onBlur?: (event: FocusEvent<E>) => void;
 };
 
+type TooltipOptions = {
+ /** The text says more than the trigger's accessible name (a full path behind a file name), so it is also the
+  * trigger's description. A tooltip that only repeats the name stays undescribed, or a reader hears it twice. */
+ describe?: boolean;
+};
+
 /** The designer's tooltip: icon-only buttons and truncated text only. It appears after the
  * delay (instantly while another is warm), uses sh-2 and 11px text, never on touch, only for
  * keyboard focus, and goes away on scroll, press or Escape. The trigger keeps its accessible name. */
-export function useTooltip<E extends HTMLElement = HTMLElement>(text: string, handlers: TriggerHandlers<E> = {}) {
+export function useTooltip<E extends HTMLElement = HTMLElement>(text: string, handlers: TriggerHandlers<E> = {}, options: TooltipOptions = {}) {
  const [anchor, setAnchor] = useState<{ rect: DOMRect; container: Element } | null>(null);
  const timer = useRef(0);
  const tip = useRef<HTMLSpanElement>(null);
@@ -53,8 +59,13 @@ export function useTooltip<E extends HTMLElement = HTMLElement>(text: string, ha
   onFocus: event => { handlers.onFocus?.(event); if (event.currentTarget.matches(':focus-visible')) show(event.currentTarget); },
   onBlur: event => { handlers.onBlur?.(event); hide(); },
  };
- const element = anchor && text ? createPortal(<span ref={tip} id={id} role="tooltip" className="tooltip">{text}</span>, anchor.container) : null;
- return { props, element };
+ // A described trigger points at the same id whether or not the tooltip is drawn: the hidden copy carries the
+ // description while it is closed, so a keyboard focus hears it at once instead of after the open delay.
+ const describe = !!options.describe && !!text;
+ const element = anchor && text
+  ? createPortal(<span ref={tip} id={id} role="tooltip" className="tooltip">{text}</span>, anchor.container)
+  : describe ? <span id={id} hidden>{text}</span> : null;
+ return { props: describe ? { ...props, 'aria-describedby': id } : props, element };
 }
 
 /** Single-line text that ellipsizes; the full text shows as a tooltip only when it is actually cut. */
