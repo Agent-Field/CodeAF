@@ -7,6 +7,7 @@ import { clampRatio, initialWorkspace, layoutFits, makeSplit, titleRank, withSpl
 import { reduceNewTab, type NewTabAction } from './reducers/newtab.ts';
 import { reduceGroups, type GroupAction } from './reducers/groups.ts';
 import { reduceSplit, type SplitAction } from './reducers/split.ts';
+import { reduceClosing, type ClosingAction } from './reducers/closing.ts';
 import { reduceTabs, type TabAction } from './reducers/tabs.ts';
 import type { Pane, SplitLayout, Tab, TabGroup, TitleSource, WorkspaceState } from './types.ts';
 
@@ -83,9 +84,9 @@ export function readWorkspace(): WorkspaceState {
   } catch { return initialWorkspace(); }
 }
 
-export type WorkspaceAction = TabAction | GroupAction | SplitAction | NewTabAction;
+export type WorkspaceAction = TabAction | GroupAction | SplitAction | NewTabAction | ClosingAction;
 type Slice = (state: WorkspaceState, action: { type: string }) => WorkspaceState | undefined;
-const slices: readonly Slice[] = [reduceTabs, reduceGroups, reduceSplit, reduceNewTab];
+const slices: readonly Slice[] = [reduceTabs, reduceGroups, reduceSplit, reduceNewTab, reduceClosing];
 
 export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState {
   for (const slice of slices) {
