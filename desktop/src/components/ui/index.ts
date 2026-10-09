@@ -1,6 +1,11 @@
 export { Icon, iconNames, type IconName } from './Icon';
 export { BrandMark } from './BrandMark';
-export { Button, IconButton } from './Button';
+export { Button, IconButton, type ButtonVariant, type IconButtonSize } from './Button';
+export { useTooltip, TruncatedText } from './Tooltip';
+export { StatusMark, type Status } from './StatusMark';
+export { Segmented, type SegmentedOption } from './Segmented';
+export { Chip, ChipButton, Tag, type TagTone } from './Chip';
+export { Row, RowActions } from './RowActions';
 export { NavigationItem } from './NavigationItem';
 export { PageHeading, SectionHeading, Text, CodeText } from './Typography';
 export { Surface, Separator } from './Surface';

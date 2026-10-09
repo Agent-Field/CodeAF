@@ -55,7 +55,7 @@ export function TrayTabs({ tabs, activeId, answeredIds, folded, foldedOpen, onSe
               key={tab.id}
               id={tabDomId(tab.id)}
               role="tab"
-              variant={tab.id === activeId ? 'secondary' : 'quiet'}
+              variant={tab.id === activeId ? 'raised' : 'ghost'}
               aria-selected={tab.id === activeId}
               aria-controls={panelDomId(tab.id)}
               tabIndex={tab.id === activeId ? 0 : -1}

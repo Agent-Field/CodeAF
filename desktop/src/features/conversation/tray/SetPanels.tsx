@@ -26,7 +26,7 @@ export function BulkCard({ members, busy, onAll, onOneByOne }: BulkProps) {
       </ul>
       <div className="tray-actions">
         <Button variant="primary" disabled={busy} onClick={() => onAll('allow')}>Allow all</Button>
-        <Button variant="secondary" disabled={busy} onClick={onOneByOne}>One by one</Button>
+        <Button variant="quiet" disabled={busy} onClick={onOneByOne}>One by one</Button>
         <Button disabled={busy} onClick={() => onAll('deny')}>Deny all</Button>
       </div>
     </section>

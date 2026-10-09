@@ -4,19 +4,97 @@ button { cursor: pointer; transition: background var(--duration) var(--chrome-ea
 button, select { -webkit-user-select: none; user-select: none; }
 button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 :focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
-.icon-button { display: grid; place-items: center; width: var(--icon-button-size); height: var(--icon-button-size); padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); flex-shrink: 0; }
-.icon-button:hover:not(:disabled) { background: var(--hover); color: var(--text); }
 .app-icon { display: inline-flex; align-items: center; justify-content: center; width: var(--icon-md); height: var(--icon-md); flex: 0 0 auto; color: inherit; }
 .app-icon-xs { width: var(--icon-xs); height: var(--icon-xs); }.app-icon-sm { width: var(--icon-sm); height: var(--icon-sm); }.app-icon-lg { width: var(--icon-lg); height: var(--icon-lg); }
 .app-icon > div { display: inline-flex; width: 100%; height: 100%; }.app-icon svg { display: block; width: 100%; height: 100%; stroke-width: var(--icon-stroke); }
 .brand-mark { display: inline-block; color: inherit; width: var(--brand-small); height: var(--brand-small); flex: 0 0 auto; }
 .brand-mark-hero { width: var(--brand-hero); height: var(--brand-hero); color: var(--text); opacity: var(--brand-opacity); margin-bottom: var(--space-section-inner); }
-.button { display: inline-flex; align-items: center; justify-content: center; gap: var(--control-gap); min-height: var(--button-height); padding: var(--space-tight) var(--space-3); border: var(--border-width) solid transparent; border-radius: var(--radius-sm); font-size: var(--font-size-label); font-weight: var(--font-weight-regular); background: transparent; color: var(--muted); white-space: nowrap; }
-.button-quiet:hover:not(:disabled) { background: var(--control-hover); color: var(--text); }
-.button-secondary { border-color: var(--border); background: var(--chrome-surface); color: var(--text); }
-.button-secondary:hover:not(:disabled) { background: var(--control-hover); border-color: var(--control-border-hover); }
-.button-primary { background: var(--chrome-accent); color: var(--on-accent); font-weight: var(--font-weight-medium); }
-.button-primary:hover:not(:disabled) { background: var(--accent-hover); }
+/* Design v3 controls: components.dc.html Controls and conversation.dc.html 1f. Hover changes only the
+   fill. Press darkens one step for dur-press. Focus-visible is a 2px accent ring with a 4px soft halo,
+   keyboard only. Disabled is 40% of the whole control, the only permitted use of opacity. */
+.button, .icon-button, .segmented-option, .chip-button { transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease); }
+.button:active, .icon-button:active, .segmented-option:active, .chip-button:active { transition-duration: var(--dur-press); }
+.button:focus-visible, .icon-button:focus-visible, .segmented-option:focus-visible, .chip-button:focus-visible { outline: var(--focus-ring-width) solid transparent; box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
+.button:disabled, .icon-button:disabled, .segmented-option:disabled, .chip-button:disabled { cursor: default; opacity: var(--opacity-control-disabled); }
+.button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-tight); min-height: var(--control-height); padding: 0 var(--control-pad); border: 0; border-radius: var(--radius-control); font-family: var(--sans); font-size: var(--type-label-size); font-weight: var(--type-label-strong); line-height: var(--type-label-leading); white-space: nowrap; background: transparent; color: var(--ink); }
+.button-primary { padding-inline: var(--control-pad-primary); background: var(--accent); color: var(--accent-ink); }
+.button-raised { background: var(--surface); box-shadow: var(--sh-1); }
+.button-quiet { background: var(--field); }
+.button-ghost { padding-inline: var(--control-pad-ghost); color: var(--ink-3); }
+.button-danger { background: var(--danger-soft); color: var(--danger); }
+.button-primary:hover:not(:disabled), .button-danger:hover:not(:disabled) { filter: brightness(var(--brightness-hover)); }
+.button-primary:active:not(:disabled), .button-danger:active:not(:disabled) { filter: brightness(var(--brightness-press)); }
+.button-ghost:hover:not(:disabled), .button-raised:hover:not(:disabled) { background: var(--field); color: var(--ink); }
+.button-quiet:hover:not(:disabled) { background: var(--field-2); }
+.button-ghost:active:not(:disabled), .button-raised:active:not(:disabled) { background: var(--field-2); color: var(--ink); }
+.button-quiet:active:not(:disabled) { background: var(--field-2); filter: brightness(var(--brightness-press)); }
+.icon-button { display: grid; place-items: center; flex-shrink: 0; width: var(--control-height); height: var(--control-height); padding: 0; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--ink-2); }
+.icon-button[data-size="row"] { width: var(--row-action-size); height: var(--row-action-size); border-radius: var(--radius-row-action); color: inherit; }
+.icon-button[data-size="message"] { width: var(--message-action-size); height: var(--message-action-size); border-radius: var(--radius-message-action); color: inherit; }
+.icon-button:hover:not(:disabled) { background: var(--field); color: var(--ink); }
+.icon-button[data-size="row"]:hover:not(:disabled), .icon-button:active:not(:disabled) { background: var(--field-2); color: var(--ink); }
+.icon-button[data-size="row"]:active:not(:disabled) { filter: brightness(var(--brightness-press)); }
+
+/* Segmented: exclusive choices on a field track; the chosen one is raised on surface. */
+.segmented { display: inline-flex; gap: var(--segment-inset); padding: var(--segment-inset); border-radius: var(--radius-segment); background: var(--field); }
+.segmented-option { display: grid; place-items: center; height: var(--segment-height); padding: 0 var(--segment-pad); border: 0; border-radius: var(--radius-segment-item); background: transparent; color: var(--ink-2); font-family: var(--sans); font-size: var(--type-label-size); font-weight: var(--type-label-weight); }
+.segmented-option:hover:not(:disabled), .segmented-option:active:not(:disabled) { background: var(--field-2); color: var(--ink); }
+.segmented-option[aria-checked="true"], .segmented-option[aria-checked="true"]:hover:not(:disabled) { background: var(--surface); box-shadow: var(--sh-1); color: var(--ink); font-weight: var(--type-label-strong); }
+
+/* Chips are 20px inline pills on field; tags are 18px labels. */
+.chip { display: inline-flex; align-items: center; gap: var(--chip-gap); height: var(--chip-height); max-width: 100%; padding: 0 var(--chip-pad-end) 0 var(--chip-pad-start); border: 0; border-radius: var(--radius-chip); background: var(--field); color: var(--ink); font-family: var(--sans); font-size: var(--type-label-size); vertical-align: middle; }
+.chip[data-muted] { color: var(--ink-3); }
+.chip-button:hover:not(:disabled), .chip-button:active:not(:disabled) { background: var(--field-2); }
+.tag { display: inline-flex; align-items: center; height: var(--tag-height); padding: 0 var(--tag-pad); border-radius: var(--radius-tag); font-family: var(--sans); font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); white-space: nowrap; }
+.tag[data-tone="accent"] { background: var(--accent-soft); color: var(--accent); }
+.tag[data-tone="neutral"] { background: var(--field); color: var(--ink-2); }
+.tag[data-tone="danger"] { background: var(--danger-soft); color: var(--danger); }
+.tag[data-tone="key"] { padding: 0 var(--tag-pad-key); background: var(--surface); box-shadow: inset 0 0 0 var(--hairline) var(--line); color: var(--ink-3); font-family: var(--mono); }
+
+/* Status marks: one still mark plus words. */
+.status-mark { display: inline-grid; place-items: center; flex: none; width: var(--mark-box); height: var(--mark-box); color: var(--mark-done); }
+.status-mark-dot { width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: currentColor; }
+.status-mark[data-status="running"] { color: var(--mark-running); }
+.status-mark[data-status="waiting"] { color: var(--mark-waiting); }
+.status-mark[data-status="failed"] { color: var(--mark-failed); }
+.status-mark[data-status="queued"] { color: var(--mark-queued); }
+.status-mark[data-status="stopped"] { color: var(--mark-stopped); }
+.status-mark[data-status="paused"] { color: var(--mark-paused); }
+.status-mark[data-status="incomplete"] { color: var(--mark-incomplete); }
+.status-mark[data-status="queued"] .status-mark-dot { width: var(--mark-ring); height: var(--mark-ring); background: transparent; box-shadow: inset 0 0 0 var(--mark-ring-width) currentColor; }
+
+/* Rows: rest none, hover field, selected field. Row and message actions hide at rest and fade in on
+   hover or focus within their host; they stay visible on touch. */
+.row { display: flex; align-items: center; gap: var(--space-compact); min-height: var(--row-height-v3); padding: 0 var(--space-1) 0 var(--row-pad); border-radius: var(--radius-control); color: var(--ink); font-size: var(--type-prose-size); transition: background-color var(--dur-fast) var(--ease); }
+.row:hover, .row[data-selected] { background: var(--field); }
+.row-actions { display: flex; align-items: center; gap: var(--space-half); margin-left: auto; color: var(--ink-2); opacity: var(--opacity-transparent); transition: opacity var(--dur-fast) var(--ease); }
+:is(.row, [data-actions-host]):is(:hover, :focus-within) .row-actions { opacity: var(--opacity-opaque); }
+@media (hover: none), (pointer: coarse) { .row-actions { opacity: var(--opacity-opaque); } }
+
+/* Field: rest on field, focus on surface with a 1px accent ring and a 4px soft halo. */
+.text-input.text-input-field { height: var(--field-height); min-height: var(--field-height); padding: 0 var(--field-pad); border-radius: var(--radius-control); background: var(--field); color: var(--ink); font-size: var(--type-label-size); }
+.text-input-field::placeholder { color: var(--ink-3); }
+.text-input-field:focus-visible { outline: var(--field-focus-ring) solid transparent; background: var(--surface); box-shadow: 0 0 0 var(--field-focus-ring) var(--accent), 0 0 0 var(--field-focus-halo) var(--accent-soft); }
+
+/* Tooltip: icon-only buttons and truncated text; sh-2 and 11px text. Its position is measured. */
+.tooltip { position: fixed; top: 0; left: 0; z-index: var(--z-menu); max-width: var(--menu-max-width); padding: var(--tooltip-pad-y) var(--tooltip-pad-x); border-radius: var(--radius-chip); background: var(--surface); color: var(--ink); box-shadow: var(--sh-2); font-family: var(--sans); font-size: var(--type-caption-size); font-weight: var(--type-label-weight); line-height: var(--type-caption-leading); pointer-events: none; }
+.truncated-text { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* LEGACY CHROME CONTROLS. The sidebar, tab strip, overview, switcher, rename dialog, page toolbar and
+   palette keep their previous control look until the owner restyles the chrome. :where() adds no
+   specificity, so each chrome rule keeps the weight it had and chrome CSS overrides still win. */
+:where(.sidebar, .workspace-tabbar, .tab-overview, .workspace-switcher, .workspace-rename, .content-toolbar, .command-palette) .icon-button { width: var(--icon-button-size); height: var(--icon-button-size); border-radius: var(--radius-sm); color: var(--muted); transition: background var(--duration) var(--chrome-ease), color var(--duration) var(--chrome-ease), border-color var(--duration) var(--chrome-ease); }
+:where(.sidebar, .workspace-tabbar, .tab-overview, .workspace-switcher, .workspace-rename, .content-toolbar, .command-palette) .icon-button:hover:not(:disabled) { background: var(--control-hover); color: var(--text); }
+:where(.sidebar, .workspace-tabbar, .tab-overview, .workspace-switcher, .workspace-rename, .content-toolbar, .command-palette) .icon-button:active:not(:disabled) { background: var(--control-pressed); color: var(--text); }
+:where(.sidebar, .workspace-tabbar, .tab-overview, .workspace-switcher, .workspace-rename, .content-toolbar, .command-palette) .button { gap: var(--control-gap); min-height: var(--button-height); padding: var(--space-tight) var(--space-3); border: var(--border-width) solid transparent; border-radius: var(--radius-sm); font-family: inherit; font-size: var(--font-size-label); font-weight: var(--font-weight-regular); line-height: inherit; background: transparent; color: var(--muted); transition: background var(--duration) var(--chrome-ease), color var(--duration) var(--chrome-ease), border-color var(--duration) var(--chrome-ease); }
+:where(.sidebar, .workspace-tabbar, .tab-overview, .workspace-switcher, .workspace-rename, .content-toolbar, .command-palette) .button-ghost:hover:not(:disabled) { background: var(--control-hover); color: var(--text); }
+:where(.sidebar, .workspace-tabbar, .tab-overview, .workspace-switcher, .workspace-rename, .content-toolbar, .command-palette) .button-quiet { border-color: var(--border); background: var(--chrome-surface); color: var(--text); }
+:where(.sidebar, .workspace-tabbar, .tab-overview, .workspace-switcher, .workspace-rename, .content-toolbar, .command-palette) .button-quiet:hover:not(:disabled) { background: var(--control-hover); border-color: var(--control-border-hover); }
+:where(.sidebar, .workspace-tabbar, .tab-overview, .workspace-switcher, .workspace-rename, .content-toolbar, .command-palette) .button-primary { background: var(--chrome-accent); color: var(--on-accent); font-weight: var(--font-weight-medium); }
+:where(.sidebar, .workspace-tabbar, .tab-overview, .workspace-switcher, .workspace-rename, .content-toolbar, .command-palette) .button-primary:is(:hover, :active):not(:disabled) { background: var(--accent-hover); filter: none; }
+:where(.sidebar, .workspace-tabbar, .tab-overview, .workspace-switcher, .workspace-rename, .content-toolbar, .command-palette) .button:not(.button-primary):active:not(:disabled) { background: var(--control-pressed); color: var(--text); filter: none; }
+:where(.sidebar, .workspace-tabbar, .tab-overview, .workspace-switcher, .workspace-rename, .content-toolbar, .command-palette) :is(.button, .icon-button):focus-visible { outline: var(--focus-width) solid var(--focus-ring); box-shadow: none; }
+:where(.sidebar, .workspace-tabbar, .tab-overview, .workspace-switcher, .workspace-rename, .content-toolbar, .command-palette) :is(.button, .icon-button):disabled { opacity: var(--opacity-disabled); }
 .nav-item { width: 100%; display: flex; align-items: center; gap: var(--space-compact); height: var(--nav-height); border: 0; background: transparent; color: var(--text); border-radius: var(--radius-sm); padding: 0 var(--space-nav-inset); text-align: left; margin: var(--space-three-quarter) 0; }
 .nav-item .app-icon { opacity: var(--opacity-icon); }.nav-item:hover { background: var(--hover); }.nav-item.active { background: var(--active); box-shadow: var(--selection-shadow); }
 .address-field { display: flex; align-items: center; gap: var(--space-2); width: 100%; height: var(--nav-height); border: 0; border-radius: var(--radius-sm); background: var(--chrome-field); color: var(--text); padding: 0 var(--space-nav-inset); text-align: left; }.address-field > .app-icon { margin-left: auto; color: var(--muted); }
@@ -46,12 +124,11 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 @keyframes surface-exit { from { opacity: var(--opacity-opaque); } to { opacity: var(--opacity-transparent); } }
 
 /* Uniform state contract: hover/press for actions; selection only for navigation. */
-.address-field:hover:not(:disabled), .favorite-button:hover:not(:disabled), .new-item:hover:not(:disabled), .icon-button:hover:not(:disabled), .select-trigger:hover:not(:disabled) { background: var(--control-hover); color: var(--text); }
+.address-field:hover:not(:disabled), .favorite-button:hover:not(:disabled), .new-item:hover:not(:disabled), .select-trigger:hover:not(:disabled) { background: var(--control-hover); color: var(--text); }
 .favorite-button[data-selected="true"] { background: var(--control-selected); color: var(--text); }
 .favorite-button[data-selected="true"]:hover:not(:disabled) { background: var(--control-pressed); }
 .address-field[aria-expanded="true"] { background: var(--control-selected); }
-.button:not(.button-primary):active:not(:disabled), .address-field:active:not(:disabled), .favorite-button:active:not(:disabled), .new-item:active:not(:disabled), .icon-button:active:not(:disabled), .select-trigger:active:not(:disabled) { background: var(--control-pressed); color: var(--text); }
-.button-primary:active:not(:disabled) { background: var(--accent-hover); }
+.address-field:active:not(:disabled), .favorite-button:active:not(:disabled), .new-item:active:not(:disabled), .select-trigger:active:not(:disabled) { background: var(--control-pressed); color: var(--text); }
 
 /* One surface and state system for tab context menus and toolbar dropdowns. */
 .app-menu { z-index: var(--z-menu); min-width: var(--menu-min-width); max-width: min(var(--menu-max-width),calc(100vw - var(--space-6))); max-height: var(--menu-max-height); overflow: auto; padding: var(--space-1); border: var(--border-width) solid var(--border); border-radius: var(--radius-md); background: var(--overlay-surface); color: var(--text); box-shadow: var(--palette-shadow); }
@@ -81,7 +158,7 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 
 @keyframes document-enter { from { opacity: var(--opacity-transparent); transform: translateY(var(--motion-travel)); } to { opacity: var(--opacity-opaque); transform: translateY(var(--motion-rest)); } }
 
-.workspace-tab-select.button-quiet:hover:not(:disabled), .workspace-tab-select.button-quiet:active:not(:disabled) { background: transparent; color: inherit; }
+.workspace-tab-select.button-ghost:hover:not(:disabled), .workspace-tab-select.button-ghost:active:not(:disabled) { background: transparent; color: inherit; }
 
 /* Tab overview: shared surface and interaction standard. */
 .tab-overview { width: min(var(--overview-max-width), calc(100vw - var(--space-8))); max-height: calc(100dvh - var(--space-8)); padding: var(--space-4); border: var(--border-width) solid var(--border); border-radius: var(--radius-lg); color: var(--text); background: var(--overlay-surface); box-shadow: var(--palette-shadow); }
