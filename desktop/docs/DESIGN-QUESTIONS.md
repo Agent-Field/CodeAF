@@ -305,3 +305,11 @@ Detailed Shell 3k and Components §15 declare width 300px with 14px horizontal p
 ### Context menu nominal width
 
 The rendered detailed Shell 3g uses content-box widths: the tab context menu is 240px content plus two 5px insets (250px outer); the group context menu and submenu are 200px content plus insets (210px outer). Shared context/submenu rules derive these outer widths from the existing tokens. Ordinary dropdown roots retain their current 200px width. Native collision bounds and viewport limits still apply.
+
+### Inactive tab preview from the keyboard
+
+The ZIP says Tab focuses controls and describes a preview after a 500ms hover; it does not define an inactive-tab keyboard preview shortcut. The shared trigger can open a preview on focus-visible, but the strip automatically selects Arrow/Home/End destinations and inactive tabs have tabindex -1. Should arrow navigation move focus without activation (Enter selects), or should a dedicated preview command exist? Current ordinary keyboard navigation selects tabs; no new shortcut was invented. Hover and preview actions remain available.
+
+### Tab and Latest text line boxes
+
+Matched Components tab-title and Latest-label leaves inherit normal leading in 30px flex parents. Dedicated shared leading tokens preserve that 14px system-font leaf geometry without changing generic typography. Catalog/global fractional screenshot origins can round a 14px DOM leaf into a 15px image crop; avoid adding compensating pixel offsets for that capture artifact.
