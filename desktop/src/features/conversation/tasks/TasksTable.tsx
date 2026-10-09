@@ -95,14 +95,16 @@ function Strip({ counts }: { counts: StripCounts }) {
   return (
     <div className="tasks-table-strip" role="img" aria-label={summary}>
       {SEGMENTS.flatMap((name) =>
-        Array.from({ length: counts[name] }, (_, index) => <span key={`${name}-${index}`} className="tasks-table-strip-cell" data-segment={name} />),
+        Array.from({ length: counts[name] }, (_, index) => (
+          <span key={`${name}-${index}`} className="tasks-table-strip-cell" data-segment={name} data-start={index === 0 || undefined} data-end={index === counts[name] - 1 || undefined} />
+        )),
       )}
     </div>
   );
 }
 
 function Mark({ row }: { row: EngineTaskRow }) {
-  return <TaskMark status={row.Status} {...rowFlags(row)} />;
+  return <TaskMark dense status={row.Status} {...rowFlags(row)} />;
 }
 
 /** The row's second line: the live command, or the reason it waits; model, steps and cost only as the engine gave them. */

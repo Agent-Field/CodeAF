@@ -11,9 +11,9 @@
 .task-row .task-panel-main.button { flex: 1; min-width: 0; height: var(--row-height-v3); justify-content: flex-start; gap: var(--tasks-mark-gap); padding: 0; border-radius: var(--radius-control); background: transparent; color: inherit; font: inherit; text-align: left; white-space: nowrap; }
 .task-row .task-panel-main.button:hover { background: transparent; }
 .task-row[data-depth="0"] .task-panel-main.button { gap: var(--space-2); font-weight: var(--type-label-strong); }
-.task-row[data-depth="0"]:not([data-parent]) .task-mark { width: var(--tasks-chevron); }
+.task-row[data-depth="0"]:not([data-parent]) .status-mark { width: var(--tasks-chevron); }
 /* A top-level parent shows its chevron alone; the mark stays in the tree for a screen reader. */
-.task-row[data-depth="0"][data-parent] .task-mark { position: absolute; width: var(--hairline); height: var(--hairline); overflow: hidden; clip-path: inset(50%); }
+.task-row[data-depth="0"][data-parent] .status-mark { position: absolute; width: var(--hairline); height: var(--hairline); overflow: hidden; clip-path: inset(50%); }
 
 .task-row-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-row-wait { opacity: var(--opacity-subtle); }

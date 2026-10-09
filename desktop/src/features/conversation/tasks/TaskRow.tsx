@@ -71,7 +71,7 @@ export function TaskRow(props: TaskRowProps) {
           aria-current={current ? 'true' : undefined}
           onClick={(event) => commands.onOpenTask(row.ID, event.metaKey || event.ctrlKey)}
         >
-          <TaskMark status={row.Status} {...rowFlags(row)} />
+          <TaskMark dense status={row.Status} {...rowFlags(row)} />
           <Title row={row} rows={props.rows} />
         </Button>
         <Meta row={row} kind={kind} now={now} below={below} />

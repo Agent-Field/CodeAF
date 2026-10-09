@@ -21,8 +21,12 @@
 .tasks-table-search .text-input { flex: 1; min-height: var(--motion-rest); padding: var(--motion-rest); color: var(--ink); font-size: var(--type-label-size); }
 .tasks-table-search .text-input:focus-visible { outline: none; }
 
-.tasks-table-strip { display: flex; gap: var(--space-half); flex: none; height: var(--tasks-table-strip-height); margin-block-end: var(--space-4); }
-.tasks-table-strip-cell { flex: 1 1 0; min-width: var(--motion-rest); border-radius: var(--space-half); background: var(--field-2); }
+/* The cells of one state join into one rounded bar; the last of each carries the gap to the next, as in the panel's strip. */
+.tasks-table-strip { display: flex; flex: none; height: var(--tasks-table-strip-height); margin-block-end: var(--space-4); }
+.tasks-table-strip-cell { flex: 1 1 0; min-width: var(--motion-rest); background: var(--field-2); }
+.tasks-table-strip-cell[data-start] { border-start-start-radius: var(--tasks-strip-radius); border-end-start-radius: var(--tasks-strip-radius); }
+.tasks-table-strip-cell[data-end] { border-start-end-radius: var(--tasks-strip-radius); border-end-end-radius: var(--tasks-strip-radius); margin-inline-end: var(--space-half); }
+.tasks-table-strip-cell[data-end]:last-child { margin-inline-end: 0; }
 .tasks-table-strip-cell[data-segment="done"] { background: var(--ink-3); }
 .tasks-table-strip-cell[data-segment="running"] { background: var(--accent); }
 .tasks-table-strip-cell[data-segment="needs"] { background: var(--amber); }

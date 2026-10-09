@@ -16,7 +16,7 @@ import { ExpandedTasks } from './ExpandedTasks';
 import { LatestPill, liveSince } from './LatestPill';
 import { summarize, type TabSummary } from './tabSummary';
 import { TaskPanel } from './TaskPanel';
-import { TaskRoute } from './TaskRoute';
+import { TaskRoute, TaskRouteBar } from './TaskRoute';
 import { taskCounts } from './taskTree';
 import { useConversation } from './useConversation';
 import { readEngineText } from './tasks/readText';
@@ -150,15 +150,14 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
           />
         )}
         <div className="conversation-main" data-empty={empty || undefined} hidden={tasksView}>
-          <div ref={scroller} className="conversation-scroll" data-scrolled={scrolled || undefined}>
+          {taskId && <TaskRouteBar taskId={taskId} tasks={model.tasks} route={route} onRoute={setRoute} />}
+          <div ref={scroller} className="conversation-scroll" data-scrolled={scrolled || undefined} data-task={inTask || undefined}>
             <div ref={content} className="conversation-column">
               {greeting && <p className="conversation-greeting">{greeting}</p>}
               {taskId ? (
                 <TaskRoute
                   sessionId={sessionId}
                   taskId={taskId}
-                  tasks={model.tasks}
-                  rootLabel={label}
                   route={route}
                   onRoute={setRoute}
                   renderFile={(path) => renderFile(path)}
