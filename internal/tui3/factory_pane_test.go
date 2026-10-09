@@ -172,7 +172,7 @@ func TestFactoryPeekNewItemLadder(t *testing.T) {
 	factoryWantBlocks(t, "the new item", blocks,
 		"#1662 fix(media): tree rails on narrow widths",
 		"claims are testable; three checks cover them",
-		"ask me at  pull request  budget  $3      thinking  —",
+		"budget  $3      thinking  —",
 		a.factoryPendingMark()+" read",
 		"Claims",
 		"· rails follow the tree")
@@ -181,8 +181,8 @@ func TestFactoryPeekNewItemLadder(t *testing.T) {
 	}
 	strip := blocks[3][0]
 	mark := a.factoryPendingMark()
-	// EVERY CELL OF THE STRIP IS ONE WIDTH, its longest name's (`○ checks`).
-	if want := mark + " read    " + mark + " checks  " + mark + " review"; strip != want {
+	// EVERY CELL OF THE STRIP IS ONE WIDTH, its longest name's (`○ approve`).
+	if want := mark + " read     " + mark + " checks   " + mark + " review   " + mark + " approve"; strip != want {
 		t.Fatalf("the would-run strip is %q, want %q", strip, want)
 	}
 	for _, key := range []string{"[t]", "[c]", "[e]"} {
@@ -238,8 +238,8 @@ func TestFactoryPeekRunningItemLadder(t *testing.T) {
 	factoryWantBlocks(t, "the running item", blocks,
 		"#1551 filters lost on compact",
 		"the filter is read before the tree exists",
-		"ask me at  pull request  budget  $5      thinking  —",
-		factoryDoneMark(a),
+		"budget  $5      thinking  —",
+		"…",
 		"review 1/2 · 3 findings · fixing · 4m left")
 	if strip := blocks[3][0]; !strings.Contains(strip, "review 1/2") || !strings.Contains(strip, "write ×3") && !strings.Contains(strip, "test") {
 		t.Fatalf("the strip is %q", strip)
@@ -261,14 +261,14 @@ func TestFactoryPeekNeedsYouLadder(t *testing.T) {
 	a := factoryPlaceLab(t)
 	factoryNoForge(t, a, 1)
 	blocks := factoryPeekBlocks(t, factoryPaneOn(t, a, 1, factoryPaneW(150), 30))
-	q := a.icon(tokens.GNeedsHuman) + " plan is ready · go, or change it?"
+	q := a.icon(tokens.GNeedsHuman) + " " + factory.ApproveQuestion("plan")
 	factoryWantBlocks(t, "the needs-you item", blocks,
 		"#1538 budget caps per task",
 		q,
 		"touches three packages; wants a plan first",
 		"touches money",
-		"ask me at  plan          budget  $8      thinking  —",
-		factoryWaitingMark(a)+" plan")
+		"budget  $8      thinking  —",
+		factoryDoneMark(a)+" plan")
 	// THE STILL FIXTURE HAS NO ANSWER DOOR, so the question draws no keys;
 	// over a floor that can answer, they stand under it.
 	if len(blocks[1]) != 1 {
@@ -281,7 +281,7 @@ func TestFactoryPeekNeedsYouLadder(t *testing.T) {
 	// THE AMBER IS ON THE MARK, the words are ink.
 	it := *factoryPaneItem(t, a, 1)
 	row := a.factoryPeekQuestion(it, 60, 8)[0]
-	if !strings.HasPrefix(row, a.pal.ask(a.icon(tokens.GNeedsHuman))) || !strings.Contains(row, a.pal.ink("plan is ready · go, or change it?")) {
+	if !strings.HasPrefix(row, a.pal.ask(a.icon(tokens.GNeedsHuman))) || !strings.Contains(row, a.pal.ink(factory.ApproveQuestion("plan"))) {
 		t.Fatalf("the question is not an amber mark and ink words: %q", row)
 	}
 }
@@ -295,7 +295,7 @@ func TestFactoryPeekLandedLadder(t *testing.T) {
 	blocks := factoryPeekBlocks(t, rows)
 	factoryWantBlocks(t, "the landed item", blocks,
 		"#1661 probes fire once, then retire",
-		"ask me at  pull request  budget  $5      thinking  —",
+		"budget  $5      thinking  —",
 		factoryDoneMark(a)+" plan",
 		a.icon(tokens.GSettled)+" fires on first true, never again")
 	claims := strings.Join(blocks[3], "\n")
@@ -337,7 +337,7 @@ func TestFactoryPeekEmptyBlocksVanish(t *testing.T) {
 	it := factoryPaneItem(t, a, 8)
 	it.Triage.Read, it.Body, it.Cap = "", "", 0
 	blocks := factoryPeekBlocks(t, factoryPaneOn(t, a, 8, factoryPaneW(150), 30))
-	factoryWantBlocks(t, "the bare item", blocks, "#1540 meter crashes", "ask me at  pull request                  thinking  —", a.factoryPendingMark()+" plan")
+	factoryWantBlocks(t, "the bare item", blocks, "#1540 meter crashes", "thinking  —", a.factoryPendingMark()+" plan")
 }
 
 // THE BODY IS SIX ROWS AT MOST, its last row cut with the ellipsis and a dim

@@ -44,7 +44,7 @@ func TestFactorySeamOverAStoreIsTheLocalFloor(t *testing.T) {
 		t.Fatal(err)
 	}
 	seam := factorySeam(st, "", "")
-	for _, door := range []string{"load", "new", "dismiss", "setgate", "setstage", "setcap"} {
+	for _, door := range []string{"load", "new", "dismiss", "setstage", "setcap"} {
 		if !seam.Has(door) {
 			t.Fatalf("the floor over a store is missing %q", door)
 		}

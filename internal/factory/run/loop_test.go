@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -110,6 +111,11 @@ func chat(name string) factory.Stage {
 	return factory.Stage{Name: name, Kind: factory.StageChat, Ask: "do " + name, Until: "done"}
 }
 
+// approveStep is an approve step; last in a run, it is the landing.
+func approveStep() factory.Stage {
+	return factory.Stage{Name: factory.ApproveName, Kind: factory.StageGate}
+}
+
 func done(out string) factory.StageResult { return factory.StageResult{Done: true, Output: out} }
 
 func TestLaunchRunsStagesInOrderAndLands(t *testing.T) {
@@ -204,48 +210,104 @@ func TestTheRailRefusesLaunch(t *testing.T) {
 	}
 }
 
-func TestAGateWaitsYesGoesOnNoStops(t *testing.T) {
+// AN APPROVE STEP HOLDS THE RUN for the person: yes goes on, words go on
+// with them in the next step's brief, no sends the run back to the step
+// before with the words, and an approve with nothing before it stops on no.
+func TestAnApproveStepHoldsYesGoesOnNoSendsBack(t *testing.T) {
+	var mu sync.Mutex
+	var briefs []string
 	g := newRig(t, map[factory.StageKind]Executor{
 		factory.StageChat: ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
+			mu.Lock()
+			briefs = append(briefs, fmt.Sprintf("%s/%d:%s", job.Stage.Name, job.Round, strings.Join(job.Notes, ";")))
+			mu.Unlock()
 			return done(""), nil
 		}),
 	}, func(o *Options) { o.Benches = 0 })
-	gate := factory.Stage{Name: "look", Kind: factory.StageGate}
-	planGated := chat("write")
-	planGated.Gate = factory.GatePlan
+	approve := factory.Stage{Name: factory.ApproveName, Kind: factory.StageGate}
 
-	yes := g.add("yes", chat("plan"), gate, planGated)
+	yes := g.add("yes", chat("plan"), approve, chat("write"))
 	if err := g.r.Launch(yes); err != nil {
 		t.Fatal(err)
 	}
-	it := g.asked(yes, "look is ready · go, or change it?")
-	if it.QKind != "gate" || it.Stream.Phases[1].State != factory.PhaseWaiting {
-		t.Fatalf("gate = %q, phase %s", it.QKind, it.Stream.Phases[1].State)
+	it := g.asked(yes, "plan is ready · continue, or send it back?")
+	if it.QKind != factory.QKindApprove || it.Stream.Phases[1].State != factory.PhaseWaiting || it.State != factory.StateNeedsYou {
+		t.Fatalf("approve = %q, phase %s, state %s", it.QKind, it.Stream.Phases[1].State, it.State)
 	}
-	if err := g.r.Answer(yes, true, ""); err != nil {
+	// NO SENDS IT BACK: plan runs a second round with the words, then the
+	// approve step holds again.
+	if err := g.r.Answer(yes, false, "use the other file"); err != nil {
 		t.Fatal(err)
 	}
-	g.asked(yes, "write is ready · go, or change it?")
-	if err := g.r.Answer(yes, false, "only the parser"); err != nil {
+	it = g.wait(yes, "plan sent back and held again", func(it factory.Item) bool {
+		return it.State == factory.StateNeedsYou && it.Stream != nil && it.Stream.Phases[0].Round == 2
+	})
+	if !logHas(it, "sent back to plan: use the other file") {
+		t.Fatalf("log = %+v", it.Stream.Log)
+	}
+	// WORDS WITH A YES GO ON, and the next step reads them.
+	if err := g.r.Answer(yes, true, "only the parser"); err != nil {
 		t.Fatal(err)
 	}
 	g.waitState(yes, factory.StateLanded)
+	mu.Lock()
+	got := strings.Join(briefs, " | ")
+	mu.Unlock()
+	if !strings.Contains(got, "plan/2:use the other file") || !strings.Contains(got, "write/1:use the other file;only the parser") {
+		t.Fatalf("briefs = %s", got)
+	}
 	if err := g.r.Answer(yes, true, ""); err == nil || err.Error() != "#1 is not waiting on you" {
 		t.Fatalf("an answer to nothing = %v", err)
 	}
 
-	no := g.add("no", chat("plan"), gate, chat("write"))
-	if err := g.r.Launch(no); err != nil {
+	first := g.add("first", approve, chat("write"))
+	if err := g.r.Launch(first); err != nil {
 		t.Fatal(err)
 	}
-	g.asked(no, "look is ready · go, or change it?")
-	if err := g.r.Answer(no, false, ""); err != nil {
+	g.asked(first, "ready to start · continue?")
+	if err := g.r.Answer(first, false, ""); err != nil {
 		t.Fatal(err)
 	}
-	it = g.waitState(no, factory.StateNew)
+	it = g.waitState(first, factory.StateNew)
 	if it.Stream == nil || !logHas(it, "stopped · branch kept") || it.Question != "" {
-		t.Fatalf("a no did not stop: %+v", it)
+		t.Fatalf("a no with nothing before did not stop: %+v", it)
 	}
+
+	// AN APPROVE STEP WITH NOTHING AFTER IT IS THE LANDING: no question
+	// before it, and the sheet waits for the person's approval.
+	last := g.add("last", chat("plan"), approve)
+	if err := g.r.Launch(last); err != nil {
+		t.Fatal(err)
+	}
+	it = g.waitState(last, factory.StateLanded)
+	if logHas(it, "plan is ready · continue, or send it back?") {
+		t.Fatalf("the last approve asked before landing: %+v", it.Stream.Log)
+	}
+}
+
+// AN ITEM WITH NO APPROVE STEP SHIPS ITSELF ON GREEN PROOF; one with an
+// approve step waits for the approval.
+func TestNoApproveStepShipsOnGreenProof(t *testing.T) {
+	exec := map[factory.StageKind]Executor{
+		factory.StageChat: ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
+			res := done("")
+			if job.Stage.Name == "proof" {
+				res.Claims = []factory.Claim{{Text: "it works", OK: true, Evidence: "a test", Medium: "test"}}
+			}
+			return res, nil
+		}),
+	}
+	g := newRig(t, exec, nil)
+	self := g.add("self", chat("write"), factory.Stage{Name: "proof", Kind: factory.StageChat, Ask: "show it", Until: "proven"})
+	if err := g.r.Launch(self); err != nil {
+		t.Fatal(err)
+	}
+	g.waitState(self, factory.StateShipped)
+	held := g.add("held", chat("write"), factory.Stage{Name: "proof", Kind: factory.StageChat, Ask: "show it", Until: "proven"}, factory.Stage{Name: factory.ApproveName, Kind: factory.StageGate})
+	if err := g.r.Launch(held); err != nil {
+		t.Fatal(err)
+	}
+	g.waitState(held, factory.StateLanded)
 }
 
 func TestUntilCleanWithMaxTwoLoopsTwiceThenAsks(t *testing.T) {
@@ -372,9 +434,11 @@ func TestThePlanEditIsAppliedUnderAdaptAndAskedUnderAsk(t *testing.T) {
 	if err := ask.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	it = ask.asked(id, "plan changed the stages · go, or change it?")
-	if it.QKind != "plan" || it.Gate != factory.GatePlan {
-		t.Fatalf("kind %q gate %q", it.QKind, it.Gate)
+	// UNDER ASK, PLAN'S CHANGE PUTS AN APPROVE STEP AFTER PLAN, and the run
+	// holds there before anything else runs.
+	it = ask.asked(id, "plan is ready · continue, or send it back?")
+	if it.QKind != factory.QKindApprove || it.Stages[1].Name != factory.ApproveName {
+		t.Fatalf("kind %q stages %+v", it.QKind, it.Stages)
 	}
 	mu.Lock()
 	if strings.Join(ran, ",") != "plan" {
@@ -534,7 +598,7 @@ func TestSignOffShipsACleanSheetAndRefusesAFailedClaim(t *testing.T) {
 	}, func(o *Options) { o.Benches = 0 })
 	check := factory.Stage{Name: "test", Kind: factory.StageCheck, Ask: "go test ./..."}
 
-	bad := g.add("bad", check)
+	bad := g.add("bad", check, approveStep())
 	if err := g.r.Launch(bad); err != nil {
 		t.Fatal(err)
 	}
@@ -553,7 +617,7 @@ func TestSignOffShipsACleanSheetAndRefusesAFailedClaim(t *testing.T) {
 	// Three clean sign-offs on one repo offer a habit.
 	var dues []bool
 	for i := 0; i < 3; i++ {
-		id := g.add("good", check)
+		id := g.add("good", check, approveStep())
 		mu.Lock()
 		ok[id] = true
 		mu.Unlock()
@@ -623,7 +687,7 @@ func TestReverifyRunsTheChecksAgain(t *testing.T) {
 			return factory.StageResult{Done: true, Exit: 0, Claims: []factory.Claim{{Text: "the tests pass", OK: n > 1, Evidence: "go test", Medium: "test"}}}, nil
 		}),
 	}, nil)
-	id := g.add("one", chat("write"), factory.Stage{Name: "test", Kind: factory.StageCheck, Until: "green"}, chat("proof"))
+	id := g.add("one", chat("write"), factory.Stage{Name: "test", Kind: factory.StageCheck, Until: "green"}, chat("proof"), approveStep())
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
@@ -781,6 +845,7 @@ func TestTheProofSheetIsTheProofStagesAndTheChecksOnce(t *testing.T) {
 		chat("write"),
 		factory.Stage{Name: "proof", Kind: factory.StageChat, Ask: "show each claim", Until: "done"},
 		factory.Stage{Name: "test", Kind: factory.StageCheck, Ask: "go test ./..."},
+		approveStep(),
 	)
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)

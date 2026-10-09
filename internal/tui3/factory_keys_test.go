@@ -77,7 +77,6 @@ func (f *factoryFake) seam() factory.Seam {
 		SetStage:   func(id, index int, on bool) error { return f.rec("SetStage", id, index, on) },
 		AddStage:   func(id int, words string) error { return f.rec("AddStage", id, words) },
 		BankStages: func(id int) error { return f.rec("BankStages", id) },
-		SetGate:    func(id int, g factory.Gate) error { return f.rec("SetGate", id, g) },
 		SetCap:     func(id int, usd float64) error { return f.rec("SetCap", id, usd) },
 		SetEffort:  func(id, stage int, effort string) error { return f.rec("SetEffort", id, stage, effort) },
 	}
@@ -135,10 +134,10 @@ func TestFactoryVerbsAskTheRightDoors(t *testing.T) {
 		// A new item, made in the terminal: the card's keys.
 		{8, []string{"enter"}, ""},
 		// `r` RUNS THE ITEM AS IT STANDS; `p` is no verb any more, and `t`
-		// moves where the run stops.
+		// is none either: where the run holds is an approve step.
 		{8, []string{"p"}, ""},
 		{8, []string{"r"}, "Launch(8)"},
-		{8, []string{"t"}, "SetGate(8,none)"},
+		{8, []string{"t"}, ""},
 		{8, []string{"c"}, "SetCap(8,8)"},
 		{8, []string{"e"}, "SetEffort(8,0,cheap)"},
 		{8, []string{"3"}, "SetStage(8,2,false)"},
@@ -154,7 +153,7 @@ func TestFactoryVerbsAskTheRightDoors(t *testing.T) {
 		{2, []string{" "}, "Pause(2)"},
 		{2, []string{"p"}, ""},
 		{2, []string{"x"}, "Stop(2)"},
-		{2, []string{"e"}, "SetEffort(2,3,cheap)"},
+		{2, []string{"e"}, "SetEffort(2,4,cheap)"},
 		{2, []string{"enter"}, ""},
 		// A queued item cannot pause.
 		{3, []string{" "}, ""},
@@ -276,7 +275,7 @@ func TestFactoryTypingRowSubmitsAndCancels(t *testing.T) {
 	drive(t, a, key("w"))
 	factoryType(t, a, "$8 plan first stronger")
 	drive(t, a, key("enter"))
-	if got := strings.Join(f.said(), " "); got != "SetGate(8,plan) SetCap(8,8) SetEffort(8,0,strong)" {
+	if got := strings.Join(f.said(), " "); got != "SetCap(8,8) SetEffort(8,0,strong)" {
 		t.Fatalf("chips in words asked %q", got)
 	}
 
@@ -293,7 +292,7 @@ func TestFactoryTypingRowSubmitsAndCancels(t *testing.T) {
 	drive(t, a, key("B"))
 	factoryType(t, a, "prove it twice")
 	drive(t, a, key("enter"))
-	if got := strings.Join(f.said(), " "); got != "Steer(2,redo it stronger) Answer(1,false,keep the flag) SendBack(9,prove it twice)" {
+	if got := strings.Join(f.said(), " "); got != "Steer(2,redo it stronger) Answer(1,true,keep the flag) SendBack(9,prove it twice)" {
 		t.Fatalf("the rows asked %q", got)
 	}
 
@@ -420,10 +419,10 @@ func TestFactoryHabitOfferBanksOnY(t *testing.T) {
 func TestFactoryNilDoorDrawsNoKeyAndIgnoresThePress(t *testing.T) {
 	f := &factoryFake{}
 	a := factoryVerbLab(t, f)
-	a.factory.Dismiss, a.factory.SetGate, a.factory.New = nil, nil, nil
+	a.factory.Dismiss, a.factory.New = nil, nil
 	factoryOn(t, a, 8)
 	hint := (placeFactory{}).hint(a) + " · " + factoryStripOf(t, a) + " · " + factorySheetText(a)
-	for _, gone := range []string{"d dismiss", "n new", "t ask me at"} {
+	for _, gone := range []string{"d dismiss", "n new", "ask me at"} {
 		if strings.Contains(hint, gone) {
 			t.Fatalf("the hint, strip or sheet names %q with no door behind it: %q", gone, hint)
 		}
@@ -451,7 +450,7 @@ func TestFactoryHintByState(t *testing.T) {
 		id          int
 		strip, hint string
 	}{
-		{8, "enter open · r run · space select · t ask me at pull request", "n new · / filter · esc back · ? keys"},
+		{8, "enter open · r run · space select", "n new · / filter · esc back · ? keys"},
 		{2, "enter open · x stop · space pause · S steer", "n new · / filter · esc back · ? keys"},
 		{1, "enter open · y yes · n no · a in words", "/ filter · esc back · ? keys"},
 	} {
@@ -527,15 +526,16 @@ func TestFactoryEnterOnAStageWithNoRoomSaysWhy(t *testing.T) {
 	}
 }
 
-// LIFTCHIPS READS THE SAME WORDS THE MOCK'S PARSER DOES.
+// LIFTCHIPS READS THE SAME WORDS THE MOCK'S PARSER DOES, and leaves the gate
+// words in the rest: an item's approve steps are its stages, never a chip.
 func TestFactoryLiftChips(t *testing.T) {
-	gate, usd, rounds, effort, rest := factory.LiftChips("fix the meter, $8, plan first, two review rounds, stronger")
-	if gate == nil || *gate != factory.GatePlan || usd == nil || *usd != 8 || rounds == nil || *rounds != 2 || effort != "strong" || rest != "fix the meter" {
-		t.Fatalf("LiftChips = %v %v %v %q %q", gate, usd, rounds, effort, rest)
+	usd, rounds, effort, rest := factory.LiftChips("fix the meter, $8, plan first, two review rounds, stronger")
+	if usd == nil || *usd != 8 || rounds == nil || *rounds != 2 || effort != "strong" || rest != "fix the meter plan first" {
+		t.Fatalf("LiftChips = %v %v %q %q", usd, rounds, effort, rest)
 	}
-	gate, usd, rounds, effort, rest = factory.LiftChips("just words")
-	if gate != nil || usd != nil || rounds != nil || effort != "" || rest != "just words" {
-		t.Fatalf("plain words lifted chips: %v %v %v %q %q", gate, usd, rounds, effort, rest)
+	usd, rounds, effort, rest = factory.LiftChips("just words")
+	if usd != nil || rounds != nil || effort != "" || rest != "just words" {
+		t.Fatalf("plain words lifted chips: %v %v %q %q", usd, rounds, effort, rest)
 	}
 }
 
@@ -568,12 +568,10 @@ func TestFactoryLaunchNoteWaitsForTheNextRead(t *testing.T) {
 		next factory.State
 		key  string
 		want string
-		gate factory.Gate
 	}{
-		{factory.StateRunning, "r", "#1540 is running", ""},
-		{factory.StateRunning, "r", "#1540 is running · " + wordAskAt + " " + wordGatePlan, factory.GatePlan},
-		{factory.StateQueued, "r", "#1540 is queued · a bench frees it", ""},
-		{factory.StateNeedsYou, "L", "#1540 is waiting on you", ""},
+		{factory.StateRunning, "r", "#1540 is running"},
+		{factory.StateQueued, "r", "#1540 is queued · a bench frees it"},
+		{factory.StateNeedsYou, "L", "#1540 is waiting on you"},
 	} {
 		f := &factoryFake{}
 		a := factoryVerbLab(t, f)
@@ -583,9 +581,6 @@ func TestFactoryLaunchNoteWaitsForTheNextRead(t *testing.T) {
 			for i := range s.Items {
 				if s.Items[i].ID == 8 {
 					s.Items[i].State = state
-					if c.gate != "" {
-						s.Items[i].Gate = c.gate
-					}
 				}
 			}
 		}

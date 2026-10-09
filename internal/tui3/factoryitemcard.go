@@ -126,7 +126,7 @@ func (a *app) factoryLiveStale(e *entry) bool {
 		return false
 	}
 	it := a.factoryLiveItem(e.fac.live)
-	key := strconv.Itoa(it.ID) + "|" + string(it.State) + "|" + it.Changed.String() + "|" + string(it.Gate) +
+	key := strconv.Itoa(it.ID) + "|" + string(it.State) + "|" + it.Changed.String() +
 		"|" + strconv.FormatFloat(it.Cap, 'f', 2, 64) + "|" + it.Question + "|" + strconv.FormatBool(a.fp.loaded)
 	if s := it.Stream; s != nil {
 		key += "|" + strconv.FormatFloat(s.Spent, 'f', 2, 64) + "|" + strconv.Itoa(s.Cur) + "|" + strconv.Itoa(len(s.Phases))
@@ -311,9 +311,6 @@ func (a *app) factoryItemState(it factory.Item) string {
 	// new and queued: the state, then the chips that are set, and the read's
 	// estimate when no cap says what it may spend.
 	parts := []string{string(it.State)}
-	if it.Gate != "" {
-		parts = append(parts, factoryAskAtWords(it.Gate))
-	}
 	if c := factoryMoney(it.Cap); c != "" {
 		parts = append(parts, wordBudget+" "+c)
 	} else if est := factoryMoney(it.Triage.Est); est != "" {

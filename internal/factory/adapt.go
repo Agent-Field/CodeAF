@@ -69,10 +69,12 @@ type Added struct {
 // RunEdit is THE ONE EDIT to an item's stages, whoever makes it: the manager
 // before a run, the plan stage during one, the person from settings or in
 // words. A run is a short program of one-word stages, and this is the whole
-// of what may change about it; there is no field for the cap, the gate, the
+// of what may change about it; there is no field for the cap, the
 // rounds or the fanout, so an edit can never raise what an item may spend.
 //
-//   - Add is new conversation stages, each placed after a named stage.
+//   - Add is new conversation stages, each placed after a named stage, or
+//     an approve step (named approve, or of kind gate), where the run holds
+//     for the person.
 //   - Ask is a new ask for a stage, by name.
 //   - Thinking is a stage's thinking, by name: "", cheap or strong.
 //   - On switches a stage on by name, an off one included.
@@ -137,12 +139,12 @@ const (
 	// EditBeforeRun is an edit before anything has run: the manager's
 	// program for the item, or the person's. Any stage's ask and thinking
 	// may change, a stage may be added after any other, switched on, or
-	// skipped unless it is proof, a gate or a stage the policy names.
+	// skipped unless it is proof or a stage the policy names.
 	EditBeforeRun EditMode = "before run"
 	// EditInRun is an edit while the item runs: the same, but a stage that
 	// is done or running is never touched and nothing is added before one,
-	// and the recipe's adapt word holds (fixed refuses, ask sets the plan
-	// gate). The zero mode is this one.
+	// and the recipe's adapt word holds (fixed refuses, ask puts an approve
+	// step after plan). The zero mode is this one.
 	EditInRun EditMode = "in run"
 )
 
@@ -164,8 +166,9 @@ func Adapt(it Item, edit PlanEdit, recipe Recipe) (Item, []string, error) {
 //     item has at most [StageMost] stages;
 //   - an added stage is a conversation with an ask;
 //   - an ask is at most [AskMost] cells, and thinking is "", cheap or strong;
-//   - a stage of kind gate, the stage named proof, and a stage a policy line
-//     names are never skipped;
+//   - the stage named proof and a stage a policy line names are never
+//     skipped; an approve step ([IsApprove]) may be added or skipped like
+//     any stage that is not fixed;
 //   - a stage that is done or running (or waiting on the person, or failed)
 //     is never changed, and nothing is added before one;
 //   - A FIXED STAGE ([Stage.Fixed], [StageFixed]) BINDS EVERYONE, YOU TOO:
@@ -173,9 +176,9 @@ func Adapt(it Item, edit PlanEdit, recipe Recipe) (Item, []string, error) {
 //     the refusal is [FixedRefusal]'s sentence. Switching it on is allowed.
 //
 // In a run ([EditInRun]) the recipe's adapt word holds for everyone but you:
-// under `fixed` every change is refused, and under `ask` the item's gate
-// becomes plan, so the person ratifies the change before anything after plan
-// runs.
+// under `fixed` every change is refused, and under `ask` an approve step
+// stands after plan, so the person ratifies the change before anything after
+// plan runs.
 //
 // The lines start with who (`manager`, `plan`, `you`) and say `set <name>:
 // <ask>`, `set <name> thinking <word>`, `added <name>` (`added <name> after
@@ -290,6 +293,10 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (Item, []string, err
 			}
 			when = "after " + strings.ToLower(after)
 		}
+		if IsApprove(st) {
+			// A SECOND APPROVE IS ITS OWN STEP, never a clash of names.
+			st.Name = approveName(stages)
+		}
 		if StageIndex(stages, st.Name) >= 0 {
 			refuse("there is already a stage named %s; %s may switch it on instead", st.Name, who)
 			continue
@@ -340,8 +347,6 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (Item, []string, err
 		switch {
 		case fixed(i):
 			errs = append(errs, FixedRefusal(st.Name))
-		case st.Kind == StageGate:
-			refuse("%s may not skip %s; it is a person's gate", who, st.Name)
 		case st.Name == "proof":
 			refuse("%s may not skip proof", who)
 		case policyNames(recipe.Policy, st.Name):
@@ -363,10 +368,23 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (Item, []string, err
 	if why != "" {
 		lines = append(lines, "why: "+why)
 	}
-	it.Stages = stages
 	if adapt == AdaptAsk {
-		it.Gate = GatePlan
+		// UNDER ASK THE PERSON RATIFIES THE CHANGE before anything after plan
+		// runs: an approve step after plan, unless one stands there already or
+		// what follows plan has begun.
+		if p := StageIndex(stages, "plan"); p >= 0 {
+			next := p + 1
+			switch {
+			case next < len(stages) && IsApprove(stages[next]):
+				stages[next].On = true
+			case next < len(stages) && started[stages[next].Name]:
+			case len(stages) >= StageMost:
+			default:
+				stages = insertStage(stages, next, Approve(stages))
+			}
+		}
 	}
+	it.Stages = stages
 	it.Adapted = append(append([]string(nil), it.Adapted...), lines...)
 	return it, lines, nil
 }
@@ -414,6 +432,21 @@ func sortedKeys(m map[string]string) []string {
 // time word puts it. bad says what is wrong with it, and is nil when nothing
 // is.
 func plannedStage(add Stage) (st Stage, when string, bad error) {
+	// AN APPROVE STEP IS ADDED BY ITS NAME OR ITS KIND, and has no ask: the
+	// person is the step. Its place is the ask's time word or the edit's
+	// after, as any stage's is.
+	place, rest := stagePlacementOf(add.Ask)
+	rest = strings.ToLower(strings.Trim(rest, " .,;:!"))
+	rest = strings.TrimPrefix(strings.TrimPrefix(rest, "an "), "a ")
+	rest = strings.TrimSuffix(rest, " step")
+	if add.Kind == StageGate || ApproveWord(strings.ToLower(strings.TrimSpace(add.Name))) || ApproveWord(rest) {
+		a := Approve(nil)
+		if w := strings.ToLower(strings.TrimSpace(add.When)); w != "" && oneOf(w, WhenWords) {
+			a.When = w
+		}
+		a.Why, a.By = add.Why, add.By
+		return a, place, nil
+	}
 	if add.Kind != "" && add.Kind != StageChat {
 		return Stage{}, "", errors.New("a stage added to a run is a conversation, not a " + string(add.Kind) + " stage")
 	}
@@ -437,7 +470,7 @@ func plannedStage(add Stage) (st Stage, when string, bad error) {
 	}
 	st = add
 	st.Kind, st.Ask, st.On = StageChat, parsed.Ask, true
-	st.Gate, st.GateWhen = "", ""
+	st.OldGate, st.OldGateWhen = "", ""
 	st.Proof = append([]string(nil), add.Proof...)
 	st.Name = parsed.Name
 	if strings.TrimSpace(add.Name) != "" {
@@ -464,7 +497,7 @@ func startedStages(it Item) map[string]bool {
 		return out
 	}
 	for _, ph := range it.Stream.Phases {
-		if ph.State != "" && ph.State != PhasePending {
+		if (ph.State != "" && ph.State != PhasePending) || ph.Round > 0 {
 			out[ph.Name] = true
 		}
 	}

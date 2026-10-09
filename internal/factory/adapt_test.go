@@ -100,38 +100,38 @@ func mustParse(t *testing.T, text string) factory.Recipe {
 	return r
 }
 
-// THE CONDITION ON A GATE IS THE GATE'S: the stage runs on every item, and
-// its gate stops only the items the condition fits.
-func TestGateWhenRoundTripsAndApplies(t *testing.T) {
-	r := mustParse(t, "## issue\n1. plan · chat · say how · when thin · gate plan when large\n")
-	p := r.Stages[0]
-	if p.Gate != factory.GatePlan || p.GateWhen != "large" || p.When != "thin" {
-		t.Fatalf("plan = %+v", p)
+// AN OLD FILE'S GATE IS AN APPROVE STEP NOW: `gate plan when large` on plan
+// reads as an approve step after plan, held only on a large item, and the
+// file is written back with the step, never the knob.
+func TestOldGateKnobReadsAsAnApproveStep(t *testing.T) {
+	r := mustParse(t, "## issue\n1. plan · chat · say how · when thin · gate plan when large\n2. write · chat · do it\n")
+	if len(r.Stages) != 3 {
+		t.Fatalf("stages = %+v", r.Stages)
 	}
-	line := factory.StageLines(r.Stages)[0]
-	if line != "1. plan · chat · say how · when thin · gate plan when large" {
-		t.Fatalf("line = %q", line)
+	p, a := r.Stages[0], r.Stages[1]
+	if p.Name != "plan" || p.When != "thin" || p.OldGate != "" || a.Name != factory.ApproveName || a.Kind != factory.StageGate || a.When != "large" || !a.On {
+		t.Fatalf("plan = %+v, approve = %+v", p, a)
+	}
+	lines := factory.StageLines(r.Stages)
+	if lines[0] != "1. plan · chat · say how · when thin" || lines[1] != "2. approve · gate · when large" {
+		t.Fatalf("lines = %q", lines)
 	}
 	if again := mustParse(t, factory.Format(r)); !reflect.DeepEqual(again.Stages, r.Stages) {
 		t.Fatalf("drifted: %+v", again.Stages)
 	}
-	gated := factory.Stage{Name: "plan", Gate: factory.GatePlan, GateWhen: "large", On: true}
-	large := factory.Item{Triage: factory.Triage{Size: "L", Readiness: 90}}
-	small := factory.Item{Triage: factory.Triage{Size: "S", Readiness: 90}}
-	if !factory.Fits(gated, small) || !factory.Fits(gated, large) {
-		t.Fatal("Fits read the gate's condition")
+	large := factory.Item{Triage: factory.Triage{Size: "L", Readiness: 90}, Stages: r.Stages}
+	small := factory.Item{Triage: factory.Triage{Size: "S", Readiness: 90}, Stages: r.Stages}
+	if !factory.HasApprove(large) || factory.HasApprove(small) {
+		t.Fatal("the approve step's when was not read")
 	}
-	if !factory.GateApplies(gated, large) || factory.GateApplies(gated, small) {
-		t.Fatal("GateApplies did not read the gate's condition")
+	// `gate ship` is an approve after its stage; `gate none` is nothing.
+	r = mustParse(t, "## pr\n1. read · chat · the diff\n2. proof · chat · the sheet · gate ship\n3. tail · chat · after · gate none\n")
+	names := []string{}
+	for _, st := range r.ByKind[factory.KindPR] {
+		names = append(names, st.Name)
 	}
-	if !factory.GateApplies(factory.Stage{Gate: factory.GateShip}, small) {
-		t.Fatal("a gate with no condition applies always")
-	}
-	if factory.GateApplies(factory.Stage{Gate: factory.GateNone}, large) || factory.GateApplies(factory.Stage{}, large) {
-		t.Fatal("no gate applied")
-	}
-	if !factory.GateApplies(factory.Stage{Gate: factory.GatePlan, GateWhen: "a word nobody taught"}, small) {
-		t.Fatal("an unknown condition dropped a person's stop")
+	if strings.Join(names, " ") != "read proof approve tail" {
+		t.Fatalf("pr stages = %q", names)
 	}
 }
 
@@ -147,7 +147,7 @@ func adaptItem() factory.Item {
 		{Name: "sign", Kind: factory.StageGate, On: true},
 		{Name: "proof", Kind: factory.StageChat, Ask: "show it", On: true},
 	}
-	return factory.Item{ID: 1, Kind: factory.KindIssue, Gate: factory.GateShip, Cap: 5, Stages: stages,
+	return factory.Item{ID: 1, Kind: factory.KindIssue, Cap: 5, Stages: stages,
 		Stream: &factory.Stream{Phases: []factory.Phase{{Name: "plan", State: factory.PhaseRunning}, {Name: "write", State: factory.PhasePending}}}}
 }
 
@@ -173,8 +173,8 @@ func TestAdaptRecordsItsLinesInOrder(t *testing.T) {
 	if !got.Stages[factory.StageIndex(got.Stages, "security")].On || got.Stages[factory.StageIndex(got.Stages, "neaten")].On {
 		t.Fatalf("switches = %+v", got.Stages)
 	}
-	if got.Gate != factory.GateShip || got.Cap != 5 {
-		t.Fatalf("under adapt the gate and cap moved: %q %v", got.Gate, got.Cap)
+	if got.Cap != 5 {
+		t.Fatalf("under adapt the cap moved: %v", got.Cap)
 	}
 	// The caller's item is not reached through the copy.
 	if it.Stages[4].On != true || len(it.Stages) != 8 || it.Adapted != nil {
@@ -204,11 +204,11 @@ func TestAdaptUnderFixedRefusesEveryChange(t *testing.T) {
 	}
 }
 
-func TestAdaptNeverSkipsAGateProofOrAPolicyStage(t *testing.T) {
+func TestAdaptNeverSkipsProofOrAPolicyStage(t *testing.T) {
 	r := factory.DefaultRecipe()
 	r.Policy = []string{"tests pass before anything posts"}
 	it := adaptItem()
-	for _, name := range []string{"sign", "proof", "test"} {
+	for _, name := range []string{"proof", "test"} {
 		got, _, err := factory.Adapt(it, factory.PlanEdit{Skip: []string{name}}, r)
 		if err == nil || !strings.Contains(err.Error(), name) || !reflect.DeepEqual(got, it) {
 			t.Fatalf("skipped %s: %v", name, err)
@@ -241,16 +241,52 @@ func TestAdaptNeverTouchesAStageThatHasRun(t *testing.T) {
 	}
 }
 
-func TestAdaptUnderAskSetsThePlanGate(t *testing.T) {
+// UNDER ASK THE PERSON RATIFIES PLAN'S CHANGE at an approve step after plan:
+// one is put there when none stands, and one that stands is kept, never
+// doubled.
+func TestAdaptUnderAskStandsAnApproveAfterPlan(t *testing.T) {
 	r := factory.DefaultRecipe()
 	r.Adapt = map[factory.Kind]factory.AdaptMode{factory.KindIssue: factory.AdaptAsk}
-	for _, g := range []factory.Gate{factory.GateNone, factory.GateShip, factory.GatePlan} {
-		it := adaptItem()
-		it.Gate = g
-		got, lines, err := factory.Adapt(it, factory.PlanEdit{Skip: []string{"neaten"}}, r)
-		if err != nil || len(lines) != 1 || got.Gate != factory.GatePlan {
-			t.Fatalf("from %q: gate %q, %q, %v", g, got.Gate, lines, err)
-		}
+	it := adaptItem()
+	got, lines, err := factory.Adapt(it, factory.PlanEdit{Skip: []string{"neaten"}}, r)
+	if err != nil || len(lines) != 1 || got.Stages[1].Name != factory.ApproveName || got.Stages[1].Kind != factory.StageGate {
+		t.Fatalf("stages %+v, %q, %v", got.Stages, lines, err)
+	}
+	again, _, err := factory.Adapt(got, factory.PlanEdit{Skip: []string{"review"}}, r)
+	if err != nil || len(again.Stages) != len(got.Stages) || again.Stages[2].Name != "write" {
+		t.Fatalf("a second edit doubled the approve step: %+v %v", again.Stages, err)
+	}
+}
+
+// AN APPROVE STEP IS ADDED AND SKIPPED LIKE ANY STAGE: by its name or a
+// sentence that says it, placed where the edit says, a second one named
+// approve2; and skipped by its name.
+func TestEditAddsAndSkipsApproveSteps(t *testing.T) {
+	it := adaptItem()
+	it.Stream = nil
+	it.Stages = append(it.Stages[:5:5], it.Stages[6:]...) // room for two more
+	got, lines, err := factory.Edit(it, factory.RunEdit{By: factory.ByManager, Add: []factory.Added{{Stage: factory.Stage{Name: "approve"}, After: "test"}}}, factory.DefaultRecipe(), factory.EditBeforeRun)
+	if err != nil || len(lines) != 1 || lines[0] != "manager added approve after test" {
+		t.Fatalf("add = %q, %v", lines, err)
+	}
+	i := factory.StageIndex(got.Stages, factory.ApproveName)
+	if i != 3 || got.Stages[i].Kind != factory.StageGate || !got.Stages[i].On || got.Stages[i].By != factory.ByManager {
+		t.Fatalf("approve = %+v", got.Stages)
+	}
+	got, _, err = factory.Edit(got, factory.RunEdit{By: factory.ByYou, Add: []factory.Added{{Stage: factory.Stage{Ask: "after plan, approve"}}}}, factory.DefaultRecipe(), factory.EditBeforeRun)
+	if err != nil || got.Stages[1].Name != "approve2" || got.Stages[1].Kind != factory.StageGate {
+		t.Fatalf("second approve = %+v, %v", got.Stages, err)
+	}
+	got, lines, err = factory.Edit(got, factory.RunEdit{By: factory.ByManager, Skip: []string{"approve2", "sign"}}, factory.DefaultRecipe(), factory.EditBeforeRun)
+	if err != nil || len(lines) != 2 || got.Stages[1].On || got.Stages[factory.StageIndex(got.Stages, "sign")].On {
+		t.Fatalf("skip = %q %+v %v", lines, got.Stages, err)
+	}
+	// A fixed approve step stays.
+	fixed := adaptItem()
+	fixed.Stream = nil
+	fixed.Stages[6].Fixed = true
+	if _, _, err := factory.Edit(fixed, factory.RunEdit{By: factory.ByManager, Skip: []string{"sign"}}, factory.DefaultRecipe(), factory.EditBeforeRun); err == nil || !strings.Contains(err.Error(), "fixed by the recipe") {
+		t.Fatalf("a fixed approve step was skipped: %v", err)
 	}
 }
 
@@ -261,12 +297,12 @@ func TestAdaptAddsOnlyConversationsWithAnAsk(t *testing.T) {
 			t.Fatalf("plan added %+v", add)
 		}
 	}
-	got, _, err := factory.Adapt(it, factory.PlanEdit{Add: []factory.Stage{{Ask: "check the docs say so", Gate: factory.GateNone}}}, factory.DefaultRecipe())
+	got, _, err := factory.Adapt(it, factory.PlanEdit{Add: []factory.Stage{{Ask: "check the docs say so", OldGate: factory.GateNone}}}, factory.DefaultRecipe())
 	if err != nil {
 		t.Fatal(err)
 	}
 	i := factory.StageIndex(got.Stages, "check")
-	if i < 0 || got.Stages[i+1].Name != "proof" || got.Stages[i].Gate != "" || got.Stages[i].Until != factory.UntilDone {
+	if i < 0 || got.Stages[i+1].Name != "proof" || got.Stages[i].OldGate != "" || got.Stages[i].Until != factory.UntilDone {
 		t.Fatalf("placed = %+v", got.Stages)
 	}
 }
@@ -405,17 +441,14 @@ func TestNineStagesAtMost(t *testing.T) {
 	}
 }
 
-// PROOF IS NEVER SKIPPED, by anyone, in either mode; nor a gate.
-func TestEditNeverSkipsProofOrAGate(t *testing.T) {
+// PROOF IS NEVER SKIPPED, by anyone, in either mode.
+func TestEditNeverSkipsProof(t *testing.T) {
 	it := adaptItem()
 	it.Stream = nil
 	for _, by := range []string{factory.ByManager, factory.ByPlan, factory.ByYou} {
 		for _, mode := range []factory.EditMode{factory.EditBeforeRun, factory.EditInRun} {
 			if _, _, err := factory.Edit(it, factory.RunEdit{By: by, Skip: []string{"proof"}}, factory.DefaultRecipe(), mode); err == nil || err.Error() != by+" may not skip proof" {
 				t.Fatalf("%s %s skipped proof: %v", by, mode, err)
-			}
-			if _, _, err := factory.Edit(it, factory.RunEdit{By: by, Skip: []string{"sign"}}, factory.DefaultRecipe(), mode); err == nil || !strings.Contains(err.Error(), "person's gate") {
-				t.Fatalf("%s %s skipped the gate: %v", by, mode, err)
 			}
 		}
 	}
@@ -472,5 +505,45 @@ func TestStageWhyAndByRoundTrip(t *testing.T) {
 	var old factory.Stage
 	if err := json.Unmarshal([]byte(`{"Name":"review","Ask":"read it","On":true}`), &old); err != nil || old.Why != "" || old.By != "" || old.Name != "review" {
 		t.Fatalf("old document = %+v %v", old, err)
+	}
+}
+
+// AN ITEM WRITTEN WITH `ask me at` IS READ INTO APPROVE STEPS and never
+// written with it again: plan is one after plan, ship one before the first
+// post step (else last), none takes every approve step out, so the item
+// ships itself on green proof. A stage's old gate knob is read the same way.
+func TestOldItemGateReadsIntoApproveSteps(t *testing.T) {
+	stages := `[{"Name":"plan","Kind":"chat","On":true},{"Name":"write","Kind":"chat","On":true},{"Name":"post","Kind":"post","On":true},{"Name":"proof","Kind":"chat","Gate":"ship","On":true}]`
+	names := func(it factory.Item) string {
+		var out []string
+		for _, s := range it.Stages {
+			out = append(out, s.Name)
+		}
+		return strings.Join(out, " ")
+	}
+	for _, c := range []struct{ gate, want string }{
+		{"plan", "plan approve2 write post proof approve"},
+		{"ship", "plan write approve2 post proof approve"},
+		{"none", "plan write post proof"},
+		{"", "plan write post proof approve"},
+	} {
+		var it factory.Item
+		doc := `{"ID":3,"Stages":` + stages
+		if c.gate != "" {
+			doc += `,"Gate":"` + c.gate + `"`
+		}
+		if err := json.Unmarshal([]byte(doc+`}`), &it); err != nil {
+			t.Fatal(err)
+		}
+		if got := names(it); got != c.want || it.OldGate != "" {
+			t.Fatalf("gate %q: stages %q, want %q (old gate %q)", c.gate, got, c.want, it.OldGate)
+		}
+		out, _ := json.Marshal(it)
+		if strings.Contains(string(out), `"Gate"`) {
+			t.Fatalf("gate %q written back: %s", c.gate, out)
+		}
+		if c.gate == "none" && factory.HasApprove(it) {
+			t.Fatal("none kept an approve step")
+		}
 	}
 }

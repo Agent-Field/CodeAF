@@ -159,9 +159,9 @@ func TestFactoryTeamsFoldUnderOneRow(t *testing.T) {
 // the head built from what changes, the body before and after — and one foot
 // afterwards: changed, kept as it was, changed in words, expired.
 func TestFactoryItemCardSettles(t *testing.T) {
-	notice := session.ItemNotice{ID: "g1", Item: 1, Ref: "#1", Gate: "plan", Cap: 8, Why: "plan first",
-		Before: session.ItemFacts{Stages: []string{"plan", "write", "test", "proof"}, Gate: "ship", Cap: 5},
-		After:  session.ItemFacts{Stages: []string{"plan", "write", "test", "proof"}, Gate: "plan", Cap: 8}}
+	notice := session.ItemNotice{ID: "g1", Item: 1, Ref: "#1", Cap: 8, Why: "a second review round",
+		Before: session.ItemFacts{Stages: []string{"plan", "approve", "write", "test", "proof"}, Cap: 5},
+		After:  session.ItemFacts{Stages: []string{"plan", "approve", "write", "test", "proof"}, Cap: 8}}
 	for _, c := range []struct {
 		name   string
 		settle func(a *app)
@@ -198,7 +198,7 @@ func TestFactoryItemCardSettles(t *testing.T) {
 			t.Fatalf("%s: the card was not drawn", c.name)
 		}
 		rows := plain(strings.Join(FactoryCardRows(a, card, 100, false), "\n"))
-		for _, want := range []string{"#1 · ask me at plan, budget $8?", "ask me at  pull request → plan", "budget  $5 → $8", "why: plan first"} {
+		for _, want := range []string{"#1 · raise the budget to $8?", "budget  $5 → $8", "why: a second review round"} {
 			if !strings.Contains(rows, want) {
 				t.Fatalf("%s: the standing card lacks %q:\n%s", c.name, want, rows)
 			}

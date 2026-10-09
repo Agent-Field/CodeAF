@@ -128,7 +128,7 @@ func TestFactoryStageRoomOpensAndEscComesBack(t *testing.T) {
 func TestFactoryStageWithoutARoomSaysWhy(t *testing.T) {
 	f := &factoryFake{}
 	factoryShapeItem(f, 2, func(it *factory.Item) {
-		it.Stream.Phases[2].Kind = factory.StageCheck
+		it.Stream.Phases[3].Kind = factory.StageCheck
 	})
 	a := factoryVerbLab(t, f)
 	factoryOn(t, a, 2)
@@ -174,8 +174,8 @@ func TestFactoryPhaseStatesAndRoundsDraw(t *testing.T) {
 	f := &factoryFake{}
 	factoryShapeItem(f, 2, func(it *factory.Item) {
 		ph := it.Stream.Phases
-		ph[3].Round, ph[3].Note = 2, "3 findings"
-		ph[2].State, ph[2].Note = factory.PhaseFailed, "test did not finish"
+		ph[4].Round, ph[4].Note = 2, "3 findings"
+		ph[3].State, ph[3].Note = factory.PhaseFailed, "test did not finish"
 	})
 	a := factoryVerbLab(t, f)
 	factoryOn(t, a, 2)

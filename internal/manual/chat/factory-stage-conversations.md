@@ -87,8 +87,10 @@ as the manager's own message and marked as the run's (a surface may draw them as
 - `plan done · 2m · $0.04 · <what it said>`: how long, what it cost, and the notes the stage left
   for the stages after it (else the last sentence its conversation said); a part with nothing in
   it is left out, so a free instant stage is `plan done · <what it said>`;
-- `asking you: plan is ready · go, or change it?` when the run waits on you, and after a stage
-  that fell short, `test failed 1 of 2 · asking you: <question>`;
+- `asking you: plan is ready · continue, or send it back?` when the run holds at an approve step
+  (the manager can explain what it waits on), and after a stage that fell short,
+  `test failed 1 of 2 · asking you: <question>`;
+- `sent back to plan: <your words>` when you said no at an approve step;
 - `budget of $5 reached · asking you`;
 - `answered: yes`, `answered: no` or `answered: <your words>`, however you answered;
 - `steer: <words>`, `changes requested: <words>`;
@@ -106,8 +108,7 @@ get one line for what came of it:
 - `manager set review: thorough on security, code and architecture · added arch after review ·
   skipped neaten · why: touches the call row`: the same line the Adapted row of the item page
   shows, one clause for each change and the reason last;
-- `the recipe stands` when the manager changed nothing, and after `n` (keep the recipe) on
-  `run these stages?`;
+- `the recipe stands` when the manager changed nothing;
 - `the manager did not answer · the recipe stands` when the turn failed, or did not end within a
   minute: the recipe runs as it is, with no question about it;
 - `the manager was busy in the window · the recipe stands` when the chat open in your window was
@@ -118,8 +119,7 @@ get one line for what came of it:
   for instance `a stage is one word · "do through" is two` or
   `the run has nine stages already`; the stages stay as they were.
 
-With `ask me at` plan and a change made, the run then pauses on `run these stages? <what it
-set>`. During a run, a change the manager makes on something you said is the same
+Shaping never stops the run; you read what it set at the first approve step. During a run, a change the manager makes on something you said is the same
 `manager set …` line, or `the manager's change was not applied: <why>`.
 
 ## talk to the manager — what you type is the brief before a run and the steer during it
@@ -137,5 +137,5 @@ What you type into the item's chat goes to the run; nothing else is needed.
   taken as a steer instead.
 
 Each line is taken once. The chat's model still answers you; it shapes the run's stages with
-`factory_run` and changes the budget, ask me at, thinking and notes through `factory_item`'s card.
+`factory_run` and changes the budget, thinking and notes through `factory_item`'s card.
 During a run each line also gives the manager one turn to reshape the stages not yet started.

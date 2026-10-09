@@ -187,7 +187,7 @@ func TestFactoryQuestionMarkOpensTheKeySheet(t *testing.T) {
 			t.Fatalf("? (item page %v) did not open the sheet", page)
 		}
 		text := factoryFrameText(a)
-		for _, want := range []string{wordGroupDo, wordGroupSet, wordGroupMove, wordRun, wordAskAt, wordBudget, wordThinking, wordStages} {
+		for _, want := range []string{wordGroupDo, wordGroupSet, wordGroupMove, wordRun, wordBudget, wordThinking, wordStages} {
 			if !strings.Contains(text, want) {
 				t.Errorf("the sheet (item page %v) does not say %q:\n%s", page, want, text)
 			}
@@ -202,28 +202,6 @@ func TestFactoryQuestionMarkOpensTheKeySheet(t *testing.T) {
 		drive(t, a, key("esc"))
 		if a.fp.keys || !a.at(pageFactory) || a.fp.open != page {
 			t.Fatalf("esc did not put the sheet away and stay where it was (item page %v)", page)
-		}
-	}
-}
-
-// `t` CYCLES WHERE THE RUN ASKS: plan, pull request, never, and round; the
-// stored gate keeps the recipe file's words.
-func TestFactoryAskMeAtCycles(t *testing.T) {
-	for _, c := range []struct {
-		from factory.Gate
-		next string
-	}{
-		{factory.GatePlan, "SetGate(8,ship)"},
-		{factory.GateShip, "SetGate(8,none)"},
-		{factory.GateNone, "SetGate(8,plan)"},
-	} {
-		if got := "SetGate(8," + string(factoryNextGate(c.from)) + ")"; got != c.next {
-			t.Errorf("t on %s asks %s, want %s", c.from, got, c.next)
-		}
-	}
-	for g, want := range map[factory.Gate]string{factory.GatePlan: "ask me at plan", factory.GateShip: "ask me at pull request", factory.GateNone: "ask me at never"} {
-		if got := factoryAskAtWords(g); got != want {
-			t.Errorf("gate %s reads %q, want %q", g, got, want)
 		}
 	}
 }

@@ -128,7 +128,7 @@ func TestFactoryTalkMakesOneConversationInTheItemsTeamUnderFactory(t *testing.T)
 func TestFactoryItemDoorAppliesEachFieldAndRefusesUnderFixed(t *testing.T) {
 	st, web, _ := talkLab(t)
 	id, err := st.Add(context.Background(), factory.Item{Repo: "web", Title: "fix the ledger double count", Kind: factory.KindIssue,
-		Gate: factory.GateShip, Cap: 5, Stages: factory.CopyStages(factory.DefaultRecipe().For(factory.KindIssue))})
+		Cap: 5, Stages: factory.CopyStages(factory.DefaultRecipe().For(factory.KindIssue))})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,15 +140,15 @@ func TestFactoryItemDoorAppliesEachFieldAndRefusesUnderFixed(t *testing.T) {
 
 	// THE PREVIEW WRITES NOTHING.
 	change := session.ItemChange{Edit: factory.PlanEdit{Skip: []string{"review"}, Why: "one-line fix"},
-		Gate: factory.GatePlan, Cap: 8, Effort: "strong", Note: "the fixture in testdata is flaky"}
+		Cap: 8, Effort: "strong", Note: "the fixture in testdata is flaky"}
 	before, after, err := door.Preview(ctx, id, change)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if before.Gate != factory.GateShip || after.Gate != factory.GatePlan || after.Cap != 8 || len(after.Notes) != 1 {
+	if before.Cap != 5 || after.Cap != 8 || len(after.Notes) != 1 {
 		t.Fatalf("preview = %+v → %+v", before, after)
 	}
-	if held, _ := st.Get(id); held.Gate != factory.GateShip || held.Cap != 5 || len(held.Notes) != 0 {
+	if held, _ := st.Get(id); held.Cap != 5 || len(held.Notes) != 0 {
 		t.Fatalf("a preview wrote to the store: %+v", held)
 	}
 
@@ -161,11 +161,11 @@ func TestFactoryItemDoorAppliesEachFieldAndRefusesUnderFixed(t *testing.T) {
 	if i := factory.StageIndex(it.Stages, "review"); i < 0 || it.Stages[i].On {
 		t.Fatalf("the saved item still runs review: %+v", it.Stages)
 	}
-	if it.Gate != factory.GatePlan || it.Cap != 8 || session.ItemEffort(it) != "strong" ||
+	if it.Cap != 8 || session.ItemEffort(it) != "strong" ||
 		strings.Join(it.Notes, "|") != "the fixture in testdata is flaky" {
-		t.Fatalf("the saved item = gate %s cap %v effort %q notes %v", it.Gate, it.Cap, session.ItemEffort(it), it.Notes)
+		t.Fatalf("the saved item = cap %v effort %q notes %v", it.Cap, session.ItemEffort(it), it.Notes)
 	}
-	if now.Gate != it.Gate || now.Cap != it.Cap {
+	if now.Cap != it.Cap {
 		t.Fatalf("Apply answered %+v, the store holds %+v", now, it)
 	}
 	if _, err := door.Apply(ctx, id, session.ItemChange{Edit: factory.PlanEdit{Skip: []string{"proof"}}}); err == nil || !strings.Contains(err.Error(), "may not skip proof") {
@@ -205,7 +205,7 @@ func TestFactoryRecipeDoorSaysTheStagesAKindRuns(t *testing.T) {
 	st, web, _ := talkLab(t)
 	door := recipeDoor(st, web).(fileRecipeDoor)
 	names, err := door.Stages(context.Background(), "web", factory.KindIssue)
-	if err != nil || strings.Join(names, " ") != "plan write test review security proof" {
+	if err != nil || strings.Join(names, " ") != "plan approve write test review security proof" {
 		t.Fatalf("stages = %v, %v", names, err)
 	}
 	if _, err := door.Stages(context.Background(), "nowhere", factory.KindIssue); err == nil || !strings.Contains(err.Error(), "does not know where nowhere is checked out") {

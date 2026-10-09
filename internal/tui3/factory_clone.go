@@ -132,11 +132,7 @@ func (a *app) factoryLaunchNow(ids []int, kind factoryRunKind) tea.Cmd {
 	if kind != factoryRunMarked && len(ids) == 1 {
 		id := ids[0]
 		return a.factoryVerb(id, func(s factory.Seam) error { return s.Launch(id) }, func(it factory.Item) string {
-			tail := ""
-			if kind == factoryRunItem && it.Gate == factory.GatePlan {
-				tail = rowSep + factoryAskAtWords(it.Gate)
-			}
-			return a.factoryLaunchNote(it, tail)
+			return a.factoryLaunchNote(it, "")
 		})
 	}
 	// THE MARKS ARE SPENT BY THE LAUNCH: an item that is now a stream has

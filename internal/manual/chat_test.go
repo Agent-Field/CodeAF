@@ -3978,6 +3978,8 @@ func TestFactoryVerbWordsReachTheirSection(t *testing.T) {
 		{"how do I approve a landed item", "approve, request changes, re-run checks"},
 		{"how do I make the run stop after the plan", "what does ask me at mean"},
 		{"what does ask me at mean", "what does ask me at mean"},
+		{"what is an approve step, how do I continue a held run", "approve steps"},
+		{"how do I send the run back to the plan", "approve steps"},
 		{"what does the question mark key show on the factory floor", "the ? key sheet"},
 		{"where do I change the budget of an item", "the settings of an item"},
 		{"how do I get back to the floor from an item", "breadcrumbs on the item page"},
