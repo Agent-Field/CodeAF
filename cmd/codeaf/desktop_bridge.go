@@ -21,6 +21,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/desktopbridge"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/placegraph"
 	"github.com/Agent-Field/codeaf/internal/remote"
 )
 
@@ -30,11 +32,12 @@ func runDesktopBridge(args []string) error {
 	flags := commandFlags("desktop-bridge")
 	address := flags.String("listen", "127.0.0.1:1423", "loopback address for the desktop transport")
 	workspace := flags.String("workspace", "", "working directory shared with the terminal")
+	placesFile := flags.String("places", "", "place graph file (default: the desktop folder of the codeaf state root)")
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return errors.New("usage: codeaf desktop-bridge [--listen 127.0.0.1:1423] [--workspace path]")
+		return errors.New("usage: codeaf desktop-bridge [--listen 127.0.0.1:1423] [--workspace path] [--places path]")
 	}
 	host, _, err := net.SplitHostPort(*address)
 	if err != nil {
@@ -96,6 +99,19 @@ func runDesktopBridge(args []string) error {
 	})
 	defer bridge.Close()
 	bridge.UseModels(&desktopbridge.Models{ProfileDir: profileDir, Catalog: desktopCatalog(profileDir)})
+	// The place graph lives at a path chosen here and handed in; nothing in the
+	// bridge picks a default of its own.
+	if strings.TrimSpace(*placesFile) == "" {
+		*placesFile = home.Join("desktop", "places.json")
+	}
+	placeStore, err := placegraph.Open(placegraph.Options{Path: *placesFile})
+	if err != nil {
+		return fmt.Errorf("places: %w", err)
+	}
+	if recovery := placeStore.LastRecovery(); recovery != nil {
+		fmt.Fprintf(os.Stderr, "places: %s file kept at %s (%s)\n", recovery.Kind, recovery.MovedTo, recovery.Reason)
+	}
+	bridge.UsePlaces(desktopbridge.NewPlaces(placeStore))
 	listener, err := net.Listen("tcp", *address)
 	if err != nil {
 		return err
