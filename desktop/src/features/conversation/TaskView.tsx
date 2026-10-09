@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { readEngineFile, readTaskPage, taskAction, type TaskAction } from '../chat/engine-client';
+import { readTaskPage, taskAction, type TaskAction } from '../chat/engine-client';
+import { readEngineText } from './tasks/readText';
 import { Button, Text } from '../../components/ui';
 import type { ReadFile } from './tasks/LogStep';
 import { TaskComposer } from './tasks/TaskComposer';
@@ -87,13 +88,6 @@ function useTaskPage(sessionId: string, taskId: string) {
 }
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : 'That did not go through.');
-
-/** Full command output lives in a file the engine wrote; read it through the engine's file door. */
-async function readEngineText(sessionId: string, path: string): Promise<string> {
-  const file = await readEngineFile(sessionId, path);
-  const bytes = Uint8Array.from(atob(file.dataBase64), (char) => char.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
-}
 
 export type TaskViewProps = {
   sessionId: string;

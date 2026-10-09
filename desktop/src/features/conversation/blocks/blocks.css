@@ -69,3 +69,6 @@
   .steer-landing,
   .answer-actions { transition: none; }
 }
+
+/* An attached picture fills its square thumbnail cell. */
+.attachments-thumb .figure-box { aspect-ratio: 1 / 1; min-height: 0; height: 100%; }

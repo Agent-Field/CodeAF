@@ -55,8 +55,8 @@
 .tray-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .tray-footer-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-left: auto; }
 
-.button.tray-receipt, .tray-receipt-static { justify-content: flex-start; display: inline-flex; align-items: center; gap: var(--space-2); min-height: 0; padding: var(--space-half) var(--space-2); color: var(--muted); font-size: var(--font-size-body); }
-.tray-receipt-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.button.tray-receipt, .tray-receipt-static { justify-content: flex-start; display: inline-flex; max-width: 100%; min-width: 0; align-items: center; gap: var(--space-2); min-height: 0; padding: var(--space-half) var(--space-2); color: var(--muted); font-size: var(--font-size-body); }
+.tray-receipt-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .tray-specimen-stack { display: flex; flex-direction: column; gap: var(--space-8); max-width: var(--composer-max-width); }
 .tray-specimen { display: flex; flex-direction: column; gap: var(--space-2); }

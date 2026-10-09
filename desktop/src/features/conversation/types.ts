@@ -1,5 +1,5 @@
 // The conversation view model. Every component in this folder renders these
-// shapes; only transcript.ts builds them, from canonical engine records.
+// shapes; only model/ builds them, from canonical engine records.
 // Nothing here is invented: a field is empty when the engine has not said it.
 
 import type { EngineQuestion, EngineTaskRow } from '../chat/engine-client';
@@ -21,24 +21,13 @@ export type ToolStep = {
 /** What sits inside one assistant reply, in record order. */
 export type TurnItem =
   | { kind: 'text'; id: string; text: string; streaming: boolean } // Markdown
-  | { kind: 'thinking'; id: string; text: string; streaming: boolean }
-  | { kind: 'tools'; id: string; steps: ToolStep[] } // consecutive calls grouped
   | { kind: 'task'; id: string; taskId?: string; title: string; status: string; summary: string; body: string } // a task's completion aside
   | { kind: 'aside'; id: string; aside: 'job' | 'watch'; title: string; body: string } // a background job or watch notice; body is literal
   | { kind: 'note'; id: string; text: string; long?: boolean } // engine note (e.g. compaction); long: model-directed text, drawn collapsed
   | { kind: 'steer'; id: string; text: string } // the person's words typed into the running turn; literal
   | { kind: 'error'; id: string; text: string };
 
-/** One exchange: the person's message and everything that answered it. */
-export type Turn = {
-  id: string; // stable across snapshots: `${sessionFile}:${entryIndex}`
-  user: string; // the literal words; never Markdown-rendered
-  items: TurnItem[];
-  state: 'streaming' | 'working' | 'done' | 'stopped' | 'failed';
-  digest: string; // first meaningful line of the final answer, plain text, '' when none
-};
-
-// ---- Contract v2 (docs/ELEMENTS.md). Lanes build against these; transcript.ts fills them. ----
+// ---- Contract v2 (docs/ELEMENTS.md). Lanes build against these; model/ fills them. ----
 
 /** Where an item sits: the person's conversation, or the folded machinery under it. */
 export type Rhythm = 'conversation' | 'work';
@@ -85,20 +74,20 @@ export type TurnBlock =
   | { kind: 'receipt'; id: string; questionKey: string; text: string; state: 'waiting' | 'decided' | 'withdrawn' } // question receipt in the flow
   | { kind: 'error'; id: string; text: string };
 
-/** Turn v2: user message + attachments + ordered blocks. Turn (v1) stays until integration swaps. */
+/** One exchange: the person's message, their attachments, and every block that answered it. */
 export type TurnV2 = {
   id: string;
   user: string;
   attachments: FileRef[]; // pictures (ImageRefs) and attached files
   steer: { id: string; text: string; landing?: string; consumed: boolean }[];
   blocks: TurnBlock[];
-  state: Turn['state'];
-  digest: string;
+  state: 'streaming' | 'working' | 'done' | 'stopped' | 'failed';
+  digest: string; // first meaningful line of the final answer, plain text, '' when none
 };
 
 export type ConversationModel = {
   title: string; // engine title, '' until generated
-  turns: Turn[];
+  turns: TurnV2[];
   preface: TurnItem[]; // notes recorded before the first user message
   running: boolean;
   questions: EngineQuestion[];

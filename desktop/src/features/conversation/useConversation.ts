@@ -6,19 +6,26 @@ import {
   answerEngine,
   connectEngine,
   EngineError,
+  holdQuestion,
   readToolResult,
   sendEngine,
+  sendEngineWithFiles,
   stopEngine,
+  taskAction,
   watchEngine,
   type EngineAnswer,
   type EngineEvent,
   type EngineSnapshot,
+  type OutgoingFile,
+  type TaskAction,
 } from '../chat/engine-client';
 import type { SendMode } from './Composer';
-import { emptyOverlay, projectConversation, reduceLiveEvent, type LiveOverlay } from './transcript';
+import { emptyLive, projectTurnsV2, reduceLive, type LiveOverlayV2, type ReceiptPlaces } from './model';
+import { questionKey } from './model/entry';
+import { blocksComposer } from './tray/layout';
 import type { ConversationModel } from './types';
 
-export type FailedSend = { text: string; mode: SendMode; message: string };
+export type FailedSend = { text: string; mode: SendMode; message: string; files?: OutgoingFile[] };
 
 type Options = { sessionFile?: string; onSessionFile: (sessionFile: string) => void };
 
@@ -34,19 +41,30 @@ function lastUserText(snapshot?: EngineSnapshot): string {
   return entry?.Text ?? '';
 }
 
+function buildModel(snapshot: EngineSnapshot, live: LiveOverlayV2, places: ReceiptPlaces): ConversationModel {
+  const { turns, preface } = projectTurnsV2(snapshot, live, places);
+  const { title, running, questions = [], tasks, planError } = snapshot;
+  return { title, turns, preface, running, questions, tasks, planError };
+}
+
+function deliver(id: string, text: string, mode: SendMode, files?: OutgoingFile[]) {
+  return files?.length ? sendEngineWithFiles(id, text, files) : sendEngine(id, text, mode);
+}
+
 export function useConversation({ sessionFile, onSessionFile }: Options) {
   const [snapshot, setSnapshot] = useState<EngineSnapshot>();
-  const [overlay, setOverlay] = useState<LiveOverlay>(emptyOverlay());
+  const [live, setLive] = useState<LiveOverlayV2>(emptyLive());
   const [online, setOnline] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [unreachable, setUnreachable] = useState(false);
   const [failed, setFailed] = useState<FailedSend>();
-  const [answering, setAnswering] = useState(false);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
   const generation = useRef(0);
   const current = useRef<EngineSnapshot | undefined>(undefined);
   const reader = useRef<AbortController | undefined>(undefined);
   const retryTimer = useRef<number | undefined>(undefined);
   const attempts = useRef(0);
+  const places = useRef<ReceiptPlaces>(new Map());
   const file = useRef(sessionFile);
   file.current = sessionFile;
   const announce = useRef(onSessionFile);
@@ -55,7 +73,7 @@ export function useConversation({ sessionFile, onSessionFile }: Options) {
   function receive(value: EngineSnapshot) {
     current.current = value;
     setSnapshot(value);
-    if (!value.running) setOverlay(emptyOverlay(value.entries.length));
+    if (!value.running) setLive(emptyLive(value.entries.length));
   }
 
   function onEvent(event: EngineEvent) {
@@ -65,7 +83,7 @@ export function useConversation({ sessionFile, onSessionFile }: Options) {
       setFailed({ text: lastUserText(current.current), mode: 'submit', message });
     }
     // Errors surface once, as the retryable item after the turn, not inside it.
-    setOverlay((before) => ({ ...reduceLiveEvent(before, event, entries), error: undefined }));
+    setLive((before) => ({ ...reduceLive(before, event, entries), error: undefined }));
   }
 
   function reconnectLater() {
@@ -129,22 +147,22 @@ export function useConversation({ sessionFile, onSessionFile }: Options) {
     return attach(current.current?.sessionFile ?? file.current);
   }
 
-  async function send(text: string, mode: SendMode): Promise<boolean> {
+  async function send(text: string, mode: SendMode, files?: OutgoingFile[]): Promise<boolean> {
     const own = generation.current;
     setFailed(undefined);
     try {
       const target = await attached();
       if (!target || own !== generation.current) return false;
-      if (target.needsPerson) throw new Error('Answer the question above first. Your message is kept.');
-      setOverlay(emptyOverlay(target.entries.length));
-      const value = await sendEngine(target.id, text, mode);
+      if (blocksComposer(target.questions ?? [])) throw new Error('Answer the question above first. Your message is kept.');
+      if (mode !== 'queue') setLive(emptyLive(target.entries.length));
+      const value = await deliver(target.id, text, mode, files);
       if (own !== generation.current) return false;
       receive(value);
       return true;
     } catch (reason) {
       if (own !== generation.current) return false;
       if (isUnreachable(reason)) setUnreachable(true);
-      setFailed({ text, mode, message: messageOf(reason) });
+      setFailed({ text, mode, message: messageOf(reason), files });
       return false;
     }
   }
@@ -162,15 +180,32 @@ export function useConversation({ sessionFile, onSessionFile }: Options) {
 
   async function answer(value: EngineAnswer): Promise<boolean> {
     const target = current.current;
-    if (!target || answering) return false;
-    setAnswering(true);
+    if (!target || busyKey) return false;
+    setBusyKey(questionKey(value));
     try {
       receive(await answerEngine(target.id, value));
       return true;
     } catch {
+      // The card says the answer did not go through and keeps it.
       return false;
     } finally {
-      setAnswering(false);
+      setBusyKey(null);
+    }
+  }
+
+  /** Stops a question's clock while the person reads it; a refused hold leaves the clock as the engine has it. */
+  function hold(question: { kind: string; id: number; ref?: string }) {
+    const target = current.current;
+    if (target) void holdQuestion(target.id, question).catch(() => undefined);
+  }
+
+  async function controlTask(taskId: string, action: TaskAction) {
+    const target = current.current;
+    if (!target) return;
+    try {
+      await taskAction(target.id, taskId, action);
+    } catch (reason) {
+      setFailed({ text: '', mode: 'submit', message: messageOf(reason) });
     }
   }
 
@@ -178,7 +213,7 @@ export function useConversation({ sessionFile, onSessionFile }: Options) {
   async function retry(): Promise<boolean> {
     attempts.current = 0;
     window.clearTimeout(retryTimer.current);
-    if (failed?.text) return send(failed.text, failed.mode);
+    if (failed?.text || failed?.files?.length) return send(failed.text, failed.mode, failed.files);
     const saved = current.current?.sessionFile ?? file.current;
     if (saved) await attach(saved).catch(() => undefined);
     return false;
@@ -190,7 +225,7 @@ export function useConversation({ sessionFile, onSessionFile }: Options) {
     return readToolResult(target.id, callId);
   }
 
-  const model = useMemo(() => (snapshot ? projectConversation(snapshot, overlay) : emptyModel), [snapshot, overlay]);
+  const model = useMemo(() => (snapshot ? buildModel(snapshot, live, places.current) : emptyModel), [snapshot, live]);
 
-  return { model, snapshot, online, connecting, unreachable, failed, answering, send, stop, answer, retry, readFull };
+  return { model, snapshot, online, connecting, unreachable, failed, busyKey, send, stop, answer, hold, controlTask, retry, readFull };
 }

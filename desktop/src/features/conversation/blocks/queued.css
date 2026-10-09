@@ -13,3 +13,4 @@
 }
 .queued-mark { display: grid; flex: none; place-items: center; }
 .queued-text { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.queued-note { margin: 0; padding-inline: var(--space-3); color: var(--muted); font-size: var(--font-size-label); }

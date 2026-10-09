@@ -1,19 +1,21 @@
 import { SectionHeading, Surface, Text } from '../../../components/ui';
+import { DecisionTraySpecimen } from '../tray/specimens/DecisionTray.specimen';
+import { AssetsSpecimen } from './Assets.specimen';
 import { ComposerSpecimen } from './Composer.specimen';
 import { MarkdownSpecimen } from './Markdown.specimen';
-import { QuestionCardSpecimen } from './QuestionCard.specimen';
 import { TaskNoticeSpecimen } from './TaskNotice.specimen';
 import { TaskPanelSpecimen } from './TaskPanel.specimen';
 import { TaskViewSpecimen } from './TaskView.specimen';
-import { ToolGroupSpecimen } from './ToolGroup.specimen';
-import { TurnViewSpecimen } from './TurnView.specimen';
+import { TurnViewV2Specimen } from './TurnViewV2.specimen';
+import { WorkSpecimen } from './Work.specimen';
 
 const specimens = [
-  { name: 'Turns', View: TurnViewSpecimen },
+  { name: 'Turns', View: TurnViewV2Specimen },
   { name: 'Replies', View: MarkdownSpecimen },
-  { name: 'Tools', View: ToolGroupSpecimen },
+  { name: 'Work', View: WorkSpecimen },
+  { name: 'Assets', View: AssetsSpecimen },
   { name: 'Task notices', View: TaskNoticeSpecimen },
-  { name: 'Questions', View: QuestionCardSpecimen },
+  { name: 'Decision tray', View: DecisionTraySpecimen },
   { name: 'Composer', View: ComposerSpecimen },
   { name: 'Task panel', View: TaskPanelSpecimen },
   { name: 'Task view', View: TaskViewSpecimen },

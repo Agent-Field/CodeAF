@@ -1,58 +1,72 @@
-import type { ReactNode } from 'react';
-import type { EngineAnswer } from '../chat/engine-client';
+import { Markdown } from '../../components/ui';
+import { useAssetMarkdownHooks } from './assets';
+import { AsideRow } from './AsideRow';
+import { renderAttachment } from './blocks/AttachmentView';
+import { TurnViewV2 } from './blocks/TurnViewV2';
+import { blockRenderer, type BlockContext } from './blockRenderer';
 import { ErrorItem } from './ErrorItem';
 import { NoteItem } from './NoteItem';
-import { QuestionCard } from './QuestionCard';
-import { TurnView } from './TurnView';
+import { TaskNotice } from './TaskNotice';
 import type { ConversationModel, TurnItem } from './types';
 import type { FailedSend } from './useConversation';
 
-type Props = {
+type Props = BlockContext & {
   model: ConversationModel;
   folded: Record<string, boolean>;
   onToggleFold: (turnId: string) => void;
-  renderItem: (item: TurnItem) => ReactNode;
   failed?: FailedSend;
   onRetry: () => void;
-  answering: boolean;
-  onAnswer: (answer: EngineAnswer) => Promise<boolean>;
 };
 
-function Preface({ items, renderItem }: { items: TurnItem[]; renderItem: Props['renderItem'] }) {
-  if (!items.length) return null;
-  return (
-    <div className="conversation-preface">
-      {items.map((item) => (
-        <div key={item.id}>{item.kind === 'note' ? <NoteItem text={item.text} /> : renderItem(item)}</div>
-      ))}
-    </div>
-  );
+type PrefaceProps = Pick<BlockContext, 'open' | 'onToggle' | 'onOpenTask'> & { item: TurnItem };
+
+function PrefaceItem({ item, open, onToggle, onOpenTask }: PrefaceProps) {
+  const hooks = useAssetMarkdownHooks();
+  const expanded = Boolean(open[item.id]);
+  switch (item.kind) {
+    case 'note':
+      return <NoteItem text={item.text} long={item.long} />;
+    case 'text':
+      return <Markdown {...hooks}>{item.text}</Markdown>;
+    case 'aside':
+      return <AsideRow item={item} open={expanded} onToggle={() => onToggle(item.id)} />;
+    case 'task':
+      return <TaskNotice item={item} open={expanded} onToggle={() => onToggle(item.id)} onOpenTask={onOpenTask} />;
+    default:
+      return null;
+  }
 }
 
-/** The conversation itself: notes, turns, then anything waiting on the person. */
-export function ConversationTranscript({ model, folded, onToggleFold, renderItem, failed, onRetry, answering, onAnswer }: Props) {
+/** The conversation itself: notes recorded before the first message, then the turns. */
+export function ConversationTranscript(props: Props) {
+  const { model, folded, onToggleFold, failed, onRetry } = props;
   const lastId = model.turns[model.turns.length - 1]?.id;
+  const renderFor = blockRenderer(props);
   return (
     <>
-      <Preface items={model.preface} renderItem={renderItem} />
+      {model.preface.length > 0 && (
+        <div className="conversation-preface">
+          {model.preface.map((item) => (
+            <PrefaceItem key={item.id} item={item} open={props.open} onToggle={props.onToggle} onOpenTask={props.onOpenTask} />
+          ))}
+        </div>
+      )}
       {model.turns.map((turn) => (
-        <TurnView
+        <TurnViewV2
           key={turn.id}
           turn={turn}
           folded={Boolean(folded[turn.id])}
           onToggleFold={() => onToggleFold(turn.id)}
-          renderItem={renderItem}
+          renderBlock={renderFor(turn)}
+          renderAttachment={renderAttachment}
           onRetry={turn.id === lastId ? onRetry : undefined}
         />
       ))}
       {failed && (
         <div className="conversation-failure">
-          <ErrorItem text={failed.message} onRetry={failed.text ? onRetry : undefined} />
+          <ErrorItem text={failed.message} onRetry={failed.text || failed.files?.length ? onRetry : undefined} />
         </div>
       )}
-      {model.questions.map((question) => (
-        <QuestionCard key={`${question.kind}:${question.id}:${question.ref ?? ''}`} question={question} busy={answering} onAnswer={onAnswer} />
-      ))}
     </>
   );
 }

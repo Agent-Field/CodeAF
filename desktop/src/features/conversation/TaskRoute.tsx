@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import type { EngineTaskRow } from '../chat/engine-client';
 import { goBack, goForward, navigate, type TabRoute } from '../tabs/view-state';
 import { Breadcrumb, type BreadcrumbSegment } from './Breadcrumb';
@@ -6,8 +5,7 @@ import { taskTrail } from './taskTree';
 import type { ReadFile } from './tasks/LogStep';
 import type { RenderFile } from './tasks/TaskSections';
 import { TaskView } from './TaskView';
-import type { OpenTask } from './itemRenderer';
-import type { TurnItem } from './types';
+import type { OpenTask } from './TaskNotice';
 
 type Props = {
   sessionId?: string;
@@ -16,8 +14,6 @@ type Props = {
   rootLabel: string;
   route: TabRoute;
   onRoute: (route: TabRoute) => void;
-  /** Kept for the caller's sake; the task view draws its own log. */
-  renderItem?: (item: TurnItem) => ReactNode;
   renderFile?: RenderFile;
   readFile?: ReadFile;
   onOpenTask: OpenTask;

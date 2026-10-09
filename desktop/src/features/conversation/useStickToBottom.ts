@@ -10,9 +10,9 @@ const distanceToEnd = (element: HTMLElement) => element.scrollHeight - element.c
 /** Changes when something new is said, not when the reader opens a disclosure. */
 export function contentSignature(model: ConversationModel): string {
   const last = model.turns[model.turns.length - 1];
-  const tail = last?.items[last.items.length - 1];
-  const size = tail && 'text' in tail ? tail.text.length : 0;
-  return [model.turns.length, last?.items.length ?? 0, size, model.questions.length].join(':');
+  const tail = last?.blocks[last.blocks.length - 1];
+  const size = tail && 'text' in tail ? tail.text.length : tail?.kind === 'work' ? tail.steps.length : 0;
+  return [model.turns.length, last?.blocks.length ?? 0, size, model.questions.length].join(':');
 }
 
 /**

@@ -7,18 +7,22 @@ import './notice.css';
 
 type TaskItem = Extract<TurnItem, { kind: 'task' }>;
 
+export type OpenTask = (taskId: string, background: boolean) => void;
+
 type TaskNoticeProps = {
   item: TaskItem;
+  /** The running task's live command, drawn in mono under the title. */
+  live?: string;
   open: boolean;
   onToggle: () => void;
-  onOpenTask?: (taskId: string, background: boolean) => void;
+  onOpenTask?: OpenTask;
 };
 
 function wantsBackground(event: MouseEvent) {
   return isMac ? event.metaKey : event.ctrlKey;
 }
 
-export function TaskNotice({ item, open, onToggle, onOpenTask }: TaskNoticeProps) {
+export function TaskNotice({ item, live, open, onToggle, onOpenTask }: TaskNoticeProps) {
   const { taskId } = item;
   const opensTask = Boolean(taskId && onOpenTask);
   const bodyId = `${item.id}-body`;
@@ -46,6 +50,7 @@ export function TaskNotice({ item, open, onToggle, onOpenTask }: TaskNoticeProps
           </Button>
         )}
       </div>
+      {live && <p className="task-notice-live">{live}</p>}
       {open && item.body && (
         <div id={bodyId} className="task-notice-body">
           {item.body}
