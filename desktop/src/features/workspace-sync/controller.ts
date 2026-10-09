@@ -200,7 +200,8 @@ export function createWorkspaceController(options: ControllerOptions) {
     if (!base) return;
     const before = view;
     const requested = requestedFocus && base.tabs.some(tab => tab.id === requestedFocus || tab.split?.panes.some(pane => pane.id === requestedFocus));
-    let state = compose(base, requested ? { ...local, activeId: requestedFocus } : local, before);
+    const intendedLocal = requested ? { ...local, activeId: requestedFocus } : local;
+    let state = compose(base, intendedLocal, before);
     if (requested) requestedFocus = undefined;
     const kept: Entry[] = [];
     let overtaken = 0;
@@ -229,7 +230,9 @@ export function createWorkspaceController(options: ControllerOptions) {
       if (draft ? !paneById(state, draft.id) : true) overtaken++;
     }
     pending = kept;
-    view = state;
+    // Replayed actions carry shared intent; their reducer focus side effects
+    // must not replace the window's later selection saved beside that queue.
+    view = compose(sharedOf(state), intendedLocal, before);
     local = localOf(view, local);
     if (overtaken) status = { ...status, overtaken: status.overtaken + overtaken };
   }
