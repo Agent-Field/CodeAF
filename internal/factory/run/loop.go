@@ -102,8 +102,12 @@ type loopCtl struct {
 	paused      bool
 	resume      chan struct{}
 	roundCancel context.CancelFunc
-	benchNo     int
-	released    bool
+	// opened is the chat the round now running opened, and carry the chat a
+	// pause cut short, which the next round continues rather than replaces.
+	opened   string
+	carry    string
+	benchNo  int
+	released bool
 }
 
 type loopAnswer struct {
@@ -144,6 +148,10 @@ func (r *Runner) Launch(id int) error {
 	lp := r.loop()
 	it, err := st.Get(id)
 	if err != nil {
+		return err
+	}
+	// A PAUSED ITEM'S LAUNCH IS ITS RUN: the one top-bar button resumes it.
+	if done, err := r.resumePaused(it); done || err != nil {
 		return err
 	}
 	if err := launchable(it); err != nil {
@@ -649,12 +657,21 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			kind = EventRound
 		}
 		now := lp.r.now()
+		// THE CHAT A PAUSE CUT SHORT IS THIS ROUND'S TO CARRY ON; a round
+		// with none starts a chat of its own, and the old name is let go.
+		lp.mu.Lock()
+		resume := c.carry
+		c.carry, c.opened = "", ""
+		lp.mu.Unlock()
 		if err := lp.move(c, name, kind, text, func(it *factory.Item) error {
 			it.State = factory.StateRunning
 			it.Stream.Cur = i
 			ph := &it.Stream.Phases[i]
 			ph.State = factory.PhaseRunning
 			ph.Round = round
+			if resume == "" {
+				ph.Chat = ""
+			}
 			if round > 1 {
 				loopSay(it, now, "thought", text)
 			}
@@ -670,6 +687,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			lp.tell(c.id, fmt.Sprintf(sayStarted, name))
 		}
 		job := lp.job(c, st, index, i, round)
+		job.Resume, job.Opened = resume, lp.opened(c, i)
 		res, again, err := lp.round(c, exec, job)
 		if c.ctx.Err() != nil {
 			return false
@@ -807,12 +825,15 @@ func (lp *floorLoop) held(c *loopCtl) bool {
 }
 
 // round runs one round under its own ctx, which a pause cancels. again is a
-// round a pause cut short, which starts over from the same round.
+// round a pause cut short: the same round goes on when the item is run
+// again, in the same chat when it had one (c.carry).
 func (lp *floorLoop) round(c *loopCtl, exec Executor, job Job) (res factory.StageResult, again bool, err error) {
 	rctx, cancel := context.WithCancel(c.ctx)
 	defer cancel()
 	lp.mu.Lock()
 	if c.paused {
+		// Paused before it began: the chat it was to carry on waits for run.
+		c.carry = job.Resume
 		lp.mu.Unlock()
 		return res, true, nil
 	}
@@ -822,11 +843,37 @@ func (lp *floorLoop) round(c *loopCtl, exec Executor, job Job) (res factory.Stag
 	lp.mu.Lock()
 	c.roundCancel = nil
 	cut := rctx.Err() != nil
+	if cut {
+		// THE CUT ROUND'S CHAT IS KEPT, or the one it was carrying on.
+		c.carry = c.opened
+		if c.carry == "" {
+			c.carry = job.Resume
+		}
+	}
 	lp.mu.Unlock()
 	if cut && c.ctx.Err() == nil {
 		return factory.StageResult{}, true, nil
 	}
 	return res, false, err
+}
+
+// opened is the Job.Opened hook: the round's chat is kept on the item the
+// moment it exists, and in the control for a pause to carry on.
+func (lp *floorLoop) opened(c *loopCtl, i int) func(string) {
+	return func(chat string) {
+		if chat = strings.TrimSpace(chat); chat == "" {
+			return
+		}
+		lp.mu.Lock()
+		c.opened = chat
+		lp.mu.Unlock()
+		_ = lp.write(c, func(it *factory.Item) error {
+			if i < len(it.Stream.Phases) {
+				it.Stream.Phases[i].Chat = chat
+			}
+			return nil
+		})
+	}
 }
 
 // job is what one round may read.
@@ -1204,11 +1251,22 @@ func (r *Runner) Stop(id int) error {
 	return fmt.Errorf("%s is not running", it.Ref())
 }
 
-// Pause holds the item's bench without ending it; calling it again resumes.
-// A round a pause cuts short starts over from the same round.
+// Pause stops the item's step now, keeping its chat; calling it again (or
+// launching the item) resumes the same step in the same chat, with a short
+// carry-on note. A paused item stays paused across a restart of codeaf, and
+// running it then does the same.
 func (r *Runner) Pause(id int) error {
 	lp := r.loop()
 	c := lp.ctl(id)
+	if c == nil {
+		it, err := r.opts.Store.Get(id)
+		if err != nil {
+			return err
+		}
+		if done, err := r.resumePaused(it); done || err != nil {
+			return err
+		}
+	}
 	if c == nil || c.reverify {
 		return r.notRunning(id)
 	}
@@ -1238,6 +1296,79 @@ func (r *Runner) Pause(id int) error {
 		return err
 	}
 	lp.tell(id, word)
+	return nil
+}
+
+// storedPaused says the item's document holds it paused: a run that was cut
+// by a pause, whether or not this process still has its control.
+func storedPaused(it factory.Item) bool {
+	if it.Stream == nil || !it.Stream.Paused {
+		return false
+	}
+	return it.State == factory.StateRunning || it.State == factory.StateQueued
+}
+
+// resumePaused runs a paused item again. done says the item was paused and
+// this call dealt with it (an error is then the refusal); false leaves the
+// door to its ordinary meaning.
+func (r *Runner) resumePaused(it factory.Item) (done bool, err error) {
+	if !storedPaused(it) {
+		return false, nil
+	}
+	lp := r.loop()
+	if c := lp.ctl(it.ID); c != nil {
+		lp.mu.Lock()
+		held := c.paused && !c.reverify
+		lp.mu.Unlock()
+		if !held {
+			return false, nil
+		}
+		return true, r.Pause(it.ID)
+	}
+	return true, r.revive(it)
+}
+
+// revive gives a paused item that has no control (codeaf was restarted since
+// it paused) a control again and puts it back on a bench. It goes on at the
+// phase and round it stopped in, and the phase's chat is carried on.
+func (r *Runner) revive(it factory.Item) error {
+	lp := r.loop()
+	id := it.ID
+	if r.opts.Rail != nil && r.opts.SpentToday != nil {
+		if rail := r.opts.Rail(); rail > 0 && r.opts.SpentToday() >= rail {
+			return fmt.Errorf("the day rail is %s and today's spend has reached it", loopUSD(rail))
+		}
+	}
+	lp.mu.Lock()
+	if lp.ctls[id] != nil {
+		lp.mu.Unlock()
+		return fmt.Errorf("%s is already running", it.Ref())
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), answers: make(chan loopAnswer, 1), phase: -1}
+	if i := nextPhase(it.Stream.Phases); i >= 0 && it.Stream.Phases[i].State == factory.PhaseRunning {
+		c.carry = strings.TrimSpace(it.Stream.Phases[i].Chat)
+	}
+	lp.ctls[id] = c
+	if lp.results[id] == nil {
+		lp.results[id] = map[int]factory.StageResult{}
+	}
+	lp.mu.Unlock()
+	now := r.now()
+	err := lp.move(c, "", EventResumed, sayResumed, func(it *factory.Item) error {
+		if !storedPaused(*it) {
+			return fmt.Errorf("%s is not paused", it.Ref())
+		}
+		it.Stream.Paused = false
+		loopSay(it, now, "said", sayResumed)
+		return nil
+	})
+	if err != nil {
+		lp.forget(c)
+		return err
+	}
+	lp.tell(id, sayResumed)
+	lp.enqueue(c)
 	return nil
 }
 

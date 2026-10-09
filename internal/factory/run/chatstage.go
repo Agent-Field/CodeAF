@@ -64,6 +64,11 @@ type ConversationSpec struct {
 	// Brief is the conversation's opening ([stageBrief]). The maker seeds it and
 	// starts the first turn on it.
 	Brief string
+	// Resume is the transcript of a conversation to reopen instead of making
+	// one, "" for a new one. The maker then continues it with Brief as a
+	// carry-on note (internal/session's CarryOn), joins no team (it is a
+	// member already), and the person's chat is the same chat.
+	Resume string
 	// Stage is the door the conversation's `stage_result` and `plan_edit`
 	// reach. The maker sets it as the conversation's session door
 	// (session.Config.Stage) and on nothing else.
@@ -108,6 +113,11 @@ const (
 	stageNoMaker      = "codeaf cannot open a conversation for a stage here"
 	stageSecondReport = "this stage already reported, and its first report stands"
 	steerNotDelivered = "your words did not reach the stage: "
+	// stageCarryOn is the note a paused stage is carried on with; the maker
+	// puts the carry-on lead on it so the chat shows it as codeaf's, not the
+	// person's. stageNoResume is the log line when the chat cannot be reopened.
+	stageCarryOn  = "You were paused and the person has run you again. Carry on with this stage from exactly where you stopped, in this same conversation; do not start over. " + briefClosing
+	stageNoResume = "the stage's chat could not be reopened, starting it again: "
 )
 
 // briefBodyMost is how much of the item's body the brief carries, in
@@ -146,20 +156,41 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		return factory.StageResult{}, errors.New(stageNoMaker)
 	}
 	door := newStageDoor()
-	conv, err := e.maker.Open(ctx, ConversationSpec{
+	log := job.Log
+	if log == nil {
+		log = func(string) {}
+	}
+	spec := ConversationSpec{
 		Team:  itemTeam(job.Item),
 		Name:  stageChatName(job),
 		Dir:   job.Dir,
 		Brief: stageBrief(job),
 		Stage: door,
-	})
-	if err != nil {
-		return factory.StageResult{}, err
+	}
+	var conv Conversation
+	var err error
+	// A PAUSED STAGE CARRIES ON IN ITS OWN CHAT. A chat that cannot be
+	// reopened is said so and the stage opens a new one on the whole brief,
+	// rather than failing a round the person only paused.
+	if job.Resume != "" {
+		resume := spec
+		resume.Resume, resume.Brief = job.Resume, stageCarryOn
+		if conv, err = e.maker.Open(ctx, resume); err != nil {
+			if ctx.Err() != nil {
+				return factory.StageResult{}, ctx.Err()
+			}
+			log(stageNoResume + oneLine(err.Error()))
+			conv = nil
+		}
+	}
+	if conv == nil {
+		if conv, err = e.maker.Open(ctx, spec); err != nil {
+			return factory.StageResult{}, err
+		}
 	}
 	defer conv.Close()
-	log := job.Log
-	if log == nil {
-		log = func(string) {}
+	if job.Opened != nil {
+		job.Opened(conv.ID())
 	}
 	captions := conv.Captions(ctx)
 	steer := job.Steer
@@ -714,7 +745,7 @@ func (m *FakeMaker) Open(ctx context.Context, spec ConversationSpec) (Conversati
 	m.mu.Lock()
 	c := &FakeConversation{
 		Spec:     spec,
-		id:       fmt.Sprintf("fake-%d", len(m.convs)+1),
+		id:       fakeID(spec, len(m.convs)+1),
 		heard:    make(chan string, 16),
 		captions: make(chan string, 64),
 		done:     make(chan struct{}),
@@ -815,3 +846,11 @@ func (c *FakeConversation) Heard() <-chan string { return c.heard }
 
 // Say puts one caption on the conversation's running account.
 func (c *FakeConversation) Say(line string) { c.captions <- line }
+
+// fakeID is a fake conversation's id: the one it reopens, else a new number.
+func fakeID(spec ConversationSpec, n int) string {
+	if spec.Resume != "" {
+		return spec.Resume
+	}
+	return fmt.Sprintf("fake-%d", n)
+}
