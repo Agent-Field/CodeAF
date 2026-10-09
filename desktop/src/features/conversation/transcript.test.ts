@@ -166,6 +166,20 @@ test('an aside with a task id but no parsable shape takes its title and status f
   assert.equal(item.summary, 'Task 2 started: Migrate the settings screen.');
 });
 
+test('the task row named by id outranks the run request parsed out of the note', () => {
+  const text = 'Use propose_task to make two tasks done · ran 30s · Counted words.';
+  const model = projectConversation(
+    snap([entry({ Role: 'user', Text: 'go' }), { ...entry({ Role: 'aside', Text: text }), TaskIDs: ['2'] } as EngineEntry], false, [
+      { ID: '2', Title: 'Count the words in README.md', Status: 'done' },
+    ]),
+  );
+  const item = model.turns[0].items[0];
+  assert.equal(item.kind, 'task');
+  if (item.kind !== 'task') return;
+  assert.equal(item.title, 'Count the words in README.md');
+  assert.equal(item.taskId, '2');
+});
+
 test('an aside with a task id but no title anywhere is a note, never an unnamed task', () => {
   const text = 'Task 9 started: something.';
   const model = projectConversation(
