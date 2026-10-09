@@ -3,6 +3,7 @@ import { DecisionTraySpecimen } from '../tray/specimens/DecisionTray.specimen';
 import { AssetsSpecimen } from './Assets.specimen';
 import { ComposerSpecimen } from './Composer.specimen';
 import { MarkdownSpecimen } from './Markdown.specimen';
+import { TaskDetailSpecimen } from '../detail/TaskDetail.specimen';
 import { TaskNoticeSpecimen } from './TaskNotice.specimen';
 import { TaskPanelSpecimen } from './TaskPanel.specimen';
 import { TaskViewSpecimen } from './TaskView.specimen';
@@ -19,6 +20,7 @@ const specimens = [
   { name: 'Composer', View: ComposerSpecimen },
   { name: 'Task panel', View: TaskPanelSpecimen },
   { name: 'Task view', View: TaskViewSpecimen },
+  { name: 'Task detail', View: TaskDetailSpecimen },
 ];
 
 /** Every conversation component with fixture props. Fixtures live only here and in tests. */
