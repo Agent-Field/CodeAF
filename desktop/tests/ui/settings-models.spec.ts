@@ -86,10 +86,10 @@ test('the picker shows the three pinned labels in order and the chords pick them
   await expect(popover.getByRole('radiogroup', { name: 'Pinned models', exact: true }).getByRole('radio')).toHaveText(['GLM Flash', 'DS Flash', 'GLM 5.3']);
   await expect(popover.getByText('All models…')).toBeVisible();
   await page.keyboard.press('Escape');
-  await page.keyboard.press(`${mod}+3`);
+  await page.keyboard.press(`Alt+${mod}+3`);
   await expect(chip(page, 'GLM 5.3')).toHaveText('GLM 5.3');
   await expect.poll(() => puts(engine.calls).length).toBe(1);
-  await page.keyboard.press(`${mod}+2`);
+  await page.keyboard.press(`Alt+${mod}+2`);
   await expect(chip(page, 'DeepSeek v4.1 Flash')).toHaveText('DS Flash');
   await expect.poll(() => puts(engine.calls).map(call => call.body.model)).toEqual([GLM, MODEL]);
 });

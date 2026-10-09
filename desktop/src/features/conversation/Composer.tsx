@@ -28,6 +28,8 @@ export type ComposerProps = {
   /** The one way out when the field is disabled, e.g. back to the conversation. */
   reasonAction?: { label: string; onClick: () => void };
   modelLabel?: string;
+  /** The chip's word for the fallback model before the engine can say (the default's pinned label, "DS Flash"). */
+  modelShort?: string;
   /** The engine's model for the Conversation role; when present it replaces the read-only chip. */
   model?: ConversationModel;
   tasksToggle?: { label: string; onClick: () => void };
@@ -194,7 +196,7 @@ export function Composer(props: ComposerProps) {
             {props.model ? (
               <ModelPicker models={props.model.models} selectedId={props.model.selectedId} onSelect={props.model.onSelect} effort={props.model.effort} pinnedCount={props.model.pinnedCount} />
             ) : props.modelLabel && (
-              <ModelPicker models={[{ id: props.modelLabel, label: props.modelLabel }]} selectedId={props.modelLabel} />
+              <ModelPicker models={[{ id: props.modelLabel, label: props.modelLabel, short: props.modelShort }]} selectedId={props.modelLabel} />
             )}
             {props.tasksToggle && <Button className="composer-tasks" onClick={props.tasksToggle.onClick}>{props.tasksToggle.label}</Button>}
           </div>

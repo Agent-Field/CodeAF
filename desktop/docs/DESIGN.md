@@ -18,7 +18,7 @@ Browser preview renders a quiet sand-to-peach background as an approximation of 
 
 ## Interaction
 
-Cmd/Ctrl+K opens the command palette; Cmd/Ctrl+B toggles the sidebar. Theme defaults to System, persists locally, and synchronizes the native window appearance. Keep visible focus, semantic controls, modal focus restoration, and reduced motion. Use the top chrome as a native drag region. Sidebar collapse removes hidden controls from keyboard navigation.
+Cmd/Ctrl+K opens the command palette; Cmd/Ctrl+S toggles the rail (Cmd/Ctrl+B still works) and Cmd/Ctrl+Shift+F is Focus mode, which also hides the tab strip. A collapsed rail peeks after the pointer rests 300ms on the left 8px edge; in Focus mode the top 8px brings the strip back. The full key map is `src/design/keyboard.ts` (design Interactions "Shortcuts"). Theme defaults to System, persists locally, and synchronizes the native window appearance. Keep visible focus, semantic controls, modal focus restoration, and reduced motion. Use the top chrome as a native drag region. Sidebar collapse removes hidden controls from keyboard navigation.
 
 ## Distribution note
 

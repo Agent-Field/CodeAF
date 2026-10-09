@@ -3,49 +3,40 @@
 // folding or unfolding keeps the touched row where it was on screen.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
-import { isMac } from '../../design/keyboard';
+import { shortcutLayer } from '../../design/keyboard';
+import { useShortcuts } from '../../design/useShortcuts';
 import { JUMP_OFFSET, jumpIndex } from './folding';
 
 const behavior = (): ScrollBehavior => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
-
-function stepDirection(event: KeyboardEvent): 1 | -1 | 0 {
-  const primary = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
-  if (!primary || event.altKey || event.shiftKey) return 0;
-  return event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0;
-}
-
-/** A field with words in it keeps its own caret keys. */
-function isWritingField(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement)) return false;
-  return target.value.length > 0;
-}
 
 const topOf = (pane: HTMLElement, element: Element) => element.getBoundingClientRect().top - pane.getBoundingClientRect().top;
 
 const anchorOf = (pane: HTMLElement | null, id: string) => pane?.querySelector(`[data-anchor="${CSS.escape(id)}"]`) ?? null;
 
-function step(pane: HTMLElement, direction: 1 | -1): boolean {
+/** 'turn' moved to a turn, 'edge' went to the top or bottom of the pane. */
+function step(pane: HTMLElement, direction: 1 | -1): 'turn' | 'edge' {
   const turns = [...pane.querySelectorAll('[data-turn]')];
   const index = jumpIndex(turns.map((turn) => topOf(pane, turn)), direction);
   const edge = direction === 1 ? pane.scrollHeight : 0;
   const top = index === -1 ? edge : pane.scrollTop + topOf(pane, turns[index]) - JUMP_OFFSET;
   pane.scrollTo({ top, behavior: behavior() });
-  return index !== -1;
+  return index === -1 ? 'edge' : 'turn';
 }
 
-/** The window listener behind ⌘↑, ⌘↓ and Esc. */
+/** ⌘↑ and ⌘↓ (through the shell's shortcut registry) and Esc. */
 export function useTurnJump(scroller: RefObject<HTMLElement | null>, active: boolean) {
   const away = useRef(false);
+  useShortcuts(shortcutLayer.surface, shortcut => {
+    const pane = scroller.current;
+    if (!pane || (shortcut.id !== 'turn-previous' && shortcut.id !== 'turn-next')) return false;
+    away.current = step(pane, shortcut.id === 'turn-next' ? 1 : -1) === 'turn';
+    return true;
+  }, active);
   useEffect(() => {
     if (!active) return;
     const onKey = (event: KeyboardEvent) => {
       const pane = scroller.current;
-      if (!pane) return;
-      const direction = stepDirection(event);
-      if (direction && !isWritingField(event.target)) {
-        event.preventDefault();
-        away.current = step(pane, direction);
-      } else if (event.key === 'Escape' && away.current && !event.defaultPrevented) {
+      if (pane && event.key === 'Escape' && away.current && !event.defaultPrevented) {
         away.current = false;
         pane.scrollTo({ top: pane.scrollHeight, behavior: behavior() });
       }
