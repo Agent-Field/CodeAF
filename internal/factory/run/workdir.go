@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -121,6 +122,9 @@ func (w *Workdirs) For(it factory.Item, checkout string) (string, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.listed(checkout, dir) {
+		if isPull(it) {
+			w.toHead(it, checkout, dir)
+		}
 		return dir, nil
 	}
 	fail := func(err error) (string, error) {
@@ -133,11 +137,23 @@ func (w *Workdirs) For(it factory.Item, checkout string) (string, error) {
 	// gits books until it is pruned, and the add below would be refused.
 	_, _ = w.git.Run(checkout, "worktree", "prune")
 	branch := w.Branch(it)
+	start := w.base(checkout)
+	if isPull(it) {
+		head, ok, err := w.fetchPull(it, checkout)
+		if err != nil {
+			return "", fmt.Errorf("could not fetch the head of %s: %s", it.Ref(), lastLine(err.Error()))
+		}
+		if ok {
+			start = head
+		}
+	}
 	var err error
+	existing := false
 	if _, verr := w.git.Run(checkout, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch); verr == nil {
+		existing = true
 		_, err = w.git.Run(checkout, "worktree", "add", dir, branch)
 	} else {
-		_, err = w.git.Run(checkout, "worktree", "add", "--no-track", "-b", branch, dir, w.base(checkout))
+		_, err = w.git.Run(checkout, "worktree", "add", "--no-track", "-b", branch, dir, start)
 	}
 	if err != nil {
 		return fail(err)
@@ -145,7 +161,93 @@ func (w *Workdirs) For(it factory.Item, checkout string) (string, error) {
 	if w.Log != nil {
 		w.Log(it, "branch: "+branch)
 	}
+	if existing && isPull(it) {
+		w.toHead(it, checkout, dir)
+	}
 	return dir, nil
+}
+
+// ── A PULL REQUEST IS REVIEWED AT ITS OWN HEAD ─────────────────────────────
+//
+// THE STEP MUST NEVER NEED THE NETWORK OR GIT PLUMBING TO SEE WHAT IT IS
+// REVIEWING. On the 2026-10-09 run of a pull request the read step's
+// worktree was cut from the default branch, so the change it was asked to
+// read was not in it; its `git remote` and `git worktree` were refused (an
+// unattended run reads no other branch's books) and it fell back to fetching
+// the pull request's diff page off the web. So a pull request's worktree is
+// cut at the pull request's head: `refs/pull/<n>/head`, which the base
+// repository serves for a fork's pull request too, kept at
+// `refs/factory/pull/<n>`, with the base branch fetched beside it so
+// `git diff origin/<base>...HEAD` is the change.
+
+// isPull says whether it is a pull request with a number to fetch.
+func isPull(it factory.Item) bool { return it.Kind == factory.KindPR && it.Num > 0 }
+
+// pullRef is where a pull request's head is kept in the checkout's refs.
+func pullRef(it factory.Item) string { return "refs/factory/pull/" + strconv.Itoa(it.Num) }
+
+// PullBase is the ref a pull request's change is read against in its
+// worktree: `origin/<base>` when the item knows its base branch, else
+// `origin/HEAD`, the remote's default branch.
+func PullBase(it factory.Item) string {
+	if b := strings.TrimSpace(it.Base); b != "" {
+		return "origin/" + b
+	}
+	return "origin/HEAD"
+}
+
+// fetchPull fetches the pull request's head into [pullRef], and its base
+// branch beside it when the item names one, and answers the ref. ok is false
+// with no error when the checkout has no `origin`, a repository made on this
+// machine whose pull requests have nowhere to be fetched from: its worktree
+// is then cut the way an issue's is.
+func (w *Workdirs) fetchPull(it factory.Item, checkout string) (string, bool, error) {
+	if _, err := w.git.Run(checkout, "remote", "get-url", "origin"); err != nil {
+		return "", false, nil
+	}
+	ref := pullRef(it)
+	specs := []string{"+refs/pull/" + strconv.Itoa(it.Num) + "/head:" + ref}
+	if b := strings.TrimSpace(it.Base); b != "" && !strings.ContainsAny(b, " :~^?*[\\") {
+		specs = append(specs, "+refs/heads/"+b+":refs/remotes/origin/"+b)
+	}
+	if _, err := w.git.Run(checkout, append([]string{"fetch", "--no-tags", "--quiet", "origin"}, specs...)...); err != nil {
+		return "", false, err
+	}
+	return ref, true, nil
+}
+
+// toHead brings a pull request's existing worktree to its head, when it has
+// not been fetched yet or the head moved since, and when that loses nothing:
+// the worktree has no commit of its own (every commit on it is on the head or
+// on a remote branch) and nothing uncommitted. A worktree a step already wrote
+// into stays where it is. It is best effort: a fetch that fails leaves the
+// worktree as it was, and the round reads what is there.
+func (w *Workdirs) toHead(it factory.Item, checkout, dir string) {
+	ref := pullRef(it)
+	have, err := w.git.Run(checkout, "rev-parse", "--verify", "--quiet", ref)
+	have = strings.TrimSpace(have)
+	if err == nil && (it.HeadSHA == "" || strings.EqualFold(have, it.HeadSHA)) {
+		if at, herr := w.git.Run(dir, "rev-parse", "HEAD"); herr == nil && strings.TrimSpace(at) == have {
+			return
+		}
+	} else {
+		if _, ok, ferr := w.fetchPull(it, checkout); ferr != nil || !ok {
+			return
+		}
+	}
+	if own, err := w.git.Run(dir, "rev-list", "--count", "HEAD", "--not", ref, "--remotes=origin"); err != nil || strings.TrimSpace(own) != "0" {
+		return
+	}
+	if dirty, err := w.git.Run(dir, "status", "--porcelain"); err != nil || strings.TrimSpace(dirty) != "" {
+		return
+	}
+	if _, err := w.git.Run(dir, "reset", "--keep", ref); err != nil {
+		return
+	}
+	if w.Log != nil {
+		short, _ := w.git.Run(dir, "rev-parse", "--short", "HEAD")
+		w.Log(it, "at the head of "+it.Ref()+": "+strings.TrimSpace(short))
+	}
 }
 
 // Remove takes its worktree away and KEEPS ITS BRANCH, so the work is still

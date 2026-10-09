@@ -32,7 +32,9 @@ import (
 const Name = string(factory.OriginForge)
 
 // bodyLimit is how much of an issue's or pull request's text the floor keeps.
-const bodyLimit = 2000
+// A pull request's claims are often at the end of its body (`How it was
+// checked`), and a step reads the body off the item, so it is kept long.
+const bodyLimit = 6000
 
 // CommentsMost is how many of an item's comments the floor keeps: the last
 // three, which is the discussion's latest turn and all a read needs.
@@ -630,7 +632,24 @@ func (s *Source) pullItem(ctx context.Context, owner, name string, p forge.Pull,
 		Checks: ChecksWords(state),
 		Diff:   DiffWords(p.Additions, p.Deletions),
 		Triage: factory.Triage{Type: "review", Size: pullSize(p.Additions + p.Deletions)},
+		Base:   p.Base, Head: pullHead(owner, name, p), HeadSHA: p.HeadSHA,
 	}
+}
+
+// pullHead is the branch a pull request comes from, `owner:branch` when that
+// branch lives in another repository (a fork).
+func pullHead(owner, name string, p forge.Pull) string {
+	head := strings.TrimSpace(p.Head)
+	if head == "" {
+		return ""
+	}
+	repo := strings.TrimSpace(p.HeadRepo)
+	if repo != "" && !strings.EqualFold(repo, owner+"/"+name) {
+		if fork, _, ok := strings.Cut(repo, "/"); ok && fork != "" {
+			return fork + ":" + head
+		}
+	}
+	return head
 }
 
 // lastComments is an item's last [CommentsMost] comments: the ones this

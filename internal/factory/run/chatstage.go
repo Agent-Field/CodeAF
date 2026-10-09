@@ -140,8 +140,9 @@ func carryOnBrief(lines []string) string {
 }
 
 // briefBodyMost is how much of the item's body the brief carries, in
-// characters. The conversation can read the rest where the item lives.
-const briefBodyMost = 2000
+// characters: the whole of what the source keeps, so a pull request's claims
+// at the end of its body reach the step.
+const briefBodyMost = 6000
 
 // briefLastMost is how much of the last round's findings a fix-then-check
 // round's brief carries, in characters.
@@ -358,9 +359,11 @@ func stageLabel(s factory.Stage) string {
 	return factory.ParseStage(s.Ask).Name
 }
 
-// stageBrief is the conversation's opening: the ask in one line, the item, the
-// notes, what came before, the stage's knobs in words, and the one sentence
-// that says how it ends.
+// stageBrief is the conversation's opening: the ask in one line, the step's
+// role, the item as the step needs it (brief.go: its facts, files, checks,
+// comments and where the change is in the work tree), the stages and which
+// one this is, the notes, what came before, the stage's knobs in words, and
+// the sentences that say where questions go and how it ends.
 //
 // EVERY PART IS LEFT OUT WHEN THERE IS NOTHING TO SAY (the emptiness law),
 // except the ask and the closing, which every stage has.
@@ -386,14 +389,10 @@ func stageBrief(job Job) string {
 		ask += ": " + a
 	}
 	para(ask)
-	head := job.Item.Ref()
-	if t := oneLine(job.Item.Title); t != "" {
-		head += " · " + t
+	para(stageRole(job))
+	for _, p := range itemContext(job) {
+		para(p...)
 	}
-	if r := oneLine(job.Item.Repo); r != "" {
-		head += " · " + r
-	}
-	para(head, cutBody(job.Item.Body))
 	para(stagePlace(job))
 	var notes []string
 	for _, n := range job.Notes {

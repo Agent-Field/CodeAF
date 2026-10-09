@@ -1604,7 +1604,7 @@ func (r *Runner) SendBack(id int, words string) error {
 		s := it.Stream
 		name := "prove"
 		for k := 2; phaseNamed(s.Phases, name) || factory.StageIndex(it.Stages, name) >= 0; k++ {
-			name = "prove " + strconv.Itoa(k)
+			name = "prove" + strconv.Itoa(k) // one word, as every stage name is
 		}
 		at := 0
 		for k, p := range s.Phases {
