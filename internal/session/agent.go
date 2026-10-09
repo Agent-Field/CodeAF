@@ -1823,6 +1823,10 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// hold now, and an order stood up while this conversation was open is not
 	// something the next turn may still be blind to (standing_world.go).
 	a.refreshStandingLocked()
+	// AND THE PLACES THIS CONVERSATION IS FILED UNDER, on the same trigger: a
+	// place added while the last turn ran applies from this one and never from
+	// the middle of one (placegraphcontext.go).
+	a.refreshPlaceGraphLocked()
 	a.refreshSystemLocked()
 	hub := a.newReplayHubLocked()
 	a.hub = hub
