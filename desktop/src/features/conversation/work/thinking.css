@@ -1,0 +1,15 @@
+/* Thinking (components §3.4): a 24px row, then at most three live lines fading at the top. */
+.thinking { display: flex; flex-direction: column; min-width: 0; font-size: var(--font-size-body); }
+.thinking-row.button { gap: var(--thinking-gap); width: 100%; min-height: var(--thinking-row-height); padding: 0; justify-content: flex-start; font-size: var(--font-size-body); color: var(--ink-2); text-align: left; }
+.thinking-row.button:disabled { cursor: default; opacity: var(--opacity-opaque); }
+.thinking-live { display: flex; align-items: center; gap: var(--thinking-gap); min-height: var(--thinking-row-height); color: var(--ink-2); }
+.thinking-mark { display: grid; place-items: center; flex: none; width: var(--thinking-mark-box); height: var(--thinking-mark-box); }
+.thinking-mark::before { content: ""; width: var(--mark-dot); height: var(--mark-dot); border-radius: var(--thinking-dot-radius); background: var(--accent); }
+.thinking-row .app-icon { width: var(--thinking-chevron); height: var(--thinking-chevron); color: var(--ink-3); }
+.thinking-row[aria-expanded="true"] .app-icon { transform: rotate(var(--motion-ask-open)); }
+.thinking-text, .thinking-body { margin: 0; padding-inline-start: var(--thinking-indent); font-size: var(--font-size-body); line-height: var(--thinking-leading); font-style: italic; color: var(--ink-3); white-space: pre-wrap; overflow-wrap: anywhere; }
+.thinking-text { display: flex; flex-direction: column; justify-content: flex-end; height: var(--thinking-live-height); overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, transparent, black var(--thinking-fade)); mask-image: linear-gradient(to bottom, transparent, black var(--thinking-fade)); }
+/* The shimmer belongs to the live step only (conversation header note). */
+.thinking-shimmer { background-image: linear-gradient(var(--shimmer-angle), var(--ink-2) 0%, var(--ink-2) 35%, var(--ink) 50%, var(--ink-2) 65%, var(--ink-2) 100%); background-size: var(--shimmer-size) 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: thinking-shimmer var(--shimmer-duration) linear infinite; }
+@keyframes thinking-shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+@media (prefers-reduced-motion: reduce) { .thinking-shimmer { animation: none; background: none; color: var(--ink-2); } }
