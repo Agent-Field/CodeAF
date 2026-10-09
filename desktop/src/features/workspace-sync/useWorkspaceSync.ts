@@ -69,6 +69,9 @@ export function useWorkspaceSync(options: WorkspaceSyncOptions): WorkspaceSync {
     const storage = options.storage ?? safeLocal();
     let live = true;
     let release = () => {};
+    // Native WebKit can delay Web Locks callbacks while another child view is active.
+    // Reading the canonical tab set must not wait for optional orphan-queue ownership.
+    active.start();
     void (async () => {
       let writer = active.writer();
       let hold = await holdWindow(writer);
@@ -88,7 +91,6 @@ export function useWorkspaceSync(options: WorkspaceSyncOptions): WorkspaceSync {
       active.adopt(orphans.entries);
       active.persistNow();
       orphans.commit();
-      active.start();
     })();
     const retry = () => active.retry();
     const visible = () => { if (document.visibilityState === 'visible') active.retry(); };
