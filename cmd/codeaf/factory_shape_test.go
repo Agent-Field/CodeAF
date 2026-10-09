@@ -34,6 +34,7 @@ func TestTheManagersBriefIsTheFiveBlocksThenTheFacts(t *testing.T) {
 		"You know: the issue and its comments, what codeaf read of it, the repository's recipe, policy and habits, the checkout, and what the person has said here.",
 		"You do: shape the run, start it when asked, report each stage here, answer the person, and hold at each approve step until the person says continue, saying what you wait on.",
 		"Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. Never drop proof. An approve step is where the run holds until the person says continue: keep the recipe's, add one (named approve) after a stage the person wants to read first, and skip one only when the person asks. Nothing posts outward before an approve step.",
+		talkBlockInbox,
 		"Say what you set in three lines at most, then stop. Do not narrate.",
 		talkRecipeLaw,
 		"",

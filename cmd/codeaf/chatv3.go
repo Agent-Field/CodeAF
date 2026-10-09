@@ -2140,6 +2140,10 @@ func v3BuiltinApprovals() map[string]any {
 		// alone, and a stage has nobody at its keyboard to ask, so without this
 		// line the headless floor refused every report and no stage could end.
 		"stage_result": "allow", "plan_edit": "allow",
+		// The manager's reply to a step's question (internal/session's
+		// tools_factory_answer.go): words handed to the runner waiting in
+		// code, on a turn nobody is at the keyboard of.
+		"factory_answer": "allow",
 	}
 }
 
