@@ -78,6 +78,13 @@ const (
 	factoryProseW = 60
 	// factoryPageProseW is the item page's measure for the whole issue.
 	factoryPageProseW = 72
+	// factoryIssueSideMin and factoryIssueSideMax are the issue's details
+	// column beside its body on the item page, and factoryIssueSideGap the
+	// air between the two: a pane narrower than the body, the air and the
+	// least of the column stacks the details under the body instead.
+	factoryIssueSideMin = 30
+	factoryIssueSideMax = 56
+	factoryIssueSideGap = 4
 	// factoryRailW is the item page's stage rail, the rule beside it not
 	// included.
 	factoryRailW = 20

@@ -169,11 +169,17 @@ them before it leaves the page. When nothing matches, the list says
 ## show one repository on the factory floor
 
 The first line of the list says which repositories it shows: `all repos`, or one repository's
-short name and how many items it has, such as `codeaf · 7`. `]` steps to the next repository and
-`[` to the one before, and past the last one the list shows all of them again. An item shows
-under a repository it arrived on or touches. That line, and the filter's words under it, stay at
-the top while the rows scroll. `esc` goes back to all repositories before it
-leaves the page.
+trail, `Factory › codeaf · 7`: the repository's short name and how many items it has. `]` steps
+to the next repository and `[` to the one before, and past the last one the list shows all of
+them again. An item shows under a repository it arrived on or touches. That line, and the
+filter's words under it, stay at the top while the rows scroll.
+
+## go back to all repositories — the factory floor shows only one repo
+
+Clicking the repository on an item page's trail, or `[` and `]`, leaves the floor showing one
+repository. To see every repository again, press `esc` (the hint says `esc all repos`) or click
+`Factory` at the start of the first line, `Factory › codeaf · 7`; resting the pointer on it
+highlights it. The cursor stays on the item it was on. A second `esc` leaves the factory.
 
 ## older new items, the backlog, and A
 
@@ -413,9 +419,9 @@ stays there while the rows scroll under the cursor, so the peek keeps its whole 
    words in ink) and, where the floor can answer, `[y] yes · [n] no · [a] in words`.
 3. The factory's one-sentence read, or `⠋ reading…` while the first read is out.
 4. Facts, dim: `touches money`, `maybe a duplicate of #7`, `thin`, `stranger`.
-5. The budget and the thinking in fixed slots, so their values line up from item to item:
-   `budget  $5`, `thinking  —`. A budget of nothing is a blank slot. Where the run holds for
-   you is an approve step among the stages, never a slot here.
+5. The budget and the thinking, `budget  $5   thinking  strong`, each only when the item has
+   one: an item with no budget and no thinking of its own has no line here at all. Where the run
+   holds for you is an approve step among the stages, never a chip here.
 6. The stages: `●` done, `◐` running, `?` waiting on you, `✕` failed, `○` to come, the pause
    mark held, the stop square where a person stopped it, and `–` skipped, every cell of the
    strip one width (its longest name, at most 16 columns; a longer name ends in `…`), with the
@@ -473,6 +479,15 @@ the questions it would ask the author, what plan changed about the stages, and t
 (each whole), checks, files, activity and links. `J`, `K`, `pgdn` and `pgup` scroll it, so do the
 wheel over the pane and a click on `▾ more`, and its bottom row says `J K scroll` while there is
 more to see. Over the left column the wheel walks its rows.
+
+On a wide terminal (the center at least 106 columns) the details stand in a column to the right
+of the description instead of under it: the read line, the factory's read and what codeaf read,
+the facts, the questions, what plan changed, the checks, the activity and the item's address on
+github. The description, its comments and its files stay on the left at 72 columns. Narrower,
+everything stacks under the description. Both columns scroll together.
+
+Nothing on the item page is cut short with `…` where you need to read it: a step's ask, its
+knobs, a stage's note, the settings' keys and a long log line all wrap to the width of the pane.
 
 ## the item page — issue, manager, steps, settings
 
@@ -572,7 +587,7 @@ left column when it is longer than the page.
 Open the item and walk to its last row, `settings`. The center is a table:
 
 ```
-thinking   —             e
+thinking   auto          e
 budget     $3            c
 
 1 plan     on
@@ -583,7 +598,8 @@ budget     $3            c
 1-9 stages · s add a stage · w set in words · b save stages as the recipe
 ```
 
-`e` turns how hard the model thinks, `c` raises the budget, `1` to `9` switch that stage on or
+`e` turns how hard the model thinks, through `auto` (the crew picks for this kind of work),
+`cheap` and `strong`; `c` raises the budget; `1` to `9` switch that stage on or
 off (an approve step too: switched off, the run goes on past it), `s` adds a stage in words
 (`after test, approve` adds an approve step after test), `w` sets them in words and `b` saves
 the stages as the repository's recipe. `e` and `c` work from any row of the page. `1-9`, `s`, `w` and `b` answer on this row only: on any other

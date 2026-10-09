@@ -323,7 +323,11 @@ func TestFactoryItemPageIssueRow(t *testing.T) {
 	if !strings.Contains(frame, "J K scroll") {
 		t.Fatalf("the issue's action line does not name J K scroll:\n%s", frame)
 	}
-	for _, want := range []string{wordFacetIssue, "paragraph line 1", a.icon(tokens.GExpanded) + " more"} {
+	// AT 150 THE DETAILS STAND BESIDE THE BODY, from its first row: what
+	// codeaf read and what it noticed are read without scrolling to the end.
+	gap := strings.Repeat(" ", factoryFactGap)
+	for _, want := range []string{wordFacetIssue, "paragraph line 1", a.icon(tokens.GExpanded) + " more",
+		"underspecified;", "thin" + gap + "stranger"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("the issue pane is missing %q:\n%s", want, frame)
 		}
@@ -339,8 +343,7 @@ func TestFactoryItemPageIssueRow(t *testing.T) {
 		drive(t, a, key("pgdown"))
 	}
 	frame = strings.Join(factoryFrameLines(a), "\n")
-	gap := strings.Repeat(" ", factoryFactGap)
-	for _, want := range []string{"paragraph line 40", "underspecified; two questions for the author first", "thin" + gap + "stranger"} {
+	for _, want := range []string{"paragraph line 40"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("the end of the issue is missing %q:\n%s", want, frame)
 		}
@@ -499,7 +502,7 @@ func TestFactoryLayoutRepoLineStaysWhenTheRowsScroll(t *testing.T) {
 		t.Fatalf("forty steps down did not scroll the rows (top %d, pinned %d)", a.fp.top, a.fp.pinned)
 	}
 	repo := factoryRepoShort(a.fp.snap.Repos[a.fp.repo-1].Name)
-	if first := strings.TrimSpace(rows[a.fp.headRows]); !strings.HasPrefix(first, repo+" · ") {
+	if first := strings.TrimSpace(rows[a.fp.headRows]); !strings.HasPrefix(first, wordFloorCrumb+" › "+repo+" · ") {
 		t.Fatalf("the scrolled floor's first row is %q, not the repo line for %s", first, repo)
 	}
 	// A press on the last row of the window lands on the item drawn there.

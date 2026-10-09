@@ -362,14 +362,16 @@ type factoryChip struct {
 // TWO, in that order, so each stands in its own slot on every item
 // ([app.factoryChipRow]). Where the run holds for the person is an approve
 // step among the stages, never a chip. THEIR WORDS ARE THE VOCABULARY'S
-// (factory_words.go): `budget  $5`, `thinking  —`. THE
+// (factory_words.go): `budget  $5`, `thinking  strong`. THE
 // THINKING CHIP READS THE STAGE `e` TURNS ([factoryEffortStage]), so the chip
-// and the key are about the same stage, and it says a dash when that stage
-// carries no word, which is the knee: the crew picks how hard to think for
-// this class of work. A budget of nothing has an empty value, and its slot is
-// drawn as air (the emptiness law).
+// and the key are about the same stage, and its value is empty when that
+// stage carries no word, which is the knee: the crew picks how hard to think
+// for this class of work. A chip with an empty value is not drawn on the peek
+// (the emptiness law); the settings pane, where `e` turns it, says
+// [wordThinkingAuto] (owner's screenshot, 2026-10-09: a bare `thinking  —`
+// floating mid-peek read as a manager thinking about nothing).
 func (a *app) factoryChipList(it factory.Item) []factoryChip {
-	thinking := "—"
+	thinking := ""
 	stages := factoryStages(a.fp.snap, it)
 	if at := factoryEffortStage(a.fp.snap, it); at >= 0 && at < len(stages) && stages[at].Effort != "" {
 		thinking = stages[at].Effort
@@ -419,9 +421,22 @@ func (a *app) factoryChips(it factory.Item, keys bool) string {
 }
 
 // factoryPeekChips is the peek's chips, without keys: the peek is read, and
-// the keys are on its last row and the hint line.
+// the keys are on its last row and the hint line. ONLY A CHIP THAT SAYS
+// SOMETHING IS DRAWN, from the margin, [factoryFactGap] apart: a slot of air
+// for an empty one left the next floating mid-row (owner's screenshot,
+// 2026-10-09), and an item with neither a budget nor a thinking word of its
+// own draws no row.
 func (a *app) factoryPeekChips(it factory.Item, measure int) string {
-	return a.factoryChipRow(it, false, measure)
+	pal := a.pal
+	var segs, plains []string
+	for _, c := range a.factoryChipList(it) {
+		if strings.TrimSpace(c.value) == "" {
+			continue
+		}
+		plains = append(plains, c.label+factorySpaces(factoryLabelGap)+c.value)
+		segs = append(segs, pal.muted(c.label)+factorySpaces(factoryLabelGap)+pal.ink(c.value))
+	}
+	return factoryJoinWhole(segs, plains, factorySpaces(factoryFactGap), measure)
 }
 
 // factoryPeekStages is the stages block: the strip, and under it what the
