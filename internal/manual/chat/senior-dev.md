@@ -419,8 +419,10 @@ dependencies). `SENIOR_DEV_NET=off` withholds `webfetch` and `websearch` for tha
 drops the part of its instructions about installing anything, and makes its copy link
 your ignored dependency folders instead of having its own.
 Senior-dev also requests model sizes and capabilities from models.dev when its cached
-catalog is absent or stale. If that site cannot be reached, the run uses conservative
-model limits and still calls models through codeaf's loopback API.
+catalog is absent or stale. If that site cannot be reached, or has never listed the model,
+it reads the model's window from the model catalog codeaf keeps for your profile, which
+needs no network. Only when neither knows the model does it assume 16,384 tokens, and it
+says so. Every model call still goes through codeaf's loopback API.
 
 ## senior-dev and missing dependencies — pytest not installed, No module named, pip refuses, npm install, a virtual environment
 
@@ -465,6 +467,39 @@ resolve project imports. Older Python cannot use `-t .` on a folder without
 `__init__.py`, so that folder uses `-s <folder>` alone. A test command that
 reports it ran no tests leaves the submission unchecked, even if it exits zero;
 the ending says `no tests were found by <command>`.
+
+## How does senior-dev find a project's build and tests — no build entrypoint could be discovered, CMake, ctest, --verify-build, --verify-test
+
+Any folder that looks like a project — a manifest, a `Makefile`, a
+`CMakeLists.txt`, a `test/` folder — must have a build command and a test command
+for its checks. senior-dev looks for them in CI, `AGENTS.md`, a Makefile or
+`package.json` script, `README.md` or `CONTRIBUTING.md`, then a default for the
+project's kind: Go, Rust, Maven, Gradle, .NET, Python, and CMake.
+
+For a CMake project with nothing else to go on, such as a header-only library, it
+builds with `cmake -S . -B .senior-dev/cmake-build && cmake --build
+.senior-dev/cmake-build --parallel` (one job per processor). It tests by running
+the same configure and build first, then `ctest --output-on-failure` in that
+folder, so the test still works when the build command came from somewhere else.
+The build folder is inside its own `.senior-dev` folder, so it never ends up in
+the change it hands in.
+This needs `cmake` on the machine.
+
+When it finds nothing, the run fails its checks: the ending says `no build
+entrypoint could be discovered` (or `test`), and the change is still handed in.
+
+**Naming the check yourself.** If the project is checked by something it cannot
+find — a fuzzing harness or a benchmark's validation script outside the folder —
+pass it on `run`:
+
+```sh
+codeaf senior-dev run --verify-test '/scripts/validate.py --poc /tmp/poc' -- <brief>
+```
+
+`--verify-build CMD` and `--verify-test CMD` each replace what senior-dev would
+have found. senior-dev runs them itself on the submitted tree, with the same strict
+settings and time limit, and a non-zero exit fails the check. Naming one never
+excuses the other. Only the command line sets them; senior-dev's own model cannot.
 
 ## Can I run senior-dev in a folder that is not a git repo — a plain folder, no git, --in-place, operation not permitted, .Trash
 
@@ -932,10 +967,12 @@ with kimi-k2.6", or several: "with kimi-k2.6 and deepseek-v4-pro" — and senior
 with exactly those, routing among them call by call when there are several; the card and
 the task's first line name them. A name that fits more than one model is put to you to
 settle. A model none of your connected services can serve is refused before the card, by
-name, rather than swapped for another. When a catalog was loaded, a model it cannot size cannot be used: the
-run ends before its first call with `senior-dev cannot work with <model>: …`, and nothing
-is spent. If models.dev is unavailable and there is no cache, conservative limits let
-the run start. The models are fixed when the run starts; changing the crew later does not move
+name, rather than swapped for another. When a catalog was loaded, a model neither it nor
+codeaf's own model catalog can size cannot be used: the run ends before its first call with
+`senior-dev cannot work with <model>: …`, and nothing is spent. A model you asked for
+that is known to hold 32,768 tokens or fewer is refused the same way (see the section on
+a model too small for senior-dev). If models.dev is unavailable and codeaf's catalog does not know the model
+either, the run starts on an assumed 16,384 tokens and says so. The models are fixed when the run starts; changing the crew later does not move
 a run already working. `/senior-dev` typed with a brief uses your crew.
 
 **Otherwise, from the chat it uses your crew.** codeaf hands senior-dev the worker
@@ -949,8 +986,35 @@ planner and checker routing and `/crew`'s per-task limit apply to codeaf's own
 tasks, not senior-dev's run. Change the crew and the next run follows. The
 mastermind (brain) model is not used: every call senior-dev makes is either its
 work or a history summary.
-A crew model senior-dev's model catalog cannot size is left out, and its log says so;
-if that leaves no working model, it uses its own list instead.
+A crew model senior-dev's model catalog cannot size is left out, and its log says so,
+and so is one known to hold 32,768 tokens or fewer; if that leaves no working model, it
+uses its own list instead.
+
+## senior-dev keeps compacting, or refused a model as too small — how much its model can hold, a 32K model, could not learn how much its model holds
+
+senior-dev keeps its brief, its tools, its checklist and its progress in its model's
+window, and compacts its history once it fills 60% of what the model can take in. It learns the window from models.dev
+first, then from the model catalog codeaf keeps for your profile, which it reads from
+disk with no network. A shell run waits up to 15 seconds for codeaf to list its models
+first on a profile that has never listed them.
+
+**A model you asked for that is known to hold 32,768 tokens or fewer is refused before
+its first call**, and nothing is spent: `senior-dev cannot work with <model> (16,384
+tokens): a run needs a model that holds more than 32,768 tokens to keep its brief, its
+tools and its progress in view, so nothing was started; ask for a model with a larger
+window`. Ask for a larger model. **A crew model that small is left out instead**, with a
+note in the run's log; if that leaves no model for its work, it uses its own list.
+
+**When nothing knows the model, it assumes 16,384 tokens and runs.** Its page says
+`could not learn how much its model holds; assumed 16,384 tokens`, and its log says
+which model. A run on that guess compacts every few steps. A real window that small
+is rare, so the guess is never refused. To give it the real figure, run `codeaf models`
+once on that machine while it can reach your model service; codeaf keeps the list it
+prints, and senior-dev reads the window from it.
+
+When a compacted history still does not fit, senior-dev keeps as much of its newest
+summary as fits beside the brief and the list of changed files. Only when none of the
+summary fits does the list of changed files carry over on its own.
 
 ## Which model is my senior-dev run on — the models it was launched with, the foot of its task page
 
@@ -1050,7 +1114,7 @@ after the run's record folder (such as `20260924-150405.000000`). That folder al
 `delegate-program.json`, with the instant senior-dev's process started and the instant it
 ended.
 
-## senior-dev's flags — run, --variant, --in-place, --high, --max-cost
+## senior-dev's flags — run, --variant, --in-place, --high, --verify-test, --max-cost
 
 `codeaf senior-dev <brief>` is `codeaf senior-dev run -- <brief>`. codeaf gives every
 program it carries four flags:
@@ -1073,6 +1137,9 @@ senior-dev's own flags on `run`:
   bare OpenRouter id, service-prefixed id, or short `/crew` model word;
 - `--asked` — the `--high` models were chosen by name, so one senior-dev cannot
   size ends the run before its first call rather than being skipped;
+- `--verify-build CMD`, `--verify-test CMD` — the project's own build or test command,
+  run by senior-dev on the submitted tree instead of the one it would have found (see
+  how senior-dev finds a project's build and tests);
 - `--frontier` — accepted, and changes nothing: no call senior-dev makes uses that tier;
 - `--crew` — the models came from a conversation's crew: one its catalog cannot size is
   left out instead of failing the run. codeaf passes it with the crew's models.
