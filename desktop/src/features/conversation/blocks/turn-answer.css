@@ -1,0 +1,58 @@
+/* Update and final answer: full ink, no bubble. The update carries an eyebrow and an accent rule. */
+.update-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-half);
+  padding-left: var(--space-row);
+  border-left: var(--space-half) solid var(--accent-rule);
+  color: var(--ink);
+}
+.update-eyebrow { color: var(--ink-3); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); font-weight: var(--type-caption-weight); }
+.update-cut { color: var(--ink-3); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); }
+
+/* Answer: the full column width. Copy shows on hover or focus, bottom-left, its icon aligned with the text. */
+.answer-block { position: relative; max-width: var(--chat-column-max-width); color: var(--ink); }
+.answer-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-half);
+  margin-left: calc(var(--space-tight) * -1);
+  color: var(--ink-3);
+  opacity: var(--opacity-transparent);
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.answer-block:hover .answer-actions,
+.answer-actions:focus-within { opacity: var(--opacity-opaque); }
+@media (pointer: coarse) {
+  .answer-actions { opacity: var(--opacity-opaque); }
+}
+
+/* Footer: one quiet line; only a failure takes colour and an action. */
+.turn-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink-2);
+  font-size: var(--type-label-size);
+  line-height: var(--type-label-leading);
+}
+.turn-footer-icon { display: inline-flex; color: var(--ink-3); }
+.turn-footer[data-failed="true"],
+.turn-footer[data-failed="true"] .turn-footer-icon { color: var(--danger); }
+.turn-footer .turn-footer-retry {
+  height: var(--row-action-size);
+  padding: 0 var(--control-pad-ghost);
+  border-radius: var(--radius-message-action);
+  background: var(--field);
+  color: var(--ink);
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-strong);
+}
+.turn-footer .turn-footer-retry:hover { background: var(--field-2); }
+.turn-footer-dot { display: grid; place-items: center; width: var(--mark-box); height: var(--mark-box); }
+.turn-footer-dot::before { content: ""; width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--accent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .answer-actions { transition: none; }
+}

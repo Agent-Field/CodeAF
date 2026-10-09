@@ -1,5 +1,6 @@
 import { Button, Icon } from '../../../components/ui';
 import type { TurnV2 } from '../types';
+import './turn-answer.css';
 
 type TurnFooterProps = {
   state: TurnV2['state'];
@@ -12,6 +13,7 @@ export function TurnFooter({ state, onRetry, retrying = false }: TurnFooterProps
   if (retrying) {
     return (
       <div className="turn-footer" role="status">
+        <span className="turn-footer-dot" aria-hidden="true" />
         <span>Retrying</span>
       </div>
     );
@@ -19,7 +21,9 @@ export function TurnFooter({ state, onRetry, retrying = false }: TurnFooterProps
   if (state === 'stopped') {
     return (
       <div className="turn-footer" role="status">
-        <Icon name="cancelled" size="sm" />
+        <span className="turn-footer-icon">
+          <Icon name="cancelled" size="xs" />
+        </span>
         <span>Stopped</span>
       </div>
     );
@@ -27,9 +31,15 @@ export function TurnFooter({ state, onRetry, retrying = false }: TurnFooterProps
   if (state !== 'failed') return null;
   return (
     <div className="turn-footer" data-failed="true" role="alert">
-      <Icon name="alert" size="sm" />
+      <span className="turn-footer-icon">
+        <Icon name="alert" size="xs" />
+      </span>
       <span>Failed</span>
-      {onRetry && <Button onClick={onRetry}>Retry</Button>}
+      {onRetry && (
+        <Button className="turn-footer-retry" onClick={onRetry}>
+          Retry
+        </Button>
+      )}
     </div>
   );
 }
