@@ -64,3 +64,20 @@ test('Mac: ⌘ chords work in a terminal field and Control chords are not app ch
   assert.deepEqual(macTerminal(key('t', { metaKey: true, shiftKey: true })), { id: 'reopen' });
   assert.equal(macTerminal(key('w', { ctrlKey: true })), undefined);
 });
+
+test('Places keys: ⌘P, ⌘⇧P, ⌘0, ⌘⇧W, ⌘N, ⌘Z outside fields, and the rail slots on ⌃ (Mac) or Alt (elsewhere)', () => {
+  assert.deepEqual(mac(key('p', { metaKey: true })), { id: 'goto' });
+  assert.deepEqual(mac(key('P', { metaKey: true, shiftKey: true })), { id: 'all-places' });
+  assert.deepEqual(linux(key('P', { ctrlKey: true, shiftKey: true })), { id: 'all-places' });
+  assert.deepEqual(mac(key('0', { metaKey: true })), { id: 'place-home' });
+  assert.deepEqual(mac(key('W', { metaKey: true, shiftKey: true })), { id: 'close-place' });
+  assert.deepEqual(mac(key('n', { metaKey: true })), { id: 'new-window' });
+  assert.deepEqual(mac(key('z', { metaKey: true })), { id: 'undo' });
+  assert.equal(mac({ ...key('z', { metaKey: true }), target: { tagName: 'TEXTAREA' } as unknown as EventTarget }), undefined);
+  assert.deepEqual(mac(key('3', { code: 'Digit3', ctrlKey: true })), { id: 'place-jump', index: 3 });
+  assert.deepEqual(mac(key('0', { code: 'Digit0', ctrlKey: true })), { id: 'place-jump', index: 0 });
+  assert.deepEqual(linux(key('3', { code: 'Digit3', altKey: true })), { id: 'place-jump', index: 3 });
+  // Ctrl+digit stays the tab jump on Linux, and ⌘digit on a Mac.
+  assert.deepEqual(linux(key('3', { code: 'Digit3', ctrlKey: true })), { id: 'jump', index: 3 });
+  assert.deepEqual(mac(key('3', { code: 'Digit3', metaKey: true })), { id: 'jump', index: 3 });
+});

@@ -1,9 +1,10 @@
 import { startFor, startSentence } from '../../../terminal/open';
 import { bind } from '../../../terminal/bindings';
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { TextInput } from '../../../../components/ui';
 import { isMac } from '../../../../design/keyboard';
 import { connectEngine, sendEngine } from '../../../chat/engine-client';
+import { FirstTurnContext } from '../../../conversation/firstTurn';
 import { tabHolding, visibleTabs } from '../../model';
 import { terminalKind, newTerminalShortcut } from '../terminal';
 import type { PaneRenderProps } from '../slots';
@@ -35,6 +36,7 @@ function NewTabField({ host, paneId, focused }: { host: NewTabHost; paneId: stri
   const [index, setIndex] = useState(0);
   const [filing, setFiling] = useState(false);
   const [busy, setBusy] = useState(false);
+  const beforeFirstTurn = useContext(FirstTurnContext);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { if (focused) input.current?.focus(); }, [focused]);
 
@@ -62,6 +64,9 @@ function NewTabField({ host, paneId, focused }: { host: NewTabHost; paneId: stri
     try {
       const snapshot = await connectEngine();
       sessionFile = snapshot.sessionFile;
+      // A question asked from a place's new tab is filed in that place before its first turn, exactly as the
+      // conversation's own first send is; if filing is refused the conversation opens holding the words, unsent.
+      if (beforeFirstTurn && sessionFile) await beforeFirstTurn(sessionFile);
       await sendEngine(snapshot.id, text);
       draft = '';
     } catch { /* The conversation opens with the words kept as its draft; sending again is one key. */ }

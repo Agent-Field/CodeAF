@@ -2,14 +2,44 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createToasts } from './toasts.ts';
 
-test('a new toast replaces the current one and settles it', () => {
+test('toasts stack newest last; a fourth lets the oldest go and settles it', () => {
   const t = createToasts();
   const log: string[] = [];
   const first = t.show({ message: ['one'], onSettled: () => log.push('one settled') });
   const second = t.show({ message: ['two'] });
   assert.notEqual(first, second);
-  assert.deepEqual(log, ['one settled']);
+  assert.deepEqual(t.getToasts().map(toast => toast.id), [first, second]);
   assert.equal(t.getToast()?.id, second);
+  t.show({ message: ['three'] });
+  assert.deepEqual(log, []);
+  const fourth = t.show({ message: ['four'] });
+  assert.deepEqual(log, ['one settled']);
+  assert.equal(t.getToasts().length, 3);
+  assert.equal(t.getToast()?.id, fourth);
+});
+
+test('showing a key that is already up replaces that toast in its place and settles it', () => {
+  const t = createToasts();
+  const log: string[] = [];
+  t.show({ message: ['a'], key: 'k', onSettled: () => log.push('a settled') });
+  const other = t.show({ message: ['b'] });
+  const again = t.show({ message: ['c'], key: 'k' });
+  assert.deepEqual(log, ['a settled']);
+  assert.deepEqual(t.getToasts().map(toast => toast.id), [again, other]);
+});
+
+test('an asynchronous Undo keeps the toast until it resolves, and a refusal keeps it standing', async () => {
+  const t = createToasts();
+  let release!: () => void;
+  const id = t.show({ message: ['x'], undo: () => new Promise<void>(resolve => { release = resolve; }) });
+  const done = t.undo(id);
+  assert.equal(t.getToast()?.id, id);
+  release();
+  await done;
+  assert.equal(t.getToast(), null);
+  const refused = t.show({ message: ['y'], undo: async () => { throw new Error('moved since'); } });
+  await assert.rejects(t.undo(refused), /moved since/);
+  assert.equal(t.getToast()?.id, refused);
 });
 
 test('undo runs the undo, removes the toast and does not settle it', () => {
@@ -34,7 +64,9 @@ test('a stale id changes nothing, and tone defaults to info', () => {
   const t = createToasts();
   const old = t.show({ message: ['a'] });
   const now = t.show({ message: ['b'], tone: 'danger' });
-  t.dismiss(old); t.undo(old); t.act(old, 0);
+  t.dismiss(old);
+  t.dismiss(old); void t.undo(old); void t.act(old, 0);
+  assert.deepEqual(t.getToasts().map(toast => toast.id), [now]);
   assert.equal(t.getToast()?.id, now);
   assert.equal(createToasts().show({ message: [] }), 1);
   assert.equal(t.getToast()?.tone, 'danger');

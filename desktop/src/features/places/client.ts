@@ -61,6 +61,8 @@ export type PlacesStatus = {
 export type ChatPlace = { id: string; name: string; tint: Tint; addedBy: AddedBy };
 export type ChatRow = {
   id: string; title: string; project: string; workspace: string;
+  /** The conversation's journal: the path a window reattaches with. Absent when the engine could not say. */
+  sessionFile?: string;
   at?: string; created?: string; model?: string;
   archived: boolean; live: boolean; doing: string; needsYou: boolean; reason?: string;
   tasks: { running: number; incomplete: number; done: number; failed: number };

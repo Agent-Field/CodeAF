@@ -199,3 +199,22 @@ The menus lane numbered these Q35–Q39 on its branch; the file and terminal lan
 | M4 | Where the Inbox tab comes from: Interactions says the rail's Inbox row opens it; 3l calls it "the pinned tab" and says closed running work lists there | The Inbox tab is created the first time work outlives its tab or an open tab needs the person, pinned first in the strip, with a dot only while something needs you. The rail lane can open it with the `open-inbox` workspace action. |
 | M5 | "Copy link" (⌘⇧C) and "Move to new window" are drawn enabled | "Move to new window" is real in the desktop app: it opens a window on the same place carrying the tab, and the tab leaves the source only when the new window claims it. In a browser it is absent (nothing can move there). "Copy link" is absent everywhere: the shell registers no deep-link scheme, so there is no canonical link to copy and none is invented. |
 | M6 | Failures in the Inbox: the design draws only running and needs-you | A "Failed" section lists recent (3 days) unseen task failures from the engine feed, at most five, each with a Seen button; opening one marks it seen. "Seen" is remembered in this window only; the engine has no durable failure-seen mark. |
+
+## Places shell integration (2026-10-09)
+
+R3 above is superseded: the rail now draws the Places sections from the engine's Places routes.
+
+| ID | Question | Assumption shipped |
+|---|---|---|
+| PS1 | The Places rail (6a, 10a) has no rows for Activity, Settings or the Design system page, and no palette field | They stay, quieter, under All places (Activity, Settings, Design system, then the theme), and the "codeaf" field keeps opening the ⌘K command palette. Say if any should leave the rail. |
+| PS2 | What the "3" beside Now counts (6a draws "Now 3", 8c draws "Not in any place · 38") | Nothing is drawn beside Now: no count the engine reports matches it. Now carries the amber dot when an unplaced chat needs you, like any place row. |
+| PS3 | ⌃1–9 on Linux, where Ctrl 1–9 is already the tab jump (⌘1–9 on a Mac) | Alt 1–9 switch places and Alt 0 goes to Now on Linux and Windows; ⌃1–9 / ⌃0 on a Mac. |
+| PS4 | A red rail/tile dot for "failed": the engine's roll-up `failedTasks` is all-time, never "new" | A place with any failed task shows red until its chats are archived. A "new since you looked" rule needs an engine field. |
+| PS5 | Closing a place (10a): the engine keeps no "closed" state; Open is derived (visited in 12h, or busy) | Closing is remembered per machine in this app's storage; going to the place again reopens it with its tabs (Q-P4 "closed by the person: tabs restored"). A closed place with running or waiting work stays muted with "closed · still running". |
+| PS6 | Per-place tab sets live in the engine (Architecture §3.4) but there is no workspace route yet | Tab sets are kept per place in this app's storage (Now keeps the v1 key); two windows on one place mirror through the storage event. They do not follow the engine to another machine. |
+| PS7 | Inbox: the design says you answer in Inbox without switching | The Inbox lists the engine's questions, failures and background work and opens the conversation; answering happens in its tray. Answering in place needs the engine's answer route without an attached view. |
+| PS8 | Notifications group "per place"; the world stream carries a chat's source folders, not its places | Notifications are posted per question with the chat's title and no place name; no folder is named as a place. |
+| PS9 | Home tab menu (Interactions "Place menu") | Open in new window, Rename, Tint, Add to another place…, Merge into…, Pin/Unpin, then Close place ⌘⇧W. Archive and Delete stay on the Home page's own ⋯ menu, where the delete confirmation is drawn. |
+| PS10 | The Home composer's model | The chip shows the Conversation role's default (DS Flash) read-only; the chat's own picker takes over once it has a session. |
+| PS11 | "Ask codeaf about this output" from a terminal inside a place | It still starts an unplaced conversation (the terminal lane's own call). Filing it in the place needs that call to go through the place strip. |
+| PS12 | Now in graphite (Places 9d) | Graphite keeps the tint formula's frame chroma (.035) and drops ink-2 on the frame to 4.46:1 (overview filmstrip labels), failing the 4.5:1 contract. Now keeps the root palette; a place window takes its own tint. Needs a graphite frame with less chroma, or a ruling that Now stays untinted. |

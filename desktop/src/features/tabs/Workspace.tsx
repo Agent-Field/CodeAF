@@ -1,7 +1,7 @@
 // The workspace: owns the reducer state and composes the strip, the content card and the dialogs.
 // Everything with a lane of its own lives in a sibling file (see ARCHITECTURE.md).
 import { useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
-import { Button, Icon, Text, TextInput, ToastRegion } from '../../components/ui';
+import { Button, Icon, Text, TextInput, type MenuEntry } from '../../components/ui';
 import { nativeControls } from '../../design/nativeControls';
 import design from '../../design/tokens.json';
 import { toasts } from '../../design/toasts';
@@ -20,7 +20,12 @@ import { TabsApiContext, type TabsApi } from './context';
 import type { PaneActions } from './kinds/slots';
 import { NewTabHostContext } from './kinds/newtab/api';
 import { kindDef } from './kinds/registry';
-import { focusedPane, panesOf, readWorkspace, storageKey, visibleTabs, workspaceReducer, type Pane, type Tab } from './model';
+import { focusedPane, freshWorkspace, panesOf, parseWorkspace, readWorkspace, visibleTabs, workspaceKey, workspaceReducer, type Pane, type Tab, type WorkspaceState } from './model';
+import { FirstTurnContext, type BeforeFirstTurn } from '../conversation/firstTurn';
+import type { TintName } from '../places/components/PlaceSwatch';
+import { onWorkspaceRequest } from '../places/shell/workspaceBus';
+import { sharedShape } from './reducers/home';
+import { publishActiveHome } from '../shell/shellState';
 import { PaneGrid } from './PaneGrid';
 import { createPreviewStore } from './preview/previewStore';
 import { TabOverview } from './TabOverview';
@@ -33,12 +38,34 @@ import './workspace.css';
 
 type Props = {
   enabled: boolean; onActivate: () => void; leading?: ReactNode;
+  /** The window's place: `now` or a design-graph place id. Each has its own saved tab set (model.ts workspaceKey). */
+  place?: string;
+  /** The place's name and tint for its Home tab; absent until the graph has been read. */
+  placeTitle?: string; placeTint?: TintName;
+  /** Moves on every Go to: the strip then focuses its Home. */
+  arrival?: number;
+  /** Files a new chat in this place between its creation and its first turn (conversation/firstTurn.ts). */
+  firstTurn?: BeforeFirstTurn;
+  /** The menu of this strip's Home tab. */
+  placeMenu?: MenuEntry[];
+  /** While the rail is put away, the Home tab is the place switcher. */
+  placeSwitcher?: { items: MenuEntry[]; alert?: string };
   /** Opens a conversation by its chat id (the shell's Places navigation owns this). The Inbox lists work with no tab here and can only offer it a click when this is given. */
   onOpenChat?: (chatId: string) => void;
 };
 
-export function Workspace({ enabled, onActivate, leading, onOpenChat }: Props) {
-  const [state, dispatch] = useReducer(workspaceReducer, undefined, readWorkspace);
+/** The saved tabs of a place, with its Home pinned first when it is a design-graph place. */
+function initialFor(place: string, title: string): WorkspaceState {
+  const home = place === 'now' ? undefined : { id: place, title };
+  const state = readWorkspace(workspaceKey(place), () => freshWorkspace(home));
+  return home ? workspaceReducer(state, { type: 'home-ensure', place: home.id, title }) : state;
+}
+
+export function Workspace({ enabled, onActivate, leading, place = 'now', placeTitle, placeTint, arrival = 0, firstTurn, placeMenu, placeSwitcher, onOpenChat }: Props) {
+  const key = workspaceKey(place);
+  const [state, dispatch] = useReducer(workspaceReducer, undefined, () => initialFor(place, placeTitle ?? 'Home'));
+  // A tab set adopted from another window is not written back: that window already saved it.
+  const adopted = useRef<string | undefined>(undefined);
   const [summaries, setSummaries] = useState<Record<string, TabSummary>>({});
   const [now, setNow] = useState(Date.now);
   const [previews] = useState(() => createPreviewStore(design.interaction.previewCloseDelay));
@@ -73,7 +100,34 @@ export function Workspace({ enabled, onActivate, leading, onOpenChat }: Props) {
   // Closed tabs whose work goes on keep being read too, so the Inbox follows them to the end.
   const watched = [...state.tabs.filter(tab => tab.id !== active.id).flatMap(tab => panesOf(tab)), ...observedClosedPanes(state.closed, summaries)];
   useBackgroundSessions(watched.filter(pane => pane.sessionFile).map(pane => ({ id: pane.id, sessionFile: pane.sessionFile! })), (id, snapshot) => receiveSummary(id, summarize(snapshot)));
-  useEffect(() => { try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch { /* A full or unavailable store must not interrupt local tab navigation. */ } }, [state]);
+  useEffect(() => {
+    if (adopted.current === sharedShape(state)) return;
+    try { localStorage.setItem(key, JSON.stringify(state)); } catch { /* A full or unavailable store must not interrupt local tab navigation. */ }
+  }, [state, key]);
+  // Two windows on one place show one tab set (Places 6d): another window's save arrives as a storage event.
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== key) return;
+      const incoming = parseWorkspace(event.newValue);
+      if (!incoming) return;
+      adopted.current = sharedShape(incoming);
+      dispatch({ type: 'adopt', state: incoming });
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [key]);
+  // The Home tab carries the place's current name; Go to (even to the place already shown) lands on it.
+  // A strip mounted by a Go to (arrival already moved) lands on its Home; one mounted by a reload keeps its saved focus.
+  const arrived = useRef(arrival > 0 ? -1 : arrival);
+  useEffect(() => {
+    if (place === 'now' || !placeTitle) return;
+    const focus = arrived.current !== arrival;
+    arrived.current = arrival;
+    dispatch({ type: 'home-ensure', place, title: placeTitle, focus });
+  }, [place, placeTitle, arrival]);
+  useEffect(() => onWorkspaceRequest(dispatch), []);
+  const focused = focusedPane(state.tabs.find(tab => tab.id === state.activeId) ?? state.tabs[0]);
+  useEffect(() => publishActiveHome(focused.kind === 'home' ? focused.place : undefined), [focused.kind, focused.place]);
 
   useEffect(() => {
     if (!switcher) return;
@@ -100,7 +154,10 @@ export function Workspace({ enabled, onActivate, leading, onOpenChat }: Props) {
   const inboxWanted = background.running.length > 0 || background.needsYou.length > 0; // Failures alone do not summon the Inbox: they never go away on their own.
   useEffect(() => { if (inboxWanted) dispatch({ type: 'ensure-inbox' }); }, [inboxWanted]);
   useWindowHandoff(dispatch);
-  const [actions] = useState(() => createTabActions({ native: nativeControls(), toasts }));
+  // A tab moves to a new window on THIS strip's place, which a Places window can change after it opened.
+  const placeNow = useRef(place);
+  placeNow.current = place;
+  const [actions] = useState(() => createTabActions({ native: nativeControls(), toasts, place: () => placeNow.current }));
   useCloseStopKey(enabled, () => closeAndStop(state.activeId));
   function startRename(id: string, group = false) { setRename({ id, group, value: (group ? state.groups : state.tabs).find(item => item.id === id)?.title ?? '' }); }
   useTabKeys({ enabled, state, dispatch, visible, overviewOpen, setOverviewOpen, closeTab, switcherRef, setSwitcher });
@@ -111,7 +168,8 @@ export function Workspace({ enabled, onActivate, leading, onOpenChat }: Props) {
   const historyHost = useHistoryWorkspace(state, dispatch);
   const [archived, dismissArchived] = useAutoArchive(state, dispatch, summaries);
 
-  const api: TabsApi = { state, dispatch, summaries, now, closeTab, closeAndStop, isRunning: closing.isRunning, background, markFailedSeen, openChat: onOpenChat, actions, reopenClosed: closing.reopenClosed, startRename, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename };
+  const api: TabsApi = { state, dispatch, summaries, now, closeTab, closeAndStop, isRunning: closing.isRunning, background, markFailedSeen, openChat: onOpenChat, actions, reopenClosed: closing.reopenClosed, startRename, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename,
+    placeTint: place === 'now' ? undefined : placeTint, placeMenu, placeSwitcher };
   const newTabHost = { state, summaries, dispatch, closeTab };
   const actionsFor = (pane: Pane): PaneActions => ({
     onDraft: draft => dispatch({ type: 'draft', id: pane.id, draft }),
@@ -122,7 +180,7 @@ export function Workspace({ enabled, onActivate, leading, onOpenChat }: Props) {
   });
   return <TabsApiContext.Provider value={api}><section className="tab-workspace" aria-label="Conversation workspace">
     <TabStrip api={api} leading={leading} overviewTrigger={overviewTrigger} onOverview={() => setOverviewOpen(true)}/>
-    <NewTabHostContext.Provider value={newTabHost}><HistoryHostContext.Provider value={historyHost}><PaneGrid tab={active} tabs={state.tabs} dispatch={dispatch} actionsFor={actionsFor}/></HistoryHostContext.Provider></NewTabHostContext.Provider>
+    <FirstTurnContext.Provider value={firstTurn}><NewTabHostContext.Provider value={newTabHost}><HistoryHostContext.Provider value={historyHost}><PaneGrid tab={active} tabs={state.tabs} dispatch={dispatch} actionsFor={actionsFor}/></HistoryHostContext.Provider></NewTabHostContext.Provider></FirstTurnContext.Provider>
     {archived && <ArchiveToast count={archived.tabs.length} onDismiss={dismissArchived} onReview={() => { dispatch(openKindAction(state, 'history')); dismissArchived(); }} onRestore={() => { restoreArchived(archived, dispatch); dismissArchived(); }}/>}
     {switcher && <div className="workspace-switcher"><div ref={switcherFocus} className="workspace-switcher-list" role="listbox" tabIndex={0} aria-label="Switch tabs" aria-activedescendant={`switcher-${switcher.ids[switcher.index]}`}>
       {switcher.ids.map((id, index) => { const tab = state.tabs.find(t => t.id === id); return tab ? <Button key={id} id={`switcher-${id}`} className="workspace-switcher-item" role="option" aria-selected={index === switcher.index} tabIndex={-1} onClick={() => { dispatch({ type: 'select', id }); switcherRef.current = null; setSwitcher(null); }}><Icon name={tab.pinned ? 'pin' : kindDef(focusedPane(tab).kind).icon} size="sm"/><span>{tab.title}</span></Button> : null; })}
@@ -132,6 +190,5 @@ export function Workspace({ enabled, onActivate, leading, onOpenChat }: Props) {
     <dialog ref={renameDialog} className="workspace-rename" aria-label={rename?.group ? 'Rename group' : 'Rename tab'} onCancel={() => setRename(null)} onClose={() => setRename(null)}>
       <form onSubmit={event => { event.preventDefault(); if (rename) dispatch({ type: rename.group ? 'rename-group' : 'rename', id: rename.id, title: rename.value }); setRename(null); }}><TextInput ref={renameInput} aria-label="Name" value={rename?.value ?? ''} maxLength={80} onChange={event => setRename(current => current ? { ...current, value: event.target.value } : null)}/><div className="workspace-rename-actions"><Button onClick={() => setRename(null)}>Cancel</Button><Button type="submit" variant="quiet">Save</Button></div></form>
     </dialog>
-    <ToastRegion/>
   </section></TabsApiContext.Provider>;
 }

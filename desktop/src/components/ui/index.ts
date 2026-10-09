@@ -21,4 +21,4 @@ export { WorkStateIndicator } from './WorkStateIndicator';
 export { Markdown, safeMarkdownUrl, type MarkdownProps, type MarkdownHooks } from './Markdown';
 export { CopyButton, type CopyButtonProps } from './CopyButton';
 export { useMoreToRight } from './useMoreToRight';
-export { ToastRegion, ToastView } from './Toast';
+export { ToastRegion, ToastView, useToasts, sentenceParts, TOAST_DURATION_MS, TOAST_LIMIT, type ToastModel, type ToastAction, type ShowToast } from './Toast';

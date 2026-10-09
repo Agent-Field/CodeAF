@@ -435,8 +435,10 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     const method = request.method();
     const parts = url.pathname.replace(/^.*\/api\/engine/, '').split('/').filter(Boolean).map(decodeURIComponent);
     const body = (method === 'POST' || method === 'PUT') && request.postData() ? JSON.parse(request.postData()!) as Record<string, unknown> : {};
-    calls.push({ method, path: url.pathname, body });
     const [root, id, action, arg] = parts;
+    // The window's own reads of the place graph and the world stream are not a conversation's calls; the Places
+    // mock (support/mock-places.ts) records those. A tab that must make no engine call is judged on the rest.
+    if (!['places', 'chats', 'world', 'events'].includes(root)) calls.push({ method, path: url.pathname, body });
     const forced = (key: keyof NonNullable<Scenario['fail']>) => {
       const status = scenario.fail?.[key];
       return status ? json(route, { error: `Mock engine forced ${key} failure` }, status) : undefined;

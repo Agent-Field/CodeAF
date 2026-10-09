@@ -30,6 +30,8 @@ type WorldRow struct {
 	// Project is the bucket's display name and Workspace the recorded tools root.
 	Project   string `json:"project"`
 	Workspace string `json:"workspace,omitempty"`
+	// SessionFile is the conversation's journal, the path a window reattaches with (POST /sessions); omitted when unknown.
+	SessionFile string `json:"sessionFile,omitempty"`
 	// SourceFolders are referenced project folders, NOT memberships in the Places graph. The project comes first, then folders it
 	// turned out to be about, newest first. Paths only; never content.
 	SourceFolders []string `json:"sourceFolders"`
@@ -145,7 +147,7 @@ func projectRow(p session.Project, r session.SessionRow) WorldRow {
 		state = "open"
 	}
 	row := WorldRow{
-		Session: r.ID, Title: r.Title, Project: p.Name, Workspace: r.Workspace, SourceFolders: place, Model: r.Model,
+		Session: r.ID, Title: r.Title, Project: p.Name, Workspace: r.Workspace, SessionFile: r.Transcript, SourceFolders: place, Model: r.Model,
 		State: state, Live: r.Live, Open: r.Open,
 		Running:  r.Live && r.Presence.State == session.PresenceWorking,
 		NeedsYou: r.NeedsPerson(), Failed: r.Tasks.Failed,

@@ -1,0 +1,58 @@
+/* Go to (Places 6c, "All places (⌘P)"). Layout only: geometry and colour are tokens, the row anatomy is the design's
+   34px row (12px lead, 10px swatch, name with a muted parent, a 6px status dot, a 64px right-aligned meta column). */
+
+/* The sheet hangs from the top like 6c and shrinks with the window; it never overflows a 320px browser. */
+.goto-chooser { box-sizing: border-box; width: min(var(--places-goto-width), calc(100% - var(--newtab-gutter) * 2)); max-width: none;
+  height: min(var(--places-goto-height), calc(100dvh - min(var(--places-goto-top), 12dvh) - var(--newtab-gutter))); max-height: none;
+  margin: min(var(--places-goto-top), 12dvh) auto auto; padding: 0; border: 0; border-radius: var(--newtab-radius);
+  background: var(--surface); color: var(--ink); box-shadow: var(--sh-3); overflow: hidden; }
+.goto-chooser[open] { animation: surface-enter var(--duration-overlay) var(--ease-overlay); }
+.goto-chooser::backdrop { background: var(--places-goto-scrim); }
+.goto-sheet { box-sizing: border-box; height: 100%; min-width: 0; display: flex; flex-direction: column; padding: var(--newtab-pad); }
+
+/* ---- Search row: 48px, 16px glyph, 15px words, the count on the right; a .5px hairline under it. ---- */
+.goto-search { flex: none; display: flex; align-items: center; gap: var(--space-3); height: var(--newtab-input-height); padding: 0 var(--space-3); font-size: var(--newtab-input-size); }
+.goto-search > .app-icon { color: var(--ink-3); }
+.goto-search .text-input { flex: 1; min-width: 0; height: 100%; min-height: 0; padding: 0; border: 0; background: transparent; color: var(--ink); font-size: var(--newtab-input-size); caret-color: var(--accent); }
+.goto-search .text-input::placeholder { color: var(--ink-3); }
+.goto-search .text-input:focus-visible { outline: none; box-shadow: none; }
+.goto-count { flex: none; font-size: var(--font-size-label); color: var(--ink-3); white-space: nowrap; }
+.goto-rule { flex: none; height: var(--hairline); margin: 0 var(--newtab-pad) var(--space-1); background: var(--line); }
+
+/* ---- Lists: Recent holds still; All (or the search results) scrolls and fades under a 40px mask, padded so the last row clears it. ---- */
+.goto-list { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.goto-group { flex: none; display: flex; flex-direction: column; min-width: 0; }
+.goto-group:is([data-section="all"], [data-section="results"]) { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: none; padding-bottom: var(--places-home-fade);
+  mask-image: linear-gradient(to bottom, black calc(100% - var(--places-home-fade)), transparent); }
+.goto-group:is([data-section="all"], [data-section="results"])::-webkit-scrollbar { display: none; }
+.goto-section { flex: none; display: block; padding: var(--space-2) var(--space-3) var(--space-1); font-size: var(--font-size-label); font-weight: var(--font-weight-medium); line-height: normal; color: var(--ink-3); }
+.goto-group + .goto-group .goto-section { padding-top: var(--space-3); }
+
+/* ---- Row ---- */
+.goto-row { flex: none; display: flex; align-items: center; gap: var(--space-3); min-width: 0; height: var(--places-goto-row-height); padding: 0 var(--space-3); border-radius: var(--radius-control);
+  font-size: var(--font-size-input); color: var(--ink); cursor: default; transition: background-color var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease); }
+.goto-row:hover:not([aria-disabled="true"]), .goto-row[aria-selected="true"] { background: var(--field); }
+.goto-row:active:not([aria-disabled="true"]) { background: var(--field-2); transition-duration: var(--dur-press); }
+.goto-row[data-disabled] > :not(.goto-lead) { opacity: var(--opacity-control-disabled); }
+.goto-list[aria-busy="true"] .goto-row { opacity: var(--opacity-control-disabled); cursor: progress; }
+.goto-lead { flex: none; display: flex; align-items: center; }
+.goto-indent { flex: none; width: var(--space-section); }
+.goto-disclosure, .goto-disclosure-slot { flex: none; display: grid; place-items: center; width: var(--space-3); height: var(--space-3); color: var(--ink-3); }
+.goto-disclosure { border-radius: var(--radius-xs); transition: color var(--dur-fast) var(--ease); }
+.goto-disclosure:hover { color: var(--ink); }
+.goto-disclosure:active { color: var(--ink-2); transition-duration: var(--dur-press); }
+.goto-disclosure[data-open="false"] .app-icon[data-motion="disclosure"] { transform: rotate(calc(var(--motion-ask-open) * -1)); }
+.goto-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to right, black calc(100% - var(--places-text-fade)), transparent); }
+.goto-context { color: var(--ink-3); }
+.goto-dot { flex: none; width: var(--mark-dot); height: var(--mark-dot); border-radius: var(--radius-pill); background: var(--amber); }
+.goto-dot[data-status="failed"] { background: var(--danger); }
+.goto-meta { flex: none; width: var(--places-history-time); font-size: var(--font-size-label); color: var(--ink-3); text-align: right; white-space: nowrap; overflow: hidden; }
+
+/* ---- No match, a refusal, and the footer hints ---- */
+.goto-empty { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-2) var(--space-3); }
+.goto-empty-line { margin: 0; min-width: 0; font-size: var(--font-size-input); color: var(--ink-2); overflow-wrap: anywhere; }
+.goto-empty .button { max-width: 100%; overflow: hidden; }
+.goto-failure { flex: none; margin: 0; padding: var(--space-1) var(--space-3); font-size: var(--font-size-body); color: var(--danger); overflow-wrap: anywhere; }
+.goto-hints { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-4); padding: var(--space-2) var(--space-3); font-size: var(--font-size-label); color: var(--ink-3); }
+.goto-hints .keyboard-shortcut { font-size: inherit; }
+.goto-specimen-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
