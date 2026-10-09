@@ -204,24 +204,32 @@ func TestTheWordsReachTheNotesWhenTheManagerIsAway(t *testing.T) {
 	}
 }
 
-// MID-RUN WORDS GIVE THE MANAGER A TURN, and what it sets on a stage not yet
-// started is what that stage runs.
-func TestMidRunWordsGiveTheManagerATurnAndTheTailChanges(t *testing.T) {
+// MID-RUN WORDS ARE HANDLED ONCE: the person typed them to the manager, whose
+// own turn answers them, so the runner takes them as the steer and gives the
+// manager NO second turn on them (the owner's run of 2026-10-09 answered
+// `how's the plan coming along?` twice). A stage the manager's own pen changed
+// meanwhile is what runs.
+func TestMidRunWordsAreASteerAndNoSecondManagerTurn(t *testing.T) {
 	talk := newFakeTalk()
 	var mu sync.Mutex
-	var heard []string
+	turns := 0
 	var g *rig
 	var reviewAsk string
 	exec := ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
 		switch job.Stage.Name {
 		case "plan":
-			// The person speaks while plan runs; plan ends once the manager's
-			// change to review is on the item.
-			talk.typed(job.Item.Talk, "do a thorough review on security, code and architecture")
+			talk.typed(job.Item.Talk, "how is the plan coming along?")
+			// The manager's own turn on those words changes review through
+			// its pen, as the floor's edit door does.
+			_ = g.st.Update(job.Item.ID, func(it *factory.Item) error {
+				if i := factory.StageIndex(it.Stages, "review"); i >= 0 {
+					it.Stages[i].Ask = "read it for security"
+				}
+				return nil
+			})
 			deadline := time.Now().Add(10 * time.Second)
 			for time.Now().Before(deadline) {
-				it, _ := g.st.Get(job.Item.ID)
-				if i := factory.StageIndex(it.Stages, "review"); i >= 0 && it.Stages[i].Ask != "do review" {
+				if it, _ := g.st.Get(job.Item.ID); logHas(it, "steer: how is the plan coming along?") {
 					break
 				}
 				time.Sleep(3 * time.Millisecond)
@@ -234,11 +242,11 @@ func TestMidRunWordsGiveTheManagerATurnAndTheTailChanges(t *testing.T) {
 		return done(""), nil
 	})
 	g, _ = managed(t, map[factory.StageKind]Executor{factory.StageChat: exec}, talk, 5*time.Millisecond)
-	g.r.opts.Reshape = func(_ context.Context, it factory.Item, said string) (factory.RunEdit, string, error) {
+	g.r.opts.Shape = func(context.Context, factory.Item, []string) (factory.RunEdit, string, error) {
 		mu.Lock()
-		heard = append(heard, said)
+		turns++
 		mu.Unlock()
-		return factory.RunEdit{Ask: map[string]string{"review": "read it for security, code and architecture"}}, "", nil
+		return factory.RunEdit{}, "", nil
 	}
 	id := g.add("fix the ledger", chat("plan"), chat("review"))
 	if err := g.r.Launch(id); err != nil {
@@ -247,13 +255,13 @@ func TestMidRunWordsGiveTheManagerATurnAndTheTailChanges(t *testing.T) {
 	it := g.waitState(id, factory.StateLanded)
 	mu.Lock()
 	defer mu.Unlock()
-	if len(heard) != 1 || heard[0] != "do a thorough review on security, code and architecture" {
-		t.Fatalf("the manager heard %v", heard)
+	if turns != 1 {
+		t.Fatalf("the manager was given %d runner turns, want the launch's one", turns)
 	}
-	if reviewAsk != "read it for security, code and architecture" {
+	if reviewAsk != "read it for security" {
 		t.Fatalf("review ran with %q", reviewAsk)
 	}
-	if !logHas(it, "manager set review: read it for security, code and architecture") || !logHas(it, "steer: do a thorough review on security, code and architecture") {
+	if !logHas(it, "steer: how is the plan coming along?") {
 		t.Fatalf("log %+v", it.Stream.Log)
 	}
 }

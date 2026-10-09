@@ -1266,6 +1266,13 @@ type userMessage struct {
 	// [sessionEntry.Note]).
 	authored bool
 
+	// noSkills marks a note the factory's runner wrote for an item's manager
+	// ([runnerNote]): it carries no skills block, because the block is chosen
+	// from the message's words and the runner's words (`Shape the run for this
+	// item now.`) are no request a skill serves; on the owner's run of
+	// 2026-10-09 every such turn arrived with a list of unrelated skills.
+	noSkills bool
+
 	// skills is the ordered shelf names this message's block carried
 	// (skillturn.go), set by [Agent.attachTurnSkillsLocked] and read by
 	// [Agent.startTurnLocked] to report them as one notice. Empty on every
