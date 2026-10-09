@@ -53,7 +53,9 @@ test('calls after one assistant entry are one batch; a new assistant entry start
   const [work] = works(turn.blocks);
   assert.equal(work.steps.length, 2);
   assert.equal(work.steps[0].calls.length, 2);
-  assert.equal(work.steps[0].tookMs, 5);
+  // The two reads ran side by side: the step took as long as the longer one.
+  assert.equal(work.steps[0].tookMs, 3);
+  assert.deepEqual(work.steps[0].calls.map((c) => c.tookMs), [2, 3]);
   assert.equal(work.steps[1].title, 'Ran 2 commands');
   assert.equal(work.steps[1].titleSource, 'composed');
   assert.equal(work.steps[1].category, 'run');
@@ -166,4 +168,30 @@ test('a repeated CallID updates the call instead of adding a row', () => {
   const calls = works(turn.blocks)[0].steps[0].calls;
   assert.equal(calls.length, 1);
   assert.deepEqual([calls[0].state, calls[0].output], ['done', 'x']);
+});
+
+test('a lone word said back ("done") never titles a step; the tools do, and durations are per call', () => {
+  // The record shape of a hand-off landing: the model says the landing word back, then lists.
+  const turn = first([
+    user('List the files, then write notes/hello.md'),
+    narrate('done'),
+    tool('ls', 'l1', { path: '/ws/notes' }, { Output: 'hello.md' }),
+    narrate(''),
+    tool('read', 'r1', { path: '/ws/notes/hello.md' }, { Took: 6_094_000_000 }),
+    final('Created notes/hello.md.'),
+  ]);
+  const [work] = works(turn.blocks);
+  assert.deepEqual(work.steps.map((s) => [s.title, s.titleSource]), [['Listed 1 item', 'composed'], ['Read hello.md', 'composed']]);
+  assert.deepEqual(work.steps.map((s) => s.tookMs), [undefined, 6094]);
+  assert.equal(work.steps[1].calls[0].tookMs, 6094);
+});
+
+test('a repeated CallID without a duration keeps the one already known', () => {
+  const turn = first([
+    user('go'),
+    tool('read', 'r1', { path: 'a.go' }, { Took: 2_000_000_000 }),
+    tool('read', 'r1', { path: 'a.go' }, { Output: 'package a' }),
+    final('ok'),
+  ]);
+  assert.equal(works(turn.blocks)[0].steps[0].calls[0].tookMs, 2000);
 });

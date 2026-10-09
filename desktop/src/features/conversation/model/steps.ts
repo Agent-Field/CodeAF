@@ -18,7 +18,6 @@ export type Batch = {
   narration: string;
   anchor: RichEntry;
   calls: ToolStep[];
-  tookNs: number;
 };
 
 export function lastUnansweredCall(entries: RichEntry[]): number {
@@ -35,6 +34,12 @@ function callState(entry: RichEntry, index: number, ctx: StepCtx): ToolStep['sta
   return ctx.running && index === ctx.lastUnanswered ? 'running' : 'done';
 }
 
+/** The engine's Took (ns) in milliseconds; undefined when it recorded none. */
+function tookOf(entry: RichEntry): number | undefined {
+  const ms = Math.round((entry.Took ?? 0) / 1e6);
+  return ms > 0 ? ms : undefined;
+}
+
 export function toolStep(entry: RichEntry, index: number, ctx: StepCtx): ToolStep {
   return {
     id: entry.CallID || `${ctx.sessionFile}:${index}`,
@@ -45,11 +50,12 @@ export function toolStep(entry: RichEntry, index: number, ctx: StepCtx): ToolSte
     output: entry.Output ?? '',
     state: callState(entry, index, ctx),
     entryIndex: index,
+    tookMs: tookOf(entry),
   };
 }
 
 export function newBatch(id: string, narration: string, anchor: RichEntry): Batch {
-  return { id, narration, anchor, calls: [], tookNs: 0 };
+  return { id, narration, anchor, calls: [] };
 }
 
 function stateOf(calls: ToolStep[], waiting: ReadonlySet<string>): WorkStep['state'] {
@@ -69,15 +75,20 @@ function titleOf(batch: Batch, done: boolean): Pick<WorkStep, 'title' | 'titleSo
   return { title: composedTitle(batch.calls, done), titleSource: 'composed' };
 }
 
+/** A batch's calls run side by side, so the step took as long as its longest call. */
+function stepTook(calls: ToolStep[]): number | undefined {
+  const longest = Math.max(0, ...calls.map((call) => call.tookMs ?? 0));
+  return longest > 0 ? longest : undefined;
+}
+
 export function finishStep(batch: Batch, ctx: StepCtx): WorkStep {
   const state = stateOf(batch.calls, ctx.waiting);
-  const tookMs = Math.round(batch.tookNs / 1e6);
   return {
     id: batch.id,
     ...titleOf(batch, isSettled(state)),
     category: categoryOf(batch.calls[0]?.tool ?? '', batch.anchor.CaptionCategory),
     calls: batch.calls,
-    tookMs: tookMs > 0 ? tookMs : undefined,
+    tookMs: stepTook(batch.calls),
     state,
   };
 }

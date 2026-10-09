@@ -149,7 +149,7 @@ test('you decide takes the pick as the asker, except when irreversible', () => {
 test('compare table needs shared axes on every option', () => {
   const dims = (speed: string, cost?: string): Record<string, string> => (cost ? { speed, cost } : { speed });
   const q: EngineQuestion = { id: 1, kind: 'ask', ask: 'choice', head: 'h', options: [{ key: '1', label: 'a', dimensions: dims('fast', '$1') }, { key: '2', label: 'b', dimensions: dims('slow') }] };
-  assert.deepEqual(compareRows(q), [['', 'A', 'B'], ['speed', 'fast', 'slow']]);
+  assert.deepEqual(compareRows(q), [['', 'a', 'b'], ['speed', 'fast', 'slow']]);
   q.options![1].dimensions = { other: 'x' };
   assert.equal(compareRows(q), null);
 });
@@ -181,4 +181,21 @@ test('only a turn-blocking question blocks the composer', () => {
   assert.equal(blocksComposer([landing, consent(1)]), false);
   assert.equal(blocksComposer([landing, consent(1, { blocking: { turn: true } })]), true);
   assert.equal(blocksComposer([consent(1, { blocking: { turn: true }, withdrawn: { reason: 'x' } })]), false);
+});
+
+test('option labels keep the engine\'s case for paths, file names and lone words; a plain phrase starts with a capital', () => {
+  const q: EngineQuestion = {
+    id: 3,
+    kind: 'ask',
+    ask: 'choice',
+    head: 'Which name should the new file have?',
+    options: [
+      { key: '1', label: 'src/c.txt' },
+      { key: '2', label: 'notes.md' },
+      { key: '3', label: 'json' },
+      { key: '4', label: 'not now', safe: true },
+    ],
+  };
+  assert.deepEqual(q.options!.map((option) => optionLabel(q, option)), ['src/c.txt', 'notes.md', 'json', 'Not now']);
+  assert.equal(summarize(q, { kind: 'ask', id: 3, key: '1', picked: ['1'] }), 'src/c.txt');
 });

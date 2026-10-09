@@ -54,7 +54,13 @@ test('unknown tools are named in words', () => {
 test('narration becomes a one-line title', () => {
   assert.equal(narrationTitle('Let me check the **config** loader.\nSecond line.'), 'Let me check the config loader');
   assert.equal(narrationTitle('  '), '');
-  assert.ok(narrationTitle('x'.repeat(200)).length <= 90);
+  assert.ok(narrationTitle('x x'.repeat(100)).length <= 90);
+});
+
+test('a lone word is not a title: the step falls back to its caption or tools', () => {
+  assert.equal(narrationTitle('done'), '');
+  assert.equal(narrationTitle('`done`.'), '');
+  assert.equal(narrationTitle('Checking notes.'), 'Checking notes');
 });
 
 test('category: caption wins, else the tool family', () => {

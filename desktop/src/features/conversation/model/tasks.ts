@@ -5,6 +5,7 @@
 import type { EngineEntry, EngineSnapshot } from '../../chat/engine-client.ts';
 import type { TurnItem } from '../types.ts';
 import { kindedAside, noteItem } from '../aside-kind.ts';
+import { personWords } from '../sessionNote.ts';
 import { firstSentence, parseTaskAside } from '../transcript-parse.ts';
 
 // The record may carry these on an aside; the Go side is adding them.
@@ -25,7 +26,9 @@ function findRow(tasks: unknown[], given: string | undefined, text: string, titl
   return title ? lastRow(tasks, (t) => t.Title === title) : undefined;
 }
 
-export function asideItem(entry: EngineEntry, id: string, snapshot: EngineSnapshot): TurnItem {
+/** The aside as a person reads it: what the session told the model about, not how it told it. */
+export function asideItem(recorded: EngineEntry, id: string, snapshot: EngineSnapshot): TurnItem {
+  const entry = { ...recorded, Text: personWords(recorded.Text) };
   const kinded = kindedAside(entry, id);
   if (kinded) return kinded;
   const parsed = parseTaskAside(entry.Text);

@@ -10,6 +10,7 @@ import { digestOf } from '../transcript-parse.ts';
 import { attachmentsOf } from './attachments.ts';
 import { placeDeliverables } from './deliverables.ts';
 import { asRich, questionsOf, type RichEntry } from './entry.ts';
+import { receiptOutcomes } from './outcomes.ts';
 import { addReceipts, type ReceiptPlaces } from './receipts.ts';
 import { finishStep, lastUnansweredCall, newBatch, summarize, toolStep, type Batch, type StepCtx } from './steps.ts';
 import { asideItem } from './tasks.ts';
@@ -90,7 +91,7 @@ function addTool(input: Input, acc: Acc) {
   const step = toolStep(entry, index, ctx);
   const known = step.callId ? acc.byCall.get(step.callId) : undefined;
   if (known) {
-    Object.assign(known, step, { hint: step.hint || known.hint, args: step.args || known.args });
+    Object.assign(known, step, { hint: step.hint || known.hint, args: step.args || known.args, tookMs: step.tookMs ?? known.tookMs });
     return;
   }
   if (step.callId) acc.byCall.set(step.callId, step);
@@ -103,7 +104,6 @@ function addTool(input: Input, acc: Acc) {
   }
   const batch = work.batches[work.batches.length - 1];
   batch.calls.push(step);
-  batch.tookNs += entry.Took ?? 0;
 }
 
 function addAside(input: Input, acc: Acc) {
@@ -172,6 +172,6 @@ export function projectTurnsV2(snapshot: EngineSnapshot, live?: LiveOverlayV2, p
   const turns = accs.map((acc) => finishTurn(acc, entries.length));
   const last = turns[turns.length - 1];
   if (snapshot.running && last) applyLive(last, snapshot, live);
-  addReceipts(turns, snapshot, places);
+  addReceipts(turns, receiptOutcomes(snapshot), places);
   return { turns, preface };
 }

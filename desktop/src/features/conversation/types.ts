@@ -39,7 +39,7 @@ export type WorkStep = {
   titleSource: 'narration' | 'caption' | 'composed';
   category: string; // CaptionCategory: search|read|edit|create|run|test|browse|transfer|communicate|coordinate|plan|wait|work
   calls: ToolStep[];
-  tookMs?: number; // sum of known call durations; absent when unknown
+  tookMs?: number; // the longest known call: a batch's calls run side by side; absent when unknown
   state: 'preparing' | 'running' | 'waiting' | 'done' | 'failed' | 'stopped';
 };
 
