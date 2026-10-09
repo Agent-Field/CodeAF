@@ -1,6 +1,7 @@
 /* Reusable primitives. All design values come from design/tokens.json. */
 button, input, select { font: inherit; }
-button { cursor: pointer; transition: background var(--duration) var(--chrome-ease), color var(--duration) var(--chrome-ease), border-color var(--duration) var(--chrome-ease); }
+/* Hover fills change over Foundations' fast step: 120ms ease (chrome-ease is the CSS ease curve). */
+button { cursor: pointer; transition: background var(--dur-fast) var(--chrome-ease), color var(--dur-fast) var(--chrome-ease), border-color var(--dur-fast) var(--chrome-ease); }
 button, select { -webkit-user-select: none; user-select: none; }
 button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 /* ONE keyboard focus treatment (conversation 1f): a 2px accent ring plus a 4px soft halo, drawn for keyboard input only.
@@ -51,6 +52,7 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .chip[data-muted] { color: var(--ink-2); }
 .chip-button:hover:not(:disabled), .chip-button:active:not(:disabled) { background: var(--field-2); }
 .tag { display: inline-flex; align-items: center; height: var(--tag-height); padding: 0 var(--tag-pad); border-radius: var(--radius-tag); font-family: var(--sans); font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); white-space: nowrap; }
+.tag[data-tone="plain"] { height: auto; padding: 0; border-radius: 0; background: transparent; color: var(--ink-3); }
 .tag[data-tone="accent"] { background: var(--accent-soft); color: var(--accent); }
 .tag[data-tone="neutral"] { background: var(--field); color: var(--ink-2); }
 .tag[data-tone="danger"] { background: var(--danger-soft); color: var(--danger); }
@@ -92,10 +94,10 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 /* LEGACY CHROME CONTROLS. The sidebar, tab strip, overview, switcher, rename dialog, page toolbar and
    palette keep their previous control look until the owner restyles the chrome. :where() adds no
    specificity, so each chrome rule keeps the weight it had and chrome CSS overrides still win. */
-:where(.sidebar, .workspace-tabbar, .tab-overview, .workspace-switcher, .workspace-rename, .content-toolbar, .command-palette) .icon-button { width: var(--icon-button-size); height: var(--icon-button-size); border-radius: var(--radius-sm); color: var(--muted); transition: background var(--duration) var(--chrome-ease), color var(--duration) var(--chrome-ease), border-color var(--duration) var(--chrome-ease); }
+:where(.sidebar, .workspace-tabbar, .tab-overview, .workspace-switcher, .workspace-rename, .content-toolbar, .command-palette) .icon-button { width: var(--icon-button-size); height: var(--icon-button-size); border-radius: var(--radius-sm); color: var(--muted); transition: background var(--dur-fast) var(--chrome-ease), color var(--dur-fast) var(--chrome-ease), border-color var(--dur-fast) var(--chrome-ease); }
 :where(.sidebar, .workspace-tabbar, .tab-overview, .workspace-switcher, .workspace-rename, .content-toolbar, .command-palette) .icon-button:hover:not(:disabled) { background: var(--control-hover); color: var(--text); }
 :where(.sidebar, .workspace-tabbar, .tab-overview, .workspace-switcher, .workspace-rename, .content-toolbar, .command-palette) .icon-button:active:not(:disabled) { background: var(--control-pressed); color: var(--text); }
-:where(.sidebar, .workspace-tabbar, .tab-overview, .workspace-switcher, .workspace-rename, .content-toolbar, .command-palette) .button { gap: var(--control-gap); min-height: var(--button-height); padding: var(--space-tight) var(--space-3); border: var(--border-width) solid transparent; border-radius: var(--radius-sm); font-family: inherit; font-size: var(--font-size-label); font-weight: var(--font-weight-regular); line-height: inherit; background: transparent; color: var(--muted); transition: background var(--duration) var(--chrome-ease), color var(--duration) var(--chrome-ease), border-color var(--duration) var(--chrome-ease); }
+:where(.sidebar, .workspace-tabbar, .tab-overview, .workspace-switcher, .workspace-rename, .content-toolbar, .command-palette) .button { gap: var(--control-gap); min-height: var(--button-height); padding: var(--space-tight) var(--space-3); border: var(--border-width) solid transparent; border-radius: var(--radius-sm); font-family: inherit; font-size: var(--font-size-label); font-weight: var(--font-weight-regular); line-height: inherit; background: transparent; color: var(--muted); transition: background var(--dur-fast) var(--chrome-ease), color var(--dur-fast) var(--chrome-ease), border-color var(--dur-fast) var(--chrome-ease); }
 :where(.sidebar, .workspace-tabbar, .tab-overview, .workspace-switcher, .workspace-rename, .content-toolbar, .command-palette) .button-ghost:hover:not(:disabled) { background: var(--control-hover); color: var(--text); }
 :where(.sidebar, .workspace-tabbar, .tab-overview, .workspace-switcher, .workspace-rename, .content-toolbar, .command-palette) .button-quiet { border-color: var(--border); background: var(--chrome-surface); color: var(--text); }
 :where(.sidebar, .workspace-tabbar, .tab-overview, .workspace-switcher, .workspace-rename, .content-toolbar, .command-palette) .button-quiet:hover:not(:disabled) { background: var(--control-hover); border-color: var(--control-border-hover); }
@@ -127,11 +129,13 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .select-trigger[data-state="open"] .app-icon[data-motion="disclosure"] { transform: rotate(var(--motion-chevron-open)); }
 .select-trigger { display: inline-flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: var(--button-height); border: 0; border-radius: var(--radius-sm); padding: var(--space-tight); background: transparent; color: var(--muted); font-size: var(--font-size-label); cursor: pointer; }
 .select-trigger:hover { background: var(--hover); }.theme-select { width: var(--select-width); }.select-trigger > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.select-menu { z-index: var(--z-overlay); min-width: var(--menu-min-width); max-height: min(var(--menu-max-height),var(--radix-select-content-available-height)); overflow: auto; padding: var(--space-1); border: var(--border-width) solid var(--border); border-radius: var(--radius-md); background: var(--overlay-surface); color: var(--text); box-shadow: var(--palette-shadow); transform-origin: var(--radix-select-content-transform-origin); }
-.select-menu[data-state="open"] { animation: surface-enter var(--duration-overlay) var(--ease-overlay); }.select-menu[data-state="closed"] { animation: surface-exit var(--duration) var(--chrome-ease); }
-.select-option { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); min-height: var(--menu-row-height); padding: var(--space-tight) var(--space-2); border-radius: var(--radius-sm); outline: none; font-size: var(--font-size-body); cursor: default; user-select: none; }
+.select-menu { z-index: var(--z-overlay); min-width: var(--menu-min-width); max-height: min(var(--menu-max-height),var(--radix-select-content-available-height)); overflow: auto; padding: var(--menu-pad); border: 0; border-radius: var(--menu-radius); background: var(--overlay-surface); color: var(--text); box-shadow: var(--sh-2); transform-origin: var(--radix-select-content-transform-origin); }
+.select-menu[data-state="open"] { animation: popover-enter var(--dur-fast) var(--chrome-ease); }.select-menu[data-state="closed"] { animation: surface-exit var(--dur-fast) var(--chrome-ease); }
+.select-option { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); min-height: var(--menu-row-height); padding: 0 var(--space-compact); border-radius: var(--radius-sm); outline: none; font-size: var(--type-prose-size); cursor: default; user-select: none; }
 .select-option[data-state="checked"] { background: var(--menu-selected); }.select-option[data-highlighted] { background: var(--menu-highlight); }.select-option[data-disabled] { opacity: var(--opacity-disabled); }.select-option .app-icon { color: var(--muted); }
 @keyframes surface-enter { from { opacity: var(--opacity-transparent); transform: translateY(var(--motion-travel)) scale(var(--motion-scale-enter)); } to { opacity: var(--opacity-opaque); transform: translateY(var(--motion-rest)) scale(var(--motion-scale-rest)); } }
+/* Popovers (menus, choices, hover cards) fade from 0.98 scale at their origin over the fast step, with no rise (Foundations, Motion: popover). */
+@keyframes popover-enter { from { opacity: var(--opacity-transparent); transform: scale(var(--motion-scale-popover)); } to { opacity: var(--opacity-opaque); transform: scale(var(--motion-scale-rest)); } }
 @keyframes surface-exit { from { opacity: var(--opacity-opaque); } to { opacity: var(--opacity-transparent); } }
 
 /* Uniform state contract: hover/press for actions; selection only for navigation. */
@@ -142,18 +146,19 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .address-field:active:not(:disabled), .favorite-button:active:not(:disabled), .new-item:active:not(:disabled), .select-trigger:active:not(:disabled) { background: var(--control-pressed); color: var(--text); }
 
 /* One surface and state system for tab context menus and toolbar dropdowns. */
-.app-menu { z-index: var(--z-menu); min-width: var(--menu-min-width); max-width: min(var(--menu-max-width),calc(100vw - var(--space-6))); max-height: var(--menu-max-height); overflow: auto; padding: var(--space-1); border: var(--border-width) solid var(--border); border-radius: var(--radius-md); background: var(--overlay-surface); color: var(--text); box-shadow: var(--palette-shadow); }
+.app-menu { z-index: var(--z-menu); min-width: var(--menu-min-width); max-width: min(var(--menu-max-width),calc(100vw - var(--space-6))); max-height: var(--menu-max-height); overflow: auto; padding: var(--menu-pad); border: 0; border-radius: var(--menu-radius); background: var(--overlay-surface); color: var(--text); box-shadow: var(--sh-2); }
 .app-menu-context { transform-origin: var(--radix-context-menu-content-transform-origin); max-height: min(var(--menu-max-height),var(--radix-context-menu-content-available-height)); }
 .app-menu-dropdown { transform-origin: var(--radix-dropdown-menu-content-transform-origin); max-height: min(var(--menu-max-height),var(--radix-dropdown-menu-content-available-height)); }
-.app-menu[data-state="open"] { animation: surface-enter var(--duration-overlay) var(--ease-overlay); }.app-menu[data-state="closed"] { animation: surface-exit var(--duration) var(--chrome-ease); }
-.menu-item { display: flex; align-items: center; gap: var(--space-2); min-height: var(--menu-row-height); padding: var(--space-tight) var(--space-2); border-radius: var(--radius-sm); outline: none; font-size: var(--font-size-body); font-weight: var(--font-weight-regular); cursor: default; user-select: none; transition: background var(--duration-fast) var(--chrome-ease), color var(--duration-fast) var(--chrome-ease); }
-.menu-label { flex: 1; min-width: 0; }.menu-item .keyboard-shortcut { color: var(--muted); margin-left: var(--space-4); white-space: nowrap; }.menu-item > .app-icon { color: var(--muted); }
+.app-menu[data-state="open"] { animation: popover-enter var(--dur-fast) var(--chrome-ease); }.app-menu[data-state="closed"] { animation: surface-exit var(--dur-fast) var(--chrome-ease); }
+/* Components "Context menu": 28px rows, radius 6, 13px, field-2 on hover, shortcuts right-aligned in 12px ink-3, destructive rows red text only. */
+.menu-item { display: flex; align-items: center; gap: var(--space-compact); min-height: var(--menu-row-height); padding: 0 var(--space-compact); border-radius: var(--radius-sm); outline: none; font-size: var(--type-prose-size); font-weight: var(--font-weight-regular); cursor: default; user-select: none; transition: background var(--dur-fast) var(--chrome-ease), color var(--dur-fast) var(--chrome-ease); }
+.menu-label { flex: 1; min-width: 0; }.menu-item .keyboard-shortcut { color: var(--ink-3); font-size: var(--type-label-size); margin-left: var(--space-4); white-space: nowrap; }.menu-item > .app-icon { color: var(--ink-2); }
 .menu-item[data-state="checked"] { background: var(--menu-selected); }.menu-item[data-highlighted], .menu-item[data-state="open"] { background: var(--menu-highlight); }.menu-item:active:not([data-disabled]) { background: var(--control-pressed); }.menu-item[data-disabled] { opacity: var(--opacity-disabled); }
-.menu-item-danger { color: var(--chrome-danger); }.menu-item-danger > .app-icon { color: inherit; }.menu-check { display: flex; align-items: center; margin-left: auto; }.menu-separator { height: var(--border-width); background: var(--border); margin: var(--space-1) var(--space-2); }
+.menu-item-danger { color: var(--chrome-danger); }.menu-item-danger > .app-icon { color: inherit; }.menu-check { display: flex; align-items: center; margin-left: auto; }.menu-separator { height: var(--hairline); background: var(--line); margin: var(--space-1) var(--space-2); }
 
 /* Preview waits for intent; it is informational and never competes with menus. */
 .hover-preview { z-index: var(--z-overlay); width: min(var(--preview-width),calc(100vw - var(--space-6))); padding: var(--space-3); border: var(--border-width) solid var(--border); border-radius: var(--radius-md); background: var(--overlay-surface); color: var(--text); box-shadow: var(--shadow); pointer-events: none; transform-origin: var(--radix-hover-card-content-transform-origin); }
-.hover-preview[data-state="open"] { animation: surface-enter var(--duration-overlay) var(--ease-overlay); }.hover-preview[data-state="closed"] { animation: surface-exit var(--duration) var(--chrome-ease); }
+.hover-preview[data-state="open"] { animation: popover-enter var(--dur-fast) var(--chrome-ease); }.hover-preview[data-state="closed"] { animation: surface-exit var(--dur-fast) var(--chrome-ease); }
 .hover-preview-title { font-size: var(--font-size-body); font-weight: var(--font-weight-medium); overflow-wrap: anywhere; }.hover-preview-draft { font-size: var(--font-size-label); color: var(--muted); margin-top: var(--space-2); display: -webkit-box; -webkit-line-clamp: var(--preview-line-clamp); -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; }.hover-preview-meta { margin-top: var(--space-2); color: var(--muted); font-size: var(--font-size-caption); }
 
 
