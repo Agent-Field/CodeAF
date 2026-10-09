@@ -1,7 +1,7 @@
 // Menu host (owned by the menus-and-closing lane): the tab and group context menus and the strip's overflow menu.
 import type { ReactElement } from 'react';
 import { ContextMenu, type MenuEntry } from '../../../components/ui';
-import { tabShortcuts } from '../../../design/keyboard';
+import { tabShortcuts, terminalTabShortcuts } from '../../../design/keyboard';
 import type { TabsApi } from '../context';
 import type { Tab, TabGroup } from '../model';
 
@@ -17,7 +17,7 @@ export function tabMenuItems(api: TabsApi, tab: Tab): MenuEntry[] {
     ] },
     ...(tab.split ? [{ id: 'unmerge', label: 'Separate split', onSelect: () => dispatch({ type: 'split-unmerge', id: tab.id }) }] : []),
     { kind: 'separator', id: 'close-separator' },
-    { id: 'close', label: 'Close tab', icon: 'close', shortcut: tabShortcuts.close, onSelect: () => api.closeTab(tab.id) },
+    { id: 'close', label: 'Close tab', icon: 'close', shortcut: tab.kind === 'terminal' ? terminalTabShortcuts.close : tabShortcuts.close, onSelect: () => api.closeTab(tab.id) },
     { id: 'reopen', label: 'Reopen closed tab', shortcut: tabShortcuts.reopen, disabled: !state.closed.length, onSelect: () => dispatch({ type: 'reopen' }) },
     { kind: 'submenu', id: 'order', label: 'Move tab', disabled: state.tabs.length < 2, items: state.tabs.filter(t => t.id !== tab.id).map(target => ({ id: target.id, label: `Before ${target.title}`, onSelect: () => dispatch({ type: 'reorder', id: tab.id, targetId: target.id }) })) },
   ];

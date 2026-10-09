@@ -42,7 +42,32 @@ function isWritingField(target: EventTarget | null | undefined): boolean {
  return (field?.tagName === 'TEXTAREA' || field?.tagName === 'INPUT') && (field.value?.length ?? 0) > 0;
 }
 
-export function shortcutOf(event: KeyEvent, mac = isMac): Shortcut | undefined {
+/** True when the event came from inside an xterm field (its hidden textarea), including one inside a portal or a second tab. */
+export function isTerminalTarget(target: EventTarget | null | undefined): boolean {
+ return typeof (target as Element | null | undefined)?.closest === 'function' && !!(target as Element).closest('.xterm');
+}
+
+/**
+ * Off a Mac the primary modifier is Ctrl, which is also the shell's editing modifier (Ctrl+W delete word, Ctrl+K kill
+ * line, Ctrl+S stop output, Ctrl+Y yank, Ctrl+1..9). Inside a terminal field those chords therefore belong to the
+ * PTY. The desktop chords there are the ones the GNOME Terminal convention reserves: Ctrl+Shift+T / Ctrl+Shift+W
+ * for a new / closed tab, plus every other Ctrl+Shift chord, Ctrl+` and Ctrl+Tab. Mac Cmd chords never reach a shell.
+ */
+export type ShortcutContext = { mac?: boolean; terminal?: boolean };
+function terminalShortcutOf(event: KeyEvent): Shortcut | undefined {
+ const bare = event.ctrlKey && !event.metaKey && !event.altKey;
+ if (bare && event.shiftKey) {
+  const key = event.key.toLowerCase();
+  if (key === 't') return { id: 'new' };
+  if (key === 'w') return { id: 'close' };
+ }
+ if (bare && (event.shiftKey || event.code === 'Backquote' || event.key === 'Tab' || event.key === 'PageDown' || event.key === 'PageUp')) return shortcutOf(event, false);
+}
+
+export function shortcutOf(event: KeyEvent, platform: boolean | ShortcutContext = isMac): Shortcut | undefined {
+ const context: ShortcutContext = typeof platform === 'boolean' ? { mac: platform } : platform;
+ const mac = context.mac ?? isMac;
+ if (context.terminal && !mac) return terminalShortcutOf(event);
  if (event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.code === 'Backquote') return { id: 'terminal' };
  if (event.ctrlKey && !event.metaKey && !event.altKey && event.key === 'Tab') return { id: event.shiftKey ? 'switch-back' : 'switch' };
  const primaryKey = mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
@@ -88,7 +113,7 @@ export const shortcutLayer = { surface: 30, workspace: 20, app: 10 } as const;
 
 const handlers: { layer: number; handler: ShortcutHandler }[] = [];
 function dispatchShortcut(event: KeyboardEvent) {
- const shortcut = shortcutOf(event);
+ const shortcut = shortcutOf(event, { terminal: isTerminalTarget(event.target) });
  if (!shortcut) return;
  for (const { handler } of [...handlers]) {
   if (handler(shortcut, event)) { event.preventDefault(); event.stopPropagation(); return; }
@@ -125,3 +150,5 @@ export function isCopyPathShortcut(event: KeyEvent) {
 /** Interactive shell tabs: Control-backtick is identical on every platform. */
 export const newTerminalShortcut = isMac ? '⌃`' : 'Ctrl `';
 export const isNewTerminalShortcut = (event: KeyEvent) => shortcutOf(event)?.id === 'terminal';
+/** In a terminal field off a Mac: Ctrl+Shift+T and Ctrl+Shift+W are the new and close tab chords. */
+export const terminalTabShortcuts = { new: isMac ? '⌘ T' : 'Ctrl Shift T', close: isMac ? '⌘ W' : 'Ctrl Shift W' };

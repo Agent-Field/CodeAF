@@ -36,3 +36,31 @@ test('⌃Tab switches recent tabs on both platforms and ⌘Tab is left to macOS'
   assert.deepEqual(mac(key('Tab', { ctrlKey: true, shiftKey: true })), { id: 'switch-back' });
   assert.equal(mac(key('Tab', { metaKey: true })), undefined);
 });
+
+const inTerminal = (event: ReturnType<typeof key>) => shortcutOf(event, { terminal: true });
+
+test('Linux: a terminal field keeps every plain Ctrl editing chord for the shell', () => {
+  for (const k of ['w', 't', 'k', 's', 'b', 'y', '1', '5', '9', ',', '/', 'ArrowUp', 'ArrowDown']) {
+    assert.equal(inTerminal(key(k, { ctrlKey: true })), undefined, `Ctrl+${k}`);
+  }
+  // Outside a terminal the same chords still belong to the app.
+  assert.deepEqual(linux(key('w', { ctrlKey: true })), { id: 'close' });
+  assert.deepEqual(linux(key('y', { ctrlKey: true })), { id: 'history' });
+});
+
+test('Linux: a terminal field still hands Ctrl+`, Ctrl+Tab and Ctrl+Shift chords to the workspace', () => {
+  assert.deepEqual(inTerminal(key('`', { code: 'Backquote', ctrlKey: true })), { id: 'terminal' });
+  assert.deepEqual(inTerminal(key('Tab', { ctrlKey: true })), { id: 'switch' });
+  assert.deepEqual(inTerminal(key('Tab', { ctrlKey: true, shiftKey: true })), { id: 'switch-back' });
+  assert.deepEqual(inTerminal(key('T', { ctrlKey: true, shiftKey: true })), { id: 'new' });
+  assert.deepEqual(inTerminal(key('W', { ctrlKey: true, shiftKey: true })), { id: 'close' });
+  assert.deepEqual(inTerminal(key('A', { ctrlKey: true, shiftKey: true })), { id: 'overview' });
+  assert.deepEqual(inTerminal(key('K', { ctrlKey: true, shiftKey: true })), { id: 'tasks' });
+});
+
+test('Mac: ⌘ chords work in a terminal field and Control chords are not app chords', () => {
+  const macTerminal = (event: ReturnType<typeof key>) => shortcutOf(event, { mac: true, terminal: true });
+  assert.deepEqual(macTerminal(key('w', { metaKey: true })), { id: 'close' });
+  assert.deepEqual(macTerminal(key('t', { metaKey: true, shiftKey: true })), { id: 'reopen' });
+  assert.equal(macTerminal(key('w', { ctrlKey: true })), undefined);
+});
