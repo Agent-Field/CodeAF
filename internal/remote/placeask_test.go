@@ -125,3 +125,31 @@ func TestThePlacesAskIsNotQueuedBehindATurn(t *testing.T) {
 // The actual engine, rather than only a fixture, must answer the ask, or the
 // flag would be false on every real engine and nothing would ever be asked.
 var _ placeAskDoor = (*session.Agent)(nil)
+
+// A READER MAY ASK ABOUT PLACES AND NOTHING MORE. The desktop's background
+// door is a watcher onto a saved conversation (internal/desktopbridge's
+// places_detached.go); the ask must cross, and the watcher must still be
+// refused the keyboard and every other model ask. Live on 2026-10-09 the ask
+// was refused here, which left Home with no offers at start-up.
+func TestAWatcherMayAskAboutPlacesButNotDrive(t *testing.T) {
+	far := &placeAgent{fakeAgent: &fakeAgent{model: "m"}}
+	loop, err := Loopback(Hello{Version: Version, Watch: true}, Options{Boot: func(Hello) (*Engine, error) {
+		return &Engine{Agent: far, ProfileDir: t.TempDir()}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	got, err := loop.Client.Agent().AskPlaces(ctx, placegraph.ModelRequest{Role: roles.RolePlaceSuggest, System: "s", User: "u"})
+	if err != nil || got.Model != "cheap/model" || far.calls != 1 {
+		t.Fatalf("a reader's places ask: %+v, %v, %d calls", got, err, far.calls)
+	}
+	if loop.Client.Welcome().Driver.Yours {
+		t.Fatal("a reader was given the keyboard")
+	}
+	if !watcherMay(MethodPlacesAsk) || watcherMay(MethodTeamsName) || watcherMay(MethodTeamsPropose) {
+		t.Fatal("the reader's allow-list is not exactly the places ask among the model asks")
+	}
+}
