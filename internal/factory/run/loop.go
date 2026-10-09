@@ -96,6 +96,9 @@ type loopCtl struct {
 	phase      int
 	phaseAt    time.Time
 	phaseSpent float64
+	// inboxMu keeps one step's question at a time with the manager and the
+	// person (inbox.go).
+	inboxMu sync.Mutex
 
 	// Guarded by floorLoop.mu.
 	pending     string // the question the item waits on: "" is none
@@ -462,6 +465,15 @@ func (lp *floorLoop) stageAt(it factory.Item, i int) (factory.Stage, int) {
 // said is the manager's line for the question (manager.go), "" for the plain
 // `asking you: <question>`; the answer is said back to it as `answered: …`.
 func (lp *floorLoop) ask(c *loopCtl, i int, pending, qkind, question string, state factory.PhaseState, note, said string) (loopAnswer, bool) {
+	return lp.askIn(c.ctx, c, i, pending, qkind, question, state, note, said)
+}
+
+// askIn is [floorLoop.ask] that also stops waiting when ctx ends: a step's
+// question (inbox.go) waits under its round's ctx, which a pause cuts. A
+// question let go so is no longer pending, and an answer already on its way
+// is kept for the step's next round ([floorLoop.keepAnswer]); the item still
+// shows the question, which [Runner.Answer] takes after.
+func (lp *floorLoop) askIn(ctx context.Context, c *loopCtl, i int, pending, qkind, question string, state factory.PhaseState, note, said string) (loopAnswer, bool) {
 	c.askMu.Lock()
 	defer c.askMu.Unlock()
 	lp.mu.Lock()
@@ -502,6 +514,9 @@ func (lp *floorLoop) ask(c *loopCtl, i int, pending, qkind, question string, sta
 	select {
 	case a = <-c.answers:
 	case <-c.ctx.Done():
+		return loopAnswer{}, false
+	case <-ctx.Done():
+		lp.letGoAsk(c)
 		return loopAnswer{}, false
 	}
 	lp.tell(c.id, fmt.Sprintf(sayAnswered, answeredWord(a)))
@@ -652,6 +667,9 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		if err := lp.move(c, name, kind, text, func(it *factory.Item) error {
 			it.State = factory.StateRunning
 			it.Stream.Cur = i
+			// A QUESTION THE ROUND BEFORE ASKED AND NOBODY ANSWERED went with
+			// that round (a pause cut it): the step asks again if it must.
+			dropStaleAsk(it)
 			ph := &it.Stream.Phases[i]
 			ph.State = factory.PhaseRunning
 			ph.Round = round
@@ -868,6 +886,9 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		Steer:  c.steer,
 		Log:    func(line string) { lp.say(c, "thought", line) },
 		Spend:  lp.spender(c),
+		Ask: func(ctx context.Context, q factory.Asked) (string, error) {
+			return lp.inbox(ctx, c, i, stageLabel(st), q)
+		},
 	}
 }
 
@@ -1259,6 +1280,12 @@ func (r *Runner) Answer(id int, yes bool, words string) error {
 		it, err := r.opts.Store.Get(id)
 		if err != nil {
 			return err
+		}
+		// A STEP'S QUESTION THE PERSON HOLDS outlives the round that asked
+		// it (a pause, a restart): the answer is kept for the step's next
+		// round (inbox.go).
+		if it.Asking != nil && it.Asking.With == factory.AskedYou {
+			return lp.keepAnswer(c, id, loopAnswer{yes: yes, words: strings.TrimSpace(words)})
 		}
 		return fmt.Errorf("%s is not waiting on you", it.Ref())
 	}

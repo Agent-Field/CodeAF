@@ -198,6 +198,15 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 	if err := q.Check(a.Decisions()); err != nil {
 		return askRefusedLead + err.Error(), false, nil
 	}
+	// A FACTORY STEP'S QUESTION GOES TO ITS ITEM'S MANAGER FIRST, and the
+	// call waits for the answer, the manager's or the person's
+	// (tools_factory_answer.go): the step has nobody else to ask.
+	if said, routed, err := a.askInbox(ctx, q); routed {
+		if err != nil {
+			return "", false, err
+		}
+		return said, false, nil
+	}
 	// A TEAM MEMBER'S CLARIFYING QUESTION GOES TO ITS MANAGER FIRST, as a
 	// decision packet, when its team says questions go up (team_questions.go).
 	// A conversation in no team pays a stat of the teams file here, and only

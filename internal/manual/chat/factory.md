@@ -885,13 +885,14 @@ asking any model. Either way the chat is the **lead** of the item's team (`#12 �
 the one `factory` team), and each stage's conversation joins that team as a member, so the teams
 rail and the team menu show the manager above its stages.
 
-Its opening brief tells it so, in five blocks, before the item's facts (its read, its stages with
+Its opening brief tells it so, in six blocks, before the item's facts (its read, its stages with
 their asks and loops, the recipe's policy and habits, ask me at, budget and thinking):
 
     You are the manager of #12 in acme/web.
     You know: the issue and its comments, what codeaf read of it, the repository's recipe, policy and habits, the checkout, and what the person has said here.
     You do: shape the run, start it when asked, report each stage here, answer the person, and ask only when ask-me-at says so.
     Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. Never drop proof or a gate stage. Nothing posts outward before ask-me-at.
+    You are the inbox: every question a stage asks comes to you first, and you reply with factory_answer. Answer it yourself when the issue, the recipe, the stages, the notes or what the person said here settle it. Send it to the person (ask_person, one line of why) when it turns on taste, scope, risk, credentials or access, money, or anything those do not settle; the stage waits, and the person answers here.
     Say what you set in three lines at most, then stop. Do not narrate.
 
 What the manager does:
@@ -900,12 +901,41 @@ What the manager does:
   `plan done · 2m · $0.04 · …`, `landed · proof sheet ready · your approval`); the lines are
   listed under what the manager hears (the stage conversations page).
 - **What you type there reaches the run** as its brief or its steer (see talk to the manager).
+- **It is the inbox**: every question a stage asks reaches it first, and it answers with
+  `factory_answer` or sends the question to you (see a stage asks a question).
 - **It shapes the run with `factory_run`** (see the manager shapes the run), with no card; the
   budget, ask me at, thinking and notes go through `factory_item`, whose card still asks you
   before anything lands. It cannot run, stop, approve or post: those stay your keys on the floor.
 
 An item whose chat cannot be made (no folder known for it) runs without a manager; its log says
 `the item's conversation could not be made: …`.
+
+## a stage asks a question — the manager answers it, or asks you and the stage waits
+
+A stage never asks you directly. When a stage's conversation asks a question (a clarification, a
+choice, a confirmation or a judgement call), it goes to the item's manager first, and the stage
+waits for the answer:
+
+- the manager's chat says `plan asks: which storage shape should this use?`, and the runner gives
+  the manager one turn on it, with the question, its answers and the stage's own pick;
+- the manager replies with `factory_answer`. If the issue, the recipe, the stages, the notes or
+  what you said in the chat settle it, it answers itself: the chat says
+  `manager answered plan: sqlite, the recipe says so`, and the stage goes on at once with it;
+- if it turns on taste, scope, risk, credentials or access, money, or anything those do not
+  settle, the manager sends it to you with one line of why: the chat says
+  `plan asks you: which storage shape should this use? · sqlite / jsonl · a taste call`, the
+  item needs you with the question on it, and the stage waits. A manager turn that fails, takes
+  longer than a minute, or calls neither also sends the question to you.
+
+Answer in the manager's chat at any time, in any words (`sqlite`, `use jsonl, it streams`), or
+with the floor's answer keys; the chat says `answered: …` and the stage goes on with your words.
+The question and its answer go on the run's notes, so the stages after it read them too.
+
+A pause keeps the question on the item: answer it while paused and the answer is kept for the
+stage's next round (`noted for plan: …`); the question also survives codeaf being closed, and an
+answer given then is read by the next run. Unanswered, it is dropped when the stage's round
+starts again, and the stage asks again if it still needs to. Permission prompts never take
+this road. One question at a time: a second one waits for the first.
 
 ## the factory's verbs, keys that change an item
 

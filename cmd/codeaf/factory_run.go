@@ -236,6 +236,9 @@ func buildFactoryRunner(st *store.Store, workspace, profileDir string, maker fac
 	if shape != nil {
 		opts.Shape = shape.Shape
 		opts.Reshape = shape.Reshape
+		// AND THE MANAGER IS THE INBOX: every question a step asks is given to
+		// it first, one turn of its conversation (factory_inbox.go).
+		opts.Inbox = shape.Inbox
 	}
 	return factoryrun.New(opts)
 }

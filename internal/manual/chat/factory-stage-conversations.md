@@ -10,7 +10,9 @@ stage's ask, the item's title and body (the first 2,000 characters), the run's s
 with this one named (`stages: plan › write › … · this is plan: do this stage's part, and leave
 the rest to the stages after it`), your notes, one line for
 each stage that ran before it (`write: done · 3 claims`), the stage's settings in words
-(`until clean · max 2 · fanout per-finding`), and the sentence `End by calling stage_result once.`
+(`until clean · max 2 · fanout per-finding`), a line saying a question it cannot settle goes to
+the item's manager through `ask` and it waits for the answer, and the sentence
+`End by calling stage_result once.`
 
 Inside, it works like any conversation: it reads, changes, runs, and can hand parts that do
 not need each other to tasks. Your words while it runs reach it, and what it is doing shows in
@@ -90,6 +92,8 @@ as the manager's own message and marked as the run's (a surface may draw them as
 - `asking you: plan is ready · go, or change it?` when the run waits on you, and after a stage
   that fell short, `test failed 1 of 2 · asking you: <question>`;
 - `budget of $5 reached · asking you`;
+- `plan asks: <question>` when a stage asks something, then `manager answered plan: <answer>` or
+  `plan asks you: <question> · <why>` (see a stage asks a question, on the factory page);
 - `answered: yes`, `answered: no` or `answered: <your words>`, however you answered;
 - `steer: <words>`, `changes requested: <words>`;
 - `landed · proof sheet ready · your approval`, `shipped`, `stopped`, `paused`, `resumed`.
