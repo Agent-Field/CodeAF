@@ -1,5 +1,5 @@
 import type { Page, Route } from '@playwright/test';
-import type { EngineEntry, EngineEvent, EngineFile, EngineSnapshot, EngineTaskPage } from '../../../src/features/chat/engine-client';
+import type { EngineEntry, EngineEvent, EngineFile, EngineFileDiff, EngineSnapshot, EngineTaskPage } from '../../../src/features/chat/engine-client';
 
 export const MODEL = 'deepseek/deepseek-v4.1-flash';
 
@@ -18,6 +18,9 @@ export type ScriptedTurn = {
 /** A workspace file the mock serves through GET /files and reports through POST /files/stat. */
 export type MockFile = Omit<EngineFile, 'name' | 'size' | 'hash'> & { dir?: boolean };
 
+/** A changed file the mock reports through GET /changes and /diff; counts derive from the hunks. */
+export type MockDiff = Pick<EngineFileDiff, 'hunks'> & Partial<Pick<EngineFileDiff, 'status' | 'lines' | 'binary' | 'truncated'>>;
+
 export type Scenario = {
   /** State returned by POST /sessions and GET /sessions/{id}. */
   initial: Partial<EngineSnapshot>;
@@ -27,6 +30,8 @@ export type Scenario = {
   tools?: Record<string, { output: string; full: boolean }>;
   /** Workspace files by path, relative or absolute; anything else stats as missing. */
   files?: Record<string, MockFile>;
+  /** Changed files by workspace-relative path; GET /changes lists them and GET /diff returns the hunks. */
+  diffs?: Record<string, MockDiff>;
   /** When true a turn only records the message; call engine.advance() to apply the reply. */
   manual?: boolean;
   /** Forced HTTP failure per endpoint, e.g. { turn: 409 }. */
@@ -178,6 +183,46 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     return json(route, { name, mime: file.mime, size: stat(path).size, hash: 'mock', dataBase64: file.dataBase64 });
   };
 
+  const relative = (path: string) => path.replace(`${state.workspace}/`, '');
+  const outside = (path: string) => path.startsWith('/') && !path.startsWith(`${state.workspace}/`);
+  const split = (path: string) => { const at = path.lastIndexOf('/'); return at < 0 ? { name: path, dir: '' } : { name: path.slice(at + 1), dir: path.slice(0, at) }; };
+  const counts = (diff: MockDiff) => diff.hunks.flatMap(h => h.lines).reduce((n, l) => ({ added: n.added + (l.kind === 'add' ? 1 : 0), deleted: n.deleted + (l.kind === 'del' ? 1 : 0) }), { added: 0, deleted: 0 });
+  const identity = (path: string) => ({ path: relative(path), ...split(relative(path)), abs: `${state.workspace}/${relative(path)}` });
+  const fileDiff = (path: string) => {
+    const diff = scenario.diffs?.[relative(path)];
+    return diff && { ...identity(path), git: true, status: diff.status ?? 'modified', lines: diff.lines ?? 0, binary: diff.binary, truncated: diff.truncated, hunks: diff.hunks, ...counts(diff) };
+  };
+  const refusal = (route: Route, path: string) => json(route, { error: outside(path) ? "engine: outside this conversation's workspace" : `engine: no such file: ${path}` }, outside(path) ? 403 : 404);
+  const workView = (route: Route, action: string, arg: string | undefined, url: URL) => {
+    const path = url.searchParams.get('path') ?? '';
+    if (action === 'changes') {
+      const only = url.searchParams.getAll('path').map(relative);
+      const rows = Object.keys(scenario.diffs ?? {}).filter(p => !only.length || only.includes(p)).sort().map(p => { const d = fileDiff(p)!; return { path: d.path, name: d.name, dir: d.dir, status: d.status, added: d.added, deleted: d.deleted, binary: d.binary }; });
+      return json(route, { git: true, base: 'abc1234', branch: 'main', files: rows, added: rows.reduce((n, r) => n + r.added, 0), deleted: rows.reduce((n, r) => n + r.deleted, 0) });
+    }
+    if (action === 'diff') {
+      if (outside(path)) return refusal(route, path);
+      const diff = fileDiff(path);
+      if (diff) return json(route, diff);
+      return fileAt(path) ? json(route, { ...identity(path), git: true, status: 'clean', added: 0, deleted: 0, lines: 0, hunks: [] }) : refusal(route, path);
+    }
+    if (arg === 'find') {
+      const q = (url.searchParams.get('q') ?? '').toLowerCase();
+      const paths = [...new Set([...Object.keys(scenario.files ?? {}), ...Object.keys(scenario.diffs ?? {})])].map(relative).filter(p => q && p.toLowerCase().includes(q)).sort();
+      return json(route, { files: paths.slice(0, Number(url.searchParams.get('limit') ?? 20)).map(p => ({ path: p, ...split(p) })) });
+    }
+    if (arg === 'locate') {
+      if (outside(path) || !(fileAt(path) || scenario.diffs?.[relative(path)])) return refusal(route, path);
+      return json(route, { path, abs: `${state.workspace}/${relative(path)}`, host: 'mock-host', local: true });
+    }
+    const file = fileAt(path);
+    if (outside(path) || !file || file.dir) return refusal(route, path);
+    const bytes = atob(file.dataBase64);
+    const base = { ...identity(path), size: bytes.length, language: (path.split('.').pop() ?? '').toLowerCase() };
+    if (bytes.includes('\0')) return json(route, { ...base, lines: 0, text: '', refusal: 'binary', message: `${base.name} is not text; open it in your editor.` });
+    return json(route, { ...base, lines: bytes.split('\n').length - (bytes.endsWith('\n') ? 1 : 0), text: new TextDecoder().decode(Uint8Array.from(bytes, c => c.charCodeAt(0))) });
+  };
+
   // A note is recorded on the task page as the person's own, so the next read shows it.
   const taskAction = (route: Route, taskId: string, verb: string, body: Record<string, unknown>) => {
     const taskPage = scenario.taskPages?.[taskId];
@@ -216,6 +261,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     }
     if (action === 'questions' && arg === 'hold') return json(route, { accepted: true });
     if (action === 'favicon') return json(route, {});
+    if (action === 'changes' || action === 'diff' || (action === 'files' && ['text', 'find', 'locate'].includes(arg ?? ''))) return workView(route, action, arg, url);
     if (action === 'files') return files(route, arg, body, url);
     if (action === 'tasks' && arg && parts[4]) return forced('task') ?? taskAction(route, arg, parts[4], body);
     if (action === 'tasks' && arg) {

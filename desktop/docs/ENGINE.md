@@ -118,3 +118,36 @@ The workspace is selected at transport startup; native project selection is a
 follow-up. A bounded 2048-record SSE tail falls back to canonical history after a
 large replay gap; interrupted live partial output should not be presented as a
 completed reply. Provider errors remain errors, not fixture-generated responses.
+
+## File and diff tabs
+
+All reads go to the engine (remote `File.Text`, `File.Find`, `Diff.Changes`,
+`Diff.File`), never to the app's disk, because the engine may be on another
+machine. Paths are workspace-relative and slash separated. The boundary is the
+workspace only (not the session folder); symlinks resolve before the check, so
+traversal and links that leave the workspace are 403, missing is 404. Typed
+client: `readEngineText`, `findEngineFiles`, `engineChanges`, `engineFileDiff`,
+`engineEditorTarget` in `engine-client.ts`. The base is git HEAD (the empty tree
+on an unborn branch); outside git, `git:false` and no files.
+
+- GET `/files/text?path=` returns `{path,name,dir,abs,size,hash,language,lines,text}`.
+  Over 1MB or binary: `text` is empty and `refusal` is `too-large` or `binary`
+  with a `message` sentence (status 200; offer Open in editor).
+- GET `/files/find?q=&limit=` returns `{files:[{path,name,dir}],truncated?}`, best
+  first, gitignore-aware (`git ls-files`, bounded walk outside git). Empty `q`
+  matches nothing. Limit defaults to 20, at most 100.
+- GET `/changes[?path=a&path=b]` returns `{git,base,branch,files:[{path,name,dir,
+  status,added,deleted,binary?}],added,deleted,truncated?}`; `status` is modified,
+  added, deleted or untracked. Repeated `path` narrows to the files a
+  conversation touched (the app knows them from its tool calls).
+- GET `/diff?path=` returns `{path,name,dir,abs,git,status,added,deleted,binary?,
+  lines,hunks,truncated?}`. A hunk is `{header,oldStart,oldLines,newStart,newLines,
+  section,lines:[{kind:context|add|del,old?,new?,text}]}`; `old`/`new` are the
+  two line-number columns. `lines` is the current file length: the "N unchanged
+  lines" fold is the gap before a hunk (`newStart - 1 - previousEnd`) and after the
+  last (`lines - end`). Header counts are `added`/`deleted`. The hover-preview diff
+  head is the first del/add lines of `hunks[0]`. Capped at 5000 lines.
+- GET `/files/locate?path=` returns `{path,abs,host,local}` for Open in editor.
+  `abs` is a path on the ENGINE's disk. The app opens an editor only when `local`
+  is true (the bridge started the engine as its own child) and `host` equals the
+  app's own machine name; otherwise it hides the handoff or offers Copy path.

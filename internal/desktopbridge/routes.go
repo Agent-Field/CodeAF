@@ -17,6 +17,16 @@ func (s *conversation) extra(w http.ResponseWriter, r *http.Request, parts []str
 		s.readFile(w, r)
 	case len(parts) == 4 && parts[2] == "files" && parts[3] == "stat":
 		s.statFiles(w, r)
+	case len(parts) == 4 && parts[2] == "files" && parts[3] == "text":
+		s.fileText(w, r)
+	case len(parts) == 4 && parts[2] == "files" && parts[3] == "find":
+		s.fileFind(w, r)
+	case len(parts) == 4 && parts[2] == "files" && parts[3] == "locate":
+		s.fileLocate(w, r)
+	case len(parts) == 3 && parts[2] == "changes":
+		s.changes(w, r)
+	case len(parts) == 3 && parts[2] == "diff":
+		s.fileDiff(w, r)
 	case len(parts) == 4 && parts[2] == "questions" && parts[3] == "hold":
 		s.holdQuestion(w, r)
 	case len(parts) == 3 && parts[2] == "favicon":
