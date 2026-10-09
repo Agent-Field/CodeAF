@@ -197,7 +197,7 @@ Geometry and color come only from tokens in `src/design/tokens.json`:
 | radius-bubble (16px) | User message bubble |
 | radius-composer (18px) | Composer field |
 | task-panel-width (280px) | Right task panel |
-| chat-gutter (28px) | Left gutter holding the fold chevron |
+| chat-gutter (24px) | Column side padding (design: 680 column, 24 gutter, 632 reading width); the fold chevron overlaps it |
 | chat-user-clamp-lines (8) | User message clamp before Show more |
 | colors.bubble | Soft translucent fill for the user bubble, light and dark |
 | colors.composer-surface | Composer field fill |
