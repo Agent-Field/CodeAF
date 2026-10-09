@@ -110,6 +110,17 @@ func recordedFolder(libraryRoot, sessionFile string, pol placegraph.SourcePolicy
 	if libraryRoot == "" || libraryRoot == string(filepath.Separator) {
 		return ""
 	}
+	// Compare both sides of the library boundary in canonical filesystem
+	// coordinates. CODEAF_HOME may be an alias (including a short socket path).
+	// Resolving only the transcript would reject legitimate saved sessions.
+	canonicalRoot, err := filepath.EvalSymlinks(libraryRoot)
+	if err != nil {
+		return ""
+	}
+	libraryRoot, err = filepath.Abs(canonicalRoot)
+	if err != nil || libraryRoot == string(filepath.Separator) {
+		return ""
+	}
 	real, ok := insideRoot(libraryRoot, sessionFile)
 	if !ok {
 		return ""
