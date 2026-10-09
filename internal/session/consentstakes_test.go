@@ -44,6 +44,8 @@ import (
 // re-read the day this file changes again.
 func TestTheGateGradesAnIrreversibleCallAndMarksDenyTheSafeAnswer(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	// Keep the literal working-folder evidence stable in this shared surface fixture.
+	agent.config.Workspace = "/workspace/permission-check"
 	call := ai.ToolCall{
 		ID:       "c1",
 		Function: ai.ToolCallFunction{Name: "bash", Arguments: `{"command":"rm -rf /"}`},
