@@ -47,7 +47,11 @@ export type PickResult =
   | { status: 'unavailable' };
 
 export type AttentionKind = 'needsYou' | 'failed' | 'running';
-export type AttentionItem = { id: string; kind: AttentionKind; chatTitle: string; text: string; placeId?: string; placeName?: string };
+/** A question as its conversation's tray names it: the engine's question kind and id. */
+export type NoticeQuestion = { kind: string; id: number };
+/** Where a click on a system notification lands: a conversation and, while it waits, the question to focus. */
+export type NoticeTarget = { chatId: string; question?: NoticeQuestion };
+export type AttentionItem = { id: string; kind: AttentionKind; chatTitle: string; text: string; placeId?: string; placeName?: string } & Partial<NoticeTarget>;
 export type NotificationPermission = { state: 'granted' | 'denied' | 'unavailable'; verified: boolean };
 export type NotifyResult = { posted: number; groups: number; skipped: 'focused' | 'nothing-new' | 'denied' | 'unavailable' | null };
 /** On Linux `applied` means the launcher was asked; whether it draws a count depends on the desktop. */
@@ -130,6 +134,34 @@ export function handoffFromPane(pane: Pane): TabHandoff {
 export function paneFromHandoff(tab: TabHandoff, id: string): Pane {
   const view: TabView = cleanView(tab as unknown as Record<string, unknown>);
   return { id, kind: isTabKind(tab.kind) ? tab.kind : 'conversation', title: tab.title, draft: tab.draft ?? '', ...(tab.titleSource ? { titleSource: tab.titleSource } : {}), ...view };
+}
+
+/** The event Rust emits to the one window a notification click was queued for (src-tauri/src/activation.rs). */
+export const NOTICE_ACTIVATED_EVENT = 'notification://activated';
+
+const NOTICE_ID = /^[A-Za-z0-9_-]{1,128}$/;
+const QUESTION_KIND = /^[A-Za-z0-9_-]{1,64}$/;
+const isQuestion = (q: unknown): q is NoticeQuestion => !!q && typeof q === 'object'
+  && typeof (q as NoticeQuestion).kind === 'string' && QUESTION_KIND.test((q as NoticeQuestion).kind)
+  && Number.isSafeInteger((q as NoticeQuestion).id) && (q as NoticeQuestion).id > 0;
+
+/**
+ * The click target an attention item may carry, by the rules activation.rs checks. A conversation or question that
+ * does not fit is left off rather than sent, because Rust refuses the WHOLE list over one bad item.
+ */
+export function noticeTarget(chatId: string | undefined, question?: { kind: string; id?: number }): Partial<NoticeTarget> {
+  if (!chatId || !NOTICE_ID.test(chatId)) return {};
+  const asked = question && { kind: question.kind, id: question.id ?? 0 };
+  return isQuestion(asked) ? { chatId, question: asked } : { chatId };
+}
+
+/** A target as claimed from Rust, or nothing when it is not that shape. */
+export function claimedTarget(raw: unknown): NoticeTarget | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const { chatId, question } = raw as Record<string, unknown>;
+  if (typeof chatId !== 'string' || !NOTICE_ID.test(chatId)) return undefined;
+  if (question === undefined) return { chatId };
+  return isQuestion(question) ? { chatId, question: { kind: question.kind, id: question.id } } : undefined;
 }
 
 /** The badge counts questions waiting on the person; failures and running work do not. */
@@ -301,6 +333,22 @@ export function createNativeControls(bridge: NativeBridge = defaultBridge()) {
     async notifyAttention(items: readonly AttentionItem[]): Promise<NotifyResult> {
       if (!bridge.desktop) return { posted: 0, groups: 0, skipped: 'unavailable' };
       return bridge.invoke<NotifyResult>('notify_attention', { items });
+    },
+
+    /**
+     * The notification clicks queued for THIS window, oldest first, each handed over once. Rust queues one only from
+     * the platform's own activation of a notification it posted, with the target fixed when it was posted.
+     */
+    async claimNotices(): Promise<NoticeTarget[]> {
+      if (!bridge.desktop) return [];
+      const claimed = await bridge.invoke<unknown>('notify_claim');
+      return Array.isArray(claimed) ? claimed.flatMap(raw => claimedTarget(raw) ?? []) : [];
+    },
+
+    /** Calls back whenever a notification click has been queued for this window. */
+    onNoticeActivated(handler: () => void): Promise<Unlisten> {
+      if (!bridge.desktop) return Promise.resolve(() => {});
+      return bridge.listen(NOTICE_ACTIVATED_EVENT, () => handler());
     },
 
     /** Sets the dock or launcher badge to the needs-you count; 0 clears it. */

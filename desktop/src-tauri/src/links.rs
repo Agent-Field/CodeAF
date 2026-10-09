@@ -244,6 +244,12 @@ fn reopen_main<R: Runtime>(app: &AppHandle<R>) -> Option<Window<R>> {
     app_window(app, built.label())
 }
 
+/// The window something from outside the app is delivered to: the one in
+/// front, else `main`, else the oldest, else `main` opened again.
+pub fn deliverable_window<R: Runtime>(app: &AppHandle<R>) -> Option<Window<R>> {
+    addressee(app).or_else(|| reopen_main(app))
+}
+
 /// Brings a window forward the way a person would expect a link to.
 pub fn bring_forward<R: Runtime>(window: &Window<R>) {
     let _ = window.unminimize();
@@ -258,7 +264,7 @@ pub fn receive<R: Runtime>(app: &AppHandle<R>, links: impl IntoIterator<Item = S
     if sound.is_empty() {
         return;
     }
-    let Some(window) = addressee(app).or_else(|| reopen_main(app)) else {
+    let Some(window) = deliverable_window(app) else {
         return;
     };
     let label = window.label().to_string();
