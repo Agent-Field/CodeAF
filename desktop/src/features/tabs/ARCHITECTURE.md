@@ -47,6 +47,13 @@ Workspace.tsx  (owns useReducer(workspaceReducer), summaries, dialogs; builds Ta
 
 Shared, change with care and keep edits small: `tokens.json` (add keys, never rename), `Tab.tsx`/`tab.css` (the primitive: states are props), `model.ts` slice list, `TabItem.tsx` (three host calls), `Workspace.tsx`.
 
+## Tab polish seams
+
+- **Title tooltip** (`hosts/titleTooltipHost.tsx`, the strip's third `wrapSelect` host beside preview and menu): the shared 500ms `useTooltip` with the full title for the active tab, a pinned tab (icon only) and a cut title. An inactive tab's hover preview already holds its title, and no tooltip opens while any preview card is open, so the two never overlap. A split's segments use `SplitTab`'s `wrapSegment`.
+- **⌘/Ctrl O** is ShortcutId `open-file` in `design/keyboard.ts`. Only the focused new-tab field registers for it (surface layer) and it runs the Open file… row's own pick; no other surface claims it.
+- **Overview card press** (Interactions "Overview card · ⌘-click / middle: Background tab"): every card is a tab that is ALREADY open, so a ⌘/Ctrl-click or middle-click opens nothing: the active tab and the overlay stay as they are and only the cursor moves to the card (`backgroundPress` in `OverviewCard.tsx`, predicate `isBackgroundPress` in `overview-model.ts`). A plain click opens and closes the overview.
+- **Overview card menu** is `tabMenuFor(api, tab)` from `hosts/menuHost.tsx`, the strip's own builder, passed down as `TabOverview`'s `menuFor`. There is no second menu array; the Inbox has no menu in either place. `ToastRegion` draws inside an open modal dialog so a toast posted from the overview is seen.
+
 ## Primitives and specimens
 
 `Tab` (30px, radius 8, 13px glyph, 12px title faded over its last 20px with a mask, close in a fixed 20px slot), `SplitTab`, `GroupCapsule` + `MemberSlot`, `LoadingLine` (2px, card top), `TabStrip` (46px). Every state has a row in `specimens/TabsSpecimen.tsx` on the Design system page; extend it with any new state. Specimens pass `specimen` so tabs render outside a tablist without a `tab` role.

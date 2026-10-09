@@ -7,7 +7,7 @@ import type { TabSummary } from '../conversation/tabSummary';
 import { kindDef } from './kinds/registry';
 import type { PaneActions } from './kinds/slots';
 import { panesOf, type Pane, type Tab } from './model';
-import { kindIcon, StateDot, tabMark } from './OverviewCard';
+import { backgroundPress, kindIcon, StateDot, tabMark } from './OverviewCard';
 import { isMac } from '../../design/keyboard';
 import { PaneHeader } from './PaneGrid';
 
@@ -51,7 +51,7 @@ export function OverviewFilmstrip({ tabs, summaries, activeId, cursorId, positio
         return <div key={tab.id} className="overview-film-item" data-cursor={centre} data-active={tab.id === activeId} data-card-id={tab.id}>
           <div className="overview-film-frame">
             <div className="overview-film-viewport"><div className="overview-film-pane">{Math.abs(index - at) <= liveReach && <LivePane tab={tab}/>}</div></div>
-            <Button className="overview-film-open" aria-label={`${centre ? 'Open' : 'Show'} ${tab.title}`} aria-current={tab.id === activeId || undefined} onClick={() => (centre ? onOpen(tab.id) : onCursor(tab.id))}/>
+            <Button className="overview-film-open" aria-label={`${centre ? 'Open' : 'Show'} ${tab.title}`} aria-current={tab.id === activeId || undefined} {...backgroundPress(() => (centre ? onOpen(tab.id) : onCursor(tab.id)), () => onCursor(tab.id))}/>
           </div>
           <span className="overview-film-label">{mark ? <StateDot mark={mark}/> : <Icon name={tab.pinned ? 'pin' : kindIcon(tab)} size="xs"/>}<span>{tab.title}</span></span>
         </div>;

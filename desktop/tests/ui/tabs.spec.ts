@@ -268,8 +268,9 @@ test('groups have distinct names and support overview moves, rename and reload',
  const overview = page.getByRole('dialog', { name: 'All tabs overview', exact: true });
  async function organize(name: string, choice: string) {
   await overview.getByRole('button', { name: `Open ${name}`, exact: true }).click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Move to group', exact: true }).hover();
-  await page.getByRole(choice === 'Create group' ? 'menuitem' : 'menuitemcheckbox', { name: choice, exact: true }).click();
+  // The overview card's menu is the strip's tab menu (TA-OV-06): "Add to group", then the groups or "New group…".
+  await page.getByRole('menuitem', { name: 'Add to group', exact: true }).hover();
+  await (choice === 'Create group' ? page.getByRole('menuitem', { name: 'New group…' }) : page.getByRole('menuitemcheckbox', { name: choice, exact: true })).click();
  }
  await organize('One', 'Create group');
  await organize('Two', 'Create group');
