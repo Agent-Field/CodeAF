@@ -55,22 +55,54 @@ type Connection struct {
 type Open func(sessionFile string) (Connection, error)
 
 type Snapshot struct {
-	ID          string                 `json:"id"`
-	SessionFile string                 `json:"sessionFile"`
-	Workspace   string                 `json:"workspace"`
-	Model       string                 `json:"model"`
-	Persistent  bool                   `json:"persistent"`
-	Running     bool                   `json:"running"`
-	NeedsPerson bool                   `json:"needsPerson"`
-	Questions   []session.Question     `json:"questions"`
-	PlanError   string                 `json:"planError,omitempty"`
-	Title       string                 `json:"title"`
-	Entries     []session.DisplayEntry `json:"entries"`
-	Tasks       []session.PlanTaskRow  `json:"tasks"`
-	Usage       session.Usage          `json:"usage"`
-	UpdatedAt   string                 `json:"updatedAt,omitempty"`
-	Seq         uint64                 `json:"seq"`
+	ID          string             `json:"id"`
+	SessionFile string             `json:"sessionFile"`
+	Workspace   string             `json:"workspace"`
+	Model       string             `json:"model"`
+	Persistent  bool               `json:"persistent"`
+	Running     bool               `json:"running"`
+	NeedsPerson bool               `json:"needsPerson"`
+	Questions   []session.Question `json:"questions"`
+	// RecentOutcomes is how the last few questions ended, newest first, so the
+	// window can draw a receipt under a question that is no longer on the list.
+	RecentOutcomes []OutcomeWire          `json:"recentOutcomes,omitempty"`
+	PlanError      string                 `json:"planError,omitempty"`
+	Title          string                 `json:"title"`
+	Entries        []session.DisplayEntry `json:"entries"`
+	Tasks          []session.PlanTaskRow  `json:"tasks"`
+	Usage          session.Usage          `json:"usage"`
+	UpdatedAt      string                 `json:"updatedAt,omitempty"`
+	Seq            uint64                 `json:"seq"`
 }
+
+// OutcomeWire is one ended question as the window reads it. It carries the
+// person-facing words only, so the window never has to rebuild a sentence.
+type OutcomeWire struct {
+	Kind    string `json:"kind"`
+	Token   string `json:"token"`
+	Head    string `json:"head"`
+	Outcome string `json:"outcome"`
+	Words   string `json:"words"`
+	By      string `json:"by"`
+	At      string `json:"at"`
+}
+
+// recentOutcomes reads the session's receipts when the engine keeps them. An
+// engine without them yields nothing, so the field is left out of the snapshot.
+func recentOutcomes(a any) []OutcomeWire {
+	door, ok := a.(interface {
+		RecentQuestionOutcomes(int) []session.QuestionOutcome
+	})
+	if !ok {
+		return nil
+	}
+	var wire []OutcomeWire
+	for _, o := range door.RecentQuestionOutcomes(20) {
+		wire = append(wire, OutcomeWire{Kind: string(o.Kind), Token: o.Token, Head: o.Head, Outcome: o.Outcome, Words: o.Words, By: o.By, At: o.At.UTC().Format(time.RFC3339)})
+	}
+	return wire
+}
+
 type Event struct {
 	Kind  string           `json:"kind"`
 	Text  string           `json:"text"`
@@ -266,7 +298,7 @@ func (s *conversation) snapshot() Snapshot {
 	if !stamp.IsZero() {
 		updatedAt = stamp.UTC().Format(time.RFC3339)
 	}
-	return Snapshot{ID: s.id, SessionFile: w.SessionFile, Workspace: w.Workspace, Model: a.Model(), Persistent: w.Persistent, Running: running, NeedsPerson: a.NeedsPerson(), Title: a.Title(), Questions: questions, PlanError: planError, Entries: entries, Tasks: tasks, Usage: a.Usage(), Seq: seq, UpdatedAt: updatedAt}
+	return Snapshot{ID: s.id, SessionFile: w.SessionFile, Workspace: w.Workspace, Model: a.Model(), Persistent: w.Persistent, Running: running, NeedsPerson: a.NeedsPerson(), Title: a.Title(), Questions: questions, RecentOutcomes: recentOutcomes(a), PlanError: planError, Entries: entries, Tasks: tasks, Usage: a.Usage(), Seq: seq, UpdatedAt: updatedAt}
 }
 func (s *conversation) publish(r Record) {
 	s.mu.Lock()
@@ -584,7 +616,12 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		answer.At = time.Now()
 		answer.From = "desktop"
 		answer.Ask = question.Ask
-		answer.DecidedBy = session.DecidedByPerson
+		// The asker may only answer for itself where it wrote down a pick, since
+		// that is the one case where "nobody objected" has an answer to stand on;
+		// every other answer from this window is a person's.
+		if answer.DecidedBy != session.DecidedByAsker || question.Pick == nil {
+			answer.DecidedBy = session.DecidedByPerson
+		}
 		if s.conn.Take != nil {
 			if err := s.conn.Take(); err != nil {
 				fail(w, 409, err.Error())
