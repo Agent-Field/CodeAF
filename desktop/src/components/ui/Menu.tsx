@@ -6,7 +6,7 @@ import { KeyboardShortcut } from './KeyboardShortcut';
 import design from '../../design/tokens.json';
 
 export type MenuEntry =
- | { kind?: 'action'; id: string; label: string; icon?: IconName; shortcut?: string; disabled?: boolean; checked?: boolean; danger?: boolean; onSelect: () => void }
+ | { kind?: 'action'; id: string; label: string; icon?: IconName; shortcut?: string; detail?: string; disabled?: boolean; checked?: boolean; danger?: boolean; onSelect: () => void }
  | { kind: 'separator'; id: string }
  | { kind: 'submenu'; id: string; label: string; icon?: IconName; disabled?: boolean; items: readonly MenuEntry[] };
 type MenuProps = { children: ReactElement; items: readonly MenuEntry[]; label: string; onOpenChange?: (open: boolean) => void };
@@ -37,7 +37,7 @@ function focusFirstItem(event: FocusEvent<HTMLDivElement>) {
 function EntryContents({ entry }: { entry: Exclude<MenuEntry, { kind: 'separator' }> }) {
  return <>{entry.icon && <Icon name={entry.icon} size="sm"/>}<span className="menu-label">{entry.label}</span>{entry.kind === 'submenu'
   ? <Icon name="chevronRight" size="xs"/>
-  : entry.shortcut && <KeyboardShortcut label={entry.shortcut}/>}</>;
+  : <>{'detail' in entry && entry.detail && <span className="menu-detail">{entry.detail}</span>}{entry.shortcut && <KeyboardShortcut label={entry.shortcut}/>}</>}</>;
 }
 function MenuItems({ items, type, container }: { items: readonly MenuEntry[]; type: 'context' | 'dropdown'; container?: HTMLElement }) {
  const P = type === 'context' ? Context : Dropdown;

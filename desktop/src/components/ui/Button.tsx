@@ -15,7 +15,7 @@ export type IconButtonSize = 'control' | 'row' | 'message';
 type IconButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children' | 'aria-label'> & { ref?: Ref<HTMLButtonElement>; label: string; icon: IconName; iconSize?: IconSize; size?: IconButtonSize };
 /** Icon-only, so it always carries an accessible name and the shared delayed tooltip (title text or the label). */
 export function IconButton({ label, icon, iconSize = 'md', size = 'control', className = '', type = 'button', title, onPointerEnter, onPointerLeave, onPointerDown, onFocus, onBlur, ...props }: IconButtonProps) {
- const tooltip = useTooltip(title ?? label, { onPointerEnter, onPointerLeave, onPointerDown, onFocus, onBlur });
+ const tooltip = useTooltip(title ?? label, { onPointerEnter, onPointerLeave, onPointerDown, onFocus, onBlur }, { describe: !!title && title !== label });
  return <>
   <button {...props} {...tooltip.props} type={type} aria-label={label} data-size={size} className={`icon-button ${className}`}><Icon name={icon} size={iconSize}/></button>
   {tooltip.element}

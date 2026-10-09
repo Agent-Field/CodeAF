@@ -114,33 +114,42 @@ func (s *conversation) fileLocate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := strings.TrimSpace(r.URL.Query().Get("path"))
-	if path == "" {
-		fail(w, 400, "path required")
+	abs, status, msg := s.placedFile(path)
+	if status != 0 {
+		fail(w, status, msg)
 		return
+	}
+	host, _ := os.Hostname()
+	write(w, EditorTarget{Path: path, Abs: abs, Host: host, Local: s.conn.Local})
+}
+
+// placedFile is the same confinement /files/locate uses. The lexical join
+// rejects a path that leaves the engine's reported workspace; the engine's
+// own stat is what rejects a symlink that leaves, because this process does
+// not read the engine's disk when the engine is somewhere else.
+func (s *conversation) placedFile(path string) (abs string, status int, msg string) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", 400, "path required"
 	}
 	workspace := s.conn.Welcome.Workspace
 	if s.conn.StatPaths == nil || workspace == "" {
-		fail(w, 409, "this engine cannot place files")
-		return
+		return "", 409, "this engine cannot place files"
 	}
-	abs := path
+	abs = path
 	if !filepath.IsAbs(abs) {
 		abs = filepath.Join(workspace, path)
 	}
 	abs = filepath.Clean(abs)
 	if rel, err := filepath.Rel(filepath.Clean(workspace), abs); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		fail(w, 403, "that file is outside this conversation's workspace")
-		return
+		return "", 403, "that file is outside this conversation's workspace"
 	}
 	facts, err := s.conn.StatPaths([]string{abs})
 	if err != nil {
-		fail(w, 502, err.Error())
-		return
+		return "", 502, err.Error()
 	}
 	if len(facts) != 1 || !facts[0].Exists || facts[0].Dir {
-		fail(w, 404, "no such file: "+path)
-		return
+		return "", 404, "no such file: " + path
 	}
-	host, _ := os.Hostname()
-	write(w, EditorTarget{Path: path, Abs: abs, Host: host, Local: s.conn.Local})
+	return abs, 0, ""
 }
