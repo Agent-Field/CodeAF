@@ -67,8 +67,9 @@ function push(acc: Acc, index: number, block: TurnBlock) {
 function addSteer({ entry, index }: Input, acc: Acc) {
   const id = `${acc.turn.id}:${index}`;
   const steer = entry.Steer;
-  acc.turn.steer.push({ id, text: entry.Text, landing: steer?.Landing || undefined, consumed: steer?.Consumed !== false });
-  if (acc.work) acc.work.notes.push({ kind: 'steer', id, text: entry.Text });
+  const row = { id, text: entry.Text, landing: steer?.Landing || undefined, consumed: steer?.Consumed !== false };
+  acc.turn.steer.push(row);
+  if (acc.work) acc.work.notes.push({ kind: 'steer', ...row });
 }
 
 function addAssistant({ entry, index }: Input, acc: Acc) {

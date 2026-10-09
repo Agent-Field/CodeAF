@@ -80,7 +80,7 @@ export function TurnViewV2(props: TurnViewV2Props) {
     <section className="turn-v2">
       <IconButton className="turn-fold" icon="chevron" iconSize="sm" label="Fold" aria-expanded={true} onClick={onToggleFold} />
       <UserMessage text={turn.user} attachments={<Attachments files={turn.attachments} render={renderAttachment} />} />
-      <Steers steer={turn.steer} />
+      <Steers steer={turn.steer} inWork={turn.blocks.flatMap((block) => (block.kind === 'work' ? block.notes : []))} />
       {turn.blocks.map((block) => (
         <Block key={block.id} block={block} renderBlock={renderBlock} onRetry={onRetry} />
       ))}
