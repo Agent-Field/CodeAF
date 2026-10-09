@@ -31,5 +31,17 @@
   "batch": "step:0",
   "scope": [
     "once"
+  ],
+  "attach": [
+    {
+      "kind": "code",
+      "title": "Command · this request only",
+      "body": "rm -rf /"
+    },
+    {
+      "kind": "text",
+      "title": "Working folder",
+      "body": "/workspace/permission-check"
+    }
   ]
 }
