@@ -1,0 +1,10 @@
+/* Layout only for the Places components specimen: the primitives style themselves. */
+.places-specimen { display: flex; flex-direction: column; gap: var(--space-xl); max-width: var(--content-max-width); padding: var(--specimen-pad); border-radius: var(--specimen-radius); background: var(--canvas); box-shadow: var(--sh-1); color: var(--ink); font-family: var(--sans); }
+.places-specimen-section { display: flex; flex-direction: column; gap: var(--space-3); }
+.places-specimen-matrix { display: flex; flex-direction: column; gap: var(--space-2); }
+.places-specimen-cell { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.places-specimen-caption { min-width: var(--places-tile-min); font-size: var(--type-caption-size); color: var(--ink-3); }
+.places-specimen-states { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--places-tile-min), 1fr)); gap: var(--places-tile-grid-gap); margin: 0; padding: 0; list-style: none; }
+.places-specimen-state { display: flex; flex-direction: column; gap: var(--space-tight); }
+.places-specimen-state .places-specimen-caption { min-width: 0; }
+.places-specimen-log { margin: 0; padding: 0; list-style: none; font-family: var(--mono); font-size: var(--type-mono-small-size); color: var(--ink-2); min-height: var(--space-section); }
