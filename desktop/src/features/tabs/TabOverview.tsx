@@ -1,77 +1,147 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
-import { Button, ContextMenu, DropdownMenu, Icon, IconButton, SectionHeading, Text, TextInput, type MenuEntry } from '../../components/ui';
-import type { TabMark, TabSummary } from '../conversation/tabSummary';
+// The overview (design 2h, 3h, 3i): a full-window layer with a top bar (search, Grid/Filmstrip, Done), the grid
+// sectioned by group, or the filmstrip of live panes. Both read one order (overview-model.ts) and one cursor.
+import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type RefObject } from 'react';
+import { Button, Icon, SectionHeading, Segmented, Text, TextInput, type MenuEntry } from '../../components/ui';
+import { isMac } from '../../design/keyboard';
+import { tabDragType } from './hosts/dragHost';
+import type { TabSummary } from '../conversation/tabSummary';
 import type { Tab, TabGroup } from './model';
+import { cardText, kindLabel, OverviewCard } from './OverviewCard';
+import { OverviewFilmstrip } from './OverviewFilmstrip';
+import { moveCursor, overviewOrder, overviewSections, searchPlaceholder, sectionPosition } from './overview-model';
 import './overview.css';
 
+type View = 'grid' | 'film';
+const viewKey = 'codeaf.desktop.overview.view';
+const views = [{ value: 'grid', label: 'Grid' }, { value: 'film', label: 'Filmstrip' }] as const;
+const readView = (): View => { try { return localStorage.getItem(viewKey) === 'film' ? 'film' : 'grid'; } catch { return 'grid'; } };
+
 type Props = {
- summaries: Readonly<Record<string, TabSummary>>; open: boolean; tabs: readonly Tab[]; groups: readonly TabGroup[]; activeId: string;
- onClose: () => void; onSelect: (id: string) => void; onNew: () => void;
- onPin: (id: string) => void; onMoveGroup: (id: string, groupId?: string) => void;
- onCreateGroup: (id: string) => void; onCloseTab?: (id: string) => void;
- returnFocus?: RefObject<HTMLElement | null>;
+  summaries: Readonly<Record<string, TabSummary>>; now: number; open: boolean; tabs: readonly Tab[]; groups: readonly TabGroup[]; activeId: string;
+  onClose: () => void; onSelect: (id: string) => void;
+  onPin: (id: string) => void; onMoveGroup: (id: string, groupId?: string) => void;
+  onCreateGroup: (id: string) => void; onCloseTab?: (id: string) => void; onSplitGroup: (groupId: string) => void;
+  returnFocus?: RefObject<HTMLElement | null>;
 };
 
-const markWords: Record<TabMark, string> = { working: 'Working', waiting: 'Needs you', failed: 'Failed' };
+const isPrimary = (event: Pick<KeyboardEvent, 'metaKey' | 'ctrlKey'>) => (isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey);
 
-export function TabOverview({ summaries, open, tabs, groups, activeId, onClose, onSelect, onNew, onPin, onMoveGroup, onCreateGroup, onCloseTab, returnFocus }: Props) {
- const dialog = useRef<HTMLDialogElement>(null);
- const search = useRef<HTMLInputElement>(null);
- const previousFocus = useRef<HTMLElement | null>(null);
- const [query, setQuery] = useState('');
- useEffect(() => {
-  if (open && !dialog.current?.open) {
-   previousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-   dialog.current?.showModal();
-   search.current?.focus();
-  } else if (!open) {
-   dialog.current?.close();
-   setQuery('');
+/** The nearest card in the next row above or below, by horizontal distance. */
+function verticalTarget(root: HTMLElement | null, id: string | undefined, direction: 1 | -1): string | undefined {
+  const cards = [...(root?.querySelectorAll<HTMLElement>('.overview-card') ?? [])];
+  const current = cards.find(card => card.dataset.cardId === id)?.getBoundingClientRect();
+  if (!current) return undefined;
+  const beyond = cards.filter(card => (card.getBoundingClientRect().top - current.top) * direction > 1);
+  if (!beyond.length) return undefined;
+  const nextTop = (direction === 1 ? Math.min : Math.max)(...beyond.map(card => card.getBoundingClientRect().top));
+  const row = beyond.filter(card => Math.abs(card.getBoundingClientRect().top - nextTop) < 1);
+  return row.reduce((best, card) => (Math.abs(card.getBoundingClientRect().left - current.left) < Math.abs(best.getBoundingClientRect().left - current.left) ? card : best)).dataset.cardId;
+}
+
+export function TabOverview({ summaries, now, open, tabs, groups, activeId, onClose, onSelect, onPin, onMoveGroup, onCreateGroup, onCloseTab, onSplitGroup, returnFocus }: Props) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const search = useRef<HTMLInputElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  const previousFocus = useRef<HTMLElement | null>(null);
+  const [query, setQuery] = useState('');
+  const [view, setView] = useState<View>(readView);
+  const [cursor, setCursor] = useState<string>();
+  useEffect(() => {
+    if (open && !dialog.current?.open) {
+      previousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      setCursor(activeId);
+      dialog.current?.showModal();
+      search.current?.focus();
+    } else if (!open) {
+      dialog.current?.close();
+      setQuery('');
+    }
+  }, [open]);
+
+  const sections = useMemo(() => overviewSections(tabs, groups, query, tab => `${tab.title} ${tab.draft} ${kindLabel(tab)} ${cardText(tab, summaries)} ${groups.find(group => group.id === tab.groupId)?.title ?? ''}`), [tabs, groups, query, summaries]);
+  const ordered = useMemo(() => overviewOrder(sections), [sections]);
+  const ids = ordered.map(tab => tab.id);
+  const cursorId = cursor && ids.includes(cursor) ? cursor : ids.includes(activeId) ? activeId : ids[0];
+  useEffect(() => {
+    if (view === 'grid') body.current?.querySelector('[data-cursor="true"]')?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+  }, [cursorId, view]);
+
+  const changeView = (next: View) => { setView(next); try { localStorage.setItem(viewKey, next); } catch { /* The choice is a convenience; it must never block the overview. */ } };
+  const openTab = (id: string) => { onSelect(id); onClose(); };
+  const move = (id: string | undefined, focusCard: boolean) => {
+    if (!id) return;
+    setCursor(id);
+    if (focusCard) requestAnimationFrame(() => dialog.current?.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(id)}"] :is(.overview-card-open, .overview-film-open)`)?.focus());
+  };
+  function onKeyDown(event: KeyboardEvent<HTMLDialogElement>) {
+    if (isPrimary(event) && event.key.toLowerCase() === 'w' && !event.shiftKey && !event.altKey) {
+      event.preventDefault();
+      if (onCloseTab && cursorId) { move(ids.length > 1 ? moveCursor(ids, cursorId, 1) : undefined, false); onCloseTab(cursorId); }
+      return;
+    }
+    const target = event.target as HTMLElement;
+    const typing = target === search.current;
+    if (!typing && !target.matches('dialog, .overview-card-open, .overview-film-open')) return;
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    const film = view === 'film';
+    const horizontal = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+    if (horizontal && (!typing || film || !query)) { event.preventDefault(); move(moveCursor(ids, cursorId, horizontal), !typing); return; }
+    if (!film && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+      event.preventDefault();
+      move(verticalTarget(body.current, cursorId, event.key === 'ArrowDown' ? 1 : -1), !typing);
+    } else if (event.key === 'Enter' && typing && cursorId) { event.preventDefault(); openTab(cursorId); }
   }
- }, [open]);
- const matches = tabs.filter(tab => `${tab.title} ${tab.draft} ${groups.find(group => group.id === tab.groupId)?.title ?? ''}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
- const ordered = [
-  ...matches.filter(tab => tab.pinned),
-  ...matches.filter(tab => !tab.pinned && !tab.groupId),
-  ...groups.flatMap(group => matches.filter(tab => tab.groupId === group.id)),
- ];
- function items(tab: Tab): MenuEntry[] {
-  return [
-   { id: 'pin', label: tab.pinned ? 'Unpin tab' : 'Pin tab', icon: 'pin', onSelect: () => onPin(tab.id) },
-   { kind: 'submenu', id: 'group', label: 'Move to group', items: [
-    { id: 'create', label: 'Create group', icon: 'plus', onSelect: () => onCreateGroup(tab.id) },
-    { kind: 'separator', id: 'group-separator' },
-    { id: 'none', label: 'No group', checked: !tab.groupId, onSelect: () => onMoveGroup(tab.id) },
-    ...groups.map(group => ({ id: group.id, label: group.title, checked: tab.groupId === group.id, onSelect: () => onMoveGroup(tab.id, group.id) })),
-   ] },
-   ...(onCloseTab ? [{ kind: 'separator' as const, id: 'close-separator' }, { id: 'close', label: 'Close tab', icon: 'close' as const, onSelect: () => onCloseTab(tab.id) }] : []),
-  ];
- }
- return <dialog ref={dialog} className="tab-overview" data-size={tabs.length <= 2 ? "compact" : "full"} aria-label="All tabs overview" onCancel={onClose} onClose={() => {
-  onClose();
-  // Safari pointer clicks do not focus buttons, so the owner supplies the reliable return target.
-  const target = returnFocus?.current ?? previousFocus.current;
-  if (target?.isConnected) target.focus();
- }} onClick={event => {
-  if (event.target !== event.currentTarget) return;
-  const bounds = event.currentTarget.getBoundingClientRect();
-  if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) onClose();
- }}>
-  <div className="overview-header"><div className="overview-heading"><SectionHeading>Tabs</SectionHeading><span className="overview-count">{tabs.length}</span></div><div className="overview-filter"><Icon name="search" size="sm"/><TextInput ref={search} aria-label="Filter tabs" placeholder="Find tabs…" value={query} onChange={event => setQuery(event.target.value)}/></div><div className="overview-actions"><IconButton label="New tab" icon="plus" onClick={() => { onNew(); onClose(); }}/><IconButton label="Close all tabs overview" icon="close" onClick={onClose}/></div></div>
-  <div className="overview-scroll">
-   <div className="overview-grid">
-    {open && ordered.map(tab => {
-     const known = summaries[tab.id];
-     const summary = tab.draft || known?.digest || known?.firstLine;
-     const mark = known?.mark;
-     return <ContextMenu key={tab.id} label={`Actions for ${tab.title} preview`} items={items(tab)}><div className="overview-card" data-active={tab.id === activeId}>
-     <Button className="overview-preview" aria-label={`Open ${tab.title}`} aria-pressed={tab.id === activeId} onClick={() => { onSelect(tab.id); onClose(); }}>
-      <span className="overview-content">{summary ? <span className="overview-draft">{summary}</span> : <span className="overview-empty"><Icon name="tab" size="sm"/><span>No work yet</span></span>}{mark && <span className="overview-work-state">{markWords[mark]}</span>}</span>
-     </Button>
-     <div className="overview-card-footer"><div className="overview-card-label">{tab.pinned && <Icon name="pin" size="xs"/>}<span className="overview-card-title">{tab.title}</span>{tab.id === activeId && <span className="overview-current"><Icon name="check" size="xs"/><span>Current</span></span>}{tab.groupId && <span className="overview-group-name">{groups.find(group => group.id === tab.groupId)?.title}</span>}</div><DropdownMenu label={`Organize ${tab.title}`} items={items(tab)}><IconButton className="overview-card-menu" label={`Organize ${tab.title}`} icon="more" iconSize="xs"/></DropdownMenu></div>
-    </div></ContextMenu>; })}
-   </div>
-   {!matches.length && <Text className="overview-no-results">No matching tabs</Text>}
-  </div>
- </dialog>;
+
+  function items(tab: Tab): MenuEntry[] {
+    return [
+      { id: 'pin', label: tab.pinned ? 'Unpin tab' : 'Pin tab', icon: 'pin', onSelect: () => onPin(tab.id) },
+      { kind: 'submenu', id: 'group', label: 'Move to group', items: [
+        { id: 'create', label: 'Create group', icon: 'plus', onSelect: () => onCreateGroup(tab.id) },
+        { kind: 'separator', id: 'group-separator' },
+        { id: 'none', label: 'No group', checked: !tab.groupId, onSelect: () => onMoveGroup(tab.id) },
+        ...groups.map(group => ({ id: group.id, label: group.title, checked: tab.groupId === group.id, onSelect: () => onMoveGroup(tab.id, group.id) })),
+      ] },
+      ...(onCloseTab ? [{ kind: 'separator' as const, id: 'close-separator' }, { id: 'close', label: 'Close tab', icon: 'close' as const, onSelect: () => onCloseTab(tab.id) }] : []),
+    ];
+  }
+
+  return <dialog ref={dialog} className="tab-overview" data-view={view} aria-label="All tabs overview" onCancel={onClose} onKeyDown={onKeyDown} onClose={() => {
+    onClose();
+    // Safari pointer clicks do not focus buttons, so the owner supplies the reliable return target.
+    const target = returnFocus?.current ?? previousFocus.current;
+    if (target?.isConnected) target.focus();
+  }}>
+    <div className="overview-bar" data-tauri-drag-region>
+      {isMac && <span className="overview-lights" aria-hidden="true"/>}
+      <label className="overview-search"><Icon name="search" size="sm"/><TextInput ref={search} aria-label="Filter tabs" placeholder={searchPlaceholder(tabs.length)} value={query} onChange={event => setQuery(event.target.value)}/></label>
+      {/* A pointer click hands the keyboard back to the search field, so the arrows then move the cursor; Space and Enter (detail 0) stay on the switch. */}
+      <div className="overview-view" onClick={event => { if (event.detail > 0) search.current?.focus(); }}><Segmented label="Overview view" options={[...views]} value={view} onChange={changeView}/></div>
+      <Button className="overview-done" onClick={onClose}>Done</Button>
+    </div>
+    {view === 'grid'
+      ? <div ref={body} className="overview-body">
+        {open && sections.map(section => {
+          const splittable = section.tabs.filter(tab => !tab.split && !tab.pinned).length;
+          // Dropping a card on a group's section regroups it; "Other tabs" ungroups it. Pinned tabs sit outside groups.
+          const target = section.kind === 'pinned' ? undefined : section.kind === 'group' ? section.id : null;
+          const drop = target === undefined ? {} : {
+            onDragOver: (event: DragEvent) => { if (event.dataTransfer.types.includes(tabDragType)) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; } },
+            onDrop: (event: DragEvent) => { const id = event.dataTransfer.getData(tabDragType); if (id) { event.preventDefault(); onMoveGroup(id, target ?? undefined); } },
+          };
+          return <section key={section.id} className="overview-section" aria-label={section.title} {...drop}>
+            <div className="overview-section-head">
+              <SectionHeading className="overview-section-title">{section.title}</SectionHeading><span className="overview-section-count">{section.tabs.length}</span>
+              {section.kind === 'group' && <Button className="overview-split" disabled={splittable < 2} onClick={() => { onSplitGroup(section.id); onClose(); }}><Icon name="grid" size="micro"/>Open as split</Button>}
+            </div>
+            <div className="overview-grid">
+              {section.tabs.map(tab => <OverviewCard key={tab.id} tab={tab} summaries={summaries} now={now} active={tab.id === activeId} cursor={tab.id === cursorId} menu={items(tab)} onOpen={() => openTab(tab.id)} onClose={onCloseTab && (() => { move(moveCursor(ids, tab.id, 1), false); onCloseTab(tab.id); })}/>)}
+            </div>
+          </section>;
+        })}
+        {!ordered.length && <Text className="overview-no-results">No matching tabs</Text>}
+      </div>
+      : open && (ordered.length
+        ? <OverviewFilmstrip tabs={ordered} summaries={summaries} activeId={activeId} cursorId={cursorId} position={sectionPosition(sections, cursorId)} onCursor={id => move(id, false)} onOpen={openTab}/>
+        : <Text className="overview-no-results">No matching tabs</Text>)}
+  </dialog>;
 }
