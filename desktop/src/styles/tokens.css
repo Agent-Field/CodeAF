@@ -182,6 +182,10 @@
   --favicon-size: 16px;
   --step-row-height: 26px;
   --work-fade: 60%;
+  --diff-font-size: 11.5px;
+  --diff-line-height: 1.65;
+  --diff-edge-fade: 24px;
+  --diff-radius: 10px;
   --asset-dir-max-width: 140px;
   --asset-name-max-width: 220px;
   --asset-sheet-gutter: 20px;
@@ -330,6 +334,7 @@
   --overlay-surface: #f3f0e9;
   --work-diff-add: #39785a1f;
   --work-diff-remove: #a442371a;
+  --diff-add: oklch(.6 .11 155 / .1);
   --asset-mono-1: #8a5a3c;
   --asset-mono-2: #4f6f52;
   --asset-mono-3: #3f6a8a;
@@ -449,6 +454,7 @@
   --overlay-surface: #2b2927;
   --work-diff-add: #87caa41f;
   --work-diff-remove: #e7a0972b;
+  --diff-add: oklch(.6 .11 155 / .1);
   --asset-mono-1: #d9a07e;
   --asset-mono-2: #9cc9a0;
   --asset-mono-3: #8fbbdb;
@@ -534,6 +540,7 @@
   --overlay-surface: #2b2927;
   --work-diff-add: #87caa41f;
   --work-diff-remove: #e7a0972b;
+  --diff-add: oklch(.6 .11 155 / .1);
   --asset-mono-1: #d9a07e;
   --asset-mono-2: #9cc9a0;
   --asset-mono-3: #8fbbdb;

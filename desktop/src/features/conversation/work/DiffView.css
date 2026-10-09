@@ -1,0 +1,14 @@
+/* The edit diff: a terminal-ground card whose lines never wrap; it scrolls sideways with a fade at the right edge while more lies that way. */
+.work-diff-rows { box-sizing: border-box; width: 100%; max-height: var(--tool-output-max-height); overflow: auto; background: var(--term); border-radius: var(--diff-radius); box-shadow: inset 0 0 0 var(--border-width) var(--line); font-family: var(--font-mono); font-size: var(--diff-font-size); line-height: var(--diff-line-height); }
+.work-diff-rows[data-more="true"] { -webkit-mask-image: linear-gradient(to right, black calc(100% - var(--diff-edge-fade)), transparent); mask-image: linear-gradient(to right, black calc(100% - var(--diff-edge-fade)), transparent); }
+.work-diff-body { width: max-content; min-width: 100%; padding-block-end: var(--space-tight); }
+.work-diff-row { display: flex; padding-inline: var(--space-3); white-space: pre; color: var(--ink-2); }
+.work-diff-sign { flex: none; width: 2ch; user-select: none; }
+.work-diff-text { min-width: 0; }
+.work-diff-row[data-kind="context"] { color: var(--ink-2); }
+.work-diff-row[data-kind="gap"] { padding-block: var(--space-half); color: var(--ink-3); }
+.work-diff-row[data-kind="add"] { background: var(--diff-add); color: var(--ink); }
+.work-diff-row[data-kind="remove"] { background: var(--danger-soft); color: var(--ink); }
+.work-diff-row[data-kind="add"] .work-diff-sign { color: var(--success); }
+.work-diff-row[data-kind="remove"] .work-diff-sign { color: var(--danger); }
+.work-diff-rows:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
