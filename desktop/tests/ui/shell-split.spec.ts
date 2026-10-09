@@ -1,3 +1,4 @@
+import { openPage } from './support/shell-navigation';
 import { test, expect, type Page } from '@playwright/test';
 import { expectAccessible } from './contracts';
 import { installMockEngine } from './support/mock-engine';
@@ -263,7 +264,7 @@ test('the Design system page shows the drag targets, the pane header and the com
   for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.goto('/');
-    await page.getByRole('button', { name: 'Design system', exact: true }).click();
+    await openPage(page, 'Design system');
     const drag = page.locator('[data-drag-specimen]');
     await drag.scrollIntoViewIfNeeded();
     await expect(drag.locator('.workspace-tab[data-drop="group"]')).toHaveCSS('box-shadow', /1\.5px/);

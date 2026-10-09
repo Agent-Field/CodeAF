@@ -1,3 +1,4 @@
+import { openPage } from './support/shell-navigation';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { expectAccessible, expectNoUnstyledControls, expectThemedSurface, menuSurface, tokenColor } from './contracts';
 import { installMockEngine, type MockEngine } from './support/mock-engine';
@@ -341,7 +342,7 @@ test('the Design system page shows the menus, the closing states and the Inbox, 
   for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.goto('/');
-    await page.getByRole('button', { name: 'Design system', exact: true }).click();
+    await openPage(page, 'Design system');
     const sheet = page.locator('[data-closing-specimen]');
     await sheet.scrollIntoViewIfNeeded();
     await expect(sheet.locator('.closing-specimen-menu')).toHaveCount(4);

@@ -1,8 +1,9 @@
+import { openAppearance, openPage } from './support/shell-navigation';
 import design from '../../src/design/tokens.json' with { type: 'json' };
 import { test, expect, type Page } from '@playwright/test';
 import { expectAccessible, expectNoUnstyledControls, expectThemedSurface, tokenColor, tokenColorIn } from './contracts';
 async function chooseTheme(page: Page, label: string) {
- await page.getByRole('combobox',{name:'Theme'}).click();
+ await openAppearance(page);
  await page.getByRole('option',{name:label,exact:true}).click();
  await expect(page.getByRole('listbox')).not.toBeVisible();
  await expect(page.locator('#root')).not.toHaveAttribute('aria-hidden','true');
@@ -34,7 +35,7 @@ for (const theme of ['Light','Dark','System']) {
   await expectAccessible(page);
   await input.fill('no match'); await expect(page.getByText('No matching commands')).toBeVisible();
   await page.keyboard.press('Escape');
-  await page.getByRole('button',{name:'Design system',exact:true}).click();
+  await openPage(page, 'Design system');
   await expectAccessible(page);
   await expectNoUnstyledControls(page);
   await page.setViewportSize({width:800,height:560});
@@ -42,17 +43,17 @@ for (const theme of ['Light','Dark','System']) {
   if(theme==='System') {
    await page.emulateMedia({colorScheme:'dark'});
    await expect(page.locator('html')).toHaveAttribute('data-resolved-theme','dark');
-   await trigger.click(); await expectThemedSurface(page,page.getByRole('listbox'));
+   await openAppearance(page); await expectThemedSurface(page,page.getByRole('listbox'));
   }
  });
 }
 test('navigation is still; action motion is bounded; collapse has a real transition', async ({page})=>{
  await page.goto('/');
- const navigation=page.getByRole('button',{name:'Activity',exact:true});
+ const navigation=page.getByRole('button',{name:'Inbox',exact:true});
  await navigation.hover();
  await expect(navigation.locator('.app-icon')).toHaveAttribute('data-motion','none');
  expect(await navigation.locator('svg').evaluate(el=>el.getAnimations({subtree:true}).length)).toBe(0);
- await page.getByRole('button',{name:'Design system',exact:true}).click();
+ await openPage(page, 'Design system');
  const action=page.getByRole('button',{name:'Open command palette',exact:true});
  await action.hover();
  await expect(action.locator('.app-icon')).toHaveCSS('transform',`matrix(1, 0, 0, 1, ${parseFloat(design.foundation['motion-directional-travel'])}, 0)`);
@@ -68,16 +69,16 @@ test('navigation is still; action motion is bounded; collapse has a real transit
 test('reduced motion disables every shared transition and keyframe',async({page})=>{
  await page.emulateMedia({reducedMotion:'reduce'}); await page.goto('/');
  await expect(page.locator('.app-shell')).toHaveCSS('transition-duration','0s, 0s');
- await page.getByRole('button',{name:'Design system',exact:true}).click();
+ await openPage(page, 'Design system');
  await page.getByRole('button',{name:'Open command palette',exact:true}).hover();
  await expect(page.getByRole('button',{name:'Open command palette',exact:true}).locator('.app-icon')).toHaveAttribute('data-motion','none');
- await page.getByRole('combobox',{name:'Theme'}).click();
+ await openAppearance(page);
  await expect(page.getByRole('listbox')).toHaveCSS('animation-duration','0s');
  await page.keyboard.press('Escape'); await page.keyboard.press('Control+k');
  await expect(page.getByRole('dialog')).toHaveCSS('animation-duration','0s');
 });
 test('theme menu keyboard selection, persistence, outside dismissal and selection state',async({page})=>{
- await page.goto('/'); const trigger=page.getByRole('combobox',{name:'Theme'});
+ await page.goto('/'); await openPage(page, 'Settings'); const trigger=page.getByRole('combobox',{name:'Theme'});
  await trigger.focus(); await page.keyboard.press('Enter');
  await expect(page.getByRole('option',{name:'System appearance'})).toBeFocused();
  await page.keyboard.press('End');
@@ -91,15 +92,15 @@ test('theme menu keyboard selection, persistence, outside dismissal and selectio
  await expectThemedSurface(page, page.getByRole('listbox'));
  await page.mouse.click(outside!.x+outside!.width/2,outside!.y+outside!.height/2);
  await expect(page.getByRole('listbox')).not.toBeVisible();
- await page.getByRole('button',{name:'Activity',exact:true}).click();
- await expect(page.getByRole('button',{name:'Activity',exact:true})).toHaveAttribute('aria-current','page');
+ await openPage(page, 'Activity');
+ await expect(page.getByRole('heading',{name:'Activity',exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Now',exact:true})).not.toHaveAttribute('aria-current','page');
 });
 
 for (const theme of ['Light','Dark']) {
  test(`${theme}: shared hover, press, selection and disabled states`,async({page,browserName})=>{
   await page.goto('/'); await chooseTheme(page,`${theme} appearance`);
-  const quick=page.getByRole('button',{name:'Activity',exact:true});
+  const quick=page.getByRole('button',{name:'Inbox',exact:true});
   await expect(quick).not.toHaveAttribute('aria-current','page');
   await quick.hover(); await expect(quick).toHaveCSS('background-color',await tokenColor(page,'tab-hover'));
   await page.mouse.down(); await page.mouse.up();
@@ -107,9 +108,8 @@ for (const theme of ['Light','Dark']) {
   await expect(quick).toHaveAttribute('aria-current','page');
   await expect(quick).toHaveCSS('background-color',await tokenColor(page,'tab'));
   await expect(page.getByRole('button',{name:'Now',exact:true}).first()).not.toHaveAttribute('aria-current','page');
-  const address=page.getByRole('button',{name:'codeaf',exact:true});
-  await address.hover(); await expect(address).toHaveCSS('background-color',await tokenColor(page,'field-2'));
-  await page.getByRole('button',{name:'Design system',exact:true}).click();
+  await expect(page.getByRole('button',{name:'codeaf',exact:true})).toHaveCount(0);
+  await openPage(page, 'Design system');
   // Design v3 controls: hover changes only the fill, press darkens it, focus is the accent ring and halo.
   const controls=page.locator('.controls-specimen');
   const quiet=controls.getByRole('button',{name:'Deny',exact:true});

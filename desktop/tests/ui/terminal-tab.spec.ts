@@ -1,3 +1,4 @@
+import { openPage } from './support/shell-navigation';
 import { test, expect, type Page } from '@playwright/test';
 import { expectAccessible } from './contracts';
 import { installMockEngine, type Scenario } from './support/mock-engine';
@@ -305,7 +306,7 @@ test('the tab is accessible in light and dark, and the specimen draws both cards
     await page.goto('about:blank');
   }
   await page.goto('/');
-  await page.getByRole('button', { name: 'Design system', exact: true }).click();
+  await openPage(page, 'Design system');
   const cards = page.locator('.terminal-specimen-card');
   await expect(cards).toHaveCount(2);
   await expect(cards.first().locator('.xterm-rows')).toContainText('BenchmarkLoadAll-10');

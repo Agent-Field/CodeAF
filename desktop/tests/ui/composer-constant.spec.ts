@@ -1,3 +1,4 @@
+import { openPage } from './support/shell-navigation';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { installMockEngine } from './support/mock-engine';
 import { plainReply } from './support/scenarios';
@@ -14,7 +15,7 @@ const ring = (field: Locator) => field.evaluate((el) => getComputedStyle(el).box
 async function open(page: Page) {
   await installMockEngine(page, { ...plainReply(), initial: { id: 'specimen', entries: [] } });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Design system', exact: true }).click();
+  await openPage(page, 'Design system');
   const section = page.getByLabel('Attachment try-out');
   await section.scrollIntoViewIfNeeded();
   return section;

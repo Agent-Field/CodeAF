@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent } from 'react';
-import { Button, KeyboardShortcut, PageHeading, SectionHeading, Segmented, Text, TextInput } from '../../components/ui';
+import { Button, KeyboardShortcut, PageHeading, SectionHeading, Segmented, Text, TextInput, ThemeSelect } from '../../components/ui';
 import type { CatalogModel, ModelRole, PlacesSetting } from '../chat/engine-client';
 import { groupRoles, roleStateLine } from './groups';
 import { ModelSelect } from './ModelSelect';
@@ -124,6 +124,7 @@ export function SettingsPage() {
     <div className="settings-page">
       <header className="settings-head">
         <PageHeading>{SETTINGS_TAB_TITLE}</PageHeading>
+        <section className="models-section" aria-label="Appearance"><SectionHeading>Appearance</SectionHeading><ThemeSelect/></section>
         <Receipt receipt={settings.receipt} />
       </header>
       <Text className="settings-note">These settings are provisional. Each job starts on the default model, and the defaults are engineering choices until Settings is designed.</Text>
