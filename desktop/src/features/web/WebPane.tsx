@@ -1,10 +1,12 @@
-import { useEffect, useSyncExternalStore } from 'react';
+import { useContext, useEffect, useSyncExternalStore } from 'react';
 import { Button, Icon, IconButton, Text } from '../../components/ui';
 import { openUrl } from '../../design/native';
 import type { WebFailure, WebNotice } from '../../design/nativeWeb';
 import { LoadingLine } from '../tabs/LoadingLine';
 import type { PaneRenderProps } from '../tabs/kinds/slots';
 import { refusalSentence, siteOf } from './address';
+import { TabsApiContext } from '../tabs/context';
+import { useWebFavicons } from './favicons';
 import { AddressField } from './AddressField';
 import { webHost, subscribeWebHost } from './host';
 import { capture } from './shots';
@@ -33,6 +35,8 @@ function failureText(failure: WebFailure, url: string): { title: string; detail:
  */
 export function WebPane({ pane, actions }: PaneRenderProps) {
   const url = pane.target?.url;
+  const api = useContext(TabsApiContext);
+  const favicons = useWebFavicons(api?.workspaceKey, [pane]);
   const web = useWebPane(pane.id, url);
   const host = useSyncExternalStore(subscribeWebHost, webHost);
   const state = web.state;
@@ -65,7 +69,7 @@ export function WebPane({ pane, actions }: PaneRenderProps) {
       {loading
         ? <IconButton icon="close" iconSize="sm" label="Stop loading" onClick={() => step(pane.id, 'stop')}/>
         : <IconButton icon="reload" iconSize="sm" label="Reload" disabled={!live} onClick={() => step(pane.id, 'reload')}/>}
-      <AddressField url={shown} status={state?.notice ? noticeLine[state.notice] : undefined} onGo={go}/>
+      <AddressField favicon={favicons.get(pane.id)} url={shown} status={state?.notice ? noticeLine[state.notice] : undefined} onGo={go}/>
       {host?.startConversationWithPage && shown && <IconButton icon="chatPlus" iconSize="sm" label="Start a conversation with this page" onClick={() => void talkAboutPage()}/>}
       <IconButton icon="external" iconSize="sm" label="Open in browser" disabled={!shown} onClick={() => shown && void openUrl(shown)}/>
     </div>

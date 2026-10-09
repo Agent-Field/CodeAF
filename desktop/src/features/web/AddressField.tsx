@@ -5,6 +5,7 @@ import { addressParts, toAddress } from './address';
 
 type Props = {
   url?: string;
+  favicon?: string;
   /** A transient line shown in place of the path (a refused download, a blocked popup). */
   status?: string;
   onGo: (url: string) => void;
@@ -16,7 +17,7 @@ type Props = {
  * input holding the whole address. Enter goes, Escape puts the address back.
  * An empty pane starts in the input.
  */
-export function AddressField({ url, status, onGo }: Props) {
+export function AddressField({ url, favicon, status, onGo }: Props) {
   const [editing, setEditing] = useState(!url);
   const [value, setValue] = useState(url ?? '');
   const [refusal, setRefusal] = useState('');
@@ -40,7 +41,7 @@ export function AddressField({ url, status, onGo }: Props) {
   if (!editing && url) {
     const { site, rest } = addressParts(url);
     return <span ref={holder} className="web-address-holder"><Button className="web-address" aria-label={`Address ${url}. Edit address`} onClick={() => setEditing(true)}>
-      <KindIcon kind="web" title={site}/>
+      <KindIcon favicon={favicon} kind="web" title={site}/>
       <span className="web-address-site">{site}</span>
       <span className="web-address-rest" role={status ? 'status' : undefined}>{status ?? rest}</span>
     </Button></span>;
