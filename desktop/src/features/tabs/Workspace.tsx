@@ -17,6 +17,7 @@ import { useCloseStopKey } from './closing/useCloseStopKey';
 import { inboxFocus } from './closing/inboxFocus';
 import { useBackground } from './closing/useBackground';
 import { useClosing } from './closing/useClosing';
+import { useOverviewGesture } from './useOverviewGesture';
 import { useStructuralUndo } from './undo/useStructuralUndo';
 import { TabsApiContext, type TabsApi } from './context';
 import type { PaneActions } from './kinds/slots';
@@ -112,6 +113,9 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
     dispatch(existing ? { type: 'select', id: existing } : { type: 'open', tab, background: false });
   }
   const [overviewOpen, setOverviewOpen] = useState(false);
+  const gestureRoot = useRef<HTMLElement>(null);
+  const openOverview = useCallback(() => setOverviewOpen(true), []);
+  useOverviewGesture(gestureRoot, enabled && !overviewOpen, openOverview);
   const [switcher, setSwitcher] = useState<Switcher>(null);
   const switcherRef = useRef<Switcher>(null);
   const switcherFocus = useRef<HTMLDivElement>(null);
@@ -205,8 +209,8 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
     },
     onAddToPlace: shell && pane.sessionFile ? () => { const chatId = chatIdFromSessionFile(pane.sessionFile!); if (chatId) shell.openChooser({ kind: 'file', chatIds: [chatId], chatTitle: pane.title, exclude: [] }); } : undefined,
   });
-  return <TabsApiContext.Provider value={api}><section className="tab-workspace" aria-label="Conversation workspace">
-    <TabStrip api={api} leading={leading} overviewTrigger={overviewTrigger} onOverview={() => setOverviewOpen(true)}/>
+  return <TabsApiContext.Provider value={api}><section ref={gestureRoot} className="tab-workspace" aria-label="Conversation workspace">
+    <TabStrip api={api} leading={leading} overviewTrigger={overviewTrigger} onOverview={openOverview}/>
     <NewConversationPlaceContext.Provider value={place === 'now' || place === 'root' ? undefined : place}><FirstTurnContext.Provider value={firstTurn}><NewTabHostContext.Provider value={newTabHost}><HistoryHostContext.Provider value={historyHost}><PaneGrid tab={active} tabs={state.tabs} dispatch={dispatch} actionsFor={actionsFor} retainedPaneIds={state.closed.flatMap(tab => panesOf(tab).map(pane => pane.id))}/></HistoryHostContext.Provider></NewTabHostContext.Provider></FirstTurnContext.Provider></NewConversationPlaceContext.Provider>
     <GroupOffer api={api}/>
     {archived && <ArchiveToast count={archived.tabs.length} onDismiss={dismissArchived} onReview={() => { dispatch(openKindAction(state, 'history')); dismissArchived(); }} onRestore={() => { restoreArchived(archived, dispatch); dismissArchived(); }}/>}
