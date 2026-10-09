@@ -86,6 +86,7 @@ func factoryNumber(it factory.Item) int {
 // the order's own order among themselves.
 func (a *app) factoryPlace(all bool) {
 	snap := a.fp.snap
+	a.fp.posGen++
 	if all || a.fp.pos == nil {
 		a.fp.pos, a.fp.posState, a.fp.posTop = map[int]int{}, map[int]factory.State{}, 0
 		for _, g := range factoryGroups {

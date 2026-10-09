@@ -35,6 +35,13 @@ import (
 // factoryMarkdown is text rendered as Markdown at w cells, painted, with a run
 // of blank rows kept as one and none at either end: A GAP ASKED FOR TWICE IS
 // STILL ONE GAP.
+//
+// IT IS RENDERED ONCE PER TEXT, WIDTH AND PAINT, not once per frame (owner's
+// floor, 2026-10-09): the peek and the issue pane drew the body and every
+// comment through the Markdown parser on every pointer step, a quarter of the
+// item page's frame. The rendered rows are kept by what they were rendered
+// from ([factoryMDCache]) and handed out as a copy, because a caller may cut
+// a row of them in place.
 func (a *app) factoryMarkdown(text string, w int) []string {
 	if strings.TrimSpace(text) == "" || w <= 0 {
 		return nil
@@ -45,6 +52,32 @@ func (a *app) factoryMarkdown(text string, w int) []string {
 	if a.pal.profile == tokens.NoColor {
 		st = nil
 	}
+	key := factoryMDKey{text: text, w: w, styler: st}
+	if rows, ok := a.fp.md[key]; ok {
+		return append([]string(nil), rows...)
+	}
+	out := factoryMarkdownRows(text, w, st)
+	if a.fp.md == nil || len(a.fp.md) >= factoryMDCache {
+		a.fp.md = make(map[factoryMDKey][]string, factoryMDCache)
+	}
+	a.fp.md[key] = out
+	return append([]string(nil), out...)
+}
+
+// factoryMDCache is how many rendered texts the page keeps: a floor's worth
+// of peeks a pointer sweeps through, each with its comments. Past it the
+// whole cache is dropped and refilled, which costs one frame's renders.
+const factoryMDCache = 256
+
+// factoryMDKey is what a rendered text was rendered from.
+type factoryMDKey struct {
+	text   string
+	w      int
+	styler *tokens.Styler
+}
+
+// factoryMarkdownRows is [app.factoryMarkdown]'s render, uncached.
+func factoryMarkdownRows(text string, w int, st *tokens.Styler) []string {
 	rows := prose.Render(text, prose.Options{Width: w, Measure: w, Styler: st, LinksAsText: true})
 	out := make([]string, 0, len(rows))
 	blank := true
