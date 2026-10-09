@@ -451,6 +451,8 @@ func (a *Agent) teamBoundary() string {
 	if profile == "" {
 		return ""
 	}
+	// Asked before the seat's lock: the door reads the floor's store.
+	lead := a.factoryLead()
 	a.team.mu.Lock()
 	roles := a.teamRolesLocked(profile)
 	news := a.teamNewsLocked(profile, roles)
@@ -465,7 +467,7 @@ func (a *Agent) teamBoundary() string {
 		a.team.mu.Lock()
 		roles = a.teamRolesLocked(profile)
 	}
-	role := teamRoleBlock(roles, a.team.file)
+	role := teamRoleBlock(roles, a.team.file, lead)
 	var releases []string
 	if a.team.file != nil {
 		for _, t := range a.team.file.Teams {
@@ -501,7 +503,7 @@ func (a *Agent) teamBoundary() string {
 	// seat's lock, so a restart keeps the clock (team_wrapup.go).
 	a.teamWrapUpNote(profile)
 	a.setTeamRole(role)
-	a.armTeamTools(roles)
+	a.armTeamTools(roles, lead)
 	// A handle that is still the word list's guess is chosen once, beside the
 	// turn (handlepick.go).
 	a.teamHandlePass(roles)
@@ -509,14 +511,26 @@ func (a *Agent) teamBoundary() string {
 }
 
 // armTeamTools puts the verbs these roles give onto the belt.
-func (a *Agent) armTeamTools(roles []teamRole) {
+func (a *Agent) armTeamTools(roles []teamRole, lead bool) {
 	var arriving []bare.Tool
 	manager, member := false, false
 	for _, role := range roles {
 		manager = manager || role.manager
 		member = member || (!role.manager && role.managed)
 	}
-	if manager {
+	switch {
+	case lead:
+		// A FACTORY ITEM'S MANAGER HAS THE READS ALONE: its members are the
+		// steps the floor's runner runs, and a directive, a stop or a start of
+		// its own would drive what the runner owns (the owner's run of
+		// 2026-10-09 sent @plan a directive while the runner ran plan).
+		for _, tool := range a.managerTools() {
+			if tool.Name == teamStatusToolName || tool.Name == teamReadToolName {
+				arriving = append(arriving, tool)
+			}
+		}
+		member = false
+	case manager:
 		arriving = append(arriving, a.managerTools()...)
 		arriving = append(arriving, a.packetTools()...)
 		arriving = append(arriving, a.wrapUpTools()...)
@@ -524,7 +538,7 @@ func (a *Agent) armTeamTools(roles []teamRole) {
 	if member {
 		arriving = append(arriving, a.memberTools()...)
 	}
-	if manager || member {
+	if (manager || member) && !lead {
 		arriving = append(arriving, a.raiseTools()...)
 	}
 	allowed := make(map[string]bool, len(arriving))
@@ -1416,10 +1430,14 @@ const (
 //
 // It is composed off the teams file the boundary has just read, under the
 // seat's lock, so it costs no disk of its own.
-func teamRoleBlock(roles []teamRole, file *teams.File) string {
+func teamRoleBlock(roles []teamRole, file *teams.File, lead bool) string {
 	var parts []string
 	for _, role := range roles {
 		switch {
+		case role.manager && lead:
+			parts = append(parts, teamFactoryLeadRole(role, file))
+		case lead:
+			// A factory item's manager is no step's member.
 		case role.manager:
 			parts = append(parts, teamManagerRole(role, file))
 		case role.managed:
@@ -1427,6 +1445,55 @@ func teamRoleBlock(roles []teamRole, file *teams.File) string {
 		}
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+// teamFactoryLeadRole is the role of a factory item's manager in the item's
+// team: the members are the steps of the item's run, and the floor's runner
+// runs them.
+func teamFactoryLeadRole(role teamRole, file *teams.File) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "You lead the team %q. Its members are the steps of this item's run, and the factory's runner runs them: it starts each step, hands it its ask and reports it here. "+
+		"Read a step (team_status, team_read) to tell the person where it stands; never send a step work, stop it or start one.\n", role.name)
+	b.WriteString(teamRoster(role, file))
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// factoryLeadSeat is whether a conversation manages a factory item, once
+// known. A no is asked again after [factoryLeadRecheck], because the item may
+// take the conversation as its manager after it opened.
+type factoryLeadSeat struct {
+	mu    sync.Mutex
+	known bool
+	is    bool
+	asked time.Time
+}
+
+// factoryLeadRecheck is how long a conversation that manages no item waits
+// before its run door is asked again.
+const factoryLeadRecheck = 10 * time.Second
+
+// factoryLead says whether this conversation is the manager of a factory
+// item, asked of its run door ([RunManagerDoor]); false where the door cannot
+// say. A yes is kept: a conversation never stops managing its item.
+func (a *Agent) factoryLead() bool {
+	door, ok := a.config.FactoryRun.(RunManagerDoor)
+	if !ok {
+		return false
+	}
+	s := &a.lead
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.known {
+		return s.is
+	}
+	if !s.asked.IsZero() && time.Since(s.asked) < factoryLeadRecheck {
+		return false
+	}
+	s.asked = time.Now()
+	if door.Manages(a.config.SessionFile) {
+		s.known, s.is = true, true
+	}
+	return s.is
 }
 
 func teamManagerRole(role teamRole, file *teams.File) string {

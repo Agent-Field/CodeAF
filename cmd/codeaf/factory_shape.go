@@ -25,9 +25,9 @@ import (
 //     sets while the person talks to it is made at once through the floor's
 //     edit door ([factory.Seam.Edit]), before a run or on the stages a run has
 //     not started;
-//   - the runner's shaping turn ([shapeTurns], wired as Options.Shape and
-//     Options.Reshape): at launch, and on a steer during a run, the runner
-//     gives the manager ONE turn of its own conversation with an ask
+//   - the runner's shaping turn ([shapeTurns], wired as Options.Shape): at
+//     launch of an item the manager never shaped, the runner gives the
+//     manager ONE turn of its own conversation with an ask
 //     (`Shape the run for this item now. …`), at the cheap thinking unless the
 //     item reads as large (or, when a window here holds the conversation,
 //     through that window at the person's own thinking), and collects the edit its `factory_run` call made,
@@ -39,11 +39,13 @@ import (
 // under its own write, with the phases rebuilt in the same step.
 
 // The runner's asks, said once so the manual and the tests quote the same
-// words.
+// words. THERE IS NO ASK ON A STEER: what the person types in the manager's
+// chat is already a turn of the manager, which reshapes with `factory_run`
+// when that is what they meant; a second turn on the same words was the
+// doubled answer of the owner's run of 2026-10-09.
 const (
 	shapeAsk     = "Shape the run for this item now."
 	shapeAskSaid = " What the person said: %s"
-	reshapeAsk   = "The person said: %s · reshape the stages not yet started if that is what they mean, else leave them"
 )
 
 // shapeAskFor is the launch's ask, with what the person typed before the run.
@@ -137,11 +139,6 @@ func liveManagerTurnFor(transcript string, door session.RunDoor) (managerTurn, b
 // Shape is the runner's Options.Shape: the launch's one turn.
 func (s *shapeTurns) Shape(ctx context.Context, it factory.Item, said []string) (factory.RunEdit, string, error) {
 	return s.run(ctx, it, shapeAskFor(said), false)
-}
-
-// Reshape is the runner's Options.Reshape: one turn on a steer, the tail only.
-func (s *shapeTurns) Reshape(ctx context.Context, it factory.Item, said string) (factory.RunEdit, string, error) {
-	return s.run(ctx, it, fmt.Sprintf(reshapeAsk, strings.Join(strings.Fields(said), " ")), true)
 }
 
 // shapeCheap says whether the shaping turn thinks cheap: always, unless the
@@ -279,6 +276,10 @@ func (d *collectRunDoor) EditRun(_ context.Context, _ string, e factory.RunEdit)
 	return next, lines, nil
 }
 
+// Manages says the conversation on this turn manages an item: the shaping
+// turn is given only to an item's manager ([session.RunManagerDoor]).
+func (d *collectRunDoor) Manages(string) bool { return true }
+
 // collected is every edit the turn made, as one.
 func (d *collectRunDoor) collected() factory.RunEdit {
 	d.mu.Lock()
@@ -286,7 +287,14 @@ func (d *collectRunDoor) collected() factory.RunEdit {
 	return d.got
 }
 
-// mergeRunEdit is two edits as one, the later winning where both set a stage.
+// mergeRunEdit is two edits as one, THE LATER WINNING wherever both touch a
+// stage: a later ask or thinking replaces the earlier one, and a later switch
+// undoes an earlier one, so a stage skipped and then switched on again in the
+// same turn is in neither list, and the edit applied to the item the turn
+// started from leaves it exactly as the manager's last call left it. (The
+// owner's run of 2026-10-09: skip then switch on was kept as both lists, which
+// [factory.Edit] applies on before skip, so the stages ended off while the
+// manager had been told they were on.)
 func mergeRunEdit(a, b factory.RunEdit) factory.RunEdit {
 	out := a
 	out.Add = append(append([]factory.Added(nil), a.Add...), b.Add...)
@@ -305,13 +313,41 @@ func mergeRunEdit(a, b factory.RunEdit) factory.RunEdit {
 	}
 	out.Ask = merge(a.Ask, b.Ask)
 	out.Thinking = merge(a.Thinking, b.Thinking)
-	out.On = append(append([]string(nil), a.On...), b.On...)
-	out.Skip = append(append([]string(nil), a.Skip...), b.Skip...)
+	out.On = switchList(a.On, b.Skip, b.On)
+	out.Skip = switchList(a.Skip, b.On, b.Skip)
 	if strings.TrimSpace(b.Why) != "" {
 		out.Why = b.Why
 	}
 	if strings.TrimSpace(b.By) != "" {
 		out.By = b.By
+	}
+	return out
+}
+
+// switchList is the earlier names with every one the later edit switched the
+// other way taken out, then the later names, each name once.
+func switchList(earlier, undone, later []string) []string {
+	gone := map[string]bool{}
+	for _, n := range undone {
+		gone[strings.ToLower(strings.TrimSpace(n))] = true
+	}
+	seen := map[string]bool{}
+	var out []string
+	keep := func(n string) {
+		k := strings.ToLower(strings.TrimSpace(n))
+		if k == "" || seen[k] {
+			return
+		}
+		seen[k] = true
+		out = append(out, n)
+	}
+	for _, n := range earlier {
+		if !gone[strings.ToLower(strings.TrimSpace(n))] {
+			keep(n)
+		}
+	}
+	for _, n := range later {
+		keep(n)
 	}
 	return out
 }
@@ -368,14 +404,15 @@ func runDoor(st *store.Store, workspace string) session.RunDoor {
 	if seam.Edit == nil {
 		return nil
 	}
-	return seamRunDoor{st: st, edit: seam.Edit}
+	return seamRunDoor{st: st, workspace: workspace, edit: seam.Edit}
 }
 
 // seamRunDoor finds the item a conversation manages and edits it through the
 // seam.
 type seamRunDoor struct {
-	st   *store.Store
-	edit func(ctx context.Context, id int, e factory.RunEdit) (factory.Item, []string, error)
+	st        *store.Store
+	workspace string
+	edit      func(ctx context.Context, id int, e factory.RunEdit) (factory.Item, []string, error)
 }
 
 // errNotAManager is `factory_run` asked by a conversation that manages no item.
@@ -383,20 +420,29 @@ var errNotAManager = errors.New("this conversation is not the manager of any ite
 
 // EditRun edits the item whose conversation is the asking one.
 func (d seamRunDoor) EditRun(ctx context.Context, conversation string, e factory.RunEdit) (factory.Item, []string, error) {
-	want := sameFileKey(conversation)
-	if want == "" {
-		return factory.Item{}, nil, errNotAManager
-	}
-	items, err := d.st.List()
+	it, err := d.managed(conversation)
 	if err != nil {
 		return factory.Item{}, nil, err
 	}
+	return d.edit(ctx, it.ID, e)
+}
+
+// managed is the item whose conversation is the asking one.
+func (d seamRunDoor) managed(conversation string) (factory.Item, error) {
+	want := sameFileKey(conversation)
+	if want == "" || d.st == nil {
+		return factory.Item{}, errNotAManager
+	}
+	items, err := d.st.List()
+	if err != nil {
+		return factory.Item{}, err
+	}
 	for _, it := range items {
 		if strings.TrimSpace(it.Talk) != "" && sameFileKey(it.Talk) == want {
-			return d.edit(ctx, it.ID, e)
+			return it, nil
 		}
 	}
-	return factory.Item{}, nil, errNotAManager
+	return factory.Item{}, errNotAManager
 }
 
 // sameFileKey is a path as one spelling, links resolved.
@@ -428,7 +474,9 @@ func sameFileKey(path string) string {
 // THE RECIPE STANDING IS A SHAPING TOO: an edit that changes nothing on an
 // item that never ran is recorded as [shapeKeptRecord], so ▶ run afterwards
 // knows the manager read it and does not spend a second turn on it. A turn
-// that did not answer, or an edit refused, records nothing.
+// that did not answer, or an edit refused, records nothing. AN ITEM THE
+// MANAGER ALREADY SHAPED IS ANSWERED WITHOUT A TURN ([sayShapedAlready]): from
+// then on its steps change where the person talks to the manager.
 
 // shapeKeptRecord is the line an item's record ([factory.Item.Adapted]) keeps
 // when the manager read it and kept the recipe. It starts with the manager's
@@ -483,6 +531,9 @@ func itemRan(it factory.Item) bool {
 	return s != nil && (!s.Started.IsZero() || len(s.Phases) > 0)
 }
 
+// sayShapedAlready is `shape steps` on an item the manager already shaped.
+const sayShapedAlready = "the manager already shaped the steps · say what to change in its chat"
+
 // errNothingToShape is `shape steps` on an item whose run is over.
 var errNothingToShape = errors.New("its run is over · there are no steps still to come")
 
@@ -503,6 +554,14 @@ func (d *shapeDoor) Shape(ctx context.Context, id int) (string, error) {
 	switch it.State {
 	case factory.StateLanded, factory.StateShipped:
 		return "", fmt.Errorf("%s: %w", it.Ref(), errNothingToShape)
+	}
+	// AN ITEM THE MANAGER ALREADY SHAPED IS NEVER SHAPED AGAIN UNASKED: the
+	// person changes its steps by saying so in the manager's chat, where the
+	// manager has its pen. A turn here would run on words nobody said (the
+	// owner's run of 2026-10-09 had two such turns undo the steps the person
+	// had just agreed with the manager).
+	if factoryrun.ShapedByManager(it) {
+		return sayShapedAlready, nil
 	}
 	chat := strings.TrimSpace(it.Talk)
 	if chat == "" {
