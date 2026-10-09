@@ -33,36 +33,42 @@
 .file-chip[data-state="missing"] > .app-icon { color: var(--danger); }
 .file-chip[aria-disabled="true"] { cursor: default; }
 
-/* Site icon and link chip. */
-.site-icon { display: inline-grid; place-items: center; flex: 0 0 auto; width: var(--favicon-size); height: var(--favicon-size); border-radius: var(--radius-xs); vertical-align: middle; }
-.site-icon-mono { background: var(--asset-mono-1); color: var(--on-accent); font-size: var(--font-size-caption); font-weight: var(--font-weight-strong); line-height: var(--line-height-tight); }
-.site-icon-mono[data-hue="2"] { background: var(--asset-mono-2); }
-.site-icon-mono[data-hue="3"] { background: var(--asset-mono-3); }
-.site-icon-mono[data-hue="4"] { background: var(--asset-mono-4); }
-.site-icon-mono[data-hue="5"] { background: var(--asset-mono-5); }
-.site-icon-mono[data-hue="6"] { background: var(--asset-mono-6); }
+/* Site icon and link chip (design v3 5.2): a monogram tile, or a favicon the engine already fetched. */
+.site-icon { display: inline-grid; place-items: center; flex: 0 0 auto; width: var(--icon-sm); height: var(--icon-sm); border-radius: var(--radius-xs); vertical-align: middle; }
+.site-icon-mono { background: var(--site-icon-hue-1); color: var(--on-accent); font-family: var(--sans); font-size: var(--site-icon-font-size); font-weight: var(--site-icon-weight); line-height: var(--icon-sm); text-transform: lowercase; }
+.site-icon-mono[data-hue="2"] { background: var(--site-icon-hue-2); }
+.site-icon-mono[data-hue="3"] { background: var(--site-icon-hue-3); }
+.site-icon-mono[data-hue="4"] { background: var(--site-icon-hue-4); }
+.site-icon-mono[data-hue="5"] { background: var(--site-icon-hue-5); }
+.site-icon-mono[data-hue="6"] { background: var(--site-icon-hue-6); }
 .site-icon-favicon { object-fit: contain; }
 
 .link-chip {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-tight);
   max-width: 100%;
   height: var(--chip-height);
-  padding: 0 var(--space-tight) 0 var(--space-three-quarter);
+  padding: 0 var(--link-chip-pad-end) 0 var(--space-three-quarter);
   vertical-align: middle;
   border-radius: var(--radius-chip);
   background: var(--field);
-  color: var(--text);
-  font-size: var(--font-size-label);
+  color: var(--ink);
+  font-size: var(--type-label-size);
+  line-height: var(--type-label-leading);
   text-decoration: none;
   white-space: nowrap;
+  transition: background var(--dur-fast) var(--ease);
 }
-.link-chip:hover { background: var(--control-hover); }
-.link-chip:active { background: var(--control-pressed); }
-.link-chip-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: var(--asset-name-max-width); }
-.link-chip-domain { min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: var(--asset-dir-max-width); color: var(--muted); }
-.text-link .site-icon { margin-inline-end: var(--space-1); position: relative; top: calc(var(--space-half) * -1); }
+.link-chip:hover { background: var(--field-2); }
+.link-chip:active { background: var(--field-2); }
+.link-chip-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: var(--asset-name-max-width); font-weight: var(--type-label-strong); }
+.link-chip-domain { min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: var(--asset-dir-max-width); color: var(--ink-3); }
+
+/* A text link keeps its own words in the accent, led by a smaller site mark. */
+.text-link { color: var(--accent); text-decoration: none; }
+.text-link .site-icon { width: var(--site-icon-text-size); height: var(--site-icon-text-size); border-radius: var(--site-icon-text-radius); margin-inline-end: var(--space-1); }
+.text-link .site-icon-mono { font-size: var(--site-icon-text-font-size); line-height: var(--site-icon-text-size); }
 
 /* Overlays share one dialog shell. */
 .asset-overlay { padding: 0; border: 0; color: var(--text); overflow: hidden; }
