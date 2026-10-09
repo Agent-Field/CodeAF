@@ -140,7 +140,7 @@ There is no Connect button. A new tab is quiet and makes no engine or provider c
 
 Use the canonical authenticated loopback transport. History, tool steps and system notes come from canonical records, never invented optimistic replies. Keep replay sequence IDs, drafts on rejected writes, and status updates for inactive open tabs. Detaching a stream never sends Stop. Pending questions and approvals appear as a card above the composer and are answered only through the engine answer endpoint with honest acknowledgement. Do not place provider keys or transport tokens in renderer storage, URLs, logs or source. Browser startup explicitly selects vite.config.ts; generated JavaScript must not shadow its authenticated proxy.
 
-Group creation is named Create group and is distinct from group destination names. Default group names are unique; collapsed group labels accept drops and moving opens the destination. Extend grouping, engine attach/detach/replay and task panel browser contracts in Chromium and WebKit. Current plan display filters archived runs to avoid joining repeated task IDs from distinct stores; retain canonical IDs.
+Group creation is named Create group and is distinct from group destination names. Default group names are unique; collapsed group labels accept drops and moving opens the destination. Extend grouping, engine attach/detach/replay and task panel browser contracts in Chromium and WebKit. The task panel lists every task the conversation ran, ended runs included, each canonical ID once (the newest record wins, so a repeated ID from an older store never joins a second row); retain canonical IDs.
 
 ## Assistant Markdown contract
 

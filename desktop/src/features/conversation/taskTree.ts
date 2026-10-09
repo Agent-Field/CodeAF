@@ -17,10 +17,22 @@ function childrenByParent(rows: EngineTaskRow[], ids: Set<string>) {
   return byParent;
 }
 
-/** Archived rows belong to a previous run and never show. A row whose parent is
- * missing becomes a root; a corrupt cycle is surfaced as roots, never dropped. */
+/** The conversation's tasks, each id once. Rows arrive oldest run first and the
+ * live run last, so a later row with the same id is the newer record of it. A task
+ * from an ended run stays listed: it is still this conversation's work. */
+export function visibleRows(rows: EngineTaskRow[]): EngineTaskRow[] {
+  const byId = new Map<string, EngineTaskRow>();
+  for (const row of rows) {
+    byId.delete(row.ID);
+    byId.set(row.ID, row);
+  }
+  return [...byId.values()];
+}
+
+/** A row whose parent is missing becomes a root; a corrupt cycle is surfaced as
+ * roots, never dropped. */
 export function buildTaskTree(rows: EngineTaskRow[]): TaskNode[] {
-  const live = rows.filter((row) => !row.Archived);
+  const live = visibleRows(rows);
   const ids = new Set(live.map((row) => row.ID));
   const byParent = childrenByParent(live, ids);
   const seen = new Set<string>();
@@ -49,7 +61,7 @@ export function taskCounts(rows: EngineTaskRow[]): { done: number; total: number
 
 /** The task and its ancestors, outermost first; a cycle stops the walk. */
 export function taskTrail(rows: EngineTaskRow[], taskId: string): EngineTaskRow[] {
-  const byId = new Map(rows.filter((row) => !row.Archived).map((row) => [row.ID, row]));
+  const byId = new Map(visibleRows(rows).map((row) => [row.ID, row]));
   const trail: EngineTaskRow[] = [];
   let row = byId.get(taskId);
   while (row && !trail.includes(row)) {
