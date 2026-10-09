@@ -129,7 +129,6 @@ export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, render
 
   const shown = active?.kind === 'question' ? active.question : (active?.members[0] as Question | undefined);
   const standing = tabs.filter((tab) => tab.kind !== 'review').length + folded.length;
-  const nonBlocking = active?.kind === 'question' && !active.question.blocking?.turn;
 
   return (
     <>
@@ -162,7 +161,6 @@ export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, render
             {body(active)}
           </div>
         )}
-        {nonBlocking && <p className="tray-foot">Doesn't block this reply</p>}
       </section>
       </TrayFold>
     </>
