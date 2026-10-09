@@ -1,5 +1,6 @@
 #[cfg(target_os = "macos")]
 mod menu;
+mod native;
 
 use std::sync::Mutex;
 use tauri::Manager;
@@ -121,7 +122,13 @@ pub fn run() {
     builder
         .manage(EngineRuntime::default())
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![engine_health, engine_connection])
+        .invoke_handler(tauri::generate_handler![
+            engine_health,
+            engine_connection,
+            native::open_path,
+            native::reveal_path,
+            native::open_url
+        ])
         .run(tauri::generate_context!())
         .expect("error while running codeaf");
 }
