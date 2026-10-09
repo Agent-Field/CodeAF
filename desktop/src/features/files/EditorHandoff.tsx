@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { Button, DropdownMenu, Icon, type MenuEntry } from '../../components/ui';
 import { copyPathShortcut, isCopyPathShortcut } from '../../design/keyboard';
 import { openPath } from '../../design/native';
+import { openEngineEditor } from '../chat/engine-client';
+import { editorsDefaultFirst } from './editorsClient';
 import type { Handoff } from './useWorkView';
 
 async function copy(text: string) {
@@ -23,10 +25,13 @@ type Props = {
 };
 
 /**
- * The handoff to the person's editor. "Open in editor ↗" appears only when the engine runs on this machine;
- * otherwise "Open in ⌄" lists what can still be done: the editor when local, and Copy path.
+ * The handoff to an editor on the engine machine. One discovered editor keeps the
+ * "Open in editor" button. Several become "Open in", default first, then Copy path.
+ * A remote engine, a headless engine, or a list that never arrived does not invent a handler.
  */
 export function EditorHandoff({ path, workspace, handoff, menu = false, keys = false }: Props) {
+  const editors = editorsDefaultFirst(handoff.editors ?? []);
+  const launchable = !!handoff.canLaunch && editors.length > 0;
   const copyFull = () => void copy(handoff.abs ?? path);
   useEffect(() => {
     if (!keys) return;
@@ -38,12 +43,20 @@ export function EditorHandoff({ path, workspace, handoff, menu = false, keys = f
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [keys, handoff.abs, path]);
-  const open = () => { if (handoff.abs) void openPath(handoff.abs, workspace).catch(() => undefined); };
-  if (handoff.canOpen && !menu) {
-    return <Button className="file-editor" onClick={open}>Open in editor<Icon name="arrowUpRight" size="xs"/></Button>;
+  const openDefault = () => { if (handoff.abs) void openPath(handoff.abs, workspace).catch(() => undefined); };
+  const openEditor = (id: string) => {
+    if (!handoff.session) return;
+    void openEngineEditor(handoff.session, path, id).catch(() => undefined);
+  };
+  const single = launchable && editors.length === 1 && !menu;
+  const legacy = !handoff.listed && handoff.canOpen && !menu;
+  if (single || legacy) {
+    const onClick = single ? () => openEditor(editors[0].id) : openDefault;
+    return <Button className="file-editor" onClick={onClick}>Open in editor<Icon name="arrowUpRight" size="xs"/></Button>;
   }
   const items: MenuEntry[] = [
-    ...(handoff.canOpen ? [{ id: 'open', label: 'Open in editor', icon: 'external' as const, onSelect: open }] : []),
+    ...(launchable ? editors.map(editor => ({ id: editor.id, label: editor.name, detail: editor.default ? 'default' : undefined, onSelect: () => openEditor(editor.id) })) : []),
+    ...(launchable ? [{ kind: 'separator' as const, id: 'sep-copy' }] : []),
     { id: 'copy', label: 'Copy path', icon: 'copy', shortcut: copyPathShortcut, onSelect: copyFull },
     { id: 'copy-relative', label: 'Copy relative path', icon: 'copy', onSelect: () => void copy(path) },
   ];

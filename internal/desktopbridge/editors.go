@@ -1,0 +1,456 @@
+package desktopbridge
+
+// editors.go lists the editors registered on the ENGINE machine for one
+// workspace file, and can start one of those editors. The renderer names an
+// id from this list. It never sends a command line, and this process never
+// passes a renderer string to a shell.
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"sort"
+	"strings"
+	"time"
+)
+
+const editorCap = 8
+
+const (
+	reasonRemote    = "The engine is on another machine."
+	reasonNoDisplay = "This machine has no display, so an editor cannot be opened."
+	reasonNoList    = "This machine cannot list editors."
+	reasonNoStart   = "This machine cannot start an editor."
+)
+
+// Editor is one handler the operating system has registered for a file's type.
+// ID is a desktop-file basename or a macOS bundle id, never a command line.
+type Editor struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Default bool   `json:"default"`
+}
+
+// editorList is the answer to GET /editors. Open is false when a program
+// cannot be started here (another machine, or no display). Editors is empty
+// in those cases only when there is nothing real to name; a headless machine
+// may still report the handlers it found and set Open false.
+type editorList struct {
+	Editors []Editor `json:"editors"`
+	Local   bool     `json:"local"`
+	Open    bool     `json:"open"`
+	Reason  string   `json:"reason,omitempty"`
+}
+
+var (
+	errNoList  = errors.New(reasonNoList)
+	errNoStart = errors.New(reasonNoStart)
+
+	// Replaced in tests. Production calls the operating system.
+	listEditors = discoverEditors
+	startEditor = startEditorOS
+	displayUp   = machineHasDisplay
+	lookPath    = exec.LookPath
+	runCmd      = defaultRun
+)
+
+// editorID accepts a desktop basename (code.desktop) or a bundle id
+// (com.apple.Preview) and nothing a shell would interpret.
+var editorID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.+_-]{0,180}$`)
+
+func safeEditorID(id string) bool {
+	return editorID.MatchString(id) && !strings.Contains(id, "..")
+}
+
+func machineHasDisplay() bool {
+	if runtime.GOOS == "darwin" {
+		return os.Getenv("SSH_TTY") == ""
+	}
+	return os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
+}
+
+func defaultRun(name string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, name, args...).Output()
+}
+
+func (s *conversation) editors(w http.ResponseWriter, r *http.Request) {
+	if !needGet(w, r) {
+		return
+	}
+	abs, status, msg := s.placedFile(r.URL.Query().Get("path"))
+	if status != 0 {
+		fail(w, status, msg)
+		return
+	}
+	if !s.conn.Local {
+		write(w, editorList{Editors: []Editor{}, Local: false, Open: false, Reason: reasonRemote})
+		return
+	}
+	found, err := listEditors(abs)
+	if err != nil {
+		write(w, editorList{Editors: []Editor{}, Local: true, Open: false, Reason: reasonNoList})
+		return
+	}
+	open := displayUp()
+	reason := ""
+	if !open {
+		reason = reasonNoDisplay
+	}
+	write(w, editorList{Editors: capEditors(found), Local: true, Open: open, Reason: reason})
+}
+
+func (s *conversation) openEditor(w http.ResponseWriter, r *http.Request) {
+	if !needPost(w, r) {
+		return
+	}
+	var body struct {
+		Path string `json:"path"`
+		ID   string `json:"id"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	abs, status, msg := s.placedFile(body.Path)
+	if status != 0 {
+		fail(w, status, msg)
+		return
+	}
+	if !s.conn.Local {
+		fail(w, 409, reasonRemote)
+		return
+	}
+	if !displayUp() {
+		fail(w, 409, reasonNoDisplay)
+		return
+	}
+	// THE ID IS LOOKED UP, NOT RUN. A string that is not one of the handlers
+	// just enumerated never becomes an argument, so a renderer cannot hand
+	// this process a shell command.
+	if !safeEditorID(body.ID) {
+		fail(w, 400, "unknown editor")
+		return
+	}
+	found, err := listEditors(abs)
+	if err != nil || !editorKnown(found, body.ID) {
+		fail(w, 400, "unknown editor")
+		return
+	}
+	if err := startEditor(body.ID, abs); err != nil {
+		fail(w, 409, reasonNoStart)
+		return
+	}
+	write(w, map[string]bool{"accepted": true})
+}
+
+func editorKnown(list []Editor, id string) bool {
+	for _, editor := range list {
+		if editor.ID == id && safeEditorID(editor.ID) {
+			return true
+		}
+	}
+	return false
+}
+
+func capEditors(list []Editor) []Editor {
+	ranked := rankEditors(list)
+	if len(ranked) > editorCap {
+		ranked = ranked[:editorCap]
+	}
+	if ranked == nil {
+		ranked = []Editor{}
+	}
+	return ranked
+}
+
+// rankEditors puts the default first and leaves a single default mark, so a
+// lister that flags two handlers still answers the way the menu draws one.
+func rankEditors(list []Editor) []Editor {
+	out := append([]Editor(nil), list...)
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Default != out[j].Default {
+			return out[i].Default
+		}
+		return out[i].Name < out[j].Name
+	})
+	seenDefault := false
+	for i := range out {
+		if !out[i].Default {
+			continue
+		}
+		if seenDefault {
+			out[i].Default = false
+			continue
+		}
+		seenDefault = true
+	}
+	return out
+}
+
+func discoverEditors(abs string) ([]Editor, error) {
+	switch runtime.GOOS {
+	case "linux":
+		return discoverLinux(abs)
+	case "darwin":
+		return discoverDarwin(abs)
+	default:
+		return nil, errNoList
+	}
+}
+
+func discoverLinux(abs string) ([]Editor, error) {
+	mime, err := fileMime(abs)
+	if err != nil {
+		return nil, err
+	}
+	def := ""
+	if out, err := runCmd(mustLook("xdg-mime"), "query", "default", mime); err == nil {
+		candidate := strings.TrimSpace(string(out))
+		if safeEditorID(candidate) {
+			def = candidate
+		}
+	}
+	return scanDesktops(applicationDirs(), mime, def), nil
+}
+
+func mustLook(name string) string {
+	path, err := lookPath(name)
+	if err != nil {
+		return name
+	}
+	return path
+}
+
+func fileMime(abs string) (string, error) {
+	if path, err := lookPath("xdg-mime"); err == nil {
+		if out, err := runCmd(path, "query", "filetype", abs); err == nil {
+			if mime, ok := cleanMime(string(out)); ok {
+				return mime, nil
+			}
+		}
+	}
+	if path, err := lookPath("gio"); err == nil {
+		if out, err := runCmd(path, "info", "-a", "standard::content-type", abs); err == nil {
+			for _, line := range strings.Split(string(out), "\n") {
+				if _, value, ok := strings.Cut(line, "standard::content-type:"); ok {
+					if mime, good := cleanMime(value); good {
+						return mime, nil
+					}
+				}
+			}
+		}
+	}
+	return "", errNoList
+}
+
+func cleanMime(raw string) (string, bool) {
+	mime := strings.TrimSpace(raw)
+	if mime == "" || strings.ContainsAny(mime, "\r\n\t ;|&$`<>\\\"'") || strings.Contains(mime, "..") || strings.Contains(mime, "/") && strings.Count(mime, "/") != 1 {
+		return "", false
+	}
+	return mime, true
+}
+
+func applicationDirs() []string {
+	home := os.Getenv("XDG_DATA_HOME")
+	if home == "" {
+		home = filepath.Join(os.Getenv("HOME"), ".local", "share")
+	}
+	dirs := []string{filepath.Join(home, "applications")}
+	raw := os.Getenv("XDG_DATA_DIRS")
+	var rest []string
+	if raw == "" {
+		rest = []string{"/usr/local/share", "/usr/share"}
+	} else {
+		rest = strings.Split(raw, string(os.PathListSeparator))
+	}
+	for _, dir := range rest {
+		if strings.TrimSpace(dir) == "" {
+			continue
+		}
+		dirs = append(dirs, filepath.Join(dir, "applications"))
+	}
+	return dirs
+}
+
+// scanDesktops reads Name and MimeType. Exec is ignored on purpose: the line
+// is a command template, and the only thing that may run later is the
+// desktop id through the platform launcher.
+func scanDesktops(dirs []string, mime, defaultID string) []Editor {
+	seen := map[string]bool{}
+	var found []Editor
+	for _, dir := range dirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			id := entry.Name()
+			if entry.IsDir() || !strings.HasSuffix(id, ".desktop") || !safeEditorID(id) || seen[id] {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(dir, id))
+			if err != nil {
+				continue
+			}
+			title, types, hidden, app := parseDesktop(string(data))
+			if hidden || !app || title == "" || strings.ContainsAny(title, "\r\n") {
+				continue
+			}
+			if !mimeListed(types, mime) && id != defaultID {
+				continue
+			}
+			seen[id] = true
+			found = append(found, Editor{ID: id, Name: title, Default: id == defaultID && defaultID != ""})
+		}
+	}
+	return found
+}
+
+func parseDesktop(data string) (name, mime string, hidden, app bool) {
+	section := ""
+	for _, line := range strings.Split(data, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			section = line
+			continue
+		}
+		if section != "[Desktop Entry]" {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		switch key {
+		case "Type":
+			app = value == "Application"
+		case "Name":
+			if name == "" {
+				name = strings.TrimSpace(value)
+			}
+		case "MimeType":
+			mime = value
+		case "Hidden":
+			if value == "true" {
+				hidden = true
+			}
+		}
+	}
+	return name, mime, hidden, app
+}
+
+func mimeListed(field, mime string) bool {
+	for _, part := range strings.Split(field, ";") {
+		if strings.EqualFold(strings.TrimSpace(part), mime) {
+			return true
+		}
+	}
+	return false
+}
+
+// discoverDarwin asks Launch Services for the default application only, through
+// a fixed JavaScript that receives the path as an argument. A full handler
+// list is not available from a bounded helper here, so anything short of one
+// real bundle id is an empty list rather than a guessed name.
+func discoverDarwin(abs string) ([]Editor, error) {
+	path, err := lookPath("osascript")
+	if err != nil {
+		return nil, errNoList
+	}
+	out, err := runCmd(path, "-l", "JavaScript", "-e", darwinDefaultScript, abs)
+	if err != nil {
+		return nil, errNoList
+	}
+	id, name, ok := strings.Cut(strings.TrimSpace(string(out)), "\t")
+	if !ok || !safeEditorID(id) || name == "" || strings.ContainsAny(name, "\r\n") {
+		return []Editor{}, nil
+	}
+	return []Editor{{ID: id, Name: name, Default: true}}, nil
+}
+
+const darwinDefaultScript = `function run(argv) {
+  ObjC.import('AppKit');
+  ObjC.import('Foundation');
+  var path = argv[0];
+  if (!path) return '';
+  var url = $.NSURL.fileURLWithPath(path);
+  var app = $.NSWorkspace.sharedWorkspace.URLForApplicationToOpenURL(url);
+  if (!app || app.isNil()) return '';
+  var bundle = $.NSBundle.bundleWithURL(app);
+  if (!bundle || bundle.isNil() || !bundle.bundleIdentifier || bundle.bundleIdentifier.isNil()) return '';
+  var name = $.NSFileManager.defaultManager.displayNameAtPath(app.path);
+  return bundle.bundleIdentifier.js + '\t' + name.js;
+}`
+
+func startEditorOS(id, abs string) error {
+	if !displayUp() {
+		return errNoStart
+	}
+	bin, args, err := launchPlan(id, abs)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(bin, args...)
+	if err := cmd.Start(); err != nil {
+		return errNoStart
+	}
+	go func() { _ = cmd.Wait() }()
+	return nil
+}
+
+// launchPlan is the only place an editor is turned into a process. The
+// arguments are the platform launcher, the already-checked id, and the
+// confined path, each a separate argv element.
+func launchPlan(id, abs string) (string, []string, error) {
+	if !safeEditorID(id) || abs == "" || strings.ContainsRune(abs, 0) {
+		return "", nil, errNoStart
+	}
+	if runtime.GOOS == "darwin" {
+		path, err := lookPath("open")
+		if err != nil {
+			return "", nil, errNoStart
+		}
+		return path, []string{"-b", id, "--", abs}, nil
+	}
+	if path, err := lookPath("gtk-launch"); err == nil {
+		return path, []string{id, abs}, nil
+	}
+	if path, err := lookPath("gio"); err == nil {
+		desktop, err := desktopFile(id)
+		if err != nil {
+			return "", nil, err
+		}
+		return path, []string{"launch", desktop, abs}, nil
+	}
+	return "", nil, errNoStart
+}
+
+// desktopFile resolves an id to a file under the application directories.
+// The id is a basename, so it cannot point at an arbitrary path.
+func desktopFile(id string) (string, error) {
+	if !safeEditorID(id) || !strings.HasSuffix(id, ".desktop") {
+		return "", errNoStart
+	}
+	for _, dir := range applicationDirs() {
+		candidate := filepath.Join(dir, id)
+		info, err := os.Stat(candidate)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		if filepath.Base(candidate) != id {
+			continue
+		}
+		return candidate, nil
+	}
+	return "", errNoStart
+}

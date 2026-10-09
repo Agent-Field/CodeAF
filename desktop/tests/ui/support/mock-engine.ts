@@ -408,5 +408,11 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     return json(route, { error: 'unknown action' }, 404);
   });
 
-  return { calls, turnModels, snapshot: () => state, advance, update };
+  return {
+    calls, turnModels, snapshot: () => state, advance, update,
+    /** Push one live event, the way a running turn would. */
+    push: emitEvent,
+    /** Replace one file's diff so the next GET /diff answers with it. */
+    replaceDiff: (path: string, diff: MockDiff) => { scenario.diffs = { ...scenario.diffs, [path]: diff }; },
+  };
 }
