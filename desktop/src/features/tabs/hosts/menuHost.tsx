@@ -66,10 +66,13 @@ export function tabMenuItems(api: TabsApi, tab: Tab): MenuEntry[] {
   ];
 }
 
-/** The Inbox is the pinned tab that is always there: it has no menu. */
-export const withTabMenu = (api: TabsApi, tab: Tab, node: ReactElement): ReactElement => (
-  tab.kind === 'inbox' ? node : <ContextMenu key={tab.id} wide label={`Actions for ${tab.title}`} items={tabMenuItems(api, tab)}>{node}</ContextMenu>
-);
+/** The Inbox is the pinned tab that is always there: it has no menu. Strip and overview both ask here, so they can never disagree. */
+export const tabMenuFor = (api: TabsApi, tab: Tab): MenuEntry[] | undefined => (tab.kind === 'inbox' ? undefined : tabMenuItems(api, tab));
+
+export const withTabMenu = (api: TabsApi, tab: Tab, node: ReactElement): ReactElement => {
+  const items = tabMenuFor(api, tab);
+  return items ? <ContextMenu key={tab.id} wide label={`Actions for ${tab.title}`} items={items}>{node}</ContextMenu> : node;
+};
 
 export function groupMenuItems(api: TabsApi, group: TabGroup): MenuEntry[] {
   const members = api.state.tabs.filter(t => t.groupId === group.id);

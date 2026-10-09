@@ -36,3 +36,12 @@ test('⌃Tab switches recent tabs on both platforms and ⌘Tab is left to macOS'
   assert.deepEqual(mac(key('Tab', { ctrlKey: true, shiftKey: true })), { id: 'switch-back' });
   assert.equal(mac(key('Tab', { metaKey: true })), undefined);
 });
+
+test('⌘O and Ctrl O are the new-tab field\'s Open file…; Shift or Alt makes them something else', () => {
+  assert.deepEqual(mac(key('o', { metaKey: true })), { id: 'open-file' });
+  assert.deepEqual(linux(key('o', { ctrlKey: true })), { id: 'open-file' });
+  assert.equal(mac(key('o', { ctrlKey: true })), undefined);
+  assert.equal(linux(key('o', { metaKey: true })), undefined);
+  assert.equal(linux(key('O', { ctrlKey: true, shiftKey: true })), undefined);
+  assert.equal(linux(key('o', { ctrlKey: true, altKey: true, code: 'KeyO' })), undefined);
+});

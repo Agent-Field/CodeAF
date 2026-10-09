@@ -18,6 +18,7 @@ export const shellShortcuts = {
  tasks: formatShortcut('⌘/Ctrl ⇧ K'),
  palette: formatShortcut('⌘/Ctrl K'),
  settings: formatShortcut('⌘/Ctrl ,'),
+ openFile: formatShortcut('⌘/Ctrl O'),
  allModels: formatShortcut('⌘/Ctrl /'),
  /** The pinned-model chord for the 1-based slot (design Interactions: ⌥⌘1–3). */
  pinnedModel: (slot: number) => (isMac ? `⌥⌘${slot}` : `Ctrl Alt ${slot}`),
@@ -29,11 +30,11 @@ type KeyEvent = Pick<KeyboardEvent, 'key' | 'code' | 'metaKey' | 'ctrlKey' | 'sh
  * Every window-level shortcut of the shell, as ids. This is the ONE place that decides which chord means what,
  * so two surfaces can never both claim a key (design Interactions "Shortcuts"). `jump` carries the tab digit and
  * `model-pin` the pinned-model slot (⌥⌘1–3). ⌘⇧\ (Ctrl Shift A on Linux) is the tab overview; ⌘↑ and ⌘↓ step between
- * messages in a chat. ⌘/Ctrl B for the rail keeps working beside ⌘S.
+ * messages in a chat. ⌘/Ctrl B for the rail keeps working beside ⌘S. 'open-file' (⌘/Ctrl O) belongs to the new-tab field: only that surface claims it.
  */
 export type ShortcutId =
  | 'new' | 'close' | 'reopen' | 'next' | 'previous' | 'switch' | 'switch-back' | 'jump'
- | 'terminal' | 'overview' | 'turn-previous' | 'turn-next' | 'history' | 'tasks' | 'rail' | 'focus' | 'palette' | 'models' | 'model-pin' | 'settings';
+ | 'terminal' | 'open-file' | 'overview' | 'turn-previous' | 'turn-next' | 'history' | 'tasks' | 'rail' | 'focus' | 'palette' | 'models' | 'model-pin' | 'settings';
 export type Shortcut = { id: ShortcutId; index?: number };
 
 /** A text field with words in it keeps ⌘↑ and ⌘↓ as caret keys. */
@@ -71,6 +72,7 @@ export function shortcutOf(event: KeyEvent, mac = isMac): Shortcut | undefined {
  }
  if (key === 't') return { id: 'new' };
  if (key === 'w') return { id: 'close' };
+ if (key === 'o') return { id: 'open-file' };
  if (key === 's' || key === 'b') return { id: 'rail' };
  if (key === 'y') return { id: 'history' };
  if (key === 'k') return { id: 'palette' };
