@@ -16,7 +16,7 @@
 .work-step-dot[data-mark="failed"]::before { background: var(--mark-failed); }
 .work-step-ring::before { content: ""; width: var(--mark-ring); height: var(--mark-ring); border-radius: 50%; box-shadow: inset 0 0 0 var(--mark-ring-width) var(--mark-queued); }
 
-.work-step-tail { display: inline-flex; flex: none; align-items: center; gap: var(--space-tight); margin-inline-start: auto; color: var(--ink-3); }
+.work-step-tail { display: inline-flex; flex: none; align-items: center; gap: var(--space-tight); margin-inline-start: auto; color: var(--ink-2); }
 .work-step-tail .app-icon { color: var(--mark-stopped); }
 .work-step-word { font-size: var(--type-mono-small-size); white-space: nowrap; }
-.work-step .work-time { color: var(--ink-3); font-family: var(--mono); font-size: var(--type-mono-small-size); }
+.work-step .work-time { color: var(--ink-2); font-family: var(--mono); font-size: var(--type-mono-small-size); }

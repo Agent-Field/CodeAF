@@ -33,9 +33,9 @@
 }
 .queued-edit .text-input { flex: 1; min-height: 0; padding: 0; font-size: inherit; caret-color: var(--accent); }
 .queued-edit .text-input:focus-visible { outline: none; }
-.queued-esc { padding: 0 var(--space-tight); color: var(--ink-3); font-size: var(--font-size-body); }
+.queued-esc { padding: 0 var(--space-tight); color: var(--ink-2); font-size: var(--font-size-body); }
 .queued-save, .queued-save:hover:not(:disabled) { background: var(--accent); color: var(--accent-ink); }
 .queued-save { min-height: var(--queue-save-height); padding: 0 var(--space-compact); border-radius: var(--queue-save-radius); }
-.button.queued-more { justify-content: flex-start; min-height: var(--queue-more-height); padding: 0 0 0 var(--space-4); color: var(--ink-3); font-size: var(--font-size-body); font-weight: inherit; }
+.button.queued-more { justify-content: flex-start; min-height: var(--queue-more-height); padding: 0 0 0 var(--space-4); color: var(--ink-2); font-size: var(--font-size-body); font-weight: inherit; }
 .queued-more[aria-expanded="true"] .app-icon[data-motion="disclosure"] { transform: rotate(var(--motion-chevron-open)); }
 .queued-note { margin: 0; padding-inline: var(--space-3); color: var(--ink-2); font-size: var(--font-size-label); }

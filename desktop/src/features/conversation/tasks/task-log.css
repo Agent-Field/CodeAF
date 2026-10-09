@@ -1,4 +1,4 @@
-/* The step list reads as a terminal: mono rows, ink-3 when done, a dot only where it matters. Design v3 conversation 1c. */
+/* The step list reads as a terminal: mono rows, ink-2 when done, a dot only where it matters. Design v3 conversation 1c. */
 .task-log { display: flex; flex-direction: column; align-items: stretch; min-width: 0; }
 .task-log-toggle.button { align-self: flex-start; min-height: var(--row-h); padding-inline: var(--space-half); gap: var(--space-tight); max-width: 100%; justify-content: flex-start; color: var(--ink-2); font-size: var(--type-label-size); }
 .task-log-toggle .app-icon[data-motion="disclosure"] { color: var(--ink-3); transform: rotate(calc(var(--motion-ask-open) * -1)); }
@@ -7,7 +7,7 @@
 .task-log-list { display: flex; flex-direction: column; gap: var(--space-half); width: 100%; min-width: 0; margin: 0; padding: 0; list-style: none; font-family: var(--font-mono); font-size: var(--type-mono-size); line-height: var(--type-mono-leading); }
 .task-log-step { display: flex; flex-direction: column; min-width: 0; }
 
-.task-log-line { display: flex; align-items: center; gap: var(--space-compact); width: 100%; min-width: 0; min-height: var(--row-h); box-sizing: border-box; padding: 0; color: var(--ink-3); font-size: inherit; text-align: left; }
+.task-log-line { display: flex; align-items: center; gap: var(--space-compact); width: 100%; min-width: 0; min-height: var(--row-h); box-sizing: border-box; padding: 0; color: var(--ink-2); font-size: inherit; text-align: left; }
 .task-log-line.button { justify-content: flex-start; border: 0; border-radius: var(--radius-control); }
 .task-log-line.button:hover { background: var(--field); }
 .task-log-command.type-code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; font-size: inherit; line-height: inherit; }
@@ -15,7 +15,7 @@
 .task-log-step[data-state="running"] .task-log-line { color: var(--ink); }
 .task-log-step[data-state="refused"] .task-log-text { text-decoration: line-through; text-decoration-color: var(--line); }
 
-.task-log-outcome { display: inline-flex; align-items: center; flex-shrink: 0; gap: var(--space-compact); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.task-log-outcome { display: inline-flex; align-items: center; flex-shrink: 0; gap: var(--space-compact); color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .task-log-outcome[data-state="refused"] { font-family: var(--font-sans); font-size: var(--type-caption-size); }
 .task-log-dot { width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--mark-failed); }
 .task-log-outcome[data-state="running"] .task-log-dot { background: var(--mark-running); }
@@ -28,4 +28,4 @@
 .task-log-detail { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; padding: var(--space-half) 0 var(--space-1); }
 .task-log-output { box-sizing: border-box; width: 100%; margin: 0; padding: var(--space-2) var(--space-3); max-height: var(--tool-output-max-height); overflow: auto; border-radius: var(--radius-control); background: var(--term); color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
 .task-log-error { margin: 0; color: var(--danger); font-family: var(--font-sans); font-size: var(--type-label-size); }
-.task-log-more.button { min-height: var(--control-height); padding-inline: var(--space-half); color: var(--ink-3); font-family: var(--font-sans); font-size: var(--type-label-size); }
+.task-log-more.button { min-height: var(--control-height); padding-inline: var(--space-half); color: var(--ink-2); font-family: var(--font-sans); font-size: var(--type-label-size); }

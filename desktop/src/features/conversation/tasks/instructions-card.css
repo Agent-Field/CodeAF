@@ -1,9 +1,9 @@
 /* The Instructions card: a field-coloured card, eyebrow and Edit on one line, the brief clamped to three lines. */
 .instructions-card { display: flex; flex-direction: column; gap: var(--space-tight); min-width: 0; padding: var(--task-view-card-pad-block) var(--space-4); border-radius: var(--radius-card); background: var(--field); }
 .instructions-head { display: flex; align-items: center; gap: var(--space-2); }
-.instructions-toggle.button { min-height: 0; padding: 0; color: var(--ink-3); font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); line-height: var(--type-caption-leading); }
+.instructions-toggle.button { min-height: 0; padding: 0; color: var(--ink-2); font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); line-height: var(--type-caption-leading); }
 .instructions-toggle.button:hover:not(:disabled) { background: transparent; color: var(--ink); }
-.instructions-edit.button { margin-inline-start: auto; min-height: 0; padding: 0; color: var(--ink-3); font-size: var(--type-label-size); line-height: var(--type-label-leading); }
+.instructions-edit.button { margin-inline-start: auto; min-height: 0; padding: 0; color: var(--ink-2); font-size: var(--type-label-size); line-height: var(--type-label-leading); }
 .instructions-edit.button:hover:not(:disabled) { background: transparent; color: var(--ink); }
 
 .instructions-body { min-width: 0; color: var(--ink-2); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); }

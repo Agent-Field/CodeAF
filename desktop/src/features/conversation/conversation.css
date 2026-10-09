@@ -41,7 +41,7 @@
   border: 0;
   border-radius: var(--radius-control);
   background: transparent;
-  color: var(--ink-3);
+  color: var(--ink-2);
   text-align: start;
   font-size: var(--type-label-size);
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
