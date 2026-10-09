@@ -53,6 +53,8 @@ function useAutosize(ref: RefObject<HTMLTextAreaElement | null>, draft: string) 
 export function Composer(props: ComposerProps) {
   const { draft, onDraft, onSend, onStop, running, docked, disabledReason, autoFocus } = props;
   const field = useRef<HTMLTextAreaElement>(null);
+  const latestDraft = useRef(draft);
+  latestDraft.current = draft;
   useAutosize(field, draft);
   const disabled = !!disabledReason;
   const attachments = useAttachments();
@@ -64,12 +66,16 @@ export function Composer(props: ComposerProps) {
   async function send(mode: SendMode) {
     if (blank || disabled) return;
     const { items } = attachments;
+    const sent = draft;
     const accepted = items.length
       ? await onSend(draft.trim(), mode, await toOutgoing(items))
       : await onSend(draft.trim(), mode);
     if (!accepted) return;
-    onDraft('');
-    attachments.clear();
+    // Typing while the send was in flight must survive: clear only the text that went out.
+    if (latestDraft.current === sent) {
+      onDraft('');
+      attachments.clear();
+    }
   }
 
   function onPaste(event: ClipboardEvent) {
