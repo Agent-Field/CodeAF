@@ -114,6 +114,7 @@ export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, render
         onAnswer={batched ? commit(question) : onAnswer}
         onHold={() => holdClock(question)}
         onLater={batched ? undefined : () => fold(question)}
+        single={tabs.length === 1 && folded.length === 0}
         renderImage={renderImage}
       />
     );
