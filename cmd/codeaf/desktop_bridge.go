@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -112,6 +113,17 @@ func runDesktopBridge(args []string) error {
 		fmt.Fprintf(os.Stderr, "places: %s file kept at %s (%s)\n", recovery.Kind, recovery.MovedTo, recovery.Reason)
 	}
 	bridge.UsePlaces(desktopbridge.NewPlaces(placeStore))
+	// Offers about places keep their own ledger beside the graph, and read the
+	// person's Places settings fresh on every job.
+	ledger, err := placegraph.OpenLedger(filepath.Join(filepath.Dir(*placesFile), "places-ai.json"))
+	if err != nil {
+		return fmt.Errorf("places: %w", err)
+	}
+	if err := bridge.UsePlaceAdvice(&desktopbridge.PlaceAdvice{Ledger: ledger, SharedWorkspace: resolved, Policy: func() placegraph.RecommendPolicy {
+		return config.DesktopPlacesPolicy(profileDir)
+	}}); err != nil {
+		return fmt.Errorf("places: %w", err)
+	}
 	listener, err := net.Listen("tcp", *address)
 	if err != nil {
 		return err

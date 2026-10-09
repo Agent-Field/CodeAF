@@ -1,8 +1,8 @@
 # AI roles and the Places recommendation policy
 
-Status: implemented as a library and a provisional Settings page, 2026-10-09. The
-recommender is not yet connected to a live engine call or to HTTP routes; see
-"What is wired and what is not" before relying on any of it. Every default not marked
+Status: implemented as a library and a provisional Settings page, 2026-10-09, and
+wired to the engine and the desktop bridge the same day (`work/d5-ai-policy-wire`). No
+window draws an offer yet; see "What is wired and what is not" before relying on any of it. Every default not marked
 **design** below is an engineering choice waiting on the product designer.
 
 Code: `internal/placegraph/policy.go`, `recommend*.go`; `internal/config/desktoproles.go`,
@@ -24,8 +24,8 @@ on every call (`config.DesktopRolesSource`). Reset removes the row.
 | Naming and summaries | `naming` — Chat titles | title | yes |
 | | `worknames` — Task and job names | taskname, jobname, caption | yes |
 | | `summaries` | none yet (recap, from the History lane) | no |
-| Places organization | `placefiling` — Chat filing | `placefile` | no |
-| | `placesuggest` — Place suggestions | `placesuggest` | no |
+| Places organization | `placefiling` — Chat filing | `placefile` | yes |
+| | `placesuggest` — Place suggestions | `placesuggest` | yes |
 | Memory, routing and safety | `memory` | reflex, consolidate | yes |
 | | `routing` | router, routerconfirm, markreader, handoff, spellout, intake | yes |
 | | `safety` | guardian, sentinel | yes |
@@ -93,7 +93,10 @@ offered only for a *group* that rules have already found, and only when the caps
   default) and the offer is at least `autoFileConfidence` (90) sure; it is one membership
   marked `addedBy: ai`, undoable.
 - **No model output becomes an id, path or permission.** The model answers labels; an
-  unknown label rejects the whole answer. The one free text it writes, a new place's
+  unknown label rejects the whole answer. The exact name of exactly one place it was shown
+  counts as that place's label (deepseek/deepseek-v4.1-flash answered "Release pipeline"
+  for "p1" in the first live run, and every such answer was being refused); a name it was
+  not shown, or one two shown places share, is still refused. The one free text it writes, a new place's
   name, must pass the graph's name rules, be ≤ 40 characters, contain no `/ \ : * ? < > |`,
   no URL, no leading dot. A place created from an offer has **no sources and no policy**,
   so accepting can never widen what a chat may read or do.
@@ -145,11 +148,35 @@ suggestion in the shell (`t-d5-sh-group-suggest-model`).
 | Piece | State |
 | --- | --- |
 | Policy, recommender, ledger (`places-ai.json` beside the graph) | built and tested |
-| Settings page sections, live/inherits lines, policy rows | built; policy rows show "cannot be changed from this engine yet" until `/places/policy` exists |
+| Settings page sections, live/inherits lines, policy rows | built; policy rows read and write `/places/policy` |
 | `/models/roles` `category`, `live`, `inherits`, `categories` | built |
-| Engine model door for the place roles (`Agent.AskPlaces`) | patch ready, not committed: registering it would mark the rows live before anything calls them |
-| `/places/policy`, `/places/proposals` routes, bridge `Recommender` | Places-routes lane / root |
-| UI that shows offers (suggestion line/card) | not built; nothing is drawn |
+| Engine model door for the place roles (`internal/session/placeadvice.go`, `Agent.AskPlaces`) | built; registers `placefile` and `placesuggest` on the low tier, so both rows are live |
+| The wire door (`Places.Ask`, `Welcome.PlaceAsk`, `internal/remote/placeask.go`) | built; the bridge asks through an open conversation's engine, which answers on the role's own model and bills it as a background errand |
+| `/places/policy`, `/places/proposals` routes and the background scheduler (`internal/desktopbridge/places_policy.go`, `places_advice.go`) | built (see below) |
+| UI that shows offers (suggestion line/card) | the UI lane's; nothing is drawn yet |
+
+**When the bridge asks.** Three triggers, none of them a read:
+
+- a turn of a conversation the bridge holds **settles** (the engine said the turn was
+  done): that chat is weighed for an existing place eight seconds later, once ever;
+- the Home page **asks** with `POST /places/proposals/organize` (once per opening; a
+  second request inside a minute is not queued);
+- the bridge has been **idle** (no turn running anywhere) for `organizeEveryMinutes`.
+
+`GET /places/proposals` and an SSE reconnect never ask a model. One job runs at a time
+per bridge; at most 32 chats wait to be weighed; every ask has a 60-second deadline and
+is cancelled when the bridge closes. With no conversation open the recommender runs on
+rules alone, and the view says so (`engine.asks: false`).
+
+**Evidence** is the conversation's own title, its first message, its settled replies, and
+its folder — except the folder every desktop conversation runs in (the bridge's
+`--workspace`), which says nothing about what a chat is and would make the folder rule
+offer every chat the same place. Other chats are read from the canonical session list
+(title, folder, and whether a turn has finished).
+
+**Accepting** may carry the `offerVersion` the window read; an offer that changed since
+is refused (`409 stale_offer`), one already decided or overtaken by the graph is `409
+gone`, and a cap that filled is `409 policy_limit`. Declining is `POST /places/proposals/{id}/decline`.
 
 ## 6. Questions for the designer
 
