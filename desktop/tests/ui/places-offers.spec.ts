@@ -13,7 +13,7 @@ for (const theme of ['light', 'dark']) {
     await page.getByRole('button', { name: /^All places/ }).click();
     const line = page.getByLabel('Place suggestion', { exact: true });
     await expect(line).toContainText('5 of these look like they belong in Reading');
-    await page.screenshot({ path: `${process.env.CODEAF_UI_RESULTS}/cluster-${theme}-${test.info().project.name}.png` });
+    if (process.env.CODEAF_UI_RESULTS) await page.screenshot({ path: `${process.env.CODEAF_UI_RESULTS}/cluster-${theme}-${test.info().project.name}.png` });
     await line.getByRole('button', { name: 'Move them', exact: true }).click();
     await expect(line).toHaveCount(0);
     expect(places.posts('/accept')).toHaveLength(1);
@@ -45,7 +45,7 @@ for (const theme of ['light', 'dark']) {
     places.propose([{ ...file, id: 'prop_0000000000000001', chatIds: ['another-chat'] }, file]);
     await expect(line).toContainText('Looks like the work in Reading', { timeout: 8000 });
     await expect(line.locator('..')).toHaveAttribute('data-turn', /.+/);
-    await page.screenshot({ path: `${process.env.CODEAF_UI_RESULTS}/first-reply-${theme}-${test.info().project.name}.png` });
+    if (process.env.CODEAF_UI_RESULTS) await page.screenshot({ path: `${process.env.CODEAF_UI_RESULTS}/first-reply-${theme}-${test.info().project.name}.png` });
     await line.getByRole('button', { name: 'Add to Reading', exact: true }).click();
     await expect(line).toHaveCount(0);
     expect(places.posts('/decline')).toHaveLength(1);
