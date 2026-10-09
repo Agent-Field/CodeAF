@@ -146,3 +146,31 @@ export async function adoptOrphans(storage: Storage | undefined, key: WorkspaceK
     abandon: () => { for (const { release } of taken) release(); },
   };
 }
+
+// A place change remounts the strip, but it does not create another window. Share this page's ownership across
+// that handover: treating its still-releasing lock as another page would rename the window and lose local focus.
+const pageHolds = new Map<string, { users: number; promise: ReturnType<typeof holdWindow>; release?: () => void; timer?: ReturnType<typeof setTimeout> }>();
+export async function holdCurrentWindow(writer: string, locks?: Locks): ReturnType<typeof holdWindow> {
+ let entry = pageHolds.get(writer);
+ if (!entry) {
+  entry = { users: 0, promise: holdWindow(writer, locks) };
+  pageHolds.set(writer, entry);
+ }
+ entry.users++;
+ if (entry.timer !== undefined) { clearTimeout(entry.timer); entry.timer = undefined; }
+ const owner = entry;
+ const held = await owner.promise;
+ owner.release = held.release;
+ let released = false;
+ return { held: held.held, release: () => {
+  if (released) return;
+  released = true;
+  owner.users--;
+  if (owner.users > 0) return;
+  owner.timer = setTimeout(() => {
+   if (owner.users > 0) return;
+   owner.release?.();
+   if (pageHolds.get(writer) === owner) pageHolds.delete(writer);
+  }, 0);
+ } };
+}

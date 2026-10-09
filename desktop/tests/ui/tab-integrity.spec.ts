@@ -1,3 +1,4 @@
+import { savedWorkspace } from './support/synced-workspace';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { expectAccessible, tokenColor } from './contracts';
 import { installMockEngine, type Scenario } from './support/mock-engine';
@@ -16,7 +17,7 @@ async function seed(page: Page, value: Seed) {
  const state = { groups: [], closed: [], nextNumber: value.tabs.length + 1, recentIds: value.tabs.map(t => (t as { id: string }).id), ...value };
  await page.addInitScript(([key, json]) => { if (!sessionStorage.getItem('integrity-seeded')) { localStorage.setItem(key, json); sessionStorage.setItem('integrity-seeded', '1'); } }, [KEY, JSON.stringify(state)] as const);
 }
-const saved = (page: Page) => page.evaluate(key => JSON.parse(localStorage.getItem(key) ?? 'null'), KEY);
+const saved = savedWorkspace;
 const tabNamed = (page: Page, name: string) => page.getByRole('tab', { name, exact: true });
 const groupLabel = (page: Page, name: string) => page.locator('.workspace-group-label', { has: page.locator('.workspace-group-name', { hasText: new RegExp(`^${name}$`) }) });
 const message = (page: Page) => page.getByRole('textbox', { name: 'Message', exact: true });
