@@ -92,7 +92,7 @@ export function HistoryList({ items, now, selectedId, label, onSelect, onOpen, o
   const sticky = stickyGroup(entries, scroll.top);
   const visible = entries.slice(range.start, range.end);
   const setRef = (node: HTMLDivElement | null) => { scroller.current = node; listRef?.(node); };
-  return <div ref={setRef} className="history-list" role="listbox" tabIndex={0} aria-label={label} aria-activedescendant={selectedId ? `history-row-${selectedId}` : undefined}
+  return <div ref={setRef} className="history-list" data-scroll-key="history-list" role="listbox" tabIndex={0} aria-label={label} aria-activedescendant={selectedId ? `history-row-${selectedId}` : undefined}
     onScroll={event => setScroll({ top: event.currentTarget.scrollTop, height: event.currentTarget.clientHeight })} onKeyDown={onKeyDown}>
     {sticky && <div className="history-sticky" aria-hidden="true" ref={node => { if (node) node.style.setProperty('--history-push', `${sticky.push}px`); }}><span>{sticky.label}</span></div>}
     <div className="history-list-space" ref={node => { if (node) node.style.setProperty('--history-total', `${height}px`); }}>

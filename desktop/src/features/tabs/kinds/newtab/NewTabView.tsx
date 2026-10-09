@@ -26,7 +26,7 @@ export type NewTabViewProps = {
 
 /** The drawing of the new tab (design 3f / Components "Command field"): shared by the live pane and the Design system specimen. */
 export function NewTabView({ id, field, query, sections, activeRowId, caption, enterHint = '↵ to start a conversation', onHover, onPick }: NewTabViewProps) {
-  return <div className="newtab">
+  return <div className="newtab" data-scroll-key="newtab">
     <div className="newtab-field">
       <div className="newtab-input-row">
         <Icon name="search"/>
