@@ -1,8 +1,9 @@
 // What the tab strip, hover preview and overview know about a conversation.
 // Pure: built from the canonical snapshot, never from the view.
 
-import type { EngineSnapshot } from '../chat/engine-client.ts';
+import type { EngineQuestion, EngineSnapshot } from '../chat/engine-client.ts';
 import { plainMessage } from './composer/pastedText.ts';
+import { rowFlags, taskMark } from './taskState.ts';
 import { digestOf } from './transcript-parse.ts';
 
 export type TabMark = 'working' | 'waiting' | 'failed';
@@ -13,6 +14,14 @@ export type TabSummary = {
   digest: string; // first line of the latest answer
   mark?: TabMark;
   updatedAt?: number;
+  /** The engine session this summary was read from; the hover preview answers questions on it. */
+  sessionId?: string;
+  /** Tasks the engine is running right now ("4 running" in a conversation's hover preview). */
+  running?: number;
+  /** Each task's state word by id ("Running", "Done"), so a task tab's preview can say where its own task stands. */
+  taskState?: Record<string, string>;
+  /** What the person is asked, in the engine's order; empty when nothing waits. */
+  questions?: EngineQuestion[];
 };
 
 const LABEL_LIMIT = 40;
@@ -43,6 +52,10 @@ export function summarize(snapshot: EngineSnapshot, failed = false): TabSummary 
     firstLine: first ? labelLine(plainMessage(first.Text)) : '',
     digest: lastAnswer(snapshot),
     mark: markOf(snapshot, failed),
+    sessionId: snapshot.id,
+    running: snapshot.tasks.filter((task) => taskMark(task.Status, rowFlags(task)).kind === 'running').length,
+    taskState: Object.fromEntries(snapshot.tasks.map((task) => [task.ID, taskMark(task.Status, rowFlags(task)).label])),
+    questions: snapshot.questions ?? [],
     updatedAt: Number.isFinite(stamp) ? stamp : undefined,
   };
 }

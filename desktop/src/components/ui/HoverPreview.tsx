@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useId, useRef, useState, type HTMLAttributes, type ReactElement, type ReactNode } from 'react';
 import * as Primitive from '@radix-ui/react-hover-card';
 import { Text } from './Typography';
 import design from '../../design/tokens.json';
@@ -26,4 +26,23 @@ export function HoverPreview({ children, title, description, meta, disabled = fa
    <Text className="hover-preview-title" tone="default">{title}</Text>{description && <Text className="hover-preview-draft">{description}</Text>}{meta && <Text className="hover-preview-meta">{meta}</Text>}
   </Primitive.Content></Primitive.Portal>}
  </Primitive.Root>;
+}
+
+/**
+ * A controlled card anchored under its trigger. The caller owns when it opens (timers, swapping between
+ * neighbours, dismissal), so Radix's own open and close are ignored; this only places the card and keeps it
+ * clear of the window edges. Unlike HoverPreview it may hold buttons: the pointer can enter it.
+ */
+export function HoverCard({ open, trigger, triggerProps, children, ...content }: {
+  open: boolean;
+  trigger: ReactElement;
+  triggerProps?: HTMLAttributes<HTMLElement>;
+  children: ReactNode;
+} & Omit<HTMLAttributes<HTMLDivElement>, 'children'>) {
+  return (
+    <Primitive.Root open={open} onOpenChange={() => {}}>
+      <Primitive.Trigger asChild {...triggerProps}>{trigger}</Primitive.Trigger>
+      {open && <Primitive.Portal><Primitive.Content {...content} side="bottom" align="start" sideOffset={design.overlay.sideOffset} collisionPadding={design.overlay.collisionPadding}>{children}</Primitive.Content></Primitive.Portal>}
+    </Primitive.Root>
+  );
 }

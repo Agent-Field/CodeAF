@@ -10,6 +10,7 @@ import type { PaneActions } from './kinds/slots';
 import { kindDef } from './kinds/registry';
 import { focusedPane, panesOf, readWorkspace, storageKey, visibleTabs, workspaceReducer, type Pane, type Tab } from './model';
 import { PaneGrid } from './PaneGrid';
+import { createPreviewStore } from './preview/previewStore';
 import { TabOverview } from './TabOverview';
 import { TabStrip } from './TabStrip';
 import { useDesktopTabActions, useTabKeys, type Switcher } from './useTabKeys';
@@ -21,6 +22,8 @@ export function Workspace({ enabled, onActivate, leading }: Props) {
   const [state, dispatch] = useReducer(workspaceReducer, undefined, readWorkspace);
   const [summaries, setSummaries] = useState<Record<string, TabSummary>>({});
   const [now, setNow] = useState(Date.now);
+  const [previews] = useState(() => createPreviewStore(design.interaction.previewCloseDelay));
+  useEffect(() => previews.dispose, [previews]);
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), design.interaction.activityRefreshInterval); return () => window.clearInterval(timer); }, []);
   function receiveSummary(id: string, summary: TabSummary) {
     setSummaries(current => ({ ...current, [id]: summary }));
@@ -73,7 +76,7 @@ export function Workspace({ enabled, onActivate, leading }: Props) {
   useTabKeys({ enabled, state, dispatch, visible, overviewOpen, setOverviewOpen, closeTab, switcherRef, setSwitcher });
   useDesktopTabActions({ state, dispatch, visible, renaming: !!rename, onActivate, closeTab, setOverviewOpen });
 
-  const api: TabsApi = { state, dispatch, summaries, now, closeTab, startRename, overlayOpen: !!switcher || overviewOpen || !!rename };
+  const api: TabsApi = { state, dispatch, summaries, now, closeTab, startRename, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename };
   const actionsFor = (pane: Pane): PaneActions => ({
     onDraft: draft => dispatch({ type: 'draft', id: pane.id, draft }),
     onView: change => dispatch({ type: 'view', id: pane.id, change }),

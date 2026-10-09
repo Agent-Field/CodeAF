@@ -1,0 +1,37 @@
+/* The tab hover preview and the overview card (Shell 3k, Components "Tab hover preview · overview card"). Values are tokens. */
+.preview-card { display: flex; flex-direction: column; gap: var(--preview-card-gap); width: var(--preview-card-width); max-width: calc(100vw - var(--space-6)); padding: var(--preview-card-pad); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--sh-2); color: var(--ink); font-family: var(--sans); text-align: left; }
+.preview-head { display: flex; align-items: center; gap: var(--preview-head-gap); font-size: var(--type-caption-size); color: var(--ink-3); }
+.preview-kind { flex: none; }
+.preview-state { display: flex; align-items: center; gap: var(--preview-count-gap); min-width: 0; margin-left: auto; font-family: inherit; }
+.preview-state .preview-diff-add { font-family: var(--mono); color: var(--preview-add-ink); }
+.preview-state .preview-diff-del { font-family: var(--mono); color: var(--danger); }
+.preview-dot { flex: none; width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--accent); }
+.preview-dot[data-tone="amber"] { background: var(--amber); }
+.preview-dot[data-tone="danger"] { background: var(--danger); }
+.preview-title { font-size: var(--preview-title-size); font-weight: var(--font-weight-medium); overflow-wrap: anywhere; }
+.preview-text { font-size: var(--type-label-size); line-height: var(--preview-body-leading); color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; }
+.preview-error { font-size: var(--type-label-size); line-height: var(--preview-body-leading); color: var(--danger); overflow-wrap: anywhere; }
+.preview-field { display: flex; flex-direction: column; padding: var(--preview-field-pad); border-radius: var(--radius-control); background: var(--term); font-family: var(--mono); font-size: var(--preview-mono-size); line-height: var(--preview-mono-leading); color: var(--ink-2); overflow: hidden; }
+.preview-line { display: block; overflow: hidden; white-space: nowrap; text-overflow: clip; }
+.preview-line[data-tone="ink"] { color: var(--ink); }
+.preview-line[data-tone="add"] { color: var(--preview-add-ink); }
+.preview-line[data-tone="del"] { color: var(--danger); }
+.preview-actions { display: flex; gap: var(--preview-action-gap); }
+.preview-actions .preview-action.button { height: var(--preview-action-height); min-height: var(--preview-action-height); padding: 0 var(--preview-action-pad); border-radius: var(--radius-segment-item); font-size: var(--type-label-size); font-weight: var(--font-weight-medium); }
+.preview-actions .preview-action.button[data-quiet] { padding: 0 var(--preview-action-pad-quiet); }
+
+/* The web card has no header: a screenshot area, then a two-line caption. */
+.preview-card-shot { gap: 0; padding: 0; overflow: hidden; }
+.preview-shot { display: flex; flex-direction: column; gap: var(--preview-shot-gap); height: var(--preview-shot-height); padding: var(--preview-shot-pad); background: var(--preview-page-ground); overflow: hidden; }
+.preview-shot-image { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.preview-shot-heading { font: var(--font-weight-bold) var(--preview-page-title-size) var(--preview-serif); color: var(--preview-page-ink); }
+.preview-shot-body { font: var(--preview-page-body-size)/var(--preview-page-body-leading) var(--preview-serif); color: var(--preview-page-ink-2); }
+.preview-caption { display: flex; flex-direction: column; gap: var(--preview-caption-gap); padding: var(--preview-caption-pad); }
+.preview-address { font-size: var(--type-caption-size); color: var(--ink-3); overflow-wrap: anywhere; }
+
+/* The floating card over the strip. It is a real surface the pointer may enter, so Allow all is reachable. */
+.tab-preview { z-index: var(--z-overlay); outline: none; }
+.tab-preview[data-state="open"] { animation: surface-enter var(--duration-overlay) var(--ease-overlay); }
+.tab-preview[data-state="open"][data-swap] { animation: none; }
+.tab-preview[data-state="closed"] { animation: surface-exit var(--duration) var(--chrome-ease); }
+@media (prefers-reduced-motion: reduce) { .tab-preview[data-state] { animation: none; } }
