@@ -475,3 +475,22 @@ func TestChoicesFromTwoWritersAreAllKept(t *testing.T) {
 		t.Fatalf("unknown field = %v", err)
 	}
 }
+
+// THE MANUAL STATES THE BUDGETS THIS FILE NAMES. A number written in two places
+// drifts, and the manual is the only thing the chat knows about this program, so
+// changing a budget without its page fails here.
+func TestTheManualStatesTheContextBudgets(t *testing.T) {
+	page, err := os.ReadFile(filepath.Join("..", "manual", "chat", "desktop-places.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		fmt.Sprintf("at most **%d sources**", ContextSourceBudget),
+		fmt.Sprintf("**%d KiB** (%d bytes)", ContextInstructionBudget>>10, ContextInstructionBudget),
+		fmt.Sprintf("**up to %d levels up**", ContextAncestorLevels),
+	} {
+		if !strings.Contains(strings.ReplaceAll(string(page), "\n", " "), want) {
+			t.Errorf("desktop-places.md does not say %q", want)
+		}
+	}
+}
