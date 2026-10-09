@@ -25,6 +25,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/placegraph"
 	"github.com/Agent-Field/codeaf/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // This local surface door reuses the same persistent engine and wire as the
@@ -124,6 +125,7 @@ func runDesktopBridge(args []string) error {
 	}}); err != nil {
 		return fmt.Errorf("places: %w", err)
 	}
+	bridge.UseHistory(&desktopbridge.History{Root: session.PlacesRoot()})
 	listener, err := net.Listen("tcp", *address)
 	if err != nil {
 		return err

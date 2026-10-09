@@ -1,4 +1,5 @@
 import type { Page, Route } from '@playwright/test';
+import { historyRoutes, type HistoryHandle, type MockHistory } from './history-engine';
 import type { EngineEntry, EngineEvent, EngineFile, EngineFileDiff, EngineSnapshot, EngineTaskPage, TerminalInfo } from '../../../src/features/chat/engine-client';
 
 export const MODEL = 'deepseek/deepseek-v4.1-flash';
@@ -28,6 +29,8 @@ export type MockDiff = Pick<EngineFileDiff, 'hunks'> & Partial<Pick<EngineFileDi
 export type MockTerminal = Partial<TerminalInfo> & { id: string; output?: string };
 
 export type Scenario = {
+  /** Conversations the History routes serve (list, recap, messages, search, archive). */
+  history?: MockHistory;
   /** Terminals and jobs served under /terminals; a POST /terminals adds more. */
   terminals?: MockTerminal[];
   /** State returned by POST /sessions and GET /sessions/{id}. */
@@ -54,6 +57,8 @@ export type Call = { method: string; path: string; body: Record<string, unknown>
 
 export type MockEngine = {
   calls: Call[];
+  /** What the History archive route changed, in order. */
+  history: HistoryHandle;
   /** The conversation model in force at the moment each accepted turn arrived. */
   turnModels: string[];
   snapshot: () => EngineSnapshot;
@@ -68,7 +73,7 @@ const ROLES = [
   { id: 'conversation', name: 'Conversation', controls: 'Answers what you type in a chat and decides when to start a task.', category: 'conversation', live: true },
   { id: 'tasks', name: 'Tasks', controls: 'Does the steps of a task: reading, editing, running commands.', category: 'conversation', live: true },
   { id: 'naming', name: 'Chat titles', controls: 'Names each chat from its opening exchange.', category: 'naming', live: true },
-  { id: 'summaries', name: 'Summaries', controls: 'Writes the short recap of a conversation that History shows.', category: 'naming', live: false, inherits: 'naming' },
+  { id: 'summaries', name: 'Summaries', controls: 'Writes the short recap of a conversation that History shows.', category: 'naming', live: true, inherits: 'naming' },
   { id: 'placefiling', name: 'Chat filing', controls: 'Picks which of your places a chat belongs in, to offer it after the first reply. Never creates a place.', category: 'places', live: false },
   { id: 'memory', name: 'Memory', controls: 'Reads each turn for things worth remembering and tidies what has been remembered.', category: 'memory', live: true },
 ];
@@ -394,6 +399,8 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     return json(route, roleView(role));
   };
 
+  const history = historyRoutes(scenario.history, json);
+
   await page.route('**/api/engine/**', async route => {
     const request = route.request();
     const url = new URL(request.url());
@@ -408,8 +415,9 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     };
     if (root === 'models') return models(route, parts, method, body);
     if (root === 'places' && parts[1] === 'policy') return placesPolicy(route, parts, method, body);
+    if (root === 'history') return history.handle(route, parts, method, body, url);
     if (root !== 'sessions') return json(route, { error: 'unknown route' }, 404);
-    if (!id) return forced('create') ?? json(route, state);
+    if (!id) return forced('create') ?? json(route, history.titleOf(body.sessionFile) ? { ...state, title: history.titleOf(body.sessionFile) } : state);
     if (id !== state.id) return json(route, { error: 'reattach this conversation' }, 404);
     if (!action) return forced('read') ?? json(route, state);
     if (action === 'events') return forced('events') ?? events(route, Number(url.searchParams.get('after') ?? 0));
@@ -444,5 +452,5 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     return json(route, { error: 'unknown action' }, 404);
   });
 
-  return { calls, turnModels, snapshot: () => state, advance, update };
+  return { calls, turnModels, history: { archived: history.archived }, snapshot: () => state, advance, update };
 }

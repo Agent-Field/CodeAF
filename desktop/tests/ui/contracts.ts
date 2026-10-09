@@ -47,6 +47,9 @@ export const INK3_TEXT = [
  '.newtab-hint', '.newtab-section', '.newtab-row-detail', '.newtab-row-hint', '.newtab-caption',
  '.terminal-meta', '.terminal-ask-note',
  '.rail .new-item kbd',
+ // History (Shell 4a-4d): the count, group headings, stamps, recap labels and meta, and the counts on a changed file.
+ '.history-count', '.history-field .keyboard-shortcut', '.history-field-hint', '.history-empty', '.history-group', '.history-sticky', '.history-row-stamp',
+ '.history-file-added', '.history-files-more', '.history-recap-meta', '.history-recap-label', '.history-decision-by', '.history-back', '.history-best-head', '.history-results-heading',
 ];
 async function isDesignInk3(page: Page, target: unknown) {
  const selector = Array.isArray(target) ? String(target[target.length - 1]) : String(target);

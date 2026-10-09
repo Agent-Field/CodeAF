@@ -188,14 +188,17 @@ test('⌘⇧\\ toggles the overview from the composer; ⌘↑ does not open it',
   await expect(tabs(page)).toHaveCount(1);
 });
 
-test('⌘Y opens History only when the engine backs it; until then the key is left to the browser', async ({ page }) => {
+test('⌘Y opens History now that the engine backs it, and a second press selects the one that is open', async ({ page }) => {
   await page.goto('/');
-  const handled = await page.evaluate(() => {
-    const event = new KeyboardEvent('keydown', { key: 'y', ctrlKey: true, metaKey: false, bubbles: true, cancelable: true });
+  const press = () => page.evaluate(() => {
+    const event = new KeyboardEvent('keydown', { key: 'y', ctrlKey: !/Mac/.test(navigator.platform), metaKey: /Mac/.test(navigator.platform), bubbles: true, cancelable: true });
     window.dispatchEvent(event); return event.defaultPrevented;
   });
-  expect(handled).toBe(false);
-  await expect(tabs(page)).toHaveCount(1);
+  expect(await press()).toBe(true);
+  await expect(tabs(page)).toHaveCount(2);
+  await expect(page.getByRole('tab', { name: /History/ })).toHaveAttribute('aria-selected', 'true');
+  expect(await press()).toBe(true);
+  await expect(tabs(page)).toHaveCount(2);
 });
 
 test('⌘⇧K toggles the task panel of a conversation that has tasks', async ({ page }) => {
