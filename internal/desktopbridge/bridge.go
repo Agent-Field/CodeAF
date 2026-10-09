@@ -144,6 +144,7 @@ type conversation struct {
 	lastTasks  []session.PlanTaskRow
 	planError  string
 	icons      *faviconCache
+	terms      *terminalSet
 }
 type Bridge struct {
 	token     string
@@ -168,6 +169,7 @@ func (b *Bridge) Close() {
 		defer b.mu.Unlock()
 		for _, s := range b.sessions {
 			close(s.done)
+			s.terminals().closeAll()
 			s.conn.Close()
 		}
 	})

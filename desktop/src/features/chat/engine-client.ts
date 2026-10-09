@@ -173,11 +173,12 @@ export async function readToolResult(id: string, callId: string): Promise<{outpu
  return result as {output:string;full:boolean};
 }
 
-// Fetch supports the native Bearer header; EventSource cannot. Aborting only
-// detaches this reader. Stop is a separate, explicit POST.
-export async function watchEngine(snapshot: EngineSnapshot, onSnapshot: (snapshot: EngineSnapshot) => void, onEvent: (event: EngineEvent) => void, signal: AbortSignal): Promise<void> {
- let after = snapshot.seq;
- const response = await fetchEngine(`${sessionPath(snapshot.id)}/events?after=${after}`, { signal, headers: { Accept: 'text/event-stream' } }, true);
+/**
+ * Reads one server-sent-event body: handles chunked CRLF and multiline data,
+ * hands each complete record's data text to onRecord, and reports a stream the
+ * engine closed. Aborting the signal only detaches this reader.
+ */
+async function pumpEventStream(response: Response, signal: AbortSignal, onRecord: (text: string) => void): Promise<void> {
  if (!response.body || !response.headers.get('content-type')?.includes('text/event-stream')) throw new EngineError('The engine did not open a conversation stream.');
  const reader = response.body.getReader();
  const decoder = new TextDecoder();
@@ -186,19 +187,7 @@ export async function watchEngine(snapshot: EngineSnapshot, onSnapshot: (snapsho
  function dispatch() {
   if (signal.aborted || !data.length) { data = []; return; }
   const text = data.join('\n'); data = [];
-  let record: unknown;
-  try { record = JSON.parse(text); } catch { throw new EngineError('The engine sent an invalid stream record.'); }
-  if (!record || typeof record !== 'object') throw new EngineError('The engine sent an invalid stream record.');
-  const item = record as { seq: number; type: string; snapshot?: unknown; event?: EngineEvent };
-  if (!Number.isSafeInteger(item.seq) || item.seq < 0) throw new EngineError('The engine sent an invalid stream sequence.');
-  if (item.seq <= after) return;
-  if (item.type === 'snapshot') {
-   const next = snapshotFrom(item.snapshot);
-   if (next.id !== snapshot.id || next.sessionFile !== snapshot.sessionFile) throw new EngineError('The engine stream changed conversations.');
-   onSnapshot(next);
-  } else if (item.type === 'event' && item.event && typeof item.event.kind === 'string') onEvent(item.event);
-  else throw new EngineError('The engine sent an unknown stream record.');
-  after = item.seq;
+  onRecord(text);
  }
  function consume(final = false) {
   let index: number;
@@ -219,6 +208,28 @@ export async function watchEngine(snapshot: EngineSnapshot, onSnapshot: (snapsho
   }
  } catch (error) { if (!signal.aborted) throw error; }
  finally { await reader.cancel().catch(() => undefined); reader.releaseLock(); }
+}
+
+// Fetch supports the native Bearer header; EventSource cannot. Aborting only
+// detaches this reader. Stop is a separate, explicit POST.
+export async function watchEngine(snapshot: EngineSnapshot, onSnapshot: (snapshot: EngineSnapshot) => void, onEvent: (event: EngineEvent) => void, signal: AbortSignal): Promise<void> {
+ let after = snapshot.seq;
+ const response = await fetchEngine(`${sessionPath(snapshot.id)}/events?after=${after}`, { signal, headers: { Accept: 'text/event-stream' } }, true);
+ await pumpEventStream(response, signal, text => {
+  let record: unknown;
+  try { record = JSON.parse(text); } catch { throw new EngineError('The engine sent an invalid stream record.'); }
+  if (!record || typeof record !== 'object') throw new EngineError('The engine sent an invalid stream record.');
+  const item = record as { seq: number; type: string; snapshot?: unknown; event?: EngineEvent };
+  if (!Number.isSafeInteger(item.seq) || item.seq < 0) throw new EngineError('The engine sent an invalid stream sequence.');
+  if (item.seq <= after) return;
+  if (item.type === 'snapshot') {
+   const next = snapshotFrom(item.snapshot);
+   if (next.id !== snapshot.id || next.sessionFile !== snapshot.sessionFile) throw new EngineError('The engine stream changed conversations.');
+   onSnapshot(next);
+  } else if (item.type === 'event' && item.event && typeof item.event.kind === 'string') onEvent(item.event);
+  else throw new EngineError('The engine sent an unknown stream record.');
+  after = item.seq;
+ });
 }
 
 // ---- Contract v2 endpoints (docs/ELEMENTS.md §9). The bridge lane implements the
@@ -297,4 +308,95 @@ export async function holdQuestion(id: string, q: { kind: string; id: number; re
 /** E8: favicon for a domain the engine itself contacted in this conversation; data URL or null. */
 export async function engineFavicon(id: string, domain: string): Promise<string | null> {
   try { const r = (await (await fetchEngine(`${sessionPath(id)}/favicon?domain=${encodeURIComponent(domain)}`)).json()) as { dataUrl?: string }; return r.dataUrl ?? null; } catch { return null; }
+}
+
+// ---- Terminals and jobs. The shell runs on the engine host, in the session
+// workspace, behind the same bearer-authenticated bridge as everything above. ----
+/** state: "running"; "exited" (ended by itself, exitCode set); "closed" (the person ended it). */
+export type TerminalInfo = {
+  id: string; kind: 'terminal' | 'job'; title: string; command?: string; cwd: string; shell: string;
+  state: 'running' | 'exited' | 'closed'; exitCode?: number; startedAt: string; endedAt?: string;
+  durationMs: number; cols: number; rows: number;
+  /** Offset one past the newest output byte; pass a stream's last end offset as `after` to resume. */
+  bytes: number;
+};
+const terminalPath = (id: string, terminal?: string, action?: string) => `${sessionPath(id)}/terminals${terminal ? `/${encodeURIComponent(terminal)}` : ''}${action ? `/${action}` : ''}`;
+function terminalInfo(value: unknown): TerminalInfo {
+  const t = value as TerminalInfo | null;
+  if (!t || typeof t.id !== 'string' || !t.id || (t.kind !== 'terminal' && t.kind !== 'job') || typeof t.title !== 'string' || !['running', 'exited', 'closed'].includes(t.state) || !Number.isFinite(t.durationMs)) throw new EngineError('The engine returned an invalid terminal.');
+  return t;
+}
+/** Starts an interactive shell, or a job when `command` is given. */
+export async function startTerminal(id: string, options: { command?: string; title?: string; cols?: number; rows?: number } = {}): Promise<TerminalInfo> {
+  return terminalInfo(await (await fetchEngine(terminalPath(id), { method: 'POST', body: JSON.stringify(options) })).json());
+}
+export async function listTerminals(id: string): Promise<TerminalInfo[]> {
+  const list: unknown = await (await fetchEngine(terminalPath(id))).json();
+  if (!Array.isArray(list)) throw new EngineError('The engine returned an invalid terminal list.');
+  return list.map(terminalInfo);
+}
+export async function readTerminal(id: string, terminal: string): Promise<TerminalInfo> {
+  return terminalInfo(await (await fetchEngine(terminalPath(id, terminal))).json());
+}
+const toBase64 = (bytes: Uint8Array) => { let text = ''; for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(text); };
+const fromBase64 = (text: string) => Uint8Array.from(atob(text), c => c.charCodeAt(0));
+/** Types into the terminal; a string is sent as UTF-8. */
+export async function writeTerminal(id: string, terminal: string, data: string | Uint8Array): Promise<void> {
+  await fetchEngine(terminalPath(id, terminal, 'input'), { method: 'POST', body: JSON.stringify({ dataBase64: toBase64(typeof data === 'string' ? new TextEncoder().encode(data) : data) }) });
+}
+export async function resizeTerminal(id: string, terminal: string, cols: number, rows: number): Promise<TerminalInfo> {
+  return terminalInfo(await (await fetchEngine(terminalPath(id, terminal, 'resize'), { method: 'POST', body: JSON.stringify({ cols, rows }) })).json());
+}
+/** Ends the process group. A job stays listed with its log; a terminal leaves the list. */
+export async function closeTerminal(id: string, terminal: string): Promise<TerminalInfo> {
+  return terminalInfo(await (await fetchEngine(terminalPath(id, terminal, 'close'), { method: 'POST', body: '{}' })).json());
+}
+/** Ends it if running and forgets it and its log. */
+export async function removeTerminal(id: string, terminal: string): Promise<void> {
+  await fetchEngine(terminalPath(id, terminal, 'remove'), { method: 'POST', body: '{}' });
+}
+/**
+ * Follows one terminal's output from byte offset `after` (0 replays the kept
+ * scrollback). Hold at most one of these per open tab: browsers allow six
+ * connections per origin. Resolves after the exit record. `cut` says the first
+ * bytes were dropped from the bounded scrollback, so the screen should reset.
+ */
+export async function watchTerminal(id: string, terminal: string, after: number, onOutput: (bytes: Uint8Array, end: number, cut: boolean) => void, onExit: (info: TerminalInfo) => void, signal: AbortSignal): Promise<void> {
+  const response = await fetchEngine(`${terminalPath(id, terminal, 'stream')}?after=${after}`, { signal, headers: { Accept: 'text/event-stream' } }, true);
+  let finished = false;
+  await pumpEventStream(response, signal, text => {
+    let record: { seq?: number; type?: string; dataBase64?: string; cut?: boolean; info?: unknown };
+    try { record = JSON.parse(text); } catch { throw new EngineError('The engine sent an invalid terminal record.'); }
+    if (record.type === 'output' && typeof record.dataBase64 === 'string' && Number.isSafeInteger(record.seq)) onOutput(fromBase64(record.dataBase64), record.seq!, record.cut === true);
+    else if (record.type === 'exit') { finished = true; onExit(terminalInfo(record.info)); }
+    else throw new EngineError('The engine sent an unknown terminal record.');
+  }).catch(error => { if (!finished) throw error; });
+}
+/** The recent output as plain text (escape codes removed, redraws collapsed). */
+export async function readTerminalOutput(id: string, terminal: string, tailBytes?: number): Promise<{ text: string; truncated: boolean; info: TerminalInfo }> {
+  const r = await (await fetchEngine(`${terminalPath(id, terminal, 'output')}${tailBytes ? `?tail=${tailBytes}` : ''}`)).json() as { text?: unknown; truncated?: unknown; info?: unknown };
+  if (typeof r.text !== 'string') throw new EngineError('The engine returned invalid terminal output.');
+  return { text: r.text, truncated: r.truncated === true, info: terminalInfo(r.info) };
+}
+/**
+ * "Ask codeaf about this output": sends the question with the selected text, or
+ * else the terminal's recent output, attached as a file through the ordinary
+ * attachment path (E3). Continues `conversationId`, or opens a new conversation
+ * when none is given. Returns the conversation the question went to.
+ */
+export async function askAboutTerminalOutput(terminal: { sessionId: string; id: string }, question: string, options: { conversationId?: string; selection?: string; tailBytes?: number } = {}): Promise<EngineSnapshot> {
+  const picked = options.selection?.trim();
+  const source = picked ? { text: picked, label: 'selection', info: await readTerminal(terminal.sessionId, terminal.id) } : await readTerminalOutput(terminal.sessionId, terminal.id, options.tailBytes ?? 64 << 10).then(r => ({ ...r, label: 'output' }));
+  if (!source.text.trim()) throw new EngineError('There is no output to ask about yet.');
+  const target = options.conversationId ?? (await connectEngine()).id;
+  const name = `${source.info.title.replace(/[^\w.-]+/g, '-')}-${source.label}.txt`;
+  return sendEngineWithFiles(target, question.trim() || 'What is going on in this output?', [{ name, mime: 'text/plain', dataBase64: toBase64(new TextEncoder().encode(source.text)) }]);
+}
+/** "Running · 2m 14s" or "exit 0 · 2m ago": the header's state words. `now` is injectable for tests. */
+export function terminalStateWords(info: TerminalInfo, now = Date.now()): string {
+  const span = (ms: number) => { const s = Math.max(0, Math.floor(ms / 1000)); return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${Math.floor(s / 3600)}h ${Math.floor(s % 3600 / 60)}m`; };
+  if (info.state === 'running') return `Running · ${span(now - Date.parse(info.startedAt))}`;
+  const ended = Date.parse(info.endedAt ?? '');
+  const ago = Number.isFinite(ended) ? ` · ${span(now - ended)} ago` : '';
+  return info.state === 'closed' ? `closed${ago}` : `exit ${info.exitCode ?? 0}${ago}`;
 }
