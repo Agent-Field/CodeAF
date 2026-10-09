@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { expectAccessible, tokenColor } from './contracts';
 import { installMockEngine } from './support/mock-engine';
+import { pendingQuestion } from './support/scenarios';
 import type { AttentionItem, WorldRow } from '../../src/features/chat/world-client';
 
 // The menus lane on top of the current shell: the shared toast with its structural Undo, a close-and-stop that fails, and the
@@ -151,5 +152,130 @@ test.describe('the tab menu offers only what can work', () => {
     await expect(menu).toBeVisible();
     await expect(menu.getByRole('menuitem', { name: /Copy link|Move to new window/ })).toHaveCount(0);
     await page.keyboard.press('Escape');
+  });
+});
+
+// Bulk closes (the rest of the strip, the tabs to the right, a whole group) share ONE structural Undo that restores every
+// pane of every split, the group's own title and collapsed state, and each tab's place. Raw workspace state is seeded so a
+// split tab and a collapsed group are part of the picture.
+type RawTab = Record<string, unknown>;
+const conv = (id: string, title: string, over: RawTab = {}): RawTab => ({ id, kind: 'conversation', title, draft: `draft ${id}`, titleSource: 'manual', pinned: false, ...over });
+async function seedRaw(page: Page, tabs: RawTab[], groups: { id: string; title: string; collapsed?: boolean }[], active: string) {
+  const state = { tabs, groups: groups.map(g => ({ collapsed: false, ...g })), closed: [], activeId: active, nextNumber: tabs.length + 1, recentIds: tabs.map(t => t.id) };
+  await page.addInitScript(value => { if (!localStorage.getItem('codeaf.desktop.workspace.v1')) localStorage.setItem('codeaf.desktop.workspace.v1', value); }, JSON.stringify(state));
+}
+const saved = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('codeaf.desktop.workspace.v1') ?? 'null') as { tabs: { id: string; groupId?: string; split?: { panes: { id: string; draft: string }[] } }[]; groups: { id: string; title: string; collapsed: boolean }[] });
+const order = async (page: Page) => (await saved(page)).tabs.map(t => t.id);
+const split = (id: string, over: RawTab = {}): RawTab => ({ ...conv(id, 'Pair', over), split: { layout: '1x2', focus: 1, panes: [conv(`${id}1`, 'Left'), conv(`${id}2`, 'Right')] } });
+
+test.describe('bulk closes have one structural Undo', () => {
+  test.beforeEach(async ({ page }) => { await page.route('**/api/engine/**', route => route.abort()); });
+
+  test('closing a group offers Undo, and Undo restores its title, collapsed state, split panes and place', async ({ page }) => {
+    await seedRaw(page, [conv('p', 'Pinned', { pinned: true }), conv('a', 'Solo'), conv('b', 'Config stack', { groupId: 'g' }), split('s', { groupId: 'g' }), conv('c', 'Tail')], [{ id: 'g', title: 'Trailing commas', collapsed: false }], 'a');
+    await page.goto('/');
+    const before = await order(page);
+    await page.locator('.workspace-group-label').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Close 2 tabs' }).click();
+    const toast = page.locator('.toast');
+    await expect(toast).toContainText('Closed 2 tabs');
+    expect(await toast.getByRole('button').allTextContents()).toEqual(['Undo']);
+    await expect(page.locator('.workspace-group-label')).toHaveCount(0);
+    expect(await order(page)).not.toEqual(before);
+    await toast.getByRole('button', { name: 'Undo' }).click();
+    await expect(toast).toHaveCount(0);
+    const after = await saved(page);
+    expect(after.tabs.map(t => t.id)).toEqual(before);
+    expect(after.groups).toEqual([{ id: 'g', title: 'Trailing commas', collapsed: false }]);
+    expect(after.tabs.find(t => t.id === 's')!.groupId).toBe('g');
+    expect(after.tabs.find(t => t.id === 's')!.split!.panes.map(p => [p.id, p.draft])).toEqual([['s1', 'draft s1'], ['s2', 'draft s2']]);
+    await expect(page.locator('.workspace-group-label')).toContainText('Trailing commas');
+  });
+
+  test('Close other tabs and Close tabs to the right each undo to the exact prior order, by keyboard', async ({ page }) => {
+    await seedRaw(page, [conv('a', 'One'), conv('b', 'Two'), split('s'), conv('d', 'Four')], [], 'b');
+    await page.goto('/');
+    const before = await order(page);
+    for (const [item, title] of [['Close other tabs', 'Two'], ['Close tabs to the right', 'One']] as const) {
+      await page.getByRole('tab', { name: title, exact: true }).click({ button: 'right' });
+      await page.getByRole('menuitem', { name: item, exact: true }).click();
+      const toast = page.locator('.toast');
+      await expect(toast).toContainText(/Closed \d tabs?/);
+      const undo = toast.getByRole('button', { name: 'Undo' });
+      await undo.focus();
+      await page.keyboard.press('Enter');
+      await expect(toast).toHaveCount(0);
+      expect(await order(page)).toEqual(before);
+      expect((await saved(page)).tabs.find(t => t.id === 's')!.split!.panes).toHaveLength(2);
+    }
+  });
+
+  test('a bulk-close toast fits and passes accessibility at 320px, light and dark', async ({ page }) => {
+    for (const scheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.setViewportSize({ width: 320, height: 640 });
+      await seedRaw(page, [conv('a', 'Solo'), conv('b', 'Config stack', { groupId: 'g' }), conv('c', 'Fixtures', { groupId: 'g' })], [{ id: 'g', title: 'Trailing commas' }], 'a');
+      await page.goto('/');
+      await page.locator('.workspace-group-label').click({ button: 'right' });
+      await page.getByRole('menuitem', { name: 'Close 2 tabs' }).click();
+      await expect(page.locator('.toast')).toBeVisible();
+      expect(await noOverflow(page)).toBe(true);
+      await expectAccessible(page);
+      await page.evaluate(() => localStorage.clear());
+    }
+  });
+});
+
+test.describe('failed tasks and the Inbox', () => {
+  const failing = (over: Partial<WorldRow> = {}) => ({ ...running, initial: { running: false, entries: [] }, world: { rows: [row('w3', { title: 'Lexer rewrite', failed: 2, at: recent(), ...over })], items: [] as AttentionItem[] } });
+
+  test('a failed task alone summons the Inbox with a red dot named for it, and Seen clears the dot', async ({ page }) => {
+    await installMockEngine(page, failing());
+    await seed(page, [{ id: 'a', title: 'Intro' }], 'a');
+    await page.goto('/');
+    const inbox = page.getByRole('tab', { name: 'Inbox', exact: true });
+    await expect(inbox).toBeVisible({ timeout: 8000 });
+    await expect(inbox).toHaveAccessibleDescription('A task failed');
+    await expect(page.locator('.tab-badge')).toHaveAttribute('data-kind', 'failed');
+    await expect(page.locator('.tab-badge')).toHaveCSS('background-color', await tokenColor(page, 'danger'));
+    await inbox.click();
+    await page.getByRole('region', { name: 'Inbox' }).getByRole('button', { name: 'Mark failure in Lexer rewrite as seen' }).click();
+    await expect(page.locator('.tab-badge')).toHaveCount(0);
+  });
+
+  test('a question outranks a failure on the dot', async ({ page }) => {
+    await installMockEngine(page, { ...failing(), world: { rows: [row('w3', { title: 'Lexer rewrite', failed: 1, at: recent() }), row('w2', { title: 'Release notes', needsYou: true })], items: [ask('w2', 'Which branch?')] } });
+    await seed(page, [{ id: 'a', title: 'Intro' }], 'a');
+    await page.goto('/');
+    await expect(page.locator('.tab-badge')).toHaveAttribute('data-kind', 'needsYou', { timeout: 8000 });
+    await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveAccessibleDescription('Needs you');
+  });
+});
+
+test.describe('open-inbox lands on the oldest question', () => {
+  const asked = (session: string, text: string, ago: number): AttentionItem => ({ ...ask(session, text), asked: new Date(Date.now() - ago).toISOString() });
+  const openFromShell = (page: Page) => page.evaluate(() => window.dispatchEvent(new CustomEvent('codeaf:shell-open', { detail: 'inbox' })));
+
+  test('the shell request lists and orders the question that has waited longest first', async ({ page }) => {
+    await installMockEngine(page, { ...running, initial: { running: false, entries: [] }, world: { rows: [row('n', { title: 'Newer', needsYou: true }), row('o', { title: 'Older', needsYou: true })], items: [asked('n', 'Newer?', 60_000), asked('o', 'Older?', 3_600_000)] } });
+    await seed(page, [{ id: 'a', title: 'Intro' }], 'a');
+    await page.goto('/');
+    await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toBeVisible({ timeout: 8000 });
+    await openFromShell(page);
+    const card = page.getByRole('region', { name: 'Inbox' });
+    await expect(card).toBeVisible();
+    const rows = card.locator('[data-section="needsYou"] li');
+    await expect(rows.first()).toContainText('Older');
+    await expect(rows.nth(1)).toContainText('Newer');
+  });
+
+  test('with a tab-backed question the row is a button and receives focus', async ({ page }) => {
+    const asking = pendingQuestion();
+    await installMockEngine(page, { ...asking, initial: { ...asking.initial, running: true } });
+    await seed(page, [{ id: 'a', title: 'Intro' }, { id: 'b', title: 'Release v2.4', running: true }], 'a');
+    await page.goto('/');
+    await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toBeVisible({ timeout: 8000 });
+    await openFromShell(page);
+    await expect(page.getByRole('region', { name: 'Inbox' }).getByRole('button', { name: /Release v2.4/ })).toBeFocused();
   });
 });

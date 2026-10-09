@@ -22,6 +22,8 @@ export function leaveKindAction(state: WorkspaceState, kind: ShellKind): Workspa
 
 /** The action that shows the tab of `kind`: select it when it exists, open it (and focus it) when it does not. */
 export function openKindAction(state: WorkspaceState, kind: ShellKind): WorkspaceAction {
+  // The Inbox is created pinned by the workspace itself, and opening it from the rail lands on the oldest question.
+  if (kind === 'inbox') return { type: 'open-inbox' };
   const existing = state.tabs.find(tab => holdsKind(tab, kind));
   if (existing) return { type: 'select', id: panesOf(existing).find(pane => pane.kind === kind)!.id };
   return { type: 'open', background: false, tab: newTab({ kind, title: titles[kind], titleSource: titleSources[kind] }) };

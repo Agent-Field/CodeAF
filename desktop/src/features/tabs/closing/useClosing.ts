@@ -2,7 +2,7 @@
 // separate, explicit act (the stop square, "Close and stop", or "Stop it" in the toast). Nothing here stops work implicitly.
 import { useRef, useState, type Dispatch } from 'react';
 import { toasts } from '../../../design/toasts';
-import { panesOf, type Tab, type TabGroup, type WorkspaceAction, type WorkspaceState } from '../model';
+import { panesOf, workspaceReducer, type Tab, type TabGroup, type WorkspaceAction, type WorkspaceState } from '../model';
 import { paneRunning, tabRunning, type Summaries } from './running';
 import { stopPanes } from './stopWork';
 
@@ -57,6 +57,31 @@ export function useClosing(options: Options) {
     else toasts.show({ message: [{ strong: tab.title }, ' closed and still running'], actions: [{ label: 'Stop it', onSelect: () => void stop(tab) }], undo: () => reopenClosed(id) });
   }
 
+  /**
+   * Closes several tabs at once (the rest of the strip, the tabs to the right, a whole group) behind one structural Undo.
+   * The restore point is taken BEFORE the close from the tabs themselves, so every pane of every split, the group's title
+   * and collapsed state, and each tab's place come back exactly; it does not lean on the bounded Reopen list.
+   * Work still running in the closed tabs goes on (closing detaches); the message says so.
+   */
+  function closeMany(action: Extract<WorkspaceAction, { type: 'close-others' | 'close-right' | 'close-group' }>) {
+    const { state, dispatch } = latest.current;
+    const remaining = new Set(workspaceReducer(state, action).tabs.map(t => t.id));
+    const gone = state.tabs.filter(t => !remaining.has(t.id));
+    if (!gone.length) return;
+    const restore = !!document.activeElement?.closest('.workspace-tab');
+    const point = { tabs: gone, order: state.tabs.map(t => t.id), groups: state.groups.map(g => ({ ...g })), activeId: state.activeId };
+    const alive = gone.filter(isRunning).length;
+    const now = Date.now();
+    for (const tab of gone) places.current.set(tab.id, { since: now });
+    dispatch(action);
+    if (restore) restoreStripFocus();
+    const count = gone.length === 1 ? '1 tab' : `${gone.length} tabs`;
+    toasts.show({
+      message: ['Closed ', { strong: count }, ...(alive ? [`, ${alive} still running`] : [])],
+      undo: () => dispatch({ type: 'restore-closed', ...point }),
+    });
+  }
+
   /** Puts a closed tab back where it was and makes it active. */
   function reopenClosed(id: string) {
     const place = places.current.get(id);
@@ -67,6 +92,7 @@ export function useClosing(options: Options) {
     stopping,
     closeTab: (id: string) => close(id, false),
     closeAndStop: (id: string) => close(id, true),
+    closeMany,
     isRunning,
     reopenClosed,
     /** When this window first saw the tab close, for the Inbox's age column. Unknown after a reload. */

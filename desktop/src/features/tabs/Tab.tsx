@@ -48,7 +48,8 @@ export type TabProps = FrameProps & {
   pinned?: boolean;
   state?: TabState;
   /** Inbox only: the one pinned tab that carries a dot. */
-  badge?: boolean;
+  /** The Inbox's corner dot: something needs you (amber) or a task failed (red). Absent means nothing to say. */
+  badge?: false | 'needsYou' | 'failed';
   /** Icon-only at the narrowest widths (the 44px "compressed" tab). */
   compressed?: boolean;
   /** Forces the hover look, for specimens. */
@@ -87,11 +88,11 @@ export type TabProps = FrameProps & {
 export function Tab({ kind, title, monogram, active = false, pinned = false, state, picked = false, badge = false, compressed = false, hover = false, closeMode = 'close', closeHint, closeShortcut, tabIndex, wrapSelect, onSelect, onClose, onRename, onKeyDown, frame, id, inGroup = false, specimen = false, placeTint, switcher, ...rest }: TabProps) {
   const home = !!placeTint;
   const select = (
-    <Button className="workspace-tab-select" role={specimen ? undefined : 'tab'} id={id} aria-controls={specimen ? undefined : 'workspace-tab-panel'} aria-selected={specimen ? undefined : active} aria-current={specimen && active ? true : undefined} aria-label={title} aria-description={[state && tabStateLabel[state], picked && 'Selected', !state && badge && 'Needs you'].filter(Boolean).join(', ') || undefined} tabIndex={tabIndex ?? (active ? 0 : -1)} onClick={onSelect} onDoubleClick={onRename} onKeyDown={onKeyDown}>
+    <Button className="workspace-tab-select" role={specimen ? undefined : 'tab'} id={id} aria-controls={specimen ? undefined : 'workspace-tab-panel'} aria-selected={specimen ? undefined : active} aria-current={specimen && active ? true : undefined} aria-label={title} aria-description={[state && tabStateLabel[state], picked && 'Selected', !state && badge && (badge === 'failed' ? 'A task failed' : 'Needs you')].filter(Boolean).join(', ') || undefined} tabIndex={tabIndex ?? (active ? 0 : -1)} onClick={onSelect} onDoubleClick={onRename} onKeyDown={onKeyDown}>
       {home && !state ? <PlaceSwatch tint={placeTint} role="rail"/> : <TabGlyph kind={kind} title={title} monogram={monogram} state={state}/>}
       {(home || (!pinned && !compressed)) && <span className="workspace-tab-title">{title}</span>}
       {home && switcher && <>{switcher.alert && <span className="tab-dot" data-state="waiting" role="img" aria-label={switcher.alert}/>}<Icon name="switcher" size="micro"/></>}
-      {badge && <span className="tab-badge" aria-hidden="true"/>}
+      {badge && <span className="tab-badge" data-kind={badge} aria-hidden="true"/>}
     </Button>
   );
   const stop = closeMode === 'stop';

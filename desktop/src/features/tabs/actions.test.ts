@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTabActions, type NativeForTabs } from './actions.ts';
+import { createTabActions, HANDOFF_CLAIM_WAIT_MS, type NativeForTabs } from './actions.ts';
 import { createToasts } from '../../design/toasts.ts';
 import type { Tab } from './model.ts';
 
@@ -53,4 +53,38 @@ test('moving into an open window reports its failure the same way', async () => 
   const actions = createTabActions({ native: native({ moveTabToWindow: async () => { throw new Error('no such window'); } }), toasts });
   assert.equal(await actions.moveToWindow(tab(), 'w-9'), false);
   assert.equal(toasts.getToast()?.tone, 'danger');
+});
+
+test('an unclaimed handoff is reported once after the wait, and the tab is untouched', async () => {
+  const timers: Array<[() => void, number]> = [];
+  const toasts = createToasts();
+  let here = true;
+  const actions = createTabActions({ native: native(), toasts, stillHere: () => here, setTimer: (fn, ms) => { timers.push([fn, ms]); } });
+  assert.equal(await actions.moveToNewWindow(tab()), true);
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0][1], HANDOFF_CLAIM_WAIT_MS);
+  assert.equal(HANDOFF_CLAIM_WAIT_MS > 60_000, true);
+  assert.equal(toasts.getToast(), null);
+  timers[0][0]();
+  assert.deepEqual(toasts.getToast()?.message, [{ strong: 'Config stack' }, ' was not taken by the new window. It is still here.']);
+  assert.equal(toasts.getToast()?.tone, 'danger');
+  assert.equal(here, true);
+});
+
+test('a claimed or closed tab produces no timeout notice', async () => {
+  for (const move of [(a: ReturnType<typeof createTabActions>) => a.moveToNewWindow(tab()), (a: ReturnType<typeof createTabActions>) => a.moveToWindow(tab(), 'w-2')]) {
+    const timers: Array<() => void> = [];
+    const toasts = createToasts();
+    const actions = createTabActions({ native: native(), toasts, stillHere: () => false, setTimer: fn => { timers.push(fn); } });
+    assert.equal(await move(actions), true);
+    timers[0]();
+    assert.equal(toasts.getToast(), null);
+  }
+});
+
+test('no timer is set when a move fails to start', async () => {
+  const timers: unknown[] = [];
+  const actions = createTabActions({ native: native({ openPlaceWindow: async () => { throw new Error('x'); } }), toasts: createToasts(), stillHere: () => true, setTimer: () => { timers.push(1); } });
+  assert.equal(await actions.moveToNewWindow(tab()), false);
+  assert.deepEqual(timers, []);
 });
