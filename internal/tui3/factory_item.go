@@ -375,7 +375,9 @@ func (a *app) factoryCloseItem() {
 	a.fp.crumbHover = factoryCrumbNone
 	a.fp.scroll = 0
 	a.fp.hot, a.fp.box = factoryItemHot{}, false
-	a.fp.host = factoryHost{}
+	// The chats the page opened are kept on it for the next sync to let go
+	// of (factory_host.go's [app.factoryHostLetGo]).
+	a.fp.host = factoryHost{opened: a.fp.host.opened, kept: a.fp.host.kept}
 	a.pageMsg = ""
 	a.touch()
 }

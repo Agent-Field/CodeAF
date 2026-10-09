@@ -436,3 +436,55 @@ func TestFactoryRunFramesAtThreeWidths(t *testing.T) {
 		}
 	}
 }
+
+// WALKING OVER THE STEPS LEAVES NO TABS: a chat the page opened because the
+// cursor passed over its row is let go of when the cursor moves on, one the
+// person put the keys into stays, and back on the floor the one the page
+// still had in front is stepped back from.
+func TestFactoryStepChatsWalkedPastAreLetGo(t *testing.T) {
+	plan, write := factoryStageChat(t), factoryStageChat(t)
+	f := &factoryFake{}
+	factoryShapeItem(f, 2, func(it *factory.Item) {
+		s := *it.Stream
+		s.Phases = append([]factory.Phase(nil), s.Phases...)
+		s.Phases[0].Chat, s.Phases[2].Chat = plan, write
+		it.Stream = &s
+	})
+	a := factoryVerbLab(t, f)
+	a.open = func(where, file string) (Conversation, error) {
+		return Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: file, Workspace: where}, nil
+	}
+	factoryOn(t, a, 2)
+	drive(t, a, key("enter"))
+	factoryRowNamed(t, a, "plan")
+	drive(t, a, key("down"), key("up"))
+	if a.frontTabKey() != a.convKey(plan) {
+		t.Fatal("selecting plan did not bring its chat in front")
+	}
+	factoryRowNamed(t, a, "write")
+	drive(t, a, key("up"), key("down"))
+	if a.frontTabKey() != a.convKey(write) {
+		t.Fatal("selecting write did not bring its chat in front")
+	}
+	if a.behind[a.convKey(plan)] != nil {
+		t.Fatal("the plan's chat the cursor walked past is still held")
+	}
+	// The keys in write's box: write is the person's now and stays.
+	drive(t, a, key("enter"))
+	if !a.fp.box {
+		t.Fatal("enter did not put the keys in write's box")
+	}
+	drive(t, a, key("esc"))
+	factoryRowNamed(t, a, "plan")
+	drive(t, a, key("down"), key("up"))
+	if a.frontTabKey() != a.convKey(plan) || a.behind[a.convKey(write)] == nil {
+		t.Fatalf("after keeping write and walking to plan: front %q, write held %v", a.frontTabKey(), a.behind[a.convKey(write)] != nil)
+	}
+	drive(t, a, key("esc"))
+	if a.fp.open {
+		t.Fatal("esc did not close the item page")
+	}
+	if a.frontTabKey() == a.convKey(plan) || a.behind[a.convKey(plan)] != nil {
+		t.Fatalf("back on the floor the plan's chat the page opened is still held: front plan %v, behind %v, prev %v, opened %v", a.frontTabKey() == a.convKey(plan), a.behind[a.convKey(plan)] != nil, a.prev, a.fp.host.opened)
+	}
+}
