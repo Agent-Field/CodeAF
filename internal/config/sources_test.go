@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -25,6 +26,47 @@ func vendoredSource(t *testing.T, id string) modelsource.Source {
 	}
 	t.Fatalf("vendored source %q was not found", id)
 	return modelsource.Source{}
+}
+
+// A VENDOR THE ROUTER CANNOT WEIGH IS STILL A MODEL A PERSON MAY PICK, and this
+// is the seam that decides it. The crew table ([config.crewVendors]) names the
+// catalog vendors a connection serves, so a vendor no catalog row names is never
+// offered to the crew — but the LISTING is a different question, and the answer
+// to it is every id the endpoint published, unfiltered.
+//
+// ai& is where the two answers differ: motif-technologies is on its listing and
+// in no catalog row, so Motif 3 is pickable and unroutable. Reading this as a
+// gap would produce the wrong fix twice — dropping the row from the listing, or
+// inventing catalog figures for a vendor the router has never heard of.
+func TestAModelTheCatalogCannotWeighStillReachesThePicker(t *testing.T) {
+	// The shape api.aiand.com/v1/models actually answers, trimmed to one model
+	// the crew can weigh and one it cannot. The richer per-model fields are here
+	// on purpose: they are what the parse must NOT need in order to keep the id.
+	body := []byte(`{"object":"list","data":[
+	 {"id":"zai-org/glm-5.3-flash","name":"zai-org/glm-5.3-flash","context_window":1048550,
+	  "capabilities":["chat","vision","reasoning","tool_calling"],
+	  "reasoning_efforts":["low","high","max"],"reasoning_effort_default":"high"},
+	 {"id":"motif-technologies/motif-3","name":"Motif-Technologies/Motif-3","context_window":262144,
+	  "capabilities":["chat","reasoning","tool_calling"],
+	  "reasoning_efforts":["none","high"],"reasoning_effort_default":"none"}]}`)
+	outcome, listed := listedOutcome(body)
+	if !listed || !outcome.Listed {
+		t.Fatalf("a well-formed listing did not parse: %+v", outcome)
+	}
+	if outcome.Models != 2 {
+		t.Errorf("listing counted %d models, want 2", outcome.Models)
+	}
+	for _, want := range []string{"zai-org/glm-5.3-flash", "motif-technologies/motif-3"} {
+		if !slices.Contains(outcome.ModelIDs, want) {
+			t.Errorf("%s did not reach the picker; listing carried %v", want, outcome.ModelIDs)
+		}
+	}
+	// The id is kept WHOLE, org segment and all. Shortening it to `motif-3` is
+	// the move that would break the send, because a router-shaped provider
+	// refuses a bare name — the same fact crewVendorWire exists for.
+	if bare := strings.TrimPrefix(outcome.ModelIDs[1], "motif-technologies/"); bare == outcome.ModelIDs[1] {
+		t.Error("the vendor segment was taken off a model id that must keep it")
+	}
 }
 
 func TestSourcePersistenceSharesTheProfileAndKeepsItPrivate(t *testing.T) {

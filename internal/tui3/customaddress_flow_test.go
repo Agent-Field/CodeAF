@@ -108,7 +108,7 @@ func TestCustomAddressFlowPrefillsTheDiscoveredRow(t *testing.T) {
 	a := modelServiceTestApp(t, t.TempDir(), "sample", modelsource.NewSet(), nil)
 	a.openAddProvider(false)
 	a.addPanel.loading = false
-	a.addPanel.rebuild([]LocalServerProbe{{Name: "local", Address: "http://127.0.0.1:9999/v1"}}, nil)
+	a.addPanel.rebuild([]LocalServerProbe{{Name: "local", Address: "http://127.0.0.1:9999/v1"}}, nil, a.sources)
 	for i, item := range a.addPanel.items {
 		if item.probe != nil {
 			a.addPanel.cursor = i

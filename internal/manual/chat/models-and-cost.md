@@ -80,6 +80,25 @@ Over `--host`, the picker and its prices are this laptop's catalog, while the co
 window used for compaction comes from the far machine's catalog. The machine doing the
 work owns that execution limit even when the two catalog caches differ.
 
+## Which model is the default — Ollama only, a removed model, or no available models
+
+On a local launch, the opening model comes from the same available chat list as
+`/model`. A saved choice, environment value, command-line choice or shipped preference
+is kept only if that model is listed. Otherwise codeaf selects the first available
+chat model in provider order. With only Ollama connected, that is an installed Ollama
+model. With several providers, the default still belongs to their combined list.
+Automatic replacements do not overwrite your saved preference.
+
+While every catalog is cold or empty, no default model is displayed and a message
+stays in the draft. The picker opens with:
+`no available model · connect a provider or refresh /model`.
+When a provider's list arrives, codeaf selects an available model. Press Enter again
+to send the draft. Refreshing a list or removing a connection also replaces a model
+that is no longer listed; existing requests finish on the model they started with.
+
+Remote sessions keep the engine's opening model; this laptop's catalog does not
+choose a default for another machine.
+
 ## Sign in with ChatGPT and use my Codex plan — models, context window, price, limits and expiry
 
 Open `/connect`, choose **Codex**, and finish the browser sign-in. This signs in the way
@@ -118,8 +137,8 @@ An expired sign-in says:
 codex sign-in has expired · /connect or codeaf connect codex signs in again
 ```
 
-This sign-in does not add an OpenAI API key, cannot connect a custom endpoint, does not
-put Codex on first-run setup, and does not replace codeaf's own instructions with the
+Codex is available on the first-run provider chooser and later through `/connect`.
+This sign-in does not add an OpenAI API key, cannot connect a custom endpoint, and does not replace codeaf's own instructions with the
 Codex CLI's base instructions. Use the custom-service row for an OpenAI-compatible API.
 
 ## Can I switch models while it is replying — I changed the model in the middle of an answer, does it change now or wait?
@@ -177,10 +196,9 @@ written anywhere: the model a remote session opens on is resolved on that machin
 that machine's profile. And reasoning effort is kept per model for the session, not
 written to the profile.
 
-esc closes the picker and **undoes nothing**. It gives your half-typed draft and the frame
-back as they were — the picker holds its own filter text, and the filter is forgotten when
-it closes — but the model in use does not come back: enter already switched it, then and
-there, and esc is only the way out. To go back to the model you were on, choose it.
+Enter on a model switches to it and closes the picker. Your half-typed draft and the
+frame return as they were; the filter text is forgotten. Esc closes the picker without
+choosing another model. To go back to the model you were on, open the picker and choose it.
 
 ## Moving and filtering in the model picker
 
@@ -194,8 +212,8 @@ Type to filter. The keys:
 | ctrl+t | walk the reasoning effort of the model under the cursor |
 | tab, → | open the providers — the providers serving the model under the cursor — and move the cursor into them |
 | tab, ← | close them again, back on the model |
-| enter | switch to the row under the cursor — or, on an open provider, pin it — and **leave the list up** |
-| esc | close it; what enter already did stays done |
+| enter | choose the highlighted model and close the list; on an open provider, pin it and keep its controls open |
+| esc | close the list without choosing another model; provider changes already made stay done |
 | alt+s, alt+shift+s | order the list by the next column, and turn that column round |
 
 ## Why left and right arrows do the wrong thing in the model picker — the caret and the providers share one pair of keys
@@ -242,10 +260,29 @@ and the task composer walk three rows a notch, clamped at both ends, while the p
 beneath stays put. The cursor's row stays on screen with headings and extra lines
 included in the window's size.
 
-**Enter does not close the list.** It switches, the mark moves to the row you chose, and
-the list stays where it is — so two models can be compared on their prices, chosen between,
-and changed back without reopening anything. `esc` is the way out, and it undoes nothing:
-what enter did is already done.
+**Enter on a model chooses it and closes the list immediately.** This applies to the
+conversation, a task's model, settings slots and roles, home's draft and the task composer.
+The keyboard returns to the draft or page you opened the list from. To compare another
+model, reopen the list. With no matching model, Enter leaves the list open and changes
+nothing. Enter inside a provider fold keeps those controls open, including when it opens
+the machines under OpenRouter.
+
+## Which models appear — only connected providers, Ollama without OpenRouter, multiple providers
+
+Model lists offer only models from connections with a key, a signed-in account, or an
+explicitly anonymous endpoint such as connected Ollama. A public catalog or a leftover
+cache does not connect a provider. With only Ollama connected, only its installed models
+appear; with only OpenRouter connected, only its models appear. With several providers
+connected, their lists appear together in provider groups. Removing a connection or its
+key removes its models from subsequent lists. A cold catalog never adds built-in guesses.
+
+This applies to `/model`, task rooms, settings slots and roles, Home drafts and the task
+composer. Each slot still keeps only models with the capabilities it needs. A provider
+that cannot list models has a non-selectable notice; `+ add a provider` opens connection
+setup and is not a model. That menu includes every built-in provider from initial setup, including
+OpenRouter, and labels each `connected` or `not connected`. You can add OpenRouter after
+Ollama without repeating onboarding; both catalogs then appear together. `ctrl+r`
+refreshes the known lists.
 
 ## Searching the model picker by name
 
@@ -262,10 +299,9 @@ At launch, codeaf fetches a connected provider's model list once if it has an em
 Pressing `ctrl+r` in the picker asks for a fresh list (the *commands* page,
 "Refreshing the model list"). Otherwise
 the list comes from what is already known, in this order: the
-catalog the door passed in, then `~/.codeaf/v3/models.json`, then five names this build
-remembers (`deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
-`anthropic/claude-sonnet-4.5`, `google/gemini-2.5-flash`, `moonshotai/kimi-k3`). Each rung is
-tried only when the one above it came back empty after filtering.
+catalog the door passed in, or that provider's cached list while discovery is warming.
+A known catalog is authoritative. A cold list offers no
+built-in guesses; connect a provider or refresh to discover its models.
 
 **The `/model` you typed stays in the box**, drawn as the chip it was, with the filter after
 it: `› /model filter by name`. The list is a different box from the one you typed the command

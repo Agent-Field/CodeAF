@@ -827,14 +827,19 @@ type Options struct {
 	// slice because the door's list may be warming: it is called the moment the
 	// picker opens, so a catalog that resolved after boot is on offer, and it
 	// MUST NOT block — a picker that waits on a fetch is a picker that answered
-	// a question with a spinner. Nil, or an empty answer, falls through to
-	// ~/.codeaf/v3/models.json and then to [BuiltinModels] (see models.go).
+	// a question with a spinner. Nil falls through to the provider's cached
+	// list; a known empty list stays empty, and no built-ins are offered.
 	//
 	// THE ONE FETCH IS ASKED FOR, AND IT STILL DOES NOT BLOCK: [Options.
 	// RefreshModels] runs as a command off the loop while the picker keeps
 	// answering, and this function goes on returning what it returned until
 	// the door has swapped in what that fetch brought back.
 	Models func() []Model
+	// RequireListedModel makes the opening model and every automatic replacement
+	// come from the same available chat catalog as /model. A cold or empty list
+	// shows no model and holds sends until discovery or a connection supplies one.
+	// Local doors own these catalogs; remote doors leave the engine's choice alone.
+	RequireListedModel bool
 	// ModelsForService is the process shelf's never-waiting reading for one
 	// connected service. Keeping it beside Models makes the picker read one
 	// shelf for every group instead of a surface-only map that a restart happens
