@@ -321,3 +321,9 @@ The Components catalogue shows a 260px content-width composer paste with a 32px 
 ### Tooltip geometry and wrapped titles
 
 Detailed component tooltip is24px tall,11px normal-leading text,8px horizontal inset,0 vertical inset and8px shortcut gap. Shared Tooltip uses that minimum height and flex alignment; it keeps height automatic for wrapped full titles in narrow windows and preserves collision padding, delay, focus/hover/Escape behavior and platform-native shortcuts. The caption typography token remains unchanged elsewhere.
+
+### Places 6e: duplicate conversation preview
+
+The preview now reads other real Places' stored open conversation panes, including splits, by the full normalized durable conversation target. Membership, closed tabs, tasks, Inbox and the virtual Now candidate do not imply an open view. Canonical Place labels appear as “also open in Marketing”. The prose specifies a small preview line without a corresponding rendered placement: the provisional choice is the shared 11px label/ink-3 caption, after the last-reply text and before any existing actions. Several matches show the first alphabetical Place and the count of other Places, with ellipsis for narrow cards. Designer review should confirm this placement and multi-Place wording. No new destination-picker or Move-to-existing-window control is specified by the ZIP, so none is introduced.
+
+A stored open tab set remains open when its window closes; closing the actual tab removes the caption. The visible hover preview refreshes every two seconds and aborts its read when dismissed. Backend compact target projections invalidate immediately on workspace file size/mtime changes and revalidate unchanged signatures every 30 seconds; this last interval covers external edits preserving timestamps. These are provisional technical defaults, not additional settings controls.
