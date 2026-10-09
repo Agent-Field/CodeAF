@@ -5,11 +5,11 @@
 .task-note-person { align-items: flex-end; gap: var(--space-1); }
 .task-note-person[data-pending] .task-note-bubble { opacity: var(--opacity-subtle); }
 .task-note-bubble { max-width: var(--chat-bubble-max-width); margin: 0; padding: var(--task-note-pad-block) var(--task-note-pad-inline); border-radius: var(--radius-bubble); background: var(--bubble); color: var(--ink); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); white-space: pre-wrap; overflow-wrap: anywhere; }
-.task-note-receipt { color: var(--ink-2); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); }
+.task-note-receipt { color: var(--ink-3); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); }
 
 /* Others' notes are work-rhythm words: ink-2, with who said it above. */
 .task-note-other { gap: var(--space-half); max-width: 85%; }
-.task-note-author { color: var(--ink-2); font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); line-height: var(--type-caption-leading); }
+.task-note-author { color: var(--ink-3); font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); line-height: var(--type-caption-leading); }
 .task-note-body { margin: 0; color: var(--ink-2); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* A landing: the result in words, the branch beside it in quiet monospace. */

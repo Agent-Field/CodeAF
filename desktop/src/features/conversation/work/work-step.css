@@ -1,11 +1,12 @@
 /* Step row (design v3 Work block · Step): 28px, chevron, 13px category glyph, title, state and duration on the right. Layout and ink only. */
 .work-step { display: flex; flex-direction: column; min-width: 0; }
-.work-step .work-step-head.button { min-height: var(--row-h); padding-inline: 0; gap: var(--space-2); border-radius: 0; background: transparent; color: var(--ink-2); font-size: var(--type-label-size); line-height: var(--type-label-leading); }
+.work-step .work-step-head.button { min-height: var(--row-h); padding-inline: 0; gap: var(--space-2); border-radius: 0; background: transparent; color: var(--ink-3); font-size: var(--type-label-size); line-height: var(--type-label-leading); }
 .work-step .work-step-head.button > .app-icon { color: var(--step-category); }
 .work-step .work-step-head.button > .app-icon[data-icon="chevron"] { width: var(--row-action-icon); height: var(--row-action-icon); color: var(--ink-3); }
 .work-step .work-step-head.button:hover > .app-icon[data-icon="chevron"] { color: var(--ink-2); }
 .work-step .app-icon[data-motion="disclosure"] { transform: rotate(calc(var(--motion-ask-open) * -1)); }
 .work-step [aria-expanded="true"] > .app-icon[data-motion="disclosure"] { transform: none; }
+.work-step[data-state="failed"] .work-step-head.button { color: var(--ink-2); }
 .work-step[data-state="running"] .work-step-head.button, .work-step[data-state="waiting"] .work-step-head.button { color: var(--ink); }
 .work-step[data-state="forming"] .work-step-title { opacity: var(--opacity-control-disabled); }
 .work-step[data-state="refused"] .work-step-title { text-decoration: line-through; text-decoration-color: var(--line); }
@@ -16,7 +17,7 @@
 .work-step-dot[data-mark="failed"]::before { background: var(--mark-failed); }
 .work-step-ring::before { content: ""; width: var(--mark-ring); height: var(--mark-ring); border-radius: 50%; box-shadow: inset 0 0 0 var(--mark-ring-width) var(--mark-queued); }
 
-.work-step-tail { display: inline-flex; flex: none; align-items: center; gap: var(--space-tight); margin-inline-start: auto; color: var(--ink-2); }
+.work-step-tail { display: inline-flex; flex: none; align-items: center; gap: var(--space-tight); margin-inline-start: auto; color: var(--ink-3); }
 .work-step-tail .app-icon { color: var(--mark-stopped); }
 .work-step-word { font-size: var(--type-mono-small-size); white-space: nowrap; }
-.work-step .work-time { color: var(--ink-2); font-family: var(--mono); font-size: var(--type-mono-small-size); }
+.work-step .work-time { color: var(--ink-3); font-family: var(--mono); font-size: var(--type-mono-small-size); }

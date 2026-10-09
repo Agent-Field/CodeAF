@@ -110,3 +110,10 @@ test('the expanded view can be left from its right-hand collapse control as well
   await expect(page.getByRole('region', { name: 'Tasks' })).toHaveCount(0);
   await expect(panel(page)).toBeVisible();
 });
+
+test('the task view header is the back arrow, the trail and the counts: no panel toggle (design 1c)', async ({ page }) => {
+  await start(page);
+  await panel(page).locator('.task-row-title').first().click();
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toBeVisible();
+  await expect(toggle(page)).toHaveCount(0);
+});

@@ -46,7 +46,7 @@ small { font-size: var(--font-size-caption); color: var(--muted); }.type-sample 
 .command-palette[open] { animation: surface-enter var(--duration-overlay) var(--ease-overlay); }
 /* Search focus is a local underline, not a rectangular native input outline. */
 .palette-search { border-bottom: var(--focus-input-width) solid transparent; }
-.palette-search .text-input:focus-visible { outline: none; }
+.palette-search .text-input:focus-visible { outline: none; box-shadow: none; }
 .palette-search:has(.text-input:focus-visible) { border-bottom-color: var(--focus-ring); }
 .workspace-page { flex: 1; min-height: 0; min-width: 0; display: flex; }
 .workspace-page[hidden] { display: none; }

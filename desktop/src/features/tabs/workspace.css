@@ -23,7 +23,6 @@
 .workspace-group-tab-slot { overflow: hidden; max-width: var(--tab-max-width); margin-right: var(--space-1); opacity: var(--opacity-opaque); transition: max-width var(--duration-sidebar) var(--ease-layout), margin var(--duration-sidebar) var(--ease-layout), opacity var(--duration) var(--chrome-ease), visibility var(--duration-sidebar); }
 .workspace-group-tab-slot[data-hidden="true"] { max-width: 0; margin-right: 0; opacity: var(--opacity-transparent); visibility: hidden; pointer-events: none; }
 .workspace-conversation { flex: 1; display: flex; min-height: 0; min-width: 0; overflow: hidden; }
-.workspace-conversation:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: calc(var(--motion-rest) - var(--focus-offset)); }
 .workspace-rename { width: min(var(--tab-composer-max-width),calc(100vw - var(--space-6))); border: var(--border-width) solid var(--border); border-radius: var(--radius-lg); padding: var(--space-4); background: var(--overlay-surface); color: var(--text); box-shadow: var(--palette-shadow); }
 .workspace-rename[open] { animation: surface-enter var(--duration-overlay) var(--ease-overlay); }
 .workspace-rename::backdrop { background: var(--palette-backdrop); backdrop-filter: blur(var(--palette-blur)); }

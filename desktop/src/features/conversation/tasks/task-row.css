@@ -19,7 +19,7 @@
 
 .task-row-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-row-wait { opacity: var(--opacity-subtle); }
-.task-row-meta { flex: none; color: var(--ink-2); font-size: var(--type-caption-size); font-variant-numeric: tabular-nums; transition: opacity var(--dur-fast) var(--ease); }
+.task-row-meta { flex: none; color: var(--ink-3); font-size: var(--type-caption-size); font-variant-numeric: tabular-nums; transition: opacity var(--dur-fast) var(--ease); }
 
 /* Settled work steps back; a task waiting its turn is dimmer still. */
 .task-row[data-kind="done"], .task-row[data-kind="paused"] { color: var(--ink-2); }

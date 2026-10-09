@@ -1,4 +1,4 @@
-/* Breadcrumb: Back and the trail share one quiet line of ink-2 text; the current task is ink at medium weight. */
+/* Breadcrumb: Back and the trail share one quiet line of ink-3 text; the current task is ink at medium weight. */
 /* The bar is the pane's own top row, not part of the column: Back sits at the pane's edge. */
 .conversation-bar .breadcrumb { flex: 1; }
 .conversation-bar .breadcrumb-back.icon-button { margin-inline-start: 0; }
@@ -10,10 +10,9 @@
 .breadcrumb-sep, .breadcrumb-ellipsis { flex: 0 0 auto; padding: 0 var(--space-tight); color: var(--ink-3); }
 .breadcrumb-link, .breadcrumb-current { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: inherit; }
 /* A block box, not the button's centred flex row, so a long name ends in an ellipsis instead of losing its start. */
-.breadcrumb-link { display: block; text-align: start; padding: var(--space-half) var(--space-1); border: 0; border-radius: var(--radius-chip); background: transparent; color: var(--ink-2); }
+.breadcrumb-link { display: block; text-align: start; padding: var(--space-half) var(--space-1); border: 0; border-radius: var(--radius-chip); background: transparent; color: var(--ink-3); }
 .breadcrumb-link:hover { background: var(--field); color: var(--ink); }
 .breadcrumb-link:active { background: var(--field-2); color: var(--ink); }
-.breadcrumb-link:focus-visible { outline: var(--focus-style); outline-offset: var(--focus-offset); }
 .breadcrumb-current { padding: var(--space-half) var(--space-1); color: var(--ink); font-weight: var(--type-label-strong); }
 
 .task-view { display: flex; flex: 1; flex-direction: column; gap: var(--space-6); min-width: 0; }

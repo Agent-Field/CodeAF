@@ -6,9 +6,9 @@ import { richReply, trayQuestions } from './support/scenarios-v2';
 import { expectAccessible } from './contracts';
 import { openApp, posts, send } from './support/conversation';
 
-// ink-3 is the designer's exact colour and reads 3.1 to 4.5:1 on the surfaces, so TEXT never uses it
-// (docs/COMPONENTS.md). This sweep opens each conversation surface in both schemes and lets axe judge
-// every visible text node, so a new ink-3 text rule fails here rather than in review.
+// ink-3 is the designer exact colour for muted text and reads 3.1 to 4.5:1 on the surfaces. The owner rule is that the design wins,
+// so only the color-contrast rule is waived, on the INK3_TEXT selectors in contracts.ts; every other axe rule applies to everything. This sweep opens each conversation surface in both schemes and lets axe judge
+// every visible text node, so ink-3 text outside those selectors fails here rather than in review.
 
 const tray = (page: Page) => page.getByRole('region', { name: 'Waiting on you' });
 

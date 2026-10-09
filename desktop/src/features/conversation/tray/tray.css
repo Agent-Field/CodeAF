@@ -18,8 +18,7 @@
 .tray-panel-column { flex-direction: column; align-items: flex-start; }
 
 .tray-field { resize: none; padding: var(--space-2) var(--space-3); border: 0; border-radius: var(--radius-md); background: var(--field); font-family: var(--font-sans); }
-/* Inline fields never draw a ring on a mouse click (the composer law): focus only deepens the fill. */
-.tray-field:focus-visible { outline: none; background: var(--field-2); }
+/* Inline fields take the shared keyboard ring and nothing on a mouse click (the composer law). */
 .tray-mono { font-family: var(--font-mono); font-size: var(--font-size-code); }
 .tray-fields { display: flex; flex-direction: column; gap: var(--space-2); }
 .tray-field-row { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); }

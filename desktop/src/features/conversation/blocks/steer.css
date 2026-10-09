@@ -11,7 +11,7 @@
   line-height: var(--type-label-leading);
   color: var(--ink-2);
 }
-.steer-landing { color: var(--ink-2); }
+.steer-landing { color: var(--ink-3); }
 .steer-elbow { display: inline-flex; flex: none; color: var(--ink-3); }
 .steer-elbow .app-icon { width: var(--steer-icon-size); height: var(--steer-icon-size); }
 .steer-text { min-width: 0; overflow-wrap: anywhere; }

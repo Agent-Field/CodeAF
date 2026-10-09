@@ -8,10 +8,9 @@
 .tray-fold[data-shown] { grid-template-rows: 1fr; opacity: var(--opacity-opaque); visibility: visible; transition: grid-template-rows var(--dur-base) var(--ease), opacity var(--dur-base) var(--ease); }
 .tray-fold-room { min-height: 0; overflow: hidden; padding: var(--tray-shadow-room); margin: calc(var(--tray-shadow-room) * -1); }
 
-.tray-header { display: flex; align-items: center; gap: var(--space-2); min-width: 0; padding: var(--space-3) var(--tray-pad-end) 0 var(--tray-pad-inline); color: var(--ink-2); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); }
+.tray-header { display: flex; align-items: center; gap: var(--space-2); min-width: 0; padding: var(--space-3) var(--tray-pad-end) 0 var(--tray-pad-inline); color: var(--ink-3); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); }
 .tray-mark { flex: none; width: var(--mark-dot); height: var(--mark-dot); border-radius: var(--tray-mark-radius); background: var(--mark-waiting); }
-/* Text the reader must read uses ink-2: the design's ink-3 reads under 4.5:1 at caption size (WCAG AA). */
-.tray-crumb { color: var(--ink-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--type-caption-weight); }
+.tray-crumb { color: var(--ink-3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--type-caption-weight); }
 .tray-crumb-kind { flex: none; font-weight: var(--font-weight-regular); }
 .tray-pager { display: flex; align-items: center; gap: var(--space-half); margin-left: auto; flex: none; }
 .tray-count { padding-right: var(--space-1); font-variant-numeric: tabular-nums; }
@@ -27,7 +26,7 @@
 /* 1f Tray body: capped at 40% of the window; a bottom mask appears only while more is below. */
 .tray-body { min-height: 0; max-height: var(--tray-body-max-height); overflow-y: auto; padding: var(--space-compact) var(--tray-pad-end) var(--space-row) var(--tray-pad-inline); }
 .tray-body[data-more] { -webkit-mask-image: linear-gradient(to bottom, var(--canvas) calc(100% - var(--tray-fade)), transparent); mask-image: linear-gradient(to bottom, var(--canvas) calc(100% - var(--tray-fade)), transparent); }
-.tray-foot { margin: 0; padding: 0 var(--tray-pad-end) var(--space-2) var(--tray-pad-inline); color: var(--ink-2); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); text-align: right; }
+.tray-foot { margin: 0; padding: 0 var(--tray-pad-end) var(--space-2) var(--tray-pad-inline); color: var(--ink-3); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); text-align: right; }
 
 /* 1b: the compact bar stands in for the card while the reader is scrolled away. */
 .tray-compact { display: flex; align-items: center; gap: var(--space-compact); min-width: 0; height: var(--tray-compact-height); padding: 0 var(--tray-compact-pad-end) 0 var(--tray-compact-pad-inline); border-radius: var(--tray-compact-radius); background: var(--surface); box-shadow: var(--sh-2); color: var(--ink); font-size: var(--type-label-size); }

@@ -3,7 +3,12 @@ button, input, select { font: inherit; }
 button { cursor: pointer; transition: background var(--duration) var(--chrome-ease), color var(--duration) var(--chrome-ease), border-color var(--duration) var(--chrome-ease); }
 button, select { -webkit-user-select: none; user-select: none; }
 button:disabled { cursor: default; opacity: var(--opacity-disabled); }
-:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
+/* ONE keyboard focus treatment (conversation 1f): a 2px accent ring plus a 4px soft halo, drawn for keyboard input only.
+   data-input="pointer" (design/inputModality.ts) is set by a mouse press and cleared by the next key, so a click in a
+   text field draws nothing. The transparent outline keeps the ring visible in forced-colors mode. */
+:focus-visible { outline: var(--focus-ring-width) solid transparent; }
+:where(html[data-input="pointer"]) :focus-visible { outline: none; }
+:where(html:not([data-input="pointer"])) :focus-visible { box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
 .app-icon { display: inline-flex; align-items: center; justify-content: center; width: var(--icon-md); height: var(--icon-md); flex: 0 0 auto; color: inherit; }
 .app-icon-xs { width: var(--icon-xs); height: var(--icon-xs); }.app-icon-sm { width: var(--icon-sm); height: var(--icon-sm); }.app-icon-lg { width: var(--icon-lg); height: var(--icon-lg); }
 .app-icon > div { display: inline-flex; width: 100%; height: 100%; }.app-icon svg { display: block; width: 100%; height: 100%; stroke-width: var(--icon-stroke); }
@@ -14,7 +19,6 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
    keyboard only. Disabled is 40% of the whole control, the only permitted use of opacity. */
 .button, .icon-button, .segmented-option, .chip-button { transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease); }
 .button:active, .icon-button:active, .segmented-option:active, .chip-button:active { transition-duration: var(--dur-press); }
-.button:focus-visible, .icon-button:focus-visible, .segmented-option:focus-visible, .chip-button:focus-visible { outline: var(--focus-ring-width) solid transparent; box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
 .button:disabled, .icon-button:disabled, .segmented-option:disabled, .chip-button:disabled { cursor: default; opacity: var(--opacity-control-disabled); }
 .button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-tight); min-height: var(--control-height); padding: 0 var(--control-pad); border: 0; border-radius: var(--radius-control); font-family: var(--sans); font-size: var(--type-label-size); font-weight: var(--type-label-strong); line-height: var(--type-label-leading); white-space: nowrap; background: transparent; color: var(--ink); }
 .button-primary { padding-inline: var(--control-pad-primary); background: var(--accent); color: var(--accent-ink); }
@@ -78,8 +82,8 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 
 /* Field: rest on field, focus on surface with a 1px accent ring and a 4px soft halo. */
 .text-input.text-input-field { height: var(--field-height); min-height: var(--field-height); padding: 0 var(--field-pad); border-radius: var(--radius-control); background: var(--field); color: var(--ink); font-size: var(--type-label-size); }
-.text-input-field::placeholder { color: var(--ink-2); }
-.text-input-field:focus-visible { outline: var(--field-focus-ring) solid transparent; background: var(--surface); box-shadow: 0 0 0 var(--field-focus-ring) var(--accent), 0 0 0 var(--field-focus-halo) var(--accent-soft); }
+.text-input-field::placeholder { color: var(--ink-3); }
+.text-input-field:focus-visible { background: var(--surface); }
 
 /* Tooltip: icon-only buttons and truncated text; sh-2 and 11px text. Its position is measured. */
 .tooltip { position: fixed; top: 0; left: 0; z-index: var(--z-menu); max-width: var(--menu-max-width); padding: var(--tooltip-pad-y) var(--tooltip-pad-x); border-radius: var(--radius-chip); background: var(--surface); color: var(--ink); box-shadow: var(--sh-2); font-family: var(--sans); font-size: var(--type-caption-size); font-weight: var(--type-label-weight); line-height: var(--type-caption-leading); pointer-events: none; }
@@ -175,7 +179,7 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .overview-filter { display: flex; align-items: center; gap: var(--space-2); flex: 1; min-width: 0; margin: 0 var(--space-4); padding: var(--space-2) 0; border-bottom: var(--border-width) solid var(--border); color: var(--muted); transition: border-color var(--duration) var(--chrome-ease); }
 .overview-filter:focus-within { border-color: var(--focus-ring); }
 .overview-filter .text-input { flex: 1; width: 100%; min-width: 0; border: 0; padding: 0; background: transparent; }
-.overview-filter .text-input:focus-visible { outline: none; }
+.overview-filter .text-input:focus-visible { outline: none; box-shadow: none; }
 .overview-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--space-half); }
 .overview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--overview-card-min-width)), 1fr)); gap: var(--space-4); }
 .overview-card { min-width: 0; }
@@ -207,3 +211,5 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 /* Opening tabs must not scale their hit area or the scroll viewport. */
 @keyframes tab-enter { from { opacity: var(--opacity-transparent); } to { opacity: var(--opacity-opaque); } }
 .app-icon[data-icon="panelRight"] { transform: scaleX(-1); }
+/* Menu rows show selection through the highlight fill, not the focus ring. */
+.select-option:focus-visible, .menu-item:focus-visible { box-shadow: none; }

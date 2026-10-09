@@ -8,7 +8,7 @@ import { ClarifyForm } from './ClarifyForm';
 import { ChoiceForm, wantsCards } from './ChoiceForm';
 import { deadlineAt } from './clock';
 import { formOf, hasWordsField, isIrreversible, needsWords, type Option, type Question } from './form';
-import { IrreversibleAnswers, PermissionAnswers } from './AnswerForms';
+import { IrreversibleAnswers, PermissionAnswers, type WhyToggle } from './AnswerForms';
 import { BlankFields, CheckList, DialField, Declines, PairRows, WordsField, type FormProps } from './InputForms';
 import { OptionList, ScopeChoice, WordsPanel } from './OptionActions';
 
@@ -37,14 +37,14 @@ function Fields({ form, props, send }: { form: string; props: FormProps; send: (
   return <WordsField {...props} onEnter={send} />;
 }
 
-type AnswersProps = { question: Question; locked: boolean; single?: boolean; onPress: (option: Option) => void; renderImage?: RenderImage };
+type AnswersProps = { question: Question; locked: boolean; single?: boolean; why: WhyToggle; onPress: (option: Option) => void; renderImage?: RenderImage };
 
 /** Permission and irreversible questions have their own rows; everything else lists its options. */
-function Answers({ question, locked, single, onPress, renderImage }: AnswersProps) {
+function Answers({ question, locked, single, why, onPress, renderImage }: AnswersProps) {
   const form = formOf(question);
   const risky = isIrreversible(question) && (form === 'permission' || form === 'choice');
   if (risky) return <IrreversibleAnswers question={question} locked={locked} onPress={onPress} />;
-  if (form === 'permission') return <PermissionAnswers question={question} locked={locked} single={single} onPress={onPress} />;
+  if (form === 'permission') return <PermissionAnswers question={question} locked={locked} single={single} why={why} onPress={onPress} />;
   return <OptionList question={question} locked={locked} onPress={onPress} renderImage={renderImage} />;
 }
 
@@ -62,6 +62,7 @@ function Heading({ question }: { question: Question }) {
 export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, onLater, single, renderImage }: QuestionCardProps) {
   const [draft, setDraft] = useState<Draft>(() => initialDraft(question));
   const [panel, setPanel] = useState<Panel>(null);
+  const [whyOpen, setWhyOpen] = useState(false);
   const [state, setState] = useState<'idle' | 'sending' | 'failed'>('idle');
   const form = formOf(question);
   const locked = busy || state === 'sending';
@@ -124,14 +125,14 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
       ) : cards ? (
         <ChoiceForm question={question} now={now} held={held} locked={locked} onChoose={press} onHold={onHold} renderImage={renderImage} />
       ) : (
-        <Answers question={question} locked={locked} single={single} onPress={press} renderImage={renderImage} />
+        <Answers question={question} locked={locked} single={single} why={{ open: whyOpen, toggle: () => setWhyOpen((open) => !open) }} onPress={press} renderImage={renderImage} />
       )}
-      {form === 'permission' && (
+      {form === 'permission' && !isIrreversible(question) && (whyOpen || draft.change) && (
         <TextArea
           className="tray-field"
           rows={1}
-          aria-label="Say why, if you say no"
-          placeholder="Say why, if you say no"
+          aria-label="Say why (optional)"
+          placeholder="Say why (optional)"
           disabled={locked}
           value={draft.change}
           onChange={(event) => edit({ change: event.target.value })}
