@@ -11,7 +11,7 @@ owned by that engine.
 
 1. Run `npm run engine:dev` inside `desktop`.
 2. Run `npm run dev` in a second terminal.
-3. Explicitly connect a conversation before sending a real instruction.
+3. Open a conversation and send. The first send creates the session; there is no Connect step.
 
 The bridge binds loopback port 1423. Vite forwards `/api/engine` and injects the
 process-local bearer token from an ignored, mode-0600 cache file. The browser
@@ -47,6 +47,16 @@ use the existing remote subscriptions. While a view is subscribed, chat-scoped
 plan rows also refresh every three seconds to catch worker CLI writes outside
 the task notice lane. Reads make no AI call and do not fabricate activity times.
 Failed plan reads expose planError and retain the last successful rows.
+
+Aside entries carry `TaskIDs`, the tasks they concern, so a task notice in the
+conversation can open its task. Tool entries carry `Failed` when present; the UI
+marks only the step, never the whole group. The desktop creates a session on the
+first send (`POST /sessions` with `{}`) and automatically reattaches a saved tab's
+`sessionFile`; no model call happens before the person sends. Conversation titles
+come from the engine title lane: one auxiliary call after the first message,
+2 to 6 words in sentence case, delivered asynchronously through the snapshot
+`title`. The tab label is manual name, then engine title, then the first line of
+the first message, then `New conversation`. The UI makes no AI call of its own.
 
 The preview uses OpenRouter `deepseek/deepseek-v4.1-flash` with OneModel enabled
 for every text role, including auxiliaries and workers. It refuses a resumed
