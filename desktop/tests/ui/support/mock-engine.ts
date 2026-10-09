@@ -1,5 +1,5 @@
 import type { Page, Route } from '@playwright/test';
-import type { EngineEntry, EngineEvent, EngineFile, EngineSnapshot, EngineTaskPage } from '../../../src/features/chat/engine-client';
+import type { EngineEntry, EngineEvent, EngineFile, EngineSnapshot, EngineTaskPage, TerminalInfo } from '../../../src/features/chat/engine-client';
 
 export const MODEL = 'deepseek/deepseek-v4.1-flash';
 
@@ -18,7 +18,12 @@ export type ScriptedTurn = {
 /** A workspace file the mock serves through GET /files and reports through POST /files/stat. */
 export type MockFile = Omit<EngineFile, 'name' | 'size' | 'hash'> & { dir?: boolean };
 
+/** A terminal or job the mock engine already holds; `output` is its kept log (raw terminal text). */
+export type MockTerminal = Partial<TerminalInfo> & { id: string; output?: string };
+
 export type Scenario = {
+  /** Terminals and jobs served under /terminals; a POST /terminals adds more. */
+  terminals?: MockTerminal[];
   /** State returned by POST /sessions and GET /sessions/{id}. */
   initial: Partial<EngineSnapshot>;
   /** One element is consumed per accepted turn; the last one repeats. */
@@ -163,6 +168,62 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     update({ needsPerson: questions.length > 0, questions, recentOutcomes: [outcome, ...before] } as Partial<EngineSnapshot>);
   };
 
+  // Terminals keep their bytes, so a stream resumes from any offset like the real one.
+  type Held = { info: TerminalInfo; bytes: Uint8Array };
+  const enc = new TextEncoder();
+  const concat = (a: Uint8Array, b: Uint8Array) => { const out = new Uint8Array(a.length + b.length); out.set(a); out.set(b, a.length); return out; };
+  const held = new Map<string, Held>();
+  const hold = (t: MockTerminal): Held => {
+    const bytes = enc.encode(t.output ?? '');
+    const info: TerminalInfo = { kind: t.command ? 'job' : 'terminal', title: t.command ?? 'zsh', cwd: `${state.workspace}`, shell: '/bin/zsh', state: 'running', startedAt: new Date().toISOString(), durationMs: 0, cols: 100, rows: 30, ...t, bytes: bytes.length };
+    delete (info as { output?: string }).output;
+    const entry = { info, bytes };
+    held.set(t.id, entry);
+    return entry;
+  };
+  scenario.terminals?.forEach(hold);
+  let terminalCount = 0;
+  const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64');
+  const termStream = async (route: Route, t: Held, after: number) => {
+    const deadline = Date.now() + 60_000;
+    while (!closed && Date.now() < deadline) {
+      const fresh = t.bytes.length > after;
+      if (fresh || t.info.state !== 'running') {
+        let body = ': connected\n\n';
+        if (fresh) body += `id: ${t.bytes.length}\ndata: ${JSON.stringify({ seq: t.bytes.length, type: 'output', dataBase64: b64(t.bytes.slice(after)) })}\n\n`;
+        if (t.info.state !== 'running') body += `data: ${JSON.stringify({ seq: t.bytes.length, type: 'exit', info: t.info })}\n\n`;
+        await route.fulfill({ status: 200, headers: { 'Cache-Control': 'no-cache' }, contentType: 'text/event-stream', body });
+        return;
+      }
+      await new Promise(r => setTimeout(r, 25));
+    }
+    await route.abort().catch(() => undefined);
+  };
+  const plain = (bytes: Uint8Array) => new TextDecoder().decode(bytes).replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '').replace(/\r\n/g, '\n').replace(/\n+$/, '');
+  const terminals = (route: Route, parts: string[], body: Record<string, unknown>, url: URL) => {
+    const [, , , tid, act] = parts;
+    if (!tid) {
+      if (route.request().method() === 'GET') return json(route, [...held.values()].map(h => h.info));
+      const id = `mock-term-${++terminalCount}`;
+      const command = typeof body.command === 'string' && body.command ? body.command : undefined;
+      const made = hold({ id, command, title: typeof body.title === 'string' && body.title ? body.title : command ?? 'zsh', output: command ? '' : 'mock$ ' });
+      return json(route, made.info);
+    }
+    const t = held.get(tid);
+    if (!t) return json(route, { error: 'this terminal is gone' }, 404);
+    if (!act) return json(route, t.info);
+    if (act === 'stream') return termStream(route, t, Number(url.searchParams.get('after') ?? 0));
+    if (act === 'output') return json(route, { text: plain(t.bytes), truncated: false, info: t.info });
+    if (act === 'input') { t.bytes = concat(t.bytes, Buffer.from(String(body.dataBase64 ?? ''), 'base64')); t.info.bytes = t.bytes.length; return json(route, { accepted: true }); }
+    if (act === 'resize') { t.info.cols = Number(body.cols); t.info.rows = Number(body.rows); return json(route, t.info); }
+    if (act === 'close' || act === 'remove') {
+      if (t.info.state === 'running') { t.info.state = 'closed'; t.info.exitCode = 129; t.info.endedAt = new Date().toISOString(); }
+      if (act === 'remove' || t.info.kind === 'terminal') held.delete(tid);
+      return act === 'remove' ? json(route, { accepted: true }) : json(route, t.info);
+    }
+    return json(route, { error: 'unknown terminal action' }, 404);
+  };
+
   const fileAt = (path: string) => scenario.files?.[path] ?? scenario.files?.[path.replace(`${state.workspace}/`, '')];
   const stat = (path: string) => {
     const file = fileAt(path);
@@ -216,6 +277,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     }
     if (action === 'questions' && arg === 'hold') return json(route, { accepted: true });
     if (action === 'favicon') return json(route, {});
+    if (action === 'terminals') return terminals(route, parts, body, url);
     if (action === 'files') return files(route, arg, body, url);
     if (action === 'tasks' && arg && parts[4]) return forced('task') ?? taskAction(route, arg, parts[4], body);
     if (action === 'tasks' && arg) {

@@ -19,6 +19,8 @@ func (s *conversation) extra(w http.ResponseWriter, r *http.Request, parts []str
 		s.statFiles(w, r)
 	case len(parts) == 4 && parts[2] == "questions" && parts[3] == "hold":
 		s.holdQuestion(w, r)
+	case len(parts) >= 3 && parts[2] == "terminals":
+		s.terminalRoute(w, r, parts[3:])
 	case len(parts) == 3 && parts[2] == "favicon":
 		s.favicon(w, r)
 	default:
