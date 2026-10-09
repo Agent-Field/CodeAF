@@ -290,7 +290,11 @@ test('a write from outside the conversation refreshes the open tab from the file
   expect(engine.calls.filter(call => call.path.includes('/models')).length).toBe(models);
   // Each stat names only the open file.
   for (const call of stats().slice(-3)) expect(call.body.paths).toEqual([FILE]);
-  await page.locator('.workspace-tab[data-active="true"]').getByRole('button', { name: /^Close / }).click({ force: true });
+  // Return to an empty field before closing. Returning to the conversation legitimately
+  // re-reads its file-chip metadata, which is a separate stat consumer from this tab's poll.
+  await page.getByRole('button', { name: 'New tab', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Search or start' })).toBeVisible();
+  await page.locator('.workspace-tab[data-kind="diff"]').getByRole('button', { name: /^Close / }).click({ force: true });
   await expect(page.getByRole('tab', { name: /auth_test\.go/ })).toHaveCount(0);
   const closed = stats().length;
   await page.waitForTimeout(4500);
