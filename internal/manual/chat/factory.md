@@ -659,9 +659,17 @@ stage waiting on you shows its question and `y yes · n no · a in words` under 
 When the plan or the manager changed the item's stages, the story's first line says what
 changed, dim, on one line: `plan added security · skipped neaten · why: touches billing`.
 
-The manager's progress lines from the item's own conversation stand between the sections, dim,
-after the stage they are about: `manager · test failed 1 of 2 · asking you`, and your replies
-there as `you · …`. An item with no conversation has none.
+The story is the manager's conversation: everything said in the item's own conversation is
+drawn in it, in order. The manager's progress lines stand between the sections, dim, after the
+stage they are about: `manager · test failed 1 of 2 · asking you`. Its ordinary replies are
+drawn as `manager · ` and the reply's words in full ink, wrapped, at most 8 rows a reply; a
+longer one ends `… ▸ T for the whole chat`. Each tool the manager called is one dim line,
+`factory_run · …`, and your words are `you · …`. The item's opening brief is never drawn. Before
+a run all of it stands in order under the issue's line; during a run, what was said before the
+first progress line stands above the first stage. While the manager is working on a turn, the
+story's last line is `⠋ manager is thinking`, and the page reads the conversation every second
+so the reply appears as it lands, whether you asked from the box, from the chat, or the run
+asked. An item with no conversation has none of this.
 
 **Dive in:** `enter` on a section head, or a click on `▸ 14 steps`, shows that stage's whole
 conversation in the middle, drawn as a task page draws one and following it while the stage
@@ -688,10 +696,16 @@ While the box has your keys:
 - the empty box says `› say it`, with its cursor drawn;
 - the bottom line is `type · enter send · tab next place · esc back to keys`.
 
-`enter` sends: the item's own conversation opens, as `T` does, with your words typed in its box
-for you to send there. `esc` gives the keys back: the verbs light up, the bottom line comes back,
-and what you typed is kept, so the next `enter` on the box shows it again. `tab` from inside the
-box walks on to the next place. `T chat` still opens the whole conversation from any row.
+`enter` sends in place: your words go to the manager's conversation as your message and you
+stay on the item page. The box clears, the story shows `you · …` at once and then
+`⠋ manager is thinking`, and the manager's reply appears in the story as it is written. The first
+words to an item with no conversation yet make it. Where this window can only open a
+conversation by showing it, `enter` opens the item's conversation as `T` does instead, with your
+words typed in its box for you to send there. `esc` gives the keys back: the verbs light up, the
+bottom line comes back, and what you typed is kept, so the next `enter` on the box shows it
+again. `tab` from inside the box walks on to the next place. `T chat` opens the whole
+conversation from any row: the same conversation the box talks to, with any turn still running
+in it, never a second copy.
 
 ## answering a question — y, n, a
 

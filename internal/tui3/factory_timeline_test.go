@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
@@ -456,10 +457,10 @@ func TestFactoryTimelineBoxTypesAndSends(t *testing.T) {
 	}
 }
 
-// THE MANAGER'S LINES INTERLEAVE: a progress line is drawn after the section
-// it is about, the person's reply after it, an ordinary reply in the
-// conversation not at all, and a line about a stage still to come after the
-// line of stages to come.
+// THE MANAGER'S LINES INTERLEAVE: what was said before the first progress
+// line above the run's first section, a progress line after the section it
+// is about, the person's reply after it, and a line about a stage still to
+// come after the line of stages to come.
 func TestFactoryTimelineManagerLinesInterleave(t *testing.T) {
 	progress := func(words string) string {
 		return `{"type":"message","role":"assistant","content":"` + words + `","presentation":{"audience":"human","kind":"factory-progress"}}`
@@ -474,8 +475,12 @@ func TestFactoryTimelineManagerLinesInterleave(t *testing.T) {
 	a, _, _, _ := factoryTLLab(t, func(it *factory.Item) { it.Talk = talk })
 	rows := factoryTLPlain(t, a, 120, 30)
 	all := strings.Join(rows, "\n")
-	if strings.Contains(all, "an ordinary reply") || strings.Contains(all, "what is the plan") {
-		t.Fatalf("the conversation around the progress is drawn:\n%s", all)
+	// WHAT WAS SAID BEFORE THE FIRST PROGRESS LINE stands above the run's
+	// first section, in order: the story is the conversation.
+	asked := factoryTLRowWith(rows, wordYou+rowSep+"what is the plan")
+	reply := factoryTLRowWith(rows, wordManager+rowSep+"an ordinary reply")
+	if asked < 0 || reply != asked+1 || reply >= factoryTLRowWith(rows, "Two files, one test.") {
+		t.Fatalf("the conversation before the run is not above it in order (%d %d):\n%s", asked, reply, all)
 	}
 	plan := factoryTLRowWith(rows, "Two files, one test.")
 	mgr := factoryTLRowWith(rows, wordManager+rowSep+"plan done")
@@ -716,5 +721,196 @@ func TestFactoryBoxClickFocusesIt(t *testing.T) {
 	drive(t, a, clickAt(x, y), releaseAt(x, y))
 	if ask := a.fp.act.ask; ask == nil || ask.text != "hi" {
 		t.Fatalf("a second click on the box lost its words: %+v", ask)
+	}
+}
+
+// ── the story is the manager's conversation ─────────────────────────────────
+
+// factoryTLTalk is an item's manager conversation on disk, the way the Talk
+// door leaves one: seeded with the item's brief behind its marker, then the
+// lines given appended.
+func factoryTLTalk(t *testing.T, lines ...string) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "talk-session")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "transcript.jsonl")
+	brief := "[factory item #8]\nYou are the manager of #8 in web.\nthe brief the model reads"
+	if err := session.SeedConversation(path, t.TempDir(), "#8 · the item", brief); err != nil {
+		t.Fatal(err)
+	}
+	factoryTLAppend(t, path, lines...)
+	return path
+}
+
+// factoryTLLongReply is a reply that runs past [factoryTLReplyRows] rows at
+// 120 columns.
+var factoryTLLongReply = strings.TrimSpace(strings.Repeat("The issue asks for a reclaim step that deletes node_modules and target once a session is terminal, keeping .git and the receipts. ", 9))
+
+// factoryTLPreRun is item #8 (no run yet) with its manager conversation
+// holding the brief, a person's line, an ordinary reply, a tool call, a
+// progress line and a long reply; the item page open on it and the
+// conversation read.
+func factoryTLPreRun(t *testing.T, seam func(f *factoryFake) factory.Seam) (*app, *factoryFake) {
+	t.Helper()
+	var lines []string
+	lines = append(lines, `{"type":"message","role":"user","content":"What is this issue about ?"}`)
+	lines = append(lines, factoryTLSaidLine("It asks for a reclaim step after a session ends. Two files and one test."))
+	lines = append(lines, factoryTLCall("m1", "factory_run", "why", "touches session trees", true)...)
+	lines = append(lines, `{"type":"message","role":"assistant","content":"plan set · 3 stages","presentation":{"audience":"human","kind":"factory-progress"}}`)
+	lines = append(lines, factoryTLSaidLine(factoryTLLongReply))
+	talk := factoryTLTalk(t, lines...)
+	f := &factoryFake{}
+	factoryShapeItem(f, 8, func(it *factory.Item) { it.Talk = talk })
+	a := factoryVerbLab(t, f)
+	a.linear = false
+	if seam != nil {
+		a.factory = seam(f)
+	}
+	factoryLabRead(t, a)
+	factoryOn(t, a, 8)
+	drive(t, a, key("enter"))
+	factoryTLRead(t, a)
+	return a, f
+}
+
+// THE STORY IS THE CONVERSATION (owner's screenshot, 2026-10-08 20:56: the
+// story showed `you · What is this issue about ?` and nothing else while the
+// chat had the answer). Before a run the issue's line stands first, then the
+// conversation in transcript order: the person's line, the reply's prose in
+// ink as `manager · …`, the tool call as one dim line, the progress line dim,
+// and a long reply cut to [factoryTLReplyRows] rows with `… ▸ T for the whole
+// chat` last. The brief behind the item's marker is never drawn. THE GRID
+// HOLDS: a reply's second row starts under its first word.
+func TestFactoryTimelineStoryIsTheConversation(t *testing.T) {
+	seam := func(f *factoryFake) factory.Seam { s, _, _ := talkSeam(t, f); return s }
+	a, _ := factoryTLPreRun(t, seam)
+	rows := factoryTLPlain(t, a, 120, 30)
+	all := strings.Join(rows, "\n")
+	t.Logf("the story at 120 columns:\n%s", all)
+	for _, never := range []string{"[factory item", "the brief the model reads", "You are the manager"} {
+		if strings.Contains(all, never) {
+			t.Fatalf("the brief is drawn (%q):\n%s", never, all)
+		}
+	}
+	you := factoryTLRowWith(rows, wordYou+rowSep+"What is this issue about ?")
+	reply := factoryTLRowWith(rows, wordManager+rowSep+"It asks for a reclaim step after a session ends.")
+	call := factoryTLRowWith(rows, "factory_run")
+	progress := factoryTLRowWith(rows, wordManager+rowSep+"plan set · 3 stages")
+	long := factoryTLRowWith(rows, wordManager+rowSep+"The issue asks for a reclaim step")
+	tail := factoryTLRowWith(rows, "… "+a.linearMark(tokens.GlyphCollapsed, ">")+" "+keyChat+" "+wordForTheWholeChat)
+	if !(0 < you && you < reply && reply < call && call < progress && progress < long && long < tail) {
+		t.Fatalf("the conversation is out of order (%d %d %d %d %d %d):\n%s", you, reply, call, progress, long, tail, all)
+	}
+	if tail-long != factoryTLReplyRows-1 {
+		t.Fatalf("the long reply took %d rows, want %d with its tail:\n%s", tail-long+1, factoryTLReplyRows, all)
+	}
+	lead := ansi.StringWidth(wordManager + rowSep)
+	for r := long + 1; r < tail; r++ {
+		if strings.TrimSpace(rows[r][:lead]) != "" || rows[r][lead] == ' ' {
+			t.Fatalf("reply row %d does not start under the reply's first word: %q", r, rows[r])
+		}
+	}
+	// THE REPLY IS INK, the call and the progress line dim.
+	painted := a.factoryTimelinePane(factoryTLItem(t, a), 120, 30)
+	if !strings.Contains(painted[reply], a.pal.ink("It asks for a reclaim step after a session ends. Two files and one test.")) {
+		t.Fatalf("the reply's prose is not in ink: %q", painted[reply])
+	}
+	if !strings.Contains(painted[progress], a.pal.dim(wordManager+rowSep+"plan set · 3 stages")) {
+		t.Fatalf("the progress line is not dim: %q", painted[progress])
+	}
+	for _, banned := range []string{"verdict", "auditor", "verified", "refuted"} {
+		if strings.Contains(strings.ToLower(all), banned) {
+			t.Fatalf("the story draws %q", banned)
+		}
+	}
+}
+
+// THE MANAGER IS THINKING while the flag is on: the story's last line before
+// the rule is `⠋ manager is thinking`, the page asks for the second beat, and
+// with the flag off the line is gone.
+func TestFactoryTimelineManagerIsThinking(t *testing.T) {
+	seam := func(f *factoryFake) factory.Seam { s, _, _ := talkSeam(t, f); return s }
+	a, _ := factoryTLPreRun(t, seam)
+	thinking := wordManager + " " + wordIsThinking
+	if strings.Contains(strings.Join(factoryTLPlain(t, a, 120, 30), "\n"), thinking) {
+		t.Fatal("the story says the manager is thinking with no turn running")
+	}
+	a.factoryManagerThinking(8, true)
+	rows := factoryTLPlain(t, a, 120, 30)
+	at := factoryTLRowWith(rows, thinking)
+	rule := factoryTLRowWith(rows, strings.Repeat(a.linearMark("─", "-"), 10))
+	if at < 0 || rule < 0 || strings.TrimSpace(strings.Join(rows[at+1:rule], "")) != "" {
+		t.Fatalf("the thinking line is not the story's last (%d, rule %d):\n%s", at, rule, strings.Join(rows, "\n"))
+	}
+	if line := strings.TrimRight(rows[at], " "); !strings.HasSuffix(line, " "+thinking) || strings.HasPrefix(line, " ") || ansi.StringWidth(line) != ansi.StringWidth(thinking)+2 {
+		t.Fatalf("the thinking line is not the spinner and the words at the margin: %q", rows[at])
+	}
+	if !a.factoryWantsSecondBeat() {
+		t.Fatal("the page does not read every second while the manager thinks")
+	}
+	a.factoryManagerThinking(8, false)
+	if strings.Contains(strings.Join(factoryTLPlain(t, a, 120, 30), "\n"), thinking) {
+		t.Fatal("the thinking line stayed after the flag went off")
+	}
+
+	// A REPLY LANDING AFTER THE FLAG ends it, read on the beat.
+	a.factoryManagerThinking(8, true)
+	factoryTLAppend(t, factoryTLItem(t, a).Talk, `{"type":"message","role":"user","content":"and the tests?"}`, factoryTLSaidLine("One test, in trees_test.go."))
+	factoryTLRead(t, a)
+	rows = factoryTLPlain(t, a, 120, 30)
+	if strings.Contains(strings.Join(rows, "\n"), thinking) || factoryTLRowWith(rows, wordManager+rowSep+"One test, in trees_test.go.") < 0 {
+		t.Fatalf("the reply did not land and end the thinking:\n%s", strings.Join(rows, "\n"))
+	}
+}
+
+// ENTER IN THE BOX SENDS IN PLACE through the Say door: the door has the
+// words, the box is cleared and gives the keys back, the page stays, and the
+// story shows `you · …` at once and the manager thinking.
+func TestFactoryTimelineBoxSendsInPlace(t *testing.T) {
+	var said []string
+	seam := func(f *factoryFake) factory.Seam {
+		s, _, _ := talkSeam(t, f)
+		s.Say = func(_ context.Context, id int, words string) error {
+			said = append(said, itoa(id)+":"+words)
+			return nil
+		}
+		return s
+	}
+	a, _ := factoryTLPreRun(t, seam)
+	opened := false
+	a.open = func(where, file string) (Conversation, error) {
+		opened = true
+		return Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: file, Workspace: where}, nil
+	}
+	a.factoryTLOpenBox(factoryTLItem(t, a))
+	factoryType(t, a, "keep the old flag")
+	drive(t, a, key("enter"))
+	if len(said) != 1 || said[0] != "8:keep the old flag" {
+		t.Fatalf("the Say door was asked %v", said)
+	}
+	if opened || a.pageShowing() == false || !a.at(pageFactory) || !a.fp.open {
+		t.Fatalf("enter left the page (opened %v, factory %v, page open %v)", opened, a.at(pageFactory), a.fp.open)
+	}
+	if a.factoryBoxFocused() || a.fp.tl.draft != "" {
+		t.Fatalf("the box was not cleared: focused %v, draft %q", a.factoryBoxFocused(), a.fp.tl.draft)
+	}
+	rows := factoryTLPlain(t, a, 120, 30)
+	all := strings.Join(rows, "\n")
+	you := factoryTLRowWith(rows, wordYou+rowSep+"keep the old flag")
+	thinking := factoryTLRowWith(rows, wordManager+" "+wordIsThinking)
+	if you < 0 || thinking < you {
+		t.Fatalf("the story does not show the words and the thinking (%d %d):\n%s", you, thinking, all)
+	}
+
+	// THE TRANSCRIPT TAKING THE LINE draws it once, from the transcript.
+	factoryTLAppend(t, factoryTLItem(t, a).Talk, `{"type":"message","role":"user","content":"keep the old flag"}`)
+	factoryTLRead(t, a)
+	if n := strings.Count(strings.Join(factoryTLPlain(t, a, 120, 30), "\n"), wordYou+rowSep+"keep the old flag"); n != 1 {
+		t.Fatalf("the sent words are drawn %d times once the transcript holds them", n)
+	}
+	if len(a.fp.tl.pending[8]) != 0 {
+		t.Fatalf("the sent words are still held: %+v", a.fp.tl.pending[8])
 	}
 }

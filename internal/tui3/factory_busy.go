@@ -113,7 +113,16 @@ func (a *app) factoryPageRunning() bool {
 		return false
 	}
 	it, ok := a.factoryCursorItem()
-	if !ok || it.Stream == nil {
+	if !ok {
+		return false
+	}
+	// THE MANAGER THINKING IS THE PAGE ALIVE TOO: its spinner turns and its
+	// conversation is read every second, so the reply streams in
+	// (factory_timeline.go).
+	if a.factoryTLThinking(it) {
+		return true
+	}
+	if it.Stream == nil {
 		return false
 	}
 	for i := range it.Stream.Phases {
