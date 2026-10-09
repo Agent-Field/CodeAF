@@ -167,7 +167,10 @@ test('platform tab shortcuts create, close, reopen, navigate and open overview',
  const primary = mac ? 'Meta' : 'Control';
  await page.keyboard.press(`${primary}+t`);
  await expect(page.getByRole('tab')).toHaveCount(2);
- await expect(page.getByRole('button', { name: 'New tab', exact: true })).toHaveAttribute('title', mac ? 'New tab (⌘ T)' : 'New tab (Ctrl T)');
+ // The shared tooltip carries the platform shortcut hint for icon-only buttons.
+ await page.getByRole('button', { name: 'New tab', exact: true }).hover();
+ await expect(page.getByRole('tooltip')).toHaveText(mac ? 'New tab (⌘ T)' : 'New tab (Ctrl T)');
+ await page.mouse.move(0, 400);
  await page.keyboard.press(`${primary}+w`);
  await expect(page.getByRole('tab')).toHaveCount(1);
  await page.keyboard.press(`${primary}+Shift+t`);

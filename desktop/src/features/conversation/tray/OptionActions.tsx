@@ -67,7 +67,7 @@ export function ScopeChoice({ question, locked, onPick }: { question: Question; 
   return (
     <div className="tray-panel" role="group" aria-label="How far this yes reaches">
       {widerScopes(question).map((scope) => (
-        <Button key={scope} variant="secondary" disabled={locked} onClick={() => onPick(scope)}>
+        <Button key={scope} variant="quiet" disabled={locked} onClick={() => onPick(scope)}>
           {scopeLabel(scope)}
         </Button>
       ))}
