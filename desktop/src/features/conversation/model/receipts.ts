@@ -1,7 +1,7 @@
 // Question receipts: a quiet line in the flow where a question was asked.
 // Waiting questions come from snapshot.questions, endings from recentOutcomes.
 // An outcome lands where this window saw its question wait (`places`), or else
-// in the turn holding the call it names, which is how a reloaded window finds it.
+// in the turn holding the call it names (the call it is about, or else the `ask` call that raised it), which is how a reloaded window finds it.
 // One with neither has no known place and is skipped.
 
 import type { EngineSnapshot } from '../../chat/engine-client.ts';
@@ -36,7 +36,7 @@ function waiting(q: RichQuestion): Asked {
   const receipt: Omit<Receipt, 'id'> = gone
     ? { kind: 'receipt', questionKey: key, state: 'withdrawn', text: withdrawnText(gone.reason) }
     : { kind: 'receipt', questionKey: key, state: 'waiting', text: `Waiting on you: ${q.head}` };
-  return { key, callId: q.subject?.callId, receipt };
+  return { key, callId: q.subject?.callId || q.askedIn || undefined, receipt };
 }
 
 function ended(o: QuestionOutcome): Asked {

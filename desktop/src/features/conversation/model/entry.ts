@@ -15,6 +15,7 @@ export type QuestionSubject = { kind?: string; id?: string; callId?: string; nam
 
 export type RichQuestion = EngineQuestion & {
   subject?: QuestionSubject | null;
+  askedIn?: string; // the `ask` call that raised it, for a question about no call
   withdrawn?: { reason?: string; by?: string; at?: string } | null;
 };
 

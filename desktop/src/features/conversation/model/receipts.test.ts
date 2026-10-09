@@ -81,6 +81,18 @@ test('live and replay put the same outcome in the same turn', () => {
   assert.deepEqual(replay, live);
 });
 
+test('a plain ask-the-person question is placed by the ask call, live and after a reload', () => {
+  const askEntries = [user('name it'), tool('ask', 'a1', { head: 'Which name?' }, { Answered: true }), user('thanks'), final('done')];
+  const waitingQ = { id: 5, kind: 'ask', ask: 'choice', head: 'Which name?', askedIn: 'a1' };
+  const live = projectTurnsV2(snap(askEntries, { questions: [waitingQ] as never }));
+  assert.equal(receipts(live.turns[0].blocks).length, 1);
+  assert.equal(receipts(live.turns[1].blocks).length, 0);
+  const outcome: QuestionOutcome = { kind: 'ask', token: '5', outcome: 'decided', words: 'notes.md', by: 'person', callId: 'a1' };
+  const replay = projectTurnsV2({ ...snap(askEntries), recentOutcomes: [outcome] } as never);
+  assert.deepEqual(receipts(replay.turns[0].blocks).map((r) => r.state), ['decided']);
+  assert.equal(receipts(replay.turns[1].blocks).length, 0);
+});
+
 test('a withdrawn outcome speaks the engine words, or the plain wording without them', () => {
   const places = new Map([['fuel:2', 'f.jsonl:3'], ['ask:a1', 'f.jsonl:3']]);
   const outcomes: QuestionOutcome[] = [

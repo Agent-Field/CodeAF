@@ -744,6 +744,12 @@ type Question struct {
 	// Subject is the row a surface has already drawn for this, which is the row
 	// the question attaches to. The question never carries a second copy of it.
 	Subject SubjectRef `json:"subject,omitzero"`
+	// AskedIn is the tool call that raised this question, where one did: the
+	// model's own `ask` call. A plain question about no row has no Subject to
+	// point at, but the call that asked it is a row in the transcript, so a
+	// receipt can be put back under it when the page is reopened. It is not part
+	// of what a decision matches on ([decidedAlready] reads Subject alone).
+	AskedIn string `json:"askedIn,omitempty"`
 	// Options are the answers the asker wrote down, in the order chips are
 	// drawn. THEY ARE THE WRITER'S ACCOUNT OF WHAT IT WILL ACCEPT — a surface
 	// draws these and never a list of its own, so it can never offer a key the
@@ -1034,6 +1040,9 @@ type DecisionRecord struct {
 	// Subject is what it was about, and it is part of the match: the same
 	// question about two files is two decisions ([decidedAlready] says why).
 	Subject SubjectRef `json:"subject,omitzero"`
+	// AskedIn is the call that raised the question ([Question.AskedIn]), kept so
+	// a receipt for a question about no row can find its place in the history.
+	AskedIn string `json:"askedIn,omitempty"`
 	// Picked are the answers given, in the words they were given under —
 	// [Words] renders them.
 	Picked []string `json:"picked,omitempty"`
@@ -1389,7 +1398,7 @@ func decisionRecordOf(q Question, answer Answer) DecisionRecord {
 	}
 	return DecisionRecord{
 		ID: q.ID, Ref: q.Ref, Kind: q.Kind, Ask: q.Ask,
-		Head: q.Head, Subject: q.Subject,
+		Head: q.Head, Subject: q.Subject, AskedIn: q.AskedIn,
 		Picked: picked, Labels: labels, Change: strings.TrimSpace(answer.Change),
 		By: answer.DecidedBy, Stakes: q.Stakes, Scope: answer.Scope,
 		Why: strings.TrimSpace(answer.Why), At: at,
