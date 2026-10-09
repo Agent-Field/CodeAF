@@ -3,7 +3,7 @@
 .task-detail-head { display: flex; flex-direction: column; gap: var(--space-tight); min-width: 0; }
 .task-detail-crumb { margin: 0; color: var(--ink-2); font-size: var(--type-label-size); line-height: var(--type-label-leading); overflow-wrap: anywhere; }
 .task-detail-title { margin: 0; color: var(--ink); font-size: var(--task-detail-title-size); font-weight: var(--type-title-weight); letter-spacing: var(--task-detail-title-tracking); line-height: var(--type-title-leading); overflow-wrap: anywhere; }
-.task-detail-state { display: flex; align-items: center; gap: var(--space-2); color: var(--ink-3); font-size: var(--type-label-size); line-height: var(--type-label-leading); font-variant-numeric: tabular-nums; }
+.task-detail-state { display: flex; align-items: center; gap: var(--space-2); color: var(--ink-2); font-size: var(--type-label-size); line-height: var(--type-label-leading); font-variant-numeric: tabular-nums; }
 .task-detail-state-word { color: var(--ink-2); }
 
 /* The tray's own card, set in the pane's quiet well; its form components keep their look. */
