@@ -61,6 +61,7 @@ function CardBody({ tab, summaries, now }: { tab: Tab; summaries: Readonly<Recor
 }
 
 type Props = {
+  modelNames?: Readonly<Record<string, string>>;
   tab: Tab; summaries: Readonly<Record<string, TabSummary>>; now: number;
   active: boolean; cursor: boolean;
   /** The tab's own menu, built by the shared tab menu builder; absent for a tab that has none (the Inbox). */
@@ -77,7 +78,7 @@ type Props = {
 /** Which half of the card a drag is over: the left half drops before the card, the right half after it. */
 const halfOf = (event: DragEvent<HTMLElement>) => { const box = event.currentTarget.getBoundingClientRect(); return event.clientX - box.left > box.width / 2 ? 'after' : 'before'; };
 
-export function OverviewCard({ tab, summaries, now, active, cursor, menu, onOpen, onBackground, onClose, onDropTab }: Props) {
+export function OverviewCard({ tab, summaries, now, active, cursor, menu, onOpen, onBackground, onClose, onDropTab, modelNames }: Props) {
   const drop = onDropTab && {
     onDragOver: (event: DragEvent<HTMLElement>) => {
       if (!event.dataTransfer.types.includes(tabDragType)) return;
@@ -97,7 +98,11 @@ export function OverviewCard({ tab, summaries, now, active, cursor, menu, onOpen
     },
   };
   const mark = tabMark(tab, summaries);
-  const updated = summaries[focusedPane(tab).id]?.updatedAt;
+  const pane = focusedPane(tab);
+  const summary = summaries[pane.id];
+  const updated = summary?.updatedAt;
+  const model = pane.kind === 'conversation' ? summary?.model : pane.kind === 'task' && pane.route?.taskId ? summary?.taskModels?.[pane.route?.taskId] : undefined;
+  const footer = [updated === undefined ? undefined : relativeTime(updated, now), model ? modelNames?.[model] || model : undefined].filter(Boolean).join(' · ');
   const card = (
     <article className="overview-card" draggable {...drop} onDragStart={event => { event.dataTransfer.setData(tabDragType, tab.id); event.dataTransfer.effectAllowed = 'move'; }} data-active={active} data-cursor={cursor} data-card-id={tab.id} data-kind={tab.split ? 'split' : tab.kind}>
       <Button className="overview-card-open" aria-label={`Open ${tab.title}`} aria-current={active || undefined} {...backgroundPress(onOpen, onBackground)}/>
@@ -108,7 +113,7 @@ export function OverviewCard({ tab, summaries, now, active, cursor, menu, onOpen
         </div>
         <span className="overview-card-title">{tab.title}</span>
         <div className="overview-card-body"><CardBody tab={tab} summaries={summaries} now={now}/></div>
-        {updated !== undefined && <span className="overview-card-foot">{relativeTime(updated, now)}</span>}
+        {footer && <span className="overview-card-foot">{footer}</span>}
       </div>
       {onClose && <IconButton className="overview-card-close" label={`Close ${tab.title}`} icon="close" iconSize="micro" onClick={onClose}/>}
     </article>

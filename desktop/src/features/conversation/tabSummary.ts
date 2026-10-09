@@ -15,6 +15,9 @@ export type TabSummary = {
   digest: string; // first line of the latest answer
   mark?: TabMark;
   updatedAt?: number;
+  /** Actual engine metadata; never inferred from a default role. */
+  model?: string;
+  taskModels?: Record<string, string>;
   /** The engine session this summary was read from; the hover preview answers questions on it. */
   sessionId?: string;
   /** Canonical saved chat identity; independent of the temporary engine bridge token. */
@@ -52,6 +55,8 @@ export function summarize(snapshot: EngineSnapshot, failed = false): TabSummary 
   const stamp = Date.parse(snapshot.updatedAt ?? '');
   return {
     title: snapshot.title.trim(),
+    model: snapshot.model.trim() || undefined,
+    taskModels: Object.fromEntries(snapshot.tasks.filter(task => task.Model?.trim()).map(task => [task.ID, task.Model!.trim()])),
     firstLine: first ? labelLine(plainMessage(first.Text)) : '',
     digest: lastAnswer(snapshot),
     mark: markOf(snapshot, failed),
