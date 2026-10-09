@@ -1,5 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { expectAccessible, expectNoUnstyledControls, expectThemedSurface } from './contracts';
+// Tab behaviour never needs the engine; a send fails fast and keeps its draft.
+test.beforeEach(async ({ page }) => { await page.route('**/api/engine/**', route => route.abort()); });
 async function rename(page: Page, index: number, name: string) {
  await page.getByRole('tab').nth(index).click({ button: 'right' });
  await page.getByRole('menuitem', { name: 'Rename tab', exact: true }).click();
@@ -11,21 +13,21 @@ async function rename(page: Page, index: number, name: string) {
 test('top tabs preserve isolated drafts across closing, reopening and reload', async ({ page }) => {
  await page.goto('/');
  await rename(page, 0, 'Engine design');
- await page.getByRole('textbox', { name: 'Draft for Engine design', exact: true }).fill('Keep the benchmarked loop');
+ await page.getByRole('textbox', { name: 'Message', exact: true }).fill('Keep the benchmarked loop');
  await page.getByRole('button', { name: 'New tab', exact: true }).click();
  await rename(page, 1, 'Desktop UX');
- await page.getByRole('textbox', { name: 'Draft for Desktop UX', exact: true }).fill('Quiet chrome');
+ await page.getByRole('textbox', { name: 'Message', exact: true }).fill('Quiet chrome');
  await page.getByRole('tab', { name: 'Engine design', exact: true }).click();
- await expect(page.getByRole('textbox', { name: 'Draft for Engine design', exact: true })).toHaveValue('Keep the benchmarked loop');
+ await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toHaveValue('Keep the benchmarked loop');
  await page.getByRole('tab', { name: 'Desktop UX', exact: true }).click({ button: 'right' });
  await page.getByRole('menuitem', { name: /^Close tab/ }).click();
  await expect(page.getByRole('tab', { name: 'Engine design', exact: true })).toHaveAttribute('aria-selected', 'true');
  await page.getByRole('button', { name: 'Tab actions', exact: true }).click();
  await page.getByRole('menuitem', { name: 'Reopen closed tab', exact: true }).click();
- await expect(page.getByRole('textbox', { name: 'Draft for Desktop UX', exact: true })).toHaveValue('Quiet chrome');
+ await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toHaveValue('Quiet chrome');
  await page.reload();
  await expect(page.getByRole('tab', { name: 'Desktop UX', exact: true })).toHaveAttribute('aria-selected', 'true');
- await expect(page.getByRole('textbox', { name: 'Draft for Desktop UX', exact: true })).toHaveValue('Quiet chrome');
+ await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toHaveValue('Quiet chrome');
  const strip = await page.locator('.workspace-tabbar').boundingBox();
  const panel = await page.getByRole('tabpanel').boundingBox();
  expect(strip!.y + strip!.height).toBeLessThanOrEqual(panel!.y + 1);
@@ -85,7 +87,7 @@ test('many top tabs scroll without hiding narrow-screen actions', async ({ page 
 test('malformed saved state recovers to a usable workspace', async ({ page }) => {
  await page.addInitScript(() => localStorage.setItem('codeaf.desktop.workspace.v1', JSON.stringify({ tabs: [{ id: 'bad', title: 'bad', draft: '', pinned: false, groupId: 'missing' }], groups: [], closed: [null], activeId: 'bad', nextNumber: -1 })));
  await page.goto('/'); await expect(page.getByRole('tab')).toHaveCount(1);
- await expect(page.getByRole('textbox', { name: /^Draft for/ })).toBeVisible();
+ await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toBeVisible();
  await page.getByRole('button', { name: 'New tab', exact: true }).click();
  await expect(page.getByRole('tab')).toHaveCount(2);
 });
@@ -93,7 +95,7 @@ test('malformed saved state recovers to a usable workspace', async ({ page }) =>
 
 test('overview searches real drafts and restores focus after nested organization menus', async ({ page }) => {
  await page.goto('/'); await rename(page, 0, 'Engine');
- await page.getByRole('textbox', { name: 'Draft for Engine', exact: true }).fill('benchmark loop');
+ await page.getByRole('textbox', { name: 'Message', exact: true }).fill('benchmark loop');
  await page.getByRole('button', { name: 'New tab', exact: true }).click();
  await rename(page, 1, 'Design');
  await page.getByRole('button', { name: 'All tabs', exact: true }).click();
@@ -133,7 +135,7 @@ test('held Control Tab previews recent tabs, Escape cancels, release commits', a
 
 test('delayed hover previews show real draft text without moving focus', async ({ page }) => {
  await page.goto('/'); await rename(page, 0, 'Preview');
- const draft = page.getByRole('textbox', { name: 'Draft for Preview', exact: true });
+ const draft = page.getByRole('textbox', { name: 'Message', exact: true });
  await draft.fill('A real saved thought');
  await page.getByRole('tab', { name: 'Preview', exact: true }).hover();
  await expect(page.getByRole('tooltip')).not.toBeVisible();
@@ -216,8 +218,8 @@ test('tab close stays inside its tab and reveals without changing width', async 
 test('compact overview shows persisted work and separates selection from focus', async ({ page }) => {
  await page.goto('/');
  const instruction = 'Inspect the shared engine boundary';
- await page.getByRole('textbox', { name: /Draft for/ }).fill(instruction);
- await page.getByRole('textbox', { name: /Draft for/ }).press('Enter');
+ await page.getByRole('textbox', { name: 'Message', exact: true }).fill(instruction);
+ await page.getByRole('textbox', { name: 'Message', exact: true }).press('Enter');
  await page.getByRole('button', { name: 'New tab', exact: true }).click();
  await page.reload();
  await page.getByRole('button', { name: 'All tabs', exact: true }).click();
@@ -279,13 +281,13 @@ test('dragging onto a collapsed group label groups the tab and preserves its dra
  await page.getByRole('menuitem', { name: 'Create group', exact: true }).click();
  await page.getByRole('button', { name: 'New tab', exact: true }).click();
  await rename(page, 0, 'Incoming');
- await page.getByRole('textbox', { name: 'Draft for Incoming', exact: true }).fill('Keep my context');
+ await page.getByRole('textbox', { name: 'Message', exact: true }).fill('Keep my context');
  const group = page.locator('.workspace-group-label');
  await group.click(); await expect(group).toHaveAttribute('aria-expanded', 'false');
  await page.getByRole('tab', { name: 'Incoming', exact: true }).dragTo(group);
  await expect(page.locator('.workspace-tab-group .workspace-tab')).toHaveCount(2);
  await expect(group).toHaveAttribute('aria-expanded', 'true');
- await expect(page.getByRole('textbox', { name: 'Draft for Incoming', exact: true })).toHaveValue('Keep my context');
+ await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toHaveValue('Keep my context');
  await page.reload();
  await expect(page.locator('.workspace-tab-group .workspace-tab')).toHaveCount(2);
 });
