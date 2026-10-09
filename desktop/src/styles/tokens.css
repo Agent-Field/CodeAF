@@ -487,6 +487,17 @@
   --monogram-font: 9px;
   --font-weight-bold: 700;
   --tab-more-pad: 8px;
+  --web-header-height: 48px;
+  --web-header-pad: 10px;
+  --web-header-gap: 4px;
+  --web-address-height: 30px;
+  --web-address-max-width: 520px;
+  --web-address-pad: 12px;
+  --web-address-gap: 8px;
+  --web-sheet-inset: 8px;
+  --radius-web-sheet: 8px;
+  --web-shot-height: 120px;
+  --web-state-max-width: 360px;
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);

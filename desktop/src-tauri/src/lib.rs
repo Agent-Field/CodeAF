@@ -1,6 +1,9 @@
 #[cfg(target_os = "macos")]
 mod menu;
 mod native;
+// Public only so the native smoke test (tests/web_smoke.rs) can drive it.
+#[doc(hidden)]
+pub mod web;
 
 use std::sync::Mutex;
 use tauri::Manager;
@@ -127,7 +130,15 @@ pub fn run() {
             engine_connection,
             native::open_path,
             native::reveal_path,
-            native::open_url
+            native::open_url,
+            web::web_open,
+            web::web_navigate,
+            web::web_bounds,
+            web::web_visible,
+            web::web_history,
+            web::web_close,
+            web::web_snapshot,
+            web::web_list
         ])
         .run(tauri::generate_context!())
         .expect("error while running codeaf");
