@@ -43,11 +43,25 @@ leaves when it is not. No labels that describe the machine ("Engine connected",
 - **Folding**: every turn has a fold chevron that appears in the left gutter on
   hover/focus (always visible on coarse pointers). Folded = the user message on
   one line + the digest in muted text on one line. Click anywhere on a folded turn
-  unfolds it. Keyboard: the chevron is a button with `aria-expanded`.
+  unfolds it. Keyboard: the chevron is a button with `aria-expanded`. A pasted
+  block never shows its `<pasted-text>` tag in a folded line, queued row, tab
+  label or Up recall (one-line readers use `plainMessage`).
+- **Long history**: settled turns fold on their own (the latest stays open; the
+  reader's own fold or unfold always wins). Beyond 12 turns (`turnFold.limit`) the
+  oldest fold into one "N earlier turns" group that opens in place, each turn
+  already a folded line. The "Earlier messages summarized" divider draws only after
+  the engine has compacted the conversation, never because the history is long.
+  ⌘↑ / ⌘↓ (Ctrl on Linux) step between turns, landing 72px below the top; Esc
+  returns to the latest message. Folding keeps the row the reader is on in place.
 - Turn spacing is generous (token `space-xl` between turns); items inside a turn
   are tight.
 - New turn arrives → auto-scroll only when the reader was already at the bottom.
-  Otherwise show a small "↓ New messages" pill above the composer.
+  Otherwise, once the reader is more than 48px from the end and something is
+  live or new, the **Latest** pill appears above the composer; it jumps to the end.
+  While the engine works it reads `Latest · Working 1m 13s` (with the shimmer),
+  otherwise just `Latest`. It never shows when anchored.
+- **Scroll edges**: the top of the reading column fades in once the reader has
+  scrolled (clear at 40px, solid at 96px). The dock fades to the canvas over 36px.
 
 ## 3. Items inside a reply
 
@@ -65,35 +79,66 @@ leaves when it is not. No labels that describe the machine ("Engine connected",
 - **Note**: centred muted small text between rules (compaction etc).
 - **Error**: inline warning text with a Retry button that resends the last user
   message (drafts are never lost).
-- **Question / approval** (`questions` from the snapshot): a card at the end of the
-  conversation, above the composer: the ask, option buttons, optional free text.
-  Uses `answerEngine`. This is the ONLY card-like element in the conversation.
+- **Question / approval** (`questions` from the snapshot): the decision tray above
+  the composer (§4.1): the ask, option buttons, optional free text. Uses
+  `answerEngine`. In the flow only a quiet receipt line marks where it was asked.
 
 ## 4. Composer
 
-- Empty conversation: the composer sits vertically centred with a single quiet
-  greeting line above it (the workspace folder name in muted text, nothing else).
-  After the first send it docks to the bottom (shared layout motion, reduced-motion
-  instant).
-- One rounded field (radius-lg, hairline border, overlay shadow token on focus only).
-  Autosizing textarea, 1 → 10 lines then scroll. Placeholder: `Ask codeaf` (`Steer, or queue a message` while working).
+- Empty conversation: `EmptyStart` draws one title, "What are we building?", and
+  the composer sits centred under it. After the first send it docks to the bottom
+  (shared layout motion, reduced-motion instant).
+- One rounded field (`radius-dock`, `sh-2` dock shadow, accent halo on focus).
+  Autosizing textarea, 1 → 8 lines, then it scrolls under a fade at the top edge.
+  Placeholder: `Ask codeaf` (`Steer, or queue a message` while working). The
+  design's `@` file hint is withheld: there is no @-file reference yet.
+- **Long paste**: a paste over 12 lines (`PASTE_CARD_LINES`) does not fill the field.
+  It becomes a card above the text (line count, remove). On send each card travels
+  as a `<pasted-text lines="N">…</pasted-text>` block ahead of the typed text; the
+  sent bubble reads the block back into a card.
 - Bottom row inside the field: left = Attach (paperclip IconButton) and the model
-  label (muted, e.g. `DeepSeek v4.1 Flash`, a Select only when real routing exists);
+  label (muted, e.g. `DeepSeek v4.1 Flash`, opening an honest one-entry popover);
   right = Send (arrow-up, primary round IconButton). While running: Send becomes
-  Stop (square) when the field is empty; with text, Enter **steers** and the button
-  reads Steer; menu (`…`) offers Queue.
-- Enter sends, Shift+Enter newline, IME composition never sends, Escape blurs (and
-  closes menus first). ↑ in an empty field recalls the last message for editing.
+  Stop (square) when the field is empty; with text, the row shows **Queue** (with
+  its shortcut, ⌥↵ on Mac, Alt Enter elsewhere) beside an accent **Steer** pill, and
+  Enter steers. There is no send-options menu. The row wraps so both stay inside
+  320px.
+- Enter sends (steers while running), Shift+Enter newline, Alt/⌥ Enter queues,
+  IME composition never sends, Escape blurs (and closes menus first). ↑ in an
+  empty field recalls the last message for editing; a pasted block returns as its
+  card. Shortcut labels come from `keyboard.ts`.
 - Drafts persist per tab (and per task route).
+
+### 4.1 Decision tray
+
+- One card above the composer pages through the waiting questions ("N of M"). Amber
+  head with the task crumb; body at most 40vh, scrolling under a bottom fade.
+- When the reader is scrolled away from the tray, it shrinks to a 40px compact bar
+  ("N need you", a one-line summary, Review) and returns on Review.
+- Choice cards: one radio card per option, the engine's pick first with a
+  "Suggested" tag, then Choose. The countdown ("Picks Suggested in 12s") and Hold
+  appear only when the question has a deadline; typing or Hold stops the clock.
+- A batch of permissions is one card, "Allow N actions?", with a collapsible command
+  list, Allow all and Deny all. **One by one** turns the same card into a pager.
+- A withdrawn question's receipt reads "No longer needed. The turn moved on."
 
 ## 5. Tasks
 
-- **Panel** (right column, width token ≈ 280px): header `Tasks` + `3 of 5` muted +
-  close IconButton. Rows: still state mark (○ queued, ◐ running, ✓ done, × failed,
-  – stopped/cancelled muted), title, nothing else. Nesting by indentation only (no
-  connector lines). Parents have a disclosure chevron. Running row shows the live
-  step in one muted line below the title. Hover reveals nothing extra. Plan errors
+- **Panel** (right column, width token `panel` 300px): header `Tasks` + `3 of 5` muted +
+  Expand tasks and close IconButtons, then the five-colour progress strip. One 30px
+  line per task: a 6px status mark drawn by the shared `StatusMark`, title, done/total
+  count on parents, duration. Nesting by indentation with 1px hairline guide lines
+  that join an open parent to its children (the tree's only lines; no node cards or
+  graph). Parents have a disclosure chevron. Queued rows lead with what they wait on.
+  The list has edge masks and a "Finished" fold. Hover shows row actions. Plan errors
   show one muted line at the top.
+- **Expanded tasks** (Expand tasks): a tab-local route stop, hash `#tasks`, so Back,
+  Forward and reload treat it like a task. It shows filter tabs with counts, the
+  progress strip, search, groups (done of total, duration), and rows with the live
+  command or the waiting reason and a state word column. The chosen row persists and
+  fills the right-hand detail pane: parent crumb, title, state with step and age, the
+  pending question (through the tray's question card), Model, Steps, Cost and Started
+  only when the engine provides them, Instructions, Open task.
 - The panel opens automatically the first time a conversation gets tasks; closing
   it is remembered per tab. A `Tasks · 3/5` toggle button lives in the composer's
   bottom row only when tasks exist and the panel is closed. Narrow widths
