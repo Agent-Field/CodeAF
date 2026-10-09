@@ -223,7 +223,7 @@ export function TasksTable(props: TasksTableProps) {
             <Search query={query} onQuery={setQuery} />
           </div>
           <Strip counts={stripCounts(tasks)} />
-          <div ref={list} className="tasks-table-scroll" data-more={more || undefined} onScroll={measure}>
+          <div ref={list} className="tasks-table-scroll" data-scroll-key="tasks-table" data-more={more || undefined} onScroll={measure}>
             <ul className="tasks-table-list">
               {tree.map((node) => <Branch key={node.row.ID} node={node} shared={shared} depth={0} />)}
             </ul>

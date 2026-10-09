@@ -16,17 +16,17 @@ const box = async (page: Page, selector: string) => (await page.locator(selector
 const selectedIndex = async (page: Page) => (await tabs(page).evaluateAll(all => all.findIndex(tab => tab.getAttribute('aria-selected') === 'true')));
 test.beforeEach(async ({ page }) => { await page.route('**/api/engine/**', route => route.abort()); });
 
-test('the rail is 232px, drawn like the design, with today\'s items as 32px rail rows', async ({ page }) => {
+test('the rail is 252px (232px rows plus 10px padding), drawn like the design, with today\'s items as 32px rail rows', async ({ page }) => {
   await page.goto('/');
-  expect(px('sidebar-width')).toBe(232);
-  expect((await rail(page).boundingBox())!.width).toBe(232);
+  expect(px('sidebar-width')).toBe(252);
+  expect((await rail(page).boundingBox())!.width).toBe(252);
   await expect(rail(page)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   const toggle = rail(page).getByRole('button', { name: 'Hide sidebar' });
   expect(await toggle.boundingBox()).toMatchObject({ width: 26, height: 26 });
   await expect(toggle).toHaveCSS('border-top-left-radius', '7px');
   await expect(toggle).toHaveCSS('color', await tokenColor(page, 'ink-3'));
   await expect(toggle.locator('.app-icon')).toHaveCSS('width', '15px');
-  for (const name of ['Workspace', 'Activity', 'Settings', 'Design system']) {
+  for (const name of ['Now', 'Activity', 'Settings', 'Design system']) {
     const row = rail(page).getByRole('button', { name, exact: true });
     expect((await row.boundingBox())!.height).toBe(px('rail-row-height'));
     await expect(row).toHaveCSS('border-top-left-radius', '8px');
@@ -37,9 +37,9 @@ test('the rail is 232px, drawn like the design, with today\'s items as 32px rail
   }
   // Rows sit 1px apart and the rail is padded 16 10 12 (Places PRAIL / rr).
   await expect(rail(page)).toHaveCSS('padding', '16px 10px 12px');
-  await expect(rail(page).locator('.rail-nav')).toHaveCSS('row-gap', '1px');
+  await expect(rail(page).locator('.rail-nav .rail-group').first()).toHaveCSS('row-gap', '1px');
   // The open row is the --tab fill plus sh-1, ink, weight 500. Hover is the tab-hover fill and nothing else.
-  const open = rail(page).getByRole('button', { name: 'Workspace', exact: true });
+  const open = rail(page).getByRole('button', { name: 'Now', exact: true });
   await expect(open).toHaveAttribute('aria-current', 'page');
   await expect(open).toHaveCSS('background-color', await tokenColor(page, 'tab'));
   await expect(open).toHaveCSS('box-shadow', /.+/);
@@ -91,7 +91,7 @@ test('resting on the left 8px edge for 300ms peeks the collapsed rail over the c
   await page.mouse.move(4, 400);
   await expect(rail(page)).toBeVisible();
   await expect.poll(async () => (await rail(page).boundingBox())?.x).toBe(0);
-  expect(await rail(page).boundingBox()).toMatchObject({ y: 0, width: 232 });
+  expect(await rail(page).boundingBox()).toMatchObject({ y: 0, width: 252 });
   // Moving onto the sheet keeps it; leaving it puts it away.
   await page.mouse.move(120, 400);
   await expect(rail(page)).toBeVisible();
@@ -161,7 +161,8 @@ test('⌘T, ⌘W, ⌘⇧T, ⌘1–9 and ⌃Tab', async ({ page }) => {
   await expect(tabs(page)).toHaveCount(2);
   await page.keyboard.press(`${mod}+Shift+t`);
   await expect(tabs(page)).toHaveCount(3);
-  expect(await selectedIndex(page)).toBe(2);
+  // ⌘⇧T puts the closed first tab back where it stood, not at the end of the strip.
+  expect(await selectedIndex(page)).toBe(0);
 });
 
 test('⌘W leaves a pinned tab open', async ({ page }) => {
@@ -188,14 +189,17 @@ test('⌘⇧\\ toggles the overview from the composer; ⌘↑ does not open it',
   await expect(tabs(page)).toHaveCount(1);
 });
 
-test('⌘Y opens History only when the engine backs it; until then the key is left to the browser', async ({ page }) => {
+test('⌘Y opens History now that the engine backs it, and a second press selects the one that is open', async ({ page }) => {
   await page.goto('/');
-  const handled = await page.evaluate(() => {
-    const event = new KeyboardEvent('keydown', { key: 'y', ctrlKey: true, metaKey: false, bubbles: true, cancelable: true });
+  const press = () => page.evaluate(() => {
+    const event = new KeyboardEvent('keydown', { key: 'y', ctrlKey: !/Mac/.test(navigator.platform), metaKey: /Mac/.test(navigator.platform), bubbles: true, cancelable: true });
     window.dispatchEvent(event); return event.defaultPrevented;
   });
-  expect(handled).toBe(false);
-  await expect(tabs(page)).toHaveCount(1);
+  expect(await press()).toBe(true);
+  await expect(tabs(page)).toHaveCount(2);
+  await expect(page.getByRole('tab', { name: /History/ })).toHaveAttribute('aria-selected', 'true');
+  expect(await press()).toBe(true);
+  await expect(tabs(page)).toHaveCount(2);
 });
 
 test('⌘⇧K toggles the task panel of a conversation that has tasks', async ({ page }) => {
@@ -248,7 +252,7 @@ test('⌘, opens the Settings tab once, from any page', async ({ page }) => {
   await expect(page.getByRole('tab', { name: 'Models', exact: true })).toHaveCount(1);
 });
 
-test('Settings is a tab: the rail item opens it once, lights while it shows, and Workspace leaves it', async ({ page }) => {
+test('Settings is a tab: the rail item opens it once, lights while it shows, and Now leaves it', async ({ page }) => {
   await installMockEngine(page, { ...plainReply(), initial: { entries: [], title: '' } });
   await openApp(page);
   const item = rail(page).getByRole('button', { name: 'Settings', exact: true });
@@ -256,7 +260,7 @@ test('Settings is a tab: the rail item opens it once, lights while it shows, and
   await expect(page.getByRole('heading', { name: 'Models', level: 1 })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Models', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(item).toHaveAttribute('aria-current', 'page');
-  await expect(rail(page).getByRole('button', { name: 'Workspace', exact: true })).not.toHaveAttribute('aria-current', 'page');
+  await expect(rail(page).getByRole('button', { name: 'Now', exact: true })).not.toHaveAttribute('aria-current', 'page');
   // A second request focuses the tab that is open.
   await page.getByRole('tab').first().click();
   await expect(page.getByRole('heading', { name: 'Models', level: 1 })).toHaveCount(0);
@@ -270,7 +274,7 @@ test('Settings is a tab: the rail item opens it once, lights while it shows, and
   // It survives a reload like any tab.
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Models', level: 1 })).toBeVisible();
-  await rail(page).getByRole('button', { name: 'Workspace', exact: true }).click();
+  await rail(page).getByRole('button', { name: 'Now', exact: true }).click();
   await expect(message(page)).toBeVisible();
 });
 
@@ -296,7 +300,7 @@ test('the Design system page shows the rail specimen, light and dark', async ({ 
     await page.getByRole('button', { name: 'Design system', exact: true }).click();
     const specimen = page.locator('[data-rail-specimen]');
     await specimen.scrollIntoViewIfNeeded();
-    await expect(specimen.locator('.nav-item')).toHaveCount(4);
+    await expect(specimen.locator('.nav-item')).toHaveCount(8);
     await expect(specimen.locator('.nav-item.active')).toHaveCount(1);
     await expectAccessible(page);
   }

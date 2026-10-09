@@ -32,3 +32,15 @@ test('placeholder, cursor and position', () => {
   assert.equal(sectionPosition(s, 'c'), 'Trailing commas · 2 of 2');
   assert.equal(sectionPosition(s, 'zz'), '');
 });
+
+test('a background press is a middle press or a click with the platform primary modifier', async () => {
+  const { isBackgroundPress } = await import('./overview-model.ts');
+  const press = (over: Record<string, unknown> = {}) => ({ button: 0, metaKey: false, ctrlKey: false, ...over });
+  assert.equal(isBackgroundPress(press(), true), false);
+  assert.equal(isBackgroundPress(press({ metaKey: true }), true), true);
+  assert.equal(isBackgroundPress(press({ ctrlKey: true }), true), false);
+  assert.equal(isBackgroundPress(press({ ctrlKey: true }), false), true);
+  assert.equal(isBackgroundPress(press({ metaKey: true }), false), false);
+  assert.equal(isBackgroundPress(press({ button: 1 }), true), true);
+  assert.equal(isBackgroundPress(press({ button: 1 }), false), true);
+});

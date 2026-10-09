@@ -12,6 +12,7 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import type { Pane } from '../features/tabs/types.ts';
 import { isTabKind, type TabKind } from '../features/tabs/kinds/types.ts';
 import { cleanView, type TabView } from '../features/tabs/view-state.ts';
+import { legacyTerminalView } from '../features/terminal/target.ts';
 
 // ---------------------------------------------------------------------------
 // Shapes. These mirror the Rust structs field for field; Rust refuses unknown
@@ -113,8 +114,12 @@ export function handoffFromPane(pane: Pane): TabHandoff {
   if (pane.path) tab.path = pane.path;
   if (pane.file) tab.file = pane.file.view ? { path: pane.file.path, view: pane.file.view } : { path: pane.file.path };
   if (pane.route) tab.route = { ...(pane.route.taskId ? { taskId: pane.route.taskId } : {}), back: [...pane.route.back], forward: [...pane.route.forward] };
-  if (pane.target) {
-    const { sessionId, path, terminalId, url } = pane.target;
+  // A terminal tab saved before its target was durable still names its shell in the legacy binding; carry that.
+  const view = pane.kind === 'terminal' ? legacyTerminalView(pane) : undefined;
+  if (view?.sessionFile) tab.sessionFile = view.sessionFile;
+  const named = view?.target ?? pane.target;
+  if (named) {
+    const { sessionId, path, terminalId, url } = pane.kind === 'terminal' ? { ...named, sessionId: undefined } : named;
     const target = Object.fromEntries(Object.entries({ sessionId, path, terminalId, url }).filter(([, v]) => typeof v === 'string' && v)) as TabHandoff['target'];
     if (target && Object.keys(target).length) tab.target = target;
   }
@@ -203,8 +208,9 @@ export function createNativeControls(bridge: NativeBridge = defaultBridge()) {
      * new window has claimed it. In a browser a tab opens on the place; nothing
      * can be moved there, so `moved` is false.
      */
-    async openPlaceWindow(placeKey: PlaceKey, options: { pane?: Pane; at?: Point } = {}): Promise<{ label?: string; handoffId?: string; moved: boolean }> {
+    async openPlaceWindow(placeKey: PlaceKey, options: { pane?: Pane; at?: Point; focusTab?: string } = {}): Promise<{ label?: string; handoffId?: string; moved: boolean }> {
       if (!isPlaceKey(placeKey)) throw new Error('That is not a place codeaf knows');
+      if (options.focusTab !== undefined && !idLike(options.focusTab)) throw new Error('That tab cannot be focused');
       const handoff = options.pane ? handoffFromPane(options.pane) : undefined;
       const problem = handoff && handoffProblem(handoff);
       if (problem) throw new Error(problem);
@@ -215,6 +221,7 @@ export function createNativeControls(bridge: NativeBridge = defaultBridge()) {
       const request: Record<string, unknown> = { placeKey };
       if (handoff) request.handoff = handoff;
       if (options.at) request.at = options.at;
+      if (options.focusTab) request.focusTab = options.focusTab;
       const opened = await bridge.invoke<{ label: string; handoffId?: string }>('window_open', { request });
       if (opened.handoffId && options.pane) started.set(opened.handoffId, options.pane.id);
       return { label: opened.label, handoffId: opened.handoffId, moved: Boolean(opened.handoffId) };

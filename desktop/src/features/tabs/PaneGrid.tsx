@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Dispatch } from 'react';
+import { useEffect, useRef, useState, type Dispatch, type ReactNode } from 'react';
 import { DropdownMenu, IconButton, type MenuEntry } from '../../components/ui';
 import { OpenFileProvider } from '../files/OpenFile';
 import { kindDef } from './kinds/registry';
@@ -8,6 +8,7 @@ import { canSplitInto, useDraggedTab } from './hosts/dragHost';
 import { SplitHandles } from './SplitHandles';
 import { SplitZones } from './SplitZones';
 import { tabDomId } from './TabItem';
+import { pruneScrollMemory, ScrollControllerProvider, useScrollRestore } from './scroll/useScrollRestore';
 import { usePaneKeys } from './usePaneKeys';
 import './panes.css';
 
@@ -38,13 +39,22 @@ export function PaneHeader({ pane, focused, onClose, menu }: { pane: Pane; focus
   );
 }
 
+/** One pane's body. It remembers where every scroller inside it was left and puts each back when the tab returns (scroll/useScrollRestore). */
+function PaneBody({ paneId, visible, layout, children }: { paneId: string; visible: boolean; layout: string; children: ReactNode }) {
+  const body = useRef<HTMLDivElement>(null);
+  const scroll = useScrollRestore(paneId, body, visible, layout);
+  return <div ref={body} className="workspace-pane-body"><ScrollControllerProvider value={scroll}>{children}</ScrollControllerProvider></div>;
+}
+
 /**
  * The content card for the active tab: one pane is the card itself; a split is a grid of cards (1x2, 2x1,
  * 2x2) with a 40px title line each and a 1.5px accent-soft ring on the focused pane. Each pane body is
  * its kind's registered renderer; nothing here switches on kind. While a tab is dragged over the card it
  * draws the split zones (design 2g); a split also draws hover resize handles (design 2h).
  */
-export function PaneGrid({ tab, tabs, dispatch, actionsFor }: { tab: Tab; tabs: readonly Tab[]; dispatch: Dispatch<WorkspaceAction>; actionsFor: (pane: Pane) => PaneActions }) {
+export function PaneGrid({ tab, tabs, dispatch, actionsFor, retainedPaneIds }: { tab: Tab; tabs: readonly Tab[]; dispatch: Dispatch<WorkspaceAction>; actionsFor: (pane: Pane) => PaneActions;
+  /** Pane ids of the closed ring (`state.closed`), which Reopen can bring back. When given, scroll places are kept for exactly these and the open tabs; when absent the memory keeps its own bounded ring of closed panes. */
+  retainedPaneIds?: readonly string[] }) {
   const panes = panesOf(tab);
   const split = !!tab.split;
   const focus = tab.split?.focus ?? 0;
@@ -54,6 +64,9 @@ export function PaneGrid({ tab, tabs, dispatch, actionsFor }: { tab: Tab; tabs: 
   const maximized = split && panes.some(p => p.id === maximizedId) ? maximizedId : null;
   useEffect(() => { setMaximizedId(null); }, [tab.id]);
   usePaneKeys(tab, dispatch, grid);
+  // A closed tab keeps its panes' scroll places for Reopen; only panes that are neither open nor retained are forgotten.
+  const retainedKey = retainedPaneIds?.join('\0');
+  useEffect(() => { pruneScrollMemory(new Set(tabs.flatMap(t => panesOf(t).map(p => p.id))), retainedPaneIds && new Set(retainedPaneIds)); }, [tabs, retainedKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const draggedId = useDraggedTab();
   const guest = draggedId ? tabs.find(t => t.id === draggedId) : undefined;
   return (
@@ -66,7 +79,7 @@ export function PaneGrid({ tab, tabs, dispatch, actionsFor }: { tab: Tab; tabs: 
             onPointerDownCapture={split && !focused ? () => dispatch({ type: 'split-focus', id: tab.id, index }) : undefined}
             onFocusCapture={split && !focused ? () => dispatch({ type: 'split-focus', id: tab.id, index }) : undefined}>
             {split && <PaneHeader pane={pane} focused={focused} onClose={() => dispatch({ type: 'split-close-pane', id: tab.id, paneId: pane.id })} menu={paneMenu(tab, pane, maximized === pane.id, () => { setMaximizedId(maximized === pane.id ? null : pane.id); if (!focused) dispatch({ type: 'split-focus', id: tab.id, index }); }, dispatch)}/>}
-            <div className="workspace-pane-body"><OpenFileProvider value={actionsFor(pane).onOpenFile}><Body pane={pane} label={pane.title} focused={focused} split={split} actions={actionsFor(pane)}/></OpenFileProvider></div>
+            <PaneBody paneId={pane.id} visible={maximized === null || maximized === pane.id} layout={`${maximized ?? ''}|${tab.split?.layout ?? ''}|${panes.length}`}><OpenFileProvider value={actionsFor(pane).onOpenFile}><Body pane={pane} label={pane.title} focused={focused} split={split} actions={actionsFor(pane)}/></OpenFileProvider></PaneBody>
           </section>
         );
       })}

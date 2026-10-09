@@ -27,7 +27,7 @@ export function OverviewSpecimen() {
     <SectionHeading>Overview cards</SectionHeading>
     <Text>Readable cards, never miniature screenshots. Active tab: 2px accent ring. Cursor and hover: a fill. Close shows on hover.</Text>
     <div className="overview-specimen-grid">
-      {cards.map(({ tab: item, active, cursor }) => <OverviewCard key={item.id} tab={item} summaries={summaries} now={now} active={!!active} cursor={!!cursor} menu={[]} onOpen={noop} onClose={noop}/>)}
+      {cards.map(({ tab: item, active, cursor }) => <OverviewCard key={item.id} tab={item} summaries={summaries} now={now} active={!!active} cursor={!!cursor} onOpen={noop} onBackground={noop} onClose={noop}/>)}
     </div>
   </div>;
 }

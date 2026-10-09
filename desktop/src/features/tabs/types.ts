@@ -20,12 +20,27 @@ export type Split = { layout: SplitLayout; focus: number; panes: Pane[]; ratios?
 export type Tab = Pane & { pinned: boolean; groupId?: string; split?: Split };
 export type TabGroup = { id: string; title: string; collapsed: boolean };
 
+/**
+ * Where a closed tab stood, recorded by the reducer when it closed so Reopen puts it back there: before the tab that
+ * followed it, else after the tab that preceded it. `group` is the group it was in, kept whole so a group that closing
+ * emptied (and so removed) comes back with its name.
+ */
+export type ClosedPlace = { before?: string; after?: string; group?: TabGroup };
+/** A closed tab and, when it was closed in this build, where it stood. */
+/** `stood` is where the tab stood when it closed (not `place`, which a place's Home already uses for its place id). */
+export type ClosedTab = Tab & { stood?: ClosedPlace };
+
 export type WorkspaceState = {
   tabs: Tab[];
   groups: TabGroup[];
   activeId: string;
   /** Closed tabs, newest last, for Reopen. A closed split tab keeps its panes. */
-  closed: Tab[];
+  closed: ClosedTab[];
   nextNumber: number;
   recentIds: string[];
+  /**
+   * Tabs picked with ⌘-click (Ctrl-click on Linux) for ⌘G, besides the active tab, which is always part of the
+   * selection. Window-local and never read back from a save: a reload starts with nothing picked.
+   */
+  picked?: string[];
 };

@@ -94,14 +94,95 @@ export function normalize(state: WorkspaceState): WorkspaceState {
   };
 }
 
-/** The strip's reading order: pinned, then ungrouped, then each group; a collapsed group keeps only its active member. */
+/**
+ * THE STRIP'S ORDER IS `state.tabs`, AND TWO LAWS HOLD AFTER EVERY ACTION: pinned tabs stand first and belong to no
+ * group, and each group's members stand together as one run (design 2b draws loose tabs on both sides of a group).
+ * workspaceReducer applies this after every slice, so the strip, the keys, ⌘1–9 and the overview read one order and no
+ * renderer ever re-sorts. A member found away from its run joins the run where the group's first member stands.
+ * Groups are kept in the order their runs appear, and a group with no members is gone.
+ */
+export function arrange(state: WorkspaceState): WorkspaceState {
+  const known = new Set(state.groups.map(group => group.id));
+  const own = (tab: Tab): Tab => (tab.groupId && (tab.pinned || !known.has(tab.groupId)) ? { ...tab, groupId: undefined } : tab);
+  const all = state.tabs.map(own);
+  const loose = all.filter(tab => !tab.pinned);
+  const order = all.filter(tab => tab.pinned);
+  const runs: string[] = [];
+  for (const tab of loose) {
+    if (!tab.groupId) order.push(tab);
+    else if (!runs.includes(tab.groupId)) { runs.push(tab.groupId); order.push(...loose.filter(member => member.groupId === tab.groupId)); }
+  }
+  const tabs = order.length === state.tabs.length && order.every((tab, index) => tab === state.tabs[index]) ? state.tabs : order;
+  const sorted = runs.map(id => state.groups.find(group => group.id === id)!);
+  const groups = sorted.length === state.groups.length && sorted.every((group, index) => group === state.groups[index]) ? state.groups : sorted;
+  const picked = state.picked?.filter(id => id !== state.activeId && tabs.some(tab => tab.id === id));
+  const samePicks = picked === undefined || (picked.length === state.picked!.length);
+  if (tabs === state.tabs && groups === state.groups && samePicks) return state;
+  return { ...state, tabs, groups, ...(state.picked ? { picked: samePicks ? state.picked : picked } : {}) };
+}
+
+/** Whether a saved order already obeys the laws of `arrange` (a save from before the laws drew groups after loose tabs). */
+export function isArranged(tabs: readonly Tab[]): boolean {
+  const firstLoose = tabs.findIndex(tab => !tab.pinned);
+  if (firstLoose >= 0 && tabs.slice(firstLoose).some(tab => tab.pinned)) return false;
+  const closed = new Set<string>();
+  return tabs.every((tab, index) => {
+    const previous = tabs[index - 1]?.groupId;
+    if (previous && previous !== tab.groupId) closed.add(previous);
+    return !tab.groupId || !closed.has(tab.groupId);
+  });
+}
+
+/** The run of a group's members in an arranged order: the first and last index, or undefined when it has none. */
+export function runOf(tabs: readonly Tab[], groupId: string | undefined): { start: number; end: number } | undefined {
+  if (!groupId) return undefined;
+  const start = tabs.findIndex(tab => tab.groupId === groupId);
+  if (start < 0) return undefined;
+  let end = start;
+  while (tabs[end + 1]?.groupId === groupId) end++;
+  return { start, end };
+}
+
+/** How many pinned tabs lead an arranged order. */
+export const pinnedCount = (tabs: readonly Tab[]) => tabs.filter(tab => tab.pinned).length;
+
+/**
+ * The nearest index to `index` where `tab` may stand in `tabs` (which does not hold it) without breaking the laws:
+ * a pinned tab among the pinned, a member of a group that has members at or inside that run, any other tab never
+ * between two members of one group.
+ */
+export function fitIndex(tabs: readonly Tab[], tab: Tab, index: number): number {
+  const pinned = pinnedCount(tabs);
+  if (tab.pinned) return Math.min(Math.max(index, 0), pinned);
+  const at = Math.min(Math.max(index, pinned), tabs.length);
+  const run = runOf(tabs, tab.groupId);
+  if (run) return Math.min(Math.max(at, run.start), run.end + 1);
+  const left = tabs[at - 1]?.groupId;
+  return left && left === tabs[at]?.groupId ? runOf(tabs, left)!.end + 1 : at;
+}
+
+export const insertAt = (tabs: readonly Tab[], tab: Tab, index: number): Tab[] => [...tabs.slice(0, index), tab, ...tabs.slice(index)];
+
+/** What the strip draws after its pinned tabs, in order: a loose tab, or a group with its members. */
+export type StripItem = { kind: 'tab'; tab: Tab } | { kind: 'group'; group: TabGroup; members: Tab[] };
+
+export function stripItems(state: Pick<WorkspaceState, 'tabs' | 'groups'>): StripItem[] {
+  const items: StripItem[] = [];
+  for (const tab of state.tabs) {
+    if (tab.pinned) continue;
+    const group = tab.groupId ? state.groups.find(g => g.id === tab.groupId) : undefined;
+    if (!group) { items.push({ kind: 'tab', tab }); continue; }
+    const last = items[items.length - 1];
+    if (last?.kind === 'group' && last.group.id === group.id) last.members.push(tab);
+    else items.push({ kind: 'group', group, members: [tab] });
+  }
+  return items;
+}
+
+/** The strip's reading order: `state.tabs` as it stands, less the hidden members of a collapsed group (its active member stays). */
 export function visibleTabs(state: Pick<WorkspaceState, 'tabs' | 'groups' | 'activeId'>): Tab[] {
-  const { tabs, groups, activeId } = state;
-  return [
-    ...tabs.filter(t => t.pinned),
-    ...tabs.filter(t => !t.pinned && !t.groupId),
-    ...groups.flatMap(g => tabs.filter(t => t.groupId === g.id && (!g.collapsed || t.id === activeId))),
-  ];
+  const collapsed = new Set(state.groups.filter(group => group.collapsed).map(group => group.id));
+  return state.tabs.filter(tab => !tab.groupId || !collapsed.has(tab.groupId) || tab.id === state.activeId);
 }
 
 export function nextGroupTitle(groups: readonly TabGroup[]): string {

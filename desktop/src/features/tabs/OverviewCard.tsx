@@ -1,7 +1,10 @@
 // One overview card (design 3h): kind and state line, title, key content, footer. Readable text, never a
 // miniature screenshot. The body is the kind's `preview` renderer when the kind has one; otherwise the draft or
 // the latest answer, which is what the engine actually knows.
+import type { MouseEvent } from 'react';
 import { Button, ContextMenu, Icon, IconButton, type MenuEntry } from '../../components/ui';
+import { isMac } from '../../design/keyboard';
+import { isBackgroundPress } from './overview-model';
 import { relativeTime, type TabMark, type TabSummary } from '../conversation/tabSummary';
 import { tabDragType } from './hosts/dragHost';
 import { kindDef } from './kinds/registry';
@@ -25,11 +28,24 @@ export function cardText(tab: Tab, summaries: Readonly<Record<string, TabSummary
 }
 
 export const kindLabel = (tab: Tab) => (tab.split ? 'Split' : kindDef(tab.kind).label);
-export const kindIcon = (tab: Tab) => (tab.split ? 'split' as const : kindDef(tab.kind).icon);
+export const kindIcon = (tab: Tab) => (tab.split ? 'split' as const : kindDef(tab.kind).glyph?.(tab.title) ?? kindDef(tab.kind).icon);
 
 /** The 6px state dot, shared by the card head and the filmstrip label. Running is accent, needs you amber, failed red. */
 export function StateDot({ mark }: { mark: TabMark }) {
   return <span className="overview-dot" data-state={mark} aria-hidden="true"/>;
+}
+
+/**
+ * The press handlers of a card or filmstrip item: a plain click opens, a ⌘/Ctrl-click or a middle-click is the
+ * background press. The middle button fires `auxclick`, not `click`, and its mousedown is cancelled so the platform's
+ * autoscroll (or primary-selection paste) never starts on top of the layer.
+ */
+export function backgroundPress(open: () => void, background: () => void) {
+  return {
+    onClick: (event: MouseEvent) => (isBackgroundPress(event, isMac) ? background() : open()),
+    onAuxClick: (event: MouseEvent) => { if (event.button === 1) { event.preventDefault(); background(); } },
+    onMouseDown: (event: MouseEvent) => { if (event.button === 1) event.preventDefault(); },
+  };
 }
 
 const overviewActions = { busy: false, allowAll: () => {}, review: () => {} };
@@ -46,16 +62,22 @@ function CardBody({ tab, summaries, now }: { tab: Tab; summaries: Readonly<Recor
 
 type Props = {
   tab: Tab; summaries: Readonly<Record<string, TabSummary>>; now: number;
-  active: boolean; cursor: boolean; menu: MenuEntry[];
-  onOpen: () => void; onClose?: () => void;
+  active: boolean; cursor: boolean;
+  /** The tab's own menu, built by the shared tab menu builder; absent for a tab that has none (the Inbox). */
+  menu?: MenuEntry[];
+  /** A plain press. */
+  onOpen: () => void;
+  /** ⌘-click or middle-click: Interactions "Background tab". The tab is already open, so this opens nothing. */
+  onBackground: () => void;
+  onClose?: () => void;
 };
 
-export function OverviewCard({ tab, summaries, now, active, cursor, menu, onOpen, onClose }: Props) {
+export function OverviewCard({ tab, summaries, now, active, cursor, menu, onOpen, onBackground, onClose }: Props) {
   const mark = tabMark(tab, summaries);
   const updated = summaries[focusedPane(tab).id]?.updatedAt;
-  return <ContextMenu label={`Actions for ${tab.title}`} items={menu}>
+  const card = (
     <article className="overview-card" draggable onDragStart={event => { event.dataTransfer.setData(tabDragType, tab.id); event.dataTransfer.effectAllowed = 'move'; }} data-active={active} data-cursor={cursor} data-card-id={tab.id} data-kind={tab.split ? 'split' : tab.kind}>
-      <Button className="overview-card-open" aria-label={`Open ${tab.title}`} aria-current={active || undefined} onClick={onOpen}/>
+      <Button className="overview-card-open" aria-label={`Open ${tab.title}`} aria-current={active || undefined} {...backgroundPress(onOpen, onBackground)}/>
       <div className="overview-card-face">
         <div className="overview-card-head">
           <Icon name={kindIcon(tab)} size="micro"/><span>{kindLabel(tab)}</span>
@@ -67,5 +89,6 @@ export function OverviewCard({ tab, summaries, now, active, cursor, menu, onOpen
       </div>
       {onClose && <IconButton className="overview-card-close" label={`Close ${tab.title}`} icon="close" iconSize="micro" onClick={onClose}/>}
     </article>
-  </ContextMenu>;
+  );
+  return menu ? <ContextMenu label={`Actions for ${tab.title}`} items={menu}>{card}</ContextMenu> : card;
 }

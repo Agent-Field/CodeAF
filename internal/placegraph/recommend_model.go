@@ -86,6 +86,7 @@ func fileQuestion(s *Snapshot, chat ChatEvidence, cands []candidate) ModelReques
 		fmt.Fprintf(&b, "%s: %s\n", label("p", i), placeLine(s, c.place))
 	}
 	b.WriteString("\nWhich one place does this chat clearly belong in? If none fits well, say none. " +
+		"Answer with the place's label (p1, p2, ...), not its name. " +
 		`Answer {"place": "<label or none>", "confidence": <0-100>}.`)
 	return ModelRequest{Role: roles.RolePlaceFile, System: recommendSystem, User: b.String()}
 }
@@ -96,7 +97,8 @@ type fileAnswer struct {
 }
 
 // readFileAnswer returns the index of the chosen candidate, or -1 for none.
-func readFileAnswer(raw string, n int) (int, int, error) {
+// names are the candidates' names in the order they were labelled.
+func readFileAnswer(raw string, names []string) (int, int, error) {
 	var a fileAnswer
 	if err := decodeObject(raw, &a); err != nil {
 		return -1, 0, err
@@ -105,11 +107,43 @@ func readFileAnswer(raw string, n int) (int, int, error) {
 	if pick == "" || pick == "none" {
 		return -1, 0, nil
 	}
-	i, ok := labelIndex(pick, "p", n)
+	i, ok := pickIndex(pick, "p", names)
 	if !ok || a.Confidence == nil {
 		return -1, 0, ErrBadAnswer
 	}
 	return i, clampPercent(*a.Confidence), nil
+}
+
+// pickIndex reads a label the model was shown, or — because a real model,
+// shown "p1: Release pipeline", answers "Release pipeline" as often as "p1"
+// (measured on deepseek/deepseek-v4.1-flash, 2026-10-09) — the exact name of
+// exactly one of the places it was shown. A name it was not shown, or one two
+// shown places share, is still refused: THE MODEL CAN ONLY EVER POINT AT A
+// PLACE IT WAS SHOWN, never name one into being.
+func pickIndex(answer, prefix string, names []string) (int, bool) {
+	if i, ok := labelIndex(answer, prefix, len(names)); ok {
+		return i, true
+	}
+	want := strings.ToLower(oneLine(answer))
+	found := -1
+	for i, name := range names {
+		if strings.ToLower(oneLine(name)) == want && want != "" {
+			if found >= 0 {
+				return 0, false
+			}
+			found = i
+		}
+	}
+	return found, found >= 0
+}
+
+// candidateNames are the candidates' place names in label order.
+func candidateNames(cands []candidate) []string {
+	names := make([]string, len(cands))
+	for i, c := range cands {
+		names[i] = c.place.Name
+	}
+	return names
 }
 
 // suggestQuestion asks whether a group of chats belongs together, and if so
@@ -133,12 +167,25 @@ func suggestQuestion(s *Snapshot, chats []ChatEvidence, existing []candidate, pa
 			fmt.Fprintf(&b, "%s: %s\n", label("u", i), placeLine(s, p))
 		}
 	}
-	b.WriteString("\nDo most of these chats clearly belong together? List only the ones that do. " +
+	b.WriteString("\nDo most of these chats clearly belong together? List only the ones that do. " + groupingGuard +
 		"Prefer an existing place when one fits. Otherwise name a new place in one to four plain words. " +
-		`Answer {"belong": true|false, "chats": ["c1", ...], "use": "<existing p label or empty>", ` +
-		`"name": "<new place name or empty>", "under": "<u label or root>", "confidence": <0-100>}.`)
+		"Use labels (c1, p1, u1), not names, wherever a label is asked for. " + suggestShape)
 	return ModelRequest{Role: roles.RolePlaceSuggest, System: recommendSystem, User: b.String()}
 }
+
+// groupingGuard names what is NOT a reason to belong together. Measured on
+// real saved conversations: smoke-test chats that asked unrelated things in
+// one folder, chats whose opening message was the same pasted brief or team
+// preamble, and quick questions with nothing in common but their shape.
+const groupingGuard = "Chats belong together only when they are about the same subject or project — " +
+	"not because they share a folder, a pasted brief or preamble, a tool, or a kind of request such as quick questions, checks or tests. " +
+	"Judge the concrete topic of each person's request. A shared coding tool, vendor, task system or version-control process is not a shared project. " +
+	"Do not invent a broad umbrella such as development, workflows or troubleshooting to connect different subjects. " +
+	"Exclude any member that only fits that umbrella; prefer no offer over combining unrelated subjects. "
+
+// suggestShape is the answer both group questions ask for.
+const suggestShape = `Answer {"belong": true|false, "chats": ["c1", ...], "use": "<existing p label or empty>", ` +
+	`"name": "<new place name or empty>", "under": "<u label or root>", "confidence": <0-100>}.`
 
 type suggestAnswer struct {
 	Belong     *bool    `json:"belong"`
@@ -158,7 +205,7 @@ type suggestion struct {
 	confidence int
 }
 
-func readSuggestAnswer(raw string, nChats, nExisting, nParents int) (*suggestion, error) {
+func readSuggestAnswer(raw string, nChats int, existing, parents []string) (*suggestion, error) {
 	var a suggestAnswer
 	if err := decodeObject(raw, &a); err != nil {
 		return nil, err
@@ -182,7 +229,7 @@ func readSuggestAnswer(raw string, nChats, nExisting, nParents int) (*suggestion
 		}
 	}
 	if use := strings.ToLower(strings.TrimSpace(a.Use)); use != "" && use != "none" {
-		i, ok := labelIndex(use, "p", nExisting)
+		i, ok := pickIndex(use, "p", existing)
 		if !ok {
 			return nil, ErrBadAnswer
 		}
@@ -197,7 +244,7 @@ func readSuggestAnswer(raw string, nChats, nExisting, nParents int) (*suggestion
 	switch under := strings.ToLower(strings.TrimSpace(a.Under)); under {
 	case "", "root", "none":
 	default:
-		i, ok := labelIndex(under, "u", nParents)
+		i, ok := pickIndex(under, "u", parents)
 		if !ok {
 			return nil, ErrBadAnswer
 		}

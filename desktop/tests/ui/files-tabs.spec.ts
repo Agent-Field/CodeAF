@@ -1,3 +1,4 @@
+import { mkdirSync } from 'node:fs';
 import { test, expect, type Page } from '@playwright/test';
 import { installMockEngine, type MockEngine, type Scenario } from './support/mock-engine';
 import { richReply } from './support/scenarios-v2';
@@ -65,6 +66,14 @@ test('a changed-file chip opens a diff tab: header, two line-number columns, red
   await expect(page.locator('.file-diff-row[data-kind="context"] .file-text').getByText('// line 1', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Show 28 unchanged lines' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Show 29 unchanged lines' })).toBeVisible();
+});
+
+test('a Go file tab draws file-code-2 from the central Icon in its header', async ({ page }) => {
+  await openWithDiff(page);
+  await openDiffTab(page);
+  const glyph = page.locator('.file-head .app-icon[data-icon="fileCode2"]');
+  await expect(glyph).toHaveCount(1);
+  await expect(glyph.locator('svg')).toHaveClass(/lucide-file-code2/);
 });
 
 test('a plain click on a file chip opens the preview sheet; Command-click or a middle click opens the tab (Interactions)', async ({ page }) => {
@@ -158,13 +167,21 @@ test('a file outside git has the file view only: no toggle, no counts', async ({
   await expect(page.locator('.file-plain-row').nth(29)).toContainText('now := fixedClock()');
   await expect(page.locator('.file-head').getByRole('radio')).toHaveCount(0);
   await expect(page.locator('.file-count')).toHaveCount(0);
+  await expect(page.locator('.file-head .file-dir')).toHaveText('internal/auth · not in git');
 });
 
 test('when the start commit is gone the changes view says so', async ({ page }) => {
   await openWithDiff(page);
-  await page.route('**/api/engine/sessions/*/diff?*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ path: FILE, name: 'auth_test.go', dir: 'internal/auth', abs: `/mock-workspace/${FILE}`, git: true, base: { kind: 'head' }, status: 'modified', added: 1, deleted: 1, lines: 60, hunks: [hunk] }) }));
+  await page.route('**/api/engine/sessions/*/diff?*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ path: FILE, name: 'auth_test.go', dir: 'internal/auth', abs: `/mock-workspace/${FILE}`, git: true, base: { kind: 'head', startGone: true }, status: 'modified', added: 1, deleted: 1, lines: 60, hunks: [hunk] }) }));
   await openDiffTab(page);
   await expect(page.locator('.file-base')).toHaveText('Compared with the latest commit. The commit this conversation started on is no longer in history.');
+});
+
+test('a diff with no recorded start says only that it is against the latest commit', async ({ page }) => {
+  await openWithDiff(page);
+  await page.route('**/api/engine/sessions/*/diff?*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ path: FILE, name: 'auth_test.go', dir: 'internal/auth', abs: `/mock-workspace/${FILE}`, git: true, base: { kind: 'head' }, status: 'modified', added: 1, deleted: 1, lines: 60, hunks: [hunk] }) }));
+  await openDiffTab(page);
+  await expect(page.locator('.file-base')).toHaveText('Compared with the latest commit.');
 });
 
 test('the Design system page draws every file tab state', async ({ page }) => {
@@ -173,6 +190,189 @@ test('the Design system page draws every file tab state', async ({ page }) => {
   const cases = page.locator('[data-files-specimen]');
   await expect(cases).toHaveCount(6);
   await expect(page.locator('[data-files-specimen="Changes"] .file-hunk').first()).toHaveText('@@ 84,10 +84,16 @@ func (l *Lexer) next() Token');
-  await expect(page.locator('[data-files-specimen="Too large"]')).toContainText('Too large to show, 3.4 MB');
+  await expect(page.locator('[data-files-specimen="Too large"]')).toContainText('Too large to show · 3.4 MB');
+  await expect(page.locator('[data-files-specimen="Outside git"] .file-dir')).toHaveText('internal/parse · not in git');
   await expect(page.locator('[data-files-specimen="Outside git"] .file-head').getByRole('radio')).toHaveCount(0);
+  await expect(page.locator('[data-files-specimen="Base gone"] .file-base')).toHaveText('Compared with the latest commit. The commit this conversation started on is no longer in history.');
+});
+
+test('file tab at 320 and 560 has no page overflow and keeps both controls', async ({ page }) => {
+  await openWithDiff(page);
+  await openDiffTab(page);
+  for (const width of [320, 560]) {
+    await page.setViewportSize({ width, height: 700 });
+    const pageOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+    expect(pageOverflow).toBe(false);
+    await expect(page.locator('.file-head').getByRole('radio', { name: 'Changes' })).toBeVisible();
+    await expect(page.locator('.file-head').getByRole('button', { name: /^Open in/ })).toBeVisible();
+    await expect(page.locator('.file-diff-row').first().locator('.file-num')).toHaveCount(2);
+    const wrapped = await page.evaluate(() => {
+      const id = document.querySelector('.file-id');
+      const actions = document.querySelector('.file-actions');
+      return !!id && !!actions && actions.getBoundingClientRect().top > id.getBoundingClientRect().top;
+    });
+    expect(wrapped).toBe(true);
+  }
+  await page.setViewportSize({ width: 800, height: 700 });
+  const sameRow = await page.evaluate(() => {
+    const id = document.querySelector('.file-id');
+    const actions = document.querySelector('.file-actions');
+    return !!id && !!actions && Math.abs(actions.getBoundingClientRect().top - id.getBoundingClientRect().top) < 8;
+  });
+  expect(sameRow).toBe(true);
+});
+
+test('Open in lists the engine editors default first, then Copy path', async ({ page }) => {
+  await openWithDiff(page);
+  await page.route('**/api/engine/sessions/*/editors?**', route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ editors: [{ id: 'preview.desktop', name: 'Preview' }, { id: 'photoshop.desktop', name: 'Photoshop', default: true }], local: true, open: true }),
+  }));
+  const opened: { path?: string; id?: string }[] = [];
+  await page.route('**/api/engine/sessions/*/editors/open', async route => {
+    opened.push(route.request().postDataJSON() as { path?: string; id?: string });
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ accepted: true }) });
+  });
+  await openDiffTab(page);
+  await page.locator('.file-head').getByRole('button', { name: 'Open in' }).click();
+  const items = page.getByRole('menuitem');
+  await expect(items.nth(0)).toContainText('Photoshop');
+  await expect(items.nth(0)).toContainText('default');
+  await expect(items.nth(1)).toContainText('Preview');
+  await expect(page.getByRole('menuitem', { name: /^Copy path/ })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menuitem')).toHaveCount(0);
+  await page.locator('.file-head').getByRole('button', { name: 'Open in' }).focus();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => opened[0]?.id).toBe('photoshop.desktop');
+  expect(opened[0]?.path).toBe(FILE);
+  expect(JSON.stringify(opened[0])).not.toContain('bash');
+});
+
+test("a remote engine's Open in holds only the copy items", async ({ page }) => {
+  await openWithDiff(page);
+  await page.route('**/api/engine/sessions/*/editors?**', route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ editors: [], local: false, open: false, reason: 'The engine is on another machine.' }),
+  }));
+  await openDiffTab(page);
+  await page.locator('.file-head').getByRole('button', { name: 'Open in' }).click();
+  await expect(page.getByRole('menuitem', { name: /^Copy path/ })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Photoshop' })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: /^Open in editor/ })).toHaveCount(0);
+});
+
+test('an edit by the conversation refreshes the open diff once', async ({ page }) => {
+  const engine = await openWithDiff(page);
+  const eventsBefore = engine.calls.filter(call => call.path.includes('/events')).length;
+  await openDiffTab(page);
+  await expect(page.locator('.file-diff-row[data-kind="add"] .file-text')).toHaveText('\tnow := fixedClock()');
+  await expect.poll(() => engine.calls.filter(call => call.path.includes('/events')).length).toBeGreaterThan(eventsBefore);
+  const before = engine.calls.filter(call => call.path.includes('/diff')).length;
+  const models = engine.calls.filter(call => call.path.includes('/models')).length;
+  await page.setViewportSize({ width: 1200, height: 360 });
+  const body = page.locator('.file-body');
+  const placed = await body.evaluate(node => { node.scrollTop = 80; return node.scrollTop; });
+  engine.replaceDiff(FILE, { lines: 60, hunks: [{ ...hunk, lines: hunk.lines.map(line => line.kind === 'add' ? { ...line, text: '\trefreshed()' } : line) }] });
+  engine.push({ kind: 'toolEnd', tool: 'edit', text: '', hint: '', raw: { Args: JSON.stringify({ path: FILE }) } });
+  await expect(page.locator('.file-diff-row[data-kind="add"] .file-text')).toHaveText('\trefreshed()', { timeout: 4000 });
+  expect(engine.calls.filter(call => call.path.includes('/diff')).length - before).toBe(1);
+  expect(engine.calls.filter(call => call.path.includes('/models')).length).toBe(models);
+  expect(await body.evaluate(node => node.scrollTop)).toBe(placed);
+});
+
+test('a write from outside the conversation refreshes the open tab from the file stat, and a closed tab stops asking', async ({ page }) => {
+  const engine = await openWithDiff(page);
+  await openDiffTab(page);
+  await expect(page.locator('.file-diff-row[data-kind="add"] .file-text')).toHaveText('\tnow := fixedClock()');
+  const stats = () => engine.calls.filter(call => call.path.endsWith('/files/stat'));
+  await expect.poll(() => stats().length, { timeout: 5000 }).toBeGreaterThan(0);
+  const before = engine.calls.filter(call => call.path.includes('/diff')).length;
+  const models = engine.calls.filter(call => call.path.includes('/models')).length;
+  // A shell command rewrites the file: no tool event, only a new size and modification time.
+  engine.replaceDiff(FILE, { lines: 60, hunks: [{ ...hunk, lines: hunk.lines.map(line => line.kind === 'add' ? { ...line, text: '\tfromShell()' } : line) }] });
+  engine.replaceFile(FILE, { mime: 'text/x-go', dataBase64: b64(body + '// shell\n'), modTime: '2026-10-09T19:00:00Z' });
+  await expect(page.locator('.file-diff-row[data-kind="add"] .file-text')).toHaveText('\tfromShell()', { timeout: 8000 });
+  expect(engine.calls.filter(call => call.path.includes('/diff')).length - before).toBe(1);
+  expect(engine.calls.filter(call => call.path.includes('/models')).length).toBe(models);
+  // Each stat names only the open file.
+  for (const call of stats().slice(-3)) expect(call.body.paths).toEqual([FILE]);
+  // Return to an empty field before closing. Returning to the conversation legitimately
+  // re-reads its file-chip metadata, which is a separate stat consumer from this tab's poll.
+  await page.getByRole('button', { name: 'New tab', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Search or start' })).toBeVisible();
+  await page.locator('.workspace-tab[data-kind="diff"]').getByRole('button', { name: /^Close / }).click({ force: true });
+  await expect(page.getByRole('tab', { name: /auth_test\.go/ })).toHaveCount(0);
+  const closed = stats().length;
+  await page.waitForTimeout(4500);
+  expect(stats().length).toBe(closed);
+});
+
+test('a file chip tooltip is the full path from the shared tooltip', async ({ page }) => {
+  await openWithDiff(page);
+  await page.getByRole('button', { name: /^Changed 1 file/ }).click();
+  const button = chip(page);
+  await expect(button).not.toHaveAttribute('title', /.+/);
+  // The full path is the chip's description before any tooltip is drawn, so keyboard focus hears it at once.
+  await expect(button).toHaveAccessibleDescription('internal/auth/auth_test.go');
+  await button.focus();
+  await expect(button).toHaveAccessibleDescription('internal/auth/auth_test.go');
+  await button.hover();
+  await expect(page.getByRole('tooltip')).toContainText('internal/auth/auth_test.go', { timeout: 2000 });
+  const described = await button.getAttribute('aria-describedby');
+  await expect(page.getByRole('tooltip')).toHaveAttribute('id', described ?? '');
+});
+
+test('edge shots for the file follow-up', async ({ page }, testInfo) => {
+  const dir = process.env.FILES_SHOTS;
+  test.skip(!dir || testInfo.project.name !== 'chromium', 'shots are taken once, from Chromium, when FILES_SHOTS is set');
+  mkdirSync(dir!, { recursive: true });
+  const shot = async (name: string) => page.screenshot({ path: `${dir}/${name}.png` });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Design system' }).first().click();
+  await expect(page.locator('[data-files-specimen="Too large"]')).toContainText('Too large to show · 3.4 MB');
+  for (const theme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.evaluate(value => localStorage.setItem('codeaf-theme', value), theme);
+    await page.reload();
+    await page.getByRole('button', { name: 'Design system' }).first().click();
+    for (const label of ['Too large', 'Outside git', 'Base gone']) {
+      await page.locator(`[data-files-specimen="${label}"]`).screenshot({ path: `${dir}/${theme}-${label.replace(/ /g, '-').toLowerCase()}.png` });
+    }
+  }
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.evaluate(() => localStorage.setItem('codeaf-theme', 'light'));
+  await openWithDiff(page);
+  await openDiffTab(page);
+  for (const width of [320, 560]) {
+    await page.setViewportSize({ width, height: 700 });
+    await shot(`header-${width}`);
+  }
+});
+
+test('editor menu and chip tooltip shots, Light and Dark', async ({ browser }, testInfo) => {
+  const dir = process.env.FILES_SHOTS;
+  test.skip(!dir || testInfo.project.name !== 'chromium', 'shots are taken once, from Chromium, when FILES_SHOTS is set');
+  for (const theme of ['light', 'dark'] as const) {
+    const context = await browser.newContext({ colorScheme: theme, viewport: { width: 1200, height: 800 } });
+    const page = await context.newPage();
+    await page.addInitScript(value => localStorage.setItem('codeaf-theme', value), theme);
+    await openWithDiff(page);
+    // The editor names are the two this Linux test machine's own discovery returned for a Go file,
+    // served by a route stub, registered after the mock engine so it wins, so the shot does not depend on the box.
+    await page.route('**/api/engine/sessions/*/editors?**', route => route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ editors: [{ id: 'libreoffice-writer.desktop', name: 'LibreOffice Writer', default: true }, { id: 'org.gnome.TextEditor.desktop', name: 'Text Editor' }], local: true, open: true }),
+    }));
+    await page.getByRole('button', { name: /^Changed 1 file/ }).click();
+    await chip(page).hover();
+    await expect(page.getByRole('tooltip')).toContainText('internal/auth/auth_test.go', { timeout: 2000 });
+    await page.screenshot({ path: `${dir}/${theme}-chip-tooltip.png` });
+    await chip(page).click({ modifiers: ['ControlOrMeta'] });
+    await page.locator('.file-head').getByRole('button', { name: 'Open in' }).click();
+    await expect(page.getByRole('menuitem', { name: /LibreOffice Writer/ })).toBeVisible();
+    await page.screenshot({ path: `${dir}/${theme}-open-in-editors.png` });
+    await context.close();
+  }
 });

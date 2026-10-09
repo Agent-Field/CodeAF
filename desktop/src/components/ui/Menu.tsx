@@ -6,10 +6,10 @@ import { KeyboardShortcut } from './KeyboardShortcut';
 import design from '../../design/tokens.json';
 
 export type MenuEntry =
- | { kind?: 'action'; id: string; label: string; icon?: IconName; shortcut?: string; disabled?: boolean; checked?: boolean; danger?: boolean; onSelect: () => void }
+ | { kind?: 'action'; id: string; label: string; icon?: IconName; shortcut?: string; detail?: string; disabled?: boolean; checked?: boolean; danger?: boolean; onSelect: () => void }
  | { kind: 'separator'; id: string }
  | { kind: 'submenu'; id: string; label: string; icon?: IconName; disabled?: boolean; items: readonly MenuEntry[] };
-type MenuProps = { children: ReactElement; items: readonly MenuEntry[]; label: string; onOpenChange?: (open: boolean) => void };
+type MenuProps = { children: ReactElement; items: readonly MenuEntry[]; label: string; onOpenChange?: (open: boolean) => void; /** The 240px menu of the design's tab menu; the default is 200px. */ wide?: boolean };
 
 function useMenuLayer<T extends HTMLElement>(onOpenChange?: (open: boolean) => void) {
  const ref = useRef<T>(null);
@@ -37,7 +37,7 @@ function focusFirstItem(event: FocusEvent<HTMLDivElement>) {
 function EntryContents({ entry }: { entry: Exclude<MenuEntry, { kind: 'separator' }> }) {
  return <>{entry.icon && <Icon name={entry.icon} size="sm"/>}<span className="menu-label">{entry.label}</span>{entry.kind === 'submenu'
   ? <Icon name="chevronRight" size="xs"/>
-  : entry.shortcut && <KeyboardShortcut label={entry.shortcut}/>}</>;
+  : <>{'detail' in entry && entry.detail && <span className="menu-detail">{entry.detail}</span>}{entry.shortcut && <KeyboardShortcut label={entry.shortcut}/>}</>}</>;
 }
 function MenuItems({ items, type, container }: { items: readonly MenuEntry[]; type: 'context' | 'dropdown'; container?: HTMLElement }) {
  const P = type === 'context' ? Context : Dropdown;
@@ -45,7 +45,7 @@ function MenuItems({ items, type, container }: { items: readonly MenuEntry[]; ty
   if (entry.kind === 'separator') return <P.Separator key={entry.id} className="menu-separator"/>;
   if (entry.kind === 'submenu') return <P.Sub key={entry.id}>
    <P.SubTrigger className="menu-item" disabled={entry.disabled}><EntryContents entry={entry}/></P.SubTrigger>
-   <P.Portal container={container}><P.SubContent onFocusCapture={focusFirstItem} className={`app-menu app-menu-${type}`} sideOffset={design.overlay.sideOffset} collisionPadding={design.overlay.collisionPadding}>
+   <P.Portal container={container}><P.SubContent onFocusCapture={focusFirstItem} className={`app-menu app-menu-${type}`} sideOffset={design.overlay.subMenuOffset} alignOffset={design.overlay.subMenuAlign} collisionPadding={design.overlay.collisionPadding}>
     <MenuItems items={entry.items} type={type} container={container}/>
    </P.SubContent></P.Portal>
   </P.Sub>;
@@ -57,7 +57,7 @@ function MenuItems({ items, type, container }: { items: readonly MenuEntry[]; ty
   return <P.Item key={entry.id} className={className} disabled={entry.disabled} onSelect={entry.onSelect}>{contents}</P.Item>;
  })}</>;
 }
-export function ContextMenu({ children, items, label, onOpenChange }: MenuProps) {
+export function ContextMenu({ children, items, label, onOpenChange, wide = false }: MenuProps) {
  const layer = useMenuLayer<HTMLSpanElement>(onOpenChange);
  return <Context.Root onOpenChange={layer.onOpenChange}>
   <Context.Trigger ref={layer.ref} asChild onKeyDown={event => {
@@ -67,7 +67,7 @@ export function ContextMenu({ children, items, label, onOpenChange }: MenuProps)
    const bounds = event.currentTarget.getBoundingClientRect();
    event.currentTarget.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: bounds.left + bounds.width / 2, clientY: bounds.bottom }));
   }}>{children}</Context.Trigger>
-  <Context.Portal container={layer.modal}><Context.Content onFocusCapture={focusFirstItem} aria-label={label} className="app-menu app-menu-context" collisionPadding={design.overlay.collisionPadding}>
+  <Context.Portal container={layer.modal}><Context.Content onFocusCapture={focusFirstItem} aria-label={label} className={`app-menu app-menu-context${wide ? ' app-menu-wide' : ''}`} collisionPadding={design.overlay.collisionPadding}>
    <MenuItems items={items} type="context" container={layer.modal}/>
   </Context.Content></Context.Portal>
  </Context.Root>;

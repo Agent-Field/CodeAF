@@ -69,6 +69,7 @@ func TestSeatOfRoleIsOneHopThroughTheRegistry(t *testing.T) {
 		roles.RoleHandoff:  SeatMastermind,
 		roles.RoleGuardian: SeatLow,
 		roles.RoleCaption:  SeatLow,
+		roles.RoleRecap:    SeatLow,
 	}
 	for role, seat := range want {
 		got, ok := SeatOfRole(role)

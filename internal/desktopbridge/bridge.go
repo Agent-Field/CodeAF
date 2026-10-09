@@ -24,6 +24,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/workspacestore"
 )
 
 const Model = "deepseek/deepseek-v4.1-flash"
@@ -152,6 +153,10 @@ type conversation struct {
 	planError  string
 	icons      *faviconCache
 	terms      *terminalSet
+	// afterTurn is told each primary stream that ended, and whether the
+	// engine said its turn was done (places_advice.go); nil is nobody
+	// listening.
+	afterTurn func(s *conversation, settled bool)
 }
 type Bridge struct {
 	token     string
@@ -162,8 +167,13 @@ type Bridge struct {
 	icons     *faviconCache
 	models    *Models
 	places    *Places
+	history   *History
+	// workspaces holds each window place's tab set (workspaces.go).
+	workspaces *workspacestore.Store
 	// world is the engine-wide feed (worldstream.go); nil until first used.
 	world *WorldFeed
+	// advice schedules place offers (places_advice.go); nil makes none.
+	advice *PlaceAdvice
 }
 
 func New(token string, open Open) *Bridge {
@@ -176,6 +186,14 @@ func Token() (string, error) {
 }
 func (b *Bridge) Close() {
 	b.closeOnce.Do(func() {
+		// The offers' worker takes the bridge lock to find a conversation, so
+		// it is stopped before that lock is held.
+		b.mu.Lock()
+		advice := b.advice
+		b.mu.Unlock()
+		if advice != nil {
+			advice.close()
+		}
 		b.mu.Lock()
 		defer b.mu.Unlock()
 		if b.world != nil {
@@ -350,7 +368,9 @@ func (s *conversation) pump(events <-chan session.Event, stop func()) {
 	s.primary = events
 	s.mu.Unlock()
 	defer stop()
+	settled := false
 	for ev := range events {
+		settled = settled || ev.Kind == session.EventTurnDone
 		if !ev.ReplayObserved {
 			s.mu.Lock()
 			s.updatedAt = time.Now()
@@ -367,6 +387,11 @@ func (s *conversation) pump(events <-chan session.Event, stop func()) {
 	s.mu.Unlock()
 	snapshot := s.snapshot()
 	s.publish(Record{Type: "snapshot", Snapshot: &snapshot})
+	// A turn the engine said was done is the one moment a chat is weighed for
+	// a place. A stream that merely ended (a stop, a lost engine) is not.
+	if s.afterTurn != nil {
+		s.afterTurn(s, settled)
+	}
 }
 
 // FollowUp is its own future turn, not a second reader of the current turn.
@@ -507,7 +532,16 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if b.modelRoutes(w, r, path) {
 		return
 	}
+	if b.placesPolicyRoutes(w, r, path) {
+		return
+	}
 	if b.placesRoutes(w, r, path) {
+		return
+	}
+	if b.historyRoutes(w, r, path) {
+		return
+	}
+	if b.workspaceRoutes(w, r, path) {
 		return
 	}
 	if b.worldRoutes(w, r, path) {
@@ -516,9 +550,25 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if path == "/sessions" && r.Method == http.MethodPost {
 		var ask struct {
 			SessionFile string `json:"sessionFile"`
+			// Place is the place a NEW conversation is started in (using.go):
+			// checked before the engine is opened, filed before the first turn.
+			Place string `json:"place"`
 		}
 		if !decode(w, r, &ask) {
 			return
+		}
+		var places *Places
+		if ask.Place != "" {
+			if ask.SessionFile != "" {
+				failPlaces(w, 400, "invalid", "Only a new chat is started in a place; file an existing one from its place.")
+				return
+			}
+			var status int
+			var code, sentence string
+			if places, status, code, sentence = b.newChatPlace(ask.Place); status != 0 {
+				failPlaces(w, status, code, sentence)
+				return
+			}
 		}
 		b.mu.Lock()
 		defer b.mu.Unlock()
@@ -538,6 +588,14 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail(w, 409, "this conversation must use the single-model persistent engine; open a new conversation")
 			return
 		}
+		if places != nil {
+			if err := places.fileNewChat(conn, ask.Place); err != nil {
+				conn.Close()
+				status, code, sentence := storeFailure(err, "")
+				failPlaces(w, status, code, sentence)
+				return
+			}
+		}
 		id, err := Token()
 		if err != nil {
 			conn.Close()
@@ -549,6 +607,7 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s := &conversation{conn: conn, id: id, changed: make(chan struct{}), done: make(chan struct{}), icons: b.icons}
 		b.sessions[id] = s
+		s.afterTurn = b.adviseAfterTurn
 		_, events, stop := conn.Agent.AttachReplay()
 		s.running = events != nil
 		if events != nil {
@@ -617,6 +676,9 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		write(w, page)
+		return
+	}
+	if b.usingRoutes(w, r, s, parts) {
 		return
 	}
 	if s.extra(w, r, parts) {

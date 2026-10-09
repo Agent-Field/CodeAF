@@ -3,11 +3,21 @@
 // world-store.ts owns the one connection and its reconnects.
 
 export type WorldTask = { id: string; label: string; state: string; phase?: string };
+/** A failure's identity: the task and the instant it landed, spelled exactly as the engine sent them. */
+export type FailureId = { task: string; at: string };
 export type WorldRow = {
- session: string; title: string; project: string; workspace?: string; sourceFolders: string[]; model?: string;
+ session: string; title: string; project: string; workspace?: string;
+ /** The conversation's journal, the path a window reattaches with; absent when unknown. */
+ sessionFile?: string;
+ /** Filesystem folders the conversation referred to. NOT design-graph places. */
+ sourceFolders: string[]; model?: string;
  /** The presence file's own word ("working", "waiting on you", "idle"), or "open" / "closed". */
  state: string;
  live: boolean; open: boolean; running: boolean; needsYou: boolean; failed: number;
+ /** Landed-failed tasks nobody has looked at, on ANY window or device (the engine's durable mark). Absent from an engine that predates the mark. */
+ unseenFailed?: number;
+ /** The newest landed failure: what `markFailureSeen` must be given back. */
+ failure?: FailureId;
  tasks: { running: number; incomplete: number; done: number; failed: number; total: number };
  liveTasks?: WorldTask[]; at?: string; archived?: boolean; deletionPending?: boolean; reason?: string;
 };
@@ -29,7 +39,7 @@ export class WorldError extends Error {
 }
 
 /** Sends one authenticated engine request. Injected so tests and the shell can supply their own. */
-export type WorldTransport = (path: string, init: { signal?: AbortSignal; headers?: Record<string, string> }) => Promise<Response>;
+export type WorldTransport = (path: string, init: { signal?: AbortSignal; headers?: Record<string, string>; method?: 'GET' | 'POST'; body?: string }) => Promise<Response>;
 
 type Connection = { url: string; token: string };
 
@@ -45,7 +55,7 @@ export const engineTransport: WorldTransport = async (path, init) => {
   headers.set('Authorization', `Bearer ${connection.token}`);
   url = `${base.origin}/api/engine${path}`;
  }
- try { return await fetch(url, { headers, cache: 'no-store', signal: init.signal }); }
+ try { return await fetch(url, { method: init.method ?? 'GET', headers, body: init.body, cache: 'no-store', signal: init.signal }); }
  catch (error) {
   if (init.signal?.aborted) throw error;
   throw new WorldError('codeaf engine is not running', 0, true);
@@ -65,6 +75,23 @@ export async function fetchWorld(transport: WorldTransport, signal?: AbortSignal
  const value = await response.json().catch(() => null) as ({ seq?: unknown } & Partial<WorldFull>) | null;
  if (!value || !Number.isSafeInteger(value.seq) || !Array.isArray(value.rows) || !Array.isArray(value.items)) throw new WorldError('The engine returned an invalid world.');
  return { seq: value.seq as number, rows: value.rows, items: value.items };
+}
+
+export type FailureSeen = { session: string; through: string; changed: boolean; unseenFailed: number };
+
+/**
+ * Records, for every window and device, that the failure `at` (as read from a row's `failure.at`) and every one before it
+ * has been looked at. Idempotent: repeating it answers `changed: false`. A failure that lands later is unseen again, because
+ * the mark is a watermark on the landing instant. Rejects with `WorldError`: 409 when that failure is no longer on record
+ * (the reading was stale; nothing was written), 404 for a conversation the engine does not have, `unreachable` when the
+ * engine did not answer. The caller must not claim the failure is seen when this rejects.
+ */
+export async function markFailureSeen(transport: WorldTransport, mark: { session: string; at: string; task?: string }, signal?: AbortSignal): Promise<FailureSeen> {
+ const response = await transport('/world/failures/seen', { signal, method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify(mark) });
+ if (!response.ok) throw await failure(response);
+ const value = await response.json().catch(() => null) as Partial<FailureSeen> | null;
+ if (!value || typeof value.session !== 'string' || typeof value.through !== 'string' || typeof value.changed !== 'boolean' || !Number.isSafeInteger(value.unseenFailed)) throw new WorldError('The engine returned an invalid reply.');
+ return value as FailureSeen;
 }
 
 /** Validates one stream record; anything else is a protocol error, never silently skipped. */

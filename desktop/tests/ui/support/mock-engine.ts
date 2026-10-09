@@ -1,4 +1,6 @@
 import type { Page, Route } from '@playwright/test';
+import { historyRoutes, type HistoryHandle, type MockHistory } from './history-engine';
+import type { AttentionItem, WorldRow } from '../../../src/features/chat/world-client';
 import type { EngineEntry, EngineEvent, EngineFile, EngineFileDiff, EngineSnapshot, EngineTaskPage, TerminalInfo } from '../../../src/features/chat/engine-client';
 
 export const MODEL = 'deepseek/deepseek-v4.1-flash';
@@ -20,7 +22,7 @@ export type ScriptedTurn = {
 };
 
 /** A workspace file the mock serves through GET /files and reports through POST /files/stat. */
-export type MockFile = Omit<EngineFile, 'name' | 'size' | 'hash'> & { dir?: boolean };
+export type MockFile = Omit<EngineFile, 'name' | 'size' | 'hash'> & { dir?: boolean; modTime?: string };
 
 /** A changed file the mock reports through GET /changes and /diff; counts derive from the hunks. */
 export type MockDiff = Pick<EngineFileDiff, 'hunks'> & Partial<Pick<EngineFileDiff, 'status' | 'lines' | 'binary' | 'truncated'>>;
@@ -28,6 +30,8 @@ export type MockDiff = Pick<EngineFileDiff, 'hunks'> & Partial<Pick<EngineFileDi
 export type MockTerminal = Partial<TerminalInfo> & { id: string; output?: string };
 
 export type Scenario = {
+  /** Conversations the History routes serve (list, recap, messages, search, archive). */
+  history?: MockHistory;
   /** Terminals and jobs served under /terminals; a POST /terminals adds more. */
   terminals?: MockTerminal[];
   /** State returned by POST /sessions and GET /sessions/{id}. */
@@ -46,6 +50,8 @@ export type Scenario = {
   models?: { id: string; name: string; efforts?: string[] }[];
   /** false: the engine serves no /places/policy route (an engine before the Places organization settings). */
   placesPolicy?: false;
+  /** The engine-wide world feed (GET /world, GET /events). Absent: the engine serves no feed and both routes answer 404. */
+  world?: { rows: WorldRow[]; items: AttentionItem[] };
   /** Forced HTTP failure per endpoint, e.g. { turn: 409 }. */
   fail?: Partial<Record<'create' | 'read' | 'turn' | 'stop' | 'answer' | 'events' | 'task', number>>;
 };
@@ -54,13 +60,23 @@ export type Call = { method: string; path: string; body: Record<string, unknown>
 
 export type MockEngine = {
   calls: Call[];
+  /** What the History archive route changed, in order. */
+  history: HistoryHandle;
   /** The conversation model in force at the moment each accepted turn arrived. */
   turnModels: string[];
   snapshot: () => EngineSnapshot;
+  /** Replaces the world feed's rows and/or attention items and streams the new state to readers. Needs `scenario.world`. */
+  setWorld: (next: { rows?: WorldRow[]; items?: AttentionItem[] }) => void;
   /** Apply the next scripted turn reply (for scenarios with manual: true). */
   advance: () => void;
   /** Merge fields into the snapshot and publish a snapshot record to stream readers. */
   update: (patch: Partial<EngineSnapshot>) => void;
+  /** Push one live event, the way a running turn would. */
+  push: (event: EngineEvent) => void;
+  /** Replace one file's diff so the next GET /diff answers with it. */
+  replaceDiff: (path: string, diff: MockDiff) => void;
+  /** Replace one file's bytes and stat with no event. */
+  replaceFile: (path: string, file: MockFile) => void;
 };
 
 /** Names, one-line jobs, sections and states of the roles, as the engine reports them (a sample of each section). */
@@ -68,7 +84,7 @@ const ROLES = [
   { id: 'conversation', name: 'Conversation', controls: 'Answers what you type in a chat and decides when to start a task.', category: 'conversation', live: true },
   { id: 'tasks', name: 'Tasks', controls: 'Does the steps of a task: reading, editing, running commands.', category: 'conversation', live: true },
   { id: 'naming', name: 'Chat titles', controls: 'Names each chat from its opening exchange.', category: 'naming', live: true },
-  { id: 'summaries', name: 'Summaries', controls: 'Writes the short recap of a conversation that History shows.', category: 'naming', live: false, inherits: 'naming' },
+  { id: 'summaries', name: 'Summaries', controls: 'Writes the short recap of a conversation that History shows.', category: 'naming', live: true, inherits: 'naming' },
   { id: 'placefiling', name: 'Chat filing', controls: 'Picks which of your places a chat belongs in, to offer it after the first reply. Never creates a place.', category: 'places', live: false },
   { id: 'memory', name: 'Memory', controls: 'Reads each turn for things worth remembering and tidies what has been remembered.', category: 'memory', live: true },
 ];
@@ -128,6 +144,23 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
   let pending: ScriptedTurn | undefined;
   let closed = false;
   page.on('close', () => { closed = true; });
+
+  // The world feed: every change is one full `reset` record, which the client applies at any cursor.
+  let world = scenario.world ? structuredClone(scenario.world) : undefined;
+  let worldSeq = 1;
+  const worldRecord = () => ({ seq: worldSeq, type: 'reset', at: new Date().toISOString(), payload: structuredClone(world!) });
+  const worldEvents = async (route: Route, after: number) => {
+    const deadline = Date.now() + 60_000;
+    while (!closed && Date.now() < deadline) {
+      if (worldSeq > after) {
+        const record = worldRecord();
+        await route.fulfill({ status: 200, headers: { 'Cache-Control': 'no-cache' }, contentType: 'text/event-stream', body: `: connected\n\nid: ${record.seq}\ndata: ${JSON.stringify(record)}\n\n` });
+        return;
+      }
+      await new Promise(r => setTimeout(r, 25));
+    }
+    await route.abort().catch(() => undefined);
+  };
 
   const publish = () => {
     state = { ...state, seq: state.seq + 1, updatedAt: new Date().toISOString() };
@@ -289,7 +322,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
   const stat = (path: string) => {
     const file = fileAt(path);
     const outside = path.startsWith('/') && !path.startsWith(`${state.workspace}/`);
-    return { path, exists: Boolean(file), dir: Boolean(file?.dir), size: file ? Math.floor(file.dataBase64.length * 0.75) : 0, outside };
+    return { path, exists: Boolean(file), dir: Boolean(file?.dir), size: file ? Math.floor(file.dataBase64.length * 0.75) : 0, modTime: file?.modTime, outside };
   };
   const files = (route: Route, arg: string | undefined, body: Record<string, unknown>, url: URL) => {
     if (arg === 'stat') return json(route, ((body.paths as string[]) ?? []).map(stat));
@@ -394,22 +427,42 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     return json(route, roleView(role));
   };
 
+  const workspaces = new Map<string, { key: string; revision: number; workspace: unknown }>();
+  const history = historyRoutes(scenario.history, json);
+
   await page.route('**/api/engine/**', async route => {
     const request = route.request();
     const url = new URL(request.url());
     const method = request.method();
     const parts = url.pathname.replace(/^.*\/api\/engine/, '').split('/').filter(Boolean).map(decodeURIComponent);
     const body = (method === 'POST' || method === 'PUT') && request.postData() ? JSON.parse(request.postData()!) as Record<string, unknown> : {};
-    calls.push({ method, path: url.pathname, body });
     const [root, id, action, arg] = parts;
+    // The window's own reads of the place graph and the world stream are not a conversation's calls; the Places
+    // mock (support/mock-places.ts) records those. A tab that must make no engine call is judged on the rest.
+    if (!['places', 'chats', 'world', 'events', 'workspaces'].includes(root)) calls.push({ method, path: url.pathname, body });
     const forced = (key: keyof NonNullable<Scenario['fail']>) => {
       const status = scenario.fail?.[key];
       return status ? json(route, { error: `Mock engine forced ${key} failure` }, status) : undefined;
     };
+    if (world && root === 'world') return json(route, { seq: worldSeq, ...structuredClone(world) });
+    if (world && root === 'events') return worldEvents(route, Number(url.searchParams.get('after') ?? 0));
+    // Fixture workspace CAS mirrors the real route; workspace reads never count as conversation calls.
+    if (root === 'workspaces' && id) {
+      const current = workspaces.get(id) ?? { key: id, revision: 0, workspace: null };
+      if (method === 'PUT') {
+        if (body.revision !== current.revision) return json(route, { error: 'Tabs changed in another window', code: 'conflict', current }, 409);
+        const saved = { key: id, revision: current.revision + 1, workspace: body.workspace };
+        workspaces.set(id, saved);
+        return json(route, saved);
+      }
+      if (url.searchParams.get('wait')) await new Promise(resolve => setTimeout(resolve, 250));
+      return json(route, workspaces.get(id) ?? current);
+    }
     if (root === 'models') return models(route, parts, method, body);
     if (root === 'places' && parts[1] === 'policy') return placesPolicy(route, parts, method, body);
+    if (root === 'history') return history.handle(route, parts, method, body, url);
     if (root !== 'sessions') return json(route, { error: 'unknown route' }, 404);
-    if (!id) return forced('create') ?? json(route, state);
+    if (!id) return forced('create') ?? json(route, history.titleOf(body.sessionFile) ? { ...state, title: history.titleOf(body.sessionFile) } : state);
     if (id !== state.id) return json(route, { error: 'reattach this conversation' }, 404);
     if (!action) return forced('read') ?? json(route, state);
     if (action === 'events') return forced('events') ?? events(route, Number(url.searchParams.get('after') ?? 0));
@@ -444,5 +497,19 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     return json(route, { error: 'unknown action' }, 404);
   });
 
-  return { calls, turnModels, snapshot: () => state, advance, update };
+  const setWorld: MockEngine['setWorld'] = next => {
+    if (!world) throw new Error('setWorld needs scenario.world');
+    world = { rows: next.rows ?? world.rows, items: next.items ?? world.items };
+    worldSeq += 1;
+  };
+
+  return {
+    calls, turnModels, history: { archived: history.archived }, snapshot: () => state, advance, update, setWorld,
+    /** Push one live event, the way a running turn would. */
+    push: emitEvent,
+    /** Replace one file's diff so the next GET /diff answers with it. */
+    replaceDiff: (path: string, diff: MockDiff) => { scenario.diffs = { ...scenario.diffs, [path]: diff }; },
+    /** Replace one file's bytes and stat, the way a shell command or another editor would, with no event. */
+    replaceFile: (path: string, file: MockFile) => { scenario.files = { ...scenario.files, [path]: file }; },
+  };
 }

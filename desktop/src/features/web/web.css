@@ -1,0 +1,21 @@
+/* The web tab (design 3d): a 48px header over a sheet inset in the card. The page
+   itself is a native view placed over .web-sheet; nothing drawn inside the sheet
+   shows while the page does. The load line anchors to the card (.workspace-pane). */
+.web-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.web-header { flex: none; display: flex; align-items: center; gap: var(--web-header-gap); height: var(--web-header-height); padding: 0 var(--web-header-pad); min-width: 0; }
+
+.web-address-holder { display: contents; }
+.web-address, .button.web-address { flex: 1 1 auto; min-width: 0; max-width: var(--web-address-max-width); height: var(--web-address-height); margin: 0 auto; display: flex; align-items: center; gap: var(--web-address-gap); padding: 0 var(--web-address-pad); border: 0; border-radius: var(--radius-control); background: var(--field); color: var(--ink); font-family: var(--sans); font-size: var(--type-label-size); text-align: left; transition: background-color var(--dur-fast) var(--ease); }
+.button.web-address { justify-content: flex-start; font-weight: var(--font-weight-regular); }
+.button.web-address:hover:not(:disabled), .button.web-address:active:not(:disabled) { background: var(--field-2); color: var(--ink); }
+.web-address-site { flex: none; max-width: 60%; overflow: hidden; white-space: nowrap; color: var(--ink); }
+.web-address-rest { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; color: var(--ink-3); mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
+.web-address-editing { padding: 0; background: transparent; }
+.web-address-input.text-input { flex: 1; min-width: 0; width: 100%; }
+.web-address-refusal { flex: none; max-width: 50%; overflow: hidden; white-space: nowrap; color: var(--ink-3); font-size: var(--type-caption-size); mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
+
+.web-sheet { position: relative; flex: 1; min-height: 0; min-width: 0; margin: 0 var(--web-sheet-inset) var(--web-sheet-inset); border-radius: var(--radius-web-sheet); background: var(--surface); overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.web-frozen { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+.web-state { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); max-width: var(--web-state-max-width); padding: var(--space-4); text-align: center; color: var(--ink-3); }
+.web-state > .type-body { margin: 0; overflow-wrap: anywhere; }
+.web-state-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); margin-top: var(--space-2); }

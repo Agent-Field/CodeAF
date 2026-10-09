@@ -30,15 +30,21 @@ test('the field becomes a file tab with its path', () => {
   assert.deepEqual([s.tabs[0].kind, s.tabs[0].path, s.tabs[0].sessionFile], ['file', 'internal/parse/lexer.go', '/s/1.jsonl']);
 });
 
+test('the field becomes a terminal tab that names its shell durably', () => {
+  const s = run(state([tab('f', { kind: 'newtab' })]), { type: 'newtab-become', id: 'f', kind: 'terminal', title: 'zsh', sessionFile: '/s/1.jsonl', terminalId: 'term-3' });
+  assert.deepEqual([s.tabs[0].kind, s.tabs[0].sessionFile, s.tabs[0].target], ['terminal', '/s/1.jsonl', { terminalId: 'term-3' }]);
+});
+
 test('only a field can become something else', () => {
   const base = state([tab('a')]);
   assert.equal(run(base, { type: 'newtab-become', id: 'a', kind: 'file', title: 'x' }).tabs[0].kind, 'conversation');
 });
 
-test('reopening from the field restores the closed tab into the field and drops it from the closed list', () => {
+test('reopening from the field brings the closed tab back under its own id, the field goes, and the closed list drops it', () => {
   const closed = tab('c', { title: 'Fix it in the lexer', sessionFile: '/s/9.jsonl', draft: 'half' });
   const s = run(state([tab('f', { kind: 'newtab', title: 'New tab' })], { closed: [closed] }), { type: 'newtab-reopen', id: 'f', closedId: 'c' });
-  assert.deepEqual([s.tabs[0].id, s.tabs[0].kind, s.tabs[0].title, s.tabs[0].sessionFile, s.tabs[0].draft, s.closed.length], ['f', 'conversation', 'Fix it in the lexer', '/s/9.jsonl', 'half', 0]);
+  assert.deepEqual([s.tabs.length, s.tabs[0].id, s.tabs[0].kind, s.tabs[0].title, s.tabs[0].sessionFile, s.tabs[0].draft, s.closed.length, s.activeId], [1, 'c', 'conversation', 'Fix it in the lexer', '/s/9.jsonl', 'half', 0, 'c']);
+  assert.ok(!s.recentIds.includes('f'));
 });
 
 test('reopening an unknown closed tab changes nothing', () => {
@@ -53,4 +59,11 @@ test('the field works inside a split', () => {
   s = run(s, { type: 'newtab-become', id: 'f', kind: 'conversation', title: 'Q', sessionFile: '/s/2.jsonl' });
   assert.equal(s.tabs.length, 1);
   assert.equal(s.tabs.flatMap(t => t.split?.panes ?? [t]).find(p => p.id === 'f')?.kind, 'conversation');
+});
+
+test('the field can become a web tab that carries its address', () => {
+  const s = run(state([tab('f', { kind: 'newtab', title: 'New tab' })]), { type: 'newtab-become', id: 'f', kind: 'web', title: 'pkg.go.dev', titleSource: 'message', target: { url: 'https://pkg.go.dev/x' } });
+  assert.equal(s.tabs[0].kind, 'web');
+  assert.deepEqual(s.tabs[0].target, { url: 'https://pkg.go.dev/x' });
+  assert.equal(s.tabs[0].draft, '');
 });
