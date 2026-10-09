@@ -31,6 +31,7 @@
 .workspace-tab.is-pinned .workspace-tab-select.button { justify-content: center; padding: 0; }
 .workspace-tab.is-pinned .app-icon { color: inherit; }
 .tab-badge { position: absolute; top: var(--space-tiny); right: var(--space-tiny); width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 var(--space-half) var(--canvas); }
+.tab-badge[data-kind="failed"] { background: var(--danger); }
 
 /* Compressed: the narrowest fallback, icon only. */
 .workspace-tab[data-compressed] { flex: none; max-width: var(--tab-compressed-width); width: var(--tab-compressed-width); min-width: var(--tab-compressed-width); }

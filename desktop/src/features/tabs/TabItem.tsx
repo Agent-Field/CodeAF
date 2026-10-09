@@ -56,7 +56,7 @@ export function TabItem({ api, tab, order, inGroup = false }: { api: TabsApi; ta
   }
   const switcher = isPlaceHome(tab) ? api.placeSwitcher : undefined;
   const view = (
-    <TabView kind={tab.kind} title={tab.title} monogram={monogramOf(focusedPane(tab))} active={active} pinned={tab.pinned} placeTint={isPlaceHome(tab) ? api.placeTint ?? 'graphite' : undefined} inGroup={inGroup} picked={picked} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame} badge={tab.kind === 'inbox' && api.background.needsYou.length > 0}
+    <TabView kind={tab.kind} title={tab.title} monogram={monogramOf(focusedPane(tab))} active={active} pinned={tab.pinned} placeTint={isPlaceHome(tab) ? api.placeTint ?? 'graphite' : undefined} inGroup={inGroup} picked={picked} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame} badge={tab.kind === 'inbox' && (api.background.needsYou.length > 0 ? 'needsYou' : api.background.failed.length > 0 ? 'failed' : false)}
       closeMode={stop ? 'stop' : 'close'} closeHint={stop ? 'Close and stop' : running ? 'Close · keeps running' : 'Close'} closeShortcut={stop ? closeStopShortcut : closeShortcutFor(tab.kind)}
       onSelect={choose(tab.id)} onClose={() => (stop ? api.closeAndStop(tab.id) : api.closeTab(tab.id))} onRename={() => api.startRename(tab.id)}
       onKeyDown={navigate(api, order, tab)} wrapSelect={select => (switcher ? <DropdownMenu label="Place switcher" items={switcher.items}>{select}</DropdownMenu> : withPreview(api, tab, select))} switcher={switcher && { alert: switcher.alert }}/>

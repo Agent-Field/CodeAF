@@ -13,7 +13,8 @@ import { paneRunning, type Summaries } from './running.ts';
  */
 type Row = { id: string; title: string; chatId?: string; tabId?: string; stale?: boolean };
 export type BackgroundItem = Row & { state: 'running' | 'waiting'; since?: number };
-export type NeedsYouItem = Row & { text?: string };
+/** `asked` is when the question was put (ms), from the engine's own stamp; absent when nothing says. */
+export type NeedsYouItem = Row & { text?: string; asked?: number };
 export type FailedItem = Row & { failed: number };
 export type BackgroundWork = {
   running: readonly BackgroundItem[];
@@ -69,6 +70,17 @@ export const recentFailureMs = 3 * 24 * 60 * 60 * 1000;
 export const failedListLimit = 5;
 export const staleNotice = 'Cannot reach the engine. Showing what was last seen.';
 
+const askedAt = (asked?: string): { asked?: number } => {
+  const at = asked ? Date.parse(asked) : NaN;
+  return Number.isFinite(at) ? { asked: at } : {};
+};
+
+/** Questions with a known time come first, oldest first (the one that has waited longest); the rest keep their order after them. */
+export const oldestFirst = <T extends { asked?: number }>(items: readonly T[]): T[] => [
+  ...items.filter(item => item.asked !== undefined).sort((a, b) => a.asked! - b.asked!),
+  ...items.filter(item => item.asked === undefined),
+];
+
 type Build = {
   tabs: readonly Tab[];
   closed: readonly Tab[];
@@ -108,7 +120,7 @@ export function buildBackgroundWork(input: Build): BackgroundWork {
     .map(row => ({ id: `chat:${row.session}`, title: row.title, chatId: row.session, state: 'running' as const, ...(stale ? { stale } : {}) }));
 
   const waiting: NeedsYouItem[] = world.items.filter((item: WorldAttention) => !openChats.has(item.session) && !closedChats.has(item.session))
-    .map(item => ({ id: `chat:${item.session}:${item.key}`, title: item.title || rows.get(item.session)?.title || 'Conversation', chatId: item.session, text: item.text, ...(stale ? { stale } : {}) }));
+    .map(item => ({ id: `chat:${item.session}:${item.key}`, title: item.title || rows.get(item.session)?.title || 'Conversation', chatId: item.session, text: item.text, ...askedAt(item.asked), ...(stale ? { stale } : {}) }));
 
   const failed: FailedItem[] = [...rows.values()]
     .filter(row => row.failed > 0 && hasUnseenFailure(seen, row.session, row.failed) && row.at && now - Date.parse(row.at) <= recentFailureMs)
@@ -117,7 +129,7 @@ export function buildBackgroundWork(input: Build): BackgroundWork {
 
   return {
     running: [...fromTabs, ...fromFeed, ...elsewhere],
-    needsYou: [...needsYouItems(tabs, summaries), ...waiting],
+    needsYou: oldestFirst([...needsYouItems(tabs, summaries), ...waiting]),
     failed,
     ...(stale ? { notice: staleNotice } : {}),
   };

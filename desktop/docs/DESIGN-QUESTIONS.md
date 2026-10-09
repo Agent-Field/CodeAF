@@ -242,3 +242,6 @@ Shortcuts: "⌘G Group selected tabs", "⌘⇧T Reopen closed tab"). The tabs au
 | TI11 | An emptied group name | Takes the next "New group" name no other group has. |
 | TI12 | The group suggestion pill (2b "Group the 3 bench tabs as Benchmarks?") | Absent. "3 or more tabs on one repo or topic" needs a repo or topic for every tab and a name for the set; no tab carries a repo and the desktop makes no AI call of its own. It waits for an engine source. |
 
+| M7 | Undo for closing a group, the other tabs or the tabs to the right: the design draws the toast only for running work | One toast "Closed N tabs" with Undo restores every pane of every split, the group's title and collapsed state and each tab's place. Closing one idle tab stays silent. |
+| M8 | A tab handed to another window that nobody claims | The source keeps it; after the native 60 s expiry plus 2 s a toast says "<title> was not taken by the new window. It is still here." |
+| M9 | Copy link and a canonical failed-seen need backend work | Both are separate backend lanes (a registered deep-link scheme; a persisted failure-seen mark in the session index). The UI offers neither until they exist. |
