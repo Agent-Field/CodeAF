@@ -1,8 +1,9 @@
-import { ConversationPane } from './ConversationPane';
+import { NewTabPane } from './newtab/NewTabPane';
 import type { KindDef } from './slots';
 
 /**
- * Live stand-in. The new-tab lane replaces `pane` with the command field (3k "New tab is a field").
- * Until then `new` still opens a conversation tab, so this kind is registered but not yet opened.
+ * The new tab (design 3f): an empty card with one field. It is a pane like any other kind; the workspace hands
+ * it the tab list through NewTabHostContext, and it turns its own tab into a conversation, a file or a reopened
+ * tab with the `newtab-*` actions (reducers/newtab.ts).
  */
-export const newtabKind: KindDef = { kind: 'newtab', label: 'New tab', icon: 'plus', backed: true, pane: ConversationPane, preview: null };
+export const newtabKind: KindDef = { kind: 'newtab', label: 'New tab', icon: 'plus', backed: true, pane: NewTabPane, preview: null };

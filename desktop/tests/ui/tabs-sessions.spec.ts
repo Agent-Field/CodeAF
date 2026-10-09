@@ -117,9 +117,13 @@ test('a new tab beside six saved tabs sends to a new session of its own', async 
  await page.goto('/');
  await expect(savedLine(page, 1)).toBeVisible();
  await page.getByRole('button', { name: 'New tab', exact: true }).click();
- await expect(page.getByRole('tab', { name: 'New conversation', exact: true })).toHaveAttribute('aria-selected', 'true');
- await message(page).fill('Hello from the seventh tab');
- await message(page).press('Enter');
+ await expect(page.getByRole('tab', { name: 'New tab', exact: true })).toHaveAttribute('aria-selected', 'true');
+ // The field makes no engine call until a row is chosen; Enter on its first row starts the conversation and sends.
+ expect(engine.creates().filter(call => !call.body.sessionFile)).toHaveLength(0);
+ const field = page.getByRole('combobox', { name: 'Search or start' });
+ await field.fill('Hello from the seventh tab');
+ await field.press('Enter');
+ await expect(page.getByRole('tab', { name: 'Hello from the seventh tab', exact: true })).toHaveAttribute('aria-selected', 'true');
  await expect(sentWords(page, 'Hello from the seventh tab')).toBeVisible();
  await expect(message(page)).toHaveValue('');
  expect(engine.creates().filter(call => !call.body.sessionFile)).toHaveLength(1);

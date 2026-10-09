@@ -6,6 +6,8 @@ export type TabRoute = { taskId?: string; back: string[]; forward: string[] };
 
 export type TabView = {
   sessionFile?: string;
+  /** A file tab's workspace-relative path (opened from the new-tab field). */
+  path?: string;
   route?: TabRoute;
   folded?: Record<string, boolean>;
   open?: Record<string, boolean>;
@@ -46,6 +48,7 @@ function isRoute(value: unknown): value is TabRoute {
 export function cleanView(value: Record<string, unknown>): TabView {
   const view: TabView = {};
   if (typeof value.sessionFile === 'string' && value.sessionFile) view.sessionFile = value.sessionFile;
+  if (typeof value.path === 'string' && value.path) view.path = value.path;
   if (isRoute(value.route)) view.route = value.route;
   if (isFlagMap(value.folded)) view.folded = value.folded;
   if (isFlagMap(value.open)) view.open = value.open;

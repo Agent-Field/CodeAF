@@ -459,6 +459,16 @@
   --tab-close-size: 18px;
   --radius-tab-close: 5px;
   --tab-dot-margin: 3.5px;
+  --newtab-top: 120px;
+  --newtab-width: 600px;
+  --newtab-radius: 14px;
+  --newtab-pad: 6px;
+  --newtab-input-height: 48px;
+  --newtab-input-size: 15px;
+  --newtab-row-height: 36px;
+  --newtab-row-icon: 15px;
+  --newtab-section-pad: 10px 12px 4px;
+  --newtab-gutter: 16px;
   --tab-title-fade: 20px;
   --tab-strip-fade: 40px;
   --tab-divider-height: 16px;
