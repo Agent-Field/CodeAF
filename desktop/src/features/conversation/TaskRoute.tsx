@@ -43,7 +43,7 @@ export function TaskRouteBar({ taskId, tasks, route, onRoute }: Pick<Props, 'tas
 }
 
 /** A task drawn as a page: title, result, the work, the notes, the brief, and a composer for notes. */
-export function TaskRoute(props: Pick<Props, 'sessionId' | 'taskId' | 'route' | 'onRoute' | 'renderFile' | 'readFile' | 'onOpenTask'>) {
+export function TaskRoute(props: Pick<Props, 'sessionId' | 'taskId' | 'tasks' | 'route' | 'onRoute' | 'renderFile' | 'readFile' | 'onOpenTask'>) {
   const { sessionId, taskId, route, onRoute } = props;
   if (!sessionId) return null;
   return (
@@ -51,6 +51,7 @@ export function TaskRoute(props: Pick<Props, 'sessionId' | 'taskId' | 'route' | 
       <TaskView
         sessionId={sessionId}
         taskId={taskId}
+        liveRow={props.tasks.find((row) => row.ID === taskId)}
         onOpenTask={props.onOpenTask}
         renderFile={props.renderFile}
         readFile={props.readFile}

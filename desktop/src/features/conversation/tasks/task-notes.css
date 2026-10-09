@@ -11,3 +11,7 @@
 .task-note-other { gap: var(--space-half); max-width: 85%; }
 .task-note-author { color: var(--ink-2); font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); line-height: var(--type-caption-leading); }
 .task-note-body { margin: 0; color: var(--ink-2); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* A landing: the result in words, the branch beside it in quiet monospace. */
+.task-note-landing { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; color: var(--ink-2); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); }
+.task-note-branch { min-width: 0; color: var(--ink-2); font-size: var(--type-caption-size); overflow-wrap: anywhere; }

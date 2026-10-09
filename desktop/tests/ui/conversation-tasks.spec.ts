@@ -1,14 +1,16 @@
 import { test, expect, type Page } from '@playwright/test';
 import { installMockEngine } from './support/mock-engine';
-import { withTasks } from './support/scenarios';
+import { taskRows, withTasks } from './support/scenarios';
+import type { Scenario } from './support/mock-engine';
 import { openApp, posts, send } from './support/conversation';
 
 const panel = (page: Page) => page.getByRole('complementary', { name: 'Tasks' });
 const crumbs = (page: Page) => page.getByRole('navigation', { name: 'Breadcrumb' });
 
 /** Send once; the scripted reply brings the aside, the plan rows and the answer. */
-async function startWithTasks(page: Page) {
+async function startWithTasks(page: Page, adjust: (scenario: Scenario) => void = () => undefined) {
   const base = withTasks();
+  adjust(base);
   // The shared fixture's aside text is not the "<title> <status> · <summary>" form the projection reads.
   const aside = { Role: 'aside', Text: 'Migrate the settings screen done · ran 30s · Two parts finished.', TaskIDs: ['2'] };
   const reply = [aside, base.initial.entries!.at(-1)!] as typeof base.initial.entries;
@@ -87,4 +89,68 @@ test('a running task row pauses its task through the engine', async ({ page }) =
   await row.getByRole('button', { name: 'Pause' }).click();
   await expect.poll(() => posts(engine, '/pause').length).toBe(1);
   expect(posts(engine, '/pause')[0].path).toMatch(/\/sessions\/mock-1\/tasks\/2\.2\/pause$/);
+});
+
+const openTask = (page: Page) => page.locator('.turn-v2').getByRole('button', { name: /Migrate the settings screen/ }).click();
+
+// The engine's own brief layout (task_brief.go in the session package), header text included.
+const WORKER_BRIEF = [
+  'WHAT THE PERSON ASKED FOR, IN THEIR OWN WORDS',
+  'This is the message this work came out of. Where anything below reads differently from it, their words are what was asked for.',
+  '',
+  'Migrate the settings screen and keep the tests green.',
+  '',
+  'THE WORK',
+  '',
+  'Move the settings screen onto the shared form primitives.',
+  '',
+  'WHAT TO PRODUCE',
+  '',
+  'src/settings.tsx using the shared primitives.',
+].join('\n');
+
+test('the Instructions card shows the task, not the engine brief; the full brief is one click away', async ({ page }) => {
+  await startWithTasks(page, (scenario) => { scenario.taskPages!['2'].Description = WORKER_BRIEF; });
+  await openTask(page);
+  const card = page.getByRole('region', { name: 'Instructions' });
+  await expect(card.getByText('Move the settings screen onto the shared form primitives.')).toBeVisible();
+  await expect(card.getByText('WHAT THE PERSON ASKED FOR')).toHaveCount(0);
+  await card.getByRole('button', { name: 'Instructions' }).click();
+  await card.getByRole('button', { name: 'Full brief' }).click();
+  await expect(card.getByRole('heading', { name: 'What to produce' })).toBeVisible();
+  await expect(card.getByText('src/settings.tsx using the shared primitives.')).toBeVisible();
+});
+
+test('a landing note reads as a result with the branch in secondary text', async ({ page }) => {
+  await startWithTasks(page, (scenario) => {
+    scenario.taskPages!['2'].Notes = [{ Author: '2', Body: 'landed on task/create-src-a3-txt-d3389b: 2 files', At: '2026-10-09T10:00:00Z' }];
+  });
+  await openTask(page);
+  const notes = page.getByRole('list', { name: 'Notes' });
+  await expect(notes.getByText('Landed · 2 files')).toBeVisible();
+  await expect(notes.getByText('task/create-src-a3-txt-d3389b')).toBeVisible();
+  await expect(notes.getByText(/^landed on /)).toHaveCount(0);
+});
+
+test('a note the engine refuses is shown, and the draft stays', async ({ page }) => {
+  const engine = await startWithTasks(page, (scenario) => { scenario.fail = { task: 409 }; });
+  await openTask(page);
+  const field = page.getByRole('textbox', { name: 'Note to this task' });
+  await field.fill('are you there');
+  await page.getByRole('button', { name: 'Send note' }).click();
+  await expect.poll(() => posts(engine, '/tasks/2/note').length).toBe(1);
+  await expect(page.locator('.task-composer-error')).toContainText('Mock engine forced task failure');
+  await expect(field).toHaveValue('are you there');
+});
+
+test('the task view follows the panel: an ended task says so and cannot take notes', async ({ page }) => {
+  const engine = await startWithTasks(page);
+  await openTask(page);
+  await expect(page.getByRole('textbox', { name: 'Note to this task' })).toBeEnabled();
+  engine.update({ tasks: taskRows.map((row) => (row.ID === '2' ? { ...row, Status: 'done', Ended: '2026-10-09T10:00:08Z' } : row)) });
+  const field = page.getByRole('textbox', { name: 'Note to this task' });
+  await expect(field).toBeDisabled();
+  await expect(page.getByText('This task has finished, so it cannot read a note.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send note' })).toBeDisabled();
+  await expect(page.locator('.task-view-body').getByText('Done', { exact: true })).toBeVisible();
 });

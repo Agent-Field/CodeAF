@@ -1,5 +1,7 @@
 import { useState, type KeyboardEvent } from 'react';
 import { Button, Markdown, TextArea } from '../../../components/ui';
+import { parseBrief } from './brief';
+import { FullBrief } from './FullBrief';
 import './instructions-card.css';
 
 export type InstructionsCardProps = {
@@ -54,7 +56,9 @@ function Editor({ initial, onSave, onCancel }: EditorProps) {
 export function InstructionsCard({ text, onAmend }: InstructionsCardProps) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [full, setFull] = useState(false);
   if (!text.trim()) return null;
+  const brief = parseBrief(text);
   return (
     <section className="instructions-card" aria-label="Instructions">
       <div className="instructions-head">
@@ -74,8 +78,14 @@ export function InstructionsCard({ text, onAmend }: InstructionsCardProps) {
         />
       ) : (
         <div className="instructions-body" data-open={open || undefined}>
-          <Markdown>{text}</Markdown>
+          <Markdown>{brief.summary}</Markdown>
         </div>
+      )}
+      {open && !editing && brief.sections.length > 1 && (
+        <>
+          <Button className="instructions-full" aria-expanded={full} onClick={() => setFull(!full)}>Full brief</Button>
+          {full && <FullBrief sections={brief.sections} />}
+        </>
       )}
     </section>
   );

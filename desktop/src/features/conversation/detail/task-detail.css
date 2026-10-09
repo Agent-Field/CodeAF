@@ -18,5 +18,7 @@
 .task-detail-label { margin: 0; color: var(--ink-2); font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); line-height: var(--type-caption-leading); }
 .task-detail-text { margin: 0; color: var(--ink-2); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); white-space: pre-wrap; overflow-wrap: anywhere; }
 
+.button.task-detail-full { align-self: flex-start; min-height: 0; padding: 0; color: var(--ink-2); font-size: var(--type-label-size); line-height: var(--type-label-leading); }
+.button.task-detail-full:hover:not(:disabled) { background: transparent; color: var(--ink); }
 .button.task-detail-open { align-self: flex-start; gap: var(--space-tight); margin-top: auto; margin-inline-start: calc(var(--control-pad-ghost) * -1); height: var(--control-height); padding-inline: var(--control-pad-ghost); border-radius: var(--radius-control); color: var(--ink-2); font-size: var(--type-label-size); }
 .button.task-detail-open:hover:not(:disabled) { background: var(--field); color: var(--ink); }
