@@ -109,10 +109,22 @@ function RegionToast({ toast, channel }: { toast: ChannelToast; channel: Toasts 
  */
 export function ToastRegion({ channel = windowToasts }: { channel?: Toasts }) {
   const list = useSyncExternalStore(channel.subscribe, channel.getToasts);
+  const [modal, setModal] = useState(() => document.querySelector<HTMLElement>('dialog:modal'));
+  useEffect(() => {
+    // Dialog owners can close without changing the toast channel or its parent. Follow that lifecycle independently.
+    const update = () => setModal(document.querySelector<HTMLElement>('dialog:modal'));
+    const containsDialog = (node: Node) => node instanceof Element && (node.matches('dialog') || node.querySelector('dialog') !== null);
+    const observer = new MutationObserver(records => {
+      if (records.some(record => record.type === 'attributes' ||
+        [...record.addedNodes, ...record.removedNodes].some(containsDialog))) update();
+    });
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['open'] });
+    update();
+    return () => observer.disconnect();
+  }, []);
   const region = <section className="toast-region" aria-label="Notifications">
     {list.map(toast => <RegionToast key={toast.id} toast={toast} channel={channel}/>)}
   </section>;
-  const modal = document.querySelector<HTMLElement>('dialog:modal');
   return modal ? createPortal(region, modal) : region;
 }
 
