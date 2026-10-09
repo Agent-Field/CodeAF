@@ -147,8 +147,15 @@ func TestTheNamerAsksAtTheEndOfTheUserMessage(t *testing.T) {
 		t.Fatalf("the namer's system message = %q, want %q", got, titleSystem)
 	}
 	user := messageContentText(asked[1])
-	if !strings.Contains(user, "5-8 word phrase") || strings.Contains(user, "tab:") || strings.Contains(user, "≤12") {
-		t.Fatalf("namer must request only one five-to-eight-word title: %s", user)
+	for _, instruction := range []string{"2-6 words", "sentence case", "No quotes, no keyword lists", "Answer with the name only"} {
+		if !strings.Contains(user, instruction) {
+			t.Fatalf("namer omitted current design instruction %q: %s", instruction, user)
+		}
+	}
+	for _, old := range []string{"5-8 word phrase", "tab:", "≤12"} {
+		if strings.Contains(user, old) {
+			t.Fatalf("namer retained obsolete instruction %q: %s", old, user)
+		}
 	}
 	if !strings.HasSuffix(user, titlePrompt) {
 		t.Fatalf("the instruction is not the last thing the namer says:\n%s", user)
