@@ -1776,6 +1776,7 @@ func (a *Agent) recoverTasks() {
 		// a reason to start one. A session that opened by talking to itself about
 		// yesterday's interrupt would be answering a question nobody asked.
 		line := userText(note)
+		line.facts = noteFacts{Kind: NoteKindResume}
 		line.delivered = recovery.deliveries
 		a.accept(delivery{origin: fromRuntime, kind: msgNotice, note: line})
 	}

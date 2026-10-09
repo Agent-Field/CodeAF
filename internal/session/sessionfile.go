@@ -145,6 +145,12 @@ type sessionEntry struct {
 	// they always did.
 	Note      bool           `json:"note,omitempty"`
 	ReplyTags []TaskReplyTag `json:"replyTags,omitempty"`
+	// NoteFacts is what a session-authored line says about WHO WROTE IT, beside
+	// the bare fact that nobody typed it: the kind of news, the finished tasks
+	// it reports and a job's short name ([noteFacts]). Absent on every line
+	// written before it existed and on every note that has none to give, and
+	// those replay with the zero value, which a surface reads as "say nothing".
+	NoteFacts *noteFacts `json:"noteFacts,omitempty"`
 
 	// Caption is a `caption` line: the sentence the cheap narrator wrote about
 	// one BATCH of tool calls while it ran, and the family of work it named
@@ -190,6 +196,14 @@ type sessionEntry struct {
 	// reopened page can only guess from the words. Absent from every line that is
 	// not one, and from every file written before the line existed.
 	FailedCall string `json:"failedCall,omitempty"`
+
+	// StoppedCall is a `stopped` line: the id of ONE tool call that came back an
+	// error because the PERSON stopped the turn it was running in. It is the
+	// `failed` line's twin and its opposite: a stopped call is not a failed one,
+	// so the two are never written for the same call. Absent from every line
+	// that is not one, and from every file written before the line existed, whose
+	// aborted calls replay exactly as they always did.
+	StoppedCall string `json:"stoppedCall,omitempty"`
 
 	// Pace is ONE TURN'S DECOMPOSITION: how long the person waited to be sent
 	// anywhere, how long they then waited for a word, and the worst gap between a
@@ -1178,6 +1192,9 @@ type sessionFile struct {
 	presentation *presentationIndex
 	notes        map[string]bool
 	replyTags    map[string][]TaskReplyTag
+	// facts is what each session-authored line said about who wrote it, under
+	// the same fingerprint the notes use ([noteFacts]).
+	facts map[string]noteFacts
 	// delivered is the set of durable delivery ids this file has recorded, from
 	// the replay at open and from every note appended since. It answers one
 	// question — has this conversation already been told this landing — for a
@@ -1221,6 +1238,10 @@ type sessionFile struct {
 	// ([sessionEntry.FailedCall]). Absent means "not recorded as failed", which
 	// is every call in a file written before the line existed.
 	failed map[string]bool
+
+	// stopped is WHICH CALLS ENDED BECAUSE THE PERSON STOPPED THE TURN, keyed
+	// like failed ([sessionEntry.StoppedCall]).
+	stopped map[string]bool
 
 	// restored is what this conversation had already spent when the file was
 	// opened: the SUM of its usage lines, replayed once and never updated after.
@@ -1514,6 +1535,39 @@ func (s *sessionFile) appendFailed(callID string) {
 	s.writeLine(sessionEntry{Type: "failed", FailedCall: callID, Timestamp: stamp()})
 }
 
+// callStopped reports whether the journal records this call as ended by the
+// person's stop. Like callFailed, a nil receiver and an unmarked call answer
+// false, and no text is ever read to decide it.
+func (s *sessionFile) callStopped(callID string) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.stopped[strings.TrimSpace(callID)]
+}
+
+// appendStopped journals that one call ended because the person stopped the
+// turn. It is called where the loop would otherwise have written the call down as
+// a failure, with the same id, so the record and the live stream cannot disagree
+// about which calls the person cut short.
+func (s *sessionFile) appendStopped(callID string) {
+	if s == nil {
+		return
+	}
+	callID = strings.TrimSpace(callID)
+	if callID == "" {
+		return
+	}
+	s.mu.Lock()
+	if s.stopped == nil {
+		s.stopped = make(map[string]bool, 2)
+	}
+	s.stopped[callID] = true
+	s.mu.Unlock()
+	s.writeLine(sessionEntry{Type: "stopped", StoppedCall: callID, Timestamp: stamp()})
+}
+
 // rememberSteer marks one message as a splice, in a map the caller owns — the
 // file's, under its lock, or the one a replay is still building. It is
 // [rememberNote]'s twin and keeps its shape on purpose: the two facts are
@@ -1757,12 +1811,14 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 		journal.presentation = &presentationIndex{}
 	}
 	journal.replyTags = replayed.replyTags
+	journal.facts = replayed.noteFacts
 	journal.delivered = replayed.delivered
 	journal.noteDeliveries = replayed.noteDeliveries
 	journal.steers = replayed.steers
 	journal.captions = replayed.captions
 	journal.tooks = replayed.tooks
 	journal.failed = replayed.failed
+	journal.stopped = replayed.stoppedCalls
 	journal.restored = replayed.usage
 
 	if !replayed.existed {
@@ -1925,7 +1981,9 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 	// [sessionFile.tooks]).
 	tooks := make(map[string]journalTook)
 	failed := make(map[string]bool)
+	cutCalls := make(map[string]bool)
 	replyTags := make(map[string][]TaskReplyTag)
+	facts := make(map[string]noteFacts)
 	delivered := make(map[string]bool)
 	noteDeliveries := make(map[string][]string)
 	// And the splice index, in the same pass and for the same reason: a steer is
@@ -2008,6 +2066,9 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			if entry.Note {
 				rememberNote(notes, message)
 				rememberReplyTags(replyTags, message, entry.ReplyTags)
+				if entry.NoteFacts != nil {
+					rememberNoteFacts(facts, message, *entry.NoteFacts)
+				}
 				rememberDeliveries(delivered, entry.Deliveries)
 				rememberNoteDeliveries(noteDeliveries, message, entry.Deliveries)
 			}
@@ -2102,6 +2163,12 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// indexes, like a `took` line.
 			if id := strings.TrimSpace(entry.FailedCall); id != "" {
 				failed[id] = true
+			}
+		case "stopped":
+			// ONE CALL THE PERSON'S STOP CUT SHORT. Indexed like a `failed` line and
+			// for the same reason: it rebuilds no message.
+			if id := strings.TrimSpace(entry.StoppedCall); id != "" {
+				cutCalls[id] = true
 			}
 		case "steer":
 			// A STEER THAT FELL THROUGH, and nothing is rebuilt from it
@@ -2285,12 +2352,14 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		notes:          notes,
 		presentation:   presentation,
 		replyTags:      replyTags,
+		noteFacts:      facts,
 		delivered:      delivered,
 		noteDeliveries: noteDeliveries,
 		steers:         steers,
 		captions:       captions,
 		tooks:          tooks,
 		failed:         failed,
+		stoppedCalls:   cutCalls,
 		usage:          spent,
 		created:        created,
 		requests:       requests,
@@ -2474,6 +2543,8 @@ type replayedSession struct {
 	presentation *presentationIndex
 	// replyTags is the typed identity stored on task completion notes.
 	replyTags map[string][]TaskReplyTag
+	// noteFacts is what each session-authored line said about who wrote it.
+	noteFacts map[string]noteFacts
 	// delivered is the set of durable delivery ids this file already recorded,
 	// and noteDeliveries the same ids under their line's fingerprint.
 	delivered      map[string]bool
@@ -2490,6 +2561,8 @@ type replayedSession struct {
 	tooks map[string]journalTook
 	// failed is which calls came back a failure, keyed by call id.
 	failed map[string]bool
+	// stoppedCalls is which calls the person's stop cut short, keyed by call id.
+	stoppedCalls map[string]bool
 	// unread is the 1-based line of the file this reading could not get past, and
 	// zero for a file read to its end. Everything above it is in `messages`; the
 	// number is what lets a caller say WHICH line rather than "something went
@@ -2713,6 +2786,7 @@ func (s *sessionFile) messageLines(first, last ai.Message) (journal string, from
 type noteMarks struct {
 	tags       []TaskReplyTag
 	deliveries []deliveryID
+	facts      noteFacts
 }
 
 func (s *sessionFile) appendNote(message ai.Message, marks noteMarks) bool {
@@ -2809,6 +2883,12 @@ func (s *sessionFile) appendWithReasoning(message ai.Message, note bool, refs []
 			}
 			rememberReplyTags(s.replyTags, message, marks[0].tags)
 		}
+		if len(marks) > 0 && !marks[0].facts.empty() {
+			if s.facts == nil {
+				s.facts = make(map[string]noteFacts)
+			}
+			rememberNoteFacts(s.facts, message, marks[0].facts)
+		}
 		s.mu.Unlock()
 	}
 	// The single text part is what nearly every message is, and its text is
@@ -2829,9 +2909,14 @@ func (s *sessionFile) appendWithReasoning(message ai.Message, note bool, refs []
 	var (
 		tags       []TaskReplyTag
 		deliveries []string
+		facts      *noteFacts
 	)
 	if len(marks) > 0 {
 		tags = marks[0].tags
+		if !marks[0].facts.empty() {
+			given := marks[0].facts
+			facts = &given
+		}
 		for _, id := range marks[0].deliveries {
 			deliveries = append(deliveries, string(id))
 		}
@@ -2854,6 +2939,7 @@ func (s *sessionFile) appendWithReasoning(message ai.Message, note bool, refs []
 		Parts:            refs,
 		Note:             note,
 		ReplyTags:        tags,
+		NoteFacts:        facts,
 		Deliveries:       deliveries,
 		Timestamp:        stamp(),
 	})
@@ -2920,6 +3006,7 @@ func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, wi
 		if note {
 			s.appendNote(message, noteMarks{
 				tags:       s.taskReplyTags(message),
+				facts:      s.noteFactsOf(message),
 				deliveries: s.noteDeliveriesOf(message),
 			})
 			continue

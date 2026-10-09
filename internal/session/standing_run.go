@@ -458,6 +458,7 @@ func (r *standingRunner) probeTool(ctx context.Context, item standing.Item) (sta
 
 	agent := &Agent{config: cfg, model: cfg.Model, id: NewSessionID()}
 	agent.jobs = newJobRegistry(cfg.Workspace, cfg.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
+	agent.jobs.notifyJob = agent.enqueueJobEnding
 	agent.connect = newConnectHub(cfg)
 	agent.tools = agent.belt()
 
