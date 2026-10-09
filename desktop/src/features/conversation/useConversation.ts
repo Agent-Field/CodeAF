@@ -32,7 +32,7 @@ import type { ConversationModel } from './types';
 
 export type FailedSend = { text: string; mode: SendMode; message: string; files?: OutgoingFile[] };
 
-type Options = { sessionFile?: string; onSessionFile: (sessionFile: string) => void; beforeFirstTurn?: BeforeFirstTurn };
+type Options = { sessionFile?: string; onSessionFile: (sessionFile: string) => void; beforeFirstTurn?: BeforeFirstTurn; newConversationPlace?: string };
 
 const BACKOFF_MS = [1000, 2000, 5000, 10000];
 
@@ -56,7 +56,7 @@ function deliver(id: string, text: string, mode: SendMode, files?: OutgoingFile[
   return files?.length ? sendEngineWithFiles(id, text, files) : sendEngine(id, text, mode);
 }
 
-export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn }: Options) {
+export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, newConversationPlace }: Options) {
   const [snapshot, setSnapshot] = useState<EngineSnapshot>();
   const [live, setLive] = useState<LiveOverlayV2>(emptyLive());
   const [online, setOnline] = useState(false);
@@ -124,7 +124,7 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn }:
     const own = generation.current;
     setConnecting(true);
     try {
-      const value = await connectEngine(saved);
+      const value = await connectEngine(saved, newConversationPlace);
       if (own !== generation.current) return undefined;
       attempts.current = 0;
       setOnline(true);

@@ -1,5 +1,5 @@
 import { useContext, useEffect, useRef, useState } from 'react';
-import { FirstTurnContext } from './firstTurn';
+import { FirstTurnContext, NewConversationPlaceContext } from './firstTurn';
 import { Text } from '../../components/ui';
 import { useMediaQuery } from '../../design/useMediaQuery';
 import design from '../../design/tokens.json';
@@ -73,7 +73,8 @@ function useTaskPanel(hasTasks: boolean, closed: boolean, onView: ConversationVi
 
 export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpenTaskTab, autoFocus = true, split = false, focused = true, usingApi, onOpenSource, onAddToPlace }: ConversationViewProps) {
   const beforeFirstTurn = useContext(FirstTurnContext);
-  const conversation = useConversation({ sessionFile: tab.sessionFile, onSessionFile: (sessionFile) => onView({ sessionFile }), beforeFirstTurn });
+  const newConversationPlace = useContext(NewConversationPlaceContext);
+  const conversation = useConversation({ sessionFile: tab.sessionFile, onSessionFile: (sessionFile) => onView({ sessionFile }), beforeFirstTurn, newConversationPlace });
   const { model, snapshot, failed } = conversation;
   const [focusKey, setFocusKey] = useState<string>();
   // A tab opened from a web page brings that page's picture; the composer attaches it once and the offer is spent.
