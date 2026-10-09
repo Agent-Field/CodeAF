@@ -873,8 +873,11 @@ mod ipc_tests {
                 serde_json::json!({ "request": { "kind": "folder" } }),
             ),
             ("notify_permission", serde_json::json!({})),
-            ("notify_attention", serde_json::json!({ "items": [] })),
-            ("badge_set", serde_json::json!({ "count": 1 })),
+            (
+                "notify_attention",
+                serde_json::json!({ "items": [], "seq": 1 }),
+            ),
+            ("badge_set", serde_json::json!({ "count": 1, "seq": 1 })),
         ] {
             assert_eq!(
                 call(&stranger, cmd, body),
