@@ -92,10 +92,13 @@ var Program = delegate.Delegate{
 	// the home folder — because the recorder's own reading climbs to any
 	// repository around the folder.
 	PlainFolder: []string{"--in-place"},
-	// Where it keeps its records in the folder it works in: the brief, the
-	// checklist, the pinned command, its session database and its model
-	// conversation (app's seniorDevDataDirectory, which git never sees). A run
-	// given --state-dir keeps the database and conversation there instead.
+	// Where it keeps the files it and its model work from in the folder it
+	// works in: the brief, the checklist, the pinned command, the messages it
+	// was handed and the output it set aside (app's seniorDevDataDirectory,
+	// which git never sees). Its session database and model conversation are
+	// not here: they go in the run's record folder (CODEAF_RECORDS), or in
+	// --state-dir's directory, and here only when codeaf names no record
+	// folder (app's stateDirectory).
 	Notes: ".senior-dev",
 	// IT LISTENS: the person's words from its page and the conversation's
 	// `say` reach its model between steps until it hands in (app/steering.go).

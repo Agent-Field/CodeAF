@@ -615,47 +615,50 @@ could not be put back and that the folder holds later changes nothing checked.
 
 ## Its notes — .senior-dev, its checklist, its session database, moved out when it ends
 
-senior-dev keeps its own records in `.senior-dev/` in the folder it works in (its copy, in
-a repository): the brief,
-its checklist, the command it pinned, its session database and its whole conversation
-with its model. **They are moved out of your folder when the run ends or you stop it**,
-into the task's record folder beside `delegate-conversation.jsonl` (a shell run's record
-folder at a shell), and the page adds `its notes (.senior-dev/) are kept in <path>`. So
-they never end up on a branch, and the next run in that folder never reads the last
-one's checklist as its own. A `.senior-dev/` already in the folder when the run began is
-left where it is, and never ends up on a branch either.
+senior-dev keeps the files it and its model work from in `.senior-dev/` in the folder it
+works in (its copy, in a repository): the brief, its checklist, the command it pinned,
+the messages it was handed and the output it set aside. **They are moved out of your
+folder when the run ends or you stop it**, into the task's record folder beside
+`delegate-conversation.jsonl` (a shell run's record folder at a shell), and the page adds
+`its notes (.senior-dev/) are kept in <path>`. So they never end up on a branch, and the
+next run in that folder never reads the last one's checklist as its own. A `.senior-dev/`
+already in the folder when the run began is left where it is, and never ends up on a
+branch either.
 
-A run given `--state-dir DIR` (or `SENIOR_DEV_STATE_DIR`) keeps its session database and
-its conversation in that directory instead, and they stay there: only what is in
-`.senior-dev/` — the brief, the checklist, the pinned command, the output it set aside —
-is moved into the record.
+Its session database and its whole conversation with its model are not in your folder at
+all. From the moment the run starts they are in `store/` in that same record folder
+(`store.1`, `store.2` for a later run of the same task), and they stay there. A run given
+`--state-dir DIR` (or `SENIOR_DEV_STATE_DIR`) keeps them in that directory instead. Only
+when codeaf names no record folder do they go in `.senior-dev/`.
 
 ## senior-dev stopped with projection.lock: no such file or directory — .senior-dev removed or a link to it gone mid-run, its session store, --state-dir, SENIOR_DEV_STATE_DIR
 
-senior-dev keeps its session store — `senior-dev.db`, the `storage/` folder of its records
-and `projection.lock` — in `.senior-dev/` in the folder it works in, unless it is given a
-directory of its own. **It opens that store once, by its real path**: a `.senior-dev` that
-is a link to somewhere else is followed when the run starts, and every later read and
-write goes where the link led. So a link that goes away while it works no longer ends the
-run. It used to: the lock was reopened through the link for every write, and the next
-model turn ended the run with `open <folder>/.senior-dev/projection.lock: no such file or
-directory` while the store itself was whole.
+senior-dev's session store — `senior-dev.db`, the `storage/` folder of its records and
+`projection.lock` — is kept out of the folder it works in: in `store/` in the run's
+record folder, or where `--state-dir DIR` or `SENIOR_DEV_STATE_DIR` says (the flag
+wins). With no record folder and neither of those, it is in `.senior-dev/`. **It opens
+the store once, by its real path**, so a link on the way to it that goes away no longer
+matters. It used to live in `.senior-dev/`, reopened through it for every write,
+and a run whose `.senior-dev` link was deleted ended with
+`open <folder>/.senior-dev/projection.lock: no such file or directory` while the store
+itself was whole.
 
-**A store that is itself removed still ends the run**, because its conversation went with
-it. senior-dev does not carry on in an empty directory made in its place, with a model
-that has lost its work; it stops, saying
+**A `.senior-dev/` removed mid-run is written back.** What the work runs can empty the
+folder — a benchmark's reset script, `make clean`, `rm -rf` of the tree. After each step
+its model takes, senior-dev puts back the brief, the checklist, the pinned command and the
+messages it was handed, as it last read them, and carries on; the page says
+`wrote .senior-dev/checklist.md back after something removed it`. The session store is
+elsewhere and is not affected.
+
+**A store that is itself removed or emptied ends the run**, because its conversation went
+with it; senior-dev never carries on in an empty one made in its place. It stops, saying
 `its store <dir> was removed while the run was working, with the conversation in it`.
-Whatever clears or restores the folder — a benchmark's reset script, `rm -rf` of the
-tree — removes a store kept in it.
 
-To keep the store out of the folder, start `codeaf senior-dev run` with `--state-dir DIR`,
-or set `SENIOR_DEV_STATE_DIR`; the flag wins when both are set, and the directory is made
-if it is missing. **Use a new one for each run**: runs in folders without git share one
-project, so a directory shared between them mixes their sessions. A directory inside the
-folder is refused before anything is spent, because its checkpoints and the change it
-hands in would carry the store; the folder's own `.senior-dev/` is the exception. The
-brief, the checklist and the other files the model reads stay in `.senior-dev/` in the
-folder either way.
+What `--state-dir` or `SENIOR_DEV_STATE_DIR` names is made if it is missing. **Use a new
+one for each run**: runs in folders without git share one project, so a shared one mixes
+their sessions. One inside the folder is refused before anything
+is made or spent, because its checkpoints and the change it hands in would carry the
+store; the folder's own `.senior-dev/` is the exception.
 
 ## Where does senior-dev put its work — its own branch, in a copy of its own, not merged, one commit
 
@@ -1172,7 +1175,7 @@ senior-dev's own flags on `run`:
 - `--verify-build CMD`, `--verify-test CMD` — the project's own build or test command,
   run by senior-dev on the submitted tree instead of the one it would have found (see
   how senior-dev finds a project's build and tests);
-- `--state-dir DIR` — its session store in DIR, outside the folder (`SENIOR_DEV_STATE_DIR`);
+- `--state-dir DIR` — its session store in DIR, not the run's record folder (`SENIOR_DEV_STATE_DIR`);
 - `--frontier` — accepted, and changes nothing: no call senior-dev makes uses that tier;
 - `--crew` — the models came from a conversation's crew: one its catalog cannot size is
   left out instead of failing the run. codeaf passes it with the crew's models.

@@ -94,7 +94,7 @@ func TestStateDirRootsTheStoreOutsideTheWorkspace(t *testing.T) {
 			case testCase.variable:
 				t.Setenv(StateDirEnv, stateDir)
 			}
-			dir, refusal := stateDirectory(flagged, workspace)
+			dir, refusal := stateDirectory(flagged, workspace, "")
 			if refusal != "" {
 				t.Fatalf("refused: %s", refusal)
 			}
@@ -160,12 +160,12 @@ func TestAStateDirInsideTheFolderIsRefused(t *testing.T) {
 		filepath.Join(outside, "into-the-folder"),
 		filepath.Join(outside, "into-the-folder", "deeper", "store"),
 	} {
-		if _, refusal := stateDirectory(refusedDir, workspace); !strings.Contains(refusal, "--state-dir "+refusedDir+" is inside the folder") {
+		if _, refusal := stateDirectory(refusedDir, workspace, ""); !strings.Contains(refusal, "--state-dir "+refusedDir+" is inside the folder") {
 			t.Errorf("--state-dir %s: refusal = %q, want it refused as inside the folder", refusedDir, refusal)
 		}
 	}
 	t.Setenv(StateDirEnv, filepath.Join(workspace, "state"))
-	if _, refusal := stateDirectory("", workspace); !strings.HasPrefix(refusal, StateDirEnv+" ") {
+	if _, refusal := stateDirectory("", workspace, ""); !strings.HasPrefix(refusal, StateDirEnv+" ") {
 		t.Errorf("refusal = %q, want it to name %s, which is where the directory came from", refusal, StateDirEnv)
 	}
 	t.Setenv(StateDirEnv, "")
@@ -183,7 +183,7 @@ func TestAStateDirInsideTheFolderIsRefused(t *testing.T) {
 		filepath.Join(workspace, seniorDevDataDirectory, "store"),
 		filepath.Join(workspace, "out-of-the-folder", "store"),
 	} {
-		if _, refusal := stateDirectory(kept, workspace); refusal != "" {
+		if _, refusal := stateDirectory(kept, workspace, ""); refusal != "" {
 			t.Errorf("--state-dir %s was refused: %s", kept, refusal)
 		}
 	}
@@ -196,7 +196,7 @@ func TestAStateDirInsideTheFolderIsRefused(t *testing.T) {
 	respelled := filepath.Join(filepath.Dir(cased), "FOLDER")
 	if same, err := os.Stat(respelled); err == nil {
 		if original, _ := os.Stat(cased); os.SameFile(same, original) {
-			if _, refusal := stateDirectory(filepath.Join(respelled, "state"), cased); !strings.Contains(refusal, "is inside the folder") {
+			if _, refusal := stateDirectory(filepath.Join(respelled, "state"), cased, ""); !strings.Contains(refusal, "is inside the folder") {
 				t.Errorf("--state-dir %s/state: refusal = %q, want the folder %s refused however it is spelled", respelled, refusal, cased)
 			}
 			if _, err := os.Lstat(filepath.Join(cased, "state")); !errors.Is(err, fs.ErrNotExist) {
@@ -208,7 +208,7 @@ func TestAStateDirInsideTheFolderIsRefused(t *testing.T) {
 	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, refusal := stateDirectory(filepath.Join(blocker, "store"), workspace); !strings.Contains(refusal, "cannot be made") {
+	if _, refusal := stateDirectory(filepath.Join(blocker, "store"), workspace, ""); !strings.Contains(refusal, "cannot be made") {
 		t.Errorf("refusal = %q, want a directory that cannot be made refused as one", refusal)
 	}
 }
@@ -239,13 +239,17 @@ func TestARemovedStoreEndsTheRunWithoutAFreshOne(t *testing.T) {
 		remade string
 		// alone closes the database before the store is removed.
 		alone bool
-		said  string
+		// emptied removes what is in the store and leaves its directory, as
+		// an `rm -rf` that raced the store's own writes did.
+		emptied bool
+		said    string
 	}{
 		{name: "gone", linked: true, said: ": no such file or directory"},
 		{name: "replaced", linked: true, remade: ".", said: "; the directory there now is a new one"},
 		{name: "in the folder, remade by a write under it", remade: "tool-output", said: "; the directory there now is a new one"},
 		{name: "replaced, alone", linked: true, remade: ".", alone: true, said: "; the directory there now is a new one"},
 		{name: "in the folder, remade by a write under it, alone", remade: "tool-output", alone: true, said: "; the directory there now is a new one"},
+		{name: "emptied, its directory left standing", emptied: true, said: ": its senior-dev.db is gone"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			workspace := t.TempDir()
@@ -271,7 +275,14 @@ func TestARemovedStoreEndsTheRunWithoutAFreshOne(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := os.RemoveAll(store); err != nil {
+			if testCase.emptied {
+				entries, _ := os.ReadDir(store)
+				for _, entry := range entries {
+					if err := os.RemoveAll(filepath.Join(store, entry.Name())); err != nil {
+						t.Fatal(err)
+					}
+				}
+			} else if err := os.RemoveAll(store); err != nil {
 				t.Fatal(err)
 			}
 			if testCase.remade != "" {
@@ -286,6 +297,9 @@ func TestARemovedStoreEndsTheRunWithoutAFreshOne(t *testing.T) {
 			if err == nil || err.Error() != want {
 				t.Fatalf("touch after the store was removed = %v, want %q", err, want)
 			}
+			if _, err := durable.Messages(ctx, session.ID); err == nil || err.Error() != want {
+				t.Fatalf("the conversation read after the store was removed = %v, want %q", err, want)
+			}
 			if _, err := persistTurnPrompt(ctx, durable, session.ID, "msg_amnesia", turn{
 				Agent: "coder", ProviderID: "p", ModelID: "m", Prompt: "a conversation with no past",
 			}); err == nil {
@@ -298,5 +312,90 @@ func TestARemovedStoreEndsTheRunWithoutAFreshOne(t *testing.T) {
 				t.Fatalf("a lock was made where the removed store was (%v)", err)
 			}
 		})
+	}
+}
+
+// A RUN CODEAF CARRIES KEEPS ITS STORE IN ITS RECORD FOLDER WHEN NOTHING ELSE
+// NAMES ONE. The folder is the work's, and what the work runs can delete it;
+// the record folder is codeaf's. Each launch gets a directory of its own there
+// — a task's folder outlives a run — the flag and the variable still win, a
+// run nobody carried keeps the folder's .senior-dev, and a record folder
+// inside the workspace (a run in the home folder) is not used and not made.
+func TestTheRecordFolderHoldsTheStoreWhenNothingElseNamesOne(t *testing.T) {
+	workspace := t.TempDir()
+	records := filepath.Join(t.TempDir(), "carried", "senior-dev", "20261009-120000.000000")
+	t.Setenv(StateDirEnv, "")
+
+	first, refusal := stateDirectory("", workspace, records)
+	if refusal != "" || first != realDirectory(filepath.Join(records, "store")) {
+		t.Fatalf("store = %q (%q), want %s/store", first, refusal, records)
+	}
+	second, _ := stateDirectory("", workspace, records)
+	if second != realDirectory(filepath.Join(records, "store.1")) {
+		t.Fatalf("a second launch's store = %q, want %s/store.1 beside the first", second, records)
+	}
+
+	flagged := filepath.Join(t.TempDir(), "flagged")
+	if dir, _ := stateDirectory(flagged, workspace, records); dir != realDirectory(flagged) {
+		t.Errorf("with --state-dir the store = %q, want %s", dir, flagged)
+	}
+	variable := t.TempDir()
+	t.Setenv(StateDirEnv, variable)
+	if dir, _ := stateDirectory("", workspace, records); dir != realDirectory(variable) {
+		t.Errorf("with %s the store = %q, want %s", StateDirEnv, dir, variable)
+	}
+	t.Setenv(StateDirEnv, "")
+	if _, err := os.Lstat(filepath.Join(records, "store.2")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the flag or the variable still made a store in the record folder (%v)", err)
+	}
+
+	if dir, _ := stateDirectory("", workspace, ""); dir != "" {
+		t.Errorf("with no record folder the store = %q, want the folder's own .senior-dev", dir)
+	}
+	inside := filepath.Join(workspace, ".codeaf", "v3", "carried", "senior-dev", "run")
+	if dir, _ := stateDirectory("", workspace, inside); dir != "" {
+		t.Errorf("with the record folder inside the workspace the store = %q, want the folder's own .senior-dev", dir)
+	}
+	if _, err := os.Lstat(filepath.Join(workspace, ".codeaf")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("a record folder inside the workspace was made (%v)", err)
+	}
+}
+
+// A NOTE FILE THAT IS GONE IS WRITTEN BACK AS THE RUN LAST READ IT. What the
+// work runs can empty .senior-dev; the brief, the checklist and the pinned
+// command are the model's to read by name. A file the run never read is not
+// invented, and one that is there is kept as it now reads.
+func TestARemovedNoteIsWrittenBackFromWhatTheRunLastRead(t *testing.T) {
+	workspace := t.TempDir()
+	runner := &pipeline{workspace: workspace}
+	notes := filepath.Join(workspace, seniorDevDataDirectory)
+	if err := os.MkdirAll(notes, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range map[string]string{"spec.md": "the brief\n", "checklist.md": "- [ ] one\n"} {
+		if err := os.WriteFile(filepath.Join(notes, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runner.tendNotes()
+	if err := os.WriteFile(filepath.Join(notes, "checklist.md"), []byte("- [x] one\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runner.tendNotes()
+
+	if err := os.RemoveAll(notes); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := runner.readNote(seniorDevChecklist); err != nil || string(data) != "- [x] one\n" {
+		t.Fatalf("the checklist read after .senior-dev went = %q, %v; want its last content", data, err)
+	}
+	runner.tendNotes()
+	for name, want := range map[string]string{"spec.md": "the brief\n", "checklist.md": "- [x] one\n"} {
+		if data, err := os.ReadFile(filepath.Join(notes, name)); err != nil || string(data) != want {
+			t.Errorf(".senior-dev/%s = %q, %v; want %q written back", name, data, err, want)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(notes, "pinned.txt")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("a pinned command the run never read was made up (%v)", err)
 	}
 }

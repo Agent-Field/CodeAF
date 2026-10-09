@@ -32,6 +32,8 @@ import (
 const (
 	seniorDevDataDirectory = ".senior-dev"
 	seniorDevDatabaseFile  = "senior-dev.db"
+	// storageDirectory holds the store's flat records ([storage.NewFromDataDir]).
+	storageDirectory = "storage"
 
 	projectionReconcileVersion = 1
 )
@@ -67,11 +69,11 @@ type durableSessions struct {
 	unsubscribe      func()
 	projector        *projectors.Store
 	lockPath         string
-	// storeDir is the store's real path, and storeHandle the directory found
-	// there when it was opened, held open for as long as the store is
-	// ([durableSessions.storeStillThere]).
-	storeDir    string
-	storeHandle *os.File
+	// storeDir is the store's real path, and storeHeld the directory found
+	// there when it was opened, its database and its records' directory, each
+	// held open for as long as the store is ([durableSessions.storeStillThere]).
+	storeDir  string
+	storeHeld []*os.File
 
 	operationMu     sync.Mutex
 	projectionMu    sync.Mutex
@@ -107,27 +109,32 @@ func openDurableSessionsIn(ctx context.Context, workspace, stateDir string) (*du
 		return nil, fmt.Errorf("senior-dev sessions: create data directory: %w", err)
 	}
 	dataDir = realDirectory(dataDir)
-	storeHandle, err := os.Open(dataDir)
-	if err != nil {
-		return nil, fmt.Errorf("senior-dev sessions: read data directory: %w", err)
-	}
 
 	projectInfo, _, err := project.Discover(ctx, workspace)
 	if err != nil {
-		_ = storeHandle.Close()
 		return nil, fmt.Errorf("senior-dev sessions: discover project: %w", err)
 	}
 	projectID := string(projectInfo.ID)
 	dbPath := filepath.Join(dataDir, seniorDevDatabaseFile)
 	db, err := projectors.Open(ctx, dbPath, projectors.BusyRetryOptions{Log: io.Discard})
 	if err != nil {
-		_ = storeHandle.Close()
 		return nil, err
 	}
+	var storeHeld []*os.File
 	closeOnError := func(err error) (*durableSessions, error) {
 		_ = db.Close()
-		_ = storeHandle.Close()
+		closeAll(storeHeld)
 		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Join(dataDir, storageDirectory), 0o755); err != nil {
+		return closeOnError(fmt.Errorf("senior-dev sessions: create records directory: %w", err))
+	}
+	for _, path := range []string{dataDir, dbPath, filepath.Join(dataDir, storageDirectory)} {
+		held, err := os.Open(path)
+		if err != nil {
+			return closeOnError(fmt.Errorf("senior-dev sessions: read data directory: %w", err))
+		}
+		storeHeld = append(storeHeld, held)
 	}
 	if err := applyProjectSchema(ctx, db); err != nil {
 		return closeOnError(err)
@@ -147,7 +154,7 @@ func openDurableSessionsIn(ctx context.Context, workspace, stateDir string) (*du
 		projectID: projectID, workspace: workspace,
 		projector: projectors.NewStore(db, projectors.StoreOptions{}),
 		lockPath:  filepath.Join(dataDir, "projection.lock"),
-		storeDir:  dataDir, storeHandle: storeHandle,
+		storeDir:  dataDir, storeHeld: storeHeld,
 	}
 	durable.projectionSource = durable.store
 	sessions, err := sessioncore.New(sessioncore.Options{
@@ -294,9 +301,16 @@ func (durable *durableSessions) withProjection(
 	})
 }
 
+// Messages is a session's conversation. It is read only from the store the
+// run opened: a removed one would read as a conversation with nothing in it,
+// and the model's next step would end the run on a sentence about a stream
+// rather than the one that names the store ([durableSessions.storeStillThere]).
 func (durable *durableSessions) Messages(
 	ctx context.Context, sessionID string,
 ) ([]msgmodel.WithParts, error) {
+	if err := durable.storeStillThere(); err != nil {
+		return nil, err
+	}
 	return durable.sessions.Messages(ctx, sessionID)
 }
 
@@ -1038,7 +1052,15 @@ func (durable *durableSessions) withStoreLock(fn func() error) error {
 	if err := durable.storeStillThere(); err != nil {
 		return err
 	}
-	return withAdvisoryFileLock(durable.lockPath, fn)
+	err := withAdvisoryFileLock(durable.lockPath, fn)
+	if err != nil {
+		// A write the store's removal cut short says so by the store's name,
+		// not by the temporary file it was renaming when the removal landed.
+		if gone := durable.storeStillThere(); gone != nil {
+			return gone
+		}
+	}
+	return err
 }
 
 // storeStillThere answers an error once the store's directory is no longer
@@ -1055,37 +1077,58 @@ func (durable *durableSessions) withStoreLock(fn func() error) error {
 // that starts where the removal happened. The run ends instead, naming the
 // store where it was.
 //
-// THE STORE'S DIRECTORY IS HELD OPEN, BECAUSE AN INODE NUMBER IS NOT A NAME
-// FOREVER. Identity is the device and inode number, and ext4 and overlayfs —
-// the benchmark's container, the CI runner — hand a removed directory's number
-// to the next directory made, so `rm -rf` and `mkdir` of the same path can
-// look like the same directory. An open handle keeps the removed directory's
-// inode allocated until the store closes, so the number cannot be given out
-// again while the run could still be fooled by it. It used to be held by
-// accident, by the database file sqlite keeps open; nothing promised that.
+// THE STORE'S DIRECTORY, ITS DATABASE AND ITS RECORDS ARE HELD OPEN, BECAUSE
+// AN INODE NUMBER IS NOT A NAME FOREVER. Identity is the device and inode
+// number, and ext4 and overlayfs — the benchmark's container, the CI runner —
+// hand a removed directory's number to the next directory made, so `rm -rf`
+// and `mkdir` of the same path can look like the same directory. An open
+// handle keeps the removed one's inode allocated until the store closes, so
+// the number cannot be given out again while the run could still be fooled
+// by it. It used to be held by accident, by the database file sqlite keeps
+// open; nothing promised that.
+//
+// A STORE EMPTIED IS A STORE REMOVED. An `rm -rf` that races the store's own
+// writes can fail on a directory something wrote into while it ran, and
+// leave the store's directory standing with its database and most of its
+// records gone; the directory alone would still look like the one the run
+// opened. The database and the records' directory are held and compared the
+// same way.
 func (durable *durableSessions) storeStillThere() error {
-	if durable.storeHandle == nil {
-		return nil
-	}
-	opened, err := durable.storeHandle.Stat()
-	if err != nil {
-		return fmt.Errorf("senior-dev sessions: read its store %s: %w", durable.storeDir, err)
-	}
-	current, err := os.Stat(durable.storeDir)
-	switch {
-	case err == nil && os.SameFile(opened, current):
-		return nil
-	case err == nil:
-		return fmt.Errorf("senior-dev sessions: its store %s was removed while the run was working, "+
-			"with the conversation in it; the directory there now is a new one", durable.storeDir)
-	default:
-		// The path is already in the sentence; the reason is all the stat adds.
-		var pathErr *fs.PathError
-		if errors.As(err, &pathErr) {
-			err = pathErr.Err
+	for _, held := range durable.storeHeld {
+		opened, err := held.Stat()
+		if err != nil {
+			return fmt.Errorf("senior-dev sessions: read its store %s: %w", durable.storeDir, err)
+		}
+		current, err := os.Stat(held.Name())
+		if err == nil && os.SameFile(opened, current) {
+			continue
+		}
+		what := "; the directory there now is a new one"
+		if held.Name() != durable.storeDir {
+			what = "; its " + filepath.Base(held.Name()) + " there now is a new one"
+		}
+		if err != nil {
+			// The path is already in the sentence; the reason is all the stat
+			// adds.
+			var pathErr *fs.PathError
+			if errors.As(err, &pathErr) {
+				err = pathErr.Err
+			}
+			what = ": " + err.Error()
+			if held.Name() != durable.storeDir {
+				what = ": its " + filepath.Base(held.Name()) + " is gone"
+			}
 		}
 		return fmt.Errorf("senior-dev sessions: its store %s was removed while the run was working, "+
-			"with the conversation in it: %w", durable.storeDir, err)
+			"with the conversation in it%s", durable.storeDir, what)
+	}
+	return nil
+}
+
+// closeAll closes every file, ignoring what closing says.
+func closeAll(files []*os.File) {
+	for _, file := range files {
+		_ = file.Close()
 	}
 }
 
@@ -1115,7 +1158,5 @@ func (durable *durableSessions) Close() {
 	if durable.db != nil {
 		_ = durable.db.Close()
 	}
-	if durable.storeHandle != nil {
-		_ = durable.storeHandle.Close()
-	}
+	closeAll(durable.storeHeld)
 }

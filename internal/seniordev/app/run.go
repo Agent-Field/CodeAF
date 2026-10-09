@@ -81,10 +81,10 @@ type Options struct {
 	VerifyTest  string
 	// StateDir is the directory `--state-dir` named: the run keeps its session
 	// store there — its database, its conversation and the lock that orders
-	// them — in place of the folder's own .senior-dev. Empty reads
-	// SENIOR_DEV_STATE_DIR, and with that empty too the store stays in the
-	// folder. The files the model works with stay in the folder's .senior-dev
-	// either way ([stateDirectory]).
+	// them. Empty reads SENIOR_DEV_STATE_DIR; with that empty too, the store
+	// goes in the run's record folder when codeaf named one, and in the
+	// folder's own .senior-dev only when it named none. The files the model
+	// works with stay in the folder's .senior-dev either way ([stateDirectory]).
 	StateDir string
 	// Crew says the pools came from the crew of the conversation that started
 	// the run (`--crew`), not from a person typing them: a model the catalog
@@ -165,7 +165,11 @@ func runWith(ctx context.Context, host delegate.Host, options Options, notes io.
 		args.MaxHours = &ceilings.Hours
 	}
 	workspace := host.Workspace()
-	stateDir, refusal := stateDirectory(options.StateDir, workspace)
+	records := ""
+	if recorder, ok := host.(delegate.Recorder); ok {
+		records = recorder.Records()
+	}
+	stateDir, refusal := stateDirectory(options.StateDir, workspace, records)
 	if refusal != "" {
 		return refused(refusal)
 	}

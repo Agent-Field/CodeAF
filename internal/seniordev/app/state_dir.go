@@ -3,6 +3,9 @@
 package app
 
 import (
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,10 +17,16 @@ import (
 // `--state-dir` names none.
 const StateDirEnv = "SENIOR_DEV_STATE_DIR"
 
+// recordStoreName is the directory in the run's record folder that a run codeaf
+// carries keeps its session store in when nothing names one ([recordStore]).
+const recordStoreName = "store"
+
 // stateDirectory is where this run keeps its session store — its database,
 // its conversation and the lock that orders them: the --state-dir it was
-// given, else SENIOR_DEV_STATE_DIR, else "" for the workspace's own
-// .senior-dev ([openDurableSessionsIn]). One inside the workspace is refused
+// given, else SENIOR_DEV_STATE_DIR, else a directory of its own in records,
+// the run's record folder codeaf named ([recordStore]), else "" for the
+// workspace's own .senior-dev ([openDurableSessionsIn]). A directory named on
+// the command line or in the variable that is inside the workspace is refused
 // before anything is spent: the run's checkpoints and the change it hands in
 // are taken from that tree, and would carry the store's files with them. Its
 // own .senior-dev is the one place in the tree they already leave alone. The
@@ -28,14 +37,14 @@ const StateDirEnv = "SENIOR_DEV_STATE_DIR"
 // part of it that already exists ([resolvedPath]); making it first would leave
 // a refused <folder>/state, or every level of <folder>/a/b/c, in the tree the
 // refusal was protecting, for the next checkpoint to carry.
-func stateDirectory(flagged, workspace string) (dir, refusal string) {
+func stateDirectory(flagged, workspace, records string) (dir, refusal string) {
 	dir, said := strings.TrimSpace(flagged), "--state-dir"
 	if dir == "" {
 		value, _ := configpkg.NewEnv(os.LookupEnv).Get(StateDirEnv)
 		dir, said = strings.TrimSpace(value), StateDirEnv
 	}
 	if dir == "" {
-		return "", ""
+		return recordStore(records, workspace), ""
 	}
 	store, folder := resolvedPath(dir), realDirectory(workspace)
 	if within(store, folder) && !within(store, filepath.Join(folder, seniorDevDataDirectory)) {
@@ -46,6 +55,45 @@ func stateDirectory(flagged, workspace string) (dir, refusal string) {
 		return "", said + " " + dir + " cannot be made: " + err.Error()
 	}
 	return realDirectory(store), ""
+}
+
+// recordStore is a directory of this launch's own in records, the run's record
+// folder: store, or store.1, store.2 when an earlier run of the same task left
+// one there, made here so two launches can never be handed the same one. It
+// is "" — the workspace's own .senior-dev — when codeaf named no record folder
+// (senior-dev run directly, a test), when that folder cannot be written, or
+// when it is inside the workspace, as it is for a run in the home folder.
+//
+// THE STORE IS KEPT OUT OF THE FOLDER WHEN THERE IS SOMEWHERE ELSE TO KEEP IT.
+// The folder is the work's, and whatever the work runs can delete it: a
+// benchmark's validate.py began `sudo rm -rf /src` and took a whole run's
+// .senior-dev with it, conversation and all, and OpenSSL 1.1.0's `make clean`
+// deletes every link in the tree, a .senior-dev that led elsewhere included.
+// The record folder is codeaf's, and nothing the work runs is pointed at it.
+func recordStore(records, workspace string) string {
+	if strings.TrimSpace(records) == "" {
+		return ""
+	}
+	base := resolvedPath(filepath.Join(records, recordStoreName))
+	if within(base, realDirectory(workspace)) {
+		return ""
+	}
+	if err := os.MkdirAll(filepath.Dir(base), 0o700); err != nil {
+		return ""
+	}
+	for n := 0; ; n++ {
+		at := base
+		if n > 0 {
+			at = fmt.Sprintf("%s.%d", base, n)
+		}
+		err := os.Mkdir(at, 0o700)
+		if err == nil {
+			return realDirectory(at)
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return ""
+		}
+	}
 }
 
 // resolvedPath is path made absolute, with the deepest part of it that already

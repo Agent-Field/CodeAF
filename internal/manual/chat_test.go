@@ -3430,7 +3430,8 @@ func TestTheUndiscoveredBuildQuestionsReachTheVerifyFlags(t *testing.T) {
 // person pastes back as a question, and whoever starts it from a benchmark rig
 // asks how to keep its store out of the folder. Both reach the section that
 // names the flag, and the ending a removed store now gives reaches the section
-// that explains it.
+// that explains it. Where the database lives now, and what happens when the
+// work empties .senior-dev, are asked in a person's words too.
 func TestTheVanishedStoreQuestionsReachTheStateDir(t *testing.T) {
 	for _, probe := range []struct {
 		asked string
@@ -3441,6 +3442,9 @@ func TestTheVanishedStoreQuestionsReachTheStateDir(t *testing.T) {
 		{"keep senior-dev's session database outside the folder", "SENIOR_DEV_STATE_DIR"},
 		{"what does senior-dev's --state-dir do", "--state-dir"},
 		{"senior-dev says its store was removed while the run was working", "was removed while the run was working"},
+		{"where does senior-dev keep its session database", "store/"},
+		{"senior-dev's .senior-dev folder was deleted in the middle of a run", "written back"},
+		{"make clean deleted .senior-dev while senior-dev was working", "puts back the brief"},
 	} {
 		found := false
 		for _, section := range Chat().Search(probe.asked, DefaultResults) {

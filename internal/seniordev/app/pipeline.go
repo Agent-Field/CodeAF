@@ -62,6 +62,10 @@ type pipeline struct {
 	fingerprintFiles map[string]worktreeFileFingerprint
 	fingerprintNonce uint64
 
+	// kept is what the note files in .senior-dev last held, so a removed one
+	// can be written back ([pipeline.readNote]).
+	kept keptNotes
+
 	// verificationTimeouts remembers entrypoints that hung at the verification
 	// ceiling so a second pass does not pay the full ceiling again for an
 	// identical command against an unchanged tree.

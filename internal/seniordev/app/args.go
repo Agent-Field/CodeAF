@@ -70,8 +70,9 @@ type cliArgs struct {
 	// leaves that kind to discovery (fullverification/declared.go).
 	VerifyBuild string
 	VerifyTest  string
-	// StateDir is where the session store lives, resolved through its links;
-	// empty keeps it in the workspace's own .senior-dev ([stateDirectory]).
+	// StateDir is where the session store lives, resolved through its links:
+	// the flag's, the variable's or the run's record folder's; empty keeps it
+	// in the workspace's own .senior-dev ([stateDirectory]).
 	StateDir string
 	MaxCost  *float64
 	MaxHours *float64

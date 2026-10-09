@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/seniordev/baked"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/msgmodel"
+	"github.com/Agent-Field/codeaf/internal/seniordev/engine/steploop"
 	"github.com/Agent-Field/codeaf/internal/seniordev/netpolicy"
 	"github.com/Agent-Field/codeaf/internal/seniordev/project"
 	"github.com/Agent-Field/codeaf/internal/seniordev/tool"
@@ -221,6 +222,9 @@ func (runner *pipeline) soloIntake(goal string) error {
 	if err := os.WriteFile(specPath, []byte(goal), 0o644); err != nil {
 		return fmt.Errorf("solo intake: %w", err)
 	}
+	// Read back at once, so the brief can be written again from the first
+	// moment something could remove it.
+	_, _ = runner.readNote(seniorDevSpec)
 	runner.events.stage("intake", "captured", map[string]any{
 		"spec_path": ".senior-dev/spec.md", "spec_bytes": len(goal),
 	})
@@ -396,7 +400,15 @@ func (runner *pipeline) soloTurn(ctx context.Context, goal, prompt string) (turn
 	configured.Tools = runner.runtime.definitionsFor(
 		configured.ProviderID, configured.ModelID, "coder", nil,
 	)
-	configured.Execute = runner.runtime.registry.Execute
+	// After every tool call the note files are read again: what they say is
+	// kept, and one a command removed is written back before the model reads
+	// it ([pipeline.tendNotes]).
+	execute := runner.runtime.registry.Execute
+	configured.Execute = func(ctx context.Context, call steploop.ToolCall) (steploop.ToolResult, error) {
+		result, err := execute(ctx, call)
+		runner.tendNotes()
+		return result, err
+	}
 	configured.SystemInstructions = runner.runtime.registry.SystemInstructions(ctx)
 	configured.LoadInstructions = runner.runtime.registry.SystemInstructions
 	configured.AfterAssistant = runner.runtime.registry.ClearInstructionClaims
@@ -622,7 +634,7 @@ func (runner *pipeline) soloUnsubmittedFindings(baseSHA string) []string {
 	} else {
 		findings = append(findings, "your pinned command is: "+pinned)
 	}
-	if _, err := os.Stat(filepath.Join(runner.workspace, ".senior-dev", "checklist.md")); err != nil {
+	if _, err := runner.readNote(seniorDevChecklist); err != nil {
 		findings = append(findings,
 			"no .senior-dev/checklist.md exists — the request's own requirements were never enumerated")
 	}
@@ -637,7 +649,7 @@ func plural(count int, singular, many string) string {
 }
 
 func (runner *pipeline) readPinnedCommand() string {
-	data, err := os.ReadFile(filepath.Join(runner.workspace, ".senior-dev", "pinned.txt"))
+	data, err := runner.readNote(seniorDevPinned)
 	if err != nil {
 		return ""
 	}
@@ -780,7 +792,7 @@ type soloChecklist struct {
 var soloChecklistItem = regexp.MustCompile(`^\s*(?:[-*]\s*)?\[([ xX])\]\s`)
 
 func (runner *pipeline) soloChecklistState() soloChecklist {
-	raw, err := os.ReadFile(filepath.Join(runner.workspace, ".senior-dev", "checklist.md"))
+	raw, err := runner.readNote(seniorDevChecklist)
 	if err != nil {
 		return soloChecklist{}
 	}
