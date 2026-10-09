@@ -1,6 +1,8 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Button, CopyButton, Markdown } from '../../components/ui';
 import './user-message.css';
+import { PasteCard } from './composer/PasteCard';
+import { splitPasted } from './composer/pastedText';
 
 /** True when the clamped text is taller than its visible box. */
 function isClipped(element: HTMLElement): boolean {
@@ -10,7 +12,8 @@ function isClipped(element: HTMLElement): boolean {
 type UserMessageProps = { text: string; markdown?: boolean; attachments?: ReactNode };
 
 /** The person's message: soft bubble, clamped when long, hover actions below. */
-export function UserMessage({ text, markdown = false, attachments }: UserMessageProps) {
+export function UserMessage({ text: message, markdown = false, attachments }: UserMessageProps) {
+  const { pastes, rest: text } = splitPasted(message);
   const body = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [overflowing, setOverflowing] = useState(false);
@@ -21,11 +24,14 @@ export function UserMessage({ text, markdown = false, attachments }: UserMessage
     if (!expanded) setOverflowing(isClipped(element));
   }, [text, expanded]);
 
-  if (!text && !attachments) return null;
+  if (!text && !attachments && pastes.length === 0) return null;
   return (
     <div className="user-message">
-      <div className="user-message-bubble" data-attached={Boolean(attachments) || undefined}>
+      <div className="user-message-bubble" data-attached={Boolean(attachments) || undefined} data-pasted={pastes.length > 0 || undefined}>
         {attachments}
+        {pastes.map((paste, index) => (
+          <PasteCard key={index} variant="sent" lines={paste.lines} text={paste.text} />
+        ))}
         {text && (
           <div ref={body} className="user-message-text" data-clamped={!expanded} data-faded={(!expanded && overflowing) || undefined} data-markdown={markdown || undefined}>
             {markdown ? <Markdown>{text}</Markdown> : text}
