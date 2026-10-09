@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/placegraph"
 )
 
 // ── THE CONVERSATION'S OWN POSTURE ON THE TOOL GATE ─────────────────────────
@@ -155,6 +156,10 @@ func (a *Agent) StandingApprovalPosture() string {
 // already standing stays standing, for the reason [Agent.SetApprovalPolicy]
 // refuses a nil: the answer to "I could not read the rules" is never a session
 // whose posture and gate disagree.
+//
+// AND IT IS A PERSON'S WORD, so a conversation whose places set its posture
+// stops following them on this field when somebody moves it here
+// (placegraphpolicy.go's [Agent.markPlaceYours]).
 func (a *Agent) SetApprovalPosture(posture string) error {
 	word := strings.ToLower(strings.TrimSpace(posture))
 	if !knownPosture(word) {
@@ -175,6 +180,7 @@ func (a *Agent) SetApprovalPosture(posture string) error {
 	if policy == nil {
 		return errors.New("the rules could not be rebuilt")
 	}
+	a.markPlaceYours(placegraph.PolicyPermissions, word)
 	a.mu.Lock()
 	a.approvalPolicy = policy
 	a.approvalPosture = word

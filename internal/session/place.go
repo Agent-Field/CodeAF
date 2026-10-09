@@ -226,6 +226,11 @@ type Meta struct {
 	// a gate a person opened from inside a conversation must be open when they
 	// come back to it.
 	Approval string `json:"approval,omitempty"`
+	// PlaceDefaults is what the desktop places this conversation is filed under
+	// set on it, and which of those fields are the person's own
+	// (placegraphpolicy.go). Absent is a conversation no place ever spoke to,
+	// which is every conversation outside the desktop.
+	PlaceDefaults *PlaceDefaults `json:"placeDefaults,omitempty"`
 	// Created is when the session was minted.
 	Created time.Time `json:"created"`
 	// LastUserAt is when the PERSON last said something. Resume order is on

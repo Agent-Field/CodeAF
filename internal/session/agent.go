@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	lanes "github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/placegraph"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/trace"
@@ -686,7 +687,15 @@ func (a *Agent) Model() string {
 // this turn. [Agent.scrubBlindImagePartsLocked] states the whole rule and its
 // three deliberate limits — the journal is untouched, the swap is one-way, and a
 // model that CAN see is handed everything unchanged.
-func (a *Agent) SetModel(model string) { a.setModel(model) }
+//
+// AND IT IS A PERSON'S PICK. A conversation whose places gave it a model stops
+// following them on this field the moment somebody chooses another one here
+// (placegraphpolicy.go's [Agent.markPlaceYours]); the place's default never
+// overrides a choice made inside the conversation.
+func (a *Agent) SetModel(model string) {
+	a.markPlaceYours(placegraph.PolicyModel, model)
+	a.setModel(model)
+}
 
 // setModel is SetModel with the answer to "when does this land", which the doors
 // inside this package that have somebody to tell need ([Agent.RetargetTask]) and
@@ -698,6 +707,23 @@ func (a *Agent) setModel(model string) ModelLanding {
 		return ModelLandsNextRequest
 	}
 	a.mu.Lock()
+	landing := a.setModelLocked(model)
+	a.mu.Unlock()
+	// AND THE BEAT IS TOLD, OUTSIDE THE LOCK. Everything above is about this
+	// session's own state; this is about a fetch somebody else will do, and a
+	// lock held across a hand-off is a lock held for no reason.
+	a.noteLaneModel(model)
+	// Other windows read the conversation model from its saved configuration.
+	// A model choice exists before another turn is sent, so publish it now.
+	a.stampModel()
+	return landing
+}
+
+// setModelLocked is the part of [Agent.setModel] that moves this session's own
+// state, for a caller already holding a.mu — the turn opening that applies a
+// place's default model (placegraphpolicy.go). The caller owes the two hand-offs
+// [Agent.setModel] makes after unlocking.
+func (a *Agent) setModelLocked(model string) ModelLanding {
 	// A PICK THAT CHANGES NOTHING IS NOT A WORD. Re-choosing the model the work is
 	// already talking to is a person confirming, not redirecting, and letting it
 	// cut would spend their money reaching the same machine again for the same
@@ -735,14 +761,6 @@ func (a *Agent) setModel(model string) ModelLanding {
 	a.noteModelWindow(model)
 	a.scrubBlindImagePartsLocked(model)
 	a.followModelOnThePageLocked()
-	a.mu.Unlock()
-	// AND THE BEAT IS TOLD, OUTSIDE THE LOCK. Everything above is about this
-	// session's own state; this is about a fetch somebody else will do, and a
-	// lock held across a hand-off is a lock held for no reason.
-	a.noteLaneModel(model)
-	// Other windows read the conversation model from its saved configuration.
-	// A model choice exists before another turn is sent, so publish it now.
-	a.stampModel()
 	return landing
 }
 
@@ -1786,6 +1804,12 @@ func (u userMessage) journaled() ai.Message {
 func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *eventStream, extra ...*eventStream) <-chan Event {
 	// The person speaking is what resets a team's loop breaker (team_wakewatch.go).
 	a.notePersonTurn(user)
+	// THE PLACES THIS CONVERSATION IS FILED UNDER are read first, before the
+	// turn binds its client, because they may set the model this turn talks to
+	// (placegraphpolicy.go). A place added while the last turn ran applies from
+	// this one and never from the middle of one (placegraphcontext.go).
+	a.refreshPlaceGraphLocked()
+	a.applyPlacePolicyLocked()
 	a.rebindClientLocked(a.model)
 	a.running = true
 	a.teamTurnAt = time.Now()
@@ -1823,10 +1847,8 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// hold now, and an order stood up while this conversation was open is not
 	// something the next turn may still be blind to (standing_world.go).
 	a.refreshStandingLocked()
-	// AND THE PLACES THIS CONVERSATION IS FILED UNDER, on the same trigger: a
-	// place added while the last turn ran applies from this one and never from
-	// the middle of one (placegraphcontext.go).
-	a.refreshPlaceGraphLocked()
+	// (The places this conversation is filed under were read at the top of
+	// this function, on the same trigger, so message[0] below carries them.)
 	a.refreshSystemLocked()
 	hub := a.newReplayHubLocked()
 	a.hub = hub
