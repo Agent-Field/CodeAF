@@ -2,16 +2,19 @@ import { startFor, startSentence } from '../../../terminal/open';
 import { bind } from '../../../terminal/bindings';
 import { useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { TextInput } from '../../../../components/ui';
-import { isMac } from '../../../../design/keyboard';
+import { isMac, isSeeAllHistoryShortcut, seeAllHistoryShortcut } from '../../../../design/keyboard';
+import { useHistoryHost } from '../../../history/host';
 import { connectEngine, sendEngine } from '../../../chat/engine-client';
 import { FirstTurnContext } from '../../../conversation/firstTurn';
-import { tabHolding, visibleTabs } from '../../model';
+import { panesOf, tabHolding, visibleTabs } from '../../model';
+import { historyKind } from '../history';
 import { terminalKind, newTerminalShortcut } from '../terminal';
 import type { PaneRenderProps } from '../slots';
 import { useNewTabHost, type NewTabHost } from './api';
 import { siteOf } from '../../../web/address';
 import { buildSections, flatRows, tabDigit, titleFromText, type NewTabRow } from './rows';
 import { useFileMatches } from './useFileMatches';
+import { useHistoryMatches } from './useHistoryMatches';
 import { NewTabView } from './NewTabView';
 
 const shortcut = (digit?: number) => (digit === undefined ? undefined : isMac ? `⌘${digit}` : `Ctrl ${digit}`);
@@ -24,15 +27,18 @@ const fileCaption = 'Type part of a file name.';
  * The new tab (design 3f): one field that starts a conversation, opens a file or jumps to a tab. It never makes an
  * engine call until a row is chosen. An address opens as a web tab (the first row); the conversation row below it still asks the same words.
  */
-export function NewTabPane({ pane, focused }: PaneRenderProps) {
+export function NewTabPane({ pane, focused, actions }: PaneRenderProps) {
   const host = useNewTabHost();
   if (!host) return null;
-  return <NewTabField host={host} paneId={pane.id} focused={focused}/>;
+  return <NewTabField host={host} paneId={pane.id} focused={focused} draft={pane.draft} onDraft={actions.onDraft}/>;
 }
 
-function NewTabField({ host, paneId, focused }: { host: NewTabHost; paneId: string; focused: boolean }) {
+function NewTabField({ host, paneId, focused, draft, onDraft }: { host: NewTabHost; paneId: string; focused: boolean; draft: string; onDraft: (draft: string) => void }) {
   const { state, summaries, dispatch, closeTab } = host;
-  const [query, setQuery] = useState('');
+  // What is typed lives in the pane's draft too, so leaving the tab and coming back finds the words and the rows still there.
+  const [query, setQueryState] = useState(draft);
+  const setQuery = (text: string) => { setQueryState(text); onDraft(text); };
+  const history = useHistoryHost();
   const [index, setIndex] = useState(0);
   const [filing, setFiling] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -48,7 +54,10 @@ function NewTabField({ host, paneId, focused }: { host: NewTabHost; paneId: stri
   // The field has no session; it searches through the first saved conversation (a file tab reads through the same one).
   const sessionFile = state.tabs.flatMap(tab => (tab.split ? tab.split.panes : [tab])).find(pane => pane.sessionFile && pane.kind === 'conversation')?.sessionFile;
   const files = useFileMatches(query, sessionFile);
-  const sections = useMemo(() => buildSections({ query, tabs: others, closed: state.closed, files, terminal: terminalKind.backed, terminalShortcut, fileShortcut }), [query, others, state.closed, files]);
+  // History answers only when it is backed and the workspace gave the field its host; otherwise the section is absent, not broken.
+  const asking = historyKind.backed && !!history;
+  const found = useHistoryMatches(query, asking);
+  const sections = useMemo(() => buildSections({ query, tabs: others, closed: state.closed, files, terminal: terminalKind.backed, terminalShortcut, fileShortcut, history: found, seeAllShortcut: seeAllHistoryShortcut }), [query, others, state.closed, files, found]);
   const rows = flatRows(sections);
   const active = rows[Math.min(index, rows.length - 1)];
 
@@ -82,9 +91,27 @@ function NewTabField({ host, paneId, focused }: { host: NewTabHost; paneId: stri
       dispatch({ type: 'newtab-become', id: paneId, kind: 'terminal', title: 'Terminal', sessionFile });
     }
   }
-  function pick(row: NewTabRow | undefined) {
+  function openConversation(row: NewTabRow, press: { background: boolean }) {
+    const item = row.conversation;
+    if (!history || !item) return;
+    const open = state.tabs.flatMap(panesOf).some(one => one.sessionFile === item.sessionFile);
+    history.continueConversation(item, paneId, press.background ? { newTab: true, background: true } : { newTab: false });
+    // An open conversation is only selected, so the empty field has nothing left to do (as with an open-tab row).
+    if (open && !press.background) closeSelf();
+  }
+  /** Every match in History's own search: the field's tab becomes History, or the History tab that exists is shown with the words. */
+  function seeAll() {
+    const words = query.trim();
+    if (!words || !asking) return;
+    const existing = state.tabs.flatMap(panesOf).find(one => one.kind === 'history');
+    if (existing) { dispatch({ type: 'draft', id: existing.id, draft: words }); dispatch({ type: 'select', id: existing.id }); closeSelf(); }
+    else dispatch({ type: 'newtab-become', id: paneId, kind: 'history', title: historyKind.label, titleSource: 'engine', draft: words });
+  }
+  function pick(row: NewTabRow | undefined, press: { background: boolean } = { background: false }) {
     if (!row || busy) return;
-    if (row.kind === 'ask') void ask(query.trim());
+    if (row.kind === 'history') openConversation(row, press);
+    else if (row.kind === 'seeall') seeAll();
+    else if (row.kind === 'ask') void ask(query.trim());
     else if (row.kind === 'web') dispatch({ type: 'newtab-become', id: paneId, kind: 'web', title: siteOf(row.target!), titleSource: 'message', target: { url: row.target! } });
     else if (row.kind === 'terminal') void openShell();
     else if (row.kind === 'openfile') { setFiling(true); input.current?.focus(); }
@@ -98,6 +125,9 @@ function NewTabField({ host, paneId, focused }: { host: NewTabHost; paneId: stri
       event.preventDefault();
       const step = event.key === 'ArrowDown' ? 1 : -1;
       setIndex(current => (Math.min(current, rows.length - 1) + step + rows.length) % rows.length);
+    } else if (isSeeAllHistoryShortcut(event)) {
+      event.preventDefault();
+      seeAll();
     } else if (event.key === 'Enter') {
       event.preventDefault();
       pick(active);

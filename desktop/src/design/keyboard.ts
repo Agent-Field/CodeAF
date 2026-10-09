@@ -185,3 +185,10 @@ export const newTerminalShortcut = isMac ? '⌃`' : 'Ctrl `';
 export const isNewTerminalShortcut = (event: KeyEvent) => shortcutOf(event)?.id === 'terminal';
 /** In a terminal field off a Mac: Ctrl+Shift+T and Ctrl+Shift+W are the new and close tab chords. */
 export const terminalTabShortcuts = { new: isMac ? '⌘ T' : 'Ctrl Shift T', close: isMac ? '⌘ W' : 'Ctrl Shift W' };
+
+/** The new-tab field: ⌘↵ (Ctrl ↵) opens every History match for the words typed ("See all N in History"). */
+export const seeAllHistoryShortcut = isMac ? '⌘↵' : 'Ctrl ↵';
+export function isSeeAllHistoryShortcut(event: KeyEvent) {
+ const primary = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+ return primary && !event.shiftKey && !event.altKey && event.key === 'Enter';
+}
