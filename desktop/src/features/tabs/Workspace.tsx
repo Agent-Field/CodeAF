@@ -5,7 +5,11 @@ import { Button, Icon, Text, TextInput } from '../../components/ui';
 import design from '../../design/tokens.json';
 import { summarize, type TabSummary } from '../conversation/tabSummary';
 import { useBackgroundSessions } from '../conversation/useBackgroundSessions';
-import type { TabsApi } from './context';
+import { backgroundItems, needsYouItems, observedClosedPanes } from './closing/background';
+import { ClosingToast } from './closing/ClosingToast';
+import { useCloseStopKey } from './closing/useCloseStopKey';
+import { useClosing } from './closing/useClosing';
+import { TabsApiContext, type TabsApi } from './context';
 import type { PaneActions } from './kinds/slots';
 import { kindDef } from './kinds/registry';
 import { focusedPane, panesOf, readWorkspace, storageKey, visibleTabs, workspaceReducer, type Pane, type Tab } from './model';
@@ -43,7 +47,9 @@ export function Workspace({ enabled, onActivate, leading }: Props) {
   const visible = visibleTabs(state);
 
   // Inactive tabs (every pane of them) keep observing their sessions; the active tab's panes stream themselves.
-  useBackgroundSessions(state.tabs.filter(tab => tab.id !== active.id).flatMap(tab => panesOf(tab)).filter(pane => pane.sessionFile).map(pane => ({ id: pane.id, sessionFile: pane.sessionFile! })), (id, snapshot) => receiveSummary(id, summarize(snapshot)));
+  // Closed tabs whose work goes on keep being read too, so the Inbox follows them to the end.
+  const watched = [...state.tabs.filter(tab => tab.id !== active.id).flatMap(tab => panesOf(tab)), ...observedClosedPanes(state.closed, summaries)];
+  useBackgroundSessions(watched.filter(pane => pane.sessionFile).map(pane => ({ id: pane.id, sessionFile: pane.sessionFile! })), (id, snapshot) => receiveSummary(id, summarize(snapshot)));
   useEffect(() => { try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch { /* A full or unavailable store must not interrupt local tab navigation. */ } }, [state]);
 
   useEffect(() => {
@@ -64,23 +70,25 @@ export function Workspace({ enabled, onActivate, leading }: Props) {
     else renameDialog.current?.close();
   }, [rename]);
 
-  function closeTab(id: string) {
-    const restore = !!document.activeElement?.closest('.workspace-tab');
-    dispatch({ type: 'close', id });
-    if (restore) requestAnimationFrame(() => document.querySelector<HTMLElement>('.workspace-tabstrip [aria-selected="true"]')?.focus());
-  }
+  const closing = useClosing({ state, dispatch, summaries });
+  const { closeTab, closeAndStop } = closing;
+  const background = { running: backgroundItems(state.closed.filter(tab => !closing.stopping.has(tab.id)), summaries, Object.fromEntries(state.closed.flatMap(tab => { const since = closing.sinceOf(tab.id); return since ? [[tab.id, since]] : []; }))), needsYou: needsYouItems(state.tabs, summaries) };
+  // The Inbox appears the first time work outlives its tab or waits on the person.
+  const inboxWanted = background.running.length > 0 || background.needsYou.length > 0;
+  useEffect(() => { if (inboxWanted) dispatch({ type: 'ensure-inbox' }); }, [inboxWanted]);
+  useCloseStopKey(enabled, () => closeAndStop(state.activeId));
   function startRename(id: string, group = false) { setRename({ id, group, value: (group ? state.groups : state.tabs).find(item => item.id === id)?.title ?? '' }); }
   useTabKeys({ enabled, state, dispatch, visible, overviewOpen, setOverviewOpen, closeTab, switcherRef, setSwitcher });
   useDesktopTabActions({ state, dispatch, visible, renaming: !!rename, onActivate, closeTab, setOverviewOpen });
 
-  const api: TabsApi = { state, dispatch, summaries, now, closeTab, startRename, overlayOpen: !!switcher || overviewOpen || !!rename };
+  const api: TabsApi = { state, dispatch, summaries, now, closeTab, closeAndStop, isRunning: closing.isRunning, background, reopenClosed: closing.reopenClosed, startRename, overlayOpen: !!switcher || overviewOpen || !!rename };
   const actionsFor = (pane: Pane): PaneActions => ({
     onDraft: draft => dispatch({ type: 'draft', id: pane.id, draft }),
     onView: change => dispatch({ type: 'view', id: pane.id, change }),
     onSummary: summary => receiveSummary(pane.id, summary),
     onOpenTaskTab: (taskId, title) => openTaskTab(pane, taskId, title),
   });
-  return <section className="tab-workspace" aria-label="Conversation workspace">
+  return <TabsApiContext.Provider value={api}><section className="tab-workspace" aria-label="Conversation workspace">
     <TabStrip api={api} leading={leading} overviewTrigger={overviewTrigger} onOverview={() => setOverviewOpen(true)}/>
     <PaneGrid tab={active} dispatch={dispatch} actionsFor={actionsFor}/>
     {switcher && <div className="workspace-switcher"><div ref={switcherFocus} className="workspace-switcher-list" role="listbox" tabIndex={0} aria-label="Switch tabs" aria-activedescendant={`switcher-${switcher.ids[switcher.index]}`}>
@@ -91,5 +99,6 @@ export function Workspace({ enabled, onActivate, leading }: Props) {
     <dialog ref={renameDialog} className="workspace-rename" aria-label={rename?.group ? 'Rename group' : 'Rename tab'} onCancel={() => setRename(null)} onClose={() => setRename(null)}>
       <form onSubmit={event => { event.preventDefault(); if (rename) dispatch({ type: rename.group ? 'rename-group' : 'rename', id: rename.id, title: rename.value }); setRename(null); }}><TextInput ref={renameInput} aria-label="Name" value={rename?.value ?? ''} maxLength={80} onChange={event => setRename(current => current ? { ...current, value: event.target.value } : null)}/><div className="workspace-rename-actions"><Button onClick={() => setRename(null)}>Cancel</Button><Button type="submit" variant="quiet">Save</Button></div></form>
     </dialog>
-  </section>;
+    {closing.toast && <ClosingToast toast={closing.toast} onStop={closing.stopFromToast} onUndo={closing.undoFromToast} onDismiss={closing.dismissToast}/>}
+  </section></TabsApiContext.Provider>;
 }

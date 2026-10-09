@@ -1,0 +1,11 @@
+/* The 6s toast after closing running work (design 3l step 3): 40px, radius 12, surface, sh-2. */
+.closing-toast-region { position: fixed; inset: auto 0 var(--toast-offset); z-index: var(--z-toast); display: flex; justify-content: center; padding: 0 var(--space-4); pointer-events: none; }
+.closing-toast { display: inline-flex; align-items: center; gap: var(--toast-gap); height: var(--toast-height); max-width: 100%; padding: 0 var(--toast-pad-end) 0 var(--space-row); border-radius: var(--radius-card); background: var(--surface); color: var(--ink); box-shadow: var(--sh-2); font-size: var(--font-size-body); pointer-events: auto; animation: surface-enter var(--duration-overlay) var(--ease-overlay); }
+.closing-toast-dot { flex: none; width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--accent); }
+.closing-toast-dot[data-state="failed"] { background: var(--danger); }
+.closing-toast-text { min-width: 0; overflow: hidden; white-space: nowrap; padding-right: var(--tab-title-fade); margin-right: calc(var(--tab-title-fade) * -1); mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
+.closing-toast-title { font-weight: var(--font-weight-medium); }
+.closing-toast .closing-toast-action.button { flex: none; min-height: var(--toast-action-height); padding: 0 var(--toast-action-pad); border-radius: var(--radius-segment-item); font-size: var(--font-size-body); font-weight: var(--font-weight-medium); color: var(--ink-2); }
+.closing-toast .closing-toast-action.button-quiet { background: var(--field); color: var(--ink); }
+.closing-toast .closing-toast-action.button-ghost:hover:not(:disabled) { color: var(--ink); }
+@media (prefers-reduced-motion: reduce) { .closing-toast { animation: none; } }

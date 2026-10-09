@@ -36,7 +36,7 @@ Workspace.tsx  (owns useReducer(workspaceReducer), summaries, dialogs; builds Ta
 | Lane | Owns |
 | --- | --- |
 | hover preview | `hosts/previewHost.tsx`, each kind's `preview`, new `preview/` folder |
-| menus and closing | `hosts/menuHost.tsx`, `closing/` (toast, Alt stop), `reducers/closing.ts`, `Tab.tsx` `closeMode` wiring in `TabItem.tsx` |
+| menus and closing | `hosts/menuHost.tsx`, `closing/` (toast, Alt stop, background list), `reducers/closing.ts`, `kinds/inbox.ts` + `kinds/inbox/`, `Tab.tsx` `closeMode` wiring in `TabItem.tsx`. Seam for the rail: dispatch `{ type: 'open-inbox' }` to create and focus the pinned Inbox. Closing never stops engine work; "Close and stop" calls the session stop endpoint through `closing/stopWork.ts`. "Copy link" and "Move to new window" are listed disabled until a link scheme and a second window exist. |
 | split panes | `reducers/split.ts`, `PaneGrid.tsx`, `panes.css`, `split-tab.css`, `hosts/dragHost.ts` (edge drops), `PaneHeader` controls |
 | overview and filmstrip | `TabOverview.tsx`, `overview.css`, `styles/ui.css` `.overview-*` |
 | new tab field | `kinds/newtab.ts` (+ its folder), switch `new` to kind `newtab` in `reducers/tabs.ts` |

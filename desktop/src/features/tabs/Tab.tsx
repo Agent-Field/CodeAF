@@ -47,6 +47,9 @@ export type TabProps = FrameProps & {
   hover?: boolean;
   /** Alt held: the close slot becomes a stop square (close and stop). */
   closeMode?: 'close' | 'stop';
+  /** The close button's tooltip text ("Close · keeps running") and its muted shortcut. */
+  closeHint?: string;
+  closeShortcut?: string;
   tabIndex?: number;
   /** Wraps the select button; the preview lane puts the hover card here. */
   wrapSelect?: (select: ReactElement) => ReactElement;
@@ -66,9 +69,9 @@ export type TabProps = FrameProps & {
  * One tab, per design 2h "Tabs": 30px, radius 8, 13px kind glyph, 12px title faded over its last 20px,
  * a close in a fixed 20px slot. All state is props; the primitive owns no data and no menus.
  */
-export function Tab({ kind, title, active = false, pinned = false, state, badge = false, compressed = false, hover = false, closeMode = 'close', tabIndex, wrapSelect, onSelect, onClose, onRename, onKeyDown, frame, id, inGroup = false, specimen = false, ...rest }: TabProps) {
+export function Tab({ kind, title, active = false, pinned = false, state, badge = false, compressed = false, hover = false, closeMode = 'close', closeHint, closeShortcut, tabIndex, wrapSelect, onSelect, onClose, onRename, onKeyDown, frame, id, inGroup = false, specimen = false, ...rest }: TabProps) {
   const select = (
-    <Button className="workspace-tab-select" role={specimen ? undefined : 'tab'} id={id} aria-controls={specimen ? undefined : 'workspace-tab-panel'} aria-selected={specimen ? undefined : active} aria-current={specimen && active ? true : undefined} aria-label={title} aria-description={state ? tabStateLabel[state] : undefined} tabIndex={tabIndex ?? (active ? 0 : -1)} onClick={onSelect} onDoubleClick={onRename} onKeyDown={onKeyDown}>
+    <Button className="workspace-tab-select" role={specimen ? undefined : 'tab'} id={id} aria-controls={specimen ? undefined : 'workspace-tab-panel'} aria-selected={specimen ? undefined : active} aria-current={specimen && active ? true : undefined} aria-label={title} aria-description={state ? tabStateLabel[state] : badge ? 'Needs you' : undefined} tabIndex={tabIndex ?? (active ? 0 : -1)} onClick={onSelect} onDoubleClick={onRename} onKeyDown={onKeyDown}>
       <TabGlyph kind={kind} title={title} state={state}/>
       {!pinned && !compressed && <span className="workspace-tab-title">{title}</span>}
       {badge && <span className="tab-badge" aria-hidden="true"/>}
@@ -78,7 +81,7 @@ export function Tab({ kind, title, active = false, pinned = false, state, badge 
   return (
     <div {...rest} {...frame} className={`workspace-tab ${pinned ? 'is-pinned' : ''} ${frame?.className ?? ''}`} data-active={active} data-kind={kind} data-state={state} data-hover={hover || undefined} data-compressed={compressed || undefined} data-in-group={inGroup || undefined}>
       {wrapSelect ? wrapSelect(select) : select}
-      {!pinned && !compressed && onClose && <span className="workspace-tab-close-slot"><IconButton className="workspace-tab-close" label={stop ? `Close and stop ${title}` : `Close ${title}`} title={stop ? 'Close and stop (⌥⌘W)' : undefined} icon={stop ? 'stop' : 'close'} iconSize="micro" tabIndex={active ? 0 : -1} onClick={onClose}/></span>}
+      {!pinned && !compressed && onClose && <span className="workspace-tab-close-slot"><IconButton className="workspace-tab-close" label={stop ? `Close and stop ${title}` : `Close ${title}`} title={closeHint} shortcut={closeShortcut} data-close-mode={closeMode} icon={stop ? 'stop' : 'close'} iconSize="micro" tabIndex={active ? 0 : -1} onClick={onClose}/></span>}
     </div>
   );
 }

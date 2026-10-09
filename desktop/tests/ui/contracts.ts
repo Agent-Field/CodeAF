@@ -7,10 +7,12 @@ export async function tokenColor(page: Page, token: string) {
   const color = getComputedStyle(probe).color; probe.remove(); return color;
  }, token);
 }
-export async function expectThemedSurface(page: Page, surface: Locator) {
+/** Menus follow the design's Context menu: `surface` and `ink`. Dialogs and listboxes keep the overlay surface. */
+export const menuSurface = { background: 'surface', ink: 'ink' } as const;
+export async function expectThemedSurface(page: Page, surface: Locator, tokens: { background: string; ink: string } = { background: 'overlay-surface', ink: 'text' }) {
  await expect(surface).toHaveCSS('opacity','1');
- await expect(surface).toHaveCSS('background-color', await tokenColor(page, 'overlay-surface'));
- await expect(surface).toHaveCSS('color', await tokenColor(page, 'text'));
+ await expect(surface).toHaveCSS('background-color', await tokenColor(page, tokens.background));
+ await expect(surface).toHaveCSS('color', await tokenColor(page, tokens.ink));
 }
 export async function expectAccessible(page: Page) {
  // Contrast is meaningful after entry/exit motion settles; transient opacity is not a theme color.
@@ -33,6 +35,7 @@ export async function expectAccessible(page: Page) {
 // color-contrast rule is waived for these exact selectors and for nothing else: every other axe rule still applies
 // to them, and every other element still has to pass color-contrast.
 export const INK3_TEXT = [
+ '.menu-item .keyboard-shortcut', '.tooltip-shortcut', '.inbox-head', '.inbox-meta', '.inbox-empty', '.closing-specimen-note',
  '.latest-pill-time', '.system-note', '.task-panel-count', '.earlier-row', '.summary-divider',
  '.composer-attach', '.composer-queue', '.model-picker', '.model-popover .keyboard-shortcut', '.model-popover-all', '.model-popover-effort-option',
  '.paste-card-lines', '.paste-card-preview', '.file-chip-dir', '.file-chip[data-state="missing"]', '.file-chip[data-state="outside"]', '.link-chip-domain',
