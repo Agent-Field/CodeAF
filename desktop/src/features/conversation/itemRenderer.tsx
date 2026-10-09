@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { AsideRow } from './AsideRow';
 import { TaskNotice } from './TaskNotice';
 import { ThinkingItem } from './ThinkingItem';
 import { ToolGroup } from './ToolGroup';
@@ -21,6 +22,7 @@ export function itemRenderer({ open, onToggle, readFull, onOpenTask }: RendererC
     if (item.kind === 'tools') return <ToolGroup item={item} open={expanded} onToggle={toggle} readFull={readFull} />;
     if (item.kind === 'thinking') return <ThinkingItem item={item} open={expanded} onToggle={toggle} />;
     if (item.kind === 'task') return <TaskNotice item={item} open={expanded} onToggle={toggle} onOpenTask={onOpenTask} />;
+    if (item.kind === 'aside') return <AsideRow item={item} open={expanded} onToggle={toggle} />;
     return null;
   };
 }

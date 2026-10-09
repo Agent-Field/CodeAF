@@ -5,6 +5,7 @@
 import type { EngineEntry, EngineSnapshot } from '../chat/engine-client.ts';
 import type { ConversationModel, ToolStep, Turn, TurnItem } from './types.ts';
 import type { LiveOverlay } from './live-overlay.ts';
+import { kindedAside, noteItem } from './aside-kind.ts';
 import { digestOf, firstSentence, parseTaskAside } from './transcript-parse.ts';
 
 export { digestOf } from './transcript-parse.ts';
@@ -26,6 +27,7 @@ function lastUnansweredTool(entries: EngineEntry[]): number {
 }
 
 function stepState(entry: EngineEntry, index: number, ctx: Ctx): ToolStep['state'] {
+  if (entry.Interrupted && (entry.Failed || !entry.Answered)) return 'stopped';
   if (entry.Failed) return 'failed';
   if (entry.Answered) return 'done';
   return ctx.snapshot.running && index === ctx.lastUnanswered ? 'running' : 'done';
@@ -40,6 +42,7 @@ function toStep(entry: EngineEntry, index: number, ctx: Ctx): ToolStep {
     args: entry.Args ?? '',
     output: entry.Output ?? '',
     state: stepState(entry, index, ctx),
+    entryIndex: index,
   };
 }
 
@@ -82,16 +85,18 @@ function rowByTitle(ctx: Ctx, title: string): TaskRowLike | undefined {
 }
 
 function asideItem(entry: EngineEntry, id: string, ctx: Ctx): TurnItem {
+  const kinded = kindedAside(entry, id);
+  if (kinded) return kinded;
   const parsed = parseTaskAside(entry.Text);
   const fields = entry as EngineEntry & AsideFields;
   const given = fields.TaskIDs?.[0];
-  if (!parsed && !given) return { kind: 'note', id, text: entry.Text };
+  if (!parsed && !given) return noteItem(id, entry.Text, true);
   // The canonical row outranks words parsed out of the note.
   const byId = rowById(ctx, given);
   const row = byId ?? rowByNote(ctx, entry.Text) ?? rowByTitle(ctx, parsed?.title ?? '');
   // A notice with no name cannot be read or opened; it is only a note.
   const title = row?.Title || parsed?.title || '';
-  if (!title) return { kind: 'note', id, text: entry.Text };
+  if (!title) return noteItem(id, entry.Text, true);
   const taskId = given ?? (row?.ID ? String(row.ID) : undefined);
   return {
     kind: 'task',
@@ -126,6 +131,7 @@ function lastTextOf(turn: Turn): string {
   }
   return '';
 }
+
 
 function project(snapshot: EngineSnapshot): ConversationModel {
   const ctx: Ctx = { snapshot, lastUnanswered: lastUnansweredTool(snapshot.entries) };
@@ -184,12 +190,23 @@ function overlayItems(turn: Turn, snapshot: EngineSnapshot, live: LiveOverlay): 
   return out;
 }
 
+/** The snapshot recorded this very call after the overlay began: drawing it again would double the row. */
+function alreadyRecorded(turn: Turn, live: LiveOverlay): boolean {
+  const { tool, hint } = live.activeTool ?? { tool: '', hint: '' };
+  return turn.items.some(
+    (item) =>
+      item.kind === 'tools' &&
+      item.steps.some((s) => s.tool === tool && s.hint === hint && (s.entryIndex ?? -1) >= live.turnBaseEntries),
+  );
+}
+
 function liveStep(live: LiveOverlay, turn: Turn): ToolStep | undefined {
   if (!live.activeTool) return undefined;
   // A recorded call still waiting on its result is this live step already drawn.
   const recordedRunning = turn.items.some((item) => item.kind === 'tools' && item.steps.some((s) => s.state === 'running'));
   if (recordedRunning) return undefined;
   const { tool, hint } = live.activeTool;
+  if (alreadyRecorded(turn, live)) return undefined;
   return { id: `${turn.id}:live-tool`, tool, hint, args: '', output: '', state: 'running' };
 }
 

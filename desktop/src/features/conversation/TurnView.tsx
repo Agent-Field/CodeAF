@@ -20,7 +20,7 @@ type ItemProps = { item: TurnItem; renderItem: TurnViewProps['renderItem']; onRe
 
 function BuiltInItem({ item, onRetry }: Omit<ItemProps, 'renderItem'>) {
   if (item.kind === 'text') return item.text ? <Markdown>{item.text}</Markdown> : null;
-  if (item.kind === 'note') return <NoteItem text={item.text} />;
+  if (item.kind === 'note') return <NoteItem text={item.text} long={item.long} />;
   if (item.kind === 'error') return <ErrorItem text={item.text} onRetry={onRetry} />;
   if (item.kind === 'steer') return <UserMessage text={item.text} />;
   return null;
@@ -51,6 +51,15 @@ function FoldedTurn({ turn, onToggleFold }: Pick<TurnViewProps, 'turn' | 'onTogg
         )}
       </span>
     </Button>
+  );
+}
+
+function Stopped() {
+  return (
+    <div className="turn-stopped" role="status">
+      <Icon name="cancelled" size="sm" />
+      <span>Stopped</span>
+    </div>
   );
 }
 
@@ -95,6 +104,7 @@ export function TurnView({ turn, folded, onToggleFold, renderItem, onRetry, user
         <Item key={item.id} item={item} renderItem={renderItem} onRetry={onRetry} />
       ))}
       {waiting && <Working />}
+      {turn.state === 'stopped' && <Stopped />}
       {reply && (
         <div className="turn-actions">
           <CopyButton text={reply} label="Copy reply" />

@@ -8,6 +8,13 @@ type Props = { step: ToolStep; open: boolean; onToggle: () => void; readFull?: R
 
 function StateMark({ state }: { state: ToolStep['state'] }) {
   if (state === 'running') return <WorkStateIndicator phase="working" label="Running" />;
+  if (state === 'stopped') {
+    return (
+      <span className="tool-mark" role="img" aria-label="Stopped">
+        <Icon name="cancelled" size="xs" />
+      </span>
+    );
+  }
   if (state !== 'failed') return null;
   return (
     <span className="tool-mark tool-mark-failed" role="img" aria-label="Failed">
