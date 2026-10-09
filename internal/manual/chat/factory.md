@@ -728,8 +728,11 @@ goes on:
   `manager set review: thorough on security, code and architecture · added arch after review ·
   why: touches the call row`, and the item page's stages redraw;
 - when it changes nothing, the line is `the recipe stands`;
-- when its turn fails or takes longer than a minute (another window holds the conversation, say),
-  the line is `the manager did not answer · the recipe stands`, and the recipe runs as it is;
+- when its turn fails or takes longer than a minute, the line is
+  `the manager did not answer · the recipe stands`, and the recipe runs as it is;
+- when the manager's window was in the middle of answering you, the runner waits for that answer,
+  asks once more, and if it is still busy the line is
+  `the manager was busy in the window · the recipe stands`;
 - when the bounds refuse what it set, the line is
   `the manager's change was not applied: <why> · the recipe stands`.
 
@@ -737,6 +740,12 @@ With `ask me at` plan and a change made, the run then stops before the first sta
 `run these stages? <what it set>` (see run these stages?). An item the manager already shaped
 because you talked to it first (see tell the manager what you want before it runs) is not shaped
 again: that is the run's shape.
+
+Talking first in the window still shapes: if you told the manager what you want and pressed `r`
+with its conversation still open, the shaping turn runs in that same window, so you see the
+manager think, at the thinking you set there. If the conversation is open in another codeaf
+instead (a window on the engine host), the runner cannot give it a turn, and the line is
+`the manager is open in another window · the recipe stands`.
 
 Mid-way the same happens on a smaller scale: each line you say to the manager is the steer, as
 always (see talk to the manager), and the manager is also given one turn,
