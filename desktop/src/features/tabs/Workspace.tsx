@@ -12,6 +12,7 @@ import { focusedPane, panesOf, readWorkspace, storageKey, visibleTabs, workspace
 import { PaneGrid } from './PaneGrid';
 import { TabOverview } from './TabOverview';
 import { TabStrip } from './TabStrip';
+import { useTerminalTabs } from '../terminal/useTerminalTabs';
 import { useDesktopTabActions, useTabKeys, type Switcher } from './useTabKeys';
 import './workspace.css';
 
@@ -71,6 +72,7 @@ export function Workspace({ enabled, onActivate, leading }: Props) {
   }
   function startRename(id: string, group = false) { setRename({ id, group, value: (group ? state.groups : state.tabs).find(item => item.id === id)?.title ?? '' }); }
   useTabKeys({ enabled, state, dispatch, visible, overviewOpen, setOverviewOpen, closeTab, switcherRef, setSwitcher });
+  useTerminalTabs({ enabled, state, dispatch });
   useDesktopTabActions({ state, dispatch, visible, renaming: !!rename, onActivate, closeTab, setOverviewOpen });
 
   const api: TabsApi = { state, dispatch, summaries, now, closeTab, startRename, overlayOpen: !!switcher || overviewOpen || !!rename };
