@@ -71,6 +71,10 @@ export function TabsSpecimen() {
           <SplitTab specimen active focus={0} segments={[{ id: 'a', kind: 'conversation', title: 'Config' }, { id: 'b', kind: 'task', title: 'Fixtures' }]}/>
         </span>
         <span className="tabs-specimen-item">Compressed<Tab specimen kind="terminal" title="nightly-bench" compressed tabIndex={-1}/></span>
+        <span className="tabs-specimen-item">Picked for ⌘G
+          <Tab specimen kind="conversation" title="Config stack" active tabIndex={-1}/>
+          <Tab specimen kind="task" title="Fixtures" picked tabIndex={-1}/>
+        </span>
       </div>
       <div className="tabs-specimen-rule"/>
       <span className="tabs-specimen-label">Drag a tab: the middle of a tab under it is the Group target, an edge marks a reorder; the content shows a split zone and pill</span>

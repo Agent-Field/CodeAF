@@ -161,7 +161,8 @@ test('⌘T, ⌘W, ⌘⇧T, ⌘1–9 and ⌃Tab', async ({ page }) => {
   await expect(tabs(page)).toHaveCount(2);
   await page.keyboard.press(`${mod}+Shift+t`);
   await expect(tabs(page)).toHaveCount(3);
-  expect(await selectedIndex(page)).toBe(2);
+  // ⌘⇧T puts the closed first tab back where it stood, not at the end of the strip.
+  expect(await selectedIndex(page)).toBe(0);
 });
 
 test('⌘W leaves a pinned tab open', async ({ page }) => {

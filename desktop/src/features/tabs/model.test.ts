@@ -72,13 +72,15 @@ test('close a background tab keeps the active one; closing the last member remov
   assert.equal(next.groups.length, 0);
 });
 
-test('reopen restores the last closed tab with its draft, into its group when that still exists', () => {
+test('reopen restores the last closed tab with its draft, in its group even when closing emptied the group', () => {
   const s = state([tab('a'), tab('b', { draft: 'keep', groupId: 'g' })], { groups: [{ id: 'g', title: 'G', collapsed: false }] });
   const closed = run(s, { type: 'close', id: 'b' });
+  assert.deepEqual(closed.groups, []);
   const back = run(closed, { type: 'reopen' });
   assert.equal(only(back, 'b').draft, 'keep');
   assert.equal(back.activeId, 'b');
-  assert.equal(only(back, 'b').groupId, undefined);
+  assert.equal(only(back, 'b').groupId, 'g');
+  assert.deepEqual(back.groups, [{ id: 'g', title: 'G', collapsed: false }]);
   assert.equal(run(s, { type: 'reopen' }), s);
 });
 
@@ -123,11 +125,14 @@ test('view and draft update the tab, or the pane inside a split', () => {
   assert.equal(panes[0].draft, '');
 });
 
-test('reorder moves a tab before its target and adopts its pin and group', () => {
-  const s = state([tab('a'), tab('b'), tab('c', { pinned: true })]);
-  const next = run(s, { type: 'reorder', id: 'a', targetId: 'c' });
-  assert.deepEqual(ids(next), ['b', 'a', 'c']);
-  assert.equal(only(next, 'a').pinned, true);
+test('reorder moves a tab before its target and never changes its pin', () => {
+  const s = state([tab('c', { pinned: true }), tab('a'), tab('b')]);
+  const next = run(s, { type: 'reorder', id: 'b', targetId: 'a' });
+  assert.deepEqual(ids(next), ['c', 'b', 'a']);
+  // Dropped on a pinned tab, a loose tab stays loose at the head of the loose tabs.
+  const onPinned = run(s, { type: 'reorder', id: 'b', targetId: 'c' });
+  assert.deepEqual(ids(onPinned), ['c', 'b', 'a']);
+  assert.equal(only(onPinned, 'b').pinned, false);
   assert.equal(run(s, { type: 'reorder', id: 'a', targetId: 'a' }), s);
   assert.equal(run(s, { type: 'reorder', id: 'a', targetId: 'zzz' }), s);
 });
@@ -300,7 +305,9 @@ test('a v1 save (no kind, no split) loads with every tab a conversation', () => 
     const s = readWorkspace();
     assert.deepEqual(s.tabs.map(t => t.kind), ['conversation', 'conversation']);
     assert.equal(s.activeId, 'b');
-    assert.equal(s.tabs[1].sessionFile, 's.jsonl');
+    // The pinned tab stands first, as the strip always drew it.
+    assert.deepEqual(s.tabs.map(t => t.id), ['b', 'a']);
+    assert.equal(only(s, 'b').sessionFile, 's.jsonl');
   });
 });
 

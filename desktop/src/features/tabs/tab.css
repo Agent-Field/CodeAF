@@ -2,6 +2,8 @@
 .workspace-tab { position: relative; display: flex; align-items: center; flex: 0 1 auto; width: var(--tab-max-width); min-width: var(--tab-min-width); max-width: var(--tab-max-width); height: var(--tab-height); border-radius: var(--radius-control); background: transparent; color: var(--ink-2); font-size: var(--font-size-body); line-height: var(--line-height-tight); transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); animation: tab-enter var(--duration-overlay) var(--ease-overlay); }
 .workspace-tab:hover, .workspace-tab[data-hover] { background: var(--tab-hover); color: var(--ink); }
 .workspace-tab[data-active="true"] { background: var(--canvas); box-shadow: var(--sh-1); color: var(--ink); }
+/* Picked for ⌘G (⌘-click): the field fill, one step past hover, so a picked tab still reads under the pointer. */
+.workspace-tab[data-picked] { background: var(--field); color: var(--ink); }
 /* An inactive tab that needs you lifts its title to full ink. */
 .workspace-tab[data-state="waiting"] { color: var(--ink); }
 

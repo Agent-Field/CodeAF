@@ -7,6 +7,8 @@ export const tabShortcuts = {
  new: formatShortcut('⌘/Ctrl T'),
  close: formatShortcut('⌘/Ctrl W'),
  reopen: formatShortcut('⌘/Ctrl ⇧ T'),
+ /** Groups the active tab with the tabs picked by ⌘-click (Interactions, Shortcuts: "⌘G Group selected tabs"). */
+ group: formatShortcut('⌘/Ctrl G'),
  switch: isMac ? '⌃ Tab' : 'Ctrl Tab',
  switchBack: isMac ? '⌃ ⇧ Tab' : 'Ctrl Shift Tab',
 };
@@ -43,7 +45,7 @@ type KeyEvent = Pick<KeyboardEvent, 'key' | 'code' | 'metaKey' | 'ctrlKey' | 'sh
  * messages in a chat. ⌘/Ctrl B for the rail keeps working beside ⌘S.
  */
 export type ShortcutId =
- | 'new' | 'close' | 'reopen' | 'next' | 'previous' | 'switch' | 'switch-back' | 'jump'
+ | 'new' | 'close' | 'reopen' | 'group' | 'next' | 'previous' | 'switch' | 'switch-back' | 'jump'
  | 'terminal' | 'overview' | 'turn-previous' | 'turn-next' | 'history' | 'tasks' | 'rail' | 'focus' | 'palette' | 'models' | 'model-pin' | 'settings'
  /** Places (Interactions "Shortcuts"): ⌘P Go to a place, ⌘⇧P All places, ⌘0 this place's Home, ⌘⇧W close this place,
   * ⌘N a new window on Now, ⌘Z undo the last structural action. `place-jump` carries the rail slot: 0 is Now, 1–9 the
@@ -126,6 +128,7 @@ export function shortcutOf(event: KeyEvent, platform: boolean | ShortcutContext 
  if (key === 'z' && !isEditable(event.target)) return { id: 'undo' };
  if (key === 't') return { id: 'new' };
  if (key === 'w') return { id: 'close' };
+ if (key === 'g') return { id: 'group' };
  if (key === 's' || key === 'b') return { id: 'rail' };
  if (key === 'y') return { id: 'history' };
  if (key === 'k') return { id: 'palette' };

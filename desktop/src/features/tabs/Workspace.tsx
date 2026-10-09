@@ -80,7 +80,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   }
   function openTaskTab(source: Pane, taskId: string, title: string) {
     const tab: Tab = { id: crypto.randomUUID(), kind: 'task', title, titleSource: 'manual', pinned: false, draft: '', sessionFile: source.sessionFile, route: { taskId, back: [''], forward: [] } };
-    dispatch({ type: 'open', tab, background: true });
+    dispatch({ type: 'open-task', tab, background: true, from: source.id });
   }
   /**
    * Opens a saved conversation by its chat id, the way a Home row does: the tab already showing its journal is selected,
