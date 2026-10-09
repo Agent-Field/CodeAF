@@ -38,6 +38,7 @@ export type WorkspaceSync = {
   setScroll: (paneId: string, top: number) => void;
   /** Same-place Move to new window: moves this window's focus off the tab; answers what the new window should focus. */
   handoff: WorkspaceController['handoff'];
+  receiveTransfer: WorkspaceController['receiveTransfer'];
 };
 
 function build(options: WorkspaceSyncOptions): WorkspaceController {
@@ -114,6 +115,6 @@ export function useWorkspaceSync(options: WorkspaceSyncOptions): WorkspaceSync {
   return useMemo(() => ({
     state, status,
     dispatch: controller.dispatch, retry: controller.retry, acknowledge: controller.acknowledge,
-    scrollOf: controller.scrollOf, setScroll: controller.setScroll, handoff: controller.handoff,
+    scrollOf: controller.scrollOf, setScroll: controller.setScroll, handoff: controller.handoff, receiveTransfer: controller.receiveTransfer,
   }), [state, status, controller]);
 }

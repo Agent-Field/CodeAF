@@ -349,3 +349,72 @@ test('picked group intent survives offline reload and another window rebase', as
     w.stop();
   }
 });
+
+test('a second window late draft follows the durable relocation and survives reload without resurrecting its source tab', async () => {
+  const { engine, time, a, b, saved } = await twoWindows('home', 'moving', 'other');
+  const destination = 'pl_0123456789abcdef';
+  const original = engine.doc('now')!.workspace as import('./shared.ts').SharedWorkspace;
+  engine.write(destination, { ...original, tabs: [tab('place-home'), original.tabs[1]] });
+  b.dispatch({ type: 'draft', id: 'moving', draft: 'words typed before the transfer answer' });
+  engine.write('now', { ...original, tabs: original.tabs.filter(t => t.id !== 'moving') }, { moving: destination });
+  await time.advance(100);
+  const there = engine.doc(destination)!.workspace as import('./shared.ts').SharedWorkspace;
+  assert.equal(there.tabs.find(t => t.id === 'moving')?.draft, 'words typed before the transfer answer');
+  assert.deepEqual(ids(a.getState()), ['home', 'other']);
+  assert.deepEqual(ids(b.getState()), ['home', 'other']);
+  assert.equal(saved['win-b'].pending.length, 0, 'retired only after destination write acknowledgment');
+  assert.equal(b.getStatus().overtaken, 0);
+  assert.ok(engine.calls.every(call => call.path.startsWith('/workspaces/')), 'no session stop or model request');
+  a.stop(); b.stop();
+  const reloaded = createWorkspaceController({ key: 'now', client: engine.client(), writer: 'win-b', initial: seed('fallback'), persisted: saved['win-b'], clock: time.clock });
+  reloaded.start(); await time.advance(50);
+  assert.deepEqual(ids(reloaded.getState()), ['home', 'other']);
+  reloaded.stop();
+});
+
+test('a missing relocation hint preserves an unresolved late draft locally and reports refusal', async () => {
+  const { engine, time, a, b, saved } = await twoWindows('home', 'moving');
+  b.dispatch({ type: 'draft', id: 'moving', draft: 'do not lose these words' });
+  const original = engine.doc('now')!.workspace as import('./shared.ts').SharedWorkspace;
+  engine.write('now', { ...original, tabs: original.tabs.filter(t => t.id !== 'moving') });
+  await time.advance(100);
+  assert.equal(b.getStatus().code, 'relocation_missing');
+  assert.equal(saved['win-b'].pending[0]?.action.type, 'draft');
+  assert.equal((saved['win-b'].pending[0]?.action as { draft: string }).draft, 'do not lose these words');
+  assert.deepEqual(ids(b.getState()), ['home']);
+  a.stop(); b.stop();
+});
+
+test('late-draft forwarding rebases a destination CAS race and retries a lost acknowledgment without duplicate tabs', async () => {
+  const engine = createTestEngine(), time = createManualClock();
+  const destination = 'pl_0123456789abcdef';
+  const sourceDoc = { schema: 1 as const, tabs: [tab('home'), tab('moving')], groups: [], closed: [], nextNumber: 3 };
+  engine.write('now', sourceDoc);
+  engine.write(destination, { ...sourceDoc, tabs: [tab('place-home'), tab('moving')] });
+  const original = engine.client();
+  let raced = false;
+  const racing = { ...original, put: async (...args: Parameters<typeof original.put>) => {
+    if (args[0] === destination && !raced) {
+      raced = true;
+      const current = engine.doc(destination)!.workspace as import('./shared.ts').SharedWorkspace;
+      engine.write(destination, { ...current, tabs: [...current.tabs, tab('other-window-later')] });
+    }
+    return original.put(...args);
+  } };
+  let saved: Persisted | undefined;
+  const window = createWorkspaceController({ key: 'now', client: racing, writer: 'late-writer', initial: seed('fallback'), clock: time.clock, persist: value => { saved = structuredClone(value); }, saveDelayMs: 10 });
+  window.start(); await time.advance(30);
+  window.dispatch({ type: 'draft', id: 'moving', draft: 'latest queued words' });
+  engine.write('now', { ...sourceDoc, tabs: [tab('home')] }, { moving: destination });
+  engine.loseNextAnswer();
+  await time.advance(100);
+  assert.ok(saved!.pending.length, 'lost answer leaves the intent durable locally');
+  assert.equal(window.getStatus().phase, 'offline');
+  await time.advance(5000);
+  const current = engine.doc(destination)!.workspace as import('./shared.ts').SharedWorkspace;
+  assert.deepEqual(current.tabs.map(t => t.id), ['place-home', 'moving', 'other-window-later']);
+  assert.equal(current.tabs.find(t => t.id === 'moving')?.draft, 'latest queued words');
+  assert.equal(saved!.pending.length, 0);
+  assert.deepEqual(ids(window.getState()), ['home']);
+  window.stop();
+});

@@ -193,7 +193,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
 
   const api: TabsApi = { workspaceKey: place, state, dispatch, summaries, now, closeTab, closeAndStop, closeMany: closing.closeMany, isRunning: closing.isRunning, background, markFailedSeen, openChat: onOpenChat ?? openChatHere, canOpenChat: id => !!worldStore.getState().rows.find(row => row.session === id)?.sessionFile, actions, reopenClosed: closing.reopenClosed, startRename, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename,
     placeTint: place === 'now' ? undefined : placeTint, placeMenu, placeSwitcher };
-  const newTabHost = { state, summaries, dispatch, closeTab };
+  const newTabHost = { state, summaries, dispatch, closeTab, receiveTransfer: sync.receiveTransfer };
   const actionsFor = (pane: Pane): PaneActions => ({
     onDraft: draft => dispatch({ type: 'draft', id: pane.id, draft }),
     onView: change => dispatch({ type: 'view', id: pane.id, change }),

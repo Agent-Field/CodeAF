@@ -606,9 +606,11 @@ func (p *Places) deletePreview(w http.ResponseWriter, id string) {
 }
 
 type chatPlacesResponse struct {
-	ChatID string           `json:"chatId"`
-	Known  bool             `json:"known"`
-	Places []chatMembership `json:"places"`
+	Workspace   string           `json:"workspace,omitempty"`
+	SessionFile string           `json:"sessionFile,omitempty"`
+	ChatID      string           `json:"chatId"`
+	Known       bool             `json:"known"`
+	Places      []chatMembership `json:"places"`
 }
 
 type chatMembership struct {
@@ -626,6 +628,10 @@ func (p *Places) chatPlaces(w http.ResponseWriter, chatID string) {
 		return
 	}
 	out := chatPlacesResponse{ChatID: chatID, Known: x.knowsChat(p, chatID), Places: []chatMembership{}}
+	if row := x.rows[chatID]; row != nil {
+		out.Workspace = row.Workspace
+		out.SessionFile = row.Transcript
+	}
 	for _, m := range x.snap.PlacesOf(chatID) {
 		pl, found := x.snap.Place(m.PlaceID)
 		if !found {

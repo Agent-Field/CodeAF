@@ -144,6 +144,8 @@ export function createWorkspaceController(options: ControllerOptions) {
   let revision = saved?.revision ?? 0;
   let pending: Entry[] = [...(saved?.pending ?? []), ...(options.adopted ?? [])];
   let inflight: Entry[] | null = null;
+  let relocating = false;
+  let movedTo: Record<string, WorkspaceKey> = {};
   let local: WindowLocal = saved?.local ? { ...emptyLocal(), ...saved.local } : emptyLocal();
   let requestedFocus = options.focus;
   if (options.focus) local = { ...local, activeId: options.focus };
@@ -220,6 +222,8 @@ export function createWorkspaceController(options: ControllerOptions) {
       if (draft && !paneById(state, draft.id)) {
         const rescued = keepDraftOnClosed(state, draft.id, draft.draft);
         if (rescued) { state = rescued; kept.push(entry); continue; }
+        // Keep a late draft until its canonical destination acknowledges it, even if a relocation hint is missing.
+        kept.push(entry); continue;
       }
       // Still a change only if it sits on what it changed; otherwise another window's edit overtook it.
       if (draft ? !paneById(state, draft.id) : true) overtaken++;
@@ -315,7 +319,49 @@ export function createWorkspaceController(options: ControllerOptions) {
 
   /** Sends the queue as one compare-and-swap write. One write is in flight at a time. */
   async function save(): Promise<void> {
-    if (stopped || readOnly || !loaded || inflight) return;
+    if (stopped || readOnly || !loaded || inflight || relocating) return;
+    const outgoing = pending.filter(entry => { const action = entry.action; return action.type === 'draft' && !paneById(view, action.id) && !view.closed.some(tab => tab.id === action.id || tab.split?.panes.some(p => p.id === action.id)); });
+    if (outgoing.length) {
+      relocating = true;
+      try {
+        for (const entry of outgoing) {
+          if (entry.action.type !== 'draft') continue;
+          const action = entry.action;
+          let target = movedTo[action.id];
+          if (!target) throw new WorkspaceSyncError('A draft is kept here until codeaf can find its moved tab.', 409, 'relocation_missing');
+          const seen = new Set<WorkspaceKey>([key]);
+          let confirmed = false;
+          let overtookDraft = false;
+          for (let attempt = 0; attempt < 12 && !confirmed; attempt++) {
+            if (seen.has(target)) throw new WorkspaceSyncError('A moved tab location could not be confirmed.', 409, 'relocation_missing');
+            const record = await client.get(target);
+            if (!record.workspace) throw new WorkspaceSyncError('A draft is kept here until its moved tab is available.', 409, 'relocation_missing');
+            let destination = compose(record.workspace, emptyLocal());
+            const currentDraft = paneById(destination, action.id)?.draft;
+            if (entry.prior !== undefined && currentDraft !== undefined && currentDraft !== entry.prior && currentDraft !== action.draft) overtookDraft = true;
+            if (!paneById(destination, action.id)) {
+              const closed = keepDraftOnClosed(destination, action.id, action.draft);
+              if (closed) destination = closed;
+              else if (record.movedTo?.[action.id]) { seen.add(target); target = record.movedTo[action.id]; continue; }
+              else throw new WorkspaceSyncError('A draft is kept here until its moved tab is available.', 409, 'relocation_missing');
+            } else destination = reduce(destination, action);
+            const result = await client.put(target, record.revision, writer, sharedOf(destination));
+            if (result.kind === 'saved') confirmed = true;
+          }
+          if (!confirmed) throw new WorkspaceSyncError('The moved tab is busy. Its draft is kept here for retry.', 409, 'busy');
+          if (overtookDraft) setStatus({ overtaken: status.overtaken + 1 });
+          pending = pending.filter(current => current !== entry);
+          persistNow();
+        }
+      } catch (failure) {
+        const error = failure instanceof WorkspaceSyncError ? failure : new WorkspaceSyncError('The moved draft could not be saved.', 0, '', true);
+        setStatus({ phase: error.unreachable || error.code === 'busy' ? 'offline' : 'refused', code: error.code, error: error.message });
+        persistNow(); notify();
+        if (error.unreachable || error.code === 'busy') scheduleSave(backoff());
+        return;
+      } finally { relocating = false; }
+      rebuild(); setStatus({ phase: pending.length ? 'saving' : 'saved', error: undefined, code: undefined });
+    }
     if (base && !pending.length) { settleIfIdle(); notify(); return; }
     const document = sharedOf(view);
     if (new TextEncoder().encode(JSON.stringify(document)).length > limits.documentBytes) {
@@ -370,6 +416,7 @@ export function createWorkspaceController(options: ControllerOptions) {
   /** Takes a record the engine answered with as the confirmed tab set. */
   function adoptRecord(record: WorkspaceRecord) {
     revision = record.revision;
+    movedTo = record.movedTo ?? {};
     if (!record.workspace) {
       // The engine has nothing (or a file it could not read): this window's tab set becomes the first saved one.
       base = undefined;
@@ -457,6 +504,13 @@ export function createWorkspaceController(options: ControllerOptions) {
     getStatus: () => status,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     dispatch,
+    /** A paired transfer answer is authoritative; preserve this window's queued edits while adopting it. */
+    receiveTransfer(record: WorkspaceRecord, incoming?: Pick<WindowLocal, 'focus' | 'scroll'>) {
+      if (record.key !== key || record.revision < revision) return;
+      if (incoming) local = { ...local, focus: { ...local.focus, ...incoming.focus }, scroll: { ...local.scroll, ...incoming.scroll } };
+      adoptRecord(record); setStatus({}); persistNow(); notify();
+      if (pending.length) scheduleSave(0);
+    },
     /** Starts reading and mirroring. Returns the stop function. */
     start() {
       if (stopped) { stopped = false; void load(); }

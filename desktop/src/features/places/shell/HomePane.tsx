@@ -14,6 +14,7 @@ import { homeViewFromDigest } from './selectors';
 import './home-pane.css';
 import { usePlaceOffers } from '../usePlaceOffers';
 import { PlaceOfferLine } from '../PlaceOfferLine';
+import { FirstPlaceTabOffer } from '../FirstPlaceTabOffer';
 
 type Read = { digest?: HomeDigest; unplaced?: HomeDigest; failure?: PlacesError | Error };
 
@@ -89,7 +90,7 @@ export function HomePane({ pane, focused, actions: paneActions }: PaneRenderProp
     ? <HomeComposer shell={shell} placeId={view.id} placeName={view.title} draft={pane.draft} onDraft={paneActions.onDraft} dispatch={strip.dispatch} offline={connection.state === 'offline'}/>
     : undefined;
   return <div className="home-pane">
-    <HomePage view={view} connection={connection} actions={homeActions} composer={composer} now={now} newWindowHint={placeShortcuts.openInNewWindow} suggestion={proposal && offerName && connection.state === 'ready' ? <PlaceOfferLine key={proposal.id} proposal={proposal} text={`${proposal.chatIds?.length} of these look like they belong in ${offerName}`} action={proposal.kind === 'create' ? `Create ${offerName}` : 'Move them'} onSettled={offers.refresh}/> : undefined}/>
+    <HomePage view={view} connection={connection} actions={homeActions} composer={composer} now={now} newWindowHint={placeShortcuts.openInNewWindow} suggestion={proposal && offerName && connection.state === 'ready' ? <PlaceOfferLine key={proposal.id} proposal={proposal} text={`${proposal.chatIds?.length} of these look like they belong in ${offerName}`} action={proposal.kind === 'create' ? `Create ${offerName}` : 'Move them'} onSettled={offers.refresh}/> : read.digest?.kind === 'place' ? <FirstPlaceTabOffer key={id} digest={read.digest} active={focused}/> : undefined}/>
     {looking && <PlaceQuickLook id={looking} actions={homeActions} onClose={() => setLooking(undefined)}/>}
   </div>;
 }
