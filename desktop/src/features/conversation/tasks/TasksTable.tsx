@@ -8,7 +8,7 @@ import { liveStep, rowAge, waitsText } from './rowText';
 import {
   costText, FILTERS, filterTree, groupCount, metaParts, stateWord, stepsText, stripCounts, tabCounts, totals, waitReason,
   type StripCounts, type TableFilter,
-} from './tasksTable';
+} from './tasksTableModel';
 import { useNow } from './useNow';
 import './tasks-table.css';
 

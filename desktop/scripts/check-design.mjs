@@ -16,6 +16,21 @@ function walk(dir) {
  }
 }
 walk('src');
+// macOS and Windows file systems ignore case, so "./TasksTable" can resolve to tasksTable.ts there and
+// blank the app while Linux builds stay green. Module names in one folder must differ by more than case.
+function caseClashes(dir) {
+ const seen = new Map();
+ for (const entry of readdirSync(dir, { withFileTypes: true })) {
+  if (entry.isDirectory()) { caseClashes(`${dir}/${entry.name}`); continue; }
+  // Stylesheets are imported with their extension, so only script modules can shadow each other.
+  if (!/\.tsx?$/.test(entry.name)) continue;
+  const stem = entry.name.replace(/(\.test)?\.tsx?$/, '');
+  const prior = seen.get(stem.toLowerCase());
+  if (prior !== undefined && prior !== stem) errors.push(`${dir}: ${prior} and ${stem} differ only by case; rename one.`);
+  seen.set(stem.toLowerCase(), stem);
+ }
+}
+caseClashes('src');
 const lightKeys = Object.keys(design.themes.light).sort();
 if (JSON.stringify(lightKeys) !== JSON.stringify(Object.keys(design.themes.dark).sort())) errors.push('tokens.json: Light and Dark must define the same semantic colors.');
 if (!design.tints.hues[design.tints.default]) errors.push('tokens.json: the default tint must be one of tints.hues.');
