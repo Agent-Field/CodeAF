@@ -85,7 +85,7 @@ summarized" divider (§3.5) draws only after an engine compaction.
   `Interrupted:true` → cut off.
 - Look: conversation rhythm, full ink, Markdown, but preceded by a tiny muted
   eyebrow "Update" and a 2px left rule in the accent at 30%. Not a bubble.
-- Cut off: ends with a muted "— cut off" suffix.
+- Cut off: ends with a muted "— cut off" suffix, set on the line of the last words.
 
 ### 2.4 Narration (the AI thinking out loud between tool calls)
 - Data: assistant entry with `Answer:false, Addressed:false` that is followed by tool calls.
@@ -107,7 +107,7 @@ label + Copy, wraps), links (§5.2), file references (§5.1), images (§5.3),
 horizontal rule. Raw HTML stays off. Mermaid/math: not now.
 
 ### 2.7 Turn footer
-- Stopped: muted line with the cancelled mark: "Stopped".
+- Stopped: muted line with the circle-slash mark (the registry's ban): "Stopped".
 - Failed: warning text + "Retry" (resends the last message; draft kept).
 - Retrying (raw kind 33): muted "Retrying — the provider was busy" while it retries; withdraws drawn text.
 - Copy answer, and (hover) "Worked 42s" link that opens the work block.
@@ -124,7 +124,9 @@ horizontal rule. Raw HTML stays off. Mermaid/math: not now.
   (only the parts that exist — emptiness law).
 - Live (running): open, showing the steps so far and the current step at the
   bottom with its live caption and a still running mark; collapses itself when
-  the answer starts streaming.
+  the answer starts streaming. The running step is one row (still mark, title,
+  clock) with the command in flight beneath it in mono; opening it lists its calls.
+  A step that is forming or waiting on the person opens by itself.
 - Stays outside the fold: tool rows waiting on a decision, failed steps in the
   last step, steers.
 
@@ -184,8 +186,8 @@ horizontal rule. Raw HTML stays off. Mermaid/math: not now.
 - Session notes to the model (`Role:"aside"`, e.g. "while you worked: A note from
   the session, not from the person: …"): drawn in a person's words. The batching
   label, the lead that instructs the model and `file://` transcript links are
-  never drawn; a note of more than one line shows its first line and folds the
-  rest under Show.
+  never drawn; a note of more than one line is one disclosure line (chevron and
+  its first line, design v3 Turn footer · System notes) that opens to the rest.
 - Job finished (`AsideKind:"job"`): muted row "Background job finished ·
   `AsideTitle`", expandable body.
 - Watch fired (`AsideKind:"watch"`): muted row "Watch fired", expandable.

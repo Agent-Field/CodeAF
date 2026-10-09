@@ -58,6 +58,7 @@ export function ConversationTranscript(props: Props) {
         folded={isFold}
         onToggleFold={() => onToggleFold(turn.id, !isFold)}
         renderBlock={renderFor(turn)}
+        onOpenWork={(ids) => ids.filter((id) => !props.open[id]).forEach(props.onToggle)}
         renderAttachment={renderAttachment}
         onRetry={turn.id === lastId ? onRetry : undefined}
       />

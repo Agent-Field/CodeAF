@@ -13,9 +13,10 @@ import { WorkStepView } from './WorkStepView';
 // `open`/`onToggle` are optional: without them the block follows `live` on its own.
 type Props = WorkRender & { block: WorkBlock; open?: boolean; onToggle?: () => void; now?: number };
 
-const LIVE_STATES: WorkStep['state'][] = ['preparing', 'running', 'waiting'];
+const LIVE_STATES: WorkStep['state'][] = ['preparing', 'waiting'];
 
-/** Steps unfold by default while they are the live edge or need the person; a failed last step stays open. */
+/** Steps unfold by default while one is forming or needs the person; a failed last step stays open.
+ * A running step stays one row with its live command under it (design v3 Work block · Live). */
 function openByDefault(step: WorkStep, last: boolean): boolean {
   return LIVE_STATES.includes(step.state) || (last && step.state === 'failed');
 }

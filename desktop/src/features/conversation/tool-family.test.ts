@@ -13,11 +13,13 @@ test('arguments with anything the hint lacks are kept', () => {
   assert.equal(argsRestateHint('not json', 'ls'), false);
 });
 
-test('listing tools use the folder mark, searches the file-search mark', () => {
+test('listing tools use the folder mark; searches, reads, edits and images the marks the design draws', () => {
   assert.equal(toolIcon('ls'), 'folder');
   assert.equal(toolIcon('list_files'), 'folder');
-  assert.equal(toolIcon('grep'), 'findFiles');
-  assert.equal(toolIcon('read_file'), 'file');
+  assert.equal(toolIcon('grep'), 'search');
+  assert.equal(toolIcon('read_file'), 'book');
+  assert.equal(toolIcon('edit'), 'pencil');
+  assert.equal(toolIcon('generate_image'), 'sparkles');
 });
 
 test('the hint drops the tool word the row already shows', () => {

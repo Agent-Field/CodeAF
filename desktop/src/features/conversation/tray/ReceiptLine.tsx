@@ -18,7 +18,7 @@ function answeredText(text: string): ReactNode {
   return (
     <>
       <span className="receipt-label">{text.slice(0, at)}</span>{' '}
-      <span className="receipt-rest">{text.slice(at + SEPARATOR.length)}</span>
+      <span className="receipt-rest">{`· ${text.slice(at + SEPARATOR.length)}`}</span>
     </>
   );
 }

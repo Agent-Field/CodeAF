@@ -34,13 +34,18 @@ function TargetView({ target, call, stat, render, state }: { target: Target; cal
     return <span className="work-call-file">{chip ?? <CodeText className="work-path">{target.path}</CodeText>}</span>;
   }
   if (target.kind === 'link' && render.renderLink) return <span className="work-call-file">{render.renderLink(target.url)}</span>;
-  const mono = target.kind === 'command' || target.kind === 'link';
+  const mono = target.kind === 'command' || target.kind === 'link' || (target.kind === 'text' && target.mono);
   const text = target.kind === 'command' ? `$ ${target.text}` : targetText(target);
-  return <span className="work-call-text" data-mono={mono || undefined} title={call.hint || undefined}>{text}</span>;
+  return (
+    <>
+      <span className="work-call-text" data-mono={mono || undefined} title={call.hint || undefined}>{text}</span>
+      {target.kind === 'text' && target.scope && <span className="work-call-scope">{target.scope}</span>}
+    </>
+  );
 }
 
 /** Done keeps the tool's own icon; waiting and running swap it for a dot, the rest for their mark. */
-const markIcons: Partial<Record<RowState, IconName>> = { failed: 'triangleAlert', stopped: 'cancelled', refused: 'cancelled' };
+const markIcons: Partial<Record<RowState, IconName>> = { failed: 'triangleAlert', stopped: 'ban', refused: 'ban' };
 
 function Lead({ call, state }: { call: ToolStep; state: RowState }) {
   if (state === 'waiting' || state === 'running') return <span className="work-call-dot" data-state={state} aria-hidden="true" />;
