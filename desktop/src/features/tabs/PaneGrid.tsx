@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Dispatch } from 'react';
+import { useEffect, useRef, useState, type Dispatch, type ReactNode } from 'react';
 import { DropdownMenu, IconButton, type MenuEntry } from '../../components/ui';
 import { OpenFileProvider } from '../files/OpenFile';
 import { kindDef } from './kinds/registry';
@@ -8,6 +8,7 @@ import { canSplitInto, useDraggedTab } from './hosts/dragHost';
 import { SplitHandles } from './SplitHandles';
 import { SplitZones } from './SplitZones';
 import { tabDomId } from './TabItem';
+import { pruneScrollMemory, useScrollRestore } from './scroll/useScrollRestore';
 import { usePaneKeys } from './usePaneKeys';
 import './panes.css';
 
@@ -38,6 +39,13 @@ export function PaneHeader({ pane, focused, onClose, menu }: { pane: Pane; focus
   );
 }
 
+/** One pane's body. It remembers where every scroller inside it was left and puts each back when the tab returns (scroll/useScrollRestore). */
+function PaneBody({ paneId, visible, children }: { paneId: string; visible: boolean; children: ReactNode }) {
+  const body = useRef<HTMLDivElement>(null);
+  useScrollRestore(paneId, body, visible);
+  return <div ref={body} className="workspace-pane-body">{children}</div>;
+}
+
 /**
  * The content card for the active tab: one pane is the card itself; a split is a grid of cards (1x2, 2x1,
  * 2x2) with a 40px title line each and a 1.5px accent-soft ring on the focused pane. Each pane body is
@@ -54,6 +62,8 @@ export function PaneGrid({ tab, tabs, dispatch, actionsFor }: { tab: Tab; tabs: 
   const maximized = split && panes.some(p => p.id === maximizedId) ? maximizedId : null;
   useEffect(() => { setMaximizedId(null); }, [tab.id]);
   usePaneKeys(tab, dispatch, grid);
+  // Closing a tab ends its panes' remembered positions; the memory only ever holds panes that are in the saved tab list.
+  useEffect(() => { pruneScrollMemory(new Set(tabs.flatMap(t => panesOf(t).map(p => p.id)))); }, [tabs]);
   const draggedId = useDraggedTab();
   const guest = draggedId ? tabs.find(t => t.id === draggedId) : undefined;
   return (
@@ -66,7 +76,7 @@ export function PaneGrid({ tab, tabs, dispatch, actionsFor }: { tab: Tab; tabs: 
             onPointerDownCapture={split && !focused ? () => dispatch({ type: 'split-focus', id: tab.id, index }) : undefined}
             onFocusCapture={split && !focused ? () => dispatch({ type: 'split-focus', id: tab.id, index }) : undefined}>
             {split && <PaneHeader pane={pane} focused={focused} onClose={() => dispatch({ type: 'split-close-pane', id: tab.id, paneId: pane.id })} menu={paneMenu(tab, pane, maximized === pane.id, () => { setMaximizedId(maximized === pane.id ? null : pane.id); if (!focused) dispatch({ type: 'split-focus', id: tab.id, index }); }, dispatch)}/>}
-            <div className="workspace-pane-body"><OpenFileProvider value={actionsFor(pane).onOpenFile}><Body pane={pane} label={pane.title} focused={focused} split={split} actions={actionsFor(pane)}/></OpenFileProvider></div>
+            <PaneBody paneId={pane.id} visible={maximized === null || maximized === pane.id}><OpenFileProvider value={actionsFor(pane).onOpenFile}><Body pane={pane} label={pane.title} focused={focused} split={split} actions={actionsFor(pane)}/></OpenFileProvider></PaneBody>
           </section>
         );
       })}
