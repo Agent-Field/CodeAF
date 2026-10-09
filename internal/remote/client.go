@@ -2231,15 +2231,22 @@ func (a *Agent) RewindPoints() []session.RewindPoint {
 // which is what a remote conversation drew before the door existed.
 // PlanTasks reads this conversation’s complete plan rows from the engine.
 func (a *Agent) PlanTasks() []session.PlanTaskRow {
+	rows, _ := a.ReadPlanTasks()
+	return rows
+}
+
+// ReadPlanTasks keeps a failed connection distinct from a conversation with no
+// plan. Surfaces can retain their last good rows while showing the read error.
+func (a *Agent) ReadPlanTasks() ([]session.PlanTaskRow, error) {
 	payload, err := a.c.call(nil, MethodPlanTasks, nil)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	var rows []session.PlanTaskRow
-	if json.Unmarshal(payload, &rows) != nil {
-		return nil
+	if err := json.Unmarshal(payload, &rows); err != nil {
+		return nil, err
 	}
-	return rows
+	return rows, nil
 }
 
 // PlanTaskPage reads one complete task page from the engine.

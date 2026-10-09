@@ -40,7 +40,7 @@ test('pinning, groups and keyboard context menus retain visible selection', asyn
  await rename(page, 1, 'Grouped work');
  await page.getByRole('tab', { name: 'Grouped work', exact: true }).click({ button: 'right' });
  await page.getByRole('menuitem', { name: 'Move to group', exact: true }).hover();
- await page.getByRole('menuitem', { name: 'New group', exact: true }).click();
+ await page.getByRole('menuitem', { name: 'Create group', exact: true }).click();
  const group = page.getByRole('button', { name: /New group/ });
  await group.click(); await expect(group).toHaveAttribute('aria-expanded', 'false');
  await expect(page.getByRole('tab', { name: 'Grouped work', exact: true })).toBeVisible();
@@ -63,8 +63,10 @@ test('many top tabs scroll without hiding narrow-screen actions', async ({ page 
  await expect(strip).toHaveCSS('scrollbar-width', 'none');
  await expect(page.getByRole('button', { name: 'Scroll tabs left', exact: true })).toBeVisible();
  const previousScroll = await strip.evaluate(el => el.scrollLeft);
+ const viewportWidth = await strip.evaluate(el => el.clientWidth);
  await page.getByRole('button', { name: 'Scroll tabs left', exact: true }).click();
  await expect.poll(() => strip.evaluate(el => el.scrollLeft)).toBeLessThan(previousScroll);
+ expect(await strip.evaluate(el => el.clientWidth)).toBe(viewportWidth);
  await expect(page.getByRole('button', { name: 'Scroll tabs right', exact: true })).toBeVisible();
  await expect(page.getByRole('button', { name: 'New tab', exact: true })).toBeInViewport();
  await expect(page.getByRole('button', { name: 'All tabs', exact: true })).toBeInViewport();
@@ -187,4 +189,103 @@ test('native tab actions attach to workspace without invoking the engine', async
  await expect(page.getByRole('tab')).toHaveCount(2);
  await page.evaluate(() => window.dispatchEvent(new CustomEvent('codeaf:desktop-tab-action', { detail: 'unrecognized' })));
  await expect(page.getByRole('tab')).toHaveCount(2);
+});
+
+test('tab close stays inside its tab and reveals without changing width', async ({ page }) => {
+ await page.goto('/');
+ const tab = page.getByRole('tab').first();
+ const wrapper = page.locator('.workspace-tab').first();
+ const close = wrapper.getByRole('button', { name: /^Close / });
+ await page.mouse.move(600, 400);
+ await page.evaluate(async () => { await Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => undefined))); });
+ await expect(close).toHaveCSS('opacity', '0');
+ const resting = await wrapper.boundingBox();
+ await tab.hover();
+ await expect(close).toHaveCSS('opacity', '1');
+ const hovering = await wrapper.boundingBox();
+ const control = await close.boundingBox();
+ expect(hovering!.width).toBe(resting!.width);
+ expect(control!.x).toBeGreaterThanOrEqual(hovering!.x);
+ expect(control!.x + control!.width).toBeLessThanOrEqual(hovering!.x + hovering!.width);
+ await page.mouse.move(600, 400);
+ await close.focus();
+ await expect(close).toHaveCSS('opacity', '1');
+ await expect(close).toBeFocused();
+});
+
+test('compact overview shows persisted work and separates selection from focus', async ({ page }) => {
+ await page.goto('/');
+ const instruction = 'Inspect the shared engine boundary';
+ await page.getByRole('textbox', { name: /Draft for/ }).fill(instruction);
+ await page.getByRole('textbox', { name: /Draft for/ }).press('Enter');
+ await page.getByRole('button', { name: 'New tab', exact: true }).click();
+ await page.reload();
+ await page.getByRole('button', { name: 'All tabs', exact: true }).click();
+ const overview = page.getByRole('dialog', { name: 'All tabs overview' });
+ await expect(overview).toHaveAttribute('data-size', 'compact');
+ await expect(overview.locator('.overview-draft')).toHaveText(instruction);
+ await expect(overview.locator('.overview-current')).toHaveText('Current');
+ await expect(overview).toContainText('No work yet');
+ const selected = overview.locator('[data-active="true"] .overview-preview');
+ const other = overview.locator('[data-active="false"] .overview-preview');
+ expect(await selected.evaluate(el => getComputedStyle(el).borderColor)).toBe(await other.evaluate(el => getComputedStyle(el).borderColor));
+ await page.evaluate(async () => { await Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => undefined))); });
+ const width = (await overview.boundingBox())!.width;
+ await page.getByRole('textbox', { name: 'Filter tabs' }).fill('New conversation 2');
+ expect((await overview.boundingBox())!.width).toBe(width);
+ await expectAccessible(page);
+});
+
+test('groups have distinct names and support overview moves, rename and reload', async ({ page }) => {
+ await page.goto('/'); await rename(page, 0, 'One');
+ await page.getByRole('button', { name: 'New tab', exact: true }).click(); await rename(page, 1, 'Two');
+ await page.getByRole('button', { name: 'All tabs', exact: true }).click();
+ const overview = page.getByRole('dialog', { name: 'All tabs overview', exact: true });
+ async function organize(name: string, choice: string) {
+  await overview.getByRole('button', { name: `Organize ${name}`, exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Move to group', exact: true }).hover();
+  await page.getByRole(choice === 'Create group' ? 'menuitem' : 'menuitemcheckbox', { name: choice, exact: true }).click();
+ }
+ await organize('One', 'Create group');
+ await organize('Two', 'Create group');
+ await expect(overview.locator('.overview-group-name')).toHaveText(['New group', 'New group 2']);
+ await organize('Two', 'New group');
+ await expect(overview.locator('.overview-group-name')).toHaveText(['New group', 'New group']);
+ await expect(overview.getByRole('button', { name: 'Organize Two', exact: true })).toBeFocused();
+ await overview.getByRole('button', { name: 'Close all tabs overview', exact: true }).click();
+ await expect(overview).not.toBeVisible();
+ const group = page.locator('.workspace-group-label');
+ await expect(group).toHaveCount(1);
+ await group.click({ button: 'right' });
+ await page.getByRole('menuitem', { name: 'Rename group', exact: true }).click();
+ await page.getByRole('dialog', { name: 'Rename group' }).getByRole('textbox', { name: 'Name' }).fill('Release');
+ await page.getByRole('button', { name: 'Save', exact: true }).click();
+ await group.click();
+ await expect(group).toHaveAttribute('aria-expanded', 'false');
+ await expect(page.getByRole('tab', { name: 'Two', exact: true })).toBeVisible();
+ await expect(page.getByRole('tab', { name: 'One', exact: true })).not.toBeVisible();
+ await page.reload();
+ await expect(page.locator('.workspace-group-label')).toContainText('Release');
+ await expect(page.locator('.workspace-group-label')).toHaveAttribute('aria-expanded', 'false');
+ await page.locator('.workspace-group-label').click();
+ await expect(page.getByRole('tab', { name: 'One', exact: true })).toBeVisible();
+ await expectAccessible(page);
+});
+
+test('dragging onto a collapsed group label groups the tab and preserves its draft', async ({ page }) => {
+ await page.goto('/'); await rename(page, 0, 'Grouped');
+ await page.getByRole('tab', { name: 'Grouped', exact: true }).click({ button: 'right' });
+ await page.getByRole('menuitem', { name: 'Move to group', exact: true }).hover();
+ await page.getByRole('menuitem', { name: 'Create group', exact: true }).click();
+ await page.getByRole('button', { name: 'New tab', exact: true }).click();
+ await rename(page, 0, 'Incoming');
+ await page.getByRole('textbox', { name: 'Draft for Incoming', exact: true }).fill('Keep my context');
+ const group = page.locator('.workspace-group-label');
+ await group.click(); await expect(group).toHaveAttribute('aria-expanded', 'false');
+ await page.getByRole('tab', { name: 'Incoming', exact: true }).dragTo(group);
+ await expect(page.locator('.workspace-tab-group .workspace-tab')).toHaveCount(2);
+ await expect(group).toHaveAttribute('aria-expanded', 'true');
+ await expect(page.getByRole('textbox', { name: 'Draft for Incoming', exact: true })).toHaveValue('Keep my context');
+ await page.reload();
+ await expect(page.locator('.workspace-tab-group .workspace-tab')).toHaveCount(2);
 });

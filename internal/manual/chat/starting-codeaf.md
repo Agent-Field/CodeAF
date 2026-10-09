@@ -831,3 +831,25 @@ without printing it. A key saved by `codeaf connect openrouter` or `/settings`
 reaches a conversation when you next open it or switch models;
 `OPENROUTER_API_KEY` still wins. `your key was not accepted for this model` means
 the provider refused the key; doctor helps find the source to replace.
+
+## Desktop connection and the terminal
+
+The desktop preview can connect to the same persistent conversation engine as the
+terminal. Its local transport is `codeaf desktop-bridge --workspace path`; it
+listens on loopback only and requires a process-local bearer credential. This
+preview fixes every text model role to `deepseek/deepseek-v4.1-flash`, with no
+fallback model. Provider keys remain in the engine's existing configuration.
+
+Opening another desktop tab creates another conversation. Reopening its stored
+session file attaches to the existing conversation; closing a tab detaches its
+view without stopping work. Stop explicitly asks the canonical engine to stop.
+Steer and Queue use the existing engine operations rather than a separate loop.
+Task rows are the same chat-scoped plan reads used by the terminal. The desktop
+preview displays the engine's pending questions and offered answers. Explicit
+choices use the same canonical resolver as the terminal; stale or rejected
+answers stay errors. Generated names arrive asynchronously from the engine, and
+read-only plan refreshes show worker updates even after the chat turn ends.
+Expanding a recorded tool call can retrieve its saved result through the engine;
+the desktop supplies a call identity rather than an arbitrary file path. Display
+output is capped at 1 MiB and identifies partial results honestly. This is a development preview, not a new
+server or an independently implemented agent.

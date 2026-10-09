@@ -52,7 +52,8 @@ test('navigation is still; action motion is bounded; collapse has a real transit
  await navigation.hover();
  await expect(navigation.locator('.app-icon')).toHaveAttribute('data-motion','none');
  expect(await navigation.locator('svg').evaluate(el=>el.getAnimations({subtree:true}).length)).toBe(0);
- const action=page.getByRole('button',{name:'Explore the foundation'});
+ await page.getByRole('button',{name:'Design system',exact:true}).click();
+ const action=page.getByRole('button',{name:'Open command palette',exact:true});
  await action.hover();
  await expect(action.locator('.app-icon')).toHaveCSS('transform',`matrix(1, 0, 0, 1, ${parseFloat(design.foundation['motion-directional-travel'])}, 0)`);
  await expect(action.locator('.app-icon')).toHaveCSS('transition-duration',`${parseFloat(design.foundation['duration-directional'])/1000}s`);
@@ -67,8 +68,9 @@ test('navigation is still; action motion is bounded; collapse has a real transit
 test('reduced motion disables every shared transition and keyframe',async({page})=>{
  await page.emulateMedia({reducedMotion:'reduce'}); await page.goto('/');
  await expect(page.locator('.app-shell')).toHaveCSS('transition-duration','0s, 0s');
- await page.getByRole('button',{name:'Explore the foundation'}).hover();
- await expect(page.getByRole('button',{name:'Explore the foundation'}).locator('.app-icon')).toHaveAttribute('data-motion','none');
+ await page.getByRole('button',{name:'Design system',exact:true}).click();
+ await page.getByRole('button',{name:'Open command palette',exact:true}).hover();
+ await expect(page.getByRole('button',{name:'Open command palette',exact:true}).locator('.app-icon')).toHaveAttribute('data-motion','none');
  await page.getByRole('combobox',{name:'Theme'}).click();
  await expect(page.getByRole('listbox')).toHaveCSS('animation-duration','0s');
  await expect(page.getByRole('combobox',{name:'Theme',includeHidden:true}).locator('[data-icon=chevron]')).toHaveCSS('transition-duration','0s');
@@ -85,7 +87,7 @@ test('theme menu keyboard selection, persistence, outside dismissal and selectio
  await page.keyboard.press('Enter');
  await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
  await page.reload(); await expect(trigger).toContainText('Dark appearance');
- const outside = await page.getByRole('heading',{name:'A space for what’s next.'}).boundingBox();
+ const outside = await page.locator('.content-pane').boundingBox();
  await trigger.click(); await expect(page.getByRole('option',{name:'Dark appearance'})).toHaveAttribute('aria-selected','true');
  await expect(page.getByRole('option',{name:'Dark appearance'})).toBeFocused();
  await expectThemedSurface(page, page.getByRole('listbox'));

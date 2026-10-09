@@ -30,7 +30,7 @@ Use Git to sync Rust/Go/native configuration changes to the Mac; restart the Mac
 
 ## Simpler fallback
 
-Commit and pull changes, then run `npm run desktop:dev` on the Mac. It starts Vite, the native shell, and the local Go health command from the same checkout. This is also the recommended way to verify production behavior before packaging.
+Commit and pull changes, then run `npm run desktop:dev` on the Mac. It starts Vite, the native shell, and the bundled canonical root engine transport from the same checkout. This is also the recommended way to verify production behavior before packaging.
 
 ## Verification boundaries
 
@@ -43,3 +43,5 @@ Use the same branch on both machines. Run commands from desktop/; merge
 upstream/dev with npm run upstream:sync from a clean checkout. This checks
 the desktop and root gates before you review and push. No automatic rebase
 or publication occurs. See ../../docs/DESKTOP.md for the engine boundaries.
+
+For a browser-only engine preview, run `npm run engine:dev` first, then `npm run dev`. Provider credentials remain in the canonical engine profile. [ENGINE.md](ENGINE.md) documents the local transport and fixed-model verification.

@@ -1,5 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+const root = fileURLToPath(new URL('../../', import.meta.url));
 const host = execFileSync('rustc', ['-vV'], { encoding: 'utf8' }).match(/^host: (.+)$/m)?.[1];
 const target = process.env.CARGO_BUILD_TARGET || host;
 const platforms = {
@@ -12,7 +14,9 @@ const platforms = {
 if (!platforms[target]) throw new Error(`Unsupported sidecar target: ${target}`);
 const [GOOS, GOARCH] = platforms[target];
 mkdirSync('src-tauri/binaries', { recursive: true });
-execFileSync('go', ['build', '-trimpath', '-o', `../src-tauri/binaries/codeaf-engine-${target}${GOOS === 'windows' ? '.exe' : ''}`, './cmd/codeaf-engine'], {
- cwd: 'engine', env: { ...process.env, GOOS, GOARCH, CGO_ENABLED: '0' }, stdio: 'inherit',
+// Package the canonical root binary: there is one engine and one prompt/storage implementation.
+execFileSync('make', ['build'], {
+ cwd: root, env: { ...process.env, GOOS, GOARCH, CGO_ENABLED: '0' }, stdio: 'inherit',
 });
-console.log(`Built codeaf engine for ${target}`);
+copyFileSync(`${root}/bin/codeaf`, `src-tauri/binaries/codeaf-engine-${target}${GOOS === 'windows' ? '.exe' : ''}`);
+console.log(`Built canonical codeaf engine for ${target}`);

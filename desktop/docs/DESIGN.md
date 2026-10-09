@@ -172,3 +172,170 @@ and [Arc's recent-tab switcher](https://resources.arc.net/hc/en-us/articles/2561
 Mac also uses Command+Shift+[ / ] for adjacent tabs and Command+Shift+\ for
 the overview, following Safari's horizontal-tab conventions. Linux uses
 Control+PageUp / PageDown for adjacent tabs and Control+Shift+A for overview.
+
+## Work document tabs
+
+The final Tab States wireframe defines a continuous document rather than a stack
+of chat bubbles. Adapt its hierarchy to the existing theme; do not copy its raw
+colors, fonts, icons, gradients or arbitrary dimensions. The product owns the ask
+row, section gaps, folding controls and input hairline. Result content owns its
+normal document structure. Shared system typography, Lucide icons, control states
+and central geometry apply to both.
+
+A fresh tab is quiet with an immediately usable instruction line, without a hero
+heading or promotional empty card. The input rests against one hairline and grows
+only as the user writes. Context and model controls appear in the active composer;
+model and effort use three tab-local presets: Auto, Fast and Thorough. Cycle the
+preset from its label, or open its adjacent picker. Advanced model/effort choices
+remain in the shared searchable picker. Presets in this scaffold are interaction
+previews, not claims of automatic model routing, availability, prices or latency.
+
+Completed sections fold to ask → digest. Opening the result is independent of
+showing the original instruction. Literal user words and all steering amendments
+appear behind the shared quotation bar only when explicitly requested. Live steers
+are footnotes, and their count remains visible as amended ×n after folding. Do not
+invent an AI ask or digest from an arbitrary submitted instruction. A locally staged
+instruction stays visibly staged until the canonical engine supplies a result.
+
+The footer presents work state, next-action suggestions or a pending question using
+the same themed line. Suggestions and decision answers are separate actions; show
+a choice only for the actual pending question, preserve its identity, and acknowledge
+local preview selection honestly. Never fabricate progress, time estimates, results
+or provider capability. Named Pricing research and Vendor reconcile samples are
+explicitly labeled fixtures and do not run AI. New input, queues and sample state
+remain local UI previews; unsent drafts retain the existing tab persistence contract.
+
+Enter continues an idle document or steers its current work; Shift+Enter inserts a
+newline. Command+Enter on Mac / Control+Enter on Linux starts a new section, replacing
+the previous compact-composer Queue proposal. Queue remains a distinct explicit
+menu action; Mac Control+Enter can queue. Command/Control+L focuses the instruction
+line, Command/Control+Period cycles presets, and Command/Control+Shift+F folds all
+sections. Shortcut platform
+matching and hints live in keyboard.ts. IME composition never submits. Escape
+dismisses overlays before stopping a working preview; Stop remains an explicit
+button as well. These desktop
+choices require deliberate mapping to canonical TUI operations during integration.
+
+Preserve document reading position, focus and drafts when switching tabs or opening
+menus. Disclosure motion uses central shared durations and reduced-motion behavior;
+no decorative cursor blinking, gradient text or per-screen keyframes. All actions
+remain usable by keyboard and at 320px browser width, including short windows and
+long instructions. Test folding, verbatim recovery, steering, pending decisions,
+model presets and tab-local isolation alongside shared theme/accessibility contracts.
+
+The final input states are mandatory: resting is a hairline with a ghost suggestion
+and Tab cue; focused-empty shows next-step pills without model/attachment controls;
+typing reveals the split preset chip, Attach, outlined New section and primary
+Continue/Steer. Fresh tabs keep Auto inline. First submission moves the box to the
+bottom and thins it using duration-work and ease-layout, without scaling text.
+Reduced motion docks immediately. Held shortcut hints are quiet text, not a card.
+
+Tab identity is stable across execution steps. Keep a clear active surface, medium
+label weight and a tab joined to the content surface; selection and work status are separate. Show
+one still, named state indicator for receiving, working, waiting, completed, stopped
+or failure. No decorative spinner or invented percentage. Delayed hover and keyboard
+previews reveal the full title, latest section and a relative recorded-activity time.
+Do not put timestamps, changing step titles or badges across the tab strip.
+
+Workspace and document consume one persisted state: tab indicators must survive
+switching, closing/reopening and reload. Activity timestamps change on meaningful
+state events, not scrolling, focus or opening a menu. Samples say sample and marked
+time rather than implying a real execution finished. Retry/Stop keep the draft and
+partial result; retry samples make no request. A pointer click on the input uses a
+quiet border; keyboard text focus uses the composer’s thin lower edge. Avoid a bright
+box selection treatment and do not remove keyboard focus. Fresh tabs expose a real
+file-picker action; never fabricate attachments, resumable jobs or activity history.
+
+The active tab joins the document: upper corners only, same surface as the pane,
+no persistent accent outline or underlined rounded pill. Its label remains medium
+weight; keyboard focus remains distinct. Tab changes may fade and settle the document
+with shared document-enter motion, without scaling text or resetting the composer.
+Hover previews are a compact hierarchy: full title, at most one two-line draft or
+named-work summary, then one status/time line. Omit generic staged-result messages,
+redundant section labels and empty paragraphs. Hover is a quick orientation aid.
+
+## Task plan direction
+
+Use a per-tab, collapsible right inspector as the task-plan home. Default to a quiet
+outline with parent/child connectors: needs-you items first, running work next,
+completed branches folded. A small Plan action reopens it; never open on hover or
+steal focus when work changes. Keep a consistent width while its data updates.
+Narrow windows use an explicit drawer, preserving the document and input.
+
+The inspector outline is containment, not a dependency graph. Show prerequisites
+and dependents for the selected task; expand to a dedicated graph view for cross-
+branch dependency exploration. Distinguish feeds_into, blocks and suggests rather
+than rendering every link alike. Parent completion is not a second completed leaf.
+
+A task row has a title and a still state. Hover/focus reveals its current step,
+recorded time and wait reason; click opens an inline task detail in the inspector.
+Expose result, artifacts, checks and notes progressively; open a task work view for
+its full trajectory. Keep task-directed corrections distinct from chat steering.
+Use completed leaf counts as counts, not invented duration/effort percentages.
+
+Future integration must reuse session.PlanAgent and the canonical engine.
+PlanTaskRow already supplies parent, waits, live step, timestamps and aggregate
+counts. Full dependency types and stopped/paused/waiting flags require a faithful
+read-only graph projection from plandb: Waits alone cannot reconstruct all edges.
+Keep conversation/chat scoping and task identifiers intact. Team traffic remains a
+separate source inside the same inspector when the selected conversation has it.
+The right inspector and canonical read-only plan bridge are implemented. Current-run rows are shown; archived runs remain available through the TUI. The full graph remains a follow-up because Waits does not include every typed edge.
+
+## Surface hierarchy and compact tab controls
+
+Use surface for document paper and overlay-surface for every transient menu, preview, picker and dialog. Tab-strip frames the document; the selected tab joins its paper without an accent outline. Keep these roles centralized in tokens.json and visible in the design specimen. Close is inside the tab, revealed on hover or keyboard focus and always available on coarse pointers; it never adds a separate flex slot or changes tab width.
+
+Overview uses document paper inside the raised overlay. Show real tab-local draft or latest section content, with an honest empty state. Selection uses a quiet Current label rather than a focus-like card outline. Keep two-tab overviews compact, sizing by total count so filtering does not resize the dialog. Preserve named keyboard focus separately from selection, theme/accessibility contracts, and reduced motion.
+
+Completion stays quiet: use the shared monochrome check in muted text, without a green fill, badge, circle or animation. Its accessible label and preview say Completed. Reserve warning/error color for conditions needing attention; do not recolor success across navigation.
+
+Tab entry fades without scaling or changing its hit area. When the strip overflows, keep both direction controls mounted and disable unavailable directions; removing controls during scrolling changes the viewport. Preserve stable scroll geometry and verify immediate scroll after creating tabs in WebKit.
+
+## Connected conversations
+
+Unconnected tabs retain the final wireframe as a local preview. Connect engine creates or attaches the canonical persistent session. The live chip says DeepSeek v4.1 Flash and exposes no pretend Auto/Fast/Thorough routing. Actual transcript user entries, assistant text, separated engine notes and progressively disclosed tool calls form the work document. Sending, steering, queuing and Stop cross the canonical typed transport; rejected sends preserve words. Closing only detaches. Background open tabs observe completion; reopening reads the same canonical sessionFile. Pending approvals/questions require the TUI until their answer protocol is implemented.
+
+Plan is a quiet footer action. At widths up to the compact breakpoint it opens an explicit modal drawer; wider windows reserve a consistent right column. Selection pins details and suppresses the redundant hover preview. Escape closes the drawer and restores focus. Completed items use the shared muted check. Ready, Assigned, Running, holds, paused/waiting and stopped/interrupted remain distinct. Leaf counts avoid counting parents twice; canonical run counters label aggregate activity as active, not executing. The labeled task fixture remains exclusively under UI preview.
+
+## Assistant Markdown
+
+The shared Markdown primitive renders canonical assistant text as a continuous document. It uses react-markdown with remark-gfm for semantic headings, paragraphs, lists, quotes, links, fenced code and tables. Product chrome stays outside content; assistant output does not receive a card or bubble. Headings remain compact, body uses system sans, code uses system monospace, and all spacing/color/weight comes from the existing theme. Read-only task-list marks use a quiet monochrome check, independent of real task or approval state.
+
+Long prose and code wrap within the document at 320px. Tables retain table semantics inside a named, keyboard-scrollable region when their structure requires extra width. Partial streaming Markdown is parsed from the accumulated actual text without a decorative typing animation or invented completion.
+
+Raw HTML is disabled. HTTP/HTTPS/mailto links and local fragments pass the shared safe URL policy; unresolved relative/file paths remain text. External browser links isolate the opener. Native external-link opening requires the narrow platform bridge; the renderer never executes shell commands or arbitrary URL schemes. Images remain named references instead of fetching remote assets automatically. Literal instructions, engine notes and tool payloads preserve their original text.
+
+Sources: [react-markdown](https://github.com/remarkjs/react-markdown) and [remark-gfm](https://github.com/remarkjs/remark-gfm).
+
+## Canonical tool activity and live conversation identity
+
+Render real assistant Markdown through the shared renderer. Preserve canonical text,
+notes and named tool calls in record order. The history also carries raw tool-result
+messages: these are not additional calls, and must not create unnamed pending rows.
+Group consecutive calls behind a quiet activity disclosure; each call has its own
+summary, arguments disclosure and bounded scrollable result. Fetch a full saved
+result only on explicit expansion, using the canonical call ID rather than a path
+supplied by the renderer. Errors retain the recorded summary and say what failed.
+
+Use the canonical asynchronous AI title for engine-owned tab names. A manual rename
+wins and remains stable across subsequent title updates and reloads. Plan stays an
+explicit action with a task count; updates do not force the inspector open or steal
+focus. Read failures show an error instead of an empty-plan claim. Live statuses never
+say sample. Approved question answers use canonical identity and choice keys, wait
+for acknowledgement, and preserve both drafts on failure; unsupported forms remain
+read-only with the TUI route visible.
+
+## Conversation and task hierarchy workspace
+
+The hierarchy is a calm navigation rail beside the work document. It shows parent/child ownership with compact text rows, quiet state marks and explicit branch disclosure. It does not turn tasks into cards or make a dependency canvas the default. Filtering is available on demand. Typed prerequisites and dependents remain secondary task context, distinct from parent/child containment.
+
+A normal task click opens its recorded conversation in the same tab. Parent and child use the same continuous work-document interface, including ask rows, folding, original instruction, Markdown and composer. The task identity changes; the interface language does not. Each child keeps its own draft and reading/folding state while the parent draft remains intact. A background tab opened for the same captured task shares its task document under the originating conversation/task identity; do not clone divergent corrections. Tab route history and root drafts remain independent. Recorded task excerpts are labeled as captures, and preview corrections never claim live execution. A named root breadcrumb and Back/Forward controls preserve orientation. Modifier-click opens a background task tab while keeping the current work in place. Route history, current task, drafts and reading context stay local to the tab. On compact screens, Plan and Conversation switch one readable view at a time; selecting a task moves into Conversation and returning to Plan retains its current marker. Updates never navigate automatically or steal focus.
+
+The prototype uses authentic captured task rows and saved task text with visible provenance. Missing records are disclosed rather than reconstructed. It creates no AI request and does not claim captured work is running now. Fresh tabs remain fresh, preview links preserve existing engine attachments and drafts, and read failures do not substitute fixtures. Canonical task identity and relationship types remain intact; leaf counts avoid counting parents twice. All rows, controls, spacing, type and motion use the shared design system.
+
+
+## Semantic typography contract
+
+Keep native system sans for prose and chrome and the central system monospace stack for code. Shared document prose, heading, code, label and metadata roles live in tokens.json and the shared typography/Markdown components; no screen-specific fonts, heading sizes or syntax palettes. Markdown owns its list, heading, table, quotation and code spacing without descendant overrides from feature styles. Inline code uses the shared CodeText role; fenced code retains literal whitespace with bounded narrow-window wrapping. JSON, shell output and tool results remain literal monospace; search queries, task names and navigation labels stay prose.
+
+Formatting is explicit content metadata, never a regex guess. WorkSection.originalFormat defaults to literal: exact user instructions, amendments, pasted context and tool arguments must remain literal. A captured task-authored Description may opt into markdown through its known projection; show it as a task instruction and retain the original stored string. Unknown/invalid formats fail storage validation rather than enabling HTML. Assistant text and explicitly marked task descriptions use the single safe shared Markdown renderer, including inline code and fenced code; never add another parser. Verify prose/code font roles, heading hierarchy, real task excerpts, exact literal user words, Light/Dark and narrow wrapping together.

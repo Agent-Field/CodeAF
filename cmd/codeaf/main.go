@@ -285,6 +285,8 @@ func run() error {
 		// the older surfaces have no session files to pick from.
 		tuneForTheSurface()
 		return runResumeV3(os.Args[2:])
+	case "desktop-bridge":
+		return runDesktopBridge(os.Args[2:])
 	case "engine":
 		// The far half of `codeaf chat --host <host>`: the process ssh starts
 		// on the other machine, speaking the wire protocol on its own pipes

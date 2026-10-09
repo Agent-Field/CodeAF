@@ -1,0 +1,19 @@
+.work-composer { min-width: 0; width: 100%; position: relative; }
+.work-writing-line { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.work-writing-line .text-area { flex: 1; min-width: 0; }
+.work-preset-chip { display: inline-flex; flex-shrink: 0; align-items: center; }
+.work-composer-controls { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.work-composer-tools, .work-composer-actions { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
+.work-composer-actions { margin-left: auto; flex-wrap: wrap; }
+.work-contexts { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-bottom: var(--space-2); }
+.work-context-chip { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; }
+.work-context-chip .button { min-width: 0; overflow-wrap: anywhere; }
+.work-context-chip .icon-button { flex-shrink: 0; }
+.work-next-suggestions { display: flex; gap: var(--space-1); flex-wrap: wrap; }
+.work-composer-caption { display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-1); }
+.work-composer-notice { margin-top: var(--space-1); }
+.work-context-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.work-context-content { white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; min-height: 0; }
+
+.work-shortcut-hints { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--space-2) var(--space-4); position: absolute; bottom: calc(100% + var(--space-2)); left: 0; right: 0; }
+.work-shortcut-hints > span { display: inline-flex; align-items: center; gap: var(--space-1); }

@@ -2,7 +2,7 @@
 :root {
   color-scheme: light;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Code", monospace;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   --radius-sm: 6px;
   --radius-md: 9px;
   --radius-lg: 12px;
@@ -125,17 +125,44 @@
   --overview-card-min-width: 220px;
   --overview-preview-height: 156px;
   --preview-width: 240px;
-  --preview-line-clamp: 3;
+  --preview-line-clamp: 2;
   --switcher-width: 320px;
   --switcher-max-height: 360px;
   --switcher-inset: 64px;
+  --composer-max-width: 608px;
+  --composer-writing-min-height: 28px;
+  --composer-writing-max-height: 210px;
+  --composer-queue-max-height: 112px;
+  --model-picker-width: 320px;
+  --model-picker-max-height: 360px;
+  --work-dock-width: 744px;
+  --work-context-max-height: 420px;
+  --motion-ask-open: 90deg;
+  --duration-work: 300ms;
+  --overview-compact-width: 640px;
+  --task-inspector-width: 288px;
+  --task-inspector-drawer-width: 360px;
+  --plan-node-width: 180px;
+  --plan-node-min-height: 68px;
+  --plan-stage-gap: 48px;
+  --plan-node-gap: 16px;
+  --plan-split-min-width: 380px;
+  --plan-detail-height: 210px;
+  --plan-edge-width: 1px;
+  --plan-edge-gap: 24px;
+  --plan-node-label-clamp: 2;
+  --task-outline-row-height: 28px;
+  --font-size-prose: 13px;
+  --font-size-document-h1: 18px;
+  --font-size-document-h2: 16px;
+  --font-size-document-h3: 14px;
   --canvas: #f0e4d0;
   --sidebar: #e9d9c2;
   --surface: #fdfdfc;
   --chrome-tint: #eed9b240;
   --chrome-preview: linear-gradient(155deg, #e8d8b5 0%, #ebd4c0 65%, #e6c7ba 100%);
   --text: #35332f;
-  --muted: #716b62;
+  --muted: #625c53;
   --border: #39302514;
   --accent: #605c53;
   --accent-hover: #49453e;
@@ -162,8 +189,10 @@
   --control-border-hover: #35332f30;
   --tab-selected: #fdfdfc;
   --tab-hover: #35332f0c;
-  --tab-strip: #7c61320a;
+  --tab-strip: #ece8e1;
   --group-mark: #716b62;
+  --composer-surface: #f8f6f1;
+  --overlay-surface: #f3f0e9;
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -200,8 +229,10 @@
   --control-border-hover: #ffffff30;
   --tab-selected: #202020;
   --tab-hover: #ffffff0e;
-  --tab-strip: #0000000a;
+  --tab-strip: #171717;
   --group-mark: #aaa39a;
+  --composer-surface: #292725;
+  --overlay-surface: #2b2927;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]):not([data-theme="dark"]) {
@@ -239,10 +270,12 @@
   --control-border-hover: #ffffff30;
   --tab-selected: #202020;
   --tab-hover: #ffffff0e;
-  --tab-strip: #0000000a;
+  --tab-strip: #171717;
   --group-mark: #aaa39a;
+  --composer-surface: #292725;
+  --overlay-surface: #2b2927;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  :root { --duration: var(--duration-none); --duration-fast: var(--duration-none); --duration-sidebar: var(--duration-none); --duration-overlay: var(--duration-none); --duration-directional: var(--duration-none); --motion-travel: var(--motion-rest); --motion-directional-travel: var(--motion-rest); --motion-scale-enter: var(--motion-scale-rest); }
+  :root { --duration: var(--duration-none); --duration-fast: var(--duration-none); --duration-sidebar: var(--duration-none); --duration-overlay: var(--duration-none); --duration-directional: var(--duration-none); --duration-work: var(--duration-none); --motion-travel: var(--motion-rest); --motion-directional-travel: var(--motion-rest); --motion-scale-enter: var(--motion-scale-rest); }
 }

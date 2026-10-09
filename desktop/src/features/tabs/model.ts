@@ -1,8 +1,14 @@
-export type Tab = { id: string; title: string; pinned: boolean; groupId?: string; draft: string };
+export type Tab = { id: string; title: string; pinned: boolean; titleSource?: 'manual' | 'engine'; groupId?: string; draft: string };
 export type TabGroup = { id: string; title: string; collapsed: boolean };
 export type WorkspaceState = { tabs: Tab[]; groups: TabGroup[]; activeId: string; closed: Tab[]; nextNumber: number; recentIds: string[] };
 export const storageKey = 'codeaf.desktop.workspace.v1';
 const createId = () => crypto.randomUUID();
+function nextGroupTitle(groups: readonly TabGroup[]): string {
+ const names = new Set(groups.map(group => group.title.toLocaleLowerCase()));
+ let number = 1;
+ while (names.has(number === 1 ? 'new group' : `new group ${number}`)) number++;
+ return number === 1 ? 'New group' : `New group ${number}`;
+}
 export function initialWorkspace(): WorkspaceState {
  const id = createId();
  return { tabs: [{ id, title: 'New conversation', pinned: false, draft: '' }], groups: [], activeId: id, closed: [], nextNumber: 2, recentIds: [id] };
@@ -10,7 +16,7 @@ export function initialWorkspace(): WorkspaceState {
 const isTab = (value: unknown): value is Tab => {
  if (!value || typeof value !== 'object') return false;
  const tab = value as Partial<Tab>;
- return typeof tab.id === 'string' && !!tab.id && typeof tab.title === 'string' && typeof tab.draft === 'string' && typeof tab.pinned === 'boolean' && (tab.groupId === undefined || typeof tab.groupId === 'string');
+ return typeof tab.id === 'string' && !!tab.id && typeof tab.title === 'string' && typeof tab.draft === 'string' && typeof tab.pinned === 'boolean' && (tab.titleSource === undefined || ['manual','engine'].includes(tab.titleSource)) && (tab.groupId === undefined || typeof tab.groupId === 'string');
 };
 const isGroup = (value: unknown): value is TabGroup => {
  if (!value || typeof value !== 'object') return false;
@@ -39,11 +45,13 @@ function normalize(state: WorkspaceState): WorkspaceState {
 }
 export type WorkspaceAction =
  | { type: 'new'; groupId?: string }
+ | { type: 'open-task'; tab: Tab; background: boolean }
  | { type: 'select'; id: string }
  | { type: 'close'; id: string }
  | { type: 'reopen' }
  | { type: 'pin'; id: string }
  | { type: 'rename'; id: string; title: string }
+ | { type: 'engine-title'; id: string; title: string }
  | { type: 'draft'; id: string; draft: string }
  | { type: 'group'; id: string }
  | { type: 'move-group'; id: string; groupId?: string }
@@ -57,6 +65,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
    const tab: Tab = { id: createId(), title: `New conversation ${state.nextNumber}`, draft: '', pinned: false, groupId: action.groupId };
    return { ...state, tabs: [...state.tabs, tab], activeId: tab.id, recentIds: [tab.id, ...state.recentIds], nextNumber: state.nextNumber + 1, groups: state.groups.map(g => g.id === action.groupId ? { ...g, collapsed: false } : g) };
   }
+  case 'open-task': return { ...state, tabs: [...state.tabs, action.tab], activeId: action.background ? state.activeId : action.tab.id, recentIds: action.background ? [...state.recentIds, action.tab.id] : [action.tab.id, ...state.recentIds] };
   case 'select': return { ...state, activeId: action.id, recentIds: [action.id, ...state.recentIds.filter(id => id !== action.id)], groups: state.groups.map(g => state.tabs.find(t => t.id === action.id)?.groupId === g.id ? { ...g, collapsed: false } : g) };
   case 'close': {
    const closing = state.tabs.find(t => t.id === action.id);
@@ -76,13 +85,18 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
    return { ...state, tabs: [...state.tabs, { ...tab, groupId }], closed: state.closed.slice(0, -1), activeId: tab.id, recentIds: [tab.id, ...state.recentIds.filter(id => id !== tab.id)], groups: state.groups.map(g => g.id === groupId ? { ...g, collapsed: false } : g) };
   }
   case 'pin': return normalize({ ...state, tabs: state.tabs.map(t => t.id === action.id ? { ...t, pinned: !t.pinned, groupId: undefined } : t) });
-  case 'rename': return { ...state, tabs: state.tabs.map(t => t.id === action.id ? { ...t, title: action.title.trim() || 'New conversation' } : t) };
+  case 'rename': return { ...state, tabs: state.tabs.map(t => t.id === action.id ? { ...t, title: action.title.trim() || 'New conversation', titleSource: 'manual' } : t) };
+  case 'engine-title': return { ...state, tabs: state.tabs.map(t => t.id === action.id && t.titleSource !== 'manual' && (t.titleSource === 'engine' || /^New conversation(?: \d+)?$/.test(t.title)) && action.title.trim() ? { ...t, title: action.title.trim(), titleSource: 'engine' } : t) };
   case 'draft': return { ...state, tabs: state.tabs.map(t => t.id === action.id ? { ...t, draft: action.draft } : t) };
   case 'group': {
-   const group: TabGroup = { id: createId(), title: 'New group', collapsed: false };
+   if (!state.tabs.some(tab => tab.id === action.id)) return state;
+   const group: TabGroup = { id: createId(), title: nextGroupTitle(state.groups), collapsed: false };
    return normalize({ ...state, groups: [...state.groups, group], tabs: state.tabs.map(t => t.id === action.id ? { ...t, pinned: false, groupId: group.id } : t) });
   }
-  case 'move-group': return normalize({ ...state, tabs: state.tabs.map(t => t.id === action.id ? { ...t, groupId: action.groupId, pinned: false } : t), groups: state.groups.map(g => g.id === action.groupId ? { ...g, collapsed: false } : g) });
+  case 'move-group': {
+   if (!state.tabs.some(tab => tab.id === action.id) || (action.groupId && !state.groups.some(group => group.id === action.groupId))) return state;
+   return normalize({ ...state, tabs: state.tabs.map(t => t.id === action.id ? { ...t, groupId: action.groupId, pinned: false } : t), groups: state.groups.map(g => g.id === action.groupId ? { ...g, collapsed: false } : g) });
+  }
   case 'rename-group': return { ...state, groups: state.groups.map(g => g.id === action.id ? { ...g, title: action.title.trim() || 'New group' } : g) };
   case 'collapse-group': return { ...state, groups: state.groups.map(g => g.id === action.id ? { ...g, collapsed: !g.collapsed } : g) };
   case 'ungroup': return { ...state, tabs: state.tabs.map(t => t.groupId === action.id ? { ...t, groupId: undefined } : t), groups: state.groups.filter(g => g.id !== action.id) };

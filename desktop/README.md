@@ -18,7 +18,7 @@ Browser preview supports navigation, appearance, and the command palette; the en
 
 ## Architecture
 
-`src/` is React, `src/design/tokens.json` owns design values and generates `src/styles/tokens.css`, `src/lib/engine.ts` owns the typed renderer contract, `src-tauri/` is the native shell, and `engine/` is the Go engine. The shell invokes the bundled Go executable for a JSON health response. There is no listener, port, or arbitrary process API exposed to the renderer. The initial command starts and exits; long-running engine supervision and streaming are future work.
+`src/` is React, `src/design/tokens.json` owns design values and generates `src/styles/tokens.css`, and `src-tauri/` is the native shell. The shell bundles the canonical root `bin/codeaf`, rather than an independent AI implementation. A narrow native command starts its authenticated loopback desktop transport; browser previews reach the same transport through Vite. Chat, streaming, Stop and read-only plan data use the existing persistent session engine. Closing a tab leaves that work running. See [ENGINE.md](docs/ENGINE.md) for startup, the fixed model and current limitations.
 
 The build script generates a sidecar matching the Rust target triple. Set `CARGO_BUILD_TARGET` to build the corresponding Go target; native shell builds still require the platform toolchain. Go binaries alone can be cross-compiled; Linux builds do not produce a validated macOS application.
 

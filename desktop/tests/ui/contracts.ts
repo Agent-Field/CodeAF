@@ -9,7 +9,7 @@ export async function tokenColor(page: Page, token: string) {
 }
 export async function expectThemedSurface(page: Page, surface: Locator) {
  await expect(surface).toHaveCSS('opacity','1');
- await expect(surface).toHaveCSS('background-color', await tokenColor(page, 'surface'));
+ await expect(surface).toHaveCSS('background-color', await tokenColor(page, 'overlay-surface'));
  await expect(surface).toHaveCSS('color', await tokenColor(page, 'text'));
 }
 export async function expectAccessible(page: Page) {
