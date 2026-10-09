@@ -50,7 +50,7 @@ test('an address in the new-tab field opens a web tab; the page, the chat and th
   await page.getByRole('textbox', { name: 'Address' }).press('Enter');
   await expect.poll(async () => (await nativeCalls(page, 'web_navigate')).map(call => call.args)).toEqual([{ pane, url: 'https://go.dev/doc' }]);
   await expect(activeTab(page).locator('.tab-monogram')).toHaveText('g');
-  expect((await stored(page)).tabs.find((tab: { id: string }) => tab.id === pane).target.url).toBe('https://go.dev/doc');
+  await expect.poll(async () => (await stored(page)).tabs.find(tab => tab.id === pane)?.target?.url).toBe('https://go.dev/doc');
 
   // 4. Start a conversation with the page: an unsent draft and the page's picture, attached once.
   await page.getByRole('button', { name: 'Start a conversation with this page' }).click();
