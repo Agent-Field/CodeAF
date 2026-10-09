@@ -43,7 +43,7 @@ test('a withdrawn question says why, in the engine words', () => {
   const q = consent({ withdrawn: { reason: 'the turn moved on without it' } });
   const { turns } = projectTurnsV2(snap(entries, { questions: [q] as never }));
   assert.deepEqual(receipts(turns[0].blocks).map((r) => [r.state, r.text]), [
-    ['withdrawn', 'No longer needed — the turn moved on without it'],
+    ['withdrawn', 'No longer needed. The turn moved on without it.'],
   ]);
 });
 
@@ -100,7 +100,7 @@ test('a withdrawn outcome speaks the engine words, or the plain wording without 
     { kind: 'ask', token: 'a1', outcome: 'withdrawn', words: 'No longer needed — the task ended' },
   ];
   const { turns } = projectTurnsV2({ ...snap(entries), recentOutcomes: outcomes } as never, undefined, places);
-  assert.deepEqual(receipts(turns[1].blocks).map((r) => r.text), ['No longer needed — the turn moved on', 'No longer needed — the task ended']);
+  assert.deepEqual(receipts(turns[1].blocks).map((r) => r.text), ['No longer needed. The turn moved on.', 'No longer needed — the task ended']);
 });
 
 test('a waiting call shows its step as waiting', () => {

@@ -78,5 +78,5 @@ export function waitingReceipt(question: Question): Receipt {
 }
 
 export function withdrawnReceipt(): Receipt {
-  return { state: 'withdrawn', text: 'No longer needed — the turn moved on' };
+  return { state: 'withdrawn', text: 'No longer needed. The turn moved on.' };
 }
