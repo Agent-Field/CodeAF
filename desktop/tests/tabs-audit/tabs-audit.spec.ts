@@ -1,3 +1,4 @@
+import { savedWorkspace } from '../ui/support/synced-workspace';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { expectAccessible } from '../ui/contracts';
 import { installMockEngine, type Scenario } from '../ui/support/mock-engine';
@@ -20,7 +21,7 @@ async function seed(page: Page, value: Seed) {
  const state = { groups: [], closed: [], nextNumber: value.tabs.length + 1, recentIds: value.tabs.map(t => (t as { id: string }).id), ...value };
  await page.addInitScript(([key, json]) => { if (!sessionStorage.getItem('audit-seeded')) { localStorage.setItem(key, json); sessionStorage.setItem('audit-seeded', '1'); } }, [KEY, JSON.stringify(state)] as const);
 }
-const saved = (page: Page) => page.evaluate(key => JSON.parse(localStorage.getItem(key) ?? 'null'), KEY);
+const saved = savedWorkspace;
 const tabNamed = (page: Page, name: string) => page.getByRole('tab', { name, exact: true });
 /** The strip's tabs in reading order, as a person sees them (hidden members of a collapsed group excluded). */
 const stripOrder = (page: Page) => page.locator('.workspace-tabstrip').evaluate(strip => Array.from(strip.querySelectorAll('[role="tab"]')).filter(el => !el.closest('[inert]')).map(el => el.getAttribute('aria-label')));
