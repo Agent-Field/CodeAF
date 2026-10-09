@@ -4,6 +4,7 @@ import design from '../../design/tokens.json';
 import { ENGINE_MODEL } from '../chat/engine-client';
 import { DEFAULT_MODEL_SHORT, useConversationModel } from './composer/useConversationModel';
 import type { Pane } from '../tabs/model';
+import { peekOfferedFiles, settleOfferedFiles } from '../web/useWorkspaceWeb';
 import { goBack, goForward, navigate, rootRoute, routeTask, TASKS_VIEW, toggleFlag, type TabView } from '../tabs/view-state';
 import { useHistoryKeys } from './Breadcrumb';
 import type { OutgoingFile } from '../chat/engine-client';
@@ -60,6 +61,8 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   const conversation = useConversation({ sessionFile: tab.sessionFile, onSessionFile: (sessionFile) => onView({ sessionFile }) });
   const { model, snapshot, failed } = conversation;
   const [focusKey, setFocusKey] = useState<string>();
+  // A tab opened from a web page brings that page's picture; the composer attaches it once and the offer is spent.
+  const [offered, setOffered] = useState(() => peekOfferedFiles(tab.id));
   const route = tab.route ?? rootRoute;
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -212,6 +215,8 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
                       model: conversationModel,
                       recallLast: () => model.turns[model.turns.length - 1]?.user,
                       autoFocus,
+                      offeredFiles: offered,
+                      onOfferedFiles: () => { settleOfferedFiles(tab.id); setOffered([]); },
                     }}
                   />
                 )}

@@ -16,6 +16,7 @@ import { createPreviewStore } from './preview/previewStore';
 import { TabOverview } from './TabOverview';
 import { TabStrip } from './TabStrip';
 import { useTerminalTabs } from '../terminal/useTerminalTabs';
+import { useWorkspaceWeb } from '../web/useWorkspaceWeb';
 import { useDesktopTabActions, useTabKeys, type Switcher } from './useTabKeys';
 import './workspace.css';
 
@@ -83,6 +84,8 @@ export function Workspace({ enabled, onActivate, leading }: Props) {
   function startRename(id: string, group = false) { setRename({ id, group, value: (group ? state.groups : state.tabs).find(item => item.id === id)?.title ?? '' }); }
   useTabKeys({ enabled, state, dispatch, visible, overviewOpen, setOverviewOpen, closeTab, switcherRef, setSwitcher });
   useTerminalTabs({ enabled, state, dispatch });
+  // Web tabs: a page's new window and a link's open-in-tab modifier open a web tab, a page can start a conversation, and a closed tab's native view closes.
+  useWorkspaceWeb(state.tabs, dispatch);
   useDesktopTabActions({ state, dispatch, visible, renaming: !!rename, onActivate, closeTab, setOverviewOpen });
 
   const api: TabsApi = { state, dispatch, summaries, now, closeTab, startRename, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename };

@@ -1,4 +1,7 @@
 import type { ReactNode } from 'react';
+import { isMac } from '../../../design/keyboard';
+import { toAddress } from '../../web/address';
+import { webHost } from '../../web/host';
 import { useAssets, useFavicon } from './AssetContext';
 import { hostnameOf, monogramHue, monogramLetter, registrableDomain } from './paths';
 
@@ -14,7 +17,18 @@ export function SiteIcon({ domain }: { domain: string }) {
 }
 
 function open(event: React.MouseEvent, href: string, openUrl: (url: string) => Promise<void>) {
-  // Modified clicks keep the browser's own behaviour; the plain click goes through the native bridge.
+  // The platform's open-in-new-tab modifier (Command on a Mac, Control elsewhere) opens a web tab when the workspace has
+  // a web host; it is the same gesture a browser uses for a background tab, and an address the policy refuses stays a link.
+  if (event.button === 0 && (isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey) && !event.shiftKey && !event.altKey) {
+    const host = webHost();
+    const address = toAddress(href);
+    if (host && 'url' in address) {
+      event.preventDefault();
+      host.openWebTab(address.url);
+      return;
+    }
+  }
+  // Other modified clicks keep the browser's own behaviour; the plain click goes through the native bridge.
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
   event.preventDefault();
   void openUrl(href).catch(() => undefined);

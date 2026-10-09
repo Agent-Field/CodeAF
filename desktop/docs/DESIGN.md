@@ -68,6 +68,7 @@ System sans is used everywhere except real code/terminal content, which uses sys
 | terminal / file / edit / web / findFiles / tool | Terminal / FileText / FilePen / Globe / FileSearch / Wrench | Tool step family icons |
 | thinking | Brain | Reasoning line |
 | tab / pin / folder / more / split | MessageSquare / Pin / Folder / Ellipsis / PanelLeft | Tabs, groups and overflow |
+| back / forward / reload / chatPlus / external | ArrowLeft / ArrowRight / RotateCw / MessageSquarePlus / ExternalLink | Web tab header: history, reload, start a conversation with the page, open in the browser |
 Sizes: xs 13px for trailing hints, sm 14px for navigation, md 16px for controls, lg 17px for favorites. The central stroke is 1.6 in a 24-unit viewBox, with rounded caps/joins. Use currentColor only. Navigation and utility glyphs stay still. Explicit directional action arrows translate 2px over 280ms; disclosure chevrons rotate only with open state. No upstream default glyph animation. Do not introduce idle animations or increase icon size to compensate for a poor glyph. Icon controls are 28px; compact sidebar actions are 32–34px high. This is desktop density, not a touch-optimized interface.
 
 ## Components and specimens

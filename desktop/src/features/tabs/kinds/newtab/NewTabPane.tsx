@@ -8,6 +8,7 @@ import { tabHolding, visibleTabs } from '../../model';
 import { terminalKind, newTerminalShortcut } from '../terminal';
 import type { PaneRenderProps } from '../slots';
 import { useNewTabHost, type NewTabHost } from './api';
+import { siteOf } from '../../../web/address';
 import { buildSections, flatRows, tabDigit, titleFromText, type NewTabRow } from './rows';
 import { useFileMatches } from './useFileMatches';
 import { NewTabView } from './NewTabView';
@@ -20,7 +21,7 @@ const fileCaption = 'Type part of a file name.';
 
 /**
  * The new tab (design 3f): one field that starts a conversation, opens a file or jumps to a tab. It never makes an
- * engine call until a row is chosen. A URL is a question for now: no web tab is backed (see DESIGN-QUESTIONS).
+ * engine call until a row is chosen. An address opens as a web tab (the first row); the conversation row below it still asks the same words.
  */
 export function NewTabPane({ pane, focused }: PaneRenderProps) {
   const host = useNewTabHost();
@@ -76,6 +77,7 @@ function NewTabField({ host, paneId, focused }: { host: NewTabHost; paneId: stri
   function pick(row: NewTabRow | undefined) {
     if (!row || busy) return;
     if (row.kind === 'ask') void ask(query.trim());
+    else if (row.kind === 'web') dispatch({ type: 'newtab-become', id: paneId, kind: 'web', title: siteOf(row.target!), titleSource: 'message', target: { url: row.target! } });
     else if (row.kind === 'terminal') void openShell();
     else if (row.kind === 'openfile') { setFiling(true); input.current?.focus(); }
     else if (row.kind === 'file') dispatch({ type: 'newtab-become', id: paneId, kind: 'file', title: row.label, path: row.target, sessionFile });
@@ -99,6 +101,6 @@ function NewTabField({ host, paneId, focused }: { host: NewTabHost; paneId: stri
 
   const field = <TextInput ref={input} role="combobox" aria-label="Search or start" aria-expanded="true" aria-controls={`newtab-${paneId}`} aria-activedescendant={active ? `newtab-${paneId}-${active.id}` : undefined} aria-autocomplete="list" autoComplete="off" spellCheck={false} value={query} disabled={busy}
     onChange={event => { setQuery(event.target.value); setIndex(0); }} onKeyDown={onKeyDown}/>;
-  return <NewTabView id={paneId} field={field} query={query} sections={sections} activeRowId={active?.id} caption={filing ? fileCaption : caption}
+  return <NewTabView id={paneId} field={field} query={query} sections={sections} activeRowId={active?.id} caption={filing ? fileCaption : caption} enterHint={active?.kind === 'web' ? '↵ to open the page' : undefined}
     onHover={row => { const at = rows.indexOf(row); if (at !== index) setIndex(at); }} onPick={pick}/>;
 }
