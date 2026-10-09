@@ -327,3 +327,25 @@ test('structural Undo minted ids stay stable through canonical replay and persis
   reopened.stop();
   b.stop();
 });
+
+
+test('picked group intent survives offline reload and another window rebase', async () => {
+  const { engine, time, a, b, saved, make } = await twoWindows('t1', 't2', 't3', 't4');
+  engine.setDown(true);
+  a.dispatch({ type: 'pick', id: 't2' });
+  a.dispatch({ type: 'pick', id: 't3' });
+  a.dispatch({ type: 'group-picked', mint: ['picked-group'] });
+  await time.advance(200);
+  a.stop();
+  assert.deepEqual(saved['win-a'].pending[0]?.action, { type: 'group', id: 't1', ids: ['t2', 't3'], mint: ['picked-group'] });
+  const reopened = make('win-a', saved['win-a']);
+  reopened.start();
+  b.dispatch({ type: 'draft', id: 't4', draft: 'keep other window' });
+  engine.setDown(false);
+  await time.advance(10000);
+  for (const w of [reopened, b]) {
+    assert.deepEqual(w.getState().tabs.filter(t => t.groupId === 'picked-group').map(t => t.id), ['t1', 't2', 't3']);
+    assert.equal(w.getState().tabs.find(t => t.id === 't4')?.draft, 'keep other window');
+    w.stop();
+  }
+});

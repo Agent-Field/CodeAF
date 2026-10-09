@@ -1,5 +1,6 @@
 // Pure rules for the group suggestion pill (Shell 2b, "a group suggestion"): which open tabs belong together, and how long a
 // decision about them is remembered. No React, no CSS, no model call: every offer is read off facts the tabs already carry.
+import { chatIdFromSessionFile } from '../places/client.ts';
 import { newConversationTitle } from './helpers.ts';
 import type { Tab } from './types.ts';
 
@@ -20,15 +21,15 @@ export type GroupOffer = { key: string; basis: 'conversation' | 'folder' | 'repo
 /** How long a settled set of chat ids waits before one organizing question. A selection change is not a new set. */
 export const offerSettleMs = 400;
 
-/** A canonical chat id is the session id the engine minted: 16 lower-case hex digits, never a path. */
+/** A canonical chat id names the saved history folder: 16 lower-case hex digits. */
 const canonicalChatID = /^[0-9a-f]{16}$/;
 
-export type ChatSummary = { sessionId?: string };
+export type ChatSummary = { chatId?: string };
 
-/** The chat id a loose conversation tab is showing, from the engine summary, else the tab's own target. A path is not an id. */
+/** The chat id a loose conversation tab is showing, from the canonical history record, never the bridge session token. */
 export function chatIDOf(tab: Tab, summary?: ChatSummary): string | undefined {
   if (tab.kind !== 'conversation' || !candidate(tab)) return undefined;
-  const id = summary?.sessionId || tab.target?.sessionId;
+  const id = (tab.sessionFile ? chatIdFromSessionFile(tab.sessionFile) : undefined) || summary?.chatId;
   return id && canonicalChatID.test(id) ? id : undefined;
 }
 

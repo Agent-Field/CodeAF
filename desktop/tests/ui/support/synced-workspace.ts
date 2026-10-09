@@ -13,7 +13,8 @@ export async function savedWorkspace(page: Page): Promise<WorkspaceState> {
    const { createWorkspaceController } = await import(controllerPath);
    const { readWorkspace } = await import(modelPath);
    const { sharedOf } = await import(sharedPath);
-   const writer = sessionStorage.getItem('codeaf.desktop.window-id');
+   const { windowWriter } = await import('/src/features/workspace-sync/windowStore.ts');
+   const writer = windowWriter();
    const raw = writer && localStorage.getItem(`codeaf.desktop.workspace-sync.v1:now:${writer}`);
    if (!raw) return undefined;
    const saved = JSON.parse(raw);

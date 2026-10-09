@@ -2,6 +2,7 @@
 // Pure: built from the canonical snapshot, never from the view.
 
 import type { EngineQuestion, EngineSnapshot } from '../chat/engine-client.ts';
+import { chatIdFromSessionFile } from '../places/client.ts';
 import { plainMessage } from './composer/pastedText.ts';
 import { rowFlags, taskMark } from './taskState.ts';
 import { digestOf } from './transcript-parse.ts';
@@ -16,6 +17,8 @@ export type TabSummary = {
   updatedAt?: number;
   /** The engine session this summary was read from; the hover preview answers questions on it. */
   sessionId?: string;
+  /** Canonical saved chat identity; independent of the temporary engine bridge token. */
+  chatId?: string;
   /** Tasks the engine is running right now ("4 running" in a conversation's hover preview). */
   running?: number;
   /** Each task's state word by id ("Running", "Done"), so a task tab's preview can say where its own task stands. */
@@ -53,6 +56,7 @@ export function summarize(snapshot: EngineSnapshot, failed = false): TabSummary 
     digest: lastAnswer(snapshot),
     mark: markOf(snapshot, failed),
     sessionId: snapshot.id,
+    chatId: snapshot.sessionFile ? chatIdFromSessionFile(snapshot.sessionFile) : undefined,
     running: snapshot.tasks.filter((task) => taskMark(task.Status, rowFlags(task)).kind === 'running').length,
     taskState: Object.fromEntries(snapshot.tasks.map((task) => [task.ID, taskMark(task.Status, rowFlags(task)).label])),
     questions: snapshot.questions ?? [],

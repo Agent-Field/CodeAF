@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { savedWorkspace } from './support/synced-workspace';
 import { installMockEngine } from './support/mock-engine';
 import { emitState, installNativeWebMock, nativeCalls } from './support/native-web-mock';
 import { richReply } from './support/scenarios-v2';
@@ -10,7 +11,7 @@ import { message, openApp, posts, send } from './support/conversation';
 // isolation is proven by the Rust tests and the native smoke.
 const field = (page: Page) => page.getByRole('combobox', { name: 'Search or start' });
 const activeTab = (page: Page) => page.locator('.workspace-tab[data-active="true"]');
-const stored = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('codeaf.desktop.workspace.v1') ?? 'null'));
+const stored = savedWorkspace;
 const modifier = (page: Page) => page.evaluate(() => (/Mac/.test(navigator.platform) ? 'Meta' : 'Control') as 'Meta' | 'Control');
 
 test('an address in the new-tab field opens a web tab; the page, the chat and the engine stay separate', async ({ page }) => {
