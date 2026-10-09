@@ -44,6 +44,13 @@ import (
 // gives them back too. While the keys walk the page the chat's caret is not
 // drawn, because a caret is a promise that a letter lands there.
 //
+// WALKING THE STEPS LEAVES NO TABS BEHIND. A chat the page opened only
+// because the cursor passed over its row ([factoryHost.opened]) is let go of
+// once the cursor leaves it, or the page closes: detached, the way a window
+// leaving lets go of a conversation, so no work it holds is ended. A chat the
+// person put the keys into ([factoryHost.kept]) is theirs and stays a tab, as
+// does every chat this window already held before the page brought it.
+//
 // A TERMINAL TOO NARROW FOR THE COLUMN HOSTS NOTHING: under
 // [factoryStageFloor] the center is the page's own, and `enter` on a step
 // with a chat walks into it the way a room is walked into.
@@ -70,6 +77,12 @@ type factoryHost struct {
 	// talks is the manager's chat the Talk door answered, by item, for a
 	// floor read that does not carry it yet.
 	talks map[int]string
+	// opened is every chat the page opened itself, by key, its transcript
+	// the value; kept is those of them the person put the keys into, which
+	// stay. The rest are let go of when the cursor leaves them
+	// ([app.factoryHostLetGo]).
+	opened map[string]string
+	kept   map[string]bool
 }
 
 // factoryCanHost says whether the page can host a chat at all on this
@@ -202,12 +215,26 @@ func (a *app) factoryHostSync() tea.Cmd {
 	h := &a.fp.host
 	if !a.at(pageFactory) || !a.fp.open || h.forwarding {
 		if !a.at(pageFactory) || !a.fp.open {
-			if h.key != "" || h.want != "" {
+			var cmd tea.Cmd
+			if len(h.opened) > 0 {
+				// Back on the floor, the chat in front is stepped back from
+				// too; gone to another place, the one in front is where the
+				// person went, and stays.
+				cmd = a.factoryHostLetGo("", a.at(pageFactory))
+			}
+			if h.key != "" || h.want != "" || len(h.opened) > 0 {
 				*h = factoryHost{}
 			}
 			a.fp.box = false
+			return cmd
 		}
 		return nil
+	}
+	if a.fp.box && h.key != "" && h.opened[h.key] != "" {
+		if h.kept == nil {
+			h.kept = map[string]bool{}
+		}
+		h.kept[h.key] = true
 	}
 	it, ok := a.factoryCursorItem()
 	if !ok {
@@ -226,13 +253,14 @@ func (a *app) factoryHostSync() tea.Cmd {
 			h.wantKey = a.convKey(want)
 		}
 	}
+	let := a.factoryHostLetGo(h.wantKey, false)
 	if want == "" {
 		if h.key != "" {
 			h.key = ""
 			a.touch()
 		}
 		a.fp.box = false
-		return nil
+		return let
 	}
 	if h.wantKey != "" && h.wantKey == a.frontTabKey() {
 		if h.key != h.wantKey {
@@ -242,7 +270,7 @@ func (a *app) factoryHostSync() tea.Cmd {
 		if h.focus {
 			h.focus, a.fp.box = false, true
 		}
-		return nil
+		return let
 	}
 	if h.key != "" {
 		h.key = ""
@@ -250,10 +278,10 @@ func (a *app) factoryHostSync() tea.Cmd {
 	}
 	a.fp.box = false
 	if h.asked == want {
-		return nil
+		return let
 	}
 	h.asked = want
-	return a.factoryHostBring(want)
+	return tea.Batch(let, a.factoryHostBring(want))
 }
 
 // factoryHostBring brings transcript chat in front without leaving the page:
@@ -279,11 +307,52 @@ func (a *app) factoryHostBring(chat string) tea.Cmd {
 			cmd, refusal := a.openBeside(where, chat)
 			if refusal != "" {
 				h.why = refusal
+			} else if key := a.convKey(chat); key != "" {
+				if h.opened == nil {
+					h.opened = map[string]string{}
+				}
+				h.opened[key] = chat
 			}
 			a.touch()
 			return cmd
 		}
 	})
+}
+
+// factoryHostLetGo lets go of every chat the page opened that the person did
+// not keep and the page does not want now (want, a key, or "" for none):
+// one held behind is detached where it stands; the one in front is stepped
+// back from, bringing the conversation before it forward, only when all is
+// set, the page closing.
+func (a *app) factoryHostLetGo(want string, all bool) tea.Cmd {
+	h := &a.fp.host
+	var cmds []tea.Cmd
+	for key := range h.opened {
+		if key == want || h.kept[key] {
+			continue
+		}
+		if held := a.behind[key]; held != nil {
+			a.letGoKept(key, held, leaveAgent)
+			delete(h.opened, key)
+			continue
+		}
+		if key != a.frontTabKey() {
+			// Gone already (closed by hand, or taken by another window).
+			delete(h.opened, key)
+			continue
+		}
+		if all {
+			if cmd, ok := a.stepBackFront(); ok {
+				cmds = append(cmds, cmd)
+			}
+			delete(h.opened, key)
+		}
+	}
+	if len(cmds) == 0 {
+		return nil
+	}
+	a.touch()
+	return tea.Batch(cmds...)
 }
 
 // factoryHostWaitWords is what the center says while the selected row's chat

@@ -537,7 +537,9 @@ A queued or landed item has no control. `?` names `space` by what it does now. O
 ## move around the item page — arrows, tab, click, hover, the wheel
 
 `↑` and `↓` walk every row of the left column in order, the steps and the actions included,
-and the center follows the row. `→` or `tab` gives the keys to the center's chat box, `esc` or
+and the center follows the row. A step's chat the cursor only passed over is let go of when the
+cursor moves on or you go back to the floor, so walking the steps leaves no tabs; one you gave the
+keys to (`enter`, `→` or a click on its box) stays a tab. `→` or `tab` gives the keys to the center's chat box, `esc` or
 `tab` gives them back, and `esc` on the page goes back to the floor. `enter` acts on the row: the
 issue and the manager open the manager's chat, a step with a chat puts the keys in its box, an
 action does what it says.
