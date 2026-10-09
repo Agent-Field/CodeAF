@@ -1,9 +1,9 @@
 import type { MouseEvent } from 'react';
 import { Button, Icon } from '../../components/ui';
 import { isMac } from '../../design/keyboard';
-import { taskMark } from './taskState';
 import type { TurnItem } from './types';
 import './task-notice.css';
+import { TaskMark } from './tasks/TaskMark';
 
 type TaskItem = Extract<TurnItem, { kind: 'task' }>;
 
@@ -22,13 +22,11 @@ function wantsBackground(event: MouseEvent) {
   return isMac ? event.metaKey : event.ctrlKey;
 }
 
-/** The notice's own mark: a 6px dot while it is running or waits on you, the quiet icon otherwise. */
+/** The notice's own mark: the shared task mark, centred on the notice's first line. */
 function NoticeMark({ status }: { status: string }) {
-  const mark = taskMark(status);
-  const dot = mark.kind === 'running' || mark.kind === 'yourcall';
   return (
-    <span className="task-notice-mark" data-kind={mark.kind} role="img" aria-label={mark.label}>
-      {dot ? <span className="task-notice-dot" /> : <Icon name={mark.icon} size="xs" />}
+    <span className="task-notice-mark">
+      <TaskMark status={status} />
     </span>
   );
 }

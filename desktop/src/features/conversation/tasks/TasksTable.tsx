@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Button, CodeText, Icon, IconButton, TextInput } from '../../../components/ui';
 import type { EngineTaskRow } from '../../chat/engine-client';
-import { rowKind } from '../taskState';
+import { rowFlags, rowKind } from '../taskState';
+import { TaskMark } from './TaskMark';
 import { buildTaskTree, taskProgress, waitTitles, type TaskNode } from '../taskTree';
 import { liveStep, rowAge, waitsText } from './rowText';
 import {
@@ -101,9 +102,7 @@ function Strip({ counts }: { counts: StripCounts }) {
 }
 
 function Mark({ row }: { row: EngineTaskRow }) {
-  const kind = rowKind(row);
-  if (kind === 'paused') return <Icon name="pause" size="xs" />;
-  return <span className="tasks-table-mark" data-kind={kind} aria-hidden="true" />;
+  return <TaskMark status={row.Status} {...rowFlags(row)} />;
 }
 
 /** The row's second line: the live command, or the reason it waits; model, steps and cost only as the engine gave them. */

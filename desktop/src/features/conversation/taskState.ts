@@ -3,6 +3,7 @@
 // the notices all say the same thing.
 
 import type { IconName } from '../../components/ui/Icon';
+import type { Status } from '../../components/ui/StatusMark';
 
 export type TaskKind = 'queued' | 'running' | 'done' | 'incomplete' | 'stopped' | 'interrupted' | 'yourcall' | 'paused';
 
@@ -66,6 +67,20 @@ export function taskKind(status: string, input: boolean | TaskFlags = {}): TaskK
 export function taskMark(status: string, flags: boolean | TaskFlags = {}): TaskMark {
   return marks[taskKind(status, flags)];
 }
+
+/** The shared StatusMark each task state draws with (foundations: the eight status marks). */
+const statuses: Record<TaskKind, Status> = {
+  running: 'running',
+  yourcall: 'waiting',
+  queued: 'queued',
+  done: 'done',
+  incomplete: 'incomplete',
+  stopped: 'stopped',
+  interrupted: 'stopped',
+  paused: 'paused',
+};
+
+export const statusOf = (kind: TaskKind): Status => statuses[kind];
 
 /** The row-shaped fields the mapping reads. */
 export type StateSource = { Status: string; Stopped?: boolean; Interrupted?: boolean; Hold?: string; Paused?: boolean };
