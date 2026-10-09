@@ -1,9 +1,10 @@
+import './work-step.css';
 import { useState } from 'react';
 import { Button, Icon } from '../../../components/ui';
 import type { WorkStep } from '../types';
 import { duration, elapsed } from './format';
-import { StateMark } from './Marks';
 import type { RowState, WorkRender } from './props';
+import { StepLead, StepTail } from './StepMark';
 import { categoryIcon } from './target';
 import { ToolCallRow } from './ToolCallRow';
 
@@ -30,7 +31,10 @@ function phaseOf(step: WorkStep, call: WorkStep['calls'][number]): 'forming' | '
   return step.state === 'waiting' ? 'waiting' : undefined;
 }
 
-/** One batch of parallel calls: category icon, title, time, state; unfolds to its calls. */
+const UNSETTLED: RowState[] = ['forming', 'running', 'waiting'];
+const isSettled = (state: RowState) => !UNSETTLED.includes(state);
+
+/** One batch of parallel calls: chevron, category glyph (a still mark while live), title, then state and time on the right. */
 export function WorkStepView({ step, open, onToggle, now, ...render }: Props) {
   const [openCalls, setOpenCalls] = useState<Record<string, boolean>>({});
   const toggleCall = (id: string) => setOpenCalls((value) => ({ ...value, [id]: !value[id] }));
@@ -39,10 +43,11 @@ export function WorkStepView({ step, open, onToggle, now, ...render }: Props) {
   return (
     <div className="work-step" data-state={state}>
       <Button className="work-step-head" aria-expanded={open} onClick={onToggle}>
-        <Icon name={categoryIcon(step.category)} size="sm" />
+        <Icon name="chevron" size="xs" motion="disclosure" />
+        <StepLead state={state} />
+        {isSettled(state) && <Icon name={categoryIcon(step.category)} size="xs" />}
         <span className="work-step-title">{step.title}</span>
-        <StateMark state={state} />
-        {time && <span className="work-time">{time}</span>}
+        <StepTail state={state} time={time} />
       </Button>
       {open && (
         <div className="work-calls">
