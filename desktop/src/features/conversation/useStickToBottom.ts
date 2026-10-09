@@ -24,6 +24,7 @@ export function useStickToBottom(scroller: RefObject<HTMLElement | null>, conten
   const onPage = useRef(Boolean(pageKey));
   onPage.current = Boolean(pageKey);
   const [behind, setBehind] = useState(false);
+  const [away, setAway] = useState(false);
 
   useEffect(() => {
     const element = scroller.current;
@@ -31,6 +32,7 @@ export function useStickToBottom(scroller: RefObject<HTMLElement | null>, conten
     if (!element || !inner) return;
     const onScroll = () => {
       atBottom.current = !onPage.current && distanceToEnd(element) <= SLACK;
+      setAway(!atBottom.current && !onPage.current);
       if (atBottom.current) setBehind(false);
     };
     const follow = () => {
@@ -67,7 +69,8 @@ export function useStickToBottom(scroller: RefObject<HTMLElement | null>, conten
     element.scrollTo({ top: element.scrollHeight, behavior: reduced ? 'auto' : 'smooth' });
     atBottom.current = true;
     setBehind(false);
+    setAway(false);
   }, [scroller]);
 
-  return { behind, jump };
+  return { behind, away, jump };
 }

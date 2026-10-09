@@ -37,19 +37,22 @@ test('a question sits in the tray; choosing answers canonically and leaves a rec
   await expect(page.getByText(/^Postgres · you · \d\d:\d\d$/)).toBeVisible();
 });
 
-test('several questions are tabs; a permission set is one card; the composer blocks only on a blocking question', async ({ page }) => {
+test('several questions page through one card; a permission set is one card; the composer blocks only on a blocking question', async ({ page }) => {
   const engine = await openWithQuestions(page, trayQuestions());
-  const tabs = tray(page).getByRole('tab');
-  await expect(tabs).toHaveCount(2);
+  const count = tray(page).getByRole('status');
+  await expect(count).toHaveText(/^1 of 2$/);
   await expect(message(page)).toBeDisabled();
   await page.getByRole('button', { name: 'Waiting on you: Pick a database' }).click();
-  await expect(tray(page).getByRole('tab', { name: /Pick a database/ })).toHaveAttribute('aria-selected', 'true');
-  await tray(page).getByRole('tab', { name: /3 actions/ }).click();
+  await expect(tray(page).getByRole('region', { name: 'Pick a database' })).toBeVisible();
+  await tray(page).getByRole('button', { name: 'Next question' }).click();
+  await expect(count).toHaveText(/^2 of 2$/);
+  await tray(page).getByRole('button', { name: 'Previous question' }).click();
+  await tray(page).getByRole('button', { name: 'Next question' }).click();
   const set = tray(page).getByRole('region', { name: '3 actions need your OK' });
   await set.getByRole('button', { name: 'Allow all' }).click();
   await expect.poll(() => posts(engine, '/answer').length).toBe(3);
   expect(posts(engine, '/answer').map((call) => [call.body.id, call.body.key])).toEqual([[1, '1'], [2, '1'], [3, '1']]);
-  await expect(tabs).toHaveCount(0);
+  await expect(count).toHaveCount(0);
   await expect(tray(page).getByRole('region', { name: 'Pick a database' })).toBeVisible();
   await expect(message(page)).toBeEnabled();
 });

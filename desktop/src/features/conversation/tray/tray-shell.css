@@ -1,0 +1,29 @@
+/* Decision tray shell: the one card (head, scrolling body, foot) and its 40px compact bar. Design v3 §6.2, 1a, 1b, 1e, 1f. */
+.decision-tray { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border-radius: var(--tray-radius); background: var(--surface); box-shadow: var(--sh-2); color: var(--ink); animation: surface-enter var(--dur-spring) var(--spring); }
+.decision-tray[hidden] { display: none; }
+
+.tray-header { display: flex; align-items: center; gap: var(--space-2); min-width: 0; padding: var(--space-3) var(--tray-pad-end) 0 var(--tray-pad-inline); color: var(--ink-3); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); }
+.tray-mark { flex: none; width: var(--mark-dot); height: var(--mark-dot); border-radius: var(--tray-mark-radius); background: var(--mark-waiting); }
+.tray-crumb { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--type-caption-weight); }
+.tray-crumb-kind { flex: none; font-weight: var(--font-weight-regular); }
+.tray-pager { display: flex; align-items: center; gap: var(--space-half); margin-left: auto; flex: none; }
+.tray-count { padding-right: var(--space-1); font-variant-numeric: tabular-nums; }
+.icon-button.tray-arrow { width: var(--row-action-size); height: var(--row-action-size); border-radius: var(--radius-row-action); color: var(--ink-2); }
+.icon-button.tray-arrow:hover:not(:disabled) { background: var(--field); color: var(--ink-2); }
+.icon-button.tray-arrow:disabled { color: var(--ink-3); opacity: var(--opacity-control-disabled); }
+.button.tray-later { min-height: var(--row-action-size); padding-inline: var(--space-2); border-radius: var(--radius-row-action); color: var(--ink-3); font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); }
+
+.tray-folded { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding: var(--space-2) var(--tray-pad-end) 0 var(--tray-pad-inline); list-style: none; }
+.tray-folded-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+
+/* 1f Tray body: capped at 40% of the window; a bottom mask appears only while more is below. */
+.tray-body { min-height: 0; max-height: var(--tray-body-max-height); overflow-y: auto; padding: var(--space-compact) var(--tray-pad-end) var(--space-row) var(--tray-pad-inline); }
+.tray-body[data-more] { -webkit-mask-image: linear-gradient(to bottom, var(--canvas) calc(100% - var(--tray-fade)), transparent); mask-image: linear-gradient(to bottom, var(--canvas) calc(100% - var(--tray-fade)), transparent); }
+.tray-foot { margin: 0; padding: 0 var(--tray-pad-end) var(--space-2) var(--tray-pad-inline); color: var(--ink-3); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); text-align: right; }
+
+/* 1b: the compact bar stands in for the card while the reader is scrolled away. */
+.tray-compact { display: flex; align-items: center; gap: var(--space-compact); min-width: 0; height: var(--tray-compact-height); padding: 0 var(--tray-compact-pad-end) 0 var(--tray-compact-pad-inline); border-radius: var(--tray-compact-radius); background: var(--surface); box-shadow: var(--sh-2); color: var(--ink); font-size: var(--type-label-size); animation: surface-enter var(--dur-spring) var(--spring); }
+.tray-compact-count { flex: none; font-weight: var(--type-label-strong); }
+.tray-compact-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); }
+.button.tray-compact-review { flex: none; height: var(--control-height); min-height: var(--control-height); margin-left: auto; padding: 0 var(--control-pad); border: 0; border-radius: var(--radius-control); background: var(--field); color: var(--ink); font-size: var(--type-label-size); font-weight: var(--type-label-strong); }
+.button.tray-compact-review:hover:not(:disabled) { background: var(--field-2); color: var(--ink); }
