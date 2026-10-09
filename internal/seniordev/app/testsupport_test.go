@@ -255,7 +255,7 @@ func (backend *coderOnlyBackend) count(agent string) int {
 }
 
 func newRuntime(workspace string, client backend) *runtimeAdapter {
-	return newConfiguredRuntime(workspace, client, nil)
+	return newConfiguredRuntime(workspace, "", client, nil)
 }
 
 // Create opens a session for agent under parentID. Tests of the durable

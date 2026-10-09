@@ -73,7 +73,7 @@ func TestProjectConfigChangesLiveRuntimePermissionsAndInstructions(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := newConfiguredRuntime(workspace, &capturingBackend{}, cfg)
+	runtime := newConfiguredRuntime(workspace, "", &capturingBackend{}, cfg)
 	defer runtime.Close()
 
 	// Project instructions reach the live system prompt service.
@@ -246,7 +246,7 @@ func TestSeniorDevConfigDirFeedsRegistryFormatterContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime := newConfiguredRuntime(workspace, &capturingBackend{}, cfg)
+	runtime := newConfiguredRuntime(workspace, "", &capturingBackend{}, cfg)
 	defer runtime.Close()
 	target := filepath.Join(workspace, "sample.fmtx")
 	input, _ := json.Marshal(map[string]any{"filePath": target, "content": "unformatted\n"})

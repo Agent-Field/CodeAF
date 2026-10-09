@@ -70,8 +70,11 @@ type cliArgs struct {
 	// leaves that kind to discovery (fullverification/declared.go).
 	VerifyBuild string
 	VerifyTest  string
-	MaxCost     *float64
-	MaxHours    *float64
+	// StateDir is where the session store lives, resolved through its links;
+	// empty keeps it in the workspace's own .senior-dev ([stateDirectory]).
+	StateDir string
+	MaxCost  *float64
+	MaxHours *float64
 }
 
 // CrewModel is a crew seat's model as a pool entry: the id filed under the

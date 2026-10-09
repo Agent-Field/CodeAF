@@ -66,18 +66,48 @@ type durableSessions struct {
 	unsubscribe      func()
 	projector        *projectors.Store
 	lockPath         string
+	// storeDir is the store's real path, and storeInfo the directory found
+	// there when it was opened ([durableSessions.storeStillThere]).
+	storeDir  string
+	storeInfo os.FileInfo
 
 	operationMu     sync.Mutex
 	projectionMu    sync.Mutex
 	projectionError []error
 }
 
+// openDurableSessions opens the store in the workspace's own .senior-dev, which
+// is where it lives when the run was given no state directory.
 func openDurableSessions(ctx context.Context, workspace string) (*durableSessions, error) {
-	// Flat session storage and senior-dev.db both live under the workspace's
-	// .senior-dev directory.
+	return openDurableSessionsIn(ctx, workspace, "")
+}
+
+// openDurableSessionsIn opens the run's session store — its database, its flat
+// records and the lock that orders them — in stateDir, or in the workspace's
+// own .senior-dev when stateDir is empty (--state-dir, SENIOR_DEV_STATE_DIR;
+// [stateDirectory]). The files the model is told about by name stay in the
+// workspace's .senior-dev either way.
+//
+// THE STORE IS OPENED BY ITS REAL PATH, ONCE. The directory is made, made
+// absolute and resolved through every link before anything is rooted on it,
+// so the database, the flat records and the lock all name the store itself,
+// never the way to it. A benchmark rig anchored .senior-dev outside the folder
+// through a link; the link went away an hour into a run, and the lock, which
+// is reopened for every write, was still reopened through it: the next model
+// turn ended the run with `open <folder>/.senior-dev/projection.lock: no such
+// file or directory` while the store it pointed at was whole.
+func openDurableSessionsIn(ctx context.Context, workspace, stateDir string) (*durableSessions, error) {
 	dataDir := filepath.Join(workspace, seniorDevDataDirectory)
+	if stateDir != "" {
+		dataDir = stateDir
+	}
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return nil, fmt.Errorf("senior-dev sessions: create data directory: %w", err)
+	}
+	dataDir = realDirectory(dataDir)
+	storeInfo, err := os.Stat(dataDir)
+	if err != nil {
+		return nil, fmt.Errorf("senior-dev sessions: read data directory: %w", err)
 	}
 
 	projectInfo, _, err := project.Discover(ctx, workspace)
@@ -112,6 +142,7 @@ func openDurableSessions(ctx context.Context, workspace string) (*durableSession
 		projectID: projectID, workspace: workspace,
 		projector: projectors.NewStore(db, projectors.StoreOptions{}),
 		lockPath:  filepath.Join(dataDir, "projection.lock"),
+		storeDir:  dataDir, storeInfo: storeInfo,
 	}
 	durable.projectionSource = durable.store
 	sessions, err := sessioncore.New(sessioncore.Options{
@@ -233,7 +264,7 @@ func (durable *durableSessions) withProjection(
 ) error {
 	durable.operationMu.Lock()
 	defer durable.operationMu.Unlock()
-	return withAdvisoryFileLock(durable.lockPath, func() error {
+	return durable.withStoreLock(func() error {
 		durable.projectionMu.Lock()
 		durable.projectionError = nil
 		durable.projectionMu.Unlock()
@@ -318,7 +349,7 @@ type replayProjectionEvent struct {
 }
 
 func (durable *durableSessions) reconcileProjection(ctx context.Context) error {
-	return withAdvisoryFileLock(durable.lockPath, func() error {
+	return durable.withStoreLock(func() error {
 		if err := durable.ensureProjectionReconcileSchema(ctx); err != nil {
 			return err
 		}
@@ -981,6 +1012,58 @@ func latestJSONTimestamp(value any, fallback uint64) uint64 {
 	}
 	visit(decoded)
 	return latest
+}
+
+// realDirectory is dir made absolute and resolved through every link on the
+// way to it. A path that cannot be resolved is kept as it was given, which is
+// what the store was rooted on before it was resolved at all.
+func realDirectory(dir string) string {
+	if absolute, err := filepath.Abs(dir); err == nil {
+		dir = absolute
+	}
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = resolved
+	}
+	return dir
+}
+
+// withStoreLock holds the store's projection lock around fn, once the store
+// is known to be the one the run opened.
+func (durable *durableSessions) withStoreLock(fn func() error) error {
+	if err := durable.storeStillThere(); err != nil {
+		return err
+	}
+	return withAdvisoryFileLock(durable.lockPath, fn)
+}
+
+// storeStillThere answers an error once the store's directory is no longer
+// the one the run opened: gone, or another in its place.
+//
+// A STORE THAT WAS REMOVED ENDS THE RUN, AND NO OTHER STANDS IN FOR IT. The
+// store is opened by its real path ([openDurableSessionsIn]), so the one way
+// its directory can stop being the one the run opened is that the store was
+// removed, and the session records in it with it. Writing on into a directory
+// made again in its place — by this lock, or by anything else that writes
+// under .senior-dev/ — would leave the database writing to the removed file
+// and a flat store holding only what came after: the next turn finds no
+// session, makes one under the same id, and the model reads a conversation
+// that starts where the removal happened. The run ends instead, naming the
+// store where it was.
+func (durable *durableSessions) storeStillThere() error {
+	if durable.storeInfo == nil {
+		return nil
+	}
+	current, err := os.Stat(durable.storeDir)
+	switch {
+	case err == nil && os.SameFile(durable.storeInfo, current):
+		return nil
+	case err == nil:
+		return fmt.Errorf("senior-dev sessions: its store %s was removed while the run was working, "+
+			"with the conversation in it; the directory there now is a new one", durable.storeDir)
+	default:
+		return fmt.Errorf("senior-dev sessions: its store %s was removed while the run was working, "+
+			"with the conversation in it: %w", durable.storeDir, err)
+	}
 }
 
 func withAdvisoryFileLock(path string, fn func() error) error {

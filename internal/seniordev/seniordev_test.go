@@ -201,6 +201,7 @@ func hermeticRun(t *testing.T) (workspace string, trap *atomic.Bool) {
 	t.Setenv("SENIOR_DEV_PERMISSION", "")
 	t.Setenv("SENIOR_DEV_NET", "allow")
 	t.Setenv("SENIOR_DEV_SCRATCH_ROOT", t.TempDir())
+	t.Setenv(app.StateDirEnv, "")
 	t.Setenv("SENIOR_DEV_DISABLE_MODELS_FETCH", "1")
 	catalog, err := filepath.Abs(filepath.Join("modelsdev", "testdata", "catalog.json"))
 	if err != nil {
@@ -403,6 +404,49 @@ func TestTheRunCommandWorksATaskThroughTheModelAPIItIsGiven(t *testing.T) {
 	}
 	if trapHit.Load() {
 		t.Fatal("a request went to OPENROUTER_BASE_URL")
+	}
+}
+
+// --state-dir REACHES THE RUN, AND WINS OVER SENIOR_DEV_STATE_DIR. A whole run
+// keeps its session database and its conversation in the directory the flag
+// names; the variable's directory and the folder's .senior-dev hold none of
+// them, and the brief is still written where the model is told to read it.
+func TestTheStateDirFlagKeepsTheStoreWhereItSays(t *testing.T) {
+	workspace, _ := hermeticRun(t)
+	stateDir, variable := filepath.Join(t.TempDir(), "run-1"), t.TempDir()
+	t.Setenv(app.StateDirEnv, variable)
+	api := httptest.NewServer(&modelAPIServer{})
+	t.Cleanup(api.Close)
+	host := &recordingHost{
+		workspace: workspace,
+		api:       delegate.ModelAPI{BaseURL: api.URL + "/v1", Token: runToken},
+	}
+
+	err := runBody(t, context.Background(), host, "--state-dir", stateDir,
+		"--high", "openrouter/fixture/vendor-model", "--", "Add", "the", "feature.")
+	if err != nil {
+		t.Fatalf("the body answered an error: %v", err)
+	}
+
+	records := host.snapshot()
+	if ending := records[len(records)-1].ending; ending.Status != delegate.StatusPass {
+		t.Fatalf("ending = %+v, want pass", ending)
+	}
+	for _, name := range []string{"senior-dev.db", "storage", "projection.lock"} {
+		if _, err := os.Stat(filepath.Join(stateDir, name)); err != nil {
+			t.Errorf("%s is not in the --state-dir: %v", name, err)
+		}
+	}
+	if entries, _ := os.ReadDir(variable); len(entries) != 0 {
+		t.Errorf("%s's directory holds %d entries although --state-dir named another", app.StateDirEnv, len(entries))
+	}
+	for _, name := range []string{"senior-dev.db", "storage", "projection.lock"} {
+		if _, err := os.Lstat(filepath.Join(workspace, ".senior-dev", name)); err == nil {
+			t.Errorf("the folder's .senior-dev holds %s", name)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(workspace, ".senior-dev", "spec.md")); err != nil {
+		t.Errorf("the brief is not where the model reads it: %v", err)
 	}
 }
 

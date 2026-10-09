@@ -625,6 +625,38 @@ they never end up on a branch, and the next run in that folder never reads the l
 one's checklist as its own. A `.senior-dev/` already in the folder when the run began is
 left where it is, and never ends up on a branch either.
 
+A run given `--state-dir DIR` (or `SENIOR_DEV_STATE_DIR`) keeps its session database and
+its conversation in that directory instead, and they stay there: only what is in
+`.senior-dev/` — the brief, the checklist, the pinned command, the output it set aside —
+is moved into the record.
+
+## senior-dev stopped with projection.lock: no such file or directory — .senior-dev removed or a link to it gone mid-run, its session store, --state-dir, SENIOR_DEV_STATE_DIR
+
+senior-dev keeps its session store — `senior-dev.db`, the `storage/` folder of its records
+and `projection.lock` — in `.senior-dev/` in the folder it works in, unless it is given a
+directory of its own. **It opens that store once, by its real path**: a `.senior-dev` that
+is a link to somewhere else is followed when the run starts, and every later read and
+write goes where the link led. So a link that goes away while it works no longer ends the
+run. It used to: the lock was reopened through the link for every write, and the next
+model turn ended the run with `open <folder>/.senior-dev/projection.lock: no such file or
+directory` while the store itself was whole.
+
+**A store that is itself removed still ends the run**, because its conversation went with
+it. senior-dev does not carry on in an empty directory made in its place, with a model
+that has lost its work; it stops, saying
+`its store <dir> was removed while the run was working, with the conversation in it`.
+Whatever clears or restores the folder — a benchmark's reset script, `rm -rf` of the
+tree — removes a store kept in it.
+
+To keep the store out of the folder, start `codeaf senior-dev run` with `--state-dir DIR`,
+or set `SENIOR_DEV_STATE_DIR`; the flag wins when both are set, and the directory is made
+if it is missing. **Use a new one for each run**: runs in folders without git share one
+project, so a directory shared between them mixes their sessions. A directory inside the
+folder is refused before anything is spent, because its checkpoints and the change it
+hands in would carry the store; the folder's own `.senior-dev/` is the exception. The
+brief, the checklist and the other files the model reads stay in `.senior-dev/` in the
+folder either way.
+
 ## Where does senior-dev put its work — its own branch, in a copy of its own, not merged, one commit
 
 In a git repository, codeaf cuts a branch of its own for the run (`task/<title>-<id>`) from
@@ -1114,7 +1146,7 @@ after the run's record folder (such as `20260924-150405.000000`). That folder al
 `delegate-program.json`, with the instant senior-dev's process started and the instant it
 ended.
 
-## senior-dev's flags — run, --variant, --in-place, --high, --verify-test, --max-cost
+## senior-dev's flags — run, --variant, --in-place, --high, --verify-test, --state-dir, --max-cost
 
 `codeaf senior-dev <brief>` is `codeaf senior-dev run -- <brief>`. codeaf gives every
 program it carries four flags:
@@ -1127,20 +1159,20 @@ program it carries four flags:
 senior-dev's own flags on `run`:
 
 - `--variant NAME` — how hard the coder thinks: `low`, `medium`, `high`, `xhigh`, `max`,
-  or `none` for the model's own default; `high` when unset. Its history summaries send
-  none;
+  or `none` for the model's own default; `high` when unset;
 - `--in-place` — work without git even inside a repository: no commits, and its
-  checkpoints kept outside the folder. A folder with no git history is worked that way
-  without it; codeaf passes it itself under a repository at your home folder;
+  checkpoints kept outside the folder. A folder with no git history needs no flag;
+  codeaf passes it itself under a repository at your home folder;
 - `--high`, `--low` — comma-separated models it routes among; `--low` (its history
   summaries) falls back to `--high`. On a shell run, each `--high` entry accepts a
   bare OpenRouter id, service-prefixed id, or short `/crew` model word;
 - `--asked` — the `--high` models were chosen by name, so one senior-dev cannot
   size ends the run before its first call rather than being skipped;
 - `--verify-build CMD`, `--verify-test CMD` — the project's own build or test command,
-  run by senior-dev on the submitted tree instead of the one it would have found (see
-  how senior-dev finds a project's build and tests);
-- `--frontier` — accepted, and changes nothing: no call senior-dev makes uses that tier;
+  run by senior-dev on the submitted tree instead of the one it would have found;
+- `--state-dir DIR` — keep its session database and conversation in DIR, outside the
+  folder (`SENIOR_DEV_STATE_DIR` when unset); a new one for each run;
+- `--frontier` — accepted; no call uses that tier;
 - `--crew` — the models came from a conversation's crew: one its catalog cannot size is
   left out instead of failing the run. codeaf passes it with the crew's models.
 
