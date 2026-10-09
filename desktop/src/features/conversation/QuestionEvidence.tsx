@@ -1,7 +1,7 @@
 import { Text } from '../../components/ui';
 import type { EngineQuestionBlock } from '../chat/engine-client';
 
-const CODE_BLOCKS = new Set(['diff', 'diagram', 'layout']);
+const CODE_BLOCKS = new Set(['code', 'diff', 'diagram', 'layout']);
 
 function Table({ rows }: { rows: string[][] }) {
   const [head, ...body] = rows;

@@ -301,6 +301,8 @@ type BlockKind string
 const (
 	// BlockText is prose. Body is the whole of it.
 	BlockText BlockKind = "text"
+	// BlockCode is literal executable text, preserved without Markdown interpretation.
+	BlockCode BlockKind = "code"
 	// BlockDiagram is a drawing the asker made, already rendered to lines.
 	BlockDiagram BlockKind = "diagram"
 	// BlockTable is Rows, the first of which is the header.
@@ -1990,7 +1992,11 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 	if landingSaid {
 		q = a.questionForLandingAnswer(answer)
 	}
-	if err := a.applyToLane(answer); err != nil {
+	err := consentScopeError(q, said, answer)
+	if err == nil {
+		err = a.applyToLane(answer)
+	}
+	if err != nil {
 		if errors.Is(err, errAnswerSettled) {
 			// THE LOSER OF A RACE RECORDS NOTHING AND SAYS NOTHING. Somebody
 			// else's answer to this question got there first — the clock and a

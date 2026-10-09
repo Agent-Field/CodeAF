@@ -318,7 +318,7 @@ func (a *app) questionPageListWant(width int) int {
 func questionBlockWant(block session.Block) int {
 	widest := ansi.StringWidth(strings.TrimSpace(block.Title))
 	switch block.Kind {
-	case session.BlockDiagram, session.BlockDiff:
+	case session.BlockCode, session.BlockDiagram, session.BlockDiff:
 		for _, line := range strings.Split(block.Body, "\n") {
 			widest = max(widest, ansi.StringWidth(expandTabs(line)))
 		}

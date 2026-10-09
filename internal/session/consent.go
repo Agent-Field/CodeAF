@@ -43,6 +43,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/connect"
+	"github.com/Agent-Field/codeaf/internal/redact"
 )
 
 // ConsentScope says how long one answer lasts.
@@ -605,12 +606,10 @@ func (a *Agent) consentAsk(id uint64, call ai.ToolCall, decision approval.Decisi
 		// and no task waits on this at all.
 		Blocking: Blocking{Turn: true},
 		Scope:    scope,
-		// AND IT ATTACHES NOTHING. The call's arguments are on the row this question
-		// points at, and consent.go's own law is that IT SHOWS THE ROW THAT IS
-		// ALREADY THERE — two renderings of one call is how a person ends up
-		// approving something other than what they read. Copying them onto the
-		// question would also put a whole file's body into a presence file every
-		// window on the machine re-reads every few seconds.
+		// The exact bash command comes from this immutable call, never a tool-name
+		// join or the policy's matching pattern. Other tools' potentially large
+		// file bodies stay on their original row.
+		Attach: a.consentCommand(call),
 	}
 }
 
@@ -656,7 +655,44 @@ func consentRule(call ai.ToolCall, decision approval.Decision) string {
 // should say the same sentence about the same rule instead of deriving one.
 func consentReason(call ai.ToolCall, decision approval.Decision) string {
 	if rule := consentRule(call, decision); rule != "" {
+		if pattern, ok := strings.CutPrefix(rule, "critical command "); ok {
+			return "Safety policy matched critical-command pattern " + pattern + ". Allow once applies only to this request."
+		}
 		return rule
 	}
 	return ConsentFallbackReason
+}
+
+func (a *Agent) consentCommand(call ai.ToolCall) []Block {
+	if call.Function.Name != "bash" {
+		return nil
+	}
+	var args struct {
+		Command string `json:"command"`
+	}
+	if json.Unmarshal([]byte(call.Function.Arguments), &args) != nil || args.Command == "" {
+		return nil
+	}
+	command := redact.Secrets(args.Command)
+	title := "Command · this request only"
+	if command != args.Command {
+		title += " · secrets hidden"
+	}
+	return []Block{{Kind: BlockCode, Title: title, Body: command}, {Kind: BlockText, Title: "Working folder", Body: redact.Secrets(a.config.Workspace)}}
+}
+
+// A hidden widening key is not an authority. The question already claimed
+// by ResolveQuestion is the immutable offer that this answer must honour.
+func consentScopeError(q Question, claimed bool, answer Answer) error {
+	if !claimed || q.Kind != QuestionConsent || answer.FirstKey() != "2" {
+		return nil
+	}
+	if q.Stakes != StakesIrreversible {
+		for _, option := range q.Options {
+			if option.Key == "2" && option.Widening {
+				return nil
+			}
+		}
+	}
+	return errors.New("this request only offers one-time permission; a standing approval was not offered")
 }
