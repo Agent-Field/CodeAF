@@ -1,0 +1,28 @@
+/* The new-tab field (design 3f, 4c, Components "Command field"): an empty card, one centred field, rows below it. */
+.newtab { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; padding: var(--newtab-top) var(--newtab-gutter) var(--space-4); }
+.newtab-field { box-sizing: border-box; width: min(calc(var(--newtab-width) + var(--newtab-pad) * 2), 100%); flex: none; display: flex; flex-direction: column; padding: var(--newtab-pad); border-radius: var(--newtab-radius); background: var(--surface); box-shadow: var(--sh-2); }
+.newtab-input-row { display: flex; align-items: center; gap: var(--space-3); height: var(--newtab-input-height); padding: 0 var(--space-3); font-size: var(--newtab-input-size); }
+.newtab-input-row > .app-icon { color: var(--ink-3); }
+.newtab-input-row .text-input { flex: 1; min-width: 0; padding: 0; min-height: 0; height: 100%; border: 0; background: transparent; color: var(--ink); font-size: var(--newtab-input-size); caret-color: var(--accent); }
+.newtab-input-row .text-input::placeholder { color: var(--ink-3); }
+/* The field is the one focus target on the card: its ring would only fence the caret, so the row carries focus by the caret alone. */
+.newtab-input-row .text-input:focus-visible { outline: none; box-shadow: none; }
+.newtab-hint { flex: none; margin-left: auto; font-size: var(--font-size-label); color: var(--ink-3); white-space: nowrap; }
+.newtab-rule { height: var(--hairline); margin: 0 var(--newtab-pad) var(--space-1); background: var(--line); }
+.newtab-list { display: flex; flex-direction: column; }
+.newtab-section { display: block; line-height: normal; padding: var(--newtab-section-pad); font-size: var(--font-size-label); font-weight: var(--font-weight-medium); color: var(--ink-3); }
+.newtab-row { display: flex; align-items: center; gap: var(--space-3); height: var(--newtab-row-height); padding: 0 var(--space-3); border-radius: var(--radius-control); font-size: var(--font-size-input); color: var(--ink); cursor: default; transition: background-color var(--dur-fast) var(--ease); }
+.newtab-row:active { background: var(--field-2); transition-duration: var(--dur-press); }
+.newtab-row[aria-selected="true"] { background: var(--field); }
+.newtab-row > .app-icon { width: var(--newtab-row-icon); height: var(--newtab-row-icon); color: var(--ink-2); }
+.newtab-row > .tab-dot { margin: 0 var(--tab-dot-margin); }
+.newtab-row-label { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
+.newtab-row-label b { font-weight: var(--font-weight-medium); }
+.newtab-row-detail { color: var(--ink-3); }
+.newtab-row-hint { flex: none; font-size: var(--font-size-label); color: var(--ink-3); }
+.newtab-caption { line-height: normal; margin: var(--space-4) 0 0; font-size: var(--font-size-body); color: var(--ink-3); text-align: center; }
+/* Specimen only: the same card on a canvas plate, without the live page offset. */
+.newtab-specimen { box-sizing: border-box; min-width: 0; max-width: 100%; display: flex; flex-direction: column; gap: var(--space-section-inner); padding: var(--space-4); border-radius: var(--radius-card); background: var(--canvas); box-shadow: inset 0 0 0 var(--hairline) var(--line); }
+.newtab-specimen .newtab { padding: 0; overflow: visible; }
+.newtab-typed { flex: 1; min-width: 0; color: var(--ink); }
+.newtab-caret { display: inline-block; width: var(--focus-input-width); height: var(--space-section); margin-left: var(--space-half); background: var(--accent); vertical-align: calc(var(--space-three-quarter) * -1); }

@@ -42,6 +42,7 @@ export const INK3_TEXT = [
  '.tasks-table-totals', '.tasks-table-tab-count', '.tasks-table-detail', '.tasks-table-group-count', '.tasks-table-state', '.tasks-table-age',
  '.task-row-meta', '.task-log-outcome', '.task-note-receipt', '.task-note-author', '.instructions-toggle', '.instructions-edit', '.breadcrumb-link',
  '.task-detail-crumb', '.task-detail-state', '.task-detail-fact dt', '.task-detail-label', '.button-ghost', '.text-input-field', '.task-composer-field',
+ '.newtab-hint', '.newtab-section', '.newtab-row-detail', '.newtab-row-hint', '.newtab-caption',
  '.markdown-code-lang', '.turn-folded', '.file-chip-added', '.changes-added', '.work-add', '.work-diff-sign',
 ];
 async function isDesignInk3(page: Page, target: unknown) {

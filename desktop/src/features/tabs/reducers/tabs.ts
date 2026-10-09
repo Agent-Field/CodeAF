@@ -2,7 +2,7 @@
 // A slice returns undefined for an action it does not own; model.ts composes the slices.
 import type { TabView } from '../view-state.ts';
 import type { TabKind } from '../kinds/types.ts';
-import { initialWorkspace, mapContent, newConversationTitle, newTab, normalize, rankOf, tabHolding, titleRank, visibleTabs } from '../helpers.ts';
+import { initialWorkspace, mapContent, newConversationTitle, newTabTitle, newTab, normalize, rankOf, tabHolding, titleRank, visibleTabs } from '../helpers.ts';
 import type { Tab, WorkspaceState } from '../types.ts';
 
 export type TabAction =
@@ -27,7 +27,8 @@ export function reduceTabs(state: WorkspaceState, action: { type: string }): Wor
   const a = action as TabAction;
   switch (a.type) {
     case 'new': {
-      const tab = newTab({ groupId: a.groupId, kind: a.kind });
+      const kind = a.kind ?? 'newtab';
+      const tab = newTab({ groupId: a.groupId, kind, ...(kind === 'newtab' ? { title: newTabTitle } : {}) });
       return { ...state, tabs: [...state.tabs, tab], activeId: tab.id, recentIds: [tab.id, ...state.recentIds], nextNumber: state.nextNumber + 1, groups: uncollapse(state, a.groupId) };
     }
     case 'open':
