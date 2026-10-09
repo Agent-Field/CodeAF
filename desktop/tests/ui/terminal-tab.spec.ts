@@ -100,6 +100,17 @@ test('the new terminal key opens a shell under the conversation, types into it a
   await page.keyboard.press('Control+Backquote');
   await expect(tabs(page)).toHaveCount(3);
   await tabs(page).nth(1).click();
+  // Canonical tabs are shared; active focus is saved only in this window's copy.
+  // Reload once both records describe the terminal the person actually selected.
+  await expect.poll(() => page.evaluate(async () => {
+    const record = await (await fetch('/api/engine/workspaces/now')).json();
+    const tab = record.workspace?.tabs.find((tab: { target?: { terminalId?: string } }) => tab.target?.terminalId === 'mock-term-1');
+    const writer = sessionStorage.getItem('codeaf.desktop.window-id');
+    const raw = writer && localStorage.getItem(`codeaf.desktop.workspace-sync.v1:now:${writer}`);
+    const local = raw ? JSON.parse(raw).local : undefined;
+    const selected = document.querySelector('.workspace-tabstrip [role="tab"][aria-selected="true"]');
+    return !!tab && local?.activeId === tab.id && selected?.id === `tab-${tab.id}`;
+  }), { message: 'canonical terminal identity and this window saved focus agree before reload' }).toBe(true);
   await page.reload();
   await expect(header(page).locator('.terminal-title')).toHaveText('zsh');
   await expect(screenText(page)).toContainText('mock$ ls');
@@ -306,6 +317,13 @@ test('the tab is accessible in light and dark, and the specimen draws both cards
     await page.goto('about:blank');
   }
   await page.goto('/');
+  // Wait for attachment's own focus effect before moving focus to app chrome.
+  await expect(screenText(page)).toContainText('ok codeaf/parse');
+  await expect(page.locator('.xterm-helper-textarea')).toBeFocused();
+  // Ctrl+K belongs to the shell while xterm has focus; navigate from the app chrome.
+  const chrome = page.getByRole('button', { name: 'New tab', exact: true });
+  await chrome.focus();
+  await expect(chrome).toBeFocused();
   await openPage(page, 'Design system');
   const cards = page.locator('.terminal-specimen-card');
   await expect(cards).toHaveCount(2);

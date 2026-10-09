@@ -418,3 +418,34 @@ test('late-draft forwarding rebases a destination CAS race and retries a lost ac
   assert.deepEqual(ids(window.getState()), ['home']);
   window.stop();
 });
+
+test('reload replays an unsaved foreground open without replacing a later explicit selection', async () => {
+ const {a,make,saved} = await twoWindows('first');
+ a.dispatch({type:'open',tab:tab('pending-terminal'),background:false});
+ a.dispatch({type:'select',id:'first'});
+ a.persistNow();
+ assert.equal(saved['win-a'].pending.length,1,'exercise an unconfirmed open, not a settled queue');
+ assert.equal(saved['win-a'].local.activeId,'first');
+ const restored=make('win-a-reloaded',structuredClone(saved['win-a']));
+ assert.deepEqual(ids(restored.getState()),['first','pending-terminal']);
+ assert.equal(restored.getState().activeId,'first','the later window-local choice survives shared replay');
+});
+
+test('reload keeps foreground focus on a pending new tab when the person has not selected elsewhere', async () => {
+ const {a,make,saved}=await twoWindows('first');
+ a.dispatch({type:'open',tab:tab('pending-terminal'),background:false});
+ a.persistNow();
+ const restored=make('win-a-reloaded',structuredClone(saved['win-a']));
+ assert.equal(restored.getState().activeId,'pending-terminal');
+});
+
+test('remote rebase of a pending foreground open preserves the later local selection and recency', async () => {
+ const {a,b,time}=await twoWindows('first','second');
+ a.dispatch({type:'open',tab:tab('pending-terminal'),background:false});
+ a.dispatch({type:'select',id:'first'});
+ b.dispatch({type:'open',tab:tab('other-window'),background:true});
+ await time.advance(150);
+ assert.deepEqual(ids(a.getState()).sort(),['first','second','pending-terminal','other-window'].sort());
+ assert.equal(a.getState().activeId,'first');
+ assert.equal(a.getState().recentIds[0],'first');
+});
