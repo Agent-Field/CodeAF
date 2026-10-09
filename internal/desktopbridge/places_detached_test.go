@@ -160,7 +160,12 @@ func (r *closedRig) savedRealChats() map[string]string {
 	return group
 }
 
-func gardenAnswer(context.Context, placegraph.ModelRequest) (session.PlacesAnswer, error) {
+// gardenAnswer groups the garden chats, and finds nothing among what no rule
+// grouped (the question that shows the rest says they are probably unrelated).
+func gardenAnswer(_ context.Context, q placegraph.ModelRequest) (session.PlacesAnswer, error) {
+	if strings.Contains(q.User, "probably unrelated") {
+		return session.PlacesAnswer{Text: `{"belong": false, "chats": [], "use": "", "name": "", "under": "root", "confidence": 10}`, Model: adviceModel}, nil
+	}
 	return session.PlacesAnswer{Text: `{"belong": true, "chats": ["c1","c2","c3","c4","c5"], "use": "", "name": "Garden drip irrigation", "under": "root", "confidence": 93}`, Model: adviceModel}, nil
 }
 
@@ -182,7 +187,8 @@ func TestHomeOffersAGroupAtStartUpWithNoConversationOpen(t *testing.T) {
 			t.Fatalf("a %s chat was offered as garden", group[id])
 		}
 	}
-	if rig.agent.calls() != 1 || rig.agent.asked[0].Role != "placesuggest" {
+	// One question about the garden group, then one about what no rule grouped.
+	if rig.agent.calls() != 2 || rig.agent.asked[0].Role != "placesuggest" || !strings.Contains(rig.agent.asked[1].User, "probably unrelated") {
 		t.Fatalf("asked %d times", rig.agent.calls())
 	}
 	if !strings.Contains(rig.agent.asked[0].User, "Recommended pressure-compensating hard-water emitters") {
@@ -247,14 +253,15 @@ func TestAJobTheRulesAnswerAttachesNothing(t *testing.T) {
 	}
 }
 
-// Only this desktop's own conversations are ridden: one from another
-// project's terminal is never booted under this host, and with nothing else
-// saved there is no door.
-func TestTheReaderNeverRidesAnotherProjectsConversation(t *testing.T) {
+// An existing terminal library supplies a reader even before the first
+// desktop conversation; its launcher joins the saved chat's own host.
+func TestTheReaderCanRideAnExistingTerminalConversation(t *testing.T) {
 	rig := newClosedRig(t)
-	rig.saved("elsewhere", "Terminal work", nil, time.Now(), "/home/u/other")
-	if file := rig.advice.backgroundFile(); file != "" {
-		t.Fatalf("would ride %s", file)
+	project := t.TempDir()
+	rig.saved("elsewhere", "Terminal work", nil, time.Now(), project)
+	rig.saved("missing", "Unavailable remote project", nil, time.Now().Add(time.Minute), filepath.Join(project, "gone"))
+	if file := rig.advice.backgroundFile(); file == "" {
+		t.Fatal("existing terminal library has no reader")
 	}
 }
 

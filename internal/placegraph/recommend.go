@@ -349,6 +349,7 @@ func (r *Recommender) Organize(ctx context.Context, library []ChatEvidence) ([]P
 	}
 	var fresh []Proposal
 	var errs []error
+	pass := &organizePass{}
 	if pol.MergeOffers {
 		for _, p := range r.mergeOffers(snap, st, pol) {
 			if room <= 0 {
@@ -374,22 +375,48 @@ func (r *Recommender) Organize(ctx context.Context, library []ChatEvidence) ([]P
 			}
 		}
 		if len(loose) >= pol.MinClusterChats {
-			for n, cl := range findClusters(loose, pol.MinClusterChats) {
-				if room <= 0 || n >= maxClustersPass {
-					break
+			clusters := findClusters(loose, pol.MinClusterChats)
+			grouped := map[string]bool{}
+			considered := 0
+			for _, cl := range clusters {
+				for _, id := range cl.ids() {
+					grouped[id] = true
+				}
+				if room <= 0 || considered >= maxClustersPass {
+					continue
 				}
 				if suppressedCluster(st, cl.ids(), r.now(), pol) || coveredBy(fresh, cl.ids()) {
 					continue
 				}
-				p, err := r.clusterOffer(ctx, snap, st, pol, cl, lib)
+				considered++
+				p, err := r.clusterOffer(ctx, snap, st, pol, cl, lib, pass)
 				if err != nil {
 					errs = append(errs, err)
 				}
+				p = r.unlessNamedTwice(st, fresh, p)
 				if p != nil {
 					fresh = append(fresh, *p)
 					if p.Status == StatusPending {
 						room--
 					}
+				}
+			}
+			// What no rule could group is shown to the model once, to find
+			// the one group a shared word could not (recommend_discover.go).
+			if room > 0 && r.Ask != nil {
+				var rest []ChatEvidence
+				for _, c := range loose {
+					if !grouped[c.ChatID] && !inAnyOffer(st, fresh, c.ChatID, r.now(), pol) {
+						rest = append(rest, c)
+					}
+				}
+				p, err := r.discoverOffer(ctx, snap, st, pol, rest, lib, pass)
+				if err != nil {
+					errs = append(errs, err)
+				}
+				p = r.unlessNamedTwice(st, fresh, p)
+				if p != nil {
+					fresh = append(fresh, *p)
 				}
 			}
 		}
@@ -425,6 +452,9 @@ func suppressedCluster(st *ledgerState, ids []string, now time.Time, pol Recomme
 	for _, p := range st.Proposals {
 		if p.Kind != ProposalMove && p.Kind != ProposalCreate {
 			continue
+		}
+		if p.Basis == BasisDiscover && p.Status == StatusDropped {
+			continue // a set shown to find a group is not itself a group
 		}
 		switch p.Status {
 		case StatusDeclined, StatusDropped:
@@ -520,7 +550,7 @@ func (r *Recommender) mergeOffers(snap *Snapshot, st *ledgerState, pol Recommend
 
 // clusterOffer decides what to offer for one group: an existing place, a new
 // place named by rules, a new place named by the model, or nothing.
-func (r *Recommender) clusterOffer(ctx context.Context, snap *Snapshot, st *ledgerState, pol RecommendPolicy, cl cluster, lib map[string]ChatEvidence) (*Proposal, error) {
+func (r *Recommender) clusterOffer(ctx context.Context, snap *Snapshot, st *ledgerState, pol RecommendPolicy, cl cluster, lib map[string]ChatEvidence, pass *organizePass) (*Proposal, error) {
 	ids := cl.ids()
 	id := proposalID(clusterFingerprint(ids))
 	cands := rankCandidates(snap, cl.folder, cl.core, nil, lib)
@@ -528,9 +558,7 @@ func (r *Recommender) clusterOffer(ctx context.Context, snap *Snapshot, st *ledg
 		cands = cands[:pol.MaxCandidates]
 	}
 	moveTo := func(p Place, conf int, basis string, chats []string) *Proposal {
-		return &Proposal{ID: proposalID(clusterFingerprint(chats)), Kind: ProposalMove, Status: StatusPending, ChatIDs: chats, PlaceID: p.ID,
-			Confidence: conf, Basis: basis, Reason: fmt.Sprintf("%d chats look like the work in %s", len(chats), p.Name),
-			Revision: snap.Revision, CreatedAt: r.now()}
+		return r.moveOffer(snap, p, conf, basis, chats)
 	}
 	// Reuse first.
 	if len(cands) > 0 && cands[0].confidence >= pol.MinConfidence {
@@ -539,21 +567,7 @@ func (r *Recommender) clusterOffer(ctx context.Context, snap *Snapshot, st *ledg
 	counts := countAI(snap, st.AIPlaces)
 	rootOK, _ := canCreateUnder(snap, pol, counts, "")
 	create := func(name, parent string, conf int, basis string, chats []string) *Proposal {
-		var parents []string
-		if parent != "" {
-			parents = []string{parent}
-		}
-		for _, sib := range snap.Places {
-			if !sib.Archived && strings.EqualFold(sib.Name, name) && parentKey(sib.Parents) == parentKey(parents) {
-				return moveTo(sib, conf, basis, chats) // the place already exists: reuse it
-			}
-		}
-		reason := fmt.Sprintf("%d chats about the same work", len(chats))
-		if basis == BasisFolder {
-			reason = fmt.Sprintf("%d chats in the %s folder", len(chats), name)
-		}
-		return &Proposal{ID: proposalID(clusterFingerprint(chats)), Kind: ProposalCreate, Status: StatusPending, ChatIDs: chats, Name: name, ParentID: parent,
-			Confidence: conf, Basis: basis, Reason: reason, Revision: snap.Revision, CreatedAt: r.now()}
+		return r.createOffer(snap, name, parent, conf, basis, chats)
 	}
 	// A shared folder names itself, at the top level, with no call.
 	if cl.folder != "" {
@@ -589,13 +603,16 @@ func (r *Recommender) clusterOffer(ctx context.Context, snap *Snapshot, st *ledg
 		shown = shown[:maxClusterShown]
 	}
 	q := suggestQuestion(snap, shown, cands, parents)
-	reserved, err := r.reserveCall(string(q.Role), pol.ClusterCallsPerDay, time.Duration(pol.OrganizeEveryMinutes)*time.Minute, nil)
+	reserved, err := r.reservePassCall(pass, string(q.Role), pol)
 	if err != nil || !reserved {
 		return nil, err
 	}
 	dropped := &Proposal{ID: id, Kind: ProposalCreate, Status: StatusDropped, ChatIDs: ids, Basis: BasisModel, Revision: snap.Revision, CreatedAt: r.now(), DecidedAt: r.now()}
 	answer, err := r.Ask(ctx, q)
 	if err != nil {
+		if pass != nil {
+			pass.failed = true
+		}
 		return nil, err
 	}
 	parentNames := make([]string, len(parents))
@@ -624,6 +641,33 @@ func (r *Recommender) clusterOffer(ctx context.Context, snap *Snapshot, st *ledg
 		return dropped, nil
 	}
 	return create(sg.name, parent, sg.confidence, BasisModel, chats), nil
+}
+
+// moveOffer offers to put a group of chats in no place into a place that exists.
+func (r *Recommender) moveOffer(snap *Snapshot, p Place, conf int, basis string, chats []string) *Proposal {
+	return &Proposal{ID: proposalID(clusterFingerprint(chats)), Kind: ProposalMove, Status: StatusPending, ChatIDs: chats, PlaceID: p.ID,
+		Confidence: conf, Basis: basis, Reason: fmt.Sprintf("%d chats look like the work in %s", len(chats), p.Name),
+		Revision: snap.Revision, CreatedAt: r.now()}
+}
+
+// createOffer offers a new place for a group, or the place of that name that
+// already sits there.
+func (r *Recommender) createOffer(snap *Snapshot, name, parent string, conf int, basis string, chats []string) *Proposal {
+	var parents []string
+	if parent != "" {
+		parents = []string{parent}
+	}
+	for _, sib := range snap.Places {
+		if !sib.Archived && strings.EqualFold(sib.Name, name) && parentKey(sib.Parents) == parentKey(parents) {
+			return r.moveOffer(snap, sib, conf, basis, chats) // the place already exists: reuse it
+		}
+	}
+	reason := fmt.Sprintf("%d chats about the same work", len(chats))
+	if basis == BasisFolder {
+		reason = fmt.Sprintf("%d chats in the %s folder", len(chats), name)
+	}
+	return &Proposal{ID: proposalID(clusterFingerprint(chats)), Kind: ProposalCreate, Status: StatusPending, ChatIDs: chats, Name: name, ParentID: parent,
+		Confidence: conf, Basis: basis, Reason: reason, Revision: snap.Revision, CreatedAt: r.now()}
 }
 
 // ---- reading, accepting and declining ------------------------------------------
