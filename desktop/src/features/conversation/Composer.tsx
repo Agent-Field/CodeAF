@@ -3,7 +3,7 @@ import { Button, Icon, IconButton, Text, TextArea, TextInput } from '../../compo
 import design from '../../design/tokens.json';
 import type { OutgoingFile } from '../chat/engine-client';
 import { PasteCard } from './composer/PasteCard';
-import { encodePasted, countLines, isLongPaste } from './composer/pastedText';
+import { encodePasted, countLines, isLongPaste, splitPasted } from './composer/pastedText';
 import { AttachmentTray } from './composer/AttachmentTray';
 import { ModelPicker } from './composer/ModelPicker';
 import { toOutgoing } from './composer/attachments';
@@ -98,7 +98,10 @@ export function Composer(props: ComposerProps) {
     const last = props.recallLast?.();
     if (last === undefined) return;
     event.preventDefault();
-    onDraft(last);
+    // A recalled paste comes back as its card, never as the tagged text it travelled as.
+    const { pastes: recalled, rest } = splitPasted(last);
+    setPastes(recalled.map((paste) => paste.text));
+    onDraft(rest);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {

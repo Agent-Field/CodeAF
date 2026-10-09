@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Button, IconButton } from '../../../components/ui';
 import type { TurnBlock, TurnV2 } from '../types';
 import { UserMessage } from '../UserMessage';
+import { plainMessage } from '../composer/pastedText';
 import { AnswerBlock, ErrorBlock, UpdateBlock } from './BlockViews';
 import { Attachments, type RenderAttachment } from './attachments';
 import { Steers } from './Steer';
@@ -23,7 +24,7 @@ export type TurnViewV2Props = {
 function FoldedLine({ turn, onToggleFold }: Pick<TurnViewV2Props, 'turn' | 'onToggleFold'>) {
   return (
     <Button className="turn-folded" aria-expanded={false} aria-label="Unfold" onClick={onToggleFold}>
-      <span className="turn-folded-user">{turn.user}</span>
+      <span className="turn-folded-user">{plainMessage(turn.user)}</span>
       {turn.digest && <span className="turn-folded-digest">{turn.digest}</span>}
     </Button>
   );

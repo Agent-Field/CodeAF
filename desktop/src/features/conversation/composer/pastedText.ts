@@ -35,3 +35,14 @@ export function splitPasted(message: string): { pastes: Pasted[]; rest: string }
   }
   return { pastes, rest };
 }
+
+/**
+ * A sent message as one line of reading text: what the person typed, never the
+ * raw tags. A message that was only pastes reads as the card does.
+ */
+export function plainMessage(message: string): string {
+  const { pastes, rest } = splitPasted(message);
+  if (rest.trim() || pastes.length === 0) return rest;
+  const lines = pastes.reduce((sum, paste) => sum + paste.lines, 0);
+  return `Pasted text · ${lines} lines`;
+}

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { countLines, encodePasted, isLongPaste, splitPasted } from './pastedText.ts';
+import { countLines, encodePasted, isLongPaste, plainMessage, splitPasted } from './pastedText.ts';
 
 const lines = (n: number) => Array.from({ length: n }, (_, i) => `line ${i + 1}`).join('\n');
 
@@ -25,4 +25,10 @@ test('a paste and the typed text round-trip', () => {
 test('a paste alone has no remaining text, and plain text has no paste', () => {
   assert.equal(splitPasted(encodePasted([lines(20)], '')).rest, '');
   assert.deepEqual(splitPasted('hello'), { pastes: [], rest: 'hello' });
+});
+
+test('a message reads without its pasted tags', () => {
+  assert.equal(plainMessage(encodePasted([lines(20)], 'Why does nested fail?')), 'Why does nested fail?');
+  assert.equal(plainMessage(encodePasted([lines(20), lines(5)], '')), 'Pasted text · 25 lines');
+  assert.equal(plainMessage('plain words'), 'plain words');
 });
