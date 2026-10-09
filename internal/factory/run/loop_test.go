@@ -669,7 +669,7 @@ func TestSendBackAppendsProveAndLandsAgain(t *testing.T) {
 	if err := g.r.SendBack(id, "and again"); err != nil {
 		t.Fatal(err)
 	}
-	if a := <-asks; a != "prove 2: and again" {
+	if a := <-asks; a != "prove2: and again" {
 		t.Fatalf("the second send-back was %q", a)
 	}
 	g.wait(id, "landed a third time", func(it factory.Item) bool {

@@ -96,9 +96,9 @@ func TestTheBriefSaysNothingAboutWhatIsNotThere(t *testing.T) {
 	}
 }
 
-func TestTheBriefCutsALongBodyAtTwoThousandCharacters(t *testing.T) {
+func TestTheBriefCutsALongBodyAtItsMost(t *testing.T) {
 	job := reviewJob()
-	job.Item.Body = strings.Repeat("é", 5000)
+	job.Item.Body = strings.Repeat("é", briefBodyMost+3000)
 	brief := stageBrief(job)
 	if n := strings.Count(brief, "é"); n != briefBodyMost {
 		t.Fatalf("the brief carries %d of the body's characters, want %d", n, briefBodyMost)

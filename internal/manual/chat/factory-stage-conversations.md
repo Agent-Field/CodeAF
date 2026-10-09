@@ -6,7 +6,13 @@ On the factory floor, a stage like plan, write or review runs as one ordinary co
 made in the item's own team, where it joins as the item and the stage: `#12 · review`, or
 `#12 · review 1/2` when the stage may run more than one round (like any conversation it then
 titles itself from its work, and that title is what its tab shows). It opens with a brief: the
-stage's ask, the item's title and body (the first 2,000 characters), the run's stages in order
+stage's ask, one line saying it is that step of a run on the pull request or issue, the item's
+title and body (the first 6,000 characters), who opened it and its labels, and for a pull
+request its base and head (`into main from alice:feature`), its line counts, each check with its
+state, the issue it closes (`linked: #3`) and its changed files with their counts; the last
+comments; where its work tree stands (a pull request's is at its head, and the brief names the
+`git diff origin/<base>...HEAD` that shows the change, so the step never goes to the web for
+it); the run's stages in order
 with this one named (`stages: plan › write › … · this is plan: do this stage's part, and leave
 the rest to the stages after it`), your notes, one line for
 each stage that ran before it (`write: done · 3 claims`), the stage's settings in words

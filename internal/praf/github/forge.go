@@ -69,15 +69,21 @@ type Issue struct {
 // Pull is one open pull request. Additions, Deletions and Files are filled by
 // [client.Pull] only: GitHub's list leaves them out.
 type Pull struct {
-	Number    int
-	Title     string
-	Body      string
-	User      string
-	Labels    []string
-	Created   time.Time
-	Updated   time.Time
-	URL       string
-	HeadSHA   string
+	Number  int
+	Title   string
+	Body    string
+	User    string
+	Labels  []string
+	Created time.Time
+	Updated time.Time
+	URL     string
+	HeadSHA string
+	// Base is the branch the pull request asks to merge into, Head the
+	// branch it comes from, and HeadRepo the repository Head lives in
+	// (`owner/name`), which differs from the base repository for a fork.
+	Base      string
+	Head      string
+	HeadRepo  string
 	Draft     bool
 	Additions int
 	Deletions int
@@ -148,8 +154,13 @@ type pullJSON struct {
 	HTMLURL   string      `json:"html_url"`
 	Draft     bool        `json:"draft"`
 	Head      struct {
-		SHA string `json:"sha"`
+		SHA  string        `json:"sha"`
+		Ref  string        `json:"ref"`
+		Repo *pullRepoJSON `json:"repo"`
 	} `json:"head"`
+	Base struct {
+		Ref string `json:"ref"`
+	} `json:"base"`
 	Additions    int `json:"additions"`
 	Deletions    int `json:"deletions"`
 	ChangedFiles int `json:"changed_files"`
@@ -173,8 +184,19 @@ func deref(s *string) string {
 	return *s
 }
 
+// pullRepoJSON is the repository a pull request's head lives in; nil when
+// the fork was deleted.
+type pullRepoJSON struct {
+	FullName string `json:"full_name"`
+}
+
 func (p pullJSON) pull() Pull {
+	headRepo := ""
+	if p.Head.Repo != nil {
+		headRepo = p.Head.Repo.FullName
+	}
 	return Pull{
+		Base: p.Base.Ref, Head: p.Head.Ref, HeadRepo: headRepo,
 		Number: p.Number, Title: p.Title, Body: deref(p.Body), User: p.User.Login,
 		Labels: labelNames(p.Labels), Created: p.CreatedAt, Updated: p.UpdatedAt,
 		URL: p.HTMLURL, HeadSHA: p.Head.SHA, Draft: p.Draft,

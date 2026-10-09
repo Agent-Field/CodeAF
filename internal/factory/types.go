@@ -375,6 +375,15 @@ type Item struct {
 	// CheckRuns are the checks on a pull request's head, one per run. Checks
 	// stays the one-word summary the row draws; these are what the page lists.
 	CheckRuns []CheckRun
+	// Base is the branch a pull request asks to merge into and Head the
+	// branch it comes from, `owner:branch` when it comes from a fork; HeadSHA
+	// is the head's commit when the source last read it. "" for anything that
+	// is not a pull request, or one read before codeaf kept them. A step's
+	// worktree is cut at the pull request's head (internal/factory/run's
+	// workdir.go), and its brief names Base so `git diff` shows the change.
+	Base    string `json:",omitempty"`
+	Head    string `json:",omitempty"`
+	HeadSHA string `json:",omitempty"`
 	// Activity is the item's own short history, oldest first: it arrived, it
 	// changed upstream, it was read, a conversation was made, its stages
 	// changed. At most [ActivityMost] are kept; the oldest go first.
