@@ -204,3 +204,14 @@ test('elapsed origins are observed once, survive retry, and are never invented f
   const reloaded = projectTurnsV2(snap([user('go'), tool('bash', 'a', {})], { running: true })).turns[0];
   assert.equal(works(reloaded.blocks)[0].startedAt, undefined);
 });
+
+test('task-only questions cannot pause foreground tools even when a worker reuses a call id', () => {
+  const overlay = play([toolEvent('toolBegin', 'c')], 1);
+  const q = { id: 7, kind: 'choice', head: 'Background question', ask: 'Proceed?', subject: { callId: 'c' }, asker: { kind: 'task' }, blocking: { turn: false, tasks: ['background'] } };
+  const project = (question: object) => projectTurnsV2(snap([user('go')], { running: true, questions: [question] as never }), overlay).turns[0];
+  assert.equal(works(project(q).blocks)[0].steps[0].state, 'running');
+  assert.equal(works(project({ ...q, blocking: { tasks: ['background'] } }).blocks)[0].steps[0].state, 'running');
+  assert.equal(works(project({ ...q, blocking: { turn: true } }).blocks)[0].steps[0].state, 'waiting');
+  assert.equal(works(project({ ...q, blocking: { turn: true }, withdrawn: { reason: 'resolved' } }).blocks)[0].steps[0].state, 'running');
+  assert.equal(works(project({ id: 7, kind: 'choice', head: 'Older question', ask: 'Proceed?', subject: { callId: 'c' } }).blocks)[0].steps[0].state, 'waiting');
+});

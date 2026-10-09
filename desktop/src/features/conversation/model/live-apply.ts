@@ -4,7 +4,7 @@
 
 import type { EngineSnapshot } from '../../chat/engine-client.ts';
 import type { ToolStep, TurnV2, WorkBlock, WorkStep } from '../types.ts';
-import { asRich, questionsOf, type RichEntry } from './entry.ts';
+import { asRich, waitingCalls, type RichEntry } from './entry.ts';
 import type { LiveCall, LiveOverlayV2 } from './live.ts';
 import { withoutHandoff } from './handoff.ts';
 import { finishStep, newBatch, summarize, type Batch } from './steps.ts';
@@ -99,7 +99,7 @@ function addSteers(turn: TurnV2, live: LiveOverlayV2) {
 export function applyLive(turn: TurnV2, snapshot: EngineSnapshot, live?: LiveOverlayV2) {
   turn.state = 'working';
   if (!live) { settleLiveFlag(turn); return; }
-  const waiting = new Set(questionsOf(snapshot).flatMap((q) => (q.subject?.callId ? [q.subject.callId] : [])));
+  const waiting = waitingCalls(snapshot);
   const seen = reconcile(recordedCalls(turn), live);
   addWork(turn, live, live.calls.filter((c) => !seen.has(c.id)), waiting);
   addSteers(turn, live);

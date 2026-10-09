@@ -1,3 +1,4 @@
+import { blocksComposer } from './tray/layout';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { FirstTurnContext, NewConversationPlaceContext } from './firstTurn';
 import { Text } from '../../components/ui';
@@ -144,7 +145,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   const holdRow = useFoldAnchor(scroller, `${tab.folded ? JSON.stringify(tab.folded) : ''}${JSON.stringify(tab.open ?? {})}`);
   const blocks = {
     tasks: model.tasks,
-    waiting: model.questions.length > 0,
+    waiting: blocksComposer(model.questions),
     open: tab.open ?? {},
     onToggle: (id: string, current?: boolean) => {
       holdRow(id);

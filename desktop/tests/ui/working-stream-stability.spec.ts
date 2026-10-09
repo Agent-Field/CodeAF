@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { question } from './support/scenarios';
+import { question, taskRows } from './support/scenarios';
 import { installMockEngine } from './support/mock-engine';
 import type { EngineEvent } from '../../src/features/chat/engine-client';
 
@@ -71,7 +71,15 @@ for (const theme of ['light', 'dark']) {
     // The canonical journal replaces provisional block IDs, without taking back the person's disclosure choice.
     const user = engine.snapshot().entries[0];
     const tool = { Role: 'tool', Text: '', Tool: 'bash', CallID: 'a', Hint: 'bash a', Args: '{"command":"pwd"}', Answered: true, Took: 1000000000 } as never;
-    await update({ entries: [user, tool], running: true, questions: [{ ...question, subject: { callId: 'c' } } as never] });
+    const backgroundQuestion = { ...question, blocking: { turn: false, tasks: ['background'] }, asker: { kind: 'task', name: 'Background check' }, subject: { callId: 'c' } } as never;
+    await update({ entries: [user, tool], running: true, tasks: [{ ...taskRows[2], ID: 'background', Parent: '', Title: 'Background check', Waiting: true }], questions: [backgroundQuestion] });
+    await expect(toggle.locator('.thinking-shimmer')).toHaveCount(1);
+    const backgroundTime = await clock.innerText();
+    await page.clock.fastForward(2100);
+    await expect(clock).not.toHaveText(backgroundTime);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    if (process.env.CODEAF_UI_RESULTS) await page.screenshot({ path: `${process.env.CODEAF_UI_RESULTS}/working-background-question-${theme}-${info.project.name}.png` });
+    await update({ questions: [{ ...question, blocking: { turn: true }, subject: { callId: 'c' } } as never] });
     await expect(toggle.locator('.thinking-shimmer')).toHaveCount(0);
     const waitingTime = await clock.innerText();
     await page.clock.fastForward(2100);
@@ -79,7 +87,7 @@ for (const theme of ['light', 'dark']) {
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     if (process.env.CODEAF_UI_RESULTS) await page.screenshot({ path: `${process.env.CODEAF_UI_RESULTS}/working-waiting-${theme}-${info.project.name}.png` });
     // Questions without a call association still pause the whole active turn.
-    await update({ questions: [question] });
+    await update({ questions: [{ ...question, blocking: { turn: true } }] });
     await expect(toggle.locator('.thinking-shimmer')).toHaveCount(0);
     await update({ questions: [] });
     await expect(toggle.locator('.thinking-shimmer')).toHaveCount(1);
