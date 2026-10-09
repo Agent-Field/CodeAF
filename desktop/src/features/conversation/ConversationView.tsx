@@ -144,10 +144,11 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   const holdRow = useFoldAnchor(scroller, `${tab.folded ? JSON.stringify(tab.folded) : ''}${JSON.stringify(tab.open ?? {})}`);
   const blocks = {
     tasks: model.tasks,
+    waiting: model.questions.length > 0,
     open: tab.open ?? {},
-    onToggle: (id: string) => {
+    onToggle: (id: string, current?: boolean) => {
       holdRow(id);
-      onView({ open: toggleFlag(tab.open, id) });
+      onView({ open: current === undefined ? toggleFlag(tab.open, id) : { ...tab.open, [id]: !current } });
     },
     readFull: conversation.readFull,
     onOpenTask: openTask,
