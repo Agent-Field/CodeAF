@@ -1,0 +1,17 @@
+.tool-group { display: flex; flex-direction: column; align-items: flex-start; max-width: 100%; }
+.tool-toggle.button { min-height: var(--row-height); padding-inline: var(--space-half); gap: var(--space-tight); max-width: 100%; justify-content: flex-start; font-size: var(--font-size-body); }
+.tool-toggle[aria-expanded="true"] .app-icon[data-motion="disclosure"] { transform: rotate(var(--motion-chevron-open)); }
+.tool-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-failed-count { color: var(--warning); white-space: nowrap; }
+.tool-list { display: flex; flex-direction: column; width: 100%; }
+.tool-row { display: flex; flex-direction: column; width: 100%; }
+.tool-row-head.button { width: 100%; min-height: var(--row-height); justify-content: flex-start; gap: var(--space-tight); padding-inline: var(--space-half); font-size: var(--font-size-body); text-align: left; }
+.tool-hint { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-mark { display: inline-flex; flex-shrink: 0; }
+.tool-mark-failed { color: var(--warning); }
+.tool-details { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); padding-block: var(--space-1) var(--space-2); padding-inline-start: calc(var(--icon-sm) + var(--space-tight) + var(--space-half)); min-width: 0; }
+.tool-pre { box-sizing: border-box; width: 100%; margin: 0; padding: var(--space-2) var(--space-3); max-height: var(--tool-output-max-height); overflow: auto; background: var(--field); border-radius: var(--radius-sm); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
+.tool-error { margin: 0; font-size: var(--font-size-label); color: var(--warning); }
+.tool-more.button { min-height: var(--row-height); padding-inline: var(--space-half); font-size: var(--font-size-label); }
+.thinking-text { margin: 0; padding-block: var(--space-1) var(--space-2); padding-inline-start: calc(var(--icon-xs) + var(--space-tight) + var(--space-half)); color: var(--muted); font-size: var(--font-size-body); line-height: var(--line-height-body); white-space: pre-wrap; overflow-wrap: anywhere; }
+.specimen-stack { display: flex; flex-direction: column; gap: var(--space-2); max-width: var(--content-max-width); }

@@ -1,0 +1,23 @@
+.task-panel { display: flex; flex-direction: column; width: var(--task-panel-width); max-width: 100%; min-height: var(--motion-rest); color: var(--text); }
+.task-panel:focus-visible { outline: none; }
+.task-panel[data-variant="column"] { flex: 0 0 var(--task-panel-width); height: 100%; border-left: var(--border-width) solid var(--border); }
+.task-panel[data-variant="sheet"] { position: absolute; top: var(--motion-rest); right: var(--motion-rest); bottom: var(--motion-rest); z-index: var(--z-overlay); border-left: var(--border-width) solid var(--border); background: var(--overlay-surface); box-shadow: var(--palette-shadow); }
+
+.task-panel-header { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-2) var(--space-2) var(--space-3); }
+.task-panel-heading { font-size: var(--font-size-body); font-weight: var(--font-weight-medium); }
+.task-panel-count { flex: 1; color: var(--muted); font-size: var(--font-size-label); }
+.task-panel-error { padding: var(--space-1) var(--space-3) var(--space-2); font-size: var(--font-size-label); }
+
+.task-panel-list { list-style: none; margin: var(--motion-rest); padding: var(--motion-rest); }
+.task-panel-scroll { flex: 1; min-height: var(--motion-rest); overflow-y: auto; padding: var(--space-1) var(--space-2) var(--space-3); }
+.task-panel-children { padding-left: var(--space-4); }
+
+.task-panel-row { display: flex; align-items: flex-start; min-width: var(--motion-rest); border-radius: var(--radius-sm); }
+.task-panel-row[data-current] { background: var(--control-selected); }
+.task-panel-disclosure, .task-panel-spacer { flex: 0 0 var(--icon-button-size); width: var(--icon-button-size); }
+.task-panel-disclosure { height: var(--task-outline-row-height); }
+.task-panel-main.button { flex: 1; min-width: var(--motion-rest); justify-content: flex-start; align-items: flex-start; gap: var(--space-tight); padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1); text-align: left; color: var(--text); font-size: var(--font-size-label); white-space: normal; }
+.task-panel-main .work-state-indicator { margin-top: var(--space-half); }
+.task-panel-text { display: flex; flex-direction: column; flex: 1; min-width: var(--motion-rest); }
+.task-panel-title, .task-panel-step { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.task-panel-step { color: var(--muted); font-size: var(--font-size-caption); }
