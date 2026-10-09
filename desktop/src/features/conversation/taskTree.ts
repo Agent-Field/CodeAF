@@ -36,13 +36,14 @@ export function buildTaskTree(rows: EngineTaskRow[]): TaskNode[] {
   return roots;
 }
 
-function leaves(nodes: TaskNode[]): EngineTaskRow[] {
-  return nodes.flatMap((node) => (node.children.length ? leaves(node.children) : [node.row]));
+function flatten(nodes: TaskNode[]): EngineTaskRow[] {
+  return nodes.flatMap((node) => [node.row, ...flatten(node.children)]);
 }
 
-/** Leaves only, so a parent never counts twice. */
+/** Every row the person sees in the panel counts once, parents included: "1 of 2"
+ * must match the two rows on screen. A parent is done when the engine says so. */
 export function taskCounts(rows: EngineTaskRow[]): { done: number; total: number } {
-  const all = leaves(buildTaskTree(rows));
+  const all = flatten(buildTaskTree(rows));
   return { done: all.filter((row) => row.Status === 'done').length, total: all.length };
 }
 

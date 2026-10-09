@@ -27,9 +27,11 @@ test('a cycle does not hide rows or recurse forever', () => {
   assert.deepEqual(ids.sort(), ['a', 'b']);
 });
 
-test('counts leaves only', () => {
+test('counts every visible row, parents included, archived never', () => {
   const rows = [row('p', 'running'), row('x', 'done', { Parent: 'p' }), row('y', 'failed', { Parent: 'p' }), row('z', 'done')];
-  assert.deepEqual(taskCounts(rows), { done: 2, total: 3 });
+  assert.deepEqual(taskCounts(rows), { done: 2, total: 4 });
+  assert.deepEqual(taskCounts([...rows, row('old', 'done', { Archived: true })]), { done: 2, total: 4 });
+  assert.deepEqual(taskCounts([row('p', 'running'), row('c', 'running', { Parent: 'p' })]), { done: 0, total: 2 });
 });
 
 test('trail walks parents outermost first and stops on a cycle', () => {
