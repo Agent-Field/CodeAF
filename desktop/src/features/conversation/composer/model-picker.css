@@ -24,3 +24,81 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* The chip's wrapper is the popover's anchor and focus-return target. */
+.model-picker-anchor { display: inline-flex; min-width: 0; }
+
+/* The quick-swap popover (design 1e): surface paper, sh-2, no border. Hover is a fill and nothing else. */
+.model-popover {
+  position: fixed;
+  left: var(--model-popover-left);
+  bottom: var(--model-popover-bottom);
+  z-index: var(--z-menu);
+  display: flex;
+  flex-direction: column;
+  gap: var(--model-popover-gap);
+  width: min(var(--model-popover-width), calc(100vw - var(--space-6)));
+  padding: var(--model-popover-pad);
+  border-radius: var(--model-popover-radius);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--sh-2);
+  font-size: var(--type-label-size);
+}
+
+.model-popover-pinned {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: var(--segment-inset);
+  padding: var(--segment-inset);
+  border-radius: var(--radius-control);
+  background: var(--field);
+}
+
+.model-popover .model-popover-segment {
+  height: var(--model-popover-segment-height);
+  border-radius: var(--model-popover-segment-radius);
+  color: var(--ink-2);
+  font-weight: var(--type-label-weight);
+}
+
+.model-popover .model-popover-segment:hover:not(:disabled) { background: var(--field-2); color: var(--ink); }
+.model-popover .model-popover-segment[aria-checked='true'] { background: var(--surface); box-shadow: var(--sh-1); color: var(--ink); font-weight: var(--type-label-strong); }
+.model-popover .model-popover-segment:focus-visible { box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
+
+.model-popover-effort {
+  display: flex;
+  align-items: center;
+  padding: var(--space-1) var(--model-popover-row-pad);
+  color: var(--ink-2);
+}
+
+.model-popover-effort-options { display: flex; gap: var(--model-popover-effort-gap); margin-left: auto; }
+
+.model-popover .model-popover-effort-option { min-height: 0; padding: 0; font-weight: var(--type-label-weight); }
+.model-popover .model-popover-effort-option:hover:not(:disabled) { background: transparent; color: var(--ink); }
+.model-popover .model-popover-effort-option[aria-checked='true'] { color: var(--ink); font-weight: var(--type-label-strong); }
+
+.model-popover-rule { height: var(--border-width); margin: 0 var(--model-popover-row-pad); background: var(--line); }
+.model-popover-list { display: flex; flex-direction: column; }
+
+.model-popover .model-popover-row {
+  justify-content: flex-start;
+  gap: var(--space-2);
+  height: var(--model-popover-row);
+  padding: 0 var(--model-popover-row-pad);
+  border-radius: var(--model-popover-row-radius);
+  color: var(--ink);
+  font-weight: var(--type-label-weight);
+  text-align: left;
+}
+
+.model-popover .model-popover-row:hover:not(:disabled) { background: var(--field); color: var(--ink); }
+.model-popover .model-popover-row:active:not(:disabled) { background: var(--field-2); }
+.model-popover .model-popover-all, .model-popover-all .keyboard-shortcut { color: var(--ink-2); }
+.model-popover-mark { display: grid; place-items: center; width: var(--space-4); color: var(--accent); }
+.model-popover-all .model-popover-mark { color: inherit; }
+.model-popover-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-popover .keyboard-shortcut { color: var(--ink-2); white-space: nowrap; }
+
