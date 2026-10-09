@@ -1,3 +1,4 @@
+import { installNativeHttpMock } from './native-http-mock';
 // A typed stand-in for src-tauri/src/links.rs at the IPC boundary. It replaces window.__TAURI_INTERNALS__ (what
 // @tauri-apps/api's invoke and listen call), so the renderer's real adapter (src/design/nativeLinks.ts) runs unchanged.
 // `deliver(page, links)` does what links.rs does when the operating system hands codeaf a link: queue it for this
@@ -11,6 +12,7 @@ import type { Page } from '@playwright/test';
 export type LinkMockCall = { cmd: string; args: Record<string, unknown> };
 
 export async function installDeepLinkMock(page: Page, options: { atBoot?: string[]; clipboard?: 'record' | 'refuse' } = {}) {
+  await installNativeHttpMock(page);
   await page.addInitScript(({ atBoot, clipboard }) => {
     const calls: { cmd: string; args: Record<string, unknown> }[] = [];
     const queue: string[] = [];
@@ -29,6 +31,7 @@ export async function installDeepLinkMock(page: Page, options: { atBoot?: string
         listeners.set(args.event as string, list);
         return args.handler;
       }
+      if (cmd.startsWith('plugin:http|')) return (window as unknown as { __engineHttpInvoke: (cmd:string, args:Record<string,unknown>) => Promise<unknown> }).__engineHttpInvoke(cmd, args);
       if (cmd.startsWith('plugin:')) return null;
       // The engine connection points at this page's own origin, where the spec's mock engine answers /api/engine.
       if (cmd === 'engine_connection') return { url: location.origin, token: 'mock-token', model: 'deepseek/deepseek-v4.1-flash' };

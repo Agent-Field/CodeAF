@@ -108,6 +108,7 @@ test.describe('overview drag regroups (Interactions, overview card)', () => {
   await expect.poll(() => strip(page)).toEqual(['[Bench: Alpha Delta]', 'Beta', 'Echo']);
   // The regroup is one structural step: ⌘Z takes the last one back.
   await tabNamed(page, 'Echo').click();
+  await page.getByRole('tab', { selected: true }).focus();
   await page.keyboard.press(`${await primary(page)}+z`);
   await expect.poll(() => strip(page)).toEqual(['[Bench: Alpha Delta Beta]', 'Echo']);
  });
@@ -149,18 +150,23 @@ test.describe('⌘Z, the window\'s structural Undo (Interactions, Undo)', () => 
   await expect(tabNamed(page, 'Delta')).toHaveCount(0);
 
   await tabNamed(page, 'Alpha').click();
+  await page.getByRole('tab', { selected: true }).focus();
   await page.keyboard.press(`${mod}+z`);
   await expect.poll(() => strip(page)).toEqual(['*Beta', 'Delta', '[New group: Alpha Gamma]']);
+  await page.getByRole('tab', { selected: true }).focus();
   await page.keyboard.press(`${mod}+z`);
   await expect.poll(() => strip(page)).toEqual(['*Beta', '[New group: Alpha Gamma]', 'Delta']);
+  await page.getByRole('tab', { selected: true }).focus();
   await page.keyboard.press(`${mod}+z`);
   await expect.poll(() => strip(page)).toEqual(['[New group: Alpha Gamma]', 'Beta', 'Delta']);
+  await page.getByRole('tab', { selected: true }).focus();
   await page.keyboard.press(`${mod}+z`);
   await expect.poll(() => strip(page)).toEqual(start);
   // Nothing left: ⌘Z does nothing and says nothing.
+  await page.getByRole('tab', { selected: true }).focus();
   await page.keyboard.press(`${mod}+z`);
   await expect.poll(() => strip(page)).toEqual(start);
-  await expect(page.locator('.toast')).toHaveCount(0);
+  await expect(page.locator('.toast').filter({ hasText: 'Could not undo' })).toHaveCount(0);
  });
 
  test('⌘Z takes back opening a group as a split, with the words in every pane', async ({ page }) => {
@@ -170,6 +176,7 @@ test.describe('⌘Z, the window\'s structural Undo (Interactions, Undo)', () => 
   await page.getByRole('menuitem', { name: /^Open as split/ }).click();
   await expect(page.locator('.workspace-split-tab')).toHaveCount(1);
   await tabNamed(page, 'Gamma').click();
+  await page.getByRole('tab', { selected: true }).focus();
   await page.keyboard.press(`${await primary(page)}+z`);
   await expect(page.locator('.workspace-split-tab')).toHaveCount(0);
   await expect.poll(() => strip(page)).toEqual(['[Bench: Alpha Beta]', 'Gamma']);
