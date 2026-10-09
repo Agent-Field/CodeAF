@@ -6,7 +6,7 @@ import { TurnViewV2 } from './blocks/TurnViewV2';
 import { blockRenderer, type BlockContext } from './blockRenderer';
 import { EarlierRow, SummaryDivider } from './EarlierTurns';
 import { ErrorItem } from './ErrorItem';
-import { EARLIER_KEY, isFolded, splitEarlier } from './folding';
+import { EARLIER_KEY, hasCompaction, isFolded, splitEarlier } from './folding';
 import { NoteItem } from './NoteItem';
 import { TaskNotice } from './TaskNotice';
 import type { ConversationModel, TurnItem, TurnV2 } from './types';
@@ -73,7 +73,7 @@ export function ConversationTranscript(props: Props) {
         <>
           <EarlierRow count={earlier.length} open={earlierOpen} onToggle={props.onToggle} />
           {earlierOpen && earlier.map(renderTurn)}
-          <SummaryDivider />
+          {hasCompaction(model) && <SummaryDivider />}
         </>
       )}
       {recent.map(renderTurn)}

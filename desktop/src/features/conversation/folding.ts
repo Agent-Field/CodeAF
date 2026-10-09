@@ -3,7 +3,7 @@
 // Nothing here invents text; a folded row shows the question and the digest.
 
 import design from '../../design/tokens.json' with { type: 'json' };
-import type { TurnV2 } from './types';
+import type { ConversationModel, TurnItem, TurnV2 } from './types';
 
 /** Beyond this many turns, the older ones fold into one group. */
 export const TURN_LIMIT = design.turnFold.limit;
@@ -23,6 +23,18 @@ export function isFolded(turn: TurnV2, index: number, count: number, chosen: Rec
 export function splitEarlier(turns: TurnV2[], limit = TURN_LIMIT): { earlier: TurnV2[]; recent: TurnV2[] } {
   const cut = Math.max(0, turns.length - limit);
   return { earlier: turns.slice(0, cut), recent: turns.slice(cut) };
+}
+
+const isCompaction = (item: TurnItem) => item.kind === 'note' && item.tone === 'compaction';
+
+/**
+ * Whether the engine compacted this conversation: a compaction note sits in the
+ * preface or inside some turn's work. Only then do the earlier turns stand for a
+ * summary, so only then does the "Earlier messages summarized" divider draw.
+ */
+export function hasCompaction(model: Pick<ConversationModel, 'preface' | 'turns'>): boolean {
+  if (model.preface.some(isCompaction)) return true;
+  return model.turns.some((turn) => turn.blocks.some((block) => block.kind === 'work' && block.notes.some(isCompaction)));
 }
 
 export function earlierLabel(count: number): string {
