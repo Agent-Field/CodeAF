@@ -311,6 +311,23 @@ export async function engineFileDiff(id: string, path: string): Promise<EngineFi
 export async function engineEditorTarget(id: string, path: string): Promise<EngineEditorTarget> {
  return (await (await fetchEngine(`${sessionPath(id)}/files/locate?path=${encodeURIComponent(path)}`)).json()) as EngineEditorTarget;
 }
+/** One editor registered on the engine machine. `id` is a desktop name or a bundle id, never a command. */
+export type EngineEditor = { id: string; name: string; default?: boolean };
+/** `open` is false when the engine cannot start a program (another machine, or no display). */
+export type EngineEditors = { editors: EngineEditor[]; local: boolean; open: boolean; reason?: string };
+function editorListFrom(value: unknown): EngineEditors {
+ const body = value as EngineEditors | null;
+ if (!body || !Array.isArray(body.editors) || body.editors.some(editor => !editor || typeof editor.id !== 'string' || typeof editor.name !== 'string' || !editor.id || !editor.name)) throw new EngineError('The engine returned an invalid editor list.');
+ return { editors: body.editors, local: body.local === true, open: body.open === true, reason: typeof body.reason === 'string' ? body.reason : undefined };
+}
+/** Editors for a workspace file, default first, at most the engine's own cap. An empty list is a real answer. */
+export async function engineEditors(id: string, path: string): Promise<EngineEditors> {
+ return editorListFrom(await (await fetchEngine(`${sessionPath(id)}/editors?path=${encodeURIComponent(path)}`)).json());
+}
+/** Start one editor from that list. The id is checked again on the engine; this sends no command line. */
+export async function openEngineEditor(id: string, path: string, editorId: string): Promise<void> {
+ await fetchEngine(`${sessionPath(id)}/editors/open`, { method: 'POST', body: JSON.stringify({ path, id: editorId }) });
+}
 /** E3: send a message with attachments. Files are base64 in the body (≤20MB total). */
 export type OutgoingFile = { name: string; mime: string; dataBase64: string };
 export function sendEngineWithFiles(id: string, text: string, files: OutgoingFile[]): Promise<EngineSnapshot> {

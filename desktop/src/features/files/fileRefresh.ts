@@ -1,0 +1,32 @@
+/** How long a burst of writes waits before the open tab reads the file again. One read, not a poll. */
+export const fileRefreshDelay = 1000;
+
+const fileTools = new Set(['edit', 'write', 'multiedit', 'apply_patch']);
+
+const norm = (value: string) => value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
+
+/** True when both strings name the same workspace file, whether or not one is absolute. */
+export function sameWorkspaceFile(eventPath: string, openPath: string): boolean {
+  const a = norm(eventPath);
+  const b = norm(openPath);
+  if (!a || !b) return false;
+  return a === b || a.endsWith('/' + b) || b.endsWith('/' + a);
+}
+
+/** The path a file tool named. Malformed arguments are not a path. */
+export function toolArgsPath(args: string): string {
+  try {
+    const parsed = JSON.parse(args) as { path?: unknown; file_path?: unknown; filePath?: unknown };
+    for (const value of [parsed.path, parsed.file_path, parsed.filePath]) {
+      if (typeof value === 'string' && value.trim()) return value;
+    }
+  } catch {
+    /* A tool that did not send JSON did not name a file. */
+  }
+  return '';
+}
+
+/** An edit or write whose arguments point at the open file. A shell command does not, because it names no file. */
+export function fileEventTouches(tool: string, args: string, openPath: string): boolean {
+  return fileTools.has(tool) && sameWorkspaceFile(toolArgsPath(args), openPath);
+}

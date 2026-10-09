@@ -36,7 +36,7 @@ const plain = (message: string) => message.replace(/^engine:\s*/, '');
 
 /** A file the engine will not show: one muted line saying why. The header's Open in menu is the way forward. */
 function refusalLine(file: EngineTextFile): string {
-  return file.refusal === 'binary' ? 'Binary file' : `Too large to show, ${formatBytes(file.size)}`;
+  return file.refusal === 'binary' ? 'Binary file' : `Too large to show · ${formatBytes(file.size)}`;
 }
 
 function ChangesView({ diff, onNeedText, text }: { diff: EngineFileDiff; onNeedText: () => void; text?: Load<EngineTextFile> }) {
@@ -64,13 +64,15 @@ function FileView({ text, deleted }: { text?: Load<EngineTextFile>; deleted: boo
 export function FileSurface({ path, workspace, view, onView, diff, text, onNeedText, handoff, keys }: FileSurfaceProps) {
   const { name, dir } = splitFilePath(path);
   const change = diff?.status === 'ready' ? diff.value : undefined;
+  const outsideGit = !!change && !change.git;
   const git = !!change?.git;
+  const folder = outsideGit ? (dir ? `${dir} · not in git` : 'not in git') : dir;
   const shown: FileView = change && !git ? 'file' : view;
   const refused = shown === 'file' && text?.status === 'ready' && !!text.value.refusal;
   useEffect(() => { if (shown === 'file') onNeedText(); }, [shown]);
   const counts = git ? change : undefined;
   return <div className="file-surface">
-    <FileHeader name={name} dir={dir} added={counts?.added} deleted={counts?.deleted} view={git ? shown : null} onView={onView} path={path} workspace={workspace} handoff={handoff} refused={refused} keys={keys}/>
+    <FileHeader name={name} dir={folder} added={counts?.added} deleted={counts?.deleted} view={git ? shown : null} onView={onView} path={path} workspace={workspace} handoff={handoff} refused={refused} keys={keys}/>
     {shown === 'changes' && change?.base?.kind === 'head' && <Text className="file-base">{baseGoneNote}</Text>}
     <div className="file-body" role="region" tabIndex={0} aria-label={shown === 'changes' ? `Changes to ${name}` : `Contents of ${name}`}>
       {shown === 'changes' && (!diff || diff.status === 'loading') && <Message>Loading…</Message>}
