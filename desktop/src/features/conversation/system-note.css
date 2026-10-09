@@ -22,9 +22,11 @@
 
 /* A folded report keeps to one line: its first line ellipsised, Show at the end, the body below. */
 .note-folded { display: flex; flex-direction: column; gap: var(--space-1); }
-.note-folded .system-note { flex-wrap: nowrap; }
-.note-folded .system-note-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.note-folded .system-note-action { margin-inline-start: auto; }
+.button.note-folded-row { justify-content: flex-start; gap: var(--space-2); min-height: var(--row-action-size); height: auto; padding: 0; background: transparent; color: var(--ink-2); font-size: var(--type-label-size); font-weight: var(--type-label-weight); line-height: var(--type-label-leading); text-align: left; }
+.note-folded-row .app-icon { width: var(--row-action-icon); height: var(--row-action-icon); color: var(--ink-3); transform: rotate(calc(var(--motion-ask-open) * -1)); }
+.note-folded-row:hover .app-icon { color: var(--ink-2); }
+.note-folded-row[aria-expanded="true"] .app-icon { transform: none; }
+.note-folded-row .system-note-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .note-folded-body { padding: var(--space-2) var(--space-3); max-height: var(--notice-body-max-height); overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); font-size: var(--font-size-body); line-height: var(--line-height-body); }
 
 /* Specimen layout only. */

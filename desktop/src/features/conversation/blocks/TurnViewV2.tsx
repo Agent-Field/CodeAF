@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
 import { Button, Icon, IconButton } from '../../../components/ui';
 import type { TurnBlock, TurnV2 } from '../types';
+import { spoken } from '../work/format';
 import { UserMessage } from '../UserMessage';
 import { plainMessage } from '../composer/pastedText';
-import { AnswerBlock, ErrorBlock, UpdateBlock } from './BlockViews';
+import { AnswerBlock, ErrorBlock, UpdateBlock, type WorkedLink } from './BlockViews';
 import { Attachments, type RenderAttachment } from './attachments';
 import { Steers } from './Steer';
 import { TurnFooter } from './TurnFooter';
@@ -19,6 +20,8 @@ export type TurnViewV2Props = {
   renderAttachment: RenderAttachment;
   onRetry?: () => void;
   retrying?: boolean;
+  /** Opens the turn's work blocks; with it, the last answer carries a "Worked 42s" link. */
+  onOpenWork?: (blockIds: string[]) => void;
 };
 
 function FoldedLine({ turn, onToggleFold }: Pick<TurnViewV2Props, 'turn' | 'onToggleFold'>) {
@@ -31,11 +34,11 @@ function FoldedLine({ turn, onToggleFold }: Pick<TurnViewV2Props, 'turn' | 'onTo
   );
 }
 
-type BlockProps = Pick<TurnViewV2Props, 'renderBlock' | 'onRetry'> & { block: TurnBlock };
+type BlockProps = Pick<TurnViewV2Props, 'renderBlock' | 'onRetry'> & { block: TurnBlock; worked?: WorkedLink };
 
-function builtIn({ block, renderBlock, onRetry }: BlockProps): ReactNode {
+function builtIn({ block, renderBlock, onRetry, worked }: BlockProps): ReactNode {
   if (block.kind === 'update') return <UpdateBlock block={block} />;
-  if (block.kind === 'answer') return <AnswerBlock block={block} />;
+  if (block.kind === 'answer') return <AnswerBlock block={block} worked={worked} />;
   if (block.kind === 'error') return <ErrorBlock block={block} onRetry={onRetry} />;
   return renderBlock(block);
 }
@@ -51,6 +54,14 @@ function Block(props: BlockProps) {
   );
 }
 
+/** "Worked 42s" for the turn's work, opening every work block of the turn; absent without a measured length. */
+function workedLink(turn: TurnV2, onOpenWork?: (blockIds: string[]) => void): WorkedLink | undefined {
+  const blocks = turn.blocks.filter((block) => block.kind === 'work');
+  const seconds = blocks.reduce((sum, block) => sum + (block.summary.seconds ?? 0), 0);
+  if (!onOpenWork || seconds <= 0) return undefined;
+  return { label: `Worked ${spoken(seconds)}`, onOpen: () => onOpenWork(blocks.map((block) => block.id)) };
+}
+
 /** The footer repeats Retry only when no error block already offers it. */
 function footerState(turn: TurnV2): TurnV2['state'] {
   const hasError = turn.blocks.some((block) => block.kind === 'error');
@@ -58,7 +69,7 @@ function footerState(turn: TurnV2): TurnV2['state'] {
 }
 
 export function TurnViewV2(props: TurnViewV2Props) {
-  const { turn, folded, onToggleFold, renderBlock, renderAttachment, onRetry, retrying } = props;
+  const { turn, folded, onToggleFold, renderBlock, renderAttachment, onRetry, retrying, onOpenWork } = props;
   if (folded) {
     return (
       <section className="turn-v2" data-folded="true" data-turn={turn.id} data-anchor={turn.id}>
@@ -66,13 +77,15 @@ export function TurnViewV2(props: TurnViewV2Props) {
       </section>
     );
   }
+  const lastAnswer = turn.blocks.filter((block) => block.kind === 'answer').pop();
+  const worked = workedLink(turn, onOpenWork);
   return (
     <section className="turn-v2" data-turn={turn.id} data-anchor={turn.id}>
       <IconButton className="turn-fold" icon="chevron" iconSize="sm" label="Fold" aria-expanded={true} onClick={onToggleFold} />
       <UserMessage text={turn.user} attachments={<Attachments files={turn.attachments} render={renderAttachment} />} />
       <Steers steer={turn.steer} inWork={turn.blocks.flatMap((block) => (block.kind === 'work' ? block.notes : []))} />
       {turn.blocks.map((block) => (
-        <Block key={block.id} block={block} renderBlock={renderBlock} onRetry={onRetry} />
+        <Block key={block.id} block={block} renderBlock={renderBlock} onRetry={onRetry} worked={block === lastAnswer ? worked : undefined} />
       ))}
       <TurnFooter state={footerState(turn)} onRetry={onRetry} retrying={retrying} />
     </section>

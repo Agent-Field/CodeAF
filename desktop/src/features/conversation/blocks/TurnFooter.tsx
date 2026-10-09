@@ -22,7 +22,7 @@ export function TurnFooter({ state, onRetry, retrying = false }: TurnFooterProps
     return (
       <div className="turn-footer" role="status">
         <span className="turn-footer-icon">
-          <Icon name="cancelled" size="xs" />
+          <Icon name="ban" size="xs" />
         </span>
         <span>Stopped</span>
       </div>

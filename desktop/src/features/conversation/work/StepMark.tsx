@@ -25,7 +25,7 @@ export function StepTail({ state, time, decision }: { state: RowState; time?: st
   return (
     <span className="work-step-tail" data-state={state}>
       {failed && <span className="work-step-dot" data-mark="failed" role="img" aria-label="Failed" />}
-      {state === 'stopped' && <Icon name="cancelled" size="xs" />}
+      {state === 'stopped' && <Icon name="ban" size="xs" />}
       {word && <span className="work-step-word">{failed && time ? `${word} · ${time}` : word}</span>}
       {time && !failed && <span className="work-time">{time}</span>}
     </span>

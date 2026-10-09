@@ -42,7 +42,7 @@ test('a question sits in the tray; choosing answers canonically and leaves a rec
   await expect.poll(() => posts(engine, '/answer').length).toBe(1);
   expect(posts(engine, '/answer')[0].body).toMatchObject({ kind: 'choice', id: 7, key: 'postgres', picked: ['postgres'] });
   await expect(tray(page)).toHaveCount(0);
-  await expect(page.getByText(/^Postgres you · \d\d:\d\d$/)).toBeVisible();
+  await expect(page.getByText(/^Postgres · you · \d\d:\d\d$/)).toBeVisible();
 });
 
 test('several questions page through one card; a permission set is one card; the composer blocks only on a blocking question', async ({ page }) => {

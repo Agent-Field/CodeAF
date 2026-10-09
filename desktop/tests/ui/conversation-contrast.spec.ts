@@ -53,7 +53,7 @@ for (const scheme of ['light', 'dark'] as const) {
       await send(page, 'Fix the flaky login test and draw a logo');
       await expect(page.getByText('so the login test no longer reads the real time.')).toBeVisible();
       await expectAccessible(page);
-      await page.getByRole('button', { name: /^Worked \d+s/ }).click();
+      await page.getByRole('button', { name: /^Worked \d+s · / }).click();
       await page.getByRole('button', { name: /^Pinning the clock/ }).click();
       await page.getByRole('button', { name: 'edit internal/auth/auth_test.go' }).click();
       await expectAccessible(page);

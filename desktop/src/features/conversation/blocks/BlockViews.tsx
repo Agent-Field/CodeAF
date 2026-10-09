@@ -1,4 +1,4 @@
-import { CopyButton, Markdown, RowActions } from '../../../components/ui';
+import { Button, CopyButton, Markdown, RowActions } from '../../../components/ui';
 import { useAssetMarkdownHooks } from '../assets/markdownHooks';
 import { ErrorItem } from '../ErrorItem';
 import type { TurnBlock } from '../types';
@@ -13,13 +13,18 @@ export function UpdateBlock({ block }: { block: Block<'update'> }) {
   return (
     <div className="update-block">
       <span className="update-eyebrow">Update</span>
-      <Markdown {...hooks}>{block.text}</Markdown>
-      {block.cut && <span className="update-cut">{'— cut off'}</span>}
+      <div className="update-body" data-cut={block.cut || undefined}>
+        <Markdown {...hooks}>{block.text}</Markdown>
+        {block.cut && <span className="update-cut">{'— cut off'}</span>}
+      </div>
     </div>
   );
 }
 
-export function AnswerBlock({ block }: { block: Block<'answer'> }) {
+/** The turn's work, named by its length: on hover it sits beside Copy and opens the work block. */
+export type WorkedLink = { label: string; onOpen: () => void };
+
+export function AnswerBlock({ block, worked }: { block: Block<'answer'>; worked?: WorkedLink }) {
   const hooks = useAssetMarkdownHooks();
   if (!block.text) return null;
   return (
@@ -28,6 +33,11 @@ export function AnswerBlock({ block }: { block: Block<'answer'> }) {
       {!block.streaming && (
         <RowActions className="answer-actions">
           <CopyButton text={block.text} label="Copy answer" size="message" iconSize="xs" />
+          {worked && (
+            <Button className="answer-worked" onClick={worked.onOpen}>
+              {worked.label}
+            </Button>
+          )}
         </RowActions>
       )}
     </div>
