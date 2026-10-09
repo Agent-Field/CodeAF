@@ -518,6 +518,10 @@ It never says the project's build and tests passed when none ran; that sentence,
 `submitted a change, and the project's own build and tests passed`, is kept for a run
 where at least one of their commands did.
 
+To the chat the run still counts as passed (see what codeaf does when senior-dev ends):
+it reads the change and offers to merge the branch without any check of its own having
+run, so look at the change yourself before taking it.
+
 A folder that does look like a project but has no command senior-dev can find is
 different: its check fails with `no build entrypoint could be discovered` (or `test`),
 and the change is still handed in (see how senior-dev finds a project's build and

@@ -84,11 +84,11 @@ func TestFolderWithNothingToRunEndsWithoutSayingItPassed(t *testing.T) {
 		t.Fatalf("verification_commands = %#v, want 0 for a folder with nothing to run", commands)
 	}
 	ending := endingOf(pipelineResult{Status: status, Reason: reason, Terminal: outcome.TerminalData})
-	if want := "submitted a change; " + nothingToCheck; ending.Message != want {
+	if want := "submitted a change; the project has no build or tests it could find to run"; ending.Message != want {
 		t.Errorf("message = %q, want %q", ending.Message, want)
 	}
-	if ending.Observed != nothingToCheck {
-		t.Errorf("observed = %q, want %q", ending.Observed, nothingToCheck)
+	if want := "the project has no build or tests it could find to run"; ending.Observed != want {
+		t.Errorf("observed = %q, want %q", ending.Observed, want)
 	}
 	for name, said := range map[string]string{"message": ending.Message, "reason": ending.Reason} {
 		if strings.Contains(said, "passed") {

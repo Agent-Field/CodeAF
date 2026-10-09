@@ -389,7 +389,7 @@ func messageOf(result pipelineResult, data map[string]any) string {
 	inner, _ := data["status"].(string)
 	switch {
 	case result.Status == delegate.StatusPass && inner == "pass":
-		if wholeNumber(data["verification_commands"]) == 0 {
+		if commands, checked := data["verification_commands"]; checked && wholeNumber(commands) == 0 {
 			return "submitted a change; " + nothingToCheck
 		}
 		return "submitted a change, and the project's own build and tests passed"
