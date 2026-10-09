@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { EngineTaskRow } from '../chat/engine-client';
-import { buildTaskTree, taskCounts, taskTrail } from './taskTree.ts';
+import { buildTaskTree, taskCounts, taskProgress, taskTrail, waitTitles } from './taskTree.ts';
 
 const row = (ID: string, Status: string, extra: Partial<EngineTaskRow> = {}): EngineTaskRow => ({
   ID,
@@ -11,7 +11,7 @@ const row = (ID: string, Status: string, extra: Partial<EngineTaskRow> = {}): En
 });
 
 test('nests children under their parent in row order', () => {
-  const tree = buildTaskTree([row('a', 'running'), row('b', 'done', { Parent: 'a' }), row('c', 'ready', { Parent: 'a' })]);
+  const tree = buildTaskTree([row('a', 'running'), row('b', 'done', { Parent: 'a' }), row('c', 'pending', { Parent: 'a' })]);
   assert.equal(tree.length, 1);
   assert.deepEqual(tree[0].children.map((n) => n.row.ID), ['b', 'c']);
 });
@@ -51,4 +51,34 @@ test('trail walks parents outermost first and stops on a cycle', () => {
   assert.deepEqual(taskTrail(rows, 'e').map((r) => r.ID), ['d', 'e']);
   assert.equal(taskTrail(rows, 'b').length, 3);
   assert.deepEqual(taskTrail(rows, 'missing'), []);
+});
+
+test('families with running work come first, at every level; otherwise store order', () => {
+  const rows = [
+    row('a', 'done'),
+    row('b', 'ready'),
+    row('b1', 'done', { Parent: 'b' }),
+    row('b2', 'running', { Parent: 'b' }),
+    row('c', 'running'),
+  ];
+  const tree = buildTaskTree(rows);
+  assert.deepEqual(tree.map((n) => n.row.ID), ['b', 'c', 'a']);
+  assert.deepEqual(tree[0].children.map((n) => n.row.ID), ['b2', 'b1']);
+});
+
+test('progress groups done, running, queued, failed; a task waiting on a person is still queued', () => {
+  const rows = [
+    row('a', 'done'),
+    row('b', 'running', { Tokens: 4000 }),
+    row('c', 'pending'),
+    row('d', 'paused'),
+    row('e', 'failed'),
+    row('f', 'running', { Stopped: true, Tokens: 500 }),
+  ];
+  assert.deepEqual(taskProgress(rows), { done: 1, running: 1, queued: 2, failed: 2, total: 6, tokens: 4500 });
+});
+
+test('a queued row names only the unfinished tasks it waits on', () => {
+  const rows = [row('a', 'done', { Title: 'Parse config' }), row('b', 'running', { Title: 'Load schema' }), row('c', 'pending', { Waits: ['a', 'b', 'gone'] })];
+  assert.deepEqual(waitTitles(rows, rows[2]), ['Load schema']);
 });

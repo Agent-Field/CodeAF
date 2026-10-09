@@ -1,0 +1,13 @@
+.task-notes { display: flex; flex-direction: column; gap: var(--space-answer); margin: 0; padding: 0; list-style: none; min-width: 0; }
+.task-note { display: flex; flex-direction: column; min-width: 0; }
+
+/* The person's words: the same soft right-hand bubble as the conversation. */
+.task-note-person { align-items: flex-end; gap: var(--space-half); }
+.task-note-person[data-pending] .task-note-bubble { opacity: var(--opacity-subtle); }
+.task-note-bubble { max-width: var(--chat-bubble-max-width); margin: 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-bubble); background: var(--bubble); color: var(--text); font-size: var(--font-size-prose); line-height: var(--line-height-body); white-space: pre-wrap; overflow-wrap: anywhere; }
+.task-note-receipt { padding-inline: var(--space-1); color: var(--muted); font-size: var(--font-size-label); }
+
+/* Others' notes are work-rhythm words: muted, one size down, with who said it. */
+.task-note-other { gap: var(--space-half); padding-inline-start: var(--space-2); color: var(--muted); font-size: var(--font-size-body); line-height: var(--line-height-body); }
+.task-note-author { font-size: var(--font-size-label); font-weight: var(--font-weight-medium); }
+.task-note-body { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
