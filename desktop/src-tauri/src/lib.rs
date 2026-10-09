@@ -1,4 +1,5 @@
 mod dialogs;
+mod links;
 #[cfg(target_os = "macos")]
 mod menu;
 mod native;
@@ -123,24 +124,51 @@ async fn engine_health(app: tauri::AppHandle) -> Result<EngineHealth, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default();
+    // The single-instance plugin must be the first one registered. A release
+    // build is always one instance, so a codeaf:// link opened while codeaf runs
+    // reaches the running app. A development build joins in only when asked:
+    // parallel checkouts each run their own development shell side by side.
+    #[cfg(any(target_os = "linux", windows))]
+    let builder = if cfg!(debug_assertions)
+        && std::env::var("CODEAF_DESKTOP_SINGLE_INSTANCE").as_deref() != Ok("1")
+    {
+        builder
+    } else {
+        builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            // A second launch without a link brings codeaf forward; a link in it
+            // is delivered by the deep-link plugin to links.rs. `app_windows`
+            // still sees a window that is showing a web page.
+            if let Some(window) = links::front_window(app) {
+                links::bring_forward(&window);
+            }
+        }))
+    };
     #[cfg(target_os = "macos")]
     let builder = builder.menu(menu::build).on_menu_event(menu::handle);
     builder
         .manage(EngineRuntime::default())
+        .manage(links::Links::default())
         .manage(windows::Windows::default())
         .manage(notifications::Attention::default())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_deep_link::init())
+        .setup(|app| {
+            links::setup(app.handle());
+            Ok(())
+        })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 windows::on_destroyed(window.app_handle(), window.label());
+                links::on_destroyed(window.app_handle(), window.label());
             }
         })
         .invoke_handler(tauri::generate_handler![
             engine_health,
             engine_connection,
+            links::link_claim,
             native::open_path,
             native::reveal_path,
             native::host_name,
