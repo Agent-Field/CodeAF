@@ -1,6 +1,6 @@
 // The workspace: owns the reducer state and composes the strip, the content card and the dialogs.
 // Everything with a lane of its own lives in a sibling file (see ARCHITECTURE.md).
-import { useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import { Button, Icon, Text, TextInput, ToastRegion } from '../../components/ui';
 import { nativeControls } from '../../design/nativeControls';
 import design from '../../design/tokens.json';
@@ -14,13 +14,14 @@ import { openKindAction } from '../shell/openKind';
 import { createTabActions } from './actions';
 import { observedClosedPanes } from './closing/background';
 import { useCloseStopKey } from './closing/useCloseStopKey';
+import { inboxFocus } from './closing/inboxFocus';
 import { useBackground } from './closing/useBackground';
 import { useClosing } from './closing/useClosing';
 import { TabsApiContext, type TabsApi } from './context';
 import type { PaneActions } from './kinds/slots';
 import { NewTabHostContext } from './kinds/newtab/api';
 import { kindDef } from './kinds/registry';
-import { focusedPane, panesOf, readWorkspace, storageKey, visibleTabs, workspaceReducer, type Pane, type Tab } from './model';
+import { focusedPane, panesOf, readWorkspace, storageKey, visibleTabs, workspaceReducer, type Pane, type Tab, type WorkspaceAction } from './model';
 import { PaneGrid } from './PaneGrid';
 import { createPreviewStore } from './preview/previewStore';
 import { TabOverview } from './TabOverview';
@@ -38,7 +39,9 @@ type Props = {
 };
 
 export function Workspace({ enabled, onActivate, leading, onOpenChat }: Props) {
-  const [state, dispatch] = useReducer(workspaceReducer, undefined, readWorkspace);
+  const [state, rawDispatch] = useReducer(workspaceReducer, undefined, readWorkspace);
+  // The rail's Inbox row opens the Inbox on its oldest question: the reducer cannot move focus, so the request rides beside it.
+  const dispatch = useCallback((action: WorkspaceAction) => { if (action.type === 'open-inbox') inboxFocus.request(); rawDispatch(action); }, []);
   const [summaries, setSummaries] = useState<Record<string, TabSummary>>({});
   const [now, setNow] = useState(Date.now);
   const [previews] = useState(() => createPreviewStore(design.interaction.previewCloseDelay));
@@ -97,10 +100,13 @@ export function Workspace({ enabled, onActivate, leading, onOpenChat }: Props) {
   const { closeTab, closeAndStop } = closing;
   const { background, markFailedSeen } = useBackground({ tabs: state.tabs, closed: state.closed, summaries, since: closing.sinceOf, stopping: closing.stopping, now });
   // The Inbox appears the first time work outlives its tab or waits on the person.
-  const inboxWanted = background.running.length > 0 || background.needsYou.length > 0; // Failures alone do not summon the Inbox: they never go away on their own.
+  // Failures summon it too: they are bounded (recent, unseen, a few) and leave with Seen.
+  const inboxWanted = background.running.length > 0 || background.needsYou.length > 0 || background.failed.length > 0;
   useEffect(() => { if (inboxWanted) dispatch({ type: 'ensure-inbox' }); }, [inboxWanted]);
   useWindowHandoff(dispatch);
-  const [actions] = useState(() => createTabActions({ native: nativeControls(), toasts }));
+  const latestState = useRef(state);
+  latestState.current = state;
+  const [actions] = useState(() => createTabActions({ native: nativeControls(), toasts, stillHere: id => latestState.current.tabs.some(tab => tab.id === id) }));
   useCloseStopKey(enabled, () => closeAndStop(state.activeId));
   function startRename(id: string, group = false) { setRename({ id, group, value: (group ? state.groups : state.tabs).find(item => item.id === id)?.title ?? '' }); }
   useTabKeys({ enabled, state, dispatch, visible, overviewOpen, setOverviewOpen, closeTab, switcherRef, setSwitcher });
@@ -111,7 +117,7 @@ export function Workspace({ enabled, onActivate, leading, onOpenChat }: Props) {
   const historyHost = useHistoryWorkspace(state, dispatch);
   const [archived, dismissArchived] = useAutoArchive(state, dispatch, summaries);
 
-  const api: TabsApi = { state, dispatch, summaries, now, closeTab, closeAndStop, isRunning: closing.isRunning, background, markFailedSeen, openChat: onOpenChat, actions, reopenClosed: closing.reopenClosed, startRename, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename };
+  const api: TabsApi = { state, dispatch, summaries, now, closeTab, closeAndStop, closeMany: closing.closeMany, isRunning: closing.isRunning, background, markFailedSeen, openChat: onOpenChat, actions, reopenClosed: closing.reopenClosed, startRename, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename };
   const newTabHost = { state, summaries, dispatch, closeTab };
   const actionsFor = (pane: Pane): PaneActions => ({
     onDraft: draft => dispatch({ type: 'draft', id: pane.id, draft }),

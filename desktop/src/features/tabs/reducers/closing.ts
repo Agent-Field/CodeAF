@@ -16,6 +16,13 @@ export type ClosingAction =
    * `group` re-creates its group if closing the tab removed it.
    */
   | { type: 'reopen-id'; id: string; before?: string; after?: string; group?: TabGroup }
+  /**
+   * Takes a bulk close back. The payload is the whole restore point, taken before the close, so nothing depends on the
+   * bounded `closed` list: `tabs` are the closed tabs themselves (every pane of a split rides inside its tab), `order` is
+   * the strip's tab order before the close, and `groups` is every group as it was (title, collapsed). A group the close
+   * removed comes back with its own metadata; a tab or group that exists again is left alone.
+   */
+  | { type: 'restore-closed'; tabs: readonly Tab[]; order: readonly string[]; groups: readonly TabGroup[]; activeId: string }
   /** A copy of the tab right after it: the same session, draft and view, new ids. */
   | { type: 'duplicate'; id: string }
   /** Makes sure the one pinned Inbox tab exists. It is first in the strip and never takes focus. */
@@ -61,6 +68,19 @@ export function reduceClosing(state: WorkspaceState, action: { type: string }): 
       const after = tabs.findIndex(t => t.id === a.after);
       tabs.splice(before >= 0 ? before : after >= 0 ? after + 1 : tabs.length, 0, { ...tab, groupId });
       return normalize({ ...state, tabs, groups: groups.map(g => (g.id === groupId ? { ...g, collapsed: false } : g)), closed: state.closed.filter(t => t.id !== a.id), activeId: tab.id, recentIds: [tab.id, ...state.recentIds.filter(id => id !== tab.id)] });
+    }
+    case 'restore-closed': {
+      const present = new Set(state.tabs.map(t => t.id));
+      const back = a.tabs.filter(t => !present.has(t.id));
+      if (!back.length) return state;
+      const groups = [...state.groups, ...a.groups.filter(g => !state.groups.some(have => have.id === g.id) && back.some(t => t.groupId === g.id)).map(g => ({ ...g }))];
+      const byId = new Map<string, Tab>([...state.tabs, ...back].map(t => [t.id, t] as const));
+      const placed = a.order.flatMap(id => (byId.has(id) ? [byId.get(id)!] : []));
+      const rest = state.tabs.filter(t => !a.order.includes(t.id));
+      const tabs = [...placed, ...rest].map(t => (t.groupId && !groups.some(g => g.id === t.groupId) ? { ...t, groupId: undefined } : t));
+      const restored = new Set(back.map(t => t.id));
+      const activeId = restored.has(a.activeId) ? a.activeId : state.activeId;
+      return normalize({ ...state, tabs, groups, closed: state.closed.filter(t => !restored.has(t.id)), activeId, recentIds: [activeId, ...state.recentIds.filter(id => id !== activeId)] });
     }
     case 'duplicate': {
       const index = state.tabs.findIndex(t => t.id === a.id);

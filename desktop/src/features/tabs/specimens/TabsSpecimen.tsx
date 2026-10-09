@@ -56,7 +56,7 @@ export function TabsSpecimen() {
       <div className="tabs-specimen-wrap">
         <span className="tabs-specimen-item">Pinned
           <Tab specimen kind="inbox" title="Inbox" pinned tabIndex={-1}/>
-          <Tab specimen kind="conversation" title="Config stack" pinned active badge tabIndex={-1}/>
+          <Tab specimen kind="conversation" title="Config stack" pinned active badge="needsYou" tabIndex={-1}/>
         </span>
         <span className="tabs-specimen-item">Group
           <GroupCapsule title="Trailing commas" count={2} collapsed={false}>

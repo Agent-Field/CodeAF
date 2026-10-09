@@ -61,8 +61,8 @@ export function tabMenuItems(api: TabsApi, tab: Tab): MenuEntry[] {
     { id: 'close', label: 'Close tab', shortcut: closeShortcutFor(tab.kind), onSelect: () => api.closeTab(tab.id) },
     // The explicit path for people who never hold Option (3l). Nothing running means nothing to stop, so it is not offered.
     ...(api.isRunning(tab) ? [{ id: 'close-stop', label: 'Close and stop', shortcut: closeStopShortcut, onSelect: () => api.closeAndStop(tab.id) }] : []),
-    { id: 'close-others', label: 'Close other tabs', disabled: !state.tabs.some(t => t.id !== tab.id && !t.pinned && t.kind !== 'inbox'), onSelect: () => dispatch({ type: 'close-others', id: tab.id }) },
-    { id: 'close-right', label: 'Close tabs to the right', disabled: !toTheRight.length, onSelect: () => dispatch({ type: 'close-right', id: tab.id }) },
+    { id: 'close-others', label: 'Close other tabs', disabled: !state.tabs.some(t => t.id !== tab.id && !t.pinned && t.kind !== 'inbox'), onSelect: () => api.closeMany({ type: 'close-others', id: tab.id }) },
+    { id: 'close-right', label: 'Close tabs to the right', disabled: !toTheRight.length, onSelect: () => api.closeMany({ type: 'close-right', id: tab.id }) },
   ];
 }
 
@@ -79,7 +79,7 @@ export function groupMenuItems(api: TabsApi, group: TabGroup): MenuEntry[] {
     { id: 'collapse', label: group.collapsed ? 'Expand' : 'Collapse', icon: group.collapsed ? 'expand' : 'shrink', onSelect: () => api.dispatch({ type: 'collapse-group', id: group.id }) },
     { id: 'ungroup', label: 'Ungroup', icon: 'layers', onSelect: () => api.dispatch({ type: 'ungroup', id: group.id }) },
     separator('close-separator'),
-    { id: 'close-all', label: `Close ${members.length} ${members.length === 1 ? 'tab' : 'tabs'}`, danger: true, onSelect: () => api.dispatch({ type: 'close-group', id: group.id }) },
+    { id: 'close-all', label: `Close ${members.length} ${members.length === 1 ? 'tab' : 'tabs'}`, danger: true, onSelect: () => api.closeMany({ type: 'close-group', id: group.id }) },
   ];
 }
 
