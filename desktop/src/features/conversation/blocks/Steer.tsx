@@ -9,13 +9,13 @@ type SteerEntry = TurnV2['steer'][number];
 export function Steer({ entry }: { entry: Pick<SteerEntry, 'text' | 'landing' | 'consumed'> }) {
   const pending = !entry.consumed;
   return (
-    <p className="steer" data-consumed={entry.consumed}>
+    <div className="steer" data-consumed={entry.consumed}>
       {pending && entry.landing && <span className="steer-landing">{entry.landing}</span>}
       <span className="steer-elbow" aria-hidden="true">
         <Icon name="cornerDownRight" size="xs" />
       </span>
       <span className="steer-text">{entry.text}</span>
-    </p>
+    </div>
   );
 }
 

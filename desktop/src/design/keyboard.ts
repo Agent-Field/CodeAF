@@ -35,15 +35,8 @@ export function tabActionShortcut(event: KeyEvent): 'new' | 'reopen' | 'close' |
  if (key === 'w' && !event.shiftKey) return 'close';
 }
 
-/** Final Tab States: primary Enter starts a section; plain Enter continues/steers. */
-export const composerShortcuts = { send: 'Enter', steer: 'Enter', queue: isMac ? '⌃ Enter' : 'Queue menu', newSection: formatShortcut('⌘/Ctrl Enter') };
-export function composerActionShortcut(event: KeyEvent, running: boolean): 'send' | 'steer' | 'queue' | 'restart' | undefined {
- if (event.key !== 'Enter' || event.altKey || event.shiftKey) return;
- const primary = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
- if (primary) return 'restart';
- if (isMac && running && event.ctrlKey && !event.metaKey) return 'queue';
- if (!event.metaKey && !event.ctrlKey) return running ? 'steer' : 'send';
-}
+/** Composer: Enter sends (steers while running), Shift+Enter adds a line, Alt/Option+Enter queues while running. */
+export const composerShortcuts = { queue: isMac ? '⌥↵' : 'Alt Enter' };
 export function isWorkShortcut(event: KeyEvent): 'focus'|'preset'|'fold'|undefined {
  const primary=isMac?event.metaKey&&!event.ctrlKey:event.ctrlKey&&!event.metaKey;
  if(!primary||event.altKey)return;
