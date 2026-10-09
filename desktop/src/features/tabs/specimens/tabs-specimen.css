@@ -13,6 +13,11 @@
 .tabs-specimen-item .workspace-tab-group .workspace-tab { width: var(--specimen-tab-column); min-width: 0; flex: none; }
 .tabs-specimen-label { font-size: var(--type-caption-size); font-weight: var(--font-weight-medium); color: var(--ink-2); }
 .tabs-specimen-card { position: relative; display: grid; place-items: center; height: var(--tab-strip-height); border-radius: var(--radius-pane); background: var(--canvas); box-shadow: var(--sh-1); color: var(--ink-3); overflow: hidden; }
+.tabs-specimen-zone-card { flex: 1 1 var(--specimen-tab-cell); min-width: var(--specimen-tab-column); height: auto; min-height: var(--tab-strip-height); align-self: stretch; }
+.tabs-specimen-zone-card .split-zone-preview { inset: var(--shell-card-inset) var(--shell-card-inset) var(--shell-card-inset) 50%; width: auto; height: auto; }
+.tabs-specimen-panes { display: flex; flex-wrap: wrap; gap: var(--pane-gap); }
+.tabs-specimen-panes .workspace-pane { flex: 1 1 var(--task-panel-width); min-width: 0; }
+.tabs-specimen-pane-body { display: flex; flex-direction: column; justify-content: flex-end; gap: var(--space-2); padding: 0 var(--space-3) var(--space-3); }
 .tabs-specimen-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2) var(--space-6); margin: 0; padding: 0; list-style: none; color: var(--ink-2); }
 .tabs-specimen-legend li { display: flex; align-items: center; gap: var(--space-compact); }
 .tabs-specimen-note { color: var(--ink-2); }

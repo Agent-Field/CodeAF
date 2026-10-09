@@ -8,7 +8,9 @@ export type Pane = { id: string; kind: TabKind; title: string; draft: string; ti
 
 /** 1x2 = one row, two columns. 2x1 = two rows, one column. 2x2 = a grid of three or four panes. */
 export type SplitLayout = '1x2' | '2x1' | '2x2';
-export type Split = { layout: SplitLayout; focus: number; panes: Pane[] };
+/** Where the dividers sit: `col` is the first column's share of the width, `row` the first row's share of the height (0..1, default one half). */
+export type SplitRatios = { col: number; row: number };
+export type Split = { layout: SplitLayout; focus: number; panes: Pane[]; ratios?: SplitRatios };
 
 /**
  * A tab in the strip. A plain tab carries its pane's fields itself. A split tab is ONE merged tab:

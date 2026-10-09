@@ -1,0 +1,15 @@
+/* Shell 3b, Components "Pane header · compact composer": a 36px field and, above it, a one-line tray. */
+.compact-composer { display: flex; flex-direction: column; gap: var(--space-2); width: 100%; }
+.text-input.compact-composer-field { flex: none; height: var(--compact-composer-height); min-height: var(--compact-composer-height); padding: 0 var(--compact-composer-pad); border-radius: var(--compact-composer-radius); background: var(--field); color: var(--ink); font-size: var(--type-prose-size); }
+.compact-composer-field::placeholder { color: var(--ink-3); }
+.compact-composer-field:focus-visible { outline: none; }
+.split-tray { display: flex; align-items: center; gap: var(--space-compact); min-width: 0; height: var(--split-tray-height); padding: 0 var(--space-tight) 0 var(--space-row); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--sh-1); color: var(--ink); font-size: var(--type-label-size); }
+.split-tray-dot { flex: none; width: var(--mark-dot); height: var(--mark-dot); border-radius: var(--radius-pill); background: var(--amber); }
+.split-tray-head { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; font-weight: var(--type-label-strong); mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
+.button.split-tray-review { flex: none; height: var(--split-tray-button-height); min-height: var(--split-tray-button-height); padding: 0 var(--control-pad-ghost); border: 0; border-radius: var(--radius-segment-item); background: var(--field); color: var(--ink); font-size: var(--type-label-size); font-weight: var(--type-label-strong); }
+.button.split-tray-review:hover:not(:disabled) { background: var(--field-2); color: var(--ink); }
+
+/* The full composer stays mounted while its pane is unfocused (attachments and pastes survive); it is out of layout and out of the tab order. */
+.composer-slot[data-compact] { position: absolute; inset-inline: 0; bottom: 0; height: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
+.composer-slot[data-expanding] { overflow: hidden; animation: composer-expand var(--dur-base) var(--ease-layout); }
+@media (prefers-reduced-motion: reduce) { .composer-slot[data-expanding] { animation: none; } }
