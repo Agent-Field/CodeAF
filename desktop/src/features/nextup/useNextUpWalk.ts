@@ -1,7 +1,6 @@
 // A walk belongs to the window, so it survives the workspace remount at a place switch.
 // The feed removes vanished questions in one publication; no empty intermediate card is shown.
 import { useEffect, useRef, useSyncExternalStore } from 'react';
-import { registerShortcuts, shortcutLayer } from '../../design/keyboard.ts';
 import type { Pane } from '../tabs/model.ts';
 import type { ScrollSpot } from '../tabs/scroll/scrollMemory.ts';
 import type { EngineAnswer } from '../chat/engine-client.ts';
@@ -84,11 +83,6 @@ export function useNextUpWalk(options: {
  const latest = useRef(options);
  latest.current = options;
  const state = useNextUpWalkState();
- useEffect(() => options.enabled ? registerShortcuts(shortcutLayer.surface + 1, shortcut => {
-  if (shortcut.id === 'next-up') { nextUpWalk.start(latest.current.origin(), worldStore.getState().items); return true; }
-  if (shortcut.id === 'back' && nextUpWalk.getSnapshot().phase !== 'idle') { nextUpWalk.exit(); return true; }
-  return false;
- }) : undefined, [options.enabled]);
  useEffect(() => {
   if (!options.enabled) return;
   const start = (event: Event) => {
