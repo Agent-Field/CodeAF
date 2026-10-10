@@ -259,7 +259,7 @@
   --thinking-mark-box: 13px;
   --thinking-chevron: 12px;
   --thinking-dot-radius: 99px;
-  --shimmer-duration: 2.4s;
+  --shimmer-duration: var(--cf-shimmer-duration);
   --shimmer-size: 250%;
   --shimmer-angle: 90deg;
   --asset-dir-max-width: 140px;
@@ -467,7 +467,7 @@
   --task-view-card-pad-block: 14px;
   --task-view-clamp-lines: 3;
   --task-view-shimmer-size: 250%;
-  --task-view-shimmer-duration: 2.4s;
+  --task-view-shimmer-duration: var(--cf-shimmer-duration);
   --task-composer-max-width: 592px;
   --task-view-column-width: 640px;
   --task-view-bar-height: 52px;
@@ -495,7 +495,7 @@
   --latest-leading: normal;
   --latest-overlap: 6px;
   --latest-rise: 4px;
-  --latest-shimmer-duration: 2.4s;
+  --latest-shimmer-duration: var(--cf-shimmer-duration);
   --latest-shimmer-size: 250%;
   --latest-shimmer-from: 100%;
   --latest-shimmer-to: -150%;
@@ -1170,6 +1170,17 @@
   --search-field-gap: 10px;
   --search-field-size: 13px;
   --search-field-hint-size: 11px;
+  --motion-rise-row: 4px;
+  --motion-rise-send: 6px;
+  --motion-rise-toast: 8px;
+  --motion-place-slide: 6px;
+  --motion-scale-quicklook: .96;
+  --motion-fold-open: var(--motion-ask-open);
+  --breathe-duration: 2.8s;
+  --breathe-from: 2px;
+  --breathe-to: 4.5px;
+  --cf-shimmer-duration: 2.4s;
+  --motion-tab-collapse: var(--dur-base);
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);
@@ -1537,5 +1548,5 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  :root { --duration: var(--duration-none); --duration-fast: var(--duration-none); --duration-sidebar: var(--duration-none); --duration-overlay: var(--duration-none); --duration-directional: var(--duration-none); --duration-work: var(--duration-none); --dur-press: var(--duration-none); --dur-fast: var(--duration-none); --dur-base: var(--duration-none); --dur-slow: var(--duration-none); --dur-spring: var(--duration-none); --motion-travel: var(--motion-rest); --motion-directional-travel: var(--motion-rest); --motion-scale-enter: var(--motion-scale-rest); --motion-scale-popover: var(--motion-scale-rest); }
+  :root { --duration: var(--duration-none); --duration-fast: var(--duration-none); --duration-sidebar: var(--duration-none); --duration-overlay: var(--duration-none); --duration-directional: var(--duration-none); --motion-travel: var(--motion-rest); --motion-directional-travel: var(--motion-rest); --motion-scale-enter: var(--motion-scale-rest); --motion-scale-popover: var(--motion-scale-rest); --duration-work: var(--duration-none); --shimmer-duration: var(--duration-none); --dur-press: var(--duration-none); --dur-fast: var(--duration-none); --dur-base: var(--duration-none); --dur-slow: var(--duration-none); --dur-spring: var(--duration-none); --task-view-shimmer-duration: var(--duration-none); --latest-shimmer-duration: var(--duration-none); --i2-banner-duration: var(--duration-none); --motion-rise-row: var(--motion-rest); --motion-rise-send: var(--motion-rest); --motion-rise-toast: var(--motion-rest); --motion-place-slide: var(--motion-rest); --motion-scale-quicklook: var(--motion-scale-rest); --breathe-duration: var(--duration-none); --breathe-from: var(--motion-rest); --breathe-to: var(--motion-rest); --cf-shimmer-duration: var(--duration-none); --motion-tab-collapse: var(--duration-none); }
 }
