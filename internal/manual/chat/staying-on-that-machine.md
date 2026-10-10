@@ -461,7 +461,7 @@ it says `no engine is holding /home/you/api on this machine`. `--status-all` doe
 workspace this machine has an engine folder for. As with `--stop`, no `--workspace` means
 your home directory.
 
-## Rebuilt codeaf but your conversation was still on the old engine — how codeaf tells you
+## Rebuilt codeaf but your conversation was still on the old engine — does the session host notice when I rebuild codeaf, how codeaf tells you
 
 A plain `codeaf` does not run your conversation inside the window — the session host does,
 in a process of its own, so it survives the terminal closing. That process also outlives the

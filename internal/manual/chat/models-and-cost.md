@@ -3902,7 +3902,7 @@ attribution change, so `--node build` today matches only the chat's own work. A 
 model or a node that matched nothing gets no sentence: an empty listing already says a
 search came back empty, and only an id you pasted is something you believed was there.
 
-## Show me the raw rows, and open one call's body
+## Show me the raw rows — raw call-log rows, and open one call's body
 
 ```
 codeaf logs --json                 the matching rows exactly as they are on disk
