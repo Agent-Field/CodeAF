@@ -4,10 +4,10 @@ package main
 //
 // The order below is the order the surface reads things in: the projects on the
 // disk, the conversations in their buckets, the work each project ran, the
-// standing orders and what they have cost, what the machine remembers, what it
-// has spent, and the messages a search ranks. Every one of them goes through
-// the writer the engine itself uses, so the surface is reading its own output
-// and not a second author's idea of the shape.
+// automations and the fortnight of runs behind them, what the machine
+// remembers, what it has spent, and the messages a search ranks. Every one of
+// them goes through the writer the engine itself uses, so the surface is
+// reading its own output and not a second author's idea of the shape.
 
 import (
 	"fmt"
@@ -33,11 +33,14 @@ type builtHome struct {
 	Projects      int
 	Conversations int
 	Tasks         int
-	Standing      int
-	Memories      int
-	UsageLines    int
-	Messages      int
-	Artifacts     int
+	// Automations is how many automations the store holds, and AutomationRuns
+	// how many runs their history holds between them.
+	Automations    int
+	AutomationRuns int
+	Memories       int
+	UsageLines     int
+	Messages       int
+	Artifacts      int
 	// Nodes and Jobs are the ONE conversation's own record of what it had out:
 	// the checkpointed task graph and the background jobs beside it
 	// (seed_room.go). They are counted apart from Tasks because they are a
@@ -49,10 +52,10 @@ type builtHome struct {
 
 func (b builtHome) line() string {
 	return fmt.Sprintf("built a demo home in %s: %d projects, %d conversations, %d pieces of work, "+
-		"%d standing orders, %d memories, %d spending lines, %d messages, %d made things, "+
+		"%d automations with %d runs, %d memories, %d spending lines, %d messages, %d made things, "+
 		"%d nodes in one graph, %d background jobs",
-		b.Dir, b.Projects, b.Conversations, b.Tasks, b.Standing, b.Memories, b.UsageLines, b.Messages,
-		b.Artifacts, b.Nodes, b.Jobs)
+		b.Dir, b.Projects, b.Conversations, b.Tasks, b.Automations, b.AutomationRuns, b.Memories,
+		b.UsageLines, b.Messages, b.Artifacts, b.Nodes, b.Jobs)
 }
 
 // seedDemoHome writes a whole v3 state into dir and answers what it wrote.
@@ -123,11 +126,16 @@ func seedDemoHome(dir string, now time.Time) (builtHome, error) {
 	}
 	built.Nodes, built.Jobs = nodes, jobs
 
-	orders, err := writeStanding(filepath.Join(root, "v3", "standing"), projects, ids, now)
+	// THE AUTOMATIONS STORE IS WHERE A WINDOW OPENED ON THIS HOME LOOKS FOR IT:
+	// v3/automations under the state root, the two names cmd/codeaf's
+	// automationsRoot joins onto internal/home. It is spelled from this home's
+	// own root and never through internal/home, which would follow CODEAF_HOME
+	// to the person's real one.
+	automations, err := writeAutomations(filepath.Join(root, "v3", "automations"), projects, ids, now)
 	if err != nil {
 		return built, err
 	}
-	built.Standing = orders
+	built.Automations, built.AutomationRuns = automations.automations, automations.runs
 
 	memories, err := writeMemories(brain, projects[firstProjectName].dir)
 	if err != nil {
@@ -135,7 +143,7 @@ func seedDemoHome(dir string, now time.Time) (builtHome, error) {
 	}
 	built.Memories = memories
 
-	lines, err := writeUsage(filepath.Join(root, "v3", session.UsageLedgerName), projects, ids, now)
+	lines, err := writeUsage(filepath.Join(root, "v3", session.UsageLedgerName), projects, ids, automations.bills, now)
 	if err != nil {
 		return built, err
 	}

@@ -315,12 +315,13 @@ test-e2e: build
 # ── the demo home ───────────────────────────────────────────────────────────
 #
 # A HOME WITH SOMETHING ON EVERY PLACE, FOR LOOKING AT. On a machine that has
-# just started using codeaf the standing store, the memory store and the
+# just started using codeaf the automations store, the memory store and the
 # spending ledger are empty, and every one of those pages correctly draws
 # nothing — which is the emptiness law working and is also indistinguishable
 # from a page that is broken. This builds a THROWAWAY home somewhere else and
 # opens the real binary against it, so all of it can be seen full without a
-# single invented row landing in ~/.codeaf.
+# single invented row landing in ~/.codeaf. The window it opens starts no
+# automations clock (CODEAF_NO_AUTOMATIONS), so nothing invented ever runs.
 #
 # It prints the directory it built and the command to open it again, so the same
 # home can be returned to:

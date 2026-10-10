@@ -8,9 +8,9 @@ package main
 // owner opened the standing page, the memory page and the spend page on their
 // own machine and saw nothing, because on their machine those stores are new
 // and empty — which is the emptiness law working exactly as designed. The
-// answer is not to write invented standing orders, invented memories and
-// invented spending into ~/.codeaf, which would make a person's own record a
-// lie; it is a SECOND home, somewhere else, that the surface can be pointed at.
+// answer is not to write invented automations, invented memories and invented
+// spending into ~/.codeaf, which would make a person's own record a lie; it is
+// a SECOND home, somewhere else, that the surface can be pointed at.
 // So this program never touches the real state root: it writes one directory,
 // the one it was given, and the launcher hands that directory to the binary as
 // HOME.
@@ -22,8 +22,8 @@ package main
 // its own main package and `bin/codeaf` does not change by a byte.
 //
 // EVERYTHING IS WRITTEN THROUGH THE ENGINE'S OWN WRITERS — session.SaveMeta,
-// session.RecordUsage, session.RecordArtifact, standing.Store, store.Store — so
-// what the surface reads back is what the product itself produces. The one
+// session.RecordUsage, session.RecordArtifact, automation.Store, store.Store —
+// so what the surface reads back is what the product itself produces. The one
 // exception is stated where it is made ([writeTranscript]).
 
 import (
@@ -84,8 +84,8 @@ func run(args []string) error {
 	fmt.Fprintf(os.Stderr, "\ncome back to this one with:\n  make demo-home DEMO_HOME=%s KEEP=1\n", dir)
 
 	if *launch == "" {
-		fmt.Fprintf(os.Stderr, "\nor open it by hand with:\n  cd %s && HOME=%s %s\n",
-			filepath.Join(dir, firstProjectName), dir, surfaceBeside())
+		fmt.Fprintf(os.Stderr, "\nor open it by hand with:\n  cd %s && HOME=%s %s=1 %s\n",
+			filepath.Join(dir, firstProjectName), dir, demoNoClock, surfaceBeside())
 		return nil
 	}
 	return launchAgainst(dir, *launch)
@@ -114,8 +114,9 @@ const usageText = `codeaf-demo-home — build a home with something on every pla
   --into    where to build it; a fresh temporary directory when not given
   --keep    reuse a directory that already holds a demo home rather than refusing
             to write over it, so a second launch sees what the first one left
-  --launch  run that binary against the demo home, with HOME pointed at it and a
-            presence heartbeat running beside it, and return when it exits
+  --launch  run that binary against the demo home, with HOME pointed at it, the
+            automations clock off and a presence heartbeat running beside it,
+            and return when it exits
 
 It writes inside --into and nowhere else. The real state root (~/.codeaf) is
 never opened.
@@ -213,12 +214,28 @@ func launchAgainst(dir, binary string) error {
 }
 
 // demoEnviron is this process's environment with the codeaf pins that would
-// point the surface back at the real machine removed. HOME is set by the
-// caller; CODEAF_HOME would override it outright, which is the one variable
-// that could silently send a demo launch at the owner's own state root.
+// point the surface back at the real machine removed, and the automations
+// clock switched off. HOME is set by the caller; CODEAF_HOME would override it
+// outright, which is the one variable that could silently send a demo launch at
+// the owner's own state root.
 func demoEnviron() []string {
-	return env.EnvironWithout("HOME", home.EnvVar)
+	return append(env.EnvironWithout("HOME", home.EnvVar, demoNoClock), demoNoClock+"=1")
 }
+
+// demoNoClock keeps every window opened on the demo home from starting the
+// automations clock ([automation.Startable] reads it): the window still reads
+// the store, draws the lines and counts itself open, and nothing runs.
+//
+// THE FIXTURE'S AUTOMATIONS ARE INVENTED AND THE CLOCK WOULD RUN THEM FOR REAL.
+// A window starts `codeaf clock` against the home it was opened on, and the
+// clock takes every slot that is due — the morning sweep and the dependency
+// bump are unattended sessions on the person's own key, and the watch on CI
+// runs a command and asks a model every fifteen minutes. So without this the
+// first look at the demo would spend real money on invented work, which is the
+// rule the task graph already keeps for the same reason (seed_room.go). The
+// cost is that an automation made INSIDE the demo is saved and never runs; the
+// demo is for looking at, and its history is the thing on show.
+const demoNoClock = "CODEAF_NO_AUTOMATIONS"
 
 // resolveDemoDir is the directory with its symlinks followed, and the directory
 // itself where they cannot be — a path that does not resolve is not a reason to

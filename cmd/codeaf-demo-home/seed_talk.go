@@ -138,9 +138,12 @@ var demoConversations = []demoTalk{
 	{
 		project: firstProjectName, title: "Standing Up the Watches", ago: 5 * time.Hour,
 		spent: 0.29, tokens: 22_400, model: "anthropic/claude-sonnet-4",
+		// THE FIRST TURN IS AN AUTOMATION'S OWN WORDS. The watch on CI was saved
+		// here (seed_automations.go), and its Words are this sentence verbatim,
+		// so the provenance it carries is a line this journal really has.
 		turns: []demoTurn{
-			{"keep an eye on CI and tell me when master goes red", "Set up. It looks every five minutes, spends at most twenty-five cents a look, and asks before it does anything but tell you."},
-			{"and sweep the repo every morning at nine", "That one is standing too. It has come back clean three mornings running."},
+			{"keep an eye on CI and tell me when master goes red", "Saved as a watch. Every fifteen minutes while codeaf is open it reads the last five runs on master, and it tells you once when one turns red — not on every look while it stays red."},
+			{"and sweep the repo every morning at nine", "That one is already an automation — you typed it on home two weeks ago — and it has come back clean three mornings running."},
 		},
 	},
 	{
@@ -190,6 +193,9 @@ var demoConversations = []demoTalk{
 		turns: []demoTurn{
 			{"what does the enterprise ladder actually beat per-seat at?", "Above forty users, on the numbers in pricing.json. Below that per-seat is cheaper for the buyer and better for us."},
 			{"write that down where I will find it again", "Remembered as a project decision, so the next conversation about the ladder starts knowing it."},
+			// A REMINDER THAT HAS NOT HAPPENED YET was saved here, and this is
+			// the sentence it keeps as its Words.
+			{"and remind me tomorrow at four to send the ladder numbers to sales", "Saved as a reminder for tomorrow at 16:00. It says \"Send the ladder numbers to sales.\" and nothing more — no model is called when it does."},
 		},
 	},
 	{
@@ -204,6 +210,9 @@ var demoConversations = []demoTalk{
 		spent: 0.31, tokens: 24_300, model: "openai/gpt-5-mini",
 		turns: []demoTurn{
 			{"is the annual discount two months free or seventeen percent off?", "They are the same number said two ways. Two months free is the one buyers read fastest."},
+			// The watch on pricing.json was saved here; it has since spoken once
+			// and finished, and its lines land in this conversation.
+			{"tell me once pricing.json changes, so I read the new numbers before anyone ships them", "Saved as a watch on pricing.json. It looks every hour while codeaf is open, tells you the first time the file changes, and then it is finished."},
 		},
 	},
 }
@@ -228,7 +237,7 @@ func writeConversation(project *demoProject, talk demoTalk, now time.Time, brain
 		Workspace:  project.dir,
 		LaunchDir:  project.dir,
 		Model:      talk.model,
-		Created:    spoke.Add(-time.Duration(len(talk.turns)) * 12 * time.Minute),
+		Created:    spoke.Add(-time.Duration(len(talk.turns)) * turnSpacing),
 		LastUserAt: spoke,
 		SpentUSD:   talk.spent,
 		Tokens:     talk.tokens,
@@ -251,7 +260,7 @@ func writeConversation(project *demoProject, talk demoTalk, now time.Time, brain
 // THIS IS THE ONE PLACE THIS PROGRAM SPELLS A FILE FORMAT, and it is worth
 // saying why rather than hiding it. Every other shape here has an exported
 // writer — session.SaveMeta, session.RecordUsage, session.RecordArtifact, the
-// standing store, the memory store — and this one does not: a journal is
+// automations store, the memory store — and this one does not: a journal is
 // written by a live agent holding a flock, through internal/session's
 // unexported sessionEntry, and there is no seam for "write me a conversation
 // that already happened". Two things keep the copy honest. The fields are the
@@ -295,6 +304,20 @@ type journalSpend struct {
 	DurationMS int64   `json:"durationMs,omitempty"`
 }
 
+// turnSpacing is how far apart a seeded conversation's turns are, spread
+// backwards from when the person last spoke, so a journal reads as something
+// that took a while.
+const turnSpacing = 12 * time.Minute
+
+// turnAt is when the person said turn `turn` of `turns`, in a conversation
+// they last spoke in at spoke. It is the ONE spelling of a turn's moment: the
+// journal is stamped with it, and an automation saved in a conversation is
+// made just after the turn that asked for it (seed_automations.go), so the two
+// can never disagree about when that was.
+func turnAt(spoke time.Time, turns, turn int) time.Time {
+	return spoke.Add(-time.Duration(turns-1-turn) * turnSpacing)
+}
+
 // writeTranscript writes one conversation's journal: the header, the turns in
 // the order they happened with a seal after each, and the name the session
 // settled on.
@@ -303,11 +326,7 @@ func writeTranscript(path, id, workspace string, talk demoTalk, spoke time.Time)
 	if turns == 0 {
 		return fmt.Errorf("conversation %q has no turns", talk.title)
 	}
-	// The turns are spread backwards from when the person last spoke, twelve
-	// minutes apart, so a journal reads as something that took a while.
-	at := func(turn int) time.Time {
-		return spoke.Add(-time.Duration(turns-1-turn) * 12 * time.Minute)
-	}
+	at := func(turn int) time.Time { return turnAt(spoke, turns, turn) }
 	lines := []journalLine{{
 		Type: "session", Version: 1, ID: id, Cwd: workspace, Model: talk.model,
 		Timestamp: at(0).Add(-time.Minute).Format(time.RFC3339Nano),

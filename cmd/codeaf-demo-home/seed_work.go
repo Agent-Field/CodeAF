@@ -66,8 +66,8 @@ var demoTasks = []demoTask{
 		project: firstProjectName, talk: "Standing Up the Watches", ago: 5 * time.Hour,
 		entry: session.TaskIndexEntry{
 			ID: "4", Title: "Write the morning sweep down", Status: string(session.TaskDone),
-			Outcome:      "The sweep is a standing order now, with a cap of a dollar a day.",
-			Files:        []string{"docs/STANDING-ORDERS.md"},
+			Outcome:      "The sweep's brief is written down beside the automation that runs it, with its twenty-minute and one-dollar limits.",
+			Files:        []string{"docs/MORNING-SWEEP.md"},
 			FilesChanged: 1, Cost: 0.14, Model: "anthropic/claude-sonnet-4", Tokens: 16_800,
 			DurationMS: 3 * 60 * 1000,
 		},
