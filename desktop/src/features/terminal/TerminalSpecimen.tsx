@@ -25,25 +25,25 @@ const failed = [
 const noop = () => {};
 const readNothing = async () => '';
 
-function Card({ header, output, anchorBottom, live }: { header: Omit<TerminalHeaderProps, 'onStop' | 'onRemove' | 'readOutput'>; output: string; anchorBottom: boolean; live: boolean }) {
+function Card({ header, output, anchorBottom, live }: { header: Omit<TerminalHeaderProps, 'onStop' | 'onRemove' | 'onClose' | 'readOutput'>; output: string; anchorBottom: boolean; live: boolean }) {
   const feed = useCallback((screen: ScreenHandle) => { if (anchorBottom) screen.pad(); screen.write(output); }, [anchorBottom, output]);
   return <div className="terminal-specimen-card">
     <div className="terminal-pane">
-      <TerminalHeader {...header} onStop={noop} onRemove={noop} readOutput={readNothing}/>
+      <TerminalHeader {...header} onStop={noop} onRemove={noop} onClose={noop} readOutput={readNothing}/>
       <div className="terminal-field"><TerminalScreen label={`${header.title} specimen`} interactive={false} cursor={live} onReady={feed}/></div>
       <AskField onAsk={async () => undefined}/>
     </div>
   </div>;
 }
 
-/** Design 3c in both themes (the theme switch drives it): a running job, and a terminal that ended with an error. */
+/** Design 3c in both themes (the theme switch drives it): a running job and a finished job with its menu. */
 export function TerminalSpecimen() {
   return <Surface direction="column">
     <SectionHeading>Terminal and job tabs</SectionHeading>
     <Text>Output on the terminal field in the program's own colours, ANSI hues at about 60% chroma and only here. State in the header; Ask codeaf about this output starts a new conversation.</Text>
     <div className="terminal-specimens">
       <Card header={{ title: 'nightly-bench', meta: '~/codeaf · job', words: 'Running · 2m 14s', tone: 'running', canStop: true, removeLabel: 'Remove job' }} output={running} anchorBottom live/>
-      <Card header={{ title: 'zsh', meta: '~/codeaf · terminal', words: 'exit 2 · 3m 5s ago', tone: 'failed', canStop: false, removeLabel: 'Remove terminal' }} output={failed} anchorBottom={false} live={false}/>
+      <Card header={{ title: 'make test', meta: '~/codeaf · job', words: 'exit 2 · 3m 5s ago', tone: 'failed', canStop: false, finishedJob: true, onOpenLog: noop, onRerun: noop, removeLabel: 'Remove job' }} output={failed} anchorBottom={false} live={false}/>
     </div>
   </Surface>;
 }

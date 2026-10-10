@@ -8,8 +8,9 @@
  */
 
 import type { SourceKind } from './client.ts';
+import { knowsList, type KnowsLine } from './knows/model.ts';
 import type {
-  PlaceSetting, PolicyDecision, PolicyField, SettingState, SourceHandoff, UsedSource, UsingBundle, UsingView, Want,
+  PlaceSetting, PolicyDecision, PolicyField, SettingState, SourceHandoff, UsedInstruction, UsedSource, UsingBundle, UsingKnowsLine, UsingView, Want,
 } from './using-types.ts';
 
 export const fieldLabel: Record<PolicyField, string> = { model: 'Model', permissions: 'Permissions' };
@@ -121,6 +122,83 @@ export function tallyLine(bundle: UsingBundle): string | undefined {
 
 /** How many instructions were cut to fit; the model reads the rest. */
 export const trimmedInstructions = (bundle: UsingBundle): number => bundle.instructions.filter(item => item.trimmed).length;
+
+/** One row of the Using sheet's Instructions group. */
+export type InstructionRow = {
+  key: string;
+  text: string;
+  /** The place or places the row is credited to, already named. */
+  places: string;
+  /** The knows caption (learned, replaced, you added, a file). Empty when there is nothing true to say. */
+  source: string;
+  struck: boolean;
+  trimmed: boolean;
+};
+
+function asKnows(line: UsingKnowsLine): KnowsLine {
+  return line;
+}
+
+/** Home spells a line the person wrote as "you added"; the same words are used here so the two lists do not drift. */
+function knowsCaption(line: KnowsLine, source: string, struck: boolean): string {
+  if (line.source.kind === 'you-wrote' && !struck) return 'you added';
+  return source;
+}
+
+function proseRow(item: UsedInstruction, bundle: UsingBundle, index: number): InstructionRow {
+  const from = [placeName(bundle, item.placeId), ...(item.alsoFrom ?? []).map(id => placeName(bundle, id))];
+  return {
+    key: `prose:${item.placeId}:${index}`,
+    text: item.text,
+    places: [...new Set(from)].join(', '),
+    source: '',
+    struck: false,
+    trimmed: Boolean(item.trimmed),
+  };
+}
+
+/**
+ * The Instructions group. Visible knows lines are listed one each, nearest place first, with the place and the
+ * learned or replaced caption. Joined instruction prose is listed only for a place that has no visible line, so a
+ * legacy paragraph is not dropped and a line is not shown twice as a paragraph. A replacement older than the strike
+ * window is absent, the same rule as Home.
+ */
+export function instructionRows(bundle: UsingBundle, now: Date = new Date()): InstructionRow[] {
+  const visible = knowsList((bundle.knows ?? []).map(asKnows), now).all.filter(row => row.line.text.trim() !== '');
+  const byPlace = new Map<string, typeof visible>();
+  for (const row of visible) {
+    const list = byPlace.get(row.line.placeId) ?? [];
+    list.push(row);
+    byPlace.set(row.line.placeId, list);
+  }
+  const rows: InstructionRow[] = [];
+  const seen = new Set<string>();
+  const emit = (placeId: string) => {
+    for (const row of byPlace.get(placeId) ?? []) {
+      rows.push({
+        key: row.line.id,
+        text: row.line.text,
+        places: placeName(bundle, placeId),
+        source: knowsCaption(row.line, row.source, row.struck),
+        struck: row.struck,
+        trimmed: false,
+      });
+    }
+  };
+  for (const place of bundle.places) {
+    seen.add(place.id);
+    emit(place.id);
+  }
+  for (const placeId of byPlace.keys()) {
+    if (!seen.has(placeId)) emit(placeId);
+  }
+  bundle.instructions.forEach((item, index) => {
+    const credited = [item.placeId, ...(item.alsoFrom ?? [])];
+    if (credited.length > 0 && credited.every(id => byPlace.has(id))) return;
+    rows.push(proseRow(item, bundle, index));
+  });
+  return rows;
+}
 
 export const settingWords: Record<SettingState, string> = {
   applied: 'In use',

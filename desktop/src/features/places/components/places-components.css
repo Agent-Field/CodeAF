@@ -107,7 +107,8 @@
 .places-heading { display: flex; flex-direction: column; gap: var(--places-heading-gap); }
 .places-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--places-crumb-gap); margin: 0; padding: 0; list-style: none; font-size: var(--places-crumb-size); color: var(--ink-3); }
 .places-crumb-item { display: inline-flex; align-items: center; gap: var(--places-crumb-gap); }
-.places-crumb.button { min-height: 0; padding: 0 var(--space-half); border-radius: var(--radius-xs); background: transparent; color: var(--ink-3); font-size: var(--places-crumb-size); font-weight: var(--font-weight-regular); line-height: var(--line-height-tight); }
+/* Padding stays 0 so the 6px trail gap is the space from the word to the chevron, the same gap the 8b screen measures. */
+.places-crumb.button { min-height: 0; padding: 0; border-radius: var(--radius-xs); background: transparent; color: var(--ink-3); font-size: var(--places-crumb-size); font-weight: var(--font-weight-regular); line-height: var(--line-height-tight); }
 .places-crumb.button:hover:not(:disabled) { background: var(--field); color: var(--ink-3); }
 .places-crumb.button:active:not(:disabled) { background: var(--field-2); color: var(--ink-3); }
 .places-heading-row { display: flex; align-items: center; gap: var(--places-heading-row-gap); min-width: 0; }

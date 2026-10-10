@@ -4,6 +4,7 @@ export { Button, IconButton, type ButtonVariant, type IconButtonSize } from './B
 export { useTooltip, TruncatedText } from './Tooltip';
 export { StatusMark, type Status } from './StatusMark';
 export { Segmented, type SegmentedOption } from './Segmented';
+export { FilterTabs, type FilterTabOption } from './FilterTabs';
 export { Chip, ChipButton, Tag, type TagTone } from './Chip';
 export { Row, RowActions } from './RowActions';
 export { NavigationItem } from './NavigationItem';
@@ -22,3 +23,4 @@ export { Markdown, InlineMarkdown, safeMarkdownUrl, type MarkdownProps, type Mar
 export { CopyButton, type CopyButtonProps } from './CopyButton';
 export { useMoreToRight } from './useMoreToRight';
 export { ToastRegion, ToastView, useToasts, sentenceParts, TOAST_DURATION_MS, TOAST_LIMIT, type ToastModel, type ToastAction, type ShowToast } from './Toast';
+export { QuickLook } from './QuickLook';

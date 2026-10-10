@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/placegraph"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -570,4 +571,227 @@ func TestSnapshotCarriesClockReceiptElapsedSeconds(t *testing.T) {
 	if len(snapshot.RecentOutcomes) != 1 || snapshot.RecentOutcomes[0].ElapsedSeconds != 37.2 {
 		t.Fatalf("clock receipt = %+v", snapshot.RecentOutcomes)
 	}
+}
+
+// The task's route list, in table order. A row that moves or grows a handler
+// before its file lands fails here.
+var seamContract = []struct {
+	method  string
+	pattern string
+}{
+	{http.MethodGet, "/places/{id}/decisions"},
+	{http.MethodGet, "/places/{id}/decide-status"},
+	{http.MethodGet, "/decisions/{id}"},
+	{http.MethodPost, "/decisions/{id}/overturn"},
+	{http.MethodPut, "/places/{id}/decide"},
+	{http.MethodGet, "/places/{id}/knows"},
+	{http.MethodPost, "/places/{id}/knows"},
+	{http.MethodPatch, "/places/{id}/knows/{line}"},
+	{http.MethodDelete, "/places/{id}/knows/{line}"},
+	{http.MethodPost, "/places/{id}/knows/{line}/still-true"},
+	{http.MethodPost, "/sessions/{id}/plan/{plan}/go"},
+	{http.MethodPost, "/sessions/{id}/plan/{plan}/edit"},
+	{http.MethodPost, "/sessions/{id}/plan/{plan}/cancel"},
+	{http.MethodGet, "/councils"},
+	{http.MethodPost, "/councils/{id}/steer"},
+	{http.MethodGet, "/councils/{id}/messages"},
+	{http.MethodPost, "/councils/{id}/pause"},
+	{http.MethodPost, "/councils/{id}/resume"},
+}
+
+// seamOwned says a row has a real handler in this package (knows_routes.go or
+// plan_routes.go), so the stub test leaves it to that file's own tests.
+func seamOwned(pattern string) bool {
+	return strings.Contains(pattern, "/knows") || strings.Contains(pattern, "/plan/{plan}/") || strings.Contains(pattern, "decide") || strings.Contains(pattern, "/decisions")
+}
+
+func seamExample(pattern string) string {
+	return "/api/engine" + strings.NewReplacer("{id}", "pl_1", "{line}", "line_7", "{plan}", "plan_9").Replace(pattern)
+}
+
+func TestSeamRouteTableAnswers501UntilAHandlerLands(t *testing.T) {
+	if len(seamTable) != len(seamContract) {
+		t.Fatalf("seam table has %d routes, the contract lists %d", len(seamTable), len(seamContract))
+	}
+	// Council list and steer have their handler (landed) and are proved
+	// below. Knows and plan rows belong to their own files (seamOwned) and
+	// are proved there. Every other row is still the empty slot that
+	// answers 501 until its own file lands.
+	landed := map[string]bool{
+		http.MethodGet + " /councils":               true,
+		http.MethodPost + " /councils/{id}/steer":   true,
+		http.MethodGet + " /councils/{id}/messages": true,
+		http.MethodPost + " /councils/{id}/pause":   true,
+		http.MethodPost + " /councils/{id}/resume":  true,
+	}
+	for i, want := range seamContract {
+		got := seamTable[i]
+		// A council row is not seamOwned, and a knows or plan row is not
+		// in landed. A handler is required when either side claims the row.
+		key := want.method + " " + want.pattern
+		filled := landed[key] || seamOwned(want.pattern)
+		if got.method != want.method || got.pattern != want.pattern || (got.handle != nil) != filled {
+			t.Fatalf("row %d: got %s %s filled=%v, want %s %s filled=%v", i, got.method, got.pattern, got.handle != nil, want.method, want.pattern, filled)
+		}
+	}
+	b := New(testToken, func(string) (Connection, error) {
+		t.Fatal("a seam stub opened an engine")
+		return Connection{}, nil
+	})
+	t.Cleanup(b.Close)
+	for _, route := range seamContract {
+		if seamOwned(route.pattern) {
+			continue
+		}
+		body := ""
+		if route.method == http.MethodPut {
+			body = `{"threshold":90,"alwaysAsk":true}`
+		}
+		w := request(b, route.method, seamExample(route.pattern), body)
+		if landed[route.method+" "+route.pattern] {
+			switch route.pattern {
+			case "/councils":
+				if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"councils":[]`) {
+					t.Errorf("%s %s: %d %s", route.method, route.pattern, w.Code, w.Body.String())
+				}
+			case "/councils/{id}/messages":
+				if w.Code != http.StatusNotFound {
+					t.Errorf("%s %s: %d %s", route.method, route.pattern, w.Code, w.Body.String())
+				}
+			default:
+				if w.Code != http.StatusConflict {
+					t.Errorf("%s %s: %d %s", route.method, route.pattern, w.Code, w.Body.String())
+				}
+			}
+			continue
+		}
+		if w.Code != http.StatusNotImplemented || strings.TrimSpace(w.Body.String()) != `{"error":"`+seamNotImplemented+`"}` {
+			t.Errorf("%s %s: %d %s", route.method, route.pattern, w.Code, w.Body.String())
+		}
+	}
+	wrong := []struct{ method, path, sentence string }{
+		{http.MethodPost, "/api/engine/places/pl_1/decisions", "GET required"},
+		{http.MethodGet, "/api/engine/places/pl_1/knows/line_7", "PATCH or DELETE required"},
+		{http.MethodDelete, "/api/engine/councils", "GET required"},
+		{http.MethodGet, "/api/engine/sessions/s/plan/p/go", "POST required"},
+	}
+	for _, probe := range wrong {
+		w := request(b, probe.method, probe.path, "")
+		if w.Code != http.StatusMethodNotAllowed || !strings.Contains(w.Body.String(), probe.sentence) {
+			t.Errorf("%s %s: %d %s, want 405 %s", probe.method, probe.path, w.Code, w.Body.String(), probe.sentence)
+		}
+	}
+	for _, path := range []string{"/api/engine/nowhere", "/api/engine/places/pl_1/decisions/extra", "/api/engine/councils/c1/nope"} {
+		w := request(b, http.MethodGet, path, "")
+		if w.Code != http.StatusNotFound {
+			t.Errorf("%s: %d, want 404", path, w.Code)
+		}
+	}
+	store, err := placegraph.Open(placegraph.Options{Path: filepath.Join(t.TempDir(), "places.json")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.UsePlaces(NewPlaces(store))
+	claimed := request(b, http.MethodGet, "/api/engine/places/pl_1/decisions", "")
+	if claimed.Code != http.StatusNotImplemented {
+		t.Fatalf("places door swallowed decisions: %d %s", claimed.Code, claimed.Body.String())
+	}
+	graph := request(b, http.MethodGet, "/api/engine/places", "")
+	if graph.Code != http.StatusOK {
+		t.Fatalf("places list: %d %s", graph.Code, graph.Body.String())
+	}
+	preflight := httptest.NewRequest(http.MethodOptions, "/api/engine/places/pl_1/knows/line_7", nil)
+	preflight.Host = "127.0.0.1:1420"
+	preflight.Header.Set("Origin", "http://127.0.0.1:1420")
+	preflight.Header.Set("Authorization", "Bearer "+testToken)
+	pw := httptest.NewRecorder()
+	b.ServeHTTP(pw, preflight)
+	methods := pw.Header().Get("Access-Control-Allow-Methods")
+	if pw.Code != http.StatusNoContent || !strings.Contains(methods, "PATCH") || !strings.Contains(methods, "DELETE") {
+		t.Fatalf("preflight: %d %q", pw.Code, methods)
+	}
+}
+
+func TestSeamRouteRegistrationReplacesTheStub(t *testing.T) {
+	const method, pattern = http.MethodPost, "/decisions/{id}/overturn"
+	var got map[string]string
+	var calls int
+	// The overturn row has its real handler (decisions.go); lend the slot to
+	// this test and put the real one back afterwards.
+	var real seamHandler
+	for _, route := range seamTable {
+		if route.method == method && route.pattern == pattern {
+			real = route.handle
+		}
+	}
+	clearSeamRoute(method, pattern)
+	registerSeamRoute(method, pattern, func(_ *Bridge, w http.ResponseWriter, _ *http.Request, ids map[string]string) {
+		calls++
+		got = ids
+		write(w, map[string]bool{"accepted": true})
+	})
+	t.Cleanup(func() {
+		clearSeamRoute(method, pattern)
+		registerSeamRoute(method, pattern, real)
+	})
+	b := New(testToken, func(string) (Connection, error) {
+		t.Fatal("a registered seam handler opened an engine")
+		return Connection{}, nil
+	})
+	t.Cleanup(b.Close)
+	w := request(b, method, "/api/engine/decisions/pl_1/overturn", "{}")
+	if w.Code != http.StatusOK || calls != 1 || got["id"] != "pl_1" {
+		t.Fatalf("overturn: %d calls=%d ids=%v body=%s", w.Code, calls, got, w.Body.String())
+	}
+	// A sibling slot stays empty, and the wrong method does not run the handler.
+	still := request(b, http.MethodPost, "/api/engine/places/pl_1/knows/line_7/still-true", "{}")
+	if still.Code != http.StatusNotImplemented {
+		t.Fatalf("still-true: %d %s", still.Code, still.Body.String())
+	}
+	if request(b, http.MethodGet, "/api/engine/decisions/pl_1/overturn", "").Code != http.StatusMethodNotAllowed || calls != 1 {
+		t.Fatalf("GET overturn ran the POST handler (%d calls)", calls)
+	}
+	lineCalls := 0
+	const linePattern = "/places/{id}/knows/{line}"
+	var original seamHandler
+	for _, route := range seamTable {
+		if route.method == http.MethodPatch && route.pattern == linePattern {
+			original = route.handle
+		}
+	}
+	clearSeamRoute(http.MethodPatch, linePattern)
+	t.Cleanup(func() {
+		clearSeamRoute(http.MethodPatch, linePattern)
+		registerSeamRoute(http.MethodPatch, linePattern, original)
+	})
+	registerSeamRoute(http.MethodPatch, "/places/{id}/knows/{line}", func(_ *Bridge, w http.ResponseWriter, _ *http.Request, ids map[string]string) {
+		lineCalls++
+		if ids["id"] != "pl_1" || ids["line"] != "line_7" {
+			t.Errorf("ids = %v", ids)
+		}
+		write(w, map[string]bool{"accepted": true})
+	})
+	if request(b, http.MethodPatch, "/api/engine/places/pl_1/knows/line_7", "{}").Code != http.StatusOK || lineCalls != 1 {
+		t.Fatalf("knows line was not dispatched (%d)", lineCalls)
+	}
+	clearSeamRoute(method, pattern)
+	if request(b, method, "/api/engine/decisions/pl_1/overturn", "{}").Code != http.StatusNotImplemented {
+		t.Fatal("clearing the handler left it installed")
+	}
+	registerSeamRoute(method, pattern, func(*Bridge, http.ResponseWriter, *http.Request, map[string]string) {})
+	defer func() {
+		if recover() == nil {
+			t.Fatal("a second registration was accepted")
+		}
+	}()
+	registerSeamRoute(method, pattern, func(*Bridge, http.ResponseWriter, *http.Request, map[string]string) {})
+}
+
+func TestSeamRouteRejectsAPatternThatIsNotOnTheTable(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("an unknown seam pattern was accepted")
+		}
+	}()
+	registerSeamRoute(http.MethodGet, "/not-a-seam", func(*Bridge, http.ResponseWriter, *http.Request, map[string]string) {})
 }

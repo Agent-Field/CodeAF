@@ -5,8 +5,8 @@ import design from '../../design/tokens.json';
 import { PlaceSwatch } from './components/PlaceSwatch';
 import { PolicyRow } from './PolicyConflict';
 import { SourceList } from './UsingSources';
-import { decisionFor, levelWords, placeName, settingFor, tallyLine, trimmedInstructions } from './using-model';
-import type { PolicyField, SourceHandoff, UsedInstruction, UsingBundle, UsingView } from './using-types';
+import { decisionFor, instructionRows, levelWords, settingFor, tallyLine, trimmedInstructions, type InstructionRow } from './using-model';
+import type { PolicyField, SourceHandoff, UsingBundle, UsingView } from './using-types';
 import type { UsingControl } from './useUsing';
 
 type SheetProps = {
@@ -73,27 +73,31 @@ function Places({ bundle }: { bundle: UsingBundle }) {
   );
 }
 
-function InstructionRow({ item, bundle }: { item: UsedInstruction; bundle: UsingBundle }) {
+function InstructionRow({ row }: { row: InstructionRow }) {
   const [expanded, setExpanded] = useState(false);
-  const from = [placeName(bundle, item.placeId), ...(item.alsoFrom ?? []).map(id => placeName(bundle, id))];
   return (
-    <li className="using-row" data-kind="instruction">
+    <li className="using-row" data-kind="instruction" data-replaced={row.struck || undefined}>
       <Button className="using-row-main" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>
         <Icon name="textLines" size="sm" />
-        <span className="using-row-text" data-expanded={expanded || undefined}>{item.text}</span>
-        <span className="using-row-aside">{[...new Set(from)].join(', ')}</span>
+        <span className="using-row-copy">
+          <span className="using-row-text" data-expanded={expanded || undefined} data-replaced={row.struck || undefined}>{row.text}</span>
+          {row.source && <span className="using-row-source">{row.source}</span>}
+        </span>
+        <span className="using-row-aside">{row.places}</span>
       </Button>
-      {item.trimmed && <Tag className="using-row-tag" title="Only the start of this reached the model, to stay within the instruction limit.">Cut short</Tag>}
+      {row.trimmed && <Tag className="using-row-tag" title="Only the start of this reached the model, to stay within the instruction limit.">Cut short</Tag>}
     </li>
   );
 }
 
 function Instructions({ bundle }: { bundle: UsingBundle }) {
   const cut = trimmedInstructions(bundle);
+  const rows = instructionRows(bundle);
+  if (rows.length === 0) return null;
   return (
     <Section label="Instructions" note={cut > 0 ? `${cut} cut short to fit the instruction limit; the model reads the rest.` : undefined}>
       <ul className="using-list">
-        {bundle.instructions.map((item, index) => <InstructionRow key={`${item.placeId}:${index}`} item={item} bundle={bundle} />)}
+        {rows.map(row => <InstructionRow key={row.key} row={row} />)}
       </ul>
     </Section>
   );
@@ -140,7 +144,7 @@ function Body({ control, view, onOpenSource }: { control: UsingControl; view: Us
         </div>
       )}
       {bundle.places.length > 0 && <Section label="Places"><Places bundle={bundle} /></Section>}
-      {reads && bundle.instructions.length > 0 && <Instructions bundle={bundle} />}
+      {reads && <Instructions bundle={bundle} />}
       {reads && hasSources && (
         <Section label="Sources" note={tally}>
           <SourceList bundle={bundle} onOpen={onOpenSource} />
@@ -152,7 +156,7 @@ function Body({ control, view, onOpenSource }: { control: UsingControl; view: Us
 }
 
 /**
- * The Using sheet (Places 6f): Places, Instructions, Sources and Policy, every row labelled with the place it came from. A
+ * The Using sheet (Places 6f, I2.13): Places, Instructions, Sources and Policy. Instructions lists each knows line, labelled with its place and whether it was learned or replaced. A
  * non-modal dialog under the chip: Escape closes it and returns focus to the chip, a press outside closes it, and Tab moves
  * through its real controls.
  */

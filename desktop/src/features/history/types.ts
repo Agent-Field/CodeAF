@@ -56,3 +56,6 @@ export type SearchResult = {
 
 /** The archive route's answer. */
 export type ArchiveResult = { changed: number };
+
+/** The delete route's answer. `undoToken` is absent when nothing moved. */
+export type DeleteResult = { deleted: number; undoToken?: string };

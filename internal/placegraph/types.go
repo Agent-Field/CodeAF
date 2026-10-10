@@ -117,7 +117,7 @@ type Source struct {
 // "instructions are plain prose on the home") and sources. Sources add up across
 // places and never conflict.
 type Context struct {
-	Instructions string   `json:"instructions,omitempty"`
+	Instructions string   `json:"instructions"`
 	Sources      []Source `json:"sources,omitempty"`
 }
 
@@ -140,6 +140,9 @@ type Place struct {
 	Archived bool    `json:"archived,omitempty"`
 	Context  Context `json:"context"`
 	Policy   Policy  `json:"policy"`
+	// Decide is this place's own deciding setting; nil means "no choice made
+	// here" and the nearest ancestor with one answers (decide_settings.go).
+	Decide *Decide `json:"decide,omitempty"`
 	// Manager is RESERVED ("not designed yet"). It is opaque JSON that is kept
 	// verbatim through every load, save, merge and undo, and interpreted by nobody.
 	Manager      json.RawMessage `json:"manager,omitempty"`
@@ -160,6 +163,10 @@ type Membership struct {
 // State is the persisted document and, copied, the Snapshot a caller reads.
 type State struct {
 	Version int `json:"version"`
+	// Lines retain provenance independently of the compatibility context field.
+	Lines []Line `json:"lines,omitempty"`
+	// KnowsMigrated makes paragraph import durable across independent windows.
+	KnowsMigrated bool `json:"knowsMigrated,omitempty"`
 	// Revision counts structural commits. It starts at 0 for a store that has
 	// never written and rises by one per commit. TouchOpened does not move it,
 	// so going to a place never invalidates an undo.
@@ -229,6 +236,7 @@ const (
 	ActionMerge      Action = "place.merge"
 	ActionContext    Action = "place.context"
 	ActionPolicy     Action = "place.policy"
+	ActionDecide     Action = "place.decide"
 	ActionPin        Action = "place.pin"
 	ActionUnpin      Action = "place.unpin"
 	ActionReorder    Action = "place.reorder"

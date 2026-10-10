@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/placegraph"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -103,6 +104,55 @@ type AttentionItem struct {
 	// answer. This feed never answers; the answer door is the session endpoint.
 	Answerable bool   `json:"answerable"`
 	Asked      string `json:"asked,omitempty"`
+	// Full-only fields preserve the wire shape of older presence files.
+	Blocking   *AttentionBlocking   `json:"blocking,omitempty"`
+	Stakes     session.Stakes       `json:"stakes,omitempty"`
+	Suggestion *AttentionSuggestion `json:"suggestion,omitempty"`
+	PlaceIDs   []string             `json:"placeIds,omitempty"`
+	PlaceNames []string             `json:"placeNames,omitempty"`
+	HoldingUp  []string             `json:"holdingUp,omitempty"`
+}
+
+// AttentionBlocking carries the question's own account of what is paused.
+type AttentionBlocking struct {
+	Turn  bool     `json:"turn"`
+	Tasks []string `json:"tasks,omitempty"`
+}
+
+// AttentionSuggestion names an offered answer, never a label guessed from its key.
+type AttentionSuggestion struct {
+	Key     string `json:"key"`
+	Label   string `json:"label,omitempty"`
+	Percent int    `json:"percent,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+}
+
+// decideLedger is the folder of per-place decision files beside the graph
+// this bridge was given. It is read when the world is projected, not when the
+// feed is built, so a graph attached a moment later is still the one consulted.
+func (b *Bridge) decideLedger() string {
+	b.mu.Lock()
+	p := b.places
+	b.mu.Unlock()
+	if p == nil || p.door == nil || strings.TrimSpace(p.door.Path) == "" {
+		return ""
+	}
+	return session.DecideLedgerDir(p.door.Path)
+}
+
+// attentionGraph reads the graph attached to this bridge, rather than a global store.
+func (b *Bridge) attentionGraph() *placegraph.Snapshot {
+	b.mu.Lock()
+	p := b.places
+	b.mu.Unlock()
+	if p == nil || p.Store == nil {
+		return nil
+	}
+	graph, err := p.Store.Snapshot()
+	if err != nil {
+		return nil
+	}
+	return graph
 }
 
 // worldDelta is the payload of a "world" record: changed rows and vanished ids.
@@ -126,7 +176,7 @@ type worldFull struct {
 
 const maxLiveTasks = 20
 
-func projectWorld(w session.World) ([]WorldRow, []AttentionItem) {
+func projectWorld(w session.World, ledger string, graphs ...*placegraph.Snapshot) ([]WorldRow, []AttentionItem) {
 	rows := []WorldRow{}
 	items := []AttentionItem{}
 	for _, project := range w.Projects {
@@ -134,13 +184,67 @@ func projectWorld(w session.World) ([]WorldRow, []AttentionItem) {
 			row := projectRow(project, r)
 			rows = append(rows, row)
 			if r.NeedsPerson() {
-				items = append(items, attentionFor(r, row))
+				// A settled question is no longer for the person, even while
+				// an older presence stamp is still fresh.
+				if !attentionPending(r) {
+					continue
+				}
+				// A place ledger is the other proof an answer was delivered.
+				// Confidence is not: a sure place that never wrote the answer
+				// still needs the person.
+				full := r.Presence.Question.Full
+				if ledger != "" && full != nil && len(graphs) > 0 && graphs[0] != nil {
+					var ids []string
+					for _, membership := range graphs[0].PlacesOf(r.ID) {
+						ids = append(ids, membership.PlaceID)
+					}
+					if session.LedgerDecided(ledger, r.ID, string(full.Kind), full.Token(), ids) {
+						continue
+					}
+				}
+				item := attentionFor(r, row)
+				if r.Presence.Question.Full != nil && len(graphs) > 0 && graphs[0] != nil {
+					for _, membership := range graphs[0].PlacesOf(r.ID) {
+						if place, ok := graphs[0].Place(membership.PlaceID); ok {
+							item.PlaceIDs = append(item.PlaceIDs, place.ID)
+							item.PlaceNames = append(item.PlaceNames, place.Name)
+						}
+					}
+				}
+				items = append(items, item)
 			}
 		}
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Session < rows[j].Session })
 	sort.SliceStable(items, func(i, j int) bool { return items[i].Key < items[j].Key })
 	return rows, items
+}
+
+// attentionPending trusts recorded answers and withdrawals, never a place's
+// confidence or policy as proof that an answer was delivered.
+func attentionPending(r session.SessionRow) bool {
+	full := r.Presence.Question.Full
+	if full == nil {
+		return true
+	}
+	if full.Withdrawn != nil {
+		return false
+	}
+	if r.Dir == "" {
+		return true
+	}
+	records, err := session.ReadDecisions(r.Dir)
+	if err != nil {
+		return true
+	}
+	for _, record := range records {
+		if record.Kind == full.Kind && record.ID == full.ID && record.Ref == full.Ref &&
+			record.Head == full.Head && record.Subject == full.Subject &&
+			(full.Asked.IsZero() || !record.At.Before(full.Asked)) {
+			return false
+		}
+	}
+	return true
 }
 
 func projectRow(p session.Project, r session.SessionRow) WorldRow {
@@ -196,6 +300,18 @@ func attentionFor(r session.SessionRow, row WorldRow) AttentionItem {
 	item.Key = r.ID + ":" + item.Kind + ":" + uitoa(q.ID)
 	if !q.Asked.IsZero() {
 		item.Asked = q.Asked.UTC().Format(time.RFC3339)
+	}
+	if full := q.Full; full != nil {
+		item.Blocking = &AttentionBlocking{Turn: full.Blocking.Turn, Tasks: append([]string(nil), full.Blocking.Tasks...)}
+		item.Stakes = full.Stakes
+		item.HoldingUp = append([]string(nil), full.Blocking.Tasks...)
+		if pick := full.Pick; pick != nil {
+			suggestion := &AttentionSuggestion{Key: pick.Key, Percent: pick.ResolvedPercent(), Reason: pick.Reason}
+			if option, ok := full.Option(pick.Key); ok {
+				suggestion.Label = option.Label
+			}
+			item.Suggestion = suggestion
+		}
 	}
 	return item
 }

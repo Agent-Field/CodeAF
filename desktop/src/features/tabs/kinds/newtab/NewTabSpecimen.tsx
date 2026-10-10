@@ -9,10 +9,13 @@ import { buildSections } from './rows';
 const tab = (id: string, title: string): Tab => ({ id, kind: 'conversation', title, draft: '', pinned: false });
 const conversation = (id: string, title: string, archived = false): HistoryItem => ({ id, sessionFile: `/specimen/${id}`, title, at: '2026-10-06T14:02:00Z', messages: 9, tasks: 0, tasksRunning: 0, files: [], fileCount: 0, decisions: 0, state: 'idle', open: false, archived });
 const history = matchesOf('fix', [{ id: 'a', line: 'decided: fix in the lexer, keep strict mode', item: conversation('a', 'Fix it in the lexer') }, { id: 'b', line: '', item: conversation('b', 'Error positions point at the wrong file', true) }], new Map(), 14);
+// A fixed clock so the specimen's "closed 1 hour ago" does not drift as the page sits open.
+const specimenNow = Date.UTC(2026, 9, 10, 16, 0, 0);
 const typed = buildSections({
   query: 'fix',
   tabs: [{ tab: tab('t', 'Port fix to v1 branch'), shortcut: '⌘3', waiting: true }],
-  closed: [tab('c', 'Fix it in the lexer')],
+  closed: [{ ...tab('c', 'Fix it in the lexer'), closedAt: specimenNow - 3_600_000 }],
+  now: specimenNow,
   files: [{ path: 'internal/parse/testdata/fixtures.go', name: 'fixtures.go', dir: 'internal/parse/testdata' }],
   terminal: true, terminalShortcut: '⌃`', fileShortcut: '⌘O', history, seeAllShortcut: '⌘↵',
 });

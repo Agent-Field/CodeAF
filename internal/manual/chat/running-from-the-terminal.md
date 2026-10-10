@@ -25,6 +25,8 @@ bash`. A codeaf owned by Homebrew, Nix or the system package manager, or one in 
 folder this account cannot write, is never replaced in place: with `automatic updates`
 on or off the launch names the manager and the curl line, not `/update`.
 
+## How do I update codeaf — /update installs in the background without stopping this session
+
 With `automatic updates` off, the launch check still runs and still says `codeaf <newest>
 is out · you have <running> · /update installs it for the next launch`, but
 nothing is downloaded until you ask.
@@ -46,6 +48,8 @@ cannot write, neither road replaces it in place. One install runs at a time per 
 two terminals, or two profiles sharing one codeaf, cannot replace it at once, and
 a window that resolves a release another terminal has already superseded installs
 nothing.
+
+## How to skip the launch update check — cached releases and the reinstall line
 
 Set `CODEAF_NO_UPDATE_CHECK=1` to skip only the launch check. Dev and staging
 answers are cached beside `config.json` for one hour in `update-check.dev.json`

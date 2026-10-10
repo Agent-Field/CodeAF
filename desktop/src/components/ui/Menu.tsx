@@ -37,7 +37,7 @@ function focusFirstItem(event: FocusEvent<HTMLDivElement>) {
 function EntryContents({ entry }: { entry: Exclude<MenuEntry, { kind: 'separator' }> }) {
  return <>{entry.icon && <Icon name={entry.icon} size="sm"/>}<span className="menu-label">{entry.label}</span>{entry.kind === 'submenu'
   ? <Icon name="chevronRight" size="xs"/>
-  : <>{'detail' in entry && entry.detail && <span className="menu-detail">{entry.detail}</span>}{entry.shortcut && <KeyboardShortcut label={entry.shortcut}/>}</>}</>;
+  : <>{'detail' in entry && entry.detail && <span className="menu-detail">{entry.detail}</span>}{entry.shortcut && <KeyboardShortcut label={entry.shortcut} variant="inline"/>}</>}</>;
 }
 function MenuItems({ items, type, container }: { items: readonly MenuEntry[]; type: 'context' | 'dropdown'; container?: HTMLElement }) {
  const P = type === 'context' ? Context : Dropdown;
@@ -76,11 +76,11 @@ export function ContextMenu({ children, items, label, onOpenChange, wide = false
   </Context.Content></Context.Portal>
  </Context.Root>;
 }
-export function DropdownMenu({ children, items, label, onOpenChange }: MenuProps) {
+export function DropdownMenu({ children, items, label, onOpenChange, className = '' }: MenuProps) {
  const layer = useMenuLayer<HTMLButtonElement>(onOpenChange);
  return <Dropdown.Root open={layer.open} onOpenChange={layer.onOpenChange}>
   <Dropdown.Trigger ref={layer.ref} asChild>{children}</Dropdown.Trigger>
-  <Dropdown.Portal container={layer.modal}><Dropdown.Content onFocusCapture={focusFirstItem} aria-label={label} className="app-menu app-menu-dropdown" align="end" sideOffset={design.overlay.sideOffset} collisionPadding={design.overlay.collisionPadding}>
+  <Dropdown.Portal container={layer.modal}><Dropdown.Content onFocusCapture={focusFirstItem} aria-label={label} className={`app-menu app-menu-dropdown ${className}`} align="end" sideOffset={design.overlay.sideOffset} collisionPadding={design.overlay.collisionPadding}>
    <MenuItems items={items} type="dropdown" container={layer.modal}/>
   </Dropdown.Content></Dropdown.Portal>
  </Dropdown.Root>;

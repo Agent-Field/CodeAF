@@ -90,11 +90,14 @@ export function submitAnswer(question: Question, draft: Draft): EngineAnswer {
   return answer;
 }
 
-/** "You decide": the asker takes its own suggestion. Never offered for what cannot be undone. */
+/** "You decide": the asker takes its own suggestion. Never offered for what cannot be undone.
+ * A clarification has no option row; the pick key is the suggestion, so it still counts. */
 export function decideAnswer(question: Question): EngineAnswer | null {
+  if (question.stakes === 'irreversible') return null;
   const pick = question.pick?.key;
-  const offered = visibleOptions(question).some((option) => option.key === pick);
-  if (!pick || !offered || question.stakes === 'irreversible') return null;
+  if (!pick) return null;
+  const offered = formOf(question) === 'text' || visibleOptions(question).some((option) => option.key === pick);
+  if (!offered) return null;
   return { ...identity(question, pick), picked: [pick], decidedBy: 'asker' };
 }
 

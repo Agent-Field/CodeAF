@@ -79,7 +79,9 @@ test.describe('with the engine away', () => {
   await openField(page);
   await field(page).fill('fix');
   const key = await mod(page);
-  expect(await rowNames(page)).toEqual(['Ask “fix” in a new conversation↵', `New terminal${await terminalHint(page)}`, `Open file…${key}O`, `Port fix to v1 branch open tab${key}1`, 'Fix it in the lexer closed']);
+  expect(await rowNames(page)).toEqual(['Ask “fix” in a new conversation↵', `New terminal${await terminalHint(page)}`, `Open file…${key}O`, `Port fix to v1 branch open tab${key}1`, 'Fix it in the lexer closed just now']);
+  const closed = (await saved(page)).closed.find((tab: { title: string; closedAt?: number }) => tab.title === 'Fix it in the lexer');
+  expect(typeof closed.closedAt).toBe('number');
   await expect(page.getByRole('option').first()).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('.newtab-row b').first()).toHaveText('fix');
   expect(await page.locator('.newtab-section').allTextContents()).toEqual(['Start', 'Matching']);

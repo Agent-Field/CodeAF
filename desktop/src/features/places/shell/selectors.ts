@@ -122,7 +122,7 @@ function child(place: PlaceView, path?: readonly string[]): HomeChild {
     id: place.id, name: place.name, tint: place.effectiveTint, tintSource: place.tint ? 'own' : 'inherited',
     places: place.counts.descendants, chats: place.counts.chatsInclusive,
     alsoIn: place.alsoIn.length ? place.alsoIn.map(ref => ref.name) : undefined,
-    status: rollupStatus(place.statusInclusive), pinned: place.pinned, archived: place.archived, path,
+    status: rollupStatus(place.statusInclusive), pinned: place.pinned, decide: place.decide, archived: place.archived, path,
   };
 }
 
@@ -137,7 +137,7 @@ function attention(item: Attention, viewing: string): HomeView['attention'][numb
   return {
     id: item.chatId, title: item.chatTitle || 'Untitled chat',
     placeName: item.placeId && item.placeId !== viewing ? item.placeName : undefined,
-    status: item.kind === 'needsYou' ? 'waiting' : 'running', statusText: item.text || undefined,
+    status: item.kind === 'needsYou' ? 'waiting' : 'running', detail: item.text && item.text !== item.chatTitle ? item.text : undefined,
   };
 }
 
@@ -166,6 +166,7 @@ export function homeViewFromDigest(digest: HomeDigest, graph?: PlacesGraph, unpl
     chatsTruncated: digest.chatsTruncated,
     sources: digest.kind === 'place' ? sources(digest) : undefined,
     pinned: digest.place?.pinned,
+    decide: digest.place?.decide,
   };
   if (digest.kind === 'root' && graph) {
     const index = indexPlaces(graph.places);

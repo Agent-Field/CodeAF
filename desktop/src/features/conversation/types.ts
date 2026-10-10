@@ -2,7 +2,7 @@
 // shapes; only model/ builds them, from canonical engine records.
 // Nothing here is invented: a field is empty when the engine has not said it.
 
-import type { EngineQuestion, EngineTaskRow } from '../chat/engine-client';
+import type { ConversationPlan, DecisionAside, EngineQuestion, EngineTaskRow } from '../chat/engine-client';
 
 /** One tool call, paired by its canonical CallID. */
 export type ToolStep = {
@@ -12,6 +12,7 @@ export type ToolStep = {
   hint: string; // the engine's own one-line gloss of the call
   args: string;
   output: string; // compact inline output; full output is fetched on demand
+  outputOmitted?: boolean; // the engine left the output out of the snapshot; CallDetail fetches it when the call is expanded
   covered?: boolean; // the read went to a quick task whose answer rides on another call of the batch; output is empty
   state: 'running' | 'done' | 'failed' | 'stopped'; // stopped: cancelled by the person's Stop
   entryIndex?: number; // record position; lets the live overlay tell a call is already recorded
@@ -72,6 +73,9 @@ export type Deliverable =
 /** Conversation-rhythm items of a turn, in order (ELEMENTS §1–2). */
 export type TurnBlock =
   | WorkBlock
+  | { kind: 'decision-receipt'; id: string; decision: DecisionAside }
+  | { kind: 'plan'; id: string; plan: ConversationPlan }
+  | { kind: 'remember-line'; id: string; text: string; undoReceipts?: string[] }
   | { kind: 'context-note'; id: string; text: string; undoReceipts?: string[] }
   | { kind: 'update'; id: string; text: string; cut: boolean; streaming: boolean } // Addressed interim update
   | { kind: 'answer'; id: string; text: string; streaming: boolean } // Answer final reply (Markdown)

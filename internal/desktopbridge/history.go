@@ -62,6 +62,11 @@ type History struct {
 	mu    sync.Mutex
 	cache map[string]*historyWords
 	bytes int
+	// Extra lists conversations the world walk skips. A council chat is an
+	// ordinary session that nobody has typed in, kept beside the place graph
+	// rather than in a project bucket, so the walk never sees it. Nil adds
+	// nothing. UseCouncils sets this.
+	Extra func() []session.SessionRow
 }
 
 // historyWords is one transcript's words, valid while the file is the size and
@@ -79,6 +84,8 @@ func (b *Bridge) UseHistory(history *History) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.history = history
+	b.attachCouncilsLocked()
+	purgeTrash(time.Now())
 }
 
 // ── wire types ──────────────────────────────────────────────────────────────
@@ -245,6 +252,14 @@ func (b *Bridge) historyRoutes(w http.ResponseWriter, r *http.Request, path stri
 		if needPost(w, r) {
 			history.archive(w, r)
 		}
+	case len(parts) == 2 && parts[1] == "delete":
+		if needPost(w, r) {
+			b.deleteConversations(w, r, history)
+		}
+	case len(parts) == 2 && parts[1] == "restore":
+		if needPost(w, r) {
+			b.restoreConversations(w, r)
+		}
 	case len(parts) == 2 && parts[1] == "group-offers":
 		if needPost(w, r) {
 			b.groupOffers(w, r, history)
@@ -298,22 +313,41 @@ type historyRow struct {
 	attach *attachedState
 }
 
-// rows reads every conversation under the root, newest first.
+// rows reads every conversation under the root, newest first, then any
+// council chat the walk skipped. A blank root still lists those, because
+// they do not live in a project bucket.
 func (h *History) rows(attached map[string]attachedState) []historyRow {
-	if strings.TrimSpace(h.Root) == "" {
-		return nil
-	}
 	var out []historyRow
-	for _, row := range session.ReadWorld(h.Root).Sessions() {
-		if row.DeletionPending {
-			continue
+	if strings.TrimSpace(h.Root) != "" {
+		for _, row := range session.ReadWorld(h.Root).Sessions() {
+			if row.DeletionPending {
+				continue
+			}
+			meta, _ := session.LoadMeta(row.Dir)
+			entry := historyRow{row: row, meta: meta, recap: meta.Recap}
+			if state, ok := attached[filepath.Clean(row.Transcript)]; ok {
+				entry.attach = &state
+			}
+			out = append(out, entry)
 		}
-		meta, _ := session.LoadMeta(row.Dir)
-		entry := historyRow{row: row, meta: meta, recap: meta.Recap}
-		if state, ok := attached[filepath.Clean(row.Transcript)]; ok {
-			entry.attach = &state
+	}
+	if h.Extra != nil {
+		seen := map[string]bool{}
+		for i := range out {
+			seen[out[i].row.ID] = true
 		}
-		out = append(out, entry)
+		for _, row := range h.Extra() {
+			if row.ID == "" || seen[row.ID] || row.DeletionPending || strings.TrimSpace(row.Transcript) == "" {
+				continue
+			}
+			seen[row.ID] = true
+			meta, _ := session.LoadMeta(row.Dir)
+			entry := historyRow{row: row, meta: meta, recap: meta.Recap}
+			if state, ok := attached[filepath.Clean(row.Transcript)]; ok {
+				entry.attach = &state
+			}
+			out = append(out, entry)
+		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		if !out[i].row.At.Equal(out[j].row.At) {

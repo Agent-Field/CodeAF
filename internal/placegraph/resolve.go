@@ -11,10 +11,11 @@ package placegraph
 // the prompt.
 //
 // THERE IS ONE RESOLVER. The engine composes message[0] from a Bundle and the
-// Using popover draws the same Bundle, so the popover can never list something
-// the model was not given or hide something it was. A second resolver in the
-// bridge or the renderer would be a second account of the same prompt, and the
-// two would drift.
+// Using popover draws the same Bundle. Instructions, sources and policy are
+// exactly what the turn is given. Knows is the place's own lines, including a
+// replacement the prompt does not read, so the popover can say what was learned
+// and what was replaced. A second resolver in the bridge or the renderer would
+// be a second account of the same prompt, and the two would drift.
 //
 // IT NEVER CALLS A MODEL AND NEVER OPENS A SOURCE. "Contradictory instructions"
 // cannot be detected without reading them for meaning, so they are not judged
@@ -32,6 +33,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -106,8 +108,13 @@ type Bundle struct {
 	// Instructions are each place's prose, nearest first, cut to
 	// the instruction budget (ContextInstructionBudget by default). A place whose
 	// words did not fit at all is still listed, Trimmed with empty Text, so the
-	// popover can say so.
+	// popover can say so. Replaced knowledge is not in here: the prompt must not
+	// read a line that no longer holds.
 	Instructions []UsedInstruction `json:"instructions"`
+	// Knows are the place's knowledge lines, nearest place first, in stored
+	// order within a place. A replaced line stays here so the popover can strike
+	// it; the prompt reads Instructions, not Knows.
+	Knows []UsedKnowledge `json:"knows"`
 	// Sources are given to the model (Status ok or missing), deduplicated across
 	// places and limited by the source budget (ContextSourceBudget by default).
 	Sources []UsedSource `json:"sources"`
@@ -156,6 +163,19 @@ type UsedInstruction struct {
 	// Bytes is the full length; Trimmed means Text is shorter than that.
 	Bytes   int  `json:"bytes"`
 	Trimmed bool `json:"trimmed,omitempty"`
+}
+
+// UsedKnowledge is one line from a place the chat is filed under, as the Using
+// popover lists it. It is the stored line, not a second copy of the prompt.
+type UsedKnowledge struct {
+	ID         string     `json:"id"`
+	PlaceID    string     `json:"placeId"`
+	Text       string     `json:"text"`
+	Source     LineSource `json:"source"`
+	CreatedAt  time.Time  `json:"createdAt,omitzero"`
+	LastUsedAt time.Time  `json:"lastUsedAt,omitzero"`
+	ReplacedBy string     `json:"replacedBy,omitempty"`
+	ReplacedAt time.Time  `json:"replacedAt,omitzero"`
 }
 
 // SourceStatus is what a stat of a given source found.
@@ -255,6 +275,7 @@ func (s *Snapshot) Resolve(chatID string, opts ResolveOptions) *Bundle {
 		Revision:     s.Revision,
 		Places:       []UsedPlace{},
 		Instructions: []UsedInstruction{},
+		Knows:        []UsedKnowledge{},
 		Sources:      []UsedSource{},
 		Trimmed:      []UsedSource{},
 		Refused:      []UsedSource{},
@@ -275,6 +296,7 @@ func (s *Snapshot) Resolve(chatID string, opts ResolveOptions) *Bundle {
 	}
 	budget := opts.Budget.defaults()
 	b.Instructions = s.resolveInstructions(cps, budget.InstructionBytes)
+	b.Knows = s.resolveKnowledge(cps)
 	b.Sources, b.Trimmed, b.Refused = s.resolveSources(chatID, cps, pol, budget.Sources)
 	b.Policy = s.resolvePolicy(chatID, cps, opts.Choices)
 	b.Counts = UsingCounts{Places: len(b.Places), Sources: len(b.Sources)}
@@ -324,7 +346,18 @@ func (s *Snapshot) resolveInstructions(cps []ContextPlace, budget int) []UsedIns
 	out := []UsedInstruction{}
 	byText := map[string]int{}
 	for _, cp := range cps {
-		text := strings.TrimSpace(s.Places[s.byID[cp.PlaceID]].Context.Instructions)
+		// The compatibility prose remains readable, but live knowledge is the
+		// same source for the engine prompt and the desktop's Using list.
+		words := []string{}
+		if legacy := strings.TrimSpace(s.Places[s.byID[cp.PlaceID]].Context.Instructions); legacy != "" {
+			words = append(words, legacy)
+		}
+		for _, line := range s.Knowledge(cp.PlaceID) {
+			if line.ReplacedBy == "" {
+				words = append(words, line.Text)
+			}
+		}
+		text := strings.TrimSpace(strings.Join(words, "\n\n"))
 		if text == "" {
 			continue
 		}
@@ -344,6 +377,23 @@ func (s *Snapshot) resolveInstructions(cps []ContextPlace, budget int) []UsedIns
 		out[i].Text = cutAtRune(out[i].Text, left)
 		out[i].Trimmed = true
 		left -= len(out[i].Text)
+	}
+	return out
+}
+
+// resolveKnowledge lists every knowledge line of the chat's places, including a
+// replacement. The prompt's instruction budget does not apply here: the popover
+// is explaining the place, and a struck line is how a replacement is shown.
+func (s *Snapshot) resolveKnowledge(cps []ContextPlace) []UsedKnowledge {
+	out := []UsedKnowledge{}
+	for _, cp := range cps {
+		for _, line := range s.Knowledge(cp.PlaceID) {
+			out = append(out, UsedKnowledge{
+				ID: line.ID, PlaceID: line.PlaceID, Text: line.Text, Source: line.Source,
+				CreatedAt: line.CreatedAt, LastUsedAt: line.LastUsedAt,
+				ReplacedBy: line.ReplacedBy, ReplacedAt: line.ReplacedAt,
+			})
+		}
 	}
 	return out
 }

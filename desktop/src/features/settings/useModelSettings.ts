@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { MODELS_CHANGED, readModelCatalog, readModelRoles, readPinnedModels, readPlacesPolicy, setModelRole, setPinnedModels, setPlacesPolicy, type CatalogModel, type ModelRole, type ModelRoleCategory, type PinnedModel, type PlacesSetting } from '../chat/engine-client';
 
+import { resolveRoleChoice, type RoleChoice } from './roleChoice';
 import { createSaveQueue } from './saveQueue';
 
 export const RECEIPT = 'Saved · applies to the next call';
@@ -16,7 +17,8 @@ export type ModelSettings = {
   pinsChosen: boolean;
   /** The last save's receipt, or the reason it failed; empty before the first change. */
   receipt: { text: string; failed: boolean } | undefined;
-  saveRole: (id: string, choice: { model: string; effort?: string }) => void;
+  /** A model change clears the effort; an effort-only change keeps the model last chosen, saved or still saving. */
+  saveRole: (id: string, choice: { model?: string; effort?: string }) => void;
   /** Puts a model in one pinned slot; a model already pinned elsewhere trades places with it. */
   savePin: (slot: number, model: string) => void;
   resetPins: () => void;
@@ -49,6 +51,10 @@ export function useModelSettings(): ModelSettings {
   const failures = useRef(new Map<string, string>());
   // A queued pinned-slot change starts from the previous save's answer, not an old render's list.
   const savedPins = useRef<string[]>([]);
+  // The latest unfinished choice per role, so an effort click builds on a model change still saving.
+  const queuedRoles = useRef(new Map<string, RoleChoice>());
+  const rolesNow = useRef<ModelRole[]>([]);
+  rolesNow.current = roles;
 
   useEffect(() => {
     let live = true;
@@ -108,9 +114,14 @@ export function useModelSettings(): ModelSettings {
     return result;
   }, [queue, showReceipt]);
 
-  const saveRole = useCallback((id: string, choice: { model: string; effort?: string }) => {
+  const saveRole = useCallback((id: string, patch: { model?: string; effort?: string }) => {
+    const choice = resolveRoleChoice(patch, queuedRoles.current.get(id), rolesNow.current.find(role => role.id === id)?.model ?? '');
+    queuedRoles.current.set(id, choice);
     void write(`role:${id}`, JSON.stringify(choice), () => setModelRole(id, choice),
-      row => setRoles(rows => rows.map(role => (role.id === id ? row : role))));
+      row => setRoles(rows => rows.map(role => (role.id === id ? row : role)))).then(() => {
+      // Only the newest choice clears the note; an older save finishing must not forget a newer one.
+      if (queuedRoles.current.get(id) === choice) queuedRoles.current.delete(id);
+    });
   }, [write]);
   const writePins = useCallback((signature: string, change: (saved: readonly string[]) => string[]) => {
     void write('pins', signature, async () => {

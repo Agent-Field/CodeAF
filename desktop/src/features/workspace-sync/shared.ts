@@ -9,9 +9,11 @@
 // every other window jump.
 //
 // Everything here is pure: no storage, no network, no React.
+import { retainSelection } from '../tabs/selection.ts';
 import { cleanView } from '../tabs/view-state.ts';
 import { kindOrDefault } from '../tabs/kinds/types.ts';
 import { clampRatio, layoutFits, makeSplit, titleRank, visibleTabs } from '../tabs/helpers.ts';
+import { closedAtOf } from '../tabs/reducers/closing.ts';
 import type { ClosedTab, Pane, SplitLayout, Tab, TabGroup, TitleSource, WorkspaceState } from '../tabs/model.ts';
 import { limits } from './limits.ts';
 
@@ -76,7 +78,7 @@ export function compose(shared: SharedWorkspace, local: WindowLocal, before?: Wo
     activeId = holder?.id ?? neighbour(before, tabs, activeId) ?? tabs[0].id;
   }
   const recentIds = [...new Set([activeId!, ...local.recentIds.filter(holds), ...tabs.map(tab => tab.id)])];
-  return { tabs, groups: shared.groups, closed, nextNumber: shared.nextNumber, activeId: activeId!, recentIds };
+  return { tabs, groups: shared.groups, closed, nextNumber: shared.nextNumber, activeId: activeId!, recentIds, ...(before?.picked ? { picked: retainSelection(before.picked, tabs) } : {}) };
 }
 
 function neighbour(before: WorkspaceState | undefined, tabs: Tab[], gone: string | undefined): string | undefined {
@@ -112,7 +114,8 @@ function readTab(value: unknown): SharedTab | undefined {
   if (!pane || !isObject(value) || typeof value.pinned !== 'boolean' || (value.groupId !== undefined && !isString(value.groupId))) return undefined;
   const stood = isObject(value.stood) ? value.stood : undefined;
   const position = stood && (stood.before === undefined || isString(stood.before)) && (stood.after === undefined || isString(stood.after)) && (stood.group === undefined || isGroup(stood.group)) ? { before: stood.before as string | undefined, after: stood.after as string | undefined, group: stood.group as TabGroup | undefined } : undefined;
-  const tab: SharedTab = { ...pane, ...(position ? { stood: position } : {}), pinned: value.pinned, ...(isString(value.groupId) ? { groupId: value.groupId } : {}) };
+  const closedAt = closedAtOf(value.closedAt);
+  const tab: SharedTab = { ...pane, ...(position ? { stood: position } : {}), ...(closedAt === undefined ? {} : { closedAt }), pinned: value.pinned, ...(isString(value.groupId) ? { groupId: value.groupId } : {}) };
   const s = value.split;
   if (!isObject(s) || !Array.isArray(s.panes)) return tab;
   const panes = s.panes.map(readPane);

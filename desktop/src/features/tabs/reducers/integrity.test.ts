@@ -128,8 +128,9 @@ test('⌘-click picks tabs and ⌘G groups them with the active tab where the fi
   assert.deepEqual(grouped.picked, []);
   assert.equal(grouped.groups[0].title, 'New group');
   assert.deepEqual(run(picked, { type: 'select', id: 'c' }).picked, []);
-  // The active tab cannot be picked away, and ⌘G with nothing picked groups the active tab alone.
-  assert.equal(run(s, { type: 'pick', id: 'b' }), s);
+  // The active tab toggles its explicit fill; grouping still includes the active tab.
+  assert.deepEqual(run(s, { type: 'pick', id: 'b' }).picked, ['b']);
+  assert.deepEqual(run(s, { type: 'pick', id: 'b' }, { type: 'pick', id: 'b' }).picked, []);
   const alone = run(s, { type: 'group-picked' });
   assert.deepEqual(strip(alone), ['a', `[${alone.groups[0].id}: b]`, 'c', 'd']);
 });

@@ -1,7 +1,7 @@
 // The not-yet-recorded tail of a running turn, built from stream events.
 // The snapshot stays canonical: the overlay only adds and updates.
 
-import type { EngineEvent } from '../../chat/engine-client.ts';
+import type { ConversationPlan, EngineEvent } from '../../chat/engine-client.ts';
 
 export type LivePhase = 'forming' | 'announced' | 'running' | 'finished' | 'done' | 'failed';
 
@@ -23,6 +23,7 @@ export type LiveCall = {
 export type LiveSteer = { id: string; text: string; landing?: string; consumed: boolean };
 
 export type LiveOverlayV2 = {
+  plan?: ConversationPlan;
   startedAt?: number; // first observed event of this turn; resets on completion/reload
   baseEntries: number; // snapshot entry count when this turn's overlay began
   text: string;
@@ -200,7 +201,16 @@ const onCompacted: Handler = (o) => ({ ...o, compacted: true });
 
 const onError: Handler = (o, event) => ({ ...o, error: event.error || event.text || 'The engine reported an error.' });
 
+/** The named plan event carries the same payload as a structured transcript aside. */
+const onPlan: Handler = (o, event) => {
+  const plan = rawField(event.raw, 'Plan') as ConversationPlan | undefined;
+  if (!plan || typeof plan.id !== 'string' || !Array.isArray(plan.steps) || typeof plan.reachesBeyond !== 'boolean') return o;
+  if (!plan.steps.every(step => step && ['hold', 'steer', 'start', 'stop', 'ask-place', 'remember'].includes(step.kind) && typeof step.text === 'string' && step.target && typeof step.target === 'object')) return o;
+  return { ...o, plan };
+};
+
 const HANDLERS: Record<string, Handler> = {
+  plan: onPlan,
   text: addText,
   thinking: (o, _event, now) => ({ ...o, thinking: { ...o.thinking, startedAt: o.thinking.startedAt ?? now } }),
   reasoning: addReasoning,
@@ -220,7 +230,7 @@ const HANDLERS: Record<string, Handler> = {
   error: onError,
 };
 
-const isIdle = (o: LiveOverlayV2) => !o.text && !o.thinking.text && !o.thinking.startedAt && o.calls.length === 0 && o.steers.length === 0;
+const isIdle = (o: LiveOverlayV2) => !o.plan && !o.text && !o.thinking.text && !o.thinking.startedAt && o.calls.length === 0 && o.steers.length === 0;
 
 export function reduceLive(overlay: LiveOverlayV2, event: EngineEvent, entryCount: number, now = Date.now()): LiveOverlayV2 {
   const kind = kindOf(event);

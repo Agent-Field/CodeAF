@@ -2,8 +2,12 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { Button, Icon, KeyboardShortcut, PageHeading, Text, TextInput } from '../../components/ui';
 import design from '../../design/tokens.json';
 import { isMac } from '../../design/keyboard';
+import { toasts } from '../../design/toasts';
 import type { TabSummary } from '../conversation/tabSummary';
 import type { PaneRenderProps } from '../tabs/kinds/slots';
+import { deleteHistory, restoreHistory } from './client';
+import { deleteAsk, deletedSentence, idsBetween, type DeleteAsk } from './deleteFlow';
+import type { HistoryPress } from './historyMenu';
 import { HistoryList } from './HistoryList';
 import { useHistoryHost } from './host';
 import { queryTerms } from './model';
@@ -17,7 +21,7 @@ import './history.css';
 const compactBelow = Number.parseFloat(design.foundation['history-compact-width']);
 
 type Reading = { id: string; at?: number };
-type Press = { newTab: boolean };
+type Press = HistoryPress;
 
 /** How wide the pane is, so a split or a small window can drop the recap card beside the list. */
 function useCompact(ref: React.RefObject<HTMLElement | null>): boolean {
@@ -49,6 +53,10 @@ export function HistoryPane({ pane, focused, actions }: PaneRenderProps) {
   // A search handed over by the new-tab field ("See all N in History") arrives as the pane's draft: it seeds the field once and is consumed.
   const [query, setQuery] = useState(pane.draft);
   const [selectedId, setSelectedId] = useState<string>();
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [pendingDelete, setPendingDelete] = useState<DeleteAsk>();
+  const [deleting, setDeleting] = useState(false);
+  const selectionAnchor = useRef<string | undefined>(undefined);
   const [recapOpen, setRecapOpen] = useState(false);
   const [reading, setReading] = useState<Reading>();
   const [now, setNow] = useState(Date.now);
@@ -64,7 +72,13 @@ export function HistoryPane({ pane, focused, actions }: PaneRenderProps) {
   const { detail } = useHistoryDetail(showingRecap ? selectedId : undefined, revision);
 
   // The first row is selected until the person picks another, and again when the selected one leaves the list.
-  useEffect(() => { if (items.length && !items.some(item => item.id === selectedId) && !(selectedId && recapOpen)) setSelectedId(items[0].id); }, [items]);
+  useEffect(() => {
+    if (items.length && !items.some(item => item.id === selectedId) && !(selectedId && recapOpen)) {
+      setSelectedId(items[0].id);
+      setSelectedIds([items[0].id]);
+      selectionAnchor.current = items[0].id;
+    }
+  }, [items]);
 
   // The tab says what it is showing, the way the design's tab reads "History · lexer".
   // The subject of a question trails it ("what did we decide about the lexer"), so the last content word names the tab.
@@ -92,6 +106,53 @@ export function HistoryPane({ pane, focused, actions }: PaneRenderProps) {
   }, [focused]);
 
   const openConversation = useCallback((item: HistoryItem, press: Press) => host?.continueConversation(item, pane.id, press), [host, pane.id]);
+  // Escape cancels the confirm wherever focus sits. A dialog that is already open keeps the key.
+  useEffect(() => {
+    if (!pendingDelete) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || deleting || document.querySelector('dialog[open]')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setPendingDelete(undefined);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [pendingDelete, deleting]);
+  const commitDelete = useCallback(async () => {
+    if (!pendingDelete || deleting) return;
+    setDeleting(true);
+    try {
+      const result = await deleteHistory(pendingDelete.ids);
+      setPendingDelete(undefined);
+      refresh();
+      // The toast offers Undo for the design's 10 seconds. Choosing it puts the chats back; letting it leave keeps them deleted.
+      if (result.deleted > 0 && result.undoToken) {
+        const token = result.undoToken;
+        toasts.show({ message: [deletedSentence(result.deleted)], durationMs: design.interaction.historyDeleteToastMs, undo: async () => { await restoreHistory(token); refresh(); } });
+      }
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : 'That chat could not be deleted.';
+      toasts.show({ message: [message], tone: 'danger' });
+    } finally {
+      setDeleting(false);
+    }
+  }, [pendingDelete, deleting, refresh]);
+  const selectRow = (item: HistoryItem, gesture?: { shift: boolean }) => {
+    setPendingDelete(undefined);
+    if (gesture?.shift && selectionAnchor.current) setSelectedIds(idsBetween(items, selectionAnchor.current, item.id));
+    else {
+      selectionAnchor.current = item.id;
+      setSelectedIds([item.id]);
+      if (compact) setRecapOpen(true);
+    }
+    setSelectedId(item.id);
+  };
+  const askDelete = (item: HistoryItem) => {
+    const ask = deleteAsk(item.id, selectedIds, items);
+    if (!ask) return;
+    setPendingDelete(ask);
+    setSelectedId(ask.anchorId);
+  };
   // Archive from the row menu: the list and the recap are read again so the row says "archived" at once.
   const archiveConversation = useCallback((item: HistoryItem) => {
     void host?.archiveConversation(item).catch(() => undefined).finally(() => { refresh(); setRevision(value => value + 1); });
@@ -123,9 +184,10 @@ export function HistoryPane({ pane, focused, actions }: PaneRenderProps) {
     ? (search.error ? <p className="history-empty" role="alert">{search.error}</p>
       : search.result ? <div className="history-results-scroll" data-scroll-key="history-results"><SearchResults result={search.result} now={now} onRecap={id => showRecap(id)} onJump={(id, index) => setReading({ id, at: index })} onContinue={openConversation}/></div> : null)
     : error ? <p className="history-empty" role="alert">{error}</p>
-    : items.length ? <HistoryList items={items} now={now} selectedId={selectedId} label="Conversations" listRef={node => { list.current = node; }}
-        onSelect={item => { setSelectedId(item.id); if (compact) setRecapOpen(true); }} onOpen={openConversation}
-        onRead={item => { setSelectedId(item.id); setReading({ id: item.id }); }} onArchive={host ? archiveConversation : undefined} onNearEnd={loadMore}/>
+    : items.length ? <HistoryList items={items} now={now} selectedId={selectedId} selectedIds={selectedIds} label="Conversations" listRef={node => { list.current = node; }}
+        confirm={pendingDelete ? { anchorId: pendingDelete.anchorId, count: pendingDelete.ids.length, busy: deleting, onCancel: () => { if (!deleting) setPendingDelete(undefined); }, onConfirm: () => void commitDelete() } : undefined}
+        onSelect={selectRow} onOpen={openConversation}
+        onRead={item => { setSelectedId(item.id); setSelectedIds([item.id]); selectionAnchor.current = item.id; setReading({ id: item.id }); }} onArchive={host ? archiveConversation : undefined} onDelete={askDelete} onNearEnd={loadMore}/>
     : !loading ? <Text className="history-empty">{emptyLine}</Text> : null;
   const card = <section className="history-card" data-mode={searching ? 'search' : 'browse'} aria-label={searching ? 'Search results' : 'Conversations'}>
     <div className="history-column">

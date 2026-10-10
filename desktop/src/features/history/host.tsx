@@ -15,7 +15,7 @@ export type HistoryHost = {
    * that asked; `newTab` keeps the asker, and `background` (the new-tab field's ⌘-click) also leaves the person where they are.
    */
   continueConversation: (item: HistoryItem, paneId: string, press: { newTab: boolean; background?: boolean }) => void;
-  /** Archive: the conversation leaves the tab strip and History marks it archived. Nothing is deleted. */
+  /** Archive removes an open row from the strip; Unarchive clears its mark without focusing it. */
   archiveConversation: (item: HistoryItem) => Promise<void>;
 };
 
@@ -31,7 +31,7 @@ export function useHistoryWorkspace(state: WorkspaceState, dispatch: Dispatch<Wo
     // Continuing an archived conversation brings it back out of the archive, as Restore all does.
     if (item.archived) void archiveHistory([item.id], false).catch(() => undefined);
     const held = current.tabs.flatMap(panesOf).find(pane => pane.sessionFile === item.sessionFile);
-    if (held) { dispatch({ type: 'select', id: held.id }); return; }
+    if (held) { if (!press.background) dispatch({ type: 'select', id: held.id }); return; }
     const tab = newTab({ kind: 'conversation', title: item.title.trim() || undefined, ...(item.title.trim() ? { titleSource: 'engine' as const } : {}), sessionFile: item.sessionFile });
     const holder = tabHolding(current, paneId);
     const asker = current.tabs.flatMap(panesOf).find(pane => pane.id === paneId);
@@ -48,10 +48,10 @@ export function useHistoryWorkspace(state: WorkspaceState, dispatch: Dispatch<Wo
     }
   }, [dispatch]);
   const archiveConversation = useCallback<HistoryHost['archiveConversation']>(async item => {
-    // A plain tab holding the conversation goes the way an idle tab does: off the strip, not into Reopen.
+    // Archiving removes a plain tab from the strip; unarchiving only changes the saved mark.
     const holders = latest.current.tabs.filter(tab => !tab.split && tab.sessionFile === item.sessionFile).map(tab => tab.id);
-    if (holders.length) dispatch({ type: 'history-archive', ids: holders });
-    await archiveHistory([item.id], true);
+    if (!item.archived && holders.length) dispatch({ type: 'history-archive', ids: holders });
+    await archiveHistory([item.id], !item.archived);
   }, [dispatch]);
   return useMemo(() => ({ continueConversation, archiveConversation }), [continueConversation, archiveConversation]);
 }

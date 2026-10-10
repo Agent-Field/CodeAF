@@ -15,7 +15,8 @@ import (
 
 // Security acceptance for the desktop bridge (BE-SEC-02, and the response half
 // of the provider-key rule). bridgeRoutes sits beside the dispatch: ServeHTTP
-// in bridge.go, extra in routes.go, and the settings and places tables.
+// in bridge.go, extra in routes.go, the seam table in routes.go, and the
+// settings and places tables.
 //
 // Mutation: delete the bearer compare in ServeHTTP (the ConstantTimeCompare
 // that answers 401). TestEveryBridgeRouteRefusesAStranger then fails because a
@@ -27,10 +28,11 @@ import (
 // probe fails because the status is not 421.
 // Mutation: write the bridge token or a provider key into fail, or into any
 // response header. The secret scan fails without printing the secret.
-// Mutation: add a route (registerPlacesRoute, registerSettingsRoute, path ==,
-// case "/…", parts[N] ==, or a case label in the route switches) and leave it
-// out of bridgeRoutes. TestBridgeRoutesNameEveryDispatch fails. The stand-in
-// is TestDispatchScanRejectsAnUnlistedPath.
+// Mutation: add a route (registerPlacesRoute, registerSettingsRoute, a seam
+// pattern: literal, path ==, case "/…", parts[N] ==, or a case label in the
+// route switches) and leave it out of bridgeRoutes.
+// TestBridgeRoutesNameEveryDispatch fails. The stand-in is
+// TestDispatchScanRejectsAnUnlistedPath.
 // Mutation: stop filtering provider keys in terminalEnv, or return an empty
 // environment. TestTheTerminalEnvironmentDropsProviderKeys fails.
 
@@ -103,6 +105,20 @@ var bridgeRoutes = []string{
 	"/api/engine/places/{place}/unpin",
 	"/api/engine/places/{place}/visit",
 	"/api/engine/places/{place}/stale-snooze",
+	"/api/engine/places/{id}/decisions",
+	"/api/engine/places/{id}/decide-status",
+	"/api/engine/places/{id}/decide",
+	"/api/engine/places/{id}/knows",
+	"/api/engine/places/knows",
+	"/api/engine/places/{id}/knows/{line}",
+	"/api/engine/places/{id}/knows/{line}/still-true",
+	"/api/engine/decisions/{id}",
+	"/api/engine/decisions/{id}/overturn",
+	"/api/engine/councils",
+	"/api/engine/councils/{id}/steer",
+	"/api/engine/councils/{id}/messages",
+	"/api/engine/councils/{id}/pause",
+	"/api/engine/councils/{id}/resume",
 	"/api/engine/chats/{chat}/places",
 	"/api/engine/workspaces/{workspace}",
 	"/api/engine/workspaces/{workspace}/open-elsewhere",
@@ -152,6 +168,9 @@ var bridgeRoutes = []string{
 	"/api/engine/sessions/{session}/using",
 	"/api/engine/sessions/{session}/using/choice",
 	"/api/engine/sessions/{session}/using/apply",
+	"/api/engine/sessions/{id}/plan/{plan}/go",
+	"/api/engine/sessions/{id}/plan/{plan}/edit",
+	"/api/engine/sessions/{id}/plan/{plan}/cancel",
 }
 
 // securityRoutes is the BE-SEC-02 set: the routes that landed after the first
@@ -277,6 +296,9 @@ func concreteRoute(path string) string {
 		"{hist}", "h1",
 		"{setting}", "organize",
 		"{receipt}", "r1",
+		"{id}", "id1",
+		"{line}", "line1",
+		"{plan}", "plan1",
 	).Replace(path)
 }
 
@@ -481,6 +503,7 @@ func dispatchMentions(t *testing.T) []routeMention {
 var (
 	settingsRoutePattern = regexp.MustCompile(`registerSettingsRoute\(\s*http\.Method(?:Get|Post|Put|Delete)\s*,\s*"(/[^"]+)"`)
 	placesRoutePattern   = regexp.MustCompile(`registerPlacesRoute\(\s*"(?:GET|POST|PUT|DELETE)\s+(/places/[^"]+)"`)
+	seamPattern          = regexp.MustCompile(`pattern:\s*"(/[^"]+)"`)
 	pathLiteralPattern   = regexp.MustCompile(`(?:path\s*==\s*|case\s+)"(/[a-zA-Z0-9{}_/-]+)"`)
 	segmentPattern       = regexp.MustCompile(`(?:parts|rest)\[\d+\]\s*!?=\s*"([a-z][a-z0-9-]*)"`)
 	caseLabelPattern     = regexp.MustCompile(`(?m)^[ \t]*case\s+((?:"[a-z][a-z0-9-]*"\s*,\s*)*"[a-z][a-z0-9-]*")\s*:`)
@@ -498,6 +521,9 @@ func mentionsIn(file, source string) []routeMention {
 		add("path", match[1])
 	}
 	for _, match := range placesRoutePattern.FindAllStringSubmatch(source, -1) {
+		add("path", match[1])
+	}
+	for _, match := range seamPattern.FindAllStringSubmatch(source, -1) {
 		add("path", match[1])
 	}
 	for _, match := range pathLiteralPattern.FindAllStringSubmatch(source, -1) {

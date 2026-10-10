@@ -129,3 +129,14 @@ for (const theme of ['Light','Dark']) {
   await expect(controls.getByRole('button',{name:'Disabled',exact:true})).toBeDisabled();
  });
 }
+
+test('settings appearance: theme applies at once, survives a reload, and reduce motion has no control', async ({ page }) => {
+ await page.goto('/'); await openPage(page, 'Settings');
+ const section = page.getByRole('region', { name: 'Appearance' });
+ await expect(section.getByText('Reduce motion follows your system setting.')).toBeVisible();
+ await expect(section.getByRole('combobox')).toHaveCount(1);
+ await chooseTheme(page, 'Dark appearance');
+ await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+ await page.reload();
+ await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+});

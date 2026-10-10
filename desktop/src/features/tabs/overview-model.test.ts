@@ -33,6 +33,23 @@ test('placeholder, cursor and position', () => {
   assert.equal(sectionPosition(s, 'zz'), '');
 });
 
+test('card state uses the running count when the engine sent it, and a task step only when that task sent one', async () => {
+  const { overviewCardState, liveCommandLines } = await import('./overview-model.ts');
+  const conversation = tab('a');
+  const quiet = { title: '', firstLine: '', digest: '' };
+  assert.deepEqual(overviewCardState(conversation, { a: { ...quiet, mark: 'working', running: 4 } }), { dot: 'accent', words: '4 running' });
+  assert.deepEqual(overviewCardState(conversation, { a: { ...quiet, mark: 'working' } }), { dot: 'accent', words: 'Working' });
+  assert.deepEqual(overviewCardState(conversation, { a: { ...quiet, mark: 'waiting' } }), { lead: 'amber', words: 'Needs you' });
+  assert.deepEqual(overviewCardState(conversation, { a: { ...quiet, mark: 'failed' } }), { lead: 'danger', words: 'Failed' });
+  assert.deepEqual(overviewCardState(conversation, {}), {});
+  const task = tab('t', { kind: 'task', route: { taskId: 't7', back: [''], forward: [] } });
+  assert.deepEqual(overviewCardState(task, { t: { ...quiet, taskState: { t7: 'Running' }, taskLive: { t7: { step: 7, command: 'go test ./internal/parse' } } } }), { dot: 'accent', words: 'step 7' });
+  assert.deepEqual(overviewCardState(task, { t: { ...quiet, taskState: { t7: 'Done' }, taskLive: { t7: { step: 7 } } } }), { words: 'Done' });
+  assert.deepEqual(liveCommandLines(task, { t: { ...quiet, taskLive: { t7: { command: 'go test ./internal/parse' } } } }), [{ text: '$ go test ./internal/parse', tone: 'ink' }]);
+  assert.deepEqual(liveCommandLines(task, { t: quiet }), []);
+  assert.deepEqual(liveCommandLines(conversation, { a: { ...quiet, taskLive: { t7: { command: 'go test' } } } }), []);
+});
+
 test('a background press is a middle press or a click with the platform primary modifier', async () => {
   const { isBackgroundPress } = await import('./overview-model.ts');
   const press = (over: Record<string, unknown> = {}) => ({ button: 0, metaKey: false, ctrlKey: false, ...over });

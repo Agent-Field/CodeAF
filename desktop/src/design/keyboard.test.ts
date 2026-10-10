@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 // keyboard.ts reads navigator.platform at import; the matcher takes the platform as an argument.
 Object.defineProperty(globalThis, 'navigator', { value: { platform: 'Linux x86_64' }, configurable: true });
-const { shortcutOf, formatShortcut, shellShortcuts, newTerminalShortcut, isNewTerminalShortcut } = await import('./keyboard.ts');
+const { spellShortcut, shortcutOf, formatShortcut, shellShortcuts, newTerminalShortcut, isNewTerminalShortcut } = await import('./keyboard.ts');
 
 const key = (key: string, over: Record<string, unknown> = {}) => ({ key, code: '', metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...over });
 const mac = (event: ReturnType<typeof key>) => shortcutOf(event, true);
@@ -169,4 +169,109 @@ test('⌘Z (Ctrl Z on Linux) is the structural Undo; ⌘⇧Z and ⌥⌘Z are not
   assert.equal(mac(key('Z', { metaKey: true, shiftKey: true })), undefined);
   assert.equal(mac(key('Ω', { code: 'KeyZ', metaKey: true, altKey: true })), undefined);
   assert.equal(mac(key('z', { ctrlKey: true })), undefined);
+});
+
+test('Iteration 2 chords have distinct registry ids on Mac and Linux (P-5)', () => {
+  const cases = [
+    [true, 'j', { metaKey: true }, 'next-up'],
+    [false, 'j', { ctrlKey: true }, 'next-up'],
+    [true, '[', { metaKey: true, code: 'BracketLeft' }, 'back'],
+    [true, ']', { metaKey: true, code: 'BracketRight' }, 'forward'],
+    [false, 'ArrowLeft', { altKey: true }, 'back'],
+    [false, 'ArrowRight', { altKey: true }, 'forward'],
+    [false, '[', { ctrlKey: true, code: 'BracketLeft' }, undefined],
+    [false, ']', { ctrlKey: true, code: 'BracketRight' }, undefined],
+    [true, 'i', { metaKey: true }, undefined],
+    [false, 'i', { ctrlKey: true }, undefined],
+  ] as const;
+  for (const [mac, chord, modifiers, id] of cases) {
+    assert.deepEqual(shortcutOf(key(chord, modifiers), mac), id ? { id } : undefined, `${mac ? 'Mac' : 'Linux'} ${chord}`);
+    assert.equal(shortcutOf(key(chord, { ...modifiers, shiftKey: true }), mac)?.id === id && !!id, false);
+  }
+});
+
+test('Home Up is up-level; chat arrows keep turn navigation and composers keep caret keys', () => {
+  for (const mac of [true, false]) {
+    const primary = mac ? { metaKey: true } : { ctrlKey: true };
+    for (const [chord, id] of [['ArrowUp', 'turn-previous'], ['ArrowDown', 'turn-next']] as const) {
+      assert.deepEqual(shortcutOf(key(chord, primary), { mac }), { id });
+    }
+    assert.deepEqual(shortcutOf(key('ArrowUp', primary), { mac, home: true }), { id: 'up-level' });
+    assert.equal(shortcutOf(key('ArrowDown', primary), { mac, home: true }), undefined);
+    for (const value of ['', 'draft']) {
+      assert.equal(shortcutOf(key('ArrowUp', { ...primary, target: { tagName: 'TEXTAREA', value } }), { mac, home: true }), undefined);
+    }
+    assert.equal(shortcutOf(key('j', { ...primary, altKey: true }), { mac }), undefined);
+  }
+  assert.equal(shortcutOf(key('j', { ctrlKey: true }), { mac: false, terminal: true }), undefined);
+});
+
+test('spellShortcut: glyphs run together on a Mac, words join with + elsewhere (C-CTRL-14)', () => {
+  const original = globalThis.navigator;
+  try {
+    Object.defineProperty(globalThis, 'navigator', { value: { platform: 'MacIntel', userAgent: 'Mac' }, configurable: true });
+    assert.equal(spellShortcut('⌘/Ctrl ⇧ C'), '⌘⇧C');
+    Object.defineProperty(globalThis, 'navigator', { value: { platform: 'Linux x86_64', userAgent: 'X11' }, configurable: true });
+    assert.equal(spellShortcut('⌘/Ctrl ⇧ C'), 'Ctrl+Shift+C');
+    assert.equal(spellShortcut('↵'), '↵');
+  } finally {
+    Object.defineProperty(globalThis, 'navigator', { value: original, configurable: true });
+  }
+});
+
+test('shell recognizers use the host primary modifier on both platforms', () => {
+  for (const [matcher, primary] of [[mac, { metaKey: true }], [linux, { ctrlKey: true }]] as const) {
+    for (const [chord, id] of [['g', 'group'], ['z', 'undo'], ['n', 'new-window'], ['o', 'open-file'], ['0', 'place-home'], ['p', 'goto']] as const) {
+      assert.deepEqual(matcher(key(chord, primary)), { id });
+      assert.equal(matcher(key(chord, { ...primary, altKey: true })), undefined);
+    }
+    assert.deepEqual(matcher(key('P', { ...primary, shiftKey: true })), { id: 'all-places' });
+    assert.deepEqual(matcher(key('C', { ...primary, shiftKey: true })), { id: 'copy-link' });
+    assert.equal(matcher(key('c', primary)), undefined);
+    assert.equal(matcher(key('C', { ...primary, shiftKey: true, altKey: true })), undefined);
+    for (const target of [{ tagName: 'TEXTAREA', value: '' }, { tagName: 'INPUT', value: 'draft' }, { isContentEditable: true }, { closest: () => ({}) }]) {
+      assert.equal(matcher(key('z', { ...primary, target })), undefined);
+    }
+  }
+});
+
+test('all nine place slots preserve tab jumps and use layout-independent digits', () => {
+  for (let index = 1; index <= 9; index++) {
+    for (const code of [`Digit${index}`, `Numpad${index}`]) {
+      assert.deepEqual(mac(key('symbol', { code, ctrlKey: true })), { id: 'place-jump', index });
+      assert.deepEqual(linux(key('symbol', { code, altKey: true })), { id: 'place-jump', index });
+      assert.equal(mac(key('symbol', { code, ctrlKey: true, shiftKey: true })), undefined);
+      assert.equal(linux(key('symbol', { code, altKey: true, shiftKey: true })), undefined);
+    }
+    assert.deepEqual(mac(key(String(index), { metaKey: true })), { id: 'jump', index });
+    assert.deepEqual(linux(key(String(index), { ctrlKey: true })), { id: 'jump', index });
+  }
+});
+
+test('Quick Look is bare Space outside writing fields and buttons on both platforms', () => {
+  for (const matcher of [mac, linux]) {
+    assert.deepEqual(matcher(key(' ', { code: 'Space' })), { id: 'quick-look' });
+    for (const target of [{ tagName: 'INPUT', value: '' }, { tagName: 'TEXTAREA', value: '' }, { tagName: 'BUTTON' }, { tagName: 'SELECT' }, { isContentEditable: true }, { tagName: 'SPAN', closest: () => ({}) }]) {
+      assert.equal(matcher(key(' ', { code: 'Space', target })), undefined);
+    }
+    for (const modifier of ['metaKey', 'ctrlKey', 'altKey', 'shiftKey']) {
+      assert.equal(matcher(key(' ', { code: 'Space', [modifier]: true })), undefined);
+    }
+  }
+});
+
+test('Copy link leaves terminal copy to the shell and file copy to its surface handler', () => {
+  for (const mac of [true, false]) {
+    assert.equal(shortcutOf(key(' ', { code: 'Space' }), { mac, terminal: true }), undefined);
+    const primary = mac ? { metaKey: true } : { ctrlKey: true };
+    assert.equal(shortcutOf(key('C', { ...primary, shiftKey: true }), { mac, terminal: true }), undefined);
+    assert.equal(shortcutOf(key('C', { ...primary, shiftKey: true, target: shellField }), { mac }), undefined);
+  }
+});
+
+test('Iteration 2 keeps brackets as focus history even on Home; Home Up uses the arrow', () => {
+  assert.deepEqual(shortcutOf(key('[', { code: 'BracketLeft', metaKey: true }), { mac: true, home: true }), { id: 'back' });
+  assert.deepEqual(shortcutOf(key('ArrowUp', { metaKey: true }), { mac: true, home: true }), { id: 'up-level' });
+  assert.deepEqual(shortcutOf(key('ArrowLeft', { altKey: true }), { mac: false, home: true }), { id: 'back' });
+  assert.deepEqual(shortcutOf(key('ArrowUp', { ctrlKey: true }), { mac: false, home: true }), { id: 'up-level' });
 });

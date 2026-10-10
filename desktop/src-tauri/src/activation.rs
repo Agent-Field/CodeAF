@@ -51,7 +51,7 @@ pub struct Question {
     pub id: u64,
 }
 
-/// Where a click lands: a conversation, and the question to focus in its tray.
+/// Where a click starts Next up: the attention item and its conversation.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Target {
@@ -126,6 +126,7 @@ impl Routes {
             return Some(target.clone());
         }
         route.targets.into_iter().next().map(|(_, target)| Target {
+            item_id: None,
             question: None,
             ..target
         })
@@ -670,7 +671,7 @@ mod tests {
 
     fn target(chat: &str, question: Option<(&str, u64)>) -> Target {
         Target {
-            item_id: None,
+            item_id: question.map(|(kind, id)| format!("{chat}:{kind}:{id}")),
             chat_id: chat.into(),
             question: question.map(|(kind, id)| Question {
                 kind: kind.into(),
@@ -814,7 +815,7 @@ mod tests {
         let wire = serde_json::to_value(target("s1", Some(("consent", 7)))).unwrap();
         assert_eq!(
             wire,
-            serde_json::json!({"chatId": "s1", "question": {"kind": "consent", "id": 7}})
+            serde_json::json!({"itemId": "s1:consent:7", "chatId": "s1", "question": {"kind": "consent", "id": 7}})
         );
         let bare = serde_json::to_value(target("s1", None)).unwrap();
         assert_eq!(bare, serde_json::json!({"chatId": "s1"}));

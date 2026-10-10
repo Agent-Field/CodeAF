@@ -1,16 +1,15 @@
 // The window-level wiring of Places: the rail's model, the keys, the window tint, and the attention the engine-wide
 // world stream reports, handed to the native notifications and the dock badge. App calls these once.
 
-import { useEffect, useMemo, useSyncExternalStore } from 'react';
-import { placeShortcuts, registerShortcuts, shortcutLayer, tabShortcuts } from '../../../design/keyboard';
+import { useMemo, useSyncExternalStore } from 'react';
+import { placeShortcuts } from '../../../design/keyboard';
 import type { AttentionItem } from '../../../design/nativeControls';
 import { worldStore } from '../../chat/world-store';
 import { parseWorkspace, workspaceKey } from '../../tabs/model';
 import type { PlaceRailActions, PlaceRailProps } from '../../shell/PlaceRail';
 import type { MenuEntry } from '../../../components/ui';
 import type { PlacesShell } from './PlacesShell';
-import { railOrder, railSections, rollupStatus } from './selectors';
-import { requestWorkspace } from './workspaceBus';
+import { railSections, rollupStatus } from './selectors';
 import { requestOpenKind } from '../../shell/shellState';
 
 /** How many tabs a place has open, from its saved tab set (the rail's close hint). */
@@ -77,51 +76,11 @@ export function usePlaceRail(shell: PlacesShell, inputs: RailInputs): PlaceRailP
   };
 }
 
-/** The Places keys (Interactions "Shortcuts"). They live in the app layer, so a surface that uses the same chord first keeps it. */
-export function usePlaceKeys(shell: PlacesShell, onEnterWorkspace: () => void) {
-  const graph = shell.places.graph;
-  const order = useMemo(() => (graph ? railOrder(railSections(graph, shell.closed, shell.place)) : []), [graph, shell.closed, shell.place]);
-  useEffect(() => registerShortcuts(shortcutLayer.app, shortcut => {
-    switch (shortcut.id) {
-      case 'goto': shell.openChooser({ kind: 'go' }); return true;
-      case 'all-places': onEnterWorkspace(); shell.openAllPlaces(); return true;
-      case 'place-home':
-        if (shell.place === 'now') { shell.warn(new Error('Now has no Home. Go to a place to see its Home.')); return true; }
-        onEnterWorkspace();
-        requestWorkspace({ type: 'home-ensure', place: shell.place, title: shell.index?.byId.get(shell.place)?.name ?? 'Home', focus: true });
-        return true;
-      case 'place-jump': {
-        const id = shortcut.index === 0 ? 'now' : order[(shortcut.index ?? 1) - 1];
-        if (!id) return false;
-        onEnterWorkspace();
-        void shell.goTo(id).catch(shell.warn);
-        return true;
-      }
-      case 'close-place':
-        if (shell.place === 'now') shell.warn(new Error(`Now is always open. Close its tabs with ${tabShortcuts.close}.`));
-        else shell.closePlace(shell.place);
-        return true;
-      case 'new-window': void shell.goToInNewWindow('now').catch(shell.warn); return true;
-      case 'undo': void shell.undoLast().catch(shell.warn); return true;
-      default: return false;
-    }
-  }), [shell, order, onEnterWorkspace]);
-}
+// The Places keys live in features/places/usePlaceKeys.ts; App still imports them from here.
+export { usePlaceKeys } from '../usePlaceKeys';
 
-/**
- * The frame and accent take the window place's tint. Portalled menus inherit it from the body. Places 9d draws Now in
- * graphite, but graphite's frame takes ink-2 below 4.5:1 (the overview filmstrip's labels measure 4.46:1), so Now keeps
- * the root palette until the designer answers DESIGN-QUESTIONS PS12. Its Home-less tab strip draws no swatch either way.
- */
-export function useWindowTint(shell: PlacesShell) {
-  const tint = shell.place === 'now' ? undefined : shell.index?.byId.get(shell.place)?.effectiveTint;
-  useEffect(() => {
-    if (!tint) return;
-    document.body.dataset.tint = tint;
-    return () => { delete document.body.dataset.tint; };
-  }, [tint]);
-  return tint;
-}
+// The frame tint lives in useWindowTint: Now and the root are graphite, and the swap is the attribute before paint.
+export { useWindowTint } from '../useWindowTint';
 
 /**
  * What needs the person, from the engine-wide world stream, for the rail's Inbox count. The system notifications and

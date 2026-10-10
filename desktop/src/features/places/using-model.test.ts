@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyOffer, chipText, handoffFor, placeList, provenance, safeUrl, sourceName, tallyLine, wantedLine } from './using-model.ts';
-import type { PlaceSetting, PolicyDecision, UsedSource, UsingBundle } from './using-types.ts';
+import { applyOffer, chipText, handoffFor, instructionRows, placeList, provenance, safeUrl, sourceName, tallyLine, wantedLine } from './using-model.ts';
+import type { PlaceSetting, PolicyDecision, UsedSource, UsingBundle, UsingKnowsLine } from './using-types.ts';
 
 // The shapes mirror what the bridge sends; the names are invented for the tests.
 const origin = (placeId: string, addedBy: 'you' | 'ai' = 'you') => ({ placeId, sourceId: `s-${placeId}`, addedBy, level: 0 });
@@ -56,6 +56,45 @@ test('apply is offered only for the two states a person can resolve, and a wider
   for (const state of ['applied', 'pending', 'needsPick', 'yours', 'unavailable'] as const) assert.equal(applyOffer(setting({ state })), undefined);
   assert.equal(applyOffer(setting({ value: undefined })), undefined);
   assert.equal(applyOffer(undefined), undefined);
+});
+
+const knows = (patch: Partial<UsingKnowsLine> & Pick<UsingKnowsLine, 'id' | 'placeId' | 'text'>): UsingKnowsLine => ({
+  source: { kind: 'you-wrote' }, ...patch,
+});
+
+test('instructions list knows lines by place, with learned and replaced, and keep prose only where there is no line', () => {
+  const now = new Date('2026-10-10T15:00:00Z');
+  const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date('2026-10-06T12:00:00Z').getDay()];
+  const rows = instructionRows(bundle({
+    instructions: [
+      { placeId: 'p1', text: 'Keep strict mode the default for public APIs\n\nWrite for customers, not engineers.', bytes: 80 },
+      { placeId: 'p2', text: 'Legacy marketing prose', bytes: 22 },
+    ],
+    knows: [
+      knows({ id: 'live', placeId: 'p1', text: 'Lead pricing with free for one seat', source: { kind: 'learned', answers: 3 }, lastUsedAt: '2026-10-09T12:00:00Z' }),
+      knows({ id: 'old', placeId: 'p1', text: 'Lead with usage pricing', replacedBy: 'live', replacedAt: '2026-10-06T12:00:00Z' }),
+      knows({ id: 'gone', placeId: 'p1', text: 'Expired rule', replacedBy: 'live', replacedAt: '2026-10-03T15:00:00Z' }),
+      knows({ id: 'file', placeId: 'p1', text: 'Match the voice file', source: { kind: 'file', path: '/work/brand-voice.md' } }),
+      knows({ id: 'said', placeId: 'p1', text: 'Said without a title', source: { kind: 'said-in-chat', chatId: 'launch' } }),
+      knows({ id: 'blank', placeId: 'p1', text: '   ' }),
+    ],
+  }), now);
+  assert.deepEqual(rows.map(row => [row.text, row.places, row.source, row.struck]), [
+    ['Lead pricing with free for one seat', 'Release', 'Learned from 3 of your answers', false],
+    ['Lead with usage pricing', 'Release', `Replaced ${day} · kept for 7 days`, true],
+    ['Match the voice file', 'Release', 'brand-voice.md · you added', false],
+    ['Said without a title', 'Release', '', false],
+    ['Legacy marketing prose', 'Marketing', '', false],
+  ]);
+  assert.equal(rows.some(row => row.text.includes('Keep strict mode')), false);
+  assert.equal(rows.some(row => row.text === 'Expired rule'), false);
+});
+
+test('with no knows lines the instructions stay the prose, labelled by every place that said it', () => {
+  const rows = instructionRows(bundle({
+    instructions: [{ placeId: 'p1', alsoFrom: ['p2'], text: 'Write for customers', bytes: 20, trimmed: true }],
+  }));
+  assert.deepEqual(rows, [{ key: 'prose:p1:0', text: 'Write for customers', places: 'Release, Marketing', source: '', struck: false, trimmed: true }]);
 });
 
 test('the places\' wishes read as the design says: who wanted what, and who decided', () => {

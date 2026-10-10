@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { EngineQuestion } from '../../chat/engine-client.ts';
 import type { TabSummary } from '../../conversation/tabSummary.ts';
-import { askOf, changedLines, headLines, questionsFor, stateOf, tailLines } from './content.ts';
+import { alsoOpenIn, askOf, changedLines, headLines, questionsFor, stateOf, tailLines } from './content.ts';
 
 const consent = (id: number, head: string): EngineQuestion => ({ id, kind: 'consent', ask: 'permission', head, options: [{ key: 'y', label: 'allow' }, { key: 'n', label: 'deny', safe: true }] });
 const summary = (over: Partial<TabSummary> = {}): TabSummary => ({ title: '', firstLine: '', digest: '', ...over });
@@ -69,4 +69,12 @@ test('a task card says Needs you only for its own question, and the conversation
   assert.deepEqual(stateOf(conversation, 't7'), { words: 'Running' });
   assert.deepEqual(stateOf(conversation, 't9'), { lead: 'amber', words: 'Needs you' });
   assert.deepEqual(stateOf(summary({ mark: 'failed', taskState: { t7: 'Done' } }), 't7'), { words: 'Done' });
+});
+
+test('the hover line names the other place that holds the chat, and counts any more', () => {
+  assert.equal(alsoOpenIn(undefined), undefined);
+  assert.equal(alsoOpenIn([]), undefined);
+  assert.equal(alsoOpenIn([{ name: 'Marketing' }]), 'also open in Marketing');
+  assert.equal(alsoOpenIn([{ name: 'Marketing' }, { name: 'Ops' }]), 'also open in Marketing and 1 other place');
+  assert.equal(alsoOpenIn([{ name: 'Marketing' }, { name: 'Ops' }, { name: 'Dev' }]), 'also open in Marketing and 2 other places');
 });

@@ -1,7 +1,7 @@
 import { Icon, Segmented } from '../../components/ui';
 import { EditorHandoff } from './EditorHandoff';
 import { FadeText } from './FadeText';
-import { fileTypeIcon } from './fileTarget';
+import { fileIcon } from './fileIcon';
 import type { Handoff } from './useWorkView';
 
 export type FileView = 'changes' | 'file';
@@ -29,7 +29,7 @@ type Props = {
 export function FileHeader({ name, dir, added, deleted, view, onView, path, workspace, handoff, refused, keys }: Props) {
   return <header className="file-head">
     <div className="file-id">
-      <Icon name={fileTypeIcon(name)} size="sm"/>
+      <Icon name={fileIcon(path)} size="sm"/>
       <FadeText className="file-name">{name}</FadeText>
       {dir && <FadeText className="file-dir">{dir}</FadeText>}
       {!!added && <span className="file-count" data-sign="add">+{added}</span>}

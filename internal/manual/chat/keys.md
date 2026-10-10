@@ -1232,7 +1232,7 @@ remembered as well.
 With history not wired up (`--no-history`), `up` takes nothing and keeps its other
 meanings.
 
-## The thinking chip above the message box — `alt+e`, `/effort`, and making this one chat think harder
+## How do I make this one chat think harder — can I click the thinking level — alt+e and /effort above the message box
 
 The line above the message box — the legend — names how hard the model will think about
 your next turn, immediately after the model that will be doing the thinking:
@@ -1269,7 +1269,7 @@ included — which is the same gesture as pressing a task's thinking row inside 
 exactly its own cells first, and the press never moves the caret in your draft. It does
 not open a list: the list is `/effort`.
 
-## `/effort` sets this conversation's rung, and when the rung will not move
+## /effort opens the thinking ladder — /thinking, /think and setting a rung directly
 
 **`/effort` opens the ladder**: six rows — `auto` first, then the five rungs cheapest
 first — with the row you are on marked. `↑`/`↓` walk it, `enter` applies, `esc` closes,
@@ -1296,6 +1296,9 @@ Until 2026-09-09 the rung was a chip at the right end of the tray row above the 
 clicking *that* opened the ladder. The rung is on the legend now, beside the model it is
 about, and the click walks it.
 
+## What this conversation's thinking rung changes — persistence, task workers and model overrides
+
+The thinking rung set with `alt+e` or `/effort` belongs to this conversation.
 What it changes and what it does not:
 
 - It sets **this conversation's** rung. It is sticky — kept in this session's own

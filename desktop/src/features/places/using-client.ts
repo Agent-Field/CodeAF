@@ -23,6 +23,17 @@ export type SettingState = 'applied' | 'pending' | 'needsPick' | 'needsYou' | 'y
 
 export type UsedPlace = { id: string; name: string; tint: Tint; level: number; inherited: boolean; through?: string[] };
 export type UsedInstruction = { placeId: string; alsoFrom?: string[]; text: string; bytes: number; trimmed?: boolean };
+/** One knowledge line the Using popover lists. Replaced lines are here and are not part of the prompt. */
+export type UsingKnowsLine = {
+  id: string;
+  placeId: string;
+  text: string;
+  source: { kind: 'you-wrote' | 'said-in-chat' | 'learned' | 'file'; chatId?: string; at?: string; answers?: number; path?: string };
+  createdAt?: string;
+  lastUsedAt?: string;
+  replacedBy?: string;
+  replacedAt?: string;
+};
 export type SourceOrigin = { placeId: string; sourceId: string; addedBy: 'you' | 'ai'; at?: string; level: number };
 export type UsedSource = {
   key: string; kind: SourceKind; ref: string; label?: string; repoRoot?: string;
@@ -37,6 +48,8 @@ export type PolicyDecision = {
 export type UsingBundle = {
   chatId: string; revision: number;
   places: UsedPlace[]; instructions: UsedInstruction[];
+  /** Knowledge lines for the popover. Absent on an older answer; empty when the places have none. */
+  knows?: UsingKnowsLine[];
   /** Given to the model. */
   sources: UsedSource[];
   /** Past the source budget: named here, never given. */
@@ -70,6 +83,7 @@ const FIELDS: readonly string[] = ['model', 'permissions'];
 const OUTCOMES: readonly string[] = ['agreed', 'decided', 'chosen', 'needsPick'];
 const STATES: readonly string[] = ['applied', 'pending', 'needsPick', 'needsYou', 'yours', 'notNew', 'unavailable'];
 const STATUSES: readonly string[] = ['ok', 'missing', 'refused'];
+const KNOW_KINDS: readonly string[] = ['you-wrote', 'said-in-chat', 'learned', 'file'];
 
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
@@ -89,6 +103,18 @@ function bundle(v: unknown): UsingBundle {
     || !Array.isArray(v.policy) || !isObject(v.counts) || !isInt(v.counts.places) || !isInt(v.counts.sources)) return bad('Using list');
   for (const p of v.places) if (!isObject(p) || typeof p.id !== 'string' || typeof p.name !== 'string' || !isInt(p.level) || typeof p.inherited !== 'boolean') bad('Using place');
   for (const i of v.instructions) if (!isObject(i) || typeof i.placeId !== 'string' || typeof i.text !== 'string' || !isInt(i.bytes)) bad('Using instruction');
+  // Older answers omit knows. A present list must be lines, never a prose blob stuffed into the field.
+  const knows: unknown = v.knows;
+  if (knows !== undefined && !Array.isArray(knows)) bad('Using knows');
+  if (Array.isArray(knows)) {
+    for (const line of knows) {
+      if (!isObject(line)) bad('Using knows');
+      const source = line.source;
+      if (typeof line.id !== 'string' || typeof line.placeId !== 'string' || typeof line.text !== 'string' || !isObject(source)) bad('Using knows');
+      if (!KNOW_KINDS.includes(String(source.kind))) bad('Using knows');
+      if (source.answers !== undefined && !isInt(source.answers)) bad('Using knows');
+    }
+  }
   usedSources(v.sources, 'Using source'); usedSources(v.trimmed, 'Using source'); usedSources(v.refused, 'Using source');
   for (const d of v.policy) {
     if (!isObject(d) || !FIELDS.includes(d.field as string) || typeof d.value !== 'string' || !OUTCOMES.includes(d.outcome as string) || !Array.isArray(d.wanted)) bad('Using decision');

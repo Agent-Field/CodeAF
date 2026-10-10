@@ -18,6 +18,11 @@
 .button.system-note-action { flex: none; min-height: var(--row-action-size); height: var(--row-action-size); padding: 0 var(--control-pad-ghost); border: 0; border-radius: var(--radius-note-action); background: var(--field); color: var(--ink); font-size: var(--type-label-size); font-weight: var(--type-label-strong); }
 .button.system-note-action:hover:not(:disabled) { background: var(--field-2); color: var(--ink); }
 
+/* Remember confirmations keep the action inline with the muted receipt words. */
+.system-note[data-kind="remember"] .system-note-action { background: transparent; color: var(--ink-3); font-weight: var(--type-label-weight); }
+.system-note[data-kind="remember"] .system-note-action:hover:not(:disabled) { background: var(--field); color: var(--ink-3); }
+.system-note[data-kind="remember"] .system-note-action:active:not(:disabled) { background: var(--field-2); }
+
 .system-note-group { display: flex; flex-direction: column; gap: var(--space-1); margin-inline-start: var(--space-tight); padding-inline-start: var(--work-indent); border-inline-start: var(--border-width) solid var(--guide); }
 
 /* A folded report keeps to one line: its first line ellipsised, Show at the end, the body below. */

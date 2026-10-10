@@ -189,3 +189,10 @@ test('engine identity crosses resets and rejects cross-epoch deltas', () => {
  const delayed = applyWorldRecord(a, { epoch: 'old', seq: 901, type: 'attention', at: 'x', payload: { items: [] } });
  assert.equal(delayed, a);
 });
+
+test('an attention record keeps the new optional fields and an old-shape item untouched', () => {
+  const full = { key: 'k', session: 's', kind: 'ask', text: 't', sourceFolders: [], answerable: true, stakes: 'irreversible' as const, blocking: { turn: true, tasks: [] }, placeIds: ['p'] };
+  const old = { key: 'o', session: 's', kind: 'ask', text: 't', sourceFolders: [], answerable: true };
+  const state = applyWorldRecord({ status: 'live', seq: 1, rows: [], items: [] }, { seq: 2, type: 'attention', at: 'x', payload: { items: [full, old] } });
+  assert.deepEqual(state.items, [full, old]);
+});

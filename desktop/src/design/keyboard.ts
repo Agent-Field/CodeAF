@@ -46,16 +46,18 @@ type KeyEvent = Pick<KeyboardEvent, 'key' | 'code' | 'metaKey' | 'ctrlKey' | 'sh
  * Every window-level shortcut of the shell, as ids. This is the ONE place that decides which chord means what,
  * so two surfaces can never both claim a key (design Interactions "Shortcuts"). `jump` carries the tab digit and
  * `model-pin` the pinned-model slot (⌥⌘1–3). ⌘⇧\ (Ctrl Shift A on Linux) is the tab overview; ⌘↑ and ⌘↓ step between
- * messages in a chat. ⌘/Ctrl B for the rail keeps working beside ⌘S. 'terminal-new' is ⌃` on every platform (the chord
+ * messages in a chat; Home uses ⌘↑ for `up-level`. I2.6 adds ⌘J for `next-up` and ⌘[ / ⌘] for focus history
+ * (`back` / `forward`, Alt arrows off a Mac per P-5). ⌘/Ctrl B for the rail keeps working beside ⌘S. 'terminal-new' is ⌃` on every platform (the chord
  * features/terminal/keys.ts re-exports). 'open-file' (⌘/Ctrl O) belongs to the new-tab field: only that surface claims it,
  * and choosing it is the Open file… row. A prose field that already holds words keeps both chords.
  */
 export type ShortcutId =
  | 'new' | 'close' | 'reopen' | 'group' | 'next' | 'previous' | 'switch' | 'switch-back' | 'jump'
- | 'open-file' | 'terminal-new' | 'overview' | 'turn-previous' | 'turn-next' | 'history' | 'tasks-panel' | 'rail' | 'focus' | 'palette' | 'models' | 'model-pin' | 'settings'
+ | 'open-file' | 'terminal-new' | 'copy-link' | 'quick-look' | 'overview' | 'turn-previous' | 'turn-next' | 'history' | 'tasks-panel' | 'rail' | 'focus' | 'palette' | 'models' | 'model-pin' | 'settings'
  /** Places (Interactions "Shortcuts"): ⌘P Go to a place, ⌘⇧P All places, ⌘0 this place's Home, ⌘⇧W close this place,
   * ⌘N a new window on Now, ⌘Z undo the last structural action. `place-jump` carries the rail slot: 0 is Now, 1–9 the
   * pinned-then-open places (⌃ on a Mac; Alt elsewhere, because Ctrl+digit is already the tab jump there). */
+ | 'next-up' | 'back' | 'forward' | 'up-level'
  | 'goto' | 'all-places' | 'place-home' | 'place-jump' | 'close-place' | 'new-window' | 'undo';
 export type Shortcut = { id: ShortcutId; index?: number };
 
@@ -68,7 +70,13 @@ function isWritingField(target: EventTarget | null | undefined): boolean {
 /** A field, editor or terminal keeps ⌘Z for its own text. */
 function isEditable(target: EventTarget | null | undefined): boolean {
  const element = target as { tagName?: string; isContentEditable?: boolean; closest?: (selector: string) => unknown } | null | undefined;
- return element?.tagName === 'TEXTAREA' || element?.tagName === 'INPUT' || !!element?.isContentEditable || !!element?.closest?.('.xterm');
+ return element?.tagName === 'TEXTAREA' || element?.tagName === 'INPUT' || !!element?.isContentEditable || !!element?.closest?.('[contenteditable]:not([contenteditable="false"]), .xterm');
+}
+
+/** Space keeps native activation on buttons and editing controls, including their nested icon targets. */
+function keepsSpace(target: EventTarget | null | undefined): boolean {
+ const element = target as Element | null | undefined;
+ return isEditable(target) || element?.tagName === 'BUTTON' || element?.tagName === 'SELECT' || !!element?.closest?.('button, [role="button"], select');
 }
 
 /** True when the event came from inside an xterm field (its hidden textarea), including one inside a portal or a second tab. */
@@ -92,15 +100,22 @@ function typingInProseField(target: EventTarget | null | undefined): boolean {
  * Off a Mac the primary modifier is Ctrl, which is also the shell's editing modifier (Ctrl+W delete word, Ctrl+K kill
  * line, Ctrl+S stop output, Ctrl+Y yank, Ctrl+1..9). Inside a terminal field those chords therefore belong to the
  * PTY. The desktop chords there are the ones the GNOME Terminal convention reserves: Ctrl+Shift+T / Ctrl+Shift+W
- * for a new / closed tab, plus every other Ctrl+Shift chord, Ctrl+` and Ctrl+Tab. Mac Cmd chords never reach a shell.
+ * for a new / closed tab, plus other Ctrl+Shift chords except the shell's Copy, Ctrl+` and Ctrl+Tab. Mac Cmd chords never reach a shell.
  */
-export type ShortcutContext = { mac?: boolean; terminal?: boolean };
+export type ShortcutContext = { mac?: boolean; terminal?: boolean; home?: boolean };
+
+/** Home owns Up only outside its composer, so a field keeps its native caret movement even when empty. */
+function isHomeTarget(target: EventTarget | null | undefined): boolean {
+ const element = target as Element | null | undefined;
+ return !!element?.closest?.('.home-pane, .home-page');
+}
 function terminalShortcutOf(event: KeyEvent): Shortcut | undefined {
  const bare = event.ctrlKey && !event.metaKey && !event.altKey;
  if (bare && event.shiftKey) {
   const key = event.key.toLowerCase();
   if (key === 't') return { id: 'new' };
   if (key === 'w') return { id: 'close' };
+  if (key === 'c') return;
  }
  if (bare && (event.shiftKey || event.code === 'Backquote' || event.key === 'Tab' || event.key === 'PageDown' || event.key === 'PageUp')) return shortcutOf(event, false);
 }
@@ -109,6 +124,7 @@ export function shortcutOf(event: KeyEvent, platform: boolean | ShortcutContext 
  const context: ShortcutContext = typeof platform === 'boolean' ? { mac: platform } : platform;
  const mac = context.mac ?? isMac;
  if (context.terminal && !mac) return terminalShortcutOf(event);
+ if (event.key === ' ' && !context.terminal && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && !keepsSpace(event.target)) return { id: 'quick-look' };
  if (event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.code === 'Backquote' && !typingInProseField(event.target)) return { id: 'terminal-new' };
  // The place slots: ⌃0–9 on a Mac, Alt 0–9 elsewhere. The digit comes from `code` so a layout's symbols do not matter.
  const slot = /^(?:Digit|Numpad)([0-9])$/.exec(event.code ?? '');
@@ -116,6 +132,10 @@ export function shortcutOf(event: KeyEvent, platform: boolean | ShortcutContext 
  if (event.ctrlKey && !event.metaKey && !event.altKey && event.key === 'Tab') return { id: event.shiftKey ? 'switch-back' : 'switch' };
  const primaryKey = mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
  // ⌥⌘1–3 pick a pinned model. The digit comes from `code`: Option turns the key into a symbol on a Mac.
+ if (!mac && event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+  if (event.key === 'ArrowLeft') return { id: 'back' };
+  if (event.key === 'ArrowRight') return { id: 'forward' };
+ }
  if (event.altKey) {
   const slot = /^(?:Digit|Numpad)([1-3])$/.exec(event.code ?? '');
   return primaryKey && !event.shiftKey && slot ? { id: 'model-pin', index: Number(slot[1]) } : undefined;
@@ -138,9 +158,14 @@ export function shortcutOf(event: KeyEvent, platform: boolean | ShortcutContext 
   if (key === 'k') return { id: 'tasks-panel' };
   if (key === 'f') return { id: 'focus' };
   if (key === 'p') return { id: 'all-places' };
+  // A terminal keeps this chord for copying its selection; other surfaces decide whether to copy a path or a link.
+  if (key === 'c' && !context.terminal && !isTerminalTarget(event.target)) return { id: 'copy-link' };
   if (key === 'w') return { id: 'close-place' };
   return;
  }
+ if (key === 'j') return { id: 'next-up' };
+ if (mac && (event.code === 'BracketLeft' || key === '[')) return { id: 'back' };
+ if (mac && (event.code === 'BracketRight' || key === ']')) return { id: 'forward' };
  if (key === 'p') return { id: 'goto' };
  if (key === '0') return { id: 'place-home' };
  if (key === 'n') return { id: 'new-window' };
@@ -155,6 +180,11 @@ export function shortcutOf(event: KeyEvent, platform: boolean | ShortcutContext 
  if (key === ',') return { id: 'settings' };
  if (key === '/') return { id: 'models' };
  if (/^[1-9]$/.test(key)) return { id: 'jump', index: Number(key) };
+ const home = context.home ?? isHomeTarget(event.target);
+ if (home) {
+  if (event.key === 'ArrowUp' && !isEditable(event.target) && !(event.target as Element | null)?.closest?.('.composer-dock')) return { id: 'up-level' };
+  return;
+ }
  if (event.key === 'ArrowUp' && !isWritingField(event.target)) return { id: 'turn-previous' };
  if (event.key === 'ArrowDown' && !isWritingField(event.target)) return { id: 'turn-next' };
 }
@@ -223,4 +253,15 @@ export const seeAllHistoryShortcut = isMac ? '⌘↵' : 'Ctrl ↵';
 export function isSeeAllHistoryShortcut(event: KeyEvent) {
  const primary = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
  return primary && !event.shiftKey && !event.altKey && event.key === 'Enter';
+}
+
+/**
+ * Spells a chord the way the design's Kbd does (C-CTRL-14, C-MENU-5): glyphs run together on a Mac (⌘⇧C), words join
+ * with "+" elsewhere (Ctrl+Shift+C). The platform is read at call time from the platform AND the user agent, so a test
+ * that overrides only the user agent still gets the other spelling.
+ */
+export function spellShortcut(label: string) {
+ const mac = /Mac/.test(navigator.platform) || /Mac/.test(navigator.userAgent);
+ const parts = label.replace('⌘/Ctrl', mac ? '⌘' : 'Ctrl').replace('⇧', mac ? '⇧' : 'Shift').split(/\s+/).filter(Boolean);
+ return mac ? parts.join('') : parts.join('+');
 }

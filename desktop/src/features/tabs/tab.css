@@ -3,7 +3,10 @@
 .workspace-tab:hover, .workspace-tab[data-hover] { background: var(--tab-hover); color: var(--ink); }
 .workspace-tab[data-active="true"] { background: var(--canvas); box-shadow: var(--sh-1); color: var(--ink); }
 /* Picked for ⌘G (⌘-click): the field fill, one step past hover, so a picked tab still reads under the pointer. */
-.workspace-tab[data-picked] { background: var(--field); color: var(--ink); }
+.workspace-tab[data-picked], .workspace-tab[data-selected] { background: var(--field); color: var(--ink); }
+/* Press is one fill, field-2, for dur-press (NT14). The select stays transparent, so the chip is the fill.
+   :has keeps a press on the close mark from filling the chip; that mark has its own press. */
+.workspace-tab:has(.workspace-tab-select:active) { background: var(--field-2); transition-duration: var(--dur-press); }
 /* An inactive tab that needs you lifts its title to full ink. */
 .workspace-tab[data-state="waiting"] { color: var(--ink); }
 
@@ -12,6 +15,8 @@
 .workspace-tab-select.button:focus-visible { outline-offset: calc(var(--motion-rest) - var(--focus-offset)); }
 .workspace-tab-select .app-icon { color: var(--ink-2); }
 .workspace-tab-title { line-height: var(--tab-title-leading); flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-align: left; mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
+/* Exit words sit after the title's own fade (C-EDGE-5), so a long name fades and `exit 0` stays readable. Muted, never a state colour. */
+.workspace-tab-meta { flex: none; color: var(--ink-3); font-size: var(--tab-meta-size); white-space: nowrap; }
 
 /* The 6px state glyph replaces the kind icon; colour lives on this dot only. */
 .tab-dot { flex: none; width: var(--mark-dot); height: var(--mark-dot); margin: 0 var(--tab-dot-margin); border-radius: 50%; background: var(--amber); }

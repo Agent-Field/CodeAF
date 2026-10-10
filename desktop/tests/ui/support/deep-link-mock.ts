@@ -41,6 +41,7 @@ export async function installDeepLinkMock(page: Page, options: { atBoot?: string
       if (cmd === 'link_claim') return queue.splice(0, queue.length);
       if (cmd === 'notify_claim') return notices.splice(0, notices.length);
       if (cmd === 'window_claim_handoff') return null;
+      if (cmd === 'window_list') return [{ label: 'main', focused: true, placeKey: 'now' }];
       if (cmd === 'window_context') return { label: 'main', placeKey: 'now' };
       if (cmd === 'web_list') return [];
       if (cmd === 'notify_attention') return { posted: 0, groups: 0, skipped: 'focused' };

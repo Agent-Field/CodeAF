@@ -128,7 +128,7 @@ export function arrange(state: WorkspaceState): WorkspaceState {
   const tabs = order.length === state.tabs.length && order.every((tab, index) => tab === state.tabs[index]) ? state.tabs : order;
   const sorted = runs.map(id => state.groups.find(group => group.id === id)!);
   const groups = sorted.length === state.groups.length && sorted.every((group, index) => group === state.groups[index]) ? state.groups : sorted;
-  const picked = state.picked?.filter(id => id !== state.activeId && tabs.some(tab => tab.id === id));
+  const picked = state.picked?.filter(id => tabs.some(tab => tab.id === id));
   const samePicks = picked === undefined || (picked.length === state.picked!.length);
   if (tabs === state.tabs && groups === state.groups && samePicks) return state;
   return { ...state, tabs, groups, ...(state.picked ? { picked: samePicks ? state.picked : picked } : {}) };
