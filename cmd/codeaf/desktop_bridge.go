@@ -227,7 +227,8 @@ func runDesktopBridge(args []string) error {
 
 // desktopPlacesPath is the place graph file this bridge opens and every engine
 // it reaches reads: the --places flag, or the desktop folder of the state root,
-// made absolute once so both processes name one file.
+// made absolute once so both processes name one file. Child engines compare
+// placegraph.ReadGeneration on this path; that counter is the store's revision.
 func desktopPlacesPath(flag string) (string, error) {
 	path := strings.TrimSpace(flag)
 	if path == "" {

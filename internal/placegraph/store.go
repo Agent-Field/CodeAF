@@ -121,13 +121,24 @@ func (s *Store) Snapshot() (*Snapshot, error) {
 	return newSnapshot(st), nil
 }
 
-// Revision returns the current structural revision.
+// Revision returns the current structural revision. It takes the store lock and
+// runs recovery, so a damaged file is set aside here. Child engines that only
+// need to know whether the graph moved use Generation instead.
 func (s *Store) Revision() (uint64, error) {
 	snap, err := s.Snapshot()
 	if err != nil {
 		return 0, err
 	}
 	return snap.Revision, nil
+}
+
+// Generation is the structural revision a child engine compares. It is the same
+// counter Revision reports on a healthy file, read without the store lock and
+// without repairing anything: TouchOpened rewrites the file and does not move
+// it, and a structural commit does. A missing file is 0. An unreadable file is
+// an error that names the path, and the bytes stay where they are.
+func (s *Store) Generation() (uint64, error) {
+	return ReadGeneration(s.opts.Path)
 }
 
 // Receipts lists the undoable commits made through THIS Store, oldest first, at

@@ -558,7 +558,7 @@ func ReadSnapshot(path string) (*Snapshot, error) {
 		return newSnapshot(&State{Version: SchemaVersion, Places: []Place{}, Memberships: []Membership{}, Pinned: []string{}}), nil
 	}
 	if errors.Is(err, errOversize) {
-		return nil, fmt.Errorf("%w: places file over %d bytes", ErrTooLarge, MaxFileBytes)
+		return nil, fmt.Errorf("%w: %s is over %d bytes", ErrTooLarge, path, MaxFileBytes)
 	}
 	if err != nil {
 		return nil, err
@@ -566,10 +566,10 @@ func ReadSnapshot(path string) (*Snapshot, error) {
 	var st State
 	dec := json.NewDecoder(bytes.NewReader(data))
 	if err := dec.Decode(&st); err != nil {
-		return nil, fmt.Errorf("%w: places file is not valid JSON: %v", ErrInvalid, err)
+		return nil, fmt.Errorf("%w: %s is not valid JSON: %v", ErrInvalid, path, err)
 	}
 	if _, err := dec.Token(); err != io.EOF {
-		return nil, fmt.Errorf("%w: unexpected data after the places document", ErrInvalid)
+		return nil, fmt.Errorf("%w: unexpected data after %s", ErrInvalid, path)
 	}
 	if st.Version > SchemaVersion {
 		return nil, fmt.Errorf("%w (file version %d, this build %d)", ErrUnsupportedVersion, st.Version, SchemaVersion)
@@ -578,4 +578,41 @@ func ReadSnapshot(path string) (*Snapshot, error) {
 		return nil, err
 	}
 	return newSnapshot(&st), nil
+}
+
+// generationFile is the only fields ReadGeneration looks at. Decoding into this
+// still walks the whole document, which at a few hundred places is the cheap
+// read; it does not validate edges or repair them.
+type generationFile struct {
+	Version  int    `json:"version"`
+	Revision uint64 `json:"revision"`
+}
+
+// ReadGeneration is [Store.Generation] for a caller that has the path and not
+// the Store: the child engine at the start of a turn. A missing file is
+// generation 0, the same as a store that has never written. An unreadable file
+// returns an error that names path and leaves the bytes where they are.
+func ReadGeneration(path string) (uint64, error) {
+	data, err := readCapped(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if errors.Is(err, errOversize) {
+		return 0, fmt.Errorf("%w: %s is over %d bytes", ErrTooLarge, path, MaxFileBytes)
+	}
+	if err != nil {
+		return 0, err
+	}
+	var doc generationFile
+	dec := json.NewDecoder(bytes.NewReader(data))
+	if err := dec.Decode(&doc); err != nil {
+		return 0, fmt.Errorf("%w: %s is not valid JSON: %v", ErrInvalid, path, err)
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return 0, fmt.Errorf("%w: unexpected data after %s", ErrInvalid, path)
+	}
+	if doc.Version > SchemaVersion {
+		return 0, fmt.Errorf("%w (file version %d, this build %d): %s", ErrUnsupportedVersion, doc.Version, SchemaVersion, path)
+	}
+	return doc.Revision, nil
 }

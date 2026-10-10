@@ -529,8 +529,8 @@ func TestMergeNeverCreatesACycle(t *testing.T) {
 		if !eq(u.Parents, []string{gp.ID}) {
 			t.Fatalf("up parents = %v, want from's parents (not `into`, which lives below it)", u.Parents)
 		}
-		if id := findCycle(&sn.State); id != "" {
-			t.Fatalf("cycle through %s", id)
+		if names := (&sn.State).cycleNames(); names != "" {
+			t.Fatalf("cycle %s", names)
 		}
 	})
 	t.Run("invalid merges", func(t *testing.T) {
