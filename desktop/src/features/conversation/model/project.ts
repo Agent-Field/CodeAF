@@ -110,6 +110,19 @@ function addTool(input: Input, acc: Acc) {
 
 function addAside(input: Input, acc: Acc) {
   const { entry, index, snapshot } = input;
+  const id = `${acc.turn.id}:${index}`;
+  if (entry.AsideKind === 'decision-receipt' && entry.Decision) {
+    push(acc, index, { kind: 'decision-receipt', id, decision: entry.Decision });
+    return;
+  }
+  if (entry.AsideKind === 'plan' && entry.Plan) {
+    push(acc, index, { kind: 'plan', id, plan: entry.Plan });
+    return;
+  }
+  if (entry.AsideKind === 'remember-line' && entry.Text.trim()) {
+    push(acc, index, { kind: 'remember-line', id, text: entry.Text, undoReceipts: entry.UndoReceipts });
+    return;
+  }
   if (!entry.Text.trim()) return;
   const item = asideItem(entry, `${acc.turn.id}:${index}`, snapshot);
   if (entry.AsideKind === 'places' && item.kind === 'note') push(acc,index,{kind:'context-note',id:item.id,text:item.text,undoReceipts:item.undoReceipts});

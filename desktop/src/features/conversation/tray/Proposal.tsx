@@ -15,15 +15,15 @@ export type ProposalProps = {
   onHold: () => void;
 };
 
-/** A place that is still learning proposes its answer instead of deciding it: the question carries `learning`, a pick that is one of its choices, and a second choice to overrule with. */
+/** A place that is still learning proposes its answer instead of deciding it: the question carries `proposal` (or the older `learning` field), a pick that is one of its choices, and a second choice to overrule with. */
 export function isProposal(question: Question): boolean {
   const options = visibleOptions(question);
-  return Boolean(question.learning && question.kind === 'ask' && options.length >= 2 && options.some((o) => o.key === question.pick?.key));
+  return Boolean((question.proposal ?? question.learning) && question.kind === 'ask' && options.length >= 2 && options.some((o) => o.key === question.pick?.key));
 }
 
 /** "Would choose · 92% · matches what Marketing knows"; every part the engine did not measure is left out. */
 export function wouldChoose(question: Question): string {
-  const place = question.learning?.place;
+  const place = (question.proposal ?? question.learning)?.place;
   const percent = question.pick?.percent;
   return ['Would choose', percent ? `${percent}%` : '', place ? `matches what ${place} knows` : ''].filter(Boolean).join(' · ');
 }
