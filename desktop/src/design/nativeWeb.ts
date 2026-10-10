@@ -94,6 +94,17 @@ export function onWebState(handler: (state: WebState) => void): Promise<Unlisten
   });
 }
 
+/** ⌘L / Ctrl+L while a page is focused. A pane is set when the page itself forwarded the key. */
+export function onWebFocusAddress(handler: (pane?: string) => void): Promise<UnlistenFn> {
+  return listen<unknown>('web://focus-address', event => {
+    const payload = event.payload;
+    const pane = payload && typeof payload === 'object' && typeof (payload as { pane?: unknown }).pane === 'string'
+      ? (payload as { pane: string }).pane
+      : undefined;
+    handler(pane);
+  });
+}
+
 export function onWebNewTab(handler: (request: WebNewTab) => void): Promise<UnlistenFn> {
   return listen<unknown>('web://new-tab', event => {
     const p = event.payload as Partial<WebNewTab> | null;

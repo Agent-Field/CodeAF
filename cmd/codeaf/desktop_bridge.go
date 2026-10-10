@@ -210,7 +210,9 @@ func runDesktopBridge(args []string) error {
 	if err := json.NewEncoder(os.Stdout).Encode(map[string]string{"url": "http://" + listener.Addr().String(), "token": token, "model": desktopbridge.Model}); err != nil {
 		return err
 	}
-	server := &http.Server{Handler: bridge, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	// Handler refuses a foreign Origin before the token check, so a web page
+	// cannot fetch the bridge even if it learned the token.
+	server := &http.Server{Handler: bridge.Handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	guard.Go("desktop-bridge-shutdown", func() {
