@@ -3,7 +3,7 @@
 import { PlacesError } from '../../../src/features/places/client';
 import type { PlaceSetting, PolicyField, UsingApi, UsingView } from '../../../src/features/places/using-types';
 
-export type Scenario = 'full' | 'quiet' | 'empty' | 'offline' | 'failing' | 'noengine' | 'absent' | 'slow' | 'single';
+export type Scenario = 'full' | 'quiet' | 'empty' | 'offline' | 'failing' | 'noengine' | 'absent' | 'slow' | 'single' | 'decided';
 
 const origin = (placeId: string, sourceId: string, level = 0, addedBy: 'you' | 'ai' = 'you') => ({ placeId, sourceId, addedBy, level });
 
@@ -79,6 +79,10 @@ export function mockApi(scenario: Scenario, calls: Calls, flags: { choiceFails?:
     : scenario === 'single' ? singleView()
     : scenario === 'quiet' ? quietView() : scenario === 'noengine' ? { ...fullView(), engine: { places: false, reason: 'This conversation was opened by another program, which reads no places.' }, settings: fullView().settings.map(s => ({ ...s, state: 'unavailable' as const })) }
     : fullView();
+  if (scenario === 'decided') {
+    view.bundle.policy = [{ field: 'model', value: 'Pro', outcome: 'decided', decidedBy: 'pl_codeaf', wanted: [{ placeId: 'pl_release', value: 'Flash' }, { placeId: 'pl_parser', value: 'Pro' }] }];
+    view.settings = [{ field: 'model', state: 'applied', value: 'Pro', current: 'Pro' }];
+  }
   let broken = scenario === 'offline' || scenario === 'failing';
   const set = (field: PolicyField, next: PlaceSetting) => { view = { ...view, revision: view.revision + 1, bundle: { ...view.bundle, revision: view.revision + 1 }, settings: view.settings.map(s => (s.field === field ? next : s)) }; };
   return {

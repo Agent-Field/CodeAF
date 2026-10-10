@@ -99,7 +99,7 @@ test('with no knows lines the instructions stay the prose, labelled by every pla
 
 test('the places\' wishes read as the design says: who wanted what, and who decided', () => {
   const decision = (patch: Partial<PolicyDecision>): PolicyDecision => ({ field: 'model', value: 'pro', outcome: 'decided', decidedBy: 'p2', wanted: [{ placeId: 'p1', value: 'flash' }], ...patch });
-  assert.equal(wantedLine(decision({}), bundle()), 'Release wanted flash · Marketing decided');
+  assert.equal(wantedLine(decision({ wanted: [{ placeId: 'p1', value: 'flash' }, { placeId: 'p2', value: 'pro' }] }), bundle()), 'Release wanted flash · Marketing decided');
   assert.equal(wantedLine(decision({ outcome: 'chosen', decidedBy: 'you' }), bundle()), 'Release wanted flash · You picked');
   assert.equal(wantedLine(decision({ outcome: 'needsPick', value: '', decidedBy: undefined, wanted: [{ placeId: 'p1', value: 'flash' }, { placeId: 'p2', value: 'pro' }] }), bundle()), 'Release wanted flash · Marketing wanted pro');
   assert.equal(wantedLine(decision({ outcome: 'agreed', wanted: [{ placeId: 'p1', value: 'pro' }, { placeId: 'p2', value: 'pro' }] }), bundle()), undefined);
