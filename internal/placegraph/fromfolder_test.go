@@ -34,7 +34,7 @@ func TestAFolderBecomesAPlaceNamedAfterIt(t *testing.T) {
 func TestARepoSubfolderBecomesTheRepoPlace(t *testing.T) {
 	st := fromFolderStore(t)
 	repo := mkdir(t, realDir(t), "shop")
-	mkdir(t, repo, ".git")
+	writeHead(t, mkdir(t, repo, ".git"))
 	sub := mkdir(t, repo, "app", "src")
 	got, err := st.FromFolder(sub, noDeny)
 	if err != nil {
@@ -49,7 +49,7 @@ func TestARepoSubfolderBecomesTheRepoPlace(t *testing.T) {
 func TestFromFolderIsIdempotent(t *testing.T) {
 	st := fromFolderStore(t)
 	repo := mkdir(t, realDir(t), "shop")
-	mkdir(t, repo, ".git")
+	writeHead(t, mkdir(t, repo, ".git"))
 	first, err := st.FromFolder(repo, noDeny)
 	if err != nil {
 		t.Fatal(err)
