@@ -16,7 +16,7 @@ test('each menu action receives its row and Delete… requests confirmation', ()
   const archived = { ...item, archived: true };
   const calls: unknown[] = [];
   const entries = rowMenu(archived, (row, press) => calls.push(['continue', row, press]), row => calls.push(['read', row]), row => calls.push(['archive', row]), row => calls.push(['confirm', row]));
-  for (const entry of entries) if (entry.kind !== 'separator' && entry.kind !== 'submenu') entry.onSelect();
+  for (const entry of entries) if (entry.kind !== 'separator' && entry.kind !== 'submenu' && entry.kind !== 'swatches') entry.onSelect();
   assert.deepEqual(calls, [['continue', archived, { newTab: false }], ['read', archived], ['archive', archived], ['confirm', archived]]);
 });
 

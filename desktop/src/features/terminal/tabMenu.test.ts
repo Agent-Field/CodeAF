@@ -17,8 +17,8 @@ function api(pane: Tab): TabsApi {
 }
 
 function action(items: MenuEntry[], id: string) {
-  const entry = items.find(item => item.kind !== 'separator' && item.kind !== 'submenu' && item.id === id);
-  if (!entry || entry.kind === 'separator' || entry.kind === 'submenu') throw new Error(`missing ${id}`);
+  const entry = items.find(item => item.kind !== 'separator' && item.kind !== 'submenu' && item.kind !== 'swatches' && item.id === id);
+  if (!entry || entry.kind === 'separator' || entry.kind === 'submenu' || entry.kind === 'swatches') throw new Error(`missing ${id}`);
   return entry;
 }
 
