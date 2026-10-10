@@ -11,6 +11,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
+use tauri::webview::PageLoadPayload;
 use tauri::{
     AppHandle, Emitter, LogicalPosition, Manager, Runtime, Webview, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder, Window,
@@ -21,6 +22,8 @@ const NOT_A_PLACE: &str = "That is not a place codeaf knows";
 const NO_WINDOW: &str = "That window is no longer open";
 const BAD_TAB: &str = "That tab cannot move to another window";
 const BAD_TITLE: &str = "That window title cannot be shown";
+pub(crate) const BAD_FOCUS: &str = "That tab cannot be focused";
+pub(crate) const BAD_POSITION: &str = "That position is outside the screen";
 
 /// How long a handoff waits for its window to claim it. A window that never
 /// loads must not hold a tab hostage, and the source keeps the tab meanwhile.
@@ -87,6 +90,22 @@ pub fn trusted<R: Runtime>(caller: &Webview<R>) -> Result<String, String> {
         Ok(caller.label().to_string())
     } else {
         Err(UNTRUSTED.into())
+    }
+}
+
+/// A tab id that may be named in a window URL or a focus event. Query syntax,
+/// a path and a blank id are refused so the new window cannot be pointed
+/// somewhere else.
+pub(crate) fn checked_focus_tab(id: &str) -> Result<&str, String> {
+    if id.is_empty()
+        || id.len() > 128
+        || !id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        Err(BAD_FOCUS.into())
+    } else {
+        Ok(id)
     }
 }
 
@@ -258,7 +277,7 @@ pub struct Point {
 }
 
 impl Point {
-    fn finite(self) -> bool {
+    pub(crate) fn finite(self) -> bool {
         self.x.is_finite() && self.y.is_finite() && self.x.abs() < 1e6 && self.y.abs() < 1e6
     }
 }
@@ -389,6 +408,18 @@ pub enum OpenResult {
     Handoff(Opened),
 }
 
+/// A drop point is the new window's top-left, in logical screen coordinates.
+/// With no drop point the window cascades from the one that opened it.
+pub(crate) fn window_origin(
+    at: Option<Point>,
+    caller: LogicalPosition<f64>,
+) -> LogicalPosition<f64> {
+    match at {
+        Some(point) => LogicalPosition::new(point.x, point.y),
+        None => LogicalPosition::new(caller.x + cascade_offset(), caller.y + cascade_offset()),
+    }
+}
+
 /// Copying the complete config preserves platform materials and future tokens.
 fn placed_config(
     mut config: tauri::utils::config::WindowConfig,
@@ -407,15 +438,22 @@ fn placed_config(
 
 /// The new window is built from `main`'s own configuration, so its size,
 /// minimum size, macOS overlay title bar and vibrancy come from the one place
-/// that is generated from design tokens.
-fn build<R: Runtime>(
+/// that is generated from design tokens. `on_page_load` runs only for this
+/// window's own view: a tear-off uses it to say which tab to show after the
+/// view has loaded, and an ordinary open passes a no-op.
+fn build<R, F>(
     app: &AppHandle<R>,
     caller: &Window<R>,
     label: &str,
     place: &str,
     at: Option<Point>,
     focus_tab: Option<&str>,
-) -> Result<WebviewWindow<R>, String> {
+    on_page_load: F,
+) -> Result<WebviewWindow<R>, String>
+where
+    R: Runtime,
+    F: Fn(WebviewWindow<R>, PageLoadPayload<'_>) + Send + Sync + 'static,
+{
     let config = app
         .config()
         .app
@@ -424,50 +462,47 @@ fn build<R: Runtime>(
         .find(|w| w.label == "main")
         .cloned()
         .ok_or("The main window configuration is missing")?;
-    let position = match at {
-        Some(point) => LogicalPosition::new(point.x, point.y),
-        None => {
-            let scale = caller.scale_factor().unwrap_or(1.0);
-            let origin = caller
-                .outer_position()
-                .map(|p| p.to_logical::<f64>(scale))
-                .unwrap_or(LogicalPosition::new(0.0, 0.0));
-            LogicalPosition::new(origin.x + cascade_offset(), origin.y + cascade_offset())
-        }
-    };
+    let scale = caller.scale_factor().unwrap_or(1.0);
+    let caller_origin = caller
+        .outer_position()
+        .map(|p| p.to_logical::<f64>(scale))
+        .unwrap_or(LogicalPosition::new(0.0, 0.0));
+    let position = window_origin(at, caller_origin);
     let config = placed_config(config, label, place, position, focus_tab);
     WebviewWindowBuilder::from_config(app, &config)
         .map_err(|_| "A new window could not be opened".to_string())?
+        .on_page_load(on_page_load)
         .build()
         .map_err(|_| "A new window could not be opened".to_string())
 }
 
-#[tauri::command]
-pub async fn window_open<R: Runtime>(
-    app: AppHandle<R>,
-    webview: Webview<R>,
+/// Opens a window on a place. `on_page_load` is attached before the view is
+/// created, so a caller can speak to that window the moment it finishes
+/// loading and not before.
+pub(crate) fn open_placed<R, F>(
+    app: &AppHandle<R>,
+    webview: &Webview<R>,
     request: OpenRequest,
-) -> Result<OpenResult, String> {
-    let from = trusted(&webview)?;
+    on_page_load: F,
+) -> Result<OpenResult, String>
+where
+    R: Runtime,
+    F: Fn(WebviewWindow<R>, PageLoadPayload<'_>) + Send + Sync + 'static,
+{
+    let from = trusted(webview)?;
     let place = checked_place(&request.place_key)?.to_string();
-    if request.focus_tab.as_deref().is_some_and(|id| {
-        id.is_empty()
-            || id.len() > 128
-            || !id
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-    }) {
-        return Err("That tab cannot be focused".into());
+    if let Some(id) = request.focus_tab.as_deref() {
+        checked_focus_tab(id)?;
     }
     if let Some(tab) = &request.handoff {
         tab.check()?;
     }
     if request.at.is_some_and(|p| !p.finite()) {
-        return Err("That position is outside the screen".into());
+        return Err(BAD_POSITION.into());
     }
     let caller = webview.window();
     let (label, handoff_id) = {
-        let mut book = book(&app)?;
+        let mut book = book(app)?;
         let label = book.allocate_available(|label| app.get_window(label).is_some());
         let id = request
             .handoff
@@ -476,14 +511,15 @@ pub async fn window_open<R: Runtime>(
         (label, id)
     };
     if let Err(error) = build(
-        &app,
+        app,
         &caller,
         &label,
         &place,
         request.at,
         request.focus_tab.as_deref(),
+        on_page_load,
     ) {
-        if let Ok(mut book) = book(&app) {
+        if let Ok(mut book) = book(app) {
             book.forget(&label);
         }
         return Err(error);
@@ -493,6 +529,15 @@ pub async fn window_open<R: Runtime>(
     } else {
         OpenResult::Label(label)
     })
+}
+
+#[tauri::command]
+pub async fn window_open<R: Runtime>(
+    app: AppHandle<R>,
+    webview: Webview<R>,
+    request: OpenRequest,
+) -> Result<OpenResult, String> {
+    open_placed(&app, &webview, request, |_, _| {})
 }
 
 #[derive(Debug, Deserialize)]
@@ -854,6 +899,22 @@ mod tests {
         assert_eq!(window_title("  ").unwrap(), "codeaf");
         assert!(window_title("a\nb").is_err());
         assert!(window_title(&"x".repeat(MAX_WINDOW_TITLE + 1)).is_err());
+    }
+
+    #[test]
+    fn a_drop_point_is_the_window_origin_and_the_menu_cascades() {
+        let dropped = window_origin(
+            Some(Point { x: 40.0, y: 80.0 }),
+            LogicalPosition::new(0.0, 0.0),
+        );
+        assert_eq!((dropped.x, dropped.y), (40.0, 80.0));
+        let menu = window_origin(None, LogicalPosition::new(10.0, 20.0));
+        assert_eq!((menu.x, menu.y), (34.0, 44.0));
+        let left = window_origin(
+            Some(Point { x: -24.0, y: 8.0 }),
+            LogicalPosition::new(0.0, 0.0),
+        );
+        assert_eq!((left.x, left.y), (-24.0, 8.0));
     }
 
     #[test]

@@ -3166,6 +3166,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how to turn telemetry off now", "running-from-the-terminal"},
 		{"where are my cleared drafts", "commands"},
 		{"what does /workspace path do", "commands"},
+		{"how do I move a tab to a new window", "desktop-tab-move-window"},
+		{"what happens when I drag a tab outside the strip", "desktop-tab-move-window"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
