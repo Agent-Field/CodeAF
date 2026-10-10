@@ -61,6 +61,8 @@ Shell). On any conflict, the design files win over code and older docs.
 
 | # | Question | Assumption the app ships now |
 |---|---|---|
+| CM2 | How should a composer context menu fit when neither side of its anchor has the nominal menu width? | Limit its width to Radix’s measured available space; labels wrap naturally, keeping both the action and shortcut reachable without horizontal clipping. |
+| CM1 | What happens when Paste as plain text cannot read the clipboard? | Preserve the draft and show the existing muted composer status: “Clipboard text could not be read. Paste with your keyboard instead.” No clipboard contents are logged. |
 | Q30 | RESOLVED by the latest Interactions page: ⌘1–9 jump to tabs and ⌥⌘1–3 switch pinned models, so the two no longer share keys | ⌘1–9 jump to tabs; ⌥⌘1–3 pick pinned models. No conflict remains. |
 | OV1 | The earlier Shell spec opened the overview with ⌘↑; the latest Shell and Interactions pages say ⌘⇧\ (or a pinch out) and give ⌘↑/⌘↓ to stepping between messages | ⌘⇧\ (Ctrl Shift A off the Mac) and the grid icon open it; the overview no longer listens for ⌘↑. |
 | OV2 | Pinch out opens the overview (Shell 2h) | Not wired: the browser and the webview report no reliable pinch event. The grid icon and the keys open it. |
