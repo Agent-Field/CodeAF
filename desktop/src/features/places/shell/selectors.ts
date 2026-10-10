@@ -137,7 +137,7 @@ function attention(item: Attention, viewing: string): HomeView['attention'][numb
   return {
     id: item.chatId, title: item.chatTitle || 'Untitled chat',
     placeName: item.placeId && item.placeId !== viewing ? item.placeName : undefined,
-    status: item.kind === 'needsYou' ? 'waiting' : 'running', statusText: item.text || undefined,
+    status: item.kind === 'needsYou' ? 'waiting' : 'running', detail: item.text && item.text !== item.chatTitle ? item.text : undefined,
   };
 }
 

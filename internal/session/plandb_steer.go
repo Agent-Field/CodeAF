@@ -16,7 +16,6 @@ package session
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
@@ -42,7 +41,7 @@ var errPlanRunNotHeld = errors.New("a run is not held as a whole: hold one of it
 // planNoTask is the refusal for an id the conversation's plan does not hold,
 // naming the id exactly as the caller wrote it so a surface can echo it.
 func planNoTask(id string) error {
-	return fmt.Errorf("no task %s in this conversation", strings.TrimSpace(id))
+	return noSuchPlanTask{id: strings.TrimSpace(id)}
 }
 
 // planSteer is the one road all six verbs take: open the conversation's store,

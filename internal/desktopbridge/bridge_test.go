@@ -596,6 +596,12 @@ var seamContract = []struct {
 	{http.MethodPost, "/councils/{id}/steer"},
 }
 
+// seamOwned says a row has a real handler in this package (knows_routes.go or
+// plan_routes.go), so the stub test leaves it to that file's own tests.
+func seamOwned(pattern string) bool {
+	return strings.Contains(pattern, "/knows") || strings.Contains(pattern, "/plan/{plan}/")
+}
+
 func seamExample(pattern string) string {
 	return "/api/engine" + strings.NewReplacer("{id}", "pl_1", "{line}", "line_7", "{plan}", "plan_9").Replace(pattern)
 }
@@ -604,17 +610,22 @@ func TestSeamRouteTableAnswers501UntilAHandlerLands(t *testing.T) {
 	if len(seamTable) != len(seamContract) {
 		t.Fatalf("seam table has %d routes, the contract lists %d", len(seamTable), len(seamContract))
 	}
-	// Council list and steer have their handler. Every other row is still the
-	// empty slot that answers 501 until its own file lands.
+	// Council list and steer have their handler (landed) and are proved
+	// below. Knows and plan rows belong to their own files (seamOwned) and
+	// are proved there. Every other row is still the empty slot that
+	// answers 501 until its own file lands.
 	landed := map[string]bool{
 		http.MethodGet + " /councils":             true,
 		http.MethodPost + " /councils/{id}/steer": true,
 	}
 	for i, want := range seamContract {
 		got := seamTable[i]
-		key := got.method + " " + got.pattern
-		if got.method != want.method || got.pattern != want.pattern || (got.handle != nil) != landed[key] {
-			t.Fatalf("row %d: got %s %s filled=%v, want %s %s filled=%v", i, got.method, got.pattern, got.handle != nil, want.method, want.pattern, landed[want.method+" "+want.pattern])
+		// A council row is not seamOwned, and a knows or plan row is not
+		// in landed. A handler is required when either side claims the row.
+		key := want.method + " " + want.pattern
+		filled := landed[key] || seamOwned(want.pattern)
+		if got.method != want.method || got.pattern != want.pattern || (got.handle != nil) != filled {
+			t.Fatalf("row %d: got %s %s filled=%v, want %s %s filled=%v", i, got.method, got.pattern, got.handle != nil, want.method, want.pattern, filled)
 		}
 	}
 	b := New(testToken, func(string) (Connection, error) {
@@ -623,6 +634,9 @@ func TestSeamRouteTableAnswers501UntilAHandlerLands(t *testing.T) {
 	})
 	t.Cleanup(b.Close)
 	for _, route := range seamContract {
+		if seamOwned(route.pattern) {
+			continue
+		}
 		body := ""
 		if route.method == http.MethodPut {
 			body = `{"threshold":90,"alwaysAsk":true}`
@@ -644,17 +658,6 @@ func TestSeamRouteTableAnswers501UntilAHandlerLands(t *testing.T) {
 		if w.Code != http.StatusNotImplemented || strings.TrimSpace(w.Body.String()) != `{"error":"`+seamNotImplemented+`"}` {
 			t.Errorf("%s %s: %d %s", route.method, route.pattern, w.Code, w.Body.String())
 		}
-	}
-	// A live session used to 404 these as an unknown action. A missing one used
-	// to say reattach. Both are the stub now.
-	liveBridge, _, id := fixture(t)
-	live := request(liveBridge, http.MethodPost, "/api/engine/sessions/"+id+"/plan/plan_9/cancel", "{}")
-	if live.Code != http.StatusNotImplemented || strings.Contains(live.Body.String(), "unknown engine action") {
-		t.Fatalf("live plan: %d %s", live.Code, live.Body.String())
-	}
-	missing := request(b, http.MethodPost, "/api/engine/sessions/missing/plan/plan_9/go", "{}")
-	if missing.Code != http.StatusNotImplemented || strings.Contains(missing.Body.String(), "reattach") {
-		t.Fatalf("missing plan: %d %s", missing.Code, missing.Body.String())
 	}
 	wrong := []struct{ method, path, sentence string }{
 		{http.MethodPost, "/api/engine/places/pl_1/decisions", "GET required"},
@@ -727,6 +730,18 @@ func TestSeamRouteRegistrationReplacesTheStub(t *testing.T) {
 		t.Fatalf("GET overturn ran the POST handler (%d calls)", calls)
 	}
 	lineCalls := 0
+	const linePattern = "/places/{id}/knows/{line}"
+	var original seamHandler
+	for _, route := range seamTable {
+		if route.method == http.MethodPatch && route.pattern == linePattern {
+			original = route.handle
+		}
+	}
+	clearSeamRoute(http.MethodPatch, linePattern)
+	t.Cleanup(func() {
+		clearSeamRoute(http.MethodPatch, linePattern)
+		registerSeamRoute(http.MethodPatch, linePattern, original)
+	})
 	registerSeamRoute(http.MethodPatch, "/places/{id}/knows/{line}", func(_ *Bridge, w http.ResponseWriter, _ *http.Request, ids map[string]string) {
 		lineCalls++
 		if ids["id"] != "pl_1" || ids["line"] != "line_7" {
@@ -734,7 +749,6 @@ func TestSeamRouteRegistrationReplacesTheStub(t *testing.T) {
 		}
 		write(w, map[string]bool{"accepted": true})
 	})
-	t.Cleanup(func() { clearSeamRoute(http.MethodPatch, "/places/{id}/knows/{line}") })
 	if request(b, http.MethodPatch, "/api/engine/places/pl_1/knows/line_7", "{}").Code != http.StatusOK || lineCalls != 1 {
 		t.Fatalf("knows line was not dispatched (%d)", lineCalls)
 	}
