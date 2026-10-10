@@ -114,3 +114,14 @@ export function listCount(output: string): number | undefined {
   if (/^(No files found|\(empty directory\))/.test(output)) return 0;
   return nonEmptyLines(uncapped(output).text);
 }
+
+/** The engine accepts an explicit requested pixel size for generate_image.
+ * Aspect ratios, provider defaults and prose output do not report pixels. */
+export function imageSize(args: string): string | undefined {
+  const size = argString(parseArgs(args), 'size').trim();
+  const match = /^(\d+)\s*[x×]\s*(\d+)$/.exec(size);
+  if (!match) return undefined;
+  const [width, height] = [Number(match[1]), Number(match[2])];
+  return [width, height].every(value => Number.isSafeInteger(value) && value > 0)
+    ? `${width}×${height}` : undefined;
+}

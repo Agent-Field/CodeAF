@@ -10,6 +10,7 @@
 .work-call-toggle::after { content: ""; position: absolute; inset: 0; }
 .work-call-dot { width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--mark-running); }
 .work-call-dot[data-state="waiting"] { background: var(--mark-waiting); }
+.work-call[data-state="done"] .work-call-toggle { color: var(--ink-2); }
 .work-call[data-state="failed"] .work-call-toggle { color: var(--mark-failed); }
 .work-call[data-state="stopped"] .work-call-toggle, .work-call[data-state="refused"] .work-call-toggle { color: var(--ink-3); }
 
