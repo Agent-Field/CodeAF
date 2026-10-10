@@ -14,6 +14,7 @@
 // `world` record, which is what makes the places store read the graph again, exactly as the live window does.
 
 import type { Page, Route } from '@playwright/test';
+import { bindPlaceFolders } from './session-place';
 import type { PlaceProposal } from '../../../src/features/places/proposals-client';
 import type {
   AddedBy, ChatRow, Crumb, HomeDigest, Mutation, PlaceCounts, PlaceDetail, PlaceView, PlacesGraph, Receipt, SourceKind, SourceView, StatusRollup, Tint,
@@ -750,6 +751,10 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
     }
   };
   for (const window of [page, ...alsoServe]) await window.route('**/api/engine/**', serve);
+  // A new chat's workspace is this place's first folder or repo that is still there. The conversation mock reads it
+  // at open time, so a folder added after install is the one the next chat uses.
+  const folderOf = (placeId: string) => store.places.find(place => place.id === placeId)?.sources.find(source => (source.kind === 'folder' || source.kind === 'repo') && source.check.state === 'ok')?.ref;
+  for (const window of [page, ...alsoServe]) bindPlaceFolders(window, folderOf);
 
   const nudge = () => { bumpWorld(); };
   return {
