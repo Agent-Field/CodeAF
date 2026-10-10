@@ -6,15 +6,17 @@ type TurnFooterProps = {
   state: TurnV2['state'];
   onRetry?: () => void;
   retrying?: boolean;
+  retryTime?: string; // mono delay beside Retrying; only when the engine sent one
 };
 
 /** The quiet line that ends a turn which did not end well; nothing for a turn that did. */
-export function TurnFooter({ state, onRetry, retrying = false }: TurnFooterProps) {
+export function TurnFooter({ state, onRetry, retrying = false, retryTime }: TurnFooterProps) {
   if (retrying) {
     return (
       <div className="turn-footer" role="status">
         <span className="turn-footer-dot" aria-hidden="true" />
         <span>Retrying</span>
+        {retryTime && <span className="turn-footer-time">{retryTime}</span>}
       </div>
     );
   }

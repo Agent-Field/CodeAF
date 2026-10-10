@@ -218,3 +218,11 @@ Right-click **Send**, **Stop** or **Steer** for **Queue instead**. It is enabled
 while work is running and the field contains nonblank text. It sends the draft through
 the same queue action as Option+Enter (⌥↵) on macOS or Alt+Enter elsewhere, without
 stopping or steering the current work. A disabled composer cannot paste or queue.
+
+## Review a question in an unfocused desktop split pane
+
+An unfocused conversation in a desktop split shows a small card above its compact
+reply field when the engine has a pending question. The card shows the question's
+title and a `Review` button. Review focuses that pane and opens its full question
+tray, returning to the latest content if you had scrolled away. With no pending
+question, the card is absent. Review does not answer the question.
