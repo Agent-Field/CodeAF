@@ -185,7 +185,7 @@ func repoRoot(path string, isDir bool) string {
 		dir = filepath.Dir(path)
 	}
 	for range 256 {
-		if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
+		if isGitEntry(filepath.Join(dir, ".git")) {
 			return dir
 		}
 		parent := filepath.Dir(dir)
@@ -195,6 +195,22 @@ func repoRoot(path string, isDir bool) string {
 		dir = parent
 	}
 	return ""
+}
+
+// isGitEntry says whether a `.git` path is a real repository marker. A file
+// is the pointer a worktree or submodule leaves; a folder counts only when it
+// holds a HEAD, because a stray empty `.git` (one sits in /tmp on some boxes)
+// would otherwise make every temp folder below it "inside a repository".
+func isGitEntry(path string) bool {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return false
+	}
+	if !info.IsDir() {
+		return true
+	}
+	_, err = os.Lstat(filepath.Join(path, "HEAD"))
+	return err == nil
 }
 
 func urlProblem(ref string) string {

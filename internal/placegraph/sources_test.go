@@ -8,6 +8,15 @@ import (
 	"testing"
 )
 
+// writeHead gives a fake .git folder the HEAD a real one has; repoRoot ignores
+// an empty .git so a stray one (as in /tmp) cannot claim every folder below it.
+func writeHead(t *testing.T, gitDir string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func mkdir(t *testing.T, parts ...string) string {
 	t.Helper()
 	dir := filepath.Join(parts...)
@@ -72,7 +81,7 @@ func TestOnlyWebURLsAreSources(t *testing.T) {
 
 func TestAFolderInsideARepoKeepsWhereItPointedAndNamesTheRepo(t *testing.T) {
 	repo := mkdir(t, realDir(t), "proj")
-	mkdir(t, repo, ".git")
+	writeHead(t, mkdir(t, repo, ".git"))
 	sub := mkdir(t, repo, "internal", "parse")
 
 	src, err := NewSource(SourceFolder, sub, AddedByYou, noDeny)
