@@ -3,7 +3,7 @@ import { installMockEngine } from './support/mock-engine';
 import { installMockPlaces, type PlacesSeed } from './support/mock-places';
 
 // Places 6a / 9a / 9d: the frame wears the window place's tint. Now and All places are graphite.
-// The swap is the attribute, measured on the next read, with no transition on the frame.
+// Iteration 2 I2.1 adds a 320ms tint transition; reduced motion keeps the swap instant.
 
 const garden = (): PlacesSeed => ({
   places: [
@@ -41,29 +41,26 @@ async function frame(page: Page) {
   });
 }
 
-function oklch(color: string) {
-  const match = /oklch\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\)/.exec(color);
-  expect(match, color).toBeTruthy();
-  return { l: Number(match![1]), c: Number(match![2]), h: Number(match![3]) };
-}
-
 async function expectTint(page: Page, theme: 'light' | 'dark', tint: keyof typeof hueOf) {
   const measured = await frame(page);
   expect(measured.tint).toBe(tint);
   expect(Number(measured.h)).toBeCloseTo(hueOf[tint], 0);
   expect(Number(measured.a)).toBeCloseTo(chromaOf[tint], 3);
-  const paint = oklch(measured.background);
-  expect(paint.l).toBeCloseTo(frameOf[theme].l, 2);
-  expect(paint.c).toBeCloseTo(frameOf[theme].c, 3);
-  expect(paint.h).toBeCloseTo(hueOf[tint], 0);
-  for (const part of measured.transition.split(',').map(item => item.trim())) {
-    expect(part === 'background' || part === 'background-color' || part.startsWith('--')).toBe(false);
-  }
-  expect(measured.animations).toBe(0);
+  // Resolve the measured design colour in the browser: interpolation can serialize as oklab.
+  const expected = await page.evaluate(({ l, c, h }) => {
+    const probe = document.createElement('span');
+    probe.style.color = `oklch(${l} ${c} ${h})`;
+    document.body.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  }, { ...frameOf[theme], h: hueOf[tint] });
+  await expect.poll(async () => (await frame(page)).background).toBe(expected);
+  await expect.poll(async () => (await frame(page)).animations).toBe(0);
 }
 
 for (const theme of ['light', 'dark'] as const) {
-  test(`PL-023 frame tint swaps instantly in ${theme}`, async ({ page }) => {
+  test(`PL-023 / I2.1 frame tint reaches its design colour in ${theme}`, async ({ page }) => {
     await page.emulateMedia({ colorScheme: theme, reducedMotion: theme === 'dark' ? 'reduce' : 'no-preference' });
     await boot(page, theme);
     await expectTint(page, theme, 'graphite');

@@ -1,11 +1,11 @@
-/* The composer's model label: quiet ink-3 text (design 1e) that lifts to a field fill on hover. */
+/* The composer's model label: quiet ink-2 text (design 1e) that lifts to a field fill on hover. */
 .model-picker.button {
   min-height: var(--control-height);
   min-width: 0;
   padding: 0 var(--control-pad-ghost);
   gap: var(--space-1);
   border-radius: var(--radius-control);
-  color: var(--ink-3);
+  color: var(--ink-2);
   font-size: var(--type-label-size);
   line-height: var(--type-label-leading);
   font-weight: var(--type-label-weight);
@@ -15,8 +15,11 @@
 .model-picker.button:hover:not(:disabled),
 .model-picker.button[data-state='open'] {
   background: var(--field);
-  color: var(--ink);
+  color: var(--ink-2);
 }
+
+.model-picker.button:active:not(:disabled) { background: var(--field-2); color: var(--ink-2); }
+.model-picker.button > .app-icon { width: var(--model-picker-chevron-size); height: var(--model-picker-chevron-size); }
 
 .model-picker-label {
   overflow: hidden;
