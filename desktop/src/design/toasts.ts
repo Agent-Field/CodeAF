@@ -5,8 +5,8 @@
 // region draws it last, in the same place, with the same label, every time. A feature never spells "Undo" itself.
 //
 // The menus lane and the Places shell each arrived with a toast of their own; they are ONE channel now, so a closed
-// tab's "Stop it" and a moved place's Undo stand in the same stack (Components "Overlays": at most three, newest at the
-// bottom) instead of two regions drawn over each other.
+// tab's "Stop it" and a moved place's Undo share one region instead of two drawn over each other.
+// One toast is on screen (SH-OQ6). A newer one replaces the older, which settles, so a person never has two to dismiss.
 
 /** Words of a toast; `{ strong }` is the subject (a tab's or a place's name) and is drawn medium. */
 export type ToastPart = string | { strong: string };
@@ -33,8 +33,8 @@ export type ToastSpec = {
 
 export type Toast = ToastSpec & { id: number; tone: ToastTone };
 
-/** At most this many toasts are drawn at once; showing a fourth lets the oldest go (and settles it). */
-export const TOAST_LIMIT = 3;
+/** One toast is drawn. Showing another replaces it and settles the one that left. */
+export const TOAST_LIMIT = 1;
 
 export type Toasts = ReturnType<typeof createToasts>;
 

@@ -16,6 +16,7 @@ import { monogramOf } from '../web/address';
 import { DropdownMenu, type IconName } from '../../components/ui';
 import { kindDef } from './kinds/registry';
 import { isPlaceHome } from './reducers/home';
+import { stripMiddleCloses } from './stripPointer';
 import { Tab as TabView, type TabState } from './Tab';
 
 
@@ -71,6 +72,14 @@ export function TabItem({ api, tab, order, inGroup = false, narrow = false }: { 
   const active = tab.id === api.state.activeId;
   const favicons = useWebFavicons(api.workspaceKey, panesOf(tab));
   const drag = tabDragProps(api, tab);
+  const home = isPlaceHome(tab);
+  // Middle-click is the × (SH-OQ4): the view closes and the work keeps running. A pin and a place Home have no close.
+  const onMouseDown = (event: MouseEvent) => { if (event.button === 1) event.preventDefault(); };
+  const onAuxClick = (event: MouseEvent) => {
+    if (event.button !== 1) return;
+    event.preventDefault();
+    if (stripMiddleCloses(tab)) api.closeTab(tab.id);
+  };
   // Design 3l: Alt turns a running tab's close into a stop square, but only under the pointer or focus. An idle tab ignores Alt.
   const [engaged, setEngaged] = useState(false);
   const stop = useAltHeld() && engaged && api.isRunning(tab);
@@ -79,8 +88,7 @@ export function TabItem({ api, tab, order, inGroup = false, narrow = false }: { 
   // While any preview card is open the tab's own full-title tooltip stays shut (Shell 3l: the two never stack).
   const previewOpen = useSyncExternalStore(api.previews.subscribe, () => api.previews.get() !== null);
   const choose = (id: string) => (event: MouseEvent) => api.dispatch(picks(event) ? { type: 'pick', id: tab.id } : { type: 'select', id });
-  const frame = { ...drag, 'data-picked': picked || undefined, onPointerEnter: () => setEngaged(true), onPointerLeave: () => setEngaged(false), onFocus: () => setEngaged(true), onBlur: () => setEngaged(false) };
-  const home = isPlaceHome(tab);
+  const frame = { ...drag, 'data-picked': picked || undefined, onMouseDown, onAuxClick, onPointerEnter: () => setEngaged(true), onPointerLeave: () => setEngaged(false), onFocus: () => setEngaged(true), onBlur: () => setEngaged(false) };
   const compressed = compressesTab(narrow, active, tab.pinned, home);
   if (tab.split && compressed) {
     const panes = panesOf(tab);
