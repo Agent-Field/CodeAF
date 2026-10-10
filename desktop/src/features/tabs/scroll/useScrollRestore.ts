@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 import type { ScrollSpot } from './scrollMemory';
 import { scheduleSave, useScrollMemory } from './memoryStore';
+import { canRestore, restoredTop } from './restoreRules';
 
 export { pruneScrollMemory, scrollMemorySize } from './memoryStore';
 
@@ -108,9 +109,9 @@ function domScroller(element: HTMLElement): Scroller {
   // Content that has not grown big enough yet cannot hold the offset: wait for it rather than settle for a clamp.
   return {
     read: () => spotOf(element),
-    reachable: spot => (spot.end || spot.top <= maxTop() + 0.5) && spot.left <= maxLeft() + 0.5,
-    write: spot => { element.scrollTop = spot.end ? maxTop() : spot.top; element.scrollLeft = spot.left; },
-    settled: spot => Math.abs(element.scrollTop - (spot.end ? maxTop() : spot.top)) <= 0.5 && Math.abs(element.scrollLeft - spot.left) <= 0.5,
+    reachable: spot => canRestore(spot, maxTop(), maxLeft()),
+    write: spot => { element.scrollTop = restoredTop(spot, maxTop()); element.scrollLeft = spot.left; },
+    settled: spot => Math.abs(element.scrollTop - restoredTop(spot, maxTop())) <= 0.5 && Math.abs(element.scrollLeft - spot.left) <= 0.5,
   };
 }
 

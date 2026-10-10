@@ -61,6 +61,7 @@ Shell). On any conflict, the design files win over code and older docs.
 
 | # | Question | Assumption the app ships now |
 |---|---|---|
+| SCROLL-142 | Should pane scroll memory replace the existing nested-scroller controller? | Keep `useScrollRestore` as the single pane controller and its window-local storage, rather than add a second conversation hook or sync scroll through `TabView`. Batch persistence every 500ms and flush on pagehide; delayed replay and reader cancellation retain existing behavior. |
 | DND-1 | Places 8g says plain place drop adds and Option moves; the older Interactions Place tile row reverses this. Which wins? | The drop model follows Places 8g and this lane's explicit acceptance: plain adds a parent, Option moves from the supplied source parent. No other parent is removed. |
 | DND-2 | What do files and URI-list drops mean with Option, and which URI schemes are supported? | Both add sources with copy intent, regardless of Option. Files remain native File objects for the owner to ingest; no path is inferred from a filename. URI lists accept only HTTP(S), ignore comments, deduplicate exact entries and refuse the whole list on an unsafe or invalid URL. |
 | DND-3 | What may a tab dropped on a place identify? | The application/codeaf-tab payload is a plain view id; the owner resolves it to a saved chat. Missing, unsent and non-chat tabs are refused, never treated as chat ids. Internal place/chat arrays take precedence over Files and URI-list fallbacks; malformed internal data is refused. |
