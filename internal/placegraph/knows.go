@@ -35,6 +35,7 @@ type Line struct {
 	Text             string     `json:"text"`
 	Source           LineSource `json:"source"`
 	CreatedAt        time.Time  `json:"createdAt,omitzero"`
+	EditedAt         time.Time  `json:"editedAt,omitzero"`
 	LastUsedAt       time.Time  `json:"lastUsedAt,omitzero"`
 	ReplacedBy       string     `json:"replacedBy,omitempty"`
 	ReplacedAt       time.Time  `json:"replacedAt,omitzero"`

@@ -30,12 +30,15 @@ type AskOnce struct {
 // fromPerson reports whether the person, rather than the agent or a file, is the
 // origin of the line.
 func fromPerson(l Line) bool {
-	return l.Source.Kind == LineYouWrote || l.Source.Kind == LineSaidInChat
+	return !l.EditedAt.IsZero() || l.Source.Kind == LineYouWrote || l.Source.Kind == LineSaidInChat
 }
 
 // learnedAt is when a line came to be known, preferring its own timestamp over
 // the source's.
 func learnedAt(l Line) time.Time {
+	if !l.EditedAt.IsZero() {
+		return l.EditedAt
+	}
 	if !l.CreatedAt.IsZero() {
 		return l.CreatedAt
 	}

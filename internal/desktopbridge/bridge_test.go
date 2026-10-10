@@ -606,8 +606,8 @@ func TestSeamRouteTableAnswers501UntilAHandlerLands(t *testing.T) {
 	}
 	for i, want := range seamContract {
 		got := seamTable[i]
-		if got.method != want.method || got.pattern != want.pattern || got.handle != nil {
-			t.Fatalf("row %d: got %s %s filled=%v, want %s %s empty", i, got.method, got.pattern, got.handle != nil, want.method, want.pattern)
+		if got.method != want.method || got.pattern != want.pattern {
+			t.Fatalf("row %d: got %s %s filled=%v, want %s %s", i, got.method, got.pattern, got.handle != nil, want.method, want.pattern)
 		}
 	}
 	b := New(testToken, func(string) (Connection, error) {
@@ -616,6 +616,9 @@ func TestSeamRouteTableAnswers501UntilAHandlerLands(t *testing.T) {
 	})
 	t.Cleanup(b.Close)
 	for _, route := range seamContract {
+		if strings.Contains(route.pattern, "/knows") {
+			continue
+		}
 		body := ""
 		if route.method == http.MethodPut {
 			body = `{"threshold":90,"alwaysAsk":true}`
@@ -707,6 +710,18 @@ func TestSeamRouteRegistrationReplacesTheStub(t *testing.T) {
 		t.Fatalf("GET steer ran the POST handler (%d calls)", calls)
 	}
 	lineCalls := 0
+	const linePattern = "/places/{id}/knows/{line}"
+	var original seamHandler
+	for _, route := range seamTable {
+		if route.method == http.MethodPatch && route.pattern == linePattern {
+			original = route.handle
+		}
+	}
+	clearSeamRoute(http.MethodPatch, linePattern)
+	t.Cleanup(func() {
+		clearSeamRoute(http.MethodPatch, linePattern)
+		registerSeamRoute(http.MethodPatch, linePattern, original)
+	})
 	registerSeamRoute(http.MethodPatch, "/places/{id}/knows/{line}", func(_ *Bridge, w http.ResponseWriter, _ *http.Request, ids map[string]string) {
 		lineCalls++
 		if ids["id"] != "pl_1" || ids["line"] != "line_7" {
@@ -714,7 +729,6 @@ func TestSeamRouteRegistrationReplacesTheStub(t *testing.T) {
 		}
 		write(w, map[string]bool{"accepted": true})
 	})
-	t.Cleanup(func() { clearSeamRoute(http.MethodPatch, "/places/{id}/knows/{line}") })
 	if request(b, http.MethodPatch, "/api/engine/places/pl_1/knows/line_7", "{}").Code != http.StatusOK || lineCalls != 1 {
 		t.Fatalf("knows line was not dispatched (%d)", lineCalls)
 	}
