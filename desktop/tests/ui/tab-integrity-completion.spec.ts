@@ -117,8 +117,9 @@ test.describe('overview drag regroups (Interactions, overview card)', () => {
   const engine = await installMockEngine(page, { initial: { running: true, title: '', entries: [{ Role: 'user', Text: 'Trailing commas' }] } });
   await seed(page, { tabs: [tab('a', 'Intro'), tab('b', 'Config stack', { sessionFile: SESSION }), tab('c', 'lexer.go')], activeId: 'a' });
   await page.goto('/');
-  await expect.poll(() => engine.calls.some(call => call.path.endsWith('/sessions'))).toBe(true);
   const overview = await openOverview(page);
+  // The running mark comes from the world feed. The background tab does not attach.
+  await expect(card(overview, 'b')).toContainText('Working');
   await card(overview, 'b').hover();
   await card(overview, 'b').getByRole('button', { name: 'Close Config stack' }).click();
   const toast = page.locator('.toast');
@@ -231,10 +232,11 @@ for (const theme of ['light', 'dark'] as const) {
   const engine = await installMockEngine(page, { initial: { running: true, title: '', entries: [{ Role: 'user', Text: 'Trailing commas' }] } });
   await seed(page, { tabs: [tab('a', 'Intro'), tab('b', 'Config stack', { sessionFile: SESSION }), tab('c', 'lexer.go')], activeId: 'a' });
   await page.goto('/');
-  await expect.poll(() => engine.calls.some(call => call.path.endsWith('/sessions'))).toBe(true);
   await page.getByRole('button', { name: 'All tabs', exact: true }).click();
   const overview = page.getByRole('dialog', { name: 'All tabs overview' });
   const closingCard = overview.locator('.overview-card[data-card-id="b"]');
+  // The running mark comes from the world feed. The background tab does not attach.
+  await expect(closingCard).toContainText('Working');
   await closingCard.hover();
   await closingCard.getByRole('button', { name: 'Close Config stack' }).click();
   const toast = page.locator('.toast');

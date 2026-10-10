@@ -264,6 +264,8 @@ test('dragging a divider resizes the panes and the ratio persists', async ({ pag
 });
 
 test('the Design system page shows the drag targets, the pane header and the compact composer, light and dark', async ({ page }) => {
+  // The accessibility pass covers the whole design system. Under four workers it does not finish in the default 30s.
+  test.setTimeout(60_000);
   for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.goto('/');

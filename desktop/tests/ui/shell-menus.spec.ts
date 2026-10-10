@@ -322,7 +322,7 @@ test.describe('closing running work (3l)', () => {
     const engine = await installMockEngine(page, { ...asked, initial: { ...asked.initial, needsPerson: false, questions: [], running: false } });
     await seed(page, [{ id: 'a', title: 'Intro' }, { id: 'b', title: 'Release v2.4', running: true }], { active: 'a' });
     await page.goto('/');
-    await expect.poll(() => engine.calls.some(call => call.path.endsWith('/sessions'))).toBe(true);
+    // The background tab does not attach. Its running mark arrives on the world feed.
     await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
     await engine.update({ running: true, needsPerson: true, questions: asked.initial.questions });
     const inbox = page.getByRole('tab', { name: 'Inbox', exact: true });
@@ -340,6 +340,8 @@ test.describe('closing running work (3l)', () => {
 });
 
 test('the Design system page shows the menus, the closing states and the Inbox, light and dark', async ({ page }) => {
+  // The accessibility pass covers the whole design system. Under four workers it does not finish in the default 30s.
+  test.setTimeout(60_000);
   for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.goto('/');

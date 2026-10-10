@@ -24,7 +24,7 @@ const card = (page: Page, title: string) => page.getByRole('group', { name: `Pre
 async function open(page: Page) {
   const base = plainReply();
   const engine = await installMockEngine(page, { ...base, initial: { ...base.initial, needsPerson: true, tasks: [], questions: [...[1, 2, 3].map(n => permission(n, `Run git step ${n}`)), permission(7, 'Delete the build folder', ['9'])], entries: [{ Role: 'user', Text: 'Port the fix' }, { Role: 'assistant', Text: 'The fixtures run now.' }] } });
-  await seed(page, [tab('a', 'Active tab', { sessionFile: 'a.jsonl' }), tab('b', 'Port fix', { kind: 'task', sessionFile: 'b.jsonl', route: { taskId: '3', back: [''], forward: [] } }), tab('c', 'Plain tab', { draft: 'A saved thought' })]);
+  await seed(page, [tab('a', 'Active tab', { sessionFile: 'mock-session-1.jsonl' }), tab('b', 'Port fix', { kind: 'task', sessionFile: 'mock-session-1.jsonl', route: { taskId: '3', back: [''], forward: [] } }), tab('c', 'Plain tab', { draft: 'A saved thought' })]);
   await page.goto('/');
   await expect(page.getByRole('tab', { name: 'Port fix', exact: true })).toBeVisible();
   return engine;
@@ -148,7 +148,7 @@ test('a task card shows and answers only its own task questions, not the convers
 test('a task with no question of its own does not say Needs you, whatever the conversation is asking', async ({ page }) => {
   const base = plainReply();
   await installMockEngine(page, { ...base, initial: { ...base.initial, needsPerson: true, tasks: [], questions: [permission(1, 'Run git step 1', ['3'])], entries: [{ Role: 'user', Text: 'Port the fix' }] } });
-  await seed(page, [tab('a', 'Active tab'), tab('b', 'Other task', { kind: 'task', sessionFile: 'b.jsonl', route: { taskId: '5', back: [''], forward: [] } })]);
+  await seed(page, [tab('a', 'Active tab'), tab('b', 'Other task', { kind: 'task', sessionFile: 'mock-session-1.jsonl', route: { taskId: '5', back: [''], forward: [] } })]);
   await page.goto('/');
   await page.getByRole('tab', { name: 'Other task', exact: true }).hover();
   await expect(card(page, 'Other task')).toBeVisible();
@@ -160,7 +160,7 @@ test('a failed Allow all says so in the card, keeps asking, and can be tried aga
   const base = plainReply();
   const scenario = { ...base, initial: { ...base.initial, needsPerson: true, tasks: [], questions: [permission(1, 'Run git step 1'), permission(2, 'Run git step 2')], entries: [{ Role: 'user' as const, Text: 'Port the fix' }] } };
   const engine = await installMockEngine(page, scenario);
-  await seed(page, [tab('a', 'Active tab', { sessionFile: 'a.jsonl' }), tab('b', 'Port fix', { kind: 'task', sessionFile: 'b.jsonl', route: { taskId: '3', back: [''], forward: [] } })]);
+  await seed(page, [tab('a', 'Active tab', { sessionFile: 'mock-session-1.jsonl' }), tab('b', 'Port fix', { kind: 'task', sessionFile: 'mock-session-1.jsonl', route: { taskId: '3', back: [''], forward: [] } })]);
   await page.goto('/');
   await expect(page.getByRole('tab', { name: 'Port fix', exact: true })).toBeVisible();
   scenario.fail = { answer: 500 };

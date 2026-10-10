@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { TabSummary } from '../conversation/tabSummary';
 import { newTab } from '../tabs/helpers';
 import { panesOf, tabHolding, type Tab, type WorkspaceAction, type WorkspaceState } from '../tabs/model';
+import { connectEngine } from '../chat/engine-client';
 import { archiveHistory } from './client';
 import { historyIdOf, idleTabs, type TabActivity } from './model';
 import type { HistoryItem } from './types';
@@ -38,7 +39,13 @@ export function useHistoryWorkspace(state: WorkspaceState, dispatch: Dispatch<Wo
     if (!press.newTab && asker?.kind === 'newtab') dispatch({ type: 'newtab-become', id: paneId, kind: 'conversation', title: tab.title, titleSource: tab.titleSource, sessionFile: item.sessionFile });
     // A plain tab that is not pinned is replaced in place; a split pane, a pinned tab or a command-click opens a new tab.
     else if (!press.newTab && holder && holder.id === paneId && !holder.pinned) dispatch({ type: 'history-replace', id: holder.id, tab });
-    else dispatch({ type: 'open', tab, background: !!press.background });
+    else {
+      dispatch({ type: 'open', tab, background: !!press.background });
+      // Opened behind: the pane is not the one on screen, so it never mounts a conversation
+      // stream. One attach is what Continue did. Tabs already sitting in the background do not
+      // attach; they hear this conversation from the world feed.
+      if (press.background && item.sessionFile) void connectEngine(item.sessionFile).catch(() => undefined);
+    }
   }, [dispatch]);
   const archiveConversation = useCallback<HistoryHost['archiveConversation']>(async item => {
     // A plain tab holding the conversation goes the way an idle tab does: off the strip, not into Reopen.
