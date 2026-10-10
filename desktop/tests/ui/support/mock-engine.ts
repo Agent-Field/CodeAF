@@ -572,7 +572,9 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
       const requested = typeof body.sessionFile === 'string' ? body.sessionFile : '';
       const titled = history.titleOf(body.sessionFile);
       if (requested || titled) state = { ...state, ...(requested ? { sessionFile: requested } : {}), ...(titled ? { title: titled } : {}) };
-      return json(route, state);
+      // Attach is how a window comes back after the stream drops. A raw snapshot
+      // put the over-cap body back, so opening the call never fetched it.
+      return json(route, snapshotView(null));
     }
     if (id !== state.id) return json(route, { error: 'reattach this conversation' }, 404);
     if (!action) {

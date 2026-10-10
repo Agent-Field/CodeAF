@@ -31,6 +31,7 @@ import {
 import type { SendMode } from './Composer';
 import { emptyLive, projectTurnsV2, reduceLive, type LiveOverlayV2, type ReceiptPlaces } from './model';
 import { questionKey } from './model/entry';
+import { toolReadOnce } from './toolReadOnce';
 import { blocksComposer } from './tray/layout';
 import type { ConversationModel } from './types';
 
@@ -39,6 +40,10 @@ export type FailedSend = { text: string; mode: SendMode; message: string; files?
 type Options = { sessionFile?: string; onSessionFile: (sessionFile: string) => void; beforeFirstTurn?: BeforeFirstTurn; newConversationPlace?: string };
 
 const BACKOFF_MS = [1000, 2000, 5000, 10000];
+
+// Survives a remount of this hook. Keyed by session and call so two chats
+// never share a body, and a failed read is dropped inside toolReadOnce.
+const toolReads = new Map<string, Promise<{ output: string; full: boolean }>>();
 
 export const emptyModel: ConversationModel = { title: '', turns: [], preface: [], running: false, questions: [], tasks: [] };
 
@@ -317,7 +322,9 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, n
   function readFull(callId: string) {
     const target = current.current;
     if (!target) return Promise.reject(new Error('This conversation is not attached.'));
-    return readToolResult(target.id, callId);
+    // One GET per call for the life of the page. Opening the row, a development
+    // remount, and a new readFull on every snapshot would otherwise repeat it.
+    return toolReadOnce(toolReads, `${target.id}\0${callId}`, () => readToolResult(target.id, callId));
   }
 
   const model = useMemo(() => (snapshot ? buildModel(snapshot, live, places.current) : emptyModel), [snapshot, live]);
