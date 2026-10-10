@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createNativeWindows, FOCUS_TAB_EVENT, isPlaceKey, isTabId, type WindowsBridge } from './windows.ts';
+import { createNativeWindows, FOCUS_TAB_EVENT, isPlaceKey, isTabId, reportsMultiwindow, tabMoveToWindow, type WindowsBridge } from './windows.ts';
 
 type Call = { command: string; args?: Record<string, unknown> };
 
@@ -133,4 +133,24 @@ test('in a browser opening a place opens a tab with ?place= and everything else 
   await (await win.onFocusTab(() => {}))();
   assert.equal(calls.length, 0);
   assert.equal(Object.keys(listeners).length, 0);
+});
+
+test('tabMoveToWindow sends tab_move_to_window with no drop point, and only when multiwindow is reported', async () => {
+  const desktop = stub({ reply: 'w-2' });
+  const windows = createNativeWindows(desktop.bridge);
+  assert.equal(reportsMultiwindow(windows), true);
+  assert.equal(await tabMoveToWindow({ id: 'tab-1' }, PLACE, windows), true);
+  assert.equal(await tabMoveToWindow({ id: 'tab-1' }, undefined, windows), true);
+  assert.deepEqual(desktop.calls, [
+    { command: 'tab_move_to_window', args: { request: { tabId: 'tab-1', placeKey: PLACE } } },
+    { command: 'tab_move_to_window', args: { request: { tabId: 'tab-1', placeKey: 'now' } } },
+  ]);
+  const browser = stub({ desktop: false });
+  const plain = createNativeWindows(browser.bridge);
+  assert.equal(reportsMultiwindow(plain), false);
+  assert.equal(await tabMoveToWindow({ id: 'tab-1' }, 'now', plain), false);
+  assert.equal(await tabMoveToWindow({ id: 'a b' }, 'now', windows), false);
+  assert.equal(await tabMoveToWindow({ id: 'tab-1' }, 'pl_0123456789abcdef', windows), false);
+  assert.equal(browser.calls.length, 0);
+  assert.equal(desktop.calls.length, 2);
 });
