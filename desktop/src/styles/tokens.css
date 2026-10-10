@@ -912,6 +912,12 @@
   --i2-chip-back-shadow: var(--sh-1);
   --i2-receipt-glyph-size: 12px;
   --i2-receipt-glyph-color: var(--ink-3);
+  --status-line-size: var(--type-label-size);
+  --status-line-gap: var(--space-2);
+  --status-line-glyph: var(--icon-tiny);
+  --status-line-weight: var(--type-label-weight);
+  --status-line-leading: normal;
+  --status-line-color: var(--ink-3);
   --i2-plan-card-radius: 14px;
   --i2-plan-card-shadow: var(--sh-1);
   --i2-plan-card-pad-block: 14px;
