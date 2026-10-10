@@ -8,11 +8,11 @@ const panel = (page: Page) => page.getByRole('complementary', { name: 'Tasks' })
 const crumbs = (page: Page) => page.getByRole('navigation', { name: 'Breadcrumb' });
 
 /** Send once; the scripted reply brings the aside, the plan rows and the answer. */
-async function startWithTasks(page: Page, adjust: (scenario: Scenario) => void = () => undefined) {
+async function startWithTasks(page: Page, adjust: (scenario: Scenario) => void = () => undefined, noticeTaskId = '2') {
   const base = withTasks();
   adjust(base);
   // The shared fixture's aside text is not the "<title> <status> · <summary>" form the projection reads.
-  const aside = { Role: 'aside', Text: 'Migrate the settings screen done · ran 30s · Two parts finished.', TaskIDs: ['2'] };
+  const aside = { Role: 'aside', Text: 'Migrate the settings screen done · ran 30s · Two parts finished.', TaskIDs: [noticeTaskId] };
   const reply = [aside, base.initial.entries!.at(-1)!] as typeof base.initial.entries;
   const engine = await installMockEngine(page, {
     ...base,
@@ -60,6 +60,57 @@ test('a task notice opens the task in the same tab; Back and Ctrl+[ return', asy
   await expect(crumbs(page)).toBeVisible();
   await page.keyboard.press('Control+BracketLeft');
   await expect(crumbs(page)).toHaveCount(0);
+});
+
+test('a task notice opens a background tab on modifier-click or middle-click, and its menu matches the row', async ({ page }) => {
+  const engine = await startWithTasks(page);
+  const row = page.locator('.turn-v2 .task-notice-row');
+  await expect(page.getByRole('tab')).toHaveCount(1);
+  await row.click({ modifiers: ['Control', 'Meta'] });
+  await expect(page.getByRole('tab')).toHaveCount(2);
+  await expect(crumbs(page)).toHaveCount(0);
+  await expect(page.getByRole('tab').first()).toHaveAttribute('aria-selected', 'true');
+  await row.click({ button: 'middle' });
+  await expect(page.getByRole('tab')).toHaveCount(3);
+  await expect(crumbs(page)).toHaveCount(0);
+
+  const notice = page.locator('.turn-v2 .task-notice');
+  await notice.click({ button: 'right' });
+  const menu = page.getByRole('menu', { name: 'Migrate the settings screen actions' });
+  await expect(menu.getByRole('menuitem', { name: 'Open in new tab' })).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: 'Stop' })).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: 'Pause' })).toHaveCount(0);
+  await expect(menu.getByRole('menuitem', { name: 'Resume' })).toHaveCount(0);
+  await menu.getByRole('menuitem', { name: 'Open in new tab' }).click();
+  await expect(page.getByRole('tab')).toHaveCount(4);
+  await expect(crumbs(page)).toHaveCount(0);
+
+  await notice.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Stop' }).click();
+  await expect.poll(() => posts(engine, '/tasks/2/cancel').length).toBe(1);
+});
+
+test('a child task notice offers Pause while running and Resume once that row is paused', async ({ page }) => {
+  const engine = await startWithTasks(page, () => undefined, '2.2');
+  const notice = page.locator('.turn-v2 .task-notice');
+  await notice.click({ button: 'right' });
+  const menu = page.getByRole('menu', { name: 'Port the form fields actions' });
+  await expect(menu.getByRole('menuitem', { name: 'Open in new tab' })).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: 'Pause' })).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: 'Stop' })).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: 'Resume' })).toHaveCount(0);
+  await menu.getByRole('menuitem', { name: 'Pause' }).click();
+  await expect.poll(() => posts(engine, '/tasks/2.2/pause').length).toBe(1);
+
+  engine.update({ tasks: taskRows.map((row) => (row.ID === '2.2' ? { ...row, Status: 'paused', Paused: true } : row)) });
+  // The notice mark reads the status word ("paused" is "Your call"); the menu reads the plan row, which is paused.
+  await expect(notice.getByRole('img', { name: 'Your call' })).toBeVisible();
+  await notice.click({ button: 'right' });
+  const paused = page.getByRole('menu', { name: 'Port the form fields actions' });
+  await expect(paused.getByRole('menuitem', { name: 'Resume' })).toBeVisible();
+  await expect(paused.getByRole('menuitem', { name: 'Pause' })).toHaveCount(0);
+  await paused.getByRole('menuitem', { name: 'Resume' }).click();
+  await expect.poll(() => posts(engine, '/tasks/2.2/resume').length).toBe(1);
 });
 
 test('modifier-click on a task row opens a background tab', async ({ page }) => {

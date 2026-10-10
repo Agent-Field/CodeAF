@@ -1163,8 +1163,8 @@ Tests named are Playwright specs under `tests/ui/` (Chromium + WebKit) unless ma
 | **Task notice, task panel, expanded, task view** ||||||
 | CV-100 | Task notice done/running (sh-2, live step)/your call | Comp §4.5; C-TNOT-1..3 | TaskNotice.tsx | partial (conversation-records.spec 400px checks the title; states untested) | t-d5-cv-test-tasks |
 | CV-101 | Task notice click → task in this tab | Int; I-ICV-25, C-TNOT-4 | TaskNotice.tsx | complete (conversation-tasks.spec "a task notice opens the task in the same tab; Back and Ctrl+[ return") | — |
-| CV-102 | Task notice ⌘-click/middle → background tab | Int; I-ICV-26 | TaskNotice.tsx isOpenInBackground (no middle click) | partial | t-d5-cv-menu-task-notice |
-| CV-103 | Task notice/row right-click: Open in new tab · Pause/Resume · Stop | Int; I-ICV-27..29 | TaskRow.tsx ContextMenu + tasks/taskMenu.ts; TaskNotice.tsx has none | partial (rows have it, no right-click test; notices lack it) | t-d5-cv-menu-task-notice, t-d5-cv-test-tasks |
+| CV-102 | Task notice ⌘-click/middle → background tab | Int; I-ICV-26 | TaskNotice.tsx | complete (conversation-tasks.spec "a task notice opens a background tab on modifier-click or middle-click, and its menu matches the row") | — |
+| CV-103 | Task notice/row right-click: Open in new tab · Pause/Resume · Stop | Int; I-ICV-27..29 | TaskRow.tsx and TaskNotice.tsx via tasks/taskMenu.ts | partial (notices: conversation-tasks.spec "a child task notice offers Pause while running and Resume once that row is paused"; rows still have no right-click test) | t-d5-cv-test-tasks |
 | CV-104 | Task row ⌘-click → background tab | Int; I-ICV-26 | TaskRow.tsx | complete (conversation-tasks.spec "modifier-click on a task row opens a background tab") | — |
 | CV-105 | Tasks panel 280px: "Tasks" + "5 of 14", maximize-2, x | 1c; I-C1c-19..21, C-TREE-1 | TaskPanel.tsx | complete (conversation-tasks.spec "panel shows counts and nested rows, closes…") | — |
 | CV-106 | Progress strip 3px five segments | 1c; I-C1c-22, C-TREE-2 | tasks/TaskProgress.tsx | partial (no segment assertion) | t-d5-cv-test-tasks |
