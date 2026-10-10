@@ -204,6 +204,9 @@ func TestASettledTurnAsksTheChatsEngineOnceAndOffersThePlace(t *testing.T) {
 	id := rig.open()
 	rig.settle(id, true)
 	eventually(t, "an offer", func() bool { v, _ := rig.view(); return len(v.Proposals) == 1 })
+	// The offer lands in the ledger before the job writes down what its ask
+	// came to, so the record is only final once the worker has gone quiet.
+	rig.idle()
 	v, _ := rig.view()
 	p := v.Proposals[0]
 	if p.Kind != placegraph.ProposalFile || p.PlaceID != release || p.ChatIDs[0] != "chat-1" || p.Basis != placegraph.BasisModel || p.OfferVersion == "" {
