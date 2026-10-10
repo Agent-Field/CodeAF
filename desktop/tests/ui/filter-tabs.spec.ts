@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import design from '../../src/design/tokens.json' with { type: 'json' };
-import { expectAccessible, tokenColor } from './contracts';
+import { expectAccessible, expectNoUnstyledControls, tokenColor } from './contracts';
 
 async function open(page: Page, theme: 'light' | 'dark') {
  await page.emulateMedia({ colorScheme: theme });
@@ -46,6 +46,7 @@ test('filter tabs match the pill metrics in light and dark', async ({ page }) =>
   const disabled = page.getByRole('radiogroup', { name: 'Disabled filter tabs', exact: true }).getByRole('radio', { name: 'All' });
   await expect(disabled).toBeDisabled();
   await expect(disabled).toHaveCSS('opacity', design.foundation['opacity-control-disabled']);
+  await expectNoUnstyledControls(page);
   await expectAccessible(page);
  }
 });

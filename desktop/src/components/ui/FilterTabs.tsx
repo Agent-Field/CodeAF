@@ -89,7 +89,7 @@ export function FilterTabs<T extends string>({ label, options, value, onChange, 
  const selected = options.findIndex((option, index) => option.value === value && enabled(index));
  const tabStop = selected >= 0 ? selected : options.findIndex((_, index) => enabled(index));
  return <div ref={group} className="filter-tabs" role="radiogroup" aria-label={label} aria-disabled={disabled || undefined} data-fade-start={edges.start ? '' : undefined} data-fade-end={edges.end ? '' : undefined} onScroll={measure}>
-  {options.map((option, index) => <button key={option.value} type="button" role="radio" aria-checked={option.value === value} tabIndex={index === tabStop ? 0 : -1} className="filter-tab" disabled={disabled || option.disabled} onClick={() => choose(index)} onKeyDown={event => onKeyDown(event, index)}>{option.label}</button>)}
+  {options.map((option, index) => <button key={option.value} type="button" role="radio" aria-checked={option.value === value} tabIndex={index === tabStop ? 0 : -1} className="filter-tab-button" disabled={disabled || option.disabled} onClick={() => choose(index)} onKeyDown={event => onKeyDown(event, index)}>{option.label}</button>)}
  </div>;
 }
 
