@@ -76,6 +76,9 @@ export function createPlacesStore(options: Options = {}) {
   const onFocus = () => { if (typeof document === 'undefined' || document.visibilityState !== 'hidden') void read(); };
 
   function start() {
+    // The first world notification is the feed connecting, still at the cursor it already
+    // had. That is not a new record, and the read just below is the one for this subscriber.
+    lastSeq = world.getState().seq;
     void read();
     unworld = world.subscribe(onWorld);
     if (typeof window !== 'undefined') { window.addEventListener('focus', onFocus); document.addEventListener('visibilitychange', onFocus); }

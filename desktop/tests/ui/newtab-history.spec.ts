@@ -41,7 +41,7 @@ test('an empty new tab makes no engine call, and typing asks History once after 
   expect(attached(engine)).toEqual([]);
 });
 
-test('the section is two conversations in the engine\'s words, then See all N, ahead of Start', async ({ page }) => {
+test('the section is three conversations in the engine\'s words, then See all N, ahead of Start', async ({ page }) => {
   await start(page);
   await field(page).fill(words);
   await expect(fromHistory(page)).toBeVisible();
@@ -49,8 +49,8 @@ test('the section is two conversations in the engine\'s words, then See all N, a
   const names = await rows(page).allTextContents();
   expect(names[0]).toMatch(/^Ask “trailing commas” in a new conversation/);
   const history = names.slice(1, names.findIndex(name => name.startsWith('See all')) + 1);
-  expect(history).toHaveLength(3);
-  expect(history[2]).toMatch(/^See all \d+ in History(⌘↵|Ctrl ↵)$/);
+  expect(history).toHaveLength(4);
+  expect(history[3]).toMatch(/^See all \d+ in History(⌘↵|Ctrl ↵)$/);
   await expect(page.getByRole('option', { name: /^See all/ })).toBeVisible();
   // Nothing is written by the field itself: every sentence on a row is a title, a decision, an answer or a snippet.
   expect(history[0]).not.toMatch(/\d+ messages|Worked \d+/);

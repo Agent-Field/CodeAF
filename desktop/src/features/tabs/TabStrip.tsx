@@ -210,7 +210,7 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
           );
         })}
       </div>
-      <span className="workspace-strip-note" role="status" aria-live="polite">{moveNote}</span>
+      {moveNote ? <span className="workspace-strip-note" role="status" aria-live="polite">{moveNote}</span> : null}
       <div className="workspace-tab-actions">
         <IconButton className="workspace-tab-action" label="New tab" title={`New tab (${tabShortcuts.new})`} icon="plus" iconSize="sm" onClick={() => dispatch({ type: 'new' })}/>
         {edge.hidden > 0 && <DropdownMenu label="Tab actions" items={overflowItems(api)}><Button className="workspace-tab-more" aria-label="Tab actions">+{edge.hidden}<Icon name="chevron" size="micro" motion="disclosure"/></Button></DropdownMenu>}
