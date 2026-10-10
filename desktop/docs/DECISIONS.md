@@ -387,3 +387,42 @@ Remaining gap, not fixed: the receipt is one shared line, so a failure on one co
 ## t-d5-sh-focus-native-lights: traffic lights in Focus mode and peek (2026-10-10)
 
 Decision: option (b). Tauri 2.12.1 and tao 0.37.1 have no runtime API to hide the macOS traffic lights (`titlebar_buttons_hidden` is creation-time only, `set_closable` only disables). A small native command `window_set_traffic_lights(window, visible: bool)` calls `standardWindowButton(...).setHidden` on the main thread; the renderer hides the lights with the strip in Focus mode and shows them with the top-8px peek. This reverses the earlier SH-013 assumption (lights always visible), because the design puts the lights inside the strip. Full reasoning, signature and risks: `docs/research/d5-focus-traffic-lights.md`. No code changed in this lane; the native writer owns a new d5-nat task. Not verified on a Mac (headless Linux lane, no network, so no newer plugin was ruled out).
+## t-d5-settings-audit-using (2026-10-10)
+
+Decision: **review complete; product acceptance has gaps**. This lane is a
+read-only source and browser-fixture audit; the coordinator owns fixes. No
+live model, profile, place or conversation was changed. The committed browser
+spec records measurements without asserting that known design gaps must remain.
+The external `settings-using-audit.md` report and screenshots carry the evidence.
+
+Design checked: Places 6e/6f, Components Places, Interactions “Using chip”
+(I-ICV-31), and Iteration 2 I2.13. Both Chromium and WebKit rendered the local
+`v-Places.html` reference; dimensions and colors below came from
+`getBoundingClientRect` and `getComputedStyle`, not visual estimates.
+
+| Finding | Evidence and coordinator follow-through |
+| --- | --- |
+| USING-283-1: successful working folder is invisible | `ConversationView.tsx:198-199,265` reads `workingFolder` but renders only its note or skipped-folder explanation. A fixture returning `/work/fixture-project`, `from: place`, and no skips displays neither path nor label in either browser/theme. Fallback notes do display. Expose the engine's actual workspace as read-only context, subject to SETTINGS-USING-283-1. Reopening must continue to use the saved workspace, not the place's current folder. |
+| USING-283-2: source refusal and failure text are colored | `using.css:65,75,81` colors refusal reasons red, selected choices accent, and alert text red with a danger fill. The design reserves state color for 6px glyphs. Keep reasons/state text in ink, selection as a soft fill, and any state color on the permitted mark. The failed chip also colors its 12px icon (`using.css:7`), exceeding the state-glyph rule. The sheet's keyboard focus also lacks the required 4px halo (`using.css:34`). |
+| USING-283-3: sheet is narrower than the rendered reference | At a wide viewport, the reference measures **392px** outer width (`width:380px` plus two 6px paddings, content-box); the app measures **380px** outer width (border-box). Both have 12px radius and 6px padding. The chip matches the reference's 24px height, 7px radius and 12px type. Resolve the 12px sheet discrepancy against the rendered design, through tokens. |
+| USING-283-4: chat-only drop is absent | Interactions explicitly permits dropping files on the Using popover for this chat only. `UsingSheet` and `UsingLine` have no drop handler or source-add seam. Do not route a drop to place-wide sources; coordinator must connect the chat-local engine door. |
+| USING-283-5: existing Engine Retry test is red | `settings-engine.spec.ts:61` expects ink-3; both browsers receive ink-2 while Retry is hovered after reload. The shared ghost button changes foreground on hover. Review the hover-only-fill law and fix the control/test contract; this audit does not change shared controls. |
+
+Sound source behavior: `internal/desktopbridge/using.go` uses
+`session.PlaceGraphUsing` with the engine's source policy and
+`session.DecidePlaceSettings` for settings. Credential paths and symlinks into
+them are refused by `internal/placegraph/sources.go`; the source policy stats
+paths without reading their contents. Using shows provenance (including AI
+additions), missing/refused reasons and budget omissions; refused and missing
+sources offer no Open action. Pending permissions do not claim to be in use.
+Escape returns focus to the chip. Unknown/empty context draws no chip.
+Settings currently offers no source-policy editor or working-folder selector;
+its Engine section names connection location, not a conversation's workspace.
+
+Validation: TypeScript and design policy passed; 22 focused Node tests passed;
+focused Go tests passed in `internal/placegraph` and `internal/desktopbridge`.
+The audit spec passes eight cases in Chromium/WebKit, Light/Dark, including
+Using at 320, 800 and 1200px. The additional existing Engine test fails once in
+each browser at the same Retry color assertion (USING-283-5). Go sources and
+product behavior were unchanged, so no build/vet/laws or manual update was
+needed. Ledger rows added: SETTINGS-USING-283-1 and SETTINGS-USING-283-2.
