@@ -11,6 +11,7 @@ import { tabDomId } from './TabItem';
 import { pruneScrollMemory, ScrollControllerProvider, useScrollRestore } from './scroll/useScrollRestore';
 import { usePaneKeys } from './usePaneKeys';
 import './panes.css';
+import './split-narrow.css';
 
 /** The pane menu (Interactions "Split pane"): close it, trade places with another pane, or fill the card with it. */
 function paneMenu(tab: Tab, pane: Pane, maximized: boolean, onMaximize: () => void, dispatch: Dispatch<WorkspaceAction>): MenuEntry[] {
