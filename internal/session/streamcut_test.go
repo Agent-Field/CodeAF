@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -155,22 +156,34 @@ func TestAnIncompleteReplyIsAskedAgainWithoutKeepingItsText(t *testing.T) {
 func TestATruncatedProviderReplyIsNotSettledByTheSession(t *testing.T) {
 	const partial = "Partial ans"
 	const complete = "The complete answer"
+	// The handler runs on the server's goroutines, so what it records is
+	// guarded: an unsynchronised counter is a race the detector reports.
+	var mu sync.Mutex
 	var attempts int
 	var requests [][]byte
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		// The adapter also looks up a model's serving set with a GET, on its own
+		// schedule; only the completions are the attempts this test counts.
+		if request.Method != http.MethodPost {
+			http.NotFound(writer, request)
+			return
+		}
 		body, err := io.ReadAll(request.Body)
 		if err != nil {
 			t.Errorf("read request: %v", err)
 			return
 		}
+		mu.Lock()
 		requests = append(requests, body)
 		attempts++
+		attempt := attempts
+		mu.Unlock()
 		writer.Header().Set("Content-Type", "text/event-stream")
-		if attempts == 1 {
+		if attempt == 1 {
 			_, _ = io.WriteString(writer, "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\""+partial+"\"}}]}\n\n")
 			return
 		}
-		_, _ = io.WriteString(writer, "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\""+complete+"\"},\"finish_reason\":\"stop\"}]}\n\n")
+		_, _ = io.WriteString(writer, "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\""+complete+"\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
 	}))
 	defer server.Close()
 
@@ -187,6 +200,8 @@ func TestATruncatedProviderReplyIsNotSettledByTheSession(t *testing.T) {
 	}
 	collected := collect(t, events)
 
+	mu.Lock()
+	defer mu.Unlock()
 	if attempts != 2 || len(requests) != 2 {
 		t.Fatalf("provider attempts = %d, requests = %d, want one truncated call and one retry", attempts, len(requests))
 	}
