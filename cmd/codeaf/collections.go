@@ -21,7 +21,7 @@ const collectionsUsage = collectionsSummary + `
   codeaf collections show <collection-id>
   codeaf collections add|remove <collection-id> <kind> <record-id>
   codeaf collections find <kind> <record-id>
-      kinds: collection, conversation, task, standing, artifact (a file path)
+      kinds: collection, conversation, task, artifact (a file path)
       tasks need --session <conversation-id>; all accept --db and --json
       organize references without moving files or starting work`
 
@@ -78,6 +78,12 @@ func runCollectionsTo(args []string, output io.Writer) error {
 		}
 		if err := ref.Validate(); err != nil {
 			return err
+		}
+		// A STANDING ITEM CAN BE FOUND AND TAKEN OUT, AND NEVER ADDED. The
+		// kind names nothing codeaf runs any more; a row that already holds one
+		// keeps it until somebody removes it ([workspace.StandingKind]).
+		if verb == "add" && ref.Kind == workspace.StandingKind {
+			return fmt.Errorf("%w: standing items are gone, so a collection cannot gain one", workspace.ErrInvalid)
 		}
 	} else if *sessionID != "" {
 		return fmt.Errorf("%w: --session belongs to a task reference in add, remove or find", workspace.ErrInvalid)

@@ -64,9 +64,10 @@ belong to collections.
 ## Adding, removing and finding a chat or work reference
 
 Use `codeaf collections add <collection-id> <kind> <record-id>`.
-The kinds are `collection`, `conversation`, `task`, `standing` and `artifact`.
-The fourth is still accepted but names nothing codeaf runs any more, and there is no
-kind for an automation.
+The kinds are `collection`, `conversation`, `task` and `artifact`. There is no kind
+for an automation. `standing` named a standing item, which codeaf no longer has: a
+row that already holds one can still be found and removed, and adding a new one is
+refused with `standing items are gone, so a collection cannot gain one`.
 A task also requires `--session <conversation-id>` because task numbers repeat
 in different conversations. For example, `codeaf collections add <collection-id>
 task 1 --session <conversation-id>` records that specific task.

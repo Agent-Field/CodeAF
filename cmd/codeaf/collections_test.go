@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -289,5 +290,40 @@ func TestCollectionsNestedMembershipRoundTrip(t *testing.T) {
 	}
 	if !reflect.DeepEqual(members, []workspace.Ref{{Kind: workspace.CollectionKind, ID: b.ID}}) {
 		t.Fatal(members)
+	}
+}
+
+// A STANDING ITEM IS NOT A KIND A COLLECTION GAINS ANY MORE. A row an older
+// build wrote that names one is still a row: it can be found and taken out.
+func TestCollectionsOnlyLetGoOfStandingItems(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("CODEAF_HOME", root)
+	db := filepath.Join(root, "v3", "collections.db")
+	ops := collectionCreate(t, db, "Ops")
+
+	var out bytes.Buffer
+	err := runCollectionsTo([]string{"add", ops.ID, "standing", "item-6am", "--db", db, "--json"}, &out)
+	if !errors.Is(err, workspace.ErrInvalid) || !strings.Contains(err.Error(), "standing items are gone") {
+		t.Fatalf("adding a standing item answered %v", err)
+	}
+
+	// The row an older build left behind.
+	store, err := workspace.Open(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Add(context.Background(), ops.ID, workspace.Ref{Kind: workspace.StandingKind, ID: "item-6am"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = store.Close()
+
+	var holding []workspace.Collection
+	if err := json.Unmarshal([]byte(collectionCommand(t, db, "find", "standing", "item-6am")), &holding); err != nil || len(holding) != 1 {
+		t.Fatalf("the older row could not be found: %v %v", holding, err)
+	}
+	collectionCommand(t, db, "remove", ops.ID, "standing", "item-6am")
+	holding = nil
+	if err := json.Unmarshal([]byte(collectionCommand(t, db, "find", "standing", "item-6am")), &holding); err != nil || len(holding) != 0 {
+		t.Fatalf("the older row could not be taken out: %v %v", holding, err)
 	}
 }
