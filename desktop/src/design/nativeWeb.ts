@@ -9,7 +9,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 export type WebRect = { x: number; y: number; width: number; height: number };
 export type WebHistoryStep = 'back' | 'forward' | 'reload' | 'stop';
 export type WebRefusal = 'tooLong' | 'malformed' | 'scheme' | 'noHost' | 'credentials' | 'appOrigin';
-export type WebFailure = { kind: 'refused'; reason: WebRefusal } | { kind: 'unreachable' };
+export type WebFailure = { kind: 'refused'; reason: WebRefusal } | { kind: 'unreachable' } | { kind: 'certificate' };
 export type WebNotice = 'download' | 'blocked' | 'permission';
 
 /** What the native view reports about its page; mirrors `WebState` in web.rs. */
@@ -38,6 +38,7 @@ const notices: readonly string[] = ['download', 'blocked', 'permission'];
 function failureOf(value: unknown): WebFailure | null {
   if (!value || typeof value !== 'object') return null;
   const failure = value as { kind?: unknown; reason?: unknown };
+  if (failure.kind === 'certificate') return { kind: 'certificate' };
   if (failure.kind === 'unreachable') return { kind: 'unreachable' };
   if (failure.kind === 'refused' && typeof failure.reason === 'string' && refusals.includes(failure.reason)) return { kind: 'refused', reason: failure.reason as WebRefusal };
   return null;
