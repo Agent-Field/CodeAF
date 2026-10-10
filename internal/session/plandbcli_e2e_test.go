@@ -11,18 +11,13 @@ package session
 // moved.
 //
 // THE CLI THE WORKERS DRIVE IS THE ONE cmd/plandb BUILDS. Under `go test` the
-// running binary is the TEST binary, which has no `plandb` verb — so the PATH
-// shim the session arms (plandb_plan.go's armShim, which execs the running
-// binary's own subcommand) is deliberately KEPT OFF the front of the PATH here:
-// the test builds the real CLI once into a directory of its own and prepends
-// THAT, and then also names the session's shim directory in the PATH it sets —
-// because armShim only prepends its bin when the bin is not already on the
-// PATH, so naming it second is what stops the shim from shadowing the real
-// binary. The CLI needs no --db: it finds the run's store by walking up from
-// the worker's own working directory, which is the session's tree folder, and
-// the store it finds there is the one the runtime seeded — asserted below, so
-// a wrong PATH fails loudly instead of quietly writing some other machine's
-// store.
+// running binary is the test binary, which has no `plandb` verb. The harness
+// binds the runtime's shim through CODEAF_PLANDB_BIN to a test-owned adapter
+// that accepts the codeaf-shaped `plandb` subcommand and execs the real CLI.
+// The shell prepends that shim for every command, so changing the process PATH
+// cannot choose the worker's CLI. The runtime binds PLANDB_DB to the seeded
+// store, and the assertions below read that same file to prove the writes
+// reached this run rather than another installation's store.
 
 import (
 	"context"
@@ -47,27 +42,24 @@ import (
 // folder and the pattern would not resolve from there.
 const planE2ECLIPackage = "github.com/Agent-Field/codeaf/cmd/plandb"
 
-// planE2EArmCLI builds the real CLI binary into a directory of its own and
-// puts that directory FIRST on the PATH, ahead of both the machine's own
-// plandb (a different program, on a different store) and the session's bin
-// shim. It must run before the agent is built: armShim reads the PATH at seed
-// time, and the whole point of the ordering is what it decides there.
-func planE2EArmCLI(t *testing.T, place Place) {
+// planE2EArmCLI builds the real CLI and binds the runtime's resolver to it.
+// The adapter removes only the subcommand word the resolver supplies, leaving
+// the worker's arguments and the runtime's store environment intact. An
+// explicit binding keeps this proof independent of installed codeaf binaries.
+func planE2EArmCLI(t *testing.T) {
 	t.Helper()
 	bin := t.TempDir()
 	out := filepath.Join(bin, "plandb")
 	build := exec.Command("go", "build", "-o", out, planE2ECLIPackage)
 	if output, err := build.CombinedOutput(); err != nil {
-		t.Skipf("cannot build the real plandb CLI (go build %s: %v)\n%s", planE2ECLIPackage, err, output)
+		t.Fatalf("cannot build the real plandb CLI (go build %s: %v)\n%s", planE2ECLIPackage, err, output)
 	}
-	// THE ORDER IS THE TEST: the built binary first, the session's shim
-	// directory second. Second is not decoration — armShim prepends its bin to
-	// the PATH unless the bin is already ON it, so naming it here is what
-	// keeps the shim (which under go test would exec the test binary) from
-	// ever being the `plandb` a worker finds.
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+
-		filepath.Join(place.Dir, "bin")+string(os.PathListSeparator)+
-		os.Getenv("PATH"))
+	adapter := filepath.Join(bin, "codeaf-plan-cli")
+	script := "#!/bin/sh\n[ \"$1\" = plandb ] || exit 64\nshift\nexec " + quoteShWord(out) + " \"$@\"\n"
+	if err := os.WriteFile(adapter, []byte(script), 0o755); err != nil {
+		t.Fatalf("write the plandb CLI adapter: %v", err)
+	}
+	t.Setenv(planCLIBinEnv, adapter)
 }
 
 // ── the four-lane completer ─────────────────────────────────────────────────
@@ -264,9 +256,8 @@ func planE2ENodeByPlan(g *TaskGraph, planID string) *TaskNode {
 	return nil
 }
 
-// planE2EOpenStore opens the run's store from the RUNTIME's own path — not by
-// walking up, which is the CLI's road — so the assertions read the very file
-// the seed wrote and the CLI had to find on its own.
+// planE2EOpenStore opens the run's store from the runtime's own path, so the
+// assertions read the very file the seed wrote and the shell bound to the CLI.
 func planE2EOpenStore(t *testing.T, place Place) *plandb.Store {
 	t.Helper()
 	store, err := plandb.Open(filepath.Join(place.Dir, planStoreFilename), "", planRootID, "", "")
@@ -336,7 +327,7 @@ func TestPlandbCliLoopThroughBash(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	place := Place{Dir: t.TempDir()}
 	repo := newTestRepo(t)
-	planE2EArmCLI(t, place)
+	planE2EArmCLI(t)
 	t.Setenv("HOME", t.TempDir())
 
 	completer := newPlanE2ECompleter(map[string][]step{
@@ -536,7 +527,7 @@ func TestPlandbCliWorkerOwnDone(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	place := Place{Dir: t.TempDir()}
 	repo := newTestRepo(t)
-	planE2EArmCLI(t, place)
+	planE2EArmCLI(t)
 	t.Setenv("HOME", t.TempDir())
 
 	completer := newPlanE2ECompleter(map[string][]step{
@@ -742,7 +733,7 @@ func TestPlandbBashWritesReachTheBranch(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	place := Place{Dir: t.TempDir()}
 	repo := newTestRepo(t)
-	planE2EArmCLI(t, place)
+	planE2EArmCLI(t)
 	t.Setenv("HOME", t.TempDir())
 
 	completer := newPlanE2ECompleter(map[string][]step{
@@ -809,7 +800,7 @@ func TestPlandbCliASplitEndingItsTurnStillDispatches(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	place := Place{Dir: t.TempDir()}
 	repo := newTestRepo(t)
-	planE2EArmCLI(t, place)
+	planE2EArmCLI(t)
 	t.Setenv("HOME", t.TempDir())
 
 	// THE THREE PARTS ARE HELD OPEN by their own lane's step, so the ordering
