@@ -80,3 +80,35 @@ func TestAskRecordsTheCallThatRaisedIt(t *testing.T) {
 		t.Fatalf("open = %+v, want one question asked in call-ask-1", open)
 	}
 }
+
+// The recorded wait survives replay and never substitutes the policy's nominal duration.
+func TestClockReceiptKeepsActualElapsedSeconds(t *testing.T) {
+	asked := time.Date(2026, 10, 9, 14, 1, 0, 0, time.UTC)
+	q := Question{ID: 4, Kind: QuestionAsk, Asked: asked, Deadline: asked.Add(30 * time.Second), Options: []AnswerOption{{Key: "strict", Label: "Keep strict"}}}
+	answer := Answer{Key: "strict", DecidedBy: DecidedByDial, At: asked.Add(37200 * time.Millisecond)}
+	record := decisionRecordOf(q, answer)
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var replay DecisionRecord
+	if err := json.Unmarshal(data, &replay); err != nil {
+		t.Fatal(err)
+	}
+	if got := decidedOutcome(replay); got.ElapsedSeconds != 37.2 || got.Words != "Keep strict" {
+		t.Fatalf("replayed receipt = %+v", got)
+	}
+	answer.DecidedBy = DecidedByPerson
+	if got := decisionRecordOf(q, answer); got.ElapsedSeconds != 0 {
+		t.Fatalf("person receipt = %+v", got)
+	}
+	answer.DecidedBy = DecidedByDial
+	q.Asked = time.Time{}
+	if got := decisionRecordOf(q, answer); got.ElapsedSeconds != 0 {
+		t.Fatalf("unknown wait = %+v", got)
+	}
+	q.Asked, q.Deadline = asked, time.Time{}
+	if got := decisionRecordOf(q, answer); got.ElapsedSeconds != 0 {
+		t.Fatalf("immediate policy = %+v", got)
+	}
+}
