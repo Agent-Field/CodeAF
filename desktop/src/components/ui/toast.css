@@ -7,7 +7,7 @@
  flex-direction: column;
  align-items: center;
  width: fit-content;
- max-width: calc(100vw - var(--toast-gutter) * 2);
+ max-width: var(--toast-max-width);
  margin-inline: auto;
  pointer-events: none;
  opacity: var(--opacity-opaque);
@@ -45,9 +45,6 @@
 .toast-action.button-quiet:hover:not(:disabled) { background: var(--field-2); }
 .toast-action.button-quiet:active:not(:disabled) { background: var(--field-2); filter: brightness(var(--brightness-press)); }
 .toast-action.button-ghost:is(:hover,:active):not(:disabled) { color: var(--ink-2); }
-@media (max-width: 600px) {
- .toast-region { max-width: calc(100vw - var(--toast-narrow-gutter) * 2); }
-}
 @media (prefers-reduced-motion: reduce) {
  .toast { animation: none; }
  .toast-region { transition: none; }
