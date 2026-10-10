@@ -2970,6 +2970,13 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		return json.Marshal(dropped)
 
+	case MethodJobsList:
+		door, ok := agent.(interface{ JobNotices() []session.JobNotice })
+		if !ok {
+			return json.Marshal([]session.JobNotice(nil))
+		}
+		return json.Marshal(door.JobNotices())
+
 	case MethodPlanTasks:
 		door, ok := agent.(interface{ PlanTasks() []session.PlanTaskRow })
 		if !ok {
