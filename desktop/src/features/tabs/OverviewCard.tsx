@@ -36,7 +36,14 @@ export function cardText(tab: Tab, summaries: Readonly<Record<string, TabSummary
 }
 
 export const kindLabel = (tab: Tab) => (tab.split ? 'Split' : kindDef(tab.kind).label);
-export const kindIcon = (tab: Tab) => (tab.split ? 'split' as const : kindDef(tab.kind).glyph?.(tab.title) ?? kindDef(tab.kind).icon);
+export const kindIcon = (tab: Tab) => {
+  if (tab.split) return 'split' as const;
+  const pane = focusedPane(tab);
+  const picked = kindDef(pane.kind).iconFor?.(pane);
+  // A file tab's type comes from its path. A title-only glyph remains for a kind that has not filled iconFor.
+  if (typeof picked === 'string') return picked;
+  return kindDef(pane.kind).glyph?.(pane.title) ?? kindDef(pane.kind).icon;
+};
 
 /** The 6px state dot, shared by the card head and the filmstrip label. Running is accent, needs you amber, failed red. */
 export function StateDot({ mark }: { mark: TabMark }) {

@@ -112,6 +112,24 @@ test('no timer is set when a move fails to start', async () => {
   assert.deepEqual(timers, []);
 });
 
+test('a drag passes the drop point as the new window\'s top-left and still shifts only local focus', async () => {
+  const calls: unknown[] = [];
+  const actions = createTabActions({ native: native({ openPlaceWindow: async (place, options) => { calls.push([place, options]); return { label: 'w-1', moved: false }; } }), toasts: createToasts(), handoffView: id => calls.push(['local-focus', id]) });
+  assert.equal(await actions.moveToNewWindow(tab(), { x: -12, y: 40 }), true);
+  assert.deepEqual(calls, [['now', { focusTab: 't', at: { x: -12, y: 40 } }], ['local-focus', 't']]);
+});
+
+test('a drag\'s drop point travels with the pane handoff, and a refusal still leaves focus where it was', async () => {
+  const calls: unknown[] = [];
+  const actions = createTabActions({ native: native({ openPlaceWindow: async (place, options) => { calls.push([place, options?.pane?.id, options?.at]); return { label: 'w-1', handoffId: 'h1', moved: true }; } }), toasts: createToasts() });
+  assert.equal(await actions.moveToNewWindow(tab(), { x: 8, y: 9 }), true);
+  assert.deepEqual(calls, [['now', 't', { x: 8, y: 9 }]]);
+  let shifted = false;
+  const refused = createTabActions({ native: native({ openPlaceWindow: async () => { throw new Error('refused'); } }), toasts: createToasts(), handoffView: () => { shifted = true; } });
+  assert.equal(await refused.moveToNewWindow(tab(), { x: 1, y: 2 }), false);
+  assert.equal(shifted, false);
+});
+
 test('same-place Move opens a focused view of the whole split and shifts only local focus after success', async () => {
   const calls: unknown[] = [];
   const source = tab({ split: { layout: '1x2', focus: 1, panes: [] } });

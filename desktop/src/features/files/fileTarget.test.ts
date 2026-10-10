@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultView, fileTab, fileTypeIcon, findFileTab, splitFilePath } from './fileTarget.ts';
+import { defaultView, fileTab, findFileTab, splitFilePath } from './fileTarget.ts';
 import { cleanView } from '../tabs/view-state.ts';
 
 test('splits a path into name and folder', () => {
@@ -30,12 +30,4 @@ test('the persisted file target is validated', () => {
   assert.deepEqual(cleanView({ file: { path: 'a.go' } }), { file: { path: 'a.go' } });
   assert.deepEqual(cleanView({ file: { path: '', view: 'file' } }), {});
   assert.deepEqual(cleanView({ file: { path: 'a.go', view: 'blame' } }), {});
-});
-
-test('a file tab draws its type: code, JSON, prose and pictures', () => {
-  assert.equal(fileTypeIcon('lexer.go'), 'fileCode2');
-  assert.equal(fileTypeIcon('package.json'), 'fileJson');
-  assert.equal(fileTypeIcon('README.md'), 'file');
-  assert.equal(fileTypeIcon('Makefile'), 'file');
-  assert.equal(fileTypeIcon('logo.png'), 'image');
 });
