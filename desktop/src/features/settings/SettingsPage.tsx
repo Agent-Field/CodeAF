@@ -2,6 +2,7 @@ import { useRef, useState, type KeyboardEvent } from 'react';
 import { Button, KeyboardShortcut, PageHeading, SectionHeading, Segmented, Text, TextInput } from '../../components/ui';
 import type { CatalogModel, ModelRole, PlacesSetting } from '../chat/engine-client';
 import { AppearanceSection } from './AppearanceSection';
+import { EngineSection } from './EngineSection';
 import { groupRoles, roleStateLine } from './groups';
 import { ModelSelect } from './ModelSelect';
 import { effortWord, SETTINGS_TAB_TITLE } from './summary';
@@ -130,6 +131,7 @@ export function SettingsPage() {
         <Receipt receipt={settings.receipt} />
       </header>
       <AppearanceSection />
+      <EngineSection />
       <Text className="settings-note">These settings are provisional. Each job starts on the default model, and the defaults are engineering choices until Settings is designed.</Text>
       {settings.state === 'loading' && <Text>Reading your model choices…</Text>}
       {settings.state === 'unavailable' && <Text role="alert">The engine is not reachable, so model choices cannot be read.</Text>}
