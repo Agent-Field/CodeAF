@@ -26,7 +26,7 @@ function segmentsFor(tasks: EngineTaskRow[], taskId: string): BreadcrumbSegment[
   return [...trail, ...own];
 }
 
-/** The drilled header names the parent and current task, across the whole pane (Iteration 2). */
+/** The header names engine ancestry; Breadcrumb returns through window history when the shell supplies it. */
 export function TaskRouteBar({ taskId, tasks, route, onRoute, rootLabel }: Pick<Props, 'taskId' | 'tasks' | 'route' | 'onRoute' | 'rootLabel'>) {
   return (
     <Breadcrumb

@@ -44,6 +44,9 @@ test('a task notice opens the task in the same tab; Back and Ctrl+[ return', asy
   const notice = () => page.locator('.turn-v2').getByRole('button', { name: /Migrate the settings screen/ });
   await notice().click();
   await expect(crumbs(page)).toBeVisible();
+  await expect(crumbs(page).locator('.back-header-current')).toHaveText('Migrate the settings screen');
+  await expect(crumbs(page).getByRole('button')).toHaveCount(1);
+  await expect(crumbs(page).locator('.back-header-separator')).toHaveText('/');
   await expect(page.getByRole('heading', { name: 'Migrate the settings screen' })).toBeVisible();
   // The worker brief is a card under the title, clamped to three lines until Instructions is opened.
   const brief = page.getByText('Move the settings screen onto the shared form primitives.');
