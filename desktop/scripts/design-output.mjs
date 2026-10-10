@@ -33,6 +33,14 @@ ${dark}
 ${dark}
   }
 }
+/* Explicit nested appearances let specimens compare both palettes inside either app theme. */
+:root [data-theme="light"], :root [data-theme="light"][data-tint] {
+  color-scheme: light;
+${declarations(design.themes.light)}
+}
+:root [data-theme="dark"], :root [data-theme="dark"][data-tint] {
+${dark}
+}
 @media (prefers-reduced-motion: reduce) {
   :root { ${reducedMotion} }
 }

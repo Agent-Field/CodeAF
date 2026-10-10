@@ -61,6 +61,7 @@ Shell). On any conflict, the design files win over code and older docs.
 
 | # | Question | Assumption the app ships now |
 |---|---|---|
+| FD-SPEC-1 | How do the Foundations grids fit 320px, below the reference’s 300px card minimum plus page padding? | Keep reference geometry on wider screens; let each grid minimum shrink to its available width and wrap type/motion columns. |
 | SH-TOUCH-343 | What hit sizes and long-press delay should shell chrome use on coarse pointers (SH-042, SH-087, SH-136, SH-212)? | The responsive contract supplies tokens for a 24px close target, 40px rail row, 16px pane-divider target and 500ms long press. These values are assumptions because the design is silent; the touch-target lane owns applying them to controls and menus. |
 | WALK-313A | Which place opens when a question belongs to several places or none? | Keep the window's current place when it belongs to the question; otherwise use the first place supplied by the engine, or Now when no place is supplied. No folder is treated as a place. |
 | WALK-313B | Do new arrivals join a walk already started, and what is its denominator after an item vanishes? | A walk captures its queue at start; new arrivals remain on the frame pill for the next walk. Progress keeps the captured total; vanished items advance progress but do not increase the accepted-answer count. |
