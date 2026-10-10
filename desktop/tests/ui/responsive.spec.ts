@@ -5,7 +5,7 @@ import { expectAccessible, expectNoUnstyledControls, expectThemedSurface } from 
 
 async function expectNoHorizontalOverflow(page: Page) {
  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
- for (const container of await page.locator('.content-pane,.page-content,.command-palette[open],.sidebar-drawer[open]').all()) {
+ for (const container of await page.locator('.content-pane,.page-content,.sidebar-drawer[open]').all()) {
   expect(await container.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
  }
 }
@@ -34,13 +34,12 @@ for (const theme of ['Light', 'Dark']) {
     await expectNoUnstyledControls(page);
     await expectAccessible(page);
     if (name === 'Design system') {
-     const bottom = page.getByRole('button', { name: 'Open command palette', exact: true });
+     const bottom = page.getByRole('button', { name: 'Open the new-tab field', exact: true });
      await bottom.scrollIntoViewIfNeeded();
      await bottom.click();
-     await expectThemedSurface(page, page.getByRole('dialog', { name: 'Command palette' }));
+     await expect(page.getByRole('combobox', { name: 'Search or start' })).toBeFocused();
      await expectNoHorizontalOverflow(page);
-     await page.getByRole('textbox', { name: 'Search commands' }).fill('activity');
-     await page.getByRole('button', { name: 'Go to Activity' }).click();
+     await openPage(page, 'Activity');
      await expect(page.locator('.page-title')).toHaveText('Activity');
     }
    }
@@ -81,9 +80,8 @@ test('narrow navigation traps focus, themes nested menus, dismisses, and preserv
  await show.click();
  await page.keyboard.press('Control+k');
  await expect(drawer).not.toBeVisible();
- await expectThemedSurface(page, page.getByRole('dialog', { name: 'Command palette' }));
+ await expect(page.getByRole('combobox', { name: 'Search or start' })).toBeFocused();
  await expectAccessible(page);
- await page.keyboard.press('Escape');
  await page.setViewportSize({ width: 1200, height: 800 });
  await expect(page.getByRole('button', { name: 'Now', exact: true })).toBeVisible();
  await page.getByRole('button', { name: 'Hide sidebar' }).click();
@@ -94,7 +92,7 @@ test('narrow navigation traps focus, themes nested menus, dismisses, and preserv
  await expect(show).toBeVisible();
 });
 
-test('narrow drawer and palette keep reduced motion and usable short-height scrolling', async ({ page }) => {
+test('narrow drawer and new-tab field keep reduced motion and usable short-height scrolling', async ({ page }) => {
  await page.setViewportSize({ width: 320, height: 320 });
  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
  await page.goto('/');
@@ -105,8 +103,8 @@ test('narrow drawer and palette keep reduced motion and usable short-height scro
  await expectThemedSurface(page, page.getByRole('listbox'));
  await page.keyboard.press('Escape');
  await openPage(page, 'Design system');
- await page.getByRole('button', { name: 'Open command palette', exact: true }).click();
- await expect(page.getByRole('dialog', { name: 'Command palette' })).toHaveCSS('animation-duration', '0s');
+ await page.getByRole('button', { name: 'Open the new-tab field', exact: true }).click();
+ await expect(page.getByRole('combobox', { name: 'Search or start' })).toBeFocused();
  await expectNoHorizontalOverflow(page);
  await expectAccessible(page);
 });

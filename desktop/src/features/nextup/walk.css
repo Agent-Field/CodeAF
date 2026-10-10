@@ -1,0 +1,35 @@
+.nextup-walk-return.button {
+ height: var(--nextup-walk-return-height);
+ min-height: var(--nextup-walk-return-height);
+ padding-inline: var(--nextup-walk-control-pad);
+ border-radius: var(--nextup-walk-return-radius);
+ font-size: var(--nextup-walk-control-size);
+ color: var(--ink-2);
+ gap: var(--nextup-walk-return-gap);
+}
+.nextup-walk-return > span { color: var(--ink-3); }
+.nextup-walk-skip.button {
+ display: flex;
+ margin-left: auto;
+ height: var(--nextup-walk-skip-height);
+ min-height: var(--nextup-walk-skip-height);
+ padding-inline: var(--nextup-walk-control-pad);
+ border-radius: var(--nextup-walk-skip-radius);
+ font-size: var(--nextup-walk-control-size);
+ color: var(--ink-3);
+}
+.nextup-walk-return.button:is(:hover, :active) { color: var(--ink-2); }
+.nextup-walk-skip.button:is(:hover, :active) { color: var(--ink-3); }
+/* The full native strip is wider than a browser phone; its names remain available to assistive technology. */
+@media (max-width: 600px) {
+ .tab-workspace[data-nextup-walk] .workspace-back-slot {
+  width: var(--nextup-walk-strip-return-width);
+  max-width: var(--nextup-walk-strip-return-width);
+ }
+ .tab-workspace[data-nextup-walk] .back-chip.button {
+  width: 100%;
+  padding-inline: var(--space-0);
+ }
+ .tab-workspace[data-nextup-walk] :is(.back-chip-label, .back-chip-shortcut, .frame-pill-muted) { display: none; }
+ .tab-workspace[data-nextup-walk] .conversation-bar-counts { flex-wrap: wrap; min-width: var(--space-0); max-width: 100%; }
+}

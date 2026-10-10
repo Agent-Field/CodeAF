@@ -38,3 +38,6 @@
 
 /* A failed page uses the sheet's muted ink; its state colour belongs to the tab. */
 .web-sheet .web-status-line { color: var(--ink-3); }
+.web-find { padding: 0; position: relative; }
+.web-find-input.text-input { padding-right: var(--web-find-count-space); }
+.web-find-count { position: absolute; right: var(--web-address-pad); pointer-events: none; color: var(--ink-3); font-size: var(--type-label-size); }

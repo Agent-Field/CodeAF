@@ -12,6 +12,7 @@ export type ProposalProps = {
   now: number;
   held: boolean;
   onAnswer: (answer: EngineAnswer) => Promise<boolean>;
+  onSkip?: () => void;
   onHold: () => void;
 };
 
@@ -32,7 +33,7 @@ export function wouldChoose(question: Question): string {
 const basisHint = (question: Question) => (question.pick?.basis?.length ? `Relied on ${question.pick.basis.join(', ')}` : undefined);
 
 /** The tray's learning-mode card: the proposed choice is lit, Agree costs one click, and taking the other answer is recorded as an overrule. */
-export function Proposal({ question, busy, now, held, onAnswer, onHold }: ProposalProps) {
+export function Proposal({ question, busy, now, held, onAnswer, onHold, onSkip }: ProposalProps) {
   const options = visibleOptions(question);
   const proposed = options.find((o) => o.key === question.pick?.key) as Option;
   const others = options.filter((o) => o !== proposed);
@@ -83,6 +84,7 @@ export function Proposal({ question, busy, now, held, onAnswer, onHold }: Propos
       <div className="tray-actions">
         <Button variant="primary" disabled={locked} onClick={agree}>Agree<span className="proposal-key" aria-hidden="true"><KeyboardShortcut label="↵" /></span></Button>
         <Button variant="raised" disabled={locked} onClick={overrule}>{`Choose ${optionLabel(question, other)}`}</Button>
+        {onSkip && <Button className="nextup-walk-skip" disabled={locked} onClick={onSkip}>Skip</Button>}
         {clock && <Text className="proposal-clock" role="timer">{held ? 'On hold — take your time' : clock}</Text>}
       </div>
       {failed && <Text className="tray-caption" role="status">That did not go through. Try again.</Text>}
