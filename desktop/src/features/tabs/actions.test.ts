@@ -145,3 +145,14 @@ test('a refused focused-view window keeps source focus and the canonical split u
   assert.equal(await actions.moveToNewWindow(tab()), false);
   assert.equal(shifted, false);
 });
+
+test('releasing focus after a new window opens moves only this window, and a failed open says the tab is still here', () => {
+  const shifted: string[] = [];
+  const toasts = createToasts();
+  const actions = createTabActions({ native: native(), toasts, handoffView: id => shifted.push(id) });
+  actions.releaseFocus(tab());
+  assert.deepEqual(shifted, ['t']);
+  actions.moveFailed(tab());
+  assert.deepEqual(toasts.getToast()?.message, ['Could not move ', { strong: 'Config stack' }, ' to a new window. It is still here.']);
+  assert.equal(toasts.getToast()?.tone, 'danger');
+});
