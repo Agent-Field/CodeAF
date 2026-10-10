@@ -1,6 +1,7 @@
 import type { AttentionItem } from '../../features/world/types.ts';
 import type { WorldClient } from '../../features/world/worldClient.ts';
 import type { AttentionItem as NativeItem } from '../../design/nativeControls.ts';
+import { groupNotifications } from '../../features/places/notifyGroup.ts';
 
 export const focusAttentionEvent = 'codeaf:focus-attention';
 
@@ -52,13 +53,15 @@ export function createAttentionNotifications(source: Source, port: NotificationP
    const active = new Set(source.attention().map(item => item.id));
    const announced = new Set((focused ? [] : eligible).filter(item => active.has(item.id)).map(item => item.id));
    // The native book also needs the full pending set to keep old notification clicks accurate.
+   // The thread is the place group: one id and title per place, Now when the chat is unplaced.
+   const threads = new Map(groupNotifications(items, places).map(notice => [notice.id, notice.thread]));
    const pending: NativeItem[] = items.filter(item => active.has(item.id) && (needsYou(item) || item.kind === 'failed')).map(item => {
-    const placeId = places?.members?.find(member => member.chatId === item.chatId)?.placeId;
-    const placeName = places?.nodes.find(place => place.id === placeId)?.name;
+    const thread = threads.get(item.id);
     return {
      id: item.id, chatId: item.chatId, kind: item.kind === 'failed' ? 'failed' : 'needsYou',
      chatTitle: item.title ?? rows.find(row => row.chatId === item.chatId)?.title ?? '', text: item.head ?? '',
-     ...(placeId ? { placeId, placeName } : {}), silent: !announced.has(item.id),
+     ...(thread ? { placeId: thread.id, ...(thread.title ? { placeName: thread.title } : {}) } : {}),
+     silent: !announced.has(item.id),
     };
    });
    if (!stopped) await port.post(pending, cursor.seq, cursor.epoch);
