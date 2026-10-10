@@ -580,6 +580,7 @@ const (
 	// goes dark, so nothing is refused at the door.
 	MethodPlanSpend    = "PlanSpend"    // PlanSpendArgs → []session.PlanSpendLine
 	MethodPlanTasks    = "PlanTasks"    // nothing → []session.PlanTaskRow
+	MethodJobsList     = "Jobs.List"    // nothing → []session.JobNotice, newest first
 	MethodPlanTaskPage = "PlanTaskPage" // PlanTaskPageArgs → PlanTaskPageResult
 	// MethodRecentQuestionOutcomes is the receipts of questions that ended, newest
 	// first. It rides this version for [MethodPlanSpend]'s reason: an engine that
