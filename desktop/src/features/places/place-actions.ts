@@ -1,4 +1,6 @@
 import type { MenuEntry } from '../../components/ui';
+import { decideEntries, type DecideChange } from './PlaceMenuDecide';
+import type { PlaceDecide } from './wire';
 import { choosableTints, tintLabel, type TintName } from './components/PlaceSwatch';
 
 /** Everything a Home can ask its owner to do. EVERY member is optional on purpose: a verb the owner has not wired is left off the menu and
@@ -21,6 +23,8 @@ export type PlaceActions = {
   setTint?: (placeId: string, tint: TintName) => void | Promise<void>;
   pin?: (placeId: string) => void | Promise<void>;
   unpin?: (placeId: string) => void | Promise<void>;
+  /** "Always ask me" and "Decision confidence…": one PUT per choice, with Undo. */
+  setDecide?: (placeId: string, change: DecideChange) => void | Promise<void>;
   archive?: (placeId: string) => void | Promise<void>;
   restore?: (placeId: string) => void | Promise<void>;
   /** The Home asks for the preview, shows it inline, and calls this only on the person's second click. */
@@ -81,7 +85,9 @@ export function canDropOn(payload: DropPayload | undefined, targetPlaceId: strin
   return !(payload.kind === 'place' && payload.ids.includes(targetPlaceId));
 }
 
-export type MenuPlace = { id: string; name: string; tint: TintName; pinned?: boolean; archived?: boolean };
+export type MenuPlace = { id: string; name: string; tint: TintName; pinned?: boolean; archived?: boolean;
+  /** How the place decides, as the engine said it; absent draws neither decision entry. */
+  decide?: PlaceDecide };
 export type MenuContext = {
   /** Offline or loading: every write is dropped from the menu, navigation stays. */
   readOnly?: boolean;
@@ -102,7 +108,7 @@ const action = (id: string, label: string, onSelect: () => void, extra: Partial<
  * entries. Tint is a submenu of the five choosable tints, the current one checked. */
 export function placeMenu(place: MenuPlace, actions: PlaceActions, context: MenuContext = {}): MenuEntry[] {
   const writes = !context.readOnly;
-  const groups: MenuEntry[][] = [[], [], [], []];
+  const groups: MenuEntry[][] = [[], [], [], [], []];
   if (!context.current) {
     if (actions.goTo) groups[0].push(action('go', 'Go to', () => void actions.goTo?.(place.id), { shortcut: '↵' }));
     if (actions.quickLook) groups[0].push(action('quick-look', 'Quick Look', () => actions.quickLook?.(place.id), { shortcut: 'Space' }));
@@ -116,12 +122,13 @@ export function placeMenu(place: MenuPlace, actions: PlaceActions, context: Menu
     });
     if (actions.chooseAnotherParent) groups[1].push(action('another-parent', 'Add to another place…', () => actions.chooseAnotherParent?.(place.id)));
     if (actions.chooseMergeTarget) groups[1].push(action('merge', 'Merge into…', () => actions.chooseMergeTarget?.(place.id)));
+    if (!place.archived) groups[2].push(...decideEntries(place.id, place.decide, actions.setDecide));
     if (!place.archived) {
-      if (place.pinned && actions.unpin) groups[2].push(action('unpin', 'Unpin from rail', () => void actions.unpin?.(place.id)));
-      else if (!place.pinned && actions.pin) groups[2].push(action('pin', 'Pin to rail', () => void actions.pin?.(place.id)));
-      if (actions.archive) groups[2].push(action('archive', 'Archive', () => void actions.archive?.(place.id)));
-    } else if (actions.restore) groups[2].push(action('restore', 'Restore', () => void actions.restore?.(place.id)));
-    if (actions.remove && context.startDelete) groups[3].push(action('delete', 'Delete place…', () => context.startDelete?.(place.id), { danger: true }));
+      if (place.pinned && actions.unpin) groups[3].push(action('unpin', 'Unpin from rail', () => void actions.unpin?.(place.id)));
+      else if (!place.pinned && actions.pin) groups[3].push(action('pin', 'Pin to rail', () => void actions.pin?.(place.id)));
+      if (actions.archive) groups[3].push(action('archive', 'Archive', () => void actions.archive?.(place.id)));
+    } else if (actions.restore) groups[3].push(action('restore', 'Restore', () => void actions.restore?.(place.id)));
+    if (actions.remove && context.startDelete) groups[4].push(action('delete', 'Delete place…', () => context.startDelete?.(place.id), { danger: true }));
   }
   const entries: MenuEntry[] = [];
   groups.filter(group => group.length).forEach((group, index) => {

@@ -147,6 +147,12 @@ func runDesktopBridge(args []string) error {
 	if err := places.UseDoor(placeDoor); err != nil {
 		return fmt.Errorf("places: %w", err)
 	}
+	// The decision ledgers sit beside the graph this hello already carries.
+	// The engine session attaches them when it opens, and the attention list
+	// reads the same folder, so a place that answered is the place both see.
+	if err := session.PrepareDecideLedger(placeDoor.Path); err != nil {
+		return fmt.Errorf("decisions: %w", err)
+	}
 	// "Not now" on an untouched-place suggestion is remembered beside the graph, so
 	// every window agrees (placegraph/stale.go).
 	if places.Stale, err = placegraph.OpenStale(filepath.Join(filepath.Dir(placeDoor.Path), "places-stale.json")); err != nil {

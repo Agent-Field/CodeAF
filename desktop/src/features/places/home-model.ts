@@ -1,4 +1,5 @@
 import type { TintName } from './components/PlaceSwatch';
+import type { PlaceDecide } from './wire';
 import type { AttentionStatus } from './components/AttentionRow';
 import type { ChatStatus } from './components/ChatRow';
 import type { StalePlace } from './stale-client';
@@ -23,6 +24,8 @@ export type HomeChild = {
   /** A descendant needs you (amber) or failed (red). Running never shows on a tile. */
   status?: 'waiting' | 'failed';
   pinned?: boolean;
+  /** How the place decides, from the engine; absent hides the decision entries of its menu. */
+  decide?: PlaceDecide;
   archived?: boolean;
   /** Only for a search across every place: where it sits ("codeaf › Software"). */
   path?: readonly string[];
@@ -78,6 +81,7 @@ export type HomeView = {
   /** "Uses Marketing's context: brand-voice.md, codeaf.dev": the engine's line for a place that inherits. */
   contextLine?: string;
   pinned?: boolean;
+  decide?: PlaceDecide;
   /** Root only: every place in the graph, for the count line and for search. */
   totals?: { topLevel: number; all: number };
   allPlaces?: readonly HomeChild[];

@@ -23,7 +23,10 @@ export type PlaceView = {
   hasInstructions: boolean; sourceCount: number;
   /** Parents after the first: "Release · also in Software". */
   alsoIn: PlaceRef[];
+  /** The deciding setting that answers for this place (its own or inherited); absent from an older engine. */
+  decide?: PlaceDecide;
 };
+export type PlaceDecide = { alwaysAsk: boolean; threshold: number };
 
 export type SourceCheck = { state: 'ok' | 'missing' | 'unreadable' | 'unknown'; note?: string; title?: string };
 export type SourceView = { id: string; kind: SourceKind; ref: string; label?: string; addedBy: AddedBy; at?: string; check: SourceCheck };

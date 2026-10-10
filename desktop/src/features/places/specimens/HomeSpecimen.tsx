@@ -23,7 +23,7 @@ const codeaf: HomeView = {
   children: [
     place('pl_software', 'Software', 'tide', 0, 28, { tintSource: 'inherited', status: 'waiting' }),
     place('pl_marketing', 'Marketing', 'rose', 0, 14),
-    place('pl_release', 'Release', 'tide', 0, 6, { tintSource: 'inherited', alsoIn: ['Software'] }),
+    place('pl_release', 'Release', 'tide', 0, 6, { tintSource: 'inherited', alsoIn: ['Software'], decide: { alwaysAsk: false, threshold: 90 } }),
   ],
   sources: [{ id: 'src_parse', kind: 'folder', label: 'codeaf/internal/parse', state: 'ok' }, { id: 'src_notes', kind: 'file', label: 'release-notes.md', state: 'missing' }],
   chats: [
@@ -42,9 +42,9 @@ const launch: HomeView = {
 const root: HomeView = {
   kind: 'root', id: 'root', title: 'All places', tint: 'graphite', breadcrumb: [], attention: [],
   totals: { topLevel: 5, all: 58 },
-  children: [place('pl_codeaf', 'codeaf', 'tide', 4, 61, { status: 'waiting' }), place('pl_reports', 'Reports', 'sage', 47, 212), place('pl_personal', 'Personal', 'sand', 0, 8),
+  children: [place('pl_codeaf', 'codeaf', 'tide', 4, 61, { status: 'waiting', decide: { alwaysAsk: false, threshold: 90 } }), place('pl_reports', 'Reports', 'sage', 47, 212), place('pl_personal', 'Personal', 'sand', 0, 8),
     place('pl_reading', 'Reading', 'iris', 3, 19), place('pl_side', 'Side projects', 'rose', 2, 7)],
-  allPlaces: [place('pl_codeaf', 'codeaf', 'tide', 4, 61, { status: 'waiting' }), place('pl_reports', 'Reports', 'sage', 47, 212), place('pl_personal', 'Personal', 'sand', 0, 8),
+  allPlaces: [place('pl_codeaf', 'codeaf', 'tide', 4, 61, { status: 'waiting', decide: { alwaysAsk: false, threshold: 90 } }), place('pl_reports', 'Reports', 'sage', 47, 212), place('pl_personal', 'Personal', 'sand', 0, 8),
     place('pl_reading', 'Reading', 'iris', 3, 19), place('pl_side', 'Side projects', 'rose', 2, 7),
     place('pl_papers', 'Papers', 'iris', 0, 11, { tintSource: 'inherited', path: ['Reading'] }), place('pl_q3', 'Q3 report', 'sage', 0, 12, { tintSource: 'inherited', path: ['Reports'] })],
   archivedChildren: [place('pl_old', 'Old experiments', 'sand', 0, 3, { archived: true })],
@@ -94,6 +94,10 @@ export function HomeSpecimen({ scenario = 'place', withoutVerbs = false }: { sce
     },
     rename: (id, name) => { say(`rename:${id}:${name}`); patch(children => children.map(child => child.id === id ? { ...child, name } : child)); },
     setTint: (id, tint) => { say(`tint:${id}:${tint}`); patch(children => children.map(child => child.id === id ? { ...child, tint, tintSource: 'own' } : child)); },
+    setDecide: (id, change) => {
+      say(`decide:${id}:${change.alwaysAsk ?? ''}:${change.threshold ?? ''}`);
+      patch(children => children.map(child => child.id === id && child.decide ? { ...child, decide: { ...child.decide, ...change } } : child));
+    },
     pin: id => say(`pin:${id}`),
     unpin: id => say(`unpin:${id}`),
     archive: id => { say(`archive:${id}`); patch(children => children.filter(child => child.id !== id)); },

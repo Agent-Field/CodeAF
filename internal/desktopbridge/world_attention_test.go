@@ -110,7 +110,7 @@ func TestWorldAttentionPresenceFields(t *testing.T) {
 func TestWorldAttentionOmitsWithdrawnAndUnknownDetails(t *testing.T) {
 	row := asking("chat", "Choose")
 	row.Presence.Question.Full = &session.Question{Withdrawn: &session.Withdrawal{Reason: "Already decided"}}
-	_, items := projectWorld(session.World{Projects: []session.Project{{Sessions: []session.SessionRow{row}}}})
+	_, items := projectWorld(session.World{Projects: []session.Project{{Sessions: []session.SessionRow{row}}}}, "")
 	if len(items) != 0 {
 		t.Fatalf("withdrawn question still present: %+v", items)
 	}
@@ -143,20 +143,20 @@ func TestWorldAttentionOmitsRecordedAnswers(t *testing.T) {
 		t.Fatal(err)
 	}
 	world := session.World{Projects: []session.Project{{Sessions: []session.SessionRow{row}}}}
-	_, items := projectWorld(world)
+	_, items := projectWorld(world, "")
 	if len(items) != 0 {
 		t.Fatalf("answered question still present: %+v", items)
 	}
 	row.Presence.Question.Full.Head = "A different question using the same token"
 	world.Projects[0].Sessions[0] = row
-	_, items = projectWorld(world)
+	_, items = projectWorld(world, "")
 	if len(items) != 1 {
 		t.Fatal("an old answer hid a different question")
 	}
 	row.Presence.Question.Full.Head = ""
 	row.Presence.Question.Full.Kind = "task"
 	world.Projects[0].Sessions[0] = row
-	_, items = projectWorld(world)
+	_, items = projectWorld(world, "")
 	if len(items) != 1 {
 		t.Fatal("answer to another kind hid the question")
 	}
