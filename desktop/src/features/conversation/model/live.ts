@@ -31,6 +31,8 @@ export type LiveOverlayV2 = {
   calls: LiveCall[];
   steers: LiveSteer[];
   retry?: string;
+  retryDelay?: number; // seconds the engine said it will wait before the next attempt; absent when it said nothing
+  compacted?: boolean; // the engine summarized earlier messages during this turn
   error?: string;
 };
 
@@ -178,7 +180,23 @@ const onSteerConsumed: Handler = (o, event) => {
 const onSteerFell: Handler = (o, event) => ({ ...o, steers: o.steers.filter((s) => s.id !== steerOf(event)?.id) });
 
 // Retrying discards everything drawn since the last user line.
-const onRetrying: Handler = (o, event) => ({ ...emptyLive(o.baseEntries), startedAt: o.startedAt, steers: o.steers, retry: event.text || 'retrying' });
+const onRetrying: Handler = (o, event) => ({
+  ...emptyLive(o.baseEntries),
+  startedAt: o.startedAt,
+  steers: o.steers,
+  compacted: o.compacted,
+  retry: event.text || 'retrying',
+  retryDelay: retryDelayOf(event),
+});
+
+/** Seconds of delay the engine attached to a retry; nothing when it sent none (Q15). */
+function retryDelayOf(event: EngineEvent): number | undefined {
+  const seconds = rawField(rawField(event.raw, 'Retry') as Raw | undefined, 'DelaySeconds');
+  return typeof seconds === 'number' && seconds > 0 ? seconds : undefined;
+}
+
+// Compaction draws nothing while it runs; the divider appears once it is done.
+const onCompacted: Handler = (o) => ({ ...o, compacted: true });
 
 const onError: Handler = (o, event) => ({ ...o, error: event.error || event.text || 'The engine reported an error.' });
 
@@ -198,6 +216,7 @@ const HANDLERS: Record<string, Handler> = {
   steerConsumed: onSteerConsumed,
   steerFellThrough: onSteerFell,
   retrying: onRetrying,
+  compacted: onCompacted,
   error: onError,
 };
 
