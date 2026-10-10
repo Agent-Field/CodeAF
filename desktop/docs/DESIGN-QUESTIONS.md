@@ -360,7 +360,7 @@ Shell). On any conflict, the design files win over code and older docs.
 
 | ID | Question | Assumption |
 |---|---|---|
-| NT1 | New tab (3f): a URL typed or pasted ("Pasting a URL opens a web tab") | Web is a design-only kind (no browser surface is backed), so a URL is treated as a question: the first row reads Ask “https://…” in a new conversation. When a web tab is backed, a URL row replaces it. |
+| NT1 | New tab (3f): a URL typed or pasted ("Pasting a URL opens a web tab") | When the text is an http(s) address or a bare host with a dot and no spaces, and the web kind is backed, the first row reads Open <site and path> in a web tab and Enter turns the tab into a web tab; the conversation row follows. Without the web kind the URL is a question: Ask “https://…” in a new conversation. |
 | NT2 | New tab (3f, 4c): the "From history" section with past conversations from the engine's session list, a one-line digest and "See all N in History ⌘↵" | The engine bridge has no session-list endpoint, so the section is not drawn. Past conversations the person still has as open or recently closed tabs appear under Matching. Drawn when the bridge lists sessions and the History tab exists. |
 | NT3 | New tab: the "closed 1h ago" age on a recently closed row | Resolved. Closing stamps `closedAt` (milliseconds). The row says "closed" plus the same relative time as everywhere else ("closed 1 hour ago", "closed just now"). A saved closed tab with no `closedAt` says "closed". |
 | NT17 | Shell 3f draws the compact "closed 1h ago" | The row uses relativeTime, so an hour reads "closed 1 hour ago" (the locale's phrase) and under a minute "closed just now". There is no second compact clock. |
