@@ -75,8 +75,8 @@ export type TabProps = FrameProps & {
   onClose?: () => void;
   onRename?: () => void;
   onKeyDown?: HTMLAttributes<HTMLButtonElement>['onKeyDown'];
-  /** Props for the outer element (drag handlers, data attributes). */
-  frame?: HTMLAttributes<HTMLDivElement> & { draggable?: boolean };
+  /** Props for the outer element (the pointer drag, data attributes). */
+  frame?: HTMLAttributes<HTMLDivElement> & { ref?: Ref<HTMLDivElement> };
   id?: string;
   inGroup?: boolean;
   /** Specimen mode: a plain button with no tab role, for pages that show a tab outside any tablist. */

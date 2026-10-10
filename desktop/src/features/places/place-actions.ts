@@ -55,29 +55,16 @@ export type PlaceActions = {
   retry?: () => void;
 };
 
-/** What a drag carries. Chats and places use their own type so a tile can tell them apart while the drag is still over it
- * (the browser hides the data until the drop, so the Home also keeps the dragged item in state). */
+/** What a drag carries. Chats and places stay distinct so a tile can tell them apart while the pointer is over it. */
 export type DropPayload = { kind: 'chat' | 'place'; ids: readonly string[] };
 export const chatDragType = 'application/x-codeaf-chat';
 export const placeDragType = 'application/x-codeaf-place';
 
-export function writeDrag(event: { dataTransfer: DataTransfer }, payload: DropPayload): void {
-  event.dataTransfer.setData(payload.kind === 'chat' ? chatDragType : placeDragType, JSON.stringify(payload.ids));
-  // A plain-text copy lets a drop outside the app (or a test) see something sensible, never a hidden id format.
-  event.dataTransfer.setData('text/plain', payload.ids.join('\n'));
-  event.dataTransfer.effectAllowed = 'copyMove';
-}
-
-export function readDrag(event: { dataTransfer: DataTransfer }): DropPayload | undefined {
-  for (const [kind, type] of [['chat', chatDragType], ['place', placeDragType]] as const) {
-    const raw = event.dataTransfer.getData(type);
-    if (!raw) continue;
-    try {
-      const ids: unknown = JSON.parse(raw);
-      if (Array.isArray(ids) && ids.every(id => typeof id === 'string')) return { kind, ids };
-    } catch { /* A foreign drag with the same type name is ignored, never trusted. */ }
-  }
-  return undefined;
+/** The pointer session's payload, when it is a chat or a place. Anything else is not a filing drag. */
+export function dropPayloadFromPointer(payload: { kind: string; id: string; ids?: readonly string[] }): DropPayload | undefined {
+  if ((payload.kind !== 'chat' && payload.kind !== 'place') || !payload.ids?.length) return undefined;
+  if (!payload.ids.every(id => typeof id === 'string')) return undefined;
+  return { kind: payload.kind, ids: payload.ids };
 }
 
 /** ⌥ moves instead of adds (Places 8g "Organizing"). The tile drag owns the rule so a tile and any other surface cannot disagree. */

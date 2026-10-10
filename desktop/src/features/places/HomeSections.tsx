@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button, SectionLabel, Text } from '../../components/ui';
 import { LiveRows } from './live/LiveRows';
 import { PlaceTile, PlaceTileGrid } from './components/PlaceTile';
 import { NewPlaceTile } from './home/NewPlaceTile';
 import type { TintName } from './components/PlaceSwatch';
 import { childMeta, nameProblem, type HomeAttention, type HomeChild, type HomeConnection } from './home-model';
-import { placeMenu, readDrag, writeDrag, type DropPayload, type PlaceActions } from './place-actions';
+import { useDropTarget, usePointerDrag } from '../../components/ui/usePointerDrag';
+import { dropPayloadFromPointer, placeMenu, type DropPayload, type PlaceActions } from './place-actions';
 import { tileDropEffect, tileDropLabel, tileDropMode, tileDropVisible } from './home/tileDnd';
 import { type PlaceDeleteState } from './DeletePlaceConfirm';
 import { createDecisionsClient } from '../decisions/client';
@@ -74,7 +75,7 @@ export function useRunner() {
 }
 export type Runner = ReturnType<typeof useRunner>;
 
-/** The item being dragged. State repaints the source; the ref is already set when dragenter follows dragstart in the same gesture, before that paint. A browser hides drag data from the drop target until the drop itself. */
+/** The item being dragged. State repaints the source. The pointer session already knows the payload, so a tile does not wait for this paint to decide. */
 export type DragState = { payload: DropPayload | undefined; set: (payload: DropPayload | undefined) => void; now: () => DropPayload | undefined };
 export function useDragState(): DragState {
   const [payload, setPayload] = useState<DropPayload | undefined>();
@@ -95,6 +96,50 @@ export function HomeAttentionSection({ items, actions, readOnly }: { items: read
 }
 
 export { PlaceChats as HomeChatsSection } from './home/PlaceChats';
+
+/** One tile that can be picked up and can take a chat or a place. The hook has to live on the tile, not in the grid's map. */
+function FilingTile({ place, actions, readOnly, drag, selected, dropOn, hovered, setHovered, setSelected, runner, menu }: {
+  place: HomeChild; actions: PlaceActions; readOnly?: boolean; drag: DragState; selected: boolean; dropOn: boolean;
+  hovered: { current: string | undefined }; setHovered: (id: string | undefined) => void; setSelected: (id: string) => void; runner: Runner;
+  menu: ReturnType<typeof placeMenu>;
+}) {
+  const payload: DropPayload = { kind: 'place', ids: [place.id] };
+  const canDrag = !readOnly && !!actions.file && !place.archived;
+  const pointer = usePointerDrag(canDrag ? {
+    payload: { kind: 'place', id: place.id, ids: payload.ids },
+    onStart: () => drag.set(payload),
+    onEnd: () => { drag.set(undefined); setHovered(undefined); },
+  } : null);
+  const gate = (body: DropPayload | undefined) => ({ targetId: place.id, archived: place.archived, readOnly, canFile: !!actions.file, payload: body });
+  const dropRef = useDropTarget({
+    kind: 'place-tile',
+    id: place.id,
+    accepts: (incoming) => tileDropVisible(gate(dropPayloadFromPointer(incoming))),
+    hover: (point) => {
+      setHovered(place.id);
+      document.documentElement.dataset.pointerDragEffect = tileDropEffect(point);
+    },
+    leave: () => {
+      // Leaving this tile must not clear the tile the pointer has already entered.
+      if (hovered.current === place.id) setHovered(undefined);
+      delete document.documentElement.dataset.pointerDragEffect;
+    },
+    drop: (point, incoming) => {
+      const body = dropPayloadFromPointer(incoming) ?? drag.now();
+      setHovered(undefined);
+      drag.set(undefined);
+      delete document.documentElement.dataset.pointerDragEffect;
+      if (!body || !tileDropVisible(gate(body))) return false;
+      void runner.run(() => actions.file?.(body, place.id, tileDropMode(point)));
+      return true;
+    },
+  });
+  return <PlaceTile ref={dropRef} {...pointer} id={place.id} name={place.name} tint={place.tint} tintSource={place.tintSource} meta={childMeta(place)} status={place.status}
+    selected={selected} dragging={drag.payload?.kind === 'place' && drag.payload.ids.includes(place.id)} dropTarget={dropOn} dropLabel={tileDropLabel} disabled={!actions.goTo}
+    onGoTo={() => void runner.run(() => actions.goTo?.(place.id))} onOpenInNewWindow={actions.goToInNewWindow && (() => void runner.run(() => actions.goToInNewWindow?.(place.id)))}
+    onQuickLook={actions.quickLook && (() => { setSelected(place.id); actions.quickLook?.(place.id); })}
+    menu={menu}/>;
+}
 
 /** The tile grid for a place's children, or a root's top-level places, or a search's results. It owns the inline create/rename tile and every drop. */
 export function HomePlacesSection({ label, places, parentId, parentName, actions, readOnly, siblings, runner, drag, onDelete, allowNew = true, showLabel = true, newLabel, extraTiles, restore }: {
@@ -138,37 +183,11 @@ export function HomePlacesSection({ label, places, parentId, parentName, actions
             onNameChange={name => setRenaming(previous => previous && { ...previous, name })} onTintChange={tint => setRenaming(previous => previous && { ...previous, tint })}
             onSubmit={() => void submitRename()} onCancel={() => setRenaming(undefined)}/>;
         }
-        const gate = (payload: DropPayload | undefined, types?: ArrayLike<string>) => ({
-          targetId: place.id, archived: place.archived, readOnly, canFile: !!actions.file, payload, types,
-        });
-        // dragenter follows dragstart before React paints, so the highlight reads the ref rather than the last render.
-        const arm = (event: DragEvent<HTMLLIElement>) => {
-          if (!tileDropVisible(gate(drag.now(), event.dataTransfer.types))) return false;
-          event.preventDefault();
-          event.dataTransfer.dropEffect = tileDropEffect(event);
-          return true;
-        };
-        return <PlaceTile key={place.id} id={place.id} name={place.name} tint={place.tint} tintSource={place.tintSource} meta={childMeta(place)} status={place.status}
-          selected={selected === place.id} dragging={drag.payload?.kind === 'place' && drag.payload.ids.includes(place.id)} dropTarget={dropOn === place.id} dropLabel={tileDropLabel} disabled={!actions.goTo}
-          onGoTo={() => void runner.run(() => actions.goTo?.(place.id))} onOpenInNewWindow={actions.goToInNewWindow && (() => void runner.run(() => actions.goToInNewWindow?.(place.id)))}
-          onQuickLook={actions.quickLook && (() => { setSelected(place.id); actions.quickLook?.(place.id); })}
+        return <FilingTile key={place.id} place={place} actions={actions} readOnly={readOnly} drag={drag} selected={selected === place.id} dropOn={dropOn === place.id}
+          hovered={hovered} setHovered={setHovered} setSelected={setSelected} runner={runner}
           menu={placeMenu({ id: place.id, name: place.name, tint: place.tint, pinned: place.pinned, decide: place.decide, archived: place.archived || restore }, actions, {
             readOnly, canRename: !place.path, startRename: id => setRenaming({ id, name: place.name, tint: place.tintSource === 'own' ? place.tint : 'graphite', original: place.name, originalTint: place.tintSource === 'own' ? place.tint : 'graphite' }),
-            startDelete: onDelete && (() => onDelete(place)) })}
-          draggable={!readOnly && !!actions.file && !place.archived}
-          onDragStart={event => { const payload: DropPayload = { kind: 'place', ids: [place.id] }; writeDrag(event, payload); drag.set(payload); }}
-          onDragEnd={() => { drag.set(undefined); setHovered(undefined); }}
-          onDragEnter={event => { if (arm(event)) setHovered(place.id); }}
-          onDragOver={event => { if (arm(event)) setHovered(place.id); }}
-          onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null) && hovered.current === place.id) setHovered(undefined); }}
-          onDrop={event => {
-            const payload = readDrag(event) ?? drag.now();
-            setHovered(undefined);
-            drag.set(undefined);
-            if (!payload || !tileDropVisible(gate(payload))) return;
-            event.preventDefault();
-            void runner.run(() => actions.file?.(payload, place.id, tileDropMode(event)));
-          }}/>;
+            startDelete: onDelete && (() => onDelete(place)) })}/>;
       })}
       {showNew && <NewPlaceTile key={parentId ?? 'root'} label={newLabel} places={places} siblings={siblings} parentId={parentId}
         disabled={readOnly || runner.busy} onCreate={draft => runner.run(() => actions.create?.(draft))}/>}

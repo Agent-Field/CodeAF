@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactElement, ReactNode } from 'react';
+import type { HTMLAttributes, ReactElement, ReactNode, Ref } from 'react';
 import { Button } from '../../components/ui';
 import './tab.css';
 import './group.css';
@@ -13,8 +13,8 @@ export type GroupCapsuleProps = {
   /** Member tabs. When collapsed the caller marks hidden members with `hidden`; see MemberSlot. */
   children: ReactNode;
   onToggle?: () => void;
-  /** Drag and drop on the label: the drag host makes it carry the whole group and take dropped tabs and groups. */
-  labelProps?: HTMLAttributes<HTMLButtonElement> & { draggable?: boolean };
+  /** Pointer drag on the label: it carries the whole group and takes dropped tabs and groups. */
+  labelProps?: HTMLAttributes<HTMLButtonElement> & { ref?: Ref<HTMLButtonElement> };
   /** Wraps the label; the menu lane puts the group context menu here. */
   wrapLabel?: (label: ReactElement) => ReactElement;
 };

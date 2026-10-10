@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import { INK3_TEXT, expectAccessible, tokenColor } from '../ui/contracts';
 
 // The Places primitives against the designer's measurements (Places 8a, 8b, 8f; Components "Place tile", "History row").
@@ -13,6 +13,27 @@ async function open(page: Page, theme: 'light' | 'dark' = 'light') {
   await page.getByTestId('places-specimen').waitFor();
 }
 const log = (page: Page) => page.getByRole('list', { name: 'Callback log' }).locator('li');
+
+/** A point on the row the cursor can actually press. A dock can cover the middle of a chat, and a row below the fold is not under the cursor until it is scrolled into view. */
+async function pointOn(locator: Locator) {
+  const find = () => locator.evaluate(el => {
+    const r = el.getBoundingClientRect();
+    for (let y = r.top + 2; y < r.bottom - 1; y += 4) {
+      for (const x of [r.left + 16, r.left + r.width / 2]) {
+        const top = document.elementsFromPoint(x, y)[0];
+        if (top && (top === el || el.contains(top))) return { x, y };
+      }
+    }
+    return null;
+  });
+  let point = await find();
+  if (!point) {
+    await locator.evaluate(el => el.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
+    point = await find();
+  }
+  if (!point) throw new Error('no point on the dragged row is under the cursor');
+  return point;
+}
 const tile = (page: Page, id: string) => page.locator(`[data-place-id="${id}"]`);
 async function shadow(page: Page, value: string) {
   return page.evaluate(declared => {
@@ -262,12 +283,16 @@ test('tiles: click, modifier click, Space and Enter, menu and arrows', async ({ 
 test('tiles: a dragged chat lights the drop target and lands on it', async ({ page }) => {
   await open(page);
   const target = tile(page, 'specimen-software');
-  const data = await page.evaluateHandle(() => new DataTransfer());
-  await chat(page, 'specimen-c1').dispatchEvent('dragstart', { dataTransfer: data });
-  await target.dispatchEvent('dragenter', { dataTransfer: data });
+  const source = chat(page, 'specimen-c1');
+  const start = await pointOn(source);
+  const end = await pointOn(target);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + 8, start.y + 4, { steps: 3 });
+  await page.mouse.move(end.x, end.y, { steps: 8 });
   await expect(target).toHaveAttribute('data-drop', 'true');
   await expect(target.locator('.places-tile-drop')).toHaveText('Add here');
-  await target.dispatchEvent('drop', { dataTransfer: data });
+  await page.mouse.up();
   await expect(target).not.toHaveAttribute('data-drop', 'true');
   await expect(log(page).last()).toHaveText('specimen-software:drop:specimen-c1');
 });
@@ -314,7 +339,27 @@ test('rows: click, modifier click, middle click, menu and drag source', async ({
   await row.click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Delete…' }).click();
   await expect(log(page).last()).toHaveText('c1:menu:delete');
-  await expect(chat(page, 'specimen-c1')).toHaveAttribute('draggable', 'true');
+  const carried = chat(page, 'specimen-c1');
+  const software = tile(page, 'specimen-software');
+  // The clicks above scroll the row to the middle, which pushes the tile off the top. Both have to be under the cursor before the press.
+  await page.evaluate(() => {
+    const chatRow = document.querySelector('[data-chat-id="specimen-c1"]');
+    const tileRow = document.querySelector('[data-place-id="specimen-software"]');
+    if (!chatRow || !tileRow) return;
+    const margin = 16;
+    const top = Math.min(tileRow.getBoundingClientRect().top, chatRow.getBoundingClientRect().top);
+    if (top < margin) window.scrollBy(0, top - margin);
+    const bottom = Math.max(tileRow.getBoundingClientRect().bottom, chatRow.getBoundingClientRect().bottom);
+    if (bottom > window.innerHeight - margin) window.scrollBy(0, bottom - (window.innerHeight - margin));
+  });
+  const from = await pointOn(carried);
+  const onto = await pointOn(software);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 8, from.y + 4, { steps: 3 });
+  await page.mouse.move(onto.x, onto.y, { steps: 8 });
+  await page.mouse.up();
+  await expect(log(page).last()).toHaveText('specimen-software:drop:specimen-c1');
   const attention = page.locator('[data-attention-id="specimen-a1"] .places-row-main');
   await attention.click();
   await expect(log(page).last()).toHaveText('a1:open');

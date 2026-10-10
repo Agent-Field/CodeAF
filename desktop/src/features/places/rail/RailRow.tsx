@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode, Ref } from 'react';
 import { IconButton, NavigationItem, type IconName } from '../../../components/ui';
 import { PlaceDot } from '../PlaceDot';
 import { PlaceSwatch, type TintName } from '../components/PlaceSwatch';
@@ -15,7 +15,7 @@ export type RailRowProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'childr
   meta?: ReactNode;
   closedButBusy?: boolean;
   close?: { onClose: () => void; tabs?: number; shortcut?: string };
-  containerProps?: HTMLAttributes<HTMLDivElement> & { 'data-drop'?: boolean };
+  containerProps?: HTMLAttributes<HTMLDivElement> & { 'data-drop'?: boolean; ref?: Ref<HTMLDivElement> };
 };
 
 /** One row serves both icon-led navigation and tint-led places, so their states and keyboard focus cannot drift. */

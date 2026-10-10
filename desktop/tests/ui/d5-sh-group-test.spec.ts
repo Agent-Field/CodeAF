@@ -16,12 +16,15 @@ const label = (page: Page) => page.locator('.workspace-group-label');
 
 test('dragging the group label onto the right half of a tab moves the whole group, members in order', async ({ page }) => {
  await open(page);
- const dt = await page.evaluateHandle(() => new DataTransfer());
+ const source = label(page);
  const target = page.getByRole('tab', { name: 'Beta', exact: true });
+ const from = (await source.boundingBox())!;
  const box = (await target.boundingBox())!;
- await label(page).dispatchEvent('dragstart', { dataTransfer: dt });
- await target.dispatchEvent('dragover', { dataTransfer: dt, clientX: box.x + box.width * 0.9, clientY: box.y + box.height / 2 });
- await target.dispatchEvent('drop', { dataTransfer: dt, clientX: box.x + box.width * 0.9, clientY: box.y + box.height / 2 });
+ await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+ await page.mouse.down();
+ await page.mouse.move(from.x + from.width / 2 + 8, from.y + from.height / 2 + 6, { steps: 3 });
+ await page.mouse.move(box.x + box.width * 0.9, box.y + box.height / 2, { steps: 8 });
+ await page.mouse.up();
  expect(await order(page)).toEqual(['Alpha', 'Beta', 'One', 'Two', 'Gamma']);
 });
 

@@ -1,0 +1,11 @@
+/* The lifted copy. Opacity and shadow are the rail ghost and the shared sh-2; the ghost adds no colour. */
+.pointer-drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: var(--z-overlay);
+  margin: 0;
+  pointer-events: none;
+  opacity: var(--rail-drag-ghost-opacity);
+  box-shadow: var(--sh-2);
+}

@@ -1,8 +1,9 @@
-import { useState, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { Button, ContextMenu, type MenuEntry } from '../../../components/ui';
+import { useDropTarget, usePointerDrag, type DragPayload } from '../../../components/ui/usePointerDrag';
 import { choosableTints, tintLabel, type TintName } from '../components/PlaceSwatch';
 import type { PlaceRowModel } from '../shell/contracts';
-import { chatDragType, placeDragType, readDrag, writeDrag } from '../place-actions';
+import { dropPayloadFromPointer } from '../place-actions';
 import type { RailSections } from '../shell/selectors';
 import { NowRow } from '../../shell/NowRow';
 import { railShortcutVisible, shownPlaces, stepRail, type RailKey } from './railFocus';
@@ -65,6 +66,76 @@ const NOW = 'now';
 const ALL = 'all';
 const primaryClick = (event: MouseEvent) => event.metaKey || event.ctrlKey;
 
+type RailTarget = { section: 'pinned' | 'open'; index: number; placeId?: string };
+
+/** A place can land in Pinned when pinning exists, or in Open when unpinning does. A chat lands only on a row that can file it. */
+function railAccepts(payload: DragPayload, target: RailTarget, actions: PlaceRailActions): boolean {
+  const body = dropPayloadFromPointer(payload);
+  if (!body) return false;
+  if (body.kind === 'place') return target.section === 'pinned' ? !!actions.pin : !!actions.unpin;
+  return !!target.placeId && !!actions.fileChats;
+}
+
+function railCommit(payload: DragPayload, target: RailTarget, actions: PlaceRailActions, pinnedIds: readonly string[]): boolean {
+  const body = dropPayloadFromPointer(payload);
+  if (!body || !railAccepts(payload, target, actions)) return false;
+  if (body.kind === 'chat') {
+    if (target.placeId) actions.fileChats?.(body.ids, target.placeId);
+    return true;
+  }
+  for (const id of body.ids) {
+    if (target.section === 'pinned') actions.pin?.(id, target.index);
+    else if (pinnedIds.includes(id)) actions.unpin?.(id);
+  }
+  return true;
+}
+
+/** The empty end of a section. Dropping here appends. A row inside is a closer target and wins when it accepts. */
+function RailSectionRows({ section, index, actions, pinnedIds, setOver, children }: {
+  section: 'pinned' | 'open'; index: number; actions: PlaceRailActions; pinnedIds: readonly string[];
+  setOver: (key: string | undefined) => void; children: ReactNode;
+}) {
+  const target: RailTarget = { section, index };
+  const dropRef = useDropTarget({
+    kind: 'rail-row',
+    id: `${section}:end`,
+    accepts: (payload) => railAccepts(payload, target, actions),
+    hover: () => setOver(`${section}:${index}`),
+    leave: () => setOver(undefined),
+    drop: (_point, payload) => { setOver(undefined); return railCommit(payload, target, actions, pinnedIds); },
+  });
+  return <div className="rail-rows" ref={dropRef}>{children}</div>;
+}
+
+/** One place row. The pointer starts on the row, so a press on its button still picks the place up. */
+function RailPlace({ place, section, index, actions, pinnedIds, over, setOver, menuItems, slot, slotShortcut, closeShortcut, current, tabCount, focus, onClick, onAuxClick }: {
+  place: PlaceRowModel; section: 'pinned' | 'open'; index: number; actions: PlaceRailActions; pinnedIds: readonly string[];
+  over?: string; setOver: (key: string | undefined) => void; menuItems: MenuEntry[]; slot?: number; slotShortcut: (index: number) => string;
+  closeShortcut: string; current?: string; tabCount?: (id: string) => number;
+  focus: { 'data-rail-item': string; tabIndex: number; onFocus: () => void };
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
+  onAuxClick: (event: MouseEvent<HTMLButtonElement>) => void;
+}) {
+  const target: RailTarget = { section, index, placeId: place.id };
+  const pointer = usePointerDrag(actions.pin ? { payload: { kind: 'place', id: place.id, ids: [place.id] } } : null);
+  const dropRef = useDropTarget({
+    kind: 'rail-row',
+    id: `${section}:${index}:${place.id}`,
+    accepts: (payload) => railAccepts(payload, target, actions),
+    hover: () => setOver(`${section}:${index}`),
+    leave: () => setOver(undefined),
+    drop: (_point, payload) => { setOver(undefined); return railCommit(payload, target, actions, pinnedIds); },
+  });
+  return <ContextMenu label={`${place.name} actions`} items={menuItems}>
+    <RailRow name={place.name} parentName={place.parentName} tint={place.tint} active={place.id === current}
+      status={place.status} statusLabel={place.statusLabel} closedButBusy={place.closedButBusy}
+      close={section === 'open' ? { onClose: () => actions.close(place.id), tabs: tabCount?.(place.id), shortcut: place.id === current ? closeShortcut : undefined } : undefined}
+      containerProps={{ ref: dropRef, 'data-drop': over === `${section}:${index}` || undefined, ...pointer }}
+      aria-keyshortcuts={slot ? slotShortcut(slot).replace('⌃', 'Control+').replace('Alt ', 'Alt+') : undefined}
+      {...focus} onClick={onClick} onAuxClick={onAuxClick}/>
+  </ContextMenu>;
+}
+
 function Section({ label, action, children }: { label: string; action?: ReactNode; children: ReactNode }) {
   return <section className="rail-group" aria-label={label}>
     <div className="rail-section-label"><span>{label}</span>{action}</div>
@@ -109,46 +180,14 @@ export function PlaceRailSections(props: PlaceRailSectionsProps) {
     return entries;
   }
 
-  const dropProps = (target: { section: 'pinned' | 'open'; index: number; placeId?: string }) => ({
-    onDragOver: (event: DragEvent) => {
-      const types = [...event.dataTransfer.types];
-      const place = types.includes(placeDragType) && (target.section === 'pinned' ? !!actions.pin : !!actions.unpin);
-      const chat = types.includes(chatDragType) && !!target.placeId && !!actions.fileChats;
-      if (!place && !chat) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = chat ? 'copy' : 'move';
-      setOver(`${target.section}:${target.index}`);
-    },
-    onDragLeave: () => setOver(undefined),
-    onDrop: (event: DragEvent) => {
-      setOver(undefined);
-      const payload = readDrag(event);
-      if (!payload) return;
-      event.preventDefault();
-      if (payload.kind === 'chat') { if (target.placeId) actions.fileChats?.(payload.ids, target.placeId); return; }
-      for (const id of payload.ids) {
-        if (target.section === 'pinned') actions.pin?.(id, target.index);
-        else if (pinnedIds.includes(id)) actions.unpin?.(id);
-      }
-    },
-  });
-
   const focusProps = (id: string) => ({ 'data-rail-item': id, tabIndex: id === stop ? 0 : -1, onFocus: () => setCursor(id) });
 
   function row(place: PlaceRowModel, section: 'pinned' | 'open', index: number) {
-    const slot = slotOf(place.id);
-    return <ContextMenu key={place.id} label={`${place.name} actions`} items={menu(place, section)}>
-      <RailRow name={place.name} parentName={place.parentName} tint={place.tint} active={place.id === current}
-        status={place.status} statusLabel={place.statusLabel} closedButBusy={place.closedButBusy}
-        close={section === 'open' ? { onClose: () => actions.close(place.id), tabs: tabCount?.(place.id), shortcut: place.id === current ? closeShortcut : undefined } : undefined}
-        containerProps={{ 'data-drop': over === `${section}:${index}` || undefined,
-          draggable: !!actions.pin, onDragStart: event => writeDrag(event, { kind: 'place', ids: [place.id] }),
-          ...dropProps({ section, index, placeId: place.id }) }}
-        aria-keyshortcuts={slot ? slotShortcut(slot).replace('⌃', 'Control+').replace('Alt ', 'Alt+') : undefined}
-        {...focusProps(place.id)}
-        onClick={event => (primaryClick(event) && actions.newWindow ? actions.newWindow(place.id) : actions.go(place.id))}
-        onAuxClick={event => { if (event.button === 1 && actions.newWindow) { event.preventDefault(); actions.newWindow(place.id); } }}/>
-    </ContextMenu>;
+    return <RailPlace key={place.id} place={place} section={section} index={index} actions={actions} pinnedIds={pinnedIds} over={over} setOver={setOver}
+      menuItems={menu(place, section)} slot={slotOf(place.id)} slotShortcut={slotShortcut} closeShortcut={closeShortcut} current={current} tabCount={tabCount}
+      focus={focusProps(place.id)}
+      onClick={event => (primaryClick(event) && actions.newWindow ? actions.newWindow(place.id) : actions.go(place.id))}
+      onAuxClick={event => { if (event.button === 1 && actions.newWindow) { event.preventDefault(); actions.newWindow(place.id); } }}/>;
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -168,9 +207,9 @@ export function PlaceRailSections(props: PlaceRailSectionsProps) {
       <div className="rail-group">
         <NowRow now={now} primaryClick={primaryClick} {...focusProps(NOW)}/>
       </div>
-      {pinned.length > 0 && <Section label="Pinned"><div className="rail-rows" {...dropProps({ section: 'pinned', index: pinned.length })}>{pinned.map((place, index) => row(place, 'pinned', index))}</div></Section>}
+      {pinned.length > 0 && <Section label="Pinned"><RailSectionRows section="pinned" index={pinned.length} actions={actions} pinnedIds={pinnedIds} setOver={setOver}>{pinned.map((place, index) => row(place, 'pinned', index))}</RailSectionRows></Section>}
       {open.length > 0 && <Section label="Open" action={<Button variant="ghost" className="rail-section-action" onClick={actions.closeAll}>Close all</Button>}>
-        <div className="rail-rows" {...dropProps({ section: 'open', index: open.length })}>{open.map((place, index) => row(place, 'open', index))}</div>
+        <RailSectionRows section="open" index={open.length} actions={actions} pinnedIds={pinnedIds} setOver={setOver}>{open.map((place, index) => row(place, 'open', index))}</RailSectionRows>
       </Section>}
       {emptyHint && pinned.length === 0 && open.length === 0 && <p className="rail-hint">Places you open show here. Pin the ones you live in.</p>}
       {notice && <p className="rail-hint" role="status">{notice.text}{notice.onRetry && <> · <Button variant="ghost" className="rail-section-action" onClick={notice.onRetry}>Retry</Button></>}</p>}

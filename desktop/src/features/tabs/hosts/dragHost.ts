@@ -1,22 +1,22 @@
 // Drag host: which tab is in flight, what dropping it on a tab or a group label does (design 2g: "split zones
 // in the content, group target in the strip"), the edge drops that PaneGrid draws, and a release outside the
 // window, which opens that tab in a new window (Interactions, "Dragging a tab out of the strip makes a new window").
-import { useSyncExternalStore, type DragEvent, type KeyboardEvent } from 'react';
+// The gesture is the shared pointer drag. A press on the tab's button is the start; WebKit never opens an
+// HTML5 drag from that button.
+import { useRef, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type Ref } from 'react';
+import { useSyncExternalStore } from 'react';
+import { useDropTarget, usePointerDrag, type DragPayload, type DragPoint } from '../../../components/ui/usePointerDrag';
+import { webOverlayDragEnd, webOverlayDragStart } from '../../../lib/native/webOverlay';
 import type { TabsApi } from '../context';
 import type { Tab, TabGroup } from '../model';
 import { blockNeighbour, blockSlots } from '../reducers/groups';
-import { dragRelease, mayTearOff, tabMoveToWindow, tearOffAt } from './tearOff';
+import { mayTearOff, tabMoveToWindow, tearOffAt } from './tearOff';
 
 export const tabDragType = 'application/codeaf-tab';
 /** A whole group in flight, dragged by its label (Interactions, group label: "Drag moves the whole group"). */
 export const groupDragType = 'application/codeaf-group';
-const carriesTab = (event: DragEvent) => event.dataTransfer.types.includes(tabDragType);
-const carriesGroup = (event: DragEvent) => event.dataTransfer.types.includes(groupDragType);
-// The group in flight, for the same reason as `dragged`: a group never drops onto its own members or label.
-let draggedGroup: string | null = null;
 
-// The id of the tab being dragged. dataTransfer cannot be read while a drag is over something, so the
-// content card reads it here to decide whether to draw its split zones.
+// The id of the tab being dragged. The content card reads it to decide whether to draw its split zones.
 let dragged: string | null = null;
 const listeners = new Set<() => void>();
 const setDragged = (id: string | null) => { if (dragged !== id) { dragged = id; listeners.forEach(listener => listener()); } };
@@ -31,64 +31,103 @@ export const dropZoneOf = (fraction: number, groupable: boolean): TabDropZone =>
   if (!groupable) return fraction < 0.5 ? 'before' : 'after';
   return fraction < 0.25 ? 'before' : fraction > 0.75 ? 'after' : 'group';
 };
-const zoneAt = (event: DragEvent<HTMLElement>, groupable: boolean) => {
-  const box = event.currentTarget.getBoundingClientRect();
-  return dropZoneOf((event.clientX - box.left) / (box.width || 1), groupable);
+const zoneAt = (point: DragPoint, element: HTMLElement, groupable: boolean) => {
+  const box = element.getBoundingClientRect();
+  return dropZoneOf((point.x - box.left) / (box.width || 1), groupable);
 };
-const clearZone = (element: HTMLElement) => { delete element.dataset.drop; };
+
+function tabPayload(payload: DragPayload): string | undefined {
+  return payload.kind === 'tab' ? payload.id : undefined;
+}
+function groupPayload(payload: DragPayload): string | undefined {
+  return payload.kind === 'group' ? payload.id : undefined;
+}
 
 /**
- * Props for a tab's outer element: it can be dragged; dropping another tab on it groups (middle) or reorders (edges).
- * A whole group dropped on it goes before or after it (or, on a member of another group, before or after that group):
- * groups never nest, so a group has no middle zone.
+ * Props for a tab's outer element. Dropping another tab on it groups (middle) or reorders (edges).
+ * A whole group dropped on it goes before or after it. Groups never nest, so a group has no middle zone.
+ * A release no target accepted, past the window edge, tears the tab off.
  */
-export function tabDragProps(api: TabsApi, tab: Tab) {
-  return {
-    draggable: true,
-    onDragStart: (event: DragEvent) => { event.dataTransfer.setData(tabDragType, tab.id); event.dataTransfer.effectAllowed = 'move'; setDragged(tab.id); },
-    onDragEnd: (event: DragEvent) => {
-      setDragged(null);
-      // The client box is this window. A pointer past it, and a drop nobody accepted, is a new window at the
-      // pointer. The move itself is the same door as the menu, so a browser, a failure and a running turn stay put.
-      const at = tearOffAt(dragRelease(event), { width: window.innerWidth, height: window.innerHeight });
+export function useTabDrag(api: TabsApi, tab: Tab): { ref: Ref<HTMLDivElement>; onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void } {
+  const el = useRef<HTMLDivElement | null>(null);
+  const pointer = usePointerDrag({
+    payload: { kind: 'tab', id: tab.id },
+    onStart: () => { setDragged(tab.id); webOverlayDragStart([tabDragType]); },
+    onEnd: () => { setDragged(null); webOverlayDragEnd(); },
+    onMiss: (point) => {
+      const at = tearOffAt({ dropEffect: 'none', clientX: point.x, clientY: point.y, screenX: point.screenX, screenY: point.screenY }, { width: window.innerWidth, height: window.innerHeight });
       if (!at || !mayTearOff(tab, api.actions.canMove(tab))) return;
       tabMoveToWindow(tab, () => { void api.actions.moveToNewWindow(tab, at); });
     },
-    onDragOver: (event: DragEvent<HTMLElement>) => {
-      const group = carriesGroup(event);
-      if (group ? !draggedGroup || tab.groupId === draggedGroup : !carriesTab(event) || dragged === tab.id) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = 'move';
-      event.currentTarget.dataset.drop = zoneAt(event, !group && !tab.pinned);
+  });
+  const dropRef = useDropTarget({
+    kind: 'tab',
+    id: tab.id,
+    accepts: (payload) => {
+      const groupId = groupPayload(payload);
+      if (groupId) return tab.groupId !== groupId;
+      const id = tabPayload(payload);
+      return !!id && id !== tab.id;
     },
-    onDragLeave: (event: DragEvent<HTMLElement>) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) clearZone(event.currentTarget); },
-    onDrop: (event: DragEvent<HTMLElement>) => {
-      const groupId = event.dataTransfer.getData(groupDragType);
-      const id = event.dataTransfer.getData(tabDragType);
-      const zone = zoneAt(event, !groupId && !tab.pinned);
-      clearZone(event.currentTarget);
-      setDragged(null);
-      draggedGroup = null;
+    hover: (point, payload) => {
+      if (!el.current) return;
+      el.current.dataset.drop = zoneAt(point, el.current, !groupPayload(payload) && !tab.pinned);
+    },
+    leave: () => { if (el.current) delete el.current.dataset.drop; },
+    drop: (point, payload) => {
+      const host = el.current;
+      const zone = host ? zoneAt(point, host, !groupPayload(payload) && !tab.pinned) : 'after';
+      if (host) delete host.dataset.drop;
+      const groupId = groupPayload(payload);
       if (groupId) {
-        event.preventDefault();
         if (tab.groupId !== groupId) api.dispatch({ type: 'move-group-block', id: groupId, targetId: tab.id, after: zone === 'after' });
-        return;
+        return true;
       }
-      if (!id || id === tab.id) return;
-      event.preventDefault();
+      const id = tabPayload(payload);
+      if (!id || id === tab.id) return false;
       if (zone !== 'group') api.dispatch({ type: 'reorder', id, targetId: tab.id, after: zone === 'after' });
       else if (tab.groupId) api.dispatch({ type: 'move-group', id, groupId: tab.groupId });
       else api.dispatch({ type: 'group', id: tab.id, ids: [id] });
+      return true;
     },
+  });
+  return {
+    onPointerDown: pointer.onPointerDown,
+    ref: (node) => { el.current = node; dropRef(node); },
   };
 }
 
 /**
- * Props for a group label. Dragging it carries the whole group. Dropping a tab on it moves the tab into the group and
- * opens it; dropping another group on it puts that group just before this one.
+ * Props for a group label. Dragging it carries the whole group. Dropping a tab on it moves the tab into the group;
+ * dropping another group on it puts that group just before this one.
  */
-export function groupDragProps(api: TabsApi, group: TabGroup, announce?: (message: string) => void) {
+export function useGroupDrag(api: TabsApi, group: TabGroup, announce?: (message: string) => void): { ref: Ref<HTMLButtonElement>; onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void; onKeyDown: (event: KeyboardEvent) => void } {
+  const pointer = usePointerDrag({
+    payload: { kind: 'group', id: group.id },
+    onStart: () => webOverlayDragStart([groupDragType]),
+    onEnd: () => webOverlayDragEnd(),
+  });
+  const dropRef = useDropTarget({
+    kind: 'group',
+    id: group.id,
+    accepts: (payload) => !!tabPayload(payload) || (!!groupPayload(payload) && groupPayload(payload) !== group.id),
+    hover: () => {},
+    leave: () => {},
+    drop: (_point, payload) => {
+      const groupId = groupPayload(payload);
+      if (groupId) {
+        if (groupId !== group.id) api.dispatch({ type: 'move-group-block', id: groupId, targetId: group.id });
+        return true;
+      }
+      const id = tabPayload(payload);
+      if (!id) return false;
+      api.dispatch({ type: 'move-group', id, groupId: group.id });
+      return true;
+    },
+  });
   return {
+    onPointerDown: pointer.onPointerDown,
+    ref: dropRef,
     // Alt+Shift+←/→ moves the whole block one slot (S-3g-18) and says where it went, since nothing else tells a screen reader.
     onKeyDown: (event: KeyboardEvent) => {
       if (!event.altKey || !event.shiftKey || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
@@ -99,20 +138,6 @@ export function groupDragProps(api: TabsApi, group: TabGroup, announce?: (messag
       api.dispatch({ type: 'move-group-block', id: group.id, targetId, after: dir > 0 });
       const slots = blockSlots(api.state.tabs);
       announce?.(`Moved group ${group.title} to position ${slots.indexOf(group.id) + dir + 1} of ${slots.length}`);
-    },
-    draggable: true,
-    onDragStart: (event: DragEvent) => { event.dataTransfer.setData(groupDragType, group.id); event.dataTransfer.effectAllowed = 'move'; draggedGroup = group.id; },
-    onDragEnd: () => { draggedGroup = null; },
-    onDragOver: (event: DragEvent) => {
-      if (carriesTab(event) || (carriesGroup(event) && draggedGroup && draggedGroup !== group.id)) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }
-    },
-    onDrop: (event: DragEvent) => {
-      const groupId = event.dataTransfer.getData(groupDragType);
-      const id = event.dataTransfer.getData(tabDragType);
-      setDragged(null);
-      draggedGroup = null;
-      if (groupId) { event.preventDefault(); if (groupId !== group.id) api.dispatch({ type: 'move-group-block', id: groupId, targetId: group.id }); }
-      else if (id) { event.preventDefault(); api.dispatch({ type: 'move-group', id, groupId: group.id }); }
     },
   };
 }

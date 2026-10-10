@@ -1,4 +1,4 @@
-import type { HTMLAttributes, KeyboardEvent, MouseEvent, ReactNode } from 'react';
+import type { HTMLAttributes, KeyboardEvent, MouseEvent, ReactNode, Ref } from 'react';
 import { Button, ContextMenu, Icon, StatusMark, type MenuEntry } from '../../../components/ui';
 import './places-components.css';
 
@@ -7,6 +7,7 @@ export type ChatStatus = 'running' | 'waiting' | 'failed';
 const statusWords: Record<ChatStatus, string> = { running: 'Running', waiting: 'Needs you', failed: 'Failed' };
 
 type ChatRowProps = Omit<HTMLAttributes<HTMLLIElement>, 'title' | 'onClick' | 'onKeyDown'> & {
+  ref?: Ref<HTMLLIElement>;
   /** The canonical session id. It rides on the row (data-chat-id) and every callback closes over it; the row never makes one up. */
   id: string;
   title: string;
@@ -41,14 +42,14 @@ type ChatRowProps = Omit<HTMLAttributes<HTMLLIElement>, 'title' | 'onClick' | 'o
 };
 
 /** The one chat row, shared by a place's Home and History. Everything shown comes from props: no state is made up. */
-export function ChatRow({ id, title, excerpt, status, statusLabel, model, timeLabel, timeIso, variant = 'home', details, selected, dragging, disabled, onOpen, onOpenInNewTab, onKeyDown, menu, menuLabel, appearance, className = '', ...frame }: ChatRowProps) {
+export function ChatRow({ id, title, excerpt, status, statusLabel, model, timeLabel, timeIso, variant = 'home', details, selected, dragging, disabled, onOpen, onOpenInNewTab, onKeyDown, menu, menuLabel, appearance, className = '', ref, ...frame }: ChatRowProps) {
   const open = (event: MouseEvent<HTMLButtonElement>) => {
     if ((event.metaKey || event.ctrlKey) && onOpenInNewTab) onOpenInNewTab(); else onOpen();
   };
-  const row = <li {...frame} className={`places-chat-row ${className}`} data-chat-id={id} data-model={model} data-variant={variant} data-status={status}
+  const row = <li {...frame} ref={ref} className={`places-chat-row ${className}`} data-chat-id={id} data-model={model} data-variant={variant} data-status={status}
     data-selected={selected || undefined} data-dragging={dragging || undefined} data-disabled={disabled || undefined} data-force={appearance}>
-    {/* The row is what leaves the list, and the person grabs this button. A button does not drag unless it says so. */}
-    <Button variant="ghost" className="places-row-main places-chat-main" draggable={frame.draggable ? true : undefined} disabled={disabled} aria-current={selected ? 'true' : undefined} data-force={appearance}
+    {/* The row is what leaves the list. The pointer listener sits on the row, so a press on this button still starts the drag. */}
+    <Button variant="ghost" className="places-row-main places-chat-main" disabled={disabled} aria-current={selected ? 'true' : undefined} data-force={appearance}
       onClick={open} onKeyDown={onKeyDown} onAuxClick={event => { if (event.button === 1 && onOpenInNewTab) { event.preventDefault(); onOpenInNewTab(); } }}>
       <span className="places-chat-lead">
         {status ? <StatusMark status={status} label={statusLabel ?? statusWords[status]} dense/> : <Icon name="tab" size="xs"/>}

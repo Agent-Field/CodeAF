@@ -29,7 +29,7 @@ const rows: Row[] = [
 const columns = ['Kind', 'Rest', 'Hover', 'Active', 'Needs you', 'Failed'];
 const noop = () => {};
 /** Forces a drag-target look on a specimen tab; the live strip sets this attribute while a tab is dragged over it. */
-const dropFrame = (zone: string) => ({ 'data-drop': zone }) as HTMLAttributes<HTMLDivElement> & { draggable?: boolean };
+const dropFrame = (zone: string) => ({ 'data-drop': zone }) as HTMLAttributes<HTMLDivElement>;
 
 function Specimen({ kind, title, active, hover, state }: { kind: TabKind; title: string; active?: boolean; hover?: boolean; state?: TabState }) {
   return <div className="tabs-specimen-cell"><Tab specimen kind={kind} title={title} active={active} hover={hover} state={state} tabIndex={-1} onClose={noop}/></div>;

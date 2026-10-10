@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import { tokenColor } from '../ui/contracts';
 
 // Home draws the same 84px tile the Components specimen measures (Places 8a, P-CMP-7..9).
@@ -9,6 +9,27 @@ async function open(page: Page, scenario: string, theme: 'light' | 'dark' = 'lig
   await page.getByTestId('home-specimen').waitFor();
 }
 const tile = (page: Page, id: string) => page.locator(`[data-place-id="${id}"]`);
+
+/** A point on the row the cursor can actually press. The Home dock covers the middle of a chat, and a row below the fold is not under the cursor until it is scrolled into view. */
+async function pointOn(locator: Locator) {
+  const find = () => locator.evaluate(el => {
+    const r = el.getBoundingClientRect();
+    for (let y = r.top + 2; y < r.bottom - 1; y += 4) {
+      for (const x of [r.left + 16, r.left + r.width / 2]) {
+        const top = document.elementsFromPoint(x, y)[0];
+        if (top && (top === el || el.contains(top))) return { x, y };
+      }
+    }
+    return null;
+  });
+  let point = await find();
+  if (!point) {
+    await locator.evaluate(el => el.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
+    point = await find();
+  }
+  if (!point) throw new Error('no point on the dragged row is under the cursor');
+  return point;
+}
 const log = (page: Page) => page.getByRole('list', { name: 'Callback log' }).locator('li');
 
 async function shadow(page: Page, value: string) {
@@ -57,12 +78,16 @@ for (const theme of ['light', 'dark'] as const) {
     await page.keyboard.press('Escape');
 
     const target = tile(page, 'pl_marketing');
-    const data = await page.evaluateHandle(() => new DataTransfer());
-    await page.locator('[data-chat-id="chat_commas"]').dispatchEvent('dragstart', { dataTransfer: data });
-    await target.dispatchEvent('dragenter', { dataTransfer: data });
+    const source = page.locator('[data-chat-id="chat_commas"]');
+    const start = await pointOn(source);
+    const end = await pointOn(target);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x + 8, start.y + 4, { steps: 3 });
+    await page.mouse.move(end.x, end.y, { steps: 8 });
     await expect(target).toHaveAttribute('data-drop', 'true');
     await expect(target.locator('.places-tile-drop')).toHaveText('Add here');
-    await target.dispatchEvent('drop', { dataTransfer: data });
+    await page.mouse.up();
     await expect(log(page).last()).toHaveText('file:chat:chat_commas:pl_marketing:add');
   });
 

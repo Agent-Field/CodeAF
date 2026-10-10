@@ -4,8 +4,9 @@
 // decides whether a change still applies (a message whose turn has started
 // refuses it), so the rows never claim a change on their own.
 
-import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { Button, ContextMenu, DropdownMenu, Icon, IconButton, RowActions } from '../../../components/ui';
+import { useDropTarget, usePointerDrag } from '../../../components/ui/usePointerDrag';
 import { plainMessage } from '../composer/pastedText';
 import { QueuedEdit } from './QueuedEdit';
 import './queued.css';
@@ -52,6 +53,42 @@ function useRowFocus(order: string) {
   };
 }
 
+/** One queued row. A coarse pointer never picks it up; a drop on a row takes that row's place. */
+function QueuedDragRow({ item, index, total, movable, dragging, setDragging, onMove, menu, nudge, children }: {
+  item: QueuedItem; index: number; total: number; movable: boolean; dragging: string | null;
+  setDragging: (id: string | null) => void; onMove?: (id: string, to: number) => void;
+  menu: { id: string; label: string; disabled?: boolean; onSelect: () => void }[];
+  nudge: (event: KeyboardEvent, id: string, index: number) => void;
+  children: ReactNode;
+}) {
+  const pointer = usePointerDrag(movable ? {
+    payload: { kind: 'queue-row', id: item.id },
+    onStart: () => setDragging(item.id),
+    onEnd: () => setDragging(null),
+  } : null);
+  const dropRef = useDropTarget(movable ? {
+    kind: 'queue-row',
+    id: item.id,
+    accepts: (payload) => payload.kind === 'queue-row',
+    hover: () => {},
+    leave: () => {},
+    drop: (_point, payload) => {
+      if (payload.kind !== 'queue-row' || !onMove) return false;
+      onMove(payload.id, index);
+      return true;
+    },
+  } : null);
+  return <li ref={dropRef} className="queued-item" data-dragging={dragging === item.id || undefined} {...pointer}>
+    <ContextMenu items={menu} label="Queued message actions" className="queued-menu">
+      <div className="queued-row" data-actions-host="" data-movable={movable || undefined} data-queued-id={item.id} role="group"
+        aria-label={`Queued message ${index + 1} of ${total}`} aria-keyshortcuts={onMove ? 'Shift+F10 Alt+ArrowUp Alt+ArrowDown' : 'Shift+F10'} tabIndex={0}
+        onKeyDown={(event) => nudge(event, item.id, index)}>
+        {children}
+      </div>
+    </ContextMenu>
+  </li>;
+}
+
 /** Messages waiting for their turn, drawn just above the composer. */
 export function QueuedRows({ items, onRemove, onEdit, onMove, onSendNow }: Props) {
   const [coarse, setCoarse] = useState(() => window.matchMedia('(pointer: coarse)').matches);
@@ -75,11 +112,6 @@ export function QueuedRows({ items, onRemove, onEdit, onMove, onSendNow }: Props
   if (items.length === 0) return null;
   const hidden = open ? 0 : Math.max(0, items.length - VISIBLE);
   const shown = hidden ? items.slice(0, VISIBLE) : items;
-
-  const drop = (to: number) => {
-    if (dragging && onMove) onMove(dragging, to);
-    setDragging(null);
-  };
 
   const move = (id: string, to: number) => {
     if (!onMove || to < 0 || to >= items.length) return;
@@ -127,47 +159,24 @@ export function QueuedRows({ items, onRemove, onEdit, onMove, onSendNow }: Props
               />
             </li>
           ) : (
-            <li
-              key={item.id}
-              className="queued-item"
-              data-dragging={dragging === item.id || undefined}
-              draggable={!!onMove && !coarse}
-              onDragStart={() => setDragging(item.id)}
-              onDragEnd={() => setDragging(null)}
-              onDragOver={(event) => dragging && event.preventDefault()}
-              onDrop={() => drop(index)}
-            >
-              <ContextMenu items={menu(item.id, index)} label="Queued message actions" className="queued-menu">
-                <div
-                  className="queued-row"
-                  data-actions-host=""
-                  data-movable={!!onMove && !coarse || undefined}
-                  data-queued-id={item.id}
-                  role="group"
-                  aria-label={`Queued message ${index + 1} of ${items.length}`}
-                  aria-keyshortcuts={onMove ? 'Shift+F10 Alt+ArrowUp Alt+ArrowDown' : 'Shift+F10'}
-                  tabIndex={0}
-                  onKeyDown={(event) => nudge(event, item.id, index)}
-                >
-                  <span className="queued-mark">
-                    <Icon name="clock" size="xs" />
-                  </span>
-                  {onMove && (
-                    <span className="queued-grip" aria-hidden="true">
-                      <Icon name="grip" size="xs" />
-                    </span>
-                  )}
-                  {onEdit ? <Button className="queued-text queued-text-edit" onClick={() => setEditing(item.id)}>{plainMessage(item.text)}</Button> : <span className="queued-text">{plainMessage(item.text)}</span>}
-                  <RowActions className="queued-actions">
-                    {onEdit && <IconButton label="Edit queued message" icon="pencil" size="row" iconSize="xs" onClick={() => setEditing(item.id)} />}
-                    <IconButton label="Remove queued message" icon="close" size="row" iconSize="xs" onClick={() => onRemove(item.id)} />
-                    {coarse && <DropdownMenu items={menu(item.id, index)} label="Queued message actions" className="queued-menu">
-                      <IconButton label="Message actions for queued row" icon="more" size="row" iconSize="xs" />
-                    </DropdownMenu>}
-                  </RowActions>
-                </div>
-              </ContextMenu>
-            </li>
+            <QueuedDragRow key={item.id} item={item} index={index} total={items.length} movable={!!onMove && !coarse} dragging={dragging} setDragging={setDragging} onMove={onMove} menu={menu(item.id, index)} nudge={nudge}>
+              <span className="queued-mark">
+                <Icon name="clock" size="xs" />
+              </span>
+              {onMove && (
+                <span className="queued-grip" aria-hidden="true">
+                  <Icon name="grip" size="xs" />
+                </span>
+              )}
+              {onEdit ? <Button className="queued-text queued-text-edit" onClick={() => setEditing(item.id)}>{plainMessage(item.text)}</Button> : <span className="queued-text">{plainMessage(item.text)}</span>}
+              <RowActions className="queued-actions">
+                {onEdit && <IconButton label="Edit queued message" icon="pencil" size="row" iconSize="xs" onClick={() => setEditing(item.id)} />}
+                <IconButton label="Remove queued message" icon="close" size="row" iconSize="xs" onClick={() => onRemove(item.id)} />
+                {coarse && <DropdownMenu items={menu(item.id, index)} label="Queued message actions" className="queued-menu">
+                  <IconButton label="Message actions for queued row" icon="more" size="row" iconSize="xs" />
+                </DropdownMenu>}
+              </RowActions>
+            </QueuedDragRow>
           ),
         )}
         {items.length > VISIBLE && (

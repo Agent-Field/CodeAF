@@ -73,6 +73,13 @@ export function readPlaceDrag(transfer: PlaceTransfer): PlaceDrag | undefined {
   return undefined;
 }
 
+/** A pointer drag already knows its payload. Finder files and links still arrive through readPlaceDrag. */
+export function placeDragFromPointer(payload: { kind: string; id: string; ids?: readonly string[] }): PlaceDrag | undefined {
+  if ((payload.kind === 'chat' || payload.kind === 'place') && payload.ids?.length && payload.ids.every(validId)) return { kind: payload.kind, ids: [...payload.ids] };
+  if (payload.kind === 'tab' && validId(payload.id)) return { kind: 'tab', id: payload.id };
+  return undefined;
+}
+
 const refuse = (reason: Extract<PlaceDropResult, { status: 'refused' }>['reason'], announcement: string): PlaceDropResult => ({ status: 'refused', reason, announcement });
 
 /** Following parents from the destination finds every ancestor, including through

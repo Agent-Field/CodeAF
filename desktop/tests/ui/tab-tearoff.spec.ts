@@ -19,10 +19,15 @@ const tab = (id: string, title: string, over: Record<string, unknown> = {}) => (
 const chip = (page: Page, title: string) => page.locator('.workspace-tab').filter({ has: page.getByRole('tab', { name: title, exact: true }) });
 
 async function release(page: Page, title: string, clientX: number, clientY: number) {
-  const data = await page.evaluateHandle(() => new DataTransfer());
   const target = chip(page, title);
-  await target.dispatchEvent('dragstart', { dataTransfer: data, clientX: 40, clientY: 20 });
-  await target.dispatchEvent('dragend', { dataTransfer: data, clientX, clientY, screenX: clientX + 100, screenY: clientY + 100 });
+  const box = (await target.boundingBox())!;
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 8, startY + 6, { steps: 3 });
+  await page.mouse.move(clientX, clientY, { steps: 5 });
+  await page.mouse.up();
 }
 
 test.beforeEach(async ({ page }) => {

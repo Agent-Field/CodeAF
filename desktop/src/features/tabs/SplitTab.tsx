@@ -16,7 +16,7 @@ export function SplitTab({ segments, focus, active, picked = false, hover = fals
   onSelectPane?: (index: number, event: MouseEvent<HTMLButtonElement>) => void; onClose?: () => void;
   /** Wraps each segment's button; the title tooltip host puts the full title here. */
   wrapSegment?: (segment: SplitSegment, button: ReactElement) => ReactElement;
-  frame?: HTMLAttributes<HTMLDivElement> & { draggable?: boolean };
+  frame?: HTMLAttributes<HTMLDivElement> & { ref?: Ref<HTMLDivElement> };
 } & Omit<HTMLAttributes<HTMLDivElement>, 'onSelect'> & { ref?: Ref<HTMLDivElement> }) {
   const name = segments.map(s => s.title).join(' and ');
   const wrap = (segment: SplitSegment, button: ReactElement) => (wrapSegment ? cloneElement(wrapSegment(segment, button), { key: segment.id }) : button);
