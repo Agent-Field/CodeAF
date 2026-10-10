@@ -23,3 +23,4 @@ export { Markdown, InlineMarkdown, safeMarkdownUrl, type MarkdownProps, type Mar
 export { CopyButton, type CopyButtonProps } from './CopyButton';
 export { useMoreToRight } from './useMoreToRight';
 export { ToastRegion, ToastView, useToasts, sentenceParts, TOAST_DURATION_MS, TOAST_LIMIT, type ToastModel, type ToastAction, type ShowToast } from './Toast';
+export { QuickLook } from './QuickLook';

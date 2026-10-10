@@ -375,6 +375,15 @@
   --filter-tab-mask: var(--edge-fade-inline);
   --quicklook-width: 420px;
   --radius-quicklook: 14px;
+  --quicklook-gutter: 32px;
+  --quicklook-fade-from: 0;
+  --quicklook-fade-to: 1;
+  --quicklook-head-gap: 10px;
+  --quicklook-pad-x: 24px;
+  --quicklook-pad-top: 22px;
+  --quicklook-pad-bottom: 18px;
+  --quicklook-foot-pad-y: 12px;
+  --quicklook-foot-gap: 6px;
   --button-height-tray: 30px;
   --row-height-v3: 30px;
   --row-pad: 8px;
