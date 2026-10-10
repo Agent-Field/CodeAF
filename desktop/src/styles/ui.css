@@ -54,6 +54,7 @@ button:disabled { cursor: default; opacity: var(--opacity-control-disabled); }
 .chip { display: inline-flex; align-items: center; gap: var(--chip-gap); height: var(--chip-height); max-width: 100%; padding: 0 var(--chip-pad-end) 0 var(--chip-pad-start); border: 0; border-radius: var(--radius-chip); background: var(--field); color: var(--ink); font-family: var(--sans); font-size: var(--type-label-size); vertical-align: middle; }
 .chip[data-muted] { color: var(--ink-2); }
 .chip-button:hover:not(:disabled), .chip-button:active:not(:disabled) { background: var(--field-2); }
+.chip-button:active:not(:disabled) { filter: brightness(var(--brightness-press)); }
 .tag { display: inline-flex; align-items: center; height: var(--tag-height); padding: 0 var(--tag-pad); border-radius: var(--radius-tag); font-family: var(--sans); font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); white-space: nowrap; }
 .tag[data-tone="plain"] { height: auto; padding: 0; border-radius: 0; background: transparent; color: var(--ink-3); }
 .tag[data-tone="accent"] { background: var(--accent-soft); color: var(--accent); }

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { tokenColor } from './contracts';
+import { tokenColorIn } from './contracts';
 import { dismissCoveringToasts, emitState, installNativeWebMock, nativeCalls, seedWebTab } from './support/native-web-mock';
 
 const PANE = 'webpane1';
@@ -52,7 +52,7 @@ test('opening a tab menu over a web tab hides the page and restores it', async (
     await expect(sheet).toHaveCSS('background-color', await sheetFill(page));
     const title = sheet.locator('.web-occluded-title');
     await expect(title).toHaveText('encoding/json');
-    await expect(title).toHaveCSS('color', await tokenColor(page, 'ink-3'));
+    await expect(title).toHaveCSS('color', await tokenColorIn(title, 'ink-3'));
     await expect(sheet).not.toContainText(/page hidden|menu is open/i);
 
     await page.keyboard.press('Escape');

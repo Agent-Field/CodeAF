@@ -519,6 +519,7 @@
   --latest-shimmer-far: 65%;
   --brightness-hover: 1.06;
   --brightness-press: .94;
+  --model-picker-chevron-size: 11px;
   --tooltip-pad-y: 0px;
   --tooltip-min-height: 24px;
   --tooltip-leading: normal;
