@@ -2,6 +2,7 @@
 // separate, explicit act (the stop square, "Close and stop", or "Stop it" in the toast). Nothing here stops work implicitly.
 import { useRef, useState, type Dispatch } from 'react';
 import { toasts } from '../../../design/toasts';
+import { tabCloseToastKey } from '../undo/structuralUndo';
 import { panesOf, workspaceReducer, type Tab, type TabGroup, type WorkspaceAction, type WorkspaceState } from '../model';
 import { paneRunning, tabRunning, type Summaries } from './running';
 import { stopPanes } from './stopWork';
@@ -34,6 +35,7 @@ export function useClosing(options: Options) {
     if (ok) return;
     mark(tab.id, false);
     toasts.show({
+      key: tabCloseToastKey,
       message: ['Could not stop ', { strong: tab.title }, '. It is still running.'], tone: 'danger',
       actions: [{ label: 'Try again', onSelect: () => void stop(tab) }],
       undo: () => reopenClosed(tab.id),
@@ -54,7 +56,7 @@ export function useClosing(options: Options) {
     if (restore) restoreStripFocus();
     if (!running) return;
     if (stopWork) void stop(tab);
-    else toasts.show({ message: [{ strong: tab.title }, ' closed and still running'], actions: [{ label: 'Stop it', onSelect: () => void stop(tab) }], undo: () => reopenClosed(id) });
+    else toasts.show({ key: tabCloseToastKey, message: [{ strong: tab.title }, ' closed and still running'], actions: [{ label: 'Stop it', onSelect: () => void stop(tab) }], undo: () => reopenClosed(id) });
   }
 
   /**
@@ -77,6 +79,7 @@ export function useClosing(options: Options) {
     if (restore) restoreStripFocus();
     const count = gone.length === 1 ? '1 tab' : `${gone.length} tabs`;
     toasts.show({
+      key: tabCloseToastKey,
       message: ['Closed ', { strong: count }, ...(alive ? [`, ${alive} still running`] : [])],
       undo: () => dispatch({ type: 'restore-closed', ...point }),
     });

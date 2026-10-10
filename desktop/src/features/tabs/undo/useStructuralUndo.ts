@@ -4,8 +4,9 @@
 // reducer, pinned to the ids that prediction minted (so the real apply, and any replay over another window's tab set,
 // lands on exactly the predicted tabs), recorded as an inverse step and then dispatched. ⌘Z takes the newest step.
 //
-// TAB AND PLACE INVERSES SHARE ONE CHRONOLOGY. Registered steps take precedence over a visible toast; a held
-// running-tab close that has not reached dispatch yet remains available through its toast when the stack is empty.
+// TAB AND PLACE INVERSES SHARE ONE CHRONOLOGY. An external step still wins over a visible toast. A running close
+// is the exception: its toast and its stack step are the same Undo (`toastOwnsClose`), so ⌘Z runs the toast and
+// the step is spent. Any other toast is reached only when the stack has nothing left.
 // In a text field, an editable region or a terminal being typed in, ⌘Z is left to that editor (design/editing.ts). With nothing to undo, the key does nothing at all.
 import { useCallback, useRef, type Dispatch } from 'react';
 import { isEditingTarget, watchEditing } from '../../../design/editing';
@@ -14,7 +15,7 @@ import { toasts } from '../../../design/toasts';
 import { useShortcuts } from '../../../design/useShortcuts';
 import { mintWith } from '../helpers';
 import { workspaceReducer, type WorkspaceAction, type WorkspaceState } from '../model';
-import { windowStructuralUndo, isUndoable } from './structuralUndo';
+import { windowStructuralUndo, isUndoable, toastOwnsClose } from './structuralUndo';
 
 type Options = { state: WorkspaceState; dispatch: Dispatch<WorkspaceAction>; enabled: boolean };
 
@@ -45,6 +46,8 @@ export function useStructuralUndo({ state, dispatch, enabled }: Options) {
   const undo = useCallback((): boolean => {
     const toast = toasts.getToast();
     const plan = stack.take(shadow.current);
+    // The close step was popped above. The toast puts the tab back; applying the step as well would be a second open.
+    if (toast && toastOwnsClose(plan, toast.key)) { void toasts.undo(toast.id); return true; }
     if (plan.kind === 'empty') {
       if (toast?.undo) { void toasts.undo(toast.id); return true; }
       return false;

@@ -28,6 +28,18 @@ export type UndoStep =
 /** What ⌘Z should do now. `refused` means the newest step's tabs changed since; it has been dropped. */
 export type UndoPlan = { kind: 'apply'; actions: WorkspaceAction[] } | { kind: 'refused' } | { kind: 'empty' } | { kind: 'external'; undo: () => Promise<void> };
 
+/**
+ * The toast a running close shows, and the stack step for that close, are one Undo.
+ * ⌘Z runs the toast (the tab comes back, the toast leaves) and the step is already spent,
+ * so a second ⌘Z cannot open the tab again.
+ */
+export const tabCloseToastKey = 'tab-close';
+
+/** True when the newest step is that close and the toast still offering it is the one on screen. */
+export function toastOwnsClose(plan: UndoPlan, toastKey: string | undefined): boolean {
+  return toastKey === tabCloseToastKey && plan.kind === 'apply' && plan.actions.length > 0 && plan.actions.every(action => action.type === 'reopen-id');
+}
+
 export function stepFor(before: WorkspaceState, action: WorkspaceAction, after: WorkspaceState): UndoStep | undefined {
   if (after === before) return undefined;
   if (closing.has(action.type)) {
