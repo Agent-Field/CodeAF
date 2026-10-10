@@ -625,7 +625,7 @@ because an underscore is a column name and not a word.)
 If you do want something gone, that is yours to do: `/forget <query>`, or delete
 (or ctrl+d) on a line in `/memory`, with one undo behind it.
 
-## Can you remember this for me?
+## Can you remember this for me — what does it remember
 
 Yes — say so, and it is written down immediately. "remember that I deploy on
 Fridays" is recognised as an instruction about memory rather than a message to
@@ -714,7 +714,7 @@ You can point that row at a different model — the **reflex** row in
 `reflex` role by itself under `pinned roles`. A change is live: the next turn's
 pair uses it.
 
-## Where is it kept, and does a task see it?
+## Where is it kept, and does a task see it? Do restrictions reach it too?
 
 It is kept in `~/.codeaf/graph.db`, which is per person rather than per
 conversation — but **not** one flat pool: what each conversation is SHOWN
@@ -771,7 +771,8 @@ not about who reads it: a team's manager and every new member run in that same
 workspace, so its project-scoped memories reach them as they reach a conversation
 (`team-manager`, *When a manager starts a member*), and a task worker gets the
 same scoped context read-only and writes nothing back (`how-tasks-run`, *What the
-task actually reads*).
+task actually reads*). Saved restrictions are those approved rules, so they reach
+a team manager, a team member and a task the same way.
 
 ## Do you remember errors and how they were fixed?
 

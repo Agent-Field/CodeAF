@@ -2613,7 +2613,7 @@ nothing, rather than closing the task page you are reading.
 **A second click on the selected row keeps its task open**, with the same draft and
 reading position. Press `esc` or the back control to return to the conversation.
 
-## What did we do last week — why is my old task not on the tasks page, an old task says now, and a task from a previous session is missing from the tasks page
+## What did we do last week — what we did last week, why is my old task not on the tasks page, an old task says now, and a task from a previous session is missing from the tasks page
 
 This is where **task history** lives — every **old and past task**, and **work from other
 sessions**, on one page.

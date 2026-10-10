@@ -63,6 +63,8 @@ on the tray above the message box, and it goes with the next thing you send.
 /attach                     the browser, so you can find the file and look at it first
 ```
 
+## What a bare /attach opens, and where the file lands
+
 **On the home screen a bare `/attach` opens the browser** for the next
 conversation's folder. `/project` opens that browser to pin the folder itself;
 `/folder` opens a conversation first and chooses a folder for that conversation.

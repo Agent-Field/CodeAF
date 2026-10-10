@@ -1,6 +1,6 @@
 # Question tray
 
-## Arrow keys in the question tray, You decide on a clarification, Holding up a question
+## Arrow keys in the question tray, You decide on a clarification, Holding up a question, click a receipt to open that question
 
 When more than one question is waiting, left and right arrow keys move between questions while the tray is focused. The corner reads `1 of 3`. The arrow at the end is disabled and drawn at 40% opacity. Arrows typed in the message field do not change the page.
 
