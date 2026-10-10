@@ -9,6 +9,7 @@ import { announceClosePane, announceOpenConversation, announceOpenTerminal } fro
 import { startFor, startSentence } from './open';
 import { bindingFor, legacyTerminalView, terminalView } from './target';
 import { metaLine, removeLabel, toneOf } from './state';
+import { offerTerminalTabMeta, type TabMetaSource } from './tabMeta';
 import { offerTerminalTabMenu, type FinishedJobOffer } from './tabMenu';
 import type { TerminalBinding } from './bindings';
 import { TerminalHeader } from './TerminalHeader';
@@ -49,11 +50,13 @@ export function TerminalPane({ pane, focused, actions }: PaneRenderProps) {
   const summarize = useRef(actions.onSummary);
   summarize.current = actions.onSummary;
   const menuFacts = useRef<FinishedJobOffer>({ finished: false, onRemove: () => {} });
+  const metaFacts = useRef<TabMetaSource | undefined>(undefined);
   const title = info?.title; const endedAt = info?.endedAt;
-  // Before paint, so the tab right-click and the header agree in the same frame the exit words appear.
+  // Before paint, so the tab right-click, the exit words and the header agree in the same frame.
+  // Kind, state and exit code are deps because `exit 0` changes none of the title, the end time or the failed mark.
   useLayoutEffect(() => {
     if (title) summarize.current({ title, firstLine: '', digest: '', mark: failed ? 'failed' : undefined, updatedAt: endedAt ? Date.parse(endedAt) : undefined });
-  }, [title, endedAt, failed]);
+  }, [title, endedAt, failed, info?.kind, info?.state, info?.exitCode]);
   // A tab saved before the durable target carried none: write it onto the pane through the tab action, once.
   const hydrate = useRef(actions.onView);
   hydrate.current = actions.onView;
@@ -99,6 +102,9 @@ export function TerminalPane({ pane, focused, actions }: PaneRenderProps) {
   // layout effect above re-renders the strip before a later effect would run, and that render is the one that builds the tab menu.
   menuFacts.current = { finished: finishedJob, onRerun: rerun, onRemove };
   offerTerminalTabMenu(pane.id, () => menuFacts.current);
+  // Published during render, like the menu: the summary effect above re-renders the strip, and that render reads the words.
+  metaFacts.current = info ? { kind: info.kind, state: info.state, exitCode: info.exitCode } : undefined;
+  offerTerminalTabMeta(pane.id, () => metaFacts.current);
   async function readOutput() {
     const selected = screen?.selection() ?? '';
     if (selected.trim()) return selected;
