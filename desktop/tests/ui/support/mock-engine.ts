@@ -57,7 +57,7 @@ export type Scenario = {
   /** false: the engine serves no /places/policy route (an engine before the Places organization settings). */
   placesPolicy?: false;
   /** The engine-wide world feed (GET /world, GET /events). Absent: the engine serves no feed and both routes answer 404. */
-  world?: { rows: WorldRow[]; items: AttentionItem[] };
+  world?: { rows: WorldRow[]; items: AttentionItem[]; jobs?: { chatId: string; running: number; jobs: unknown[] }[] };
   /** Forced HTTP failure per endpoint, e.g. { turn: 409 }. */
   fail?: Partial<Record<'create' | 'read' | 'turn' | 'stop' | 'answer' | 'events' | 'task', number>>;
 };
@@ -72,7 +72,7 @@ export type MockEngine = {
   turnModels: string[];
   snapshot: () => EngineSnapshot;
   /** Replaces the world feed's rows and/or attention items and streams the new state to readers. Needs `scenario.world`. */
-  setWorld: (next: { rows?: WorldRow[]; items?: AttentionItem[] }) => void;
+  setWorld: (next: { rows?: WorldRow[]; items?: AttentionItem[]; jobs?: { chatId: string; running: number; jobs: unknown[] }[] }) => void;
   /** Apply the next scripted turn reply (for scenarios with manual: true). */
   advance: () => void;
   /** Merge fields into the snapshot and publish a snapshot record to stream readers. */
@@ -181,7 +181,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
   // The world feed: every change is one full `reset` record, which the client applies at any cursor.
   let world = scenario.world ? structuredClone(scenario.world) : undefined;
   let worldSeq = 1;
-  const worldRecord = () => ({ seq: worldSeq, type: 'reset', at: new Date().toISOString(), payload: structuredClone(world!) });
+  const worldRecord = () => ({ epoch: 'mock-world', seq: worldSeq, type: 'reset', at: new Date().toISOString(), payload: structuredClone(world!) });
   const worldEvents = async (route: Route, after: number) => {
     const deadline = Date.now() + 60_000;
     while (!closed && Date.now() < deadline) {
@@ -581,7 +581,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
 
   const setWorld: MockEngine['setWorld'] = next => {
     if (!world) throw new Error('setWorld needs scenario.world');
-    world = { rows: next.rows ?? world.rows, items: next.items ?? world.items };
+    world = { rows: next.rows ?? world.rows, items: next.items ?? world.items, jobs: next.jobs ?? world.jobs };
     worldSeq += 1;
   };
 
