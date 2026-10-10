@@ -23,7 +23,7 @@ const codeaf: HomeView = {
   children: [
     place('pl_software', 'Software', 'tide', 0, 28, { tintSource: 'inherited', status: 'waiting' }),
     place('pl_marketing', 'Marketing', 'rose', 0, 14),
-    place('pl_release', 'Release', 'tide', 0, 6, { tintSource: 'inherited', alsoIn: ['Software'] }),
+    place('pl_release', 'Release', 'tide', 0, 6, { tintSource: 'inherited', alsoIn: ['Software'], decide: { alwaysAsk: false, threshold: 90 } }),
   ],
   sources: [{ id: 'src_parse', kind: 'folder', label: 'codeaf/internal/parse', state: 'ok' }, { id: 'src_notes', kind: 'file', label: 'release-notes.md', state: 'missing' }],
   chats: [
@@ -94,6 +94,10 @@ export function HomeSpecimen({ scenario = 'place', withoutVerbs = false }: { sce
     },
     rename: (id, name) => { say(`rename:${id}:${name}`); patch(children => children.map(child => child.id === id ? { ...child, name } : child)); },
     setTint: (id, tint) => { say(`tint:${id}:${tint}`); patch(children => children.map(child => child.id === id ? { ...child, tint, tintSource: 'own' } : child)); },
+    setDecide: (id, change) => {
+      say(`decide:${id}:${change.alwaysAsk ?? ''}:${change.threshold ?? ''}`);
+      patch(children => children.map(child => child.id === id && child.decide ? { ...child, decide: { ...child.decide, ...change } } : child));
+    },
     pin: id => say(`pin:${id}`),
     unpin: id => say(`unpin:${id}`),
     archive: id => { say(`archive:${id}`); patch(children => children.filter(child => child.id !== id)); },
