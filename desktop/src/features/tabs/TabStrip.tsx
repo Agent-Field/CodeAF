@@ -8,6 +8,7 @@ import { Banner, type NextUpBannerItem } from '../nextup/Banner';
 import { FramePill, framePillVisible } from '../nextup/FramePill';
 import { QueuePopover, type QueueRow } from '../nextup/QueuePopover';
 import type { TabsApi } from './context';
+import { useStripAnnouncement } from './announce';
 import { GroupCapsule, MemberSlot } from './GroupCapsule';
 import { groupDragProps } from './hosts/dragHost';
 import { overflowItems, withGroupMenu } from './hosts/menuHost';
@@ -83,7 +84,7 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
   const narrow = useMediaQuery(`(max-width: ${design.breakpoints.small}px)`);
   const reduced = useMediaQuery('(prefers-reduced-motion: reduce)');
   const [edge, setEdge] = useState({ end: false, hidden: 0 });
-  const [moveNote, setMoveNote] = useState('');
+  const [moveNote, setMoveNote] = useStripAnnouncement(strip);
   const [departures, setDepartures] = useState<TabDeparture[]>([]);
   const order = visibleTabs(state);
   // Closing tabs stay mounted for dur-base. The comparison is the id list: a draft keystroke must not restart a collapse.
@@ -210,7 +211,8 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
           );
         })}
       </div>
-      {moveNote ? <span className="workspace-strip-note" role="status" aria-live="polite">{moveNote}</span> : null}
+      {/* The node stays mounted so a repeated move replaces the text (the key) and is read again. Until there are words it stays out of the accessibility tree, so an empty announcement is not a second status on the page. */}
+      <span className="workspace-strip-note" role="status" aria-live="polite" aria-atomic="true" aria-hidden={moveNote.text ? undefined : true}><span key={moveNote.revision}>{moveNote.text}</span></span>
       <div className="workspace-tab-actions">
         <IconButton className="workspace-tab-action" label="New tab" title={`New tab (${tabShortcuts.new})`} icon="plus" iconSize="sm" onClick={() => dispatch({ type: 'new' })}/>
         {edge.hidden > 0 && <DropdownMenu label="Tab actions" items={overflowItems(api)}><Button className="workspace-tab-more" aria-label="Tab actions">+{edge.hidden}<Icon name="chevron" size="micro" motion="disclosure"/></Button></DropdownMenu>}
