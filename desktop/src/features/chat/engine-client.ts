@@ -265,7 +265,7 @@ export async function engineEventStream(path: string, after: number, onRecord: (
 
 // Fetch supports the native Bearer header; EventSource cannot. Aborting only
 // detaches this reader. Stop is a separate, explicit POST.
-export async function watchEngine(snapshot: EngineSnapshot, onSnapshot: (snapshot: EngineSnapshot) => void, onEvent: (event: EngineEvent) => void, signal: AbortSignal): Promise<void> {
+export async function watchEngine(snapshot: EngineSnapshot, onSnapshot: (snapshot: EngineSnapshot) => void, onEvent: (event: EngineEvent) => void, signal: AbortSignal, held: () => EngineSnapshot | undefined = () => undefined): Promise<void> {
  let after = snapshot.seq;
  const response = await fetchEngine(`${sessionPath(snapshot.id)}/events?after=${after}`, { signal, headers: { Accept: 'text/event-stream' } }, true);
  await pumpEventStream(response, signal, text => {
@@ -276,7 +276,8 @@ export async function watchEngine(snapshot: EngineSnapshot, onSnapshot: (snapsho
   if (!Number.isSafeInteger(item.seq) || item.seq < 0) throw new EngineError('The engine sent an invalid stream sequence.');
   if (item.seq <= after) return;
   if (item.type === 'snapshot') {
-   const next = snapshotFrom(isTail(item.snapshot) ? mergeTail(snapshot, item.snapshot) : item.snapshot);
+   // A tail folds into the window when it holds one, and otherwise into this stream's preceding snapshot, so one replay batch chains before the window has caught up. A tail that cannot be folded ends the stream so the caller reattaches whole.
+   const next = snapshotFrom(isTail(item.snapshot) ? mergeTail(held() ?? snapshot, item.snapshot) : item.snapshot);
    if (next.id !== snapshot.id || next.sessionFile !== snapshot.sessionFile) throw new EngineError('The engine stream changed conversations.');
    // Each tail starts where the preceding snapshot ended, including within one replay batch.
    snapshot = next;

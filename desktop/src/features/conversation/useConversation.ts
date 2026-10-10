@@ -113,7 +113,7 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, n
     reader.current?.abort();
     const controller = new AbortController();
     reader.current = controller;
-    watchEngine(value, receive, onEvent, controller.signal).catch(() => {
+    watchEngine(value, receive, onEvent, controller.signal, () => current.current).catch(() => {
       if (controller.signal.aborted || own !== generation.current) return;
       setOnline(false);
       reconnectLater();
@@ -229,7 +229,7 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, n
     try {
       receive(await change(target.id));
     } catch (reason) {
-      await readEngine(target.id).then(receive, () => undefined);
+      await readEngine(target.id, target.entries.length, target).then(receive, () => undefined);
       setFailed({ text: '', mode: 'submit', message: messageOf(reason) });
     }
   }
