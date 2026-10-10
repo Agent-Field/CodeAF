@@ -1,6 +1,9 @@
 /* Tool call row (components §3.3): lead, target, stat, state word, time. One 28px line, ink-2 at 12px. Layout only. */
 .work-call { display: flex; flex-direction: column; min-width: 0; }
 .work-call-head { position: relative; display: grid; grid-template-columns: var(--tool-row-lead) minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); min-height: var(--row-h); border-radius: var(--radius-chip); color: var(--ink-3); font-size: var(--type-label-size); line-height: var(--tool-row-leading); }
+.work-call[data-state="done"]:is([data-tool="read"], [data-tool="grep"], [data-tool="web_search"], [data-tool="generate_image"]) .work-call-head { grid-template-columns: var(--tool-kind-lead) minmax(0, 1fr) auto; }
+.work-call[data-state="done"]:is([data-tool="read"], [data-tool="grep"], [data-tool="web_search"], [data-tool="generate_image"]) .work-call-main { gap: var(--space-2); }
+.work-call[data-state="done"]:is([data-tool="read"], [data-tool="grep"], [data-tool="web_search"], [data-tool="generate_image"]) .work-call-toggle { width: var(--tool-kind-lead); }
 .work-call-head:hover { background: var(--field); }
 .work-call-head:active { background: var(--field-2); }
 .work-call-head:has(.work-call-toggle:focus-visible) { outline: var(--focus-ring-width) solid transparent; box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
