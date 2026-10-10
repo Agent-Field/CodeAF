@@ -44,6 +44,12 @@ export type ComposerProps = {
   dropState?: 'page' | 'over';
   /** The idle prompt in the empty field when the surface has its own words ("Start something in codeaf" on a place's Home). */
   placeholder?: string;
+  /**
+   * Conversation 1b: the queued rows have folded into this chip because the reader
+   * is more than a viewport from the end. `count` is the real queue length.
+   * `onOpen` returns to the bottom, which is what unfolds the rows.
+   */
+  queueChip?: { count: number; onOpen: () => void };
 };
 
 const START_PLACEHOLDER = 'Ask codeaf, or type @ to reference a file';
@@ -256,6 +262,9 @@ export function Composer(props: ComposerProps) {
               <ModelPicker models={props.model.models} selectedId={props.model.selectedId} onSelect={props.model.readOnly ? undefined : props.model.onSelect} effort={props.model.readOnly ? undefined : props.model.effort} pinnedCount={props.model.pinnedCount} hint={props.model.hint} />
             ) : props.modelLabel && (
               <ModelPicker models={[{ id: props.modelLabel, label: props.modelLabel, short: props.modelShort }]} selectedId={props.modelLabel} />
+            )}
+            {props.queueChip && props.queueChip.count > 0 && (
+              <Button className="composer-queue-chip" onClick={props.queueChip.onOpen}>{`${props.queueChip.count} queued`}</Button>
             )}
             {props.tasksToggle && <Button className="composer-tasks" onClick={props.tasksToggle.onClick}>{props.tasksToggle.label}</Button>}
           </div>

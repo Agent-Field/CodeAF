@@ -104,11 +104,12 @@ type Bundle struct {
 	// level 1, then 2 — exactly Snapshot.ContextPlaces.
 	Places []UsedPlace `json:"places"`
 	// Instructions are each place's prose, nearest first, cut to
-	// ContextInstructionBudget. A place whose words did not fit at all is still
-	// listed, Trimmed with empty Text, so the popover can say so.
+	// the instruction budget (ContextInstructionBudget by default). A place whose
+	// words did not fit at all is still listed, Trimmed with empty Text, so the
+	// popover can say so.
 	Instructions []UsedInstruction `json:"instructions"`
-	// Sources are given to the model (Status ok or missing), at most
-	// ContextSourceBudget, deduplicated across places.
+	// Sources are given to the model (Status ok or missing), deduplicated across
+	// places and limited by the source budget (ContextSourceBudget by default).
 	Sources []UsedSource `json:"sources"`
 	// Trimmed are sources that passed the policy but are past the budget. They
 	// are named in the Using popover and NOT given to the model.
@@ -212,8 +213,27 @@ type PolicyDecision struct {
 	Wanted []Want `json:"wanted"`
 }
 
+// ResolveBudget limits the context a single chat receives. Non-positive fields
+// use the defaults, so existing callers keep the same bounded context.
+type ResolveBudget struct {
+	Sources          int
+	InstructionBytes int
+}
+
+func (b ResolveBudget) defaults() ResolveBudget {
+	if b.Sources <= 0 {
+		b.Sources = ContextSourceBudget
+	}
+	if b.InstructionBytes <= 0 {
+		b.InstructionBytes = ContextInstructionBudget
+	}
+	return b
+}
+
 // ResolveOptions carries what the graph alone does not know.
 type ResolveOptions struct {
+	// Budget overrides the defaults for this resolution only.
+	Budget ResolveBudget
 	// Choices are the person's remembered picks (ChoiceBook.For). Choices for
 	// another chat are ignored.
 	Choices []Choice
@@ -253,8 +273,9 @@ func (s *Snapshot) Resolve(chatID string, opts ResolveOptions) *Bundle {
 			Inherited: cp.Level > 0, Through: through[p.ID],
 		})
 	}
-	b.Instructions = s.resolveInstructions(cps)
-	b.Sources, b.Trimmed, b.Refused = s.resolveSources(chatID, cps, pol)
+	budget := opts.Budget.defaults()
+	b.Instructions = s.resolveInstructions(cps, budget.InstructionBytes)
+	b.Sources, b.Trimmed, b.Refused = s.resolveSources(chatID, cps, pol, budget.Sources)
 	b.Policy = s.resolvePolicy(chatID, cps, opts.Choices)
 	b.Counts = UsingCounts{Places: len(b.Places), Sources: len(b.Sources)}
 	return b
@@ -299,7 +320,7 @@ func contains(list []string, v string) bool {
 // instructions says the same thing twice; giving it twice would spend the budget
 // on a repeat and suggest to the model that it matters twice as much. The one
 // entry is credited to every place that says it.
-func (s *Snapshot) resolveInstructions(cps []ContextPlace) []UsedInstruction {
+func (s *Snapshot) resolveInstructions(cps []ContextPlace, budget int) []UsedInstruction {
 	out := []UsedInstruction{}
 	byText := map[string]int{}
 	for _, cp := range cps {
@@ -314,7 +335,7 @@ func (s *Snapshot) resolveInstructions(cps []ContextPlace) []UsedInstruction {
 		byText[text] = len(out)
 		out = append(out, UsedInstruction{PlaceID: cp.PlaceID, Text: text, Bytes: len(text)})
 	}
-	left := ContextInstructionBudget
+	left := budget
 	for i := range out {
 		if len(out[i].Text) <= left {
 			left -= len(out[i].Text)
@@ -350,11 +371,15 @@ func cutAtRune(text string, n int) string {
 
 // resolveSources deduplicates every place's sources by canonical key, applies the
 // source policy, and spends the source budget nearest place first.
-func (s *Snapshot) resolveSources(chatID string, cps []ContextPlace, pol SourcePolicy) (given, trimmed, refused []UsedSource) {
+func (s *Snapshot) resolveSources(chatID string, cps []ContextPlace, pol SourcePolicy, budget int) (given, trimmed, refused []UsedSource) {
 	var all []UsedSource
 	byKey := map[string]int{}
 	for _, cp := range cps {
-		for _, src := range s.Places[s.byID[cp.PlaceID]].Context.Sources {
+		// Keep place precedence, then spend on older sources before newer ones.
+		// Sorting a copy preserves the snapshot and stable order for unknown dates.
+		sources := append([]Source(nil), s.Places[s.byID[cp.PlaceID]].Context.Sources...)
+		sort.SliceStable(sources, func(i, j int) bool { return sources[i].At.Before(sources[j].At) })
+		for _, src := range sources {
 			origin := SourceOrigin{PlaceID: cp.PlaceID, SourceID: src.ID, AddedBy: src.AddedBy, Level: cp.Level}
 			key := SourceKey(src)
 			if i, ok := byKey[key]; ok {
@@ -378,8 +403,8 @@ func (s *Snapshot) resolveSources(chatID string, cps []ContextPlace, pol SourceP
 		// stat per listed path at every turn that re-resolves, under the turn's
 		// lock. A trimmed entry is therefore not checked against the policy; it
 		// is named in the popover and never reaches a prompt.
-		if len(given) >= ContextSourceBudget {
-			u.Status, u.Reason = SourceTrimmedStatus, fmt.Sprintf("past the budget of %d sources per chat", ContextSourceBudget)
+		if len(given) >= budget {
+			u.Status, u.Reason = SourceTrimmedStatus, fmt.Sprintf("past the budget of %d sources per chat", budget)
 			trimmed = append(trimmed, u)
 			continue
 		}

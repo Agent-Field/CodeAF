@@ -33,7 +33,8 @@ export const shellShortcuts = {
  tasks: formatShortcut('⌘/Ctrl ⇧ K'),
  palette: formatShortcut('⌘/Ctrl K'),
  settings: formatShortcut('⌘/Ctrl ,'),
- openFile: formatShortcut('⌘/Ctrl O'),
+ /** Shell 3f draws the glyph against the letter (⌘O), so this one does not go through formatShortcut's spaced form. */
+ openFile: isMac ? '⌘O' : 'Ctrl O',
  allModels: formatShortcut('⌘/Ctrl /'),
  /** The pinned-model chord for the 1-based slot (design Interactions: ⌥⌘1–3). */
  pinnedModel: (slot: number) => (isMac ? `⌥⌘${slot}` : `Ctrl Alt ${slot}`),
@@ -45,11 +46,13 @@ type KeyEvent = Pick<KeyboardEvent, 'key' | 'code' | 'metaKey' | 'ctrlKey' | 'sh
  * Every window-level shortcut of the shell, as ids. This is the ONE place that decides which chord means what,
  * so two surfaces can never both claim a key (design Interactions "Shortcuts"). `jump` carries the tab digit and
  * `model-pin` the pinned-model slot (⌥⌘1–3). ⌘⇧\ (Ctrl Shift A on Linux) is the tab overview; ⌘↑ and ⌘↓ step between
- * messages in a chat. ⌘/Ctrl B for the rail keeps working beside ⌘S. 'open-file' (⌘/Ctrl O) belongs to the new-tab field: only that surface claims it.
+ * messages in a chat. ⌘/Ctrl B for the rail keeps working beside ⌘S. 'terminal-new' is ⌃` on every platform (the chord
+ * features/terminal/keys.ts re-exports). 'open-file' (⌘/Ctrl O) belongs to the new-tab field: only that surface claims it,
+ * and choosing it is the Open file… row. A prose field that already holds words keeps both chords.
  */
 export type ShortcutId =
  | 'new' | 'close' | 'reopen' | 'group' | 'next' | 'previous' | 'switch' | 'switch-back' | 'jump'
- | 'open-file' | 'terminal' | 'overview' | 'turn-previous' | 'turn-next' | 'history' | 'tasks-panel' | 'rail' | 'focus' | 'palette' | 'models' | 'model-pin' | 'settings'
+ | 'open-file' | 'terminal-new' | 'overview' | 'turn-previous' | 'turn-next' | 'history' | 'tasks-panel' | 'rail' | 'focus' | 'palette' | 'models' | 'model-pin' | 'settings'
  /** Places (Interactions "Shortcuts"): ⌘P Go to a place, ⌘⇧P All places, ⌘0 this place's Home, ⌘⇧W close this place,
   * ⌘N a new window on Now, ⌘Z undo the last structural action. `place-jump` carries the rail slot: 0 is Now, 1–9 the
   * pinned-then-open places (⌃ on a Mac; Alt elsewhere, because Ctrl+digit is already the tab jump there). */
@@ -74,6 +77,18 @@ export function isTerminalTarget(target: EventTarget | null | undefined): boolea
 }
 
 /**
+ * A prose field that already holds words keeps ⌃` and ⌘O, the same way it keeps ⌘↑ for the caret.
+ * The new-tab command field is not prose: Shell 3f draws both hints beside a typed query.
+ * A terminal's hidden textarea is not prose either: ⌃` opens another shell from inside one.
+ */
+function typingInProseField(target: EventTarget | null | undefined): boolean {
+ if (isTerminalTarget(target)) return false;
+ const field = target as { getAttribute?: (name: string) => string | null } | null | undefined;
+ if (field?.getAttribute?.('role') === 'combobox') return false;
+ return isWritingField(target);
+}
+
+/**
  * Off a Mac the primary modifier is Ctrl, which is also the shell's editing modifier (Ctrl+W delete word, Ctrl+K kill
  * line, Ctrl+S stop output, Ctrl+Y yank, Ctrl+1..9). Inside a terminal field those chords therefore belong to the
  * PTY. The desktop chords there are the ones the GNOME Terminal convention reserves: Ctrl+Shift+T / Ctrl+Shift+W
@@ -94,7 +109,7 @@ export function shortcutOf(event: KeyEvent, platform: boolean | ShortcutContext 
  const context: ShortcutContext = typeof platform === 'boolean' ? { mac: platform } : platform;
  const mac = context.mac ?? isMac;
  if (context.terminal && !mac) return terminalShortcutOf(event);
- if (event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.code === 'Backquote') return { id: 'terminal' };
+ if (event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.code === 'Backquote' && !typingInProseField(event.target)) return { id: 'terminal-new' };
  // The place slots: ⌃0–9 on a Mac, Alt 0–9 elsewhere. The digit comes from `code` so a layout's symbols do not matter.
  const slot = /^(?:Digit|Numpad)([0-9])$/.exec(event.code ?? '');
  if (slot && !event.shiftKey && (mac ? event.ctrlKey && !event.metaKey && !event.altKey : event.altKey && !event.ctrlKey && !event.metaKey)) return { id: 'place-jump', index: Number(slot[1]) };
@@ -133,7 +148,7 @@ export function shortcutOf(event: KeyEvent, platform: boolean | ShortcutContext 
  if (key === 't') return { id: 'new' };
  if (key === 'w') return { id: 'close' };
  if (key === 'g') return { id: 'group' };
- if (key === 'o') return { id: 'open-file' };
+ if (key === 'o' && !typingInProseField(event.target)) return { id: 'open-file' };
  if (key === 's' || key === 'b') return { id: 'rail' };
  if (key === 'y') return { id: 'history' };
  if (key === 'k') return { id: 'palette' };
@@ -199,7 +214,7 @@ export const isCopyLinkShortcut = isCopyPathShortcut;
 
 /** Interactive shell tabs: Control-backtick is identical on every platform. */
 export const newTerminalShortcut = isMac ? '⌃`' : 'Ctrl `';
-export const isNewTerminalShortcut = (event: KeyEvent) => shortcutOf(event)?.id === 'terminal';
+export const isNewTerminalShortcut = (event: KeyEvent) => shortcutOf(event)?.id === 'terminal-new';
 /** In a terminal field off a Mac: Ctrl+Shift+T and Ctrl+Shift+W are the new and close tab chords. */
 export const terminalTabShortcuts = { new: isMac ? '⌘ T' : 'Ctrl Shift T', close: isMac ? '⌘ W' : 'Ctrl Shift W' };
 

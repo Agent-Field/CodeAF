@@ -86,7 +86,7 @@ func testFeed(fw *fakeWorld) (*WorldFeed, *manualClock) {
 func bridgeFor(t *testing.T, f *WorldFeed) *httptest.Server {
 	b := New(worldToken, nil)
 	b.UseWorld(f)
-	srv := httptest.NewServer(b)
+	srv := httptest.NewServer(b.Handler())
 	t.Cleanup(func() { srv.CloseClientConnections(); srv.Close() })
 	return srv
 }

@@ -36,6 +36,19 @@ func guardRequest(r *http.Request) (status int, sentence string) {
 	return 0, ""
 }
 
+// Handler is the bridge behind the origin guard. The desktop command serves
+// this, so a web page's fetch (its Origin is the page, not the app) is refused
+// before the token is read and learns nothing about the engine.
+func (b *Bridge) Handler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if status, sentence := guardRequest(r); status != 0 {
+			fail(w, status, sentence)
+			return
+		}
+		b.ServeHTTP(w, r)
+	})
+}
+
 // loopbackHost accepts only 127.0.0.1, [::1] or localhost with a numeric port.
 func loopbackHost(host string) bool {
 	name, port, err := net.SplitHostPort(host)

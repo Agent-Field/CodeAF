@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Button } from '../../../components/ui';
 import type { EngineAnswer } from '../../chat/engine-client';
 import { BatchCard } from './BatchCard';
@@ -39,6 +39,28 @@ function tabHolds(tab: Tab | undefined, key: string): boolean {
   return tab.members.some((member) => questionKey(member) === key);
 }
 
+/** Free-text fields. Anything else an input can be either ignores horizontal arrows or uses them to change its own value. */
+const TEXT_FIELD = new Set(['', 'text', 'search', 'email', 'url', 'tel', 'password', 'number']);
+
+/**
+ * ← → belong to the focused control when moving them would edit it.
+ * A text field keeps them only once it holds characters, so an empty one still pages the tray.
+ * A radio, a dial, a select or a date field keeps them always: those keys change that control.
+ */
+function arrowsStayWithControl(target: EventTarget | null): boolean {
+  const node = target instanceof Element ? target : null;
+  const field = node?.closest('input, textarea, select, [contenteditable="true"]');
+  if (!field) return false;
+  if (field instanceof HTMLSelectElement) return true;
+  if (field instanceof HTMLTextAreaElement) return field.value.length > 0;
+  if (field instanceof HTMLInputElement) {
+    if (TEXT_FIELD.has(field.type)) return field.value.length > 0;
+    if (field.type === 'checkbox' || field.type === 'button' || field.type === 'submit' || field.type === 'reset' || field.type === 'file' || field.type === 'image' || field.type === 'hidden' || field.type === 'color') return false;
+    return true;
+  }
+  return (field.textContent ?? '').length > 0;
+}
+
 export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, renderImage, focusKey, compact, onReview }: DecisionTrayProps) {
   const [later, setLater] = useState<Set<string>>(new Set());
   const [expanded] = useState<Set<string>>(new Set());
@@ -47,6 +69,9 @@ export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, render
   const [wanted, setWanted] = useState('');
   const [foldedOpen, setFoldedOpen] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const trayRef = useRef<HTMLElement>(null);
+  /** Set when a key pages, so focus can return to an arrow if the control that had it unmounts. */
+  const returnFocus = useRef<-1 | 1 | 0>(0);
   const { tabs, folded } = useMemo(() => layoutTabs(questions, expanded, later), [questions, expanded, later]);
 
   useEffect(() => {
@@ -57,15 +82,41 @@ export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, render
 
   const active = tabs.find((tab) => tab.id === wanted) ?? tabs.find((tab) => tabHolds(tab, wanted)) ?? tabs[0];
   const moreBelow = useMoreBelow(bodyRef, active?.id ?? '');
+  const index = tabs.findIndex((tab) => tab.id === active?.id);
+
+  useEffect(() => {
+    const step = returnFocus.current;
+    if (!step) return;
+    returnFocus.current = 0;
+    const root = trayRef.current;
+    if (!root || root.contains(document.activeElement)) return;
+    const label = step > 0 ? 'Next question' : 'Previous question';
+    const preferred = root.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]:not(:disabled)`);
+    const fallback = root.querySelector<HTMLButtonElement>('.tray-arrow:not(:disabled)');
+    (preferred ?? fallback)?.focus();
+  }, [index]);
 
   if (!tabs.length && !folded.length) return null;
   const inSet = new Set(tabs.flatMap((tab) => (tab.kind === 'review' ? [tab.batch] : [])));
   const busy = (key: string) => busyKey === key;
 
-  const index = tabs.findIndex((tab) => tab.id === active?.id);
-
   function page(step: -1 | 1) {
     setWanted(tabs[Math.max(0, Math.min(index + step, tabs.length - 1))]?.id ?? '');
+  }
+
+  // The pager arrows are the keys too (Interactions, tray pager: ← → while the tray is focused).
+  // At either end the press does nothing, and the arrow there is already disabled.
+  function onTrayKey(event: KeyboardEvent<HTMLElement>) {
+    if (event.defaultPrevented || event.nativeEvent.isComposing) return;
+    if (event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
+    const step: -1 | 1 | 0 = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+    if (step === 0 || tabs.length < 2) return;
+    if (arrowsStayWithControl(event.target)) return;
+    const next = index + step;
+    if (next < 0 || next >= tabs.length) return;
+    event.preventDefault();
+    returnFocus.current = step;
+    page(step);
   }
 
   function holdClock(question: Question) {
@@ -136,7 +187,7 @@ export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, render
         <TrayCompact count={standing} summary={(active?.label ?? '').replace(/`/g, '')} onReview={() => onReview?.()} />
       </TrayFold>
       <TrayFold shown={!compact}>
-      <section className="decision-tray" aria-label="Waiting on you">
+      <section ref={trayRef} className="decision-tray" aria-label="Waiting on you" onKeyDown={onTrayKey}>
         <TrayHeader
           question={shown}
           index={index + 1}
