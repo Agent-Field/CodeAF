@@ -207,6 +207,32 @@ export function historyIdOf(sessionFile: string): string {
   return name.replace(/\.jsonl$/, '');
 }
 
+/** The part of a world row this list reads: enough to say what a conversation is doing wherever it is attached. */
+export type LiveRow = { chatId: string; sessionFile?: string; running: boolean; needsYou: number; tasksRunning: number };
+
+/**
+ * Lays the world stream's live state over the listed rows, so a conversation attached in another window, or closed
+ * but still running, shows its real glyph and Open mark and not only what this bridge attached. Rows are returned
+ * in the order given: the list sorts by time alone, never by state, and the world adds no rows of its own.
+ */
+export function withWorldState(items: readonly HistoryItem[], rows: readonly LiveRow[]): readonly HistoryItem[] {
+  if (!rows.length) return items;
+  const byId = new Map<string, LiveRow>();
+  for (const row of rows) { byId.set(row.chatId, row); if (row.sessionFile) byId.set(historyIdOf(row.sessionFile), row); }
+  let changed = false;
+  const merged = items.map(item => {
+    const row = byId.get(item.id);
+    if (!row || (!row.running && row.needsYou <= 0)) return item;
+    // A question outranks work, as it does on the tab strip; only a live row can lift a conversation, never lower one.
+    const state = row.needsYou > 0 ? 'needs-you' : item.state === 'needs-you' ? item.state : 'working';
+    const tasksRunning = Math.max(item.tasksRunning, row.tasksRunning);
+    if (item.open && item.state === state && item.tasksRunning === tasksRunning) return item;
+    changed = true;
+    return { ...item, state, open: true, tasksRunning } as HistoryItem;
+  });
+  return changed ? merged : items;
+}
+
 export const IDLE_ARCHIVE_MS = 12 * 60 * MINUTE;
 
 /** What the workspace remembers about a tab so idleness survives a restart. `hold` is true when it was pinned, running or waiting on the person. */

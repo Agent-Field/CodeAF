@@ -1,7 +1,10 @@
 // The History tab's data: the paged list, one recap and a debounced search. Reads only; every request is cancellable.
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import design from '../../design/tokens.json';
 import { EngineError } from '../chat/engine-client';
+import type { WorldRow } from '../world/types';
+import { useWorld } from '../world/useWorld';
+import { withWorldState } from './model';
 import { listHistory, readHistory, searchHistory } from './client';
 import type { HistoryDetail, HistoryFilter, HistoryItem, SearchResult } from './types';
 
@@ -15,8 +18,13 @@ const messageOf = (error: unknown) => (error instanceof EngineError ? error.mess
 
 export type ListState = { items: HistoryItem[]; total: number; matching: number; loading: boolean; more: boolean; error: string; loadMore: () => void; refresh: () => void };
 
+const worldRows = (world: { rows: () => readonly WorldRow[] }) => world.rows();
+
 export function useHistoryList(filter: HistoryFilter): ListState {
-  const [items, setItems] = useState<HistoryItem[]>([]);
+  const [listed, setItems] = useState<HistoryItem[]>([]);
+  // The world stream says what is running or waiting anywhere; it lifts rows already listed and never reorders them.
+  const live = useWorld(worldRows);
+  const items = useMemo(() => withWorldState(listed, live) as HistoryItem[], [listed, live]);
   const [total, setTotal] = useState(0);
   const [matching, setMatching] = useState(0);
   const [next, setNext] = useState<string>();
@@ -39,10 +47,10 @@ export function useHistoryList(filter: HistoryFilter): ListState {
 
   const kept = useRef(0);
   kept.current = items.length;
-  const live = useRef<AbortController | null>(null);
+  const reading = useRef<AbortController | null>(null);
   useEffect(() => {
     const stop = new AbortController();
-    live.current = stop;
+    reading.current = stop;
     setLoading(true);
     void read(stop.signal, 0);
     const timer = window.setInterval(() => { if (!document.hidden) void read(stop.signal, kept.current); }, REFRESH_MS);
@@ -59,7 +67,7 @@ export function useHistoryList(filter: HistoryFilter): ListState {
   }, [filter, next]);
 
   // After the person changes something (an archive), the rows already loaded are read again at once.
-  const refresh = useCallback(() => { const stop = live.current; if (stop && !stop.signal.aborted) void read(stop.signal, kept.current); }, [read]);
+  const refresh = useCallback(() => { const stop = reading.current; if (stop && !stop.signal.aborted) void read(stop.signal, kept.current); }, [read]);
 
   return { items, total, matching, loading, more: !!next, error, loadMore, refresh };
 }
