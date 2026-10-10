@@ -1,0 +1,9 @@
+/* Split at 600px and below (SH-211): the card shows only the focused pane, full size. The other panes stay mounted
+   (display none keeps drafts and streams alive and takes them out of tab order), and the merged tab's segments
+   choose which pane is focused. Dividers and drop zones have no room to work, so they are not drawn. */
+@media (max-width: 600px) {
+  .workspace-conversation[data-split] { display: flex; }
+  .workspace-conversation[data-split] > .workspace-pane:not([data-focused="true"]) { display: none; }
+  .workspace-conversation[data-split] > .workspace-pane[data-focused="true"] { grid-column: auto; }
+  .workspace-conversation[data-split] > .pane-resize, .workspace-conversation[data-split] > .split-zones { display: none; }
+}
