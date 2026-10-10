@@ -47,6 +47,7 @@ type WorldRecord struct {
 type WorldFeed struct {
 	read      func() session.World
 	graph     func() *placegraph.Snapshot
+	ledger    func() string
 	interval  time.Duration
 	heartbeat time.Duration
 	maxAge    time.Duration
@@ -155,7 +156,11 @@ func (f *WorldFeed) refresh() {
 	if f.graph != nil {
 		graph = f.graph()
 	}
-	rows, items := projectWorld(f.read(), graph)
+	var ledger string
+	if f.ledger != nil {
+		ledger = f.ledger()
+	}
+	rows, items := projectWorld(f.read(), ledger, graph)
 	now := time.Now()
 
 	f.mu.Lock()
@@ -261,6 +266,7 @@ func (b *Bridge) UseWorld(f *WorldFeed) {
 		b.world.Close()
 	}
 	f.graph = b.attentionGraph
+	f.ledger = b.decideLedger
 	b.world = f
 }
 
@@ -270,6 +276,9 @@ func (b *Bridge) worldFeed() *WorldFeed {
 	if b.world == nil {
 		b.world = NewWorldFeed(nil)
 		b.world.graph = b.attentionGraph
+	}
+	if b.world.ledger == nil {
+		b.world.ledger = b.decideLedger
 	}
 	return b.world
 }

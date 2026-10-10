@@ -244,3 +244,14 @@ export function isSeeAllHistoryShortcut(event: KeyEvent) {
  const primary = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
  return primary && !event.shiftKey && !event.altKey && event.key === 'Enter';
 }
+
+/**
+ * Spells a chord the way the design's Kbd does (C-CTRL-14, C-MENU-5): glyphs run together on a Mac (⌘⇧C), words join
+ * with "+" elsewhere (Ctrl+Shift+C). The platform is read at call time from the platform AND the user agent, so a test
+ * that overrides only the user agent still gets the other spelling.
+ */
+export function spellShortcut(label: string) {
+ const mac = /Mac/.test(navigator.platform) || /Mac/.test(navigator.userAgent);
+ const parts = label.replace('⌘/Ctrl', mac ? '⌘' : 'Ctrl').replace('⇧', mac ? '⇧' : 'Shift').split(/\s+/).filter(Boolean);
+ return mac ? parts.join('') : parts.join('+');
+}

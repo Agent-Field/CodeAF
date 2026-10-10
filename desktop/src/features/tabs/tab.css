@@ -15,6 +15,8 @@
 .workspace-tab-select.button:focus-visible { outline-offset: calc(var(--motion-rest) - var(--focus-offset)); }
 .workspace-tab-select .app-icon { color: var(--ink-2); }
 .workspace-tab-title { line-height: var(--tab-title-leading); flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-align: left; mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
+/* Exit words sit after the title's own fade (C-EDGE-5), so a long name fades and `exit 0` stays readable. Muted, never a state colour. */
+.workspace-tab-meta { flex: none; color: var(--ink-3); font-size: var(--tab-meta-size); white-space: nowrap; }
 
 /* The 6px state glyph replaces the kind icon; colour lives on this dot only. */
 .tab-dot { flex: none; width: var(--mark-dot); height: var(--mark-dot); margin: 0 var(--tab-dot-margin); border-radius: 50%; background: var(--amber); }

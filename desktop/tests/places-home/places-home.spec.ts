@@ -230,3 +230,23 @@ test('failed knowledge write preserves the draft and adds no saved line', async 
   await expect(page.locator('.knows-error')).toBeVisible();
   await expect(page.locator('.knows-text')).toHaveCount(1);
 });
+
+test('menus: Always ask me toggles and Decision confidence… writes the chosen figure', async ({ page }) => {
+  // A place Home no longer draws its child tiles. All places still does, and that tile menu is the same place menu.
+  await open(page, 'root');
+  await tile(page, 'pl_codeaf').click({ button: 'right' });
+  const ask = page.getByRole('menuitemcheckbox', { name: 'Always ask me' });
+  await expect(ask).toHaveAttribute('aria-checked', 'false');
+  await ask.click();
+  await expect(log(page).last()).toHaveText('decide:pl_codeaf:true:');
+  await tile(page, 'pl_codeaf').click({ button: 'right' });
+  await expect(page.getByRole('menuitemcheckbox', { name: 'Always ask me' })).toHaveAttribute('aria-checked', 'true');
+  await page.getByRole('menuitem', { name: 'Decision confidence…' }).click();
+  await expect(page.getByRole('menuitemcheckbox', { name: '90%' })).toHaveAttribute('aria-checked', 'true');
+  await page.getByRole('menuitemcheckbox', { name: '70%' }).click();
+  await expect(log(page).last()).toHaveText('decide:pl_codeaf::70');
+  // A place the engine did not describe draws neither entry.
+  await tile(page, 'pl_reports').click({ button: 'right' });
+  await expect(page.getByRole('menuitemcheckbox', { name: 'Always ask me' })).toHaveCount(0);
+  await expect(page.getByRole('menuitem', { name: 'Decision confidence…' })).toHaveCount(0);
+});

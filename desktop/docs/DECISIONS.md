@@ -156,3 +156,200 @@ If approved, the follow-through is:
 4. Restore a finished job as read-only recorded output. Do not restore interactive PTYs, automatically rerun commands, or turn a job interrupted by shutdown into a fabricated successful completion. Run again remains an explicit new job.
 
 No code or user-visible feature changes are needed for this research task. No manual page changes are needed: this decision records the current boundary and a proposed future capability, not a capability the app offers.
+Calls made from the design and the code when a lane was asked to decide
+rather than wait. The assumption the app ships is also a row in
+`DESIGN-QUESTIONS.md`.
+
+## t-d5-be-pg-merge-decision (2026-10-10)
+
+**Question.** Places §6d (the card coverage calls P-6d-10) says “Delete or
+merge a place. From the Home menu.” The sentences under that card describe
+delete: chats keep their other places or become unplaced, nothing is lost,
+history keeps everything, and children move up to the deleted place’s
+parents. The 8f place menu drawing (coverage P-X-13) lists Go to, Quick Look,
+Open in new window, Rename, Tint, Add to another place…, Pin to rail,
+Archive, Delete place…. It does not draw Merge. The 60-day card says a quiet
+suggestion to merge or archive, on Home and in ⌘P, and does not say which
+place a merge lands in. 9d says a place inside two families keeps the tint of
+the parent it was created in, and never blends colours. Nothing in the design
+says how instructions or policy combine.
+
+**Call.** Merge ships. The place the menu was opened on is absorbed. The
+person picks the survivor. Nothing is deleted, and colours are not blended.
+
+### Target
+
+“Merge into…” opens the existing Go to sheet titled `Merge “Name” into…`.
+The absorbed place, every place under it, and archived places are not
+offered, because a place cannot sit inside itself. There is no suggested
+target and no second confirmation. Picking a row merges at once. The toast
+reads `Merged “Name” into “Survivor”` and offers Undo. Undo restores both
+places, because the receipt puts the graph back to the snapshot from before
+the write. Merging a place into itself is refused. A missing target is
+refused with “Say which place to merge into.” An archived target is refused.
+
+The 60-day suggestion’s Merge button opens that same chooser. It does not
+pick a place. Archive and Not now on that line stay as they are.
+
+### What combines
+
+- **Instructions.** The survivor’s text stays first. The absorbed place’s
+  instructions are appended after a blank line when they are non-empty and
+  different. The same text is not repeated.
+- **Sources.** United by kind and ref. The survivor’s copy of a duplicate
+  stays.
+- **Policy.** The survivor wins each field. A blank model or permissions
+  field is filled from the absorbed place. The reserved manager blob follows
+  the same empty-fill rule. No question is asked, and the two values are not
+  mixed.
+- **Tint.** The survivor keeps its own tint. A child that moves keeps the
+  colour it was showing, pinned when inheriting from the survivor would
+  change it. 9d’s “never blend” rule is the reason.
+- **Chats.** Memberships move onto the survivor. A chat already in both keeps
+  the survivor’s existing row. Other places that chat belongs to stay. No
+  chat is deleted and none becomes unplaced only because this place went
+  away. The delete sentences on the same 6d card stay the delete path.
+- **Children.** They become children of the survivor. A child that already
+  sits above the survivor takes the absorbed place’s parents instead, so the
+  graph does not loop. Parents of the absorbed place are added to the
+  survivor unless that edge would loop; those are reported as skipped and
+  not applied.
+- **Knows lines.** They move to the survivor. Their text is not rewritten
+  and duplicates are not folded by this write.
+- **Rail pin.** If the absorbed place was pinned and the survivor was not,
+  the pin moves to the survivor. If the survivor was already pinned, it
+  stays pinned.
+- **Tabs.** The survivor keeps the tab set it already had. The absorbed
+  place’s saved tabs are not copied onto it. They remain stored under the
+  absorbed place and return with Undo.
+
+### Where the item sits
+
+One menu builder draws it, so it appears everywhere that builder is used
+and the merge handler is wired:
+
+1. The place right-click menu (8f), after “Add to another place…” and before
+   Pin to rail.
+2. The Home page’s ⋯ menu, in that same place. Archive and Delete stay on
+   this menu.
+3. The Home tab’s place menu, in that same place, then Close place. That
+   tab menu does not carry Archive or Delete (PS9).
+
+Offline, the write is absent, so the item is absent. Now and All places
+have no place menu.
+
+### Window
+
+The window that ran the merge goes to the survivor. Another window that
+still has the absorbed place selected, once its graph read shows the place
+is gone, shows Now and says “That place no longer exists, so this window
+shows Now.”
+
+### What this does not invent
+
+No blended tint, no model call to reconcile instructions, no default
+survivor, no preview counts, and no confirm the design does not draw.
+Delete’s confirmation stays on delete only.
+# Desktop decisions
+
+Append one dated section per task. Leave every other section as it is.
+
+## t-d5-be-files-write-decision (2026-10-10)
+
+### Question
+
+Should the desktop file tab be able to write, rename, or delete a file? (BE-FILE-07, code-bridge §6.5.)
+
+### Call
+
+No. The app ships no file-mutation route and no control for one.
+
+### Why
+
+Shell 3e is a viewer: changes first, a toggle to the full file, and a handoff to your editor. The drawn controls are Changes, File, and Open in editor. Iteration 2 (I2.1–I2.14) does not add an editor. Rename in Shell 3g is the tab and group menu, not a filesystem rename.
+
+The bridge file doors are reads: file bytes, text, stat, list, find, locate, changes, and diff. Open in editor starts a program the engine just listed. It does not change the file. There is no write, rename, delete, or move route. The file header offers the view toggle and that handoff. The lines are text, not a field.
+
+### What still changes files
+
+A conversation can still create, overwrite, edit, rename, move, and delete files through its own tools when you ask. That is not a control on the file tab, and this decision does not remove it. Sending a picture or a file with a message attaches it to that message. It does not write a workspace path from the tab. Writing into a terminal is the terminal, not the file tab.
+
+### What ships
+
+Nothing new is built. A request to write, rename, delete, or move a file through the desktop bridge is an unknown action. The tab does not draw a save, a rename, or a delete, and it does not invent a dirty or saved state. The assumption is also row BE-FILE-07 in the Open table of DESIGN-QUESTIONS.md, so a later design that draws an editor can replace it.
+
+
+## 2026-10-10 — t-d5-pl-decisions: places questions and assumptions
+
+**Decision:** use the 13 PLD rows in the Open table of DESIGN-QUESTIONS.md as
+this lane's integration contract. This task records decisions and review
+findings; it changes no runtime behavior and makes no new manual capability
+claim. Other places lanes retain ownership of implementation files.
+
+Sources: design v3 Places 6c–6e, 8a–8g, 9a/9c/9e and 10a; Interactions Places,
+Multiple windows and Shortcuts; Iteration 2 I2.13–I2.14. The requested
+`cov-places.md` was not present in the available worktree/design snapshot.
+Its open-question list is reproduced in DESIGN-COVERAGE.md, Places “Open
+questions (each with the conservative assumption the tasks use)”; that is
+the coverage source used here. Covers PL-007, PL-070, PL-086, PL-124, PL-133,
+PL-174, PL-221, PL-230 and PL-235, plus the named shortcut, peek, delete,
+counts and window-scope questions.
+
+### Chosen behavior
+
+| Area | Decision and ledger rows |
+|---|---|
+| Navigation | Go to is ⌘P, All places is ⌘⇧P; ⌘N creates a place only inside Go to and opens a window on Now elsewhere (PLD-01/02). |
+| Numbering and peek | Keep Pinned-then-Open numbering from the drawn 9c switcher, Now at 0, Linux Alt+digits; this remains an assumption where 10a/Interactions say pinned only. Left-edge dwell reveals the rail; top edge reveals the Focus-mode strip (PLD-03/04). |
+| Structural actions | Prefer the non-destructive 8g drop rule over the conflicting Interactions place row: plain adds, Option moves the source edge only. Merge follows BE-PL-44, superseding the earlier “omitted in d5” coverage assumption. Place delete never deletes conversations (PLD-05/06/07). |
+| Engine content | Recap, cluster, filing offer and knows lines render real engine data only. No renderer AI call, guessed destination, fabricated recap or automatic transcript extraction. Iteration 2 unifies knowledge; a new-place cluster requires at least five chats (PLD-08/09/10/11). |
+| Counts and persistence | Child-place numbers are direct; chat totals include descendants and deduplicate. Pinned is global; Open visits/closes are window-local. Shared tab content and local focus remain distinct (PLD-12/13). |
+
+### Current-code review and follow-through
+
+`desktop/src/design/keyboard.ts`, `places/shell/GoToChooser.tsx`,
+`places/shell/useShellPlaces.ts` and `shell/useShellFrame.ts` already implement
+the selected shortcut, numbering and peek split. `places/dnd/placeDnd.ts`
+already implements additive plain drops, source-edge-only Option moves and
+cycle refusal. The merge menu and chooser already follow the newer merge
+research decision; retain them rather than reverting to the stale coverage.
+
+The older BE-PL-46 and memory research sections are historical findings,
+not a current inventory: `internal/placegraph/recommend*.go` and
+`internal/desktopbridge/places_advice.go` now provide recommendation paths;
+`internal/placegraph/digest.go` builds recaps from saved evidence;
+`internal/session/remember_place.go` implements an explicit save into a
+place. None authorizes the desktop to invent missing data or establishes that
+automatic chat-decision promotion is wired. Do not interpret PLD-08–11 as
+instructions to remove existing engine functionality.
+
+Two integration gaps remain, recorded instead of silently changing another
+lane's files. `places/shell/selectors.ts` reads `counts.descendants` for both
+`placeMeta` and child tile metadata, while `counts.children` already exists;
+the display owner should use it for “inside” and “places”, preserving
+`chatsInclusive` for chat totals. `internal/placegraph/rail.go` stores Open
+in the global graph; the shell filters local closes but still starts from
+that global visit list. The persistence owner must isolate each window's
+Open visits/close/idle state without forking shared place tab contents.
+
+### Verification boundaries
+
+The React-wired v-Places design was opened through local Playwright in
+Chromium and WebKit. Both measured its first section at 2624 × 2658.84375px
+with the specified system font stack using getBoundingClientRect and
+getComputedStyle. These measurements establish the design was read from a
+rendered page; they do not claim runtime pixel parity for this documentation
+change. Acceptance is all named questions having explicit assumptions,
+including the superseded merge omission and the two implementation gaps.
+
+Validation passed: TypeScript (`npx tsc --noEmit -p .`), design policy
+(`npm run design:check`), 62 focused Node tests (keyboard, shell selectors,
+drop/filing model and palette), and eight Playwright cases across Chromium
+and WebKit (Go to, rail slots/close/pin, merge chooser and place-delete Undo).
+The browser run used port 1765, reuseExistingServer false and the lane's
+external output directory; its temporary config was removed. Vite's runner
+config loader avoided the read-only shared node_modules bundle cache.
+A document assertion checked 13 unique Open rows with non-empty questions
+and assumptions, the dated task section, all nine acceptance IDs and both
+integration gaps. `git diff --check` passed. Go build/vet/laws and manual
+retrieval probes were not run because no Go or user-visible feature changed.

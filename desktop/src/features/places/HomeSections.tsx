@@ -167,7 +167,7 @@ export function HomePlacesSection({ label, places, parentId, parentName, parentT
           selected={selected === place.id} dragging={drag.payload?.kind === 'place' && drag.payload.ids.includes(place.id)} dropTarget={dropOn === place.id && accepts} disabled={!actions.goTo}
           onGoTo={() => void runner.run(() => actions.goTo?.(place.id))} onOpenInNewWindow={actions.goToInNewWindow && (() => void runner.run(() => actions.goToInNewWindow?.(place.id)))}
           onQuickLook={actions.quickLook && (() => { setSelected(place.id); actions.quickLook?.(place.id); })}
-          menu={placeMenu({ id: place.id, name: place.name, tint: place.tint, pinned: place.pinned, archived: place.archived || restore }, actions, {
+          menu={placeMenu({ id: place.id, name: place.name, tint: place.tint, pinned: place.pinned, decide: place.decide, archived: place.archived || restore }, actions, {
             readOnly, canRename: !place.path, startRename: id => setRenaming({ id, name: place.name, tint: place.tintSource === 'own' ? place.tint : 'graphite', original: place.name, originalTint: place.tintSource === 'own' ? place.tint : 'graphite' }),
             startDelete: onDelete && (() => onDelete(place)) })}
           draggable={!readOnly && !!actions.file && !place.archived}
