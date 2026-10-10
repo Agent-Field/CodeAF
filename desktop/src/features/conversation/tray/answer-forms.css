@@ -2,3 +2,9 @@
    Fill, hover and press come from the Button variants (primary, quiet, danger, ghost); only size lives here. */
 .answer-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-tight); }
 .button.answer { min-height: var(--control-height); height: var(--control-height); }
+/* Conversation 1e draws Always allow… and Tell it… in ink-3, and Components draws "and say why" the same way.
+   The shared ghost stays ink-2 (C-CTRL-4). Hover and press change the fill only, so these words stay ink-3. */
+.answer-row .button.answer-ghost,
+.answer-row .button.answer-why,
+.answer-row .button.answer-ghost:is(:hover, :active):not(:disabled),
+.answer-row .button.answer-why:is(:hover, :active):not(:disabled) { color: var(--ink-3); }

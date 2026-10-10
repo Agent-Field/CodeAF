@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
 import design from '../../design/tokens.json';
 import { DeleteConfirm } from './DeleteConfirm';
 import { HistoryRow } from './HistoryRow';
@@ -28,6 +29,12 @@ type Props = {
   onNearEnd: () => void;
   /** Focus returns to the list when the person arrows out of the field. */
   listRef?: (node: HTMLDivElement | null) => void;
+  /**
+   * Where the inline confirm is painted. It has to sit outside the listbox: a listbox may only own options,
+   * and the question's buttons are not options. The layer is aligned over the list, so the question still
+   * covers the row it replaces.
+   */
+  confirmLayer?: HTMLElement | null;
 };
 
 /** Sets CSS custom properties from layout numbers: the stylesheet places the entry, so no inline style is written. */
@@ -42,8 +49,10 @@ const place = (top: number, height: number) => (node: HTMLElement | null) => {
  * entries near the viewport are in the DOM, so thousands of conversations cost the same as a dozen.
  * Up and Down move the selection, Enter continues, Home and End jump.
  */
-export function HistoryList({ items, now, selectedId, selectedIds, confirm, label, onSelect, onOpen, onRead, onArchive, onDelete, onNearEnd, listRef }: Props) {
+export function HistoryList({ items, now, selectedId, selectedIds, confirm, label, onSelect, onOpen, onRead, onArchive, onDelete, onNearEnd, listRef, confirmLayer }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
+  const spaceNode = useRef<HTMLDivElement | null>(null);
+  const confirmNode = useRef<HTMLDivElement | null>(null);
   const [scroll, setScroll] = useState({ top: 0, height: 0 });
   const { entries, height } = useMemo(() => layout(items, now, metrics), [items, now]);
 
@@ -106,18 +115,49 @@ export function HistoryList({ items, now, selectedId, selectedIds, confirm, labe
   const visible = entries.slice(range.start, range.end);
   const setRef = (node: HTMLDivElement | null) => { scroller.current = node; listRef?.(node); };
   const confirming = confirm && selectedId === confirm.anchorId;
+  const anchor = confirm ? entries.find(entry => entry.kind === 'row' && entry.item.id === confirm.anchorId) : undefined;
+  // The layer is a sibling of the list, sized to the list's box, so the question scrolls and clips with the rows
+  // without becoming a child of the listbox.
+  useLayoutEffect(() => {
+    const list = scroller.current;
+    const layer = confirmLayer ?? null;
+    const parent = layer?.parentElement;
+    if (!list || !layer || !parent) return;
+    const listBox = list.getBoundingClientRect();
+    const parentBox = parent.getBoundingClientRect();
+    layer.style.setProperty('--history-top', `${listBox.top - parentBox.top}px`);
+    layer.style.setProperty('--history-left', `${listBox.left - parentBox.left}px`);
+    layer.style.setProperty('--history-width', `${listBox.width}px`);
+    layer.style.setProperty('--history-height', `${listBox.height}px`);
+    const space = spaceNode.current;
+    const node = confirmNode.current;
+    if (!space || !node || anchor?.kind !== 'row') return;
+    const spaceBox = space.getBoundingClientRect();
+    node.style.setProperty('--history-top', `${spaceBox.top - listBox.top + anchor.top}px`);
+    node.style.setProperty('--history-left', `${spaceBox.left - listBox.left}px`);
+    node.style.setProperty('--history-width', `${spaceBox.width}px`);
+    node.style.setProperty('--history-height', `${anchor.height}px`);
+  }, [confirmLayer, confirm, anchor, scroll.top, scroll.height, height]);
+  const setSpace = (node: HTMLDivElement | null) => {
+    spaceNode.current = node;
+    if (node) node.style.setProperty('--history-total', `${height}px`);
+  };
   return <div ref={setRef} className="history-list" data-scroll-key="history-list" role="listbox" tabIndex={0} aria-label={label} aria-multiselectable={selectedIds ? true : undefined} aria-activedescendant={selectedId && !confirming ? `history-row-${selectedId}` : undefined}
     onScroll={event => setScroll({ top: event.currentTarget.scrollTop, height: event.currentTarget.clientHeight })} onKeyDown={onKeyDown}>
     {sticky && <div className="history-sticky" aria-hidden="true" ref={node => { if (node) node.style.setProperty('--history-push', `${sticky.push}px`); }}><span>{sticky.label}</span></div>}
-    <div className="history-list-space" ref={node => { if (node) node.style.setProperty('--history-total', `${height}px`); }}>
+    <div className="history-list-space" ref={setSpace}>
       {visible.map(entry => <Entry key={entry.key} entry={entry} now={now} selectedId={selectedId} selectedIds={selectedIds} confirm={confirm} onSelect={onSelect} onOpen={onOpen} onRead={onRead} onArchive={onArchive} onDelete={onDelete}/>)}
     </div>
+    {confirm && anchor?.kind === 'row' && confirmLayer && createPortal(
+      <DeleteConfirm count={confirm.count} busy={confirm.busy} onCancel={confirm.onCancel} onConfirm={confirm.onConfirm} placeRef={node => { confirmNode.current = node; }}/>,
+      confirmLayer)}
   </div>;
 }
 
 function Entry({ entry, now, selectedId, selectedIds, confirm, onSelect, onOpen, onRead, onArchive, onDelete }: { entry: ListEntry; now: number; selectedId?: string } & Pick<Props, 'selectedIds' | 'confirm' | 'onSelect' | 'onOpen' | 'onRead' | 'onArchive' | 'onDelete'>) {
   if (entry.kind === 'group') return <div className="history-group" role="presentation" ref={place(entry.top, entry.height)}><span>{entry.label}</span></div>;
-  if (confirm && entry.item.id === confirm.anchorId) return <DeleteConfirm count={confirm.count} busy={confirm.busy} onCancel={confirm.onCancel} onConfirm={confirm.onConfirm} placeRef={place(entry.top, entry.height)}/>;
+  // The row is gone while the question is up. The question itself is portaled onto the layer, not drawn here.
+  if (confirm && entry.item.id === confirm.anchorId) return null;
   const selected = selectedIds ? selectedIds.includes(entry.item.id) : entry.item.id === selectedId;
   return <HistoryRow item={entry.item} now={now} domId={`history-row-${entry.item.id}`} selected={selected} onSelect={onSelect} onOpen={onOpen} onRead={onRead} onArchive={onArchive} onDelete={onDelete} placeRef={place(entry.top, entry.height)}/>;
 }

@@ -102,3 +102,6 @@
 /* A dev transport address is a URL with no spaces. It wraps instead of widening the page. */
 .settings-engine-where { overflow-wrap: anywhere; min-width: 0; }
 .settings-page .settings-engine-retry { align-self: flex-start; }
+/* Settings does not draw this Retry. It follows the conversation's quiet Retry: ink-3, and a hover only fills. */
+.settings-page .settings-engine-retry.button-ghost,
+.settings-page .settings-engine-retry.button-ghost:is(:hover, :active):not(:disabled) { color: var(--ink-3); }

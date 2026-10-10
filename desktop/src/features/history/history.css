@@ -9,7 +9,7 @@
 .history-card { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-radius: var(--radius-pane); background: var(--canvas); box-shadow: var(--sh-1); }
 .history-card[data-mode="browse"] { flex: 0 1 var(--history-list-width); }
 .history-card[data-mode="search"], .history-pane[data-compact] .history-card { flex: 1; }
-.history-column { flex: 1; display: flex; flex-direction: column; gap: var(--space-row); min-height: 0; padding: var(--history-page-pad-top) var(--space-8) 0 var(--space-2xl); }
+.history-column { position: relative; flex: 1; display: flex; flex-direction: column; gap: var(--space-row); min-height: 0; padding: var(--history-page-pad-top) var(--space-8) 0 var(--space-2xl); }
 .history-card[data-mode="search"] .history-column { width: 100%; max-width: var(--history-column-max-width); margin-inline: auto; padding-inline: var(--space-8); }
 .history-pane[data-compact] .history-column { padding-inline: var(--space-4); }
 
@@ -62,6 +62,11 @@
 .history-row-stamp { flex: none; width: var(--history-time-width); padding-top: var(--space-half); text-align: right; font-size: var(--type-caption-size); font-weight: var(--type-label-weight); color: var(--ink-3); }
 .history-row-main > .history-files { margin-top: var(--space-half); }
 .history-visually-hidden { position: absolute; width: var(--hairline); height: var(--hairline); overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* The question is not a listbox child — a listbox may only own options, and these buttons are not — so it is
+   painted in a layer the size of the list, over the row it replaces. */
+.history-confirm-layer { position: absolute; top: var(--history-top); left: var(--history-left); width: var(--history-width); height: var(--history-height); pointer-events: none; overflow: hidden; z-index: 2; }
+.history-confirm-layer .history-delete-confirm { pointer-events: auto; left: var(--history-left); width: var(--history-width); right: auto; }
 
 /* The inline confirm takes the row's place (Interactions "Delete"). Soft fill, no edge accent, and the question fades rather than ellipsizing. */
 .history-delete-confirm { position: absolute; left: 0; right: 0; top: var(--history-top); height: var(--history-height); display: flex; align-items: center; gap: var(--space-tight); padding: 0 var(--space-row); border-radius: var(--tasks-table-row-radius); background: var(--field); color: var(--ink); }
