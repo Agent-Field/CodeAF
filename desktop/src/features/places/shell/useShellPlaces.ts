@@ -57,7 +57,9 @@ export function usePlaceRail(shell: PlacesShell, inputs: RailInputs): PlaceRailP
       active: inputs.onWorkspace && shell.place === 'now' && !allPlacesActive, shortcut: placeShortcuts.slot(0),
       // Places 8e draws this as the unplaced-chat count ("Not in any place"), not how many are running.
       count: graph?.now.chats, status: rollupStatus(graph?.now.status), statusLabel: graph && graph.now.status.needsYou > 0 ? `${graph.now.status.needsYou} need${graph.now.status.needsYou === 1 ? 's' : ''} you in Now` : undefined,
-      onGo: enter(() => void shell.goTo('now')), onNewWindow: () => void shell.goToInNewWindow('now').catch(shell.warn),
+      onGo: enter(() => void shell.goTo('now').catch(shell.warn)),
+      // Without native windows the modified click must take the same workspace entry path as a plain click.
+      onNewWindow: shell.native.desktop ? () => void shell.goToInNewWindow('now').catch(shell.warn) : undefined,
     },
     sections,
     current: inputs.onWorkspace && !allPlacesActive && shell.place !== 'now' ? shell.place : undefined,
