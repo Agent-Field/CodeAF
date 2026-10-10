@@ -41,8 +41,6 @@ export function useTabKeys({ enabled, state, dispatch, visible, overviewOpen, se
     if (modalOpen) return false;
     switch (shortcut.id) {
       case 'new': case 'reopen': dispatch({ type: shortcut.id }); return true;
-      // ⌘G: the active tab and every ⌘-clicked tab become one new group, where the first of them stands.
-      case 'group': dispatch({ type: 'group-picked' }); return true;
       // Pinned tabs never close with ⌘W (design 2h "Pinned").
       case 'close': if (!active?.pinned) closeTab(state.activeId); return true;
       case 'next': case 'previous': if (!visible.length) return false; dispatch({ type: 'select', id: neighbour(visible, state.activeId, shortcut.id === 'next' ? 1 : -1).id }); return true;

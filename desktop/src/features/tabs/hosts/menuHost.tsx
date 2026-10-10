@@ -32,7 +32,7 @@ function groupEntry(api: TabsApi, tab: Tab): MenuEntry {
   }));
   return {
     kind: 'submenu', id: 'group', label: 'Add to group', icon: 'layers',
-    items: [...groups, ...(groups.length ? [separator('groups-separator')] : []), { id: 'new-group', label: 'New group…', icon: 'plus', shortcut: newGroupShortcut, onSelect: () => dispatch({ type: 'group', id: tab.id }) }],
+    items: [...groups, ...(groups.length ? [separator('groups-separator')] : []), { id: 'new-group', label: 'New group…', icon: 'plus', shortcut: newGroupShortcut, onSelect: () => api.groupSelected(tab.id) }],
   };
 }
 
