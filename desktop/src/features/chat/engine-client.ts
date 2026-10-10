@@ -38,7 +38,9 @@ export type EngineQuestion = {
  options?: { key: string; label: string; body?: string; consequence?: string; safe?: boolean; widening?: boolean; blocks?: EngineQuestionBlock[]; dimensions?: Record<string, string> }[];
  input?: { kind?: string; prompt?: string; secret?: boolean; blanks?: { label: string; kind?: string; default?: string; choices?: string[] }[]; dial?: { min: number; max: number; default: number; labels?: string[] } };
  attach?: EngineQuestionBlock[]; scope?: string[]; asked?: string; deadline?: string;
- pick?: { key: string; reason?: string; confidence?: 'sure' | 'fairly' | 'unsure'; wouldChange?: string };
+ pick?: { key: string; reason?: string; confidence?: 'sure' | 'fairly' | 'unsure'; percent?: number; basis?: string[]; wouldChange?: string };
+ /** Set while the asking place is still learning this kind of question: how many of its last `of` proposals the person agreed with. */
+ learning?: { place?: string; agreed: number; of: number };
  stakes?: 'reversible' | 'costly' | 'irreversible';
  blocking?: { turn?: boolean; tasks?: string[] };
  asker?: { kind?: 'model' | 'engine' | 'task' | 'surface' | 'window'; name?: string };
@@ -47,7 +49,7 @@ export type EngineQuestion = {
  policy?: { kind?: 'ask' | 'recommend-then-auto' | 'decide'; after?: number }; // after: nanoseconds, a Go duration
  withdrawn?: { reason?: string; by?: string; at?: string };
 };
-export type EngineAnswer = { kind: string; id: number; ref?: string; key: string; picked?: string[]; change?: string; blanks?: Record<string,string>; scope?: string; dial?: number; decidedBy?: 'person' | 'dial' | 'record' | 'asker' | 'window'; comments?: Record<string,string> };
+export type EngineAnswer = { kind: string; id: number; ref?: string; key: string; picked?: string[]; change?: string; blanks?: Record<string,string>; scope?: string; dial?: number; decidedBy?: 'person' | 'dial' | 'record' | 'asker' | 'window'; /** The person took another answer than the one a learning place proposed. */ overruled?: boolean; comments?: Record<string,string> };
 export type EngineEntry = {
  Role: 'user' | 'assistant' | 'tool' | 'note' | 'aside'; Text: string;
  Answer?: boolean; Addressed?: boolean; Interrupted?: boolean;
