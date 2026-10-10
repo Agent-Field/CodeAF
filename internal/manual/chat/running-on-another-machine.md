@@ -469,7 +469,7 @@ exact sentence each one says.
    An older engine, where the AI teams category cannot be saved over the connection, says exactly:
    `these rows belong to this machine; this conversation reads its profile on the other one.`
 
-## More of what does not work over --host
+## Why won't permissions show the rules on the machine I used with host — /cache, /crew and /harness over --host
 
 The second half of the list, with the exact sentence each one says.
 
