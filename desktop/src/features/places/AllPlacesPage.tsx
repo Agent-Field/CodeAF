@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from 'react';
 import { Button, HomeTitle, Icon, TextInput } from '../../components/ui';
 import { PlaceTile } from './components/PlaceTile';
-import { SuggestionLine } from './components/SuggestionLine';
+import { Suggestion } from './home/Suggestion';
 import { HomeAttentionSection, HomeChatsSection, HomePlacesSection, type DragState, type Runner } from './HomeSections';
 import { searchPlaces, totalsLine, type HomeChild, type HomeView } from './home-model';
 import type { PlaceActions } from './place-actions';
 import { staleSuggestion } from './stale-model';
+import { browserSnoozes, idleLine } from './suggestions';
 
 type AllPlacesPageProps = {
   view: HomeView;
@@ -33,9 +34,10 @@ export function AllPlacesPage({ suggestion, view, actions, readOnly, runner, dra
   const unplacedTotal = view.unplaced?.total ?? view.chats.length;
   const count = totalsLine(view.totals);
   const siblings = view.children.map(child => child.name);
-  // Design 6d: places untouched for 60 days get one quiet line to merge or archive them. Writes are dropped while offline, so is the line.
-  const stale = !searching && !readOnly && view.stale
-    ? staleSuggestion([view.stale], { merge: actions.chooseMergeTarget, archive: actions.archive, snooze: actions.snoozeStale })
+  // Design 6d: one quiet line for a place the engine named and this clock still calls idle. Writes are dropped while offline, so is the line.
+  const confirmed = view.stale ? idleLine(view.stale, now, browserSnoozes(now)) : undefined;
+  const stale = !searching && !readOnly && view.stale && confirmed
+    ? staleSuggestion([{ ...view.stale, daysUntouched: confirmed.days }], { merge: actions.chooseMergeTarget, archive: actions.archive, snooze: actions.snoozeStale })
     : undefined;
 
   return <>
@@ -71,7 +73,7 @@ export function AllPlacesPage({ suggestion, view, actions, readOnly, runner, dra
           <HomePlacesSection label="Places" places={view.children} actions={actions} readOnly={readOnly} siblings={siblings} runner={runner} drag={drag} onDelete={onDelete}
             newLabel={first ? 'Name a place' : undefined}
             extraTiles={first && actions.openFolderAsPlace ? <PlaceTile mode="new" label="Open a folder or repo" disabled={readOnly} onCreate={() => actions.openFolderAsPlace?.()}/> : undefined}/>
-          {stale && <SuggestionLine text={stale.text} actions={stale.actions} run={runner.run} busy={runner.busy}/>}
+          {stale && <Suggestion layout="line" text={stale.text} actions={stale.actions} run={runner.run} busy={runner.busy}/>}
           {archived.length > 0 && <section className="home-section" aria-label="Archived places">
             <Button variant="ghost" className="home-archived-toggle" aria-expanded={showArchived} onClick={() => setShowArchived(open => !open)}>
               <Icon name={showArchived ? 'chevron' : 'chevronRight'} size="micro"/>Archived · {archived.length}
