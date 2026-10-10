@@ -268,5 +268,7 @@ export function isSeeAllHistoryShortcut(event: KeyEvent) {
 export function spellShortcut(label: string) {
  const mac = navigator.platform ? /Mac/.test(navigator.platform) : /Mac/.test(navigator.userAgent);
  const parts = label.replace('⌘/Ctrl', mac ? '⌘' : 'Ctrl').replace('⇧', mac ? '⇧' : 'Shift').split(/\s+/).filter(Boolean);
- return mac ? parts.join('') : parts.join('+');
+ // A label already spelled in words (Ctrl, Shift) stays in words even when only the user agent says Mac, as WebKit does on Linux.
+ const words = parts.some(part => /^(Ctrl|Shift|Alt|Meta)$/.test(part));
+ return mac && !words ? parts.join('') : parts.join('+');
 }
