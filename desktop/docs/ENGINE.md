@@ -132,6 +132,14 @@ All are under `/sessions/{id}` and take the same bearer token. Refusals are
   `[{path,exists,dir,size,modTime?,outside?}]`. `modTime` is RFC 3339. `outside`
   is true when the path does not exist because it lies beyond the workspace and
   the conversation folder (a lexical reading of the engine's refusal).
+- GET `/files/list?path=` returns `{path,entries:[{name,dir,size,modTime?}],truncated}`
+  through the engine's ListDir. A missing or blank path lists the workspace root
+  (the engine's relative `.`). At most 2000 rows; `truncated` is true when the
+  tail was cut. `path` is the path the engine resolved, never one this process
+  built. `modTime` is the engine's unix seconds (`mtime` on the remote wire),
+  omitted when it sent none. An engine with no listing door is 409 "this engine
+  cannot list folders". Confinement stays the engine's two roots (the workspace
+  and the conversation's own folder).
 - POST `/turn` also takes `files:[{name,mime,dataBase64}]` with mode submit only.
   Images (png, jpeg, webp, gif) go as pictures, the rest as files. At most 10MB
   per picture and 20MB in total; larger is 413 with a sentence. Text may be blank

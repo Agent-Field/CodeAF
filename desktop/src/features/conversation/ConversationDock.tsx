@@ -6,11 +6,12 @@ import type { EngineAnswer, EngineQuestion } from '../chat/engine-client';
 import { ImageFigure } from './assets';
 import { QueuedRows, type QueuedItem } from './blocks/QueuedRows';
 import { Composer } from './Composer';
-import { CompactComposer, SplitTrayLine } from './composer/CompactComposer';
+import { CompactComposer } from './composer/CompactComposer';
 import { EmptyStart } from './EmptyStart';
 import { deadlineAt } from './tray/clock';
 import { DecisionTray } from './tray/DecisionTray';
 import { blocksComposer } from './tray/layout';
+import { PaneMiniTray } from './tray/PaneMiniTray';
 import { useNow } from './tasks/useNow';
 
 type TrayProps = {
@@ -79,7 +80,7 @@ export function ConversationDock({ tray, queue, composer, compact }: Props) {
       {!compact && <Tray tray={tray} />}
       <Queue queue={queue} />
       {!composer.docked && <EmptyStart />}
-      {compact && <CompactComposer label={compact.label} draft={composer.draft} onDraft={composer.onDraft}><SplitTrayLine questions={tray.questions} /></CompactComposer>}
+      {compact && <CompactComposer label={compact.label} draft={composer.draft} onDraft={composer.onDraft}><PaneMiniTray questions={tray.questions} onReview={tray.onReview} /></CompactComposer>}
       <div ref={expand.slot} className="composer-slot" data-compact={compact ? '' : undefined} data-expanding={expand.expanding ? '' : undefined} onAnimationEnd={expand.onEnd}>
         <Composer {...composer} disabledReason={blocked ? BLOCKED : composer.disabledReason} />
       </div>
