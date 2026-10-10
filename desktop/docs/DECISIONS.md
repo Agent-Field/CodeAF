@@ -250,3 +250,79 @@ shows Now.”
 No blended tint, no model call to reconcile instructions, no default
 survivor, no preview counts, and no confirm the design does not draw.
 Delete’s confirmation stays on delete only.
+
+
+## 2026-10-10 — t-d5-pl-decisions: places questions and assumptions
+
+**Decision:** use the 13 PLD rows in the Open table of DESIGN-QUESTIONS.md as
+this lane's integration contract. This task records decisions and review
+findings; it changes no runtime behavior and makes no new manual capability
+claim. Other places lanes retain ownership of implementation files.
+
+Sources: design v3 Places 6c–6e, 8a–8g, 9a/9c/9e and 10a; Interactions Places,
+Multiple windows and Shortcuts; Iteration 2 I2.13–I2.14. The requested
+`cov-places.md` was not present in the available worktree/design snapshot.
+Its open-question list is reproduced in DESIGN-COVERAGE.md, Places “Open
+questions (each with the conservative assumption the tasks use)”; that is
+the coverage source used here. Covers PL-007, PL-070, PL-086, PL-124, PL-133,
+PL-174, PL-221, PL-230 and PL-235, plus the named shortcut, peek, delete,
+counts and window-scope questions.
+
+### Chosen behavior
+
+| Area | Decision and ledger rows |
+|---|---|
+| Navigation | Go to is ⌘P, All places is ⌘⇧P; ⌘N creates a place only inside Go to and opens a window on Now elsewhere (PLD-01/02). |
+| Numbering and peek | Keep Pinned-then-Open numbering from the drawn 9c switcher, Now at 0, Linux Alt+digits; this remains an assumption where 10a/Interactions say pinned only. Left-edge dwell reveals the rail; top edge reveals the Focus-mode strip (PLD-03/04). |
+| Structural actions | Prefer the non-destructive 8g drop rule over the conflicting Interactions place row: plain adds, Option moves the source edge only. Merge follows BE-PL-44, superseding the earlier “omitted in d5” coverage assumption. Place delete never deletes conversations (PLD-05/06/07). |
+| Engine content | Recap, cluster, filing offer and knows lines render real engine data only. No renderer AI call, guessed destination, fabricated recap or automatic transcript extraction. Iteration 2 unifies knowledge; a new-place cluster requires at least five chats (PLD-08/09/10/11). |
+| Counts and persistence | Child-place numbers are direct; chat totals include descendants and deduplicate. Pinned is global; Open visits/closes are window-local. Shared tab content and local focus remain distinct (PLD-12/13). |
+
+### Current-code review and follow-through
+
+`desktop/src/design/keyboard.ts`, `places/shell/GoToChooser.tsx`,
+`places/shell/useShellPlaces.ts` and `shell/useShellFrame.ts` already implement
+the selected shortcut, numbering and peek split. `places/dnd/placeDnd.ts`
+already implements additive plain drops, source-edge-only Option moves and
+cycle refusal. The merge menu and chooser already follow the newer merge
+research decision; retain them rather than reverting to the stale coverage.
+
+The older BE-PL-46 and memory research sections are historical findings,
+not a current inventory: `internal/placegraph/recommend*.go` and
+`internal/desktopbridge/places_advice.go` now provide recommendation paths;
+`internal/placegraph/digest.go` builds recaps from saved evidence;
+`internal/session/remember_place.go` implements an explicit save into a
+place. None authorizes the desktop to invent missing data or establishes that
+automatic chat-decision promotion is wired. Do not interpret PLD-08–11 as
+instructions to remove existing engine functionality.
+
+Two integration gaps remain, recorded instead of silently changing another
+lane's files. `places/shell/selectors.ts` reads `counts.descendants` for both
+`placeMeta` and child tile metadata, while `counts.children` already exists;
+the display owner should use it for “inside” and “places”, preserving
+`chatsInclusive` for chat totals. `internal/placegraph/rail.go` stores Open
+in the global graph; the shell filters local closes but still starts from
+that global visit list. The persistence owner must isolate each window's
+Open visits/close/idle state without forking shared place tab contents.
+
+### Verification boundaries
+
+The React-wired v-Places design was opened through local Playwright in
+Chromium and WebKit. Both measured its first section at 2624 × 2658.84375px
+with the specified system font stack using getBoundingClientRect and
+getComputedStyle. These measurements establish the design was read from a
+rendered page; they do not claim runtime pixel parity for this documentation
+change. Acceptance is all named questions having explicit assumptions,
+including the superseded merge omission and the two implementation gaps.
+
+Validation passed: TypeScript (`npx tsc --noEmit -p .`), design policy
+(`npm run design:check`), 62 focused Node tests (keyboard, shell selectors,
+drop/filing model and palette), and eight Playwright cases across Chromium
+and WebKit (Go to, rail slots/close/pin, merge chooser and place-delete Undo).
+The browser run used port 1765, reuseExistingServer false and the lane's
+external output directory; its temporary config was removed. Vite's runner
+config loader avoided the read-only shared node_modules bundle cache.
+A document assertion checked 13 unique Open rows with non-empty questions
+and assumptions, the dated task section, all nine acceptance IDs and both
+integration gaps. `git diff --check` passed. Go build/vet/laws and manual
+retrieval probes were not run because no Go or user-visible feature changed.
