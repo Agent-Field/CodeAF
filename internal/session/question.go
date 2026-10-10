@@ -434,9 +434,9 @@ type InputShape struct {
 // ── the asker's own pick ────────────────────────────────────────────────────
 
 // Confidence is how sure the asker is of its own pick, in three words a person
-// would use. It is deliberately coarse: a percentage is a number nobody can
-// check, and a person deciding whether to read further wants to know whether
-// the asker is guessing, not how much.
+// would use. The words stay the coarse vocabulary an asker is offered. A
+// measured number lives on [Pick.Percent]; when the asker set only the word,
+// [Pick.ResolvedPercent] maps that word onto the band Decisions already reads.
 type Confidence string
 
 const (
@@ -454,6 +454,22 @@ const (
 // (internal/tui3's questionConfidenceWord).
 var confidences = []Confidence{ConfidenceSure, ConfidenceFairly, ConfidenceUnsure}
 
+// These are what a pick is worth when it named a word and measured no percent.
+// They sit inside the bands Decisions already reads — sure is at least 90,
+// fairly is 60 through 89, unsure is under 60 — and each band has one number
+// so two readers cannot pick two.
+//
+// SURE IS THE FLOOR OF ITS BAND, which is also the default threshold a place
+// decides at, so a bare "sure" can meet that threshold and a bare "fairly"
+// cannot. FAIRLY IS THE MIDDLE of 60 through 89, rounded. UNSURE IS UNDER 60
+// AND NOT ZERO: zero means nothing was measured, and "unsure" is a word the
+// asker did set.
+const (
+	percentForSure   = 90
+	percentForFairly = 75
+	percentForUnsure = 40
+)
+
 // Pick is the asker's own answer to its own question, and it is a POINTER on
 // [Question] so that "I have no pick" is spelled once. A question with no pick
 // draws no `enter →` line at all, because there is nothing for enter to take
@@ -467,10 +483,43 @@ type Pick struct {
 	Reason string `json:"reason,omitempty"`
 	// Confidence is how sure the asker is.
 	Confidence Confidence `json:"confidence,omitempty"`
+	// Percent is how sure this pick is, as a whole number from 1 to 100.
+	// Zero means it was not measured, and a surface draws nothing for zero
+	// (the emptiness law). [Question.Check] refuses a number outside 0 to 100.
+	// Decisions reads this for the "92%" and "97%" on a suggestion; a pick
+	// that only named a word resolves through [Pick.ResolvedPercent].
+	Percent int `json:"percent,omitempty"`
+	// Basis names the knows lines and decision receipts this pick was weighed
+	// against, by their ids. Empty means the pick names none, and a surface
+	// draws nothing rather than an empty "because".
+	Basis []string `json:"basis,omitempty"`
 	// WouldChange is WHAT WOULD CHANGE THE ASKER'S MIND — "if the file is
 	// generated, the other answer" — and it is the most useful line on a card,
 	// because it tells a person which fact they hold that the asker does not.
 	WouldChange string `json:"wouldChange,omitempty"`
+}
+
+// ResolvedPercent is the number Decisions may draw and compare.
+//
+// A measured [Pick.Percent] is that number, including when it disagrees with
+// the word: 92 and 97 are evidence, and the word is only the coarse fallback.
+// When only the word is set, the word maps onto its band — sure is at least
+// 90, fairly is 60 through 89, unsure is under 60. A pick with neither is
+// unknown and returns 0, which draws nothing.
+func (p Pick) ResolvedPercent() int {
+	if p.Percent != 0 {
+		return p.Percent
+	}
+	switch p.Confidence {
+	case ConfidenceSure:
+		return percentForSure
+	case ConfidenceFairly:
+		return percentForFairly
+	case ConfidenceUnsure:
+		return percentForUnsure
+	default:
+		return 0
+	}
 }
 
 // UnmarshalJSON lets a pick be written as nothing but its key. A model asked for
@@ -886,6 +935,15 @@ func errQuestionUnknownPick(key string) error {
 		key)
 }
 
+// errQuestionPickPercent is the refusal for a percent outside 0 to 100. Zero
+// is allowed and means the number was not measured; anything else is a number
+// the asker can correct.
+func errQuestionPickPercent(percent int) error {
+	return fmt.Errorf(
+		"a pick's percent is a whole number from 0 to 100, and %d is outside that: send one in that range, or leave it off when nothing measured it",
+		percent)
+}
+
 // errQuestionStillOpen is the refusal for a question that is already standing
 // unanswered. It names the question rather than merely refusing, because what
 // the asker has to do about it is nothing: the answer reaches it as a message
@@ -950,6 +1008,9 @@ func (q Question) Check(records []DecisionRecord) error {
 	if q.Pick != nil {
 		if _, ok := q.Option(q.Pick.Key); !ok {
 			return errQuestionUnknownPick(q.Pick.Key)
+		}
+		if q.Pick.Percent < 0 || q.Pick.Percent > 100 {
+			return errQuestionPickPercent(q.Pick.Percent)
 		}
 	}
 	if q.Stakes == StakesIrreversible {
