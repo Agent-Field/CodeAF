@@ -1,9 +1,12 @@
 package placegraph
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestAddChatDeduplicatesAndRecordsWho(t *testing.T) {
@@ -263,5 +266,182 @@ func TestRemoveChat(t *testing.T) {
 	}
 	if len(snap(t, s).Memberships) != 0 {
 		t.Fatal("membership remains")
+	}
+}
+
+// The acceptance names for chat membership. The store already implemented the
+// operations; these pin the laws under the names this lane is held to.
+// ChatsIn is the landed name of the brief's ChatsOf. Undo is the receipt in
+// PLACES-ARCHITECTURE §3.1 (revision-checked, twenty kept), not a ten-second
+// token: S-IX-10's ten seconds is how long the toast offers Undo.
+
+func TestAChatMayHaveNoPlaceOrSeveral(t *testing.T) {
+	s, _ := newStore(t)
+	a, b := mk(t, s, "A"), mk(t, s, "B")
+	if got := snap(t, s).PlacesOf("none"); len(got) != 0 {
+		t.Fatalf("a chat with no row has places: %+v", got)
+	}
+	if _, _, err := s.AddChat("several", a.ID, AddedByYou); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.AddChat("several", b.ID, AddedByAI); err != nil {
+		t.Fatal(err)
+	}
+	// Filing somewhere it already is changes nothing: one row, same actor.
+	again, rc, err := s.AddChat("several", a.ID, AddedByAI)
+	if err != nil || !rc.Noop() || again.PlaceID != a.ID || again.AddedBy != AddedByYou {
+		t.Fatalf("duplicate add: %+v %+v %v", again, rc, err)
+	}
+	ms := snap(t, s).PlacesOf("several")
+	if len(ms) != 2 || ms[0].PlaceID != a.ID || ms[0].AddedBy != AddedByYou || ms[1].PlaceID != b.ID || ms[1].AddedBy != AddedByAI {
+		t.Fatalf("places = %+v", ms)
+	}
+	// An archived place keeps the row and drops out of context.
+	ok(t)(s.Archive(b.ID))
+	sn := snap(t, s)
+	if len(sn.PlacesOf("several")) != 2 {
+		t.Fatal("archiving dropped a membership row")
+	}
+	ctx := sn.ContextPlaces("several")
+	for _, c := range ctx {
+		if c.PlaceID == b.ID {
+			t.Fatalf("archived place still reaches the chat: %+v", ctx)
+		}
+	}
+	if len(ctx) != 1 || ctx[0].PlaceID != a.ID || ctx[0].Level != 0 {
+		t.Fatalf("context = %+v", ctx)
+	}
+}
+
+func TestMoveIsOneWrite(t *testing.T) {
+	s, path := newStore(t)
+	a, b := mk(t, s, "A"), mk(t, s, "B")
+	if _, _, err := s.AddChat("c1", a.ID, AddedByYou); err != nil {
+		t.Fatal(err)
+	}
+	before, err := s.Revision()
+	if err != nil {
+		t.Fatal(err)
+	}
+	writes := 0
+	s.beforeRename = func() error {
+		writes++
+		return nil
+	}
+	rc := ok(t)(s.MoveChat("c1", a.ID, b.ID, AddedByAI))
+	if writes != 1 {
+		t.Fatalf("move wrote the file %d times, want 1", writes)
+	}
+	after, err := s.Revision()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after != before+1 || rc.BeforeRevision != before || rc.AfterRevision != after || rc.Action != ActionMove {
+		t.Fatalf("revision %d→%d receipt %+v", before, after, rc)
+	}
+	var st State
+	if err := json.Unmarshal(readFile(t, path), &st); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Memberships) != 1 || st.Memberships[0].ChatID != "c1" || st.Memberships[0].PlaceID != b.ID || st.Memberships[0].AddedBy != AddedByAI {
+		t.Fatalf("on disk after the one write: %+v", st.Memberships)
+	}
+}
+
+func TestChatsOfADiamondCountsEachChatOnce(t *testing.T) {
+	s, _ := newStore(t)
+	top, left, right, shared := diamond(t, s)
+	for _, p := range []Place{shared, left, right} {
+		by := AddedByYou
+		if p.ID == right.ID {
+			by = AddedByAI
+		}
+		if _, _, err := s.AddChat("everywhere", p.ID, by); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, err := s.AddChat("only-left", left.ID, AddedByYou); err != nil {
+		t.Fatal(err)
+	}
+	got := snap(t, s).ChatsIn(top.ID, true)
+	seen := map[string]int{}
+	for _, id := range got {
+		seen[id]++
+	}
+	if seen["everywhere"] != 1 || seen["only-left"] != 1 || len(got) != 2 {
+		t.Fatalf("chats under the diamond = %v, each chat once", got)
+	}
+	if direct := snap(t, s).ChatsIn(shared.ID, false); !eq(direct, []string{"everywhere"}) {
+		t.Fatalf("direct = %v", direct)
+	}
+}
+
+func TestUndoRestoresExactlyOnceWithinTenSeconds(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "places.json")
+	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	var n int
+	s, err := Open(Options{
+		Path: path,
+		Now:  func() time.Time { return now },
+		NewID: func(prefix string) string {
+			n++
+			return fmt.Sprintf("%s%d", prefix, n)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := mk(t, s, "A"), mk(t, s, "B")
+	filed, _, err := s.AddChat("c1", a.ID, AddedByAI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rc := ok(t)(s.MoveChat("c1", a.ID, b.ID, AddedByYou))
+	// Past the toast's ten seconds. The store does not expire the receipt:
+	// Undo applies while the graph is still the receipt's AfterRevision.
+	now = now.Add(11 * time.Second)
+	if _, err := s.Undo(rc.ID); err != nil {
+		t.Fatal(err)
+	}
+	got := snap(t, s).PlacesOf("c1")
+	if len(got) != 1 || got[0] != filed {
+		t.Fatalf("undo restored %+v, want the exact prior row %+v", got, filed)
+	}
+	rev, err := s.Revision()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Undo(rc.ID); !errors.Is(err, ErrNoReceipt) {
+		t.Fatalf("second undo = %v, want ErrNoReceipt", err)
+	}
+	if after, _ := s.Revision(); after != rev {
+		t.Fatalf("a spent receipt moved the revision %d → %d", rev, after)
+	}
+	if again := snap(t, s).PlacesOf("c1"); len(again) != 1 || again[0] != filed {
+		t.Fatalf("second undo changed the row: %+v", again)
+	}
+}
+
+func TestUnplacedListsChatsWithNoRow(t *testing.T) {
+	s, _ := newStore(t)
+	a := mk(t, s, "A")
+	if _, _, err := s.AddChat("filed", a.ID, AddedByYou); err != nil {
+		t.Fatal(err)
+	}
+	if got := snap(t, s).Unplaced([]string{"loose", "filed", "also"}); !eq(got, []string{"loose", "also"}) {
+		t.Fatalf("unplaced = %v", got)
+	}
+	// The archived row stays. The chat reads as unplaced because an archived
+	// place reads as absent.
+	ok(t)(s.Archive(a.ID))
+	sn := snap(t, s)
+	if len(sn.PlacesOf("filed")) != 1 {
+		t.Fatal("archive dropped the membership row")
+	}
+	if len(sn.ContextPlaces("filed")) != 0 {
+		t.Fatalf("archived membership still in context: %+v", sn.ContextPlaces("filed"))
+	}
+	if got := sn.Unplaced([]string{"filed", "loose"}); !eq(got, []string{"filed", "loose"}) {
+		t.Fatalf("archived-only unplaced = %v", got)
 	}
 }
