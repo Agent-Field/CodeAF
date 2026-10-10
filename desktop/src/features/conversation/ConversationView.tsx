@@ -97,6 +97,8 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   const setRoute = (next: typeof route) => onView({ route: next });
   const taskId = routeTask(route);
   const tasksView = route.taskId === TASKS_VIEW;
+  // A sheet covers the reading column. The backdrop catches the pointer; this stops the column itself from moving under it.
+  const sheetLocksScroll = panel.shown && panel.sheet && !tasksView;
 
   useEffect(() => {
     if (snapshot) onSummary(summarize(snapshot, Boolean(failed?.text)));
@@ -211,7 +213,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
             onHold={conversation.hold}
           />
         )}
-        <div className="conversation-main" data-empty={empty || undefined} hidden={tasksView}>
+        <div className="conversation-main" data-empty={empty || undefined} data-sheet={sheetLocksScroll || undefined} hidden={tasksView}>
           {showBar && (
             <ConversationBar onTasksFilter={(tasksFilter) => { if (panel.sheet) panel.close(); onView({ tasksFilter, route: navigate(route, TASKS_VIEW) }); }} lead={inTask ? 'trail' : 'title'} counts={barCounts} panel={barPanel} using={<UsingLine control={using} onOpenSource={onOpenSource} onAddToPlace={onAddToPlace} />}>
               {taskId ? <TaskRouteBar taskId={taskId} tasks={model.tasks} route={route} onRoute={setRoute} /> : <span className="conversation-bar-title">{barTitle}</span>}
