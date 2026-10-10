@@ -111,7 +111,7 @@ test('b. Go to via the chooser lands on the place Home; Now gives back its own t
   await expect(homeTab(page).locator('.place-swatch')).toHaveAttribute('data-tint-name', 'iris');
   await expect(homeTab(page).getByRole('button', { name: /^Close/ })).toHaveCount(0);
   await expect(page.locator('body')).toHaveAttribute('data-tint', 'iris');
-  await expect.poll(() => rig.places.posts(`/places/${id}/visit`).length).toBe(1);
+  await expect.poll(() => rig.places.posts('/places/rail').filter(call => call.body?.op === 'visit' && call.body?.place === id).length).toBe(1);
   await expect(section(page, 'Open').locator('.rail-place', { hasText: 'Config parser' })).toHaveAttribute('aria-current', 'page');
 
   await rail(page).getByRole('button', { name: 'Now', exact: true }).click();
