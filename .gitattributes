@@ -1,2 +1,3 @@
 desktop/docs/DESIGN-QUESTIONS.md merge=union
 internal/manual/chat_test.go merge=union
+desktop/docs/DECISIONS.md merge=union
