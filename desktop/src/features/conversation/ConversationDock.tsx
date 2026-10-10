@@ -75,14 +75,32 @@ function useExpandOnFocus(compact: boolean) {
 export function ConversationDock({ tray, queue, composer, compact }: Props) {
   const blocked = blocksComposer(tray.questions);
   const expand = useExpandOnFocus(Boolean(compact));
+  // Conversation 1b folds the queued rows into the toolbar chip once the reader
+  // is more than a viewport from the end — the same distance the question tray
+  // uses for its compact bar. Clicking the chip re-anchors, and that is what
+  // brings the rows back. An unfocused split pane keeps the rows: its compact
+  // field has no model-chip toolbar to put the chip in. An empty queue draws neither.
+  const queueFolded = Boolean(tray.compact) && !compact && queue.items.length > 0 && tray.onReview !== undefined;
+  // The rows come back in the same turn and shorten the reading pane, so one
+  // jump lands short of the end. The second runs after that layout.
+  const openQueue = () => {
+    const review = tray.onReview;
+    if (!review) return;
+    review();
+    requestAnimationFrame(review);
+  };
   return (
     <>
       {!compact && <Tray tray={tray} />}
-      <Queue queue={queue} />
+      {!queueFolded && <Queue queue={queue} />}
       {!composer.docked && <EmptyStart />}
       {compact && <CompactComposer label={compact.label} draft={composer.draft} onDraft={composer.onDraft}><PaneMiniTray questions={tray.questions} onReview={tray.onReview} /></CompactComposer>}
       <div ref={expand.slot} className="composer-slot" data-compact={compact ? '' : undefined} data-expanding={expand.expanding ? '' : undefined} onAnimationEnd={expand.onEnd}>
-        <Composer {...composer} disabledReason={blocked ? BLOCKED : composer.disabledReason} />
+        <Composer
+          {...composer}
+          disabledReason={blocked ? BLOCKED : composer.disabledReason}
+          queueChip={queueFolded && tray.onReview ? { count: queue.items.length, onOpen: openQueue } : undefined}
+        />
       </div>
     </>
   );

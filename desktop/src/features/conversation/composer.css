@@ -146,6 +146,32 @@
   background: currentColor;
 }
 
+/* Conversation 1b: the folded queue, drawn as the model chip's neighbour.
+   Rest is ink-3 on nothing; hover is a fill only. The 28px height, 12px type
+   and 8px inset are the same control the screen measures. */
+.composer-queue-chip.button {
+  box-sizing: border-box;
+  flex: none;
+  height: var(--control-height);
+  min-height: var(--control-height);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-control);
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
+  line-height: normal;
+  color: var(--ink-3);
+}
+
+.composer-queue-chip.button:hover:not(:disabled) {
+  background: var(--field);
+  color: var(--ink);
+}
+
+.composer-queue-chip.button:active:not(:disabled) {
+  background: var(--field-2);
+  color: var(--ink);
+}
+
 .composer-queue.button {
   height: var(--control-height);
   padding: 0 var(--space-tight);
