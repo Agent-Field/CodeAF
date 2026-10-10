@@ -131,6 +131,10 @@ export async function fetchEngine(path: string, init?: RequestInit, stream = fal
  }
  return response;
 }
+/** Shared JSON requests keep authentication, PUT/If-Match headers and bridge errors on one transport. */
+export async function engineJson<T>(path: string, init?: RequestInit): Promise<T> {
+ return (await fetchEngine(path, init)).json() as Promise<T>;
+}
 function snapshotFrom(value: unknown): EngineSnapshot {
  if (!value || typeof value !== 'object') throw new EngineError('The engine returned an invalid session.');
  const s = value as EngineSnapshot;
@@ -236,6 +240,13 @@ async function pumpEventStream(response: Response, signal: AbortSignal, onRecord
   }
  } catch (error) { if (!signal.aborted) throw error; }
  finally { await reader.cancel().catch(() => undefined); reader.releaseLock(); }
+}
+
+/** Shared streams replay after the supplied sequence without the request clock; only the caller interprets records. */
+export async function engineEventStream(path: string, after: number, onRecord: (text: string) => void, signal: AbortSignal): Promise<void> {
+ const separator = path.includes('?') ? '&' : '?';
+ const response = await fetchEngine(`${path}${separator}after=${after}`, { signal, headers: { Accept: 'text/event-stream' } }, true);
+ await pumpEventStream(response, signal, onRecord);
 }
 
 // Fetch supports the native Bearer header; EventSource cannot. Aborting only
