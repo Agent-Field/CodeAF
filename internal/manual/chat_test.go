@@ -3166,6 +3166,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how to turn telemetry off now", "running-from-the-terminal"},
 		{"where are my cleared drafts", "commands"},
 		{"what does /workspace path do", "commands"},
+		{"what does since yesterday mean on a place home", "desktop-place-home"},
+		{"why does a chat in a child place show on the parent", "desktop-place-home"},
+		{"what is the line under a chat on a place home", "desktop-place-home"},
+		{"where are chats that are not in any place", "desktop-place-home"},
+		{"what does also in mean on a place tile", "desktop-place-home"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
