@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Button, Text, TextArea, InlineMarkdown } from '../../../components/ui';
+import { Button, Text, TextArea, InlineMarkdown, Tag } from '../../../components/ui';
 import type { EngineAnswer } from '../../chat/engine-client';
 import { answerFor, canPress, canSend, decideAnswer, initialDraft, submitAnswer, type Draft } from './answers';
 import { CardEvidence, CompareTable, type RenderImage } from './CardEvidence';
@@ -50,13 +50,18 @@ function Answers({ question, locked, single, why, note, onPress, renderImage }: 
 }
 
 function Heading({ question }: { question: Question }) {
+  const permission = formOf(question) === 'permission';
+  const risk = permission && (question.stakes === 'reversible' || question.stakes === 'irreversible') ? question.stakes : undefined;
   const from = question.asker?.kind === 'task' ? question.asker.name : '';
   const policyPattern = question.kind === 'consent' && question.reason?.startsWith('critical command ')
     ? question.reason.slice('critical command '.length) : undefined;
   const reason = policyPattern ? `Safety policy matched critical-command pattern ${policyPattern}. Allow once applies only to this request.` : question.reason;
   return (
     <header className="tray-card-head">
-      <h3 className="tray-head"><InlineMarkdown>{question.head}</InlineMarkdown></h3>
+      <div className="tray-heading-row">
+        <h3 className="tray-head"><InlineMarkdown>{question.head}</InlineMarkdown></h3>
+        {risk && <Tag tone={risk === 'irreversible' ? 'danger' : 'neutral'}>{risk === 'irreversible' ? 'Irreversible' : 'Reversible'}</Tag>}
+      </div>
       {from && <Text className="tray-caption">{`From ${from}`}</Text>}
       {reason && <Text className="tray-reason">{reason}</Text>}
       {question.kind === 'consent' && question.subject?.name === 'bash' && !question.attach?.some(block => block.kind === 'code') &&

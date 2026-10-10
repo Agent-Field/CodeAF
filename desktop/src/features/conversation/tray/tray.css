@@ -47,3 +47,5 @@
 
 .tray-specimen-stack { display: flex; flex-direction: column; gap: var(--space-8); max-width: var(--composer-max-width); }
 .tray-specimen { display: flex; flex-direction: column; gap: var(--space-2); }
+
+.tray-heading-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }

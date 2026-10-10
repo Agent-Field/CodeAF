@@ -139,3 +139,31 @@ test('legacy pending permission labels the pattern and admits missing full comma
   expect(posts(engine, '/answer')).toHaveLength(0);
   if (process.env.PERMISSION_EVIDENCE_DIR) await page.screenshot({ path: `${process.env.PERMISSION_EVIDENCE_DIR}/permission-legacy-${test.info().project.name}.png` });
 });
+
+for (const scheme of ['light', 'dark'] as const) {
+ test(`${scheme}: permission heading uses only provided stakes and shared tags`, async ({ page }) => {
+  await page.emulateMedia({ colorScheme: scheme });
+  const consent: EngineQuestion = { id: 91, kind: 'consent', ask: 'permission', head: 'Run the requested command?', options: [{ key: 'once', label: 'allow once' }, { key: 'always', label: 'always', widening: true }, { key: 'deny', label: 'deny', safe: true }], stakes: 'reversible', blocking: { turn: true } };
+  const engine = await openWithQuestions(page, [consent]);
+  const card = tray(page).getByRole('region', { name: consent.head });
+  const badge = card.locator('.tray-heading-row .tag');
+  await expect(badge).toHaveText('Reversible');
+  await expect(badge).toHaveAttribute('data-tone', 'neutral');
+  await expect(badge).toHaveCSS('height', '18px');
+  await expect(badge).toHaveCSS('padding-left', '6px');
+  await expect(badge).toHaveCSS('border-radius', '5px');
+  await expect(badge).toHaveCSS('font-size', '11px');
+  await expect(badge).toHaveCSS('font-weight', '500');
+  for (const stakes of ['irreversible', undefined, 'costly'] as const) {
+   engine.update({ needsPerson: true, running: true, questions: [{ ...consent, stakes }] });
+   await page.reload();
+   if (stakes === 'irreversible') {
+    await expect(badge).toHaveText('Irreversible');
+    await expect(badge).toHaveAttribute('data-tone', 'danger');
+    await expect(card.getByRole('button', { name: /^Always/ })).toHaveCount(0);
+    await expect(card.locator('.tray-clock')).toHaveCount(0);
+    await expect(card.getByRole('button', { name: 'Allow once' })).not.toHaveClass(/primary/);
+   } else await expect(badge).toHaveCount(0);
+  }
+ });
+}
