@@ -95,7 +95,8 @@ function PlaceTileBody(props: PlaceProps) {
   const tile = <li {...frame} className={`places-tile ${className}`} data-mode="place" data-place-id={id} data-tint-name={tint} data-tint-source={tintSource}
     data-selected={selected || undefined} data-drop={dropTarget || undefined} data-dragging={dragging || undefined} data-disabled={disabled || undefined} data-force={appearance}
     draggable={draggable && !disabled} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
-    <Button variant="ghost" className="places-tile-main" data-places-tile-focusable disabled={disabled} aria-current={selected ? 'true' : undefined} data-force={appearance}
+    {/* The person grabs this button, which fills the tile. A button is not dragged unless it says so, so the tile would never leave the grid. */}
+    <Button variant="ghost" className="places-tile-main" data-places-tile-focusable draggable={draggable && !disabled ? true : undefined} disabled={disabled} aria-current={selected ? 'true' : undefined} data-force={appearance}
       onClick={open} onKeyDown={tileKeys(props)} onAuxClick={event => { if (event.button === 1 && onOpenInNewWindow) { event.preventDefault(); onOpenInNewWindow(); } }}>
       <span className="places-tile-head">
         <PlaceSwatch tint={tint} role="tile"/>

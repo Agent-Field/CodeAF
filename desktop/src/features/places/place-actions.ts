@@ -75,8 +75,8 @@ export function readDrag(event: { dataTransfer: DataTransfer }): DropPayload | u
   return undefined;
 }
 
-/** ⌥ moves instead of adds (Places 8g "Organizing"). */
-export const dropMode = (event: { altKey: boolean }): 'add' | 'move' => (event.altKey ? 'move' : 'add');
+/** ⌥ moves instead of adds (Places 8g "Organizing"). The tile drag owns the rule so a tile and any other surface cannot disagree. */
+export { tileDropMode as dropMode } from './home/tileDnd';
 
 /** A tile accepts a drop when the owner wired `file`, and never from itself. A place dropped on its own child would be a cycle: the
  * store refuses that with a sentence the Home shows, so it is not pre-judged here. */

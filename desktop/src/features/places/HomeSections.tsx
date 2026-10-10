@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { Button, Icon, SectionLabel, Text } from '../../components/ui';
 import { LiveRows } from './live/LiveRows';
 import { PlaceTile, PlaceTileGrid } from './components/PlaceTile';
 import type { TintName } from './components/PlaceSwatch';
 import { childMeta, nameProblem, type HomeAttention, type HomeChild, type HomeConnection } from './home-model';
-import { canDropOn, dropMode, placeMenu, readDrag, writeDrag, type DropPayload, type PlaceActions } from './place-actions';
+import { placeMenu, readDrag, writeDrag, type DropPayload, type PlaceActions } from './place-actions';
+import { tileDropEffect, tileDropLabel, tileDropMode, tileDropVisible } from './home/tileDnd';
 import { type PlaceDeleteState } from './DeletePlaceConfirm';
 import { createDecisionsClient } from '../decisions/client';
 import type { DecideStatus } from '../decisions/StatusLine';
@@ -72,11 +73,14 @@ export function useRunner() {
 }
 export type Runner = ReturnType<typeof useRunner>;
 
-/** The item being dragged, kept in state because a browser hides drag data from the drop target until the drop itself. */
-export type DragState = { payload: DropPayload | undefined; set: (payload: DropPayload | undefined) => void };
+/** The item being dragged. State repaints the source; the ref is already set when dragenter follows dragstart in the same gesture, before that paint. A browser hides drag data from the drop target until the drop itself. */
+export type DragState = { payload: DropPayload | undefined; set: (payload: DropPayload | undefined) => void; now: () => DropPayload | undefined };
 export function useDragState(): DragState {
-  const [payload, set] = useState<DropPayload | undefined>();
-  return { payload, set };
+  const [payload, setPayload] = useState<DropPayload | undefined>();
+  const live = useRef<DropPayload | undefined>(undefined);
+  const set = useCallback((next: DropPayload | undefined) => { live.current = next; setPayload(next); }, []);
+  const now = useCallback(() => live.current, []);
+  return { payload, set, now };
 }
 
 /** The place feed includes detached work, so closing its tab never removes a Live row. */
@@ -100,6 +104,15 @@ export function HomePlacesSection({ label, places, parentId, parentName, parentT
 }) {
   const [selected, setSelected] = useState<string>();
   const [dropOn, setDropOn] = useState<string>();
+  // Which tile is lit. A ref so leaving one tile cannot clear the tile the pointer has already entered.
+  const hovered = useRef<string | undefined>(undefined);
+  const setHovered = useCallback((id: string | undefined) => {
+    if (hovered.current === id) return;
+    hovered.current = id;
+    setDropOn(id);
+  }, []);
+  // A chat row's drag ends on the row, which does not know which tile was lit.
+  useEffect(() => { if (!drag.payload) setHovered(undefined); }, [drag.payload, setHovered]);
   const [creating, setCreating] = useState<{ name: string; tint: TintName } | undefined>();
   const [renaming, setRenaming] = useState<{ id: string; name: string; tint: TintName; original: string; originalTint: TintName } | undefined>();
   const showNew = allowNew && !!actions.create;
@@ -131,26 +144,36 @@ export function HomePlacesSection({ label, places, parentId, parentName, parentT
             onNameChange={name => setRenaming(previous => previous && { ...previous, name })} onTintChange={tint => setRenaming(previous => previous && { ...previous, tint })}
             onSubmit={() => void submitRename()} onCancel={() => setRenaming(undefined)}/>;
         }
-        const accepts = canDropOn(drag.payload, place.id, actions) && !readOnly && !place.archived;
+        const gate = (payload: DropPayload | undefined, types?: ArrayLike<string>) => ({
+          targetId: place.id, archived: place.archived, readOnly, canFile: !!actions.file, payload, types,
+        });
+        // dragenter follows dragstart before React paints, so the highlight reads the ref rather than the last render.
+        const arm = (event: DragEvent<HTMLLIElement>) => {
+          if (!tileDropVisible(gate(drag.now(), event.dataTransfer.types))) return false;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = tileDropEffect(event);
+          return true;
+        };
         return <PlaceTile key={place.id} id={place.id} name={place.name} tint={place.tint} tintSource={place.tintSource} meta={childMeta(place)} status={place.status}
-          selected={selected === place.id} dragging={drag.payload?.kind === 'place' && drag.payload.ids.includes(place.id)} dropTarget={dropOn === place.id && accepts} disabled={!actions.goTo}
+          selected={selected === place.id} dragging={drag.payload?.kind === 'place' && drag.payload.ids.includes(place.id)} dropTarget={dropOn === place.id} dropLabel={tileDropLabel} disabled={!actions.goTo}
           onGoTo={() => void runner.run(() => actions.goTo?.(place.id))} onOpenInNewWindow={actions.goToInNewWindow && (() => void runner.run(() => actions.goToInNewWindow?.(place.id)))}
           onQuickLook={actions.quickLook && (() => { setSelected(place.id); actions.quickLook?.(place.id); })}
           menu={placeMenu({ id: place.id, name: place.name, tint: place.tint, pinned: place.pinned, decide: place.decide, archived: place.archived || restore }, actions, {
             readOnly, canRename: !place.path, startRename: id => setRenaming({ id, name: place.name, tint: place.tintSource === 'own' ? place.tint : 'graphite', original: place.name, originalTint: place.tintSource === 'own' ? place.tint : 'graphite' }),
             startDelete: onDelete && (() => onDelete(place)) })}
           draggable={!readOnly && !!actions.file && !place.archived}
-          onDragStart={event => { const payload: DropPayload = { kind: 'place', ids: [place.id] }; writeDrag(event, payload); drag.set(payload); }} onDragEnd={() => { drag.set(undefined); setDropOn(undefined); }}
-          onDragEnter={event => { if (accepts) { event.preventDefault(); setDropOn(place.id); } }}
-          onDragOver={event => { if (accepts) { event.preventDefault(); event.dataTransfer.dropEffect = dropMode(event) === 'move' ? 'move' : 'copy'; } }}
-          onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropOn(undefined); }}
+          onDragStart={event => { const payload: DropPayload = { kind: 'place', ids: [place.id] }; writeDrag(event, payload); drag.set(payload); }}
+          onDragEnd={() => { drag.set(undefined); setHovered(undefined); }}
+          onDragEnter={event => { if (arm(event)) setHovered(place.id); }}
+          onDragOver={event => { if (arm(event)) setHovered(place.id); }}
+          onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null) && hovered.current === place.id) setHovered(undefined); }}
           onDrop={event => {
-            setDropOn(undefined);
-            const payload = readDrag(event) ?? drag.payload;
-            if (!canDropOn(payload, place.id, actions) || readOnly || place.archived) return;
-            event.preventDefault();
+            const payload = readDrag(event) ?? drag.now();
+            setHovered(undefined);
             drag.set(undefined);
-            void runner.run(() => actions.file?.(payload as DropPayload, place.id, dropMode(event)));
+            if (!payload || !tileDropVisible(gate(payload))) return;
+            event.preventDefault();
+            void runner.run(() => actions.file?.(payload, place.id, tileDropMode(event)));
           }}/>;
       })}
       {creating
