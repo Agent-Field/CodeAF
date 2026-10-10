@@ -265,7 +265,7 @@ export async function engineEventStream(path: string, after: number, onRecord: (
 
 // Fetch supports the native Bearer header; EventSource cannot. Aborting only
 // detaches this reader. Stop is a separate, explicit POST.
-export async function watchEngine(snapshot: EngineSnapshot, onSnapshot: (snapshot: EngineSnapshot) => void, onEvent: (event: EngineEvent) => void, signal: AbortSignal): Promise<void> {
+export async function watchEngine(snapshot: EngineSnapshot, onSnapshot: (snapshot: EngineSnapshot) => void, onEvent: (event: EngineEvent) => void, signal: AbortSignal, held: () => EngineSnapshot | undefined = () => undefined): Promise<void> {
  let after = snapshot.seq;
  const response = await fetchEngine(`${sessionPath(snapshot.id)}/events?after=${after}`, { signal, headers: { Accept: 'text/event-stream' } }, true);
  await pumpEventStream(response, signal, text => {
@@ -276,7 +276,8 @@ export async function watchEngine(snapshot: EngineSnapshot, onSnapshot: (snapsho
   if (!Number.isSafeInteger(item.seq) || item.seq < 0) throw new EngineError('The engine sent an invalid stream sequence.');
   if (item.seq <= after) return;
   if (item.type === 'snapshot') {
-   const next = snapshotFrom(item.snapshot);
+   // A tail record is folded into what the window holds; one that cannot be folded ends the stream so the caller reattaches whole.
+   const next = snapshotFrom(isTail(item.snapshot) ? mergeTail(held() ?? snapshot, item.snapshot) : item.snapshot);
    if (next.id !== snapshot.id || next.sessionFile !== snapshot.sessionFile) throw new EngineError('The engine stream changed conversations.');
    onSnapshot(next);
   } else if (item.type === 'event' && item.event && typeof item.event.kind === 'string') onEvent(item.event);
