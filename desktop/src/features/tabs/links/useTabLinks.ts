@@ -61,7 +61,7 @@ export function useTabLinks({ enabled, state, dispatch, actions, native = native
       for (const target of targets) {
         const item = worldStore.getState().items.find(item => target.itemId ? item.key === target.itemId : target.question && item.session === target.chatId && item.kind === target.question.kind && item.id === target.question.id);
         if (item) dispatchAttentionFocus(item.key);
-        // The conversation opens either way (NAT-N2): a question answered since the click has no item to focus, and the chat is still what was asked for.
+        // The conversation opens either way (NAT-N2). A question answered or withdrawn since the notification posted has no item to focus, so this open leaves the tray where it is.
         void open(linkOf({ kind: 'chat', chatId: target.chatId }));
       }
     }

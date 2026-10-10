@@ -1,6 +1,6 @@
 # Desktop file tab does not edit files
 
-## Can I edit text in the desktop file tab
+## Desktop file writes — can I edit text in the desktop file tab
 
 No. The desktop file tab shows the file. You can switch between Changes and File, and Open in hands the file to an editor on the engine's machine. You cannot type into the tab, and there is no save. Asking codeaf in the conversation can still change the file. That is the conversation, not a control on the file tab. Nothing is drawn for a save that does not exist.
 

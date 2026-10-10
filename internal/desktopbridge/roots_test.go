@@ -99,12 +99,7 @@ func TestRootsAreWorkspacesSessionFoldersAndPlaceFolders(t *testing.T) {
 	kept := mustDir(t, filepath.Join(root, "kept"))
 	plain := mustDir(t, filepath.Join(root, "plain"))
 	repo := mustDir(t, filepath.Join(root, "repo"))
-	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(repo, ".git", "HEAD"), []byte("ref: refs/heads/main\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	initGitFixture(t, repo)
 	archived := mustDir(t, filepath.Join(root, "archived"))
 	diskSaid := mustDir(t, filepath.Join(root, "disk-said"))
 	diskKept := mustDir(t, filepath.Join(root, "disk-kept"))

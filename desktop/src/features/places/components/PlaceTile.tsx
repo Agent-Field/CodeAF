@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type DragEvent, type HTMLAttributes, type KeyboardEvent, type MouseEvent, type Ref } from 'react';
+import { useEffect, useId, useRef, type HTMLAttributes, type KeyboardEvent, type MouseEvent, type Ref } from 'react';
 import { Button, ContextMenu, Icon, StatusMark, TextInput, type MenuEntry } from '../../../components/ui';
 import { PlaceSwatch, choosableTints, tintLabel, type TintName } from './PlaceSwatch';
 import './places-components.css';
@@ -9,7 +9,7 @@ export type TintSource = 'own' | 'inherited';
 export type TileStatus = 'waiting' | 'failed';
 const statusWords: Record<TileStatus, string> = { waiting: 'Needs you', failed: 'Failed' };
 
-type Frame = Omit<HTMLAttributes<HTMLLIElement>, 'title' | 'onClick' | 'onKeyDown' | 'onDrop' | 'onDragStart' | 'onDragEnd' | 'onDragOver' | 'onDragEnter' | 'onDragLeave'>;
+type Frame = Omit<HTMLAttributes<HTMLLIElement>, 'title' | 'onClick' | 'onKeyDown'> & { ref?: Ref<HTMLLIElement> };
 type CommonProps = Frame & {
   disabled?: boolean;
   /** Forces a look, for specimens only. */
@@ -43,13 +43,6 @@ type PlaceProps = CommonProps & {
   onQuickLook?: () => void;
   menu?: readonly MenuEntry[];
   menuLabel?: string;
-  draggable?: boolean;
-  onDragStart?: (event: DragEvent<HTMLLIElement>) => void;
-  onDragEnd?: (event: DragEvent<HTMLLIElement>) => void;
-  onDragEnter?: (event: DragEvent<HTMLLIElement>) => void;
-  onDragOver?: (event: DragEvent<HTMLLIElement>) => void;
-  onDragLeave?: (event: DragEvent<HTMLLIElement>) => void;
-  onDrop?: (event: DragEvent<HTMLLIElement>) => void;
   onKeyDown?: (event: KeyboardEvent<HTMLButtonElement>) => void;
 };
 type NewProps = CommonProps & {
@@ -89,17 +82,16 @@ function tileKeys(props: PlaceProps) {
 
 function PlaceTileBody(props: PlaceProps) {
   const { id, name, tint, tintSource, meta, status, statusLabel, selected, dropTarget, dropLabel = 'Add here', dragging, disabled, appearance, onGoTo, onOpenInNewWindow,
-    menu, menuLabel, draggable, onDragStart, onDragEnd, onDragEnter, onDragOver, onDragLeave, onDrop, className = '', ...rest } = props;
+    menu, menuLabel, className = '', ref, ...rest } = props;
   // Keys, Quick Look and the mode are handled by tileKeys and the dispatcher, not by the frame.
   const { onKeyDown: _keys, onQuickLook: _look, mode: _mode, ...frame } = rest;
   const open = (event: MouseEvent<HTMLButtonElement>) => {
     if ((event.metaKey || event.ctrlKey) && onOpenInNewWindow) onOpenInNewWindow(); else onGoTo();
   };
-  const tile = <li {...frame} className={`places-tile ${className}`} data-mode="place" data-place-id={id} data-tint-name={tint} data-tint-source={tintSource}
-    data-selected={selected || undefined} data-drop={dropTarget || undefined} data-dragging={dragging || undefined} data-disabled={disabled || undefined} data-force={appearance}
-    draggable={draggable && !disabled} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
-    {/* The person grabs this button, which fills the tile. A button is not dragged unless it says so, so the tile would never leave the grid. */}
-    <Button variant="ghost" className="places-tile-main" data-places-tile-focusable draggable={draggable && !disabled ? true : undefined} disabled={disabled} aria-current={selected ? 'true' : undefined} data-force={appearance}
+  const tile = <li {...frame} ref={ref} className={`places-tile ${className}`} data-mode="place" data-place-id={id} data-tint-name={tint} data-tint-source={tintSource}
+    data-selected={selected || undefined} data-drop={dropTarget || undefined} data-dragging={dragging || undefined} data-disabled={disabled || undefined} data-force={appearance}>
+    {/* The person grabs this button, which fills the tile. The pointer listener sits on the tile, so the press still starts a drag. */}
+    <Button variant="ghost" className="places-tile-main" data-places-tile-focusable disabled={disabled} aria-current={selected ? 'true' : undefined} data-force={appearance}
       onClick={open} onKeyDown={tileKeys(props)} onAuxClick={event => { if (event.button === 1 && onOpenInNewWindow) { event.preventDefault(); onOpenInNewWindow(); } }}>
       <span className="places-tile-head">
         <PlaceSwatch tint={tint} role="tile"/>

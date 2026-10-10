@@ -100,3 +100,34 @@ The first Playwright invocation died because the config lived in `/tmp` and coul
 
 Place-graph failures (`t-fix-repo-root-stray-git`) trigger on this box because `/tmp/.git` exists and is not a valid git repository, and `repoRoot` treats any `.git` entry as a repo root.
 
+
+## 2026-10-10 — health 3: every gate after the fix wave (lane t-health-3-492, d3-int head 03b909957)
+
+| Gate | Result |
+| --- | --- |
+| `npx tsc --noEmit -p .` | pass |
+| `npm run design:check` | pass |
+| `design:test` | pass (`tokens-parity` duplicate-oklch check is `todo` for wave E: light `scrim` = `scrim-palette`) |
+| unit / files / scroll / menu / workspace-sync / stale tests | pass (1248 / 30 / 14 / 8 / 46 / 10) |
+| Playwright full suite, chromium + webkit, workers 6, port 17921 (1792 was held by another session) | 2932 passed, 16 skipped, **128 failed** (~64 per browser, 27 spec files) |
+| `go build ./...` | pass |
+| `make test-laws` | **fail**: `TestTheChatManualAnswersTheQuestionsPeopleAsk` (chat_test.go:3220) |
+| `make test-touched BASE=df7b9968f` | **fail**: cmd/codeaf 15m timeout; desktopbridge 4; manual 4; session 1 flaky |
+
+### Failures grouped by cause, each filed as a plandb task
+
+| Task | Failing | Cause |
+| --- | --- | --- |
+| `t-fix-h3-unstyled-controls` | responsive (20), native-web (12), theme-motion (6), group-offer (2), shell-tabs (2) | control contract flags the bare search input and `filter-tab` radios |
+| `t-fix-h3-focus-halo` | markdown-links, suggest-pill, d5-tab-web-test (8), chips link focus | halo draws 6px (ring + halo summed) where specs expect 4px |
+| `t-fix-h3-atpicker-contrast` | composer-at-picker (12) | axe colour-contrast on `.at-picker-dir-head/-tail` |
+| `t-fix-h3-tab-selected` | d5-tab-hist-row-menu, notification-clicks (4), tab-deep-links, tabs, d5-sh-tab-state-test (2) | tab activation after open changed (Closing/Inbox and History follow-ups) |
+| `t-fix-h3-places-flows` | places-shell (6), folder-place-arrival (4), remember-place (4), canonical-group-journey (2) | place/folder flows no longer reach their controls |
+| `t-fix-h3-shimmer-ink` | working-stream-stability (4), d5-cv-test-work (3), d5-tab-web-occlusion (2), window-tint (4), chips press (8) | shimmer class or ink/fill token values moved |
+| `t-fix-h3-web-address-toast` | d5-tab-web-address (4), d5-qa-prim-toast (webkit) | Design system page title absent; webkit toast CSS |
+| `t-fix-h3-bridge-git-repo` | desktopbridge: TestPlacesWireFixtures, TestFromFolderRouteMakesTheRepoPlaceOnceAndOffersUnfiledChats, TestSourcesAreValidatedCanonicalisedAndCheckedWithoutReading, TestRootsAreWorkspacesSessionFoldersAndPlaceFolders | repo check refuses fixture git directories |
+| `t-fix-h3-manual-probes` | manual: 4 tests (also-in probe, desktop-file-writes, desktop-open-with, held-out 16/22) and test-laws | new desktop pages outrank older ones |
+| `t-fix-h3-codeaf-manual-hang` | cmd/codeaf `TestManualDispatchesFromTheCommandLine` 15m timeout in `lane.Beat` | lane beat started by the test never returns |
+| `t-fix-h3-session-truncated-flaky` | session `TestATruncatedProviderReplyIsNotSettledByTheSession` (flaky) | timing under shard load |
+
+Nothing was fixed in place: no failure was a trivial one-line cause. Playwright ran at workers 6, so some of the 128 may be load flakes; each task's first step is to rerun its specs at workers 2.

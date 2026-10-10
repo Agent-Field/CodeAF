@@ -1,14 +1,14 @@
 // One overview card (design 3h): kind and state line, title, the one piece that matters, footer. Readable text,
 // never a miniature screenshot. The body is the kind's preview content (last reply, terminal lines, diff head).
 // A running task quotes the live command the engine sent. A card that needs you carries Allow all / Review.
-import { useContext, useState, type DragEvent, type MouseEvent } from 'react';
+import { useContext, useRef, useState, type MouseEvent } from 'react';
 import { Button, ContextMenu, Icon, IconButton, type MenuEntry } from '../../components/ui';
+import { useDropTarget, usePointerDrag, type DragPoint } from '../../components/ui/usePointerDrag';
 import { answerEngine } from '../chat/engine-client';
 import { isMac } from '../../design/keyboard';
 import { relativeTime, summarize, type TabMark, type TabSummary } from '../conversation/tabSummary';
 import { bulkAnswers } from '../conversation/tray/answers';
 import { TabsApiContext } from './context';
-import { tabDragType } from './hosts/dragHost';
 import { kindDef } from './kinds/registry';
 import type { PreviewActions } from './kinds/slots';
 import { focusedPane, panesOf, type Tab } from './model';
@@ -151,28 +151,26 @@ type Props = {
 };
 
 /** Which half of the card a drag is over: the left half drops before the card, the right half after it. */
-const halfOf = (event: DragEvent<HTMLElement>) => { const box = event.currentTarget.getBoundingClientRect(); return event.clientX - box.left > box.width / 2 ? 'after' : 'before'; };
+const halfOf = (point: DragPoint, element: HTMLElement) => { const box = element.getBoundingClientRect(); return point.x - box.left > box.width / 2 ? 'after' : 'before'; };
 
 export function OverviewCard({ tab, summaries, now, active, cursor, menu, onOpen, onBackground, onClose, onDropTab, modelNames }: Props) {
   const act = useCardActions(tab, onOpen);
-  const drop = onDropTab && {
-    onDragOver: (event: DragEvent<HTMLElement>) => {
-      if (!event.dataTransfer.types.includes(tabDragType)) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = 'move';
-      event.currentTarget.dataset.drop = halfOf(event);
+  const el = useRef<HTMLElement | null>(null);
+  const pointer = usePointerDrag({ payload: { kind: 'tab', id: tab.id } });
+  const dropRef = useDropTarget(onDropTab ? {
+    kind: 'overview-card',
+    id: tab.id,
+    accepts: (payload) => payload.kind === 'tab' && payload.id !== tab.id,
+    hover: (point) => { if (el.current) el.current.dataset.drop = halfOf(point, el.current); },
+    leave: () => { if (el.current) delete el.current.dataset.drop; },
+    drop: (point, payload) => {
+      if (!el.current || payload.kind !== 'tab' || payload.id === tab.id) return false;
+      const after = halfOf(point, el.current) === 'after';
+      delete el.current.dataset.drop;
+      onDropTab(payload.id, after);
+      return true;
     },
-    onDragLeave: (event: DragEvent<HTMLElement>) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) delete event.currentTarget.dataset.drop; },
-    onDrop: (event: DragEvent<HTMLElement>) => {
-      const id = event.dataTransfer.getData(tabDragType);
-      const after = halfOf(event) === 'after';
-      delete event.currentTarget.dataset.drop;
-      if (!id) return;
-      // The section under the card sees the drop too (it clears its own highlight) and leaves a handled drop alone.
-      event.preventDefault();
-      if (id !== tab.id) onDropTab(id, after);
-    },
-  };
+  } : null);
   const state = overviewCardState(tab, summaries);
   const dot = state.lead === 'amber' ? 'waiting' : state.lead === 'danger' ? 'failed' : state.dot ? 'working' : undefined;
   const pane = focusedPane(tab);
@@ -181,7 +179,7 @@ export function OverviewCard({ tab, summaries, now, active, cursor, menu, onOpen
   const model = pane.kind === 'conversation' ? summary?.model : pane.kind === 'task' && pane.route?.taskId ? summary?.taskModels?.[pane.route?.taskId] : undefined;
   const footer = [updated === undefined ? undefined : relativeTime(updated, now), model ? modelNames?.[model] || model : undefined].filter(Boolean).join(' · ');
   const card = (
-    <article className="overview-card" draggable {...drop} onDragStart={event => { event.dataTransfer.setData(tabDragType, tab.id); event.dataTransfer.effectAllowed = 'move'; }} data-active={active} data-cursor={cursor} data-card-id={tab.id} data-kind={tab.split ? 'split' : tab.kind}>
+    <article ref={node => { el.current = node; dropRef(node); }} className="overview-card" {...pointer} data-active={active} data-cursor={cursor} data-card-id={tab.id} data-kind={tab.split ? 'split' : tab.kind}>
       <Button className="overview-card-open" aria-label={`Open ${tab.title}`} aria-current={active || undefined} {...backgroundPress(onOpen, onBackground)}/>
       <div className="overview-card-face">
         <div className="overview-card-head">

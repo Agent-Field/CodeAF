@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Icon, Markdown, PageHeading, Text } from '../../../components/ui';
+import { Button, Icon, Markdown, PageHeading, Text, useMoreBelow } from '../../../components/ui';
 import type { EngineTaskRow } from '../../chat/engine-client';
 import { rowFlags, rowKind } from '../taskState';
 import { QuestionCardV2, type QuestionCardProps } from '../tray/QuestionCardV2';
@@ -55,6 +55,7 @@ function Facts({ row }: { row: EngineTaskRow }) {
 /** The right half of the expanded tasks view: one task, its question, its facts, its brief. */
 export function TaskDetailPane({ row, parentTitle, instructions, question, now, onOpenTask }: TaskDetailPaneProps) {
   const [full, setFull] = useState(false);
+  const instructionsScroll = useMoreBelow();
   const brief = instructions ? parseBrief(instructions) : undefined;
   return (
     <aside className="task-detail" aria-label={`Task: ${row.Title}`}>
@@ -72,7 +73,7 @@ export function TaskDetailPane({ row, parentTitle, instructions, question, now, 
       {brief && (
         <section className="task-detail-brief" aria-label="Instructions">
           <h3 className="task-detail-label">Instructions</h3>
-          <div className="task-detail-instructions-scroll" role="region" aria-label="Task instructions" tabIndex={0}>
+          <div ref={instructionsScroll.ref} className="task-detail-instructions-scroll" data-more={instructionsScroll.more || undefined} onScroll={instructionsScroll.measure} role="region" aria-label="Task instructions" tabIndex={0}>
             <Markdown tone="secondary" className="task-detail-text">{brief.summary}</Markdown>
             {brief.sections.length > 1 && (
               <>

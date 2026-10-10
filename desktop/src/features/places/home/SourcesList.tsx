@@ -18,7 +18,6 @@ export function SourcesList({ placeId, sources, actions, readOnly, showAdd }: So
   const pending = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
-  if (!sources.length) return null;
   const remove = !readOnly ? actions.removeSource : undefined;
   const add = showAdd && actions.addSources && !readOnly;
   const run = async (job: () => void | Promise<void>) => {
@@ -31,6 +30,13 @@ export function SourcesList({ placeId, sources, actions, readOnly, showAdd }: So
     catch (failure) { setError(failure instanceof Error && failure.message ? failure.message : 'Could not change these sources. Try again.'); }
     finally { pending.current = false; setBusy(false); }
   };
+  // A populated place can have chats and still no sources. The Sources heading stays hidden until a
+  // source exists, but Add files or links is the only control that adds the first one.
+  if (!sources.length) {
+    if (!add) return null;
+    return <div className="home-empty-actions"><Button variant="quiet" disabled={busy} onClick={() => void run(() => actions.addSources?.(placeId))}>
+      <Icon name="attach" size="xs"/>Add files or links</Button>{error && <p className="home-quiet" role="alert">{error}</p>}</div>;
+  }
   return <section className="home-section home-sources" aria-label="Sources" aria-busy={busy}>
     <SectionLabel>Sources</SectionLabel>
     <ul className="home-source-list" aria-label="Sources">

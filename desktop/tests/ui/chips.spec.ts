@@ -53,7 +53,7 @@ async function keyboardFocus(page: Page, target: Locator) {
   await expect(target).toBeFocused();
   const expected = await target.evaluate(element => {
     const probe = document.createElement('span');
-    probe.style.boxShadow = '0 0 0 2px var(--accent), 0 0 0 6px var(--accent-soft)';
+    probe.style.boxShadow = '0 0 0 2px var(--accent), 0 0 0 4px var(--accent-soft)';
     element.append(probe);
     const result = getComputedStyle(probe).boxShadow;
     probe.remove();

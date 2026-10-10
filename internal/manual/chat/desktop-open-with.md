@@ -1,6 +1,6 @@
 # Desktop open with a chosen editor
 
-## Open this file in a chosen editor
+## Desktop Open with — open this file in a chosen editor
 
 In the desktop app, Open in can start one editor the engine just listed for that file. The editor is the id that list returned: a desktop-file name such as `code.desktop`, or a Mac bundle id. codeaf asks that conversation's editor list again when you choose one, and starts it only when the id is still on the list. The id is not a command. Nothing typed into the page is run as a program.
 

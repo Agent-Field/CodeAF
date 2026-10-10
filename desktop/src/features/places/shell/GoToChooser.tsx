@@ -60,8 +60,9 @@ export function GoToChooser({ open, mode, places, childrenOf, total, now, onChoo
       search.current?.focus();
     } else if (!open && element.open) element.close();
   }, [open]);
-  // Leaving the page while open: no close event will come, so focus goes back by hand.
-  useEffect(() => () => { if (dialog.current?.open && opener.current?.isConnected) opener.current.focus(); }, []);
+  // Leaving the page while open: no close event will come, so focus goes back by hand. React has already cleared the dialog ref by now,
+  // so the opener (forgotten by `closed` after a normal close) is the only sign that the sheet was still open.
+  useEffect(() => () => { if (opener.current?.isConnected) opener.current.focus(); }, []);
   useEffect(() => {
     if (active) document.getElementById(optionId(active))?.scrollIntoView({ block: 'nearest' });
   }, [active?.key]);

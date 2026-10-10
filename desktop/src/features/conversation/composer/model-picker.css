@@ -12,18 +12,21 @@
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease);
 }
 
-/* Press darkens over the 80ms press duration, as every other control does. */
-.model-picker.button:active:not(:disabled) {
-  filter: brightness(var(--brightness-press));
-  transition-duration: var(--dur-press);
-}
-
 .model-picker.button:hover:not(:disabled),
 .model-picker.button[data-state='open'] {
   background: var(--field);
   /* The ghost button's own hover would lift the ink; the label keeps its ink-3. */
   color: var(--ink-3);
 }
+
+/* Press moves from the hover field to field-2 and darkens over the 80ms press duration. This rule follows hover so both match together. */
+.model-picker.button:active:not(:disabled) {
+  background: var(--field-2);
+  color: var(--ink-3);
+  filter: brightness(var(--brightness-press));
+  transition-duration: var(--dur-press);
+}
+.model-picker.button > .app-icon { width: var(--model-picker-chevron-size); height: var(--model-picker-chevron-size); }
 
 .model-picker-label {
   overflow: hidden;

@@ -23,7 +23,7 @@
   transition: background var(--dur-fast) var(--ease);
 }
 .chip.link-chip:hover, .chip.link-chip:active { background: var(--field-2); }
-/* Press darkens over the 80ms press duration, as every other control does. */
+/* Press darkens over the 80ms press duration, as every other control does. The first transition only names background, so this one adds the filter. */
 .chip.link-chip { transition: background-color var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease); }
 .chip.link-chip:active { filter: brightness(var(--brightness-press)); transition-duration: var(--dur-press); }
 .link-chip-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: var(--asset-name-max-width); font-weight: var(--type-label-strong); }

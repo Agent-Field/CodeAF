@@ -1,9 +1,9 @@
 // The overview (design 2h, 3h, 3i): a full-window layer with a top bar (search, Grid/Filmstrip, Done), the grid
 // sectioned by group, or the filmstrip of live panes. Both read one order (overview-model.ts) and one cursor.
-import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { Button, Icon, SectionHeading, Segmented, Text, TextInput, type MenuEntry } from '../../components/ui';
+import { useDropTarget } from '../../components/ui/usePointerDrag';
 import { isMac } from '../../design/keyboard';
-import { tabDragType } from './hosts/dragHost';
 import type { TabSummary } from '../conversation/tabSummary';
 import type { Tab, TabGroup } from './model';
 import { cardText, kindLabel, OverviewCard } from './OverviewCard';
@@ -16,6 +16,34 @@ type View = 'grid' | 'film';
 const viewKey = 'codeaf.desktop.overview.view';
 const views = [{ value: 'grid', label: 'Grid' }, { value: 'film', label: 'Filmstrip' }] as const;
 const readView = (): View => { try { return localStorage.getItem(viewKey) === 'film' ? 'film' : 'grid'; } catch { return 'grid'; } };
+
+/** One overview section. Pinned has no drop target. A group's heading takes a tab into that group; "Other tabs" takes it out. */
+function OverviewSectionBlock({ title, id, kind, count, target, splittable, onMoveGroup, onSplitGroup, onClose, children }: {
+  title: string; id: string; kind: string; count: number; target: string | null | undefined; splittable: number;
+  onMoveGroup: (tabId: string, groupId?: string) => void; onSplitGroup: (groupId: string) => void; onClose: () => void; children: ReactNode;
+}) {
+  const el = useRef<HTMLElement | null>(null);
+  const dropRef = useDropTarget(target === undefined ? null : {
+    kind: 'overview-section',
+    id,
+    accepts: (payload) => payload.kind === 'tab',
+    hover: () => { if (el.current) el.current.dataset.drop = 'section'; },
+    leave: () => { if (el.current) delete el.current.dataset.drop; },
+    drop: (_point, payload) => {
+      if (el.current) delete el.current.dataset.drop;
+      if (payload.kind !== 'tab') return false;
+      onMoveGroup(payload.id, target ?? undefined);
+      return true;
+    },
+  });
+  return <section ref={node => { el.current = node; dropRef(node); }} className="overview-section" aria-label={title}>
+    <div className="overview-section-head">
+      <SectionHeading className="overview-section-title">{title}</SectionHeading><span className="overview-section-count">{count}</span>
+      {kind === 'group' && <Button className="overview-split" disabled={splittable < 2} onClick={() => { onSplitGroup(id); onClose(); }}><Icon name="grid" size="micro"/>Open as split</Button>}
+    </div>
+    <div className="overview-grid">{children}</div>
+  </section>;
+}
 
 type Props = {
   summaries: Readonly<Record<string, TabSummary>>; now: number; open: boolean; tabs: readonly Tab[]; groups: readonly TabGroup[]; activeId: string;
@@ -116,20 +144,9 @@ export function TabOverview({ summaries, now, open, tabs, groups, activeId, onCl
           const splittable = section.tabs.filter(tab => !tab.split && !tab.pinned).length;
           // Dropping a card on a group's section regroups it; "Other tabs" ungroups it. Pinned tabs sit outside groups.
           const target = section.kind === 'pinned' ? undefined : section.kind === 'group' ? section.id : null;
-          const drop = target === undefined ? {} : {
-            onDragOver: (event: DragEvent<HTMLElement>) => { if (event.dataTransfer.types.includes(tabDragType)) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; event.currentTarget.dataset.drop = 'section'; } },
-            onDragLeave: (event: DragEvent<HTMLElement>) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) delete event.currentTarget.dataset.drop; },
-            onDrop: (event: DragEvent<HTMLElement>) => { delete event.currentTarget.dataset.drop; const id = event.dataTransfer.getData(tabDragType); if (id && !event.defaultPrevented) { event.preventDefault(); onMoveGroup(id, target ?? undefined); } },
-          };
-          return <section key={section.id} className="overview-section" aria-label={section.title} {...drop}>
-            <div className="overview-section-head">
-              <SectionHeading className="overview-section-title">{section.title}</SectionHeading><span className="overview-section-count">{section.tabs.length}</span>
-              {section.kind === 'group' && <Button className="overview-split" disabled={splittable < 2} onClick={() => { onSplitGroup(section.id); onClose(); }}><Icon name="grid" size="micro"/>Open as split</Button>}
-            </div>
-            <div className="overview-grid">
-              {section.tabs.map(tab => <OverviewCard key={tab.id} modelNames={modelNames} tab={tab} summaries={summaries} now={now} active={tab.id === activeId} cursor={tab.id === cursorId} menu={menuFor?.(tab)} onDropTab={target === undefined ? undefined : (id, after) => onMoveGroup(id, target ?? undefined, { id: tab.id, after })} onOpen={() => openTab(tab.id)} onBackground={() => move(tab.id, false)} onClose={onCloseTab && (() => { move(moveCursor(ids, tab.id, 1), false); onCloseTab(tab.id); })}/>)}
-            </div>
-          </section>;
+          return <OverviewSectionBlock key={section.id} title={section.title} id={section.id} kind={section.kind} count={section.tabs.length} target={target} splittable={splittable} onMoveGroup={onMoveGroup} onSplitGroup={onSplitGroup} onClose={onClose}>
+            {section.tabs.map(tab => <OverviewCard key={tab.id} modelNames={modelNames} tab={tab} summaries={summaries} now={now} active={tab.id === activeId} cursor={tab.id === cursorId} menu={menuFor?.(tab)} onDropTab={target === undefined ? undefined : (id, after) => onMoveGroup(id, target ?? undefined, { id: tab.id, after })} onOpen={() => openTab(tab.id)} onBackground={() => move(tab.id, false)} onClose={onCloseTab && (() => { move(moveCursor(ids, tab.id, 1), false); onCloseTab(tab.id); })}/>)}
+          </OverviewSectionBlock>;
         })}
         {!ordered.length && <Text className="overview-no-results">No matching tabs</Text>}
       </div>

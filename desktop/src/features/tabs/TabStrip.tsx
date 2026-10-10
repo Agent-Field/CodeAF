@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from 'react';
 import { Button, DropdownMenu, Icon, IconButton } from '../../components/ui';
+import { Switcher } from '../places/rail/Switcher';
 import design from '../../design/tokens.json';
 import { useMediaQuery } from '../../design/useMediaQuery';
 import { overviewShortcut, tabShortcuts } from '../../design/keyboard';
@@ -10,14 +11,16 @@ import { QueuePopover, type QueueRow } from '../nextup/QueuePopover';
 import type { TabsApi } from './context';
 import { useStripAnnouncement } from './announce';
 import { GroupCapsule, MemberSlot } from './GroupCapsule';
-import { groupDragProps } from './hosts/dragHost';
+import { useGroupDrag } from './hosts/dragHost';
 import { overflowItems, withGroupMenu } from './hosts/menuHost';
 import { openStripBackgroundMenu, StripMenu } from './hosts/stripMenu';
 import { navigate, stateOfMark, TabItem, tabDomId, tabDomIds } from './TabItem';
-import { focusedPane, stripItems, visibleTabs, type Tab } from './model';
+import { focusedPane, stripItems, visibleTabs, type Tab, type TabGroup } from './model';
 import { departureIds, departuresFrom, exitHoldMs, groupsForDepartures, mergeDepartures, retainDepartures, withDepartures, type TabDeparture } from './tabExit';
 import { HomeTab } from '../places/home/HomeTab';
 import { isPlaceHome } from './reducers/home';
+import { useLongPress } from '../shell/useLongPress';
+import '../shell/touch.css';
 import './strip.css';
 import './tab-motion.css';
 
@@ -44,6 +47,14 @@ export const nextUpStartEvent = 'codeaf:next-up-start';
 
 /** `itemKey` is the question to open. Absent, the walk starts at the front of the queue. */
 export type NextUpStartDetail = { itemKey?: string };
+
+/** One group capsule. The hook has to live in a component, not in the strip's map. */
+function GroupBlock({ api, group, announce, children, ...capsule }: {
+  api: TabsApi; group: TabGroup; announce?: (message: string) => void; children: ReactNode;
+} & Omit<ComponentProps<typeof GroupCapsule>, 'labelProps' | 'children'>) {
+  const labelProps = useGroupDrag(api, group, announce);
+  return <GroupCapsule {...capsule} labelProps={labelProps}>{children}</GroupCapsule>;
+}
 
 /** Asks the walk to start. A window with no listener yet still shows the pill; the click is not lost as a navigation. */
 export function requestNextUp(detail: NextUpStartDetail = {}) {
@@ -80,6 +91,8 @@ export type StripBack = {
  * chevron buttons, no wheel hijacking.
  */
 export function TabStrip({ api, leading, back, frame, overviewTrigger, onOverview }: { api: TabsApi; leading?: ReactNode; back?: StripBack; frame?: StripFrame; overviewTrigger: RefObject<HTMLButtonElement | null>; onOverview: () => void }) {
+  // A finger hold on a tab or a group label opens the menu that control already has. No prop on TabItem or the capsule: the listener finds them.
+  useLongPress();
   const { state, dispatch } = api;
   const strip = useRef<HTMLDivElement>(null);
   const homeFocus = useRef<string | null>(null);
@@ -215,17 +228,17 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
         {home && <HomeTab key={home.id} name={home.title} tint={api.placeTint ?? 'graphite'} active={state.activeId === home.id} id={tabDomId(home)} menu={api.placeMenu}
           onSelect={() => dispatch({ type: 'select', id: home.id })} onKeyDown={navigate(api, order, home, homeFocus)}
           switcher={!!api.placeSwitcher} needsYou={api.placeSwitcher?.alert}
-          wrapSelect={api.placeSwitcher ? select => <DropdownMenu label="Place switcher" items={api.placeSwitcher!.items}>{select}</DropdownMenu> : undefined}/>}
+          wrapSelect={api.placeSwitcher ? select => <Switcher items={api.placeSwitcher!.items}>{select}</Switcher> : undefined}/>}
         {pinned.map(tab => item(tab))}
         {pinned.length > 0 && <span className="workspace-tab-divider" role="separator" aria-orientation="vertical"/>}
         {items.map(entry => {
           if (entry.kind === 'tab') return item(entry.tab);
           const { group, members } = entry;
           return (
-            <GroupCapsule key={group.id} title={group.title} count={members.length} collapsed={group.collapsed} needsYou={members.some(t => stateOfMark(api.summaries[focusedPane(t).id]?.mark) === 'waiting')}
-              onToggle={() => dispatch({ type: 'collapse-group', id: group.id })} labelProps={groupDragProps(api, group, setMoveNote)} wrapLabel={label => withGroupMenu(api, group, label)}>
+            <GroupBlock key={group.id} api={api} group={group} announce={setMoveNote} title={group.title} count={members.length} collapsed={group.collapsed} needsYou={members.some(t => stateOfMark(api.summaries[focusedPane(t).id]?.mark) === 'waiting')}
+              onToggle={() => dispatch({ type: 'collapse-group', id: group.id })} wrapLabel={label => withGroupMenu(api, group, label)}>
               {members.map(tab => <MemberSlot key={tab.id} hidden={group.collapsed && tab.id !== state.activeId && !departing.has(tab.id)}>{item(tab, !group.collapsed)}</MemberSlot>)}
-            </GroupCapsule>
+            </GroupBlock>
           );
         })}
       </div>
