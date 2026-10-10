@@ -173,7 +173,7 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
   );
   const frame = (scroll: ReactNode, pin: ReactNode) => (
     <section className="tray-card" aria-label={question.head} aria-busy={locked || undefined} onFocusCapture={stopClock}>
-      <div className="tray-scroll">{scroll}</div>
+      <div className="tray-scroll" tabIndex={0}>{scroll}</div>
       <div className="tray-pinned">{pin}</div>
     </section>
   );
