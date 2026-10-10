@@ -150,6 +150,16 @@ All are under `/sessions/{id}` and take the same bearer token. Refusals are
   this conversation's web_fetch or web_search arguments or results are fetched
   (`https://<domain>/favicon.ico`, 3 s, at most 64KB, image types except svg,
   same-host redirects only, public addresses only), cached per bridge.
+- GET `/jobs` returns the engine's background jobs, newest as the engine listed
+  them: `[{id,name?,command?,detail?,kind?,state?,startedAt?,elapsedMs?,exitCode?,ticks?,logPath?}]`.
+  `startedAt` is RFC 3339. `exitCode` is present only for `done` and `failed` (including 0).
+  An engine with no job shelf is 409 `this engine cannot list its jobs`.
+- POST `/jobs/{jobId}/stop` is `Cancel("job:{jobId}")`. Success is `{accepted:true,line?}`
+  where `line` is the engine's sentence when it returned one. A refusal is 409 with that sentence.
+- GET `/jobs/{jobId}/log?tail=N` reads that job's log through FetchFile, and only when the
+  path is inside the conversation's own folder (a symlink that walks out is 403). `tail` is
+  bytes, capped at 1 MiB; omitted means that cap. The body is `{text,truncated}` with ANSI
+  stripped. A `path` query is ignored. The log is the one the engine listed for that id.
 
 Event `kind` names now cover caption, steerAccepted, steerConsumed,
 steerFellThrough, toolAnnounced, toolForming, toolFinished, toolOutput, retrying,

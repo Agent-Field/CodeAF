@@ -167,6 +167,12 @@ type conversation struct {
 	// engine said its turn was done (places_advice.go); nil is nobody
 	// listening.
 	afterTurn func(s *conversation, settled bool)
+	// jobsWorld publishes a jobs roll-up onto the engine-wide feed (jobs.go).
+	// Nil means this conversation has nobody to tell.
+	jobsWorld func(kind string, payload any)
+	jobsMu    sync.Mutex
+	jobsSeen  map[int]session.JobNotice
+	jobsSig   string
 }
 type Bridge struct {
 	token     string
@@ -365,6 +371,12 @@ func (s *conversation) snapshot() Snapshot {
 	return Snapshot{ID: s.id, SessionFile: w.SessionFile, Workspace: w.Workspace, Model: a.Model(), Persistent: w.Persistent, Running: running, NeedsPerson: a.NeedsPerson(), Title: a.Title(), Questions: questions, RecentOutcomes: recentOutcomes(a), PlanError: planError, Entries: entries, Tasks: tasks, Usage: a.Usage(), Queue: s.queueWire(), Seq: seq, UpdatedAt: updatedAt, WorkingFolder: s.folder}
 }
 func (s *conversation) publish(r Record) {
+	// A jobUpdate is also the window's jobs roll-up. This runs before the
+	// conversation lock because it may publish on the world feed, and that
+	// feed takes the bridge lock: the two locks must not be taken in both orders.
+	if r.Event != nil && r.Event.Raw.Job != nil {
+		s.noteJob(*r.Event.Raw.Job)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.seq++
@@ -648,7 +660,7 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if conn.DiffStart != nil {
 			_, _ = conn.DiffStart() // diffs compare against where this conversation began; best effort
 		}
-		s := &conversation{conn: conn, id: id, changed: make(chan struct{}), done: make(chan struct{}), icons: b.icons, folder: folder}
+		s := &conversation{conn: conn, id: id, changed: make(chan struct{}), done: make(chan struct{}), icons: b.icons, folder: folder, jobsWorld: b.recordWorld}
 		b.sessions[id] = s
 		s.afterTurn = b.adviseAfterTurn
 		_, events, stop := conn.Agent.AttachReplay()
