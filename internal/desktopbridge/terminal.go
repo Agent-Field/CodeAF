@@ -6,12 +6,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/creack/pty"
 )
 
@@ -102,18 +100,6 @@ func shellPath() string {
 		}
 	}
 	return "/bin/sh"
-}
-
-// terminalEnv is the environment for the person's shell: the engine's own,
-// minus the bridge's connection secrets, with a terminal type that renders.
-func terminalEnv() []string {
-	var kept []string
-	for _, kv := range env.EnvironWithoutOwnedSecrets() {
-		if name, _, _ := strings.Cut(kv, "="); name != "TERM" && name != "COLORTERM" {
-			kept = append(kept, kv)
-		}
-	}
-	return append(kept, "TERM=xterm-256color", "COLORTERM=truecolor")
 }
 
 func clampSize(cols, rows int) (int, int) {
