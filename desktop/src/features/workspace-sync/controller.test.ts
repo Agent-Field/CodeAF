@@ -449,3 +449,123 @@ test('remote rebase of a pending foreground open preserves the later local selec
  assert.equal(a.getState().activeId,'first');
  assert.equal(a.getState().recentIds[0],'first');
 });
+
+test('a pending new-tab terminal keeps foreground focus on restore before its canonical base contains it', async () => {
+  const { a, make, saved } = await twoWindows('first');
+  a.dispatch({ type: 'new' });
+  const id = a.getState().activeId;
+  a.dispatch({ type: 'newtab-become', id, kind: 'terminal', title: 'zsh', sessionFile: 's', terminalId: 'term' });
+  a.persistNow();
+  assert.equal(saved['win-a'].base?.tabs.some(tab => tab.id === id), false);
+  assert.equal(saved['win-a'].pending.length, 2);
+  assert.equal(saved['win-a'].local.activeId, id);
+  const restored = make('win-a-reloaded', structuredClone(saved['win-a']));
+  assert.equal(restored.getState().activeId, id);
+  assert.equal(restored.getState().tabs.find(tab => tab.id === id)?.kind, 'terminal');
+});
+
+test('an obsolete bootstrap response cannot replace focus while the restarted controller saves a pending terminal', async () => {
+  const { a, engine, time, saved } = await twoWindows('first');
+  a.dispatch({ type: 'new' });
+  const id = a.getState().activeId;
+  a.dispatch({ type: 'newtab-become', id, kind: 'terminal', title: 'zsh', sessionFile: 's', terminalId: 'term' });
+  a.stop();
+  const client = engine.client();
+  const reads: ((value: Awaited<ReturnType<typeof client.get>>) => void)[] = [];
+  let finishWrite: (() => Promise<void>) | undefined;
+  const restarted = createWorkspaceController({
+    key: 'now', writer: 'restarted', initial: seed('first'), persisted: structuredClone(saved['win-a']), clock: time.clock,
+    client: {
+      ...client,
+      get: () => new Promise(resolve => reads.push(resolve)),
+      put: (...args) => new Promise(resolve => { finishWrite = async () => { resolve(await client.put(...args)); }; }),
+    },
+  });
+  restarted.start();
+  restarted.stop();
+  restarted.start();
+  const old = await client.get('now');
+  reads[1](old);
+  await time.advance(0);
+  assert.ok(restarted.inspect().inflight, 'latest start is saving the pending terminal');
+  reads[0](old);
+  await time.advance(0);
+  try {
+    assert.equal(restarted.getState().activeId, id, 'obsolete start must not rebuild over an in-flight foreground tab');
+  } finally {
+    await finishWrite?.();
+    await time.advance(0);
+    restarted.stop();
+  }
+});
+
+test('a late previous-lifecycle write acknowledgement preserves newer drafts and foreground terminal identity', async () => {
+  const { engine, time } = await twoWindows('first');
+  const client = engine.client();
+  let releaseWrite: (() => void) | undefined;
+  let first = true;
+  const controller = createWorkspaceController({
+    key: 'now', writer: 'late-write', initial: seed('first'), clock: time.clock, saveDelayMs: 10,
+    client: {
+      ...client,
+      put: async (...args) => {
+        const answer = await client.put(...args);
+        if (first) { first = false; await new Promise<void>(resolve => { releaseWrite = resolve; }); }
+        return answer;
+      },
+    },
+  });
+  controller.start(); await time.advance(50);
+  controller.dispatch({ type: 'open', tab: tab('terminal', {kind:'terminal',target:{terminalId:'term'}}), background: false });
+  controller.dispatch({ type: 'draft', id: 'first', draft: 'initial' });
+  await time.advance(20);
+  assert.ok(controller.inspect().inflight);
+  controller.stop(); controller.start();
+  controller.dispatch({ type: 'draft', id: 'first', draft: 'newer while restarting' });
+  releaseWrite?.(); await time.advance(150);
+  assert.equal(controller.getState().activeId,'terminal');
+  assert.equal(controller.getState().tabs.find(tab=>tab.id==='first')?.draft,'newer while restarting');
+  const record=await client.get('now');
+  assert.equal(record.workspace?.tabs.find(tab=>tab.id==='first')?.draft,'newer while restarting');
+  assert.equal(record.workspace?.tabs.filter(tab=>tab.id==='terminal').length,1);
+  assert.equal(controller.inspect().pending.length,0);
+  controller.stop();
+});
+
+test('a late previous-lifecycle watch response cannot replace the restarted window selection or saved draft', async () => {
+  const { engine,time }=await twoWindows('first');
+  const client=engine.client();
+  const old=await client.get('now');
+  let releaseWatch: ((record:typeof old)=>void)|undefined;
+  let first=true;
+  const controller=createWorkspaceController({key:'now',writer:'late-watch',initial:seed('first'),clock:time.clock,saveDelayMs:10,
+    client:{...client,wait:(...args)=>{if(first){first=false;return new Promise(resolve=>{releaseWatch=resolve;});}return client.wait(...args);}},
+  });
+  controller.start();await time.advance(50);
+  controller.dispatch({type:'open',tab:tab('terminal',{kind:'terminal',target:{terminalId:'term'}}),background:false});
+  controller.dispatch({type:'draft',id:'first',draft:'keep this'});
+  await time.advance(100);
+  controller.stop();controller.start();await time.advance(50);
+  releaseWatch?.(old);await time.advance(50);
+  assert.equal(controller.getState().activeId,'terminal');
+  assert.equal(controller.getState().tabs.find(tab=>tab.id==='first')?.draft,'keep this');
+  controller.stop();
+});
+
+test('a delayed same-lifecycle watch response cannot rewind an acknowledged terminal and its focus', async () => {
+  const { engine, time } = await twoWindows('first');
+  const client = engine.client();
+  const old = await client.get('now');
+  let releaseWatch: ((record: typeof old) => void) | undefined;
+  let first = true;
+  const controller = createWorkspaceController({ key: 'now', writer: 'delayed-watch', initial: seed('first'), clock: time.clock, saveDelayMs: 10,
+    client: { ...client, wait: (...args) => { if (first) { first = false; return new Promise(resolve => { releaseWatch = resolve; }); } return client.wait(...args); } },
+  });
+  controller.start(); await time.advance(50);
+  controller.dispatch({ type: 'open', tab: tab('terminal', {kind:'terminal',target:{terminalId:'term'}}), background: false });
+  await time.advance(100);
+  releaseWatch?.(old); await time.advance(50);
+  assert.equal(controller.getState().activeId, 'terminal');
+  assert.equal(controller.getState().tabs.filter(tab=>tab.id==='terminal').length, 1);
+  controller.stop();
+});

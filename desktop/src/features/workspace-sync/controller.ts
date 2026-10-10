@@ -158,6 +158,9 @@ export function createWorkspaceController(options: ControllerOptions) {
   let status: SyncStatus = { phase: 'loading', overtaken: 0, unsaved: pending.length };
   let loaded = false;
   let stopped = true;
+  let lifecycle = 0;
+  let lifecycleAbort: AbortController | undefined;
+  const current = (owner: number) => !stopped && owner === lifecycle;
   /** The engine refused this build's writes for good (a newer codeaf wrote the file): read and mirror only. */
   let readOnly = false;
   let conflictsInARow = 0;
@@ -323,9 +326,13 @@ export function createWorkspaceController(options: ControllerOptions) {
   /** Sends the queue as one compare-and-swap write. One write is in flight at a time. */
   async function save(): Promise<void> {
     if (stopped || readOnly || !loaded || inflight || relocating) return;
+    const owner = lifecycle;
+    const signal = lifecycleAbort?.signal;
     const outgoing = pending.filter(entry => { const action = entry.action; return action.type === 'draft' && !paneById(view, action.id) && !view.closed.some(tab => tab.id === action.id || tab.split?.panes.some(p => p.id === action.id)); });
     if (outgoing.length) {
       relocating = true;
+      let forwardingDone!: () => void;
+      settle = new Promise(resolve => { forwardingDone = resolve; });
       try {
         for (const entry of outgoing) {
           if (entry.action.type !== 'draft') continue;
@@ -337,7 +344,8 @@ export function createWorkspaceController(options: ControllerOptions) {
           let overtookDraft = false;
           for (let attempt = 0; attempt < 12 && !confirmed; attempt++) {
             if (seen.has(target)) throw new WorkspaceSyncError('A moved tab location could not be confirmed.', 409, 'relocation_missing');
-            const record = await client.get(target);
+            const record = await client.get(target, signal);
+            if (!current(owner)) return;
             if (!record.workspace) throw new WorkspaceSyncError('A draft is kept here until its moved tab is available.', 409, 'relocation_missing');
             let destination = compose(record.workspace, emptyLocal());
             const currentDraft = paneById(destination, action.id)?.draft;
@@ -348,7 +356,8 @@ export function createWorkspaceController(options: ControllerOptions) {
               else if (record.movedTo?.[action.id]) { seen.add(target); target = record.movedTo[action.id]; continue; }
               else throw new WorkspaceSyncError('A draft is kept here until its moved tab is available.', 409, 'relocation_missing');
             } else destination = reduce(destination, action);
-            const result = await client.put(target, record.revision, writer, sharedOf(destination));
+            const result = await client.put(target, record.revision, writer, sharedOf(destination), signal);
+            if (!current(owner)) return;
             if (result.kind === 'saved') confirmed = true;
           }
           if (!confirmed) throw new WorkspaceSyncError('The moved tab is busy. Its draft is kept here for retry.', 409, 'busy');
@@ -357,12 +366,13 @@ export function createWorkspaceController(options: ControllerOptions) {
           persistNow();
         }
       } catch (failure) {
+        if (!current(owner)) return;
         const error = failure instanceof WorkspaceSyncError ? failure : new WorkspaceSyncError('The moved draft could not be saved.', 0, '', true);
         setStatus({ phase: error.unreachable || error.code === 'busy' ? 'offline' : 'refused', code: error.code, error: error.message });
         persistNow(); notify();
         if (error.unreachable || error.code === 'busy') scheduleSave(backoff());
         return;
-      } finally { relocating = false; }
+      } finally { relocating = false; forwardingDone(); }
       rebuild(); setStatus({ phase: pending.length ? 'saving' : 'saved', error: undefined, code: undefined });
     }
     if (base && !pending.length) { settleIfIdle(); notify(); return; }
@@ -372,15 +382,16 @@ export function createWorkspaceController(options: ControllerOptions) {
       notify();
       return;
     }
-    inflight = pending;
+    const sent = pending;
+    inflight = sent;
     pending = [];
     setStatus({ phase: 'saving' });
     notify();
     let done!: () => void;
     settle = new Promise(resolve => { done = resolve; });
     try {
-      const answer = await client.put(key, revision, writer, document);
-      const sent = inflight;
+      const answer = await client.put(key, revision, writer, document, signal);
+      if (!current(owner)) { pending = [...sent, ...pending]; return; }
       inflight = null;
       if (answer.kind === 'saved') {
         conflictsInARow = 0;
@@ -398,7 +409,8 @@ export function createWorkspaceController(options: ControllerOptions) {
         scheduleSave(conflictsInARow > 3 ? Math.min(250 * 2 ** (conflictsInARow - 4), 5_000) : 0);
       }
     } catch (failure) {
-      pending = [...(inflight ?? []), ...pending];
+      pending = [...sent, ...pending];
+      if (!current(owner)) return;
       inflight = null;
       const error = failure instanceof WorkspaceSyncError ? failure : new WorkspaceSyncError('codeaf could not save these tabs', 0, '', true);
       if (error.unreachable || error.code === 'busy') {
@@ -410,6 +422,7 @@ export function createWorkspaceController(options: ControllerOptions) {
         setStatus({ phase: 'refused', error: error.message, code: error.code });
       }
     } finally {
+      if (inflight === sent) inflight = null;
       done();
       persistNow();
       notify();
@@ -430,17 +443,17 @@ export function createWorkspaceController(options: ControllerOptions) {
   }
 
   /** The long poll: takes every revision another window writes, as it is written. */
-  async function watch() {
-    while (!stopped) {
+  async function watch(owner: number) {
+    while (current(owner)) {
       const abort = new AbortController();
       watchAbort = abort;
       try {
         const record = await client.wait(key, revision, abort.signal);
-        if (stopped) return;
+        if (!current(owner)) return;
         retryDelay = retryFloorMs;
         // A write of this window's own is in flight: its answer decides; the next wait sees anything newer.
         if (inflight) { await settle; continue; }
-        if (record.revision !== revision) {
+        if (record.revision > revision) {
           adoptRecord(record);
           persistSoon();
           if (pending.length || !base) scheduleSave(0);
@@ -450,7 +463,7 @@ export function createWorkspaceController(options: ControllerOptions) {
         settleIfIdle();
         notify();
       } catch (failure) {
-        if (stopped) return;
+        if (!current(owner)) return;
         const error = failure instanceof WorkspaceSyncError ? failure : undefined;
         if (status.phase !== 'refused') setStatus({ phase: 'offline', error: error?.message ?? 'codeaf engine is not running', code: error?.code });
         notify();
@@ -460,10 +473,14 @@ export function createWorkspaceController(options: ControllerOptions) {
   }
 
   /** First contact: read the engine's tab set, or offer this window's as the first one. */
-  async function load() {
+  async function load(owner: number) {
     try {
-      const record = await client.get(key);
-      if (stopped) return;
+      // A prior lifecycle may have sent a write whose reply was delayed. Its
+      // intent stays queued until its own settlement; bootstrap reads afterward.
+      if (inflight || relocating) await settle;
+      if (!current(owner)) return;
+      const record = await client.get(key, lifecycleAbort?.signal);
+      if (!current(owner)) return;
       loaded = true;
       if (record.workspace) {
         // The import seed is not replayed over the engine's tab set; the changes made on it are.
@@ -476,24 +493,25 @@ export function createWorkspaceController(options: ControllerOptions) {
       }
       if (pending.length || !base) scheduleSave(0);
     } catch (failure) {
-      if (stopped) return;
+      if (!current(owner)) return;
       const error = failure instanceof WorkspaceSyncError ? failure : undefined;
       setStatus({ phase: 'offline', error: error?.message ?? 'codeaf engine is not running', code: error?.code });
       notify();
       // Until the engine answers this window works on its own copy; the watch loop retries the read.
       await pause(backoff());
-      if (!stopped) return load();
+      if (current(owner)) return load(owner);
       return;
     }
     persistNow();
     notify();
-    void watch();
+    void watch(owner);
   }
 
   /** Detaches: ends the long poll and timers and saves the queue locally. Nothing queued is thrown away. */
   function stop() {
     if (stopped) return;
     stopped = true;
+    lifecycleAbort?.abort();
     watchAbort?.abort();
     wakeWatch?.();
     if (saveTimer !== undefined) clock.clear(saveTimer);
@@ -516,7 +534,12 @@ export function createWorkspaceController(options: ControllerOptions) {
     },
     /** Starts reading and mirroring. Returns the stop function. */
     start() {
-      if (stopped) { stopped = false; void load(); }
+      if (stopped) {
+        stopped = false;
+        loaded = false;
+        lifecycleAbort = new AbortController();
+        void load(++lifecycle);
+      }
       return stop;
     },
     stop,
