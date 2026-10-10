@@ -1,7 +1,9 @@
 // The rows of the new-tab field (design 3f, 4c): pure, so a node test covers the ordering and filtering.
 // The first row always turns the typed text into a conversation; every other row is a way to jump or open.
 import type { IconName } from '../../../../components/ui/Icon';
+import { relativeTime } from '../../../conversation/tabSummary.ts';
 import type { HistoryItem } from '../../../history/types.ts';
+import { closedAtOf } from '../../reducers/closing.ts';
 import type { Tab } from '../../types.ts';
 import { addressParts, looksLikeAddress, toAddress } from '../../../web/address.ts';
 
@@ -29,7 +31,10 @@ export type RowInput = {
   query: string;
   /** Tabs in strip order, without the field's own tab. */
   tabs: { tab: Tab; shortcut?: string; waiting: boolean }[];
-  closed: Tab[];
+  /** Closed tabs, newest last. `closedAt` is optional: a save from before the stamp has none. */
+  closed: (Tab & { closedAt?: number })[];
+  /** Clock for the closed-row age. The field omits it and the rows use the moment they are built. */
+  now?: number;
   files: FileHit[];
   /** True while the terminal kind is backed by the engine; otherwise the row is absent, not broken. */
   terminal: boolean;
@@ -58,6 +63,12 @@ export const titleFromText = (text: string): string => clip(firstLine(text), ask
 
 const has = (title: string, query: string) => title.toLowerCase().includes(query.toLowerCase());
 
+/** Shell 3f: "closed 1h ago". No stamp (an old save) says "closed" and nothing more. */
+function closedDetail(tab: { closedAt?: number }, now: number): string {
+  const at = closedAtOf(tab.closedAt);
+  return at === undefined ? 'closed' : `closed ${relativeTime(at, now)}`;
+}
+
 export function buildSections(input: RowInput): NewTabSection[] {
   const query = input.query.trim();
   const sections: NewTabSection[] = [];
@@ -77,10 +88,11 @@ export function buildSections(input: RowInput): NewTabSection[] {
   ];
   sections.push({ title: 'Start', rows: start });
   if (!query) return sections;
+  const now = input.now ?? Date.now();
   const matching: NewTabRow[] = [
     ...input.files.map((file): NewTabRow => ({ id: `file:${file.path}`, kind: 'file', icon: 'fileCode', label: file.name, detail: file.dir, target: file.path })),
     ...input.tabs.filter(item => has(item.tab.title, query)).map((item): NewTabRow => ({ id: `tab:${item.tab.id}`, kind: 'tab', icon: 'tab', label: item.tab.title, detail: 'open tab', hint: item.shortcut, dot: item.waiting, target: item.tab.id })),
-    ...input.closed.filter(tab => tab.kind !== 'newtab' && has(tab.title, query)).reverse().map((tab): NewTabRow => ({ id: `closed:${tab.id}`, kind: 'closed', icon: 'history', label: tab.title, detail: 'closed', target: tab.id })),
+    ...input.closed.filter(tab => tab.kind !== 'newtab' && has(tab.title, query)).reverse().map((tab): NewTabRow => ({ id: `closed:${tab.id}`, kind: 'closed', icon: 'history', label: tab.title, detail: closedDetail(tab, now), target: tab.id })),
   ];
   if (matching.length) sections.push({ title: 'Matching', rows: matching });
   return sections;
