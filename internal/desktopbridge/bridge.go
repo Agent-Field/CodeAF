@@ -135,6 +135,8 @@ type Event struct {
 	Hint  string           `json:"hint"`
 	Error string           `json:"error,omitempty"`
 	Raw   remote.EventWire `json:"raw"`
+	// PlaceChange rides a `placeChange` event only (placechange.go).
+	PlaceChange *PlaceChange `json:"placeChange,omitempty"`
 }
 type Record struct {
 	Seq      uint64    `json:"seq"`
