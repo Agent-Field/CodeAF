@@ -367,6 +367,8 @@ The History lane numbered these Q35–Q44 on its branch; the file and terminal l
 | H9 | History row menu: "Add to place" and "Delete" | Absent. The place graph and its routes now exist (Places lane), but the History row menu is not wired to them yet, and there is no engine delete route. The menu shows Continue, Read conversation and Archive. |
 | H10 | Auto-archive toast duration: Components says every toast sits 6s and always offers Undo; 4c's archive toast offers Review and Restore all | 6s (`historyToastMs`), paused while hovered or focused; Restore all is its undo. |
 | PL-C1 | How does the "Now also using <place>: <source>" line reach the open conversation, and what does a move say? | A `placeChange` event on that conversation's own ring, payload in `event.placeChange` (not inside `raw`, whose type is the engine's event) with placeId, placeName, tint, sources, added, undo, at. Moving a chat between places announces only the place it joins; the one it leaves is silent. Filing into Now announces nothing. |
+| PA-1 | Places 8g says a plain drop adds a place and Option moves it; Interactions says a drag nests and Option adds a second parent. Which gesture is the place drop? | A plain drop and "Add to another place…" add a parent and leave the others. Option sets that place's only parent to the target. A chat drop adds it; Option moves it out of the place it came from. |
+| PA-2 | What does the toast say when pinned places are reordered? The design names reorder as undoable and does not give the sentence. | "Reordered the pinned places." No one place is named in medium weight. |
 
 
 ### Preview geometry from rendered reference
