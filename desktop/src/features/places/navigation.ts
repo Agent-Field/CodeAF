@@ -32,7 +32,9 @@ export function createPlaceNavigation(deps: NavigationDeps) {
   };
   const visit = async (key: string) => {
     if (key === 'now' || key === 'root') return;
-    // Last-opened is the canonical visit. The window has already moved; a refusal is reported and does not send it back.
+    // Going there is a touch: POST /places/{id}/visit stamps lastOpenedAt, which is the date the
+    // untouched-place suggestion reads. It moves no revision and has no receipt. The window has already
+    // moved, so a refusal is reported and does not send it back.
     try { await deps.client.visit(key); } catch (failure) { deps.warn(failure); }
     // The rail's Open list is a separate soft write, with the same rule: keep the destination if it fails.
     try { await deps.client.railOp({ op: 'visit', place: key }); } catch (failure) { deps.warn(failure); }

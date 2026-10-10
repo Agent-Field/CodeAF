@@ -29,9 +29,9 @@ type Props = {
 export function HistoryRow({ item, now, selected, domId, onSelect, onOpen, onRead, onArchive, onDelete, placeRef }: Props) {
   const line = rowLine(item);
   const stateWord = item.state === 'needs-you' ? 'Needs you' : item.state === 'working' || (item.open && item.tasksRunning > 0) ? 'Working' : undefined;
-  // A click selects. Shift-click extends from the anchor row. A command-click or a middle click opens a new tab. A double click continues.
+  // A click selects. Shift-click extends from the anchor row. A command-click opens a new tab and moves to it (Shell: History); a middle click opens it behind, as a browser does. A double click continues.
   const click = (event: MouseEvent) => {
-    if (event.metaKey || event.ctrlKey) { onOpen(item, { newTab: true, background: true }); return; }
+    if (event.metaKey || event.ctrlKey) { onOpen(item, { newTab: true }); return; }
     onSelect(item, { shift: event.shiftKey });
     if (!event.shiftKey && event.detail > 1) onOpen(item, { newTab: false });
   };
