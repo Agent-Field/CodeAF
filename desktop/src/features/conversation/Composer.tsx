@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type RefObject } from 'react';
-import { Button, Icon, IconButton, Text, TextArea, TextInput } from '../../components/ui';
+import { Button, ContextMenu, Icon, IconButton, Text, TextArea, TextInput } from '../../components/ui';
 import design from '../../design/tokens.json';
 import { composerShortcuts } from '../../design/keyboard';
 import type { OutgoingFile } from '../chat/engine-client';
@@ -79,6 +79,15 @@ export function Composer(props: ComposerProps) {
   const autosize = useAutosize(field, draft);
   const focus = useKeyboardFocus();
   const [pastes, setPastes] = useState<string[]>([]);
+  const [pasteError, setPasteError] = useState('');
+  const selection = useRef({ start: 0, end: 0 });
+  const [pasteCaret, setPasteCaret] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (pasteCaret === null || !field.current) return;
+    field.current.focus();
+    field.current.setSelectionRange(pasteCaret, pasteCaret);
+    setPasteCaret(null);
+  }, [draft, pasteCaret]);
   const latestDraft = useRef(draft);
   latestDraft.current = draft;
   const disabled = !!disabledReason;
@@ -120,6 +129,29 @@ export function Composer(props: ComposerProps) {
     else setPastes(current => [...current, text]);
   }
 
+  function rememberSelection(open: boolean) {
+    if (!open || !field.current) return;
+    // The menu takes focus, so preserve the selection before its items receive it.
+    selection.current = { start: field.current.selectionStart, end: field.current.selectionEnd };
+    setPasteError('');
+  }
+
+  async function pastePlainText() {
+    const target = field.current;
+    const before = latestDraft.current;
+    const { start, end } = selection.current;
+    try {
+      const text = await navigator.clipboard.readText();
+      // A delayed clipboard read must not replace newer typing or another pane's draft.
+      if (!text || target !== field.current || !target || target.disabled || latestDraft.current !== before) return;
+      setPasteCaret(start + text.length);
+      onDraft(before.slice(0, start) + text + before.slice(end));
+      setPasteError('');
+    } catch {
+      if (target === field.current && target) setPasteError('Clipboard text could not be read. Paste with your keyboard instead.');
+    }
+  }
+
   function onPicked(input: HTMLInputElement) {
     attachments.add(Array.from(input.files ?? []));
     input.value = '';
@@ -147,6 +179,11 @@ export function Composer(props: ComposerProps) {
 
   const stopping = running && blank;
   const steering = running && !blank;
+  const queueMenu = [{
+    id: 'queue-instead', label: 'Queue instead', shortcut: composerShortcuts.queue,
+    disabled: !running || draft.trim() === '' || disabled,
+    onSelect: () => { void send('queue'); },
+  }];
 
   return (
     <div className="composer-dock" data-docked={docked} data-variant={props.variant}>
@@ -169,24 +206,30 @@ export function Composer(props: ComposerProps) {
             onRemove={() => setPastes(current => current.filter((_, at) => at !== index))}
           />
         ))}
-        <TextArea
-          ref={field}
-          className="composer-field"
-          data-faded={autosize.faded || undefined}
-          data-keyboard={focus.keyboard || undefined}
-          onFocus={focus.onFocus}
-          onBlur={focus.onBlur}
-          onScroll={autosize.onScroll}
-          aria-label="Message"
-          placeholder={disabledReason ?? (running ? 'Steer, or queue a message' : props.placeholder ?? (docked ? 'Ask codeaf' : START_PLACEHOLDER))}
-          value={draft}
-          disabled={disabled}
-          autoFocus={autoFocus}
-          rows={composerMinRows}
-          onChange={event => onDraft(event.target.value)}
-          onKeyDown={onKeyDown}
-          onPaste={onPaste}
-        />
+        <ContextMenu className="composer-menu" label="Message menu" onOpenChange={rememberSelection} items={[{
+          id: 'paste-plain', label: 'Paste as plain text', disabled,
+          onSelect: () => { void pastePlainText(); },
+        }]}>
+          <TextArea
+            ref={field}
+            className="composer-field"
+            data-faded={autosize.faded || undefined}
+            data-keyboard={focus.keyboard || undefined}
+            onFocus={focus.onFocus}
+            onBlur={focus.onBlur}
+            onScroll={autosize.onScroll}
+            aria-label="Message"
+            placeholder={disabledReason ?? (running ? 'Steer, or queue a message' : props.placeholder ?? (docked ? 'Ask codeaf' : START_PLACEHOLDER))}
+            value={draft}
+            disabled={disabled}
+            autoFocus={autoFocus}
+            rows={composerMinRows}
+            onChange={event => onDraft(event.target.value)}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+          />
+        </ContextMenu>
+        {pasteError && <Text className="composer-error" role="status">{pasteError}</Text>}
         {attachments.error && <Text className="composer-error" role="status">{attachments.error}</Text>}
         <div className="composer-row">
           <div className="composer-tools">
@@ -218,28 +261,34 @@ export function Composer(props: ComposerProps) {
           </div>
           <div className="composer-actions">
             {stopping && (
-              <Button className="composer-primary composer-stop" aria-label="Stop" title="Stop" onClick={onStop}>
-                <span className="composer-stop-mark" aria-hidden="true" />
-              </Button>
+              <ContextMenu className="composer-menu" label="Send menu" items={queueMenu}>
+                <Button className="composer-primary composer-stop" aria-label="Stop" title="Stop" onClick={onStop}>
+                  <span className="composer-stop-mark" aria-hidden="true" />
+                </Button>
+              </ContextMenu>
             )}
             {steering && (
               <>
                 <Button className="composer-queue" onClick={() => void send('queue')}>Queue {composerShortcuts.queue}</Button>
-                <Button className="composer-steer" disabled={disabled} onClick={() => void send('steer')}>
-                  <Icon name="steer" size="xs" />
-                  Steer
-                </Button>
+                <ContextMenu className="composer-menu" label="Send menu" items={queueMenu}>
+                  <Button className="composer-steer" disabled={disabled} onClick={() => void send('steer')}>
+                    <Icon name="steer" size="xs" />
+                    Steer
+                  </Button>
+                </ContextMenu>
               </>
             )}
             {!running && (
-              <IconButton
-                className="composer-primary composer-send"
-                label="Send"
-                icon="send"
-                iconSize="sm"
-                disabled={blank || disabled}
-                onClick={() => void send('submit')}
-              />
+              <ContextMenu className="composer-menu" label="Send menu" items={queueMenu}>
+                <IconButton
+                  className="composer-primary composer-send"
+                  label="Send"
+                  icon="send"
+                  iconSize="sm"
+                  disabled={blank || disabled}
+                  onClick={() => void send('submit')}
+                />
+              </ContextMenu>
             )}
           </div>
         </div>

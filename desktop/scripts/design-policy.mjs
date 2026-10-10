@@ -40,7 +40,7 @@ export function inspectCss(path, source, design) {
  const literals = css.match(/#[\da-f]{3,8}\b|(?:\d*\.)?\d+(?:px|rem|em|ms|s|deg)\b|(?:rgba?|hsla?|oklch)\([^)]*\)/gi) ?? [];
  if (literals.length) violations.push(`${path}: put raw design values in tokens.json: ${[...new Set(literals)].join(', ')}`);
  const tokens = new Set([...Object.keys(design.foundation), ...Object.keys(design.themes.light), ...Object.keys(design.themes.dark)]);
- for (const match of css.matchAll(/var\(--([\w-]+)/g)) if (!tokens.has(match[1]) && !['radix-select-content-available-height','radix-select-content-transform-origin','radix-context-menu-content-available-height','radix-context-menu-content-transform-origin','radix-dropdown-menu-content-available-height','radix-dropdown-menu-content-transform-origin','radix-hover-card-content-transform-origin'].includes(match[1])) violations.push(`${path}: unknown token --${match[1]}.`);
+ for (const match of css.matchAll(/var\(--([\w-]+)/g)) if (!tokens.has(match[1]) && !['radix-select-content-available-height','radix-select-content-transform-origin','radix-context-menu-content-available-height','radix-context-menu-content-available-width','radix-context-menu-content-transform-origin','radix-dropdown-menu-content-available-height','radix-dropdown-menu-content-transform-origin','radix-hover-card-content-transform-origin'].includes(match[1])) violations.push(`${path}: unknown token --${match[1]}.`);
  for (const match of css.matchAll(/(?:font-size|font-weight|font-family|line-height|letter-spacing|opacity|stroke-width)\s*:\s*([^;}]+)/g)) {
   if (!/^(?:var\(--[\w-]+\)|inherit|normal)$/.test(match[1].trim())) violations.push(`${path}: typography and opacity must use tokens: ${match[0]}`);
  }

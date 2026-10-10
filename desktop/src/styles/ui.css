@@ -154,6 +154,13 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .app-menu-context, .app-menu-submenu { min-width: calc(var(--menu-popup-min-width) + var(--menu-pad) * 2); }
 .app-menu-context.app-menu-wide { min-width: calc(var(--menu-wide-min-width) + var(--menu-pad) * 2); }
 .app-menu-context { transform-origin: var(--radix-context-menu-content-transform-origin); max-height: min(var(--menu-max-height),var(--radix-context-menu-content-available-height)); }
+
+/* The composer can open near the middle of a narrow window, with less room on either side. */
+.app-menu.composer-menu {
+  min-width: min(var(--composer-menu-width), var(--radix-context-menu-content-available-width));
+  max-width: min(var(--menu-max-width), var(--radix-context-menu-content-available-width));
+}
+
 .app-menu-dropdown { transform-origin: var(--radix-dropdown-menu-content-transform-origin); max-height: min(var(--menu-max-height),var(--radix-dropdown-menu-content-available-height)); }
 .app-menu[data-state="open"] { animation: popover-enter var(--dur-fast) var(--chrome-ease); }.app-menu[data-state="closed"] { animation: surface-exit var(--dur-fast) var(--chrome-ease); }
 .menu-item { display: flex; align-items: center; gap: var(--space-compact); min-height: var(--menu-item-height); padding: 0 var(--space-compact); border-radius: var(--radius-sm); outline: none; font-size: var(--font-size-prose); font-weight: var(--font-weight-regular); cursor: default; user-select: none; transition: background var(--duration-fast) var(--chrome-ease), color var(--duration-fast) var(--chrome-ease); }
