@@ -56,3 +56,9 @@ Terminals: `scenario.terminals` seeds terminals and jobs (`id`, optional
 `terminal-client.spec.ts` shows them through the typed client.
 
 `mock-engine.spec.ts` shows each endpoint through `fetch` only.
+
+Places: every install also serves an empty place graph (`scenario.places` names a fixture).
+`/places*` except `/places/policy`, `/chats/{id}/places` and `/sessions/{id}/using` are that
+graph. When `scenario.world` is set, `GET /events` sends a `reset` whose payload includes
+the places record and then a `places` envelope; a graph write publishes both again.
+`/places/policy` stays the Settings route.
