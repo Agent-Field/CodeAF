@@ -6,7 +6,55 @@ import { PlaceTile, PlaceTileGrid } from './components/PlaceTile';
 import type { TintName } from './components/PlaceSwatch';
 import { childMeta, nameProblem, shortTime, type HomeAttention, type HomeChat, type HomeSource, type HomeChild, type HomeConnection, type HomeDeleteImpact } from './home-model';
 import { canDropOn, chatMenu, dropMode, placeMenu, readDrag, writeDrag, deleteSentence, type DropPayload, type PlaceActions } from './place-actions';
+import { createDecisionsClient } from '../decisions/client';
+import type { DecideStatus } from '../decisions/StatusLine';
+import { DECIDED_CAP, type DecidedItem } from '../decisions/decidedModel';
+import { createKnowsClient, type KnowsAnswer, type KnowsMutation } from './knows/client';
+import type { KnowsActions } from './knows/KnowsList';
+import { createPlacesClient, placesTransport } from './client';
+import { homeDecisions, homeStatus } from './home-sections-data';
 import './home.css';
+
+const decisionsClient = createDecisionsClient();
+const knowsClient = createKnowsClient();
+const placesClient = createPlacesClient();
+type PlaceSections = { id: string; status?: DecideStatus; decisions?: DecidedItem[]; knowledge?: KnowsAnswer; error?: string };
+
+/** Independent reads keep available sections visible when another engine door fails. Aborting prevents another place's data from arriving here. */
+export function useHomeSections(placeId: string | undefined, revision: unknown, paused: boolean) {
+  const [data, setData] = useState<PlaceSections>();
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!placeId || paused) return;
+    const abort = new AbortController();
+    const save = (patch: Partial<PlaceSections>) => {
+      if (!abort.signal.aborted) setData(before => ({ ...(before?.id === placeId ? before : {}), id: placeId, ...patch }));
+    };
+    save({ error: undefined });
+    const fail = (failure: unknown) => save({ error: failure instanceof Error ? failure.message : 'Could not read this Home.' });
+    void decisionsClient.status(placeId, abort.signal).then(value => save({ status: homeStatus(value) })).catch(fail);
+    // All is capped by the shared DecidedRows model, so this read requests the same ceiling.
+    void placesTransport(`/places/${encodeURIComponent(placeId)}/decisions?limit=${DECIDED_CAP}`, { method: 'GET', signal: abort.signal }).then(value => save({ decisions: homeDecisions(value) })).catch(fail);
+    void knowsClient.list(placeId, abort.signal).then(knowledge => save({ knowledge })).catch(fail);
+    return () => abort.abort();
+  }, [placeId, revision, paused, attempt]);
+  const current = data?.id === placeId ? data : undefined;
+  const knowledge = current?.knowledge;
+  const refresh = () => setAttempt(value => value + 1);
+  const changed = async (job: Promise<KnowsMutation>) => {
+    const result = await job;
+    if (result.ask) throw new Error(`This conflicts with “${result.ask.a.text}”. Nothing was changed.`);
+    refresh();
+    return { undo: async () => { await placesClient.undo(result.undo); refresh(); } };
+  };
+  const actions: KnowsActions = placeId && knowledge && !paused ? {
+    add: text => changed(knowsClient.add(placeId, { text, ifRevision: knowledge.revision })),
+    edit: (id, text) => changed(knowsClient.edit(placeId, id, { text, ifRevision: knowledge.revision })),
+    remove: id => changed(knowsClient.remove(placeId, id, knowledge.revision)),
+    confirm: async id => { await knowsClient.confirm(placeId, id, knowledge.revision); refresh(); },
+  } : {};
+  return { ...current, actions, refresh };
+}
 
 /** Runs an owner's callback and keeps its failure as a sentence. The store's errors are already readable ("That would put “A” inside “B”."),
  * so they are shown as they come; a half-finished multi-step write is the owner's to describe in its message. */
@@ -241,8 +289,8 @@ export function useDeleteFlow(actions: PlaceActions, runner: Runner) {
 }
 
 /** The page frame both Homes share: the scrolling column with the design's bottom fade, and the composer slot under it. `⌘↑` or `Ctrl ↑` goes up a level (Iteration 2). */
-export function HomeFrame({ label, children, composer, onUp }: { label: string; children: ReactNode; composer?: ReactNode; onUp?: () => void }) {
-  return <section className="home-page" aria-label={label}
+export function HomeFrame({ label, children, composer, onUp, populated }: { label: string; children: ReactNode; composer?: ReactNode; onUp?: () => void; populated?: boolean }) {
+  return <section className="home-page" data-populated-place={populated || undefined} aria-label={label}
     onKeyDown={event => { if (onUp && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key === 'ArrowUp') { event.preventDefault(); onUp(); } }}>
     <div className="home-scroll" data-scroll-key="home" tabIndex={-1}><div className="home-column">{children}</div></div>
     {composer && <div className="home-composer">{composer}</div>}
