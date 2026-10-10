@@ -178,6 +178,8 @@ type Bridge struct {
 	openElsewhere *workspaceOpenIndex
 	// world is the engine-wide feed (worldstream.go); nil until first used.
 	world *WorldFeed
+	// worldRows is the per-conversation rows producer (worldrows.go); nil until set.
+	worldRows *worldRows
 	// advice schedules place offers (places_advice.go); nil makes none.
 	advice *PlaceAdvice
 	// openIn opens a new chat in another folder (workingfolder.go); nil keeps every chat in the bridge's workspace.
