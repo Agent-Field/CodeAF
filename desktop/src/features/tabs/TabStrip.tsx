@@ -102,7 +102,8 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
     setSeen(signature);
     if (departureIds(next) !== departureIds(departures)) setDepartures(next);
   }
-  const shown = withDepartures(order, departures);
+  // Every tab is drawn, hidden members included: a collapsed group whose members are all hidden must still show its capsule.
+  const shown = withDepartures(state.tabs, departures);
   const groups = groupsForDepartures(state.groups, departures);
   const departing = new Set(departures.map(item => item.tab.id));
   // The strip draws `state.tabs` as it stands (the reducer keeps pinned tabs first and each group one run), so what a
