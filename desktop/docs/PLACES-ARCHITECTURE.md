@@ -356,7 +356,7 @@ were reduced to verifying it against these rules.
 | Q-P3 | ⌃1–9: pinned only, or pinned then open (9c)? | Pinned first, then open, in rail order; ⌃0 = Now. |
 | Q-P4 | Reopening a closed place: restore its tabs (10a) or nothing (6d "goes quiet")? | Closed by the person: tabs restored. Auto-closed after 12h idle: tabs archived, nothing restored until asked. |
 | Q-P5 | Plain drop vs ⌥ drop (8g vs Interactions) | Plain drop adds (non-destructive); ⌥ moves. |
-| Q-P6 | Merge (promised by 6d, absent from every menu) | The engine supports it (`MergePlaces`); the UI shows no Merge item until the designer places one (`t-d5-be-pg-merge-decision`). |
+| Q-P6 | Merge (6d promises it from the Home menu; the 8f drawing has no row) | Decided 2026-10-10 (`desktop/docs/DECISIONS.md`, `t-d5-be-pg-merge-decision`, BE-PL-44). “Merge into…” sits after “Add to another place…”. The place the menu was opened on is absorbed; the person picks the survivor. Instructions append; the survivor’s policy and tint win; an empty policy field is filled from the absorbed place. |
 | Q-P7 | Counts "N chats / N inside": direct or descendants? | Tiles show descendants (chats in the place and its descendants, each counted once); the Home Chats list shows direct members only. |
 | Q-P8 | Who writes "Since yesterday" and who suggests places/merges? | No model call from the desktop. Show only what the engine already has (child recaps from `t-s1-history`); otherwise draw nothing. Cluster suggestions are not built; the 60-day idle suggestion is a date rule. |
 | Q-P9 | Which folder becomes a chat's working directory when its place has several? | The place's first folder source; the rest are referred `said`. With no folder source, the bridge's launch workspace. |
