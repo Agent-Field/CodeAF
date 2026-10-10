@@ -34,6 +34,8 @@ for (const theme of ['light', 'dark']) {
     const current = menu.getByRole('menuitemcheckbox', { name: /^codeaf/ });
     await expect(current).toHaveAttribute('aria-checked', 'true');
     expect(await current.evaluate(el => { const s = getComputedStyle(el), r = el.getBoundingClientRect(); return [r.width, r.height, s.fontSize, s.gap, s.borderRadius]; })).toEqual([280, 32, '13px', '10px', '7px']);
+    expect(await menu.evaluate(el => { const s = getComputedStyle(el), r = el.getBoundingClientRect(); return [r.width, s.borderRadius, s.padding]; })).toEqual([290, '12px', '5px']);
+    expect(await menu.locator('.keyboard-shortcut').first().evaluate(el => getComputedStyle(el).fontSize)).toBe('11px');
     const config = menu.getByRole('menuitemcheckbox', { name: /Config parser/ });
     await expect(config.locator('.place-swatch')).toHaveAttribute('data-tint-name', 'tide');
     await expect(config.locator('.status-mark')).toHaveAccessibleName('2 need you in Config parser');
