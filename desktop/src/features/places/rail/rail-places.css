@@ -29,11 +29,3 @@
 :where(html:not([data-input="pointer"])) .rail .rail-row-main.nav-item:focus-visible { box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
 /* The browser specimen uses the design's 232px row column without widening the production rail. */
 .rail-row-fixture { width: var(--rail-row-specimen-width); background: var(--frame); }
-/* Places 9c uses a flat selected fill; the tint and status already identify the current row. */
-.app-menu.place-switcher { width: calc(var(--rail-switcher-width) + var(--menu-pad) * 2); }
-.place-switcher .menu-item { height: var(--rail-place-row-height); min-height: var(--rail-place-row-height); font-size: var(--rail-row-font); border-radius: var(--rail-switcher-radius); }
-.place-switcher .menu-item[data-state="checked"] { background: var(--field-2); }
-.place-switcher .menu-check { display: none; }
-.place-switcher .menu-label { white-space: nowrap; overflow: hidden; mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
-.place-switcher .keyboard-shortcut { font-size: var(--rail-meta-font); }
-.place-switcher .menu-section-label { padding: var(--rail-switcher-label-pad-top) var(--space-compact) var(--rail-switcher-label-pad-bottom); font-size: var(--rail-meta-font); font-weight: var(--font-weight-medium); color: var(--ink-3); }
