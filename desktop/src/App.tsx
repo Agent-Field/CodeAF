@@ -8,15 +8,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
 import { checkEngine } from './lib/engine';
 import { connectDesktopTabs } from './lib/desktopTabs';
+import { nativeControls } from './design/nativeControls';
 import { Button, IconButton, Icon, PageHeading, SectionHeading, Text, CodeText, Markdown, Surface, ContextMenu, DropdownMenu, WorkStateIndicator, ToastRegion, iconNames, type MenuEntry } from './components/ui';
 import design from './design/tokens.json';
 import { useMediaQuery } from './design/useMediaQuery';
 import './App.css';
-import { Workspace } from './features/tabs/Workspace';
+import { focusHistoryStorageKey, Workspace } from './features/tabs/Workspace';
+import type { FocusEntry } from './features/focus-history/model';
+import { FocusHistoryProvider, useFocusWireFor } from './features/focus-history/useFocusHistory';
+import { createNextUp, NextUpProvider } from './features/nextup/useNextUp';
 import { PlaceRail, type RailItem } from './features/shell/PlaceRail';
-import { PlacesShellProvider, usePlacesShellController } from './features/places/shell/PlacesShell';
+import { PlacesShellProvider, usePlacesShellController, type PlacesShell } from './features/places/shell/PlacesShell';
 import { PlacesOverlays } from './features/places/shell/PlacesOverlays';
-import { placeSwitcher, useAttentionNotices, usePlaceKeys, usePlaceRail, useWindowTint } from './features/places/shell/useShellPlaces';
+import { placeSwitcher, usePlaceKeys, usePlaceRail, useWindowTint } from './features/places/shell/useShellPlaces';
+import { requestWorkspace } from './features/places/shell/workspaceBus';
 import { GoToChooserSpecimen } from './features/places/shell/GoToChooserSpecimen';
 import { PlaceDialogsSpecimen, ToastSpecimen } from './features/places/shell/PlaceDialogsSpecimen';
 import { chatIdFromSessionFile } from './features/places/client';
@@ -43,6 +48,22 @@ const devPages: readonly Page[] = ['Workspace', 'Activity', 'Design system'];
 const desktop = isTauri();
 const mac = desktop && /Mac/.test(navigator.platform);
 document.documentElement.dataset.environment = mac ? 'mac-desktop' : desktop ? 'desktop' : 'browser';
+
+/**
+ * Puts focus back on a history step. The same place selects at once. Another place waits until that
+ * strip is listening: Go to resolves after the engine, and the select is one turn later so it is not dropped.
+ * A drill is the task id the workspace recorded; none means the tab's own page.
+ */
+function restoreFocus(shell: PlacesShell, entry: FocusEntry) {
+ const task = entry.drillPath[0];
+ const apply = () => {
+  requestWorkspace({ type: 'select', id: entry.tabId });
+  requestWorkspace({ type: 'view', id: entry.tabId, change: { route: task ? { taskId: task, back: [], forward: [] } : undefined } });
+ };
+ if (entry.windowPlace === shell.place) { apply(); return; }
+ void shell.goTo(entry.windowPlace).then(() => { window.setTimeout(apply, 0); }).catch(shell.warn);
+}
+
 function App() {
  useEffect(connectDesktopTabs, []);
  const [page, setPage] = useState<Page>('Workspace');
@@ -89,13 +110,23 @@ function App() {
  usePlaceKeys(shell, enterWorkspace);
  usePaletteKey(enterWorkspace);
  useWindowTint(shell);
- const attention = useAttentionNotices();
+ // One controller per window. Skip and a pending Accept stay here, not on the module singleton.
+ const [nextUpWindow] = useState(() => createNextUp());
+ const shellNow = useRef(shell);
+ shellNow.current = shell;
+ const [windowLabel, setWindowLabel] = useState('main');
+ useEffect(() => {
+  let live = true;
+  void nativeControls().currentWindow().then(info => { if (live && info.label) setWindowLabel(info.label); }).catch(() => undefined);
+  return () => { live = false; };
+ }, []);
+ const focusWire = useFocusWireFor(focusHistoryStorageKey(windowLabel), entry => restoreFocus(shellNow.current, entry));
  const appItems: RailItem[] = [];
+ // No Inbox row. Questions in other conversations are the strip's frame pill, fed by nextUpWindow.
  const rail = usePlaceRail(shell, {
   inert: narrow ? !drawerOpen : sidebarHidden && frame.peek !== 'rail', peeking: frame.peek === 'rail',
   onToggle: () => narrow ? setDrawerOpen(false) : toggleSidebar(), appItems,
   onWorkspace: page === 'Workspace' && !settingsOpen && activeKind !== 'inbox', activeHome, onEnterWorkspace: enterWorkspace,
-  inbox: { count: attention.items.filter(item => item.kind === 'needsYou').length, active: page === 'Workspace' && activeKind === 'inbox' },
  });
  const sidebar = <PlaceRail {...rail}/>;
  const current = shell.place === 'now' ? undefined : shell.index?.byId.get(shell.place);
@@ -119,7 +150,9 @@ function App() {
  }, { canRename: true, startRename: id => shell.openDialog({ kind: 'rename', placeId: id }), newWindowHint: placeShortcuts.openInNewWindow }),
   { kind: 'separator', id: 'close-separator' }, { id: 'close-place', label: 'Close place', shortcut: placeShortcuts.close, onSelect: () => shell.closePlace(current.id) }] : undefined;
  const stripToggle = sidebarHidden ? <RailToggle ref={sidebarToggle} placement="strip" collapsed onClick={toggleSidebar}/> : undefined;
- return <PlacesShellProvider value={shell}><div className={`app-shell ${sidebarHidden ? 'sidebar-collapsed' : ''}`} data-focus={frame.focus || undefined} data-peek={frame.peek || undefined}>
+ // Outer to inner: the place, then Next up, then focus history (its restore asks the shell to move).
+ // The strip draws the frame pill and the banner from the Next up provider. A second pair here would leave the strip.
+ return <PlacesShellProvider value={shell}><NextUpProvider controller={nextUpWindow}><FocusHistoryProvider wire={focusWire}><div className={`app-shell ${sidebarHidden ? 'sidebar-collapsed' : ''}`} data-providers="places next-up focus-history" data-focus={frame.focus || undefined} data-peek={frame.peek || undefined}>
   {frame.edges.top && <div className="shell-hotzone" data-edge="top" data-tauri-drag-region onPointerEnter={frame.enterTopEdge}/>}
   {frame.edges.left && <div className="shell-hotzone" data-edge="left" onPointerEnter={frame.enterLeftEdge} onPointerLeave={frame.leaveLeftEdge}/>}
   {narrow ? <dialog ref={drawer} className="sidebar-drawer" aria-label="Navigation" onCancel={() => setDrawerOpen(false)} onClose={() => {
@@ -146,6 +179,6 @@ function App() {
   <PlacesOverlays shell={shell}/>
   {/* The window's ONE toast region: a closed tab's Stop it and a place's Undo stand in the same stack. */}
   <ToastRegion/>
- </div></PlacesShellProvider>;
+ </div></FocusHistoryProvider></NextUpProvider></PlacesShellProvider>;
 }
 export default App;

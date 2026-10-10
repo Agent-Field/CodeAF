@@ -46,7 +46,7 @@ for (const theme of ['Light','Dark','System']) {
 }
 test('navigation is still; action motion is bounded; collapse has a real transition', async ({page})=>{
  await page.goto('/');
- const navigation=page.getByRole('navigation',{name:'Places'}).getByRole('button',{name:'Inbox',exact:true});
+ const navigation=page.getByRole('navigation',{name:'Places'}).getByRole('button',{name:'Now',exact:true});
  await navigation.hover();
  await expect(navigation.locator('.app-icon')).toHaveAttribute('data-motion','none');
  expect(await navigation.locator('svg').evaluate(el=>el.getAnimations({subtree:true}).length)).toBe(0);
@@ -57,7 +57,7 @@ test('navigation is still; action motion is bounded; collapse has a real transit
  await expect(action.locator('.app-icon')).toHaveCSS('transition-duration',`${parseFloat(design.foundation['duration-directional'])/1000}s`);
  await page.getByRole('button',{name:'Hide sidebar'}).click();
  const shell=page.locator('.app-shell');
- await expect(shell).toHaveCSS('transition-duration',Array(2).fill(`${parseFloat(design.foundation['duration-sidebar'])/1000}s`).join(', '));
+ await expect(shell).toHaveCSS('transition-duration',Array(3).fill(`${parseFloat(design.foundation['duration-sidebar'])/1000}s`).join(', '));
  await expect.poll(async()=>page.locator('.content-pane').evaluate(el=>Math.round(el.getBoundingClientRect().left))).toBe(parseFloat(design.foundation['shell-card-inset']));
  await expect(navigation).not.toBeVisible();
  await page.getByRole('button',{name:'Show sidebar'}).click();
@@ -65,7 +65,7 @@ test('navigation is still; action motion is bounded; collapse has a real transit
 });
 test('reduced motion disables every shared transition and keyframe',async({page})=>{
  await page.emulateMedia({reducedMotion:'reduce'}); await page.goto('/');
- await expect(page.locator('.app-shell')).toHaveCSS('transition-duration','0s, 0s');
+ await expect(page.locator('.app-shell')).toHaveCSS('transition-duration','0s, 0s, 0s');
  await openPage(page, 'Design system');
  await page.getByRole('button',{name:'Open the new-tab field',exact:true}).hover();
  await expect(page.getByRole('button',{name:'Open the new-tab field',exact:true}).locator('.app-icon')).toHaveAttribute('data-motion','none');
@@ -97,7 +97,7 @@ test('theme menu keyboard selection, persistence, outside dismissal and selectio
 for (const theme of ['Light','Dark']) {
  test(`${theme}: shared hover, press, selection and disabled states`,async({page,browserName})=>{
   await page.goto('/'); await chooseTheme(page,`${theme} appearance`);
-  const quick=page.getByRole('button',{name:'Inbox',exact:true});
+  const quick=page.locator('.rail-foot').getByRole('button',{name:/^All places/});
   await expect(quick).not.toHaveAttribute('aria-current','page');
   await quick.hover(); await expect(quick).toHaveCSS('background-color',await tokenColor(page,'tab-hover'));
   await page.mouse.down(); await page.mouse.up();
