@@ -23,6 +23,8 @@ export type GoToPaletteProps = {
   /** ⌘N / Ctrl N, or ↵ on the Create row. `name` is what is typed, trimmed; empty when nothing is typed. */
   onCreate: (name: string) => void;
   onClose: () => void;
+  /** Pick mode: what the field asks. Set, the palette answers one question, so ⌘↵ (new window) and its hint are absent. */
+  pickTitle?: string;
 };
 
 /** The key one row up or down, held at the ends; none active yet starts at the first row (↓) or the last (↑). */
@@ -62,7 +64,7 @@ function NameRun({ name, matched }: { name: string; matched: readonly number[] }
  * Go to a place (Places 6c, ⌘P): a modal over the current place with one field over Recent and the All tree, or one
  * ranked list while typing. It draws only the snapshot it is handed and writes nothing; every verb is the owner's callback.
  */
-export function GoToPalette({ open, places, childrenOf, now, onOpen, onOpenInNewWindow, onCreate, onClose }: GoToPaletteProps) {
+export function GoToPalette({ open, places, childrenOf, now, onOpen, onOpenInNewWindow, onCreate, onClose, pickTitle }: GoToPaletteProps) {
   const dialog = useRef<HTMLDialogElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
@@ -84,6 +86,7 @@ export function GoToPalette({ open, places, childrenOf, now, onOpen, onOpenInNew
   const active = view.rows.find(row => row.key === activeKey) ?? view.rows[0];
   const optionId = (row: PaletteRow) => `${baseId}-o${view.rows.indexOf(row)}`;
   const typed = query.trim();
+  const prompt = pickTitle ? `${pickTitle}, or create one` : 'Go to a place, or create one';
   const total = places.filter(place => !place.archived).length;
 
   useEffect(() => {
@@ -137,7 +140,7 @@ export function GoToPalette({ open, places, childrenOf, now, onOpen, onOpenInNew
     }
     if (event.key === 'Enter') {
       event.preventDefault();
-      if (primary && !event.shiftKey && !event.altKey) { if (active?.kind === 'place') onOpenInNewWindow(active.place.id); return; }
+      if (primary && !event.shiftKey && !event.altKey) { if (!pickTitle && active?.kind === 'place') onOpenInNewWindow(active.place.id); return; }
       choose(active);
       return;
     }
@@ -193,14 +196,14 @@ export function GoToPalette({ open, places, childrenOf, now, onOpen, onOpenInNew
     rows.current.style.paddingBottom = `${slice.padBottom}px`;
   }, [slice.padTop, slice.padBottom]);
 
-  return <dialog ref={dialog} className="palette" aria-label="Go to a place" onClose={closed}
+  return <dialog ref={dialog} className="palette" aria-label={pickTitle ?? 'Go to a place'} onClose={closed}
     onCancel={event => { event.preventDefault(); onClose(); }}
     onClick={event => { if (event.target === dialog.current) onClose(); }}>
     <div className="palette-sheet">
       <div className="palette-search">
         <Icon name="search" size="md"/>
         <TextInput ref={search} role="combobox" aria-expanded="true" aria-controls={listId} aria-autocomplete="list"
-          aria-activedescendant={active ? optionId(active) : undefined} aria-label="Go to a place, or create one" placeholder="Go to a place, or create one"
+          aria-activedescendant={active ? optionId(active) : undefined} aria-label={prompt} placeholder={prompt}
           value={query} autoComplete="off" spellCheck={false}
           onChange={event => { setQuery(event.target.value); setActiveKey(undefined); setScrollTop(0); }} onKeyDown={onKeyDown}/>
         {countLabel(total) && <span className="palette-count">{countLabel(total)}</span>}
@@ -220,8 +223,8 @@ export function GoToPalette({ open, places, childrenOf, now, onOpen, onOpenInNew
         </>}
       </div>
       <div className="palette-hints">
-        <span><KeyboardShortcut label="↵"/> open</span>
-        <span><KeyboardShortcut label="⌘/Ctrl ↵"/> open in new window</span>
+        <span><KeyboardShortcut label="↵"/> {pickTitle ? 'choose' : 'open'}</span>
+        {!pickTitle && <span><KeyboardShortcut label="⌘/Ctrl ↵"/> open in new window</span>}
         <span><KeyboardShortcut label="⌘/Ctrl N"/> new place</span>
       </div>
     </div>
