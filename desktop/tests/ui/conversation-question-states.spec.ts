@@ -75,7 +75,8 @@ for (const scheme of ['light', 'dark'] as const) {
     const field = card.getByRole('textbox', { name: 'Say why (optional)' });
     await page.keyboard.press('Tab');
     await expect(field).toBeFocused();
-    expect(await field.evaluate((node) => getComputedStyle(node).boxShadow)).toMatch(/0px 0px 0px 2px/);
+    // The inline field shares the button's ring, including the halo beyond its edge.
+    expect(await field.evaluate((node) => getComputedStyle(node).boxShadow)).toBe(ring);
   });
 }
 

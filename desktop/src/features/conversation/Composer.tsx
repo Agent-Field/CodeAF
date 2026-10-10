@@ -97,6 +97,12 @@ export function Composer(props: ComposerProps) {
   const { draft, onDraft, onSend, onStop, running, docked, disabledReason, autoFocus } = props;
   const field = useRef<HTMLTextAreaElement>(null);
   const box = useRef<HTMLDivElement>(null);
+  // The strip owns focus while its arrow keys select a conversation. Native autofocus
+  // can run after that selection and take the keyboard away from the next tab key.
+  useLayoutEffect(() => {
+    if (!autoFocus || document.activeElement?.closest('[role="tab"]')) return;
+    field.current?.focus();
+  }, [autoFocus]);
   const autosize = useAutosize(field, draft);
   const focus = useKeyboardFocus();
   const [pastes, setPastes] = useState<string[]>([]);
@@ -264,7 +270,6 @@ export function Composer(props: ComposerProps) {
             placeholder={disabledReason ?? (running ? 'Steer, or queue a message' : props.placeholder ?? (docked ? 'Ask codeaf' : START_PLACEHOLDER))}
             value={draft}
             disabled={disabled}
-            autoFocus={autoFocus}
             rows={composerMinRows}
             onChange={event => { onDraft(event.target.value); atPicker.sync(event.target); }}
             onSelect={event => atPicker.sync(event.currentTarget)}

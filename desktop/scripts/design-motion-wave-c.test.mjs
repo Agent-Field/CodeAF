@@ -14,6 +14,8 @@ test('reduced motion disables every rise, scale, breathe distance and component 
  for (const key of Object.keys(design.foundation)) {
   if (key.startsWith('motion-rise-') || ['motion-place-slide', 'breathe-from', 'breathe-to'].includes(key)) assert.ok(reduced.includes(`--${key}: var(--motion-rest);`), key);
   if (key.startsWith('motion-scale-') && key !== 'motion-scale-rest') assert.ok(reduced.includes(`--${key}: var(--motion-scale-rest);`), key);
+  // The next-up banner fade is the one duration that stays. Zeroing it snaps the fold.
+  if (key === 'i2-banner-duration') { assert.equal(reduced.includes('--i2-banner-duration:'), false); continue; }
   if (key.endsWith('-duration') || key === 'motion-tab-collapse') assert.ok(reduced.includes(`--${key}: var(--duration-none);`), key);
  }
 });

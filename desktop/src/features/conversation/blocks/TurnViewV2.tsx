@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Button, Icon, IconButton } from '../../../components/ui';
+import { Button, ContextMenu, Icon, IconButton } from '../../../components/ui';
 import type { TurnBlock, TurnV2 } from '../types';
 import { spoken } from '../work/format';
 import { UserMessage } from '../UserMessage';
@@ -8,6 +8,7 @@ import { AnswerBlock, ErrorBlock, UpdateBlock, type WorkedLink } from './BlockVi
 import { Attachments, type RenderAttachment } from './attachments';
 import { Steers } from './Steer';
 import { TurnFooter } from './TurnFooter';
+import { foldedTurnMenu } from '../menus/messageMenu';
 import '../conversation.css';
 import './blocks.css';
 
@@ -23,15 +24,19 @@ export type TurnViewV2Props = {
   retrying?: boolean;
   /** Opens the turn's work blocks; with it, the last answer carries a "Worked 42s" link. */
   onOpenWork?: (blockIds: string[]) => void;
+  /** Opens the same conversation at this turn without replacing the reader's tab. */
+  onOpenConversationTab?: (anchor: string, background: boolean) => void;
 };
 
-function FoldedLine({ turn, onToggleFold }: Pick<TurnViewV2Props, 'turn' | 'onToggleFold'>) {
+function FoldedLine({ turn, onToggleFold, onOpenConversationTab }: Pick<TurnViewV2Props, 'turn' | 'onToggleFold' | 'onOpenConversationTab'>) {
   return (
-    <Button className="turn-folded" aria-expanded={false} aria-label="Unfold" onClick={onToggleFold}>
-      <span className="turn-folded-user">{plainMessage(turn.user)}</span>
-      {turn.digest && <span className="turn-folded-digest">{turn.digest}</span>}
-      <span className="turn-folded-chevron"><Icon name="chevron" size="xs" /></span>
-    </Button>
+    <ContextMenu items={foldedTurnMenu(turn, onOpenConversationTab)} label="Folded turn actions">
+      <Button className="turn-folded" aria-expanded={false} aria-label="Unfold" onClick={onToggleFold}>
+        <span className="turn-folded-user">{plainMessage(turn.user)}</span>
+        {turn.digest && <span className="turn-folded-digest">{turn.digest}</span>}
+        <span className="turn-folded-chevron"><Icon name="chevron" size="xs" /></span>
+      </Button>
+    </ContextMenu>
   );
 }
 
@@ -74,7 +79,7 @@ export function TurnViewV2(props: TurnViewV2Props) {
   if (folded) {
     return (
       <section className="turn-v2" data-folded="true" data-turn={turn.id} data-anchor={turn.id}>
-        <FoldedLine turn={turn} onToggleFold={onToggleFold} />
+        <FoldedLine turn={turn} onToggleFold={onToggleFold} onOpenConversationTab={props.onOpenConversationTab} />
       </section>
     );
   }

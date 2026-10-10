@@ -1,9 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 
-// Council chat end to end through two harnesses: the Live row on Places Home, and the council pane over a scripted stream.
-// Run with playwright.council-spec.config.ts, which serves both.
-const COUNCIL = `http://127.0.0.1:${process.env.CODEAF_UI_PORT ?? '1776'}`;
-const HOME = 'http://127.0.0.1:1745';
+// The suite's Vite server serves both harnesses, so council coverage needs no extra servers or fixed ports.
+const COUNCIL = '/tests/council-wire/harness/index.html';
+const HOME = '/tests/places-home/harness/index.html';
 type Fake = { calls: string[]; say: (s: string, t: string) => void; decide: () => void; escalate: () => void };
 const calls = (page: Page) => page.evaluate(() => (window as unknown as { __council: Fake }).__council.calls.slice());
 
@@ -12,7 +11,7 @@ for (const theme of ['light', 'dark'] as const) {
     test.beforeEach(async ({ page }) => { await page.addInitScript(t => localStorage.setItem('codeaf-theme', t), theme); });
 
     test('Live shows the running council as "2 of 6 turns" and opening it makes the active tab', async ({ page }) => {
-      await page.goto(`${HOME}/?live=1`);
+      await page.goto(`${HOME}?live=1`);
       const row = page.locator('[data-attention-id="council"] button');
       await expect(row).toContainText('Marketing with Software');
       await expect(row.locator('.home-live-aside')).toHaveText('2 of 6 turns');

@@ -75,6 +75,13 @@ const forming: WorkBlock = {
   ],
 };
 
+const waiting: WorkBlock = {
+  ...running,
+  id: 'waiting',
+  thinking: undefined,
+  steps: [step('s4', 'Removing the old build', 'run', 'waiting', [call('c6', 'bash', { command: 'rm -rf build' }, 'running', '')])],
+};
+
 const settled: WorkBlock = {
   kind: 'work',
   id: 'settled',
@@ -133,6 +140,7 @@ export function WorkSpecimen() {
     <div className="work-specimen">
       <Labelled label="Running: a finished step, then tests in flight"><WorkBlockView block={running} now={NOW} /></Labelled>
       <Labelled label="Running: a call still forming"><WorkBlockView block={forming} now={NOW} /></Labelled>
+      <Labelled label="Running: waiting on you"><WorkBlockView block={waiting} now={NOW} /></Labelled>
       <Labelled label="Settled, opened: failed and stopped steps"><WorkBlockView block={settled} open onToggle={() => undefined} /></Labelled>
       <Labelled label="Settled, folded"><WorkBlockView block={{ ...settled, id: 'folded' }} /></Labelled>
       <Labelled label="Edit as a diff"><OpenCall call={settled.steps[1].calls[0]} /></Labelled>
