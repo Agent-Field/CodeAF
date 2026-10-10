@@ -118,3 +118,51 @@ for (const width of [600, 1200]) {
   await expect(segment).toHaveCount(0);
  });
 }
+
+for (const theme of ['light', 'dark'] as const) {
+ test(`SH-083 keyboard tab reorder keeps focus, selection and section in ${theme}`, async ({ page }) => {
+  await page.emulateMedia({ colorScheme: theme });
+  await open(page, [tab('p', 'Pin one', { pinned: true }), tab('q', 'Pin two', { pinned: true }), ...tabs]);
+  const note = page.locator('.workspace-strip-note[role="status"]');
+  await expect(note).toHaveAttribute('aria-live', 'polite');
+  await expect(note).toHaveAttribute('aria-atomic', 'true');
+  const move = async (name: string, key: string, message: string) => {
+   const target = page.getByRole('tab', { name, exact: true });
+   await target.focus();
+   await page.keyboard.press(`Alt+Shift+${key}`);
+   await expect(target).toBeFocused();
+   await expect(note).toHaveText(message);
+   await expect(page.getByRole('tab', { name: 'Alpha', exact: true })).toHaveAttribute('aria-selected', 'true');
+  };
+  await move('Pin one', 'ArrowRight', 'Moved to position 2 of 2');
+  expect(await order(page)).toEqual(['Pin two', 'Pin one', 'Alpha', 'One', 'Two', 'Beta', 'Gamma']);
+  await page.keyboard.press('Alt+Shift+ArrowRight');
+  expect(await order(page)).toEqual(['Pin two', 'Pin one', 'Alpha', 'One', 'Two', 'Beta', 'Gamma']);
+  await move('One', 'ArrowRight', 'Moved to position 2 of 2');
+  expect(await order(page)).toEqual(['Pin two', 'Pin one', 'Alpha', 'Two', 'One', 'Beta', 'Gamma']);
+  await page.keyboard.press('Alt+Shift+ArrowRight');
+  expect(await order(page)).toEqual(['Pin two', 'Pin one', 'Alpha', 'Two', 'One', 'Beta', 'Gamma']);
+  await move('Gamma', 'ArrowLeft', 'Moved to position 2 of 3');
+  expect(await order(page)).toEqual(['Pin two', 'Pin one', 'Alpha', 'Two', 'One', 'Gamma', 'Beta']);
+  await move('Gamma', 'ArrowRight', 'Moved to position 3 of 3');
+  await move('Gamma', 'ArrowLeft', 'Moved to position 2 of 3');
+ });
+}
+
+for (const width of [600, 1200]) {
+ test(`SH-083 a split reorders as one tab and preserves its focused segment at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 800 });
+  await page.addInitScript(() => Object.defineProperty(navigator, 'platform', { value: 'Linux x86_64' }));
+  const split = tab('split', 'Left and Right', { split: { layout: '1x2', focus: 0, panes: [tab('left', 'Left'), tab('right', 'Right')] } });
+  await open(page, [tabs[0], split, tab('b', 'Beta')]);
+  const name = width === 600 ? 'Left · Right' : 'Right';
+  const target = page.getByRole('tab', { name, exact: true });
+  await target.click({ modifiers: ['Control'] });
+  await target.focus();
+  await page.keyboard.press('Alt+Shift+ArrowRight');
+  await expect(target).toBeFocused();
+  await expect(target).toHaveAttribute('aria-description', 'selected for grouping');
+  await expect(page.locator('.workspace-strip-note[role="status"]')).toHaveText('Moved to position 3 of 3');
+  expect(await order(page)).toEqual(width === 600 ? ['Alpha', 'Beta', 'Left · Right'] : ['Alpha', 'Beta', 'Left', 'Right']);
+ });
+}
