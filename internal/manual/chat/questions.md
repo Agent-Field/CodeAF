@@ -20,7 +20,7 @@ offered; it never substitutes positional yes/no keys.
 Every question is drawn by one thing now — the **question block**, described
 under "How a question looks" below. It never takes the keyboard, the answers are
 numbered, and `esc` on it means *later*. The approval question before a command
-runs, a task proposal, a standing card, a connect offer, an offer to run a saved
+runs, a task proposal, an automation card, a connect offer, an offer to run a saved
 program and a finished harness design are all on it, and so are the two cards you
 raise yourself.
 
@@ -58,7 +58,9 @@ card opens with.
   offer to connect one of your accounts, an offer to run a saved program. The
   safe answer is to skip it.
 - **choice** — which of these. Several answers that have already been thought
-  through, usually with one marked as the pick.
+  through, usually with one marked as the pick. An automation card is a choice
+  with no pick: `1 Save`, `0 Don't save`, and `2 Save and run it now` where that
+  means something (*The automation card* below).
 - **judgement** — is this good enough. A written page waiting to be approved.
   Only you ever answer one.
 - **clarification** — I could not tell what you meant. Words are the first
@@ -74,8 +76,8 @@ card opens with.
 
 ## Which questions wait, which one carries a clock, and when it keeps working while you decide
 
-Most of them wait. A wait that ended is not a no: an approval question, a
-standing card and a page waiting to be approved carry no clock at all, and they
+Most of them wait. A wait that ended is not a no: an approval question, an
+automation card and a page waiting to be approved carry no clock at all, and they
 stay up until somebody answers them.
 
 **A task proposal and a reversible recommendation may carry a clock.** The card's
@@ -167,7 +169,7 @@ in `decisions.jsonl` as the record of what happened.
 Work that finished and that nobody could check sits on `your call`. That is a
 question like any other: home says the conversation is waiting on you, the tab
 signal lights, and the switcher marks the row — the same as it does for an
-approval or a standing card.
+approval or an automation card.
 
 It did not always. A task on `your call` used to leave every one of those saying
 the conversation was idle, and the only way to find it was to open the
@@ -212,7 +214,7 @@ A question the model raised with `ask` is drawn on the row like any other — th
 mark, the conversation's name, what was asked, and the count in the band at the
 top — and no key pressed over that row takes it. The lanes that wrote their own
 card before questions became one object are the ones a row still takes a key for:
-a permission, a task proposal, a standing offer.
+a permission and a task proposal.
 
 Press `enter` on the row instead. It brings that conversation here, and the
 question is above the box where it was raised, with its own keys on it.
@@ -698,10 +700,10 @@ to the status line and leaves a gap:
 `space` opens it again (while the box is empty), and `alt+y` opens it from
 anywhere.
 
-This is what changed about the approval question, where `esc` used to deny, and
-about the standing card, where `esc` used to be the outright no. Nothing is ever
-decided by making something go away — which is why both of those grew a visible
-answer for the refusal (`3 deny`, `0 no`) on the way here.
+This is what changed about the approval question, where `esc` used to deny.
+Nothing is ever decided by making something go away — which is why it grew a
+visible answer for the refusal, `3 deny`, on the way here, and why the no on an
+automation card is an answer you can see and press: `0 Don't save`.
 
 To bring it back, press `alt+y`.
 
@@ -1066,9 +1068,8 @@ end the wait instead.
 
 If you meant to say something *beside* the question and keep it open, `?` is the
 key for that. On a question the model itself asked you get an answer back while
-the question stays open; on a permission, a task proposal or a standing card the
-ask-back reaches the model only once you have answered, and the section on `?`
-below says why.
+the question stays open; on a permission or a task proposal the ask-back reaches
+the model only once you have answered, and the section on `?` below says why.
 
 ## Comment on one option
 
@@ -1103,11 +1104,11 @@ still on your screen and not to ask it again, so the model answers you and the
 answers stay exactly where they were. Nothing is decided by asking.
 
 **A limit worth knowing, and it is now only about the OTHER questions.** A
-permission, a task proposal and a standing card are not asked by a call the model
-is parked on, so a sentence asked back on one of those goes in as an ordinary
-message and is queued behind the question — which is waiting for you. No reply
-comes until you answer. There is no error and nothing is lost: answer the
-question and the ask-back reaches the model with it.
+permission and a task proposal are not asked by a call the model is parked on, so
+a sentence asked back on one of those goes in as an ordinary message and is queued
+behind the question — which is waiting for you. No reply comes until you answer.
+There is no error and nothing is lost: answer the question and the ask-back
+reaches the model with it.
 
 **One exchange per answer.** A second `?` on the same answer says `already asked
 about this one` rather than doing nothing. A question that turned into a
@@ -1272,20 +1273,23 @@ has all of the above: the digits, `esc` for later, the chip, the receipt, the
 settle guard, the narrow card and the phone sheet. `permissions` is its own page
 and states what each answer banks.
 
-**So does the standing card.** The first line says the kind: `wants to remind you`,
-`wants to set up a repeating check`, `wants to watch for something`, or
-`wants to keep a rule`. Under that is what it does, then when and what one time
-costs, and the `where ·` band. The answers sit above the box. A repeating check's
-yes is `Set it up · <cadence>`, its once is `Only now, don't repeat` (this used
-to say `just once`), and its no is `Don't set it up`. A reminder and a rule have
-no once. `o` starts an updated request. `enter` sends your words back to be
-re-proposed.
+A question that is not simply a line of answers still fits here. The approval
+question's widening yes, `2 always`, has a **second beat** on a shell command:
+it replaces the answers row with the shapes the rule could be written as, and
+picks one before anything is written.
 
-**`esc` on a standing card means *later* now, and it used to mean no.** It is
-the one key whose meaning this move changed. Nothing is set up either way, so
-nothing is lost: the question folds to the chip, the card stays open, and the
-count goes on counting it. The outright no is `0 no`, which is drawn on the card
-as an answer you can see and click — where `esc` never was.
+```
+  always? 1 git status*  ·  2 git *  ·  3 just this line  ·  esc never mind
+```
+
+While a beat is up, the digits belong to it — `3` is the third shape and not the
+third answer — and `esc` backs out of the beat rather than putting the question
+off.
+
+**So does the automation card** — `wants to remind you`, `wants to schedule work`
+or `wants to watch for something`, answered with `1 Save`, `2 Save and run it now`
+or `0 Don't save`, and carrying no clock. *The automation card* below has the
+whole of it.
 
 **So does the connect offer** — `connect your <Name> account?` with `1 connect`
 and `2 not now`. A service connected by a KEY has no `1`: a bare yes to one of
@@ -1296,10 +1300,42 @@ with no visible no is a question nobody can end. The waiting mark and the
 sentence arrive as one fact: the moment a sign-in needs you, the line is already
 `connect your <Name> account?`, on this page, on home and on the tab.
 
-**So does the harness lane's pair.** An offer to run a saved program is one line —
-`run harness "research"?` with `1 run it` and `2 not now`. A finished harness
-design is a card — `wrote a program: <name>` with `1 save it`, `2 change it` and
-`3 drop it`, each saying what it costs beside it. `2` resolves nothing: it walks
+## The automation card — Save, Don't save, Change…, and why esc on a reminder card does not say no
+
+When I propose a reminder, scheduled work or a watch, the conversation draws the
+card — the title, when it first runs, what it says or does, where work runs and,
+for anything but a reminder, what one run may take and spend (*Automations*,
+*The card*) — and its question goes on the block above your box. The first line
+says the kind: `wants to remind you`, `wants to schedule work` or
+`wants to watch for something`. The line under it is
+`nothing is saved until you say so`.
+
+The answers are `1 Save`; `2 Save and run it now`, or `2 Save and check it now` on
+a watch, with no `2` on a reminder or on work kept in a separate worktree; and
+`0 Don't save`. **`o Change…`**, or a sentence typed in the box under the card and
+sent with `enter`, is a correction in your own words —
+`say what to change — when, what it does, where it runs` — so nothing is saved
+and I propose it again.
+
+**`esc` is *later*, never no.** The card folds to its rule, my turn keeps waiting
+on it, and `alt+y` brings it back; to decline it, press `0 Don't save`. It
+carries no clock, and no `/autonomy` rule answers it. Home and another window
+offer the same answers. Answered, the card settles into one line:
+`weekly update · Save · saved`, or `weekly update · not saved`.
+
+**A typed `/automations add` or `/automations edit` ends on the same card**, raised
+by your own window rather than by me and answered only there:
+`save this automation?` or `save this change?`, with the reason
+`you typed it, so nothing is saved until you say so` and only `1 Save` and
+`0 Don't save`.
+
+## The harness offer, the task proposal, and the two cards you raise yourself — Stop this task? and Close this tab?
+
+**The harness lane's pair is drawn on the question block.** An offer to run a
+saved program is one line — `run harness "research"?` with `1 run it` and
+`2 not now`. A finished harness design is a card — `wrote a program: <name>`
+with `1 save it`, `2 change it` and `3 drop it`, each saying what it costs beside
+it. `2` resolves nothing: it walks
 into the design's own room, where a change is typed, and the page stays waiting
 until the rewrite lands. The page itself stays down in the conversation, where it
 can be scrolled and read; only the asking is above the box. A design waiting on
@@ -1323,18 +1359,6 @@ from every other question here in three ways worth knowing:
   while one is up your half-typed sentence stays in the box, unsent, because
   `enter` belongs to the card.
 
-A question that is not simply a line of answers still fits here. The approval
-question's widening yes, `2 always`, has a **second beat** on a shell command:
-it replaces the answers row with the shapes the rule could be written as, and
-picks one before anything is written.
-
-```
-  always? 1 git status*  ·  2 git *  ·  3 just this line  ·  esc never mind
-```
-
-While a beat is up, the digits belong to it — `3` is the third shape and not the
-third answer — and `esc` backs out of the beat rather than putting the question
-off.
 ## Questions over the session host and on another machine — do questions work over --host, and on the engine behind an ordinary codeaf when I run it normally
 
 **A question reaches you wherever the conversation is, and you answer it where
@@ -1403,10 +1427,22 @@ gone. The one card in this program that still answers to keys of its own is the
 intake form `/subharness` opens for a saved program, which is a fullscreen page
 with fields to fill in rather than a question above the box.
 
-## Does accepting a standing card mean it repeats?
+## Does saving an automation mean it repeats — what Save says on the card
 
-The answer depends on the kind shown on the card. A one-off reminder says
-`Reminds you then. Nothing repeats.` A repeating check says
-`It repeats on that cadence until you stop it.` A rule says
-`The rule is kept until you stop it.` These are the engine's own answer
-consequences, shared by the home screen and the conversation.
+It depends on what was proposed, and the card says which beside `1 Save`:
+
+- a watch — `It looks on that rhythm while codeaf is open, and tells you when it happens.`
+- anything on a rhythm — `It runs on that rhythm while codeaf is open, until you stop it.`
+- one moment — `It runs once, then. If codeaf is closed then, it runs when you next open it.`
+
+`2 Save and run it now` says `Saves it, then does it once now, here, while you watch.`
+(on a watch, `Saves it, then takes one look now, here, while you watch.`), and
+`0 Don't save` says `Nothing is saved and nothing runs.` On the card a typed
+`/automations add` raises, `1 Save` says
+`It runs on this schedule while codeaf is open.`; on an edit's,
+`The automation runs this way from its next time.`
+
+Saving is not forever: pausing or deleting one later is `/automations`, or asking me
+(*Automations*). A rule such as "always use tabs" is not an automation — it has no
+time and nothing to run — so it is kept as a memory marked always, with `/always`
+(*Rules are not automations*).

@@ -672,6 +672,20 @@ A folder I worked out for myself — the project a task turned out to stand in, 
 one you chose — is not called attached and is never quoted to me as instructions you gave;
 it is only where work went.
 
+## Which folder an automation works in — the conversation's own folder, not the ones you chose
+
+An automation runs in the folder of the conversation that made it — the directory the
+status line shows — or in your home folder when that conversation belongs to no project.
+A typed `/automations add` runs in its window's project unless it names a `folder`. A
+watch's command runs there, and a files look stays inside it. The folders you attached
+with `/folder` do not go with it: each run of work is a conversation of its own, opened
+on that one folder and told about none of the others.
+
+Work changes that folder directly, as a turn of your own does, so nothing waits for
+`/land` — or, when you asked for it to be kept for review, each run gets a separate git
+worktree whose branch is kept for you to merge
+(*Automations*, *Where does scheduled work run*).
+
 ## Attach a folder — /attach with a directory after it
 
 `/attach <path>` with a **folder** after it used to refuse with

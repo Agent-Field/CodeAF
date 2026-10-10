@@ -34,8 +34,8 @@ answering one question you would ask walking up to a colleague's desk:
    Spark Fleet Ssh Audit · 2 hosts up, 1 not
    made apartments-minto-street.md
 
- standing
-   the 6am repo watch
+ automations
+   weekly update
 ```
 
 Everything with rows in it is on the **left**, in the fixed order of the seven panels.
@@ -79,7 +79,7 @@ panels below them, which are in the rail only because they are quiet today.
 
 **The rank never moves, only the side.** Within the field and within the rail the order is
 always `sessions`, question rows, `projects`, `since you left`, `spend`,
-`standing` — so two panels that both fill never swap places.
+`automations` — so two panels that both fill never swap places.
 
 One column under 110 cells, where every panel is in that one order and there is no rail;
 two columns from 110; three from 170, where the rail is the third and the field fills the
@@ -95,7 +95,7 @@ from home stands there as a card. Nothing else stands in it.
 | `sessions` | one of the fifteen most recent conversations | opens the conversation | `your recent conversations appear here` |
 | `since you left` | what landed while you were away | opens the record, the file or the place | `what watches and tasks did while the terminal was shut` |
 | `spend` | today, the fortnight, who it went to | nothing — its lines are read, never stood on or pressed; the heading opens the spend place | `every chat and task is priced here` |
-| `standing` | a standing order — reminder, routine, watch or rule — soonest first | opens the standing place | `reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"` |
+| `automations` | an automation that will run again — a reminder, scheduled work or a watch — soonest first | opens the automations place | `reminders, scheduled work and watches · "remind me at 6" or "every morning at 9"` |
 
 **An empty headed panel keeps its heading and that one dim line** — it names what arrives there and
 the one thing that puts it there, and it never says the panel is empty. On a narrow column
@@ -115,12 +115,11 @@ The selected row's description shows the question and its available answers. The
 same digit keys answer it. Once the question is resolved and Home refreshes, the
 question mark disappears. Questions belonging to items outside the visible lists
 remain reachable as unheaded rows; they are not dropped because their owner is absent.
-Standing items that need an answer also keep an unheaded question row.
 
 **Every description opens with the thread the row belongs to**, as a title line of its
 own — `thread: Searching for Apartments Near Minto`, spelled exactly as the conversation list spells
 that conversation — then a blank line, and then the rest: the question, or a landing's
-files and sentence, with the answers at the right. A watch made from home's own box belongs
+files and sentence, with the answers at the right. A row of the `automations` panel belongs
 to no thread and has no title line. On a frame with no description column the read row
 grows three lines under itself for this; a terminal too short to keep those lines free
 keeps one, and while such a row is read the rows under it move down two for the moment.
@@ -153,8 +152,8 @@ landing is the one still in your head.
 
 **A landing is one line at rest**: its name and how long ago it landed. **The right margin
 of every row of the field is a time** — how long a question has waited, how long ago a
-landing landed, when you last spoke in a conversation, how long a task has run, when an
-order is due — and nothing else stands there.
+landing landed, when you last spoke in a conversation, how long a task has run — and nothing
+else stands there; an `automations` row has nothing at its right at all.
 
 **The row under the pointer or the cursor grows its description** — the thread's title
 line, a blank, then how many files it wrote, the first sentence of what the work came to,
@@ -181,8 +180,8 @@ work has already finished.
 
 **Only a landing ages.** A `your call` is a row for two days after it landed; after that the
 panel's last line counts it with the rest it hides — `3 more` — and `enter` there opens the
-place, where every one of them still is. A question a conversation is stopped on, and a
-watch that needs somebody, never age off home.
+place, where every one of them still is. A question a conversation is stopped on never
+ages off home.
 
 **A landing on `unread` is not repeated by `since you left`.** It goes back to that panel
 as an ordinary line once it has been answered or has aged out of the group.
@@ -331,9 +330,9 @@ away:
 
 ```
  since you left · 12h
-   Spark Fleet Ssh Audit · 2 hosts up, 1 not                                  $0.42
-   made apartments-minto.md                                            Pricing Site
-   fired at 6am — nothing had changed
+   weekly update · done · drafted it                                           1h
+   Spark Fleet Ssh Audit · 2 hosts up, 1 not                                   3h
+   made apartments-minto.md                                                    5h
 ```
 
 Four kinds of line, newest first, four of them — eight in a tall window — then
@@ -345,12 +344,14 @@ Four kinds of line, newest first, four of them — eight in a tall window — th
   `went in circles`, `out of steps`;
 - **a file a conversation made** — `made <name>`, with how long ago at the right and that
   conversation's name under the cursor;
-- **a standing item that fired** — its own last-look line, in its own words; a one-off that
-  fired and stood down reads `fired 3 minutes ago — it told you`;
+- **an automation's run** — the line its own conversation got,
+  `weekly update · done · drafted it`: the last run of each automation, when it ended
+  while you were away and is news. A watch's `nothing new` is never a line;
 - **what memory learned or let go** — `learned 2 things, let go of 1`.
 
 **Every line is a door.** `enter` on a task opens that task's record, on a file opens the
-file, on a firing opens standing and on memory's line opens memory.
+file, on an automation's run opens the automations place (`/automations`) and on memory's
+line opens memory.
 
 It is measured from when you last **closed** home; the very first look has no "since" and
 the panel keeps its heading and `what watches and tasks did while the terminal was shut`.
@@ -487,11 +488,13 @@ inside it. The conversation and question rows have no heading. The row you are o
 wears the same ground and its title goes bold; the row under your mouse pointer wears it too
 while the pointer is on it.
 
-**`→` opens a row's verbs, on every row and at every width**, and the chords work without
-the strip: `ctrl+o` opens a conversation's workspace, the workspace a standing order stands
-over, or the conversation a `since you left` line happened in; `ctrl+y` copies the path,
-`ctrl+e` asks to delete a conversation or pauses a standing item, `ctrl+x` stops. The foot does not change from row to row and
-names none of them; `alt+.` draws the map when you want the rest.
+**`→` opens a row's verbs, on every row that has them and at every width** — an
+`automations` row has none — and the chords work without the strip: `ctrl+o` opens a
+conversation's workspace, the folder an automation runs in, or the folder of the
+conversation a `since you left` line happened in; `ctrl+y` copies a conversation's path,
+`ctrl+e` asks to delete a conversation, `ctrl+x` asks to stop a task this window runs. The
+foot does not change from row to row and names none of them; `alt+.` draws the map when you
+want the rest.
 
 A digit answers the question row drawing its answers, wherever you are standing. `enter` acts on
 the row under the cursor. `alt+.` draws the map.
@@ -541,7 +544,7 @@ the conversation list has this conversation from its first minute.
 says what would put something there. It goes the moment the first row arrives.
 
 A quiet morning on a busy machine is the same screen with fewer rows: `needs you` whispering,
-`sessions` whispering, the conversation list full, `since you left` holding what fired overnight.
+`sessions` whispering, the conversation list full, `since you left` holding what ran overnight.
 There is no accent anywhere when nothing is waiting on you.
 
 Typing works exactly as it does anywhere: `? ask here: "…"` and `+ start a new
@@ -561,19 +564,19 @@ folds it. One panel is open at a time; opening a second folds the first. An open
 taller than the window shows what fits and its line still counts the rest — `3 fewer · 40
 more` — and names no place, because `enter` on it folds rather than opens. The way to
 those rows is the panel's **heading**: `sessions` opens sessions, `since you left` opens memory,
-and `standing` opens standing. Conversations and extra question rows have no heading;
+and `automations` opens automations. Conversations and extra question rows have no heading;
 `projects` opens nothing. The foot under a fold says
 which way it will go: `enter shows the rest`, then `enter folds them`. Opening lasts as long
 as the window; a relaunch starts folded. The fold wears no mark: home spends its two marks
 on the amber `?` and the one moving cell.
 
 **A tall terminal grows the panels**, once every panel has what it naturally shows:
-additional question rows, `since you left` and `projects` to eight rows; `sessions` keeps at most fifteen recent conversations; `standing` from three to five. `spend` never grows. What is left over is air
+additional question rows, `since you left` and `projects` to eight rows; `sessions` keeps at most fifteen recent conversations; `automations` from three to five. `spend` never grows. What is left over is air
 under the shorter column.
 
-**A short terminal squeezes them in a fixed order**: `standing` gives way first, then `spend`,
-then `since you left`, then `sessions`, then `projects`; the conversation list and additional question rows
-shrink last. A squeezed panel keeps its heading, the rows that fit and its `N more` line;
+**A short terminal squeezes them in a fixed order**: `automations` gives way first, then
+`spend`, then `since you left`, then `projects`; the conversation list, the additional
+question rows and `sessions` shrink last. A squeezed panel keeps its heading, the rows that fit and its `N more` line;
 only when every panel is down to that is a panel dropped — and the panels that are only
 whispering go before any panel with rows, whatever their rank, so a very short window
 (fourteen rows) still shows a conversation you can open rather than a sentence about what
@@ -590,9 +593,10 @@ panels, and `enter` again folds it. The box at the foot still searches every con
 the machine as you type — a project's name, a folder's name or a word from what a task came
 to all find them — whether or not a panel is drawing the row.
 
-Every panel's fold works the same way: `N more` under `activity`, `since you left`, `standing`
-and `projects` opens that panel. The places themselves — tasks, standing, spend — are on the
-tab bar and their slash commands, not behind the folds.
+Every panel's fold works the same way: `N more` under `activity`, `since you left`,
+`automations` and `projects` opens that panel. The places themselves — activity, spend,
+automations — open from a panel's heading, their `alt+` keys and their slash commands, not
+from the folds.
 
 Per-project folds — `▸ 13 more, quiet since 1d` under a project's own heading — belong only
 to the **phone shape**, under 60 columns, where home is still an inbox with the projects
@@ -622,13 +626,12 @@ every width, because it is the one number you must not have to go looking for. T
 this manual has the whole order and the `more ▾` menu.
 
 - `2 want you` — how many things have **stopped on you**: a conversation waiting for an
-  answer, a standing order that will not fire until you say so, an errand holding a
-  question. It is drawn in **amber**, which means one thing only: someone is waiting for a
-  person.
+  answer, work that landed as your call, an errand holding a question. It is drawn in
+  **amber**, which means one thing only: someone is waiting for a person.
 - `4 moving` — how many things this machine has **in flight right now**: task nodes out,
-  conversations mid-turn in another window, an `ask here` errand answering, a standing
-  order firing. A conversation with three tasks out counts as three. It is drawn in
-  **cyan**, shows from one, and disappears at nothing.
+  conversations mid-turn in another window, an `ask here` errand answering. A conversation
+  with three tasks out counts as three; an automation's run is not counted (`/status` has
+  it). It is drawn in **cyan**, shows from one, and disappears at nothing.
 - `$0.55 / $500` — every model call written down **since midnight**, against the day's
   allowance, in **green**, the money colour. A machine with no allowance draws the figure
   alone.
@@ -642,17 +645,22 @@ another window asks can take up to ten seconds to reach a chat's top line.
 **The money on this line is the money on the spend place and the `spend` panel**, to the
 cent — one reading of one file, wherever you are standing.
 
-## Where did standing and memory go: the six words on the tab bar
+## Where did standing and memory go on the tab bar — automations is alt+7, memory alt+8, and the seven words
 
-The top line reads `home  chats  AI teams  activity  memory  spend  settings`. `alt+1` through
-`alt+6` go to each; `chats` (`alt+3`) returns to your conversation.
+The top line reads `home  chats  AI teams  activity  memory  spend  settings`. Each place
+has a digit of its own: `alt+1` home, `alt+2` AI teams, `alt+3` chats (back to your
+conversation), `alt+4` activity, `alt+5` spend, `alt+6` settings, `alt+7` automations and
+`alt+8` memory.
 
-- `/standing` (or `/orders`) and `alt+7` open Standing.
-- `/memory` (or `/memories`) and `alt+8` open Memory.
+- **Standing is gone, and automations replaced it.** `/automations` and `alt+7` open the
+  automations place; its word is not one of the seven, and is drawn after them while you
+  are in it. `/standing` and `/orders` are not commands any more — `/standing` answers
+  `there is no command called /standing · / lists them`.
+- **Memory is on the bar**, the fifth word. `/memory` (or `/memories`) and `alt+8` open it.
 
-Their words appear after the six while open. `tab` returns to Home; `alt+.` shows
-all eight numbered destinations. Search is on Home: type into its box to find a
-conversation. There is no separate Search tab or `/search` command.
+`tab` returns to Home; `alt+.` shows all eight numbered destinations. Search is on Home:
+type into its box to find a conversation. There is no separate Search tab or `/search`
+command.
 
 ## Why did a dashboard open when I started codeaf — home greets you
 
@@ -740,7 +748,7 @@ goes empty on the `start a new conversation` row, which is a chat that does not 
 place opens that place. A `projects` row is the one exception: a click on it picks that
 folder for the next message and opens nothing. A click on a panel's **heading** opens the place the heading names:
 `sessions` opens sessions, `since you left` opens memory, `spend` opens spend, and
-`standing` opens standing. There is no `needs you` heading. The conversation list has no heading. The `projects` heading opens nothing
+`automations` opens automations. There is no `needs you` heading. The conversation list has no heading. The `projects` heading opens nothing
 and stays dim. **A heading that opens somewhere underlines on mouse-over.** The
 pointer on a heading moves neither the cursor nor the marked heading.
 A click on a `/` command, `ask here` or the new-conversation row only selects it;
@@ -1028,20 +1036,16 @@ because there is nowhere to continue it.
 refresh (home re-checks every three seconds); or start a new conversation in a project that
 exists — `ctrl+t` on one of its rows.
 
-## Why does it say elsewhere — on a standing item, and nowhere else
+## Why does it say elsewhere — not on a conversation, and not on an automation
 
 **Almost never, and never on a conversation.** Every project but the one this window
 launched in used to carry a dim `elsewhere`, and `enter` on one of its rows opened nothing.
 That is gone: `enter` opens any conversation on home, in any project.
 
-**Home never says it on a standing item either, any more.** Pressing `enter` on a
-**standing item** — a reminder, a watch, a rule — opens the conversation that set it up,
-whichever project it belongs to; it used to refuse with `elsewhere · <the item's workspace>`
-at the foot when that project was not this window's, and that refusal is gone. An item that
-was set up from home and never became a conversation opens the **standing place with the
-cursor on that item** — its own page is the honest answer to "show me this thing". The one
-place the sentence `made from home — no conversation to open` is still said is the standing
-place itself, when `enter` there asks for the conversation behind such an item.
+**Nor on an automation.** Standing items used to refuse with
+`elsewhere · <the item's workspace>` when their project was not this window's; standing
+items are gone, and a row of the `automations` panel opens the automations place whichever
+project it runs in.
 
 A second project is a second **conversation**, built the way the first one was, on its own
 workspace, with its own gate. A conversation still never moves between projects — though it
@@ -1329,11 +1333,11 @@ one behind your back. This is every fate, in the words the drop-up draws them in
 | --- | --- | --- |
 | **`pins the next conversation's model`** | `/model` · `/model <slug>` | The list opens in home's own body; the pinned model appears on the rule above the box. Nothing behind home is touched. |
 | **`next conversation's folder`** | `/project` · `/project <path>` | Bare, opens the folder browser **aimed at the next conversation**; picking a folder pins it, with no duplicate footer message. With a path, pins that folder at once, opens nothing and says nothing. Either way `project: ~/src/parser` at the right of the keys row shows the selection, and neither road writes a second sentence over the keys. |
-| **`opens the page`** | `/settings` `/set` `/config` · `/home` · `/spend` · `/standing` · `/memory` `/memories` · `/history` · `/task` (bare) | A place replaces a place, exactly as before. |
+| **`opens the page`** | `/settings` `/set` `/config` · `/home` · `/spend` · `/memory` `/memories` · `/history` · `/task` (bare) | A place replaces a place, exactly as before. |
 | **`this list is /resume`** | `/resume` `/sessions` | Says `this list is /resume · enter opens a row` — home *is* that list. |
 | **`onto home's tray`** | `/attach <path>` | The file — or picture — rides on home's own tray into the conversation you open next. Home says `attached · notes.md · rides with the next conversation`. A bare `/attach` opens the browser aimed at the next conversation's folder, and a file chosen there lands on the tray. |
-| **`opens a conversation here first`** | `/files` · `/folder` `/place` `/dir` · `/manual` · `/permissions` `/perms` · `/connect` · `/harness` · `/subharness` · `/skill` `/skills` · `/copy` · `/select` · `/rewind` `/undo` `/back` · `/compact` · `/export` `/save` · `/standing <words>` · `/task <brief>` | Opens a conversation at the target — the folder at the right of the keys row and the model on the rule above the box — then runs there. Home closes, exactly as `enter` closes it. `/manual` is on this road since 2026-09-22: it is a question put to the model, so it needs a conversation to be asked in. `/folder` joined it the same day — it gives THIS conversation a folder, and home has no this; the pin it used to be here is `/project`. |
-| **`answers here`** | `/help` · `/status` · `/cost` · `/cache` · `/budget` · `/debug` · `/stop` · `/remember` · `/forget` · a word nobody defined | Answers with a note, and the first line of that note is put on home's own line under the box. `there is no command called /pricing · / lists them` is now something you can read. |
+| **`opens a conversation here first`** | `/files` · `/folder` `/place` `/dir` · `/manual` · `/permissions` `/perms` · `/connect` · `/harness` · `/subharness` · `/skill` `/skills` · `/copy` · `/select` · `/rewind` `/undo` `/back` · `/compact` · `/export` `/save` · `/task <brief>` | Opens a conversation at the target — the folder at the right of the keys row and the model on the rule above the box — then runs there. Home closes, exactly as `enter` closes it. `/manual` is on this road since 2026-09-22: it is a question put to the model, so it needs a conversation to be asked in. `/folder` joined it the same day — it gives THIS conversation a folder, and home has no this; the pin it used to be here is `/project`. |
+| **`answers here`** | `/help` · `/status` · `/cost` · `/cache` · `/budget` · `/debug` · `/stop` · `/remember` · `/forget` · `/always` · `/always <text>` · a word nobody defined | Answers with a note, and the first line of that note is put on home's own line under the box. `there is no command called /pricing · / lists them` is now something you can read. |
 | **`opens the crew panel`** | `/crew` and every `/crew` shortcut | Home steps aside and the crew panel opens over the conversation behind it; `esc` on the panel brings you back to home. A shortcut opens it with a tick on the row it changed. |
 | **`runs on the conversation behind home`** | `/land` · `/land <folder>` · `/workspace <path>` · `/delete` | `/delete` asks to permanently delete the conversation behind Home; it opens its confirmation here and never starts a new conversation. The other commands act on the conversation this window is holding behind the screen — not on the one `enter` would open — and its answer is echoed onto home's line. |
 | **`a fresh conversation behind home`** | `/new` `/clear` `/clean` `/reset` | Replaces the conversation behind the screen and says `started a fresh conversation behind home`. It is not the same act as `enter`, which opens a conversation at the target. |
@@ -1346,6 +1350,24 @@ another project's engine is still running.
 
 **The fate is never the half that gets cut.** On a narrow window the command's own
 description gives way first, whole, and what `enter` will do stays on the row.
+
+## Typing /automations on home — open the list, or add a reminder from the home screen
+
+**`/automations` has no fate on its rows of the `/` list yet** — they carry only their own
+description — so this is what `enter` does with it on home:
+
+- **bare**, it opens the automations place, as `alt+7` does;
+- **`/automations add …`** and **`/automations edit …`** close home and raise their
+  `save this automation?` or `save this change?` card in the conversation behind home.
+  A typed add runs in that conversation's project unless it names a `folder`;
+- **`run`, `pause`, `resume` and `delete`** with an id act at once, with no card, and their
+  receipt — `paused · weekly update` — is written in the conversation behind home.
+
+A line that cannot be read says why on home's own line and saves nothing.
+
+To set one up from home without leaving it, type the sentence and use `ask here` instead:
+its card is answered in home's own pane (*Ask here — a reminder or a watch without opening
+a conversation*). `/standing` is not a command any more; *Automations* has the typed forms.
 
 ## Attach a file before starting — /attach on home, the tray rides into the new conversation
 
@@ -1420,8 +1442,7 @@ selected project. A new window starts with its own default.
 
 **`alt+p` is the same gesture for the folder** — press it, or press the path at the right of
 the keys row, and
-the target walks through the projects in the panel's order, including projects with only
-standing work, and wraps after the last. Clicking a project name in the panel selects it directly. All three controls share one
+the target walks through the projects in the panel's order and wraps after the last. Clicking a project name in the panel selects it directly. All three controls share one
 selection, shown only as `project: <path>` at the right of the keys row. If `/project` selected a destination outside the panel,
 the next cycle starts at its first project. With just one destination already selected,
 `alt+p project` is absent.
@@ -1436,8 +1457,8 @@ asks, never onto `refuses`: home says `approvals · YOLO · tools run without as
 critical commands still ask · for the next conversation you start here`, and the cell
 wears the warning hue while the gate is open. Both are carried onto the conversation
 `enter` opens. **The rung lasts as long as this window does, like the model; the gate is
-spent** — after the conversation opens, Home's approvals cell returns to the
-standing choice. The selected project remains pinned. Neither cell is drawn on a window whose session has no dial for it, and over
+spent** — after the conversation opens, Home's approvals cell returns to its
+unpinned choice. The selected project remains pinned. Neither cell is drawn on a window whose session has no dial for it, and over
 `--host` the far machine's rows decide.
 
 **Home and conversations share the model, effort and approvals controls.**
@@ -1554,7 +1575,7 @@ and opens home. So a space you actually wanted is never eaten: space then `x` le
 lines, from a `ctrl+j` or an `alt+enter` you did not mean. It also includes the other
 places: the same two spaces, typed into a place's own empty box — the tasks roster's filter,
 the memory filter — open home from there. Places without a box,
-such as spend and standing, count the two spaces directly. The door still
+such as spend and automations, count the two spaces directly. The door still
 loses to a space that already means something where you are standing: on the settings panel
 space is the row's `activate` verb, inside a task's record `space` pages the card, and on
 home itself two spaces type into home's own box.
@@ -1626,9 +1647,10 @@ this folder as the first row of `projects`.
 
 ## Is there a key for home?
 
-Three of them. **`alt+1`** goes straight there from anywhere — home is the first of the
-six words on the tab bar, and each answers to its own position, `alt+1` through `alt+6`
-(standing and memory, the two places off the bar, answer `alt+7` and `alt+8`).
+Three of them. **`alt+1`** goes straight there from anywhere — home is the first word on
+the tab bar, and every place answers to a digit of its own, `alt+1` through `alt+8`
+(automations, the one place not drawn on the bar until you are in it, is `alt+7`; memory is
+`alt+8`).
 **Space twice on an empty box** goes there from inside a conversation, and **`tab`** walks to
 it from any other place. `/home` opens it too.
 
@@ -1645,12 +1667,13 @@ activity page, `/history`).
 
 Home remembers when you last **closed** it, and the `since you left` panel says what
 finished after that — a line per task that landed, a line per file a conversation made, the
-watches that fired and what memory learned (*What did it do while I was away*).
+automations whose runs were news and what memory learned (*What did it do while I was away*).
 
 That is the whole mechanism **on home**: no badge, no list of unread things, and no mark of
 its own on a row. (A session's own window does send a desktop notification when its turn
 finishes or it stops on a question while you are looking elsewhere — see "Why a session says
-it needs you" below. Home itself never does.)
+it needs you" below — and an automation's run raises one of its own (*Automations*, *Where
+does the news arrive*). Home itself adds none.)
 
 Looking at the screen is what counts as seeing, so nothing is marked seen the instant it
 appears. The panel holds while the screen is open — a refresh does not silently unmark the
@@ -1704,13 +1727,12 @@ The chips are the ones the question has:
 
 - It is **waiting for permission to run something**: `1 allow once  2 always  3 deny`.
 - It is **asking whether to start a task**: `1 yes  2 no`.
-- It is **asking whether to keep something going**. The chips are that card's own
-  words: a repeating check is `1 Set it up · <cadence>`, `3 Only now, don't repeat`,
-  `0 Don't set it up`. A one-off reminder has no once, and its no is `Don't remind me`.
-  A watch's no is `Don't watch`. A rule's no is `Don't keep it`. **`0` is how you say
-  no from home**: nothing is set up, nothing is run, and the card settles as `not set up`.
-  There is no change chip here, on purpose: that answer is a request for a text box. Open
-  the conversation to say a different time or place.
+- It is **asking whether to save an automation** — a reminder, scheduled work or a watch:
+  `1 Save  2 Save and run it now  0 Don't save`, with `2 Save and check it now` on a watch
+  and no `2` on a reminder or on work kept in a separate worktree. **`0` is how you say no
+  from home**: nothing is saved and nothing runs, and the card settles as
+  `weekly update · not saved`. There is no change chip here, on purpose: `o Change…` asks
+  for words. Open the conversation to say a different time or place.
 
 `2 always` means what it means in the window: **that session stops asking about that
 tool** for the rest of its life. It does not write a permission rule into your settings. The
@@ -1771,8 +1793,8 @@ about somebody else's disk.
 Yes, every few seconds, by reading the folders again. A task landing in another window,
 work somebody starts in a second terminal, or a session stopping to ask a question all
 show up without you doing anything. There is no file watcher: home reads, and closing the
-screen stops the reading. (Standing items — reminders, watches, rules — are a different
-mechanism and do keep going; see the keeping-an-eye page.)
+screen stops the reading. (Automations are a different mechanism: the clock runs them while
+any codeaf window is open, whether home is up or not — see *Automations*.)
 
 The resting screen does not animate, except the one spinner on the first working conversation row
 (*Why does only one row spin*); the ages simply change on the next reading. In screen-reader
@@ -1782,191 +1804,106 @@ The cursor stays on the row it was on rather than on the line number — the ord
 changes when work starts or finishes, and a cursor that stayed put would move you onto
 something else between two glances.
 
-## What is the ◦ row on home — the little circle, and when does a standing order go off?
+## The little circle on home, and when does a standing order go off now — the automations panel
 
-**A standing thing — a reminder, a watch, a rule, an overnight job — is on home's panels
-three ways:**
+**The `◦` rows went with standing orders.** In their place home has the `automations`
+panel, the last of the seven: one row for each automation that will run again — a
+reminder, scheduled work or a watch — soonest first, each its title with nothing at its
+right.
 
-- **while it is asking you something**, it is a row of `needs you`, with the amber `?` and
-  what it is asking under it;
-- **while it is firing**, it is a row of `standing` like any other order — it is not a
-  task and has no row on `sessions`. It is still the item — `ctrl+e` pauses it, `ctrl+x` stops
-  it, and `alt+e` raises how hard it thinks;
-- **while it is simply waiting for its time**, it is a row of `standing`, soonest first.
-  Home does not show when a waiting order will next go off. Press `enter` on the row, or
-  open the standing place with `alt+7` or `/standing`, to read when it is due.
-
-`enter` on a question row opens the conversation that asked for it; on a `sessions` row it
-opens the conversation; on a `standing` row it opens the standing place.
-
-The `◦` mark itself belongs to the standing place and to a conversation's own lines —
-`◦ leave for the train · in 4m`. `∙` is a paused item there, and `◆` means the thing went off
-after the last time you spoke in the conversation behind it. The standing place (`alt+7`,
-`/standing`) is every promise this machine has made, with how much rope each has.
-
-**Retired items are nowhere on home.** Something that fired once and finished, or that you
-stopped, is a thing that happened — the `since you left` panel says so the morning after.
-
-**Typing does not find them.** The box at the foot searches conversations, and a standing
-row riding along under a query would be a row the query never considered; the standing
-place is where every one of them is.
-
-## How do I pause a reminder from home — the → strip, and ctrl+e / ctrl+x
-
-Put the cursor on the item's row (or point at it). **`ctrl+e` pauses it** and **`ctrl+x`
-stops it for good**, from any column, with no strip (on a `sessions` row this window holds,
-`ctrl+x` asks to stop that task instead). **`→`** shows the row's options, including
-`p pause it` or `r resume it` for a paused item. They appear below its description in the
-middle column on a wide home, or under the row on a narrower layout. While they are
-drawn those letters are the verbs. `esc` or `←` closes them.
-
-A third chord, **`alt+e`**, raises how hard that item thinks — see "Make a reminder think
-harder" below. Home says `paused · <your words>` or `stopped · <your words>` at the foot and
-redraws the row from the store, so what you see is what is on disk rather than what the
-keypress hoped for.
-
-Home's box takes every letter, always, so a `p` is a `p` in your sentence wherever the
-cursor rests — *unless the strip is on screen*. That visible strip is what buys the two bare
-letters, and it is the only state on this surface where a printable key is not a character.
-
-A window whose build cannot write to the store says `this window cannot change
-it` rather than pretending.
-
-`enter` on the row **opens the conversation that asked for it** — that is the answer to
-"why did I get this?", whatever project it belongs to. Something you set up from home that
-never became a conversation opens the standing place with the cursor on it instead.
-
-## Make a reminder think harder — how hard a standing item thinks, and alt+e on its row
-
-The machine's **thinking** row does not reach a standing firing at all. An install
-dialled to `max` still does not turn every check on the machine into a deep pass,
-and an item nobody has dialled asks for nothing.
-
-**`alt+e` on an item's row is how you raise the one that deserves it.** Put the cursor on
-the standing item — on home at rest it has a row under `standing`, or under `needs you`
-while it is asking you something — and press it: the rung climbs one step each
-press — `low`, `medium`, `high`, `xhigh`, `max`, then back to `low` — and home says
-`thinking high · <your words>` at the foot. The item's sheet on a phone then carries a dim
-`thinking high`, read straight back from the item's own document.
-
-An item nobody has dialled says **nothing** at all about it, which is not the same as
-`low`: it means nobody chose and no rung is sent. The rung is kept with the item, so it
-survives closing codeaf, and it is what that item's firings **and** its checks ask for
-from then on.
-
-`alt+e` does nothing on a conversation's row: that rung belongs to the window that
-conversation is open in, and the machine's own default is the `thinking` row of `/settings`.
-A window that cannot write to the store says `this window cannot change it`.
-
-## Keeping an eye on — the status line, and /status
-
-When the project this window is in has something standing, the status row at the
-foot of the frame grows one dim segment:
+**When it goes off is in the row's description**, under the cursor or the pointer:
+the sentence `/automations` draws, which says when it goes off next — its kind, its
+schedule, where it is now and how its last run went. Under the cursor `weekly update` reads
 
 ```
-◦ keeping an eye on 2
+scheduled work · every Monday at 09:00 · next Mon 12 Oct at 09:00 · last done
 ```
 
-**Nothing at all when there is nothing** — a line that permanently read
-`keeping an eye on 0` would be a permanent reminder of the absence of a thing.
-The glyph **breathes** — it becomes the same spinner every running thing here
-wears — only while one of them is actually firing. The rest of the time it is
-still.
+and a one-time reminder reads `reminder · today at 18:00`. A rhythm says `next …`; a
+one-time automation's schedule is its moment; a run in hand reads `running now` or
+`about to run`. `enter` on the row, or a click on the `automations` heading, opens
+`/automations` (`alt+7`), which also keeps the paused and finished ones.
 
-`/status` adds one line under the same heading:
+The `◦` lines in a conversation went too: a run now leaves one dim line in the conversation
+that made it, `weekly update · done · drafted it`, and home's `since you left` lists it
+(*Automations*, *Where does the news arrive*). Typing on home searches conversations, not
+automations; typing `aut` offers the automations place itself.
 
-```
-keeping watch   installed · last check 4m
-keeping watch   while a window is open · last check 4m
-keeping watch   nothing is checking · say "remind me…" to start
-keeping watch   nothing is checking · background checks are off · /settings
-```
+## How do I pause a reminder from home — not on home itself: /automations, then → and p
 
-It says **`installed`** when the machine's own timer is set up, so the checking
-happens with no terminal open at all. It says **`while a window is open`** when
-there is no timer but this window is running the pass itself, every five
-minutes. When neither is true it says **`nothing is checking`** — nothing was
-switched off, and the items are still there and still due; there is simply
-nothing running the checks right now. The tail says which way it got there:
-`say "remind me…" to start`, because setting up the first standing thing is what
-installs the timer, or `background checks are off · /settings`, because something
-has stood here before — so the timer went on once — and it is not on now.
+**Home's `automations` rows have no verbs of their own.** `→` opens no strip on them, and
+`ctrl+e` and `ctrl+x` do nothing there; `ctrl+o` opens the folder the automation runs in.
+Pausing, running and deleting belong to the automations place:
 
-The `last check` half is dropped when nothing has ever run. A window with no
-ambient side at all — `--host`, a build without it — prints **no line**, and so
-does one whose timer could not be read: an absent answer is left absent rather
-than reported as "off".
+1. `enter` on the row — or a click on the `automations` heading, `alt+7`, or
+   `/automations` — opens the automations place;
+2. on the automation's row there, `→` then `p` pauses it and says `paused · <title>`; `p`
+   again resumes it, `going again · <title>`.
 
-## Why did a card appear asking me about a reminder — saying yes to something standing
+The same strip has `r` to run it now, `s` to stop a run in hand, `e` to edit it and `d` to
+delete it (*Automations*, *Pause, resume, run now, stop a run that is going, or delete an
+automation*). You can also say it in any conversation — "pause the CI watch" — or type
+`/automations pause <id>`.
 
-When you say something that would keep working after this window closes — "remind
-me at 6 to leave", "tell me when CI on main goes red", "every Monday post the
-standup note" — a card appears in the conversation and **nothing is set up until
-you answer it**:
+A paused automation leaves home's panel, because it is no longer coming up; `/automations`
+still lists it, marked `paused`.
 
-```
-╭─ ? wants to set up a repeating check ──────────────────────────────────────
-│ every Monday at 9, post the standup note from the git log
-│ Mondays at 9am · about $0.02 a run, at most once a day
-│ where · for this project
-╰────────────────────────────────────────────────────────────────────────────
-```
+## How hard does a reminder think, and can I make one think harder — no rung of its own
 
-The head says what kind of thing it is. The next line is what it does. The line
-after that is when, and what one time costs. **`where ·`** is how far it reaches.
-A watch that has to look at something adds `checked every 5 minutes` on that
-cost line. If it made the timing up rather than reading it off what you said,
-the line asks instead of stating:
-`Mondays at 9am. You didn't say, so that's my guess. Right?`
+**An automation has no thinking rung of its own, and nothing on home raises one.** `alt+e`
+on home walks how hard **the next conversation you start here** thinks, whichever row the
+cursor is on, and says `thinking · high · for the next conversation you start here`. It
+used to raise a standing item's own rung; that went with standing orders.
 
-**The answers**, by key, by `←`/`→` and `enter`, or by clicking one:
+What each kind thinks with:
 
-- `1` sets it up. On a repeating check the button reads `Set it up · <cadence>`.
-- `o Change…` turns the box into a place to say the time or the place you want
-  instead: "make it 8", "only in this project", "everywhere". Nothing is set up
-  until a new card comes with them in it. On a rule the button reads `Change where…`.
-- `3` does it now and leaves nothing behind. On a check it reads `Only now, don't repeat`.
-  This used to say `just once`.
-- `0` sets nothing up. The button's words depend on the kind: `Don't set it up`,
-  `Don't remind me`, `Don't watch`, or `Don't keep it`. The row settles as `not set up`.
+- **a reminder** calls no model at all — it only says its line;
+- **scheduled work** is put together the way your own conversations are, so it thinks as
+  hard as an untouched conversation of yours: the `thinking` row of `/settings`, or a level
+  set on the model it runs on;
+- **a watch** has every look judged by a low-tier model, and any work it then runs is
+  scheduled work.
 
-**The line under the answers says what the one you are on will actually do**, written
-out of this card's own facts. A **one-off reminder's card draws no `3`**: "do it now" for
-a line meant for six o'clock is the wrong thing at the wrong moment. The `0` is on every
-one of them.
+There is no way to make one automation think harder than the others. Moving the `thinking`
+row moves every conversation that has not chosen for itself, and every run of work with
+them.
 
-**There is no clock on this one**: no countdown, and no moment where it answers on your
-behalf. If the turn ends with the card still up it says `ended · nothing was set up`. An
-answered card settles in place, grey, with the answer and what it came to on its bottom
-edge — in a conversation and in home's `ask here` pane alike.
+## Is the ambient side off — keeping an eye on 2 and keeping watch are gone; what runs on the clock now
 
-**The first time you ever set one up** the machine's own timer goes on, and one dim line
-says so, once, ever:
-`checks every 5 minutes, window or not · background checks under /settings`.
+**They went with standing orders.** The `◦ keeping an eye on 2` segment at the foot of the
+frame, `/status`'s `keeping watch` row, the `background checks` setting and the background
+timer the machine used to install are all gone. Nothing is installed on the operating
+system any more, and codeaf removes the old timer on every start.
 
-## What does a ◦ line in the middle of my conversation mean — news from something standing
+What runs on a clock now is an **automation**, and **only while a codeaf window is open**:
+one small process per codeaf home, `codeaf clock`, runs them for every window. There is
+nothing to switch on: with a window open they run; with none open nothing runs, and what
+fell due runs once, marked `late`, when one is. A window started with
+`CODEAF_NO_AUTOMATIONS` set starts no clock of its own (*Automations*, *Does it run when
+codeaf is closed*).
 
-Once something is set up it writes **one line and never more** into a
-conversation you have open — the one that asked for it when that is open, and
-otherwise whichever one of that project you are sitting in (the keeping-an-eye
-page has the whole order):
+**`/status` says what is on the clock**, in one line while anything is:
 
 ```
-◦ every Monday at 9 · set up
-◦ every Monday at 9 · said: the standup note is in notes/standup.md
-? keep main green · your call: the fix touches migrations
-∙ remind me at 6 to leave · stopped
+automations   3 on the clock · next weekly update Mon 12 Oct at 09:00 · 1 running
 ```
 
-**When the line appears.** If the chat is open when the thing fires, the line is
-drawn **at once**, the moment the firing arrives. If the chat was **shut** when it
-fired, the same line is drawn when you open it: one row for each thing that was
-waiting, oldest first, above the first thing you type.
+With nothing on the clock there is no line at all. Home's `automations` panel lists the
+same automations, soonest first, and `/automations` (`alt+7`) has every one.
 
-That is the whole of it. **A check that found nothing writes nothing** — a watch
-that ran faithfully for thirty mornings and found nothing leaves your
-conversation exactly as quiet as it was, and home's `since you left` panel is where
-you go to confirm it really did look.
+## How do I say no to a reminder from home — 0 Don't save, from the conversation's row
+
+**Nothing is saved until somebody answers.** A reminder, scheduled work or a watch is
+proposed under `wants to remind you`, `wants to schedule work` or
+`wants to watch for something`, and a conversation waiting on one is a row with the amber
+`?` on home. Its answers are in the row's description — `1 Save  0 Don't save` on a
+reminder; scheduled work adds `2 Save and run it now` (except when it is kept in a separate
+worktree), and a watch `2 Save and check it now` — and **`0` answers it `Don't save` from
+home**: nothing is saved and nothing runs, and it settles as `weekly update · not saved`.
+
+`o Change…` asks for words, so home offers only the digits; open the conversation to say a
+different time or place. One that `ask here` raised is answered in home's own pane with the
+same keys. *Automations* (*The card*) has every line one can show.
 
 ## Ask here — a reminder or a watch without opening a conversation
 
@@ -1995,6 +1932,11 @@ another conversation; the row is still here, still waiting, when home opens agai
 filed only once it is over, you have seen what it came to, and you have moved off its row —
 or when you quit.
 
+**A reminder, scheduled work or a watch asked for here arrives as its card in the pane**:
+`1`, `2` and `0` answer it as they do in a conversation, and `o` opens the pane's own box
+for a correction. Once it is saved the pane says `saved · /automations lists it`, and the
+row's tail reads `saved`.
+
 The whole of it — where the record goes, how the card is answered, how to turn the exchange
 into an ordinary conversation — is on its own page: *Asking from home*.
 
@@ -2019,8 +1961,9 @@ search*). Under 60 columns a row opens a full-frame sheet instead (*Opening a ro
 phone*).
 
 **The machine's own card is gone too.** `↑` off the top of the column stays on the top row,
-and each thing that card said has a place: `keeping an eye on` is the standing place
-(`alt+7`), `today` is the `spend` panel and the pulse line, `agents` is the pulse's
+and each thing that card said has a place: `keeping an eye on` went with standing orders,
+and what runs on a clock is the `automations` panel and `/automations` (`alt+7`), `today` is
+the `spend` panel and the pulse line, `agents` is the pulse's
 `4 moving`, and `thinking` is the `thinking` row of `/settings`.
 
 ## The card beside a search — the preview on the right while you type
@@ -2039,16 +1982,16 @@ drawn only when it has something to say:
 4. **the work** — each task and what it came to, three of them, then `▸ N more tasks`;
 5. **the files it made**, as links;
 6. **where you left off**, the last exchange;
-7. **what is scheduled** and **news since you last looked**;
-8. a dim line of **facts** — `touched 12 files · spent $1.25 · 34k tokens · last active
+7. a dim line of **facts** — `touched 12 files · spent $1.25 · 34k tokens · last active
    12m`;
-9. one dim line naming the strip: `→ verbs: delete, copy name, new in project,
+8. one dim line naming the strip: `→ verbs: delete, copy name, new in project,
    open folder`.
 
 It never moves while the list lifts under your typing, and it goes empty on the
 `start a new conversation` row, because that chat does not exist yet. A frame too short for
 all of it drops bands from the bottom and never touches the name. Nothing that is zero is
-drawn.
+drawn. The **what is scheduled** and **news since you last looked** bands went with
+standing orders; what is coming up is home's `automations` panel.
 
 ## Copy a conversation name from Home
 
@@ -2073,9 +2016,9 @@ are looking at: the row under your pointer when there is one, the cursor's row o
 | `ctrl+t` | a fresh conversation **in that row's own folder** — the one you were in keeps running |
 | `ctrl+o` | asks the machine to open that conversation's workspace folder |
 | `ctrl+y` | copies the workspace path |
-| `ctrl+e` | confirms conversation deletion, or pauses a standing item |
-| `ctrl+x` | stops a standing item for good |
-| `alt+e` | raises how hard a standing item thinks; nothing on a conversation row |
+| `ctrl+e` | confirms conversation deletion |
+| `ctrl+x` | on a task this window runs, asks to stop it; nothing on a conversation row |
+| `alt+e` | walks how hard the next conversation you start here thinks, whatever the row |
 
 `y` and `n` are a question's own first two answers on the `→` strip — `y let it send`,
 `n not this time` — and exist only while that strip is drawn.
@@ -2103,10 +2046,10 @@ pushes the rows under it down. The options are shown only while their shortcuts 
 
 **The verbs are the row's own:** a question's first two option words on its own answer keys; a
 conversation's `x delete`, `c copy name`, then, where it has a folder, `n new in project`
-and `o open folder`; a standing item's `p pause it` or `r resume it`; a task this
-window runs, `s stop`.
+and `o open folder`; a task this window runs, `s stop`. A row of the `automations` panel
+has none: `enter` opens `/automations`, where its verbs are.
 
-**`→` opens the strip on every row of the field, at every width** — the arrows never
+**`→` opens the strip on every row of the field that has verbs, at every width** — the arrows never
 leave the field (owner, 2026-09-17) — and a conversation's verbs are on their chords too:
 `ctrl+e`, `ctrl+o`, `ctrl+y`, `ctrl+t`. The foot names none of them and says the same
 sentence on every row. A project's row has no strip: clicking it selects the next message's project.
@@ -2217,14 +2160,18 @@ until the title would be down to twelve cells.
 ## What happened in this conversation while I was away — news since I last looked
 
 **On the resting home, the `since you left` panel is where that lives** — one line per task
-that landed, per file made, per watch that fired, each a door (*What did it do while I was
-away*).
+that landed, per file made, per automation whose run was news, each a door (*What did it do
+while I was away*).
 
-A conversation's own **news band** — `◆ N things since you left`, with each item underneath
-reading `<age> · <words> · <text>`, for example `4m · keep main green · the tests passed` —
-is drawn on the **phone sheet** under 60 columns and on the **card beside a search**. It
-shows three items, then a `▸ …N more things` door. An absent or empty inbox draws no news
-band at all, and looking at the band does not consume the news.
+**Inside the conversation**, a run of an automation it set up leaves one dim line —
+`weekly update · done · drafted it` — and a run that ended while the conversation was shut
+is drawn when a codeaf window next starts with it in front, not when you switch to it in a
+window already open (*Automations*, *Where does the news arrive*). Its tasks
+say what they came to on their own rows.
+
+There is no news band on a conversation's card any more: `◆ N things since you left`, on the
+card beside a search and the phone sheet, carried what its standing orders had left, and it
+went with them.
 
 ## Where are the files it produced — deliverables on a conversation
 
@@ -2263,49 +2210,38 @@ timed-out Git check draws nothing. The reading arrives a moment after home opens
 that is no longer on this disk says `that folder is gone` in place of the branch it cannot
 have.
 
-## Standing on home — what is scheduled, reminders, routines, watches and rules, what is next up and when
+## Automations on home — reminders, scheduled work and watches, what is scheduled, what is next up and when
 
-**The `standing` panel, last of the seven**: every standing order this machine will act
-on, from every project, **soonest first**, with the rules that simply hold at the end.
-Four kinds of order stand on it — a **reminder** (`remind me at 6`), a **routine** (`every
-morning at nine`), a **watch** (`tell me when CI goes red`, `when go.sum changes`) and a
-**rule** (`never change the public API without telling me`). Each row is your own words
-and **nothing at its right**:
+**The `automations` panel, last of the seven**: every automation on this machine that will
+run again, from every project, **soonest first** — a **reminder** ("remind me at 6"),
+**scheduled work** ("every morning at 9, draft the standup note") or a **watch** ("tell me
+when CI goes red"). Each row is the automation's title and **nothing at its right**:
 
 ```
- standing
-   the 6am repo watch
-   top movers before the open
-   tell me when CI goes red on master
-   never change the public API without telling me first
+ automations
+   leave
+   weekly update
+   ci on main
 ```
 
-**When it happens is said once, in the row's description under the cursor, and each kind
-says it one way** — a fixed sentence you learn once, the kind word first. It is there at
-every width: beside the row in the middle column from 170 cells, and as the line under the
-cursor's row on a narrower frame.
+**When it happens is said once, in the row's description under the cursor** — beside the
+row in the middle column from 170 cells, and as the line under the row on a narrower frame.
+It is the sentence `/automations` draws: the kind, the schedule, where it is now and how its
+last run went — `scheduled work · every Monday at 09:00 · next Mon 12 Oct at 09:00 · last done`,
+`watch · every 15 minutes · running now · last nothing new`, `reminder · today at 18:00`.
+Moments read `today at 18:00`, `tomorrow at 09:00` or `Mon 12 Oct at 09:00`.
 
-- a reminder: `reminder · goes off tomorrow 9:00am`
-- a routine: `routine · every morning at nine · next tomorrow 9:00am · last: done, two branches landed`
-- a watch: `watch · every five minutes · last looked 3m ago · found: the last five runs are green`
-  — or `found nothing`, which for a watch is the commonest finding and a real one
-- a rule: `rule · always`
+Paused and finished automations are not on it; `/automations` keeps them. Three rows show,
+five in a tall window, then `N more`, which `enter` unfolds. **Every row opens the
+automations place** (`/automations`, `alt+7`), and so does a click on the heading: that is
+where one is run, paused, changed or deleted, because the row itself has no verbs. `ctrl+o`
+on a row opens the folder it runs in.
 
-Moments read `today 6:00pm`, `tomorrow 9:00am`, a weekday inside the week (`mon 9:00am`),
-a date beyond it (`21 sep 9:00am`), and `now` once they have arrived. A routine that has
-never fired has no `last:`; a watch that has never looked has no `last looked`. An order in
-the middle of a pass says what the pass is doing instead of its clock.
-
-**An order stopped on you is not on `standing`** — it is a row of `needs you`, with its
-question, and comes back here the moment you answer. Paused, stopped and retired orders are
-not on it either.
-
-Three rows show, five in a tall window, then `N more`, which `enter` opens. **Every row is a
-door into the standing place**, where the orders are kept and changed.
-
-With nothing standing it keeps its heading and
-`reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"` — the
-words that set one up. On a short terminal `standing` is the first panel to give way.
+With nothing on the clock the panel keeps its heading and
+`reminders, scheduled work and watches · "remind me at 6" or "every morning at 9"` — the
+words that set one up. On a short terminal `automations` is the first panel to give way.
+The card beside a search and the phone sheet no longer carry a `next up` band; this panel is
+what is next up (*Automations*, *Automations on home*).
 
 ## How much did today cost — the spend panel on home
 
@@ -2366,10 +2302,11 @@ phone-width frame is walked one row at a time rather than scanned.
 Top to bottom:
 
 1. `sessions`: the fifteen most recent conversations, combining open tabs and saved history without duplicates.
-2. Additional question rows, without a heading — conversations not already listed above,
-   standing items that need a look, and ask-here panes holding a card, from **any** project.
+2. Additional question rows, without a heading — conversations not already listed above
+   and ask-here panes holding a card, from **any** project.
 3. Home ask exchanges retain their own answer rows.
-4. `since you left` — what landed while you were not in the room.
+4. `since you left` — what landed while you were not in the room, the runs of automations
+   among it. There is no `automations` section at this width; `/automations` lists them.
 5. **The projects.** This window's own project is drawn open with its remaining rows; every
    other project is one folded line — `▸ wisp   6 · 2d` — that `enter` or a tap opens in
    place.
@@ -2397,10 +2334,9 @@ There is no second column under 60 columns, so `enter` — or a **tap**, in one 
 rather than two — opens the row's card over the **whole frame**. The top row reads
 `‹ back`, the title and the place are under it, and everything below is the card's bands.
 
-The order is what you can act on first: the answers, then the state, then
-`since you left`, then the work, then what is next, then where it left off, then the
-files it produced. The repository, the keys and the spend are behind one `▸ more` at the
-foot; `→` or `m`, or a tap on that line, opens it.
+The order is what you can act on first: the answers, then the state, then the work, then
+where it left off, then the files it produced. The repository, the keys and the spend are
+behind one `▸ more` at the foot; `→` or `m`, or a tap on that line, opens it.
 
 Keys on the sheet:
 
@@ -2411,12 +2347,9 @@ Keys on the sheet:
 | `↑` `↓` `PgUp` `PgDn` `g` `G` | scroll the card |
 | a digit | answer the question the card is showing |
 | `→` or `m` | open everything behind `▸ more` |
-| `→` then `p` / `s`, or `ctrl+e` / `ctrl+x` | on a standing item: pause it, stop it |
 
-A standing item's sheet carries your words, where it is, when it goes off, what it has
-done, `4 runs · spent $0.08`, `ran 3 times this week · $0.04`, and how hard it thinks when
-you have said. A frame too short for all the bands **drops them from the bottom** — never
-the title and never the answers.
+A frame too short for all the bands **drops them from the bottom** — never the title and
+never the answers.
 
 **Rotating the phone costs nothing.** Crossing 60 columns swaps the inbox for the panels
 and back, and the cursor, what you typed and any errands are all still there.
@@ -2464,6 +2397,9 @@ are said where they happen: in the conversation that met them, and on `/status`.
 
 **Group by project or hide the quiet chats.** `alt+g` and `alt+q` are unbound; the
 `projects` panel and the panels themselves do those jobs.
+
+**Pause, run or change an automation.** A row of the `automations` panel has no verbs;
+`enter` opens `/automations`, where `→` on its row has them.
 
 **Show a preview card at rest.** The card is only beside a search, on a wide frame.
 

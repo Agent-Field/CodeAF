@@ -423,8 +423,8 @@ written, in the same words `/memory` uses:
 
 Something learned in the last hour reads `just now`, then hours, days, weeks and
 months. A memory old enough to be worth doubting is a memory that says so, which
-is the difference between a standing preference and a fact about a project that
-has moved on since.
+is the difference between a preference that still holds and a fact about a project
+that has moved on since.
 
 A line whose age is unknown — an old row from before this was recorded — simply
 carries no age rather than a zero. Nothing here asks a model to work out a date
@@ -566,8 +566,8 @@ memory tidied · 2 merged · 1 superseded
 
 A half that is zero is left out, and a pass that changed nothing says nothing at
 all — which is most passes. The line arrives in whichever conversation you most
-recently touched, if any is open; on a machine with no window open there is no
-line, and the change is simply there the next time you look at `/memory`.
+recently touched, if one is open; otherwise there is no line, and the change is
+simply there the next time you look at `/memory`.
 
 If a tidy write fails, it reports an error rather than recording a successful
 no-op. Successful changes from that pass remain, but its completion watermark
@@ -575,8 +575,8 @@ is not advanced, so the failed work stays eligible for retry. Write failures
 are also journaled when the store can accept the failure record. Quarantined
 rows are excluded even if a project key is accidentally set to `legacy`.
 
-**When it runs.** It rides the same 5-minute background pass that checks
-everything standing, and three things have to be true at once: memory is **on**,
+**When it runs.** It is a background pass that runs only while a codeaf window is
+open, and three things have to be true at once: memory is **on**,
 **nobody has said anything anywhere for fifteen minutes**, and the last tidy was
 **more than six hours ago**. On top of that at least **two** remembered lines
 must have changed since the last one — one new line has already been settled
@@ -594,17 +594,16 @@ quarantine — grouped by how far each one's truth reaches, and answers with at 
   true now in its place.
 
 **What it costs.** One call on the **small work** class — the `consolidate` role
-in `/settings` → Models — a few times a day at most. It spends under the same
-daily budget as everything else that runs in the background, and it is the first
-thing a spent day stops paying for.
+in `/settings` → Models — a few times a day at most. It is skipped for the rest of
+the day once what the pass has spent that day reaches your daily limit (`per day`).
 
 **Where the record is.** Every change is an ordinary memory event, so `/memory`
 is where you see what it did — and because a line it rewrote was last touched by
 the tidy rather than by a conversation, that row's `learned <age>` is the age of
 the rewrite and it names no session. Nothing is deleted: a retired line keeps its
-row and the store keeps what it said before. What the pass spent is one line in
-the day's ledger under `~/.codeaf/v3/standing/`, and it counts against the same
-daily budget as everything else that runs in the background.
+row and the store keeps what it said before. What the pass spent is written to a
+day's record of its own rather than to the machine's spending ledger, so `/spend`
+does not show it.
 
 ## Does it clean up or delete old memories on its own?
 
@@ -716,6 +715,20 @@ remembered makes that line the rule. Nothing learned in the background makes,
 unmakes or replaces a rule, and the tidy never touches one. **Memory off is rules
 off:** `/always` answers
 `memory is off for this session · turn it on under /settings`.
+
+## Where a rule holds — this project or every project, not in this project, and making it permanent
+
+A rule holds where it was kept, and nowhere narrower: in **this project** when it was kept
+in a conversation that has one, or in **every project** when it was typed on home or kept
+in a conversation with no project of its own. The line it was kept with says which.
+
+**There is no "not in this project" exception**, and no rule for one conversation only. To
+stop a rule holding here, switch it off — `→` then `a` on its line in the memory place, so
+it comes up only when it matters — or forget it with `/forget <query>`.
+
+**Making something permanent** is keeping it as a rule: a sentence you want true of every
+later conversation is `/always <text>`, kept at once. Something you want done again at a
+time or on a rhythm is not a rule but an automation (*Automations*).
 
 ## Is that an instruction or a rule — how it knows you mean always, and when it didn't notice a rule and did it once
 
@@ -1056,10 +1069,9 @@ them apply across projects. The ordinary remember tool also defaults to project;
 `/remember` retains its explicit personal-save behavior.
 
 Explicit rules and decisions with supporting user words are read locally before
-the first reply request. A standing order authorized to act unattended is bound
-the same way: its run reads this project's approved rules read-only before its
-first action and writes nothing back, and when memory is on a run that cannot load
-those rules refuses and asks for you instead of acting unbound. Optional semantic recall can arrive later.
+the first reply request. An automation's scheduled work is bound the same way: each
+run is your own conversation done later, so it starts on the same memory and the rules
+you keep with `/always` (*Automations*). Optional semantic recall can arrive later.
 Source words outrank interpretations; assistant assertions do not confirm test
 outcomes. A binding claim is judged against its own supporting span, not every
 word of the turn, so a quotation of ordinary talk cannot manufacture a rule. The
@@ -1118,9 +1130,12 @@ the evidence history.
 ## Will a future intention automatically schedule work?
 
 An intention can be retained with its prerequisite, but memory does not schedule
-it. When available, the existing `stand` tool proposes a standing order and uses
-its existing ratification, triggers and spending rails. Recognizing an opportunity
-never authorizes an unrelated edit. Memory adds no second scheduler.
+it. Something that should happen at a time or on a rhythm is an automation: in a
+conversation I propose it with the `automation` tool, on a card you answer before
+anything is saved, with its own limits, and it runs only while a codeaf window is open
+(*Automations*). A rule with no time — "always run the tests first" — is a memory
+marked always instead (`/always`). Recognizing an opportunity never authorizes an
+unrelated edit. Memory adds no second scheduler.
 
 
 ## Can I inspect the source behind a saved claim?

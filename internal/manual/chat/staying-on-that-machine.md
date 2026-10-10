@@ -41,6 +41,10 @@ the connection came back, but devbox does not keep a turn running while nothing 
 Nothing is lost either way. The far machine is the only thing that writes the session
 file and it writes it as the conversation happens.
 
+**Automations are not held this way.** They run only while a codeaf window is open on that
+machine or attached to it, so closing the last one stops them until a window is back
+(*Automations*).
+
 ## How quickly a dead ssh link is noticed and retried
 
 With the defaults, an ssh connection that stops answering is noticed in about **9
@@ -104,26 +108,26 @@ what it has and opens the one you pick.
 
 It waits for you, and it is there when you come back.
 
-A conversation can stop and ask: may this command run, should this reminder stand, should
-this saved program take the turn, may this account be connected. Those questions used to
-need somebody watching at the exact moment they were raised. On a machine that holds
-sessions they do not: a question raised with no window attached is **kept**, the turn stays
-stopped on it, and the next window to attach is handed it along with how long it has been
-waiting.
+A conversation can stop and ask: may this command run, should this automation be saved,
+should this saved program take the turn, may this account be connected. Those questions
+used to need somebody watching at the exact moment they were raised. On a machine that
+holds sessions they do not: a question raised with no window attached is **kept**, the turn
+stays stopped on it, and the next window to attach is handed it along with how long it has
+been waiting.
 
 So a long piece of work you left running does not fail four hours ago because nobody was
 there to say yes. It is sitting where it stopped.
 
-Five kinds of question wait this way: a permission question about a tool call, a reminder
-or watch asking to stand, an offer to run a saved harness, a request to connect an
-account, and a question the model asked you itself. Answer it exactly as you would have
+Five kinds of question wait this way: a permission question about a tool call, an
+automation's card asking to be saved, an offer to run a saved harness, a request to connect
+an account, and a question the model asked you itself. Answer it exactly as you would have
 answered it live — it is not a different kind of card, it is the card you would have seen,
 with the same keys and the same offer.
 
-The last of the five waits by a different route and you cannot tell them apart: the engine
-simply says what it is still waiting on the moment a window attaches, so a question raised
-into an empty room draws the same block when you arrive that it would have drawn while you
-were sitting there. See **questions** for what that block does.
+The automation card and the model's own question wait by a different route, and you cannot
+tell them apart: the engine simply says what it is still waiting on the moment a window
+attaches, so a question raised into an empty room draws the same block when you arrive that
+it would have drawn while you were sitting there. See **questions** for what that block does.
 
 **It tells you how long it sat there**, on a line of its own just above the card:
 
@@ -356,10 +360,13 @@ you. That is the point of the whole arrangement: the long piece of work you left
 keeps that machine's attention until it is finished, and only then does the ordinary clock
 begin.
 
-**Reminders and watches are not affected by this.** They are not held by that process:
-their pass is done by whichever codeaf is up — any open window, or the timer on that
-machine that calls `codeaf tick` with nobody sitting anywhere. A host going away hands
-their timing back to that timer exactly as closing a terminal always did.
+**Automations do not depend on it either way.** They are run by `codeaf clock`, which runs
+only while a codeaf window is open on that machine or attached to it with `--host` or
+`--at` — and a conversation the host goes on holding after its window closed is not an open
+window. So the host staying or going changes nothing for them: half a minute after the last
+window is gone a run in progress is stopped, recorded as
+`stopped · codeaf closed before it finished`, and whatever falls due meanwhile runs once,
+late, when a window is back (*Automations*).
 
 **And it goes early when codeaf on that machine is rebuilt under it.** It is a running copy
 of the build that started it, so a new binary at the same path does not replace it; it
@@ -514,8 +521,8 @@ Two things.
 The list used to be three long. Harness building and subharness intake cards came off it
 when the wire grew their subscription and their answer: a card raised while nobody is
 attached is handed to the next window that arrives, once, and answering it takes it down.
-Permission cards, reminders, harness offers and account connections wait for you as they
-already did.
+Permission cards, automation cards, harness offers and account connections wait for you as
+they already did.
 
 Nothing here half-works: a capability a road cannot carry is absent rather than present and
 failing, which is why the model is not given a verb it could not finish.

@@ -517,6 +517,26 @@ func TestManualOpensWithNoKeyAndNoModel(t *testing.T) {
 		t.Logf("the answer carries %s labels, exit 0", label)
 	})
 
+	t.Run("a home standing-order due-time question", func(t *testing.T) {
+		const asked = "when does a standing order go off on home"
+		out, code := runManualCommand(t, codeaf, home, asked)
+		if code != 0 {
+			t.Fatalf("`codeaf manual %q` exited %d:\n%s", asked, code, shorten(out, 400))
+		}
+		label := manual.PersonSectionOpen("home")
+		if !strings.Contains(out, label) {
+			t.Fatalf("%q did not return the corrected home section labelled %s; got %v", asked, label, labelsOf(renderedSections(out)))
+		}
+		// STANDING ORDERS ARE AUTOMATIONS NOW, and home's `automations` panel says
+		// when each one goes off next, in the sentence `/automations` draws
+		// (internal/manual's TestHomeAutomationQuestionFindsWhenItGoesOffNext asks
+		// the same question without the binary).
+		if !strings.Contains(out, "which says when it goes off next") {
+			t.Errorf("%q returned the home page without saying where an automation's next time is shown", asked)
+		}
+		t.Logf("`codeaf manual %q` reached %s and explained where the due time is shown", asked, label)
+	})
+
 	t.Run("a page that does not exist", func(t *testing.T) {
 		out, code := runManualCommand(t, codeaf, home, "no-such-page")
 		if code == 0 {

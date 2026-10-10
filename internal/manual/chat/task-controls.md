@@ -14,10 +14,10 @@ has room for that row. Back and Escape change the view; neither stops work.
 ## Scroll the task tree and conversation context independently
 
 On a side column with enough height, the task tree is at the top. A separate
-Conversation section appears only when standing instructions or background jobs
-exist. Each has its own scroll window. Turn the mouse wheel over the section you
-want to read. `alt+pgup` and `alt+pgdown` scroll the Conversation section while
-the task page has the keyboard. The tree retains its existing keyboard navigation.
+Conversation section appears only when this conversation has background jobs, or
+automations it set up that have not finished. Each has its own scroll window. Turn
+the mouse wheel over the section you want to read. `alt+pgup` and `alt+pgdown`
+scroll the Conversation section while the task page has the keyboard. The tree retains its existing keyboard navigation.
 Scrolling over task setup does not move the transcript.
 
 Task setup sits below these windows. `Model` names the working model; `Thinking`

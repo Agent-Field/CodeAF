@@ -843,7 +843,8 @@ underneath whatever you wrote:
 - **`jobs`**, whose list and output are reads of processes you already started.
   Its kill is **not** on the floor; that inherits the blanket mode.
 - **The agent's own bookkeeping** — `remember`, `track` and `recall`. These
-  write to and read from the working state codeaf keeps for itself.
+  write to and read from the working state codeaf keeps for itself — but
+  `remember` set to *always* keeps a rule, so it asks: `needs your ok to keep a rule`.
 - **`manual`**, which reads pages compiled into this binary and touches no disk
   at all. Asking you to approve codeaf looking up its own documentation would be
   asking about the wrong thing.
@@ -1089,7 +1090,11 @@ needs approval but no resolver is attached: <rule>
 ```
 
 Inside a task node the refusal reads
-`refused in a task: <rule> — nobody to ask`. A wait that ends without an answer
+`refused in a task: <rule> — nobody to ask`. An automation's scheduled work runs
+under your own rules with nobody to ask, so the first call they would ask about is
+refused and stops the run as `your call`, naming it —
+`needed your ok to run bash git push`; an `always` you give in a conversation lets
+later runs through (*Automations*). A wait that ends without an answer
 is never worded as a person's no. A timed-out question refuses with
 `not approved: the question timed out`. A turn (or the agent) that ends first
 refuses with `not approved: ended before an answer`.

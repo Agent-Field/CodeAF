@@ -211,7 +211,7 @@ Without that variable, codeaf looks for `rtk` on `PATH`, then its managed copy. 
 to rtk carry `RTK_TELEMETRY_DISABLED=1` and `RTK_NO_TOML=1`: codeaf does not opt you
 into a third party's collection.
 
-## Running codeaf from the terminal — can I run this without the chat
+## Running codeaf from the terminal — can I run this without the chat, every verb a terminal takes
 
 Typing `codeaf` with no arguments opens the conversation. Everything else is a verb after
 it, and there are five kinds:

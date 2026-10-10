@@ -34,12 +34,12 @@ from the session's first keystroke, before any tasks exist. It is the same colum
 chat, and its header is `Tasks N`, or `Tasks N · Traffic N new` in a chat in a team. An untouched empty
 conversation opens without it: no column, no doors, no rule, no telemetry, just the
 centred greeting with the message box inside it (see *The empty screen* page); the
-column stands the moment you type, or at once if a standing order or a task is already
-here. Under the header, a needs-you band when anything needs you; then the roster of
-work grouped by state, and `standing`, the orders standing over this conversation. Work
-fills the column rather than raising it, and the work it fills with is **this
-conversation's alone**. An empty column keeps only its header and its typeable `+ /task`
-and `+ /standing` doors; where the project has a record from earlier sessions, one dim line
+column stands the moment you type, or at once if a task is already here. Under the
+header, a needs-you band when anything needs you; then the roster of work grouped by
+state, and `automations`, the ones this conversation set up. Work fills the column rather
+than raising it, and the work it fills with is **this conversation's alone**. An empty
+column keeps only its header and its typeable `+ /task` and `+ /automations` doors;
+where the project has a record from earlier sessions, one dim line
 at the foot of the column reads `ctrl+. earlier` and opens the task page. `alt+l` closes
 the column and opens it again, remembered between sessions, and the header names it at its
 right: `alt+l`. `ctrl+g` does the same while no foreground command can be kept. With the
@@ -47,13 +47,14 @@ column closed the conversation is laid out at the full width of the terminal, ru
 still draws the strip along the top, and the keys row under the box reads `alt+l tasks`
 once the session has tasks to come back to and no running-turn line owns that row.
 
-**Seven places take the whole frame instead of sharing it**, at every width: home, teams,
-sessions, standing, memory, spend and settings. Five are on the tab bar with the way back to the chats, `home  teams  chats
-sessions  spend  settings`, and `tab` walks the five rooms; `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) jump
-straight to any of those seven or back to the chats from wherever you are standing, a place or a conversation,
-and each
-has commands of its own (`/home`, `/teams`, `/history`, `/standing`,
-`/memory`, `/settings`). The rewind timeline (`/rewind`) takes the frame the same way and is
+**Seven places take the whole frame instead of sharing it**, at every width: home, AI
+teams, activity, automations, memory, spend and settings. Six are on the tab bar with the
+way back to the chats, `Home  Chats  AI teams  Activity  Memory  Spend  Settings`, and
+`Automations` joins it only while you are in it; `tab` walks the rooms on the bar.
+`alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) jump straight to any of those seven or back
+to the chats from wherever you are standing, a place or a conversation — `alt+7` is
+automations — and each has commands of its own (`/home`, `/teams`, `/history`,
+`/automations`, `/memory`, `/settings`). The rewind timeline (`/rewind`) takes the frame the same way and is
 deliberately not one of the seven: it is something you do to this conversation rather than
 a room in the machine.
 
@@ -292,7 +293,11 @@ row, and a working one is answered by the card below. `/quit` and `ctrl+c` end t
 program, ask
 their own question about work in flight, and act on every conversation this window holds
 at once. Closing a tab never quits codeaf, and quitting is not what any of the card's
-three answers does.
+three answers does. With an automation running and no other codeaf window open, the
+first `ctrl+c` at rest, or the last `/quit`, only says
+`1 automation is running — quitting stops it · ctrl+c again to quit`
+(`· /quit again to quit` after `/quit`), and the same gesture within ten seconds leaves
+(*Automations*).
 The session cancels its routing-cache refresh and waits for that refresh's remaining
 local writes before shutdown completes.
 
@@ -302,7 +307,7 @@ work is active. On New chat it closes
 the start page and parks its unfinished first message. Stop on a task page
 ends that task; `/quit` ends the program.
 
-## Keep running, stop work or cancel — closing a tab on a chat that is still working
+## Keep running, stop work or cancel — what keep running does when you close a tab on a chat that is still working
 
 A tool permission question does not trap you in its tab. `ctrl+w` offers the same
 close actions while leaving the question unanswered; `alt+k` opens the chats card and
@@ -880,12 +885,13 @@ meaning until the walk ends. The name and the model are not drawn in a room; the
 own title and model are on the status row, which a room renames.
 
 **Two lines in that slot are about the draft you are typing**, rather than about a state
-the surface is in. `/standing keeps this true` appears while your sentence looks like a
-rule (see the standing orders page), and `ctrl+r spell it out` while it looks like
-something to build and still has room to grow (see the keys page). They share the one
-slot and the standing line wins whenever both would show. While the spelling-out call is
-out, the slot turns a small spinner in front of the same words. Neither ever moves the
-message box: this line is on the frame in every state.
+the surface is in. `enter sizes this task` appears while a live `/task` tag stands later
+in your sentence (see the commands page), and `ctrl+r spell it out` while the sentence
+looks like something to build and still has room to grow (see the keys page). They share
+the one slot and the tag's line wins whenever both would show. While the spelling-out call
+is out, the slot turns a small spinner in front of the same words. Neither ever moves the
+message box: this line is on the frame in every state. A sentence that reads like a rule
+gets no line of its own: a rule is kept with `/always` (*What I remember*).
 
 One line in that slot is not about the next keystroke: `alt+l tasks` (`alt+l traffic` in a
 manager's chat), which appears
@@ -921,7 +927,6 @@ What steps up, in the lines you will see it in:
 | `model · <id>` after `/model` | the model id |
 | `harness · <name>` | the harness's name |
 | `<mode> task <id> started · <title>` | the id and the title |
-| `N standing orders here — /standing` | the count |
 | the legend's hint slot | the key, never the verb beside it |
 | `/help` | the key at the head of each row, never its explanation |
 | `/status` and `/cost` | the figure in the second column, never its label |
@@ -933,7 +938,7 @@ a mark means:
 - **A tinted background on your words is always a slash command codeaf recognises** — any
   recognized command wherever it stands, a leading one or `/compact` mid-sentence. It says
   the word is known to codeaf, not that enter will run it: enter acts only on a leading
-  command, and on a live `/standing`, `/orders`, or `/task` tag later in the draft. Help
+  command, and on a live `/task` tag later in the draft. Help
   rows chip their leading command too. Nothing else borrows the mark.
 - **A key chord is brighter ink and never a background.** `ctrl+b`, `esc`, `↑↓` step up a
   tier; they do not get a chip.
@@ -975,7 +980,7 @@ request shows its name without an empty quote. The same source details remain
 available after `/resume`, and the tasks themselves remain accessible in the task
 column.
 
-## Provider missing or tok/s not showing — why via or the machine in brackets or the rate is not there, no rate after a follow-up
+## Provider missing or tok/s not showing — why via, the provider or machine in brackets, or the rate is missing, no rate after a follow-up
 
 The machine in brackets after the model on the line above the message box
 (`deepseek-v4.1-flash (baidu)`) and the live `38 tok/s` at the right edge of the status
@@ -1040,12 +1045,12 @@ nothing. Space is the separator — no pipe, no bracket, no rule. The groups, le
 - **the meter** — tokens carried over the model's window and the percentage,
   `66.8k/1.3M · 5%`, and `compaction in ~3 turns` when that is close.
 - **elsewhere** — what is alive somewhere other than this conversation: `2 jobs · 1 watch`
-  for background work, absent when both counts are zero. The open-conversation count and
-  the standing count were in this group until 2026-09-09 and are not on the row at all
-  now: the **tab strip** above the transcript names every open conversation that has a
-  draft or a message (an untouched new one has no tab yet), and
-  `◦ 2 standing orders` is a line at the foot of the **task column** (see *The column on
-  the right*).
+  for background work, absent when both counts are zero. A `watch` here is a background
+  job a `watch` call started, not an automation: automations are never on this row —
+  `/status` has an `automations` line, and the column lists the ones this conversation set
+  up. The open-conversation count was in this group until 2026-09-09 and is not on the row
+  at all now: the **tab strip** above the transcript names every open conversation that
+  has a draft or a message (an untouched new one has no tab yet).
 - **the posture** — `YOLO`, drawn only when the gate is open **and** the legend above the
   box is not carrying the approvals chip: while the welcome box or a task's page is up.
   In an open conversation the chip on the legend says the posture at every posture
@@ -1108,15 +1113,14 @@ half, the rate) and gives way before the cache, the bill and the meter.
 
 Until 2026-09-09 the name and the model were the left half of this row and every figure
 sat in one dotted run beside them; the crew word, the `Σ +128 −14` session delta, the
-`tok/s avg` burn, the context sparkline, `2 open · 1 waiting` and `◦ 2 standing orders`
-were on it too. None of those is on the line now — `/status` and the phone sheet still
-print all six, and the standing count is drawn at the foot of the task column.
+`tok/s avg` burn, the context sparkline and `2 open · 1 waiting` were on it too. None of
+those is on the line now — `/status` and the phone sheet still print all five.
 
 ## What each part of the status line means
 
-Nine segments, in a fixed order, grouped as the previous heading describes. Two more —
-`open` and `standing` — are still built and still reach `/status` and the phone sheet,
-and are listed here with the row they left:
+Nine segments, in a fixed order, grouped as the previous heading describes. One more —
+`open` — is still built and still reaches `/status` and the phone sheet, and is listed
+here with the row it left:
 
 | # | segment | example | what the number is | when it is empty |
 | --- | --- | --- | --- | --- |
@@ -1126,7 +1130,6 @@ and are listed here with the row they left:
 | 4 | eta | `compaction in ~3 turns` | forecast from average growth; the same door | empty when the conversation is not growing, when the answer is more than 5 turns out, or when compaction is already due |
 | — | open | `2 open · 1 waiting` | how many conversations **this terminal** is holding, and how many of them are stopped on a question. **Off the row since 2026-09-09** — the tab strip names them all — and on `/status` and the phone sheet | absent whenever only one is open; the `· N waiting` clause is absent when none is waiting |
 | 5 | ambient | `2 jobs · 1 watch` | background work this screen saw start and has not seen killed — a `bash` with `background:true`, a `watch` call | zero of both draws nothing |
-| — | standing | `◦ 2 standing orders` | the active standing orders reaching this project; the mark moves while one is being acted on. **Off the row since 2026-09-09**: it is a line at the foot of the task column, still dim, still pressable, still opening `/standing` | absent when nothing stands here |
 | 6 | yolo | `YOLO` | the gate is open — this conversation's own posture is `yolo`, the `tools.approvalMode` row is `allow`, or the session was launched with `--yolo` — over `--host` it is the far machine's row, carried once when the connection opens. Drawn **only while the legend has no approvals chip** — a conversation whose engine has no approvals door. Never on the welcome box (the greeting says nothing about the gate; the legend and its cell come up the moment the greeting goes — the first keystroke, or on the very first conversation the first message) and never inside a task's page (the legend there carries `◇ on its own`) | empty in every other posture, and empty whenever the `◇` cell on the legend is saying the posture instead |
 | 7 | rate | `38 tok/s` | what the stream is producing **right now** — tokens over elapsed, measured on the live stream by the layer holding it — while the answer is being thought or written; or the phase's own words while the turn is in a phase that is producing nothing (`connecting · 1.2s`, `paced · retry in 6s`, `slow · trying coreweave…`). It is about **whichever work this window is a window onto**: the conversation out here, and the open room's task inside one | empty unless that rate is being measured this instant, for this window's own work: never the last answer's average, never the per-turn burn, never another task's, and never `0 tok/s` |
 | 8 | connection | `devbox · 3ms` | a rolling estimate of one empty round trip to the machine a `--host` conversation runs on; while the link is down this is replaced by `reconnecting to devbox — trying for up to 5 minutes` | empty on every local session and on a hosted one until the first measurement answers; never `0ms` |
@@ -1143,13 +1146,16 @@ are looking at a different one is counted in `N waiting` on the next frame. `tab
 empty box goes to the last one — see the keys page, and home's *Switch between projects
 without leaving*.
 
-**Six facts are on `/status` and the phone sheet but not on the row:** `crew` (auto, and
+**Five facts are on `/status` and the phone sheet but not on the row:** `crew` (auto, and
 any seat you pinned), `changes` (`Σ +128 −14`, lines
 added and removed by this session), `rate` (`1.2k tok/s avg`, this turn's output over
 this turn's whole wall time, waits and tool calls included — which is why it is not the
-figure at the right edge of the row), the compaction sparkline's readings, `open` and
-`watching` (the standing count, which is drawn at the foot of the task column). They were
-all on the row until 2026-09-09; none of them is something you act on from the line.
+figure at the right edge of the row), the compaction sparkline's readings, and `open`.
+They were all on the row until 2026-09-09; none of them is something you act on from the
+line. **One more was never on it:** `automations` — how many are on the clock, which runs
+next and how many are running now,
+`3 on the clock · next weekly update Mon 12 Oct at 09:00 · 1 running` — absent when
+nothing is on the clock (*Automations*).
 
 ## How fast is the connection — host latency and round-trip time in the status line
 
@@ -1284,7 +1290,7 @@ words:
 | `⠹ working · 1m 4s` | a turn is running; spinner plus a count-up | accent |
 | `working` | your own turn is over but work it handed out is still running — a task node in this conversation, or a background job; no spinner and no clock, which belong to a turn that is not running | accent |
 | `starting task` | a task proposal has a countdown and will start automatically | accent |
-| `waiting · your call` | an approval, standing or saved-program question requires an answer, or a task proposal has no countdown | the question hue, bold |
+| `waiting · your call` | an approval or saved-program question requires an answer, or a task proposal has no countdown | the question hue, bold |
 | `stopping · detaching in 7s` | you pressed `esc` and the turn has not finished letting go yet; the count is what is left of the 10-second bound before codeaf detaches | dim |
 | `interrupted` | the last turn was stopped by hand and is over | the bad hue |
 | `COPY` or `COPY · 12 lines` | copy mode | accent |
@@ -1336,8 +1342,8 @@ jobs → compaction eta → the cache's cash half → rate → cache → cost �
 
 `jobs` goes first because it is the one segment left that is not about the conversation in
 front: at sixty columns what you need is what **this** conversation is doing. (The open
-count and the standing count were the first two rungs until 2026-09-09 and are off the row
-entirely now.) The cache segment has a shorter true spelling before it goes — `⟲ saved $0.02 · 89% cached` becomes
+count went before it until 2026-09-09 and is off the row entirely now.) The cache segment
+has a shorter true spelling before it goes — `⟲ saved $0.02 · 89% cached` becomes
 `⟲ 89% cached` — and the live rate goes before the cache's hit rate because the clock on
 the state word already says the turn is alive.
 
@@ -1559,8 +1565,8 @@ value.
 
 Typing `/status` (aliases `/info` and `/context`) prints the list as a note in the
 conversation. It also adds the complete session-file path and the build identity, because
-both are facts meant to be copied rather than permanent rows in a phone-sized sheet. That
-is the only door if you are on the keyboard with the mouse off.
+both are facts meant to be copied rather than permanent rows in a phone-sized sheet. It
+is the only door with the mouse off.
 
 The head is `status` on the left and `esc close` on the right. The foot names the keys:
 `esc close · ↑↓ move`, plus ` · enter model` while the cursor is on the model line.
@@ -1574,8 +1580,8 @@ with its `:level` — the one actable row), `task model` (in a room), `served`, 
 (the tool gate's posture — `prompt`, `allow` or `deny`, where the status line draws only
 the `YOLO` badge and only over an open gate), then every telemetry segment under its own
 word — `background`, `changes`, `spend`, `context`, `cache`, `rate`, `compaction`,
-`connection`, `state` — then `tasks`, `place` (full path, branch and dirty star) and
-`keys`.
+`connection`, `state` — then `tasks`, `automations` (while one is on the clock or
+running), `place` (full path, branch and dirty star) and `keys`.
 
 A press selects a row; a second press on the already-selected row answers it. A press
 outside the list — the title, the rules, the keys line, the empty rows under a short
@@ -1861,9 +1867,8 @@ one message waiting the first piece is counted — `2 wait for this answer` — 
 exactly one it is not counted at all.
 
 `→ steers it in` is there only while the message can go into the running answer: a turn
-still running, and a message of words alone. A waiting message that carries pictures, or
-one bound for the standing-order door (`/standing`), cannot be sent in and the clause is
-absent for it. Pressing
+still running, and a message of words alone. A waiting message that carries pictures
+cannot be sent in, and the clause is absent for it. Pressing
 `space` `space` opens Home and leaves the block with this conversation. `esc` or
 `ctrl+c` stops the answer
 and removes the waiting block at once; `→ steers it in` is absent while a stopped turn
@@ -1877,7 +1882,7 @@ What happens to it:
   the conversation as a normal message of yours. Several waiting messages go **one per
   finished turn**, oldest first, in the order you typed them.
 - **If you leave for Home or another conversation**, it stays waiting in this
-  conversation, with its pictures, pasted documents and standing mark. It still sends
+  conversation, with its pictures and pasted documents. It still sends
   when this answer finishes even while you are somewhere else. Come back before then and
   the same waiting block and hint are above the box; the box contains only the separate
   draft you had not sent.
@@ -3105,8 +3110,8 @@ legend while one is up. Its whole value is that seeing it anywhere means one thi
 
 ## Home and the places use the same colours as the chat — and their own background, none
 
-**Home and the five places beside it — tasks, standing, memory, spend, settings —
-paint from the table you just read.** Same inks, same three background steps, same
+**Home and the places beside it — AI teams, activity, automations, memory, spend,
+settings — paint from the table you just read.** Same inks, same three background steps, same
 terminal background showing through. A place is the chat's palette applied to a list.
 
 For a while they were not. A wave painted a page of their own — a near-black `#12121A`
@@ -3204,8 +3209,7 @@ empty box) is the other place old work is listed. Running work belonging to *oth
 windows is not on the column at all, and never was; `/history` carries that too.
 
 The footer has no counts: the header counts the work and each heading counts its group.
-It is the standing count `◦ 2 standing orders` when anything stands over this project, and
-then up to two dim lines, each of which is a button as well as a key:
+It is up to two dim lines, each of which is a button as well as a key:
 
 ```
 ctrl+. earlier
@@ -3273,16 +3277,18 @@ There is **one scrollbar-less window and no second one**: the wheel, the arrow k
 landing task all move the same offset. What the window cannot show is said at the foot of
 the column: `ctrl+. earlier` onto the full task page.
 
-## What is that column on the right — tasks, standing, jobs and an empty rail
+## What is that column on the right — tasks, automations, jobs and an empty rail
 
-The column beside the conversation is one column in every chat. It carries this
-conversation's work, the orders standing over it, and the background work it started, and
-in a chat in a team it carries the team's Traffic as its second view. (An untouched empty
-conversation has no column at all until the first keystroke, a task, or a standing order;
-*The empty screen* page says why.) Once it stands:
+The column beside the conversation is one column in every chat. From the top: its
+header, the needs-you band and the Tasks view — or, in a chat in a team, the team's Traffic
+(*The column's header, its needs-you band, and the Tasks and Traffic views*); then, a
+blank line apart, the `+ /task` door, the automations this conversation set up
+(*Automations on the right column*) and its background `jobs`; then the foot. (An
+untouched empty conversation has no column until the first keystroke or a task; *The
+empty screen* page says why.)
 
 ```
-Tasks 3 · Traffic 2 new                alt+l
+Tasks 3                                alt+l
 ? Port the parser · your call · nobo…
 ──────────────────────────────────────
 Running 1
@@ -3290,16 +3296,38 @@ Running 1
 Done 1 ▸
 + /task
 
-standing
-◦ keep the tests green
-◦ never touch the public API  everywhere
-+ /standing
+automations
+○ weekly update
+◐ ci on main
++ /automations
 
 ▸ jobs · 1 running · 4m12s
 
-◦ 2 standing orders
 ctrl+. earlier
 ```
+
+- **`jobs`** is this conversation's background work (a server, a build, a watch, a
+  render), one line — `jobs · 2 running`, `jobs · 1 running · 4m12s`, `jobs · 6 ran` —
+  that enter or a click opens and closes. Open, running jobs come first, then finished
+  ones, newest first, with an `N earlier` line counting what did not fit; a row opens that
+  job's page, not a chat. Zero jobs draws nothing (*Background jobs on the column*, on the
+  tasks page).
+- **The roster scrolls; the sections under it do not.** It is given what is left after
+  the doors, the automations rows and the jobs section are reserved.
+- **An idle column draws nothing to mark an absence**: no `none` rows, no empty group
+  headings, no band. The header keeps its words with a dim `0`, and `+ /task` and
+  `+ /automations` remain as the doors. Jobs have no `+` door; a tool starts a job.
+- **The `+` rows type, they do not arm.** Pressing one puts that command and a space at
+  the head of your message box and hands the keyboard back: plain text you can edit or
+  delete, no mode, no form.
+
+**It is one width everywhere**: a quarter of the frame, never under 28 columns or over 40,
+the same in every chat and in either view, so nothing drawn in it moves the conversation.
+Sections are one blank line apart; the band's rule is the one rule in the column.
+
+## The column's header, its needs-you band, and the Tasks and Traffic views
+
+The top of the right-hand column, above the sections under its list:
 
 - **The header** is `Tasks N`, and in a chat in a team `Tasks N · Traffic N new`. The word
   in front is bold ink and the other dim; each is a button with a hover ground and a hint,
@@ -3321,45 +3349,36 @@ ctrl+. earlier
 - **The Traffic view**, in a chat in a team, is what passes in the team, one line a row,
   newest first, with a thin `new` line under what arrived since you last looked. The team
   manager page has the whole of it.
-- **`standing`** is the standing orders reaching this conversation, one line each: a mark,
-  what the order is called, and a dim tail naming its reach **only when that reach is not
-  the ordinary one** (`everywhere` for machine-wide, `just here` for this conversation
-  only, and nothing at all for an order governing this project). A row's mark becomes the
-  spinner while that order is being checked or fired right now. Clicking one opens
-  `/standing` with the cursor already on it.
-- **`jobs`** is this conversation's background work (a server, a build, a watch, a render)
-  as a section under the other two, collapsed by default to one line (`jobs · 2 running`,
-  `jobs · 1 running · 4m12s` when exactly one is live, `jobs · 6 ran` when nothing is).
-  Enter or a click toggles it. Expanded, every running job draws, then finished ones fill
-  whatever room is left, newest first, with `▸ N earlier` counting the rest. Zero jobs draws
-  nothing at all. A click on a job opens its page, not a chat. The tasks page has the whole
-  of it under *Background jobs on the column*.
-- **The `standing` section keeps its rows however long the roster gets.** The sections
-  do not compete for the column: the roster is given what is left over after the doors,
-  the standing rows and the jobs section have been reserved, and it is the roster that
-  scrolls. A session with forty tasks in it still shows the orders standing over it, and
-  the jobs that are running, without scrolling.
-- **At most three orders are drawn, and the label counts the rest**: `standing · 7 more`.
-  Past a handful the rows stop being read one at a time; `+ /standing` (or `/standing`)
-  opens the page that lists them all. A section showing every order it has says nothing
-  extra: the label is simply `standing`.
-- On a **short terminal** the standing rows give way one at a time so that the roster
-  keeps at least six rows, and under that the whole standing section stands down rather
-  than drawing a label over nothing. Live jobs are reserved before standing spends: a
-  running job is not a thing this column hides to make room for furniture.
-- **An idle column draws nothing to mark an absence**: no `none` rows, no empty group
-  headings, no band. The header keeps its words with a dim `0`, and `+ /task` and
-  `+ /standing` remain as the discoverable doors. Jobs add no `+` door; a job is started by
-  a tool, not typed.
-- **The `+` rows type, they do not arm.** Pressing `+ /task` or `+ /standing` puts that
-  command and a space at the head of your message box and hands the keyboard back: plain
-  text you can edit or delete, no mode, no form.
 
-**It is one width everywhere**: a quarter of the frame, never under 28 columns or over 40,
-the same in every chat and in either view, so nothing drawn in it moves the conversation.
-The separation between the sections under the list is one blank line; the band's rule is
-the one rule in the column. On a build with no ambient side the `standing` section is
-absent entirely.
+## Automations on the right column — why it shows only three, `automations · 2 more`, and where the standing orders went
+
+Under the tasks, the right-hand column lists **the automations this conversation set up**
+— said here, or typed here with `/automations add` — that have not finished, one line
+each: a mark and the automation's title. One made in another conversation, or from home
+with `ask here`, is not on it; `/automations` (`alt+7`) lists every one.
+
+- **The mark is its state**: `◐` while a run is in hand, `○` while it waits for its time
+  or is about to run, `=` paused, `?` when its last run came to `your call` or
+  `couldn't check`, and `✕` when it came to `incomplete`.
+- **At most three are drawn, and the label counts the rest**: `automations · 2 more`. With
+  every one on screen the label is simply `automations`; with none there is no label, only
+  the door.
+- **A row opens `/automations` with the cursor on that automation**, where `→` draws its
+  verbs (*Automations*). The column has no verbs of its own.
+- **`+ /automations` puts `/automations ` at the head of the message box**, keeping what
+  you had typed. Sent alone it opens the list; after it come only the typed forms — `add`,
+  `edit`, `run`, `pause`, `resume`, `delete` — and any other word is refused, as in
+  `unknown "remind" — the forms are add, edit, run, pause, resume and delete`. To make one
+  in your own words, just say it.
+- **The rows hold however long the roster gets**; on a **short terminal** they give way one
+  at a time so the roster keeps six rows, and then the section stands down. Running jobs
+  are reserved first.
+
+**Standing orders are gone**, and with them the column's `standing` section, its
+`+ /standing` door and the `◦ 2 standing orders` line at its foot: what ran on a clock is
+an automation, and a rule is a memory marked always (`/always`). A window that cannot read
+automations — a store that would not open, or a `--host` engine on a build without them —
+draws no automations section at all.
 
 ## The right edge: the chevron that brings the task column back, and the key that closes it
 
@@ -3905,15 +3924,50 @@ nothing for it to open — `nothing made yet.` from `/files`, or
 `no subharnesses here yet — a subharness is a saved program for work that comes round
 again.` from `/subharness`. None of them is ever sent to the model.
 
-The **eight places** are not among them: `/standing`, `/history` and `/memory` open their
-page whatever is in it and let the page say so, rather than writing a line here (the Places
-page states the law).
+The **eight places** are not among them: `/automations`, `/history` and `/memory` open
+their page whatever is in it and let the page say so, rather than writing a line here (the
+Places page states the law).
 
 **The same line twice running is one line.** Press a command four times because the first
 press looked like it did nothing, and you get one copy of its answer rather than four
 stacked identical lines; the conversation scrolls back down to the line that is already
 there. If anything at all lands in between — a reply, a tool call, a different line of
 codeaf's own — the answer is written again, in its new place.
+
+## An automation in my conversation — the card that asks before saving, and the dim line `weekly update · done · drafted it`
+
+An automation draws two things in a conversation (*Automations* has the whole of it).
+
+**A card, before anything is saved.** When what you say is a reminder, scheduled work or a
+watch, a card comes up headed `wants to remind you`, `wants to schedule work` or
+`wants to watch for something` — or `save this automation?` for a line you typed with
+`/automations add` — showing the real thing, one fact a line:
+
+```
+╭─ ? wants to schedule work ──────────────────────────
+│ weekly update
+│ every Monday at 09:00 · first run Mon 12 Oct 09:00
+│ cron 0 9 * * 1 · America/Toronto
+│ does · draft the weekly update from the git log
+│ in your checkout
+│ up to 30m and $5.00 a run
+╰─────────────────────────────────────────────────────
+```
+
+Its answers are drawn under the rule, above the message box, like every question's:
+`1 Save`; `2 Save and run it now` (`2 Save and check it now` on a watch, and no `2` on a
+reminder or on work kept in a worktree); `0 Don't save`; and `o Change…`. A typed card
+has only `1 Save` and `0 Don't save`. `esc` puts it off for later. Answered, the card
+folds to its head and one line: `weekly update · Save · saved`, or
+`weekly update · not saved`.
+
+**One dim line per finished run.** The conversation that made the automation gets one
+line, led by the outcome's mark — `✓ weekly update · done · drafted it`,
+`? ci on main · your call · needed your ok to run bash git push` — and if it was closed,
+those lines are drawn when you next open it. A watch's `nothing new` draws none. A change
+made by an `automation` call in a turn leaves the same kind of line: `ci on main · paused`,
+`weekly update · saved`, `… · resumed`, `… · deleted`, `… · running`. None of these lines
+is part of the transcript, none wakes the model, and they cost nothing.
 
 ## I typed something while it was working and it disappeared — the `└` correction stays where I said it
 
@@ -4105,8 +4159,8 @@ would be the one boxed thing on a surface with no boxes.
 one.** Whether you reached a row with the mouse or with `↓`, the row you are on looks the
 same — it does not change appearance depending on which hand you used. In a list the
 conversation opens over you, what tells the two apart is the mark in front: `›` where
-enter would act, `·` where the pointer is. On the places (tasks, standing, memory, spend,
-settings) there is no mark at all: the row under either hand wears the same ground
+enter would act, `·` where the pointer is. On the places (activity, automations, memory,
+spend, settings) there is no mark at all: the row under either hand wears the same ground
 with its name in bold, the way a row on home does.
 
 The step above that is for the thing you have actually **chosen**, and it stays drawn
@@ -4146,8 +4200,8 @@ are inside codeaf, and it changes as you move:
 - a conversation that has not named itself yet: `new conversation · codeaf`, which becomes
   the name the moment the conversation has one
 - a task page: `Fix the nil-map crash · task · codeaf`
-- the tasks, standing, memory, spend or settings place: its own word, as in
-  `memory · codeaf`
+- any other place — activity, automations, memory, spend, settings, AI teams: its own
+  word, as in `memory · codeaf` or `automations · codeaf`
 - over `--host`, the machine comes before the product: `Token counter @ devbox · codeaf`
   (home at rest there is `codeaf @ devbox`)
 

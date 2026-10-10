@@ -1353,8 +1353,9 @@ Two things it deliberately does not do:
   ignored: `--one-model settles this machine's model rows; over --host the far machine
   answers them, so the two cannot be combined`.
 
-Standing items never take this posture, whatever the session that set them up was started
-with. They fire on their own clock long after your run ended, and the crew answers for them.
+Automations never take this posture, whatever the window that set them up was started
+with. They run on their own clock, in the `codeaf clock` process, long after your run ended,
+and your own model rows answer for them (*Automations*).
 
 ## What the screen says under `--one-model` — why does the status line say one model, where did my crew word go, no crew line when a task starts
 
@@ -1424,28 +1425,25 @@ Several things can name a rung, and the most specific one wins:
    `--reasoning` on the command line. It beats everything under it.
 2. **This conversation's own rung.** It is sticky: it is kept in the session's own
    `meta.json`, so it is still there after you close codeaf and come back.
-3. **The piece of work's own rung** — a task carries one in `tasks.json`, and a standing
-   item carries one as its `does.effort`.
-4. **What the call is for.** A standing item's firing and the sentinel check in front of it
-   take the item's own rung, and ask for nothing at all when the item has none — nothing
-   else on this machine reaches them. The errands codeaf runs beside your turn — naming a
+3. **The piece of work's own rung** — a task carries one in `tasks.json`.
+4. **What the call is for.** The errands codeaf runs beside your turn — naming a
    conversation, summarising it, judging where a request belongs — ask for nothing whatever
-   anybody set. Your own turn, and the task workers you hand work out to, take the default.
+   anybody set, and so does a watch's yes-or-no on what it saw. Your own turn, the task
+   workers you hand work out to, and an automation's scheduled work take the default.
 5. **The default** — the **thinking** row, which is `auto` until somebody chooses otherwise.
 
 **`alt+e` moves the rung of whatever you are standing on.** In the message box it moves
 **this conversation's** rung, which is named on the line above the box, beside the model:
 `glm-5.3-flash:high`. On a task — the roster row under the cursor, or the page you are
-inside — it moves that task's rung. On a standing item's card it moves that item's. A
-conversation's rung, a task's rung, and the level `ctrl+t` dials onto one model in
+inside — it moves that task's rung. A conversation's rung, a task's rung, and the level
+`ctrl+t` dials onto one model in
 `/model` all climb one step each press and come back to `auto` off the top — that is how
 you hand this chat, this piece of work, or this model back to whatever stands above it.
 (This conversation's rung joined them on 2026-09-15; its wheel had five stops until then
 and wrapped from `max` to `low`.) `/effort auto` and the top row of `/effort` still clear
-this conversation in one move from any rung. A standing item's rung is the one that never
-walks back to "nobody said": it is cleared in the item's own document. The **thinking**
-row in `/settings` stays what it is: the answer for every conversation that has not been
-dialled by hand. The keys page has the whole of it — see *The thinking chip above the message box* and *alt+e — how hard the
+this conversation in one move from any rung. An automation has no rung for it to move.
+The **thinking** row in `/settings` stays what it is: the answer for every conversation
+that has not been dialled by hand. The keys page has the whole of it — see *The thinking chip above the message box* and *alt+e — how hard the
 thing you are looking at thinks*.
 
 **Three doors, one rung.** `alt+e`, a press on the rung itself, and `/effort`:
@@ -1483,13 +1481,12 @@ the provider to disable reasoning.
 setting; choose auto in `/settings` to change the install default. Scoped overrides
 still take precedence.
 
-**Standing work and its checks no longer carry a level of their own.** A standing item's
-firing and the yes-or-no check in front of it used to be sent at `low` whatever anybody
-had chosen, because they run unattended and forever. That level is gone: the only rung
-that reaches a firing is the one written on the item's own card, and an item that was
-never dialled sends no reasoning field at all. The conversation you set the item up in
-still does not reach it — that is what keeps an install dialled to `max` from turning
-every check on the machine into a deep pass.
+**An automation carries no level of its own.** Nothing on its card sets a rung, and
+`alt+e` has nothing to move on one. Its scheduled work runs as a fresh conversation of
+yours, so it thinks at the **thinking** row; no rung dialled in the conversation you set
+it up in reaches it. A watch's yes-or-no on what it saw is one call on the **small work**
+model (the `sentinel` role) and sends no reasoning field at all, so an install dialled to
+`max` does not turn every look into a deep pass (*Automations*).
 
 ## Thinking between tool calls
 
@@ -1516,15 +1513,15 @@ Neither happens now.
 
 What still travels is what somebody asked for: a level you dialled, an explicit
 `--reasoning` level, `CODEAF_REASONING` and `CODEAF_EXEC_REASONING` at a headless
-door, a pinned value like `moonshotai/kimi-k3:high`, and a rung on a task or
-a standing card. `off` on the headless environment settings really does send the
+door, a pinned value like `moonshotai/kimi-k3:high`, and a rung on a task.
+`off` on the headless environment settings really does send the
 disable; `off` on the chat dial is the legacy spelling of `auto`. Errands the
 session runs for itself — naming a conversation, judging a route — still ask for
 nothing, because your dial is not spent on a title.
 
 codeaf also leaves generation defaults alone on its own auxiliary calls: task and
-conversation names, reflex sorting, memory upkeep, task planning and checks, standing
-work, document parsing, saved harness execution, and resident work all omit output and
+conversation names, reflex sorting, memory upkeep, task planning and checks,
+automations, document parsing, saved harness execution, and resident work all omit output and
 sampling controls unless an operator-facing option supplied one. Context reserves,
 response byte limits, task budgets and deadlines still bound the local process; they are
 not sent as instructions for how the provider should generate.
@@ -1790,8 +1787,8 @@ the limit is some provider's shared pool rather than your account, and it arrive
 `(via Wafer: … is temporarily rate-limited upstream.)`. That endpoint is taken off the next
 request and another machine serving the same model is asked **at once, with no wait at
 all**, for as long as the turn's own patience lasts — **90 seconds** for a turn you are
-sitting in front of, four and a half minutes for a task's own call, nine for a standing
-pass. There is no count of attempts anywhere in this; see *How long codeaf keeps trying*.
+sitting in front of, four and a half minutes for a task's own call, nine for a watch's
+yes-or-no on what it saw. There is no count of attempts anywhere in this; see *How long codeaf keeps trying*.
 
 **A rate limit that names nobody is your whole account**, and there is no machine to step
 around: every machine behind the model is behind the same ceiling. codeaf waits **once**,
@@ -2451,7 +2448,7 @@ larger `calls` figure; they add up the same.
 
 Every line records: when it happened and which local calendar day that was, which model answered,
 how many requests and how many tokens in and out, what it cost, the conversation it was made
-in, the piece of work or the standing promise it was made for, and the project directory it
+in, the piece of work or the automation it was made for, and the project directory it
 ran against.
 
 Five things are worth knowing about it:
@@ -2549,18 +2546,20 @@ same three-second beat every place runs on, and it draws three things:
   own session is opened, so this window cannot tell "nothing is bound" from "I cannot ask" —
   and the emptiness law says an unknown is drawn as nothing rather than guessed at;
 - **by topic** — the three things money is ever spent on, because the ledger holds
-  three ids: a piece of work, a standing promise, or a conversation. **The dearest twenty
+  three ids: a piece of work, an automation, or a conversation. **The dearest twenty
   are shown** and the rest fold into one line — the body scrolls and the cursor carries the
   window with it, so a long table costs a short terminal nothing. It showed three, which is
   a headline rather than an answer to the question this page is for. Work with **no id of its own** — the hands a reply
   forks, the check that reads what a piece of work left — is on the row of the conversation
   it belongs to, because that is the only name it has;
-- **by standing order** — the standing promises, under a heading and columns of their own,
-  **drawn with `by topic`**. A promise is one of the things money was *for*, so it is a
-  third heading rather than a third cut, and the control above it stays on `by topic`.
-  A promise's facts are not a task's: what you want of one is how often it went off and what
-  a single firing costs, so its row reads `repo-watch · 88 firings · $0.04 a run · $3.31`
-  rather than carrying a project and a kind word it has no use for.
+- **by automation** — the automations, under a heading and columns of their own,
+  **drawn with `by topic`**. An automation is one of the things money was *for*, so it is
+  a third heading rather than a third cut, and the control above it stays on `by topic`.
+  Its facts are not a task's: what you want of one is how often it called the model and
+  what one call cost, so its row is its title, `88 calls`, `$0.04 a call` and its total,
+  rather than a project and a kind word it has no use for. Spending recorded by the
+  standing orders that automations replaced is counted here too, under the id it was
+  written with, because nothing names it any more.
 
 **A row gives up its words before its figure.** A long name or project pushes the fields
 behind it, but only as far as the cells the money needs: what gives way is the words, never
@@ -2577,10 +2576,10 @@ the `today` pointer line and the Spending tab all keep the exact arithmetic. A c
 cost nothing has no row at all, which is the emptiness law and not a rounding.
 
 **The three headings are one set, and the tab already said `spend`.** They read `by model`,
-`by topic` and `by standing order` — four to eight cells each — and each says only which way
-that table cuts the money. They were sentences (`what ran it · by the model, and the role it
-was bound to`, `what it was for`, `what kept running · standing orders, and what a firing
-cost`), each naming the page's subject again before getting to the point. A heading in
+`by topic` and `by automation` — eight to thirteen cells each — and each says only which way
+that table cuts the money. The first two were sentences (`what ran it · by the model, and
+the role it was bound to`, `what it was for`), each naming the page's subject again before
+getting to the point. A heading in
 this set says how its table cuts the money and leaves the columns to say what they hold —
 the role, the calls and the tokens are all unnamed up there.
 
@@ -2591,7 +2590,7 @@ of the same money:
 | --- | --- | --- | --- | --- |
 | *by model* | the model | the role it is bound to | its calls · its tokens | what it cost |
 | *by topic* | the task or the conversation | `task` or `chat` | its project | what it cost |
-| *by standing order* | the standing order | its firings | what a firing cost | what it cost |
+| *by automation* | the automation | its calls | what one call cost | what it cost |
 
 **What a row *is* stands first, right after its name**; the figures stand together behind
 it. The kind word is `task` and `chat` — column words, not sentences. It read `a task` and
@@ -2625,20 +2624,20 @@ the project — never a figure with its tail cut off, and never the money. Where
 and is still the first thing given up.
 
 **Figures are written the same way wherever they appear.** Money over a thousand carries the
-mark — `$4,210.55`, and a limit `$50,000` — and so do call and firing counts: `128,400 calls`. Token
+mark — `$4,210.55`, and a limit `$50,000` — and so do call counts: `128,400 calls`. Token
 volumes climb `842`, `12.4k`, `1.2M`, `3.2B`, one decimal and no more, so a number never
 keeps a unit it has outgrown.
 
 The ledger holds **ids and no titles**, so the place joins each id against the records it is
-already reading — the project's own index of what it ran, and the standing store — to put a
-name on the row. A thing neither of them knows keeps its id.
+already reading — the project's own index of what it ran, and the list of automations — to
+put a name on the row. A thing neither of them knows keeps its id.
 
-**`enter` on any row under "by topic" or "by standing order" opens the thing itself**, and
+**`enter` on any row under "by topic" or "by automation" opens the thing itself**, and
 the foot says so on every row that is a door — `enter opens what spent it`. The headings
 said it too for a while; the heading over the cut is the control that swaps cuts now, and
 a control with an unrelated instruction after it is two objects on one line. A task opens **its own record card** in the activity page, with the list
-behind it parked on that row; a standing promise opens the standing place **on that
-order**; and a conversation **opens** — brought forward if this terminal already has it,
+behind it parked on that row; an automation opens `/automations` with the cursor **on
+that automation**; and a conversation **opens** — brought forward if this terminal already has it,
 otherwise opened beside the one you are in, with all of that door's refusals (a folder that
 has since gone says so). A task is found by the pair that identifies one, **its id and the
 conversation that ran it**, because ids restart with every conversation — two conversations
@@ -2683,8 +2682,8 @@ Time is two questions, so it gets two arrow axes and no letters:
 The cut of the ledger is its own control and has nothing to do with time: walk onto the
 heading and `←`/`→` swap `by topic` for `by model`. The window opens on **the last 14 days,
 by the day**. The label between the arrows is the
-reading and the control at once, and the same head row is drawn on the activity page and the
-standing place. A terminal too narrow to draw the control has no window there at all — the
+reading and the control at once, and the same head row is drawn on the activity page. A
+terminal too narrow to draw the control has no window there at all — the
 keys do nothing rather than moving something nothing on screen reports — and the zoom keys
 are bound only where `shift+↑ coarser` fits beside the arrows. A week buckets from Monday; there is no year rung, because a
 window of years is a question about a machine older than this program.
@@ -2695,15 +2694,15 @@ is the same reading answering a different question.
 ## Everything at once — /status
 
 `/status` (also `/info`, `/context`) prints **every fact the status line can carry**, one per
-line, into the conversation. It is not a panel. Usage totals are refreshed first, so a
-command typed between turns answers from what the session holds now.
+line, into the conversation. Usage totals are refreshed first, so a command typed between
+turns answers from what the session holds now.
 
 The labels come in this order, each dropped when its value is empty: `session`, `task` (only
 inside a task room), `model` (the full routing address, with `:level` when a reasoning level
 is set), `crew`, `task model` (only in a room), `served`, then the telemetry segments under
 their own words — `background`, `changes`, `spend`, `context`, `cache`, `rate`,
-`compaction`, `approvals`, `connection`, `state` — then `tasks`, `place`, `keys`, and
-finally `file`.
+`compaction`, `approvals`, `connection`, `state` — then `tasks`, `automations` (while
+one is on the clock or running), `place`, `keys`, and finally `file`.
 Labels are padded into two aligned columns.
 
 The `crew` line sits directly under `model` and says the crew is auto, with any seat you
@@ -2716,8 +2715,7 @@ crew     auto · pinned checker moonshotai/kimi-k3
 On the live status line the crew is one short segment — `crew auto`, or `crew auto · 1 pinned` — at
 the head of the telemetry beside the model, and among the first a narrow row gives up; the
 `crew` line here and on the phone's status sheet is the full reading. A **remote** session
-opened with `--host` has no crew of its own to read — it is the other machine's — and gets
-no `crew` line or segment at all.
+opened with `--host` gets no `crew` line or segment at all: its crew is the other machine's.
 
 Two things differ deliberately from the status line on screen:
 
@@ -3005,7 +3003,7 @@ They live on **one tab**: `/settings` → **Spending**, which `/budget` opens di
 | **per conversation** | `no limit` | this conversation stops starting new turns; the turn in flight always finishes |
 | **per plan** | `asks first above $100` | a planned job estimated above it quotes its step count and its price and waits for your go-ahead — it asks, it does not stop |
 | **per task** | `$5 a task` | an ordinary task's next priced call is not made; set in `/crew`. senior-dev has its own run ceiling |
-| **per standing run** | `$5 a firing` | that one firing stops there; each order may name its own |
+| **per automation** | `$5 a run` | that run's work stops there, as `incomplete · reached its $5.00 cap`; each automation may name its own |
 
 Above those limits the category leads with **`today`**, which is a reading and not a setting:
 `$3.42 of $500 · resets at midnight`, or `$3.42 · no limit` on a machine with no daily
@@ -3024,7 +3022,7 @@ the conversation itself had spent, so the tab and the row a person pressed to ge
 disagreed while a task was running. It also counts a call whose receipt arrived after its
 turn ended, the same moment `today` does.
 
-**Three are rows you can edit** — daily spending, per-chat spending and the plan approval threshold. `per task` and `per standing run` are **readings**: they are real rails, and
+**Three are rows you can edit** — daily spending, per-chat spending and the plan approval threshold. `per task` and `per automation` are **readings**: they are real rails, and
 neither is a number a settings row could hold. The sections below say why.
 
 Open **Spending** for monetary limits. There is no practice limit: codeaf no longer practises on its own, so nothing is set aside for it.
@@ -3158,9 +3156,10 @@ conversation and day.
 `/budget task 20` is not a shape this command takes; the per-task figure lives in `/crew`.
 The **composer layer** can put a further figure on one errand; see the tasks page.
 
-`per standing run` beside it is the same kind of reading for a different reason: it reads
-`$5 a firing · each order may name its own`, because that rail is written **per standing
-order** where the order is made, not in one settings row.
+`per automation` beside it is the same kind of reading for a different reason: it reads
+`$5 a run · each automation may name its own`, because that limit is written **on each
+automation** and shown on its card — `up to 30m and $5.00 a run` unless it names others —
+not in one settings row. *Automations* has the rest.
 
 ## This conversation stopped starting turns — conversation limit reached
 
@@ -3749,7 +3748,7 @@ A successful answer with no reported cache hit keeps its place. The prefix may h
 
 The same stable identity also travels in OpenRouter's session header so a successful cold request can establish continuity before the first reported cache hit. A changed opening after compaction keeps that identity.
 
-**Answering a question does not cost the cache.** What sits in front of every message — the instructions, the folders you attached, your standing orders, the newest few decisions — is re-sent unchanged on every request, and one changed byte in it re-prices the whole conversation at full price. Answering a question used to change it, so every `allow once` on a tool bought that re-send on the very next message. It does not any more: the decision is written to the record on disk, the model reads the answer in the result that comes back to it, and the copy in front of the conversation is brought up to date only when something else there moves anyway — a folder attached, a standing order agreed.
+**Answering a question does not cost the cache.** What sits in front of every message — the instructions, the folders you attached, the rules you keep with `/always`, the newest few decisions — is re-sent unchanged on every request, and one changed byte in it re-prices the whole conversation at full price. Answering a question used to change it, so every `allow once` on a tool bought that re-send on the very next message. It does not any more: the decision is written to the record on disk, the model reads the answer in the result that comes back to it, and the copy in front of the conversation is brought up to date only when something else there moves anyway — a folder attached, a rule kept.
 
 Each of your conversations keeps its own provider, and so does each worker on a task, because each of them is sending a different transcript. Background work is kept warm the same way: its first request asks by whatever the row asks for, and after that it comes back to whichever one answered. `routing` at `simple` — the shipped row — or at `off` sends none of it.
 

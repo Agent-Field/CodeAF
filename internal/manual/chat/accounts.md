@@ -508,9 +508,12 @@ codeaf reads immediately before it calls one, so an unanswered message does not 
 chase on its own.
 
 What you can ask for is a **follow-up**, and then it is a new message you approved: "chase
-that on Friday if there is no reply" becomes a standing order with a moment on it, and the
-approval question comes round again when it fires. See the keeping-an-eye page for how a
-moment or a rhythm is set up.
+that on Friday if there is no reply" becomes an automation with a moment on it, saved only
+once you answer its card, and it runs only while a codeaf window is open. Its run has
+nobody to answer the send's approval question, so unless the tool is already allowed by
+name — `gmail_send:allow`, the account's capability set to `yes`, or an "always" you gave —
+the run stops there: `your call · needed your ok to run gmail_send`. *Automations* has how
+a moment or a rhythm is set up.
 
 If an outgoing call genuinely did not happen — the approval question was declined, or the
 account answered with an error — codeaf says so in its reply rather than quietly trying

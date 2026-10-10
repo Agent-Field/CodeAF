@@ -4,9 +4,9 @@
 
 `ctrl+enter` over a `/command` takes plain enter's command action, even while a turn
 is running. With no turn running or on the new-chat start page it also acts as plain
-enter. A live `/standing`, `/orders` or `/task` tag inside a sentence also keeps
-plain enter's door. It queues only non-empty words mid-turn from this conversation's
-own composer, with no live send-door tag.
+enter. A live `/task` tag inside a sentence also keeps plain enter's door. It queues
+only non-empty words mid-turn from this conversation's own composer, with no live
+send-door tag.
 The decoded chord works wherever the terminal sends it; the queue hint and tip are
 advertised only after the terminal's key-support reply. A terminal that cannot send
 it delivers plain enter or, on some keyboards, a newline.
@@ -14,8 +14,7 @@ it delivers plain enter or, on some keyboards, a newline.
 Only messages queued from this window can be clicked back out of the queue. Their
 words return to this conversation's composer. If a draft is already there, the
 returned message is appended on a new line, keeping the draft and tray and renumbering
-its paste chips. `/standing <words>` sends marked words even with pictures or a picked
-shape on the tray, leaving those on the tray; the standing hint's absence is separate.
+its paste chips.
 
 ## Bash mode — run a shell command with ! and keep its output in context
 
@@ -82,7 +81,7 @@ A filter with no matches shows `no commands match` and keeps unrelated results h
 
 The list follows the caret as well as edits. The box remains editable while it is open.
 A command chosen inside a sentence completes its token rather than running on its own.
-Tab never submits that sentence or a finished `/task` or `/standing` tag; Enter retains
+Tab never submits that sentence or a finished `/task` tag; Enter retains
 its send behavior. With no matching command, Tab leaves the draft and screen unchanged.
 
 On home, command rows describe what they will do there, including commands that open a
@@ -139,42 +138,44 @@ tag and its chip so it is clear why that door acted.
 Below the 256-colour rung there is no background to draw, and the command reads as
 **bold** instead. On a NO_COLOR terminal there is no mark at all.
 
-## Use /standing or /task in the middle of a sentence
+## Use /task in the middle of a sentence — the one command that acts away from the start
 
-A slash command at the start still runs normally. Two commands are also **send-door
-tags** anywhere else in a draft:
+A slash command at the start still runs normally. One command is also a **send-door
+tag** anywhere else in a draft:
 
-- `keep the tests green /standing` removes `/standing` from the sentence and sends
-  `keep the tests green` through the standing-order door. `/orders` is the same tag.
 - `please investigate the flaky test /task` removes `/task` and sends the remaining
   brief through the same door `/task <brief>` opens.
 
-Both roads end at something you can see: standing raises its ratification card, and task
-starts one worker in the open — its started row, and its row on the roster, where it can be
-stopped. A pasted tag does not silently do work: a live send-door tag is named on
-the hint line under the box, and it only ever opens the door you can see. With no other words, each tag behaves like that command's existing
-bare form. With two live tags codeaf sends nothing, leaves the draft in the box, and says
+It ends at something you can see: the task starts one worker in the open — its started
+row, and its row on the roster, where it can be stopped. A pasted tag does not silently do
+work: a live tag is named on the hint line, `enter sizes this task`, and it only ever opens
+the door you can see. With no other words, the tag behaves like a bare `/task`. With two
+live tags codeaf sends nothing, leaves the draft in the box, and says
 `one tag per send — backspace one to make it plain words`.
+
+`/standing` and `/orders` were tags too, and went with standing orders: in the middle of a
+sentence they are plain words now, and at the start they answer
+`there is no command called /standing · / lists them`. Something to do on a clock is an
+automation — say it, or use `/automations` (*Automations*).
 
 Other commands remain ordinary prose away from the start. `later I will run /compact on
 this` is sent literally, and codeaf still chips `/compact` there — the mark says the word
 is recognised, not that enter will run it.
 
-## Asking what a quoted /task or /standing command does
+## Asking what a quoted /task command does
 
 `What does '/task' do?` sends that whole sentence as an ordinary message. A command
 named in straight single or double quotes, or curly quotes, never acts as a send-door
-tag. `What does “/task” do?` starts no task; quoting `/standing` raises no standing
-order. The quoted command still wears the composer's chip in explanations and help,
-and a quoted path stays plain. In the sent message, a quoted send-door name is plain
-because no door acted on it.
+tag. `What does “/task” do?` starts no task. The quoted command still wears the
+composer's chip in explanations and help, and a quoted path stays plain. In the sent
+message, a quoted send-door name is plain because no door acted on it.
 
 Without quotes, `What does /task do?` still contains a live task tag: Enter starts a
 task with the remaining words. Quote the command when you want to ask about it.
 
 ## Backspace after a slash tag makes it plain words
 
-With the caret immediately after a live `/standing`, `/orders`, or `/task` tag, the first
+With the caret immediately after a live `/task` tag, the first
 backspace removes its chip but deletes no letter. The word is now plain prose and Enter
 sends it to the conversation normally. A second backspace edits the word as usual.
 
@@ -186,10 +187,9 @@ all demotions.
 
 ## Slash command did nothing
 
-A command in the middle of a sentence acts only when it is `/standing`, `/orders`, or
-`/task`. Every other command there is still highlighted — `/compact`, `/clear` and
-`/model` wear the same chip as any recognized word — but enter sends it as ordinary
-words. Put one of those commands at the start if you want to run it. If a send-door word
+A command in the middle of a sentence acts only when it is `/task`. Every other command
+there is still highlighted — `/compact`, `/clear` and `/model` wear the same chip as any
+recognized word — but enter sends it as ordinary words. Put one of those commands at the start if you want to run it. If a send-door word
 is plain, it was demoted with backspace; edit it or type it again to make it live.
 
 The command list follows that rule when you choose a row from it:
@@ -197,8 +197,8 @@ The command list follows that rule when you choose a row from it:
 - If the word is at the very start of the box and there is nothing else in it, enter runs
   the command — or, for a row that takes an argument, writes `/model ` into the box.
 - Anywhere else, choosing a non-door row replaces just that word with the command's name,
-  parks the caret after it, and runs nothing. Choosing `/standing` or `/task` completes a
-  live tag; Enter on the finished tag routes the send as described above.
+  parks the caret after it, and runs nothing. Choosing `/task` completes a live tag;
+  Enter on the finished tag routes the send as described above.
 
 So the list can never send a message you did not send yourself, and choosing a row mid
 sentence is a way of spelling a word rather than a second way of running a command.
@@ -262,16 +262,20 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/land` | — | `now` | …puts it in: a branch merged for a repository, files copied back for a plain folder |
 | `/land` | — | `<folder>` | …when more than one folder is waiting; `/land <folder> now` puts that one in |
 
-## Rewind, approvals and standing commands
+## Rewind, approvals and automations commands
 
 | Command | Aliases | Argument | Effect |
 |---|---|---|---|
 | `/rewind` | `/undo`, `/back` | — | opens the rewind timeline — the whole conversation as a list (esc esc is the quick inline version) |
 | `/permissions` | `/perms` | — | lists what runs without asking; `d` drops a line |
+| `/automations` | — | — | opens the automations place (also `alt+7`): every reminder, piece of scheduled work and watch, with its schedule and how its last run went; `→` then `r` runs, `s` stops, `p` pauses, `e` edits, `d` deletes, `o` opens where it was asked |
+| `/automations` | — | `add <title> …` | adds one exactly as typed, read back on a `save this automation?` card first; `edit`, `run`, `pause`, `resume` and `delete` take its id |
 | `/autonomy` | — | — | prints this project's rules for questions while you are away; refuses when the conversation has no project to keep them in |
 | `/autonomy` | — | `<kind> <ask\|recommend [duration]\|decide>` | changes one project question rule; refuses an unknown kind or rule, a bad duration, and changes to confirmation or clarification that their limits forbid |
-| `/standing` | `/orders` | `<words>` | makes those words a standing order — a card to answer, never work done once |
-| `/standing` | `/orders` | — | what stands over this conversation; `p` pauses, `s` stops, `n` excepts this place |
+
+`/standing` and `/orders` are not commands any more: they answer
+`there is no command called /standing · / lists them`. What runs on a clock is
+`/automations`, and a rule is a memory marked always, kept with `/always`.
 
 ## Programs, skills and memory commands
 
@@ -290,6 +294,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/memories` | — | — | opens the memory place |
 | `/remember` | — | `<text>` | keeps one thing across conversations |
 | `/forget` | — | `<query>` | forgets the best matching memory |
+| `/always` | — | — | lists the rules in force here — memories marked always, put in front of every conversation and task |
+| `/always` | — | `<text>` | keeps one as a rule, without asking: for this project, or for you everywhere when typed on home |
 
 ## Crew and task commands
 
@@ -370,13 +376,15 @@ Under the table `/help` prints the keys that have no slash command, including
 rows, directly under the `tab` row:
 
 ```
-alt+1…8        go to a place · established shortcut order: home · AI teams · chats · activity · spend · settings · standing · memory
+alt+1…8        go to a place · in the tab bar's own order: home · AI teams · chats · activity · spend · settings · automations · memory
 alt+.          on a place: what else is here · every key that place has, drawn
                on a place, tab is the next place · esc back
 ```
 
 On a Mac those read `opt+1…8` and `opt+.`; the substitution happens once, at the moment of
-drawing, and the words are the same.
+drawing, and the words are the same. The digits follow that list, not the bar's
+left-to-right order: `alt+8` is memory, and `alt+7` is automations, which is on the bar
+only while you are in it.
 
 **One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc
 back` — the places row, the task roster on `alt+t`, the conversation switcher on `alt+k`,
@@ -387,8 +395,8 @@ open to find out how many there are. The longer `esc leaves it as it was` is a d
 sentence and stays where it is: it is said over a value you were editing, and it means the
 edit is discarded, not that you moved.
 
-Two rows say what their key DOES rather than naming the thing it reaches: `ctrl+,` is
-`open settings`, and `n` on the `/standing` row is `keep it out of here`.
+A row may say what its key DOES rather than naming the thing it reaches: `ctrl+,` is
+`open settings`.
 
 The last line of `/help` is `session · <path>`, and it appears **only when the session
 has a file**. The path is written against your home — `~/.codeaf/v3/…` — so that it fits
@@ -412,11 +420,13 @@ The key is named on the first row of `/help` itself, and on the line every sessi
 with — `esc interrupts · ctrl+c quits · ? for help`. `/?` is also an alias of
 `/help`, and has been all along.
 
-`/quit` (or `/exit`, `/q`) **closes the conversation in front**, and it does it at once —
-it is typed out on purpose, so it is not asked twice. Your draft is written to disk
-synchronously first, with any message still waiting for an answer folded in underneath it,
-so nothing typed in the last moment is lost. Then that conversation's running turn is
-interrupted and its agent is closed for real.
+## /quit, /exit, /q and ctrl+c — leaving one conversation or all of them, and the warning when an automation is running
+
+`/quit` (or `/exit`, `/q`) **closes the conversation in front**, at once — it is typed out
+on purpose, so it is not asked twice. Your draft is written to disk synchronously first,
+with any message still waiting for an answer folded in underneath it, so nothing typed in
+the last moment is lost. Then that conversation's running turn is interrupted and its agent
+is closed for real.
 
 **If this terminal is holding another conversation, codeaf stays up** and the most recently
 open one comes forward, saying `closed · <the name of the one that went>`. `/quit` leaves
@@ -424,12 +434,20 @@ the program only when the conversation it closed was the last one. Home's page h
 whole arrangement under *Switch between projects without leaving*.
 
 `ctrl+c` is the other road out, it takes **one press**, and it closes **everything** —
-every conversation this terminal holds, not just the one in front. Nothing is asked and
-nothing is named first: your draft and anything waiting for an answer are written to disk,
-and codeaf exits. Work the codeaf service is running keeps going and is there when you open
-the workspace again; work running inside this terminal stops with it.
-While a turn is running `ctrl+c` interrupts the turn instead, and that press does not leave.
-The keys page has the whole rule under "Quitting codeaf".
+every conversation this terminal holds, not just the one in front. Your draft and anything
+waiting for an answer are written to disk, and codeaf exits. Work the codeaf service is
+running keeps going and is there when you open the workspace again; work running inside
+this terminal stops with it. While a turn is running `ctrl+c` interrupts the turn instead,
+and that press does not leave.
+
+**The one warning is a running automation.** Automations run only while a codeaf window is
+open, so with a run in hand and no other codeaf window open, the press that would leave —
+`ctrl+c`, or the `/quit` that closes the last conversation — says
+`1 automation is running — quitting stops it · ctrl+c again to quit` instead
+(`· /quit again to quit` after `/quit`). The same gesture again within ten seconds leaves,
+and the run is recorded as `stopped · codeaf closed before it finished`. Nothing else is
+asked or named first. The keys page has the whole rule under "Quitting codeaf", and
+*Automations* the rest.
 
 ## /new — start another conversation in this project
 
@@ -813,15 +831,16 @@ The labels come in this order, and each is dropped when its value is empty: `ses
 `task` (only inside a task room), `model` (the full routing address, with `:level` when a
 reasoning level is set), `crew`, `task model` (only in a room), `served`, `search`,
 `approvals`, then the telemetry words — `spend`, `cache`, `context`, `compacts at`,
-`compaction`, `background`, `changes`, `rate`, `open`, `watching`, `speed`, `connection`,
-`state` — then `tasks`, `keeping watch`, `place`, `keys`, and last `build` and `file`.
+`compaction`, `background`, `changes`, `rate`, `open`, `speed`, `connection`,
+`state` — then `tasks`, `automations`, `place`, `keys`, and last `build` and `file`.
 Labels are padded into two aligned columns.
 
-Four other words are facts this command and the phone's sheet carry and the status row
+Three other words are facts this command and the phone's sheet carry and the status row
 does not: `changes` (`Σ +128 −14`), `rate` (`1.2k tok/s avg`, this turn's output over its
-whole wall time — the right edge of the row shows the live `38 tok/s` instead), `open`
-(`2 open · 1 waiting`) and `watching` (the standing count, which is drawn at the foot of the
-task column). `crew` is a fifth and has its own line above.
+whole wall time — the right edge of the row shows the live `38 tok/s` instead) and `open`
+(`2 open · 1 waiting`). `crew` is a fourth and has its own line above. `automations` is
+there only while something is on the clock or running —
+`3 on the clock · next weekly update Mon 12 Oct at 09:00 · 1 running` (*Automations*).
 
 The `crew` line sits directly under `model` and says the crew is auto, with any seat you
 pinned after it:
@@ -913,7 +932,7 @@ and by what it was for. It is the same place `alt+5` opens.
 
 **`/spend` used to be an alias of `/cost` and is not any more.** The two answer different
 questions: `/cost` is *this conversation's* bill, printed into the conversation, and the
-spend place is *the whole machine* — every window, every task and every standing run,
+spend place is *the whole machine* — every window, every task and every automation's run,
 including a session opened from another machine over `--host` whose calls are still made
 here. The word `spend` belongs to the bigger reading, so the one guess most people make
 now lands on the place. `/cost` keeps `/usage` and `/tokens`.
@@ -1300,7 +1319,7 @@ box, opens it on a one-conversation machine and on an empty one alike, and over 
 it opens the far machine's.
 
 There is no argument form. There are three other ways in: **`alt+1`**, home being the first
-of the six words on the tab bar; **`space` twice** on an empty box; and **`tab`** from any
+of the seven words on the tab bar; **`space` twice** on an empty box; and **`tab`** from any
 other place.
 
 **It is seven panels**, in one column under 110 cells, two from 110 and three from 170,
@@ -1308,7 +1327,8 @@ always in one order: an unheaded list of open tabs followed by up to three dimme
 closed conversations, `needs you` (every question waiting on you, a digit answers the
 top one from anywhere), `projects` (click a folder to select it for the next message),
 `tasks` (the last day's tasks, running or landed, newest first), `since you left` (what landed while you were
-away), `spend` (today and the fortnight) and `standing` (standing orders, soonest first).
+away), `spend` (today and the fortnight) and `automations` (every automation that will run
+again, soonest first; it and every row open `/automations`).
 Which column a panel stands in follows what it holds: the panels with rows fill the **field**
 at the left, and the **rail** at the right holds `projects` and `spend` at its top with the
 quiet panels under them. An empty panel keeps its heading and one dim line naming what
@@ -1492,44 +1512,40 @@ That one sentence covers every way of having none — no registry wired, a regis
 nothing in it, and **every `--host` session**, because the registry lives on the far
 machine. No list opens behind it. See the *Subharnesses* page for the card and its keys.
 
-## /standing — the command's two forms, bare and with words after it
+## /automations — the list of what runs on a clock, and the typed forms add, edit, run, pause, resume and delete
 
-`/standing` (or `/orders`) has two forms, and they do different things. The words form
-leads — making an order is what the command exists for; the page is the follow-up.
+**Bare, `/automations` opens the automations place** — the same place `alt+7` opens: every
+reminder, piece of scheduled work and watch codeaf runs on a clock while it is open, one
+row each with its kind, its schedule, where it is now and how its last run went. `enter`
+opens a row's history; `→` draws its verbs — `r` run now, `s` stop the run, `p` pause or
+resume, `e` edit, `d` delete, `o` open where it was asked. With none saved it opens all the
+same, on its heading and
+`reminders, scheduled work and watches · "remind me at 6" or "every morning at 9"`.
 
-**With words after it, those words become a new standing order.**
+**With words after it, it is one of six exact forms**, read with no model in between:
 
 ```
-/standing always run the tests before you say you are done
+/automations add leave at 18:00 say "time to leave"
+/automations edit 3f2a9c every 30m
+/automations run 3f2a9c
 ```
 
-The tag form works in the middle or at the end too: `always run the tests /standing` and
-`always /orders run the tests` hand the remaining sentence through the same door. Press
-backspace immediately after the tag to make it plain words instead.
+`pause`, `resume` and `delete` take the id the same way; its first few characters are
+enough when no other id starts the same way. `add` and `edit` end on a card —
+`save this automation?` or `save this change?` — answered `1 Save` or `0 Don't save`, and
+nothing is saved before it. `run`, `pause`, `resume` and `delete` do not ask: typing the id
+is the confirmation. Any other first word says
+`unknown "<word>" — the forms are add, edit, run, pause, resume and delete`, and a window
+that cannot keep automations says `this window cannot change automations`.
+*Automations* has every clause and every refusal.
 
-They go through the deliberate marked door: codeaf is told to shape the
-sentence into a standing order's card — when it wakes, what it does, how far it reaches —
-and it never carries the sentence out as one-off work as well. Nothing stands until you
-answer the card. A sentence that cannot stand at all gets one short line saying so and
-nothing else. Typed while an answer is still arriving it waits above the box and goes
-through the marked door when its turn comes. On a build with no ambient side it says
-`nothing here can hold a standing order` and sends nothing.
+**The command list carries two rows**: `/automations`, whose tail reads
+`what runs on a clock · run, pause, edit or delete one`, and `/automations add <title> …`,
+whose tail reads `…or add one exactly, read back on a card first`. The `+ /automations` row
+in the column on the right puts `/automations ` in your box.
 
-**Bare, it opens a page.** A short list under the message box of what stands over this
-conversation, on up to three shelves, with `p` to pause one, `s` to stop one, `n` to except
-this place and `enter` to open the conversation that asked for it. With nothing standing it
-opens all the same, on its heading `standing orders` and one dim line:
-`reminders, watches and routines · "remind me at 6" or "every morning at 9"`
-Nothing is written into the conversation either way.
-
-Nothing on the page is ever named at the command line — the words are always a new order,
-never a query, because the only way to name one is to read it off the page first.
-
-**The command list carries both rows, the words form first**: `/standing <words>` whose
-tail reads `keep this true · a card, never work done once`, and under it `/standing` on
-its own, whose tail reads `…or what stands over this conversation · stop, pause or not
-here`. Pressing the words row puts the command in your box rather than running it. The
-`+ /standing` row at the foot of the column on the right does the same thing.
+You rarely need the typed forms: say it — "remind me at 6", "every Monday at 9, draft the
+weekly update" — and it is proposed on a card. `/standing` and `/orders` are gone.
 
 ## /task — start work you can walk away from
 
@@ -1801,7 +1817,7 @@ input keeps the draft and shows its error beside it. Escape cancels an open edit
 or choice list without saving.
 
 esc backs out one layer at a time: the search first, then anything the `Connections` tab
-has standing open, then the panel. The head line says `esc close` on the right. The
+has open, then the panel. The head line says `esc close` on the right. The
 bottom legend normally reads
 `↑↓ move · ←→ tabs · enter change · type to search · esc close`.
 
