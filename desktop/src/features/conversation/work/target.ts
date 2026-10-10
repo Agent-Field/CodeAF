@@ -3,7 +3,7 @@
 import type { IconName } from '../../../components/ui/Icon';
 import type { ToolStep } from '../types';
 import { hintText, toolLabel } from '../tool-family.ts';
-import { argPath, argString, bashExit, editStat, listCount, parseArgs, readLines, writeLines } from './stats.ts';
+import { argPath, argString, bashExit, editStat, imageSize, listCount, parseArgs, readLines, writeLines } from './stats.ts';
 
 export type Target =
   | { kind: 'file'; path: string }
@@ -76,8 +76,10 @@ export function callTarget(call: ToolStep): Target {
       return { kind: 'text', text: `“${excerpt(argString(fields, 'query') || hintText(call.tool, call.hint))}”` };
     case 'web_fetch':
       return argString(fields, 'url') ? { kind: 'link', url: argString(fields, 'url') } : textTarget(call);
-    case 'generate_image':
-      return textTarget(call, 'prompt');
+    case 'generate_image': {
+      const prompt = argString(fields, 'prompt').trim();
+      return prompt ? { kind: 'text', text: `“${excerpt(prompt)}”` } : textTarget(call);
+    }
     case 'propose_task':
     case 'quick_task':
     case 'tasks':
@@ -112,6 +114,10 @@ export function callStat(call: ToolStep): CallStat {
       return call.state === 'done' ? lines(listCount(call.output), 'matches') : {};
     case 'ls':
       return call.state === 'done' ? lines(listCount(call.output), 'entries') : {};
+    case 'generate_image': {
+      const size = imageSize(call.args);
+      return size ? { text: size } : {};
+    }
     case 'bash': {
       const code = bashExit(call.output);
       return code === undefined ? {} : { text: `exit ${code}` };
