@@ -141,3 +141,10 @@ labels as well as the new organization.
 
 Resident-only practice controls remain in resident configuration. They do not
 appear in chat settings, and `/budget practice` cannot edit them from chat.
+
+## Desktop tool approval mode
+
+The desktop bridge stores the same profile choice for tool approval: `prompt`
+asks before running, `allow` runs tools, and `deny` refuses them. Unknown choices
+are rejected without changing the saved mode. Saving this preference does not
+answer an approval that is already waiting.
