@@ -1,0 +1,37 @@
+/* Tab entry fades in place (Foundations leave the fade to the shell; a scale would move the hit area).
+   The keyframes live with the other shared fades. A closing copy must not play them again. */
+.workspace-tab-exit .workspace-tab { animation: none; }
+
+/* The closing slot keeps the width the strip had already given that tab, then gives it up over dur-base
+   (Foundations: tab close, base). Neighbours are flex siblings, so they slide as this width goes to zero.
+   The measured start is written once from the live box; max-content does not interpolate. */
+.workspace-tab-exit {
+  display: flex;
+  flex: 0 1 auto;
+  width: var(--tab-max-width);
+  min-width: var(--tab-min-width);
+  max-width: var(--tab-max-width);
+  overflow: hidden;
+  pointer-events: none;
+  transition: width var(--dur-base) var(--ease), min-width var(--dur-base) var(--ease), max-width var(--dur-base) var(--ease), margin-right var(--dur-base) var(--ease);
+}
+.workspace-tab-exit .workspace-tab { flex: 1 1 auto; width: 100%; min-width: var(--motion-rest); max-width: none; }
+.workspace-tab-exit:has(.workspace-tab.is-pinned) { flex: none; width: var(--tab-pinned-width); min-width: var(--tab-pinned-width); max-width: var(--tab-pinned-width); }
+.workspace-tab-exit:has(.workspace-tab[data-compressed]) { flex: none; width: var(--tab-compressed-width); min-width: var(--tab-compressed-width); max-width: var(--tab-compressed-width); }
+.workspace-tab-exit:has(.workspace-split-tab) { flex: none; width: max-content; min-width: var(--motion-rest); max-width: none; }
+.workspace-tab-exit:has(.workspace-split-tab) .workspace-tab { flex: none; width: max-content; max-width: none; }
+/* One gap remains between the neighbours. The strip's own gap would otherwise be doubled by a zero-width slot. */
+.workspace-tabstrip > .workspace-tab-exit[data-collapsed] { margin-right: calc(var(--motion-rest) - var(--space-half)); }
+
+/* A group member's slot is the width the capsule actually spends. Collapse that, on the same duration, not the sidebar one. */
+.workspace-group-tab-slot:has(> .workspace-tab-exit) {
+  overflow: hidden;
+  transition: width var(--dur-base) var(--ease), min-width var(--dur-base) var(--ease), max-width var(--dur-base) var(--ease), margin-right var(--dur-base) var(--ease);
+}
+.workspace-group-tab-slot:has(> .workspace-tab-exit[data-collapsed]) { margin-right: calc(var(--motion-rest) - var(--tab-split-gap)); }
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-tab { animation: none; }
+  .workspace-tab-exit,
+  .workspace-group-tab-slot:has(> .workspace-tab-exit) { transition: none; }
+}
