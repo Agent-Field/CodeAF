@@ -183,6 +183,7 @@ func TestListFilesNeedsTheToken(t *testing.T) {
 	})
 	for _, header := range []string{"", "Bearer nope"} {
 		r := httptest.NewRequest(http.MethodGet, path+"/files/list?path=src", nil)
+		r.Host = "127.0.0.1:1420"
 		if header != "" {
 			r.Header.Set("Authorization", header)
 		}
