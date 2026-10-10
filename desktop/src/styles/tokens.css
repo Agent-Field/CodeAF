@@ -981,6 +981,16 @@
   --plan-card-button-size: 12px;
   --plan-card-button-weight: 500;
   --plan-card-edit-height: 28px;
+  --knows-section-gap: 8px;
+  --knows-row-gap: 12px;
+  --knows-row-height: 38px;
+  --knows-row-pad-y: 4px;
+  --knows-row-pad-x: 12px;
+  --knows-row-radius: 9px;
+  --knows-text-size: 13px;
+  --knows-source-size: 11px;
+  --knows-leading: normal;
+  --knows-prompt-gap: 6px;
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);
