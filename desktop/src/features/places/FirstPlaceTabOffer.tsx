@@ -37,8 +37,13 @@ export function FirstPlaceTabOffer({ digest, active }: { digest: HomeDigest; act
   const scope = useRef(placeId); scope.current = placeId;
   useEffect(() => { scope.current = placeId; return () => { scope.current = undefined; }; }, [placeId]);
   useEffect(() => {
-    setIds([]); setSource(undefined); pending.current = undefined;
-    if (!eligible || !active || !placeId || !shell) return;
+    // A newer home digest must not blank the offer. The world feed refreshes the
+    // digest while the button is on screen; clearing here unmounts it, and the
+    // click lands on nothing so the move never starts.
+    if (!eligible || !active || !placeId || !shell) {
+      setIds([]); setSource(undefined); pending.current = undefined;
+      return;
+    }
     let live = true;
     const abort = new AbortController();
     try { pending.current = readPending(safeLocal()?.getItem(storageKey(placeId)), placeId); } catch { /* A request cannot be trusted until the bridge validates it. */ }

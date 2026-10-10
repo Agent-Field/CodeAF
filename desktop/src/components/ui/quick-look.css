@@ -1,0 +1,12 @@
+/* The Quick Look sheet (Components Overlays, C-OVL-4): a native modal dialog, so the browser traps focus and returns it to the opener. */
+.quick-look { width: min(var(--quicklook-width), calc(100vw - var(--quicklook-gutter))); max-height: calc(100vh - var(--quicklook-gutter)); padding: 0; border: 0; border-radius: var(--radius-quicklook); background: var(--canvas); color: var(--ink); box-shadow: var(--sh-3); overflow: hidden; }
+.quick-look[open] { display: flex; flex-direction: column; animation: quick-look-in var(--dur-base) var(--ease-overlay); }
+.quick-look::backdrop { background: var(--scrim); }
+.quick-look-head { display: flex; align-items: center; gap: var(--quicklook-head-gap); padding: var(--quicklook-pad-top) var(--quicklook-pad-x) 0; }
+.quick-look-title { margin: 0; flex: 1; min-width: 0; font-size: var(--type-h1-size); font-weight: var(--type-h1-weight); line-height: var(--type-h1-leading); letter-spacing: var(--type-h1-tracking); }
+.quick-look-hint { font-size: var(--type-caption-size); color: var(--ink-3); white-space: nowrap; }
+.quick-look-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--quicklook-head-gap) var(--quicklook-pad-x) var(--quicklook-pad-bottom); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); color: var(--ink-2); }
+.quick-look-foot { display: flex; flex-wrap: wrap; gap: var(--quicklook-foot-gap); padding: var(--quicklook-foot-pad-y) var(--quicklook-pad-x); border-top: var(--hairline) solid var(--line); }
+@keyframes quick-look-in { from { opacity: var(--quicklook-fade-from); transform: scale(var(--motion-scale-quicklook)); } to { opacity: var(--quicklook-fade-to); transform: scale(var(--motion-scale-rest)); } }
+/* Reduced motion keeps the fade and drops the scale (F-MO-16). */
+@media (prefers-reduced-motion: reduce) { .quick-look[open] { animation-name: quick-look-fade; } @keyframes quick-look-fade { from { opacity: var(--quicklook-fade-from); } to { opacity: var(--quicklook-fade-to); } } }

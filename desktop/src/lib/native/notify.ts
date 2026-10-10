@@ -75,7 +75,12 @@ export function createAttentionNotifications(source: Source, port: NotificationP
  };
 }
 
-/** Browser previews have no OS notification delivery and never request notification permission. */
+/**
+ * Browser previews have no OS notification delivery and never request notification permission.
+ * The list is the chat world feed's, the same one the Inbox reads. The newer world client
+ * rejects that feed (it wants chatId and a numeric needs-you count), so posting from it
+ * never named a question or a failure.
+ */
 export function connectAttentionNotifications(): () => void {
  let disposed = false;
  let stop: (() => void) | undefined;

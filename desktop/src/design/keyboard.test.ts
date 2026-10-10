@@ -218,3 +218,60 @@ test('spellShortcut: glyphs run together on a Mac, words join with + elsewhere (
     Object.defineProperty(globalThis, 'navigator', { value: original, configurable: true });
   }
 });
+
+test('shell recognizers use the host primary modifier on both platforms', () => {
+  for (const [matcher, primary] of [[mac, { metaKey: true }], [linux, { ctrlKey: true }]] as const) {
+    for (const [chord, id] of [['g', 'group'], ['z', 'undo'], ['n', 'new-window'], ['o', 'open-file'], ['0', 'place-home'], ['p', 'goto']] as const) {
+      assert.deepEqual(matcher(key(chord, primary)), { id });
+      assert.equal(matcher(key(chord, { ...primary, altKey: true })), undefined);
+    }
+    assert.deepEqual(matcher(key('P', { ...primary, shiftKey: true })), { id: 'all-places' });
+    assert.deepEqual(matcher(key('C', { ...primary, shiftKey: true })), { id: 'copy-link' });
+    assert.equal(matcher(key('c', primary)), undefined);
+    assert.equal(matcher(key('C', { ...primary, shiftKey: true, altKey: true })), undefined);
+    for (const target of [{ tagName: 'TEXTAREA', value: '' }, { tagName: 'INPUT', value: 'draft' }, { isContentEditable: true }, { closest: () => ({}) }]) {
+      assert.equal(matcher(key('z', { ...primary, target })), undefined);
+    }
+  }
+});
+
+test('all nine place slots preserve tab jumps and use layout-independent digits', () => {
+  for (let index = 1; index <= 9; index++) {
+    for (const code of [`Digit${index}`, `Numpad${index}`]) {
+      assert.deepEqual(mac(key('symbol', { code, ctrlKey: true })), { id: 'place-jump', index });
+      assert.deepEqual(linux(key('symbol', { code, altKey: true })), { id: 'place-jump', index });
+      assert.equal(mac(key('symbol', { code, ctrlKey: true, shiftKey: true })), undefined);
+      assert.equal(linux(key('symbol', { code, altKey: true, shiftKey: true })), undefined);
+    }
+    assert.deepEqual(mac(key(String(index), { metaKey: true })), { id: 'jump', index });
+    assert.deepEqual(linux(key(String(index), { ctrlKey: true })), { id: 'jump', index });
+  }
+});
+
+test('Quick Look is bare Space outside writing fields and buttons on both platforms', () => {
+  for (const matcher of [mac, linux]) {
+    assert.deepEqual(matcher(key(' ', { code: 'Space' })), { id: 'quick-look' });
+    for (const target of [{ tagName: 'INPUT', value: '' }, { tagName: 'TEXTAREA', value: '' }, { tagName: 'BUTTON' }, { tagName: 'SELECT' }, { isContentEditable: true }, { tagName: 'SPAN', closest: () => ({}) }]) {
+      assert.equal(matcher(key(' ', { code: 'Space', target })), undefined);
+    }
+    for (const modifier of ['metaKey', 'ctrlKey', 'altKey', 'shiftKey']) {
+      assert.equal(matcher(key(' ', { code: 'Space', [modifier]: true })), undefined);
+    }
+  }
+});
+
+test('Copy link leaves terminal copy to the shell and file copy to its surface handler', () => {
+  for (const mac of [true, false]) {
+    assert.equal(shortcutOf(key(' ', { code: 'Space' }), { mac, terminal: true }), undefined);
+    const primary = mac ? { metaKey: true } : { ctrlKey: true };
+    assert.equal(shortcutOf(key('C', { ...primary, shiftKey: true }), { mac, terminal: true }), undefined);
+    assert.equal(shortcutOf(key('C', { ...primary, shiftKey: true, target: shellField }), { mac }), undefined);
+  }
+});
+
+test('Iteration 2 keeps brackets as focus history even on Home; Home Up uses the arrow', () => {
+  assert.deepEqual(shortcutOf(key('[', { code: 'BracketLeft', metaKey: true }), { mac: true, home: true }), { id: 'back' });
+  assert.deepEqual(shortcutOf(key('ArrowUp', { metaKey: true }), { mac: true, home: true }), { id: 'up-level' });
+  assert.deepEqual(shortcutOf(key('ArrowLeft', { altKey: true }), { mac: false, home: true }), { id: 'back' });
+  assert.deepEqual(shortcutOf(key('ArrowUp', { ctrlKey: true }), { mac: false, home: true }), { id: 'up-level' });
+});

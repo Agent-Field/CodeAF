@@ -70,6 +70,7 @@ export function useTabKeys({ enabled, state, dispatch, visible, overviewOpen, se
   useEffect(() => {
     if (!enabled) { switcherRef.current = null; setSwitcher(null); return; }
     const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && state.picked?.length) dispatch({ type: 'clear-picks' });
       if (event.key === 'Escape' && switcherRef.current) { event.preventDefault(); switcherRef.current = null; setSwitcher(null); }
     };
     const onRelease = (event: KeyboardEvent) => {
@@ -80,7 +81,7 @@ export function useTabKeys({ enabled, state, dispatch, visible, overviewOpen, se
     const onBlur = () => { switcherRef.current = null; setSwitcher(null); };
     window.addEventListener('keydown', onKey); window.addEventListener('keyup', onRelease); window.addEventListener('blur', onBlur);
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onRelease); window.removeEventListener('blur', onBlur); };
-  }, [enabled]);
+  }, [enabled, state.picked, dispatch]);
 }
 
 type MenuOptions = {
