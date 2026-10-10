@@ -342,8 +342,9 @@ test.describe('the overview card (TA-OV-05, TA-OV-06)', () => {
       const engine = await installMockEngine(page, { ...running, fail: { stop: 500 } });
       await seed(page, tabsOf({ id: 'a', title: 'Intro' }, { id: 'b', title: 'Config stack', running: true }), 'a');
       await page.goto('/');
-      await expect.poll(() => engine.calls.some(call => call.path.endsWith('/sessions'))).toBe(true);
       await open(page);
+      // The running mark comes from the world feed. The background tab does not attach.
+      await expect(card(page, 'Config stack')).toContainText('Working');
       await (await cardMenu(page, 'Config stack')).getByRole('menuitem', { name: /^Close and stop/ }).click();
       await expect.poll(() => stops(engine)).toBe(1);
       const toast = overview(page).locator('.toast');
@@ -360,8 +361,9 @@ test.describe('the overview card (TA-OV-05, TA-OV-06)', () => {
       const engine = await installMockEngine(page, running);
       await seed(page, tabsOf({ id: 'a', title: 'Intro' }, { id: 'b', title: 'Config stack', running: true }), 'a');
       await page.goto('/');
-      await expect.poll(() => engine.calls.some(call => call.path.endsWith('/sessions'))).toBe(true);
       await open(page);
+      // The running mark comes from the world feed. The background tab does not attach.
+      await expect(card(page, 'Config stack')).toContainText('Working');
       await (await cardMenu(page, 'Config stack')).getByRole('menuitem', { name: /^Close tab(?!s)/ }).click();
       const toast = overview(page).locator('.toast');
       await expect(toast).toContainText('Config stack');
