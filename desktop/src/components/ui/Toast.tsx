@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom';
 import design from '../../design/tokens.json';
 import { toasts as windowToasts, TOAST_LIMIT, type Toast as ChannelToast, type ToastAction as ChannelAction, type ToastPart, type ToastTone, type Toasts } from '../../design/toasts';
 import { Button } from './Button';
+import { Icon } from './Icon';
+import { toastQueueFor, type ToastOptions } from './toastQueue';
+import './toast.css';
 
 /** The design's "6s" (Components "Overlays"); Delete passes its own ten seconds (Interactions "Delete"). */
 export const TOAST_DURATION_MS = design.interaction.toastDuration;
@@ -22,14 +25,14 @@ export type ToastModel = {
 };
 export type ShowToast = Omit<ToastModel, 'id' | 'actions'> & { id?: string; actions?: readonly ToastAction[] };
 
-type ViewToast = { message: readonly ToastPart[]; tone?: ToastTone; actions?: readonly ToastAction[]; undo?: unknown };
+type ViewToast = Pick<ChannelToast, 'content' | 'lead'> & { message: readonly ToastPart[]; tone?: ToastTone; actions?: readonly ToastAction[]; undo?: unknown };
 type ViewProps = {
   toast: ViewToast;
   onAction?: (index: number) => void | Promise<void>;
   onUndo?: () => void | Promise<void>;
-  onHold?: (held: boolean) => void;
+  onHold?: (held: boolean, source: 'hover' | 'focus') => void;
   onDismiss?: () => void;
-  /** A refusal said in the sentence's place, amber. */
+  /** A refusal replaces the sentence; its leading dot supplies the amber state. */
   failure?: string;
   /** The label of the button whose work is still running. */
   pending?: string;
@@ -50,19 +53,19 @@ export function sentenceParts(text: string, subject?: string): ToastPart[] {
 /** The toast itself, with no timer and no placement: what the region shows, and what the Design system page specimens. */
 export function ToastView({ toast, onAction, onUndo, onHold, onDismiss, failure, pending }: ViewProps) {
   const tone = failure !== undefined ? 'warning' : toast.tone ?? 'info';
-  const onBlur = (event: FocusEvent<HTMLDivElement>) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onHold?.(false); };
+  const onBlur = (event: FocusEvent<HTMLDivElement>) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onHold?.(false, 'focus'); };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Escape' || !onDismiss) return;
+    event.preventDefault();
     event.stopPropagation();
     onDismiss();
   };
-  const alert = tone !== 'info';
   return (
-    <div className="toast" data-tone={tone} data-native-cover="" onPointerEnter={() => onHold?.(true)} onPointerLeave={() => onHold?.(false)} onFocus={() => onHold?.(true)} onBlur={onBlur} onKeyDown={onKeyDown}>
-      <span className="toast-dot" data-tone={tone} aria-hidden="true"/>
-      {/* Keyed on the tone so a refusal mounts a fresh alert, which every screen reader announces; a role swapped in place is not. */}
-      <span key={tone} className="toast-text" role={alert ? 'alert' : 'status'} aria-live={alert ? 'assertive' : 'polite'} aria-atomic="true">
-        {failure !== undefined ? failure : toast.message.map(part)}
+    <div className="toast" data-tone={tone} data-native-cover="" onPointerEnter={() => onHold?.(true, 'hover')} onPointerLeave={() => onHold?.(false, 'hover')} onFocus={() => onHold?.(true, 'focus')} onBlur={onBlur} onKeyDown={onKeyDown}>
+      {toast.lead && toast.lead !== 'dot' ? <span className="toast-icon" aria-hidden="true"><Icon name={toast.lead} size="xs"/></span> : <span className="toast-dot" data-tone={tone} aria-hidden="true"/>}
+      {/* A refusal replaces the sentence while the persistent host announces it politely. */}
+      <span key={tone} className="toast-text">
+        {failure !== undefined ? failure : toast.content ?? toast.message.map(part)}
       </span>
       {toast.actions?.map((action, index) => <Button key={action.label} variant={action.primary ? 'quiet' : 'ghost'} className="toast-action"
         loading={pending === action.label} disabled={pending !== undefined} onClick={() => void onAction?.(index)}>{action.label}</Button>)}
@@ -75,28 +78,20 @@ export function ToastView({ toast, onAction, onUndo, onHold, onDismiss, failure,
  * inside it or its chosen work is running, so a person reaching for Undo is never raced. A refused choice keeps the toast
  * and puts the refusal in its place, amber, for a fresh full duration. Escape inside it dismisses it. */
 function RegionToast({ toast, channel }: { toast: ChannelToast; channel: Toasts }) {
-  const duration = toast.durationMs ?? TOAST_DURATION_MS;
-  const [held, setHeld] = useState(false);
+  const queue = toastQueueFor(channel);
   const [pending, setPending] = useState<string>();
   const [failure, setFailure] = useState<string>();
-  const remaining = useRef(duration);
-  const paused = held || pending !== undefined;
-  useEffect(() => {
-    // A duration of zero or Infinity means the owner dismisses it; nothing here does.
-    if (paused || !Number.isFinite(duration) || duration <= 0) return;
-    const started = Date.now();
-    const timer = window.setTimeout(() => channel.dismiss(toast.id), Math.max(0, remaining.current));
-    return () => { window.clearTimeout(timer); remaining.current = Math.max(0, remaining.current - (Date.now() - started)); };
-  }, [paused, toast.id, duration, failure, channel]);
   const run = async (label: string, choose: () => Promise<void>) => {
+    queue.hold(toast.id, 'action', true);
     setPending(label);
     try { await choose(); } catch (error) {
-      remaining.current = duration;
+      queue.restart(toast.id);
       setFailure(messageOf(error));
       setPending(undefined);
+      queue.hold(toast.id, 'action', false);
     }
   };
-  return <ToastView toast={toast} failure={failure} pending={pending} onHold={setHeld} onDismiss={() => channel.dismiss(toast.id)}
+  return <ToastView toast={toast} failure={failure} pending={pending} onHold={(held, source) => queue.hold(toast.id, source, held)} onDismiss={() => channel.dismiss(toast.id)}
     onAction={index => run(toast.actions?.[index]?.label ?? '', () => channel.act(toast.id, index))}
     onUndo={() => run('Undo', () => channel.undo(toast.id))}/>;
 }
@@ -104,10 +99,11 @@ function RegionToast({ toast, channel }: { toast: ChannelToast; channel: Toasts 
 /**
  * The window's one toast region (design 3l step 3, Components "Overlays"): one toast, bottom centre. A newer toast
  * replaces the one on screen. The region is always on the page (empty, it draws nothing and takes no pointer) so the
- * live region inside it is announced as it arrives, and it is a status, not a dialog, so it never takes focus. Mount
+ * live region announces the sentence as it arrives, and it is a status, not a dialog, so it never takes focus. Mount
  * it ONCE per window; a specimen passes its own channel.
  */
-export function ToastRegion({ channel = windowToasts }: { channel?: Toasts }) {
+export function ToastHost({ channel = windowToasts }: { channel?: Toasts }) {
+  toastQueueFor(channel);
   const list = useSyncExternalStore(channel.subscribe, channel.getToasts);
   const [modal, setModal] = useState(() => document.querySelector<HTMLElement>('dialog:modal'));
   useEffect(() => {
@@ -122,10 +118,23 @@ export function ToastRegion({ channel = windowToasts }: { channel?: Toasts }) {
     update();
     return () => observer.disconnect();
   }, []);
-  const region = <section className="toast-region" aria-label="Notifications">
-    {list.map(toast => <RegionToast key={toast.id} toast={toast} channel={channel}/>)}
+  const [shown, setShown] = useState(list);
+  const exiting = list.length === 0 && shown.length > 0;
+  useEffect(() => { if (list.length) setShown(list); }, [list]);
+  const region = <section className="toast-region" aria-label="Notifications" role="status" aria-live="polite" aria-atomic="true"
+    data-exiting={exiting || undefined} onTransitionEnd={event => {
+      if (event.target === event.currentTarget && exiting) setShown([]);
+    }}>
+    {(list.length ? list : shown).map(toast => <RegionToast key={toast.id} toast={toast} channel={channel}/>)}
   </section>;
-  return modal ? createPortal(region, modal) : region;
+  useEffect(() => {
+    if (!exiting) return;
+    // Reduced motion has no transition event; the fallback also covers a host detached during an exit.
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const timer = window.setTimeout(() => setShown([]), reduced ? 0 : Number.parseFloat(design.foundation['dur-base']));
+    return () => window.clearTimeout(timer);
+  }, [exiting]);
+  return createPortal(region, modal ?? document.body);
 }
 
 /** The Places shell's door onto the window channel: a sentence and its subject in, a toast in the one region out.
@@ -142,3 +151,13 @@ export function useToasts(channel: Toasts = windowToasts) {
   const dismiss = useCallback((id: string) => { const at = ids.current.get(id); if (at !== undefined) channel.dismiss(at); ids.current.delete(id); }, [channel]);
   return { show, dismiss };
 }
+
+/** Compatibility keeps existing callers on the single primitive while the shell integrator adopts its name. */
+export const ToastRegion = ToastHost;
+/** The standalone card uses the same drawing as the host, for specimens and reusable overlay content. */
+export function Toast(options: ToastOptions) {
+  return <ToastView toast={{ message: [], content: options.message, lead: options.lead,
+    actions: options.actions?.map(action => ({ label: action.label, primary: action.kind === 'field', onSelect: action.onAction })),
+    undo: options.undo }} onAction={index => options.actions?.[index]?.onAction()} onUndo={options.undo}/>;
+}
+export { toast } from './toastQueue';

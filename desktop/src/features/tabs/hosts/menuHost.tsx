@@ -3,6 +3,7 @@
 import type { ReactElement } from 'react';
 import { ContextMenu, type MenuEntry } from '../../../components/ui';
 import { copyLinkShortcut, tabShortcuts } from '../../../design/keyboard';
+import { reportsMultiwindow, tabMoveToWindow } from '../../../lib/native/windows';
 import { closeShortcutFor, closeStopShortcut, newGroupShortcut } from '../closing/shortcuts';
 import type { TabsApi } from '../context';
 import { placeFinishedJobItems } from '../../terminal/tabMenu';
@@ -32,13 +33,15 @@ function groupEntry(api: TabsApi, tab: Tab): MenuEntry {
   }));
   return {
     kind: 'submenu', id: 'group', label: 'Add to group', icon: 'layers',
-    items: [...groups, ...(groups.length ? [separator('groups-separator')] : []), { id: 'new-group', label: 'New group…', icon: 'plus', shortcut: newGroupShortcut, onSelect: () => dispatch({ type: 'group', id: tab.id }) }],
+    items: [...groups, ...(groups.length ? [separator('groups-separator')] : []), { id: 'new-group', label: 'New group…', icon: 'plus', shortcut: newGroupShortcut, onSelect: () => api.groupSelected(tab.id) }],
   };
 }
 
 /**
  * Copy link and Move to new window are present only where they can work. A capability that cannot work is ABSENT, not
- * disabled: a tab with nothing durable behind it has no link (links/deepLinks.ts), and a tab moves only in the desktop app.
+ * disabled. Copy link needs a durable target (links/deepLinks.ts); with none, the row is left off and its chord does
+ * nothing. Move to new window is listed only when the native bridge reports another window can open, and choosing it
+ * calls `tabMoveToWindow`.
  */
 function transferEntries(api: TabsApi, tab: Tab): MenuEntry[] {
   const { actions } = api;
@@ -46,7 +49,15 @@ function transferEntries(api: TabsApi, tab: Tab): MenuEntry[] {
   // The chord is Copy path on a file or diff tab (keyboard.ts), so those tabs show Copy link without it.
   const chord = ['file', 'diff'].includes(focusedPane(tab).kind) ? undefined : copyLinkShortcut;
   if (actions.linkFor(tab)) entries.push({ id: 'copy-link', label: 'Copy link', icon: 'link', shortcut: chord, onSelect: () => void actions.copyLink(tab) });
-  if (actions.canMove(tab)) entries.push({ id: 'new-window', label: 'Move to new window', icon: 'appWindow', onSelect: () => void actions.moveToNewWindow(tab) });
+  if (reportsMultiwindow()) entries.push({
+    id: 'new-window', label: 'Move to new window', icon: 'appWindow',
+    onSelect: () => {
+      void tabMoveToWindow(tab, api.workspaceKey).then(opened => {
+        if (opened) actions.releaseFocus(tab);
+        else actions.moveFailed(tab);
+      }, () => actions.moveFailed(tab));
+    },
+  });
   return entries.length ? [separator('link-separator'), ...entries] : [];
 }
 

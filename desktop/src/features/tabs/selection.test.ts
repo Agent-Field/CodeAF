@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isSelectionPress, toggleSelection, retainSelection } from './selection.ts';
+import { isSelectionPress, toggleSelection, retainSelection, groupTargets } from './selection.ts';
 import { workspaceReducer, freshWorkspace } from './model.ts';
 import { compose, emptyLocal, sharedOf } from '../workspace-sync/shared.ts';
 
@@ -45,4 +45,21 @@ test('selection survives remote updates in this window and never enters the shar
   assert.equal('picked' in doc, false);
   assert.deepEqual(compose(doc, emptyLocal(), selected).picked, selected.picked);
   assert.equal(compose(doc, emptyLocal()).picked, undefined);
+});
+
+test('⌘G covers the whole selection when the pressed tab is in it, and the pressed tab alone otherwise', () => {
+  const s = { picked: ['a', 'b'], activeId: 'c' };
+  assert.deepEqual(groupTargets(s, 'a'), ['a', 'b']);
+  assert.deepEqual(groupTargets(s, 'c'), ['a', 'b']);
+  assert.deepEqual(groupTargets(s, 'z'), ['z']);
+  assert.deepEqual(groupTargets({ activeId: 'c' }, 'c'), ['c']);
+});
+
+test('grouping the selection clears it and names the group with the next default', () => {
+  const s = workspaceReducer(workspaceReducer(freshWorkspace(), { type: 'new' }), { type: 'new' });
+  const [first, second] = s.tabs.map(t => t.id);
+  const grouped = workspaceReducer({ ...s, picked: [first, second] }, { type: 'group', id: first, ids: [second] });
+  assert.deepEqual(grouped.picked, []);
+  assert.equal(grouped.groups[0].title, 'New group');
+  assert.equal(grouped.tabs.filter(t => t.groupId === grouped.groups[0].id).length, 2);
 });

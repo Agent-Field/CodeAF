@@ -59,6 +59,8 @@ test.describe('one strip order (finding 5)', () => {
   await tabNamed(page, 'Alpha').click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Add to group', exact: true }).hover();
   await page.getByRole('menuitem', { name: /^New group…/ }).click();
+  // The new group's label opens in rename at once (Shell 2h); Enter keeps the default name.
+  await page.keyboard.press('Enter');
   await expect.poll(() => strip(page)).toEqual(['[New group: Alpha]', 'Beta', 'Gamma']);
   await page.getByRole('button', { name: 'New tab', exact: true }).click();
   await expect(tabNamed(page, 'New tab')).toHaveAttribute('aria-selected', 'true');
@@ -88,20 +90,22 @@ test.describe('one strip order (finding 5)', () => {
   await expect.poll(() => strip(page)).toEqual(['Pinned', 'Loose', '[Bench: Alpha Beta]']);
  });
 
- test('⌘-click picks tabs (Ctrl-click on Linux) and ⌘G groups them with the active tab', async ({ page }) => {
+ test('⌘-click picks tabs (Ctrl-click on Linux) and ⌘G groups them', async ({ page }) => {
   await seed(page, { tabs: [tab('a', 'Alpha'), tab('b', 'Beta'), tab('c', 'Gamma'), tab('d', 'Delta')], activeId: 'a' });
   await page.goto('/');
   const mod = await primary(page);
   await tabNamed(page, 'Gamma').click({ modifiers: [mod] });
   await tabNamed(page, 'Delta').click({ modifiers: [mod] });
   await expect(tabNamed(page, 'Alpha')).toHaveAttribute('aria-selected', 'true');
-  await expect(tabNamed(page, 'Gamma')).toHaveAttribute('aria-description', 'Selected');
+  await expect(tabNamed(page, 'Gamma')).toHaveAttribute('aria-description', 'selected for grouping');
   await expect(page.locator('.workspace-tab[data-picked]')).toHaveCount(2);
   await expect(page.locator('.workspace-tab[data-picked]').first()).toHaveCSS('background-color', await tokenColor(page, 'field'));
   await expectAccessible(page);
+  // The selection alone is grouped (the active tab only when nothing is selected), and rename opens on the new label.
   await page.keyboard.press(`${mod}+g`);
+  await page.keyboard.press('Enter');
   await expect(page.locator('.workspace-tab-group')).toHaveCount(1);
-  await expect.poll(() => strip(page)).toEqual(['[New group: Alpha Gamma Delta]', 'Beta']);
+  await expect.poll(() => strip(page)).toEqual(['Alpha', 'Beta', '[New group: Gamma Delta]']);
   await expect(page.locator('.workspace-tab[data-picked]')).toHaveCount(0);
   // A plain click drops the picks.
   await tabNamed(page, 'Beta').click({ modifiers: [mod] });
@@ -165,6 +169,7 @@ test('a task opened from a grouped conversation joins its group', async ({ page 
  await tabNamed(page, title).click({ button: 'right' });
  await page.getByRole('menuitem', { name: 'Add to group', exact: true }).hover();
  await page.getByRole('menuitem', { name: /^New group…/ }).click();
+ await page.keyboard.press('Enter');
  await expect(page.locator('.workspace-tab-group')).toHaveCount(1);
  await panel.getByRole('button', { name: /^(?!Collapse|Expand).*Port the form fields/ }).click({ modifiers: [await primary(page)] });
  await expect(page.getByRole('tab')).toHaveCount(2);
