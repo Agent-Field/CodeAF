@@ -61,6 +61,7 @@ Shell). On any conflict, the design files win over code and older docs.
 
 | # | Question | Assumption the app ships now |
 |---|---|---|
+| PL-144 | Places 8a shows chat digests without defining a separate per-row digest endpoint. What appears when a chat has no recap in the Home response? | Use the matching engine-written Home recap item’s line; a waiting reason takes priority. Without either, omit the digest. No renderer model call or invented task-count sentence. Older chats without recap evidence remain title-only. |
 | TOK-OVERLAY-435 | Places 6c/8d names `scrim` .18 for the palette and .2 for Quick Look (D-14) but gives no Dark value. | Light .18 / .2; Dark .4 for both, matching the existing Dark `scrim`. `scrim-quicklook` aliases `--scrim`; tokens only, components adopt them in their own lanes. |
 | AX-CONTRAST-367 | Should decision-card bodies and comparison tables have their own Tab stop even when their current contents fit without scrolling? | Both remain keyboard focusable so overflow is reachable at every window size. The shared keyboard focus ring identifies the focused area; Tab continues to the decision actions. |
 | CV-MSG-425 | Conversation 1f says a code block scrolls with a 24px right mask, and does not name that scroller for a keyboard or a screen reader. What is its accessible name? | A region named "Code block", in the tab order, so arrow keys scroll it the same way a response table does. The mask is the shared 24px edge fade, and it is absent once the line is scrolled to the end or the line already fits. |
