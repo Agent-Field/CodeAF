@@ -69,7 +69,7 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
     {isPlace && <StatusLine status={sections.status}/>}
     </div>
     {notices}
-    {!isPlace && suggestion}
+    {suggestion}
     {view.recap && <HomeRecap label={view.recap.label} text={view.recap.text}/>}
     <HomeAttentionSection items={view.attention} actions={actions} readOnly={readOnly}/>
     {/* Places 8b draws the place's child places, its own chats and its sources under the heading; a place Home that lists none would hide the work the place exists to hold. */}

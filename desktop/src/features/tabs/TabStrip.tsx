@@ -100,12 +100,14 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
   const focusNeighbour = useRef(false);
   if (seen !== signature) {
     const gone = departuresFrom(tabsRef.current, state.tabs, groupsRef.current);
-    if (gone.length > 0) focusNeighbour.current = true;
+    // Only a close hands focus to an existing neighbour. A tab replaced by a new one (Continue from History) selects a tab the strip
+    // never held, whose pane takes the keyboard itself; focusing its tab button here would make the composer stand aside.
+    if (gone.length > 0 && tabsRef.current.some(tab => tab.id === state.activeId)) focusNeighbour.current = true;
     const next = mergeDepartures(departures, retainDepartures(reduced, gone), new Set(state.tabs.map(tab => tab.id)));
     setSeen(signature);
     if (departureIds(next) !== departureIds(departures)) setDepartures(next);
   }
-  // Collapsed members remain in the drawing model so their capsule survives after motion ends.
+  // Every tab is drawn, hidden members included: a collapsed group whose members are all hidden must still show its capsule.
   const shown = withDepartures(state.tabs, departures);
   const groups = groupsForDepartures(state.groups, departures);
   const departing = new Set(departures.map(item => item.tab.id));
