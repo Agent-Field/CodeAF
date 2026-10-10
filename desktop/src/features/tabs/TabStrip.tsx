@@ -87,19 +87,22 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
   const [moveNote, setMoveNote] = useStripAnnouncement(strip);
   const [departures, setDepartures] = useState<TabDeparture[]>([]);
   const order = visibleTabs(state);
-  // Closing tabs stay mounted for dur-base. The comparison is the id list: a draft keystroke must not restart a collapse.
+  // Closing compares the full tab list, not the visible one. A collapsed group's hidden members leave the
+  // visible order without leaving the document; treating that as a close dropped the pill whenever the
+  // selected tab stood outside the group. A draft keystroke does not change this id list, so it does not
+  // restart a collapse.
   const signature = state.tabs.map(tab => tab.id).join('\0');
   const [seen, setSeen] = useState(signature);
-  // Previous strip, updated after commit. A render (including a strict-mode replay) must keep seeing the same
-  // "before", or the second pass thinks nothing left and the collapse never starts.
-  const orderRef = useRef(state.tabs);
+  // Previous full list, updated after commit. A render (including a strict-mode replay) must keep seeing the
+  // same "before", or the second pass thinks nothing left and the collapse never starts.
+  const tabsRef = useRef(state.tabs);
   const groupsRef = useRef(state.groups);
   const focusNeighbour = useRef(false);
   if (seen !== signature) {
-    const gone = departuresFrom(orderRef.current, state.tabs, groupsRef.current);
+    const gone = departuresFrom(tabsRef.current, state.tabs, groupsRef.current);
     // Only a close hands focus to an existing neighbour. A tab replaced by a new one (Continue from History) selects a tab the strip
     // never held, whose pane takes the keyboard itself; focusing its tab button here would make the composer stand aside.
-    if (gone.length > 0 && orderRef.current.some(tab => tab.id === state.activeId)) focusNeighbour.current = true;
+    if (gone.length > 0 && tabsRef.current.some(tab => tab.id === state.activeId)) focusNeighbour.current = true;
     const next = mergeDepartures(departures, retainDepartures(reduced, gone), new Set(state.tabs.map(tab => tab.id)));
     setSeen(signature);
     if (departureIds(next) !== departureIds(departures)) setDepartures(next);
@@ -108,9 +111,9 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
   const shown = withDepartures(state.tabs, departures);
   const groups = groupsForDepartures(state.groups, departures);
   const departing = new Set(departures.map(item => item.tab.id));
-  // The strip draws `state.tabs` as it stands (the reducer keeps pinned tabs first and each group one run), so what a
-  // person sees, what the arrow keys walk and what ⌘1–9 count are one order. A departing tab is put back only so its
-  // slot can shrink; it is not in that order.
+  // Arrow keys and ⌘1–9 walk `order` (hidden members of a collapsed group are not stops). The drawn strip
+  // still includes every member, so the pill "Label N" stays when none of those tabs is selected. A
+  // departing tab is put back only so its slot can shrink; it is not in that keyboard order.
   const pinned = shown.filter(tab => tab.pinned);
   const items = stripItems({ tabs: shown, groups });
   // The strip only re-measures when its shape changes, never on a draft keystroke.
@@ -168,7 +171,7 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
   }, [departures, reduced]);
 
   useLayoutEffect(() => {
-    orderRef.current = state.tabs;
+    tabsRef.current = state.tabs;
     groupsRef.current = state.groups;
   });
 
