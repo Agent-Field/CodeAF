@@ -5,6 +5,7 @@
 // opens through the same link path, and the question it named is brought forward in that conversation's tray.
 // Outside the desktop app nothing can arrive, so only the chord is live there.
 import { useEffect, useRef, type Dispatch } from 'react';
+import { dispatchAttentionFocus } from '../../../lib/native/notify';
 import { nativeLinks, type NativeLinks } from '../../../design/nativeLinks';
 import { nativeControls, type NativeControls } from '../../../design/nativeControls';
 import { questionFocus } from '../../conversation/questionFocus';
@@ -57,6 +58,7 @@ export function useTabLinks({ enabled, state, dispatch, actions, native = native
       let targets: Awaited<ReturnType<typeof notices.claimNotices>>;
       try { targets = await notices.claimNotices(); } catch { return; }
       for (const target of targets) {
+        if (target.itemId) dispatchAttentionFocus(target.itemId);
         // Asked for before the tab opens, so a conversation that mounts for it finds the request already waiting.
         if (target.question) questionFocus.request(target.chatId, target.question);
         void open(linkOf({ kind: 'chat', chatId: target.chatId }));

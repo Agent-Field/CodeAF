@@ -9,6 +9,8 @@ export type WorldRow = {
 export type AttentionItem = {
  id: string; chatId: string; sessionFile?: string; sessionId?: string;
  title?: string; kind: string; head?: string; at?: string;
+ /** Absent on older engines, whose attention questions all block a conversation. */
+ blocking?: boolean;
 };
 export type EngineJob = {
  id: number; name?: string; command?: string; detail?: string; kind?: string;
