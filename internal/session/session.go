@@ -1210,6 +1210,12 @@ type Config struct {
 	// leave this off and their event streams remain asynchronous.
 	WaitForBeltSteps bool
 
+	// PlanCards puts the `plan` tool on this conversation's belt. It is a door
+	// the desktop sets, because the tool's card needs a surface that draws it
+	// and answers Go, Edit or Cancel; without one the verb would be present and
+	// could never finish, so it is absent instead.
+	PlanCards bool
+
 	Workspace string // tools root here; all relative paths resolve inside it
 	Model     string
 	APIKey    string
@@ -3554,6 +3560,10 @@ type Agent struct {
 	// lane is the roster's, its readers walk a strict sequence of rows, and a
 	// question is not a row.
 	questionWatchers []*eventStream
+
+	// planBook holds the plan cards this conversation proposed (plancard_exec.go).
+	// Built on first use, under mu.
+	planBook *PlanBook
 	// landingQuestions is which shape each landed node's `your call` was last
 	// PUT OUT AS — `landing` or `conflict` — so that a question can be taken back
 	// in the kind it was raised in when the node settles or changes shape
