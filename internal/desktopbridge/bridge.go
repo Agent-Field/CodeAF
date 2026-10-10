@@ -668,7 +668,10 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer b.mu.Unlock()
 		for _, s := range b.sessions {
 			if ask.SessionFile != "" && s.conn.Welcome.SessionFile == ask.SessionFile {
-				write(w, s.snapshot())
+				// Reattach is how a window comes back after the stream drops.
+				// The body is the elided snapshot a GET would send, so a large
+				// tool output stays out until the call is opened.
+				write(w, fullView(s.snapshot()))
 				return
 			}
 		}
@@ -756,7 +759,9 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			go s.lane("question", events, stop)
 		}
 		go s.watchPlanReads()
-		write(w, s.snapshot())
+		// A resumed transcript can already hold large tool outputs. Send the
+		// elided view, the same one a later GET sends.
+		write(w, fullView(s.snapshot()))
 		return
 	}
 	parts := strings.Split(strings.Trim(path, "/"), "/")
