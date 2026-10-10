@@ -69,6 +69,9 @@ func (a *app) proposeAutomation(ev session.Event) {
 	}
 	card := &automationCard{id: notice.ID, notice: *notice}
 	a.auto = card
+	// A CARD IN FRONT OF THEM IS THE LESSON LEARNED: the tips about
+	// automations retire (notice.go).
+	a.noticeEvent(eventAutomationsOpened)
 	a.closeLive()
 	a.closeLists()
 	a.closeSettings()

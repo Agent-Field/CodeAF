@@ -465,6 +465,8 @@ func (placeAutomations) open(a *app) tea.Cmd {
 	a.autoPlace.settle(a)
 	a.closeLists()
 	a.dismissWelcome()
+	// The person found the place, so the tips that teach it retire (notice.go).
+	a.noticeEvent(eventAutomationsOpened)
 	return tea.Batch(a.armPlaceClock(), a.readAutomations())
 }
 

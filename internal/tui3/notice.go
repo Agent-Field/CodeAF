@@ -130,9 +130,9 @@ const (
 	eventResumeOpened = "resume-opened"
 	// eventCostShown is /cost answered.
 	eventCostShown = "cost-shown"
-	// eventStandingOpened is the standing page raised or an order made — either
-	// proves the person knows the word.
-	eventStandingOpened = "standing-opened"
+	// eventAutomationsOpened is the automations place raised or an automation's
+	// card put in front of the person — either proves the person knows the word.
+	eventAutomationsOpened = "automations-opened"
 	// eventDeliverableMade is something written for the person: an export that
 	// landed on disk.
 	eventDeliverableMade = "deliverable-made"
@@ -205,7 +205,7 @@ var noticeEvents = []string{
 	eventBoot, eventTurnEnded, eventTaskStarted, eventTaskPageOpened,
 	eventMenuOpened, eventRewound, eventCopyEntered, eventModelSwitched,
 	eventCompacted, eventFilesOpened, eventResumeOpened, eventCostShown,
-	eventStandingOpened, eventDeliverableMade,
+	eventAutomationsOpened, eventDeliverableMade,
 	eventAsked, eventTaskTyped, eventManualAsked, eventTabReopened, eventAtOpened, eventAttached,
 	eventFolderPicked, eventProjectSet, eventModelListOpened, eventCrewShown, eventBudgetShown,
 	eventConversationBudgetShown,
@@ -387,16 +387,14 @@ var notices = []notice{
 		retire: eventResumeOpened,
 	},
 	{
-		id: "standing-after-several-sessions", slot: slotHint,
-		armed: func(a *app) bool { return len(a.welcome.recent) >= 3 },
-		// THE TWO "KEEPS" ROWS ARE TOLD APART SINCE 2026-09-22. This one and
-		// `/remember` both said "keeps", which taught a person that the two
-		// commands did the same thing in different words. They do not: a
-		// standing order is a CONDITION the work has to honour — it rides into
-		// a task's brief under its own heading and the worker reports when it
-		// cannot meet one — and a memory is a fact carried forward.
-		text:   "/standing turns a message into a rule work must follow",
-		retire: eventStandingOpened,
+		// SOMEBODY WHO HAS COME BACK SEVERAL TIMES has work worth doing on a
+		// clock. The row names the place that lists what runs while codeaf is
+		// open, and retires the first time the place is opened or a card for
+		// one is put in front of them.
+		id: "automations-after-several-sessions", slot: slotHint,
+		armed:  func(a *app) bool { return len(a.welcome.recent) >= 3 },
+		text:   "/automations lists what codeaf does on a clock while it is open",
+		retire: eventAutomationsOpened,
 	},
 	// ── starting work ───────────────────────────────────────────────────────
 	//
@@ -425,17 +423,14 @@ var notices = []notice{
 		retire: eventTaskTyped,
 	},
 	{
-		// THE THIRD ROW ABOUT A STANDING ORDER, and it says the same thing as
-		// the one above in the same words since 2026-09-22. It named the
-		// ctrl+enter chord until that chord became the queue's (followup.go,
-		// 2026-09-30); the explicit door that remains is the command, so the
-		// row teaches that now. The two rows retire on the SAME event, so they
-		// are one lesson told twice, and telling it twice in two vocabularies
-		// is the way to teach neither.
-		id: "standing-by-chord", slot: slotHint,
+		// THE OTHER HALF OF THE SAME LESSON: an automation is made by saying
+		// what you want and when, in the conversation, and the card shows the
+		// real schedule before anything is saved. It retires on the same event
+		// as the row that names the place, because the two are one lesson.
+		id: "automations-by-saying", slot: slotHint,
 		armed:  ready,
-		text:   "/standing makes your message a rule instead of a request",
-		retire: eventStandingOpened,
+		text:   "say what to do and when, like every Monday at 9, and it becomes an automation",
+		retire: eventAutomationsOpened,
 	},
 	{
 		id: "manual-answers", slot: slotHint,
