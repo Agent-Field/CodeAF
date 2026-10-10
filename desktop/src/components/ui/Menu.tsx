@@ -37,7 +37,7 @@ function focusFirstItem(event: FocusEvent<HTMLDivElement>) {
 function EntryContents({ entry }: { entry: Exclude<MenuEntry, { kind: 'separator' }> }) {
  return <>{entry.icon && <Icon name={entry.icon} size="sm"/>}<span className="menu-label">{entry.label}</span>{entry.kind === 'submenu'
   ? <Icon name="chevronRight" size="xs"/>
-  : <>{'detail' in entry && entry.detail && <span className="menu-detail">{entry.detail}</span>}{entry.shortcut && <KeyboardShortcut label={entry.shortcut}/>}</>}</>;
+  : <>{'detail' in entry && entry.detail && <span className="menu-detail">{entry.detail}</span>}{entry.shortcut && <KeyboardShortcut label={entry.shortcut} variant="inline"/>}</>}</>;
 }
 function MenuItems({ items, type, container }: { items: readonly MenuEntry[]; type: 'context' | 'dropdown'; container?: HTMLElement }) {
  const P = type === 'context' ? Context : Dropdown;

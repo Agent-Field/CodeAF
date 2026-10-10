@@ -124,7 +124,6 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .type-section { margin: 0; font-size: var(--font-size-body); font-weight: var(--font-weight-semibold); line-height: var(--line-height-body); }
 .type-body { line-height: var(--line-height-body); font-size: var(--font-size-body); margin: 0; }.text-muted { color: var(--muted); }.text-default { color: var(--text); }
 .type-code { font-family: var(--font-mono); font-size: var(--font-size-code); font-weight: var(--font-weight-regular); line-height: var(--line-height-body); color: var(--ink); }
-.keyboard-shortcut { font-family: var(--font-sans); font-size: var(--font-size-caption); font-weight: var(--font-weight-regular); color: inherit; }
 .text-input { min-width: 0; width: 100%; min-height: var(--input-height); padding: var(--input-padding) 0; background: transparent; border: 0; color: var(--text); font-size: var(--font-size-input); }.text-input::placeholder { color: var(--muted); opacity: var(--opacity-opaque); }
 .settings-section { display: flex; align-items: center; justify-content: space-between; gap: var(--space-section); border-top: var(--border-width) solid var(--border); padding: var(--space-section-inner) 0; }.settings-section .type-body { margin-top: var(--space-2); overflow-wrap: anywhere; }.settings-section.vertical { align-items: flex-start; flex-direction: column; gap: var(--space-3); }.settings-section.vertical .type-body { margin-top: 0; }
 
