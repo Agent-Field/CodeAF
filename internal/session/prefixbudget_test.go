@@ -572,12 +572,13 @@ const fixedPrefixTarget = 48_000
 // (docs/design/automations/DESIGN.md). `stand` and its 9,607 bytes leave every
 // belt that carried them, and `automation` — a smaller tool for the same
 // sentences — takes its place; the one-sentence paragraph the page composes
-// beside it is the same length as the one it replaces. The fixed prefix
-// measures 52,721 bytes and the lean 44,935, and both waivers FALL to sit
-// exactly on the measurement: the bill this file has carried for `stand` since
-// it was first weighed is mostly paid.
+// beside it is the same length as the one it replaces, and `watch`'s boundary
+// sentence names the idea rather than a verb some belts lack, eight bytes
+// shorter. The fixed prefix measures 52,713 bytes and the lean 44,935, and both
+// waivers FALL to sit exactly on the measurement: the bill this file has
+// carried for `stand` since it was first weighed is mostly paid.
 const (
-	fixedPrefixWaiver = 4_721
+	fixedPrefixWaiver = 4_713
 	leanPrefixWaiver  = 13_435
 )
 

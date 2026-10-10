@@ -536,8 +536,8 @@ const (
 	// through the door; it is to make them say the same word the door says.
 	//
 	// THEY REACHED THE CALL LOG WITH NO TAG AT ALL UNTIL THIS PR, which meant the
-	// two slowest unattended errands this build makes — a memory tidy-up and a
-	// standing item's check, both of which run while nobody is there — were
+	// two slowest unattended errands this build makes — a memory tidy-up and an
+	// automation's check, both of which run while nobody is there — were
 	// indistinguishable from a turn that had lost its name. They carry the most
 	// money per call of anything nobody is waiting for.
 
@@ -548,20 +548,14 @@ const (
 	// out. The memory tidy-up is [roles.RoleConsolidate] and says so at its own
 	// call; the two below are not roles at all.
 	//
-	// purposeSentinel is one standing item's yes-or-no on evidence somebody else
-	// already gathered, run on every check of every item forever. It is the ONE
-	// DELIBERATE DIVERGENCE: the call resolves on [roles.RoleSentinel], but the
-	// tag is `standing-check`, because cmd/codeaf already writes `sentinel` for
-	// the resident's quorum errand and two different calls under one tag is one
-	// reading of neither. THE RENAME IS A HOLDING ACTION: it moves the collision
-	// rather than fixing it, and it is fixed by carrying [lane.Role] on the
-	// calllog record beside the tag, where the two calls are told apart by what
-	// they ARE and both can spell `sentinel` again. That is issue #1010, whose
-	// spine is #928.
-	purposeSentinel callPurpose = "standing-check"
 	// purposeAutomationCheck is one automation watch's judgment: does what its
-	// look saw meet the condition? It resolves on [roles.RoleSentinel], the same
-	// low-tier seat, and is tagged for what it is.
+	// look saw meet the condition? It is the ONE DELIBERATE DIVERGENCE: the call
+	// resolves on [roles.RoleSentinel], but the tag is not `sentinel`, because
+	// cmd/codeaf already writes that for the resident's quorum errand and two
+	// different calls under one tag is one reading of neither. That collision is
+	// fixed for good by carrying [lane.Role] on the calllog record beside the
+	// tag (issue #1010, whose spine is #928). The standing check this replaced
+	// was tagged `standing-check`, which cmd/codeaf-replay still reads.
 	purposeAutomationCheck callPurpose = "automation-check"
 	// purposeDocument is a rung of the document reader — the model's own eyes on
 	// a PDF the `read` tool cannot open as text. It is not a role because the

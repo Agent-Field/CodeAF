@@ -1560,8 +1560,8 @@ cap **50,189**, both dated in `prefixWaivers`.
 `stand` and its **9,607** bytes leave every belt that carried them; `automation`,
 a smaller tool for the same sentences, takes its place, and the page's one
 sentence about leaving something behind stays the same length. The full prefix
-measures **52,721** bytes and the lean **44,935**, and both waivers fall to sit
-exactly on the measurement: the full cap is **52,721** (4,721 over its target)
+measures **52,713** bytes and the lean **44,935**, and both waivers fall to sit
+exactly on the measurement: the full cap is **52,713** (4,713 over its target)
 and the lean cap **44,935** (13,435 over).
 
 ## Following through on a completion claim
