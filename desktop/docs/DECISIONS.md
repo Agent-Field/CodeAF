@@ -432,3 +432,58 @@ needed. Ledger rows added: SETTINGS-USING-283-1 and SETTINGS-USING-283-2.
 Decision: **no additional pinch wiring**. Shell 2h and Interactions require pinch-out, but renderer Ctrl+wheel cannot distinguish a physical pinch from ordinary zoom, and native delivery/cancellation has not been observed on either supported platform. The existing tab-strip-only `useOverviewGesture` is already wired; this research does not remove it or broaden it. Corrected stale OV2, which said no wiring existed.
 
 [Research and minimal native probe](research/d5-overview-pinch.md) distinguish macOS GestureEvent/Ctrl-wheel source evidence from GTK native magnification and from synthetic browser tests. Keep the overview button and platform keys as dependable doors. SH-190 native acceptance stays open until physical traces are recorded on macOS WKWebView and Linux WebKitGTK. No renderer, engine, tokens or manual behavior changed.
+
+## t-d5-tab-web-find-research: find in a native web page (2026-10-10)
+
+**Decision: find is feasible on macOS and Linux without giving the `web-*` view IPC. Build it as `t-d5-nat-web-find`.** The command is `web_find { pane, query, forward } -> { found, matches? }`. `pane` is the id the other web commands already take (the task's `label`); the view label stays `web-<pane>` inside Rust. `found` is always a boolean. `matches` is present only when Linux reports a total under its cap. There is no `current` index, so the field never shows "n of m".
+
+Find stays absent in the app until that follow-up lands. This lane adds no command, menu item, or field. Covers TW-14. The design files do not draw find in a web tab; Open row TW-14 records what ships.
+
+### Why the synchronous `{matches, current}` shape does not fit
+
+Both platform calls are asynchronous, and neither public API reports the ordinal of the selected match.
+
+**macOS.** Public `WKWebView` method, WebKit `WKWebView.h` (main, 2026-10-10):
+
+```objc
+- (void)findString:(NSString *)string
+ withConfiguration:(nullable WKFindConfiguration *)configuration
+ completionHandler:(void (^)(WKFindResult *result))completionHandler
+    WK_API_AVAILABLE(macos(11.0), ios(14.0));
+```
+
+The selector is `findString:withConfiguration:completionHandler:`. The header says a match is selected and the page scrolls to it. `WKFindConfiguration` (class available macOS 10.15.4) has `backwards` (default NO), `caseSensitive` (default NO), and `wraps` (default YES). `WKFindResult` has one property, `matchFound`. The same headers are what `objc2-web-kit` 0.3.2 translated: `findString_withConfiguration_completionHandler` is compiled only with features `WKFindConfiguration`, `WKFindResult`, and `block2`, and `WKFindResult::matchFound` is its only method. This crate's `Cargo.toml` enables `WKWebView` and `block2` and does not yet enable the two find features. Tauri 2.12.1 does not wrap find; `Webview::with_webview` already hands the process the `WKWebView` (`PlatformWebview::inner`), which `web/platform.rs` uses for history and snapshots.
+
+**Linux.** Installed WebKitGTK 2.52.6 (`/usr/include/webkitgtk-4.1/webkit/WebKitFindController.h`) and the already-linked `webkit2gtk` 2.0.2 crate. `WebViewExt::find_controller` is `webkit_web_view_get_find_controller`. `FindControllerExt` exposes `search`, `search_next`, `search_previous`, `search_finish`, and `count_matches`. The GIR (`WebKit2-4.1.gir`) says the operations are asynchronous: `found-text` and `failed-to-find-text` after a search, `counted-matches` after `count_matches`. `found-text`'s `match_count` is the number of matches, and a total above `max_match_count` is reported as `G_MAXUINT`. `search_finish` unhighlights. `PlatformWebview::inner` on Linux is a `webkit2gtk::WebView`, already used from `with_webview` in `web/platform.rs`.
+
+**Private macOS SPI stays unused.** `WKWebViewPrivate.h` declares `_findString:options:maxCount:`, `_countStringMatches:options:maxCount:`, `_hideFindUI`, and `_findDelegate`. Those can count and clear. They are absent from the public header and from `objc2-web-kit` 0.3.2. `macOSPrivateApi` in `tauri.conf.json` is the title-bar switch, not a grant to call WebKit SPI. The follow-up calls the public method only.
+
+### Command the follow-up implements
+
+`web_find` is a Tauri command on the app webview, the same trust path as `web_history` and `web_snapshot` (`owned_view`, then `with_webview`). `capabilities/default.json` keeps `web-*` out of the capability set. The page gets no IPC permission and no script evaluation.
+
+The command awaits one platform result on a channel, as `web_snapshot` already does, and returns:
+
+| Field | When it is present |
+|---|---|
+| `found` | Always. macOS: `WKFindResult.matchFound`. Linux: true on `found-text`, false on `failed-to-find-text`. |
+| `matches` | Linux `found-text` `match_count` when that value is not `G_MAXUINT`. Omitted on macOS, on a failed search, on dismiss, and when the count hit the cap. |
+
+`current` is not a field. Counting Next presses in the app would lie once the search wraps.
+
+Call rules, so the two platforms agree:
+
+- A new or changed `query` starts a search. Linux: `search` with `WEBKIT_FIND_OPTIONS_CASE_INSENSITIVE | WEBKIT_FIND_OPTIONS_WRAP_AROUND`, plus `WEBKIT_FIND_OPTIONS_BACKWARDS` when `forward` is false. macOS: `findString` with `caseSensitive = false`, `wraps = true`, `backwards = !forward`. Linux `search` starts at the beginning of the document; macOS starts at the current selection. On a fresh page those are the same place.
+- The same `query` again steps. Linux: `search_next` or `search_previous`. macOS: `findString` again; `backwards` selects the direction from the current selection.
+- An empty `query` dismisses and returns `{ found: false }` with `matches` omitted. Linux calls `search_finish`. macOS calls `findString` with an empty string, because the public header has no hide method. The follow-up confirms on a Mac that the selection clears. If it does not, Esc still closes the field and the page selection stays until the next find or navigation. That gap does not justify `_hideFindUI`.
+- One named match cap lives beside the command. `G_MAXUINT` means the total is unknown, so `matches` is omitted. The renderer never draws 0 for a missing count.
+
+The find highlight is WebKit's own selection inside the page. It is page content. The app's find field, when the renderer lane draws it, uses the shared search field: no coloured count, no "n of m".
+
+### Keys while the page is focused
+
+The page holds keystrokes. Today ⌘L / Ctrl+L reaches the app (macOS menu item `web-address`; Linux accelerator in `web/platform.rs`, which forwards `t`, `w`, and `l` only). ⌘F / Ctrl+F does not. `t-d5-nat-web-find` adds Find the same way: a View-menu item `web-find` with Cmd+F on macOS, and the letter `f` on the Linux accelerator list. `t-d5-tab-web-keys` (TW-15) keeps the other chords. The renderer task `t-d5-tab-web-find` consumes `{ found, matches? }` and draws the field. Until both land, find stays absent (WEB-QUESTIONS W9).
+
+### Verification
+
+Evidence is the public headers, the GIR, the crates already in this tree (`objc2-web-kit` 0.3.2, `webkit2gtk` 2.0.2, Tauri 2.12.1), and the existing `with_webview` call sites. No Mac was available in this lane, so `findString` was not executed. No product, token, engine, or manual file changed. `desktop/src/features/web/find-decision.test.ts` locks this section and Open row TW-14.
