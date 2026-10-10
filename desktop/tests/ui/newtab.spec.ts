@@ -1,10 +1,11 @@
-import { openPage } from './support/shell-navigation';
+import { openAppearance, openPage } from './support/shell-navigation';
 import { test, expect, type Page } from '@playwright/test';
 import { expectAccessible, expectNoUnstyledControls, tokenColor } from './contracts';
 import { installMockEngine } from './support/mock-engine';
 import { plainReply } from './support/scenarios';
 import { message, posts, send } from './support/conversation';
 import { newConversation } from './support/new-tab';
+import { savedWorkspace } from './support/synced-workspace';
 
 // Design 3f / 4c / 2h and Components "Command field": a new tab is one field, not a page.
 const field = (page: Page) => page.getByRole('combobox', { name: 'Search or start' });
@@ -12,15 +13,16 @@ const rowNames = (page: Page) => page.getByRole('option').allTextContents();
 const openField = (page: Page) => page.getByRole('button', { name: 'New tab', exact: true }).click();
 const terminalHint = (page: Page) => page.evaluate(() => /Mac/.test(navigator.platform) ? '⌃`' : 'Ctrl `');
 const mod = (page: Page) => page.evaluate(() => (/Mac/.test(navigator.platform) ? '⌘' : 'Ctrl '));
-const saved = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('codeaf.desktop.workspace.v1') ?? 'null'));
+const saved = savedWorkspace;
 
 test.describe('with the engine away', () => {
  test.beforeEach(async ({ page }) => { await page.route('**/api/engine/**', route => route.abort()); });
 
  test('the New tab button opens an empty card with one centred field and no engine call', async ({ page }) => {
   const calls: string[] = [];
-  // The window's own reads of the place graph and the world stream (engine-wide attention for the Inbox and the dock badge) are not the tab's; a new tab must add none.
-  page.on('request', request => { if (request.url().includes('/api/engine/') && !/\/api\/engine\/(places|events|world)\b/.test(request.url())) calls.push(request.url()); });
+  // Shared graph, attention streams and canonical workspace bootstrap/retries belong to the window.
+  // The empty new tab must still add no session/history/search/tool/model requests.
+  page.on('request', request => { if (request.url().includes('/api/engine/') && !/\/api\/engine\/(places|events|world|workspaces)\b/.test(request.url())) calls.push(request.url()); });
   await page.goto('/');
   calls.length = 0;
   await openField(page);
@@ -147,9 +149,11 @@ test.describe('with the engine away', () => {
  test('is accessible and uses shared controls, light and dark', async ({ page }) => {
   await page.goto('/'); await openField(page); await field(page).fill('fix');
   for (const theme of ['Light', 'Dark']) {
-   await page.getByRole('combobox', { name: 'Theme' }).click().catch(() => undefined);
-   const option = page.getByRole('option', { name: `${theme} appearance`, exact: true });
-   if (await option.count()) await option.click();
+   await openAppearance(page);
+   await page.getByRole('option', { name: `${theme} appearance`, exact: true }).click();
+   await openPage(page, 'Now');
+   await expect(field(page)).toHaveValue('fix');
+   await expect(page.locator('html')).toHaveAttribute('data-theme', theme.toLowerCase());
    await expectAccessible(page); await expectNoUnstyledControls(page);
   }
  });
