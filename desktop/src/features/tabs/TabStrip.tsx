@@ -79,6 +79,7 @@ export function TabStrip({ api, leading, overviewTrigger, onOverview }: { api: T
       <div className="workspace-tab-actions">
         <IconButton className="workspace-tab-action" label="New tab" title={`New tab (${tabShortcuts.new})`} icon="plus" iconSize="sm" onClick={() => dispatch({ type: 'new' })}/>
         {edge.hidden > 0 && <DropdownMenu label="Tab actions" items={overflowItems(api)}><Button className="workspace-tab-more" aria-label="Tab actions">+{edge.hidden}<Icon name="chevron" size="micro" motion="disclosure"/></Button></DropdownMenu>}
+        <div className="workspace-tab-spacer" data-tauri-drag-region/>
         <IconButton ref={overviewTrigger} className="workspace-tab-action workspace-overview-trigger" label="All tabs" title={`All tabs (${overviewShortcut})`} icon="grid" iconSize="sm" onClick={onOverview}/>
       </div>
     </div>
