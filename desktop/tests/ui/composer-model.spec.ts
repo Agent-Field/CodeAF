@@ -32,7 +32,7 @@ test('hover is a fill only, the popover uses sh-2, and Esc returns focus to the 
   const style = await popover.evaluate(node => { const c = getComputedStyle(node); return { shadow: c.boxShadow, radius: c.borderRadius, width: c.width }; });
   expect(style.shadow).not.toBe('none');
   expect(style.radius).toBe('14px');
-  expect(style.width).toBe('300px');
+  expect(style.width).toBe('290px');
   const row = popover.getByRole('radiogroup', { name: 'Models', exact: true }).getByRole('radio');
   await row.hover();
   const hovered = await row.evaluate(node => { const c = getComputedStyle(node); return { bg: c.backgroundColor, border: c.borderTopWidth, shadow: c.boxShadow, transform: c.transform }; });
