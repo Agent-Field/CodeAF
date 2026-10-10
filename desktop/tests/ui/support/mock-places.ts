@@ -53,6 +53,11 @@ export type SeedChat = {
   tasks?: Partial<{ running: number; incomplete: number; done: number; failed: number }>;
   /** ISO instant of the last word; defaults to minutes ago, newest first in seed order. */
   at?: string;
+  /**
+   * How long a running chat has been running, measured back from the Home read.
+   * Set only when a row must say "running · Nm"; absent leaves the start time off the wire.
+   */
+  runningMinutes?: number;
 };
 
 export type PlacesSeed = {
@@ -84,6 +89,7 @@ type Place = {
 type Chat = {
   id: string; title: string; sessionFile: string; at: string; live: boolean; doing: string; needsYou: boolean; reason?: string; archived: boolean;
   tasks: { running: number; incomplete: number; done: number; failed: number };
+  runningMinutes?: number;
 };
 type Member = { chatId: string; placeId: string; addedBy: AddedBy; at: string };
 type Store = { places: Place[]; pins: string[]; members: Member[]; chats: Chat[] };
@@ -174,7 +180,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
   (seed.chats ?? []).forEach((c, index) => {
     store.chats.push({
       id: c.id, title: c.title ?? '', sessionFile: sessionFileFor(c.id), at: c.at ?? new Date(base - (index + 1) * 7 * 60_000).toISOString(),
-      live: !!c.live || !!c.needsYou, doing: c.doing ?? (c.needsYou ? 'waiting on you' : c.live ? 'working' : ''), needsYou: !!c.needsYou, reason: c.reason, archived: false,
+      live: !!c.live || !!c.needsYou, doing: c.doing ?? (c.needsYou ? 'waiting on you' : c.live ? 'working' : ''), needsYou: !!c.needsYou, reason: c.reason, archived: false, runningMinutes: c.runningMinutes,
       tasks: { running: 0, incomplete: 0, done: 0, failed: 0, ...c.tasks },
     });
     for (const ref of c.places ?? []) store.members.push({ chatId: c.id, placeId: byName(ref)!.id, addedBy: 'you', at: '2026-10-01T09:00:00Z' });
@@ -267,7 +273,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
     addedBy: inPlace ? store.members.find(m => m.chatId === chat.id && m.placeId === inPlace)?.addedBy : undefined,
   });
   const newest = (chats: Chat[]) => [...chats].sort((a, b) => b.at.localeCompare(a.at));
-  const attention = (placeIds: string[]) => {
+  const attention = (placeIds: string[], readAt: string) => {
     const seen = new Set<string>();
     const needs: HomeDigest['attention'] = [], running: HomeDigest['attention'] = [];
     for (const placeId of placeIds) {
@@ -275,7 +281,12 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
       for (const chat of chatsIn(placeId)) {
         if (seen.has(chat.id)) continue;
         if (chat.needsYou) { seen.add(chat.id); needs.push({ kind: 'needsYou', chatId: chat.id, chatTitle: chat.title, placeId, placeName: place.name, text: chat.reason ?? '' }); }
-        else if (isRunning(chat)) { seen.add(chat.id); running.push({ kind: 'running', chatId: chat.id, chatTitle: chat.title, placeId, placeName: place.name, text: chat.title }); }
+        else if (isRunning(chat)) {
+          seen.add(chat.id);
+          // The start is this read minus the seeded minutes, so the row's "running · Nm" does not depend on how long the test took to boot.
+          const since = chat.runningMinutes ? new Date(Date.parse(readAt) - chat.runningMinutes * 60_000).toISOString() : undefined;
+          running.push({ kind: 'running', chatId: chat.id, chatTitle: chat.title, placeId, placeName: place.name, text: chat.title, ...(since ? { since } : {}) });
+        }
       }
     }
     return [...needs, ...running];
@@ -293,7 +304,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
       const placed = newest(store.chats.filter(c => !c.archived && store.members.some(m => m.chatId === c.id && get(m.placeId) && !get(m.placeId)!.archived)));
       const top = active().filter(p => !p.parents.some(parent => get(parent) && !get(parent)!.archived));
       return { ...base, kind: 'root', title: 'All places', breadcrumb: [], children: top.map(view), chats: placed.map(c => chatRow(c)),
-        attention: attention(active().map(p => p.id)), status: rollupOf(placed), counts: { children: top.length, descendants: active().length, chats: 0, chatsInclusive: placed.length } };
+        attention: attention(active().map(p => p.id), base.readAt), status: rollupOf(placed), counts: { children: top.length, descendants: active().length, chats: 0, chatsInclusive: placed.length } };
     }
     if (id === 'now') {
       const loose = newest(unplaced());
@@ -302,7 +313,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
     }
     const place = must(id);
     return { ...base, kind: 'place', title: place.name, place: detail(place), breadcrumb: ancestry(place), children: childrenOf(id).map(view),
-      chats: newest(chatsIn(id)).map(c => chatRow(c, id)), attention: attention([id, ...descendants(id)]), status: statusOf(id), counts: countsOf(id) };
+      chats: newest(chatsIn(id)).map(c => chatRow(c, id)), attention: attention([id, ...descendants(id)], base.readAt), status: statusOf(id), counts: countsOf(id) };
   }
 
   // ---- the untouched-place suggestion (internal/placegraph/stale.go: 60 days untouched, 30 days of "Not now") ------------
