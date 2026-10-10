@@ -130,6 +130,7 @@ export function createWorldClient(options: WorldClientOptions = {}) {
  }
 
  const api = {
+  cursor: () => ({ seq, epoch }),
   rows: () => rows,
   row: (chatId: string) => rows.find(row => row.chatId === chatId),
   attention: () => items,
