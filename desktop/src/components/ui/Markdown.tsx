@@ -35,15 +35,17 @@ function textOf(node: ReactNode): string {
  if (Array.isArray(node)) return node.map(textOf).join('');
  return '';
 }
+/** A long line scrolls inside the block. The right edge fades only while more of that line is still off to the right. */
 function CodeBlock({ children }: { children?: ReactNode }) {
  const code = children as ReactElement<{ className?: string; children?: ReactNode }> | undefined;
  const language = /language-([\w+#.-]+)/.exec(code?.props?.className ?? '')?.[1];
+ const { ref, more, measure } = useMoreToRight();
  return <div className="markdown-code">
   <div className="markdown-code-head">
    <span className="markdown-code-lang">{language}</span>
    <CopyButton text={textOf(code?.props?.children)} label="Copy code"/>
   </div>
-  <pre>{children}</pre>
+  <div ref={ref} className="markdown-code-scroll" role="region" aria-label="Code block" tabIndex={0} data-more={more} onScroll={measure}><pre>{children}</pre></div>
  </div>;
 }
 /** Tables keep real table semantics and a named keyboard-scrollable viewport; the right edge fades only while more lies that way. */
