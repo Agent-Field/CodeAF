@@ -44,10 +44,6 @@ var (
 // it would lack is everything below, which is why [TestOnlyTheSurfaceHelperRunsTheV3Surface]
 // reads this package's sources rather than trusting the next door to remember.
 func runSurface(ctx context.Context, options tui3.Options) error {
-	// THIS IS A WINDOW, and automations run only while one is open: it holds
-	// its presence for exactly as long as the surface runs, and keeps a clock
-	// going meanwhile (chatv3_clock.go).
-	defer keepAutomationsWindow("window")()
 	revision := surfaceRevision()
 	executable, executableErr := surfaceRunningExecutable()
 	curl := codeupdate.CurlCommand

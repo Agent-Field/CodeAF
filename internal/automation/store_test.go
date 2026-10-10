@@ -229,6 +229,31 @@ func TestRunsRecordAndChangesReachEveryReader(t *testing.T) {
 	}
 }
 
+// ONE WINDOW TELLS THE PERSON. Every open window reads the same finished run;
+// the first to claim it raises the notification, and claiming it moves nothing
+// any window reads, so no window draws the run's line twice.
+func TestOneClaimPerRunAndTheClaimIsNotNews(t *testing.T) {
+	s, _ := openStore(t)
+	a, _ := s.Create(routine("1h"))
+	run, _ := s.QueueNow(a.ID)
+	_ = s.Start(run.ID)
+	run.Outcome = OutcomeDone
+	_ = s.Finish(run)
+	_, cursor, err := s.Changes(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first, err := s.Claim(run.ID); err != nil || !first {
+		t.Fatalf("the first claim = %v, %v", first, err)
+	}
+	if again, err := s.Claim(run.ID); err != nil || again {
+		t.Fatalf("a second window claimed the same run: %v, %v", again, err)
+	}
+	if more, next, _ := s.Changes(cursor); len(more) != 0 || next != cursor {
+		t.Fatalf("the claim read as news: %v, cursor %d → %d", more, cursor, next)
+	}
+}
+
 func TestAbandonedClosesWhatAGoneClockLeftRunning(t *testing.T) {
 	s, _ := openStore(t)
 	a, _ := s.Create(routine("1h"))

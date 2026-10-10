@@ -182,6 +182,11 @@ const (
 	// records, and rather than a note because a note is a static sentence where
 	// this opens as a question with a clock on it.
 	entryStanding
+	// entryAutomation is ONE AUTOMATION touching the conversation
+	// (automation.go): the card a proposal raises while it is a question, and —
+	// in its other shape — one dim line of news about an automation or a run of
+	// one. The lines are the surface's own and never the model's.
+	entryAutomation
 	// entryTeam is ONE NOTE A CONVERSATION'S TEAM SENT IT, drawn as the quoted
 	// cards it is (teamcard.go) rather than as the session's dim lane or the
 	// person's own line.
@@ -610,6 +615,9 @@ type entry struct {
 	// POINTER for [entry.card]'s reason: the answer lane holds the same card,
 	// and the row and the verdict on it must never be able to disagree.
 	stand *standingCard
+	// auto is the automation card or line this entry draws, for kind
+	// entryAutomation and nothing else (automation.go).
+	auto *automationCard
 
 	// pending says this is the PERSON'S OWN LINE, echoed before the engine has
 	// agreed to take it — the gap a connection puts between pressing enter and
@@ -2059,8 +2067,14 @@ type app struct {
 	// are nil on every surface whose door has not wired the ambient side, which
 	// is a surface where no card is ever drawn and home shows no item band — a
 	// capability that cannot work is absent, not broken.
-	stand  *standingCard
+	stand *standingCard
+	// auto is the automation card still asking, if one is (automation.go).
+	auto   *automationCard
 	stands StandingSeam
+	// autos is the automations seam and watch is what this window last read
+	// through it (automationwatch.go).
+	autos AutomationsSeam
+	watch automationsWatch
 	// THE LINK SIDE (hostlink.go). link is what the door can tell this surface
 	// about the connection the conversation is on the far end of. Its zero value
 	// is every local session — no segment, no notice, no waiting room — which is
@@ -3011,6 +3025,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		resume:              opts.Resume,
 		shared:              opts.SharedAgent,
 		stands:              opts.Standing,
+		autos:               opts.Automations,
 		teamsDisk:           teamsDisk{door: opts.Teams},
 		link:                opts.Link,
 		conns:               opts.Connections,
@@ -3442,6 +3457,10 @@ func (a *app) Init() tea.Cmd {
 	standing := []tea.Cmd{a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchTitles(),
 		a.watchRuns(), a.watchQuestions(), a.loadTasks(), a.stirLane(), a.askHeld(), a.watchDriving(), a.watchFollowing(),
 		a.linkPingTick(), a.prefetchReplayedPictures(), a.countConversations(), tea.RequestBackgroundColor,
+		// AND WHAT AUTOMATIONS HAVE BEEN DOING, read off their store on a beat of
+		// its own (automationwatch.go): this window learns of a run whichever
+		// process ran it.
+		a.readAutomations(),
 		// AND WHAT THIS PROJECT DOES WITH A QUESTION WHILE NOBODY IS THERE, once,
 		// here (autonomysheet.go's [app.readAutonomy]). It is a door, so it may not
 		// be asked from the update loop where it is READ — when a question is
@@ -5248,6 +5267,23 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// without touching the filter somebody is typing (folderplace.go).
 		return a, a.tookFolderStore(msg)
 
+	case automationsReadMsg:
+		// WHAT THE AUTOMATIONS HAVE BEEN DOING, read off their store by a
+		// command: the lines for this conversation, the desktop notifications
+		// this window claims, the snapshot the quit question reads, and the next
+		// reading (automationwatch.go).
+		return a, a.automationsRead(msg)
+
+	case automationsBeatMsg:
+		// TIME TO READ THE STORE AGAIN: the reading is a command of its own,
+		// and its answer arms the next beat (automationwatch.go).
+		return a, a.readAutomations()
+
+	case automationNotifyMsg:
+		// A MACHINE WITH NO NATIVE NOTIFIER: the banner rides the terminal's own
+		// escape instead, the way a finished turn's does (desktopnotify.go).
+		return a, tea.Raw(notifySeq(msg.title, msg.body))
+
 	case homeTickMsg:
 		// HOME IS LIVE, and this is the whole of how: read the folders again,
 		// then ask for one more beat. It rides its own clock rather than the
@@ -6282,6 +6318,18 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		// beside emitStandingUpdate). The two are exclusive, so this fold has no
 		// de-dup to do; the task lane below is the case that does.
 		a.standingUpdate(ev)
+
+	case session.EventAutomationProposal:
+		// A DECISION OUTRANKS A PANEL, for the task proposal's reason above.
+		a.closeSettings()
+		a.closeHome()
+		a.proposeAutomation(ev)
+
+	case session.EventAutomationUpdate:
+		// One dim line: the direct result of an `automation` call in this turn.
+		// A RUN's news never comes down a turn's stream; this window reads it
+		// off the store (automationwatch.go).
+		a.automationUpdate(ev)
 
 	case session.EventTaskUpdate:
 		// A PROPOSAL'S FORMING BLOCK ENDS HERE, because this is the first breath

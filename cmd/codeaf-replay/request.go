@@ -285,6 +285,12 @@ var callSiteRoles = map[string]lane.Role{
 	// judged: this one sets lane.RoleStanding on its own context, and pricing it
 	// as a judge would put a wait nobody is having into the table.
 	"standing-check": lane.RoleStanding,
+	// internal/session/automation_run.go: one watch's yes-or-no on what it
+	// looked at, the errand that replaced the standing check above and is
+	// priced the same way for the same reason — nobody is waiting on it, and
+	// it sets lane.RoleStanding on its own context. The older tag stays so a
+	// log written before the change still reads.
+	"automation-check": lane.RoleStanding,
 	// internal/session/tools_doc.go: the model's own eyes on a document the
 	// `read` tool cannot open as text. A TOOL CALL INSIDE A TURN, so somebody IS
 	// waiting — the one of the three whose seconds are a person's.

@@ -329,6 +329,11 @@ func openChatV3Local(launch localLaunch) error {
 	defer closeErrands()
 	options.Errand = errand
 	options.StandingRoot = v3StandingRoot()
+	// AND THE AUTOMATIONS ARE THIS MACHINE'S, read straight off their store:
+	// the engine here is a process on this machine, and the store it proposes
+	// into is the one this window reads (chatv3_clock.go). Over --host the
+	// seam goes over the connection instead ([hostOptions]).
+	options.Automations = v3AutomationsSeam()
 	// AND A QUESTION IN ANOTHER WINDOW CAN BE ANSWERED FROM HOME. The answer is
 	// left in that session's OWN FOLDER and the session picks it up on its
 	// presence heartbeat (internal/session's answers.go), and home draws the chips
@@ -367,6 +372,11 @@ func openChatV3Local(launch localLaunch) error {
 	if dir, err := v3Dir(); err == nil {
 		options.DraftFile = tui3.DraftFile(dir, welcome.Workspace)
 	}
+	// THIS IS A WINDOW ON THIS MACHINE, whose automations it shows: it holds
+	// its own presence here rather than asking the engine to, because the
+	// engine is a process of this machine and would count the same window
+	// twice (chatv3_clock.go).
+	defer keepAutomationsWindow("window")()
 	return runSurface(context.Background(), options)
 }
 

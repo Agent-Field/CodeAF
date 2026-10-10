@@ -166,6 +166,7 @@ CREATE TABLE runs (
  usd REAL NOT NULL DEFAULT 0,
  transcript TEXT NOT NULL DEFAULT '',
  stop INTEGER NOT NULL DEFAULT 0,
+ told INTEGER NOT NULL DEFAULT 0,
  seq INTEGER NOT NULL DEFAULT 0,
  UNIQUE (automation_id, due_ms, why)
 );
@@ -625,17 +626,40 @@ func (s *Store) Run(id int64) (Run, error) {
 // Changes is every run that changed after the cursor, in the order it changed,
 // and the cursor to ask from next time. A window keeps the cursor and reads
 // what is new; nobody has to be the process that ran it.
+//
+// THE COUNTER IS READ FIRST AND THE RUNS ARE READ UP TO IT. Every write stamps
+// its rows and moves the counter in one transaction, so every run at or below
+// the counter just read is already committed; read the other way round, a
+// write landing between the two reads would move the cursor past a run that
+// was never returned, and its news would be lost for good.
 func (s *Store) Changes(after int64) ([]Run, int64, error) {
-	runs, err := s.queryRuns(`WHERE seq > ? ORDER BY seq`, after)
+	var seq int64
+	if err := s.db.QueryRow(`SELECT seq FROM counter WHERE id = 1`).Scan(&seq); err != nil {
+		return nil, after, err
+	}
+	if seq <= after {
+		return nil, after, nil
+	}
+	runs, err := s.queryRuns(`WHERE seq > ? AND seq <= ? ORDER BY seq`, after, seq)
 	if err != nil {
 		return nil, after, err
 	}
-	cursor := after
-	var seq int64
-	if err := s.db.QueryRow(`SELECT seq FROM counter WHERE id = 1`).Scan(&seq); err == nil && seq > cursor {
-		cursor = seq
+	return runs, seq, nil
+}
+
+// Claim reports whether the caller is the first to ask for a run — the one
+// window on the machine that raises its desktop notification, when several are
+// open and every one of them read the same news.
+//
+// IT MOVES NO CURSOR. The run's news has already been read by every window, and
+// a claim that stamped it again would hand it to all of them a second time.
+func (s *Store) Claim(id int64) (bool, error) {
+	res, err := s.db.Exec(`UPDATE runs SET told = 1 WHERE id = ? AND told = 0`, id)
+	if err != nil {
+		return false, err
 	}
-	return runs, cursor, nil
+	n, err := res.RowsAffected()
+	return n == 1, err
 }
 
 // Cursor is the store's change counter now: a window that wants only what

@@ -1163,6 +1163,11 @@ type Options struct {
 	// watch. Nothing half-works and nothing claims to.
 	Standing StandingSeam
 
+	// Automations is how this window reads and changes automations
+	// ([AutomationsSeam] says what each function owes). The zero value is a
+	// window with automations off: no page, no lines, no notifications.
+	Automations AutomationsSeam
+
 	// Teams is where the teams file and the Traffic logs are: the profile of
 	// the machine the SESSION runs on, because the team tools a model calls
 	// keep them there ([TeamsSeam] says what each function owes).

@@ -1311,6 +1311,9 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 	case entryStanding:
 		return StandingCardRows(a, e.stand, width, a.sel == i)
 
+	case entryAutomation:
+		return AutomationCardRows(a, e.auto, width, a.sel == i)
+
 	case entryHarness:
 		return a.harnessFeedRows(e.harness, width, a.sel == i)
 

@@ -29,6 +29,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/subharness"
+	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 // automationsRoot is the folder the store, the presence files and the clock's
@@ -60,6 +61,41 @@ func v3Automations() *session.Automations {
 		return nil
 	}
 	return &session.Automations{Store: automationsStore, Zone: session.LocalZone()}
+}
+
+// v3AutomationsSeam is [tui3.Options.Automations] for a window on the machine
+// its automations run on: the store itself, read and written directly, and the
+// presence folder the clock counts windows from. A store that cannot be opened
+// is the zero seam, which the surface reads as automations absent.
+func v3AutomationsSeam() tui3.AutomationsSeam {
+	autos := v3Automations()
+	if autos == nil || autos.Store == nil {
+		return tui3.AutomationsSeam{}
+	}
+	store := autos.Store
+	presence := automation.NewPresence(store.Root())
+	return tui3.AutomationsSeam{
+		List:      store.List,
+		Runs:      store.Runs,
+		Changes:   store.Changes,
+		Cursor:    store.Cursor,
+		Active:    store.Active,
+		Windows:   presence.Count,
+		Create:    store.Create,
+		Update:    store.Update,
+		SetStatus: store.SetStatus,
+		Delete:    store.Delete,
+		RunNow: func(id string) error {
+			_, err := store.QueueNow(id)
+			return err
+		},
+		StopRun: store.RequestStop,
+		Claim: func(id int64) bool {
+			first, err := store.Claim(id)
+			return err == nil && first
+		},
+		Zone: autos.Zone,
+	}
 }
 
 // keepAutomationsWindow registers this process as an open window and keeps a

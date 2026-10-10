@@ -1502,11 +1502,19 @@ func (a *app) questionSubjectRow(q questionShown, width int) (string, bool) {
 // one line and two calls the person never saw asked about.
 func (a *app) questionSubjectAt(q session.Question) int {
 	if q.Subject.Kind == session.SubjectOrder {
-		// A STANDING ORDER'S SUBJECT IS ITS OWN CARD IN THE TRANSCRIPT
-		// (standing.go). It is paired on the id the engine minted before anybody
-		// was asked, exactly as a node's is, so there is no walk-by-name arm.
+		// A STANDING ORDER'S OR AN AUTOMATION'S SUBJECT IS ITS OWN CARD IN THE
+		// TRANSCRIPT (standing.go, automation.go). It is paired on the id the
+		// engine minted before anybody was asked, exactly as a node's is, so
+		// there is no walk-by-name arm.
 		for i := range a.entries {
-			if e := &a.entries[i]; e.kind == entryStanding && e.stand != nil && e.stand.id == q.Subject.ID {
+			e := &a.entries[i]
+			if q.Kind == session.QuestionAutomation {
+				if e.kind == entryAutomation && e.auto != nil && !e.auto.news() && e.auto.id == q.Subject.ID {
+					return i
+				}
+				continue
+			}
+			if e.kind == entryStanding && e.stand != nil && e.stand.id == q.Subject.ID {
 				return i
 			}
 		}
@@ -4491,6 +4499,10 @@ func (a *app) questionDrawnHere(q session.Question) bool {
 		// deleted (standing.go, pickrow.go). What is left there is the head, the
 		// bands, the draining meter and the news line — what the card SHOWS, as
 		// against what it ASKS.
+		return true
+	case session.QuestionAutomation:
+		// THE AUTOMATION CARD (automation.go), which never had answers of its
+		// own: what is left there is what it SHOWS.
 		return true
 	case session.QuestionHarness:
 		// THE HARNESS LANE'S TWO QUESTIONS, which are one lane and were two

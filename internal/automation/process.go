@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 )
 
@@ -67,7 +68,7 @@ func StartClock(root, binary string, args ...string) error {
 // binary is not: started with the clock's arguments it would run its tests,
 // detached, in the background.
 func Startable(binary string) bool {
-	if strings.TrimSpace(os.Getenv("CODEAF_NO_AUTOMATIONS")) != "" {
+	if strings.TrimSpace(env.Get("CODEAF_NO_AUTOMATIONS")) != "" {
 		return false
 	}
 	base := filepath.Base(binary)

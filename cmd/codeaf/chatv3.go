@@ -483,6 +483,13 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	settled.SessionFile, settled.Resumed = transcript, resumed
 	seam := &v3Seam{proc: proc, boot: &settled, seed: seed}
 
+	// THIS IS A WINDOW ON THIS MACHINE, and its automations run only while one
+	// is open: it holds its presence for exactly as long as the surface runs,
+	// and keeps a clock going meanwhile (chatv3_clock.go). The two doors to
+	// another machine hold presence THERE instead, through the engine they
+	// attach to, because the automations such a window shows are that
+	// machine's.
+	defer keepAutomationsWindow("window")()
 	// The byte meter and the logger redirect both belong to the surface rather
 	// than to this door, and [runSurface] (chatv3_surface.go) is where every
 	// door gets them.
@@ -560,6 +567,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// pause and stop keys, and /status's keeping-watch line, all off the
 		// same store the conversation proposes into (chatv3_standing.go).
 		Standing: v3StandingSeam(cfg.Standing),
+		// Automations, read and changed off the same store the conversation
+		// proposes into (chatv3_clock.go).
+		Automations: v3AutomationsSeam(),
 		Fresh: func() (tui3.Agent, string, error) {
 			conv, err := seam.start("")
 			if err != nil {

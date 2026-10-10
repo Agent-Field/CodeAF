@@ -233,10 +233,13 @@ to a person: **`codeaf plandb`** answers the same commands the worker runs in ba
 critical-path` — against the run's own `plandb.db`, so a plan a worker is driving can be
 read the way the worker reads it.
 
-Two more exist and are deliberately kept out of the help text, because nothing types them
-by hand: **`codeaf engine`** is the far half of `chat --host`, started by ssh, and
-**`codeaf tick`** is the one bounded pass the background timer runs every five minutes.
-Neither draws anything or reads a key.
+Three more exist and are deliberately kept out of the help text, because nothing types
+them by hand: **`codeaf engine`** is the far half of `chat --host`, started by ssh;
+**`codeaf clock`** is the one process that runs your automations while a codeaf window is
+open — a window starts it, and it leaves by itself half a minute after the last window
+closes; and **`codeaf tick`** is what the old five-minute background timer used to run.
+It does nothing now, and the first start of this build removes that timer from the
+machine. None of them draws anything or reads a key.
 
 ## Connect from the terminal without opening the chat — codeaf connect and codeaf disconnect
 

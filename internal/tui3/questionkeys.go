@@ -492,6 +492,9 @@ const questionKeyGap = " · "
 func questionVerbWord(q questionShown, verb questionVerb) string {
 	switch verb.key {
 	case questionCommentKey:
+		if q.question.Kind == session.QuestionAutomation {
+			return autoChangeWord
+		}
 		if q.question.Kind == session.QuestionStanding {
 			// THE CORRECTION BUTTON SAYS WHAT IT IS. A rule's is about where
 			// the rule reaches. The head is the kind, which is how this row
