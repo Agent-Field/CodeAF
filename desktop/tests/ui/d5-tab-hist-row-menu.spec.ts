@@ -46,17 +46,20 @@ for (const key of ['Shift+F10', 'ContextMenu']) {
   });
 }
 
+// A command-click opens the conversation in a new tab and moves to it (Shell: History); a middle click opens it behind, as a browser does.
 for (const gesture of ['command', 'middle'] as const) {
-  test(`d5-tab-hist-test: ${gesture} click opens a background tab and keeps History selected`, async ({ page }) => {
+  test(`d5-tab-hist-test: ${gesture} click opens a new tab ${gesture === 'command' ? 'and selects it' : 'behind and keeps History selected'}`, async ({ page }) => {
     await open(page);
     const row = page.getByRole('option', { name: /Does JSON5 handle this/ });
-    await row.click(gesture === 'command' ? { modifiers: ['ControlOrMeta'] } : { button: 'middle' });
+    const press = () => row.click(gesture === 'command' ? { modifiers: ['ControlOrMeta'] } : { button: 'middle' });
     const history = page.getByRole('tab', { name: /History/ });
-    await expect(history).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('tab', { name: /Does JSON5 handle this/ })).toHaveAttribute('aria-selected', 'false');
-    // The same gesture on an existing tab keeps the current view as well.
-    await row.click(gesture === 'command' ? { modifiers: ['ControlOrMeta'] } : { button: 'middle' });
-    await expect(history).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('tab', { name: /Does JSON5 handle this/ })).toHaveCount(1);
+    const opened = page.getByRole('tab', { name: /Does JSON5 handle this/ });
+    await press();
+    await expect(history).toHaveAttribute('aria-selected', gesture === 'command' ? 'false' : 'true');
+    await expect(opened).toHaveAttribute('aria-selected', gesture === 'command' ? 'true' : 'false');
+    if (gesture === 'command') await history.click();
+    // The same gesture on an existing tab opens no second one.
+    await press();
+    await expect(opened).toHaveCount(1);
   });
 }

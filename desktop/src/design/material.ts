@@ -38,9 +38,13 @@ export function initMaterial(): () => void {
   const reduced = window.matchMedia('(prefers-reduced-transparency: reduce)');
   const contrast = window.matchMedia('(prefers-contrast: more)');
   let active = document.hasFocus();
+  // Writing an attribute its own value still queues a mutation record. The terminal reads its theme through a probe element
+  // appended inside the body, and re-reads whenever <html> attributes mutate, so an unconditional write here made the two
+  // observers wake each other forever. Only a change is written.
+  const write = (name: 'windowActive' | 'material', value: string) => { if (root.dataset[name] !== value) root.dataset[name] = value; };
   const apply = () => {
-    root.dataset.windowActive = String(active);
-    root.dataset.material = resolveMaterial({
+    write('windowActive', String(active));
+    write('material', resolveMaterial({
       desktop: isTauri(),
       platform: navigator.platform,
       active,
@@ -48,7 +52,7 @@ export function initMaterial(): () => void {
       moreContrast: contrast.matches,
       backdropFilter: typeof CSS !== 'undefined' && CSS.supports('backdrop-filter', 'blur(1px)'),
       blurOpen: document.querySelector(BLUR_LAYER) !== null,
-    });
+    }));
   };
   const set = (next: boolean) => () => { active = next; apply(); };
   const focus = set(true);
