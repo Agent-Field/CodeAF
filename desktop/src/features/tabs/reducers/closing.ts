@@ -1,6 +1,7 @@
 // Reducer slice: closing many tabs, reopening a chosen one where it was, duplicating, and the pinned Inbox.
 // Closing only detaches a view (the engine keeps the work), so every closed tab lands in `closed` and can be reopened.
 import { createId, normalize, visibleTabs } from '../helpers.ts';
+import { isPlaceHome } from './home.ts';
 import { reduceTabs, type TabAction } from './tabs.ts';
 import type { Pane, Tab, TabGroup, WorkspaceState } from '../types.ts';
 
@@ -33,7 +34,7 @@ export type ClosingAction =
   | { type: 'restore-closed'; tabs: readonly Tab[]; order: readonly string[]; groups: readonly TabGroup[]; activeId: string }
   /** A copy of the tab right after it: the same session, draft and view, new ids. */
   | { type: 'duplicate'; id: string }
-  /** Makes sure the one pinned Inbox tab exists. It is first in the strip and never takes focus. */
+  /** Makes sure the one pinned Inbox tab exists. It sits just after the place Home, or first when there is no Home, and never takes focus. */
   | { type: 'ensure-inbox' }
   /** The rail's Inbox row (Interactions, "Rail · Inbox"): makes sure the Inbox tab exists and focuses it. */
   | { type: 'open-inbox' };
@@ -104,7 +105,11 @@ export function reduceClosing(state: WorkspaceState, action: { type: string }): 
     case 'ensure-inbox': {
       if (state.tabs.some(t => t.kind === 'inbox')) return state;
       const inbox: Tab = { id: inboxId, kind: 'inbox', title: 'Inbox', draft: '', pinned: true };
-      return normalize({ ...state, tabs: [inbox, ...state.tabs], recentIds: [...state.recentIds, inbox.id] });
+      // Home owns the first pinned slot (Shell 2h). Inbox, while it is still drawn, is the next pin.
+      const homeAt = state.tabs.findIndex(tab => isPlaceHome(tab));
+      const tabs = [...state.tabs];
+      tabs.splice(homeAt >= 0 ? homeAt + 1 : 0, 0, inbox);
+      return normalize({ ...state, tabs, recentIds: [...state.recentIds, inbox.id] });
     }
     case 'open-inbox': {
       const ensured = reduceClosing(state, { type: 'ensure-inbox' }) ?? state;
