@@ -12,8 +12,8 @@ import type { PageContext } from './pageContext';
 export type WebHost = {
   /** A page asked for a new window, or a link was opened as a web tab. */
   openWebTab: (url: string, opener?: string) => void;
-  /** The person asked to talk about this page: open a conversation with it attached, unsent. */
-  startConversationWithPage?: (page: PageContext) => void;
+  /** The person asked to talk about this page: open a focused conversation immediately after `fromPaneId`, with the page attached and unsent. */
+  startConversationWithPage?: (page: PageContext, fromPaneId: string) => void;
 };
 
 let host: WebHost | null = null;
