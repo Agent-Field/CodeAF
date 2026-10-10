@@ -59,7 +59,7 @@ export function WorkBlockView({ block, paused, open, onToggle, now: given, ...re
   const [stepOpen, setStepOpen] = useState<Record<string, boolean>>({});
   const isOpen = open ?? auto.open;
   const thinking = block.thinking;
-  const activeStep = block.steps.map(step => step.state === 'running' || step.state === 'preparing').lastIndexOf(true);
+  const activeStep = block.steps.map(step => step.state === 'running').lastIndexOf(true);
   if (block.steps.length === 0 && !thinking && block.notes.length === 0) return null;
   const thought = thinking && <ThinkingView text={thinking.text} streaming={thinking.streaming && !waiting} seconds={thinking.seconds} />;
   return (
