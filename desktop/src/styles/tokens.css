@@ -138,6 +138,18 @@
   --composer-max-width: 608px;
   --composer-writing-max-height: 210px;
   --composer-fade-top: 28px;
+  --at-picker-row-height: 28px;
+  --at-picker-row-height-coarse: 36px;
+  --at-picker-row-radius: 6px;
+  --at-picker-row-pad: 10px;
+  --at-picker-row-gap: 10px;
+  --at-picker-width: 320px;
+  --at-picker-span: 320px;
+  --at-picker-left: 0px;
+  --at-picker-bottom: 0px;
+  --at-picker-pad: 5px;
+  --at-picker-radius: 10px;
+  --at-picker-max-height: 280px;
   --paste-card-width: 240px;
   --paste-card-header-leading: normal;
   --paste-card-preview-height: 30px;

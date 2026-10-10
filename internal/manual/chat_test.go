@@ -3169,6 +3169,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// Desktop conversation 1b: queued rows fold into the chip after the model name.
 		{"what is the N queued chip in the desktop composer", "desktop-queued-chip"},
 		{"I scrolled up and the queued messages disappeared", "desktop-queued-chip"},
+		// Desktop conversation 1e: @ in the composer lists workspace files.
+		{"typing @ in the desktop composer opens the file picker", "desktop-at-picker"},
+		{"the desktop file picker shows nothing", "desktop-at-picker"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

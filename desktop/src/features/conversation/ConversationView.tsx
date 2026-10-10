@@ -267,6 +267,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
                       model: conversationModel,
                       recallLast: () => model.turns[model.turns.length - 1]?.user,
                       autoFocus,
+                      sessionId,
                       offeredFiles: offered,
                       onOfferedFiles: () => { settleOfferedFiles(tab.id); setOffered([]); },
                     }}
