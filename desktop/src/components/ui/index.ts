@@ -25,5 +25,7 @@ export { WorkStateIndicator } from './WorkStateIndicator';
 export { Markdown, InlineMarkdown, safeMarkdownUrl, type MarkdownProps, type MarkdownHooks } from './Markdown';
 export { CopyButton, type CopyButtonProps } from './CopyButton';
 export { useMoreToRight } from './useMoreToRight';
-export { ToastRegion, ToastView, useToasts, sentenceParts, TOAST_DURATION_MS, TOAST_LIMIT, type ToastModel, type ToastAction, type ShowToast } from './Toast';
+export { Toast, ToastHost, toast, ToastRegion, ToastView, useToasts, sentenceParts, TOAST_DURATION_MS, TOAST_LIMIT, type ToastModel, type ToastAction, type ShowToast } from './Toast';
 export { QuickLook } from './QuickLook';
+export { SearchField, type SearchFieldProps } from './SearchField';
+export { PlaceSwatch } from '../../features/places/components/PlaceSwatch';
