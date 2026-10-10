@@ -629,6 +629,9 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				failPlaces(w, status, code, sentence)
 				return
 			}
+			if !places.staleRevision(w, ask.IfGeneration) {
+				return
+			}
 		}
 		b.mu.Lock()
 		defer b.mu.Unlock()
