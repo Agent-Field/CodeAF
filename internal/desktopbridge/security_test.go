@@ -109,6 +109,7 @@ var bridgeRoutes = []string{
 	"/api/engine/places/{id}/decide-status",
 	"/api/engine/places/{id}/decide",
 	"/api/engine/places/{id}/knows",
+	"/api/engine/places/knows",
 	"/api/engine/places/{id}/knows/{line}",
 	"/api/engine/places/{id}/knows/{line}/still-true",
 	"/api/engine/decisions/{id}",
