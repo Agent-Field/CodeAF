@@ -168,7 +168,7 @@ test('a background tab does not repeat GET /sessions/{id}', async ({ page }) => 
  expect(before).toBe(0);
 });
 
-test('a send the engine never answers says so and keeps the draft', async ({ page }) => {
+test('a send the engine never answers is held in the pane and the composer stays editable', async ({ page }) => {
  await page.clock.install();
  engine.stallNewSessions();
  await page.goto('/');
@@ -178,9 +178,12 @@ test('a send the engine never answers says so and keeps the draft', async ({ pag
  await page.clock.runFor(ENGINE_REQUEST_TIMEOUT_MS + 1000);
  await expect(page.getByRole('status').filter({ hasText: 'Reconnecting to the engine…' })).toBeVisible();
  await expect(page.getByRole('tabpanel').getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0);
- await expect(message(page)).toHaveValue('Still here after the wait');
+ await expect(page.locator('.user-message[data-sending]')).toHaveText('Still here after the wait');
+ await expect(message(page)).toHaveValue('');
+ await expect(message(page)).toBeEnabled();
  await page.clock.fastForward(RECONNECT_WINDOW_MS);
  await expect(page.getByRole('status').filter({ hasText: "Can't reach the engine" })).toBeVisible();
  await expect(page.getByRole('tabpanel').getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
  await expect(page.getByText('codeaf engine is not running')).toHaveCount(0);
+ await expect(message(page)).toBeEnabled();
 });

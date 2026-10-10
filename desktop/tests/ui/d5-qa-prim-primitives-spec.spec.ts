@@ -1,5 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 import { tokenColor } from './contracts';
+import { installMockEngine } from './support/mock-engine';
+import { openPage } from './support/shell-navigation';
 
 for (const theme of ['light', 'dark']) {
  for (const width of [320, 1200]) {
@@ -188,4 +191,82 @@ for (const theme of ['light', 'dark'] as const) {
    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
  }
+}
+
+for (const theme of ['light', 'dark'] as const) {
+ test(`PR-SPEC-2: Shared primitives render in ${theme}`, async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.addInitScript(value => localStorage.setItem('codeaf-theme', value), theme);
+  await installMockEngine(page, { initial: { entries: [], title: '' } });
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await page.goto('/');
+  await openPage(page, 'Design system');
+  const specimen = page.locator('.primitives-specimen');
+  await expect(specimen.getByRole('heading', { name: 'Shared primitives', exact: true })).toBeVisible();
+  const rest = specimen.locator('[data-specimen-state="rest"]');
+  await expect(rest.getByRole('button', { name: 'Allow once', exact: true })).toHaveCSS('background-color', await tokenColor(page, 'accent'));
+  await expect(rest.getByRole('button', { name: 'Allow once', exact: true })).toHaveCSS('min-height', '28px');
+  const tray = rest.getByRole('button', { name: 'Tray primary', exact: true });
+  await expect(tray).toHaveAttribute('data-size', 'tray');
+  await expect(tray).toHaveCSS('min-height', '30px');
+  expect((await tray.boundingBox())!.height).toBe(30);
+  await expect(rest.getByRole('combobox', { name: 'Sample choice' })).toBeVisible();
+  await expect(rest.getByRole('searchbox', { name: 'Search conversations' })).toBeVisible();
+  await expect(rest.getByRole('radio', { name: 'All', exact: true })).toHaveAttribute('aria-checked', 'true');
+  const tag = rest.getByText('Suggested', { exact: true });
+  await expect(tag).toHaveAttribute('data-tone', 'plain');
+  await expect(tag).toHaveCSS('color', await tokenColor(page, 'ink-3'));
+  await expect(rest.locator('[data-kbd="box"] .keyboard-shortcut')).toHaveAttribute('data-variant', 'box');
+  await expect(rest.locator('[data-kbd="inline"] .keyboard-shortcut')).toHaveAttribute('data-variant', 'inline');
+  await expect(rest.locator('.search-field .keyboard-shortcut')).toHaveAttribute('data-variant', 'inline');
+  for (const role of ['rail', 'tile', 'sheet', 'title', 'card', 'choice', 'menu']) {
+   await expect(rest.locator(`.place-swatch[data-role="${role}"]`)).toHaveCount(1);
+  }
+  await expect(rest.locator('[data-shimmer="still"]')).toHaveText('Settled step');
+  await expect(rest.locator('[data-shimmer="live"]')).toHaveText('Running the parser tests');
+  await expect(rest.locator('.cf-breathe')).toHaveCount(1);
+  const mark = rest.locator('.stop-glyph-mark').first();
+  await expect(mark).toHaveCSS('width', '10px');
+  await expect(mark).toHaveCSS('height', '10px');
+  await expect(rest.getByText('Config stack closed and still running')).toBeVisible();
+  await expect(specimen.locator('[data-specimen-state="selected"]').getByRole('radio', { name: 'Open', exact: true })).toHaveAttribute('aria-checked', 'true');
+  await expect(specimen.locator('[data-specimen-state="selected"] [data-selected]')).toHaveCount(1);
+  await expect(specimen.getByRole('button', { name: 'Disabled tray' })).toBeDisabled();
+  await expect(specimen.getByRole('button', { name: 'Loading tray' })).toBeDisabled();
+  await expect(specimen.getByRole('button', { name: 'Loading tray' })).toHaveAttribute('aria-busy', 'true');
+  await expect(specimen.getByRole('combobox', { name: 'Disabled choice' })).toBeDisabled();
+  const deny = rest.getByRole('button', { name: 'Deny', exact: true });
+  await deny.hover();
+  await expect(deny).toHaveCSS('background-color', await tokenColor(page, 'field-2'));
+  await specimen.getByRole('button', { name: 'Copy hint' }).hover();
+  await expect(page.getByRole('tooltip')).toContainText('Copy the step');
+  const focus = specimen.getByRole('button', { name: 'Focus Allow once' });
+  await focus.focus();
+  await expect(focus).toBeFocused();
+  await specimen.getByRole('button', { name: 'Show a 6 second toast' }).click();
+  await expect(page.getByText('Specimen notice for six seconds')).toBeVisible();
+  await specimen.getByRole('button', { name: 'Show a 10 second toast' }).click();
+  await expect(page.getByText('Specimen notice for ten seconds')).toBeVisible();
+  await expect(page.getByText('Specimen notice for six seconds')).toHaveCount(0);
+  await expect(specimen.getByRole('button', { name: 'Show a 6 second toast' })).toHaveAttribute('data-toast-ms', '6000');
+  await expect(specimen.getByRole('button', { name: 'Show a 10 second toast' })).toHaveAttribute('data-toast-ms', '10000');
+  await specimen.getByRole('button', { name: 'Open Quick Look', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Reading' });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByText('Last week you finished the Raft notes and started on Spanner.')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(sheet).toBeHidden();
+  const narrow = specimen.locator('.primitives-specimen-narrow');
+  await expect(narrow).toHaveCSS('max-width', '320px');
+  for (const width of [1200, 320]) {
+   await page.setViewportSize({ width, height: 800 });
+   const box = (await narrow.boundingBox())!;
+   expect(box.width).toBeLessThanOrEqual(320);
+   const bounds = await specimen.evaluate(root => ({ width: root.clientWidth, scroll: root.scrollWidth, overflowing: [...root.querySelectorAll('*')].filter(el => el.getBoundingClientRect().right > root.getBoundingClientRect().right + 1).map(el => (el as HTMLElement).className) }));
+   expect(bounds.scroll, JSON.stringify(bounds)).toBeLessThanOrEqual(bounds.width + 1);
+   expect(bounds.overflowing).toEqual([]);
+  }
+  const result = await new AxeBuilder({ page }).include('.primitives-specimen').analyze();
+  expect(result.violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => ({ target: n.target, failure: n.failureSummary })) }))).toEqual([]);
+ });
 }

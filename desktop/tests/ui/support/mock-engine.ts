@@ -572,7 +572,10 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
       const requested = typeof body.sessionFile === 'string' ? body.sessionFile : '';
       const titled = history.titleOf(body.sessionFile);
       if (requested || titled) state = { ...state, ...(requested ? { sessionFile: requested } : {}), ...(titled ? { title: titled } : {}) };
-      return json(route, state);
+      // Same cap as a read. Attach is how a window comes back after this double
+      // closes the event stream after each batch; a raw snapshot would put an
+      // over-cap tool result back on screen, so opening the call would not fetch it.
+      return json(route, snapshotView(null));
     }
     if (id !== state.id) return json(route, { error: 'reattach this conversation' }, 404);
     if (!action) {
