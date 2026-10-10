@@ -267,6 +267,7 @@ func (a *Agent) belt() []bare.Tool {
 	// Conversation search needs only a history reader. Task workers and forked
 	// hands inherit it without gaining the writable memory store.
 	tools = append(tools, a.conversationTools()...)
+	tools = append(tools, a.planCardTools()...)
 	tools = append(tools, a.stateTools()...)
 	tools = append(tools, a.searchTools()...)
 	tools = append(tools, a.settingsTools()...)
