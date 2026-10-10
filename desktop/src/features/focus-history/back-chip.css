@@ -1,0 +1,50 @@
+/* The strip return chip is temporary; the in-tab return keeps the immediate parent's name. */
+.back-chip.button {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  height: var(--back-chip-height);
+  min-height: var(--back-chip-height);
+  padding: var(--space-0) var(--back-chip-pad-end) var(--space-0) var(--back-chip-pad-start);
+  border-radius: var(--back-chip-radius);
+  gap: var(--back-chip-gap);
+  font-size: var(--back-chip-size);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--back-chip-leading);
+  color: var(--ink);
+  box-shadow: var(--sh-1);
+}
+.back-chip .app-icon { width: var(--back-chip-icon); height: var(--back-chip-icon); color: var(--ink-2); }
+.back-chip-shortcut { flex: none; color: var(--ink-3); font-weight: var(--font-weight-regular); }
+.back-chip-label, .back-header-label, .back-header-current {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  mask-image: linear-gradient(to right, black calc(100% - var(--back-header-fade)), transparent);
+}
+.back-header.breadcrumb {
+  min-width: 0;
+  min-height: var(--back-chip-height);
+  gap: var(--space-2);
+  font-size: var(--back-header-size);
+  line-height: var(--back-chip-leading);
+}
+.back-header-parent.button {
+  justify-content: flex-start;
+  min-width: 0;
+  height: var(--back-chip-height);
+  min-height: var(--back-chip-height);
+  padding: var(--space-0) var(--back-chip-pad-end) var(--space-0) var(--back-header-pad-start);
+  border-radius: var(--back-header-radius);
+  gap: var(--back-chip-gap);
+  font-size: inherit;
+  font-weight: var(--font-weight-regular);
+  line-height: inherit;
+  color: var(--ink-2);
+}
+.back-header-parent .app-icon { width: var(--back-header-icon); height: var(--back-header-icon); }
+.back-header-parent.button:hover:not(:disabled), .back-header-parent.button:active:not(:disabled) { color: var(--ink-2); }
+.back-header-separator { flex: none; color: var(--ink-3); }
+.back-header-current { color: var(--ink); font-weight: var(--font-weight-medium); }
+/* Extra end space lets the mask stay clear of a name that fits. */
+.back-chip-label, .back-header-label, .back-header-current { padding-inline-end: var(--back-header-fade); margin-inline-end: calc(var(--back-header-fade) * -1); }
