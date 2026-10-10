@@ -3,7 +3,7 @@ import { installMockEngine } from './support/mock-engine';
 import { installMockPlaces, sessionFileFor } from './support/mock-places';
 import type { SharedWorkspace } from '../../src/features/workspace-sync/shared';
 
-const tabs = (page: Page) => page.getByRole('tab', { name: /^(?!Inbox$).*/ });
+const tabs = (page: Page) => page.getByRole('tab');
 
 const place = 'pl_0123456789abcdef';
 const other = 'pl_fedcba9876543210';
@@ -71,7 +71,7 @@ for (const theme of ['light', 'dark']) {
     await expect(tabs(page).nth(1)).toHaveAccessibleName('Start from Home');
     await expect(tabs(page).nth(1)).toHaveAttribute('aria-selected', 'true');
     await expect(tabs(page).nth(2)).toHaveAccessibleName('Saved chat');
-    await expect.poll(() => workspace.tabs.filter(tab => tab.kind !== 'inbox').map(tab => tab.title)).toEqual(['Reading', 'Start from Home', 'Saved chat']);
+    await expect.poll(() => workspace.tabs.map(tab => tab.title)).toEqual(['Reading', 'Start from Home', 'Saved chat']);
     // A later canonical replacement needs the same Home repair without taking focus from the conversation.
     workspace = { ...workspace, tabs: workspace.tabs.filter(tab => tab.kind !== 'home') };
     revision++;

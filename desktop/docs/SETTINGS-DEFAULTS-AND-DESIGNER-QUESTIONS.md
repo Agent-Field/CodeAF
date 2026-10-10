@@ -192,7 +192,7 @@ Additive only: `tokens.json` (`places-*`, `type-home-title-*`, `type-section-lab
 
 ## Normal shell and provisional Appearance
 
-The normal rail follows the Places shell: Inbox, Now, Places rows and All places. Extra workspace search/address, Activity, Settings, Design system and the theme footer are absent from the reference and are removed from this rail. Settings remains available through ⌘/Ctrl-comma and the native menu; development Activity and component specimens remain in the development command palette. The provisional Settings tab exposes the existing shared ThemeSelect under Appearance, with System as its default and Light/Dark overrides persisted per device. The designer should decide whether the final Settings entry belongs in a native menu alone or another specified shell control.
+The normal rail follows the Places shell: Now, Places rows and All places. Next up belongs in the window frame. Extra workspace search/address, Activity, Settings, Design system and the theme footer are absent from the reference and are removed from this rail. Settings remains available through ⌘/Ctrl-comma and the native menu; development Activity and component specimens remain in the development command palette. The provisional Settings tab exposes the existing shared ThemeSelect under Appearance, with System as its default and Light/Dark overrides persisted per device. The designer should decide whether the final Settings entry belongs in a native menu alone or another specified shell control.
 
 Pinning multiple tabs preserves the order in which they entered the pinned section. The source specifies a pinned section but does not specify whether later pins should follow original strip order instead; this remains a designer choice.
 

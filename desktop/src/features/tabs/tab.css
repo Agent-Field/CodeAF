@@ -32,7 +32,7 @@ img.tab-monogram { background: transparent; object-fit: contain; }
 .workspace-tab .workspace-tab-close.icon-button:active:not(:disabled) { background: var(--field-2); }
 .workspace-tab:hover .workspace-tab-close, .workspace-tab:focus-within .workspace-tab-close, .workspace-tab[data-active="true"] .workspace-tab-close, .workspace-tab[data-hover] .workspace-tab-close { opacity: var(--opacity-opaque); }
 
-/* Pinned: icon-only square. The Inbox alone carries a dot. */
+/* Pins are icon-only squares; their owner supplies any real status glyph. */
 .workspace-tab.is-pinned { flex: none; width: var(--tab-pinned-width); min-width: var(--tab-pinned-width); max-width: var(--tab-pinned-width); justify-content: center; }
 .workspace-tab.is-pinned .workspace-tab-select.button { justify-content: center; padding: 0; }
 .workspace-tab.is-pinned .app-icon { color: inherit; }

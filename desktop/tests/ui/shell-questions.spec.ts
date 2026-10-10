@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-// SH-OQ4 and SH-OQ14: middle-click closes an ordinary tab, and Inbox/Now open no menu.
+// SH-OQ4 and SH-OQ14: middle-click closes an ordinary tab, and Now opens no menu.
 test.beforeEach(async ({ page }) => { await page.route('**/api/engine/**', route => route.abort()); });
 
 test('middle-click closes an unpinned tab and leaves a pinned one', async ({ page }) => {

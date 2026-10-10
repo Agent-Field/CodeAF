@@ -81,7 +81,7 @@ export function WebPreview({ pane, title }: PreviewRenderProps) {
   return <PreviewShot title={title} address={target.url ? addressOf(target.url) : ''} image={image} note={live.missing}/>;
 }
 
-/** Settings, history, the inbox and a new tab have nothing to quote: kind and title, and a draft if one is typed. */
+/** Settings, history and a new tab have nothing to quote: kind and title, and a draft if one is typed. */
 export function PlainPreview({ pane, title }: PreviewRenderProps) {
   const draft = pane.draft.trim();
   return <PreviewCard kind={pane.kind} title={title}>{draft && <PreviewText>{`Draft: ${draft}`}</PreviewText>}</PreviewCard>;

@@ -65,7 +65,7 @@ test('a. first launch: Now and All places only; All places names a place inline 
   const rig = await boot(page, { live: [NEW_CHAT] });
   await expect(rail(page).getByRole('button', { name: 'Now', exact: true })).toBeVisible();
   await expect(rail(page).getByRole('button', { name: 'All places' })).toBeVisible();
-  await expect(rail(page).getByRole('button', { name: 'Inbox', exact: true })).toHaveCount(0);
+  await expect(rail(page).locator('.nav-item')).toHaveCount(2);
   await expect(rail(page).getByText('Pinned', { exact: true })).toHaveCount(0);
   await expect(rail(page).getByText('Open', { exact: true })).toHaveCount(0);
 
@@ -92,7 +92,7 @@ test('a. first launch: Now and All places only; All places names a place inline 
   expect(rig.places.state().places).toEqual([]);
 });
 
-test('collapsed rail switcher lists Now, the rail places and All places, never Inbox', async ({ page }) => {
+test('collapsed rail switcher lists Now, the rail places and All places', async ({ page }) => {
   await boot(page);
   await railPlace(page, 'Marketing').click();
   await expect(homeTab(page)).toBeVisible();
@@ -101,12 +101,11 @@ test('collapsed rail switcher lists Now, the rail places and All places, never I
   await homeTab(page).getByRole('tab').click();
   const menu = page.getByRole('menu', { name: 'Place switcher' });
   await expect(menu).toBeVisible();
-  // Checked rows are menuitemcheckbox. Now, places and All places are present; Inbox is neither role.
-  await expect(menu.getByRole('menuitem', { name: /^Inbox/ })).toHaveCount(0);
-  await expect(menu.getByRole('menuitemcheckbox', { name: /^Inbox/ })).toHaveCount(0);
+  // Checked rows are menuitemcheckbox; the switcher contains only place navigation.
   await expect(menu.getByRole('menuitemcheckbox', { name: /^Now/ })).toBeVisible();
   await expect(menu.getByRole('menuitemcheckbox', { name: /^Marketing/ })).toBeVisible();
   await expect(menu.getByRole('menuitem', { name: /^All places/ })).toBeVisible();
+  await expect(menu.locator('[role=menuitem], [role=menuitemcheckbox]')).toHaveCount(3);
 });
 
 test('b. Go to via the chooser lands on the place Home; Now gives back its own tabs and the root palette', async ({ page }) => {
@@ -487,14 +486,16 @@ test('k. offline: the rail and All places say the engine is out of reach, invent
   await expect(rail(page).getByText('Can’t reach the engine')).toHaveCount(0);
 });
 
-test('a waiting question is the frame pill, and the rail has no Inbox row', async ({ page }) => {
+test('a waiting question appears once on the Next up frame pill', async ({ page }) => {
   await boot(page, {
     places: [{ name: 'Software', tint: 'iris' }],
     chats: [{ id: 'sess-need', title: 'Port fix to v1', places: ['Software'], needsYou: true, reason: 'Allow the v1 branch push?' }],
     live: [NEW_CHAT],
   });
-  await expect(rail(page).getByRole('button', { name: /^Inbox/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /need you elsewhere/ })).toBeVisible();
+  const pill = page.getByRole('button', { name: /^1 need you elsewhere/ });
+  await expect(pill).toHaveCount(1);
+  await expect(pill).toBeVisible();
+  await expect(rail(page).locator('.frame-pill')).toHaveCount(0);
 });
 
 async function setTheme(page: Page, theme: 'Light' | 'Dark') {

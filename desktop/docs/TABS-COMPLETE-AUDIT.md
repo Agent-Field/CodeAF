@@ -10,7 +10,7 @@ re-scored. Until then nothing that exists only in an unintegrated candidate is c
   are the per-item ids of the shell design inventory; `IX` is the Interactions page.
 - **Code baseline:** `199bf66c6` ("Keep Home suggestion icon inside valid flow markup").
 - **Candidates inspected read-only (not merged, not scored as passing):** `07f0b63bc` (tab and group menus, close vs
-  close-and-stop, closing toast, Inbox), `2d26ba62a` (History tab, archive toast), `0ff19c89e` (native web tabs), and
+  close-and-stop, closing toast, Inbox), `2d26ba62a` (History tab, archive toast), `0ff19c89e` (native web tabs), and **(superseded attention scope: I2.1/I2.6)**
   the live Places shell lane (place Home tab, per-place workspace keys).
 - **Evidence:** Playwright in Chromium **and** WebKit, plus the pure node tests. New audit journeys live in
   `desktop/tests/tabs-audit/` and run with `npx playwright test --config playwright.tabs-audit.config.ts` (port 1759,
@@ -113,7 +113,7 @@ The `responsive.spec.ts` reds are not tab-owned: at 320 and 480px the Design sys
    contiguous (`group` moves members next to the first one; `new` appends).
 
 Everything else is in the inventory below. The largest block of MISSING rows (3g menu items, ⌥ stop square, closing toast,
-Inbox, History, web tab) is **work pending integration**, not missing work: it exists in `07f0b63bc`, `2d26ba62a` and
+Inbox, History, web tab) is **work pending integration**, not missing work: it exists in `07f0b63bc`, `2d26ba62a` and **(superseded attention scope: I2.1/I2.6)**
 `0ff19c89e` and is re-scored on the root's merged commit.
 
 ## Inventory
@@ -148,7 +148,7 @@ Columns: **Case** · **Requirement** · **Design** · **Baseline code (`199bf66c
 | TA-STRIP-20 | Act from the preview: Allow all, Review; failures said in the card | S-3k-9 | `previewHost.tsx` `useActions` | — | PASS | `tab-preview` "Allow all in the card answers…", "a failed Allow all says so…" | |
 | TA-STRIP-21 | Keyboard previews (AGENTS "delayed hover and keyboard previews") | AGENTS only | focus-visible opens the card, but roving focus never rests on an inactive tab | — | NOT VERIFIED (design silent; AGENTS requirement unreachable by construction) | source | Decide whether the ⌃Tab switcher is the keyboard preview. |
 
-### Pinned, Home and Inbox
+### Pinned, Home and Inbox **(superseded attention scope: I2.1/I2.6)**
 
 | Case | Requirement | Design | Baseline code | Candidate | Result | Evidence | Human impact |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -156,7 +156,7 @@ Columns: **Case** · **Requirement** · **Design** · **Baseline code (`199bf66c
 | TA-PIN-02 | ⌘W never closes a pinned tab | S-T-2 | `useTabKeys.ts` `close` | — | PASS | `shell-rail-keys` "⌘W leaves a pinned tab open" | |
 | TA-PIN-03 | Pinned order is predictable (strip order) and survives reload | AGENTS "predictable ordering" | `visibleTabs` | — | PASS | audit: TA-PIN-03 | |
 | TA-PIN-04 | The place's Home is the pinned first slot, never closes, ⌘0 | S-T-2, S-T-3, S-K-11, S-IX-16 | none | Places shell lane (uncommitted) | MISSING (pending places) | | |
-| TA-PIN-05 | Pinned Inbox, the only pinned tab with a dot; background work listed at its top | S-3j-10, S-3j-21, S-3l-7 | `kinds/inbox.ts` placeholder, `backed: false` | `07f0b63bc` | MISSING (pending menus) | | |
+| TA-PIN-05 | **Superseded attention scope: I2.1/I2.6.** Pinned Inbox, the only pinned tab with a dot; background work listed at its top | S-3j-10, S-3j-21, S-3l-7 | `kinds/inbox.ts` placeholder, `backed: false` | `07f0b63bc` | MISSING (pending menus) | | |
 
 ### Groups
 
@@ -225,7 +225,7 @@ Columns: **Case** · **Requirement** · **Design** · **Baseline code (`199bf66c
 | TA-CLOSE-04 | On an idle tab ⌥ does nothing | S-3l-6 | trivially true (no ⌥ behaviour at all) | `07f0b63bc` | NOT VERIFIED (vacuous until TA-CLOSE-02 exists) | | |
 | TA-CLOSE-05 | Closing the active tab selects its neighbour; the last close leaves one fresh tab; closed list keeps every close | browser convention | `reducers/tabs.ts` `close` | — | PASS | audit: TA-CLOSE-05 | |
 | TA-CLOSE-06 | ⌥⌘W closes and stops | S-3l-14 | none | `07f0b63bc` | MISSING (pending menus) | | |
-| TA-CLOSE-07 | Closed-but-running work is listed in the Inbox; clicking reopens it where it was | S-3l-5, S-3l-7 | none | `07f0b63bc` | MISSING (pending menus) | | |
+| TA-CLOSE-07 | **Superseded attention scope: I2.1/I2.6.** Closed-but-running work is listed in the Inbox; clicking reopens it where it was | S-3l-5, S-3l-7 | none | `07f0b63bc` | MISSING (pending menus) | | |
 | TA-CLOSE-08 | A stop that fails keeps the tab and says so in words, no modal | IX Flows "Errors" | none | `07f0b63bc` `stopWork` | NOT VERIFIED (candidate only) | | |
 | TA-CLOSE-09 | Close N tabs from the group menu | S-3g-14 | none | `07f0b63bc` `close-group` | MISSING (pending menus) | audit: TA-GRP-19 | |
 | TA-CLOSE-10 | The closed list keeps at most 20 | IX "Undo … up to 20" | `closed.slice(-19)` | — | PASS | `model.test.ts` | |

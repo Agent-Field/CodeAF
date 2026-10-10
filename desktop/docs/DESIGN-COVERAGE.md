@@ -23,15 +23,16 @@ means its old presentation must not be built, not that its replacement passed.
 | BE-INB-05/06/07; old notification scope/activation assumptions | superseded where conflicting: I2.3 | Only blocking questions notify; activation starts Next up at the exact item; dock badge is total needs-you. Existing native activation evidence remains relevant. |
 
 SH-028 retains its Now context-menu rule only. PL-040/063/064/082 lose their
-Inbox entries, not their remaining rail/switcher obligations. The old Inbox
-assumptions in the shell and tab-kind sections below are retired. Shared backend
+superseded Inbox entries, not their remaining rail/switcher obligations. The
+old attention assumptions in the shell and tab-kind sections below are retired. Shared backend
 work (`t-d5-be-attention`, `t-d5-qa-be-world`, `t-d5-prim-world-client`,
 `t-d5-nat-notify`) remains required under the new scopes; do not cancel it merely
-because its historical row said Inbox.
+because its historical row named the retired pane.
 
 | I2 acceptance area | Coverage / evidence map | Acceptance scope |
 | --- | --- | --- |
 | I2.1–I2.3, I2.6, I2.11: Next up and two counts | `features/nextup/`; `tests/ui/nextup-walk.spec.ts`, `strip-nextup-seam.spec.ts`, `conversation-header-nextup.spec.ts` | Window queue, actual tray navigation, Skip, delayed Accept/Undo, blocking banner; native notifications need native proof. |
+| I2.1, I2.6: retirement in shell specs and architecture | `tests/ui/shell-menus-integration.spec.ts`, `shell-menus.spec.ts`, `places-shell.spec.ts`, `shell-rail-keys.spec.ts`, `d5-pl-test-window.spec.ts`; `tests/tabs-audit/tabs-audit.spec.ts` | One elsewhere-question pill; close and Undo preserve exact tab order; rail/switcher list only places. These assertions do not imply the full browser suite is green. |
 | I2.4–I2.5: focus history and back chips | `features/focus-history/`; `src/design/keyboard.test.ts`; `desktop-navigation-shortcuts.md` manual | Foreground history restores context; background opens do not record; Home Up and chat message movement remain distinct. |
 | I2.7–I2.9: gate, learning, receipts | `internal/session/decide_{hook,wire}_test.go`, `internal/decide/*_test.go`, bridge `decisions_flow_test.go`; `tests/ui/decisions.spec.ts` | Per-kind 18/20, 90% default, asks/refusals, receipt replay. Transcript overturn wiring remains a documented gap. |
 | I2.10, I2.12, I2.14: discussions, plans, bounded reach | `internal/council/*_test.go`, bridge council routes; `tests/ui/council-view.spec.ts`; `desktop-plan-card.md` manual | Caps and pair/topic cooldown, Go/Edit/Cancel, deleted targets, dependent handling; components do not prove live runner wiring. |
@@ -82,7 +83,7 @@ the newest reading any open window has reported say what is pending, so a window
 reading behind can neither announce an answered question again nor point a grouped
 click at it; a window whose own sequence goes backwards marks an engine restart.
 Failures in that list come from the engine's `unseenFailed` and the newest
-failure's landing instant, not from the Inbox's optimistic seen marks, its five-row
+failure's landing instant, not from the Inbox's optimistic seen marks, its five-row **(superseded attention scope: I2.1/I2.6)**
 limit or a window's count record, and a failure is announced once. Two limits stay:
 an engine that predates the seen mark leaves failures to each window's own record,
 so two windows can disagree about one (it is still announced once); and the badge
@@ -226,8 +227,8 @@ dependency edge between consecutive owners, so no two lanes edit it at once.
 | `desktop/src/features/chat/engine-client.ts` | `t-d5-prim-engine-fetch-export` → `t-d5-prim-snapshot-merge` → `t-d5-cv-incremental-wire` → `t-d5-cv-queue-send-now-client` |
 | `desktop/src-tauri/src/lib.rs` | `t-d5-int-be-tauri-windows` → `t-d5-int-be-tauri-web` → `t-d5-int-be-tauri-plugins` → `t-d5-int-tab-native` |
 | `desktop/tests/ui/support/mock-engine.ts` | `t-d5-int-cv-mock-engine` → `t-d5-int-sh-workspace` → `t-d5-int-pl-test-wiring` → `t-d5-int-be-mock-engine` |
-| `desktop/src/features/shell/Rail.tsx` | `t-d5-sh-rail-inbox-wire` → `t-d5-sh-rail-now-wire` → `t-d5-sh-rail-legacy-retire` → `t-d5-int-pl-rail-slot` |
-| `desktop/src/features/tabs/TabItem.tsx` | `t-d5-sh-strip-compressed` → `t-d5-sh-tab-multiselect` → `t-d5-sh-tab-keyboard-move` → `t-d5-sh-inbox-tab-dot` |
+| `desktop/src/features/shell/Rail.tsx` | **Superseded attention scope: I2.1/I2.6.** `t-d5-sh-rail-inbox-wire` → `t-d5-sh-rail-now-wire` → `t-d5-sh-rail-legacy-retire` → `t-d5-int-pl-rail-slot` |
+| `desktop/src/features/tabs/TabItem.tsx` | **Superseded attention scope: I2.1/I2.6.** `t-d5-sh-strip-compressed` → `t-d5-sh-tab-multiselect` → `t-d5-sh-tab-keyboard-move` → `t-d5-sh-inbox-tab-dot` |
 | `desktop/src/features/tabs/kinds/newtab/rows.ts` | `t-d5-sh-newtab-history` → `t-d5-sh-newtab-closed-age` → `t-d5-sh-newtab-start-rows` → `t-d5-sh-newtab-url` |
 | `desktop/src/features/tabs/model.ts` | `t-d5-int-be-tabs-persistence` → `t-d5-int-sh-workspace` → `t-d5-int-pl-workspace-key` |
 | `desktop/src/design/keyboard.ts` | `t-d5-int-cv-keys` → `t-d5-int-tab-keys` → `t-d5-int-sh-keymap` |
@@ -252,7 +253,7 @@ dependency edge between consecutive owners, so no two lanes edit it at once.
 | `desktop/src/features/shell/rail.css` | `t-d5-sh-rail-legacy-retire` → `t-d5-int-pl-rail-slot` |
 | `desktop/src/features/tabs/Workspace.tsx` | `t-d5-int-sh-workspace` → `t-d5-int-pl-workspace-key` |
 | `desktop/src/features/tabs/strip.css` | `t-d5-sh-drag-regions` → `t-d5-sh-strip-compressed` |
-| `desktop/src/features/shell/railActions.ts` | `t-d5-sh-rail-inbox-wire` → `t-d5-sh-rail-now-wire` |
+| `desktop/src/features/shell/railActions.ts` | **Superseded attention scope: I2.1/I2.6.** `t-d5-sh-rail-inbox-wire` → `t-d5-sh-rail-now-wire` |
 | `desktop/src/features/tabs/tab.css` | `t-d5-sh-tab-chrome` → `t-d5-sh-tab-multiselect` |
 | `desktop/src/features/tabs/hosts/dragHost.ts` | `t-d5-sh-group-drag` → `t-d5-sh-tab-tearoff` |
 | `desktop/src/features/tabs/OverviewCard.tsx` | `t-d5-sh-overview-tab-menu` → `t-d5-sh-overview-card-body` |
@@ -263,7 +264,7 @@ dependency edge between consecutive owners, so no two lanes edit it at once.
 | Lane | Worktree | Owns | Tasks that wait for it |
 |---|---|---|---|
 | `t-s1-preview` | `.claude/worktrees/agent-a7359f658c917f69f` | tab hover preview cards | preview-dependent shell/places tasks |
-| `t-s1-menus` | `agent-a320e518fe154e07c` | context menus, close vs close-and-stop, closing toast, local Inbox | 46 tasks (largest bottleneck) |
+| `t-s1-menus` | **Superseded attention scope: I2.1/I2.6.** `agent-a320e518fe154e07c` | context menus, close vs close-and-stop, closing toast, local Inbox | 46 tasks (largest bottleneck) |
 | `t-s1-split` (+ `t-s1-menu`) | `agent-ad64d2e18339b086b` | split 2x2, drag zones, pane focus, compact composer | split follow-ups |
 | `t-s1-overview` (+ `t-ov-*`) | `agent-a4590d5501d02cd1f` | overview grid, filmstrip | overview menu/body follow-ups |
 | `t-s1-newtab` | `agent-a2d4b3e6b5845bad3` | ⌘T field | new-tab history/URL/start rows |
@@ -559,7 +560,7 @@ Notes on status: token rows whose value already equals the design are `partial` 
 | PR-CHIP-6 | Real favicon only for already-contacted domains | C-CHIP-9 | LinkChip.tsx / AssetContext favicons | partial | t-d5-qa-prim-chips |
 | PR-CHIP-7 | Model chip 28h pad 8 r8 12 ink-2 chevron-down 11 | C-COMP-3 | composer/ModelPicker.tsx; tests/ui/composer-model.spec.ts (popover only) | partial | t-d5-qa-prim-chips |
 | PR-CHIP-8 | Chip context menu (file chip: Open / Reveal / Copy path) | Interactions | FileActions.ts | partial | t-d5-qa-prim-chips |
-| PR-DOT-1 | Needs-you amber 6px dot / failed red dot primitive shared by tabs, rail, tree, inbox | C-TAB-4/5, C-PLACE-6, C-TREE-6 | StatusMark dense; tab.css .tab-dot (own copy) | partial | t-d5-qa-prim-primitives-spec |
+| PR-DOT-1 | **Superseded attention scope: I2.1/I2.6.** Needs-you amber 6px dot / failed red dot primitive shared by tabs, rail, tree, inbox | C-TAB-4/5, C-PLACE-6, C-TREE-6 | StatusMark dense; tab.css .tab-dot (own copy) | partial | t-d5-qa-prim-primitives-spec |
 | PR-DOT-2 | Running never shows in rows/tabs (silent) | Foundations §08 rules | rule; tab/rail lanes | partial | t-d5-qa-prim-primitives-spec |
 | PR-SCRIM-1 | One scrim token used by Quick Look, palette backdrop, task sheet backdrop, lightbox (ASSUME lightbox keeps darker 60%) | C-OVL-4 | palette-backdrop, asset-lightbox-scrim, task-backdrop-enter | partial | t-d5-int-tok-a-colour |
 | PR-STOP-1 | Stop square 10px r2 currentColor glyph shared (composer, tab ⌥ close) | F-ICON-18 | composer.css only; Icon stop = CircleStop | partial | t-d5-prim-stop-glyph |
@@ -592,7 +593,7 @@ Notes on status: token rows whose value already equals the design are `partial` 
 
 ### 7.2 Shell chrome
 
-Scope: Shell design page chrome and the Shell rows of Interactions, EXCEPT tab-kind contents (file/diff/terminal/web/history/settings/inbox panes) and EXCEPT places (place rows, Home tab, place switcher, All places, tints). Pinned Home tab, place-row menus/drag, ⌘0/⌃1–9/⌘P/⌘⇧P/⌘[/Space HANDLERS are the places writer's; this file only owns their chord recognizers (row SH-256..259, 265, 273).
+Scope: Shell design page chrome and the Shell rows of Interactions, EXCEPT tab-kind contents (file/diff/terminal/web/history/settings/inbox panes) and EXCEPT places (place rows, Home tab, place switcher, All places, tints). Pinned Home tab, place-row menus/drag, ⌘0/⌃1–9/⌘P/⌘⇧P/⌘[/Space HANDLERS are the places writer's; this file only owns their chord recognizers (row SH-256..259, 265, 273). **(superseded attention scope: I2.1/I2.6)**
 
 Verified against HEAD 39d440c4f (`/home/santosh/codeaf-design-plan/desktop`) and the lane worktrees under `/home/santosh/codeaf-workspace/.claude/worktrees/` (read 2026-10-09). Lane state at read time: preview cf0536bd7 (+dirty), overview b803d4121, newtab 3a4ec2702 (committed during this pass), menus/split/rail/history/terminal/files uncommitted. "in-flight" = present only in a lane worktree, unverified; never complete.
 
@@ -631,12 +632,12 @@ Source shorthand: SH = `codeaf Shell.dc.html` §id; IX = `codeaf Interactions.dc
 | SH-025 | Inbox click → Inbox in the current place's strip, focused on the oldest needs-you item | IX Shell "Rail · Inbox"; S-R-9 | none | superseded: I2 (see override table) | t-d5-sh-rail-inbox-wire, t-d5-sh-rail-test |
 | SH-026 | Inbox ⌘-click / middle → new tab | IX "Rail · Inbox"; S-R-9 | none | superseded: I2 (see override table) | t-d5-sh-rail-inbox-wire, t-d5-sh-rail-test |
 | SH-027 | Inbox hover shows the count | IX "Rail · Inbox"; S-R-9 | none | superseded: I2 (see override table) | t-d5-sh-rail-rows, t-d5-sh-rail-test |
-| SH-028 | Inbox / Now right-click: none ("—"). ASSUME the webview's default context menu is suppressed on rail rows | IX "Rail · Inbox/Now" right-click "—" | none | missing | t-d5-sh-rail-inbox-wire, t-d5-sh-rail-test |
+| SH-028 | **Superseded attention scope: I2.1/I2.6.** Inbox / Now right-click: none ("—"). ASSUME the webview's default context menu is suppressed on rail rows | IX "Rail · Inbox/Now" right-click "—" | none | missing | t-d5-sh-rail-inbox-wire, t-d5-sh-rail-test |
 | SH-029 | Now row: circle-dashed 14 + "Now" + count 11 ink-3 | SH 3a; S-R-3, C-PLACE-2 | none | missing | t-d5-sh-rail-attention-model, t-d5-sh-rail-rows, t-d5-sh-rail-test |
 | SH-030 | Now click switches the window to Now (graphite, unplaced tabs) | IX "Rail · Now"; S-R-10 | none | missing | t-d5-sh-rail-now-wire, t-d5-sh-rail-test |
 | SH-031 | Now ⌘-click / middle → new window on Now | IX "Rail · Now"; S-R-10 | none (no multiwindow) | missing | t-d5-sh-rail-now-wire, t-d5-sh-rail-test |
 | SH-032 | ASSUME (rail silent; IX Flows "Settings" = a tab): Settings entry is one rail row that opens/focuses the single Settings tab | IX Flows "Settings"; S-IX-12 | L-rail `kinds/SettingsPane.tsx`, `openKind.ts`; test "Settings is a tab: the rail item opens it once…" | in-flight:t-s1-rail | — |
-| SH-033 | Legacy rail items not in the design (BrandMark address search, Activity page, Design system page, "Find anything ⌘K", ThemeSelect) retire once Inbox/Now/Settings land | SH 3a rail (Inbox · Now · Places · All places); S-R-1..8 | HEAD `Rail.tsx`, `App.tsx pages`; L-rail keeps them (DQ R3) | partial | t-d5-sh-rail-legacy-retire, t-d5-int-sh-app, t-d5-sh-rail-test |
+| SH-033 | **Superseded attention scope: I2.1/I2.6.** Legacy rail items not in the design (BrandMark address search, Activity page, Design system page, "Find anything ⌘K", ThemeSelect) retire once Inbox/Now/Settings land | SH 3a rail (Inbox · Now · Places · All places); S-R-1..8 | HEAD `Rail.tsx`, `App.tsx pages`; L-rail keeps them (DQ R3) | partial | t-d5-sh-rail-legacy-retire, t-d5-int-sh-app, t-d5-sh-rail-test |
 | SH-034 | ⌘S collapses / restores the rail | SH 2h; S-R-16, S-IX-18 | L-rail `useShellFrame.ts`, test "the toggle and ⌘S collapse the rail…" | in-flight:t-s1-rail | — |
 | SH-035 | ⌘B kept as alias beside ⌘S (L-rail DQ R2) | design lists only ⌘S | HEAD `App.tsx` ⌘B; L-rail `keyboard.ts` `'s' or 'b'` | in-flight:t-s1-rail | — |
 | SH-036 | Collapsed rail: traffic lights + rail toggle move into the strip | SH 2b/2d; S-2b-2, S-2d-2 | HEAD `strip.css` mac `--native-controls-inset`; L-rail `RailToggle placement` | in-flight:t-s1-rail | — |
@@ -647,7 +648,7 @@ Source shorthand: SH = `codeaf Shell.dc.html` §id; IX = `codeaf Interactions.dc
 | SH-041 | ASSUME ≤850px: rail compacts to 190px (`sidebar-width-compact`) | design silent | `App.css @media (max-width: 850px)` | partial (no assertion of the width) | t-d5-sh-rail-test |
 | SH-042 | ASSUME coarse pointer: rail rows ≥40px hit target | design silent | none | missing | t-d5-tok-sh-touch, t-d5-sh-touch-targets, t-d5-sh-touch-test |
 | SH-043 | ASSUME rail collapsed / Focus mode are per window (not mirrored to a second window on the same place) | IX Flows "Multiple windows" silent on chrome state | L-rail `useShellFrame` (component state) | missing | t-d5-sh-window-local-state |
-| SH-044 | ASSUME the ≤600 drawer shows the same Inbox/Now rows | design silent | none | missing | t-d5-sh-rail-test |
+| SH-044 | **Superseded attention scope: I2.1/I2.6.** ASSUME the ≤600 drawer shows the same Inbox/Now rows | design silent | none | missing | t-d5-sh-rail-test |
 
 #### 3. Tab strip and tab
 
@@ -666,7 +667,7 @@ Source shorthand: SH = `codeaf Shell.dc.html` §id; IX = `codeaf Interactions.dc
 | SH-060 | Running is silent; tabs never carry spinners, counts or badges | SH 3j footnote; S-3j-23, C-TAB-6 | `stateOfMark` drops `working` | partial (rule in code; no live assertion) | t-d5-sh-tab-state-test |
 | SH-061 | Screen reader hears state in words ("Needs you" / "Failed") | IX Flows "Accessibility" | `Tab.tsx aria-description` | partial (untested) | t-d5-sh-tab-state-test |
 | SH-062 | Kinds × states sheet (rest/hover/active/needs-you/failed; Settings and New tab n/a) | SH 3j; S-3j-1..9, S-3j-15..22 | `specimens/TabsSpecimen.tsx` | complete (shell-tabs.spec "the Design system page shows every tab kind and state, light and dark") | — |
-| SH-063 | Specimens: Pinned (inbox + dot), Group, Collapsed group, Split, Compressed | S-3j-10..14 | `TabsSpecimen.tsx` | complete (same test: badge count 1, group radius 10, collapsed count "3", pinned width 30) | — |
+| SH-063 | **Superseded attention scope: I2.1/I2.6.** Specimens: Pinned (inbox + dot), Group, Collapsed group, Split, Compressed | S-3j-10..14 | `TabsSpecimen.tsx` | complete (same test: badge count 1, group radius 10, collapsed count "3", pinned width 30) | — |
 | SH-064 | Long title fades over last 20px with a mask, no ellipsis | SH 3l; S-3l-9, C-TAB-9 | `tab.css` | complete (shell-tabs.spec "the strip, a tab and the content card match the shell design") | — |
 | SH-065 | × in a fixed 20px slot; width never changes on hover | S-3l-10, C-TAB-10 | `Tab.tsx .workspace-tab-close-slot` | complete (tabs.spec "tab close sits in a fixed slot…") | — |
 | SH-066 | Full title in a 500ms tooltip (where no hover preview opens: active and compressed tabs) | SH 3l "Long title · full name"; S-3l-11 | none on `Tab.tsx` select button | missing | t-d5-sh-tab-chrome, t-d5-sh-strip-test |
@@ -892,7 +893,7 @@ Source shorthand: SH = `codeaf Shell.dc.html` §id; IX = `codeaf Interactions.dc
 
 #### Open questions
 
-1. Pinned first slot: Home tab (2h, 3a–4c) or Inbox (2b, 2g, 3j, 3l)? ASSUME both: Home (places writer) first, then the pinned Inbox (L-menus); the collapsed-rail strip (2b) shows the Inbox as its first pinned tab after the traffic lights and rail toggle. Recorded by t-d5-sh-decide-shell-questions.
+1. Pinned first slot: Home tab (2h, 3a–4c) or Inbox (2b, 2g, 3j, 3l)? ASSUME both: Home (places writer) first, then the pinned Inbox (L-menus); the collapsed-rail strip (2b) shows the Inbox as its first pinned tab after the traffic lights and rail toggle. Recorded by t-d5-sh-decide-shell-questions. **(superseded attention scope: I2.1/I2.6)**
 2. ⌥⌘W: "Close other tabs" (3g) vs "Close and stop" (3l, IX). ASSUME Close and stop; Close other tabs has no shortcut (as L-menus already does).
 3. "Copy link" and "Move to new window" while unbacked: disabled (L-menus) or absent (repo law)? ASSUME absent until backed; Move to new window becomes live with t-d5-nat-tab-move-window; Copy link stays absent until a `codeaf://` link scheme is decided.
 4. Strip tab ⌘-click: "Background tab" (IX) vs "⌘-selecting" for ⌘G (2h). ASSUME ⌘-click toggles selection on strip tabs (links and rows keep ⌘-click = background tab); middle-click closes.
@@ -905,7 +906,7 @@ Source shorthand: SH = `codeaf Shell.dc.html` §id; IX = `codeaf Interactions.dc
 11. Window-local vs shared workspace fields (two windows on one place). ASSUME active tab, recents, selection, overview, undo and rail state are per window; tab set, groups and closed list are shared. If t-d5-prim-workspace-sync already fixes this split, t-d5-sh-window-local-state reduces to its test.
 12. ⌘B alias (L-rail R2): keep beside ⌘S? ASSUME keep until the designer says otherwise.
 13. Pinch-out: no reliable webview event (L-overview OV2). ASSUME not built; keys and grid button remain (research t-d5-sh-overview-pinch).
-14. Inbox / Now right-click is "—". ASSUME suppress the webview's default context menu on those rows (nothing opens).
+14. Inbox / Now right-click is "—". ASSUME suppress the webview's default context menu on those rows (nothing opens). **(superseded attention scope: I2.1/I2.6)**
 
 #### Counts
 
@@ -925,9 +926,9 @@ Tasks: 68 in ~/.codex/codeaf-design-run/d5-inventory/tasks-shell.json (every par
 
 ### 7.3 Tab kinds
 
-Scope: the contents and states of every tab kind other than the conversation (file, diff, terminal/job, engine job, web, history, settings, inbox, new tab, task), the Components "Edge states" rows and the Interactions rows that reach those kinds.
+Scope: the contents and states of every tab kind other than the conversation (file, diff, terminal/job, engine job, web, history, settings, inbox, new tab, task), the Components "Edge states" rows and the Interactions rows that reach those kinds. **(superseded attention scope: I2.1/I2.6)**
 Code verified 2026-10-09 against HEAD 39d440c4f (`/home/santosh/codeaf-design-plan`) and the lane worktrees under `/home/santosh/codeaf-workspace/.claude/worktrees/` (L-files = agent-a451c7c04660863b4, committed abba872c6, not in HEAD; L-term = agent-aa8990887568558b7, uncommitted; L-hist = agent-ab15dab692b3b743f, uncommitted; L-rail = agent-a99c430e0f6cc71ca, uncommitted; L-menus = agent-a320e518fe154e07c, uncommitted; L-newtab = agent-a2d4b3e6b5845bad3, committed 3a4ec2702, not in HEAD).
-At HEAD, `kinds/{file,diff,web,terminal,settings,history,inbox}.ts` are `placeholderPane` ("<Kind> is not available yet.", `backed:false`), and `kinds/newtab.ts` is a ConversationPane stand-in. Lane work is unverified by definition (in-flight).
+At HEAD, `kinds/{file,diff,web,terminal,settings,history,inbox}.ts` are `placeholderPane` ("<Kind> is not available yet.", `backed:false`), and `kinds/newtab.ts` is a ConversationPane stand-in. Lane work is unverified by definition (in-flight). **(superseded attention scope: I2.1/I2.6)**
 Tab-strip chrome (glyph states, close, groups, previews, overview) belongs to the shell writer. Here it appears only where a kind's body or its kind-specific menu depends on it.
 
 | Cov ID | Design item (state/input) | Source (page §id + inventory ID) | Current code path(s) (HEAD file or lane:path) | Status | Task |
@@ -1049,7 +1050,7 @@ Tab-strip chrome (glyph states, close, groups, previews, overview) belongs to th
 | TS-10 | One centred column, no horizontal overflow at 320px, Light + Dark | responsive law | test `settings-models.spec.ts` "settings is one centred column, accessible in light and dark, with no horizontal overflow at 320px" | complete | — |
 | TS-11 | Hover/overview card: "Pinned: … Default effort: …" | 3h Shell-ann line 243 | L-rail `SettingsPreview` | in-flight:t-s1-rail | — |
 | TS-12 | New sections keyboard-reachable, accessible in Light + Dark, at 320px | contract | none | missing | t-d5-tab-set-test |
-| **Inbox tab** | | | | | |
+| **Inbox tab** | **Superseded attention scope: I2.1/I2.6.** | | | | |
 | TI-01 | Inbox (pinned) body: "Running in the background" (closed-but-running work, click reopens where it was) | 3l S-3l-7, S-K-10 | HEAD `kinds/inbox.ts` placeholder; L-menus `kinds/inbox/InboxPane.tsx`, `closing/background.ts`; lane test "closed-but-running work lists in the pinned Inbox and a click reopens the tab" | superseded: I2 (see override table) | — |
 | TI-02 | Stopping the closed work clears it | S-3l-4/5 | L-menus lane test "stopping the closed work clears it from the Inbox" | superseded: I2 (see override table) | — |
 | TI-03 | Inbox dot only when something needs you | S-3j-21/23 | L-menus lane test "the Inbox carries a dot only when something needs you" | superseded: I2 (see override table) | — |
@@ -1089,8 +1090,8 @@ Not rows here, because other writers own them: the task-notice right-click menu 
 3. **New-window requests from a page (TW-13).** ASSUME: a background web tab placed right after the opener, in the same place. Never a native window, never a non-http(s) scheme.
 4. **Find in page and keys while the native webview holds focus (TW-14/15).** The webview has no IPC by rule (arch "Web tab"), and its keystrokes never reach the renderer. ASSUME: ⌘L, ⌘R, ⌘F, ⌘W and ⌘T reach the app through native app-menu accelerators (the existing `desktop-tab-action` path). Find uses a native find command, if t-d5-tab-web-find-research confirms one exists on both WKWebView and WebKitGTK. Otherwise find stays absent.
 5. **"Chat-plus starts a conversation with the page attached" (TW-5).** ASSUME: a new conversation tab opens focused, with the page URL and title as a link attachment in the composer, NOT sent. The page body is never scraped (no invented content, and the model can fetch it).
-6. **Failed work in the Inbox (TI-10).** ASSUME: not listed. 3l says background work stays in the Inbox "until it finishes or needs you". Failed shows on the tab, rail and notification.
-7. **Answer in place inside the Inbox (TI-07).** The design shows acting from a preview (3k), not an Inbox card layout. ASSUME: the Inbox row expands into the same question card the tray draws, reusing the tray component read-only. Answering attaches the conversation lazily.
+6. **Failed work in the Inbox (TI-10).** ASSUME: not listed. 3l says background work stays in the Inbox "until it finishes or needs you". Failed shows on the tab, rail and notification. **(superseded attention scope: I2.1/I2.6)**
+7. **Answer in place inside the Inbox (TI-07).** The design shows acting from a preview (3k), not an Inbox card layout. ASSUME: the Inbox row expands into the same question card the tray draws, reusing the tray component read-only. Answering attaches the conversation lazily. **(superseded attention scope: I2.1/I2.6)**
 8. **"Open log" for a finished job (C-EDGE-6).** For a PTY job the log is the tab itself. ASSUME: "Open log" appears only for engine jobs that keep a log file, and opens that log read-only in the job tab's field (full log, not the 512 KB tail). This needs `t-d5-be-jobs-routes` to serve `GET /sessions/{id}/jobs/{jobId}/log`. If that route is not in the backend writer's contract, the item stays absent.
 9. **Editors list for "Open in ⌄" (TF-06).** ASSUME: a local engine lists the OS handlers registered for the file's type, default first, and opening one goes through a confined native command. A remote engine lists nothing, so the menu holds Copy path and Copy relative path.
 10. **Settings tab title (TS-09).** 3j draws "Models", and Interactions makes Settings a page with five sections. ASSUME: "Settings".
@@ -1408,7 +1409,7 @@ Status key: complete, partial, missing, in-flight:<lane>, n/a-decided.
 
 | Cov ID | Design item | Source | Current code | Status | Task |
 |---|---|---|---|---|---|
-| PL-040 | Rail frame 232px: lights + toggle, Inbox, Now, Pinned, Open, All places at the bottom | 6a; P-0-7; P-SH-2 | HEAD `features/shell/Rail.tsx` (page nav); lane t-s1-rail restyles it with `items[]` | partial | t-d5-int-pl-rail-slot; t-d5-pl-rail-sections |
+| PL-040 | **Superseded attention scope: I2.1/I2.6.** Rail frame 232px: lights + toggle, Inbox, Now, Pinned, Open, All places at the bottom | 6a; P-0-7; P-SH-2 | HEAD `features/shell/Rail.tsx` (page nav); lane t-s1-rail restyles it with `items[]` | partial | t-d5-int-pl-rail-slot; t-d5-pl-rail-sections |
 | PL-041 | Rail toggle ⌘S (⌘B kept) and the collapse animation | 9c; P-IX-41 | t-s1-rail: `shell/RailToggle.tsx`, `useShellFrame.ts`, lane DESIGN-QUESTIONS R2 | in-flight:t-s1-rail | — |
 | PL-042 | Rail row anatomy: 32px, gap 10, r8, 13px, lead, name, muted " · parent", dot, 11px meta | P-0-6; P-CMP-2; P-6a-9 | lane rows are 30px/12px tab-shaped (D-02) | missing | t-d5-tok-pl-rail; t-d5-pl-rail-row |
 | PL-043 | Row hover: fill only; Open rows show ×; Pinned rows show none | 10a; P-10a-3; P-X-1 | none | missing | t-d5-pl-rail-row |
@@ -1431,8 +1432,8 @@ Status key: complete, partial, missing, in-flight:<lane>, n/a-decided.
 | PL-060 | Closed but running: row stays in Open, muted, "closed · still running" with its glyph, and leaves by itself when the work finishes or you answer | 10a; P-10a-5,12; P-CMP-15 | t-s1-menus has the tab version (`closing/running.ts`) | missing | t-d5-pl-selectors; t-d5-pl-rail-row |
 | PL-061 | Going idle: an Open place untouched for 12h closes itself; Pinned never auto-close | 10a; P-10a-13; P-6d-7 | none | missing | t-d5-pl-idle-close |
 | PL-062 | Pinned places' idle tabs still archive (toast "Archived 6 tabs idle for more than 12h · Review · Restore all") | 10a; P-10a-13; P-CMP-23 | t-s1-history auto-archive | in-flight:t-s1-history | t-d5-pl-idle-close (place side only) |
-| PL-063 | Empty rail: Inbox, Now, "Places you open show here. Pin the ones you live in.", All places | 10a; P-10a-8 | none | missing | t-d5-pl-rail-sections |
-| PL-064 | 0 places: Inbox and Now only, no empty "Places" header, All places without ⌘⇧P meta | 6d; P-6d-1; 8e P-8e-2 | none | missing | t-d5-pl-rail-sections |
+| PL-063 | **Superseded attention scope: I2.1/I2.6.** Empty rail: Inbox, Now, "Places you open show here. Pin the ones you live in.", All places | 10a; P-10a-8 | none | missing | t-d5-pl-rail-sections |
+| PL-064 | **Superseded attention scope: I2.1/I2.6.** 0 places: Inbox and Now only, no empty "Places" header, All places without ⌘⇧P meta | 6d; P-6d-1; 8e P-8e-2 | none | missing | t-d5-pl-rail-sections |
 | PL-065 | Drag to pin: lifted ghost (sh-2), 2px accent insertion line, drop across the section line pins or unpins | 10a; P-10a-7,14; P-X-6 | `tabs/hosts/dragHost.ts` is tab-only | missing | t-d5-pl-rail-dnd |
 | PL-066 | Drag within Pinned reorders; keyboard equivalent (ASSUME: Alt+↑/↓ like Q28, plus menu Pin/Unpin) | 10a; P-10a-14 | none | missing | t-d5-pl-rail-dnd |
 | PL-067 | Drop a file, link or tab onto a rail row adds it to that place; drop-target highlight (ASSUME: the tile "Add here" recipe on the row) | P-IX-9; P-6e-12; P-X-5 | none | missing | t-d5-pl-filing; t-d5-pl-rail-dnd |
@@ -1450,7 +1451,7 @@ Status key: complete, partial, missing, in-flight:<lane>, n/a-decided.
 |---|---|---|---|---|---|
 | PL-080 | Collapsed: lights + toggle move into the strip | 9c; P-9c-2; P-9e-5 | t-s1-rail `RailToggle placement` | in-flight:t-s1-rail | — |
 | PL-081 | Home tab gains chevrons-up-down and opens the place switcher | 9c; P-9c-2; P-CMP-12; P-IX-12 | none | missing | t-d5-pl-home-tab; t-d5-pl-switcher |
-| PL-082 | Switcher popover 280px: Inbox (dot), Now ⌃0, Pinned ⌃1…, Open with parents and dots, All places ⌘⇧P; current row `--field-2`; ↑↓/↵/Esc | 9c; P-9c-3; P-CMP-13 | none | missing | t-d5-pl-switcher |
+| PL-082 | **Superseded attention scope: I2.1/I2.6.** Switcher popover 280px: Inbox (dot), Now ⌃0, Pinned ⌃1…, Open with parents and dots, All places ⌘⇧P; current row `--field-2`; ↑↓/↵/Esc | 9c; P-9c-3; P-CMP-13 | none | missing | t-d5-pl-switcher |
 | PL-083 | ⌃0 = Now; ⌃1–9 jump between places | 9c; P-9c-4,5 | none | missing | t-d5-pl-keys |
 | PL-084 | Edge peek: hovering the LEFT 8px for 300ms peeks the full rail (lane uses the TOP 8px) | 9e; P-9c-6; D-04 | t-s1-rail `useShellFrame.ts` (top 8px) | partial | t-d5-pl-rail-peek |
 | PL-085 | Needs-you while collapsed: Home-tab swatch gets an amber glyph; the switcher names which place | 9e; P-9c-7; P-9e-6 | none | missing | t-d5-pl-home-tab; t-d5-pl-switcher |
@@ -1602,7 +1603,7 @@ Status key: complete, partial, missing, in-flight:<lane>, n/a-decided.
 | PL-253 | ⌘N opens a new window on Now (IX) vs ⌘N = new place inside ⌘P (6c). ASSUME: ⌘N inside the palette = new place; elsewhere = new window | P-IX-29; D-07 | none | missing | t-d5-pl-keys; t-d5-nat-window-menu |
 | PL-254 | Notifications only for needs-you/failed, one per question, grouped per place; click focuses | P-IX-30; P-X-18 | none | missing | t-d5-nat-notify; t-d5-pl-notify-group |
 | PL-255 | Dock badge = count of needs-you items | P-IX-31 | none | missing | t-d5-nat-notify |
-| PL-256 | Something needs you in another place: amber on its rail row, listed in Inbox, answer without switching | 6d; P-6d-5 | none | missing | t-d5-pl-rail-sections; t-d5-be-attention |
+| PL-256 | **Superseded attention scope: I2.1/I2.6.** Something needs you in another place: amber on its rail row, listed in Inbox, answer without switching | 6d; P-6d-5 | none | missing | t-d5-pl-rail-sections; t-d5-be-attention |
 | PL-257 | Keyboard shortcut map: ⌘0, ⌃0–9, ⌘P, ⌘⇧P, ⌘⇧W, ⌘[, Space, ⌘↵, ⌘Z, platform labels | IX Shortcuts; P-IX-36..46 | `design/keyboard.ts` (tab keys only) | missing | t-d5-pl-keys |
 | PL-258 | Screen readers announce place status in words; colour never carries meaning alone | P-IX-34 | none | missing | t-d5-pl-place-dot; t-d5-pl-test-rail |
 | PL-259 | Light + Dark for every place surface | P-X-14 | tokens are theme-aware | missing | t-d5-pl-test-rail; t-d5-pl-test-home; t-d5-pl-test-window |
@@ -1802,7 +1803,7 @@ blends the two meanings.
 | BE-SET-07 | Set or replace the provider key from the app. ASSUME: not in v1; the row names where the key comes from | S-IX-12 | none | missing | t-d5-be-key-set-decision |
 | BE-SET-08 | Settings pane | S-IX-12 | rail lane `SettingsPane.tsx` | in-flight:t-s1-rail | — |
 
-#### 8. Inbox and attention
+#### 8. Inbox and attention **(superseded attention scope: I2.1/I2.6)**
 
 | Cov ID | Design item | Source | Current code path(s) | Status | Task |
 |---|---|---|---|---|---|

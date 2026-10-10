@@ -7,6 +7,19 @@ every design item to a task. On conflict, the design files
 (`.git/design-current/*.dc.html`) win over this document, and the code wins over both
 on what exists today.
 
+## Iteration 2 attention override
+
+Next up replaces the historical attention pane. The frame pill counts waiting
+questions in other conversations; zero renders nothing. Click or ⌘J (Ctrl+J on
+Linux) walks actual conversations with the tray focused on their questions.
+Answers happen there; Skip preserves the question. Closed-but-running work stays
+under Live on its place Home. There is no additional attention tab or rail row.
+
+The d5 inventory below is historical. **Superseded: Inbox** in the original tab
+kind inventory is retained only to explain saved-workspace migration; it is absent
+from the current registry. See [ITERATION-2.md](ITERATION-2.md) for the current
+attention architecture and shortcut law.
+
 ## 1. Bottom line
 
 1. **A design "place" is a new engine concept.** It does not extend `session.Place`.
@@ -31,7 +44,7 @@ on what exists today.
    per-turn rebuild, and no independent AI in the desktop.
 4. **There is one engine-wide SSE stream** (`GET /api/engine/events`) carrying small
    typed records: `world`, `attention`, `places`, `workspace`, `jobs`. It replaces the
-   2-second full-snapshot polling of background tabs and feeds the rail dots, Inbox,
+   2-second full-snapshot polling of background tabs and feeds the rail dots, Next up,
    Home, the switcher and notifications. Per-conversation SSE stays, and only the
    focused conversation holds one.
 5. **The Web tab is a native child webview**, one per web pane, positioned over the
@@ -57,7 +70,7 @@ on what exists today.
 | Referred folders | `internal/session/places.go:128-238` `Places/ReferPlace/RemovePlace/SetPlaceMode`; `placescontext.go:109-284` `attachedBlock` | ≤16 per conversation in `meta.json`. Composed into message[0] only on a deliberate act | No bridge route. Not in `Snapshot` |
 | Background jobs | `internal/session/jobs.go:261,475`, `jobnotice.go:111-141` | Reach outside code only as `EventJobUpdate{Job *JobNotice}` | No exported list, no stop, no snapshot field |
 | Tab model | `desktop/src/features/tabs/{types,model,helpers}.ts`, `reducers/*`; `storageKey='codeaf.desktop.workspace.v1'` | `WorkspaceState{tabs,groups,activeId,closed,nextNumber,recentIds}` and `Tab = Pane & {pinned, groupId?, split?}` | One workspace, kept in one `localStorage` key. Two windows would overwrite each other's tabs. No place key |
-| Tab kinds | `features/tabs/kinds/types.ts:5` | `conversation, task, file, diff, web, terminal, settings, history, newtab, inbox` | No `home` kind and no `places` (All places) kind. `web` is a placeholder (`backed:false`) |
+| Superseded d5 tab kinds | `features/tabs/kinds/types.ts:5` | `conversation, task, file, diff, web, terminal, settings, history, newtab, inbox` (superseded: I2.1) | No `home` kind and no `places` (All places) kind. `web` is a placeholder (`backed:false`) |
 | Native | `src-tauri/src/{lib,native,menu}.rs`; `capabilities/default.json` (`windows:["main"]`); `Cargo.toml` (`macos-private-api`, `tauri-plugin-shell`) | `engine_health`, `engine_connection`, `open_path`, `reveal_path`, `open_url` | One window. No `unstable` (no child webviews). No dialog or notification plugins. `open_path` trusts a renderer-supplied workspace string |
 
 ## 3. Data shapes
@@ -218,7 +231,7 @@ from `world` rows. A full snapshot is fetched only when a tab is focused.
 | Places graph, membership, rail | `desktop/places.json` | `/api/engine/places*` + `places` records | `features/places/` (new) |
 | Place context | `placegraph.Resolve` in the child engine | engine-internal; `GET /sessions/{id}/using` for the chip | `features/places/using/` |
 | Tab sets | `desktop/workspaces/*.json` | `/api/engine/workspaces/{key}` + `workspace` records | `features/tabs/` persistence adapter |
-| Cross-conversation rows, Inbox, dots | `ReadWorld` + live sessions | world SSE `world`/`attention` | `features/world/` (new) |
+| Cross-conversation rows, Next up, dots | `ReadWorld` + live sessions | world SSE `world`/`attention` | `features/world/` (new) |
 | History | `t-s1-history` routes | its routes + `world` rows | `features/history/` (lane) |
 | Jobs | session job registry (export) / bridge PTYs | `/sessions/{id}/jobs`, `/terminals`, `jobs` records | `features/terminal/` (lane) + jobs list |
 | Files | the conversation's workspace | existing routes + `/files/list` | `features/files/` (lane) |
@@ -342,7 +355,7 @@ were reduced to verifying it against these rules.
 | Files | read/find/stat/diff/locate | directory list (tree, @ picker), editor list for "Open in ⌄" | `t-d5-be-files-list`, `t-s1-files` |
 | History | not on bridge | list/search/archive/recap (lane), auto-archive (lane) | `t-s1-history` |
 | Settings | roles, pinned, catalog | key status without the secret | `t-d5-be-key-status`, `t-s1-settings` |
-| Inbox | per-open-conversation questions only | engine-wide attention feed; answer without a visible tab | `t-d5-be-attention`, `t-d5-tab-inbox-*` |
+| Next up | engine-wide attention feed | walk actual conversations with their question focused in the tray; frame count excludes the current chat | `features/nextup/`, `t-d5-be-attention` |
 | Multiwindow | one window | windows, capability scope, shared workspace store | `t-d5-nat-window-*`, `t-d5-be-workspace-*` |
 | Session lifecycle | children never reaped | detach + idle reap | `t-d5-be-session-detach` |
 | Workspace per chat | one per bridge | `POST /sessions {workspace}` | `t-d5-be-session-workspace` |

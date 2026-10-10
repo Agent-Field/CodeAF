@@ -197,7 +197,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
   let worldSeq = 2;
   // Inactive tabs read this mirror instead of holding a session stream. It speaks the
   // world client's row (chatId, numeric needsYou) and carries the questions the preview answers.
-  // It has no `session` field: the inbox's older feed lists a running row with one as another
+  // Superseded: the Inbox's older feed lists a running row with `session` as another
   // window's work, and this mirror is the same conversation the window already has open.
   let sessionWorldSeq = 1;
   // Empty unless a scenario names a fixture. A write publishes again through onChange.
