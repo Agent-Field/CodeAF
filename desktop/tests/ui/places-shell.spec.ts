@@ -165,7 +165,7 @@ test('d. the Home composer creates, files, then sends; ↵ focuses the new tab a
   await expect(tabs(page).nth(1)).toHaveAccessibleName('Draft the launch email');
   const [create, file, turn] = order(rig, isCreate, isFiling(id), isTurn);
   expect(create).toBeGreaterThanOrEqual(0);
-  expect(rig.places.traffic[create].body).toEqual({ place: id });
+  expect(rig.places.traffic[create].body).toEqual({ placeId: id });
   expect(file).toBeGreaterThan(create);
   expect(turn).toBeGreaterThan(file);
   expect(rig.places.traffic[file].body).toMatchObject({ chats: [NEW_CHAT] });
@@ -208,7 +208,7 @@ test('e. ⌘T inside a place files the new chat before its first turn', async ({
   await expect.poll(() => order(rig, isTurn)[0]).toBeGreaterThanOrEqual(0);
   const [create, file, turn] = order(rig, isCreate, isFiling(id), isTurn);
   expect(create).toBeGreaterThanOrEqual(0);
-  expect(rig.places.traffic[create].body).toEqual({ place: id });
+  expect(rig.places.traffic[create].body).toEqual({ placeId: id });
   expect(file, 'POST /places/{id}/members must come before the first turn').toBeGreaterThan(create);
   expect(turn).toBeGreaterThan(file);
 });
@@ -554,7 +554,7 @@ for (const theme of ['light', 'dark'] as const) {
     const body = route.request().postDataJSON();
     starts.push(body);
     if (!body.sessionFile) {
-      expect(body).toEqual({ place: studio });
+      expect(body).toEqual({ placeId: studio });
       rig.engine.update({ workspace: '/work/brand', workingFolder: { from: 'place', path: '/work/brand', label: 'brand' } });
     } else expect(body).toEqual({ sessionFile: sessionFileFor(NEW_CHAT) });
     await route.fulfill({ json: rig.engine.snapshot() });
@@ -563,7 +563,7 @@ for (const theme of ['light', 'dark'] as const) {
   await composer.fill('Show the actual folder');
   await composer.press('Enter');
   await expect(tabs(page).filter({ hasText: 'Show the actual folder' })).toHaveAttribute('aria-selected', 'true');
-  expect(starts[0]).toEqual({ place: studio });
+  expect(starts[0]).toEqual({ placeId: studio });
   await expect.poll(() => rig.engine.calls.some(call => call.path.endsWith('/turn'))).toBe(true);
   expect(rig.engine.snapshot().workspace).toBe('/work/brand');
   expect(rig.engine.snapshot().workingFolder?.from).toBe('place');
@@ -592,7 +592,7 @@ for (const theme of ['light', 'dark'] as const) {
     if (route.request().method() !== 'POST') { await route.fallback(); return; }
     const body = route.request().postDataJSON();
     if (!body.sessionFile) {
-      expect(body).toEqual({ place: studio });
+      expect(body).toEqual({ placeId: studio });
       rig.engine.update({ workspace: '/work/brand', workingFolder: { from: 'place', path: '/work/brand', label: 'brand' } });
     }
     await route.fulfill({ json: rig.engine.snapshot() });

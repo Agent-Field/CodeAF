@@ -179,7 +179,7 @@ for (const theme of ['light', 'dark'] as const) {
     await field.press('Enter');
     await expect.poll(() => rig.places.traffic.some(call => call.method === 'POST' && call.path === `/places/${id}/members`)).toBe(true);
     const create = rig.places.traffic.findIndex(call => call.method === 'POST' && call.path === '/sessions');
-    expect(rig.places.traffic[create].body).toEqual({ place: id });
+    expect(rig.places.traffic[create].body).toEqual({ placeId: id });
     expect(rig.places.state().members).toContainEqual(expect.objectContaining({ chatId: CHAT, placeId: id }));
     // The new chat uses Marketing's context: its chip names the place and the brand-voice file.
     await expect(page.getByRole('button', { name: 'Using 2 places · 2 sources', exact: true })).toBeVisible({ timeout: 10000 });
