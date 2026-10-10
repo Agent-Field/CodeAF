@@ -43,7 +43,7 @@ import (
 const (
 	// threadGap is how long a room has to have been silent before its next
 	// message is a RE-ENTRY rather than the next line of a conversation. It
-	// matches the arrival brief's own default (config.DefaultBriefAfter) on
+	// matches the arrival brief's own default (resident.DefaultBriefAfter) on
 	// purpose: the two answer the same question about the same person, and a
 	// window that briefed on arrival while the head carried on mid-sentence
 	// would be two components disagreeing about whether they had been away.

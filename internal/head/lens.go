@@ -55,14 +55,14 @@ const (
 )
 
 // The kind words recall filters on. They are the person's vocabulary for the
-// six things memory is made of, not the store's names for its tables — a person
-// asking "only the rules" has never heard of a charter.
+// five things memory is made of, not the store's names for its tables — a person
+// asking "only the beliefs" has never heard of a fact row. Standing rules were a
+// sixth, and went with the v1 scheduler.
 const (
 	lensKindMessage = "message"
 	lensKindJob     = "job"
 	lensKindResult  = "result"
 	lensKindBelief  = "belief"
-	lensKindRule    = "rule"
 	lensKindService = "service"
 )
 
@@ -138,8 +138,7 @@ type lensHit struct {
 // through three separate tools that each knew about some of them, so the answer
 // to "what do we know about pricing?" depended on which tool the model happened
 // to pick. Here they are one question: the conversation, the notebook, the
-// graph, the standing rules, the services, and the settled rows a territory has
-// packed away. A person asking about the past cannot know which of those holds
+// graph, the services, and the settled rows a territory has packed away. A person asking about the past cannot know which of those holds
 // their answer and has never had to.
 func (run *beltRun) recall(args map[string]any) (string, bool) {
 	if run.head == nil || run.head.store == nil {
@@ -151,7 +150,7 @@ func (run *beltRun) recall(args map[string]any) (string, bool) {
 	}
 	kind := strings.ToLower(strings.TrimSpace(beltString(args, "kind")))
 	if kind != "" && !lensKnownKind(kind) {
-		return "kind must be one of message, job, result, belief, rule, service", true
+		return "kind must be one of message, job, result, belief, service", true
 	}
 	since, ok := parseHistoryBound(beltString(args, "since"), false)
 	if !ok {
@@ -166,14 +165,14 @@ func (run *beltRun) recall(args map[string]any) (string, bool) {
 	}
 	hits := run.head.lensGather(query, kind, strings.TrimSpace(beltString(args, "session")), since, until)
 	if len(hits) == 0 {
-		return "nothing remembered matches those words — not in the conversation, not in the notebook, not in work, not in the standing rules or services. Say that plainly rather than reconstructing it.", false
+		return "nothing remembered matches those words — not in the conversation, not in the notebook, not in work, not in the services. Say that plainly rather than reconstructing it.", false
 	}
 	return lensRenderHits(query, kind, hits), false
 }
 
 func lensKnownKind(kind string) bool {
 	switch kind {
-	case lensKindMessage, lensKindJob, lensKindResult, lensKindBelief, lensKindRule, lensKindService:
+	case lensKindMessage, lensKindJob, lensKindResult, lensKindBelief, lensKindService:
 		return true
 	}
 	return false
@@ -182,7 +181,7 @@ func lensKnownKind(kind string) bool {
 // lensGather asks every surface the kind filter admits and blends what comes
 // back. Each surface is asked for lensSourceCap and failures are misses: an
 // index that cannot answer must never turn a read into an error, because the
-// other five still have something true to say.
+// others still have something true to say.
 func (h *Head) lensGather(query, kind, session string, since, until time.Time) []lensHit {
 	now := time.Now()
 	wants := func(candidate string) bool { return kind == "" || kind == candidate }
@@ -196,9 +195,6 @@ func (h *Head) lensGather(query, kind, session string, since, until time.Time) [
 	}
 	if wants(lensKindBelief) {
 		hits = append(hits, h.lensBeliefHits(query)...)
-	}
-	if wants(lensKindRule) {
-		hits = append(hits, h.lensRuleHits(query)...)
 	}
 	if wants(lensKindService) {
 		hits = append(hits, h.lensServiceHits(query)...)
@@ -394,24 +390,6 @@ func (h *Head) lensBeliefHits(query string) []lensHit {
 	return hits
 }
 
-func (h *Head) lensRuleHits(query string) []lensHit {
-	charters, err := h.store.SearchActiveCharters(query)
-	if err != nil || len(charters) == 0 {
-		return nil
-	}
-	hits := make([]lensHit, 0, len(charters))
-	for index, charter := range charters {
-		if index == lensSourceCap {
-			break
-		}
-		hits = append(hits, lensHit{
-			kind: lensKindRule, id: charter.ID, at: charter.CreatedAt, rank: index,
-			snippet: lensSnippet(charter.Invariant) + " | " + lensWatchPhrase(charter.Watch),
-		})
-	}
-	return hits
-}
-
 func (h *Head) lensServiceHits(query string) []lensHit {
 	services, err := h.store.SearchServices(query)
 	if err != nil || len(services) == 0 {
@@ -587,9 +565,6 @@ func (h *Head) lensOpen(id, job string, raw bool, part int) (string, error) {
 		}
 		return lensPage(id, body, part, h.budget.lensPage), nil
 	}
-	if charter, found, err := h.store.Charter(id); err == nil && found {
-		return lensPage(id, lensCharterRecord(charter), part, h.budget.lensPage), nil
-	}
 	if service, found, err := h.store.ServiceByName(id); err == nil && found {
 		return lensPage(id, lensServiceRecord(service), part, h.budget.lensPage), nil
 	}
@@ -599,7 +574,7 @@ func (h *Head) lensOpen(id, job string, raw bool, part int) (string, error) {
 	if rendered, resolved, err := h.lensAnyFile(id, part); resolved {
 		return rendered, err
 	}
-	return "", fmt.Errorf("nothing here is called %q — ids come from a board or recall read: a job id, a file a job wrote (pass job: as well when two jobs wrote the same name), a standing rule's id, a service's name, or a #number from the notebook. A learned way of working is not reachable from this conversation", id)
+	return "", fmt.Errorf("nothing here is called %q — ids come from a board or recall read: a job id, a file a job wrote (pass job: as well when two jobs wrote the same name), a service's name, or a #number from the notebook. A learned way of working is not reachable from this conversation", id)
 }
 
 // lensJob is the state-aware half. The line above both branches is the same,
@@ -1159,59 +1134,6 @@ func (h *Head) lensFact(seq int64) (string, error) {
 	return strings.TrimSpace(rendered.String()), nil
 }
 
-// lensCharterRecord is a standing rule whole: what it watches for, how often it
-// looks, what it does when it fires, and — the half that is usually the actual
-// question — whether it has been looking at all.
-func lensCharterRecord(charter store.Charter) string {
-	var rendered strings.Builder
-	fmt.Fprintf(&rendered, "%s | standing rule | %s | %s\n", charter.ID, charter.Status, charter.Autonomy)
-	rendered.WriteString("watches for: " + strings.TrimSpace(charter.Invariant) + "\n")
-	rendered.WriteString("how often: " + lensWatchPhrase(charter.Watch) + "\n")
-	if action := strings.TrimSpace(charter.Action.Template); action != "" {
-		word := "does"
-		if charter.Action.SayOnly {
-			word = "says"
-		}
-		rendered.WriteString(word + ": " + action + "\n")
-	}
-	if hint := strings.TrimSpace(charter.SentinelHint); hint != "" {
-		rendered.WriteString("what to look at: " + hint + "\n")
-	}
-	if !charter.CreatedAt.IsZero() {
-		rendered.WriteString("agreed: " + charter.CreatedAt.Local().Format(nowLineLayout) + "\n")
-	}
-	if !charter.LastChecked.IsZero() {
-		rendered.WriteString("last looked: " + charter.LastChecked.Local().Format(nowLineLayout) + "\n")
-	}
-	if line := strings.TrimSpace(charter.LastCheckLine); line != "" {
-		rendered.WriteString("and found: " + line + "\n")
-	}
-	if !charter.LastWake.IsZero() {
-		rendered.WriteString("last fired: " + charter.LastWake.Local().Format(nowLineLayout) + "\n")
-	}
-	if !charter.NextDue.IsZero() {
-		rendered.WriteString("next check: " + charter.NextDue.Local().Format(nowLineLayout) + "\n")
-	}
-	fmt.Fprintf(&rendered, "fired cleanly %d %s, stood down %d %s\n",
-		charter.GreenFirings, pluralWord(charter.GreenFirings, "time", "times"),
-		charter.Demotions, pluralWord(charter.Demotions, "time", "times"))
-	return strings.TrimSpace(rendered.String())
-}
-
-// lensWatchPhrase says a watch's rhythm in words. A guessed cadence is marked
-// as a guess, because a rule that says "about every 2 minutes" in the same
-// voice a person's own "every Monday" is said in is a rule nobody can audit.
-func lensWatchPhrase(watch store.WatchSpec) string {
-	phrase := string(watch.Kind)
-	if cadence := strings.TrimSpace(watch.Cadence); cadence != "" {
-		phrase += " " + cadence
-		if watch.CadenceGuessed {
-			phrase += " (a guess — nobody said a rhythm)"
-		}
-	}
-	return strings.TrimSpace(phrase)
-}
-
 func lensServiceRecord(service store.Service) string {
 	var rendered strings.Builder
 	fmt.Fprintf(&rendered, "%s | service | %s\n", service.Name, service.Status)
@@ -1438,7 +1360,6 @@ func (h *Head) lensStatus(sessionID string) string {
 	// that claims to be the whole system on one page.
 	rendered.WriteString("OPEN THREADS\n" + h.openThreads(sessionID, now) + "\n\n")
 	rendered.WriteString("MONEY\n" + h.lensMoney() + "\n\n")
-	rendered.WriteString("WATCH\n" + h.lensWatch() + "\n\n")
 	rendered.WriteString("SERVICES\n" + h.lensServices() + "\n\n")
 	rendered.WriteString("WAYS OF WORKING\n" + h.lensWays() + "\n\n")
 	rendered.WriteString("COMPETENCE\n" + h.lensCompetence() + "\n\n")
@@ -1555,40 +1476,6 @@ func (h *Head) lensJobSpend() string {
 			moneyUSD(job.Cost), job.Runs, pluralWord(job.Runs, "call", "calls"))
 	}
 	return rendered.String()
-}
-
-func (h *Head) lensWatch() string {
-	var rendered strings.Builder
-	if h.standingWatch == nil {
-		rendered.WriteString("standing-watch status is not wired into this surface.\n")
-	} else if status := strings.TrimSpace(h.standingWatch()); status == "" {
-		rendered.WriteString("nothing is on watch and no standing check is arranged.\n")
-	} else {
-		rendered.WriteString(status + "\n")
-	}
-	// The next checks come off the charters directly, because "what happens
-	// overnight" is a question about times and the watch block is a question
-	// about whether anything is watching at all.
-	charters, err := h.store.ActiveCharters()
-	if err != nil || len(charters) == 0 {
-		return strings.TrimSpace(rendered.String())
-	}
-	sort.SliceStable(charters, func(first, second int) bool {
-		return charters[first].NextDue.Before(charters[second].NextDue)
-	})
-	if len(charters) > lensStatusListCap {
-		charters = charters[:lensStatusListCap]
-	}
-	rendered.WriteString("standing rules and their next checks:\n")
-	for _, charter := range charters {
-		next := "no next check arranged"
-		if !charter.NextDue.IsZero() {
-			next = "next " + charter.NextDue.Local().Format(nowLineLayout)
-		}
-		fmt.Fprintf(&rendered, "- %s | %s | %s | %s\n", charter.ID,
-			lensSnippet(charter.Invariant), lensWatchPhrase(charter.Watch), next)
-	}
-	return strings.TrimSpace(rendered.String())
 }
 
 func (h *Head) lensServices() string {

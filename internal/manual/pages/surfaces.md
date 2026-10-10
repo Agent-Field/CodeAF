@@ -23,9 +23,7 @@ its own words, what they are:
 | **Competence** | where it is strong and where it is at its frontier, measured |
 | **Beliefs** | the notebook: what it holds true about you and this machine |
 | **Skills** | procedures it forged and verified; they ride every worker's PATH |
-| **Watches** | standing goals checking on their own schedule |
 | **Services** | processes it keeps alive for you |
-| **Practice** | what it did with idle time, and what that taught it |
 | **Dials** | how it balances demand against curiosity — read-only, edit in `⚙` |
 
 A row with nothing in it still explains itself, so you learn what would go
@@ -40,13 +38,8 @@ search` so a brain that has been running for months still opens instantly.
 
 Opening a craft shows its steps, the bounds a run will obey, and its version
 history — the same commits `git log` shows in the craft directory. Opening a
-watch or a service hands you to its card on the board, which is the one place
-that can act on them.
-
-**Practice** groups repeated attempts at the same goal into one row —
-`the goal, clipped · ×6 · $0.67 · nothing yet` — with the count and the cost in
-their own aligned columns. Open a row to see the whole goal and every attempt
-behind it: when it ran, what it cost, and what it came back with.
+service hands you to its card on the board, which is the one place that can act
+on it.
 
 ## The task rail and drilling into a worker
 
@@ -83,11 +76,7 @@ Everything you can tune lives in one sheet. Open it with `/settings`, the
 cursor is not in the input. It is a single column of grouped rows: **models**
 (all eight slots, plus the Model Pool row — `on` reads and sends, `read`
 uses the pool and sends nothing, `off` does neither), **money & limits**
-(the daily budget, the practice
-carve-out, the quiet period before practice), **rhythm** (how long an absence
-earns an arrival brief, how many clean firings earn a charter tenure),
-**learning** (how much practice follows measured demand rather than curiosity,
-and whether codeaf may propose new skills), **documents & vision** (the reading
+(the daily budget), **documents & vision** (the reading
 rung and the model that looks at images), **sharing** (attribution.model — whether
 the line codeaf always signs its commits with names the model), and
 **appearance** (the chat/rail split).
@@ -168,11 +157,10 @@ locally.
   models. `--best` and `--cheap` move that one run's crew. It is held to the per-task
   limit set in `/crew` ($5 unless set), which `-yes-spend` does not lift; `-yes-spend`
   answers the daily cap and the plan-price question.
-- `codeaf wake` — run one bounded pass and exit. This is what the standing watch
-  timer runs; you can run it by hand too.
-- `codeaf doctor` — the brain's path and size, whether a resident is alive, the
-  standing watch, today's spend against the rail, active charters, and pending
-  questions.
+- `codeaf doctor` — whether a key is set and where it came from, the brain's
+  path and size, whether a resident is alive, and today's spend against the
+  rail. (`codeaf wake` still answers, for a timer an older version installed,
+  and does nothing: the standing watch it ran is gone.)
 - `codeaf notebook` / `notebook retract <seq>` / `notebook restore <seq>`
 - `codeaf competence` — the measured competence map
 - `codeaf services` / `services stop <name>`
@@ -312,6 +300,6 @@ over. That is a real answer, not a refusal.
 
 ## There is no web surface
 
-Everything is the terminal chat and these commands. If you want codeaf running
-somewhere you are not sitting, the shape is the standing watch — an OS timer
-running `codeaf wake` against the same durable brain — not a server.
+Everything is the terminal chat and these commands. There is no server, and no
+longer a standing watch either: nothing runs here on a timer while no terminal
+is open.

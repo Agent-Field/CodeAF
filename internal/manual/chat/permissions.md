@@ -892,7 +892,7 @@ The whole list, by settings key:
   rows, the model that answers in your place, the reminder that pauses rather
   than answering no, and the task clock that starts work if you say nothing.
 - **What may be spent without asking you** — `daily_budget_usd`,
-  `plan_consent_usd`, `practice_budget_usd`, `session.spendRailUSD`,
+  `plan_consent_usd`, `session.spendRailUSD`,
   `task.repair_rounds`, `working_set_tokens`, `context_reuse_pct`. The last three
   are rails too: each is a number that multiplies what one piece of unattended
   work costs.

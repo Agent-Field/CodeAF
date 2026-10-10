@@ -23,7 +23,7 @@ func TestChatSettingsPresentationDiscoveryAndCompatibility(t *testing.T) {
 		}
 	}
 	text, _ := callSetting(t, read, map[string]string{})
-	for _, key := range []string{config.KeyPracticeIdle, config.KeyPracticeBudget, config.KeyBriefAfter, config.KeyTenureAfter, config.KeySplitPct} {
+	for _, key := range []string{"practice_idle", "practice_budget_usd", "brief_after", "tenure_after", config.KeySplitPct} {
 		if strings.Contains(text, key+" ·") {
 			t.Fatalf("resident-only %s leaked into chat list", key)
 		}
@@ -74,12 +74,24 @@ func TestChatSettingsRefusalsPreserveProfile(t *testing.T) {
 	read, write := settingsHands(t, agent)
 	callSetting(t, write, map[string]string{"key": config.KeyWork, "value": "open"})
 	before, _ := json.Marshal(profileJSON(t, profile))
+	// A row chat settings keep hidden: a model slot this surface cannot change.
+	// (The resident's practice rows used to stand here; they are gone.)
+	hidden := ""
+	for _, slot := range config.ModelSlots() {
+		if slot.Role != "" && slot.Slot != "talk" {
+			hidden = config.ModelSettingKey(slot.Slot)
+			break
+		}
+	}
+	if hidden == "" {
+		t.Fatal("no model slot is hidden from chat settings")
+	}
 	for _, tc := range []struct{ key, value string }{
 		{config.KeyWork, "expanded"}, // readable labels do not redefine the old API
 		{config.KeyMemoryEnabled, "sometimes"},
 		{config.KeyToolApprovalMode, "allow"},
 		{config.KeyTaskParallel, "100"},
-		{config.KeyPracticeIdle, "on"},
+		{hidden, "on"},
 	} {
 		text, bad := callSetting(t, write, map[string]string{"key": tc.key, "value": tc.value})
 		if !bad {
@@ -90,7 +102,7 @@ func TestChatSettingsRefusalsPreserveProfile(t *testing.T) {
 			t.Fatalf("refusal for %s changed profile", tc.key)
 		}
 	}
-	detail, bad := callSetting(t, read, map[string]string{"key": config.KeyPracticeIdle})
+	detail, bad := callSetting(t, read, map[string]string{"key": hidden})
 	if bad || !strings.Contains(detail, "Unavailable in chat settings") || strings.Contains(detail, "I can change this one") {
 		t.Fatalf("hidden exact-key detail misleading: %s", detail)
 	}

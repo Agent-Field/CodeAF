@@ -1,7 +1,6 @@
 package store
 
 import (
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -116,89 +115,5 @@ func TestProseThatMerelyCarriesTheGlyphIsNotMistakenForOptions(t *testing.T) {
 	body := "▸ asked → answered · what the run cost"
 	if prompt := QuestionPrompt(body); prompt != body {
 		t.Fatalf("prompt = %q, want the line kept whole", prompt)
-	}
-}
-
-func TestTheStandingWatchOfferSaysItsChoicesInFieldsAndKeepsTheOldBody(t *testing.T) {
-	graph := openTestStore(t, filepath.Join(t.TempDir(), "standing-watch-parts.db"))
-	charter := mustTestCharter(t, "watched-charter", CharterActive, CharterRails{
-		PerFiringBudgetUSD: 0.10, MaxFiringsPerDay: 3,
-	})
-	if err := graph.CreateCharter(charter); err != nil {
-		t.Fatal(err)
-	}
-	if posted, err := graph.OfferStandingWatch("watch-session", charter.ID); err != nil || !posted {
-		t.Fatalf("offer posted=%t err=%v", posted, err)
-	}
-	messages, err := graph.Messages("watch-session", 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var offer Message
-	for _, message := range messages {
-		if message.QuestionSeq != 0 {
-			offer = message
-		}
-	}
-	if offer.QuestionSeq == 0 {
-		t.Fatalf("no standing-watch question message in %+v", messages)
-	}
-
-	// The new surface: the sentence once, and the options only in the column a
-	// question block is drawn from.
-	prose := questionTextPart(t, offer.Parts)
-	if strings.Contains(prose, "▸") || strings.Contains(prose, "yes, always") {
-		t.Fatalf("the offer smuggled its options into its prose: %q", prose)
-	}
-	if len(offer.Options) != 2 || offer.Options[0].Value != "standing-watch:enable" {
-		t.Fatalf("options = %+v", offer.Options)
-	}
-
-	// The old surface (11.1): unchanged prompt, and both choices still readable
-	// out of the body it has always read them out of.
-	prompt, labels := v1QuestionFromBody(offer.Body)
-	if prompt != "Should I keep watching this when you're not here?" {
-		t.Fatalf("old chat would draw the prompt as %q", prompt)
-	}
-	if len(labels) != 2 || labels[0] != "yes, always" || labels[1] != "only while I'm around" {
-		t.Fatalf("old chat would draw the choices as %q", labels)
-	}
-}
-
-func TestTheStandDownAskSurfacesWithItsChoicesOnlyInFields(t *testing.T) {
-	graph := openTestStore(t, filepath.Join(t.TempDir(), "stand-down-parts.db"))
-	charter := mustTestCharter(t, "stood-charter", CharterActive, CharterRails{
-		PerFiringBudgetUSD: 0.10, MaxFiringsPerDay: 3,
-	})
-	if err := graph.CreateCharter(charter); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := graph.OfferStandingWatch("watch-session", charter.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := graph.RecordStandingWatchDecision(StandingWatchEnabled, "yes, always"); err != nil {
-		t.Fatal(err)
-	}
-	if offered, err := graph.OfferStandingWatchStandDown("watch-session"); err != nil || !offered {
-		t.Fatalf("stand-down offered=%t err=%v", offered, err)
-	}
-	pending, err := graph.PendingQuestions("watch-session", 10)
-	if err != nil || len(pending) != 1 {
-		t.Fatalf("pending = %+v err=%v", pending, err)
-	}
-	message, err := graph.SurfaceQuestion(pending[0].Seq)
-	if err != nil {
-		t.Fatal(err)
-	}
-	prose := questionTextPart(t, message.Parts)
-	if strings.Contains(prose, "▸") || strings.Contains(prose, "stand down") {
-		t.Fatalf("the stand-down ask smuggled its options into its prose: %q", prose)
-	}
-	prompt, labels := v1QuestionFromBody(message.Body)
-	if !strings.HasSuffix(prompt, "Keep watching?") {
-		t.Fatalf("old chat would draw the prompt as %q", prompt)
-	}
-	if len(labels) != 2 || labels[0] != "keep watching" || labels[1] != "stand down" {
-		t.Fatalf("old chat would draw the choices as %q", labels)
 	}
 }

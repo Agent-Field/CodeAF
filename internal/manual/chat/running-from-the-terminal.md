@@ -221,7 +221,7 @@ talk to it              chat · resume
 hand it work            do "<task>" · exec "<prompt>" · run <program>
 look at what happened   why self · why <task-id> · notebook · competence · services ·
                         logs · models · doctor · manual · version
-housekeeping            connect · disconnect · cache · cache clean · rebuild · wake ·
+housekeeping            connect · disconnect · cache · cache clean · rebuild ·
                         serve · devices · help env
 plan work by hand       plan new "<goal>" · plan show <plan.json> ·
                         plan revise <plan.json> "…" · plan run <plan.json>
@@ -236,7 +236,8 @@ read the way the worker reads it.
 Two more exist and are deliberately kept out of the help text, because nothing types them
 by hand: **`codeaf engine`** is the far half of `chat --host`, started by ssh, and
 **`codeaf tick`** is the one bounded pass the background timer runs every five minutes.
-Neither draws anything or reads a key.
+Neither draws anything or reads a key. **`codeaf wake`** is kept out of it as well, because
+it does nothing any more (see *codeaf wake and codeaf tick* below).
 
 ## Connect from the terminal without opening the chat — codeaf connect and codeaf disconnect
 
@@ -586,51 +587,16 @@ not one word on stderr. It is an escape hatch for scripts already written, it ap
 the script to is `stop` in `--json`, which names why a run ended in a word rather than a
 number and is the same word on all three commands.
 
-## What does codeaf wake do — running the background pass by hand, once
+## codeaf wake and codeaf tick — the old background passes
 
-`codeaf wake` does one bounded pass of the work that normally happens on the five-minute
-timer, prints what it did, and exits. **It starts no permanent process and no worker
-runner.** Unlike everything else on this page that only reads, it spends: it makes model
-calls.
+`codeaf wake` and `codeaf tick` were background passes an operating-system timer used to
+run; they now do nothing. Nothing is scheduled on the machine any more: automations run
+only while a window is open.
 
-```
-codeaf wake [--db path] [--timeout 2m]
-```
-
-`--timeout` defaults to **2m**. It takes a duration — `--timeout 5m`, `--timeout 90s` — and
-a bare number is still read as seconds, so `--timeout 120` is the same wall. Zero or less
-is refused at the flag: `--timeout: must be positive`. Inside that wall it takes at most
-**32** passes, and stops early the moment a pass changes nothing.
-
-The flag used to be `--max-seconds`, which was the same wall spelled a third way and in the
-unit rather than in the quantity: `codeaf wake --max-seconds 5m` was a parse error on a
-machine where `codeaf do --timeout 5m` works. **`--max-seconds` still works for one
-release** and says so on stderr the first time it is used:
-
-```
-note: `--max-seconds` is now `--timeout` — the old spelling works for one more release.
-```
-
-**It defers to a live one.** If something else already holds the role for that store, it
-prints one line and does nothing:
-
-```
-resident alive (pid 41207) — skipping wake
-```
-
-The exception is a holder that is alive but has stopped completing passes. Waiting on that
-forever is how a stalled process quietly stops every check on the machine, so it says so
-and goes anyway:
-
-```
-resident (pid 41207) has not ticked since 2026-09-02T11:04:18Z — waking anyway
-```
-
-The last line counts what the pass did:
-
-```
-examined 3, checked 2, fired 1, no 0, errors 0, rail waits 0, practice 0, learning 2
-```
+Both still answer, quietly and with exit status **0**, because a timer an older version
+installed goes on running them until this version's first start removes it — and an
+unknown command would exit 1, which the timer reports as a failure every five minutes.
+Neither is listed in `--help`, and neither takes, checks or refuses a flag.
 
 ## What did that task actually do — see one piece of work's turn-by-turn record, with codeaf why
 
@@ -710,14 +676,14 @@ codeaf why self      --db ~/.codeaf/runs/codeaf-do-3f81c2/graph.db
 ```
 
 `--db` means the same thing on `why`, `notebook`, `competence`, `services`, `doctor`,
-`rebuild`, `wake` and `do`. **None of them will create a store**: a `--db` that is not a
-regular file is refused, each in its own words — `open receipts: <path> is not a regular
-database file` from `why`, `open notebook: …`, `open competence map: …`, `open store: …`
-from `rebuild`, `open wake store: …`.
+`rebuild` and `do`. **None of them will create a store**: a `--db` that is not a regular
+file is refused, each in its own words — `open receipts: <path> is not a regular database
+file` from `why`, `open notebook: …`, `open competence map: …`, `open store: …` from
+`rebuild`.
 
 **A conversation's tasks are somewhere else entirely.** A task commissioned in the chat
 writes its transcript to a file beside the conversation, not into this store, and its room
-in the chat replays it. `why` is the reader for headless work and for the background pass.
+in the chat replays it. `why` is the reader for headless work.
 
 ## What have I spent today — the receipts, with codeaf why self
 
@@ -1023,7 +989,7 @@ safe in a shell prompt, a CI step or a bug report.
 model catalog, but spends nothing of yours.
 
 **These spend**, because all of them call a model: `chat`, `do`, `exec`, `run`,
-`plan new`, `plan revise`, `plan run` and `wake`. The door opens when the default
+`plan new`, `plan revise` and `plan run`. The door opens when the default
 service has a key or any connected service holds its credential — a Codex sign-in, an
 Ollama connection, a vendor key. So with no OpenRouter key a headless command still
 starts once another service is connected; point it at that service's model with
@@ -1189,7 +1155,7 @@ on every command.
 | `--budget N` | `--token-budget N` | *budget* is a word about **money** everywhere else here — `CODEAF_DAILY_BUDGET`, `/budget`, `--max-cost` — so `--budget 150000` read as $150,000 |
 | `--run-budget N` | `--total-token-budget N` | the same, for the whole-run wall |
 | `--turns N` | `--max-turns N` | it is a limit, and every other limit says so |
-| `--max-seconds N` | `--timeout 2m` | one duration flag, one spelling, on `do`, `exec`, `plan run` and `wake` |
+| `--max-seconds N` | `--timeout 2m` | one duration flag, one spelling, on `do`, `exec` and `plan run` |
 | `--brief` | `--instructions` | it writes a self-contained instruction for every step |
 | `--contracts=false` | `--no-method` | a boolean that defaults on needs a negative spelling, and what it turns off is a **working method** |
 | `--ensemble 0\|-1\|N` | `--passes auto\|off\|N` | a tri-state is words, not magic integers |
@@ -1226,28 +1192,28 @@ codeaf doctor [--db path]
 Every row is labelled in the words a developer would search for:
 
 ```
+key              set · OPENROUTER_API_KEY
 store            /home/you/.codeaf/graph.db · 496 KiB
 resident         this terminal while open
-background timer not installed · last wake not yet
 spend            rail $20.00
 model calls      /home/you/.codeaf/logs/calls.jsonl · 26 KiB
 ```
 
-`store` names the file the journal and every derived table live in, and how big it is —
-`· not created` on a machine that has not made one yet. `background timer` is the row about
-the five-minute pass: whether it is installed, when it last woke, when it next checks, and
-`· checks look stalled` when an installed one has not woken for several cadences. `spend`
+`key` comes first: whether this machine can reach a model at all, and where the key came
+from — never the key itself. `store` names the file the journal and every derived table
+live in, and how big it is — `· not created` on a machine that has not made one yet. `spend`
 is the day against its limit, and `model calls` is where the call log is and what it
-weighs. A machine with charters or unanswered questions on it prints a `standing` row too.
+weighs. `store` used to read `brain` — nobody looking for where their data lives searches
+for a brain.
 
-Both of the first two labels are recent. `store` used to read `brain` — nobody looking for
-where their data lives searches for a brain — and `background timer` used to be named after
-a piece of the *other* product in this binary, which is not a thing the chat has at all.
+**There is no background timer row any more.** Earlier versions printed one about a
+five-minute pass an operating-system timer ran, and a `standing` row counting what that
+pass kept; codeaf no longer installs anything on the machine, so there is nothing for
+either row to read.
 
 **It leaves out what it has not measured.** A machine that has spent nothing today prints
 the limit and no figure beside it, rather than `$0.00` — a zero nobody measured reads as a
-machine that counted, which is the opposite of the truth. Same for the counts beside it:
-nothing to say is nothing printed.
+machine that counted, which is the opposite of the truth.
 
 That command is about this *install*. `/status` in the chat is about the conversation you
 are in. They are related and they are not the same reading.

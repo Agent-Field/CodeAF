@@ -136,14 +136,11 @@ func (r *Reconciler) craftCompile(ctx context.Context, command store.Command) (c
 }
 
 // craftFor is the recognition itself, separated from where the request came
-// from. A standing watch firing is the case a learned workflow exists for —
-// the same shape of work, over and over, on a schedule — and it was the one
-// path that could not reach the shelf: admitCharterFiring compiled and planned
-// directly, so the recurring overnight job planned itself from scratch every
-// morning while the craft distilled from it sat unread.
-//
-// The caller supplies the id namespace and the provenance, because those are
-// the only two things a firing and a chat splice genuinely differ on.
+// from: the caller supplies the id namespace and the provenance. It was split
+// out so a standing watch's firing — the same shape of work, over and over, on
+// a schedule — could reach the shelf as a chat splice does; the firings went
+// with the v1 scheduler, and the seam stays because it is the right one for
+// any second door.
 func (r *Reconciler) craftFor(ctx context.Context, request string, fresh bool, rootID string,
 	provenance store.Provenance) (craftUse, bool) {
 	// Independent asks reach this from several goroutines at once; the shelf

@@ -31,12 +31,12 @@ import (
 // what the work IS — goes as CommandRedirect with the words untouched.
 //
 // Every consent gate and legality check stays where it is: the store's legality
-// table, the charter transition table, the craft repository's own refusals.
+// table and the craft repository's own refusals.
 
 func (run *beltRun) change(args map[string]any) (string, bool) {
 	target := strings.TrimSpace(beltString(args, "target"))
 	if target == "" {
-		return "target must name one id from a read — a job, a standing rule, a service, or a learned way of working", true
+		return "target must name one id from a read — a job, a service, or a learned way of working", true
 	}
 	words := strings.TrimSpace(beltString(args, "words"))
 	if words == "" {
@@ -60,8 +60,6 @@ func (run *beltRun) change(args map[string]any) (string, bool) {
 		return run.changeJob(found.job, words)
 	case targetThread:
 		return run.changeThread(found.thread.ID, words)
-	case targetRule:
-		return run.changeRule(found.rule, words)
 	case targetService:
 		return run.changeService(found.service, words)
 	case targetCraft:
@@ -149,48 +147,6 @@ func changeSays(lower string, phrases ...string) bool {
 	return false
 }
 
-// changeRule resolves the person's words onto the charter transitions that
-// change a rule without withdrawing it: when it runs, what it says, and whether
-// it asks first. The resolution is charterManagement's — the same reading the
-// deterministic charter path has always used — and where it cannot tell, the
-// candidates come back exactly as every other ambiguity in this package does.
-func (run *beltRun) changeRule(rule store.Charter, words string) (string, bool) {
-	intent, read := charterManagement(words)
-	kind := intent.Kind
-	switch {
-	case !read, kind == store.CommandCharterRetire, kind == store.CommandCharterPause:
-		// Retiring and holding are withdrawal and belong to stop; an unreadable
-		// sentence is not one to guess at. Both come back as choices.
-		return "those words do not say plainly which change to " + firstLine(rule.Invariant) +
-			" they mean. Ask which, with these as the options:\n" +
-			"- when it runs (say the new rhythm)\n" +
-			"- what it says (say the new message)\n" +
-			"- going back to asking before each run\n" +
-			"- retiring or holding it — that is stop, not change", false
-	}
-	instruction := words
-	switch kind {
-	case store.CommandCharterCadence:
-		if intent.Cadence != "" {
-			instruction = intent.Cadence
-		}
-	case store.CommandCharterWording:
-		if intent.Wording != "" {
-			instruction = intent.Wording
-		}
-	default:
-		instruction = string(kind)
-	}
-	command, err := run.head.store.RequestCommand(store.Command{
-		SessionID: run.user.SessionID, Kind: kind, Target: rule.ID, Instruction: instruction,
-	})
-	if err != nil {
-		return "that could not be queued: " + err.Error(), true
-	}
-	run.record(command.Seq, charterAcknowledgement(kind))
-	return "queued: " + charterAcknowledgement(kind), false
-}
-
 // changeService reads the two things a person changes about something they are
 // running — start it over, or stop it deciding for itself whether to. Stopping
 // it is withdrawal and belongs to stop.
@@ -263,7 +219,6 @@ const (
 	targetNone targetKind = iota
 	targetForeign
 	targetJob
-	targetRule
 	targetService
 	targetCraft
 	// targetThread is the conversation itself. It joined the list when threads
@@ -276,34 +231,30 @@ const (
 type resolvedTarget struct {
 	kind    targetKind
 	job     store.Node
-	rule    store.Charter
 	service store.Service
 	craft   string
 	thread  store.Session
 }
 
-// resolveTarget reads one id against everything the person owns. All four kinds
-// are confirmed before anything is journaled: a graph node, a charter, a service
-// by id or by name, and a way of working by the name the journal recorded when
-// it was forged.
+// resolveTarget reads one id against everything the person owns. Every kind is
+// confirmed before anything is journaled: a graph node, a service by id or by
+// name, a way of working by the name the journal recorded when it was forged,
+// and a conversation.
 func (h *Head) resolveTarget(id string) resolvedTarget {
 	id = strings.TrimSpace(id)
 	if h == nil || h.store == nil || id == "" {
 		return resolvedTarget{}
 	}
 	// The node read runs first and its NEGATIVE answer is held rather than
-	// returned: a standing rule has a node of its own in the graph, and that node
-	// is deliberately outside the membrane the board sits behind. Answering
-	// "not yours" there would have made every rule unreachable by its own id.
+	// returned: an id outside the membrane the board sits behind may still name
+	// a service, a way of working or a conversation, and answering "not yours"
+	// there would make those unreachable by their own ids.
 	foreign := store.Node{}
 	if node, found, err := h.store.Node(id); err == nil && found && node.ID != store.RootID {
 		if beltAddressable(node) {
 			return resolvedTarget{kind: targetJob, job: node}
 		}
 		foreign = node
-	}
-	if rule, found, err := h.store.Charter(id); err == nil && found {
-		return resolvedTarget{kind: targetRule, rule: rule}
 	}
 	if service, found, err := h.store.Service(id); err == nil && found {
 		return resolvedTarget{kind: targetService, service: service}
@@ -330,9 +281,9 @@ func (h *Head) resolveTarget(id string) resolvedTarget {
 }
 
 // unknownTarget is the one sentence every verb says about an id nothing answers
-// to. It names all four places that were looked in, so the loop can tell a
-// mistyped id from a thing that never existed.
+// to. It names the places that were looked in, so the loop can tell a mistyped
+// id from a thing that never existed.
 func unknownTarget(id string) string {
-	return "nothing on the board, no standing rule, no service and no learned way of working is called " +
+	return "nothing on the board, no service and no learned way of working is called " +
 		quoted(id) + " — read again for the id"
 }

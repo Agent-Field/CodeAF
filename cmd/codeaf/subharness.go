@@ -400,7 +400,7 @@ func registerSubharnessRunners(registry *exec.Registry, build leafBuild) {
 // It is also where model identity and the lane ledger's fold are seated, and
 // that is not a coincidence: this is the one function every surface that records
 // anything calls before it reads or writes a profile — the plan command, the
-// headless run, chat, and the wake pass. A history keyed on the operator's
+// headless run, and chat. A history keyed on the operator's
 // spelling instead of on the model is two histories and two rulers for one
 // executor, which is the thing this function exists to prevent one file at a
 // time.

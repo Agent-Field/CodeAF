@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
@@ -112,10 +111,6 @@ var SettingCategories = []string{
 const (
 	KeyDailyBudget    = "daily_budget_usd"
 	KeyPlanConsent    = "plan_consent_usd"
-	KeyPracticeBudget = "practice_budget_usd"
-	KeyPracticeIdle   = "practice_idle"
-	KeyBriefAfter     = "brief_after"
-	KeyTenureAfter    = "tenure_after"
 	KeyDocumentEngine = "document_engine"
 	KeyVisionModel    = "vision_model"
 	// KeyModelPool is the stored word the pool's resolver takes: the same three
@@ -1373,10 +1368,6 @@ const (
 	// would genuinely want to see priced first. 0 never asks.
 	DefaultPlanConsentUSD = 100.0
 
-	// DefaultTenureAfter is the clean-firing count a standing charter needs
-	// before it earns tenure.
-	DefaultTenureAfter = 3
-
 	// DefaultAttributionModel names the model in the `Assisted-by` line by
 	// default, because the line is provenance and the model is the part of it
 	// somebody auditing the history later actually wants. The signature itself
@@ -1532,9 +1523,9 @@ type Setting struct {
 	// renders it ([Setting.Reading]).
 	//
 	// THE SYMBOLS ATTACH AND THE WORDS DO NOT. `300s`, `60%`, `20m` are one
-	// token in every terminal font, the way the two SettingDuration rows beside
-	// them already read; `1536 MB` and `65536 tok` are two words and read as
-	// two ([unitAttaches] is the whole list).
+	// token in every terminal font, the way a duration reading already reads;
+	// `1536 MB` and `65536 tok` are two words and read as two ([unitAttaches]
+	// is the whole list).
 	//
 	// A ROW WHOSE READING ALREADY CARRIES ITS UNIT LEAVES THIS EMPTY — a
 	// duration writes `20m`, a dollar row writes `$5`, [formatPercent] writes
@@ -1897,8 +1888,8 @@ func ModelSettingKey(slot string) string { return "model." + slot }
 //
 // Within a group the order is how often a person touches a row, not the order
 // the rows were written or the order they happen to persist in: the day's
-// ceiling before the ask-first threshold before the practice carve-out, the
-// conversation model before the two nobody has ever changed. Between groups the
+// ceiling before the ask-first threshold, the conversation model before the two
+// nobody has ever changed. Between groups the
 // order is [SettingCategories]. Nothing here announces either — 15 — the
 // sequence is the sequence.
 func (s *Settings) build() []Setting {
@@ -2091,17 +2082,6 @@ func (s *Settings) build() []Setting {
 				"does not stop. Say none and it never asks.",
 			read:  func() string { return moneyValue(resolvedDollars(PlanConsentUSDAt(dir))) },
 			write: func(raw string) error { return writeDollars(dir, KeyPlanConsent, raw) },
-		},
-		Setting{
-			Key: KeyPracticeBudget, Category: CategorySpending, Kind: SettingDollars,
-			Label: "practice budget", Env: "CODEAF_PRACTICE_BUDGET",
-			EmptyLabel: "practice off",
-			Hint: "the slice of the day reserved for codeaf practicing on itself. When it " +
-				"is spent, practice stops until tomorrow and your own work is untouched. " +
-				"0 is the one money row that does not mean no limit: it turns practice " +
-				"off. A change lands the next time codeaf starts.",
-			read:  func() string { return moneyValue(resolvedDollars(PracticeBudgetUSDAt(dir))) },
-			write: func(raw string) error { return writeDollars(dir, KeyPracticeBudget, raw) },
 		},
 
 		// The two consent rows sit with spending because they answer the same
@@ -2409,20 +2389,6 @@ func (s *Settings) build() []Setting {
 			receipt: s.spentThisSessionReceipt,
 		},
 
-		Setting{
-			Key: KeyPracticeIdle, Category: CategoryPractice, Kind: SettingDuration,
-			Label: "quiet before practice", Env: "CODEAF_PRACTICE_IDLE",
-			Hint:  "how long the room stays quiet before codeaf starts practicing.",
-			read:  func() string { return formatDuration(resolvedDuration(PracticeIdleAt(dir))) },
-			write: func(raw string) error { return writeDuration(dir, KeyPracticeIdle, raw) },
-		},
-		Setting{
-			Key: KeyBriefAfter, Category: CategoryPractice, Kind: SettingDuration,
-			Label: "arrival brief after", Env: "CODEAF_BRIEF_AFTER",
-			Hint:  "how long you have to be away before codeaf greets you with a summary. 0 always briefs.",
-			read:  func() string { return formatDuration(resolvedDuration(BriefAfterAt(dir))) },
-			write: func(raw string) error { return writeDuration(dir, KeyBriefAfter, raw) },
-		},
 		// THE TWO ROWS THAT ARE NOT THE CREW, AND THEN THE CREW'S THREE PINS.
 		// The tiers are what a person configures for the calls codeaf makes on
 		// its own — the name it gives a session, the check on work a task says is
@@ -2557,13 +2523,6 @@ func (s *Settings) build() []Setting {
 				"A model that goes quiet is cut either way.",
 			read:  func() string { return ReplyGuardAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyReplyGuard, raw, ReplyGuardModes) },
-		},
-		Setting{
-			Key: KeyTenureAfter, Category: CategoryPractice, Kind: SettingCount,
-			Label: "tenure after", Unit: "clean firings", UnitOne: "clean firing", Env: "CODEAF_TENURE_AFTER",
-			Hint:  "how many clean firings a standing charter needs before it earns tenure.",
-			read:  func() string { return strconv.Itoa(TenureAfterAt(dir)) },
-			write: func(raw string) error { return writeTenure(dir, raw) },
 		},
 		// THE ROW READS THE SAME WAY UP AS ITS KEY, unlike the hints row above:
 		// `update.auto` on means codeaf keeps itself current, and `auto update` on
@@ -2771,9 +2730,8 @@ const noLimitWord = NoLimitWord
 // A row whose figure is zero returns NOTHING, which hands the reading to
 // [Setting.EmptyLabel] — the mechanism every other kind of row already uses for
 // its off state, and the one place each rail's own word for zero is written
-// down: `no limit` on the day and the conversation, `never asks` on the consent
-// gate, `practice off` on the carve-out, whose zero switches practice off rather
-// than uncapping it. Two things follow for free, and both are the reason it is
+// down: `no limit` on the day and the conversation, and `never asks` on the
+// consent gate. Two things follow for free, and both are the reason it is
 // spelled this way rather than as a second receipt:
 //
 //   - THE EDIT BOX OPENS EMPTY on a row that holds nothing. Every surface
@@ -3201,57 +3159,10 @@ func PlanConsentUSDAt(profileDir string) (float64, error) {
 	return DefaultPlanConsentUSD, nil
 }
 
-// PracticeBudgetUSDAt resolves the daily self-practice carve-out.
-func PracticeBudgetUSDAt(profileDir string) (float64, error) {
-	if raw := strings.TrimSpace(env.Get("CODEAF_PRACTICE_BUDGET")); raw != "" {
-		return validateDailyBudgetValue(raw, "CODEAF_PRACTICE_BUDGET")
-	}
-	if value, ok := persistedFloat(profileDir, KeyPracticeBudget); ok && value >= 0 {
-		return value, nil
-	}
-	return DefaultPracticeBudgetUSD, nil
-}
-
-// PracticeIdleAt resolves the quiet period before self-practice.
-func PracticeIdleAt(profileDir string) (time.Duration, error) {
-	return durationAt(profileDir, "CODEAF_PRACTICE_IDLE", KeyPracticeIdle, DefaultPracticeIdle)
-}
-
-// BriefAfterAt resolves the absence that earns an arrival brief.
-func BriefAfterAt(profileDir string) (time.Duration, error) {
-	return durationAt(profileDir, "CODEAF_BRIEF_AFTER", KeyBriefAfter, DefaultBriefAfter)
-}
-
-func durationAt(profileDir, envName, key string, fallback time.Duration) (time.Duration, error) {
-	if raw := strings.TrimSpace(env.Value(envName)); raw != "" {
-		value, err := time.ParseDuration(raw)
-		if err != nil || value < 0 {
-			return 0, fmt.Errorf("%s: want a non-negative duration, got %q", envName, raw)
-		}
-		return value, nil
-	}
-	if value, ok := persistedDuration(profileDir, key); ok {
-		return value, nil
-	}
-	return fallback, nil
-}
-
-// TenureAfterAt resolves the clean-firing count that earns a charter tenure.
-func TenureAfterAt(profileDir string) int {
-	if raw := strings.TrimSpace(env.Get("CODEAF_TENURE_AFTER")); raw != "" {
-		if value, err := strconv.Atoi(raw); err == nil && value > 0 {
-			return value
-		}
-		return DefaultTenureAfter
-	}
-	if value, ok := persistedInt(profileDir, KeyTenureAfter); ok && value > 0 {
-		return value
-	}
-	return DefaultTenureAfter
-}
-
-// The two resolvers that used to sit here — practice_demand_pct and
-// propose_new_skills — are gone with their rows. Nothing in this build read
+// The resolvers that used to sit here — practice_demand_pct and
+// propose_new_skills, and later the v1 scheduler's four (the practice budget
+// and its quiet period, the arrival brief's absence, and tenure) — are gone
+// with their rows. Nothing in this build read
 // either one: the value was resolved, copied onto a Config field, and never
 // looked at again, so the sheet was offering a person a dial wired to nothing.
 // 5.20 is that an affordance which does nothing must not be offered as though
@@ -3409,19 +3320,6 @@ func VisionModelAt(profileDir string) string {
 		return strings.TrimSpace(value)
 	}
 	return ""
-}
-
-// InstallPersistedEnv exports the persisted value of every knob whose only
-// reader is the process environment, so a choice made in the sheet survives a
-// relaunch without a second lookup path. A variable the user actually set is
-// never overwritten — the environment still wins.
-func InstallPersistedEnv(profileDir string) {
-	if strings.TrimSpace(env.Get("CODEAF_TENURE_AFTER")) != "" {
-		return
-	}
-	if value, ok := persistedInt(profileDir, KeyTenureAfter); ok && value > 0 {
-		_ = os.Setenv("CODEAF_TENURE_AFTER", strconv.Itoa(value))
-	}
 }
 
 // ── the web-search rows ─────────────────────────────────────────────────────
@@ -4638,14 +4536,6 @@ func writeDollars(profileDir, key, raw string) error {
 	return writeProfileValue(profileDir, key, value)
 }
 
-func writeDuration(profileDir, key, raw string) error {
-	value, err := parseDuration(raw)
-	if err != nil {
-		return err
-	}
-	return writeProfileValue(profileDir, key, formatDuration(value))
-}
-
 func writeBool(profileDir, key, raw string) error {
 	value, err := parseBool(raw)
 	if err != nil {
@@ -4918,23 +4808,6 @@ func writeContextReuse(profileDir, raw string) error {
 	return nil
 }
 
-// writeTenure persists the count and exports it, because the standing watch
-// reads the variable at each check: the change lands in this process too.
-func writeTenure(profileDir, raw string) error {
-	value, err := parseCount(raw)
-	if err != nil {
-		return err
-	}
-	if value <= 0 {
-		return fmt.Errorf("that needs to be at least 1")
-	}
-	if err := writeProfileValue(profileDir, KeyTenureAfter, value); err != nil {
-		return err
-	}
-	_ = os.Setenv("CODEAF_TENURE_AFTER", strconv.Itoa(value))
-	return nil
-}
-
 // Parsers. Their errors are the words the row shows under itself, so they read
 // like a person talking rather than a validator.
 
@@ -4960,18 +4833,6 @@ func parseDollars(raw string) (float64, error) {
 	value, err := strconv.ParseFloat(text, 64)
 	if err != nil || value < 0 {
 		return 0, fmt.Errorf("that's not a dollar amount — a number, or none for no limit")
-	}
-	return value, nil
-}
-
-func parseDuration(raw string) (time.Duration, error) {
-	text := strings.TrimSpace(raw)
-	if text == "0" {
-		return 0, nil
-	}
-	value, err := time.ParseDuration(text)
-	if err != nil || value < 0 {
-		return 0, fmt.Errorf("that's not a length of time — try 20m or 4h")
 	}
 	return value, nil
 }
@@ -5035,39 +4896,11 @@ func formatBool(value bool) string {
 	return "off"
 }
 
-// formatDuration writes the shortest honest form: 4h, 20m, 1h30m.
-func formatDuration(value time.Duration) string {
-	if value <= 0 {
-		return "0"
-	}
-	var text strings.Builder
-	if hours := int(value / time.Hour); hours > 0 {
-		fmt.Fprintf(&text, "%dh", hours)
-	}
-	if minutes := int(value % time.Hour / time.Minute); minutes > 0 {
-		fmt.Fprintf(&text, "%dm", minutes)
-	}
-	if seconds := int(value % time.Minute / time.Second); seconds > 0 {
-		fmt.Fprintf(&text, "%ds", seconds)
-	}
-	if text.Len() == 0 {
-		return value.String()
-	}
-	return text.String()
-}
-
 // A row still has to read while the environment holds an unparsable value.
 // The sheet shows the pin and refuses the edit; the reading falls back rather
 // than blanking.
 
 func resolvedDollars(value float64, err error) float64 {
-	if err != nil {
-		return 0
-	}
-	return value
-}
-
-func resolvedDuration(value time.Duration, err error) time.Duration {
 	if err != nil {
 		return 0
 	}
@@ -5128,18 +4961,6 @@ func persistedString(profileDir, key string) (string, bool) {
 	var value string
 	if err := json.Unmarshal(encoded, &value); err != nil {
 		return "", false
-	}
-	return value, true
-}
-
-func persistedDuration(profileDir, key string) (time.Duration, bool) {
-	text, ok := persistedString(profileDir, key)
-	if !ok {
-		return 0, false
-	}
-	value, err := parseDuration(text)
-	if err != nil {
-		return 0, false
 	}
 	return value, true
 }

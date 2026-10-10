@@ -435,11 +435,11 @@ var settingUI = map[string]settingMeta{
 
 	// ── Spending ────────────────────────────────────────────────────────────
 	//
-	// MONEY, AND NOTHING THAT IS NOT MONEY. The four rows are the four rails a
+	// MONEY, AND NOTHING THAT IS NOT MONEY. The three rows are the three rails a
 	// person can actually turn, and the label of each one is THE SCOPE it bounds
-	// — per day, per conversation, per plan, practice — because that is the
-	// question being asked and `daily budget` / `session ceiling` are the names
-	// of the keys behind it. The order they read in, and the three readings that
+	// — per day, per conversation, per plan — because that is the question being
+	// asked and `daily budget` / `session ceiling` are the names of the keys
+	// behind it. The order they read in, and the three readings that
 	// stand between them, are settingspend.go's ([spendingItems]).
 	//
 	// EVERY HINT ENDS WITH WHAT HAPPENS AT THE LINE. A rail whose consequence is
@@ -458,12 +458,6 @@ var settingUI = map[string]settingMeta{
 			"price and waits for your go-ahead — it asks, it does not stop. " +
 			"none never asks.",
 	},
-	config.KeyPracticeBudget: {
-		tab: tabSpending, label: "practice", widget: widgetText,
-		about: "the slice of the day codeaf may spend practicing on itself. When " +
-			"it is gone practice stops until tomorrow and your own work is " +
-			"untouched. 0 here turns practice off rather than uncapping it.",
-	},
 	// It is `per conversation` and not `session ceiling` for this tab's whole
 	// reason: the label is the SCOPE and the person is reading a column of
 	// scopes. It sat on Session for four waves, one tab away from every other
@@ -479,19 +473,6 @@ var settingUI = map[string]settingMeta{
 	//
 	// This machine and this project: what codeaf does with its own time here,
 	// and what it may reach on your behalf.
-	config.KeyPracticeIdle: {
-		tab: tabWorkspace, label: "quiet before practice", widget: widgetText,
-		about: "how long the room stays quiet before codeaf starts practicing.",
-	},
-	config.KeyBriefAfter: {
-		tab: tabWorkspace, label: "arrival brief after", widget: widgetText,
-		about: "how long you have to be away before codeaf greets you with a " +
-			"summary. 0 always briefs.",
-	},
-	config.KeyTenureAfter: {
-		tab: tabWorkspace, label: "tenure after", widget: widgetText,
-		about: "how many clean firings a standing charter needs before it earns tenure.",
-	},
 	// And beside it, the switch on the whole ambient side's timing. It is on
 	// this tab rather than under Session because it is not about this
 	// conversation at all: it is about what happens on this machine when there

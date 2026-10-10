@@ -518,12 +518,13 @@ func commandWords() []string {
 }
 
 // knownCommands is every word the dispatch answers to, in the order the table
-// introduces them. `engine` and `tick` are deliberately absent for the same
-// reason they are absent from the usage text: nothing types them. The programs
-// this build carries are joined to it where it is read ([commandWords]).
+// introduces them. `engine`, `tick` and `wake` are deliberately absent for the
+// same reason they are absent from the usage text: nothing types them. The
+// programs this build carries are joined to it where it is read
+// ([commandWords]).
 var knownCommands = []string{
 	"chat", "resume", "serve", "devices", "do", "plan", "revise", "run", "exec",
-	"show", "models", "pool", "notebook", "collections", "competence", "services", "wake", "patch",
+	"show", "models", "pool", "notebook", "collections", "competence", "services", "patch",
 	"doc", "web", "image",
 	"doctor",
 	"logs", "cache", "rebuild", "why", "manual", "version", "help",

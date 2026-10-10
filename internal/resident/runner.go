@@ -1179,30 +1179,12 @@ func (r *Runner) claimNext(pass *passReads) (store.Node, bool, error) {
 		if pass.open[node.ID] {
 			continue
 		}
-		// Admission reserves the per-firing budget; nothing until now spent it.
-		// A firing admitted at $0.50 could run six leaves and journal $3, and
-		// the only thing that ever noticed was the next day's admission
-		// arithmetic. The rail belongs where every other one already is — in
-		// front of the claim — because that is the last moment at which not
-		// starting a leaf is free.
-		if node.Group == store.PracticeGroup {
-			overspent, err := r.practiceFiringOverspent(node)
-			if err != nil {
-				return store.Node{}, false, err
-			}
-			if overspent {
-				// Stopping the firing means landing it, not wedging it: a
-				// pending leaf nobody will ever claim would keep its root open
-				// forever. Cancelling one node per pass is deliberate — each is
-				// journaled with its own reason, and the root settles as soon as
-				// the last child is terminal. A refused cancel is a race with
-				// another writer, not a reason to take the whole runner down.
-				if err := r.graph.CancelPending(node.ID, practiceBudgetStop); err != nil {
-					_ = guard.Note("resident/runner practice rail "+node.ID, err)
-				}
-				continue
-			}
-		}
+		// A practice leaf used to meet one more rail here, the per-firing
+		// budget its charter reserved. Charters went with the v1 scheduler,
+		// so a practice job an older build left pending has no reservation to
+		// be held to — which is exactly what the check concluded for a
+		// missing charter — and is bounded by the day's rail below like every
+		// other piece of background work.
 		if r.dailyBudgetUSD > 0 {
 			var rail store.DailyRail
 			if node.Group == store.PracticeGroup || node.Provenance.SessionID == "" {
@@ -1504,68 +1486,6 @@ func (r *Runner) runOne(ctx context.Context, node store.Node, hold *leafHold) {
 		_ = r.graph.Release(claim)
 	}
 }
-
-// practiceBudgetStop is the reason journaled onto every leaf a firing does not
-// get to run. It names the bound rather than the accident, because the node's
-// own record is the only place anyone will later look to ask why the practice
-// job is short.
-const practiceBudgetStop = "practice firing reached its per-firing budget"
-
-// practiceFiringOverspent asks whether this firing has already journaled more
-// than the charter reserved for it. It reads the whole firing rather than the
-// leaf, because the budget is the firing's: six cheap leaves overrun a bound
-// no single one of them comes near.
-//
-// An unbounded or uncharterable node is never refused. A missing charter, a
-// zero rail and an unresolvable root all mean the same thing here — no bound is
-// in force — and inventing one from a default would stop work nobody agreed to
-// stop.
-func (r *Runner) practiceFiringOverspent(node store.Node) (bool, error) {
-	charterID := strings.TrimSpace(node.Provenance.CharterID)
-	if charterID == "" {
-		return false, nil
-	}
-	charter, found, err := r.graph.Charter(charterID)
-	if err != nil || !found {
-		return false, err
-	}
-	budget := charter.Rails().PerFiringBudgetUSD
-	if budget <= 0 {
-		return false, nil
-	}
-	root, err := r.firingRoot(node)
-	if err != nil || root == "" {
-		return false, err
-	}
-	impact, err := r.graph.Impact(root, time.Now())
-	if err != nil {
-		return false, err
-	}
-	return impact.Cost >= budget, nil
-}
-
-// firingRoot walks a practice leaf back to the job the firing admitted. The
-// walk stops at the spine because that is what "one firing" means in the store:
-// fireCharter splices one subtree whose root hangs directly off it.
-func (r *Runner) firingRoot(node store.Node) (string, error) {
-	current := node
-	for depth := 0; depth < maxFiringDepth; depth++ {
-		if current.Parent == "" || current.Parent == store.RootID {
-			return current.ID, nil
-		}
-		parent, found, err := r.graph.Node(current.Parent)
-		if err != nil || !found {
-			return "", err
-		}
-		current = parent
-	}
-	return "", nil
-}
-
-// maxFiringDepth bounds the walk above. A cycle cannot occur through parent
-// links the store enforces, so this is a belt against a corrupted view rather
-// than an expected depth.
-const maxFiringDepth = 32
 
 // gatePassed reports that this node's work has already been JUDGED AGAINST THE
 // REQUEST and found to be what was asked for.

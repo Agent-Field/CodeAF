@@ -37,11 +37,10 @@ const questionChoiceLabelBytes = 64
 // reply and must stop.
 //
 // Only questions that would actually take this reply compete, which is the same
-// test the resolution path applies a moment later: a standing-watch decision or
-// an unratified charter lets ordinary words go by, so words those questions
-// would ignore are not a choice between them. A reply exactly one open question
-// would take is aimed at that one even when a newer question sits on top —
-// that is the evidence a person would use, and the newest-wins rule has no
+// test the resolution path applies a moment later, so words a question would
+// ignore are not a choice between it and another. A reply exactly one open
+// question would take is aimed at that one even when a newer question sits on
+// top — that is the evidence a person would use, and the newest-wins rule has no
 // claim on it.
 func (h *Head) aimAgentQuestion(user store.Message, newest store.AgentQuestion) (store.AgentQuestion, bool, error) {
 	candidates, err := h.store.QuestionsForAnswer(user.SessionID, user.Seq)
@@ -260,12 +259,6 @@ func questionsAccepting(reply string, candidates []store.AgentQuestion) []store.
 func questionAcceptsReply(reply string, question store.AgentQuestion) bool {
 	if _, selected := selectQuestionOption(reply, question.Options); selected {
 		return true
-	}
-	if standingWatchQuestion(question.Options) {
-		return false
-	}
-	if _, isCharter := charterQuestionID(question.Options); isCharter {
-		return strings.TrimSpace(extractCadence(reply)) != ""
 	}
 	return strings.TrimSpace(reply) != ""
 }

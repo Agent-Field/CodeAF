@@ -49,12 +49,17 @@ const (
 
 // AgentQuestion is one materialized agent-to-user question. Seq is the
 // question's queue event. OriginCommandSeq is retained for compiler askbacks;
-// ordinary resident questions should name either their node or charter.
+// ordinary resident questions should name their node.
 type AgentQuestion struct {
-	Seq              int64
-	SessionID        string
-	Text             string
-	OriginNodeID     string
+	Seq          int64
+	SessionID    string
+	Text         string
+	OriginNodeID string
+	// OriginCharterID is the standing rule an older build asked about. Nothing
+	// asks on a charter's behalf any more — the v1 scheduler that owned them is
+	// gone (docs/design/automations/DESIGN.md) — but the column and the queue
+	// event still carry the ones a store already holds, and the resident reads
+	// it to let those lapse rather than wait on machinery that cannot answer.
 	OriginCharterID  string
 	OriginCommandSeq int64
 	Urgency          QuestionUrgency
@@ -193,8 +198,11 @@ func (s *Store) AskQuestion(question AgentQuestion) (AgentQuestion, error) {
 	if !validQuestionClass(question.Class) {
 		return AgentQuestion{}, fmt.Errorf("ask question: %w: unknown class %q", ErrInvalid, question.Class)
 	}
-	if question.OriginNodeID != "" && question.OriginCharterID != "" {
-		return AgentQuestion{}, fmt.Errorf("ask question: %w: node and charter origins are mutually exclusive", ErrInvalid)
+	// A charter origin is refused at the door rather than stored: the rule it
+	// would name no longer exists anywhere, so a question asked on its behalf
+	// could never be answered by anything that acts.
+	if question.OriginCharterID != "" {
+		return AgentQuestion{}, fmt.Errorf("ask question: %w: standing-rule origins were removed with the v1 scheduler", ErrInvalid)
 	}
 	if question.OriginCommandSeq < 0 {
 		return AgentQuestion{}, fmt.Errorf("ask question: %w: invalid origin command", ErrInvalid)
@@ -219,15 +227,6 @@ func (s *Store) AskQuestion(question AgentQuestion) (AgentQuestion, error) {
 				question.OriginNodeID).Scan(&question.SessionID)
 		}
 	}
-	if question.OriginCharterID != "" {
-		if err := requireCharter(tx, question.OriginCharterID); err != nil {
-			return AgentQuestion{}, fmt.Errorf("ask question: %w", err)
-		}
-		if question.SessionID == "" {
-			_ = tx.QueryRow(`SELECT session_id FROM charters WHERE id = ?`,
-				question.OriginCharterID).Scan(&question.SessionID)
-		}
-	}
 	if question.OriginCommandSeq != 0 {
 		var commandSession string
 		if err := tx.QueryRow(`SELECT session_id FROM commands WHERE seq = ?`,
@@ -249,16 +248,12 @@ func (s *Store) AskQuestion(question AgentQuestion) (AgentQuestion, error) {
 
 	payload := agentQuestionPayload{
 		SessionID: question.SessionID, Text: question.Text,
-		OriginNodeID: question.OriginNodeID, OriginCharterID: question.OriginCharterID,
+		OriginNodeID:     question.OriginNodeID,
 		OriginCommandSeq: question.OriginCommandSeq, Urgency: question.Urgency, Class: question.Class,
 		Options: options, ExpiresAt: question.ExpiresAt,
 		Category: question.Category, DefaultAnswer: question.DefaultAnswer,
 	}
-	anchor := question.OriginNodeID
-	if anchor == "" {
-		anchor = question.OriginCharterID
-	}
-	seq, at, err := appendEvent(tx, anchor, EventAgentQuestionQueued, payload)
+	seq, at, err := appendEvent(tx, question.OriginNodeID, EventAgentQuestionQueued, payload)
 	if err != nil {
 		return AgentQuestion{}, fmt.Errorf("ask question: %w", err)
 	}

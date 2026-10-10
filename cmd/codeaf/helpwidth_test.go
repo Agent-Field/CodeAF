@@ -123,7 +123,6 @@ func helpPages(t *testing.T) []helpPage {
 		{"chat", runChatV3},
 		{"logs", runLogs},
 		{"doctor", runDoctor},
-		{"wake", runWake},
 		{"why", runWhy},
 		{"cache", runCache},
 		{"devices", runDevices},

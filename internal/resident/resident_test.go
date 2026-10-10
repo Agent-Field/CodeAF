@@ -358,6 +358,18 @@ func openStore(t *testing.T) *store.Store {
 	return graph
 }
 
+// residentTestStore is openStore with the file named, for a test that opens
+// more than one store or wants its database recognisable in a failure.
+func residentTestStore(t *testing.T, name string) *store.Store {
+	t.Helper()
+	graph, err := store.Open(filepath.Join(t.TempDir(), name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = graph.Close() })
+	return graph
+}
+
 func commandBySeq(t *testing.T, graph *store.Store, seq int64) store.Command {
 	t.Helper()
 	command, ok, err := graph.CommandBySeq(seq)
@@ -827,19 +839,38 @@ func TestSessionlessChildFailureReachesTheJobSession(t *testing.T) {
 }
 
 // A transient fault inside one pass must not end the loop and strand the lease.
+//
+// The fault is a real one rather than an injected error: while the pass is
+// applying the command, somebody else settles it, so the pass cannot record its
+// own resolution and fails. It fails once — by the next pass nothing is pending
+// — and the loop has to still be serving when its context ends.
 func TestServeSurvivesTransientTickFailures(t *testing.T) {
 	graph := openStore(t)
-	reconciler := New(graph, nil, nil)
-	failures := 0
-	reconciler.standingWatchKeyPersist = func() (bool, string, error) {
-		failures++
-		return false, "", errors.New("provider unavailable")
+	command, err := graph.RequestCommand(store.Command{
+		SessionID: "transient", Kind: store.CommandSplice, Instruction: "summarise the numbers",
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
+	compiles := 0
+	reconciler := New(graph, func(_ context.Context, instruction, _ string) (Compiled, error) {
+		compiles++
+		if err := graph.ResolveCommand(command.Seq, store.CommandRejected, "settled elsewhere"); err != nil {
+			t.Errorf("settle the command out from under the pass: %v", err)
+		}
+		return Compiled{Goal: instruction}, nil
+	}, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
 	defer cancel()
-	err := reconciler.Serve(ctx)
+	err = reconciler.Serve(ctx)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("serve ended on a transient fault: %v", err)
+	}
+	if compiles != 1 {
+		t.Fatalf("the command was applied %d times, want once", compiles)
+	}
+	if err := graph.ResolveCommand(command.Seq, store.CommandApplied, "a second settlement"); err == nil {
+		t.Fatal("the command could be settled again, so the pass that applied it cannot have failed")
 	}
 }
 

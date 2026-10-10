@@ -307,14 +307,6 @@ func (r *Reconciler) postRetrospectiveDigest(afterSeq int64) {
 				})
 				addDetail("~ " + firstLine(node.Title))
 			}
-		case store.EventCharterCreated:
-			charter, ok, readErr := r.store.Charter(event.NodeID)
-			if readErr == nil && ok && charter.Status == store.CharterProposed {
-				addCategory("proposals", event.Seq, 1, func(count int) string {
-					return fmt.Sprintf("%d %s made", count, plural(count, "proposal", "proposals"))
-				})
-				addDetail("~ " + firstLine(charter.Invariant))
-			}
 		case store.EventCraftForged:
 			// The digest had every other kind of learning in it and not this one,
 			// which is the largest of them: a whole way of working, worked out from

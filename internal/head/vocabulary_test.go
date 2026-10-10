@@ -54,12 +54,6 @@ func TestTheDeterministicRepliesSpeakPlainly(t *testing.T) {
 	// the worst possible place to say "charter" or "node".
 	assertPlain(t, "the honest refusal", unclearCommandReply, noSuchTargetReply,
 		commandErrorReply, providerErrorReply)
-	// The which-one question is the ask tool's now and its words are the model's,
-	// so what is pinned here is the sentence the belt hands it to ask FROM.
-	assertPlain(t, "the standing-rule receipt",
-		charterAcknowledgement(store.CommandCharterRetire),
-		charterAcknowledgement(store.CommandCharterPause),
-		charterAcknowledgement(store.CommandCharterCadence))
 }
 
 // TestTheBackstageListsNameTheWordsThatActuallyLeak pins the second half of the

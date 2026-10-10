@@ -1643,8 +1643,8 @@ func (w *settlementWatch) moved() (bool, error) {
 // check answers the only question the watcher has: is this errand over?
 //
 // A command that was rejected is over immediately — the compiler asked
-// something, or drafted a charter, and neither has an answer coming in a
-// process with no one at the keyboard. Otherwise the errand is over when every
+// something, and no answer is coming in a process with no one at the
+// keyboard. Otherwise the errand is over when every
 // node this session owns has stopped. Extensions are covered without a special
 // case: a gate that buys another round splices before the node it is extending
 // lands, so there is no instant at which the graph looks finished and is not.
@@ -1713,8 +1713,8 @@ func (w *settlementWatch) check() (headlessOutcome, bool, error) {
 }
 
 // refusalWords is what a rejected command has to say for itself. The receipt
-// the reconciler posted is the real answer — a compiler question, a charter
-// awaiting ratification — and the command's own result is the summary of it.
+// the reconciler posted is the real answer — a compiler question, say — and
+// the command's own result is the summary of it.
 //
 // Whatever it is, it goes through [plainWords] on the way out. A refusal that
 // happened deep in the stack arrives here as everything that wrapped it, and

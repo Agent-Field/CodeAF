@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/store"
 )
@@ -46,18 +45,6 @@ func seedRecallMemory(t *testing.T, graph *store.Store) store.Fact {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A standing rule.
-	charter, charterErr := store.NewCharter("pricing-watch", "Pricing pages never disagree with the pricing model.",
-		store.WatchSpec{Kind: store.WatchPoll, Poll: &store.PollWatch{Condition: "check the pricing page", Cadence: time.Hour}},
-		"Did the pricing page change?", store.CharterAction{Template: "Reconcile the pricing page"},
-		store.CharterRails{PerFiringBudgetUSD: 0.1, MaxFiringsPerDay: 3}, store.CharterActive,
-		store.Ratification{Origin: store.OriginUser, SessionID: "lens", Evidence: "yes"})
-	if charterErr != nil {
-		t.Fatal(charterErr)
-	}
-	if err := graph.CreateCharter(charter); err != nil {
-		t.Fatal(err)
-	}
 	// A service.
 	headServiceFixture(t, graph, "svc-pricing", "pricing-api", "pricing-leaf", 71)
 	return belief
@@ -80,7 +67,6 @@ func TestRecallBlendsEveryKindOfMemoryInOneRead(t *testing.T) {
 		lensKindResult:  "what finished work concluded",
 		lensKindJob:     "work that has not concluded anything yet",
 		lensKindBelief:  "the notebook",
-		lensKindRule:    "the standing rules",
 		lensKindService: "the services",
 	} {
 		if !strings.Contains(read, "- "+kind+" | ") {
@@ -96,7 +82,7 @@ func TestRecallBlendsEveryKindOfMemoryInOneRead(t *testing.T) {
 		t.Fatalf("the result hit carried no actual finding:\n%s", read)
 	}
 	// Every hit carries an id, and the ids are the ones open takes.
-	if !strings.Contains(read, "| pricing-study |") || !strings.Contains(read, "| pricing-watch |") {
+	if !strings.Contains(read, "| pricing-study |") || !strings.Contains(read, "| pricing-api |") {
 		t.Fatalf("recall handed back hits with no openable id:\n%s", read)
 	}
 	// Nothing was clipped, so nothing claims it was.
@@ -414,19 +400,10 @@ func TestOpenRefusesAPartThatIsNotThere(t *testing.T) {
 
 // The other things a person owns open as their full record, by the ids and
 // names they were shown rather than by a second naming scheme.
-func TestOpenReachesRulesServicesAndNotebookLines(t *testing.T) {
+func TestOpenReachesServicesAndNotebookLines(t *testing.T) {
 	graph := openHeadStore(t)
 	belief := seedRecallMemory(t, graph)
 	run := lensRun(t, graph, "lens")
-
-	rule, failed := run.execute(beltToolOpen, mustJSON(map[string]any{"id": "pricing-watch"}))
-	if failed {
-		t.Fatalf("open on a standing rule failed: %s", rule)
-	}
-	if !strings.Contains(rule, "watches for: Pricing pages never disagree") ||
-		!strings.Contains(rule, "how often:") {
-		t.Fatalf("a standing rule opened without its record:\n%s", rule)
-	}
 
 	service, failed := run.execute(beltToolOpen, mustJSON(map[string]any{"id": "pricing-api"}))
 	if failed {
@@ -470,7 +447,6 @@ func TestStatusRendersTheWholeSystemOnOnePage(t *testing.T) {
 
 	head := New(&beltClient{}, graph).
 		WithCompetenceMap(func() string { return "strong on research, weak on long-running builds" }).
-		WithStandingWatch(func() string { return "checks continue with no terminal open; last wake 2h ago" }).
 		WithDailyBudgetUSD(5)
 	run := &beltRun{head: head, user: postUser(t, graph, "lens", "how are things?")}
 
@@ -478,7 +454,7 @@ func TestStatusRendersTheWholeSystemOnOnePage(t *testing.T) {
 	if failed {
 		t.Fatalf("status failed: %s", read)
 	}
-	for _, section := range []string{"WORK", "MONEY", "WATCH", "SERVICES", "WAYS OF WORKING", "COMPETENCE", "HEALTH"} {
+	for _, section := range []string{"WORK", "MONEY", "SERVICES", "WAYS OF WORKING", "COMPETENCE", "HEALTH"} {
 		if !strings.Contains(read, section+"\n") {
 			t.Fatalf("status is missing its %s section:\n%s", section, read)
 		}
@@ -489,11 +465,8 @@ func TestStatusRendersTheWholeSystemOnOnePage(t *testing.T) {
 	if !strings.Contains(read, "daily rail") {
 		t.Fatalf("status never said what today cost against the rail:\n%s", read)
 	}
-	if !strings.Contains(read, "checks continue with no terminal open") {
-		t.Fatalf("status never read the standing watch:\n%s", read)
-	}
-	if !strings.Contains(read, "pricing-watch") || !strings.Contains(read, "next check") {
-		t.Fatalf("status never said when the next check is:\n%s", read)
+	if strings.Contains(read, "WATCH\n") {
+		t.Fatalf("status still has a section for the removed background watch:\n%s", read)
 	}
 	if !strings.Contains(read, "pricing-api") {
 		t.Fatalf("status never named the services:\n%s", read)
@@ -519,9 +492,6 @@ func TestStatusSaysWhatIsNotWiredRatherThanLeavingItOut(t *testing.T) {
 	}
 	if !strings.Contains(read, "no daily rail is configured on this surface") {
 		t.Fatalf("an unset rail was passed off as a rail:\n%s", read)
-	}
-	if !strings.Contains(read, "standing-watch status is not wired into this surface") {
-		t.Fatalf("an unwired watch was left out rather than named:\n%s", read)
 	}
 	if !strings.Contains(read, "no competence measurement is wired into this surface") {
 		t.Fatalf("an unwired competence map was left out rather than named:\n%s", read)

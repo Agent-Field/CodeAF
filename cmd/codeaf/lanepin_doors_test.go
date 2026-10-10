@@ -186,7 +186,6 @@ func TestEveryDoorReachesTheLaneRowsThroughTheProfileLoad(t *testing.T) {
 		"main.go":            "codeaf plan new and codeaf plan revise",
 		"run.go":             "codeaf run and codeaf plan run",
 		"subharness_run.go":  "codeaf run subharness",
-		"wake.go":            "codeaf wake, the resident's own pass",
 		"chatv3_standing.go": "the standing pass a codeaf window and `codeaf tick` both run",
 		"chatv3_process.go":  "the conversation",
 	}

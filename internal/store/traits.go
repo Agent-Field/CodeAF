@@ -14,10 +14,14 @@ const (
 	TraitRefreshInterval = 24 * time.Hour
 )
 
+// The measured traits. There was a fifth, "proposal-appetite": the share of
+// the standing rules the retrospective offered that the person took. Those
+// offers went with the v1 scheduler (docs/design/automations/DESIGN.md), so
+// nothing measures it and nothing reads it; a store that recorded one keeps
+// the fact, which ordinary retrieval was never allowed to see anyway.
 const (
 	TraitCorrectionStyle      = "correction-style"
 	TraitDefaultAcceptance    = "default-acceptance"
-	TraitProposalAppetite     = "proposal-appetite"
 	TraitSpecGranularity      = "spec-granularity"
 	TraitExplorationTolerance = "exploration-tolerance"
 )
@@ -32,11 +36,6 @@ type CorrectionStyleValue struct {
 type DefaultAcceptanceValue map[QuestionCategory]struct {
 	Rate float64 `json:"rate"`
 	N    int     `json:"n"`
-}
-
-// ProposalAppetiteValue is the accepted share of journaled standing proposals.
-type ProposalAppetiteValue struct {
-	Acceptance float64 `json:"acceptance"`
 }
 
 // SpecGranularityValue projects ask size and subsequent redirect density.
@@ -58,9 +57,9 @@ type NamedTrait struct {
 	Measurement TraitMeasurement
 }
 
-// MeasureTraits computes all five v1 traits without creating telemetry.
+// MeasureTraits computes all four traits without creating telemetry.
 func (s *Store) MeasureTraits(now time.Time) ([]NamedTrait, error) {
-	traits := make([]NamedTrait, 0, 5)
+	traits := make([]NamedTrait, 0, 4)
 	correction, correctionN, err := s.measureCorrectionStyle()
 	if err != nil {
 		return nil, err
@@ -71,11 +70,6 @@ func (s *Store) MeasureTraits(now time.Time) ([]NamedTrait, error) {
 		return nil, err
 	}
 	traits = append(traits, NamedTrait{TraitDefaultAcceptance, TraitMeasurement{Value: acceptance, N: acceptanceN, Updated: now}})
-	appetite, appetiteN, err := s.measureProposalAppetite()
-	if err != nil {
-		return nil, err
-	}
-	traits = append(traits, NamedTrait{TraitProposalAppetite, TraitMeasurement{Value: appetite, N: appetiteN, Updated: now}})
 	granularity, granularityN, err := s.measureSpecGranularity()
 	if err != nil {
 		return nil, err
@@ -224,18 +218,6 @@ func (s *Store) measureDefaultAcceptance() (DefaultAcceptanceValue, int, error) 
 	return value, total, nil
 }
 
-func (s *Store) measureProposalAppetite() (ProposalAppetiteValue, int, error) {
-	var accepted, declined int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM commands WHERE kind=? AND status=?`, CommandCharterRatify, CommandApplied).Scan(&accepted); err != nil {
-		return ProposalAppetiteValue{}, 0, err
-	}
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM events WHERE kind=?`, EventCharterProposalDeclined).Scan(&declined); err != nil {
-		return ProposalAppetiteValue{}, 0, err
-	}
-	total := accepted + declined
-	return ProposalAppetiteValue{Acceptance: float64(accepted) / float64(max(total, 1))}, total, nil
-}
-
 func (s *Store) measureSpecGranularity() (SpecGranularityValue, int, error) {
 	rows, err := s.db.Query(`SELECT length(instruction) FROM commands WHERE kind=? ORDER BY length(instruction)`, CommandSplice)
 	if err != nil {
@@ -302,19 +284,15 @@ func (s *Store) measureExplorationTolerance() (ExplorationToleranceValue, int, e
 	return ExplorationToleranceValue{TrialCorrectionRate: trialRate, PlainCorrectionRate: plainRate, Tolerance: math.Max(0, 1-math.Max(0, trialRate-plainRate))}, counts[true].jobs + counts[false].jobs, nil
 }
 
-// ProposalCadenceRuns scales the tuned cadence within hard rails by observed appetite.
+// ProposalCadenceRuns is how many retrospectives pass between unprompted
+// proposals, within its hard rails.
+//
+// It used to be scaled by the measured appetite for standing-rule proposals,
+// and that measurement went with the proposals themselves (see the trait list
+// above), so what is left is the tuned parameter as it stands.
 func (s *Store) ProposalCadenceRuns() int {
-	base := s.Parameter(ParameterProposalCadenceRuns)
-	measurement, _, ok, _ := s.Trait(TraitProposalAppetite)
-	if !ok {
-		return int(base)
-	}
-	var value ProposalAppetiteValue
-	if !decodeTraitValue(measurement.Value, &value) {
-		return int(base)
-	}
-	traitCadence := float64(ProposalCadenceMaxRuns) - (float64(ProposalCadenceMaxRuns-ProposalCadenceMinRuns) * clampFloat(value.Acceptance, 0, 1))
-	return int(math.Round(clampFloat(traitCadence+(base-1), ProposalCadenceMinRuns, ProposalCadenceMaxRuns)))
+	return int(math.Round(clampFloat(s.Parameter(ParameterProposalCadenceRuns),
+		ProposalCadenceMinRuns, ProposalCadenceMaxRuns)))
 }
 
 // CompilerAssumptionGuidance exposes the measured compiler seam without narrating a personality.
@@ -392,13 +370,6 @@ func (s *Store) MeasuredTraitBlock(maxBytes int) string {
 				parts = append(parts, fmt.Sprintf("%s %.0f%%", category, 100*counted.Rate))
 			}
 			add("takes the offered default: " + strings.Join(parts, ", "))
-		}
-	}
-	if measurement, _, ok, err := s.Trait(TraitProposalAppetite); err == nil && ok && measurement.N > 0 {
-		var value ProposalAppetiteValue
-		if decodeTraitValue(measurement.Value, &value) {
-			add(fmt.Sprintf("accepts %.0f%% of standing proposals (%d judged)",
-				100*value.Acceptance, measurement.N))
 		}
 	}
 	if measurement, _, ok, err := s.Trait(TraitSpecGranularity); err == nil && ok && measurement.N > 0 {

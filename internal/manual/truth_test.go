@@ -347,10 +347,6 @@ func quotedFacts(t *testing.T) []quotedFact {
 		value:  dollarsOwed(standing.DefaultPerRunUSD),
 		quotes: []quotedIn{{"models-and-cost", "| **per standing run** | `$%s a firing` |"}},
 	}, {
-		fact: "what practice may take of the day", owner: "config.DefaultPracticeBudgetUSD",
-		value:  dollarsOwed(config.DefaultPracticeBudgetUSD),
-		quotes: []quotedIn{{"models-and-cost", "The separate resident’s practice default is `$%s of the day`"}},
-	}, {
 		// The pass, which the page states in words because a person asking how
 		// often their watch checks is not asking for a duration.
 		fact: "how often everything standing is checked", owner: "standing.Interval",

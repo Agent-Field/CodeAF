@@ -364,7 +364,7 @@ var commands = []command{
 	// "…".
 	{name: "budget", desc: "what codeaf may spend · every limit on one tab", alias: []string{"limits"}},
 	{name: "budget", args: "<amount>", desc: "…set the day's limit · none removes it"},
-	{name: "budget", args: "<row> <amount>", desc: "…set one by name: day, conversation, plan, practice"},
+	{name: "budget", args: "<row> <amount>", desc: "…set one by name: day, conversation, plan"},
 	// THE DISK BESIDE THE MONEY: /cost is what this conversation has spent and
 	// this is what the machine is holding for it — the shared build cache task
 	// workers fill (internal/cachedir). Two rows for one command, /export's

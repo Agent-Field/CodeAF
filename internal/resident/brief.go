@@ -34,7 +34,6 @@ type BriefActivity struct {
 	Failed        int          `json:"failed"`
 	Cancelled     int          `json:"cancelled"`
 	Questions     int          `json:"questions"`
-	CharterFired  int          `json:"charter_fired"`
 	FactsLearned  int          `json:"facts_learned"`
 	SkillsLearned int          `json:"skills_learned"`
 	CraftsForged  int          `json:"crafts_forged"`
@@ -231,25 +230,6 @@ func (r *Reconciler) briefActivity(previous store.Seen, throughSeq int64) (Brief
 			activity.Events = append(activity.Events, BriefEvent{
 				Seq: event.Seq, Time: event.Time, Kind: store.BriefFailure,
 				Text: label + " — " + detail, Ref: node.ID,
-			})
-
-		case store.EventCharterFired:
-			charter, ok, readErr := r.store.Charter(event.NodeID)
-			if readErr != nil {
-				return activity, readErr
-			}
-			text := "Standing charter " + event.NodeID + " fired."
-			if ok {
-				text = firstLine(charter.Invariant)
-				if text == "" {
-					text = firstLine(charter.Action.Template)
-				}
-				text = "Charter fired — " + text
-			}
-			activity.CharterFired++
-			activity.Events = append(activity.Events, BriefEvent{
-				Seq: event.Seq, Time: event.Time, Kind: store.BriefCharter,
-				Text: text, Ref: event.NodeID,
 			})
 
 		case store.EventFactLearned:
@@ -560,8 +540,7 @@ func materializeBrief(sinceSeq, throughSeq int64, activity BriefActivity, draft 
 		Brief: &store.Brief{
 			SinceSeq: sinceSeq, ThroughSeq: throughSeq,
 			Done: activity.Done, Failed: activity.Failed, Cancelled: activity.Cancelled, Questions: activity.Questions,
-			CharterFired: activity.CharterFired, FactsLearned: activity.FactsLearned,
-			SkillsLearned: activity.SkillsLearned, Waiting: activity.Waiting,
+			FactsLearned: activity.FactsLearned, SkillsLearned: activity.SkillsLearned, Waiting: activity.Waiting,
 			CostUSD: activity.CostUSD, Items: items,
 		},
 	}
@@ -590,10 +569,6 @@ func defaultBriefHeadline(activity BriefActivity) string {
 		// now three things this can do the way it has done them before.
 		parts = append(parts, fmt.Sprintf("%d new %s", activity.CraftsForged,
 			plural(activity.CraftsForged, "way of working", "ways of working")))
-	}
-	if activity.CharterFired > 0 {
-		parts = append(parts, fmt.Sprintf("%d %s fired", activity.CharterFired,
-			plural(activity.CharterFired, "charter", "charters")))
 	}
 	if activity.CostUSD > 0 {
 		parts = append(parts, fmt.Sprintf("$%.2f", activity.CostUSD))

@@ -17,7 +17,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/plan"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/thread"
-	"github.com/Agent-Field/codeaf/internal/watchdog"
 )
 
 const (
@@ -89,10 +88,8 @@ type Compiled struct {
 	Question string
 
 	// QuestionOptions makes any compiler askback selectable without removing
-	// free text. Charter is an inert standing draft until the reconciler records
-	// a separate ratification command.
+	// free text.
 	QuestionOptions []store.QuestionOption
-	Charter         *store.CharterSpec
 	ServiceIntent   bool
 
 	// WorkModel is the model the user named for this job in their own words.
@@ -259,13 +256,10 @@ type Reconciler struct {
 	overrunPlan     OverrunPlanFunc
 	cancelRethink   CancelRethinkFunc
 	redirect        RedirectFunc
-	sentinel        SentinelFunc
 	composeBrief    BriefComposeFunc
-	standingWatch   StandingWatch
 	craft           *CraftRunner
 	craftMind       *CraftMind
 	resolveModel    ModelResolveFunc
-	proposeCharters bool
 	// oneShotErrand is the headless surface's fact about itself: every command
 	// this reconciler will apply is one errand, run once, with nobody who could
 	// answer a question about it.
@@ -277,14 +271,8 @@ type Reconciler struct {
 	// becomes provenance.
 	modelsInForce  func() (plan, work string)
 	dailyBudgetUSD float64
-	// rooms is the addressing policy, resolved once at construction. Every
-	// decision about *which conversation* a piece of news is spoken into reads
-	// this one value; nothing below reads the environment again.
-	practiceEnabled bool
-	practiceBudget  float64
-	practiceIdle    time.Duration
-	services        *ServiceSupervisor
-	heartbeat       func(time.Time)
+	services       *ServiceSupervisor
+	heartbeat      func(time.Time)
 	// heartbeatAt is when the stamp was last written. Touched only by
 	// noteHeartbeat, which the Serve loop calls between passes with nothing else
 	// running, so it needs no lock of its own.
@@ -310,14 +298,7 @@ type Reconciler struct {
 	commandWall       time.Duration
 	learningMoments   map[string]*pendingLearningMoment
 	lastConsolidation time.Time
-	// charterOutcomeSeq is how far the charter ladder has finished reading. It
-	// is a working cursor, not a durable one: zero re-reads every unfolded
-	// firing, which is what a fresh process should do and what makes losing it
-	// cost one pass rather than one outcome.
-	charterOutcomeSeq       int64
-	lastWatchPass           WatchPass
-	standingWatchKeyPersist func() (bool, string, error)
-	now                     func() time.Time
+	now               func() time.Time
 
 	// arrivalSession and arrivalSeq mark where the user's arrival began. The
 	// attach edge is journaled after AttachSession has already surfaced
@@ -327,10 +308,6 @@ type Reconciler struct {
 	// is surfaced, and the brief closes its window on it instead.
 	arrivalSession string
 	arrivalSeq     int64
-
-	// The host repair runs outside mu on purpose, so it keeps its own lock.
-	standingMu         sync.Mutex
-	standingWatchCheck time.Time
 
 	// craftMu serializes recognition. Independent asks are compiled and planned
 	// side by side now, and the shelf they all ask "do we already know how to do
@@ -350,10 +327,9 @@ type Reconciler struct {
 	// The reads several lanes of one pass each take for themselves, shared only
 	// where sharing provably cannot change the answer (memo.go). Every one of
 	// them is guarded by mu, because every one of them is read from a pass.
-	questionMemo  journalMemo[[]store.AgentQuestion]
-	activeMemo    journalMemo[[]store.Node]
-	tasteMemo     journalMemo[[]store.TasteAnswer]
-	surpriseMemos map[int]*timedMemo[[]store.ScopeSurprise]
+	questionMemo journalMemo[[]store.AgentQuestion]
+	activeMemo   journalMemo[[]store.Node]
+	tasteMemo    journalMemo[[]store.TasteAnswer]
 	// The skill passes derive from the fact shelf and write to disk, so they
 	// are gated on the journal rather than shared (skills.go). The import pass
 	// watches the foreign disk the journal cannot see, and carries the same
@@ -395,41 +371,6 @@ func (r *Reconciler) tasteAnswersLocked() ([]store.TasteAnswer, error) {
 	return r.tasteMemo.read(r.store, r.store.TasteAnswers)
 }
 
-// scopeSurpriseTTL is how long a surprise metric may be reused. See timedMemo:
-// this is the one derivation the journal watermark cannot help with, and the
-// span is far shorter than the coarsest clock any reader of it turns on.
-const scopeSurpriseTTL = time.Minute
-
-// scopeSurprisesLocked is the practice loop's reading of the residual metrics.
-// It is an unbounded recursive walk of every settled job with a GROUP_CONCAT
-// over their facts, taken twice on every non-quiet pass, and the sample floor
-// reshapes the aggregation — so the memo is per floor rather than shared.
-func (r *Reconciler) scopeSurprisesLocked(minSamples int) ([]store.ScopeSurprise, error) {
-	if r.surpriseMemos == nil {
-		r.surpriseMemos = make(map[int]*timedMemo[[]store.ScopeSurprise])
-	}
-	memo := r.surpriseMemos[minSamples]
-	if memo == nil {
-		memo = &timedMemo[[]store.ScopeSurprise]{}
-		r.surpriseMemos[minSamples] = memo
-	}
-	return memo.read(r.now(), scopeSurpriseTTL, func() ([]store.ScopeSurprise, error) {
-		return r.store.ScopeSurprises(minSamples)
-	})
-}
-
-// StandingWatch is the small consequence-facing seam the resident needs.
-// watchdog.Manager implements it; tests inject an in-memory recorder.
-type StandingWatch interface {
-	Install(ctx context.Context) error
-	// Uninstall is the reverse gear. A consent the product accepts and cannot
-	// give back is not consent, and the timer repairs itself against a manual
-	// `launchctl unload` every five minutes, so the only honest off-switch is
-	// one the resident itself performs after journalling the decision.
-	Uninstall(ctx context.Context) error
-	Status() (watchdog.Status, error)
-}
-
 // New constructs a reconciler. A nil compiler preserves the instruction
 // verbatim with no assumptions. A nil planner admits one task whose stable ID
 // is derived from the command sequence.
@@ -454,18 +395,10 @@ func (r *Reconciler) WithCraftRunner(craft *CraftRunner) *Reconciler {
 
 // WithOneShotErrands pins this reconciler to the headless errand surface.
 //
-// The compiler is told the same fact and is the place it should be settled;
-// this is the second rung, for the case where a charter draft arrives anyway —
-// a compiler that is not the head's, a provider that emitted a charter key the
-// prompt never asked for. A draft that reaches a surface with no one at the
-// keyboard is auto-resolved exactly as the caller already chose by typing the
-// verb: once, not standing. The resolution is journaled, and the work then
-// runs, which is the whole point of the errand.
-//
-// It is also the switch for the surface's other law, which is about words
-// rather than time: the submitted ask is the goal, kept byte for byte, and a
-// question the compiler wanted to ask is answered here rather than returned.
-// See keepTheAskVerbatim and assumeAndDeclare.
+// It is the switch for that surface's law, which is about words: the submitted
+// ask is the goal, kept byte for byte, and a question the compiler wanted to
+// ask is answered here rather than returned. See keepTheAskVerbatim and
+// assumeAndDeclare.
 func (r *Reconciler) WithOneShotErrands() *Reconciler {
 	r.oneShotErrand = true
 	return r
@@ -507,23 +440,16 @@ func (r *Reconciler) splitModelSlots(pinnedWork string) (plan, run string) {
 	return plan, work
 }
 
-// WithStandingWatch enables the one-time unattended-presence offer after the
-// first charter ratification. Nil preserves embedding paths with no host timer.
-func (r *Reconciler) WithStandingWatch(standing StandingWatch) *Reconciler {
-	r.standingWatch = standing
-	return r
-}
-
 // residentTickFailures is how many consecutive failed passes end the loop.
 //
 // A pass fails for two very different reasons. Something transient — a provider
-// 429 inside a practice plan, a recycled PID the service supervisor cannot
-// signal, one sentinel whose model is briefly unreachable — or something
-// structural: a store that can no longer be read. Returning on the first error
-// treated them as the same thing, and the transient one is overwhelmingly the
-// common one. The resident then died in under a millisecond while its process
-// lived on holding the lease, so every later `codeaf wake` reported it alive and
-// no standing watch, charter or practice ever fired again, silently, forever.
+// 429 inside a plan, a recycled PID the service supervisor cannot signal — or
+// something structural: a store that can no longer be read. Returning on the
+// first error treated them as the same thing, and the transient one is
+// overwhelmingly the common one. The resident then died in under a millisecond
+// while its process lived on holding the lease, and nothing it owed — a
+// settled job's announcement, a deferred overrun, a service's health — was ever
+// seen to again, silently, forever.
 //
 // Counting consecutive failures separates the two without anyone having to
 // enumerate a provider's error strings: a store that is genuinely gone fails
@@ -630,18 +556,12 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		return err
 	}
 
-	// The host timer repair shells out to launchctl or systemctl. It is
-	// deliberately reconciled before the lock so a wedged daemon cannot stop
-	// the resident from ticking at all.
-	r.reconcileStandingWatch(ctx)
-
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	// Learning moments are deliberately NOT reset here. A moment composed while
-	// no surface was attached used to be wiped at the top of the next tick,
-	// which is every moment the wake path ever produces; they are now held
-	// until somebody is there to read them and dropped only on delivery.
-	r.lastWatchPass = WatchPass{}
+	// no surface was attached used to be wiped at the top of the next tick; they
+	// are now held until somebody is there to read them and dropped only on
+	// delivery.
 
 	if r.store == nil {
 		return errors.New("resident tick: nil store")
@@ -704,14 +624,6 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 			return fmt.Errorf("resident tick: advance craft runs: %w", err)
 		}
 	}
-	watchPass, err := r.watchOnceLocked(ctx)
-	r.lastWatchPass = watchPass
-	if err != nil {
-		return fmt.Errorf("resident tick: standing watches: %w", err)
-	}
-	if err := r.reconcileCharterOutcomes(); err != nil {
-		return fmt.Errorf("resident tick: charter outcomes: %w", err)
-	}
 
 	if err := ctx.Err(); err != nil {
 		return err
@@ -743,9 +655,6 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	r.postRetrospectiveDigest(retrospectiveAfter)
 	r.syncSkillBins()
 	r.importForeignSkills()
-	if err := r.practiceOnceLocked(ctx); err != nil {
-		return fmt.Errorf("resident tick: practice loop: %w", err)
-	}
 	if err := r.primeQuietGateLocked(); err != nil {
 		return fmt.Errorf("resident tick: change gate: %w", err)
 	}
@@ -845,12 +754,6 @@ func (r *Reconciler) nextClockDeadlineLocked() (time.Time, error) {
 		}
 	}
 
-	charterDue, _, err := r.store.CharterClockDeadline(now)
-	if err != nil {
-		return time.Time{}, err
-	}
-	earlier(charterDue)
-
 	// Service health is deliberately NOT a deadline here. It used to be, and it
 	// was the most expensive line in this function: the supervisor's interval is
 	// ten seconds, a deadline demands a whole pass, and adopting one service
@@ -888,15 +791,6 @@ func (r *Reconciler) nextClockDeadlineLocked() (time.Time, error) {
 		}
 	}
 	return deadline, nil
-}
-
-// LastWatchPass returns the standing-watch decisions made by the latest Tick.
-// It is an ephemeral operation report for bounded callers such as `codeaf
-// wake`; all resulting state transitions remain journaled in the store.
-func (r *Reconciler) LastWatchPass() WatchPass {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.lastWatchPass
 }
 
 type commandOutcome struct {
@@ -1099,18 +993,17 @@ func (r *Reconciler) settleCommand(command store.Command, outcome commandOutcome
 		})
 		ask := store.AgentQuestion{
 			SessionID: command.SessionID, Text: boundMessage(text),
-			OriginCharterID:  questionCharterOrigin(outcome.options),
 			OriginCommandSeq: command.Seq, Urgency: store.QuestionBlocking,
 			Options: outcome.options, Category: outcome.category,
 			DefaultAnswer: outcome.defaultAnswer,
 		}
 		if outcome.category == store.QuestionCategoryCompileAssumption {
-			// A compile askback has no node and no charter behind it, so no
-			// origin can ever retire it and it hung forever — outliving the
-			// request it was asked about, and outliving the session that could
-			// answer it. Its own relevance window is the only thing that can
-			// end it, and ending loudly is the point: a request that lapsed is
-			// news, a request that vanished is a betrayal.
+			// A compile askback has no node behind it, so no origin can ever
+			// retire it and it hung forever — outliving the request it was asked
+			// about, and outliving the session that could answer it. Its own
+			// relevance window is the only thing that can end it, and ending
+			// loudly is the point: a request that lapsed is news, a request that
+			// vanished is a betrayal.
 			ask.ExpiresAt = r.now().Add(compileAskWindow)
 		}
 		_, err := r.askQuestionLocked(ask)
@@ -1197,7 +1090,7 @@ func receiptVoice(command store.Command, status store.CommandStatus) store.Role 
 
 // HeadSpeaksFor is the audit, written down: every kind here is journaled by a
 // route that answers the user in its own voice in the same breath — surgery and
-// revision, charters, services, splices — and handover, whose outcome the
+// revision, services, splices — and handover, whose outcome the
 // residency narrates while it waits for it. A kind absent from this list is one
 // nobody has volunteered to answer for, so its receipt becomes the answer.
 // Silence is the failure this list exists to prevent; a kind that grows a spoken
@@ -1214,13 +1107,8 @@ func HeadSpeaksFor(kind store.CommandKind) bool {
 		store.CommandExpedite, store.CommandPause, store.CommandResume,
 		store.CommandReprioritize, store.CommandRestart, store.CommandHandover,
 		store.CommandServiceStop, store.CommandServiceRestart, store.CommandServiceAutoRestart,
-		store.CommandCharterRatify, store.CommandCharterPause, store.CommandCharterRetire,
-		store.CommandCharterCadence, store.CommandCharterWording, store.CommandCharterOnce,
-		store.CommandCharterFire,
-		store.CommandCharterDecline, store.CommandCharterAlways, store.CommandCharterNever,
-		store.CommandCharterProbation,
 		// The verbs aimed at what has been learned join for the same reason the
-		// charter and service verbs did: the head's own craft tool answers in the
+		// service verbs did: the head's own craft tool answers in the
 		// same breath that it journals one, so a spoken receipt beside it would
 		// say the same thing twice. Fired from a page instead, the page is where
 		// the person is looking and the filed receipt is the record of it — and a
@@ -1262,18 +1150,23 @@ func (r *Reconciler) applyCommand(ctx context.Context, command store.Command) (c
 		return r.applyCraftCommand(ctx, command)
 	case store.CommandSkillRetire:
 		return r.applySkillRetire(command)
-	case store.CommandCharterRatify, store.CommandCharterPause, store.CommandCharterRetire,
-		store.CommandCharterCadence, store.CommandCharterWording, store.CommandCharterOnce,
-		store.CommandCharterFire,
-		store.CommandCharterDecline, store.CommandCharterAlways, store.CommandCharterNever, store.CommandCharterProbation:
-		return r.applyCharterCommand(ctx, command)
-	case store.CommandStandingWatchEnable, store.CommandStandingWatchDecline:
-		return r.applyStandingWatchCommand(ctx, command)
 	case store.CommandAmend:
 		return r.amend(command)
 	case store.CommandHandover:
 		return r.applyHandoverCommand(command)
 	default:
+		if store.RetiredSchedulerCommand(command.Kind) {
+			// Only a store an older build left can hold one of these: a change
+			// to a standing rule, or an answer to the offer to keep watching,
+			// queued and never applied. Both are about machinery that is gone,
+			// so the honest settlement is a refusal in words a person can read
+			// rather than the line below, which would quote the kind back.
+			return commandOutcome{
+				status:  store.CommandRejected,
+				result:  fmt.Sprintf("%s was a v1 scheduler verb; the scheduler has been removed", command.Kind),
+				receipt: retiredSchedulerReceipt,
+			}, nil
+		}
 		reason := fmt.Sprintf("command kind %q is not supported", command.Kind)
 		return commandOutcome{
 			status:  store.CommandRejected,
@@ -1282,6 +1175,11 @@ func (r *Reconciler) applyCommand(ctx context.Context, command store.Command) (c
 		}, nil
 	}
 }
+
+// retiredSchedulerReceipt is what the person reads for a queued change to a
+// standing rule that outlived the machinery it was meant for.
+const retiredSchedulerReceipt = "That was about a standing rule, and standing rules are gone from this " +
+	"version of codeaf — nothing runs on a schedule here any more — so nothing was changed."
 
 func (r *Reconciler) reflex(command store.Command) (commandOutcome, error) {
 	if command.Kind != store.CommandSplice || strings.TrimSpace(command.Target) != "" {
@@ -1372,28 +1270,6 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		// changing one thing at once, and only the second is unrepairable.
 		compiled.BuildsOn = prependBuildsOn(unfinished, compiled.BuildsOn)
 	}
-	onceNote := ""
-	if compiled.Charter != nil {
-		if !r.oneShotErrand {
-			id := fmt.Sprintf("charter-%d", command.Seq)
-			charter, err := r.store.DraftCharter(id, command.SessionID, command.Seq, *compiled.Charter)
-			if err != nil {
-				return commandOutcome{}, fmt.Errorf("draft charter: %w", err)
-			}
-			question, options := charterRatificationQuestion(charter, compiled.Charter.Rails.MaxPerDayJustification)
-			return commandOutcome{
-				status: store.CommandRejected, result: "drafted charter pending ratification",
-				receipt: question, asAgent: true, options: options,
-				category:      store.QuestionCategoryCharterRatification,
-				defaultAnswer: "1",
-			}, nil
-		}
-		compiled, onceNote, err = r.resolveStandingAsOnce(command, compiled)
-		if err != nil {
-			return commandOutcome{}, err
-		}
-	}
-
 	// A headless errand answers its own questions, because the alternative is
 	// not "ask carefully" but "do nothing". This is the same move the empirical
 	// ask policy below makes, taken unconditionally and without the second
@@ -1522,10 +1398,6 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		receipt = reflexPromotionLine
 	}
 	result := fmt.Sprintf("spliced %d nodes", len(subtree.Nodes))
-	if onceNote != "" {
-		receipt = onceNote + "\n" + receipt
-		result = "standing draft resolved as once; " + result
-	}
 	return commandOutcome{
 		status:  store.CommandApplied,
 		result:  result,
@@ -1538,10 +1410,6 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 const oneShotErrandContext = "\n\nSurface: this ask arrived as a single headless errand — one run, nobody " +
 	"at a keyboard. It is work to be done once, now; it is never a standing rule, schedule or watch, and " +
 	"no question asked about it can be answered.\n"
-
-// oneShotErrandOnceEvidence is what the journal records about a standing draft
-// that never had a ratification card to stand on.
-const oneShotErrandOnceEvidence = "one-shot errand surface: `codeaf do` is the choice of once, not standing"
 
 // keepTheAskVerbatim is the headless surface's half of the compile contract.
 //
@@ -1601,54 +1469,6 @@ func (r *Reconciler) assumeAndDeclare(command store.Command, compiled Compiled, 
 		fmt.Sprintf("%s — nobody was at the keyboard on this surface; assumed %s", question, answer),
 	}, compiled.Assumptions...)
 	return compiled
-}
-
-// resolveStandingAsOnce answers the ratification question the way the caller
-// already answered it by typing the verb, and hands back ordinary work.
-//
-// It is deliberately not a shortcut around the machinery: the draft is
-// journaled and retired so the record says what was proposed and what became
-// of it, and the returned brief then goes through compile's own splice path —
-// planner, working method, gate — because "do it once" means do it properly
-// once, not splice a bare node and hope.
-//
-// The goal is the submitted ask itself — this only ever runs on the one-shot
-// surface, whose law is that the caller's sentence is the specification
-// (keepTheAskVerbatim). The charter's invariant, which the temporal compiler is
-// required to keep verbatim anyway, is the fallback for the command that
-// somehow arrived without words, and the action template backstops that.
-func (r *Reconciler) resolveStandingAsOnce(command store.Command, compiled Compiled) (Compiled, string, error) {
-	spec := *compiled.Charter
-	goal := strings.TrimSpace(command.Instruction)
-	if goal == "" {
-		goal = strings.TrimSpace(spec.Invariant)
-	}
-	if goal == "" {
-		goal = strings.TrimSpace(spec.Action)
-	}
-	// A spec complete enough to be a charter is recorded as one and retired in
-	// the same breath. One too thin to draft is not an error here — it was
-	// never going to be a standing rule on this surface anyway — and the work
-	// still runs, which is the only thing the caller asked for.
-	id := fmt.Sprintf("charter-%d", command.Seq)
-	if charter, err := r.store.DraftCharter(id, command.SessionID, command.Seq, spec); err == nil {
-		if template := strings.TrimSpace(charter.Invariant); template != "" && goal == "" {
-			goal = template
-		}
-		if err := r.store.SetCharterStatusWithReason(charter.ID, store.CharterRetired, store.Ratification{
-			Origin: store.OriginUser, SessionID: command.SessionID, Evidence: oneShotErrandOnceEvidence,
-		}, oneShotErrandOnceEvidence); err != nil {
-			return compiled, "", fmt.Errorf("retire the standing draft this surface cannot ratify: %w", err)
-		}
-	}
-	compiled.Charter = nil
-	compiled.Question = ""
-	compiled.QuestionOptions = nil
-	compiled.Goal = goal
-	if strings.TrimSpace(compiled.Scale) == "" {
-		compiled.Scale = "task"
-	}
-	return compiled, "Read as a standing rule; doing it once instead — a one-shot errand has no cadence to ratify.", nil
 }
 
 func defaultQuestionAnswer(options []store.QuestionOption) string {
@@ -2967,16 +2787,10 @@ func (r *Reconciler) recordLearnedFact(nodeID string, learned Learned) (store.Fa
 	return r.store.RecordFactFrom(store.FactWriterDistiller, nodeID, learned.Scope, learned.Kind, clipFactBody(learned.Body))
 }
 
-// renderCompileContext is the compiler's whole view for a caller with no
-// conversation behind it — a charter firing speaks its own template.
-func (r *Reconciler) renderCompileContext(snapshot store.Snapshot, instruction string) string {
-	return r.renderCompileContextFor(snapshot, instruction, "")
-}
-
 // renderCompileContextFor is the compiler's whole view: the notebook first —
 // durable facts the user should never have to repeat — then the measured
 // policy, then the graph, and last the conversation the instruction came out
-// of.
+// of. An empty session is a caller with no conversation behind it.
 //
 // The order is the cache's order. Everything above the thread is stable across
 // a session, so it is written once and re-read from the prefix; the thread

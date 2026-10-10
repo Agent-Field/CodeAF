@@ -400,16 +400,6 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		func(words head.ModelWords) head.WorkModelChoice {
 			return resolveWorkModelWords(words, modelCatalog, taskClient.Model)
 		}, true)
-	// Self-practice is curiosity spent on a notebook, and a one-shot has no
-	// business buying any. An ephemeral store's notebook is deleted with it, so
-	// the practice would be paid for and unreadable; and on a durable store
-	// named with --db it is worse, because the charter and its work land in
-	// somebody's own journal as the residue of an errand that was asked for one
-	// thing. Either way it competes with the single job this process was
-	// started to run. So every `codeaf do` schedules nothing, whatever its
-	// store, and the resident that owns that store keeps practising on its own
-	// time.
-	reconciler = reconciler.WithPracticeLoop(0, 0)
 	if craftRunner != nil {
 		reconciler = reconciler.WithCraftRunner(craftRunner)
 	}
@@ -422,8 +412,8 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		return choice.Model, choice.Model != ""
 	})
 	// The lease's flock proves the process exists; the heartbeat proves it is
-	// doing the work. Without this stamp a wedged TUI holds the resident role
-	// while every wake pass defers to it, and the standing watches go blind.
+	// doing the work. Without this stamp a wedged process holds the resident
+	// role while every other one defers to it, and nothing it owes is done.
 	reconciler = reconciler.WithHeartbeat(func(at time.Time) {
 		_ = lease.NoteResidentTick(path, at)
 	})
@@ -3991,9 +3981,9 @@ type jobPlans struct {
 	// worth of them; losing a reading costs one journal field and never the job.
 	readings map[string]string
 	// journal persists a job's structure, and hydrate reads it back. Both are
-	// nil on surfaces with no store to write to — `codeaf wake` builds a
-	// registry for one bounded pass and never outlives it — and a nil pair
-	// leaves the registry exactly the memory-only map it used to be.
+	// nil on surfaces with no store to write to — a registry built for one
+	// bounded pass that never outlives it — and a nil pair leaves the registry
+	// exactly the memory-only map it used to be.
 	journal func(prefix string, entry plannedJob)
 	hydrate func(prefix string) (plannedJob, bool)
 }
@@ -4490,13 +4480,13 @@ func isJobNode(id, prefix string) bool {
 }
 
 // The resident is the half of the surface that keeps working while nobody is
-// typing: it announces settled work, distills the notebook, fires charters, and
-// resumes deferred overruns. Its loop used to be launched as `_ = Serve(ctx)` —
-// the error thrown away, the goroutine gone, and no one told. A single
-// transient failure inside one pass therefore ended the resident silently for
-// the lifetime of the terminal, while the lease went on saying the role was
-// taken, so `codeaf wake` stepped aside for a process that had stopped serving
-// hours ago. Standing watches, charters and practice simply never fired again.
+// typing: it announces settled work, distills the notebook, and resumes
+// deferred overruns. Its loop used to be launched as `_ = Serve(ctx)` — the
+// error thrown away, the goroutine gone, and no one told. A single transient
+// failure inside one pass therefore ended the resident silently for the
+// lifetime of the terminal, while the lease went on saying the role was taken,
+// so every other process stepped aside for one that had stopped serving hours
+// ago, and nothing the resident owed was ever done again.
 //
 // So the loop gets a supervisor. Restarting is the right default because the
 // store is the truth and Serve holds nothing across a pass — a fresh call
@@ -6139,57 +6129,6 @@ func digestTerritory(settings config.Config, client *liveClient) resident.Territ
 			return "", err
 		}
 		return strings.TrimSpace(response.Text()), nil
-	}
-}
-
-const sentinelSystemPrompt = `You are a cheap standing-watch sentinel. Decide only whether the supplied condition occurred or the invariant is threatened now. Answer exactly "yes — <one line>" or "no — <one line>". No markdown, no qualifications, no suggested work.`
-
-// checkSentinel reuses the resident talk client just like consolidation. The
-// store, not this parser, decides whether a yes may spend or fire.
-func checkSentinel(settings config.Config, client *liveClient) resident.SentinelFunc {
-	return func(ctx context.Context, prompt resident.SentinelPrompt) (resident.SentinelVerdict, error) {
-		input := fmt.Sprintf("Invariant (verbatim):\n%s\n\nSentinel hint:\n%s\n\nWake evidence:\n%s",
-			prompt.Invariant, prompt.SentinelHint, prompt.Evidence)
-		// The charter's own history, last: it is the only part of this prompt
-		// that moves between wakes, and for a poll charter it is the only part
-		// that moves at all. Without it the same judgment was made against the
-		// same bytes an hour later, however the last one turned out.
-		if len(prompt.Previous) > 0 {
-			input += "\n\nYour last judgments on this same charter, newest first, and how each turned out:\n"
-			for _, line := range prompt.Previous {
-				input += "- " + line + "\n"
-			}
-		}
-		system := sentinelSystemPrompt + prompt.Voice
-		// NO CEILING TRAVELS. This call used to carry one — sixty tokens, then a
-		// thousand and twenty-four once a model that reasons first spent the
-		// whole sixty thinking and left "sentinel returned no clear yes" on every
-		// wake forever. Both figures were the same mistake in different sizes:
-		// guessing how much room somebody else's model needs to say yes. The
-		// prompt asks for a verdict and a line of reason, and the model's own
-		// default is what bounds it.
-		response, err := client.CompleteWithMessages(errandContext(ctx, settings, "sentinel", lane.RoleJudge), []ai.Message{
-			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: system}}},
-			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
-		})
-		if err != nil {
-			return resident.SentinelVerdict{}, err
-		}
-		if response == nil {
-			return resident.SentinelVerdict{}, fmt.Errorf("sentinel returned no response")
-		}
-		answer := strings.TrimSpace(response.Text())
-		lower := strings.ToLower(answer)
-		yes := strings.HasPrefix(lower, "yes")
-		if !yes && !strings.HasPrefix(lower, "no") {
-			return resident.SentinelVerdict{Line: "sentinel returned no clear yes"}, nil
-		}
-		line := answer
-		if fields := strings.Fields(answer); len(fields) > 1 {
-			line = strings.TrimSpace(strings.Join(fields[1:], " "))
-		}
-		line = strings.TrimSpace(strings.TrimLeft(line, "—:- "))
-		return resident.SentinelVerdict{Yes: yes, Line: line}, nil
 	}
 }
 

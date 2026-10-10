@@ -324,7 +324,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/effort` | `/think`, `/thinking` | `<rung>` | sets this conversation's thinking level; an unknown rung lists the accepted levels and changes nothing |
 | `/budget` | `/limits` | — | what codeaf may spend · every limit on one tab |
 | `/budget` | `/limits` | `<amount>` | sets the day's limit · `none` removes it |
-| `/budget` | `/limits` | `<row> <amount>` | sets one by name: `day`, `conversation`, `plan`, `practice` |
+| `/budget` | `/limits` | `<row> <amount>` | sets one by name: `day`, `conversation`, `plan` |
 
 ## Cache, display and export commands
 
@@ -978,15 +978,16 @@ With no amount, either command opens settings on the corresponding row. A failed
 live update says `saved for the next conversation · this one still has its previous limit`.
 
 The row names it takes are **`day`** (`daily`, `today`), **`conversation`** (`chat`,
-`session`), **`plan`** (`plans`, `ask`) and **`practice`** — the four rows that can be
-edited. There is **no `/budget task`**: the per-task limit for an ordinary `/task` is set in `/crew`, with
+`session`) and **`plan`** (`plans`, `ask`) — the three rows that can be edited. `/budget
+practice` answers `There is no practice limit any more — codeaf no longer practises on its
+own. Use /budget day, /budget conversation or /budget plan.` There is **no `/budget task`**: the per-task limit for an ordinary `/task` is set in `/crew`, with
 `/crew cap task <$>`. senior-dev has a separate ceiling for each run; see its page
 for the shell flags and conversation limits that can lower it.
 
 A write says back what it landed, in the tab's own words for that row — `per day · $50`,
 or `per day · no limit`. A figure it cannot read is refused in the row's own words with
 the rows listed after it: `that's not a dollar amount — a number, or none for no limit ·
-rows: day, conversation, plan, practice`. A row this machine does not have answers `that
+rows: day, conversation, plan`. A row this machine does not have answers `that
 limit is not on this machine`.
 
 The `$` is optional, and the amount can be a word — see the next section.
@@ -1908,8 +1909,8 @@ Connections holds accounts, keys, web search and remote connection settings.
 Privacy holds history, drafts and data-sharing choices.
 
 Old saved keys and values are unchanged. Search accepts old labels and keys,
-including settings inside Advanced. Resident-only practice, arrival-brief and
-tenure controls no longer appear in chat settings. See **Settings** for scope,
+including settings inside Advanced. The resident's practice, arrival-brief and
+tenure controls are gone, with the background routine they tuned. See **Settings** for scope,
 activation timing and how an existing profile carries forward.
 
 ## Settings categories on a narrow terminal

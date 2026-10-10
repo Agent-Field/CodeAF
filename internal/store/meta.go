@@ -270,14 +270,17 @@ func normalizeTraitName(name string) string {
 }
 
 // QuestionCategory is the stable class used by the empirical ask gate.
+//
+// Three were retired with the v1 scheduler — "charter-ratification",
+// "charter-cadence" and "standing-hygiene", the questions about standing rules.
+// Nothing asks them any more; rows an older build wrote keep the spelling, and
+// the gate counts them, like any category, by the string on the row.
 type QuestionCategory string
 
 const (
-	QuestionCategoryCharterRatification QuestionCategory = "charter-ratification"
-	QuestionCategorySurgeryConfirm      QuestionCategory = "surgery-confirm"
-	QuestionCategoryCompileAssumption   QuestionCategory = "compile-assumption"
-	QuestionCategoryRailRaise           QuestionCategory = "rail-raise"
-	QuestionCategoryCharterCadence      QuestionCategory = "charter-cadence"
+	QuestionCategorySurgeryConfirm    QuestionCategory = "surgery-confirm"
+	QuestionCategoryCompileAssumption QuestionCategory = "compile-assumption"
+	QuestionCategoryRailRaise         QuestionCategory = "rail-raise"
 	// QuestionCategoryServiceConsent is the promotion boundary: keeping a
 	// process alive past its task is consent-bearing, so it is measured like
 	// every other ask but never gated away.
@@ -285,12 +288,6 @@ const (
 	// QuestionCategoryServiceHygiene is the long-running nudge, which is an
 	// ordinary VOI-gated ask: if the user always keeps them, stop nagging.
 	QuestionCategoryServiceHygiene QuestionCategory = "service-hygiene"
-	// QuestionCategoryStandingHygiene is the same nudge pointed at a watch
-	// rather than a process. It is its own category because the two are
-	// answered differently — a service is nearly always still wanted, a watch
-	// that has found nothing for a fortnight often is not — and one shared
-	// category would let each teach the gate the wrong thing about the other.
-	QuestionCategoryStandingHygiene QuestionCategory = "standing-hygiene"
 	// QuestionCategoryRedirectTarget is "did you mean the running job, or is
 	// this new work?" — reversible either way, so the meta loop is free to
 	// learn that the top-ranked job is simply always what was meant.
@@ -565,8 +562,7 @@ func (s *Store) ShouldAsk(category QuestionCategory) (bool, CategoryStats, error
 	if err != nil {
 		return true, stat, err
 	}
-	if category == QuestionCategoryCharterRatification || category == QuestionCategoryRailRaise ||
-		category == QuestionCategoryServiceConsent {
+	if category == QuestionCategoryRailRaise || category == QuestionCategoryServiceConsent {
 		return true, stat, nil
 	}
 	if stat.N < VOIMinSamples {
@@ -942,7 +938,6 @@ func (s *Store) MetaReversalRates() (map[string]ReversalRate, error) {
 	consolidated := make(map[int64]bool)
 	aged := make(map[int64]bool)
 	restored := make(map[int64]bool)
-	proposalTotal, proposalDeclined := 0, 0
 	learned := make(map[int64]factPayload)
 	for _, event := range events {
 		switch event.Kind {
@@ -977,13 +972,6 @@ func (s *Store) MetaReversalRates() (map[string]ReversalRate, error) {
 			if json.Unmarshal(event.Payload, &payload) == nil {
 				restored[payload.FactSeq] = true
 			}
-		case EventCharterCreated:
-			var payload map[string]any
-			if json.Unmarshal(event.Payload, &payload) == nil && payload["proposal_shape"] != nil {
-				proposalTotal++
-			}
-		case EventCharterProposalDeclined:
-			proposalDeclined++
 		}
 	}
 	result := make(map[string]ReversalRate)
@@ -1015,7 +1003,10 @@ func (s *Store) MetaReversalRates() (map[string]ReversalRate, error) {
 		}
 	}
 	makeRate("aging", len(aged), reversals)
-	makeRate("proposals", proposalTotal, proposalDeclined)
+	// There used to be a fourth class, "proposals": the standing rules the
+	// retrospective offered and how many the person turned down. The offers
+	// went with the v1 scheduler, so the class has no events left to count and
+	// is gone rather than reported as an empty measurement.
 	return result, nil
 }
 

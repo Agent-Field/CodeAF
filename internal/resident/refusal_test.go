@@ -57,7 +57,7 @@ func TestRejectedCommandForAHeadSpokenKindStillSpeaks(t *testing.T) {
 func TestEveryRejectionSpeaksAndAppliedReceiptsKeepTheirPlace(t *testing.T) {
 	for _, kind := range []store.CommandKind{
 		store.CommandCancel, store.CommandRedirect, store.CommandSplice,
-		store.CommandCharterRatify, store.CommandStandingWatchEnable,
+		store.CommandServiceStop, store.CommandHandover,
 	} {
 		command := store.Command{Kind: kind, Target: "job"}
 		if voice := receiptVoice(command, store.CommandRejected); voice != store.RoleAgent {
