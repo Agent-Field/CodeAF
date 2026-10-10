@@ -1,7 +1,7 @@
 /* Work rhythm (ELEMENTS §0). The block container and its guide live in workBlock.css. */
 .work-step-head.button { min-height: var(--step-row-height); padding-inline: var(--space-half); gap: var(--space-tight); max-width: 100%; justify-content: flex-start; font-size: var(--font-size-body); text-align: left; }
 .work-step-head.button { width: 100%; }
-[data-tone="warning"] { color: var(--amber); }
+.work-note[data-tone="warning"] { color: var(--amber); }
 
 .work-step-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .work-time { flex: none; color: var(--ink-3); font-variant-numeric: tabular-nums; }
