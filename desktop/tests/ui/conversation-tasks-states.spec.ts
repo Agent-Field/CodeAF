@@ -286,7 +286,9 @@ for (const theme of ['light', 'dark'] as const) {
     await failed.scrollIntoViewIfNeeded();
     await expect(failed).toHaveAttribute('data-status', 'incomplete');
     await expect(failed.locator('.status-mark-dot')).toHaveCSS('width', '6px');
+    await expect(failed.locator('.status-mark-dot')).toHaveCSS('height', '6px');
     await expect(failed.locator('.status-mark-dot')).toHaveCSS('background-color', await paint(page, 'danger'));
+    await expect(row(page, '4.2').locator('.task-row-title')).toHaveCSS('color', await paint(page, 'ink', 'color'));
 
     const paused = row(page, '4.3').locator('.status-mark');
     await paused.scrollIntoViewIfNeeded();
