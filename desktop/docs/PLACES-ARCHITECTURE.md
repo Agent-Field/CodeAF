@@ -94,9 +94,9 @@ type State struct {
 - **Identity:** `ChatID` is `session.SessionRow.ID` (the conversation folder's name). It is stable
   across reopen and is what `ReadWorld` reports. The bridge never uses a `sessionFile` path as a
   membership key.
-- **Store:** the caller injects the path. The bridge passes `home.Join("desktop", "placegraph.json")`
-  (owned by `t-d5-be-pg-store`). Avoid the word `places` in the path: `v3/projects` is already the
-  conversations' places root. Every call takes the exclusive lock (`internal/filelock`, 10s, then
+- **Store:** the caller injects the path. The bridge passes `home.Join("desktop", "places.json")`
+  (`CODEAF_HOME` through `internal/home`). That file does not share a directory with `v3/projects`,
+  which is the conversations' places root. Every call takes the exclusive lock (`internal/filelock`, 10s, then
   `ErrLocked`), re-reads, validates, then replaces the file by temp, fsync and rename. A damaged file
   is quarantined beside the original, never deleted (`Store.LastRecovery()`).
 - **Laws in code:** many parents, cycles refused (`ErrCycle`). Sibling names are unique,
@@ -140,8 +140,10 @@ type Bundle struct {
 ### 3.3 How the model is told (child engine)
 
 - The child `codeaf engine` shares the disk (`Connection.Local`). At **turn start**
-  it `stat`s `placegraph.json`. If `State.Revision` moved, it calls `Resolve` and rebuilds
-  the place block **once**. This applies "Adding a place mid-run applies from the next
+  it `stat`s `places.json`. If the stat moved, it reads `placegraph.ReadGeneration`
+  (that number is `State.Revision`). If the generation or the choices file moved, it calls
+  `Resolve` and rebuilds the place block **once**. A visit rewrites the file and does not
+  move the generation, so it does not rebuild the block. This applies "Adding a place mid-run applies from the next
   turn" (6e risks) and the message[0] cache law (`memory.go:2097`,
   `refreshSystemLocked`).
 - Folder sources of a chat's places become `PlaceRef{Arrival: PlaceSaid}` through the
@@ -213,7 +215,7 @@ from `world` rows. A full snapshot is fetched only when a tab is focused.
 | Feature | Truth | Wire | Renderer owner |
 |---|---|---|---|
 | Conversation | child engine session | `/sessions/{id}` (+`since`), per-session SSE | `features/conversation/*` |
-| Places graph, membership, rail | `placegraph.json` | `/api/engine/places*` + `places` records | `features/places/` (new) |
+| Places graph, membership, rail | `desktop/places.json` | `/api/engine/places*` + `places` records | `features/places/` (new) |
 | Place context | `placegraph.Resolve` in the child engine | engine-internal; `GET /sessions/{id}/using` for the chip | `features/places/using/` |
 | Tab sets | `desktop/workspaces/*.json` | `/api/engine/workspaces/{key}` + `workspace` records | `features/tabs/` persistence adapter |
 | Cross-conversation rows, Inbox, dots | `ReadWorld` + live sessions | world SSE `world`/`attention` | `features/world/` (new) |
