@@ -12,11 +12,14 @@ import (
 // (none when nothing changed), and Undo lists the receipt ids to hand to
 // POST /places/undo. Nothing here is a promise the store did not make.
 type Mutation struct {
-	Revision uint64               `json:"revision"`
-	Receipts []placegraph.Receipt `json:"receipts"`
-	Noop     bool                 `json:"noop"`
-	Place    *PlaceDetail         `json:"place,omitempty"`
-	Undo     []string             `json:"undo"`
+	Revision uint64 `json:"revision"`
+	// Generation is Revision under the name the desktop client reads.
+	Generation uint64               `json:"generation"`
+	Rail       *RailView            `json:"rail,omitempty"`
+	Receipts   []placegraph.Receipt `json:"receipts"`
+	Noop       bool                 `json:"noop"`
+	Place      *PlaceDetail         `json:"place,omitempty"`
+	Undo       []string             `json:"undo"`
 	// Result carries what a delete or a merge did (store DeleteResult / MergeResult).
 	Result any `json:"result,omitempty"`
 	// Memberships are the filings a members write created.
@@ -39,7 +42,7 @@ func (p *Places) finish(w http.ResponseWriter, b *batch, placeID string, extra f
 		p.failStore(w, err, "", b.receipts)
 		return
 	}
-	m := Mutation{Revision: rev, Receipts: b.receipts, Noop: len(b.receipts) == 0, Undo: []string{}}
+	m := Mutation{Revision: rev, Generation: rev, Receipts: b.receipts, Noop: len(b.receipts) == 0, Undo: []string{}}
 	if m.Receipts == nil {
 		m.Receipts = []placegraph.Receipt{}
 	}
@@ -60,6 +63,9 @@ func (p *Places) finish(w http.ResponseWriter, b *batch, placeID string, extra f
 		extra(&m)
 	}
 	write(w, m)
+	if !m.Noop {
+		p.publishPlaces(m.Memberships)
+	}
 }
 
 // ---- places ----------------------------------------------------------------
@@ -367,6 +373,11 @@ func (p *Places) visit(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	if err := p.Store.TouchOpened(id, p.now()); err != nil {
+		p.failStore(w, err, "", nil)
+		return
+	}
+	// Going somewhere also puts it at the top of the rail's Open section.
+	if err := p.Store.Visit(id); err != nil {
 		p.failStore(w, err, "", nil)
 		return
 	}
