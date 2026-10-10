@@ -33,7 +33,7 @@ export function CompareTable({ question }: { question: Question }) {
   if (!rows) return null;
   const [head, ...body] = rows;
   return (
-    <div className="tray-compare">
+    <div className="tray-compare" tabIndex={0}>
       <table>
         <thead>
           <tr>{head.map((cell, index) => <th key={index}>{cell}</th>)}</tr>

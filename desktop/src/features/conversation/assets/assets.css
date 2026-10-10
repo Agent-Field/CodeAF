@@ -12,8 +12,9 @@
 .site-icon-mono[data-hue="6"] { background: var(--site-icon-hue-6); }
 .site-icon-favicon { object-fit: contain; }
 
-/* The link chip is the shared Chip on an anchor: only its tighter lead, gap and link reset are its own. */
+/* The link chip keeps the shared Chip's ink even when Markdown gives ordinary prose anchors the accent. */
 .chip.link-chip {
+  color: var(--ink);
   gap: var(--space-tight);
   padding-left: var(--space-three-quarter);
   line-height: var(--type-label-leading);
