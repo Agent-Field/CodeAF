@@ -23,8 +23,9 @@ async function open(page: Page, theme: 'light' | 'dark') {
     localStorage.setItem('codeaf-theme', theme);
     localStorage.setItem('codeaf.desktop.workspace.v1', JSON.stringify({
       tabs: [
-        { id: 'first', title: 'First tab', titleSource: 'manual', kind: 'conversation', draft: '', pinned: false },
-        { id: 'last', title: 'Last tab', titleSource: 'manual', kind: 'conversation', draft, pinned: false },
+        { id: 'first', title: 'First tab', titleSource: 'manual', kind: 'conversation', draft: '', pinned: true },
+        // Pins keep previews at narrow widths; pinning both preserves the strip order for Home/End.
+        { id: 'last', title: 'Last tab', titleSource: 'manual', kind: 'conversation', draft, pinned: true },
       ],
       groups: [], closed: [], activeId: 'first', nextNumber: 3, recentIds: ['first', 'last'],
     }));
