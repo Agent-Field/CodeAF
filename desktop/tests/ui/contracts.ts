@@ -100,7 +100,7 @@ export const INK3_TEXT = [
  '.menu-item .keyboard-shortcut', '.tooltip-shortcut', '.inbox-head', '.inbox-meta', '.inbox-empty', '.closing-specimen-note',
  '.latest-pill-time', '.system-note', '.task-panel-count', '.earlier-row', '.summary-divider',
  '.composer-attach', '.composer-queue', '.model-picker', '.model-popover .keyboard-shortcut', '.model-popover-all', '.model-popover-effort-option',
- '.paste-card-lines', '.paste-card-preview', '.file-chip-dir', '.at-picker-dir', '.file-chip[data-state="missing"]', '.file-chip[data-state="outside"]', '.link-chip-domain',
+ '.paste-card-lines', '.paste-card-preview', '.file-chip-dir', '.at-picker-dir', '.file-chip[data-state="missing"]', '.file-chip[data-state="outside"]', '.link-chip-domain', '.web-address-rest',
  '.steer-landing', '.queued-esc', '.queued-more', '.queued-note', '.update-cut', '.turn-footer', '.work-live-time', '.work-time',
  '.work-step-head', '.work-step-tail', '.thinking-text', '.thinking-body', '.work-call-head', '.work-stat', '.work-call-time', '.work-call-status', '.work-call-text',
  '.task-notice-live', '.tray-header', '.choice-clock', '.tray-note', '.tray-holding', '.batch-pager',
@@ -154,12 +154,14 @@ export async function expectNoUnstyledControls(page: Page, scope?: string) {
    const rect = el.getBoundingClientRect();
    return rect.width > 0 && rect.height > 0 && getComputedStyle(el).visibility !== 'hidden';
   };
-  const themed = /(?:button|nav-item|address-field|favorite-button|new-item|select-trigger|palette-close|command-item|text-input|segmented-option|chip-button)/;
+  const themed = /(?:button|nav-item|address-field|favorite-button|new-item|select-trigger|palette-close|command-item|text-input|segmented-option|chip-button|filter-tab)/;
   const bad: string[] = [];
   for (const el of root.querySelectorAll('select:not([aria-hidden="true"])')) if (shown(el)) bad.push(`visible native select: ${el.outerHTML.slice(0, 120)}`);
   for (const el of root.querySelectorAll('button,input:not([type=hidden]),textarea')) {
    // xterm.js's input proxy: transparent, off-screen and named; the visible terminal field is what a person sees and focuses.
    if (el.classList.contains('xterm-helper-textarea')) continue;
+   // The shared SearchField draws its bare input through the wrapper's own field styling.
+   if (el.parentElement?.classList.contains('search-field')) continue;
    if (shown(el) && !themed.test(el.getAttribute('class') ?? '')) bad.push(`unstyled control: ${el.outerHTML.slice(0, 120)}`);
   }
   return bad;

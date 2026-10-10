@@ -76,7 +76,7 @@ test('Group and Dismiss are the tab stops, and keyboard focus draws the accent r
   await expect(group).toBeFocused();
   const ring = await page.evaluate(() => {
     const probe = document.createElement('span');
-    probe.style.boxShadow = '0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft)';
+    probe.style.boxShadow = '0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 calc(var(--focus-ring-width) + var(--focus-halo-width)) var(--accent-soft)';
     document.body.append(probe);
     const value = getComputedStyle(probe).boxShadow;
     probe.remove();

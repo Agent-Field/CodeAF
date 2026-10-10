@@ -78,7 +78,7 @@ test('links are accent and underline on hover', async ({ page }) => {
     const focused = await link.evaluate(el => {
       const style = getComputedStyle(el);
       const probe = document.createElement('span');
-      probe.style.boxShadow = '0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft)';
+      probe.style.boxShadow = '0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 calc(var(--focus-ring-width) + var(--focus-halo-width)) var(--accent-soft)';
       document.body.append(probe);
       const ring = getComputedStyle(probe).boxShadow;
       probe.remove();
