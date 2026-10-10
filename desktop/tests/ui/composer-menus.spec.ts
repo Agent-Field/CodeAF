@@ -46,7 +46,7 @@ for (const theme of ['light', 'dark'] as const) {
     await page.getByRole('button', { name: 'Send', exact: true }).click({ button: 'right' });
     const item = page.getByRole('menuitem', { name: /Queue instead/ });
     await expect(item).toHaveAttribute('aria-disabled', 'true');
-    await expect(item.locator('.keyboard-shortcut')).toHaveText(/⌥↵|Alt Enter/);
+    await expect(item.locator('.keyboard-shortcut')).toHaveText(/⌥↵|Alt\+Enter/);
     await page.keyboard.press('Escape');
     await send(page, 'Start');
     await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible();
@@ -226,7 +226,7 @@ for (const platform of ['Linux x86_64', 'Win32']) {
         await expect(picker).toBeVisible();
         const pins = picker.getByRole('radiogroup', { name: 'Pinned models', exact: true });
         await expect(pins.getByRole('radio')).toHaveText(['DS Flash', 'GLM 5.3', 'kimi-k3']);
-        await expect(picker.locator('kbd')).toHaveText(['Ctrl Alt 1', 'Ctrl Alt 2', 'Ctrl Alt 3']);
+        await expect(picker.locator('kbd')).toHaveText(['Ctrl+Alt+1', 'Ctrl+Alt+2', 'Ctrl+Alt+3']);
         await expectAccessible(page);
         await pins.getByRole('radio', { name: 'kimi-k3', exact: true }).focus();
         await page.keyboard.press('Enter');
