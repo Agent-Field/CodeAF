@@ -1,5 +1,5 @@
 //! "Needs you" signals that reach the person while codeaf is in the background:
-//! one system notification per place, and the dock or launcher badge.
+//! one system notification per new item, and the dock or launcher badge.
 //!
 //! Every window watches the same attention feed, so the bookkeeping that keeps a
 //! question from being announced twice lives here, once for the whole app,
@@ -11,7 +11,7 @@
 //! operating system, and posts on a background task whose failure it discards.
 //! So `verified` is false on desktop: the system may still silence codeaf, and
 //! the badge and the Inbox stay the source of truth. Grouping is ignored by the
-//! plugin on desktop, so codeaf groups by place itself. The plugin also drops
+//! plugin on desktop; codeaf retains the place identity for each notification. The plugin also drops
 //! click actions, so codeaf posts through the platform's own notification
 //! service and a click opens the question it names (activation.rs).
 //!
@@ -25,7 +25,7 @@
 //! feed carries a process identity. A new identity retires the old one; delayed
 //! posts from that retired engine cannot reset the authority or restore questions.
 
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -35,14 +35,12 @@ use tauri_plugin_notification::PermissionState;
 use crate::activation::{is_chat_id, Activation, Question, Target};
 use crate::windows::{app_window, app_windows, trusted};
 
-/// Enough to remember every open question for a long day without growing.
+/// Bound retired engine identities so an unknown old feed is refused rather than trusted.
 const REMEMBERED: usize = 2048;
 const MAX_ITEMS: usize = 256;
 const MAX_TEXT: usize = 400;
 const MAX_ID: usize = 256;
 const MAX_BADGE: u32 = 9999;
-/// Body lines name at most this many chats before "and N more".
-const NAMED: usize = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -59,6 +57,9 @@ pub struct AttentionItem {
     pub kind: AttentionKind,
     pub chat_title: String,
     pub text: String,
+    /// A foreground or nonblocking item stays pending without announcing it.
+    #[serde(default)]
+    pub silent: bool,
     #[serde(default)]
     pub place_id: Option<String>,
     #[serde(default)]
@@ -74,6 +75,7 @@ pub struct AttentionItem {
 impl AttentionItem {
     fn target(&self) -> Option<Target> {
         Some(Target {
+            item_id: Some(self.id.clone()),
             chat_id: self.chat_id.clone()?,
             question: self.question.clone(),
         })
@@ -124,37 +126,13 @@ pub struct Note {
 
 #[derive(Default)]
 struct Seen {
-    /// Each remembered id with the kind it was announced as.
-    ids: HashMap<String, AttentionKind>,
-    order: VecDeque<String>,
+    /// Identities live for the app process so a long session cannot replay an old question as new.
+    ids: HashSet<String>,
 }
 
 impl Seen {
-    fn insert(&mut self, id: &str, kind: AttentionKind) -> bool {
-        if self.ids.contains_key(id) {
-            return false;
-        }
-        if self.order.len() >= REMEMBERED {
-            if let Some(old) = self.order.pop_front() {
-                self.ids.remove(&old);
-            }
-        }
-        self.ids.insert(id.to_string(), kind);
-        self.order.push_back(id.to_string());
-        true
-    }
-
-    /// Forgets the questions no longer pending, so one put again is new. Failures
-    /// stay remembered (see `fresh`).
-    fn keep_only(&mut self, pending: &HashSet<String>) {
-        let ids = &mut self.ids;
-        self.order.retain(|id| {
-            let keep = pending.contains(id) || ids.get(id) == Some(&AttentionKind::Failed);
-            if !keep {
-                ids.remove(id);
-            }
-            keep
-        });
+    fn insert(&mut self, id: &str) -> bool {
+        self.ids.insert(id.to_string())
     }
 }
 
@@ -247,99 +225,47 @@ fn notifies(item: &AttentionItem) -> bool {
     matches!(item.kind, AttentionKind::NeedsYou | AttentionKind::Failed)
 }
 
-/// Groups the new items by place, one notification each, in a stable order.
+/// Each new item keeps its own words and place identity.
 pub fn compose(items: &[&AttentionItem]) -> Vec<Note> {
-    let mut groups: BTreeMap<String, (String, Vec<&AttentionItem>)> = BTreeMap::new();
-    for item in items {
-        let key = item.place_id.clone().unwrap_or_else(|| "now".into());
-        let title = item
-            .place_name
-            .as_deref()
-            .map(|n| clean(n, 80))
-            .filter(|n| !n.is_empty())
-            .unwrap_or_else(|| "codeaf".into());
-        groups
-            .entry(key)
-            .or_insert_with(|| (title, Vec::new()))
-            .1
-            .push(item);
-    }
-    groups
-        .into_iter()
-        .map(|(group, (title, items))| {
-            let body = if let [one] = items.as_slice() {
-                let chat = clean(&one.chat_title, 80);
-                let text = clean(&one.text, MAX_TEXT);
-                match (chat.is_empty(), text.is_empty()) {
-                    (false, false) => format!("{chat} — {text}"),
-                    (false, true) => chat,
-                    (true, false) => text,
-                    (true, true) => verb(one.kind).into(),
-                }
-            } else {
-                let failed = items.iter().all(|i| i.kind == AttentionKind::Failed);
-                let lead = if failed {
-                    format!("{} chats stopped with a failure", items.len())
-                } else {
-                    format!("{} chats need you", items.len())
-                };
-                let names: Vec<String> = items
-                    .iter()
-                    .map(|i| clean(&i.chat_title, 40))
-                    .filter(|n| !n.is_empty())
-                    .collect();
-                if names.is_empty() {
-                    lead
-                } else {
-                    let shown = names
-                        .iter()
-                        .take(NAMED)
-                        .cloned()
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    let more = names.len().saturating_sub(NAMED);
-                    if more > 0 {
-                        format!("{lead}: {shown} and {more} more")
-                    } else {
-                        format!("{lead}: {shown}")
-                    }
-                }
+    items
+        .iter()
+        .map(|item| {
+            let chat = clean(&item.chat_title, 80);
+            let text = clean(&item.text, MAX_TEXT);
+            let body = match (chat.is_empty(), text.is_empty()) {
+                (false, false) => format!("{chat} — {text}"),
+                (false, true) => chat,
+                (true, false) => text,
+                (true, true) => String::new(),
             };
-            let targets = items
-                .iter()
-                .filter_map(|i| Some((i.id.clone(), i.target()?)))
-                .collect();
             Note {
-                group,
-                title,
+                group: item.place_id.clone().unwrap_or_else(|| "now".into()),
+                title: item
+                    .place_name
+                    .as_deref()
+                    .map(|name| clean(name, 80))
+                    .filter(|name| !name.is_empty())
+                    .unwrap_or_else(|| "codeaf".into()),
                 body,
-                targets,
+                targets: item
+                    .target()
+                    .map(|target| vec![(item.id.clone(), target)])
+                    .unwrap_or_default(),
             }
         })
         .collect()
 }
 
-fn verb(kind: AttentionKind) -> &'static str {
-    match kind {
-        AttentionKind::Failed => "A chat stopped with a failure",
-        _ => "A chat needs you",
-    }
-}
-
 /// Records what is pending and returns only the items never announced before.
 ///
-/// A question that leaves the list was answered, and the same question may be
-/// put again later. A failure that leaves the list is never announced again
-/// while it is remembered: the engine names a failure by the instant it landed,
-/// so its id never returns as a new failure, and a window whose clock ages it out
-/// a moment before another's must not make the other announce it twice.
+/// A replayed identity is not a new question. Foreground and nonblocking items
+/// are remembered silently so a later blur cannot announce old work.
 fn fresh<'a>(book: &mut Book, items: &'a [AttentionItem]) -> Vec<&'a AttentionItem> {
     let wanted: Vec<&AttentionItem> = items.iter().filter(|i| notifies(i)).collect();
     book.pending = wanted.iter().map(|i| i.id.clone()).collect();
-    book.seen.keep_only(&book.pending);
     wanted
         .into_iter()
-        .filter(|i| book.seen.insert(&i.id, i.kind))
+        .filter(|i| book.seen.insert(&i.id) && !i.silent)
         .collect()
 }
 
@@ -458,11 +384,16 @@ pub fn notify_attention<R: Runtime>(
         });
     }
     let notes = compose(&new);
+    let groups = notes
+        .iter()
+        .map(|note| &note.group)
+        .collect::<HashSet<_>>()
+        .len();
     if permission(&app, false).state != Permission::Granted {
         attract(&app);
         return Ok(Posted {
             posted: 0,
-            groups: notes.len(),
+            groups,
             skipped: Some(Skipped::Denied),
         });
     }
@@ -481,7 +412,7 @@ pub fn notify_attention<R: Runtime>(
     }
     Ok(Posted {
         posted,
-        groups: notes.len(),
+        groups,
         skipped: None,
     })
 }
@@ -582,6 +513,7 @@ mod tests {
             kind,
             chat_title: chat.into(),
             text: "Which branch should I use?".into(),
+            silent: false,
             place_id: place.map(|p| p.0.into()),
             place_name: place.map(|p| p.1.into()),
             chat_id: None,
@@ -611,6 +543,16 @@ mod tests {
     }
 
     #[test]
+    fn a_silent_question_stays_quiet_after_blur() {
+        let mut book = Book::default();
+        let mut question = item("q", AttentionKind::NeedsYou, MKT, "Release");
+        question.silent = true;
+        assert!(fresh(&mut book, &[question.clone()]).is_empty());
+        question.silent = false;
+        assert!(fresh(&mut book, &[question]).is_empty());
+    }
+
+    #[test]
     fn running_never_notifies_and_failed_does() {
         let mut book = Book::default();
         let items = vec![
@@ -623,13 +565,13 @@ mod tests {
     }
 
     #[test]
-    fn an_answered_question_can_come_back_as_new() {
+    fn an_answered_question_is_not_announced_again() {
         let mut book = Book::default();
         let a = vec![item("a", AttentionKind::NeedsYou, None, "Launch")];
         assert_eq!(fresh(&mut book, &a).len(), 1);
         assert_eq!(fresh(&mut book, &[]).len(), 0);
         assert!(book.pending.is_empty());
-        assert_eq!(fresh(&mut book, &a).len(), 1);
+        assert_eq!(fresh(&mut book, &a).len(), 0);
     }
 
     #[test]
@@ -647,16 +589,15 @@ mod tests {
     }
 
     #[test]
-    fn memory_is_bounded() {
+    fn old_identities_remain_quiet_in_a_long_session() {
         let mut seen = Seen::default();
         for i in 0..REMEMBERED + 10 {
-            seen.insert(&i.to_string(), AttentionKind::Failed);
+            seen.insert(&i.to_string());
         }
-        assert_eq!(seen.ids.len(), REMEMBERED);
-        assert_eq!(seen.order.len(), REMEMBERED);
+        assert_eq!(seen.ids.len(), REMEMBERED + 10);
         assert!(
-            seen.insert("0", AttentionKind::Failed),
-            "the oldest was forgotten"
+            !seen.insert("0"),
+            "an old question remains known after thousands of newer items"
         );
     }
 
@@ -725,9 +666,10 @@ mod tests {
         let new = post(&mut book, "main", 5, &first).unwrap();
         assert_eq!(new.len(), 2);
         let token = routes.register(
-            compose(&first.iter().collect::<Vec<_>>())[0]
-                .targets
-                .clone(),
+            compose(&first.iter().collect::<Vec<_>>())
+                .into_iter()
+                .flat_map(|note| note.targets)
+                .collect(),
         );
         // s1's question is answered: main reads it at 6, then w-2 posts its reading from 5.
         assert!(post(&mut book, "main", 6, std::slice::from_ref(&b)).is_some());
@@ -735,6 +677,7 @@ mod tests {
         assert_eq!(
             routes.resolve(token.unwrap(), &book.pending),
             Some(Target {
+                item_id: Some("s2:choice:3".into()),
                 chat_id: "s2".into(),
                 question: Some(Question {
                     kind: "choice".into(),
@@ -809,12 +752,12 @@ mod tests {
     }
 
     #[test]
-    fn one_notification_per_place_named_after_it() {
+    fn one_notification_per_item_named_after_its_place() {
         let a = item("a", AttentionKind::NeedsYou, MKT, "Launch plan");
         let b = item("b", AttentionKind::NeedsYou, MKT, "Pricing page");
         let c = item("c", AttentionKind::Failed, None, "Nightly");
         let notes = compose(&[&a, &b, &c]);
-        assert_eq!(notes.len(), 2);
+        assert_eq!(notes.len(), 3);
         let now = notes.iter().find(|n| n.group == "now").unwrap();
         assert_eq!(now.title, "codeaf");
         assert_eq!(now.body, "Nightly — Which branch should I use?");
@@ -823,11 +766,11 @@ mod tests {
             .find(|n| n.group == "pl_00000000000000aa")
             .unwrap();
         assert_eq!(mkt.title, "Marketing");
-        assert_eq!(mkt.body, "2 chats need you: Launch plan, Pricing page");
+        assert_eq!(mkt.body, "Launch plan — Which branch should I use?");
     }
 
     #[test]
-    fn long_groups_name_three_and_count_the_rest() {
+    fn every_item_keeps_its_chat_title() {
         let items: Vec<AttentionItem> = (0..5)
             .map(|i| {
                 item(
@@ -841,7 +784,7 @@ mod tests {
         let refs: Vec<&AttentionItem> = items.iter().collect();
         assert_eq!(
             compose(&refs)[0].body,
-            "5 chats stopped with a failure: Chat 0, Chat 1, Chat 2 and 2 more"
+            "Chat 0 — Which branch should I use?"
         );
     }
 
@@ -857,10 +800,10 @@ mod tests {
     }
 
     #[test]
-    fn empty_words_fall_back_to_a_plain_sentence() {
+    fn unknown_words_do_not_invent_a_body() {
         let mut bare = item("a", AttentionKind::Failed, None, "");
         bare.text = String::new();
-        assert_eq!(compose(&[&bare])[0].body, "A chat stopped with a failure");
+        assert_eq!(compose(&[&bare])[0].body, "");
     }
 
     #[test]
@@ -888,10 +831,11 @@ mod tests {
             .find(|n| n.group == "pl_00000000000000aa")
             .unwrap();
         let ids: Vec<&str> = mkt.targets.iter().map(|(id, _)| id.as_str()).collect();
-        assert_eq!(ids, ["s1:consent:7", "s2:choice:3"]);
+        assert_eq!(ids, ["s1:consent:7"]);
         assert_eq!(
             mkt.targets[0].1,
             Target {
+                item_id: Some("s1:consent:7".into()),
                 chat_id: "s1".into(),
                 question: Some(Question {
                     kind: "consent".into(),
