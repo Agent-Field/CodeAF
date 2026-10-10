@@ -185,6 +185,8 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
 
   const publish = () => {
     state = { ...state, seq: state.seq + 1, updatedAt: new Date().toISOString() };
+    // The stream carries the same omission as a read, so a window never receives an over-cap body it would not get from GET.
+    // A record is a tail from the last published length; a shorter transcript is a reset, matching the bridge.
     const { entries, ...header } = structuredClone(state);
     const reset = publishedEntries > entries.length;
     const from = reset ? 0 : publishedEntries;

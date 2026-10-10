@@ -12,6 +12,7 @@ export type ToolStep = {
   hint: string; // the engine's own one-line gloss of the call
   args: string;
   output: string; // compact inline output; full output is fetched on demand
+  outputOmitted?: boolean; // the engine left the output out of the snapshot; CallDetail fetches it when the call is expanded
   covered?: boolean; // the read went to a quick task whose answer rides on another call of the batch; output is empty
   state: 'running' | 'done' | 'failed' | 'stopped'; // stopped: cancelled by the person's Stop
   entryIndex?: number; // record position; lets the live overlay tell a call is already recorded
