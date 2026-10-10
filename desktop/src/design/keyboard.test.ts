@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 // keyboard.ts reads navigator.platform at import; the matcher takes the platform as an argument.
 Object.defineProperty(globalThis, 'navigator', { value: { platform: 'Linux x86_64' }, configurable: true });
-const { shortcutOf } = await import('./keyboard.ts');
+const { shortcutOf, formatShortcut, shellShortcuts } = await import('./keyboard.ts');
 
 const key = (key: string, over: Record<string, unknown> = {}) => ({ key, code: '', metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...over });
 const mac = (event: ReturnType<typeof key>) => shortcutOf(event, true);
@@ -27,8 +27,33 @@ test('⌘⇧\\ is the overview on a Mac, Ctrl Shift A elsewhere; ⌘↑ and ⌘�
 });
 
 test('rail, focus, tasks, history, settings, models and palette keys', () => {
-  const ids = [['s', {}, 'rail'], ['b', {}, 'rail'], ['f', { shiftKey: true }, 'focus'], ['k', { shiftKey: true }, 'tasks'], ['y', {}, 'history'], [',', {}, 'settings'], ['/', {}, 'models'], ['k', {}, 'palette']] as const;
+  const ids = [['s', {}, 'rail'], ['b', {}, 'rail'], ['f', { shiftKey: true }, 'focus'], ['k', { shiftKey: true }, 'tasks-panel'], ['y', {}, 'history'], [',', {}, 'settings'], ['/', {}, 'models'], ['k', {}, 'palette']] as const;
   for (const [k, over, id] of ids) assert.deepEqual(mac(key(k, { metaKey: true, ...over })), { id });
+});
+
+test('Tasks panel uses ⌘⇧K or Ctrl Shift K without claiming the plain palette chord', () => {
+  for (const [matcher, primary] of [[mac, { metaKey: true }], [linux, { ctrlKey: true }]] as const) {
+    assert.deepEqual(matcher(key('K', { ...primary, shiftKey: true })), { id: 'tasks-panel' });
+    assert.deepEqual(matcher(key('k', primary)), { id: 'palette' });
+    assert.equal(matcher(key('K', { ...primary, shiftKey: true, altKey: true })), undefined);
+  }
+  assert.equal(mac(key('K', { ctrlKey: true, shiftKey: true })), undefined);
+  assert.equal(linux(key('K', { metaKey: true, shiftKey: true })), undefined);
+  assert.equal(shellShortcuts.tasks, formatShortcut('⌘/Ctrl ⇧ K'));
+  assert.equal(shellShortcuts.tasks, 'Ctrl Shift K');
+});
+
+test('Tasks panel tooltip formats the chord for a Mac', async () => {
+  const original = globalThis.navigator;
+  Object.defineProperty(globalThis, 'navigator', { value: { platform: 'MacIntel' }, configurable: true });
+  try {
+    // A fresh module reads the Mac platform without changing the Linux matcher's defaults.
+    const macKeyboard = await import(new URL('./keyboard.ts?mac-shortcuts', import.meta.url).href);
+    assert.equal(macKeyboard.shellShortcuts.tasks, macKeyboard.formatShortcut('⌘/Ctrl ⇧ K'));
+    assert.equal(macKeyboard.shellShortcuts.tasks, '⌘ ⇧ K');
+  } finally {
+    Object.defineProperty(globalThis, 'navigator', { value: original, configurable: true });
+  }
 });
 
 test('⌃Tab switches recent tabs on both platforms and ⌘Tab is left to macOS', () => {
@@ -55,7 +80,7 @@ test('Linux: a terminal field still hands Ctrl+`, Ctrl+Tab and Ctrl+Shift chords
   assert.deepEqual(inTerminal(key('T', { ctrlKey: true, shiftKey: true })), { id: 'new' });
   assert.deepEqual(inTerminal(key('W', { ctrlKey: true, shiftKey: true })), { id: 'close' });
   assert.deepEqual(inTerminal(key('A', { ctrlKey: true, shiftKey: true })), { id: 'overview' });
-  assert.deepEqual(inTerminal(key('K', { ctrlKey: true, shiftKey: true })), { id: 'tasks' });
+  assert.deepEqual(inTerminal(key('K', { ctrlKey: true, shiftKey: true })), { id: 'tasks-panel' });
 });
 
 test('Mac: ⌘ chords work in a terminal field and Control chords are not app chords', () => {
