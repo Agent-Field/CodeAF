@@ -98,6 +98,7 @@ func TestEveryRefusalTellsTheAskerWhatToDoInstead(t *testing.T) {
 		errQuestionTooFewOptions, errQuestionTooManyOptions,
 		errQuestionChecklistWithoutOptions, errQuestionUnlabelledOption(2),
 		errQuestionUnknownPick("9"),
+		errQuestionPickPercent(101),
 		errQuestionClockOnIrreversible, errQuestionAutoOnIrreversible,
 		errQuestionAutoWithoutPick,
 	} {
