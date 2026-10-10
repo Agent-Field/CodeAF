@@ -1,3 +1,4 @@
+import type { SnapshotTail } from '../../../src/features/chat/snapshotMerge';
 import type { Page, Route } from '@playwright/test';
 import { historyRoutes, type HistoryHandle, type MockHistory } from './history-engine';
 import type { AttentionItem, WorldRow } from '../../../src/features/chat/world-client';
@@ -9,7 +10,7 @@ export const GLM = 'z-ai/glm-5.3';
 /** The segment words the engine reports for the three default pins. */
 const PIN_LABELS: Record<string, string> = { [GLM_FLASH]: 'GLM Flash', [MODEL]: 'DS Flash', [GLM]: 'GLM 5.3' };
 
-export type StreamRecord = { seq: number; type: 'snapshot' | 'event'; snapshot?: EngineSnapshot; event?: EngineEvent };
+export type StreamRecord = { seq: number; type: 'snapshot' | 'event'; snapshot?: EngineSnapshot | SnapshotTail; event?: EngineEvent };
 
 /** What one scripted turn does after the person's message is recorded. */
 export type ScriptedTurn = {
@@ -157,6 +158,7 @@ const sse = (records: StreamRecord[]) =>
 export async function installMockEngine(page: Page, scenario: Scenario): Promise<MockEngine> {
   let state = baseSnapshot(scenario.initial);
   const log: StreamRecord[] = [];
+  let publishedEntries = state.entries.length;
   const calls: Call[] = [];
   const turnModels: string[] = [];
   let turnIndex = 0;
@@ -183,7 +185,11 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
 
   const publish = () => {
     state = { ...state, seq: state.seq + 1, updatedAt: new Date().toISOString() };
-    log.push({ seq: state.seq, type: 'snapshot', snapshot: structuredClone(state) });
+    const { entries, ...header } = structuredClone(state);
+    const reset = publishedEntries > entries.length;
+    const from = reset ? 0 : publishedEntries;
+    log.push({ seq: state.seq, type: 'snapshot', snapshot: { header: { ...header, entryCount: entries.length }, from, entries: elideOutputs(entries.slice(from)), ...(reset ? { reset: true } : {}) } });
+    publishedEntries = entries.length;
   };
   const emitEvent = (event: EngineEvent) => {
     state = { ...state, seq: state.seq + 1 };
@@ -229,7 +235,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     if (since === null) return { ...header, entries: elideOutputs(entries) };
     const from = Number(since);
     const reset = !Number.isInteger(from) || from < 0 || from > entries.length;
-    return { ...header, entryCount: entries.length, from: reset ? 0 : from, ...(reset ? { reset: true } : {}), entries: elideOutputs(reset ? entries : entries.slice(from)) };
+    return { header: { ...header, entryCount: entries.length }, from: reset ? 0 : from, ...(reset ? { reset: true } : {}), entries: elideOutputs(reset ? entries : entries.slice(from)) };
   };
 
   const events = async (route: Route, after: number) => {
@@ -508,7 +514,11 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     if (root !== 'sessions') return json(route, { error: 'unknown route' }, 404);
     if (!id) return forced('create') ?? json(route, history.titleOf(body.sessionFile) ? { ...state, title: history.titleOf(body.sessionFile) } : state);
     if (id !== state.id) return json(route, { error: 'reattach this conversation' }, 404);
-    if (!action) return forced('read') ?? json(route, snapshotView(url.searchParams.get('since')));
+    if (!action) {
+      const since = url.searchParams.get('since');
+      if (since !== null && (!/^[+-]?\d+$/.test(since) || !Number.isSafeInteger(Number(since)))) return json(route, { error: 'since must be an entry count' }, 400);
+      return forced('read') ?? json(route, snapshotView(since));
+    }
     if (action === 'events') return forced('events') ?? events(route, Number(url.searchParams.get('after') ?? 0));
     if (action === 'turn') return forced('turn') ?? turn(route, body);
     if (action === 'queue-send') return forced('queue') ?? queueSend(route, body);
