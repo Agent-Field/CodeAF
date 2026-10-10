@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { ToolStep } from '../types';
 import { argsRestateHint } from '../tool-family';
 import { DiffView } from './DiffView';
@@ -74,18 +74,22 @@ export function CallDetail({ call, ...render }: { call: ToolStep } & WorkRender)
 
 /**
  * An output the engine left out of the snapshot is fetched once, when the call is
- * expanded, because only an open row can show it. Outputs already present are never
- * refetched, and a failed read leaves the row as it was (the terminal block still
- * offers its own button).
+ * expanded, because only an open row can show it. The loader is read from a ref
+ * so a new function on each snapshot does not start the effect again. Outputs
+ * already present are never refetched, and a failed read leaves the row as it was
+ * (the terminal block still offers its own button).
  */
 function useOmittedOutput(call: ToolStep, readFull?: WorkRender['readFull']): ToolStep {
   const [fetched, setFetched] = useState<string>();
-  const wanted = Boolean(call.outputOmitted && !call.output && call.callId && readFull);
+  const read = useRef(readFull);
+  read.current = readFull;
+  const id = call.outputOmitted && !call.output ? call.callId : undefined;
   useEffect(() => {
-    if (!wanted || !call.callId || !readFull) return;
+    const load = read.current;
+    if (!id || !load) return;
     let alive = true;
-    readFull(call.callId).then((result) => alive && setFetched(result.output), () => undefined);
+    load(id).then((result) => { if (alive) setFetched(result.output); }, () => undefined);
     return () => { alive = false; };
-  }, [wanted, call.callId, readFull]);
+  }, [id]);
   return fetched === undefined ? call : { ...call, output: fetched };
 }

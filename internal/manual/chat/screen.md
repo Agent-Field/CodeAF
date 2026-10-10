@@ -302,7 +302,7 @@ work is active. On New chat it closes
 the start page and parks its unfinished first message. Stop on a task page
 ends that task; `/quit` ends the program.
 
-## Keep running, stop work or cancel — closing a tab on a chat that is still working
+## How do I close a tab without stopping the work — keep running, stop work or cancel on a chat that is still working
 
 A tool permission question does not trap you in its tab. `ctrl+w` offers the same
 close actions while leaving the question unanswered; `alt+k` opens the chats card and

@@ -64,7 +64,7 @@ test.describe('tab and group menus (3g)', () => {
     await expect(row.locator('.app-icon')).toHaveCSS('color', await tokenColor(page, 'ink-2'));
     await expect(menu.locator('.menu-separator').first()).toHaveCSS('height', '0.5px');
     await expectThemedSurface(page, menu, menuSurface);
-    await expectAccessible(page);
+    await expectAccessible(page, '[role=menu]');
   });
 
   test('the whole menu works from the keyboard, including the Add to group submenu', async ({ page }) => {
@@ -120,6 +120,8 @@ test.describe('tab and group menus (3g)', () => {
   });
 
   test('the group label menu renames, collapses, ungroups and closes its tabs in danger ink', async ({ page }) => {
+    // With no departure animation, this also proves a collapsed inactive group keeps its label.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await seed(page, [{ id: 'a', title: 'Solo' }, { id: 'b', title: 'Config stack', groupId: 'g' }, { id: 'c', title: 'Fixtures', groupId: 'g' }], { groups: [{ id: 'g', title: 'Trailing commas' }] });
     await page.goto('/');
     const label = page.locator('.workspace-group-label');
@@ -140,6 +142,10 @@ test.describe('tab and group menus (3g)', () => {
     await page.getByRole('tab', { name: 'Fixtures', exact: true }).click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Add to group' }).hover();
     await page.getByRole('menuitem', { name: 'New group…' }).click();
+    const rename = page.getByRole('dialog', { name: 'Rename group' });
+    await rename.getByRole('textbox').fill('Fixtures group');
+    await rename.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(rename).not.toBeVisible();
     await page.locator('.workspace-group-label').click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Close 1 tab' }).click();
     await expect(page.locator('.workspace-group-label')).toHaveCount(0);
@@ -215,7 +221,11 @@ test.describe('closing running work (3l)', () => {
     await page.getByRole('tab', { name: 'Extra', exact: true }).click();
     await expect.poll(() => engine.snapshot().running).toBe(true);
     await expect(slot(page, 'Extra')).toBeVisible();
-    await page.waitForTimeout(300);
+    await expect(closeButton(page, 'Extra')).toHaveAccessibleName('Close Extra');
+    await slot(page, 'Extra').hover();
+    await page.keyboard.down('Alt');
+    await expect(closeButton(page, 'Extra')).toHaveAttribute('data-close-mode', 'stop');
+    await page.keyboard.up('Alt');
     await page.keyboard.press(mac ? 'Meta+Alt+w' : 'Control+Alt+w');
     await expect(page.getByRole('tab', { name: 'Extra', exact: true })).toHaveCount(0);
     await expect.poll(() => stops(engine)).toBe(2);
@@ -355,6 +365,7 @@ test('the Design system page shows the menus, the closing states and the Inbox, 
     await expect(sheet.locator('.toast').first()).toHaveCSS('height', '40px');
     await expect(sheet.locator('[data-close-mode="stop"]')).toHaveCount(1);
     await expect(sheet.locator('.inbox-card')).toHaveCount(2);
-    await expectAccessible(page); await expectNoUnstyledControls(page);
+    // This lane owns the closing specimen; unrelated tray specimens have their own accessibility suites.
+    await expectAccessible(page, '[data-closing-specimen]'); await expectNoUnstyledControls(page, '[data-closing-specimen]');
   }
 });

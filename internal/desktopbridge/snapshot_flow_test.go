@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -178,4 +179,38 @@ func snapshotFlowBytes(v reflect.Value) uint64 {
 		}
 	}
 	return bytes
+}
+
+// Reattach is a POST of the session file, the same door a window uses when its
+// stream drops. That answer has to omit an over-cap output the way a GET does,
+// or opening the call finds the body already inlined and never fetches it.
+func TestReattachOmitsOverCapToolOutput(t *testing.T) {
+	a := &stateAgent{fakeAgent: &fakeAgent{model: Model}, titles: make(chan session.Event, 1), questionsLane: make(chan session.Event, 1)}
+	b := New(testToken, func(string) (Connection, error) {
+		return Connection{Agent: a, Welcome: remote.Welcome{SessionFile: "session.jsonl", Model: Model, Persistent: true, Launch: &remote.LaunchShape{OneModel: true}}, Close: func() {}}, nil
+	})
+	t.Cleanup(b.Close)
+	body := strings.Repeat("x", outputCap+1)
+	a.mu.Lock()
+	a.entries = []session.DisplayEntry{{Role: "tool", Tool: "probe", CallID: "g1", Output: body}}
+	a.mu.Unlock()
+	for range 2 {
+		w := request(b, http.MethodPost, "/api/engine/sessions", `{"sessionFile":"session.jsonl"}`)
+		if w.Code != http.StatusOK {
+			t.Fatalf("HTTP %d %s", w.Code, w.Body.String())
+		}
+		var snap elidedSnapshot
+		if err := json.Unmarshal(w.Body.Bytes(), &snap); err != nil {
+			t.Fatal(err)
+		}
+		if len(snap.Entries) != 1 || snap.Entries[0].Output != "" || !snap.Entries[0].OutputOmitted || snap.Entries[0].OutputBytes != len(body) {
+			t.Fatalf("attach leaked tool output: output=%q omitted=%t bytes=%d", snap.Entries[0].Output, snap.Entries[0].OutputOmitted, snap.Entries[0].OutputBytes)
+		}
+		if snap.ID == "" || snap.Entries[0].CallID != "g1" {
+			t.Fatalf("attach dropped the session or the call: %+v", snap)
+		}
+	}
+	if got := a.Transcript()[0].Output; got != body {
+		t.Fatalf("canonical output changed: %d bytes", len(got))
+	}
 }
