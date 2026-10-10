@@ -30,8 +30,8 @@ export type PlaceRailActions = {
 
 export type PlaceRailProps = {
   /** True when the rail is not on screen: its controls leave the tab order. */
-  inert: boolean; paletteOpen: boolean; peeking: boolean;
-  onToggle: () => void; onSearch: () => void;
+  inert: boolean; peeking: boolean;
+  onToggle: () => void;
   /** Inbox: absent where nothing backs it (no row, never a dead one). */
   inbox?: { count: number; active: boolean; onOpen: () => void };
   now: { active: boolean; status?: 'waiting' | 'failed'; statusLabel?: string; shortcut: string; onGo: () => void; onNewWindow?: () => void };

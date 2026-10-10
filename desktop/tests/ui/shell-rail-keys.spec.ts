@@ -339,10 +339,12 @@ test('Settings is a tab: the rail item opens it once, lights while it shows, and
   await openPage(page, 'Settings');
   await expect(page.getByRole('tab', { name: 'Models', exact: true })).toHaveCount(1);
   await expect(page.getByRole('heading', { name: 'Models', level: 1 })).toBeVisible();
-  // The command palette goes to the same tab.
+  // ⌘K leaves Settings for the New-tab field and keeps the one Settings tab.
   await page.keyboard.press(`${mod}+k`);
-  await page.getByRole('button', { name: /Go to Settings/ }).click();
+  await expect(page.getByRole('combobox', { name: 'Search or start' })).toBeFocused();
   await expect(page.getByRole('tab', { name: 'Models', exact: true })).toHaveCount(1);
+  await page.keyboard.press(`${mod}+w`);
+  await openPage(page, 'Settings');
   // It survives a reload like any tab.
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Models', level: 1 })).toBeVisible();
