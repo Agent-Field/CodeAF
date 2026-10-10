@@ -82,6 +82,8 @@ export function buildSections(input: RowInput): NewTabSection[] {
     rows.push({ id: 'seeall', kind: 'seeall', icon: 'history', label: `See all ${found.total} in History`, hint: input.seeAllShortcut });
     sections.push({ title: 'From history', rows });
   }
+  // Shell 3f Start. New terminal is drawn only while that kind is backed: an unbacked row would be a control that cannot work.
+  // Choosing it turns this tab into a terminal. ⌃` itself belongs to the terminal key, not to this row.
   const start: NewTabRow[] = [
     ...(input.terminal ? [{ id: 'terminal', kind: 'terminal' as const, icon: 'terminal' as const, label: 'New terminal', hint: input.terminalShortcut }] : []),
     { id: 'openfile', kind: 'openfile', icon: 'findFiles', label: 'Open file…', hint: input.fileShortcut },

@@ -54,7 +54,7 @@ Shared, change with care and keep edits small: `tokens.json` (add keys, never re
 ## Tab polish seams
 
 - **Title tooltip** (`Tab.tsx` + `useTitleOverflow.ts`): the shared 500ms tooltip with the full title when the name is cut and no hover preview opens (the active tab, a compressed tab). An inactive tab's hover preview already holds its title, and no tooltip opens while any preview card is open. A split's segments still use `hosts/titleTooltipHost.tsx` through `SplitTab`'s `wrapSegment`.
-- **⌘/Ctrl O** is ShortcutId `open-file` in `design/keyboard.ts`. Only the focused new-tab field registers for it (surface layer) and it runs the Open file… row's own pick; no other surface claims it.
+- **⌘/Ctrl O** is ShortcutId `open-file` in `design/keyboard.ts`. The focused new-tab field runs the Open file… row's own pick. From any other tab, `useNewTabKeys` opens a New tab or focuses one already open, and the caption becomes "Type part of a file name." A dialog that is open keeps the chord.
 - **Overview card press** (Interactions "Overview card · ⌘-click / middle: Background tab"): every card is a tab that is ALREADY open, so a ⌘/Ctrl-click or middle-click opens nothing: the active tab and the overlay stay as they are and only the cursor moves to the card (`backgroundPress` in `OverviewCard.tsx`, predicate `isBackgroundPress` in `overview-model.ts`). A plain click opens and closes the overview.
 - **Overview card menu** is `tabMenuFor(api, tab)` from `hosts/menuHost.tsx`, the strip's own builder, passed down as `TabOverview`'s `menuFor`. There is no second menu array; the Inbox has no menu in either place. `ToastRegion` draws inside an open modal dialog so a toast posted from the overview is seen.
 ## Group suggestion
