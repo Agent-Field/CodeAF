@@ -338,8 +338,8 @@ test('g. Delete place… says what will happen first, then offers Undo', async (
   await openAllPlaces(page, rig);
   await tile(page, 'Software').locator('.places-tile-main').click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Delete place…' }).click();
-  const confirm = page.getByRole('group', { name: 'Delete Software' });
-  await expect(confirm).toContainText('Delete “Software”? 1 place inside it moves up a level. No chat is deleted.');
+  const confirm = page.getByRole('group', { name: /Delete “Software”/ });
+  await expect(confirm).toContainText('Delete “Software”? 1 place moves up. No chat is deleted.');
   expect(rig.places.posts('/delete')).toEqual([]);
   await confirm.getByRole('button', { name: 'Delete place' }).click();
   await expect.poll(() => rig.places.posts(`/places/${software}/delete`).length).toBe(1);
