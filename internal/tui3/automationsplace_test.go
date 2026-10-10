@@ -1,6 +1,8 @@
 package tui3
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -264,6 +266,60 @@ func TestARunThatEndedLeavesOneLineInItsConversation(t *testing.T) {
 	}
 	if len(lines) != 1 || lines[0] != "weekly update · done · drafted it" {
 		t.Fatalf("the conversation got %q, want the one finished run and nothing for the quiet look", lines)
+	}
+}
+
+// A CONVERSATION SWITCHED TO IS TOLD WHAT IT MISSED, ONCE. Its run ended while
+// another conversation was in front; when it comes forward the next reading
+// draws the line there, and coming back to it again does not draw it twice.
+func TestAConversationSwitchedToIsToldWhatItMissedOnce(t *testing.T) {
+	a, store := automationLab(t)
+	here := a.file
+	other := filepath.Join(t.TempDir(), "other", "transcript.jsonl")
+	if err := os.MkdirAll(filepath.Dir(other), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(other, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The person last had anything to do with it an hour ago.
+	hourAgo := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(other, hourAgo, hourAgo); err != nil {
+		t.Fatal(err)
+	}
+	item := labWork("weekly update", "0 9 * * 1")
+	item.Workspace, item.Origin.Transcript = t.TempDir(), other
+	made, err := store.Create(item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readAutomationsNow(t, a)
+	finishRun(t, store, made.ID, automation.OutcomeDone, "drafted it")
+
+	said := func() int {
+		n := 0
+		for _, e := range a.entries {
+			if e.kind == entryAutomation && e.auto != nil && e.auto.line == "weekly update · done · drafted it" {
+				n++
+			}
+		}
+		return n
+	}
+	readAutomationsNow(t, a)
+	if got := said(); got != 0 {
+		t.Fatalf("the line was drawn in a conversation that did not make it (%d)", got)
+	}
+	a.file = other
+	readAutomationsNow(t, a)
+	if got := said(); got != 1 {
+		t.Fatalf("the conversation switched to was told %d times, want once", got)
+	}
+	a.file = here
+	readAutomationsNow(t, a)
+	a.file = other
+	readAutomationsNow(t, a)
+	if got := said(); got != 1 {
+		t.Fatalf("coming back to it told it %d times, want once", got)
 	}
 }
 

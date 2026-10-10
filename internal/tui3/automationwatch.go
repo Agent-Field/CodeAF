@@ -81,7 +81,20 @@ type automationsWatch struct {
 	// the quit question is not asked from an unknown.
 	running, others int
 	known           bool
+	// awayFor is the conversation whose missed news this window last gathered.
+	// A conversation that comes to the front is asked about once, on the next
+	// reading, whether it is the first one this window opened or one it
+	// switched to.
+	awayFor string
+	// drawn is every run whose line this window has drawn, so a conversation
+	// switched away from and back to is not told the same news twice.
+	drawn map[int64]bool
 }
+
+// drawnMost bounds [automationsWatch.drawn]. A window open for weeks would
+// otherwise remember every run it ever drew; forgetting them all at once costs
+// at most a line drawn again in a conversation switched back to.
+const drawnMost = 4096
 
 // automationsReadMsg is one reading.
 type automationsReadMsg struct {
@@ -89,6 +102,9 @@ type automationsReadMsg struct {
 	cursor  int64
 	runs    []automation.Run
 	away    []automation.Run
+	// awayFor is the conversation away was gathered for, and empty when this
+	// reading gathered nothing.
+	awayFor string
 	list    []automation.Automation
 	listed  bool
 	active  []automation.Run
@@ -112,8 +128,9 @@ func (a *app) beatAutomations() tea.Cmd {
 
 // readAutomations reads the store once, in a command: the runs that changed
 // since the cursor, the list, how many runs are in hand and how many windows
-// are open. The first reading starts the cursor at now and collects what this
-// conversation missed while it was closed instead.
+// are open. The first reading starts the cursor at now. AND WHENEVER A
+// CONVERSATION COMES TO THE FRONT — the first one, or one switched to — the
+// reading also collects what it missed while it was not in front.
 func (a *app) readAutomations() tea.Cmd {
 	seam := a.autos
 	if !seam.on() {
@@ -122,6 +139,7 @@ func (a *app) readAutomations() tea.Cmd {
 	cursor := a.watch.cursor
 	started := a.watch.started
 	file := a.file
+	gather := strings.TrimSpace(file) != "" && !sameTranscript(file, a.watch.awayFor)
 	return func() tea.Msg {
 		msg := automationsReadMsg{first: !started, cursor: cursor}
 		if !started {
@@ -136,8 +154,8 @@ func (a *app) readAutomations() tea.Cmd {
 		if list, err := seam.List(); err == nil {
 			msg.list, msg.listed = list, true
 		}
-		if !started {
-			msg.away = automationsAway(seam, msg.list, file)
+		if gather {
+			msg.away, msg.awayFor = automationsAway(seam, msg.list, file), file
 		}
 		if seam.Active != nil {
 			if active, err := seam.Active(); err == nil {
@@ -161,8 +179,22 @@ func (a *app) readAutomations() tea.Cmd {
 	}
 }
 
-// automationsAway is the news a conversation missed while it was closed: runs
-// of automations it made that ended after the person was last in it.
+// drawAutomationRun draws one run's line in the conversation in front, once per
+// window: a run already drawn here is not drawn again when its conversation is
+// switched back to.
+func (a *app) drawAutomationRun(item automation.Automation, run automation.Run) {
+	if a.watch.drawn[run.ID] {
+		return
+	}
+	if a.watch.drawn == nil || len(a.watch.drawn) >= drawnMost {
+		a.watch.drawn = map[int64]bool{}
+	}
+	a.watch.drawn[run.ID] = true
+	a.automationRan(item, run)
+}
+
+// automationsAway is the news a conversation missed while it was not in front:
+// runs of automations it made that ended after the person was last in it.
 func automationsAway(seam AutomationsSeam, list []automation.Automation, file string) []automation.Run {
 	if seam.Runs == nil || strings.TrimSpace(file) == "" {
 		return nil
@@ -223,9 +255,19 @@ func (a *app) automationsRead(msg automationsReadMsg) tea.Cmd {
 		byID[item.ID] = item
 	}
 	var cmds []tea.Cmd
-	for _, run := range msg.away {
-		if item, ok := byID[run.AutomationID]; ok {
-			a.automationRan(item, run)
+	// THE MISSED NEWS IS DRAWN ONLY WHERE IT WAS GATHERED FOR. A switch that
+	// landed while the reading was out leaves the news for the conversation it
+	// was about; the next reading asks about the one now in front.
+	if msg.awayFor != "" {
+		a.watch.awayFor = msg.awayFor
+		if sameTranscript(msg.awayFor, a.file) {
+			for _, run := range msg.away {
+				if item, ok := byID[run.AutomationID]; ok {
+					a.drawAutomationRun(item, run)
+				}
+			}
+		} else {
+			a.watch.awayFor = ""
 		}
 	}
 	for _, run := range msg.runs {
@@ -237,7 +279,7 @@ func (a *app) automationsRead(msg automationsReadMsg) tea.Cmd {
 			continue
 		}
 		if sameTranscript(item.Origin.Transcript, a.file) {
-			a.automationRan(item, run)
+			a.drawAutomationRun(item, run)
 		}
 		if automationNotifies(item, run) {
 			cmds = append(cmds, a.notifyAutomation(item, run))

@@ -305,10 +305,11 @@ Every one but `nothing new` is news: a line in the conversation that made it, an
 **In the conversation that made it.** When a run ends, one dim line appears there:
 `weekly update · done · drafted it`, `ci on main · done · CI on main is red`. It is not part
 of the transcript, it does not wake me, and it costs nothing. A window draws it only while
-that conversation is the one in front. One that was in front nowhere gets its lines when a
-codeaf window next starts with it in front — every run worth telling you about that ended
-since you last wrote there, up to the last ten of each automation. Switching to it in a
-window that is already open does not draw them; its history on `/automations` has every run.
+that conversation is the one in front. One that was not in front gets its lines when it
+next comes to the front — a window starting with it, or a switch to it in a window already
+open, within a couple of seconds — every run worth telling you about that ended since you
+last wrote there, up to the last ten of each automation. A line a window has already drawn
+is not drawn again when you switch back. Its history on `/automations` has every run.
 
 **On the desktop.** A run that is news raises one notification, titled `codeaf · <title>`
 with the same line as its text: on macOS through `osascript`, on Linux through
