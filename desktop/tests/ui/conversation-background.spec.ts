@@ -49,6 +49,7 @@ for (const scheme of ['light', 'dark'] as const) {
       const quiet = page.getByRole('tab', { name: 'Quiet', exact: true });
       await expect(page.getByText('Keep this conversation in front.', { exact: true })).toBeVisible();
       await expect.poll(() => delivered).toBe(1);
+      await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toBeFocused();
       await expect(background.getByRole('img', { name: 'Needs you' })).toHaveCount(0);
       await page.clock.runFor(1100);
       await expect.poll(() => pending !== undefined).toBe(true);
@@ -84,6 +85,14 @@ for (const scheme of ['light', 'dark'] as const) {
       await expect(background).toBeFocused();
       await expect(background).toHaveAttribute('aria-selected', 'true');
       await expect.poll(() => attachments().map(call => call.body.sessionFile)).toEqual([tabs[0].sessionFile, tabs[1].sessionFile]);
+      // Attaching and rendering the destination must not take focus from the strip.
+      await expect(background).toBeFocused();
+      await background.press('ArrowRight');
+      await expect(quiet).toBeFocused();
+      await expect(quiet).toHaveAttribute('aria-selected', 'true');
+      await quiet.press('ArrowLeft');
+      await expect(background).toBeFocused();
+      await expect(background).toHaveAttribute('aria-selected', 'true');
     });
   }
 }
