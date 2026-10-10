@@ -61,7 +61,7 @@ export type TabProps = FrameProps & {
   compressed?: boolean;
   /** Forces the hover look, for specimens. */
   hover?: boolean;
-  /** Picked with ⌘-click (Ctrl-click on Linux) for ⌘G: a field fill, and "Selected" for a screen reader. */
+  /** Picked with ⌘-click (Ctrl-click on Linux) for ⌘G: a field fill, and "selected for grouping" for a screen reader. */
   picked?: boolean;
   /** Alt held: the close slot becomes a stop square (close and stop). */
   closeMode?: 'close' | 'stop';
@@ -109,7 +109,7 @@ export function Tab({ kind, title, icon, monogram, favicon, active = false, pinn
   const tip = overflow && (active || compressed) && !previewOpen ? title : '';
   const tooltip = useTooltip<HTMLButtonElement>(tip);
   const select = (
-    <Button {...tooltip.props} className="workspace-tab-select" role={specimen ? undefined : 'tab'} id={id} aria-controls={specimen ? undefined : 'workspace-tab-panel'} aria-selected={specimen ? undefined : active} aria-current={specimen && active ? true : undefined} aria-label={title} aria-description={[state && tabStateLabel[state], titleShown && meta, picked && 'Selected', !state && badge && (badge === 'failed' ? 'A task failed' : 'Needs you')].filter(Boolean).join(', ') || undefined} tabIndex={tabIndex ?? (active ? 0 : -1)} onClick={onSelect} onDoubleClick={onRename} onKeyDown={onKeyDown}>
+    <Button {...tooltip.props} className="workspace-tab-select" role={specimen ? undefined : 'tab'} id={id} aria-controls={specimen ? undefined : 'workspace-tab-panel'} aria-selected={specimen ? undefined : active} aria-current={specimen && active ? true : undefined} aria-label={title} aria-description={[state && tabStateLabel[state], titleShown && meta, picked && 'selected for grouping', !state && badge && (badge === 'failed' ? 'A task failed' : 'Needs you')].filter(Boolean).join(', ') || undefined} tabIndex={tabIndex ?? (active ? 0 : -1)} onClick={onSelect} onDoubleClick={onRename} onKeyDown={onKeyDown}>
       {home && !state ? <PlaceSwatch tint={placeTint} role="rail"/> : <TabGlyph icon={icon} favicon={favicon} kind={kind} title={title} monogram={monogram} state={state}/>}
       {titleShown && <span ref={titleRef} className="workspace-tab-title">{title}</span>}
       {titleShown && meta && <span className="workspace-tab-meta">{meta}</span>}
@@ -119,7 +119,7 @@ export function Tab({ kind, title, icon, monogram, favicon, active = false, pinn
   );
   const stop = closeMode === 'stop';
   return (
-    <div {...rest} {...frame} className={`workspace-tab ${pinned && !home ? 'is-pinned' : ''} ${home ? 'is-place-home' : ''} ${frame?.className ?? ''}`} data-active={active} data-kind={kind} data-state={state} data-hover={hover || undefined} data-compressed={compressed || undefined} data-in-group={inGroup || undefined} data-picked={picked || undefined} data-title-overflow={overflow || undefined}>
+    <div {...rest} {...frame} className={`workspace-tab ${pinned && !home ? 'is-pinned' : ''} ${home ? 'is-place-home' : ''} ${frame?.className ?? ''}`} data-active={active} data-kind={kind} data-state={state} data-hover={hover || undefined} data-compressed={compressed || undefined} data-in-group={inGroup || undefined} data-picked={picked || undefined} data-selected={picked || undefined} data-title-overflow={overflow || undefined}>
       {wrapSelect ? wrapSelect(select) : select}
       {tooltip.element}
       {!pinned && !compressed && onClose && <span className="workspace-tab-close-slot"><IconButton className="workspace-tab-close" label={stop ? `Close and stop ${title}` : `Close ${title}`} title={closeHint} shortcut={closeShortcut} data-close-mode={closeMode} icon={stop ? 'stop' : 'close'} iconSize="micro" tabIndex={active ? 0 : -1} onClick={onClose}/></span>}
