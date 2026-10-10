@@ -158,7 +158,7 @@ test.describe('⌘O / Ctrl O on the new-tab field (TA-KEY-12)', () => {
 
   test('the advertised chord does what the Open file… row does, with no engine call', async ({ page }) => {
     const calls: string[] = [];
-    page.on('request', request => { if (request.url().includes('/api/engine/') && !/\/api\/engine\/(world|events)\b/.test(request.url())) calls.push(request.url()); });
+    page.on('request', request => { if (request.url().includes('/api/engine/') && !/\/api\/engine\/(places|events|world|workspaces)\b/.test(request.url())) calls.push(request.url()); });
     await page.goto('/');
     await page.getByRole('button', { name: 'New tab', exact: true }).click();
     await expect(field(page)).toBeFocused();
@@ -179,31 +179,35 @@ test.describe('⌘O / Ctrl O on the new-tab field (TA-KEY-12)', () => {
     expect((await saved(page)).tabs.some((tab: { kind: string }) => tab.kind === 'newtab')).toBe(true);
   });
 
-  test('another surface does not answer the chord: a conversation tab ignores it, so does a field behind a dialog', async ({ page }) => {
+  test('from another tab the chord focuses the open New tab and asks for a file name, and a dialog keeps the chord', async ({ page }) => {
     await seed(page, tabsOf({ id: 'a', title: 'Conversation' }, { id: 'n', title: 'New tab', kind: 'newtab' }), 'a');
     await page.goto('/');
     await expect(stripTab(page, 'Conversation')).toHaveAttribute('aria-selected', 'true');
-    await page.keyboard.press(`${await primary(page)}+o`);
-    await expect(caption(page)).toHaveCount(0);
-    await stripTab(page, 'New tab').click();
+    // The seeded draft sits in the composer, and a writing field that already holds words keeps this chord.
+    await stripTab(page, 'Conversation').press(`${await primary(page)}+o`);
+    await expect(stripTab(page, 'New tab')).toHaveAttribute('aria-selected', 'true');
+    await expect(caption(page)).toBeVisible();
     await expect(field(page)).toBeFocused();
+    await expect(page.getByRole('tab')).toHaveCount(2);
     await page.getByRole('button', { name: 'All tabs', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'All tabs overview', exact: true })).toBeVisible();
     await page.keyboard.press(`${await primary(page)}+o`);
-    await expect(caption(page)).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: 'All tabs overview', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab')).toHaveCount(2);
   });
 
-  test('only the focused pane of a split claims it', async ({ page }) => {
+  test('a split focuses its New tab pane and asks for a file name', async ({ page }) => {
     const pane = (id: string, title: string, kind = 'conversation') => ({ id, title, draft: '', kind });
     const split = { id: 'sp', title: 'Split', draft: '', pinned: false, kind: 'conversation', titleSource: 'manual', split: { layout: '1x2', focus: 0, panes: [pane('p1', 'Chat'), pane('p2', 'New tab', 'newtab')] } };
     await seed(page, [split], 'sp');
     await page.goto('/');
     await expect(field(page)).toBeVisible();
-    await page.keyboard.press(`${await primary(page)}+o`);
     await expect(caption(page)).toHaveCount(0);
-    await stripTab(page, 'New tab').click();
     await page.keyboard.press(`${await primary(page)}+o`);
     await expect(caption(page)).toBeVisible();
+    await expect(field(page)).toBeFocused();
+    await expect(page.getByRole('tab', { name: 'New tab', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('group', { name: /Split/ })).toBeVisible();
   });
 });
 
