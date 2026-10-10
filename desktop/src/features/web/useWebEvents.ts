@@ -13,10 +13,12 @@ export function useWebEvents(state: WebState | null, url: string | undefined, ac
   const shown = state?.url || url;
   const title = state?.title.trim() || (shown ? siteOf(shown) : '');
 
+  const failed = !!state?.failure;
+
   // Workspace callbacks are recreated on render; their identity must not publish another summary.
   useEffect(() => {
-    if (title) current.current.onSummary({ title, firstLine: '', digest: shown ?? '' });
-  }, [title, shown]);
+    if (title) current.current.onSummary({ title, firstLine: '', digest: shown ?? '', mark: failed ? 'failed' : undefined });
+  }, [title, shown, failed]);
   useEffect(() => {
     if (state?.url && state.url !== url && /^https?:/i.test(state.url)) current.current.onView({ target: { url: state.url } });
   }, [state?.url, url]);

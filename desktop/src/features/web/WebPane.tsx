@@ -8,6 +8,7 @@ import type { PaneRenderProps } from '../tabs/kinds/slots';
 import { refusalSentence, siteOf } from './address';
 import { TabsApiContext } from '../tabs/context';
 import { useWebFavicons } from './favicons';
+import { WebStatus } from './WebStatus';
 import { WebHeader } from './WebHeader';
 import { webHost, subscribeWebHost } from './host';
 import { capture } from './shots';
@@ -23,7 +24,7 @@ const noticeLine: Record<WebNotice, string> = {
   permission: 'Web tabs do not get the camera, microphone or location',
 };
 
-function failureText(failure: WebFailure, url: string): { title: string; detail: string } {
+function failureText(failure: Exclude<WebFailure, { kind: 'certificate' }>, url: string): { title: string; detail: string } {
   if (failure.kind === 'unreachable') return { title: 'This page did not load', detail: `codeaf could not reach ${siteOf(url)}.` };
   return { title: 'This address does not open here', detail: `${refusalSentence[failure.reason]}.` };
 }
@@ -84,7 +85,7 @@ export function WebPane({ pane, focused, actions }: PaneRenderProps) {
   const live = web.native && !!state;
   const loading = !!state?.loading && !state.failure;
   const historyOpen = (flag: boolean | undefined) => live && (!state!.historyKnown || !!flag);
-  const failure = state?.failure ? failureText(state.failure, shown ?? '') : web.openError ? { title: 'This page did not open', detail: `${web.openError}.` } : null;
+  const failure = state?.failure && state.failure.kind !== 'certificate' ? failureText(state.failure, shown ?? '') : web.openError ? { title: 'This page did not open', detail: `${web.openError}.` } : null;
   return <div className="web-pane" data-pane={pane.id} data-loading={loading || undefined} data-find={finding || undefined}>
     <LoadingLine active={loading}/>
     <WebHeader find={finding ? { search: (query, forward) => webFind(pane.id, query, forward), close: closeFind } : undefined} url={shown} favicon={favicons.get(pane.id)} loading={loading}
@@ -101,7 +102,9 @@ export function WebPane({ pane, focused, actions }: PaneRenderProps) {
           <Text>This window cannot show {siteOf(shown)}.</Text>
           <Button variant="raised" onClick={() => void openUrl(shown)}>Open in browser</Button>
         </div>}
-        {web.native && failure && <div className="web-state" role="alert">
+        {web.native && state?.failure?.kind === 'certificate' && shown && <WebStatus kind="certificate"
+          onExternal={() => void openUrl(shown)} onReload={() => retry(pane.id)}/>}
+        {web.native && failure && state?.failure?.kind !== 'certificate' && <div className="web-state" role="alert">
           <Icon name="warn" size="lg"/>
           <Text tone="default">{failure.title}</Text>
           <Text>{failure.detail}</Text>
