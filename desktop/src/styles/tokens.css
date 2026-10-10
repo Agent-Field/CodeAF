@@ -540,6 +540,7 @@
   --code-pad-end: 12px;
   --table-min-width: 360px;
   --edge-fade-inline: 24px;
+  --edge-fade-block: 40px;
   --task-check-icon: 10px;
   --task-check-ring: 1.5px;
   --rule-width: 2px;
@@ -746,6 +747,9 @@
   --rail-drag-ghost-opacity: .95;
   --pointer-drag-threshold: 4px;
   --rail-switcher-width: 280px;
+  --rail-switcher-radius: 7px;
+  --rail-switcher-label-pad-top: 6px;
+  --rail-switcher-label-pad-bottom: 2px;
   --rail-peek-delay: 300ms;
   --type-home-title-size: 28px;
   --type-home-title-leading: normal;

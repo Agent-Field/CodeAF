@@ -1,13 +1,15 @@
 import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { Button, ContextMenu, type MenuEntry } from '../../../components/ui';
 import { useDropTarget, usePointerDrag, type DragPayload } from '../../../components/ui/usePointerDrag';
-import { choosableTints, tintLabel, type TintName } from '../components/PlaceSwatch';
+import { type TintName } from '../components/PlaceSwatch';
 import type { PlaceRowModel } from '../shell/contracts';
 import { dropPayloadFromPointer } from '../place-actions';
 import type { RailSections } from '../shell/selectors';
+import { railMenu } from '../menus/railMenu';
 import { NowRow } from '../../shell/NowRow';
 import { railShortcutVisible, shownPlaces, stepRail, type RailKey } from './railFocus';
 import { RailRow } from './RailRow';
+import { keyboardMoveTarget, movedAnnouncement, pinnedDropIndex } from './railDnd';
 import './rail-sections.css';
 
 /** What a rail row can ask for. Each is wired by the shell; one that is absent has no menu entry and no gesture. */
@@ -58,7 +60,7 @@ export type PlaceRailSectionsProps = {
   slotShortcut: (index: number) => string;
   closeShortcut: string;
   newWindowShortcut: string;
-  /** App pages and the theme, drawn under All places. */
+  /** Settings, and the development Design system row, drawn under All places. */
   foot?: ReactNode;
 };
 
@@ -83,8 +85,8 @@ function railCommit(payload: DragPayload, target: RailTarget, actions: PlaceRail
     if (target.placeId) actions.fileChats?.(body.ids, target.placeId);
     return true;
   }
-  for (const id of body.ids) {
-    if (target.section === 'pinned') actions.pin?.(id, target.index);
+  for (const [offset, id] of body.ids.entries()) {
+    if (target.section === 'pinned') actions.pin?.(id, pinnedDropIndex(pinnedIds, id, target.index) + offset);
     else if (pinnedIds.includes(id)) actions.unpin?.(id);
   }
   return true;
@@ -108,13 +110,14 @@ function RailSectionRows({ section, index, actions, pinnedIds, setOver, children
 }
 
 /** One place row. The pointer starts on the row, so a press on its button still picks the place up. */
-function RailPlace({ place, section, index, actions, pinnedIds, over, setOver, menuItems, slot, slotShortcut, closeShortcut, current, tabCount, focus, onClick, onAuxClick }: {
+function RailPlace({ place, section, index, actions, pinnedIds, over, setOver, menuItems, slot, slotShortcut, closeShortcut, current, tabCount, focus, onClick, onAuxClick, onKeyDown }: {
   place: PlaceRowModel; section: 'pinned' | 'open'; index: number; actions: PlaceRailActions; pinnedIds: readonly string[];
   over?: string; setOver: (key: string | undefined) => void; menuItems: MenuEntry[]; slot?: number; slotShortcut: (index: number) => string;
   closeShortcut: string; current?: string; tabCount?: (id: string) => number;
   focus: { 'data-rail-item': string; tabIndex: number; onFocus: () => void };
   onClick: (event: MouseEvent<HTMLButtonElement>) => void;
   onAuxClick: (event: MouseEvent<HTMLButtonElement>) => void;
+  onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
 }) {
   const target: RailTarget = { section, index, placeId: place.id };
   const pointer = usePointerDrag(actions.pin ? { payload: { kind: 'place', id: place.id, ids: [place.id] } } : null);
@@ -132,7 +135,7 @@ function RailPlace({ place, section, index, actions, pinnedIds, over, setOver, m
       close={section === 'open' ? { onClose: () => actions.close(place.id), tabs: tabCount?.(place.id), shortcut: place.id === current ? closeShortcut : undefined } : undefined}
       containerProps={{ ref: dropRef, 'data-drop': over === `${section}:${index}` || undefined, ...pointer }}
       aria-keyshortcuts={slot ? slotShortcut(slot).replace('⌃', 'Control+').replace('Alt ', 'Alt+') : undefined}
-      {...focus} onClick={onClick} onAuxClick={onAuxClick}/>
+      {...focus} onClick={onClick} onAuxClick={onAuxClick} onKeyDown={onKeyDown}/>
   </ContextMenu>;
 }
 
@@ -152,6 +155,7 @@ export function PlaceRailSections(props: PlaceRailSectionsProps) {
   const { now, sections, current, emptyHint, livePlaces, notice, allPlaces, actions, tabCount, slotShortcut, closeShortcut, newWindowShortcut, foot } = props;
   const [over, setOver] = useState<string>();
   const [cursor, setCursor] = useState<string>();
+  const [announcement, setAnnouncement] = useState('');
   const pinned = shownPlaces(sections?.pinned ?? []);
   const open = shownPlaces(sections?.open ?? []);
   const pinnedIds = pinned.map(place => place.id);
@@ -159,25 +163,18 @@ export function PlaceRailSections(props: PlaceRailSectionsProps) {
   const activeId = now.active ? NOW : current && ids.includes(current) ? current : allPlaces?.active ? ALL : NOW;
   const stop = cursor && ids.includes(cursor) ? cursor : activeId;
   const slotOf = (id: string) => { const order = [...pinnedIds, ...open.map(place => place.id)]; const at = order.indexOf(id); return at >= 0 && at < 9 ? at + 1 : undefined; };
+  const indexOfPinned = (id: string) => pinnedIds.indexOf(id);
 
-  function menu(place: PlaceRowModel, section: 'pinned' | 'open'): MenuEntry[] {
-    const groups: MenuEntry[][] = [[], [], [], []];
-    groups[0].push({ id: 'go', label: 'Go to', shortcut: '↵', onSelect: () => actions.go(place.id) });
-    if (actions.quickLook) groups[0].push({ id: 'quick-look', label: 'Quick Look', onSelect: () => actions.quickLook?.(place.id) });
-    if (actions.newWindow) groups[0].push({ id: 'new-window', label: 'Open in new window', shortcut: newWindowShortcut, onSelect: () => actions.newWindow?.(place.id) });
-    if (section === 'pinned' && actions.unpin) {
-      groups[1].push({ id: 'unpin', label: 'Unpin', onSelect: () => actions.unpin?.(place.id) });
-      const at = pinnedIds.indexOf(place.id);
-      if (actions.pin && at > 0) groups[1].push({ id: 'up', label: 'Move up', onSelect: () => actions.pin?.(place.id, at - 1) });
-      if (actions.pin && at < pinnedIds.length - 1) groups[1].push({ id: 'down', label: 'Move down', onSelect: () => actions.pin?.(place.id, at + 1) });
-    } else if (actions.pin) groups[1].push({ id: 'pin', label: 'Pin', onSelect: () => actions.pin?.(place.id) });
-    if (actions.rename) groups[1].push({ id: 'rename', label: 'Rename…', onSelect: () => actions.rename?.(place.id) });
-    if (actions.setTint) groups[1].push({ kind: 'submenu', id: 'tint', label: 'Tint', items: choosableTints.map(tint => ({ id: `tint-${tint}`, label: tintLabel[tint], checked: tint === place.tint, onSelect: () => actions.setTint?.(place.id, tint) })) });
-    groups[2].push({ id: 'close', label: 'Close', shortcut: place.id === current ? closeShortcut : undefined, onSelect: () => actions.close(place.id) });
-    groups[2].push({ id: 'close-others', label: 'Close all others', disabled: !open.some(other => other.id !== place.id), onSelect: () => actions.closeOthers(place.id) });
-    const entries: MenuEntry[] = [];
-    groups.filter(group => group.length).forEach((group, index) => { if (index) entries.push({ kind: 'separator', id: `sep-${index}` }); entries.push(...group); });
-    return entries;
+  function menu(place: PlaceRowModel, section: 'pinned' | 'open') {
+    return railMenu({ id: place.id, tint: place.tint, pinned: section === 'pinned' }, {
+      goTo: actions.go, quickLook: actions.quickLook, newWindow: actions.newWindow, newWindowShortcut,
+      pin: actions.pin, unpin: actions.unpin, startRename: actions.rename, setTint: actions.setTint,
+      close: actions.close, closeOthers: actions.closeOthers,
+      closeShortcut: place.id === current ? closeShortcut : undefined,
+      closeOthersDisabled: !open.some(other => other.id !== place.id),
+      moveUp: actions.pin && indexOfPinned(place.id) > 0 ? id => actions.pin?.(id, indexOfPinned(id) - 1) : undefined,
+      moveDown: actions.pin && indexOfPinned(place.id) < pinnedIds.length - 1 ? id => actions.pin?.(id, indexOfPinned(id) + 1) : undefined,
+    });
   }
 
   const focusProps = (id: string) => ({ 'data-rail-item': id, tabIndex: id === stop ? 0 : -1, onFocus: () => setCursor(id) });
@@ -187,22 +184,36 @@ export function PlaceRailSections(props: PlaceRailSectionsProps) {
       menuItems={menu(place, section)} slot={slotOf(place.id)} slotShortcut={slotShortcut} closeShortcut={closeShortcut} current={current} tabCount={tabCount}
       focus={focusProps(place.id)}
       onClick={event => (primaryClick(event) && actions.newWindow ? actions.newWindow(place.id) : actions.go(place.id))}
-      onAuxClick={event => { if (event.button === 1 && actions.newWindow) { event.preventDefault(); actions.newWindow(place.id); } }}/>;
+      onAuxClick={event => { if (event.button === 1 && actions.newWindow) { event.preventDefault(); actions.newWindow(place.id); } }}
+      onKeyDown={event => {
+        if (event.key === ' ' && !event.altKey && !event.metaKey && !event.ctrlKey && actions.quickLook) { event.preventDefault(); actions.quickLook(place.id); }
+        if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown') && section === 'pinned' && actions.pin) {
+          event.preventDefault();
+          const next = keyboardMoveTarget(pinnedIds, place.id, event.key);
+          if (next !== undefined) { actions.pin(place.id, next); setAnnouncement(movedAnnouncement(next, pinnedIds.length)); }
+        }
+      }}/>;
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    // Alt+arrows reorder a pin; they must not also move the cursor. Arrows stop at the ends (PL-045).
+    // Home and End still jump, the same chords the rail used before the list stopped wrapping.
     if (event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
     const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[data-rail-item]')];
     const index = items.findIndex(item => item === document.activeElement);
     if (index < 0) return;
+    const next = event.key === 'Home' ? 0
+      : event.key === 'End' ? items.length - 1
+      : event.key === 'ArrowDown' || event.key === 'ArrowUp' ? stepRail(items.length, index, event.key as RailKey)
+      : undefined;
+    if (next === undefined) return;
     event.preventDefault();
-    const next = stepRail(items.length, index, event.key as RailKey);
     items[next]?.focus();
   }
 
   const showShortcut = allPlaces && railShortcutVisible(livePlaces);
   return <div className="rail-sections" onKeyDown={onKeyDown}>
+    <span className="rail-announce" role="status" aria-live="polite">{announcement}</span>
     <nav className="rail-nav" aria-label="Places">
       <div className="rail-group">
         <NowRow now={now} primaryClick={primaryClick} {...focusProps(NOW)}/>

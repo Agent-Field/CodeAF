@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from 'react';
 import { Button, DropdownMenu, Icon, IconButton } from '../../components/ui';
+import { Switcher } from '../places/rail/Switcher';
 import design from '../../design/tokens.json';
 import { useMediaQuery } from '../../design/useMediaQuery';
 import { overviewShortcut, tabShortcuts } from '../../design/keyboard';
@@ -18,6 +19,8 @@ import { focusedPane, stripItems, visibleTabs, type Tab, type TabGroup } from '.
 import { departureIds, departuresFrom, exitHoldMs, groupsForDepartures, mergeDepartures, retainDepartures, withDepartures, type TabDeparture } from './tabExit';
 import { HomeTab } from '../places/home/HomeTab';
 import { isPlaceHome } from './reducers/home';
+import { useLongPress } from '../shell/useLongPress';
+import '../shell/touch.css';
 import './strip.css';
 import './tab-motion.css';
 
@@ -88,6 +91,8 @@ export type StripBack = {
  * chevron buttons, no wheel hijacking.
  */
 export function TabStrip({ api, leading, back, frame, overviewTrigger, onOverview }: { api: TabsApi; leading?: ReactNode; back?: StripBack; frame?: StripFrame; overviewTrigger: RefObject<HTMLButtonElement | null>; onOverview: () => void }) {
+  // A finger hold on a tab or a group label opens the menu that control already has. No prop on TabItem or the capsule: the listener finds them.
+  useLongPress();
   const { state, dispatch } = api;
   const strip = useRef<HTMLDivElement>(null);
   const homeFocus = useRef<string | null>(null);
@@ -223,7 +228,7 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
         {home && <HomeTab key={home.id} name={home.title} tint={api.placeTint ?? 'graphite'} active={state.activeId === home.id} id={tabDomId(home)} menu={api.placeMenu}
           onSelect={() => dispatch({ type: 'select', id: home.id })} onKeyDown={navigate(api, order, home, homeFocus)}
           switcher={!!api.placeSwitcher} needsYou={api.placeSwitcher?.alert}
-          wrapSelect={api.placeSwitcher ? select => <DropdownMenu label="Place switcher" items={api.placeSwitcher!.items}>{select}</DropdownMenu> : undefined}/>}
+          wrapSelect={api.placeSwitcher ? select => <Switcher items={api.placeSwitcher!.items}>{select}</Switcher> : undefined}/>}
         {pinned.map(tab => item(tab))}
         {pinned.length > 0 && <span className="workspace-tab-divider" role="separator" aria-orientation="vertical"/>}
         {items.map(entry => {

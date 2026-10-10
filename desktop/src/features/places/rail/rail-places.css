@@ -1,6 +1,6 @@
 /* Places 10a shares one row with icon navigation; the wrapper keeps close beside, rather than inside, its button. */
 .rail-row { position: relative; border-radius: var(--radius-control); }
-.rail .rail-row-main.nav-item { height: var(--rail-place-row-height); padding: 0 var(--space-tight) 0 var(--space-2); gap: var(--space-compact); transition: background-color var(--dur-fast) var(--ease); }
+.rail .rail-row-main.nav-item { height: var(--rail-place-row-height); padding: 0 var(--space-2); gap: var(--space-compact); transition: background-color var(--dur-fast) var(--ease); }
 .rail .rail-row-main.nav-item:hover { color: var(--ink-2); }
 .rail .rail-row-main.nav-item.active:hover { color: var(--ink); }
 .rail .rail-row-main.nav-item:active { transition-duration: var(--dur-press); }
@@ -16,13 +16,16 @@
 .rail-row-close.icon-button { position: absolute; top: 50%; right: var(--space-tight); transform: translateY(-50%); width: var(--rail-close-size); height: var(--rail-close-size); color: var(--ink-3); background: var(--tab-hover); opacity: var(--opacity-transparent); pointer-events: none; }
 .rail-row-close.icon-button:hover:not(:disabled) { color: var(--ink-3); background: var(--field-2); }
 .rail-row-close.icon-button:active:not(:disabled) { background: var(--field-2); transition-duration: var(--dur-press); }
-/* Only rows with a close action exchange the trailing mark for it; touch uses the row's existing menu. */
+/* Attention stays hoverable beside close; replacing the dot would make its own tooltip unreachable. */
+.rail-row[data-status] .rail-row-close { right: calc(var(--space-2) + var(--rail-dot-size) + var(--space-compact)); }
+/* Rows without attention exchange their metadata for close; touch uses the row's existing menu. */
 @media (hover: hover) and (pointer: fine) {
   .rail-row[data-closable]:hover .rail-row-close, .rail-row[data-closable]:focus-within .rail-row-close { opacity: var(--opacity-opaque); pointer-events: auto; }
-  .rail-row[data-closable]:hover .rail-row-trail, .rail-row[data-closable]:focus-within .rail-row-trail { visibility: hidden; }
+  .rail-row[data-closable]:not([data-status]):hover .rail-row-trail, .rail-row[data-closable]:not([data-status]):focus-within .rail-row-trail { visibility: hidden; }
+  .rail-row[data-closable]:hover .rail-meta, .rail-row[data-closable]:focus-within .rail-meta { visibility: hidden; }
 }
 @media (hover: none), (pointer: coarse) { .rail-row-close.icon-button { display: none; } }
 /* The selected lift must not override the shared keyboard ring, including while the row is hovered. */
-:where(html:not([data-input="pointer"])) .rail .rail-row-main.nav-item:focus-visible { box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 calc(var(--focus-ring-width) + var(--focus-halo-width)) var(--accent-soft); }
+:where(html:not([data-input="pointer"])) .rail .rail-row-main.nav-item:focus-visible { box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
 /* The browser specimen uses the design's 232px row column without widening the production rail. */
 .rail-row-fixture { width: var(--rail-row-specimen-width); background: var(--frame); }

@@ -4,11 +4,11 @@
    pills past it — never by fading the text itself. */
 
 .filter-tabs { display: flex; align-items: center; gap: var(--filter-tab-gap); min-width: 0; max-width: 100%; }
-.filter-tab { box-sizing: border-box; flex: none; display: inline-flex; align-items: center; justify-content: center; height: var(--filter-tab-height); padding: 0 var(--filter-tab-pad); border: 0; border-radius: var(--radius-filter-tab); background: transparent; color: var(--ink-2); font-family: var(--sans); font-size: var(--filter-tab-size); font-weight: var(--filter-tab-weight); line-height: var(--filter-tab-leading); white-space: nowrap; transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease); }
-.filter-tab:hover:not(:disabled):not([aria-checked="true"]), .filter-tab:active:not(:disabled):not([aria-checked="true"]) { background: var(--field-2); }
-.filter-tab[aria-checked="true"] { background: var(--field); color: var(--ink); font-weight: var(--filter-tab-weight-selected); }
-.filter-tab:active:not(:disabled) { filter: brightness(var(--brightness-press)); transition-duration: var(--dur-press); }
-.filter-tab:disabled { cursor: default; opacity: var(--opacity-control-disabled); }
+.filter-tab-button { box-sizing: border-box; flex: none; display: inline-flex; align-items: center; justify-content: center; height: var(--filter-tab-height); padding: 0 var(--filter-tab-pad); border: 0; border-radius: var(--radius-filter-tab); background: transparent; color: var(--ink-2); font-family: var(--sans); font-size: var(--filter-tab-size); font-weight: var(--filter-tab-weight); line-height: var(--filter-tab-leading); white-space: nowrap; transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease); }
+.filter-tab-button:hover:not(:disabled):not([aria-checked="true"]), .filter-tab-button:active:not(:disabled):not([aria-checked="true"]) { background: var(--field-2); }
+.filter-tab-button[aria-checked="true"] { background: var(--field); color: var(--ink); font-weight: var(--filter-tab-weight-selected); }
+.filter-tab-button:active:not(:disabled) { filter: brightness(var(--brightness-press)); transition-duration: var(--dur-press); }
+.filter-tab-button:disabled { cursor: default; opacity: var(--opacity-control-disabled); }
 
 @media (max-width: 600px) {
   .filter-tabs { overflow-x: auto; overscroll-behavior-x: contain; }

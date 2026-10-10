@@ -13,7 +13,8 @@ import { focusedPane, panesOf, type Pane, type Tab } from './model';
 import { SplitTab } from './SplitTab';
 import { useWebFavicons } from '../web/favicons';
 import { monogramOf } from '../web/address';
-import { DropdownMenu, type IconName } from '../../components/ui';
+import { type IconName } from '../../components/ui';
+import { Switcher } from '../places/rail/Switcher';
 import { kindDef } from './kinds/registry';
 import { isPlaceHome } from './reducers/home';
 import { isSelectionPress } from './selection';
@@ -135,7 +136,7 @@ export function TabItem({ api, tab, order, inGroup = false, narrow = false }: { 
     <TabView compressed={compressed} icon={paneIcon(tab)} favicon={favicons.get(tab.id)} kind={tab.kind} title={tab.title} meta={meta} monogram={monogramOf(focusedPane(tab))} active={active} pinned={tab.pinned} placeTint={home ? api.placeTint ?? 'graphite' : undefined} inGroup={inGroup} picked={picked} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame}
       closeMode={stop ? 'stop' : 'close'} closeHint={stop ? 'Close and stop' : running ? 'Close · keeps running' : 'Close'} closeShortcut={stop ? closeStopShortcut : closeShortcutFor(tab.kind)}
       onSelect={choose(tab.id)} onClose={() => (stop ? api.closeAndStop(tab.id) : api.closeTab(tab.id))} onRename={() => api.startRename(tab.id)}
-      onKeyDown={navigate(api, order, tab, pendingFocus)} previewOpen={previewOpen} wrapSelect={select => (switcher ? <DropdownMenu label="Place switcher" items={switcher.items}>{select}</DropdownMenu> : withPreview(api, tab, select))} switcher={switcher && { alert: switcher.alert }}/>
+      onKeyDown={navigate(api, order, tab, pendingFocus)} previewOpen={previewOpen} wrapSelect={select => (switcher ? <Switcher items={switcher.items}>{select}</Switcher> : withPreview(api, tab, select))} switcher={switcher && { alert: switcher.alert }}/>
   );
   // The switcher menu hangs on the tab's own button, so its popup attributes land on a control and not on the frame.
   return withTabMenu(api, tab, view);

@@ -96,7 +96,7 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(tile(page, 'state-Hover')).toHaveCSS('background-color', await tokenColor(page, 'field'));
       await expect(rest).toHaveCSS('transition-duration', '0.12s, 0.12s, 0.12s');
       await main.focus();
-      await expect(main).toHaveCSS('box-shadow', await shadow(page, '0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 calc(var(--focus-ring-width) + var(--focus-halo-width)) var(--accent-soft)'));
+      await expect(main).toHaveCSS('box-shadow', await shadow(page, '0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft)'));
       await rest.scrollIntoViewIfNeeded();
       const box = (await rest.boundingBox())!;
       await page.mouse.move(box.x + 8, box.y + 8);
@@ -107,7 +107,7 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(main).toHaveCSS('box-shadow', 'none');
       await expect(tile(page, 'state-Pressed')).toHaveCSS('background-color', await tokenColor(page, 'field-2'));
       const focus = tile(page, 'state-Focus').locator('.places-tile-main');
-      await expect(focus).toHaveCSS('box-shadow', await shadow(page, '0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 calc(var(--focus-ring-width) + var(--focus-halo-width)) var(--accent-soft)'));
+      await expect(focus).toHaveCSS('box-shadow', await shadow(page, '0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft)'));
       const selected = tile(page, 'state-selected');
       await expect(selected).toHaveCSS('box-shadow', await shadow(page, 'var(--sh-1), 0 0 0 var(--places-tile-ring-selected) var(--accent)'));
       await expect(selected.locator('.places-tile-main')).toHaveAttribute('aria-current', 'true');

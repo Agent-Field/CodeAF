@@ -38,7 +38,7 @@ export function mountRailSections(theme: string, scene: RailScene, drawer = fals
         go: id => note(`go:${id}`), newWindow: id => note(`window:${id}`), close: id => note(`close:${id}`),
         closeAll: () => note('close-all'), closeOthers: () => note('close-others'),
       },
-      slotShortcut: index => `⌃${index}`, closeShortcut: '⌘⇧W', newWindowShortcut: '⌘N', appItems: [],
+      slotShortcut: index => `⌃${index}`, closeShortcut: '⌘⇧W', newWindowShortcut: '⌘N',
     });
     const body = drawer
       ? h('div', { className: 'app-shell sidebar-collapsed' }, h('dialog', { className: 'sidebar-drawer', open: true, 'aria-label': 'Navigation' }, rail))

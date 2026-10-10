@@ -39,7 +39,7 @@
 .places-attention-row[data-dragging], .places-chat-row[data-dragging], .places-tile[data-dragging] { opacity: var(--places-drag-opacity); }
 /* A forced focus look for the specimen: the same ring the global :focus-visible rule draws.
    The halo sits outside the 2px accent ring, so the soft spread is the ring plus the halo. */
-.places-row-main[data-force="focus"], .places-tile-main[data-force="focus"] { box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 calc(var(--focus-ring-width) + var(--focus-halo-width)) var(--accent-soft); }
+.places-row-main[data-force="focus"], .places-tile-main[data-force="focus"] { box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
 
 /* ---- Attention row: 36px, 9px radius, glyph + neutral text + right-hand words (8a). ---- */
 .places-attention-list { display: flex; flex-direction: column; gap: var(--places-row-list-gap); margin-inline: var(--places-row-bleed); }

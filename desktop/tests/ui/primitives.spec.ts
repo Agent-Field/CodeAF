@@ -1,7 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
-import { INK3_TEXT, tokenColor, tokenColorIn } from './contracts';
+import { INK3_TEXT, expectNoUnstyledControls, tokenColor, tokenColorIn } from './contracts';
 import { installMockEngine } from './support/mock-engine';
 import { openPage } from './support/shell-navigation';
 
@@ -134,7 +134,7 @@ for (const theme of themes) {
    await page.keyboard.press('Shift+Tab');
    await page.keyboard.press('Tab');
    await expect(target).toBeFocused();
-   await expect(target).toHaveCSS('box-shadow', await shadow(target, ringExpression(len('focus-ring-width'), len('focus-halo-width'))));
+   await expect(target).toHaveCSS('box-shadow', await shadow(target, `0 0 0 ${len('focus-ring-width')} var(--accent), 0 0 0 ${len('focus-halo-width')} var(--accent-soft)`));
    await target.click();
    await expect(target).toHaveCSS('box-shadow', 'none');
    await expectAccessible(page, '.primitives-specimen');
@@ -273,7 +273,7 @@ for (const theme of themes) {
    await page.keyboard.press('Shift+Tab');
    await page.keyboard.press('Tab');
    await expect(selected).toBeFocused();
-   await expect(selected).toHaveCSS('box-shadow', await shadow(selected, ringExpression(len('focus-ring-width'), len('focus-halo-width'))));
+   await expect(selected).toHaveCSS('box-shadow', await shadow(selected, `0 0 0 ${len('focus-ring-width')} var(--accent), 0 0 0 ${len('focus-halo-width')} var(--accent-soft)`));
   });
 
   test('PR-SEG-1/3/4 + FilterTabs: Segmented geometry, selected styling, keyboard and one tab stop', async ({ page }) => {
@@ -411,6 +411,7 @@ for (const theme of themes) {
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => undefined }, configurable: true });
    });
    await openSpecimen(page, theme);
+   await expectNoUnstyledControls(page, '.primitives-specimen');
    const search = page.locator('.primitives-specimen').getByRole('searchbox', { name: 'Search conversations' });
    await search.fill('raft');
    await expect(search).toHaveValue('raft');
