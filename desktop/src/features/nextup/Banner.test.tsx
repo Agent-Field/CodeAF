@@ -138,6 +138,9 @@ test.describe('next up banner', () => {
   });
 
   test('click starts Next up at that item and folds', async ({ page }) => {
+    // The fold lasts one enter duration. A fake clock holds it open so a slow engine cannot
+    // remove the card between the click and the assertions that read its folding pose.
+    await page.clock.install();
     await page.goto(live);
     const card = banner(page);
     await expect(card).toBeAttached();
@@ -145,6 +148,7 @@ test.describe('next up banner', () => {
     await expect(page.locator('.nextup-banner-specimen')).toHaveAttribute('data-opened', 'git-3');
     await expect(card).toHaveAttribute('data-phase', 'into-pill');
     await expect(card).toHaveAttribute('aria-live', 'off');
+    await page.clock.fastForward(enterMs);
     await expect(card).toHaveCount(0);
   });
 
