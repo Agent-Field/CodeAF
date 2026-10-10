@@ -1,30 +1,34 @@
 import { useEffect, useRef } from 'react';
-import { Button, Icon } from '../../components/ui';
-import design from '../../design/tokens.json';
-
-/** How long the toast waits for an answer before it leaves (Components: toasts sit for 6s). Hovering or focusing it stops the clock. */
-export const TOAST_MS = design.interaction.historyToastMs;
+import { toast } from '../../components/ui/Toast';
 
 type Props = { count: number; onReview: () => void; onRestore: () => void; onDismiss: () => void };
 
-/**
- * The one toast after tabs archived themselves (design 4c): "Archived 6 tabs idle for more than 12h", with
- * Review (opens History) and Restore all. It never blocks, and Escape dismisses it.
- */
-export function ArchiveToast({ count, onReview, onRestore, onDismiss }: Props) {
-  const timer = useRef<number>(undefined);
-  const arm = () => { window.clearTimeout(timer.current); timer.current = window.setTimeout(onDismiss, TOAST_MS); };
-  const hold = () => window.clearTimeout(timer.current);
-  useEffect(() => { arm(); return hold; }, []);
+/** The archive notice uses the window's shared host, so placement, timing and held actions have one owner. */
+export function ArchiveToast(props: Props) {
+  const latest = useRef(props);
+  latest.current = props;
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape' && !document.querySelector('dialog[open]')) onDismiss(); };
+    const id = toast.show({
+      lead: 'archive',
+      message: `Archived ${props.count} ${props.count === 1 ? 'tab' : 'tabs'} idle for more than 12h`,
+      actions: [
+        { label: 'Review', kind: 'ghost', onAction: () => latest.current.onReview() },
+        { label: 'Restore all', kind: 'field', onAction: () => latest.current.onRestore() },
+      ],
+    });
+    // Inline workspace callbacks change on every render; they must neither restart the notice nor retain old tabs.
+    const unsubscribe = toast.channel.subscribe(() => {
+      if (!toast.channel.getToasts().some(notice => notice.id === id)) latest.current.onDismiss();
+    });
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !document.querySelector('dialog[open]')) toast.dismiss(id);
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onDismiss]);
-  return <div className="history-toast" role="status" data-native-cover="" onPointerEnter={hold} onPointerLeave={arm} onFocus={hold} onBlur={arm}>
-    <Icon name="archive" size="xs"/>
-    <span className="history-toast-text">Archived {count} {count === 1 ? 'tab' : 'tabs'} idle for more than 12h</span>
-    <Button variant="ghost" className="history-toast-action" onClick={onReview}>Review</Button>
-    <Button variant="quiet" className="history-toast-action" onClick={onRestore}>Restore all</Button>
-  </div>;
+    return () => {
+      unsubscribe();
+      window.removeEventListener('keydown', onKey);
+      toast.dismiss(id);
+    };
+  }, [props.count]);
+  return null;
 }
