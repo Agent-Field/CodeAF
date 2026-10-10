@@ -12,9 +12,10 @@
 .workspace-tabbar .workspace-tab-action.icon-button { width: var(--tab-height); height: var(--tab-height); border-radius: var(--radius-control); color: var(--ink-3); }
 .workspace-tabbar .workspace-tab-action.icon-button:hover:not(:disabled) { background: var(--tab-hover); color: var(--ink); }
 .workspace-tabbar .workspace-tab-action.icon-button:active:not(:disabled) { background: var(--field-2); }
-.workspace-overview-trigger { margin-left: auto; }
+/* The flexible empty space is its own element: Tauri 2 drags only on the exact target, so the spacer carries the drag region while the buttons around it stay no-drag. */
+.workspace-tab-spacer { flex: 1 1 0; align-self: stretch; min-width: 0; }
 .workspace-tab-more.button { height: var(--tab-height); min-height: 0; gap: var(--space-half); padding: 0 var(--tab-more-pad); border: 0; border-radius: var(--radius-control); background: transparent; color: var(--ink-2); font-size: var(--font-size-body); font-weight: var(--font-weight-medium); }
 .workspace-tab-more.button:hover:not(:disabled) { background: var(--tab-hover); color: var(--ink); }
 :root[data-environment="mac-desktop"] .sidebar-collapsed .workspace-tabbar { padding-left: var(--native-controls-inset); }
-.workspace-tab, .workspace-tab-actions, .workspace-group-label, .workspace-tabbar > .icon-button { -webkit-app-region: no-drag; }
+.workspace-tab, .workspace-tab-action, .workspace-tab-more, .workspace-group-label, .workspace-tabbar > .icon-button { -webkit-app-region: no-drag; }
 @media (max-width: 600px) { .workspace-tabbar { padding: 0 var(--space-1); } }
