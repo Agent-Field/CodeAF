@@ -434,9 +434,9 @@ type InputShape struct {
 // ── the asker's own pick ────────────────────────────────────────────────────
 
 // Confidence is how sure the asker is of its own pick, in three words a person
-// would use. It is deliberately coarse: a percentage is a number nobody can
-// check, and a person deciding whether to read further wants to know whether
-// the asker is guessing, not how much.
+// would use. The words stay the coarse vocabulary an asker is offered. A
+// measured number lives on [Pick.Percent]; when the asker set only the word,
+// [Pick.ResolvedPercent] maps that word onto the band Decisions already reads.
 type Confidence string
 
 const (
@@ -454,6 +454,22 @@ const (
 // (internal/tui3's questionConfidenceWord).
 var confidences = []Confidence{ConfidenceSure, ConfidenceFairly, ConfidenceUnsure}
 
+// These are what a pick is worth when it named a word and measured no percent.
+// They sit inside the bands Decisions already reads — sure is at least 90,
+// fairly is 60 through 89, unsure is under 60 — and each band has one number
+// so two readers cannot pick two.
+//
+// SURE IS THE FLOOR OF ITS BAND, which is also the default threshold a place
+// decides at, so a bare "sure" can meet that threshold and a bare "fairly"
+// cannot. FAIRLY IS THE MIDDLE of 60 through 89, rounded. UNSURE IS UNDER 60
+// AND NOT ZERO: zero means nothing was measured, and "unsure" is a word the
+// asker did set.
+const (
+	percentForSure   = 90
+	percentForFairly = 75
+	percentForUnsure = 40
+)
+
 // Pick is the asker's own answer to its own question, and it is a POINTER on
 // [Question] so that "I have no pick" is spelled once. A question with no pick
 // draws no `enter →` line at all, because there is nothing for enter to take
@@ -467,10 +483,43 @@ type Pick struct {
 	Reason string `json:"reason,omitempty"`
 	// Confidence is how sure the asker is.
 	Confidence Confidence `json:"confidence,omitempty"`
+	// Percent is how sure this pick is, as a whole number from 1 to 100.
+	// Zero means it was not measured, and a surface draws nothing for zero
+	// (the emptiness law). [Question.Check] refuses a number outside 0 to 100.
+	// Decisions reads this for the "92%" and "97%" on a suggestion; a pick
+	// that only named a word resolves through [Pick.ResolvedPercent].
+	Percent int `json:"percent,omitempty"`
+	// Basis names the knows lines and decision receipts this pick was weighed
+	// against, by their ids. Empty means the pick names none, and a surface
+	// draws nothing rather than an empty "because".
+	Basis []string `json:"basis,omitempty"`
 	// WouldChange is WHAT WOULD CHANGE THE ASKER'S MIND — "if the file is
 	// generated, the other answer" — and it is the most useful line on a card,
 	// because it tells a person which fact they hold that the asker does not.
 	WouldChange string `json:"wouldChange,omitempty"`
+}
+
+// ResolvedPercent is the number Decisions may draw and compare.
+//
+// A measured [Pick.Percent] is that number, including when it disagrees with
+// the word: 92 and 97 are evidence, and the word is only the coarse fallback.
+// When only the word is set, the word maps onto its band — sure is at least
+// 90, fairly is 60 through 89, unsure is under 60. A pick with neither is
+// unknown and returns 0, which draws nothing.
+func (p Pick) ResolvedPercent() int {
+	if p.Percent != 0 {
+		return p.Percent
+	}
+	switch p.Confidence {
+	case ConfidenceSure:
+		return percentForSure
+	case ConfidenceFairly:
+		return percentForFairly
+	case ConfidenceUnsure:
+		return percentForUnsure
+	default:
+		return 0
+	}
 }
 
 // UnmarshalJSON lets a pick be written as nothing but its key. A model asked for
@@ -705,6 +754,17 @@ const (
 	questionChecklistCap = 8
 )
 
+// QuestionProposal is the learning mark on a question a place has not yet
+// earned the right to answer alone. Place is the place's name, as a person
+// reads it. Agreed and Of are the "14 of 20" count: Of is the graduation
+// window, not how many answers have arrived, so fourteen agreements read
+// "14 of 20" before the window is full.
+type QuestionProposal struct {
+	Place  string `json:"place"`
+	Agreed int    `json:"agreed"`
+	Of     int    `json:"of"`
+}
+
 // Question is a decision handed to a person with its evidence attached.
 //
 // It is ONE object for every lane in this engine (see the file header), and
@@ -762,6 +822,12 @@ type Question struct {
 	Input InputShape `json:"input,omitzero"`
 	// Pick is the asker's own answer, or nil where it genuinely has none.
 	Pick *Pick `json:"pick,omitempty"`
+	// Proposal is a place still learning, offering that pick for the person to
+	// confirm. Nil means nobody is proposing: a place that decided already
+	// answered, and a question coming straight to the person has no count to
+	// show. Of is the graduation window (20) and Agreed is how many of the
+	// last answers chose the proposed key.
+	Proposal *QuestionProposal `json:"proposal,omitempty"`
 	// Stakes is what a wrong answer costs, and it is what decides whether a
 	// clock is allowed at all.
 	Stakes Stakes `json:"stakes"`
@@ -886,6 +952,15 @@ func errQuestionUnknownPick(key string) error {
 		key)
 }
 
+// errQuestionPickPercent is the refusal for a percent outside 0 to 100. Zero
+// is allowed and means the number was not measured; anything else is a number
+// the asker can correct.
+func errQuestionPickPercent(percent int) error {
+	return fmt.Errorf(
+		"a pick's percent is a whole number from 0 to 100, and %d is outside that: send one in that range, or leave it off when nothing measured it",
+		percent)
+}
+
 // errQuestionStillOpen is the refusal for a question that is already standing
 // unanswered. It names the question rather than merely refusing, because what
 // the asker has to do about it is nothing: the answer reaches it as a message
@@ -950,6 +1025,9 @@ func (q Question) Check(records []DecisionRecord) error {
 	if q.Pick != nil {
 		if _, ok := q.Option(q.Pick.Key); !ok {
 			return errQuestionUnknownPick(q.Pick.Key)
+		}
+		if q.Pick.Percent < 0 || q.Pick.Percent > 100 {
+			return errQuestionPickPercent(q.Pick.Percent)
 		}
 	}
 	if q.Stakes == StakesIrreversible {
@@ -1711,6 +1789,13 @@ func (a *Agent) raiseQuestion(q Question, announce func()) (letGo func()) {
 	if q.Asked.IsZero() {
 		q.Asked = time.Now()
 	}
+	// A LANE THAT NEVER TOUCHES THE DESK STILL PASSES THE GATE. Connect, a
+	// landing and a fuel question are raised here and nowhere else. A question
+	// the gate already answered is not raised: raising it would put an open
+	// question on the screen after the place had taken it.
+	if a.decideBeforePresence(&q) {
+		return func() {}
+	}
 	letGo = a.rememberQuestion(q)
 	if announce != nil {
 		announce()
@@ -1980,6 +2065,7 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 		}
 		a.recordDecision(record)
 		a.emitQuestion(EventQuestionAnswered, q, &answer)
+		a.notePersonLearning(q, answer)
 		return nil
 	}
 	// THE WORDS ARE CLAIMED BEFORE THE LANE IS TOUCHED. The lane is about to
@@ -2062,6 +2148,10 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 	if said || landingSaid {
 		a.emitQuestion(EventQuestionAnswered, q, &answer)
 	}
+	// A PERSON'S ANSWER IS WHAT THE PLACE LEARNS FROM. The gate's own answer
+	// is marked as the dial and records nothing here; an answer the person
+	// gave, including one that revises, is the learning outcome.
+	a.notePersonLearning(q, answer)
 	// AND EVERY OTHER WINDOW LEARNS THE SESSION IS NO LONGER STOPPED, on the
 	// beat the answer lands rather than on the presence heartbeat's next tick:
 	// home, the switcher and a second terminal all read that file, and a `needs

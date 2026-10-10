@@ -2,6 +2,7 @@
 #[doc(hidden)]
 pub mod activation;
 mod dialogs;
+mod editors;
 mod links;
 #[cfg(target_os = "macos")]
 mod menu;
@@ -48,15 +49,79 @@ fn forwarded_connection() -> Result<Option<EngineConnection>, String> {
     };
     let text = std::fs::read_to_string(path)
         .map_err(|_| "The forwarded engine connection is unreadable")?;
-    let connection: EngineConnection =
-        serde_json::from_str(&text).map_err(|_| "The forwarded engine connection is invalid")?;
-    let loopback = ["http://127.0.0.1:", "http://localhost:"]
+    forwarded_connection_from_text(&text).map(Some)
+}
+
+// Forwarded engines use the same numeric origin as bundled engines, so the
+// app's CSP stays confined to loopback without relying on localhost resolution.
+fn forwarded_connection_from_text(text: &str) -> Result<EngineConnection, String> {
+    let mut connection: EngineConnection =
+        serde_json::from_str(text).map_err(|_| "The forwarded engine connection is invalid")?;
+    let invalid = "The forwarded engine connection must be an authenticated loopback URL";
+    let mut url = tauri::Url::parse(&connection.url).map_err(|_| invalid)?;
+    if !["http://127.0.0.1:", "http://localhost:"]
         .iter()
-        .any(|prefix| connection.url.starts_with(prefix));
-    if !loopback || connection.token.is_empty() {
+        .any(|prefix| connection.url.starts_with(prefix))
+        || url.scheme() != "http"
+        || !matches!(url.host_str(), Some("127.0.0.1" | "localhost"))
+        || url.port_or_known_default().is_none_or(|port| port == 0)
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.path() != "/"
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || connection.token.is_empty()
+    {
         return Err("The forwarded engine connection must be an authenticated loopback URL".into());
     }
-    Ok(Some(connection))
+    if url.host_str() == Some("localhost") {
+        url.set_host(Some("127.0.0.1")).map_err(|_| invalid)?;
+        connection.url = url.as_str().trim_end_matches('/').to_string();
+    }
+    Ok(connection)
+}
+
+#[cfg(test)]
+mod forwarded_tests {
+    use super::*;
+
+    fn connection(url: &str, token: &str) -> Result<EngineConnection, String> {
+        forwarded_connection_from_text(
+            &serde_json::json!({"url": url, "token": token, "model": "test-model"}).to_string(),
+        )
+    }
+
+    #[test]
+    fn localhost_is_rewritten_before_the_connection_is_cached() {
+        for url in ["http://localhost:4321", "http://localhost:4321/"] {
+            let actual = connection(url, "test-token").unwrap();
+            assert_eq!(actual.url, "http://127.0.0.1:4321");
+            assert_eq!(actual.token, "test-token");
+            assert_eq!(actual.model, "test-model");
+        }
+        let actual = connection("http://127.0.0.1:4321", "test-token").unwrap();
+        assert_eq!(actual.url, "http://127.0.0.1:4321");
+    }
+
+    #[test]
+    fn forwarded_connections_refuse_remote_or_ambiguous_origins() {
+        for url in [
+            "https://localhost:4321",
+            "http://example.com:4321",
+            "http://localhost:4321@example.com",
+            "http://127.0.0.1:4321@example.com",
+            "http://user@localhost:4321",
+            "http://localhost:0",
+            "http://localhost",
+            "http://localhost:4321/api",
+            "http://localhost:4321?token=hidden",
+            "http://localhost:4321#fragment",
+        ] {
+            assert!(connection(url, "test-token").is_err(), "accepted {url}");
+        }
+        assert!(connection("http://localhost:4321", "").is_err());
+        assert!(forwarded_connection_from_text("invalid json").is_err());
+    }
 }
 
 // Only the canonical binary's fixed local transport can be started. The
@@ -182,6 +247,7 @@ pub fn run() {
             links::link_claim,
             native::open_path,
             native::reveal_path,
+            editors::open_with,
             native::host_name,
             native::open_url,
             windows::window_open,

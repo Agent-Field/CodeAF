@@ -374,6 +374,8 @@ var callSiteRoles = map[string]lane.Role{
 	// internal/placegraph's two offers: errands nobody is waiting on.
 	"placefile":    lane.RoleAuxiliary,
 	"placesuggest": lane.RoleAuxiliary,
+	"council":      lane.RoleAuxiliary,
+	"deciding":     lane.RoleAuxiliary,
 	"distill":      lane.RoleAuxiliary,
 }
 

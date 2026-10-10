@@ -99,3 +99,6 @@
 .settings-number { display: inline-flex; align-items: center; gap: var(--space-2); }
 .settings-number .text-input-field { width: var(--settings-number-width); }
 .settings-unit { color: var(--ink-2); font-size: var(--type-label-size); }
+/* A dev transport address is a URL with no spaces. It wraps instead of widening the page. */
+.settings-engine-where { overflow-wrap: anywhere; min-width: 0; }
+.settings-page .settings-engine-retry { align-self: flex-start; }

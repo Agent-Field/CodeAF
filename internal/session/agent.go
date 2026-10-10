@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/decide"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -439,6 +440,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// doorstep is emptied here: the answer is applied through the same one door
 	// as every other, and the conversation opens already settled rather than
 	// asking a question somebody answered yesterday.
+	// THE GATE IS ON BEFORE THAT DRAIN. An answer the person left while the
+	// window was shut is a person's answer, and the place should learn it;
+	// attaching afterwards would apply the answer and forget to record it.
+	agent.attachDecideGate()
 	agent.drainAnswers()
 	// AND THE SESSION STARTS SAYING IT IS HERE. The index above is what work
 	// came to; this is the claim that a PROCESS is alive right now, which no
@@ -3399,7 +3404,7 @@ func (a *Agent) drainQueuedLocked(hub *eventHub, includeAmbient bool) (int, bool
 		a.ambient = nil
 	}
 	sourceCount := len(queued)
-	queued = coalesceSessionNotes(queued)
+	queued = coalesceSessionNotes(foldDecisionNotes(queued))
 	owed := false
 	for _, message := range queued {
 		a.recordUserLocked(message)
@@ -4867,6 +4872,9 @@ type DisplayEntry struct {
 	AsideKind string
 	// UndoReceipts names only the exact context mutation, persisted in note facts.
 	UndoReceipts []string
+	// Decision is the receipt a "decision-receipt" aside draws: one decision, or
+	// a group with children. Nil on every other entry (the emptiness law).
+	Decision *decide.Aside
 	// AsideTitle is a job aside's short name, the label its own row wears, so a
 	// surface can head the entry without reading the sentence. It is empty for
 	// every other kind and whenever the job had no name.
@@ -5072,6 +5080,10 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 		if role == "assistant" {
 			displayText, update = UserFacingUpdate(displayText)
 		}
+		decision := decisionAside(facts)
+		if decision != nil {
+			displayText = decision.Text
+		}
 		entries = append(entries, DisplayEntry{
 			Role:         role,
 			Answer:       role == "assistant" && !interrupted && (len(msg.ToolCalls) == 0 || update),
@@ -5085,6 +5097,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			AsideKind:    facts.Kind,
 			UndoReceipts: append([]string(nil), facts.UndoReceipts...),
 			AsideTitle:   facts.Title,
+			Decision:     decision,
 			// The journal is the only thing that remembers a user line was typed
 			// INTO the turn above it rather than opening one of its own: the
 			// message itself is an ordinary user message, because that is what the

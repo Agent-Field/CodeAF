@@ -30,7 +30,12 @@ export type MockDiff = Pick<EngineFileDiff, 'hunks'> & Partial<Pick<EngineFileDi
 /** A terminal or job the mock engine already holds; `output` is its kept log (raw terminal text). */
 export type MockTerminal = Partial<TerminalInfo> & { id: string; output?: string };
 
+/** An engine background job the mock lists under /jobs; `log` is the text its log route returns, `cut` marks a trimmed front. */
+export type MockJob = { id: number; name?: string; command?: string; state?: 'running' | 'done' | 'failed' | 'stopped'; startedAt?: string; elapsedMs?: number; exitCode?: number; log?: string; cut?: boolean };
+
 export type Scenario = {
+  /** Engine background jobs served under /jobs (list, log tail, stop). A stop marks the job stopped. */
+  jobs?: MockJob[];
   /** Conversations the History routes serve (list, recap, messages, search, archive). */
   history?: MockHistory;
   /** Terminals and jobs served under /terminals; a POST /terminals adds more. */
@@ -52,7 +57,7 @@ export type Scenario = {
   /** false: the engine serves no /places/policy route (an engine before the Places organization settings). */
   placesPolicy?: false;
   /** The engine-wide world feed (GET /world, GET /events). Absent: the engine serves no feed and both routes answer 404. */
-  world?: { rows: WorldRow[]; items: AttentionItem[] };
+  world?: { rows: WorldRow[]; items: AttentionItem[]; jobs?: { chatId: string; running: number; jobs: unknown[] }[] };
   /** Forced HTTP failure per endpoint, e.g. { turn: 409 }. */
   fail?: Partial<Record<'create' | 'read' | 'turn' | 'stop' | 'answer' | 'events' | 'task', number>>;
 };
@@ -67,7 +72,7 @@ export type MockEngine = {
   turnModels: string[];
   snapshot: () => EngineSnapshot;
   /** Replaces the world feed's rows and/or attention items and streams the new state to readers. Needs `scenario.world`. */
-  setWorld: (next: { rows?: WorldRow[]; items?: AttentionItem[] }) => void;
+  setWorld: (next: { rows?: WorldRow[]; items?: AttentionItem[]; jobs?: { chatId: string; running: number; jobs: unknown[] }[] }) => void;
   /** Apply the next scripted turn reply (for scenarios with manual: true). */
   advance: () => void;
   /** Merge fields into the snapshot and publish a snapshot record to stream readers. */
@@ -106,11 +111,18 @@ const ROLE_CATEGORIES = [
   { id: 'places', name: 'Places organization' },
   { id: 'memory', name: 'Memory, routing and safety' },
 ];
-/** A sample of internal/placegraph's policy table: one switch that is the design's figure, one provisional number. */
+/**
+ * A sample of internal/placegraph's policy table, plus the four hierarchy caps.
+ * Those four rows match policy.go: defaults, bounds, and the depth explain that
+ * says a person's own places can go deeper.
+ */
 const PLACES_POLICY = [
   { key: 'clusterOffers', group: 'offers', name: 'Offer new places', explain: 'When enough chats in no place belong together, offer to put them in a place. You approve every new place.', kind: 'switch', default: true, design: true },
   { key: 'autoFile', group: 'offers', name: 'File chats without asking', explain: 'Put a chat in a place you already have when codeaf is very sure, and say so.', kind: 'switch', default: false, design: false },
-  { key: 'maxAiTopLevel', group: 'limits', name: 'Top-level places codeaf may create', explain: 'Places you make yourself are never limited.', kind: 'number', default: 6, min: 0, max: 50, unit: 'places', design: false },
+  { key: 'maxAiTopLevel', group: 'limits', name: 'Top-level places codeaf may create', explain: "Counts only places created from codeaf's offers. Places you make yourself are never limited.", kind: 'number', default: 6, min: 0, max: 50, unit: 'places', design: false },
+  { key: 'maxAiSiblings', group: 'limits', name: 'Places codeaf may create under one parent', explain: "Counts only places created from codeaf's offers.", kind: 'number', default: 8, min: 0, max: 100, unit: 'places', design: false },
+  { key: 'maxAiDepth', group: 'limits', name: 'Deepest level for a new place', explain: "A top-level place is level 1. Places you make yourself can go deeper; this only limits places created from codeaf's offers.", kind: 'number', default: 3, min: 1, max: 6, unit: 'levels', design: false },
+  { key: 'maxAiPlaces', group: 'limits', name: 'Places codeaf may create in all', explain: "Counts active places created from codeaf's offers.", kind: 'number', default: 30, min: 0, max: 500, unit: 'places', design: false },
 ] as const;
 
 const emptyUsage = { Input: 0, Output: 0, CostUSD: 0, Duration: 0, Turns: 0 };
@@ -182,7 +194,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     tasksTotal: (state.tasks ?? []).length, attached: true, archived: false, questions: state.questions ?? [],
   });
   const sessionWorldRecord = () => ({ epoch: 'mock-session', seq: sessionWorldSeq, type: 'reset', at: new Date().toISOString(), payload: { rows: [sessionRow()], items: [] } });
-  const worldRecord = () => ({ seq: worldSeq, type: 'reset', at: new Date().toISOString(), payload: structuredClone(world!) });
+  const worldRecord = () => ({ epoch: 'mock-world', seq: worldSeq, type: 'reset', at: new Date().toISOString(), payload: structuredClone(world!) });
   const worldEvents = async (route: Route, after: number) => {
     const deadline = Date.now() + 60_000;
     while (!closed && Date.now() < deadline) {
@@ -211,6 +223,8 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
   const publish = () => {
     state = { ...state, seq: state.seq + 1, updatedAt: new Date().toISOString() };
     sessionWorldSeq += 1;
+    // The stream carries the same omission as a read, so a window never receives an over-cap body it would not get from GET.
+    // A record is a tail from the last published length; a shorter transcript is a reset, matching the bridge.
     const { entries, ...header } = structuredClone(state);
     const reset = publishedEntries > entries.length;
     const from = reset ? 0 : publishedEntries;
@@ -393,6 +407,17 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     return json(route, { error: 'unknown terminal action' }, 404);
   };
 
+  const heldJobs = new Map((scenario.jobs ?? []).map(j => [String(j.id), { ...j }]));
+  const jobs = (route: Route, parts: string[]) => {
+    const [, , , jid, act] = parts;
+    if (!jid) return json(route, [...heldJobs.values()].map(({ log: _log, cut: _cut, ...row }) => row));
+    const job = heldJobs.get(jid);
+    if (!job) return json(route, { error: `no job ${jid}` }, 404);
+    if (act === 'log') return json(route, { text: job.log ?? '', truncated: job.cut === true });
+    if (act === 'stop') { job.state = 'stopped'; return json(route, { accepted: true }); }
+    return json(route, { error: 'unknown job action' }, 404);
+  };
+
   const fileAt = (path: string) => scenario.files?.[path] ?? scenario.files?.[path.replace(`${state.workspace}/`, '')];
   const stat = (path: string) => {
     const file = fileAt(path);
@@ -512,11 +537,10 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     const parts = url.pathname.replace(/^.*\/api\/engine/, '').split('/').filter(Boolean).map(decodeURIComponent);
     const body = (method === 'POST' || method === 'PUT') && request.postData() ? JSON.parse(request.postData()!) as Record<string, unknown> : {};
     const [root, id, action, arg] = parts;
-    // The window's own reads of the place graph and the world stream are not a conversation's calls; the Places
-    // mock (support/mock-places.ts) records those. A tab that must make no engine call is judged on the rest.
-    // Place-graph reads are not a conversation's calls. A settings write to policy is: the test has to see it.
-    const policyWrite = root === 'places' && parts[1] === 'policy' && method !== 'GET';
-    if (!['places', 'chats', 'world', 'events', 'workspaces'].includes(root) || policyWrite) calls.push({ method, path: url.pathname, body });
+    // Place, chat, world and workspace reads are not a conversation's calls. A Places
+    // policy write is a Settings save, so it stays on the list the settings specs read.
+    const policyWrite = root === 'places' && id === 'policy' && method !== 'GET';
+    if (policyWrite || !['places', 'chats', 'world', 'events', 'workspaces'].includes(root)) calls.push({ method, path: url.pathname, body });
     if (offline) return offline === '503' ? json(route, { error: 'engine unreachable' }, 503) : route.abort('connectionrefused');
     const forced = (key: keyof NonNullable<Scenario['fail']>) => {
       const status = scenario.fail?.[key];
@@ -576,6 +600,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     if (action === 'favicon') return json(route, {});
     if (action === 'changes' || action === 'diff' || (action === 'files' && ['text', 'find', 'locate'].includes(arg ?? ''))) return workView(route, action, arg, url);
     if (action === 'terminals') return terminals(route, parts, body, url);
+    if (action === 'jobs') return jobs(route, parts);
     if (action === 'files') return files(route, arg, body, url);
     if (action === 'tasks' && arg && parts[4]) return forced('task') ?? taskAction(route, arg, parts[4], body);
     if (action === 'tasks' && arg) {
@@ -591,7 +616,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
 
   const setWorld: MockEngine['setWorld'] = next => {
     if (!world) throw new Error('setWorld needs scenario.world');
-    world = { rows: next.rows ?? world.rows, items: next.items ?? world.items };
+    world = { rows: next.rows ?? world.rows, items: next.items ?? world.items, jobs: next.jobs ?? world.jobs };
     worldSeq += 1;
   };
 

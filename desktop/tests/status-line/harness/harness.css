@@ -1,0 +1,8 @@
+.status-line-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--places-heading-gap);
+  width: min(100%, var(--content-max-width));
+}
+.ink3-probe { color: var(--ink-3); }

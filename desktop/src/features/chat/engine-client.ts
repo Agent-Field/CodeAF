@@ -38,7 +38,11 @@ export type EngineQuestion = {
  options?: { key: string; label: string; body?: string; consequence?: string; safe?: boolean; widening?: boolean; blocks?: EngineQuestionBlock[]; dimensions?: Record<string, string> }[];
  input?: { kind?: string; prompt?: string; secret?: boolean; blanks?: { label: string; kind?: string; default?: string; choices?: string[] }[]; dial?: { min: number; max: number; default: number; labels?: string[] } };
  attach?: EngineQuestionBlock[]; scope?: string[]; asked?: string; deadline?: string;
- pick?: { key: string; reason?: string; confidence?: 'sure' | 'fairly' | 'unsure'; wouldChange?: string };
+ pick?: { key: string; reason?: string; confidence?: 'sure' | 'fairly' | 'unsure'; percent?: number; basis?: string[]; wouldChange?: string };
+ /** Set while the asking place is still learning this kind of question: how many of its last `of` proposals the person agreed with. */
+ learning?: { place?: string; agreed: number; of: number };
+ /** Canonical learning mark sent by session.Question. */
+ proposal?: { place: string; agreed: number; of: number };
  stakes?: 'reversible' | 'costly' | 'irreversible';
  blocking?: { turn?: boolean; tasks?: string[] };
  asker?: { kind?: 'model' | 'engine' | 'task' | 'surface' | 'window'; name?: string };
@@ -47,7 +51,10 @@ export type EngineQuestion = {
  policy?: { kind?: 'ask' | 'recommend-then-auto' | 'decide'; after?: number }; // after: nanoseconds, a Go duration
  withdrawn?: { reason?: string; by?: string; at?: string };
 };
-export type EngineAnswer = { kind: string; id: number; ref?: string; key: string; picked?: string[]; change?: string; blanks?: Record<string,string>; scope?: string; dial?: number; decidedBy?: 'person' | 'dial' | 'record' | 'asker' | 'window'; comments?: Record<string,string> };
+export type EngineAnswer = { kind: string; id: number; ref?: string; key: string; picked?: string[]; change?: string; blanks?: Record<string,string>; scope?: string; dial?: number; decidedBy?: 'person' | 'dial' | 'record' | 'asker' | 'window'; /** The person took another answer than the one a learning place proposed. */ overruled?: boolean; comments?: Record<string,string> };
+export type DecisionWhy = { by: string; because?: string; percent?: number; reversible: boolean };
+export type DecisionAside = { kind: string; text: string; why?: DecisionWhy; children?: { decisionId: string; text: string; question: { kind: string; token: string }; why: DecisionWhy }[] };
+export type ConversationPlan = { id: string; steps: import('../decisions/client').PlanStep[]; reachesBeyond: boolean };
 export type EngineEntry = {
  Role: 'user' | 'assistant' | 'tool' | 'note' | 'aside'; Text: string;
  Answer?: boolean; Addressed?: boolean; Interrupted?: boolean;
@@ -59,6 +66,9 @@ export type EngineEntry = {
  TaskIDs?: string[] | null;
  /** What wrote an aside: "task" | "job" | "watch" | "resume"; absent when unknown. */
  AsideKind?: string;
+ Decision?: DecisionAside;
+ /** Optional structured plan on a persisted aside; older engines omit it. */
+ Plan?: ConversationPlan;
  /** Exact context-mutation receipts; absent for older/ambiguous notes. */
  UndoReceipts?: string[];
  /** A job aside's own short name (its label or command); absent when it has none. */
@@ -191,7 +201,7 @@ export async function readEngine(id: string, since?: number, held?: EngineSnapsh
  try { return snapshotFrom(mergeTail(held, body)); }
  catch (error) { if (error instanceof EngineError) throw error; return readEngine(id); }
 }
-async function action(id: string, kind: 'turn' | 'stop' | 'answer' | 'queue-edit' | 'queue-move' | 'queue-remove', body?: unknown): Promise<EngineSnapshot> {
+async function action(id: string, kind: 'turn' | 'stop' | 'answer' | 'queue-edit' | 'queue-move' | 'queue-remove' | 'queue-send', body?: unknown): Promise<EngineSnapshot> {
  const response = await fetchEngine(`${sessionPath(id)}/${kind}`, { method: 'POST', body: JSON.stringify(body ?? {}) });
  const result: unknown = await response.json();
  if (!result || typeof result !== 'object' || !('accepted' in result) || result.accepted !== true) throw new EngineError('The engine did not accept this action.');
@@ -206,6 +216,8 @@ export function editQueued(id: string, queued: string, text: string): Promise<En
 export function moveQueued(id: string, queued: string, to: number): Promise<EngineSnapshot> { return action(id, 'queue-move', { id: queued, to }); }
 /** Takes a queued message back so it never runs. Refused (409) once its turn has started. */
 export function removeQueued(id: string, queued: string): Promise<EngineSnapshot> { return action(id, 'queue-remove', { id: queued }); }
+/** Sends a queued message immediately; the engine decides whether to steer or start a turn. */
+export function sendQueuedNow(sessionId: string, id: string): Promise<EngineSnapshot> { return action(sessionId, 'queue-send', { id }); }
 export function stopEngine(id: string): Promise<EngineSnapshot> { return action(id, 'stop'); }
 /** Identity and explicit canonical option keys cross unchanged; only the engine resolves a question. */
 export function answerEngine(id: string, answer: EngineAnswer): Promise<EngineSnapshot> { return action(id, 'answer', answer); }
@@ -265,7 +277,7 @@ export async function engineEventStream(path: string, after: number, onRecord: (
 
 // Fetch supports the native Bearer header; EventSource cannot. Aborting only
 // detaches this reader. Stop is a separate, explicit POST.
-export async function watchEngine(snapshot: EngineSnapshot, onSnapshot: (snapshot: EngineSnapshot) => void, onEvent: (event: EngineEvent) => void, signal: AbortSignal): Promise<void> {
+export async function watchEngine(snapshot: EngineSnapshot, onSnapshot: (snapshot: EngineSnapshot) => void, onEvent: (event: EngineEvent) => void, signal: AbortSignal, held: () => EngineSnapshot | undefined = () => undefined): Promise<void> {
  let after = snapshot.seq;
  const response = await fetchEngine(`${sessionPath(snapshot.id)}/events?after=${after}`, { signal, headers: { Accept: 'text/event-stream' } }, true);
  await pumpEventStream(response, signal, text => {
@@ -276,7 +288,8 @@ export async function watchEngine(snapshot: EngineSnapshot, onSnapshot: (snapsho
   if (!Number.isSafeInteger(item.seq) || item.seq < 0) throw new EngineError('The engine sent an invalid stream sequence.');
   if (item.seq <= after) return;
   if (item.type === 'snapshot') {
-   const next = snapshotFrom(isTail(item.snapshot) ? mergeTail(snapshot, item.snapshot) : item.snapshot);
+   // A tail folds into the window when it holds one, and otherwise into this stream's preceding snapshot, so one replay batch chains before the window has caught up. A tail that cannot be folded ends the stream so the caller reattaches whole.
+   const next = snapshotFrom(isTail(item.snapshot) ? mergeTail(held() ?? snapshot, item.snapshot) : item.snapshot);
    if (next.id !== snapshot.id || next.sessionFile !== snapshot.sessionFile) throw new EngineError('The engine stream changed conversations.');
    // Each tail starts where the preceding snapshot ended, including within one replay batch.
    snapshot = next;

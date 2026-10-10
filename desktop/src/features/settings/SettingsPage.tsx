@@ -1,6 +1,9 @@
 import { useRef, useState, type KeyboardEvent } from 'react';
-import { Button, KeyboardShortcut, PageHeading, SectionHeading, Segmented, Text, TextInput, ThemeSelect } from '../../components/ui';
+import { Button, KeyboardShortcut, PageHeading, SectionHeading, Segmented, Text, TextInput } from '../../components/ui';
 import type { CatalogModel, ModelRole, PlacesSetting } from '../chat/engine-client';
+import { AppearanceSection } from './AppearanceSection';
+import { EngineSection } from './EngineSection';
+import { KeyStatus } from './KeyStatus';
 import { groupRoles, roleStateLine } from './groups';
 import { ModelSelect } from './ModelSelect';
 import { effortWord, SETTINGS_TAB_TITLE } from './summary';
@@ -52,7 +55,7 @@ function RoleRow({ role, settings }: { role: ModelRole; settings: ModelSettings 
       <div className="settings-row-choice">
         <ModelSelect label={`Model for ${role.name}`} value={role.model} catalog={settings.catalog} onChange={choose} />
         {efforts.length > 0 && (
-          <Segmented label={`Effort for ${role.name}`} value={role.effort ?? ''} options={efforts.map(word => ({ value: word, label: effortWord(word) }))} onChange={word => settings.saveRole(role.id, { model: role.model, effort: word })} />
+          <Segmented label={`Effort for ${role.name}`} value={role.effort ?? ''} options={efforts.map(word => ({ value: word, label: effortWord(word) }))} onChange={word => settings.saveRole(role.id, { effort: word })} />
         )}
       </div>
     </li>
@@ -116,7 +119,7 @@ function PlacesPolicy({ settings }: { settings: ModelSettings }) {
 }
 
 /**
- * The Models page: which three models are pinned to the composer, which model each kind of job runs on, grouped
+ * The Settings page, in reading order (and so keyboard order): Models, provider key, appearance, engine. Models: which three models are pinned to the composer, which model each kind of job runs on, grouped
  * into provisional sections, and how codeaf offers places. Every change is saved at once through the engine and
  * says so; there is no Save button.
  */
@@ -126,7 +129,6 @@ export function SettingsPage() {
     <div className="settings-page">
       <header className="settings-head">
         <PageHeading>{SETTINGS_TAB_TITLE}</PageHeading>
-        <section className="models-section" aria-label="Appearance"><SectionHeading>Appearance</SectionHeading><ThemeSelect/></section>
         <Receipt receipt={settings.receipt} />
       </header>
       <Text className="settings-note">These settings are provisional. Each job starts on the default model, and the defaults are engineering choices until Settings is designed.</Text>
@@ -149,6 +151,9 @@ export function SettingsPage() {
           })}
         </>
       )}
+      <KeyStatus />
+      <AppearanceSection />
+      <EngineSection />
     </div>
   );
 }

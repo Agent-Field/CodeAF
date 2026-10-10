@@ -50,7 +50,7 @@ test('a place Home view carries only what the engine sent', () => {
   assert.equal(view.title, 'Config parser');
   assert.equal(view.recap, undefined);
   assert.equal(view.contextLine, undefined);
-  assert.deepEqual(view.attention.map(a => [a.title, a.status, a.statusText, a.placeName]), [['Port fix to v1', 'waiting', 'Allow the v1 branch push?', undefined], ['Update fixtures', 'running', 'Update fixtures', undefined]]);
+  assert.deepEqual(view.attention.map(a => [a.title, a.status, a.detail, a.placeName]), [['Port fix to v1', 'waiting', 'Allow the v1 branch push?', undefined], ['Update fixtures', 'running', undefined, undefined]]);
   assert.ok(view.chats.every(chat => chat.status === undefined || chat.status === 'running' || chat.status === 'waiting'));
 });
 

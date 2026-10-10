@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { installMockEngine } from './support/mock-engine';
 import { plainReply } from './support/scenarios';
+import { expectAccessible } from './contracts';
 import { message, openApp, posts, send } from './support/conversation';
 
 const LONG = 'src/features/conversation/composer/deep/nested/folder/again/and/more/segments/lexer.go';
@@ -286,3 +287,26 @@ test('coarse pointers use 36px rows', async ({ browser, baseURL }) => {
     await context.close();
   }
 });
+
+// CV-211: at 600px and below the list takes the full composer width, and above that it is the 320px paper, so each width pins its own side of that rule.
+for (const width of [320, 600, 1200]) {
+  for (const theme of ['light', 'dark'] as const) {
+    test(`${theme}: at ${width}px the list fits the composer, stays on screen and has no axe violations`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: theme });
+      await conversation(page);
+      await page.setViewportSize({ width, height: 800 });
+      const list = await openList(page);
+      const placed = await list.evaluate(node => {
+        const composer = document.querySelector('.conversation-footer .composer')!.getBoundingClientRect();
+        const rect = node.getBoundingClientRect();
+        return { list: rect.width, composer: composer.width, left: rect.left, right: rect.right, top: rect.top, view: window.innerWidth };
+      });
+      expect(placed.left).toBeGreaterThanOrEqual(0);
+      expect(placed.right).toBeLessThanOrEqual(placed.view);
+      expect(placed.top).toBeGreaterThanOrEqual(0);
+      if (width <= 600) expect(Math.abs(placed.list - placed.composer)).toBeLessThanOrEqual(1);
+      else expect(Math.round(placed.list)).toBe(320);
+      await expectAccessible(page);
+    });
+  }
+}

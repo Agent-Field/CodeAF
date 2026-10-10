@@ -1,0 +1,15 @@
+/* Council chat (design v3 Decisions 12): place messages, the decided card and the footer. Tokens only. */
+.council-stack { display: flex; flex-direction: column; gap: var(--council-stack-gap); }
+.council-message { display: flex; align-items: flex-start; gap: var(--council-message-gap); max-width: var(--council-message-max-width); }
+.council-message-swatch { margin-top: var(--council-message-swatch-offset); display: flex; }
+.council-message-text { display: flex; flex-direction: column; gap: var(--council-message-text-gap); min-width: 0; }
+.council-message-name { font-size: var(--council-message-name-size); font-weight: var(--council-message-name-weight); }
+.council-message-body { font-size: var(--council-message-body-size); line-height: var(--council-message-body-leading); color: var(--ink); overflow-wrap: anywhere; }
+.council-decided { display: flex; flex-direction: column; gap: var(--council-decided-gap); padding: var(--council-decided-pad-block) var(--council-decided-pad-inline); border-radius: var(--council-decided-radius); background: var(--field); }
+.council-decided-title { display: flex; align-items: center; gap: var(--council-decided-title-gap); font-size: var(--council-decided-title-size); font-weight: var(--council-decided-title-weight); }
+.council-decided-title .app-icon { color: var(--ink-3); }
+.council-decided-facts, .council-footer { font-size: var(--council-footer-size); color: var(--ink-3); }
+/* The pane's top row names the discussion by its two places: their tint squares, then "A with B". */
+.council-head { display: flex; flex: none; align-items: center; gap: var(--space-compact); height: var(--task-view-bar-height); padding: 0 var(--conversation-bar-pad-end) 0 var(--conversation-bar-pad-start); }
+.council-head-swatches { display: flex; gap: var(--space-1); }
+.council-head .council-head-title { margin: 0; overflow: hidden; font-size: var(--type-prose-size); font-weight: var(--type-label-strong); text-overflow: ellipsis; white-space: nowrap; }

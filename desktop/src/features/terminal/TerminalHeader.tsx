@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { DropdownMenu, IconButton, type MenuEntry } from '../../components/ui';
 import design from '../../design/tokens.json';
+import { tabShortcuts } from '../../design/keyboard';
+import { finishedHeaderMenu } from './tabMenu';
 
 /** The colour of the 6px glyph before the state words; colour lives only on that glyph. */
 export type StateTone = 'running' | 'done' | 'failed' | 'stopped';
@@ -19,13 +21,18 @@ export type TerminalHeaderProps = {
   onStop: () => void;
   /** Present for a finished job: starts the same command again in a new tab. */
   onRerun?: () => void;
+  /** Only supplied when the engine has a retained log file and a working opener. */
+  onOpenLog?: () => void;
+  /** A finished job keeps its engine record when its tab is closed. */
+  finishedJob?: boolean;
+  onClose: () => void;
   /** The text to copy: the selection, else the recent plain output. */
   readOutput: () => Promise<string>;
   onRemove: () => void;
 };
 
-/** Design 3c: 48px line, title and place on the left, live state and three quiet icon buttons on the right. */
-export function TerminalHeader({ title, meta, words, tone, canStop, removeLabel, onStop, onRerun, readOutput, onRemove }: TerminalHeaderProps) {
+/** Design 3c: 48px line, title and place on the left, live state and quiet action buttons on the right. */
+export function TerminalHeader({ title, meta, words, tone, canStop, removeLabel, onStop, onRerun, onOpenLog, finishedJob = false, onClose, readOutput, onRemove }: TerminalHeaderProps) {
   const [copied, setCopied] = useState(false);
   const timer = useRef(0);
   useEffect(() => () => window.clearTimeout(timer.current), []);
@@ -35,18 +42,19 @@ export function TerminalHeader({ title, meta, words, tone, canStop, removeLabel,
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => setCopied(false), design.interaction.copiedFeedbackMs);
   }
-  const menu: MenuEntry[] = [
-    { id: 'stop', label: 'Stop', icon: 'stop', disabled: !canStop, onSelect: onStop },
-    ...(onRerun ? [{ id: 'rerun', label: 'Run again', icon: 'play' as const, onSelect: onRerun }] : []),
-    { id: 'copy', label: 'Copy output', icon: 'copy', onSelect: () => void copy() },
-    { kind: 'separator', id: 'sep' },
-    { id: 'remove', label: removeLabel, icon: 'close', danger: true, onSelect: onRemove },
-  ];
+  // Finished jobs share finishedHeaderMenu with the tab right-click, so Open log, Run again and Remove job cannot drift.
+  const menu: MenuEntry[] = finishedJob
+    ? finishedHeaderMenu({ onOpenLog, onRerun, onRemove, onClose }, tabShortcuts.close)
+    : [
+      { id: 'copy', label: 'Copy output', icon: 'copy', onSelect: () => void copy() },
+      { kind: 'separator', id: 'sep' },
+      { id: 'remove', label: removeLabel, danger: true, onSelect: onRemove },
+    ];
   return <header className="terminal-header">
     <span className="terminal-identity"><span className="terminal-title">{title}</span>{meta && <span className="terminal-meta">{meta}</span>}</span>
     <span className="terminal-state">{tone && <span className="terminal-mark" data-tone={tone} aria-hidden="true"/>}{words}</span>
-    <IconButton className="terminal-action" label="Stop" icon="stop" iconSize="sm" disabled={!canStop} onClick={onStop}/>
+    {canStop && <IconButton className="terminal-action" label="Stop" icon="stop" iconSize="sm" onClick={onStop}/>}
     <IconButton className="terminal-action" label={copied ? 'Copied' : 'Copy output'} icon={copied ? 'check' : 'copy'} iconSize="sm" onClick={() => void copy()}/>
-    <DropdownMenu label="Terminal actions" items={menu}><IconButton className="terminal-action" label="More" icon="more" iconSize="sm"/></DropdownMenu>
+    <DropdownMenu label="Terminal actions" className="terminal-menu" items={menu}><IconButton className="terminal-action" label="More" icon="more" iconSize="sm"/></DropdownMenu>
   </header>;
 }

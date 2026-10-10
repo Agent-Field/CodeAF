@@ -20,7 +20,13 @@ export function fullView(): UsingView {
       ],
       instructions: [
         { placeId: 'pl_parser', text: 'Keep strict mode the default for public APIs', bytes: 44 },
-        { placeId: 'pl_release', alsoFrom: ['pl_codeaf'], text: 'Write for customers, not engineers. Lead with what changes for them, then the reason, and link the changelog instead of repeating it here.', bytes: 140, trimmed: true },
+        { placeId: 'pl_release', text: 'Write for customers, not engineers. Lead with what changes for them, then the reason, and link the changelog instead of repeating it here.', bytes: 140, trimmed: true },
+      ],
+      // The popover lists these lines. The instruction prose above is what the prompt was given, including the cut.
+      knows: [
+        { id: 'k-strict', placeId: 'pl_parser', text: 'Keep strict mode the default for public APIs', source: { kind: 'you-wrote' }, createdAt: '2026-10-01T12:00:00Z' },
+        { id: 'k-customers', placeId: 'pl_release', text: 'Write for customers, not engineers. Lead with what changes for them, then the reason, and link the changelog instead of repeating it here.', source: { kind: 'learned', answers: 3 }, createdAt: '2026-10-08T12:00:00Z', lastUsedAt: '2026-10-09T12:00:00Z' },
+        { id: 'k-old', placeId: 'pl_release', text: 'Lead with internal names', source: { kind: 'you-wrote' }, createdAt: '2026-10-01T12:00:00Z', replacedBy: 'k-customers', replacedAt: new Date(Date.now() - 2 * 86_400_000).toISOString() },
       ],
       sources: [
         { key: 'repo:/work/codeaf/internal/parse', kind: 'repo', ref: '/work/codeaf/internal/parse', repoRoot: '/work/codeaf', from: [origin('pl_parser', 's1')], status: 'ok' },
@@ -60,7 +66,7 @@ export type Calls = { kind: 'using' | 'choose' | 'apply'; field?: PolicyField; p
 /** An in-memory bridge: reads the scenario's list, and applies a choice or an apply by the engine's rules (409 / 422 included). */
 export function mockApi(scenario: Scenario, calls: Calls, flags: { choiceFails?: boolean } = {}): UsingApi | undefined {
   if (scenario === 'absent') return undefined;
-  let view = scenario === 'empty' ? { ...quietView(), bundle: { ...quietView().bundle, places: [], sources: [], instructions: [], policy: [], counts: { places: 0, sources: 0 } }, settings: [] }
+  let view = scenario === 'empty' ? { ...quietView(), bundle: { ...quietView().bundle, places: [], sources: [], instructions: [], knows: [], policy: [], counts: { places: 0, sources: 0 } }, settings: [] }
     : scenario === 'quiet' ? quietView() : scenario === 'noengine' ? { ...fullView(), engine: { places: false, reason: 'This conversation was opened by another program, which reads no places.' }, settings: fullView().settings.map(s => ({ ...s, state: 'unavailable' as const })) }
     : fullView();
   let broken = scenario === 'offline' || scenario === 'failing';

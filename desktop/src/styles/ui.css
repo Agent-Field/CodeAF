@@ -1,3 +1,4 @@
+::selection { background: var(--accent-soft); }
 /* Reusable primitives. All design values come from design/tokens.json. */
 button, input, select { font: inherit; }
 /* Hover fills change over Foundations' fast step: 120ms ease (chrome-ease is the CSS ease curve). */
@@ -26,8 +27,8 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .button-primary { padding-inline: var(--control-pad-primary); background: var(--accent); color: var(--accent-ink); }
 .button-raised { background: var(--surface); box-shadow: var(--sh-1); }
 .button-quiet { background: var(--field); }
-/* Ghost text is ink-3, as the design draws it (owner rule: the design wins over the older ink-2 contrast deviation). */
-.button-ghost { padding-inline: var(--control-pad-ghost); color: var(--ink-3); }
+/* Ghost text is ink-2 (C-CTRL-4); ink-3 stays waived in the contracts until wave F. */
+.button-ghost { padding-inline: var(--control-pad-ghost); color: var(--ink-2); }
 .button-danger { background: var(--danger-soft); color: var(--danger); }
 .button-primary:hover:not(:disabled), .button-danger:hover:not(:disabled) { filter: brightness(var(--brightness-hover)); }
 .button-primary:active:not(:disabled), .button-danger:active:not(:disabled) { filter: brightness(var(--brightness-press)); }
@@ -71,7 +72,7 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .status-mark[data-status="incomplete"] { color: var(--mark-incomplete); }
 .status-mark[data-dense] { display: inline-flex; align-items: center; justify-content: center; width: var(--mark-dot); }
 .status-mark[data-dense] > * { flex: none; }
-.status-mark[data-dense][data-status="incomplete"] { color: var(--mark-failed); }
+.status-mark[data-dense][data-status="incomplete"] { color: var(--mark-incomplete); }
 .status-mark[data-dense][data-status="queued"] .status-mark-dot { width: var(--mark-dot); height: var(--mark-dot); box-shadow: inset 0 0 0 var(--tasks-ring-width) currentColor; }
 .status-mark[data-status="queued"] .status-mark-dot { width: var(--mark-ring); height: var(--mark-ring); background: transparent; box-shadow: inset 0 0 0 var(--mark-ring-width) currentColor; }
 
@@ -81,17 +82,18 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .row:hover, .row[data-selected] { background: var(--field); }
 .row-actions { display: flex; align-items: center; gap: var(--space-half); margin-left: auto; color: var(--ink-2); opacity: var(--opacity-transparent); transition: opacity var(--dur-fast) var(--ease); }
 :is(.row, [data-actions-host]):is(:hover, :focus-within) .row-actions { opacity: var(--opacity-opaque); }
+@media (pointer: coarse) { .icon-button { min-width: var(--hit); min-height: var(--hit); } }
 @media (hover: none), (pointer: coarse) { .row-actions { opacity: var(--opacity-opaque); } }
 
 /* Field: rest on field, focus on surface with a 1px accent ring and a 4px soft halo. */
 .text-input.text-input-field { height: var(--field-height); min-height: var(--field-height); padding: 0 var(--field-pad); border-radius: var(--radius-control); background: var(--field); color: var(--ink); font-size: var(--type-label-size); }
 .text-input-field::placeholder { color: var(--ink-3); }
-.text-input-field:focus-visible { background: var(--surface); }
+.text-input-field:focus-visible { background: var(--surface); box-shadow: 0 0 0 var(--field-focus-ring) var(--accent), 0 0 0 calc(var(--field-focus-ring) + var(--field-focus-halo)) var(--accent-soft); }
 
 /* Tooltip: icon-only buttons and truncated text; sh-2 and 11px text. Its position is measured. */
 .tooltip-shortcut { flex-shrink: 0; color: var(--ink-3); }
 /* A full tab title can be longer than a narrow window: the tooltip wraps inside the collision padding (overlay.collisionPadding, 12px = space-3) instead of running off the edge. */
-.tooltip { display: inline-flex; align-items: center; gap: var(--tooltip-gap); min-height: var(--tooltip-min-height); overflow-wrap: anywhere; position: fixed; top: 0; left: 0; z-index: var(--z-menu); max-width: min(var(--menu-max-width), calc(100vw - 2 * var(--space-3))); padding: var(--tooltip-pad-y) var(--tooltip-pad-x); border-radius: var(--radius-chip); background: var(--surface); color: var(--ink); box-shadow: var(--sh-2); font-family: var(--sans); font-size: var(--type-caption-size); font-weight: var(--type-label-weight); line-height: var(--tooltip-leading); pointer-events: none; }
+.tooltip { display: flex; align-items: center; gap: var(--tooltip-gap); height: var(--tooltip-height); overflow-wrap: anywhere; position: fixed; top: 0; left: 0; z-index: var(--z-menu); max-width: min(var(--menu-max-width), calc(100vw - 2 * var(--space-3))); padding: 0 var(--tooltip-pad-x); border-radius: var(--radius-chip); background: var(--surface); color: var(--ink); box-shadow: var(--sh-2); font-family: var(--sans); font-size: var(--type-caption-size); font-weight: var(--type-label-weight); line-height: var(--tooltip-leading); pointer-events: none; }
 .truncated-text { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* LEGACY CHROME CONTROLS. The sidebar, tab strip, overview, switcher, rename dialog, page toolbar and
@@ -122,7 +124,6 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .type-section { margin: 0; font-size: var(--font-size-body); font-weight: var(--font-weight-semibold); line-height: var(--line-height-body); }
 .type-body { line-height: var(--line-height-body); font-size: var(--font-size-body); margin: 0; }.text-muted { color: var(--muted); }.text-default { color: var(--text); }
 .type-code { font-family: var(--font-mono); font-size: var(--font-size-code); font-weight: var(--font-weight-regular); line-height: var(--line-height-body); color: var(--ink); }
-.keyboard-shortcut { font-family: var(--font-sans); font-size: var(--font-size-caption); font-weight: var(--font-weight-regular); color: inherit; }
 .text-input { min-width: 0; width: 100%; min-height: var(--input-height); padding: var(--input-padding) 0; background: transparent; border: 0; color: var(--text); font-size: var(--font-size-input); }.text-input::placeholder { color: var(--muted); opacity: var(--opacity-opaque); }
 .settings-section { display: flex; align-items: center; justify-content: space-between; gap: var(--space-section); border-top: var(--border-width) solid var(--border); padding: var(--space-section-inner) 0; }.settings-section .type-body { margin-top: var(--space-2); overflow-wrap: anywhere; }.settings-section.vertical { align-items: flex-start; flex-direction: column; gap: var(--space-3); }.settings-section.vertical .type-body { margin-top: 0; }
 
@@ -133,7 +134,7 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .select-trigger { display: inline-flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: var(--button-height); border: 0; border-radius: var(--radius-sm); padding: var(--space-tight); background: transparent; color: var(--muted); font-size: var(--font-size-label); cursor: pointer; }
 .select-trigger:hover { background: var(--hover); }.theme-select { width: var(--select-width); }.select-trigger > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .select-menu { z-index: var(--z-overlay); min-width: var(--menu-min-width); max-height: min(var(--menu-max-height),var(--radix-select-content-available-height)); overflow: auto; padding: var(--menu-pad); border: 0; border-radius: var(--menu-radius); background: var(--overlay-surface); color: var(--text); box-shadow: var(--sh-2); transform-origin: var(--radix-select-content-transform-origin); }
-.select-menu[data-state="open"] { animation: popover-enter var(--dur-fast) var(--chrome-ease); }.select-menu[data-state="closed"] { animation: surface-exit var(--dur-fast) var(--chrome-ease); }
+.select-menu[data-state="open"] { animation: popover-enter var(--dur-fast) var(--ease); }.select-menu[data-state="closed"] { animation: surface-exit var(--dur-fast) var(--chrome-ease); }
 .select-option { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); min-height: var(--menu-row-height); padding: 0 var(--space-compact); border-radius: var(--radius-sm); outline: none; font-size: var(--type-prose-size); cursor: default; user-select: none; }
 .select-option[data-state="checked"] { background: var(--menu-selected); }.select-option[data-highlighted] { background: var(--menu-highlight); }.select-option[data-disabled] { opacity: var(--opacity-disabled); }.select-option .app-icon { color: var(--muted); }
 @keyframes surface-enter { from { opacity: var(--opacity-transparent); transform: translateY(var(--motion-travel)) scale(var(--motion-scale-enter)); } to { opacity: var(--opacity-opaque); transform: translateY(var(--motion-rest)) scale(var(--motion-scale-rest)); } }
@@ -162,7 +163,7 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 }
 
 .app-menu-dropdown { transform-origin: var(--radix-dropdown-menu-content-transform-origin); max-height: min(var(--menu-max-height),var(--radix-dropdown-menu-content-available-height)); }
-.app-menu[data-state="open"] { animation: popover-enter var(--dur-fast) var(--chrome-ease); }.app-menu[data-state="closed"] { animation: surface-exit var(--dur-fast) var(--chrome-ease); }
+.app-menu[data-state="open"] { animation: popover-enter var(--dur-fast) var(--ease); }.app-menu[data-state="closed"] { animation: surface-exit var(--dur-fast) var(--chrome-ease); }
 .menu-item { display: flex; align-items: center; gap: var(--space-compact); min-height: var(--menu-item-height); padding: 0 var(--space-compact); border-radius: var(--radius-sm); outline: none; font-size: var(--font-size-prose); font-weight: var(--font-weight-regular); cursor: default; user-select: none; transition: background var(--duration-fast) var(--chrome-ease), color var(--duration-fast) var(--chrome-ease); }
 .menu-label { flex: 1; min-width: 0; }.menu-detail { flex: none; margin-left: var(--space-4); font-size: var(--font-size-body); color: var(--ink-3); white-space: nowrap; }.menu-item .keyboard-shortcut { color: var(--ink-3); font-size: var(--font-size-body); white-space: nowrap; }.menu-item > .app-icon { color: var(--ink-2); }.menu-item > .app-icon-xs:last-child { color: var(--ink-3); }
 .menu-item[data-highlighted], .menu-item[data-state="open"] { background: var(--field-2); }.menu-item:active:not([data-disabled]) { background: var(--control-pressed); }.menu-item[data-disabled] { opacity: var(--opacity-disabled); }
@@ -170,7 +171,7 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 
 /* Preview waits for intent; it is informational and never competes with menus. */
 .hover-preview { z-index: var(--z-overlay); width: min(var(--preview-width),calc(100vw - var(--space-6))); padding: var(--space-3); border: var(--border-width) solid var(--border); border-radius: var(--radius-md); background: var(--overlay-surface); color: var(--text); box-shadow: var(--shadow); pointer-events: none; transform-origin: var(--radix-hover-card-content-transform-origin); }
-.hover-preview[data-state="open"] { animation: popover-enter var(--dur-fast) var(--chrome-ease); }.hover-preview[data-state="closed"] { animation: surface-exit var(--dur-fast) var(--chrome-ease); }
+.hover-preview[data-state="open"] { animation: popover-enter var(--dur-fast) var(--ease); }.hover-preview[data-state="closed"] { animation: surface-exit var(--dur-fast) var(--chrome-ease); }
 .hover-preview-title { font-size: var(--font-size-body); font-weight: var(--font-weight-medium); overflow-wrap: anywhere; }.hover-preview-draft { font-size: var(--font-size-label); color: var(--muted); margin-top: var(--space-2); display: -webkit-box; -webkit-line-clamp: var(--preview-line-clamp); -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; }.hover-preview-meta { margin-top: var(--space-2); color: var(--muted); font-size: var(--font-size-caption); }
 
 
@@ -217,3 +218,8 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 
 /* Inline command spans share the same field treatment as question receipts. */
 .inline-code { padding: var(--border-width) var(--space-tiny); border-radius: var(--radius-xs); background: var(--field); font-size: var(--type-mono-small-size); }
+
+/* Live titles share one neutral shimmer; reduced motion preserves their still label. */
+.ui-live-shimmer { background-image: linear-gradient(var(--shimmer-angle), var(--ink-2) 0%, var(--ink-2) var(--latest-shimmer-edge), var(--ink) var(--latest-shimmer-mid), var(--ink-2) var(--latest-shimmer-far), var(--ink-2) 100%); background-size: var(--shimmer-size) 100%; background-clip: text; color: transparent; animation: ui-live-shimmer var(--shimmer-duration) linear infinite; }
+@keyframes ui-live-shimmer { from { background-position: var(--latest-shimmer-from) 0; } to { background-position: var(--latest-shimmer-to) 0; } }
+@media (prefers-reduced-motion: reduce) { .ui-live-shimmer { animation: none; background: none; color: var(--ink); } }

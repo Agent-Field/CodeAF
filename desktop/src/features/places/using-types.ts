@@ -11,7 +11,7 @@
  */
 
 export type {
-  PlaceSetting, PolicyDecision, PolicyField, PolicyOutcome, SettingState, SourceOrigin, SourceStatus, UsedInstruction, UsedPlace,
+  PlaceSetting, PolicyDecision, PolicyField, PolicyOutcome, SettingState, SourceOrigin, SourceStatus, UsedInstruction, UsedPlace, UsingKnowsLine,
   UsedSource, UsingBundle, UsingView, Want,
 } from './using-client.ts';
 import type { PolicyField, UsingView } from './using-client.ts';

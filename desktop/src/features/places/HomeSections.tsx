@@ -1,12 +1,60 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Button, Icon, IconButton, Row, RowActions, SectionLabel, Text } from '../../components/ui';
-import { AttentionList, AttentionRow } from './components/AttentionRow';
+import { LiveRows } from './live/LiveRows';
 import { ChatList, ChatRow } from './components/ChatRow';
 import { PlaceTile, PlaceTileGrid } from './components/PlaceTile';
 import type { TintName } from './components/PlaceSwatch';
 import { childMeta, nameProblem, shortTime, type HomeAttention, type HomeChat, type HomeSource, type HomeChild, type HomeConnection, type HomeDeleteImpact } from './home-model';
 import { canDropOn, chatMenu, dropMode, placeMenu, readDrag, writeDrag, deleteSentence, type DropPayload, type PlaceActions } from './place-actions';
+import { createDecisionsClient } from '../decisions/client';
+import type { DecideStatus } from '../decisions/StatusLine';
+import { DECIDED_CAP, type DecidedItem } from '../decisions/decidedModel';
+import { createKnowsClient, type KnowsAnswer, type KnowsMutation } from './knows/client';
+import type { KnowsActions } from './knows/KnowsList';
+import { createPlacesClient, placesTransport } from './client';
+import { homeDecisions, homeStatus } from './home-sections-data';
 import './home.css';
+
+const decisionsClient = createDecisionsClient();
+const knowsClient = createKnowsClient();
+const placesClient = createPlacesClient();
+type PlaceSections = { id: string; status?: DecideStatus; decisions?: DecidedItem[]; knowledge?: KnowsAnswer; error?: string };
+
+/** Independent reads keep available sections visible when another engine door fails. Aborting prevents another place's data from arriving here. */
+export function useHomeSections(placeId: string | undefined, revision: unknown, paused: boolean) {
+  const [data, setData] = useState<PlaceSections>();
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!placeId || paused) return;
+    const abort = new AbortController();
+    const save = (patch: Partial<PlaceSections>) => {
+      if (!abort.signal.aborted) setData(before => ({ ...(before?.id === placeId ? before : {}), id: placeId, ...patch }));
+    };
+    save({ error: undefined });
+    const fail = (failure: unknown) => save({ error: failure instanceof Error ? failure.message : 'Could not read this Home.' });
+    void decisionsClient.status(placeId, abort.signal).then(value => save({ status: homeStatus(value) })).catch(fail);
+    // All is capped by the shared DecidedRows model, so this read requests the same ceiling.
+    void placesTransport(`/places/${encodeURIComponent(placeId)}/decisions?limit=${DECIDED_CAP}`, { method: 'GET', signal: abort.signal }).then(value => save({ decisions: homeDecisions(value) })).catch(fail);
+    void knowsClient.list(placeId, abort.signal).then(knowledge => save({ knowledge })).catch(fail);
+    return () => abort.abort();
+  }, [placeId, revision, paused, attempt]);
+  const current = data?.id === placeId ? data : undefined;
+  const knowledge = current?.knowledge;
+  const refresh = () => setAttempt(value => value + 1);
+  const changed = async (job: Promise<KnowsMutation>) => {
+    const result = await job;
+    if (result.ask) throw new Error(`This conflicts with “${result.ask.a.text}”. Nothing was changed.`);
+    refresh();
+    return { undo: async () => { await placesClient.undo(result.undo); refresh(); } };
+  };
+  const actions: KnowsActions = placeId && knowledge && !paused ? {
+    add: text => changed(knowsClient.add(placeId, { text, ifRevision: knowledge.revision })),
+    edit: (id, text) => changed(knowsClient.edit(placeId, id, { text, ifRevision: knowledge.revision })),
+    remove: id => changed(knowsClient.remove(placeId, id, knowledge.revision)),
+    confirm: async id => { await knowsClient.confirm(placeId, id, knowledge.revision); refresh(); },
+  } : {};
+  return { ...current, actions, refresh };
+}
 
 /** Runs an owner's callback and keeps its failure as a sentence. The store's errors are already readable ("That would put “A” inside “B”."),
  * so they are shown as they come; a half-finished multi-step write is the owner's to describe in its message. */
@@ -38,18 +86,14 @@ export function HomeRecap({ label, text }: { label: string; text: string }) {
   </section>;
 }
 
-/** Needs-you first, then failures, then running; the engine's order is kept inside each group. */
-const attentionRank = { waiting: 0, failed: 1, running: 2 } as const;
-
-export function HomeAttentionSection({ items: given, actions, readOnly }: { items: readonly HomeAttention[]; actions: PlaceActions; readOnly?: boolean }) {
-  if (!given.length) return null;
-  const items = [...given].sort((a, b) => attentionRank[a.status] - attentionRank[b.status]);
-  return <section className="home-section" aria-label="Needs you and running">
-    <AttentionList label="Needs you and running">
-      {items.map(item => <AttentionRow key={`${item.status}:${item.id}`} id={item.id} title={item.title} placeName={item.placeName} status={item.status} statusText={item.statusText}
-        disabled={!actions.openChat || readOnly} onOpen={() => void actions.openChat?.(item.id)} onOpenInNewTab={actions.openChatInNewTab && (() => void actions.openChatInNewTab?.(item.id))}/>)}
-    </AttentionList>
-  </section>;
+/** The place feed includes detached work, so closing its tab never removes a Live row. */
+export function HomeAttentionSection({ items, actions, readOnly }: { items: readonly HomeAttention[]; actions: PlaceActions; readOnly?: boolean }) {
+  const runner = useRunner();
+  return <>
+    <LiveRows items={items} readOnly={readOnly} onOpen={actions.openChat && (id => void runner.run(() => actions.openChat?.(id)))}
+      onOpenInNewTab={actions.openChatInNewTab && (id => void runner.run(() => actions.openChatInNewTab?.(id)))}/>
+    {runner.error && <p className="home-quiet" role="alert">{runner.error}</p>}
+  </>;
 }
 
 function moveFocus(event: KeyboardEvent<HTMLButtonElement>) {
@@ -123,7 +167,7 @@ export function HomePlacesSection({ label, places, parentId, parentName, parentT
           selected={selected === place.id} dragging={drag.payload?.kind === 'place' && drag.payload.ids.includes(place.id)} dropTarget={dropOn === place.id && accepts} disabled={!actions.goTo}
           onGoTo={() => void runner.run(() => actions.goTo?.(place.id))} onOpenInNewWindow={actions.goToInNewWindow && (() => void runner.run(() => actions.goToInNewWindow?.(place.id)))}
           onQuickLook={actions.quickLook && (() => { setSelected(place.id); actions.quickLook?.(place.id); })}
-          menu={placeMenu({ id: place.id, name: place.name, tint: place.tint, pinned: place.pinned, archived: place.archived || restore }, actions, {
+          menu={placeMenu({ id: place.id, name: place.name, tint: place.tint, pinned: place.pinned, decide: place.decide, archived: place.archived || restore }, actions, {
             readOnly, canRename: !place.path, startRename: id => setRenaming({ id, name: place.name, tint: place.tintSource === 'own' ? place.tint : 'graphite', original: place.name, originalTint: place.tintSource === 'own' ? place.tint : 'graphite' }),
             startDelete: onDelete && (() => onDelete(place)) })}
           draggable={!readOnly && !!actions.file && !place.archived}
@@ -244,10 +288,10 @@ export function useDeleteFlow(actions: PlaceActions, runner: Runner) {
   return { state, start, confirm, cancel: () => setState(undefined) };
 }
 
-/** The page frame both Homes share: the scrolling column with the design's bottom fade, and the composer slot under it. `⌘[` or `Ctrl [` goes up a level. */
-export function HomeFrame({ label, children, composer, onUp }: { label: string; children: ReactNode; composer?: ReactNode; onUp?: () => void }) {
-  return <section className="home-page" aria-label={label}
-    onKeyDown={event => { if (onUp && (event.metaKey || event.ctrlKey) && !event.altKey && event.key === '[') { event.preventDefault(); onUp(); } }}>
+/** The page frame both Homes share: the scrolling column with the design's bottom fade, and the composer slot under it. `⌘↑` or `Ctrl ↑` goes up a level (Iteration 2). */
+export function HomeFrame({ label, children, composer, onUp, populated }: { label: string; children: ReactNode; composer?: ReactNode; onUp?: () => void; populated?: boolean }) {
+  return <section className="home-page" data-populated-place={populated || undefined} aria-label={label}
+    onKeyDown={event => { if (onUp && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key === 'ArrowUp') { event.preventDefault(); onUp(); } }}>
     <div className="home-scroll" data-scroll-key="home" tabIndex={-1}><div className="home-column">{children}</div></div>
     {composer && <div className="home-composer">{composer}</div>}
   </section>;

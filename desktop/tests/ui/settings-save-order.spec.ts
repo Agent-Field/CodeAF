@@ -30,12 +30,12 @@ for (const theme of ['light', 'dark'] as const) {
     await effort.getByRole('radio', { name: 'High' }).click();
     await expect.poll(() => writes).toEqual(['high']);
     await effort.getByRole('radio', { name: 'Low' }).click();
-    await expect(page.getByRole('status')).toHaveText('Saving…');
+    await expect(page.locator('.settings-receipt')).toHaveText('Saving…');
     expect(writes).toEqual(['high']);
     held.release();
     await expect.poll(() => writes).toEqual(['high', 'low']);
     await expect(effort.getByRole('radio', { name: 'Low' })).toHaveAttribute('aria-checked', 'true');
-    await expect(page.getByRole('status')).toHaveText('Saved · applies to the next call');
+    await expect(page.locator('.settings-receipt')).toHaveText('Saved · applies to the next call');
     if (shots) await page.locator('[data-role=naming]').screenshot({ path: `${shots}/role-low-${theme}-${info.project.name}.png` });
   });
 
@@ -59,13 +59,13 @@ for (const theme of ['light', 'dark'] as const) {
     await input.press('Tab');
     await expect.poll(() => writes).toBe(1);
     held.release();
-    await expect(page.getByRole('status')).toContainText('Not saved');
+    await expect(page.locator('.settings-receipt')).toContainText('Not saved');
     await expect(input).toHaveValue('5');
     await input.fill('6');
     await input.press('Enter');
     await expect.poll(() => writes).toBe(2);
     await expect(input).toHaveValue('6');
-    await expect(page.getByRole('status')).toHaveText('Saved · applies to the next call');
+    await expect(page.locator('.settings-receipt')).toHaveText('Saved · applies to the next call');
   });
 
   test(`an older failed numeric save preserves a newer draft · ${theme}`, async ({ page }) => {
@@ -87,11 +87,11 @@ for (const theme of ['light', 'dark'] as const) {
     await expect.poll(() => writes).toBe(1);
     await input.fill('7');
     held.release();
-    await expect(page.getByRole('status')).toContainText('Not saved');
+    await expect(page.locator('.settings-receipt')).toContainText('Not saved');
     await expect(input).toHaveValue('7');
     await input.press('Enter');
     await expect.poll(() => writes).toBe(2);
-    await expect(page.getByRole('status')).toHaveText('Saved · applies to the next call');
+    await expect(page.locator('.settings-receipt')).toHaveText('Saved · applies to the next call');
     await expect(input).toHaveValue('7');
   });
 
@@ -114,12 +114,12 @@ for (const theme of ['light', 'dark'] as const) {
     await titles.getByRole('radio', { name: 'High' }).click();
     await summaries.getByRole('radio', { name: 'Low' }).click();
     await expect(summaries.getByRole('radio', { name: 'Low' })).toHaveAttribute('aria-checked', 'true');
-    await expect(page.getByRole('status')).toHaveText('Saving…');
+    await expect(page.locator('.settings-receipt')).toHaveText('Saving…');
     expect(writes).toEqual(['naming', 'summaries']);
     held.release();
     await expect(titles.getByRole('radio', { name: 'High' })).toHaveAttribute('aria-checked', 'true');
     await expect(summaries.getByRole('radio', { name: 'Low' })).toHaveAttribute('aria-checked', 'true');
-    await expect(page.getByRole('status')).toHaveText('Saved · applies to the next call');
+    await expect(page.locator('.settings-receipt')).toHaveText('Saved · applies to the next call');
   });
 
   test(`queued pinned-slot changes use the last saved list instead of losing the earlier change · ${theme}`, async ({ page }) => {

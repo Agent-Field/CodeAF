@@ -96,7 +96,7 @@ test('b. Go to via the chooser lands on the place Home; Now gives back its own t
   const composer = page.getByRole('textbox', { name: 'Message', exact: true });
   await expect(composer).toBeVisible();
   await composer.fill('a draft kept in Now');
-  await expect(page.locator('body')).not.toHaveAttribute('data-tint', /./); // Now keeps the root palette (DESIGN-QUESTIONS PS12).
+  await expect(page.locator('body')).toHaveAttribute('data-tint', 'graphite'); // Now is graphite (Places 9d).
 
   await page.keyboard.press(`${primary(rig)}+KeyP`);
   await expect(page.getByRole('dialog', { name: 'Go to a place, or create one' })).toBeVisible();
@@ -111,11 +111,11 @@ test('b. Go to via the chooser lands on the place Home; Now gives back its own t
   await expect(homeTab(page).locator('.place-swatch')).toHaveAttribute('data-tint-name', 'iris');
   await expect(homeTab(page).getByRole('button', { name: /^Close/ })).toHaveCount(0);
   await expect(page.locator('body')).toHaveAttribute('data-tint', 'iris');
-  await expect.poll(() => rig.places.posts(`/places/${id}/visit`).length).toBe(1);
+  await expect.poll(() => rig.places.posts('/places/rail').filter(call => call.body?.op === 'visit' && call.body?.place === id).length).toBe(1);
   await expect(section(page, 'Open').locator('.rail-place', { hasText: 'Config parser' })).toHaveAttribute('aria-current', 'page');
 
   await rail(page).getByRole('button', { name: 'Now', exact: true }).click();
-  await expect(page.locator('body')).not.toHaveAttribute('data-tint', /./); // Now keeps the root palette (DESIGN-QUESTIONS PS12).
+  await expect(page.locator('body')).toHaveAttribute('data-tint', 'graphite'); // Now is graphite (Places 9d).
   await expect(homeTab(page)).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toHaveValue('a draft kept in Now');
 });
@@ -268,14 +268,14 @@ test('f. rail: pin from the menu, close from × and ⌘⇧W, closed-but-running 
   await expect(homeTab(page)).toContainText('Docs');
   await expect(railRow(page, 'Docs')).not.toHaveAttribute('data-busy-closed', 'true');
   await page.keyboard.press(`${primary(rig)}+Shift+KeyW`);
-  await expect(page.locator('body')).not.toHaveAttribute('data-tint', /./); // Now keeps the root palette (DESIGN-QUESTIONS PS12).
+  await expect(page.locator('body')).toHaveAttribute('data-tint', 'graphite'); // Now is graphite (Places 9d).
   await expect(homeTab(page)).toHaveCount(0);
   await expect(railRow(page, 'Docs')).toContainText('closed · still running');
 
   // A needs-you roll-up draws the amber dot with words a screen reader can say.
   rig.places.setStatus(software, { needsYou: 1 });
-  const dot = railRow(page, 'Software').locator('.rail-dot');
-  await expect(dot).toHaveAttribute('data-state', 'waiting');
+  const dot = railRow(page, 'Software').locator('.status-mark');
+  await expect(dot).toHaveAttribute('data-status', 'waiting');
   await expect(dot).toHaveAccessibleName(/needs? you/);
 
   // ⌃1 / Alt 1 is the first rail place; ⌃0 / Alt 0 is Now.

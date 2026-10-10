@@ -1,5 +1,6 @@
 // Reducer slice: opening, selecting, closing, pinning, naming and ordering tabs.
 // A slice returns undefined for an action it does not own; model.ts composes the slices.
+import { toggleSelection } from '../selection.ts';
 import type { TabView } from '../view-state.ts';
 import type { TabKind } from '../kinds/types.ts';
 import { fitIndex, initialWorkspace, insertAt, mapContent, newConversationTitle, newTabTitle, newTab, normalize, pinnedCount, rankOf, tabHolding, titleRank, visibleTabs } from '../helpers.ts';
@@ -26,8 +27,9 @@ export type TabAction =
    * for callers that remembered a place themselves (the closing toast's Undo).
    */
   | { type: 'reopen-id'; id: string; before?: string; after?: string; group?: TabGroup }
-  /** ⌘-click (Ctrl-click on Linux): adds a tab to, or takes it out of, the tabs ⌘G will group. The active tab is always in. */
+  /** ⌘-click (Ctrl-click on Linux): adds a tab to, or takes it out of, the tabs ⌘G will group. The active tab can also carry the explicit selection fill. */
   | { type: 'pick'; id: string }
+  | { type: 'clear-picks' }
   | { type: 'pin'; id: string }
   | { type: 'rename'; id: string; title: string }
   | { type: 'title'; id: string; title: string; source: 'message' | 'engine' }
@@ -48,15 +50,19 @@ function placeOf(state: WorkspaceState, tab: Tab, group = state.groups.find(g =>
   return { before: state.tabs[index + 1]?.id, after: state.tabs[index - 1]?.id, group };
 }
 
-/** A closed tab with where it stood, for `closed`. A tab of this file's `close` and a pane closed out of a split both use it. */
-export const closedRecord = (tab: Tab, stood: ClosedPlace): ClosedTab => ({ ...tab, stood });
+/**
+ * A closed tab with where it stood and when it closed, for `closed`. A tab of this file's `close` and a pane closed
+ * out of a split both use it, so every way into the closed list carries the same `closedAt`.
+ */
+export const closedRecord = (tab: Tab, stood: ClosedPlace): ClosedTab => ({ ...tab, stood, closedAt: Date.now() });
 
 /**
  * Puts a closed tab back: before the tab that followed it, else after the tab that preceded it, else last; in its
  * group, which is made again from the record if closing emptied it. The tab becomes active and leaves `closed`.
  */
 export function restore(state: WorkspaceState, closed: ClosedTab, hint: ClosedPlace = {}): WorkspaceState {
-  const { stood, ...plain } = closed;
+  // `closedAt` stays on the closed list. Putting it back on the open tab would save a stale age.
+  const { stood, closedAt: _closedAt, ...plain } = closed;
   const where: ClosedPlace = { before: hint.before ?? stood?.before, after: hint.after ?? stood?.after, group: hint.group ?? stood?.group };
   const rest = state.closed.filter(t => t.id !== closed.id);
   // A tab that is somehow open already is only selected: two tabs never share an id.
@@ -89,10 +95,11 @@ export function reduceTabs(state: WorkspaceState, action: { type: string }): Wor
       return { ...state, tabs: insertAt(state.tabs, tab, at), activeId: a.background ? state.activeId : tab.id, recentIds: a.background ? [...state.recentIds, tab.id] : [tab.id, ...state.recentIds] };
     }
     case 'pick': {
-      if (!state.tabs.some(t => t.id === a.id) || a.id === state.activeId) return state;
+      if (!state.tabs.some(t => t.id === a.id)) return state;
       const picked = state.picked ?? [];
-      return { ...state, picked: picked.includes(a.id) ? picked.filter(id => id !== a.id) : [...picked, a.id] };
+      return { ...state, picked: toggleSelection(picked, a.id) };
     }
+    case 'clear-picks': return { ...state, picked: [] };
     case 'select': {
       const holder = tabHolding(state, a.id);
       const unpicked = state.picked?.length ? { picked: [] } : {};

@@ -15,6 +15,7 @@ import {
   removeQueued,
   sendEngine,
   sendEngineWithFiles,
+  sendQueuedNow,
   stopEngine,
   taskAction,
   watchEngine,
@@ -113,7 +114,7 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, n
     reader.current?.abort();
     const controller = new AbortController();
     reader.current = controller;
-    watchEngine(value, receive, onEvent, controller.signal).catch(() => {
+    watchEngine(value, receive, onEvent, controller.signal, () => current.current).catch(() => {
       if (controller.signal.aborted || own !== generation.current) return;
       setOnline(false);
       reconnectLater();
@@ -229,13 +230,38 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, n
     try {
       receive(await change(target.id));
     } catch (reason) {
-      await readEngine(target.id).then(receive, () => undefined);
+      await readEngine(target.id, target.entries.length, target).then(receive, () => undefined);
       setFailed({ text: '', mode: 'submit', message: messageOf(reason) });
     }
   }
   const editQueue = (queued: string, text: string) => changeQueue((id) => editQueued(id, queued, text));
   const moveQueue = (queued: string, to: number) => changeQueue((id) => moveQueued(id, queued, to));
   const removeQueue = (queued: string) => changeQueue((id) => removeQueued(id, queued));
+
+  async function sendQueueNow(queued: string) {
+    const target = current.current;
+    const own = generation.current;
+    if (!target) return;
+    setFailed(undefined);
+    try {
+      const value = await sendQueuedNow(target.id, queued);
+      if (own === generation.current) receive(value);
+    } catch (reason) {
+      if (own !== generation.current) return;
+      const alreadySent = reason instanceof EngineError && reason.status === 409;
+      // A conflict proves delivery even when the refresh fails, so the stale row must leave immediately.
+      if (alreadySent && current.current) {
+        receive({ ...current.current, queue: current.current.queue?.filter((row) => row.id !== queued) });
+      }
+      setFailed({ text: '', mode: 'submit', message: alreadySent ? 'that message has already been sent' : messageOf(reason) });
+      const held = current.current;
+      if (!held) return;
+      await readEngine(target.id, held.entries.length, held).then((value) => {
+        if (own !== generation.current) return;
+        receive(alreadySent ? { ...value, queue: value.queue?.filter((row) => row.id !== queued) } : value);
+      }, () => undefined);
+    }
+  }
 
   async function controlTask(taskId: string, action: TaskAction) {
     const target = current.current;
@@ -268,5 +294,5 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, n
   // Once the engine has recorded anything newer than the send, the real message takes over.
   const sending = writing && (snapshot?.entries.length ?? 0) <= writing.at ? writing.text : undefined;
 
-  return { model, snapshot, sending, online, connecting, unreachable, failed, busyKey, send, stop, answer, hold, controlTask, retry, readFull, editQueue, moveQueue, removeQueue };
+  return { model, snapshot, sending, online, connecting, unreachable, failed, busyKey, send, stop, answer, hold, controlTask, retry, readFull, editQueue, moveQueue, removeQueue, sendQueueNow };
 }

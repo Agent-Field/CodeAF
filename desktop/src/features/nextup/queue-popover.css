@@ -1,0 +1,118 @@
+/* The queue popover (Iteration 2 "Frame pill → hover list"). It hangs under the pill, right edges
+   aligned, 380 wide. Rows fill on hover and nothing else changes: the words never recolor. */
+
+.queue-popover-anchor {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.queue-popover {
+  position: absolute;
+  top: var(--i2-queue-pop-offset);
+  right: 0;
+  z-index: var(--i2-queue-pop-z);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: var(--i2-queue-pop-width);
+  max-width: calc(100vw - var(--space-4));
+  padding: var(--i2-queue-pop-pad);
+  border-radius: var(--i2-queue-pop-radius);
+  background-color: var(--surface);
+  box-shadow: var(--i2-queue-pop-shadow);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+.queue-popover-head {
+  display: flex;
+  align-items: center;
+  gap: var(--i2-queue-head-gap);
+  padding: var(--i2-queue-head-pad-top) var(--i2-queue-head-pad-inline) var(--i2-queue-head-pad-bottom);
+  font-size: var(--font-size-body);
+}
+
+.queue-popover-need { font-weight: var(--i2-queue-need-weight); }
+.queue-popover-where { color: var(--ink-3); }
+
+.button.queue-popover-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--i2-queue-row-gap);
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  padding: var(--i2-queue-row-pad-block) var(--i2-queue-row-pad-inline);
+  border-radius: var(--i2-queue-row-radius);
+  color: var(--ink);
+  font-size: var(--font-size-input);
+  font-weight: var(--font-weight-regular);
+  line-height: normal;
+  text-align: start;
+  white-space: nowrap;
+}
+
+/* The tint square is 8px with a 3px corner, not the swatch's own 0.3 ratio. */
+.queue-popover-row .place-swatch[data-role="card"] {
+  width: var(--i2-queue-tint-size);
+  height: var(--i2-queue-tint-size);
+  border-radius: var(--i2-queue-tint-radius);
+}
+
+.queue-popover-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--i2-queue-line-gap);
+  min-width: var(--space-0);
+}
+
+.queue-popover-ask,
+.queue-popover-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.queue-popover-sub,
+.queue-popover-tag {
+  color: var(--ink-3);
+  font-size: var(--font-size-label);
+}
+
+.queue-popover-rule {
+  height: var(--hairline);
+  margin: var(--i2-queue-rule-margin-block) var(--i2-queue-rule-margin-inline);
+  background-color: var(--line);
+}
+
+.queue-popover-actions {
+  display: flex;
+  gap: var(--i2-queue-actions-gap);
+  padding: var(--i2-queue-actions-pad-top) var(--i2-queue-actions-pad-inline) var(--i2-queue-actions-pad-bottom);
+}
+
+.button.queue-popover-action {
+  height: var(--i2-queue-action-height);
+  min-height: 0;
+  padding: 0 var(--i2-queue-action-pad);
+  border-radius: var(--i2-queue-action-radius);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+  line-height: normal;
+}
+
+.queue-popover-chord {
+  margin-left: var(--i2-queue-chord-gap);
+  opacity: var(--opacity-shortcut);
+}
+
+.queue-popover-specimen {
+  box-sizing: border-box;
+  display: flex;
+  justify-content: flex-end;
+  min-height: 100vh;
+  padding: var(--space-8);
+  background-color: var(--canvas);
+}

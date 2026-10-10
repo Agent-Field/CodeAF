@@ -1,0 +1,2 @@
+/* An engine job's tab body (design 3c). It reuses the terminal pane's layout; only the trimmed-log line is new. */
+.job-pane .job-trim { flex: none; margin: 0 var(--terminal-header-pad-end) var(--space-2) var(--terminal-header-pad-start); font-size: var(--font-size-body); color: var(--ink-3); }

@@ -14,6 +14,7 @@ import { TaskViewSpecimen } from './TaskView.specimen';
 import { TurnViewV2Specimen } from './TurnViewV2.specimen';
 import { UserMessageSpecimen } from './UserMessage.specimen';
 import { WorkSpecimen } from './Work.specimen';
+import { CouncilSpecimen } from './Council.specimen';
 
 const specimens = [
   { name: 'Turns', View: TurnViewV2Specimen },
@@ -31,6 +32,7 @@ const specimens = [
   { name: 'Tasks table', View: TasksTableSpecimen },
   { name: 'Task view', View: TaskViewSpecimen },
   { name: 'Task detail', View: TaskDetailSpecimen },
+  { name: 'Council', View: CouncilSpecimen },
 ];
 
 /** Every conversation component with fixture props. Fixtures live only here and in tests. */

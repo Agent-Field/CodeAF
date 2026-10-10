@@ -42,8 +42,13 @@
 .tray-review-head { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
 .tray-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+/* Holding-up is the one muted foot line (ink-3, 12px). The clock and other captions stay ink-2. */
+.tray-holding.text-muted { margin: 0; color: var(--ink-3); font-size: var(--font-size-body); line-height: var(--line-height-body); }
 .tray-note.type-body { margin-left: auto; padding-right: var(--space-2); color: var(--ink-3); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); }
 .tray-footer-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-left: auto; }
+/* Q18: Later and You decide are ink-2 on every card. Hold is the same quiet ink. */
+.tray-footer .button-ghost { color: var(--ink-2); }
+.tray-footer .button-ghost:hover:not(:disabled), .tray-footer .button-ghost:active:not(:disabled) { color: var(--ink); }
 
 .tray-specimen-stack { display: flex; flex-direction: column; gap: var(--space-8); max-width: var(--composer-max-width); }
 .tray-specimen { display: flex; flex-direction: column; gap: var(--space-2); }

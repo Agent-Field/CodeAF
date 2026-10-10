@@ -33,16 +33,18 @@ export function HoverPreview({ children, title, description, meta, disabled = fa
  * neighbours, dismissal), so Radix's own open and close are ignored; this only places the card and keeps it
  * clear of the window edges. Unlike HoverPreview it may hold buttons: the pointer can enter it.
  */
-export function HoverCard({ open, trigger, triggerProps, children, ...content }: {
+export function HoverCard({ open, trigger, triggerProps, children, collisionPadding = design.overlay.collisionPadding, ...content }: {
   open: boolean;
   trigger: ReactElement;
   triggerProps?: HTMLAttributes<HTMLElement>;
   children: ReactNode;
+  /** Pixels kept clear of the viewport. The tab preview passes its own 8px; other callers keep the shared overlay padding. */
+  collisionPadding?: number;
 } & Omit<HTMLAttributes<HTMLDivElement>, 'children'>) {
   return (
     <Primitive.Root open={open} onOpenChange={() => {}}>
       <Primitive.Trigger asChild {...triggerProps}>{trigger}</Primitive.Trigger>
-      {open && <Primitive.Portal><Primitive.Content {...content} side="bottom" align="start" sideOffset={design.overlay.sideOffset} collisionPadding={design.overlay.collisionPadding}>{children}</Primitive.Content></Primitive.Portal>}
+      {open && <Primitive.Portal><Primitive.Content {...content} side="bottom" align="start" sideOffset={design.overlay.sideOffset} collisionPadding={collisionPadding}>{children}</Primitive.Content></Primitive.Portal>}
     </Primitive.Root>
   );
 }

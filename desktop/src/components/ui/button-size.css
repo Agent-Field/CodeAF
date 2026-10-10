@@ -1,0 +1,3 @@
+/* Tray answers use the taller target without changing the shared control appearance. */
+.button[data-size='control'] { min-height: var(--control-height); }
+.button[data-size='tray'] { min-height: var(--button-height-tray); }

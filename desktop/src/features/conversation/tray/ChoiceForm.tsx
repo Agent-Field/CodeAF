@@ -15,6 +15,8 @@ type Props = {
   onChoose: (option: Option) => void;
   onHold: () => void;
   renderImage?: RenderImage;
+  /** Places the cards and the action row in different parents, so the row can stay pinned while the cards scroll. */
+  render?: (parts: { cards: ReactNode; actions: ReactNode }) => ReactNode;
 };
 
 /** Options with something to read are cards; short answers stay a row of buttons. */
@@ -65,34 +67,36 @@ function Countdown({ question, now, held }: { question: Question; now: number; h
 }
 
 /** Cards to pick from, the engine's pick lit first, and Choose. A Deadline adds the clock and Hold. */
-export function ChoiceForm({ question, now, held, locked, note, onChoose, onHold, renderImage }: Props) {
+export function ChoiceForm({ question, now, held, locked, note, onChoose, onHold, renderImage, render }: Props) {
   const options = visibleOptions(question);
   const [key, setKey] = useState(() => (options.some((o) => o.key === question.pick?.key) ? question.pick?.key : undefined));
   const chosen = options.find((option) => option.key === key);
   const clocked = deadlineAt(question) !== null;
-  return (
-    <>
-      <div className="choice-cards" role="radiogroup" aria-label={question.head}>
-        {options.map((option) => (
-          <Card
-            key={option.key}
-            question={question}
-            option={option}
-            chosen={option.key === key}
-            locked={locked}
-            onSelect={() => setKey(option.key)}
-            renderImage={renderImage}
-          />
-        ))}
-      </div>
-      <div className="choice-actions">
-        <Button variant="primary" className="choice-choose" disabled={locked || !chosen} onClick={() => chosen && onChoose(chosen)}>
-          Choose
-        </Button>
-        <Countdown question={question} now={now} held={held} />
-        {clocked && !held && <Button className="choice-hold" disabled={locked} onClick={onHold}>Hold</Button>}
-        {note}
-      </div>
-    </>
+  const cards = (
+    <div className="choice-cards" role="radiogroup" aria-label={question.head}>
+      {options.map((option) => (
+        <Card
+          key={option.key}
+          question={question}
+          option={option}
+          chosen={option.key === key}
+          locked={locked}
+          onSelect={() => setKey(option.key)}
+          renderImage={renderImage}
+        />
+      ))}
+    </div>
   );
+  const actions = (
+    <div className="choice-actions">
+      <Button variant="primary" className="choice-choose" disabled={locked || !chosen} onClick={() => chosen && onChoose(chosen)}>
+        Choose
+      </Button>
+      <Countdown question={question} now={now} held={held} />
+      {clocked && !held && <Button className="choice-hold" disabled={locked} onClick={onHold}>Hold</Button>}
+      {note}
+    </div>
+  );
+  if (render) return render({ cards, actions });
+  return <>{cards}{actions}</>;
 }

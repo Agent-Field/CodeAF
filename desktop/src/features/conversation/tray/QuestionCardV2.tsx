@@ -11,6 +11,7 @@ import { formOf, hasWordsField, isIrreversible, needsWords, type Option, type Qu
 import { IrreversibleAnswers, PermissionAnswers, type WhyToggle } from './AnswerForms';
 import { BlankFields, CheckList, DialField, Declines, PairRows, WordsField, type FormProps } from './InputForms';
 import { NonBlockingNote, doesNotBlock } from './NonBlockingNote';
+import { Proposal, isProposal } from './Proposal';
 import { OptionList, ScopeChoice, WordsPanel, hasButtonRow } from './OptionActions';
 
 export type QuestionCardProps = {
@@ -97,6 +98,7 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
     void send(answerFor(question, draft, option));
   }
 
+  if (isProposal(question)) return <Proposal question={question} busy={locked} now={now} held={held} onAnswer={onAnswer} onHold={onHold} />;
   const decide = decideAnswer(question);
   const props: FormProps = { question, draft, edit, locked };
   const always = (question.options ?? []).find((option) => option.widening);
@@ -110,39 +112,18 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
   const risky = isIrreversible(question) && (form === 'permission' || form === 'choice');
   const rowHostsNote = cards || (form !== 'text' && (INPUT_FORMS.has(form) || risky || form === 'permission' || hasButtonRow(question)));
   const stopClock = () => clocked && !held && onHold();
-
-  return (
-    <section
-      className="tray-card"
-      aria-label={question.head}
-      aria-busy={locked || undefined}
-      onFocusCapture={stopClock}
-    >
+  const source = (
+    <>
       <Heading question={question} />
       <CardEvidence blocks={question.attach} renderImage={renderImage} />
       <CompareTable question={question} />
       {form === 'proposal' && question.input?.blanks?.length ? <BlankFields {...props} /> : null}
-      {form === 'text' ? (
-        <ClarifyForm
-          {...props}
-          onSend={sendForm}
-          onLater={clocked ? undefined : onLater}
-          onDecide={decide ? () => void send(decide) : undefined}
-        />
-      ) : INPUT_FORMS.has(form) ? (
-        <>
-          <Fields form={form} props={props} send={sendForm} />
-          <div className="tray-actions">
-            <Button variant="primary" disabled={locked || !canSend(question, draft)} onClick={sendForm}>Send</Button>
-            <Declines question={question} locked={locked} onPress={decline} />
-            {note}
-          </div>
-        </>
-      ) : cards ? (
-        <ChoiceForm question={question} now={now} held={held} locked={locked} note={note} onChoose={press} onHold={onHold} renderImage={renderImage} />
-      ) : (
-        <Answers question={question} locked={locked} single={single} why={{ open: whyOpen, toggle: () => setWhyOpen((open) => !open) }} note={note} onPress={press} renderImage={renderImage} />
-      )}
+      {INPUT_FORMS.has(form) ? <Fields form={form} props={props} send={sendForm} /> : null}
+      {hasWordsField(question) && form === 'choice' && !cards ? <WordsField {...props} onEnter={() => undefined} /> : null}
+    </>
+  );
+  const extra = (
+    <>
       {form === 'permission' && !isIrreversible(question) && (whyOpen || draft.change) && (
         <TextArea
           className="tray-field"
@@ -154,9 +135,7 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
           onChange={(event) => edit({ change: event.target.value })}
         />
       )}
-      {hasWordsField(question) && form === 'choice' && (
-        <WordsField {...props} onEnter={() => undefined} />
-      )}
+      {hasWordsField(question) && form === 'choice' && cards ? <WordsField {...props} onEnter={() => undefined} /> : null}
       {panel?.kind === 'scope' && always && (
         <ScopeChoice question={question} locked={locked} onPick={(scope) => void send(answerFor(question, { ...draft, scope }, always))} />
       )}
@@ -174,18 +153,54 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
           That did not go through. Try again.
         </Text>
       )}
-      <CardFooter
+    </>
+  );
+  const footer = (
+    <CardFooter
+      question={question}
+      now={now}
+      held={held}
+      locked={locked}
+      canDecide={Boolean(decide) && !clarifying}
+      clock={!cards}
+      note={rowHostsNote ? undefined : note}
+      onHold={onHold}
+      onLater={clarifying ? undefined : onLater}
+      onDecide={() => decide && void send(decide)}
+    />
+  );
+  const frame = (scroll: ReactNode, pin: ReactNode) => (
+    <section className="tray-card" aria-label={question.head} aria-busy={locked || undefined} onFocusCapture={stopClock}>
+      <div className="tray-scroll">{scroll}</div>
+      <div className="tray-pinned">{pin}</div>
+    </section>
+  );
+
+  if (cards) {
+    return (
+      <ChoiceForm
         question={question}
         now={now}
         held={held}
         locked={locked}
-        canDecide={Boolean(decide) && !clarifying}
-        clock={!cards}
-        note={rowHostsNote ? undefined : note}
+        note={note}
+        onChoose={press}
         onHold={onHold}
-        onLater={clarifying ? undefined : onLater}
-        onDecide={() => decide && void send(decide)}
+        renderImage={renderImage}
+        render={({ cards: list, actions }) => frame(<>{source}{list}</>, <>{actions}{extra}{footer}</>)}
       />
-    </section>
+    );
+  }
+  const answers = form === 'text' ? (
+    <ClarifyForm {...props} onSend={sendForm} onLater={clocked ? undefined : onLater} onDecide={decide ? () => void send(decide) : undefined} />
+  ) : INPUT_FORMS.has(form) ? (
+    <div className="tray-actions">
+      <Button variant="primary" disabled={locked || !canSend(question, draft)} onClick={sendForm}>Send</Button>
+      <Declines question={question} locked={locked} onPress={decline} />
+      {note}
+    </div>
+  ) : (
+    <Answers question={question} locked={locked} single={single} why={{ open: whyOpen, toggle: () => setWhyOpen((open) => !open) }} note={note} onPress={press} renderImage={renderImage} />
   );
+  return frame(source, <>{answers}{extra}{footer}</>);
 }

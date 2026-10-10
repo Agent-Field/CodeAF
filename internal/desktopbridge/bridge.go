@@ -213,6 +213,9 @@ type Bridge struct {
 	openIn OpenIn
 	// groups answers tab-group offers (tabgroups.go); nil makes none.
 	groups *TabGroups
+	// councils is the discussions door (council_routes.go). Nil means the
+	// list is empty and a steer is refused: this bridge has no discussions.
+	councils *councilDoor
 	// lifecycle tracks attached views separately from SSE connections (lifecycle.go).
 	lifecycle *sessionLifecycle
 }
@@ -522,6 +525,8 @@ func eventKind(k session.EventKind) string {
 		return "consent"
 	case session.EventQuestion:
 		return "question"
+	case session.EventPlan:
+		return "plan"
 	default:
 		return laterKind(k)
 	}
@@ -585,7 +590,9 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if native {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, If-Match")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+		// PATCH and DELETE are how a knows line is edited. Leaving them off this
+		// list would fail the browser's preflight before the route could answer.
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 	}
 	if r.Method == http.MethodOptions && native {
 		w.WriteHeader(204)
@@ -602,6 +609,11 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if path == "/roots" {
 		b.roots(w, r)
+		return
+	}
+	// Claimed before places and sessions. Those doors answer 404 for a path
+	// they do not know, which would hide a route whose handler has not landed.
+	if b.seamRoutes(w, r, path) {
 		return
 	}
 	if b.modelRoutes(w, r, path) {

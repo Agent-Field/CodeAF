@@ -10,7 +10,9 @@
 // not on screen, while anything of the app's floats over it (covers.ts), while
 // the pane draws its own error over the sheet, and while the window is hidden.
 // While any of those covers a page, one overlay hold hides every web view in
-// the window and the sheet stays blank. A drag of a tab or a group holds too.
+// the window. The sheet keeps its fill and WebPane writes the page title when
+// the page has one. Registered overlays (occlusion.ts) count as the same kind
+// of cover. A drag of a tab or a group holds too.
 
 import {
   nativeWebAvailable, onWebFocusAddress, onWebNewTab, onWebState, webClose, webHistory, webList, webNavigate, webOpen, webBounds, webVisible,
@@ -21,6 +23,7 @@ import {
 } from '../../lib/native/webOverlay';
 import { focusAddress } from './addressFocus';
 import { coverBoxes, isCovered } from './covers';
+import { overlayBoxes, subscribeOcclusion } from './occlusion';
 import { openFromPage } from './host';
 import { capture, forgetShot } from './shots';
 
@@ -137,10 +140,36 @@ function start() {
   mutation.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'data-state', 'hidden', 'open'] });
   window.addEventListener('resize', schedule);
   document.addEventListener('visibilitychange', schedule);
+  // Moving the window to another screen keeps the CSS rectangle and changes
+  // the scale. Forget the placed rectangle so the next frame sends it again;
+  // the native side reads the window scale when it places the view.
+  watchPixelRatio();
   // A hold going up or down changes every sheet (blank, or the page again).
   subscribeWebOverlay(() => { notify(); schedule(); });
+  // A registered overlay has no DOM mutation of its own when it is only a rectangle.
+  subscribeOcclusion(schedule);
   installWebOverlayDragGuard();
   observers = { resize, mutation };
+}
+
+let pixelRatio = typeof window === 'undefined' ? 1 : window.devicePixelRatio;
+
+function watchPixelRatio() {
+  const query = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+  const onChange = () => {
+    query.removeEventListener('change', onChange);
+    schedule();
+    watchPixelRatio();
+  };
+  query.addEventListener('change', onChange);
+}
+
+/** True on the frame the window's scale changed. The CSS rectangle can be unchanged. */
+function scaleChanged(): boolean {
+  const next = window.devicePixelRatio;
+  if (next === pixelRatio) return false;
+  pixelRatio = next;
+  return true;
 }
 
 export function schedule() {
@@ -154,7 +183,8 @@ export function schedule() {
 const sameRect = (a: WebRect | null, b: WebRect) => !!a && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
 
 function tick() {
-  const covers = coverBoxes();
+  const rescale = scaleChanged();
+  const covers = [...coverBoxes(), ...overlayBoxes()];
   const windowShown = document.visibilityState !== 'hidden';
   let changed = false;
   let anyCovered = false;
@@ -216,7 +246,7 @@ function tick() {
       slot.sentVisible = false;
       enqueue(slot, () => webVisible(slot.pane, false));
     }
-    if (show && !sameRect(slot.sentRect, place.rect)) {
+    if (show && (rescale || !sameRect(slot.sentRect, place.rect))) {
       slot.sentRect = place.rect;
       enqueue(slot, () => webBounds(slot.pane, place.rect));
     }

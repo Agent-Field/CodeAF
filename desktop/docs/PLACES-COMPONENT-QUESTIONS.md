@@ -19,6 +19,7 @@ Decisions made while building `src/features/places/components/` where the design
 | Q-T13 | Space on a tile. | Quick Look when `onQuickLook` is given; otherwise an ordinary press. ⌘/Ctrl-Enter and ⌘/Ctrl-click and middle click open in a new window. |
 | Q-T14 | Tab order in the tile grid. | Every tile is a tab stop; arrows, Home and End are an accelerator, not roving tabindex. |
 | Q-T15 | The 12px swatch pickers are below the 24px target size. | Kept as drawn; WCAG 2.2 target size is outside the suite's tags. Revisit with the designer for coarse pointers. |
+| Q-T16 | The suite hardcodes port 1711, so parallel lanes collide. | Left as is; a lane overrides the port with a temporary copy of the Playwright and Vite configs and deletes it after the run. |
 
 ## Shared edits outside the new folder
 

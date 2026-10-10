@@ -2,15 +2,13 @@ import { useSyncExternalStore } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
 import { ScrollMemory } from './scrollMemory';
 import { browserNamespace, nativeNamespace, storageKeyFor, touchNamespace } from './scrollStorage';
+import { createScrollSaveThrottle } from './saveThrottle';
 
 // The one live memory of THIS window, persisted under a window-local key (scrollStorage.ts). A browser knows its namespace at once; a native
 // window must ask the shell for its label, so the memory is undefined for a moment and restores wait for it.
 
-const SAVE_DELAY_MS = 300;
-
 let memory: ScrollMemory | undefined;
 let key = '';
-let saveTimer: ReturnType<typeof setTimeout> | undefined;
 const listeners = new Set<() => void>();
 
 function open(namespace: string) {
@@ -22,17 +20,15 @@ function open(namespace: string) {
 }
 
 function save() {
-  saveTimer = undefined;
   if (!memory) return;
   try { localStorage.setItem(key, memory.serialize()); } catch { /* Storage can be full or blocked; the position is a convenience. */ }
 }
 
-export function scheduleSave() {
-  if (saveTimer === undefined) saveTimer = setTimeout(save, SAVE_DELAY_MS);
-}
+const saveThrottle = createScrollSaveThrottle(save);
+export const scheduleSave = saveThrottle.schedule;
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('pagehide', () => { if (saveTimer !== undefined) { clearTimeout(saveTimer); save(); } });
+  window.addEventListener('pagehide', saveThrottle.flush);
   const fallback = () => open(browserNamespace(typeof sessionStorage === 'undefined' ? undefined : sessionStorage));
   if (isTauri()) {
     // The shell names each window ("main", "w-2"); that label survives a relaunch, so positions do too.

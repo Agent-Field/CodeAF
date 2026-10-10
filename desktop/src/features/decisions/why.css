@@ -1,0 +1,41 @@
+/* The Why? popover (Components I2, Decisions 12c). Measured against the design: a 360px surface at radius 12 on sh-2,
+   padded 14/16, 10px between blocks; facts are a two-column grid in 12px; the Next time block is set off by a hairline. */
+.why { position: relative; display: inline-block; }
+.why-trigger.button { height: auto; min-height: 0; padding: var(--space-0); background: transparent; font: inherit; color: var(--ink-2); }
+.why-trigger.button:hover:not(:disabled) { color: var(--ink); }
+.why-card {
+ position: absolute;
+ left: 0;
+ top: calc(100% + var(--why-offset));
+ z-index: var(--z-overlay);
+ display: flex;
+ flex-direction: column;
+ gap: var(--why-gap);
+ width: var(--why-width);
+ padding: var(--why-pad-block) var(--why-pad-inline);
+ border-radius: var(--why-radius);
+ box-shadow: var(--why-shadow);
+ background: var(--surface);
+ color: var(--ink);
+ font-family: var(--sans);
+ transform-origin: top left;
+ animation: popover-enter var(--dur-fast) var(--chrome-ease);
+}
+.why-title { font-size: var(--why-title-size); font-weight: var(--why-title-weight); }
+.why-facts { display: grid; grid-template-columns: auto 1fr; gap: var(--why-facts-gap-block) var(--why-facts-gap-inline); margin: 0; font-size: var(--why-facts-size); }
+.why-fact { display: contents; }
+.why-facts dt { color: var(--ink-3); }
+.why-facts dd { margin: 0; }
+.why-next { display: flex; flex-direction: column; gap: var(--why-next-gap); padding-top: var(--why-next-pad-top); border-top: var(--why-next-rule); }
+.why-next-label { font-size: var(--why-facts-size); color: var(--why-next-label-color); }
+.why-next-choices { display: flex; flex-wrap: wrap; gap: var(--why-next-gap); }
+.why-buttons { display: flex; align-items: center; gap: var(--why-buttons-gap); }
+.why-button.button {
+ height: var(--why-button-height);
+ min-height: var(--why-button-height);
+ padding: var(--space-0) var(--why-button-pad);
+ border-radius: var(--why-button-radius);
+ font-size: var(--why-button-size);
+ font-weight: var(--why-button-weight);
+}
+.why-open.button { margin-left: auto; color: var(--why-open-color); }

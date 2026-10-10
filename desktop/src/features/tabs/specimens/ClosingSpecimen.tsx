@@ -14,7 +14,7 @@ function MenuSurface({ rows, wide = false, label }: { rows: Row[]; wide?: boolea
         ? <div key={index} className="menu-separator"/>
         : <div key={row.id} className={`menu-item${row.danger ? ' menu-item-danger' : ''}`} data-highlighted={row.highlighted || undefined}>
           {row.icon && <Icon name={row.icon} size="sm"/>}<span className="menu-label">{row.label}</span>
-          {row.submenu ? <Icon name="chevronRight" size="xs"/> : row.shortcut && <KeyboardShortcut label={row.shortcut}/>}
+          {row.submenu ? <Icon name="chevronRight" size="xs"/> : row.shortcut && <KeyboardShortcut label={row.shortcut} variant="inline"/>}
         </div>)}
     </div>
   );

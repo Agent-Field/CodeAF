@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
+	"github.com/Agent-Field/codeaf/internal/decide"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	executor "github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/standing"
@@ -374,6 +375,21 @@ func quotedFacts(t *testing.T) []quotedFact {
 		quotes: []quotedIn{
 			{"adaptive-runs", "picked up again from 9 recorded turns — it was still working when it ran out of %s"},
 		},
+	}, {
+		// A kind of question graduates on this many agreements inside one full
+		// ring. The page states the bar in digits, the same digits the tray
+		// counts with, so a moved constant cannot leave the sentence behind.
+		fact: "how many of the last answers must agree before a kind decides", owner: "decide.GraduateAt",
+		value:  strconv.Itoa(decide.GraduateAt),
+		quotes: []quotedIn{{"desktop-learning-mode", "once %s of the last"}},
+	}, {
+		fact: "how many answers a kind must have before it can decide", owner: "decide.RingSize",
+		value:  strconv.Itoa(decide.RingSize),
+		quotes: []quotedIn{{"desktop-learning-mode", "of the last %s answers agreed"}},
+	}, {
+		fact: "how many agreements in a full ring still leave a kind learning", owner: "decide.GraduateAt - 1",
+		value: strconv.Itoa(decide.GraduateAt - 1),
+		quotes: []quotedIn{{"desktop-learning-mode", "%s of 20 stays learning"}},
 	}}
 	return facts
 }

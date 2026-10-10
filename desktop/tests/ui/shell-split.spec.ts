@@ -204,7 +204,7 @@ test('the pane menu swaps, maximizes without unmounting, restores, and closes', 
   await page.getByRole('menuitem', { name: 'Maximize' }).click();
   await expect(panes.nth(0)).toBeHidden();
   await expect(panes.nth(1)).toHaveAttribute('data-focused', 'true');
-  await expect(page.locator('.pane-resize')).toHaveCount(0);
+  await expect(page.locator('.pane-resize')).toBeHidden();
   const area = await card(page);
   const full = (await panes.nth(1).boundingBox())!;
   expect(Math.abs(full.width - area.width)).toBeLessThan(2);
@@ -281,4 +281,25 @@ test('the Design system page shows the drag targets, the pane header and the com
     await expect(panes.locator('.split-tray')).toHaveCSS('height', '38px');
     await expectAccessible(page);
   }
+});
+
+test('at 600px and below a split shows only the focused pane and segments switch it (SH-211)', async ({ page }) => {
+  await seed(page, [split([pane('p1', 'Alpha'), pane('p2', 'Beta')])], 'sp');
+  await page.setViewportSize({ width: 600, height: 800 });
+  await page.goto('/');
+  const panes = page.locator('.workspace-pane');
+  await expect(panes).toHaveCount(2);
+  await expect(panes.nth(0)).toBeVisible();
+  await expect(panes.nth(1)).toBeHidden();
+  await expect(page.locator('.pane-resize')).toBeHidden();
+  const full = await panes.nth(0).boundingBox();
+  const area = await card(page);
+  expect(Math.abs(full!.width - area.width)).toBeLessThan(2);
+  await page.getByRole('tab', { name: 'Beta', exact: true }).click();
+  await expect(panes.nth(1)).toBeVisible();
+  await expect(panes.nth(0)).toBeHidden();
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Alt+ArrowLeft' : 'Control+Alt+ArrowLeft');
+  await expect(panes.nth(0)).toBeVisible();
+  await page.setViewportSize({ width: 1000, height: 800 });
+  await expect(panes.nth(1)).toBeVisible();
 });

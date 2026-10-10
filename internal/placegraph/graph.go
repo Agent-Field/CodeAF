@@ -25,17 +25,23 @@ func (p Place) clone() Place {
 	p.Parents = append([]string{}, p.Parents...)
 	p.Context.Sources = append([]Source(nil), p.Context.Sources...)
 	p.Manager = append(json.RawMessage(nil), p.Manager...)
+	if p.Decide != nil {
+		d := *p.Decide
+		p.Decide = &d
+	}
 	return p
 }
 
 func (st *State) clone() *State {
 	c := &State{
-		Version:     st.Version,
-		Revision:    st.Revision,
-		Places:      make([]Place, len(st.Places)),
-		Memberships: append([]Membership{}, st.Memberships...),
-		Pinned:      append([]string{}, st.Pinned...),
-		Open:        append([]OpenRow(nil), st.Open...),
+		Version:       st.Version,
+		Lines:         append([]Line(nil), st.Lines...),
+		KnowsMigrated: st.KnowsMigrated,
+		Revision:      st.Revision,
+		Places:        make([]Place, len(st.Places)),
+		Memberships:   append([]Membership{}, st.Memberships...),
+		Pinned:        append([]string{}, st.Pinned...),
+		Open:          append([]OpenRow(nil), st.Open...),
 	}
 	for i, p := range st.Places {
 		c.Places[i] = p.clone()
@@ -232,6 +238,11 @@ func validateState(st *State, repair bool) ([]string, error) {
 		if err := validatePolicy(p.Policy); err != nil {
 			return nil, err
 		}
+		if p.Decide != nil {
+			if err := validateDecide(*p.Decide); err != nil {
+				return nil, fmt.Errorf("%w (place %s)", err, p.ID)
+			}
+		}
 		if len(p.Manager) > 0 && (len(p.Manager) > MaxManagerBytes || !json.Valid(p.Manager)) {
 			return nil, fmt.Errorf("%w: manager of %s", ErrInvalid, p.ID)
 		}
@@ -271,6 +282,9 @@ func validateState(st *State, repair bool) ([]string, error) {
 	}
 	if names := st.cycleNames(); names != "" {
 		return nil, fmt.Errorf("%w: %s", ErrCycle, names)
+	}
+	if err := validateLines(st); err != nil {
+		return nil, err
 	}
 	// Memberships.
 	type pair struct{ c, p string }
@@ -1175,6 +1189,13 @@ func detach(st *State, id string, repl func(child *Place) []string) (int, error)
 		}
 	}
 	st.Places = places
+	lines := st.Lines[:0:0]
+	for _, l := range st.Lines {
+		if l.PlaceID != id {
+			lines = append(lines, l)
+		}
+	}
+	st.Lines = lines
 	ms := st.Memberships[:0:0]
 	for _, m := range st.Memberships {
 		if m.PlaceID != id {
@@ -1294,6 +1315,11 @@ func (s *Store) MergePlaces(from, into string) (MergeResult, Receipt, error) {
 			}
 			have[m.ChatID] = true
 			m.PlaceID = into
+		}
+		for i := range st.Lines {
+			if st.Lines[i].PlaceID == from {
+				st.Lines[i].PlaceID = into
+			}
 		}
 		dst.Context = merged
 		if dst.Policy.Model == "" {

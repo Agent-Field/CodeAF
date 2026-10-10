@@ -6,14 +6,17 @@
 // routes, and every change is one of their writes. The window keeps only what is genuinely the window's: which place
 // it shows, and which places the person closed in it (Places 10a "Closing ... takes it off the rail").
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useToasts } from '../../../components/ui';
 import { nativeControls, placeFromSearch, type NativeControls } from '../../../design/nativeControls';
 import { PlacesError, type Mutation, type PlacesClient } from '../client';
-import type { ChooserMode, UndoEntry, WindowPlace } from './contracts';
+import type { ChooserMode, WindowPlace } from './contracts';
 import { indexPlaces, type PlaceIndex } from './selectors';
 import { placesStore, usePlaces, type PlacesState } from './placesStore';
 import { requestWorkspace } from './workspaceBus';
+import { createPlaceNavigation } from '../navigation';
+import { createPlaceUndo } from '../undo';
+import { windowStructuralUndo } from '../../tabs/undo/structuralUndo';
 
 export type DialogRequest =
   | { kind: 'instructions'; placeId: string }
@@ -36,6 +39,7 @@ export type PlacesShell = {
   goTo: (id: string) => Promise<void>;
   goToInNewWindow: (id: string) => Promise<void>;
   openAllPlaces: (background?: boolean) => void;
+  up: () => Promise<void>;
   closePlace: (id: string) => void;
   closeOpen: (except?: string) => void;
   chooser?: ChooserMode;
@@ -65,7 +69,6 @@ export const PlacesShellProvider = PlacesShellContext.Provider;
 /** The shell, or undefined outside one (a specimen). A part that needs it draws nothing without it. */
 export const usePlacesShell = () => useContext(PlacesShellContext);
 
-const UNDO_LIMIT = 20;
 const closedKey = 'codeaf.desktop.places.closed';
 const windowPlaceKey = (label: string) => `codeaf.desktop.window.${label}.place`;
 export const isWindowPlace = (value: unknown): value is WindowPlace => value === 'now' || (typeof value === 'string' && /^pl_[0-9a-f]{16}$/.test(value));
@@ -104,8 +107,9 @@ export function usePlacesShellController(): PlacesShell {
   const [chooser, setChooser] = useState<ChooserMode>();
   const [dialog, setDialog] = useState<DialogRequest>();
   const [lookAt, setLookAt] = useState<string>();
-  const undo = useRef<UndoEntry[]>([]);
-  const [canUndo, setCanUndo] = useState(false);
+  const placeUndo = useMemo(() => createPlaceUndo(client), [client]);
+  const undoSize = useSyncExternalStore(windowStructuralUndo.subscribe, windowStructuralUndo.getSnapshot);
+  const canUndo = undoSize > 0;
   const toasts = useToasts();
   const show = toasts.show;
   const index = useMemo(() => (places.graph ? indexPlaces(places.graph.places) : undefined), [places.graph]);
@@ -133,28 +137,13 @@ export function usePlacesShellController(): PlacesShell {
 
   const refresh = useCallback(() => placesStore.refresh(), []);
 
-  const undoEntry = useCallback(async (entry: UndoEntry) => {
-    try {
-      await client.undo([...entry.receipts]);
-      undo.current = undo.current.filter(other => other.id !== entry.id);
-      setCanUndo(undo.current.length > 0);
-      show({ text: `Undone: ${entry.text}`, actions: [], durationMs: 3000 });
-    } catch (failure) {
-      // A graph that moved on since cannot be taken back; the step leaves the stack with the engine's reason.
-      if (failure instanceof PlacesError && failure.code === 'cannot_undo') { undo.current = undo.current.filter(other => other.id !== entry.id); setCanUndo(undo.current.length > 0); }
-      throw failure;
-    } finally {
-      void refresh();
-    }
-  }, [client, refresh, show]);
-
   const remember = useCallback((text: string, receipts: string[], subject?: string, durationMs?: number) => {
-    if (!receipts.length) return;
-    const entry: UndoEntry = { id: crypto.randomUUID(), text, subject, receipts };
-    undo.current = [...undo.current.slice(-(UNDO_LIMIT - 1)), entry];
-    setCanUndo(true);
-    show({ text, subject, undo: () => undoEntry(entry), durationMs });
-  }, [show, undoEntry]);
+    const entry = placeUndo.register({ receipts }, async () => {
+      show({ text: `Undone: ${text}`, actions: [], durationMs: 3000 });
+      await refresh();
+    });
+    if (entry) show({ text, subject, undo: entry.undo, durationMs });
+  }, [show, placeUndo, refresh]);
 
   const write = useCallback<PlacesShell['write']>(async (text, job, options = {}) => {
     try {
@@ -171,56 +160,54 @@ export function usePlacesShellController(): PlacesShell {
   }, [remember, refresh]);
 
   const undoLast = useCallback(async () => {
-    const entry = undo.current[undo.current.length - 1];
-    if (!entry) { show({ text: 'Nothing to undo.', actions: [], durationMs: 3000 }); return; }
-    await undoEntry(entry);
-  }, [show, undoEntry]);
+    await windowStructuralUndo.undoExternal();
+  }, []);
 
   const openAllPlaces = useCallback((background = false) => {
     if (!requestWorkspace({ type: 'home-root', background })) show({ text: 'All places opens in the workspace. Go to the workspace first.', tone: 'warning', actions: [] });
   }, [show]);
 
-  const goTo = useCallback(async (id: string) => {
-    setChooser(undefined);
-    if (id === 'root') { openAllPlaces(); return; }
-    if (id === 'now') { setPlace('now'); setArrival(n => n + 1); return; }
-    if (!isWindowPlace(id)) throw new Error('That is not a place codeaf knows.');
-    // A just-created Place can precede this render's graph refresh. Confirm
-    // unknown targets with the canonical graph before rejecting or navigating.
-    const target = index?.byId.get(id) ?? (await client.graph({ archived: true })).places.find(place => place.id === id);
-    if (!target) throw new Error('That place no longer exists.');
-    if (target?.archived) throw new Error(`“${target.name}” is archived. Restore it from All places first.`);
-    setPlace(id);
-    setArrival(n => n + 1);
-    setClosed(before => { if (!before.has(id)) return before; const next = new Map(before); next.delete(id); return next; });
-    // Going there is what puts a place in the rail's Open list; the engine records it and the next read shows it.
-    try { await client.visit(id); } catch (failure) { warn(failure); }
-    void refresh();
-  }, [client, index, openAllPlaces, refresh, warn]);
-
-  const goToInNewWindow = useCallback(async (id: string) => {
-    if (id !== 'now' && id !== 'root' && !isWindowPlace(id)) throw new Error('That is not a place codeaf knows.');
-    await native.openPlaceWindow(id as 'now' | 'root' | `pl_${string}`);
-    if (isWindowPlace(id) && id !== 'now') { try { await client.visit(id); } catch (failure) { warn(failure); } void refresh(); }
-  }, [client, native, refresh, warn]);
-
-  const closePlace = useCallback((id: string) => {
-    setClosed(before => new Map(before).set(id, new Date().toISOString()));
-    // Closing the place this window shows leaves the window in Now; its tabs are kept for when it is opened again.
-    if (id === place) { setPlace('now'); setArrival(n => n + 1); }
-  }, [place]);
-
-  const closeOpen = useCallback((except?: string) => {
-    const open = places.graph?.rail.open.filter(view => view.id !== except && !view.pinned) ?? [];
-    if (!open.length) return;
-    const at = new Date().toISOString();
-    setClosed(before => { const next = new Map(before); for (const view of open) next.set(view.id, at); return next; });
-    if (place !== 'now' && place !== except && open.some(view => view.id === place)) { setPlace('now'); setArrival(n => n + 1); }
-  }, [places.graph, place]);
+  // Async navigation reads the latest window and graph rather than a render captured before an engine write.
+  const navigationState = useRef({ place, graph: places.graph });
+  navigationState.current = { place, graph: places.graph };
+  const navigation = useMemo(() => createPlaceNavigation({
+    client: { graph: client.graph, railOp: async operation => {
+      const result = await client.railOp(operation);
+      if (operation.op === 'close' && operation.place) {
+        const id = operation.place;
+        const name = navigationState.current.graph?.places.find(item => item.id === id)?.name;
+        const text = name ? `Closed “${name}”` : 'Closed place';
+        const entry = placeUndo.registerClose(async () => {
+          await client.railOp({ op: 'visit', place: id });
+          setClosed(before => { const next = new Map(before); next.delete(id); return next; });
+          show({ text: `Undone: ${text}`, actions: [], durationMs: 3000 });
+          void refresh();
+        });
+        show({ text, subject: name, undo: entry.undo });
+      }
+      return result;
+    } }, windows: native,
+    graph: () => navigationState.current.graph,
+    current: () => navigationState.current.place,
+    setPlace: key => { navigationState.current.place = key; setPlace(key); },
+    focusHome: () => setArrival(n => n + 1),
+    openRoot: openAllPlaces,
+    setClosed: (key, isClosed) => setClosed(before => {
+      if (key === 'now' || key === 'root') return before;
+      const next = new Map(before);
+      if (isClosed) next.set(key, new Date().toISOString()); else next.delete(key);
+      return next;
+    }),
+    refresh, warn,
+  }), [client, native, openAllPlaces, refresh, warn, placeUndo, show]);
+  const goTo = useCallback(async (id: string) => { setChooser(undefined); await navigation.goTo(id); }, [navigation]);
+  const goToInNewWindow = navigation.openInNewWindow;
+  const closePlace = useCallback((id: string) => { void navigation.closePlace(id).catch(warn); }, [navigation, warn]);
+  const closeOpen = useCallback((except?: string) => { void navigation.closeAllOthers(except).catch(warn); }, [navigation, warn]);
 
   return {
     place, places, index, client, native, arrival, closed,
-    goTo, goToInNewWindow, openAllPlaces, closePlace, closeOpen,
+    goTo, goToInNewWindow, openAllPlaces, closePlace, closeOpen, up: navigation.up,
     chooser, openChooser: setChooser, closeChooser: () => setChooser(undefined),
     lookAt, quickLook: setLookAt,
     dialog, openDialog: setDialog, closeDialog: () => setDialog(undefined),

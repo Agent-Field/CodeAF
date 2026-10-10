@@ -1,7 +1,7 @@
 // The typed, shared tab actions: the things a tab can DO that reach outside the workspace (another window, the clipboard).
 // The tab menu, the overview, the rail and the keys all call this one object, so what is offered and what is said when it
 // fails cannot drift apart. Free of React so node tests drive it with a stub native bridge.
-import type { NativeControls, PlaceKey } from '../../design/nativeControls.ts';
+import type { NativeControls, PlaceKey, Point } from '../../design/nativeControls.ts';
 import type { Toasts } from '../../design/toasts.ts';
 import type { Tab } from './model.ts';
 import { linkForTab } from './links/deepLinks.ts';
@@ -45,8 +45,10 @@ export type TabActions = {
    * claimed it (the workspace removes it on `window://handoff-claimed`), so a failed or abandoned move loses nothing.
    * Failures are said in a toast; the tab is never touched. A handoff nobody claims within `HANDOFF_CLAIM_WAIT_MS` is
    * said once, in a toast, and the tab stays.
+   * A drag passes `at`, the new window's top-left in logical screen coordinates, including a negative one.
+   * The menu omits it and the window cascades.
    */
-  moveToNewWindow(tab: Tab): Promise<boolean>;
+  moveToNewWindow(tab: Tab, at?: Point): Promise<boolean>;
   /** The same, into a window that is already open. */
   moveToWindow(tab: Tab, label: string): Promise<boolean>;
 };
@@ -74,16 +76,17 @@ export function createTabActions({ native, toasts, writeClipboard = text => navi
       return true;
     },
     canMove,
-    async moveToNewWindow(tab) {
+    async moveToNewWindow(tab, at) {
       if (!canMove(tab)) return false;
       try {
         const placeKey = (place?.() as PlaceKey | undefined) ?? (await native.currentWindow()).placeKey;
+        const where = at ? { at } : {};
         if (handoffView) {
-          await native.openPlaceWindow(placeKey, { focusTab: tab.id });
+          await native.openPlaceWindow(placeKey, { focusTab: tab.id, ...where });
           handoffView(tab.id);
           return true;
         }
-        const opened = await native.openPlaceWindow(placeKey, { pane: tab });
+        const opened = await native.openPlaceWindow(placeKey, { pane: tab, ...where });
         if (opened.moved) { watch(tab, 'the new window'); return true; }
       } catch { /* said below */ }
       failed(tab, 'to a new window');

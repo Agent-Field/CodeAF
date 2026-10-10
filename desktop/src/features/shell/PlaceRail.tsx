@@ -5,6 +5,7 @@ import type { PlaceRowModel } from '../places/shell/contracts';
 import { chatDragType, placeDragType, readDrag, writeDrag } from '../places/place-actions';
 import type { RailSections } from '../places/shell/selectors';
 import { RailToggle } from './RailToggle';
+import { PlaceDot as Dot } from '../places/PlaceDot';
 import './rail.css';
 import './place-rail.css';
 
@@ -54,11 +55,6 @@ export type PlaceRailProps = {
 };
 
 const primaryClick = (event: MouseEvent) => event.metaKey || event.ctrlKey;
-
-function Dot({ status, label }: { status?: 'waiting' | 'failed'; label?: string }) {
-  if (!status) return null;
-  return <span className="rail-dot" data-state={status} role="img" aria-label={label ?? (status === 'waiting' ? 'Needs you' : 'Failed')} title={label}/>;
-}
 
 function Section({ label, action, children }: { label: string; action?: ReactNode; children: ReactNode }) {
   return <section className="rail-group" aria-label={label}>
@@ -153,8 +149,9 @@ export function PlaceRail(props: PlaceRailProps) {
     </div>
     <nav className="rail-nav" aria-label="Places">
       <div className="rail-group">
-        {inbox && <NavigationItem icon="inbox" active={inbox.active} onClick={inbox.onOpen} trail={inbox.count > 0 ? <Dot status="waiting" label={`${inbox.count} ${inbox.count === 1 ? 'needs' : 'need'} you`}/> : undefined}>Inbox</NavigationItem>}
-        <NavigationItem icon="now" active={now.active} aria-keyshortcuts={now.shortcut} onClick={event => (primaryClick(event) && now.onNewWindow ? now.onNewWindow() : now.onGo())}
+        {inbox && <NavigationItem icon="inbox" active={inbox.active} onClick={inbox.onOpen} onContextMenu={event => event.preventDefault()} trail={inbox.count > 0 ? <Dot status="waiting" label={`${inbox.count} ${inbox.count === 1 ? 'needs' : 'need'} you`}/> : undefined}>Inbox</NavigationItem>}
+        {/* Inbox and Now draw no menu (Interactions, right-click "—"). Swallowing the event keeps the webview's own menu off those rows. */}
+        <NavigationItem icon="now" active={now.active} aria-keyshortcuts={now.shortcut} onContextMenu={event => event.preventDefault()} onClick={event => (primaryClick(event) && now.onNewWindow ? now.onNewWindow() : now.onGo())}
           onAuxClick={event => { if (event.button === 1 && now.onNewWindow) { event.preventDefault(); now.onNewWindow(); } }}
           trail={<Dot status={now.status} label={now.statusLabel}/>}>Now</NavigationItem>
       </div>

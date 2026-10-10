@@ -11,6 +11,27 @@ const state = (tabs: Tab[], over: Partial<WorkspaceState> = {}): WorkspaceState 
 const run = (s: WorkspaceState, ...actions: WorkspaceAction[]) => actions.reduce(workspaceReducer, s);
 const ids = (s: WorkspaceState) => s.tabs.map(t => t.id);
 
+test('closing stamps when the tab entered the closed list, and reopening drops that time', () => {
+  const before = Date.now();
+  const closed = run(state([tab('a'), tab('b')]), { type: 'close', id: 'b' });
+  const at = closed.closed.find(t => t.id === 'b')!.closedAt!;
+  assert.ok(Number.isSafeInteger(at) && at >= before && at <= Date.now());
+  const back = run(closed, { type: 'reopen' });
+  assert.equal('closedAt' in back.tabs.find(t => t.id === 'b')!, false);
+  const again = run(back, { type: 'close', id: 'b' });
+  assert.ok(again.closed.find(t => t.id === 'b')!.closedAt! >= at);
+});
+
+test('a bulk close and a pane closed out of a split each carry a close time', () => {
+  const bulk = run(state([tab('a'), tab('b'), tab('c')], { activeId: 'b' }), { type: 'close-others', id: 'b' });
+  assert.ok(bulk.closed.every(t => Number.isSafeInteger(t.closedAt)));
+  const pane = (id: string) => ({ id, kind: 'conversation' as const, title: id, draft: '' });
+  const host = tab('s', { split: { layout: '1x2', focus: 0, panes: [pane('p1'), pane('p2')] } });
+  const split = run(state([host, tab('z')]), { type: 'split-close-pane', id: 's', paneId: 'p2' });
+  assert.equal(split.closed[0].id, 'p2');
+  assert.ok(Number.isSafeInteger(split.closed[0].closedAt));
+});
+
 test('close-others keeps the tab and the pinned tabs, and every closed tab can be reopened', () => {
   const s = run(state([tab('p', { pinned: true }), tab('a'), tab('b'), tab('c')], { activeId: 'a' }), { type: 'close-others', id: 'b' });
   assert.deepEqual(ids(s), ['p', 'b']);
@@ -84,6 +105,13 @@ test('ensure-inbox adds one pinned Inbox first in the strip, once, without takin
   assert.equal(once.tabs[0].kind, 'inbox');
   assert.equal(once.activeId, 'b');
   assert.equal(run(once, { type: 'ensure-inbox' }), once);
+});
+
+test('ensure-inbox sits after a place Home and still does not take focus', () => {
+  const home = tab('home', { kind: 'home', place: 'pl_reading', title: 'Reading', pinned: true });
+  const once = run(state([home, tab('a')], { activeId: 'a' }), { type: 'ensure-inbox' });
+  assert.deepEqual(ids(once), ['home', 'inbox', 'a']);
+  assert.equal(once.activeId, 'a');
 });
 
 test('open-inbox creates the Inbox when absent and focuses it; with it present it only focuses', () => {

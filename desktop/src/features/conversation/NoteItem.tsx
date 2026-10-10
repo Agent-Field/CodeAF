@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Button, Icon } from '../../components/ui';
-import { SystemNote, type SystemNoteKind } from './SystemNote';
+import { RememberNote, SystemNote, type SystemNoteKind } from './SystemNote';
 import type { NoteTone } from './types';
 import { usePlacesShell } from '../places/shell/PlacesShell';
 import { toasts } from '../../design/toasts';
@@ -39,6 +39,9 @@ export function NoteItem({ text, long, tone, time, undoReceipts }: NoteItemProps
     finally { inFlight.current = false; setPending(false); }
   };
   if (!text) return null;
+  if (text.startsWith('Saved to ') && undoReceipts?.length === 1 && undoReceipts[0].startsWith('remember_')) {
+    return <RememberNote text={text} token={undoReceipts[0]} />;
+  }
   if (long) return <FoldedNote text={text} />;
   return <SystemNote kind={tone ? KIND[tone] : 'info'} time={time} action={shell && undoReceipts?.length && !undone ? { label: pending ? 'Undoing…' : 'Undo', onClick: () => void undo() } : undefined}>{text}</SystemNote>;
 }
