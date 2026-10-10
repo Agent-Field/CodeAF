@@ -10,7 +10,7 @@ const proposal = (): EngineQuestion => ({
   kind: 'ask',
   ask: 'choice',
   head: 'Should trailing commas be on by default?',
-  learning: { place: 'Marketing', agreed: 14, of: 20 },
+  proposal: { place: 'Marketing', agreed: 14, of: 20 },
   pick: { key: 'a', percent: 92, basis: ['k-12', 'k-40'] },
   options: [{ key: 'a', label: 'Keep strict' }, { key: 'b', label: 'Tolerant' }],
 });

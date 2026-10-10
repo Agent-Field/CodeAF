@@ -154,6 +154,7 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
   const holdRow = useFoldAnchor(scroller, `${tab.folded ? JSON.stringify(tab.folded) : ''}${JSON.stringify(tab.open ?? {})}`);
   const control = (action: 'pause' | 'resume' | 'cancel') => (id: string) => void conversation.controlTask(id, action);
   const blocks = {
+    sessionId: snapshot?.id,
     tasks: model.tasks,
     waiting: blocksComposer(model.questions),
     open: tab.open ?? {},

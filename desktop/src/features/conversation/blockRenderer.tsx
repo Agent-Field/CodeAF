@@ -4,6 +4,7 @@
 import type { ReactNode } from 'react';
 import type { EngineTaskRow } from '../chat/engine-client';
 import { DeliverableView, FileChip, ImageGrid, LinkChip, type FigureItem } from './assets';
+import { DecisionAsideView, TranscriptPlan } from './DecisionAsideView';
 import { NoteItem } from './NoteItem';
 import { TaskNotice, type OpenTask } from './TaskNotice';
 import { displayCommand } from './tasks/displayCommand';
@@ -15,6 +16,7 @@ import { argPath } from './work/stats';
 import { WorkBlockView } from './work/WorkBlockView';
 
 export type BlockContext = {
+  sessionId?: string;
   tasks: EngineTaskRow[];
   waiting?: boolean;
   open: Record<string, boolean>;
@@ -123,6 +125,9 @@ export function blockRenderer(ctx: BlockContext) {
   return (turn: TurnV2) =>
     function renderBlock(block: TurnBlock): ReactNode {
       switch (block.kind) {
+        case 'decision-receipt': return <DecisionAsideView decision={block.decision} onOpen={ctx.onFocusQuestion}/>;
+        case 'plan': return ctx.sessionId ? <TranscriptPlan plan={block.plan} sessionId={ctx.sessionId}/> : null;
+        case 'remember-line': return <NoteItem text={block.text} undoReceipts={block.undoReceipts}/>;
         case 'context-note': return <NoteItem text={block.text} undoReceipts={block.undoReceipts}/>;
         case 'work':
           return <WorkBlock block={block} turn={turn} ctx={ctx} />;
