@@ -143,6 +143,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   }
 
   const holdRow = useFoldAnchor(scroller, `${tab.folded ? JSON.stringify(tab.folded) : ''}${JSON.stringify(tab.open ?? {})}`);
+  const control = (action: 'pause' | 'resume' | 'cancel') => (id: string) => void conversation.controlTask(id, action);
   const blocks = {
     tasks: model.tasks,
     waiting: blocksComposer(model.questions),
@@ -153,11 +154,13 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
     },
     readFull: conversation.readFull,
     onOpenTask: openTask,
+    onPause: control('pause'),
+    onResume: control('resume'),
+    onStop: control('cancel'),
     onFocusQuestion: focusQuestion,
   };
   const sessionId = snapshot?.id;
   const readFile = sessionId ? (path: string) => readEngineText(sessionId, path) : undefined;
-  const control = (action: 'pause' | 'resume' | 'cancel') => (taskId: string) => void conversation.controlTask(taskId, action);
   const folded = tab.folded ?? {};
   const toggleFold = (id: string, next: boolean) => {
     holdRow(id);
