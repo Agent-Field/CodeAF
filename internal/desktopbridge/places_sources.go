@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/placegraph"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // SourceCheck is what could be said about a source without reading it. It is
@@ -232,4 +233,37 @@ func (p *Places) removeSource(w http.ResponseWriter, r *http.Request, id string)
 	var b batch
 	b.add(rc)
 	p.finish(w, &b, id, nil)
+}
+
+// chatSource is the chat-only drop: a folder dropped on one conversation
+// refers it to THAT chat alone and never touches a place's sources. It goes
+// through the attached agent's ReferPlace by type assertion so the Agent
+// interface keeps its size, and says PlaceSaid because the person named it.
+func (s *conversation) chatSource(w http.ResponseWriter, r *http.Request) {
+	if !needPost(w, r) {
+		return
+	}
+	var ask struct {
+		Path string `json:"path"`
+	}
+	if !decode(w, r, &ask) {
+		return
+	}
+	door, ok := s.conn.Agent.(interface {
+		ReferPlace(string, session.PlaceArrival) (session.PlaceRef, error)
+	})
+	if !ok {
+		fail(w, 409, "this engine cannot take a folder")
+		return
+	}
+	if strings.TrimSpace(ask.Path) == "" {
+		fail(w, 400, "Say which folder to add.")
+		return
+	}
+	ref, err := door.ReferPlace(ask.Path, session.PlaceSaid)
+	if err != nil {
+		fail(w, 422, err.Error())
+		return
+	}
+	write(w, ref)
 }
