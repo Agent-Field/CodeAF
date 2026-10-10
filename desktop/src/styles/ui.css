@@ -212,3 +212,4 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .ui-live-shimmer { background-image: linear-gradient(var(--shimmer-angle), var(--ink-2) 0%, var(--ink-2) var(--latest-shimmer-edge), var(--ink) var(--latest-shimmer-mid), var(--ink-2) var(--latest-shimmer-far), var(--ink-2) 100%); background-size: var(--shimmer-size) 100%; background-clip: text; color: transparent; animation: ui-live-shimmer var(--shimmer-duration) linear infinite; }
 @keyframes ui-live-shimmer { from { background-position: var(--latest-shimmer-from) 0; } to { background-position: var(--latest-shimmer-to) 0; } }
 @media (prefers-reduced-motion: reduce) { .ui-live-shimmer { animation: none; background: none; color: var(--ink); } }
+.app-icon[data-mirror] svg { transform: scaleX(-1); }
