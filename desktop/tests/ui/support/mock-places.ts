@@ -54,6 +54,10 @@ export type SeedChat = {
 };
 
 export type PlacesSeed = {
+  /** A fixed engine clock keeps fixture timestamps and idle rules reproducible. */
+  now?: string;
+  /** Closed places remain visible only while their work needs attention. */
+  closed?: string[];
   proposals?: PlaceProposal[];
   places?: SeedPlace[];
   chats?: SeedChat[];
@@ -104,6 +108,8 @@ export type MockPlaces = {
   id: (name: string) => string;
   /** Overrides a place's DIRECT roll-up (its inclusive one follows) and nudges the world stream so the window reads again. */
   setStatus: (placeId: string, rollup: Partial<StatusRollup>) => void;
+  /** Updates real fixture work, so closed rows can leave when their last run ends. */
+  setChat: (chatId: string, patch: Partial<SeedChat>) => void;
   /** Forces an answer on one route until cleared with `undefined`. */
   fail: (key: RouteKey, forced: Forced | undefined) => void;
   /** Moves the world sequence, so the window reads the graph again. */
@@ -120,9 +126,10 @@ export type MockPlaces = {
 export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoServe: Page[] = []): Promise<MockPlaces> {
   let counter = 0;
   const nextId = (prefix: string) => `${prefix}_${hex(++counter)}`;
-  const now = () => new Date().toISOString();
+  const clock = () => seed.now === undefined ? Date.now() : Date.parse(seed.now);
+  const now = () => new Date(clock()).toISOString();
   const DAY = 86_400_000;
-  const daysAgo = (days: number) => new Date(Date.now() - days * DAY).toISOString();
+  const daysAgo = (days: number) => new Date(clock() - days * DAY).toISOString();
   /** Place id to the instant its "Not now" ends; lives in this mock, so it outlasts a page reload like the engine's snooze file. */
   const snoozed = new Map<string, string>();
   let revision = 0;
@@ -130,6 +137,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
   const offersView = () => ({ proposals: offers, organizing: false });
   let store: Store = { places: [], pins: [], members: [], chats: [] };
   const overrides = new Map<string, Partial<StatusRollup>>();
+  const closedPlaces = new Set(seed.closed ?? []);
   const live = new Set(seed.live ?? []);
   const disk = new Set(seed.disk ?? []);
   const forced = new Map<RouteKey, Forced>();
@@ -156,7 +164,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
   }
   // A top-level place with no tint gets the least-used one, as the store does.
   for (const place of store.places) if (!place.tint && !place.parents.length) place.tint = leastUsed();
-  const base = Date.now();
+  const base = clock();
   (seed.chats ?? []).forEach((c, index) => {
     store.chats.push({
       id: c.id, title: c.title ?? '', sessionFile: sessionFileFor(c.id), at: c.at ?? new Date(base - (index + 1) * 7 * 60_000).toISOString(),
@@ -219,9 +227,10 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
   const unplaced = () => store.chats.filter(c => !c.archived && !store.members.some(m => m.chatId === c.id && get(m.placeId)));
   const rail = () => {
     const pinned = store.pins.map(get).filter((p): p is Place => !!p && !p.archived).map(view);
-    const window = Date.now() - 12 * 3_600_000;
+    const window = clock() - 12 * 3_600_000;
     const open = active().filter(p => !store.pins.includes(p.id) && p.lastOpenedAt).map(view)
-      .filter(v => Date.parse(v.lastOpenedAt!) >= window || v.statusInclusive.running > 0 || v.statusInclusive.needsYou > 0)
+      .filter(v => (!closedPlaces.has(v.id) && Date.parse(v.lastOpenedAt!) >= window) || v.statusInclusive.running > 0 || v.statusInclusive.needsYou > 0)
+      .map(v => ({ ...v, ...(closedPlaces.has(v.id) ? { closed: true } : {}) }))
       .sort((a, b) => (b.lastOpenedAt ?? '').localeCompare(a.lastOpenedAt ?? '')).slice(0, 12);
     return { pinned, open, openWindowHours: 12 };
   };
@@ -232,7 +241,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
   };
   const nowView = () => ({ chats: unplaced().length, status: rollupOf(unplaced()) });
   const graph = (archived: boolean): PlacesGraph => ({
-    revision, places: (archived ? store.places : active()).map(view), rail: rail(), now: nowView(), totals: totals(), readAt: now(),
+    revision, generation: revision, nodes: (archived ? store.places : active()).map(view), unplaced: unplaced().map(c => c.id), places: (archived ? store.places : active()).map(view), rail: rail(), now: nowView(), totals: totals(), readAt: now(),
   });
   const chatRow = (chat: Chat, inPlace?: string): ChatRow => ({
     id: chat.id, title: chat.title, project: 'app', workspace: '/w', sessionFile: chat.sessionFile, at: chat.at, archived: chat.archived,
@@ -287,7 +296,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
     return Math.max(...stamps.filter((t): t is string => !!t).map(t => Date.parse(t)).filter(t => !Number.isNaN(t)));
   };
   const staleAnswer = () => {
-    const at = Date.now();
+    const at = clock();
     const places = active().filter(place => {
       if (store.pins.includes(place.id)) return false;
       const busy = statusInclusiveOf(place.id);
@@ -301,7 +310,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
   };
   function staleSnooze(id: string) {
     must(id);
-    const until = new Date(Date.now() + STALE_SNOOZE * DAY).toISOString();
+    const until = new Date(clock() + STALE_SNOOZE * DAY).toISOString();
     snoozed.set(id, until);
     return { ok: true, placeId: id, until };
   }
@@ -315,11 +324,12 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
     if (changed === false) return undefined;
     const receipt: Receipt = { id: nextId('rc'), action, subject, beforeRevision: revision, afterRevision: revision + 1, at: now() };
     revision += 1;
+    worldSeq += 1;
     history.push({ receipt, before });
     return receipt;
   }
   const checkRevision = (body: Record<string, unknown>) => {
-    if (typeof body.ifRevision === 'number' && body.ifRevision !== revision) throw new Refusal(409, 'stale', 'The places changed in another window. Look again and retry.');
+    if ((body.ifGeneration ?? body.ifRevision) !== undefined && (body.ifGeneration ?? body.ifRevision) !== revision) throw new Refusal(409, 'stale', 'The places changed in another window. Look again and retry.');
   };
   const mutation = (receipts: (Receipt | undefined)[], place?: Place, extra: Record<string, unknown> = {}): Mutation & Record<string, unknown> => {
     const list = receipts.filter((r): r is Receipt => !!r);
@@ -572,6 +582,8 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
   function visit(id: string) {
     const place = must(id);
     place.lastOpenedAt = now();
+    closedPlaces.delete(id);
+    worldSeq += 1;
     return { ok: true };
   }
 
@@ -682,6 +694,20 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
       if (method !== 'POST') return json(route, { error: 'method not allowed' }, 405);
       if (!id) return json(route, create(body));
       if (id === 'undo') return json(route, undo(body));
+      if (id === 'rail') {
+        checkRevision(body);
+        const placeId = String(body.place ?? '');
+        if (body.op === 'pin' || body.op === 'unpin') return json(route, pin(placeId, body, body.op === 'pin'));
+        if (body.op === 'visit') visit(placeId);
+        else if (body.op === 'close') { must(placeId); closedPlaces.add(placeId); worldSeq += 1; }
+        else if (body.op === 'reorder') {
+          const order = body.order;
+          if (!Array.isArray(order) || order.length !== store.pins.length || new Set(order).size !== order.length || order.some(id => !store.pins.includes(id))) throw new Refusal(400, 'invalid', 'Name every pinned place once.');
+          store.pins = [...order];
+          worldSeq += 1;
+        } else throw new Refusal(400, 'invalid', 'Unknown rail operation.');
+        return json(route, { ...mutation([]), rail: rail() });
+      }
       if (!verb) return json(route, update(id, body));
       if (sub === 'remove') return json(route, verb === 'sources' ? removeSource(id, body) : removeMembers(id, body));
       switch (verb) {
@@ -711,6 +737,14 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
     state: () => ({ ...snapshot(), revision }),
     id: name => { const place = store.places.find(p => p.name === name); if (!place) throw new Error(`mock-places: no place called ${name}`); return place.id; },
     setStatus: (placeId, rollup) => { overrides.set(placeId, rollup); nudge(); },
+    setChat: (chatId, patch) => {
+      const chat = store.chats.find(chat => chat.id === chatId);
+      if (!chat) throw new Error(`mock-places: no chat called ${chatId}`);
+      const { places: _places, tasks, id: _id, ...fields } = patch;
+      Object.assign(chat, fields);
+      if (tasks) Object.assign(chat.tasks, tasks);
+      nudge();
+    },
     fail: (key, value) => { if (value) forced.set(key, value); else forced.delete(key); },
     nudge,
     propose: next => { offers.splice(0, offers.length, ...structuredClone(next)); },
