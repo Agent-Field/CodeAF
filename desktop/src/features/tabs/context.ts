@@ -43,6 +43,8 @@ export type TabsApi = {
   reopenClosed: (id: string) => void;
   /** Opens the rename dialog for a tab or, with `group`, a group. */
   startRename: (id: string, group?: boolean) => void;
+  /** Groups the selection (or the given tab alone), clears the selection and opens rename on the new group's label. */
+  groupSelected: (pressedId?: string) => void;
   /** Records a fresh summary for a pane, the way a background read does (the hover preview uses it after an answer). */
   receiveSummary: (paneId: string, summary: TabSummary) => void;
   /** True while the switcher, overview or rename dialog is open, so hover cards stay shut. */
