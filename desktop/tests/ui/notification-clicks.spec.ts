@@ -33,7 +33,8 @@ async function open(page: Page, world?: Parameters<typeof installMockEngine>[1][
 }
 
 test('a notification starts Next up at its item and advances after withdrawal', async ({ page }) => {
-  const engine = await open(page, { rows: [], items: [
+  // A real world feed carries a row for every conversation that holds a question; the walker finds the tab's transcript through it.
+  const engine = await open(page, { rows: [{ session: CHAT, sessionFile: SESSION, title: 'Fix the parser', project: 'p', sourceFolders: [], state: 'idle', live: true, open: true, running: true, needsYou: true, failed: 0, unseenFailed: 0, tasks: { running: 0, incomplete: 0, done: 0, failed: 0, total: 0 }, at }], items: [
     { key: `${CHAT}:consent:2`, session: CHAT, kind: 'consent', id: 2, text: 'Run it?', sourceFolders: [], answerable: true },
     { key: `${CHAT}:ask:7`, session: CHAT, kind: 'ask', id: 7, text: 'Choose?', sourceFolders: [], answerable: true },
   ] });

@@ -61,7 +61,8 @@ export function useTabLinks({ enabled, state, dispatch, actions, native = native
       for (const target of targets) {
         const item = worldStore.getState().items.find(item => target.itemId ? item.key === target.itemId : target.question && item.session === target.chatId && item.kind === target.question.kind && item.id === target.question.id);
         if (item) dispatchAttentionFocus(item.key);
-        else if (!target.question) void open(linkOf({ kind: 'chat', chatId: target.chatId }));
+        // A question that was answered or withdrawn since the notification posted still opens its conversation, and moves nothing in its tray.
+        else void open(linkOf({ kind: 'chat', chatId: target.chatId }));
       }
     }
     let stop: (() => void) | undefined;
