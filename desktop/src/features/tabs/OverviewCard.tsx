@@ -1,17 +1,22 @@
-// One overview card (design 3h): kind and state line, title, key content, footer. Readable text, never a
-// miniature screenshot. The body is the kind's `preview` renderer when the kind has one; otherwise the draft or
-// the latest answer, which is what the engine actually knows.
-import type { DragEvent, MouseEvent } from 'react';
+// One overview card (design 3h): kind and state line, title, the one piece that matters, footer. Readable text,
+// never a miniature screenshot. The body is the kind's preview content (last reply, terminal lines, diff head).
+// A running task quotes the live command the engine sent. A card that needs you carries Allow all / Review.
+import { useContext, useState, type DragEvent, type MouseEvent } from 'react';
 import { Button, ContextMenu, Icon, IconButton, type MenuEntry } from '../../components/ui';
+import { answerEngine } from '../chat/engine-client';
 import { isMac } from '../../design/keyboard';
-import { isBackgroundPress } from './overview-model';
-import { relativeTime, type TabMark, type TabSummary } from '../conversation/tabSummary';
+import { relativeTime, summarize, type TabMark, type TabSummary } from '../conversation/tabSummary';
+import { bulkAnswers } from '../conversation/tray/answers';
+import { TabsApiContext } from './context';
 import { tabDragType } from './hosts/dragHost';
 import { kindDef } from './kinds/registry';
-import { PreviewContents } from './preview/PreviewCard';
+import type { PreviewActions } from './kinds/slots';
 import { focusedPane, panesOf, type Tab } from './model';
+import { isBackgroundPress, liveCommandLines, overviewCardState } from './overview-model';
+import { askOf, questionsFor } from './preview/content';
+import { PreviewButtons, PreviewContents, PreviewField } from './preview/PreviewCard';
+import { routeTask } from './view-state';
 
-export const markWords: Record<TabMark, string> = { working: 'Working', waiting: 'Needs you', failed: 'Failed' };
 const markRank: TabMark[] = ['waiting', 'failed', 'working'];
 
 /** The state a tab shows: the most urgent mark among its panes (needs you, then failed, then working). */
@@ -20,11 +25,14 @@ export function tabMark(tab: Tab, summaries: Readonly<Record<string, TabSummary>
   return markRank.find(mark => marks.includes(mark));
 }
 
-/** What a card says when the kind has no preview renderer: the draft, else the latest answer, else the first line. */
+/** What a card is searched by: the draft, the question, the live command, else the latest answer. Empty when unknown. */
 export function cardText(tab: Tab, summaries: Readonly<Record<string, TabSummary>>): string {
   const pane = focusedPane(tab);
   const known = summaries[pane.id];
-  return pane.draft.trim() || known?.digest || known?.firstLine || '';
+  const taskId = pane.kind === 'task' && pane.route ? routeTask(pane.route) : undefined;
+  const ask = askOf(questionsFor(known, taskId))?.text;
+  const command = liveCommandLines(tab, summaries)[0]?.text;
+  return pane.draft.trim() || ask || command || known?.digest || known?.firstLine || '';
 }
 
 export const kindLabel = (tab: Tab) => (tab.split ? 'Split' : kindDef(tab.kind).label);
@@ -57,16 +65,67 @@ export function backgroundPress(open: () => void, background: () => void) {
   };
 }
 
-const overviewActions = { busy: false, allowAll: () => {}, review: () => {} };
+/** What went wrong, in the same words the hover preview uses. The buttons stay so the person can try again. */
+const failureWords = (error: unknown) => `Not sent. ${error instanceof Error && error.message ? error.message : 'The engine did not answer.'}`;
 
-function CardBody({ tab, summaries, now }: { tab: Tab; summaries: Readonly<Record<string, TabSummary>>; now: number }) {
+/**
+ * Allow all answers the questions this card shows, on the engine session the summary came from. Review opens the tab.
+ * With no workspace api (the Design system specimen) the buttons still draw and Allow all does nothing.
+ */
+function useCardActions(tab: Tab, onReview: () => void): PreviewActions {
+  const api = useContext(TabsApiContext);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const pane = focusedPane(tab);
+  const summary = api?.summaries[pane.id];
+  const taskId = pane.kind === 'task' && pane.route ? routeTask(pane.route) : undefined;
+  return {
+    busy,
+    error,
+    review: onReview,
+    allowAll: () => {
+      const session = summary?.sessionId;
+      if (!api || !session || busy) return;
+      setBusy(true);
+      setError(undefined);
+      void (async () => {
+        let latest = summary;
+        try {
+          for (const answer of bulkAnswers(questionsFor(summary, taskId), 'allow')) {
+            latest = summarize(await answerEngine(session, answer));
+            api.receiveSummary(pane.id, latest);
+          }
+          if (questionsFor(latest, taskId).length) setError('Some questions still need you. Review them.');
+        } catch (failure) {
+          setError(failureWords(failure));
+        } finally {
+          setBusy(false);
+        }
+      })();
+    },
+  };
+}
+
+function CardBody({ tab, summaries, now, act }: { tab: Tab; summaries: Readonly<Record<string, TabSummary>>; now: number; act: PreviewActions }) {
   if (tab.split) return <span className="overview-card-panes">{tab.split.panes.map(pane => <span key={pane.id} className="overview-card-pane">{pane.title}</span>)}</span>;
-  const known = summaries[tab.id];
-  if (['conversation', 'task', 'newtab', 'inbox'].includes(tab.kind) && !tab.draft.trim() && !known?.digest && known?.mark !== 'waiting') return <span className="overview-card-text overview-card-empty">No work yet</span>;
-  const Preview = kindDef(tab.kind).preview;
-  if (Preview) return <PreviewContents><Preview pane={tab} title={tab.title} summary={summaries[tab.id]} now={now} act={overviewActions}/></PreviewContents>;
+  const pane = focusedPane(tab);
+  const summary = summaries[pane.id];
+  const taskId = pane.kind === 'task' && pane.route ? routeTask(pane.route) : undefined;
+  const ask = askOf(questionsFor(summary, taskId));
+  const commands = liveCommandLines(tab, summaries);
+  // PreviewContents keeps the overview's own chrome and drops the preview's. The actions live on that dropped
+  // chrome, so a card that needs you draws them again here, with the same engine calls.
+  const actions = ask && (
+    <div className="overview-card-actions preview-actions" onMouseDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}>
+      <PreviewButtons busy={act.busy} primary={ask.permissions ? { label: ask.count > 1 ? 'Allow all' : 'Allow', onClick: act.allowAll } : undefined} secondary={{ label: 'Review', onClick: act.review }}/>
+    </div>
+  );
+  // A running task's one piece is the command in progress. A question outranks it, the same way the hover card does.
+  if (!ask && commands.length) return <PreviewField label="Live command" lines={commands}/>;
+  const Preview = kindDef(pane.kind).preview;
+  if (Preview) return <><PreviewContents><Preview pane={pane} title={tab.title} summary={summary} now={now} act={act}/></PreviewContents>{actions}</>;
   const text = cardText(tab, summaries);
-  return text ? <span className="overview-card-text">{text}</span> : <span className="overview-card-text overview-card-empty">No work yet</span>;
+  return text ? <span className="overview-card-text">{text}</span> : null;
 }
 
 type Props = {
@@ -88,6 +147,7 @@ type Props = {
 const halfOf = (event: DragEvent<HTMLElement>) => { const box = event.currentTarget.getBoundingClientRect(); return event.clientX - box.left > box.width / 2 ? 'after' : 'before'; };
 
 export function OverviewCard({ tab, summaries, now, active, cursor, menu, onOpen, onBackground, onClose, onDropTab, modelNames }: Props) {
+  const act = useCardActions(tab, onOpen);
   const drop = onDropTab && {
     onDragOver: (event: DragEvent<HTMLElement>) => {
       if (!event.dataTransfer.types.includes(tabDragType)) return;
@@ -106,7 +166,8 @@ export function OverviewCard({ tab, summaries, now, active, cursor, menu, onOpen
       if (id !== tab.id) onDropTab(id, after);
     },
   };
-  const mark = tabMark(tab, summaries);
+  const state = overviewCardState(tab, summaries);
+  const dot = state.lead === 'amber' ? 'waiting' : state.lead === 'danger' ? 'failed' : state.dot ? 'working' : undefined;
   const pane = focusedPane(tab);
   const summary = summaries[pane.id];
   const updated = summary?.updatedAt;
@@ -118,10 +179,10 @@ export function OverviewCard({ tab, summaries, now, active, cursor, menu, onOpen
       <div className="overview-card-face">
         <div className="overview-card-head">
           <Icon name={kindIcon(tab)} size="micro"/><span>{kindLabel(tab)}</span>
-          {mark && <span className="overview-card-state"><StateDot mark={mark}/>{markWords[mark]}</span>}
+          {state.words && <span className="overview-card-state">{dot && <StateDot mark={dot}/>}{state.words}</span>}
         </div>
         <span className="overview-card-title">{tab.title}</span>
-        <div className="overview-card-body"><CardBody tab={tab} summaries={summaries} now={now}/></div>
+        <div className="overview-card-body"><CardBody tab={tab} summaries={summaries} now={now} act={act}/></div>
         {footer && <span className="overview-card-foot">{footer}</span>}
       </div>
       {onClose && <IconButton className="overview-card-close" label={`Close ${tab.title}`} icon="close" iconSize="micro" onClick={onClose}/>}

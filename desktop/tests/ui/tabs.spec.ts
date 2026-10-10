@@ -254,7 +254,7 @@ test('overview cards show persisted work and mark the active tab with a ring', a
  await page.getByRole('button', { name: 'All tabs', exact: true }).click();
  const overview = page.getByRole('dialog', { name: 'All tabs overview' });
  await expect(overview.locator('.preview-text').first()).toHaveText(`Draft: ${instruction}`);
- await expect(overview).toContainText('No work yet');
+ await expect(overview).not.toContainText('No work yet');
  const selected = overview.locator('.overview-card[data-active="true"]');
  await expect(selected).toHaveCount(1);
  expect(await selected.evaluate(el => getComputedStyle(el).boxShadow)).toMatch(/0px 0px 0px 2px/);
