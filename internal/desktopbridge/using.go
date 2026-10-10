@@ -173,9 +173,10 @@ func (b *Bridge) usingRoutes(w http.ResponseWriter, r *http.Request, s *conversa
 }
 
 // using resolves live knowledge lines, sources and policy through the same
-// resolver the engine reads at turn start. Replaced lines remain in Knows for
-// explanation but are absent from this bundle. A graph or picks file that cannot be
-// read is an error, never an empty list.
+// resolver the engine reads at turn start. Replaced lines stay on the bundle's
+// knows list so the popover can explain them, and stay out of instructions so
+// the prompt does not read a line that was replaced. A graph or picks file that
+// cannot be read is an error, never an empty list.
 func (p *Places) using(s *conversation, chatID string) (*UsingView, error) {
 	snap, err := p.Store.Snapshot()
 	if err != nil {

@@ -51,8 +51,11 @@
 .using-row-main .app-icon { flex: none; color: var(--ink-3); }
 .button.using-row-main { justify-content: flex-start; height: auto; min-height: var(--using-row-height); border-radius: var(--using-row-radius); background: transparent; color: var(--ink); font-weight: var(--type-label-weight); white-space: normal; text-align: left; }
 .button.using-row-main:hover:not(:disabled), .button.using-row-main:active:not(:disabled) { background: var(--field); color: var(--ink); }
-.using-row-text { flex: 1; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--using-clamp-lines); line-clamp: var(--using-clamp-lines); overflow-wrap: anywhere; }
+.using-row-copy { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.using-row-text { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--using-clamp-lines); line-clamp: var(--using-clamp-lines); overflow-wrap: anywhere; }
 .using-row-text[data-expanded] { display: block; }
+.using-row-text[data-replaced] { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line); }
+.using-row-source { color: var(--ink-3); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); }
 .using-row-aside { flex: none; max-width: 45%; color: var(--ink-3); font-size: var(--type-caption-size); overflow-wrap: anywhere; text-align: right; }
 .using-row-tag { flex: none; }
 .using-row-open { flex: none; color: var(--ink-3); }
