@@ -4,6 +4,7 @@ export { Button, IconButton, type ButtonVariant, type IconButtonSize } from './B
 export { useTooltip, TruncatedText } from './Tooltip';
 export { StatusMark, type Status } from './StatusMark';
 export { Segmented, type SegmentedOption } from './Segmented';
+export { FilterTabs, type FilterTabOption } from './FilterTabs';
 export { Chip, ChipButton, Tag, type TagTone } from './Chip';
 export { Row, RowActions } from './RowActions';
 export { NavigationItem } from './NavigationItem';
