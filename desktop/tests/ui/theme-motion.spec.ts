@@ -19,10 +19,10 @@ for (const theme of ['Light','Dark','System']) {
   const trigger = page.getByRole('combobox',{name:'Theme'});
   await trigger.focus(); await page.keyboard.press('Enter');
   const menu = page.getByRole('listbox'); await expect(menu).toBeVisible();
-  await expectThemedSurface(page,menu);
+  await expectThemedSurface(page,menu,{background:'surface',ink:'ink'});
   await expect(page.locator('#root')).toHaveAttribute('inert','');
   const highlighted = page.locator('.select-option[data-highlighted]');
-  await expect(highlighted).toHaveCSS('background-color',await tokenColor(page,'menu-highlight'));
+  await expect(highlighted).toHaveCSS('background-color',await tokenColor(page,'field-2'));
   await expectAccessible(page);
   await page.keyboard.press('Escape');
   await expect(trigger).toBeFocused();
@@ -40,7 +40,7 @@ for (const theme of ['Light','Dark','System']) {
   if(theme==='System') {
    await page.emulateMedia({colorScheme:'dark'});
    await expect(page.locator('html')).toHaveAttribute('data-resolved-theme','dark');
-   await openAppearance(page); await expectThemedSurface(page,page.getByRole('listbox'));
+   await openAppearance(page); await expectThemedSurface(page,page.getByRole('listbox'),{background:'surface',ink:'ink'});
   }
  });
 }
@@ -54,7 +54,7 @@ test('navigation is still; action motion is bounded; collapse has a real transit
  const action=page.getByRole('button',{name:'Open the new-tab field',exact:true});
  await action.hover();
  await expect(action.locator('.app-icon')).toHaveCSS('transform',`matrix(1, 0, 0, 1, ${parseFloat(design.foundation['motion-directional-travel'])}, 0)`);
- await expect(action.locator('.app-icon')).toHaveCSS('transition-duration',`${parseFloat(design.foundation['duration-directional'])/1000}s`);
+ await expect(action.locator('.app-icon')).toHaveCSS('transition-duration',`${parseFloat(design.foundation['dur-fast'])/1000}s`);
  await page.getByRole('button',{name:'Hide sidebar'}).click();
  const shell=page.locator('.app-shell');
  await expect(shell).toHaveCSS('transition-duration',Array(3).fill(`${parseFloat(design.foundation['duration-sidebar'])/1000}s`).join(', '));
@@ -86,7 +86,7 @@ test('theme menu keyboard selection, persistence, outside dismissal and selectio
  const outside = await page.locator('.content-pane').boundingBox();
  await trigger.click(); await expect(page.getByRole('option',{name:'Dark appearance'})).toHaveAttribute('aria-selected','true');
  await expect(page.getByRole('option',{name:'Dark appearance'})).toBeFocused();
- await expectThemedSurface(page, page.getByRole('listbox'));
+ await expectThemedSurface(page, page.getByRole('listbox'),{background:'surface',ink:'ink'});
  await page.mouse.click(outside!.x+outside!.width/2,outside!.y+outside!.height/2);
  await expect(page.getByRole('listbox')).not.toBeVisible();
  await openPage(page, 'Activity');
@@ -137,3 +137,21 @@ test('settings appearance: theme applies at once, survives a reload, and reduce 
  await page.reload();
  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });
+
+for (const theme of ['Light', 'Dark']) {
+ test(`${theme}: retired chrome uses shared focus, disabled and success tokens`, async ({ page }) => {
+  await page.goto('/'); await chooseTheme(page, `${theme} appearance`);
+  await openPage(page, 'Design system');
+  const controls = page.locator('.controls-specimen');
+  // The old chrome scope must not replace the shared keyboard ring or disabled opacity.
+  await controls.evaluate(node => node.classList.add('workspace-tabbar'));
+  const quiet = controls.getByRole('button', { name: 'Deny', exact: true });
+  await page.keyboard.press('Tab'); await quiet.focus();
+  await expect(quiet).toHaveCSS('outline-width', design.foundation['focus-ring-width']);
+  expect(await quiet.evaluate(node => getComputedStyle(node).boxShadow)).toContain(await tokenColorIn(controls, 'accent'));
+  await expect(controls.getByRole('button', { name: 'Disabled', exact: true })).toHaveCSS('opacity', design.foundation['opacity-control-disabled']);
+  // Both owning features retain their key while the theme supplies the single success colour.
+  await expect.poll(() => tokenColor(page, 'history-added')).toBe(await tokenColor(page, 'success'));
+  await expect.poll(() => tokenColor(page, 'preview-add-ink')).toBe(await tokenColor(page, 'success'));
+ });
+}
