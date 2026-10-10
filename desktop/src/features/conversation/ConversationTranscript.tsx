@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Markdown } from '../../components/ui';
+import { MembershipNote } from '../places/using/MembershipNote';
 import { useAssetMarkdownHooks } from './assets';
 import { AsideRow } from './AsideRow';
 import { renderAttachment } from './blocks/AttachmentView';
@@ -34,6 +35,8 @@ function PrefaceItem({ item, open, onToggle, onOpenTask, tasks, onPause, onResum
   switch (item.kind) {
     case 'note':
       return <NoteItem text={item.text} long={item.long} tone={item.tone} undoReceipts={item.undoReceipts} />;
+    case 'placeChange':
+      return <MembershipNote text={item.text} undoReceipts={item.undoReceipts} placeName={item.placeName} />;
     case 'text':
       return <Markdown {...hooks}>{item.text}</Markdown>;
     case 'aside':

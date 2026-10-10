@@ -1,8 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { relativeTime } from '../../../conversation/tabSummary.ts';
 import type { Tab } from '../../types.ts';
-import { askLabel, buildSections, flatRows, splitMatch, tabDigit, titleFromText, type RowInput } from './rows.ts';
+import { askLabel, buildSections, flatRows, shortAge, splitMatch, tabDigit, titleFromText, type RowInput } from './rows.ts';
 
 const tab = (id: string, title: string, over: Partial<Tab> = {}): Tab => ({ id, kind: 'conversation', title, draft: '', pinned: false, ...over });
 const input = (over: Partial<RowInput> = {}): RowInput => ({ query: '', tabs: [], closed: [], files: [], terminal: false, web: true, terminalShortcut: '⌃`', fileShortcut: '⌘O', ...over });
@@ -45,7 +44,10 @@ test('a recently closed row says how long ago, and a save with no close time say
     now,
     closed: [{ ...tab('c1', 'Fix it in the lexer'), closedAt: hour }, tab('old', 'fix later'), { ...tab('bad', 'fix me'), closedAt: Number.NaN }],
   })));
-  assert.equal(rows.find(row => row.id === 'closed:c1')!.detail, `closed ${relativeTime(hour, now)}`);
+  assert.equal(rows.find(row => row.id === 'closed:c1')!.detail, 'closed 1h ago');
+  assert.equal(shortAge(now - 5 * 60_000, now), '5m ago');
+  assert.equal(shortAge(now - 2 * 86_400_000, now), '2d ago');
+  assert.equal(shortAge(now - 5_000, now), 'just now');
   assert.equal(rows.find(row => row.id === 'closed:old')!.detail, 'closed');
   assert.equal(rows.find(row => row.id === 'closed:bad')!.detail, 'closed');
 });

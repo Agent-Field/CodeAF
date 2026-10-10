@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import { installMockEngine, type Scenario } from './support/mock-engine';
 import { installMockPlaces, sessionFileFor, type PlacesSeed } from './support/mock-places';
 
@@ -347,8 +347,8 @@ test('d5-pl-test-org: the tile menu, the Home ⋯ and the Home tab each list the
   await page.keyboard.press('Escape');
 
   await page.getByRole('tab', { name: 'Reading' }).click({ button: 'right' });
-  // The strip names a tab's menu from the tab title. HomeTab's own label is the inner one.
-  const tab = page.getByRole('menu', { name: 'Actions for Reading' });
+  // A place's Home owns its menu and labels it "Place menu"; the strip's "Actions for <title>" wraps only ordinary tabs.
+  const tab = page.getByRole('menu', { name: 'Place menu' });
   await expect(tab).toBeVisible();
   expect((await menuRows(tab)).map(row => row.label)).toEqual([
     'Open in new window', '—',
@@ -359,4 +359,183 @@ test('d5-pl-test-org: the tile menu, the Home ⋯ and the Home tab each list the
   await expect(tab.getByRole('menuitem', { name: 'Delete place…' })).toHaveCount(0);
   await expect(tab.getByRole('menuitem', { name: 'Go to' })).toHaveCount(0);
   await expect(tab.getByRole('menuitem', { name: 'Quick Look' })).toHaveCount(0);
+});
+
+/** One DataTransfer for the whole gesture, so the type written at dragstart is still there at the drop. */
+async function drag(page: Page, source: Locator, target: Locator, alt = false, commit = true) {
+  const data = await page.evaluateHandle(() => new DataTransfer());
+  await source.dispatchEvent('dragstart', { dataTransfer: data, bubbles: true });
+  await target.dispatchEvent('dragenter', { dataTransfer: data, altKey: alt, bubbles: true });
+  await target.dispatchEvent('dragover', { dataTransfer: data, altKey: alt, bubbles: true });
+  if (commit) await target.dispatchEvent('drop', { dataTransfer: data, altKey: alt, bubbles: true });
+  await source.dispatchEvent('dragend', { dataTransfer: data, bubbles: true });
+  return data;
+}
+
+test('d5-pl-test-org: dragging onto a tile says Add here, Option moves, and the menu adds without a drag', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.clock.setFixedTime(NOW);
+  const engine = await installMockEngine(page, fresh());
+  const places = await installMockPlaces(page, {
+    places: [
+      { name: 'Reading', tint: 'tide' },
+      { name: 'Papers', parents: ['Reading'] },
+      { name: 'Notes', parents: ['Reading'] },
+      { name: 'Clips', parents: ['Reading'] },
+    ],
+    chats: [
+      { id: 'c1', title: 'Essay one', places: ['Reading'] },
+      { id: 'c2', title: 'Essay two', places: ['Reading'] },
+      { id: 'c3', title: 'Shared note', places: ['Reading', 'Papers'] },
+    ],
+    live: ['mock-1'],
+  });
+  await page.goto('/');
+  const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
+  await page.keyboard.press(`${mac ? 'Meta' : 'Control'}+Shift+KeyP`);
+  await expect(page.getByRole('heading', { name: 'All places' })).toBeVisible();
+  await tile(page, 'Reading').locator('.places-tile-main').click();
+  await expect(page.getByRole('heading', { name: 'Reading', exact: true })).toBeVisible();
+  await expect(page.getByText('Essay one')).toBeVisible();
+
+  const notes = tile(page, 'Notes');
+  const essay = page.locator('[data-chat-id="c1"]');
+  const parentPosts = () => places.posts('/parents');
+  const memberPosts = () => places.posts('/members');
+
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+    const data = await page.evaluateHandle(() => new DataTransfer());
+    await essay.dispatchEvent('dragstart', { dataTransfer: data, bubbles: true });
+    await notes.dispatchEvent('dragenter', { dataTransfer: data, altKey: theme === 'dark', bubbles: true });
+    await notes.dispatchEvent('dragover', { dataTransfer: data, altKey: theme === 'dark', bubbles: true });
+    await expect(notes).toHaveAttribute('data-drop', 'true');
+    await expect(essay).toHaveAttribute('data-dragging', 'true');
+    const measured = await notes.evaluate((el, holding) => {
+      const label = el.querySelector<HTMLElement>('.places-tile-drop');
+      if (!label) return null;
+      const tileBox = el.getBoundingClientRect();
+      const labelBox = label.getBoundingClientRect();
+      const dragging = el.ownerDocument.querySelector<HTMLElement>('[data-dragging]');
+      // A previous theme left an inline transition. Clear it so this read is the stylesheet's 120ms.
+      el.style.transition = '';
+      if (dragging) dragging.style.transition = '';
+      const transition = getComputedStyle(el).transitionDuration;
+      // The suite clock is frozen, so a 120ms fill never leaves its first frame. Dropping the transition reveals the settled colour.
+      el.style.transition = 'none';
+      if (dragging) dragging.style.transition = 'none';
+      const probe = document.createElement('span');
+      el.appendChild(probe);
+      const painted = (property: 'color' | 'backgroundColor', token: string) => {
+        probe.style.color = '';
+        probe.style.backgroundColor = '';
+        probe.style[property] = `var(${token})`;
+        return getComputedStyle(probe)[property];
+      };
+      probe.style.opacity = 'var(--opacity-subtle)';
+      const subtle = getComputedStyle(probe).opacity;
+      const accentSoft = painted('backgroundColor', '--accent-soft');
+      const field = painted('backgroundColor', '--field');
+      const accent = painted('color', '--accent');
+      probe.remove();
+      const tile = getComputedStyle(el);
+      const words = getComputedStyle(label);
+      return {
+        text: label.textContent,
+        height: tileBox.height,
+        radius: tile.borderTopLeftRadius,
+        background: tile.backgroundColor,
+        accentSoft,
+        field,
+        shadow: tile.boxShadow,
+        borderLeft: tile.borderLeftWidth,
+        fontSize: words.fontSize,
+        fontWeight: words.fontWeight,
+        color: words.color,
+        accent,
+        right: tileBox.right - labelBox.right,
+        bottom: tileBox.bottom - labelBox.bottom,
+        transition,
+        opacity: getComputedStyle(el.ownerDocument.querySelector('[data-dragging]')!).opacity,
+        subtle,
+        holding,
+      };
+    }, theme === 'dark');
+    expect(measured, theme).toBeTruthy();
+    expect(measured!.text, theme).toBe('Add here');
+    expect(measured!.height, theme).toBeCloseTo(84, 0);
+    expect(measured!.radius, theme).toBe('12px');
+    expect(measured!.background, theme).toBe(measured!.accentSoft);
+    expect(measured!.background, theme).not.toBe(measured!.field);
+    expect(measured!.shadow, theme).toContain('1.5px');
+    expect(measured!.borderLeft, theme).toBe('0px');
+    expect(measured!.fontSize, theme).toBe('11px');
+    expect(measured!.fontWeight, theme).toBe('500');
+    expect(measured!.color, theme).toBe(measured!.accent);
+    expect(measured!.right, theme).toBeCloseTo(12, 0);
+    expect(measured!.bottom, theme).toBeCloseTo(12, 0);
+    expect(measured!.transition, theme).toMatch(/0\.12s/);
+    expect(measured!.opacity, theme).toBe(measured!.subtle);
+    await notes.hover();
+    const hovered = await notes.evaluate(el => {
+      el.style.transition = 'none';
+      const probe = document.createElement('span');
+      probe.style.backgroundColor = 'var(--accent-soft)';
+      el.appendChild(probe);
+      const soft = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return { background: getComputedStyle(el).backgroundColor, soft };
+    });
+    expect(hovered.background, theme).toBe(hovered.soft);
+    // A synthetic drag reports dropEffect "none": the browser only keeps copy or move during a real drag. The write below is what Option changes.
+    await essay.dispatchEvent('dragend', { dataTransfer: data, bubbles: true });
+    await expect(notes).not.toHaveAttribute('data-drop');
+  }
+  expect(parentPosts()).toEqual([]);
+  expect(memberPosts()).toEqual([]);
+  expect(engine.calls.filter(call => call.method === 'POST' && /\/places\/[^/]+\/(members|parents)/.test(call.path))).toEqual([]);
+
+  const clips = tile(page, 'Clips');
+  const self = await page.evaluateHandle(() => new DataTransfer());
+  await clips.locator('.places-tile-main').dispatchEvent('dragstart', { dataTransfer: self, bubbles: true });
+  await clips.dispatchEvent('dragenter', { dataTransfer: self, bubbles: true });
+  await clips.dispatchEvent('dragover', { dataTransfer: self, bubbles: true });
+  await expect(clips).toHaveAttribute('data-dragging', 'true');
+  await expect(clips).not.toHaveAttribute('data-drop');
+  await clips.locator('.places-tile-main').dispatchEvent('dragend', { dataTransfer: self, bubbles: true });
+  expect(parentPosts()).toEqual([]);
+
+  await notes.locator('.places-tile-main').focus();
+  await page.keyboard.press('Shift+F10');
+  await page.getByRole('menuitem', { name: 'Add to another place…' }).click();
+  const addPlace = page.getByRole('dialog', { name: 'Add “Notes” to another place…' });
+  await expect(addPlace).toBeVisible();
+  await addPlace.getByRole('option', { name: /^Papers/ }).click();
+  const papersId = places.id('Papers');
+  const notesId = places.id('Notes');
+  const readingId = places.id('Reading');
+  await expect.poll(() => places.state().places.find(place => place.name === 'Notes')?.parents.slice().sort()).toEqual([papersId, readingId].sort());
+
+  await page.locator('[data-chat-id="c1"] .places-chat-main').focus();
+  await page.keyboard.press('Shift+F10');
+  await page.getByRole('menuitem', { name: 'Add to a place…' }).click();
+  await page.getByRole('dialog', { name: 'Add “Essay one” to a place…' }).getByRole('option', { name: /^Notes/ }).click();
+  await expect.poll(() => places.state().members.filter(row => row.chatId === 'c1').map(row => row.placeId).sort()).toEqual([notesId, readingId].sort());
+
+  await drag(page, page.locator('[data-chat-id="c2"]'), tile(page, 'Papers'));
+  await expect.poll(() => memberPosts().at(-1)?.body).toMatchObject({ chats: ['c2'] });
+  expect(memberPosts().at(-1)?.body.moveFrom).toBeUndefined();
+  await expect.poll(() => places.state().members.filter(row => row.chatId === 'c2').map(row => row.placeId).sort()).toEqual([papersId, readingId].sort());
+
+  await drag(page, page.locator('[data-chat-id="c3"]'), notes, true);
+  await expect.poll(() => memberPosts().at(-1)?.body).toMatchObject({ chats: ['c3'], moveFrom: readingId });
+  await expect.poll(() => places.state().members.filter(row => row.chatId === 'c3').map(row => row.placeId).sort()).toEqual([notesId, papersId].sort());
+
+  await drag(page, clips.locator('.places-tile-main'), notes);
+  await expect.poll(() => parentPosts().at(-1)?.body).toMatchObject({ add: notesId });
+  await expect.poll(() => places.state().places.find(place => place.name === 'Clips')?.parents.slice().sort()).toEqual([notesId, readingId].sort());
+
+  await drag(page, clips.locator('.places-tile-main'), tile(page, 'Papers'), true);
+  await expect.poll(() => parentPosts().at(-1)?.body).toMatchObject({ set: [papersId] });
+  await expect.poll(() => places.state().places.find(place => place.name === 'Clips')?.parents).toEqual([papersId]);
 });

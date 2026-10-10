@@ -1,0 +1,11 @@
+/* Places 8c measures the root search and tiles differently from a place Home.
+   Keep these overrides on the root so the other Home lanes retain their own geometry. */
+.home-column:has(> .root-home-heading) .places-tile-grid { grid-template-columns: repeat(auto-fill, minmax(max(var(--root-home-tile-min), calc((100% - (var(--places-tile-grid-columns) - 1) * var(--places-tile-grid-gap)) / var(--places-tile-grid-columns) - var(--places-tile-grid-slack))), 1fr)); }
+.root-home-heading .all-places-search { width: var(--root-home-search-width); }
+.home-column:has(> .root-home-heading) .places-tile[data-mode="place"] { height: var(--root-home-tile-height); }
+
+.root-home-heading .all-places-search .all-places-search-input.text-input { padding-inline-start: calc(var(--space-compact) + var(--icon-sm) + var(--space-2)); }
+
+/* Places 8e keeps the first-launch sentence under the title and leaves the third grid slot quiet. */
+.first-launch-heading .home-empty-sentence { max-width: var(--first-launch-sentence-max); }
+.home-column:has(> .first-launch-heading) .places-tile-grid { grid-template-columns: repeat(auto-fill, minmax(max(var(--root-home-tile-min), calc((100% - (var(--first-launch-columns) - 1) * var(--places-tile-grid-gap)) / var(--first-launch-columns) - var(--places-tile-grid-slack))), 1fr)); }

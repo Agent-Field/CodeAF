@@ -45,7 +45,7 @@ function BarTitle({ title, onRename }: { title: string; onRename?: (name: string
   );
 }
 
-type BarProps = { children?: ReactNode; /** The conversation's name; when given with `lead="title"` the bar draws it, and `onRename` makes it editable. */ title?: string; onRename?: (name: string) => void; counts: BarCounts; panel?: BarPanel; lead: 'title' | 'trail'; /** The Using chip: sits beside the title, and only on a conversation (the trail of a task page has no chip). */ using?: ReactNode; nextUp?: NextUpProgress; onNeedsYou?: () => void; onOpenFiltered?: (filter: 'running' | 'needs') => void; onTasksFilter?: (filter: 'running' | 'needs') => void };
+type BarProps = { children?: ReactNode; /** The conversation's name; when given with `lead="title"` the bar draws it, and `onRename` makes it editable. */ title?: string; onRename?: (name: string) => void; counts: BarCounts; panel?: BarPanel; lead: 'title' | 'trail'; /** The Using chip: beside the title and left of the counts. A task page's trail has no chip. */ using?: ReactNode; nextUp?: NextUpProgress; onNeedsYou?: () => void; onOpenFiltered?: (filter: 'running' | 'needs') => void; onTasksFilter?: (filter: 'running' | 'needs') => void };
 
 /** The pane's top row (design 1a to 1c): the title or the trail on the left, what is happening on the right, then the panel toggle. */
 export function ConversationBar({ children, title, onRename, counts, panel, lead, using, nextUp, onNeedsYou, onOpenFiltered, onTasksFilter }: BarProps) {

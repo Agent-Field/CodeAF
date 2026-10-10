@@ -172,6 +172,8 @@ export function homeViewFromDigest(digest: HomeDigest, graph?: PlacesGraph, unpl
     chats: digest.chats.map(row => chat(row, digest)),
     chatsTruncated: digest.chatsTruncated,
     sources: digest.kind === 'place' ? sources(digest) : undefined,
+    instructions: digest.kind === 'place' && digest.place?.instructions.trim() ? digest.place.instructions : undefined,
+    contextParents: digest.kind === 'place' ? digest.place?.parents : undefined,
     pinned: digest.place?.pinned,
     decide: digest.place?.decide,
     recap: sinceOf(digest),

@@ -30,6 +30,7 @@ export type TurnItem =
   | { kind: 'task'; id: string; taskId?: string; title: string; status: string; summary: string; body: string } // a task's completion aside
   | { kind: 'aside'; id: string; aside: 'job' | 'watch'; title: string; body: string } // a background job or watch notice; body is literal
   | { kind: 'note'; id: string; text: string; long?: boolean; tone?: NoteTone; time?: string; undoReceipts?: string[] } // engine note; long: model-directed text, drawn collapsed
+  | { kind: 'placeChange'; id: string; text: string; undoReceipts?: string[]; placeName?: string } // a place started or stopped reaching this chat
   | { kind: 'steer'; id: string; text: string; landing?: string; consumed?: boolean } // the person's words typed into the running turn; literal
   | { kind: 'error'; id: string; text: string };
 
@@ -76,7 +77,7 @@ export type TurnBlock =
   | { kind: 'decision-receipt'; id: string; decision: DecisionAside }
   | { kind: 'plan'; id: string; plan: ConversationPlan }
   | { kind: 'remember-line'; id: string; text: string; undoReceipts?: string[] }
-  | { kind: 'context-note'; id: string; text: string; undoReceipts?: string[] }
+  | { kind: 'placeChange'; id: string; text: string; undoReceipts?: string[]; placeName?: string } // membership line; the recorded sentence, with Undo on that change
   | { kind: 'update'; id: string; text: string; cut: boolean; streaming: boolean } // Addressed interim update
   | { kind: 'answer'; id: string; text: string; streaming: boolean } // Answer final reply (Markdown)
   | { kind: 'task'; id: string; taskId?: string; title: string; status: string; summary: string; body: string; live?: string }
