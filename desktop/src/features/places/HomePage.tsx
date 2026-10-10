@@ -93,7 +93,7 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
     {isPlace && sections.error && <div className="home-notice" role="alert"><span>{sections.error}</span>
       {!readOnly && <Button variant="quiet" onClick={sections.refresh}>Retry Home sections</Button>}</div>}
     {nothingYet && <>
-      <HomeEmptyPlace placeId={view.id} contextLine={view.contextLine} actions={actions} readOnly={readOnly}
+      <HomeEmptyPlace placeId={view.id} contextLine={view.contextLine} contextParents={view.contextParents} revision={view} actions={actions} readOnly={readOnly}
         onWriteInstructions={actions.saveInstructions && !readOnly ? () => setInstructionsFor(view.id) : undefined}/>
       <Instructions key={view.id} placeId={view.id} instructions={view.instructions} open={instructionsFor === view.id} readOnly={readOnly}
         onSave={actions.saveInstructions && (text => actions.saveInstructions?.(view.id, text))}

@@ -80,6 +80,8 @@ export type HomeView = {
   sources?: readonly HomeSource[];
   /** "Uses Marketing's context: brand-voice.md, codeaf.dev": the engine's line for a place that inherits. */
   contextLine?: string;
+  /** Direct parent ids from the engine; the empty Home reads their sources through two ancestor levels. */
+  contextParents?: readonly string[];
   /** The place's own instructions, the engine's prose. Absent when there are none, so the card stays off the page. */
   instructions?: string;
   pinned?: boolean;
