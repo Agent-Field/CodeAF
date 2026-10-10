@@ -11,7 +11,13 @@ import { DecidedRows } from '../decisions/DecidedRows';
 import { KnowsList } from './knows/KnowsList';
 import { shortTime } from './home-model';
 import { Instructions } from './home/Instructions';
+import { homePlaceIsEmpty } from './shell/homeComposerCopy';
 import { homeMenu, type PlaceActions } from './place-actions';
+
+/** A node is drawn as given. A function is told whether this Home is the empty screen. */
+function drawnComposer(composer: HomePageProps['composer'], empty: boolean): ReactNode {
+  return typeof composer === 'function' ? composer(empty) : composer;
+}
 
 export type HomePageProps = {
   /** The read for this page. Absent while loading, after a failed first read, or while offline with nothing yet loaded. */
@@ -19,8 +25,11 @@ export type HomePageProps = {
   connection?: HomeConnection;
   /** Every verb the owner has wired. A verb that is not here has no control on the page. */
   actions: PlaceActions;
-  /** The composer that starts a chat in this place (↵ new tab after Home, ⌘↵ background): the conversation feature owns it. */
-  composer?: ReactNode;
+  /**
+   * The composer that starts a chat in this place (↵ new tab after Home, ⌘↵ background). A function receives whether
+   * this Home is the empty screen (Places 8b), so the prompt can ask for the first chat.
+   */
+  composer?: ReactNode | ((empty: boolean) => ReactNode);
   suggestion?: ReactNode;
   /** Injected so tests and the specimen are deterministic; the live page uses the real time. */
   now?: Date;
@@ -41,7 +50,7 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
   const sections = useHomeSections(view?.kind === 'place' ? view.id : undefined, view, connection.state !== 'ready');
 
   if (!view) {
-    return <HomeFrame label="Place" composer={composer}><HomeNotice connection={connection} hasView={false} onRetry={actions.retry}/></HomeFrame>;
+    return <HomeFrame label="Place" composer={drawnComposer(composer, false)}><HomeNotice connection={connection} hasView={false} onRetry={actions.retry}/></HomeFrame>;
   }
   const notices = <>
     <HomeNotice connection={connection} hasView onRetry={actions.retry}/>
@@ -52,7 +61,7 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
   const onUp = view.kind === 'place' && actions.goTo ? () => void runner.run(() => actions.goTo?.(parentId)) : undefined;
 
   if (view.kind === 'root') {
-    return <HomeFrame label="All places" composer={composer}>
+    return <HomeFrame label="All places" composer={drawnComposer(composer, false)}>
       <AllPlacesPage suggestion={suggestion} view={view} actions={actions} readOnly={readOnly} runner={runner} drag={drag} onDelete={deletion.start} now={clock} notices={notices}/>
     </HomeFrame>;
   }
@@ -63,9 +72,9 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
   const isPlace = view.kind === 'place';
   const menu = isPlace ? homeMenu({ id: view.id, name: view.title, tint: view.tint, pinned: view.pinned, decide: view.decide }, actions, {
     readOnly, canRename: !!actions.rename, startRename: () => setRenaming(true), startDelete: deletion.start && (() => deletion.start?.({ id: view.id, name: view.title })), newWindowHint }) : [];
-  const nothingYet = isPlace && !view.sources?.length && !view.children.length && !view.chats.length && !view.attention.length && !sections.decisions?.length && !sections.knowledge?.lines.length;
+  const nothingYet = isPlace && homePlaceIsEmpty(view) && !sections.decisions?.length && !sections.knowledge?.lines.length;
 
-  return <HomeFrame label={view.title} composer={composer} onUp={onUp} populated={isPlace && !nothingYet}>
+  return <HomeFrame label={view.title} composer={drawnComposer(composer, nothingYet)} onUp={onUp} populated={isPlace && !nothingYet}>
     <div className="home-heading-stack"><PlaceHeading title={view.title} tint={view.tint} breadcrumb={breadcrumb} menu={menu} menuLabel={`${view.title} actions`}
       renaming={renaming} onRenameCancel={() => setRenaming(false)}
       onRename={name => void runner.run(() => actions.rename?.(view.id, name)).then(ok => { if (ok) setRenaming(false); })}/>
