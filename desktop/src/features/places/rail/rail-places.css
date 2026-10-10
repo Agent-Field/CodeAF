@@ -1,0 +1,28 @@
+/* Places 10a shares one row with icon navigation; the wrapper keeps close beside, rather than inside, its button. */
+.rail-row { position: relative; border-radius: var(--radius-control); }
+.rail .rail-row-main.nav-item { height: var(--rail-place-row-height); padding: 0 var(--space-tight) 0 var(--space-2); gap: var(--space-compact); transition: background-color var(--dur-fast) var(--ease); }
+.rail .rail-row-main.nav-item:hover { color: var(--ink-2); }
+.rail .rail-row-main.nav-item.active:hover { color: var(--ink); }
+.rail .rail-row-main.nav-item:active { transition-duration: var(--dur-press); }
+.rail-row-main .nav-label { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: var(--space-tight); overflow: hidden; }
+.rail-place-name { flex: 1; line-height: var(--rail-name-leading); min-width: 0; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
+.rail-place-path { font-weight: var(--font-weight-regular); color: var(--ink-3); white-space: nowrap; }
+.rail-place-closed { flex: none; font-size: var(--rail-meta-font); }
+.rail .rail-row[data-busy-closed] .rail-row-main { color: var(--ink-3); }
+.rail-row[data-drop] { box-shadow: inset 0 0 0 var(--places-tile-ring-drop) var(--accent); }
+.rail-row-trail { display: flex; align-items: center; flex: none; gap: var(--space-compact); }
+.rail-row-trail:empty { display: none; }
+.rail-meta { flex: none; font-size: var(--rail-meta-font); color: var(--ink-3); }
+.rail-row-close.icon-button { position: absolute; top: 50%; right: var(--space-tight); transform: translateY(-50%); width: var(--rail-close-size); height: var(--rail-close-size); color: var(--ink-3); background: var(--tab-hover); opacity: var(--opacity-transparent); pointer-events: none; }
+.rail-row-close.icon-button:hover:not(:disabled) { color: var(--ink-3); background: var(--field-2); }
+.rail-row-close.icon-button:active:not(:disabled) { background: var(--field-2); transition-duration: var(--dur-press); }
+/* Only rows with a close action exchange the trailing mark for it; touch uses the row's existing menu. */
+@media (hover: hover) and (pointer: fine) {
+  .rail-row[data-closable]:hover .rail-row-close, .rail-row[data-closable]:focus-within .rail-row-close { opacity: var(--opacity-opaque); pointer-events: auto; }
+  .rail-row[data-closable]:hover .rail-row-trail, .rail-row[data-closable]:focus-within .rail-row-trail { visibility: hidden; }
+}
+@media (hover: none), (pointer: coarse) { .rail-row-close.icon-button { display: none; } }
+/* The selected lift must not override the shared keyboard ring, including while the row is hovered. */
+:where(html:not([data-input="pointer"])) .rail .rail-row-main.nav-item:focus-visible { box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 calc(var(--focus-ring-width) + var(--focus-halo-width)) var(--accent-soft); }
+/* The browser specimen uses the design's 232px row column without widening the production rail. */
+.rail-row-fixture { width: var(--rail-row-specimen-width); background: var(--frame); }
