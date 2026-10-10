@@ -8,7 +8,7 @@ import { reduceNewTab, type NewTabAction } from './reducers/newtab.ts';
 import { reduceGroups, type GroupAction } from './reducers/groups.ts';
 import { reduceHistory, type HistoryAction } from './reducers/history.ts';
 import { reduceSplit, type SplitAction } from './reducers/split.ts';
-import { reduceClosing, type ClosingAction } from './reducers/closing.ts';
+import { closedAtOf, reduceClosing, type ClosingAction } from './reducers/closing.ts';
 import { reduceHandoff, type HandoffAction } from './reducers/handoff.ts';
 import { reduceTabs, type TabAction } from './reducers/tabs.ts';
 import { reduceHome, type HomeAction } from './reducers/home.ts';
@@ -86,8 +86,11 @@ function readPlace(value: unknown): ClosedPlace | undefined {
 
 function readClosed(value: unknown): ClosedTab | undefined {
   const tab = readTab(value);
-  const stood = tab && readPlace((value as { stood?: unknown }).stood);
-  return tab && stood ? { ...tab, stood } : tab;
+  if (!tab) return undefined;
+  const stood = readPlace((value as { stood?: unknown }).stood);
+  const closedAt = closedAtOf((value as { closedAt?: unknown }).closedAt);
+  const closed: ClosedTab = stood ? { ...tab, stood } : tab;
+  return closedAt === undefined ? closed : { ...closed, closedAt };
 }
 
 /**

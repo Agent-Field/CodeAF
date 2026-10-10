@@ -26,9 +26,10 @@ export type TabGroup = { id: string; title: string; collapsed: boolean };
  * emptied (and so removed) comes back with its name.
  */
 export type ClosedPlace = { before?: string; after?: string; group?: TabGroup };
-/** A closed tab and, when it was closed in this build, where it stood. */
+/** A closed tab and, when this build closed it, where it stood and when. */
 /** `stood` is where the tab stood when it closed (not `place`, which a place's Home already uses for its place id). */
-export type ClosedTab = Tab & { stood?: ClosedPlace };
+/** `closedAt` is milliseconds since the epoch. A save from before the stamp has none, and the new-tab row then says "closed". */
+export type ClosedTab = Tab & { stood?: ClosedPlace; closedAt?: number };
 
 export type WorkspaceState = {
   tabs: Tab[];
