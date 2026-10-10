@@ -33,11 +33,11 @@ import (
 // columns side by side.
 //
 // EVERY ROW IS A LINE OF HOME'S OWN COLUMN. A conversation on any panel is a
-// [homeSession] line, a watch is a [homeItem] line, a door into a place is a
-// [homeLedger] line — so enter, the verbs, the digits, the takeover and the row
-// identity every other part of this screen already asks of a line go on
-// working unchanged. What a panel adds is [homeLine.cell]: the words the row is
-// painted with.
+// [homeSession] line and a door into a place is a [homeLedger] line, an
+// automation's row among them — so enter, the verbs, the digits, the takeover
+// and the row identity every other part of this screen already asks of a line
+// go on working unchanged. What a panel adds is [homeLine.cell]: the words the
+// row is painted with.
 
 // The width ladder (law 2): one column under a hundred and ten cells, two under
 // a hundred and seventy, three past it.
@@ -1100,7 +1100,7 @@ func (p homeGridPanel) lines() []homeLine {
 // and a line that named a place `enter` did not go to would be a door drawn on
 // a wall (review of #1046). The way to the rest is the panel's HEADING, which
 // opens the place that owns the panel (law 10): tasks for `needs you`,
-// `tasks` and `since you left`, standing for `standing`. `threads` has no
+// `tasks` and `since you left`, automations for `automations`. `threads` has no
 // place of its own to open (the search place was its door until 2026-09-17;
 // the box under home is the search now), so its heading names only the panel.
 // It used to be the other way round: law 9 said the fold IS the door, `N more

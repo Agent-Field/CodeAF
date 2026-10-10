@@ -63,12 +63,12 @@ import (
 // reading twice.
 //
 // THE READING IS switcher.go's AND THIS FILE OWNS ONLY THE WIRING. [readSwitcher]
-// is pure — a world, the standing bands, a look stamp and a clock in, a list of
-// lines out — and everything this file does is turn those lines into lines of
-// home's own column so that every door, card, digit and key that already worked
-// on a conversation or a standing item goes on working on it untouched. A
-// switcher row for a conversation IS a [homeSession] row; a switcher row for a
-// watch IS a [homeItem] row, painted from the panel cell it wears (homegrid.go).
+// is pure — a world, the automations the watcher last read, a look stamp and a
+// clock in, a list of lines out — and everything this file does is turn those
+// lines into lines of home's own column so that every door, card, digit and key
+// that already worked on a conversation goes on working on it untouched. A
+// switcher row for a conversation IS a [homeSession] row, painted from the
+// panel cell it wears (homegrid.go).
 //
 // AND TYPING IS UNTOUCHED. The moment there is something in the box the column
 // is [homeView.buildWorld]'s drop-up again, ranked by [homeRank], with `ask

@@ -31,9 +31,7 @@ import (
 // A cache keyed by the SUBJECT over a reading that is GLOBAL is the shape of
 // that bug: it multiplies one file read by the number of rows a person walks
 // past. So the reading is taken once, filed by the conversation that made each
-// file, and every card is a map lookup — which is the bargain
-// homestanding.go's [app.standWeek] already makes for the week's ledger, in the
-// same words.
+// file, and every card is a map lookup.
 //
 // AND IT IS RE-PARSED ONLY WHEN THE FILE CHANGED. Home's beat asks for the
 // reading three times a minute and gets one os.Stat for its trouble; the JSON is

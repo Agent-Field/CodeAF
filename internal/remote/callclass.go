@@ -56,7 +56,7 @@ package remote
 // keystroke could sit behind a send. Running the ordered bodies on the
 // goroutine that reads the socket gave the order for free and took the READING
 // away with it: [MethodSubmit] alone rebinds the client, re-reads the person's
-// standing orders, reassembles the system prompt, journals the message and
+// rules, reassembles the system prompt, journals the message and
 // starts the naming errand before it returns, and for all of that the engine
 // was not reading its own pipe. A person who pressed Enter and then Esc was
 // queued behind their own send. [MethodCompact] was the extreme case — it does

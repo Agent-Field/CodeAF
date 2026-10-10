@@ -45,14 +45,14 @@ package tui3
 //   - TRIAGE FIRST AND ACROSS EVERYTHING. `waiting on you`, `running` and
 //     `since you left` are the three questions somebody opens their phone to
 //     ask, and none of them is a question about one project — so the sections
-//     gather conversations, standing items and errands from every project on the
-//     machine. The projects come after them, and only this window's is drawn
+//     gather conversations, errands and automation runs from every project on
+//     the machine. The projects come after them, and only this window's is drawn
 //     open; the rest are one line each, exactly as the `elsewhere` block already
 //     draws them, without the rule line that costs a row nobody can spare.
 //
 //   - OPEN TABS COME FIRST, with status bullets followed by bounded closed history.
 //     Waiting details may also have a triage row; project groups do not repeat
-//     conversations. Their standing items remain below the inbox.
+//     conversations.
 //
 //   - THREE, THEN A DOOR. Every section shows three rows and folds the rest into
 //     `▸ …N more`, which is the same fold mark, the same word and the same
@@ -90,10 +90,10 @@ const (
 	// [homeHeading] does — but a TAP on it folds the section away, because on a
 	// screen this short "I have dealt with those" is a gesture worth having.
 	homePhoneSection homeRowKind = 210
-	// homePhoneNews is one thing that happened while you were away: a note left
-	// in a conversation's inbox or in a project's, or a task that landed since
-	// the last time you spoke. It is a cursor stop and its door is the thing it
-	// is about.
+	// homePhoneNews is one thing that happened while you were away: an
+	// automation's run that ended since home was last looked at, or a task that
+	// landed since the last time you spoke. It is a cursor stop and its door is
+	// the thing it is about.
 	homePhoneNews homeRowKind = 211
 	// homePhoneMore is a section's own fold line — `▸ …4 more` — and it is a
 	// door exactly as [homeQuiet] is, with the same mark and the same gestures.
@@ -140,8 +140,7 @@ type homePhoneNote struct {
 	project string
 	dir     string
 	// row is the conversation the news belongs to, and hasRow says there is
-	// one — a note left in a PROJECT's inbox has no conversation behind it
-	// (homeband_news.go says why that inbox exists).
+	// one — an automation's run is news with no conversation row behind it.
 	row    session.SessionRow
 	hasRow bool
 	proj   session.Project
@@ -373,10 +372,9 @@ func (h *homeView) phoneProjects(lifted phoneLifted) {
 // phoneNotes reads the machine's news, and reads it on HOME'S OWN CLOCK and not
 // on the paint clock.
 //
-// The inboxes are files on disk and this list is rebuilt on every keystroke, so
-// the walk is taken once per reading of the world ([homeEvery]) and answered
-// from the cache in between — the same bargain [app.homeHeld] makes about the
-// lock and [drawNewsBand] makes about the same files.
+// This list is rebuilt on every keystroke, so it is gathered once per reading
+// of the world ([homeEvery]) and answered from the cache in between — the same
+// bargain [app.homeHeld] makes about the lock.
 func (h *homeView) phoneNotes() []homePhoneNote {
 	now := h.world.Read
 	if !h.inboxAt.IsZero() && !now.IsZero() && now.Sub(h.inboxAt) < homeEvery {
@@ -398,8 +396,7 @@ func (h *homeView) phoneNotes() []homePhoneNote {
 	}
 	for _, project := range h.everyProject() {
 		for _, row := range project.Sessions {
-			// WORK THAT LANDED WHILE YOU WERE NOT IN THE ROOM.			// AND WORK THAT LANDED WHILE YOU WERE NOT IN THE ROOM. It is the
-			// same derivation the `◆` on a standing row makes ([standNews]):
+			// AND WORK THAT LANDED WHILE YOU WERE NOT IN THE ROOM.
 			// [session.SessionRow.At] is when the PERSON last spoke, so a task
 			// that finished after it is a thing they have not seen. Nothing is
 			// asserted about "last looked" — this surface has no such record and

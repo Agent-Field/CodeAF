@@ -25,10 +25,10 @@ import (
 //	role         what this session is for (Config.EffortRole)
 //	default      the install's `effort` row (Config.DefaultEffort)
 //
-// A child agent — a task worker, a standing firing, an adaptive-run node — is a
-// whole session of its own, so the work's rung reaches it as ITS conversation
-// rather than as a fifth argument threaded down every call: the child is the
-// work, and its own turns are the work being done.
+// A child agent — a task worker, an adaptive-run node — is a whole session of
+// its own, so the work's rung reaches it as ITS conversation rather than as a
+// fifth argument threaded down every call: the child is the work, and its own
+// turns are the work being done.
 
 // effortFor is the rung one call on this model should ask for.
 //

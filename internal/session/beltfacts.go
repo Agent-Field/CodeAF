@@ -10,8 +10,8 @@ import (
 //
 // prompts/system.md is one embedded text read by every agent this package
 // builds — the conversation, a worker that may hand parts out, a worker on the
-// floor of the tree, a standing check — and the belt those agents get is not one
-// belt. Five families come off it by their own gates (tools.go): the settings
+// floor of the tree, an automation's run — and the belt those agents get is not
+// one belt. Five families come off it by their own gates (tools.go): the settings
 // pair and `watch` inside a task, `search_conversations` where no store was
 // opened, `tasks` and `propose_task` on the floor of the tree, `use_service`
 // where there is no account hub. A sentence in the page naming one of those is
@@ -28,10 +28,10 @@ import (
 // So the tool-naming facts of the session-facts section live HERE and are
 // composed at render time, each from THE PREDICATE THAT PUTS ITS TOOL ON THE
 // BELT. Where a tool is absent the fragment says what to do instead rather than
-// saying nothing, in the voice the page's own `remember` and `stand` sentences
-// already use ("Without `remember`, say plainly that memory is off"): a worker
-// told the truth spends its turn on the work, and a worker told nothing spends
-// it guessing.
+// saying nothing, in the voice the page's own `remember` sentence already uses
+// ("Without `remember`, say plainly that memory is off"): a worker told the
+// truth spends its turn on the work, and a worker told nothing spends it
+// guessing.
 //
 // prompt_belt_test.go is the both-ways proof, over every agent shape this
 // package builds.
@@ -806,8 +806,7 @@ func promptWithBeltFacts(config Config) string {
 //
 //   - WRITTEN FOR BOTH CASES ALREADY. The page names the tool and, in the same
 //     breath, says what to do without it — "Without `remember`, say plainly that
-//     memory is off", "Without `stand` this build cannot watch anything once the
-//     window closes". prompt_belt_test.go holds these to that: where the belt
+//     memory is off". prompt_belt_test.go holds these to that: where the belt
 //     lacks the tool, the sentence stating the absence must be in the rendered
 //     prompt.
 //

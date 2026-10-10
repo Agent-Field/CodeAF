@@ -291,10 +291,10 @@ func (a *app) clearTargetSpans() {
 // [placeHome.owns] before the router claims a single chord and from
 // [app.placeKeyPress] on the other places.
 
-// targetDestinations uses the projects panel's order, including projects known
-// only through standing work. The selected path never moves to the front: doing
-// that on each press traps the cycle between the pin and the launch folder.
-// Everything comes from home's caches, so the hint can ask without disk I/O.
+// targetDestinations uses the projects panel's order. The selected path never
+// moves to the front: doing that on each press traps the cycle between the pin
+// and the launch folder. Everything comes from home's caches, so the hint can
+// ask without disk I/O.
 func (a *app) targetDestinations() []string {
 	world := a.home.world
 	world.Projects = a.home.everyProject()

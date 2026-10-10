@@ -76,7 +76,7 @@ type spendPage struct {
 	read time.Time
 	// held is whether the ledger holds ANY priced line at all, in any window, and
 	// it is what tells the two empty pages apart — the same fact and the same
-	// argument as the standing and tasks places' own ([standingPlace.held]).
+	// argument as the tasks place's own ([tasksReading.held]).
 	//
 	// A WINDOW EMPTIED BY THE ARROWS IS NOT AN EMPTY MACHINE. Both draw no rows,
 	// and the right answer to each is the opposite of the other: a machine that
@@ -387,11 +387,11 @@ func (a *app) rebuildSpend() {
 // person calls that thing.
 //
 // THE LEDGER HOLDS IDS AND NOTHING ELSE and says so in its own header — no
-// title for a task, none for a standing item, only the ids a page joins against
+// title for a task, none for an automation, only the ids a page joins against
 // the records it is already reading. So this walks the world's task index by
-// (session, id) and the standing seam's items by id, and anything neither knows
-// keeps the id: a row headed by an id is a poorer row than one headed by a
-// title, and a far better one than a blank.
+// (session, id) and the automations this window last read by id, and anything
+// neither knows keeps the id: a row headed by an id is a poorer row than one
+// headed by a title, and a far better one than a blank.
 //
 // IT IS BUILT FROM A WORLD THIS PLACE READ ITSELF, ON THE WAY IN. It used to read
 // home's cached world — which is nil the moment home is left, and leaving home is
@@ -400,18 +400,11 @@ func (a *app) rebuildSpend() {
 // scan is one walk of the places root on `open` and on the place clock's beat,
 // which is what every other place pays for its own reading.
 //
-// AND THE PROMISES ARE ASKED OF EVERY PROJECT, not of this window's. A firing
-// costs money in the workspace it fires in, so a page asking only about the
-// project the window happens to be in cannot name a promise in any other one.
-//
-// IT IS ASKED ONCE, AND ONLY WHERE THE WORLD IS READ ([app.readSpendLines]).
-// The orders came through [StandingSeam.Items], which is the store's List
-// filtered to one workspace — so asking it per project walked the standing root
-// once per project and parsed every document on the machine each time, to build
-// one map. [StandingSeam.All] is the same answer for one read. A surface with no
-// way to ask it at all — a connection, whose door answers by workspace — names
-// no promise rather than fanning out into N reads, and those rows keep their
-// ids, which the header above says is the poorer row and not the wrong one.
+// AND THE AUTOMATIONS ARE EVERY PROJECT'S, not this window's. A run costs money
+// in the workspace it runs in, so a page naming only the project the window
+// happens to be in could not name one anywhere else. The watcher's list is the
+// whole store, already read on its own beat (automationwatch.go), so the join
+// asks no seam anything ([app.readSpendLines] is the one place it is made).
 func (a *app) spendNames(world session.World) map[string]string {
 	names := map[string]string{}
 	for _, project := range world.Projects {
@@ -551,12 +544,10 @@ func (a *app) spendKey(msg tea.KeyPressMsg) tea.Cmd {
 // MONEY WAS SPENT ON, which is the only door this page has and the only one it
 // should have.
 //
-// A task goes to the task page, where its own record card is; a standing item
-// goes to the standing place, where the promise it was made under lives; a
-// conversation goes to home, which is the switcher and the one screen that can
-// resolve a conversation id into an open window. Anything else opens nothing
-// and says nothing, because a door onto a thing this build cannot find is worse
-// than no door at all.
+// A task goes to the task page, where its own record card is; an automation
+// goes to the automations place with the cursor on its row; a conversation is
+// opened. Anything else opens nothing and says nothing, because a door onto a
+// thing this build cannot find is worse than no door at all.
 func (a *app) openSpendRow() (tea.Cmd, bool) {
 	stop := a.spendStopAt(a.spend.cursor)
 	if !stop.ok {

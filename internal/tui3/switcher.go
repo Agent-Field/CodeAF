@@ -17,8 +17,9 @@ import (
 // ── THE SWITCHER'S READING ──────────────────────────────────────────────────
 //
 // HOME IS A SWITCHER, NOT A DIRECTORY, AND THIS FILE IS THE WHOLE OF WHAT IT
-// READS (SCREEN 1a). Data in — a world, the standing bands, where this window is
-// standing, a look stamp and a clock — rows, stops and verbs out.
+// READS (SCREEN 1a). Data in — a world, the automations the watcher last read,
+// where this window is standing, a look stamp and a clock — rows, stops and
+// verbs out.
 //
 // IT IS PURE AND IT MUST STAY PURE. Nothing here takes an *app, starts a clock,
 // opens a file or asks the disk anything: the facts are gathered on home's own
@@ -102,9 +103,8 @@ type switcherRow struct {
 }
 
 // switcherReading is the whole of what the grid's panels read off the machine:
-// every conversation and every standing thing that needs somebody or is firing,
-// ranked, and the `since you left` lines beside them (homegrid.go's
-// [homeView.gridInput]).
+// every conversation, ranked by what needs somebody and what is moving, and the
+// `since you left` lines beside them (homegrid.go's [homeView.gridInput]).
 type switcherReading struct {
 	// rows is ranked: what needs you (oldest first), then what is moving, then
 	// the rest by recency ([switcherLess]).

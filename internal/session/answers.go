@@ -7,20 +7,18 @@ package session
 // card writes what it is asking, with the answers it will take, into its
 // presence file, and any other window may read it without opening a journal or
 // taking a lock. This file is the return path, and it is deliberately the
-// simplest thing that works — internal/standing's inbox.go in the other
-// direction: ONE JSONL FILE in the session's own folder, appended by whoever
-// answered, drained whole by the session itself on the heartbeat it already
-// runs.
+// simplest thing that works: ONE JSONL FILE in the session's own folder,
+// appended by whoever answered, drained whole by the session itself on the
+// heartbeat it already runs.
 //
 // ── THE THREE LAWS ──
 //
 //   - AN ANSWER IS APPLIED THROUGH THE SAME RESOLVER A SURFACE USES. There is
-//     no second door into the approval gate, the task proposal or the standing
-//     card: [Agent.applyAnswer] calls [Agent.ResolveConsentRemember],
-//     [Agent.ResolveTask] and [Agent.ResolveStanding], which is exactly what the
-//     card in the window calls. A lane of its own would be a second place that
-//     decides what "yes" does, and the two would drift on the day one of them
-//     learned something.
+//     no second door into the approval gate, the task proposal or the
+//     automation card: [Agent.applyAnswer] calls [Agent.ResolveQuestion], which
+//     is exactly what the card in the window calls. A lane of its own would be
+//     a second place that decides what "yes" does, and the two would drift on
+//     the day one of them learned something.
 //
 //   - A LATE ANSWER IS IGNORED, AND NOTHING SAYS SO. The resolvers already drop
 //     an id nobody is waiting on — a question the clock approved, a card the
@@ -47,10 +45,10 @@ package session
 // the same instant and an append never loses one — the opposite of presence.json
 // next to it, which has exactly one writer and one fact and is replaced whole.
 //
-// THE DRAIN RENAMES BEFORE IT READS, for standing's own reason: an answer
-// delivered while the file is being read would otherwise be read and then
-// deleted unapplied. Moving it aside first means a racing write starts a fresh
-// file that the next beat finds.
+// THE DRAIN RENAMES BEFORE IT READS: an answer delivered while the file is
+// being read would otherwise be read and then deleted unapplied. Moving it
+// aside first means a racing write starts a fresh file that the next beat
+// finds.
 
 import (
 	"bufio"
@@ -648,8 +646,7 @@ func WriteAnswer(sessionDir string, kind QuestionKind, id uint64, key string) er
 	})
 }
 
-// deliverAnswer appends one line, making the folder if it is not there. It is
-// [standing.Deliver] with a different payload and the same shape.
+// deliverAnswer appends one line, making the folder if it is not there.
 func deliverAnswer(sessionDir string, answer Answer) error {
 	dir := strings.TrimSpace(sessionDir)
 	if dir == "" {

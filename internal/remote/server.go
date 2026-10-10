@@ -222,10 +222,10 @@ type Engine struct {
 	// surface listed its own instead. Over --host that meant the tasks place
 	// walked the LAPTOP's `~/.codeaf/v3` and drew what it found — eight rows and
 	// a total in dollars — under a conversation running here. These doors are
-	// how it asks the right machine, and they are the same shape Recent and
-	// StandingItems already are: nil is the reading absent rather than empty,
-	// answered as a refusal, so the surface keeps the difference between "there
-	// is nothing there" and "nobody asked".
+	// how it asks the right machine, and they are the same shape Recent
+	// already is: nil is the reading absent rather than empty, answered as a
+	// refusal, so the surface keeps the difference between "there is nothing
+	// there" and "nobody asked".
 
 	// World is the walk of this machine's places root: every project, every
 	// conversation in it, and the work each of those ran. It is the reading five
@@ -1683,7 +1683,7 @@ type server struct {
 	//
 	// IT IS WHY A KEYSTROKE NO LONGER WAITS FOR A SEND. Everything the engine
 	// does between Submit and the first request leaving — the client rebind,
-	// the standing orders, the system prompt, the journal write, the naming
+	// the person's rules, the system prompt, the journal write, the naming
 	// errand — used to run on the reader, and every frame behind it on this
 	// socket waited for all of it (callclass.go's header).
 	ordered *orderedLane

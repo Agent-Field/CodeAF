@@ -41,12 +41,10 @@ import (
 // ── WHAT CANNOT BE STEERED, AND WHY IT IS LEFT WAITING ──────────────────────
 //
 // [session.Agent.Steer] is WORDS ONLY — pictures reach a running turn by their
-// own door, which assembles parts and journals durable references — and a
-// sentence somebody MARKED as something to keep true is a sentence bound for a
-// different door entirely (standmark.go). Neither is refused with a note: the
-// message simply stays parked and goes as its own turn, which is what it would
-// have done had nobody pressed anything. A gesture whose failure mode is the
-// default behaviour needs no apology for it.
+// own door, which assembles parts and journals durable references. A message
+// carrying them is not refused with a note: it simply stays parked and goes as
+// its own turn, which is what it would have done had nobody pressed anything. A
+// gesture whose failure mode is the default behaviour needs no apology for it.
 //
 // ── THE REFUSAL IS ANSWERED BY DELIVERING THE WORDS ANYWAY ──────────────────
 //
@@ -138,10 +136,7 @@ func (a *app) steerable() bool {
 // steerable reports whether ONE waiting message can go into a running turn.
 //
 // A message with pictures cannot: [session.Agent.Steer] takes words and the
-// tray travels by its own door. A message somebody MARKED cannot either: the
-// mark says the sentence is bound for the standing door, and a steer that
-// dropped it would be the sentence quietly becoming ordinary work, which is the
-// one ending that gesture exists to rule out (standmark.go).
+// tray travels by its own door.
 func (p parked) steerable() bool {
 	return p.text != "" && len(p.chips) == 0 && !p.sending
 }
@@ -339,9 +334,9 @@ func (a *app) promoteParked(at int) tea.Cmd {
 	}
 	one := a.parks[at]
 	if !one.steerable() {
-		// LEFT EXACTLY WHERE IT WAS. A message with pictures on it, or one marked
-		// as something to keep true, waits for the turn to end and goes through its
-		// own door — which is what it was always going to do.
+		// LEFT EXACTLY WHERE IT WAS. A message with pictures on it waits for the
+		// turn to end and goes through its own door — which is what it was always
+		// going to do.
 		return nil
 	}
 	agent, ok := a.agent.(steerAgent)

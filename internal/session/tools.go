@@ -262,8 +262,8 @@ func (a *Agent) belt() []bare.Tool {
 	// The workspace's own history — restore points over the FILES, forks to try
 	// something risky in, and the merge that lands one (tools_workspace.go).
 	// They are furrow's verbs and they are absent in a folder nobody has
-	// attached to furrow, which is the same absence law `stand` and the memory
-	// pair are built on and is stated at length where they are built.
+	// attached to furrow, which is the same absence law `automation` and the
+	// memory hand are built on and is stated where they are built.
 	tools = append(tools, a.workspaceTools()...)
 	// Conversation search needs only a history reader. Task workers and forked
 	// hands inherit it without gaining the writable memory store.

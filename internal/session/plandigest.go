@@ -33,8 +33,7 @@ package session
 // from and nowhere else: [Agent.recordUserLocked] journals their own sentence
 // through [userMessage.said] (or past [userMessage.lead], on a message with
 // pictures), so a resume, an export and the transcript on screen all show
-// what they typed. That is standing_mark.go's law, applied to the second door
-// that needs it.
+// what they typed. That is [userMessage.said]'s law.
 
 import (
 	"fmt"
@@ -174,9 +173,8 @@ func planAnyOpen(rows []PlanTaskRow) bool {
 }
 
 // planDigested is the person's message with the digest in front of it for the
-// model, and their own sentence alone for the journal. It is [standingMarked]'s
-// shape and it is that shape deliberately: the two doors differ in what the
-// model reads, and in nothing else.
+// model, and their own sentence alone for the journal: the door differs from a
+// plain send in what the model reads, and in nothing else.
 func planDigested(digest, text string) userMessage {
 	return userMessage{
 		message: textMessage("user", digest+"\n\n"+text),

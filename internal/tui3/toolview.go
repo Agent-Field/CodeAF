@@ -672,7 +672,7 @@ func (a *app) joinTail(mark tailSeg, figures []tailSeg) (string, int) {
 
 // joinFact appends one fact to another with the surface's own separator, in
 // both forms at once — a plain string to measure and a painted one to draw. It
-// is not homestanding.go's [joinDot], which joins one string to another; this
+// is not homewords.go's [joinDot], which joins one string to another; this
 // one keeps the measured copy and the drawn copy in step, which is the whole
 // reason the right column can add up.
 func joinFact(plain, painted, addPlain, addPainted string) (string, string) {

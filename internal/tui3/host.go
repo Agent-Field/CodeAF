@@ -137,34 +137,21 @@ import (
 //	                  (internal/remote's SubmitImage). So a relative path and the
 //	                  completion walk are both anchored HERE rather than on the
 //	                  remote workspace — see [app.pathRoot].
-//	standing items    ON, and on at both ends. The `stand` tool is on the belt
-//	                  over a connection because the engine keeps its ambient
-//	                  side (cmd/codeaf's engine.go), the proposal card crosses as
-//	                  an ordinary event and the answer crosses back as its own
-//	                  frame (internal/remote's ResolveStanding), so a person
-//	                  sitting here can set something up on the far machine and it
-//	                  goes on working after this window closes. THE ITEMS BELONG
-//	                  TO THE MACHINE THAT RUNS THEM: the store, the profile rules
-//	                  a firing inherits and the OS timer are all the engine's.
-//	the item band     DRAWN, now that home lists the far machine's projects: the
-//	                  band under a project row is that project's standing items,
-//	                  asked of the engine's own store by a path that is real
-//	                  there. It also still lights up the status line's
-//	                  `keeping an eye on` segment,
-//	                  which asks about THIS window's workspace — and over --host
-//	                  that path is the engine's own, so the count is about the
-//	                  right machine. The rows answer from a cache that refreshes
-//	                  behind itself (cmd/codeaf's [hostStanding]), because this
-//	                  seam is asked on the frame and a wire call is not.
-//	`keeping watch`   WORKS. Standing.Watch crosses the wire and reads the far
-//	                  machine's scheduler, so /status says installed, absent, or
-//	                  nothing when that engine has no scheduler to ask. It never
-//	                  consults this laptop's timer.
-//	the ● glyph       never worn, and for the reason the field states rather than
-//	                  for a remote one: a firing is in flight inside whichever
-//	                  process holds the tick lock, nothing on disk says so, and
-//	                  no frame could carry an answer the far end does not have.
-//	                  Running is nil here exactly as it is at home.
+//	automations       ON, and on at both ends. The `automation` tool is on the
+//	                  belt over a connection because the engine keeps a store of
+//	                  its own (cmd/codeaf's engine.go), the card crosses as an
+//	                  ordinary event and the answer crosses back through the one
+//	                  question door, so a person sitting here can set something
+//	                  up on the far machine. THEY BELONG TO THE MACHINE THAT RUNS
+//	                  THEM: the store, the profile rules a run inherits and the
+//	                  clock are all the engine's, and that clock runs while a
+//	                  window is open there or attached from here.
+//	/automations      DRAWN from the far machine's store over the wire
+//	                  (cmd/codeaf's hostAutomationsSeam): the list, what is
+//	                  running, the run lines, the notifications and the line on
+//	                  /status are all that machine's. An engine without those
+//	                  doors shows no automations here, never this laptop's,
+//	                  which run somewhere else.
 //	a dropped link    SAID, and said in the one place a condition belongs: the
 //	                  status line grows a segment reading `reconnecting to
 //	                  devbox — trying for up to 5 minutes` while the connection
@@ -435,10 +422,9 @@ func (a *app) remoteProfileWord(thing string) string {
 // `~/.codeaf/v3`; tasks lists the work those conversations ran; spend adds up the
 // ledger every model call on that machine appends to; search reads the index of
 // what was said there; memory reads the store the sessions there remember into;
-// standing lists the documents that machine's timer fires from. Every one of
-// those is a directory under the state root of THIS process — which over --host
-// is the laptop's, while the conversation the person is sitting in runs on the
-// server.
+// automations lists what that machine's clock runs. Every one of those is a
+// directory under the state root of THIS process — which over --host is the
+// laptop's, while the conversation the person is sitting in runs on the server.
 //
 // THE ANSWER IS THAT THE PLACES FOLLOW THE SESSION'S MACHINE. The reading each
 // one is built from is asked of the ENGINE and not of this process, so the rows
@@ -455,10 +441,10 @@ func (a *app) remoteProfileWord(thing string) string {
 //	           reported: a click on the tab drew the LAPTOP's eight tasks and its
 //	           $22.54 under a session on a server that had run none of them, with
 //	           the full confidence of a page that had read a real disk.
-//	standing   THE FAR MACHINE'S, and it was half true already: what stands on
-//	           THIS conversation always crossed the wire (Standing.Items), and
-//	           what else keeps an eye on that machine is a walk of the far world's
-//	           projects asking the far store about paths that are real there.
+//	automations
+//	           THE FAR MACHINE'S, read over the wire from that machine's store
+//	           (cmd/codeaf's hostAutomationsSeam), and absent when the engine
+//	           has no store to read.
 //	spend      THE FAR MACHINE'S, through Places.Ledger and a held cache.
 //	search     THE FAR MACHINE'S, one call from the search command's goroutine.
 //	memory     THE FAR MACHINE'S, all seven readings and writes together.

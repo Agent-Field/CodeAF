@@ -302,14 +302,14 @@ func initRepository(dir string, now time.Time) error {
 // encodeWorkspace is the bucket name for a workspace: the path with its
 // separators turned into dashes.
 //
-// IT IS A COPY, DELIBERATELY, AND IT IS THE THIRD ONE. The encoder lives in
-// cmd/codeaf's chatv3_layout.go and is unexported there, and internal/standing's
-// inbox.go and internal/e2e's tmux test already spell it for themselves. What
-// makes a copy safe here is that the encoding is ONE-WAY and nothing reads it
-// back: the world layer takes a project's real path out of each session's
-// meta.json and never decodes a bucket (internal/session's world.go). A drift
-// would show up as a duplicate row on home the moment the surface opened one of
-// these projects, which is what the test beside this program looks for.
+// IT IS A COPY, DELIBERATELY. The encoder lives in cmd/codeaf's
+// chatv3_layout.go and is unexported there, and internal/e2e's tmux test
+// already spells it for itself. What makes a copy safe here is that the
+// encoding is ONE-WAY and nothing reads it back: the world layer takes a
+// project's real path out of each session's meta.json and never decodes a
+// bucket (internal/session's world.go). A drift would show up as a duplicate
+// row on home the moment the surface opened one of these projects, which is
+// what the test beside this program looks for.
 func encodeWorkspace(workspace string) string {
 	encoded := strings.ReplaceAll(filepath.Clean(workspace), string(filepath.Separator), "-")
 	encoded = strings.ReplaceAll(encoded, ":", "-")

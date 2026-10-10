@@ -2793,8 +2793,8 @@ func (a *app) railShowing() bool {
 }
 
 // railQuiet reports whether the column has nothing true to say yet: the
-// greeting is up, this conversation has run nothing, and nothing stands over
-// it.
+// greeting is up, this conversation has run nothing, and it has set up no
+// automation.
 //
 // THE COLUMN IS ABSENT UNTIL IT HAS CONTENT OR THE CONVERSATION HAS BEGUN. It is
 // still permanent in the sense that matters — it stands from the first
@@ -2805,9 +2805,9 @@ func (a *app) railShowing() bool {
 // absence is the one thing this surface does not draw. The doors are one `/`
 // away and the greeting's own line says so.
 //
-// It answers false — the column stands — the moment there is a task or a
-// standing order to put on it, so a session with orders over it meets the
-// column on its first frame exactly as before. And it is only ever true while
+// It answers false — the column stands — the moment there is a task or an
+// automation to put on it, so a session that set one up meets the column on
+// its first frame exactly as before. And it is only ever true while
 // the greeting is open: neither the closed column's edge nor the column itself
 // is on the frame, so nothing here can be pressed ([app.railStowed] asks it
 // too).
@@ -3067,10 +3067,11 @@ type railLine struct {
 	// rather than a flag because there are two of them and they type two different
 	// things, and the word is also what the pointer lights by.
 	door string
-	// stand is the id of the standing order this line draws, on a row of the
-	// margin's standing section and nowhere else (margin.go). It is a string
-	// because a standing item's id is one ([standing.Item.ID]), and "" is an
-	// honest "this line is not an order" where a zero id could one day exist.
+	// stand is the id of the automation this line draws, on a row of the
+	// margin's automations section and nowhere else (margin.go). It is a string
+	// because an automation's id is one ([automation.Automation.ID]), and "" is
+	// an honest "this line is not an automation" where a zero id could one day
+	// exist.
 	stand string
 	// jobs says this line is the jobs section's LABEL, which toggles the
 	// section open and shut. It is a flag rather than a door-word because a
@@ -4113,21 +4114,15 @@ type railFootMarks struct {
 // missing.
 var noRailFoot = railFootMarks{hint: -1, more: -1}
 
-// railFootRows is the foot of the column: the standing count, the door onto
-// the task page, and the offer of the wide tier, each only when it is true.
+// railFootRows is the foot of the column: the door onto the task page, and
+// the offer of the wide tier, each only when it is true.
 //
-//	◦ 2 standing orders
 //	earlier ▸
 //
 // THE COUNTS OF EACH GROUP ARE NOT HERE ANY MORE. They were the foot's first
 // lines for as long as the column drew families, which scattered the groups;
 // the groups are the column's own headings now, each with its count on it, and
 // the header's `Tasks N` says the whole (sidecol.go).
-//
-// AND THE STANDING COUNT IS A LINE OF IT SINCE 2026-09-09 ([app.railStandingLine],
-// standdoor.go). It keeps everything it had: it is drawn only when something
-// stands here, its mark breathes while a pass has one of those orders in its
-// hands, and pressing it opens /standing.
 func (a *app) railFootRows(width, height int) ([]string, railFootMarks) {
 	if width < 8 || height < 4 {
 		return nil, noRailFoot

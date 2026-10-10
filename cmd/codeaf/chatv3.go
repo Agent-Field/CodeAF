@@ -1744,7 +1744,7 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// AND WHETHER THE SIGNATURE ON THE GIT WORK codeaf DOES NAMES THE MODEL,
 	// read here for the reason the audit row above it is read here: every v3
 	// door comes through this function, and a row honoured in the conversation
-	// but not in a standing firing is a row the person cannot trust. The
+	// but not in an automation's run is a row the person cannot trust. The
 	// signature itself has no row: codeaf always signs. PROFILE-ONLY — a
 	// repository that could change what a visitor's commits say about them by
 	// being cloned would be writing into somebody else's provenance. The

@@ -56,8 +56,8 @@ import (
 //
 // Shift+enter opens a line in every message box. Adding ctrl preserves a
 // distinct stop-and-send gesture without taking the ordinary newline chord.
-// Ctrl+enter keeps its standing-order meaning, and alt+enter remains the
-// conversation's alternate newline key and home's task composer key.
+// Ctrl+enter keeps its queueing meaning (followup.go), and alt+enter remains
+// the conversation's alternate newline key and home's task composer key.
 //
 // ── THE CAPABILITY LAW, AND HOW THIS BUILD CAN ACTUALLY ANSWER IT ───────────
 //

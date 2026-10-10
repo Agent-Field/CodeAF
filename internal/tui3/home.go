@@ -1043,11 +1043,10 @@ func worldHasElsewhere(world session.World, here string) bool {
 // session, and — over a connection — the answer the ENGINE gave to the same
 // question about its own disk (internal/remote's Places.World). It is one
 // function because home was never the only place that takes this walk: the tasks
-// place reads its rows out of `world.Projects[].Sessions[].Tasks.Rows`, standing
-// walks the projects to ask what else keeps an eye on that machine, spend joins
-// its titles onto the ledger, and search opens a hit's conversation out of it.
-// So there is ONE answer to which machine the places are describing, taken at
-// one moment, and five screens cannot disagree about it.
+// place reads its rows out of `world.Projects[].Sessions[].Tasks.Rows`, spend
+// joins its titles onto the ledger, and search opens a hit's conversation out
+// of it. So there is ONE answer to which machine the places are describing,
+// taken at one moment, and four screens cannot disagree about it.
 //
 // THE ANSWER MAY BE THAT THERE IS NO ANSWER YET. Over a wire the far machine has
 // not always replied by the first frame, and a world nobody has answered is not
@@ -2580,8 +2579,8 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		// EVERY FIELD ROW WITH A FOLDER OPENS IT — a conversation's workspace,
-		// the workspace a standing order stands over, the
-		// conversation a `since you left` line happened in ([homeRowFolder]).
+		// the workspace an automation runs in, the conversation a `since you
+		// left` line happened in ([homeRowFolder]).
 		// The chord keeps working even though the foot no longer names it. A
 		// row with no folder says nothing, which is the emptiness law on a key.
 		if line, ok := h.previewLine(); ok {
@@ -3765,7 +3764,7 @@ const homeDoorWord = "space space home"
 // person would call text ([app.homeDoorShowing]), and the gesture demanded a box
 // holding EXACTLY one space. Every draft the two disagreed about was a door
 // drawn over a gesture that could not fire — and one of them is easy to land in
-// and impossible to see: `ctrl+enter` and `shift+enter` (standmark.go,
+// and impossible to see: `ctrl+enter` and `shift+enter` (followup.go,
 // bargein.go) arrive as a bare `ctrl+j` on every terminal that cannot spell
 // them, and `ctrl+j` opens a line (input.go). Two of those on an empty box left
 // `\n\n` in it, the frame drew an empty box over an advertised door, and the
@@ -4226,10 +4225,10 @@ func (a *app) homeFrame(width, height int) ([]string, []int, int, int) {
 	lines, hits, caretX, caretY := placeFrame(a, width, height,
 		func(width, room int) []placeRow { return placeHome{}.body(a, width, room) })
 	// THE HIT MAPS ARE KEPT WHERE THE POINTER CAN FIND THEM, and they are written
-	// by the draw for the reason [standingCard.choiceRow] is: the press and the
-	// hover resolve against what this frame actually drew, so a stale map is a
-	// click answering for a row that has moved. They are unpacked AFTER the frame
-	// so the clamp that cuts rows cuts both of them the same way.
+	// by the draw for hover.go's reason: the press and the hover resolve against
+	// what this frame actually drew, so a stale map is a click answering for a
+	// row that has moved. They are unpacked AFTER the frame so the clamp that
+	// cuts rows cuts both of them the same way.
 	marks := placeHitsOf(hits, homeMark{line: -1, pane: -1})
 	rows, panes := make([]int, len(marks)), make([]int, len(marks))
 	for i, mark := range marks {
@@ -4708,12 +4707,6 @@ func homeFoldMark(folded bool, pal palette) string {
 // and so does one with work running, and both sort above the quiet projects
 // ([homeView.projectHot]). Everything else says how long since anybody spoke in
 // it, which is the only fact a quiet project has.
-//
-// THE COUNTS INCLUDE THE PROJECT'S STANDING ITEMS. A watch stopped on a
-// question needs a person exactly as a conversation does, and one firing right
-// now is work in flight; the count says how many things want you, not how many
-// chats do. The leading number stays the conversations, because that is what
-// opening the line shows you.
 func (h *homeView) projectNote(project session.Project, now time.Time, ascii bool) string {
 	parts := []string{itoa(len(project.Sessions))}
 	waiting, running := h.projectCounts(project)

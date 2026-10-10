@@ -914,11 +914,10 @@ func (a *Agent) routeAhead(ctx context.Context, user userMessage) *routeRace {
 	asked := user.text()
 	if said := strings.TrimSpace(user.said); said != "" {
 		// AND ONLY THEIR HALF OF IT. What the model reads is sometimes the
-		// person's sentence with an instruction the SESSION wrote in front of it
-		// — a draft they marked as standing is the one door that does this
-		// (standing_mark.go) — and [userMessage.said] is the half they typed. A
-		// judge shown the instruction would be judging the session's own words,
-		// which is the same law the wake check above keeps.
+		// person's sentence with words the SESSION wrote beside it — the plan
+		// digest is one (plandigest.go) — and [userMessage.said] is the half
+		// they typed. A judge shown those words would be judging the session's
+		// own, which is the same law the wake check above keeps.
 		asked = said
 	}
 	// THE FLOOR IS THE ASK. A trivial verb is never worth a raced yes, and

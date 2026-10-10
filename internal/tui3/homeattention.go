@@ -26,10 +26,10 @@ package tui3
 //   - AN UNKNOWN STAMP GOES LAST and never to the top of a list ordered by how
 //     long something has been standing still.
 //
-// EVERY FACT IS ONE HOME ALREADY READ. The world, the standing bands and the
-// errands are the same three readings the list is built from, on the same
-// three-second beat ([homeEvery]). This file opens nothing, stats nothing and
-// asks the engine for nothing.
+// EVERY FACT IS ONE HOME ALREADY READ. The world and the errands are the same
+// two readings the list is built from, on the same three-second beat
+// ([homeEvery]). This file opens nothing, stats nothing and asks the engine for
+// nothing.
 
 import (
 	"time"

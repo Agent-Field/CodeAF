@@ -172,12 +172,12 @@ const (
 // may touch a disk or a door; and the test that walks [commands] can then ask it
 // about every row without an app.
 //
-// THE ARGUMENT IS PART OF THE QUESTION, because three commands mean two different
-// things with and without one: `/standing` is a page and `/standing <words>`
-// raises a card in a conversation; `/task` is the task page and `/task <brief>` starts work; `/memory` is
-// the place and `/memory <query>` prints. A table keyed on the name alone would
-// send a person to the wrong one of each pair. The drop-up asks with the row's
-// own placeholder ([command.args]), which is empty on exactly the bare rows.
+// THE ARGUMENT IS PART OF THE QUESTION, because two commands mean two different
+// things with and without one: `/task` is the task page and `/task <brief>`
+// starts work; `/memory` is the place and `/memory <query>` prints. A table
+// keyed on the name alone would send a person to the wrong one of each pair.
+// The drop-up asks with the row's own placeholder ([command.args]), which is
+// empty on exactly the bare rows.
 //
 // A WORD NOBODY DEFINED HAS NO FATE, and the dispatch answers it the way it
 // always did — `there is no command called /x · / lists them`, on home's line.
@@ -250,9 +250,8 @@ func homeFate(word, rest string) string {
 		// /crew and /model. The crew is the machine's, the model has a target
 		// rule home can pin — and a thinking rung is the CONVERSATION's own scope
 		// (effortchip.go), so there is nothing here for it to be set on. Home's
-		// own rung is not this one either: `alt+e` on a standing item's card
-		// moves that item's, and the install's default is the `thinking` row of
-		// /settings (effortscope.go).
+		// own rung is not this one either: the install's default is the
+		// `thinking` row of /settings (effortscope.go).
 		return fateNeedsChat
 	case "memory", "memories":
 		// Bare it is the memory place; a query prints matching rows.

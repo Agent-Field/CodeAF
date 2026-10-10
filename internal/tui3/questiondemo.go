@@ -70,13 +70,13 @@ func (a *app) openDemoQuestion(env func(string) string) {
 	}
 	if build, known := blockDemos[name]; known {
 		// AND THE BLOCK'S OWN FIXTURES, on the same terms and for the same
-		// reason. The five lanes that moved onto it in the questions wave — the
-		// standing card, the harness offer, a finished design, the connect offer
-		// and the key it asks for — are each raised by MINUTES of real work: a
-		// reminder proposed by a turn, a design written by a model, an account
-		// the session reached for. A screen capture that has to pay for all of
-		// that first is a screen capture nobody takes twice, and a renderer
-		// nobody has looked at is not done.
+		// reason. The lanes it carries — the automation card, the harness offer,
+		// a finished design, the connect offer and the key it asks for — are
+		// each raised by MINUTES of real work: a reminder proposed by a turn, a
+		// design written by a model, an account the session reached for. A
+		// screen capture that has to pay for all of that first is a screen
+		// capture nobody takes twice, and a renderer nobody has looked at is not
+		// done.
 		a.raiseQuestion(questionShown{question: build()})
 		// The DRAW is what stamps a question as seen, and the guard is measured
 		// from the stamp — so the fixture spends it up front, exactly as the

@@ -136,8 +136,8 @@ never opened.
 // spellings are two PROJECT BUCKETS for one folder — the fixture's conversations
 // under `-tmp-…-codeaf` and the window's own under `-private-tmp-…-codeaf` — so
 // home drew the demo project twice, and `enter` on a standing order refused
-// because the conversation that asked for it was "elsewhere"
-// ([app.homeItemEnter]'s bucket guard). Every path this fixture writes is the
+// because the conversation that asked for it was "elsewhere" (the bucket guard
+// in internal/tui3's homeItemEnter). Every path this fixture writes is the
 // resolved one, so the fixture and the binary agree about what the folder is
 // called.
 func demoDir(into string, reuse bool) (dir string, fresh bool, err error) {

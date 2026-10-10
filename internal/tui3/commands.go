@@ -136,20 +136,20 @@ var commands = []command{
 	{name: "dismiss", args: "undo", desc: "restore dismissed task notifications"},
 	{name: "home", desc: "every project and conversation on this machine"},
 	// AND THE TWO PLACES THAT HAD NO TYPED DOOR, directly under the one that
-	// does. /home, /memory, /standing, /history and /settings each open a place
-	// from the box; search and spend were reachable only by their `alt+` digit,
-	// `tab`, the tab bar, or typing a word on home — every one of which has to be
-	// learned somewhere else first. The digit on each row is read off the bar's
-	// order table ([placeChord]).
+	// does. /home, /memory, /automations, /history and /settings each open a
+	// place from the box; search and spend were reachable only by their `alt+`
+	// digit, `tab`, the tab bar, or typing a word on home — every one of which
+	// has to be learned somewhere else first. The digit on each row is read off
+	// the bar's order table ([placeChord]).
 	//
 	// /spend IS A PLACE AND NOT A READING, WHICH IS WHY IT MOVED. It used to be
 	// an alias of /cost, so the one word a person guesses for "what has this cost
 	// me" printed THIS CONVERSATION's bill and never said the machine-wide place
 	// existed. The two answer different questions — /cost is this conversation,
-	// spend is every window, task and standing run on the machine — and the word
-	// belongs to the bigger one. /cost keeps /usage and /tokens, and says on its
-	// own row which question it is answering, so nobody who typed either word
-	// lands nowhere.
+	// spend is every window, task and automation run on the machine — and the
+	// word belongs to the bigger one. /cost keeps /usage and /tokens, and says on
+	// its own row which question it is answering, so nobody who typed either
+	// word lands nowhere.
 	{name: "wall", desc: "every open conversation, live, and your teams · alt+v or ▦ below the box"},
 	// THE TEAMS PAGE, beside the wall it opens onto: the wall is the open
 	// conversations big, and this is the team-level view, every member open or
@@ -429,7 +429,7 @@ var commands = []command{
 	// rows at once, so position is a claim about frequency. /attach stands with
 	// the doors onto moving a file, an errand it shares with /files; putting it
 	// higher would push /compact, which people reach for daily, into a scroll.
-	// standingpage_test.go pins that ordering.
+	// permissions_test.go pins that ordering.
 	//
 	// A PICTURE HANDED TO /attach STILL GOES ON AS A PICTURE. Its extension
 	// decides whether the model looks at it or reads a file, so one command

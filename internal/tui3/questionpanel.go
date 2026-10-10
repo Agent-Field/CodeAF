@@ -13,7 +13,7 @@ import (
 //
 // A QUESTION HANGS ABOVE THE BOX AS ONE OBJECT (owner ruling 2026-09-11, frame
 // pick A). It is the one drawing every question with anything to weigh gets —
-// the model's own `ask`, a permission, a task proposal, a standing card, a
+// the model's own `ask`, a permission, a task proposal, an automation card, a
 // landing, a confirmation — and the chooser (questionchooser.go) is what decides
 // that a question has anything to weigh.
 //

@@ -123,8 +123,8 @@ func jobSectionRows(live, settled []session.JobNotice, open bool, now time.Time,
 //	▸ jobs · 2 running · 6 ran
 //	▸ jobs · 6 ran
 //
-// IT IS THE STANDING LABEL'S OWN SHAPE ([app.marginStandHead]): the figure in
-// the data ink and the words around it dim. The clock appears only when
+// IT IS THE AUTOMATIONS LABEL'S OWN SHAPE ([app.marginStandHead]): the figure
+// in the data ink and the words around it dim. The clock appears only when
 // exactly one job is running, because then there is one duration to name;
 // past that the count is the news and a clock beside it would belong to no
 // particular row.

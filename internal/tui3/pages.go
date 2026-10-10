@@ -250,8 +250,8 @@ type place interface {
 	// ONLY HOME HAS A BOX THAT SENDS ANYTHING (the owner's ruling, 2026-09-17).
 	// Tasks and memory keep an editor because typing there FILTERS or
 	// SEARCHES, and each of them draws its own letters in its own body; the
-	// standing and spend places take no text at all, and the foot under every
-	// place but home draws no box. The shared composer that used to sit under
+	// automations and spend places take no text at all, and the foot under
+	// every place but home draws no box. The shared composer that used to sit under
 	// all seven — `enter talk about it · alt+enter send it off as a task` — was a
 	// box on six pages where `enter` opened a row and the sentence went nowhere.
 	box(a *app) *editor
@@ -398,7 +398,7 @@ var placeRegistry = map[page]place{}
 var placeOrder = []page{pageHome, pageTeams, pageChats, pageTasks, pageSpend, pageSettings, pageAutomations, pageMemory}
 
 // placeBarOrder groups daily work before utilities. Memory stays discoverable
-// even before the first saved memory; standing orders remain available in the map.
+// even before the first saved memory; automations remain available in the map.
 var placeBarOrder = []page{pageHome, pageChats, pageTeams, pageTasks, pageMemory, pageSpend, pageSettings, pageAutomations}
 
 const placeBarPlaces = 7
@@ -518,7 +518,7 @@ func (p page) lookKey() string {
 
 // counted answers whether a number in front of a place would mean anything.
 //
-// A COLLECTION CAN BE COUNTED AND A STATE CANNOT. Home, tasks, standing and
+// A COLLECTION CAN BE COUNTED AND A STATE CANNOT. Home, tasks, automations and
 // memory each hold a pile of things, so "two of them changed" is a fact about
 // the place. Spend is a sum, and settings is how
 // this machine is set — a number in front of either would be a number
@@ -529,10 +529,11 @@ func (p page) counted() bool {
 }
 
 // parsePageWord is the typed surface's half of the tab bar: a person who types
-// `sta` is offered the standing place beside the chats that match (SCREEN 1g).
+// `aut` is offered the automations place beside the chats that match (SCREEN
+// 1g).
 //
 // AN EXACT WORD BEATS A PREFIX, and a prefix that fits two places is no answer
-// at all — `s` is `standing`, `spend` and `settings` at once, and
+// at all — `s` is `sessions`, `spend` and `settings` at once, and
 // offering the first of those would be the surface guessing. So an ambiguous
 // prefix offers nothing, and the person types one more letter.
 // placeNames keeps older typed destinations working when their display label changes.
@@ -942,8 +943,8 @@ func placeHitsOf[H any](hits []placeHit, blank H) []H {
 }
 
 // placeLineHits is [placeHitsOf] for the places whose rows answer with a LINE OF
-// THEIR OWN BODY — the standing list, memory and spend all do — where a
-// row that answers to nothing is -1.
+// THEIR OWN BODY — memory and spend both do — where a row that answers to
+// nothing is -1.
 func placeLineHits(hits []placeHit) []int { return placeHitsOf(hits, -1) }
 
 // placeFrame is THE frame. Every place is drawn in it, and the head, the foot

@@ -24,9 +24,9 @@ func (a *app) jobSection(width, room int) []railLine {
 
 // jobSectionMin is how many rows the jobs section will spend before it has
 // drawn a single finished job: the blank and the label, and — when it is
-// open — every running job. Standing gives this up first ([app.marginRows]),
-// because live work outranks the furniture around it, which is the same
-// trade the roster's own live head makes.
+// open — every running job. The automations section gives this up first
+// ([app.marginRows]), because live work outranks the furniture around it,
+// which is the same trade the roster's own live head makes.
 func (a *app) jobSectionMin() int {
 	if len(a.jobs) == 0 {
 		return 0

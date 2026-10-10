@@ -746,10 +746,10 @@ func readConsolidateMark(root string) (consolidateMark, bool) {
 	return mark, true
 }
 
-// writeConsolidateMark stamps the clock. It is written temp-and-rename for the
-// reason every other file in the ambient side is: a machine that lost power
-// mid-write would otherwise come back with a half-written watermark, and the
-// honest reading of that file is "no pass has ever run".
+// writeConsolidateMark stamps the clock. It is written temp-and-rename because
+// a machine that lost power mid-write would otherwise come back with a
+// half-written watermark, and the honest reading of that file is "no pass has
+// ever run".
 func writeConsolidateMark(root string, mark consolidateMark) error {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return err

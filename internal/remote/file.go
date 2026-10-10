@@ -670,7 +670,7 @@ func (a *Agent) SubmitFiles(ctx context.Context, text string, files []WireFile, 
 // THE ERROR IS THE ENGINE'S SENTENCE AND NOTHING SOFTENS IT. A file this
 // session will not hand over is a decision taken on the machine that owns the
 // file, and a surface that redrew that refusal in its own words would be
-// guessing at somebody else's boundary (the same bargain [Client.SaveStanding]
+// guessing at somebody else's boundary (the same bargain [automationsAnswer]
 // makes with a store that refused a write).
 func (c *Client) FetchFile(path string) (FetchedFile, error) {
 	payload, err := c.call(nil, MethodFetchFile, FetchFileArgs{Path: path})

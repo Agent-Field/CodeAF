@@ -321,14 +321,12 @@ func Load() (Config, error) { return load(true) }
 // key (internal/tui3's firstrun.go). Everything else resolves exactly as Load
 // resolves it, and APIKey is simply empty until the person hands one over.
 //
-// AND FOR A PASS THAT WILL PROBABLY DO NOTHING, which is the second legitimate
-// caller and the one nobody expects: the standing tick (cmd/codeaf's
-// v3StandingTicker), run every five minutes by whichever of a window or the
-// operating system's timer gets there first. Most passes decline the lock or
-// find every item asleep, and a pass that will do nothing costs nothing and
-// needs nothing — so it builds keyless and carries whatever key was there
-// through to the one moment a judgment actually calls a model, where a machine
-// with none says so on that item's own row.
+// AND FOR A CLOCK THAT MAY NEVER NEED A MODEL, which is the second legitimate
+// caller and the one nobody expects: `codeaf clock` (cmd/codeaf's
+// openV3ClockProcess), which runs automations while a window is open. A
+// reminder needs no model, so the clock builds keyless and carries whatever key
+// was there through to the one moment a judgment or a piece of work actually
+// calls a model, where a machine with none says so on that automation's own row.
 //
 // A door that has nobody to ask AND something to spend — --once, an engine, a
 // pipe — still has no business calling this: it would fail on its first request

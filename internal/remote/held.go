@@ -6,7 +6,7 @@ package remote
 //
 // It exists because version 2 separated a conversation's life from a
 // connection's. A card is a question the turn STOPS on — consent.go blocks the
-// call, the standing lane waits for an answer that never times out, a harness
+// call, an automation card waits for an answer that never times out, a harness
 // offer holds the turn before its first request — so a card raised into an
 // empty room used to be a turn that sat there until something else killed it.
 // That single fact is what made half the --host gap list honest: a lane whose
@@ -15,7 +15,7 @@ package remote
 // merely unattended, and the difference is this file.
 //
 // WHAT IS HELD IS EVERY QUESTION THAT ARRIVES ON A TURN'S STREAM AND CAN BE
-// ANSWERED OVER THIS WIRE. The four kinds below are four of the resolve-doors
+// ANSWERED OVER THIS WIRE. The three kinds below are three of the resolve-doors
 // [WrappedAgent] carries. The harness lane's two cards — a design, a subharness
 // intake — are deliberately absent: they never travel a stream, and the session
 // replays whichever of them is still standing onto every new subscription

@@ -4,10 +4,10 @@ package tui3
 //
 // home.go's [app.homeDetail] owns the two lines nothing may displace — the
 // title and the place — and then asks this registry for the rest. A band says
-// what kind of thing it is about (a conversation, a standing item, a project),
-// what order it sits at, and how to draw itself for a given width; the registry
-// composes them top-down with one blank row between, and a frame too short for
-// all of them drops whole bands from the bottom ([homeBands]), so the most
+// what kind of thing it is about (a conversation or a project), what order it
+// sits at, and how to draw itself for a given width; the registry composes them
+// top-down with one blank row between, and a frame too short for all of them
+// drops whole bands from the bottom ([homeBands]), so the most
 // decision-relevant band is the one nearest the title.
 //
 // ── THE LAWS ──
@@ -271,21 +271,21 @@ const (
 	bandOrderNews        = 30  // what happened since you last looked
 	bandOrderWork        = 40  // the tasks it ran, with what they came to
 	bandOrderDeliverable = 50  // the files it produced
-	bandOrderNextUp      = 60  // the standing items that will wake, and when
+	bandOrderNextUp      = 60  // retired with standing orders: the items that would wake next
 	bandOrderLeftOff     = 70  // where the conversation left off
 	bandOrderRepo        = 80  // where the repository stands
 	bandOrderFolders     = 85  // the folders it is about beyond the one it stands in
 	bandOrderSpend       = 90  // what it has cost
-	bandOrderThinking    = 93  // a standing item: the rung it thinks at
+	bandOrderThinking    = 93  // retired with standing orders: an item's thinking rung
 	bandOrderKeys        = 100 // what the keyboard does here, always last
 )
 
 // THE REGISTRY OUTLIVED THE RESTING CARD THAT ASSEMBLED MOST OF THESE BANDS.
 // The grid (homegrid.go) retired that card, and the panels take what they need
-// from the reading rather than from here; but three surfaces still draw every
-// band a subject has — the card beside the typed search ([app.homeCardRows]),
-// the standing item's card ([StandingItemCard]) and the phone sheet
-// ([app.homeSheetBody]) — so it stays for as long as one of them asks.
+// from the reading rather than from here; but two surfaces still draw every
+// band a subject has — the card beside the typed search ([app.homeCardRows])
+// and the phone sheet ([app.homeSheetBody]) — so it stays for as long as one of
+// them asks.
 var (
 	homeBandRegistry []homeBand
 	homeBandsSorted  bool

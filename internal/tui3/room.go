@@ -2165,8 +2165,8 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 
 	case effortKey:
 		// HOW HARD THIS NODE THINKS, one step up the ladder — the same chord that
-		// moves the install's rung on home at rest and a standing item's on its
-		// own card, bound here to the node whose page this is (taskeffort.go).
+		// moves a conversation's rung from the chip above the box, bound here to
+		// the node whose page this is (taskeffort.go).
 		// Everything that outranks the room outranks it, because it is read from
 		// inside the room's own switch and never above it.
 		if a.room.plan == nil {
@@ -2563,11 +2563,11 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 		return nil, true
 	}
 	// AND THE MARGIN'S OWN LINES ARE ITS OWN: the `+` row at the foot of each
-	// section, which types its slash word into the draft, and a standing order's
-	// row, which opens the page on that order (margin.go). They are asked before
-	// the entries below for the reason the footer's lines are — they belong to no
-	// node, and a question about which node is under the pointer would answer
-	// about the space beside them.
+	// section, which types its slash word into the draft, and an automation's
+	// row, which opens the automations place on it (margin.go). They are asked
+	// before the entries below for the reason the footer's lines are — they
+	// belong to no node, and a question about which node is under the pointer
+	// would answer about the space beside them.
 	if cmd, took := a.marginPress(line); took {
 		return cmd, true
 	}
