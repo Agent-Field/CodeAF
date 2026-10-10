@@ -1,5 +1,6 @@
-/* The strip: 46px, on the frame (no fill of its own), tabs 2px apart. */
-.workspace-tabbar { display: flex; align-items: center; min-width: 0; flex-shrink: 0; height: var(--tab-strip-height); padding: 0; gap: var(--space-half); font-size: var(--font-size-body); }
+/* The strip: 46px, on the frame (no fill of its own), tabs 2px apart.
+   The layer sits above the card so the banner and the queue, which hang out of the 46px, are not painted under the pane. */
+.workspace-tabbar { position: relative; z-index: var(--i2-queue-pop-z); display: flex; align-items: center; min-width: 0; flex-shrink: 0; height: var(--tab-strip-height); padding: 0; gap: var(--space-half); font-size: var(--font-size-body); }
 /* Beside the rail the strip is flush with the card (design 3a, 6a: first tab and the overview button sit on the card edges); with the rail put away it starts 8px in (9c). */
 .sidebar-collapsed .workspace-tabbar { padding-left: var(--space-2); }
 .workspace-tabstrip { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; gap: var(--space-half); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-behavior: auto; }
@@ -17,7 +18,13 @@
 .workspace-tab-more.button { height: var(--tab-height); min-height: 0; gap: var(--space-half); padding: 0 var(--tab-more-pad); border: 0; border-radius: var(--radius-control); background: transparent; color: var(--ink-2); font-size: var(--font-size-body); font-weight: var(--font-weight-medium); }
 .workspace-tab-more.button:hover:not(:disabled) { background: var(--tab-hover); color: var(--ink); }
 :root[data-environment="mac-desktop"] .sidebar-collapsed .workspace-tabbar { padding-left: var(--native-controls-inset); }
-.workspace-tab, .workspace-tab-action, .workspace-tab-more, .workspace-group-label, .workspace-tabbar > .icon-button { -webkit-app-region: no-drag; }
+.workspace-tab, .workspace-tab-action, .workspace-tab-more, .workspace-group-label, .workspace-tabbar > .icon-button, .workspace-back-slot, .workspace-frame-slot { -webkit-app-region: no-drag; }
+/* The back chip sits before the tabs, so Home stays the first tab and the chip does not scroll away with them. */
+.workspace-back-slot { display: flex; flex: none; align-items: center; min-width: 0; max-width: 100%; }
+/* The pill is the last flex item, past the drag spacer, so empty strip space still drags the window. */
+.workspace-frame-slot { position: relative; display: flex; flex: none; align-items: center; }
+/* Hung under the pill on the same offset as the queue, right edges aligned. Out of flow so the strip stays 46px. */
+.workspace-frame-banner { position: absolute; top: var(--i2-queue-pop-offset); right: 0; z-index: var(--i2-queue-pop-z); }
 @media (max-width: 600px) {
   .workspace-tabbar { padding: 0 var(--space-1); }
   /* The active tab keeps its title and the 112px floor. A split's own rule would let it shrink past that.
