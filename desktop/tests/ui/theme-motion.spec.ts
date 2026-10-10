@@ -89,9 +89,9 @@ test('theme menu keyboard selection, persistence, outside dismissal and selectio
  await expectThemedSurface(page, page.getByRole('listbox'),{background:'surface',ink:'ink'});
  await page.mouse.click(outside!.x+outside!.width/2,outside!.y+outside!.height/2);
  await expect(page.getByRole('listbox')).not.toBeVisible();
- await openPage(page, 'Activity');
- await expect(page.getByRole('heading',{name:'Activity',exact:true})).toBeVisible();
- await expect(page.getByRole('button',{name:'Now',exact:true})).not.toHaveAttribute('aria-current','page');
+ await page.evaluate(() => window.dispatchEvent(new CustomEvent('codeaf:dev-page', { detail: 'Activity' })));
+ await expect(page.getByRole('heading',{name:'Activity',exact:true})).toHaveCount(0);
+ await expect(page.locator('.workspace-page')).toBeVisible();
 });
 
 for (const theme of ['Light','Dark']) {

@@ -23,8 +23,7 @@ export function resolveMaterial(input: MaterialInputs): Material {
   if (!input.active || input.reducedTransparency || input.moreContrast || input.blurOpen) return 'solid';
   // Vibrancy lives under the webview on macOS and Windows; CSS adds no blur on top of it.
   if (input.desktop && /Mac|Win/.test(input.platform)) return 'native';
-  // Linux has no window material, and a blurred fake over a bare desktop reads as dirt: solid.
-  if (input.desktop) return 'solid';
+  // Linux and browsers use the same frame-only CSS fallback when blur is supported.
   return input.backdropFilter ? 'glass' : 'solid';
 }
 
