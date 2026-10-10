@@ -44,6 +44,10 @@ type PlaceView struct {
 	HasInstructions bool              `json:"hasInstructions"`
 	SourceCount     int               `json:"sourceCount"`
 	AlsoIn          []PlaceRef        `json:"alsoIn"`
+	// Decide is the setting that answers for this place: its own, else the
+	// nearest ancestor's, else the default. The place menu reads it to draw
+	// "Always ask me" checked and the figure under "Decision confidence…".
+	Decide placegraph.Decide `json:"decide"`
 }
 
 // PlaceRef names a place without its weight.
@@ -235,11 +239,12 @@ func (x *placeIndex) pinned(id string) bool {
 
 func (x *placeIndex) view(pl placegraph.Place) PlaceView {
 	tint, _ := x.snap.EffectiveTint(pl.ID)
+	decide, _ := x.snap.EffectiveDecide(pl.ID)
 	v := PlaceView{
 		ID: pl.ID, Name: pl.Name, Parents: append([]string{}, pl.Parents...), Tint: pl.Tint, EffectiveTint: tint,
 		Archived: pl.Archived, CreatedAt: pl.CreatedAt, LastOpenedAt: pl.LastOpenedAt, ArchivedAt: pl.ArchivedAt,
 		Pinned: x.pinned(pl.ID), HasInstructions: pl.Context.Instructions != "", SourceCount: len(pl.Context.Sources),
-		AlsoIn: []PlaceRef{},
+		AlsoIn: []PlaceRef{}, Decide: decide,
 	}
 	if pl.Archived {
 		v.Counts = placegraph.Counts{Chats: len(x.snap.ChatsIn(pl.ID, false))}
