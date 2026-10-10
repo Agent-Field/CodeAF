@@ -35,21 +35,7 @@ func (p *Places) staleList(w http.ResponseWriter) {
 	if !ok {
 		return
 	}
-	activity := map[string]time.Time{}
-	for id := range x.incl {
-		for _, chat := range x.incl[id] {
-			if r := x.rows[chat]; r != nil && r.At.After(activity[id]) {
-				activity[id] = r.At
-			}
-		}
-	}
-	list := placegraph.StalePlaces(placegraph.StaleInput{
-		Snap: x.snap, Now: x.now, Activity: activity, Snoozed: p.Stale.Active(x.now),
-		Busy: func(id string) bool {
-			s := x.rollup(x.incl[id])
-			return s.Running > 0 || s.NeedsYou > 0
-		},
-	})
+	list := placegraph.StalePlaces(p.staleInput(x))
 	write(w, staleAnswer{Revision: x.snap.Revision, ReadAt: x.now, AfterDays: placegraph.StaleAfterDays, SnoozeDays: placegraph.StaleSnoozeDays, Places: list})
 }
 
@@ -80,4 +66,23 @@ func (p *Places) staleSnooze(w http.ResponseWriter, r *http.Request, id string) 
 		return
 	}
 	write(w, staleSnoozed{OK: true, PlaceID: got.PlaceID, Until: got.Until})
+}
+
+// staleInput shares one reading of activity and snoozes between both offer routes.
+func (p *Places) staleInput(x *placeIndex) placegraph.StaleInput {
+	activity := map[string]time.Time{}
+	for id := range x.incl {
+		for _, chat := range x.incl[id] {
+			if r := x.rows[chat]; r != nil && r.At.After(activity[id]) {
+				activity[id] = r.At
+			}
+		}
+	}
+	return placegraph.StaleInput{
+		Snap: x.snap, Now: x.now, Activity: activity, Snoozed: p.Stale.Active(x.now),
+		Busy: func(id string) bool {
+			s := x.rollup(x.incl[id])
+			return s.Running > 0 || s.NeedsYou > 0
+		},
+	}
 }
