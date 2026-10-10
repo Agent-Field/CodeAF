@@ -108,7 +108,8 @@ export function buildHomeActions({ shell, homeId, digests, strip, quickLook, ret
     removeChat: async (chatId, from) => { await write(`Removed ${quoted(chatTitle(chatId))} from ${quoted(name(from))}`, () => client.removeChats(from, [chatId]), { subject: name(from) }); },
     removeSource: async (placeId, sourceId) => { await write(`Removed a source from ${quoted(name(placeId))}`, () => client.removeSource(placeId, sourceId), { subject: name(placeId) }); },
     addSources: placeId => shell.openDialog({ kind: 'sources', placeId }),
-    writeInstructions: placeId => shell.openDialog({ kind: 'instructions', placeId }),
+    saveInstructions: async (placeId, text) => { await shell.write(`Saved the instructions of ${quoted(name(placeId))}`, () => shell.client.updatePlace(placeId, { instructions: text }), { subject: name(placeId) }); },
+    dropOnInstructions: async (placeId, source) => { await shell.write(`Added ${source.kind === 'url' ? 'a link' : 'a file'} to ${quoted(name(placeId))}`, () => shell.client.addSource(placeId, source), { subject: name(placeId) }); },
     openFolderAsPlace: shell.native.desktop ? () => { void createFromFolder(shell).catch(shell.warn); } : undefined,
     snoozeStale,
     retry,
@@ -121,17 +122,8 @@ export async function createFromFolder(shell: PlacesShell): Promise<void> {
   if (picked.status === 'busy') throw new Error('Another chooser is already open.');
   if (picked.status !== 'picked') return;
   const folder = picked.paths[0];
-  const created = await shell.write(`Created “${folder.name}” from ${folder.name}`, async () => {
-    const made = await shell.client.createPlace({ name: folder.name });
-    const id = made.place?.id;
-    if (!id) return made;
-    try { return [made, await shell.client.addSource(id, { kind: 'folder', ref: folder.path })]; }
-    catch (failure) {
-      // The place exists; its source was refused. Undo stays available for the place itself.
-      shell.warn(failure);
-      return made;
-    }
-  }, { subject: folder.name });
+  const created = await shell.write('Opened a folder or repo as a place',
+    () => shell.client.fromFolder(folder.path), { subject: folder.name });
   const id = created[0]?.place?.id;
   if (id) await shell.goTo(id);
 }

@@ -41,7 +41,12 @@ export type PlaceActions = {
   /** Empty-place affordances and the root's engine-made suggestion. */
   addSources?: (placeId: string) => void;
   removeSource?: (placeId: string, sourceId: string) => void | Promise<void>;
+  /** Opens the instructions sheet. The Home card does not use this; it edits in place. */
   writeInstructions?: (placeId: string) => void;
+  /** Replace the place's instructions with this prose. '' clears them. Unchanged text is not sent. */
+  saveInstructions?: (placeId: string, text: string) => void | Promise<void>;
+  /** A file or http(s) link dropped on the notes field. Chats and places are not this verb. */
+  dropOnInstructions?: (placeId: string, source: { kind: 'file' | 'url'; ref: string }) => void | Promise<void>;
   acceptSuggestion?: () => void | Promise<void>;
   /** "Not now" on the untouched-place suggestion: the engine hides that place's offer for 30 days, in every window. */
   snoozeStale?: (placeId: string) => void | Promise<void>;

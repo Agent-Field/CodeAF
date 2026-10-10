@@ -116,11 +116,33 @@ export const INK3_TEXT = [
  '.history-file-added', '.history-files-more', '.history-recap-meta', '.history-recap-label', '.history-decision-by', '.history-back', '.history-best-head', '.history-results-heading',
  '.rail .new-item kbd', '.rail-section-label', '.rail-place-path', '.rail-hint', '.rail-meta',
  // The live place Home and All places draw these in ink-3 (Places 8a to 8e); the Places suites waive the same list.
- '.home-quiet', '.home-quicklook-hint', '.all-places-search', '.places-tile-hint', '.home-archived-toggle', '.home-notice',
+ '.home-quiet', '.home-quicklook-hint', '.all-places-search', '.places-tile-hint', '.home-archived-toggle', '.home-notice', '.home-source-note',
  '.places-row-aside', '.places-row-muted', '.places-chat-excerpt', '.places-chat-time', '.places-tile-meta', '.places-crumb', '.type-section-label', '.places-heading-menu', '.places-chat-lead', '.places-tile-main',
  // The Go to chooser and the place dialogs (Places 4a to 4e, Interactions "Go to"): counts, section labels, times, hints.
  '.goto-count', '.goto-section', '.goto-meta', '.goto-hints', '.goto-context', '.place-dialog-quiet', '.place-dialog-source-meta',
+ // Using (Places 6e, 6f) and the live Home lines the place pages draw in ink-3.
+ '.using-label', '.using-sublabel', '.using-note', '.using-row-aside', '.using-row-source', '.using-row-text[data-replaced]', '.using-source-detail', '.using-source-note', '.using-place[data-inherited]',
+ '.using-choice-value', '.using-row-main .app-icon', '.using-row-open',
+ '.status-line', '.knows-source', '.home-live-aside', '.home-live-detail', '.decided-sub', '.decided-age', '.home-source-note',
 ];
+/**
+ * Place surfaces and the tokens they paint. Selection on them is a fill; none of them uses a leading accent bar.
+ * Home is the document canvas. Go to and Using are `surface`. Place dialogs keep the overlay surface.
+ */
+export const placeSurfaces = {
+ home: { background: 'canvas', ink: 'ink' },
+ chooser: { background: 'surface', ink: 'ink', shadow: 'sh-3' },
+ dialog: { background: 'overlay-surface', ink: 'ink', shadow: 'sh-3' },
+ using: { background: 'surface', ink: 'ink' },
+} as const;
+/** A place surface matches its tokens and has no leading accent bar. */
+export async function expectPlaceSurface(page: Page, surface: Locator, name: keyof typeof placeSurfaces) {
+ const spec = placeSurfaces[name];
+ if ('shadow' in spec) await expectDesignSurface(page, surface, { bg: spec.background, shadow: spec.shadow });
+ else await expectThemedSurface(page, surface, { background: spec.background, ink: spec.ink });
+ await expect(surface).toHaveCSS('border-left-width', '0px');
+ await expect(surface).toHaveCSS('border-right-width', '0px');
+}
 export async function expectNoUnstyledControls(page: Page, scope?: string) {
  // One in-page pass: per-control locator round trips cost ~15s over the Design system specimen in webkit.
  const offenders = await page.evaluate(selector => {

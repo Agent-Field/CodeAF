@@ -77,3 +77,18 @@ test('a saved Home tab keeps its place through a reload; an invalid place id is 
   const bad = parseWorkspace(JSON.stringify({ ...state, tabs: state.tabs.map((t, i) => (i === 0 ? { ...t, place: '../etc' } : t)) }))!;
   assert.equal(bad.tabs[0].place, undefined);
 });
+
+
+test('the All places shortcut and background press open fresh closable root views', () => {
+  const first = workspaceReducer(withHome(), { type: 'home-root' });
+  const fresh = workspaceReducer(first, { type: 'home-root', fresh: true });
+  const roots = fresh.tabs.filter(tab => tab.place === 'root');
+  assert.equal(roots.length, 2);
+  assert.equal(fresh.activeId, roots[1].id);
+  const behind = workspaceReducer(fresh, { type: 'home-root', background: true });
+  assert.equal(behind.tabs.filter(tab => tab.place === 'root').length, 3);
+  assert.equal(behind.activeId, fresh.activeId);
+  const closed = workspaceReducer(behind, { type: 'close', id: roots[1].id });
+  assert.equal(closed.tabs.filter(tab => tab.place === 'root').length, 2);
+  assert.ok(isPlaceHome(closed.tabs[0]));
+});

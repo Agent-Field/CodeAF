@@ -67,9 +67,10 @@ for (const theme of ['light', 'dark'] as const) {
   });
 
   test(`${theme}: All places tiles keep the rolled-up count and the failed-child meta`, async ({ page }) => {
+    // The All places root draws the taller root tile (I2, root-home-tile-height); a place's own Home keeps the 84px tile.
     await open(page, 'root', theme);
     const codeaf = tile(page, 'pl_codeaf');
-    await expect(codeaf).toHaveCSS('height', '84px');
+    await expect(codeaf).toHaveCSS('height', '108px');
     await expect(codeaf.locator('.places-tile-meta')).toHaveText('4 places · 61 chats');
     await expect(codeaf.locator('.status-mark')).toHaveCSS('color', await tokenColor(page, 'amber'));
     await expect(tile(page, 'pl_reports').locator('.places-tile-meta')).toHaveText('47 places · 212 chats');

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
-import { Button, Icon, SectionLabel, Text } from '../../components/ui';
+import { Button, SectionLabel, Text } from '../../components/ui';
 import { LiveRows } from './live/LiveRows';
 import { PlaceTile, PlaceTileGrid } from './components/PlaceTile';
+import { NewPlaceTile } from './home/NewPlaceTile';
 import type { TintName } from './components/PlaceSwatch';
 import { childMeta, nameProblem, type HomeAttention, type HomeChild, type HomeConnection } from './home-model';
 import { placeMenu, readDrag, writeDrag, type DropPayload, type PlaceActions } from './place-actions';
@@ -96,7 +97,7 @@ export function HomeAttentionSection({ items, actions, readOnly }: { items: read
 export { PlaceChats as HomeChatsSection } from './home/PlaceChats';
 
 /** The tile grid for a place's children, or a root's top-level places, or a search's results. It owns the inline create/rename tile and every drop. */
-export function HomePlacesSection({ label, places, parentId, parentName, parentTint, actions, readOnly, siblings, runner, drag, onDelete, allowNew = true, showLabel = true, newLabel, extraTiles, restore }: {
+export function HomePlacesSection({ label, places, parentId, parentName, actions, readOnly, siblings, runner, drag, onDelete, allowNew = true, showLabel = true, newLabel, extraTiles, restore }: {
   label: string; places: readonly HomeChild[]; parentId?: string; parentName?: string; parentTint?: TintName;
   actions: PlaceActions; readOnly?: boolean; siblings: readonly string[]; runner: Runner; drag: DragState; onDelete?: (place: HomeChild) => void; allowNew?: boolean; showLabel?: boolean; newLabel?: string; extraTiles?: ReactNode;
   /** Archived tiles offer Restore instead of Go to's neighbours: drawn as the same tiles, with their menu alone changed. */
@@ -113,18 +114,11 @@ export function HomePlacesSection({ label, places, parentId, parentName, parentT
   }, []);
   // A chat row's drag ends on the row, which does not know which tile was lit.
   useEffect(() => { if (!drag.payload) setHovered(undefined); }, [drag.payload, setHovered]);
-  const [creating, setCreating] = useState<{ name: string; tint: TintName } | undefined>();
   const [renaming, setRenaming] = useState<{ id: string; name: string; tint: TintName; original: string; originalTint: TintName } | undefined>();
   const showNew = allowNew && !!actions.create;
-  if (!places.length && !showNew && !creating && !extraTiles) return null;
+  if (!places.length && !showNew && !extraTiles) return null;
 
-  const createProblem = creating ? nameProblem(creating.name, siblings) : undefined;
   const renameProblem = renaming ? nameProblem(renaming.name, siblings, renaming.original) : undefined;
-  const submitCreate = async () => {
-    if (!creating || createProblem) return;
-    const ok = await runner.run(() => actions.create?.({ name: creating.name.trim(), tint: creating.tint === 'graphite' ? undefined : creating.tint, parent: parentId }));
-    if (ok) setCreating(undefined);
-  };
   const submitRename = async () => {
     if (!renaming || renameProblem) return;
     const { id, name, tint, original, originalTint } = renaming;
@@ -176,11 +170,8 @@ export function HomePlacesSection({ label, places, parentId, parentName, parentT
             void runner.run(() => actions.file?.(payload, place.id, tileDropMode(event)));
           }}/>;
       })}
-      {creating
-        ? <PlaceTile mode="creating" name={creating.name} tint={creating.tint} invalid={!!createProblem && !!creating.name.trim()} hint={creating.name.trim() && createProblem ? createProblem : '↵ create · Esc cancel'}
-            onNameChange={name => setCreating(previous => previous && { ...previous, name })} onTintChange={tint => setCreating(previous => previous && { ...previous, tint })}
-            onSubmit={() => void submitCreate()} onCancel={() => setCreating(undefined)}/>
-        : showNew && <PlaceTile mode="new" label={newLabel} disabled={readOnly || runner.busy} onCreate={() => setCreating({ name: '', tint: parentTint ?? 'graphite' })}/>}
+      {showNew && <NewPlaceTile key={parentId ?? 'root'} label={newLabel} places={places} siblings={siblings} parentId={parentId}
+        disabled={readOnly || runner.busy} onCreate={draft => runner.run(() => actions.create?.(draft))}/>}
       {extraTiles}
     </PlaceTileGrid>
   </section>;
@@ -188,20 +179,7 @@ export function HomePlacesSection({ label, places, parentId, parentName, parentT
 
 export { SourcesList as HomeSourcesSection } from './home/SourcesList';
 
-/** The empty place of 8b: one sentence, the two optional actions that are wired, and the context line the engine wrote. Nothing else. */
-export function HomeEmptyPlace({ placeId, contextLine, actions, readOnly }: { placeId: string; contextLine?: string; actions: PlaceActions; readOnly?: boolean }) {
-  const add = actions.addSources && !readOnly, write = actions.writeInstructions && !readOnly;
-  return <>
-    <section className="home-empty" aria-label="Empty place">
-      <p className="home-empty-sentence">Nothing here yet. Start a chat below, drag chats in from anywhere, or drop in what this place should know.</p>
-      {(add || write) && <div className="home-empty-actions">
-        {add && <Button variant="quiet" onClick={() => actions.addSources?.(placeId)}><Icon name="attach" size="xs"/>Add files or links</Button>}
-        {write && <Button variant="quiet" onClick={() => actions.writeInstructions?.(placeId)}><Icon name="pencil" size="xs"/>Write instructions</Button>}
-      </div>}
-    </section>
-    {contextLine && <p className="home-quiet home-context">{contextLine}</p>}
-  </>;
-}
+export { EmptyPlace as HomeEmptyPlace } from './home/EmptyPlace';
 
 /** Loading, a read that failed, and the engine being out of reach. With a page already on screen the last good one stays, read-only. */
 export function HomeNotice({ connection, hasView, onRetry }: { connection: HomeConnection; hasView: boolean; onRetry?: () => void }) {
