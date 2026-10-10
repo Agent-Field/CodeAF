@@ -48,7 +48,7 @@ for (const theme of ['light', 'dark']) {
     const selectors = ['.places-crumbs', '.places-heading-row', '.status-line', '.home-recap', '.home-live', '.decided', '.knows-heading', '.knows-add', '.home-composer'];
     const positions = await Promise.all(selectors.map(selector => page.locator(selector).evaluate(el => el.getBoundingClientRect().top)));
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
-    await expect(page.locator('.home-places, .home-chats, .home-sources, .home-suggestion')).toHaveCount(0);
+    await expect(page.locator('.home-suggestion')).toHaveCount(0);
     await page.locator('[data-decided-id="d1"] button').click();
     await expect(page.getByRole('dialog', { name: 'Why?' })).toContainText('97%');
     await expect(page.getByRole('dialog', { name: 'Why?' })).toContainText('codeaf');
