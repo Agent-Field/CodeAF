@@ -32,7 +32,7 @@ test('the rail is 252px (232px rows plus 10px padding), drawn like the design, w
   await expect(toggle).toHaveCSS('border-top-left-radius', '7px');
   await expect(toggle).toHaveCSS('color', await tokenColor(page, 'ink-3'));
   await expect(toggle.locator('.app-icon')).toHaveCSS('width', '15px');
-  for (const row of [rail(page).getByRole('button', { name: 'Now', exact: true }), rail(page).getByRole('button', { name: 'All places' })]) {
+  for (const row of [rail(page).getByRole('button', { name: 'Now', exact: true }), rail(page).getByRole('button', { name: 'All places' }), rail(page).getByRole('button', { name: 'Settings', exact: true })]) {
     expect((await row.boundingBox())!.height).toBe(px('rail-row-height'));
     await expect(row).toHaveCSS('border-top-left-radius', '8px');
     await expect(row).toHaveCSS('font-size', '13px');
@@ -326,16 +326,20 @@ test('⌘, opens the Settings tab once, from any page', async ({ page }) => {
 test('Settings is a tab: the rail item opens it once, lights while it shows, and Now leaves it', async ({ page }) => {
   await installMockEngine(page, { ...plainReply(), initial: { entries: [], title: '' } });
   await openApp(page);
-  await expect(rail(page).getByRole('button', { name: 'Settings', exact: true })).toHaveCount(0);
-  await openPage(page, 'Settings');
+  const settings = rail(page).getByRole('button', { name: 'Settings', exact: true });
+  await expect(settings).toBeVisible();
+  await settings.click();
   await expect(page.getByRole('heading', { name: 'Models', level: 1 })).toBeVisible();
+  await expect(settings).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('tab', { name: 'Models', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('combobox', { name: 'Theme' })).toBeVisible();
+  await expect(rail(page).getByRole('combobox', { name: 'Theme' })).toHaveCount(0);
   await expect(rail(page).getByRole('button', { name: 'Now', exact: true })).not.toHaveAttribute('aria-current', 'page');
   // A second request focuses the tab that is open.
   await page.getByRole('tab').first().click();
   await expect(page.getByRole('heading', { name: 'Models', level: 1 })).toHaveCount(0);
-  await openPage(page, 'Settings');
+  await expect(settings).not.toHaveAttribute('aria-current', 'page');
+  await settings.click();
   await expect(page.getByRole('tab', { name: 'Models', exact: true })).toHaveCount(1);
   await expect(page.getByRole('heading', { name: 'Models', level: 1 })).toBeVisible();
   // ⌘K leaves Settings for the New-tab field and keeps the one Settings tab.

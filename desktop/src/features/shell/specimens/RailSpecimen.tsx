@@ -24,7 +24,7 @@ export function RailSpecimen() {
       <div className="rail-specimen-frame"><PlaceRail inert={false} peeking={false} onToggle={noop}
         now={{ active: false, shortcut: '⌃0', onGo: noop }}
         sections={{ pinned, open }} current="specimen-config"
-        allPlaces={{ active: false, shortcut: '⌘⇧P', onOpen: noop }} actions={actions} slotShortcut={index => `⌃${index}`} closeShortcut="⌘⇧W" newWindowShortcut="⌘↵" appItems={[]}/></div>
+        allPlaces={{ active: false, shortcut: '⌘⇧P', onOpen: noop }} actions={actions} slotShortcut={index => `⌃${index}`} closeShortcut="⌘⇧W" newWindowShortcut="⌘↵"/></div>
       <div className="rail-specimen-strip"><RailToggle placement="strip" collapsed onClick={noop}/></div>
     </div>
   </Surface>;

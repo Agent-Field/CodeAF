@@ -16,7 +16,7 @@ function labels(items: MenuEntry[]): string[] {
 
 function rail(over: Partial<PlaceRailProps> = {}): PlaceRailProps {
   return {
-    inert: false, peeking: false, onToggle: () => {}, appItems: [],
+    inert: false, peeking: false, onToggle: () => {},
     now: { active: true, shortcut: '⌃0', onGo: () => {} },
     actions: { go: () => {}, close: () => {}, closeAll: () => {}, closeOthers: () => {} },
     slotShortcut: index => `⌃${index}`, closeShortcut: '⌘⇧W', newWindowShortcut: '⌘↵',

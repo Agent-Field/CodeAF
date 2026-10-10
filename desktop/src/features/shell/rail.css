@@ -16,16 +16,11 @@
 
 /* Rows: the open one is the --tab fill plus sh-1, ink and medium weight; hover is the tab-hover fill and nothing else. */
 .rail-nav { display: flex; flex-direction: column; gap: var(--rail-row-gap); }
-.rail .address-field { flex-shrink: 0; height: var(--rail-row-height); gap: var(--space-compact); border-radius: var(--radius-control); padding: 0 var(--space-2); background: var(--field); color: var(--ink); font-size: var(--rail-row-font); }
-.rail .address-field:hover:not(:disabled) { background: var(--field-2); }
-.rail .address-field > .app-icon { width: var(--icon-sm); height: var(--icon-sm); color: var(--ink-3); }
 .rail .nav-item { height: var(--rail-row-height); margin: 0; padding: 0 var(--space-2); gap: var(--space-compact); border-radius: var(--radius-control); background: transparent; box-shadow: none; color: var(--ink-2); font-size: var(--rail-row-font); line-height: var(--line-height-tight); transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
 .rail .nav-item .app-icon { width: var(--icon-sm); height: var(--icon-sm); color: var(--ink-3); opacity: var(--opacity-opaque); }
 .rail .nav-item:hover, .rail .nav-item[data-hover] { background: var(--tab-hover); color: var(--ink); }
 .rail .nav-item:active { background: var(--field-2); }
 .rail .nav-item.active { background: var(--tab); box-shadow: var(--sh-1); color: var(--ink); font-weight: var(--font-weight-medium); }
-.sidebar-bottom .select-trigger.select-trigger-icon { justify-content: center; width: var(--icon-button-size); height: var(--icon-button-size); padding: 0; }
-.sidebar-bottom { margin-top: auto; padding: 0 var(--border-width); display: flex; align-items: center; justify-content: flex-start; gap: var(--space-1); }
 
 /* Collapsed (⌘S) or Focus mode (⌘⇧F): the rail leaves the layout. Resting on the left 8px edge for 300ms brings it
    back as a translucent sheet over the content, tinted with the frame (Places 9e). */
