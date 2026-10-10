@@ -160,27 +160,4 @@ export function PlaceTile(props: PlaceTileProps) {
   return <PlaceTileBody {...props}/>;
 }
 
-/** The grid of tiles. Every tile is a tab stop; the arrow keys, Home and End also move between tiles, by row and column. */
-export function PlaceTileGrid({ label, onKeyDown, className = '', ...props }: HTMLAttributes<HTMLUListElement> & { label: string }) {
-  const move = (event: KeyboardEvent<HTMLUListElement>) => {
-    onKeyDown?.(event);
-    const target = event.target as HTMLElement;
-    if (event.defaultPrevented || !target.matches('[data-places-tile-focusable]')) return;
-    const tiles = [...event.currentTarget.querySelectorAll<HTMLElement>('[data-places-tile-focusable]:not(:disabled)')];
-    const index = tiles.indexOf(target);
-    const here = target.getBoundingClientRect();
-    const vertical = (down: boolean) => tiles
-      .filter(tile => { const box = tile.getBoundingClientRect(); return down ? box.top > here.top : box.top < here.top; })
-      .sort((a, b) => {
-        const rowA = a.getBoundingClientRect(), rowB = b.getBoundingClientRect();
-        return (down ? rowA.top - rowB.top : rowB.top - rowA.top) || Math.abs(rowA.left - here.left) - Math.abs(rowB.left - here.left);
-      })[0];
-    const next = event.key === 'ArrowRight' ? tiles[index + 1] : event.key === 'ArrowLeft' ? tiles[index - 1]
-      : event.key === 'ArrowDown' ? vertical(true) : event.key === 'ArrowUp' ? vertical(false)
-      : event.key === 'Home' ? tiles[0] : event.key === 'End' ? tiles[tiles.length - 1] : undefined;
-    if (!next) return;
-    event.preventDefault();
-    next.focus();
-  };
-  return <ul {...props} aria-label={label} className={`places-tile-grid ${className}`} onKeyDown={move}/>;
-}
+export { PlaceGrid as PlaceTileGrid } from '../home/PlaceGrid';
