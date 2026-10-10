@@ -14,6 +14,8 @@ import './tasks-table.css';
 
 export type TasksTableProps = {
   tasks: EngineTaskRow[];
+  filter?: TableFilter;
+  onFilter?: (filter: TableFilter) => void;
   selectedId?: string;
   onSelect: (taskId: string) => void;
   /** Leave the expanded view (the arrow at the head). */
@@ -198,7 +200,9 @@ function useMoreBelow(deps: readonly unknown[]) {
 
 export function TasksTable(props: TasksTableProps) {
   const { tasks, selectedId, onSelect, onClose, reasons, detail } = props;
-  const [filter, setFilter] = useState<TableFilter>('all');
+  const [localFilter, setLocalFilter] = useState<TableFilter>('all');
+  const filter = props.filter ?? localFilter;
+  const setFilter = props.onFilter ?? setLocalFilter;
   const [query, setQuery] = useState('');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const now = useNow(taskProgress(tasks).running > 0, props.now);

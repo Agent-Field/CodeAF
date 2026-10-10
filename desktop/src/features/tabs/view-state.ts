@@ -2,6 +2,8 @@
 // session, and what the reader folded. Persisted with the tab and validated on
 // read; an invalid field is dropped rather than discarding the whole tab.
 
+export type TasksFilter = 'all' | 'needs' | 'running' | 'done';
+
 export type TabRoute = { taskId?: string; back: string[]; forward: string[] };
 
 /** What a file or diff tab shows: a workspace-relative path, and which view of it (Changes or File). */
@@ -19,6 +21,8 @@ export type TabView = {
   tasksClosed?: boolean;
   /** The row chosen in the expanded tasks view. */
   tasksSelected?: string;
+  /** The expanded Tasks filter, retained with this conversation tab. */
+  tasksFilter?: TasksFilter;
   /** What a file, diff, terminal or web tab points at; set by that kind's lane and read by its hover preview. */
   target?: PaneTarget;
   /** A Home tab's place: a design-graph place id (`pl_…`) or `root` for All places. Never a filesystem folder. */
@@ -101,6 +105,7 @@ export function cleanView(value: Record<string, unknown>): TabView {
   if (isFlagMap(value.open)) view.open = value.open;
   if (typeof value.tasksClosed === 'boolean') view.tasksClosed = value.tasksClosed;
   if (typeof value.tasksSelected === 'string' && value.tasksSelected) view.tasksSelected = value.tasksSelected;
+  if (['all', 'needs', 'running', 'done'].includes(value.tasksFilter as string)) view.tasksFilter = value.tasksFilter as TasksFilter;
   if (isHomePlace(value.place)) view.place = value.place;
   return view;
 }

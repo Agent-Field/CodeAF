@@ -5,7 +5,8 @@ import type { EngineTaskRow } from '../../chat/engine-client';
 import { buildTaskTree, type TaskNode } from '../taskTree.ts';
 import { rowKind, taskMark, type TaskKind } from '../taskState.ts';
 
-export type TableFilter = 'all' | 'needs' | 'running' | 'done';
+export type { TasksFilter as TableFilter } from '../../tabs/view-state';
+import type { TasksFilter as TableFilter } from '../../tabs/view-state';
 
 export const FILTERS: readonly { id: TableFilter; label: string }[] = [
   { id: 'all', label: 'All' },

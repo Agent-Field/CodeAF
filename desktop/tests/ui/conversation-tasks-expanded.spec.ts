@@ -242,3 +242,45 @@ for (const scheme of ['light', 'dark'] as const) {
     await expect(pane).toHaveCSS('width', '428px');
   });
 }
+
+for (const theme of ['light', 'dark'] as const) {
+ test(`task header counts open the matching filter and retain it through history, tabs and reload · ${theme}`, async ({ page }) => {
+  await page.emulateMedia({ colorScheme: theme });
+  await installMockEngine(page, scenario());
+  await openApp(page); await send(page, 'Ship it');
+  const chatId = await page.locator('.workspace-tabstrip [role=tab][aria-selected=true]').getAttribute('id');
+  const chat = page.locator(`#${chatId}`);
+  const counts = page.locator('.conversation-bar-counts');
+  const count = counts.getByRole('button', { name: '1 need you', exact: true });
+  await expect(count).toHaveCSS('font-size', await counts.evaluate(node => getComputedStyle(node).fontSize));
+  await expect(count).toHaveCSS('color', await counts.evaluate(node => getComputedStyle(node).color));
+  await expect(count).toHaveCSS('padding', '0px');
+  await expect(count).toHaveCSS('min-height', '0px');
+  if (process.env.TASK_COUNT_SHOTS) await page.screenshot({ path: `${process.env.TASK_COUNT_SHOTS}/${test.info().project.name}-${theme}-header.png` });
+  await counts.getByRole('button', { name: '1 need you', exact: true }).click();
+  await expect(filterTab(page, /^Needs you/)).toHaveAttribute('aria-pressed', 'true');
+  await expect(rowButton(page, '1.3')).toBeVisible();
+  await expect(rowButton(page, '1.2')).toHaveCount(0);
+  if (process.env.TASK_COUNT_SHOTS) await page.screenshot({ path: `${process.env.TASK_COUNT_SHOTS}/${test.info().project.name}-${theme}-needs.png` });
+  const primary = await page.evaluate(() => /Mac/.test(navigator.platform) ? 'Meta' : 'Control');
+  await page.keyboard.press(`${primary}+[`);
+  await expect(table(page)).toHaveCount(0);
+  await page.keyboard.press(`${primary}+]`);
+  await expect(filterTab(page, /^Needs you/)).toHaveAttribute('aria-pressed', 'true');
+  await table(page).getByRole('button', { name: 'Back to the conversation' }).click();
+  await counts.getByRole('button', { name: '2 running', exact: true }).click();
+  await expect(filterTab(page, /^Running/)).toHaveAttribute('aria-pressed', 'true');
+  await expect(rowButton(page, '1.2')).toBeVisible();
+  await expect(rowButton(page, '1.3')).toHaveCount(0);
+  if (process.env.TASK_COUNT_SHOTS) await page.screenshot({ path: `${process.env.TASK_COUNT_SHOTS}/${test.info().project.name}-${theme}-running.png` });
+  await filterTab(page, /^Done/).click();
+  await page.getByRole('button', { name: 'New tab', exact: true }).click();
+  await chat.click();
+  await expect(filterTab(page, /^Done/)).toHaveAttribute('aria-pressed', 'true');
+  await page.reload();
+  await expect(filterTab(page, /^Done/)).toHaveAttribute('aria-pressed', 'true');
+  await expect(rowButton(page, '1.1')).toBeVisible();
+  if (process.env.TASK_COUNT_SHOTS) await page.screenshot({ path: `${process.env.TASK_COUNT_SHOTS}/${test.info().project.name}-${theme}-reloaded.png` });
+  await expectAccessible(page);
+ });
+}
