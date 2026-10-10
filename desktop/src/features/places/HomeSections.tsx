@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { Button, Icon, IconButton, Row, RowActions, SectionLabel, Text } from '../../components/ui';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Button, Icon, SectionLabel, Text } from '../../components/ui';
 import { LiveRows } from './live/LiveRows';
-import { ChatList, ChatRow } from './components/ChatRow';
 import { PlaceTile, PlaceTileGrid } from './components/PlaceTile';
+import { NewPlaceTile } from './home/NewPlaceTile';
 import type { TintName } from './components/PlaceSwatch';
-import { childMeta, nameProblem, shortTime, type HomeAttention, type HomeChat, type HomeSource, type HomeChild, type HomeConnection } from './home-model';
-import { canDropOn, chatMenu, dropMode, placeMenu, readDrag, writeDrag, type DropPayload, type PlaceActions } from './place-actions';
+import { childMeta, nameProblem, type HomeAttention, type HomeChild, type HomeConnection } from './home-model';
+import { canDropOn, dropMode, placeMenu, readDrag, writeDrag, type DropPayload, type PlaceActions } from './place-actions';
 import { type PlaceDeleteState } from './DeletePlaceConfirm';
 import { createDecisionsClient } from '../decisions/client';
 import type { DecideStatus } from '../decisions/StatusLine';
@@ -80,13 +80,6 @@ export function useDragState(): DragState {
   return { payload, set };
 }
 
-export function HomeRecap({ label, text }: { label: string; text: string }) {
-  return <section className="home-section home-recap" aria-label={label}>
-    <SectionLabel>{label}</SectionLabel>
-    <p className="home-recap-text">{text}</p>
-  </section>;
-}
-
 /** The place feed includes detached work, so closing its tab never removes a Live row. */
 export function HomeAttentionSection({ items, actions, readOnly }: { items: readonly HomeAttention[]; actions: PlaceActions; readOnly?: boolean }) {
   const runner = useRunner();
@@ -97,34 +90,10 @@ export function HomeAttentionSection({ items, actions, readOnly }: { items: read
   </>;
 }
 
-function moveFocus(event: KeyboardEvent<HTMLButtonElement>) {
-  const step = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
-  if (!step) return;
-  const rows = [...event.currentTarget.closest('ul')!.querySelectorAll<HTMLButtonElement>('.places-row-main:not(:disabled)')];
-  const next = rows[rows.indexOf(event.currentTarget) + step];
-  if (next) { event.preventDefault(); next.focus(); }
-}
-
-export function HomeChatsSection({ label, chats, truncated, actions, readOnly, inPlaceId, drag, now }: {
-  label: string; chats: readonly HomeChat[]; truncated?: boolean; actions: PlaceActions; readOnly?: boolean; inPlaceId?: string; drag: DragState; now: Date;
-}) {
-  if (!chats.length) return null;
-  const draggable = !readOnly && !!actions.file;
-  return <section className="home-section home-chats" aria-label={label}>
-    <SectionLabel>{label}</SectionLabel>
-    <ChatList label={label}>
-      {chats.map(chat => <ChatRow key={chat.id} id={chat.id} title={chat.title || 'Untitled chat'} excerpt={chat.excerpt} status={chat.status} model={chat.model}
-        timeLabel={shortTime(chat.at, now)} timeIso={chat.at} disabled={!actions.openChat} onKeyDown={moveFocus}
-        onOpen={() => void actions.openChat?.(chat.id)} onOpenInNewTab={actions.openChatInNewTab && (() => void actions.openChatInNewTab?.(chat.id))}
-        menu={chatMenu(chat.id, actions, { readOnly, inPlaceId })} draggable={draggable} dragging={drag.payload?.kind === 'chat' && drag.payload.ids.includes(chat.id)}
-        onDragStart={event => { const payload: DropPayload = { kind: 'chat', ids: [chat.id] }; writeDrag(event, payload); drag.set(payload); }} onDragEnd={() => drag.set(undefined)}/>)}
-    </ChatList>
-    {truncated && <p className="home-quiet">Showing the most recent chats.</p>}
-  </section>;
-}
+export { PlaceChats as HomeChatsSection } from './home/PlaceChats';
 
 /** The tile grid for a place's children, or a root's top-level places, or a search's results. It owns the inline create/rename tile and every drop. */
-export function HomePlacesSection({ label, places, parentId, parentName, parentTint, actions, readOnly, siblings, runner, drag, onDelete, allowNew = true, showLabel = true, newLabel, extraTiles, restore }: {
+export function HomePlacesSection({ label, places, parentId, parentName, actions, readOnly, siblings, runner, drag, onDelete, allowNew = true, showLabel = true, newLabel, extraTiles, restore }: {
   label: string; places: readonly HomeChild[]; parentId?: string; parentName?: string; parentTint?: TintName;
   actions: PlaceActions; readOnly?: boolean; siblings: readonly string[]; runner: Runner; drag: DragState; onDelete?: (place: HomeChild) => void; allowNew?: boolean; showLabel?: boolean; newLabel?: string; extraTiles?: ReactNode;
   /** Archived tiles offer Restore instead of Go to's neighbours: drawn as the same tiles, with their menu alone changed. */
@@ -132,18 +101,11 @@ export function HomePlacesSection({ label, places, parentId, parentName, parentT
 }) {
   const [selected, setSelected] = useState<string>();
   const [dropOn, setDropOn] = useState<string>();
-  const [creating, setCreating] = useState<{ name: string; tint: TintName } | undefined>();
   const [renaming, setRenaming] = useState<{ id: string; name: string; tint: TintName; original: string; originalTint: TintName } | undefined>();
   const showNew = allowNew && !!actions.create;
-  if (!places.length && !showNew && !creating && !extraTiles) return null;
+  if (!places.length && !showNew && !extraTiles) return null;
 
-  const createProblem = creating ? nameProblem(creating.name, siblings) : undefined;
   const renameProblem = renaming ? nameProblem(renaming.name, siblings, renaming.original) : undefined;
-  const submitCreate = async () => {
-    if (!creating || createProblem) return;
-    const ok = await runner.run(() => actions.create?.({ name: creating.name.trim(), tint: creating.tint === 'graphite' ? undefined : creating.tint, parent: parentId }));
-    if (ok) setCreating(undefined);
-  };
   const submitRename = async () => {
     if (!renaming || renameProblem) return;
     const { id, name, tint, original, originalTint } = renaming;
@@ -185,35 +147,14 @@ export function HomePlacesSection({ label, places, parentId, parentName, parentT
             void runner.run(() => actions.file?.(payload as DropPayload, place.id, dropMode(event)));
           }}/>;
       })}
-      {creating
-        ? <PlaceTile mode="creating" name={creating.name} tint={creating.tint} invalid={!!createProblem && !!creating.name.trim()} hint={creating.name.trim() && createProblem ? createProblem : '↵ create · Esc cancel'}
-            onNameChange={name => setCreating(previous => previous && { ...previous, name })} onTintChange={tint => setCreating(previous => previous && { ...previous, tint })}
-            onSubmit={() => void submitCreate()} onCancel={() => setCreating(undefined)}/>
-        : showNew && <PlaceTile mode="new" label={newLabel} disabled={readOnly || runner.busy} onCreate={() => setCreating({ name: '', tint: parentTint ?? 'graphite' })}/>}
+      {showNew && <NewPlaceTile key={parentId ?? 'root'} label={newLabel} places={places} siblings={siblings} parentId={parentId}
+        disabled={readOnly || runner.busy} onCreate={draft => runner.run(() => actions.create?.(draft))}/>}
       {extraTiles}
     </PlaceTileGrid>
   </section>;
 }
 
-const sourceWords: Record<NonNullable<HomeSource['state']>, string> = { ok: '', missing: 'missing', unreadable: 'unreadable', unknown: '' };
-
-/** The place's own sources, with its existing add verb available even after the empty Home disappears. */
-export function HomeSourcesSection({ placeId, sources, actions, readOnly, showAdd }: { placeId: string; sources: readonly HomeSource[]; actions: PlaceActions; readOnly?: boolean; showAdd?: boolean }) {
-  const add = showAdd && actions.addSources && !readOnly;
-  if (!sources.length && !add) return null;
-  const remove = actions.removeSource && !readOnly ? actions.removeSource : undefined;
-  return <section className="home-section home-sources" aria-label="Sources">
-    <SectionLabel>Sources</SectionLabel>
-    {sources.length > 0 && <ul className="home-source-list" aria-label="Sources">
-      {sources.map(source => <li key={source.id}><Row className="home-source" data-source-id={source.id} data-state={source.state}>
-        <span className="home-source-label">{source.label}</span>
-        <span className="home-source-note">{[source.kind, source.state ? sourceWords[source.state] : ''].filter(Boolean).join(' · ')}</span>
-        {remove && <RowActions><IconButton size="row" icon="close" iconSize="xs" label={`Remove ${source.label}`} onClick={() => void remove(placeId, source.id)}/></RowActions>}
-      </Row></li>)}
-    </ul>}
-    {add && <div className="home-empty-actions"><Button variant="quiet" onClick={() => actions.addSources?.(placeId)}><Icon name="attach" size="xs"/>Add files or links</Button></div>}
-  </section>;
-}
+export { SourcesList as HomeSourcesSection } from './home/SourcesList';
 
 /** The empty place of 8b: one sentence, the two optional actions that are wired, and the context line the engine wrote. Nothing else. */
 export function HomeEmptyPlace({ placeId, contextLine, actions, readOnly, onWriteInstructions }: { placeId: string; contextLine?: string; actions: PlaceActions; readOnly?: boolean; onWriteInstructions?: () => void }) {

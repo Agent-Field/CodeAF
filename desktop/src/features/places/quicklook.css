@@ -1,0 +1,16 @@
+/* Quick Look (8d): a read-only Home in a sheet over a scrim. */
+.home-quicklook { width: min(var(--places-quicklook-width), calc(100vw - var(--places-quicklook-gutter))); max-width: 100%; max-height: calc(100dvh - var(--places-quicklook-gutter)); padding: 0; border: 0; border-radius: var(--places-quicklook-radius); background: var(--canvas); color: var(--ink); box-shadow: var(--sh-3); overflow: hidden; }
+.home-quicklook[open] { display: flex; flex-direction: column; }
+.home-quicklook::backdrop { background: var(--places-quicklook-scrim); }
+.home-quicklook-body { display: flex; flex-direction: column; gap: var(--places-quicklook-content-gap); padding: var(--places-quicklook-pad-top) var(--places-quicklook-pad-inline) var(--places-quicklook-pad-bottom); overflow-y: auto; min-height: 0; }
+.home-quicklook-head { display: flex; align-items: center; gap: var(--space-compact); }
+.home-quicklook-title { margin: 0; flex: 1; min-width: 0; font-size: var(--type-title-size); font-weight: var(--type-title-weight); line-height: var(--type-title-leading); overflow-wrap: anywhere; }
+.home-quicklook-hint { font-size: var(--type-caption-size); color: var(--ink-3); }
+.home-quicklook-recap { margin: 0; font-size: var(--type-prose-size); line-height: var(--type-prose-leading); color: var(--ink-2); }
+.home-quicklook-foot { display: flex; flex-wrap: wrap; gap: var(--space-tight); padding: var(--space-3) var(--places-quicklook-pad-inline); border-top: var(--border-width) solid var(--line); }
+.home-quicklook .places-chat-list[data-variant="home"] { margin-top: 0; }
+
+.home-quicklook-places { font-size: var(--type-label-size); color: var(--ink-3); overflow-wrap: anywhere; }
+
+/* The sheet fills a narrow window so its Home remains readable. */
+@media (max-width: 600px) { .home-quicklook { width: 100%; } .home-quicklook-head { flex-wrap: wrap; } }

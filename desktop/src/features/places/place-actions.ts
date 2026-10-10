@@ -1,7 +1,7 @@
 import type { MenuEntry } from '../../components/ui';
 import { decideEntries, type DecideChange } from './PlaceMenuDecide';
 import type { PlaceDecide } from './wire';
-import { choosableTints, tintLabel, type TintName } from './components/PlaceSwatch';
+import { tintLabel, type TintName } from './components/PlaceSwatch';
 
 /** Everything a Home can ask its owner to do. EVERY member is optional on purpose: a verb the owner has not wired is left off the menu and
  * off the page entirely, because a control that does nothing is worse than no control. The root wires these to the Places client
@@ -109,8 +109,12 @@ export type MenuContext = {
 
 const action = (id: string, label: string, onSelect: () => void, extra: Partial<Extract<MenuEntry, { kind?: 'action' }>> = {}): MenuEntry => ({ id, label, onSelect, ...extra });
 
+/** Places 8f draws the five squares in this order. Graphite is never among them: it means no tint was chosen. */
+const menuTintOrder = ['tide', 'rose', 'sage', 'sand', 'iris'] as const;
+const isMenuTint = (id: string): id is typeof menuTintOrder[number] => (menuTintOrder as readonly string[]).includes(id);
+
 /** The place menu of Places 8f, in the design's order. A verb without a handler is absent. Separators only ever sit between two real
- * entries. Tint is a submenu of the five choosable tints, the current one checked. */
+ * entries. Tint is the inline swatch row under the word, not a flyout. */
 export function placeMenu(place: MenuPlace, actions: PlaceActions, context: MenuContext = {}): MenuEntry[] {
   const writes = !context.readOnly;
   const groups: MenuEntry[][] = [[], [], [], [], []];
@@ -122,8 +126,10 @@ export function placeMenu(place: MenuPlace, actions: PlaceActions, context: Menu
   if (writes) {
     if (context.canRename && context.startRename) groups[1].push(action('rename', 'Rename', () => context.startRename?.(place.id)));
     if (actions.setTint) groups[1].push({
-      kind: 'submenu', id: 'tint', label: 'Tint',
-      items: choosableTints.map(tint => action(`tint-${tint}`, tintLabel[tint], () => void actions.setTint?.(place.id, tint), { checked: tint === place.tint })),
+      kind: 'swatches', id: 'tint', label: 'Tint', icon: 'palette',
+      options: menuTintOrder.map(tint => ({ id: tint, label: tintLabel[tint] })),
+      selected: isMenuTint(place.tint) ? place.tint : undefined,
+      onSelect: id => { if (isMenuTint(id)) void actions.setTint?.(place.id, id); },
     });
     if (actions.chooseAnotherParent) groups[1].push(action('another-parent', 'Add to another place…', () => actions.chooseAnotherParent?.(place.id)));
     if (actions.chooseMergeTarget) groups[1].push(action('merge', 'Merge into…', () => actions.chooseMergeTarget?.(place.id)));

@@ -1,9 +1,9 @@
 import { useCallback, useRef, useState } from 'react';
-import { Button, Icon, StatusMark } from '../../components/ui';
-import { UsingSheet } from './UsingSheet';
+import { UsingPopover } from './using/UsingPopover';
 import { chipText, hasContext, settingFor } from './using-model';
 import type { SourceHandoff, UsingView } from './using-types';
 import type { UsingControl } from './useUsing';
+import { UsingChip, singlePlace } from './using/UsingChip';
 import './using.css';
 
 export type UsingLineProps = {
@@ -15,6 +15,8 @@ export type UsingLineProps = {
   onOpenSource?: (handoff: SourceHandoff) => void;
   /** Absent when this conversation cannot be filed in a place from here; the "Add to a place…" row is then left out. */
   onAddToPlace?: () => void;
+  /** A drop attaches files only to this conversation. */
+  onDropFiles?: (files: File[]) => void;
   /** Whether the sheet starts open (the specimen and the tests). */
   startOpen?: boolean;
 };
@@ -51,28 +53,17 @@ export const usingVisible = (control: UsingControl): boolean => chipFor(control)
  * The Using chip in a conversation's header (Places 6e/6f): "Using 3 places · 4 sources", and a sheet listing every instruction,
  * source and policy under the place it came from. It draws nothing while loading and nothing when there is nothing to use.
  */
-export function UsingLine({ control, onOpenSource, onAddToPlace, startOpen = false }: UsingLineProps) {
+export function UsingLine({ control, onOpenSource, onAddToPlace, onDropFiles, startOpen = false }: UsingLineProps) {
   const anchor = useRef<HTMLSpanElement>(null);
   const [open, setOpen] = useState(startOpen);
   const close = useCallback(() => { setOpen(false); anchor.current?.querySelector('button')?.focus(); }, []);
   const chip = chipFor(control);
   if (!chip) return null;
-  const failed = chip.tone === 'failed';
+  const place = chip.tone === 'quiet' ? singlePlace(control.state.phase === 'ready' ? control.state.view : undefined) : undefined;
   return (
     <span ref={anchor} className="using-anchor">
-      <Button
-        className="using-chip"
-        data-tone={chip.tone}
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        onClick={() => setOpen(value => !value)}
-      >
-        <Icon name={failed ? 'triangleAlert' : 'layers'} size="xs" />
-        <span className="using-chip-text">{chip.text}</span>
-        {chip.mark && <StatusMark dense status="waiting" label={chip.mark.words} />}
-        <Icon name="chevronUp" size="xs" />
-      </Button>
-      {open && <UsingSheet control={control} anchor={anchor} onClose={close} onDismiss={() => setOpen(false)} onOpenSource={onOpenSource} onAddToPlace={onAddToPlace} />}
+      <UsingChip text={chip.text} tone={chip.tone} mark={chip.mark?.words} place={place} open={open} onToggle={() => setOpen(value => !value)} />
+      {open && <UsingPopover control={control} anchor={anchor} onClose={close} onDismiss={() => setOpen(false)} onOpenSource={onOpenSource} onAddToPlace={onAddToPlace} onDropFiles={onDropFiles} />}
     </span>
   );
 }

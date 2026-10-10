@@ -33,6 +33,8 @@
   font-size: var(--font-size-input);
 }
 .queued-edit .text-input { flex: 1; min-height: 0; padding: 0; font-size: inherit; caret-color: var(--accent); }
+/* The stored paste keeps its line breaks in the value. The row stays the 34px editor, so the rest scrolls inside it. */
+.queued-edit textarea.text-input { height: var(--queue-edit-height); resize: none; overflow: auto; white-space: pre; }
 .queued-edit .text-input:focus-visible { outline: none; box-shadow: none; }
 .queued-esc { padding: 0 var(--space-tight); color: var(--ink-3); font-size: var(--font-size-body); }
 .queued-save, .queued-save:hover:not(:disabled) { background: var(--accent); color: var(--accent-ink); }

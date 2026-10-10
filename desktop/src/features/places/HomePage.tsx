@@ -1,9 +1,10 @@
+import { SinceBlock } from './home/SinceBlock';
 import { Button } from '../../components/ui';
 import { useState, type ReactNode } from 'react';
 import { PlaceHeading, type Crumb } from './components/PlaceHeading';
 import { AllPlacesPage } from './AllPlacesPage';
 import { DeletePlaceConfirm } from './DeletePlaceConfirm';
-import { HomeAttentionSection, HomeBanner, HomeChatsSection, HomeEmptyPlace, HomeFrame, HomeNotice, HomePlacesSection, HomeRecap, HomeSourcesSection, useHomeSections, useDeleteFlow, useDragState, useRunner } from './HomeSections';
+import { HomeAttentionSection, HomeBanner, HomeChatsSection, HomeEmptyPlace, HomeFrame, HomeNotice, HomePlacesSection, HomeSourcesSection, useHomeSections, useDeleteFlow, useDragState, useRunner } from './HomeSections';
 import type { HomeConnection, HomeView } from './home-model';
 import { StatusLine } from '../decisions/StatusLine';
 import { DecidedRows } from '../decisions/DecidedRows';
@@ -62,7 +63,7 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
   const isPlace = view.kind === 'place';
   const menu = isPlace ? homeMenu({ id: view.id, name: view.title, tint: view.tint, pinned: view.pinned, decide: view.decide }, actions, {
     readOnly, canRename: !!actions.rename, startRename: () => setRenaming(true), startDelete: deletion.start && (() => deletion.start?.({ id: view.id, name: view.title })), newWindowHint }) : [];
-  const nothingYet = isPlace && !view.children.length && !view.chats.length && !view.attention.length && !sections.decisions?.length && !sections.knowledge?.lines.length;
+  const nothingYet = isPlace && !view.sources?.length && !view.children.length && !view.chats.length && !view.attention.length && !sections.decisions?.length && !sections.knowledge?.lines.length;
 
   return <HomeFrame label={view.title} composer={composer} onUp={onUp} populated={isPlace && !nothingYet}>
     <div className="home-heading-stack"><PlaceHeading title={view.title} tint={view.tint} breadcrumb={breadcrumb} menu={menu} menuLabel={`${view.title} actions`}
@@ -72,7 +73,7 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
     </div>
     {notices}
     {suggestion}
-    {view.recap && <HomeRecap label={view.recap.label} text={view.recap.text}/>}
+    <SinceBlock recap={view.recap}/>
     <HomeAttentionSection items={view.attention} actions={actions} readOnly={readOnly}/>
     {/* Places 8b draws the place's child places, its own chats and its sources under the heading; a place Home that lists none would hide the work the place exists to hold. */}
     {isPlace && !nothingYet && <HomePlacesSection label="Places" places={view.children} parentId={view.id} parentName={view.title} parentTint={view.tintSource === 'own' ? view.tint : undefined}
@@ -83,7 +84,7 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
       onSave={actions.saveInstructions && (text => actions.saveInstructions?.(view.id, text))}
       onDropSource={actions.dropOnInstructions && (source => actions.dropOnInstructions?.(view.id, source))}
       onDismiss={() => setInstructionsFor(current => current === view.id ? undefined : current)}/>}
-    {isPlace && <HomeSourcesSection placeId={view.id} sources={view.sources ?? []} actions={actions} readOnly={readOnly} showAdd={!nothingYet}/>}
+    {isPlace && <HomeSourcesSection key={`${view.id}-sources`} placeId={view.id} sources={view.sources ?? []} actions={actions} readOnly={readOnly} showAdd={!nothingYet}/>}
     {isPlace && !nothingYet && <>
       <DecidedRows key={`${view.id}-decided`} items={(sections.decisions ?? []).map(item => ({ ...item, age: shortTime(item.at, clock) }))}/>
       {sections.knowledge && <KnowsList key={`${view.id}-knows`} placeName={view.title} lines={sections.knowledge.lines} now={clock}
