@@ -144,6 +144,16 @@ type Record struct {
 	Event    *Event    `json:"event,omitempty"`
 	Snapshot *Snapshot `json:"snapshot,omitempty"`
 }
+
+// replayRecord owns only the header and newly recorded entries, so repeated
+// state changes never retain another copy of the whole transcript.
+type replayRecord struct {
+	Seq      uint64        `json:"seq"`
+	Type     string        `json:"type"`
+	Event    *Event        `json:"event,omitempty"`
+	Snapshot *SnapshotTail `json:"snapshot,omitempty"`
+}
+
 type conversation struct {
 	conn       Connection
 	id         string
@@ -153,7 +163,8 @@ type conversation struct {
 	primary    <-chan session.Event
 	updatedAt  time.Time
 	seq        uint64
-	records    []Record
+	records    []replayRecord
+	entryCount int
 	changed    chan struct{}
 	done       chan struct{}
 	observers  int
@@ -394,10 +405,14 @@ func (s *conversation) publish(r Record) {
 	s.seq++
 
 	r.Seq = s.seq
+	kept := replayRecord{Seq: r.Seq, Type: r.Type, Event: r.Event}
 	if r.Snapshot != nil {
 		r.Snapshot.Seq = r.Seq
+		tail := tailOf(*r.Snapshot, s.entryCount)
+		kept.Snapshot = &tail
+		s.entryCount = tail.Header.EntryCount
 	}
-	s.records = append(s.records, r)
+	s.records = append(s.records, kept)
 	if len(s.records) > MaxReplay {
 		s.records = s.records[len(s.records)-MaxReplay:]
 	}
@@ -742,7 +757,17 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(parts) == 2 && r.Method == http.MethodGet {
-		write(w, s.snapshot())
+		snapshot := s.snapshot()
+		if r.URL.Query().Has("since") {
+			since, err := strconv.Atoi(r.URL.Query().Get("since"))
+			if err != nil {
+				fail(w, http.StatusBadRequest, "since must be an entry count")
+				return
+			}
+			write(w, tailOf(snapshot, since))
+		} else {
+			write(w, fullView(snapshot))
+		}
 		return
 	}
 	if len(parts) == 4 && parts[2] == "tools" && r.Method == http.MethodGet {
@@ -956,7 +981,7 @@ func (s *conversation) events(w http.ResponseWriter, r *http.Request) {
 	defer heartbeat.Stop()
 	for {
 		s.mu.Lock()
-		var batch []Record
+		var batch []replayRecord
 		for _, item := range s.records {
 			if item.Seq > after {
 				batch = append(batch, item)
@@ -966,8 +991,20 @@ func (s *conversation) events(w http.ResponseWriter, r *http.Request) {
 		gap := len(s.records) > 0 && after+1 < s.records[0].Seq
 		s.mu.Unlock()
 		if gap {
-			snapshot := s.snapshot()
-			batch = []Record{{Seq: snapshot.Seq, Type: "snapshot", Snapshot: &snapshot}}
+			// A window outside the retained history needs one replacement, not
+			// partial tails whose missing predecessors it cannot reconstruct.
+			snapshot := fullView(s.snapshot())
+			data, _ := json.Marshal(struct {
+				Seq      uint64         `json:"seq"`
+				Type     string         `json:"type"`
+				Snapshot elidedSnapshot `json:"snapshot"`
+			}{snapshot.Seq, "snapshot", snapshot})
+			if _, err := fmt.Fprintf(w, "id: %d\ndata: %s\n\n", snapshot.Seq, data); err != nil {
+				return
+			}
+			after = snapshot.Seq
+			batch = nil
+			f.Flush()
 		}
 		for _, item := range batch {
 			data, _ := json.Marshal(item)
