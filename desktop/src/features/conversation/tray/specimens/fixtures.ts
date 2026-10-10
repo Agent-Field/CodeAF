@@ -29,7 +29,7 @@ const consent = (id: number, head: string, extra: Partial<EngineQuestion> = {}):
 export function fixtures(now: number): Case[] {
   return [
     { title: 'One consent', questions: [consent(1, 'Run `rm -rf build`?', { stakes: 'irreversible' })] },
-    { title: 'One reversible consent', questions: [consent(1, 'Run `rm -rf build`?')] },
+    { title: 'One reversible consent', questions: [consent(1, 'Run `rm -rf build`?', { stakes: 'reversible' })] },
     {
       title: 'Batch of three permissions',
       questions: [1, 2, 3].map((n) => consent(n, ['Run `go test ./...`', 'Edit `main.go`', 'Fetch `pkg.go.dev`'][n - 1], { batch: 'step:4', asked: ago(now, 30 - n) })),
