@@ -1,9 +1,9 @@
 import { useCallback, useRef, useState } from 'react';
-import { Button, Icon, StatusMark } from '../../components/ui';
 import { UsingSheet } from './UsingSheet';
 import { chipText, hasContext, settingFor } from './using-model';
 import type { SourceHandoff, UsingView } from './using-types';
 import type { UsingControl } from './useUsing';
+import { UsingChip, singlePlace } from './using/UsingChip';
 import './using.css';
 
 export type UsingLineProps = {
@@ -57,21 +57,10 @@ export function UsingLine({ control, onOpenSource, onAddToPlace, startOpen = fal
   const close = useCallback(() => { setOpen(false); anchor.current?.querySelector('button')?.focus(); }, []);
   const chip = chipFor(control);
   if (!chip) return null;
-  const failed = chip.tone === 'failed';
+  const place = chip.tone === 'quiet' ? singlePlace(control.state.phase === 'ready' ? control.state.view : undefined) : undefined;
   return (
     <span ref={anchor} className="using-anchor">
-      <Button
-        className="using-chip"
-        data-tone={chip.tone}
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        onClick={() => setOpen(value => !value)}
-      >
-        <Icon name={failed ? 'triangleAlert' : 'layers'} size="xs" />
-        <span className="using-chip-text">{chip.text}</span>
-        {chip.mark && <StatusMark dense status="waiting" label={chip.mark.words} />}
-        <Icon name="chevronUp" size="xs" />
-      </Button>
+      <UsingChip text={chip.text} tone={chip.tone} mark={chip.mark?.words} place={place} open={open} onToggle={() => setOpen(value => !value)} />
       {open && <UsingSheet control={control} anchor={anchor} onClose={close} onDismiss={() => setOpen(false)} onOpenSource={onOpenSource} onAddToPlace={onAddToPlace} />}
     </span>
   );

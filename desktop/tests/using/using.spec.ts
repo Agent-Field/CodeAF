@@ -42,6 +42,26 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page);
     });
 
+    test('chip: --field closed, --field-2 open with the chevron turned up, and a lone place draws swatch and name', async ({ page }) => {
+      await open(page, 'quiet', theme);
+      const bg = () => chip(page).evaluate(el => getComputedStyle(el).backgroundColor);
+      const resolve = (name: string) => page.evaluate(n => { const e = document.createElement('i'); e.style.background = `var(${n})`; document.body.append(e); const c = getComputedStyle(e).backgroundColor; e.remove(); return c; }, name);
+      await page.mouse.move(0, 0);
+      await expect.poll(bg).toBe(await resolve('--field'));
+      await chip(page).click();
+      await page.mouse.move(0, 0);
+      await expect.poll(bg).toBe(await resolve('--field-2'));
+      await page.keyboard.press('Escape');
+      await open(page, 'single', theme);
+      const lone = page.locator('.using-chip');
+      await expect(lone).toHaveText(/\S/);
+      await expect(lone.locator('.place-swatch')).toHaveCSS('width', '8px');
+      await expect(lone.locator('.app-icon')).toHaveCount(0);
+      await lone.focus();
+      await page.keyboard.press('Enter');
+      await expect(sheet(page)).toBeVisible();
+    });
+
     test('keyboard: Enter opens, focus lands in the sheet, Escape closes and returns to the chip', async ({ page }) => {
       await open(page, 'full', theme);
       await chip(page).focus();
