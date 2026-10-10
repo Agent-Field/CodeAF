@@ -420,3 +420,10 @@ Detailed component tooltip is24px tall,11px normal-leading text,8px horizontal i
 The preview now reads other real Places' stored open conversation panes, including splits, by the full normalized durable conversation target. Membership, closed tabs, tasks, Inbox and the virtual Now candidate do not imply an open view. Canonical Place labels appear as “also open in Marketing”. The prose specifies a small preview line without a corresponding rendered placement: the provisional choice is the shared 11px label/ink-3 caption, after the last-reply text and before any existing actions. Several matches show the first alphabetical Place and the count of other Places, with ellipsis for narrow cards. Designer review should confirm this placement and multi-Place wording. No new destination-picker or Move-to-existing-window control is specified by the ZIP, so none is introduced.
 
 A stored open tab set remains open when its window closes; closing the actual tab removes the caption. The visible hover preview refreshes every two seconds and aborts its read when dismissed. Backend compact target projections invalidate immediately on workspace file size/mtime changes and revalidate unchanged signatures every 30 seconds; this last interval covers external edits preserving timestamps. These are provisional technical defaults, not additional settings controls.
+
+## Filing lane notes
+
+| ID | Question | Assumption |
+|---|---|---|
+| Q-filing-1 | A File dropped from the webview carries no disk path, and the design does not say how a folder is told from a file | `filing.ts` takes injected `nativePath` and `kindOf` resolvers (the native shell's drop paths and a stat). An item with no path or kind is skipped by name with a sentence pointing at "Add files or links"; a path is never guessed from a name. The wiring of the Tauri drop event is the rail-dnd lane's seam. |
+| Q-filing-2 | Does Option change a file, folder or link drop? | No. Sources are additive (Places 8g); only chat and place drops move. |
