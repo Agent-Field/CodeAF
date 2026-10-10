@@ -165,6 +165,15 @@ test('parseWorldRecord rejects shapes the engine never sends', () => {
  assert.equal(parseWorldRecord('{"seq":1,"type":"attention","at":"x","payload":{"items":[]}}').type, 'attention');
 });
 
+test('a jobs roll-up is a world record and does not replace the rows', () => {
+ const record = parseWorldRecord('{"seq":4,"type":"jobs","at":"x","payload":{"chatId":"chat-9","running":1,"jobs":[{"id":4,"state":"running"}]}}');
+ assert.equal(record.type, 'jobs');
+ const next = applyWorldRecord({ status: 'live', seq: 3, rows: [row('keep')], items: [] }, record);
+ assert.equal(next.seq, 4);
+ assert.equal(next.rows[0].session, 'keep');
+ assert.throws(() => parseWorldRecord('{"seq":4,"type":"jobs","at":"x","payload":{"running":1,"jobs":[]}}'), WorldError);
+});
+
 test('fetchWorld reads the whole state and reports a refusal in the engine words', async () => {
  const ok: WorldTransport = async () => new Response(JSON.stringify({ seq: 4, rows: [row('a')], items: [] }), { status: 200 });
  assert.equal((await fetchWorld(ok)).seq, 4);
