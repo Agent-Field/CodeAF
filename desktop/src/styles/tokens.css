@@ -837,6 +837,8 @@
   --web-address-gap: 8px;
   --web-sheet-inset: 8px;
   --radius-web-sheet: 8px;
+  --web-sheet-fill: oklch(.99 0 0);
+  --web-sheet-ink: oklch(.25 0 0);
   --web-shot-height: 120px;
   --web-state-max-width: 360px;
   --menu-popup-min-width: 200px;

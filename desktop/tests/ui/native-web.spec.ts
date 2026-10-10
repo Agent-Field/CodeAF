@@ -13,11 +13,29 @@ const px = (name: string) => parseFloat((design.foundation as Record<string, str
 
 test.beforeEach(async ({ page }) => { await page.route('**/api/engine/**', route => route.abort()); });
 
+const liveSheet = (page: Page) => page.locator('.content-pane .web-sheet');
+
 async function sheetRect(page: Page) {
-  const box = (await page.locator('.web-sheet').boundingBox())!;
+  const box = (await liveSheet(page).boundingBox())!;
   return { x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) };
 }
+const fillOf = (page: Page, selector: string) => page.locator(selector).evaluate(el => getComputedStyle(el).backgroundColor);
+const tokenFill = (page: Page) => page.evaluate(() => {
+  const probe = document.createElement('div');
+  probe.style.backgroundColor = 'var(--web-sheet-fill)';
+  document.body.append(probe);
+  const color = getComputedStyle(probe).backgroundColor;
+  probe.remove();
+  return color;
+});
 const lastVisible = async (page: Page) => (await nativeCalls(page, 'web_visible')).at(-1)?.args.visible;
+
+/** The last placed rectangle is the sheet's, measured in the same moment. */
+async function placedOnSheet(page: Page) {
+  const sent = (await nativeCalls(page, 'web_bounds')).at(-1)?.args.rect ?? (await nativeCalls(page, 'web_open'))[0]?.args.rect;
+  const sheet = await sheetRect(page);
+  return !!sent && sent.x === sheet.x && sent.y === sheet.y && sent.width === sheet.width && sent.height === sheet.height;
+}
 
 test.describe('outside the desktop app', () => {
   test('a web tab says pages open in the desktop app and never pretends one loaded', async ({ page }) => {
@@ -62,7 +80,14 @@ test.describe('in the desktop app (typed native mock)', () => {
     const field = (await page.locator('.web-address').boundingBox())!;
     expect(field.height).toBe(px('web-address-height'));
     expect(field.width).toBeLessThanOrEqual(px('web-address-max-width'));
-    await expect(page.locator('.web-sheet')).toHaveCSS('border-top-left-radius', '8px');
+    const sheet = page.locator('.content-pane .web-sheet');
+    await expect(sheet).toHaveAttribute('data-theme', 'light');
+    await expect(sheet).toHaveCSS('border-top-left-radius', '8px');
+    await expect(sheet).toHaveCSS('margin-top', '0px');
+    await expect(sheet).toHaveCSS('margin-right', '8px');
+    await expect(sheet).toHaveCSS('margin-bottom', '8px');
+    await expect(sheet).toHaveCSS('margin-left', '8px');
+    expect(await fillOf(page, '.content-pane .web-sheet')).toBe(await tokenFill(page));
     await expect(page.locator('.web-address-site')).toHaveText('pkg.go.dev');
     await expect(page.locator('.web-address-rest')).toHaveText('/encoding/json#Decoder');
     // No renderer command ever carries a script, a path or a shell command.
@@ -179,6 +204,65 @@ test.describe('in the desktop app (typed native mock)', () => {
     expect(await nativeCalls(page, 'web_close')).toEqual([]);
   });
 
+  test('a split and a collapsed rail move the one view onto the sheet', async ({ page }) => {
+    await page.goto('/');
+    await expect.poll(async () => (await nativeCalls(page, 'web_open')).length).toBe(1);
+    const before = await sheetRect(page);
+    await page.locator('.workspace-tab[data-active="true"]').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Open in split' }).hover();
+    await page.getByRole('menuitem', { name: 'Config stack', exact: true }).click();
+    await page.mouse.move(8, 8);
+    await expect(page.locator('.workspace-split-tab')).toHaveCount(1);
+    await expect.poll(() => placedOnSheet(page)).toBe(true);
+    const split = await sheetRect(page);
+    expect(split.width).toBeLessThan(before.width);
+    await page.getByRole('button', { name: 'Hide sidebar' }).click();
+    await expect.poll(() => placedOnSheet(page)).toBe(true);
+    expect((await sheetRect(page)).width).toBeGreaterThan(split.width);
+    expect((await nativeCalls(page, 'web_open')).length).toBe(1);
+    expect(await nativeCalls(page, 'web_close')).toEqual([]);
+    const panes = new Set((await nativeCalls(page, 'web_open')).map(call => call.args.pane));
+    expect(panes.size).toBe(1);
+  });
+
+  test('the filmstrip side card does not open a second view, and closing the overview puts the page back on the sheet', async ({ page }) => {
+    await page.goto('/');
+    await expect.poll(async () => (await nativeCalls(page, 'web_open')).length).toBe(1);
+    await page.getByRole('button', { name: /All tabs/ }).first().click();
+    await page.getByRole('radio', { name: 'Filmstrip' }).click();
+    await page.getByRole('button', { name: 'Show Config stack' }).click();
+    await expect(page.locator('.overview-film-item:not([data-cursor="true"]) .web-sheet')).toHaveCount(1);
+    await expect.poll(() => lastVisible(page)).toBe(false);
+    expect((await nativeCalls(page, 'web_open')).length).toBe(1);
+    expect(await nativeCalls(page, 'web_close')).toEqual([]);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: /All tabs overview/ })).toHaveCount(0);
+    await page.mouse.move(8, 8);
+    await expect.poll(() => lastVisible(page)).toBe(true);
+    await expect.poll(async () => (await nativeCalls(page, 'web_bounds')).at(-1)?.args.rect ?? (await nativeCalls(page, 'web_open'))[0].args.rect).toEqual(await sheetRect(page));
+    expect((await nativeCalls(page, 'web_open')).length).toBe(1);
+  });
+
+  test('a screen scale change places the view on the sheet again, in css pixels', async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'screen scale is changed through Chromium emulation');
+    await page.goto('/');
+    await expect.poll(async () => (await nativeCalls(page, 'web_open')).length).toBe(1);
+    const before = (await nativeCalls(page, 'web_bounds')).length;
+    const sheet = await sheetRect(page);
+    const client = await page.context().newCDPSession(page);
+    // Emulation changes the scale without the resolution event a real screen
+    // move fires. The resize is the frame the view is placed on; the rectangle
+    // itself does not change, so a resend is the scale, not a new size.
+    await client.send('Emulation.setDeviceMetricsOverride', { width: 1200, height: 800, deviceScaleFactor: 2, mobile: false });
+    await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+    await expect.poll(async () => (await nativeCalls(page, 'web_bounds')).length).toBeGreaterThan(before);
+    const rect = (await nativeCalls(page, 'web_bounds')).at(-1)!.args.rect as { x: number; width: number };
+    expect(rect).toEqual(await sheetRect(page));
+    expect(rect.x).toBe(sheet.x);
+    expect(rect.width).toBe(sheet.width);
+    expect((await nativeCalls(page, 'web_open')).length).toBe(1);
+  });
+
   test('a resize moves the view to the sheet once per frame; a tab switch hides it and keeps the page', async ({ page }) => {
     await page.goto('/');
     await expect.poll(async () => (await nativeCalls(page, 'web_open')).length).toBe(1);
@@ -278,6 +362,8 @@ test.describe('in the desktop app (typed native mock)', () => {
         await page.setViewportSize({ width, height: width < 800 ? 560 : 800 });
         await page.goto('/');
         await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+        await expect(liveSheet(page)).toHaveAttribute('data-theme', 'light');
+        expect(await fillOf(page, '.content-pane .web-sheet')).toBe(await tokenFill(page));
         await expect.poll(async () => (await nativeCalls(page, 'web_open')).length).toBe(1);
         await emitState(page, PANE, { loading: false, title: 'encoding/json', canBack: true });
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
