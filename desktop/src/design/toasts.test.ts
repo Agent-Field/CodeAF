@@ -2,24 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createToasts } from './toasts.ts';
 
-test('toasts stack newest last; a fourth lets the oldest go and settles it', () => {
+test('one toast is shown; a newer one replaces it and settles the one that left', () => {
   const t = createToasts();
   const log: string[] = [];
   const first = t.show({ message: ['one'], onSettled: () => log.push('one settled') });
   const second = t.show({ message: ['two'] });
   assert.notEqual(first, second);
-  assert.deepEqual(t.getToasts().map(toast => toast.id), [first, second]);
-  assert.equal(t.getToast()?.id, second);
-  t.show({ message: ['three'] });
-  assert.deepEqual(log, []);
-  const fourth = t.show({ message: ['four'] });
   assert.deepEqual(log, ['one settled']);
-  assert.equal(t.getToasts().length, 3);
-  assert.equal(t.getToast()?.id, fourth);
+  assert.deepEqual(t.getToasts().map(toast => toast.id), [second]);
+  assert.equal(t.getToast()?.id, second);
 });
 
 test('showing a key that is already up replaces that toast in its place and settles it', () => {
-  const t = createToasts();
+  const t = createToasts(2);
   const log: string[] = [];
   t.show({ message: ['a'], key: 'k', onSettled: () => log.push('a settled') });
   const other = t.show({ message: ['b'] });

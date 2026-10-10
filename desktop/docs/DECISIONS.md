@@ -383,3 +383,26 @@ Finding fixed (real): an effort click sent `{ model: role.model, effort }`, wher
 Checked and sound: same-key saves run in intent order (`saveQueue`); a duplicate Enter/blur shares one save; a failed save neither blocks a retry nor drops a newer intent; only the newest version applies its answer or its failure text; pinned slots re-read the saved list when they run, so overlapping pin edits compose; the receipt shows the latest failure, else "Saving…", else the saved line.
 
 Remaining gap, not fixed: the receipt is one shared line, so a failure on one control has no marker on its own row. Left for the coordinator (see DESIGN-QUESTIONS, SETTINGS-ROLE-282).
+
+## t-d5-sh-decide-shell-questions (2026-10-10)
+
+Recorded the fourteen shell coverage questions as SH-OQ1–SH-OQ14. The rows are in `desktop/docs/questions/d5-shell.md` and under **Open: for the designer** in `DESIGN-QUESTIONS.md`. None of them move D1–D6, Q1–Q34, the Q-P, OV or NT rows, or R1–R4.
+
+Calls, from Shell 2b/2h/3g/3j/3l, Interactions, Iteration 2 I2.1, and the code:
+
+1. **Home, then Inbox.** The place Home is the first pinned slot. An Inbox tab is the next pin, never the first. I2.1 replaces Inbox with Next up, so the lasting strip has no Inbox chip. `ensure-inbox` now inserts after Home.
+2. **⌥⌘W is Close and stop.** Close other tabs has no chord. Already true in `closing/shortcuts.ts` and the tab menu (M1). ⌥⌘1–3 stay the pinned models (Q30, R1).
+3. **Absent until backed.** Copy link and Move to new window are omitted when they cannot work, and shown when they can (menu host, DL1–DL6, M5). They are not drawn disabled.
+4. **⌘-click selects; middle-click closes.** ⌘-click already toggles a pick (TI6). Middle-click now closes an unpinned tab the way × does. A pin and a place Home stay. Overview cards stay OV14.
+5. **⌘K opens the New-tab field and the four-page palette retires.** ⌘P stays Go to (PLD-01). Not wired in this lane: `keyboard.ts` still maps ⌘K to the command palette. The palette-retire lane cites SH-OQ5.
+6. **One toast.** A newer toast replaces the one on screen. Ordinary news is role=status; a refusal stays role=alert. Hover and focus pause the timer; Escape dismisses. `TOAST_LIMIT` is 1.
+7. **Group suggestion × is for this session.** No 30-day memory for tab groups. The place-filing Not now keeps its 30 days. Not changed here: `offerRules.ts` still stores 30 days (the provisional half of GO6). The group-offer lane drops that store.
+8. **⌘W closes the whole split.** Already true: the key and the × call `closeTab` on the merged tab. Close pane stays in the pane menu.
+9. **Compressed tabs at 600px, inactive only.** Already `compressesTab`, same as SH-072.
+10. **Traffic lights stay visible in Focus mode.** No code hides them. Peek timing stays R4.
+11. **Window-local versus shared.** Already `windowLocal.ts`: active tab, recents, selection, overview, undo and rail state are per window; tabs, groups and the closed list are shared. Place pins stay engine-wide (PLD-13).
+12. **⌘B stays beside ⌘S.** Already R2. This row does not remove it.
+13. **Pinch-out is not built.** Already OV2.
+14. **Inbox and Now have no menu.** Right-click on those rail rows is swallowed so the webview menu does not open. Place rows keep their menu.
+
+Ambiguity 8 (Close N tabs and running work) stays M7: the close keeps work running and the toast offers Undo.
