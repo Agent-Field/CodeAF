@@ -61,6 +61,7 @@ Shell). On any conflict, the design files win over code and older docs.
 
 | # | Question | Assumption the app ships now |
 |---|---|---|
+| CV-R1 | How should clock receipts round fractional waits or display older records without a wait? | Round the actual recorded wait to the nearest whole second. Without a known positive wait, show “picked by codeaf” without an invented duration. Person receipts retain “you · HH:MM”. |
 | CV160 | Which title does the unfocused pane mini-tray show when several questions are pending? | Ship the first standing question in the full tray’s existing order (deeper clarification first, then oldest), without adding a count to the title. |
 | CV-N1 | The retrying event carries no delay today (`RetryNews` has none); where does a countdown come from | The overlay reads `Retry.DelaySeconds` from the event if a future engine sends it and shows it as a static mono `Ns` beside "Retrying" (nothing otherwise, Q15). It does not tick. While compacting nothing is drawn; on `compacted` the "Earlier messages summarized" divider appears live. |
 | LIFE1 | When does the ten-minute engine idle grace start after detached work or a question ends between reaper sweeps? | Start at the first one-minute sweep that confirms no views, streams, work or questions remain. Never count busy time toward the grace. A quiet final detach starts the grace immediately; repeated detaches do not extend it. |

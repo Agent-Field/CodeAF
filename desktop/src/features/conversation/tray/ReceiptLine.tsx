@@ -11,14 +11,15 @@ function withCode(text: string): ReactNode[] {
   return text.split('`').map((part, at) => (at % 2 ? <span key={at} className="receipt-code">{part}</span> : part));
 }
 
-/** "Allowed once · you · 14:02": the verdict reads stronger than who and when. */
+/** "Allowed once · you · 14:02": the picked label reads stronger than who and when. */
 function answeredText(text: string): ReactNode {
   const at = text.indexOf(SEPARATOR);
   if (at < 0) return <span className="receipt-label">{text}</span>;
+  const rest = text.slice(at + SEPARATOR.length);
   return (
     <>
       <span className="receipt-label">{text.slice(0, at)}</span>{' '}
-      <span className="receipt-rest">{`· ${text.slice(at + SEPARATOR.length)}`}</span>
+      <span className="receipt-rest">{rest.startsWith('picked by codeaf') ? rest : `· ${rest}`}</span>
     </>
   );
 }

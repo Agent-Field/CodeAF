@@ -38,6 +38,8 @@ type QuestionOutcome struct {
 	// outcome was read from.
 	By string
 	At time.Time
+	// ElapsedSeconds is known only for an answer taken by the clock.
+	ElapsedSeconds float64
 	// CallID is the tool call the question was about, copied from the question's
 	// subject. The decision record and the replayed history both carry it, so a
 	// window reopened later can put the receipt back under the call that asked.
@@ -105,7 +107,7 @@ func decidedOutcome(record DecisionRecord) QuestionOutcome {
 	return QuestionOutcome{
 		Kind: record.Kind, Token: token, Head: record.Head,
 		Outcome: QuestionDecided, Words: sentenceCase(record.Words()),
-		By: string(record.By), At: record.At, CallID: anchorCall(record.Subject, record.AskedIn),
+		By: string(record.By), At: record.At, ElapsedSeconds: record.ElapsedSeconds, CallID: anchorCall(record.Subject, record.AskedIn),
 	}
 }
 

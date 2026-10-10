@@ -1076,6 +1076,8 @@ type DecisionRecord struct {
 	// 2026-09-11: a side-call read the record, found "Hello" and a file saying
 	// "Hola", and set about "fixing" the file.
 	Was []string `json:"was,omitempty"`
+	// ElapsedSeconds keeps the actual clock wait so replay never substitutes the policy duration.
+	ElapsedSeconds float64 `json:"elapsed_seconds,omitempty"`
 	// At is when.
 	At time.Time `json:"at"`
 }
@@ -1398,12 +1400,16 @@ func decisionRecordOf(q Question, answer Answer) DecisionRecord {
 	if at.IsZero() {
 		at = time.Now()
 	}
+	var elapsedSeconds float64
+	if answer.DecidedBy == DecidedByDial && !q.Deadline.IsZero() && !q.Asked.IsZero() && at.After(q.Asked) {
+		elapsedSeconds = at.Sub(q.Asked).Seconds()
+	}
 	return DecisionRecord{
 		ID: q.ID, Ref: q.Ref, Kind: q.Kind, Ask: q.Ask,
 		Head: q.Head, Subject: q.Subject, AskedIn: q.AskedIn,
 		Picked: picked, Labels: labels, Change: strings.TrimSpace(answer.Change),
 		By: answer.DecidedBy, Stakes: q.Stakes, Scope: answer.Scope,
-		Why: strings.TrimSpace(answer.Why), At: at,
+		Why: strings.TrimSpace(answer.Why), At: at, ElapsedSeconds: elapsedSeconds,
 	}
 }
 
