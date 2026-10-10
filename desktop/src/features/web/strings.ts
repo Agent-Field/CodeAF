@@ -14,3 +14,11 @@ export const webStateSentence: Record<WebErrorKind, { title: string; detail: (si
 
 export const webLoadingLabel = 'Loading';
 export const webUntitled = 'New tab';
+
+// Error sheets use one sentence; details never disclose native exception text.
+export const webErrorLine: Record<Exclude<WebErrorKind, 'none'>, string> = {
+  failed: "This page can't be shown here.",
+  offline: "You're offline.",
+  blocked: "This site doesn't allow being shown inside codeaf.",
+  certificate: "This site's certificate isn't trusted.",
+};
