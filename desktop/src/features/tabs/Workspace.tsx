@@ -200,6 +200,9 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
     onSummary: summary => receiveSummary(pane.id, summary),
     onOpenTaskTab: (taskId, title) => openTaskTab(pane, taskId, title),
     onOpenFile: (path, kind) => openFile(pane, path, kind),
+    onRename: title => dispatch({ type: 'rename', id: pane.id, title }),
+    // The tab model has no anchor slot yet (see DESIGN-QUESTIONS), so the new tab opens at the session's end.
+    onOpenConversationTab: (sessionFile, _anchor, background = false) => dispatch({ type: 'open', background, tab: newTab({ kind: 'conversation', title: pane.title, titleSource: pane.titleSource, sessionFile }) }),
     usingApi,
     onOpenSource: (source: SourceHandoff) => {
       if (source.kind === 'chat') (onOpenChat ?? openChatHere)(source.chatId);
