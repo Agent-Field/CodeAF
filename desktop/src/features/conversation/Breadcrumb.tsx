@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { Button, Icon } from '../../components/ui';
+import { useOptionalFocusWire } from '../focus-history/useFocusHistory';
 import { isMac } from '../../design/keyboard';
 import './task-view.css';
 import '../focus-history/back-chip.css';
@@ -15,20 +16,28 @@ export function historyDirection(event: Pick<KeyboardEvent, 'code' | 'metaKey' |
 }
 
 export function useHistoryKeys(onBack: () => void, onForward: () => void) {
+  const wire = useOptionalFocusWire();
   const handlers = useRef({ onBack, onForward });
   handlers.current = { onBack, onForward };
   useEffect(() => {
     const listen = (event: KeyboardEvent) => {
       const direction = historyDirection(event);
-      if (!direction) return;
+      if (!direction || event.defaultPrevented) return;
       event.preventDefault();
-      if (direction < 0) handlers.current.onBack();
+      // The window stack includes tab and place moves; a local route cannot substitute for it.
+      if (wire) {
+        if (direction < 0) wire.back();
+        else wire.forward();
+      } else if (direction < 0) handlers.current.onBack();
       else handlers.current.onForward();
     };
     window.addEventListener('keydown', listen);
     return () => window.removeEventListener('keydown', listen);
-  }, []);
+  }, [wire]);
 }
+
+const noHistorySubscription = () => () => {};
+const noHistorySnapshot = () => null;
 
 type Props = {
   segments: BreadcrumbSegment[];
@@ -41,13 +50,15 @@ type Props = {
 
 /** The immediate parent is the return affordance; older ancestors stay in keyboard history. */
 export function Breadcrumb({ segments, canBack, onBack }: Props) {
+  const wire = useOptionalFocusWire();
+  const history = useSyncExternalStore(wire?.subscribe ?? noHistorySubscription, wire?.getSnapshot ?? noHistorySnapshot);
   const current = segments[segments.length - 1];
   const parent = segments[segments.length - 2];
   if (!current) return null;
   return (
     <nav className="breadcrumb back-header" aria-label="Breadcrumb">
-      {parent && canBack && <>
-        <Button className="back-header-parent" onClick={onBack} title={parent.label}>
+      {parent && (wire ? history?.canBack : canBack) && <>
+        <Button className="back-header-parent" onClick={() => { if (wire) wire.back(); else onBack(); }} title={parent.label}>
           <Icon name="back" />
           <span className="back-header-label">{parent.label}</span>
         </Button>

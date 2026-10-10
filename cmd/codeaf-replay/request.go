@@ -375,6 +375,7 @@ var callSiteRoles = map[string]lane.Role{
 	"placefile":    lane.RoleAuxiliary,
 	"placesuggest": lane.RoleAuxiliary,
 	"council":      lane.RoleAuxiliary,
+	"deciding":     lane.RoleAuxiliary,
 	"distill":      lane.RoleAuxiliary,
 }
 
