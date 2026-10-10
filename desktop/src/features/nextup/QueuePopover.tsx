@@ -114,7 +114,7 @@ export function QueuePopover({ children, rows, acceptable, onJump, onStart, onAc
       onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) { cancel(); setOpen(false); } }}
       onKeyDown={onKeyDown}
     >
-      <div data-queue-trigger aria-expanded={shown} aria-controls={shown ? panel : undefined}>{children}</div>
+      <div data-queue-trigger aria-controls={shown ? panel : undefined}>{children}</div>
       {shown && (
         <div id={panel} className="queue-popover" role="group" aria-label={`${heading.need} ${heading.where}`}>
           <div className="queue-popover-head">
