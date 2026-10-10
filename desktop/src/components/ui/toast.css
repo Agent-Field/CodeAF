@@ -33,6 +33,8 @@
  pointer-events: auto;
  animation: toast-enter var(--dur-base) var(--ease);
 }
+/* work.css paints every [data-tone=warning] amber. A toast carries that attribute for its dot, and the sentence stays ink: colour lives on the 6px glyph. */
+.toast[data-tone] { color: var(--ink); }
 .toast-dot { flex: none; width: var(--toast-dot); height: var(--toast-dot); border-radius: var(--radius-pill); background: var(--accent); }
 .toast[data-tone="warning"] .toast-dot { background: var(--amber); }
 .toast[data-tone="danger"] .toast-dot { background: var(--danger); }

@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mintWith, setIdSource } from '../helpers.ts';
 import { workspaceReducer, type Tab, type TabGroup, type WorkspaceAction, type WorkspaceState } from '../model.ts';
-import { createStructuralUndo, isUndoable, undoLimit } from './structuralUndo.ts';
+import { createStructuralUndo, isUndoable, tabCloseToastKey, toastOwnsClose, undoLimit, type UndoPlan } from './structuralUndo.ts';
 
 let counter = 0;
 setIdSource(() => `u${++counter}`);
@@ -164,6 +164,16 @@ test('non-structural actions are never steps, and the stack holds the newest 20 
   assert.equal(undone, undoLimit);
   // 25 toggles, 20 undone: the five oldest stay done, so a stays pinned.
   assert.ok(many.state.tabs.find(t => t.id === 'a')!.pinned);
+});
+
+test('a running close\'s toast owns that close, and nothing else', () => {
+  const reopen: UndoPlan = { kind: 'apply', actions: [{ type: 'reopen-id', id: 'd' }] };
+  assert.equal(toastOwnsClose(reopen, tabCloseToastKey), true);
+  assert.equal(toastOwnsClose(reopen, 'accept'), false);
+  assert.equal(toastOwnsClose(reopen, undefined), false);
+  assert.equal(toastOwnsClose({ kind: 'apply', actions: [{ type: 'pin', id: 'a' }] }, tabCloseToastKey), false);
+  assert.equal(toastOwnsClose({ kind: 'empty' }, tabCloseToastKey), false);
+  assert.equal(toastOwnsClose({ kind: 'apply', actions: [] }, tabCloseToastKey), false);
 });
 
 test('ROUND TRIP: any run of structural steps, undone in reverse, gives back the strip it started from', () => {
