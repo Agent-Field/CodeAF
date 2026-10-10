@@ -140,6 +140,9 @@ type Place struct {
 	Archived bool    `json:"archived,omitempty"`
 	Context  Context `json:"context"`
 	Policy   Policy  `json:"policy"`
+	// Decide is this place's own deciding setting; nil means "no choice made
+	// here" and the nearest ancestor with one answers (decide_settings.go).
+	Decide *Decide `json:"decide,omitempty"`
 	// Manager is RESERVED ("not designed yet"). It is opaque JSON that is kept
 	// verbatim through every load, save, merge and undo, and interpreted by nobody.
 	Manager      json.RawMessage `json:"manager,omitempty"`
@@ -229,6 +232,7 @@ const (
 	ActionMerge      Action = "place.merge"
 	ActionContext    Action = "place.context"
 	ActionPolicy     Action = "place.policy"
+	ActionDecide     Action = "place.decide"
 	ActionPin        Action = "place.pin"
 	ActionUnpin      Action = "place.unpin"
 	ActionReorder    Action = "place.reorder"
