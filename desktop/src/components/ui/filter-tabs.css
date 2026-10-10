@@ -1,0 +1,21 @@
+/* Filter tabs (Components Inputs, C-INPUT-4): 26px pills. The chosen one sits on field
+   in 500 ink. The rest stay ink-2, and hover only changes their fill. At the small
+   breakpoint the row scrolls, and a 24px mask shows only on an edge that still has
+   pills past it — never by fading the text itself. */
+
+.filter-tabs { display: flex; align-items: center; gap: var(--filter-tab-gap); min-width: 0; max-width: 100%; }
+.filter-tab { box-sizing: border-box; flex: none; display: inline-flex; align-items: center; justify-content: center; height: var(--filter-tab-height); padding: 0 var(--filter-tab-pad); border: 0; border-radius: var(--radius-filter-tab); background: transparent; color: var(--ink-2); font-family: var(--sans); font-size: var(--filter-tab-size); font-weight: var(--filter-tab-weight); line-height: var(--filter-tab-leading); white-space: nowrap; transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease); }
+.filter-tab:hover:not(:disabled):not([aria-checked="true"]), .filter-tab:active:not(:disabled):not([aria-checked="true"]) { background: var(--field-2); }
+.filter-tab[aria-checked="true"] { background: var(--field); color: var(--ink); font-weight: var(--filter-tab-weight-selected); }
+.filter-tab:active:not(:disabled) { filter: brightness(var(--brightness-press)); transition-duration: var(--dur-press); }
+.filter-tab:disabled { cursor: default; opacity: var(--opacity-control-disabled); }
+
+@media (max-width: 600px) {
+  .filter-tabs { overflow-x: auto; overscroll-behavior-x: contain; }
+  .filter-tabs[data-fade-end]:not([data-fade-start]) { -webkit-mask-image: linear-gradient(to right, black calc(100% - var(--filter-tab-mask)), transparent); mask-image: linear-gradient(to right, black calc(100% - var(--filter-tab-mask)), transparent); }
+  .filter-tabs[data-fade-start]:not([data-fade-end]) { -webkit-mask-image: linear-gradient(to right, transparent, black var(--filter-tab-mask)); mask-image: linear-gradient(to right, transparent, black var(--filter-tab-mask)); }
+  .filter-tabs[data-fade-start][data-fade-end] { -webkit-mask-image: linear-gradient(to right, transparent, black var(--filter-tab-mask), black calc(100% - var(--filter-tab-mask)), transparent); mask-image: linear-gradient(to right, transparent, black var(--filter-tab-mask), black calc(100% - var(--filter-tab-mask)), transparent); }
+}
+
+body:has(.filter-tabs-specimen) { margin: 0; background: var(--canvas); color: var(--ink); font-family: var(--sans); }
+.filter-tabs-specimen { box-sizing: border-box; display: flex; flex-direction: column; align-items: stretch; gap: var(--space-3); width: 100%; min-height: 100vh; padding: var(--space-3); background: var(--canvas); }
