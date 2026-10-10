@@ -85,9 +85,20 @@ test('dragging a card onto another section regroups the tab', async ({ page }) =
   await seed(page); await page.goto('/');
   await page.getByRole('button', { name: 'All tabs', exact: true }).click();
   const overview = dialog(page);
-  await overview.getByRole('button', { name: 'Open Release v2.4', exact: true }).dragTo(overview.locator('.overview-section[aria-label="Trailing commas"] .overview-section-head'));
+  const dragCard = async (name: string, section: string) => {
+    const from = overview.getByRole('button', { name, exact: true });
+    const to = overview.locator(`.overview-section[aria-label="${section}"] .overview-section-head`);
+    const start = (await from.boundingBox())!;
+    const end = (await to.boundingBox())!;
+    await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(start.x + start.width / 2 + 8, start.y + start.height / 2 + 6, { steps: 3 });
+    await page.mouse.move(end.x + end.width / 2, end.y + end.height / 2, { steps: 8 });
+    await page.mouse.up();
+  };
+  await dragCard('Open Release v2.4', 'Trailing commas');
   await expect(overview.locator('.overview-section-count')).toHaveText(['5', '1']);
-  await overview.getByRole('button', { name: 'Open Lexer', exact: true }).dragTo(overview.locator('.overview-section[aria-label="Other tabs"] .overview-section-head'));
+  await dragCard('Open Lexer', 'Other tabs');
   await expect(overview.locator('.overview-section-count')).toHaveText(['4', '2']);
 });
 

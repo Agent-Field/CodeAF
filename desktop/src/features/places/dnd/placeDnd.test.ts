@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { acceptsPlaceDrag, placeDndTypes, readPlaceDrag, resolvePlaceDrop, wouldCreatePlaceCycle, type PlaceDropContext, type PlaceTransfer } from './placeDnd.ts';
+import { acceptsPlaceDrag, placeDndTypes, placeDragFromPointer, readPlaceDrag, resolvePlaceDrop, wouldCreatePlaceCycle, type PlaceDropContext, type PlaceTransfer } from './placeDnd.ts';
 
 const places = [
   { id: 'root', parents: [] },
@@ -11,6 +11,12 @@ const places = [
 ];
 const context = (altKey = false): PlaceDropContext => ({ targetPlaceId: 'target', altKey, fromPlaceId: 'root', places, chatForTab: id => id === 'tab' ? 'saved-chat' : undefined });
 const transfer = (type: string, data: string): PlaceTransfer => ({ types: [type], getData: requested => requested === type ? data : '' });
+
+test('a pointer payload is the same drag a tile already understands', () => {
+  assert.deepEqual(placeDragFromPointer({ kind: 'chat', id: 'chat', ids: ['chat'] }), { kind: 'chat', ids: ['chat'] });
+  assert.deepEqual(placeDragFromPointer({ kind: 'tab', id: 'tab' }), { kind: 'tab', id: 'tab' });
+  assert.equal(placeDragFromPointer({ kind: 'queue-row', id: 'q' }), undefined);
+});
 
 for (const kind of ['chat', 'place', 'tab'] as const) {
   for (const alt of [false, true]) {

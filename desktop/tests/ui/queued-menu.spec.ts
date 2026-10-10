@@ -308,7 +308,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       for (const width of WIDTHS) {
         await page.setViewportSize({ width, height: 800 });
         const row = list.getByRole('group').first();
-        await expect(row.locator('..')).toHaveAttribute('draggable', 'false');
+        await expect(row.locator('..')).not.toHaveAttribute('data-dragging');
         await expect(row).not.toHaveAttribute('data-movable');
         await expect(row.locator('.queued-actions')).toHaveCSS('opacity', '1');
         await expect(row.locator('.queued-grip')).toHaveCSS('display', 'none');
@@ -321,8 +321,14 @@ for (const colorScheme of ['light', 'dark'] as const) {
         await expectNoHorizontalOverflow(page);
       }
       const rows = list.getByRole('group');
-      // A coarse pointer does not start a drag. dragTo gives up when the row refuses it.
-      await rows.nth(1).dragTo(rows.nth(0), { timeout: 2_000 }).catch(() => undefined);
+      // A coarse pointer does not start a drag, so the same press-and-move writes nothing.
+      const from = (await rows.nth(1).boundingBox())!;
+      const onto = (await rows.nth(0).boundingBox())!;
+      await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(from.x + from.width / 2 + 12, from.y + from.height / 2 + 8, { steps: 4 });
+      await page.mouse.move(onto.x + onto.width / 2, onto.y + onto.height / 2, { steps: 6 });
+      await page.mouse.up();
       expect(posts(engine, '/queue-move')).toHaveLength(0);
       expect(order(engine)).toEqual(before);
       const more = rows.first().getByRole('button', { name: 'Message actions for queued row' });

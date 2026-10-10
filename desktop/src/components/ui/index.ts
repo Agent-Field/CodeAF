@@ -28,4 +28,6 @@ export { useMoreToRight } from './useMoreToRight';
 export { Toast, ToastHost, toast, ToastRegion, ToastView, useToasts, sentenceParts, TOAST_DURATION_MS, TOAST_LIMIT, type ToastModel, type ToastAction, type ShowToast } from './Toast';
 export { QuickLook } from './QuickLook';
 export { SearchField, type SearchFieldProps } from './SearchField';
+export { useDropTarget, usePointerDrag } from './usePointerDrag';
+export { pointerDragActive, pointerDragThresholdPx, type DragPayload, type DragPoint, type DropKind, type DropRegistration } from './pointerDrag';
 export { PlaceSwatch } from '../../features/places/components/PlaceSwatch';

@@ -327,7 +327,14 @@ test('dragging onto a collapsed group label groups the tab and preserves its dra
  await page.getByRole('textbox', { name: 'Message', exact: true }).fill('Keep my context');
  const group = page.locator('.workspace-group-label');
  await group.click(); await expect(group).toHaveAttribute('aria-expanded', 'false');
- await page.getByRole('tab', { name: 'Incoming', exact: true }).dragTo(group);
+ const incoming = page.getByRole('tab', { name: 'Incoming', exact: true });
+ const from = (await incoming.boundingBox())!;
+ const onto = (await group.boundingBox())!;
+ await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+ await page.mouse.down();
+ await page.mouse.move(from.x + from.width / 2 + 8, from.y + from.height / 2 + 6, { steps: 3 });
+ await page.mouse.move(onto.x + onto.width / 2, onto.y + onto.height / 2, { steps: 8 });
+ await page.mouse.up();
  await expect(page.locator('.workspace-tab-group .workspace-tab')).toHaveCount(2);
  await expect(group).toHaveAttribute('aria-expanded', 'true');
  await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toHaveValue('Keep my context');

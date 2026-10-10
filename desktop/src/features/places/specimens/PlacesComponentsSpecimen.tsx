@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { SectionLabel, Text, type MenuEntry } from '../../../components/ui';
+import { useDropTarget, usePointerDrag } from '../../../components/ui/usePointerDrag';
 import { AttentionList, AttentionRow } from '../components/AttentionRow';
 import { ChatList, ChatRow } from '../components/ChatRow';
 import { PlaceHeading } from '../components/PlaceHeading';
@@ -10,6 +11,36 @@ import './places-components-specimen.css';
 const noop = () => {};
 const swatchRoles: readonly SwatchRole[] = ['rail', 'tile', 'sheet', 'title', 'card', 'choice', 'menu'];
 const looks = [{ label: 'Rest' }, { label: 'Hover', appearance: 'hover' as const }, { label: 'Pressed', appearance: 'pressed' as const }, { label: 'Focus', appearance: 'focus' as const }];
+
+/** A live tile. A chat dropped on it reports the chat id; the tile itself is not picked up. */
+function SpecimenTile({ tile, selected, dropOn, setSelected, setDropOn, say, menu }: {
+  tile: { id: string; name: string; tint: TintName; meta: string; status?: 'waiting'; tintSource?: 'own' | 'inherited' };
+  selected: boolean; dropOn: boolean; setSelected: (id: string) => void; setDropOn: (id: string | undefined) => void;
+  say: (line: string) => void; menu: MenuEntry[];
+}) {
+  const dropRef = useDropTarget({
+    kind: 'place-tile',
+    id: tile.id,
+    accepts: (payload) => payload.kind === 'chat',
+    hover: () => setDropOn(tile.id),
+    leave: () => setDropOn(undefined),
+    drop: (_point, payload) => {
+      setDropOn(undefined);
+      say(`${tile.id}:drop:${payload.id || 'none'}`);
+      return true;
+    },
+  });
+  return <PlaceTile ref={dropRef} id={tile.id} name={tile.name} tint={tile.tint} tintSource={tile.tintSource} meta={tile.meta} status={tile.status}
+    selected={selected} dropTarget={dropOn}
+    onGoTo={() => { setSelected(tile.id); say(`${tile.id}:goTo`); }} onOpenInNewWindow={() => say(`${tile.id}:newWindow`)} onQuickLook={() => { setSelected(tile.id); say(`${tile.id}:quickLook`); }}
+    menu={menu}/>;
+}
+
+/** The one chat a person can carry onto a live tile. */
+function SpecimenChat({ say, menu }: { say: (line: string) => void; menu: MenuEntry[] }) {
+  const pointer = usePointerDrag({ payload: { kind: 'chat', id: 'specimen-c1', ids: ['specimen-c1'] } });
+  return <ChatRow {...pointer} id="specimen-c1" title="Trailing commas across the config stack" excerpt="Open · 4 tasks running" status="running" timeLabel="Today" timeIso="2026-10-09T09:00:00Z" model="DS Flash" onOpen={() => say('c1:open')} onOpenInNewTab={() => say('c1:newTab')} menu={menu}/>;
+}
 
 /** Every Places primitive in every state, plus a live strip that reports each callback. Specimen only: the names, counts and
  * times below are fixtures for the Design system page and are never shown as a person's places or chats. */
@@ -69,12 +100,7 @@ export function PlacesComponentsSpecimen() {
     <section className="places-specimen-section" aria-labelledby="ps-live">
       <SectionLabel id="ps-live">Live · Space is Quick Look, ⌘ click opens a new window, drag a chat onto a tile</SectionLabel>
       <PlaceTileGrid label="Places in codeaf">
-        {tiles.map(tile => <PlaceTile key={tile.id} id={tile.id} name={tile.name} tint={tile.tint} tintSource={tile.tintSource} meta={tile.meta} status={tile.status}
-          selected={selected === tile.id} dropTarget={dropOn === tile.id}
-          onGoTo={() => { setSelected(tile.id); say(`${tile.id}:goTo`); }} onOpenInNewWindow={() => say(`${tile.id}:newWindow`)} onQuickLook={() => { setSelected(tile.id); say(`${tile.id}:quickLook`); }}
-          menu={entries(tile.id)} draggable
-          onDragEnter={event => { event.preventDefault(); setDropOn(tile.id); }} onDragOver={event => event.preventDefault()}
-          onDragLeave={() => setDropOn(undefined)} onDrop={event => { event.preventDefault(); setDropOn(undefined); say(`${tile.id}:drop:${event.dataTransfer.getData('text/plain') || 'none'}`); }}/>)}
+        {tiles.map(tile => <SpecimenTile key={tile.id} tile={tile} selected={selected === tile.id} dropOn={dropOn === tile.id} setSelected={setSelected} setDropOn={setDropOn} say={say} menu={entries(tile.id)}/>)}
         {creating
           ? <PlaceTile mode="creating" name={name} tint={tint} onNameChange={setName} onTintChange={setTint} invalid={name.trim().toLowerCase() === 'software'}
               onSubmit={() => { say(`create:${name.trim()}:${tint}`); setCreating(false); setName(''); }} onCancel={() => { say('create:cancel'); setCreating(false); }}/>
@@ -96,7 +122,7 @@ export function PlacesComponentsSpecimen() {
     <section className="places-specimen-section" aria-labelledby="ps-chat">
       <SectionLabel id="ps-chat">Chat row · Home list</SectionLabel>
       <ChatList label="Chats">
-        <ChatRow id="specimen-c1" title="Trailing commas across the config stack" excerpt="Open · 4 tasks running" status="running" timeLabel="Today" timeIso="2026-10-09T09:00:00Z" model="DS Flash" onOpen={() => say('c1:open')} onOpenInNewTab={() => say('c1:newTab')} menu={entries('c1')} draggable onDragStart={event => { event.dataTransfer.setData('text/plain', 'specimen-c1'); }}/>
+        <SpecimenChat say={say} menu={entries('c1')}/>
         <ChatRow id="specimen-c2" title="Naming: codeaf vs CodeAF" excerpt="Decided lower-case everywhere" timeLabel="Mon" onOpen={() => say('c2:open')}/>
         <ChatRow id="specimen-c3" title="Pricing for teams" excerpt="Discussed seat vs usage. No decision yet" timeLabel="Last wk" selected onOpen={noop}/>
         <ChatRow id="specimen-c4" title="Release v2.4 waits on you for the tag, and this title is long enough to need the mask at the column's edge" excerpt="Waiting on you: Tag v2.4.1? A long recap that also runs past the edge of its column and fades under the mask" status="waiting" timeLabel="Open" onOpen={noop}/>

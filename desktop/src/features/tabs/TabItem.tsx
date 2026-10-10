@@ -4,7 +4,7 @@ import { useAltHeld } from './closing/altHeld';
 import { closeShortcutFor, closeStopShortcut } from './closing/shortcuts';
 import type { TabMark } from '../conversation/tabSummary';
 import type { TabsApi } from './context';
-import { tabDragProps } from './hosts/dragHost';
+import { useTabDrag } from './hosts/dragHost';
 import { withTabMenu } from './hosts/menuHost';
 import { withPreview } from './hosts/previewHost';
 import { withSegmentTooltip } from './hosts/titleTooltipHost';
@@ -94,7 +94,7 @@ export function TabItem({ api, tab, order, inGroup = false, narrow = false }: { 
   });
   const active = tab.id === api.state.activeId;
   const favicons = useWebFavicons(api.workspaceKey, panesOf(tab));
-  const drag = tabDragProps(api, tab);
+  const drag = useTabDrag(api, tab);
   const home = isPlaceHome(tab);
   // Middle-click is the × (SH-OQ4): the view closes and the work keeps running. A pin and a place Home have no close.
   const onMouseDown = (event: MouseEvent) => { if (event.button === 1) event.preventDefault(); };

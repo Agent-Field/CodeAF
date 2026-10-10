@@ -1,4 +1,5 @@
 import { useEffect, useRef, type FocusEvent, type PointerEvent } from 'react';
+import { pointerDragActive } from '../../../components/ui/pointerDrag';
 import design from '../../../design/tokens.json';
 import type { PreviewStore } from './previewStore';
 import { previewMayOpen } from './previewOpen';
@@ -39,6 +40,8 @@ export function usePreviewTrigger(store: PreviewStore, id: string, open: boolean
 
   return {
     onPointerEnter: (event: PointerEvent) => {
+      // A drag already in flight must not open a card on the row it crosses.
+      if (pointerDragActive()) return;
       if (!previewMayOpen({ hoverNone: hoverNone(), pointerType: event.pointerType, disabled, pressed: pressed.current })) return;
       stop();
       if (store.isWarm()) store.open(id);
@@ -46,7 +49,7 @@ export function usePreviewTrigger(store: PreviewStore, id: string, open: boolean
     },
     onPointerLeave: () => { pressed.current = false; stop(); store.scheduleClose(id); },
     onPointerDown: () => { pressed.current = true; dismiss(); },
-    onDragStart: dismiss,
+    // A drag is a press that kept going. The press already closed the card, and capture keeps the next tab from opening one.
     onClick: dismiss,
     onContextMenu: dismiss,
     onFocusCapture: (event: FocusEvent) => {

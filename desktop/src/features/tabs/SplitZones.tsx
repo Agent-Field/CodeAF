@@ -1,6 +1,7 @@
-import { useState, type DragEvent, type Dispatch } from 'react';
+import { useRef, useState, type Dispatch, type ReactNode } from 'react';
 import { Icon } from '../../components/ui';
-import { edgeLabel, edgeMerge, edgeZones, endTabDrag, tabDragType, type EdgeZone } from './hosts/dragHost';
+import { useDropTarget } from '../../components/ui/usePointerDrag';
+import { edgeLabel, edgeMerge, edgeZones, type EdgeZone } from './hosts/dragHost';
 import type { WorkspaceAction } from './model';
 import './split-zones.css';
 
@@ -8,33 +9,40 @@ import './split-zones.css';
  * Design 2g: while a tab is dragged over the content, the left, right and bottom edges show a faint
  * outline; hovering one fills the half it would take with a translucent accent zone and a "Split …" pill,
  * and dropping merges the tab into this one as a new pane (up to a 2x2 grid).
+ * The bands and the preview are both targets: the preview covers the band once it appears, so the
+ * pointer would miss the band if only the band were registered.
  */
 export function SplitZones({ hostId, guestId, dispatch }: { hostId: string; guestId: string; dispatch: Dispatch<WorkspaceAction> }) {
   const [over, setOver] = useState<EdgeZone | null>(null);
-  const hover = (zone: EdgeZone) => (event: DragEvent) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'move'; setOver(zone); };
-  const leave = (zone: EdgeZone) => (event: DragEvent) => {
-    const next = event.relatedTarget instanceof Element ? event.relatedTarget.closest<HTMLElement>('.split-zone-band, .split-zone-preview') : null;
-    // Entering the highlighted half (or its pill) keeps the same drop intent.
-    if (next?.dataset.zone === zone) return;
-    // Native WebKit may omit relatedTarget between the band and its overlaid preview.
-    // Retain only while the real pointer still lies inside that visible target.
-    const preview = event.currentTarget.parentElement?.querySelector<HTMLElement>(`.split-zone-preview[data-zone="${zone}"]`);
-    const bounds = preview?.getBoundingClientRect();
-    if (bounds && event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= bounds.top && event.clientY <= bounds.bottom) return;
-    setOver(current => current === zone ? null : current);
-  };
-  const drop = (zone: EdgeZone) => (event: DragEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const withId = event.dataTransfer.getData(tabDragType) || guestId;
-    setOver(null);
-    endTabDrag();
-    dispatch({ type: 'split-merge', id: hostId, withId, ...edgeMerge(zone) });
+  const live = useRef<EdgeZone | null>(null);
+  const setZone = (zone: EdgeZone | null) => { live.current = zone; setOver(zone); };
+  const drop = (zone: EdgeZone) => {
+    setZone(null);
+    dispatch({ type: 'split-merge', id: hostId, withId: guestId, ...edgeMerge(zone) });
   };
   return (
     <div className="split-zones" aria-hidden="true">
-      {edgeZones.map(zone => <div key={zone} className="split-zone-band" data-zone={zone} data-over={over === zone || undefined} onDragEnter={hover(zone)} onDragOver={hover(zone)} onDragLeave={leave(zone)} onDrop={drop(zone)}/>)}
-      {over && <div className="split-zone-preview" data-zone={over} onDragEnter={hover(over)} onDragOver={hover(over)} onDragLeave={leave(over)} onDrop={drop(over)}><span className="split-zone-pill"><Icon name="split" size="xs"/>{edgeLabel[over]}</span></div>}
+      {edgeZones.map(zone => <ZoneTarget key={zone} zone={zone} live={live} setZone={setZone} onDrop={drop} className="split-zone-band" over={over}/>)}
+      {over && <ZoneTarget zone={over} live={live} setZone={setZone} onDrop={drop} className="split-zone-preview" over={over}>
+        <span className="split-zone-pill"><Icon name="split" size="xs"/>{edgeLabel[over]}</span>
+      </ZoneTarget>}
     </div>
   );
+}
+
+function ZoneTarget({ zone, live, setZone, onDrop, className, over, children }: {
+  zone: EdgeZone; live: { current: EdgeZone | null }; setZone: (zone: EdgeZone | null) => void; onDrop: (zone: EdgeZone) => void;
+  className: string; over: EdgeZone | null; children?: ReactNode;
+}) {
+  const ref = useDropTarget({
+    kind: 'edge-zone',
+    id: `${className}:${zone}`,
+    accepts: (payload) => payload.kind === 'tab',
+    hover: () => setZone(zone),
+    // A move from the band onto its own preview leaves one target and enters the other in the same event.
+    // The ref is already the new zone by the time a stale leave would clear it, so only a real exit wins.
+    leave: () => { if (live.current === zone) setZone(null); },
+    drop: () => { onDrop(zone); return true; },
+  });
+  return <div ref={ref} className={className} data-zone={zone} data-over={over === zone || undefined}>{children}</div>;
 }

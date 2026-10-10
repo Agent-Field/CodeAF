@@ -22,7 +22,7 @@ function garden(): PlacesSeed {
   };
 }
 
-const tile = (page: Page, name: string) => page.locator('.places-tile[data-mode="place"]').filter({ has: page.locator('.places-tile-name', { hasText: new RegExp(`^${name}$`) }) });
+const tile = (page: Page, name: string) => page.locator('.places-tile[data-mode="place"]:not(.pointer-drag-ghost)').filter({ has: page.locator('.places-tile-name', { hasText: new RegExp(`^${name}$`) }) });
 /** The delete toast only. The follow-up "Undone: …" line repeats the same sentence, so a substring match would still see it. */
 const deleteToast = (page: Page) => page.locator('.toast-region .toast').filter({ hasText: /^Deleted “Reading”\. No chat was deleted\./ });
 
@@ -361,15 +361,19 @@ test('d5-pl-test-org: the tile menu, the Home ⋯ and the Home tab each list the
   await expect(tab.getByRole('menuitem', { name: 'Quick Look' })).toHaveCount(0);
 });
 
-/** One DataTransfer for the whole gesture, so the type written at dragstart is still there at the drop. */
-async function drag(page: Page, source: Locator, target: Locator, alt = false, commit = true) {
-  const data = await page.evaluateHandle(() => new DataTransfer());
-  await source.dispatchEvent('dragstart', { dataTransfer: data, bubbles: true });
-  await target.dispatchEvent('dragenter', { dataTransfer: data, altKey: alt, bubbles: true });
-  await target.dispatchEvent('dragover', { dataTransfer: data, altKey: alt, bubbles: true });
-  if (commit) await target.dispatchEvent('drop', { dataTransfer: data, altKey: alt, bubbles: true });
-  await source.dispatchEvent('dragend', { dataTransfer: data, bubbles: true });
-  return data;
+/** Press, cross the 4px threshold, and land on the target. Option is down before the release so the drop sees it. */
+async function drag(page: Page, source: Locator, target: Locator, alt = false) {
+  const start = (await source.boundingBox())!;
+  const end = (await target.boundingBox())!;
+  const sx = start.x + start.width / 2;
+  const sy = start.y + start.height / 2;
+  await page.mouse.move(sx, sy);
+  await page.mouse.down();
+  await page.mouse.move(sx + 8, sy + 6, { steps: 3 });
+  await page.mouse.move(end.x + end.width / 2, end.y + end.height / 2, { steps: 8 });
+  if (alt) await page.keyboard.down('Alt');
+  await page.mouse.up();
+  if (alt) await page.keyboard.up('Alt');
 }
 
 test('d5-pl-test-org: dragging onto a tile says Add here, Option moves, and the menu adds without a drag', async ({ page }) => {
@@ -405,10 +409,13 @@ test('d5-pl-test-org: dragging onto a tile says Add here, Option moves, and the 
 
   for (const theme of ['light', 'dark'] as const) {
     await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
-    const data = await page.evaluateHandle(() => new DataTransfer());
-    await essay.dispatchEvent('dragstart', { dataTransfer: data, bubbles: true });
-    await notes.dispatchEvent('dragenter', { dataTransfer: data, altKey: theme === 'dark', bubbles: true });
-    await notes.dispatchEvent('dragover', { dataTransfer: data, altKey: theme === 'dark', bubbles: true });
+    const start = (await essay.boundingBox())!;
+    const end = (await notes.boundingBox())!;
+    await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(start.x + start.width / 2 + 8, start.y + start.height / 2 + 6, { steps: 3 });
+    if (theme === 'dark') await page.keyboard.down('Alt');
+    await page.mouse.move(end.x + end.width / 2, end.y + end.height / 2, { steps: 8 });
     await expect(notes).toHaveAttribute('data-drop', 'true');
     await expect(essay).toHaveAttribute('data-dragging', 'true');
     const measured = await notes.evaluate((el, holding) => {
@@ -487,8 +494,10 @@ test('d5-pl-test-org: dragging onto a tile says Add here, Option moves, and the 
       return { background: getComputedStyle(el).backgroundColor, soft };
     });
     expect(hovered.background, theme).toBe(hovered.soft);
-    // A synthetic drag reports dropEffect "none": the browser only keeps copy or move during a real drag. The write below is what Option changes.
-    await essay.dispatchEvent('dragend', { dataTransfer: data, bubbles: true });
+    // Escape puts the chat back. Nothing is filed, in either theme.
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    if (theme === 'dark') await page.keyboard.up('Alt');
     await expect(notes).not.toHaveAttribute('data-drop');
   }
   expect(parentPosts()).toEqual([]);
@@ -496,13 +505,14 @@ test('d5-pl-test-org: dragging onto a tile says Add here, Option moves, and the 
   expect(engine.calls.filter(call => call.method === 'POST' && /\/places\/[^/]+\/(members|parents)/.test(call.path))).toEqual([]);
 
   const clips = tile(page, 'Clips');
-  const self = await page.evaluateHandle(() => new DataTransfer());
-  await clips.locator('.places-tile-main').dispatchEvent('dragstart', { dataTransfer: self, bubbles: true });
-  await clips.dispatchEvent('dragenter', { dataTransfer: self, bubbles: true });
-  await clips.dispatchEvent('dragover', { dataTransfer: self, bubbles: true });
+  const self = (await clips.boundingBox())!;
+  await page.mouse.move(self.x + self.width / 2, self.y + self.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(self.x + self.width / 2 + 8, self.y + self.height / 2 + 6, { steps: 3 });
   await expect(clips).toHaveAttribute('data-dragging', 'true');
   await expect(clips).not.toHaveAttribute('data-drop');
-  await clips.locator('.places-tile-main').dispatchEvent('dragend', { dataTransfer: self, bubbles: true });
+  await page.keyboard.press('Escape');
+  await page.mouse.up();
   expect(parentPosts()).toEqual([]);
 
   await notes.locator('.places-tile-main').focus();
