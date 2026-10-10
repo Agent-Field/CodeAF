@@ -3166,6 +3166,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how to turn telemetry off now", "running-from-the-terminal"},
 		{"where are my cleared drafts", "commands"},
 		{"what does /workspace path do", "commands"},
+		// Desktop conversation 1b: queued rows fold into the chip after the model name.
+		{"what is the N queued chip in the desktop composer", "desktop-queued-chip"},
+		{"I scrolled up and the queued messages disappeared", "desktop-queued-chip"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
