@@ -74,7 +74,7 @@ export function WebPane({ pane, actions }: PaneRenderProps) {
       {host?.startConversationWithPage && shown && <IconButton icon="chatPlus" iconSize="sm" label="Start a conversation with this page" onClick={() => void talkAboutPage()}/>}
       <IconButton icon="external" iconSize="sm" label="Open in browser" disabled={!shown} onClick={() => shown && void openUrl(shown)}/>
     </div>
-    <div ref={web.sheetRef} className="web-sheet" data-covered={web.covered || undefined} data-blank={web.blank || undefined}>
+    <div ref={web.sheetRef} className="web-sheet" data-theme="light" data-covered={web.covered || undefined} data-blank={web.blank || undefined}>
       {web.blank ? null : <>
         {!web.native && shown && <div className="web-state">
           <Icon name="web" size="lg"/>
