@@ -5,6 +5,7 @@ import { installMockEngine } from './support/mock-engine';
 import { plainReply } from './support/scenarios';
 import { message, posts, send } from './support/conversation';
 import { newConversation } from './support/new-tab';
+import { installNativeWebMock } from './support/native-web-mock';
 import { savedWorkspace } from './support/synced-workspace';
 
 // Design 3f / 4c / 2h and Components "Command field": a new tab is one field, not a page.
@@ -116,6 +117,7 @@ test.describe('with the engine away', () => {
  });
 
  test('Escape clears the text, then closes the empty field; a URL is offered as a page first and a question second', async ({ page }) => {
+  await installNativeWebMock(page);
   await page.goto('/'); await openField(page);
   await field(page).fill('https://pkg.go.dev/encoding/json');
   expect((await rowNames(page))[0]).toMatch(/^Open pkg\.go\.dev\/encoding\/json in a web tab/);
@@ -214,4 +216,10 @@ test('the Design system page shows the field typed and empty', async ({ page }) 
  await specimen.scrollIntoViewIfNeeded();
  await expect(specimen.getByRole('option', { name: /Ask “fix” in a new conversation/ })).toHaveAttribute('aria-selected', 'true');
  await expect(specimen.getByText('Matching')).toBeVisible();
+});
+
+test('without native web a URL stays a question: no Open row is drawn', async ({ page }) => {
+  await page.goto('/'); await openField(page);
+  await field(page).fill('https://pkg.go.dev/encoding/json');
+  expect((await rowNames(page))[0]).toMatch(/^Ask “https:\/\/pkg\.go\.dev\/encoding\/json” in a new conversation/);
 });
