@@ -925,6 +925,12 @@
   --i2-proposal-choice-gap: 6px;
   --i2-proposal-choice-selected-fill: var(--accent-soft);
   --i2-proposal-choice-selected-ring: inset 0 0 0 1px var(--accent-rule);
+  --next-up-chip-height: 24px;
+  --next-up-chip-radius: 99px;
+  --next-up-chip-pad: 10px;
+  --next-up-chip-gap: 8px;
+  --next-up-chip-size: 12px;
+  --next-up-chip-title-gap: 12px;
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);
