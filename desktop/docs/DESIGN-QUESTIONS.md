@@ -202,6 +202,7 @@ Shell). On any conflict, the design files win over code and older docs.
 | JOB-OPEN-2 | Shell 3c does not say whether a job drawn as one pane of a split counts as already open. | It counts. Selecting it focuses that pane. The same job id in another conversation is a different tab. The session file and the job id are compared as the text the tab stored, with no path rewriting. |
 | JOB-OPEN-3 | Opening a job whose tab was closed: bring that closed tab back, or add a new one? | A closed tab is not open. A new terminal tab is added. Reopen is what puts a closed tab back where it stood. |
 | JOB-OPEN-4 | Tasks opened from a conversation join its group. Shell 3c does not say whether a job does. | A job tab is a loose tab. It does not join the conversation's group. |
+| PK1 | A pick that only says sure, fairly or unsure has no measured percent. Decisions draws a number ("Would choose · 92%", "Sure 97%"). The bands are sure at least 90, fairly 60–89, unsure under 60, and they do not name the one number a word stands for. | A measured percent is drawn as itself, and 0 draws nothing. A word with no percent stands for 90 (sure), 75 (fairly) or 40 (unsure). 90 is the floor of sure, so a bare "sure" meets the default decide threshold and a bare "fairly" does not. |
 
 ## File lane integration notes
 
