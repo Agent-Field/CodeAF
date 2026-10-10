@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { tokenColorIn } from './contracts';
 
 for (const theme of ['light', 'dark']) {
   for (const reducedMotion of ['no-preference', 'reduce'] as const) {
@@ -41,10 +42,12 @@ for (const theme of ['light', 'dark']) {
       await page.evaluate(() => (window as any).renderWorkShimmer(true, 60000));
       await expect(clock).toHaveText('12s');
       for (const title of await titles.all()) await expect(title).toHaveCSS('animation-name', 'none');
-      expect(await titles.nth(1).evaluate(el => {
-        const probe = document.createElement('span'); probe.style.color = 'var(--ink-3)'; el.append(probe);
-        const matches = getComputedStyle(el).color === getComputedStyle(probe).color; probe.remove(); return matches;
-      })).toBe(true);
+      for (const at of [0, 1, 3]) {
+        const title = titles.nth(at);
+        await expect(title).toHaveCSS('color', await tokenColorIn(title, 'ink-3'));
+        await title.hover();
+        await expect(title).toHaveCSS('color', await tokenColorIn(title, 'ink-3'));
+      }
     });
   }
 }

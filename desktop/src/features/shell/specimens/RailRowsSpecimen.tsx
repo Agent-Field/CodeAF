@@ -19,7 +19,7 @@ const states = [
 export function RailRowsSpecimen() {
   return <Surface direction="column">
     <SectionHeading>Rail rows</SectionHeading>
-    <Text>Specimen. A 32px row, 13px ink-2 with a 14px ink-3 glyph. Hover is the tab-hover fill and ink; selected is the tab fill with sh-1, ink and medium weight; focus is a ring on keyboard only. Now shows what is running in ink-3 and nothing at 0; an amber dot, with a tooltip in words, shows when something needs you.</Text>
+    <Text>Specimen. A 32px row, 13px ink-2 with a 14px ink-3 glyph. Hover is the tab-hover fill and ink; selected is the tab fill with sh-1, ink and medium weight; focus is a ring on keyboard only. Now shows its count in ink-3 and nothing at 0; an amber dot, with a tooltip in words, shows when something needs you.</Text>
     <div className="rail-specimen" inert aria-hidden="true" data-rail-rows-specimen>
       {states.map(({ label, now }) => <div key={label} className="rail-specimen-frame rail">
         <small>{label}</small>
