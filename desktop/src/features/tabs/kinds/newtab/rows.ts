@@ -5,7 +5,8 @@ import { relativeTime } from '../../../conversation/tabSummary.ts';
 import type { HistoryItem } from '../../../history/types.ts';
 import { closedAtOf } from '../../reducers/closing.ts';
 import type { Tab } from '../../types.ts';
-import { addressParts, looksLikeAddress, toAddress } from '../../../web/address.ts';
+import { webRows } from './urlRow.ts';
+export { webLabel } from './urlRow.ts';
 
 export type RowKind = 'ask' | 'history' | 'seeall' | 'web' | 'terminal' | 'openfile' | 'file' | 'tab' | 'closed';
 import { historyDetail, type HistoryMatches } from './historyRows.ts';
@@ -38,6 +39,8 @@ export type RowInput = {
   files: FileHit[];
   /** True while the terminal kind is backed by the engine; otherwise the row is absent, not broken. */
   terminal: boolean;
+  /** True while the web kind is backed (the desktop app); otherwise an address is only a question. */
+  web: boolean;
   terminalShortcut: string;
   fileShortcut: string;
   /** What History found for the query, when it has answered for exactly this query. */
@@ -47,11 +50,6 @@ export type RowInput = {
 
 export const askLimit = 40;
 
-/** What the first row says for an address: the site and path as the web tab will show them. */
-export function webLabel(url: string): string {
-  const { site, rest } = addressParts(url);
-  return `Open ${clip(`${site}${rest}`, askLimit)} in a web tab`;
-}
 const clip = (text: string, limit: number) => (text.length <= limit ? text : `${text.slice(0, limit - 1).trimEnd()}…`);
 const firstLine = (text: string) => text.trim().split('\n')[0];
 
@@ -72,9 +70,8 @@ function closedDetail(tab: { closedAt?: number }, now: number): string {
 export function buildSections(input: RowInput): NewTabSection[] {
   const query = input.query.trim();
   const sections: NewTabSection[] = [];
-  // An address is offered as a page first; the conversation row stays one arrow away for a URL that is a question.
-  const address = query && looksLikeAddress(query) ? toAddress(query) : undefined;
-  const web: NewTabRow[] = address && 'url' in address ? [{ id: 'web', kind: 'web', icon: 'web', label: webLabel(address.url), hint: '↵', target: address.url }] : [];
+  // An address is offered as a page first while web is backed; the conversation row stays one arrow away for a URL that is a question.
+  const web = webRows(query, input.web);
   if (query) sections.push({ rows: [...web, { id: 'ask', kind: 'ask', icon: 'tab', label: askLabel(query), hint: web.length ? undefined : '↵' }] });
   const found = input.history;
   if (found && found.query === query && (found.rows.length || found.total > 0)) {
