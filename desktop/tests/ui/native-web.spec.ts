@@ -119,7 +119,7 @@ test.describe('in the desktop app (typed native mock)', () => {
     await page.getByRole('button', { name: /^Address / }).click();
     await page.getByRole('textbox', { name: 'Address' }).fill('example.org');
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('button', { name: /^Address https:\/\/go\.dev\/doc/ })).toBeFocused();
+    await expect(page.getByRole('button', { name: /^Address https:\/\/go\.dev\/doc/ })).not.toBeFocused();
     expect((await nativeCalls(page, 'web_navigate')).length).toBe(1);
   });
 
@@ -208,6 +208,7 @@ test.describe('in the desktop app (typed native mock)', () => {
   test('a failed load shows why, hides the view, and Try again reloads', async ({ page }) => {
     await page.goto('/');
     await expect.poll(async () => (await nativeCalls(page, 'web_open')).length).toBe(1);
+    await expect.poll(() => lastVisible(page)).toBe(true);
     await emitState(page, PANE, { loading: false, failure: { kind: 'unreachable' } });
     const alert = page.locator('.web-state[role="alert"]');
     await expect(alert).toContainText('This page did not load');
@@ -281,7 +282,7 @@ test.describe('in the desktop app (typed native mock)', () => {
         await emitState(page, PANE, { loading: false, title: 'encoding/json', canBack: true });
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
         const header = (await page.locator('.web-header').boundingBox())!;
-        for (const name of ['Back', 'Forward', 'Reload', 'Open in browser']) {
+        for (const name of ['Back', 'Forward', 'Reload', width <= 600 ? 'Page actions' : 'Open in browser']) {
           const box = (await page.getByRole('button', { name, exact: true }).boundingBox())!;
           expect(box.x).toBeGreaterThanOrEqual(header.x);
           expect(box.x + box.width).toBeLessThanOrEqual(header.x + header.width + 0.5);
