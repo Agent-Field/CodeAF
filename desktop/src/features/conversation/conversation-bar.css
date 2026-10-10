@@ -14,3 +14,10 @@
 /* Progress stays beside the title while the shell walks the queue. */
 .next-up-chip { display: flex; flex: none; align-items: center; height: var(--next-up-chip-height); padding-inline: var(--next-up-chip-pad); gap: var(--next-up-chip-gap); border-radius: var(--next-up-chip-radius); background: var(--field); color: var(--ink-2); font-size: var(--next-up-chip-size); white-space: nowrap; }
 .next-up-chip-progress { color: var(--ink-3); }
+
+/* The title renames in place: hover is a fill change only, the keyboard ring comes from the shared focus rule, and the field takes the title's own type so nothing jumps. */
+.conversation-bar-title[role="button"] { padding-inline: var(--conversation-bar-title-pad); margin-inline-start: calc(-1 * var(--conversation-bar-title-pad)); border-radius: var(--radius-sm); cursor: text; transition: background var(--conversation-bar-hover-duration); }
+.conversation-bar-title[role="button"]:hover { background: var(--field); }
+.conversation-bar-rename.text-input { flex: none; width: var(--conversation-bar-rename-width); max-width: 100%; font-size: var(--type-prose-size); font-weight: var(--type-label-strong); }
+.conversation-bar-count { display: flex; align-items: center; gap: var(--conversation-bar-count-gap); white-space: nowrap; }
+.conversation-bar-count.button:hover:not(:disabled) { background: var(--field); }

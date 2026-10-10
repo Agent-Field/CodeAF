@@ -1,0 +1,54 @@
+.toast-region {
+ position: fixed;
+ inset-inline: var(--toast-zero);
+ bottom: var(--toast-offset);
+ z-index: var(--z-toast);
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ width: fit-content;
+ max-width: calc(100vw - var(--toast-gutter) * 2);
+ margin-inline: auto;
+ pointer-events: none;
+ opacity: var(--opacity-opaque);
+ transition: opacity var(--dur-base) var(--ease);
+}
+.toast-region[data-exiting] { opacity: var(--opacity-transparent); pointer-events: none; }
+.toast-region[data-exiting] .toast { pointer-events: none; }
+.toast {
+ display: flex;
+ align-items: center;
+ gap: var(--toast-gap);
+ box-sizing: border-box;
+ height: var(--toast-height);
+ max-width: 100%;
+ padding: var(--toast-zero) var(--toast-pad-end) var(--toast-zero) var(--toast-pad-start);
+ border-radius: var(--toast-radius);
+ background: var(--surface);
+ box-shadow: var(--sh-2);
+ color: var(--ink);
+ font-family: var(--sans);
+ font-size: var(--type-label-size);
+ line-height: var(--type-label-leading);
+ pointer-events: auto;
+ animation: toast-enter var(--dur-base) var(--ease);
+}
+.toast-dot { flex: none; width: var(--toast-dot); height: var(--toast-dot); border-radius: var(--radius-pill); background: var(--accent); }
+.toast[data-tone="warning"] .toast-dot { background: var(--amber); }
+.toast[data-tone="danger"] .toast-dot { background: var(--danger); }
+.toast-icon { flex: none; color: var(--ink-2); }
+.toast-text { flex: 0 1 auto; min-width: var(--toast-zero); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.toast-strong { font-weight: var(--type-label-strong); }
+.toast-action.button { flex: none; min-height: var(--toast-action-height); height: var(--toast-action-height); padding: var(--toast-zero) var(--toast-action-pad); border-radius: var(--toast-action-radius); font-weight: var(--type-label-strong); }
+.toast-action.button-ghost { color: var(--ink-2); }
+.toast-action.button-quiet { background: var(--field); color: var(--ink); }
+.toast-action.button-quiet:hover:not(:disabled) { background: var(--field-2); }
+.toast-action.button-quiet:active:not(:disabled) { background: var(--field-2); filter: brightness(var(--brightness-press)); }
+.toast-action.button-ghost:is(:hover,:active):not(:disabled) { color: var(--ink-2); }
+@media (max-width: 600px) {
+ .toast-region { max-width: calc(100vw - var(--toast-narrow-gutter) * 2); }
+}
+@media (prefers-reduced-motion: reduce) {
+ .toast { animation: none; }
+ .toast-region { transition: none; }
+}
