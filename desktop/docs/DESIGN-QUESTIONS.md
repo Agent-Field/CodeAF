@@ -61,6 +61,7 @@ Shell). On any conflict, the design files win over code and older docs.
 
 | # | Question | Assumption the app ships now |
 |---|---|---|
+| PL-RAIL-514 | Rail accessibility requires roving arrows but does not specify wrap boundaries or an empty Pinned drop target. | Up/Down wrap through visible navigation rows; Home/End choose the endpoints without navigating. A first-pin drop area appears only during a place drag, so the resting empty rail keeps no Pinned heading. Alt+Up/Down and Move up/Move down do not wrap. |
 | PL-RAIL-0 | At zero places, Places 6d says the rail shows Now and nothing else, while 8e draws Now and All places with no shortcut. Which one is the rail? | Follow the drawn 8e: Now and All places, no Pinned or Open header, and no ⌘⇧P until a live place exists. 6d's "nothing else" is the absence of place sections, not the All places row. |
 | PL-RAIL-KEYS | Places and Interactions say ↑↓ move through the rail list and do not say whether the move wraps. | The move stops on the first and last row. Enter activates the focused row (Go to, Now, or All places). |
 | IR1 | **Superseded attention scope: I2.1/I2.6.** What opens if a saved workspace contains only retired Inbox slots? | Drop Inbox, open one quiet New tab, and preserve closed chats and the tab counter. Mixed splits retain every surviving pane; one surviving pane becomes a plain tab with the holder id. |

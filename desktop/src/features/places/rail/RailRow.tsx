@@ -23,7 +23,7 @@ export function RailRow({ name, active, icon, tint, parentName, status, statusLa
   const canClose = close && !closedButBusy;
   const tabs = close?.tabs;
   const closeTitle = `Close ${name}${tabs && tabs > 0 ? ` · ${tabs} ${tabs === 1 ? 'tab' : 'tabs'}` : ''}`;
-  return <div {...containerProps} className={`rail-row ${containerProps?.className ?? ''}`} data-busy-closed={closedButBusy || undefined} data-closable={canClose ? true : undefined}>
+  return <div {...containerProps} className={`rail-row ${containerProps?.className ?? ''}`} data-status={status} data-busy-closed={closedButBusy || undefined} data-closable={canClose ? true : undefined}>
     <NavigationItem {...props} className={`rail-row-main ${tint ? 'rail-place' : ''} ${className}`} active={active} icon={icon}
       lead={tint ? <PlaceSwatch tint={tint} role="rail"/> : undefined}
       trail={<span className="rail-row-trail">{meta !== undefined && meta !== null && meta !== '' && meta !== 0 && <span className="rail-meta">{meta}</span>}<PlaceDot status={status} label={statusLabel}/></span>}>

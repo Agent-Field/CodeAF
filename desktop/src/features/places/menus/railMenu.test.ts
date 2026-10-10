@@ -43,3 +43,22 @@ test('Shift+F10 and the context-menu key open the menu; plain F10 does not', () 
   assert.ok(opensRailMenu({ key: 'F10', shiftKey: true }));
   assert.ok(!opensRailMenu({ key: 'F10', shiftKey: false }));
 });
+
+test('wired window, reorder and close hints use the same rail menu builder', () => {
+  const called: string[] = [];
+  const items = railMenu({ id: 'a', tint: 'tide', pinned: true }, {
+    newWindow: id => called.push(`window:${id}`), newWindowShortcut: '⌘↵',
+    moveUp: id => called.push(`up:${id}`), close: id => called.push(`close:${id}`), closeShortcut: '⌘⇧W',
+    closeOthers: () => {}, closeOthersDisabled: true,
+  });
+  for (const id of ['new-window', 'up', 'close']) {
+    const item = items.find(item => item.id === id);
+    assert.ok(item && 'onSelect' in item);
+    if (item && 'onSelect' in item) item.onSelect();
+  }
+  assert.deepEqual(called, ['window:a', 'up:a', 'close:a']);
+  const close = items.find(item => item.id === 'close');
+  assert.equal(close && 'shortcut' in close ? close.shortcut : undefined, '⌘⇧W');
+  const others = items.find(item => item.id === 'close-others');
+  assert.equal(others && 'disabled' in others ? others.disabled : undefined, true);
+});
