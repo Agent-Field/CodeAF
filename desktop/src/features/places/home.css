@@ -56,3 +56,10 @@
 
 /* Narrow windows: the column keeps the 16px page gutter (Places plan, P-CMP-18). */
 @media (max-width: 600px) { .home-column { padding-inline: var(--space-4); } .home-composer { padding-inline: var(--space-4); } }
+
+/* Decisions 12a keeps the status with the heading and the composer in the same reading column. */
+.home-heading-stack { display: flex; flex-direction: column; gap: var(--home-place-heading-gap); }
+.home-page[data-populated-place] .home-column { padding-top: var(--home-place-pad-top); gap: var(--home-place-section-gap); }
+.home-page[data-populated-place] .home-composer { width: 100%; max-width: var(--content-max-width); box-sizing: border-box; align-self: center; }
+
+.home-page[data-populated-place] .places-heading { gap: var(--home-place-heading-gap); }

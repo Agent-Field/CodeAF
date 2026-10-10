@@ -1,8 +1,13 @@
+import { Button } from '../../components/ui';
 import { useState, type ReactNode } from 'react';
 import { PlaceHeading, type Crumb } from './components/PlaceHeading';
 import { AllPlacesPage } from './AllPlacesPage';
-import { HomeAttentionSection, HomeBanner, HomeChatsSection, HomeDeleteConfirm, HomeEmptyPlace, HomeFrame, HomeNotice, HomePlacesSection, HomeRecap, HomeSourcesSection, useDeleteFlow, useDragState, useRunner } from './HomeSections';
+import { HomeAttentionSection, HomeBanner, HomeChatsSection, HomeDeleteConfirm, HomeEmptyPlace, HomeFrame, HomeNotice, HomeRecap, useHomeSections, useDeleteFlow, useDragState, useRunner } from './HomeSections';
 import type { HomeConnection, HomeView } from './home-model';
+import { StatusLine } from '../decisions/StatusLine';
+import { DecidedRows } from '../decisions/DecidedRows';
+import { KnowsList } from './knows/KnowsList';
+import { shortTime } from './home-model';
 import { homeMenu, type PlaceActions } from './place-actions';
 
 export type HomePageProps = {
@@ -20,7 +25,7 @@ export type HomePageProps = {
   newWindowHint?: string;
 };
 
-/** A place's Home, the root's All places, or Now (Places 8a to 8e). One page; `view.kind` says which. Everything it shows is in `view`; every
+/** A place's Home, the root's All places, or Now (Places 8a to 8e). One page; `view.kind` says which. The digest and section reads supply every row; every
  * control it draws exists because the owner wired the verb behind it. Loading, error and offline are states of this page, not other pages. */
 export function HomePage({ view, connection = { state: 'ready' }, actions, composer, suggestion, now, newWindowHint }: HomePageProps) {
   const runner = useRunner();
@@ -29,6 +34,7 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
   const [renaming, setRenaming] = useState(false);
   const readOnly = connection.state === 'offline';
   const clock = now ?? new Date();
+  const sections = useHomeSections(view?.kind === 'place' ? view.id : undefined, view, connection.state !== 'ready');
 
   if (!view) {
     return <HomeFrame label="Place" composer={composer}><HomeNotice connection={connection} hasView={false} onRetry={actions.retry}/></HomeFrame>;
@@ -53,23 +59,27 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
   const isPlace = view.kind === 'place';
   const menu = isPlace ? homeMenu({ id: view.id, name: view.title, tint: view.tint, pinned: view.pinned }, actions, {
     readOnly, canRename: !!actions.rename, startRename: () => setRenaming(true), startDelete: deletion.start && (() => deletion.start?.({ id: view.id, name: view.title })), newWindowHint }) : [];
-  const nothingYet = isPlace && !view.children.length && !view.chats.length && !view.attention.length;
-  const siblings = view.children.map(child => child.name);
+  const nothingYet = isPlace && !view.children.length && !view.chats.length && !view.attention.length && !sections.decisions?.length && !sections.knowledge?.lines.length;
 
-  return <HomeFrame label={view.title} composer={composer} onUp={onUp}>
-    <PlaceHeading title={view.title} tint={view.tint} breadcrumb={breadcrumb} menu={menu} menuLabel={`${view.title} actions`}
+  return <HomeFrame label={view.title} composer={composer} onUp={onUp} populated={isPlace && !nothingYet}>
+    <div className="home-heading-stack"><PlaceHeading title={view.title} tint={view.tint} breadcrumb={breadcrumb} menu={menu} menuLabel={`${view.title} actions`}
       renaming={renaming} onRenameCancel={() => setRenaming(false)}
       onRename={name => void runner.run(() => actions.rename?.(view.id, name)).then(ok => { if (ok) setRenaming(false); })}/>
+    {isPlace && <StatusLine status={sections.status}/>}
+    </div>
     {notices}
-    {suggestion}
+    {!isPlace && suggestion}
     {view.recap && <HomeRecap label={view.recap.label} text={view.recap.text}/>}
     <HomeAttentionSection items={view.attention} actions={actions} readOnly={readOnly}/>
-    {isPlace && !nothingYet && <HomePlacesSection label="Places" places={view.children} parentId={view.id} parentName={view.title} parentTint={view.tintSource === 'own' ? view.tint : undefined}
-      actions={actions} readOnly={readOnly} siblings={siblings} runner={runner} drag={drag} onDelete={deletion.start}/>}
-    <HomeChatsSection label={isPlace ? 'Chats' : 'Not in any place'} chats={view.chats} truncated={view.chatsTruncated} actions={actions} readOnly={readOnly}
-      inPlaceId={isPlace ? view.id : undefined} drag={drag} now={clock}/>
-    {isPlace && <HomeSourcesSection placeId={view.id} sources={view.sources ?? []} actions={actions} readOnly={readOnly} showAdd={!nothingYet}/>}
+    {!isPlace && <HomeChatsSection label="Not in any place" chats={view.chats} truncated={view.chatsTruncated} actions={actions} readOnly={readOnly}
+      drag={drag} now={clock}/>}
+    {isPlace && !nothingYet && <>
+      <DecidedRows key={`${view.id}-decided`} items={(sections.decisions ?? []).map(item => ({ ...item, age: shortTime(item.at, clock) }))}/>
+      {sections.knowledge && <KnowsList key={`${view.id}-knows`} placeName={view.title} lines={sections.knowledge.lines} now={clock}
+        chatTitles={Object.fromEntries(view.chats.map(chat => [chat.id, chat.title]))} actions={sections.actions} readOnly={readOnly}/>}
+    </>}
+    {isPlace && sections.error && <div className="home-notice" role="alert"><span>{sections.error}</span>
+      {!readOnly && <Button variant="quiet" onClick={sections.refresh}>Retry Home sections</Button>}</div>}
     {nothingYet && <HomeEmptyPlace placeId={view.id} contextLine={view.contextLine} actions={actions} readOnly={readOnly}/>}
-    {isPlace && !nothingYet && view.contextLine && <p className="home-quiet home-context">{view.contextLine}</p>}
   </HomeFrame>;
 }
