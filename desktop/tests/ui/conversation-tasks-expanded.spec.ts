@@ -189,9 +189,13 @@ for (const theme of ['light', 'dark'] as const) {
       const s = getComputedStyle(el); const md = el.querySelector('.markdown')!;
       return { overflow: el.scrollHeight > el.clientHeight, bounded: el.clientHeight <= parseFloat(s.getPropertyValue('--task-detail-brief-max-height')), secondary: getComputedStyle(md).color === getComputedStyle(el.closest('.task-detail')!.querySelector('.task-detail-state-word')!).color, fits: el.getBoundingClientRect().bottom <= el.closest('.task-detail')!.getBoundingClientRect().bottom };
     })).toEqual({ overflow: true, bounded: true, secondary: true, fits: true });
+    // Text runs past the cap, so the bottom edge fades until the reader reaches the end.
+    await expect(instructions).toHaveAttribute('data-more', 'true');
+    expect(await instructions.evaluate(el => getComputedStyle(el).maskImage || getComputedStyle(el).webkitMaskImage)).toContain('linear-gradient');
     await instructions.focus();
     await page.keyboard.press('End');
     await expect.poll(() => instructions.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+    await expect(instructions).not.toHaveAttribute('data-more');
     await expect(instructions.getByText('Last instruction.', { exact: true })).toBeVisible();
     await expect(pane.getByRole('button', { name: 'Open task' })).toBeVisible();
     await expectNoHorizontalOverflow(page);
@@ -201,6 +205,19 @@ for (const theme of ['light', 'dark'] as const) {
     await expectNoHorizontalOverflow(page);
   });
 }
+
+test('a short task brief fits its pane and carries no bottom fade', async ({ page }) => {
+  const rig = scenario();
+  rig.taskPages!['1.1'] = pageOf(1, 'Read the screen once.');
+  await installMockEngine(page, rig);
+  await openApp(page);
+  await send(page, 'Ship it');
+  await page.getByRole('complementary', { name: 'Tasks' }).getByRole('button', { name: 'Expand tasks' }).click();
+  await rowButton(page, '1.1').click();
+  const instructions = detail(page, 'Read the current screen').getByRole('region', { name: 'Task instructions', exact: true });
+  await expect(instructions).toBeVisible();
+  await expect(instructions).not.toHaveAttribute('data-more');
+});
 
 for (const scheme of ['light', 'dark'] as const) {
   test(`${scheme}: task detail heading retains the design 1d typography over shared title defaults`, async ({ page }, testInfo) => {

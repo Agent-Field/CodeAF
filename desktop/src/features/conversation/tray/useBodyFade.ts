@@ -1,4 +1,5 @@
 import { useEffect, useState, type RefObject } from 'react';
+import { isMoreBelow } from '../../../components/ui';
 
 /**
  * True while the scrolling middle has more content below its visible edge, so the
@@ -15,7 +16,7 @@ export function useMoreBelow(body: RefObject<HTMLElement | null>, page: string):
     // A fresh card starts at the top. The fade is how the reader knows the rest of
     // the question is below the answers, which stay pinned underneath.
     element.scrollTop = 0;
-    const measure = () => setMore(element.scrollHeight - element.clientHeight - element.scrollTop > 1);
+    const measure = () => setMore(isMoreBelow(element));
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     for (const child of Array.from(element.children)) observer.observe(child);
