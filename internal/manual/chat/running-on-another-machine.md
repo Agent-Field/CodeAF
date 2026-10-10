@@ -658,6 +658,31 @@ Two readings are absent over a connection, and each says nothing rather than gue
   this instant — a run is in flight inside whichever process holds the tick lock — so the
   surface does not claim it. That is true locally too.
 
+## Automations on another machine — which machine runs them, and when they stop
+
+A window opened with `--host` or `--at` shows **that machine's** automations. One made in
+the conversation over there is saved on that machine and run by that machine's clock, in
+its workspace, under its profile and its keys. When a run ends, its one line appears in
+the conversation that made it if your window has that conversation open, and the desktop
+notification is raised on the machine you are sitting at — once, by whichever window
+reading that machine's automations claims it first. A rhythm such as every Monday at 9 is
+read in that machine's time zone.
+
+**They run there only while a window is attached.** Your window counts as a window open on
+that machine for as long as its connection lasts, once per window however many
+conversations it has open. A window opened on that machine itself counts too. Nothing is
+run for them on the machine you are sitting at.
+
+**Closing the last attached window stops a run in progress there.** Half a minute after the
+last window on that machine is gone, its clock stops whatever is running, records it as
+`stopped · codeaf closed before it finished`, and runs nothing more until a window is back.
+A slot missed in the meantime runs once, marked late, when one is. The same half minute is
+what carries a dropped `--host` link that reconnects: the window counts again once it is
+back.
+
+A far engine that could not open its automations store gives this window no automations at
+all — never this machine's own, which run somewhere else.
+
 ## Connecting an account over --host
 
 `/connect` is off over a connection. The panel writes to this machine's account store

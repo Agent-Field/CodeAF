@@ -133,6 +133,15 @@ leading `!` as model text, including automated submissions. Output events carry
 literal stdout/stderr in `Text`, paired by `CallID`, before the final tool result.
 A version mismatch refuses this feature rather than interpreting it as a chat.
 
+**Version 21 adds the automations doors and `Hello.Window`.** A window over `--host`
+or `--at` reads and changes the far machine's automations through thirteen
+`Automations.*` calls on that machine's store (`internal/remote/wire_automations.go`),
+advertised by `Welcome.Automations`, with the far machine's zone in
+`Welcome.AutomationsZone`. `Hello.Window`, said only on the boot connection of those
+two doors, makes the engine hold that machine's automations presence for the
+connection until it ends, so the far clock runs while a window is attached. The local
+engine road never says it: that window already holds presence on its own machine.
+
 ## Decision 4 — Version 2 separates a conversation's life from a pipe's
 
 **Decision.** In version 1 the engine *was* the ssh command: it read frames on

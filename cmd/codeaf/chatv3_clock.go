@@ -5,6 +5,12 @@ package main
 // them while a codeaf window is open, and the window's half — holding presence
 // for as long as it is open and starting a clock when none is running.
 //
+// AND THE TWO SEAMS A WINDOW READS AUTOMATIONS THROUGH, side by side: this
+// machine's store read directly ([v3AutomationsSeam]), and another machine's
+// read over a connection ([hostAutomationsSeam]) — whose clock is kept running
+// by the engine there, holding presence for the attached window
+// ([engineAutomations] in engine.go).
+//
 // `codeaf clock` IS MACHINERY, NOT A COMMAND, and like `codeaf engine` it is
 // absent from the usage text: a window starts it, it draws nothing, and it
 // leaves on its own when the last window has been closed for half a minute.
@@ -26,6 +32,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/subharness"
@@ -98,8 +105,54 @@ func v3AutomationsSeam() tui3.AutomationsSeam {
 	}
 }
 
+// hostAutomationsSeam is [tui3.Options.Automations] for a window on ANOTHER
+// machine — over --host or --at — and it is [v3AutomationsSeam] function for
+// function, every one of them a call to the engine instead of a read of this
+// disk (internal/remote's wire_automations.go). The conversation over there
+// proposes into that machine's store and that machine's clock runs what it
+// keeps, so the far store is the one this window reads, and the zone a typed
+// rhythm is read in is the far machine's, as its welcome said.
+//
+// AN ENGINE THAT DOES NOT SAY IT HAS THE DOORS GETS THE ZERO SEAM, which the
+// surface reads as automations absent over this connection — no list, no run
+// lines, no notifications. It never gets this laptop's store instead: those
+// automations run on a different machine, beside conversations this window
+// cannot see.
+func hostAutomationsSeam(client *remote.Client, welcome remote.Welcome) tui3.AutomationsSeam {
+	if client == nil || !welcome.Automations {
+		return tui3.AutomationsSeam{}
+	}
+	return tui3.AutomationsSeam{
+		List:      client.AutomationsList,
+		Runs:      client.AutomationsRuns,
+		Changes:   client.AutomationsChanges,
+		Cursor:    client.AutomationsCursor,
+		Active:    client.AutomationsActive,
+		Windows:   client.AutomationsWindows,
+		Create:    client.AutomationsCreate,
+		Update:    client.AutomationsUpdate,
+		SetStatus: client.AutomationsSetStatus,
+		Delete:    client.AutomationsDelete,
+		RunNow:    client.AutomationsRunNow,
+		StopRun:   client.AutomationsStopRun,
+		// A CLAIM THAT DID NOT ANSWER IS NOT THIS WINDOW'S, the same reading the
+		// local seam takes of a store that failed: one missed banner is better
+		// than the same banner raised by every window that could not be sure.
+		Claim: func(id int64) bool {
+			first, err := client.AutomationsClaim(id)
+			return err == nil && first
+		},
+		Zone: welcome.AutomationsZone,
+	}
+}
+
 // keepAutomationsWindow registers this process as an open window and keeps a
 // clock running while it is. The release is the window closing.
+//
+// IT IS ALSO WHAT AN ENGINE HOLDS FOR A WINDOW ATTACHED FROM ANOTHER MACHINE
+// ([engineAutomations]), once per connection whose hello says it is a window,
+// released when that connection ends. One door for both kinds of window is what
+// keeps them one kind of thing to the clock that counts them.
 func keepAutomationsWindow(label string) func() {
 	root := automationsRoot()
 	binary, err := os.Executable()
