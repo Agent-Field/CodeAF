@@ -61,6 +61,7 @@ Shell). On any conflict, the design files win over code and older docs.
 
 | # | Question | Assumption the app ships now |
 |---|---|---|
+| HRM1 | History specifies Delete… for archived rows, but the engine has no conversation-delete route. What should appear until deletion and Undo exist? | Ship no live Delete… action; the row exposes a confirmation callback only when supplied by a real host. Add to place stays absent until its filing lane connects it. |
 | WP-1 | When does a remembered window place become invalid, and what happens if persistence fails? | Only a successful graph read can establish deletion or archive; loading and failed reads retain the key. Boot destinations take precedence over saved keys. Navigation continues if local storage cannot be read or written, without promising restoration. |
 | TF-11-image | What is shown when the image GET fails before reporting its size? | Keep the engine's actual refusal reason as one muted line and select the Open in dropdown; do not invent a size. |
 | SH-089 | What does right-clicking empty strip space offer, and how does a keyboard reach it? | The shared ContextMenu offers New tab, Reopen closed tab (disabled with no closed tabs), and Show all tabs with platform shortcuts. Empty strip frame space shares the spacer menu; tabs, groups and controls keep their own behavior. A visually hidden button in the native drag spacer opens it with Shift+F10 or the context-menu key. No additional menu geometry or icons are invented. |
