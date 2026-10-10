@@ -117,3 +117,54 @@ test('forced failures and unknown sessions return error bodies', async ({ page }
   expect(typeof rejected.body.error).toBe('string');
   expect((await call(page, '/sessions/other')).status).toBe(404);
 });
+
+const big = (n: number) => 'é'.repeat(n);
+const toolEntry = (n: number, Output: string) => ({ Role: 'tool' as const, Text: '', Tool: 'bash', CallID: `c${n}`, Output });
+
+test('since= answers the header plus the entries tail, eliding over-cap outputs', async ({ page }) => {
+  const entries = [{ Role: 'user' as const, Text: 'a' }, toolEntry(1, 'small'), toolEntry(2, big(9000)), { Role: 'assistant' as const, Text: 'done' }];
+  await installMockEngine(page, { initial: { entries, title: 'T' } });
+  const tail = (await call(page, '/sessions/mock-1?since=2')).body;
+  expect(tail).toMatchObject({ title: 'T', entryCount: 4, from: 2 });
+  expect(tail.reset).toBeUndefined();
+  expect(tail.entries.map((e: any) => e.Role)).toEqual(['tool', 'assistant']);
+  expect(tail.entries[0]).toMatchObject({ Output: '', OutputOmitted: true, OutputBytes: 18000 });
+  const full = (await call(page, '/sessions/mock-1')).body;
+  expect(full.entries).toHaveLength(4);
+  expect(full.entries[1].Output).toBe('small');
+  const rewritten = (await call(page, '/sessions/mock-1?since=9')).body;
+  expect(rewritten).toMatchObject({ reset: true, from: 0 });
+  expect(rewritten.entries).toHaveLength(4);
+});
+
+test('queue-send steers a queued message into the running turn and refuses a sent one', async ({ page }) => {
+  const mock = await installMockEngine(page, { ...plainReply(), initial: { entries: [] }, manual: true });
+  await call(page, '/sessions/mock-1/turn', 'POST', { text: 'first', mode: 'submit' });
+  await call(page, '/sessions/mock-1/turn', 'POST', { text: 'later', mode: 'queue' });
+  const queued = (await call(page, '/sessions/mock-1')).body.queue;
+  expect(queued).toHaveLength(1);
+  expect((await call(page, '/sessions/mock-1/queue-send', 'POST', { id: queued[0].id })).body).toEqual({ accepted: true });
+  const after = (await call(page, '/sessions/mock-1')).body;
+  expect(after.queue).toEqual([]);
+  expect(after.entries.at(-1)).toMatchObject({ Role: 'user', Text: 'later', Steer: { Consumed: false } });
+  const again = await call(page, '/sessions/mock-1/queue-send', 'POST', { id: queued[0].id });
+  expect(again).toMatchObject({ status: 409, body: { error: 'that message has already been sent' } });
+  mock.advance();
+});
+
+test('offline fails every route until restored, and notice events stream', async ({ page }) => {
+  const mock = await installMockEngine(page, plainReply());
+  mock.setOffline(true, '503');
+  expect((await call(page, '/sessions/mock-1')).status).toBe(503);
+  mock.setOffline(true);
+  await expect(call(page, '/sessions/mock-1')).rejects.toThrow();
+  mock.setOffline(false);
+  expect((await call(page, '/sessions/mock-1')).status).toBe(200);
+  const after = mock.snapshot().seq;
+  mock.retrying(4, 'busy');
+  mock.compacting();
+  mock.compacted();
+  const events = (await readStream(page, 'mock-1', after)).map(r => (r as any).event);
+  expect(events.map((e: any) => e.kind)).toEqual(['retrying', 'compacting', 'compacted']);
+  expect(events[0]).toMatchObject({ text: 'busy', raw: { Retry: { DelaySeconds: 4 } } });
+});
