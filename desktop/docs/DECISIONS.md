@@ -373,3 +373,13 @@ Finding fixed: `584cf68e3` removed the scoped `http:default` grant (loopback `/a
 | 9 | ⌘T / ⌘W with the page focused | manual | manual | `policy::app_chords_are_new_close_and_address_on_the_primary_modifier_only`; menu accelerators `menu.rs`, GTK accel group `platform.rs` |
 
 Gap, stated plainly: acceptance ("every line passes on both OSes") is not met until lines 1-6 and 9 are walked by hand on both machines and 7-8 are confirmed from the page's devtools. Lines 2-4 have no automated check at all.
+
+## t-d5-settings-audit-role: model role controls and overlapping saves (2026-10-10)
+
+Decision: audited `SettingsPage` role rows, `ModelSelect`, `useModelSettings` and `saveQueue` from source. Read-only against the engine; no live profile was written. Browser fixture screenshots were not taken (headless lane); the claims below rest on source and unit tests.
+
+Finding fixed (real): an effort click sent `{ model: role.model, effort }`, where `role.model` is the last SAVED model. Choosing model B then clicking an effort before B's save returned queued a second save carrying the old model A, and the engine ended on A with B's choice silently lost (B's own answer is correctly not applied because it is superseded). Now an effort-only change resolves its model from the latest queued choice (`roleChoice.ts`, `resolveRoleChoice`), and a model change still clears the effort because the new model may not accept it. Covered by `roleChoice.test.ts`.
+
+Checked and sound: same-key saves run in intent order (`saveQueue`); a duplicate Enter/blur shares one save; a failed save neither blocks a retry nor drops a newer intent; only the newest version applies its answer or its failure text; pinned slots re-read the saved list when they run, so overlapping pin edits compose; the receipt shows the latest failure, else "Saving…", else the saved line.
+
+Remaining gap, not fixed: the receipt is one shared line, so a failure on one control has no marker on its own row. Left for the coordinator (see DESIGN-QUESTIONS, SETTINGS-ROLE-282).

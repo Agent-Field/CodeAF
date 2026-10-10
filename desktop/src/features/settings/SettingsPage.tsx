@@ -55,7 +55,7 @@ function RoleRow({ role, settings }: { role: ModelRole; settings: ModelSettings 
       <div className="settings-row-choice">
         <ModelSelect label={`Model for ${role.name}`} value={role.model} catalog={settings.catalog} onChange={choose} />
         {efforts.length > 0 && (
-          <Segmented label={`Effort for ${role.name}`} value={role.effort ?? ''} options={efforts.map(word => ({ value: word, label: effortWord(word) }))} onChange={word => settings.saveRole(role.id, { model: role.model, effort: word })} />
+          <Segmented label={`Effort for ${role.name}`} value={role.effort ?? ''} options={efforts.map(word => ({ value: word, label: effortWord(word) }))} onChange={word => settings.saveRole(role.id, { effort: word })} />
         )}
       </div>
     </li>
