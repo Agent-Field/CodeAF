@@ -17,6 +17,7 @@ import './styles/material.css';
 import './App.css';
 import { initMaterial } from './design/material';
 import { focusHistoryStorageKey, Workspace } from './features/tabs/Workspace';
+import { restoreNamedScroll } from './features/tabs/scroll/memoryStore';
 import type { FocusEntry } from './features/focus-history/model';
 import { FocusHistoryProvider, useFocusWireFor } from './features/focus-history/useFocusHistory';
 import { createNextUp, NextUpProvider } from './features/nextup/useNextUp';
@@ -60,6 +61,8 @@ document.documentElement.dataset.environment = mac ? 'mac-desktop' : desktop ? '
 function restoreFocus(shell: PlacesShell, entry: FocusEntry) {
  const task = entry.drillPath[0];
  const apply = () => {
+  // Before the pane mounts: a place switch has already dropped this pane from scroll memory.
+  restoreNamedScroll(entry.tabId, entry.scroll);
   requestWorkspace({ type: 'select', id: entry.tabId });
   requestWorkspace({ type: 'view', id: entry.tabId, change: { route: task ? { taskId: task, back: [], forward: [] } : undefined } });
  };
