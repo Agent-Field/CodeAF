@@ -160,6 +160,7 @@ Shell). On any conflict, the design files win over code and older docs.
 | CV181 | Conversation 1b draws a "2 queued" chip after the model chip and does not say when the rows fold, what one queued message reads, or what the chip does. | The chip replaces the rows only while the reader is more than one viewport from the bottom, the same rule as the compact question tray, and only while the full composer is on screen. It reads "N queued", including "1 queued". Clicking it, or returning to the bottom any other way, shows the rows again. An empty queue draws neither. An unfocused split pane keeps the rows, because its compact field has no toolbar for the chip. |
 | SH-011 | Does the empty strip space drag the window? | Yes: it is its own `.workspace-tab-spacer` carrying `data-tauri-drag-region`; tabs, group labels, +, +N and the overview button stay no-drag. |
 | SH-012 | Double-click on the empty strip | Toggles maximize, the title-bar convention, through the drag region's native behaviour (capability `core:window:allow-toggle-maximize`). |
+| OP1 | What Open in editor and Reveal say when the engine's directory list cannot be read (the design names the outside sentence only) | "The workspace is unavailable". An empty list is different: every path is refused with "That file is outside the workspace", and the path is not checked on disk first. A file that was there and is gone, when the list did load, says "That file no longer exists". |
 
 ## File lane integration notes
 
