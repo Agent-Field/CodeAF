@@ -9,7 +9,7 @@
 .search-field > input::-webkit-search-decoration,
 .search-field > input::-webkit-search-cancel-button { appearance: none; }
 .search-field > input:focus-visible { outline: none; box-shadow: none; }
-html:not([data-input="pointer"]) .search-field:has(> input:focus-visible) { outline: var(--focus-ring-width) solid transparent; box-shadow: var(--sh-1), 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 calc(var(--focus-ring-width) + var(--focus-halo-width)) var(--accent-soft); }
+html:not([data-input="pointer"]) .search-field:has(> input:focus-visible) { outline: var(--focus-ring-width) solid transparent; box-shadow: var(--sh-1), 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
 .search-field-hint { flex: none; margin-left: auto; }
 .search-field-hint > .keyboard-shortcut[data-variant="inline"] { font-size: var(--search-field-hint-size); }
 @media (max-width: 600px) { .search-field-hint { display: none; } }

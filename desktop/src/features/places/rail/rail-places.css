@@ -23,6 +23,6 @@
 }
 @media (hover: none), (pointer: coarse) { .rail-row-close.icon-button { display: none; } }
 /* The selected lift must not override the shared keyboard ring, including while the row is hovered. */
-:where(html:not([data-input="pointer"])) .rail .rail-row-main.nav-item:focus-visible { box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 calc(var(--focus-ring-width) + var(--focus-halo-width)) var(--accent-soft); }
+:where(html:not([data-input="pointer"])) .rail .rail-row-main.nav-item:focus-visible { box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
 /* The browser specimen uses the design's 232px row column without widening the production rail. */
 .rail-row-fixture { width: var(--rail-row-specimen-width); background: var(--frame); }

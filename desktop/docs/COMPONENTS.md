@@ -74,7 +74,7 @@ text role must be drawn in `ink-3` by the design first.
   `control-pad-ghost` 10, `field-height` 30, `field-pad` 10, `segment-*`,
   `tag-*`, `row-height-v3` 30, `row-pad` 8, `row-action-size` 24,
   `row-action-icon` 12, `message-action-size` 26, `message-action-icon` 13,
-  `focus-ring-width` 2, `focus-halo-width` 6, `opacity-control-disabled` 0.4,
+  `focus-ring-width` 2, `focus-halo-width` 4, `opacity-control-disabled` 0.4,
   `hairline` .5px.
 
 ## Legacy names
