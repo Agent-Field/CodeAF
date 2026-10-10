@@ -171,7 +171,7 @@ export function usePlacesShellController(): PlacesShell {
   const navigationState = useRef({ place, graph: places.graph });
   navigationState.current = { place, graph: places.graph };
   const navigation = useMemo(() => createPlaceNavigation({
-    client: { graph: client.graph, railOp: async operation => {
+    client: { graph: client.graph, visit: id => client.visit(id), railOp: async operation => {
       const result = await client.railOp(operation);
       if (operation.op === 'close' && operation.place) {
         const id = operation.place;
