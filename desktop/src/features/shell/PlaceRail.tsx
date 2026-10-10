@@ -1,12 +1,12 @@
 import { useState, type DragEvent, type MouseEvent, type ReactNode } from 'react';
-import { Button, ContextMenu, IconButton, NavigationItem, ThemeSelect, type IconName, type MenuEntry } from '../../components/ui';
-import { choosableTints, PlaceSwatch, tintLabel, type TintName } from '../places/components/PlaceSwatch';
+import { Button, ContextMenu, NavigationItem, ThemeSelect, type IconName, type MenuEntry } from '../../components/ui';
+import { choosableTints, tintLabel, type TintName } from '../places/components/PlaceSwatch';
 import type { PlaceRowModel } from '../places/shell/contracts';
 import { chatDragType, placeDragType, readDrag, writeDrag } from '../places/place-actions';
 import type { RailSections } from '../places/shell/selectors';
 import { RailToggle } from './RailToggle';
 import { NowRow } from './NowRow';
-import { PlaceDot as Dot } from '../places/PlaceDot';
+import { RailRow } from '../places/rail/RailRow';
 import './rail.css';
 import './place-rail.css';
 
@@ -122,22 +122,17 @@ export function PlaceRail(props: PlaceRailProps) {
   });
 
   function row(place: PlaceRowModel, section: 'pinned' | 'open', index: number) {
-    const tabs = tabCount?.(place.id) ?? 0;
     const slot = slotOf(place.id);
     return <ContextMenu key={place.id} label={`${place.name} actions`} items={menu(place, section)}>
-      <div className="rail-row" data-busy-closed={place.closedButBusy || undefined} data-drop={over === `${section}:${index}` || undefined}
-        draggable={!!actions.pin} onDragStart={event => writeDrag(event, { kind: 'place', ids: [place.id] })} {...dropProps({ section, index, placeId: place.id })}>
-        <NavigationItem className="rail-place" active={place.id === current} lead={<PlaceSwatch tint={place.tint} role="rail"/>}
-          trail={<Dot status={place.status} label={place.statusLabel}/>}
-          aria-keyshortcuts={slot ? slotShortcut(slot).replace('⌃', 'Control+').replace('Alt ', 'Alt+') : undefined}
-          onClick={event => (primaryClick(event) && actions.newWindow ? actions.newWindow(place.id) : actions.go(place.id))}
-          onAuxClick={event => { if (event.button === 1 && actions.newWindow) { event.preventDefault(); actions.newWindow(place.id); } }}>
-          <span className="rail-place-name">{place.name}{place.parentName && <span className="rail-place-path"> · {place.parentName}</span>}</span>
-          {place.closedButBusy && <span className="rail-place-path rail-place-closed">closed · still running</span>}
-        </NavigationItem>
-        {section === 'open' && !place.closedButBusy && <IconButton className="rail-row-close" icon="close" iconSize="micro" label={`Close ${place.name}`}
-          title={`Close ${place.name}${tabs ? ` · ${tabs} ${tabs === 1 ? 'tab' : 'tabs'}` : ''}${place.id === current ? ` (${closeShortcut})` : ''}`} onClick={() => actions.close(place.id)}/>}
-      </div>
+      <RailRow name={place.name} parentName={place.parentName} tint={place.tint} active={place.id === current}
+        status={place.status} statusLabel={place.statusLabel} closedButBusy={place.closedButBusy}
+        close={section === 'open' ? { onClose: () => actions.close(place.id), tabs: tabCount?.(place.id), shortcut: place.id === current ? closeShortcut : undefined } : undefined}
+        containerProps={{ 'data-drop': over === `${section}:${index}` || undefined,
+          draggable: !!actions.pin, onDragStart: event => writeDrag(event, { kind: 'place', ids: [place.id] }),
+          ...dropProps({ section, index, placeId: place.id }) }}
+        aria-keyshortcuts={slot ? slotShortcut(slot).replace('⌃', 'Control+').replace('Alt ', 'Alt+') : undefined}
+        onClick={event => (primaryClick(event) && actions.newWindow ? actions.newWindow(place.id) : actions.go(place.id))}
+        onAuxClick={event => { if (event.button === 1 && actions.newWindow) { event.preventDefault(); actions.newWindow(place.id); } }}/>
     </ContextMenu>;
   }
 
