@@ -594,6 +594,9 @@ var seamContract = []struct {
 	{http.MethodPost, "/sessions/{id}/plan/{plan}/cancel"},
 	{http.MethodGet, "/councils"},
 	{http.MethodPost, "/councils/{id}/steer"},
+	{http.MethodGet, "/councils/{id}/messages"},
+	{http.MethodPost, "/councils/{id}/pause"},
+	{http.MethodPost, "/councils/{id}/resume"},
 }
 
 // seamOwned says a row has a real handler in this package (knows_routes.go or
@@ -615,8 +618,11 @@ func TestSeamRouteTableAnswers501UntilAHandlerLands(t *testing.T) {
 	// are proved there. Every other row is still the empty slot that
 	// answers 501 until its own file lands.
 	landed := map[string]bool{
-		http.MethodGet + " /councils":             true,
-		http.MethodPost + " /councils/{id}/steer": true,
+		http.MethodGet + " /councils":               true,
+		http.MethodPost + " /councils/{id}/steer":   true,
+		http.MethodGet + " /councils/{id}/messages": true,
+		http.MethodPost + " /councils/{id}/pause":   true,
+		http.MethodPost + " /councils/{id}/resume":  true,
 	}
 	for i, want := range seamContract {
 		got := seamTable[i]
@@ -646,6 +652,10 @@ func TestSeamRouteTableAnswers501UntilAHandlerLands(t *testing.T) {
 			switch route.pattern {
 			case "/councils":
 				if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"councils":[]`) {
+					t.Errorf("%s %s: %d %s", route.method, route.pattern, w.Code, w.Body.String())
+				}
+			case "/councils/{id}/messages":
+				if w.Code != http.StatusNotFound {
 					t.Errorf("%s %s: %d %s", route.method, route.pattern, w.Code, w.Body.String())
 				}
 			default:

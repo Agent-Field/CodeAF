@@ -378,3 +378,39 @@ func histTitle(items []HistoryItem, id string) string {
 	}
 	return ""
 }
+
+// A discussion's messages come back with the place that spoke each one, the
+// person's own typing is marked, and pause then resume reach the runner.
+func TestCouncilMessagesPauseAndResume(t *testing.T) {
+	rig := newPlacesRig(t)
+	a, z := rig.mk("Marketing"), rig.mk("Software")
+	root := t.TempDir()
+	store, err := council.Open(council.Options{Path: filepath.Join(root, "c.json"), SessionsDir: filepath.Join(root, "s"), Places: rig.p.Store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink := journalSink{store: store}
+	run, err := council.NewRunner(store, rig.p.Store, refuseCouncilAsk, sink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rig.b.UseCouncils(store, run)
+	c := mustBegin(t, store, a, z, "Launch date")
+	if err := sink.Say(c.ChatID, "Marketing", "Does it hold?"); err != nil {
+		t.Fatal(err)
+	}
+	path := "/councils/" + c.ID
+	if code, body := rig.raw(http.MethodPost, path+"/pause", nil); code != http.StatusOK || !strings.Contains(string(body), `"state":"paused"`) {
+		t.Fatalf("pause: %d %s", code, body)
+	}
+	if code, body := rig.raw(http.MethodPost, path+"/steer", map[string]string{"text": "Wait"}); code != http.StatusOK {
+		t.Fatalf("steer: %d %s", code, body)
+	}
+	code, body := rig.raw(http.MethodGet, path+"/messages", nil)
+	if code != http.StatusOK || !strings.Contains(string(body), `"speaker":"Marketing"`) || !strings.Contains(string(body), `"speaker":"person"`) {
+		t.Fatalf("messages: %d %s", code, body)
+	}
+	if code, _ := rig.raw(http.MethodGet, "/councils/nope/messages", nil); code != http.StatusNotFound {
+		t.Fatalf("missing: %d", code)
+	}
+}

@@ -9,6 +9,12 @@ function council(v: unknown): Council {
     || !['sessionFile', 'outcome', 'closedAt'].every(k => v[k] === undefined || typeof v[k] === 'string')) return invalid('discussion');
   return v as Council;
 }
+/** One line of a discussion. `speaker` is the place's name, "person" for the person, absent for a line the journal wrote before it recorded who spoke. */
+export type CouncilMessage = { speaker?: string; text: string; at?: string };
+function message(v: unknown): CouncilMessage {
+  if (!object(v) || typeof v.text !== 'string' || !['speaker', 'at'].every(k => v[k] === undefined || typeof v[k] === 'string')) return invalid('discussion message');
+  return v as CouncilMessage;
+}
 /** Only the engine can list or steer discussions; this door runs no model. */
 export function createCouncilClient(transport: PlacesTransport = placesTransport) {
   return {
@@ -19,6 +25,15 @@ export function createCouncilClient(transport: PlacesTransport = placesTransport
       return v as { councils: Council[] };
     },
     steer: async (id: string, text: string, signal?: AbortSignal): Promise<Council> => council(await transport(`/councils/${encodeURIComponent(id)}/steer`, { method: 'POST', body: { text }, signal })),
+    messages: async (id: string, signal?: AbortSignal): Promise<CouncilMessage[]> => {
+      const v = await transport(`/councils/${encodeURIComponent(id)}/messages`, { method: 'GET', signal });
+      if (!object(v) || !Array.isArray(v.messages)) return invalid('discussion messages');
+      return v.messages.map(message);
+    },
+    /** Holds the discussion before its next turn: the person has started typing. */
+    pause: async (id: string, signal?: AbortSignal): Promise<Council> => council(await transport(`/councils/${encodeURIComponent(id)}/pause`, { method: 'POST', body: {}, signal })),
+    /** Lets a paused discussion go on: the person cleared what they were typing. */
+    resume: async (id: string, signal?: AbortSignal): Promise<Council> => council(await transport(`/councils/${encodeURIComponent(id)}/resume`, { method: 'POST', body: {}, signal })),
   };
 }
 export type CouncilClient = ReturnType<typeof createCouncilClient>;

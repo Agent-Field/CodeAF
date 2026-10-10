@@ -210,6 +210,9 @@ var seamTable = []seamRoute{
 	{method: http.MethodPost, pattern: "/sessions/{id}/plan/{plan}/cancel"},
 	{method: http.MethodGet, pattern: "/councils"},
 	{method: http.MethodPost, pattern: "/councils/{id}/steer"},
+	{method: http.MethodGet, pattern: "/councils/{id}/messages"},
+	{method: http.MethodPost, pattern: "/councils/{id}/pause"},
+	{method: http.MethodPost, pattern: "/councils/{id}/resume"},
 }
 
 func init() {

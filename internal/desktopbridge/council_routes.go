@@ -29,6 +29,9 @@ import (
 func init() {
 	registerSeamRoute(http.MethodGet, "/councils", councilsList)
 	registerSeamRoute(http.MethodPost, "/councils/{id}/steer", councilSteer)
+	registerSeamRoute(http.MethodGet, "/councils/{id}/messages", councilMessages)
+	registerSeamRoute(http.MethodPost, "/councils/{id}/pause", councilPause)
+	registerSeamRoute(http.MethodPost, "/councils/{id}/resume", councilResume)
 }
 
 // councilDoor is the store and the runner a bridge was given. The runner may
@@ -211,6 +214,82 @@ func councilSteer(b *Bridge, w http.ResponseWriter, r *http.Request, ids map[str
 	write(w, councilToItem(c, file))
 }
 
+// councilPause holds the discussion before its next turn: the moment the
+// person starts typing in its chat. A discussion that has ended is refused.
+func councilPause(b *Bridge, w http.ResponseWriter, _ *http.Request, ids map[string]string) {
+	councilHold(b, w, ids["id"], (*council.Runner).Pause)
+}
+
+// councilResume lets a paused discussion go on without a message: the person
+// cleared what they were typing.
+func councilResume(b *Bridge, w http.ResponseWriter, _ *http.Request, ids map[string]string) {
+	councilHold(b, w, ids["id"], (*council.Runner).Resume)
+}
+
+func councilHold(b *Bridge, w http.ResponseWriter, id string, act func(*council.Runner, string) (council.Council, error)) {
+	run, store := b.councilRunner(), b.councilStore()
+	if run == nil || store == nil {
+		fail(w, 409, "This discussion can't be steered from here.")
+		return
+	}
+	if c, err := store.Get(id); err != nil {
+		councilFail(w, err)
+		return
+	} else if c.State.Ended() {
+		councilFail(w, council.ErrEnded)
+		return
+	}
+	c, err := act(run, id)
+	if err != nil {
+		councilFail(w, err)
+		return
+	}
+	write(w, councilToItem(c, councilFile(store, c.ChatID)))
+}
+
+// councilMessage is one line of a discussion with the place that spoke it.
+// Speaker is "person" for the person and empty for a line written before the
+// journal recorded who spoke, so the pane draws it unlabelled rather than guess.
+type councilMessage struct {
+	Speaker string `json:"speaker,omitempty"`
+	Text    string `json:"text"`
+	At      string `json:"at,omitempty"`
+}
+
+// councilMessages reads the discussion's transcript back with its speakers.
+func councilMessages(b *Bridge, w http.ResponseWriter, _ *http.Request, ids map[string]string) {
+	store := b.councilStore()
+	if store == nil {
+		fail(w, 404, "That discussion doesn't exist.")
+		return
+	}
+	c, err := store.Get(ids["id"])
+	if err != nil {
+		councilFail(w, err)
+		return
+	}
+	out := []councilMessage{}
+	raw, err := os.ReadFile(councilFile(store, c.ChatID))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		fail(w, 500, "That discussion couldn't be read.")
+		return
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		var m struct {
+			Type, Role, Content, Speaker, Timestamp string
+		}
+		if json.Unmarshal([]byte(line), &m) != nil || m.Type != "message" || strings.TrimSpace(m.Content) == "" {
+			continue
+		}
+		speaker := m.Speaker
+		if m.Role == "user" {
+			speaker = council.SpeakerPerson
+		}
+		out = append(out, councilMessage{Speaker: speaker, Text: m.Content, At: m.Timestamp})
+	}
+	write(w, map[string]any{"messages": out})
+}
+
 func councilFail(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, council.ErrNotFound):
@@ -252,16 +331,18 @@ func (j journalSink) Say(chatID, speaker, text string) error {
 		return fmt.Errorf("%w: empty message", council.ErrInvalid)
 	}
 	role := "assistant"
+	who := speaker
 	if speaker == council.SpeakerPerson {
-		role = "user"
+		role, who = "user", ""
 	}
 	now := j.clock()
 	line, err := json.Marshal(struct {
 		Type      string `json:"type"`
 		Role      string `json:"role"`
 		Content   string `json:"content"`
+		Speaker   string `json:"speaker,omitempty"`
 		Timestamp string `json:"timestamp"`
-	}{Type: "message", Role: role, Content: text, Timestamp: now.Format(time.RFC3339Nano)})
+	}{Type: "message", Role: role, Content: text, Speaker: who, Timestamp: now.Format(time.RFC3339Nano)})
 	if err != nil {
 		return err
 	}
