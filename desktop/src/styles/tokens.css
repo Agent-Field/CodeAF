@@ -359,6 +359,7 @@
   --tag-pad-key: 5px;
   --kbd-height: 18px;
   --kbd-pad: 5px;
+  --kbd-inline-size: 12px;
   --search-field-height: 40px;
   --search-field-radius: 12px;
   --search-field-pad: 14px;
