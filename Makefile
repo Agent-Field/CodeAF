@@ -299,15 +299,16 @@ test-packed-manual: embed
 test-remote:
 	go test -tags docker_e2e -count=1 -run TestRemoteTwoMachines -timeout 20m ./internal/e2e/
 
-# THE AMBIENT SURFACE, ALONE. TestTUIE2E fits in about seventeen minutes; the
-# full tagged package does not fit in forty (ManualOnTheWire, QuestionsE2E and
-# the roomfeed twins run first and eat the budget). This is the door for the
-# seventeen-minute ambient proof. Needs OPENROUTER_API_KEY, tmux and bin/codeaf.
+# THE CHAT SURFACE, ALONE. TestTUIE2E fits in forty minutes where the full
+# tagged package does not (ManualOnTheWire, QuestionsE2E and the roomfeed twins
+# run first and eat the budget). It used to take about seventeen, most of them
+# one subtest waiting out a standing pass that went with standing orders on
+# 2026-10-10. Needs OPENROUTER_API_KEY, tmux and bin/codeaf.
 test-e2e-tui: build
 	go test -tags e2e -count=1 -timeout 40m -v -run '^TestTUIE2E$$' ./internal/e2e/
 
 # THE WHOLE TAGGED PACKAGE. Two hours is the measured fit on Spark once every
-# live-model lane is included; prefer test-e2e-tui when only the ambient surface
+# live-model lane is included; prefer test-e2e-tui when only the chat surface
 # is under change.
 test-e2e: build
 	go test -tags e2e -count=1 -timeout 120m -v ./internal/e2e/

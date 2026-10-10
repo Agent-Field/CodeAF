@@ -356,14 +356,18 @@ terminal against a real model, and it is how a wave verifies that the surface
 still behaves:
 
 ```sh
-make test-e2e-tui                                              # TestTUIE2E alone, ~17m, 40m ceiling
+make test-e2e-tui                                              # TestTUIE2E alone, 40m ceiling
 make test-e2e                                                 # whole tagged package, 120m ceiling
 go test -tags e2e -run TestTUIE2E -count=1 -timeout 40m -v ./internal/e2e/
 ```
 
-It needs a provider key and `tmux`, costs a few cents. `TestTUIE2E` alone is
-about **seventeen minutes** (most of it one subtest waiting out a five-minute
-standing pass). The whole tagged package does not fit in forty minutes —
+It needs a provider key and `tmux`, costs a few cents. `TestTUIE2E` alone was
+about **seventeen minutes**, most of it one subtest waiting out a five-minute
+standing pass; that subtest went with standing orders on 2026-10-10, and the
+suite has not been timed since. Automations have a keyless proof of their own —
+`go test -tags e2e -run TestAutomationsE2E -count=1 -v ./internal/e2e/` drives
+the real binary against a scripted model endpoint, so it needs only `tmux` and
+`bin/codeaf`. The whole tagged package does not fit in forty minutes —
 ManualOnTheWire, QuestionsE2E and the roomfeed twins run first and eat the
 budget — so `make test-e2e` gives it two hours. It SKIPS
 rather than fails with no key, no tmux or no `bin/codeaf`, so run `make build`
