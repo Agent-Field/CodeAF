@@ -38,3 +38,8 @@
   .file-actions { flex-basis: 100%; margin-inline-start: 0; flex-wrap: wrap; }
 }
 
+
+/* The editor menu keeps the design's row width plus its shared popup padding. */
+.app-menu.file-editors-menu { width: calc(var(--editor-menu-width) + var(--menu-pad) * 2); }
+/* Editor names align with copy actions even though discovery supplies no icons. */
+.file-editors-menu .menu-item:not(:has(.app-icon))::before { content: ""; flex: none; width: var(--icon-sm); }
