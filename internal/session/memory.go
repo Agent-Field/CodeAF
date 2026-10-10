@@ -899,6 +899,12 @@ func (a *Agent) runMemoryCommand(say func(string), cmd reflex.Cmd) {
 	}
 	switch cmd.Name {
 	case "remember":
+		if _, handled, err := a.rememberPlace(cmd.Arg, ""); handled {
+			if err != nil {
+				say("Could not remember that: " + err.Error())
+			}
+			return
+		}
 		title, err := a.writeRemembered(cmd.Arg, "")
 		if err != nil {
 			a.journalMemoryFailure("routed-remember", err)
@@ -1998,9 +2004,9 @@ func memoryTitleFrom(text string) string {
 
 // ── the one tool ────────────────────────────────────────────────────────────
 
-const rememberDescription = "Keep one durable user preference, correction or decision in a short line. Preserve conditions and exceptions; omit transcripts, repo facts and temporary state. Related memories are reconciled; the result names the saved title."
+const rememberDescription = "Keep one durable user preference, correction or decision in a short line. Preserve conditions and exceptions; omit transcripts, repo facts and temporary state. In a chat filed under a place, save a knowledge line there by default, with Undo; with several places use the first parent-most and name that choice. Explicit user/project/env scopes use general memory, where related memories are reconciled."
 
-const rememberSchemaJSON = `{"type":"object","properties":{"text":{"type":"string","description":"The single line to remember, in plain words"},"scope":{"type":"string","enum":["user","project","env"],"description":"How far the truth reaches: this project by default; user only for an explicitly personal rule across projects; env only for this machine"}},"required":["text"],"additionalProperties":false}`
+const rememberSchemaJSON = `{"type":"object","properties":{"text":{"type":"string","description":"The single line to remember, in plain words"},"scope":{"type":"string","enum":["place","user","project","env"],"description":"How far the truth reaches: this chat’s place by default when filed, otherwise this project; place explicitly requires a filed chat; user only for an explicitly personal rule across projects; env only for this machine"}},"required":["text"],"additionalProperties":false}`
 
 // The gloss a person reads beside a memory call is the thing itself —
 // "remember prefers tabs over spaces" — for the reason every other tool's gloss
@@ -2008,13 +2014,15 @@ const rememberSchemaJSON = `{"type":"object","properties":{"text":{"type":"strin
 // and not what it did.
 func init() { glossField["remember"] = "text" }
 
-// memoryTools is the one hand, or nothing at all when this session has no brain.
+// memoryTools is the one hand, absent unless general memory or a filed place
+// gives this conversation somewhere to save a fact.
 //
 // Nothing at all is the point, and it is the law CLAUDE.md states: a belt
 // carrying `remember` against no store is a model told it can remember, whose
-// every call is refused. A session without memory simply does not have the verb.
+// every call is refused. A place supplies its own writable knowledge store,
+// so a filed chat can remember there without a general memory brain.
 func (a *Agent) memoryTools() []bare.Tool {
-	if !a.memoryWritable() {
+	if !a.memoryWritable() && !a.canRememberPlace() {
 		return nil
 	}
 	return append([]bare.Tool{{
@@ -2028,6 +2036,12 @@ func (a *Agent) memoryTools() []bare.Tool {
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
+			}
+			if saved, handled, err := a.rememberPlace(parsed.Text, parsed.Scope); handled {
+				if err != nil {
+					return "Could not remember that: " + err.Error(), true, nil
+				}
+				return saved, false, nil
 			}
 			title, err := a.RememberScoped(parsed.Text, parsed.Scope)
 			if err != nil {

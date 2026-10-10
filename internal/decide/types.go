@@ -1,7 +1,9 @@
 // Package decide holds the desktop's decision ledger: what the app decided on a
 // person's behalf in a place, why, and whether the person later overturned it.
 // store.go is the file. learning.go is when a kind of question is still
-// watching and when it has earned the right to decide.
+// watching and when it has earned the right to decide. It also routes
+// questions up the place graph; evidence and answer delivery remain with the
+// callers.
 package decide
 
 import "time"

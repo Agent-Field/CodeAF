@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/placegraph"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -45,6 +46,7 @@ type WorldRecord struct {
 // reader, because a reader pulls from the ring at its own pace.
 type WorldFeed struct {
 	read      func() session.World
+	graph     func() *placegraph.Snapshot
 	interval  time.Duration
 	heartbeat time.Duration
 	maxAge    time.Duration
@@ -149,7 +151,11 @@ func (f *WorldFeed) poll(stop <-chan struct{}) {
 func (f *WorldFeed) refresh() {
 	f.refreshMu.Lock()
 	defer f.refreshMu.Unlock()
-	rows, items := projectWorld(f.read())
+	var graph *placegraph.Snapshot
+	if f.graph != nil {
+		graph = f.graph()
+	}
+	rows, items := projectWorld(f.read(), graph)
 	now := time.Now()
 
 	f.mu.Lock()
@@ -254,6 +260,7 @@ func (b *Bridge) UseWorld(f *WorldFeed) {
 	if b.world != nil {
 		b.world.Close()
 	}
+	f.graph = b.attentionGraph
 	b.world = f
 }
 
@@ -262,6 +269,7 @@ func (b *Bridge) worldFeed() *WorldFeed {
 	defer b.mu.Unlock()
 	if b.world == nil {
 		b.world = NewWorldFeed(nil)
+		b.world.graph = b.attentionGraph
 	}
 	return b.world
 }

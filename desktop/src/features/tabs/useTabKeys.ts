@@ -1,9 +1,10 @@
 // Keyboard and native-menu wiring for the workspace (owned by the rail-and-keys lane). Every chord is decided by
 // design/keyboard.ts (one registry for the whole shell); this hook only says what each one does to the workspace.
-import { useEffect, type Dispatch, type MutableRefObject } from 'react';
+import { useEffect, useRef, type Dispatch, type MutableRefObject } from 'react';
 import { desktopTabEvent, isDesktopTabAction } from '../../lib/desktopTabs';
 import { shortcutLayer } from '../../design/keyboard';
 import { useShortcuts } from '../../design/useShortcuts';
+import { isOpenJobDetail, jobOpenAction } from '../jobs/open';
 import { leaveKindAction, openKindAction, type ShellKind } from '../shell/openKind';
 import { publishActiveKind, shellEvent, shellLeaveEvent } from '../shell/shellState';
 import { kindDef } from './kinds/registry';
@@ -88,9 +89,25 @@ type MenuOptions = {
 
 /** Native menu items and the rail's "open this kind" request arrive as window events; they act on the workspace even from another page. */
 export function useDesktopTabActions({ state, dispatch, visible, renaming, onActivate, closeTab, closeAndStop, setOverviewOpen }: MenuOptions) {
+  // The listener below is re-bound when the strip changes, so a job open reads the tabs of this render plus any
+  // open dispatched earlier in the same turn (React has not painted those yet).
+  const openTabs = useRef(state.tabs);
+  openTabs.current = state.tabs;
   useEffect(() => {
+    const pending: Tab[] = [];
     const onMenuAction = (event: Event) => {
       const action: unknown = (event as CustomEvent).detail;
+      // A job rides the same event as the native menu. The detail is an object, so the string commands below ignore it.
+      if (isOpenJobDetail(action)) {
+        if (renaming) return;
+        const next = jobOpenAction([...openTabs.current, ...pending], action);
+        if (!next) return;
+        if (next.type === 'open') pending.push(next.tab);
+        // A background open leaves the person where they are, including on the all-tabs layer.
+        if (!action.background) { onActivate(); setOverviewOpen(false); }
+        dispatch(next);
+        return;
+      }
       if (!isDesktopTabAction(action) || renaming) return;
       onActivate();
       if (action === 'overview') setOverviewOpen(open => !open);

@@ -217,7 +217,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
         <div className="conversation-main" data-empty={empty || undefined} data-tint={empty && !newConversationPlace ? 'graphite' : undefined} data-sheet={sheetLocksScroll || undefined} hidden={tasksView}>
           {showBar && (
             <ConversationBar onTasksFilter={(tasksFilter) => { if (panel.sheet) panel.close(); onView({ tasksFilter, route: navigate(route, TASKS_VIEW) }); }} lead={inTask ? 'trail' : 'title'} counts={barCounts} panel={barPanel} using={<UsingLine control={using} onOpenSource={onOpenSource} onAddToPlace={onAddToPlace} />}>
-              {taskId ? <TaskRouteBar taskId={taskId} tasks={model.tasks} route={route} onRoute={setRoute} /> : <span className="conversation-bar-title">{barTitle}</span>}
+              {taskId ? <TaskRouteBar rootLabel={label} taskId={taskId} tasks={model.tasks} route={route} onRoute={setRoute} /> : <span className="conversation-bar-title">{barTitle}</span>}
             </ConversationBar>
           )}
           <div ref={scroller} className="conversation-scroll" data-scroll-key={inTask ? 'task-page' : 'conversation'} data-scrolled={scrolled || undefined} data-task={inTask || undefined}>

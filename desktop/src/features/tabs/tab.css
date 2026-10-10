@@ -4,6 +4,9 @@
 .workspace-tab[data-active="true"] { background: var(--canvas); box-shadow: var(--sh-1); color: var(--ink); }
 /* Picked for ⌘G (⌘-click): the field fill, one step past hover, so a picked tab still reads under the pointer. */
 .workspace-tab[data-picked] { background: var(--field); color: var(--ink); }
+/* Press is one fill, field-2, for dur-press (NT14). The select stays transparent, so the chip is the fill.
+   :has keeps a press on the close mark from filling the chip; that mark has its own press. */
+.workspace-tab:has(.workspace-tab-select:active) { background: var(--field-2); transition-duration: var(--dur-press); }
 /* An inactive tab that needs you lifts its title to full ink. */
 .workspace-tab[data-state="waiting"] { color: var(--ink); }
 
