@@ -37,7 +37,7 @@ test('the settings page lists the pinned models and one row per role', async ({ 
     await expect(page.getByRole('region', { name: section }).getByText(name, { exact: true })).toBeVisible();
   }
   await expect(page.getByRole('button', { name: 'Model for Tasks' })).toHaveText('DeepSeek V4.1 Flash');
-  // Nothing differs from the default yet, so there is no Reset and no receipt.
+  // Nothing differs from the default yet, so there is no Reset and the receipt is blank.
   await expect(page.getByRole('button', { name: /^Reset/ })).toHaveCount(0);
   await expect(page.locator('.settings-receipt')).toHaveText('');
 });

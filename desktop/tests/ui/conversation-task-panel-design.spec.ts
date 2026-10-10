@@ -26,7 +26,7 @@ for (const scheme of ['light', 'dark'] as const) {
     const bar = page.locator('.conversation-bar');
     await expect(bar.getByText('Trailing commas')).toBeVisible();
     await expect(bar.getByText(/^\d+ running$/)).toBeVisible();
-    await expect(bar.getByText('1 need you')).toBeVisible();
+    await expect(bar.getByText('1 needs you here')).toBeVisible();
     // The old composer chip is gone: one toggle, in the header.
     await expect(page.locator('.composer-tasks')).toHaveCount(0);
     await expect(toggle(page)).toHaveAttribute('aria-pressed', 'true');

@@ -1,0 +1,34 @@
+@import '../../styles/tokens.css';
+
+/* Choice menu (Components "Open in", Shell menus C-MENU-1..3). Paper is surface at radius-menu
+   with sh-2 and the menu's 5px pad. Rows are 28px, radius 6, 13px. The highlight is field-2
+   and nothing else — no accent, no coloured words. The previous rules still live in ui.css
+   until that sheet drops them, and a single class loses to a later sheet, so each selector
+   is repeated here on purpose. */
+
+.select-trigger.select-trigger { display: inline-flex; align-items: center; justify-content: space-between; gap: var(--space-tight); box-sizing: border-box; height: var(--control-height); min-height: var(--control-height); min-width: 0; max-width: 100%; padding: 0 var(--space-compact); border: 0; border-radius: var(--radius-control); background: var(--field); color: var(--ink); font-family: var(--sans); font-size: var(--type-label-size); font-weight: var(--type-label-strong); line-height: var(--type-label-leading); white-space: nowrap; cursor: pointer; transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease); }
+.select-trigger.select-trigger > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-trigger.select-trigger .app-icon[data-motion="disclosure"] { color: var(--ink-3); }
+.select-trigger.select-trigger[data-state="open"] .app-icon[data-motion="disclosure"] { transform: rotate(var(--motion-chevron-open)); }
+.select-trigger.select-trigger:hover:not(:disabled) { background: var(--field-2); color: var(--ink); }
+.select-trigger.select-trigger:active:not(:disabled) { background: var(--field-2); color: var(--ink); filter: brightness(var(--brightness-press)); transition-duration: var(--dur-press); }
+.select-trigger.select-trigger:disabled { cursor: default; opacity: var(--opacity-control-disabled); }
+/* The rail's gear is the same quiet control, squared, with an ink-2 glyph. */
+.select-trigger.select-trigger.select-trigger-icon { justify-content: center; width: var(--control-height); padding: 0; color: var(--ink-2); }
+
+.select-menu.select-menu { z-index: var(--z-overlay); min-width: var(--menu-min-width); max-height: min(var(--menu-max-height), var(--radix-select-content-available-height)); overflow: auto; box-sizing: border-box; padding: var(--menu-pad); border: 0; border-radius: var(--radius-menu); background: var(--surface); color: var(--ink); box-shadow: var(--sh-2); transform-origin: var(--radix-select-content-transform-origin); }
+.select-menu.select-menu[data-state="open"] { animation: popover-enter var(--dur-fast) var(--ease); }
+.select-menu.select-menu[data-state="closed"] { animation: surface-exit var(--dur-fast) var(--chrome-ease); }
+
+.select-option.select-option { display: flex; align-items: center; gap: var(--space-compact); box-sizing: border-box; height: var(--menu-item-height); min-height: var(--menu-item-height); max-height: var(--menu-item-height); padding: 0 var(--space-compact); border-radius: var(--radius-sm); outline: none; background: transparent; color: var(--ink); font-size: var(--font-size-prose); font-weight: var(--font-weight-regular); white-space: nowrap; cursor: default; user-select: none; transition: background-color var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease); }
+.select-option.select-option > span:last-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* The column is reserved on every row. Only the chosen row draws the check, in ink-2. */
+.select-check { display: flex; flex: none; align-items: center; justify-content: center; width: var(--icon-sm); height: var(--icon-sm); color: var(--ink-2); }
+.select-option.select-option .app-icon { color: var(--ink-2); }
+.select-option.select-option[data-highlighted] { background: var(--field-2); color: var(--ink); }
+.select-option.select-option:active:not([data-disabled]) { filter: brightness(var(--brightness-press)); transition-duration: var(--dur-press); }
+.select-option.select-option[data-disabled] { opacity: var(--opacity-control-disabled); }
+.select-option.select-option:focus-visible { box-shadow: none; }
+
+body:has(.select-specimen) { margin: 0; background: var(--canvas); color: var(--ink); font-family: var(--sans); }
+.select-specimen { box-sizing: border-box; display: flex; align-items: flex-start; min-height: 100vh; padding: var(--space-3); background: var(--canvas); }

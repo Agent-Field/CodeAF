@@ -16,3 +16,9 @@ export function retainSelection(selected: readonly string[], open: readonly { id
   const alive = new Set(open.map(tab => tab.id));
   return selected.filter(id => alive.has(id));
 }
+
+/** The tabs a group gesture covers: the whole selection when the pressed tab is in it, otherwise that tab alone. */
+export function groupTargets(state: { picked?: readonly string[]; activeId: string }, pressedId: string): string[] {
+  const picked = state.picked ?? [];
+  return picked.length && (picked.includes(pressedId) || pressedId === state.activeId) ? [...picked] : [pressedId];
+}
