@@ -155,6 +155,11 @@ export function FocusHistoryProvider({ wire, children }: { wire: FocusWire; chil
   return createElement(FocusHistoryContext.Provider, { value: wire }, children);
 }
 
+/** Standalone specimens retain local routing until the shell supplies window history. */
+export function useOptionalFocusWire(): FocusWire | null {
+  return useContext(FocusHistoryContext);
+}
+
 /** The window's wire, for components that restore (the back chip, the shortcut) or report. */
 export function useFocusWire(): FocusWire {
   const wire = useContext(FocusHistoryContext);
