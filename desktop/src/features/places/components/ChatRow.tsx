@@ -47,7 +47,8 @@ export function ChatRow({ id, title, excerpt, status, statusLabel, model, timeLa
   };
   const row = <li {...frame} className={`places-chat-row ${className}`} data-chat-id={id} data-model={model} data-variant={variant} data-status={status}
     data-selected={selected || undefined} data-dragging={dragging || undefined} data-disabled={disabled || undefined} data-force={appearance}>
-    <Button variant="ghost" className="places-row-main places-chat-main" disabled={disabled} aria-current={selected ? 'true' : undefined} data-force={appearance}
+    {/* The row is what leaves the list, and the person grabs this button. A button does not drag unless it says so. */}
+    <Button variant="ghost" className="places-row-main places-chat-main" draggable={frame.draggable ? true : undefined} disabled={disabled} aria-current={selected ? 'true' : undefined} data-force={appearance}
       onClick={open} onKeyDown={onKeyDown} onAuxClick={event => { if (event.button === 1 && onOpenInNewTab) { event.preventDefault(); onOpenInNewTab(); } }}>
       <span className="places-chat-lead">
         {status ? <StatusMark status={status} label={statusLabel ?? statusWords[status]} dense/> : <Icon name="tab" size="xs"/>}

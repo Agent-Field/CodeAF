@@ -172,3 +172,48 @@ test('offline fails every route until restored, and notice events stream', async
   expect(events.map((e: any) => e.kind)).toEqual(['retrying', 'compacting', 'compacted']);
   expect(events[0]).toMatchObject({ text: 'busy', raw: { Retry: { DelaySeconds: 4 } } });
 });
+
+test('places routes, Using and world-stream places records come from the mounted places engine', async ({ page }) => {
+  await installMockEngine(page, { initial: { entries: [] }, places: '200-places', world: { rows: [], items: [] } });
+  const graph = (await call(page, '/places')).body;
+  expect(graph.places).toHaveLength(200);
+  const depth = (id: string, seen = new Set<string>()): number => {
+    const place = graph.places.find((row: { id: string }) => row.id === id);
+    if (!place || seen.has(id) || place.parents.length === 0) return 1;
+    seen.add(id);
+    return 1 + Math.max(...place.parents.map((parent: string) => depth(parent, seen)));
+  };
+  expect(Math.max(...graph.places.map((place: { id: string }) => depth(place.id)))).toBe(3);
+  const reports = graph.places.find((place: { name: string }) => place.name === 'Reports');
+  expect((await call(page, `/places/${reports.id}`)).body.children).toHaveLength(47);
+  const using = await call(page, '/sessions/config-stack/using');
+  expect(using.status).toBe(200);
+  expect(using.body.bundle.places.map((place: { id: string }) => place.id)).toEqual(['config-parser', 'software', 'codeaf']);
+  expect((await call(page, '/places/policy')).body.settings.map((row: { key: string }) => row.key)).toContain('clusterOffers');
+  const read = async (after: number) => page.evaluate(async (cursor) => {
+    const response = await fetch(`/api/engine/events?after=${cursor}`, { headers: { Accept: 'text/event-stream' } });
+    const text = await response.text();
+    return text.split('\n').filter(line => line.startsWith('data:')).map(line => JSON.parse(line.slice(5)));
+  }, after);
+  const first = await read(0);
+  expect(first.map((record: { type: string }) => record.type)).toEqual(['reset', 'places']);
+  expect(first[0].payload.places.nodes).toHaveLength(200);
+  expect(first[1].payload.nodes).toHaveLength(200);
+  expect(first[1].payload.generation).toBe(graph.generation);
+  expect(first[1].seq).toBe(first[0].seq + 1);
+  const created = await call(page, '/places', 'POST', { name: 'Scale child' });
+  expect(created.status).toBe(200);
+  const next = await read(first[1].seq);
+  expect(next.map((record: { type: string }) => record.type)).toEqual(['reset', 'places']);
+  expect(next[1].payload.nodes).toHaveLength(201);
+});
+
+test('settings come from the mounted world engine, and History and an absent world feed stay put', async ({ page }) => {
+  await installMockEngine(page, { initial: { entries: [] } });
+  expect((await call(page, '/settings/key')).body).toEqual({ present: false });
+  expect((await call(page, '/settings/engine')).body).toEqual({ local: true, connection: 'local' });
+  expect((await call(page, '/settings/permissions', 'PUT', { mode: 'secret-canary' })).status).toBe(400);
+  expect((await call(page, '/settings/permissions', 'PUT', { mode: 'allow' })).body).toMatchObject({ mode: 'allow' });
+  expect((await call(page, '/history')).body).toMatchObject({ total: 0, items: [] });
+  expect((await call(page, '/world')).status).toBe(404);
+});

@@ -31,8 +31,8 @@ test('the settings page lists the pinned models and one row per role', async ({ 
   await openSettings(page);
   const pinned = page.getByRole('region', { name: 'Pinned' });
   await expect(pinned.getByRole('button', { name: /^Pinned model/ })).toHaveText(['GLM 5.3 Flash', 'DeepSeek V4.1 Flash', 'GLM 5.3']);
-  // Each job sits under its section, in the engine's order; Provider key joins after them once the engine can say.
-  await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Pinned', 'Conversation and tasks', 'Naming and summaries', 'Places organization', 'Memory, routing and safety', 'Appearance', 'Engine']);
+  // The world mock answers the key, so the row joins the model sections and says it is not set.
+  await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Pinned', 'Conversation and tasks', 'Naming and summaries', 'Places organization', 'Memory, routing and safety', 'Provider key', 'Appearance', 'Engine']);
   for (const [section, name] of [['Conversation and tasks', 'Tasks'], ['Naming and summaries', 'Chat titles'], ['Places organization', 'Chat filing'], ['Memory, routing and safety', 'Memory']]) {
     await expect(page.getByRole('region', { name: section }).getByText(name, { exact: true })).toBeVisible();
   }

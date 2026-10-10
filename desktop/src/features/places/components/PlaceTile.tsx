@@ -55,6 +55,7 @@ type PlaceProps = CommonProps & {
 type NewProps = CommonProps & {
   mode: 'new';
   label?: string;
+  icon?: 'plus' | 'folderOpen';
   onCreate: () => void;
   buttonRef?: Ref<HTMLButtonElement>;
   onKeyDown?: (event: KeyboardEvent<HTMLButtonElement>) => void;
@@ -97,7 +98,8 @@ function PlaceTileBody(props: PlaceProps) {
   const tile = <li {...frame} className={`places-tile ${className}`} data-mode="place" data-place-id={id} data-tint-name={tint} data-tint-source={tintSource}
     data-selected={selected || undefined} data-drop={dropTarget || undefined} data-dragging={dragging || undefined} data-disabled={disabled || undefined} data-force={appearance}
     draggable={draggable && !disabled} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragEnter={onDragEnter} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
-    <Button variant="ghost" className="places-tile-main" data-places-tile-focusable disabled={disabled} aria-current={selected ? 'true' : undefined} data-force={appearance}
+    {/* The person grabs this button, which fills the tile. A button is not dragged unless it says so, so the tile would never leave the grid. */}
+    <Button variant="ghost" className="places-tile-main" data-places-tile-focusable draggable={draggable && !disabled ? true : undefined} disabled={disabled} aria-current={selected ? 'true' : undefined} data-force={appearance}
       onClick={open} onKeyDown={tileKeys(props)} onAuxClick={event => { if (event.button === 1 && onOpenInNewWindow) { event.preventDefault(); onOpenInNewWindow(); } }}>
       <span className="places-tile-head">
         <PlaceSwatch tint={tint} role="tile"/>
@@ -111,10 +113,10 @@ function PlaceTileBody(props: PlaceProps) {
   return menu && menu.length > 0 ? <ContextMenu items={menu} label={menuLabel ?? `${name} actions`}>{tile}</ContextMenu> : tile;
 }
 
-function NewPlaceTile({ label = 'New place', onCreate, buttonRef, onKeyDown, disabled, appearance, className = '', ...frame }: NewProps) {
+function NewPlaceTile({ label = 'New place', icon = 'plus', onCreate, buttonRef, onKeyDown, disabled, appearance, className = '', ...frame }: NewProps) {
   return <li {...frame} className={`places-tile ${className}`} data-mode="new" data-disabled={disabled || undefined} data-force={appearance}>
     <Button variant="ghost" className="places-tile-main" data-places-tile-focusable disabled={disabled} data-force={appearance} ref={buttonRef} onClick={onCreate} onKeyDown={onKeyDown}>
-      <Icon name="plus" size="md"/>
+      <Icon name={icon} size="md"/>
       <span className="places-tile-new-label">{label}</span>
     </Button>
   </li>;

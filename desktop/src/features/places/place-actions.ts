@@ -41,7 +41,12 @@ export type PlaceActions = {
   /** Empty-place affordances and the root's engine-made suggestion. */
   addSources?: (placeId: string) => void;
   removeSource?: (placeId: string, sourceId: string) => void | Promise<void>;
+  /** Opens the instructions sheet. The Home card does not use this; it edits in place. */
   writeInstructions?: (placeId: string) => void;
+  /** Replace the place's instructions with this prose. '' clears them. Unchanged text is not sent. */
+  saveInstructions?: (placeId: string, text: string) => void | Promise<void>;
+  /** A file or http(s) link dropped on the notes field. Chats and places are not this verb. */
+  dropOnInstructions?: (placeId: string, source: { kind: 'file' | 'url'; ref: string }) => void | Promise<void>;
   acceptSuggestion?: () => void | Promise<void>;
   /** "Not now" on the untouched-place suggestion: the engine hides that place's offer for 30 days, in every window. */
   snoozeStale?: (placeId: string) => void | Promise<void>;
@@ -75,8 +80,8 @@ export function readDrag(event: { dataTransfer: DataTransfer }): DropPayload | u
   return undefined;
 }
 
-/** ⌥ moves instead of adds (Places 8g "Organizing"). */
-export const dropMode = (event: { altKey: boolean }): 'add' | 'move' => (event.altKey ? 'move' : 'add');
+/** ⌥ moves instead of adds (Places 8g "Organizing"). The tile drag owns the rule so a tile and any other surface cannot disagree. */
+export { tileDropMode as dropMode } from './home/tileDnd';
 
 /** A tile accepts a drop when the owner wired `file`, and never from itself. A place dropped on its own child would be a cycle: the
  * store refuses that with a sentence the Home shows, so it is not pre-judged here. */
