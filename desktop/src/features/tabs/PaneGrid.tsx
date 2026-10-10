@@ -76,7 +76,11 @@ export function PaneGrid({ tab, tabs, dispatch, actionsFor, retainedPaneIds }: {
         const focused = index === focus;
         return (
           <section key={pane.id} className="workspace-pane" hidden={maximized !== null && maximized !== pane.id} tabIndex={split ? -1 : undefined} data-focused={split ? focused : undefined} aria-label={split ? pane.title : undefined}
-            onPointerDownCapture={split && !focused ? () => dispatch({ type: 'split-focus', id: tab.id, index }) : undefined}
+            onPointerDownCapture={split && !focused ? (event) => {
+              // Review must restore the tray before native focus replaces its button.
+              if (event.target instanceof Element && event.target.closest('[data-pane-review]')) return;
+              dispatch({ type: 'split-focus', id: tab.id, index });
+            } : undefined}
             onFocusCapture={split && !focused ? () => dispatch({ type: 'split-focus', id: tab.id, index }) : undefined}>
             {split && <PaneHeader pane={pane} focused={focused} onClose={() => dispatch({ type: 'split-close-pane', id: tab.id, paneId: pane.id })} menu={paneMenu(tab, pane, maximized === pane.id, () => { setMaximizedId(maximized === pane.id ? null : pane.id); if (!focused) dispatch({ type: 'split-focus', id: tab.id, index }); }, dispatch)}/>}
             <PaneBody paneId={pane.id} visible={maximized === null || maximized === pane.id} layout={`${maximized ?? ''}|${tab.split?.layout ?? ''}|${panes.length}`}><OpenFileProvider value={actionsFor(pane).onOpenFile}><Body pane={pane} label={pane.title} focused={focused} split={split} actions={actionsFor(pane)}/></OpenFileProvider></PaneBody>

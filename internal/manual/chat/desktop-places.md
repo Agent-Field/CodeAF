@@ -205,3 +205,11 @@ keeps the directory it was given. The desktop process stays where it was launche
 The model does not follow the folder. A new chat still takes a place's model and permissions
 when its **first turn** opens. A later change still applies at the **next turn**. A choice you
 made in the chat still wins.
+
+## Review a question in an unfocused desktop split pane
+
+An unfocused conversation in a desktop split shows a small card above its compact
+reply field when the engine has a pending question. The card shows the question's
+title and a `Review` button. Review focuses that pane and opens its full question
+tray, returning to the latest content if you had scrolled away. With no pending
+question, the card is absent. Review does not answer the question.
