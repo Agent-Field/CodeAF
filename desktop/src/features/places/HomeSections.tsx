@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Button, Icon, SectionLabel, Text } from '../../components/ui';
+import { Button, SectionLabel, Text } from '../../components/ui';
 import { LiveRows } from './live/LiveRows';
 import { PlaceTile, PlaceTileGrid } from './components/PlaceTile';
 import { NewPlaceTile } from './home/NewPlaceTile';
@@ -156,20 +156,7 @@ export function HomePlacesSection({ label, places, parentId, parentName, actions
 
 export { SourcesList as HomeSourcesSection } from './home/SourcesList';
 
-/** The empty place of 8b: one sentence, the two optional actions that are wired, and the context line the engine wrote. Nothing else. */
-export function HomeEmptyPlace({ placeId, contextLine, actions, readOnly, onWriteInstructions }: { placeId: string; contextLine?: string; actions: PlaceActions; readOnly?: boolean; onWriteInstructions?: () => void }) {
-  const add = actions.addSources && !readOnly, write = !!onWriteInstructions && !readOnly;
-  return <>
-    <section className="home-empty" aria-label="Empty place">
-      <p className="home-empty-sentence">Nothing here yet. Start a chat below, drag chats in from anywhere, or drop in what this place should know.</p>
-      {(add || write) && <div className="home-empty-actions">
-        {add && <Button variant="quiet" onClick={() => actions.addSources?.(placeId)}><Icon name="attach" size="xs"/>Add files or links</Button>}
-        {write && <Button variant="quiet" onClick={onWriteInstructions}><Icon name="pencil" size="xs"/>Write instructions</Button>}
-      </div>}
-    </section>
-    {contextLine && <p className="home-quiet home-context">{contextLine}</p>}
-  </>;
-}
+export { EmptyPlace as HomeEmptyPlace } from './home/EmptyPlace';
 
 /** Loading, a read that failed, and the engine being out of reach. With a page already on screen the last good one stays, read-only. */
 export function HomeNotice({ connection, hasView, onRetry }: { connection: HomeConnection; hasView: boolean; onRetry?: () => void }) {
