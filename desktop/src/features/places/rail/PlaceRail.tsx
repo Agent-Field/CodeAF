@@ -9,6 +9,7 @@ import { railMenu } from '../menus/railMenu';
 import { NowRow } from '../../shell/NowRow';
 import { railShortcutVisible, shownPlaces, stepRail, type RailKey } from './railFocus';
 import { RailRow } from './RailRow';
+import { keyboardMoveTarget, movedAnnouncement, pinnedDropIndex } from './railDnd';
 import './rail-sections.css';
 
 /** What a rail row can ask for. Each is wired by the shell; one that is absent has no menu entry and no gesture. */
@@ -85,6 +86,7 @@ export function PlaceRailSections(props: PlaceRailSectionsProps) {
   const [dragging, setDragging] = useState<string>();
   const [dropKind, setDropKind] = useState<'place' | 'chat'>();
   const [cursor, setCursor] = useState<string>();
+  const [announcement, setAnnouncement] = useState('');
   const pinned = shownPlaces(sections?.pinned ?? []);
   const open = shownPlaces(sections?.open ?? []);
   const pinnedIds = pinned.map(place => place.id);
@@ -131,7 +133,7 @@ export function PlaceRailSections(props: PlaceRailSectionsProps) {
       setDragging(undefined);
       if (payload.kind === 'chat') { if (target.placeId) actions.fileChats?.(payload.ids, target.placeId); return; }
       for (const [offset, id] of payload.ids.entries()) {
-        if (target.section === 'pinned') actions.pin?.(id, target.index + offset);
+        if (target.section === 'pinned') actions.pin?.(id, pinnedDropIndex(pinnedIds, id, target.index) + offset);
         else if (pinnedIds.includes(id)) actions.unpin?.(id);
       }
     },
@@ -162,8 +164,8 @@ export function PlaceRailSections(props: PlaceRailSectionsProps) {
           if (event.key === ' ' && !event.altKey && !event.metaKey && !event.ctrlKey && actions.quickLook) { event.preventDefault(); actions.quickLook(place.id); }
           if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown') && section === 'pinned' && actions.pin) {
             event.preventDefault();
-            const next = index + (event.key === 'ArrowUp' ? -1 : 1);
-            if (next >= 0 && next < pinnedIds.length) actions.pin(place.id, next);
+            const next = keyboardMoveTarget(pinnedIds, place.id, event.key);
+            if (next !== undefined) { actions.pin(place.id, next); setAnnouncement(movedAnnouncement(next, pinnedIds.length)); }
           }
         }}
         aria-keyshortcuts={slot ? slotShortcut(slot).replace('⌃', 'Control+').replace('Alt ', 'Alt+') : undefined}
@@ -191,6 +193,7 @@ export function PlaceRailSections(props: PlaceRailSectionsProps) {
 
   const showShortcut = allPlaces && railShortcutVisible(livePlaces);
   return <div className="rail-sections" onKeyDown={onKeyDown}>
+    <span className="rail-announce" role="status" aria-live="polite">{announcement}</span>
     <nav className="rail-nav" aria-label="Places">
       <div className="rail-group">
         <NowRow now={now} primaryClick={primaryClick} {...focusProps(NOW)}/>
