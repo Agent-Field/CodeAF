@@ -205,3 +205,16 @@ keeps the directory it was given. The desktop process stays where it was launche
 The model does not follow the folder. A new chat still takes a place's model and permissions
 when its **first turn** opens. A later change still applies at the **next turn**. A choice you
 made in the chat still wins.
+
+## Desktop composer: Paste as plain text and Queue instead
+
+In the desktop app, right-click the message field and choose **Paste as plain text**
+to insert clipboard text at the caret, replacing any selected text. Even a long paste
+stays in the field; this action creates no pasted-text card or attachment. If clipboard
+access fails, the draft stays and the composer says "Clipboard text could not be read.
+Paste with your keyboard instead."
+
+Right-click **Send**, **Stop** or **Steer** for **Queue instead**. It is enabled only
+while work is running and the field contains nonblank text. It sends the draft through
+the same queue action as Option+Enter (⌥↵) on macOS or Alt+Enter elsewhere, without
+stopping or steering the current work. A disabled composer cannot paste or queue.

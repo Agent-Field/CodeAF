@@ -9,7 +9,7 @@ export type MenuEntry =
  | { kind?: 'action'; id: string; label: string; icon?: IconName; shortcut?: string; detail?: string; disabled?: boolean; checked?: boolean; danger?: boolean; onSelect: () => void }
  | { kind: 'separator'; id: string }
  | { kind: 'submenu'; id: string; label: string; icon?: IconName; disabled?: boolean; items: readonly MenuEntry[] };
-type MenuProps = { children: ReactElement; items: readonly MenuEntry[]; label: string; onOpenChange?: (open: boolean) => void; /** The 240px menu of the design's tab menu; the default is 200px. */ wide?: boolean };
+type MenuProps = { children: ReactElement; items: readonly MenuEntry[]; label: string; className?: string; onOpenChange?: (open: boolean) => void; /** The 240px menu of the design's tab menu; the default is 200px. */ wide?: boolean };
 
 function useMenuLayer<T extends HTMLElement>(onOpenChange?: (open: boolean) => void) {
  const ref = useRef<T>(null);
@@ -57,7 +57,7 @@ function MenuItems({ items, type, container }: { items: readonly MenuEntry[]; ty
   return <P.Item key={entry.id} className={className} disabled={entry.disabled} onSelect={entry.onSelect}>{contents}</P.Item>;
  })}</>;
 }
-export function ContextMenu({ children, items, label, onOpenChange, wide = false }: MenuProps) {
+export function ContextMenu({ children, items, label, onOpenChange, wide = false, className = '' }: MenuProps) {
  const layer = useMenuLayer<HTMLSpanElement>(onOpenChange);
  return <Context.Root onOpenChange={layer.onOpenChange}>
   <Context.Trigger ref={layer.ref} asChild onKeyDown={event => {
@@ -67,7 +67,7 @@ export function ContextMenu({ children, items, label, onOpenChange, wide = false
    const bounds = event.currentTarget.getBoundingClientRect();
    event.currentTarget.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: bounds.left + bounds.width / 2, clientY: bounds.bottom }));
   }}>{children}</Context.Trigger>
-  <Context.Portal container={layer.modal}><Context.Content onFocusCapture={focusFirstItem} aria-label={label} className={`app-menu app-menu-context${wide ? ' app-menu-wide' : ''}`} collisionPadding={design.overlay.collisionPadding}>
+  <Context.Portal container={layer.modal}><Context.Content onFocusCapture={focusFirstItem} aria-label={label} className={`app-menu app-menu-context${wide ? ' app-menu-wide' : ''} ${className}`} collisionPadding={design.overlay.collisionPadding}>
    <MenuItems items={items} type="context" container={layer.modal}/>
   </Context.Content></Context.Portal>
  </Context.Root>;

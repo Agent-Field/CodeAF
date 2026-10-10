@@ -47,3 +47,8 @@ test('keeps delayed previews inside their approved primitive boundary', () => {
  assert.ok(inspectSource('src/features/tasks/Graph.tsx', '<svg><path /></svg>').length);
  assert.ok(inspectSource('src/components/ui/DependencyMap.tsx', '<svg><circle /></svg>').length);
  });
+
+test('accepts measured Radix context-menu width and rejects unknown geometry', () => {
+ assert.deepEqual(inspectCss('src/styles/ui.css', '.menu { max-width: var(--radix-context-menu-content-available-width); }', design), []);
+ assert.equal(inspectCss('src/styles/ui.css', '.menu { max-width: var(--radix-context-menu-content-invented-width); }', design).length, 1);
+});
