@@ -2,8 +2,8 @@
 // Every word on a row is the engine's own (a title, a decision, the best answer, a snippet); nothing is summarised here.
 import type { HistoryItem, SearchResult } from '../../../history/types.ts';
 
-/** Conversations the section lists before "See all"; the design (Shell 4c) shows two. */
-export const fromHistoryLimit = 2;
+/** Conversations the section lists before "See all": up to three; Shell 4c draws two because only two matched (ledger NT16). */
+export const fromHistoryLimit = 3;
 
 /** One conversation the search found, in the engine's order. `item` is known for the best match; the rest are read on demand. */
 export type HistoryCandidate = { id: string; line: string; item?: HistoryItem };
