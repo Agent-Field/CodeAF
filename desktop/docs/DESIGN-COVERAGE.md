@@ -7,6 +7,39 @@ Companion: [`PLACES-ARCHITECTURE.md`](PLACES-ARCHITECTURE.md), the data paths, b
 boundary these tasks build. Work orders live in PlanDB project `p-6xuu` under `t-d5-plan`. Every task
 id in this file is a PlanDB id.
 
+## Iteration 2 overrides (2026-10-10)
+
+Authority: v3 Iteration 2 I2.1–I2.14, Decisions 12a–12e and Interactions I2.
+See [ITERATION-2.md](ITERATION-2.md) for architecture, shortcuts, live limitations
+and manual coverage. The d5 baseline below remains historical; **superseded**
+means its old presentation must not be built, not that its replacement passed.
+
+| Retired d5 work / coverage | Status | Replacement obligation |
+| --- | --- | --- |
+| `t-d5-sh-rail-inbox-wire`, `t-d5-sh-inbox-tab-dot`; SH-024/025/026/027/085/086, PL-047/048 | superseded: I2.1–I2.2 | No Inbox row or tab. One frame pill counts questions elsewhere; the current chat owns its local count. |
+| `t-d5-tab-inbox-feed`, `t-d5-tab-inbox-rows`, `t-d5-tab-inbox-open`; TI-03/04/05/06/08/11/12 | superseded: I2.1–I2.3 | World attention feeds Next up across windows. Walk real conversations, focus their questions, support keyboard/theme/narrow layouts. |
+| `t-d5-tab-inbox-answer`, `t-d5-tab-inbox-test`; TI-07/09/10, BE-INB-03/08 | superseded: I2.1, I2.11 | Answer in the conversation tray; Skip preserves the question; Accept covers reversible suggestions; zero hides the pill. |
+| SH-145, TI-01/02; old Inbox background-work list | superseded: I2.6 | Closed-but-running work lives under Live on place Home; closing still never stops work. |
+| BE-INB-05/06/07; old notification scope/activation assumptions | superseded where conflicting: I2.3 | Only blocking questions notify; activation starts Next up at the exact item; dock badge is total needs-you. Existing native activation evidence remains relevant. |
+
+SH-028 retains its Now context-menu rule only. PL-040/063/064/082 lose their
+Inbox entries, not their remaining rail/switcher obligations. The old Inbox
+assumptions in the shell and tab-kind sections below are retired. Shared backend
+work (`t-d5-be-attention`, `t-d5-qa-be-world`, `t-d5-prim-world-client`,
+`t-d5-nat-notify`) remains required under the new scopes; do not cancel it merely
+because its historical row said Inbox.
+
+| I2 acceptance area | Coverage / evidence map | Acceptance scope |
+| --- | --- | --- |
+| I2.1–I2.3, I2.6, I2.11: Next up and two counts | `features/nextup/`; `tests/ui/nextup-walk.spec.ts`, `strip-nextup-seam.spec.ts`, `conversation-header-nextup.spec.ts` | Window queue, actual tray navigation, Skip, delayed Accept/Undo, blocking banner; native notifications need native proof. |
+| I2.4–I2.5: focus history and back chips | `features/focus-history/`; `src/design/keyboard.test.ts`; `desktop-navigation-shortcuts.md` manual | Foreground history restores context; background opens do not record; Home Up and chat message movement remain distinct. |
+| I2.7–I2.9: gate, learning, receipts | `internal/session/decide_{hook,wire}_test.go`, `internal/decide/*_test.go`, bridge `decisions_flow_test.go`; `tests/ui/decisions.spec.ts` | Per-kind 18/20, 90% default, asks/refusals, receipt replay. Transcript overturn wiring remains a documented gap. |
+| I2.10, I2.12, I2.14: discussions, plans, bounded reach | `internal/council/*_test.go`, bridge council routes; `tests/ui/council-view.spec.ts`; `desktop-plan-card.md` manual | Caps and pair/topic cooldown, Go/Edit/Cancel, deleted targets, dependent handling; components do not prove live runner wiring. |
+| I2.13–I2.14: knowledge and retrieval | `internal/placegraph/knows*_test.go`, bridge knows routes; `features/places/knows/`; `chat_desktop_iteration_two_test.go` | Provenance, Undo, explicit conflicts, seven-day replacement, sixty-day confirmation, real callback limits and searchable manual overview. |
+
+These pointers identify evidence to run; they are not a blanket completion claim.
+Historical counts below include superseded rows and are not current gap totals.
+
 ## Current audit status
 
 The counts and per-row statuses below are the planning baseline at `39d440c4f`.
@@ -594,10 +627,10 @@ Source shorthand: SH = `codeaf Shell.dc.html` §id; IX = `codeaf Interactions.dc
 | SH-021 | Rail row selected = `--tab` fill + `--sh-1`, ink 500 (tab-like lift) | F-COL-24, C-PLACE-5 | no `tab` theme colour in tokens (HEAD or L-rail); L-rail uses `NavigationItem` | missing | t-d5-int-tok-a-colour, t-d5-sh-rail-rows |
 | SH-022 | Rail row hover = `--tab-hover` fill | C-PLACE-8 | L-rail `rail.css` | in-flight:t-s1-rail | — |
 | SH-023 | Rail rows keyboard-reachable; ring only on keyboard focus | IX Flows "Accessibility"; S-IX-13 | L-rail test "the rail, the strip toggle and Focus mode are accessible in light and dark" | in-flight:t-s1-rail | — |
-| SH-024 | Inbox row: inbox 14 ink-3 + "Inbox" + amber 6px dot when anything needs you | SH 3a; S-R-2, C-PLACE-1 | none (L-rail DQ R3 ships Workspace/Activity/Settings/Design system only) | missing | t-d5-sh-rail-attention-model, t-d5-sh-rail-rows, t-d5-sh-rail-test |
-| SH-025 | Inbox click → Inbox in the current place's strip, focused on the oldest needs-you item | IX Shell "Rail · Inbox"; S-R-9 | none | missing | t-d5-sh-rail-inbox-wire, t-d5-sh-rail-test |
-| SH-026 | Inbox ⌘-click / middle → new tab | IX "Rail · Inbox"; S-R-9 | none | missing | t-d5-sh-rail-inbox-wire, t-d5-sh-rail-test |
-| SH-027 | Inbox hover shows the count | IX "Rail · Inbox"; S-R-9 | none | missing | t-d5-sh-rail-rows, t-d5-sh-rail-test |
+| SH-024 | Inbox row: inbox 14 ink-3 + "Inbox" + amber 6px dot when anything needs you | SH 3a; S-R-2, C-PLACE-1 | none (L-rail DQ R3 ships Workspace/Activity/Settings/Design system only) | superseded: I2 (see override table) | t-d5-sh-rail-attention-model, t-d5-sh-rail-rows, t-d5-sh-rail-test |
+| SH-025 | Inbox click → Inbox in the current place's strip, focused on the oldest needs-you item | IX Shell "Rail · Inbox"; S-R-9 | none | superseded: I2 (see override table) | t-d5-sh-rail-inbox-wire, t-d5-sh-rail-test |
+| SH-026 | Inbox ⌘-click / middle → new tab | IX "Rail · Inbox"; S-R-9 | none | superseded: I2 (see override table) | t-d5-sh-rail-inbox-wire, t-d5-sh-rail-test |
+| SH-027 | Inbox hover shows the count | IX "Rail · Inbox"; S-R-9 | none | superseded: I2 (see override table) | t-d5-sh-rail-rows, t-d5-sh-rail-test |
 | SH-028 | Inbox / Now right-click: none ("—"). ASSUME the webview's default context menu is suppressed on rail rows | IX "Rail · Inbox/Now" right-click "—" | none | missing | t-d5-sh-rail-inbox-wire, t-d5-sh-rail-test |
 | SH-029 | Now row: circle-dashed 14 + "Now" + count 11 ink-3 | SH 3a; S-R-3, C-PLACE-2 | none | missing | t-d5-sh-rail-attention-model, t-d5-sh-rail-rows, t-d5-sh-rail-test |
 | SH-030 | Now click switches the window to Now (graphite, unplaced tabs) | IX "Rail · Now"; S-R-10 | none | missing | t-d5-sh-rail-now-wire, t-d5-sh-rail-test |
@@ -654,8 +687,8 @@ Source shorthand: SH = `codeaf Shell.dc.html` §id; IX = `codeaf Interactions.dc
 | SH-082 | Drag a tab out of the strip → new window holding that tab | IX Flows "Multiple windows"; S-2g-6 | none | missing | t-d5-sh-tab-tearoff, t-d5-sh-window-test |
 | SH-083 | ASSUME keyboard reorder: Alt+Shift+←/→ moves the focused tab one place; SR "Moved to position N of M" (mirrors Q28) | design silent | none | missing | t-d5-sh-tab-keyboard-move, t-d5-sh-group-test |
 | SH-084 | Pinned tab: 30px icon-only; ⌘W leaves it open | SH 2h "Pinned"; S-T-2 | `Tab.tsx pinned`; L-rail test "⌘W leaves a pinned tab open" | in-flight:t-s1-rail | — |
-| SH-085 | Pinned Inbox tab: first slot, the only pinned tab with a dot | SH 3j/3l/2b; S-3j-10, S-3j-21, S-2b-2 | L-menus `reducers/closing.ts ensure-inbox`; test "the Inbox carries a dot only when something needs you" | in-flight:t-s1-menus | — |
-| SH-086 | Inbox tab dot reflects needs-you across ALL conversations (world `attention`), not only open tabs | SH 3j "where everything that needs you lands"; arch "Inbox" row | L-menus computes from open tabs only | missing | t-d5-sh-rail-attention-model, t-d5-sh-inbox-tab-dot, t-d5-sh-rail-test |
+| SH-085 | Pinned Inbox tab: first slot, the only pinned tab with a dot | SH 3j/3l/2b; S-3j-10, S-3j-21, S-2b-2 | L-menus `reducers/closing.ts ensure-inbox`; test "the Inbox carries a dot only when something needs you" | superseded: I2 (see override table) | — |
+| SH-086 | Inbox tab dot reflects needs-you across ALL conversations (world `attention`), not only open tabs | SH 3j "where everything that needs you lands"; arch "Inbox" row | L-menus computes from open tabs only | superseded: I2 (see override table) | t-d5-sh-rail-attention-model, t-d5-sh-inbox-tab-dot, t-d5-sh-rail-test |
 | SH-087 | ASSUME coarse pointer: × always shown on the active tab with a 24px hit; long-press (500ms) opens the tab menu | design silent | none | missing | t-d5-tok-sh-touch, t-d5-sh-touch-targets, t-d5-sh-touch-test |
 | SH-088 | ≤600px strip: actions stay reachable | AGENTS responsive | `strip.css @media 600` | complete (tabs.spec "many top tabs scroll under a mask with a +N menu and keep narrow-screen actions reachable") | — |
 | SH-089 | ASSUME right-click on empty strip: New tab ⌘T · Reopen closed tab ⌘⇧T · Show all tabs ⌘⇧\ | design silent | none | missing | t-d5-sh-strip-menu, t-d5-sh-strip-test |
@@ -713,7 +746,7 @@ Source shorthand: SH = `codeaf Shell.dc.html` §id; IX = `codeaf Interactions.dc
 | SH-142 | Idle tab: ⌥ does nothing | S-3l-6 | L-menus `running.ts` | in-flight:t-s1-menus | — |
 | SH-143 | ⌥⌘W closes and stops | IX Shortcuts; S-3l-14 | L-menus `useCloseStopKey.ts` | in-flight:t-s1-menus | — |
 | SH-144 | Toast "<b>Config stack</b> closed and still running" · Stop it · Undo; 6s; bottom | SH 3l step 3; S-3l-4, C-OVL-1 | L-menus `closing/ClosingToast.tsx`; tests "after closing running work a 6s toast…", "Stop it stops the closed work…" | in-flight:t-s1-menus | — |
-| SH-145 | Closed-but-running work listed under "Running in the background"; click reopens where it was | SH 3l; S-3l-5, S-3l-7 | L-menus `InboxPane.tsx`, `background.ts` | in-flight:t-s1-menus | — |
+| SH-145 | Closed-but-running work listed under "Running in the background"; click reopens where it was | SH 3l; S-3l-5, S-3l-7 | L-menus `InboxPane.tsx`, `background.ts` | superseded: I2 (see override table) | — |
 | SH-146 | ONE toast primitive (bottom-centre, 40h r12 surface sh-2, 6s) shared by closing and auto-archive toasts | C-OVL-1, C-OVL-2; audit D8 (two impls, 6s vs 12s) | L-menus `ClosingToast.tsx`; L-history `ArchiveToast.tsx` | missing | t-d5-tok-sh-toast, t-d5-prim-toast, t-d5-int-tok-f-exports, t-d5-prim-toast-adopt-closing, t-d5-sh-toast-test |
 | SH-147 | ASSUME toast: `role=status`; actions reachable by keyboard; timer pauses on hover / focus | ambiguity 22; IX Flows "Accessibility" | none shared | missing | t-d5-prim-toast, t-d5-sh-toast-test |
 | SH-148 | ASSUME one toast at a time; a newer one replaces the older | ambiguity 22 | none | missing | t-d5-prim-toast, t-d5-sh-toast-test |
@@ -1017,18 +1050,18 @@ Tab-strip chrome (glyph states, close, groups, previews, overview) belongs to th
 | TS-11 | Hover/overview card: "Pinned: … Default effort: …" | 3h Shell-ann line 243 | L-rail `SettingsPreview` | in-flight:t-s1-rail | — |
 | TS-12 | New sections keyboard-reachable, accessible in Light + Dark, at 320px | contract | none | missing | t-d5-tab-set-test |
 | **Inbox tab** | | | | | |
-| TI-01 | Inbox (pinned) body: "Running in the background" (closed-but-running work, click reopens where it was) | 3l S-3l-7, S-K-10 | HEAD `kinds/inbox.ts` placeholder; L-menus `kinds/inbox/InboxPane.tsx`, `closing/background.ts`; lane test "closed-but-running work lists in the pinned Inbox and a click reopens the tab" | in-flight:t-s1-menus | — |
-| TI-02 | Stopping the closed work clears it | S-3l-4/5 | L-menus lane test "stopping the closed work clears it from the Inbox" | in-flight:t-s1-menus | — |
-| TI-03 | Inbox dot only when something needs you | S-3j-21/23 | L-menus lane test "the Inbox carries a dot only when something needs you" | in-flight:t-s1-menus | — |
-| TI-04 | Needs-you list across ALL conversations, not only open tabs ("where everything that needs you lands") | S-3j-21, arch Inbox | L-menus lists only open tabs' summaries (`api.background.needsYou`) | partial | t-d5-be-attention, t-d5-prim-world-client (fixed), t-d5-tab-inbox-feed |
-| TI-05 | Needs-you row: amber dot, conversation title, place, the question in one line, age; oldest first | ASSUME from 3l row anatomy + I-ISH-1 "oldest" | L-menus row = dot + title + "needs you" | partial | t-d5-tab-inbox-rows |
-| TI-06 | Rail Inbox click opens Inbox focused on the oldest needs-you item | I-ISH-1 | none | missing | t-d5-tab-inbox-rows |
-| TI-07 | Answer in place: the row opens the question card; answering attaches the conversation lazily (`POST /sessions {sessionFile}` then `/answer`); the row leaves | arch Inbox "answering attaches lazily"; S-3k-9 (act without switching) | none | missing | t-d5-tab-inbox-answer |
-| TI-08 | Row click opens/focuses that conversation tab with the question focused in the tray; ⌘-click = background | I-ISH-1/2, I-IFL-13 | L-menus `select` only for open tabs | partial | t-d5-tab-inbox-open |
-| TI-09 | Empty: one muted line "Work that needs you, or keeps running after you close its tab, lands here." | DS emptiness law | L-menus `InboxPane.tsx` | in-flight:t-s1-menus | — |
-| TI-10 | ASSUME: failed work is not listed in the Inbox. Failed shows on the tab and the rail, and work that finishes leaves the Inbox | 3l "until it finishes or needs you" | L-menus lists running/waiting only (unasserted) | missing | t-d5-tab-inbox-test |
-| TI-11 | Keyboard ↑↓/↵ through rows, Light + Dark, narrow ≤600 | S-IX-13, responsive law | L-menus rows are buttons; arrows not wired | missing | t-d5-tab-inbox-rows, t-d5-tab-inbox-test |
-| TI-12 | Inbox mirrors live in a second window | I-IFL-9 | world stream shared (planned) | missing | t-d5-tab-inbox-feed |
+| TI-01 | Inbox (pinned) body: "Running in the background" (closed-but-running work, click reopens where it was) | 3l S-3l-7, S-K-10 | HEAD `kinds/inbox.ts` placeholder; L-menus `kinds/inbox/InboxPane.tsx`, `closing/background.ts`; lane test "closed-but-running work lists in the pinned Inbox and a click reopens the tab" | superseded: I2 (see override table) | — |
+| TI-02 | Stopping the closed work clears it | S-3l-4/5 | L-menus lane test "stopping the closed work clears it from the Inbox" | superseded: I2 (see override table) | — |
+| TI-03 | Inbox dot only when something needs you | S-3j-21/23 | L-menus lane test "the Inbox carries a dot only when something needs you" | superseded: I2 (see override table) | — |
+| TI-04 | Needs-you list across ALL conversations, not only open tabs ("where everything that needs you lands") | S-3j-21, arch Inbox | L-menus lists only open tabs' summaries (`api.background.needsYou`) | superseded: I2 (see override table) | t-d5-be-attention, t-d5-prim-world-client (fixed), t-d5-tab-inbox-feed |
+| TI-05 | Needs-you row: amber dot, conversation title, place, the question in one line, age; oldest first | ASSUME from 3l row anatomy + I-ISH-1 "oldest" | L-menus row = dot + title + "needs you" | superseded: I2 (see override table) | t-d5-tab-inbox-rows |
+| TI-06 | Rail Inbox click opens Inbox focused on the oldest needs-you item | I-ISH-1 | none | superseded: I2 (see override table) | t-d5-tab-inbox-rows |
+| TI-07 | Answer in place: the row opens the question card; answering attaches the conversation lazily (`POST /sessions {sessionFile}` then `/answer`); the row leaves | arch Inbox "answering attaches lazily"; S-3k-9 (act without switching) | none | superseded: I2 (see override table) | t-d5-tab-inbox-answer |
+| TI-08 | Row click opens/focuses that conversation tab with the question focused in the tray; ⌘-click = background | I-ISH-1/2, I-IFL-13 | L-menus `select` only for open tabs | superseded: I2 (see override table) | t-d5-tab-inbox-open |
+| TI-09 | Empty: one muted line "Work that needs you, or keeps running after you close its tab, lands here." | DS emptiness law | L-menus `InboxPane.tsx` | superseded: I2 (see override table) | — |
+| TI-10 | ASSUME: failed work is not listed in the Inbox. Failed shows on the tab and the rail, and work that finishes leaves the Inbox | 3l "until it finishes or needs you" | L-menus lists running/waiting only (unasserted) | superseded: I2 (see override table) | t-d5-tab-inbox-test |
+| TI-11 | Keyboard ↑↓/↵ through rows, Light + Dark, narrow ≤600 | S-IX-13, responsive law | L-menus rows are buttons; arrows not wired | superseded: I2 (see override table) | t-d5-tab-inbox-rows, t-d5-tab-inbox-test |
+| TI-12 | Inbox mirrors live in a second window | I-IFL-9 | world stream shared (planned) | superseded: I2 (see override table) | t-d5-tab-inbox-feed |
 | **New tab (⌘T)** | | | | | |
 | TN-01 | One centred field, rows, caption "Type a question, a file, a URL, or a command." | 3f S-3f-1..12, C-NEWT-1..5 | HEAD `kinds/newtab.ts` stand-in; L-newtab `kinds/newtab/NewTabPane.tsx`, `rows.ts`; lane tests "the field, its rows and the caption have the design geometry" | in-flight:t-s1-newtab | — |
 | TN-02 | First row "Ask “fix…” in a new conversation ↵" turns the tab into a conversation | S-3f-4/15 | L-newtab lane tests "Enter on the first row creates a session…" | in-flight:t-s1-newtab | — |
@@ -1382,8 +1415,8 @@ Status key: complete, partial, missing, in-flight:<lane>, n/a-decided.
 | PL-044 | Row selected: `--tab` lift + sh-1 + ink + 500 weight; `aria-current` | P-0-6; P-X-4 | none | missing | t-d5-pl-rail-row |
 | PL-045 | Row focus-visible ring; ↑/↓ roving focus through the rail list; Enter = Go to | IX Accessibility; P-IX-34; P-X-3 | none | missing | t-d5-pl-rail-sections; t-d5-pl-test-rail |
 | PL-046 | Row disabled. ASSUME: no disabled place row; archived places never appear in the rail | — | none | missing | t-d5-pl-rail-sections |
-| PL-047 | Inbox row: inbox icon, amber dot when anything anywhere needs you, hover shows count | 6a; P-6a-3; P-IX-3 | lane t-s1-menus builds a local-tab Inbox pane only | missing | t-d5-pl-rail-sections |
-| PL-048 | Inbox row click opens Inbox in the current place's strip at the oldest item; ⌘-click/middle-click opens a new tab | P-IX-1,2 | t-s1-menus `kinds/inbox/InboxPane.tsx` (local) | in-flight:t-s1-menus (pane) / missing (row) | t-d5-pl-rail-sections |
+| PL-047 | Inbox row: inbox icon, amber dot when anything anywhere needs you, hover shows count | 6a; P-6a-3; P-IX-3 | lane t-s1-menus builds a local-tab Inbox pane only | superseded: I2 (see override table) | t-d5-pl-rail-sections |
+| PL-048 | Inbox row click opens Inbox in the current place's strip at the oldest item; ⌘-click/middle-click opens a new tab | P-IX-1,2 | t-s1-menus `kinds/inbox/InboxPane.tsx` (local) | superseded: I2 (see override table) | t-d5-pl-rail-sections |
 | PL-049 | Now row: circle-dashed, count of unplaced open tabs; click switches the window to Now (graphite, no Home); ⌘-click opens a new window on Now | 6a; P-6a-4; P-IX-4,5 | none | missing | t-d5-pl-rail-sections; t-d5-pl-navigation |
 | PL-050 | Pinned section: user order, never auto-closes, a pinned parent does not pull in its children | 10a; P-10a-10,15 | none | missing | t-d5-pl-selectors; t-d5-pl-rail-sections |
 | PL-051 | Open section: places you've gone to, newest at the top, flat, parent muted | 10a; P-10a-9,10; P-6a-8 | none | missing | t-d5-pl-selectors; t-d5-pl-rail-sections |
@@ -1775,12 +1808,12 @@ blends the two meanings.
 |---|---|---|---|---|---|
 | BE-INB-01 | Questions and approvals of an attached conversation | Conversation tray | `Snapshot.questions`, `POST …/answer` | complete (`TestQuestionAnswerUsesCanonicalIdentityAndOfferedKey`) | — |
 | BE-INB-02 | Cross-conversation needs-you feed (every place, attached or not) | §6d P-6d-5, §6a P-6a-3 | `S/world.go:281` `SessionRow.NeedsPerson`; no route | missing | t-d5-be-attention |
-| BE-INB-03 | Answer in Inbox without switching (lazy attach then `/answer`) | §6d P-6d-5 | `POST /sessions` spawns an engine first | partial | t-d5-be-attention, t-d5-qa-be-world |
+| BE-INB-03 | Answer in Inbox without switching (lazy attach then `/answer`) | §6d P-6d-5 | `POST /sessions` spawns an engine first | superseded: I2 (see override table) | t-d5-be-attention, t-d5-qa-be-world |
 | BE-INB-04 | Failed items (red) in the feed | §10a P-10a-16, P-X-11 | none | missing | t-d5-be-attention |
 | BE-INB-05 | System notification when backgrounded: needs-you and failed only, one per question, grouped per place; never done/running | Shell IX S-IX-6, P-X-18 | none | missing | t-d5-nat-notify |
 | BE-INB-06 | Notification click focuses that question. ASSUME: focuses the app window and the renderer opens the newest needs-you item (desktop notification plugins do not deliver click payloads on Linux) | S-IX-6 | none | missing | t-d5-nat-notify |
 | BE-INB-07 | Dock badge = needs-you count, nothing else | S-IX-7 | none | missing | t-d5-nat-notify |
-| BE-INB-08 | Local-tab Inbox pane | Shell IX | menus lane `InboxPane.tsx` | in-flight:t-s1-menus | t-d5-prim-world-client (data source) |
+| BE-INB-08 | Local-tab Inbox pane | Shell IX | menus lane `InboxPane.tsx` | superseded: I2 (see override table) | t-d5-prim-world-client (data source) |
 
 #### 9. Multiwindow
 
