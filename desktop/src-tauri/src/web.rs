@@ -463,6 +463,9 @@ pub async fn web_open<R: Runtime>(
         }
     };
     platform::adopt(&caller, &view, rect);
+    // While the page holds the keys, a document listener in the app never runs.
+    // Linux registers the three app chords on the window; macOS uses the menu.
+    platform::bind_app_chords(&app, caller.label(), &view, &pane);
     if !visible {
         let _ = view.hide();
     }
@@ -478,6 +481,23 @@ pub async fn web_open<R: Runtime>(
         }),
     );
     current(&app, &label)
+}
+
+/// Sends one app chord to the window that owns the page. New and close use the
+/// same event the menu already sends; the address chord is its own event so a
+/// tab command never has to mean "focus the address".
+pub(super) fn deliver_chord<R: Runtime>(
+    app: &AppHandle<R>,
+    owner: &str,
+    pane: Option<&str>,
+    chord: policy::AppChord,
+) {
+    let (event, payload) = match chord {
+        policy::AppChord::NewTab => ("desktop-tab-action", serde_json::json!("new")),
+        policy::AppChord::CloseTab => ("desktop-tab-action", serde_json::json!("close")),
+        policy::AppChord::Address => ("web://focus-address", serde_json::json!({ "pane": pane })),
+    };
+    let _ = app.emit_to(owner, event, payload);
 }
 
 fn current<R: Runtime>(app: &AppHandle<R>, label: &str) -> Result<WebState, String> {
