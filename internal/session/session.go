@@ -636,6 +636,9 @@ const (
 	// EventToolOutput carries literal stdout/stderr in Text while a user shell
 	// command is running. CallID owns the bytes; its result still ends the call.
 	EventToolOutput
+	// EventPlan carries a proposed sequence in Plan so a surface can ask before
+	// actions reach beyond the chat. It adds no approval clock or execution.
+	EventPlan
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -676,6 +679,7 @@ type Event struct {
 	ReplayObserved bool         `json:"-"`
 
 	Discussion *QuestionDiscussion `json:",omitempty"`
+	Plan       *Plan               `json:"plan,omitempty"`
 
 	Kind EventKind
 	// Addressed is a producer's declaration that streamed text is for the person.
