@@ -19,15 +19,57 @@ func captureStdout(t *testing.T, run func() error) (string, error) {
 	}
 	previous := os.Stdout
 	os.Stdout = write
+	// THE READER HAS TO RUN WHILE THE COMMAND WRITES. A pipe holds 64KiB and
+	// the next write blocks until somebody reads. Reading only after run
+	// returns deadlocks the moment a command prints more than that: the
+	// manual listing did, and TestManualDispatchesFromTheCommandLine sat in
+	// Write until the suite's ceiling.
+	type readResult struct {
+		body []byte
+		err  error
+	}
+	done := make(chan readResult, 1)
+	go func() {
+		body, readErr := io.ReadAll(read)
+		done <- readResult{body, readErr}
+	}()
+	defer func() {
+		_ = write.Close()
+		if os.Stdout == write {
+			os.Stdout = previous
+		}
+	}()
 	runErr := run()
+	// Close the write end before waiting, so ReadAll sees EOF, and put the
+	// real stdout back before that wait so a later log line is not a write
+	// into a pipe nobody is draining anymore.
 	_ = write.Close()
 	os.Stdout = previous
-	body, readErr := io.ReadAll(read)
+	got := <-done
 	_ = read.Close()
-	if readErr != nil {
-		t.Fatal(readErr)
+	if got.err != nil {
+		t.Fatal(got.err)
 	}
-	return string(body), runErr
+	return string(got.body), runErr
+}
+
+// TestCaptureStdoutReadsWhileTheCommandWrites is the pipe law above, stated
+// with a payload rather than with whatever the manual listing happens to
+// weigh this week. 256KiB is four times the 64KiB a Linux pipe holds before
+// the writer blocks.
+func TestCaptureStdoutReadsWhileTheCommandWrites(t *testing.T) {
+	const past = 256 << 10
+	payload := strings.Repeat("m", past)
+	got, err := captureStdout(t, func() error {
+		_, writeErr := os.Stdout.WriteString(payload)
+		return writeErr
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != payload {
+		t.Fatalf("captured %d bytes, wrote %d", len(got), past)
+	}
 }
 
 func TestServicesCommandListsAndStops(t *testing.T) {
