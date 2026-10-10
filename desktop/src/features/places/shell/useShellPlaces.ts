@@ -44,8 +44,11 @@ type RailInputs = Pick<PlaceRailProps, 'inert' | 'paletteOpen' | 'peeking' | 'on
   /** The focused Home tab's place (`root` for All places). */
   activeHome?: string;
   onEnterWorkspace: () => void;
-  /** Questions waiting on the person, from the world stream, and whether the Inbox tab is the one showing. */
-  inbox: { count: number; active: boolean };
+  /**
+   * The retired Inbox row. Omitted, the rail and the collapsed switcher draw no Inbox.
+   * Next up's frame pill is the count now; a caller that still passes this keeps the old row.
+   */
+  inbox?: { count: number; active: boolean };
 };
 
 export function usePlaceRail(shell: PlacesShell, inputs: RailInputs): PlaceRailProps {
@@ -59,7 +62,8 @@ export function usePlaceRail(shell: PlacesShell, inputs: RailInputs): PlaceRailP
   const { inbox, onWorkspace: _onWorkspace, activeHome: _activeHome, onEnterWorkspace: _enter, ...rest } = inputs;
   return {
     ...rest,
-    inbox: { ...inbox, onOpen: enter(() => requestOpenKind('inbox')) },
+    // Absent means no row. A passed count still opens the old tab, for a caller that has not dropped it.
+    ...(inbox ? { inbox: { ...inbox, onOpen: enter(() => requestOpenKind('inbox')) } } : {}),
     now: {
       active: inputs.onWorkspace && shell.place === 'now' && !allPlacesActive, shortcut: placeShortcuts.slot(0),
       status: rollupStatus(graph?.now.status), statusLabel: graph && graph.now.status.needsYou > 0 ? `${graph.now.status.needsYou} need${graph.now.status.needsYou === 1 ? 's' : ''} you in Now` : undefined,
@@ -95,7 +99,7 @@ export function useAttentionNotices() {
   return { items, status: world.status };
 }
 
-/** The Home tab's place switcher while the rail is put away (Places 9c): Inbox, Now, the rail's places with their slot keys, All places. */
+/** The Home tab's place switcher while the rail is put away (Places 9c): Now, the rail's places with their slot keys, All places. Inbox is listed only when the rail was given that row. */
 export function placeSwitcher(shell: PlacesShell, rail: PlaceRailProps): { items: MenuEntry[]; alert?: string } {
   const sections = rail.sections ?? { pinned: [], open: [] };
   const order = [...sections.pinned, ...sections.open];

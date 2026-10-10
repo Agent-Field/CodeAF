@@ -9,7 +9,7 @@
 // Skip lives on this controller only. Another window has its own controller, so
 // its walk order does not follow this one, and the engine is never told.
 
-import { useCallback, useSyncExternalStore } from 'react';
+import { createContext, createElement, useCallback, useContext, useSyncExternalStore, type ReactNode } from 'react';
 import design from '../../design/tokens.json' with { type: 'json' };
 import { toasts, type Toasts } from '../../design/toasts.ts';
 import { EngineError, fetchEngine, type EngineAnswer } from '../chat/engine-client.ts';
@@ -228,14 +228,27 @@ export type NextUp = ReturnType<typeof createNextUp>;
 /** The window's Next up. Skip and the pending Accept belong to this window alone. */
 export const nextUp = createNextUp();
 
+const NextUpContext = createContext<NextUp | null>(null);
+
+/**
+ * The one Next up for this window. App mounts it. A specimen with no provider
+ * keeps the module controller, so a pill rendered alone still has a queue.
+ */
+export function NextUpProvider({ controller = nextUp, children }: { controller?: NextUp; children: ReactNode }) {
+  return createElement(NextUpContext.Provider, { value: controller }, children);
+}
+
 /**
  * The queue for the conversation on screen, and Accept / Skip.
  * `conversationKey` is that conversation's session id; empty counts every one.
+ * An explicit controller wins; otherwise the provider App mounted; otherwise the module one.
  */
-export function useNextUp(conversationKey = '', controller: NextUp = nextUp) {
-  const snapshot = () => controller.view(conversationKey);
-  const view = useSyncExternalStore(controller.subscribe, snapshot, snapshot);
-  const accept = useCallback(() => { controller.accept(conversationKey); }, [controller, conversationKey]);
-  const skip = useCallback(() => { controller.skip(conversationKey); }, [controller, conversationKey]);
+export function useNextUp(conversationKey = '', controller?: NextUp) {
+  const provided = useContext(NextUpContext);
+  const active = controller ?? provided ?? nextUp;
+  const snapshot = () => active.view(conversationKey);
+  const view = useSyncExternalStore(active.subscribe, snapshot, snapshot);
+  const accept = useCallback(() => { active.accept(conversationKey); }, [active, conversationKey]);
+  const skip = useCallback(() => { active.skip(conversationKey); }, [active, conversationKey]);
   return { ...view.queue, skipped: view.skipped, pendingAccept: view.pendingAccept, failureLine: view.failureLine, accept, skip };
 }
