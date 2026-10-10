@@ -22,6 +22,7 @@ export type QuestionCardProps = {
   onAnswer: (answer: EngineAnswer) => Promise<boolean>;
   onHold: () => void;
   onLater?: () => void;
+  onSkip?: () => void;
   /** The only question waiting: no pager, so Enter chooses the primary. */
   single?: boolean;
   renderImage?: RenderImage;
@@ -71,7 +72,7 @@ function Heading({ question }: { question: Question }) {
   );
 }
 
-export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, onLater, single, renderImage }: QuestionCardProps) {
+export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, onLater, single, renderImage, onSkip }: QuestionCardProps) {
   const [draft, setDraft] = useState<Draft>(() => initialDraft(question));
   const [panel, setPanel] = useState<Panel>(null);
   const [whyOpen, setWhyOpen] = useState(false);
@@ -98,7 +99,7 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
     void send(answerFor(question, draft, option));
   }
 
-  if (isProposal(question)) return <Proposal question={question} busy={locked} now={now} held={held} onAnswer={onAnswer} onHold={onHold} />;
+  if (isProposal(question)) return <Proposal question={question} busy={locked} now={now} held={held} onAnswer={onAnswer} onHold={onHold} onSkip={onSkip} />;
   const decide = decideAnswer(question);
   const props: FormProps = { question, draft, edit, locked };
   const always = (question.options ?? []).find((option) => option.widening);
@@ -107,7 +108,8 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
   const clocked = deadlineAt(question) !== null;
   const clarifying = form === 'text';
   const cards = wantsCards(question);
-  const note = doesNotBlock([question]) ? <NonBlockingNote /> : undefined;
+  const nonBlocking = doesNotBlock([question]) ? <NonBlockingNote /> : undefined;
+  const note = onSkip ? <>{nonBlocking}<Button className="nextup-walk-skip" disabled={locked} onClick={onSkip}>Skip</Button></> : nonBlocking;
   // The note rides the card's main row of answers when it has one; otherwise the footer row carries it.
   const risky = isIrreversible(question) && (form === 'permission' || form === 'choice');
   const rowHostsNote = cards || (form !== 'text' && (INPUT_FORMS.has(form) || risky || form === 'permission' || hasButtonRow(question)));

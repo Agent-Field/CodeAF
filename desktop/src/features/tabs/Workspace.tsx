@@ -1,6 +1,6 @@
 // The workspace: owns the reducer state and composes the strip, the content card and the dialogs.
 // Everything with a lane of its own lives in a sibling file (see ARCHITECTURE.md).
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Button, Icon, Text, TextInput, type MenuEntry } from '../../components/ui';
 import { nativeControls } from '../../design/nativeControls';
 import design from '../../design/tokens.json';
@@ -23,12 +23,14 @@ import { TabsApiContext, type TabsApi } from './context';
 import type { PaneActions } from './kinds/slots';
 import { tabMenuFor } from './hosts/menuHost';
 import { NewTabHostContext } from './kinds/newtab/api';
+import { useNewTabKeys } from './kinds/newtab/useNewTabKeys';
 import { kindDef } from './kinds/registry';
 import { newTab } from './helpers';
+import { blockingOf, type AttentionItem } from '../chat/world-client';
 import { worldStore } from '../chat/world-store';
 import { focusedPane, freshWorkspace, panesOf, readWorkspace, visibleTabs, workspaceKey, workspaceReducer, type Pane, type Tab, type WorkspaceState, type WorkspaceAction } from './model';
 import { FirstTurnContext, NewConversationPlaceContext, type BeforeFirstTurn } from '../conversation/firstTurn';
-import type { TintName } from '../places/components/PlaceSwatch';
+import { placeTints, type TintName } from '../places/components/PlaceSwatch';
 import { onWorkspaceRequest } from '../places/shell/workspaceBus';
 import { useWorkspaceSync } from '../workspace-sync/useWorkspaceSync';
 import type { WorkspaceKey } from '../workspace-sync/client';
@@ -42,13 +44,90 @@ import { publishActiveHome } from '../shell/shellState';
 import { PaneGrid } from './PaneGrid';
 import { createPreviewStore } from './preview/previewStore';
 import { TabOverview } from './TabOverview';
-import { TabStrip } from './TabStrip';
+import { requestNextUp, TabStrip, type StripBack, type StripFrame } from './TabStrip';
+import { bannerVisible, type NextUpBannerItem } from '../nextup/Banner';
+import { queueRowOf } from '../nextup/QueuePopover';
+import { useNextUp } from '../nextup/useNextUp';
+import { nextUpWalk, useNextUpWalk } from '../nextup/useNextUpWalk';
+import type { FocusEntry } from '../focus-history/model';
+import { useFocusWireFor, useOptionalFocusWire } from '../focus-history/useFocusHistory';
+import { routeTask } from './view-state';
+import { useScrollMemory } from './scroll/memoryStore';
+import { questionFocus } from '../conversation/questionFocus';
 import { useTerminalTabs } from '../terminal/useTerminalTabs';
 import { useWorkspaceWeb } from '../web/useWorkspaceWeb';
+import { useGroupKeys } from './useGroupKeys';
 import { useDesktopTabActions, useTabKeys, type Switcher } from './useTabKeys';
 import { useWindowHandoff } from './useWindowHandoff';
 import { useTabLinks } from './links/useTabLinks';
 import './workspace.css';
+
+/** Per window, so two windows do not share a back stack (P-24). The browser's one window is `main`. The seam spec duplicates the `main` key because it cannot import this module. */
+export const focusHistoryStorageKey = (label: string) => `codeaf.desktop.focus.v1.${label}`;
+
+/** A place tint the swatch knows. Anything else is graphite, the neutral, rather than a colour the feed invented. */
+function swatchTint(value: string | undefined): TintName {
+  return (placeTints as readonly string[]).includes(value ?? '') ? value as TintName : 'graphite';
+}
+
+/**
+ * The banner's second line: the conversation the feed named, then the work the question holds up.
+ * One named task is spelled; several become a count. Nothing named leaves the line off.
+ */
+function bannerDetail(item: AttentionItem): string | undefined {
+  const conversation = typeof item.title === 'string' ? item.title.trim() : '';
+  const named = (item.holdingUp ?? []).map(name => name.trim()).filter(name => name !== '');
+  const tasks = blockingOf(item).tasks.filter(name => typeof name === 'string' && name.trim() !== '');
+  const count = named.length || tasks.length;
+  const hold = count > 1 ? `holding up ${count} tasks` : count === 1 ? `holding up ${named[0] || tasks[0]}` : '';
+  const line = [conversation, hold].filter(part => part !== '').join(' · ');
+  return line || undefined;
+}
+
+function bannerFrom(item: AttentionItem): NextUpBannerItem {
+  const blocking = blockingOf(item);
+  return {
+    id: item.key,
+    blocking: blocking.turn || blocking.tasks.some(name => typeof name === 'string' && name !== ''),
+    head: typeof item.text === 'string' ? item.text : '',
+    detail: bannerDetail(item),
+  };
+}
+
+/**
+ * A banner for a blocking question that arrives after the feed's first reading. Questions already
+ * waiting when the window opens stay on the pill and do not slide out.
+ */
+function useArrivingBanner(elsewhere: readonly AttentionItem[]): NextUpBannerItem | null {
+  const world = useSyncExternalStore(worldStore.subscribe, worldStore.getState, worldStore.getState);
+  const seeded = useRef(false);
+  const known = useRef(new Set<string>());
+  const [current, setCurrent] = useState<NextUpBannerItem | null>(null);
+  const worldKeys = world.items.map(item => item.key).join('\0');
+  const elsewhereKeys = elsewhere.map(item => item.key).join('\0');
+  useEffect(() => {
+    if (!seeded.current) {
+      if (world.status !== 'live' && world.items.length === 0) return;
+      seeded.current = true;
+      known.current = new Set(world.items.map(item => item.key));
+      return;
+    }
+    const fresh = elsewhere.find(item => !known.current.has(item.key) && bannerVisible(bannerFrom(item)));
+    for (const item of world.items) if (item.key) known.current.add(item.key);
+    if (fresh) setCurrent(bannerFrom(fresh));
+  }, [worldKeys, elsewhereKeys, world.status, world.items, elsewhere]);
+  return current;
+}
+
+/** Where Back returns. Another place is named as a place; a tab in this place is named by its title. Unknown is nothing. */
+function backTargetName(entry: FocusEntry, tabs: readonly Tab[], place: string, placeName: (id: string) => string | undefined): string {
+  if (entry.windowPlace !== place) {
+    if (entry.windowPlace === 'now') return 'Now';
+    if (entry.windowPlace === 'root') return 'All places';
+    return placeName(entry.windowPlace) ?? '';
+  }
+  return tabs.find(tab => tab.id === entry.tabId)?.title ?? '';
+}
 
 type Props = {
   enabled: boolean; onActivate: () => void; leading?: ReactNode;
@@ -147,7 +226,84 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
     dispatch({ type: 'home-ensure', place, title: placeTitle, focus });
   }, [place, placeTitle, arrival]);
   useEffect(() => onWorkspaceRequest(dispatch), [dispatch]);
-  const focused = focusedPane(state.tabs.find(tab => tab.id === state.activeId) ?? state.tabs[0]);
+  const activeTab = state.tabs.find(tab => tab.id === state.activeId) ?? state.tabs[0];
+  const focused = focusedPane(activeTab);
+  // P-3: the conversation you're in is the focused pane's. A task or file on that session is the same conversation.
+  const conversationKey = focused.sessionFile ? chatIdFromSessionFile(focused.sessionFile) : '';
+  const queue = useNextUp(conversationKey);
+  const banner = useArrivingBanner(queue.items);
+  const tintOf = (placeId: string | undefined): TintName => swatchTint(placeId ? shell?.index?.byId.get(placeId)?.effectiveTint : undefined);
+  const frame: StripFrame = {
+    count: queue.count,
+    rows: queue.items.map(item => queueRowOf(item, tintOf)),
+    acceptable: queue.acceptable.length,
+    banner,
+    onOpen: () => requestNextUp(),
+    onJump: itemKey => requestNextUp({ itemKey }),
+    onStart: () => requestNextUp(),
+    onAccept: () => { void queue.accept(); },
+  };
+  // The workspace keeps window history and prefers the outer wire when the shell supplies one.
+  const outerFocus = useOptionalFocusWire();
+  const [windowLabel, setWindowLabel] = useState('main');
+  const focusNavigate = useRef<(entry: FocusEntry) => void>(() => {});
+  focusNavigate.current = entry => {
+    if (entry.windowPlace !== place) void shell?.goTo(entry.windowPlace);
+    dispatch({ type: 'select', id: entry.tabId });
+  };
+  const localFocus = useFocusWireFor(outerFocus ? undefined : focusHistoryStorageKey(windowLabel), entry => focusNavigate.current(entry));
+  const focusWire = outerFocus ?? localFocus;
+  const focusSnap = useSyncExternalStore(focusWire.subscribe, focusWire.getSnapshot, focusWire.getSnapshot);
+  const scrollMemory = useScrollMemory();
+  const walk = useNextUpWalk({
+    enabled, place,
+    origin: () => ({ place, tabId: activeTab.id, paneId: focused.id, label: placeTitle ?? activeTab.title, conversation: conversationKey, draft: focused.draft, route: focused.route, scroll: scrollMemory?.get(focused.id) }),
+    goTo: id => shell ? shell.goTo(id) : Promise.reject(new Error('That place is unavailable.')),
+    warn: reason => shell?.warn(reason),
+    open: item => {
+      const row = worldStore.getState().rows.find(row => row.session === item.session);
+      if (!row?.sessionFile) { shell?.warn(new Error('The engine did not say where this conversation is saved.')); return; }
+      focusWire.markCause('next-up');
+      const existing = state.tabs.flatMap(tab => panesOf(tab)).find(pane => pane.kind === 'conversation' && pane.sessionFile === row.sessionFile);
+      const pane = existing ?? newTab({ kind: 'conversation', title: row.title || 'Untitled chat', titleSource: 'engine', sessionFile: row.sessionFile });
+      dispatch(existing ? { type: 'select', id: pane.id } : { type: 'open', background: false, tab: pane as Tab });
+      if (existing?.route) dispatch({ type: 'view', id: pane.id, change: { route: undefined } });
+      if (item.id !== undefined) questionFocus.request(item.session, { kind: item.kind, id: item.id });
+    },
+    restore: origin => {
+      for (const [key, spot] of origin.scroll ?? []) scrollMemory?.set(origin.paneId, key, spot);
+      dispatch({ type: 'select', id: origin.paneId });
+      dispatch({ type: 'view', id: origin.paneId, change: { route: origin.route } });
+      if (origin.draft !== undefined) dispatch({ type: 'draft', id: origin.paneId, draft: origin.draft });
+    },
+  });
+  const backEntry = focusSnap.chip;
+  const backName = backEntry ? backTargetName(backEntry, state.tabs, place, id => shell?.index?.byId.get(id)?.name) : '';
+  const back: StripBack | undefined = walk.origin && walk.phase !== 'idle' ? {
+    key: `walk:${walk.origin.place}:${walk.origin.tabId}`, parentName: walk.origin.label,
+    onBack: () => nextUpWalk.exit(), onDismiss: () => {},
+  } : backEntry && backName ? {
+    key: `${focusSnap.history.cursor}:${backEntry.windowPlace}:${backEntry.tabId}:${backEntry.drillPath.join('/')}`,
+    parentName: backName,
+    onBack: () => { focusWire.back(); },
+    onDismiss: () => { focusWire.dismissChip(); },
+  } : undefined;
+  useEffect(() => {
+    let live = true;
+    void nativeControls().currentWindow().then(info => { if (live && info.label) setWindowLabel(info.label); });
+    return () => { live = false; };
+  }, []);
+  // The tab id is the step, not the pane inside a split. The first report after a saved stack is a relaunch, so a chip that was already there stays.
+  useEffect(() => {
+    focusWire.setTabs(place, state.tabs.map(tab => tab.id));
+    if (!activeTab) return;
+    // A place's Home on the way to a question is navigation in progress, not another focus step.
+    if (walk.phase === 'walking' && (focused.kind !== 'conversation' || conversationKey !== walk.item?.session)) return;
+    if (walk.phase === 'returning' && focused.id !== walk.origin?.paneId) return;
+    if (walk.phase === 'walking') focusWire.markCause('next-up');
+    const task = focused.route ? routeTask(focused.route) : undefined;
+    focusWire.observe({ windowPlace: place, tabId: activeTab.id, drillPath: task ? [task] : [] });
+  }, [focusWire, place, state.tabs, activeTab, focused.route, walk.phase, walk.item?.key]);
   useEffect(() => publishActiveHome(focused.kind === 'home' ? focused.place : undefined), [focused.kind, focused.place]);
 
   useEffect(() => {
@@ -190,6 +346,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   useTabLinks({ enabled, state, dispatch, actions });
   useCloseStopKey(enabled, () => closeAndStop(state.activeId));
   function startRename(id: string, group = false) { setRename({ id, group, value: (group ? state.groups : state.tabs).find(item => item.id === id)?.title ?? '' }); }
+  const groupSelected = useGroupKeys({ enabled, state, dispatch, startRename });
   useTabKeys({ enabled, state, dispatch, visible, overviewOpen, setOverviewOpen, closeTab, switcherRef, setSwitcher });
   useTerminalTabs({ enabled, state, dispatch });
   // Web tabs: a page's new window and a link's open-in-tab modifier open a web tab, a page can start a conversation, and a closed tab's native view closes.
@@ -198,8 +355,9 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const historyHost = useHistoryWorkspace(state, dispatch);
   const [archived, dismissArchived] = useAutoArchive(state, dispatch, summaries, Date.now, sync.status.phase === 'saved' || sync.status.phase === 'saving');
 
-  const api: TabsApi = { workspaceKey: place, state, dispatch, summaries, now, closeTab, closeAndStop, closeMany: closing.closeMany, isRunning: closing.isRunning, background, markFailedSeen, openChat: onOpenChat ?? openChatHere, canOpenChat: id => !!worldStore.getState().rows.find(row => row.session === id)?.sessionFile, actions, reopenClosed: closing.reopenClosed, startRename, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename,
+  const api: TabsApi = { workspaceKey: place, state, dispatch, summaries, now, closeTab, closeAndStop, closeMany: closing.closeMany, isRunning: closing.isRunning, background, markFailedSeen, openChat: onOpenChat ?? openChatHere, canOpenChat: id => !!worldStore.getState().rows.find(row => row.session === id)?.sessionFile, actions, reopenClosed: closing.reopenClosed, startRename, groupSelected, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename,
     placeTint: place === 'now' ? undefined : placeTint, placeMenu, placeSwitcher };
+  useNewTabKeys(api);
   const newTabHost = { state, summaries, dispatch, closeTab, receiveTransfer: sync.receiveTransfer };
   const actionsFor = (pane: Pane): PaneActions => ({
     onDraft: draft => dispatch({ type: 'draft', id: pane.id, draft }),
@@ -219,8 +377,8 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
     },
     onAddToPlace: shell && pane.sessionFile ? () => { const chatId = chatIdFromSessionFile(pane.sessionFile!); if (chatId) shell.openChooser({ kind: 'file', chatIds: [chatId], chatTitle: pane.title, exclude: [] }); } : undefined,
   });
-  return <TabsApiContext.Provider value={api}><section ref={gestureRoot} className="tab-workspace" aria-label="Conversation workspace">
-    <TabStrip api={api} leading={leading} overviewTrigger={overviewTrigger} onOverview={openOverview}/>
+  return <TabsApiContext.Provider value={api}><section ref={gestureRoot} className="tab-workspace" aria-label="Conversation workspace" data-nextup-walk={walk.phase !== 'idle' || undefined}>
+    <TabStrip api={api} leading={leading} back={back} frame={frame} overviewTrigger={overviewTrigger} onOverview={openOverview}/>
     <NewConversationPlaceContext.Provider value={place === 'now' || place === 'root' ? undefined : place}><FirstTurnContext.Provider value={firstTurn}><NewTabHostContext.Provider value={newTabHost}><HistoryHostContext.Provider value={historyHost}><PaneGrid tab={active} tabs={state.tabs} dispatch={dispatch} actionsFor={actionsFor} retainedPaneIds={state.closed.flatMap(tab => panesOf(tab).map(pane => pane.id))}/></HistoryHostContext.Provider></NewTabHostContext.Provider></FirstTurnContext.Provider></NewConversationPlaceContext.Provider>
     <GroupOffer api={api}/>
     {archived && <ArchiveToast count={archived.tabs.length} onDismiss={dismissArchived} onReview={() => { dispatch(openKindAction(state, 'history')); dismissArchived(); }} onRestore={() => { restoreArchived(archived, dispatch); dismissArchived(); }}/>}

@@ -5,7 +5,7 @@ import type { Tab } from '../../types.ts';
 import { askLabel, buildSections, flatRows, splitMatch, tabDigit, titleFromText, type RowInput } from './rows.ts';
 
 const tab = (id: string, title: string, over: Partial<Tab> = {}): Tab => ({ id, kind: 'conversation', title, draft: '', pinned: false, ...over });
-const input = (over: Partial<RowInput> = {}): RowInput => ({ query: '', tabs: [], closed: [], files: [], terminal: false, terminalShortcut: '⌃`', fileShortcut: '⌘O', ...over });
+const input = (over: Partial<RowInput> = {}): RowInput => ({ query: '', tabs: [], closed: [], files: [], terminal: false, web: true, terminalShortcut: '⌃`', fileShortcut: '⌘O', ...over });
 
 test('with nothing typed the field offers only the start rows', () => {
   const sections = buildSections(input());
@@ -13,8 +13,15 @@ test('with nothing typed the field offers only the start rows', () => {
   assert.deepEqual(flatRows(sections).map(r => r.id), ['openfile']);
 });
 
-test('the terminal row is absent until a terminal is backed', () => {
-  assert.deepEqual(flatRows(buildSections(input({ terminal: true }))).map(r => r.id), ['terminal', 'openfile']);
+test('the terminal row is absent until a terminal is backed, and then it carries the New terminal chord', () => {
+  const off = flatRows(buildSections(input()));
+  assert.deepEqual(off.map(row => row.label), ['Open file…']);
+  assert.equal(off[0].hint, '⌘O');
+  const on = flatRows(buildSections(input({ terminal: true, terminalShortcut: '⌃`', fileShortcut: '⌘O' })));
+  assert.deepEqual(on.map(row => [row.id, row.label, row.hint, row.kind]), [
+    ['terminal', 'New terminal', '⌃`', 'terminal'],
+    ['openfile', 'Open file…', '⌘O', 'openfile'],
+  ]);
 });
 
 test('typed text puts the conversation row first, then Start, then Matching in file, tab, closed order', () => {
@@ -73,4 +80,10 @@ test('an address puts a web row ahead of the conversation row; ordinary words do
   assert.deepEqual(flatRows(buildSections(input({ query: 'why is the lexer slow' }))).map(r => r.id).slice(0, 2), ['ask', 'openfile']);
   assert.equal(flatRows(buildSections(input({ query: 'ftp://example.com/x' })))[0].id, 'ask');
   assert.equal(flatRows(buildSections(input({ query: 'a.b c.d' })))[0].id, 'ask');
+});
+
+test('with web unbacked an address stays a question: the conversation row leads with the enter hint', () => {
+  const rows = flatRows(buildSections(input({ query: 'https://example.com/x', web: false })));
+  assert.deepEqual(rows.slice(0, 2).map(r => r.id), ['ask', 'openfile']);
+  assert.equal(rows[0].hint, '↵');
 });

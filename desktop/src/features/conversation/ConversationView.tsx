@@ -1,3 +1,8 @@
+import { EndCard } from '../nextup/EndCard';
+import { useNextUpWalkState } from '../nextup/useNextUpWalk';
+import { nextUpWalk } from '../nextup/useNextUpWalk';
+import { worldStore } from '../chat/world-store';
+import '../nextup/walk.css';
 import { blocksComposer } from './tray/layout';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { FirstTurnContext, NewConversationPlaceContext } from './firstTurn';
@@ -83,11 +88,12 @@ function useTaskPanel(hasTasks: boolean, closed: boolean, onView: ConversationVi
   return { sheet, shown, close, open };
 }
 
-export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummary, onOpenTaskTab, autoFocus = true, split = false, focused = true, usingApi, onOpenSource, onAddToPlace }: ConversationViewProps) {
+export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummary, onOpenTaskTab, onRename, autoFocus = true, split = false, focused = true, usingApi, onOpenSource, onAddToPlace }: ConversationViewProps) {
   const beforeFirstTurn = useContext(FirstTurnContext);
   const newConversationPlace = useContext(NewConversationPlaceContext);
   const conversation = useConversation({ sessionFile: tab.sessionFile, onSessionFile: (sessionFile) => onView({ sessionFile }), beforeFirstTurn, newConversationPlace });
   const { model, snapshot, failed } = conversation;
+  const walk = useNextUpWalkState();
   const [focusKey, setFocusKey] = useState<string>();
   // A tab opened from a web page brings that page's picture; the composer attaches it once and the offer is spent.
   const [offered, setOffered] = useState(() => peekOfferedFiles(tab.id));
@@ -183,8 +189,9 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
   const empty = !inTask && model.turns.length === 0 && model.preface.length === 0 && !failed;
   const { done, total } = taskCounts(model.tasks);
   const barPanel = hasTasks && !inTask ? { label: `Tasks · ${done}/${total}`, shown: panel.shown, onToggle: panel.shown ? panel.close : panel.open } : undefined;
-  // ⌘⇧K toggles the task panel (design Shell 2h); a conversation without tasks has no panel, so the key is left alone.
-  useShortcuts(shortcutLayer.surface, shortcut => { if (shortcut.id !== 'tasks-panel' || !barPanel) return false; barPanel.onToggle(); return true; }, !tasksView);
+  // ⌘⇧K toggles the task panel exactly like the header button (design Shell 2h, I-IKY-16). Only the focused pane answers, so a split's
+  // other panes do not race for the key; a conversation without tasks has no panel, so the key is left alone.
+  useShortcuts(shortcutLayer.surface, shortcut => { if (shortcut.id !== 'tasks-panel' || !barPanel) return false; barPanel.onToggle(); return true; }, !tasksView && focused);
   const barCounts = { running: taskProgress(model.tasks).running, needsYou: model.questions.length };
   // The Using list is re-read when a turn lands or the work starts and stops: a place changed meanwhile applies from the next turn.
   const using = useUsing(usingApi, sessionId, `${model.turns.length}:${model.running}`);
@@ -220,15 +227,8 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
         {/* Now uses graphite for the empty start without changing the surrounding shell palette. */}
         <div className="conversation-main" data-empty={empty || undefined} data-tint={empty && !newConversationPlace ? 'graphite' : undefined} data-sheet={sheetLocksScroll || undefined} hidden={tasksView}>
           {showBar && (
-            <ConversationBar nextUp={nextUp} onNeedsYou={() => {
-              const first = model.questions[0];
-              if (!first) return;
-              if (panel.sheet) panel.close();
-              if (inTask) setRoute(navigate(route, undefined));
-              jump();
-              focusQuestion(questionKey(first));
-            }} onTasksFilter={(tasksFilter) => { if (panel.sheet) panel.close(); onView({ tasksFilter, route: navigate(route, TASKS_VIEW) }); }} lead={inTask ? 'trail' : 'title'} counts={barCounts} panel={barPanel} using={<UsingLine control={using} onOpenSource={onOpenSource} onAddToPlace={onAddToPlace} />}>
-              {taskId ? <TaskRouteBar rootLabel={label} taskId={taskId} tasks={model.tasks} route={route} onRoute={setRoute} /> : <span className="conversation-bar-title">{barTitle}</span>}
+            <ConversationBar nextUp={nextUp} onTasksFilter={(tasksFilter) => { if (panel.sheet) panel.close(); onView({ tasksFilter, route: navigate(route, TASKS_VIEW) }); }} lead={inTask ? 'trail' : 'title'} title={barTitle || undefined} onRename={barTitle ? onRename : undefined} counts={barCounts} panel={barPanel} using={<UsingLine control={using} onOpenSource={onOpenSource} onAddToPlace={onAddToPlace} />}>
+              {taskId ? <TaskRouteBar rootLabel={label} taskId={taskId} tasks={model.tasks} route={route} onRoute={setRoute} /> : null}
             </ConversationBar>
           )}
           <div ref={scroller} className="conversation-scroll" data-scroll-key={inTask ? 'task-page' : 'conversation'} data-scrolled={scrolled || undefined} data-task={inTask || undefined}>
@@ -262,6 +262,7 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
             <div className="conversation-dock-layer">
               {showJump && <LatestPill working={model.running} since={liveSince(model)} onJump={jump} />}
               <div className="conversation-footer conversation-column">
+                {focused && walk.phase === 'clear' && walk.origin && <EndCard answeredCount={walk.answered} conversations={worldStore.getState().rows.map(row => ({ tasksRunning: row.tasks.running }))} originLabel={walk.origin.label} onReturn={() => nextUpWalk.exit()} />}
                 {folderNote && <Text role="status">{folderNote}</Text>}
                 {conversation.unreachable && <EngineNotice onRetry={() => void retry()} />}
                 {!inTask && (

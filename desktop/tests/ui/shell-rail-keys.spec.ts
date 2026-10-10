@@ -368,6 +368,8 @@ test('the rail, the strip toggle and Focus mode are accessible in light and dark
 });
 
 test('the Design system page shows the rail specimen, light and dark', async ({ page }) => {
+  // The accessibility pass covers the whole design system. Under four workers it does not finish in the default 30s.
+  test.setTimeout(60_000);
   for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.goto('/');

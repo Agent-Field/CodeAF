@@ -1,0 +1,24 @@
+/* The inline place-delete confirm (Interactions "Delete"). Soft fill, no edge accent.
+   The question fades under a mask rather than ellipsizing. Hover and press live on the shared buttons. */
+.place-delete-confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--space-tight);
+  min-height: var(--row-height-v3);
+  padding: 0 var(--places-row-pad);
+  border-radius: var(--places-row-radius);
+  background: var(--field);
+  color: var(--ink);
+}
+.place-delete-question {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-strong);
+  line-height: var(--type-label-leading);
+  color: var(--ink);
+  mask-image: linear-gradient(to right, black calc(100% - var(--places-text-fade)), transparent);
+}
+.place-delete-confirm .button { flex: none; }

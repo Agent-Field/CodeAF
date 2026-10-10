@@ -11,6 +11,8 @@
 import { useEffect, useRef, type Dispatch } from 'react';
 import type { Tab, WorkspaceAction } from '../tabs/model';
 import { panesOf } from '../tabs/model';
+import { openUrl } from '../../design/native';
+import { nativeWebAvailable } from '../../design/nativeWeb';
 import { siteOf } from './address';
 import { setWebHost } from './host';
 import { pageAttachment, type PageContext } from './pageContext';
@@ -51,7 +53,8 @@ export function useWorkspaceWeb(tabs: Tab[], dispatch: Dispatch<WorkspaceAction>
   const send = useRef(dispatch);
   send.current = dispatch;
   useEffect(() => setWebHost({
-    openWebTab: url => send.current({ type: 'open', tab: webTab(url), background: false }),
+    // Without native web no web tab ever opens: the address goes to the default browser instead.
+    openWebTab: url => { if (nativeWebAvailable()) send.current({ type: 'open', tab: webTab(url), background: false }); else void openUrl(url); },
     startConversationWithPage: page => send.current({ type: 'open', tab: conversationAbout(page), background: false }),
   }), []);
   const live = tabs.flatMap(tab => panesOf(tab)).filter(pane => pane.kind === 'web').map(pane => pane.id).join('\n');

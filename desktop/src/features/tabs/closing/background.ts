@@ -119,7 +119,9 @@ export function buildBackgroundWork(input: Build): BackgroundWork {
     return row ? [{ id: tab.id, title: tab.title, tabId: tab.id, chatId: row.session, state: row.needsYou ? 'waiting' as const : 'running' as const, since: since[tab.id], ...(stale ? { stale } : {}) }] : [];
   });
   // Conversations with no tab here at all: running in another window, or in none.
-  const elsewhere: BackgroundItem[] = [...rows.values()].filter(row => row.running && !row.needsYou && !openChats.has(row.session) && !closedChats.has(row.session))
+  // A row that names no conversation is not that work. The session mirror the inactive tabs
+  // read has a chat id and no session, and listing it would pin an Inbox for a chat this window already has.
+  const elsewhere: BackgroundItem[] = [...rows.values()].filter(row => row.session && row.running && !row.needsYou && !openChats.has(row.session) && !closedChats.has(row.session))
     .map(row => ({ id: `chat:${row.session}`, title: row.title, chatId: row.session, state: 'running' as const, ...(stale ? { stale } : {}) }));
 
   const waiting: NeedsYouItem[] = world.items.filter((item: WorldAttention) => !openChats.has(item.session) && !closedChats.has(item.session))

@@ -14,6 +14,11 @@
 .work-step[data-state="forming"] .work-step-title { opacity: var(--opacity-control-disabled); }
 .work-step[data-state="refused"] .work-step-title { text-decoration: line-through; text-decoration-color: var(--line); }
 
+/* Only the last running title receives the sweep; settled titles inherit Q19's quiet row ink. */
+.work-step-title[data-shimmer] { background-image: linear-gradient(var(--shimmer-angle), var(--ink-2) 0%, var(--ink-2) var(--cf-shimmer-edge), var(--ink) var(--cf-shimmer-mid), var(--ink-2) var(--cf-shimmer-far), var(--ink-2) 100%); background-size: var(--shimmer-size) 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: cf-shimmer var(--cf-shimmer-duration) linear infinite; }
+@keyframes cf-shimmer { from { background-position: var(--cf-shimmer-from) 0; } to { background-position: var(--cf-shimmer-to) 0; } }
+@media (prefers-reduced-motion: reduce) { .work-step-title[data-shimmer] { animation: none; background: none; color: var(--ink-2); } }
+
 .work-step-dot, .work-step-ring { display: inline-grid; flex: none; place-items: center; width: var(--icon-xs); height: var(--icon-xs); }
 .work-step-dot::before { content: ""; width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--mark-running); }
 .work-step-dot[data-mark="waiting"]::before { background: var(--mark-waiting); }
