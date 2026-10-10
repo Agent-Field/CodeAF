@@ -599,7 +599,7 @@ var seamContract = []struct {
 // seamOwned says a row has a real handler in this package (knows_routes.go or
 // plan_routes.go), so the stub test leaves it to that file's own tests.
 func seamOwned(pattern string) bool {
-	return strings.Contains(pattern, "/knows") || strings.Contains(pattern, "/plan/{plan}/")
+	return strings.Contains(pattern, "/knows") || strings.Contains(pattern, "/plan/{plan}/") || strings.Contains(pattern, "decide") || strings.Contains(pattern, "/decisions")
 }
 
 func seamExample(pattern string) string {
@@ -706,12 +706,24 @@ func TestSeamRouteRegistrationReplacesTheStub(t *testing.T) {
 	const method, pattern = http.MethodPost, "/decisions/{id}/overturn"
 	var got map[string]string
 	var calls int
+	// The overturn row has its real handler (decisions.go); lend the slot to
+	// this test and put the real one back afterwards.
+	var real seamHandler
+	for _, route := range seamTable {
+		if route.method == method && route.pattern == pattern {
+			real = route.handle
+		}
+	}
+	clearSeamRoute(method, pattern)
 	registerSeamRoute(method, pattern, func(_ *Bridge, w http.ResponseWriter, _ *http.Request, ids map[string]string) {
 		calls++
 		got = ids
 		write(w, map[string]bool{"accepted": true})
 	})
-	t.Cleanup(func() { clearSeamRoute(method, pattern) })
+	t.Cleanup(func() {
+		clearSeamRoute(method, pattern)
+		registerSeamRoute(method, pattern, real)
+	})
 	b := New(testToken, func(string) (Connection, error) {
 		t.Fatal("a registered seam handler opened an engine")
 		return Connection{}, nil

@@ -126,6 +126,19 @@ func (s *Store) Mode(kindKey string) (KindState, error) {
 	return st, err
 }
 
+// Modes returns every kind the place has a state for, keyed by kind key. A
+// kind never asked about is absent, not learning with an empty ring.
+func (s *Store) Modes() (map[string]KindState, error) {
+	out := map[string]KindState{}
+	err := s.view(func(c *doc) {
+		for key, st := range c.Modes {
+			st.Recent = append([]Outcome(nil), st.Recent...)
+			out[key] = st
+		}
+	})
+	return out, err
+}
+
 // SetMode changes the mode for kindKey and keeps its ring.
 func (s *Store) SetMode(kindKey string, m Mode) error {
 	if kindKey == "" || !m.Valid() {

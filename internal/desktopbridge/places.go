@@ -69,6 +69,9 @@ type Places struct {
 	// answer that this bridge cannot.
 	door    *session.PlaceGraphDoor
 	choices *placegraph.ChoiceBook
+	// Decisions is the engine's door onto the decision ledgers (decisions.go).
+	// Nil leaves the log and status reads empty and the overturn route at 501.
+	Decisions *DecisionDoor
 	// allowsModel checks a place's default model against the same model list
 	// the settings page offers. UsePlaces fills it from the bridge's models.
 	allowsModel func(context.Context, string) bool
