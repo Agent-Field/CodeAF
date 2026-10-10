@@ -170,7 +170,7 @@ leaves when it is not. No labels that describe the machine ("Engine connected",
 - If the engine is unreachable, one muted line under the header reads
   `Reconnecting to the engine…` while the client retries. After 30s it reads
   `Can't reach the engine` with a quiet Retry. Nothing turns red. The line
-  disappears when the engine answers. The draft stays.
+  disappears when the engine answers. A plain-text send is held in that pane, drawn at 60% opacity, and goes out in order when the engine answers. A draft that was not sent stays. A send with files stays in the composer.
 - **Separate AI calls** — exactly one, and it is the engine's: the conversation
   title, generated asynchronously after the first message by the engine's title
   lane on the auxiliary role (same fixed model), delivered via the snapshot `title`.
