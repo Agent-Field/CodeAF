@@ -27,6 +27,10 @@ function rig(desktop = false) {
   let refuse = '';
   const client = {
     graph: async () => graph,
+    visit: async (id: string) => {
+      calls.push(`touch:${id}`);
+      if (refuse === 'touch') throw new Error('Engine refused');
+    },
     railOp: async (ask: { op: string; place?: string }) => {
       calls.push(`${ask.op}:${ask.place}`);
       if (ask.op === refuse) throw new Error('Engine refused');
@@ -55,6 +59,7 @@ test('Go to visits the Open MRU and focuses Home on every arrival without stoppi
   assert.equal(r.graph.rail.open[0].id, A);
   assert.equal(r.focuses(), 3);
   assert.equal(r.tabs.get(A), saved);
+  assert.deepEqual(r.calls.filter(call => call.startsWith('touch:')), [`touch:${A}`, `touch:${B}`, `touch:${A}`]);
   assert.deepEqual(r.work, { running: true, stopCalls: 0 });
 });
 
@@ -101,7 +106,7 @@ test('native new-window navigation leaves this window and its saved tabs untouch
   await r.nav.openInNewWindow('root');
   assert.equal(r.current(), A);
   assert.equal(r.focuses(), 1);
-  assert.deepEqual(r.calls, [`visit:${A}`, `window:${B}`, `visit:${B}`, 'window:root']);
+  assert.deepEqual(r.calls, [`touch:${A}`, `visit:${A}`, `window:${B}`, `touch:${B}`, `visit:${B}`, 'window:root']);
 });
 
 test('browser new-window actions fall back to Go to in this window', async () => {
@@ -145,6 +150,10 @@ test('a refused close preserves the current workspace; a failed visit reports it
   await r.nav.goTo(B);
   assert.equal(r.current(), B);
   assert.equal(r.warnings.length, 1);
+  r.refuse('touch');
+  await r.nav.goTo(A);
+  assert.equal(r.current(), A);
+  assert.equal(r.warnings.length, 2);
 });
 
 test('a delayed lookup cannot replace a newer navigation', async () => {
@@ -158,5 +167,5 @@ test('a delayed lookup cannot replace a newer navigation', async () => {
   resolve({ ...r.graph, places: [...r.graph.places, a] });
   await slow;
   assert.equal(r.current(), B);
-  assert.deepEqual(r.calls, [`visit:${B}`]);
+  assert.deepEqual(r.calls, [`touch:${B}`, `visit:${B}`]);
 });
