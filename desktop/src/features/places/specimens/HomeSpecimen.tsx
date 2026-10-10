@@ -42,9 +42,9 @@ const launch: HomeView = {
 const root: HomeView = {
   kind: 'root', id: 'root', title: 'All places', tint: 'graphite', breadcrumb: [], attention: [],
   totals: { topLevel: 5, all: 58 },
-  children: [place('pl_codeaf', 'codeaf', 'tide', 4, 61, { status: 'waiting' }), place('pl_reports', 'Reports', 'sage', 47, 212), place('pl_personal', 'Personal', 'sand', 0, 8),
+  children: [place('pl_codeaf', 'codeaf', 'tide', 4, 61, { status: 'waiting', decide: { alwaysAsk: false, threshold: 90 } }), place('pl_reports', 'Reports', 'sage', 47, 212), place('pl_personal', 'Personal', 'sand', 0, 8),
     place('pl_reading', 'Reading', 'iris', 3, 19), place('pl_side', 'Side projects', 'rose', 2, 7)],
-  allPlaces: [place('pl_codeaf', 'codeaf', 'tide', 4, 61, { status: 'waiting' }), place('pl_reports', 'Reports', 'sage', 47, 212), place('pl_personal', 'Personal', 'sand', 0, 8),
+  allPlaces: [place('pl_codeaf', 'codeaf', 'tide', 4, 61, { status: 'waiting', decide: { alwaysAsk: false, threshold: 90 } }), place('pl_reports', 'Reports', 'sage', 47, 212), place('pl_personal', 'Personal', 'sand', 0, 8),
     place('pl_reading', 'Reading', 'iris', 3, 19), place('pl_side', 'Side projects', 'rose', 2, 7),
     place('pl_papers', 'Papers', 'iris', 0, 11, { tintSource: 'inherited', path: ['Reading'] }), place('pl_q3', 'Q3 report', 'sage', 0, 12, { tintSource: 'inherited', path: ['Reports'] })],
   archivedChildren: [place('pl_old', 'Old experiments', 'sand', 0, 3, { archived: true })],
