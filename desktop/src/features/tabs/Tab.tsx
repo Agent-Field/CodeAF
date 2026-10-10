@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { HTMLAttributes, MouseEvent, ReactElement, Ref } from 'react';
-import { Button, Icon, IconButton } from '../../components/ui';
+import { Button, Icon, IconButton, type IconName } from '../../components/ui';
 import { kindDef } from './kinds/registry';
 import { PlaceSwatch, type TintName } from '../places/components/PlaceSwatch';
 import type { TabKind } from './kinds/types';
@@ -21,8 +21,9 @@ export function monogramHue(title: string): number {
 /**
  * The kind glyph: a Lucide icon, or for web the favicon if there is one, else a monogram. The monogram is the page's
  * site (`monogram`, from the pane's address), not its title: a page's title changes as it loads and the mark must not.
+ * `icon` is the kind's iconFor result, so a file tab draws its type from the path. Absent, the title glyph or the kind icon draws.
  */
-export function KindIcon({ kind, title, monogram, favicon }: { kind: TabKind; title: string; monogram?: string; favicon?: string }) {
+export function KindIcon({ kind, title, icon, monogram, favicon }: { kind: TabKind; title: string; icon?: IconName; monogram?: string; favicon?: string }) {
   const [failed, setFailed] = useState<string>();
   if (kind === 'web') {
     const source = monogram?.trim() || title;
@@ -31,19 +32,21 @@ export function KindIcon({ kind, title, monogram, favicon }: { kind: TabKind; ti
       : <span className="tab-monogram" data-hue={monogramHue(source)} aria-hidden="true">{source.trim().charAt(0).toLowerCase()}</span>;
   }
   const def = kindDef(kind);
-  return <Icon name={def.glyph?.(title) ?? def.icon} size={kind === 'inbox' ? 'sm' : 'xs'}/>;
+  return <Icon name={icon ?? def.glyph?.(title) ?? def.icon} size={kind === 'inbox' ? 'sm' : 'xs'}/>;
 }
 
 /** The leading mark: an amber or red 6px dot when the tab needs you or failed, otherwise the kind glyph. */
-export function TabGlyph({ kind, title, monogram, state, favicon }: { kind: TabKind; title: string; monogram?: string; state?: TabState; favicon?: string }) {
+export function TabGlyph({ kind, title, icon, monogram, state, favicon }: { kind: TabKind; title: string; icon?: IconName; monogram?: string; state?: TabState; favicon?: string }) {
   if (state) return <span className="tab-dot" data-state={state} role="img" aria-label={tabStateLabel[state]}/>;
-  return <KindIcon kind={kind} title={title} monogram={monogram} favicon={favicon}/>;
+  return <KindIcon kind={kind} title={title} icon={icon} monogram={monogram} favicon={favicon}/>;
 }
 
 type FrameProps = Omit<HTMLAttributes<HTMLDivElement>, 'onSelect' | 'onKeyDown' | 'id' | 'title'> & { ref?: Ref<HTMLDivElement> };
 export type TabProps = FrameProps & {
   kind: TabKind;
   title: string;
+  /** A per-tab icon from the kind's iconFor. A file tab passes its type icon. */
+  icon?: IconName;
   /** A web tab's mark source: its site. Falls back to the title. */
   monogram?: string;
   favicon?: string;
@@ -88,11 +91,11 @@ export type TabProps = FrameProps & {
  * One tab, per design 2h "Tabs": 30px, radius 8, 13px kind glyph, 12px title faded over its last 20px,
  * a close in a fixed 20px slot. All state is props; the primitive owns no data and no menus.
  */
-export function Tab({ kind, title, monogram, favicon, active = false, pinned = false, state, picked = false, badge = false, compressed = false, hover = false, closeMode = 'close', closeHint, closeShortcut, tabIndex, wrapSelect, onSelect, onClose, onRename, onKeyDown, frame, id, inGroup = false, specimen = false, placeTint, switcher, ...rest }: TabProps) {
+export function Tab({ kind, title, icon, monogram, favicon, active = false, pinned = false, state, picked = false, badge = false, compressed = false, hover = false, closeMode = 'close', closeHint, closeShortcut, tabIndex, wrapSelect, onSelect, onClose, onRename, onKeyDown, frame, id, inGroup = false, specimen = false, placeTint, switcher, ...rest }: TabProps) {
   const home = !!placeTint;
   const select = (
     <Button className="workspace-tab-select" role={specimen ? undefined : 'tab'} id={id} aria-controls={specimen ? undefined : 'workspace-tab-panel'} aria-selected={specimen ? undefined : active} aria-current={specimen && active ? true : undefined} aria-label={title} aria-description={[state && tabStateLabel[state], picked && 'Selected', !state && badge && (badge === 'failed' ? 'A task failed' : 'Needs you')].filter(Boolean).join(', ') || undefined} tabIndex={tabIndex ?? (active ? 0 : -1)} onClick={onSelect} onDoubleClick={onRename} onKeyDown={onKeyDown}>
-      {home && !state ? <PlaceSwatch tint={placeTint} role="rail"/> : <TabGlyph favicon={favicon} kind={kind} title={title} monogram={monogram} state={state}/>}
+      {home && !state ? <PlaceSwatch tint={placeTint} role="rail"/> : <TabGlyph icon={icon} favicon={favicon} kind={kind} title={title} monogram={monogram} state={state}/>}
       {(home || (!pinned && !compressed)) && <span className="workspace-tab-title">{title}</span>}
       {home && switcher && <>{switcher.alert && <span className="tab-dot" data-state="waiting" role="img" aria-label={switcher.alert}/>}<Icon name="switcher" size="micro"/></>}
       {badge && <span className="tab-badge" data-kind={badge} aria-hidden="true"/>}
