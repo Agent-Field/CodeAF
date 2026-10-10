@@ -55,6 +55,7 @@ type PlaceProps = CommonProps & {
 type NewProps = CommonProps & {
   mode: 'new';
   label?: string;
+  icon?: 'plus' | 'folderOpen';
   onCreate: () => void;
   buttonRef?: Ref<HTMLButtonElement>;
   onKeyDown?: (event: KeyboardEvent<HTMLButtonElement>) => void;
@@ -111,10 +112,10 @@ function PlaceTileBody(props: PlaceProps) {
   return menu && menu.length > 0 ? <ContextMenu items={menu} label={menuLabel ?? `${name} actions`}>{tile}</ContextMenu> : tile;
 }
 
-function NewPlaceTile({ label = 'New place', onCreate, buttonRef, onKeyDown, disabled, appearance, className = '', ...frame }: NewProps) {
+function NewPlaceTile({ label = 'New place', icon = 'plus', onCreate, buttonRef, onKeyDown, disabled, appearance, className = '', ...frame }: NewProps) {
   return <li {...frame} className={`places-tile ${className}`} data-mode="new" data-disabled={disabled || undefined} data-force={appearance}>
     <Button variant="ghost" className="places-tile-main" data-places-tile-focusable disabled={disabled} data-force={appearance} ref={buttonRef} onClick={onCreate} onKeyDown={onKeyDown}>
-      <Icon name="plus" size="md"/>
+      <Icon name={icon} size="md"/>
       <span className="places-tile-new-label">{label}</span>
     </Button>
   </li>;
