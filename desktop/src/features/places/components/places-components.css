@@ -76,7 +76,8 @@
 /* The History row is a card on the canvas: the same fills, 10px radius, no height of its own. */
 
 /* ---- Tile: 84px, surface + sh-1 (Components "Place tile"). Hover fills with --field and a press with --field-2 (the design draws no tile hover: Q-T1). ---- */
-.places-tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--places-tile-min), 1fr)); gap: var(--places-tile-grid-gap); }
+/* Four equal columns; a tile never narrows below the narrow minimum, and the slack keeps sub-pixel rounding from losing the fourth column, so a narrow page drops to fewer columns instead of squeezing names. */
+.places-tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(var(--places-tile-narrow-min), calc((100% - (var(--places-tile-grid-columns) - 1) * var(--places-tile-grid-gap)) / var(--places-tile-grid-columns) - var(--places-tile-grid-slack))), 1fr)); gap: var(--places-tile-grid-gap); }
 .places-tile { position: relative; height: var(--places-tile-height); border-radius: var(--places-tile-radius); background: var(--surface); box-shadow: var(--sh-1); }
 .places-tile:hover:not([data-disabled]):not([data-drop]), .places-tile[data-force="hover"] { background: var(--field); }
 .places-tile:active:not([data-disabled]):not([data-drop]), .places-tile[data-force="pressed"] { background: var(--field-2); }
