@@ -48,7 +48,7 @@ test.describe('tab and group menus (3g)', () => {
     // stands behind them to link to (tab-deep-links.spec covers saved tabs), and a tab moves only in the desktop app.
     // A capability that cannot work is left off the menu.
     expect(await labels(menu)).toEqual(['Open in split', 'Add to group', 'Pin tab', 'Duplicate', 'Rename tab', 'Close tab', 'Close other tabs', 'Close tabs to the right']);
-    await expect(menu.getByRole('menuitem', { name: /^Close tab\b/ }).locator('kbd')).toHaveText(mac ? '⌘W' : 'Ctrl W');
+    await expect(menu.getByRole('menuitem', { name: /^Close tab\b/ }).locator('kbd')).toHaveText(mac ? '⌘W' : 'Ctrl+W');
     // Detailed Shell 3g: 240px content plus 5px padding each side (250px outer), radius 10, 28px rows.
     // Layout width, not the bounding box: the entry animation scales the surface for a few frames.
     expect(await menu.evaluate(el => (el as HTMLElement).offsetWidth)).toBe(px('menu-wide-min-width') + 2 * px('menu-pad'));
@@ -206,7 +206,7 @@ test.describe('closing running work (3l)', () => {
     await page.keyboard.press('Escape');
     const menu = await openMenu(page, 'Config stack');
     await expect(menu.getByRole('menuitem', { name: /^Close tab\b/ })).toBeVisible();
-    await expect(menu.getByRole('menuitem', { name: /^Close and stop/ }).locator('kbd')).toHaveText(mac ? '⌥⌘W' : 'Ctrl Alt W');
+    await expect(menu.getByRole('menuitem', { name: /^Close and stop/ }).locator('kbd')).toHaveText(mac ? '⌥⌘W' : 'Ctrl+Alt+W');
     await menu.getByRole('menuitem', { name: /^Close and stop/ }).click();
     await expect(page.getByRole('tab', { name: 'Config stack', exact: true })).toHaveCount(0);
     await expect.poll(() => stops(engine)).toBe(1);
