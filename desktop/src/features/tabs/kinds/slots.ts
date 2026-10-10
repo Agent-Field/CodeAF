@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react';
-import type { IconName } from '../../../components/ui';
+import type { IconName, MenuEntry } from '../../../components/ui';
 import type { TabSummary } from '../../conversation/tabSummary';
+import type { TabsApi } from '../context';
 import type { Pane } from '../types';
 import type { TabView } from '../view-state';
 import type { SourceHandoff, UsingApi } from '../../places/using-types';
@@ -49,6 +50,12 @@ export type KindDef = {
   /** A per-tab icon read from the tab's title, when the kind draws more than one (a file tab draws its type). */
   glyph?: (title: string) => IconName;
   /** True when the engine or bridge backs this kind today. Unbacked kinds are built and specimened, never opened in the live app. */
+  /** A per-tab icon read from the pane: a file's type icon, a web tab's favicon or monogram. Absent, the kind's `icon` draws. */
+  iconFor?: (pane: Pane) => IconName | { favicon?: string; monogram?: string };
+  /** Short muted text drawn after the title, such as a finished job's `exit 0`. Absent or empty draws nothing. */
+  tabMeta?: (pane: Pane, summary?: TabSummary) => string | undefined;
+  /** Kind-specific entries the tab right-click menu inserts above Close tab. */
+  menuItems?: (pane: Pane, api: TabsApi) => MenuEntry[];
   backed: boolean;
   pane: ComponentType<PaneRenderProps>;
   /** The text card for this kind: kind, state, title and the one piece that matters. */
