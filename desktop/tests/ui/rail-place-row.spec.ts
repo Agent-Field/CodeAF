@@ -19,7 +19,7 @@ for (const theme of ['light', 'dark']) {
     expect(await row.evaluate(el => {
       const s = getComputedStyle(el), r = el.getBoundingClientRect();
       return [r.height, s.fontSize, s.gap, s.borderRadius, s.paddingLeft, s.paddingRight];
-    })).toEqual([32, '13px', '10px', '8px', '8px', '6px']);
+    })).toEqual([32, '13px', '10px', '8px', '8px', '8px']);
     await expect(row).toHaveAttribute('aria-current', 'page');
     expect(await row.evaluate(el => getComputedStyle(el).boxShadow)).not.toBe('none');
     const swatch = row.locator('.place-swatch');
@@ -42,6 +42,9 @@ for (const theme of ['light', 'dark']) {
     const row = marketing(page), close = page.getByRole('button', { name: 'Close Marketing', exact: true });
     expect(await close.evaluate(el => getComputedStyle(el).opacity)).toBe('0');
     await row.hover();
+    await expect(row.locator('.status-mark')).toBeVisible();
+    await row.locator('.status-mark').hover();
+    await expect(page.getByRole('tooltip')).toHaveText('2 need you in Marketing');
     await expect(close).toHaveCSS('opacity', '1');
     await close.hover();
     await expect(page.getByRole('tooltip')).toHaveText('Close Marketing · 4 tabs⌘⇧W');

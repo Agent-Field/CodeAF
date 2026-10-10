@@ -6,8 +6,8 @@
 .rail-section-label > span { flex: 1; min-width: 0; }
 /* "Close all" sits on the Open header and shows with the section's hover or keyboard focus; touch always shows it. */
 .rail-section-action.button { height: auto; min-height: 0; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: inherit; font-weight: inherit; line-height: inherit; }
-.rail-section-action.button:hover:not(:disabled) { background: transparent; color: var(--ink); }
-.rail-section-action.button:active:not(:disabled) { background: transparent; color: var(--ink); }
+.rail-section-action.button:hover:not(:disabled) { background: var(--tab-hover); }
+.rail-section-action.button:active:not(:disabled) { background: var(--field-2); }
 .rail-section-label .rail-section-action { opacity: var(--opacity-transparent); transition: opacity var(--dur-fast) var(--ease); }
 .rail-group:hover .rail-section-action, .rail-group:focus-within .rail-section-action { opacity: var(--opacity-opaque); }
 @media (hover: none) { .rail-section-label .rail-section-action { opacity: var(--opacity-opaque); } }
@@ -17,3 +17,11 @@
 /* The foot: All places, then the window's other pages, then the theme. */
 .rail-foot { margin-top: auto; display: flex; flex-direction: column; gap: var(--rail-row-gap); }
 .rail-foot .sidebar-bottom { margin-top: var(--space-2); }
+.place-rail .nav-item:hover { color: var(--ink-2); }
+.place-rail .nav-item.active:hover { color: var(--ink); }
+/* The insertion mark names a slot, while a filed chat highlights the place itself. */
+.rail-drop-section { position: relative; min-height: var(--rail-place-row-height); }
+.rail-insertion::before, .rail-insertion-end::after { content: ''; position: absolute; left: 0; right: 0; height: var(--rail-insertion-line); background: var(--accent); pointer-events: none; }
+.rail-insertion::before { top: 0; }
+.rail-insertion-end::after { bottom: 0; }
+.rail-dragging { background: var(--tab); box-shadow: var(--sh-2); opacity: var(--rail-drag-ghost-opacity); }

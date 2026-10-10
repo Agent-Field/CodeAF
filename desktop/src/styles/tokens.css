@@ -742,6 +742,9 @@
   --rail-insertion-line: 2px;
   --rail-drag-ghost-opacity: .95;
   --rail-switcher-width: 280px;
+  --rail-switcher-radius: 7px;
+  --rail-switcher-label-pad-top: 6px;
+  --rail-switcher-label-pad-bottom: 2px;
   --rail-peek-delay: 300ms;
   --type-home-title-size: 28px;
   --type-home-title-leading: normal;
