@@ -25,6 +25,10 @@ func (p Place) clone() Place {
 	p.Parents = append([]string{}, p.Parents...)
 	p.Context.Sources = append([]Source(nil), p.Context.Sources...)
 	p.Manager = append(json.RawMessage(nil), p.Manager...)
+	if p.Decide != nil {
+		d := *p.Decide
+		p.Decide = &d
+	}
 	return p
 }
 
@@ -231,6 +235,11 @@ func validateState(st *State, repair bool) ([]string, error) {
 		}
 		if err := validatePolicy(p.Policy); err != nil {
 			return nil, err
+		}
+		if p.Decide != nil {
+			if err := validateDecide(*p.Decide); err != nil {
+				return nil, fmt.Errorf("%w (place %s)", err, p.ID)
+			}
 		}
 		if len(p.Manager) > 0 && (len(p.Manager) > MaxManagerBytes || !json.Valid(p.Manager)) {
 			return nil, fmt.Errorf("%w: manager of %s", ErrInvalid, p.ID)
