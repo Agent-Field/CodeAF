@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Button, Icon, IconButton, Row, RowActions, SectionLabel, Text } from '../../components/ui';
-import { AttentionList, AttentionRow } from './components/AttentionRow';
+import { LiveRows } from './live/LiveRows';
 import { ChatList, ChatRow } from './components/ChatRow';
 import { PlaceTile, PlaceTileGrid } from './components/PlaceTile';
 import type { TintName } from './components/PlaceSwatch';
@@ -38,18 +38,14 @@ export function HomeRecap({ label, text }: { label: string; text: string }) {
   </section>;
 }
 
-/** Needs-you first, then failures, then running; the engine's order is kept inside each group. */
-const attentionRank = { waiting: 0, failed: 1, running: 2 } as const;
-
-export function HomeAttentionSection({ items: given, actions, readOnly }: { items: readonly HomeAttention[]; actions: PlaceActions; readOnly?: boolean }) {
-  if (!given.length) return null;
-  const items = [...given].sort((a, b) => attentionRank[a.status] - attentionRank[b.status]);
-  return <section className="home-section" aria-label="Needs you and running">
-    <AttentionList label="Needs you and running">
-      {items.map(item => <AttentionRow key={`${item.status}:${item.id}`} id={item.id} title={item.title} placeName={item.placeName} status={item.status} statusText={item.statusText}
-        disabled={!actions.openChat || readOnly} onOpen={() => void actions.openChat?.(item.id)} onOpenInNewTab={actions.openChatInNewTab && (() => void actions.openChatInNewTab?.(item.id))}/>)}
-    </AttentionList>
-  </section>;
+/** The place feed includes detached work, so closing its tab never removes a Live row. */
+export function HomeAttentionSection({ items, actions, readOnly }: { items: readonly HomeAttention[]; actions: PlaceActions; readOnly?: boolean }) {
+  const runner = useRunner();
+  return <>
+    <LiveRows items={items} readOnly={readOnly} onOpen={actions.openChat && (id => void runner.run(() => actions.openChat?.(id)))}
+      onOpenInNewTab={actions.openChatInNewTab && (id => void runner.run(() => actions.openChatInNewTab?.(id)))}/>
+    {runner.error && <p className="home-quiet" role="alert">{runner.error}</p>}
+  </>;
 }
 
 function moveFocus(event: KeyboardEvent<HTMLButtonElement>) {
