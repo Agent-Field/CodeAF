@@ -313,7 +313,7 @@ test('source walk keeps code under src and tests and skips the rest', () => {
 test('real tokens.json classifies the chrome palette and leaves component tokens alone', () => {
   const tokens = JSON.parse(readFileSync(new URL('../src/design/tokens.json', import.meta.url), 'utf8'));
   const names = new Set(reportLegacy({ tokens, files: [] }).present.map(row => row.token));
-  for (const name of ['sidebar', 'text', 'muted', 'border', 'menu-highlight', 'menu-selected', 'overlay-surface', 'focus-ring', 'shadow', 'selection-shadow', 'tab-selected', 'tab-strip', 'chrome-canvas', 'control-hover', 'palette-shadow', 'font-size-caption', 'font-weight-semibold', 'font-weight-strong', 'font-sans', 'font-mono', 'radius-md', 'duration', 'duration-fast', 'duration-overlay', 'duration-directional', 'duration-work', 'opacity-disabled', 'swatch-width', 'swatch-height', 'radius-swatch', 'preview-width']) {
+  for (const name of ['sidebar', 'text', 'muted', 'border', 'overlay-surface', 'focus-ring', 'shadow', 'chrome-canvas', 'palette-shadow', 'font-size-caption', 'font-weight-semibold', 'font-weight-strong', 'font-sans', 'font-mono', 'radius-md', 'duration', 'duration-fast', 'duration-overlay', 'duration-work', 'swatch-width', 'swatch-height', 'radius-swatch']) {
     assert.equal(names.has(name), true, name);
   }
   for (const name of ['ink', 'dur-fast', 'type-prose-size', 'control-height', 'control-gap', 'control-pad', 'chrome-ease', 'palette-max-width', 'palette-blur', 'focus-ring-width', 'font-weight-regular', 'duration-sidebar', 'duration-none', 'radius-chip', 'tab', 'tab-hover', 'tab-strip-height', 'sidebar-width', 'sh-1', 'opacity-control-disabled', 'site-icon-font-size']) {
@@ -333,7 +333,16 @@ test('the desktop tree prints a table and does not fail closed while the keys st
   assert.match(out, /\| sidebar \| themes \|/);
   assert.match(out, /\| text \| themes \|/);
   assert.match(out, /var\(--text\)/);
-  assert.match(out, /src\/styles\/ui\.css:\d+/);
+  assert.doesNotMatch(out, /src\/styles\/ui\.css:\d+/);
   assert.match(out, /\| chrome-canvas \| design\.themes \| src\/design\/ThemeProvider\.tsx:\d+ \|/);
-  assert.doesNotMatch(out, /\/home\//);
+  assert.doesNotMatch(out, /\| \/home\//);
+});
+
+test('retired chrome keys stay absent without leaving dangling consumers', () => {
+  const tokens = JSON.parse(readFileSync(new URL('../src/design/tokens.json', import.meta.url), 'utf8'));
+  for (const name of ['chrome-preview', 'menu-highlight', 'menu-selected', 'selection-shadow', 'tab-selected', 'tab-strip', 'control-hover', 'control-pressed', 'opacity-disabled', 'preview-width']) {
+    assert.equal(Object.hasOwn(tokens.foundation, name), false, name);
+    for (const theme of Object.values(tokens.themes)) assert.equal(Object.hasOwn(theme, name), false, name);
+  }
+  assert.equal(main({ argv: ['--strict'], stdout: quiet(), stderr: quiet() }), 0);
 });
