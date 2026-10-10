@@ -2,7 +2,7 @@
 use crate::menu_route::{action_of, target_label};
 use tauri::{
     menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
-    AppHandle, Emitter, Manager, Runtime,
+    AppHandle, Emitter, Runtime,
 };
 
 pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
@@ -48,13 +48,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                         Some("Cmd+Shift+T"),
                     )?,
                     &PredefinedMenuItem::separator(app)?,
-                    &MenuItem::with_id(
-                        app,
-                        "window-close",
-                        "Close Window",
-                        true,
-                        Some("Cmd+Shift+W"),
-                    )?,
+                    &MenuItem::with_id(app, "window-close", "Close Window", true, None::<&str>)?,
                 ])?;
             }
             "Window" => {
@@ -96,6 +90,10 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                         true,
                         Some("Cmd+Shift+Backslash"),
                     )?,
+                    // ⌘L has to be a menu accelerator: a web page holds the keys, and
+                    // the menu still runs while that page is focused. New Tab and
+                    // Close Tab already do; the address chord did not.
+                    &MenuItem::with_id(app, "web-address", "Focus Address", true, Some("Cmd+L"))?,
                 ])?;
             }
             _ => {}
@@ -114,10 +112,35 @@ pub fn handle<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
     else {
         return;
     };
+    if event.id().as_ref() == "window-new" {
+        if let Some(window) = crate::windows::app_window(app, &label) {
+            let app = app.clone();
+            // Native accelerators must work while a child web page has focus.
+            // Build off the event thread, which the window builder may need.
+            tauri::async_runtime::spawn(async move {
+                let request = crate::windows::OpenRequest {
+                    place_key: "now".into(),
+                    focus_tab: None,
+                    handoff: None,
+                    at: None,
+                };
+                if let Err(error) = crate::windows::open(&app, &window, request) {
+                    eprintln!("Unable to open a desktop window: {error}");
+                }
+            });
+        }
+        return;
+    }
     if event.id().as_ref() == "window-close" {
         if let Some(window) = crate::windows::app_window(app, &label) {
             let _ = window.close();
         }
+        return;
+    }
+    if event.id().as_ref() == "web-address" {
+        // No pane: the menu does not know which page had the keys. The renderer
+        // focuses the address that is on screen.
+        let _ = app.emit_to(label.as_str(), "web://focus-address", serde_json::json!({}));
         return;
     }
     let Some(action) = action_of(event.id().as_ref()) else {

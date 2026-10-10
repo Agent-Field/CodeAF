@@ -424,6 +424,21 @@ sentence). There is no "same answer for all of these" key on tabs; for
 permissions there is `allow all`, on permissions.md's grouped frame. Under sixty
 columns the questions come one at a time.
 
+## The desktop card — next question, previous question, left and right arrows, Question N of M
+
+In the desktop app, questions waiting on you share one card above the message
+box. With more than one, the corner reads `2 of 5`. Left and right arrows, while
+focus is inside that card, move to the previous or next question. They stop at
+the ends: the arrow that cannot move is dimmed, and pressing it changes nothing.
+A screen reader hears `Question 2 of 5`. The corner itself still reads `2 of 5`.
+
+A text field that already holds characters, spaces included, keeps the arrows
+for the caret. An empty field does not: the arrows still change the question.
+A radio, a dial, a dropdown or a date field keeps the arrows too, because those
+keys change that control. One question draws no pager. The message box is
+outside the card, so arrows there do not change the question. Shift, Alt, Ctrl
+or Command with an arrow is not this pager.
+
 ## The question disappeared — it vanished without me answering, withdrawal
 
 A question can stop needing an answer: what it was about went away, the plan

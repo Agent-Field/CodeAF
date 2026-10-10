@@ -76,6 +76,9 @@ func fixture(t *testing.T) (*Bridge, *fakeAgent, string) {
 }
 func request(b *Bridge, method, path, body string) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, path, strings.NewReader(body))
+	// ServeHTTP refuses a host that is not loopback with a port. The helper
+	// speaks as the dev server so a test is asserting the route, not the guard.
+	r.Host = "127.0.0.1:1420"
 	r.Header.Set("Authorization", "Bearer "+testToken)
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -86,6 +89,7 @@ func TestUnauthorizedCannotOpenOrSend(t *testing.T) {
 	var opens atomic.Int32
 	b := New(testToken, func(string) (Connection, error) { opens.Add(1); return Connection{}, nil })
 	r := httptest.NewRequest("POST", "/api/engine/sessions", strings.NewReader("{}"))
+	r.Host = "127.0.0.1:1420"
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	b.ServeHTTP(w, r)
@@ -134,6 +138,7 @@ func TestViewDisconnectDoesNotStopTurnAndReplaySurvives(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	r := httptest.NewRequest("GET", path+"/events", nil).WithContext(ctx)
+	r.Host = "127.0.0.1:1420"
 	r.Header.Set("Authorization", "Bearer "+testToken)
 	done := make(chan struct{})
 	go func() { b.ServeHTTP(httptest.NewRecorder(), r); close(done) }()
@@ -168,6 +173,7 @@ func TestAChosenConversationModelDoesNotBlockTheNextSend(t *testing.T) {
 func TestNativePreflightNeverCreatesSession(t *testing.T) {
 	b, _, _ := fixture(t)
 	r := httptest.NewRequest("OPTIONS", "/api/engine/sessions", nil)
+	r.Host = "127.0.0.1:1420"
 	r.Header.Set("Origin", "tauri://localhost")
 	w := httptest.NewRecorder()
 	b.ServeHTTP(w, r)
