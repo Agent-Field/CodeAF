@@ -182,8 +182,14 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, n
       return true;
     } catch (reason) {
       if (own !== generation.current) return false;
-      if (isUnreachable(reason)) setUnreachable(true);
-      setFailed({ text, mode, message: messageOf(reason), files });
+      // The header line is the only sentence for a quiet engine. An empty
+      // message keeps the draft for a later send and draws no second notice.
+      if (isUnreachable(reason)) {
+        setUnreachable(true);
+        setFailed({ text, mode, message: '', files });
+      } else {
+        setFailed({ text, mode, message: messageOf(reason), files });
+      }
       return false;
     } finally {
       if (own === generation.current) setWriting(undefined);
@@ -277,6 +283,27 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, n
     }
   }
 
+  /**
+   * Ask the engine again without sending the draft. The header line's probes
+   * and its Retry button use this, so the words the person typed stay put
+   * while the connection is checked. A success drops an empty failure that
+   * existed only because nothing answered.
+   */
+  async function reprobe(): Promise<boolean> {
+    const own = generation.current;
+    window.clearTimeout(retryTimer.current);
+    const saved = current.current?.sessionFile ?? file.current;
+    if (!saved) return false;
+    try {
+      const value = await attach(saved);
+      if (own !== generation.current || !value) return false;
+      setFailed(current => (current && current.message === '' ? undefined : current));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /** Retry what failed: the unsent message if there is one, otherwise the attachment. */
   async function retry(): Promise<boolean> {
     attempts.current = 0;
@@ -298,5 +325,5 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, n
   // Once the engine has recorded anything newer than the send, the real message takes over.
   const sending = writing && (snapshot?.entries.length ?? 0) <= writing.at ? writing.text : undefined;
 
-  return { model, snapshot, sending, online, connecting, unreachable, failed, busyKey, send, stop, answer, hold, controlTask, retry, readFull, editQueue, moveQueue, removeQueue, sendQueueNow };
+  return { model, snapshot, sending, online, connecting, unreachable, failed, busyKey, send, stop, answer, hold, controlTask, retry, reprobe, readFull, editQueue, moveQueue, removeQueue, sendQueueNow };
 }

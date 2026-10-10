@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { AddressInfo, Socket } from 'node:net';
 import { test, expect, type Page } from '@playwright/test';
 import { ENGINE_REQUEST_TIMEOUT_MS, type EngineSnapshot } from '../../src/features/chat/engine-client';
+import { RECONNECT_WINDOW_MS } from '../../src/features/conversation/offline/reconnect';
 import { MODEL } from './support/mock-engine';
 import { message } from './support/conversation';
 
@@ -175,7 +176,11 @@ test('a send the engine never answers says so and keeps the draft', async ({ pag
  await message(page).press('Enter');
  await expect.poll(() => engine.creates().length).toBe(1);
  await page.clock.runFor(ENGINE_REQUEST_TIMEOUT_MS + 1000);
- await expect(page.getByRole('status').filter({ hasText: 'codeaf engine is not running' })).toBeVisible();
- await expect(page.getByRole('tabpanel').getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
+ await expect(page.getByRole('status').filter({ hasText: 'Reconnecting to the engine…' })).toBeVisible();
+ await expect(page.getByRole('tabpanel').getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0);
  await expect(message(page)).toHaveValue('Still here after the wait');
+ await page.clock.fastForward(RECONNECT_WINDOW_MS);
+ await expect(page.getByRole('status').filter({ hasText: "Can't reach the engine" })).toBeVisible();
+ await expect(page.getByRole('tabpanel').getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
+ await expect(page.getByText('codeaf engine is not running')).toHaveCount(0);
 });
