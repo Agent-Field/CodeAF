@@ -213,6 +213,9 @@ type Bridge struct {
 	openIn OpenIn
 	// groups answers tab-group offers (tabgroups.go); nil makes none.
 	groups *TabGroups
+	// councils is the discussions door (council_routes.go). Nil means the
+	// list is empty and a steer is refused: this bridge has no discussions.
+	councils *councilDoor
 	// lifecycle tracks attached views separately from SSE connections (lifecycle.go).
 	lifecycle *sessionLifecycle
 }
