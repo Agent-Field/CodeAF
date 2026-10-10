@@ -70,3 +70,19 @@ test('a chat row opens through the session file the engine reported, and only th
   assert.equal(sessionFileOf([undefined, digest], 'sess-run'), '/h/.codeaf/v3/projects/app/sess-run/session.jsonl');
   assert.equal(sessionFileOf([digest], 'sess-need'), undefined);
 });
+
+test('Home chat digests use the matching engine recap, with waiting reasons first and missing evidence absent', () => {
+  const digest = fixture('home-place');
+  digest.recap = { items: [
+    { chatId: 'sess-run', line: 'Updated the strict-mode fixtures.' },
+    { chatId: 'sess-need', line: 'Ported the parser.' },
+    { chatId: 'other-chat', line: 'An unrelated decision.' },
+  ] };
+  const view = homeViewFromDigest(digest);
+  assert.equal(view.chats.find(chat => chat.id === 'sess-run')?.excerpt, 'Updated the strict-mode fixtures.');
+  assert.equal(view.chats.find(chat => chat.id === 'sess-need')?.excerpt, 'Allow the v1 branch push?');
+  assert.equal(homeViewFromDigest({ ...digest, recap: undefined }).chats.find(chat => chat.id === 'sess-run')?.excerpt, undefined);
+  const now = fixture('home-now');
+  now.recap = { items: [{ chatId: now.chats[0].id, line: 'The loose chat’s recap.' }] };
+  assert.equal(homeViewFromDigest(fixture('home-root'), undefined, now).chats[0].excerpt, 'The loose chat’s recap.');
+});
