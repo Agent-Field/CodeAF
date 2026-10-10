@@ -132,3 +132,60 @@ for (const theme of ['light', 'dark'] as const) {
   });
  }
 }
+
+for (const theme of ['light', 'dark'] as const) {
+ for (const width of [320, 1200]) {
+  test(`PR-STOP-1: stop square is 10x10 r2 currentColor in ${theme} at ${width}px`, async ({ page }) => {
+   await page.setViewportSize({ width, height: 560 });
+   await page.goto('/tests/stop-glyph/index.html');
+   await page.locator('.stop-glyph').first().waitFor();
+   await page.locator('html').evaluate((element, value) => element.setAttribute('data-theme', value), theme);
+   const declared = await page.evaluate(() => {
+    for (const sheet of document.styleSheets) {
+     let rules: CSSRuleList;
+     try { rules = sheet.cssRules; } catch { continue; }
+     for (const rule of rules) {
+      if (rule instanceof CSSStyleRule && rule.selectorText === '.stop-glyph-mark') return rule.style.backgroundColor;
+     }
+    }
+    return '';
+   });
+   expect(declared).toBe('currentcolor');
+   const tones: Record<string, string> = {};
+   for (const tone of ['ink', 'accent'] as const) {
+    const row = page.locator(`[data-tone="${tone}"]`);
+    const glyph = row.locator('.stop-glyph');
+    const mark = row.locator('.stop-glyph-mark');
+    const icon = row.locator('.app-icon');
+    const size = tone === 'ink' ? 'md' : 'sm';
+    await expect(glyph).toHaveAttribute('data-size', size);
+    await expect(glyph).toHaveAttribute('aria-hidden', 'true');
+    await expect(mark).toHaveCSS('width', '10px');
+    await expect(mark).toHaveCSS('height', '10px');
+    await expect(mark).toHaveCSS('border-radius', '2px');
+    const markBox = (await mark.boundingBox())!;
+    expect(markBox.width).toBe(10);
+    expect(markBox.height).toBe(10);
+    const glyphBox = (await glyph.boundingBox())!;
+    const iconBox = (await icon.boundingBox())!;
+    expect(glyphBox.width).toBe(iconBox.width);
+    expect(glyphBox.height).toBe(iconBox.height);
+    expect(glyphBox.width).toBe(size === 'md' ? 16 : 14);
+    expect(glyphBox.height).toBe(size === 'md' ? 16 : 14);
+    expect(markBox.x - glyphBox.x).toBe((glyphBox.width - markBox.width) / 2);
+    expect(markBox.y - glyphBox.y).toBe((glyphBox.height - markBox.height) / 2);
+    const ink = await glyph.evaluate(element => getComputedStyle(element).color);
+    await expect(mark).toHaveCSS('background-color', ink);
+    tones[tone] = ink;
+   }
+   expect(tones.ink).not.toBe(tones.accent);
+   const flipped = theme === 'dark' ? 'light' : 'dark';
+   await page.locator('html').evaluate((element, value) => element.setAttribute('data-theme', value), flipped);
+   const flippedInk = await page.locator('[data-tone="ink"] .stop-glyph').evaluate(element => getComputedStyle(element).color);
+   const flippedMark = await page.locator('[data-tone="ink"] .stop-glyph-mark').evaluate(element => getComputedStyle(element).backgroundColor);
+   expect(flippedInk).not.toBe(tones.ink);
+   expect(flippedMark).toBe(flippedInk);
+   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+ }
+}

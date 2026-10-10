@@ -1,0 +1,26 @@
+/* Lucide draws square as an outline, and the animated set does not include it.
+   The stop mark is this filled square, in currentColor, so it takes the button's ink.
+   The box is Icon's sm or md cell: swapping the send arrow for the square does not shift the control. */
+
+.stop-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: var(--icon-md);
+  height: var(--icon-md);
+  color: inherit;
+}
+
+.stop-glyph[data-size="sm"] {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.stop-glyph-mark {
+  flex: none;
+  width: var(--stop-glyph-size);
+  height: var(--stop-glyph-size);
+  border-radius: var(--stop-glyph-radius);
+  background-color: currentColor;
+}

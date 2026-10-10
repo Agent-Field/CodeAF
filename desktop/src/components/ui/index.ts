@@ -1,4 +1,5 @@
 export { Icon, iconNames, type IconName } from './Icon';
+export { StopGlyph, type StopGlyphSize } from './StopGlyph';
 export { BrandMark } from './BrandMark';
 export { Button, IconButton, type ButtonVariant, type IconButtonSize } from './Button';
 export { useTooltip, TruncatedText } from './Tooltip';
