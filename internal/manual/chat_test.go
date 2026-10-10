@@ -3190,6 +3190,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// A native web view paints above the window, so a menu hides the page.
 		{"why the web page went blank when I opened a menu", "desktop-web-overlay"},
 		{"the web page disappeared behind a menu", "desktop-web-overlay"},
+		// Desktop conversation 1e: @ in the composer lists workspace files.
+		{"typing @ in the desktop composer opens the file picker", "desktop-at-picker"},
+		{"the desktop file picker shows nothing", "desktop-at-picker"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

@@ -3,6 +3,7 @@ import { Button, ContextMenu, Icon, IconButton, Text, TextArea, TextInput } from
 import design from '../../design/tokens.json';
 import { composerShortcuts } from '../../design/keyboard';
 import type { OutgoingFile } from '../chat/engine-client';
+import { AtPicker, useAtPicker } from './composer/AtPicker';
 import { PasteCard } from './composer/PasteCard';
 import { encodePasted, countLines, isLongPaste, splitPasted } from './composer/pastedText';
 import { AttachmentTray } from './composer/AttachmentTray';
@@ -45,6 +46,11 @@ export type ComposerProps = {
   /** The idle prompt in the empty field when the surface has its own words ("Start something in codeaf" on a place's Home). */
   placeholder?: string;
   /**
+   * The conversation's engine session. Typing @ lists workspace files through it.
+   * With none yet (a chat that has not been sent) the list stays absent.
+   */
+  sessionId?: string;
+  /**
    * Conversation 1b: the queued rows have folded into this chip because the reader
    * is more than a viewport from the end. `count` is the real queue length.
    * `onOpen` returns to the bottom, which is what unfolds the rows.
@@ -82,6 +88,7 @@ function useAutosize(ref: RefObject<HTMLTextAreaElement | null>, draft: string) 
 export function Composer(props: ComposerProps) {
   const { draft, onDraft, onSend, onStop, running, docked, disabledReason, autoFocus } = props;
   const field = useRef<HTMLTextAreaElement>(null);
+  const box = useRef<HTMLDivElement>(null);
   const autosize = useAutosize(field, draft);
   const focus = useKeyboardFocus();
   const [pastes, setPastes] = useState<string[]>([]);
@@ -110,6 +117,7 @@ export function Composer(props: ComposerProps) {
   }, [props.offeredFiles]);
   const dropState = props.dropState ?? (drop.over ? 'over' : drop.pageDrag ? 'page' : undefined);
   const blank = draft.trim() === '' && attachments.items.length === 0 && pastes.length === 0;
+  const atPicker = useAtPicker(field, props.sessionId, draft, onDraft, setPasteCaret);
 
   async function send(mode: SendMode) {
     if (blank || disabled) return;
@@ -175,6 +183,8 @@ export function Composer(props: ComposerProps) {
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (isComposing(event)) return;
+    // The file list owns these keys while it is up: arrows move, Enter and Tab insert, Esc closes.
+    if (atPicker.onKeyDown(event)) return;
     if (event.key === 'Escape') return event.currentTarget.blur();
     if (event.key === 'ArrowUp' && draft === '') return recall(event);
     if (event.key !== 'Enter' || event.shiftKey) return;
@@ -194,6 +204,7 @@ export function Composer(props: ComposerProps) {
   return (
     <div className="composer-dock" data-docked={docked} data-variant={props.variant}>
       <div
+        ref={box}
         className="composer"
         data-attached={attachments.items.length > 0 || undefined}
         data-running={running}
@@ -221,20 +232,35 @@ export function Composer(props: ComposerProps) {
             className="composer-field"
             data-faded={autosize.faded || undefined}
             data-keyboard={focus.keyboard || undefined}
-            onFocus={focus.onFocus}
-            onBlur={focus.onBlur}
             onScroll={autosize.onScroll}
             aria-label="Message"
+            aria-autocomplete={atPicker.open ? 'list' : undefined}
+            aria-controls={atPicker.open ? atPicker.listId : undefined}
+            aria-activedescendant={atPicker.open ? atPicker.activeId : undefined}
             placeholder={disabledReason ?? (running ? 'Steer, or queue a message' : props.placeholder ?? (docked ? 'Ask codeaf' : START_PLACEHOLDER))}
             value={draft}
             disabled={disabled}
             autoFocus={autoFocus}
             rows={composerMinRows}
-            onChange={event => onDraft(event.target.value)}
+            onChange={event => { onDraft(event.target.value); atPicker.sync(event.target); }}
+            onSelect={event => atPicker.sync(event.currentTarget)}
+            onKeyUp={event => atPicker.sync(event.currentTarget)}
+            onClick={event => atPicker.sync(event.currentTarget)}
+            onFocus={event => { focus.onFocus(); atPicker.sync(event.currentTarget); }}
+            onBlur={() => { focus.onBlur(); atPicker.sync(null); }}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
           />
         </ContextMenu>
+        <AtPicker
+          anchor={box}
+          files={atPicker.files}
+          active={atPicker.active}
+          listId={atPicker.listId}
+          onHighlight={atPicker.highlight}
+          onPick={atPicker.pick}
+          onClose={atPicker.close}
+        />
         {pasteError && <Text className="composer-error" role="status">{pasteError}</Text>}
         {attachments.error && <Text className="composer-error" role="status">{attachments.error}</Text>}
         <div className="composer-row">

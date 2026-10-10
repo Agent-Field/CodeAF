@@ -1,6 +1,6 @@
 // The @ file reference, as data. Conversation 1e never draws the picker (I-C1e-64/65);
-// this is the part the field can decide without one: which @ the caret is in, what to
-// ask the engine, and where the chosen path lands. The list itself is a later lane.
+// AtPicker draws the list. This is the part both share: which @ the caret is in, what to
+// ask the engine, and where the chosen path lands.
 
 /** One row of findEngineFiles: a workspace-relative path split into name and folder. */
 export type AtFile = { path: string; name: string; dir: string };
