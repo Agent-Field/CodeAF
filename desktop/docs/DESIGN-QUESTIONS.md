@@ -61,6 +61,7 @@ Shell). On any conflict, the design files win over code and older docs.
 
 | # | Question | Assumption the app ships now |
 |---|---|---|
+| PG-S61 | What list envelope and activity boundary should the cleanup suggestion API use? | GET /places/suggestions returns {suggestions:[{kind:"mergeOrArchive",placeId}]}. It shares the existing untouched-place rule: inclusive 60 × 24 hours, creation as fallback, descendant activity, busy exclusions and oldest-first cap of 20; Not now shares the durable 30-day snooze. |
 | WIN-46 | The native-window brief requires `now` / `p-<12 lowercase hex>`, while the current engine and renderer use `root` / `pl_<16 lowercase hex>`. Which contract should integration use? | `window_open` enforces the lane brief and refuses the other spellings with “That is not a place codeaf knows”. The integrator must reconcile place IDs before graph places can open end to end. |
 | WIN-47 | How does the brief's bare-label `window_open` result coexist with the existing tab-move claim receipt? | Ordinary opening returns a label string. A request carrying a tab handoff retains `{label, handoffId}` so the source waits for the target to claim it. The renderer accepts both. |
 | PG-R1 | Does the rail's Open section follow the store's open rows or the last-visited time? | The store's open rows (newest first); a closed row stays only while its place has work running or waiting on you, and a row idle 12 hours is hidden at read time and swept every 30 seconds. `ifGeneration` is accepted as the same guard as `ifRevision`. |
