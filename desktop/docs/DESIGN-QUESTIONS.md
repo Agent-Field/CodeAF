@@ -61,6 +61,8 @@ Shell). On any conflict, the design files win over code and older docs.
 
 | # | Question | Assumption the app ships now |
 |---|---|---|
+| WTINT-1 | Foundations "Place switch" crossfades a vibrancy tint layer over 320ms, and "Tinted vibrancy" puts the place tint over macOS sidebar material (Windows uses Mica). P-X-15. | The frame tint swaps in the same layout as the place, with no fade. macOS keeps its overlay title bar, hidden title and sidebar vibrancy. Linux keeps a decorated window. The tint is the CSS frame only. The OS title is not recolored. |
+| WTINT-2 | All places opened as a tab while the window is already in a place (8c draws All places as its own graphite window). | The frame follows the window place. That tab does not retint the window. Now and a window whose place is root stay graphite. |
 | WP-1 | When does a remembered window place become invalid, and what happens if persistence fails? | Only a successful graph read can establish deletion or archive; loading and failed reads retain the key. Boot destinations take precedence over saved keys. Navigation continues if local storage cannot be read or written, without promising restoration. |
 | TF-11-image | What is shown when the image GET fails before reporting its size? | Keep the engine's actual refusal reason as one muted line and select the Open in dropdown; do not invent a size. |
 | SH-089 | What does right-clicking empty strip space offer, and how does a keyboard reach it? | The shared ContextMenu offers New tab, Reopen closed tab (disabled with no closed tabs), and Show all tabs with platform shortcuts. Empty strip frame space shares the spacer menu; tabs, groups and controls keep their own behavior. A visually hidden button in the native drag spacer opens it with Shift+F10 or the context-menu key. No additional menu geometry or icons are invented. |
@@ -311,7 +313,7 @@ R3 above is superseded: the rail now draws the Places sections from the engine's
 | PS9 | Home tab menu (Interactions "Place menu") | Open in new window, Rename, Tint, Add to another place…, Merge into…, Pin/Unpin, then Close place ⌘⇧W. Archive and Delete stay on the Home page's own ⋯ menu, where the delete confirmation is drawn. |
 | PS10 | The Home composer's model | The chip shows the Conversation role's default (DS Flash) read-only; the chat's own picker takes over once it has a session. |
 | PS11 | "Ask codeaf about this output" from a terminal inside a place | It still starts an unplaced conversation (the terminal lane's own call). Filing it in the place needs that call to go through the place strip. |
-| PS12 | Now in graphite (Places 9d) | Graphite keeps the tint formula's frame chroma (.035) and drops ink-2 on the frame to 4.46:1 (overview filmstrip labels), failing the 4.5:1 contract. Now keeps the root palette; a place window takes its own tint. Needs a graphite frame with less chroma, or a ruling that Now stays untinted. |
+| PS12 | Graphite frame contrast (Places 9d draws Now in graphite; ink-2 on that frame measures 4.46:1) | Graphite ships for Now and the root, as 9d draws. The 4.5:1 miss on ink-2 stays until the graphite frame chroma is lowered. |
 
 ## Tab order, groups and reopen (tab integrity)
 
