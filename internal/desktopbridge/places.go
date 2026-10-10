@@ -45,6 +45,11 @@ type Places struct {
 	// conversation the person just started may not be in the world yet; it is
 	// still a real chat they can file. UsePlaces fills it.
 	live func() []string
+	// publish puts a record on the world stream. UsePlaces points it at the
+	// bridge's feed; nil publishes nothing.
+	publish func(kind string, payload any)
+	// sweepStop ends the rail's 30-second sweep. Bridge.Close closes it.
+	sweepStop chan struct{}
 
 	// door is the engine's own door onto this graph (session.PlaceGraphDoorFor):
 	// the remembered-picks file and the source policy the Using list and the
@@ -80,6 +85,11 @@ func (b *Bridge) UsePlaces(p *Places) {
 	if p != nil {
 		p.live = b.liveChatIDs
 		p.allowsModel = b.allowsModel
+		p.publish = func(kind string, payload any) { b.worldFeed().Publish(kind, payload) }
+		if p.sweepStop == nil {
+			p.sweepStop = make(chan struct{})
+			p.startSweep(p.sweepStop, sweepEvery)
+		}
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -161,6 +171,9 @@ func (b *Bridge) placesRoutes(w http.ResponseWriter, r *http.Request, path strin
 }
 
 func (p *Places) serve(w http.ResponseWriter, r *http.Request, parts []string) {
+	if p.tableRoute(w, r, parts) {
+		return
+	}
 	get, post := r.Method == http.MethodGet, r.Method == http.MethodPost
 	switch len(parts) {
 	case 0:
@@ -179,7 +192,9 @@ func (p *Places) serve(w http.ResponseWriter, r *http.Request, parts []string) {
 				p.status(w)
 			}
 		case "rail":
-			if needGet(w, r) {
+			if r.Method == http.MethodPost {
+				p.railOp(w, r)
+			} else if needGet(w, r) {
 				p.railRoute(w)
 			}
 		case "undo":
@@ -369,6 +384,7 @@ func readBody(w http.ResponseWriter, r *http.Request, v any) bool {
 		fail(w, 415, "JSON required")
 		return false
 	}
+	acceptGeneration(w, r)
 	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	d.DisallowUnknownFields()
 	if err := d.Decode(v); err != nil {
