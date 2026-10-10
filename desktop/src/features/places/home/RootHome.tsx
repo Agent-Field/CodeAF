@@ -2,11 +2,12 @@ import { useState, type ReactNode } from 'react';
 import './root-home.css';
 import { Button, HomeTitle, Icon, TextInput } from '../../../components/ui';
 import { FirstLaunch } from './FirstLaunch';
-import { SuggestionLine } from '../components/SuggestionLine';
+import { Suggestion } from './Suggestion';
 import { HomeAttentionSection, HomeChatsSection, HomePlacesSection, type DragState, type Runner } from '../HomeSections';
 import { searchPlaces, totalsLine, type HomeChild, type HomeView } from '../home-model';
 import type { PlaceActions } from '../place-actions';
 import { staleSuggestion } from '../stale-model';
+import { browserSnoozes, idleLine } from '../suggestions';
 
 type RootHomeProps = {
   view: HomeView;
@@ -37,9 +38,10 @@ export function RootHome({ suggestion, view, actions, readOnly, runner, drag, on
   const unplacedLabel = unplacedTotal && unplacedTotal > 0 ? `Not in any place · ${unplacedTotal}` : 'Not in any place';
   const count = totalsLine(view.totals);
   const siblings = view.children.map(child => child.name);
-  // Design 6d: places untouched for 60 days get one quiet line to merge or archive them. Writes are dropped while offline, so is the line.
-  const stale = !searching && !readOnly && view.stale
-    ? staleSuggestion([view.stale], { merge: actions.chooseMergeTarget, archive: actions.archive, snooze: actions.snoozeStale })
+  // The engine names the candidate; the injected clock and persisted snooze decide whether it is still due.
+  const confirmed = view.stale ? idleLine(view.stale, now, browserSnoozes(now)) : undefined;
+  const stale = !searching && !readOnly && view.stale && confirmed
+    ? staleSuggestion([{ ...view.stale, daysUntouched: confirmed.days }], { merge: actions.chooseMergeTarget, archive: actions.archive, snooze: actions.snoozeStale })
     : undefined;
 
   return <>
@@ -70,7 +72,7 @@ export function RootHome({ suggestion, view, actions, readOnly, runner, drag, on
           <HomeAttentionSection items={view.attention} actions={actions} readOnly={readOnly}/>
           {!first && <HomePlacesSection label="Places" places={view.children} actions={actions} readOnly={readOnly} siblings={siblings} runner={runner} drag={drag} onDelete={onDelete}
             showLabel={false}/>}
-          {stale && <SuggestionLine text={stale.text} actions={stale.actions} run={runner.run} busy={runner.busy}/>}
+          {stale && <Suggestion layout="line" text={stale.text} actions={stale.actions} run={runner.run} busy={runner.busy}/>}
           {archived.length > 0 && <section className="home-section" aria-label="Archived places">
             <Button variant="ghost" className="home-archived-toggle" aria-expanded={showArchived} onClick={() => setShowArchived(open => !open)}>
               <Icon name={showArchived ? 'chevron' : 'chevronRight'} size="micro"/>Archived · {archived.length}

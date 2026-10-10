@@ -50,11 +50,14 @@ export type EngineJob = {
 };
 /** One attached chat's jobs on the world feed. `running` is how many are still running. */
 export type JobsRollup = { chatId: string; running: number; jobs: EngineJob[] };
+/** The graph a `places` world record carries. This store does not apply it; it must not reject it. */
+export type PlacesStreamRecord = { generation: number; nodes: unknown[]; rail: unknown; members?: unknown[] };
 export type WorldRecord =
  | { epoch?: string; seq: number; type: 'reset'; at: string; payload: WorldFull }
  | { epoch?: string; seq: number; type: 'world'; at: string; payload: { rows: WorldRow[]; removed: string[] } }
  | { epoch?: string; seq: number; type: 'attention'; at: string; payload: { items: AttentionItem[] } }
- | { epoch?: string; seq: number; type: 'jobs'; at: string; payload: JobsRollup };
+ | { epoch?: string; seq: number; type: 'jobs'; at: string; payload: JobsRollup }
+ | { epoch?: string; seq: number; type: 'places'; at: string; payload: PlacesStreamRecord };
 
 export class WorldError extends Error {
  readonly status: number;
@@ -132,6 +135,8 @@ export function parseWorldRecord(text: string): WorldRecord {
  if (record.type === 'attention' && Array.isArray(p.items)) return value as WorldRecord;
  // A jobs roll-up is one chat's background work. Rejecting it here used to drop the whole world stream.
  if (record.type === 'jobs' && typeof p.chatId === 'string' && p.chatId !== '' && Number.isSafeInteger(p.running) && (p.running as number) >= 0 && Array.isArray(p.jobs)) return value as WorldRecord;
+ // A places record is the graph. Rejecting it dropped the feed the same way a jobs record used to.
+ if (record.type === 'places' && Number.isSafeInteger(p.generation) && (p.generation as number) >= 0 && Array.isArray(p.nodes) && !!p.rail && typeof p.rail === 'object') return value as WorldRecord;
  throw new WorldError('The engine sent an unknown world record.');
 }
 
