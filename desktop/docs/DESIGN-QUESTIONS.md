@@ -62,6 +62,7 @@ Shell). On any conflict, the design files win over code and older docs.
 | # | Question | Assumption the app ships now |
 |---|---|---|
 | CV-N1 | The retrying event carries no delay today (`RetryNews` has none); where does a countdown come from | The overlay reads `Retry.DelaySeconds` from the event if a future engine sends it and shows it as a static mono `Ns` beside "Retrying" (nothing otherwise, Q15). It does not tick. While compacting nothing is drawn; on `compacted` the "Earlier messages summarized" divider appears live. |
+| CV-SN | What "Send now" does with a queued message (Interactions I-ICO-22 names the verb only) | While work is running, the message is steered into that turn. While nothing is running, it is submitted as the next turn. Either way it leaves the queue first. An id that is no longer queued is refused with 409 "that message has already been sent" (Q26). |
 | Q30 | RESOLVED by the latest Interactions page: ⌘1–9 jump to tabs and ⌥⌘1–3 switch pinned models, so the two no longer share keys | ⌘1–9 jump to tabs; ⌥⌘1–3 pick pinned models. No conflict remains. |
 | OV1 | The earlier Shell spec opened the overview with ⌘↑; the latest Shell and Interactions pages say ⌘⇧\ (or a pinch out) and give ⌘↑/⌘↓ to stepping between messages | ⌘⇧\ (Ctrl Shift A off the Mac) and the grid icon open it; the overview no longer listens for ⌘↑. |
 | OV2 | Pinch out opens the overview (Shell 2h) | Not wired: the browser and the webview report no reliable pinch event. The grid icon and the keys open it. |
