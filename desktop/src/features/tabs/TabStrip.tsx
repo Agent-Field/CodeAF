@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Button, DropdownMenu, Icon, IconButton } from '../../components/ui';
 import design from '../../design/tokens.json';
 import { useMediaQuery } from '../../design/useMediaQuery';
@@ -10,7 +10,24 @@ import { overflowItems, withGroupMenu } from './hosts/menuHost';
 import { openStripBackgroundMenu, StripMenu } from './hosts/stripMenu';
 import { stateOfMark, TabItem, tabDomIds } from './TabItem';
 import { focusedPane, stripItems, visibleTabs, type Tab } from './model';
+import { departureIds, departuresFrom, exitHoldMs, groupsForDepartures, mergeDepartures, retainDepartures, withDepartures, type TabDeparture } from './tabExit';
 import './strip.css';
+import './tab-motion.css';
+
+/**
+ * The strip had already sized this slot. Pin that used width, then take it to zero so the CSS transition
+ * runs. A keyword width (max-content) does not interpolate, so the start has to be the measured length.
+ */
+function releaseWidth(box: HTMLElement) {
+  const width = box.getBoundingClientRect().width;
+  box.style.width = `${width}px`;
+  box.style.minWidth = `${width}px`;
+  box.style.maxWidth = `${width}px`;
+  void box.offsetWidth;
+  box.style.width = '0px';
+  box.style.minWidth = '0px';
+  box.style.maxWidth = '0px';
+}
 
 /**
  * The strip (46px): pinned tabs, a hairline, then tabs and group capsules, "+" and, at the far right, the
@@ -24,16 +41,51 @@ export function TabStrip({ api, leading, overviewTrigger, onOverview }: { api: T
   const strip = useRef<HTMLDivElement>(null);
   // Shell 3j "Compressed", and the open question that makes it live: only while the window is at the small breakpoint.
   const narrow = useMediaQuery(`(max-width: ${design.breakpoints.small}px)`);
+  const reduced = useMediaQuery('(prefers-reduced-motion: reduce)');
   const [edge, setEdge] = useState({ end: false, hidden: 0 });
   const [moveNote, setMoveNote] = useState('');
+  const [departures, setDepartures] = useState<TabDeparture[]>([]);
   const order = visibleTabs(state);
+  // Closing tabs stay mounted for dur-base. The comparison is the id list: a draft keystroke must not restart a collapse.
+  const signature = order.map(tab => tab.id).join('\0');
+  const [seen, setSeen] = useState(signature);
+  // Previous strip, updated after commit. A render (including a strict-mode replay) must keep seeing the same
+  // "before", or the second pass thinks nothing left and the collapse never starts.
+  const orderRef = useRef(order);
+  const groupsRef = useRef(state.groups);
+  const focusNeighbour = useRef(false);
+  if (seen !== signature) {
+    const gone = departuresFrom(orderRef.current, order, groupsRef.current);
+    if (gone.length > 0) focusNeighbour.current = true;
+    const next = mergeDepartures(departures, retainDepartures(reduced, gone), new Set(order.map(tab => tab.id)));
+    setSeen(signature);
+    if (departureIds(next) !== departureIds(departures)) setDepartures(next);
+  }
+  const shown = withDepartures(order, departures);
+  const groups = groupsForDepartures(state.groups, departures);
+  const departing = new Set(departures.map(item => item.tab.id));
   // The strip draws `state.tabs` as it stands (the reducer keeps pinned tabs first and each group one run), so what a
-  // person sees, what the arrow keys walk and what ⌘1–9 count are one order.
-  const pinned = state.tabs.filter(t => t.pinned);
-  const items = stripItems(state);
+  // person sees, what the arrow keys walk and what ⌘1–9 count are one order. A departing tab is put back only so its
+  // slot can shrink; it is not in that order.
+  const pinned = shown.filter(tab => tab.pinned);
+  const items = stripItems({ tabs: shown, groups });
   // The strip only re-measures when its shape changes, never on a draft keystroke.
-  const shape = JSON.stringify([state.activeId, state.groups, state.tabs.map(t => [t.id, t.title, t.pinned, t.groupId, t.split?.panes.map(p => [p.id, p.title])])]);
-  const item = (tab: Tab, inGroup = false) => <TabItem key={tab.id} api={api} tab={tab} order={order} inGroup={inGroup} narrow={narrow}/>;
+  const shape = JSON.stringify([state.activeId, state.groups, departures.map(item => item.tab.id), state.tabs.map(t => [t.id, t.title, t.pinned, t.groupId, t.split?.panes.map(p => [p.id, p.title])])]);
+  // A closing tab is inert and hidden from assistive tech for the whole collapse. The ref pins its live width, then
+  // lets the transition take that width to zero. Doing it here, not in state, keeps a second render from skipping the start.
+  const release = useCallback((el: HTMLDivElement | null) => {
+    if (!el || el.dataset.measured) return;
+    el.dataset.measured = 'true';
+    const parent = el.parentElement;
+    const slot = parent?.classList.contains('workspace-group-tab-slot') ? parent : null;
+    releaseWidth(el);
+    if (slot) releaseWidth(slot);
+    el.dataset.collapsed = 'true';
+  }, []);
+  const item = (tab: Tab, inGroup = false) => departing.has(tab.id)
+    // A departure's parent changes, so this copy remounts inside the collapsing slot. A tab that stays does not.
+    ? <div key={tab.id} ref={release} className="workspace-tab-exit" data-exit-id={tab.id} inert aria-hidden="true"><TabItem api={api} tab={tab} order={order} inGroup={inGroup} narrow={narrow}/></div>
+    : <TabItem key={tab.id} api={api} tab={tab} order={order} inGroup={inGroup} narrow={narrow}/>;
 
   useEffect(() => {
     const viewport = strip.current;
@@ -59,6 +111,36 @@ export function TabStrip({ api, leading, overviewTrigger, onOverview }: { api: T
   }, [shape]);
 
   useEffect(() => {
+    if (reduced) {
+      setDepartures(current => (current.length ? [] : current));
+      return;
+    }
+    if (!departures.length) return;
+    // The token, not a copied number: reduced motion sets dur-base to zero and this hold ends on that same frame.
+    const hold = exitHoldMs(getComputedStyle(document.documentElement).getPropertyValue('--dur-base'));
+    const ids = new Set(departures.map(item => item.tab.id));
+    const timer = window.setTimeout(() => setDepartures(current => current.filter(item => !ids.has(item.tab.id))), hold);
+    return () => window.clearTimeout(timer);
+  }, [departures, reduced]);
+
+  useLayoutEffect(() => {
+    orderRef.current = order;
+    groupsRef.current = state.groups;
+  });
+
+  useLayoutEffect(() => {
+    if (!focusNeighbour.current) return;
+    focusNeighbour.current = false;
+    const root = strip.current;
+    if (!root) return;
+    const active = document.activeElement;
+    const inExit = !!active?.closest('.workspace-tab-exit');
+    const nowhere = !active || active === document.body || active === document.documentElement;
+    // The close already selected the neighbour. Move focus there before paint, not after the width finishes.
+    if (inExit || nowhere) root.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+  });
+
+  useEffect(() => {
     const selected = strip.current?.querySelector<HTMLElement>('[aria-selected="true"]');
     selected?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
     const frame = requestAnimationFrame(() => selected?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' }));
@@ -78,7 +160,7 @@ export function TabStrip({ api, leading, overviewTrigger, onOverview }: { api: T
           return (
             <GroupCapsule key={group.id} title={group.title} count={members.length} collapsed={group.collapsed} needsYou={members.some(t => stateOfMark(api.summaries[focusedPane(t).id]?.mark) === 'waiting')}
               onToggle={() => dispatch({ type: 'collapse-group', id: group.id })} labelProps={groupDragProps(api, group, setMoveNote)} wrapLabel={label => withGroupMenu(api, group, label)}>
-              {members.map(tab => <MemberSlot key={tab.id} hidden={group.collapsed && tab.id !== state.activeId}>{item(tab, !group.collapsed)}</MemberSlot>)}
+              {members.map(tab => <MemberSlot key={tab.id} hidden={group.collapsed && tab.id !== state.activeId && !departing.has(tab.id)}>{item(tab, !group.collapsed)}</MemberSlot>)}
             </GroupCapsule>
           );
         })}
