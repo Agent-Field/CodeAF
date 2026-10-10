@@ -50,7 +50,7 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(software).toHaveCSS('background-color', await tokenColor(page, 'field'));
     const main = software.locator('.places-tile-main');
     await main.focus();
-    await expect(main).toHaveCSS('box-shadow', await shadow(page, '0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 calc(var(--focus-ring-width) + var(--focus-halo-width)) var(--accent-soft)'));
+    await expect(main).toHaveCSS('box-shadow', await shadow(page, '0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft)'));
     await main.press('Space');
     await expect(software).toHaveAttribute('data-selected', 'true');
     await expect(software).toHaveCSS('box-shadow', await shadow(page, 'var(--sh-1), 0 0 0 var(--places-tile-ring-selected) var(--accent)'));
