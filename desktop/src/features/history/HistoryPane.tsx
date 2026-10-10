@@ -48,6 +48,7 @@ export function HistoryPane({ pane, focused, actions }: PaneRenderProps) {
   const root = useRef<HTMLDivElement>(null);
   const field = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement | null>(null);
+  const [confirmLayer, setConfirmLayer] = useState<HTMLDivElement | null>(null);
   const compact = useCompact(root);
   const [filter, setFilter] = useState<HistoryFilter>('all');
   // A search handed over by the new-tab field ("See all N in History") arrives as the pane's draft: it seeds the field once and is consumed.
@@ -184,7 +185,7 @@ export function HistoryPane({ pane, focused, actions }: PaneRenderProps) {
     ? (search.error ? <p className="history-empty" role="alert">{search.error}</p>
       : search.result ? <div className="history-results-scroll" data-scroll-key="history-results"><SearchResults result={search.result} now={now} onRecap={id => showRecap(id)} onJump={(id, index) => setReading({ id, at: index })} onContinue={openConversation}/></div> : null)
     : error ? <p className="history-empty" role="alert">{error}</p>
-    : items.length ? <HistoryList items={items} now={now} selectedId={selectedId} selectedIds={selectedIds} label="Conversations" listRef={node => { list.current = node; }}
+    : items.length ? <HistoryList items={items} now={now} selectedId={selectedId} selectedIds={selectedIds} label="Conversations" listRef={node => { list.current = node; }} confirmLayer={confirmLayer}
         confirm={pendingDelete ? { anchorId: pendingDelete.anchorId, count: pendingDelete.ids.length, busy: deleting, onCancel: () => { if (!deleting) setPendingDelete(undefined); }, onConfirm: () => void commitDelete() } : undefined}
         onSelect={selectRow} onOpen={openConversation}
         onRead={item => { setSelectedId(item.id); setSelectedIds([item.id]); selectionAnchor.current = item.id; setReading({ id: item.id }); }} onArchive={host ? archiveConversation : undefined} onDelete={askDelete} onNearEnd={loadMore}/>
@@ -199,6 +200,7 @@ export function HistoryPane({ pane, focused, actions }: PaneRenderProps) {
       </div>
       {filters}
       {body}
+      <div ref={setConfirmLayer} className="history-confirm-layer"/>
     </div>
   </section>;
   return <div ref={root} className="history-pane" data-mode={searching ? 'search' : 'browse'} data-compact={compact || undefined}>
