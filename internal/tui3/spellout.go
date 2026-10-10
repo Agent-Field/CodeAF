@@ -3,6 +3,7 @@ package tui3
 import (
 	"context"
 	"strings"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -203,9 +204,6 @@ func (a *app) spellOffered() bool {
 	if _, ok := a.spellDoor(); !ok {
 		return false
 	}
-	if a.standSayOffered() {
-		return false
-	}
 	return looksMaking(a.input.value)
 }
 
@@ -222,7 +220,7 @@ func looksMaking(draft []rune) bool {
 	head := strings.ToLower(string(draft))
 	trimmed := strings.TrimSpace(head)
 	// A COMMAND IS SAID TO THIS SURFACE AND NOT TO THE MODEL, so there is no
-	// request here to spell out (standmark.go reads a slash the same way).
+	// request here to spell out.
 	if strings.HasPrefix(trimmed, "/") {
 		return false
 	}
@@ -234,11 +232,27 @@ func looksMaking(draft []rune) bool {
 		}
 	}
 	for _, verb := range spellOutMakings {
-		if standMarkAt(head, verb) {
+		if wordStartsAt(head, verb) {
 			return true
 		}
 	}
 	return false
+}
+
+// wordStartsAt is "this phrase appears, at the start of a word". The draft is
+// already lower-cased.
+func wordStartsAt(head, shape string) bool {
+	for at := 0; ; {
+		found := strings.Index(head[at:], shape)
+		if found < 0 {
+			return false
+		}
+		found += at
+		if found == 0 || !unicode.IsLetter(rune(head[found-1])) {
+			return true
+		}
+		at = found + 1
+	}
 }
 
 // spellShowing reports whether the block is on the frame — and it is the law

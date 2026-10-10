@@ -177,33 +177,22 @@ var commands = []command{
 	// something has surprised them. /perms is here because it is what fingers
 	// type; the row shows the whole word.
 	{name: "permissions", desc: "what runs without asking · drop one with d", alias: []string{"perms"}},
-	// AND WHAT IS ALREADY TRUE HERE, beside what may run without asking
-	// (standingpage.go). The pair is the same question asked twice — one is what
-	// this thing may do when you ask it, the other is what it keeps doing when
+	// AND WHAT RUNS ON A CLOCK, beside what may run without asking
+	// (place_automations.go). The pair is the same question asked twice — one
+	// is what this thing may do when you ask it, the other is what it does when
 	// nobody asks — and this row sits under that one for the reason that one
 	// sits down here: [menuRows] shows eight rows at once, position in this
-	// table is a claim about frequency, and a page a person opens when something
-	// has surprised them may not push /compact into a scroll.
+	// table is a claim about frequency, and a page a person opens to check on
+	// something may not push /compact into a scroll.
 	//
 	// TWO ROWS FOR ONE COMMAND, the way /export and /crew have two, and for that
-	// reason: a single row carrying <words> would make the bare form — the page
-	// — unreachable from this list, because [app.runMenu] puts a row that TAKES
-	// something into the draft instead of running it.
-	//
-	// THE WORDS COME FIRST. Making an order is the act this command exists for —
-	// the owner's own ruling — and the page is the follow-up a person opens to
-	// see what their sentences became. So the row that starts an order leads,
-	// and the page rides under it wearing the "…or".
-	//
-	// The words go through the deliberate door (standmark.go's [app.standingSay]),
-	// which is what the tail of this row promises: it is the chord's own sentence
-	// said in the grammar of the list.
-	{name: "standing", args: "<words>", desc: "keep this true · a card, never work done once", door: sendDoorStanding},
-	// /orders is here because it is the other word people bring for the thing:
-	// a standing order is the concept, and half of them will type the noun they
-	// remember rather than the adjective this surface chose.
-	{name: "standing", desc: "…or what stands over this conversation · stop, pause or not here",
-		alias: []string{"orders"}},
+	// reason: a single row carrying arguments would make the bare form — the
+	// place — unreachable from this list, because [app.runMenu] puts a row that
+	// TAKES something into the draft instead of running it. The place leads,
+	// because the conversation is where most automations are made and the place
+	// is where a person comes to see them; the exact typed form rides under it.
+	{name: "automations", desc: "what runs on a clock · run, pause, edit or delete one"},
+	{name: "automations", args: "add <title> …", desc: "…or add one exactly, read back on a card first"},
 	// THE SHAPES OF WORK THIS CONVERSATION HAS SAVED (harnesspanel.go). It
 	// belongs topically beside /connect — one is what this surface may reach,
 	// the other is what it has learned to do — and it sits here instead for a

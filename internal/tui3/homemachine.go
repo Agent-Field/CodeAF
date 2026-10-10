@@ -27,7 +27,6 @@ package tui3
 // nothing else, so a frame costs no file, however often it is painted.
 
 import (
-	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
@@ -90,11 +89,11 @@ func (f machineFacts) nearCeiling() bool {
 }
 
 // readMachine is the whole reading, taken over one world: the day's money off
-// the ledger and the two counts off the world's rows and the standing bands
-// read with it. It runs on a beat and never on a draw.
-func (a *app) readMachine(now time.Time, sessions []session.SessionRow, bands map[string][]StandingItemView) {
+// the ledger and the two counts off the world's rows. It runs on a beat and
+// never on a draw.
+func (a *app) readMachine(now time.Time, sessions []session.SessionRow) {
 	a.readMachineMoney(now)
-	a.machine.hands, a.machine.wants = machineCounts(now, sessions, bands, a.exchanges)
+	a.machine.hands, a.machine.wants = machineCounts(now, sessions, a.exchanges)
 }
 
 // readMachineMoney is the money half alone: what the day has cost, and the
@@ -127,7 +126,7 @@ func (a *app) readMachineMoney(now time.Time) {
 // draws and these figures are about the MACHINE, so a count taken from the rows
 // on screen would fall the moment a ninth thing started — which is the opposite
 // of what the figure means.
-func machineCounts(now time.Time, sessions []session.SessionRow, bands map[string][]StandingItemView, exchanges []*homeExchange) (hands, wants int) {
+func machineCounts(now time.Time, sessions []session.SessionRow, exchanges []*homeExchange) (hands, wants int) {
 	for _, row := range sessions {
 		// AND A LANDING NOBODY HAS CHECKED IS A WANT TOO. How many rows of
 		// `needs you` a conversation is — its own question, its landings, or
@@ -144,25 +143,6 @@ func machineCounts(now time.Time, sessions []session.SessionRow, bands map[strin
 			hands += row.Tasks.Running
 		case row.Tasks.Running == 1 || row.Live && row.Presence.State == session.PresenceWorking:
 			hands++
-		}
-	}
-	// ONE ITEM IS ONE HAND, OR ONE QUESTION, HOWEVER MANY PROJECTS HOLD IT. A
-	// machine-wide watch is in every project's band ([app.readStandBands] keys
-	// them by directory), and a walk that did not remember what it had counted
-	// would multiply it.
-	counted := make(map[string]bool)
-	for _, views := range bands {
-		for _, view := range views {
-			if counted[view.Item.ID] {
-				continue
-			}
-			counted[view.Item.ID] = true
-			switch {
-			case strings.TrimSpace(view.Item.NeedsPerson) != "":
-				wants++
-			case view.Running:
-				hands++
-			}
 		}
 	}
 	for _, ex := range exchanges {

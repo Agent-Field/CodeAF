@@ -77,7 +77,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // The row kinds the inbox adds, declared HERE and given values far above the
@@ -174,12 +174,7 @@ func (h *homeView) buildPhone() {
 		h.buildWorld()
 		return
 	}
-	lifted := phoneLifted{rows: map[string]bool{}, items: map[string]bool{}, errands: map[*homeExchange]bool{}}
-	// THE ITEMS THE SECTIONS TAKE ARE HUNG ON THE VIEW, because the block that
-	// would draw them again is [homeView.projectBlock], which is shared with
-	// every wider frame and may not be handed a phone's bookkeeping. It is nil
-	// everywhere else, and nil is "nothing was lifted".
-	h.liftedItems = lifted.items
+	lifted := phoneLifted{rows: map[string]bool{}, errands: map[*homeExchange]bool{}}
 	in := h.gridInput()
 	in.errands = nil // The phone inbox places exchanges in its own triage sections.
 	conversations := (sessionsPanel{homePanelBase{panelSessions}}).rows(&in)
@@ -252,26 +247,17 @@ func (h *homeView) phoneSection(word, key string, rows []homeLine) {
 // phoneLifted is what the triage sections took, so the projects under them do
 // not say it twice (this file's second law).
 //
-// THERE ARE THREE KINDS OF ROW ON THIS SCREEN AND ALL THREE ARE RECORDED. For a
-// wave there were only two: a standing item lifted into `waiting on you` was
-// drawn again under its own project four rows later, which on a twenty-six-row
-// phone frame spent four rows saying one thing twice — on the one tier that has
-// no rows to spare, against the law this file's own header states.
+// BOTH KINDS OF ROW ON THIS SCREEN ARE RECORDED: a row lifted into `waiting on
+// you` and drawn again under its own project would spend rows saying one thing
+// twice on the one tier that has no rows to spare, against the law this file's
+// own header states.
 type phoneLifted struct {
 	rows    map[string]bool
-	items   map[string]bool
 	errands map[*homeExchange]bool
 }
 
-// phoneItemKey names one standing item where it is drawn: a watch belongs to a
-// project, and two projects may hold items that answer to the same id.
-func phoneItemKey(project session.Project, view StandingItemView) string {
-	return project.Dir + "\x00" + view.Item.ID
-}
-
 // phoneWaiting is everything on this machine that has stopped and is asking for
-// a hand: a conversation on a question, a standing item that needs a look, an
-// errand holding a card. They are one section because they are one claim on a
+// a hand: a conversation on a question, or an errand holding a card. They are one section because they are one claim on a
 // person's attention, and the section is the reason this screen exists.
 func (h *homeView) phoneWaiting(lifted phoneLifted) []homeLine {
 	var out []homeLine
@@ -282,12 +268,6 @@ func (h *homeView) phoneWaiting(lifted phoneLifted) []homeLine {
 		}
 	}
 	for _, project := range h.everyProject() {
-		for _, view := range h.items[project.Dir] {
-			if strings.TrimSpace(view.Item.NeedsPerson) != "" {
-				lifted.items[phoneItemKey(project, view)] = true
-				out = append(out, h.itemLine(project, view))
-			}
-		}
 		for _, row := range project.Sessions {
 			if !row.NeedsPerson() {
 				continue
@@ -301,18 +281,9 @@ func (h *homeView) phoneWaiting(lifted phoneLifted) []homeLine {
 	return out
 }
 
-// everyProject is every project on the screen, the ones home knows only through
-// the things keeping an eye on them included ([homeBare]). The sections gather
-// from all of them, because a watch on a workspace nobody has spoken in is
-// exactly as able to need somebody as one on a busy project.
-func (h *homeView) everyProject() []session.Project {
-	out := make([]session.Project, 0, len(h.world.Projects)+len(h.bare))
-	out = append(out, h.world.Projects...)
-	for _, bare := range h.bare {
-		out = append(out, bare.project)
-	}
-	return out
-}
+// everyProject is every project on the screen. The sections gather from all of
+// them.
+func (h *homeView) everyProject() []session.Project { return h.world.Projects }
 
 // phoneNews is `since you left`, newest first.
 func (h *homeView) phoneNews() []homeLine {
@@ -353,11 +324,6 @@ func (h *homeView) phoneProjects(lifted phoneLifted) {
 		hit := homeHit{project: project, at: project.At()}
 		found = append(found, hit)
 	}
-	for _, bare := range h.bare {
-		if len(h.items[bare.project.Dir]) > 0 {
-			found = append(found, homeHit{project: bare.project, at: bare.at, bare: true})
-		}
-	}
 	sort.SliceStable(found, func(i, j int) bool { return found[i].at.After(found[j].at) })
 	// ONE PROJECT OPEN AND IT IS THIS WINDOW'S, which is [homeTiers]'s own law
 	// with the count taken down to one: this is the project this window can open
@@ -378,7 +344,7 @@ func (h *homeView) phoneProjects(lifted phoneLifted) {
 	for _, hit := range open {
 		h.blank()
 		h.lines = append(h.lines, homeLine{
-			kind: homeHeading, project: hit.project.Name, dir: hit.project.Dir, bare: hit.bare,
+			kind: homeHeading, project: hit.project.Name, dir: hit.project.Dir,
 		})
 		h.projectBlock(hit, "")
 	}
@@ -417,22 +383,22 @@ func (h *homeView) phoneNotes() []homePhoneNote {
 		return h.inbox
 	}
 	var out []homePhoneNote
-	for _, project := range h.everyProject() {
-		for _, note := range standing.PeekProjectInbox(h.standRoot, homeProjectPath(project)) {
-			out = append(out, homePhoneNote{
-				words: standNoteWords(note), at: note.At,
-				project: project.Name, dir: project.Dir, proj: project,
-			})
-		}
-		for _, row := range project.Sessions {
-			for _, note := range readHomeNews(row.Dir) {
-				out = append(out, homePhoneNote{
-					words: standNoteWords(note), at: note.At,
-					project: project.Name, dir: project.Dir,
-					row: row, hasRow: true, proj: project,
-				})
+	// WHAT RAN ON THE CLOCK WHILE NOBODY WAS LOOKING: the last run of every
+	// automation that ended since home was last looked at, said the way its own
+	// conversation's line says it (automation.go's [automationRunWords]). A
+	// watch's quiet looks are never news.
+	if !h.seen.IsZero() {
+		for _, item := range h.autos {
+			last := item.Last
+			if last == nil || !last.Outcome.Delivered() || !last.Finished.After(h.seen) {
+				continue
 			}
-			// AND WORK THAT LANDED WHILE YOU WERE NOT IN THE ROOM. It is the
+			out = append(out, homePhoneNote{words: automationRunWords(item, *last), at: last.Finished, project: placeAutomationsWord})
+		}
+	}
+	for _, project := range h.everyProject() {
+		for _, row := range project.Sessions {
+			// WORK THAT LANDED WHILE YOU WERE NOT IN THE ROOM.			// AND WORK THAT LANDED WHILE YOU WERE NOT IN THE ROOM. It is the
 			// same derivation the `◆` on a standing row makes ([standNews]):
 			// [session.SessionRow.At] is when the PERSON last spoke, so a task
 			// that finished after it is a thing they have not seen. Nothing is
@@ -453,12 +419,6 @@ func (h *homeView) phoneNotes() []homePhoneNote {
 	sort.SliceStable(out, func(i, j int) bool { return out[i].at.After(out[j].at) })
 	h.inbox, h.inboxAt = out, now
 	return out
-}
-
-// standNoteWords is what one note SAYS, on the news band's own terms: the words
-// the thing was asked in, and the line it came to under them.
-func standNoteWords(note standing.Note) string {
-	return joinDot(strings.TrimSpace(note.Words), strings.TrimSpace(note.Text))
 }
 
 // ── the frame ───────────────────────────────────────────────────────────────
@@ -695,10 +655,6 @@ func (a *app) homePhoneWords(line homeLine, pal palette) (string, string, noteIn
 	case homeCompletion:
 		label, note, _ := h.completionWords(line, pal)
 		return label, note, nil
-	case homeItem:
-		return standGlyph(line.view.Item, line.view.Running, line.view.News, pal.ascii) +
-				" " + strings.TrimSpace(line.view.Item.Words),
-			standRollup(line.view, h.world.Read), standRowInk(line.view)
 	case homeExchangeRow:
 		return homeAskHereGlyph + " " + exchangeTitle(line.ex.spoke),
 			// bridge lane: the one-spinner law is the wide frame's (homespinner.go).
@@ -711,12 +667,8 @@ func (a *app) homePhoneWords(line homeLine, pal palette) (string, string, noteIn
 		if note == nil {
 			return "", "", nil
 		}
-		glyph := standNewsGlyph
-		if pal.ascii {
-			glyph = standNewsASCII
-		}
-		return glyph + " " + note.words, joinDot(sinceAt(note.at, h.world.Read), note.project), nil
-	case homePhoneMore, homeQuiet, homeItemFold:
+		return a.icon(tokens.GSettled) + " " + note.words, joinDot(sinceAt(note.at, h.world.Read), note.project), nil
+	case homePhoneMore, homeQuiet:
 		return homeFoldMark(line.folded, pal) + " " + homePhoneFoldWord(line, h.world.Read), "", nil
 	case homeProject:
 		return homeFoldMark(line.folded, pal) + " " + line.project,
@@ -751,8 +703,6 @@ func homePhoneFoldWord(line homeLine, now time.Time) string {
 	switch line.kind {
 	case homeQuiet:
 		return homeQuietWord(line, now)
-	case homeItemFold:
-		return standFoldWord(line.quiet, line.folded)
 	}
 	if !line.folded {
 		return "…" + itoa(line.quiet) + " fewer"
@@ -989,7 +939,7 @@ func (a *app) homePhoneEnter() (tea.Cmd, bool) {
 		a.home.foldSection(line.dir)
 		a.touch()
 		return nil, true
-	case homeSession, homeItem, homePhoneNews, homeExchangeRow:
+	case homeSession, homePhoneNews, homeExchangeRow:
 		a.openHomeSheet()
 		return nil, true
 	}

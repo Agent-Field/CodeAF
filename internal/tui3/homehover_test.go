@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // Mouse and keyboard navigation share one selected row. The card follows
@@ -64,8 +62,8 @@ func homeLeftText(a *app, at int) string {
 }
 
 // hoverLab is the resting switcher with one of everything a pointer can land on
-// — a quiet conversation in each of three projects, one stopped on a question,
-// and one watch that needs somebody — on a frame past [homeCardMin].
+// — a quiet conversation in each of three projects, and one stopped on a
+// question — on a frame past [homeCardMin].
 //
 // THE FRAME IS THE FLOOR AND NOT A ROUND NUMBER. There is no card below that
 // width at all (homebridge.go), and a test about what the card is ABOUT drawn on
@@ -91,20 +89,6 @@ func hoverLab(t *testing.T) (*app, *homeLab, string) {
 	mine := lab.session("-zeta", "cccc000000000001", "zeta chat", zeta, now.Add(-3*time.Hour))
 
 	a := lab.app(mine)
-	// AND ONE WATCH THAT NEEDS SOMEBODY, which is the other kind of row a cursor
-	// stops on and the other kind of card the right column draws. It needs a
-	// person because that is what earns a standing item a row on the resting list
-	// at all now ([readSwitcher]); the ones merely waiting for their time are the
-	// standing place's business.
-	a.stands.Items = func(workspace string) []standing.Item {
-		if workspace != alpha {
-			return nil
-		}
-		return []standing.Item{{
-			ID: "w1", Words: "watch the repo", Status: standing.StatusActive,
-			Workspace: alpha, NeedsPerson: "should I send the digest?", Updated: now.Add(-time.Hour),
-		}}
-	}
 	a.width, a.height = homeCardMin, 40
 	openHomeOn(a, mine)
 	return a, lab, mine
@@ -158,46 +142,6 @@ func TestThePointerLeavingTheColumnGivesTheCardBackToTheCursor(t *testing.T) {
 	}
 }
 
-// EVERY ROW THE CURSOR CAN STOP ON THE POINTER CAN REACH, AND THE CARD IT GETS
-// IS THE CARD THAT ROW HAS.
-//
-// This used to be said about a folded project's line, and there are no project
-// lines at rest any more — the tiers and the `elsewhere` block went with the
-// tree (switcher.go). The second kind of stop on the resting list is a WATCH,
-// and its card is the standing item's own ([StandingItemCard], which this wave
-// did not touch), so the law is pinned where it still has two kinds to be true
-// of.
-func TestHoveringAWatchPreviewsTheWatchsOwnCard(t *testing.T) {
-	a, lab, _ := hoverLab(t)
-	at := -1
-	for i, line := range a.home.lines {
-		if line.kind == homeItem {
-			at = i
-			break
-		}
-	}
-	if at < 0 {
-		t.Fatalf("the watch has no row on the column:\n%s", homeText(a))
-	}
-	a.homeHover(4, homeLineY(t, a, at))
-
-	subject, ok := a.homeSubject()
-	if !ok || subject.kind != bandKindItem {
-		t.Fatalf("the hovered watch answers subject kind %v, want an item", subject.kind)
-	}
-	alpha := lab.workspace("alpha")
-	if subject.dir != alpha {
-		t.Fatalf("the previewed subject is at %q, want the watch's own workspace %q", subject.dir, alpha)
-	}
-	card := homeCard(t, a)
-	if !strings.Contains(card, "watch the repo") {
-		t.Fatalf("the card beside a hovered watch is not the watch's:\n%s", card)
-	}
-	if strings.Contains(card, "Zeta Chat") {
-		t.Fatalf("the card stayed on the cursor's conversation:\n%s", card)
-	}
-}
-
 // `→` ACTS ON THE ROW A PERSON IS LOOKING AT. The right column has no cursor of
 // its own, so a key that reaches past the list has to mean the row that is
 // drawn — the previewed one — or the screen would answer one row and the
@@ -206,29 +150,20 @@ func TestHoveringAWatchPreviewsTheWatchsOwnCard(t *testing.T) {
 // THE KEY IT REACHES CHANGED AND THE LAW DID NOT. `→` used to open every fold on
 // the card; it opens the row's VERB STRIP now, and only where the row has verbs
 // (placekeys.go's [app.placeKey], verbstrip.go) — which on the resting list is
-// every conversation and every watch, so the fold arm below it is no longer
-// reachable from a row at all. What is pinned here is the half that survived
-// both: the verbs belong to the single row selected by the latest navigation.
+// every conversation, so the fold arm below it is no longer reachable from a row
+// at all. What is pinned here is the half that survived both: the verbs belong
+// to the single row selected by the latest navigation.
 func TestTheVerbKeyActsOnTheRowThePointerIsOn(t *testing.T) {
 	a, _, _ := hoverLab(t)
-	watch := -1
-	for i, line := range a.home.lines {
-		if line.kind == homeItem {
-			watch = i
-			break
-		}
-	}
-	if watch < 0 {
-		t.Fatalf("the watch has no row on the column:\n%s", homeText(a))
-	}
-	// The cursor is on this window's own conversation, whose verbs are a
-	// conversation's; the pointer goes to the watch, whose verbs are an item's.
-	// The two lists share no word, which is what lets the strip say which row it
-	// was opened for.
+	// The cursor is on this window's own conversation; the pointer goes to the
+	// one stopped on a question, whose strip leads with that question's own
+	// answers — words no other row on the column offers, which is what lets the
+	// strip say which row it was opened for.
 	if line, ok := a.home.focusedLine(); !ok || line.kind != homeSession {
 		t.Fatalf("home did not open on a conversation, so the two rows cannot be told apart:\n%s", homeText(a))
 	}
-	a.homeHover(4, homeLineY(t, a, watch))
+	asking := homeLineOfKind(t, a, homeSession, "beta asking")
+	a.homeHover(4, homeLineY(t, a, asking))
 
 	a.homeKey(key("right"))
 	if !a.strip.open {
@@ -239,8 +174,8 @@ func TestTheVerbKeyActsOnTheRowThePointerIsOn(t *testing.T) {
 		words = append(words, v.word)
 	}
 	joined := strings.Join(words, ", ")
-	if !strings.Contains(joined, homeItemPauseWord) {
-		t.Fatalf("→ did not offer the previewed watch's own verbs, it offered %q", joined)
+	if !strings.Contains(joined, "delete") {
+		t.Fatalf("→ did not offer the previewed conversation's own verbs, it offered %q", joined)
 	}
 	if strings.Contains(joined, "close") {
 		t.Fatalf("→ acted on the cursor's conversation instead of the row on the screen: %q", joined)

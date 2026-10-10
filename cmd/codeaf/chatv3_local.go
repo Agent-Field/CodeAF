@@ -328,7 +328,7 @@ func openChatV3Local(launch localLaunch) error {
 	// and a Run that leaves by any other road than /quit still owes it a flush.
 	defer closeErrands()
 	options.Errand = errand
-	options.StandingRoot = v3StandingRoot()
+	options.ErrandsRoot = v3ErrandsRoot()
 	// AND THE AUTOMATIONS ARE THIS MACHINE'S, read straight off their store:
 	// the engine here is a process on this machine, and the store it proposes
 	// into is the one this window reads (chatv3_clock.go). Over --host the

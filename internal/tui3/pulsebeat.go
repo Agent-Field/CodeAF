@@ -102,7 +102,6 @@ func (a *app) pulseCounted(msg pulseWorldMsg) {
 	if a.at(pageHome) || !msg.known {
 		return
 	}
-	bands, _, _ := a.standBandsOf(msg.world)
-	a.readMachine(a.now(), msg.world.Sessions(), bands)
+	a.readMachine(a.now(), msg.world.Sessions())
 	a.touch()
 }

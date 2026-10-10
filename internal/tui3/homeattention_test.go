@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -38,9 +37,9 @@ func switchRowLine(a *app, name string) string {
 	return ""
 }
 
-// switchNames is every conversation and standing item on the built column, in
-// the order the list draws them — the flat list's answer to what the two strips
-// used to be asked for.
+// switchNames is every conversation on the built column, in the order the list
+// draws them — the flat list's answer to what the two strips used to be asked
+// for.
 func switchNames(a *app) []string {
 	var out []string
 	for _, line := range a.home.lines {
@@ -51,8 +50,7 @@ func switchNames(a *app) []string {
 		default:
 			continue
 		}
-		switch row.kind {
-		case switcherConversation, switcherStanding:
+		if row.kind == switcherConversation {
 			out = append(out, row.title)
 		}
 	}
@@ -65,8 +63,7 @@ func switchNames(a *app) []string {
 // The strip earned its rows because a project tree could not answer "what needs
 // me"; a list already sorted by that answers it by existing, so what this test
 // pins is the sort itself: the thing that has been stopped longest has cost the
-// most already, so it is row one, and a watch that is asking counts as the same
-// kind of blocked as a conversation that is asking.
+// most already, so it is row one.
 func TestSessionsStayChronologicalWhenAConversationNeedsAnAnswer(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
@@ -78,15 +75,7 @@ func TestSessionsStayChronologicalWhenAConversationNeedsAnAnswer(t *testing.T) {
 	question.Asked = now.Add(-3 * time.Hour)
 	lab.asking("-beta", "bbbb000000000001", question, now)
 
-	// And a standing order that has been asking for an hour, which is the second
-	// KIND of blocked thing and belongs in the same ranking rather than beside it.
-	band := &standBand{}
-	band.items = []standing.Item{bandItem("ask", "keep main green", alpha, standing.WhenProbe, "when CI goes red")}
-	band.items[0].NeedsPerson = "the fix touches migrations"
-	band.items[0].Updated = now.Add(-time.Hour)
-
 	a := lab.app(mine)
-	band.wire(a)
 	a.width, a.height = 120, 30
 	a.openHome()
 

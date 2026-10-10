@@ -43,7 +43,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // bandClauses lays whole facts into the fewest rows that hold them. THE LAST
@@ -202,8 +201,6 @@ type bandKind uint8
 const (
 	// bandKindSession is the card for one conversation — the row under the cursor.
 	bandKindSession bandKind = iota + 1
-	// bandKindItem is the card for one standing item.
-	bandKindItem
 	// bandKindProject is the card for a whole project: the cursor is on a heading
 	// or on a folded project line.
 	bandKindProject
@@ -222,8 +219,6 @@ type bandSubject struct {
 	kind bandKind
 	// row is the conversation, for bandKindSession.
 	row session.SessionRow
-	// item is the standing item, for bandKindItem.
-	item StandingItemView
 	// project is the whole project, for bandKindProject.
 	project string
 	// world is the reading the rows were built from, for bands that look past
@@ -235,13 +230,11 @@ type bandSubject struct {
 }
 
 // id is what fold state and caches key on: the transcript for a conversation,
-// the item id for an item, the directory for a project.
+// the directory for a project.
 func (s bandSubject) id() string {
 	switch s.kind {
 	case bandKindSession:
 		return s.row.Transcript
-	case bandKindItem:
-		return s.item.Item.ID
 	case bandKindProject:
 		return s.dir
 	}
@@ -611,12 +604,4 @@ func drawStateBand(a *app, ctx bandContext) []string {
 		}
 	}
 	return append(state, a.takeoverCard(row, width, pal)...)
-}
-
-// itemView is a convenience for bands that draw for items.
-func (s bandSubject) itemOrNil() *standing.Item {
-	if s.kind != bandKindItem {
-		return nil
-	}
-	return &s.item.Item
 }

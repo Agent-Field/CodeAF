@@ -9,10 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -335,33 +333,6 @@ func TestTheRosterAndTheRecordAgreeOnEveryShape(t *testing.T) {
 	}
 	if glyph, _ := tasksGlyph(tasksItem{entry: live}, a.pal); glyph != glyphIdle {
 		t.Errorf("an unvouched queued row draws %q, want %q", glyph, glyphIdle)
-	}
-}
-
-// HOME'S STANDING ROWS SAY THE SAME WORD, and the reason travels with it. The
-// clause obeys the emptiness law, which is what a quiet item draws.
-func TestHomeStandingRowsSayYourCallAndTheirReason(t *testing.T) {
-	item := standing.Item{
-		ID: "i1", Words: "keep main green", Workspace: "/w/alpha",
-		When:   standing.When{Kind: standing.WhenEvery, Words: "when CI goes red"},
-		Status: standing.StatusActive,
-	}
-	item.NeedsPerson = "the fix touches migrations"
-	row := plain(standRollup(StandingItemView{Item: item}, time.Time{}))
-	if want := tierYourCallWord + tierReasonSep + "the fix touches migrations"; row != want {
-		t.Fatalf("the standing rollup says %q, want %q", row, want)
-	}
-	item.NeedsPerson = ""
-	if got := plain(standRollup(StandingItemView{Item: item}, time.Time{})); strings.Contains(got, tierYourCallWord) {
-		t.Fatalf("a row with nothing to report says %q", got)
-	}
-
-	// AND THE NEWS LINE UNDER IT SAYS THE SAME WORD.
-	if got := standUpdateWord("needs-you", ""); got != tierYourCallWord {
-		t.Fatalf("a news line says %q, want %q", got, tierYourCallWord)
-	}
-	if got := standUpdateWord("needs-you", "the fix touches migrations"); got != tierYourCallWord+": the fix touches migrations" {
-		t.Fatalf("a news line with a reason says %q", got)
 	}
 }
 

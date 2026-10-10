@@ -1,16 +1,14 @@
 package tui3
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // phoneHome opens home on a phone-sized frame. Fifty by thirty is the size the
@@ -566,12 +564,14 @@ func TestThePhoneInboxCarriesSinceYouLeft(t *testing.T) {
 		Label: "the deploy went green", Status: string(session.TaskDone),
 		EndedAt: now.Add(-time.Minute),
 	})
-	dir := filepath.Dir(mine)
-	note := `{"at":"` + now.Add(-30*time.Minute).Format(time.RFC3339Nano) + `","words":"keep main green","text":"it is green"}`
-	if err := os.WriteFile(standing.InboxPath(dir), []byte(note+"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	a := phoneHome(t, lab, mine)
+	// AN AUTOMATION THAT RAN WHILE NOBODY WAS LOOKING is a line of the
+	// section too, said the way its own conversation's line says it.
+	a.home.seen = now.Add(-2 * time.Hour)
+	a.home.autos = []automation.Automation{{ID: "w1", Title: "keep main green", Last: &automation.Run{
+		Phase: automation.PhaseOver, Outcome: automation.OutcomeDone, Line: "it is green", Finished: now.Add(-30 * time.Minute)}}}
+	a.home.inboxAt = time.Time{}
+	a.home.build()
 	text := phoneText(a)
 	if !strings.Contains(text, homePhoneNewsWord) {
 		t.Fatalf("no %q section:\n%s", homePhoneNewsWord, text)
@@ -624,30 +624,5 @@ func TestAnErrandOnAPhoneIsTheSameSheet(t *testing.T) {
 	drive(t, a, key("tab"))
 	if a.homeSheetShowing() {
 		t.Fatal("tab did not put the list back")
-	}
-}
-
-// TestAPhoneInboxDrawsAStandingItemOnlyOnce is homephone.go's second law — A ROW
-// APPEARS ONCE — held for the third kind of row on that screen.
-//
-// A watch that needs somebody was lifted into `waiting on you` AND drawn again
-// under its own project four rows later: two lines each, four of the twenty-six
-// a pocket terminal has, on the one tier with none to spare.
-func TestAPhoneInboxDrawsAStandingItemOnlyOnce(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "port the picker", "/tmp/alpha", now)
-	a := phoneHome(t, lab, mine)
-	const words = "tell me when CI goes red on master"
-	a.home.items = map[string][]StandingItemView{lab.project("-tmp-alpha"): {{Item: standing.Item{
-		ID: "watch", Words: words, NeedsPerson: "may I re-run the typecheck job?", Updated: now,
-	}}}}
-	a.home.rebuild()
-	text := phoneText(a)
-	if n := strings.Count(text, words); n != 1 {
-		t.Fatalf("the watch was drawn %d times, want once — lifted into `waiting on you` and not again under its project:\n%s", n, text)
-	}
-	if strings.Contains(text, "\n "+homePhoneWaitingWord+" ") {
-		t.Fatal("the watch still has a separate waiting heading")
 	}
 }

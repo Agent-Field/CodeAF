@@ -45,25 +45,22 @@ import (
 // a live tag plain by pressing backspace immediately after it, and its chip
 // leaves on that first press without deleting a letter.
 //
-// THE TWO TAG DOORS BOTH END WHERE A PERSON CAN SEE THEM. /standing raises its
-// ratification card, and /task starts its work in the open — a started row and a
-// task on the roster, one worker that can be stopped (issue #936 took the wait in
-// front of it away, not the row). Pasted text cannot turn a tinted word into
-// silent work, because a tag's promise is carried by [commandDoor] and the hint
-// line, never by the tint alone.
+// THE TAG DOOR ENDS WHERE A PERSON CAN SEE IT. /task starts its work in the
+// open — a started row and a task on the roster, one worker that can be stopped
+// (issue #936 took the wait in front of it away, not the row). Pasted text
+// cannot turn a tinted word into silent work, because a tag's promise is
+// carried by [commandDoor] and the hint line, never by the tint alone.
 
 type sendDoor uint8
 
 const (
 	sendDoorNone sendDoor = iota
-	sendDoorStanding
 	sendDoorTask
 )
 
 const (
-	slashTagHintStanding = "enter keeps this true"
-	slashTagHintTask     = "enter sizes this task"
-	slashTagRefusal      = "one tag per send — backspace one to make it plain words"
+	slashTagHintTask = "enter sizes this task"
+	slashTagRefusal  = "one tag per send — backspace one to make it plain words"
 )
 
 func commandDoor(word string) sendDoor {
@@ -293,10 +290,6 @@ func (a *app) slashTagHint() string {
 	if len(tags) != 1 {
 		return ""
 	}
-	word := string(a.input.value[tags[0].from+1 : tags[0].to])
-	if commandDoor(word) == sendDoorStanding {
-		return slashTagHintStanding
-	}
 	return slashTagHintTask
 }
 
@@ -324,59 +317,6 @@ func shiftSegments(segs []segment, n int) []segment {
 			continue
 		}
 		out = append(out, segment{from: s.from - n, to: s.to - n})
-	}
-	return out
-}
-
-// plainWithoutTag carries demoted tags from the line a person sent into the
-// words [removeSlashTag] leaves once the live tag is taken out. value and tag
-// are the editor's, and plain is [editor.plainTags]'s offsets into the trimmed
-// line.
-//
-// EVERY RANGE IS CHECKED AGAINST THE WORDS IT LANDS ON, and one that does not
-// spell the same command there is dropped. The arithmetic mirrors
-// removeSlashTag's trims, and a stray kind of space it did not foresee should
-// cost a chip, never paint one on the wrong word.
-func plainWithoutTag(value []rune, tag segment, plain []segment) []segment {
-	if len(plain) == 0 {
-		return nil
-	}
-	isCut := func(r rune) bool { return r == ' ' || r == '\t' || r == '\n' }
-	lead := 0
-	for lead < len(value) && unicode.IsSpace(value[lead]) {
-		lead++
-	}
-	leftEnd := tag.from
-	for leftEnd > 0 && isCut(value[leftEnd-1]) {
-		leftEnd--
-	}
-	rightStart := tag.to
-	for rightStart < len(value) && isCut(value[rightStart]) {
-		rightStart++
-	}
-	words := []rune(removeSlashTag(value, tag))
-	out := make([]segment, 0, len(plain))
-	for _, p := range plain {
-		from, to := p.from+lead, p.to+lead
-		var at int
-		switch {
-		case to <= tag.from && leftEnd > lead:
-			at = from - lead
-		case from >= tag.to && leftEnd <= lead:
-			at = from - rightStart
-			for skip := rightStart; skip < len(value) && unicode.IsSpace(value[skip]); skip++ {
-				at--
-			}
-		case from >= tag.to:
-			at = from - rightStart + (leftEnd - lead) + 1
-		default:
-			continue
-		}
-		moved := segment{from: at, to: at + (to - from)}
-		if moved.from < 0 || moved.to > len(words) || string(words[moved.from:moved.to]) != string(value[from:to]) {
-			continue
-		}
-		out = append(out, moved)
 	}
 	return out
 }

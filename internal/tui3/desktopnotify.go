@@ -26,6 +26,11 @@ import (
 // notification escape, for a machine with no native notifier.
 type automationNotifyMsg struct{ title, body string }
 
+// osNotify is the native notifier this window raises banners through. It is a
+// variable for one reason: a test raises a run's news and must not put a real
+// banner on the screen of whoever is running the suite.
+var osNotify = desktopNotify
+
 // desktopNotify raises one banner through the operating system and reports
 // whether it could; false means the caller should fall back to the terminal.
 func desktopNotify(title, body string) bool {

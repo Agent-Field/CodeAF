@@ -236,7 +236,7 @@ func phaseKeeps(e *entry) bool {
 		return true
 	}
 	switch e.kind {
-	case entryTask, entryStanding, entryConnect, entrySeam, entryHarness, entryDone:
+	case entryTask, entryAutomation, entryConnect, entrySeam, entryHarness, entryDone:
 		return true
 	case entryNote:
 		return e.told
@@ -285,7 +285,7 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 			// landing as a boundary so unrelated housekeeping on either side
 			// still folds, even when an async command acknowledgement arrived
 			// after the response without a new user message.
-			if interruptedUpdate(&es[i]) || es[i].kind == entryTask || es[i].kind == entryConnect || es[i].kind == entryStanding || es[i].kind == entryDone {
+			if interruptedUpdate(&es[i]) || es[i].kind == entryTask || es[i].kind == entryConnect || es[i].kind == entryAutomation || es[i].kind == entryDone {
 				asks = append(asks, i)
 			}
 			if es[i].kind == entryTool && ((es[i].status != toolOK && es[i].status != toolFailed && !es[i].cut) || es[i].decision != "") {

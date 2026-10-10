@@ -65,8 +65,7 @@ func leftLine(row switcherRow, now time.Time) homeLine {
 			cell.title, cell.after, cell.program = label, after, program
 		}
 	}
-	return homeLine{kind: homeLedger, project: row.place, dir: leftKey(row),
-		view: row.item, item: row.item.Item, cell: cell}
+	return homeLine{kind: homeLedger, project: row.place, dir: leftKey(row), cell: cell}
 }
 
 // taskLedgerKey is ONE piece of work's identity across home's columns: the

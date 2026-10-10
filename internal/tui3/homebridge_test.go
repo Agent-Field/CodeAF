@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // ── THE TWO COLUMNS ─────────────────────────────────────────────────────────
@@ -44,11 +43,7 @@ func bridgeLab(t *testing.T) (*app, string) {
 		ID: "1", Name: "sweep", Label: "Sweep", Title: "Sweep",
 		Status: string(session.TaskRunning), SessionID: "aaaa000000000002",
 	})
-	band := &standBand{items: []standing.Item{
-		bandItem("one", "check the deploy", alpha, standing.WhenEvery, "every 20 minutes"),
-	}}
 	a := lab.app(mine)
-	band.wire(a)
 	a.width, a.height = 200, 30
 	a.openHome()
 	return a, mine

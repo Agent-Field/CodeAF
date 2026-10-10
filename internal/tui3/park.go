@@ -64,14 +64,9 @@ type parked struct {
 	// submit is crossing back to the surface. It prevents a return during that
 	// crossing from treating the same message as unsent and sending it twice.
 	sending bool
-	// standing says the person MARKED this one as something to keep true
-	// (standmark.go). It travels with the words for the chips' own reason: the
-	// gesture was made when the message was typed, and a queue that forgot it
-	// would send the sentence as ordinary work minutes later.
-	standing bool
 	// plain is every slash tag the person backspaced to plain words before
 	// pressing enter, as offsets into text. IT WAITS WITH THE WORDS for the
-	// mark's reason: the demotion was made when the message was typed, and a
+	// chips' reason: the demotion was made when the message was typed, and a
 	// queue that forgot it would chip the word again in the transcript the
 	// moment the message went (slashchip.go's [transcriptCommandSpans]).
 	plain []segment
@@ -94,7 +89,7 @@ func (a *app) parking() bool { return a.state == stateWorking }
 //
 // plain is the demoted tags as offsets into text, and they are rebased here by
 // whatever leading space the trim takes off, so they still name the same words.
-func (a *app) park(text string, standing bool, plain []segment) tea.Cmd {
+func (a *app) park(text string, plain []segment) tea.Cmd {
 	trimmed := strings.TrimLeftFunc(text, unicode.IsSpace)
 	plain = shiftSegments(plain, len([]rune(text))-len([]rune(trimmed)))
 	text = strings.TrimSpace(trimmed)
@@ -103,7 +98,7 @@ func (a *app) park(text string, standing bool, plain []segment) tea.Cmd {
 		return nil
 	}
 	a.chips = nil
-	a.parks = append(a.parks, parked{text: text, chips: chips, pastes: a.pastes, standing: standing, plain: plain})
+	a.parks = append(a.parks, parked{text: text, chips: chips, pastes: a.pastes, plain: plain})
 	a.pastes = nil
 	a.follow()
 	a.touch()
@@ -147,11 +142,6 @@ func (a *app) sendParked() tea.Cmd {
 		a.chips = held
 		return cmd
 	}
-	// A MARKED MESSAGE GOES THROUGH THE MARKED DOOR, however long it waited
-	// (standmark.go).
-	if next.standing {
-		return a.submitStandingShown(spoken, shown, next.plain)
-	}
 	return a.submitShown(spoken, shown, next.plain)
 }
 
@@ -163,9 +153,6 @@ func parkedStart(agent Agent, ctx context.Context, hosted bool, p parked) (spoke
 	spoken, shown = p.spoken(), p.text
 	if len(p.chips) > 0 {
 		return attachmentStart(agent, ctx, hosted, spoken, shown, p.chips)
-	}
-	if p.standing {
-		return spoken, shown, standingStart(agent, ctx, spoken)
 	}
 	return spoken, shown, submitStart(agent, ctx, spoken)
 }

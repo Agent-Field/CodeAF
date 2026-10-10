@@ -3,6 +3,7 @@ package tui3
 import (
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/subharness"
 )
@@ -279,37 +280,21 @@ var blockDemos = map[string]func() session.Question{
 	// seen without a model.
 	"evidence":        demoQuestionReading,
 	"evidence-layout": demoQuestionLayout,
-	"standing":        demoStandingCard,
+	"automation":      demoAutomationCard,
 	"harness-offer":   demoHarnessOffer,
 	"design":          demoHarnessDesign,
 	"connect":         demoConnectOffer,
 	"connect-key":     demoConnectKey,
 }
 
-// demoStandingCard is the reminder a turn proposed: a choice with four answers
-// and a correction lane under it.
-func demoStandingCard() session.Question {
-	return session.Question{
-		ID:     1,
-		Kind:   session.QuestionStanding,
-		Ask:    session.AskChoice,
-		Form:   session.FormCard,
-		Asker:  session.Asker{Kind: session.AskerModel},
-		Head:   session.StandingHeadCheck,
-		Reason: session.StandingAskReason,
-		Stakes: session.StakesReversible,
-		// THE WORDS ARE THE CARD'S OWN CONSTANTS and never a second spelling of
-		// them (standing.go, and the law a test in this package holds): a fixture
-		// that said the answers itself would be a picture of a card this program
-		// does not draw.
-		Options: []session.AnswerOption{
-			{Key: standYesKey, Label: standYesWord, Consequence: standYesCost},
-			{Key: session.StandingOnceKey, Label: standOnceWord, Consequence: standOnceCost},
-			{Key: session.StandingNoKey, Label: standNoWordChip, Safe: true, Consequence: standNoCost},
-		},
-		Input: session.InputShape{Kind: session.InputText, Prompt: standChangeCost},
-		Scope: []session.AnswerScope{session.ScopeOnce, session.ScopeAlways},
-	}
+// demoAutomationCard is the scheduled work a turn proposed: the engine's own
+// construction of the question, so the fixture is a picture of a card this
+// program draws and never a second spelling of one.
+func demoAutomationCard() session.Question {
+	return session.AutomationQuestion(session.AutomationNotice{ID: 1, Automation: automation.Automation{
+		Title: "weekly update", Words: "every Monday at 9, draft the weekly update",
+		Schedule: automation.Schedule{Every: "0 9 * * 1"}, Action: automation.Action{Do: "draft the weekly update"},
+	}})
 }
 
 // demoHarnessOffer is the offer to run a saved program: one line, two answers.

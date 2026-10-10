@@ -768,21 +768,6 @@ func resolveThroughLanes(agent any, answer session.Answer) error {
 		}
 		door.ResolveConnect(answer.Ref, key == "1")
 		return nil
-	case session.QuestionStanding:
-		door, ok := agent.(standingAgent)
-		if !ok {
-			return errNoSuchLane
-		}
-		if words := strings.TrimSpace(answer.Words()); words != "" && key == "" {
-			door.ResolveStanding(answer.ID, session.StandingAnswer{Change: words})
-			return nil
-		}
-		action, found := session.AnswerFromKey(session.QuestionStanding, key)
-		if !found {
-			return errNoSuchLane
-		}
-		door.ResolveStanding(answer.ID, action.Standing)
-		return nil
 	}
 	return errNoSuchLane
 }

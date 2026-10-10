@@ -11,21 +11,21 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // errandAgent is the scripted session an errand runs against. It is
 // [fakeAgent] with two differences, both of which are about what an errand
 // actually does: its Submit CLOSES the stream when the scripted turn runs out,
 // so a test does not spend a second and a half waiting on a channel nobody will
-// close, and it answers the standing card ([session.Agent.ResolveStanding]),
-// which is the one thing the surface asks of an errand's agent that it does not
-// ask of an ordinary one.
+// close, and it records the answers the pane's card hands back
+// ([session.Agent.ResolveQuestion]), which is the one thing the surface asks of
+// an errand's agent that it does not ask of an ordinary one.
 type errandAgent struct {
 	fakeAgent
-	answered []session.StandingAnswer
-	answerID []uint64
+	answered []session.Answer
 	// images is what an errand carrying a picture was handed, which is the only
 	// way to assert the bytes crossed rather than the path (homeexchange.go's
 	// [errandSend]).
@@ -53,18 +53,18 @@ func (e *errandAgent) Submit(ctx context.Context, text string) (<-chan session.E
 	return out, nil
 }
 
-func (e *errandAgent) ResolveStanding(id uint64, answer session.StandingAnswer) {
-	e.answerID = append(e.answerID, id)
+func (e *errandAgent) ResolveQuestion(answer session.Answer) error {
 	e.answered = append(e.answered, answer)
+	return nil
 }
 
-// errandLab is a home lab with a standing root beside it and an errand seam
+// errandLab is a home lab with an errands root beside it and an errand seam
 // wired, which is the whole of what `ask here` needs that home does not.
 type errandLab struct {
 	*homeLab
-	standing string
-	agent    *errandAgent
-	dirs     []string
+	errands string
+	agent   *errandAgent
+	dirs    []string
 	// orders is every [ErrandOrders] the seam was handed, so a test can assert
 	// WHAT the composer layer settled — the destination, the execution model, the
 	// cap — and not only where the folder went.
@@ -73,7 +73,7 @@ type errandLab struct {
 
 func newErrandLab(t *testing.T) *errandLab {
 	t.Helper()
-	return &errandLab{homeLab: newHomeLab(t), standing: t.TempDir()}
+	return &errandLab{homeLab: newHomeLab(t), errands: t.TempDir()}
 }
 
 // besideTheList widens a frame until it holds two columns, which is the only
@@ -103,7 +103,7 @@ func (l *errandLab) app(here string, turns ...[]session.Event) *app {
 	l.t.Helper()
 	l.agent = &errandAgent{fakeAgent: fakeAgent{model: "m", turns: turns}}
 	a := l.homeLab.app(here)
-	a.standingRoot = l.standing
+	a.errandsRoot = l.errands
 	a.errand = func(orders ErrandOrders) (Agent, error) {
 		l.dirs = append(l.dirs, orders.Dir)
 		l.orders = append(l.orders, orders)
@@ -155,8 +155,6 @@ func cursorWord(a *app) string {
 		return "session " + line.row.Transcript
 	case homeExchangeRow:
 		return "exchange " + line.ex.id
-	case homeItem:
-		return "item " + line.item.ID
 	}
 	return "line " + itoa(int(line.kind))
 }
@@ -275,8 +273,8 @@ func TestAskHereMakesItsFolderOutsideTheProjectsAndSendsTheSentence(t *testing.T
 		t.Fatalf("one folder should have been made, the seam saw %v", lab.dirs)
 	}
 	made := lab.dirs[0]
-	if parent := filepath.Dir(made); parent != filepath.Join(lab.standing, "exchanges") {
-		t.Fatalf("the exchange should live under the standing root's exchanges/, it is at %s", made)
+	if parent := filepath.Dir(made); parent != lab.errands {
+		t.Fatalf("the exchange should live under the errands root, it is at %s", made)
 	}
 	if strings.HasPrefix(made, lab.root) {
 		t.Fatalf("the exchange must not be under the projects root, it is at %s", made)
@@ -285,11 +283,11 @@ func TestAskHereMakesItsFolderOutsideTheProjectsAndSendsTheSentence(t *testing.T
 		t.Fatalf("the exchange has no transcript: %v", err)
 	}
 	// AND HOME STILL CANNOT SEE IT. The list is read off the projects root, and
-	// nothing under the standing root is in it.
+	// nothing under the errands root is in it.
 	a.refreshHome()
 	for _, project := range a.home.world.Projects {
 		for _, row := range project.Sessions {
-			if strings.HasPrefix(row.Dir, lab.standing) {
+			if strings.HasPrefix(row.Dir, lab.errands) {
 				t.Fatalf("home listed the exchange as a conversation: %s", row.Dir)
 			}
 		}
@@ -340,23 +338,22 @@ func TestTheChordAsksHereWithoutWalkingToTheRow(t *testing.T) {
 	}
 }
 
-// standingProposal is one EventStandingProposal as the engine sends it.
-func standingProposal(id uint64, words string) session.Event {
-	return session.Event{
-		Kind: session.EventStandingProposal,
-		Standing: &session.StandingNotice{
-			ID: id,
-			Item: standing.Item{
-				Words:     words,
-				Workspace: "/tmp/alpha",
-				When:      standing.When{Kind: standing.WhenAt, Words: "at 6 today"},
-				Does:      standing.Action{Kind: standing.ActionSay, Say: "leave"},
-				Rails:     standing.Rails{PerRunUSD: 0.02, MaxPerDay: 1},
-			},
-			WhenWords: "at 6 today",
-			CostWords: "about $0.02, once",
-		},
-	}
+// automationProposal is one EventAutomationProposal as the engine sends it: a
+// reminder at six today, in the person's own words.
+func automationProposal(id uint64, words string) session.Event {
+	return automationProposalOf(id, automation.Automation{
+		Title: "leave", Words: words, Workspace: "/tmp/alpha",
+		Schedule: automation.Schedule{At: time.Now().Add(time.Hour)},
+		Action:   automation.Action{Say: "leave"},
+	}, "at 6 today")
+}
+
+// automationProposalOf is one EventAutomationProposal for any automation, with
+// the answers the engine offers for it ([session.AutomationOptions]).
+func automationProposalOf(id uint64, item automation.Automation, when string) session.Event {
+	return session.Event{Kind: session.EventAutomationProposal, Automation: &session.AutomationNotice{
+		ID: id, Automation: item, WhenWords: when, Options: session.AutomationOptions(item),
+	}}
 }
 
 // TestTheCardInThePaneIsAnsweredWithOne is the decision moment: the card is
@@ -368,7 +365,7 @@ func TestTheCardInThePaneIsAnsweredWithOne(t *testing.T) {
 
 	a := lab.app(mine, []session.Event{
 		text(session.EventTextDelta, "Here is what I will do."),
-		standingProposal(7, "remind me at 6 to leave"),
+		automationProposal(7, "remind me at 6 to leave"),
 		{Kind: session.EventTurnDone},
 	})
 	// THE CARD OUTLIVES THE ANSWER, so the frame has to still be drawing a pane
@@ -380,7 +377,7 @@ func TestTheCardInThePaneIsAnsweredWithOne(t *testing.T) {
 	drive(t, a, key("up"), key("enter"))
 
 	frame := homeText(a)
-	for _, want := range []string{"remind me at 6 to leave", "at 6 today", "about $0.02, once", "1 Remind me"} {
+	for _, want := range []string{"remind me at 6 to leave", "at 6 today", "1 Save"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("the card does not say %q:\n%s", want, frame)
 		}
@@ -389,11 +386,11 @@ func TestTheCardInThePaneIsAnsweredWithOne(t *testing.T) {
 	if len(lab.agent.answered) != 1 {
 		t.Fatalf("`1` should have answered the card, the agent saw %v", lab.agent.answered)
 	}
-	if !lab.agent.answered[0].Approved {
-		t.Fatalf("`1` is a yes, the answer was %+v", lab.agent.answered[0])
+	if got := lab.agent.answered[0]; got.FirstKey() != session.AutomationSaveKey || got.Kind != session.QuestionAutomation {
+		t.Fatalf("`1` is a save, the answer was %+v", got)
 	}
-	if lab.agent.answerID[0] != 7 {
-		t.Fatalf("the answer went back on token %d, want 7", lab.agent.answerID[0])
+	if lab.agent.answered[0].ID != 7 {
+		t.Fatalf("the answer went back on id %d, want 7", lab.agent.answered[0].ID)
 	}
 	// AND THE CARD IS STILL THERE, SETTLED. It used to be taken off the pane the
 	// instant somebody answered it, which left the one thing on screen that
@@ -407,61 +404,43 @@ func TestTheCardInThePaneIsAnsweredWithOne(t *testing.T) {
 	// AND THE ROW SAYS WHAT IT CAME TO once the keyboard is back on the grid,
 	// which has no pane column to keep the settled card standing in (the narrow
 	// frame's rule, [app.homeStacked]).
-	if settled := homeText(a); strings.Contains(settled, "[ 1 "+standYesWord+" ]") {
+	if settled := homeText(a); strings.Contains(settled, "[ 1 Save ]") {
 		t.Fatalf("the settled card is still drawing its chips:\n%s", settled)
-	}
-}
-
-// standingProposalNarrowed is one EventStandingProposal carrying the answers the
-// ENGINE narrowed this item to ([session.StandingOptions]), which is what every
-// real proposal carries and what decides how many chips the card draws.
-//
-// [standingProposal] deliberately carries none, which is the field's other
-// reading — a notice that narrowed nothing is the kind's full row — so the two
-// helpers between them cover both roads a card's chips arrive by.
-func standingProposalNarrowed(id uint64, item standing.Item) session.Event {
-	return session.Event{
-		Kind: session.EventStandingProposal,
-		Standing: &session.StandingNotice{
-			ID:        id,
-			Item:      item,
-			WhenWords: item.When.Words,
-			CostWords: "about $0.02, once",
-			Options:   session.StandingOptions(item),
-		},
 	}
 }
 
 // THE PANE'S HINT NAMES EXACTLY THE ANSWERS THE CARD DREW AND NEVER A DIGIT
 // MORE.
 //
-// It used to be a third hardcoded copy of a line standing.go already kept two
-// correct spellings of, so a one-off reminder — whose card correctly draws no
-// `just once`, because doing that action "now" is meaningless — was offered `3
-// just once` in the sentence under it, and nothing at all answered to the `3`
-// (#189). The line is read off the QUESTION now, which is the very object the
-// answers are painted from ([app.questionCardBody]), so an answer the card did
-// not draw cannot be named: it is not in the list the sentence walks.
+// It used to be a hardcoded copy of the card's answers, so a one-off reminder —
+// whose card correctly draws no `run it now`, because a reminder's whole content
+// is its moment — was offered an answer the card never drew, and nothing at all
+// answered to its digit (#189). The line is read off the QUESTION, which is the
+// very object the answers are painted from ([app.questionCardBody]), so an
+// answer the card did not draw cannot be named: it is not in the list the
+// sentence walks.
 func TestTheErrandHintNamesOnlyTheAnswersTheCardDrew(t *testing.T) {
+	reminder, work := labReminder("leave"), labWork("weekly update", "0 9 * * 1")
+	reminder.Words, work.Words = "remind me at 6 to leave", "every Monday at 9 draft the weekly update"
 	for _, c := range []struct {
 		what  string
-		item  standing.Item
+		item  automation.Automation
 		want  string
 		chips int
 	}{
-		// A one-off reminder. "Do it once, now" says the wrong thing at the
-		// wrong moment for a line that was meant for six o'clock, so the card
-		// draws two numbered chips and the hint may name two digits.
-		{"a one-off reminder", standReminder(), "1 Remind me in 1 minute · 07:35 · 0 Don't remind me · o Change…", 2},
-		// A repeating check is a thing a person may reasonably want done once, now.
-		// The third answer is drawn, so the third digit is named.
-		{"a repeating check", standItem(), "1 Set it up · Mondays at 9am · 3 Only now, don't repeat · 0 Don't set it up · o Change…", 3},
+		// A one-off reminder. "Run it now" says the wrong thing at the wrong
+		// moment for a line that was meant for six o'clock, so the card draws two
+		// numbered chips and the hint may name two digits.
+		{"a one-off reminder", reminder, "1 Save · 0 Don't save · o Change…", 2},
+		// Scheduled work is a thing a person may reasonably want done once, now.
+		// The second answer is drawn, so its digit is named.
+		{"scheduled work", work, "1 Save · 2 Save and run it now · 0 Don't save · o Change…", 3},
 	} {
 		lab := newErrandLab(t)
 		mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
 		a := lab.app(mine, []session.Event{
 			text(session.EventTextDelta, "Here is what I will do."),
-			standingProposalNarrowed(7, c.item),
+			automationProposalOf(7, c.item, ""),
 			{Kind: session.EventTurnDone},
 		})
 		besideTheList(a)
@@ -493,10 +472,10 @@ func TestTheErrandHintNamesOnlyTheAnswersTheCardDrew(t *testing.T) {
 			t.Fatalf("the foot under %s does not offer %q:\n%s", c.what, c.want, frame)
 		}
 		// AND NOTHING NAMES AN ANSWER THAT IS NOT ON THE ROW. The reminder's
-		// card has no `3`, so neither the chips nor the line under them may say
+		// card has no `2`, so neither the chips nor the line under them may say
 		// one.
-		if c.chips < 3 && strings.Contains(frame, standOnceWord) {
-			t.Fatalf("%s was offered %q by a card that drew no such chip:\n%s", c.what, standOnceWord, frame)
+		if c.chips < 3 && strings.Contains(frame, "run it now") {
+			t.Fatalf("%s was offered running it now by a card that drew no such chip:\n%s", c.what, frame)
 		}
 		// EVERY CHIP THAT WAS DRAWN IS NAMED, which is the other half of
 		// "exactly": a hint that quietly dropped an answer would pass every
@@ -516,14 +495,14 @@ func TestTheErrandHintNamesOnlyTheAnswersTheCardDrew(t *testing.T) {
 // that hands the keyboard back to the list, and a card left standing on the
 // column is not an answer — so a person who asked for a reminder from home and
 // then thought better of it had nothing to press. The decline is the engine's
-// own `0` ([session.StandingNoKey]), in the kind's own words, which is the same
-// key on this pane, on home's answer band and in the conversation.
+// own `0` ([session.AutomationNoKey]), which is the same key on this pane, on
+// home's answer band and in the conversation.
 func TestTheCardInThePaneIsDeclinedWithZero(t *testing.T) {
 	lab := newErrandLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
 
 	a := lab.app(mine, []session.Event{
-		standingProposal(7, "remind me at 6 to leave"),
+		automationProposal(7, "remind me at 6 to leave"),
 		{Kind: session.EventTurnDone},
 	})
 	// A DECLINE SETTLES THE CARD AND GIVES THE KEYBOARD BACK, so what is pinned
@@ -535,18 +514,18 @@ func TestTheCardInThePaneIsDeclinedWithZero(t *testing.T) {
 
 	// THE HINT NAMES IT, because this is the only way out of the question that
 	// answers it.
-	if frame := homeText(a); !strings.Contains(frame, "0 Don't remind me") {
+	if frame := homeText(a); !strings.Contains(frame, "0 Don't save") {
 		t.Fatalf("the pane does not name the decline:\n%s", frame)
 	}
-	drive(t, a, key(session.StandingNoKey))
+	drive(t, a, key(session.AutomationNoKey))
 	if len(lab.agent.answered) != 1 {
-		t.Fatalf("`%s` should have answered the card, the agent saw %v", session.StandingNoKey, lab.agent.answered)
+		t.Fatalf("`%s` should have answered the card, the agent saw %v", session.AutomationNoKey, lab.agent.answered)
 	}
-	if lab.agent.answered[0] != (session.StandingAnswer{}) {
-		t.Fatalf("`%s` sent %+v, want the decline", session.StandingNoKey, lab.agent.answered[0])
+	if got := lab.agent.answered[0]; got.FirstKey() != session.AutomationNoKey {
+		t.Fatalf("`%s` sent %+v, want the decline", session.AutomationNoKey, got)
 	}
-	if lab.agent.answerID[0] != 7 {
-		t.Fatalf("the answer went back on token %d, want 7", lab.agent.answerID[0])
+	if lab.agent.answered[0].ID != 7 {
+		t.Fatalf("the answer went back on id %d, want 7", lab.agent.answered[0].ID)
 	}
 	ex := theExchange(a)
 	if ex.view == nil || !ex.view.settled() {
@@ -561,9 +540,9 @@ func TestTheCardInThePaneIsDeclinedWithZero(t *testing.T) {
 	// WITH NO CARD UP IT IS A CHARACTER AGAIN. Everything the digits do here
 	// they do only while a card is asking; a `0` typed afterwards is somebody
 	// writing.
-	drive(t, a, key("tab"), key(session.StandingNoKey))
+	drive(t, a, key("tab"), key(session.AutomationNoKey))
 	if len(lab.agent.answered) != 1 {
-		t.Fatalf("a second `%s` answered a settled card: %v", session.StandingNoKey, lab.agent.answered)
+		t.Fatalf("a second `%s` answered a settled card: %v", session.AutomationNoKey, lab.agent.answered)
 	}
 }
 
@@ -622,102 +601,20 @@ func TestContinueAsAConversationMovesTheFolderIntoTheBucket(t *testing.T) {
 	}
 }
 
-// TestStandingUpMovesTheExchangeUnderTheItemItMade is provenance: the thing
-// stands, and the short exchange that produced it is filed under it rather than
-// left in the errands drawer — which is what makes "why did I get this?" a door
-// ([standing.Store.ExchangeDir], [standing.Origin]).
-//
-// THE MOVE HAPPENS WHEN THE EXCHANGE ENDS AND NOT WHEN THE NEWS ARRIVES. The
-// news arrives mid-turn, so closing the agent to free the transcript's lock
-// there cancelled the running turn and parked the update loop on the close's
-// grace period — which is what a person felt as the screen going dead just
-// after they said yes (homeexchange.go's header).
-func TestStandingUpMovesTheExchangeUnderTheItemItMade(t *testing.T) {
-	lab := newErrandLab(t)
-	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
-
-	item := standing.Item{
-		ID: "cccc000000000009", Words: "remind me at 6 to leave", Workspace: "/tmp/alpha",
-		When: standing.When{Kind: standing.WhenAt, Words: "at 6 today"},
-		Does: standing.Action{Kind: standing.ActionSay, Say: "leave"},
-	}
-	a := lab.app(mine, []session.Event{
-		{Kind: session.EventStandingUpdate, Standing: &session.StandingNotice{
-			Update: "stood", Item: item, Text: "I will tell you at 6.",
-		}},
-		{Kind: session.EventTurnDone},
-	})
-	a.openHome()
-	typeHome(a, "remind me at 6 to leave")
-	drive(t, a, key("up"), key("enter"))
-
-	made := lab.dirs[0]
-	store, err := standing.Open(lab.standing)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := store.ExchangeDir(item.ID)
-	// NOTHING HAS MOVED AND NOTHING HAS BEEN CLOSED YET.
-	if lab.agent.closes != 0 {
-		t.Fatalf("the agent was closed mid-turn, %d times", lab.agent.closes)
-	}
-	if _, err := os.Stat(filepath.Join(made, "transcript.jsonl")); err != nil {
-		t.Fatalf("the exchange left its folder before it ended: %v", err)
-	}
-	if !theExchange(a).stood || theExchange(a).itemID != item.ID {
-		t.Fatalf("the exchange did not remember what stood: %+v", theExchange(a).stood)
-	}
-	// AND A FOLLOW-UP STILL WORKS, because the session is still there.
-	before := len(lab.agent.sent)
-	drive(t, a, key("right"))
-	typeHome(a, "make it 7")
-	drive(t, a, key("enter"))
-	if len(lab.agent.sent) != before+1 {
-		t.Fatalf("a follow-up after something stood went nowhere, the agent saw %v", lab.agent.sent)
-	}
-
-	// AND CLOSING HOME DOES NOT END IT. The exchange belongs to the window, not
-	// to the screen (homeexchange.go's header).
-	a.closeHome()
-	if lab.agent.closes != 0 {
-		t.Fatalf("closing home closed the errand's agent, %d times", lab.agent.closes)
-	}
-	if _, err := os.Stat(filepath.Join(made, "transcript.jsonl")); err != nil {
-		t.Fatalf("closing home moved the exchange's folder: %v", err)
-	}
-
-	// THE EXCHANGE ENDS WITH THE WINDOW, AND ONLY THEN DOES THE FOLDER GO UNDER
-	// THE ITEM.
-	a.quit()
-	if lab.agent.closes == 0 {
-		t.Fatal("quitting left the errand's agent open")
-	}
-	if _, err := os.Stat(filepath.Join(want, "transcript.jsonl")); err != nil {
-		t.Fatalf("the exchange was not filed under the item: %v", err)
-	}
-	if _, err := os.Stat(made); err == nil {
-		t.Fatalf("the exchange is in two places at once — %s is still there", made)
-	}
-}
-
-// TestSomethingStandingKeepsItsCardAndHandsBackTheKeyboard is the other half of
-// the news arriving: the card that proposed the thing settles in place rather
-// than vanishing, and the hand goes back to the column — the thing they asked
-// for exists now, and the list is where a person goes next.
-func TestSomethingStandingKeepsItsCardAndHandsBackTheKeyboard(t *testing.T) {
+// TestSavingKeepsItsCardAndHandsBackTheKeyboard is the other half of the news
+// arriving: the card that proposed the thing settles in place rather than
+// vanishing, and the hand goes back to the column — the thing they asked for
+// exists now, and the list is where a person goes next.
+func TestSavingKeepsItsCardAndHandsBackTheKeyboard(t *testing.T) {
 	lab := newErrandLab(t)
 	now := time.Now()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
 	lab.session("-tmp-alpha", "aaaa000000000002", "porting the picker", "/tmp/alpha", now.Add(-time.Hour))
 
-	item := standing.Item{
-		ID: "cccc000000000009", Words: "remind me at 6 to leave", Workspace: "/tmp/alpha",
-		When: standing.When{Kind: standing.WhenAt, Words: "at 6 today"},
-		Does: standing.Action{Kind: standing.ActionSay, Say: "leave"},
-	}
+	saved := automation.Automation{ID: "cccc000000000009", Title: "leave", Words: "remind me at 6 to leave", Workspace: "/tmp/alpha"}
 	a := lab.app(mine, []session.Event{
-		standingProposal(7, "remind me at 6 to leave"),
-		{Kind: session.EventStandingUpdate, Standing: &session.StandingNotice{Update: "stood", Item: item}},
+		automationProposal(7, "remind me at 6 to leave"),
+		{Kind: session.EventAutomationUpdate, Automation: &session.AutomationNotice{Update: "saved", Automation: saved}},
 		{Kind: session.EventTurnDone},
 	})
 	// THE CARD HAS TO BE DRAWN SOMEWHERE FOR "IT SETTLES IN PLACE" TO MEAN
@@ -733,21 +630,21 @@ func TestSomethingStandingKeepsItsCardAndHandsBackTheKeyboard(t *testing.T) {
 		t.Fatal("the card is gone from the pane")
 	}
 	if !ex.view.settled() {
-		t.Fatal("a card whose proposal now stands is still asking")
+		t.Fatal("a card whose automation is now saved is still asking")
 	}
-	// THE ROW SAYS IT STOOD once the keyboard is back on the grid, which has
-	// no pane column to keep the settled card in (the narrow frame's rule,
+	// THE ROW SAYS IT WAS SAVED once the keyboard is back on the grid, which
+	// has no pane column to keep the settled card in (the narrow frame's rule,
 	// [app.homeStacked]).
-	if frame := homeText(a); !strings.Contains(frame, homeAskStoodTail) {
+	if frame := homeText(a); !strings.Contains(frame, homeAskSavedTail) {
 		t.Fatalf("the row does not say what the exchange came to:\n%s", frame)
 	}
 	if ex.focused {
-		t.Fatal("the keyboard stayed in the pane after something stood")
+		t.Fatal("the keyboard stayed in the pane after the automation was saved")
 	}
 	before := cursorWord(a)
 	drive(t, a, key("up"))
 	if cursorWord(a) == before {
-		t.Fatal("the list does not move after something stood")
+		t.Fatal("the list does not move after the automation was saved")
 	}
 }
 
@@ -945,7 +842,7 @@ func TestSayingYesHandsTheKeyboardBackToTheList(t *testing.T) {
 	lab.session("-tmp-alpha", "aaaa000000000002", "porting the picker", "/tmp/alpha", now.Add(-time.Hour))
 
 	a := lab.app(mine, []session.Event{
-		standingProposal(7, "remind me at 6 to leave"),
+		automationProposal(7, "remind me at 6 to leave"),
 		{Kind: session.EventTurnDone},
 	})
 	a.openHome()
@@ -1074,7 +971,7 @@ func TestAChangedCardIsReplacedByTheOneThatFollowsIt(t *testing.T) {
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", now)
 	lab.session("-tmp-alpha", "aaaa000000000002", "porting the picker", "/tmp/alpha", now.Add(-time.Hour))
 
-	a := lab.app(mine, []session.Event{standingProposal(7, "remind me at 6 to leave"), {Kind: session.EventTurnDone}})
+	a := lab.app(mine, []session.Event{automationProposal(7, "remind me at 6 to leave"), {Kind: session.EventTurnDone}})
 	a.openHome()
 	typeHome(a, "remind me at 6 to leave")
 	drive(t, a, key("up"), key("enter"))
@@ -1093,15 +990,15 @@ func TestAChangedCardIsReplacedByTheOneThatFollowsIt(t *testing.T) {
 	first := ex.view
 	typeHome(a, "make it 8")
 	drive(t, a, key("enter"))
-	if first.verdict != standChangedWord {
-		t.Fatalf("the corrected card settled as %q, want %q", first.verdict, standChangedWord)
+	if first.verdict != autoChangedWord {
+		t.Fatalf("the corrected card settled as %q, want %q", first.verdict, autoChangedWord)
 	}
 	// THE RE-PROPOSAL COMES BACK ON THE SAME TURN in a real session — the tool
 	// call that raised the first card is still blocked on the answer — so it
 	// arrives here as the event it is rather than as a second Submit.
 	spent := make(chan session.Event)
 	close(spent)
-	drive(t, a, errandEventMsg{ex: ex, ch: spent, ev: standingProposal(8, "remind me at 8 to leave")})
+	drive(t, a, errandEventMsg{ex: ex, ch: spent, ev: automationProposal(8, "remind me at 8 to leave")})
 
 	// AND THE SECOND CARD REPLACES IT.
 	cards := 0
@@ -1207,20 +1104,20 @@ func TestAnExchangeIsARowInTheColumnWearingWhatItIsDoing(t *testing.T) {
 		t.Fatalf("a working exchange does not say so on its row:\n%s", frame)
 	}
 	// WAITING ON YOU, the moment a card arrives.
-	a.errandEvent(ex, standingProposal(7, "remind me at 6 to leave"))
+	a.errandEvent(ex, automationProposal(7, "remind me at 6 to leave"))
 	a.home.build()
 	if frame := homeText(a); !strings.Contains(frame, homeAskWaitingWord) {
 		t.Fatalf("an exchange holding a card does not say it wants you:\n%s", frame)
 	}
-	// AND `stood` ONCE SOMETHING DOES. The card settles into the answer the
+	// AND `saved` ONCE THE AUTOMATION IS. The card settles into the answer the
 	// world gave it, and the row settles with it.
-	a.errandEvent(ex, session.Event{Kind: session.EventStandingUpdate, Standing: &session.StandingNotice{
-		Update: "stood", Item: standing.Item{ID: "cccc000000000009"},
+	a.errandEvent(ex, session.Event{Kind: session.EventAutomationUpdate, Automation: &session.AutomationNotice{
+		Update: "saved", Automation: automation.Automation{ID: "cccc000000000009", Title: "leave"},
 	}})
 	a.errandEvent(ex, session.Event{Kind: session.EventTurnDone})
 	a.home.build()
-	if frame := homeText(a); !strings.Contains(frame, standOffGlyph+" "+homeAskStoodTail) {
-		t.Fatalf("a stood exchange does not say so on its row:\n%s", frame)
+	if frame := homeText(a); !strings.Contains(frame, a.icon(tokens.GSettled)+" "+homeAskSavedTail) {
+		t.Fatalf("a saved exchange does not say so on its row:\n%s", frame)
 	}
 }
 
@@ -1237,7 +1134,7 @@ func TestAWaitingExchangeSortsAboveAWorkingOne(t *testing.T) {
 	if len(a.exchanges) != 2 {
 		t.Fatalf("a second `ask here` should have ADDED an exchange, there are %d", len(a.exchanges))
 	}
-	a.errandEvent(second, standingProposal(7, "tell me when CI goes red"))
+	a.errandEvent(second, automationProposal(7, "tell me when CI goes red"))
 	a.home.build()
 
 	firstAt, secondAt := exchangeRowAt(a, first), exchangeRowAt(a, second)
@@ -1258,7 +1155,7 @@ func TestASecondAskHereDoesNotCloseTheFirst(t *testing.T) {
 	a := lab.app(mine)
 	a.openHome()
 	first := askedHere(t, lab, a, "remind me at 6 to leave")
-	a.errandEvent(first, standingProposal(7, "remind me at 6 to leave"))
+	a.errandEvent(first, automationProposal(7, "remind me at 6 to leave"))
 	askedHere(t, lab, a, "tell me when CI goes red")
 
 	if lab.agent.closes != 0 {
@@ -1276,7 +1173,7 @@ func TestASecondAskHereDoesNotCloseTheFirst(t *testing.T) {
 // verbatim: "if I don't reply and check another chat, it seems to go away and
 // not stay waiting". It went away because opening another conversation closes
 // home and closing home closed the agent — so the engine answered the person's
-// own card with "the card was left unanswered — nothing was set up".
+// own card with "the card was left unanswered — nothing was saved".
 func TestOpeningAnotherConversationLeavesTheExchangeRunning(t *testing.T) {
 	lab := newErrandLab(t)
 	now := time.Now()
@@ -1286,7 +1183,7 @@ func TestOpeningAnotherConversationLeavesTheExchangeRunning(t *testing.T) {
 	a := lab.app(mine)
 	a.openHome()
 	ex := askedHere(t, lab, a, "remind me at 6 to leave")
-	a.errandEvent(ex, standingProposal(7, "remind me at 6 to leave"))
+	a.errandEvent(ex, automationProposal(7, "remind me at 6 to leave"))
 
 	// Open the other conversation, which is what home closing IS.
 	a.home.cursor = 0
@@ -1317,7 +1214,7 @@ func TestOpeningAnotherConversationLeavesTheExchangeRunning(t *testing.T) {
 	// pane the moment somebody looks.
 	spent := make(chan session.Event)
 	close(spent)
-	drive(t, a, errandEventMsg{ex: ex, ch: spent, ev: standingProposal(9, "remind me at 6 to leave, again")})
+	drive(t, a, errandEventMsg{ex: ex, ch: spent, ev: automationProposal(9, "remind me at 6 to leave, again")})
 	if ex.view == nil || ex.view.id != 9 {
 		t.Fatalf("an event arriving with home closed did not reach the exchange: %+v", ex.view)
 	}
@@ -1332,7 +1229,7 @@ func TestOpeningAnotherConversationLeavesTheExchangeRunning(t *testing.T) {
 	// AND IT IS STILL ANSWERABLE.
 	a.home.cursor = exchangeRowAt(a, ex)
 	drive(t, a, key("right"), key("1"))
-	if len(lab.agent.answered) != 1 || !lab.agent.answered[0].Approved {
+	if len(lab.agent.answered) != 1 || lab.agent.answered[0].FirstKey() != session.AutomationSaveKey {
 		t.Fatalf("the card outlived home but could not be answered, the agent saw %v", lab.agent.answered)
 	}
 }
@@ -1574,7 +1471,9 @@ func TestASettledExchangeIsFiledOnlyOnceItWasSeenAndLeft(t *testing.T) {
 }
 
 // TestQuittingFilesEveryOpenExchange is the way out: the window takes them all,
-// and a stood one's folder reaches the item it made.
+// and every folder stays where it was made — an automation saved from one names
+// it as where it was asked, so the record does not move out from under that
+// name.
 func TestQuittingFilesEveryOpenExchange(t *testing.T) {
 	lab := newErrandLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
@@ -1584,9 +1483,8 @@ func TestQuittingFilesEveryOpenExchange(t *testing.T) {
 	first := askedHere(t, lab, a, "remind me at 6 to leave")
 	askedHere(t, lab, a, "tell me when CI goes red")
 
-	item := standing.Item{ID: "cccc000000000009", Words: "remind me at 6 to leave"}
-	a.errandEvent(first, session.Event{Kind: session.EventStandingUpdate,
-		Standing: &session.StandingNotice{Update: "stood", Item: item}})
+	a.errandEvent(first, session.Event{Kind: session.EventAutomationUpdate,
+		Automation: &session.AutomationNotice{Update: "saved", Automation: automation.Automation{ID: "cccc000000000009", Title: "leave"}}})
 
 	a.quit()
 	if len(a.exchanges) != 0 {
@@ -1595,15 +1493,10 @@ func TestQuittingFilesEveryOpenExchange(t *testing.T) {
 	if lab.agent.closes < 2 {
 		t.Fatalf("quitting closed %d of two errand agents", lab.agent.closes)
 	}
-	store, err := standing.Open(lab.standing)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(store.ExchangeDir(item.ID), "transcript.jsonl")); err != nil {
-		t.Fatalf("the stood exchange was not filed under its item on the way out: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(lab.dirs[1], "transcript.jsonl")); err != nil {
-		t.Fatalf("the other exchange lost its record on the way out: %v", err)
+	for _, dir := range lab.dirs {
+		if _, err := os.Stat(filepath.Join(dir, "transcript.jsonl")); err != nil {
+			t.Fatalf("an exchange lost its record on the way out: %v", err)
+		}
 	}
 }
 
@@ -1652,9 +1545,9 @@ func TestANarrowWindowStacksTheExchangeOverTheList(t *testing.T) {
 		t.Fatal("enter on the row did not open the stacked pane again")
 	}
 	// THE CARD IS ANSWERABLE THERE.
-	a.errandEvent(ex, standingProposal(7, "remind me at 6 to leave"))
+	a.errandEvent(ex, automationProposal(7, "remind me at 6 to leave"))
 	drive(t, a, key("1"))
-	if len(lab.agent.answered) != 1 || !lab.agent.answered[0].Approved {
+	if len(lab.agent.answered) != 1 || lab.agent.answered[0].FirstKey() != session.AutomationSaveKey {
 		t.Fatalf("the card could not be answered on a narrow frame, the agent saw %v", lab.agent.answered)
 	}
 }

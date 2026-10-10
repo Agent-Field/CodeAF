@@ -87,11 +87,11 @@ func everyPlaceTable() []everyPlace {
 			},
 		},
 		{
-			id:     pageStanding,
-			open:   func(t *testing.T) *app { return standPlaceLab(t) },
-			cursor: func(a *app) int { return a.orders.cursor },
+			id:     pageAutomations,
+			open:   func(t *testing.T) *app { return autoPlaceLab(t) },
+			cursor: func(a *app) int { return a.autoPlace.cursor },
 			hits: func(a *app) []int {
-				_, hits, _, _ := a.standingPlaceFrame(a.width, a.height)
+				_, hits := automationsPlaceFrame(a)
 				return hits
 			},
 		},
@@ -248,10 +248,10 @@ func everyEmptyPlace() []everyPlace {
 			a.showPage(pageTasks)
 			return a
 		}},
-		{id: pageStanding, open: func(t *testing.T) *app {
+		{id: pageAutomations, open: func(t *testing.T) *app {
 			t.Helper()
-			a, _ := standingPlaceApp(t, nil, nil)
-			a.openStanding()
+			a, _ := automationLab(t)
+			runCmd(a.openAutomations())
 			return a
 		}},
 		{id: pageMemory, open: func(t *testing.T) *app {
@@ -359,7 +359,7 @@ func TestTheWheelNeverReachesTheConversationFromAPlace(t *testing.T) {
 // THE POINTER SELECTS ON EVERY PROMOTED PLACE. Every list uses its one cursor
 // for the highlight and for the row that keyboard actions operate on.
 func TestThePointerSelectsOnEveryPromotedPlace(t *testing.T) {
-	promoted := map[page]bool{pageStanding: true, pageMemory: true, pageSpend: true}
+	promoted := map[page]bool{pageAutomations: true, pageMemory: true, pageSpend: true}
 	for _, place := range everyPlaceTable() {
 		if !promoted[place.id] {
 			continue

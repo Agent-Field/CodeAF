@@ -153,22 +153,16 @@ const (
 	// things, so the word is what tells them apart — and it is what the paint
 	// asks by, which keeps the row that lights and the row that answers one row.
 	hoverMarginDoor
-	// hoverMarginStand is one standing order's row in that same margin, held by
-	// the order's own id for [hoverOrch]'s reason: an order is named by a string
-	// and the column is rebuilt every frame, so a hover stored as a row of it
-	// would follow the scroll instead of following the order.
+	// hoverMarginStand is one automation's row in that same margin, held by the
+	// automation's own id for [hoverOrch]'s reason: an automation is named by a
+	// string and the column is rebuilt every frame, so a hover stored as a row of
+	// it would follow the scroll instead of following the automation.
 	hoverMarginStand
 	// hoverRailMore is the footer's OTHER door — the one line that leaves the
 	// column for the task page (taskview.go's [taskSheetPastHint]). It is a kind
 	// of its own because it belongs to no node, and it does something different
 	// from every other line of the footer.
 	hoverRailMore
-	// hoverRailStanding is the footer's standing count — `◦ 2 standing orders`,
-	// a door onto /standing (standdoor.go). It is a kind of its own for
-	// [hoverRailMore]'s reason and one more: it was a segment of the status row
-	// until 2026-09-09, and what lights has to be what the press acts on
-	// wherever the line is drawn.
-	hoverRailStanding
 	// hoverTaskSheet is one row of the task page; index is its item
 	// (taskview.go). It is a kind of its own rather than another [hoverSheet]
 	// because the two pages number their rows out of different lists, and a
@@ -205,9 +199,9 @@ const (
 	hoverMoney
 	// hoverMeter is the context meter's door onto /status, one more the status
 	// row grew when it became a ledger (foot.go). The open count was another
-	// and is off the row entirely; the standing count is [hoverRailStanding]
-	// now; and the YOLO badge was a fourth until the gate's posture moved to
-	// the seam as a control, where it lights as [hoverApproval].
+	// and is off the row entirely; and the YOLO badge was a third until the
+	// gate's posture moved to the seam as a control, where it lights as
+	// [hoverApproval].
 	hoverMeter
 	// hoverApproval is the APPROVALS CHIP on the seam, the cell after the
 	// thinking rung (approvalchip.go), its own kind for [hoverEffort]'s reason:
@@ -497,15 +491,8 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	if at, ok := a.sideHoverAt(x, y); ok {
 		return at
 	}
-	// AND THE FOOTER'S STANDING COUNT, on exactly those terms: it is a line of
-	// the footer, it belongs to no node, and it answers to a click
-	// (standdoor.go's [app.railStandingAt]).
-	if a.railStandingAt(x, y) {
-		return hoverAt{kind: hoverRailStanding}
-	}
-	// AND THE MARGIN'S OWN LINES, asked on the same terms as the footer's above
-	// them: a `+` row and a standing order's row belong to no node, and both
-	// answer to a click (margin.go).
+	// AND THE MARGIN'S OWN LINES: a `+` row and an automation's row belong to
+	// no node, and both answer to a click (margin.go).
 	if word, ok := a.marginDoorAt(x, y); ok {
 		return hoverAt{kind: hoverMarginDoor, key: word}
 	}
@@ -797,7 +784,7 @@ func (a *app) hoveringRailMore() bool { return a.hot.kind == hoverRailMore }
 // hoveringRailArea reports whether the pointer is anywhere over the roster.
 func (a *app) hoveringRailArea() bool {
 	switch a.hot.kind {
-	case hoverRail, hoverRailArea, hoverRailSeam, hoverRailMore, hoverRailStanding, hoverSide, hoverRailGroup:
+	case hoverRail, hoverRailArea, hoverRailSeam, hoverRailMore, hoverSide, hoverRailGroup:
 		return true
 	}
 	return false

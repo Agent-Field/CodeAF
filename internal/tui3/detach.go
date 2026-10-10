@@ -481,12 +481,6 @@ func (a *app) closeForSwitch() {
 	a.pick.close()
 	a.mem.close()
 	a.permPanel.close()
-	// AND THE STANDING PAGE, which is a door onto what stands over the
-	// conversation this window was holding: the shelves are read per
-	// conversation, so one left open across a switch would be three headings
-	// about somewhere else (place_standing.go). CLOSING IS THE LOOK, so the
-	// place is handed the app to stamp it with, exactly as `esc` does.
-	a.orders.close(a)
 	// AND /subharness, for the reason above and one of its own: a card is an
 	// answer half typed, and carrying one across a switch would leave a person
 	// about to start work in a conversation they are no longer in
@@ -625,7 +619,6 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 		a.replay()
 		joined = tea.Batch(a.joinTurn(), a.resumeStoppedTurn())
 	}
-	a.noteStandingHere()
 	a.measureContext()
 	// AND THE MONEY IS ASKED FOR AGAIN, immediately after [app.resetMeters] above
 	// zeroed the figures for the conversation being left. The meters are reset

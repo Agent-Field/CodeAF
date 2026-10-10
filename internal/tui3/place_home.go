@@ -9,7 +9,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // ── THE HOME PLACE ──────────────────────────────────────────────────────────
@@ -190,18 +189,7 @@ func (a *app) homeRowVerbs() []verb {
 	if line.cell != nil && line.cell.row != nil {
 		return a.homeReadingVerbs(line, *line.cell.row)
 	}
-	// A ROW THE TYPED SURFACE BUILT, WHICH THE READING NEVER SAW. Under a query
-	// the column is [homeRank]'s drop-up and a standing item's row is the one
-	// thing on it with verbs — the two actions home has been ADVERTISING on such
-	// a row without binding (`homeItemActions`, homestanding.go), bound to ctrl+e
-	// and ctrl+x, which the line never named, and whose bare `p` and `s` typed.
-	if !line.standsForItem() {
-		return nil
-	}
-	return []verb{
-		{key: 'p', word: homeItemPauseWord, do: func() tea.Cmd { return a.homeItemWrite(line, standing.StatusPaused) }},
-		{key: 's', word: homeItemStopWord, do: func() tea.Cmd { return a.homeItemWrite(line, standing.StatusRetired) }},
-	}
+	return nil
 }
 
 // homeReadingVerbs is [switcherVerbsFor]'s verbs for one row, less the ones
@@ -253,10 +241,6 @@ func (a *app) homeSwitchVerb(line homeLine, row switcherRow, v switcherVerb) ver
 		do = func() tea.Cmd { return a.homeOpenFolder(row.session) }
 	case v.key == 'c' && row.kind == switcherConversation:
 		do = func() tea.Cmd { return a.homeCopyName(row.session) }
-	case v.key == 'p':
-		do = func() tea.Cmd { return a.homeItemWrite(line, standing.StatusPaused) }
-	case v.key == 'r':
-		do = func() tea.Cmd { return a.homeItemWrite(line, standing.StatusActive) }
 	}
 	return verb{key: v.key, word: v.word, do: do}
 }
@@ -495,7 +479,7 @@ func (placeHome) rowID(a *app) string {
 	if !ok {
 		return ""
 	}
-	parts := []string{strconv.Itoa(int(line.kind)), line.project, line.dir, line.row.Transcript, line.item.ID}
+	parts := []string{strconv.Itoa(int(line.kind)), line.project, line.dir, line.row.Transcript}
 	if line.ex != nil {
 		parts = append(parts, line.ex.id)
 	}

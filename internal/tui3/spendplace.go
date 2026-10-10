@@ -473,14 +473,14 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 		if shown > spendSubjectCap && !r.unfolded {
 			shown = spendSubjectCap
 		}
-		// THE PROMISES ARE DRAWN APART FROM THE WORK, under a heading of their own
-		// and measured into their own columns ([spendStandingWord]). They are not
-		// a third CUT — a promise is one of the things money was for — so the
-		// control stays on `by topic` above them and the fold still counts the
-		// whole list.
+		// THE AUTOMATIONS ARE DRAWN APART FROM THE WORK, under a heading of their
+		// own and measured into their own columns ([spendAutomationWord]). They
+		// are not a third CUT — an automation is one of the things money was for
+		// — so the control stays on `by topic` above them and the fold still
+		// counts the whole list.
 		var work, promises []session.SubjectSpend
 		for _, subject := range r.subjects[:shown] {
-			if subject.Kind == session.SubjectStanding {
+			if subject.Kind == session.SubjectAutomation {
 				promises = append(promises, subject)
 				continue
 			}
@@ -488,8 +488,8 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 		}
 		// THE CUT'S HEADING IS DRAWN WHETHER OR NOT THE WORK HAS ROWS, because it
 		// is the only way back to the other cut: a window whose whole bill was
-		// standing orders would otherwise strand a person on a page with no
-		// control on it.
+		// automations would otherwise strand a person on a page with no control
+		// on it.
 		cut = head(func(at int) string { return placeLead + r.sliceHeading(inner, on(at), pal) })
 		fields, table := r.subjectTable(work, inner, rule)
 		for at, subject := range work {
@@ -497,8 +497,8 @@ func (r spendReading) paint(width int, pal palette, lit func(int) bool) ([]strin
 			out = append(out, placeLead+spendSubjectRowLit(fields[at], table, inner, on(len(out)), pal))
 		}
 		if len(promises) > 0 {
-			out = appendPlaceSection(out, placeLead+placeHeading(fit(spendStandingWord, inner), pal))
-			fields, table := r.standingTable(promises, inner, rule)
+			out = appendPlaceSection(out, placeLead+placeHeading(fit(spendAutomationWord, inner), pal))
+			fields, table := r.automationTable(promises, inner, rule)
 			for at, subject := range promises {
 				doors[len(out)] = subject
 				out = append(out, placeLead+spendSubjectRowLit(fields[at], table, inner, on(len(out)), pal))
@@ -1037,18 +1037,15 @@ func (r spendReading) sliceHeading(width int, lit bool, pal palette) string {
 	return placeHeading(fit(said, width), pal)
 }
 
-// spendStandingWord heads the STANDING PROMISES, which answer the same question
-// as the rows above them and answer it with different facts.
+// spendAutomationWord heads the AUTOMATIONS, which answer the same question as
+// the rows above them and answer it with different facts.
 //
-// A PROMISE'S FACTS ARE NOT A TASK'S. What a person wants of a task or a
+// AN AUTOMATION'S FACTS ARE NOT A TASK'S. What a person wants of a task or a
 // conversation is where it ran and what kind of thing it was; what they want of
-// a promise is how often it went off and what one firing costs — and neither of
-// those is a column the rows above could fill. Mixed into one table the promises
-// wore a `standing · 88 firings` tag crammed into the project's column and a
-// kind word that had to be suppressed to stop the row saying `standing` twice.
-// Given a table of their own they simply have their own columns, which is the
-// whole of the fix.
-const spendStandingWord = "by standing order"
+// an automation is how much it calls the model and what one call costs — and
+// neither of those is a column the rows above could fill. Given a table of
+// their own they simply have their own columns.
+const spendAutomationWord = "by automation"
 
 // spendSeatsWord heads the block drawn last on the page: what the run's own
 // tasks have spent, by seat.
@@ -1506,19 +1503,19 @@ func (r spendReading) subjectTable(subjects []session.SubjectSpend, width, rule 
 	return rows, spendMeasured(rows, drop, map[int]int{spendColSecond: spendProjectCap}, rule, width)
 }
 
-// standingTable is `by standing order` measured — the promises, in the two facts
-// that are theirs and nobody else's ([spendStandingWord] says why they are a
-// table apart).
-func (r spendReading) standingTable(subjects []session.SubjectSpend, width, rule int) ([][]string, spendTable) {
-	firings := 0
+// automationTable is `by automation` measured — the automations, in the two
+// facts that are theirs and nobody else's ([spendAutomationWord] says why they
+// are a table apart).
+func (r spendReading) automationTable(subjects []session.SubjectSpend, width, rule int) ([][]string, spendTable) {
+	calls := 0
 	for _, subject := range subjects {
-		firings = max(firings, ansi.StringWidth(plural("firing", subject.Calls)))
+		calls = max(calls, ansi.StringWidth(plural("call", subject.Calls)))
 	}
 	rows := make([][]string, 0, len(subjects))
 	for _, subject := range subjects {
 		rows = append(rows, []string{
 			tokens.GlyphProseBullet + " " + r.name(subject),
-			spendFigureWord(spendCountFigure(subject.Calls), plural("firing", subject.Calls), firings),
+			spendFigureWord(spendCountFigure(subject.Calls), plural("call", subject.Calls), calls),
 			spendFigureWord(spendEachFigure(subject), spendEachWord, 0),
 			spendMoneyWord(subject.USD),
 		})
@@ -1527,17 +1524,16 @@ func (r spendReading) standingTable(subjects []session.SubjectSpend, width, rule
 	return rows, spendMeasured(rows, drop, nil, rule, width)
 }
 
-// spendEachWord is the unit behind a promise's per-firing figure.
-const spendEachWord = "a run"
+// spendEachWord is the unit behind an automation's per-call figure.
+const spendEachWord = "a call"
 
-// spendEachFigure is WHAT ONE FIRING COST, which is the figure a person acts on:
-// a promise that has gone off two hundred times is cheap or dear by this column
-// and not by its total.
+// spendEachFigure is WHAT ONE CALL COST, which is the figure a person acts on:
+// an automation that has called the model two hundred times is cheap or dear by
+// this column and not by its total.
 //
-// It is written by the money column's own rule ([spendMoneyWord]), so a firing
-// that cost a twentieth of a cent reads `$0.01 a run` — the smallest figure this
-// page can say — rather than the words `under a cent a run` that used to stand
-// in the kind word's column and say nothing a person could line up.
+// It is written by the money column's own rule ([spendMoneyWord]), so a call
+// that cost a twentieth of a cent reads `$0.01 a call` — the smallest figure
+// this page can say.
 func spendEachFigure(subject session.SubjectSpend) string {
 	if subject.Calls <= 0 || subject.USD <= 0 {
 		return ""

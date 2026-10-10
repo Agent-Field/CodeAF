@@ -652,7 +652,11 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// What the second press used to buy — the draft and everything parked
 		// above it written down before the program ends — is bought by
 		// [app.quit] itself, on this press, and is owed to a real SIGINT too.
-		return a.quit()
+		//
+		// THE ONE EXCEPTION IS A RUN THIS WINDOW WOULD STOP. Closing the last
+		// window stops an automation in hand, so the first press says so and the
+		// second leaves (automationquit.go).
+		return a.requestQuit(quitAgainChord)
 	}
 
 	// THE REWIND TIMELINE IS MODAL AT THIS RUNG AND FOR THE SETTINGS PANEL'S
@@ -1530,8 +1534,6 @@ func (a *app) enterLine() tea.Cmd {
 	}
 	var tagDoor sendDoor
 	var tagWords string
-	var tagPlain []segment
-	tagShown := line
 	// A DEMOTION MUST SURVIVE THE RESET. [editor.reset] nils demotedTags, and
 	// the transcript is painted long after that, so the ranges are snapshotted
 	// here and threaded to the entry (app.go's [app.submittingShown]).
@@ -1540,7 +1542,6 @@ func (a *app) enterLine() tea.Cmd {
 		tag := tags[0]
 		tagDoor = commandDoor(string(a.input.value[tag.from+1 : tag.to]))
 		tagWords = removeSlashTag(a.input.value, tag)
-		tagPlain = plainWithoutTag(a.input.value, tag, plain)
 	}
 	a.input.reset()
 	a.endRecall()
@@ -1573,13 +1574,7 @@ func (a *app) enterLine() tea.Cmd {
 	// Send-door tags use the command's existing bare and argument forms. Both
 	// roads stop at a visible card or chooser, so this act cannot become silent
 	// work merely because the token arrived in pasted prose.
-	switch tagDoor {
-	case sendDoorStanding:
-		if tagWords == "" {
-			return a.openStanding()
-		}
-		return a.standingSayShown(tagWords, tagShown, plain, tagPlain)
-	case sendDoorTask:
+	if tagDoor == sendDoorTask {
 		return a.runTaskCommand(tagWords)
 	}
 	// A PICKED HARNESS TAKES THE SENTENCE, and it takes it whole: the person
@@ -1605,7 +1600,7 @@ func (a *app) enterLine() tea.Cmd {
 	// still happens at once, because those are things said to THIS SURFACE rather
 	// than to the model.
 	if a.parking() {
-		return a.park(line, false, plain)
+		return a.park(line, plain)
 	}
 	shownLine := line
 	line = a.expandPastes(line)

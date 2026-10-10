@@ -7,7 +7,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // ── WHAT A CARD READS, AND WHEN ─────────────────────────────────────────────
@@ -40,15 +39,9 @@ import (
 // so a pointer swept down twenty rows asks about twenty rows once, not twenty
 // times each.
 
-// homeNewsMsg and homeLeftOffMsg are those two readings coming back. Each
-// carries what it was ABOUT, because several may be in flight at once and an
-// answer filed against whatever the cursor had reached would be another row's.
-type homeNewsMsg struct {
-	key   string
-	at    time.Time
-	notes []standing.Note
-}
-
+// homeLeftOffMsg is that reading coming back. It carries what it was ABOUT,
+// because several may be in flight at once and an answer filed against whatever
+// the cursor had reached would be another row's.
 type homeLeftOffMsg struct {
 	transcript string
 	summary    session.Summary
@@ -98,48 +91,9 @@ func (a *app) refreshHomeCard(now time.Time) tea.Cmd {
 	case line.kind == homeSession:
 		asked = append(asked,
 			a.refreshRepoOf(strings.TrimSpace(line.row.Workspace), now),
-			a.askHomeNews(bandSubject{kind: bandKindSession, row: line.row}, now),
 			a.askHomeLeftOff(line.row.Transcript))
-	case line.kind == homeProject:
-		asked = append(asked, a.askHomeNews(bandSubject{
-			kind: bandKindProject, project: line.project,
-			dir: homeProjectPath(line.proj), world: a.home.world,
-		}, now))
 	}
 	return tea.Batch(asked...)
-}
-
-// askHomeNews asks for the inbox behind the `since you left` band
-// (homeband_news.go). It expires on home's own clock, so a firing that landed in
-// another window shows up on the next arrival at that card.
-func (a *app) askHomeNews(subject bandSubject, now time.Time) tea.Cmd {
-	key := subject.id()
-	if key == "" {
-		return nil
-	}
-	if cached, ok := a.home.news[key]; ok && now.Sub(cached.at) < homeEvery {
-		return nil
-	}
-	if a.newsAsking == nil {
-		a.newsAsking = map[string]bool{}
-	}
-	if a.newsAsking[key] {
-		return nil
-	}
-	a.newsAsking[key] = true
-	return func() tea.Msg {
-		return homeNewsMsg{key: key, at: now, notes: newsNotesOf(a, subject)}
-	}
-}
-
-// tookHomeNews files that answer.
-func (a *app) tookHomeNews(msg homeNewsMsg) {
-	delete(a.newsAsking, msg.key)
-	if a.home.news == nil {
-		a.home.news = map[string]homeNewsCache{}
-	}
-	a.home.news[msg.key] = homeNewsCache{at: msg.at, notes: msg.notes}
-	a.touch()
 }
 
 // askHomeLeftOff asks for the tail of one conversation's own journal, behind the

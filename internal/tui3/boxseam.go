@@ -329,11 +329,6 @@ func (a *app) placeTargetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.moveTarget()
 		return nil, true
 	case effortKey:
-		if a.at(pageHome) {
-			if subject, ok := a.homeSubject(); ok && subject.kind == bandKindItem {
-				return a.cycleHomeEffort(), true
-			}
-		}
 		return a.cycleTargetEffort(), true
 	case approvalKey:
 		return a.cycleTargetApproval(), true

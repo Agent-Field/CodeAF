@@ -426,12 +426,11 @@ func (a *app) spendNames(world session.World) map[string]string {
 			}
 		}
 	}
-	if a.stands.All == nil {
-		return names
-	}
-	for _, item := range a.stands.All() {
-		if title := strings.TrimSpace(item.Title()); title != "" {
-			names[session.SubjectStanding+"\x00"+item.ID] = title
+	// AND EVERY AUTOMATION, by the id its runs' calls were written under, read
+	// off the watcher's last reading of the store (automationwatch.go).
+	for _, item := range a.watch.list {
+		if title := strings.TrimSpace(item.Title); title != "" {
+			names[session.SubjectAutomation+"\x00"+item.ID] = title
 		}
 	}
 	return names
@@ -603,8 +602,8 @@ func (a *app) openSpendRow() (tea.Cmd, bool) {
 		// same way).
 		a.pageMsg = spendGoneTaskWord
 		return nil, true
-	case session.SubjectStanding:
-		return a.openStandingAt(stop.subject.ID), true
+	case session.SubjectAutomation:
+		return a.openAutomationsAt(stop.subject.ID), true
 	case session.SubjectConversation:
 		// AND A CONVERSATION IS OPENED, not merely pointed at. This arm went to
 		// home — the switcher — on the argument that home is the one screen that

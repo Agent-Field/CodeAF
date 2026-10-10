@@ -44,7 +44,7 @@ const (
 	pageNone page = iota
 	pageHome
 	pageTasks
-	pageStanding
+	pageAutomations
 	pageMemory
 	pageSpend
 	pageSettings
@@ -395,11 +395,11 @@ var placeRegistry = map[page]place{}
 
 // placeOrder preserves the established numbered shortcuts for existing users.
 // Visual order is independent: moving a destination must not retrain a shortcut.
-var placeOrder = []page{pageHome, pageTeams, pageChats, pageTasks, pageSpend, pageSettings, pageStanding, pageMemory}
+var placeOrder = []page{pageHome, pageTeams, pageChats, pageTasks, pageSpend, pageSettings, pageAutomations, pageMemory}
 
 // placeBarOrder groups daily work before utilities. Memory stays discoverable
 // even before the first saved memory; standing orders remain available in the map.
-var placeBarOrder = []page{pageHome, pageChats, pageTeams, pageTasks, pageMemory, pageSpend, pageSettings, pageStanding}
+var placeBarOrder = []page{pageHome, pageChats, pageTeams, pageTasks, pageMemory, pageSpend, pageSettings, pageAutomations}
 
 const placeBarPlaces = 7
 
@@ -1459,11 +1459,6 @@ func (a *app) scopeWorkspace() string {
 func scopeAddress(line homeLine) string {
 	// A conversation: the project directory its journal recorded.
 	if path := strings.TrimSpace(line.row.ProjectDir); path != "" {
-		return path
-	}
-	// A standing item: the project root the order belongs to, which
-	// [standing.Item.Workspace] holds as a resolved path for exactly this.
-	if path := strings.TrimSpace(line.item.Workspace); path != "" {
 		return path
 	}
 	// A project heading: the project's own path, which is an address where its

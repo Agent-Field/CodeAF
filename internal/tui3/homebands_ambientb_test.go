@@ -12,7 +12,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // settleHomeRepo runs the reading an arrival ASKED FOR and files the answer,
@@ -77,48 +76,9 @@ func TestKeysBandDrawsBothLegendsAndObeysWidth(t *testing.T) {
 		t.Fatalf("session keys = %q", got)
 	}
 	assertNarrowRows(t, "keys", drawKeysBand(a, ambientBandContextAt(a, 30, time.Now())), 30, "→ more")
-	// AN ITEM NAMES THE DOOR IT ACTUALLY HAS. One asked for in a conversation
-	// opens that conversation; one made at home has none — its exchange is kept
-	// under the item's folder rather than as a session — and `enter` opens it on
-	// standing instead ([app.homeItemEnter]). Two doors, two words, and neither
-	// row advertises the other's.
-	ctx.subject.kind = bandKindItem
-	if got := plain(drawKeysBand(a, ctx)[0]); !strings.HasPrefix(got, homeItemStandingWord) {
-		t.Fatalf("an item with no conversation behind it says %q, want %q", got, homeItemStandingWord)
-	}
-	ctx.subject.item.Item.Origin.Transcript = "/work/.codeaf/v3/projects/-work/s1/transcript.jsonl"
-	if got := plain(drawKeysBand(a, ctx)[0]); !strings.HasPrefix(got, "enter open where") {
-		t.Fatalf("item keys = %q", got)
-	}
 	ctx.subject.kind = bandKindProject
 	if rows := drawKeysBand(a, ctx); len(rows) != 0 {
 		t.Fatalf("project keys drew %q", rows)
-	}
-}
-
-func TestNextUpDrawsSoonestTwoFoldsAndDrawsNothingEmpty(t *testing.T) {
-	a := newTestApp(&fakeAgent{model: "m"})
-	now := time.Now()
-	item := func(id, words string, due time.Duration) StandingItemView {
-		return StandingItemView{Item: standing.Item{ID: id, Words: words, Status: standing.StatusActive,
-			NextDue: now.Add(due), When: standing.When{Words: "Mondays 9am"}}}
-	}
-	a.home.items = map[string][]StandingItemView{"/bucket": {
-		item("late", "third", 12*time.Minute), item("first", "first", 4*time.Minute), item("next", "second", 8*time.Minute),
-	}}
-	ctx := ambientBandContextAt(a, 32, now)
-	rows := drawNextUpBand(a, ctx)
-	got := strings.Join([]string{plain(rows[0]), plain(rows[1]), plain(rows[2])}, "\n")
-	if !strings.Contains(got, "◦ first") || !strings.Contains(got, "· in 4m") || !strings.Contains(got, "…1 more items") {
-		t.Fatalf("next up = %q", got)
-	}
-	if ansi.StringWidth(plain(rows[0])) > 32 {
-		t.Fatalf("next up exceeded width: %q", plain(rows[0]))
-	}
-	assertNarrowRows(t, "next up", drawNextUpBand(a, ambientBandContextAt(a, 30, now)), 30, "in 4m")
-	a.home.items = nil
-	if rows := drawNextUpBand(a, ctx); len(rows) != 0 {
-		t.Fatalf("empty next up drew %q", rows)
 	}
 }
 

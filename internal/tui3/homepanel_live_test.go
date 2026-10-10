@@ -409,25 +409,6 @@ type cancelFake struct{ *fakeAgent }
 
 func (cancelFake) Cancel(string) (string, error) { return "stopping", nil }
 
-// A firing standing item keeps its own scheduled row, outside conversation history.
-func TestAFiringStandingItemIsNotARowOfTasks(t *testing.T) {
-	a, _ := itemHome(t)
-	for _, line := range panelLines(a, panelSessions) {
-		if line.kind == homeItem || (line.cell != nil && line.cell.title == "remind me on Fridays") {
-			t.Fatalf("the firing item is a row of tasks: %+v", line.cell)
-		}
-	}
-	found := false
-	for _, line := range panelLines(a, panelNext) {
-		if line.cell != nil && line.cell.title == "remind me on Fridays" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("the firing item is on no panel at all:\n%s", homeText(a))
-	}
-}
-
 // ── since you left ──────────────────────────────────────────────────────────
 
 // A LINE PER TASK THAT LANDED AND PER FILE MADE, newest first, under a heading

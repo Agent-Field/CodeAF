@@ -160,7 +160,7 @@ func TestASwitchDoesNotBringBackAQuestionTheEngineHasResolved(t *testing.T) {
 
 // A switch keeps the box and the waiting queue as two different things. The
 // turn is still running, so folding the queue into a draft would throw away its
-// pictures, paste bodies and standing mark and leave nothing to send at close.
+// pictures and paste bodies and leave nothing to send at close.
 func TestASwitchKeepsParkedMessagesStructuredBesideTheDraft(t *testing.T) {
 	agent := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a := newTestApp(agent)
@@ -169,7 +169,7 @@ func TestASwitchKeepsParkedMessagesStructuredBesideTheDraft(t *testing.T) {
 	paste := pasteChip{n: 1, text: "one\ntwo\nthree"}
 	a.parks = []parked{
 		{text: "and check the tests", chips: []chip{shot}, pastes: []pasteChip{paste}},
-		{text: "then push", standing: true},
+		{text: "then push"},
 	}
 	agent.running = true
 	typeChars(t, a, "one more thing")
@@ -178,7 +178,7 @@ func TestASwitchKeepsParkedMessagesStructuredBesideTheDraft(t *testing.T) {
 	if side.draft != "one more thing" {
 		t.Fatalf("the box went into the sidecar as %q", side.draft)
 	}
-	if len(side.parks) != 2 || side.parks[0].text != "and check the tests" || len(side.parks[0].chips) != 1 || len(side.parks[0].pastes) != 1 || !side.parks[1].standing {
+	if len(side.parks) != 2 || side.parks[0].text != "and check the tests" || len(side.parks[0].chips) != 1 || len(side.parks[0].pastes) != 1 || side.parks[1].text != "then push" {
 		t.Fatalf("the structured queue went into the sidecar as %+v", side.parks)
 	}
 	drain(t, a, a.attachConversation(conv, side))
@@ -186,7 +186,7 @@ func TestASwitchKeepsParkedMessagesStructuredBesideTheDraft(t *testing.T) {
 	if a.input.String() != "one more thing" {
 		t.Fatalf("the box came back as %q", a.input.String())
 	}
-	if len(a.parks) != 2 || len(a.parks[0].chips) != 1 || len(a.parks[0].pastes) != 1 || !a.parks[1].standing {
+	if len(a.parks) != 2 || len(a.parks[0].chips) != 1 || len(a.parks[0].pastes) != 1 || a.parks[1].text != "then push" {
 		t.Fatalf("the structured queue came back as %+v", a.parks)
 	}
 	drawn := plain(strings.Join(a.parkedRows(120), "\n"))

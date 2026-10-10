@@ -216,8 +216,7 @@ func TestTheLaunchHomeAndTheOpenedHomeAreBuiltTheSameWay(t *testing.T) {
 	// never written into (homeband_deliverables.go), so an unread one is a read
 	// waiting to happen rather than a panic waiting to happen.
 	for name, ok := range map[string]bool{
-		"last": launched.last != nil, "news": launched.news != nil,
-		"expanded": launched.expanded != nil, "itemsOpen": launched.itemsOpen != nil,
+		"last": launched.last != nil, "expanded": launched.expanded != nil,
 	} {
 		if !ok {
 			t.Fatalf("the launch home has no %s map", name)

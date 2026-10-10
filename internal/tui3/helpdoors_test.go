@@ -170,7 +170,7 @@ func TestThePaletteFillsTheFrameAndSaysWhatIsHidden(t *testing.T) {
 func TestAnEmptyPlaceSaysWhatToDoNext(t *testing.T) {
 	pal := newPalette(0, false)
 	doors := map[page]string{
-		pageTasks: "/task", pageStanding: `"remind me at 6"`, pageMemory: "/remember",
+		pageTasks: "/task", pageAutomations: `"remind me at 6"`, pageMemory: "/remember",
 		pageSpend: "as it runs",
 	}
 	for id, door := range doors {

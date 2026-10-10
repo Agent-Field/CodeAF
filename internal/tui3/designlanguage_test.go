@@ -11,7 +11,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -870,24 +869,6 @@ func TestThePlaceMarksAreTheDesignsOwn(t *testing.T) {
 	if homeIdleGlyph != tokens.GlyphQueued {
 		t.Fatalf("home's queued mark is %q and the house alphabet's is %q",
 			homeIdleGlyph, tokens.GlyphQueued)
-	}
-	if got := standSurfaceGlyph(standStoreAskGlyph); got != homeAskGlyph {
-		t.Fatalf("the store's needs-you mark translates to %q, want %q", got, homeAskGlyph)
-	}
-	if got := standSurfaceGlyph(standStoreLiveGlyph); got != homeLiveGlyph {
-		t.Fatalf("the store's firing mark translates to %q, want %q", got, homeLiveGlyph)
-	}
-	// AND THE STORE STILL SPELLS WHAT THE TRANSLATION EXPECTS. This is the half
-	// that would rot in silence.
-	item := standing.Item{NeedsPerson: "the fix touches migrations"}
-	if got := item.Glyph(false); got != standStoreAskGlyph {
-		t.Fatalf("internal/standing now writes %q for needs-you, and standing.go still "+
-			"translates %q — the translation has quietly stopped happening",
-			got, standStoreAskGlyph)
-	}
-	if got := (standing.Item{}).Glyph(true); got != standStoreLiveGlyph {
-		t.Fatalf("internal/standing now writes %q for firing, and standing.go still "+
-			"translates %q", got, standStoreLiveGlyph)
 	}
 }
 

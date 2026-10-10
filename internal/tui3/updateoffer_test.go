@@ -605,7 +605,7 @@ func TestTheGraceWaitsWhereTheOfferCannotBeAnswered(t *testing.T) {
 	}{
 		{"the settings page", func(a *app) { a.raisePlace(pageSettings) }},
 		{"the memory page", func(a *app) { a.raisePlace(pageMemory) }},
-		{"the standing page", func(a *app) { a.raisePlace(pageStanding) }},
+		{"the standing page", func(a *app) { a.raisePlace(pageAutomations) }},
 		{"the first-run sheet", func(a *app) { a.setup.open = true }},
 		{"a team's card", func(a *app) { a.tsheet.on = true }},
 		{"the move picker", func(a *app) { a.tmove.on = true }},

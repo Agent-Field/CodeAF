@@ -23,6 +23,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -89,3 +90,7 @@ func v3Errand(cfg session.Config, workspace, profileDir string, yolo bool) func(
 		return v3OpenSession(fresh)
 	}
 }
+
+// v3ErrandsRoot is where home's `ask here` keeps its errands, one folder each:
+// a sibling of the projects root, so home never lists one as a conversation.
+func v3ErrandsRoot() string { return home.Join("v3", "errands") }

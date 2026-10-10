@@ -113,6 +113,12 @@ type Automation struct {
 	// so the next look can say what changed. It is the look's own business and
 	// opaque to everything else.
 	Memo string `json:"memo,omitempty"`
+
+	// Last is the most recent run that ended, filled in by [Store.List] and
+	// [Store.Get] from the runs table so a list can say what each one last came
+	// to without asking once per row. IT IS NEVER STORED IN THE DOCUMENT: the
+	// runs table is the one record of a run.
+	Last *Run `json:"last,omitempty"`
 }
 
 // Look is what a watch looks at, and the sentence its judgment is held to.

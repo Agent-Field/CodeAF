@@ -45,7 +45,7 @@ func (a *app) roomPanelView(height int) ([]railLine, int) {
 	footer := make([]railLine, len(foot))
 	for i, s := range foot {
 		footer[i] = railLine{text: s, entry: -1, hint: i == marks.hint,
-			more: i == marks.more, keeping: i == marks.keeping}
+			more: i == marks.more}
 	}
 	// The shared sidebar header owns the hide control in this view too.
 	available := height - len(controls) - len(footer)

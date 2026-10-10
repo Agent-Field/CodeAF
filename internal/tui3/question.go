@@ -1502,19 +1502,14 @@ func (a *app) questionSubjectRow(q questionShown, width int) (string, bool) {
 // one line and two calls the person never saw asked about.
 func (a *app) questionSubjectAt(q session.Question) int {
 	if q.Subject.Kind == session.SubjectOrder {
-		// A STANDING ORDER'S OR AN AUTOMATION'S SUBJECT IS ITS OWN CARD IN THE
-		// TRANSCRIPT (standing.go, automation.go). It is paired on the id the
-		// engine minted before anybody was asked, exactly as a node's is, so
-		// there is no walk-by-name arm.
+		// AN AUTOMATION'S SUBJECT IS ITS OWN CARD IN THE TRANSCRIPT
+		// (automation.go). It is paired on the id minted before anybody was
+		// asked — the engine's for a proposal, this window's for a typed line,
+		// which are kept apart ([typedAutomationID]) — exactly as a node's is,
+		// so there is no walk-by-name arm.
 		for i := range a.entries {
 			e := &a.entries[i]
-			if q.Kind == session.QuestionAutomation {
-				if e.kind == entryAutomation && e.auto != nil && !e.auto.news() && e.auto.id == q.Subject.ID {
-					return i
-				}
-				continue
-			}
-			if e.kind == entryStanding && e.stand != nil && e.stand.id == q.Subject.ID {
+			if e.kind == entryAutomation && e.auto != nil && !e.auto.news() && e.auto.id == q.Subject.ID {
 				return i
 			}
 		}

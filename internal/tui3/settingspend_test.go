@@ -53,7 +53,7 @@ func TestTheSpendingTabIsTheSevenRowsAndNothingElse(t *testing.T) {
 	a.dayCost, a.dayCosted = 3.42, true
 	a.sheet.today = a.todayReading()
 	a.sheet.build()
-	want := []string{spendTodayWord, "daily spending limit", "per-chat spending limit", "ask before a plan costs more than", "per task", "per standing run"}
+	want := []string{spendTodayWord, "daily spending limit", "per-chat spending limit", "ask before a plan costs more than", "per task", "per automation"}
 	if got := spendingRows(a); strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("the Spending tab reads\n  %v\nwant\n  %v", got, want)
 	}
@@ -271,8 +271,8 @@ func TestARowsReceiptIsThereWhenItIsKnownAndAbsentWhenItIsNot(t *testing.T) {
 	if got := taskReading(t.TempDir()).receipt.full; !strings.Contains(got, "set in /crew") {
 		t.Fatalf("per task's receipt = %q", got)
 	}
-	if got := standingReading().value.full; got != "$5 a firing" {
-		t.Fatalf("per standing run reads %q", got)
+	if got := automationReading().value.full; got != "$5 a run" {
+		t.Fatalf("per automation reads %q", got)
 	}
 }
 

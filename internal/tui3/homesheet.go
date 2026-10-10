@@ -61,7 +61,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // The sentences the sheet says. Each is quoted in the manual exactly as it is
@@ -316,11 +315,6 @@ func (a *app) homeSheetTitle(subject bandSubject, width int, pal palette) []stri
 		name, place = homeName(subject.row), subject.project
 		if dir := strings.TrimSpace(subject.row.ProjectDir); dir != "" && dir != place {
 			place += " · " + dir
-		}
-	case bandKindItem:
-		name, place = strings.TrimSpace(subject.item.Item.Words), subject.project
-		if subject.dir != "" && subject.dir != place {
-			place = joinDot(place, subject.dir)
 		}
 	case bandKindProject:
 		name, place = subject.project, subject.dir
@@ -686,8 +680,6 @@ func (a *app) homeSheetOpen() tea.Cmd {
 	}
 	a.closeHomeSheet()
 	switch line.kind {
-	case homeItem:
-		return a.homeItemEnter(line)
 	case homePhoneNews:
 		if line.note == nil || !line.note.hasRow {
 			return nil
@@ -771,27 +763,6 @@ func (a *app) homeSheetKeyFirst(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// legend teaches works at every width. Both spellings, one meaning.
 		if subject, ok := a.homeSheetSubject(); ok {
 			a.toggleSheetMore(subject)
-		}
-		return nil, true
-	case "p", "s", "ctrl+e", "ctrl+x":
-		// THE ITEM'S OWN KEYS, working here exactly as they do on the row
-		// (homestanding.go's [app.homeItemWrite]). The sheet is the card, and
-		// the card names `ctrl+e pause` and `ctrl+x stop`; the bare pair stays
-		// as a synonym for the same modal reason as `m` above.
-		if line, ok := a.home.focusedLine(); ok && line.standsForItem() {
-			if msg.String() == "p" || msg.String() == "ctrl+e" {
-				return a.homeItemWrite(line, standing.StatusPaused), true
-			}
-			return a.homeItemWrite(line, standing.StatusRetired), true
-		}
-		return nil, true
-	case effortKey:
-		// AND THE ITEM'S RUNG, at this width too, on the rule above: a key the
-		// card's legend names works wherever the card is drawn (homeeffort.go).
-		// An item's rung is the only one this chord moves anywhere now, so there
-		// is nothing else it could mean here.
-		if line, ok := a.home.focusedLine(); ok && line.standsForItem() {
-			return a.cycleItemEffort(line.item), true
 		}
 		return nil, true
 	}

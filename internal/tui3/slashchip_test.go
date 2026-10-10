@@ -7,7 +7,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -156,9 +155,9 @@ func TestAllRecognisedCommandsAreChippedInsideASentence(t *testing.T) {
 		[]string{"/senior-dev"}, "the sent message keeps the chip")
 
 	// A SEND-DOOR TAG IS UNCHANGED away from the head.
-	a.entries = []entry{{kind: entryUser, text: "keep this true /standing"}}
+	a.entries = []entry{{kind: entryUser, text: "investigate the wrap /task"}}
 	sameRuns(t, chipRuns(a.renderEntry(0, &a.entries[0], a.width)...),
-		[]string{"/standing"}, "a send-door tag in the sent message")
+		[]string{"/task"}, "a send-door tag in the sent message")
 
 	// AND SO IS A NON-DOOR COMMAND: it chips, and an unknown word beside it does
 	// not — this is the recognition rule, not a second send rule.
@@ -167,30 +166,29 @@ func TestAllRecognisedCommandsAreChippedInsideASentence(t *testing.T) {
 		[]string{"/compact"}, "a non-door command in the sent message")
 }
 
-func tagTestApp() (*app, *fakeAgent) {
+// tagTestApp is a surface whose engine answers the one send door there is,
+// /task, so a test can tell a tag that routed from a tag that travelled as
+// prose: door counts what started work, agent what was said.
+func tagTestApp() (*app, *taskCommandFake, *fakeAgent) {
 	agent := &fakeAgent{model: "m"}
-	a := newTestApp(agent)
-	a.stands.Items = func(string) []standing.Item { return nil }
-	return a, agent
+	door := &taskCommandFake{Agent: agent}
+	return newTestApp(door), door, agent
 }
 
 func TestATrailingAndMidSentenceTagRouteAndStrip(t *testing.T) {
-	for _, line := range []string{"keep the tests green /standing", "keep /standing the tests green"} {
-		a, agent := tagTestApp()
+	for _, line := range []string{"investigate the wrap /task", "investigate /task the wrap"} {
+		a, door, _ := tagTestApp()
 		typeInto(t, a, line)
 		drive(t, a, key("enter"))
-		if len(agent.marked) != 1 || agent.marked[0] != "keep the tests green" {
-			t.Fatalf("%q routed marked words %q", line, agent.marked)
-		}
-		if got := chipRuns(a.renderEntry(0, &a.entries[0], a.width)...); len(got) != 1 || got[0] != "/standing" {
-			t.Fatalf("the routed transcript chipped %q", got)
+		if door.singleCalls != 1 || door.brief != "investigate the wrap" {
+			t.Fatalf("%q started %d tasks with brief %q", line, door.singleCalls, door.brief)
 		}
 	}
 }
 
 func TestTwoTagsRefuseAndKeepTheDraft(t *testing.T) {
-	a, agent := tagTestApp()
-	line := "keep /standing this /task"
+	a, _, agent := tagTestApp()
+	line := "keep /task this /task"
 	typeInto(t, a, line)
 	drive(t, a, key("enter"))
 	if a.input.String() != line || len(agent.sent) != 0 {
@@ -202,54 +200,54 @@ func TestTwoTagsRefuseAndKeepTheDraft(t *testing.T) {
 }
 
 func TestBackspaceDemotesATagThenEditsAndSendsItAsProse(t *testing.T) {
-	a, agent := tagTestApp()
-	typeInto(t, a, "say /standing")
+	a, door, agent := tagTestApp()
+	typeInto(t, a, "say /task")
 	drive(t, a, key("backspace"))
-	if a.input.String() != "say /standing" || len(boxRuns(a)) != 0 {
+	if a.input.String() != "say /task" || len(boxRuns(a)) != 0 {
 		t.Fatal("first backspace did not demote without editing")
 	}
 	drive(t, a, key("enter"))
-	if len(agent.sent) != 1 || agent.sent[0] != "say /standing" || len(agent.marked) != 0 {
-		t.Fatalf("demoted send: sent=%q marked=%q", agent.sent, agent.marked)
+	if len(agent.sent) != 1 || agent.sent[0] != "say /task" || door.singleCalls != 0 {
+		t.Fatalf("demoted send: sent=%q tasks=%d", agent.sent, door.singleCalls)
 	}
 	// A DEMOTED WORD STAYS PLAIN IN THE TRANSCRIPT, exactly as it does in the
-	// box: the word no longer routes — marked is empty and it travels as prose
+	// box: the word no longer routes — no work starts and it travels as prose
 	// — and the demotion now carries through the reset to the entry
 	// (input.go's [app.enterLine] snapshots it), so no chip is painted for it.
 	if got := chipRuns(a.renderEntry(0, &a.entries[0], a.width)...); len(got) != 0 {
 		t.Fatalf("demoted transcript chipped %q, want none", got)
 	}
 
-	a, _ = tagTestApp()
-	typeInto(t, a, "say /standing")
+	a, _, _ = tagTestApp()
+	typeInto(t, a, "say /task")
 	drive(t, a, key("backspace"), key("backspace"))
-	if a.input.String() != "say /standin" {
+	if a.input.String() != "say /tas" {
 		t.Fatalf("second backspace left %q", a.input.String())
 	}
 }
 
-func TestEditingADemotedTagRecognizesItAfreshAndAliasesWork(t *testing.T) {
-	a, agent := tagTestApp()
-	typeInto(t, a, "say /orders")
+func TestEditingADemotedTagRecognizesItAfresh(t *testing.T) {
+	a, door, _ := tagTestApp()
+	typeInto(t, a, "say /task")
 	drive(t, a, key("backspace"))
 	drive(t, a, key("left"), key("x"), key("backspace"), key("right"))
-	if got := boxRuns(a); len(got) != 1 || got[0] != "/orders" {
-		t.Fatalf("edited alias chipped %q", got)
+	if got := boxRuns(a); len(got) != 1 || got[0] != "/task" {
+		t.Fatalf("the edited tag chipped %q", got)
 	}
 	drive(t, a, key("enter"))
-	if len(agent.marked) != 1 || agent.marked[0] != "say" {
-		t.Fatalf("alias routed %q", agent.marked)
+	if door.singleCalls != 1 || door.brief != "say" {
+		t.Fatalf("the re-recognised tag started %d tasks with brief %q", door.singleCalls, door.brief)
 	}
 }
 
 func TestAnEditBeforeADemotedTagMovesItsPlainRange(t *testing.T) {
-	a, agent := tagTestApp()
-	typeInto(t, a, "say /standing")
+	a, door, agent := tagTestApp()
+	typeInto(t, a, "say /task")
 	drive(t, a, key("backspace"))
 	a.input.cursor = 0
 	drive(t, a, key("x"), key("enter"))
-	if len(agent.sent) != 1 || agent.sent[0] != "xsay /standing" || len(agent.marked) != 0 {
-		t.Fatalf("shifted demotion sent=%q marked=%q", agent.sent, agent.marked)
+	if len(agent.sent) != 1 || agent.sent[0] != "xsay /task" || door.singleCalls != 0 {
+		t.Fatalf("shifted demotion sent=%q tasks=%d", agent.sent, door.singleCalls)
 	}
 	// The edited word is still a demoted one, so the shifted range leaves the
 	// transcript plain too — the plainness carried through the edit.
@@ -266,16 +264,16 @@ func TestAnEditBeforeADemotedTagMovesItsPlainRange(t *testing.T) {
 // row at the suite's sixty columns, so a whole-entry subtraction would be
 // compared against a row-local span.
 func TestADemotedTagStaysPlainWhenTheSentLineWraps(t *testing.T) {
-	a, agent := tagTestApp()
-	line := "the quick brown fox jumps over the lazy dog and keeps going /standing"
+	a, door, agent := tagTestApp()
+	line := "the quick brown fox jumps over the lazy dog and keeps going /task"
 	typeInto(t, a, line)
 	drive(t, a, key("backspace"))
 	if got := boxRuns(a); len(got) != 0 {
 		t.Fatalf("the demotion did not clear the box chip: %q", got)
 	}
 	drive(t, a, key("enter"))
-	if len(agent.sent) != 1 || agent.sent[0] != line || len(agent.marked) != 0 {
-		t.Fatalf("demoted wrapped send: sent=%q marked=%q", agent.sent, agent.marked)
+	if len(agent.sent) != 1 || agent.sent[0] != line || door.singleCalls != 0 {
+		t.Fatalf("demoted wrapped send: sent=%q tasks=%d", agent.sent, door.singleCalls)
 	}
 	rows := a.renderEntry(0, &a.entries[0], a.width)
 	if len(rows) < 2 {
@@ -287,7 +285,7 @@ func TestADemotedTagStaysPlainWhenTheSentLineWraps(t *testing.T) {
 }
 
 func TestNonDoorCommandsStayInertAndLeadingCommandsAreUnchanged(t *testing.T) {
-	a, agent := tagTestApp()
+	a, door, agent := tagTestApp()
 	typeInto(t, a, "please /compact later")
 	// A CHIP IS A RECOGNITION MARK, NOT A SEND PROMISE: /compact wears one
 	// mid-sentence now, and enter still does not run it.
@@ -298,18 +296,18 @@ func TestNonDoorCommandsStayInertAndLeadingCommandsAreUnchanged(t *testing.T) {
 	if len(agent.sent) != 1 || agent.sent[0] != "please /compact later" {
 		t.Fatalf("inert command sent %q", agent.sent)
 	}
-	if len(agent.marked) != 0 {
-		t.Fatalf("a non-door command routed %q", agent.marked)
+	if door.singleCalls != 0 {
+		t.Fatalf("a non-door command started %d tasks", door.singleCalls)
 	}
 	if got := chipRuns(a.renderEntry(0, &a.entries[0], a.width)...); len(got) != 1 || got[0] != "/compact" {
 		t.Fatalf("the sent non-door command chipped %q, want [/compact]", got)
 	}
 
-	a, agent = tagTestApp()
-	typeInto(t, a, "/standing keep this")
+	a, door, _ = tagTestApp()
+	typeInto(t, a, "/task keep this")
 	drive(t, a, key("enter"))
-	if len(agent.marked) != 1 || agent.marked[0] != "keep this" {
-		t.Fatalf("leading command routed %q", agent.marked)
+	if door.singleCalls != 1 || door.brief != "keep this" {
+		t.Fatalf("the leading command started %d tasks with brief %q", door.singleCalls, door.brief)
 	}
 }
 
@@ -329,7 +327,7 @@ func TestTaskTagUsesTheTaskCommandRoad(t *testing.T) {
 
 func TestQuotedDoorNamesSendTheWholeSentenceAsProse(t *testing.T) {
 	for _, quotes := range [][2]string{{"'", "'"}, {"\"", "\""}, {"‘", "’"}, {"“", "”"}} {
-		for _, word := range []string{"task", "standing", "background", "senior-dev"} {
+		for _, word := range []string{"task", "automations", "background", "senior-dev"} {
 			line := "What does " + quotes[0] + "/" + word + quotes[1] + " do?"
 			t.Run(line, func(t *testing.T) {
 				base := &fakeAgent{model: "m"}
@@ -340,8 +338,8 @@ func TestQuotedDoorNamesSendTheWholeSentenceAsProse(t *testing.T) {
 					t.Errorf("quoted command became %d actionable tags", len(tags))
 				}
 				drive(t, a, key("enter"))
-				if door.singleCalls != 0 || len(base.marked) != 0 {
-					t.Fatalf("quoted command acted: tasks=%d marked=%q", door.singleCalls, base.marked)
+				if door.singleCalls != 0 {
+					t.Fatalf("quoted command acted: tasks=%d", door.singleCalls)
 				}
 				if len(base.sent) != 1 || base.sent[0] != line {
 					t.Fatalf("quoted question did not send whole: %q", base.sent)
@@ -356,7 +354,7 @@ func TestQuotedDoorNamesSendTheWholeSentenceAsProse(t *testing.T) {
 
 func TestQuotedDoorNamesStayPlainInTheOrdinarySendTranscript(t *testing.T) {
 	for _, quotes := range [][2]string{{"'", "'"}, {"\"", "\""}, {"‘", "’"}, {"“", "”"}} {
-		for _, word := range []string{"task", "standing"} {
+		for _, word := range []string{"task", "automations"} {
 			line := "What does " + quotes[0] + "/" + word + quotes[1] + " do?"
 			t.Run(line, func(t *testing.T) {
 				base := &fakeAgent{model: "m"}
@@ -365,8 +363,8 @@ func TestQuotedDoorNamesStayPlainInTheOrdinarySendTranscript(t *testing.T) {
 				typeInto(t, a, line)
 				sameRuns(t, boxRuns(a), []string{"/" + word}, "the quoted draft")
 				drive(t, a, key("enter"))
-				if door.singleCalls != 0 || len(base.marked) != 0 || len(base.sent) != 1 || base.sent[0] != line {
-					t.Fatalf("quoted question did not send as prose: tasks=%d marked=%q sent=%q", door.singleCalls, base.marked, base.sent)
+				if door.singleCalls != 0 || len(base.sent) != 1 || base.sent[0] != line {
+					t.Fatalf("quoted question did not send as prose: tasks=%d sent=%q", door.singleCalls, base.sent)
 				}
 				e := lastUserEntry(t, a)
 				if e.text != line {
@@ -597,17 +595,17 @@ func lastUserEntry(t *testing.T, a *app) *entry {
 // demoted range has to travel on the parked message or the transcript chips the
 // word the person made plain.
 func TestADemotedTagStaysPlainWhenTheMessageWaitsForTheAnswer(t *testing.T) {
-	a, agent := tagTestApp()
+	a, door, agent := tagTestApp()
 	a.state = stateWorking
-	typeInto(t, a, "say /standing")
+	typeInto(t, a, "say /task")
 	drive(t, a, key("backspace"), key("enter"))
 	if len(a.parks) != 1 || len(a.parks[0].plain) != 1 {
 		t.Fatalf("the demotion did not travel with the parked message: %+v", a.parks)
 	}
 	a.state = stateIdle
 	drive(t, a, runCmd(a.sendParked())...)
-	if len(agent.sent) != 1 || agent.sent[0] != "say /standing" || len(agent.marked) != 0 {
-		t.Fatalf("parked demoted send: sent=%q marked=%q", agent.sent, agent.marked)
+	if len(agent.sent) != 1 || agent.sent[0] != "say /task" || door.singleCalls != 0 {
+		t.Fatalf("parked demoted send: sent=%q tasks=%d", agent.sent, door.singleCalls)
 	}
 	e := lastUserEntry(t, a)
 	if got := chipRuns(a.renderEntry(0, e, a.width)...); len(got) != 0 {
@@ -618,61 +616,14 @@ func TestADemotedTagStaysPlainWhenTheMessageWaitsForTheAnswer(t *testing.T) {
 // And a parked message pulled back into the box keeps the tag plain there too:
 // the words come back exactly as they were parked.
 func TestARecalledParkedMessageKeepsItsTagPlain(t *testing.T) {
-	a, _ := tagTestApp()
+	a, _, _ := tagTestApp()
 	a.state = stateWorking
-	typeInto(t, a, "say /standing")
+	typeInto(t, a, "say /task")
 	drive(t, a, key("backspace"), key("enter"))
 	if !a.recallParked() {
 		t.Fatal("nothing was recalled")
 	}
-	if a.input.String() != "say /standing" || len(boxRuns(a)) != 0 {
+	if a.input.String() != "say /task" || len(boxRuns(a)) != 0 {
 		t.Fatalf("the recalled demotion came back chipped: %q runs=%q", a.input.String(), boxRuns(a))
-	}
-}
-
-// The /standing tag's own road parks the words WITHOUT the tag, so a second,
-// demoted tag in the same line has to be carried into those shorter words.
-func TestADemotedTagBesideALiveStandingTagStaysPlainWhenParked(t *testing.T) {
-	a, agent := tagTestApp()
-	a.state = stateWorking
-	typeInto(t, a, "keep this /task")
-	drive(t, a, key("backspace"))
-	typeInto(t, a, " /standing")
-	drive(t, a, key("enter"))
-	if len(a.parks) != 1 || a.parks[0].text != "keep this /task" || !a.parks[0].standing {
-		t.Fatalf("the tagged line did not park as its marked words: %+v", a.parks)
-	}
-	a.state = stateIdle
-	drive(t, a, runCmd(a.sendParked())...)
-	if len(agent.marked) != 1 || agent.marked[0] != "keep this /task" {
-		t.Fatalf("parked standing tag routed %q", agent.marked)
-	}
-	e := lastUserEntry(t, a)
-	if got := chipRuns(a.renderEntry(0, e, a.width)...); len(got) != 0 {
-		t.Fatalf("the demoted /task chipped %q once the parked words went, want none", got)
-	}
-}
-
-func TestPlainWithoutTagFollowsTheWordsTheTagLeaves(t *testing.T) {
-	for _, c := range []struct{ line, want string }{
-		{"  say /task then /standing more", "say /task then more"},
-		{"/standing  say /task", "say /task"},
-		{"say /task /standing", "say /task"},
-		{"say /standing then /task", "say then /task"},
-	} {
-		value := []rune(c.line)
-		trimmed := []rune(strings.TrimSpace(c.line))
-		at := len([]rune(strings.SplitN(string(trimmed), "/task", 2)[0]))
-		plain := []segment{{from: at, to: at + len("/task")}}
-		from := len([]rune(strings.SplitN(c.line, "/standing", 2)[0]))
-		tag := segment{from: from, to: from + len("/standing")}
-		if got := removeSlashTag(value, tag); got != c.want {
-			t.Fatalf("%q: removeSlashTag gave %q, want %q", c.line, got, c.want)
-		}
-		got := plainWithoutTag(value, tag, plain)
-		words := []rune(c.want)
-		if len(got) != 1 || string(words[got[0].from:got[0].to]) != "/task" {
-			t.Fatalf("%q: rebased %v onto %q, want the range of /task", c.line, got, c.want)
-		}
 	}
 }

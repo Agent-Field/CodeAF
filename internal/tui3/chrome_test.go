@@ -9,7 +9,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -743,26 +742,6 @@ func TestAFreshScreenDrawsNoRailAndNoTelemetry(t *testing.T) {
 	}
 	if screen := plain(frame(a)); !strings.Contains(screen, marginDoorWord(marginTaskType)) {
 		t.Fatalf("the column's door is not drawn once the conversation began:\n%s", screen)
-	}
-}
-
-// AN ORDER STANDING HERE IS CONTENT, so the column stands on the first frame
-// exactly as it always did — only a column with nothing to say is absent.
-func TestTheColumnStandsOnAFreshScreenWithAnOrderOverIt(t *testing.T) {
-	a, _ := marginApp(t, standOrder("p1", "keep the tests green", standing.AltitudeProject))
-	a.welcome = welcome{open: true, sel: -1}
-	a.touch()
-	if !a.railShowing() {
-		t.Fatal("a standing order did not raise the column on a fresh screen")
-	}
-	if !strings.Contains(marginRail(a), "keep the tests green") {
-		t.Fatalf("the order is not on the column:\n%s", marginRail(a))
-	}
-	quiet, _ := marginApp(t)
-	quiet.welcome = welcome{open: true, sel: -1}
-	quiet.touch()
-	if quiet.railShowing() {
-		t.Fatal("a column with nothing to say stood on a fresh screen")
 	}
 }
 

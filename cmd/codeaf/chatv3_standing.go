@@ -41,7 +41,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
-	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
 // standingLogName is where a failed pass says so.
@@ -382,86 +381,6 @@ func noteStanding(line string) {
 	}
 	defer file.Close()
 	fmt.Fprintf(file, "%s %s\n", time.Now().Format(time.RFC3339), line)
-}
-
-// v3StandingSeam is the surface's reading of the same seam the session
-// proposes through. A nil seam is a zero StandingSeam, which internal/tui3 reads
-// as the ambient side absent: no band on home, no segment, no /status line.
-//
-// Running IS supplied, and what makes that honest is that something on disk now
-// says it. A firing runs inside whichever process holds the tick lock — a live
-// window, or the operating system's timer running `codeaf tick` with nobody
-// sitting anywhere — and internal/standing's running.go is that process leaving
-// a marker in the item's folder for the length of the pass it is doing. Every
-// other window reads it, doubts it (a dead pid, an age past one pass) and draws
-// `●` only on what survives, so the glyph is derived rather than asserted.
-func v3StandingSeam(seam *session.Standing) tui3.StandingSeam {
-	if seam == nil || seam.Store == nil {
-		return tui3.StandingSeam{}
-	}
-	store, watch := seam.Store, seam.Watch
-	out := tui3.StandingSeam{
-		Items: func(workspace string) []standing.Item {
-			items, err := store.ForWorkspace(workspace)
-			if err != nil {
-				return nil
-			}
-			return items
-		},
-		// AND EVERY ORDER ON THE MACHINE IN ONE READ, which is the store's own
-		// List and is what Items is a filtered copy of. A page wanting the whole
-		// set asks this once rather than asking Items once per project, which
-		// walked the standing root once per project to build one map.
-		All: func() []standing.Item {
-			items, err := store.List()
-			if err != nil {
-				return nil
-			}
-			return items
-		},
-		Save: store.Save,
-		// AND THE RUNG ONE ITEM THINKS AT, through the store's own door and never
-		// through Save above: the rung is a read-modify-write under the item's
-		// lock, so a card that had been on screen for a beat cannot write back the
-		// check results and the next-due the ticker has moved since
-		// (internal/standing's SetStandingEffort says the whole of why).
-		SetEffort: store.SetStandingEffort,
-		// WHETHER THIS PROCESS IS KEEPING TIME, asked at the moment the line is
-		// drawn rather than latched when the seam was built: the ticking starts
-		// during the launch (startStandingTicks) and a boolean captured here
-		// would be a claim about the order of two lines in this file.
-		Ticking: standingTicking,
-		// And why nobody is, when nobody is: has this machine ever been told
-		// that background checks are on. The marker lives under the store root
-		// and internal/session owns its shape (tools_standing.go).
-		BackgroundTold: func() bool { return session.BackgroundTold(store.Root()) },
-		// The ledger's last days, per item, for the `this week` line on a card.
-		// A read that fails answers nothing rather than a wrong figure — the
-		// card simply has one less true thing to say.
-		Runs: func(since time.Time) map[string]standing.Spend {
-			runs, err := store.RunsSince(since)
-			if err != nil {
-				return nil
-			}
-			return runs
-		},
-		// The marker in the item's own folder, doubted by the store before it
-		// answers. This is the whole of "some other process is on this item
-		// right now" — the surface's `●`, the card's `checking now`, and the
-		// one segment on the status line that moves.
-		Running: store.Running,
-	}
-	if watch != nil {
-		out.Watch = func() (standing.WatchStatus, bool) {
-			status, err := watch.Status()
-			return status, err == nil
-		}
-		// The same timer as the hand the `background checks` settings row turns.
-		// It is the reading above and the switch under it, and they are one
-		// object so the sheet cannot read one timer and turn another.
-		out.Background = watch
-	}
-	return out
 }
 
 // ── the launch's one look at the background checks ──────────────────────────

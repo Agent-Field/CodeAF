@@ -20,12 +20,12 @@ package tui3
 //     that cannot send the first one do send (input.go's alt+enter/ctrl+j pair
 //     is the same law about the same key).
 //   - A REAL session.Agent behind it, built through the door's own seam
-//     ([Options.Errand]) with its transcript in a folder under the standing
+//     ([Options.Errand]) with its transcript in a folder under the errands
 //     root rather than under v3/projects — so home never lists it, and the
 //     record still exists.
 //   - A ROW IN THE LEFT COLUMN for every exchange, in its project's block where
 //     the hot things go, wearing what it is doing right now — `working`,
-//     `waiting on you`, `stood`. It is a cursor stop like any other row.
+//     `waiting on you`, `saved`. It is a cursor stop like any other row.
 //   - The exchange itself in home's RIGHT PANE **while the cursor is on that
 //     row**: the person's line, the reply as it streams, one line per tool call,
 //     a live strip of what is happening this second, and the ratification card
@@ -38,7 +38,7 @@ package tui3
 // It used to live on [homeView], which [app.closeHome] assigns the zero value
 // to — so opening another conversation to check something ended the errand
 // mid-question, and the engine answered the card nobody could see any more with
-// "the card was left unanswered — nothing was set up". The exchange DIED
+// "the card was left unanswered — nothing was saved". The exchange DIED
 // because somebody looked elsewhere. So the list of them is on the APP
 // ([app.exchanges]), home merely draws it, and the four rules are:
 //
@@ -55,27 +55,19 @@ package tui3
 // WHERE THE FOLDER LIVES, AT EVERY STAGE. There is one folder and it only ever
 // MOVES; nothing here copies a transcript and nothing here deletes one.
 //
-//	made          <standing root>/exchanges/<16-hex id>/transcript.jsonl
-//	came to a thing that stands   <standing root>/<item id>/exchange/
-//	                              ([standing.Store.ExchangeDir], on "stood")
+//	made                          <errands root>/<16-hex id>/transcript.jsonl
 //	promoted to a conversation    <project bucket>/<16-hex id>/  with meta.json
-//	came to nothing               it stays where it was made, and the sweep law
-//	                              reaps it after standing.RunKeep
+//	anything else                 it stays where it was made
+//
+// AN AUTOMATION SAVED FROM HERE NAMES THIS FOLDER AS WHERE IT WAS ASKED
+// ([automation.Origin]), which is what makes "why did I get this reminder?" a
+// door: the place's `open` opens this transcript. So the folder does not move
+// when something is saved — a record that moved after it was pointed at would
+// be a door onto nothing.
 //
 // THE AGENT IS CLOSED BEFORE THE FOLDER MOVES, always. The transcript's flock
 // rides the open file and a rename carries the inode with it, so a folder moved
 // under a live writer would leave a lock held on a path nobody can name.
-//
-// AND THE MOVE THEREFORE WAITS FOR THE END OF THE EXCHANGE. "stood" arrives
-// MID-TURN — the tool call that raised it is still running — so closing the
-// agent there cancelled the turn in flight and parked the update loop on
-// [session.Agent.Close]'s grace period, which is what a person feels as the
-// screen going dead just after they said yes. So a stood exchange only
-// REMEMBERS the item it made ([homeExchange.itemID]); the agent stays open,
-// follow-ups keep working, and the folder is filed under the item when the
-// exchange is FILED ([app.fileExchange]) — swept off the list after it settled
-// and was seen, or taken with the window on the way out — after the agent has
-// been closed there.
 
 import (
 	"context"
@@ -90,7 +82,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -113,8 +104,9 @@ const (
 	// homeAskChangeWord is what the card says after `2`: the correction is
 	// typed into the box, not into a second card.
 	homeAskChangeWord = "type the change and press enter"
-	// homeAskStoodWord is what the pane says once something stands.
-	homeAskStoodWord = "kept · this exchange is filed under it"
+	// homeAskSavedWord is what the pane says once an automation it asked for
+	// is saved, and where to find it.
+	homeAskSavedWord = "saved · /automations lists it"
 	// homeAskPromotedWord is the refusal for a second promotion of one folder.
 	homeAskPromotedWord = "this exchange is already a conversation"
 )
@@ -134,10 +126,10 @@ const (
 	// conversation that needs somebody does: a screen whose whole job is triage
 	// cannot draw its most urgent fact in the same grey as an age.
 	homeAskWaitingWord = "waiting on you"
-	// homeAskAnsweredTail and homeAskStoodTail are the two ways an exchange is
-	// over: it came to nothing anybody has to answer, or something stands.
+	// homeAskAnsweredTail and homeAskSavedTail are the two ways an exchange is
+	// over: it came to nothing anybody has to answer, or an automation was saved.
 	homeAskAnsweredTail = "answered"
-	homeAskStoodTail    = "stood"
+	homeAskSavedTail    = "saved"
 	// homeAskThinkWord is what the pane says before the first token of a turn
 	// has arrived, and homeAskWriteWord once the reply is streaming. Two words
 	// and not one, because "is it stuck or is it typing" is exactly the question
@@ -200,7 +192,7 @@ const (
 	// that recorded what was decided vanished at the instant it had something to
 	// record, and what was left was a reply and a dim line. It is a row now, in
 	// the place it arrived, and answering it SETTLES it the way the
-	// conversation's own card settles (standing.go's [standingCard.verdict]):
+	// conversation's own card settles (automation.go's [automationCard.verdict]):
 	// the frame goes grey, the question hue goes, and the foot carries the
 	// answer and what it came to. A later card from a re-proposal replaces it,
 	// because two cards about one proposal would be one question asked twice.
@@ -237,7 +229,7 @@ type exchangeRow struct {
 	// card is the proposal this row draws, for [exchangeCard]. It is the SAME
 	// object [homeExchange.view] holds while it is the current one, so the row
 	// and the keyboard can never disagree about what was decided.
-	card *standingCard
+	card *automationCard
 }
 
 // homeExchange is one errand: the agent, the folder it writes into, what has
@@ -250,9 +242,9 @@ type homeExchange struct {
 	agent Agent
 	// view is the card as the shared renderer reads it, built once per notice
 	// ([app.exchangeProposal]) and drawn by the conversation's own renderer
-	// ([StandingCardRows]), so a card met at home and a card met mid-conversation
-	// are one card. nil until a card arrives.
-	view *standingCard
+	// ([AutomationCardRows]), so a card met at home and a card met
+	// mid-conversation are one card. nil until a card arrives.
+	view *automationCard
 	// dir is the folder the transcript lives in and id is its name, which is
 	// also the id a promoted session keeps.
 	dir string
@@ -299,8 +291,8 @@ type homeExchange struct {
 	// live is the reply being streamed into, and -1 between turns.
 	live    int
 	working bool
-	// card is the ratification card waiting for an answer, and nil when none is.
-	card *session.StandingNotice
+	// card is the automation card waiting for an answer, and nil when none is.
+	card *session.AutomationNotice
 	// askAt is where the last draw PUT the answers of that question, as pane row
 	// indexes: one entry per answer, in the order the card drew them, or nil when
 	// no card is on screen. Written by the render and read by the hit-testing, so
@@ -331,15 +323,10 @@ type homeExchange struct {
 	// a follow-up but the person's own wording of what is wrong with it.
 	changing bool
 
-	// stood is set once something actually stands. It is what stops a second
-	// move of one folder, and what the pane says about where the record went.
-	stood bool
-	// itemID is the thing that stood, and it is the folder's DESTINATION held
-	// rather than acted on: the move happens when the exchange ends and the
-	// agent has been closed (this file's header says why it cannot happen at
-	// the moment the news arrives). "" is a stood item whose notice carried no
-	// id, which leaves the folder where it was made.
-	itemID string
+	// saved is set once an automation this exchange asked for was saved. The
+	// automation names this folder as where it was asked, so it is also what
+	// stops the folder being promoted out from under that name.
+	saved bool
 	// promoted is set once the folder became a project session.
 	promoted bool
 	// spoke is the first thing the person said, which is what names a promoted
@@ -382,8 +369,7 @@ type homeExchange struct {
 func (ex *homeExchange) waiting() bool { return ex.asking() }
 
 // over reports whether the exchange has nothing left to do: the card, if there
-// was one, has been answered — stood, once, or declined — and the agent is
-// idle.
+// was one, has been answered — saved or declined — and the agent is idle.
 func (ex *homeExchange) over() bool { return !ex.working && !ex.asking() }
 
 // spent reports whether the exchange may be filed: it is over AND the person
@@ -542,7 +528,7 @@ func errandWait(ex *homeExchange, ch <-chan session.Event) tea.Cmd {
 }
 
 // errandEvent is the reduced fold: text, tools, the card, the update that says
-// something now stands, and nothing else.
+// an automation was saved, and nothing else.
 //
 // IT IGNORES MOST OF WHAT A TURN EMITS, and that is the design rather than a
 // gap. Reasoning, compaction, harness offers, task proposals and the rest are
@@ -569,14 +555,14 @@ func (a *app) errandEvent(ex *homeExchange, ev session.Event) tea.Cmd {
 	case session.EventToolEnd, session.EventToolFailed:
 		a.closeExchangeTool(ex, ev)
 
-	case session.EventStandingProposal:
-		if ev.Standing != nil {
-			a.exchangeProposal(ex, *ev.Standing)
+	case session.EventAutomationProposal:
+		if ev.Automation != nil {
+			a.exchangeProposal(ex, *ev.Automation)
 		}
 
-	case session.EventStandingUpdate:
-		if ev.Standing != nil {
-			return a.errandUpdated(ex, *ev.Standing)
+	case session.EventAutomationUpdate:
+		if ev.Automation != nil {
+			return a.errandUpdated(ex, *ev.Automation)
 		}
 
 	case session.EventError:
@@ -590,15 +576,15 @@ func (a *app) errandEvent(ex *homeExchange, ev session.Event) tea.Cmd {
 	return nil
 }
 
-// exchangeProposal puts one ratification card into the pane, in the transcript
+// exchangeProposal puts one automation card into the pane, in the transcript
 // where it arrived.
 //
 // A SECOND CARD REPLACES THE FIRST and does not stack under it. The only way to
-// get one is `2 change when` and a correction, which is one question being
-// asked again in better words — so the row the first card drew is taken out and
-// the new one is appended where the conversation now is, rather than leaving a
-// settled `you asked for a different when` above a card that supersedes it.
-func (a *app) exchangeProposal(ex *homeExchange, notice session.StandingNotice) {
+// get one is `Change…` and a correction, which is one question being asked
+// again in better words — so the row the first card drew is taken out and the
+// new one is appended where the conversation now is, rather than leaving a
+// settled `you asked for something different` above a card that supersedes it.
+func (a *app) exchangeProposal(ex *homeExchange, notice session.AutomationNotice) {
 	if ex.view != nil {
 		for i := range ex.rows {
 			if ex.rows[i].kind == exchangeCard && ex.rows[i].card == ex.view {
@@ -610,11 +596,11 @@ func (a *app) exchangeProposal(ex *homeExchange, notice session.StandingNotice) 
 	kept := notice
 	ex.card, ex.changing = &kept, false
 	ex.closeReply()
-	// THE VIEW IS BUILT HERE AND NOT AT DRAW TIME. Whether the three digits
-	// belong to the card is a question the keyboard asks before any frame has
-	// been painted, and a view that only existed once something had been drawn
-	// would make the answer depend on the terminal having repainted.
-	ex.view = a.standingCardFor(kept)
+	// THE VIEW IS BUILT HERE AND NOT AT DRAW TIME. Whether the digits belong to
+	// the card is a question the keyboard asks before any frame has been
+	// painted, and a view that only existed once something had been drawn would
+	// make the answer depend on the terminal having repainted.
+	ex.view = &automationCard{id: kept.ID, notice: kept}
 	ex.rows = append(ex.rows, exchangeRow{kind: exchangeCard, card: ex.view})
 	ex.ask = a.exchangeShown(ex, kept)
 }
@@ -623,15 +609,16 @@ func (a *app) exchangeProposal(ex *homeExchange, notice session.StandingNotice) 
 //
 // THE TOKEN CARRIES THE FOLDER, which is the one thing this question needs that
 // the conversation's does not: an errand is a DIFFERENT session, so its
-// proposal's id belongs to another id space entirely and `standing:7` here and
-// `standing:7` in the window behind it would be one token for two decisions
+// proposal's id belongs to another id space entirely and `automation:7` here and
+// `automation:7` in the window behind it would be one token for two decisions
 // ([session.Question.Token] prefers the Ref).
 //
 // AND IT IS ANSWERED THROUGH THE CLOSURE. The errand has its own agent
 // ([homeExchange.agent]) and this window's door reaches this window's engine, so
 // the answer goes where the card came from ([questionShown.local]).
-func (a *app) exchangeShown(ex *homeExchange, notice session.StandingNotice) *questionShown {
-	built := a.standingQuestion(ex.view, notice)
+func (a *app) exchangeShown(ex *homeExchange, notice session.AutomationNotice) *questionShown {
+	built := session.AutomationQuestion(notice)
+	built.Asked = a.now()
 	built.Ref = ex.id + "/" + itoa(int(notice.ID))
 	// A CARD IN THIS PANE HAS NO ROW ABOVE IT THE BLOCK CAN FIND. The transcript
 	// the subject would name is the errand's, drawn in the pane by the pane, so
@@ -655,52 +642,51 @@ func (a *app) exchangeShown(ex *homeExchange, notice session.StandingNotice) *qu
 	return &shown
 }
 
-// answerExchangeCard is the one place the errand's own standing lane is
+// answerExchangeCard is the one place the errand's own automation card is
 // answered, whichever key or press gave the answer.
 //
-// IT IS [app.answerCard] AND [app.exchangeEnter]'S CHANGE ARM, FOLDED. The three
-// endings a standing card has are the engine's own three ([session.
-// AnswerFromKey]) plus the correction, and each one settles the row in the
-// conversation's words so that a card met here and a card met mid-conversation
-// cannot settle into two vocabularies.
-func (a *app) answerExchangeCard(ex *homeExchange, notice *session.StandingNotice, answer session.Answer) tea.Cmd {
+// IT SETTLES THE ROW IN THE CONVERSATION'S WORDS ([app.automationAnswered]'s),
+// so a card met here and a card met mid-conversation cannot settle into two
+// vocabularies, and then hands the answer to the errand's own engine.
+func (a *app) answerExchangeCard(ex *homeExchange, notice *session.AutomationNotice, answer session.Answer) tea.Cmd {
 	if ex.view == nil || ex.view.settled() {
 		return nil
 	}
 	if words := strings.TrimSpace(answer.Words()); words != "" && answer.FirstKey() == "" {
 		return a.changeExchangeCard(ex, notice, words)
 	}
-	action, ok := session.AnswerFromKey(session.QuestionStanding, answer.FirstKey())
-	if !ok {
+	key := answer.FirstKey()
+	switch key {
+	case session.AutomationSaveKey, session.AutomationRunNowKey:
+		ex.settle(autoSavedWord, automationOptionLabel(*notice, key))
+	case session.AutomationNoKey:
+		ex.settle(autoNotSaved, "")
+	default:
 		return nil
 	}
-	verdict, chosen := standVerdictOf(ex.view, answer)
-	ex.settle(verdict, chosen)
-	sent := a.resolveStanding(ex, notice, action.Standing)
-	if !action.Standing.Once {
-		// AND THE KEYBOARD GOES BACK TO THE LIST on a yes and on a no alike. The
-		// question is over either way, and a hand left in a pane with nothing
-		// left to answer is how the arrows stop moving the column. The exchange
-		// stays alive beside it — tab or a click brings it back for a follow-up.
-		ex.focused, ex.onOffer = false, false
-	}
+	sent := a.resolveExchange(ex, notice, answer)
+	// AND THE KEYBOARD GOES BACK TO THE LIST on a yes and on a no alike. The
+	// question is over either way, and a hand left in a pane with nothing left
+	// to answer is how the arrows stop moving the column. The exchange stays
+	// alive beside it — tab or a click brings it back for a follow-up.
+	ex.focused, ex.onOffer = false, false
 	return sent
 }
 
-// changeExchangeCard is the correction: nothing is created, the model
-// re-proposes on the person's own words, and a second card arrives to replace
-// this one.
-func (a *app) changeExchangeCard(ex *homeExchange, notice *session.StandingNotice, words string) tea.Cmd {
+// changeExchangeCard is the correction: nothing is saved, the model proposes
+// again on the person's own words, and a second card arrives to replace this
+// one.
+func (a *app) changeExchangeCard(ex *homeExchange, notice *session.AutomationNotice, words string) tea.Cmd {
 	ex.box.reset()
 	ex.changing = false
-	ex.settle(standChangedWord, session.StandingChangeWord(ex.view.item))
+	ex.settle(autoChangedWord, autoChangeWord)
 	ex.rows = append(ex.rows, exchangeRow{kind: exchangeSaid, text: words})
 	ex.said = a.now()
 	// THE CORRECTION IS A TURN LIKE ANY OTHER from the pane's point of view: the
 	// model is going to answer it, so the strip and the state line have to start
 	// counting or the screen sits still while it does.
 	ex.startTurn(a.now())
-	return a.resolveStanding(ex, notice, session.StandingAnswer{Change: words})
+	return a.resolveExchange(ex, notice, session.Answer{Change: words})
 }
 
 // asking reports whether a card is up AND still a question. It is what owns
@@ -713,9 +699,9 @@ func (ex *homeExchange) asking() bool {
 
 // settle writes the decision onto the card and leaves it exactly where it is.
 //
-// THE WORDS ARE THE CONVERSATION'S OWN (standing.go's verdicts), because a card
-// met at home and a card met mid-conversation are one card and must not settle
-// into two vocabularies.
+// THE WORDS ARE THE CONVERSATION'S OWN (automation.go's verdicts), because a
+// card met at home and a card met mid-conversation are one card and must not
+// settle into two vocabularies.
 func (ex *homeExchange) settle(verdict, answer string) {
 	if ex.view == nil {
 		return
@@ -782,12 +768,12 @@ func exchangeToolLine(ev session.Event) string {
 // exchangeToolWords splits one call into those two parts.
 func exchangeToolWords(ev session.Event) (name, target string) {
 	tool := strings.TrimSpace(ev.Tool)
-	if tool == "stand" {
-		// THE AMBIENT TOOL SAYS WHAT IT IS DOING AND NOT WHAT IT IS CALLED. It
+	if tool == "automation" {
+		// THE AUTOMATION TOOL SAYS WHAT IT IS DOING AND NOT WHAT IT IS CALLED. It
 		// has no entry in either gloss table, so the engine's hint for it is the
-		// bare word `stand` — and `stand` beside `stand` is a row that costs a
+		// bare word — and `automation` beside `automation` is a row that costs a
 		// line and says nothing.
-		return tool, exchangeStandWords(ev.Args)
+		return tool, exchangeAutomationWords(ev.Args)
 	}
 	name, gloss := toolWords(tool, ev.Hint)
 	if target := toolTarget(tool, ev.Args, ev.Hint); target != "" {
@@ -796,84 +782,65 @@ func exchangeToolWords(ev session.Event) (name, target string) {
 	return name, gloss
 }
 
-// exchangeStandWords is what a `stand` call is doing, in the words this screen
-// already uses for the thing it is doing it to (standing.go's verdicts and
-// homestanding.go's rows). An op nobody named draws nothing, which is honest:
-// the card that follows says what it was about.
-func exchangeStandWords(args string) string {
+// exchangeAutomationWords is what an `automation` call is doing, in the words
+// the place and the card already use. An op nobody named draws nothing, which
+// is honest: the card that follows says what it was about.
+func exchangeAutomationWords(args string) string {
 	fields := argsOf(args)
 	switch strings.ToLower(strings.TrimSpace(argString(fields, "op"))) {
 	case "propose":
-		if words := strings.TrimSpace(firstLine(argString(fields, "words"))); words != "" {
-			return "proposing " + words
+		if title := strings.TrimSpace(firstLine(argString(fields, "title"))); title != "" {
+			return "proposing " + title
 		}
-		return "proposing something to keep"
+		return "proposing an automation"
 	case "list":
-		return "reading what already stands"
+		return "reading the automations"
+	case "history":
+		return "reading what one did"
 	case "pause":
 		return "pausing one"
 	case "resume":
 		return "starting one again"
-	case "stop":
-		return "stopping one"
+	case "delete":
+		return "deleting one"
+	case "run":
+		return "running one now"
 	}
 	return ""
 }
 
-// errandUpdated is what a standing update does to the exchange.
-//
-// "stood" IS THE ONE THAT DECIDES WHERE THE FOLDER GOES. The item now exists
-// and its own folder is where its origin exchange belongs
-// ([standing.Store.ExchangeDir]) — that is what makes "why did I get this
-// reminder?" openable. Every other update is a line in the pane and nothing
-// else.
-//
-// IT REMEMBERS THE DESTINATION AND MOVES NOTHING. The news arrives mid-turn,
-// so closing the agent to free the transcript's lock here would cancel the turn
-// that is still running and park the update loop on the close's grace period
-// (this file's header). The move happens at [app.dropExchange] instead, which
-// is the one place the agent is actually finished with.
+// errandUpdated is what an automation update does to the exchange: a line in
+// the pane, and on "saved" the mark that this exchange is where something now
+// on the clock was asked.
 //
 // AND THE KEYBOARD GOES BACK TO THE LIST. The thing they asked for now exists;
 // the list is where a person goes next, and the exchange stays alive beside it
 // for a follow-up that tab or a click reaches.
-func (a *app) errandUpdated(ex *homeExchange, notice session.StandingNotice) tea.Cmd {
+func (a *app) errandUpdated(ex *homeExchange, notice session.AutomationNotice) tea.Cmd {
 	if text := strings.TrimSpace(notice.Text); text != "" {
 		ex.rows = append(ex.rows, exchangeRow{kind: exchangeNote, text: text})
 	}
-	if notice.Update != "stood" || ex.stood || ex.promoted {
+	if notice.Update != "saved" || ex.saved || ex.promoted {
 		return nil
 	}
-	// A card still asking when the thing it proposed has stood is a question
-	// nobody can answer any more, so it settles into the answer the world just
-	// gave it rather than staying a live question over a decided fact.
+	// A card still asking when the thing it proposed has been saved is a
+	// question nobody can answer any more, so it settles into the answer the
+	// world just gave it rather than staying a live question over a decided fact.
 	if ex.asking() {
-		ex.settle(standSetWord, "")
+		ex.settle(autoSavedWord, "")
 	}
-	ex.stood = true
-	ex.itemID = strings.TrimSpace(notice.Item.ID)
+	ex.saved = true
 	ex.focused, ex.onOffer, ex.changing = false, false, false
-	ex.rows = append(ex.rows, exchangeRow{kind: exchangeNote, text: homeAskStoodWord})
-	// AND THE COLUMN'S COUNT HEARS IT TOO. `ask here` stands the item on the
-	// errand's own stream, which never reaches [app.standingUpdate], so without
-	// this the foot of the task column kept a cached zero until home's beat
-	// re-read the store — while the pane already said the order stood.
-	a.refreshKeepingCount()
+	ex.rows = append(ex.rows, exchangeRow{kind: exchangeNote, text: homeAskSavedWord})
 	return nil
 }
 
-// fileExchange ENDS one exchange: the agent is closed, and THEN the folder is
-// moved under the thing the exchange made, if it made one.
+// fileExchange ENDS one exchange: the agent is closed, and the folder stays
+// where it is.
 //
-// THE ORDER IS THE WHOLE OF IT. The rename carries the transcript's inode, so
-// it must happen after the writer is gone (this file's header), and "stood"
-// arrives while the writer is still mid-turn — which is why the move waits for
-// this call rather than happening at the moment the news lands.
-//
-// THE FOLDER IS THE RECORD AND IT IS NEVER REMOVED HERE. An exchange that came
-// to nothing keeps its transcript under the standing root's exchanges/, where
-// the sweep law reaps it after [standing.RunKeep] — the record outlives the
-// window, which is the whole reason it is a folder and not a buffer.
+// THE FOLDER IS THE RECORD AND IT IS NEVER REMOVED HERE. The record outlives the
+// window, which is the whole reason it is a folder and not a buffer — and an
+// automation saved from this exchange names it as where it was asked.
 func (a *app) fileExchange(ex *homeExchange) {
 	if ex == nil || ex.filed {
 		return
@@ -886,32 +853,6 @@ func (a *app) fileExchange(ex *homeExchange) {
 		ex.agent.InterruptFor(session.StopByLeaving)
 	}
 	_ = ex.agent.Close()
-	a.moveFiled(ex)
-}
-
-// moveFiled puts a stood exchange's folder under the item it made, which is
-// what makes "why did I get this reminder?" a door ([standing.Store.ExchangeDir]).
-//
-// A STOOD ITEM WITH NO ID, AND AN EXCHANGE THAT CAME TO NOTHING, BOTH STAY PUT.
-// The folder is a record in the right place with the wrong name on it, which is
-// better than a move to a directory nobody can find again — and the sweep law
-// reaps what came to nothing after [standing.RunKeep].
-func (a *app) moveFiled(ex *homeExchange) {
-	if ex == nil || !ex.stood || ex.promoted || ex.itemID == "" {
-		return
-	}
-	store, err := standing.Open(a.standingHome())
-	if err != nil {
-		return
-	}
-	dest := store.ExchangeDir(ex.itemID)
-	if dest == ex.dir {
-		return
-	}
-	if err := moveExchange(ex.dir, dest); err != nil {
-		return
-	}
-	ex.dir = dest
 }
 
 // moveExchange renames one folder onto another path, making the parent first. A
@@ -927,22 +868,18 @@ func moveExchange(from, to string) error {
 
 // ── asking ──────────────────────────────────────────────────────────────────
 
-// standingHome is where everything standing lives. The field is the test's door
-// and the option is the launch's; the fallback is arithmetic on the projects
-// root, because `<state root>/v3/projects` and `<state root>/v3/standing` are
-// siblings by construction (internal/standing's package comment).
-func (a *app) standingHome() string {
-	if root := strings.TrimSpace(a.standingRoot); root != "" {
+// errandsDir is where an exchange is made and where it stays. It is NOT under
+// v3/projects, which is the whole mechanism: home lists what is in projects/,
+// so an errand cannot become a row on the screen it was typed at. The field is
+// the test's door and the option is the launch's; the fallback is arithmetic on
+// the projects root, because `<state root>/v3/projects` and
+// `<state root>/v3/errands` are siblings by construction.
+func (a *app) errandsDir() string {
+	if root := strings.TrimSpace(a.errandsRoot); root != "" {
 		return root
 	}
-	return filepath.Join(filepath.Dir(a.placesRoot()), "standing")
+	return filepath.Join(filepath.Dir(a.placesRoot()), "errands")
 }
-
-// errandsDir is where an exchange is made and where one that came to nothing
-// stays. It is under the standing root and NOT under v3/projects, which is the
-// whole mechanism: home lists what is in projects/, so an errand cannot become
-// a row on the screen it was typed at.
-func (a *app) errandsDir() string { return filepath.Join(a.standingHome(), "exchanges") }
 
 // askHere is the second action row, and the chord.
 //
@@ -1434,23 +1371,27 @@ func (ex *homeExchange) startTurn(now time.Time) {
 	ex.seen = false
 }
 
-// resolveStanding hands one answer back. An agent with no standing lane on it is
-// a session where the ambient side is off, and such a session cannot have drawn
-// a card in the first place — so the type assertion failing is unreachable
-// through anything a person can do, and answering nothing is the right thing to
-// do with a card that came from nowhere.
-func (a *app) resolveStanding(ex *homeExchange, card *session.StandingNotice, answer session.StandingAnswer) tea.Cmd {
+// resolveExchange hands one answer back to the errand's engine. An agent that
+// cannot be answered is one that could not have drawn a card in the first place
+// — so the type assertion failing is unreachable through anything a person can
+// do, and answering nothing is the right thing to do with a card that came from
+// nowhere.
+func (a *app) resolveExchange(ex *homeExchange, card *session.AutomationNotice, answer session.Answer) tea.Cmd {
 	if card == nil {
 		return nil
 	}
-	door, ok := ex.agent.(standingAgent)
+	door, ok := ex.agent.(questionResolver)
 	if !ok {
 		return nil
 	}
+	// THE ANSWER IS ADDRESSED IN THE ERRAND'S OWN NUMBERS. The Ref the pane gave
+	// the question is this window's way of telling two sessions' ids apart; the
+	// errand's engine knows its card by kind and id alone.
+	answer.Kind, answer.ID, answer.Ref = session.QuestionAutomation, card.ID, ""
 	// FROM A COMMAND, NEVER FROM THE LOOP (offloop.go): the pane's agent is in
 	// another process exactly as the conversation's is.
 	return a.offLoop(func() func(bool) tea.Cmd {
-		door.ResolveStanding(card.ID, answer)
+		_ = door.ResolveQuestion(answer)
 		return nil
 	})
 }
@@ -1458,7 +1399,7 @@ func (a *app) resolveStanding(ex *homeExchange, card *session.StandingNotice, an
 // offering reports whether `continue as a conversation` is on the pane: the
 // first reply has landed, and the folder has not already gone somewhere.
 func (ex *homeExchange) offering() bool {
-	if ex.stood || ex.promoted {
+	if ex.saved || ex.promoted {
 		return false
 	}
 	for _, row := range ex.rows {
@@ -1481,7 +1422,7 @@ func (ex *homeExchange) offering() bool {
 // arrangements for one act would be two things to keep in step.
 func (a *app) promoteExchange(ex *homeExchange) tea.Cmd {
 	h := &a.home
-	if ex.promoted || ex.stood {
+	if ex.promoted || ex.saved {
 		h.say(homeAskPromotedWord, "")
 		return nil
 	}
@@ -1598,7 +1539,7 @@ func (a *app) exchangePane(ex *homeExchange, width, room int, pal palette) []str
 			if row.card == nil {
 				continue
 			}
-			out = append(out, StandingCardRows(a, row.card, width, true)...)
+			out = append(out, AutomationCardRows(a, row.card, width, true)...)
 			if row.card == ex.view && ex.ask != nil {
 				// AND THE QUESTION DIRECTLY UNDER THE CARD IT IS ABOUT, drawn by
 				// the block's own renderer. It is not pinned above a message box
@@ -2044,13 +1985,12 @@ func (a *app) exchangeTail(ex *homeExchange, spins bool) string {
 		}
 		return mark + " " + word
 	default:
-		glyph := standOffGlyph
-		if a.pal.ascii {
-			glyph = standOffASCII
-		}
+		// AN EXCHANGE THAT IS OVER WEARS THE SETTLED MARK, through the one door
+		// every mark comes through (docs/design/icons/DESIGN.md).
+		glyph := a.icon(tokens.GSettled)
 		word := homeAskAnsweredTail
-		if ex.stood {
-			word = homeAskStoodTail
+		if ex.saved {
+			word = homeAskSavedTail
 		}
 		return glyph + " " + word
 	}

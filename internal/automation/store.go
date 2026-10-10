@@ -208,6 +208,7 @@ func (s *Store) Create(a Automation) (Automation, error) {
 		return Automation{}, err
 	}
 	a.Next = first
+	a.Last = nil
 	doc, err := json.Marshal(a)
 	if err != nil {
 		return Automation{}, err
@@ -223,14 +224,24 @@ func (s *Store) Create(a Automation) (Automation, error) {
 	return a, nil
 }
 
-// Get reads one automation.
+// Get reads one automation, with the last run that ended.
 func (s *Store) Get(id string) (Automation, error) {
 	row := s.db.QueryRow(`SELECT doc, status, next_ms, seen, memo, revision FROM automations WHERE id = ?`, id)
 	a, err := scanAutomation(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Automation{}, ErrNotFound
 	}
-	return a, err
+	if err != nil {
+		return Automation{}, err
+	}
+	last, err := s.queryRuns(`WHERE automation_id = ? AND phase = ? ORDER BY id DESC LIMIT 1`, id, string(PhaseOver))
+	if err != nil {
+		return Automation{}, err
+	}
+	if len(last) == 1 {
+		a.Last = &last[0]
+	}
+	return a, nil
 }
 
 // List is every automation, the ones waiting on the person first, then the
@@ -251,6 +262,19 @@ func (s *Store) List() ([]Automation, error) {
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+	// THE LAST RUN OF EVERY AUTOMATION IN ONE QUERY, not one per row: a list
+	// is read on every window's beat, and over --host every query is a trip.
+	last, err := s.queryRuns(`WHERE id IN (SELECT MAX(id) FROM runs WHERE phase = ? GROUP BY automation_id)`, string(PhaseOver))
+	if err != nil {
+		return nil, err
+	}
+	byAutomation := make(map[string]*Run, len(last))
+	for i := range last {
+		byAutomation[last[i].AutomationID] = &last[i]
+	}
+	for i := range all {
+		all[i].Last = byAutomation[all[i].ID]
 	}
 	sortAutomations(all)
 	return all, nil
@@ -297,6 +321,7 @@ func (s *Store) Update(a Automation) (Automation, error) {
 		if err := a.Validate(); err != nil {
 			return err
 		}
+		a.Last = nil
 		doc, err := json.Marshal(a)
 		if err != nil {
 			return err
@@ -343,6 +368,7 @@ func (s *Store) SetStatus(id string, status Status) (Automation, error) {
 		}
 		a.Revision++
 		a.Updated = now
+		a.Last = nil
 		doc, err := json.Marshal(a)
 		if err != nil {
 			return err
@@ -728,6 +754,7 @@ func scanAutomation(row scanner) (Automation, error) {
 	a.Seen = seen
 	a.Memo = memo
 	a.Revision = revision
+	a.Last = nil
 	return a, nil
 }
 

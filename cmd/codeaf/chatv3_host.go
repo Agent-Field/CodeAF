@@ -678,7 +678,6 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	news := &hostNews{}
 	seams.Notice = news.join(seams.Notice)
 	far := hostFar{client: client, tell: news.say}
-	stands := newHostStanding(far)
 	// THE PLACES FOLLOW THE SESSION'S MACHINE. The world behind home, tasks,
 	// standing, spend and search is asked of the ENGINE and kept warm here, and
 	// it is asked once now so the first frame after launch already has it
@@ -758,46 +757,12 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 		// on the screen until a later beat fetched it back ([hostWorld.archive]
 		// carries the whole of why).
 		Archive: world.archive,
-		// THE AMBIENT SIDE, AS THE ENGINE MACHINE HOLDS IT. The items belong to
-		// the machine that runs them, so both halves go over the wire and
-		// neither reads a store on this laptop — the far end answers about the
-		// far end's own disk, keyed by a workspace path that means something
-		// there ([standing.Item.Workspace] is always the engine's own path,
-		// which is exactly what welcome.Workspace is too).
-		//
-		// WHAT THIS LIGHTS UP HERE is both home's item band and the status line's
-		// `◦ N standing orders` segment. Home reads the far world, so its project
-		// paths are paths this far store can answer, while the segment asks about this
-		// window's workspace — which over --host is the engine's own path, so
-		// the count is about the right machine ([hostStanding] has the longer
-		// version, and internal/tui3's host.go states it in the honesty table).
-		//
-		// Items therefore answers from a cache and refreshes behind itself,
-		// which is not an optimization but the seam's stated law, because that
-		// segment is asked on the frame. Save travels synchronously: it is a
-		// keystroke, it is rare, and somebody is waiting for its answer.
 		// THE TEAMS, AS THE ENGINE MACHINE KEEPS THEM. The far session's team
 		// tools write the teams file and each team's Traffic into the engine's
 		// profile, so the window reads and writes those, over the wire
 		// ([hostTeams]); an engine without the doors hands no seam and the
 		// surface turns teams off rather than keeping them on this laptop.
 		Teams: hostTeamsSeam(far, welcome),
-		Standing: tui3.StandingSeam{
-			Items: stands.list,
-			Save:  stands.save,
-			Watch: client.StandingWatch,
-			// Running stays nil; Watch reads the engine's own scheduler over the
-			// wire and therefore never substitutes this laptop's timer.
-			//
-			// Running: nothing on the far machine's disk says "firing at this
-			// instant" — a run is in flight inside whichever process holds the
-			// tick lock — so there is no question to put on the wire and no
-			// answer a frame could carry. Nil answers no for everything, and a
-			// home where no row ever wears `●` is the truth (cmd/codeaf's
-			// [v3StandingSeam] declines it for the same reason on this machine's
-			// own store).
-			//
-		},
 		// ── WHAT THE CONNECTION ITSELF SAYS ─────────────────────────────────
 		//
 		// The four facts only a connection has: the sentence to draw while a

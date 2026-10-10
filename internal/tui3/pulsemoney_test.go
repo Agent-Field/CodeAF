@@ -157,9 +157,9 @@ func TestTheMoneyOnTheTopLineIsTheMoneyOnTheSpendPage(t *testing.T) {
 	}
 
 	walks := [][]page{
-		{pageHome, pageTasks, pageStanding, pageMemory, pageSpend, pageSettings},
-		{pageSettings, pageSpend, pageMemory, pageStanding, pageTasks, pageHome},
-		{pageTasks, pageSpend, pageHome, pageMemory, pageSpend, pageStanding, pageSpend},
+		{pageHome, pageTasks, pageAutomations, pageMemory, pageSpend, pageSettings},
+		{pageSettings, pageSpend, pageMemory, pageAutomations, pageTasks, pageHome},
+		{pageTasks, pageSpend, pageHome, pageMemory, pageSpend, pageAutomations, pageSpend},
 	}
 	for _, walk := range walks {
 		a, advance := oneMoneyLab(t)

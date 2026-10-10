@@ -426,31 +426,6 @@ func (a *app) answerHere(question session.PresenceQuestion, key string) (tea.Cmd
 				return nil
 			}), true
 		}
-	case session.QuestionStanding:
-		if card := a.stand; card != nil && card.id == question.ID && !card.settled() {
-			// AND IT IS THE BLOCK'S OWN ANSWER, not a second one beside it: the
-			// same receipt, the same record and the same settled row as the same
-			// answer pressed in front of the card (standing.go). The words the
-			// row keeps are read off the answer that settled it, so they cannot
-			// drift from what the engine was told.
-			if open := a.questionOpenOn(session.QuestionStanding, question.ID); open != nil {
-				return a.answerQuestion(*open, session.Answer{Key: key}), true
-			}
-			switch {
-			case action.Standing.Once:
-				return a.answerStanding(action.Standing, standOnceApproved, standOnceWord), true
-			case action.Standing.Approved:
-				return a.answerStanding(action.Standing, standSetWord, standYesWord), true
-			default:
-				return a.answerStanding(action.Standing, standNoWord, ""), true
-			}
-		}
-		if agent, ok := a.stander(); ok {
-			return a.offLoop(func() func(bool) tea.Cmd {
-				agent.ResolveStanding(question.ID, action.Standing)
-				return nil
-			}), true
-		}
 	}
 	return nil, false
 }

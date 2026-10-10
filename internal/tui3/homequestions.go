@@ -19,9 +19,6 @@ func homeQuestionRowKey(line homeLine) string {
 	if line.row.Transcript != "" {
 		return "chat:" + filepath.Clean(line.row.Transcript)
 	}
-	if line.kind == homeItem {
-		return "standing:" + line.dir + "/" + line.item.ID
-	}
 	return ""
 }
 

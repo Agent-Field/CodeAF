@@ -540,7 +540,6 @@ func (a *app) landTakeover(transcript string) {
 		world, known := a.readWorldKnown()
 		a.home = a.newHomeView(world, known)
 		a.raisePlace(pageHome)
-		a.readStandBands()
 		a.home.readGone()
 		a.home.build()
 		a.dismissWelcome()

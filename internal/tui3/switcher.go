@@ -10,8 +10,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // ── THE SWITCHER'S READING ──────────────────────────────────────────────────
@@ -54,7 +54,6 @@ type switcherKind uint8
 
 const (
 	switcherConversation switcherKind = iota
-	switcherStanding
 	switcherLedger
 )
 
@@ -64,7 +63,6 @@ type switcherRow struct {
 	chatKey string
 	kind    switcherKind
 	session session.SessionRow
-	item    StandingItemView
 	place   string
 	project string
 	title   string
@@ -147,9 +145,10 @@ type switcherGone map[string]bool
 
 // readSwitcher uses the same attention rules as homeattention.go: NeedsPerson
 // outranks everything; moving is Tasks.Running or a fresh PresenceWorking
-// conversation, and a standing item moves only while view.Running. An item's
-// own NeedsPerson likewise outranks its running marker.
-func readSwitcher(world session.World, items map[string][]StandingItemView, fired []StandingItemView, here switcherHere, gone switcherGone, seen time.Time, now time.Time, ledger switcherLedgerInput) switcherReading {
+// conversation. autos is the machine's automations as the watcher last read
+// them, which the `since you left` block reads for the runs that ended while
+// nobody was looking.
+func readSwitcher(world session.World, autos []automation.Automation, here switcherHere, gone switcherGone, seen time.Time, now time.Time, ledger switcherLedgerInput) switcherReading {
 	r := switcherReading{now: now}
 	var all []switcherRow
 	for _, project := range world.Projects {
@@ -197,22 +196,10 @@ func readSwitcher(world session.World, items map[string][]StandingItemView, fire
 				options: options,
 			})
 		}
-		for _, view := range items[project.Dir] {
-			if strings.TrimSpace(view.Item.NeedsPerson) == "" && !view.Running {
-				continue
-			}
-			needs := strings.TrimSpace(view.Item.NeedsPerson) != ""
-			all = append(all, switcherRow{
-				kind: switcherStanding, item: view, project: project.Name,
-				title: strings.TrimSpace(view.Item.Words), note: switcherStandingNote(view),
-				age: sinceAt(switcherItemAt(view), now), at: switcherItemAt(view),
-				needs: needs, moving: !needs && view.Running, paused: view.Item.Status == standing.StatusPaused,
-			})
-		}
 	}
 	sort.SliceStable(all, func(i, j int) bool { return switcherLess(all[i], all[j]) })
 	r.rows = all
-	r.addLedger(items, fired, world, seen, ledger)
+	r.addLedger(autos, world, seen, ledger)
 	return r
 }
 
@@ -235,16 +222,6 @@ func switcherSortAt(row session.SessionRow) time.Time {
 		return attentionMovingSince(row)
 	}
 	return row.At
-}
-
-func switcherItemAt(view StandingItemView) time.Time {
-	if strings.TrimSpace(view.Item.NeedsPerson) != "" {
-		return view.Item.Updated
-	}
-	if view.Running {
-		return view.Mark.Since
-	}
-	return view.Item.LastFired
 }
 
 func switcherLess(a, b switcherRow) bool {
@@ -356,28 +333,6 @@ func switcherConversationNote(row session.SessionRow, seen time.Time) string {
 	return ""
 }
 
-func switcherStandingNote(view StandingItemView) string {
-	if need := switcherFirstLine(view.Item.NeedsPerson); need != "" {
-		// WHICH OF THE TWO THINGS NeedsPerson CARRIES HAS ONE ANSWER, and
-		// [standing.IsPermissionLine] is it, because the spellings of a refusal
-		// live in standing, in that one predicate, and no surface keeps its own
-		// list of them. The refusal is said bare because it is already a whole
-		// sentence about the item, `stopped: it needed your ok to run bash`, so
-		// the ask word would put `asks: stopped` on a row where nobody asked
-		// anything, the same reading switcherConversationNote takes above for
-		// the consent gate's own sentence. The word is for the other tenant, a
-		// QUESTION the firing put to the person in its own words.
-		if standing.IsPermissionLine(need) {
-			return need
-		}
-		return switcherAsksWord + need
-	}
-	if view.Running && strings.TrimSpace(view.Mark.What) != "" {
-		return switcherFirstLine(view.Mark.What)
-	}
-	return ""
-}
-
 // switcherAsksWord is what a row's note says in front of the question it is
 // stopped on. The grid's needs panel draws the question under its row and takes
 // the word back off, because there the panel's own heading already says it.
@@ -401,15 +356,13 @@ func switcherPlural(n int, one, many string) string {
 // addLedger builds the `since you left` block: what happened on its own while
 // nobody was looking.
 //
-// IT WALKS WHAT STANDS AND WHAT WENT, and it has to walk both. items is every
-// project's live band, which is the right answer for a watch that fired at six
-// and is still watching; fired is what the same reading found RETIRED with a
-// firing on it (homestanding.go's [app.standItems]). A one-off — the commonest
-// standing thing there is, `remind me in 1 minute` — retires in the pass that
-// fires it, so a block built off the bands alone was silent about exactly the
-// case it exists for: the reminder went off with the terminal shut, and the
-// screen a person came back to said nothing had happened.
-func (r *switcherReading) addLedger(items map[string][]StandingItemView, fired []StandingItemView, world session.World, seen time.Time, input switcherLedgerInput) {
+// IT INCLUDES WHAT RAN ON THE CLOCK. An automation's run that ended while the
+// person was away — a reminder that went off, a watch that spoke, work that
+// finished or needs them — is exactly what this block exists for, so each one
+// is a line here, said the way its own conversation's line says it
+// (automation.go's [automationRunWords]), and enter on it opens the
+// automations place. A watch's quiet looks are never news and never a line.
+func (r *switcherReading) addLedger(autos []automation.Automation, world session.World, seen time.Time, input switcherLedgerInput) {
 	// AND THE WHOLE BLOCK IS ABOUT A STRETCH OF TIME THAT MAY NOT EXIST YET. With
 	// no look stamp there is no "since", so there is nothing to say — the same
 	// first-look law [switcherConversationNote] keeps one function up.
@@ -417,39 +370,12 @@ func (r *switcherReading) addLedger(items map[string][]StandingItemView, fired [
 		return
 	}
 	var events []switcherRow
-	// ONE LINE PER ITEM, HOWEVER MANY PROJECTS HOLD IT. The bands are keyed by
-	// project directory and a machine-wide watch is in every one of them, so a
-	// walk that did not remember what it had seen would say the same thing four
-	// times (homestanding.go's [app.readStandBands] keys them, and this is the
-	// reading's own half of that fact). The retired half is deduped against the
-	// same map, because an item that stood in two places went in two places.
-	said := make(map[string]bool)
-	add := func(view StandingItemView) {
-		if !view.Item.LastFired.After(seen) || said[view.Item.ID] {
-			return
+	for _, item := range autos {
+		last := item.Last
+		if last == nil || !last.Outcome.Delivered() || !last.Finished.After(seen) {
+			continue
 		}
-		said[view.Item.ID] = true
-		// THE ITEM'S OWN LAST-LOOK SENTENCE AND NEVER A SECOND ONE WRITTEN HERE.
-		// `fired 3 minutes ago · … — it told you` is [standing.LastLookLine], the
-		// one place that sentence is composed, and a retired one-off is told the
-		// same way a live watch is: what it did, when, and what came of it. The
-		// row does not say the thing has stood down, because the block is a list
-		// of what HAPPENED and not a roll-call of what still stands.
-		line := standing.LastLookLine(view.Item, r.now)
-		if line == "" {
-			line = switcherFirstLine(view.Item.LastCheckLine)
-		}
-		if line != "" {
-			events = append(events, switcherRow{kind: switcherLedger, item: view, title: line, place: "standing", at: view.Item.LastFired})
-		}
-	}
-	for _, views := range items {
-		for _, view := range views {
-			add(view)
-		}
-	}
-	for _, view := range fired {
-		add(view)
+		events = append(events, switcherRow{kind: switcherLedger, title: automationRunWords(item, *last), place: placeAutomationsWord, at: last.Finished})
 	}
 	events = append(events, ledgerLanded(world, seen)...)
 	events = append(events, ledgerMade(world, input.made)...)
@@ -469,11 +395,6 @@ func (r *switcherReading) addLedger(items map[string][]StandingItemView, fired [
 	sort.SliceStable(events, func(i, j int) bool { return events[i].at.After(events[j].at) })
 	r.ledger = events
 }
-
-// switcherResumeWord is the undoing of a pause, and it is spelled here because
-// nothing else on this surface offers it: an item's card and the standing place
-// both pause and stop, and only a row that is ALREADY paused has a resume.
-const switcherResumeWord = "resume it"
 
 // switcherMarginWord is a row's right margin: THE ONE THING THAT DECIDES WHAT
 // ENTER WILL DO, and an age when nothing does. A folder that is gone outranks a
@@ -510,17 +431,6 @@ func switcherSides(width int, left, right string, leftInk, rightInk func(string)
 // position, which is what the surface holding these rows as lines of its own
 // column needs (place_home.go).
 func switcherVerbsFor(row switcherRow) []switcherVerb {
-	if row.kind == switcherStanding {
-		verbs := switcherQuestionVerbs(row.options)
-		if row.paused {
-			return append(verbs, switcherVerb{key: 'r', word: switcherResumeWord})
-		}
-		// ONE SPELLING FOR ONE VERB. `pause` is what an item's own card and the
-		// standing place both call this act (homestanding.go's [homeItemActions],
-		// place_standing.go's [placeStanding.verbs]), and a strip that said it a second
-		// way would be two words for one thing on one screen.
-		return append(verbs, switcherVerb{key: 'p', word: homeItemPauseWord})
-	}
 	if row.kind != switcherConversation {
 		return nil
 	}

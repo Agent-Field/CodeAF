@@ -35,9 +35,7 @@ const (
 	autoNotSaved    = "not saved"
 	autoChangedWord = "you asked for something different"
 	autoEndedWord   = "ended · nothing was saved"
-	// autoChangeWord is the card's own-words answer, which is the same word on
-	// every card that has one.
-	autoChangeWord = standChangeWord
+	autoChangeWord  = "Change…"
 )
 
 // automationCard is one card, or one line of news, in the transcript.
@@ -49,6 +47,10 @@ type automationCard struct {
 	// line is set on a line of news rather than a card: the whole row.
 	line  string
 	glyph tokens.GlyphID
+	// head replaces the card's first line, for a card this window raised about
+	// a line the person typed rather than one a model proposed
+	// (automationscmd.go).
+	head string
 }
 
 func (c *automationCard) settled() bool { return c.verdict != "" }
@@ -104,12 +106,7 @@ func (a *app) automationAnswered(id uint64, answer session.Answer) {
 	case key == "" && strings.TrimSpace(answer.Words()) != "":
 		card.verdict, card.answer = autoChangedWord, autoChangeWord
 	case key == session.AutomationSaveKey || key == session.AutomationRunNowKey:
-		card.verdict = autoSavedWord
-		for _, option := range card.notice.Options {
-			if option.Key == key {
-				card.answer = option.Label
-			}
-		}
+		card.verdict, card.answer = autoSavedWord, automationOptionLabel(card.notice, key)
 	default:
 		card.verdict = autoNotSaved
 	}
@@ -117,6 +114,17 @@ func (a *app) automationAnswered(id uint64, answer session.Answer) {
 	a.endRecall()
 	a.closeLists()
 	a.touch()
+}
+
+// automationOptionLabel is the label the card drew for one answer's key, or ""
+// for a key it did not offer.
+func automationOptionLabel(notice session.AutomationNotice, key string) string {
+	for _, option := range notice.Options {
+		if option.Key == key {
+			return option.Label
+		}
+	}
+	return ""
 }
 
 // automationUpdate draws one dim line about an automation a call in this turn
@@ -212,7 +220,11 @@ func AutomationCardRows(a *app, card *automationCard, width int, sel bool) []str
 		head = taskCornerASCII + " " + a.icon(tokens.GNeedsHuman) + " "
 		foot = taskCornerASCII
 	}
-	name := fit(session.AutomationHead(card.notice.Automation), width-ansi.StringWidth(head)-3)
+	said := session.AutomationHead(card.notice.Automation)
+	if card.head != "" {
+		said = card.head
+	}
+	name := fit(said, width-ansi.StringWidth(head)-3)
 	top := paint(head)
 	if card.settled() {
 		top += a.pal.muted(name)

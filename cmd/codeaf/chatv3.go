@@ -563,10 +563,6 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		AnchorWorkspace: func(path string) (string, error) {
 			return seam.anchor(agent, path)
 		},
-		// The ambient side as this surface reads it: home's item band, the
-		// pause and stop keys, and /status's keeping-watch line, all off the
-		// same store the conversation proposes into (chatv3_standing.go).
-		Standing: v3StandingSeam(cfg.Standing),
 		// Automations, read and changed off the same store the conversation
 		// proposes into (chatv3_clock.go).
 		Automations: v3AutomationsSeam(),
@@ -577,12 +573,11 @@ func openChatV3(name string, args []string, pickSession bool) error {
 			}
 			return conv.Agent, conv.SessionFile, nil
 		},
-		// ── lane errand, for the merge: this pair and nothing else ──────────
 		// Home's `ask here` — the errand answered in the right pane, whose
-		// transcript lives under the standing root and never under v3/projects
+		// transcript lives under the errands root and never under v3/projects
 		// (chatv3_exchange.go, tui3's homeexchange.go).
-		Errand:       v3Errand(cfg, workspace, settings.ProfileDir, *yolo),
-		StandingRoot: v3StandingRoot(),
+		Errand:      v3Errand(cfg, workspace, settings.ProfileDir, *yolo),
+		ErrandsRoot: v3ErrandsRoot(),
 		// Answering another window's question from home: the answer is left in
 		// that session's own folder and it picks it up on its heartbeat
 		// (internal/session's answers.go, tui3's homeband_answer.go).

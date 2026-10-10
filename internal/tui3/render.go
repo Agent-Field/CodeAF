@@ -645,7 +645,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		// paragraphs.
 		if (e.kind == entryNote && !wasNote) ||
 			wasCluster || wasBlock || wasUser || e.kind == entryUser || e.kind == entrySteer || e.kind == entryTask ||
-			(e.kind == entryStanding && e.stand != nil && !e.stand.news()) ||
+			(e.kind == entryAutomation && e.auto != nil && !e.auto.news()) ||
 			// AND THE BREATH ABOVE A PROMOTED ANSWER (hierarchy.go's
 			// [answerBreath]). It is asked HERE, inside the same condition as the
 			// four rules above it, because [gap] is not idempotent: two calls are
@@ -728,7 +728,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		}
 		wasCluster = false
 		wasNote = e.kind == entryNote
-		wasBlock = e.kind == entryTask || (e.kind == entryStanding && e.stand != nil && !e.stand.news())
+		wasBlock = e.kind == entryTask || (e.kind == entryAutomation && e.auto != nil && !e.auto.news())
 		// The change-of-speaker gap belongs to the person's message and not to a
 		// kind of block: a divider between the question and the reply carries the
 		// mark forward, because the reply still opens under their words.
@@ -984,12 +984,6 @@ func (a *app) entryRows(d deck, i, width int) []string {
 	// its spinner is a function of the frame (connect.go). It rejoins the cache
 	// the moment it settles, which is the moment it stops moving.
 	if e.kind == entryConnect && e.conn != nil && e.conn.state == connectWaiting {
-		return a.renderEntry(i, e, width)
-	}
-	// AND AN OPEN STANDING CARD, for the reason the proposal above is not: its
-	// meter drains toward the moment the engine declines it (standing.go). It
-	// rejoins the cache the moment it is answered.
-	if e.kind == entryStanding && e.stand != nil && !e.stand.settled() && !e.stand.news() {
 		return a.renderEntry(i, e, width)
 	}
 	// AND A CORRECTION THAT IS STILL MOVING, for the reason all four of those are
@@ -1307,9 +1301,6 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 
 	case entryTask:
 		return a.taskCardRows(e.card, width, a.sel == i)
-
-	case entryStanding:
-		return StandingCardRows(a, e.stand, width, a.sel == i)
 
 	case entryAutomation:
 		return AutomationCardRows(a, e.auto, width, a.sel == i)
@@ -2035,13 +2026,6 @@ const (
 	// weaker of the two. The phone sheet and /status still carry it.
 	segOpen
 	segAmbient
-	// segKeeping is the standing side's own presence: how many things are
-	// keeping an eye on this project (homestanding.go). It is OFF THE LINE as
-	// well, and unlike the open count it went somewhere: it is a line at the
-	// foot of the task column now (task.go's [app.railFootRows]), beside the
-	// counts of what that column is holding, which is where the rest of this
-	// project's live work is already written down.
-	segKeeping
 	segDelta
 	segCost
 	segCtx
@@ -2648,7 +2632,6 @@ func (a *app) telemetry(width int) []hudPart {
 	add(segDelta, a.deltaSegment())
 	add(segBurn, a.burnSegment())
 	add(segOpen, a.openSegment())
-	add(segKeeping, a.keepingSegment())
 	add(segRate, a.liveRiderAt(-1))
 	// A LINK THAT HAS STOPPED WORKING OUTRANKS EVERY NUMBER ON THIS LINE, and
 	// says so by never being dropped: it is not in [dropOrder], so a narrow
@@ -3314,7 +3297,7 @@ func (a *app) stateWord() (string, string) {
 	}
 	// Required input outranks work. A proposal with a deadline starts on its
 	// own; it offers an intervention, not a question that blocks progress.
-	if a.asking() || a.awaitingStanding() || a.awaitingSubharness() ||
+	if a.asking() || a.awaitingSubharness() ||
 		(a.awaitingTask() && a.task.deadline.IsZero()) {
 		return waitingWord, a.pal.askBold(waitingWord)
 	}
@@ -3413,7 +3396,7 @@ func (a *app) legend(width int) string {
 	// (styles.go). The question is bottom-anchored and so is this border — the two
 	// of them framing the question is the surface pointing at it with both hands.
 	paint := a.pal.dim
-	if a.asking() || a.awaitingTask() || a.awaitingStanding() {
+	if a.asking() || a.awaitingTask() {
 		paint = a.pal.ask
 	}
 	// THE LADDER, in the order of what a person can recover elsewhere. Each rung
@@ -4017,13 +4000,11 @@ func (a *app) hintWord() string {
 			return filesCopyVerbs
 		}
 		return filesVerbs
-	case a.at(pageStanding):
-		// The standing page names its verbs here because they are the half of it
-		// nobody can guess, and it names the ones the ROW UNDER THE CURSOR
-		// actually has: one of them stops a thing for good, and an order in
-		// another project cannot be excepted from a place it never reached
-		// ([standingPlace.hint]).
-		return a.orders.hint(a)
+	case a.at(pageAutomations):
+		// The automations place names its verbs here because they are the half
+		// of it nobody can guess, and it names the ones the ROW UNDER THE CURSOR
+		// actually has ([automationsPlace.hint]).
+		return a.autoPlace.hint(a)
 	case a.crewUI.open:
 		// The crew panel prints its keys in its own bottom edge (crewpanel.go),
 		// and a slot repeating them would say the same thing twice on one screen.
@@ -4120,18 +4101,6 @@ func (a *app) hintWord() string {
 		// below. A HINT MAY ONLY NAME A KEY THAT WORKS, and exactly one tag is the
 		// only state where enter has the promised alternate meaning.
 		return a.slashTagHint()
-	case a.standSayOffered():
-		// THE DRAFT LOOKS LIKE A CONDITION, so the slot says the typed door that
-		// makes it one (standmark.go). It ranks HERE — under the running turn,
-		// over the column's own line — for this slot's ordering law: it is read
-		// at the bottom of [app.key]'s plain switch, so every state above has
-		// already taken the keyboard, and esc while an answer is streaming is a
-		// key the person is far more likely to want next.
-		//
-		// It costs no rows. The legend is on the frame in every state, and this is
-		// the slot it already carries — so a draft that starts looking like a rule
-		// changes one word at the end of a line and moves nothing.
-		return standSayHint
 	case a.spellOffered():
 		// AND THE DRAFT LOOKS LIKE SOMETHING TO BUILD, with room left to say what
 		// it means, so the slot offers to spell it out (spellout.go). It ranks

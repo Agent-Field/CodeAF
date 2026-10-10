@@ -216,15 +216,6 @@ func TestTheGridsReadingsAreAskedForAndNotTaken(t *testing.T) {
 // what a band draws takes the reading first, exactly as the arrival does and the
 // update loop then files.
 
-// takeHomeNews reads one subject's inbox and files it.
-func takeHomeNews(a *app, subject bandSubject, now time.Time) {
-	if cmd := a.askHomeNews(subject, now); cmd != nil {
-		if msg, ok := cmd().(homeNewsMsg); ok {
-			a.tookHomeNews(msg)
-		}
-	}
-}
-
 // takeHomeLeftOff peeks at one conversation's journal and files it.
 func takeHomeLeftOff(a *app, transcript string) {
 	if cmd := a.askHomeLeftOff(transcript); cmd != nil {

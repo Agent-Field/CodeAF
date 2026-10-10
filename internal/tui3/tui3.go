@@ -51,11 +51,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/credits"
-	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/leave"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/subharness"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
 )
@@ -77,14 +75,6 @@ type Agent interface {
 	// the blind model; which is why the surface keeps the attachment tray until
 	// this has answered (attach.go).
 	SubmitImage(ctx context.Context, text string, images []session.Image) (<-chan session.Event, error)
-	// SubmitStanding is Submit for a draft the person MARKED as something to
-	// keep true — the chord on the box (standmark.go). The turn is an ordinary
-	// one in every respect except what the engine puts in front of the sentence:
-	// an instruction that the sentence was marked, so it is shaped into a
-	// standing order's card and never carried out as one-off work (internal/
-	// session's standing_mark.go). It refuses — with an error and no stream —
-	// where this build has no ambient side to hold one.
-	SubmitStanding(ctx context.Context, text string) (<-chan session.Event, error)
 	// Interrupt cancels the in-flight turn, keeping its partial reply. It is
 	// THE PERSON'S OWN STOP and nothing else.
 	Interrupt()
@@ -691,7 +681,7 @@ type Options struct {
 	// IT IS A SECOND SEAM AND NOT AN ARGUMENT ON THE FIRST, because the two
 	// build different things. [Fresh] mints a session folder in THIS project's
 	// bucket and hands back where it put it; an errand's folder is made by the
-	// surface, under the standing root, and is deliberately not a place [Fresh]
+	// surface, under the errands root, and is deliberately not a place [Fresh]
 	// is allowed to put anything — a conversation home would then list is exactly
 	// what asking from home exists to avoid. So the caller names the folder, and
 	// the door only has to point a config at it.
@@ -726,11 +716,11 @@ type Options struct {
 	// root under this process belongs to the wrong machine (home.go).
 	Answer func(dir string, kind session.QuestionKind, id uint64, key string) error
 
-	// StandingRoot is where the ambient side keeps its things —
-	// ~/.codeaf/v3/standing — which is where an errand's folder is made and where
-	// one that came to nothing stays. Empty falls through to the sibling of the
-	// projects root, which is what that path is by construction (internal/standing).
-	StandingRoot string
+	// ErrandsRoot is where home's `ask here` keeps its errands —
+	// ~/.codeaf/v3/errands — one folder per errand, made by this surface before
+	// the agent is built. Empty falls through to the sibling of the projects
+	// root, which is what that path is by construction (homeexchange.go).
+	ErrandsRoot string
 
 	// Workspace is the directory the agent works in; its base name is the
 	// place shown in the status line. Empty takes the process's cwd.
@@ -1152,17 +1142,6 @@ type Options struct {
 	Input  io.Reader
 	Output io.Writer
 
-	// Standing is the ambient side's seam: what home reads to draw the band of
-	// items under a project, what a pause or a stop is written back through, and
-	// what /status derives its `keeping watch` line from ([StandingSeam] says
-	// what each function owes).
-	//
-	// The zero value is a surface with the ambient side OFF, and it is off the
-	// way every optional capability here is off: home draws no item band at all,
-	// the status line grows no segment, and /status says nothing about keeping
-	// watch. Nothing half-works and nothing claims to.
-	Standing StandingSeam
-
 	// Automations is how this window reads and changes automations
 	// ([AutomationsSeam] says what each function owes). The zero value is a
 	// window with automations off: no page, no lines, no notifications.
@@ -1227,7 +1206,7 @@ type Options struct {
 // — because a figure a person set and nothing read would be worse than a figure
 // they were never offered.
 type ErrandOrders struct {
-	// Dir is the folder the surface already made, under the standing root. The
+	// Dir is the folder the surface already made, under the errands root. The
 	// transcript and every sidecar go inside it.
 	Dir string
 	// Workspace is the project this errand is about: the destination the layer's
@@ -1247,145 +1226,6 @@ type ErrandOrders struct {
 // sigQuitMsg is an outside request to leave, on its way to [app.quit]. See
 // [forwardSignals] for why this surface catches those requests itself.
 type sigQuitMsg struct{}
-
-// StandingSeam is everything this surface needs from internal/standing, as
-// FUNCTIONS rather than as a store.
-//
-// It is functions for the reason [Options.Models] is one: the door owns where
-// the store lives and how it is opened, and a test owns neither. Handing the
-// surface a *standing.Store would make "home with three items on it" a test
-// that writes JSON documents into a temp directory to assert a row's spacing.
-//
-// EVERY FIELD IS INDEPENDENTLY OPTIONAL. A door that can list items but cannot
-// install an OS timer wires Items and leaves Watch nil, and what a person then
-// sees is item rows and no `keeping watch` line — which is exactly the truth.
-type StandingSeam struct {
-	// Items answers the items belonging to one workspace, in whatever order the
-	// store holds them; this surface applies its own triage order
-	// (homestanding.go's [standTriage]). It must NOT block: home calls it on
-	// every three-second beat and on the keystroke that opens the screen.
-	//
-	// Nil is a home with no item band, which is the ambient side switched off.
-	Items func(workspace string) []standing.Item
-
-	// All answers EVERY standing item this machine holds, in the store's own
-	// order, and each item carries the workspace it belongs to.
-	//
-	// IT EXISTS BECAUSE A PAGE THAT WANTS THE WHOLE SET WAS ASKING Items ONCE
-	// PER PROJECT. Items is the store's List filtered down to one workspace, so
-	// a page joining ids against titles across five projects paid five walks of
-	// the standing root and five parses of every document on the machine to
-	// build one map — a cost that grows as projects × orders, which PERF.md
-	// does not allow of anything a keystroke or a beat can reach. One question
-	// asked once is the same answer.
-	//
-	// Like [StandingSeam.Items] it must NOT block: the spend place asks it on
-	// the way in and on the three-second beat.
-	//
-	// Nil is a surface with no way to ask the question at all — a connection,
-	// whose door answers by workspace and has no "every workspace" on the wire
-	// — and a caller then names nothing rather than fanning out into N reads.
-	All func() []standing.Item
-
-	// Save writes one item back — the pause and the stop keys on a home row, and
-	// nothing else on this surface. It returns the write's error and home says
-	// so on its own message line rather than swallowing it: a row that redrew as
-	// paused over a store that refused the write would be the screen lying about
-	// the disk.
-	//
-	// Nil is a home where `p` and `s` say the change cannot be made here.
-	Save func(item standing.Item) error
-
-	// Running reports whether some process is CHECKING OR FIRING one item at
-	// this instant, by id, and what it is doing ([standing.RunningMark]). It is
-	// separate from the item document because it is not a fact the document
-	// holds: the pass may be happening in another window, or in the operating
-	// system's timer with no window open at all, and what says so is a marker
-	// the store writes and doubts (internal/standing's running.go).
-	//
-	// IT ANSWERS THE MARK AND NOT A BOOL because the card says which half of a
-	// pass it caught and how long ago it started — `● checking now · since 4s`
-	// — and a surface that were handed only a yes would have to invent both.
-	//
-	// Nil answers no for everything, and a home where no row ever wears `●` is
-	// honest: the glyph is a claim about right now, and a surface with no way to
-	// ask must not make it.
-	Running func(id string) (standing.RunningMark, bool)
-
-	// Watch is what /status prints under `keeping watch`, derived and never
-	// asserted ([standing.WatchStatus]). The bool is whether there is an answer
-	// at all — a build with no OS timer support, a remote engine — and a false
-	// prints nothing, which is the emptiness law applied to a whole line.
-	Watch func() (standing.WatchStatus, bool)
-
-	// BackgroundTold reports whether this machine has already been told, once,
-	// that background checks are on — the marker the first standing item writes
-	// under the store root (internal/session's BackgroundTold).
-	//
-	// /status uses it for one word and one word only — why nothing is checking.
-	// "Nothing has ever stood here" and "the row is off" are two different
-	// situations for the person in front of the screen, and the first has a
-	// different move in it from the second.
-	//
-	// Nil is a surface that cannot tell them apart, and it says neither.
-	BackgroundTold func() bool
-
-	// Background is this machine's timer itself, and it is the `background
-	// checks` settings row's own hand: what the row reads is derived from
-	// [standing.Watch.Status], and turning the row installs or removes it
-	// (internal/config's backgroundRow).
-	//
-	// It is a second field beside [StandingSeam.Watch] rather than a widening
-	// of it because they answer different questions. Watch is a READING for the
-	// /status line and may one day come from somewhere this process cannot
-	// reach; this is a timer on THIS machine that can be turned on and off, and
-	// nil means there is none to turn — the row is then absent from the sheet
-	// entirely.
-	Background standing.Watch
-
-	// Ticking reports that THIS PROCESS is running the standing pass itself —
-	// the every-five-minutes walk any open window takes when it gets the store's
-	// lock (cmd/codeaf's startStandingTicks).
-	//
-	// IT IS WHAT LETS /status SAY THE AMBIENT SIDE IS NOT BEING CHECKED. Without
-	// it the line could only say `installed` or assert `while a window is open`
-	// about a window it had not asked, and a person asking /status about a
-	// machine where nothing is keeping time would be told a window was.
-	//
-	// Nil answers no, on [StandingSeam.Running]'s law: this is a claim about
-	// right now, and a surface with no way to ask must not make it.
-	Ticking func() bool
-
-	// Runs is the standing ledger since a moment, summed per item id — how many
-	// times each thing fired and what it spent ([standing.Store.RunsSince]). It
-	// is what a card means by `ran 3 times this week`.
-	//
-	// IT ANSWERS THE WHOLE MACHINE IN ONE CALL, deliberately: the ledger is one
-	// file per day, so a surface asking item by item would open the same seven
-	// files once per row it drew. The surface reads it on home's own beat and
-	// sums whichever ids the card it is drawing owns.
-	//
-	// It must not block — it is a walk of at most a month of small files — and
-	// nil is a surface that simply draws no weekly line, which is the emptiness
-	// law applied to a fact nobody can answer.
-	Runs func(since time.Time) map[string]standing.Spend
-
-	// SetEffort moves the rung one item's firings and its checks think at
-	// (internal/standing's [Store.SetStandingEffort]) — `alt+e` on that item's
-	// card, and nothing else on this surface.
-	//
-	// IT IS ITS OWN FUNCTION AND NOT A FIELD ON THE ITEM [StandingSeam.Save]
-	// TAKES, and the store says why in full: Save writes a whole document, so a
-	// surface holding an item it read a beat ago would write back the check
-	// results, the spend and the next-due that the ticker has moved since — and
-	// quietly undo a firing to change a word nobody was looking at. The rung is
-	// a read-modify-write under the item's own lock and it happens in the store.
-	//
-	// Nil is a home where the key says the change cannot be made here, in the
-	// same sentence the pause and stop keys already say it in
-	// ([homeItemNoStore]).
-	SetEffort func(id string, rung effort.Rung) error
-}
 
 // Run opens the surface and blocks until it closes. A cancelled context closes
 // it the same way ctrl+c does.

@@ -227,6 +227,20 @@ func TestRunsRecordAndChangesReachEveryReader(t *testing.T) {
 	if len(history) != 1 || history[0].Line != "drafted it" || history[0].USD != 0.12 {
 		t.Fatalf("history %+v", history)
 	}
+	// AND THE LIST SAYS WHAT EACH ONE LAST CAME TO, read from the runs and
+	// never kept in the document.
+	listed, _ := s.List()
+	if len(listed) != 1 || listed[0].Last == nil || listed[0].Last.Line != "drafted it" {
+		t.Fatalf("the list's last run = %+v", listed)
+	}
+	got, _ := s.Get(a.ID)
+	if got.Last == nil || got.Last.ID != run.ID {
+		t.Fatalf("get's last run = %+v", got.Last)
+	}
+	saved, err := s.Update(got)
+	if err != nil || saved.Last != nil {
+		t.Fatalf("an update kept a last run in the document: %+v, %v", saved.Last, err)
+	}
 }
 
 // ONE WINDOW TELLS THE PERSON. Every open window reads the same finished run;

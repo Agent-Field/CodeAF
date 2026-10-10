@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // switchLab is a machine with something of every kind on it: a conversation
@@ -95,14 +95,31 @@ func TestSinceYouLeftLinesAreDoorsIntoTheirPlaces(t *testing.T) {
 		Status: string(session.TaskDone), EndedAt: now.Add(-time.Minute), FilesChanged: 1})
 	a := lab.app(lab.mine)
 	a.width, a.height = 120, 40
-	// A watch that fired while nobody was looking is the best `since you left`
-	// line this product will ever have, and it is a door into the standing place.
-	a.stands.Items = func(string) []standing.Item {
-		return []standing.Item{{ID: "w1", Words: "the 6am repo watch", Status: standing.StatusActive,
-			Workspace: lab.workspace("alpha"), LastFired: now.Add(-time.Minute),
-			LastChecked: now.Add(-time.Minute), LastCheckLine: "nothing had changed",
-			LastOutcome: standing.OutcomeNothing}}
+	// An automation that ran while nobody was looking is the best `since you
+	// left` line this product will ever have, and it is a door into the
+	// automations place.
+	store, err := automation.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
+	a.autos = automationsSeamOf(store)
+	watch, err := store.Create(automation.Automation{Title: "the 6am repo watch", Workspace: lab.workspace("alpha"),
+		Schedule: automation.Schedule{Every: "1h"}, Look: &automation.Look{Command: "true", Condition: "a new tag"},
+		Action: automation.Action{Say: "a new tag landed"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := store.QueueNow(watch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = store.Start(run.ID)
+	run.Outcome, run.Line = automation.OutcomeDone, "a new tag landed"
+	if err := store.Finish(run); err != nil {
+		t.Fatal(err)
+	}
+	readAutomationsNow(t, a)
 	a.openHome()
 	// A look stamp is what makes anything "since you left" at all.
 	a.home.seen = now.Add(-30 * time.Minute)
@@ -114,7 +131,8 @@ func TestSinceYouLeftLinesAreDoorsIntoTheirPlaces(t *testing.T) {
 	doors := map[string]bool{}
 	for i, line := range a.home.lines {
 		// THE LEDGER IS ITS OWN PANEL ON THE GRID, and the other panels' doors
-		// into the same places (next up's rows open standing too) are not it.
+		// into the same places (the automations panel's rows open that place
+		// too) are not it.
 		if line.kind != homeLedger || line.cell == nil || line.cell.panel != panelLeft {
 			continue
 		}
@@ -122,39 +140,26 @@ func TestSinceYouLeftLinesAreDoorsIntoTheirPlaces(t *testing.T) {
 			t.Fatalf("the ledger line %q names no place", line.project)
 		}
 		doors[line.project] = true
-		if line.project != "standing" {
+		if line.project != placeAutomationsWord {
 			continue
 		}
 		a.home.cursor = i
 		a.homeEnter()
-		// THE DOOR WAS WALKED THROUGH AND THE PLACE ANSWERED — with the watch the
-		// line was about, on the shelf that holds it.
-		//
-		// This assertion used to be the OPPOSITE fact: this window holds no agent,
-		// so the standing place refused in its own words and the refusal was the
-		// proof the key had reached it. THE FOURTH SHELF ENDED THAT. A machine
-		// holding an order in another project now has a page to open, and the
-		// conversation seam coming back empty is no longer an answer about the
-		// machine (place_standing_test.go's [TestAnOrderInAnotherProjectReachesTheStandingPage]
-		// states the fault it repairs). The law under the old assertion is
-		// untouched — the line is a door — so it is asked for directly: the place
-		// is what the frame is now on, and the watch is on it. The refusal itself
-		// is still pinned where it is still true, over a machine holding nothing
-		// at all (the standing whisper's own tests, [placeWhisper]).
-		if a.page != pageStanding || !a.at(pageStanding) {
-			t.Fatalf("the standing ledger line opened nothing: page %v, notes %q",
-				a.page, homeNotes(a))
+		// THE DOOR WAS WALKED THROUGH AND THE PLACE ANSWERED, with the automation
+		// the line was about on it.
+		if !a.at(pageAutomations) {
+			t.Fatalf("the automations ledger line opened nothing: page %v, notes %q", a.page, homeNotes(a))
 		}
-		if screen := standingPlaceScreen(a); !strings.Contains(screen, "the 6am repo watch") {
-			t.Fatalf("the door opened a place without the watch it was about:\n%s", screen)
+		if screen := automationsScreen(a); !strings.Contains(screen, "the 6am repo watch") {
+			t.Fatalf("the door opened a place without the automation it was about:\n%s", screen)
 		}
 		// HOME IS PUT BACK before the walk goes on, because the rest of this test
 		// is about the ledger's other lines and a place left standing would have
 		// them pressed into the wrong keyboard.
 		a.showPage(pageHome)
 	}
-	if !doors["standing"] || !doors["activity"] {
-		t.Fatalf("the ledger drew %v, and both the watch and the landed work happened", doors)
+	if !doors[placeAutomationsWord] || !doors["activity"] {
+		t.Fatalf("the ledger drew %v, and both the automation and the landed work happened", doors)
 	}
 }
 
@@ -220,35 +225,6 @@ func TestTheLedgersMemoryFiguresComeThroughOneSeam(t *testing.T) {
 	}
 	if strings.Contains(switchFrame(a), "learned") {
 		t.Fatalf("a figure nobody can ask for was drawn:\n%s", switchFrame(a))
-	}
-}
-
-// A STANDING ITEM IS STILL A STANDING ITEM ON THIS LIST: same row kind, same
-// card, same two verbs.
-func TestAWatchKeepsItsOwnRowKindInsideTheFlatList(t *testing.T) {
-	lab := newHomeLab(t)
-	now := time.Now()
-	work := lab.workspace("alpha")
-	mine := lab.session("-alpha", "aaaa000000000001", "here", work, now)
-	a := lab.app(mine)
-	a.width, a.height = 120, 30
-	a.stands.Items = func(string) []standing.Item {
-		return []standing.Item{{ID: "w1", Words: "watch the repo", Status: standing.StatusActive,
-			Workspace: work, NeedsPerson: "should I send the digest?", Updated: now.Add(-time.Hour)}}
-	}
-	a.openHome()
-	at := -1
-	for i, line := range a.home.lines {
-		if line.kind == homeItem {
-			at = i
-		}
-	}
-	if at < 0 {
-		t.Fatalf("the watch has no row:\n%s", switchFrame(a))
-	}
-	a.home.cursor = at
-	if !strings.Contains(switchFrame(a), "Watch the Repo") && !strings.Contains(switchFrame(a), "watch the repo") {
-		t.Fatalf("the watch's words are not on the row:\n%s", switchFrame(a))
 	}
 }
 

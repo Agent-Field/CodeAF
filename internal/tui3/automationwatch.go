@@ -73,6 +73,9 @@ type automationsWatch struct {
 	started bool
 	cursor  int64
 	list    []automation.Automation
+	// active is every run queued or in hand, which the place reads to offer a
+	// stop and to mark a row as running.
+	active []automation.Run
 	// running is how many runs are in hand, and others how many windows are
 	// open besides this one. known is false until the first reading lands, and
 	// the quit question is not asked from an unknown.
@@ -87,6 +90,8 @@ type automationsReadMsg struct {
 	runs    []automation.Run
 	away    []automation.Run
 	list    []automation.Automation
+	listed  bool
+	active  []automation.Run
 	running int
 	windows int
 	known   bool
@@ -129,13 +134,14 @@ func (a *app) readAutomations() tea.Cmd {
 			msg.runs, msg.cursor = runs, next
 		}
 		if list, err := seam.List(); err == nil {
-			msg.list = list
+			msg.list, msg.listed = list, true
 		}
 		if !started {
 			msg.away = automationsAway(seam, msg.list, file)
 		}
 		if seam.Active != nil {
 			if active, err := seam.Active(); err == nil {
+				msg.active = active
 				for _, run := range active {
 					if run.Phase == automation.PhaseRunning {
 						msg.running++
@@ -197,10 +203,17 @@ func automationsAway(seam AutomationsSeam, list []automation.Automation, file st
 func (a *app) automationsRead(msg automationsReadMsg) tea.Cmd {
 	a.watch.started = true
 	a.watch.cursor = msg.cursor
-	if msg.list != nil {
+	// AN EMPTY STORE IS A READING TOO. A list is replaced whenever the store
+	// answered, so the last automation deleted leaves the window with none
+	// rather than with the list from before; a reading that failed keeps what
+	// the window had.
+	if msg.listed {
 		a.watch.list = msg.list
 	}
 	a.watch.running = msg.running
+	if msg.known {
+		a.watch.active = msg.active
+	}
 	if msg.windows > 0 {
 		a.watch.others = msg.windows - 1
 	}
@@ -268,7 +281,7 @@ func (a *app) notifyAutomation(item automation.Automation, run automation.Run) t
 		if !seam.Claim(run.ID) {
 			return nil
 		}
-		if desktopNotify(title, body) {
+		if osNotify(title, body) {
 			return nil
 		}
 		return automationNotifyMsg{title: title, body: body}

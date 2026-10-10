@@ -223,7 +223,7 @@ func TestEnterFromTheLayerTalksAboutItInstead(t *testing.T) {
 func TestAltEnterOnAnotherPlaceOpensNoLayer(t *testing.T) {
 	a := placeApp(t)
 	a.width, a.height = 120, 30
-	for _, id := range []page{pageSpend, pageTasks, pageStanding} {
+	for _, id := range []page{pageSpend, pageTasks, pageAutomations} {
 		a.showPage(id)
 		drive(t, a, key("alt+enter"))
 		if a.composerShowing() {

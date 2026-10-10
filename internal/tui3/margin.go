@@ -6,17 +6,16 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/Agent-Field/codeaf/internal/standing"
-	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
+	"github.com/Agent-Field/codeaf/internal/automation"
 )
 
 // THE MARGIN: ONE COLUMN, THREE SECTIONS, AND A DOOR AT THE FOOT OF THE TWO THAT HAVE ONE.
 //
 // The column on the right has been this conversation's WORK and nothing else
-// (task.go's rail). Everything else standing over the conversation — the orders
-// that keep being true while nobody is looking — lived on a page a person had to
-// know the name of, behind a count on the status row (standdoor.go). Two things
-// govern a conversation and only one of them was on the frame.
+// (task.go's rail). The other thing a conversation can leave behind it — the
+// automations it set up, which go on running while nobody is looking — lived on
+// a page a person had to know the name of. Two things come out of a
+// conversation and only one of them was on the frame.
 //
 // So the column carries both. Real rows earn dim labels in the words the
 // product already uses:
@@ -25,10 +24,10 @@ import (
 //	⠙ Fix nil-map             #7
 //	+ /task
 //
-//	standing
-//	◦ keep the tests green
-//	◦ never touch the API   everywhere
-//	+ /standing
+//	automations
+//	◷ weekly update
+//	◷ ci on main
+//	+ /automations
 //
 // ── THE LAWS THIS FILE APPLIES ──
 //
@@ -43,24 +42,12 @@ import (
 //
 //   - TWO ROWS OF PERMANENT INK AND NO MORE. The `+` rows are the whole of what
 //     this file adds to a column that is otherwise the session's own news.
-//     Anything else worth saying about an order is on
-//     the order's page, one press away.
+//     Anything else worth saying about an automation is on the place, one press
+//     away.
 //
-//   - THE GLYPH CARRIES THE HUE (docs/HOME-BRIDGE.md's colour law). `▲` wears
-//     the waiting hue on the one row where a person is genuinely being waited on
-//     — the amber every surface says "waiting on you" in, since the question
-//     violet was retired on 2026-09-11 (styles.go) — the breathing `●` wears the
-//     muted voice the spinner already speaks in, and everything else — the title,
-//     the scope tail, the labels — is calm.
-//
-//   - A SCOPE TAIL ONLY WHERE THE SCOPE IS NOT THE DEFAULT. An order made in a
-//     chat governs the project ([standing.AltitudeProject] is the zero value), so
-//     saying so on every row would be printing the default in the one column with
-//     no room to spare. The two that are not the default say which they are
-//     ([standScopeTail]).
-//
-// TASKS NEVER CARRY A SCOPE MARK. A task is this conversation's, always; scope is
-// a standing order's concept and belongs to nothing else on this column.
+//   - THE GLYPH CARRIES THE STATE, through the one door every mark comes
+//     through (docs/design/icons/DESIGN.md): running, paused, or what its last
+//     run came to. The title is calm.
 
 // The margin's own words. Both labels are words this product already uses for
 // these two things, and both are quoted in internal/manual/chat's pages exactly
@@ -68,9 +55,9 @@ import (
 const (
 	// marginTasksWord and marginStandWord are the two section labels: dim,
 	// lowercase, and the same two nouns the rest of the product calls these
-	// things — the roster is tasks, and what stands is standing.
+	// things — the roster is tasks, and what runs on the clock is automations.
 	marginTasksWord = "tasks"
-	marginStandWord = "standing"
+	marginStandWord = placeAutomationsWord
 	// marginJobsWord is the jobs section's label: the same noun the rest of
 	// the product calls background work, dim and lowercase like the two
 	// above. It has no `+` door — a job is started by a tool, not typed.
@@ -80,31 +67,32 @@ const (
 	// because the row is teaching the command: what lands in the box is what a
 	// person would have typed.
 	marginTaskType  = "/task "
-	marginStandType = "/standing "
+	marginStandType = "/" + placeAutomationsWord + " "
 	// marginDoorMark is what a door row leads with. A `+` is the one mark on this
 	// surface that already means "one more of these" (the strip's own +N counts
 	// what it could not draw), and it is what keeps the row from reading as a
 	// third task.
 	marginDoorMark = "+ "
-	// marginStandMoreWord is what the standing label calls the orders the column
-	// had no room for ([app.marginStandHead]). It is the band's own word for
+	// marginStandMoreWord is what the automations label calls the ones the
+	// column had no room for ([app.marginStandHead]). It is the band's own word for
 	// the same fact (`+2 more`, sidecol.go), because a column that said `hidden`
 	// in one place and `more` in another would be two vocabularies for "there
 	// is another page of this".
 	marginStandMoreWord = "more"
 )
 
-// marginStandCost is what this block spends before it has drawn a single order:
-// the `+ /task` door, which is drawn whatever else the column can afford, then
-// the blank line that separates the two sections, the `standing` label, and the
-// `+ /standing` door. It is counted here rather than measured because the rows
+// marginStandCost is what this block spends before it has drawn a single
+// automation: the `+ /task` door, which is drawn whatever else the column can
+// afford, then the blank line that separates the two sections, the
+// `automations` label, and the `+ /automations` door. It is counted here rather than measured because the rows
 // are built in [app.marginRows] and a block that guessed its own height would be
 // a column measured twice.
 const marginStandCost = 4
 
-// marginStandMax is the most orders the column draws at once, however tall the
-// frame is. Three is a glance; past three the rows stop being read one at a time,
-// and what a person wants then is the page `+ /standing` types the command for.
+// marginStandMax is the most automations the column draws at once, however
+// tall the frame is. Three is a glance; past three the rows stop being read one
+// at a time, and what a person wants then is the place `+ /automations` types
+// the command for.
 // The rest are counted on the label rather than dropped in silence
 // ([app.marginStandHead]).
 const marginStandMax = 3
@@ -115,70 +103,30 @@ const marginStandMax = 3
 // history fills whatever is left ([marginJobsFit]).
 const marginJobsCost = 2
 
-// marginTitleFloor is how little room a standing row's title may be left with
-// before the scope tail gives way. It is [railTitleFloor] and not a second
-// number: the two rows are the same width, and a title that survives a task's
-// handle survives an order's reach.
-const marginTitleFloor = railTitleFloor
-
 // marginDoorWord is one door row as it is drawn.
 func marginDoorWord(typed string) string { return marginDoorMark + strings.TrimSpace(typed) }
 
-// ── what stands here ────────────────────────────────────────────────────────
+// ── what this conversation set up ───────────────────────────────────────────
 
-// marginStanding is the orders governing this conversation, in the order the
-// column reads them: what has a next occasion first, then what merely holds.
-//
-// WHY THAT ORDER. A reminder, a routine and a watch are all going to DO
-// something, and when is the question a person glancing at a column has; a rule
-// is true and does nothing at all ([standHoldsWord] is the whole of its status
-// everywhere else on this surface). So the things with an occasion coming lead,
-// and the rules sit under them — which is the same reading order the page's
-// shelves have, one question up.
-//
-// THE SEAM'S OWN ORDER IS KEPT INSIDE EACH HALF. StandingHere answers
-// conversation, project, machine, recent first within a shelf (internal/session's
-// standing_orders.go), and a column that sorted again would be a second
-// authority on a question the engine has already answered.
-//
-// IT IS CACHED ON HOME'S OWN BEAT, for [app.keepingCount]'s reason and it is the
-// same reason: this is asked at LAYOUT, the layout is asked twice a frame, the
-// frame turns thirty times a second while a turn is running, and the store is a
-// directory of documents. A reading three seconds old is a reading that is right
-// — nothing standing changes faster than that — and the glyph that moves is
-// resolved on the paint clock ([app.marginGlyph]).
-func (a *app) marginStanding() []StandingItemView {
-	agent, ok := a.agent.(standingCountAgent)
-	if !ok {
-		// A SURFACE WHOSE ENGINE CANNOT BE ASKED HAS NO SECTION AT ALL — not an
-		// empty one. A capability that cannot work is absent, not broken.
+// marginStanding is the automations this conversation set up, in the place's
+// own order — the watcher's reading of the store, which every window already
+// takes (automationwatch.go), so the column asks nothing of the disk.
+func (a *app) marginStanding() []automation.Automation {
+	if !a.autos.on() || strings.TrimSpace(a.file) == "" {
 		return nil
 	}
-	if now := a.now(); !a.standRailAt.IsZero() && now.Sub(a.standRailAt) < keepEvery {
-		return a.standRail
-	}
-	stand, _ := agent.StandingHere()
-	occasions := make([]StandingItemView, 0, len(stand))
-	var holds []StandingItemView
-	for _, item := range stand {
-		mark, running := a.standRunning(item.ID)
-		view := StandingItemView{Item: item, Running: running, Mark: mark}
-		if item.When.Kind == standing.WhenHold {
-			holds = append(holds, view)
-			continue
+	var here []automation.Automation
+	for _, item := range a.watch.list {
+		if item.Status != automation.StatusFinished && sameTranscript(item.Origin.Transcript, a.file) {
+			here = append(here, item)
 		}
-		occasions = append(occasions, view)
 	}
-	a.standRail, a.standRailAt = append(occasions, holds...), a.now()
-	return a.standRail
+	return here
 }
 
-// marginStandingShows reports whether the column carries the standing section at
-// all — which is whether this surface's engine can be asked what stands here.
-func (a *app) marginStandingShows() bool {
-	_, ok := a.agent.(standingCountAgent)
-	return ok
-}
+// marginStandingShows reports whether the column carries the automations
+// section at all — which is whether this window can read automations.
+func (a *app) marginStandingShows() bool { return a.autos.on() }
 
 // ── the rows ────────────────────────────────────────────────────────────────
 
@@ -228,11 +176,11 @@ func (a *app) marginRows(width, room int) []railLine {
 			if len(stand) > 0 {
 				out = append(out, railLine{text: a.marginStandHead(width, len(stand)-shown), entry: -1})
 			}
-			for _, view := range stand[:shown] {
+			for _, item := range stand[:shown] {
 				out = append(out, railLine{
-					text:  a.marginStandRow(view, width),
+					text:  a.marginStandRow(item, width),
 					entry: -1,
-					stand: view.Item.ID,
+					stand: item.ID,
 				})
 			}
 			out = append(out, railLine{
@@ -354,81 +302,17 @@ func (a *app) marginDoorLine(typed string, width int) string {
 	return mark + a.pal.dim(fit(word, max(0, width-ansi.StringWidth(marginDoorMark))))
 }
 
-// marginStandRow is one order as one line: the glyph every codeaf surface agrees
-// on, what the order is called, and its reach when its reach is not the default.
-//
-// THE TITLE IS THE MUTED VOICE and never the ink. A task that is running is the
-// news on this column and wears the ink for it (task.go's [app.railTitle]); an
-// order is a thing that is quietly true, which is exactly what the muted voice is
-// for — and the one row that IS asking for something says so with its glyph.
-//
-// THE TAIL GIVES WAY FIRST, which is this column's own trade for the same shape:
-// a name a person recognizes the order by outranks a word about its reach
-// (task.go's [app.railEntryRows] drops a handle on the same terms, and
-// [standFitNote] makes the same call on home's rows).
-func (a *app) marginStandRow(view StandingItemView, width int) string {
-	glyph := a.marginGlyph(view)
-	room := width - ansi.StringWidth(a.marginPlainGlyph(view)) - 1
-	tail := standScopeTail(view.Item.Level())
-	if tail != "" && room-ansi.StringWidth(tail)-1 < marginTitleFloor {
-		tail = ""
-	}
-	if tail != "" {
-		room -= ansi.StringWidth(tail) + 1
-	}
+// marginStandRow is one automation as one line: the mark its state wears and
+// what it is called, in the muted voice — a task that is running is the news on
+// this column and wears the ink for it (task.go's [app.railTitle]); an
+// automation is a thing that is quietly on the clock.
+func (a *app) marginStandRow(item automation.Automation, width int) string {
+	glyph := a.icon(automationRowGlyph(item, a.watch.active))
+	room := width - ansi.StringWidth(glyph) - 1
 	if room < 1 {
 		return glyph
 	}
-	title := fit(strings.TrimSpace(view.Item.Title()), room)
-	line := glyph + " " + a.pal.muted(title)
-	if tail == "" {
-		return line
-	}
-	if pad := room - ansi.StringWidth(title) + 1; pad > 0 {
-		line += strings.Repeat(" ", pad)
-	}
-	return line + a.pal.dim(tail)
-}
-
-// marginGlyph is the row's one coloured cell, and it BREATHES exactly where the
-// status row's chip breathes (homestanding.go's [app.keepingWord]): while a pass
-// has this order in its hands the cell is the spinner, on [spinnerStep]'s own
-// grid so two moving things on one frame never beat against each other, and it is
-// a still mark every other moment.
-//
-// THE HUE IS SPENT ON ONE STATE AND NO OTHER. `▲` is a person being waited on
-// (docs/HOME-BRIDGE.md's colour law), which on this column is the only row
-// somebody has to do something about; the breathing cell takes the muted voice
-// the spinner already speaks in, and a still order is dim like every other fact
-// this column reports.
-func (a *app) marginGlyph(view StandingItemView) string {
-	if view.Running {
-		// The linear tier's objection to a spinner is the one it makes everywhere:
-		// a claim repeated thirty times a second is heard thirty times a second by
-		// a surface being read aloud. A still mark makes it once.
-		if a.linear || a.pal.ascii {
-			return a.pal.muted(glyphRunASCII)
-		}
-		return a.pal.muted(tokens.Spinner(a.paints / spinnerStep))
-	}
-	glyph := a.marginPlainGlyph(view)
-	if view.Item.NeedsPerson != "" {
-		return a.pal.askBold(glyph)
-	}
-	return a.pal.dim(glyph)
-}
-
-// marginPlainGlyph is that same cell with no hue on it, which is what the row's
-// arithmetic measures: a painted glyph carries escape sequences and a budget
-// spent on those would cut the title short by the width of a colour.
-func (a *app) marginPlainGlyph(view StandingItemView) string {
-	if view.Running {
-		if a.linear || a.pal.ascii {
-			return glyphRunASCII
-		}
-		return tokens.Spinner(a.paints / spinnerStep)
-	}
-	return standGlyph(view.Item, false, false, a.pal.ascii)
+	return a.pal.dim(glyph) + " " + a.pal.muted(fit(strings.TrimSpace(item.Title), room))
 }
 
 // ── the pointer ─────────────────────────────────────────────────────────────
@@ -436,7 +320,7 @@ func (a *app) marginPlainGlyph(view StandingItemView) string {
 // marginPress answers a press on one of the margin's own lines, and reports
 // whether it took it — with whatever that press owes the loop. The rows this
 // column has always had are answered above it (room.go's [app.railPress]); what
-// is left here is a standing order, a job, the jobs label, and the two doors.
+// is left here is an automation, a job, the jobs label, and the two doors.
 //
 // IT CARRIES A COMMAND BECAUSE ONE OF THESE ROWS STARTS A READING. A job's row
 // opens that job's page, and the page's log is read on a beat rather than once
@@ -456,11 +340,11 @@ func (a *app) marginPress(line railLine) (tea.Cmd, bool) {
 		a.marginType(line.door)
 		return nil, true
 	case line.stand != "":
-		// THE ROW OPENS THE PAGE ON ITSELF. Everything a person can do to an order
-		// is a key on that page (standingpage.go), and a column two cells from a
-		// paragraph is not the place to grow a second set of them.
-		a.openStandingAt(line.stand)
-		return nil, true
+		// THE ROW OPENS THE PLACE ON ITSELF. Everything a person can do to an
+		// automation is a key on that place (place_automations.go), and a column
+		// two cells from a paragraph is not the place to grow a second set of
+		// them.
+		return a.openAutomationsAt(line.stand), true
 	}
 	return nil, false
 }

@@ -66,7 +66,7 @@ func projectsOrdered(in *homeGridInput) []session.Project {
 		}
 	}
 	if own == nil && launch != "" {
-		own = &session.Project{Path: launch, Name: standBareName(launch)}
+		own = &session.Project{Path: launch, Name: bareName(launch)}
 	}
 	if own == nil {
 		return out

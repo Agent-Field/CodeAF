@@ -7,8 +7,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -85,7 +85,7 @@ func TestThePlacesAreOneList(t *testing.T) {
 // counted; a sum, an act and a set of settings cannot, and a count on one of
 // those would be a number about nothing.
 func TestOnlyTheCollectionsWearACount(t *testing.T) {
-	for _, id := range []page{pageHome, pageTasks, pageStanding, pageMemory} {
+	for _, id := range []page{pageHome, pageTasks, pageAutomations, pageMemory} {
 		if !id.counted() {
 			t.Fatalf("%s holds a pile of things and would not wear a count", id.word())
 		}
@@ -163,7 +163,7 @@ func TestEveryPlaceOpensOnAnEmptyMachine(t *testing.T) {
 	a.width, a.height = 120, 40
 	// EVERY SEAM IS NIL AND NOTHING IS ON THE DISK. This is the machine somebody
 	// has just installed codeaf on, which is the only machine this test is about.
-	a.memory, a.stands, a.places = nil, StandingSeam{}, nil
+	a.memory, a.autos, a.places = nil, AutomationsSeam{}, nil
 	a.openHome()
 	for _, id := range pages() {
 		a.showPage(id)
@@ -195,9 +195,9 @@ func TestNothingIsEverPutBackBecauseNothingRefuses(t *testing.T) {
 	lab := newHomeLab(t)
 	a := lab.app("")
 	a.width, a.height = 120, 40
-	a.memory, a.stands, a.places = nil, StandingSeam{}, nil
+	a.memory, a.autos, a.places = nil, AutomationsSeam{}, nil
 	a.openHome()
-	for _, id := range []page{pageMemory, pageStanding, pageTasks} {
+	for _, id := range []page{pageMemory, pageAutomations, pageTasks} {
 		was := a.page
 		a.showPage(id)
 		if a.page == was && was != id {
@@ -273,7 +273,7 @@ func TestOnlyHomeDrawsTheBoxAndTheDraftsRule(t *testing.T) {
 	if !strings.Contains(text, targetProjectLead) || !strings.Contains(text, "› "+placeRestWord) {
 		t.Fatalf("home's foot lost its rule or its box:\n%s", text)
 	}
-	for _, id := range []page{pageTasks, pageStanding, pageSpend} {
+	for _, id := range []page{pageTasks, pageAutomations, pageSpend} {
 		a.showPage(id)
 		text := placeFrameText(a)
 		if strings.Contains(text, targetProjectLead) || strings.Contains(text, placeRestWord) {
@@ -487,12 +487,12 @@ func TestTheComposerIsAsleepWhileTheStripIsUp(t *testing.T) {
 // what kind of thing it is. Nobody has to be told the places exist twice.
 func TestTypingOffersAPlaceBesideTheConversations(t *testing.T) {
 	a := placeApp(t)
-	for _, r := range "sta" {
+	for _, r := range "aut" {
 		drive(t, a, key(string(r)))
 	}
 	text := placeFrameText(a)
-	if !strings.Contains(text, bandFoldGlyph+" standing") {
-		t.Fatalf("typing `sta` offered no place:\n%s", text)
+	if !strings.Contains(text, bandFoldGlyph+" "+placeAutomationsWord) {
+		t.Fatalf("typing `aut` offered no place:\n%s", text)
 	}
 	if !strings.Contains(text, placeRowWord) {
 		t.Fatalf("the offered place does not say what kind of thing it is:\n%s", text)
@@ -509,8 +509,8 @@ func TestTypingOffersAPlaceBesideTheConversations(t *testing.T) {
 	}
 	a.home.cursor = at
 	drive(t, a, key("enter"))
-	if a.page != pageStanding && a.page != pageHome {
-		t.Fatalf("enter on the standing place landed on %q", a.page.word())
+	if a.page != pageAutomations && a.page != pageHome {
+		t.Fatalf("enter on the automations place landed on %q", a.page.word())
 	}
 }
 
@@ -528,16 +528,16 @@ func TestTypingOffersAPlaceBesideTheConversations(t *testing.T) {
 func TestAPlaceOutranksEveryConversationTheWordsAlsoMatch(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
-	// Both conversations match `sta` on their own titles, so the place is not
+	// Both conversations match `aut` on their own titles, so the place is not
 	// winning by being the only row on the list.
-	mine := lab.session("-alpha", "aaaa000000000001", "standup notes",
+	mine := lab.session("-alpha", "aaaa000000000001", "autumn release notes",
 		lab.workspace("alpha"), now.Add(-2*time.Minute))
-	lab.session("-beta", "bbbb000000000001", "stacking the deck",
+	lab.session("-beta", "bbbb000000000001", "automating the deploy",
 		lab.workspace("beta"), now.Add(-3*time.Hour))
 	a := lab.app(mine)
 	a.width, a.height = 120, 30
 	a.openHome()
-	for _, r := range "sta" {
+	for _, r := range "aut" {
 		drive(t, a, key(string(r)))
 	}
 	place, lastChat, ask, action := -1, -1, -1, -1
@@ -589,61 +589,63 @@ func TestWordsNoPlaceAnswersToOfferNoPlaceRow(t *testing.T) {
 	}
 }
 
-// AND THE OFFERED PLACE SAYS WHAT IS BEHIND IT — `a place · 2 orders, 1 fired
-// today`, which is 1g's own row.
+// AND THE OFFERED PLACE SAYS WHAT IS BEHIND IT — `a place · 2 automations on
+// the clock`, which is 1g's own row.
 //
 // THE CLAUSE IS THE PLACE'S OWN ANSWER and this test asks the place for it as
 // well as reading the screen, so a row that drew the words by accident — out of
-// a title, out of the tab bar — cannot pass. And the firing half is ABSENT on a
-// day nothing fired, which is the emptiness law on a margin four cells wide.
+// a title, out of the tab bar — cannot pass. And a place with nothing on the
+// clock says nothing at all, which is the emptiness law on a margin four cells
+// wide.
 func TestAnOfferedPlaceSaysWhatIsBehindIt(t *testing.T) {
-	band := &standBand{}
 	lab := newHomeLab(t)
 	now := time.Now()
 	dir := lab.workspace("alpha")
 	mine := lab.session("-alpha", "aaaa000000000001", "porting the picker", dir, now.Add(-2*time.Minute))
-	fired := bandItem("one", "tell me when CI goes red", dir, standing.WhenEvery, "every twenty minutes")
-	// TODAY IS THE DAY THE TEST RUNS ON, so the firing is stamped at the instant
-	// the fixture is built rather than an hour back — an hour back is yesterday
-	// on a run that starts just after midnight, and a test that fails once a day
-	// is a test nobody believes.
-	fired.LastFired = now
-	quiet := bandItem("two", "check the release feed", dir, standing.WhenEvery, "every morning at nine")
-	band.items = []standing.Item{fired, quiet}
 	a := lab.app(mine)
-	band.wire(a)
+	store, err := automation.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	a.autos = automationsSeamOf(store)
+	first, _ := store.Create(automation.Automation{Title: "ci on main", Workspace: dir, Schedule: automation.Schedule{Every: "20m"},
+		Look: &automation.Look{Command: "true", Condition: "it went red"}, Action: automation.Action{Say: "CI is red"}})
+	if _, err := store.Create(automation.Automation{Title: "release feed", Workspace: dir, Schedule: automation.Schedule{Every: "0 9 * * *"},
+		Action: automation.Action{Do: "read the release feed"}}); err != nil {
+		t.Fatal(err)
+	}
+	readAutomationsNow(t, a)
 	a.width, a.height = 120, 30
 	a.openHome()
-	for _, r := range "sta" {
+	for _, r := range "aut" {
 		drive(t, a, key(string(r)))
 	}
-	if got := (placeStanding{}).summary(a); got != "2 orders, 1 fired today" {
-		t.Fatalf("the standing place says %q is behind it", got)
+	if got := (placeAutomations{}).summary(a); got != "2 automations on the clock" {
+		t.Fatalf("the automations place says %q is behind it", got)
 	}
 	text := placeFrameText(a)
-	if !strings.Contains(text, placeRowWord+" · 2 orders, 1 fired today") {
+	if !strings.Contains(text, placeRowWord+" · 2 automations on the clock") {
 		t.Fatalf("the offered place does not say what is behind it:\n%s", text)
 	}
-	// AND AN ORDER THAT REACHES THE WHOLE MACHINE IS COUNTED ONCE. It stands over
-	// every project, so the bands hold it under each of them; a clause that added
-	// those up would say six on a machine holding four.
-	everywhere := bandItem("three", "always run gofmt", dir, standing.WhenEvery, "before a change lands")
-	everywhere.Altitude = standing.AltitudeMachine
-	band.items = []standing.Item{fired, quiet, everywhere}
-	a.refreshHome()
-	if got := (placeStanding{}).summary(a); got != "3 orders, 1 fired today" {
-		t.Fatalf("a machine-wide order was counted more than once: %q", got)
+	// A PAUSED ONE IS NOT ON THE CLOCK.
+	if _, err := store.SetStatus(first.ID, automation.StatusPaused); err != nil {
+		t.Fatal(err)
 	}
-	// AND A DAY NOTHING FIRED ON SAYS ONLY WHAT IS THERE.
-	band.items = []standing.Item{quiet}
-	a.refreshHome()
-	if got := (placeStanding{}).summary(a); got != "1 order" {
-		t.Fatalf("a place with one quiet order says %q", got)
+	readAutomationsNow(t, a)
+	if got := (placeAutomations{}).summary(a); got != "1 automation on the clock" {
+		t.Fatalf("a place with one automation on the clock says %q", got)
 	}
-	// AND A MACHINE WITH NOTHING STANDING ON IT SAYS NOTHING AT ALL.
-	band.items = nil
-	a.refreshHome()
-	if got := (placeStanding{}).summary(a); got != "" {
+	// AND A MACHINE WITH NOTHING ON THE CLOCK SAYS NOTHING AT ALL.
+	if _, err := store.SetStatus(first.ID, automation.StatusPaused); err != nil {
+		t.Fatal(err)
+	}
+	all, _ := store.List()
+	for _, item := range all {
+		_ = store.Delete(item.ID)
+	}
+	readAutomationsNow(t, a)
+	if got := (placeAutomations{}).summary(a); got != "" {
 		t.Fatalf("a place with nothing in it says %q", got)
 	}
 }
@@ -708,9 +710,9 @@ func (c countingPlaces) ChangedIn(place string) int { return c[place] }
 func TestATabWearsTheCountTheSeamGivesIt(t *testing.T) {
 	a := placeApp(t)
 	a.places = countingPlaces{
-		pageTasks.word():    2,
-		pageSpend.word():    9,
-		pageStanding.word(): 0,
+		pageTasks.word():       2,
+		pageSpend.word():       9,
+		pageAutomations.word(): 0,
 	}
 	bar := navPlaces(a, 160, false)
 	if !strings.Contains(bar, "Activity 2") {
@@ -794,15 +796,15 @@ func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
 		t.Fatalf("%s from the conversation landed on %q (open %v)", placeChord(pageTasks), a.page.word(), a.at(pageTasks))
 	}
 	drive(t, a, key("esc"))
-	drive(t, a, key(placeChord(pageStanding)))
-	if a.page != pageStanding || !a.at(pageStanding) {
-		t.Fatalf("%s from the conversation landed on %q", placeChord(pageStanding), a.page.word())
+	drive(t, a, key(placeChord(pageAutomations)))
+	if a.page != pageAutomations || !a.at(pageAutomations) {
+		t.Fatalf("%s from the conversation landed on %q", placeChord(pageAutomations), a.page.word())
 	}
 	// AND `tab` IS STILL THE CONVERSATION'S OWN KEY THERE.
 	drive(t, a, key("esc"))
 	page := a.page
 	drive(t, a, key("tab"))
-	if a.page != page || a.at(pageTasks) || a.at(pageStanding) {
+	if a.page != page || a.at(pageTasks) || a.at(pageAutomations) {
 		t.Fatal("tab in the conversation opened a place")
 	}
 }
@@ -816,7 +818,7 @@ func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 		if !placeWordsInOrder(bar, "Home", "Chats", "AI teams", "Activity", "Memory", "Spend", "Settings") {
 			t.Fatalf("at %d columns the bar is not the six places in order: %q", width, bar)
 		}
-		for _, id := range []page{pageStanding} {
+		for _, id := range []page{pageAutomations} {
 			if strings.Contains(bar, navLabel(id)) {
 				t.Fatalf("at %d columns the bar still carries %q: %q", width, id.word(), bar)
 			}
@@ -824,7 +826,7 @@ func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	}
 	// AND A ROOM OFF THE BAR IS ON IT WHILE YOU STAND IN IT. A bar with no word
 	// lit is a bar that does not know where you are.
-	walkTo(t, a, pageStanding)
+	walkTo(t, a, pageAutomations)
 	if bar := navPlaces(a, 120, false); !strings.Contains(bar, "Settings  Standing") {
 		t.Fatalf("standing in memory, the bar does not say so: %q", bar)
 	}

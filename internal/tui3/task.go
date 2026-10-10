@@ -915,8 +915,6 @@ func (a *app) taskEvent(ev session.Event) tea.Cmd {
 		if ev.Job != nil && a.jobUpdate(*ev.Job) {
 			a.touch()
 		}
-	case session.EventStandingProposal:
-		a.proposeStanding(ev)
 	case session.EventTakeover:
 		// ANOTHER WINDOW HAS ASKED FOR THIS CONVERSATION and the engine has
 		// already agreed — it announces this only when no turn is in flight
@@ -930,14 +928,6 @@ func (a *app) taskEvent(ev session.Event) tea.Cmd {
 		// The lane pump is deliberately NOT re-armed below for [session.EventTakeover]'s
 		// reason — the agent it was reading is about to be let go of.
 		return a.movedAway(ev.Text)
-	case session.EventStandingUpdate:
-		// AN ITEM FIRES WITH NOBODY IN THE ROOM, which is the whole of the
-		// ambient side — so a FIRING reaches this surface here and only here,
-		// on the lane that outlives every turn (standing.go, and session's
-		// [Agent.emitStandingNews] for why the turn's hub cannot carry it). What
-		// was waiting in the inbox while the window was shut arrives on this lane
-		// too, as the first thing on it.
-		a.standingUpdate(ev)
 	}
 	return tea.Batch(waitTask(a.taskLane, a.taskGen), pilot, a.wake(), mentions)
 }
@@ -3072,11 +3062,6 @@ type railLine struct {
 	// to know whether it was asked to widen the column or to leave it for a page
 	// that holds work this session never ran.
 	more bool
-	// keeping says this line is the footer's standing count, whose door is
-	// /standing (standdoor.go). It is a fourth flag for the third one's reason:
-	// every one of these lines can be on the frame at once, and a press has to
-	// know which of the four it landed on.
-	keeping bool
 	// door is the slash word this line TYPES INTO THE DRAFT when it is pressed —
 	// the `+` row at the foot of each section (margin.go). It is the word itself
 	// rather than a flag because there are two of them and they type two different
@@ -3274,7 +3259,7 @@ func (a *app) railContentView(height int) ([]railLine, int) {
 	for i, text := range foot {
 		out = append(out, railLine{
 			text: text, entry: -1, hint: i == marks.hint,
-			more: i == marks.more, keeping: i == marks.keeping})
+			more: i == marks.more})
 	}
 	return out, focus
 }
@@ -3600,12 +3585,6 @@ func (a *app) railRows(height int) []string {
 			// THE DOOR ONTO THE TASK PAGE TAKES IT TOO, on the terms every other
 			// pressable line here takes it on: it answers to a click, so the pointer
 			// says so ([taskSheetPastHint], taskview.go).
-			text = a.hoverRow(text, room)
-		case line.keeping && a.hoveringRailStanding():
-			// AND THE STANDING COUNT, which is a door onto /standing and says so
-			// twice for the margin door's reason: its own ink comes up
-			// ([app.railStandingLine]) and the row's ground comes up here, because
-			// the ground is what tells a hand the WHOLE line answers.
 			text = a.hoverRow(text, room)
 		case line.door != "" && a.hoveringMarginDoor(line.door):
 			// AND THE MARGIN'S TWO `+` ROWS, on the same terms and for the same
@@ -4126,13 +4105,13 @@ func (a *app) railEnter() tea.Cmd {
 //
 // The named fields keep each pointer target attached to the row that drew it.
 type railFootMarks struct {
-	// hint is the widen offer, more the task page, and keeping the standing count.
-	hint, more, keeping int
+	// hint is the widen offer, and more the task page.
+	hint, more int
 }
 
 // noRailFoot is the answer for a frame with no footer at all: every line
 // missing.
-var noRailFoot = railFootMarks{hint: -1, more: -1, keeping: -1}
+var noRailFoot = railFootMarks{hint: -1, more: -1}
 
 // railFootRows is the foot of the column: the standing count, the door onto
 // the task page, and the offer of the wide tier, each only when it is true.
@@ -4169,15 +4148,7 @@ func (a *app) railFootRows(width, height int) ([]string, railFootMarks) {
 	// taskview.go): a group the column folded is one press away on the column.
 	viewText := taskSheetPastHint
 	view := ansi.StringWidth(viewText) <= width && a.railHasRecord()
-	// THE STANDING LINE IS DRAWN ONLY WHERE SOMETHING STANDS, which is the
-	// emptiness law the segment already kept on the status row: a permanent
-	// `0 standing orders` is a permanent reminder of the absence of a thing
-	// (homestanding.go's [app.keepingSegment]).
-	standWord := a.keepingSegment()
-	if ansi.StringWidth(standWord) > width {
-		standWord = ""
-	}
-	if standWord == "" && !offer && !view {
+	if !offer && !view {
 		return nil, noRailFoot
 	}
 	out := make([]string, 0, 4)
@@ -4188,12 +4159,6 @@ func (a *app) railFootRows(width, height int) ([]string, railFootMarks) {
 		out = append(out, "")
 	}
 	marks := noRailFoot
-	// THE STANDING COUNT GOES FIRST, because it says what this project is
-	// holding, and then the doors and the offers about the column itself.
-	if standWord != "" && len(out)+1 < height {
-		marks.keeping = len(out)
-		out = append(out, a.railStandingLine())
-	}
 	// THE PAGE'S DOOR GOES ABOVE THE WIDTH OFFER. The door says where the rest
 	// of the work is, and widening answers "how much of my screen is this
 	// taking".
@@ -4210,27 +4175,6 @@ func (a *app) railFootRows(width, height int) ([]string, railFootMarks) {
 		out = append(out, paintHint(hintText, a.pal, a.pal.dim))
 	}
 	return out, marks
-}
-
-// railStandingLine is the standing count as the foot of the column draws it:
-//
-//	◦ 2 standing orders
-//
-// DIM LIKE THE TALLY ABOVE IT, AND BRIGHT UNDER THE POINTER, which is this
-// column's own spelling of "this line answers to a click" ([app.railDoorLine]
-// and the margin's `+` rows make the same bargain). Pressing it opens /standing
-// (room.go's [app.railPress]); the keyboard door is unchanged and is still
-// /standing or /orders typed into the box.
-//
-// THE WORD IS [app.keepingWord] AND NOT THE SEGMENT, because the mark breathes
-// while a pass has one of this place's orders in its hands and the two are the
-// same width by construction — that function swaps the glyph and nothing else
-// (homestanding.go).
-func (a *app) railStandingLine() string {
-	if a.hoveringRailStanding() {
-		return a.pal.accent(a.keepingWord())
-	}
-	return a.pal.dim(a.keepingWord())
 }
 
 // railMoreAt reports whether a pointer is on the footer's door onto the task

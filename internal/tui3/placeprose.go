@@ -203,10 +203,10 @@ type placeBlank struct {
 // the emptiness law inverted into words (docs/DESIGN-LANGUAGE.md, "presence
 // over labels"). Settings is absent because it is never empty.
 var placeWhisper = map[page]placeBlank{
-	pageTasks:    {whisper: "work you send off with /task lands here, and its record stays"},
-	pageSpend:    {whisper: "every chat and task is priced here as it runs"},
-	pageStanding: {heading: standHeading, whisper: `reminders, watches and routines · "remind me at 6" or "every morning at 9"`},
-	pageMemory:   {whisper: "what it has learned about you and this machine · /remember adds a line"},
+	pageTasks:       {whisper: "work you send off with /task lands here, and its record stays"},
+	pageSpend:       {whisper: "every chat and task is priced here as it runs"},
+	pageAutomations: {heading: standHeading, whisper: `reminders, watches and routines · "remind me at 6" or "every morning at 9"`},
+	pageMemory:      {whisper: "what it has learned about you and this machine · /remember adds a line"},
 }
 
 // placeWhisperLead is where the whisper hangs: the place's own lead, then the

@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -178,7 +179,7 @@ var homePanelOrder = []homePanelSlot{
 	{panel: projectsPanel{homePanelBase{panelProjects}}, word: "projects", pinned: true, keep: 4, least: 3, rest: 5, most: 8},
 	{panel: leftPanel{homePanelBase{panelLeft}}, word: "since you left", keep: 2, least: 3, rest: 4, most: 8, place: pageTasks, head: pageMemory},
 	{panel: spendPanel{homePanelBase{panelSpend}}, word: "spend", pinned: true, keep: 1, least: 3, rest: 3, most: 3, place: pageSpend, head: pageSpend},
-	{panel: nextPanel{homePanelBase{panelNext}}, word: (placeStanding{}).word(), keep: 0, least: 3, rest: 3, most: 5, place: pageStanding, head: pageStanding},
+	{panel: nextPanel{homePanelBase{panelNext}}, word: placeAutomationsWord, keep: 0, least: 3, rest: 3, most: 5, place: pageAutomations, head: pageAutomations},
 }
 
 // homeNeedsTaskFresh is how long a task's call stays a row of `needs you` after
@@ -202,7 +203,7 @@ var homeWhisper = map[homePanelID]string{
 	panelSessions: "your recent conversations appear here",
 	panelLeft:     "what watches and tasks did while the terminal was shut",
 	panelSpend:    "every chat and task is priced here",
-	panelNext:     `reminders, routines, watches and rules · "remind me at 6" or "every morning at 9"`,
+	panelNext:     `reminders, scheduled work and watches · "remind me at 6" or "every morning at 9"`,
 }
 
 // homePanelCut is a panel's rows cut at its cap, with the count of what the
@@ -294,11 +295,12 @@ type homeGridInput struct {
 	// screen, and the pulse's count (homepanel_needs.go's [needsCallOf]).
 	calls      []needsItem
 	callsOlder int
-	// world is every project, the ones home knows only through a watch
-	// included ([homeView.everyProject]).
+	// world is every project ([homeView.everyProject]).
 	world session.World
-	// items is each project's standing band, by bucket directory.
-	items map[string][]StandingItemView
+	// autos and active are the machine's automations and the runs in hand, as
+	// the watcher last read them (automationwatch.go).
+	autos  []automation.Automation
+	active []automation.Run
 	// errands are the `ask here` exchanges this window is holding, already as
 	// lines of the column (homeexchange.go).
 	errands []homeLine
@@ -333,7 +335,7 @@ func (h *homeView) gridInput() homeGridInput {
 	world := h.world
 	world.Projects = h.everyProject()
 	here := switcherHere{session: h.here, coming: h.claim, hosted: h.far}
-	reading := readSwitcher(world, h.items, h.fired, here, h.gone, h.seen, h.world.Read, h.ledger)
+	reading := readSwitcher(world, h.autos, here, h.gone, h.seen, h.world.Read, h.ledger)
 	calls, older := needsFresh(needsCalls(world, h.world.Read), h.world.Read)
 	// AN OPENED `needs you` SHOWS ITS AGED LANDINGS TOO. They aged out of the
 	// group as history ([needsFresh]) and the shut fold counts them with the rest
@@ -346,7 +348,7 @@ func (h *homeView) gridInput() homeGridInput {
 	open, closed := h.conversationRows()
 	return homeGridInput{openChats: open, closedChats: closed, rows: reading.rows, ledger: reading.ledger, calls: calls, callsOlder: older,
 		opened: h.opened, openedOn: h.openedOn,
-		desc: homeDescOn(h.cols), world: world, items: h.items,
+		desc: homeDescOn(h.cols), world: world, autos: h.autos, active: h.active,
 		errands: h.switchExchanges(), bucket: h.bucket, launch: h.launch, tilde: h.tilde, last: h.last,
 		repos: h.repos, spend: h.spend, seen: h.seen, now: h.world.Read}
 }
@@ -1254,18 +1256,17 @@ func (h *homeView) rowOf(at int) int {
 // homeRowFolder is the folder `ctrl+o` opens for a row, and "" for a row that
 // belongs to no folder — a spend row, a fold.
 //
-// EVERY ROW OF THE FIELD ANSWERS, not only a conversation's: a standing order
-// carries the workspace it stands over, and a `since you left` line carries the
-// conversation the news happened in. The same shortcut works on every kind of row.
+// EVERY ROW OF THE FIELD ANSWERS, not only a conversation's: an automation
+// carries the workspace it runs in, and a `since you left` line carries the
+// conversation the news happened in. The same shortcut works on every kind of
+// row.
 func homeRowFolder(line homeLine) string {
 	switch line.kind {
 	case homeSession:
 		return strings.TrimSpace(line.row.Workspace)
-	case homeItem:
-		return strings.TrimSpace(line.item.Workspace)
 	case homeLedger:
-		if line.item.ID != "" {
-			return strings.TrimSpace(line.item.Workspace)
+		if folder := strings.TrimSpace(line.folder); folder != "" {
+			return folder
 		}
 		if line.cell != nil && line.cell.row != nil {
 			return strings.TrimSpace(line.cell.row.session.Workspace)
@@ -1378,13 +1379,10 @@ func (h *homeView) gridColumnAt(x int) int {
 }
 
 // switcherRowLine is one of the switcher's rows as a line of home's column,
-// wearing a panel's cell: a conversation is a [homeSession] line and a watch a
-// [homeItem] one, which is what keeps every door on them the door it was.
+// wearing a panel's cell: a conversation is a [homeSession] line, which is what
+// keeps every door on it the door it was.
 func switcherRowLine(row switcherRow, cell *homeCell) homeLine {
 	cell.row = &row
-	if row.kind == switcherStanding {
-		return homeLine{kind: homeItem, view: row.item, item: row.item.Item, project: row.project, cell: cell}
-	}
 	return homeLine{kind: homeSession, row: row.session, project: row.project,
 		dir: homeBucketOf(row.session.Transcript), cell: cell}
 }

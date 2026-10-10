@@ -98,24 +98,6 @@ func TestTheShapeLawOffersOnlyMakingDraftsWithRoomToGrow(t *testing.T) {
 	}
 }
 
-// THE STANDING HINT WINS THE SLOT, and the rule lives in one place
-// ([app.spellOffered]) rather than in the slot's ordering.
-func TestTheStandingHintKeepsTheSlotWhenBothWouldOffer(t *testing.T) {
-	a, _ := spellLab(t)
-	band := &standBand{}
-	band.wire(a)
-	typeDraft(t, a, "always build the docs first")
-	if !a.standSayOffered() {
-		t.Fatal("the standing hint did not offer on a standing-shaped draft")
-	}
-	if a.spellOffered() {
-		t.Fatal("both hints offered at once")
-	}
-	if got := a.hintWord(); got != standSayHint {
-		t.Fatalf("the slot said %q, wanted the standing hint", got)
-	}
-}
-
 func TestTheChordMakesOneCallAndDrawsTheBlock(t *testing.T) {
 	a, f := spellLab(t)
 	typeDraft(t, a, "build me a login page")
