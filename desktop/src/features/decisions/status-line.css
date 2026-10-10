@@ -1,0 +1,22 @@
+/* Place Home status line (Decisions 12a). Measured: flex row, 8px gap, 12px text at weight 400,
+   line-height normal, ink-3, sparkle 12px in the same ink. It is not a control: no fill, no ring.
+   The heading column owns the 10px gap under the title; this row does not add a margin of its own. */
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: var(--status-line-gap);
+  margin: 0;
+  min-width: 0;
+  font-family: var(--sans);
+  font-size: var(--status-line-size);
+  font-weight: var(--status-line-weight);
+  line-height: var(--status-line-leading);
+  letter-spacing: normal;
+  color: var(--status-line-color);
+}
+.status-line > .app-icon {
+  width: var(--status-line-glyph);
+  height: var(--status-line-glyph);
+  color: var(--status-line-color);
+}
+.status-line-text { min-width: 0; }
