@@ -1,7 +1,6 @@
 // The rows of the new-tab field (design 3f, 4c): pure, so a node test covers the ordering and filtering.
 // The first row always turns the typed text into a conversation; every other row is a way to jump or open.
 import type { IconName } from '../../../../components/ui/Icon';
-import { relativeTime } from '../../../conversation/tabSummary.ts';
 import type { HistoryItem } from '../../../history/types.ts';
 import { closedAtOf } from '../../reducers/closing.ts';
 import type { Tab } from '../../types.ts';
@@ -61,10 +60,19 @@ export const titleFromText = (text: string): string => clip(firstLine(text), ask
 
 const has = (title: string, query: string) => title.toLowerCase().includes(query.toLowerCase());
 
+/** The compact age Shell 3f draws ("1h ago"): a row is 36px and the age shares it with a title, so the long form would crowd it. */
+export function shortAge(at: number, now: number): string {
+  const seconds = Math.max(0, Math.floor((now - at) / 1000));
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  return `${Math.floor(seconds / 86400)}d ago`;
+}
+
 /** Shell 3f: "closed 1h ago". No stamp (an old save) says "closed" and nothing more. */
 function closedDetail(tab: { closedAt?: number }, now: number): string {
   const at = closedAtOf(tab.closedAt);
-  return at === undefined ? 'closed' : `closed ${relativeTime(at, now)}`;
+  return at === undefined ? 'closed' : `closed ${shortAge(at, now)}`;
 }
 
 export function buildSections(input: RowInput): NewTabSection[] {

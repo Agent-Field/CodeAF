@@ -18,6 +18,7 @@ import type { PlaceProposal } from '../../../src/features/places/proposals-clien
 import type {
   AddedBy, ChatRow, Crumb, HomeDigest, Mutation, PlaceCounts, PlaceDetail, PlaceView, PlacesGraph, Receipt, SourceKind, SourceView, StatusRollup, Tint,
 } from '../../../src/features/places/client';
+import type { PlacesRecord } from '../../../src/features/places/wire';
 
 export type SeedPlace = {
   /** Fixed id; otherwise one is made (pl_ and 16 hex digits). */
@@ -118,12 +119,14 @@ export type MockPlaces = {
   propose: (next: PlaceProposal[]) => void;
   /** POSTs whose path ends with the suffix. */
   posts: (suffix: string) => PlacesCall[];
+  /** The places record the world stream carries: generation, nodes, rail and memberships. */
+  placesRecord: () => PlacesRecord;
   /** The "Not now" snoozes the engine holds: place id to the ISO instant each ends. Survives a page reload, as the engine's file does. */
   snoozes: () => Record<string, string>;
 };
 
 /** `alsoServe` are more windows on the same engine: they answer from this same state, as two app windows share one engine. */
-export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoServe: Page[] = []): Promise<MockPlaces> {
+export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoServe: Page[] = [], hooks?: { onChange?: () => void }): Promise<MockPlaces> {
   let counter = 0;
   const nextId = (prefix: string) => `${prefix}_${hex(++counter)}`;
   const clock = () => seed.now === undefined ? Date.now() : Date.parse(seed.now);
@@ -146,6 +149,8 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
   /** Receipts the store still holds, newest last; an undo may only take back the newest live one (the bridge's rule). */
   const history: { receipt: Receipt; before: Store }[] = [];
   let worldSeq = 1;
+  // The conversation mock owns the engine-wide stream. A graph write asks it to publish a places record.
+  const bumpWorld = () => { worldSeq += 1; hooks?.onChange?.(); };
   let closed = false;
   page.on('close', () => { closed = true; });
 
@@ -243,6 +248,16 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
   const graph = (archived: boolean): PlacesGraph => ({
     revision, generation: revision, nodes: (archived ? store.places : active()).map(view), unplaced: unplaced().map(c => c.id), places: (archived ? store.places : active()).map(view), rail: rail(), now: nowView(), totals: totals(), readAt: now(),
   });
+  const placesRecord = (): PlacesRecord => {
+    const current = graph(false);
+    return {
+      generation: current.generation, nodes: current.nodes, rail: current.rail,
+      members: store.members.flatMap(member => {
+        const place = get(member.placeId);
+        return place && !place.archived ? [{ chatId: member.chatId, placeId: member.placeId, addedBy: member.addedBy, at: member.at }] : [];
+      }),
+    };
+  };
   const chatRow = (chat: Chat, inPlace?: string): ChatRow => ({
     id: chat.id, title: chat.title, project: 'app', workspace: '/w', sessionFile: chat.sessionFile, at: chat.at, archived: chat.archived,
     live: chat.live, doing: chat.live ? chat.doing : '', needsYou: chat.needsYou, reason: chat.reason, tasks: { ...chat.tasks },
@@ -324,7 +339,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
     if (changed === false) return undefined;
     const receipt: Receipt = { id: nextId('rc'), action, subject, beforeRevision: revision, afterRevision: revision + 1, at: now() };
     revision += 1;
-    worldSeq += 1;
+    bumpWorld();
     history.push({ receipt, before });
     return receipt;
   }
@@ -583,7 +598,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
     const place = must(id);
     place.lastOpenedAt = now();
     closedPlaces.delete(id);
-    worldSeq += 1;
+    bumpWorld();
     return { ok: true };
   }
 
@@ -598,7 +613,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
   async function events(route: Route, after: number) {
     if (after < worldSeq) {
       const record = after === 0
-        ? { seq: worldSeq, type: 'reset', at: now(), payload: { rows: worldRows(), items: worldItems() } }
+        ? { seq: worldSeq, type: 'reset', at: now(), payload: { rows: worldRows(), items: worldItems(), places: placesRecord() } }
         : { seq: worldSeq, type: 'world', at: now(), payload: { rows: worldRows(), removed: [] } };
       await route.fulfill({ status: 200, headers: { 'Cache-Control': 'no-cache' }, contentType: 'text/event-stream', body: sse(record, worldSeq) });
       return;
@@ -704,12 +719,12 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
         const placeId = String(body.place ?? '');
         if (body.op === 'pin' || body.op === 'unpin') return json(route, pin(placeId, body, body.op === 'pin'));
         if (body.op === 'visit') visit(placeId);
-        else if (body.op === 'close') { must(placeId); closedPlaces.add(placeId); worldSeq += 1; }
+        else if (body.op === 'close') { must(placeId); closedPlaces.add(placeId); bumpWorld(); }
         else if (body.op === 'reorder') {
           const order = body.order;
           if (!Array.isArray(order) || order.length !== store.pins.length || new Set(order).size !== order.length || order.some(id => !store.pins.includes(id))) throw new Refusal(400, 'invalid', 'Name every pinned place once.');
           store.pins = [...order];
-          worldSeq += 1;
+          bumpWorld();
         } else throw new Refusal(400, 'invalid', 'Unknown rail operation.');
         return json(route, { ...mutation([]), rail: rail() });
       }
@@ -736,7 +751,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
   };
   for (const window of [page, ...alsoServe]) await window.route('**/api/engine/**', serve);
 
-  const nudge = () => { worldSeq += 1; };
+  const nudge = () => { bumpWorld(); };
   return {
     calls, traffic,
     state: () => ({ ...snapshot(), revision }),
@@ -754,6 +769,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
     nudge,
     propose: next => { offers.splice(0, offers.length, ...structuredClone(next)); },
     posts: suffix => calls.filter(call => call.method === 'POST' && call.path.endsWith(suffix)),
+    placesRecord,
     snoozes: () => Object.fromEntries(snoozed),
   };
 }

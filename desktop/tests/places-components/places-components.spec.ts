@@ -14,6 +14,16 @@ async function open(page: Page, theme: 'light' | 'dark' = 'light') {
 }
 const log = (page: Page) => page.getByRole('list', { name: 'Callback log' }).locator('li');
 const tile = (page: Page, id: string) => page.locator(`[data-place-id="${id}"]`);
+async function shadow(page: Page, value: string) {
+  return page.evaluate(declared => {
+    const probe = document.createElement('span');
+    probe.style.boxShadow = declared;
+    document.body.append(probe);
+    const painted = getComputedStyle(probe).boxShadow;
+    probe.remove();
+    return painted;
+  }, value);
+}
 const chat = (page: Page, id: string) => page.locator(`[data-chat-id="${id}"]`);
 
 for (const theme of ['light', 'dark'] as const) {
@@ -49,17 +59,36 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(rest.locator('.places-tile-name')).toHaveCSS('font-weight', '500');
       await expect(rest.locator('.places-tile-meta')).toHaveCSS('font-size', '11px');
       await expect(rest.locator('.places-tile-meta')).toHaveCSS('color', await tokenColor(page, 'ink-3'));
+      await expect(rest.locator('.places-tile-meta')).toHaveText('28 chats');
+      await expect(tile(page, 'state-drag').locator('.places-tile-meta')).toHaveText('6 chats · also in Software');
+      await expect(tile(page, 'state-failed').locator('.places-tile-meta')).toHaveText('47 places · 212 chats');
       await expect(rest.locator('.place-swatch')).toHaveCSS('width', '12px');
       await expect(rest.locator('.status-mark-dot')).toHaveCSS('width', '6px');
+      await expect(rest.locator('.status-mark')).toHaveCSS('width', '6px');
+      await expect(rest.locator('.status-mark')).toHaveCSS('height', '6px');
       await expect(rest.locator('.status-mark')).toHaveCSS('color', await tokenColor(page, 'amber'));
+      await expect(rest.locator('.places-tile-name')).toHaveCSS('color', await tokenColor(page, 'ink'));
       // Name sits at the bottom: margin-top auto pushes it below the head.
       const [head, name] = await Promise.all([rest.locator('.places-tile-head').boundingBox(), rest.locator('.places-tile-name').boundingBox()]);
       expect(name!.y).toBeGreaterThan(head!.y + head!.height);
 
       await expect(tile(page, 'state-Hover')).toHaveCSS('background-color', await tokenColor(page, 'field'));
+      await expect(rest).toHaveCSS('transition-duration', '0.12s, 0.12s, 0.12s');
+      await main.focus();
+      await expect(main).toHaveCSS('box-shadow', await shadow(page, '0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 calc(var(--focus-ring-width) + var(--focus-halo-width)) var(--accent-soft)'));
+      await rest.scrollIntoViewIfNeeded();
+      const box = (await rest.boundingBox())!;
+      await page.mouse.move(box.x + 8, box.y + 8);
+      await page.mouse.down();
+      await expect(rest).toHaveCSS('transition-duration', '0.08s');
+      await expect(rest).toHaveCSS('background-color', await tokenColor(page, 'field-2'));
+      await page.mouse.up();
+      await expect(main).toHaveCSS('box-shadow', 'none');
       await expect(tile(page, 'state-Pressed')).toHaveCSS('background-color', await tokenColor(page, 'field-2'));
+      const focus = tile(page, 'state-Focus').locator('.places-tile-main');
+      await expect(focus).toHaveCSS('box-shadow', await shadow(page, '0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 calc(var(--focus-ring-width) + var(--focus-halo-width)) var(--accent-soft)'));
       const selected = tile(page, 'state-selected');
-      expect(await selected.evaluate(el => getComputedStyle(el).boxShadow)).toContain('2px');
+      await expect(selected).toHaveCSS('box-shadow', await shadow(page, 'var(--sh-1), 0 0 0 var(--places-tile-ring-selected) var(--accent)'));
       await expect(selected.locator('.places-tile-main')).toHaveAttribute('aria-current', 'true');
       const drop = tile(page, 'state-drop');
       await expect(drop).toHaveCSS('background-color', await tokenColor(page, 'accent-soft'));
@@ -69,7 +98,8 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(label).toHaveCSS('font-size', '11px');
       await expect(label).toHaveCSS('color', await tokenColor(page, 'accent'));
       await expect(tile(page, 'state-drag')).toHaveCSS('opacity', '0.7');
-      await expect(tile(page, 'state-disabled')).toHaveCSS('opacity', '0.4');
+      await expect(tile(page, 'state-disabled')).toHaveCSS('opacity', '0.6');
+      await expect(tile(page, 'state-disabled').locator('.places-tile-main')).toHaveCSS('opacity', '1');
       await expect(tile(page, 'state-disabled').locator('.places-tile-main')).toBeDisabled();
       await expect(tile(page, 'state-failed').locator('.status-mark')).toHaveCSS('color', await tokenColor(page, 'danger'));
 
@@ -331,7 +361,13 @@ test('heading: breadcrumb, menu and inline rename', async ({ page }) => {
   await expect(log(page).last()).toHaveText('rename:codeaf desktop');
   await heading.getByRole('button', { name: 'Place actions' }).click();
   await page.getByRole('menuitem', { name: 'Rename inline' }).click();
-  await heading.getByRole('textbox', { name: 'Place name' }).press('Escape');
+  const again = heading.getByRole('textbox', { name: 'Place name' });
+  await again.fill('   ');
+  await again.press('Enter');
+  await expect(again).toHaveAttribute('aria-invalid', 'true');
+  await again.fill('x');
+  await expect(again).not.toHaveAttribute('aria-invalid', 'true');
+  await again.press('Escape');
   await expect(heading.getByRole('heading', { level: 1 })).toHaveText('codeaf desktop');
 });
 
@@ -353,7 +389,7 @@ for (const theme of ['light', 'dark'] as const) {
   }
 }
 
-test('320px: the tile grid wraps and keyboard order stays in tile order', async ({ page }) => {
+test('320px: the tile grid wraps and arrow order stays in tile order', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 900 });
   await open(page);
   const grid = page.getByRole('list', { name: 'Places in codeaf' });
@@ -361,7 +397,8 @@ test('320px: the tile grid wraps and keyboard order stays in tile order', async 
   expect(new Set(boxes.map(box => box[0])).size).toBeLessThanOrEqual(2);
   for (const box of boxes) expect(box[2]).toBeGreaterThan(100);
   await grid.locator('[data-place-id="specimen-software"] .places-tile-main').focus();
-  await page.keyboard.press('Tab');
+  // The grid is one tab stop, so the arrow keys carry focus to the next tile in order.
+  await page.keyboard.press('ArrowRight');
   await expect(grid.locator('[data-place-id="specimen-reading"] .places-tile-main')).toBeFocused();
 });
 
@@ -372,4 +409,29 @@ test('reduced motion removes the fill transition but keeps the state', async ({ 
   await expect(row).toHaveCSS('transition-duration', /^0s(, 0s)*$/);
   await row.hover();
   await expect(row).toHaveCSS('background-color', await tokenColor(page, 'field'));
+});
+
+test('tile grid: one tab stop that follows focus, four columns, Command Enter opens a window', async ({ page }) => {
+  await open(page);
+  const grid = page.getByRole('list', { name: 'Places in codeaf' });
+  const stops = grid.locator('[data-places-tile-focusable][tabindex="0"]');
+  await expect(stops).toHaveCount(1);
+  const release = grid.locator('[data-place-id="specimen-release"] .places-tile-main');
+  await release.focus();
+  await expect(stops).toHaveCount(1);
+  await expect(release).toHaveAttribute('tabindex', '0');
+  await page.keyboard.press('ControlOrMeta+Enter');
+  await expect(log(page).last()).toHaveText('specimen-release:newWindow');
+  // Wide pages draw four equal columns; the New place tile is the last cell.
+  // The harness column is only 624px, so the grid is given a page-sized width to stand in for a wide Home.
+  await grid.evaluate(el => { el.style.width = '1100px'; });
+  const columns = await grid.evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length);
+  expect(columns).toBe(4);
+  const last = await grid.locator('.places-tile').last().getAttribute('data-mode');
+  expect(last).toBe('new');
+  // A narrow page keeps tiles at 160px or wider by dropping columns.
+  await grid.evaluate(el => { el.style.width = '400px'; });
+  const narrow = await grid.evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').map(parseFloat));
+  expect(narrow.length).toBeLessThan(4);
+  for (const width of narrow) expect(width).toBeGreaterThanOrEqual(160);
 });

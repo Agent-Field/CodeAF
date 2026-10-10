@@ -30,6 +30,7 @@ import {
 } from '../chat/engine-client';
 import type { SendMode } from './Composer';
 import { emptyLive, projectTurnsV2, reduceLive, type LiveOverlayV2, type ReceiptPlaces } from './model';
+import { appendPlaceChange, attachLivePlaceChanges, livePlaceChange, type LivePlaceChange } from './placeChange';
 import { beginPost, holdSend, restoreFront, type HeldSend } from './offline/outbox';
 import { questionKey } from './model/entry';
 import { toolReadOnce } from './toolReadOnce';
@@ -56,8 +57,9 @@ function lastUserText(snapshot?: EngineSnapshot): string {
   return entry?.Text ?? '';
 }
 
-function buildModel(snapshot: EngineSnapshot, live: LiveOverlayV2, places: ReceiptPlaces): ConversationModel {
-  const { turns, preface } = projectTurnsV2(snapshot, live, places);
+function buildModel(snapshot: EngineSnapshot, live: LiveOverlayV2, places: ReceiptPlaces, changes: readonly LivePlaceChange[]): ConversationModel {
+  const projected = projectTurnsV2(snapshot, live, places);
+  const { turns, preface } = attachLivePlaceChanges(projected, changes);
   const { title, running, questions = [], tasks, planError } = snapshot;
   return { title, turns, preface, running, questions, tasks, planError };
 }
@@ -74,6 +76,8 @@ function rememberHeld(box: { current: HeldSend[] }, held: readonly HeldSend[], s
 
 export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, newConversationPlace }: Options) {
   const [snapshot, setSnapshot] = useState<EngineSnapshot>();
+  // Membership lines that arrived on the ring before the record holds them.
+  const [placeChanges, setPlaceChanges] = useState<LivePlaceChange[]>([]);
   const [live, setLive] = useState<LiveOverlayV2>(emptyLive());
   const [online, setOnline] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -112,6 +116,8 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, n
   }
 
   function onEvent(event: EngineEvent) {
+    const note = livePlaceChange(event);
+    if (note) setPlaceChanges((list) => appendPlaceChange(list, note));
     const entries = current.current?.entries.length ?? 0;
     if (event.kind === 'error') {
       const message = event.error || event.text || 'The engine reported an error.';
@@ -256,6 +262,8 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, n
       if (own === generation.current) setConnecting(false);
     }
   }
+
+  useEffect(() => { setPlaceChanges([]); }, [sessionFile]);
 
   useEffect(() => {
     if (file.current) void attach(file.current).catch(reconnectLater);
@@ -480,7 +488,7 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, n
     return toolReadOnce(toolReads, `${target.id}\0${callId}`, () => readToolResult(target.id, callId));
   }
 
-  const model = useMemo(() => (snapshot ? buildModel(snapshot, live, places.current) : emptyModel), [snapshot, live]);
+  const model = useMemo(() => (snapshot ? buildModel(snapshot, live, places.current, placeChanges) : emptyModel), [snapshot, live, placeChanges]);
 
   // Once the engine has recorded anything newer than the send, the real message takes over.
   // Held sends stay listed until they are the one being posted, so two copies of the same words both stay visible.

@@ -53,9 +53,11 @@ function PaneBody({ paneId, visible, layout, children }: { paneId: string; visib
  * its kind's registered renderer; nothing here switches on kind. While a tab is dragged over the card it
  * draws the split zones (design 2g); a split also draws hover resize handles (design 2h).
  */
-export function PaneGrid({ tab, tabs, dispatch, actionsFor, retainedPaneIds }: { tab: Tab; tabs: readonly Tab[]; dispatch: Dispatch<WorkspaceAction>; actionsFor: (pane: Pane) => PaneActions;
+export function PaneGrid({ tab, tabs, dispatch, actionsFor, retainedPaneIds, overlay }: { tab: Tab; tabs: readonly Tab[]; dispatch: Dispatch<WorkspaceAction>; actionsFor: (pane: Pane) => PaneActions;
   /** Pane ids of the closed ring (`state.closed`), which Reopen can bring back. When given, scroll places are kept for exactly these and the open tabs; when absent the memory keeps its own bounded ring of closed panes. */
-  retainedPaneIds?: readonly string[] }) {
+  retainedPaneIds?: readonly string[];
+  /** Workspace-owned suggestions are positioned against the content card, below the strip. */
+  overlay?: ReactNode }) {
   const panes = panesOf(tab);
   const split = !!tab.split;
   const focus = tab.split?.focus ?? 0;
@@ -72,6 +74,7 @@ export function PaneGrid({ tab, tabs, dispatch, actionsFor, retainedPaneIds }: {
   const guest = draggedId ? tabs.find(t => t.id === draggedId) : undefined;
   return (
     <div ref={grid} className="workspace-conversation" role="tabpanel" id="workspace-tab-panel" aria-labelledby={tabDomId(tab)} tabIndex={0} data-split={split || undefined} data-layout={maximized ? undefined : tab.split?.layout} data-count={maximized ? undefined : panes.length} data-maximized={maximized ? '' : undefined}>
+      {overlay}
       {panes.map((pane, index) => {
         const Body = kindDef(pane.kind).pane;
         const focused = index === focus;

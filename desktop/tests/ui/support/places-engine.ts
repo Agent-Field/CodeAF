@@ -9,10 +9,14 @@ export type PlacesEngine = MockPlaces & {
   setUsing: (token: string, view: UsingView) => void;
 };
 
-/** Install after the conversation mock; unrelated routes fall through to its session backend. */
-export async function installPlacesEngine(page: Page, fixture: PlacesFixtureName | PlacesFixture = 'typical-day', alsoServe: Page[] = []): Promise<PlacesEngine> {
+/**
+ * Install after the conversation mock when a spec wants its own graph. installMockEngine mounts one itself
+ * and falls through to it; a later call still wins, because Playwright tries the newest route first.
+ * `onChange` fires after a graph write so that owner can publish a places record on the world stream.
+ */
+export async function installPlacesEngine(page: Page, fixture: PlacesFixtureName | PlacesFixture = 'typical-day', alsoServe: Page[] = [], hooks?: { onChange?: () => void }): Promise<PlacesEngine> {
   const seed = typeof fixture === 'string' ? placesFixture(fixture) : structuredClone(fixture);
-  const mock = await installMockPlaces(page, seed, alsoServe);
+  const mock = await installMockPlaces(page, seed, alsoServe, hooks);
   const overrides = structuredClone(seed.using ?? {});
   const using = (chatId: string): UsingView => {
     if (overrides[chatId]) return structuredClone(overrides[chatId]);
