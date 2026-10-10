@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import './root-home.css';
 import { Button, HomeTitle, Icon, TextInput } from '../../../components/ui';
-import { PlaceTile } from '../components/PlaceTile';
+import { FirstLaunch } from './FirstLaunch';
 import { Suggestion } from './Suggestion';
 import { HomeAttentionSection, HomeChatsSection, HomePlacesSection, type DragState, type Runner } from '../HomeSections';
 import { searchPlaces, totalsLine, type HomeChild, type HomeView } from '../home-model';
@@ -45,7 +45,7 @@ export function RootHome({ suggestion, view, actions, readOnly, runner, drag, on
     : undefined;
 
   return <>
-    <header className="home-heading all-places-heading root-home-heading">
+    {first ? <FirstLaunch actions={actions} readOnly={readOnly} runner={runner} drag={drag} notices={notices}/> : <header className="home-heading all-places-heading root-home-heading">
       <div className="all-places-title-row">
         <HomeTitle>All places</HomeTitle>
         {!first && <label className="all-places-search">
@@ -55,12 +55,8 @@ export function RootHome({ suggestion, view, actions, readOnly, runner, drag, on
         </label>}
       </div>
       {count && !first && <p className="home-quiet" data-testid="all-places-count">{count}</p>}
-    </header>
-    {notices}
-
-    {first && <section className="home-empty" aria-label="First launch">
-      <p className="home-empty-sentence">Places hold work that belongs together, with what the AI should know about it. Open a folder or repo to make one, or just name one.</p>
-    </section>}
+    </header>}
+    {!first && notices}
 
     {searching
       ? (matches.length > 0 || chats.length === 0) && <section className="home-section" aria-label="Search results">
@@ -74,9 +70,8 @@ export function RootHome({ suggestion, view, actions, readOnly, runner, drag, on
         </section>
       : <>
           <HomeAttentionSection items={view.attention} actions={actions} readOnly={readOnly}/>
-          <HomePlacesSection label="Places" places={view.children} actions={actions} readOnly={readOnly} siblings={siblings} runner={runner} drag={drag} onDelete={onDelete}
-            showLabel={false} newLabel={first ? 'Name a place' : undefined}
-            extraTiles={first && actions.openFolderAsPlace ? <PlaceTile mode="new" label="Open a folder or repo" disabled={readOnly} onCreate={() => actions.openFolderAsPlace?.()}/> : undefined}/>
+          {!first && <HomePlacesSection label="Places" places={view.children} actions={actions} readOnly={readOnly} siblings={siblings} runner={runner} drag={drag} onDelete={onDelete}
+            showLabel={false}/>}
           {stale && <Suggestion layout="line" text={stale.text} actions={stale.actions} run={runner.run} busy={runner.busy}/>}
           {archived.length > 0 && <section className="home-section" aria-label="Archived places">
             <Button variant="ghost" className="home-archived-toggle" aria-expanded={showArchived} onClick={() => setShowArchived(open => !open)}>
