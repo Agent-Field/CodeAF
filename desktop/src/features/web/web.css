@@ -11,6 +11,7 @@
 .web-address-site { flex: none; max-width: 60%; overflow: hidden; white-space: nowrap; color: var(--ink); }
 .web-address-rest { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; color: var(--ink-3); mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
 .web-address-editing { padding: 0; background: transparent; }
+.button.web-address:active:not(:disabled) { transition-duration: var(--dur-press); }
 .web-address-input.text-input { flex: 1; min-width: 0; width: 100%; }
 .web-address-refusal { flex: none; max-width: 50%; overflow: hidden; white-space: nowrap; color: var(--ink-3); font-size: var(--type-caption-size); mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
 
@@ -19,3 +20,15 @@
 .web-state { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); max-width: var(--web-state-max-width); padding: var(--space-4); text-align: center; color: var(--ink-3); }
 .web-state > .type-body { margin: 0; overflow-wrap: anywhere; }
 .web-state-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); margin-top: var(--space-2); }
+
+.web-header .web-muted-action { color: var(--ink-3); }
+.web-header .icon-button:hover:not(:disabled), .web-header .icon-button:active:not(:disabled) { color: var(--ink-2); }
+.web-header .web-muted-action:hover:not(:disabled), .web-header .web-muted-action:active:not(:disabled) { color: var(--ink-3); }
+.web-header .web-more-action { display: none; }
+.web-address-input.text-input.text-input-field { height: var(--web-address-height); min-height: var(--web-address-height); padding: 0 var(--web-address-pad); font-size: var(--type-label-size); }
+.web-address-specimen { min-width: 0; width: 100%; }
+@media (max-width: 600px) {
+  .web-header .web-wide-action { display: none; }
+  .web-header .web-more-action { display: grid; }
+}
+.web-address-input.text-input.text-input-field:focus-visible { background: var(--field); }
