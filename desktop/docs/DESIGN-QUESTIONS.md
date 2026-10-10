@@ -93,6 +93,7 @@ Shell). On any conflict, the design files win over code and older docs.
 | Q-P13 | Design says "Allow 3 git actions?"; the engine's batch head reads "Allow N actions?" | The shipped wording is the tray's ("Allow N actions?"); the card does not invent a noun the engine did not send. |
 | Q-P14 | File, diff, terminal and web cards need a target (path, terminal id, URL) | `Pane.target` is an optional validated field kept across reload (`PaneTarget` in view-state.ts); the kind lanes write it. Until a lane sets it the card is kind and title only, never invented content. |
 | Q-P15 | A card whose read fails or is still loading | Kind and title only; no spinner, no error text (a read failure is not the person's to act on). The previous target's content is never shown for a different target. |
+| TN1 | A task notice can be on screen before its plan row arrives. Pause, Resume and Stop are decided from that row (a root cannot be paused; an ended task cannot be stopped). The design does not say what the menu holds in the gap. | Only "Open in new tab", which needs the task id. Pause, Resume and Stop appear when the row arrives, and they are the same entries that row's menu shows. Middle-click and ⌘-click (Ctrl off the Mac) stay on the line that opens the task; the Report control only expands the written report. |
 
 ## File lane integration notes
 
