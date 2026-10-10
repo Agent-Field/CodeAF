@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as Reac
 import { Button, Icon, KeyboardShortcut, TextInput } from '../../../components/ui';
 import { isMac } from '../../../design/keyboard';
 import { PlaceSwatch } from '../components/PlaceSwatch';
-import { SuggestionLine } from '../components/SuggestionLine';
+import { Suggestion } from '../home/Suggestion';
 import { chooserTitle, chooserView, countLabel, firstChoosable, parentRowKey, step, type ChooserRow } from './chooserModel';
 import type { ChooserMode, ChooserProps } from './contracts';
 import './go-to-chooser.css';
@@ -188,7 +188,7 @@ export function GoToChooser({ open, mode, places, childrenOf, total, now, onChoo
         {section('Recent', view.recent, 'recent')}
         {view.searching ? section('Matching places', view.results, 'results', false) : section('All', view.tree, 'all')}
       </div>
-      {suggestion && mode.kind === 'go' && !view.searching && <SuggestionLine className="goto-suggestion" text={suggestion.text} actions={suggestion.actions} run={runSuggestion} busy={pending}/>}
+      {suggestion && mode.kind === 'go' && !view.searching && <Suggestion layout="line" className="goto-suggestion" text={suggestion.text} actions={suggestion.actions} run={runSuggestion} busy={pending}/>}
       {failure && <p role="alert" className="goto-failure">{failure}</p>}
       <div className="goto-hints">
         <span><KeyboardShortcut label="↵"/> {enterVerb[mode.kind]}</span>

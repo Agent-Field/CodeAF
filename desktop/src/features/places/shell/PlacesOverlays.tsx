@@ -7,6 +7,7 @@ import { PlaceQuickLook } from './HomePane';
 import { InstructionsDialog, NameDialog, SourcesDialog } from './PlaceDialogs';
 import type { DialogRequest, PlacesShell } from './PlacesShell';
 import { placeRow } from './selectors';
+import { browserSnoozes, idleLine } from '../suggestions';
 import { staleLineFor, useStale } from './useStale';
 
 const quoted = (name: string | undefined) => (name ? `“${name}”` : 'the place');
@@ -94,7 +95,13 @@ export function PlacesOverlays({ shell }: { shell: PlacesShell }) {
   const mode = shell.chooser;
   const now = useMemo(() => new Date(), [mode, graph]);
   const stale = useStale(shell);
-  const suggestion = mode?.kind === 'go' ? staleLineFor(shell, stale) : undefined;
+  const snoozes = browserSnoozes(now);
+  // The engine names who is idle (it can see chat speech). This clock confirms each one and applies a Not now kept here.
+  const places = stale.places.flatMap(place => {
+    const line = idleLine(place, now, snoozes);
+    return line ? [{ ...place, daysUntouched: line.days }] : [];
+  });
+  const suggestion = mode?.kind === 'go' ? staleLineFor(shell, { ...stale, places }) : undefined;
   return <>
     {mode && <GoToChooser key={mode.kind} open mode={mode} suggestion={suggestion} places={rows} childrenOf={shell.index?.childrenOf ?? new Map()} total={rows.length} now={now}
       onClose={shell.closeChooser}
