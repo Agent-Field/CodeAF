@@ -859,8 +859,12 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			go s.pump(events, func() {})
 		}
 		write(w, map[string]bool{"accepted": true})
-	case "queue-edit", "queue-move", "queue-remove":
-		s.queueAction(w, r, parts[2])
+	case "queue-edit", "queue-move", "queue-remove", "queue-send":
+		if parts[2] == "queue-send" {
+			s.queueSend(w, r)
+		} else {
+			s.queueAction(w, r, parts[2])
+		}
 	case "stop":
 		if r.Method != http.MethodPost {
 			fail(w, 405, "POST required")
