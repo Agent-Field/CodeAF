@@ -65,3 +65,13 @@ export function stateOf(summary: TabSummary | undefined, taskId?: string): CardS
   if (summary.mark === 'working') return { dot: 'accent', words: 'Working' };
   return {};
 }
+
+/**
+ * The hover line naming other open places that hold this chat: "also open in Marketing", with the rest counted.
+ * Nothing when no other place has it, so an unknown or empty answer renders as no line at all.
+ */
+export function alsoOpenIn(places: readonly { name: string }[] | undefined): string | undefined {
+  if (!places?.length) return undefined;
+  const rest = places.length - 1;
+  return `also open in ${places[0].name}${rest ? ` and ${rest} other ${rest === 1 ? 'place' : 'places'}` : ''}`;
+}
