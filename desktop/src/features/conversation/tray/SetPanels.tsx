@@ -23,6 +23,7 @@ export function ReviewPanel({ members, held, onGo, onSendAll }: ReviewProps) {
   }
   return (
     <section className="tray-card" aria-label="Review your answers">
+      <div className="tray-scroll">
       <header className="tray-card-head">
         <h3 className="tray-head">Review your answers</h3>
       </header>
@@ -39,6 +40,8 @@ export function ReviewPanel({ members, held, onGo, onSendAll }: ReviewProps) {
           );
         })}
       </ul>
+      </div>
+      <div className="tray-pinned">
       {state === 'failed' && (
         <Text className="tray-caption" role="status">Not every answer went through. Nothing was lost; try again.</Text>
       )}
@@ -46,6 +49,7 @@ export function ReviewPanel({ members, held, onGo, onSendAll }: ReviewProps) {
         <Button variant="primary" disabled={!ready || state === 'sending'} onClick={() => void sendAll()}>
           {`Send ${members.length} answers`}
         </Button>
+      </div>
       </div>
     </section>
   );
