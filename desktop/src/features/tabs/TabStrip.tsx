@@ -6,6 +6,7 @@ import type { TabsApi } from './context';
 import { GroupCapsule, MemberSlot } from './GroupCapsule';
 import { groupDragProps } from './hosts/dragHost';
 import { overflowItems, withGroupMenu } from './hosts/menuHost';
+import { openStripBackgroundMenu, StripMenu } from './hosts/stripMenu';
 import { stateOfMark, TabItem, tabDomIds } from './TabItem';
 import { focusedPane, stripItems, visibleTabs, type Tab } from './model';
 import './strip.css';
@@ -60,7 +61,7 @@ export function TabStrip({ api, leading, overviewTrigger, onOverview }: { api: T
   }, [state.activeId, state.groups]);
 
   return (
-    <div className="workspace-tabbar" data-tauri-drag-region>
+    <div className="workspace-tabbar" data-tauri-drag-region onContextMenu={openStripBackgroundMenu}>
       {leading}
       <div className="workspace-tablist-owner" role="tablist" aria-label="Conversation tabs" aria-owns={order.flatMap(tabDomIds).join(" ")}/>
       <div ref={strip} className="workspace-tabstrip" aria-label="Conversation tabs" data-fade-end={edge.end || undefined}>
@@ -81,7 +82,7 @@ export function TabStrip({ api, leading, overviewTrigger, onOverview }: { api: T
       <div className="workspace-tab-actions">
         <IconButton className="workspace-tab-action" label="New tab" title={`New tab (${tabShortcuts.new})`} icon="plus" iconSize="sm" onClick={() => dispatch({ type: 'new' })}/>
         {edge.hidden > 0 && <DropdownMenu label="Tab actions" items={overflowItems(api)}><Button className="workspace-tab-more" aria-label="Tab actions">+{edge.hidden}<Icon name="chevron" size="micro" motion="disclosure"/></Button></DropdownMenu>}
-        <div className="workspace-tab-spacer" data-tauri-drag-region/>
+        <StripMenu api={api} onOverview={onOverview}/>
         <IconButton ref={overviewTrigger} className="workspace-tab-action workspace-overview-trigger" label="All tabs" title={`All tabs (${overviewShortcut})`} icon="grid" iconSize="sm" onClick={onOverview}/>
       </div>
     </div>

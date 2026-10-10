@@ -1,18 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { imageVerdict, imageVerdictOf, isRasterImagePath, maxImageBytes, settleImage } from './imageFile.ts';
+import { imageVerdict, imageVerdictOf, isImagePath, maxImageBytes, settleImage } from './imageFile.ts';
 
-test('raster extensions are pictures; svg, html and code are not', () => {
-  for (const path of ['a/b.png', 'x.JPG', 'x.jpeg', 'x.gif', 'x.webp', 'x.avif', 'x.bmp', 'x.ico']) assert.equal(isRasterImagePath(path), true, path);
-  for (const path of ['x.svg', 'x.html', 'x.go', 'x.png.txt', 'png']) assert.equal(isRasterImagePath(path), false, path);
+test('image kinds include SVG; html and code are not', () => {
+  for (const path of ['a/b.png', 'x.JPG', 'x.jpeg', 'x.gif', 'x.webp', 'x.avif', 'x.bmp', 'x.ico', 'x.svg']) assert.equal(isImagePath(path), true, path);
+  for (const path of ['x.html', 'x.go', 'x.png.txt', 'png']) assert.equal(isImagePath(path), false, path);
 });
 
 test('a small raster answer becomes a data url with the normalised mime', () => {
   assert.deepEqual(imageVerdict({ mime: 'IMAGE/PNG; charset=binary', size: 4, dataBase64: 'AAAA' }), { ok: true, url: 'data:image/png;base64,AAAA' });
 });
 
-test('svg, html and unknown mimes are refused as unsafe', () => {
-  for (const mime of ['image/svg+xml', 'text/html', 'application/octet-stream', 'image/png,<script>']) {
+test('html and unknown mimes are refused as unsafe', () => {
+  for (const mime of ['text/html', 'application/octet-stream', 'image/png,<script>']) {
     assert.deepEqual(imageVerdict({ mime, size: 4, dataBase64: 'AAAA' }), { ok: false, reason: 'unsafe' }, mime);
   }
 });
@@ -54,4 +54,14 @@ test('an answer read for another session or path, or with no key, is loading', (
   assert.deepEqual(settleImage(null, ready('s1\0a.png')), { status: 'loading' });
   assert.deepEqual(settleImage('s1\0a.png', { status: 'loading' }), { status: 'loading' });
   assert.deepEqual(settleImage('s1\0a.png', { status: 'failed', message: 'no' }), { status: 'failed', message: 'no' });
+});
+
+test('SVG is accepted for a restricted image document', () => {
+  assert.equal(imageVerdict({ mime: 'image/svg+xml', size: 4, dataBase64: 'AAAA' }).ok, true);
+});
+
+test('a real cap-sized payload validates without overflowing the regexp stack', () => {
+  const payload = 'A'.repeat(Math.ceil(maxImageBytes / 3) * 4 - 2) + '==';
+  assert.equal(imageVerdict({ mime: 'image/png', size: maxImageBytes, dataBase64: payload }).ok, true);
+  assert.deepEqual(imageVerdict({ mime: 'image/png', size: 1, dataBase64: payload.slice(0, -2) + 'AA' }), { ok: false, reason: 'too-large' });
 });

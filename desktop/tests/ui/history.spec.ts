@@ -229,7 +229,7 @@ test('the row menu continues, reads and archives; Archive is offered only for se
   await page.keyboard.press('Control+y');
   await row(page, 'Fix it in the lexer').click({ button: 'right' });
   const menu = page.getByRole('menu', { name: 'Fix it in the lexer actions' });
-  await expect(menu.getByRole('menuitem')).toHaveText(['Continue', 'Read conversation', 'Archive']);
+  await expect(menu.getByRole('menuitem')).toHaveText(['Continue', 'Read', 'Archive']);
   await menu.getByRole('menuitem', { name: 'Archive' }).click();
   await expect.poll(() => engine.history.archived()).toEqual([{ id: 'lexer', archived: true }]);
   await expect(page.getByRole('tab', { name: /Fix it in the lexer/ })).toHaveCount(0);
@@ -237,14 +237,14 @@ test('the row menu continues, reads and archives; Archive is offered only for se
   await expect(page.getByRole('complementary', { name: 'Recap' })).toContainText('· archived');
   // An archived conversation is not offered Archive again; running work and a waiting question cannot be archived.
   await row(page, 'Fix it in the lexer').click({ button: 'right' });
-  await expect(menu.getByRole('menuitem')).toHaveText(['Continue', 'Read conversation']);
+  await expect(menu.getByRole('menuitem')).toHaveText(['Continue', 'Read', 'Unarchive']);
   await page.keyboard.press('Escape');
   await row(page, 'Trailing commas').click({ button: 'right' });
   await expect(page.getByRole('menuitem', { name: 'Archive' })).toBeDisabled();
   await page.keyboard.press('Escape');
   // Read conversation from the menu opens the saved messages read-only.
   await row(page, 'Does JSON5 handle this').click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Read conversation' }).click();
+  await page.getByRole('menuitem', { name: 'Read', exact: true }).click();
   await expect(page.locator('.history-message').first()).toContainText('Does JSON5 handle trailing commas?');
 });
 

@@ -111,7 +111,7 @@ test('b. Go to via the chooser lands on the place Home; Now gives back its own t
   await expect(homeTab(page).locator('.place-swatch')).toHaveAttribute('data-tint-name', 'iris');
   await expect(homeTab(page).getByRole('button', { name: /^Close/ })).toHaveCount(0);
   await expect(page.locator('body')).toHaveAttribute('data-tint', 'iris');
-  await expect.poll(() => rig.places.posts(`/places/${id}/visit`).length).toBe(1);
+  await expect.poll(() => rig.places.posts('/places/rail').filter(call => call.body?.op === 'visit' && call.body?.place === id).length).toBe(1);
   await expect(section(page, 'Open').locator('.rail-place', { hasText: 'Config parser' })).toHaveAttribute('aria-current', 'page');
 
   await rail(page).getByRole('button', { name: 'Now', exact: true }).click();
@@ -274,8 +274,8 @@ test('f. rail: pin from the menu, close from × and ⌘⇧W, closed-but-running 
 
   // A needs-you roll-up draws the amber dot with words a screen reader can say.
   rig.places.setStatus(software, { needsYou: 1 });
-  const dot = railRow(page, 'Software').locator('.rail-dot');
-  await expect(dot).toHaveAttribute('data-state', 'waiting');
+  const dot = railRow(page, 'Software').locator('.status-mark');
+  await expect(dot).toHaveAttribute('data-status', 'waiting');
   await expect(dot).toHaveAccessibleName(/needs? you/);
 
   // ⌃1 / Alt 1 is the first rail place; ⌃0 / Alt 0 is Now.

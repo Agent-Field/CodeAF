@@ -1,9 +1,10 @@
 // What the tab strip, hover preview and overview know about a conversation.
 // Pure: built from the canonical snapshot, never from the view.
 
-import type { EngineQuestion, EngineSnapshot } from '../chat/engine-client.ts';
+import type { EngineQuestion, EngineSnapshot, EngineTaskRow } from '../chat/engine-client.ts';
 import { chatIdFromSessionFile } from '../places/client.ts';
 import { plainMessage } from './composer/pastedText.ts';
+import { displayCommand } from './tasks/displayCommand.ts';
 import { rowFlags, taskMark } from './taskState.ts';
 import { digestOf } from './transcript-parse.ts';
 
@@ -26,6 +27,11 @@ export type TabSummary = {
   running?: number;
   /** Each task's state word by id ("Running", "Done"), so a task tab's preview can say where its own task stands. */
   taskState?: Record<string, string>;
+  /**
+   * The live step number and the command the engine sent for a running task.
+   * A task with neither is absent: the overview does not invent "step 7" or a command line.
+   */
+  taskLive?: Record<string, { step?: number; command?: string }>;
   /** What the person is asked, in the engine's order; empty when nothing waits. */
   questions?: EngineQuestion[];
 };
@@ -43,6 +49,19 @@ function markOf(snapshot: EngineSnapshot, failed: boolean): TabMark | undefined 
   if (snapshot.needsPerson || snapshot.questions?.length) return 'waiting';
   if (snapshot.running) return 'working';
   return failed ? 'failed' : undefined;
+}
+
+/** Live step and command, only for the tasks the engine actually sent them on. */
+function taskLiveOf(tasks: readonly EngineTaskRow[]): TabSummary['taskLive'] {
+  const live = Object.fromEntries(tasks.flatMap(task => {
+    const step = task.Live?.Step;
+    const command = displayCommand(task.Live?.Command ?? '', task.LiveParts).trim();
+    const known: { step?: number; command?: string } = {};
+    if (typeof step === 'number' && Number.isInteger(step) && step > 0) known.step = step;
+    if (command) known.command = command;
+    return Object.keys(known).length ? [[task.ID, known]] : [];
+  }));
+  return Object.keys(live).length ? live : undefined;
 }
 
 function lastAnswer(snapshot: EngineSnapshot): string {
@@ -64,6 +83,7 @@ export function summarize(snapshot: EngineSnapshot, failed = false): TabSummary 
     chatId: snapshot.sessionFile ? chatIdFromSessionFile(snapshot.sessionFile) : undefined,
     running: snapshot.tasks.filter((task) => taskMark(task.Status, rowFlags(task)).kind === 'running').length,
     taskState: Object.fromEntries(snapshot.tasks.map((task) => [task.ID, taskMark(task.Status, rowFlags(task)).label])),
+    taskLive: taskLiveOf(snapshot.tasks),
     questions: snapshot.questions ?? [],
     updatedAt: Number.isFinite(stamp) ? stamp : undefined,
   };

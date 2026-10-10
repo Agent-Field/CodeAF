@@ -3,7 +3,7 @@ import { installMockEngine } from './support/mock-engine';
 import { plainReply } from './support/scenarios';
 import { send } from './support/conversation';
 
-// The File view of a raster picture (design gap TF11): the existing confined read, fitted in the body.
+// The File view of a picture (TF-11): the existing confined read, fitted in the body.
 // 400x100 and 60x120 PNGs, a 4:1 and a 1:2 picture, so the aspect assertions can tell them apart. Each is two flat
 // halves (wide: red then blue across; tall: green then amber down) and decodes cleanly: WebKit draws nothing for a PNG
 // whose zlib checksum is wrong while still reporting its natural width, so a damaged fixture passes without a picture.
@@ -62,7 +62,11 @@ for (const theme of ['light', 'dark'] as const) {
     for (const viewport of [1200, 320]) {
       await page.setViewportSize({ width: viewport, height: 700 });
       const [box, around] = await Promise.all([picture(page).boundingBox(), body(page).boundingBox()]);
+      expect(box!.width).toBeLessThanOrEqual(400);
       expect(box!.width).toBeLessThanOrEqual(around!.width + 0.5);
+      expect(Math.abs(box!.x + box!.width / 2 - around!.x - around!.width / 2)).toBeLessThan(1);
+      expect(Math.abs(box!.y + box!.height / 2 - around!.y - around!.height / 2)).toBeLessThan(1);
+      expect(await body(page).evaluate(el => getComputedStyle(el).backgroundImage)).toBe('none');
       expect(box!.height).toBeLessThanOrEqual(around!.height + 0.5);
       expect(Math.abs(box!.width / box!.height - 4)).toBeLessThan(0.1);
       expect(await body(page).evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
@@ -108,7 +112,7 @@ test('switching the target shows the new picture, never the old one', async ({ p
 test('an unsafe, oversize or corrupt picture is one muted line and an Open in menu', async ({ page }) => {
   await start(page, {
     'art/corrupt.png': png(btoa('this is not a picture')),
-    'art/vector.png': { mime: 'image/svg+xml', dataBase64: btoa('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>') },
+    'art/vector.png': { mime: 'image/svg+xml', dataBase64: btoa('<svg broken') },
     'art/page.png': { mime: 'text/html', dataBase64: btoa('<script>alert(1)</script>') },
     'art/huge.png': png('A'.repeat(22_400_000)),
   });
@@ -121,7 +125,7 @@ test('an unsafe, oversize or corrupt picture is one muted line and an Open in me
     await page.keyboard.press('Escape');
   };
   await line('art/corrupt.png', 'This image cannot be shown.');
-  await line('art/vector.png', 'Binary file');
+  await line('art/vector.png', 'This image cannot be shown.');
   await line('art/page.png', 'Binary file');
   await line('art/huge.png', /^Too large to show · /);
 });
@@ -153,4 +157,38 @@ test('a held read for the old target never paints over the new one', async ({ pa
   await expect.poll(() => width(page)).toBe(400);
   await page.getByRole('tab', { name: 'tall.png', exact: true }).click();
   await expect.poll(() => width(page)).toBe(60);
+});
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`SVG renders from a blob as a restricted image, never inline (${theme})`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.addInitScript(value => localStorage.setItem('codeaf-theme', value), theme);
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="60" height="120"><script>window.__svgExecuted=true</script><rect width="60" height="120" fill="#c9403d"/></svg>';
+    const reads = await start(page, { 'art/vector.svg': { mime: 'image/svg+xml', dataBase64: btoa(svg) } });
+    await openFile(page, 'art/vector.svg');
+    await expect.poll(() => width(page)).toBe(60);
+    await expect(picture(page)).toHaveAttribute('src', /^blob:/);
+    expect(await pixel(page, 30, 60)).toEqual([201, 64, 61]);
+    await expect(body(page).locator('svg')).toHaveCount(0);
+    expect(await page.evaluate(() => '__svgExecuted' in window)).toBe(false);
+    const box = await picture(page).boundingBox();
+    expect(box!.width).toBe(60);
+    expect(box!.height).toBe(120);
+    await page.setViewportSize({ width: 320, height: 220 });
+    const [small, pane] = await Promise.all([picture(page).boundingBox(), body(page).boundingBox()]);
+    expect(small!.height).toBeLessThanOrEqual(pane!.height);
+    expect(small!.width).toBeLessThanOrEqual(pane!.width);
+    expect(Math.abs(small!.width / small!.height - 0.5)).toBeLessThan(0.01);
+    expect(reads).toContain('image:art/vector.svg');
+    expect(reads).not.toContain('text:art/vector.svg');
+  });
+}
+
+test('an engine read refusal keeps the Open in dropdown available', async ({ page }) => {
+  await start(page, { 'art/large.png': png(WIDE) });
+  await page.route(/\/files\?path=art%2Flarge\.png/, route => route.fulfill({ status: 502, json: { error: 'file exceeds the 16 MiB read limit' } }));
+  await openFile(page, 'art/large.png');
+  await expect(body(page)).toHaveText('file exceeds the 16 MiB read limit');
+  await page.locator('.file-head').getByRole('button', { name: 'Open in' }).click();
+  await expect(page.getByRole('menuitem', { name: 'Copy path' })).toBeVisible();
 });

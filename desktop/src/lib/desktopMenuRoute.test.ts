@@ -28,3 +28,9 @@ test('unknown or inherited payloads are refused', () => {
     assert.equal(deliverDesktopAction(payload, () => assert.fail('dispatch'), () => assert.fail('run')), false);
   }
 });
+
+test('isDesktopTabAction accepts exactly the tab commands and no shell chord', () => {
+  const tab = ['new', 'close', 'close-stop', 'reopen', 'overview', 'next', 'previous'];
+  for (const action of tab) assert.equal(isDesktopTabAction(action), true);
+  for (const other of ['settings', 'focus', 'sidebar', 'history', 'new-window', 'Close', '', 'constructor']) assert.equal(isDesktopTabAction(other), false);
+});

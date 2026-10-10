@@ -14,6 +14,7 @@ import type { ChooserMode, UndoEntry, WindowPlace } from './contracts';
 import { indexPlaces, type PlaceIndex } from './selectors';
 import { placesStore, usePlaces, type PlacesState } from './placesStore';
 import { requestWorkspace } from './workspaceBus';
+import { createPlaceNavigation } from '../navigation';
 
 export type DialogRequest =
   | { kind: 'instructions'; placeId: string }
@@ -36,6 +37,7 @@ export type PlacesShell = {
   goTo: (id: string) => Promise<void>;
   goToInNewWindow: (id: string) => Promise<void>;
   openAllPlaces: (background?: boolean) => void;
+  up: () => Promise<void>;
   closePlace: (id: string) => void;
   closeOpen: (except?: string) => void;
   chooser?: ChooserMode;
@@ -180,47 +182,32 @@ export function usePlacesShellController(): PlacesShell {
     if (!requestWorkspace({ type: 'home-root', background })) show({ text: 'All places opens in the workspace. Go to the workspace first.', tone: 'warning', actions: [] });
   }, [show]);
 
-  const goTo = useCallback(async (id: string) => {
-    setChooser(undefined);
-    if (id === 'root') { openAllPlaces(); return; }
-    if (id === 'now') { setPlace('now'); setArrival(n => n + 1); return; }
-    if (!isWindowPlace(id)) throw new Error('That is not a place codeaf knows.');
-    // A just-created Place can precede this render's graph refresh. Confirm
-    // unknown targets with the canonical graph before rejecting or navigating.
-    const target = index?.byId.get(id) ?? (await client.graph({ archived: true })).places.find(place => place.id === id);
-    if (!target) throw new Error('That place no longer exists.');
-    if (target?.archived) throw new Error(`“${target.name}” is archived. Restore it from All places first.`);
-    setPlace(id);
-    setArrival(n => n + 1);
-    setClosed(before => { if (!before.has(id)) return before; const next = new Map(before); next.delete(id); return next; });
-    // Going there is what puts a place in the rail's Open list; the engine records it and the next read shows it.
-    try { await client.visit(id); } catch (failure) { warn(failure); }
-    void refresh();
-  }, [client, index, openAllPlaces, refresh, warn]);
-
-  const goToInNewWindow = useCallback(async (id: string) => {
-    if (id !== 'now' && id !== 'root' && !isWindowPlace(id)) throw new Error('That is not a place codeaf knows.');
-    await native.openPlaceWindow(id as 'now' | 'root' | `pl_${string}`);
-    if (isWindowPlace(id) && id !== 'now') { try { await client.visit(id); } catch (failure) { warn(failure); } void refresh(); }
-  }, [client, native, refresh, warn]);
-
-  const closePlace = useCallback((id: string) => {
-    setClosed(before => new Map(before).set(id, new Date().toISOString()));
-    // Closing the place this window shows leaves the window in Now; its tabs are kept for when it is opened again.
-    if (id === place) { setPlace('now'); setArrival(n => n + 1); }
-  }, [place]);
-
-  const closeOpen = useCallback((except?: string) => {
-    const open = places.graph?.rail.open.filter(view => view.id !== except && !view.pinned) ?? [];
-    if (!open.length) return;
-    const at = new Date().toISOString();
-    setClosed(before => { const next = new Map(before); for (const view of open) next.set(view.id, at); return next; });
-    if (place !== 'now' && place !== except && open.some(view => view.id === place)) { setPlace('now'); setArrival(n => n + 1); }
-  }, [places.graph, place]);
+  // Async navigation reads the latest window and graph rather than a render captured before an engine write.
+  const navigationState = useRef({ place, graph: places.graph });
+  navigationState.current = { place, graph: places.graph };
+  const navigation = useMemo(() => createPlaceNavigation({
+    client, windows: native,
+    graph: () => navigationState.current.graph,
+    current: () => navigationState.current.place,
+    setPlace: key => { navigationState.current.place = key; setPlace(key); },
+    focusHome: () => setArrival(n => n + 1),
+    openRoot: openAllPlaces,
+    setClosed: (key, isClosed) => setClosed(before => {
+      if (key === 'now' || key === 'root') return before;
+      const next = new Map(before);
+      if (isClosed) next.set(key, new Date().toISOString()); else next.delete(key);
+      return next;
+    }),
+    refresh, warn,
+  }), [client, native, openAllPlaces, refresh, warn]);
+  const goTo = useCallback(async (id: string) => { setChooser(undefined); await navigation.goTo(id); }, [navigation]);
+  const goToInNewWindow = navigation.openInNewWindow;
+  const closePlace = useCallback((id: string) => { void navigation.closePlace(id).catch(warn); }, [navigation, warn]);
+  const closeOpen = useCallback((except?: string) => { void navigation.closeAllOthers(except).catch(warn); }, [navigation, warn]);
 
   return {
     place, places, index, client, native, arrival, closed,
-    goTo, goToInNewWindow, openAllPlaces, closePlace, closeOpen,
+    goTo, goToInNewWindow, openAllPlaces, closePlace, closeOpen, up: navigation.up,
     chooser, openChooser: setChooser, closeChooser: () => setChooser(undefined),
     lookAt, quickLook: setLookAt,
     dialog, openDialog: setDialog, closeDialog: () => setDialog(undefined),

@@ -48,7 +48,9 @@
 .overview-dot[data-state="waiting"] { background: var(--amber); }
 .overview-dot[data-state="failed"] { background: var(--danger); }
 .overview-card-title { margin-top: var(--overview-card-title-top); font-size: var(--font-size-input); font-weight: var(--font-weight-medium); line-height: var(--line-height-tight); white-space: nowrap; overflow: hidden; mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
-.overview-card-body { min-height: 0; flex: 0 1 auto; overflow: hidden; }
+.overview-card-body { min-height: 0; flex: 1 1 auto; overflow: hidden; display: flex; flex-direction: column; gap: var(--overview-card-gap); }
+/* The face lets presses through to the open button. Allow all and Review sit on top of it and take the press themselves. */
+.overview-card-actions { flex: none; margin-top: auto; pointer-events: auto; }
 .overview-card-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--overview-card-lines); overflow: hidden; overflow-wrap: anywhere; font-size: var(--font-size-body); line-height: var(--overview-card-leading); color: var(--ink-2); }
 .overview-card-empty { color: var(--ink-3); }
 .overview-card-panes { display: flex; flex-direction: column; font-size: var(--font-size-body); line-height: var(--overview-card-leading); color: var(--ink-2); }
