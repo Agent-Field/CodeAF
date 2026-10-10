@@ -41,10 +41,17 @@ export type WindowLocal = {
 
 export const emptyLocal = (): WindowLocal => ({ recentIds: [], focus: {}, scroll: {} });
 
-const stripFocus = (tab: Tab): SharedTab => {
+/** Legacy offsets belong to this window even when they were saved on a pane. */
+const stripScroll = <P extends Pane>(pane: P): P => {
+  const { scrollOffset: _scroll, ...rest } = pane;
+  return rest as P;
+};
+
+const stripFocus = (source: Tab): SharedTab => {
+  const tab = stripScroll(source);
   if (!tab.split) { const { split: _drop, ...rest } = tab; return rest; }
   const { focus: _focus, ...split } = tab.split;
-  return { ...tab, split };
+  return { ...tab, split: { ...split, panes: split.panes.map(stripScroll) } };
 };
 
 /** The shared half of a window's state. Closed split tabs lose their focus too: Reopen lands on the first pane. */
@@ -59,7 +66,11 @@ export const sharedText = (state: WorkspaceState) => JSON.stringify(sharedOf(sta
 export function localOf(state: WorkspaceState, previous: WindowLocal): WindowLocal {
   const focus: Record<string, number> = {};
   for (const tab of [...state.tabs, ...state.closed]) if (tab.split && tab.split.focus > 0) focus[tab.id] = tab.split.focus;
-  return { activeId: state.activeId, recentIds: state.recentIds, focus, scroll: previous.scroll };
+  const scroll = { ...previous.scroll };
+  for (const tab of [...state.tabs, ...state.closed]) for (const pane of tab.split?.panes ?? [tab]) {
+    if (pane.scrollOffset !== undefined && scroll[pane.id] === undefined) scroll[pane.id] = pane.scrollOffset;
+  }
+  return { activeId: state.activeId, recentIds: state.recentIds, focus, scroll };
 }
 
 /**

@@ -10,6 +10,8 @@ export type TabRoute = { taskId?: string; back: string[]; forward: string[] };
 export type FileTarget = { path: string; view?: 'changes' | 'file' };
 
 export type TabView = {
+  /** Legacy single-scroller offset in pixels; the shared workspace strips it into this window's local state. */
+  scrollOffset?: number;
   /** The file a file or diff tab shows. It reads through the session in `sessionFile`. */
   file?: FileTarget;
   sessionFile?: string;
@@ -118,6 +120,7 @@ function cleanJob(value: unknown): { jobId: string } | undefined {
 /** Keeps only the view fields that validate. */
 export function cleanView(value: Record<string, unknown>): TabView {
   const view: TabView = {};
+  if (typeof value.scrollOffset === 'number' && Number.isFinite(value.scrollOffset) && value.scrollOffset >= 0) view.scrollOffset = value.scrollOffset;
   const target = cleanTarget(value.target);
   if (target) view.target = target;
   if (typeof value.sessionFile === 'string' && value.sessionFile) view.sessionFile = value.sessionFile;

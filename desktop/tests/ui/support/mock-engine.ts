@@ -527,7 +527,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     return json(route, roleView(role));
   };
 
-  const workspaces = new Map<string, { key: string; revision: number; workspace: unknown }>();
+  const workspaces = new Map<string, { key: string; revision: number; writer?: string; workspace: unknown }>();
   const history = historyRoutes(scenario.history, json);
 
   await page.route('**/api/engine/**', async route => {
@@ -550,10 +550,12 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     if (root === 'events') return (world ? worldEvents : sessionEvents)(route, Number(url.searchParams.get('after') ?? 0));
     // Fixture workspace CAS mirrors the real route; workspace reads never count as conversation calls.
     if (root === 'workspaces' && id) {
+      if (parts.length !== 2 || !/^(now|pl_[0-9a-f]{16})$/.test(id)) return json(route, { error: 'there is no such tab set', code: 'unknown_key' }, 404);
+      if (!['GET', 'PUT'].includes(method)) return json(route, { error: 'GET or PUT required' }, 405);
       const current = workspaces.get(id) ?? { key: id, revision: 0, workspace: null };
       if (method === 'PUT') {
-        if (body.revision !== current.revision) return json(route, { error: 'Tabs changed in another window', code: 'conflict', current }, 409);
-        const saved = { key: id, revision: current.revision + 1, workspace: body.workspace };
+        if (body.revision !== current.revision) return json(route, { error: 'these tabs changed in another window', code: 'conflict', current }, 409);
+        const saved = { key: id, revision: current.revision + 1, writer: String(body.writer ?? ''), workspace: body.workspace };
         workspaces.set(id, saved);
         return json(route, saved);
       }
