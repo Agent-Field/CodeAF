@@ -1,6 +1,7 @@
 // Package decide holds the desktop's decision ledger: what the app decided on a
 // person's behalf in a place, why, and whether the person later overturned it.
-// It is the persistence half only; deciding policy lives with the callers.
+// It also routes questions up the place graph; evidence and answer delivery
+// remain with the callers.
 package decide
 
 import "time"
