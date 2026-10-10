@@ -57,7 +57,7 @@ export type Scenario = {
   /** false: the engine serves no /places/policy route (an engine before the Places organization settings). */
   placesPolicy?: false;
   /** The engine-wide world feed (GET /world, GET /events). Absent: the engine serves no feed and both routes answer 404. */
-  world?: { rows: WorldRow[]; items: AttentionItem[] };
+  world?: { rows: WorldRow[]; items: AttentionItem[]; jobs?: { chatId: string; running: number; jobs: unknown[] }[] };
   /** Forced HTTP failure per endpoint, e.g. { turn: 409 }. */
   fail?: Partial<Record<'create' | 'read' | 'turn' | 'stop' | 'answer' | 'events' | 'task', number>>;
 };
@@ -72,7 +72,7 @@ export type MockEngine = {
   turnModels: string[];
   snapshot: () => EngineSnapshot;
   /** Replaces the world feed's rows and/or attention items and streams the new state to readers. Needs `scenario.world`. */
-  setWorld: (next: { rows?: WorldRow[]; items?: AttentionItem[] }) => void;
+  setWorld: (next: { rows?: WorldRow[]; items?: AttentionItem[]; jobs?: { chatId: string; running: number; jobs: unknown[] }[] }) => void;
   /** Apply the next scripted turn reply (for scenarios with manual: true). */
   advance: () => void;
   /** Merge fields into the snapshot and publish a snapshot record to stream readers. */
@@ -181,7 +181,20 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
   // The world feed: every change is one full `reset` record, which the client applies at any cursor.
   let world = scenario.world ? structuredClone(scenario.world) : undefined;
   let worldSeq = 1;
-  const worldRecord = () => ({ seq: worldSeq, type: 'reset', at: new Date().toISOString(), payload: structuredClone(world!) });
+  // Inactive tabs read this mirror instead of holding a session stream. It speaks the
+  // world client's row (chatId, numeric needsYou) and carries the questions the preview answers.
+  // It has no `session` field: the inbox's older feed lists a running row with one as another
+  // window's work, and this mirror is the same conversation the window already has open.
+  let sessionWorldSeq = 1;
+  const sessionRow = () => ({
+    chatId: state.id || 'mock-1', sessionFile: state.sessionFile, sessionId: state.id, sessionSeq: state.seq,
+    title: state.title, workspace: state.workspace, running: state.running,
+    needsYou: state.needsPerson ? Math.max(state.questions?.length ?? 0, 1) : 0,
+    failed: 0, tasksRunning: (state.tasks ?? []).filter(task => task.Status === 'running').length,
+    tasksTotal: (state.tasks ?? []).length, attached: true, archived: false, questions: state.questions ?? [],
+  });
+  const sessionWorldRecord = () => ({ epoch: 'mock-session', seq: sessionWorldSeq, type: 'reset', at: new Date().toISOString(), payload: { rows: [sessionRow()], items: [] } });
+  const worldRecord = () => ({ epoch: 'mock-world', seq: worldSeq, type: 'reset', at: new Date().toISOString(), payload: structuredClone(world!) });
   const worldEvents = async (route: Route, after: number) => {
     const deadline = Date.now() + 60_000;
     while (!closed && Date.now() < deadline) {
@@ -194,9 +207,22 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     }
     await route.abort().catch(() => undefined);
   };
+  const sessionEvents = async (route: Route, after: number) => {
+    const deadline = Date.now() + 60_000;
+    while (!closed && Date.now() < deadline) {
+      if (sessionWorldSeq > after) {
+        const record = sessionWorldRecord();
+        await route.fulfill({ status: 200, headers: { 'Cache-Control': 'no-cache' }, contentType: 'text/event-stream', body: `: connected\n\nid: ${record.seq}\ndata: ${JSON.stringify(record)}\n\n` });
+        return;
+      }
+      await new Promise(r => setTimeout(r, 25));
+    }
+    await route.abort().catch(() => undefined);
+  };
 
   const publish = () => {
     state = { ...state, seq: state.seq + 1, updatedAt: new Date().toISOString() };
+    sessionWorldSeq += 1;
     // The stream carries the same omission as a read, so a window never receives an over-cap body it would not get from GET.
     // A record is a tail from the last published length; a shorter transcript is a reset, matching the bridge.
     const { entries, ...header } = structuredClone(state);
@@ -521,7 +547,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
       return status ? json(route, { error: `Mock engine forced ${key} failure` }, status) : undefined;
     };
     if (world && root === 'world') return json(route, { seq: worldSeq, ...structuredClone(world) });
-    if (world && root === 'events') return worldEvents(route, Number(url.searchParams.get('after') ?? 0));
+    if (root === 'events') return (world ? worldEvents : sessionEvents)(route, Number(url.searchParams.get('after') ?? 0));
     // Fixture workspace CAS mirrors the real route; workspace reads never count as conversation calls.
     if (root === 'workspaces' && id) {
       const current = workspaces.get(id) ?? { key: id, revision: 0, workspace: null };
@@ -538,7 +564,16 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     if (root === 'places' && parts[1] === 'policy') return placesPolicy(route, parts, method, body);
     if (root === 'history') return history.handle(route, parts, method, body, url);
     if (root !== 'sessions') return json(route, { error: 'unknown route' }, 404);
-    if (!id) return forced('create') ?? json(route, history.titleOf(body.sessionFile) ? { ...state, title: history.titleOf(body.sessionFile) } : state);
+    if (!id) {
+      const refused = forced('create');
+      if (refused) return refused;
+      // Attaching a saved conversation keeps that file. Replacing it with the mock's
+      // default made a second Continue look like a different chat and open a duplicate tab.
+      const requested = typeof body.sessionFile === 'string' ? body.sessionFile : '';
+      const titled = history.titleOf(body.sessionFile);
+      if (requested || titled) state = { ...state, ...(requested ? { sessionFile: requested } : {}), ...(titled ? { title: titled } : {}) };
+      return json(route, state);
+    }
     if (id !== state.id) return json(route, { error: 'reattach this conversation' }, 404);
     if (!action) {
       const since = url.searchParams.get('since');
@@ -581,7 +616,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
 
   const setWorld: MockEngine['setWorld'] = next => {
     if (!world) throw new Error('setWorld needs scenario.world');
-    world = { rows: next.rows ?? world.rows, items: next.items ?? world.items };
+    world = { rows: next.rows ?? world.rows, items: next.items ?? world.items, jobs: next.jobs ?? world.jobs };
     worldSeq += 1;
   };
 

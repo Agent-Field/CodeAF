@@ -1,0 +1,55 @@
+/* The group suggestion pill (Shell 2b). It sits on the content card, which is already position: relative,
+   so top and the horizontal centre are measured from that card. Colour, type and the two controls come from
+   tokens and the shared Button and IconButton. The wide frame is one line; the small breakpoint wraps
+   (DESIGN-QUESTIONS SUGGEST-PILL-299) because 2b itself never draws a narrow card. */
+.suggest-pill {
+  position: absolute;
+  top: var(--suggest-pill-top);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--suggest-pill-z);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--suggest-pill-gap);
+  width: fit-content;
+  max-width: calc(100% - var(--space-4));
+  height: var(--suggest-pill-height);
+  padding: var(--suggest-pill-pad);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--sh-2);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
+  white-space: nowrap;
+}
+.suggest-pill-mark { display: flex; flex: none; color: var(--ink-2); }
+.suggest-pill-text b { font-weight: var(--font-weight-medium); color: inherit; }
+/* The shared primary control is 28px with 12px of side padding. 2b draws this one at 24px with 10px. */
+.suggest-pill .suggest-pill-group.button {
+  flex: none;
+  height: var(--row-action-size);
+  min-height: var(--row-action-size);
+  padding: 0 var(--space-compact);
+  border-radius: var(--radius-pill);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+}
+/* The shared row icon button is 24px. 2b draws this × at 22px, ink-3, on the pill radius. */
+.suggest-pill .suggest-pill-dismiss.icon-button {
+  flex: none;
+  width: var(--suggest-pill-dismiss);
+  height: var(--suggest-pill-dismiss);
+  border-radius: var(--radius-pill);
+  color: var(--ink-3);
+}
+/* Card width minus 16px is the pill's max-width above. Here the sentence is allowed to wrap inside that,
+   and a folder name with no spaces breaks, so Group and Dismiss stay on the card. */
+@media (max-width: 600px) {
+  .suggest-pill { height: auto; min-height: var(--suggest-pill-height); white-space: normal; }
+  .suggest-pill-text { min-width: 0; overflow-wrap: anywhere; }
+}
+
+/* The measurement page only. The product mounts the pill inside the tab panel, which already fills the card. */
+.suggest-pill-card { position: relative; width: 100%; height: 100%; }

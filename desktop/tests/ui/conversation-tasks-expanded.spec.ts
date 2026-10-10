@@ -258,8 +258,9 @@ for (const theme of ['light', 'dark'] as const) {
   await expect(count).toHaveCSS('min-height', '0px');
   if (process.env.TASK_COUNT_SHOTS) await page.screenshot({ path: `${process.env.TASK_COUNT_SHOTS}/${test.info().project.name}-${theme}-header.png` });
   await counts.getByRole('button', { name: '1 needs you here', exact: true }).click();
-  await expect(page.getByRole('region', { name: 'Waiting on you' })).toBeVisible();
-  await expect(table(page)).toHaveCount(0);
+  // I-ICV-34: the need-you count opens the Tasks view on its Needs you filter, not the tray.
+  await expect(filterTab(page, /^Needs you/)).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Back to the conversation' }).click();
   await counts.getByRole('button', { name: '2 running', exact: true }).click();
   await expect(filterTab(page, /^Running/)).toHaveAttribute('aria-pressed', 'true');
   await expect(rowButton(page, '1.2')).toBeVisible();

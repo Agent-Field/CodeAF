@@ -24,12 +24,11 @@ for (const theme of ['light', 'dark'] as const) {
     const tray = page.getByRole('region', { name: 'Waiting on you' });
     const count = page.locator('.conversation-bar-counts').getByRole('button', { name: '2 need you here', exact: true });
     await expect(count).toBeVisible();
-    await tray.getByRole('button', { name: 'Next question' }).click();
-    await expect(tray.getByRole('status')).toHaveText('2 of 2');
+    // I-ICV-34: the count opens the expanded Tasks view filtered to Needs you.
     await count.click();
-    await expect(tray.getByRole('status')).toHaveText('1 of 2');
-    await expect(tray.getByRole('region', { name: 'Choose storage' })).toBeVisible();
-    await expect(page.getByRole('region', { name: 'Tasks', exact: true })).toHaveCount(0);
+    await expect(page.locator('.tasks-table-tab[data-filter="needs"]')).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: 'Back to the conversation' }).click();
+    await expect(page.locator('.expanded-tasks')).toHaveCount(0);
     engine.update({ questions: [questions[0]] });
     await expect(page.locator('.conversation-bar-counts').getByRole('button', { name: '1 needs you here', exact: true })).toBeVisible();
     await page.setViewportSize({ width: 320, height: 568 });

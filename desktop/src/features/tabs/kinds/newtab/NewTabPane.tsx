@@ -11,10 +11,12 @@ import { panesOf, tabHolding, visibleTabs } from '../../model';
 import { newTabFieldEvent } from '../../../shell/newTabField';
 import { historyKind } from '../history';
 import { terminalKind, newTerminalShortcut } from '../terminal';
+import { webKind } from '../web';
 import type { PaneRenderProps } from '../slots';
 import { useNewTabHost, type NewTabHost } from './api';
 import { siteOf } from '../../../web/address';
 import { buildSections, flatRows, tabDigit, titleFromText, type NewTabRow } from './rows';
+import { filePromptArmed, settleFilePrompt } from './openFile';
 import { useFileMatches } from './useFileMatches';
 import { useHistoryMatches } from './useHistoryMatches';
 import { NewTabView } from './NewTabView';
@@ -42,7 +44,8 @@ function NewTabField({ host, paneId, focused, draft, onDraft }: { host: NewTabHo
   const setQuery = (text: string) => { setQueryState(text); onDraft(text); };
   const history = useHistoryHost();
   const [index, setIndex] = useState(0);
-  const [filing, setFiling] = useState(false);
+  // ⌘O from another tab arms this before the field mounts. Reading it here shows the file caption on the first paint.
+  const [filing, setFiling] = useState(() => filePromptArmed(paneId));
   const [busy, setBusy] = useState(false);
   const beforeFirstTurn = useContext(FirstTurnContext);
   const newConversationPlace = useContext(NewConversationPlaceContext);
@@ -54,6 +57,15 @@ function NewTabField({ host, paneId, focused, draft, onDraft }: { host: NewTabHo
     window.addEventListener(newTabFieldEvent, onField);
     return () => window.removeEventListener(newTabFieldEvent, onField);
   }, [focused]);
+  // A New tab that was already open is still mounted, so the arm is taken when it becomes the pane in front.
+  // The settle waits a tick: StrictMode replays the effect, and clearing in the first pass would drop the prompt.
+  useEffect(() => {
+    if (!filePromptArmed(paneId)) return;
+    setFiling(true);
+    input.current?.focus();
+    const timer = window.setTimeout(() => settleFilePrompt(paneId), 0);
+    return () => window.clearTimeout(timer);
+  }, [paneId, focused]);
 
   const others = useMemo(() => {
     const all = visibleTabs(state);
@@ -66,7 +78,7 @@ function NewTabField({ host, paneId, focused, draft, onDraft }: { host: NewTabHo
   // History answers only when it is backed and the workspace gave the field its host; otherwise the section is absent, not broken.
   const asking = historyKind.backed && !!history;
   const found = useHistoryMatches(query, asking);
-  const sections = useMemo(() => buildSections({ query, tabs: others, closed: state.closed, files, terminal: terminalKind.backed, terminalShortcut, fileShortcut, history: found, seeAllShortcut: seeAllHistoryShortcut }), [query, others, state.closed, files, found]);
+  const sections = useMemo(() => buildSections({ query, tabs: others, closed: state.closed, files, terminal: terminalKind.backed, web: webKind.backed, terminalShortcut, fileShortcut, history: found, seeAllShortcut: seeAllHistoryShortcut }), [query, others, state.closed, files, found]);
   const rows = flatRows(sections);
   const active = rows[Math.min(index, rows.length - 1)];
 
@@ -128,7 +140,7 @@ function NewTabField({ host, paneId, focused, draft, onDraft }: { host: NewTabHo
     else if (row.kind === 'tab') { dispatch({ type: 'select', id: row.target! }); closeSelf(); }
     else dispatch({ type: 'newtab-reopen', id: paneId, closedId: row.target! });
   }
-  // ⌘/Ctrl O is the Open file… row's chord: the focused field only, through the one registry, and the same pick the row makes.
+  // ⌘/Ctrl O while this field is in front is the Open file… row's own pick. From any other tab the workspace hook opens or focuses a New tab and arms the same caption.
   useShortcuts(shortcutLayer.surface, shortcut => {
     if (shortcut.id !== 'open-file' || document.querySelector('dialog[open]')) return false;
     pick(rows.find(row => row.kind === 'openfile'));

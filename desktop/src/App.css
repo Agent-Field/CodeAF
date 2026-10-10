@@ -3,7 +3,7 @@
 * { box-sizing: border-box; }
 html, body, #root { width: 100%; height: 100%; }
 body { margin: 0; background: var(--chrome-canvas); color: var(--text); font-family: var(--font-sans); font-size: var(--font-size-body); font-weight: var(--font-weight-regular); letter-spacing: var(--tracking-body); -webkit-font-smoothing: antialiased; }
-.app-shell { min-width: 0; height: 100dvh; display: grid; grid-template-columns: var(--sidebar-width) minmax(0,1fr); transition: grid-template-columns var(--duration-sidebar) var(--ease-layout), padding var(--duration-sidebar) var(--ease-layout); padding: 0; background: var(--frame); }
+.app-shell { min-width: 0; height: 100dvh; display: grid; grid-template-columns: var(--sidebar-width) minmax(0,1fr); transition: background-color var(--nextup-walk-tint-duration), grid-template-columns var(--duration-sidebar) var(--ease-layout), padding var(--duration-sidebar) var(--ease-layout); padding: 0; background: var(--frame); }
 :root[data-environment="mac-desktop"] body { background: transparent; }
 :root[data-environment="mac-desktop"] .app-shell { background: var(--chrome-tint); }
 .content-pane { grid-column: 2; min-height: 0; display: flex; flex-direction: column; min-width: 0; padding: 0 var(--shell-card-inset) var(--shell-card-inset) 0; }

@@ -1,7 +1,8 @@
 import './work-step.css';
 import { useState } from 'react';
-import { Button, Icon } from '../../../components/ui';
+import { Button, ContextMenu, Icon } from '../../../components/ui';
 import type { WorkStep } from '../types';
+import { stepCopyText } from './copyLog';
 import { duration, elapsed } from './format';
 import type { RowState, WorkRender } from './props';
 import { StepLead, StepTail } from './StepMark';
@@ -51,13 +52,15 @@ export function WorkStepView({ step, shimmer, open, onToggle, now, ...render }: 
   const caption = !open && state === 'running' ? liveCaption(step) : undefined;
   return (
     <div className="work-step" data-state={state}>
-      <Button className="work-step-head" aria-expanded={open} onClick={onToggle}>
-        <Icon name="chevron" size="xs" motion="disclosure" />
-        <StepLead state={state} />
-        {isSettled(state) && <Icon name={categoryIcon(step.category)} size="xs" />}
-        <span className={shimmer ? 'work-step-title thinking-shimmer' : 'work-step-title'}>{step.title}</span>
-        <StepTail state={state} time={time} decision={step.calls.length === 1 ? step.calls[0].decision : undefined} />
-      </Button>
+      <ContextMenu label="Step actions" items={[{ id: 'copy-step', label: 'Copy command or output', icon: 'copy', onSelect: () => void stepCopyText(step, render.readFull).then((text) => navigator.clipboard.writeText(text)).catch(() => undefined) }]}>
+        <Button className="work-step-head" aria-expanded={open} onClick={onToggle}>
+          <Icon name="chevron" size="xs" motion="disclosure" />
+          <StepLead state={state} />
+          {isSettled(state) && <Icon name={categoryIcon(step.category)} size="xs" />}
+          <span className="work-step-title" data-shimmer={shimmer && state === 'running' || undefined}>{step.title}</span>
+          <StepTail state={state} time={time} decision={step.calls.length === 1 ? step.calls[0].decision : undefined} />
+        </Button>
+      </ContextMenu>
       {caption && <span className="work-step-caption">{caption}</span>}
       {open && (
         <div className="work-calls">
