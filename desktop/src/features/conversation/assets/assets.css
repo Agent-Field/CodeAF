@@ -23,6 +23,7 @@
   transition: background var(--dur-fast) var(--ease);
 }
 .chip.link-chip:hover, .chip.link-chip:active { background: var(--field-2); }
+.chip.link-chip:active { filter: brightness(var(--brightness-press)); transition-duration: var(--dur-press); }
 .link-chip-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: var(--asset-name-max-width); font-weight: var(--type-label-strong); }
 .link-chip-domain { min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: var(--asset-dir-max-width); color: var(--ink-3); }
 
