@@ -312,7 +312,7 @@ func TestAnEngineThatReadsNoPlacesIsNeverClaimedToApplyThem(t *testing.T) {
 func TestANewChatStartedInAPlaceIsFiledBeforeItsFirstTurn(t *testing.T) {
 	rig := newUsingRig(t)
 	id := rig.policyPlace("Release", placegraph.Policy{Model: "place/flash"})
-	token, code, _ := rig.open(map[string]any{"place": id})
+	token, code, _ := rig.open(map[string]any{"placeId": id})
 	if code != 200 || token == "" {
 		t.Fatalf("open in place: %d", code)
 	}
@@ -335,10 +335,10 @@ func TestANewChatStartedInAPlaceIsFiledBeforeItsFirstTurn(t *testing.T) {
 		status int
 		code   string
 	}{
-		{map[string]any{"place": "pl_ffffffffffffffff"}, 404, "not_found"},
-		{map[string]any{"place": old}, 409, "archived"},
-		{map[string]any{"place": placegraph.NowID}, 400, "reserved"},
-		{map[string]any{"place": id, "sessionFile": rig.file}, 400, "invalid"},
+		{map[string]any{"placeId": "pl_ffffffffffffffff"}, 404, "not_found"},
+		{map[string]any{"placeId": old}, 409, "archived"},
+		{map[string]any{"placeId": placegraph.NowID}, 400, "reserved"},
+		{map[string]any{"placeId": id, "sessionFile": rig.file}, 400, "invalid"},
 	} {
 		if _, code, e := rig.open(tc.body); code != tc.status || e.Code != tc.code {
 			t.Errorf("%v: %d %+v", tc.body, code, e)

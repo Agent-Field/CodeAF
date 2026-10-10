@@ -582,24 +582,21 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if path == "/sessions" && r.Method == http.MethodPost {
-		var ask struct {
-			SessionFile string `json:"sessionFile"`
-			// Place is the place a NEW conversation is started in (using.go):
-			// checked before the engine is opened, filed before the first turn.
-			Place string `json:"place"`
-		}
+		// PlaceID is the place a NEW conversation is started in (using.go, openrequest.go):
+		// checked before the engine is opened, filed before the first turn.
+		var ask OpenRequest
 		if !decode(w, r, &ask) {
 			return
 		}
 		var places *Places
-		if ask.Place != "" {
+		if ask.PlaceID != "" {
 			if ask.SessionFile != "" {
 				failPlaces(w, 400, "invalid", "Only a new chat is started in a place; file an existing one from its place.")
 				return
 			}
 			var status int
 			var code, sentence string
-			if places, status, code, sentence = b.newChatPlace(ask.Place); status != 0 {
+			if places, status, code, sentence = b.newChatPlace(ask.PlaceID); status != 0 {
 				failPlaces(w, status, code, sentence)
 				return
 			}
@@ -621,7 +618,7 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		dir := ""
 		switch {
 		case places != nil:
-			dir, folder = b.folderFor(places, ask.Place)
+			dir, folder = b.folderFor(places, ask.PlaceID)
 		case b.openIn != nil:
 			dir = recordedFolder(home.Dir(), ask.SessionFile, b.folderPolicy())
 		}
@@ -647,12 +644,13 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if places != nil {
-			if err := places.fileNewChat(conn, ask.Place); err != nil {
+			if err := places.fileNewChat(conn, ask.PlaceID); err != nil {
 				conn.Close()
 				status, code, sentence := storeFailure(err, "")
 				failPlaces(w, status, code, sentence)
 				return
 			}
+			places.referRestOfPlace(conn, folder)
 		}
 		id, err := Token()
 		if err != nil {
