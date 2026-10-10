@@ -1,0 +1,43 @@
+/* Coarse pointers (a finger). The design does not draw these sizes; SH-TOUCH-343 records the
+   assumption, and every length is a token. The rail and the strip import this sheet. App may
+   import it too: the selectors are specific enough that a second import does not change the result.
+   The design-system rail specimen is not .sidebar, so it keeps the 32px row a mouse draws. */
+
+@media (pointer: coarse) {
+  /* The open tab's × stays visible, and its hit is 24px. A generic icon-button rule would
+     otherwise force the 32px hit, so the minimum is set here too. The 20px slot stays; it
+     centers the button, which overflows it equally. Hover and press keep that hit: the
+     fine-pointer hover rule grows the mark to the slot, which is smaller than 24px. */
+  .workspace-tab[data-active="true"] .workspace-tab-close.icon-button,
+  .workspace-tab[data-active="true"] .workspace-tab-close.icon-button:hover:not(:disabled),
+  .workspace-tab[data-active="true"] .workspace-tab-close.icon-button:active:not(:disabled) {
+    width: var(--hit-coarse-close);
+    height: var(--hit-coarse-close);
+    min-width: var(--hit-coarse-close);
+    min-height: var(--hit-coarse-close);
+    opacity: var(--opacity-opaque);
+  }
+
+  /* Rail rows are 40px: Now, a place, All places, and the other pages under them.
+     A place row's own height (.rail .rail-row-main.nav-item) is three classes, so the
+     coarse rule has to name that class or a finger keeps the 32px mouse row. The
+     specimen is not .sidebar, so it stays 32px. */
+  .sidebar.rail .nav-item,
+  .sidebar.rail .rail-row-main.nav-item {
+    height: var(--hit-coarse-row);
+    min-height: var(--hit-coarse-row);
+  }
+  .sidebar.rail .rail-row { min-height: var(--hit-coarse-row); }
+
+  /* The divider is placed in script as an 8px box centred on the gap. The minimum grows
+     that box to 16px on the far side only, so the translate pulls it back by half the
+     difference and the finger's target stays centred on the same line. */
+  .pane-resize[data-axis="col"] {
+    min-width: var(--pane-resize-hit-coarse);
+    transform: translateX(calc((var(--pane-resize-hit) - var(--pane-resize-hit-coarse)) / 2));
+  }
+  .pane-resize[data-axis="row"] {
+    min-height: var(--pane-resize-hit-coarse);
+    transform: translateY(calc((var(--pane-resize-hit) - var(--pane-resize-hit-coarse)) / 2));
+  }
+}

@@ -124,3 +124,27 @@ test('invalid internal drops are ignored instead of using a text fallback', asyn
   await drop(page, '[aria-label="Pinned"] .rail-row', 'application/x-codeaf-place', '[""]');
   await expect(calls(page)).toBeEmpty();
 });
+
+for (const theme of ['light', 'dark']) {
+  test(`a touch hold opens the extracted place row menu without navigating · ${theme}`, async ({ browser }) => {
+    const context = await browser.newContext({ hasTouch: true, viewport: { width: 1200, height: 800 } });
+    try {
+      const page = await context.newPage();
+      await mount(page, theme);
+      const config = row(page, 'Config parser');
+      expect((await config.boundingBox())!.height).toBe(40);
+      await config.dispatchEvent('pointerdown', { pointerType: 'touch', button: 0, pointerId: 1 });
+      const menu = page.getByRole('menu', { name: 'Config parser actions' });
+      await expect(menu).toBeVisible();
+      await config.dispatchEvent('pointerup', { pointerType: 'touch', button: 0, pointerId: 1 });
+      // The release click belongs to the hold, so it must not also navigate to the place.
+      await config.dispatchEvent('click', { button: 0 });
+      await expect(calls(page)).toBeEmpty();
+      await menu.getByRole('menuitem', { name: 'Close', exact: true }).click();
+      await expect(calls(page)).toHaveText('close:config');
+      await expect(config).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
+  });
+}
