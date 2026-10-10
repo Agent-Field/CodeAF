@@ -245,6 +245,7 @@ func TestReadingOffersAndReconnectingTheStreamNeverAskAModel(t *testing.T) {
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		r := httptest.NewRequest("GET", "/api/engine/sessions/"+id+"/events", nil).WithContext(ctx)
+		r.Host = "127.0.0.1:1420"
 		r.Header.Set("Authorization", "Bearer "+testToken)
 		done := make(chan struct{})
 		go func() { rig.b.ServeHTTP(httptest.NewRecorder(), r); close(done) }()
@@ -440,6 +441,7 @@ func TestThePolicyRoutesReadAndWriteTheProfile(t *testing.T) {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
 	r := httptest.NewRequest("PUT", "/api/engine/places/policy/minClusterChats", strings.NewReader(`{"value":7}`))
+	r.Host = "127.0.0.1:1420"
 	r.Header.Set("Authorization", "Bearer "+testToken)
 	r.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -448,6 +450,7 @@ func TestThePolicyRoutesReadAndWriteTheProfile(t *testing.T) {
 		t.Fatalf("%d %s", rec.Code, rec.Body.String())
 	}
 	r = httptest.NewRequest("PUT", "/api/engine/places/policy/minClusterChats", strings.NewReader(`{"value":"lots"}`))
+	r.Host = "127.0.0.1:1420"
 	r.Header.Set("Authorization", "Bearer "+testToken)
 	r.Header.Set("Content-Type", "application/json")
 	rec = httptest.NewRecorder()

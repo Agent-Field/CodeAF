@@ -172,9 +172,12 @@ type conversation struct {
 	// jobsWorld publishes a jobs roll-up onto the engine-wide feed (jobs.go).
 	// Nil means this conversation has nobody to tell.
 	jobsWorld func(kind string, payload any)
-	jobsMu    sync.Mutex
-	jobsSeen  map[int]session.JobNotice
-	jobsSig   string
+	// bridge is the table that opened this conversation. publish tells its world
+	// rows from here, and detach is a bridge method the session route table calls.
+	bridge   *Bridge
+	jobsMu   sync.Mutex
+	jobsSeen map[int]session.JobNotice
+	jobsSig  string
 }
 type Bridge struct {
 	token     string
@@ -204,7 +207,9 @@ type Bridge struct {
 }
 
 func New(token string, open Open) *Bridge {
-	return &Bridge{token: token, open: open, sessions: map[string]*conversation{}, icons: newFaviconCache()}
+	b := &Bridge{token: token, open: open, sessions: map[string]*conversation{}, icons: newFaviconCache()}
+	b.reaper()
+	return b
 }
 func Token() (string, error) {
 	var b [32]byte
@@ -213,6 +218,9 @@ func Token() (string, error) {
 }
 func (b *Bridge) Close() {
 	b.closeOnce.Do(func() {
+		// The idle reaper takes the bridge lock to release a child. Stop it
+		// before shutdown takes that lock, so the two cannot close one engine.
+		b.stopReaper()
 		// The offers' worker takes the bridge lock to find a conversation, so
 		// it is stopped before that lock is held.
 		b.mu.Lock()
@@ -383,7 +391,6 @@ func (s *conversation) publish(r Record) {
 		s.noteJob(*r.Event.Raw.Job)
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.seq++
 
 	r.Seq = s.seq
@@ -396,6 +403,14 @@ func (s *conversation) publish(r Record) {
 	}
 	close(s.changed)
 	s.changed = make(chan struct{})
+	bridge := s.bridge
+	s.mu.Unlock()
+	// Running, pending questions and the title move with the records a window
+	// already sees. worldChanged takes this conversation's lock, so the call
+	// waits until that lock is down. With no rows producer it returns at once.
+	if bridge != nil {
+		bridge.worldChanged(s)
+	}
 }
 func (s *conversation) pump(events <-chan session.Event, stop func()) {
 	s.mu.Lock()
@@ -544,12 +559,17 @@ func laterKind(k session.EventKind) string {
 	}
 }
 func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// A foreign page is refused before the token check, so it learns nothing about the engine.
+	if status, msg := guardRequest(r); status != 0 {
+		fail(w, status, msg)
+		return
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	origin := r.Header.Get("Origin")
 	native := origin == "tauri://localhost" || origin == "http://tauri.localhost" || origin == "http://localhost:1420" || origin == "http://127.0.0.1:1420"
 	if native {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, If-Match")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
 	}
 	if r.Method == http.MethodOptions && native {
@@ -577,10 +597,17 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if b.historyRoutes(w, r, path) {
 		return
 	}
-	if b.workspaceRoutes(w, r, path) {
+	if b.settingsRoutes(w, r, path) {
 		return
 	}
 	if b.worldRoutes(w, r, path) {
+		return
+	}
+	if b.workspaceRoutes(w, r, path) {
+		return
+	}
+	if path == "/favicon" {
+		b.webFavicon(w, r)
 		return
 	}
 	if path == "/sessions" && r.Method == http.MethodPost {
@@ -663,7 +690,7 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if conn.DiffStart != nil {
 			_, _ = conn.DiffStart() // diffs compare against where this conversation began; best effort
 		}
-		s := &conversation{conn: conn, id: id, changed: make(chan struct{}), done: make(chan struct{}), icons: b.icons, folder: folder, jobsWorld: b.recordWorld}
+		s := &conversation{conn: conn, id: id, changed: make(chan struct{}), done: make(chan struct{}), icons: b.icons, folder: folder, jobsWorld: b.recordWorld, bridge: b}
 		b.sessions[id] = s
 		s.afterTurn = b.adviseAfterTurn
 		_, events, stop := conn.Agent.AttachReplay()
