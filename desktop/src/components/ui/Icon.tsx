@@ -27,7 +27,6 @@ import { CircleAlertIcon } from '@animateicons/react/lucide/circle-alert-icon';
 import { CircleMinusIcon } from '@animateicons/react/lucide/circle-minus-icon';
 import { TerminalIcon } from '@animateicons/react/lucide/terminal-icon';
 import { FileTextIcon } from '@animateicons/react/lucide/file-text-icon';
-import { FilePenIcon } from '@animateicons/react/lucide/file-pen-icon';
 import { GlobeIcon } from '@animateicons/react/lucide/globe-icon';
 import { BrainIcon } from '@animateicons/react/lucide/brain-icon';
 import { ListTreeIcon } from '@animateicons/react/lucide/list-tree-icon';
@@ -39,11 +38,8 @@ import { ListChecksIcon } from '@animateicons/react/lucide/list-checks-icon';
 import { CopyIcon } from '@animateicons/react/lucide/copy-icon';
 import { FilePlusIcon } from '@animateicons/react/lucide/file-plus-icon';
 import { FlaskConicalIcon } from '@animateicons/react/lucide/flask-conical-icon';
-import { CompassIcon } from '@animateicons/react/lucide/compass-icon';
 import { ArrowLeftRightIcon } from '@animateicons/react/lucide/arrow-left-right-icon';
-import { MessageCircleIcon } from '@animateicons/react/lucide/message-circle-icon';
 import { NetworkIcon } from '@animateicons/react/lucide/network-icon';
-import { MapIcon } from '@animateicons/react/lucide/map-icon';
 import { HourglassIcon } from '@animateicons/react/lucide/hourglass-icon';
 import { ImageIcon } from '@animateicons/react/lucide/image-icon';
 import { FileCodeIcon } from '@animateicons/react/lucide/file-code-icon';
@@ -90,20 +86,34 @@ import { ShieldIcon } from '@animateicons/react/lucide/shield-icon';
 import { RefreshCwIcon } from '@animateicons/react/lucide/refresh-cw-icon';
 import { ChevronUpIcon } from '@animateicons/react/lucide/chevron-up-icon';
 import { AppWindowIcon } from '@animateicons/react/lucide/app-window-icon';
+import { FoldVerticalIcon } from '@animateicons/react/lucide/fold-vertical-icon';
+import { ReplyIcon } from '@animateicons/react/lucide/reply-icon';
+import { QuoteIcon } from '@animateicons/react/lucide/quote-icon';
+import { useEffect, useRef } from 'react';
 import { useTheme } from '../../design/ThemeProvider';
 import design from '../../design/tokens.json';
-export const iconNames = ['sidebar','plus','search','code','activity','grid','settings','arrow','chevron','check','close','pin','folder','more','split','tab','chevronRight','chevronLeft','attach','send','stop','queued','running','failed','alert','cancelled','terminal','file','edit','web','thinking','tasks','tool','findFiles','arrowDown','back','checklist','copy','create','test','browse','transfer','communicate','coordinate','plan','wait','image','fileCode','fileJson','fileCode2','pdf','fileMissing','audio','video','play','pause','expand','zoomIn','zoomOut','external','folderOpen','imageOff','cornerDownRight','ban','warn','info','fileLock','clock','grip','pencil','steer','triangleAlert','arrowUpRight','panelRight','shrink','sliders','book','sparkles','inbox','history','diff','layers','archive','cpu','textLines','link','branch','shield','retry','chevronUp','forward','reload','chatPlus','appWindow','now','allPlaces','switcher','messagesSquare','bookmark','sparkle','scrollText'] as const;
+export const iconNames = ['sidebar','plus','search','code','activity','grid','settings','arrow','chevron','check','close','pin','folder','more','split','tab','chevronRight','chevronLeft','attach','send','stop','queued','running','failed','alert','cancelled','terminal','file','edit','web','thinking','tasks','tool','findFiles','arrowDown','back','checklist','copy','create','test','browse','transfer','communicate','coordinate','plan','wait','image','fileCode','fileJson','fileCode2','pdf','fileMissing','audio','video','play','pause','expand','zoomIn','zoomOut','external','folderOpen','imageOff','cornerDownRight','ban','warn','info','fileLock','clock','grip','pencil','steer','triangleAlert','arrowUpRight','panelRight','shrink','sliders','book','sparkles','inbox','history','diff','layers','archive','cpu','textLines','link','branch','shield','retry','chevronUp','forward','reload','chatPlus','appWindow','now','allPlaces','switcher','messagesSquare','bookmark','sparkle','scrollText','folderTree','chevronsUpDown','foldVertical','rotateCw','reply','quote','terminalSquare','maximize','clock3','fileDiff'] as const;
 export type IconName = typeof iconNames[number];
 export type IconSize = 'micro' | 'tiny' | 'xs' | 'sm' | 'md' | 'lg';
 const staticGlyph = (Glyph: ComponentType<LucideProps>) => (_: { isAnimated?: boolean }) => <Glyph />;
-const icons = { sidebar: PanelLeftIcon, plus: PlusIcon, search: SearchIcon, code: CodeXmlIcon, activity: ActivityIcon, grid: LayoutGridIcon, settings: SettingsIcon, arrow: ArrowRightIcon, chevron: ChevronDownIcon, check: CheckIcon, close: XIcon, pin: PinIcon, folder: FolderIcon, more: EllipsisIcon, split: PanelLeftIcon, tab: MessageSquareIcon, chevronRight: ChevronRightIcon, chevronLeft: ChevronLeftIcon, attach: PaperclipIcon, send: ArrowUpIcon, stop: CircleStopIcon, queued: CircleDashedIcon, running: CircleDotIcon, failed: CircleXIcon, alert: CircleAlertIcon, cancelled: CircleMinusIcon, terminal: TerminalIcon, file: FileTextIcon, edit: FilePenIcon, web: GlobeIcon, thinking: BrainIcon, tasks: ListTreeIcon, tool: WrenchIcon, findFiles: FileSearchIcon, arrowDown: ArrowDownIcon, back: ArrowLeftIcon, checklist: ListChecksIcon, copy: CopyIcon, create: FilePlusIcon, test: FlaskConicalIcon, browse: CompassIcon, transfer: ArrowLeftRightIcon, communicate: MessageCircleIcon, coordinate: NetworkIcon, plan: MapIcon, wait: HourglassIcon, image: ImageIcon, fileCode: FileCodeIcon, fileJson: staticGlyph(FileJson), fileCode2: staticGlyph(FileCode2), pdf: FileTypeIcon, fileMissing: FileXIcon, audio: MusicIcon, video: VideoIcon, play: PlayIcon, pause: PauseIcon, expand: ExpandIcon, zoomIn: ZoomInIcon, zoomOut: ZoomOutIcon, external: ExternalLinkIcon, folderOpen: FolderOpenIcon, imageOff: ImageOffIcon, cornerDownRight: CornerDownRightIcon, ban: BanIcon, warn: TriangleAlertIcon, info: InfoIcon, fileLock: FileLockIcon, clock: ClockIcon, grip: GripVerticalIcon, pencil: PencilIcon, steer: CornerDownRightIcon, triangleAlert: TriangleAlertIcon, arrowUpRight: ArrowUpRightIcon, panelRight: PanelLeftIcon, shrink: ShrinkIcon, sliders: SlidersHorizontalIcon, book: BookOpenIcon, sparkles: SparklesIcon, inbox: InboxIcon, history: HistoryIcon, diff: DiffIcon, layers: LayersIcon, archive: ArchiveIcon, cpu: CpuIcon, textLines: AlignLeftIcon, link: LinkIcon, branch: GitBranchIcon, shield: ShieldIcon, retry: RefreshCwIcon, chevronUp: ChevronUpIcon, forward: ArrowRightIcon, reload: RotateCwIcon, chatPlus: MessageSquarePlusIcon, appWindow: AppWindowIcon, now: CircleDashedIcon, allPlaces: FolderTreeIcon, switcher: ChevronsUpDownIcon, messagesSquare: staticGlyph(MessagesSquare), bookmark: staticGlyph(Bookmark), sparkle: staticGlyph(Sparkle), scrollText: ScrollTextIcon };
-export function Icon({ name, size = 'md', motion = 'none' }: { name: IconName; size?: IconSize; motion?: 'none' | 'directional' | 'disclosure' }) {
+const icons = { sidebar: PanelLeftIcon, plus: PlusIcon, search: SearchIcon, code: CodeXmlIcon, activity: ActivityIcon, grid: LayoutGridIcon, settings: SettingsIcon, arrow: ArrowRightIcon, chevron: ChevronDownIcon, check: CheckIcon, close: XIcon, pin: PinIcon, folder: FolderIcon, more: EllipsisIcon, split: PanelLeftIcon, tab: MessageSquareIcon, chevronRight: ChevronRightIcon, chevronLeft: ChevronLeftIcon, attach: PaperclipIcon, send: ArrowUpIcon, stop: CircleStopIcon, queued: CircleDashedIcon, running: CircleDotIcon, failed: CircleXIcon, alert: CircleAlertIcon, cancelled: CircleMinusIcon, terminal: TerminalIcon, file: FileTextIcon, edit: PencilIcon, web: GlobeIcon, thinking: BrainIcon, tasks: ListTreeIcon, tool: WrenchIcon, findFiles: FileSearchIcon, arrowDown: ArrowDownIcon, back: ArrowLeftIcon, checklist: ListChecksIcon, copy: CopyIcon, create: FilePlusIcon, test: FlaskConicalIcon, browse: GlobeIcon, transfer: ArrowLeftRightIcon, communicate: MessageSquareIcon, coordinate: NetworkIcon, plan: ListChecksIcon, wait: HourglassIcon, image: ImageIcon, fileCode: FileCodeIcon, fileJson: staticGlyph(FileJson), fileCode2: staticGlyph(FileCode2), pdf: FileTypeIcon, fileMissing: FileXIcon, audio: MusicIcon, video: VideoIcon, play: PlayIcon, pause: PauseIcon, expand: ExpandIcon, zoomIn: ZoomInIcon, zoomOut: ZoomOutIcon, external: ExternalLinkIcon, folderOpen: FolderOpenIcon, imageOff: ImageOffIcon, cornerDownRight: CornerDownRightIcon, ban: BanIcon, warn: TriangleAlertIcon, info: InfoIcon, fileLock: FileLockIcon, clock: ClockIcon, grip: GripVerticalIcon, pencil: PencilIcon, steer: CornerDownRightIcon, triangleAlert: TriangleAlertIcon, arrowUpRight: ArrowUpRightIcon, panelRight: PanelLeftIcon, shrink: ShrinkIcon, sliders: SlidersHorizontalIcon, book: BookOpenIcon, sparkles: SparklesIcon, inbox: InboxIcon, history: HistoryIcon, diff: DiffIcon, layers: LayersIcon, archive: ArchiveIcon, cpu: CpuIcon, textLines: AlignLeftIcon, link: LinkIcon, branch: GitBranchIcon, shield: ShieldIcon, retry: RefreshCwIcon, chevronUp: ChevronUpIcon, forward: ArrowRightIcon, reload: RotateCwIcon, chatPlus: MessageSquarePlusIcon, appWindow: AppWindowIcon, now: CircleDashedIcon, allPlaces: FolderTreeIcon, switcher: ChevronsUpDownIcon, messagesSquare: staticGlyph(MessagesSquare), bookmark: staticGlyph(Bookmark), sparkle: staticGlyph(Sparkle), scrollText: ScrollTextIcon, folderTree: FolderTreeIcon, chevronsUpDown: ChevronsUpDownIcon, foldVertical: FoldVerticalIcon, rotateCw: RotateCwIcon, reply: ReplyIcon, quote: QuoteIcon, terminalSquare: TerminalIcon, maximize: ExpandIcon, clock3: ClockIcon, fileDiff: DiffIcon };
+// Q34: names whose library glyph is mirrored in CSS rather than drawn twice.
+const mirrored: readonly IconName[] = ['panelRight'];
+export function Icon({ name, size = 'md', motion = 'none', play }: { name: IconName; size?: IconSize; motion?: 'none' | 'directional' | 'disclosure'; play?: string | number | boolean }) {
  const { reducedMotion } = useTheme();
  // Upstream glyph choreography is disabled. Only approved, state-meaningful motion is allowed.
  const approved = design.icons.motionByName[name];
  const resolvedMotion = motion === approved && !(reducedMotion && motion === 'directional') ? motion : 'none';
- const Glyph = icons[name];
- return <span className={`app-icon app-icon-${size}`} aria-hidden="true" data-icon={name} data-motion={resolvedMotion}>
-  <Glyph isAnimated={false} />
+ const Glyph = icons[name] as ComponentType<{ isAnimated?: boolean; ref?: React.Ref<{ startAnimation: () => void }> }>;
+ const handle = useRef<{ startAnimation: () => void } | null>(null);
+ const first = useRef(true);
+ // A changing `play` key plays the glyph's own choreography exactly once; the first render is the resting state, and reduced motion keeps it static.
+ useEffect(() => {
+  if (first.current) { first.current = false; return; }
+  if (play === undefined || approved !== 'once' || reducedMotion) return;
+  handle.current?.startAnimation();
+ }, [play, approved, reducedMotion]);
+ return <span className={`app-icon app-icon-${size}`} aria-hidden="true" data-icon={name} data-motion={resolvedMotion} data-mirror={mirrored.includes(name) ? '' : undefined}>
+  <Glyph isAnimated={false} ref={approved === 'once' ? handle : undefined}/>
  </span>;
 }
