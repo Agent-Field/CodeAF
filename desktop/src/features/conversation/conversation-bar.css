@@ -1,12 +1,16 @@
 /* The pane's top row: title or trail left, counts and the panel toggle right. It sits on clean canvas, no bar and no border. */
 .conversation-bar { display: flex; flex: none; align-items: center; gap: var(--space-compact); height: var(--task-view-bar-height); padding: 0 var(--conversation-bar-pad-end) 0 var(--conversation-bar-pad-start); }
 .conversation-bar[data-lead="trail"] { padding-inline-start: var(--space-3); }
-.conversation-bar-lead { display: flex; flex: 1; align-items: center; min-width: 0; }
+.conversation-bar-lead { display: flex; flex: 1; align-items: center; min-width: 0; gap: var(--next-up-chip-title-gap); }
 .conversation-bar-title { overflow: hidden; margin: 0; font-size: var(--type-prose-size); font-weight: var(--type-label-strong); text-overflow: ellipsis; white-space: nowrap; }
 .conversation-bar-counts { display: flex; flex: none; align-items: center; gap: var(--conversation-bar-counts-gap); padding-inline-end: var(--space-tight); color: var(--ink-2); font-size: var(--type-label-size); }
 .conversation-bar-count.button { min-height: 0; padding: 0; border-radius: var(--radius-sm); color: inherit; font: inherit; line-height: inherit; display: flex; align-items: center; gap: var(--conversation-bar-count-gap); white-space: nowrap; }
 .conversation-bar-toggle.icon-button { flex: none; color: var(--ink-3); }
 .conversation-bar-toggle.icon-button[aria-pressed="true"] { background: var(--field); }
 .conversation-bar-toggle.icon-button[aria-pressed="true"]:hover:not(:disabled) { background: var(--field-2); }
-/* A narrow pane keeps the title and the toggle; the counts are in the panel and the tray. */
-@media (max-width: 600px) { .conversation-bar-counts { display: none; } }
+/* A narrow pane wraps attention so its tray remains reachable. */
+@media (max-width: 600px) { .conversation-bar { flex-wrap: wrap; height: auto; min-height: var(--task-view-bar-height); } .conversation-bar-lead { flex-wrap: wrap; } }
+
+/* Progress stays beside the title while the shell walks the queue. */
+.next-up-chip { display: flex; flex: none; align-items: center; height: var(--next-up-chip-height); padding-inline: var(--next-up-chip-pad); gap: var(--next-up-chip-gap); border-radius: var(--next-up-chip-radius); background: var(--field); color: var(--ink-2); font-size: var(--next-up-chip-size); white-space: nowrap; }
+.next-up-chip-progress { color: var(--ink-3); }
