@@ -39,12 +39,28 @@ function tabShowing(state: WorkspaceState, sessionFile: string): string | undefi
 export function buildHomeActions({ shell, homeId, digests, strip, quickLook, retry, snoozeStale }: HomeActionDeps): PlaceActions {
   const name = (id: string) => (id === 'root' ? 'All places' : id === 'now' ? 'Now' : shell.index?.byId.get(id)?.name);
   const chatTitle = (chatId: string) => {
-    for (const digest of digests) { const row = digest?.chats.find(chat => chat.id === chatId); if (row) return row.title || 'Untitled chat'; }
+    for (const digest of digests) {
+      const row = digest?.chats.find(chat => chat.id === chatId);
+      if (row) return row.title || 'Untitled chat';
+      // A rolled-up row names the chat even when this Home does not list it among its own chats.
+      const rolled = digest?.attention.find(item => item.chatId === chatId);
+      if (rolled?.chatTitle) return rolled.chatTitle;
+    }
     return 'Untitled chat';
   };
-  const openChat = (chatId: string, background: boolean) => {
+  // A parent Home lists a descendant's chat in Live without copying that chat's journal path.
+  // The path lives on the place the chat is filed in, so a click there reads that place's Home.
+  const journalOf = async (chatId: string) => {
+    const known = sessionFileOf(digests, chatId);
+    if (known) return known;
+    const origin = digests.flatMap(digest => digest?.attention ?? []).find(item => item.chatId === chatId)?.placeId;
+    if (!origin || origin === homeId || origin === 'root' || origin === 'now') return undefined;
+    const filed = await shell.client.home(origin);
+    return filed.chats.find(row => row.id === chatId)?.sessionFile;
+  };
+  const openChat = async (chatId: string, background: boolean) => {
     if (!strip) throw new Error('Chats open in the workspace.');
-    const sessionFile = sessionFileOf(digests, chatId);
+    const sessionFile = await journalOf(chatId);
     // A row the engine could not place on disk cannot be reattached; saying so beats opening an empty tab.
     if (!sessionFile) throw new Error('This chat cannot be opened here: the engine did not say where it is saved.');
     const existing = tabShowing(strip.state, sessionFile);
