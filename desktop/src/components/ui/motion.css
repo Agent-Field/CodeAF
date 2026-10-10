@@ -1,0 +1,32 @@
+/* The two loops Foundations §08 allows. Private copies of this sweep drifted
+   across the latest pill, thinking and the task log; one keyframe is the law.
+   Only a live step's words and the header's "N running" dot may wear them. */
+
+.cf-shimmer {
+  background-image: linear-gradient(var(--shimmer-angle), var(--ink-2) 0%, var(--ink-2) var(--cf-shimmer-edge), var(--ink) var(--cf-shimmer-mid), var(--ink-2) var(--cf-shimmer-far), var(--ink-2) 100%);
+  background-size: var(--shimmer-size) 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: cf-shimmer var(--cf-shimmer-duration) linear infinite;
+}
+@keyframes cf-shimmer {
+  from { background-position: var(--cf-shimmer-from) 0; }
+  to { background-position: var(--cf-shimmer-to) 0; }
+}
+
+.cf-breathe {
+  display: inline-block; flex: none;
+  width: var(--mark-dot); height: var(--mark-dot);
+  border-radius: var(--radius-pill); background: var(--accent);
+  animation: cf-breathe var(--breathe-duration) ease-in-out infinite;
+}
+@keyframes cf-breathe {
+  0%, 100% { box-shadow: 0 0 0 var(--breathe-from) var(--accent-soft); }
+  50% { box-shadow: 0 0 0 var(--breathe-to) var(--accent-soft); }
+}
+
+/* A clipped gradient with the sweep removed would leave the words invisible,
+   so the still colour is ink-2 and the dot loses its halo. */
+@media (prefers-reduced-motion: reduce) {
+  .cf-shimmer { animation: none; background: none; color: var(--ink-2); }
+  .cf-breathe { animation: none; box-shadow: none; }
+}
