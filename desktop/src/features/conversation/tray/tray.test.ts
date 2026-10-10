@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { EngineQuestion } from '../../chat/engine-client.ts';
 import { answerFor, bulkAnswers, canPress, canSend, decideAnswer, initialDraft, submitAnswer, summarize } from './answers.ts';
 import { clockText, deadlineAt } from './clock.ts';
-import { compareRows, formOf, optionLabel, optionVariant, visibleOptions } from './form.ts';
+import { compareRows, formOf, needsWords, optionLabel, optionVariant, visibleOptions } from './form.ts';
 import { blocksComposer, layoutTabs, orderQuestions } from './layout.ts';
 
 const consent = (id: number, extra: Partial<EngineQuestion> = {}): EngineQuestion => ({
@@ -144,6 +144,24 @@ test('you decide takes the pick as the asker, except when irreversible', () => {
   assert.deepEqual(decideAnswer(q), { kind: 'landing', id: 7, key: 'a', picked: ['a'], decidedBy: 'asker' });
   assert.equal(decideAnswer({ ...q, stakes: 'irreversible' }), null);
   assert.equal(decideAnswer(landing), null);
+  const clarify: EngineQuestion = { id: 8, kind: 'ask', ask: 'clarification', head: 'Which customers still run v1?', pick: { key: 'northwind' } };
+  assert.deepEqual(decideAnswer(clarify), { kind: 'ask', id: 8, key: 'northwind', picked: ['northwind'], decidedBy: 'asker' });
+  assert.equal(decideAnswer({ ...clarify, pick: undefined }), null);
+});
+
+test('an irreversible Tell it gathers words and is not a second danger', () => {
+  const q: EngineQuestion = {
+    id: 5, kind: 'ask', ask: 'choice', head: 'Remove the legacy YAML loader?', stakes: 'irreversible',
+    options: [
+      { key: 'remove', label: 'Remove' },
+      { key: 'keep', label: 'Keep it', safe: true },
+      { key: 'tell', label: 'Tell it' },
+    ],
+  };
+  assert.equal(needsWords(q, q.options![2]), true);
+  assert.equal(needsWords(q, q.options![0]), false);
+  assert.equal(optionLabel(q, q.options![2]), 'Tell it…');
+  assert.equal(visibleOptions({ ...q, options: [...q.options!, { key: '2', label: 'always', widening: true }] }).some((option) => option.widening), false);
 });
 
 test('compare table needs shared axes on every option', () => {

@@ -37,10 +37,15 @@ export function visibleOptions(question: Question): Option[] {
   return isIrreversible(question) ? options.filter((option) => !option.widening) : options;
 }
 
+// "Tell it…" is the quiet ghost on an irreversible card. The engine spells it as the
+// option's own label (a landing uses key s instead); either ellipsis counts.
+const TELLS_IT = /^tell it(?:…|\.\.\.)?$/i;
+
 /** The option that is only an answer once the person has written words. */
 export function needsWords(question: Question, option: Option): boolean {
   const form = formOf(question);
-  return (form === 'landing' && option.key === 's') || (form === 'fuel' && option.key === '1');
+  if ((form === 'landing' && option.key === 's') || (form === 'fuel' && option.key === '1')) return true;
+  return isIrreversible(question) && (form === 'choice' || form === 'permission') && TELLS_IT.test(option.label.trim());
 }
 
 export const hasWordsField = (question: Question) =>
