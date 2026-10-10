@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { DropdownMenu, IconButton, type MenuEntry } from '../../components/ui';
 import design from '../../design/tokens.json';
 import { tabShortcuts } from '../../design/keyboard';
+import { finishedHeaderMenu } from './tabMenu';
 
 /** The colour of the 6px glyph before the state words; colour lives only on that glyph. */
 export type StateTone = 'running' | 'done' | 'failed' | 'stopped';
@@ -41,15 +42,14 @@ export function TerminalHeader({ title, meta, words, tone, canStop, removeLabel,
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => setCopied(false), design.interaction.copiedFeedbackMs);
   }
-  const menu: MenuEntry[] = [
-    ...(finishedJob ? [
-      ...(onOpenLog ? [{ id: 'log', label: 'Open log', icon: 'scrollText' as const, onSelect: onOpenLog }] : []),
-      ...(onRerun ? [{ id: 'rerun', label: 'Run again', icon: 'reload' as const, onSelect: onRerun }] : []),
-    ] : [{ id: 'copy', label: 'Copy output', icon: 'copy' as const, onSelect: () => void copy() }]),
-    { kind: 'separator', id: 'sep' },
-    ...(finishedJob ? [{ id: 'close', label: 'Close tab', shortcut: tabShortcuts.close, onSelect: onClose }] : []),
-    { id: 'remove', label: removeLabel, danger: true, onSelect: onRemove },
-  ];
+  // Finished jobs share finishedHeaderMenu with the tab right-click, so Open log, Run again and Remove job cannot drift.
+  const menu: MenuEntry[] = finishedJob
+    ? finishedHeaderMenu({ onOpenLog, onRerun, onRemove, onClose }, tabShortcuts.close)
+    : [
+      { id: 'copy', label: 'Copy output', icon: 'copy', onSelect: () => void copy() },
+      { kind: 'separator', id: 'sep' },
+      { id: 'remove', label: removeLabel, danger: true, onSelect: onRemove },
+    ];
   return <header className="terminal-header">
     <span className="terminal-identity"><span className="terminal-title">{title}</span>{meta && <span className="terminal-meta">{meta}</span>}</span>
     <span className="terminal-state">{tone && <span className="terminal-mark" data-tone={tone} aria-hidden="true"/>}{words}</span>
