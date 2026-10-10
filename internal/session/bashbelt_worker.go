@@ -195,7 +195,7 @@ func workerJournalName() string {
 // of what they did — every child's title, status and result — in place of the
 // interrupted-predecessor sentence, which is a fact about a different worker
 // and not about this one. The resume flag still rides the trajectory's steps.
-func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, wake, rules, orders string, workspace ...string) string {
+func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, wake, rules string, workspace ...string) string {
 	role := planIsTask
 	if root {
 		role = planIsRoot
@@ -236,25 +236,21 @@ func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, 
 	case resume:
 		doc = withReport(doc, taskResumeClause)
 	}
-	// THE PERSON'S STANDING ORDERS, LAST — the same road a node's brief takes
+	// THE PERSON'S RULES, LAST — the same road a node's brief takes
 	// ([TaskGraph.briefLocked]): the job is above, and the conditions the job is
-	// done under close the document. The section is already rendered by the
-	// caller ([StandingWorld]); an empty one is no section, the emptiness law,
-	// and a brief for a place with no orders reads as it always read.
+	// done under close the document. The section is memories marked always,
+	// already rendered by the caller ([AlwaysWorld]); an empty one is no
+	// section, the emptiness law, and a brief for a place with no rules reads as
+	// it always read.
 	//
 	// WITHOUT THIS A PLAN-BORN WORKER RAN WITH NO HOUSE RULES (#1549): the
 	// composition above is built from the store's task rows, and nothing on
-	// that road asked the resolver — the standing section a task node gets in
+	// that road asked the resolver — the section a task node gets in
 	// [TaskGraph.briefLocked] never reached the run's workers. It rides the
 	// brief and not the harness's note because it is a birth fact, not a
 	// mid-work sentence: the worker must read it on the opening message or it
 	// governed nothing.
-	//
-	// AND THE PERSON'S RULES CLOSE IT WITH THEM, ahead of the orders as in a
-	// node's brief: memories marked always, rendered by the caller
-	// ([AlwaysWorld]), on the same birth seam and for the same reason — a rule
-	// read after the worker's first message governed nothing it did before.
-	if t := strings.TrimSpace(joinWorldSections(rules, orders)); t != "" {
+	if t := strings.TrimSpace(rules); t != "" {
 		doc += "\n\n" + t
 	}
 	return doc

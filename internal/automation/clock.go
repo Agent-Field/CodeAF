@@ -116,11 +116,18 @@ type Clock struct {
 	// Log receives one line for anything that went wrong outside a run — a
 	// store error, a run that could not be recorded. Nil discards.
 	Log func(string)
+	// Tidy is the pass over what is remembered, asked every [tidyEvery] while
+	// a window is open and never while one is already in hand. Nil is memory
+	// off, and nothing is asked.
+	Tidy Tidy
 
 	mu       sync.Mutex
 	inflight map[int64]*flight
 	work     int
 	looks    int
+	tidying  bool
+	tidiedAt time.Time
+	tidyStop context.CancelFunc
 	wg       sync.WaitGroup
 }
 
@@ -189,6 +196,7 @@ func (c *Clock) Run(ctx context.Context) error {
 		case windows > 0:
 			empty = time.Time{}
 			c.pass(ctx, now)
+			c.tidy(ctx, now)
 		case empty.IsZero():
 			empty = now
 		case now.Sub(empty) >= closingGrace:
@@ -224,6 +232,48 @@ func (c *Clock) lock() (func(), error) {
 		_ = filelock.Unlock(file)
 		_ = file.Close()
 	}, nil
+}
+
+// tidyEvery is how often the clock asks the memory pass whether it wants to
+// run, and tidyWindow how long one pass may take. The pass keeps its own gates
+// (internal/session's memory_consolidate.go), so asking is a stat and a world
+// read on every ask but the few a day it actually runs.
+var (
+	tidyEvery  = 5 * time.Minute
+	tidyWindow = 2 * time.Minute
+)
+
+// tidy asks the memory pass, beside the runs and never in their way: it runs
+// on a goroutine of its own, one at a time, and the clock's closing cancels it.
+func (c *Clock) tidy(ctx context.Context, now time.Time) {
+	if c.Tidy == nil {
+		return
+	}
+	c.mu.Lock()
+	if c.tidying || (!c.tidiedAt.IsZero() && now.Sub(c.tidiedAt) < tidyEvery) {
+		c.mu.Unlock()
+		return
+	}
+	pass, cancel := context.WithTimeout(ctx, tidyWindow)
+	c.tidying, c.tidiedAt, c.tidyStop = true, now, cancel
+	c.mu.Unlock()
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		defer func() {
+			cancel()
+			c.mu.Lock()
+			c.tidying, c.tidyStop = false, nil
+			c.mu.Unlock()
+		}()
+		tidied, err := c.Tidy(pass)
+		switch {
+		case err != nil:
+			c.log("the memory pass: " + err.Error())
+		case tidied.Line() != "":
+			c.log(tidied.Line())
+		}
+	}()
 }
 
 // pass is one look: stop what somebody asked to stop, take what is due, and
@@ -369,6 +419,11 @@ func (c *Clock) stopAll(cause error) {
 	c.mu.Lock()
 	for _, f := range c.inflight {
 		f.cancel(cause)
+	}
+	// AND THE MEMORY PASS GOES WITH THEM: it is nobody's run, and a closing
+	// clock waits for nothing it can stop.
+	if c.tidyStop != nil {
+		c.tidyStop()
 	}
 	c.mu.Unlock()
 	done := make(chan struct{})

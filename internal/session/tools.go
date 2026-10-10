@@ -238,18 +238,13 @@ func (a *Agent) belt() []bare.Tool {
 	// narrow task's belt byte-identical to what it was before that road
 	// existed.
 	tools = append(tools, a.divideTools()...)
-	// stand (tools_standing.go) is the ambient side's one verb, and it is
-	// CONDITIONAL for the sharpest version of the absence law on this belt: a
-	// model told it can set up a reminder will plan a whole reply around one,
-	// so a session with no store behind it is not given the verb at all. Every
-	// door that is a conversation fills the seam; --once, a task node and a
-	// firing's own headless session do not, because nothing unwatched may arm
-	// something that spends forever.
-	tools = append(tools, a.standingTools()...)
 	// automation (automation_tool.go) proposes and manages work on a clock, and
-	// is absent where there is no store or where the session is itself a task
-	// or an automation's run: nothing unwatched may arm something that runs on
-	// a clock. automation_report is the run's own door, on its belt alone.
+	// it is CONDITIONAL for the sharpest version of the absence law on this
+	// belt: a model told it can set up a reminder will plan a whole reply around
+	// one, so a session with no store behind it is not given the verb at all.
+	// It is absent too where the session is itself a task or an automation's
+	// run: nothing unwatched may arm something that runs on a clock.
+	// automation_report is the run's own door, on its belt alone.
 	tools = append(tools, a.automationTools()...)
 	tools = append(tools, a.automationReportTools()...)
 	tools = append(tools, a.harnessTools()...)

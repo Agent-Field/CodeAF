@@ -93,10 +93,6 @@ var doorsThatHaveNotCrossed = map[string]absentDoor{
 		says:  "harnesses are unavailable here",
 		loses: "running a harness the picker offered",
 	},
-	"standingHereAgent": {
-		says:  "this window cannot change it",
-		loses: "the standing page's four doors — what holds here, an exception, standing one down, pausing one; the page draws only the elsewhere shelf",
-	},
 	"taskRoomAgent": {
 		says:  "this session has no task rooms",
 		loses: "watching one task and reading its journal; the room's steer door crosses and its two reading doors do not, so a room falls back to a read-only far reading, and a room the roster does not know meets this sentence with `· say it to main` on the end of it",
@@ -111,7 +107,6 @@ var doorsThatHaveNotCrossed = map[string]absentDoor{
 	"promoteAgent":                    {loses: "promoting a call out of the background"},
 	"runAgent":                        {loses: "listing orchestration runs"},
 	"spellOutAgent":                   {loses: "spelling a reply out again in longer form"},
-	"standingCountAgent":              {loses: "the `◦ n standing orders` count the margin draws; there is no section at all"},
 	"taskMentionAgent":                {loses: "the task index an @-mention completes from, where the far reading is nil too"},
 	"taskWeightDoor":                  {loses: "one task's context tokens (the conversation's own ContextTokens crosses; the task's does not)"},
 	"turnResumer":                     {loses: "resuming a turn that was stopped"},
@@ -123,7 +118,7 @@ var doorsThatHaveNotCrossed = map[string]absentDoor{
 // surfaceDoorLedger is the ratchet: the ledger above may shrink and may never
 // grow, and shrinking it without lowering this number in the same commit is a
 // red as well ([ratchetComplaint]).
-const surfaceDoorLedger = 20
+const surfaceDoorLedger = 18
 
 // TestEverySurfaceDoorTheEngineHasCrossesTheWire is the law above.
 func TestEverySurfaceDoorTheEngineHasCrossesTheWire(t *testing.T) {

@@ -139,13 +139,13 @@ func automationRowSaid(item automation.Automation, active []automation.Run, now 
 // automationsListLines is the list as lines of the body, with the map from
 // each line back to the automation it draws (-1 for a line that draws none),
 // the window's top, and how many automations were on screen.
-func automationsListLines(a *app, list []automation.Automation, active []automation.Run, cursor, top, width, room int, now time.Time) (lines []string, owner []int, newTop, shown int) {
+func automationsListLines(pal palette, glyph func(tokens.GlyphID) string, list []automation.Automation, active []automation.Run, cursor, top, width, room int, now time.Time) (lines []string, owner []int, newTop, shown int) {
 	if room <= 0 || width < 8 {
 		return nil, nil, 0, 0
 	}
 	// THE HEADING NAMES THE PAGE AND COUNTS NOTHING: a tally of what a person can
 	// already see is the emptiness law broken from the other end.
-	lines = append(lines, placeLead+placeHeading(fit(placeAutomationsWord, width-len(placeLead)), a.pal), "")
+	lines = append(lines, placeLead+placeHeading(fit(placeAutomationsWord, width-len(placeLead)), pal), "")
 	owner = append(owner, -1, -1)
 	visible := room - len(lines)
 	if visible < 1 {
@@ -155,16 +155,16 @@ func automationsListLines(a *app, list []automation.Automation, active []automat
 	titleRoom := automationsTitleRoom(list, width)
 	for i := newTop; i < len(list) && len(lines) < room; i++ {
 		item := list[i]
-		mark := a.icon(automationRowGlyph(item, active))
+		mark := glyph(automationRowGlyph(item, active))
 		title := fit(strings.TrimSpace(item.Title), titleRoom)
-		row := placeLead + mark + " " + a.pal.ink(title)
+		row := placeLead + mark + " " + pal.ink(title)
 		pad := titleRoom - ansi.StringWidth(title)
 		said := automationRowSaid(item, active, now)
 		if left := width - ansi.StringWidth(placeLead) - ansi.StringWidth(mark) - 1 - titleRoom - 2; left > 4 && said != "" {
-			row += strings.Repeat(" ", max(0, pad)) + "  " + a.pal.dim(fit(said, left))
+			row += strings.Repeat(" ", max(0, pad)) + "  " + pal.dim(fit(said, left))
 		}
 		if i == cursor {
-			row = placeBand(row, width, a.pal)
+			row = placeBand(row, width, pal)
 		}
 		lines = append(lines, row)
 		owner = append(owner, i)
@@ -244,16 +244,16 @@ func automationRunWhen(run automation.Run) time.Time {
 
 // automationHistoryLines is one automation's history as lines of the body, with
 // the same owner map the list writes (a run's index, -1 for the head).
-func automationHistoryLines(a *app, item automation.Automation, runs []automation.Run, loaded bool, cursor, top, width, room int, now time.Time) (lines []string, owner []int, newTop, shown int) {
+func automationHistoryLines(pal palette, glyph func(tokens.GlyphID) string, item automation.Automation, runs []automation.Run, loaded bool, cursor, top, width, room int, now time.Time) (lines []string, owner []int, newTop, shown int) {
 	if room <= 0 || width < 8 {
 		return nil, nil, 0, 0
 	}
 	for i, head := range automationHistoryHead(item, now) {
 		text := fit(head, width-len(placeLead))
 		if i == 0 {
-			text = placeHeading(text, a.pal)
+			text = placeHeading(text, pal)
 		} else {
-			text = a.pal.dim(text)
+			text = pal.dim(text)
 		}
 		lines = append(lines, placeLead+text)
 		owner = append(owner, -1)
@@ -268,7 +268,7 @@ func automationHistoryLines(a *app, item automation.Automation, runs []automatio
 		if !loaded {
 			word = autoReadingWord
 		}
-		lines = append(lines, placeLead+a.pal.dim(word))
+		lines = append(lines, placeLead+pal.dim(word))
 		owner = append(owner, -1)
 		return lines, owner, 0, 0
 	}
@@ -276,40 +276,21 @@ func automationHistoryLines(a *app, item automation.Automation, runs []automatio
 	newTop = listTop(cursor, top, len(runs), visible)
 	for i := newTop; i < len(runs) && len(lines) < room; i++ {
 		run := runs[i]
-		mark := a.icon(automationRunGlyph(run.Outcome))
+		mark := glyph(automationRunGlyph(run.Outcome))
 		if run.Phase == automation.PhaseRunning {
-			mark = a.icon(tokens.GWorking)
+			mark = glyph(tokens.GWorking)
 		}
 		when := fit(automation.Moment(automationRunWhen(run), now), 24)
-		row := placeLead + mark + " " + a.pal.ink(when) + strings.Repeat(" ", max(0, 24-ansi.StringWidth(when))) + "  "
+		row := placeLead + mark + " " + pal.ink(when) + strings.Repeat(" ", max(0, 24-ansi.StringWidth(when))) + "  "
 		if left := width - ansi.StringWidth(row); left > 4 {
-			row += a.pal.dim(fit(automationRunRowSaid(run), left))
+			row += pal.dim(fit(automationRunRowSaid(run), left))
 		}
 		if i == cursor {
-			row = placeBand(row, width, a.pal)
+			row = placeBand(row, width, pal)
 		}
 		lines = append(lines, row)
 		owner = append(owner, i)
 		shown++
 	}
 	return lines, owner, newTop, shown
-}
-
-// automationsStatusWord is what /status and the phone's sheet say about the
-// automations: how many will run again, which is next and when, and how many
-// are running now — or nothing at all when none are on the clock.
-func (a *app) automationsStatusWord() (string, bool) {
-	upcoming := nextAutomations(a.watch.list)
-	if len(upcoming) == 0 && a.watch.running == 0 {
-		return "", false
-	}
-	word := ""
-	if len(upcoming) > 0 {
-		next := upcoming[0]
-		word = itoa(len(upcoming)) + " on the clock · next " + strings.TrimSpace(next.Title) + " " + automation.Moment(next.Next, a.now())
-	}
-	if a.watch.running > 0 {
-		word = joinDot(word, itoa(a.watch.running)+" running")
-	}
-	return word, true
 }

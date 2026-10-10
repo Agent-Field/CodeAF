@@ -225,7 +225,7 @@ func demoQuestionPairs() session.Question {
 // demoQuestionDial is a setting with a sentence under it.
 func demoQuestionDial() session.Question {
 	return session.Question{
-		ID: 5, Kind: session.QuestionStanding, Ask: session.AskJudgement, Form: session.FormRoom,
+		ID: 5, Kind: session.QuestionAutomation, Ask: session.AskJudgement, Form: session.FormRoom,
 		Asker:  session.Asker{Kind: session.AskerEngine},
 		Head:   "how much may it decide on its own here?",
 		Reason: "you have taken its pick on the last four questions in this project",

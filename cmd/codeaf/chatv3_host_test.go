@@ -13,7 +13,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 )
 
@@ -228,7 +227,7 @@ func TestHostFlagIsOnTheChatUsage(t *testing.T) {
 // The two wire doors are asserted beside it because they are the same fact from
 // the surface's side — the band and the pause key read the ENGINE machine's
 // store, and a closure that was never filled is a refusal on the wire.
-func TestTheEngineDoorKeepsTheAmbientSideOnOverAConnection(t *testing.T) {
+func TestTheEngineDoorKeepsAutomationsOnOverAConnection(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("CODEAF_HOME", filepath.Join(home, "state"))
@@ -243,11 +242,11 @@ func TestTheEngineDoorKeepsTheAmbientSideOnOverAConnection(t *testing.T) {
 	}
 	defer func() { _ = engine.Agent.Close() }()
 
-	// The doors are built from the config's own seam ([engineStandingItems]
-	// hands back nil for a nil one), so a door that is here is proof that
-	// bootEngine's Config.Standing was filled and `stand` reached the belt.
-	if engine.StandingItems == nil || engine.StandingSave == nil {
-		t.Fatal("the engine serves no standing doors, so a remote surface has no band and no pause key")
+	// The wire's automations are this machine's store ([engineAutomations]
+	// hands back nil when it cannot be opened), so a seam here is proof a
+	// remote surface can list and change them.
+	if engine.Automations == nil || engine.Automations.Store == nil {
+		t.Fatal("the engine serves no automations, so a remote surface has no list and no card")
 	}
 	// These are production bindings on the engine returned by bootEngine, not
 	// callbacks supplied by a test fixture. Removing either binding makes a
@@ -268,48 +267,25 @@ func TestTheEngineDoorKeepsTheAmbientSideOnOverAConnection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the shared assembly did not open: %v", err)
 	}
-	if launch.Config.Standing == nil || launch.Config.Standing.Store == nil {
-		t.Fatal("the engine door built no standing seam, so `stand` is off the belt over --host")
+	if launch.Config.Automations == nil || launch.Config.Automations.Store == nil {
+		t.Fatal("the engine door built no automations seam, so `automation` is off the belt over --host")
 	}
-	// AND THE STORE IS THE ENGINE MACHINE'S OWN, under its state root and not
-	// under any path a surface could have sent it.
-	if root := launch.Config.Standing.Store.Root(); root != v3StandingRoot() {
-		t.Fatalf("the engine's store is at %q, want this machine's own %q", root, v3StandingRoot())
-	}
-	// The doors answer that same store: an item written through Save comes back
-	// out of Items for its own workspace.
-	item := standing.Item{
-		Words:     "tell me when the build breaks",
-		Workspace: home,
-		When:      standing.When{Kind: standing.WhenEvery, Words: "every hour", Every: "1h"},
-		Does:      standing.Action{Kind: standing.ActionSay, Say: "the build broke"},
-		Rails:     standing.Rails{PerRunUSD: 0.02, MaxPerDay: 4},
-	}
-	stood, err := launch.Config.Standing.Store.Create(item)
-	if err != nil {
-		t.Fatalf("create: %v", err)
-	}
-	found, err := engine.StandingItems(home)
-	if err != nil || len(found) != 1 || found[0].ID != stood.ID {
-		t.Fatalf("the engine's items door answered %+v, %v", found, err)
-	}
-	stood.Status = standing.StatusPaused
-	if err := engine.StandingSave(stood); err != nil {
-		t.Fatalf("the engine's save door refused a paused item: %v", err)
-	}
-	if again, err := engine.StandingItems(home); err != nil || len(again) != 1 || again[0].Status != standing.StatusPaused {
-		t.Fatalf("the write did not land: %+v, %v", again, err)
+	// AND IT IS THE ONE STORE THIS PROCESS HOLDS, the one the wire serves, so
+	// what the session proposes is what a surface lists.
+	if engine.Automations.Store != launch.Config.Automations.Store {
+		t.Fatal("the wire serves a different store from the one the session proposes into")
 	}
 }
 
 // AND THE SURFACE IS HANDED IT, with the live firing field that nobody can
 // answer left out. This is the door's half: what hostOptions wires is
 // what a person over --host actually gets.
-func TestTheHostDoorWiresTheStandingSeamAndNothingAboutThisMachine(t *testing.T) {
+func TestTheHostDoorWiresTheFarMachineAndNothingAboutThisMachine(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	welcome := remote.Welcome{
 		Version: remote.Version, Workspace: "/srv/app",
 		Build: "1265feda built 2026-08-27 13:28", BashBackgroundAfterSeconds: 47,
+		Automations: true,
 	}
 	// A REAL CLIENT, not a nil: the door primes three readings on goroutines
 	// of their own the moment it is built, and a nil here used to be three
@@ -323,150 +299,15 @@ func TestTheHostDoorWiresTheStandingSeamAndNothingAboutThisMachine(t *testing.T)
 	if options.BashBackgroundAfterSeconds != welcome.BashBackgroundAfterSeconds {
 		t.Fatalf("the surface countdown is %d, want the engine's %d", options.BashBackgroundAfterSeconds, welcome.BashBackgroundAfterSeconds)
 	}
-	if options.Standing.Items == nil || options.Standing.Save == nil {
-		t.Fatal("the door hands over no standing seam, so a remote surface has no rows and no pause key")
+	// The automations are the FAR machine's, read over the wire, when the far
+	// engine serves them.
+	if options.Automations.List == nil || options.Automations.Create == nil {
+		t.Fatal("the door hands over no automations seam, so a remote surface has no list and no card")
 	}
-	// Running: nothing on the far machine's disk says "firing at this instant",
-	// so nil answers no for everything and no row ever wears `●`.
-	if options.Standing.Running != nil {
-		t.Fatal("the door claims it can tell whether an item is firing on another machine")
-	}
-	// Watch crosses to the engine, so /status can answer from the right timer.
-	if options.Standing.Watch == nil {
-		t.Fatal("the door does not ask the engine for its background timer")
-	}
-	// StandingRoot is the LOCAL errand and exchange folder, and there is no
-	// errand over a connection.
-	if options.StandingRoot != "" {
-		t.Fatalf("the door pointed the surface at %q, a folder on the wrong machine", options.StandingRoot)
-	}
-}
-
-// THE READ MUST NOT BLOCK, and that is the whole reason [hostStanding] exists.
-// The reader over --host is the status line's `◦ N standing orders` segment — home
-// does not open on a remote session — and that segment is asked on every frame,
-// while a wire call has a ten-second deadline behind it. So this holds the far
-// end still and asks anyway.
-func TestTheHostStandingSeamAnswersFromItsCacheWithoutBlocking(t *testing.T) {
-	held := make(chan struct{})
-	asked := make(chan string, 8)
-	stands := &hostStanding{
-		ask: func(workspace string) ([]standing.Item, error) {
-			asked <- workspace
-			<-held
-			return []standing.Item{{ID: "01HQ", Words: "watch CI", Workspace: workspace}}, nil
-		},
-		put:   func(standing.Item) error { return nil },
-		items: map[string][]standing.Item{},
-	}
-
-	// The first reading has nothing to answer with and answers nothing, at once.
-	if items := stands.list("/srv/app"); items != nil {
-		t.Fatalf("the first reading answered %+v, want nothing yet", items)
-	}
-	// An absent segment for one beat is the honest order: a surface that guessed
-	// a count would have to guess wrong first.
-	if !waitFor(func() bool { return len(asked) == 1 }) {
-		t.Fatal("the first reading started no fetch at all")
-	}
-	// AND SO DOES EVERY READING WHILE THAT FETCH IS STILL OUT THERE. This is the
-	// frame that would otherwise be a terminal that stopped repainting.
-	start := time.Now()
-	for range 50 {
-		stands.list("/srv/app")
-	}
-	if waited := time.Since(start); waited > 2*time.Second {
-		t.Fatalf("fifty readings took %s while the far end said nothing", waited)
-	}
-	// ONE FETCH AND NEVER A PILE. Fifty more readings of a workspace nobody has
-	// answered for yet is still one question on the wire.
-	if len(asked) != 1 {
-		t.Fatalf("%d fetches were started for one workspace", len(asked))
-	}
-	close(held)
-	if !waitFor(func() bool { return len(stands.list("/srv/app")) == 1 }) {
-		t.Fatal("the answer never reached the cache")
-	}
-
-	// A workspace nobody asked about gets its own fetch, and an empty workspace
-	// gets none: there is no such place to ask about.
-	if items := stands.list("   "); items != nil {
-		t.Fatalf("an empty workspace answered %+v", items)
-	}
-}
-
-// A WRITE THAT LANDED IS NOT READ BACK STALE. The engine accepted this exact
-// document, so what is held is corrected with it rather than left showing the
-// version the key was pressed on — and the entry is aged out so the next beat
-// still asks the store what it really thinks. (The keys that call this are
-// home's, and home does not open over --host today; the door is proved here so
-// that it is the surface's opening that is missing and not this.)
-func TestSavingOneItemOverTheWireRefreshesWhatHomeDraws(t *testing.T) {
-	item := standing.Item{ID: "01HQ", Words: "watch CI", Workspace: "/srv/app", Status: standing.StatusActive}
-	var written []standing.Item
-	stands := &hostStanding{
-		ask:   func(string) ([]standing.Item, error) { return []standing.Item{item}, nil },
-		put:   func(saved standing.Item) error { written = append(written, saved); return nil },
-		items: map[string][]standing.Item{"/srv/app": {item}},
-	}
-	paused := item
-	paused.Status = standing.StatusPaused
-	if err := stands.save(paused); err != nil {
-		t.Fatalf("save: %v", err)
-	}
-	if len(written) != 1 || written[0].Status != standing.StatusPaused {
-		t.Fatalf("the item did not travel: %+v", written)
-	}
-	held := stands.list("/srv/app")
-	if len(held) != 1 || held[0].Status != standing.StatusPaused {
-		t.Fatalf("the row would have redrawn as %+v", held)
-	}
-}
-
-// A REFUSED WRITE IS THE STORE'S OWN SENTENCE AND NOTHING IS CHANGED HERE. Home
-// prints it on its message line, and a cache that had already recorded the pause
-// would be this screen disagreeing with the other machine's disk.
-func TestARefusedRemoteWriteLeavesTheRowAsItWas(t *testing.T) {
-	item := standing.Item{ID: "01HQ", Words: "watch CI", Workspace: "/srv/app", Status: standing.StatusActive}
-	stands := &hostStanding{
-		ask:   func(string) ([]standing.Item, error) { return []standing.Item{item}, nil },
-		put:   func(standing.Item) error { return errors.New("an item needs a per-run budget") },
-		items: map[string][]standing.Item{"/srv/app": {item}},
-	}
-	paused := item
-	paused.Status = standing.StatusPaused
-	err := stands.save(paused)
-	if err == nil || err.Error() != "an item needs a per-run budget" {
-		t.Fatalf("save = %v, want the store's own refusal", err)
-	}
-	if held := stands.list("/srv/app"); len(held) != 1 || held[0].Status != standing.StatusActive {
-		t.Fatalf("a refused write changed the row anyway: %+v", held)
-	}
-}
-
-// A FAILING LINK KEEPS THE LAST LIST. The two ways a fetch fails are a
-// connection that died and an engine with no ambient side; neither of them is
-// the news "the things you set up are gone", so the count holds what it had
-// rather than dropping to nothing and taking the segment off the line.
-func TestALostConnectionDoesNotEmptyTheItemBand(t *testing.T) {
-	item := standing.Item{ID: "01HQ", Words: "watch CI", Workspace: "/srv/app"}
-	stands := &hostStanding{
-		ask:   func(string) ([]standing.Item, error) { return nil, errors.New("the connection to devbox is gone") },
-		put:   func(standing.Item) error { return nil },
-		items: map[string][]standing.Item{"/srv/app": {item}},
-	}
-	if held := stands.list("/srv/app"); len(held) != 1 {
-		t.Fatalf("the seam answered %+v before the fetch even failed", held)
-	}
-	if !waitFor(func() bool {
-		stands.duty.mu.Lock()
-		defer stands.duty.mu.Unlock()
-		return !stands.duty.out["/srv/app"] && !stands.duty.ended["/srv/app"].IsZero()
-	}) {
-		t.Fatal("the failing fetch never finished")
-	}
-	if held := stands.list("/srv/app"); len(held) != 1 || held[0].ID != "01HQ" {
-		t.Fatalf("a failed round trip emptied the list: %+v", held)
+	// ErrandsRoot is the LOCAL errands folder, and there is no errand over a
+	// connection.
+	if options.ErrandsRoot != "" {
+		t.Fatalf("the door pointed the surface at %q, a folder on the wrong machine", options.ErrandsRoot)
 	}
 }
 

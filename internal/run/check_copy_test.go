@@ -44,7 +44,7 @@ func TestCheckWorkerIsToldTheWorkIsInItsOwnCopy(t *testing.T) {
 		cut()
 		return textReply("done"), nil
 	}}}
-	_, _ = run.NewBashWorker(store, copyDir, "test/model", "", seat).Run(run.WithStepsPerTask(ctx, 2), *check)
+	_, _ = run.NewBashWorker(store, copyDir, "test/model", seat).Run(run.WithStepsPerTask(ctx, 2), *check)
 
 	opening := seat.opening(t)
 	for _, want := range []string{

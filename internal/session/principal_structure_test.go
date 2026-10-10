@@ -140,7 +140,6 @@ func TestEveryWakeRoadSaysWhoItIsAddressedTo(t *testing.T) {
 var personAddressedSentences = map[string]string{
 	"offer them a follow-up in their own words before anything else is spent on it": "principal_wire.go",
 	"the person can also answer this on the card in front of them":                  "task_run.go",
-	"nobody is here to say yes — this can only be set up in a conversation":         "tools_standing.go",
 }
 
 // TestEveryPersonAddressedSentenceSitsBesideThePrincipal fails when one of them

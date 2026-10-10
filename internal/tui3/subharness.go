@@ -154,7 +154,7 @@ const (
 	// the chips are walked with ←/→ and taken with enter, and both `0` and `esc`
 	// are the no — `esc` because it is the dismiss key everywhere in a
 	// conversation, `0` because it is the decline every card on this surface
-	// answers to (standing.go's [session.StandingNoKey]).
+	// answers to ([session.DeclineKey]).
 	subOfferVerbs = "←→ · enter takes it · 0 or esc, no"
 	// subEditHint is the placeholder in the box while one field is being typed
 	// into. It takes the filter's place — one box under the overlay, answering
@@ -454,11 +454,11 @@ func (c *subCard) asked() bool { return c != nil && c.offer != 0 }
 // runs (internal/session's ResolveSubharness) — and the way out is LAST so that
 // it is the chip [app.pickRow] never drops for want of room. Its key is the `0`
 // every other card on this surface declines with, off both ends of the numbering
-// so that it means the same thing on every card ([session.StandingNoKey]).
+// so that it means the same thing on every card ([session.DeclineKey]).
 func (c *subCard) row() []pickChoice {
 	return []pickChoice{
 		{key: "1", word: subRunWord},
-		{key: session.StandingNoKey, word: subNoChipWord},
+		{key: session.DeclineKey, word: subNoChipWord},
 	}
 }
 
@@ -1161,7 +1161,7 @@ func (a *app) subCardKey(msg tea.KeyPressMsg) tea.Cmd {
 			break
 		}
 		listNavigate(msg, &editor{}, c.move, func() {}, subRowsMax-1)
-	case "1", session.StandingNoKey:
+	case "1", session.DeclineKey:
 		// THE TWO DIGITS THE ANSWER ROW DRAWS, and only on the card that draws
 		// them. They are claimed wherever the cursor is standing, because a
 		// question a person has read is a question they may answer without first
@@ -1169,7 +1169,7 @@ func (a *app) subCardKey(msg tea.KeyPressMsg) tea.Cmd {
 		// digit while no box is open (the box above has already returned).
 		if c.asked() {
 			at := 0
-			if msg.String() == session.StandingNoKey {
+			if msg.String() == session.DeclineKey {
 				at = c.declineAt()
 			}
 			cmd = a.takeSubharnessAnswer(at)

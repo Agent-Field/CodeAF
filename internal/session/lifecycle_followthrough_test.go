@@ -57,7 +57,7 @@ func TestAnchorWorkspaceResetsOutcomePairingAndScratchImpacts(t *testing.T) {
 
 	scratch := t.TempDir()
 	repo := newTestRepo(t)
-	scratchKey := standingProjectKey(scratch)
+	scratchKey := anchoredProjectKey(scratch)
 	agent := anchorAgent(t, brain, scratch, scratchKey)
 	agent.mu.Lock()
 	agent.stampUserLocked("make the release offline")

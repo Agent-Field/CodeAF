@@ -53,7 +53,7 @@ func TestCrewFactoryCarriesTheRoleSeatToTheSpendGuard(t *testing.T) {
 		CeilingAction: "checker ceiling $%.2f",
 	}
 	probes := []*crewCallProbe{}
-	factory := CrewFactory(store, dir, profile, Seats{}, "", "", func(model string) session.Completer {
+	factory := CrewFactory(store, dir, profile, Seats{}, "", func(model string) session.Completer {
 		p := &crewCallProbe{}
 		probes = append(probes, p)
 		return guard.Wrap(model, p)

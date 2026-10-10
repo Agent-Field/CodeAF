@@ -41,7 +41,7 @@ func TestUserBashComposerBypassesSetupAndKeepsShellSyntax(t *testing.T) {
 	a.setup.open = false
 	a.welcome.open = false
 	a.closeHome()
-	line := `!printf '%s\n' /task /standing @literal`
+	line := `!printf '%s\n' /task /automations @literal`
 	a.input.setText(line)
 	a.syncLists()
 	if a.menu.open || a.comp.open || len(a.liveTags()) != 0 {
@@ -52,7 +52,7 @@ func TestUserBashComposerBypassesSetupAndKeepsShellSyntax(t *testing.T) {
 		t.Fatalf("shell hit setup: %v", result.err)
 	}
 	fake := a.agent.(*fakeAgent)
-	if len(fake.bashSent) != 1 || len(fake.sent) != 1 || fake.sent[0] != line || len(fake.marked) != 0 {
+	if len(fake.bashSent) != 1 || len(fake.sent) != 1 || fake.sent[0] != line {
 		t.Fatalf("shell was modified or sent through a model modifier: %+v", fake.sent)
 	}
 }

@@ -234,20 +234,13 @@ type RunSpec struct {
 	// ([conversationCrew]), so the program works on the models the person
 	// chose. Zero for every other run.
 	Crew delegate.Crew
-	// Standing is the person's standing orders over this place, already
-	// rendered as the section a worker's brief closes on ([StandingWorld],
-	// resolved once per run against the conversation's own place). It is the
-	// same answer a task node starting in this conversation reads
-	// ([TaskGraph.standingWorld]) — a plan-born worker and a node worker must
-	// never disagree about what stands (#1549). Empty when nothing stands or
-	// the ambient side is off: no orders is no section, never an empty heading.
-	Standing string
 	// Always is the person's rules over this place — memories marked always —
 	// already rendered as the section a worker's brief closes on ([AlwaysWorld],
 	// read once per run for the conversation's own owners). It is the same
-	// answer a task node of this conversation reads ([TaskGraph.alwaysWorld]),
-	// so a plan-born worker works under the same rules. Empty when no rule holds
-	// or memory is off.
+	// answer a task node of this conversation reads ([TaskGraph.alwaysWorld]):
+	// a plan-born worker and a node worker must never disagree about what holds
+	// (#1549). Empty when no rule holds or memory is off: no rules is no
+	// section, never an empty heading.
 	Always string
 }
 
@@ -1104,12 +1097,10 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		ProgramBriefNote:   run.folder.BriefNote(),
 		ProgramFolderHold:  run.folder.Hold(),
 		Crew:               programCrew,
-		// THE ORDERS ARE RESOLVED HERE AND NOT PER WORKER, for the same reason
+		// THE RULES ARE RESOLVED HERE AND NOT PER WORKER, for the same reason
 		// the frontier resolves them once per pass: every worker of one run
-		// sits in one place, and reading a folder per worker would be the same
-		// question asked ten times (standing_world.go).
-		Standing: a.standingWorld(),
-		// AND THE RULES, read once per run on the same argument.
+		// sits in one place, and reading them per worker would be the same
+		// question asked ten times.
 		Always: a.alwaysWorld(),
 	}
 }

@@ -411,16 +411,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// owed. It runs AFTER recovery so that a node the graph took back is not
 	// closed out from under it.
 	agent.closeInflightTaskIndexRows()
-	// AND WHAT ARRIVED WHILE THE WINDOW WAS SHUT. A standing item that fired
-	// into a conversation nobody had open left its news in the session's inbox
-	// (internal/standing's Deliver), and this is the moment it is folded into
-	// one "while you were away" line for the first turn to read — the same lane
-	// and the same reason as the interrupt account above (standing_run.go).
-	agent.drainStandingInbox()
-	// AND THIS PROCESS SAYS IT HOLDS THIS CONVERSATION. It is how a firing knows
-	// to steer its line into a live room instead of writing an inbox line
-	// nobody will see until tomorrow (standing_run.go's registry). Close erases
-	// it.
+	// AND THIS PROCESS SAYS IT HOLDS THIS CONVERSATION. It is how a lane knows
+	// somebody is waiting on it, and how the memory pass finds the one room to
+	// say its line in (livesessions.go). Close erases it.
 	registerLiveSession(agent)
 	// AND WHAT WAS ANSWERED WHILE NOBODY WAS HOME IS ANSWERED NOW. An answer left
 	// on this conversation's doorstep rides the presence heartbeat
@@ -1800,14 +1793,10 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// when it has gone stale enough to be worth the cold prefix (prompt.go's
 	// clockRefresh says why that is free).
 	a.refreshClockLocked(time.Now())
-	// AND SO ARE THE PERSON'S STANDING ORDERS, on the same trigger and for the
-	// same reason the clock has one: a turn must reason with the conditions that
-	// hold now, and an order stood up while this conversation was open is not
-	// something the next turn may still be blind to (standing_world.go).
-	a.refreshStandingLocked()
-	// AND THE PERSON'S RULES, on the same trigger for the same reason: a rule
-	// set from another window, or from /always a moment ago, holds over the very
-	// next turn (memory_always.go).
+	// AND SO ARE THE PERSON'S RULES, on the same trigger and for the same reason
+	// the clock has one: a turn must reason with the conditions that hold now,
+	// and a rule set from another window, or from /always a moment ago, holds
+	// over the very next turn (memory_always.go).
 	a.refreshAlwaysLocked()
 	a.refreshSystemLocked()
 	hub := a.newReplayHubLocked()

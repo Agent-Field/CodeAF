@@ -467,7 +467,7 @@ func TestWhileItIsReconnectingItSaysSoQuietly(t *testing.T) {
 	if note := client.LinkNote(); note != "reconnecting to devbox — trying for up to 1 second" {
 		t.Fatalf("the note reads %q", note)
 	}
-	if _, err := client.StandingItems("/srv/app"); err == nil || !strings.Contains(err.Error(), "reconnecting to devbox — try that again in a moment") {
+	if _, err := client.HeldQuestions(); err == nil || !strings.Contains(err.Error(), "reconnecting to devbox — try that again in a moment") {
 		t.Fatalf("a call in the gap answered %v", err)
 	}
 

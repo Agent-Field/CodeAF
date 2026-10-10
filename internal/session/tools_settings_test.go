@@ -455,51 +455,18 @@ func waitForNotice(t *testing.T, events <-chan Event) string {
 	}
 }
 
-// "TURN OFF THE BACKGROUND CHECKS" IS A SENTENCE THE CHAT CAN ACT ON. The row
-// is the switch on this machine's timer and the session is holding that timer
-// already — it is what the first standing item installed — so the hand that
-// writes rows can turn it, and turning it moves the machine rather than only
-// the file.
-func TestChangeSettingTurnsTheBackgroundChecks(t *testing.T) {
-	agent, profile := settingsAgent(t)
-	watch := &fakeWatch{installed: true}
-	agent.config.Standing = &Standing{Watch: watch}
-	_, write := settingsHands(t, agent)
-
-	text, isError := callSetting(t, write, map[string]any{
-		"key": config.KeyStandingBackground, "value": config.BackgroundOff,
-	})
-	if isError {
-		t.Fatalf("change_setting refused the row: %q", text)
-	}
-	if watch.uninstalls != 1 || watch.installed {
-		t.Fatalf("the timer was not removed: %+v", watch)
-	}
-	if profileJSON(t, profile)[config.KeyStandingBackground] != config.BackgroundOff {
-		t.Fatalf("the answer did not survive on disk: %v", profileJSON(t, profile))
-	}
-	if text, isError := callSetting(t, write, map[string]any{
-		"key": config.KeyStandingBackground, "value": config.BackgroundOn,
-	}); isError {
-		t.Fatalf("change_setting could not turn it back on: %q", text)
-	}
-	if watch.installs != 1 || !watch.installed {
-		t.Fatalf("the timer was not put back: %+v", watch)
-	}
-}
-
-// AND WITH NO TIMER THERE IS NO ROW TO NAME. A session whose machine cannot
-// have one refuses the key the way it refuses any key nobody declared, rather
-// than pretending to turn something.
-func TestChangeSettingHasNoBackgroundRowWithNoTimer(t *testing.T) {
+// THERE IS NO BACKGROUND-CHECKS ROW TO NAME. Automations run only while a
+// window is open and nothing is installed on the machine, so the old switch is
+// refused the way any key nobody declared is, rather than pretending to turn
+// something.
+func TestChangeSettingHasNoBackgroundRow(t *testing.T) {
+	const retired = "standing.background"
 	agent, _ := settingsAgent(t)
 	read, write := settingsHands(t, agent)
-	if text, _ := callSetting(t, read, map[string]any{}); strings.Contains(text, config.KeyStandingBackground) {
-		t.Fatalf("a machine with no timer listed a switch for one:\n%s", text)
+	if text, _ := callSetting(t, read, map[string]any{}); strings.Contains(text, retired) {
+		t.Fatalf("the sheet listed a switch for a timer nothing installs:\n%s", text)
 	}
-	text, isError := callSetting(t, write, map[string]any{
-		"key": config.KeyStandingBackground, "value": config.BackgroundOff,
-	})
+	text, isError := callSetting(t, write, map[string]any{"key": retired, "value": "off"})
 	if !isError {
 		t.Fatalf("a row that is not there was written anyway: %q", text)
 	}

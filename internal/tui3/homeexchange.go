@@ -1234,7 +1234,7 @@ func (a *app) exchangeKey(ex *homeExchange, msg tea.KeyPressMsg) tea.Cmd {
 		ex.focused, ex.onOffer, ex.changing = false, false, false
 		return nil
 
-	case "1", "2", "3", session.StandingNoKey, questionCommentKey:
+	case "1", "2", "3", session.DeclineKey, questionCommentKey:
 		// THE CARD OWNS ITS OWN DIGITS WHILE IT IS STILL A QUESTION, and it is
 		// the BLOCK'S router that says which they are ([app.questionOptionKey],
 		// [app.questionVerbKey]) — one grammar, whether the card is met here or

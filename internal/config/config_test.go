@@ -551,7 +551,7 @@ func TestNoShippedWriterKeyIsReportedUnread(t *testing.T) {
 		values[row.Key] = json.RawMessage(`"x"`)
 	}
 	for _, key := range []string{
-		KeySetupSeen, KeySplitPct, KeyStandingBackground,
+		KeySetupSeen, KeySplitPct,
 		KeyResponseAttempts, KeyResponseLiftAfter, KeyResponseLiftCap,
 		keyModelSources,
 	} {

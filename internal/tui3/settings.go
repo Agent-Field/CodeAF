@@ -632,7 +632,7 @@ var settingUI = map[string]settingMeta{
 		tab: tabProviders, label: "thinking", widget: widgetCycle,
 		about: "how hard the model thinks, unless something nearer the work says " +
 			"otherwise. " + effortKey + " moves the rung of whatever you stand on — the rung " +
-			"beside the model above the message box for one conversation, a task, or a standing item — and " +
+			"beside the model above the message box for one conversation or a task — and " +
 			"ctrl+t in /model dials one model. This row answers for everything nobody dialled.",
 	},
 	// It belongs on this tab and not under Session because it is a question

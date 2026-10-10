@@ -150,21 +150,6 @@ func AlwaysWorld(st *store.Store, owners []string) string {
 	return renderAlwaysRules(rules, alwaysWorldReport)
 }
 
-// joinWorldSections joins the closing sections of a brief — the rules and the
-// standing orders — into the one string the brief closes on, empty ones left
-// out. Each section ends on its own newline, so one more puts a blank line
-// between them and the second reads as an opening rather than a row of the
-// first.
-func joinWorldSections(sections ...string) string {
-	kept := make([]string, 0, len(sections))
-	for _, section := range sections {
-		if strings.TrimSpace(section) != "" {
-			kept = append(kept, section)
-		}
-	}
-	return strings.Join(kept, "\n")
-}
-
 // alwaysWorld is the conversation answering for a piece of its own work: its
 // rules, read from the brain a binding read may use ([Config.bindingBrain]) for
 // the owners this conversation sees. A node starting here ([TaskGraph.alwaysWorld])
@@ -175,8 +160,8 @@ func (a *Agent) alwaysWorld() string {
 }
 
 // alwaysWorld is the section a starting node's brief closes on, asked once per
-// frontier pass for the reason the standing section is: every node in one graph
-// sits in one place, so the answer is one answer.
+// frontier pass: every node in one graph sits in one place, so the answer is
+// one answer.
 func (g *TaskGraph) alwaysWorld() string {
 	if g.home == nil {
 		return ""
@@ -186,8 +171,8 @@ func (g *TaskGraph) alwaysWorld() string {
 
 // refreshAlwaysLocked puts the rules that hold over this conversation in front
 // of the model. It is called with a.mu held at the start of every turn, beside
-// the standing orders' refresh and for their reason: a rule set a moment ago, in
-// this window or another, holds over the very next turn.
+// the clock's refresh and for its reason: a rule set a moment ago, in this
+// window or another, holds over the very next turn.
 //
 // IT IS NOT GATED ON [Agent.remembers]. That answers whether this conversation
 // does memory WORK — the router, the post-turn pass, `remember` on the belt —

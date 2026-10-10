@@ -28,15 +28,14 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
-// The four kinds a [HeldQuestion] can carry, which are the four resolve-doors
+// The three kinds a [HeldQuestion] can carry, which are the three resolve-doors
 // this wire has. They are spelled once here so the engine and the surface
 // cannot disagree about a string; wire.go's HeldQuestion.Kind documents why an
 // unknown one is skipped rather than refused.
 const (
-	HeldConsent  = "consent"
-	HeldStanding = "standing"
-	HeldHarness  = "harness"
-	HeldConnect  = "connect"
+	HeldConsent = "consent"
+	HeldHarness = "harness"
+	HeldConnect = "connect"
 )
 
 // heldSet is one session's outstanding questions, oldest first.
@@ -169,7 +168,7 @@ func (h *heldSet) answered(kind string, id uint64, text string) {
 //
 // IT IS NOT A PURE MIRROR OF THAT LIST and cannot become one. What a surface is
 // handed on arrival is the lane's own FRAME — the EventConsentRequest, the
-// EventStandingProposal the card is drawn from — which the question object does
+// EventConnectAsk the card is drawn from — which the question object does
 // not carry. This room keeps the frames; the engine says which of them still
 // stand.
 func (h *heldSet) keepOnly(open map[heldKey]bool) {
@@ -228,12 +227,6 @@ func heldKeyOfQuestion(q session.Question) (heldKey, bool) {
 		}
 		return heldKey{kind: HeldConsent, id: q.ID}, true
 
-	case session.QuestionStanding:
-		if q.ID == 0 {
-			return heldKey{}, false
-		}
-		return heldKey{kind: HeldStanding, id: q.ID}, true
-
 	case session.QuestionHarness:
 		if q.ID == 0 {
 			return heldKey{}, false
@@ -253,8 +246,7 @@ func heldKeyOfQuestion(q session.Question) (heldKey, bool) {
 //
 // THE KINDS ARE READ FROM THE EVENT AND NEVER GUESSED. Each one names the field
 // its answer travels back on — [WrappedAgent.ResolveConsent] takes Event.ID,
-// ResolveStanding takes the id INSIDE the standing card, ResolveConnect takes
-// the string in ConnectID — so a card whose id could not be read is not held,
+// ResolveConnect takes the string in ConnectID — so a card whose id could not be read is not held,
 // because holding it would promise an answer that lands nowhere.
 func heldKeyOf(event session.Event) (heldKey, bool) {
 	switch event.Kind {
@@ -263,12 +255,6 @@ func heldKeyOf(event session.Event) (heldKey, bool) {
 			return heldKey{}, false
 		}
 		return heldKey{kind: HeldConsent, id: event.ID}, true
-
-	case session.EventStandingProposal:
-		if event.Standing == nil || event.Standing.ID == 0 {
-			return heldKey{}, false
-		}
-		return heldKey{kind: HeldStanding, id: event.Standing.ID}, true
 
 	case session.EventHarnessOffer, session.EventHarnessDesignDone:
 		// One door answers both: an offer to RUN a harness and a finished page

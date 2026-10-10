@@ -71,7 +71,7 @@ func TestBashWorkerRunsAndRecordsNativeWebTools(t *testing.T) {
 			}
 			defer store.Close()
 			web := &workerWeb{fail: failed}
-			worker := NewBashWorker(store, root, "test/model", "", &webSeat{})
+			worker := NewBashWorker(store, root, "test/model", &webSeat{})
 			worker.searchProvider, worker.searchFetcher = web, web
 			ctx, cancel := context.WithTimeout(WithStepsPerTask(t.Context(), 2), 10*time.Second)
 			defer cancel()
@@ -122,7 +122,7 @@ func TestCrewFactoryWiresLiveWebFromItsProfile(t *testing.T) {
 		}
 	}
 	write("exa", "fixture-key")
-	factory := CrewFactory(nil, t.TempDir(), profile, Seats{One: "test/model"}, "", "", func(string) session.Completer { return &webSeat{} })
+	factory := CrewFactory(nil, t.TempDir(), profile, Seats{One: "test/model"}, "", func(string) session.Completer { return &webSeat{} })
 	worker := factory(plandb.Task{}).(*BashWorker)
 	if worker.searchProvider == nil || worker.searchFetcher == nil {
 		t.Fatal("run worker lost the web pair")
@@ -169,7 +169,7 @@ func TestBashWorkerCancellationReachesNativeWebBackend(t *testing.T) {
 	}
 	defer store.Close()
 	backend := &waitingWorkerSearch{entered: make(chan struct{}), cancelled: make(chan struct{})}
-	worker := NewBashWorker(store, root, "test/model", "", &webSeat{})
+	worker := NewBashWorker(store, root, "test/model", &webSeat{})
 	worker.searchProvider = backend
 	guard, stop := context.WithTimeout(t.Context(), 10*time.Second)
 	defer stop()

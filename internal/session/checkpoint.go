@@ -3906,9 +3906,6 @@ func personCardAnswerGloss(q Question, answer Answer) string {
 	if answer.DecidedBy != "" && answer.DecidedBy != DecidedByPerson {
 		return ""
 	}
-	if q.Kind == QuestionStanding && answer.FirstKey() == StandingOnceKey {
-		return "only now, don't repeat"
-	}
 	words := strings.TrimSpace(decisionRecordOf(q, answer).Words())
 	if change := strings.Join(strings.Fields(answer.Change), " "); change != "" {
 		if words == "" {

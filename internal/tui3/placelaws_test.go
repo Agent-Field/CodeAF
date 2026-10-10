@@ -235,7 +235,7 @@ func TestNoPlaceFileMentionsTheBar(t *testing.T) {
 // and nobody notices until a frame is slow.
 func TestTheReadingLayersImportNoApp(t *testing.T) {
 	readings := []string{
-		"switcher.go", "tasksplace.go", "standingplace.go",
+		"switcher.go", "tasksplace.go", "automationsplace.go",
 		"memoryplace.go", "spendplace.go", "placeprose.go",
 	}
 	fset := token.NewFileSet()

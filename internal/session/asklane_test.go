@@ -308,7 +308,7 @@ func TestAChangeToAQuestionTheLaneNeverHeldIsRefused(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "earlier run") {
 		t.Fatalf("a change to nothing was taken: %v", err)
 	}
-	if err := a.ResolveQuestion(Answer{Kind: QuestionStanding, ID: 1, Key: "1", Revises: true}); err == nil {
+	if err := a.ResolveQuestion(Answer{Kind: QuestionAutomation, ID: 1, Key: "1", Revises: true}); err == nil {
 		t.Fatal("a lane that cannot take a change took one")
 	}
 }

@@ -24,7 +24,7 @@ func TestFinishOnTheCappedStepKeepsTheStoreEnding(t *testing.T) {
 			return toolReply(finishCommand(id, "finished on the last step")), nil
 		},
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
 	report, err := worker.Run(run.WithStepsPerTask(runContext(t), 2), *store.Task(id))
 	if err != nil || report.Result != "finished on the last step" {
 		t.Fatalf("capped finish returned report=%+v, err=%v; want the store's done result", report, err)
@@ -50,7 +50,7 @@ func TestOpenTaskStillStopsAtItsStepCap(t *testing.T) {
 			return toolReply(`{"command":"echo two"}`), nil
 		},
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
 	_, err := worker.Run(run.WithStepsPerTask(runContext(t), 2), *store.Task(store.RootID()))
 	if err == nil || !strings.Contains(err.Error(), "stopped at its step cap after 2 steps") {
 		t.Fatalf("open task cap = %v", err)
@@ -73,7 +73,7 @@ func TestCappedLeafFinishStillSeatsItsReview(t *testing.T) {
 	factory := func(task plandb.Task) run.Worker {
 		switch {
 		case task.ID == "leaf":
-			return run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
+			return run.NewBashWorker(store, t.TempDir(), "test/model", seat)
 		case task.Role == plandb.RoleCheck:
 			return funcWorker(func(context.Context, plandb.Task) (run.Report, error) {
 				return run.Report{Result: "holds: checked"}, nil
@@ -106,7 +106,7 @@ func TestWaitOnTheCappedStepKeepsTheStorePark(t *testing.T) {
 			return toolReply(`{"command":"plandb wait root --agent root"}`), nil
 		},
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
 	report, err := worker.Run(run.WithStepsPerTask(runContext(t), 1), *store.Task(store.RootID()))
 	if err != nil || !report.Waiting {
 		t.Fatalf("capped wait returned report=%+v err=%v", report, err)

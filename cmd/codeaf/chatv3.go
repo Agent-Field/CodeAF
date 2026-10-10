@@ -357,15 +357,16 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// neither of them is a gate that quietly opens because the terminal
 		// happens to be a pipe.
 		cfg.AskConsent = false
-		// AND NOTHING MAY BE SET UP HERE. A standing item spends money at times
+		// AND NOTHING MAY BE SET UP HERE. An automation spends money at times
 		// nobody chose, so it needs a yes; a headless run has nobody to give
 		// one, and a clock that armed it anyway would be the harness agreeing on
 		// somebody's behalf. The tool is simply absent (internal/session's
 		// tools.go), which is the same law --once already applies to consent.
-		cfg.Standing = nil
+		cfg.Automations = nil
 		// AND THE SUBHARNESS SEAMS ARE LEFT ALONE, which is not an oversight
-		// beside the line above it. Standing has to be taken away here because
-		// nothing else asks whether anybody is watching before it arms a clock. A
+		// beside the line above it. Automations have to be taken away here
+		// because nothing else asks whether anybody is watching before it arms a
+		// clock. A
 		// subharness cannot start without somebody confirming an intake card, and
 		// internal/session already reads that in one place — its own gate is
 		// `AskConsent && there is something to offer` (tools_subharness.go), and
@@ -762,21 +763,6 @@ type v3Options struct {
 	// posture every session has always had, where the model stopping is the
 	// session stopping.
 	Budget session.Budget
-	// NoStandingTicks says THIS PROCESS IS NOT THE ONE THAT KEEPS TIME for the
-	// machine's standing items, however complete the config it is about to build.
-	//
-	// It exists for exactly one caller, and the zero value is the posture every
-	// other door has always had. On the engine road the screen and the sessions
-	// live in two processes: the ENGINE holds this project's conversations, and a
-	// firing is delivered into an open conversation of the same project through
-	// the live registry of the process that ran the pass (internal/standing, and
-	// internal/manual/chat/keeping-an-eye.md's three roads). So a client that
-	// ticked would win the store's lock every so often and fire an item into a
-	// registry holding nothing but its own errand — filing the words in the
-	// project's inbox for the next launch while the person sat in front of the
-	// conversation they were meant to land in. One process keeps time, and on
-	// that road it is the one holding the conversations.
-	NoStandingTicks bool
 }
 
 // joinV3Notices puts the launch's dim lines on one row, in the order they were
@@ -943,15 +929,6 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// costs one scan and no writes, and a skill edited since the last open is
 	// re-read before the model ever sees the shelf.
 	importForeignSkillsBeforeFirstMessage(proc.skillShelf(), workspace)
-
-	// AND THIS PROCESS STARTS KEEPING TIME. Any open window takes the store's
-	// lock and runs the pass; the OS timer is the backup for "no terminal open"
-	// (chatv3_standing.go). It is here, beside [startPlaceSweep], because every
-	// v3 door assembles through this function — and the first pass is a whole
-	// interval away, so a launch that exits immediately has ticked nothing.
-	if cfg.Standing != nil && !opts.NoStandingTicks {
-		proc.startStandingTicks(cfg.Standing.Store)
-	}
 
 	return &v3Launch{
 		Settings:     settings,
@@ -1175,13 +1152,10 @@ func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place sessio
 		// generation verb off the belt. The RESOLVER (MediaModel) is wired
 		// after governance lands, because its pin rung reads RolesSource.
 		Media: media,
-		// THE AMBIENT SIDE (chatv3_standing.go). It is filled for every door
-		// that is a CONVERSATION — chat, resume, engine — and taken away again
-		// on the --once path below, because nothing unwatched may set up
-		// something that spends forever. A task node and a firing's own session
-		// never see it: neither copies this config.
-		Standing: v3Standing(settings.ProfileDir),
-		// The automations store, opened once per process (chatv3_clock.go).
+		// The automations store, opened once per process (chatv3_clock.go). It
+		// is filled for every door that is a CONVERSATION — chat, resume,
+		// engine — and taken away again on the --once path below, because
+		// nothing unwatched may set up something that runs on a clock.
 		Automations: v3Automations(),
 		// THE DIVISION ROAD, on by default (internal/config's DefaultSwarm). A
 		// task that turns out to hold more than one worker's share may split
@@ -1836,10 +1810,9 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo, oneModel boo
 	// (internal/provider's lanepin.go says why that is not a Config field).
 	//
 	// IT IS THE RESOLVER'S ENTRANCE AND NOT A PERSON'S. This function reads the
-	// row and hands the answer down, and it runs again on every standing tick
-	// for as long as the window lives ([v3StandingTicker], five minutes apart) —
-	// so it must not be able to forget what the wire said about the row while
-	// nobody has touched it. A person's own act goes to [provider.RepinLane]
+	// row and hands the answer down, and it runs again for every automation run
+	// the clock assembles a config for — so it must not be able to forget what
+	// the wire said about the row while nobody has touched it. A person's own act goes to [provider.RepinLane]
 	// (internal/tui3's laneRowChanged), which forgets unconditionally.
 	// The speed guard travels with the pin because the adjacent rows are one
 	// routing posture and two readers of that posture would drift.

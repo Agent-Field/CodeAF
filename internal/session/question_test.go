@@ -515,8 +515,8 @@ func TestAnAnswerFileWrittenByAnOlderWindowStillReads(t *testing.T) {
 	// AND A WHOLE ANSWER ROUND-TRIPS, keeping the four fields filled for whoever
 	// reads it next.
 	whole := Answer{
-		At: time.Now().UTC(), Kind: QuestionStanding, ID: 9, Key: StandingOnceKey,
-		Picked: []string{StandingOnceKey}, Change: "but not on Sundays",
+		At: time.Now().UTC(), Kind: QuestionAutomation, ID: 9, Key: AutomationRunNowKey,
+		Picked: []string{AutomationRunNowKey}, Change: "but not on Sundays",
 		Blanks: map[string]string{"when": "six"}, DecidedBy: DecidedByPerson,
 		Scope: ScopeProject, Why: "I only want it on weekdays",
 	}
@@ -528,7 +528,7 @@ func TestAnAnswerFileWrittenByAnOlderWindowStillReads(t *testing.T) {
 	if err := json.Unmarshal(raw, &back); err != nil {
 		t.Fatalf("unmarshalling: %v", err)
 	}
-	if back.Key != StandingOnceKey || back.Change != whole.Change ||
+	if back.Key != AutomationRunNowKey || back.Change != whole.Change ||
 		back.Blanks["when"] != "six" || back.Scope != ScopeProject || back.Why != whole.Why {
 		t.Fatalf("the whole answer did not round-trip: %+v", back)
 	}

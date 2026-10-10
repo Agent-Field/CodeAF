@@ -421,3 +421,52 @@ func TestWatchWorkGetsTheEvidence(t *testing.T) {
 		t.Fatalf("usd = %v, want %v", runs[0].USD, want)
 	}
 }
+
+// THE MEMORY PASS RIDES THE CLOCK: asked while a window is open, once per
+// [tidyEvery] and never twice at once, and its line goes to the clock's log.
+func TestTheClockAsksTheMemoryPassWhileAWindowIsOpen(t *testing.T) {
+	fast(t)
+	root := t.TempDir()
+	store, err := Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	release, err := NewPresence(root).Hold("test window")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	asked := make(chan struct{}, 4)
+	var logged []string
+	var logMu sync.Mutex
+	clock := &Clock{Store: store, Presence: NewPresence(root), Runner: &fakeRunner{},
+		Tidy: func(context.Context) (Tidied, error) {
+			asked <- struct{}{}
+			return Tidied{Merged: 2}, nil
+		},
+		Log: func(line string) { logMu.Lock(); logged = append(logged, line); logMu.Unlock() },
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- clock.Run(ctx) }()
+	select {
+	case <-asked:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the clock never asked the memory pass")
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-asked:
+		t.Fatal("the pass was asked twice inside one tidy interval")
+	default:
+	}
+	logMu.Lock()
+	defer logMu.Unlock()
+	if len(logged) == 0 || logged[len(logged)-1] != "consolidated · 2 merged" {
+		t.Fatalf("the pass's line did not reach the log: %q", logged)
+	}
+}

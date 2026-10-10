@@ -40,7 +40,7 @@ func TestBashWorkerATextOnlyReplyLoopsAndFourInARowFail(t *testing.T) {
 			return textReply("I am blocked on my dependency"), nil
 		},
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
 
 	_, err := worker.Run(run.WithStepsPerTask(runContext(t), 9), *store.Task(store.RootID()))
 
@@ -86,7 +86,7 @@ func TestBashWorkerDoneEndsTheLoopWithItsResult(t *testing.T) {
 			return toolReply(finishCommand("root", answer)), nil
 		},
 	}}
-	worker := run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
+	worker := run.NewBashWorker(store, t.TempDir(), "test/model", seat)
 
 	report, err := worker.Run(run.WithStepsPerTask(runContext(t), 9), *store.Task(store.RootID()))
 
@@ -189,7 +189,7 @@ func TestStartAnswersTheRootsDoneResult(t *testing.T) {
 		},
 	}}
 	factory := func(task plandb.Task) run.Worker {
-		return run.NewBashWorker(store, t.TempDir(), "test/model", "", seat)
+		return run.NewBashWorker(store, t.TempDir(), "test/model", seat)
 	}
 
 	outcome, summary := run.Start(ctx, run.Spec{
@@ -246,7 +246,7 @@ func TestStartAnswersTheRootsDoneResultWhenItsWorkerReturnsLate(t *testing.T) {
 		},
 	}}
 	factory := func(task plandb.Task) run.Worker {
-		return lateWorker{inner: run.NewBashWorker(store, t.TempDir(), "test/model", "", seat), late: 750 * time.Millisecond}
+		return lateWorker{inner: run.NewBashWorker(store, t.TempDir(), "test/model", seat), late: 750 * time.Millisecond}
 	}
 
 	outcome, summary := run.Start(ctx, run.Spec{

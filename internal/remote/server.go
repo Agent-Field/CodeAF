@@ -69,7 +69,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -90,7 +89,6 @@ import (
 // drive a scripted agent and never open a socket.
 type WrappedAgent interface {
 	Submit(ctx context.Context, text string) (<-chan session.Event, error)
-	SubmitStanding(ctx context.Context, text string) (<-chan session.Event, error)
 	SubmitImage(ctx context.Context, text string, images []session.Image) (<-chan session.Event, error)
 	FollowUp(text string) (<-chan session.Event, error)
 	Steer(text string) (<-chan session.Event, error)
@@ -114,7 +112,6 @@ type WrappedAgent interface {
 	SetReasoningFor(model, level string)
 	ResolveConsent(id uint64, allow bool)
 	ResolveConsentRemember(id uint64, allow bool, scope session.ConsentScope)
-	ResolveStanding(id uint64, answer session.StandingAnswer)
 	ResolveHarness(id uint64, run bool, model string)
 	ResolveConnect(id string, approve bool)
 	ResolveConnectKey(id string, key string)
@@ -218,26 +215,6 @@ type Engine struct {
 	// that exists only because the surface is remote: a local one reads the
 	// session directory off its own disk, and a remote one cannot see it.
 	Recent func() []session.Summary
-
-	// StandingItems and StandingSave are this MACHINE'S ambient side, for the
-	// same reason Recent is here: the store is a directory of documents under
-	// the engine's own state root, a local surface opens it directly, and a
-	// remote one has no way to. The workspace is a path on THIS disk, which is
-	// the only kind of path an item's own Workspace field ever holds.
-	//
-	// Nil is the ambient side off for this engine, and it is answered as a
-	// refusal rather than as an empty list — a capability that cannot work is
-	// absent, and the surface keeps the difference between "no items" and "no
-	// door" (internal/remote's Client.StandingItems says what it does with it).
-	StandingItems func(workspace string) ([]standing.Item, error)
-	// StandingSave writes one item back. THE STORE'S OWN REFUSAL IS THE ERROR:
-	// internal/standing validates what it is asked to write, and a surface that
-	// redrew a row as paused over a rejected write would be lying about this
-	// disk, so nothing here softens it.
-	StandingSave func(item standing.Item) error
-	// StandingWatch reads this machine's scheduler. Nil means this engine has no
-	// scheduler to ask, which the surface renders as no line.
-	StandingWatch func() (standing.WatchStatus, bool)
 
 	// ── the places ──────────────────────────────────────────────────────────
 	//
@@ -1365,7 +1342,7 @@ func factsMoved(kind session.EventKind) bool {
 		session.EventConsentRequest, session.EventToolEnd, session.EventToolFailed,
 		session.EventConnectAsk, session.EventConnectDone,
 		session.EventTaskProposal, session.EventTaskUpdate,
-		session.EventStandingProposal, session.EventStandingUpdate,
+		session.EventAutomationProposal, session.EventAutomationUpdate,
 		session.EventHarnessOffer, session.EventHarnessRun, session.EventHarnessDesignDone,
 		session.EventHarnessDesignRevising, session.EventOrchestratePause, session.EventOrchestrateFuel,
 		session.EventSubharnessAsk, session.EventSubharnessProposal, session.EventSubharnessProposalOff:
@@ -2545,13 +2522,6 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if err != nil {
 			return nil, err
 		}
-		// A MARKED DRAFT IS THE SAME CALL THROUGH THE OTHER DOOR. What differs
-		// is the instruction the engine puts in front of the sentence, which
-		// lives on this side of the wire (internal/session's standing_mark.go).
-		if args.Standing {
-			events, err := agent.SubmitStanding(context.Background(), args.Text)
-			return s.stream(MethodSubmit, args.Text, events, err)
-		}
 		events, err := agent.Submit(context.Background(), args.Text)
 		return s.stream(MethodSubmit, args.Text, events, err)
 
@@ -2866,14 +2836,6 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		agent.ResolveConsentRemember(args.ID, args.Allow, args.Scope)
 		return nil, nil
 
-	case MethodStandingResolve:
-		args, err := arg[StandingArgs](call)
-		if err != nil {
-			return nil, err
-		}
-		agent.ResolveStanding(args.ID, args.Answer)
-		return nil, nil
-
 	case MethodHarness:
 		args, err := arg[HarnessArgs](call)
 		if err != nil {
@@ -3146,46 +3108,6 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, err
 		}
 		return json.Marshal(record)
-
-	case MethodStandingItems:
-		workspace, err := arg[string](call)
-		if err != nil {
-			return nil, err
-		}
-		sess.mu.Lock()
-		items := sess.engine.StandingItems
-		sess.mu.Unlock()
-		if items == nil {
-			return nil, errors.New("engine: this engine keeps an eye on nothing")
-		}
-		found, err := items(workspace)
-		if err != nil {
-			return nil, err
-		}
-		return json.Marshal(found)
-
-	case MethodStandingSave:
-		item, err := arg[standing.Item](call)
-		if err != nil {
-			return nil, err
-		}
-		sess.mu.Lock()
-		save := sess.engine.StandingSave
-		sess.mu.Unlock()
-		if save == nil {
-			return nil, errors.New("engine: this engine keeps an eye on nothing")
-		}
-		return nil, save(item)
-
-	case MethodStandingWatch:
-		sess.mu.Lock()
-		watch := sess.engine.StandingWatch
-		sess.mu.Unlock()
-		if watch == nil {
-			return nil, errors.New("engine: this engine cannot read background checks")
-		}
-		status, known := watch()
-		return json.Marshal(StandingWatchResult{Status: status, Known: known})
 
 	case MethodSessionNew:
 		sess.mu.Lock()

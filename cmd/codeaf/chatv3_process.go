@@ -132,14 +132,11 @@ type v3Process struct {
 	// mu guards everything below: the lazily opened history file and the list of
 	// agents this process has built. Both are touched from the surface's
 	// goroutine and from the door's defer, which are not the same one.
-	mu              sync.Mutex
-	recall          *history.Store
-	agents          []*session.Agent
-	standingStarted bool
-	standingStop    chan struct{}
-	standingDone    chan struct{}
-	sweepCancel     context.CancelFunc
-	sweepDone       chan struct{}
+	mu          sync.Mutex
+	recall      *history.Store
+	agents      []*session.Agent
+	sweepCancel context.CancelFunc
+	sweepDone   chan struct{}
 	// catalogs are the lazy catalogs this process opened beside Models — a
 	// direct service's own listing, asked for when a conversation is opened on
 	// one of its models ([v3Process.ownCatalog]). closeAll cancels and joins each.
@@ -235,11 +232,6 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		}
 		return nil, err
 	}
-	// AND THE BACKGROUND CHECKS ARE PUT BACK IF THEY DRIFTED, once per process,
-	// in the background, saying nothing on screen (chatv3_standing.go). A timer
-	// naming a program that has moved is a timer that runs nothing, and this is
-	// the one moment this build knows where the program actually is.
-	startBackgroundRepair(settings.ProfileDir)
 	// WHERE THE PERSON IS STANDING, which is not the same fact as which project
 	// this is: `codeaf` typed in repo/cmd/ is a conversation about the
 	// repository, and the subdirectory is recorded rather than resolved away
@@ -659,11 +651,6 @@ func (p *v3Process) closeAll() {
 	// the seam). It runs first, before the conversations and the stores, because
 	// it is the process's own errand and not a conversation's.
 	stopPoolErrands(p.ProfileDir)
-
-	// Stop the standing clock before closing anything it may borrow. Waiting
-	// for its loop also waits for a pass already in flight, so no standing
-	// writer can outlive this process close.
-	p.stopStandingTicks()
 
 	var waiting sync.WaitGroup
 	for _, agent := range agents {

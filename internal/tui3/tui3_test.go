@@ -165,11 +165,6 @@ type fakeAgent struct {
 	// levels is the reasoning strength held per model id, the session's own map
 	// as far as the surface can see it (internal/session's agent.go).
 	levels map[string]string
-	// marked is every sentence that went through the MARKED door — the typed
-	// command that means "keep this true" (standmark.go). It is kept beside `sent`
-	// rather than folded into it because which door a message took is the whole
-	// question those tests ask.
-	marked []string
 	// queue is the session side of the follow-up queue (followup.go), held in
 	// step with the surface's: a take-back the surface drew without this queue
 	// losing the message would be a removal the session never made.

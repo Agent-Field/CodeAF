@@ -1064,14 +1064,11 @@ func helpText(file string, chords chordSpelling) string {
 		// not have — while the keystroke itself arrives there as `super+enter`
 		// (steer.go binds both names). The substitution is chords.go's one door.
 		helpKeyRow(chords.say(parkKey), "mid-answer: waits above the box · → sends a waiting one"),
-		// THE QUEUE KEY (followup.go). It took over this sheet's standing-order
-		// chord on 2026-09-30 — queueing is pressed many times a session, marking a
-		// sentence is not — and the standing sentence's explicit door is the typed
-		// command, which works on every terminal this one does not.
+		// THE QUEUE KEY (followup.go), pressed many times a session.
 		// AND THE CAVEAT IS ON THE ROW for the chord's own limit: on a terminal that
 		// cannot tell ctrl+enter from a plain enter, the key arrives as a newline
 		// and queues nothing.
-		helpKeyRow(chords.say("ctrl+enter"), "mid-answer: queue the draft to run after the current turn · needs a terminal that can send it · /standing keeps a sentence true"),
+		helpKeyRow(chords.say("ctrl+enter"), "mid-answer: queue the draft to run after the current turn · needs a terminal that can send it"),
 		// THE ROW READS IN THE ROUTER'S ORDER. The empty-box key asks the running
 		// turn's window first ([app.toggleLatestWorkfold]) and falls through to
 		// thinking ([app.toggleLatestThought]); the row was rewritten when the key was.
@@ -1129,7 +1126,9 @@ func helpText(file string, chords chordSpelling) string {
 		helpKeyRow(chords.say("alt+backspace"), "delete the word behind the caret · ctrl+u the line · ctrl+k the rest of it"),
 		"ctrl+,         open settings",
 		"d              in /permissions: drop the line under the cursor · press it twice",
-		"p s n          in /standing: pause one · stop it · keep it out of here",
+		// THE AUTOMATIONS PLACE'S LETTERS, which work while → has drawn the row's
+		// keys (verbstrip.go); `s` stops a run in flight and is drawn only then.
+		"→ r p e d o    in /automations: show the row's keys · run it now · pause it · edit it · delete it · open where it was asked",
 		// THE TEAMS PAGE'S LETTERS, each the button of the same word on the
 		// selected team, and the chord that puts the keyboard on those buttons
 		// while the manager's conversation has the box (teamspagehost.go).

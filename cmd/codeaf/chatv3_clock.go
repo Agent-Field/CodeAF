@@ -203,6 +203,7 @@ func runClock(args []string) error {
 		return cfg, err
 	}, store.Root())
 	clock := &automation.Clock{Store: store, Presence: automation.NewPresence(root), Runner: runner, Log: logf}
+	clock.Tidy = clockMemoryTidy(proc, store.Root())
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -213,6 +214,51 @@ func runClock(args []string) error {
 		return nil
 	}
 	return err
+}
+
+// clockMemoryTidy is the pass over what is remembered that the clock asks for
+// while a window is open (internal/session's memory_consolidate.go), or nil
+// when memory is off or the person's assembly cannot be read — a capability
+// that cannot work is absent.
+//
+// IT RIDES THE CLOCK because it wants exactly what the clock already has: one
+// process elected among every window, and a machine where nobody is typing,
+// which the pass asks for itself ([session.MachineIdle]). It is handed the
+// store's PATH rather than an open store, so the clock does not hold a database
+// connection between passes.
+//
+// THE PASS HAS NO PROJECT. It is resolved against the person's home and runs
+// over what they and this machine remember, never over one project's lines,
+// because nobody is in a project while it runs.
+func clockMemoryTidy(proc *v3Process, root string) automation.Tidy {
+	brain := v3MemoryPath(proc.ProfileDir)
+	if brain == "" {
+		return nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		home = os.TempDir()
+	}
+	parent, _, _, err := v3ConfigFor(proc, v3Options{Interactive: true}, home, session.Place{}, "", nil)
+	if err != nil {
+		return nil
+	}
+	parent.MemoryProjectKey = ""
+	return session.NewMemoryTidy(parent, brain, root, session.MachineIdle())
+}
+
+// v3MemoryPath is the brain's file when the memory row is on, and the empty
+// string when it is off.
+//
+// IT READS THE SAME ROW [v3Memory] READS and answers a path rather than a
+// handle, which is the difference between the conversation's need and a
+// pass's: a window opens one store and keeps it for the session, while a pass
+// wants one a few times a day and wants it closed again afterwards.
+func v3MemoryPath(profileDir string) string {
+	if !config.MemoryEnabledAt(profileDir) {
+		return ""
+	}
+	return defaultChatDB()
 }
 
 // openV3ClockProcess is the clock's process: the person's settings, models,

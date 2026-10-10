@@ -21,17 +21,16 @@
 //     transcript would make every one of them provisional, and the whole value
 //     of a journal a person can cat, grep and rsync is that it is not.
 //
-//  4. AND THE AMBIENT SIDE'S OWN LITTER GOES THE SAME WAY. The standing root
-//     accumulates two things nobody asked to keep: the folder behind an errand
-//     said at home that came to nothing, and the run folder of a firing that
-//     delivered nothing. Both are reaped after [standing.RunKeep] and both are
-//     asked the same two questions rule 2 asks — is anybody holding it, and has
-//     anything touched it lately — with a third for a run, which is whether the
-//     run itself said it came to nothing ([standing.RunCameToNothing]). The
-//     items, the ledgers, the wake log and every run that said, landed or is
-//     waiting for the person are outside its reach by construction, and so is
-//     everything under v3/projects: rule 4 walks exchanges/ and <id>/runs/ and
-//     nothing else, and answers immediately on an empty root.
+//  4. AND HOME'S OWN LITTER GOES THE SAME WAY. An errand said at home lives in
+//     its own folder under v3/errands until it becomes something — `continue
+//     as a conversation` moves it into the project's bucket — and the folder of
+//     one that went nowhere accumulates with nobody asking to keep it. It is
+//     reaped after [errandKeep] and asked the same two questions rule 2 asks —
+//     is anybody holding it, and has anything touched it lately — with a third:
+//     whether an automation was saved from it, because "open where it was
+//     asked" reads that folder for as long as the automation exists. Everything
+//     under v3/projects is outside its reach by construction: rule 4 walks the
+//     errands root and nothing else, and answers immediately on an empty one.
 //
 // The two removals are DIFFERENT ACTS and the third rule reads differently
 // against each. Rule 1 reaches into logs/ and nowhere else, so no expiry can
@@ -62,7 +61,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
 	"github.com/Agent-Field/codeaf/internal/home"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 const (
@@ -77,24 +75,30 @@ const (
 	// cmd/codeaf's layout spells when it creates a bucket (chatv3_layout.go).
 	// The sweep needs only the root and never the encoder.
 	placesDirName = "projects"
+
+	// errandKeep is how long an errand's folder sits untouched before it is
+	// litter: [sweepTTL], for the same judgement.
+	errandKeep = sweepTTL
 )
 
-// SweepHome runs one pass over this machine's session folders and one over the
-// ambient side's own. It is the launch door's call ([SweepPlaces] and
-// [SweepStanding] are the testable ones underneath it).
+// SweepHome runs one pass over this machine's session folders and one over
+// home's errands. It is the launch door's call ([SweepPlaces] and
+// [SweepErrands] are the testable ones underneath it).
 //
-// standingRoot is passed in rather than resolved here for the reason every
-// other root in this file is: a pass that computed its own paths could not be
-// pointed at a temp directory and therefore could not be proved. An empty root
-// is a build with no ambient side, and rule 4 does nothing at all.
-func SweepHome(standingRoot string, note func(string)) {
-	SweepHomeContext(context.Background(), standingRoot, note)
+// errandsRoot is passed in rather than resolved here for the reason every other
+// root in this file is: a pass that computed its own paths could not be pointed
+// at a temp directory and therefore could not be proved. An empty root is a
+// build with no errands, and rule 4 does nothing at all. held answers whether
+// an errand's folder is still somebody's — an automation was saved from it —
+// and may be nil.
+func SweepHome(errandsRoot string, held func(dir string) bool, note func(string)) {
+	SweepHomeContext(context.Background(), errandsRoot, held, note)
 }
 
 // SweepHomeContext is SweepHome with cancellation. Cancellation is checked
-// before resolving the ambient home so a stopped launch cannot target a home
-// selected after it started.
-func SweepHomeContext(ctx context.Context, standingRoot string, note func(string)) {
+// before resolving the home so a stopped launch cannot target a home selected
+// after it started.
+func SweepHomeContext(ctx context.Context, errandsRoot string, held func(dir string) bool, note func(string)) {
 	if contextDone(ctx) {
 		return
 	}
@@ -103,7 +107,7 @@ func SweepHomeContext(ctx context.Context, standingRoot string, note func(string
 	if contextDone(ctx) {
 		return
 	}
-	SweepStandingContext(ctx, standingRoot, now, note)
+	SweepErrandsContext(ctx, errandsRoot, now, held, note)
 }
 
 // SweepPlaces applies the three rules over one projects root.
@@ -411,22 +415,21 @@ func reapSession(ctx context.Context, dir string, meta Meta, note func(string)) 
 	}
 }
 
-// ── rule 4: the ambient side's own litter ───────────────────────────────────
+// ── rule 4: home's own litter ───────────────────────────────────────────────
 
-// SweepStanding applies rule 4 over one standing root: the errands that came to
-// nothing, and the runs that delivered nothing.
+// SweepErrands applies rule 4 over one errands root: the folders behind errands
+// said at home that went nowhere.
 //
-// EVERY PATH IT TOUCHES IS ARITHMETIC ON root, and there are exactly two of
-// them — <root>/exchanges/<id>/ and <root>/<item id>/runs/<n>/. It cannot reach
-// v3/projects because it never reads that directory, and an empty or missing
-// root answers silently: a machine with nothing standing has nothing here.
-func SweepStanding(root string, now time.Time, note func(string)) {
-	SweepStandingContext(context.Background(), root, now, note)
+// EVERY PATH IT TOUCHES IS <root>/<id>/. It cannot reach v3/projects because it
+// never reads that directory, and an empty or missing root answers silently: a
+// machine where nobody has asked anything at home has nothing here.
+func SweepErrands(root string, now time.Time, held func(dir string) bool, note func(string)) {
+	SweepErrandsContext(context.Background(), root, now, held, note)
 }
 
-// SweepStandingContext is SweepStanding with cancellation between entries and
+// SweepErrandsContext is SweepErrands with cancellation between entries and
 // immediately before each removal.
-func SweepStandingContext(ctx context.Context, root string, now time.Time, note func(string)) {
+func SweepErrandsContext(ctx context.Context, root string, now time.Time, held func(dir string) bool, note func(string)) {
 	if contextDone(ctx) {
 		return
 	}
@@ -437,28 +440,12 @@ func SweepStandingContext(ctx context.Context, root string, now time.Time, note 
 	if root == "" {
 		return
 	}
-	sweepExchanges(ctx, root, now, note)
-	if contextDone(ctx) {
-		return
-	}
-	sweepRuns(ctx, root, now, note)
-}
-
-// sweepExchanges reaps the folder behind an errand that came to nothing.
-//
-// An errand said at home lives under exchanges/ until it becomes something: a
-// thing that stands moves it under the item, and `continue as a conversation`
-// moves it into the project's own bucket (tui3's homeexchange.go). What is left
-// here after a week is the third case — a sentence that went nowhere — and it
-// is the one case whose folder nobody will ever open again.
-func sweepExchanges(ctx context.Context, root string, now time.Time, note func(string)) {
-	exchanges := standing.ExchangesRoot(root)
-	entries, err := os.ReadDir(exchanges)
+	entries, err := os.ReadDir(root)
 	if errors.Is(err, fs.ErrNotExist) {
 		return
 	}
 	if err != nil {
-		note(fmt.Sprintf("sweep: could not read %s: %v", exchanges, err))
+		note(fmt.Sprintf("sweep: could not read %s: %v", root, err))
 		return
 	}
 	for _, entry := range entries {
@@ -468,8 +455,8 @@ func sweepExchanges(ctx context.Context, root string, now time.Time, note func(s
 		if !entry.IsDir() {
 			continue
 		}
-		dir := filepath.Join(exchanges, entry.Name())
-		if !sweepIsStale(dir, now) {
+		dir := filepath.Join(root, entry.Name())
+		if (held != nil && held(dir)) || !sweepIsStale(dir, now) {
 			continue
 		}
 		if contextDone(ctx) {
@@ -477,63 +464,6 @@ func sweepExchanges(ctx context.Context, root string, now time.Time, note func(s
 		}
 		if err := os.RemoveAll(dir); err != nil {
 			note(fmt.Sprintf("sweep: could not remove %s: %v", dir, err))
-		}
-	}
-}
-
-// sweepRuns reaps the run folders of firings that delivered nothing.
-//
-// THE RUN'S OWN MARKER IS THE PERMISSION SLIP. A firing writes what it came to
-// beside its transcript ([standing.CameTo]); this reads it and removes the
-// folder only when that word is [standing.OutcomeNothing]. A run that said
-// something, landed something, failed, or is waiting for the person keeps its
-// folder like any other session — as does a run whose marker is missing, which
-// is every run written before this existed.
-func sweepRuns(ctx context.Context, root string, now time.Time, note func(string)) {
-	items, err := os.ReadDir(root)
-	if errors.Is(err, fs.ErrNotExist) {
-		return
-	}
-	if err != nil {
-		note(fmt.Sprintf("sweep: could not read %s: %v", root, err))
-		return
-	}
-	for _, item := range items {
-		if contextDone(ctx) {
-			return
-		}
-		// Only an item's own folder holds runs. exchanges/ is rule 4's other
-		// half and is skipped by name; the documents, the ledgers, the wake log
-		// and the locks are files and are skipped by not being directories.
-		if !item.IsDir() || item.Name() == filepath.Base(standing.ExchangesRoot(root)) {
-			continue
-		}
-		runs := filepath.Join(root, item.Name(), "runs")
-		entries, err := os.ReadDir(runs)
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			note(fmt.Sprintf("sweep: could not read %s: %v", runs, err))
-			continue
-		}
-		for _, entry := range entries {
-			if contextDone(ctx) {
-				return
-			}
-			if !entry.IsDir() {
-				continue
-			}
-			dir := filepath.Join(runs, entry.Name())
-			if !standing.RunCameToNothing(dir) || !sweepIsStale(dir, now) {
-				continue
-			}
-			if contextDone(ctx) {
-				return
-			}
-			if err := os.RemoveAll(dir); err != nil {
-				note(fmt.Sprintf("sweep: could not remove %s: %v", dir, err))
-			}
 		}
 	}
 }
@@ -550,14 +480,14 @@ func contextDone(ctx context.Context) bool {
 	}
 }
 
-// sweepIsStale is rule 2's two questions asked of an ambient folder: is
+// sweepIsStale is rule 2's two questions asked of an errand's folder: is
 // anybody holding it, and has anything in it been touched inside
-// [standing.RunKeep].
+// [errandKeep].
 //
 // EVERY UNCERTAINTY ANSWERS "KEEP IT", exactly as [sessionIsOpen] does: a
 // folder that cannot be walked, an entry that cannot be stated, a transcript
 // under a flock. The newest thing in the tree is what is asked about rather
-// than the folder's own mtime, because a run writes its transcript into a
+// than the folder's own mtime, because an errand writes its transcript into a
 // directory whose mtime stopped moving the moment the files were created.
 func sweepIsStale(dir string, now time.Time) bool {
 	if sessionIsOpen(dir) {
@@ -567,7 +497,7 @@ func sweepIsStale(dir string, now time.Time) bool {
 	if !ok {
 		return false
 	}
-	return newest.Before(now.Add(-standing.RunKeep))
+	return newest.Before(now.Add(-errandKeep))
 }
 
 // newestUnder is the most recent modification time anywhere in a tree, and

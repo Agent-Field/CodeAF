@@ -57,7 +57,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -1008,27 +1007,22 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	// assembly fills for every door.
 	cfg, open := v3Shape(cfg, v3LanesOverWire())
 
-	// AND THE AMBIENT SIDE IS ON, which is the one capability on this list that
-	// a connection does not take away. It arrives already filled, from the
+	// AND AUTOMATIONS ARE ON, which is the one capability on this list that a
+	// connection does not take away. The store arrives already filled, from the
 	// shared assembly every v3 door goes through (chatv3.go's [openV3Launch]
-	// sets Config.Standing and starts this process ticking), and it is left
-	// alone here rather than rebuilt — one source of truth about where the store
-	// lives and what a pass may do.
+	// sets Config.Automations), and it is left alone here rather than rebuilt —
+	// one source of truth about where the store lives.
 	//
-	// IT IS SAFE BECAUSE THE ENGINE IS THE MACHINE. Everything the two
-	// capabilities above lack is present here: the store is a directory under
-	// THIS machine's CODEAF_HOME ([v3StandingRoot]), a firing runs under THIS
-	// machine's profile rules (chatv3_standing.go's header states that law), the
-	// OS timer a first yes offers to install is THIS machine's timer, and the
-	// work an item does happens where the workspace is. And the card travels a
-	// road the two above do not: the standing proposal crosses as an ordinary
-	// event on the turn's own stream (internal/remote's EventWire) and the
-	// answer crosses back as ResolveStanding, so the person sitting on the other
-	// end of this wire is the person who says yes. Nobody being there at that
-	// moment no longer loses it either — a proposal raised with no surface
-	// attached is held and handed to the next one (internal/remote's held.go).
-	// A session that could leave nothing behind over --host would have made the
-	// ambient side a property of which terminal somebody happened to open.
+	// IT IS SAFE BECAUSE THE ENGINE IS THE MACHINE. The store is a directory
+	// under THIS machine's CODEAF_HOME ([automationsRoot]), a run happens under
+	// THIS machine's profile rules and in the workspace that is here, and the
+	// clock that runs it is THIS machine's, kept going while a window is
+	// attached ([engineAutomations]). The card travels as an ordinary event on
+	// the turn's own stream (internal/remote's EventWire) and the answer crosses
+	// back through the one question door, so the person sitting on the other end
+	// of this wire is the person who says yes. A session that could leave
+	// nothing behind over --host would have made automations a property of
+	// which terminal somebody happened to open.
 
 	// The builder came out of the shape above with the adaptive runner already
 	// decided: "runs are on" and "build it through [v3OpenSession]" are one fact
@@ -1173,18 +1167,6 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			proc.track(replacement)
 			return replacement, statErr == nil, nil
 		},
-		// The engine machine's ambient side, as a remote surface reads it, off
-		// the SAME store this session proposes into. What a surface does with
-		// them is the surface's business and is stated where it wires them
-		// (chatv3_host.go's [hostStanding]: over --host the live reader is the
-		// status line and home's far project bands). They are closures on the store rather
-		// than the store itself for [tui3.StandingSeam]'s own reason — the door
-		// owns where it lives and how it is opened — and they are absent
-		// entirely when the ambient side could not be built, which the surface
-		// reads as nothing to show rather than as an empty list.
-		StandingItems: engineStandingItems(cfg.Standing),
-		StandingSave:  engineStandingSave(cfg.Standing),
-		StandingWatch: engineStandingWatch(cfg.Standing),
 		// ── THE PLACES, AS THIS MACHINE HOLDS THEM ──────────────────────
 		//
 		// The world under THIS machine's state root, and the root it was walked
@@ -1340,37 +1322,6 @@ func openEngineProcess() (*v3Process, error) {
 func closeEngineProcess() {
 	if engineProcess.proc != nil {
 		engineProcess.proc.closeAll()
-	}
-}
-
-// engineStandingItems and engineStandingSave are the two standing doors, or nil.
-//
-// NIL IS THE AMBIENT SIDE OFF AND IT IS NEVER A CLOSURE THAT FAILS, which is
-// the same reading [v3Standing] already asks every caller for: an engine with no
-// store hands the surface nothing, the surface draws no band, and the model
-// never had the `stand` verb either. A pair of closures that answered an error
-// on every call would be a capability that is present and broken.
-func engineStandingItems(seam *session.Standing) func(string) ([]standing.Item, error) {
-	if seam == nil || seam.Store == nil {
-		return nil
-	}
-	return seam.Store.ForWorkspace
-}
-
-func engineStandingSave(seam *session.Standing) func(standing.Item) error {
-	if seam == nil || seam.Store == nil {
-		return nil
-	}
-	return seam.Store.Save
-}
-
-func engineStandingWatch(seam *session.Standing) func() (standing.WatchStatus, bool) {
-	if seam == nil || seam.Watch == nil {
-		return nil
-	}
-	return func() (standing.WatchStatus, bool) {
-		status, err := seam.Watch.Status()
-		return status, err == nil
 	}
 }
 

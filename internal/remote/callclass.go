@@ -153,7 +153,6 @@ func classify(method string) callClass {
 		MethodReasoningFor, MethodEffort, MethodResolvedEffort, MethodResolvedApproval,
 		MethodAttachedSkills, MethodSkillShelf,
 		MethodSessionsRecent, MethodHeldQuestions,
-		MethodStandingItems, MethodStandingWatch,
 		MethodPlacesWorld, MethodPlacesTask, MethodPlacesLedger, MethodPlacesSearch,
 		MethodMemorySnapshot, MethodMemoryChanged, MethodMemoryList, MethodMemoryProvenance,
 		MethodTaskRoom, MethodTaskPending, MethodTaskEffort,
@@ -170,7 +169,7 @@ func classify(method string) callClass {
 		return classGetter
 	case MethodQuestionResolve, MethodQuestionHold,
 		MethodConsent, MethodConsentRemember,
-		MethodStandingResolve, MethodHarness, MethodConnect, MethodConnectKey,
+		MethodHarness, MethodConnect, MethodConnectKey,
 		MethodNoteConnected,
 		MethodMemoryRemember, MethodMemoryForgetQuery, MethodMemoryMemories,
 		MethodMemoryRememberAlways, MethodMemoryAlways, MethodMemorySetAlways,

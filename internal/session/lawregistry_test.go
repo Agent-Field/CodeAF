@@ -119,13 +119,12 @@ func lawElsewhere(t *testing.T, at string) string {
 		// The harness messages a law can ride on, by the symbol a lane would go
 		// and edit. A name missing here is a message nobody has registered yet.
 		messages := map[string]string{
-			"standingNewsRule":     standingNewsRule,
 			"checkpointChoiceRule": checkpointChoiceRule,
 			"carriedResultsRule":   carriedResultsRule,
 		}
 		text, known := messages[name]
 		if !known {
-			t.Fatalf("code:%s is not a message this test knows; add it beside standingNewsRule", name)
+			t.Fatalf("code:%s is not a message this test knows; add it beside checkpointChoiceRule", name)
 		}
 		return text
 	}
@@ -219,11 +218,6 @@ var lawRegistry = []lawUnit{
 	{id: "standing.background-checks", class: lawDemand, at: "manual:keeping-an-eye", key: "background checks are on out of the box, and nobody asks you first"},
 	{id: "standing.a-minute-is-a-timer", class: lawDemand, at: "manual:keeping-an-eye", key: "ordinary standing one-off"},
 	{id: "accounts.never-sent-twice", class: lawDemand, at: "manual:accounts", key: "Each outgoing mail or Slack message goes out **once**"},
-
-	// ── and the one that rides with the EVENT. A fired standing item announces
-	// itself and says what to do about itself, so the page explaining that
-	// message was the second copy of a rule the message already carries.
-	{id: "standing.news-is-not-a-request", class: lawEvent, at: "code:standingNewsRule", key: "Do not call stand again for it"},
 
 	// ── and the three laws of a turn that has run long (inherit.go). WHAT
 	// `inherit` DOES IS A FACT ABOUT ONE FIELD OF ONE VERB, so it rides that

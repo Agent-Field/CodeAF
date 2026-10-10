@@ -405,15 +405,13 @@ const (
 	// "trying again". It never ends a turn: either the next attempt streams, or
 	// EventError arrives with the sentence about giving up.
 	EventRetrying
-	// EventStandingProposal asks the person whether one standing item — a
-	// reminder, a watch, a rule, an overnight job — may stand (standing_contract.go).
-	// Standing carries the card; the ID inside it is the token a surface hands back
-	// to [Agent.ResolveStanding]. Nothing stands until the answer is yes.
-	EventStandingProposal
-	// EventStandingUpdate reports a standing item changing under a live window: it
-	// was ratified, it fired, it was paused, retired, or it needs the person. It is
-	// a report, never a question.
-	EventStandingUpdate
+	// TWO KINDS WERE RETIRED HERE WITH STANDING ORDERS (the proposal and the
+	// update, replaced by [EventAutomationProposal] and [EventAutomationUpdate]
+	// at the end of this block). Their numbers are kept, never sent, so every
+	// kind after them keeps the integer it has on the wire and in anything a
+	// surface wrote down — this block's own law, stated over [EventRowNews].
+	_
+	_
 	// EventSubharnessAsk is a running subharness putting one question to the
 	// person (subharness_env.go, the Env's ask() door). ID is the run's task
 	// node, Text is the question in the program's own words, and Args carries
@@ -582,7 +580,7 @@ const (
 	//
 	// IT IS A SECOND DESCRIPTION AND NEVER A REPLACEMENT. Every lane goes on
 	// emitting the event it always emitted — EventConsentRequest,
-	// EventTaskProposal, EventStandingProposal and the rest — so a surface that
+	// EventTaskProposal, EventAutomationProposal and the rest — so a surface that
 	// ignores this kind is exactly what it was. A surface that draws it draws
 	// one object for every lane instead of thirteen cards.
 	//
@@ -945,10 +943,6 @@ type Event struct {
 	// and no cost, and a surface that mistook one for an update would redraw a
 	// card from a value that never carried those.
 	TaskPhase *TaskPhaseNotice
-
-	// Standing carries one EventStandingProposal or EventStandingUpdate's payload
-	// (standing_contract.go). It is nil on every other kind.
-	Standing *StandingNotice
 
 	// Automation carries one EventAutomationProposal or EventAutomationUpdate's
 	// payload (automation_tool.go). It is nil on every other kind.
@@ -1325,9 +1319,9 @@ type Config struct {
 	// did, with no approved block and no new authority. It is read-only by the
 	// plumbing that uses it ([Agent.prepareWorkerBinding] never writes it).
 	bindingStore *store.Store
-	// bindingOnlyMemory makes a brain READ-ONLY. It exists for the authorized
-	// standing run, which must see the owner's approved binding rules before
-	// its first action without gaining any general memory write: extraction,
+	// bindingOnlyMemory makes a brain READ-ONLY. It exists for an automation's
+	// run, which must see the owner's approved binding rules before its first
+	// action without gaining any general memory write: extraction,
 	// dependency observation, dismissal, import and the remember/forget verbs
 	// are all refused, while the same canonical identity, query and context
 	// machinery answers the read. Nothing is written from a posture that only
@@ -1531,10 +1525,6 @@ type Config struct {
 	// the same choices whichever way this is set.
 	TaskSettle string
 
-	// Standing is the ambient side (standing_contract.go, internal/standing).
-	// Nil is off: no belt tool, no card, no ticking from this process.
-	Standing *Standing
-
 	// Automations is the door to the automations store (automation_tool.go).
 	// Nil is off: no `automation` tool and no card — which is what a run of an
 	// automation is given, because nothing an automation does may arm another.
@@ -1544,13 +1534,6 @@ type Config struct {
 	// in, and only there: it puts `automation_report` on the belt and receives
 	// what the run reports (automation_run.go).
 	AutomationRun *AutomationRun
-
-	// standingItems overrides where [Standing.Store] would be read, and it is
-	// unexported because it exists for THIS PACKAGE'S TESTS and for nothing
-	// else: the store is a concrete *standing.Store on the seam a door fills,
-	// and a test that wants to watch what a ratified card actually writes needs
-	// a fake behind the same three methods (tools_standing.go's standingStore).
-	standingItems standingStore
 
 	// ProfileDir is the person's profile directory — the one holding the
 	// config.json that /settings writes (internal/config's settings registry).
@@ -2274,14 +2257,11 @@ type Config struct {
 	// worker.
 	rootSession string
 
-	// standingItemID is the id of the standing item whose firing this agent IS
-	// (standing_run.go), and empty in every conversation and every ordinary task.
-	// It rides on the config for [Config.taskID]'s reason: the money a firing
-	// spends has to be attributable to the promise the person made, and the only
-	// thing that knows which promise is the runner that built this config.
-	standingItemID string
-	// automationID is the id of the automation whose run this agent IS, so
-	// every call it makes lands in the usage ledger against that automation.
+	// automationID is the id of the automation whose run this agent IS
+	// (automation_run.go), and empty in every conversation and every ordinary
+	// task. It rides on the config for [Config.taskID]'s reason: the money a run
+	// spends has to be attributable to the automation the person saved, and the
+	// only thing that knows which one is the runner that built this config.
 	automationID string
 
 	// SpendRailUSD stops a session that has spent this much. 0 is off. The
@@ -3514,13 +3494,6 @@ type Agent struct {
 	// contract test cross the old deadline without sleeping or racing a machine.
 	taskNow   func() time.Time
 	taskTimer func(time.Duration) (<-chan time.Time, func())
-	// standingAnswers is the same wait, for standing cards (standing_contract.go).
-	standingAnswers map[uint64]chan StandingAnswer
-	// standingSeq numbers those cards. It is the agent's own sequence and not
-	// the task graph's, because a standing proposal is not a node: nothing is
-	// reserved, nothing is admitted, and the only thing the number has to do is
-	// name one outstanding question until it is answered (tools_standing.go).
-	standingSeq uint64
 	// automationAnswers and automationSeq are the same wait, for automation
 	// cards (automation_tool.go).
 	automationAnswers map[uint64]chan AutomationAnswer

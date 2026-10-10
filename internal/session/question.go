@@ -21,7 +21,7 @@ package session
 //
 // IT ADDS NO SECOND STORE. [Agent.OpenQuestions] is DERIVED, every time, from
 // the waits the lanes already keep: the consent map, the connect asks, the
-// harness asks, the standing answers, the task proposals, the sub-harness
+// harness asks, the automation answers, the task proposals, the sub-harness
 // offers and questions, the orchestrator's pause and the task graph's own
 // [PendingDecision] registry. A list of open questions kept beside those would
 // be the second place a question could be open, and the two would disagree the
@@ -251,15 +251,15 @@ const (
 	SubjectPage SubjectKind = "page"
 	// SubjectRun is an adaptive run, named by [SubjectRef.Ref].
 	SubjectRun SubjectKind = "run"
-	// SubjectOrder is one standing order waiting to be agreed to, named by
-	// [SubjectRef.ID]. It is the card the transcript is already drawing — the
-	// person's own sentence, when it wakes, what it costs and how far it reaches
-	// — so a surface that finds it says the question's reason once rather than
-	// under both.
+	// SubjectOrder is one automation waiting to be agreed to, named by
+	// [SubjectRef.ID]. It is the card the transcript is already drawing — what
+	// it does, when it runs and what one run may spend — so a surface that finds
+	// it says the question's reason once rather than under both.
 	//
-	// IT IS `order` AND NOT `standing` because [SubjectStanding] is already
+	// IT IS `order` AND NOT `automation` because [SubjectAutomation] is already
 	// taken, by the spend ledger, for the thing money was spent inside
-	// (usage_spend.go). Two names for two ideas.
+	// (usage_spend.go). Two names for two ideas, and `order` is the wire's
+	// spelling, which an older window still reads.
 	SubjectOrder SubjectKind = "order"
 	// SubjectAccount is one of the person's connected accounts, named by
 	// [SubjectRef.Ref] and read out in [SubjectRef.Name].
@@ -716,7 +716,7 @@ type Question struct {
 
 	// ID is the token an answer names, and it is THE SAME NUMBER the lane's own
 	// resolver already takes — [Event.ID] for a consent request, the node's id
-	// for a proposal, [StandingNotice.ID] for a standing card. A question does
+	// for a proposal, [AutomationNotice.ID] for an automation card. A question does
 	// not mint an id of its own, because a second id for one decision is a
 	// second thing an answer could name and get wrong.
 	ID uint64 `json:"id"`
@@ -1186,29 +1186,25 @@ func decidedByWord(by DecidedBy) string {
 	return string(by)
 }
 
-// decisionsSectionMost is how many decisions the section may list. It is
-// [standingWorldMost]'s figure for [standingWorldMost]'s reason — a block
+// decisionsSectionMost is how many decisions the section may list. A block
 // somebody pays for on every request of every turn is a preamble and not an
-// archive — and it is read from there rather than typed again.
+// archive, and eight lines is a preamble.
 //
 // THE CAP IS ON THE RENDERING AND NEVER ON THE RECORD. [Question.Check] is
 // asked against [Agent.Decisions], which stays whole: a gate that stopped
 // recognising a decision because eight newer ones were made would ask a person
 // something they had already settled, which is the one failure the record exists
 // to prevent.
-const decisionsSectionMost = standingWorldMost
+const decisionsSectionMost = 8
 
 // DecisionsSection is the record as the model's context carries it: a heading
 // and one line per decision, oldest first, bounded to the newest
 // [decisionsSectionMost] with a line saying how many older ones the file still
 // holds.
 //
-// THE NEWEST ARE THE ONES KEPT, which is the opposite of what the standing
-// section does and is right for the same reason that one leads with the
-// longest-standing: a standing order is a house rule that gets more binding with
-// age, and a decision is an answer to a question that came up — the one given
-// this morning is the one still shaping the work, and the one from eleven
-// questions ago is history. The older ones are named rather than dropped
+// THE NEWEST ARE THE ONES KEPT. A decision is an answer to a question that
+// came up — the one given this morning is the one still shaping the work, and
+// the one from eleven questions ago is history. The older ones are named rather than dropped
 // silently, because a model that cannot see them can still go and read them.
 //
 // It answers with "" for a session that has decided nothing, and a caller adds
@@ -1432,7 +1428,7 @@ func questionToken(kind QuestionKind, token string) string {
 //
 // THE KEYS ARE THE LANES' OWN AND ARE NEVER GUESSED. Each case names the field
 // its lane's question is keyed by — consent's id, the proposal's node id, the
-// standing item's id inside its card, the harness offer's id, connect's string —
+// automation card's id, the harness offer's id, connect's string —
 // and each is the same token the lane's builder further down this file gives the
 // question it banks, so the two cannot mean different things. A kind missing
 // from this list replays exactly as it always did, which is the safe half of
@@ -1458,12 +1454,6 @@ func questionAsked(event Event) (string, bool) {
 			return "", false
 		}
 		return questionToken(QuestionTask, strconv.FormatUint(event.Task.ID, 10)), true
-
-	case EventStandingProposal:
-		if event.Standing == nil || event.Standing.ID == 0 {
-			return "", false
-		}
-		return questionToken(QuestionStanding, strconv.FormatUint(event.Standing.ID, 10)), true
 
 	case EventAutomationProposal:
 		if event.Automation == nil || event.Automation.ID == 0 {
@@ -1674,7 +1664,7 @@ func (a *Agent) WatchQuestions() (<-chan Event, func()) {
 // hands back — never anything else, and never one without the other.
 //
 // IT EXISTS BECAUSE FIVE LANES HAD HALF OF IT. The model's `ask`, consent, a
-// task proposal, a standing card and a landing banked their words and spoke on
+// task proposal, an automation card and a landing banked their words and spoke on
 // this lane; connect, the harness offer and design, a sub-harness intake card, a
 // running sub-harness's own question and an adaptive run at its fuel gate only
 // sent their own turn event. A window that learned one of those from the
@@ -2197,19 +2187,7 @@ func (a *Agent) applyToLane(answer Answer) error {
 		}
 		a.ResolveAutomation(answer.ID, reply)
 		return nil
-	case QuestionConsent, QuestionTask, QuestionStanding:
-		if answer.Kind == QuestionStanding && key == "" && words != "" {
-			// A STANDING CARD ANSWERED IN WORDS IS A CORRECTION, and it is not a
-			// yes. "make it 2pm" says the arrangement is nearly right and names
-			// what is wrong with it; the model re-proposes on those words
-			// ([StandingAnswer.Change]), so nothing stands until the corrected
-			// card is agreed to. It is the answer the card's own `change when or
-			// where` chip asked for before the block drew this lane, and the
-			// block asks for it the way every other question does — `c`, then the
-			// box (tui3's questionkeys.go).
-			a.ResolveStanding(answer.ID, StandingAnswer{Change: words})
-			return nil
-		}
+	case QuestionConsent, QuestionTask:
 		if answer.Kind == QuestionTask && key == "" && words != "" {
 			// A PROPOSAL ANSWERED IN WORDS IS APPROVED, AND THE WORDS ARE THE
 			// REDIRECT. It is the one lane on this door where a sentence is a
@@ -2229,7 +2207,7 @@ func (a *Agent) applyToLane(answer Answer) error {
 			})
 			return nil
 		}
-		// The three lanes answers.go already mapped, through the mapping it
+		// The two lanes answers.go already mapped, through the mapping it
 		// already wrote: [AnswerFromKey] says what a key MEANS, and a key the
 		// kind does not take is applied to nothing.
 		action, ok := AnswerFromKey(answer.Kind, key)
@@ -2250,8 +2228,6 @@ func (a *Agent) applyToLane(answer Answer) error {
 			task := action.Task
 			task.Model = answer.Blanks[TaskModelBlank]
 			a.ResolveTask(answer.ID, task)
-		case QuestionStanding:
-			a.ResolveStanding(answer.ID, action.Standing)
 		}
 		return nil
 	case QuestionConnect:
@@ -2420,7 +2396,7 @@ func fuelAnswer(key, words string) string {
 //
 // IT IS DERIVED AND THERE IS NO SECOND STORE (the file header, and pending.go's
 // own law one layer down). This walks the WAITS the lanes already keep — the
-// consent map, the connect asks, the harness asks, the standing answers, the
+// consent map, the connect asks, the harness asks, the automation answers, the
 // task proposals, the sub-harness offers and questions, the orchestrator's
 // pause and the graph's unverified nodes — and asks [Agent.questionWords] only
 // what each of them SAID. A list kept beside those would be a second place a
@@ -2454,10 +2430,6 @@ func (a *Agent) OpenQuestions() []Question {
 	harnesses := make(map[uint64]Event, len(a.harnessAsks))
 	for id, ask := range a.harnessAsks {
 		harnesses[id] = ask.card
-	}
-	standings := make([]uint64, 0, len(a.standingAnswers))
-	for id := range a.standingAnswers {
-		standings = append(standings, id)
 	}
 	automations := make([]uint64, 0, len(a.automationAnswers))
 	for id := range a.automationAnswers {
@@ -2503,9 +2475,6 @@ func (a *Agent) OpenQuestions() []Question {
 	}
 	for id, card := range harnesses {
 		open = append(open, a.harnessQuestion(id, card))
-	}
-	for _, id := range standings {
-		open = append(open, a.standingQuestion(id))
 	}
 	for _, id := range automations {
 		open = append(open, a.automationQuestionOpen(id))
@@ -2802,36 +2771,6 @@ func (a *Agent) automationQuestionOpen(id uint64) Question {
 		Blocking: Blocking{Turn: true},
 		Scope:    []AnswerScope{ScopeOnce},
 		Input:    InputShape{Kind: InputText, Prompt: AutomationChangeHint},
-	})
-}
-
-// standingQuestion is a standing card as a question. Its answers are the ONE
-// item's and not the kind's ([StandingOptions]) wherever the lane banked them —
-// a one-off reminder offers no `just once`, and a list that said otherwise
-// would be a chip the session drops.
-func (a *Agent) standingQuestion(id uint64) Question {
-	token := strconv.FormatUint(id, 10)
-	return a.said(QuestionStanding, token, Question{
-		ID:      id,
-		Kind:    QuestionStanding,
-		Ask:     AskChoice,
-		Form:    FormCard,
-		Asker:   Asker{Kind: AskerEngine},
-		Head:    a.presenceAsk().Text,
-		Reason:  StandingAskReason,
-		Subject: SubjectRef{Kind: SubjectOrder, ID: id},
-		Options: AnswerOptions(QuestionStanding),
-		Stakes:  StakesReversible,
-		// AND THE TURN IS STOPPED ON IT, which this question did not say for a
-		// long time and which is simply true: [Agent.askStanding] parks the
-		// `stand` call on the answer and the card carries no clock at all, by
-		// law (standing_contract.go), so the conversation waits for as long as
-		// the card stands. A question that said otherwise was a window drawing
-		// `idle` over work that had stopped, and — once the waiting desk began
-		// reading [Question.Waiting] — a standing card that was not on the desk
-		// at all.
-		Blocking: Blocking{Turn: true},
-		Scope:    []AnswerScope{ScopeOnce, ScopeAlways},
 	})
 }
 

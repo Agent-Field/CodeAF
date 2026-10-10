@@ -222,13 +222,16 @@ type UsageLine struct {
 	// field existed decodes without it, which reads as "this is not a family's
 	// line", and every one of them is a conversation's or a standing item's.
 	Root string `json:"root,omitempty"`
-	// Standing is the id of the standing item whose firing made this call, and
-	// empty everywhere else. A firing is InTask and may also carry a Task id;
-	// [UsageBySubject] prefers this one, because a person recognises the promise
-	// they made long before they recognise the run it spawned.
+	// Standing is the id of the standing item whose firing made the call, on a
+	// line an older build wrote. Nothing writes it now; it is read so the money
+	// those firings spent still belongs to a promise ([UsageBySubject] reads it
+	// as an automation).
 	Standing string `json:"standing,omitempty"`
 	// Automation is the automation whose run or watch made the call
-	// (automation_run.go), and empty on every other line.
+	// (automation_run.go), and empty on every other line. A run is InTask and
+	// may also carry a Task id; [UsageBySubject] prefers this one, because a
+	// person recognises the automation they saved long before they recognise
+	// the run it spawned.
 	Automation string `json:"automation,omitempty"`
 	// Workspace is the project root the call was made against — what a page
 	// groups by, and empty for a conversation held nowhere in particular.
@@ -972,7 +975,6 @@ func (a *Agent) recordUsageLine(call bankedCall) {
 		// conversation: Session above is already that answer, and writing it
 		// twice would be the one-source-of-truth law broken on the same row.
 		Root:       strings.TrimSpace(a.config.rootSession),
-		Standing:   strings.TrimSpace(a.config.standingItemID),
 		Automation: strings.TrimSpace(a.config.automationID),
 		Workspace:  strings.TrimSpace(a.config.Workspace),
 	}
@@ -1216,6 +1218,6 @@ func (a *Agent) recordUnbilledReceipt(model string) {
 	a.mu.Unlock()
 	RecordUnbilledCall(path, UsageLine{
 		Session: owner, Model: model, Task: usageTaskID(a.config.taskID),
-		Root: a.config.rootSession, Standing: a.config.standingItemID, Automation: a.config.automationID, Workspace: a.config.Workspace,
+		Root: a.config.rootSession, Automation: a.config.automationID, Workspace: a.config.Workspace,
 	})
 }

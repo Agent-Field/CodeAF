@@ -61,8 +61,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // The two refusals this file makes, and both are about the CALLER rather than
@@ -93,9 +91,6 @@ const (
 	QuestionConsent QuestionKind = "consent"
 	// QuestionTask is a task proposal: should this work go (task.go).
 	QuestionTask QuestionKind = "task"
-	// QuestionStanding is a standing card: should this be kept an eye on
-	// (tools_standing.go).
-	QuestionStanding QuestionKind = "standing"
 
 	// ── the lanes below were added with question.go, and every one of them
 	// already existed as a wait with a resolver; what they had never had was a
@@ -182,30 +177,20 @@ type AnswerOption struct {
 // AnswerOptions is what one kind of question may be answered with, in the order
 // the chips are drawn.
 //
-// THE KEYS ARE THE CARD'S OWN DIGITS WHERE THE CARD HAS DIGITS. The standing
-// card is answered 1 yes, 2 change when or where, 3 just once in its own window
-// (tui3's standing.go), and 1 and 3 mean the same here — the hand that learned
-// them there is right here. `2 change when or where` is deliberately NOT on this
-// list: it is a request for a text box, and there is no box on the row this is
-// drawn beside.
+// THE KEYS ARE THE CARD'S OWN DIGITS WHERE THE CARD HAS DIGITS, so the hand
+// that learned them on a card in its own window is right on home too, and the
+// words beside them are the card's own: one answer, one spelling, wherever it
+// is drawn.
 //
-// AND THE WORDS ARE THE CARD'S OWN TOO. A person reading `just once` on the card
-// and `once, not standing` on home would be reading two names for one answer,
-// and the second of them is written in this build's vocabulary rather than
-// theirs — "standing" is a word they never said. One answer, one spelling,
-// wherever it is drawn.
+// AND `0` IS THE OUTRIGHT NO, ON EVERY SURFACE THAT DRAWS A CARD. In the
+// conversation the no can be `esc`, which home does not have to give — esc there
+// closes home — so a card met from home needs a key of its own to say no with.
+// [DeclineKey] is why the key is a `0` and not another digit.
 //
-// AND `0 not set up` IS THE OUTRIGHT NO, ON EVERY SURFACE THAT DRAWS THE CARD.
-// In the conversation the no was `esc` alone, which home does not have to give —
-// esc there closes home — so a standing card met from home used to offer a yes,
-// a once, and no way at all to say no; the only ways out were opening the window
-// or leaving the question open. [StandingNoKey] is why the key is a `0` and not
-// a fourth digit.
-//
-// THIS IS THE ANSWER FOR THE KIND AND NOT FOR AN ITEM. A one-off reminder's
-// card offers no `3` at all, because doing that action "now" is meaningless —
-// [StandingOptions] narrows this list to one item, and that is what a card and
-// a presence file are actually built from.
+// THIS IS THE ANSWER FOR THE KIND AND NOT FOR ONE CARD. An automation's card
+// is built from [AutomationOptions], which knows whether "run it now" means
+// anything for that one automation; a bare kind can only promise what every
+// card of it has.
 //
 // THE CONSENT KEYS ARE NEW AND THE ANSWERS ARE NOT. In its own window the gate
 // is answered y / a / n; those letters cannot be borrowed here, because a letter
@@ -241,20 +226,18 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 			{Key: "2", Label: "no", Safe: true},
 		}
 	case QuestionAutomation:
-		// THE KIND'S ROW, WITH NO AUTOMATION TO NARROW IT. A card is built from
+		// THE KIND'S ROW, WITH NO AUTOMATION TO NARROW IT, and so it is every
+		// answer ANY automation card can take. A card is built from
 		// [AutomationOptions], which knows whether "run it now" means anything
-		// for that one automation; a bare kind can only promise the two
-		// answers every card has.
+		// for that one automation and draws only what does — but this row is
+		// also what an answer left from another window is checked against
+		// ([WriteAnswer]), and a row narrower than the card would refuse a chip
+		// the card itself drew.
 		return []AnswerOption{
 			{Key: AutomationSaveKey, Label: "Save"},
+			{Key: AutomationRunNowKey, Label: "Save and run it now"},
 			{Key: AutomationNoKey, Label: "Don't save", Safe: true},
 		}
-	case QuestionStanding:
-		// THE KIND'S ROW, WITH NO ITEM TO NARROW IT. A card is built from
-		// [StandingOptions], which says the words for THAT item. This list is
-		// the repeating check, the shape a bare key still has to name, and the
-		// yes carries no cadence because there is no when to read one from.
-		return standingCheckOptions("")
 	case QuestionConnect:
 		return []AnswerOption{
 			{Key: "1", Label: "connect"},
@@ -377,211 +360,35 @@ const (
 	LandingTakeBackKey = "u"
 )
 
-// StandingOnceKey is the digit "once, not standing" is answered with, on the
-// card and on home alike. It is spelled once, here, because two surfaces and
-// [StandingOptions] all have to agree about which chip is the one that may be
-// missing.
-const StandingOnceKey = "3"
-
-// StandingNoKey is the digit that DECLINES a standing card outright: nothing is
-// created, nothing is run, and the row settles as `not set up` — the answer
-// [Agent.ResolveStanding] reads out of a zero [StandingAnswer].
+// DeclineKey is the digit that DECLINES a card outright — nothing is saved,
+// started or run — on every card that has an outright no: an automation's, a
+// subharness's.
 //
 // IT IS A `0` BECAUSE IT MUST NOT BE A DIGIT ANOTHER CHIP ALREADY OWNS, AND
-// MUST NOT BE A LETTER. The card in a conversation numbers its chips by their
-// position — 1 yes, 2 change when, 3 once (tui3's [taskModelKey]) — so a fourth
-// answer taking `4` would move the moment a card drew one chip fewer, and the
-// hand that learned the keys on a watch would decline a reminder. A letter is
+// MUST NOT BE A LETTER. A card numbers its chips by their position, so a no
+// taking the next digit would move the moment a card drew one chip fewer, and
+// the hand that learned the keys on one card would decline another. A letter is
 // worse: on home the letters are already typing, which is the whole reason
 // [AnswerOption.Key] is a digit on every kind. `0` is off the end of the chip
 // numbering in both directions, is one keystroke, and is nowhere near `1`.
 //
-// AND IT IS A DRAWN CHIP EVERYWHERE, the conversation's own card included. It
-// was a bare key there for a wave — `esc` had always been the no, and the `0`
-// was named only in the hint slot under the message box — and a person meeting
-// their first card said plainly that they could see no way to cancel. A gesture
-// whose only documentation is documentation is the one trade
-// docs/DESIGN-LANGUAGE.md refuses, so the decline is now a chip a person can see
-// and click on all three surfaces, and `esc` goes on doing the same thing beside
-// it in the one place there is an esc to spare.
-const StandingNoKey = "0"
+// AND IT IS A DRAWN CHIP EVERYWHERE. A gesture whose only documentation is
+// documentation is the one trade docs/DESIGN-LANGUAGE.md refuses, so the
+// decline is a chip a person can see and click on every surface, and `esc` goes
+// on doing the same thing beside it in the one place there is an esc to spare.
+const DeclineKey = "0"
 
-// StandingOnceIsAnAnswer reports whether "do it once, now" MEANS anything for
-// one item, and it is the ONE PLACE that is decided.
-//
-// "Once" means: do the action NOW, as an ordinary turn, and leave nothing
-// behind ([StandingAnswer.Once]). A repeating check and a watch are things a
-// person may want done once. A reminder's whole content is the moment, and
-// doing it now says the thing at the wrong time. A rule never runs, so "once"
-// has nothing to do.
-func StandingOnceIsAnAnswer(item standing.Item) bool {
-	// Ordinary turns cannot provide the scheduled executor's retained worktree.
-	if item.Does.Isolate {
-		return false
-	}
-	switch item.CardKindOf() {
-	case standing.CardCheck, standing.CardWatch:
-		return true
-	default:
-		return false
-	}
-}
-
-// The heads a standing card opens with. The person's own sentence is the next
-// line, not this one: this line says what KIND of thing is being asked.
-const (
-	StandingHeadReminder      = "wants to remind you"
-	StandingHeadScheduledWork = "wants to schedule work once"
-	StandingHeadCheck         = "wants to set up a repeating check"
-	StandingHeadWatch         = "wants to watch for something"
-	StandingHeadRule          = "wants to keep a rule"
-)
-
-// StandingHead is the card's first line for this item.
-func StandingHead(item standing.Item) string {
-	switch item.CardKindOf() {
-	case standing.CardReminder:
-		if item.Does.Kind == standing.ActionTask {
-			return StandingHeadScheduledWork
-		}
-		return StandingHeadReminder
-	case standing.CardCheck:
-		return StandingHeadCheck
-	case standing.CardRule:
-		return StandingHeadRule
-	default:
-		return StandingHeadWatch
-	}
-}
-
-// StandingChangeWord is the correction button. A rule's correction is about
-// where it reaches. Everything else is about the arrangement.
-func StandingChangeWord(item standing.Item) string {
-	if item.CardKindOf() == standing.CardRule {
-		return "Change where…"
-	}
-	return "Change…"
-}
-
-// StandingChangeHint is what the correction button does, in one sentence.
-func StandingChangeHint(item standing.Item) string {
-	switch item.CardKindOf() {
-	case standing.CardReminder:
-		return "Say a different time. Nothing is set up yet."
-	case standing.CardRule:
-		return "Say where it should reach. Nothing is kept yet."
-	case standing.CardWatch:
-		return "Say what to watch for instead. Nothing is set up yet."
-	default:
-		return "Say a different time or place. Nothing is set up yet."
-	}
-}
-
-// standingCadenceMark separates a yes label from the cadence it carries. A
+// labelCadenceMark separates an answer's label from the cadence it carries. A
 // narrow row drops everything from this mark on before it cuts a character.
-const standingCadenceMark = " · "
+const labelCadenceMark = " · "
 
-// StandingPlainLabel is a label with its cadence removed. A label that carries
-// none is returned as it is.
-//
-// A REMINDER'S WHEN IS THE WHOLE TAIL, including a clock joined on with the
-// same mark a repeating check uses between its verb and its cadence. "Remind
-// me in 1 minute · 07:35" drops to "Remind me", not to "Remind me in 1 minute":
-// the mark inside the when is part of the when, and a narrow row still loses
-// the when before it cuts a character.
-func StandingPlainLabel(label string) string {
-	const stem = "Remind me "
-	if strings.HasPrefix(label, stem) && len(label) > len(stem) {
-		return "Remind me"
-	}
-	if at := strings.Index(label, standingCadenceMark); at > 0 {
+// PlainLabel is a label with its cadence removed. A label that carries none is
+// returned as it is.
+func PlainLabel(label string) string {
+	if at := strings.Index(label, labelCadenceMark); at > 0 {
 		return label[:at]
 	}
 	return label
-}
-
-// StandingOptions is the answers THIS card offers, in the order they are drawn.
-//
-// THE WORDS ARE THIS ITEM'S. A reminder, a repeating check, a watch and a rule
-// are different questions, and a label that could mean two of them is how a
-// person presses the wrong one. Every surface, including another window and the
-// record of what was pressed, reads this list.
-//
-// THE KEYS DO NOT MOVE. 1 is the yes, 3 is once, 0 is the no. Once is missing
-// on a reminder and on a rule, and it is never the answer a cursor may rest on.
-// The no is last and marked safe, so a row that has to drop an answer drops
-// one in front of it.
-func StandingOptions(item standing.Item) []AnswerOption {
-	options := standingOptions(item)
-	if !StandingOnceIsAnAnswer(item) {
-		for i, option := range options {
-			if option.Key == StandingOnceKey {
-				return append(options[:i], options[i+1:]...)
-			}
-		}
-	}
-	return options
-}
-
-func standingOptions(item standing.Item) []AnswerOption {
-	cadence := item.When.ShortWords()
-	switch item.CardKindOf() {
-	case standing.CardReminder:
-		if item.Does.Kind == standing.ActionTask {
-			yes := "Run it then"
-			if cadence != "" {
-				yes += standingCadenceMark + cadence
-			}
-			return []AnswerOption{
-				{Key: "1", Label: yes, Consequence: "Runs the work then. Nothing repeats."},
-				{Key: StandingNoKey, Label: "Don't schedule it", Consequence: "Nothing is scheduled or run.", Safe: true},
-			}
-		}
-		yes := "Remind me"
-		if cadence != "" {
-			yes = "Remind me " + cadence
-		}
-		return []AnswerOption{
-			{Key: "1", Label: yes, Consequence: "Reminds you then. Nothing repeats."},
-			{Key: StandingNoKey, Label: "Don't remind me", Consequence: "You are not reminded.", Safe: true},
-		}
-	case standing.CardWatch:
-		// A ONE-SHOT CONDITION WATCH SAYS SO. Its yes is still "Watch for it",
-		// but the consequence is what actually happens: it tells the person
-		// once when the condition first turns true and then stops, and there is
-		// no false-then-true second notice. A recurring watch keeps the old
-		// sentence.
-		watches := "It watches until you stop it."
-		if item.When.OneShot {
-			watches = "It tells you once when the condition first turns true, then stops."
-		}
-		return []AnswerOption{
-			{Key: "1", Label: "Watch for it", Consequence: watches},
-			{Key: StandingOnceKey, Label: "Check once now", Consequence: "Checks once now. Nothing keeps watching."},
-			{Key: StandingNoKey, Label: "Don't watch", Consequence: "Nothing watches.", Safe: true},
-		}
-	case standing.CardRule:
-		return []AnswerOption{
-			{Key: "1", Label: "Keep this rule", Consequence: "The rule is kept until you stop it."},
-			{Key: StandingNoKey, Label: "Don't keep it", Consequence: "The rule is not kept.", Safe: true},
-		}
-	default:
-		return standingCheckOptions(cadence)
-	}
-}
-
-// standingCheckOptions is a repeating check's row. An empty cadence leaves the
-// yes as the stem, which is also what a bare key names when no item is in hand.
-func standingCheckOptions(cadence string) []AnswerOption {
-	yes := "Set it up"
-	if cadence != "" {
-		yes = "Set it up" + standingCadenceMark + cadence
-	}
-	return []AnswerOption{
-		{Key: "1", Label: yes, Consequence: "It repeats on that cadence until you stop it."},
-		{Key: StandingOnceKey, Label: "Only now, don't repeat", Consequence: "Runs the check one time now. Nothing repeats."},
-		{Key: StandingNoKey, Label: "Don't set it up", Consequence: "Nothing is set up, and nothing runs.", Safe: true},
-	}
 }
 
 // AnswerLabel is the word for one key, and "" for a key that kind does not
@@ -612,8 +419,6 @@ type AnswerAction struct {
 	Scope ConsentScope
 	// Task is the proposal lane's answer, for [Agent.ResolveTask].
 	Task TaskAnswer
-	// Standing is the standing lane's answer, for [Agent.ResolveStanding].
-	Standing StandingAnswer
 }
 
 // AnswerFromKey is the whole mapping, and it is the one place it is written.
@@ -655,21 +460,6 @@ func AnswerFromKey(kind QuestionKind, key string) (AnswerAction, bool) {
 			action.Task = TaskAnswer{Approved: true}
 		case "2":
 			action.Task = TaskAnswer{Approved: false}
-		}
-	case QuestionStanding:
-		switch key {
-		case "1":
-			action.Standing = StandingAnswer{Approved: true}
-		case StandingOnceKey:
-			action.Standing = StandingAnswer{Once: true}
-		case StandingNoKey:
-			// THE DECLINE IS WRITTEN OUT RATHER THAN LEFT TO FALL THROUGH. It
-			// is already the zero value — which is the safety this whole
-			// function is built on — but a reader counting the answers a
-			// standing card takes must find three arms here and not two, and
-			// the day one of them learns something the line to change is
-			// visible.
-			action.Standing = StandingAnswer{}
 		}
 	}
 	return action, true

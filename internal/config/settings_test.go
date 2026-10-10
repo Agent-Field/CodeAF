@@ -1,7 +1,6 @@
 package config
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -9,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/pool/poolcfg"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/taxonomy"
 )
 
@@ -851,57 +850,24 @@ func mustRow(t *testing.T, rows *Settings, key string) Setting {
 	return row
 }
 
-// ── background checks ───────────────────────────────────────────────────────
+// ── auto update ─────────────────────────────────────────────────────────────
 
-// THE ROW READS THE MACHINE AND NEVER THE FILE. What it shows is derived from
-// the timer's own definition on disk, so a person who removed the agent by hand
-// is told `off` in the one place they went to check — and turning the row is
-// what installs and removes it.
-// THE AUTO UPDATE ROW IS READ NEXT TO BACKGROUND CHECKS, on the same
-// machine-and-project reading and the same category: both answer what codeaf
-// does HERE on its own, rather than how the surface draws itself. It used to be
-// filed under the interface group and drawn on the Display tab, which is about
-// appearance and typing; a person keeping an installation current looks where
-// the machine's own work is kept.
-func TestTheAutoUpdateRowReadsBesideBackgroundChecks(t *testing.T) {
-	dir := t.TempDir()
-	home := t.TempDir()
-	program := filepath.Join(t.TempDir(), "codeaf")
-	if err := os.WriteFile(program, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	timer, err := standing.NewWatch(standing.WatchOptions{
-		Platform: "darwin", HomeDir: home, Executable: program, UID: 501,
-		Runner: quietRunner{},
-	})
-	if err != nil {
-		t.Fatalf("NewWatch: %v", err)
-	}
-	registry := NewSettings(SettingsOptions{ProfileDir: dir, BackgroundChecks: timer})
-	updateAt, checksAt := -1, -1
-	for at, row := range registry.Rows() {
-		switch row.Key {
-		case KeyUpdateAuto:
-			updateAt = at
-			if row.Category != CategoryPractice {
-				t.Fatalf("auto update is filed under %q, want %q", row.Category, CategoryPractice)
-			}
-		case KeyStandingBackground:
-			checksAt = at
-		}
-	}
-	if updateAt < 0 || checksAt < 0 {
-		t.Fatalf("both rows must be in the registry: auto update at %d, background checks at %d", updateAt, checksAt)
-	}
-	if updateAt+1 != checksAt {
-		t.Fatalf("auto update stands at %d and background checks at %d, want them adjacent", updateAt, checksAt)
-	}
-	// THE FIRST SENTENCE SAYS WHAT THE ROW DOES, and the rest says what off
-	// means: manual installation, while the one launch check still runs.
+// THE AUTO UPDATE ROW IS FILED WITH WHAT THE MACHINE DOES ON ITS OWN, rather
+// than with how the surface draws itself. It used to be filed under the
+// interface group and drawn on the Display tab, which is about appearance and
+// typing; a person keeping an installation current looks where the machine's
+// own work is kept.
+func TestTheAutoUpdateRowIsFiledWithThePracticeRows(t *testing.T) {
+	registry := NewSettings(SettingsOptions{ProfileDir: t.TempDir()})
 	row, ok := registry.Row(KeyUpdateAuto)
 	if !ok {
 		t.Fatal("the registry has no auto update row")
 	}
+	if row.Category != CategoryPractice {
+		t.Fatalf("auto update is filed under %q, want %q", row.Category, CategoryPractice)
+	}
+	// THE FIRST SENTENCE SAYS WHAT THE ROW DOES, and the rest says what off
+	// means: manual installation, while the one launch check still runs.
 	for _, want := range []string{
 		"keeps this codeaf installation current in the background.",
 		"Off, installation is manual",
@@ -912,95 +878,6 @@ func TestTheAutoUpdateRowReadsBesideBackgroundChecks(t *testing.T) {
 		}
 	}
 }
-
-func TestTheBackgroundChecksRowReadsTheTimerAndTurnsIt(t *testing.T) {
-	dir := t.TempDir()
-	home := t.TempDir()
-	program := filepath.Join(t.TempDir(), "codeaf")
-	if err := os.WriteFile(program, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-	timer, err := standing.NewWatch(standing.WatchOptions{
-		Platform: "darwin", HomeDir: home, Executable: program, UID: 501,
-		Runner: quietRunner{},
-	})
-	if err != nil {
-		t.Fatalf("NewWatch: %v", err)
-	}
-	registry := NewSettings(SettingsOptions{ProfileDir: dir, BackgroundChecks: timer})
-	row, ok := registry.Row(KeyStandingBackground)
-	if !ok {
-		t.Fatal("a machine with a timer has no background checks row")
-	}
-	if row.Category != CategoryPractice || row.Kind != SettingChoice {
-		t.Fatalf("row = %+v", row)
-	}
-	// Nothing installed yet, so the row says so however the file reads.
-	if row.Value() != BackgroundOff {
-		t.Fatalf("an uninstalled timer reads %q", row.Value())
-	}
-	if err := row.Apply(BackgroundOn); err != nil {
-		t.Fatalf("turning it on: %v", err)
-	}
-	if row.Value() != BackgroundOn {
-		t.Fatalf("an installed timer reads %q", row.Value())
-	}
-	if BackgroundChecksAt(dir) != BackgroundOn {
-		t.Fatalf("the intent on disk = %q", BackgroundChecksAt(dir))
-	}
-	if err := row.Apply(BackgroundOff); err != nil {
-		t.Fatalf("turning it off: %v", err)
-	}
-	if row.Value() != BackgroundOff {
-		t.Fatalf("a removed timer reads %q", row.Value())
-	}
-	if BackgroundChecksWantedAt(dir) {
-		t.Fatal("the launch repair would put back a timer the person turned off")
-	}
-	// AND THE HINT NAMES THE THING IT INSTALLS. "codeaf installs a launchd
-	// agent" is a sentence nobody can check.
-	for _, want := range []string{standing.DarwinTickLabel, standing.LinuxTickTimer, standing.IntervalWords()} {
-		if !strings.Contains(row.Hint, want) {
-			t.Fatalf("the hint does not name %q: %s", want, row.Hint)
-		}
-	}
-	// And a model may turn it: this is a preference, not a rail on the model.
-	if !row.SelfService() {
-		t.Fatal("the chat cannot turn off the background checks somebody asked it to")
-	}
-}
-
-// A CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. On a machine with no
-// timer to install there is nothing for this switch to switch, so the sheet has
-// no row rather than a row that reads nothing and refuses every write.
-func TestTheBackgroundChecksRowIsAbsentWithNoTimer(t *testing.T) {
-	registry := NewSettings(SettingsOptions{ProfileDir: t.TempDir()})
-	if _, ok := registry.Row(KeyStandingBackground); ok {
-		t.Fatal("a machine with no timer offered a switch for one")
-	}
-	for _, row := range registry.Rows() {
-		if row.Key == KeyStandingBackground {
-			t.Fatal("the row is in the sheet after all")
-		}
-	}
-}
-
-// A REPOSITORY MAY NOT TURN THIS ON. Installing a timer is a change to
-// somebody's machine, and a checked-in file that could make one is a clone
-// arranging to run a program on every laptop it lands on.
-func TestBackgroundChecksAreProfileOnly(t *testing.T) {
-	for _, key := range ProjectKeys {
-		if key == KeyStandingBackground {
-			t.Fatal("a repository can install a timer on the reader's machine")
-		}
-	}
-}
-
-// quietRunner is this machine's scheduler, stood in for. Nothing in these tests
-// goes near launchctl.
-type quietRunner struct{}
-
-func (quietRunner) Run(context.Context, string, ...string) error { return nil }
 
 // ── the retired task-start word ─────────────────────────────────────────────
 
@@ -1126,7 +1003,7 @@ func TestSpendRailsShipLargeEnoughNotToHinder(t *testing.T) {
 		{"the daily rail", DefaultDailyBudgetUSD, 500},
 		{"the plan consent gate", DefaultPlanConsentUSD, 100},
 		{"the lifted-tier cap", taxonomy.DefaultTierCapUSD, 25},
-		{"a standing order's per-firing rail", standing.DefaultPerRunUSD, 5},
+		{"an automation's per-run rail", automation.DefaultUSD, 5},
 	}
 	for _, floor := range floors {
 		if floor.value < floor.floor {

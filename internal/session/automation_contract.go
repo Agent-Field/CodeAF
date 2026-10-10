@@ -20,11 +20,12 @@ import (
 // QuestionAutomation is an automation card: should this be saved?
 const QuestionAutomation QuestionKind = "automation"
 
-// The keys an automation card answers with. They never move.
+// The keys an automation card answers with. They never move, and the no is
+// every card's outright no ([DeclineKey]) rather than a digit of its own.
 const (
 	AutomationSaveKey   = "1"
 	AutomationRunNowKey = "2"
-	AutomationNoKey     = "0"
+	AutomationNoKey     = DeclineKey
 )
 
 // AutomationNotice is one automation card, or one report about an automation.

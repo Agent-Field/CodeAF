@@ -164,7 +164,7 @@ offer somebody a plan drawn before the work is opened. A change too wide for one
 worker is one task with `wide` set, which hands its own parts out once the
 material shows the width is real.
 
-STANDING_FACTS
+AUTOMATION_FACTS
 
 # Interrupts and steering
 A mid-turn message cuts generation: keep partial work in the transcript and

@@ -494,12 +494,12 @@ func (placeAutomations) body(a *app, width, room int) []placeRow {
 	var lines []string
 	if p.history != "" {
 		item, _ := p.opened(a)
-		lines, p.owner, p.htop, p.shown = automationHistoryLines(a, item, p.runs, p.loaded, p.hcursor, p.htop, width, room, a.now())
+		lines, p.owner, p.htop, p.shown = automationHistoryLines(a.pal, a.icon, item, p.runs, p.loaded, p.hcursor, p.htop, width, room, a.now())
 	} else if len(list) == 0 {
 		p.owner, p.shown = nil, 0
 		return placeWhisperRows(pageAutomations, width, room, a.pal)
 	} else {
-		lines, p.owner, p.top, p.shown = automationsListLines(a, list, a.watch.active, p.cursor, p.top, width, room, a.now())
+		lines, p.owner, p.top, p.shown = automationsListLines(a.pal, a.icon, list, a.watch.active, p.cursor, p.top, width, room, a.now())
 	}
 	rows := make([]placeRow, 0, room)
 	for i, text := range lines {
@@ -650,4 +650,23 @@ func (a *app) openAutomationsAt(id string) tea.Cmd {
 	}
 	a.touch()
 	return cmd
+}
+
+// automationsStatusWord is what /status and the phone's sheet say about the
+// automations: how many will run again, which is next and when, and how many
+// are running now — or nothing at all when none are on the clock.
+func (a *app) automationsStatusWord() (string, bool) {
+	upcoming := nextAutomations(a.watch.list)
+	if len(upcoming) == 0 && a.watch.running == 0 {
+		return "", false
+	}
+	word := ""
+	if len(upcoming) > 0 {
+		next := upcoming[0]
+		word = itoa(len(upcoming)) + " on the clock · next " + strings.TrimSpace(next.Title) + " " + automation.Moment(next.Next, a.now())
+	}
+	if a.watch.running > 0 {
+		word = joinDot(word, itoa(a.watch.running)+" running")
+	}
+	return word, true
 }

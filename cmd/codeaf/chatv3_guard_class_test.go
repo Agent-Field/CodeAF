@@ -23,13 +23,10 @@ func TestV3ProcessGuardGoClass(t *testing.T) {
 		kind, stop, join, owner string
 	}
 	want := map[string]class{
-		"chatv3/standing":         {kind: "joined writer", stop: "v3Process.standingStop", join: "v3Process.closeAll calls stopStandingTicks"},
-		"chatv3/standing-stop":    {kind: "joined helper", stop: "standingStop is closed", join: "chatv3/standing closes standingDone after this helper returns"},
 		"pool/judge-sweep":        {kind: "joined writer", stop: "pool errand context", join: "v3Process.closeAll calls stopPoolErrands"},
 		"chatv3/models":           {kind: "joined writer", stop: "warmModels waiter on the pool errand context, and the catalog's own warm context", join: "v3Process.closeAll calls stopPoolErrands for the waiter (since #1179) and Models.Close, which cancels and joins the internal/catalog warm"},
 		"engine/models":           {kind: "joined writer", stop: "warmModels waiter on the pool errand context, and the catalog's own warm context", join: "v3Process.closeAll calls stopPoolErrands for the waiter (since #1179) and Models.Close, which cancels and joins the internal/catalog warm"},
 		"chatv3/sweep-home":       {kind: "joined writer", stop: "v3Process.sweepCancel cancels the walk's context, checked between entries and before every destructive operation", join: "v3Process.closeAll calls stopPlaceSweep, which waits on sweepDone (since #1276)"},
-		"chatv3/background":       {kind: "one-shot", stop: "repairBackgroundChecks returns after one bounded Drift/Install pass"},
 		"chatv3/once-questions":   {kind: "one-shot", stop: "agent.Close closes the WatchQuestions channel consumed by the range"},
 		"chatv3/close-agent":      {kind: "joined one-shot", stop: "Agent.Close is bounded", join: "v3Process.closeAll waits on waiting"},
 		"chatv3/payment-credits":  {kind: "joined one-shot", stop: "processCtx is canceled and credits.Read is bounded", join: "v3Process.closeAll calls creditWatcher.close and waits"},

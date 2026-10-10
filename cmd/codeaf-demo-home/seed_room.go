@@ -419,7 +419,7 @@ var roomPlanJournal = []journalLine{
 	answer("c1", "tui3 12ms\ntui2 6ms\nsession 4ms\nstanding 3ms\n"),
 	{Type: "message", Role: "assistant", Content: "Now the measurement itself, once per package.",
 		ToolCalls: []ai.ToolCall{call("c2", "bash", map[string]any{"command": "go test -run TestFrameBudget -bench . ./internal/... | tee /tmp/budget.txt"})}},
-	answer("c2", "internal/tui3      14.2ms/frame  OVER\ninternal/tui2       5.9ms/frame\ninternal/session    4.1ms/frame\ninternal/standing   3.0ms/frame\ninternal/head      11.8ms/frame  OVER\ninternal/resident  10.4ms/frame  OVER\ninternal/remote     9.7ms/frame  OVER\nok\n"),
+	answer("c2", "internal/tui3      14.2ms/frame  OVER\ninternal/tui2       5.9ms/frame\ninternal/session    4.1ms/frame\ninternal/automation 3.0ms/frame\ninternal/head      11.8ms/frame  OVER\ninternal/resident  10.4ms/frame  OVER\ninternal/remote     9.7ms/frame  OVER\nok\n"),
 	{Type: "message", Role: "assistant", Content: "Four are over. Writing the order down: the tab bar first, because every other count on the surface is read from it.",
 		ToolCalls: []ai.ToolCall{call("c3", "write", map[string]any{"path": "docs/design/polish/budget.md"})}},
 	answer("c3", "wrote docs/design/polish/budget.md (48 lines)"),
@@ -491,7 +491,7 @@ func roomDevServerLog() string {
 	out.WriteString("  VITE v5.4.2  ready in 412 ms\n\n")
 	out.WriteString("  ➜  Local:   http://localhost:5173/\n")
 	out.WriteString("  ➜  Network: http://192.168.1.24:5173/\n\n")
-	routes := []string{"/", "/home", "/tasks", "/tasks/3", "/jobs", "/jobs/1", "/spend", "/standing", "/memory", "/search"}
+	routes := []string{"/", "/home", "/tasks", "/tasks/3", "/jobs", "/jobs/1", "/spend", "/automations", "/memory", "/search"}
 	for tick := 0; tick < 24; tick++ {
 		for _, route := range routes {
 			fmt.Fprintf(&out, "%02d:%02d:%02d [vite] GET %s 200 in %dms\n",

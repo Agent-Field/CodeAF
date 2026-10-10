@@ -4489,12 +4489,6 @@ func (a *app) questionDrawnHere(q session.Question) bool {
 		// on — which is what the question is ABOUT rather than a second copy of
 		// the asking.
 		return true
-	case session.QuestionStanding:
-		// THE STANDING CARD, whose chip row, cursor, digits and hint line are
-		// deleted (standing.go, pickrow.go). What is left there is the head, the
-		// bands, the draining meter and the news line — what the card SHOWS, as
-		// against what it ASKS.
-		return true
 	case session.QuestionAutomation:
 		// THE AUTOMATION CARD (automation.go), which never had answers of its
 		// own: what is left there is what it SHOWS.

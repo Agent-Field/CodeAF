@@ -346,7 +346,6 @@ var nonSettingProfileFields = []string{
 	// was told at launch that a key codeaf reads was unread.
 	LaneBorrowKey(LaneSlotTalk),
 	KeySplitPct,
-	KeyStandingBackground,
 	KeyResponseAttempts,
 	KeyResponseLiftAfter,
 	KeyResponseLiftCap,
@@ -400,6 +399,10 @@ var retiredProfileKeys = map[string]bool{
 	"practice_idle":       true, // reader removed on 2026-10-10: the practice loop is gone
 	"brief_after":         true, // reader removed on 2026-10-10: nothing read the field
 	"tenure_after":        true, // reader removed on 2026-10-10: charters are gone
+	// The OS timer that ran standing items with no window open. Automations
+	// run only while a window is open, so there is nothing left to switch, and
+	// off — the one answer anybody chose on purpose — is now simply true.
+	"standing.background": true, // reader removed on 2026-10-10: the OS timer is gone
 	// The retired crew rows are read once more, by the migration that removes
 	// them and says so in its own line (crewmigrate.go's [MigrateCrew]); the
 	// unread check must not say it a second time in a worse sentence.

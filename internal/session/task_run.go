@@ -1548,18 +1548,12 @@ func (g *TaskGraph) runFrontier() {
 	// ([TaskGraph.holdOnStartingLocked]), because the answer for the second
 	// node of a fan depends on the first one having started.
 	g.governor.observe(g.lanesTaken())
-	// AND THE PERSON'S STANDING ORDERS ARE RESOLVED BEFORE THE LOCK TOO, and at
-	// most once a pass, for the reading's reason: every node in one graph sits
-	// in one place, so the answer is the same for all of them, and reading a
-	// folder per starting node would be the same question asked ten times
-	// (standing_world.go).
-	//
-	// AND THE PERSON'S RULES, beside them and for the same reason: one place, one
-	// answer, read once a pass and outside the lock (memory_always.go). They are
-	// joined onto the same closing section, rules first, so a brief reads what
-	// always holds before what the person has standing; an empty one is left out
-	// by the join itself.
-	orders := joinWorldSections(g.alwaysWorld(), g.standingWorld())
+	// AND THE PERSON'S RULES ARE RESOLVED BEFORE THE LOCK TOO, and at most once
+	// a pass, for the reading's reason: every node in one graph sits in one
+	// place, so the answer is the same for all of them, and reading them per
+	// starting node would be the same question asked ten times
+	// (memory_always.go).
+	orders := g.alwaysWorld()
 
 	g.mu.Lock()
 	// A CLOSED SESSION HAS NO RUNNING NODES, so a pass that arrives after the
@@ -4915,18 +4909,6 @@ func (a *Agent) TaskUpdates() <-chan Event {
 //
 // stop is never nil and calling it twice is calling it once.
 func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
-	// AND A SURFACE ATTACHING IS THE OTHER MOMENT SOMEBODY CAME BACK. The
-	// inbox road ends in a drain that ran inside New ([Agent.drainStandingInbox]),
-	// which was the whole story while every window built its own engine. Since
-	// #653 an interactive launch joins this workspace's session host, and a host
-	// that outlived the last window hands the next one the SAME agent
-	// (internal/enginehost's Host.join) — so a firing filed under the project
-	// while nobody was here would sit in that file forever, read by nothing,
-	// because no agent was ever constructed to read it. Draining here is the
-	// same fold and the same rows, asked for by the surface rather than by the
-	// boot; the file is emptied as it is read, so a second lane finds nothing
-	// and this costs a stat on every attach.
-	a.drainStandingInbox()
 	stream := newEventStream()
 	a.mu.Lock()
 	if a.closed {

@@ -28,7 +28,7 @@ func TestCloseJoinsPlaceSweepAndNextProcessStillSweeps(t *testing.T) {
 	t.Cleanup(func() { sweepHome = previousSweep })
 	var starts atomic.Int32
 	var destructive atomic.Int32
-	sweepHome = func(ctx context.Context, _ string, _ func(string)) {
+	sweepHome = func(ctx context.Context, _ string, _ func(string) bool, _ func(string)) {
 		i := int(starts.Add(1)) - 1
 		if i >= len(passes) {
 			t.Errorf("unexpected sweep start %d", i+1)

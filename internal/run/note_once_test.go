@@ -14,6 +14,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/run"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // echoesUntilTheCap keeps a worker moving with a different command every step,
@@ -49,7 +50,7 @@ func TestAWorkerIsNotHandedItsOwnNote(t *testing.T) {
 			return toolReply(`{"command":"echo three"}`), nil
 		},
 	}}
-	worker := run.NewBashWorker(store, filepath.Dir(store.Path()), "test/model", "", seat)
+	worker := run.NewBashWorker(store, filepath.Dir(store.Path()), "test/model", seat)
 	_, _ = worker.Run(run.WithStepsPerTask(runContext(t), 4), *store.Task(store.RootID()))
 
 	written := false
@@ -77,34 +78,40 @@ func TestAWorkerLaunchedAgainIsNotHandedNotesItsTaskAlreadyHad(t *testing.T) {
 	}
 
 	first := &seat{ever: echoesUntilTheCap()}
-	worker := run.NewBashWorker(store, filepath.Dir(store.Path()), "test/model", "", first)
+	worker := run.NewBashWorker(store, filepath.Dir(store.Path()), "test/model", first)
 	_, _ = worker.Run(run.WithStepsPerTask(runContext(t), 3), *store.Task(store.RootID()))
 	if !seatSaw(first, said) {
 		t.Fatalf("the first worker was never handed the note:\n%s", seatTranscript(first))
 	}
 
 	again := &seat{ever: echoesUntilTheCap()}
-	woken := run.NewBashWorker(store, filepath.Dir(store.Path()), "test/model", "", again)
+	woken := run.NewBashWorker(store, filepath.Dir(store.Path()), "test/model", again)
 	_, _ = woken.Run(run.WithStepsPerTask(runContext(t), 3), *store.Task(store.RootID()))
 	if seatSaw(again, said) {
 		t.Fatalf("the task was handed a note it already had, a second time:\n%s", seatTranscript(again))
 	}
 }
 
-// TestAPlanBornWorkerIsHandedTheStandingOrders is #1549's end-to-end half: the
-// brief a run worker opens on closes on the person's standing orders — the same
-// section a task node of the conversation reads — so a worker seated from a
-// plan works under the house rules too. The orders ride the OPENING message,
-// not a later note: they are a birth fact.
-func TestAPlanBornWorkerIsHandedTheStandingOrders(t *testing.T) {
+// TestAPlanBornWorkerIsHandedThePersonsRules is #1549's end-to-end half: the
+// brief a run worker opens on closes on the person's rules — the same section a
+// task node of the conversation reads — so a worker seated from a plan works
+// under the house rules too. The rules ride the OPENING message, not a later
+// note: they are a birth fact. They reach the worker through the factory, which
+// is the one door a run seats its workers through.
+func TestAPlanBornWorkerIsHandedThePersonsRules(t *testing.T) {
 	t.Setenv("CODEAF_TASK_BELT", "bash")
 	t.Setenv("CODEAF_PLANDB_BIN", realPlandbDoor(t))
 	store := runOpenStore(t)
-	const orders = "Standing orders:\n\n- never force-push a shared branch"
+	const rules = "Rules that always hold here:\n\n- never force-push a shared branch"
 	seat := &seat{ever: echoesUntilTheCap()}
-	worker := run.NewBashWorker(store, filepath.Dir(store.Path()), "test/model", orders, seat)
+	factory := run.CrewFactory(store, filepath.Dir(store.Path()), t.TempDir(), run.Seats{One: "test/model"}, rules,
+		func(string) session.Completer { return seat })
+	worker := factory(*store.Task(store.RootID()))
+	if worker == nil {
+		t.Fatal("the factory seated nothing for the root")
+	}
 	_, _ = worker.Run(run.WithStepsPerTask(runContext(t), 2), *store.Task(store.RootID()))
-	if !seatSaw(seat, orders) {
-		t.Fatalf("the run worker was never handed the standing orders:\n%s", seatTranscript(seat))
+	if !seatSaw(seat, rules) {
+		t.Fatalf("the run worker was never handed the person's rules:\n%s", seatTranscript(seat))
 	}
 }

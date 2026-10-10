@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -1240,19 +1239,9 @@ func (c *Client) OpenSession(path string) (Welcome, error) {
 	return c.swap(MethodSessionOpen, path)
 }
 
-// StandingItems is the engine machine's standing items for one workspace: the
-// far half of what a local surface reads straight off its own disk
-// (cmd/codeaf's [v3StandingSeam]).
-//
-// IT ANSWERS AN ERROR RATHER THAN AN EMPTY LIST, which is the one place it
-// differs from [Client.Recent], and the difference is what the caller does with
-// it: this list is asked for again and again on a beat, so a caller that keeps
-// the last good answer must be able to tell "there is nothing here" from "the
-// round trip failed" — a fault redrawn as an empty band would be the screen
-// saying the person's watches had gone away.
 // World is the engine machine's places root, walked: what home lists, what the
-// tasks place reads its rows out of, and what the standing, spend and search
-// places each take one fact from ([MethodPlacesWorld]).
+// tasks place reads its rows out of, and what the spend and search places each
+// take one fact from ([MethodPlacesWorld]).
 //
 // THE ERROR IS ANSWERED AND NOT SWALLOWED, unlike [Client.Recent] next door,
 // and the difference matters: a recent-sessions list that came back empty is a
@@ -1434,44 +1423,6 @@ func (c *Client) Memories(query string) ([]session.MemoryLine, error) {
 	return lines, err
 }
 
-func (c *Client) StandingItems(workspace string) ([]standing.Item, error) {
-	payload, err := c.call(nil, MethodStandingItems, workspace)
-	if err != nil {
-		return nil, err
-	}
-	var items []standing.Item
-	if err := json.Unmarshal(payload, &items); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-// SaveStanding writes one item back to the engine machine's store — the pause
-// and the stop keys, and nothing else on this surface.
-//
-// THE REFUSAL TRAVELS. internal/tui3's StandingSeam.Save returns the write's
-// error and home prints it rather than swallowing it, because a row that redrew
-// as paused over a store that refused the write would be the screen lying about
-// somebody else's disk. So the engine's error comes back as this call's error
-// and nothing is invented here.
-func (c *Client) SaveStanding(item standing.Item) error {
-	_, err := c.call(nil, MethodStandingSave, item)
-	return err
-}
-
-// StandingWatch reads the scheduler on the engine machine.
-func (c *Client) StandingWatch() (standing.WatchStatus, bool) {
-	payload, err := c.call(nil, MethodStandingWatch, nil)
-	if err != nil {
-		return standing.WatchStatus{}, false
-	}
-	var result StandingWatchResult
-	if json.Unmarshal(payload, &result) != nil {
-		return standing.WatchStatus{}, false
-	}
-	return result.Status, result.Known
-}
-
 // HeldQuestions is what this session asked while nobody was attached, asked for
 // over the wire rather than read off the welcome.
 //
@@ -1481,9 +1432,8 @@ func (c *Client) StandingWatch() (standing.WatchStatus, bool) {
 // has answered one, after a session swap, or when it has been sitting attached
 // for a while and something was raised on another surface's watch.
 //
-// AN ERROR IS AN ERROR HERE and not an empty list, for [Client.StandingItems]'
-// reason: "nothing is waiting" and "the far end did not answer" are different
-// facts, and a surface that drew the second as the first would be quietly
+// AN ERROR IS AN ERROR HERE and not an empty list: "nothing is waiting" and
+// "the far end did not answer" are different facts, and a surface that drew the second as the first would be quietly
 // telling a person there is nothing to answer.
 func (c *Client) HeldQuestions() ([]HeldQuestion, error) {
 	payload, err := c.call(nil, MethodHeldQuestions, nil)
@@ -1790,15 +1740,6 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan session.Event, 
 // interprets message content as executable shell syntax.
 func (a *Agent) SubmitBash(ctx context.Context, text string) (<-chan session.Event, error) {
 	return a.open(ctx, MethodSubmitBash, SubmitArgs{Text: text})
-}
-
-// SubmitStanding is Submit for a draft the person marked as something to keep
-// true. It rides the same method as an ordinary send with one flag on it, for
-// the reason [SubmitArgs.Standing] states: the two turns differ only in what the
-// ENGINE puts in front of the sentence, which is not a thing a wire can carry
-// halfway.
-func (a *Agent) SubmitStanding(ctx context.Context, text string) (<-chan session.Event, error) {
-	return a.open(ctx, MethodSubmit, SubmitArgs{Text: text, Standing: true})
 }
 
 // SubmitImage is Submit with pictures. THE BYTES ARE READ HERE, on the machine
@@ -2112,25 +2053,12 @@ func (a *Agent) ResolveConsentRemember(id uint64, allow bool, scope session.Cons
 	_, _ = a.c.call(nil, MethodConsentRemember, ConsentArgs{ID: id, Allow: allow, Scope: scope})
 }
 
-// ResolveStanding answers one standing card: set it up, set it up once, or a
-// correction in the person's own words.
-//
-// IT IS THE METHOD THAT MAKES A STANDING CARD ANSWERABLE OVER A CONNECTION.
-// internal/tui3's standing.go asserts an OPTIONAL interface on whatever agent it
-// is holding ([standingAgent]) and draws no chips at all for one that does not
-// implement it, so a remote handle without this would have shown the person a
-// proposal they could look at and could not answer. Adding it here is the whole
-// of the difference.
-func (a *Agent) ResolveStanding(id uint64, answer session.StandingAnswer) {
-	_, _ = a.c.call(nil, MethodStandingResolve, StandingArgs{ID: id, Answer: answer})
-}
-
 // ResolveQuestion answers ONE QUESTION OF ANY LANE, whole, over the wire.
 //
-// IT IS THE METHOD THAT MAKES A QUESTION ANSWERABLE FROM A SURFACE AT ALL, and
-// [Agent.ResolveStanding]'s note above says why in the older case: internal/tui3
-// asserts an OPTIONAL interface on whatever agent it is holding and draws a page
-// that can be READ and not answered for one that does not implement it. Every
+// IT IS THE METHOD THAT MAKES A QUESTION ANSWERABLE FROM A SURFACE AT ALL:
+// internal/tui3 asserts an OPTIONAL interface on whatever agent it is holding
+// and draws a page that can be READ and not answered for one that does not
+// implement it. Every
 // local chat surface holds this type — the engine runs in its own process even
 // on this machine — so without this the question page was a page nobody could
 // answer anywhere.

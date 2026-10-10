@@ -181,14 +181,13 @@ func TestNoDoorResolvesTheLaneRowForItself(t *testing.T) {
 // somebody measures where their work went.
 func TestEveryDoorReachesTheLaneRowsThroughTheProfileLoad(t *testing.T) {
 	doors := map[string]string{
-		"chat.go":            "the brain `codeaf do` builds",
-		"exec.go":            "codeaf exec",
-		"main.go":            "codeaf plan new and codeaf plan revise",
-		"run.go":             "codeaf run and codeaf plan run",
-		"subharness_run.go":  "codeaf run subharness",
-		"chatv3_standing.go": "the standing pass a codeaf window and `codeaf tick` both run",
-		"chatv3_process.go":  "the conversation",
-		"chatv3_clock.go":    "codeaf clock, the process that runs automations",
+		"chat.go":           "the brain `codeaf do` builds",
+		"exec.go":           "codeaf exec",
+		"main.go":           "codeaf plan new and codeaf plan revise",
+		"run.go":            "codeaf run and codeaf plan run",
+		"subharness_run.go": "codeaf run subharness",
+		"chatv3_process.go": "the conversation",
+		"chatv3_clock.go":   "codeaf clock, the process that runs automations",
 	}
 	for name, door := range doors {
 		raw, err := os.ReadFile(name)

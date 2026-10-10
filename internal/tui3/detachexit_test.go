@@ -214,8 +214,6 @@ type servedAgent struct{ *fakeAgent }
 
 func (s *servedAgent) ReasoningLevels() map[string]string { return s.levels }
 
-func (s *servedAgent) ResolveStanding(uint64, session.StandingAnswer) {}
-
 func (s *servedAgent) Steer(string) (<-chan session.Event, error) { return nil, nil }
 
 func (s *servedAgent) RewindPoints() []session.RewindPoint { return nil }

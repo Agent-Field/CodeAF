@@ -50,11 +50,6 @@ func TestTheEventAndTheQuestionNameOneCard(t *testing.T) {
 			question: session.Question{Kind: session.QuestionConsent, ID: 3},
 		},
 		{
-			what:     "standing",
-			event:    session.Event{Kind: session.EventStandingProposal, Standing: &session.StandingNotice{ID: 4}},
-			question: session.Question{Kind: session.QuestionStanding, ID: 4},
-		},
-		{
 			what:     "harness",
 			event:    session.Event{Kind: session.EventHarnessOffer, ID: 5},
 			question: session.Question{Kind: session.QuestionHarness, ID: 5},
@@ -91,7 +86,7 @@ func TestTheEventAndTheQuestionNameOneCard(t *testing.T) {
 // new door from re-opening that hole: the room is emptied from the question's
 // own life, so there is no line for a door to forget.
 func TestAnAnswerThroughTheOneDoorEmptiesTheWaitingRoom(t *testing.T) {
-	far := newAskingAgent(session.Question{Kind: session.QuestionStanding, ID: 4})
+	far := newAskingAgent(session.Question{Kind: session.QuestionConsent, ID: 4})
 	sess := NewSession(&Engine{
 		Agent:       far,
 		Workspace:   "/home/somebody/api",
@@ -99,12 +94,12 @@ func TestAnAnswerThroughTheOneDoorEmptiesTheWaitingRoom(t *testing.T) {
 	}, true)
 	sess.mu.Lock()
 	sess.held.raise(WireEvent(session.Event{
-		Kind: session.EventStandingProposal, Standing: &session.StandingNotice{ID: 4},
+		Kind: session.EventConsentRequest, ID: 4,
 	}), 1, nil)
 	sess.mu.Unlock()
 
 	if got := sess.heldCount(); got != 1 {
-		t.Fatalf("a standing card nobody has answered is outstanding %d times, want 1", got)
+		t.Fatalf("an approval nobody has answered is outstanding %d times, want 1", got)
 	}
 	if got := len(sess.heldWaiting(2)); got != 1 {
 		t.Fatalf("a surface arriving before the answer was handed %d questions, want 1", got)
@@ -115,7 +110,7 @@ func TestAnAnswerThroughTheOneDoorEmptiesTheWaitingRoom(t *testing.T) {
 	link := dialSession(t, sess)
 	link.hello(Hello{Version: Version, Surface: "macbook"})
 	link.ok(1, MethodQuestionResolve, QuestionArgs{Answer: session.Answer{
-		Kind: session.QuestionStanding, ID: 4, Key: "3",
+		Kind: session.QuestionConsent, ID: 4, Key: "1",
 	}})
 
 	if got := sess.heldCount(); got != 0 {

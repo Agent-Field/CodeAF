@@ -280,10 +280,10 @@ func (a *app) questionBandWord(word, key string, width int) string {
 	if ansi.StringWidth(word) <= room {
 		return word
 	}
-	// A YES THAT CARRIES A CADENCE LOSES THE CADENCE BEFORE ANY CHARACTER IS
-	// CUT. "Set it up · every 3 hours" becomes "Set it up", and only then is
-	// the stem truncated.
-	plain := session.StandingPlainLabel(word)
+	// A LABEL THAT CARRIES A CADENCE LOSES THE CADENCE BEFORE ANY CHARACTER IS
+	// CUT. "Save · every 3 hours" becomes "Save", and only then is the stem
+	// truncated.
+	plain := session.PlainLabel(word)
 	if ansi.StringWidth(plain) <= room {
 		return plain
 	}

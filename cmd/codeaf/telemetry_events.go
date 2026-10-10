@@ -86,15 +86,6 @@ func (c *countingAgent) SubmitBash(ctx context.Context, text string) (<-chan ses
 	return countedEvents(events), nil
 }
 
-// SubmitStanding is [tui3.Agent.SubmitStanding] with the stream counted.
-func (c *countingAgent) SubmitStanding(ctx context.Context, text string) (<-chan session.Event, error) {
-	events, err := c.Agent.SubmitStanding(ctx, text)
-	if err != nil {
-		return events, err
-	}
-	return countedEvents(events), nil
-}
-
 // SubmitImage is [tui3.Agent.SubmitImage] with the stream counted.
 func (c *countingAgent) SubmitImage(ctx context.Context, text string, images []session.Image) (<-chan session.Event, error) {
 	events, err := c.Agent.SubmitImage(ctx, text, images)

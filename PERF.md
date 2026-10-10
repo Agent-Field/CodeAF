@@ -1510,12 +1510,12 @@ that pays some back lowers it in the same commit. It replaced a `t.Logf`, which
 nothing in the Makefile passes `-v` to — the one line saying the prefix was
 thousands of bytes over was printed where nobody would ever see it.
 
-The bill is not spread thin: `stand` is **9,607 bytes**, more than a quarter of
-the full tool block and nearly twice the next heaviest, and on a
-sixteen-thousand-token window it is roughly one token in six of everything that
-person has before they have said anything. Trimming it is a change to what the
-model is told, so it is owed by whoever owns the standing belt and not by this
-gate.
+The bill was not spread thin: `stand` was **9,607 bytes**, more than a quarter
+of the full tool block and nearly twice the next heaviest, and on a
+sixteen-thousand-token window it was roughly one token in six of everything that
+person had before they had said anything. Trimming it was a change to what the
+model is told, so it was owed by whoever owned the standing belt and not by this
+gate — and it was paid when automations replaced it (2026-10-10, below).
 
 **And the prefix is not the same size on every machine, which is why both
 figures are the widest machine's.** `grep` says a longer sentence about itself
@@ -1555,6 +1555,14 @@ guide is 190 bytes and its item in the hand-off paragraph's list 203, the same i
 both arms, and the caps rise by exactly that over sec's: measured on dev
 `baa2d7f0f` with sec (2026-10-07), the full cap is **57,817** bytes and the lean
 cap **50,189**, both dated in `prefixWaivers`.
+
+**Automations replace standing orders, and the `stand` bill is paid (2026-10-10).**
+`stand` and its **9,607** bytes leave every belt that carried them; `automation`,
+a smaller tool for the same sentences, takes its place, and the page's one
+sentence about leaving something behind stays the same length. The full prefix
+measures **52,721** bytes and the lean **44,935**, and both waivers fall to sit
+exactly on the measurement: the full cap is **52,721** (4,721 over its target)
+and the lean cap **44,935** (13,435 over).
 
 ## Following through on a completion claim
 

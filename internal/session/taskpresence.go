@@ -282,7 +282,7 @@ type PresenceJob struct {
 //
 // IT IS THE SHORTEST THING SOMEBODY COULD ANSWER FROM, and that bound is the
 // design. The card itself — the command's arguments, the brief, the whole
-// standing item — stays in the window that raised it; what travels is the one
+// automation — stays in the window that raised it; what travels is the one
 // line a person reads and the two or three answers they would give. A presence
 // file is read by every window every few seconds, and a card copied into it
 // would be a second rendering of a question, which is how a person comes to
@@ -298,7 +298,7 @@ type PresenceQuestion struct {
 	// Kind is which lane raised it (answers.go).
 	Kind QuestionKind `json:"kind"`
 	// ID is the token the answer names — [Event.ID] for a consent request, the
-	// node's id for a proposal, [StandingNotice.ID] for a card. It is the same
+	// node's id for a proposal, [AutomationNotice.ID] for a card. It is the same
 	// number the surface in that window hands its own resolver.
 	ID uint64 `json:"id"`
 	// Text is the one line the session is stopped on, and it is the SAME line
@@ -342,7 +342,7 @@ func (q PresenceQuestion) Answerable() bool {
 // IT IS THE WRITER'S LIST AND NOT THE KIND'S. [AnswerLabel] answers what a kind
 // of question can take in general; this answers what the session on the other
 // end of this file said it would take, which is narrower whenever the answers
-// depend on what is being asked ([StandingOptions]). A surface deciding whether
+// depend on what is being asked ([AutomationOptions]). A surface deciding whether
 // a keypress is an answer must ask THIS one, or a digit the chips never drew
 // would still be sent.
 func (q PresenceQuestion) Label(key string) string {
@@ -511,8 +511,8 @@ type presenceDesk struct {
 	mu sync.Mutex
 	// asks is the questions this session has out, in the order they were
 	// raised, each with the one line it would be described by and the answers
-	// it takes. The three lanes a card can come from fill it (consent.go,
-	// task.go, tools_standing.go) through [Agent.presenceAsking]; every other
+	// it takes. The lanes a card can come from fill it (consent.go, task.go,
+	// automation_tool.go) through [Agent.presenceAskingWhole]; every other
 	// lane a person can be asked on still makes the session say it is waiting,
 	// with no reason and no question — see [Agent.presenceSnapshot].
 	asks []presenceAsk
@@ -609,12 +609,12 @@ func (a *Agent) nudgePresence() {
 // WINDOW AT ALL: a card that reached the disk five seconds after it was raised
 // would be a card whose window had already timed out of somebody's glance.
 //
-// IT IS THE ONE HELPER THE THREE LANES USE. consent.go, task.go and
-// tools_standing.go each raise a different card with a different resolver, and
-// what they share is exactly this: a kind, the id their own resolver takes, and
-// one line. The answers are not named by the lane — they are answers.go's to
-// decide ([AnswerOptions] for a kind, [StandingOptions] for one standing item),
-// and a lane spelling its own keys would be the second place they were decided.
+// IT IS THE ONE HELPER THE LANES SHARE. Each raises a different card with a
+// different resolver, and what they share is exactly this: a kind, the id their
+// own resolver takes, and one line. The answers are not named by the lane —
+// they are answers.go's to decide ([AnswerOptions] for a kind,
+// [AutomationOptions] for one automation), and a lane spelling its own keys
+// would be the second place they were decided.
 //
 // A lane with nothing to say passes an empty text and is still banked, because
 // the session is still stopped; a question with no id is banked and not
@@ -624,9 +624,9 @@ func (a *Agent) presenceAsking(kind QuestionKind, id uint64, text string) func()
 }
 
 // presenceAskingOptions is the same thing for a lane whose answers depend on
-// WHAT IS BEING ASKED and not only on which lane is asking. A standing card for
-// a one-off reminder offers no `once` (answers.go's [StandingOptions]), and the
-// presence file has to say so or home would draw a chip the session drops.
+// WHAT IS BEING ASKED and not only on which lane is asking. An automation card
+// for a reminder offers no `Save and run it now` ([AutomationOptions]), and the presence
+// file has to say so or home would draw a chip the session drops.
 func (a *Agent) presenceAskingOptions(kind QuestionKind, id uint64, text string, options []AnswerOption) func() {
 	desk := a.presence
 	if desk == nil {
@@ -954,17 +954,18 @@ type personAsk struct {
 //
 // EVERY LANE A PERSON CAN BE ASKED ON COUNTS, not only the approval gate: a
 // session stopped on a connect question, a sub-harness offer, a task proposal,
-// a standing card or an intake card chat raised for a saved program is just as
-// stuck, and a surface that only knew about consent would leave those windows
-// looking idle while they waited (consent.go, connect.go, harness.go, task.go,
-// tools_standing.go, tools_subharness.go each hold one of these).
+// an automation card or an intake card chat raised for a saved program is just
+// as stuck, and a surface that only knew about consent would leave those
+// windows looking idle while they waited (consent.go, connect.go, harness.go,
+// task.go, automation_tool.go, tools_subharness.go each hold one of these).
 //
 // A task proposal with an active countdown starts automatically and does not
 // require the person. Holding it removes that deadline and makes it a question.
 //
-// THE STANDING CARD IS THE ONE LANE THAT WAITS FOREVER — it carries no clock at
-// all, by law (standing_contract.go) — so a window left on one said "idle" for
-// as long as it stood there, which is the exact opposite of the truth.
+// AN AUTOMATION CARD WAITS FOREVER — it carries no clock at all, because
+// nothing is saved until a person says so (automation_contract.go) — so a
+// window left on one must not say "idle" for as long as it stands there, which
+// would be the exact opposite of the truth.
 //
 // AND SO DOES AN ADAPTIVE RUN AT ITS FUEL GATE, which for a long time this did
 // not count. A run that has spent its tank stops launching and waits for
@@ -1080,7 +1081,7 @@ func (a *Agent) personAskLanes() (asked bool, offered string, runs []*orchestrat
 	// was this predicate that did not look, and the lane's own comment already
 	// claimed the row said so.
 	asked = len(a.consent) > 0 || len(a.connectAsks) > 0 || len(a.harnessAsks) > 0 ||
-		len(a.standingAnswers) > 0 || len(a.automationAnswers) > 0 || len(a.subharnessAsks) > 0 || a.asked.anyLocked()
+		len(a.automationAnswers) > 0 || len(a.subharnessAsks) > 0 || a.asked.anyLocked()
 	for _, proposal := range a.taskAnswers {
 		if proposal != nil && proposal.notice.Deadline.IsZero() {
 			asked = true
@@ -1125,7 +1126,7 @@ const subharnessOfferLine = "wants to run "
 
 // NeedsPerson reports whether this conversation is stopped on a question only a
 // person can answer — an approval, a connect offer, a sub-harness offer, a task
-// proposal, a standing card, an intake card chat raised for a saved program, an
+// proposal, an automation card, an intake card chat raised for a saved program, an
 // adaptive run waiting at its fuel gate, or a landed task waiting on somebody's
 // word about whether its work holds.
 //

@@ -5,13 +5,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
-	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/automation"
 )
 
 // A QUESTION TRAVELS OUT IN PRESENCE AND THE ANSWER COMES BACK IN A FILE.
@@ -198,229 +197,18 @@ func TestTheTaskProposalTravelsInPresenceAndAnAnswerComesBack(t *testing.T) {
 	waitForNoQuestion(t, dir)
 }
 
-func TestTheStandingCardTravelsInPresenceAndAnAnswerComesBack(t *testing.T) {
-	agent, dir := questionSession(t, "cccc1111cccc2222", nil)
-	events := watched(agent)
-
-	answers := make(chan StandingAnswer, 1)
-	go func() {
-		notice := &StandingNotice{Item: standing.Item{Words: "tell me when ci goes red"}}
-		answer, err := agent.askStanding(context.Background(), notice)
-		if err != nil {
-			t.Errorf("the card ended in an error: %v", err)
-		}
-		answers <- answer
-	}()
-
-	proposal := <-events
-	if proposal.Kind != EventStandingProposal || proposal.Standing == nil {
-		t.Fatalf("the standing lane sent %v", proposal.Kind)
-	}
-	question := waitForQuestion(t, dir)
-	if question.Kind != QuestionStanding || question.ID != proposal.Standing.ID {
-		t.Fatalf("the question reads %+v, the card is %d", question, proposal.Standing.ID)
-	}
-	if question.Text != StandingHeadWatch {
-		t.Fatalf("the line is %q", question.Text)
-	}
-	// `2 change when` is not offered from another window: it is a request for a
-	// text box, and there is no box on a card in a column.
-	for _, option := range question.Options {
-		if option.Key == "2" {
-			t.Fatalf("the card offered `2 %s`, which cannot be answered from home", option.Label)
-		}
-	}
-	// AND THE OUTRIGHT NO IS OFFERED, which is the one answer another window
-	// used to have no way to give: `esc` is the no in the conversation, and esc
-	// on home closes home.
-	if AnswerLabel(QuestionStanding, StandingNoKey) == "" {
-		t.Fatal("the standing card takes no decline at all")
-	}
-	var decline bool
-	for _, option := range question.Options {
-		decline = decline || option.Key == StandingNoKey
-	}
-	if !decline {
-		t.Fatalf("the card offered %v, with nothing on it that says no", question.Options)
-	}
-
-	if err := WriteAnswer(dir, QuestionStanding, question.ID, "3"); err != nil {
-		t.Fatalf("leaving the answer: %v", err)
-	}
-	agent.drainAnswers()
-	answer := <-answers
-	if !answer.Once || answer.Approved {
-		t.Fatalf("`3 once, not standing` came out as %+v", answer)
-	}
-	waitForNoQuestion(t, dir)
-}
-
-// THE OUTRIGHT NO TRAVELS TOO, AND IT IS ONE KEYSTROKE.
-//
-// This is the answer the standing card was missing from every window but its
-// own: `esc` is the no in the conversation, and `esc` on home closes home. A
-// person who did not want the thing had to walk to the window or leave the
-// question standing — which is the walk the whole answer band exists to save.
-func TestAStandingCardIsDeclinedFromAnotherWindowWithOneKey(t *testing.T) {
-	agent, dir := questionSession(t, "ffff3333ffff4444", nil)
-	events := watched(agent)
-
-	answers := make(chan StandingAnswer, 1)
-	go func() {
-		notice := &StandingNotice{Item: standing.Item{Words: "check the deploy every morning"}}
-		answer, err := agent.askStanding(context.Background(), notice)
-		if err != nil {
-			t.Errorf("the card ended in an error: %v", err)
-		}
-		answers <- answer
-	}()
-
-	proposal := <-events
-	if proposal.Kind != EventStandingProposal || proposal.Standing == nil {
-		t.Fatalf("the standing lane sent %v", proposal.Kind)
-	}
-	question := waitForQuestion(t, dir)
-	if err := WriteAnswer(dir, QuestionStanding, question.ID, StandingNoKey); err != nil {
-		t.Fatalf("leaving the answer: %v", err)
-	}
-	agent.drainAnswers()
-	// NOTHING WAS SET UP, AND NOTHING WAS RUN. The decline is the zero answer:
-	// not approved, not once, no correction to re-propose from, and nobody was
-	// asked about the OS timer.
-	if answer := <-answers; answer != (StandingAnswer{}) {
-		t.Fatalf("`%s not set up` came out as %+v", StandingNoKey, answer)
-	}
-	waitForNoQuestion(t, dir)
-}
-
-// EACH KIND OF CARD SAYS WHAT IT IS, AND EACH BUTTON SAYS WHAT IT DOES.
-func TestStandingCardWordsFollowTheKind(t *testing.T) {
-	cases := []struct {
-		item standing.Item
-		head string
-		yes  string
-		once string
-		no   string
-	}{
-		{
-			item: standing.Item{When: standing.When{Kind: standing.WhenAt, Words: "at 6"}},
-			head: StandingHeadReminder, yes: "Remind me at 6", once: "", no: "Don't remind me",
-		},
-		{
-			item: standing.Item{When: standing.When{Kind: standing.WhenEvery, Words: "every 3 hours"}},
-			head: StandingHeadCheck, yes: "Set it up · every 3 hours", once: "Only now, don't repeat", no: "Don't set it up",
-		},
-		{
-			item: standing.Item{When: standing.When{Kind: standing.WhenProbe, Words: "when CI goes red"}},
-			head: StandingHeadWatch, yes: "Watch for it", once: "Check once now", no: "Don't watch",
-		},
-		{
-			item: standing.Item{When: standing.When{Kind: standing.WhenHold, Words: "always"}},
-			head: StandingHeadRule, yes: "Keep this rule", once: "", no: "Don't keep it",
-		},
-	}
-	for _, c := range cases {
-		if got := StandingHead(c.item); got != c.head {
-			t.Errorf("%s head %q, want %q", c.item.When.Kind, got, c.head)
-		}
-		var sawOnce bool
-		for _, option := range StandingOptions(c.item) {
-			switch option.Key {
-			case "1":
-				if option.Label != c.yes || option.Consequence == "" {
-					t.Errorf("%s yes %q (%q)", c.item.When.Kind, option.Label, option.Consequence)
-				}
-				if option.Safe {
-					t.Errorf("%s yes is the cursor rest", c.item.When.Kind)
-				}
-			case StandingOnceKey:
-				sawOnce = true
-				if option.Label != c.once || option.Safe {
-					t.Errorf("%s once %q safe=%v", c.item.When.Kind, option.Label, option.Safe)
-				}
-				if option.Consequence == "" {
-					t.Errorf("%s once has no hint", c.item.When.Kind)
-				}
-			case StandingNoKey:
-				if option.Label != c.no || !option.Safe || option.Consequence == "" {
-					t.Errorf("%s no %+v", c.item.When.Kind, option)
-				}
-			}
-		}
-		if sawOnce != (c.once != "") {
-			t.Errorf("%s once offered=%v want %q", c.item.When.Kind, sawOnce, c.once)
-		}
-		if plain := StandingPlainLabel(c.yes); strings.Contains(c.yes, " · ") && strings.Contains(plain, " · ") {
-			t.Errorf("%s plain label kept the cadence: %q", c.item.When.Kind, plain)
-		}
-		if c.item.When.Kind == standing.WhenAt && StandingPlainLabel(c.yes) != "Remind me" {
-			t.Errorf("reminder plain label %q", StandingPlainLabel(c.yes))
-		}
-		if c.item.When.Kind == standing.WhenAt {
-			clocked := "Remind me in 1 minute · 07:35"
-			if got := StandingPlainLabel(clocked); got != "Remind me" {
-				t.Errorf("a reminder with a clock kept %q", got)
-			}
-		}
-	}
-	long := standing.When{Words: "every Monday morning after the deploy window closes and the board has signed off"}
-	if got := long.ShortWords(); len(got) > 40 || !strings.HasSuffix(got, "...") {
-		t.Fatalf("a long cadence was not shortened: %q", got)
-	}
-}
-
-// THE DECLINE IS ON EVERY STANDING CARD THERE IS. The `once` chip is the only
-// one that is ever missing (a one-off reminder's), because "do it now" is not a
-// smaller version of "do it at six" — but "set nothing up" answers every
-// standing question ever asked, and a person who learned the key on a watch
-// must find it under the same key on a reminder.
-func TestEveryStandingCardOffersTheSameDecline(t *testing.T) {
-	reminder := standing.Item{
-		When: standing.When{Kind: standing.WhenAt},
-		Does: standing.Action{Kind: standing.ActionSay},
-	}
-	watch := standing.Item{
-		When: standing.When{Kind: standing.WhenProbe},
-		Does: standing.Action{Kind: standing.ActionSay},
-	}
-	for _, item := range []standing.Item{reminder, watch} {
-		var found bool
-		for _, option := range StandingOptions(item) {
-			found = found || (option.Key == StandingNoKey && option.Label != "")
-		}
-		if !found {
-			t.Fatalf("a %s card offers %v, with no decline on it", item.When.Kind, StandingOptions(item))
-		}
-	}
-	// AND IT IS NOT A DIGIT ANY CHIP OWNS. The card in a conversation numbers
-	// its chips by position — 1, 2, 3 — so a decline sharing one of those would
-	// move under the hand the day a card drew one chip fewer.
-	var wearsIt int
-	for _, option := range AnswerOptions(QuestionStanding) {
-		if option.Key == StandingNoKey {
-			wearsIt++
-		}
-	}
-	if wearsIt != 1 {
-		t.Fatalf("%q names %d answers on a standing card, want exactly one", StandingNoKey, wearsIt)
-	}
-	if StandingNoKey == StandingOnceKey || StandingNoKey == "1" || StandingNoKey == "2" {
-		t.Fatalf("the decline is %q, which is a chip's own digit", StandingNoKey)
-	}
-}
-
 // A STALE ID IS IGNORED, AS EVERY LATE ANSWER IS. Nothing is reported, because
 // there is nobody left to report it to — the question is over.
 func TestAnAnswerToAQuestionNobodyIsWaitingOnIsDropped(t *testing.T) {
 	agent, dir := questionSession(t, "dddd1111dddd2222", nil)
-	for _, kind := range []QuestionKind{QuestionConsent, QuestionTask, QuestionStanding} {
+	for _, kind := range []QuestionKind{QuestionConsent, QuestionTask, QuestionAutomation} {
 		if err := WriteAnswer(dir, kind, 99, "1"); err != nil {
 			t.Fatalf("leaving the answer: %v", err)
 		}
 	}
 	// A key the question does not take never reaches the doorstep at all.
-	if err := WriteAnswer(dir, QuestionStanding, 99, "2"); err == nil {
-		t.Fatal("`2` was written for a standing card, which does not take it")
+	if err := WriteAnswer(dir, QuestionAutomation, 99, "3"); err == nil {
+		t.Fatal("`3` was written for an automation card, which does not take it")
 	}
 	agent.drainAnswers()
 	if _, err := os.Stat(AnswersPath(dir)); !os.IsNotExist(err) {
@@ -547,11 +335,11 @@ func TestTheKeysMeanWhatTheChipsSay(t *testing.T) {
 		// named no action at all (question.go's proposalQuestion).
 		{QuestionTask, "1", "start it", func(a AnswerAction) bool { return a.Task.Approved }},
 		{QuestionTask, "2", "no", func(a AnswerAction) bool { return !a.Task.Approved }},
-		{QuestionStanding, "1", "Set it up", func(a AnswerAction) bool { return a.Standing.Approved && !a.Standing.Once }},
-		{QuestionStanding, "3", "Only now, don't repeat", func(a AnswerAction) bool { return a.Standing.Once && !a.Standing.Approved }},
-		{QuestionStanding, "0", "Don't set it up", func(a AnswerAction) bool {
-			return a.Standing == (StandingAnswer{})
-		}},
+		// AN AUTOMATION'S KEYS ARE READ BY ITS OWN LANE ([automationAnswerOf]);
+		// the kind row only says which ones a card of it can take.
+		{QuestionAutomation, AutomationSaveKey, "Save", func(a AnswerAction) bool { return true }},
+		{QuestionAutomation, AutomationRunNowKey, "Save and run it now", func(a AnswerAction) bool { return true }},
+		{QuestionAutomation, DeclineKey, "Don't save", func(a AnswerAction) bool { return true }},
 	} {
 		if label := AnswerLabel(want.kind, want.key); label != want.label {
 			t.Errorf("%s %s is called %q, want %q", want.kind, want.key, label, want.label)
@@ -566,9 +354,9 @@ func TestTheKeysMeanWhatTheChipsSay(t *testing.T) {
 		}
 	}
 	// Everything else is nothing at all — never a yes.
-	for _, key := range []string{"", "4", "y", "9", "2 "} {
-		if action, ok := AnswerFromKey(QuestionStanding, key); ok && key != "2 " {
-			t.Errorf("a standing card took %q as %+v", key, action)
+	for _, key := range []string{"", "3", "4", "y", "9"} {
+		if action, ok := AnswerFromKey(QuestionAutomation, key); ok {
+			t.Errorf("an automation card took %q as %+v", key, action)
 		}
 	}
 	if _, ok := AnswerFromKey("nonsense", "1"); ok {
@@ -703,20 +491,126 @@ func TestAnAnswerLeftWhileTheWindowWasShutIsAppliedAsItOpens(t *testing.T) {
 	}
 }
 
-func TestScheduledTaskApprovalNamesWorkNotReminder(t *testing.T) {
-	item := standing.Item{When: standing.When{Kind: standing.WhenAt, Words: "tomorrow at 8"}, Does: standing.Action{Kind: standing.ActionTask, Brief: "write report"}}
-	if got := StandingHead(item); got != "wants to schedule work once" {
-		t.Fatal(got)
+// answersWatch is a watch an automation card can propose: one with a look, a
+// condition and a line to say.
+func answersWatch() automation.Automation {
+	return automation.Automation{
+		Title:     "ci on main",
+		Words:     "tell me when ci goes red",
+		Workspace: "/home/someone/api",
+		Schedule:  automation.Schedule{Every: "15m"},
+		Look:      &automation.Look{Command: "gh run list --limit 1", Condition: "the latest run failed"},
+		Action:    automation.Action{Say: "CI on main is red"},
 	}
-	options := StandingOptions(item)
-	if len(options) != 2 || !strings.HasPrefix(options[0].Label, "Run it then") || options[0].Consequence != "Runs the work then. Nothing repeats." || options[1].Label != "Don't schedule it" {
-		t.Fatalf("options: %+v", options)
+}
+
+// AN AUTOMATION CARD TRAVELS IN PRESENCE, AND AN ANSWER COMES BACK FROM HOME,
+// with every chip the card drew answerable there — `2` included, which a
+// doorstep checking the kind's two-answer row once refused.
+func TestAnAutomationCardTravelsInPresenceAndAnAnswerComesBack(t *testing.T) {
+	agent, dir := questionSession(t, "cccc1111cccc2222", nil)
+	events := watched(agent)
+
+	item := answersWatch()
+	answers := make(chan AutomationAnswer, 1)
+	go func() {
+		answer, err := agent.askAutomation(context.Background(), &AutomationNotice{Automation: item})
+		if err != nil {
+			t.Errorf("the card ended in an error: %v", err)
+		}
+		answers <- answer
+	}()
+
+	proposal := <-events
+	if proposal.Kind != EventAutomationProposal || proposal.Automation == nil {
+		t.Fatalf("the automation lane sent %v", proposal.Kind)
 	}
-	if StandingOnceIsAnAnswer(item) {
-		t.Fatal("future scheduled work unexpectedly offers now")
+	question := waitForQuestion(t, dir)
+	if question.Kind != QuestionAutomation || question.ID != proposal.Automation.ID {
+		t.Fatalf("the question reads %+v, the card is %d", question, proposal.Automation.ID)
 	}
-	item.Does = standing.Action{Kind: standing.ActionSay, Say: "time for report"}
-	if StandingHead(item) != StandingHeadReminder || !strings.HasPrefix(StandingOptions(item)[0].Label, "Remind me") {
-		t.Fatal("say-only reminder changed")
+	if question.Text != AutomationHead(item) {
+		t.Fatalf("the line is %q", question.Text)
+	}
+	// AND THE OUTRIGHT NO IS OFFERED, which is the one answer another window
+	// has no other way to give: `esc` is the no in the conversation, and esc on
+	// home closes home.
+	var decline, runNow bool
+	for _, option := range question.Options {
+		decline = decline || option.Key == DeclineKey
+		runNow = runNow || option.Key == AutomationRunNowKey
+	}
+	if !decline || !runNow {
+		t.Fatalf("the card offered %v, want a decline and a run-it-now on a watch", question.Options)
+	}
+
+	if err := WriteAnswer(dir, QuestionAutomation, question.ID, AutomationRunNowKey); err != nil {
+		t.Fatalf("leaving the answer the card drew: %v", err)
+	}
+	agent.drainAnswers()
+	if answer := <-answers; !answer.Save || !answer.RunNow {
+		t.Fatalf("`%s` came out as %+v", AutomationRunNowKey, answer)
+	}
+	waitForNoQuestion(t, dir)
+}
+
+// AND IT IS DECLINED FROM ANOTHER WINDOW WITH ONE KEY: nothing is saved and
+// nothing runs.
+func TestAnAutomationCardIsDeclinedFromAnotherWindowWithOneKey(t *testing.T) {
+	agent, dir := questionSession(t, "ffff3333ffff4444", nil)
+	events := watched(agent)
+
+	answers := make(chan AutomationAnswer, 1)
+	go func() {
+		answer, err := agent.askAutomation(context.Background(), &AutomationNotice{Automation: answersWatch()})
+		if err != nil {
+			t.Errorf("the card ended in an error: %v", err)
+		}
+		answers <- answer
+	}()
+
+	if proposal := <-events; proposal.Kind != EventAutomationProposal {
+		t.Fatalf("the automation lane sent %v", proposal.Kind)
+	}
+	question := waitForQuestion(t, dir)
+	if err := WriteAnswer(dir, QuestionAutomation, question.ID, DeclineKey); err != nil {
+		t.Fatalf("leaving the answer: %v", err)
+	}
+	agent.drainAnswers()
+	if answer := <-answers; answer != (AutomationAnswer{}) {
+		t.Fatalf("`%s` came out as %+v", DeclineKey, answer)
+	}
+	waitForNoQuestion(t, dir)
+}
+
+// EVERY AUTOMATION CARD OFFERS THE SAME DECLINE, on a key no chip owns: the
+// card numbers its chips by position, so a decline sharing one of those digits
+// would move under the hand the day a card drew one chip fewer.
+func TestEveryAutomationCardOffersTheSameDecline(t *testing.T) {
+	reminder := automation.Automation{Schedule: automation.Schedule{At: time.Now().Add(time.Hour)}, Action: automation.Action{Say: "leave"}}
+	for _, item := range []automation.Automation{reminder, answersWatch()} {
+		var found int
+		for _, option := range AutomationOptions(item) {
+			if option.Key == DeclineKey && option.Label != "" && option.Safe {
+				found++
+			}
+		}
+		if found != 1 {
+			t.Fatalf("a %s card offers %v, want exactly one safe decline", item.Kind(), AutomationOptions(item))
+		}
+	}
+	if DeclineKey == AutomationSaveKey || DeclineKey == AutomationRunNowKey {
+		t.Fatalf("the decline is %q, which is a chip's own digit", DeclineKey)
+	}
+}
+
+// A NARROW ROW DROPS A LABEL'S CADENCE BEFORE IT CUTS A CHARACTER, and a label
+// that carries none is left as it is.
+func TestAPlainLabelDropsItsCadence(t *testing.T) {
+	if got := PlainLabel("Save · every 3 hours"); got != "Save" {
+		t.Fatalf("the cadence survived: %q", got)
+	}
+	if got := PlainLabel("Don't save"); got != "Don't save" {
+		t.Fatalf("a plain label changed: %q", got)
 	}
 }

@@ -292,10 +292,9 @@ type leanSection struct {
 // default would make the lean arm quietly lose every law written after this
 // file.
 //
-// THE HEADINGS ARE MATCHED AGAINST THE COMPOSED PAGE, which is why
-// `Things that keep working after this window` is here at all: it is not a
-// heading in prompts/system.md but one composed into it from beltfacts.go's
-// [standingFacts]. promptprofile_test.go fails if a row names a heading the
+// THE HEADINGS ARE MATCHED AGAINST THE COMPOSED PAGE, not against
+// prompts/system.md alone, because the page is composed from beltfacts.go's
+// sections too. promptprofile_test.go fails if a row names a heading the
 // widest page does not have, so a rename cannot silently stop a drop.
 var leanPageSections = []leanSection{{
 	heading: "How you spend the time",
@@ -306,12 +305,11 @@ var leanPageSections = []leanSection{{
 		"also the one page a worker and a conversation read byte-identically " +
 		"(taskprompt_test.go), so a profile that trimmed it here would break that pin " +
 		"as well as the outcome.",
-	// THE STANDING SECTION USED TO BE A ROW HERE and is not one any more: the
-	// diet took `# Things that keep working after this window` off the page for
-	// EVERY shape, leaving one sentence composed from [standingFacts] and no
-	// heading at all. A row naming it would now decide nothing, which
-	// promptprofile_test.go refuses — and it is the right outcome: a law the lean
-	// arm did not need turned out to be a law nobody needed on the page.
+	// THE SECTION ON WORK THAT OUTLIVES THE WINDOW USED TO BE A ROW HERE and is
+	// not one any more: the diet took `# Things that keep working after this
+	// window` off the page for EVERY shape, leaving one sentence composed from
+	// [automationFacts] and no heading at all. A row naming it would now decide
+	// nothing, which promptprofile_test.go refuses.
 }, {
 	heading: "Messages from codeaf",
 	keeps:   true,

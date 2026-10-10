@@ -159,8 +159,9 @@ func (a *app) tabSignalFor(key string, here bool) tabSignal {
 	return held.watch.signal()
 }
 
-// asksStanding reports whether the surface holds a standing answer, which is a
-// question a firing put to this person and which nothing else will answer.
+// asksAutomation reports whether the surface holds an automation card, which is
+// a question nothing else will answer: nothing is saved until the person says
+// so, and the card carries no clock.
 //
 // IT NAMES ONE KIND RATHER THAN TREATING EVERY OPEN QUESTION AS A SIGNAL. A
 // task proposal carrying a deadline is a countdown, and a countdown answers
@@ -169,9 +170,9 @@ func (a *app) tabSignalFor(key string, here bool) tabSignal {
 // engine can (session's personAskLanding skips a settling landing, #1322), and
 // its answer reaches the front tab through [app.frontWaits]. So the landing
 // does wear the mark, from the one reader that knows when to take it off.
-func (a *app) asksStanding() bool {
+func (a *app) asksAutomation() bool {
 	for _, open := range a.questions {
-		if open.question.Kind == session.QuestionStanding {
+		if open.question.Kind == session.QuestionAutomation {
 			return true
 		}
 	}
@@ -201,7 +202,7 @@ func (a *app) frontSignal() tabSignal {
 	if run := a.orchOf(); run != nil && run.gate != nil {
 		return tabNeedsPerson
 	}
-	if a.asking() || a.asksConnect() || a.asksHarness() || a.asksStanding() || (a.awaitingTask() && a.task != nil && a.task.deadline.IsZero()) {
+	if a.asking() || a.asksConnect() || a.asksHarness() || a.asksAutomation() || (a.awaitingTask() && a.task != nil && a.task.deadline.IsZero()) {
 		return tabNeedsPerson
 	}
 	if a.frontWorking() {

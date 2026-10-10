@@ -78,13 +78,12 @@ func buildShippedConversation(t *testing.T, config *Config) {
 	config.OrchestrateRunner = func(context.Context, string, string, float64) (string, error) { return "", nil }
 	config.BashBackgroundAfterSeconds = configpkg.DefaultBashBackgroundAfter
 	// AND THE TWO SEAMS THAT ARE THE REST OF THE UNIVERSE. The big machines
-	// and `stand` are conditional on somebody being there to answer a card
-	// and on there being a store to arm one in (tools.go), and a universe
+	// and `automation` are conditional on somebody being there to answer a
+	// card and on there being a store to arm one in (tools.go), and a universe
 	// built without them would be a universe that could not tell a tool
 	// nobody named from a tool nobody has.
 	config.AskConsent = true
-	config.Standing = &Standing{}
-	config.standingItems = &fakeStanding{}
+	config.Automations = &Automations{Store: automationStoreFor(t), Zone: "UTC"}
 	config.Subharnesses = registryWith(t, &fakeGeneralist{}, &fakeRunner{manifest: theProgram()})
 	config.HarnessCards = true
 	// AND THE PROGRAMS THE BUILD CARRIES, as the chat door hands them over
@@ -96,7 +95,7 @@ func buildShippedConversation(t *testing.T, config *Config) {
 }
 
 // beltShapes is every shape, and each is built the way its own door builds it —
-// task_run.go for a node, standing_run.go for a check — so that a door that
+// task_run.go for a node, automation_run.go for a run — so that a door that
 // changes what it hands down changes this test's answer too.
 var beltShapes = []beltShape{{
 	// The shipping conversation, fully wired: a store behind memory, an
@@ -165,14 +164,15 @@ var beltShapes = []beltShape{{
 		config.ContextWindow = leanWindow
 	},
 }, {
-	// A standing check's probe (standing_run.go): the parent's config with the
-	// conversation taken out of it, InTask, and no store — the throwaway agent
-	// it builds has no brain, so the config must not claim one.
-	name: "a standing check",
+	// An automation's run (automation_run.go): the person's own assembly with
+	// nobody there to ask, InTask, no store to arm another automation in, and
+	// the run's own report door.
+	name: "an automation's run",
 	build: func(t *testing.T, config *Config) {
 		config.InTask = true
 		config.AskConsent = false
-		config.Standing = nil
+		config.Automations = nil
+		config.AutomationRun = &AutomationRun{}
 	},
 }}
 

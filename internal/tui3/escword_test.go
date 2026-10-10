@@ -74,11 +74,12 @@ func TestTheKeySheetSpellsTheEscapeGestureOneWay(t *testing.T) {
 // ── A KEY ROW SAYS WHAT THE KEY DOES ───────────────────────────────────────
 //
 // Two rows on the sheet were labels among instructions: `ctrl+,` was answered
-// with the bare noun `settings`, and `/standing`'s `n` with `not here`, sitting
-// between neighbours that say open, switch, copy, delete, pause, stop and run.
+// with the bare noun `settings`, and the old standing page's `n` with `not
+// here`, sitting between neighbours that say open, switch, copy, delete, pause,
+// stop and run. The automations row is held to the same law.
 // A person reading a column of verbs and meeting a noun has to guess whether the
 // key opens the thing, closes it, or is where it is.
-func TestTheKeySheetSaysWhatTheSettingsAndStandingKeysDo(t *testing.T) {
+func TestTheKeySheetSaysWhatTheSettingsAndAutomationsKeysDo(t *testing.T) {
 	sheet := helpText("", chordSpelling{meta: chordAltWord})
 	for _, row := range []struct {
 		what string
@@ -90,8 +91,8 @@ func TestTheKeySheetSaysWhatTheSettingsAndStandingKeysDo(t *testing.T) {
 		stale string
 	}{
 		{"ctrl+, ", "ctrl+,", "open settings", "settings"},
-		{"n, on the /standing row", "p s n", "keep it out of here",
-			"in /standing: pause one · stop it · not here"},
+		{"the /automations row", "→ r p e d o", "pause it",
+			"in /automations: run · pause · edit · delete · origin"},
 	} {
 		found := ""
 		for _, line := range strings.Split(sheet, "\n") {

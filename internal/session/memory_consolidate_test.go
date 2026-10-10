@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
-	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -125,7 +125,7 @@ func activeTitles(t *testing.T, brain *store.Store) []string {
 // asks whether it has anything to tidy with by whether the seam is there at
 // all, exactly as it asks whether this build can judge or look.
 func TestTheTidyIsAbsentWhenMemoryIsOff(t *testing.T) {
-	always := standing.Idle(func(time.Duration) bool { return true })
+	always := automation.Idle(func(time.Duration) bool { return true })
 	if tidy := NewMemoryTidy(Config{}, "", t.TempDir(), always); tidy != nil {
 		t.Fatal("memory off still handed the tick something to call")
 	}
@@ -140,7 +140,7 @@ func TestTheTidyIsAbsentWhenMemoryIsOff(t *testing.T) {
 func TestTheTidyWaitsUntilTheMachineIsQuiet(t *testing.T) {
 	root := t.TempDir()
 	var asked time.Duration
-	busy := standing.Idle(func(quiet time.Duration) bool { asked = quiet; return false })
+	busy := automation.Idle(func(quiet time.Duration) bool { asked = quiet; return false })
 
 	tidy := NewMemoryTidy(Config{}, filepath.Join(root, "nothing-here.db"), root, busy)
 	if tidy == nil {
@@ -166,7 +166,7 @@ func TestTheTidyWaitsUntilTheMachineIsQuiet(t *testing.T) {
 // a list that changes a handful of times a day.
 func TestTheTidyRunsAtMostOnceEveryFewHours(t *testing.T) {
 	root := t.TempDir()
-	always := standing.Idle(func(time.Duration) bool { return true })
+	always := automation.Idle(func(time.Duration) bool { return true })
 	if err := writeConsolidateMark(root, consolidateMark{At: time.Now().Add(-time.Hour), Seq: 4}); err != nil {
 		t.Fatalf("write watermark: %v", err)
 	}
@@ -467,14 +467,14 @@ func TestAPassStampsTheClockPastItsOwnWrites(t *testing.T) {
 // than printed as a zero. THE EMPTINESS LAW.
 func TestTheTidyLineSaysOnlyWhatHappened(t *testing.T) {
 	for _, want := range []struct {
-		tidied standing.Tidied
+		tidied automation.Tidied
 		notice string
 		ledger string
 	}{
-		{standing.Tidied{}, "", ""},
-		{standing.Tidied{Merged: 2}, "memory tidied · 2 merged", "consolidated · 2 merged"},
-		{standing.Tidied{Merged: 2, Superseded: 1}, "memory tidied · 2 merged · 1 superseded", "consolidated · 2 merged · 1 superseded"},
-		{standing.Tidied{Superseded: 1, USD: 0.002}, "memory tidied · 1 superseded", "consolidated · 1 superseded · $0.002"},
+		{automation.Tidied{}, "", ""},
+		{automation.Tidied{Merged: 2}, "memory tidied · 2 merged", "consolidated · 2 merged"},
+		{automation.Tidied{Merged: 2, Superseded: 1}, "memory tidied · 2 merged · 1 superseded", "consolidated · 2 merged · 1 superseded"},
+		{automation.Tidied{Superseded: 1, USD: 0.002}, "memory tidied · 1 superseded", "consolidated · 1 superseded · $0.002"},
 	} {
 		if got := consolidateNoticeLine(want.tidied); got != want.notice {
 			t.Errorf("%+v says %q on screen, want %q", want.tidied, got, want.notice)

@@ -370,8 +370,6 @@ func (r *automationRunner) lookTool(ctx context.Context, item automation.Automat
 	cfg.AskConsent = false
 	cfg.InTask = true
 	cfg.Automations = nil
-	cfg.Standing = nil
-	cfg.standingItems = nil
 	cfg.Memory = nil
 	cfg.automationID = item.ID
 	agent := &Agent{config: cfg, model: cfg.Model, id: NewSessionID()}
@@ -545,6 +543,16 @@ func automationVerdictWords(reply string) (word, line string) {
 
 // ── the work ────────────────────────────────────────────────────────────────
 
+// automationBinding is the memory posture a run works under. THE PERSON'S RULES
+// HOLD OVER A RUN, AND NOTHING A RUN DOES IS REMEMBERED: the brain is lent
+// read-only ([Config.bindingOnlyMemory]), so the rules marked always are read
+// before the first action and nothing work nobody watched turned up is
+// extracted, promoted or kept. A run with memory off has nothing to lend.
+func automationBinding(cfg Config) Config {
+	cfg.bindingOnlyMemory = cfg.Memory != nil
+	return cfg
+}
+
 func (r *automationRunner) Work(ctx context.Context, item automation.Automation, run automation.Run, evidence string) (automation.Report, error) {
 	runDir := filepath.Join(r.root, "runs", item.ID, strconv.FormatInt(run.ID, 10))
 	if err := os.MkdirAll(runDir, 0o700); err != nil {
@@ -568,8 +576,7 @@ func (r *automationRunner) Work(ctx context.Context, item automation.Automation,
 	cfg.Unattended = false
 	// NOTHING AN AUTOMATION DOES MAY ARM ANOTHER.
 	cfg.Automations = nil
-	cfg.Standing = nil
-	cfg.standingItems = nil
+	cfg = automationBinding(cfg)
 	report := &AutomationRun{}
 	cfg.AutomationRun = report
 	cfg.automationID = item.ID

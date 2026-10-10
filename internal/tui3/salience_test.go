@@ -138,10 +138,6 @@ var salienceTable = []salienceCase{
 	{name: "EventHarnessProgress", chatOnly: "the same card's live edge", ev: session.Event{Kind: session.EventHarnessProgress, ID: 7}},
 	{name: "EventHarnessDesignDone", chatOnly: "the same card, settled", ev: session.Event{Kind: session.EventHarnessDesignDone, ID: 7}},
 	{name: "EventHarnessDesignRevising", chatOnly: "the same card, revising", ev: session.Event{Kind: session.EventHarnessDesignRevising, ID: 7}},
-	{name: "EventStandingProposal", chatOnly: "a standing order is a decision, and a decision needs the keyboard",
-		ev: session.Event{Kind: session.EventStandingProposal}},
-	{name: "EventStandingUpdate", chatOnly: "standing orders belong to the session, not to one node's work",
-		ev: session.Event{Kind: session.EventStandingUpdate}},
 	{name: "EventOrchestrateNote", chatOnly: "an adaptive run is a GRAPH and not a transcript; its page draws " +
 		"the graph (roomorch.go)", ev: session.Event{Kind: session.EventOrchestrateNote, Text: "planning"}},
 	{name: "EventOrchestrateFuel", chatOnly: "the same graph's budget", ev: session.Event{Kind: session.EventOrchestrateFuel}},

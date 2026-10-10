@@ -23,7 +23,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/leave"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
@@ -693,7 +692,7 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 	seams.Notice = news.join(seams.Notice)
 	far := hostFar{client: client, tell: news.say}
 	// THE PLACES FOLLOW THE SESSION'S MACHINE. The world behind home, tasks,
-	// standing, spend and search is asked of the ENGINE and kept warm here, and
+	// spend and search is asked of the ENGINE and kept warm here, and
 	// it is asked once now so the first frame after launch already has it
 	// ([hostWorld] holds both laws).
 	world := newHostWorld(far)
@@ -831,8 +830,8 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 		// the wire, and its row says "allowed" rather than "saved", which is
 		// exactly what happened (internal/tui3's consent.go).
 		//
-		// StandingRoot: the local errand and exchange folder, which is where a
-		// question asked from home leaves its short transcript. It is a path on
+		// ErrandsRoot: the local errands folder, which is where a question asked
+		// from home leaves its short transcript. It is a path on
 		// THIS machine and the exchange it hosts is a session this surface would
 		// have to open here, so it stays unset over a connection — the same
 		// posture the errand pair takes.
@@ -1164,161 +1163,6 @@ func hostHeld(seams hostSeams) func() ([]tui3.HeldQuestion, error) {
 	}
 }
 
-// ── the ambient side over a connection ──────────────────────────────────────
-
-// hostStandingEvery is how stale a cached list of items is allowed to be before
-// the next reading kicks a fresh one. It is deliberately LOOSER than the
-// surface's own three-second beat (internal/tui3's homeEvery): every refresh
-// here is a round trip down an ssh pipe rather than a directory read, and
-// nothing standing changes faster than this — an item's cadence is measured in
-// minutes ([standing.Interval] is five of them), so a list a few seconds old is
-// a list that is right.
-const hostStandingEvery = 5 * time.Second
-
-// hostStanding is the engine machine's items, kept here so the surface can have
-// them without waiting.
-//
-// WHO ACTUALLY READS THIS OVER A CONNECTION, because it is not the reader the
-// seam's own doc comment leads with: /home does not open over --host at all
-// (internal/tui3's homeRemoteWord), so home's item band and its `p` and `s` keys
-// are unreachable here and homestanding.go's per-project standItems is never
-// called. The live reader is THE TASK COLUMN'S FOOT AND /status —
-// [app.keepingCount] feeds the `◦ 2 standing orders` line at the foot of the
-// column (and the same words under `watching` on /status and the phone sheet),
-// and it asks about the window's own workspace, which over --host is the
-// ENGINE's path. That makes the count a true sentence about the right machine,
-// and it is a real thing to have: a remote window says how many things are
-// keeping an eye on the project it is sitting in.
-//
-// AND IT EXISTS FOR ONE LAW, which is [tui3.StandingSeam.Items]': it MUST NOT
-// BLOCK. That segment is asked on EVERY FRAME and twice per frame while a turn
-// runs. The surface already keeps its own three-second answer for it, so this is
-// the second of two guards rather than the only one — and it is not redundant,
-// because the one reading that does get through is on the draw path. Locally
-// that reading is a directory of small documents. Over a connection it is a call
-// with a ten-second deadline (internal/remote's callDeadline), so a surface that
-// made one of those while drawing would be a terminal that stopped repainting
-// for as long as the far machine took to answer — on a link that had just died,
-// ten seconds per frame.
-//
-// So the reading and the fetching are pulled apart. THE READ ANSWERS FROM WHAT
-// IS HELD, ALWAYS AND IMMEDIATELY; a list that has gone stale kicks ONE
-// background fetch and still answers with what it had. The first read of a
-// workspace answers nothing at all and starts the fetch, so the segment is
-// absent for one beat and then true — the honest order, because a surface that
-// guessed would have to guess wrong first.
-//
-// ONE FETCH AT A TIME PER WORKSPACE, never a pile: the surface is drawn many
-// times a second and every one of those readings would otherwise start its own
-// goroutine and its own frame on the wire, which is a queue of identical
-// questions behind a link that is already slow.
-type hostStanding struct {
-	// ask and put are the two wire doors, held as CLOSURES rather than as the
-	// client for [tui3.StandingSeam]'s own reason said one seam further along:
-	// what this type does is a policy about staleness and blocking, and a test
-	// of that policy should be able to hand it a slow answer without opening a
-	// pipe.
-	ask func(workspace string) ([]standing.Item, error)
-	put func(item standing.Item) error
-
-	// duty is the latch, the clock and the door, kept per workspace
-	// (chatv3_host_duty.go).
-	duty hostDuty
-
-	mu sync.Mutex
-	// items is the last list each workspace answered with.
-	items map[string][]standing.Item
-}
-
-func newHostStanding(far hostFar) *hostStanding {
-	h := &hostStanding{
-		ask:   far.client.StandingItems,
-		put:   far.client.SaveStanding,
-		items: map[string][]standing.Item{},
-	}
-	far.arm(&h.duty, "reading the standing items")
-	return h
-}
-
-// list is [tui3.StandingSeam.Items]: what is held, right now, with a refresh
-// started behind it when what is held has aged.
-func (h *hostStanding) list(workspace string) []standing.Item {
-	workspace = strings.TrimSpace(workspace)
-	if workspace == "" {
-		return nil
-	}
-	held := h.snapshot(workspace)
-	if h.duty.due(workspace, hostStandingEvery) {
-		h.duty.run("chatv3/host-standing", workspace, func() { h.fetch(workspace) })
-	}
-	return held
-}
-
-// snapshot is what is held for one workspace, under the lock held from a defer.
-func (h *hostStanding) snapshot(workspace string) []standing.Item {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.items[workspace]
-}
-
-// fetch is the round trip, on a goroutine of its own.
-//
-// A FAILED CALL KEEPS THE LAST LIST rather than emptying the band. The two ways
-// this fails are a link that has died and an engine with no ambient side at all;
-// neither of them is the news "the things you set up are gone", and a band that
-// blanked itself on a dropped connection would be the screen reporting a loss
-// that did not happen. The clock is still stamped, so a link that is failing is
-// asked again on the next beat and not on every frame.
-func (h *hostStanding) fetch(workspace string) {
-	items, err := h.ask(workspace)
-	if err != nil {
-		return
-	}
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.items[workspace] = items
-}
-
-// save is [tui3.StandingSeam.Save], and it is ALLOWED TO BLOCK where the read is
-// not: it is a keystroke on one row — pause, stop — so it happens once and a
-// person is waiting for the answer to it. The error travels back unchanged
-// because home prints it: a row redrawn as paused over a store that refused the
-// write would be this screen lying about the other machine's disk.
-//
-// NOTHING CAN PRESS THOSE KEYS OVER --host TODAY, and that is worth saying out
-// loud rather than leaving for somebody to discover: the only callers are home's
-// `p` and `s`, and home does not open over a connection. It is wired anyway
-// because the alternative is a seam that is half absent for a reason that is not
-// its own — the door and the wire are correct and proved, and the day home opens
-// on a remote session the keys work rather than saying the change cannot be made
-// here. A nil would have been a second thing to undo on that day, and a claim
-// about this store that is not true.
-//
-// A WRITE THAT LANDED IS PUT STRAIGHT INTO WHAT IS HELD, and that is what keeps
-// the row from redrawing stale in the beat before the next fetch returns: the
-// engine accepted this exact document, so the held list is corrected with it
-// rather than left showing the version the key was pressed on. The entry is
-// aged out at the same time, so the next reading also asks the store what it
-// really thinks.
-func (h *hostStanding) save(item standing.Item) error {
-	if err := h.put(item); err != nil {
-		return err
-	}
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	workspace := strings.TrimSpace(item.Workspace)
-	held := h.items[workspace]
-	for i, existing := range held {
-		if existing.ID == item.ID {
-			held[i] = item
-			break
-		}
-	}
-	h.items[workspace] = held
-	h.duty.age(workspace)
-	return nil
-}
-
 // hostSessions is [tui3.Options.RecentSessions] over the wire.
 //
 // IT IS ASKED ON THE KEYSTROKE, like the local one, and it is a round trip
@@ -1397,21 +1241,20 @@ func runHostOnce(agent *remote.Agent, text string) error {
 // hostWorldEvery is how stale a held world is allowed to be before the next
 // reading kicks a fresh one.
 //
-// IT IS SHORTER THAN [hostStandingEvery] AND LONGER THAN NOTHING. The surface
-// re-reads its places every three seconds (internal/tui3's homeEvery), and a
-// staleness of two means every one of those beats finds the held world old
-// enough to refresh — so what a person looks at is at most one beat behind the
-// far machine, which is the same lag a local window has against the next
-// terminal on its own disk. Standing can afford five because an item's cadence
-// is measured in minutes; a conversation in the next window over there answers
-// in seconds, and home exists to show that happening.
+// IT IS SHORT AND LONGER THAN NOTHING. The surface re-reads its places every
+// three seconds (internal/tui3's homeEvery), and a staleness of two means every
+// one of those beats finds the held world old enough to refresh — so what a
+// person looks at is at most one beat behind the far machine, which is the same
+// lag a local window has against the next terminal on its own disk. A
+// conversation in the next window over there answers in seconds, and home
+// exists to show that happening.
 const hostWorldEvery = 2 * time.Second
 
 // hostWorld is the ENGINE machine's world, kept here so the places can have it
 // without waiting.
 //
-// It is [hostStanding] applied to the one reading five of the seven places are
-// built from, and it keeps that type's two laws for that type's two reasons:
+// It is the one reading five of the seven places are built from, and it keeps
+// two laws for two reasons:
 //
 //   - THE READ ANSWERS FROM WHAT IS HELD, ALWAYS AND IMMEDIATELY. A place may
 //     read on its open and on its beat, and over a connection both of those are
@@ -1423,19 +1266,19 @@ const hostWorldEvery = 2 * time.Second
 //     each asking the same question, is a queue of identical frames behind a link
 //     that is already slow.
 //
-// AND IT SAYS WHETHER IT HAS AN ANSWER, which [hostStanding] does not have to.
-// An empty list of standing items and no answer yet are the same thing on a
-// screen — the emptiness law draws both as nothing. An empty WORLD is not: it is
+// AND IT SAYS WHETHER IT HAS AN ANSWER. For most lists an empty one and no
+// answer yet are the same thing on a screen — the emptiness law draws both as
+// nothing. An empty WORLD is not: it is
 // a machine with no projects on it, and `nothing here yet — say something and
 // this fills up` drawn over a server full of work is the one wrong sentence this
 // screen can say about somebody else's disk. So the seam answers a second value
 // and the surface draws nothing at all until the far machine has spoken once
 // (internal/tui3's [app.worldKnown]).
 type hostWorld struct {
-	// ask and put are the two wire doors, held as closures for
-	// [hostStanding.ask]'s reason: what this type does is a policy about
-	// staleness and blocking, and a test of that policy should be able to hand it
-	// a slow answer without opening a pipe.
+	// ask and put are the two wire doors, held as CLOSURES rather than as the
+	// client: what this type does is a policy about staleness and blocking, and
+	// a test of that policy should be able to hand it a slow answer without
+	// opening a pipe.
 	ask func() (session.World, error)
 	put func(dir string, archived bool) error
 
@@ -1503,10 +1346,9 @@ func (h *hostWorld) fetch() {
 // went when a later beat's fetch happened to return and a later beat still
 // happened to rebuild: [hostWorldEvery] of staleness plus up to two of the
 // surface's own three-second beats, which is the several seconds a person sees
-// between pressing the key and watching the row go. This is [hostStanding.save]'s
-// correction applied to the one write home makes against the world, for the same
-// reason and in the same two halves — the held copy is patched, and the entry is
-// aged out so the next reading still asks the engine what it really thinks.
+// between pressing the key and watching the row go. So the correction comes in
+// two halves — the held copy is patched, and the entry is aged out so the next
+// reading still asks the engine what it really thinks.
 //
 // A REFUSED WRITE CHANGES NOTHING HERE. Home prints the engine's own refusal
 // ("could not put it away") and a cache that had already moved the row would be
@@ -1577,8 +1419,7 @@ func newHostLedger(far hostFar) *hostLedger {
 // the one from before the call. The local seam re-reads the file on home's own
 // three-second beat (place_spend.go), and this is that beat said over a wire.
 //
-// It matches [hostWorldEvery] rather than [hostStandingEvery] because it answers
-// the same kind of question — a page a person is looking at right now, about
+// It matches [hostWorldEvery] because it answers the same kind of question — a page a person is looking at right now, about
 // facts that move while they look — and because both are read on the frame.
 const hostLedgerEvery = 2 * time.Second
 

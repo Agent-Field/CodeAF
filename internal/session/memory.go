@@ -191,7 +191,7 @@ func (c Config) bindingBrain() *store.Store {
 // memoryWritable is remembers() AND the corrections that a session may WRITE
 // through the brain. A read-only binding posture answers true to remembers()
 // — so the owner's rules can be read before the first action — and false
-// here, so nothing a firing does is promoted, extracted, imported or dismissed
+// here, so nothing an automation run does is promoted, extracted, imported or dismissed
 // on the strength of a brain it was only lent.
 func (a *Agent) memoryWritable() bool {
 	return a.remembers() && !a.config.bindingOnlyMemory

@@ -4,13 +4,16 @@ package tui3
 //
 // THE CONTROL BINDS TO THE SURFACE YOU STAND ON, AND ONE CHORD MOVES IT.
 //
-// internal/effort holds the ladder and internal/session, internal/config and
-// internal/standing hold the three scopes a person can set a rung at. This file
-// is the surface's half of all three, and the whole of what it decides is that
-// `alt+e` means the SAME VERB everywhere and a DIFFERENT SCOPE everywhere:
+// internal/effort holds the ladder and internal/session and internal/config
+// hold the scopes a person can set a rung at. This file is the surface's half
+// of them, and the whole of what it decides is that `alt+e` means the SAME VERB
+// everywhere and a DIFFERENT SCOPE everywhere:
 //
 //	the cursor on a task        the task's own rung   (session's SetTaskEffort)
-//	a standing item's card      that item's rung      (standing's SetStandingEffort)
+//	the chip above the box      this conversation's   (session's SetConversationEffort)
+//
+// A STANDING ITEM'S CARD WAS A SCOPE HERE TOO, and it went with standing orders
+// (2026-10-10): an automation runs on the person's own `thinking` row.
 //
 // A THIRD SCOPE USED TO BE HERE AND ITS SURFACE IS GONE. Home had a resting
 // state — the cursor on no row at all, the column a card about the machine — and
@@ -21,8 +24,8 @@ package tui3
 //
 // One chord and two scopes is not two bindings that happen to share a key.
 // It is the same binding: the rung this screen is showing is the rung the chord
-// moves, and a person who learns it once on a task knows it on home and on a
-// standing item without being told. A second chord per scope would have been
+// moves, and a person who learns it once on a task knows it everywhere else
+// without being told. A second chord per scope would have been
 // three things to remember for one idea, and the chord budget on this surface is
 // spent (docs/DESIGN-LANGUAGE.md's refusal of keyboard speed at
 // discoverability's expense — every one of the three surfaces below carries a
@@ -35,9 +38,8 @@ package tui3
 // reads as nothing (the emptiness law) and the first press lands on the cheapest
 // rung, but no number of further presses ever puts a rung BACK to absence.
 // Clearing one is a deliberate act with real meaning — it hands the scope back
-// to whatever stands above it. A standing item's rung therefore keeps this
-// wheel; the three scopes the surface itself must be able to clear use
-// [effortNextClearing] below.
+// to whatever stands above it — so the scopes the surface itself must be able
+// to clear use [effortNextClearing] below.
 //
 // ── AND THE RUNG IS FURNITURE UNTIL IT MOVES ──
 //
@@ -62,7 +64,6 @@ package tui3
 import (
 	"time"
 
-	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/effort"
 )
@@ -109,9 +110,7 @@ func effortNext(rung effort.Rung) effort.Rung {
 // THE CONVERSATION JOINED THEM ON 2026-09-15. Its wheel had five stops and the
 // way back to `auto` was by name — `/effort auto`, or the ladder's top row —
 // which left the state a shipped install STARTS at reachable only by leaving the
-// chip a person was standing at. A standing item's rung is still cleared in its
-// own document, which is why it alone keeps the wheel that never lands on
-// absence ([effortNext] above).
+// chip a person was standing at.
 func effortNextClearing(rung effort.Rung) effort.Rung {
 	if rung == effort.Rungs[len(effort.Rungs)-1] {
 		return effort.None
@@ -139,9 +138,9 @@ func effortClause(rung effort.Rung) string {
 // would be two answers to "what just changed".
 type effortMoved struct {
 	// where is the surface's own name for the scope, so a clause can ask whether
-	// the emphasis is ITS: a standing item's id for an item, and
-	// [effortScopeConversation] for the rung on the seam above the message box
-	// (effortchip.go). They cannot collide — the sentinel leads with a NUL no id
+	// the emphasis is ITS: [effortScopeConversation] for the rung on the seam
+	// above the message box (effortchip.go), and [effortScopeDraft] for the
+	// draft's own (boxseam.go). They cannot collide — the sentinel leads with a NUL no id
 	// can carry.
 	where string
 	at    time.Time
@@ -159,17 +158,6 @@ type effortMoved struct {
 // seconds ([app.effortFlashing]), where a card has a whole clause and lets it
 // fade down the reading ladder over the status line's ten.
 const effortScopeConversation = "\x00conversation"
-
-// markEffortMoved records the move and schedules the two wakeups the emphasis
-// needs to come back down.
-//
-// THE TICKS ARE THE STATUS LINE'S OWN ([fadeTicks]) and there is deliberately no
-// ticker: a surface with nothing happening on it wakes twice and then stops
-// (app.go's [hudFadeMsg]).
-func (a *app) markEffortMoved(where string) tea.Cmd {
-	a.effortLit = effortMoved{where: where, at: a.now()}
-	return fadeTicks()
-}
 
 // effortInk is the tier one scope's clause is drawn in this frame: the reading
 // ladder's ramp for the scope that just moved, and the quiet tier for every

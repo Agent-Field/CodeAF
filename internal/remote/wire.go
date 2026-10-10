@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // Version is the protocol's version. The hello and the welcome both carry it,
@@ -517,7 +516,6 @@ const (
 	MethodSetReasoningFor = "SetReasoningFor"        // ReasoningArgs → nothing
 	MethodConsent         = "ResolveConsent"         // ConsentArgs → nothing
 	MethodConsentRemember = "ResolveConsentRemember" // ConsentArgs → nothing
-	MethodStandingResolve = "ResolveStanding"        // StandingArgs → nothing
 	// MethodQuestionResolve is the ONE door for an answer to any question, over
 	// the wire (docs/design/questions/DESIGN.md). It carries
 	// [session.Answer] whole — the lane, the token, the keys, the words beside
@@ -664,18 +662,8 @@ const (
 	MethodSessionNew     = "Session.New"     // nothing → Welcome (the engine swaps to a fresh session)
 	MethodSessionOpen    = "Session.Open"    // string (path) → Welcome (the engine swaps to that session)
 
-	// Standing doors. They are in the Session group and not the Agent one
-	// because they are about the ENGINE MACHINE'S STORE rather than about the
-	// conversation: a local surface opens internal/standing on its own disk and
-	// a remote one cannot, which is the same reason Sessions.Recent exists. The
-	// items belong to the machine that runs them, so a session swap leaves them
-	// exactly where they were.
-	MethodStandingItems = "Standing.Items" // string (workspace) → []standing.Item
-	MethodStandingSave  = "Standing.Save"  // standing.Item → nothing (the error carries a refused write)
-	MethodStandingWatch = "Standing.Watch" // nothing → StandingWatchResult
-
 	// The PLACES doors, and they are in the Session group for the reason
-	// Sessions.Recent and Standing.Items are: each one is a reading of THE
+	// Sessions.Recent is: each one is a reading of THE
 	// ENGINE MACHINE'S DISK rather than of the conversation. A local surface
 	// walks its own state root and reads its own ledger; a remote one has no
 	// way to, and every screen it drew off this laptop's copy was a confident
@@ -836,12 +824,6 @@ func (l *LaunchShape) Same(other *LaunchShape) bool {
 		theirs = *other
 	}
 	return mine == theirs
-}
-
-// StandingWatchResult keeps "not installed" distinct from "could not read".
-type StandingWatchResult struct {
-	Status standing.WatchStatus `json:"status"`
-	Known  bool                 `json:"known"`
 }
 
 // Hello is the client's first frame ("hello"). Workspace is the path AS TYPED
@@ -1430,16 +1412,6 @@ type InterruptArgs struct {
 
 type SubmitArgs struct {
 	Text string `json:"text"`
-	// Standing says the person MARKED this draft as something to keep true
-	// (internal/session's standing_mark.go), so the engine opens the turn
-	// through SubmitStanding rather than Submit.
-	//
-	// IT IS A FIELD RATHER THAN A METHOD OF ITS OWN because the two differ in
-	// what the engine puts in front of the sentence and in nothing a wire can
-	// see: same argument, same StreamRef, same event frames. An older engine
-	// that does not read it runs the ordinary turn, which is the one direction
-	// this may fail in that leaves the person's words intact.
-	Standing bool `json:"standing,omitempty"`
 }
 
 // UnqueueArgs names the queued follow-up a surface wants taken back out: the
@@ -1868,22 +1840,6 @@ type ConsentArgs struct {
 	ID    uint64               `json:"id"`
 	Allow bool                 `json:"allow"`
 	Scope session.ConsentScope `json:"scope,omitempty"`
-}
-
-// StandingArgs carries ResolveStanding: which card, and what the person said to
-// it. It is the standing lane's ConsentArgs — one id and one answer — and the
-// answer travels WHOLE rather than field by field, because
-// [session.StandingAnswer] is the engine's own type and a field added there must
-// arrive without a wire change (this file's header states that bargain).
-//
-// KEEPWATCH'S THIRD STATE IS LOAD-BEARING AND SURVIVES BECAUSE IT IS A POINTER.
-// The field answers a question that is only ever ASKED of a person's first
-// standing item, so nil means nobody was asked, and encoding/json writes a nil
-// pointer as null and reads null back as nil. A bool would have turned "never
-// asked" into "said no" on the far machine.
-type StandingArgs struct {
-	ID     uint64                 `json:"id"`
-	Answer session.StandingAnswer `json:"answer"`
 }
 
 // AutonomyArgs is one shape of question and what may answer it from now on.

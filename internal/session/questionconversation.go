@@ -65,8 +65,6 @@ func (a *Agent) ReplaceQuestion(ctx context.Context, answer Answer) (<-chan Even
 	switch q.Kind {
 	case QuestionTask:
 		owner.ResolveTask(q.ID, TaskAnswer{})
-	case QuestionStanding:
-		owner.ResolveStanding(q.ID, StandingAnswer{})
 	case QuestionAutomation:
 		owner.ResolveAutomation(q.ID, AutomationAnswer{})
 	case QuestionHarness:
@@ -97,7 +95,7 @@ func (a *Agent) clarifyQuestion(answer Answer) error {
 	cfg.rootSession = a.id
 	cfg.Errand, cfg.Interactive = true, true
 	cfg.InTask, cfg.Divide, cfg.HarnessCards = false, false, false
-	cfg.Standing = nil
+	cfg.Automations = nil
 	cfg.tasker, cfg.taskID = nil, 0
 	cfg.ApprovalPolicy = a.approvalPolicy
 	if cfg.ApprovalPolicy == nil {

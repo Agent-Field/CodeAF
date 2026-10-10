@@ -45,8 +45,9 @@ func (c Config) automationStore() *automation.Store {
 
 // automationTools is the `automation` tool when this conversation has a store
 // and is not itself a run of one: NOTHING AN AUTOMATION DOES MAY ARM ANOTHER.
+// [Config.mayAutomate] is that whole rule, and the page reads it too.
 func (a *Agent) automationTools() []bare.Tool {
-	if a.config.automationStore() == nil || a.config.AutomationRun != nil || a.config.InTask {
+	if !a.config.mayAutomate() {
 		return nil
 	}
 	return []bare.Tool{{

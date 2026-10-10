@@ -63,10 +63,6 @@ func (f *farAgent) Submit(ctx context.Context, text string) (<-chan session.Even
 	return ch, nil
 }
 
-func (f *farAgent) SubmitStanding(ctx context.Context, text string) (<-chan session.Event, error) {
-	return f.Submit(ctx, text)
-}
-
 func (f *farAgent) SubmitImage(ctx context.Context, text string, images []session.Image) (<-chan session.Event, error) {
 	return f.Submit(ctx, text)
 }
@@ -103,7 +99,6 @@ func (f *farAgent) ReasoningLevels() map[string]string {
 func (f *farAgent) SetReasoningFor(model, level string)                       { f.levels[model] = level }
 func (f *farAgent) ResolveConsent(id uint64, allow bool)                      {}
 func (f *farAgent) ResolveConsentRemember(uint64, bool, session.ConsentScope) {}
-func (f *farAgent) ResolveStanding(id uint64, answer session.StandingAnswer)  {}
 func (f *farAgent) ResolveHarness(id uint64, run bool, model string)          {}
 func (f *farAgent) ResolveConnect(id string, approve bool)                    {}
 func (f *farAgent) ResolveConnectKey(id string, key string)                   {}

@@ -379,17 +379,13 @@ func TestATaskBriefClosesOnTheRules(t *testing.T) {
 	if !strings.Contains(world, `- "never touch the public API"`) || !strings.HasSuffix(world, alwaysWorldReport+"\n") {
 		t.Fatalf("the task's rules section = %q", world)
 	}
-	joined := joinWorldSections(world, "Standing orders:\n\n- ship on Fridays\n")
-	if strings.Index(joined, "never touch") > strings.Index(joined, "Standing orders") || !strings.Contains(joined, "report.\n\nStanding") {
-		t.Fatalf("the sections are not joined rules first with a blank line between:\n%s", joined)
-	}
-	if got := joinWorldSections("", "  \n", ""); got != "" {
-		t.Fatalf("empty sections joined into %q", got)
-	}
 	leaf := &plandb.Task{TaskSpec: plandb.TaskSpec{ID: "leaf", Description: "the leaf's own work order"}}
-	worker := BeltWorkerBrief(nil, leaf, false, false, "", world, "")
+	worker := BeltWorkerBrief(nil, leaf, false, false, "", world)
 	if !strings.Contains(worker, "never touch the public API") {
 		t.Fatalf("a run worker's brief does not carry the rules:\n%s", worker)
+	}
+	if plain := BeltWorkerBrief(nil, leaf, false, false, "", "  \n"); plain != BeltWorkerBrief(nil, leaf, false, false, "", "") {
+		t.Fatalf("a blank rules section changed the brief:\n%q", plain)
 	}
 }
 

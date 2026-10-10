@@ -118,7 +118,7 @@ func TestTheChooserIsOneLadderOfProperties(t *testing.T) {
 			{Key: "2", Label: "JSONL", Consequence: "append-only"},
 		},
 	}
-	kinds := []session.QuestionKind{session.QuestionAsk, session.QuestionTask, session.QuestionStanding}
+	kinds := []session.QuestionKind{session.QuestionAsk, session.QuestionTask, session.QuestionAutomation}
 	want := questionView(0)
 	for at, kind := range kinds {
 		q := weighed

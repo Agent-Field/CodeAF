@@ -60,10 +60,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -86,7 +86,7 @@ const (
 	consolidateEvery = 6 * time.Hour
 
 	// consolidateQuiet is how long nobody may have said anything anywhere
-	// before the pass is allowed to run, handed to [StandingIdle]. Fifteen
+	// before the pass is allowed to run, handed to [MachineIdle]. Fifteen
 	// minutes is "they have gone to do something else" rather than "they are
 	// reading the answer" — the pass writes into the same store the very next
 	// message routes against, and doing that under somebody's hands is the one
@@ -121,9 +121,9 @@ const (
 	// than the row it replaced.
 	consolidateInputRunes = 20000
 
-	// consolidateWindow bounds the whole pass. It sits inside the tick's own
-	// [standing.TickWindow], so a provider that never answers costs one pass and
-	// not the reminders the pass had not reached yet.
+	// consolidateWindow bounds the whole pass. It sits inside the clock's own
+	// bound on a tidy (internal/automation's clock.go), so a provider that never
+	// answers costs one pass and nothing else the clock was going to do.
 	consolidateWindow = 90 * time.Second
 )
 
@@ -202,21 +202,22 @@ func consolidateOwners(cfg Config) []string {
 	return owners
 }
 
-// ── the seam the tick fills ─────────────────────────────────────────────────
+// ── the seam the clock fills ────────────────────────────────────────────────
 
-// NewMemoryTidy is the seam a door fills [standing.Ticker.Tidy] with.
+// NewMemoryTidy is the seam a door fills [automation.Clock.Tidy] with.
 //
 // brainPath is the store's file and NOT an open store, which is the whole of
-// how this stays cheap: a ticker is rebuilt every five minutes, and a handle
-// opened per ticker would be a database connection per five minutes for the
-// life of a window. The pass opens the store only once it has decided it is
-// going to run — which is a few times a day — and closes it before it returns.
+// how this stays cheap: the clock asks every few minutes for as long as a
+// window is open, and a handle held across those asks would be a database
+// connection for the life of the clock. The pass opens the store only once it
+// has decided it is going to run — which is a few times a day — and closes it
+// before it returns.
 //
-// A BLANK brainPath IS MEMORY OFF and answers a nil seam, so the tick has
+// A BLANK brainPath IS MEMORY OFF and answers a nil seam, so the clock has
 // nothing to call. That is the same absence [Config.Memory] being nil is on the
 // turn path: the door opens no store when the memory row is off, and this reads
 // the same switch through the same door.
-func NewMemoryTidy(parent Config, brainPath, root string, idle standing.Idle) standing.Tidy {
+func NewMemoryTidy(parent Config, brainPath, root string, idle automation.Idle) automation.Tidy {
 	if strings.TrimSpace(brainPath) == "" || strings.TrimSpace(root) == "" {
 		return nil
 	}
@@ -226,21 +227,21 @@ func NewMemoryTidy(parent Config, brainPath, root string, idle standing.Idle) st
 		model  string
 		built  error
 	)
-	return func(ctx context.Context) (standing.Tidied, error) {
+	return func(ctx context.Context) (automation.Tidied, error) {
 		// THE TWO FREE GATES FIRST. Nobody is here, and it has been long enough
 		// since the last pass. Neither opens a database or a connection, so an
-		// ordinary tick — one every five minutes, forever — pays a stat and a
-		// world read for this and nothing else.
+		// ordinary ask — one every few minutes while a window is open — pays a
+		// stat and a world read for this and nothing else.
 		if idle == nil || !idle(consolidateQuiet) {
-			return standing.Tidied{}, nil
+			return automation.Tidied{}, nil
 		}
 		mark, _ := readConsolidateMark(root)
 		if !mark.At.IsZero() && time.Since(mark.At) < consolidateEvery {
-			return standing.Tidied{}, nil
+			return automation.Tidied{}, nil
 		}
 		brain, err := store.Open(brainPath)
 		if err != nil {
-			return standing.Tidied{}, err
+			return automation.Tidied{}, err
 		}
 		defer brain.Close()
 
@@ -257,7 +258,7 @@ func NewMemoryTidy(parent Config, brainPath, root string, idle standing.Idle) st
 			client, built = provider.NewClient(settings)
 		})
 		if built != nil {
-			return standing.Tidied{}, built
+			return automation.Tidied{}, built
 		}
 		// THE OWNERS A BACKGROUND PASS MAY TOUCH. A consolidate runs while
 		// nobody is at the machine and has no project context — it is a
@@ -303,18 +304,18 @@ type tidyPass struct {
 // quarantine — rows whose owner nobody can prove — is never in the list. A
 // nil or empty owners list is a fail-closed no-op: a pass that cannot prove
 // what it is allowed to touch does no work at all.
-func (p tidyPass) run(ctx context.Context) (standing.Tidied, error) {
+func (p tidyPass) run(ctx context.Context) (automation.Tidied, error) {
 	if len(p.owners) == 0 {
-		return standing.Tidied{}, errors.New("session: the tidy has no authorized owners to tidy")
+		return automation.Tidied{}, errors.New("session: the tidy has no authorized owners to tidy")
 	}
 	for _, owner := range p.owners {
 		if !store.ValidOwner(owner) || owner == store.OwnerLegacyProject {
-			return standing.Tidied{}, errors.New("session: the tidy has an unauthorized owner")
+			return automation.Tidied{}, errors.New("session: the tidy has an unauthorized owner")
 		}
 	}
 	batch, err := p.brain.ListMemories(p.owners, consolidateBatch)
 	if err != nil {
-		return standing.Tidied{}, err
+		return automation.Tidied{}, err
 	}
 	// THE TIDY NEVER SEES A RULE. A rule is the person's own words about work to
 	// come (memory_always.go), and a pass nobody watches that merged or replaced
@@ -327,14 +328,14 @@ func (p tidyPass) run(ctx context.Context) (standing.Tidied, error) {
 		// the one line that did change is still owed a look, and stamping the
 		// clock here would mean a store that changes a line every seven hours is
 		// never tidied at all.
-		return standing.Tidied{}, nil
+		return automation.Tidied{}, nil
 	}
 	bounded, cancel := context.WithTimeout(ctx, consolidateWindow)
 	defer cancel()
 
 	plan, usd, err := consolidateAsk(bounded, p.completer, p.model, batch)
 	if err != nil {
-		return standing.Tidied{USD: usd}, err
+		return automation.Tidied{USD: usd}, err
 	}
 	tidied, err := applyConsolidatePlan(p.brain, batch, p.owners, plan)
 	tidied.USD = usd
@@ -504,7 +505,7 @@ func consolidateScopeWord(scope string) string {
 // Invalid model operations are skipped locally. Store write failures are
 // journaled and returned, preserving successful partial work without stamping
 // the pass as complete. Mutation doors use the row's observed owner alone.
-func applyConsolidatePlan(brain *store.Store, batch []store.Memory, owners []string, plan consolidatePlan) (standing.Tidied, error) {
+func applyConsolidatePlan(brain *store.Store, batch []store.Memory, owners []string, plan consolidatePlan) (automation.Tidied, error) {
 	known := map[string]store.Memory{}
 	for _, memory := range batch {
 		known[memory.ID] = memory
@@ -517,7 +518,7 @@ func applyConsolidatePlan(brain *store.Store, batch []store.Memory, owners []str
 		}
 	}
 	touched := map[string]bool{}
-	var tidied standing.Tidied
+	var tidied automation.Tidied
 	var failures error
 	recordFailure := func(id string, err error) {
 		failure := fmt.Errorf("tidy memory %s: %w", id, err)
@@ -653,7 +654,7 @@ func consolidateMayRetire(row store.Memory) bool {
 // only when something actually moved. THE EMPTINESS LAW: a half that is zero is
 // absent rather than printed as a zero, and a pass that changed nothing says
 // nothing at all — which is most passes.
-func consolidateNoticeLine(tidied standing.Tidied) string {
+func consolidateNoticeLine(tidied automation.Tidied) string {
 	parts := make([]string, 0, 2)
 	if tidied.Merged > 0 {
 		parts = append(parts, fmt.Sprintf("%d merged", tidied.Merged))
@@ -678,12 +679,11 @@ func consolidateNoticeLine(tidied standing.Tidied) string {
 //
 // ONE WINDOW AND NOT ALL OF THEM. The store is one brain shared by every
 // conversation on the machine, so a line per open window would be the same
-// piece of news said four times — [standingRunner.deliver]'s law, applied to a
-// pass that has no origin conversation to prefer.
+// piece of news said four times.
 //
-// AND NO WINDOW AT ALL IS THE ORDINARY CASE, because most passes happen inside
-// `codeaf tick` with nothing open anywhere. Then nothing is said, and /memory is
-// where the change is seen.
+// AND NO WINDOW IN THIS PROCESS IS THE ORDINARY CASE, because the pass runs in
+// the clock, which is its own process. Then nothing is said here, and /memory
+// is where the change is seen.
 func noticeLiveWindow(text string) {
 	liveSessionsMu.Lock()
 	windows := make([]liveWindow, 0, len(liveSessions))
@@ -724,7 +724,7 @@ type consolidateMark struct {
 	USD        float64   `json:"usd,omitempty"`
 }
 
-// consolidateMarkName is the file, beside everything else standing keeps.
+// consolidateMarkName is the file, beside everything else the automations keep.
 const consolidateMarkName = "memory-tidy.json"
 
 func consolidateMarkPath(root string) string {

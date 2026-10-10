@@ -45,7 +45,7 @@ func TestANoteLeftWhileATaskWorksReachesItsWorkerBetweenSteps(t *testing.T) {
 	// has actually arrived [worksUntilItIsToldThen].
 	seat := &seat{ever: worksUntilItIsToldThen("root", said, "read the note and finished",
 		"while [ ! -f "+release+" ]; do sleep 0.02; done; echo looked")}
-	worker := run.NewBashWorker(store, workspace, "test/model", "", seat)
+	worker := run.NewBashWorker(store, workspace, "test/model", seat)
 	ctx := run.WithStepsPerTask(runContext(t), 9)
 
 	done := make(chan error, 1)
@@ -109,7 +109,7 @@ func TestANoteIsHandedToAWorkerOnceAndTheScreenStillReadsIt(t *testing.T) {
 	// boundaries that must stay silent are boundaries that certainly happened
 	// AFTER the delivery rather than boundaries that happened instead of it.
 	seat := &seat{ever: worksOnAfterItIsToldThen("root", said, "counted to three", 3)}
-	worker := run.NewBashWorker(store, filepath.Dir(store.Path()), "test/model", "", seat)
+	worker := run.NewBashWorker(store, filepath.Dir(store.Path()), "test/model", seat)
 	if _, err := worker.Run(run.WithStepsPerTask(runContext(t), 9), *store.Task(store.RootID())); err != nil {
 		t.Fatalf("the worker's run failed: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestANoteDoesNotChangeWhatATaskWasAskedFor(t *testing.T) {
 	}
 
 	seat := &seat{ever: worksUntilItIsToldThen("root", "task t-2", "did what was asked", "echo working")}
-	worker := run.NewBashWorker(store, filepath.Dir(store.Path()), "test/model", "", seat)
+	worker := run.NewBashWorker(store, filepath.Dir(store.Path()), "test/model", seat)
 	if _, err := worker.Run(run.WithStepsPerTask(runContext(t), 9), *store.Task(store.RootID())); err != nil {
 		t.Fatalf("the worker's run failed: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestNotesBeyondTheBoundWaitForTheNextBoundary(t *testing.T) {
 		}
 	}
 	seat := &seat{ever: worksUntilItIsToldThen("root", "the sixth thing nobody must lose", "read them all", "echo working")}
-	worker := run.NewBashWorker(store, filepath.Dir(store.Path()), "test/model", "", seat)
+	worker := run.NewBashWorker(store, filepath.Dir(store.Path()), "test/model", seat)
 	if _, err := worker.Run(run.WithStepsPerTask(runContext(t), 9), *store.Task(store.RootID())); err != nil {
 		t.Fatalf("the worker's run failed: %v", err)
 	}
@@ -286,7 +286,7 @@ func TestTwoWorkersLiveAtOnceEachGetOnlyItsOwnNote(t *testing.T) {
 		release := filepath.Join(workspace, "release-"+id)
 		s := &seat{ever: worksUntilItIsToldThen(id, want, "read what was addressed to me",
 			"while [ ! -f "+release+" ]; do sleep 0.02; done; echo "+id)}
-		worker := run.NewBashWorker(store, workspace, "test/model", "", s)
+		worker := run.NewBashWorker(store, workspace, "test/model", s)
 		done := make(chan error, 1)
 		task := *store.Task(id)
 		go func() {
