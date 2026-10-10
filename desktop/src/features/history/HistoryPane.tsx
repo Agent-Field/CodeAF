@@ -4,6 +4,7 @@ import design from '../../design/tokens.json';
 import { isMac } from '../../design/keyboard';
 import type { TabSummary } from '../conversation/tabSummary';
 import type { PaneRenderProps } from '../tabs/kinds/slots';
+import type { HistoryPress } from './historyMenu';
 import { HistoryList } from './HistoryList';
 import { useHistoryHost } from './host';
 import { queryTerms } from './model';
@@ -17,7 +18,7 @@ import './history.css';
 const compactBelow = Number.parseFloat(design.foundation['history-compact-width']);
 
 type Reading = { id: string; at?: number };
-type Press = { newTab: boolean };
+type Press = HistoryPress;
 
 /** How wide the pane is, so a split or a small window can drop the recap card beside the list. */
 function useCompact(ref: React.RefObject<HTMLElement | null>): boolean {
