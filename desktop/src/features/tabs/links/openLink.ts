@@ -25,6 +25,7 @@ export type LinkEngine = {
 
 /** What the workspace does with a link: select a pane that already shows it, open one tab, or say why not. */
 export type LinkOutcome =
+  | { kind: 'next-up'; link: string }
   | { kind: 'focus'; id: string; link: string }
   | { kind: 'open'; tab: Tab; link: string }
   | { kind: 'refused'; sentence: string; link?: string };
@@ -39,11 +40,12 @@ export const linkSentences = {
 
 /** The pane in these tabs that already shows the target. A conversation link is shown by any tab on that conversation. */
 export function paneShowing(tabs: readonly Tab[], target: LinkTarget): string | undefined {
+  if (target.kind === 'next-up') return undefined;
   const wanted = linkOf(target);
   for (const tab of tabs) {
     for (const pane of panesOf(tab)) {
       const shown = targetOf(pane);
-      if (!shown || shown.chatId !== target.chatId) continue;
+      if (!shown || shown.kind === 'next-up' || shown.chatId !== target.chatId) continue;
       if (target.kind === 'chat' && !target.taskId ? pane.kind === 'conversation' && shown.kind === 'chat' : linkOf(shown) === wanted) return pane.id;
     }
   }
@@ -66,6 +68,7 @@ export async function resolveLink(raw: unknown, tabs: () => readonly Tab[], engi
   const parsed = parseDeepLink(raw);
   if (!parsed.ok) return { kind: 'refused', sentence: linkProblemSentence[parsed.reason] };
   const { target, canonical: link } = parsed;
+  if (target.kind === 'next-up') return { kind: 'next-up', link };
   const held = paneShowing(tabs(), target);
   if (held) return { kind: 'focus', id: held, link };
 

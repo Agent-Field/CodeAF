@@ -43,7 +43,7 @@ export function tearOffAt(end: DragRelease, box: WindowClientBox): TearOffAt | u
  * place Home are already false). A pinned tab can still move from the menu; a drag out of the strip does not take it.
  */
 export function mayTearOff(tab: Pick<Tab, 'pinned' | 'kind'>, canMove: boolean): boolean {
-  return canMove && !tab.pinned && tab.kind !== 'inbox';
+  return canMove && !tab.pinned;
 }
 
 /** The drag's one call into the window door. The caller supplies the place and the drop point. */

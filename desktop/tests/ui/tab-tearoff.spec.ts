@@ -46,7 +46,7 @@ test('letting go outside the window leaves the tab in the strip and opens nothin
   expect(await page.evaluate(() => (window as unknown as { __opened: string[] }).__opened)).toEqual([]);
 });
 
-test('a pinned tab and the Inbox stay when the pointer leaves the window', async ({ page }) => {
+test('a pinned tab stays while a retired Inbox slot drops', async ({ page }) => {
   await seed(page, [
     tab('p', 'Pinned notes', { pinned: true }),
     { id: 'inbox', kind: 'inbox', title: 'Inbox', draft: '', titleSource: 'manual', pinned: true },
@@ -54,11 +54,10 @@ test('a pinned tab and the Inbox stay when the pointer leaves the window', async
   ], 'a');
   await page.goto('/');
   await expect(page.getByRole('tab', { name: 'Pinned notes', exact: true })).toBeVisible();
-  await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
   await release(page, 'Pinned notes', -20, -20);
-  await release(page, 'Inbox', -30, -30);
   await expect(page.getByRole('tab', { name: 'Pinned notes', exact: true })).toBeVisible();
-  await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
   await expect(page.getByRole('tab', { name: 'Alpha', exact: true })).toHaveAttribute('aria-selected', 'true');
   expect(await page.evaluate(() => (window as unknown as { __opened: string[] }).__opened)).toEqual([]);
 });

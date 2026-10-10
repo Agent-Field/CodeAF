@@ -18,6 +18,7 @@ const PREFIX = `${LINK_SCHEME}://`;
 export const LINK_LIMITS = { link: 8192, id: 128, task: 256, path: 4096 } as const;
 
 export type LinkTarget =
+  | { kind: 'next-up' }
   | { kind: 'chat'; chatId: string; taskId?: string }
   | { kind: 'file' | 'diff'; chatId: string; path: string }
   | { kind: 'terminal'; chatId: string; terminalId: string };
@@ -56,6 +57,7 @@ const encodePath = (path: string) => path.split('/').map(encodeURIComponent).joi
 
 /** The one spelling of a target. `parseDeepLink(linkOf(t)).target` is `t`. */
 export function linkOf(target: LinkTarget): string {
+  if (target.kind === 'next-up') return `${PREFIX}inbox`;
   const chat = encodeURIComponent(target.chatId);
   switch (target.kind) {
     case 'chat': return target.taskId ? `${PREFIX}chat/${chat}/task/${encodeURIComponent(target.taskId)}` : `${PREFIX}chat/${chat}`;
@@ -76,6 +78,7 @@ export function parseDeepLink(raw: unknown): ParsedLink {
   if (typeof raw !== 'string' || raw === '' || utf8Length(raw) > LINK_LIMITS.link || /[\s\u0000-\u001f\u007f-\u009f]/.test(raw)) return fail('malformed');
   if (raw.slice(0, PREFIX.length).toLowerCase() !== PREFIX || raw.includes('#')) return fail('malformed');
   const rest = raw.slice(PREFIX.length);
+  if (rest === 'inbox' || rest === 'inbox/') return { ok: true, target: { kind: 'next-up' }, canonical: `${PREFIX}inbox` };
   const mark = rest.indexOf('?');
   const path = mark < 0 ? rest : rest.slice(0, mark);
   const query = mark < 0 ? undefined : rest.slice(mark + 1);
@@ -159,4 +162,4 @@ export function linkForPane(pane: Pane): string | undefined {
 }
 
 /** A split tab copies the pane that has focus, the one the person is looking at. */
-export const linkForTab = (tab: Tab): string | undefined => (tab.kind === 'inbox' ? undefined : linkForPane(focusedPane(tab)));
+export const linkForTab = (tab: Tab): string | undefined => linkForPane(focusedPane(tab));

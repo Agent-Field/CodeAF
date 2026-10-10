@@ -45,7 +45,7 @@ export function useClosing(options: Options) {
   function close(id: string, stopWork: boolean) {
     const { state, dispatch } = latest.current;
     const tab = state.tabs.find(t => t.id === id);
-    if (!tab || tab.kind === 'inbox') return;
+    if (!tab) return;
     const restore = !!document.activeElement?.closest('.workspace-tab');
     const group = state.groups.find(g => g.id === tab.groupId);
     const alone = !!group && state.tabs.filter(t => t.groupId === group.id).length === 1;

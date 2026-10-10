@@ -14,7 +14,6 @@ import { openKindAction } from '../shell/openKind';
 import { createTabActions } from './actions';
 import { observedClosedPanes } from './closing/background';
 import { useCloseStopKey } from './closing/useCloseStopKey';
-import { inboxFocus } from './closing/inboxFocus';
 import { useBackground } from './closing/useBackground';
 import { useClosing } from './closing/useClosing';
 import { useOverviewGesture } from './useOverviewGesture';
@@ -162,7 +161,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const { state } = sync;
   const { dispatch: rawDispatch, undo } = useStructuralUndo({ state, dispatch: sync.dispatch, enabled, keys: false });
   useUndoKeys({ undo }, enabled);
-  const dispatch = useCallback((action: WorkspaceAction) => { if (action.type === 'open-inbox') inboxFocus.request(); rawDispatch(action); }, [rawDispatch]);
+  const dispatch = useCallback((action: WorkspaceAction) => { if (action.type === 'open-inbox') { window.dispatchEvent(new Event('codeaf:next-up-start')); return; } rawDispatch(action); }, [rawDispatch]);
   const shell = usePlacesShell();
   const [usingApi] = useState(createUsingClient);
   const [summaries, setSummaries] = useState<Record<string, TabSummary>>({});
@@ -364,8 +363,6 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const { background, markFailedSeen } = useBackground({ tabs: state.tabs, closed: state.closed, summaries, since: closing.sinceOf, stopping: closing.stopping, now });
   // The Inbox appears the first time work outlives its tab or waits on the person.
   // Failures summon it too: they are bounded (recent, unseen, a few) and leave with Seen.
-  const inboxWanted = background.running.length > 0 || background.needsYou.length > 0 || background.failed.length > 0;
-  useEffect(() => { if (inboxWanted) dispatch({ type: 'ensure-inbox' }); }, [inboxWanted]);
   useWindowHandoff(dispatch);
   useEffect(() => { if (sync.status.overtaken > 0) toasts.show({ key: `workspace-overtaken-${place}`, message: [`Another window changed ${sync.status.overtaken} of your tab edits. Your latest tab set is shown.`], tone: 'warning', onSettled: sync.acknowledge }); }, [sync.status.overtaken, place]);
   useEffect(() => { if (sync.status.error) toasts.show({ key: `workspace-status-${place}`, message: [sync.status.error], tone: 'warning', actions: [{ label: 'Try again', onSelect: sync.retry }] }); }, [sync.status.error, place]);

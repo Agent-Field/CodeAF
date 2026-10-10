@@ -1,9 +1,10 @@
 // The workspace model: types, the persisted shape and the pure reducer.
 // The reducer is a composition of slices (reducers/): add a lane's actions as a new slice file, add
 // its action type to WorkspaceAction and its function to `slices` below. Nothing here touches React.
+import { withoutInbox } from './kinds/retired.ts';
 import { cleanView } from './view-state.ts';
 import { kindOrDefault } from './kinds/types.ts';
-import { arrange, mintWith, clampRatio, initialWorkspace, isArranged, layoutFits, makeSplit, titleRank, withSplitTitle, splitCapacity } from './helpers.ts';
+import { newTab, arrange, mintWith, clampRatio, initialWorkspace, isArranged, layoutFits, makeSplit, titleRank, withSplitTitle, splitCapacity } from './helpers.ts';
 import { reduceNewTab, type NewTabAction } from './reducers/newtab.ts';
 import { reduceGroups, type GroupAction } from './reducers/groups.ts';
 import { reduceHistory, type HistoryAction } from './reducers/history.ts';
@@ -117,8 +118,9 @@ export function parseWorkspace(text: string | null): WorkspaceState | undefined 
   try {
     const saved = JSON.parse(text ?? 'null') as Partial<WorkspaceState> | null;
     if (!saved || !Array.isArray(saved.tabs) || !saved.tabs.length || !Array.isArray(saved.groups) || !Array.isArray(saved.closed)) return undefined;
-    const read = saved.tabs.map(readTab);
-    const closed = saved.closed.map(readClosed);
+    const migrated = withoutInbox(saved.tabs);
+    const read = (migrated.length ? migrated : [newTab({ kind: 'newtab' })]).map(readTab);
+    const closed = withoutInbox(saved.closed).map(readClosed);
     if (read.some(t => !t) || closed.some(t => !t) || !saved.groups.every(isGroup)) return undefined;
     const tabsIn = read as Tab[];
     const closedIn = closed as ClosedTab[];

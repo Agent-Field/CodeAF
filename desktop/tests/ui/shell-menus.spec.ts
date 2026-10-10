@@ -2,7 +2,6 @@ import { openPage } from './support/shell-navigation';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { expectAccessible, expectNoUnstyledControls, expectThemedSurface, menuSurface, tokenColor } from './contracts';
 import { installMockEngine, type MockEngine } from './support/mock-engine';
-import { pendingQuestion } from './support/scenarios';
 import design from '../../src/design/tokens.json' with { type: 'json' };
 
 // Design 3g (tab menu, group label menu), Components "Context menu" and 3l (closing running work).
@@ -282,74 +281,23 @@ test.describe('closing running work (3l)', () => {
     expect(stops(engine)).toBe(1);
   });
 
-  test('closed-but-running work lists in the pinned Inbox and a click reopens the tab where it was', async ({ page }) => {
-    const engine = await installMockEngine(page, running);
-    await seed(page, [{ id: 'a', title: 'Intro' }, { id: 'b', title: 'Config stack', running: true }, { id: 'c', title: 'lexer.go' }], { active: 'b' });
-    await page.goto('/');
-    await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
-    await expect.poll(() => engine.calls.some(call => call.path.endsWith('/sessions'))).toBe(true);
-    await slot(page, 'Config stack').hover();
-    await closeButton(page, 'Config stack').click();
-    // The Inbox is the first, pinned, icon-only tab; running work alone gives it no dot.
-    const inbox = page.getByRole('tab', { name: 'Inbox', exact: true });
-    await expect(inbox).toBeVisible();
-    expect((await names(page))[0]).toBe('Inbox');
-    await expect(slot(page, 'Inbox')).toHaveClass(/is-pinned/);
-    await expect(page.locator('.tab-badge')).toHaveCount(0);
-    await inbox.click();
-    const card = page.getByRole('region', { name: 'Inbox' });
-    await expect(card.getByRole('heading', { name: 'Running in the background' })).toBeVisible();
-    const row = card.getByRole('button', { name: /Config stack/ });
-    await expect(row).toContainText('now');
-    // Design: 300px card, radius 12, 32px rows, a 6px accent dot.
-    expect((await card.boundingBox())!.width).toBe(px('inbox-width'));
-    await expect(card).toHaveCSS('border-top-left-radius', '12px');
-    expect((await row.boundingBox())!.height).toBe(px('inbox-row-height'));
-    await expect(row.locator('.inbox-dot')).toHaveCSS('width', '6px');
-    await expectAccessible(page);
-    await row.click();
-    expect(await names(page)).toEqual(['Inbox', 'Intro', 'Config stack', 'lexer.go']);
-    await expect(page.getByRole('tab', { name: 'Config stack', exact: true })).toHaveAttribute('aria-selected', 'true');
-  });
-
-  test('stopping the closed work clears it from the Inbox', async ({ page }) => {
+  test('closing background work never recreates a pinned Inbox', async ({ page }) => {
     const engine = await installMockEngine(page, running);
     await seed(page, [{ id: 'a', title: 'Intro' }, { id: 'b', title: 'Config stack', running: true }], { active: 'b' });
     await page.goto('/');
     await expect.poll(() => engine.calls.some(call => call.path.endsWith('/sessions'))).toBe(true);
     await slot(page, 'Config stack').hover();
     await closeButton(page, 'Config stack').click();
-    await page.getByRole('tab', { name: 'Inbox', exact: true }).click();
-    const card = page.getByRole('region', { name: 'Inbox' });
-    await expect(card.getByRole('button', { name: /Config stack/ })).toBeVisible();
-    await page.locator('.toast').getByRole('button', { name: 'Stop it' }).click();
-    await expect(card.getByRole('button', { name: /Config stack/ })).toHaveCount(0, { timeout: 8000 });
-    await expect(card).toContainText('lands here');
+    await expect(page.locator('.toast')).toContainText('closed and still running');
+    await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
+    await page.locator('.toast').getByRole('button', { name: 'Undo' }).click();
+    await expect(page.getByRole('tab', { name: 'Config stack', exact: true })).toBeVisible();
+    expect(stops(engine)).toBe(0);
   });
 
-  test('the Inbox carries a dot only when something needs you', async ({ page }) => {
-    const asked = pendingQuestion();
-    const engine = await installMockEngine(page, { ...asked, initial: { ...asked.initial, needsPerson: false, questions: [], running: false } });
-    await seed(page, [{ id: 'a', title: 'Intro' }, { id: 'b', title: 'Release v2.4', running: true }], { active: 'a' });
-    await page.goto('/');
-    // The background tab does not attach. Its running mark arrives on the world feed.
-    await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
-    await engine.update({ running: true, needsPerson: true, questions: asked.initial.questions });
-    const inbox = page.getByRole('tab', { name: 'Inbox', exact: true });
-    await expect(inbox).toBeVisible({ timeout: 8000 });
-    await expect(page.locator('.tab-badge')).toHaveCount(1);
-    await expect(inbox).toHaveAccessibleDescription('Needs you');
-    await inbox.click();
-    const card = page.getByRole('region', { name: 'Inbox' });
-    await expect(card.getByRole('heading', { name: 'Needs you' })).toBeVisible();
-    await card.getByRole('button', { name: /Release v2.4/ }).click();
-    await expect(page.getByRole('tab', { name: 'Release v2.4', exact: true })).toHaveAttribute('aria-selected', 'true');
-    await engine.update({ needsPerson: false, questions: [], running: false });
-    await expect(page.locator('.tab-badge')).toHaveCount(0, { timeout: 8000 });
-  });
 });
 
-test('the Design system page shows the menus, the closing states and the Inbox, light and dark', async ({ page }) => {
+test('the Design system page shows the menus, the closing states without Inbox, light and dark', async ({ page }) => {
   // The accessibility pass covers the whole design system. Under four workers it does not finish in the default 30s.
   test.setTimeout(60_000);
   for (const scheme of ['light', 'dark'] as const) {
@@ -364,7 +312,7 @@ test('the Design system page shows the menus, the closing states and the Inbox, 
     await expect(sheet.locator('.toast')).toHaveCount(2);
     await expect(sheet.locator('.toast').first()).toHaveCSS('height', '40px');
     await expect(sheet.locator('[data-close-mode="stop"]')).toHaveCount(1);
-    await expect(sheet.locator('.inbox-card')).toHaveCount(2);
+    await expect(sheet.locator('.inbox-card')).toHaveCount(0);
     // This lane owns the closing specimen; unrelated tray specimens have their own accessibility suites.
     await expectAccessible(page, '[data-closing-specimen]'); await expectNoUnstyledControls(page, '[data-closing-specimen]');
   }

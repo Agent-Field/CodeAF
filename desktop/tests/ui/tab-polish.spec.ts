@@ -378,12 +378,12 @@ test.describe('the overview card (TA-OV-05, TA-OV-06)', () => {
       await expect.poll(() => stops(engine)).toBe(1);
     });
 
-    test('the Inbox card has no menu, exactly as the Inbox tab has none', async ({ page }) => {
+    test('a retired Inbox slot has no overview card', async ({ page }) => {
       await page.route('**/api/engine/**', route => route.abort());
       await seed(page, [...tabsOf({ id: 'a', title: 'Intro' }), { id: 'inbox', kind: 'inbox', title: 'Inbox', draft: '', titleSource: 'manual', pinned: true }], 'a');
       await page.goto('/');
       await open(page);
-      await overview(page).locator('.overview-card[data-kind="inbox"]').click({ button: 'right', position: { x: 40, y: 40 } });
+      await expect(overview(page).locator('.overview-card[data-kind="inbox"]')).toHaveCount(0);
       await expect(page.getByRole('menu')).toHaveCount(0);
     });
 

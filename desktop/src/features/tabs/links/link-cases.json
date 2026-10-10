@@ -1,6 +1,8 @@
 {
   "_": "The ONE corpus both validators read: deepLinks.test.ts (the renderer parser) and src-tauri/src/links.rs (the native gate). A case added here is checked on both sides, so the two can never disagree about what a codeaf link is.",
   "valid": [
+    { "raw": "codeaf://inbox", "canonical": "codeaf://inbox", "target": { "kind": "next-up" } },
+    { "raw": "codeaf://inbox/", "canonical": "codeaf://inbox", "target": { "kind": "next-up" } },
     { "raw": "codeaf://chat/9446cc2627f3deae", "canonical": "codeaf://chat/9446cc2627f3deae", "target": { "kind": "chat", "chatId": "9446cc2627f3deae" } },
     { "raw": "CODEAF://chat/9446cc2627f3deae", "canonical": "codeaf://chat/9446cc2627f3deae", "target": { "kind": "chat", "chatId": "9446cc2627f3deae" } },
     { "raw": "codeaf://chat/9446cc2627f3deae/task/t-12", "canonical": "codeaf://chat/9446cc2627f3deae/task/t-12", "target": { "kind": "chat", "chatId": "9446cc2627f3deae", "taskId": "t-12" } },

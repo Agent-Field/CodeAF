@@ -25,11 +25,9 @@ export type GroupAction =
   | { type: 'collapse-group'; id: string }
   | { type: 'ungroup'; id: string };
 
-/** The Inbox is the window's own pinned tab, never a member of a group. */
-const groupable = (tab: Tab) => tab.kind !== 'inbox';
-
+/** Group only ids that are still present after a workspace rebase. */
 function makeGroup(state: WorkspaceState, ids: readonly string[], title?: string): WorkspaceState {
-  const members = new Set(ids.filter(id => state.tabs.some(tab => tab.id === id && groupable(tab))));
+  const members = new Set(ids.filter(id => state.tabs.some(tab => tab.id === id)));
   if (!members.size) return state;
   const group: TabGroup = { id: createId(), title: title?.trim() || nextGroupTitle(state.groups), collapsed: false };
   // The arrange law gathers the members where the first of them stands, so the new group keeps that place.

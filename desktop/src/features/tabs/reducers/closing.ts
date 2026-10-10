@@ -1,7 +1,6 @@
-// Reducer slice: closing many tabs, reopening a chosen one where it was, duplicating, and the pinned Inbox.
+// Reducer slice: closing many tabs, reopening a chosen one where it was, and duplicating.
 // Closing only detaches a view (the engine keeps the work), so every closed tab lands in `closed` and can be reopened.
 import { createId, normalize, visibleTabs } from '../helpers.ts';
-import { isPlaceHome } from './home.ts';
 import { reduceTabs, type TabAction } from './tabs.ts';
 import type { Pane, Tab, TabGroup, WorkspaceState } from '../types.ts';
 
@@ -34,12 +33,10 @@ export type ClosingAction =
   | { type: 'restore-closed'; tabs: readonly Tab[]; order: readonly string[]; groups: readonly TabGroup[]; activeId: string }
   /** A copy of the tab right after it: the same session, draft and view, new ids. */
   | { type: 'duplicate'; id: string }
-  /** Makes sure the one pinned Inbox tab exists. It sits just after the place Home, or first when there is no Home, and never takes focus. */
+  /** An old saved action is ignored; Inbox no longer owns a pinned slot. */
   | { type: 'ensure-inbox' }
-  /** The rail's Inbox row (Interactions, "Rail · Inbox"): makes sure the Inbox tab exists and focuses it. */
+  /** An old saved action is ignored; the shell handles this request through Next up. */
   | { type: 'open-inbox' };
-
-export const inboxId = 'inbox';
 
 /** Closes each id in turn through the ordinary close, so the active tab moves exactly as it does for a single close. */
 function closeAll(state: WorkspaceState, ids: readonly string[]): WorkspaceState {
@@ -52,19 +49,16 @@ function closeAll(state: WorkspaceState, ids: readonly string[]): WorkspaceState
 /** The tab the person closed others around becomes active when the active tab was one of the closed. */
 const keep = (next: WorkspaceState, before: WorkspaceState, id: string): WorkspaceState => (next.tabs.some(t => t.id === before.activeId) ? next : { ...next, activeId: id, recentIds: [id, ...next.recentIds.filter(r => r !== id)] });
 
-/** Closable means a tab the person put there: never the Inbox. */
-const closable = (tab: Tab) => tab.kind !== 'inbox';
-
 const copyPane = (pane: Pane): Pane => ({ ...pane, id: createId() });
 
 export function reduceClosing(state: WorkspaceState, action: { type: string }): WorkspaceState | undefined {
   const a = action as ClosingAction;
   switch (a.type) {
-    case 'close-others': return keep(closeAll(state, state.tabs.filter(t => t.id !== a.id && !t.pinned && closable(t)).map(t => t.id)), state, a.id);
+    case 'close-others': return keep(closeAll(state, state.tabs.filter(t => t.id !== a.id && !t.pinned).map(t => t.id)), state, a.id);
     case 'close-right': {
       const order = visibleTabs(state);
       const index = order.findIndex(t => t.id === a.id);
-      return index < 0 ? state : keep(closeAll(state, order.slice(index + 1).filter(t => !t.pinned && closable(t)).map(t => t.id)), state, a.id);
+      return index < 0 ? state : keep(closeAll(state, order.slice(index + 1).filter(t => !t.pinned).map(t => t.id)), state, a.id);
     }
     case 'close-group': return closeAll(state, state.tabs.filter(t => t.groupId === a.id).map(t => t.id));
     case 'reopen-id': {
@@ -95,26 +89,15 @@ export function reduceClosing(state: WorkspaceState, action: { type: string }): 
     }
     case 'duplicate': {
       const index = state.tabs.findIndex(t => t.id === a.id);
-      if (index < 0 || !closable(state.tabs[index])) return state;
+      if (index < 0) return state;
       const source = state.tabs[index];
       const copy: Tab = { ...source, id: createId(), pinned: false, split: source.split && { ...source.split, panes: source.split.panes.map(copyPane) } };
       const tabs = [...state.tabs];
       tabs.splice(index + 1, 0, copy);
       return normalize({ ...state, tabs, activeId: copy.id, recentIds: [copy.id, ...state.recentIds], nextNumber: state.nextNumber + 1 });
     }
-    case 'ensure-inbox': {
-      if (state.tabs.some(t => t.kind === 'inbox')) return state;
-      const inbox: Tab = { id: inboxId, kind: 'inbox', title: 'Inbox', draft: '', pinned: true };
-      // Home owns the first pinned slot (Shell 2h). Inbox, while it is still drawn, is the next pin.
-      const homeAt = state.tabs.findIndex(tab => isPlaceHome(tab));
-      const tabs = [...state.tabs];
-      tabs.splice(homeAt >= 0 ? homeAt + 1 : 0, 0, inbox);
-      return normalize({ ...state, tabs, recentIds: [...state.recentIds, inbox.id] });
-    }
-    case 'open-inbox': {
-      const ensured = reduceClosing(state, { type: 'ensure-inbox' }) ?? state;
-      return { ...ensured, activeId: inboxId, recentIds: [inboxId, ...ensured.recentIds.filter(id => id !== inboxId)] };
-    }
+    case 'ensure-inbox':
+    case 'open-inbox': return state;
     default: return undefined;
   }
 }
