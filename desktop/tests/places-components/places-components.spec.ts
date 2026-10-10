@@ -14,6 +14,16 @@ async function open(page: Page, theme: 'light' | 'dark' = 'light') {
 }
 const log = (page: Page) => page.getByRole('list', { name: 'Callback log' }).locator('li');
 const tile = (page: Page, id: string) => page.locator(`[data-place-id="${id}"]`);
+async function shadow(page: Page, value: string) {
+  return page.evaluate(declared => {
+    const probe = document.createElement('span');
+    probe.style.boxShadow = declared;
+    document.body.append(probe);
+    const painted = getComputedStyle(probe).boxShadow;
+    probe.remove();
+    return painted;
+  }, value);
+}
 const chat = (page: Page, id: string) => page.locator(`[data-chat-id="${id}"]`);
 
 for (const theme of ['light', 'dark'] as const) {
@@ -49,17 +59,36 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(rest.locator('.places-tile-name')).toHaveCSS('font-weight', '500');
       await expect(rest.locator('.places-tile-meta')).toHaveCSS('font-size', '11px');
       await expect(rest.locator('.places-tile-meta')).toHaveCSS('color', await tokenColor(page, 'ink-3'));
+      await expect(rest.locator('.places-tile-meta')).toHaveText('28 chats');
+      await expect(tile(page, 'state-drag').locator('.places-tile-meta')).toHaveText('6 chats · also in Software');
+      await expect(tile(page, 'state-failed').locator('.places-tile-meta')).toHaveText('47 places · 212 chats');
       await expect(rest.locator('.place-swatch')).toHaveCSS('width', '12px');
       await expect(rest.locator('.status-mark-dot')).toHaveCSS('width', '6px');
+      await expect(rest.locator('.status-mark')).toHaveCSS('width', '6px');
+      await expect(rest.locator('.status-mark')).toHaveCSS('height', '6px');
       await expect(rest.locator('.status-mark')).toHaveCSS('color', await tokenColor(page, 'amber'));
+      await expect(rest.locator('.places-tile-name')).toHaveCSS('color', await tokenColor(page, 'ink'));
       // Name sits at the bottom: margin-top auto pushes it below the head.
       const [head, name] = await Promise.all([rest.locator('.places-tile-head').boundingBox(), rest.locator('.places-tile-name').boundingBox()]);
       expect(name!.y).toBeGreaterThan(head!.y + head!.height);
 
       await expect(tile(page, 'state-Hover')).toHaveCSS('background-color', await tokenColor(page, 'field'));
+      await expect(rest).toHaveCSS('transition-duration', '0.12s, 0.12s, 0.12s');
+      await main.focus();
+      await expect(main).toHaveCSS('box-shadow', await shadow(page, '0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 calc(var(--focus-ring-width) + var(--focus-halo-width)) var(--accent-soft)'));
+      await rest.scrollIntoViewIfNeeded();
+      const box = (await rest.boundingBox())!;
+      await page.mouse.move(box.x + 8, box.y + 8);
+      await page.mouse.down();
+      await expect(rest).toHaveCSS('transition-duration', '0.08s');
+      await expect(rest).toHaveCSS('background-color', await tokenColor(page, 'field-2'));
+      await page.mouse.up();
+      await expect(main).toHaveCSS('box-shadow', 'none');
       await expect(tile(page, 'state-Pressed')).toHaveCSS('background-color', await tokenColor(page, 'field-2'));
+      const focus = tile(page, 'state-Focus').locator('.places-tile-main');
+      await expect(focus).toHaveCSS('box-shadow', await shadow(page, '0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 calc(var(--focus-ring-width) + var(--focus-halo-width)) var(--accent-soft)'));
       const selected = tile(page, 'state-selected');
-      expect(await selected.evaluate(el => getComputedStyle(el).boxShadow)).toContain('2px');
+      await expect(selected).toHaveCSS('box-shadow', await shadow(page, 'var(--sh-1), 0 0 0 var(--places-tile-ring-selected) var(--accent)'));
       await expect(selected.locator('.places-tile-main')).toHaveAttribute('aria-current', 'true');
       const drop = tile(page, 'state-drop');
       await expect(drop).toHaveCSS('background-color', await tokenColor(page, 'accent-soft'));
@@ -69,7 +98,8 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(label).toHaveCSS('font-size', '11px');
       await expect(label).toHaveCSS('color', await tokenColor(page, 'accent'));
       await expect(tile(page, 'state-drag')).toHaveCSS('opacity', '0.7');
-      await expect(tile(page, 'state-disabled')).toHaveCSS('opacity', '0.4');
+      await expect(tile(page, 'state-disabled')).toHaveCSS('opacity', '0.6');
+      await expect(tile(page, 'state-disabled').locator('.places-tile-main')).toHaveCSS('opacity', '1');
       await expect(tile(page, 'state-disabled').locator('.places-tile-main')).toBeDisabled();
       await expect(tile(page, 'state-failed').locator('.status-mark')).toHaveCSS('color', await tokenColor(page, 'danger'));
 
