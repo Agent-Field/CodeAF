@@ -173,6 +173,11 @@ func openChatV3At(launch atLaunch) error {
 		Session:   launch.session,
 		Model:     launch.model,
 		Level:     launch.level,
+		// A WINDOW IS A WINDOW OPEN ON THE FAR MACHINE, said on this boot
+		// connection alone, exactly as the ssh door says it
+		// (chatv3_host.go's [openChatV3Host]): the far machine's automations
+		// clock runs while it is attached. A headless `--once` is not a window.
+		Window: launch.once == "",
 	})
 	if err != nil {
 		return err
@@ -203,6 +208,9 @@ func openChatV3At(launch atLaunch) error {
 		if err != nil {
 			return nil, err
 		}
+		// NO [remote.Hello.Window] HERE, for [besideHello]'s reason: this is the
+		// same window on another tunnel, and the boot connection already holds
+		// the far machine's presence for it.
 		beside, err := remote.Dial(next, name, remote.Hello{
 			Workspace: ask.workspace,
 			Session:   ask.session,

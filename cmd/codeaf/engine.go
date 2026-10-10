@@ -1251,7 +1251,33 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			// over a connection would be a second law about one layout.
 			return session.RecentSessions(launch.Bucket, v3RecentSessionSlots)
 		},
+		// ── THE AUTOMATIONS, AS THIS MACHINE KEEPS AND RUNS THEM ────────────
+		//
+		// The store this conversation's `automation` tool proposes into, read
+		// and changed by a window over --host or --at, and the presence such a
+		// window holds HERE while it is attached — which is what keeps this
+		// machine's clock running for somebody sitting at another one
+		// ([engineAutomations]).
+		Automations: engineAutomations(),
 	}, nil
+}
+
+// engineAutomations is this machine's automations as the wire serves them to a
+// window on another machine: the store this process opened once, the zone its
+// conversations read a rhythm in, and the same door a local window holds its own
+// presence through, so an attached window and a window on this machine are one
+// kind of thing to the clock that counts them (chatv3_clock.go).
+//
+// NIL IS A STORE THAT COULD NOT BE OPENED, and it is never a hook whose doors
+// fail: the welcome then says nothing, a window over the connection draws no
+// automations, and the conversation never had the `automation` verb either — a
+// capability that cannot work is absent, not broken.
+func engineAutomations() *remote.EngineAutomations {
+	autos := v3Automations()
+	if autos == nil || autos.Store == nil {
+		return nil
+	}
+	return &remote.EngineAutomations{Store: autos.Store, Zone: autos.Zone, HoldWindow: keepAutomationsWindow}
 }
 
 // engineLaunchOptions is the hello, as the shared assembly takes it.

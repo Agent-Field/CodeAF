@@ -356,6 +356,13 @@ func launchHello(session, model, level string) remote.Hello {
 // already has. It carries the launch's model and level for the same reason the
 // launch's own does — a conversation opened an hour later is the same launch —
 // and it carries the ask's own intention (chatv3_beside.go's [engineAsk]).
+//
+// IT DOES NOT SAY [remote.Hello.Window], deliberately: this is the same window
+// on another connection, and the boot connection already holds the far
+// machine's presence for it. Saying it here would count one window once per
+// conversation it has open — a window with three tabs reading itself as three
+// windows, which is the very count that says whether anybody else is still
+// there when this one closes.
 func besideHello(ask engineAsk, model, level string) remote.Hello {
 	return remote.Hello{Session: ask.session, New: ask.mint, Model: model, Level: level}
 }
@@ -536,6 +543,13 @@ func openChatV3Host(launch hostLaunch) error {
 	}
 	hello := launchHello(launch.session, launch.model, launch.level)
 	hello.Headless = launch.once != ""
+	// AND A WINDOW IS A WINDOW OPEN ON THE FAR MACHINE, so that machine's
+	// automations clock runs while it is attached (internal/remote's
+	// [remote.Hello.Window]). It is said on THIS connection and on no other: the
+	// boot connection lives exactly as long as the window does, and every
+	// conversation opened beside it is the same window on another pipe
+	// ([besideHello] says nothing). A headless `--once` is a script, not a window.
+	hello.Window = launch.once == ""
 	link, err := dialEngine(dest, workspace, hello)
 	if err != nil {
 		return err
@@ -782,6 +796,16 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 		// ([hostTeams]); an engine without the doors hands no seam and the
 		// surface turns teams off rather than keeping them on this laptop.
 		Teams: hostTeamsSeam(far, welcome),
+		// THE AUTOMATIONS, AS THE ENGINE MACHINE KEEPS AND RUNS THEM. The
+		// conversation over there proposes into that machine's store and that
+		// machine's clock runs what it keeps — while this window is attached,
+		// because the boot hello says this connection is a window
+		// ([openChatV3Host]) — so the list, the run lines and the notifications
+		// are read over the wire ([hostAutomationsSeam]). An engine without the
+		// doors hands no seam and this window shows no automations, never this
+		// laptop's, which run somewhere else. The linked-local road puts its own
+		// machine's store back on top ([openChatV3Local]).
+		Automations: hostAutomationsSeam(client, welcome),
 		Standing: tui3.StandingSeam{
 			Items: stands.list,
 			Save:  stands.save,

@@ -362,7 +362,29 @@ import (
 // and the person is never told their word did nothing. NEVER TO SILENCE.
 // Version 20 adds the explicit human shell door and streamed shell output.
 // Older peers must refuse rather than treat a shell command as model input.
-const Version = 20
+//
+// VERSION 21 CARRIES THE AUTOMATIONS DOORS AND [Hello.Window]
+// (wire_automations.go). A window over --host or --at shows the FAR machine's
+// automations — its conversation proposes into that machine's store and that
+// machine's clock runs them — and the far clock runs only while a window is
+// open over there. So the delta is thirteen calls onto that machine's store,
+// one per function of the surface's automations seam, and one field on the
+// hello that makes the connection a window open on the far machine for as long
+// as it is attached.
+//
+// THE DOORS ALONE COULD HAVE RIDDEN VERSION 20 behind [Welcome.Automations],
+// the way the teams doors did: an engine without them says nothing at the door
+// and the window draws no automations. [Hello.Window] could not, because what it
+// carries is not a reading but whether the far clock runs at all. It is an
+// omitempty boolean — exactly the shape an older decoder drops without a word —
+// and a version-20 engine that already runs automations (the build just before
+// this one) would drop it and count no window for a person sitting in front of
+// a conversation there, while a version-20 surface would never say it. Either
+// way that machine's clock stops half a minute after its last local window
+// closes, with somebody watching, and a run in progress is recorded as codeaf
+// closing. So the number moves, and the door refuses the pair before either
+// half can be believed. NEVER TO SILENCE.
+const Version = 21
 
 // AND THE NEWS FRAMES RIDE THAT SAME NUMBER, for the reason the places methods
 // rode version 5's: neither half can be surprised by them. "phase" and "lane"
@@ -967,6 +989,29 @@ type Hello struct {
 	// who drives (driver.go) — and a watcher that tries to type anyway is refused
 	// with a sentence rather than dropped.
 	Watch bool `json:"watch,omitempty"`
+
+	// ── version 21 ──────────────────────────────────────────────────────────
+
+	// Window says this connection is A PERSON'S WINDOW OPEN ON THE ENGINE'S
+	// MACHINE, and the engine holds that machine's automations presence for it
+	// until the connection closes, however it closes (wire_automations.go).
+	//
+	// IT EXISTS BECAUSE THE FAR CLOCK COUNTS WINDOWS AND THIS ONE IS ELSEWHERE.
+	// Automations run only while a codeaf window is open on the machine they
+	// belong to, and every window on that machine says so with a lock file of
+	// its own (internal/automation's presence.go). A window over --host or --at
+	// is a process on another machine entirely: no file on the far disk could
+	// name it, so without this the far clock would stop half a minute after a
+	// person sat down in front of its automations.
+	//
+	// ONLY THE TWO DOORS TO ANOTHER MACHINE SAY IT, AND ONLY ON THE CONNECTION
+	// THAT LIVES AS LONG AS THE WINDOW. The local engine road is a window on this
+	// same machine that already holds its own presence, and saying it there
+	// would count one window twice; a conversation opened beside the first one
+	// is another connection of the SAME window, and the boot connection is never
+	// retired while the window is open (cmd/codeaf's chatv3_beside.go). A
+	// headless `--once` is a script and not a window, and says nothing.
+	Window bool `json:"window,omitempty"`
 }
 
 // StreamCursor is one "I have seen this stream through here".
@@ -1297,6 +1342,23 @@ type Welcome struct {
 	// false keeps the picker's own sentence for a conversation that cannot
 	// carry attached skills rather than a list whose every choice goes nowhere.
 	Skills bool `json:"skills,omitempty"`
+
+	// ── version 21 ──────────────────────────────────────────────────────────
+
+	// Automations says this engine ANSWERS THE AUTOMATIONS DOORS from its own
+	// machine's store (wire_automations.go), and AutomationsZone is the zone a
+	// rhythm typed in an attached window is read in: THIS machine's, because
+	// the clock that reads the rhythm is here. Empty is a machine that could not
+	// name its zone, which the store reads as the machine's own.
+	//
+	// IT IS CARRIED FOR [Welcome.Teams]' REASON: the window decides at the door
+	// whether it has automations over this connection, before anything is
+	// drawn. ABSENCE IS false, and false leaves the window's seam zero, which
+	// the surface reads as no automations over this connection — never as this
+	// laptop's own store, whose automations run on a different machine beside
+	// conversations this one cannot see.
+	Automations     bool   `json:"automations,omitempty"`
+	AutomationsZone string `json:"automationsZone,omitempty"`
 }
 
 // SkillShelfArgs asks for one reading of the conversation's skill shelf, on

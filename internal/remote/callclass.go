@@ -161,7 +161,12 @@ func classify(method string) callClass {
 		// The wall's two model asks are reads of the naming role, asked off the
 		// update loop and bounded by the wall; queued behind a turn they would
 		// wait out the wall's patience and answer nobody.
-		MethodTeamsName, MethodTeamsPropose:
+		MethodTeamsName, MethodTeamsPropose,
+		// The automations readings are the watcher's beat (wire_automations.go):
+		// a store read every two seconds that a turn in flight must never hold
+		// up, or a run's line would arrive when the reply did.
+		MethodAutomationsList, MethodAutomationsRuns, MethodAutomationsChanges,
+		MethodAutomationsCursor, MethodAutomationsActive, MethodAutomationsWindows:
 		return classGetter
 	case MethodQuestionResolve, MethodQuestionHold,
 		MethodConsent, MethodConsentRemember,
@@ -170,7 +175,15 @@ func classify(method string) callClass {
 		MethodMemoryRemember, MethodMemoryForgetQuery, MethodMemoryMemories,
 		MethodTake, MethodAnswerLaneOffer, MethodInterrupt, MethodUnqueueFollowUp,
 		MethodPlanNote, MethodPlanPause, MethodPlanResume, MethodPlanCancel, MethodPlanAmend, MethodPlanPriority,
-		MethodTyping:
+		MethodTyping,
+		// A person's change to an automation is a keystroke on a list, and it
+		// is about the machine's store rather than the conversation's order: a
+		// pause pressed while a reply streams owes that reply nothing. The claim
+		// is the one store write a window makes on its own behalf, and it is as
+		// small as a key.
+		MethodAutomationsCreate, MethodAutomationsUpdate, MethodAutomationsSetStatus,
+		MethodAutomationsDelete, MethodAutomationsRunNow, MethodAutomationsStopRun,
+		MethodAutomationsClaim:
 		return classAct
 	case MethodCompact:
 		return classWork

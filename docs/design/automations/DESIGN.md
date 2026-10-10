@@ -139,12 +139,15 @@ own under `~/.codeaf/v3/automations/windows/`. The kernel drops it when the
 process ends, however it ends, so "is a window open?" is "can I take any of
 these locks?" — no heartbeats, no stale entries. Two kinds of holder:
 
-- every **local window** registers in `runSurface` (`cmd/codeaf/chatv3_surface.go`),
-  the one door into `tui3.Run` — in-process, the ordinary road, and windows
-  attached to another machine alike;
+- every **local window** holds its own presence for as long as its surface runs —
+  the in-process door (`cmd/codeaf/chatv3.go`) and the ordinary road
+  (`chatv3_local.go`) alike;
 - a **window attached over `--host`/`--at`** is registered on the far machine
-  by the far host when the hello carries a window id (`Hello.Window`, set only
-  by those doors), and released when it detaches.
+  by the far engine when the hello says it is a window (`Hello.Window`, set
+  only by those doors, and only on the boot connection that lives as long as
+  the window), and released when that connection ends, however it ends. It
+  holds no presence on the machine it is sitting at: the automations it shows
+  are the far machine's.
 
 **The clock is its own process**, `codeaf clock` (hidden machinery, like
 `codeaf engine`). Not a window: a run must not die with whichever window
