@@ -754,6 +754,17 @@ const (
 	questionChecklistCap = 8
 )
 
+// QuestionProposal is the learning mark on a question a place has not yet
+// earned the right to answer alone. Place is the place's name, as a person
+// reads it. Agreed and Of are the "14 of 20" count: Of is the graduation
+// window, not how many answers have arrived, so fourteen agreements read
+// "14 of 20" before the window is full.
+type QuestionProposal struct {
+	Place  string `json:"place"`
+	Agreed int    `json:"agreed"`
+	Of     int    `json:"of"`
+}
+
 // Question is a decision handed to a person with its evidence attached.
 //
 // It is ONE object for every lane in this engine (see the file header), and
@@ -811,6 +822,12 @@ type Question struct {
 	Input InputShape `json:"input,omitzero"`
 	// Pick is the asker's own answer, or nil where it genuinely has none.
 	Pick *Pick `json:"pick,omitempty"`
+	// Proposal is a place still learning, offering that pick for the person to
+	// confirm. Nil means nobody is proposing: a place that decided already
+	// answered, and a question coming straight to the person has no count to
+	// show. Of is the graduation window (20) and Agreed is how many of the
+	// last answers chose the proposed key.
+	Proposal *QuestionProposal `json:"proposal,omitempty"`
 	// Stakes is what a wrong answer costs, and it is what decides whether a
 	// clock is allowed at all.
 	Stakes Stakes `json:"stakes"`
@@ -1771,6 +1788,13 @@ func (a *Agent) WatchQuestions() (<-chan Event, func()) {
 func (a *Agent) raiseQuestion(q Question, announce func()) (letGo func()) {
 	if q.Asked.IsZero() {
 		q.Asked = time.Now()
+	}
+	// A LANE THAT NEVER TOUCHES THE DESK STILL PASSES THE GATE. Connect, a
+	// landing and a fuel question are raised here and nowhere else. A question
+	// the gate already answered is not raised: raising it would put an open
+	// question on the screen after the place had taken it.
+	if a.decideBeforePresence(&q) {
+		return func() {}
 	}
 	letGo = a.rememberQuestion(q)
 	if announce != nil {
