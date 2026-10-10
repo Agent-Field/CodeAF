@@ -12,7 +12,9 @@
   color: var(--ink-2);
   font-size: var(--font-size-body);
 }
-.queued-row:hover { padding-inline-end: var(--space-1); background: var(--field); color: var(--ink); }
+.queued-row { transition: background var(--dur-fast); }
+.queued-row:hover { background: var(--field); }
+.queued-row:active { background: var(--field-2); transition-duration: var(--dur-press); }
 /* Edit and remove are the shared RowActions with row-size icon buttons; the row is their host. */
 .queued-mark, .queued-grip { display: grid; flex: none; place-items: center; width: var(--queue-mark-size); height: var(--queue-mark-size); color: var(--ink-3); }
 .queued-grip { display: none; position: absolute; left: var(--space-4); cursor: grab; }
@@ -28,7 +30,6 @@
   padding: 0 var(--space-1) 0 var(--space-row);
   border-radius: var(--queue-radius);
   background: var(--surface);
-  box-shadow: 0 0 0 var(--queue-focus-ring) var(--accent), 0 0 0 var(--queue-focus-halo) var(--accent-soft);
   font-size: var(--font-size-input);
 }
 .queued-edit .text-input { flex: 1; min-height: 0; padding: 0; font-size: inherit; caret-color: var(--accent); }
@@ -40,3 +41,15 @@
 .queued-more[aria-expanded="true"] .app-icon[data-motion="disclosure"] { transform: rotate(var(--motion-chevron-open)); }
 /* Announces a keyboard move to screen readers; never drawn. */
 .queued-announce { position: absolute; width: var(--border-width); height: var(--border-width); overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* The text is a real button so the inline editor is available without a pointer. */
+.button.queued-text-edit { display: block; min-height: var(--queue-row-height); padding: 0; text-align: start; font-size: inherit; font-weight: inherit; color: inherit; border-radius: var(--queue-radius); }
+.button.queued-text-edit:is(:hover, :active):not(:disabled) { background: transparent; color: inherit; }
+.queued-menu .menu-item[data-disabled] { opacity: var(--queue-menu-disabled); }
+@media (pointer: coarse) {
+  .queued-row .queued-grip { display: none; }
+  .queued-row .queued-mark { visibility: visible; }
+}
+
+/* Pointer edits stay quiet; keyboard edits use the shared two-pixel focus ring. */
+html:not([data-input="pointer"]) .queued-edit:has(.text-input:focus-visible) { box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 calc(var(--focus-ring-width) + var(--queue-focus-halo)) var(--accent-soft); }
