@@ -61,8 +61,8 @@ for (const theme of ['light', 'dark'] as const) {
       return { shadow: style.boxShadow, ring: style.getPropertyValue('--focus-ring-width').trim(), halo: style.getPropertyValue('--focus-halo-width').trim() };
     });
     expect(ring.ring).toBe('2px');
-    // The shared halo token is the outer spread: 2px accent plus 4px of accent-soft.
-    expect(ring.halo).toBe('6px');
+    // The shared halo token is the total outer spread: the 2px ring sits inside it.
+    expect(ring.halo).toBe('4px');
     expect(ring.shadow).toContain(ring.ring);
     expect(ring.shadow).toContain(ring.halo);
 
