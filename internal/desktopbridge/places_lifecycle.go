@@ -2,6 +2,7 @@ package desktopbridge
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/placegraph"
 )
@@ -51,10 +52,10 @@ func (p *Places) undoReceipt(w http.ResponseWriter, r *http.Request, token strin
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if !p.staleRevision(w, ask.IfRevision) {
+	if !strings.HasPrefix(token, "remember_") && !p.staleRevision(w, ask.IfRevision) {
 		return
 	}
-	revision, err := p.Store.Undo(token)
+	revision, err := p.undoPlaceMutation(token)
 	if err != nil {
 		p.failStore(w, err, "", nil)
 		return
@@ -176,14 +177,20 @@ func (p *Places) undo(w http.ResponseWriter, r *http.Request) {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if !p.staleRevision(w, ask.IfRevision) {
+	// A remembered line checks its own content under the store lock; a global
+	// revision guard would reject the save itself before the window refreshes.
+	targeted := true
+	for _, token := range ask.Receipts {
+		targeted = targeted && strings.HasPrefix(token, "remember_")
+	}
+	if !targeted && !p.staleRevision(w, ask.IfRevision) {
 		return
 	}
 	undone := 0
 	var rev uint64
 	for i := len(ask.Receipts) - 1; i >= 0; i-- {
 		var err error
-		if rev, err = p.Store.Undo(ask.Receipts[i]); err != nil {
+		if rev, err = p.undoPlaceMutation(ask.Receipts[i]); err != nil {
 			status, code, sentence := storeFailure(err, "")
 			writeStatus(w, status, placesError{Error: sentence, Code: code, Undone: &undone})
 			if undone > 0 {
@@ -195,4 +202,13 @@ func (p *Places) undo(w http.ResponseWriter, r *http.Request) {
 	}
 	write(w, map[string]any{"revision": rev, "undone": undone})
 	p.publishPlaces(nil)
+}
+
+// A chat's engine owns its save, so its targeted inverse crosses the process
+// boundary instead of relying on this bridge's in-memory receipt stack.
+func (p *Places) undoPlaceMutation(token string) (uint64, error) {
+	if strings.HasPrefix(token, "remember_") {
+		return p.Store.UndoRemember(token)
+	}
+	return p.Store.Undo(token)
 }
