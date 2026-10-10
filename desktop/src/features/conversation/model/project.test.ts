@@ -233,6 +233,18 @@ test('time spent waiting on a question is not worked time', () => {
   assert.equal(work.steps[1].tookMs, undefined);
 });
 
+test('a saved knowledge line filed as a places aside stays a remember receipt', () => {
+  const token = `remember_ln_saved_${'b'.repeat(64)}`;
+  const text = 'Saved to Marketing: Keep the launch review in this place.';
+  const turn = first([user('Remember the launch review'), entry({ Role: 'aside', AsideKind: 'places', Text: text, UndoReceipts: [token] }), final('Saved.')]);
+  const note = turn.blocks.find(block => block.kind === 'remember-line');
+  assert.equal(note?.kind, 'remember-line');
+  if (note?.kind === 'remember-line') {
+    assert.equal(note.text, text);
+    assert.deepEqual(note.undoReceipts, [token]);
+  }
+});
+
 test('context changes stay chronological outside collapsed work and carry exact Undo authority',()=>{
  const turn=first([user('go'),tool('read','c1',{path:'a.go'}),entry({Role:'aside',AsideKind:'places',Text:'Now also using Release',UndoReceipts:['rc_exact']}),final('Done.')]);
  assert.deepEqual(kinds(turn.blocks),['work','placeChange','answer']);
