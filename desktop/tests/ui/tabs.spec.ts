@@ -46,6 +46,11 @@ test('pinning, groups and keyboard context menus retain visible selection', asyn
  await page.getByRole('tab', { name: 'Grouped work', exact: true }).click({ button: 'right' });
  await page.getByRole('menuitem', { name: 'Add to group', exact: true }).hover();
  await page.getByRole('menuitem', { name: /^New group…/ }).click();
+ // The new group's label opens in rename at once (Shell 2h); Enter keeps the default name.
+ const groupRename = page.getByRole('dialog', { name: 'Rename group', exact: true });
+ await expect(groupRename).toBeVisible();
+ await page.keyboard.press('Enter');
+ await expect(groupRename).not.toBeVisible();
  const group = page.getByRole('button', { name: /New group/ });
  await group.click(); await expect(group).toHaveAttribute('aria-expanded', 'false');
  await expect(page.getByRole('tab', { name: 'Grouped work', exact: true })).toBeVisible();
@@ -272,6 +277,13 @@ test('groups have distinct names and support overview moves, rename and reload',
   // The overview card's menu is the strip's tab menu (TA-OV-06): "Add to group", then the groups or "New group…".
   await page.getByRole('menuitem', { name: 'Add to group', exact: true }).hover();
   await (choice === 'Create group' ? page.getByRole('menuitem', { name: 'New group…' }) : page.getByRole('menuitemcheckbox', { name: choice, exact: true })).click();
+  // Creating a group opens rename on its label (Shell 2h). Enter keeps the offered name and returns to the overview.
+  if (choice === 'Create group') {
+   const groupRename = page.getByRole('dialog', { name: 'Rename group', exact: true });
+   await expect(groupRename).toBeVisible();
+   await page.keyboard.press('Enter');
+   await expect(groupRename).not.toBeVisible();
+  }
  }
  await organize('One', 'Create group');
  await organize('Two', 'Create group');
@@ -304,6 +316,11 @@ test('dragging onto a collapsed group label groups the tab and preserves its dra
  await page.getByRole('tab', { name: 'Grouped', exact: true }).click({ button: 'right' });
  await page.getByRole('menuitem', { name: 'Add to group', exact: true }).hover();
  await page.getByRole('menuitem', { name: /^New group…/ }).click();
+ // The new group's label opens in rename at once (Shell 2h); Enter keeps the default name.
+ const groupRename = page.getByRole('dialog', { name: 'Rename group', exact: true });
+ await expect(groupRename).toBeVisible();
+ await page.keyboard.press('Enter');
+ await expect(groupRename).not.toBeVisible();
  await newConversation(page);
  // The new tab opens last, after the group (design 2b), so it is the second tab.
  await rename(page, 1, 'Incoming');
