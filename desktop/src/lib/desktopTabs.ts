@@ -1,10 +1,8 @@
 import { isTauri } from '@tauri-apps/api/core';
 import { runShortcut } from '../design/keyboard';
-import { deliverDesktopAction, shellShortcutOf } from './desktopMenuRoute';
-export { isDesktopTabAction, type DesktopTabAction } from './desktopMenuRoute';
+import { deliverDesktopAction, desktopTabEvent, shellShortcutOf } from './desktopMenuRoute';
+export { desktopTabEvent, isDesktopTabAction, type DesktopTabAction } from './desktopMenuRoute';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-
-export const desktopTabEvent = 'codeaf:desktop-tab-action';
 const toWorkspace = (action: string) => window.dispatchEvent(new CustomEvent(desktopTabEvent, { detail: action }));
 /** Native menu accelerators select UI views; they never call the session engine. */
 export function connectDesktopTabs() {
