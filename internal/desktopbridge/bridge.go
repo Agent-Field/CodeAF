@@ -585,6 +585,10 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		write(w, map[string]any{"status": "ready", "model": Model})
 		return
 	}
+	if path == "/roots" {
+		b.roots(w, r)
+		return
+	}
 	if b.modelRoutes(w, r, path) {
 		return
 	}
