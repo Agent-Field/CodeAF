@@ -301,7 +301,7 @@ func (s *Store) acquire() (func(), error) {
 func (s *Store) loadLocked() (*State, error) {
 	data, err := readCapped(s.opts.Path)
 	if errors.Is(err, os.ErrNotExist) {
-		return &State{Version: SchemaVersion, Places: []Place{}, Memberships: []Membership{}, Pinned: []string{}}, nil
+		return &State{Version: SchemaVersion, KnowsMigrated: true, Places: []Place{}, Memberships: []Membership{}, Pinned: []string{}}, nil
 	}
 	if err != nil && !errors.Is(err, errOversize) {
 		return nil, err
@@ -333,6 +333,15 @@ func (s *Store) loadLocked() (*State, error) {
 		return s.quarantineLocked(reason)
 	}
 	if len(repairs) == 0 {
+		migrated, err := s.migrateKnowledge(&st)
+		if err != nil {
+			return nil, err
+		}
+		if migrated {
+			if err := s.writeLocked(&st); err != nil {
+				return nil, err
+			}
+		}
 		return &st, nil
 	}
 	// Repaired: keep a copy of the original beside it and write the clean one.
@@ -342,6 +351,9 @@ func (s *Store) loadLocked() (*State, error) {
 		return nil, err
 	}
 	st.Revision++
+	if _, err := s.migrateKnowledge(&st); err != nil {
+		return nil, err
+	}
 	if err := s.writeLocked(&st); err != nil {
 		return nil, err
 	}
@@ -358,7 +370,7 @@ func (s *Store) quarantineLocked(reason string) (*State, error) {
 	if err := os.Rename(s.opts.Path, to); err != nil {
 		return nil, fmt.Errorf("placegraph: cannot set aside damaged file (%s): %w", reason, err)
 	}
-	st := &State{Version: SchemaVersion, Revision: 1, Places: []Place{}, Memberships: []Membership{}, Pinned: []string{}}
+	st := &State{Version: SchemaVersion, KnowsMigrated: true, Revision: 1, Places: []Place{}, Memberships: []Membership{}, Pinned: []string{}}
 	if err := s.writeLocked(st); err != nil {
 		return nil, err
 	}
