@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent, type PointerEvent, type ReactElement, type ReactNode } from 'react';
 import * as Context from '@radix-ui/react-context-menu';
 import * as Dropdown from '@radix-ui/react-dropdown-menu';
+import { synthesizeContextMenu } from './contextMenuEvent';
 import { Icon, type IconName } from './Icon';
 import { KeyboardShortcut } from './KeyboardShortcut';
 import design from '../../design/tokens.json';
@@ -122,17 +123,10 @@ export function ContextMenu({ children, items, label, onOpenChange, wide = false
  const layer = useMenuLayer<HTMLSpanElement>(onOpenChange);
  return <Context.Root onOpenChange={layer.onOpenChange}>
   <Context.Trigger ref={layer.ref} asChild onKeyDown={event => {
-   // macOS WebKit does not synthesize this browser event for Shift+F10.
+   // macOS WebKit does not synthesize this browser event for Shift+F10. The same helper opens the menu for a coarse long-press.
    if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
    event.preventDefault();
-   const bounds = event.currentTarget.getBoundingClientRect();
-   event.currentTarget.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: bounds.left + bounds.width / 2, clientY: bounds.bottom }));
-   // A synthetic contextmenu opens the menu without moving focus, so the first item would not take the next key.
-   requestAnimationFrame(() => {
-    // Radix may already have focused an item; a late frame must not undo keyboard navigation into a submenu.
-    if (document.activeElement?.closest('.app-menu')) return;
-    document.querySelector<HTMLElement>('.app-menu-context[data-state="open"] [role^="menuitem"]:not([data-disabled])')?.focus();
-   });
+   synthesizeContextMenu(event.currentTarget);
   }}>{children}</Context.Trigger>
   <Context.Portal container={layer.modal}><Context.Content onFocusCapture={focusFirstItem} aria-label={label} className={`app-menu app-menu-context${wide ? ' app-menu-wide' : ''} ${className}`} collisionPadding={design.overlay.collisionPadding}>
    <MenuItems items={items} type="context" container={layer.modal}/>
