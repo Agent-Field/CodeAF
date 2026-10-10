@@ -2,11 +2,10 @@ import { savedWorkspace } from './support/synced-workspace';
 import { test, expect, type Page } from '@playwright/test';
 import { expectAccessible, tokenColor } from './contracts';
 import { installMockEngine } from './support/mock-engine';
-import { pendingQuestion } from './support/scenarios';
 import type { AttentionItem, WorldRow } from '../../src/features/chat/world-client';
 
 // The menus lane on top of the current shell: the shared toast with its structural Undo, a close-and-stop that fails, and the
-// Inbox fed by the engine-wide world feed (stale rows, failures marked seen). The mock engine holds one session; a tab with
+// absence of the retired Inbox summons. The mock engine holds one session; a tab with
 // that sessionFile is running, a tab without one is idle. Nothing here calls a model.
 const SESSION = 'mock-session-1.jsonl';
 const running = { initial: { running: true, title: '', entries: [{ Role: 'user', Text: 'Trailing commas across the config stack' }] } };
@@ -22,7 +21,7 @@ const recent = () => new Date(Date.now() - 60_000).toISOString();
 const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 
 test.describe('closing that fails to stop (3l)', () => {
-  test('Close and stop that cannot stop leaves the work visible in the Inbox, with Try again and a structural Undo', async ({ page }) => {
+  test('Close and stop that cannot stop keeps the work running, with Try again and a structural Undo', async ({ page }) => {
     const engine = await installMockEngine(page, { ...running, fail: { stop: 500 } });
     await seed(page, [{ id: 'a', title: 'Intro' }, { id: 'b', title: 'Config stack', running: true }], 'b');
     await page.goto('/');
@@ -33,9 +32,8 @@ test.describe('closing that fails to stop (3l)', () => {
     await expect(toast).toContainText('Could not stop Config stack. It is still running.');
     expect(await toast.getByRole('button').allTextContents()).toEqual(['Try again', 'Undo']);
     await expect(toast.locator('.toast-dot')).toHaveCSS('background-color', await tokenColor(page, 'danger'));
-    // The tab is gone but the work is not: it is on the Inbox's running list.
-    await page.getByRole('tab', { name: 'Inbox', exact: true }).click();
-    await expect(page.getByRole('region', { name: 'Inbox' }).getByRole('button', { name: /Config stack/ })).toBeVisible();
+    // The tab is gone but the work is not: Home's Live section carries it, and no Inbox tab opens.
+    await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
     // Undo is reached by keyboard and reopens the tab where it was.
     await toast.getByRole('button', { name: 'Undo' }).focus();
     await page.keyboard.press('Enter');
@@ -58,89 +56,17 @@ test.describe('closing that fails to stop (3l)', () => {
   });
 });
 
-test.describe('the Inbox from the engine world feed', () => {
-  const world = (over: Partial<{ rows: WorldRow[]; items: AttentionItem[] }> = {}) => ({
+test('failures, questions and background work on the world feed summon no Inbox tab and no tab dot', async ({ page }) => {
+  await installMockEngine(page, {
     ...running, initial: { running: false, entries: [] },
-    world: {
-      rows: [row('w1', { title: 'Nightly build', running: true }), row('w2', { title: 'Release notes', needsYou: true }), row('w3', { title: 'Lexer rewrite', failed: 2, at: recent() })],
-      items: [ask('w2', 'Which branch should the notes cover?')], ...over,
-    },
+    world: { rows: [row('w1', { title: 'Nightly build', running: true }), row('w2', { title: 'Release notes', needsYou: true }), row('w3', { title: 'Lexer rewrite', failed: 2, at: recent() })], items: [ask('w2', 'Which branch should the notes cover?')] },
   });
-
-  test('work, questions and failures with no tab here come from the feed; rows with nowhere to go are text, not dead buttons', async ({ page }) => {
-    await installMockEngine(page, world());
-    await seed(page, [{ id: 'a', title: 'Intro' }], 'a');
-    await page.goto('/');
-    const inbox = page.getByRole('tab', { name: 'Inbox', exact: true });
-    await expect(inbox).toBeVisible({ timeout: 8000 });
-    await expect(page.locator('.tab-badge')).toHaveCount(1);
-    await inbox.click();
-    const card = page.getByRole('region', { name: 'Inbox' });
-    await expect(card.getByRole('heading', { name: 'Running in the background' })).toBeVisible();
-    await expect(card.getByRole('heading', { name: 'Needs you' })).toBeVisible();
-    await expect(card.getByRole('heading', { name: 'Failed' })).toBeVisible();
-    await expect(card).toContainText('Nightly build');
-    await expect(card).toContainText('Release notes');
-    await expect(card).toContainText('2 tasks');
-    // The shell has not supplied an opener for chats with no tab, so none of these rows is a button; only "Seen" is.
-    await expect(card.getByRole('button', { name: /^(Nightly build|Release notes|Lexer rewrite)/ })).toHaveCount(0);
-    expect(await card.getByRole('button').allTextContents()).toEqual(['Seen']);
-    await expectAccessible(page);
-  });
-
-  test('marking a failure seen removes it, keeps it gone after a reload, and a new failure brings it back', async ({ page }) => {
-    const engine = await installMockEngine(page, world());
-    await seed(page, [{ id: 'a', title: 'Intro' }], 'a');
-    await page.goto('/');
-    await page.getByRole('tab', { name: 'Inbox', exact: true }).click();
-    const card = page.getByRole('region', { name: 'Inbox' });
-    await card.getByRole('button', { name: 'Mark failure in Lexer rewrite as seen' }).click();
-    await expect(card.getByRole('heading', { name: 'Failed' })).toHaveCount(0);
-    await page.reload();
-    await page.getByRole('tab', { name: 'Inbox', exact: true }).click();
-    await expect(page.getByRole('region', { name: 'Inbox' })).toContainText('Nightly build');
-    await expect(page.getByRole('region', { name: 'Inbox' }).getByRole('heading', { name: 'Failed' })).toHaveCount(0);
-    engine.setWorld({ rows: [row('w1', { title: 'Nightly build', running: true }), row('w3', { title: 'Lexer rewrite', failed: 3, at: recent() })] });
-    await expect(page.getByRole('region', { name: 'Inbox' }).getByRole('heading', { name: 'Failed' })).toBeVisible({ timeout: 8000 });
-    await expect(page.getByRole('region', { name: 'Inbox' })).toContainText('3 tasks');
-  });
-
-  test('the list follows the stream: finished work and answered questions leave, and an empty Inbox says what arrives', async ({ page }) => {
-    const engine = await installMockEngine(page, world());
-    await seed(page, [{ id: 'a', title: 'Intro' }], 'a');
-    await page.goto('/');
-    await page.getByRole('tab', { name: 'Inbox', exact: true }).click();
-    const card = page.getByRole('region', { name: 'Inbox' });
-    await expect(card).toContainText('Nightly build');
-    engine.setWorld({ rows: [row('w1', { title: 'Nightly build' }), row('w2', { title: 'Release notes' })], items: [] });
-    await expect(card).not.toContainText('Nightly build', { timeout: 8000 });
-    await expect(card).not.toContainText('Release notes');
-    await expect(page.locator('.tab-badge')).toHaveCount(0);
-    await expect(card).toContainText('lands here');
-  });
-
-  for (const scheme of ['light', 'dark'] as const) for (const width of [320, 600]) {
-    test(`the Inbox with every section fits and passes accessibility: ${scheme} ${width}px`, async ({ page }) => {
-      await page.emulateMedia({ colorScheme: scheme });
-      await page.setViewportSize({ width, height: 720 });
-      await installMockEngine(page, world());
-      await seed(page, [{ id: 'a', title: 'Intro' }], 'a');
-      await page.goto('/');
-      const inbox = page.getByRole('tab', { name: 'Inbox', exact: true });
-      await expect(inbox).toBeVisible({ timeout: 8000 });
-      await inbox.click();
-      const card = page.getByRole('region', { name: 'Inbox' });
-      await expect(card.getByRole('heading', { name: 'Failed' })).toBeVisible();
-      // Keyboard: the only control is reachable and activates.
-      const seen = card.getByRole('button', { name: /as seen$/ });
-      await seen.focus();
-      await expect(seen).toBeFocused();
-      expect(await noOverflow(page)).toBe(true);
-      await expectAccessible(page);
-      await page.keyboard.press('Enter');
-      await expect(card.getByRole('heading', { name: 'Failed' })).toHaveCount(0);
-    });
-  }
+  await seed(page, [{ id: 'a', title: 'Intro' }], 'a');
+  await page.goto('/');
+  await expect(page.getByRole('tab', { name: 'Intro', exact: true })).toBeVisible();
+  await page.waitForTimeout(1500);
+  await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
+  await expect(page.locator('.tab-badge')).toHaveCount(0);
 });
 
 test.describe('the tab menu offers only what can work', () => {
@@ -221,59 +147,5 @@ test.describe('bulk closes have one structural Undo', () => {
       await expect(page.locator('.toast').filter({ hasText: /^Closed / })).toBeVisible();
       expect(await noOverflow(page)).toBe(true);
       await expectAccessible(page);
-  });
-});
-
-test.describe('failed tasks and the Inbox', () => {
-  const failing = (over: Partial<WorldRow> = {}) => ({ ...running, initial: { running: false, entries: [] }, world: { rows: [row('w3', { title: 'Lexer rewrite', failed: 2, at: recent(), ...over })], items: [] as AttentionItem[] } });
-
-  test('a failed task alone summons the Inbox with a red dot named for it, and Seen clears the dot', async ({ page }) => {
-    await installMockEngine(page, failing());
-    await seed(page, [{ id: 'a', title: 'Intro' }], 'a');
-    await page.goto('/');
-    const inbox = page.getByRole('tab', { name: 'Inbox', exact: true });
-    await expect(inbox).toBeVisible({ timeout: 8000 });
-    await expect(inbox).toHaveAccessibleDescription('A task failed');
-    await expect(page.locator('.tab-badge')).toHaveAttribute('data-kind', 'failed');
-    await expect(page.locator('.tab-badge')).toHaveCSS('background-color', await tokenColor(page, 'danger'));
-    await inbox.click();
-    await page.getByRole('region', { name: 'Inbox' }).getByRole('button', { name: 'Mark failure in Lexer rewrite as seen' }).click();
-    await expect(page.locator('.tab-badge')).toHaveCount(0);
-  });
-
-  test('a question outranks a failure on the dot', async ({ page }) => {
-    await installMockEngine(page, { ...failing(), world: { rows: [row('w3', { title: 'Lexer rewrite', failed: 1, at: recent() }), row('w2', { title: 'Release notes', needsYou: true })], items: [ask('w2', 'Which branch?')] } });
-    await seed(page, [{ id: 'a', title: 'Intro' }], 'a');
-    await page.goto('/');
-    await expect(page.locator('.tab-badge')).toHaveAttribute('data-kind', 'needsYou', { timeout: 8000 });
-    await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveAccessibleDescription('Needs you');
-  });
-});
-
-test.describe('open-inbox lands on the oldest question', () => {
-  const asked = (session: string, text: string, ago: number): AttentionItem => ({ ...ask(session, text), asked: new Date(Date.now() - ago).toISOString() });
-  const openFromShell = (page: Page) => page.evaluate(() => window.dispatchEvent(new CustomEvent('codeaf:shell-open', { detail: 'inbox' })));
-
-  test('the shell request lists and orders the question that has waited longest first', async ({ page }) => {
-    await installMockEngine(page, { ...running, initial: { running: false, entries: [] }, world: { rows: [row('n', { title: 'Newer', needsYou: true }), row('o', { title: 'Older', needsYou: true })], items: [asked('n', 'Newer?', 60_000), asked('o', 'Older?', 3_600_000)] } });
-    await seed(page, [{ id: 'a', title: 'Intro' }], 'a');
-    await page.goto('/');
-    await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toBeVisible({ timeout: 8000 });
-    await openFromShell(page);
-    const card = page.getByRole('region', { name: 'Inbox' });
-    await expect(card).toBeVisible();
-    const rows = card.locator('[data-section="needsYou"] li');
-    await expect(rows.first()).toContainText('Older');
-    await expect(rows.nth(1)).toContainText('Newer');
-  });
-
-  test('with a tab-backed question the row is a button and receives focus', async ({ page }) => {
-    const asking = pendingQuestion();
-    await installMockEngine(page, { ...asking, initial: { ...asking.initial, running: true } });
-    await seed(page, [{ id: 'a', title: 'Intro' }, { id: 'b', title: 'Release v2.4', running: true }], 'a');
-    await page.goto('/');
-    await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toBeVisible({ timeout: 8000 });
-    await openFromShell(page);
-    await expect(page.getByRole('region', { name: 'Inbox' }).getByRole('button', { name: /Release v2.4/ })).toBeFocused();
   });
 });
