@@ -308,15 +308,17 @@ answered, so nothing is saved from it.
 
 ## Where did that exchange go — the folder, at every stage
 
-There is one folder and it moves at most once. Nothing here copies a transcript and nothing
-here deletes one.
+There is one folder and it moves at most once. Nothing here copies a transcript.
 
 | What happened | Where the folder is |
 | --- | --- |
 | you asked | `~/.codeaf/v3/errands/<id>/transcript.jsonl` |
-| an automation was saved from it | the same folder: it does not move, because the automation names it as where it was asked |
+| an automation was saved from it | the same folder: it does not move, and it is never cleared away, because the automation names it as where it was asked |
 | you continued it as a conversation | the project's own folder, with a `meta.json` |
-| it came to nothing | it stays where it was made |
+| it came to nothing | it stays where it was made for a week; once nothing in it has changed for seven days, the sweep a launch runs removes it |
+
+The sweep never touches one that is open in a window, one an automation was saved from,
+or anything you continued as a conversation.
 
 So "why did I get this?" is a door: `→` then `o` — `open where it was asked` — on the
 automation's row in `/automations` opens this exchange's transcript.
