@@ -7,10 +7,11 @@ button, select { -webkit-user-select: none; user-select: none; }
 button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 /* ONE keyboard focus treatment (conversation 1f): a 2px accent ring plus a 4px soft halo, drawn for keyboard input only.
    data-input="pointer" (design/inputModality.ts) is set by a mouse press and cleared by the next key, so a click in a
-   text field draws nothing. The transparent outline keeps the ring visible in forced-colors mode. */
+   text field draws nothing. The halo extends beyond the ring, so its shadow spread includes both widths.
+   The transparent outline keeps the ring visible in forced-colors mode. */
 :focus-visible { outline: var(--focus-ring-width) solid transparent; }
 :where(html[data-input="pointer"]) :focus-visible { outline: none; }
-:where(html:not([data-input="pointer"])) :focus-visible { box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
+:where(html:not([data-input="pointer"])) :focus-visible { box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 calc(var(--focus-ring-width) + var(--focus-halo-width)) var(--accent-soft); }
 .app-icon { display: inline-flex; align-items: center; justify-content: center; width: var(--icon-md); height: var(--icon-md); flex: 0 0 auto; color: inherit; }
 .app-icon-tiny { width: var(--icon-tiny); height: var(--icon-tiny); }
 .app-icon-micro { width: var(--icon-micro); height: var(--icon-micro); }.app-icon-xs { width: var(--icon-xs); height: var(--icon-xs); }.app-icon-sm { width: var(--icon-sm); height: var(--icon-sm); }.app-icon-lg { width: var(--icon-lg); height: var(--icon-lg); }
