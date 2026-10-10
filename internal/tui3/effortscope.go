@@ -64,7 +64,6 @@ package tui3
 import (
 	"time"
 
-
 	"github.com/Agent-Field/codeaf/internal/effort"
 )
 

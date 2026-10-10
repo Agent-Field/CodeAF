@@ -98,10 +98,10 @@ const drawnMost = 4096
 
 // automationsReadMsg is one reading.
 type automationsReadMsg struct {
-	first   bool
-	cursor  int64
-	runs    []automation.Run
-	away    []automation.Run
+	first  bool
+	cursor int64
+	runs   []automation.Run
+	away   []automation.Run
 	// awayFor is the conversation away was gathered for, and empty when this
 	// reading gathered nothing.
 	awayFor string
