@@ -80,13 +80,6 @@ export function useDragState(): DragState {
   return { payload, set };
 }
 
-export function HomeRecap({ label, text }: { label: string; text: string }) {
-  return <section className="home-section home-recap" aria-label={label}>
-    <SectionLabel>{label}</SectionLabel>
-    <p className="home-recap-text">{text}</p>
-  </section>;
-}
-
 /** The place feed includes detached work, so closing its tab never removes a Live row. */
 export function HomeAttentionSection({ items, actions, readOnly }: { items: readonly HomeAttention[]; actions: PlaceActions; readOnly?: boolean }) {
   const runner = useRunner();
