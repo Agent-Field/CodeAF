@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Button, Icon, SectionLabel, Text } from '../../components/ui';
 import { LiveRows } from './live/LiveRows';
-import { ChatList, ChatRow } from './components/ChatRow';
 import { PlaceTile, PlaceTileGrid } from './components/PlaceTile';
 import type { TintName } from './components/PlaceSwatch';
-import { childMeta, nameProblem, shortTime, type HomeAttention, type HomeChat, type HomeChild, type HomeConnection } from './home-model';
-import { canDropOn, chatMenu, dropMode, placeMenu, readDrag, writeDrag, type DropPayload, type PlaceActions } from './place-actions';
+import { childMeta, nameProblem, type HomeAttention, type HomeChild, type HomeConnection } from './home-model';
+import { canDropOn, dropMode, placeMenu, readDrag, writeDrag, type DropPayload, type PlaceActions } from './place-actions';
 import { type PlaceDeleteState } from './DeletePlaceConfirm';
 import { createDecisionsClient } from '../decisions/client';
 import type { DecideStatus } from '../decisions/StatusLine';
@@ -80,13 +79,6 @@ export function useDragState(): DragState {
   return { payload, set };
 }
 
-export function HomeRecap({ label, text }: { label: string; text: string }) {
-  return <section className="home-section home-recap" aria-label={label}>
-    <SectionLabel>{label}</SectionLabel>
-    <p className="home-recap-text">{text}</p>
-  </section>;
-}
-
 /** The place feed includes detached work, so closing its tab never removes a Live row. */
 export function HomeAttentionSection({ items, actions, readOnly }: { items: readonly HomeAttention[]; actions: PlaceActions; readOnly?: boolean }) {
   const runner = useRunner();
@@ -97,31 +89,7 @@ export function HomeAttentionSection({ items, actions, readOnly }: { items: read
   </>;
 }
 
-function moveFocus(event: KeyboardEvent<HTMLButtonElement>) {
-  const step = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
-  if (!step) return;
-  const rows = [...event.currentTarget.closest('ul')!.querySelectorAll<HTMLButtonElement>('.places-row-main:not(:disabled)')];
-  const next = rows[rows.indexOf(event.currentTarget) + step];
-  if (next) { event.preventDefault(); next.focus(); }
-}
-
-export function HomeChatsSection({ label, chats, truncated, actions, readOnly, inPlaceId, drag, now }: {
-  label: string; chats: readonly HomeChat[]; truncated?: boolean; actions: PlaceActions; readOnly?: boolean; inPlaceId?: string; drag: DragState; now: Date;
-}) {
-  if (!chats.length) return null;
-  const draggable = !readOnly && !!actions.file;
-  return <section className="home-section home-chats" aria-label={label}>
-    <SectionLabel>{label}</SectionLabel>
-    <ChatList label={label}>
-      {chats.map(chat => <ChatRow key={chat.id} id={chat.id} title={chat.title || 'Untitled chat'} excerpt={chat.excerpt} status={chat.status} model={chat.model}
-        timeLabel={shortTime(chat.at, now)} timeIso={chat.at} disabled={!actions.openChat} onKeyDown={moveFocus}
-        onOpen={() => void actions.openChat?.(chat.id)} onOpenInNewTab={actions.openChatInNewTab && (() => void actions.openChatInNewTab?.(chat.id))}
-        menu={chatMenu(chat.id, actions, { readOnly, inPlaceId })} draggable={draggable} dragging={drag.payload?.kind === 'chat' && drag.payload.ids.includes(chat.id)}
-        onDragStart={event => { const payload: DropPayload = { kind: 'chat', ids: [chat.id] }; writeDrag(event, payload); drag.set(payload); }} onDragEnd={() => drag.set(undefined)}/>)}
-    </ChatList>
-    {truncated && <p className="home-quiet">Showing the most recent chats.</p>}
-  </section>;
-}
+export { PlaceChats as HomeChatsSection } from './home/PlaceChats';
 
 /** The tile grid for a place's children, or a root's top-level places, or a search's results. It owns the inline create/rename tile and every drop. */
 export function HomePlacesSection({ label, places, parentId, parentName, parentTint, actions, readOnly, siblings, runner, drag, onDelete, allowNew = true, showLabel = true, newLabel, extraTiles, restore }: {

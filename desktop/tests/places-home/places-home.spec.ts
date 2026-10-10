@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { INK3_TEXT, expectAccessible } from '../ui/contracts';
 
-INK3_TEXT.push('.status-line', '.knows-source', '.home-specimen-composer', '.home-specimen-log', '.places-crumb', '.type-section-label', '.home-live-aside', '.home-live-detail', '.decided-sub', '.decided-age');
+INK3_TEXT.push('.status-line', '.knows-source', '.home-specimen-composer', '.home-specimen-log', '.places-crumb', '.type-section-label', '.home-live-aside', '.home-live-detail', '.decided-sub', '.decided-age', '.home-source-note');
 
 const now = '2026-09-26T12:00:00Z';
 const knowledge = () => ({ revision: 1, stillTrue: [], lines: [{ id: 'k1', placeId: 'pl_codeaf', text: 'Use plain language', source: { kind: 'you-wrote' }, createdAt: now }] });
@@ -45,9 +45,15 @@ for (const theme of ['light', 'dark']) {
     await expect(page.locator('.home-column')).toHaveCSS('row-gap', '24px');
     await expect(page.locator('.home-heading-stack')).toHaveCSS('row-gap', '10px');
     await expect(page.locator('.status-line')).toHaveCSS('font-size', '12px');
-    const selectors = ['.places-crumbs', '.places-heading-row', '.status-line', '.home-recap', '.home-live', '.decided', '.knows-heading', '.knows-add', '.home-composer'];
+    const selectors = ['.places-crumbs', '.places-heading-row', '.status-line', '.home-recap', '.home-live', '.decided', '.knows-heading', '.knows-add'];
     const positions = await Promise.all(selectors.map(selector => page.locator(selector).evaluate(el => el.getBoundingClientRect().top)));
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    // The composer stays below the scroller while longer merged sections continue underneath its mask.
+    const dock = await page.locator('.home-page').evaluate(el => ({
+      scrollBottom: el.querySelector('.home-scroll')!.getBoundingClientRect().bottom,
+      composerTop: el.querySelector('.home-composer')!.getBoundingClientRect().top,
+    }));
+    expect(dock.composerTop).toBeCloseTo(dock.scrollBottom);
     await expect(page.locator('.home-suggestion')).toHaveCount(0);
     await page.locator('[data-decided-id="d1"] button').click();
     await expect(page.getByRole('dialog', { name: 'Why?' })).toContainText('97%');

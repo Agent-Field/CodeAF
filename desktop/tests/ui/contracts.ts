@@ -23,6 +23,30 @@ export async function expectThemedSurface(page: Page, surface: Locator, tokens: 
  await expect(surface).toHaveCSS('background-color', await tokenColor(page, tokens.background));
  await expect(surface).toHaveCSS('color', await tokenColor(page, tokens.ink));
 }
+/** The design's overlay material: `surface` and `ink` with the level-2 shadow, not the legacy overlay-surface/text pair. */
+export async function expectDesignSurface(page: Page, locator: Locator, tokens: { bg: string; shadow: string } = { bg: 'surface', shadow: 'sh-2' }) {
+ await expect(locator).toHaveCSS('background-color', await tokenColor(page, tokens.bg));
+ await expect(locator).toHaveCSS('color', await tokenColor(page, 'ink'));
+ const shadow = await locator.evaluate((el, name) => {
+  const probe = document.createElement('span'); probe.style.boxShadow = `var(--${name})`; el.append(probe);
+  const value = getComputedStyle(probe).boxShadow; probe.remove(); return value;
+ }, tokens.shadow);
+ await expect(locator).toHaveCSS('box-shadow', shadow);
+}
+/** Under reduced motion nothing inside the locator may be animating. */
+export async function expectStill(page: Page, locator: Locator) {
+ await page.emulateMedia({ reducedMotion: 'reduce' });
+ const running = await locator.evaluate(el => el.getAnimations({ subtree: true }).filter(a => a.playState === 'running').length);
+ expect(running).toBe(0);
+}
+/** A size property equals the resolved value of a design token (e.g. `height`, `--control-h`). */
+export async function expectTokenSize(locator: Locator, prop: string, token: string) {
+ const expected = await locator.evaluate((el, name) => {
+  const probe = document.createElement('span'); probe.style.width = `var(--${name})`; el.append(probe);
+  const value = getComputedStyle(probe).width; probe.remove(); return value;
+ }, token);
+ await expect(locator).toHaveCSS(prop, expected);
+}
 export async function expectAccessible(page: Page, scope?: string) {
  // Contrast is meaningful after entry/exit motion settles; transient opacity is not a theme color.
  // A transition started by the key that just landed is not in the list until the next frame, so look twice.
@@ -82,7 +106,7 @@ export const INK3_TEXT = [
  '.task-notice-live', '.tray-header', '.choice-clock', '.tray-note', '.tray-holding', '.batch-pager',
  '.tasks-table-totals', '.tasks-table-tab-count', '.tasks-table-detail', '.tasks-table-group-count', '.tasks-table-state', '.tasks-table-age',
  '.task-row-meta', '.task-log-outcome', '.task-note-receipt', '.task-note-author', '.instructions-toggle', '.instructions-edit', '.breadcrumb-link',
- '.task-detail-crumb', '.task-detail-state', '.task-detail-fact dt', '.task-detail-label', '.button-ghost', '.text-input-field', '.task-composer-field',
+ '.task-detail-crumb', '.task-detail-state', '.task-detail-fact dt', '.task-detail-label', '.text-input-field', '.task-composer-field',
  '.overview-card-head', '.overview-card-empty', '.overview-card-foot', '.overview-section-count', '.overview-film-position', '.overview-film-hint', '.overview-film-label .app-icon',
  '.markdown-code-lang', '.turn-folded', '.update-eyebrow', '.answer-worked', '.receipt-rest', '.receipt[data-state="withdrawn"]', '.work-step-caption', '.file-chip-added', '.changes-added', '.work-add', '.work-diff-sign',
  '.newtab-hint', '.newtab-section', '.newtab-row-detail', '.newtab-row-hint', '.newtab-caption',
