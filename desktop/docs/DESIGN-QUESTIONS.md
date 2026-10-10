@@ -205,6 +205,8 @@ Shell). On any conflict, the design files win over code and older docs.
 | JOB-OPEN-3 | Opening a job whose tab was closed: bring that closed tab back, or add a new one? | A closed tab is not open. A new terminal tab is added. Reopen is what puts a closed tab back where it stood. |
 | JOB-OPEN-4 | Tasks opened from a conversation join its group. Shell 3c does not say whether a job does. | A job tab is a loose tab. It does not join the conversation's group. |
 | PK1 | A pick that only says sure, fairly or unsure has no measured percent. Decisions draws a number ("Would choose · 92%", "Sure 97%"). The bands are sure at least 90, fairly 60–89, unsure under 60, and they do not name the one number a word stands for. | A measured percent is drawn as itself, and 0 draws nothing. A word with no percent stands for 90 (sure), 75 (fairly) or 40 (unsure). 90 is the floor of sure, so a bare "sure" meets the default decide threshold and a bare "fairly" does not. |
+| NU-END1 | How does the end card fit at 320px, where the catalogue's single row cannot fit? | Wrap the return button onto a second row, aligned right. The origin label wraps inside its button. |
+| NU-END2 | Who supplies the walk counts before the walk host lands? | `EndCard` takes `answeredCount`, the whole engine world feed as `conversations`, `originLabel`, and `onReturn`. It sums `tasksRunning` across that feed, including conversations without open tabs. Unknown and zero counts are absent. The walk host owns return navigation and focus restoration. |
 
 ## File lane integration notes
 
