@@ -27,6 +27,10 @@ export type TabView = {
   target?: PaneTarget;
   /** A Home tab's place: a design-graph place id (`pl_…`) or `root` for All places. Never a filesystem folder. */
   place?: string;
+  /** A web tab's address. Only http and https survive validation; anything else drops this field, never the tab. */
+  web?: { url: string };
+  /** The job a job tab follows. */
+  job?: { jobId: string };
 };
 
 /** The design-graph place ids a Home tab may show: `root` (All places) or a placegraph id. */
@@ -92,6 +96,25 @@ function isFileTarget(value: unknown): value is FileTarget {
   return typeof file.path === 'string' && file.path !== '' && (file.view === undefined || file.view === 'changes' || file.view === 'file');
 }
 
+/** A web address the browser surface may load: http or https only, so a saved `javascript:` url is never navigated to. */
+function cleanWeb(value: unknown): { url: string } | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const url = (value as { url?: unknown }).url;
+  if (typeof url !== 'string') return undefined;
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'http:' || protocol === 'https:' ? { url } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function cleanJob(value: unknown): { jobId: string } | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const jobId = (value as { jobId?: unknown }).jobId;
+  return typeof jobId === 'string' && jobId ? { jobId } : undefined;
+}
+
 /** Keeps only the view fields that validate. */
 export function cleanView(value: Record<string, unknown>): TabView {
   const view: TabView = {};
@@ -107,6 +130,10 @@ export function cleanView(value: Record<string, unknown>): TabView {
   if (typeof value.tasksSelected === 'string' && value.tasksSelected) view.tasksSelected = value.tasksSelected;
   if (['all', 'needs', 'running', 'done'].includes(value.tasksFilter as string)) view.tasksFilter = value.tasksFilter as TasksFilter;
   if (isHomePlace(value.place)) view.place = value.place;
+  const web = cleanWeb(value.web);
+  if (web) view.web = web;
+  const job = cleanJob(value.job);
+  if (job) view.job = job;
   return view;
 }
 
