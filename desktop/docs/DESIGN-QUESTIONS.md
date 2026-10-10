@@ -61,6 +61,7 @@ Shell). On any conflict, the design files win over code and older docs.
 
 | # | Question | Assumption the app ships now |
 |---|---|---|
+| REM-178 | How does “first parent-most” break ties among unrelated direct places, and what happens to Undo after another window writes? | Choose the direct place with the shortest path to a root, breaking ties by filing order; inherited-only ancestors are not targets. Undo removes only the unchanged saved line across processes, preserving unrelated writes and refusing edited or replaced lines. |
 | PU1 | Does undoing a rail close also navigate back to that place? | Reopen the place through the canonical visit operation and clear this window's closed marker; preserve the currently viewed place and all saved tabs. |
 | PU2 | What happens when a place Undo fails before all its receipts are consumed? | Keep unconsumed receipts after a transport failure for an explicit retry. Drop the step when the engine reports `cannot_undo` or `no_receipt`; never replay receipts already consumed. |
 | NAV-154 | If a rail visit or close fails, should the window still move? | A failed visit leaves the requested view open and reports the engine error. A failed close leaves the current place and its saved tabs open. Bulk close stops on the first refusal; earlier accepted closes remain applied. |
