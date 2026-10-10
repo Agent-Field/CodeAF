@@ -88,7 +88,7 @@ function useTaskPanel(hasTasks: boolean, closed: boolean, onView: ConversationVi
   return { sheet, shown, close, open };
 }
 
-export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummary, onOpenTaskTab, onRename, autoFocus = true, split = false, focused = true, usingApi, onOpenSource, onAddToPlace }: ConversationViewProps) {
+export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummary, onOpenTaskTab, onRename, onOpenConversationTab, autoFocus = true, split = false, focused = true, usingApi, onOpenSource, onAddToPlace }: ConversationViewProps) {
   const beforeFirstTurn = useContext(FirstTurnContext);
   const newConversationPlace = useContext(NewConversationPlaceContext);
   const conversation = useConversation({ sessionFile: tab.sessionFile, onSessionFile: (sessionFile) => onView({ sessionFile }), beforeFirstTurn, newConversationPlace });
@@ -251,6 +251,7 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
                 <ConversationTranscript
                   {...blocks}
                   model={model}
+                  onOpenConversationTab={tab.sessionFile && onOpenConversationTab ? (anchor, background) => onOpenConversationTab?.(tab.sessionFile!, anchor, background) : undefined}
                   firstReplyAside={tab.sessionFile && model.turns[0]?.state === 'done' && model.turns[0].blocks.some(block => block.kind === 'answer') ? <FirstReplyPlaceOffer key={tab.sessionFile} sessionFile={tab.sessionFile} focused={focused}/> : undefined}
                   folded={folded}
                   onToggleFold={toggleFold}

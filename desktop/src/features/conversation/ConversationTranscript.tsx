@@ -23,6 +23,7 @@ type Props = BlockContext & {
   /** Words sent but not yet recorded. */
   sending?: string;
   onRetry: () => void;
+  onOpenConversationTab?: (anchor: string, background: boolean) => void;
 };
 
 type PrefaceProps = Pick<BlockContext, 'open' | 'onToggle' | 'onOpenTask' | 'tasks' | 'onPause' | 'onResume' | 'onStop'> & { item: TurnItem };
@@ -68,6 +69,7 @@ export function ConversationTranscript(props: Props) {
       <TurnViewV2
         key={turn.id}
         turn={turn}
+        onOpenConversationTab={props.onOpenConversationTab}
         afterReply={turn === model.turns[0] ? props.firstReplyAside : undefined}
         folded={isFold}
         onToggleFold={() => onToggleFold(turn.id, !isFold)}
