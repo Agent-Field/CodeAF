@@ -30,7 +30,12 @@ export type MockDiff = Pick<EngineFileDiff, 'hunks'> & Partial<Pick<EngineFileDi
 /** A terminal or job the mock engine already holds; `output` is its kept log (raw terminal text). */
 export type MockTerminal = Partial<TerminalInfo> & { id: string; output?: string };
 
+/** An engine background job the mock lists under /jobs; `log` is the text its log route returns, `cut` marks a trimmed front. */
+export type MockJob = { id: number; name?: string; command?: string; state?: 'running' | 'done' | 'failed' | 'stopped'; startedAt?: string; elapsedMs?: number; exitCode?: number; log?: string; cut?: boolean };
+
 export type Scenario = {
+  /** Engine background jobs served under /jobs (list, log tail, stop). A stop marks the job stopped. */
+  jobs?: MockJob[];
   /** Conversations the History routes serve (list, recap, messages, search, archive). */
   history?: MockHistory;
   /** Terminals and jobs served under /terminals; a POST /terminals adds more. */
@@ -369,6 +374,17 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     return json(route, { error: 'unknown terminal action' }, 404);
   };
 
+  const heldJobs = new Map((scenario.jobs ?? []).map(j => [String(j.id), { ...j }]));
+  const jobs = (route: Route, parts: string[]) => {
+    const [, , , jid, act] = parts;
+    if (!jid) return json(route, [...heldJobs.values()].map(({ log: _log, cut: _cut, ...row }) => row));
+    const job = heldJobs.get(jid);
+    if (!job) return json(route, { error: `no job ${jid}` }, 404);
+    if (act === 'log') return json(route, { text: job.log ?? '', truncated: job.cut === true });
+    if (act === 'stop') { job.state = 'stopped'; return json(route, { accepted: true }); }
+    return json(route, { error: 'unknown job action' }, 404);
+  };
+
   const fileAt = (path: string) => scenario.files?.[path] ?? scenario.files?.[path.replace(`${state.workspace}/`, '')];
   const stat = (path: string) => {
     const file = fileAt(path);
@@ -541,6 +557,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     if (action === 'favicon') return json(route, {});
     if (action === 'changes' || action === 'diff' || (action === 'files' && ['text', 'find', 'locate'].includes(arg ?? ''))) return workView(route, action, arg, url);
     if (action === 'terminals') return terminals(route, parts, body, url);
+    if (action === 'jobs') return jobs(route, parts);
     if (action === 'files') return files(route, arg, body, url);
     if (action === 'tasks' && arg && parts[4]) return forced('task') ?? taskAction(route, arg, parts[4], body);
     if (action === 'tasks' && arg) {

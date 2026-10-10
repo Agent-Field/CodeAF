@@ -1,8 +1,13 @@
+import { createElement } from 'react';
+import { JobPane } from '../../jobs/JobPane';
 import { TerminalPreview } from '../preview/bodies';
 import { TerminalPane } from '../../terminal/TerminalPane';
 import { terminalTabMenuItems } from '../../terminal/tabMenu';
 import { terminalTabMeta } from '../../terminal/tabMeta';
-import type { KindDef } from './slots';
+import type { KindDef, PaneRenderProps } from './slots';
+
+/** A pane that names an engine job draws that job's log; every other terminal pane is the interactive shell and the PTY-backed job. */
+const TerminalOrJobPane = (props: PaneRenderProps) => createElement(props.pane.job ? JobPane : TerminalPane, props);
 
 /**
  * Terminals and jobs (design 3c). One glyph serves an interactive shell and a job log; the engine's
@@ -12,7 +17,7 @@ import type { KindDef } from './slots';
  * A job that exited shows `exit N` after its name (C-EDGE-5). A running job and a shell show nothing (3j).
  */
 export const terminalKind: KindDef = {
-  kind: 'terminal', label: 'Terminal', icon: 'terminal', backed: true, pane: TerminalPane, preview: TerminalPreview,
+  kind: 'terminal', label: 'Terminal', icon: 'terminal', backed: true, pane: TerminalOrJobPane, preview: TerminalPreview,
   menuItems: terminalTabMenuItems,
   tabMeta: terminalTabMeta,
 };
