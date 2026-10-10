@@ -146,7 +146,7 @@ and the rule that changing any cap changes the doc in the same commit — are in
 [PERF.md](PERF.md).
 
 `make demo-home` builds a **throwaway home with something on every place** — three
-projects, twelve conversations, standing orders, memories, a fourteen-day spending
+projects, twelve conversations, automations, memories, a fourteen-day spending
 ledger — and opens `bin/codeaf` against it with `HOME` pointed there. Use it when you
 want to SEE a page full: on a machine that has just started using codeaf the standing,
 memory and spend pages correctly draw nothing, which is indistinguishable from a page

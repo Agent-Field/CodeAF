@@ -254,6 +254,70 @@ func TestOneClaimPerRunAndTheClaimIsNotNews(t *testing.T) {
 	}
 }
 
+// A HISTORY THAT ALREADY HAPPENED IS WRITTEN THROUGH THE STORE'S OWN DOORS.
+// SetClock is the one thing a fixture adds: every stamp a write makes reads it,
+// so a run taken three hours after its slot reads late by exactly that, and nil
+// hands every later write back to the wall clock.
+func TestSetClockStampsEveryWrite(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	clock := time.Date(2026, 9, 28, 10, 12, 0, 0, time.UTC)
+	s.SetClock(func() time.Time { return clock })
+
+	a, err := s.Create(routine("1h"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !a.Created.Equal(clock) || !a.Schedule.Anchor.Equal(clock) || !a.Next.Equal(clock.Add(time.Hour)) {
+		t.Fatalf("made at %v: created %v, anchor %v, next %v", clock, a.Created, a.Schedule.Anchor, a.Next)
+	}
+
+	slot := a.Next
+	clock = slot.Add(3 * time.Hour)
+	started := clock
+	run, err := s.Take(a, started)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Start(run.ID); err != nil {
+		t.Fatal(err)
+	}
+	clock = started.Add(4 * time.Minute)
+	run.Outcome, run.Line = OutcomeDone, "drafted it"
+	if err := s.Finish(run); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Run(run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Due.Equal(slot) || !got.Started.Equal(started) || !got.Finished.Equal(clock) || got.Late() != 3*time.Hour {
+		t.Fatalf("the run reads due %v, started %v, finished %v, late %v", got.Due, got.Started, got.Finished, got.Late())
+	}
+
+	clock = clock.Add(time.Hour)
+	paused, err := s.SetStatus(a.ID, StatusPaused)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !paused.Updated.Equal(clock) {
+		t.Fatalf("paused at %v, the change reads %v", clock, paused.Updated)
+	}
+
+	s.SetClock(nil)
+	before := time.Now().Add(-time.Second)
+	asked, err := s.QueueNow(a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if asked.Due.Before(before) {
+		t.Fatalf("with the wall clock back, a run asked for now is due at %v", asked.Due)
+	}
+}
+
 func TestAbandonedClosesWhatAGoneClockLeftRunning(t *testing.T) {
 	s, _ := openStore(t)
 	a, _ := s.Create(routine("1h"))

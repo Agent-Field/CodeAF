@@ -104,6 +104,29 @@ func Open(root string) (*Store, error) {
 // Root is the folder the store, the presence files and the clock lock live in.
 func (s *Store) Root() string { return s.root }
 
+// SetClock makes every write read its time from now instead of the wall clock:
+// when an automation was made or changed, and when a run was asked for, started
+// and ended. nil puts the wall clock back.
+//
+// IT IS FOR WRITING A HISTORY THAT ALREADY HAPPENED, AND NOTHING IN THE PRODUCT
+// CALLS IT. The clock process and every window read the wall clock. The one
+// caller is the demo home (cmd/codeaf-demo-home), which builds a fortnight of
+// runs out of this store's own doors — Create, Take, Start, Finish, SetStatus —
+// and has no other way to say that a run started on a Tuesday: Start and Finish
+// stamp the time themselves, and a fixture that wrote those columns with its
+// own SQL would be a second author of this table, which is the drift this store
+// exists to end. Take already takes its moment as an argument; this is the same
+// courtesy for the doors that do not.
+//
+// It is not safe while another goroutine is using the store. Call it between
+// writes, from the one goroutine that owns the store.
+func (s *Store) SetClock(now func() time.Time) {
+	if now == nil {
+		now = time.Now
+	}
+	s.now = now
+}
+
 // Close releases the database.
 func (s *Store) Close() error {
 	if s == nil || s.db == nil {
