@@ -902,6 +902,18 @@ the desktop supplies a call identity rather than an arbitrary file path. Display
 output is capped at 1 MiB and identifies partial results honestly. This is a development preview, not a new
 server or an independently implemented agent.
 
+## Closing a desktop tab and reattaching an idle conversation
+
+Closing a desktop tab detaches its view without stopping work. The bridge's
+lifecycle handler releases the connection after ten idle minutes with no
+attached views or event streams, running work, live terminals or jobs, running
+plan tasks, or open questions. It checks once per minute; after work ends, the
+idle grace starts when a check confirms the chat is quiet.
+
+Releasing the connection keeps the saved conversation. Its old connection ID
+answers `reattach this conversation`; opening its saved session file attaches
+again. The detach route and startup/shutdown wiring are pending desktop integration.
+
 ## Editing, reordering or taking back a queued message in the desktop
 
 A message sent with Queue while work is running waits above the composer, in the
