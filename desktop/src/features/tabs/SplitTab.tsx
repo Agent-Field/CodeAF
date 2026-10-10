@@ -1,11 +1,11 @@
 import { cloneElement, type HTMLAttributes, type MouseEvent, type ReactElement, type Ref } from 'react';
-import { Button, IconButton } from '../../components/ui';
+import { Button, IconButton, type IconName } from '../../components/ui';
 import { TabGlyph, type TabState } from './Tab';
 import type { TabKind } from './kinds/types';
 import './tab.css';
 import './split-tab.css';
 
-export type SplitSegment = { id: string; kind: TabKind; title: string; /** A web pane's site, the monogram source. */ monogram?: string; favicon?: string; state?: TabState };
+export type SplitSegment = { id: string; kind: TabKind; title: string; /** A file pane's type icon, from the kind's iconFor. */ icon?: IconName; /** A web pane's site, the monogram source. */ monogram?: string; favicon?: string; state?: TabState };
 
 /**
  * A split is ONE merged tab with a segment per pane (up to four); the focused pane's segment is filled.
@@ -24,7 +24,7 @@ export function SplitTab({ segments, focus, active, hover = false, specimen = fa
     <div {...rest} {...frame} className={`workspace-tab workspace-split-tab ${frame?.className ?? ''}`} data-active={!!active} data-hover={hover || undefined} role="group" aria-label={`Split: ${name}`}>
       {segments.map((segment, index) => wrap(segment, (
         <Button key={segment.id} className="workspace-split-segment" role={specimen ? undefined : 'tab'} id={`tab-${segment.id}`} aria-controls={specimen ? undefined : 'workspace-tab-panel'} aria-selected={specimen ? undefined : !!active && index === focus} aria-label={segment.title} data-focused={!!active && index === focus} tabIndex={active && index === focus ? 0 : -1} onClick={event => onSelectPane?.(index, event)}>
-          <TabGlyph favicon={segment.favicon} kind={segment.kind} title={segment.title} monogram={segment.monogram} state={segment.state}/>
+          <TabGlyph icon={segment.icon} favicon={segment.favicon} kind={segment.kind} title={segment.title} monogram={segment.monogram} state={segment.state}/>
           <span className="workspace-tab-title">{segment.title}</span>
         </Button>
       )))}
