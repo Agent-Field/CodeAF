@@ -431,6 +431,8 @@
   --conversation-bar-counts-gap: 16px;
   --task-composer-clearance: 20px;
   --task-composer-pad-start: 16px;
+  --task-worker-note-max-width: 85%;
+  --task-worker-note-eyebrow-leading: normal;
   --task-note-pad-block: 7px;
   --task-note-pad-inline: 13px;
   --radius-pill: 99px;

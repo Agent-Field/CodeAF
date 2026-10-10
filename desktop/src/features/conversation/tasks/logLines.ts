@@ -67,9 +67,8 @@ export function logSummary(lines: readonly LogLine[], live: LogLine | undefined,
 function authorWord(author?: string): string {
   const word = (author ?? '').trim();
   if (word.toLowerCase() === 'chat') return 'Conversation';
-  // A bare task number is a task's own note (the run's outcome note is written under the run's id).
-  if (/^\d+(\.\d+)*$/.test(word)) return `Task ${word}`;
-  return word ? word.charAt(0).toUpperCase() + word.slice(1) : '';
+  // The engine records worker identities, but the task page names their voice for the person.
+  return 'Note from worker';
 }
 
 // The engine's landing sentence, `landed on <branch>: <n> file(s)` (beltLandingLine in
@@ -101,7 +100,7 @@ function repeatsResult(body: string, result: string): boolean {
 export function noteLines(page: TaskPage, running: boolean): NoteLine[] {
   const result = (page.Result ?? '').trim();
   return (page.Notes ?? [])
-    .filter((note) => note.Body && !repeatsResult(note.Body, result))
+    .filter((note) => note.Body?.trim() && !repeatsResult(note.Body, result))
     .map((note, index) => {
       const { rest, landing } = note.Person ? { rest: note.Body, landing: undefined } : splitLanding(note.Body);
       return {
