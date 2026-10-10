@@ -2,15 +2,16 @@
 // conversations. The workspace (integrator-owned) registers a host once; a web
 // pane never reaches into the tab model itself.
 //
-// Without a host, a page's request for a new window opens in the person's
-// browser (the link chip's default), and "Start a conversation with this page"
-// is absent rather than broken.
+// "Start a conversation with this page" is absent rather than broken when no
+// host is registered. A page's own new window does not use the host: it is a
+// background web tab after the opener (newWindow.ts), whether or not a host
+// is registered, and it never opens the person's browser.
 
-import { openUrl } from '../../design/native';
 import type { PageContext } from './pageContext';
+import { acceptPageNewWindow } from './newWindow.ts';
 
 export type WebHost = {
-  /** A page asked for a new window, or a link was opened as a web tab. */
+  /** Opens an address as a web tab for a caller that holds the host. A page's new window does not use this. */
   openWebTab: (url: string, opener?: string) => void;
   /** The person asked to talk about this page: open a focused conversation immediately after `fromPaneId`, with the page attached and unsent. */
   startConversationWithPage?: (page: PageContext, fromPaneId: string) => void;
@@ -34,8 +35,7 @@ export function subscribeWebHost(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-/** Where a page's new-window request goes. */
+/** A page asked for a new window. The strip opens a background web tab after the opener. */
 export function openFromPage(url: string, opener: string): void {
-  if (host) host.openWebTab(url, opener);
-  else void openUrl(url);
+  acceptPageNewWindow({ opener, url });
 }
