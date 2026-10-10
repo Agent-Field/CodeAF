@@ -88,19 +88,19 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
   const [departures, setDepartures] = useState<TabDeparture[]>([]);
   const order = visibleTabs(state);
   // Closing tabs stay mounted for dur-base. The comparison is the id list: a draft keystroke must not restart a collapse.
-  const signature = order.map(tab => tab.id).join('\0');
+  const signature = state.tabs.map(tab => tab.id).join('\0');
   const [seen, setSeen] = useState(signature);
   // Previous strip, updated after commit. A render (including a strict-mode replay) must keep seeing the same
   // "before", or the second pass thinks nothing left and the collapse never starts.
-  const orderRef = useRef(order);
+  const orderRef = useRef(state.tabs);
   const groupsRef = useRef(state.groups);
   const focusNeighbour = useRef(false);
   if (seen !== signature) {
-    const gone = departuresFrom(orderRef.current, order, groupsRef.current);
+    const gone = departuresFrom(orderRef.current, state.tabs, groupsRef.current);
     // Only a close hands focus to an existing neighbour. A tab replaced by a new one (Continue from History) selects a tab the strip
     // never held, whose pane takes the keyboard itself; focusing its tab button here would make the composer stand aside.
     if (gone.length > 0 && orderRef.current.some(tab => tab.id === state.activeId)) focusNeighbour.current = true;
-    const next = mergeDepartures(departures, retainDepartures(reduced, gone), new Set(order.map(tab => tab.id)));
+    const next = mergeDepartures(departures, retainDepartures(reduced, gone), new Set(state.tabs.map(tab => tab.id)));
     setSeen(signature);
     if (departureIds(next) !== departureIds(departures)) setDepartures(next);
   }
@@ -168,7 +168,7 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
   }, [departures, reduced]);
 
   useLayoutEffect(() => {
-    orderRef.current = order;
+    orderRef.current = state.tabs;
     groupsRef.current = state.groups;
   });
 

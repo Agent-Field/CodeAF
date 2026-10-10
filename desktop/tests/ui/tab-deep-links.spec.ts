@@ -40,7 +40,8 @@ test.describe('Copy link in the tab menu', () => {
     await page.getByRole('tab', { name: 'Fix the parser', exact: true }).click({ button: 'right' });
     const item = page.getByRole('menuitem', { name: /^Copy link/ });
     await expect(item).toBeVisible();
-    await expect(item).toContainText(/(⌘⇧C|Ctrl Shift C)/);
+    const chord = await page.evaluate(() => /Mac/.test(navigator.platform) ? '⌘⇧C' : 'Ctrl+Shift+C');
+    await expect(item.locator('.keyboard-shortcut')).toHaveText(chord);
     await expectAccessible(page);
     await item.click();
     await expect.poll(() => copiedText(page)).toEqual([`codeaf://chat/${CHAT}`]);
@@ -85,7 +86,7 @@ test.describe('Copy link in the tab menu', () => {
     await expect.poll(() => copiedText(page)).toEqual([`codeaf://chat/${CHAT}`]);
     await page.getByRole('tab', { name: 'main.go', exact: true }).click({ button: 'right' });
     const item = page.getByRole('menuitem', { name: /^Copy link/ });
-    await expect(item).not.toContainText(/(⌘⇧C|Ctrl Shift C)/);
+    await expect(item.locator('.keyboard-shortcut')).toHaveCount(0);
     await item.click();
     await expect.poll(() => copiedText(page)).toEqual([`codeaf://chat/${CHAT}`, `codeaf://file/${CHAT}?path=src/main.go`]);
   });

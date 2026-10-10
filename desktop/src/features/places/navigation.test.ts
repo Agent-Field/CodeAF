@@ -27,7 +27,7 @@ function rig(desktop = false) {
   let refuse = '';
   const client = {
     graph: async () => graph,
-    visit: async (id: string) => {
+    visit: async (id: string, _generation?: number) => {
       calls.push(`touch:${id}`);
       if (refuse === 'touch') throw new Error('Engine refused');
     },
