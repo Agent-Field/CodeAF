@@ -155,7 +155,7 @@ test('Open in editor appears only when the engine is on this machine; otherwise 
   const button = page.locator('.file-head').getByRole('button', { name: /^Open in editor/ });
   await expect(button).toBeVisible();
   await button.click();
-  await expect.poll(() => page.evaluate(() => (window as unknown as { __calls: unknown[][] }).__calls.find(call => call[0] === 'open_path'))).toEqual(['open_path', { path: '/mock-workspace/internal/auth/auth_test.go', workspace: '/mock-workspace' }]);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __calls: unknown[][] }).__calls.find(call => call[0] === 'open_path'))).toEqual(['open_path', { path: '/mock-workspace/internal/auth/auth_test.go' }]);
 });
 
 test('without the desktop shell the handoff is the Open in menu', async ({ page }) => {
