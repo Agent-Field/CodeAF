@@ -1,0 +1,31 @@
+/* The pinned Home tab (Places helper homeTab, screens 6a and 9c, Components "Home tab as switcher").
+   The strip's leading slot mounts this ahead of every other tab. Geometry is the measured chip:
+   30px, radius 8, 10px padding, 8px between the swatch and the name, weight 500. The trailing
+   hairline is the 1×16 rule the strip draws after Home (margin 6px, and the 2px strip gap, so
+   the rule sits 8px off the name). Tokens only; the states follow the same fill law as a tab. */
+
+.home-tab-slot { display: flex; align-items: center; flex: none; gap: var(--space-half); min-width: 0; -webkit-app-region: no-drag; }
+.home-tab { display: flex; flex: none; align-items: stretch; height: var(--tab-height); border-radius: var(--radius-control); background: transparent; color: var(--ink-2); transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease); }
+.home-tab-select.button { display: flex; align-items: center; justify-content: flex-start; flex: none; height: 100%; min-height: 0; padding: 0 var(--space-compact); gap: var(--space-2); border-radius: inherit; background: transparent; color: inherit; font-size: var(--font-size-body); font-weight: var(--font-weight-medium); line-height: var(--tab-title-leading); }
+.home-tab-select.button:hover:not(:disabled), .home-tab-select.button:active:not(:disabled) { background: transparent; color: inherit; filter: none; }
+/* The collapsed rail draws 6px after the name, where the chevron sits (9c padding 0 6px 0 10px). */
+.home-tab[data-switcher] .home-tab-select.button { padding-inline-end: var(--space-tight); }
+.home-tab-name { white-space: nowrap; }
+.home-tab-mark { position: relative; display: inline-flex; flex: none; }
+/* The chevron is chrome, ink-3, never a state colour. It stays still: opening the switcher is the click. */
+.home-tab-switcher { display: inline-flex; flex: none; color: var(--ink-3); }
+/* Places 9e draws no position for the amber glyph. It sits on the swatch's trailing-bottom corner,
+   half on the square, so the tint stays readable and the mark stays the 6px needs-you dot (HT-2). */
+.home-tab-alert { position: absolute; right: calc(var(--mark-dot) * -0.5); bottom: calc(var(--mark-dot) * -0.5); width: var(--mark-dot); height: var(--mark-dot); border-radius: var(--radius-pill); background: var(--amber); }
+
+.home-tab:hover, .home-tab[data-force="hover"] { background: var(--tab-hover); color: var(--ink); }
+.home-tab[data-active="true"] { background: var(--canvas); box-shadow: var(--sh-1); color: var(--ink); }
+.home-tab:has(.home-tab-select:active), .home-tab[data-force="pressed"] { background: var(--field-2); color: var(--ink); transition-duration: var(--dur-press); }
+
+/* Keyboard focus only: the 2px accent ring and 4px halo. A pointer press sets data-input and draws nothing.
+   The rule is stronger than the strip's button focus, which would otherwise drop the halo. */
+html:not([data-input="pointer"]) .home-tab .home-tab-select.button:focus-visible { outline: var(--focus-ring-width) solid transparent; box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
+html[data-input="pointer"] .home-tab .home-tab-select.button:focus-visible { outline: none; box-shadow: none; }
+.home-tab[data-force="focus"] .home-tab-select.button { outline: var(--focus-ring-width) solid transparent; box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
+
+.home-tab-hairline { flex: none; width: var(--border-width); height: var(--tab-divider-height); margin: 0 var(--space-tight); background: var(--line); }
