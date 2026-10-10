@@ -53,7 +53,7 @@ import { useNextUpKeys } from '../nextup/useNextUpKeys';
 import type { FocusEntry } from '../focus-history/model';
 import { useFocusWireFor, useOptionalFocusWire } from '../focus-history/useFocusHistory';
 import { routeTask } from './view-state';
-import { useScrollMemory } from './scroll/memoryStore';
+import { namedScrollSpots, useScrollMemory } from './scroll/memoryStore';
 import { questionFocus } from '../conversation/questionFocus';
 import { useTerminalTabs } from '../terminal/useTerminalTabs';
 import { useWorkspaceWeb } from '../web/useWorkspaceWeb';
@@ -297,16 +297,44 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
     return () => { live = false; };
   }, []);
   // The tab id is the step, not the pane inside a split. The first report after a saved stack is a relaunch, so a chip that was already there stays.
-  useEffect(() => {
-    focusWire.setTabs(place, state.tabs.map(tab => tab.id));
+  // Scroll and the draft ride on that step: switching places prunes every pane that is not on the strip being shown,
+  // and ⌘[ would otherwise come back to the tab at the bottom with no way to know where the reader had left it.
+  const noteFocus = () => {
     if (!activeTab) return;
     // A place's Home on the way to a question is navigation in progress, not another focus step.
     if (walk.phase === 'walking' && (focused.kind !== 'conversation' || conversationKey !== walk.item?.session)) return;
     if (walk.phase === 'returning' && focused.id !== walk.origin?.paneId) return;
     if (walk.phase === 'walking') focusWire.markCause('next-up');
     const task = focused.route ? routeTask(focused.route) : undefined;
-    focusWire.observe({ windowPlace: place, tabId: activeTab.id, drillPath: task ? [task] : [] });
-  }, [focusWire, place, state.tabs, activeTab, focused.route, walk.phase, walk.item?.key]);
+    const scroll = namedScrollSpots(focused.id);
+    focusWire.observe({
+      windowPlace: place, tabId: activeTab.id, drillPath: task ? [task] : [],
+      // Nothing read yet is not a position. Omitting it keeps spots the step already stored.
+      ...(scroll.length ? { scroll } : {}),
+      draftKey: focused.draft ? focused.id : null,
+    });
+  };
+  const noteFocusNow = useRef(noteFocus);
+  noteFocusNow.current = noteFocus;
+  useEffect(() => {
+    focusWire.setTabs(place, state.tabs.map(tab => tab.id));
+    noteFocusNow.current();
+  }, [focusWire, place, state.tabs, activeTab, focused.route, focused.draft, focused.id, walk.phase, walk.item?.key]);
+  // Scroll does not bubble. Capture on the workspace sees it after the pane's own frame has stored the spot.
+  useEffect(() => {
+    const root = gestureRoot.current;
+    if (!root) return;
+    let waiting = 0;
+    const note = () => {
+      if (waiting) return;
+      waiting = window.setTimeout(() => { waiting = 0; noteFocusNow.current(); }, 0);
+    };
+    root.addEventListener('scroll', note, true);
+    return () => {
+      root.removeEventListener('scroll', note, true);
+      if (waiting) window.clearTimeout(waiting);
+    };
+  }, []);
   useEffect(() => publishActiveHome(focused.kind === 'home' ? focused.place : undefined), [focused.kind, focused.place]);
 
   useEffect(() => {

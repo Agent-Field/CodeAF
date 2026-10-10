@@ -1,9 +1,10 @@
+import { SinceBlock } from './home/SinceBlock';
 import { Button } from '../../components/ui';
 import { useState, type ReactNode } from 'react';
 import { PlaceHeading, type Crumb } from './components/PlaceHeading';
 import { AllPlacesPage } from './AllPlacesPage';
 import { DeletePlaceConfirm } from './DeletePlaceConfirm';
-import { HomeAttentionSection, HomeBanner, HomeChatsSection, HomeEmptyPlace, HomeFrame, HomeNotice, HomePlacesSection, HomeRecap, HomeSourcesSection, useHomeSections, useDeleteFlow, useDragState, useRunner } from './HomeSections';
+import { HomeAttentionSection, HomeBanner, HomeChatsSection, HomeEmptyPlace, HomeFrame, HomeNotice, HomePlacesSection, HomeSourcesSection, useHomeSections, useDeleteFlow, useDragState, useRunner } from './HomeSections';
 import type { HomeConnection, HomeView } from './home-model';
 import { StatusLine } from '../decisions/StatusLine';
 import { DecidedRows } from '../decisions/DecidedRows';
@@ -70,7 +71,7 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
     </div>
     {notices}
     {suggestion}
-    {view.recap && <HomeRecap label={view.recap.label} text={view.recap.text}/>}
+    <SinceBlock recap={view.recap}/>
     <HomeAttentionSection items={view.attention} actions={actions} readOnly={readOnly}/>
     {/* Places 8b draws the place's child places, its own chats and its sources under the heading; a place Home that lists none would hide the work the place exists to hold. */}
     {isPlace && !nothingYet && <HomePlacesSection label="Places" places={view.children} parentId={view.id} parentName={view.title} parentTint={view.tintSource === 'own' ? view.tint : undefined}

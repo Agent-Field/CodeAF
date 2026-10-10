@@ -38,6 +38,9 @@
 .toast-dot { flex: none; width: var(--toast-dot); height: var(--toast-dot); border-radius: var(--radius-pill); background: var(--accent); }
 .toast[data-tone="warning"] .toast-dot { background: var(--amber); }
 .toast[data-tone="danger"] .toast-dot { background: var(--danger); }
+/* Colour stays on the 6px dot. A global [data-tone="warning"] rule would otherwise paint the sentence amber. */
+.toast[data-tone="warning"],
+.toast[data-tone="danger"] { color: var(--ink); }
 .toast-icon { flex: none; color: var(--ink-2); }
 .toast-text { flex: 0 1 auto; min-width: var(--toast-zero); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .toast-strong { font-weight: var(--type-label-strong); }

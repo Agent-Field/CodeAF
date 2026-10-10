@@ -866,7 +866,7 @@
   --places-quicklook-radius: 14px;
   --places-quicklook-pad-top: var(--space-section-inner);
   --places-quicklook-pad-bottom: 18px;
-  --places-quicklook-scrim: var(--scrim);
+  --places-quicklook-scrim: oklch(0 0 0 / .2);
   --history-list-width: 560px;
   --history-compact-width: 760px;
   --history-column-max-width: 884px;
@@ -1265,6 +1265,9 @@
   --primitives-specimen-gap: var(--foundations-section-gap);
   --primitives-specimen-row-gap: var(--space-2);
   --primitives-specimen-narrow: 320px;
+  --places-quicklook-gutter: 32px;
+  --places-quicklook-pad-inline: 24px;
+  --places-quicklook-content-gap: 14px;
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);

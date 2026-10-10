@@ -10,11 +10,14 @@ import { isTauri } from '@tauri-apps/api/core';
 import { checkEngine } from './lib/engine';
 import { connectDesktopTabs } from './lib/desktopTabs';
 import { nativeControls } from './design/nativeControls';
-import { Button, IconButton, Icon, PageHeading, SectionHeading, Text, CodeText, Markdown, Surface, ContextMenu, DropdownMenu, WorkStateIndicator, ToastRegion, iconNames, type MenuEntry } from './components/ui';
+import { Button, IconButton, Icon, PageHeading, SectionHeading, Text, CodeText, Markdown, Surface, ContextMenu, DropdownMenu, WorkStateIndicator, ToastHost, iconNames, type MenuEntry } from './components/ui';
 import design from './design/tokens.json';
 import { useMediaQuery } from './design/useMediaQuery';
+import './styles/material.css';
 import './App.css';
+import { initMaterial } from './design/material';
 import { focusHistoryStorageKey, Workspace } from './features/tabs/Workspace';
+import { restoreNamedScroll } from './features/tabs/scroll/memoryStore';
 import type { FocusEntry } from './features/focus-history/model';
 import { FocusHistoryProvider, useFocusWireFor } from './features/focus-history/useFocusHistory';
 import { createNextUp, NextUpProvider } from './features/nextup/useNextUp';
@@ -58,6 +61,8 @@ document.documentElement.dataset.environment = mac ? 'mac-desktop' : desktop ? '
 function restoreFocus(shell: PlacesShell, entry: FocusEntry) {
  const task = entry.drillPath[0];
  const apply = () => {
+  // Before the pane mounts: a place switch has already dropped this pane from scroll memory.
+  restoreNamedScroll(entry.tabId, entry.scroll);
   requestWorkspace({ type: 'select', id: entry.tabId });
   requestWorkspace({ type: 'view', id: entry.tabId, change: { route: task ? { taskId: task, back: [], forward: [] } : undefined } });
  };
@@ -67,6 +72,8 @@ function restoreFocus(shell: PlacesShell, entry: FocusEntry) {
 
 function App() {
  useEffect(connectDesktopTabs, []);
+ // The browser's glass blur over the whole Design system page stalls and kills the renderer under software rendering, so only the desktop shell (native or solid, never blurred by CSS) wires the material.
+ useEffect(() => desktop ? initMaterial() : undefined, []);
  const [page, setPage] = useState<Page>('Workspace');
  const narrow = useMediaQuery(`(max-width: ${design.breakpoints.small}px)`);
  const frame = useShellFrame(narrow);
@@ -179,7 +186,7 @@ function App() {
   </main>
   <PlacesOverlays shell={shell}/>
   {/* The window's ONE toast region: a closed tab's Stop it and a place's Undo stand in the same stack. */}
-  <ToastRegion/>
+  <ToastHost/>
  </div></FocusHistoryProvider></NextUpProvider></PlacesShellProvider>;
 }
 export default App;

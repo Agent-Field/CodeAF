@@ -8,18 +8,20 @@ async function render(page: Page, text: string) {
  await installMockEngine(page, plainReply());
  await openApp(page);
  await expect(page.locator('.conversation-scroll > .conversation-column')).toBeAttached();
- // Vite records these module URLs as they load. Reading them in the same turn as open can miss one.
- await page.waitForFunction(() => {
-  const names = performance.getEntriesByType('resource').map(entry => entry.name);
-  return names.some(url => /\/react\.js\?/.test(url)) && names.some(url => /\/react-dom_client\.js\?/.test(url));
- });
+ // WebKit does not keep the optimized React URLs in resource timing on this page, so a lookup there is undefined and import() throws. The transformed entry names the specifier the page loaded, which keeps one React.
  await page.evaluate(async (text) => {
-  const markdownPath = '/src/components/ui/Markdown.tsx';
-  const resources = performance.getEntriesByType('resource').map(entry => entry.name);
-  const reactPath = resources.find(url => /\/react\.js\?/.test(url))!;
-  const clientPath = resources.find(url => /\/react-dom_client\.js\?/.test(url))!;
-  const themePath = '/src/design/ThemeProvider.tsx';
-  const [{ Markdown }, { default: React }, { default: ReactDOM }, { ThemeProvider }] = await Promise.all([import(markdownPath), import(reactPath), import(clientPath), import(themePath)]);
+  const transformed = await (await fetch('/src/main.tsx')).text();
+  const specifier = (file: string) => {
+   const found = transformed.match(new RegExp(`["']([^"']*/${file}(?:\\?[^"']*)?)["']`));
+   if (!found) throw new Error(`optimized dependency ${file} is not in the entry module`);
+   return found[1];
+  };
+  const [{ Markdown }, { default: React }, { default: ReactDOM }, { ThemeProvider }] = await Promise.all([
+   import('/src/components/ui/Markdown.tsx'),
+   import(specifier('react\\.js')),
+   import(specifier('react-dom_client\\.js')),
+   import('/src/design/ThemeProvider.tsx'),
+  ]);
   const container = document.createElement('section'); container.id = 'markdown-specimen'; container.setAttribute('aria-label', 'Markdown specimen');
   document.querySelector('.conversation-scroll > .conversation-column')!.replaceChildren(container);
   const root = ReactDOM.createRoot(container);
