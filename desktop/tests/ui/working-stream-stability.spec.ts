@@ -64,8 +64,8 @@ for (const theme of ['light', 'dark']) {
     await push(event('assistantDone')); await push(event('toolBegin', '', 'c'));
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await toggle.click();
-    await expect(page.locator('.work-step-title.thinking-shimmer')).toHaveCount(1);
-    await expect(page.locator('.work-block .thinking-shimmer')).toHaveCount(1);
+    await expect(page.locator('.work-step-title[data-shimmer]')).toHaveCount(1);
+    await expect(page.locator('.work-block .thinking-shimmer, .work-block .work-step-title[data-shimmer]')).toHaveCount(1);
     if (process.env.CODEAF_UI_RESULTS) await page.screenshot({ path: `${process.env.CODEAF_UI_RESULTS}/working-live-step-${theme}-${info.project.name}.png` });
     await toggle.click();
     // The canonical journal replaces provisional block IDs, without taking back the person's disclosure choice.
@@ -97,7 +97,7 @@ for (const theme of ['light', 'dark']) {
     await update({ entries: [user, tool, { Role: 'assistant', Text: 'Both paths are verified.', Answer: true } as never], running: false });
     await expect(page.getByText('Both paths are verified.')).toBeVisible();
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    await expect(page.locator('.work-block .thinking-shimmer')).toHaveCount(0);
+    await expect(page.locator('.work-block .thinking-shimmer, .work-block .work-step-title[data-shimmer]')).toHaveCount(0);
     await expect(clock).toHaveCount(0);
     const finished = await toggle.textContent() ?? '';
     await page.clock.fastForward(2100);

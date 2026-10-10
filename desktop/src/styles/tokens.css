@@ -519,6 +519,7 @@
   --latest-shimmer-far: 65%;
   --brightness-hover: 1.06;
   --brightness-press: .94;
+  --model-picker-chevron-size: 11px;
   --tooltip-pad-y: 0px;
   --tooltip-min-height: 24px;
   --tooltip-leading: normal;
@@ -738,10 +739,15 @@
   --rail-place-row-height: var(--rail-row-height);
   --rail-dot-size: var(--mark-dot);
   --rail-meta-font: var(--type-caption-size);
+  --rail-hint-size: 12px;
+  --rail-hint-leading: 1.55;
   --rail-close-size: 20px;
   --rail-insertion-line: 2px;
   --rail-drag-ghost-opacity: .95;
   --rail-switcher-width: 280px;
+  --rail-switcher-radius: 7px;
+  --rail-switcher-label-pad-top: 6px;
+  --rail-switcher-label-pad-bottom: 2px;
   --rail-peek-delay: 300ms;
   --type-home-title-size: 28px;
   --type-home-title-leading: normal;
