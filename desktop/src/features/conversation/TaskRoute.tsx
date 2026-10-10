@@ -22,15 +22,15 @@ type Props = {
 function segmentsFor(tasks: EngineTaskRow[], taskId: string): BreadcrumbSegment[] {
   const trail = taskTrail(tasks, taskId).map((row) => ({ id: row.ID, label: row.Title }));
   const own = trail.length ? [] : [{ id: taskId, label: 'Task' }];
-  // The design's trail starts at the parent task: Back, not a root crumb, returns to the conversation.
+  // Engine ancestry supplies the immediate parent; the conversation name is added at the header seam.
   return [...trail, ...own];
 }
 
-/** The trail in the pane's top row in task view: Back and the path, across the whole pane (design 1c). */
-export function TaskRouteBar({ taskId, tasks, route, onRoute }: Pick<Props, 'taskId' | 'tasks' | 'route' | 'onRoute'>) {
+/** The drilled header names the parent and current task, across the whole pane (Iteration 2). */
+export function TaskRouteBar({ taskId, tasks, route, onRoute, rootLabel }: Pick<Props, 'taskId' | 'tasks' | 'route' | 'onRoute' | 'rootLabel'>) {
   return (
     <Breadcrumb
-      segments={segmentsFor(tasks, taskId)}
+      segments={[{ id: null, label: rootLabel }, ...segmentsFor(tasks, taskId)]}
       onNavigate={(id) => onRoute(navigate(route, id ?? undefined))}
       canBack={route.back.length > 0}
       canForward={route.forward.length > 0}
