@@ -6,7 +6,7 @@ import type { TabKind } from '../tabs/kinds/types.ts';
 import type { Tab, TitleSource, WorkspaceAction, WorkspaceState } from '../tabs/model.ts';
 
 /** The kinds the shell opens by name. Each is a singleton tab. */
-export type ShellKind = Extract<TabKind, 'settings' | 'history' | 'inbox'>;
+export type ShellKind = Extract<TabKind, 'settings' | 'history'> | 'inbox';
 
 const titles: Record<ShellKind, string> = { settings: SETTINGS_TAB_TITLE, history: 'History', inbox: 'Inbox' };
 /** History names its own tab while searching ("History · lexer"), so its opening title must not outrank the pane's. */

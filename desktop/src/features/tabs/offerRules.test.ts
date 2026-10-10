@@ -20,12 +20,11 @@ test('a placeholder conversation title is never offered as the group name', () =
   assert.equal(findOffers([tab('c', { title: 'Mine', sessionFile: 's' }), ...tabs.slice(1)])[0].title, undefined, 'no titleSource: the title is not a name anyone chose');
 });
 
-test('fewer than three, pinned, grouped, split, inbox and unsourced tabs make no offer', () => {
+test('fewer than three, pinned, grouped, split and unsourced tabs make no offer', () => {
   const base = [tab('a', { sessionFile: 's' }), tab('b', { kind: 'task', sessionFile: 's' })];
   assert.deepEqual(findOffers([...base, tab('c', { kind: 'task', sessionFile: 's', pinned: true })]), []);
   assert.deepEqual(findOffers([...base, tab('c', { kind: 'task', sessionFile: 's', groupId: 'g' })]), []);
   assert.deepEqual(findOffers([...base, tab('c', { kind: 'task', sessionFile: 's', split: { layout: '1x2', focus: 0, panes: [] } })]), []);
-  assert.deepEqual(findOffers([...base, tab('c', { kind: 'inbox', sessionFile: 's' })]), []);
   assert.deepEqual(findOffers([...base, tab('c', { kind: 'terminal', sessionFile: 's' })]), []);
   assert.deepEqual(findOffers([...base, tab('c', { kind: 'newtab' })]), []);
 });

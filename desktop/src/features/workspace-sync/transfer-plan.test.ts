@@ -36,3 +36,12 @@ test('moves whole split/group metadata without touching session state, drafts, r
   assert.deepEqual(planTransferUndo(typedPlaceholder, all.destination, all.receipt).destination.tabs.map(t => t.id), ['stable-empty', 'member']);
   assert.deepEqual(transferredLocal({ recentIds: ['place-home'], focus: { old: 2 }, scroll: { old: 30 } }, { recentIds: [], focus: { split: 1, other: 1 }, scroll: { member: 200, folder: 100, other: 80 } }, plan.receipt), { recentIds: ['place-home'], focus: { old: 2, split: 1 }, scroll: { old: 30, member: 200, folder: 100 } });
 });
+
+test('retired Inbox slots are ignored by matches and older transfer offers', () => {
+  const inbox = { ...tab('member-inbox'), kind: 'inbox' } as unknown as SharedTab;
+  assert.deepEqual(matchingTabs(doc(inbox, tab('member')), match), ['member']);
+  const plan = planTransfer(doc(inbox, tab('member')), doc(tab('other')), ['member-inbox', 'member']);
+  assert.deepEqual(planTransfer(doc(inbox), doc(tab('other')), ['member-inbox']).receipt.tabIds, []);
+  assert.deepEqual(plan.receipt.tabIds, ['member']);
+  assert.deepEqual(plan.destination.tabs.map(tab => tab.id), ['other', 'member']);
+});

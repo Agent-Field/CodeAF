@@ -134,7 +134,7 @@ function App() {
  const rail = usePlaceRail(shell, {
   inert: narrow ? !drawerOpen : sidebarHidden && frame.peek !== 'rail', peeking: frame.peek === 'rail',
   onToggle: () => narrow ? setDrawerOpen(false) : toggleSidebar(), appItems,
-  onWorkspace: page === 'Workspace' && !settingsOpen && activeKind !== 'inbox', activeHome, onEnterWorkspace: enterWorkspace,
+  onWorkspace: page === 'Workspace' && !settingsOpen, activeHome, onEnterWorkspace: enterWorkspace,
  });
  const sidebar = <PlaceRail {...rail}/>;
  const current = shell.place === 'now' ? undefined : shell.index?.byId.get(shell.place);

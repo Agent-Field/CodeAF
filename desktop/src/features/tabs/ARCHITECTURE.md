@@ -26,9 +26,19 @@ Workspace.tsx  (owns useReducer(workspaceReducer), summaries, dialogs; builds Ta
 - `workspaceReducer` composes slices: `reducers/tabs.ts` (new, open, open-task, select, pick, close, reopen, reopen-id, pin, rename, title, view, draft, reorder), `reducers/groups.ts` (group, group-picked, move-group, reorder-group, rename-group, collapse-group, ungroup), `reducers/split.ts` (split-merge, split-close-pane, split-focus, split-layout, split-unmerge, split-group). `view`, `draft`, `title`, `rename` and `select` accept a tab id OR a pane id.
 - To add actions: new file `reducers/<lane>.ts` exporting `XAction` and `reduceX(state, action)` that returns `undefined` for foreign actions; add the type to `WorkspaceAction` and the function to `slices` in `model.ts` (two one-line edits). Add cases to your own tests in `<lane>.test.ts`, not `model.test.ts`.
 
+## Inbox retirement (Iteration 2)
+
+Inbox is no longer a kind or a pane. `kinds/retired.ts` drops its saved slots before
+kind fallback in local and shared workspace readers. Other tabs, closed chats,
+drafts and surviving split panes remain. An Inbox-only save opens one quiet New tab.
+Old `ensure-inbox` actions replay as no-ops; shell `open-inbox` requests and
+`codeaf://inbox` addresses start the existing Next up walker. Transfer offers ignore
+retired slots. The historical Inbox references in lane ownership below are superseded
+by this rule; `closing/background.ts` remains the data source for closing work.
+
 ## Kinds registry (`kinds/`)
 
-`kinds/types.ts` lists the kinds (conversation, task, file, diff, web, terminal, settings, history, newtab, inbox). `kinds/registry.ts` maps each kind to a `KindDef` (`label`, `icon`, `backed`, `pane`, `preview`). No code switches on kind: ask `kindDef(kind)`.
+`kinds/types.ts` lists the kinds (conversation, task, file, diff, web, terminal, settings, history, newtab, home). `kinds/registry.ts` maps each kind to a `KindDef` (`label`, `icon`, `backed`, `pane`, `preview`). No code switches on kind: ask `kindDef(kind)`.
 
 - `pane` renders the body inside a card (`PaneRenderProps`: `pane`, `label`, `focused`, `split`, `actions`). `split` and `focused` are what the conversation lane needs for the compact 36px composer.
 - `preview` is the hover-card/overview body slot (`PreviewRenderProps`), `null` until the preview lane fills it.

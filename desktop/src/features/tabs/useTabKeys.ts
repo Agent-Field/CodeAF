@@ -143,7 +143,7 @@ export function useDesktopTabActions({ state, dispatch, visible, renaming, onAct
   useEffect(() => {
     const onOpenKind = (event: Event) => {
       const kind = (event as CustomEvent<ShellKind>).detail;
-      if (!kindDef(kind).backed || renaming) return;
+      if ((kind !== 'inbox' && !kindDef(kind).backed) || renaming) return;
       setOverviewOpen(false);
       dispatch(openKindAction(state, kind));
       onActivate();
