@@ -426,3 +426,9 @@ Using at 320, 800 and 1200px. The additional existing Engine test fails once in
 each browser at the same Retry color assertion (USING-283-5). Go sources and
 product behavior were unchanged, so no build/vet/laws or manual update was
 needed. Ledger rows added: SETTINGS-USING-283-1 and SETTINGS-USING-283-2.
+
+## t-d5-sh-overview-pinch (2026-10-10)
+
+Decision: **no additional pinch wiring**. Shell 2h and Interactions require pinch-out, but renderer Ctrl+wheel cannot distinguish a physical pinch from ordinary zoom, and native delivery/cancellation has not been observed on either supported platform. The existing tab-strip-only `useOverviewGesture` is already wired; this research does not remove it or broaden it. Corrected stale OV2, which said no wiring existed.
+
+[Research and minimal native probe](research/d5-overview-pinch.md) distinguish macOS GestureEvent/Ctrl-wheel source evidence from GTK native magnification and from synthetic browser tests. Keep the overview button and platform keys as dependable doors. SH-190 native acceptance stays open until physical traces are recorded on macOS WKWebView and Linux WebKitGTK. No renderer, engine, tokens or manual behavior changed.
