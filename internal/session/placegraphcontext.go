@@ -22,10 +22,13 @@ package session
 //
 // AT A TURN'S OPENING AND NEVER INSIDE ONE (6e risks: "Adding a place mid-run
 // applies from the next turn"). The check is a stat of the graph file and the
-// choices file; only when one of them moved is the graph re-read and the block
-// re-rendered, and only when the rendered bytes differ does message[0] change
-// (memory.go's [Agent.refreshSystemLocked] states why a changed byte there costs
-// the whole transcript). Most turns of most conversations pay two stats.
+// choices file. A stat that moved is then compared as [placegraph.ReadGeneration]
+// (the store's revision). Only a moved generation, or a moved choices file,
+// re-reads the graph and re-renders the block, and only when the rendered bytes
+// differ does message[0] change (memory.go's [Agent.refreshSystemLocked] states
+// why a changed byte there costs the whole transcript). A visit rewrites the
+// file without moving the generation, so it does not re-render. Most turns of
+// most conversations pay two stats.
 //
 // THE READ TAKES NO LOCK BUT THIS AGENT'S. The graph is read with
 // [placegraph.ReadSnapshot], which never waits on the store's file lock and
@@ -76,8 +79,11 @@ type PlaceGraphDoor struct {
 }
 
 // placeGraphStamp is what a turn compares to decide whether to re-read.
+// generation is the graph revision last resolved. It is filled in only after a
+// stat miss, so the fast path (two stats, nothing else) does not parse the file.
 type placeGraphStamp struct {
 	graph, choices os.FileInfo
+	generation     uint64
 }
 
 func statStamp(door *PlaceGraphDoor) placeGraphStamp {
@@ -109,6 +115,18 @@ func (a *Agent) refreshPlaceGraphLocked() {
 	}
 	stamp := statStamp(door)
 	if a.placeGraphRead && stamp.same(a.placeGraphStamp) {
+		return
+	}
+	// The generation is the revision. A file that moved without it (a visit)
+	// cannot have changed what this conversation is told. A damaged file is an
+	// error here and is left for the store; the block already composed stays.
+	gen, err := placegraph.ReadGeneration(door.Path)
+	if err != nil {
+		return
+	}
+	stamp.generation = gen
+	if a.placeGraphRead && gen == a.placeGraphStamp.generation && sameInfo(stamp.choices, a.placeGraphStamp.choices) {
+		a.placeGraphStamp = stamp
 		return
 	}
 	bundle, err := resolvePlaceGraph(door, a.id)

@@ -245,7 +245,7 @@ func validateState(st *State, repair bool) ([]string, error) {
 		for _, par := range p.Parents {
 			switch {
 			case par == p.ID:
-				return nil, fmt.Errorf("%w: %s is its own parent", ErrCycle, p.ID)
+				return nil, fmt.Errorf("%w: %s -> %s", ErrCycle, p.Name, p.Name)
 			case par == RootID && repair:
 				repairs = append(repairs, "dropped explicit root parent of "+p.ID)
 			case par == RootID || par == NowID:
@@ -268,8 +268,8 @@ func validateState(st *State, repair bool) ([]string, error) {
 			return nil, fmt.Errorf("%w: %s has more than %d parents", ErrTooLarge, p.ID, MaxParents)
 		}
 	}
-	if id := findCycle(st); id != "" {
-		return nil, fmt.Errorf("%w: through %s", ErrCycle, id)
+	if names := st.cycleNames(); names != "" {
+		return nil, fmt.Errorf("%w: %s", ErrCycle, names)
 	}
 	// Memberships.
 	type pair struct{ c, p string }
@@ -330,43 +330,103 @@ func validateState(st *State, repair bool) ([]string, error) {
 	return repairs, nil
 }
 
-// findCycle returns a place on a cycle, or "" (Kahn's algorithm over parent edges).
-func findCycle(st *State) string {
-	indeg := make(map[string]int, len(st.Places))
-	kids := map[string][]string{}
-	for _, p := range st.Places {
-		indeg[p.ID] += 0
-		for _, par := range p.Parents {
-			indeg[p.ID]++
-			kids[par] = append(kids[par], p.ID)
-		}
+// placeName is the words a refusal quotes. An id with no row keeps the id, so a
+// damaged edge still names something.
+func (st *State) placeName(id string) string {
+	if p := st.find(id); p != nil && strings.TrimSpace(p.Name) != "" {
+		return p.Name
 	}
-	var queue []string
-	for _, p := range st.Places {
-		if indeg[p.ID] == 0 {
-			queue = append(queue, p.ID)
-		}
+	return id
+}
+
+// cycleNames is one parent cycle as place names, the first name repeated at the
+// end ("Alpha -> Beta -> Alpha"). "" when the graph is a DAG. The walk is
+// iterative: a chain as long as MaxPlaces must not grow the call stack. Names,
+// not ids, because a refused parent edit has to say which places would loop.
+func (st *State) cycleNames() string {
+	color := make(map[string]int, len(st.Places)) // 0 unseen, 1 on the stack, 2 done
+	type frame struct {
+		id string
+		pi int
 	}
-	done := 0
-	for len(queue) > 0 {
-		n := queue[0]
-		queue = queue[1:]
-		done++
-		for _, c := range kids[n] {
-			if indeg[c]--; indeg[c] == 0 {
-				queue = append(queue, c)
+	for _, start := range st.Places {
+		if color[start.ID] != 0 {
+			continue
+		}
+		stack := []frame{{id: start.ID}}
+		color[start.ID] = 1
+		for len(stack) > 0 {
+			i := len(stack) - 1
+			p := st.find(stack[i].id)
+			if p == nil || stack[i].pi >= len(p.Parents) {
+				color[stack[i].id] = 2
+				stack = stack[:i]
+				continue
+			}
+			par := p.Parents[stack[i].pi]
+			stack[i].pi++
+			switch color[par] {
+			case 1:
+				var names []string
+				for _, f := range stack {
+					if f.id == par || len(names) > 0 {
+						names = append(names, st.placeName(f.id))
+					}
+				}
+				names = append(names, st.placeName(par))
+				return strings.Join(names, " -> ")
+			case 0:
+				color[par] = 1
+				stack = append(stack, frame{id: par})
 			}
 		}
 	}
-	if done == len(st.Places) {
-		return ""
+	return ""
+}
+
+// wouldCycleNames names the loop that making par a parent of id would close.
+// par is id, or already reachable below id. The walk is downward through
+// children so it follows the edge that actually connects them, not only the
+// first parent.
+func (st *State) wouldCycleNames(id, par string) string {
+	if id == par {
+		n := st.placeName(id)
+		return n + " -> " + n
 	}
-	for _, p := range st.Places {
-		if indeg[p.ID] > 0 {
-			return p.ID
+	kids := st.childrenOf()
+	prev := map[string]string{id: ""}
+	queue := []string{id}
+	found := false
+	for len(queue) > 0 && !found {
+		n := queue[0]
+		queue = queue[1:]
+		for _, c := range kids[n] {
+			if _, seen := prev[c]; seen {
+				continue
+			}
+			prev[c] = n
+			if c == par {
+				found = true
+				break
+			}
+			queue = append(queue, c)
 		}
 	}
-	return ""
+	if !found {
+		return st.placeName(id) + " -> " + st.placeName(par) + " -> " + st.placeName(id)
+	}
+	var chain []string
+	for cur := par; ; cur = prev[cur] {
+		chain = append(chain, st.placeName(cur))
+		if cur == id {
+			break
+		}
+	}
+	for i, j := 0, len(chain)-1; i < j; i, j = i+1, j-1 {
+		chain[i], chain[j] = chain[j], chain[i]
+	}
+	chain = append(chain, st.placeName(id))
+	return strings.Join(chain, " -> ")
 }
 
 // ---- Snapshot --------------------------------------------------------------
@@ -514,6 +574,10 @@ func (s *Snapshot) EffectiveTint(id string) (Tint, bool) {
 // broken by palette order. It is deterministic and calls no model (assumption Q-04:
 // the design's "AI picks an unused colour" is served by a rule, not a call).
 func (s *Snapshot) SuggestTint() Tint { return suggestTint(&s.State) }
+
+// NewTopLevelTint is SuggestTint under the name a new top-level place is given
+// when nobody chose a hue: the least-used of the five, graphite excluded.
+func (s *Snapshot) NewTopLevelTint() Tint { return s.SuggestTint() }
 
 func suggestTint(st *State) Tint {
 	use := map[Tint]int{}
@@ -805,7 +869,7 @@ func reparent(st *State, id string, parents []string) (*change, error) {
 			return nil, err
 		}
 		if par == id || below[par] {
-			return nil, fmt.Errorf("%w: %s under %s", ErrCycle, id, par)
+			return nil, fmt.Errorf("%w: %s", ErrCycle, st.wouldCycleNames(id, par))
 		}
 		if pp.Archived && !had[par] {
 			return nil, fmt.Errorf("%w: parent %s", ErrArchived, par)
@@ -1255,8 +1319,8 @@ func (s *Store) MergePlaces(from, into string) (MergeResult, Receipt, error) {
 			return nil, err
 		}
 		res.ChildrenMoved = moved
-		if id := findCycle(st); id != "" {
-			return nil, fmt.Errorf("%w: merge left a cycle through %s", ErrCycle, id)
+		if names := st.cycleNames(); names != "" {
+			return nil, fmt.Errorf("%w: %s", ErrCycle, names)
 		}
 		res.Into = st.find(into).clone()
 		if res.SkippedParents == nil {
