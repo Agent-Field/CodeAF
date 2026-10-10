@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 // keyboard.ts reads navigator.platform at import; the matcher takes the platform as an argument.
 Object.defineProperty(globalThis, 'navigator', { value: { platform: 'Linux x86_64' }, configurable: true });
-const { shortcutOf, formatShortcut, shellShortcuts, newTerminalShortcut, isNewTerminalShortcut } = await import('./keyboard.ts');
+const { spellShortcut, shortcutOf, formatShortcut, shellShortcuts, newTerminalShortcut, isNewTerminalShortcut } = await import('./keyboard.ts');
 
 const key = (key: string, over: Record<string, unknown> = {}) => ({ key, code: '', metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...over });
 const mac = (event: ReturnType<typeof key>) => shortcutOf(event, true);
@@ -204,4 +204,17 @@ test('Home Up is up-level; chat arrows keep turn navigation and composers keep c
     assert.equal(shortcutOf(key('j', { ...primary, altKey: true }), { mac }), undefined);
   }
   assert.equal(shortcutOf(key('j', { ctrlKey: true }), { mac: false, terminal: true }), undefined);
+});
+
+test('spellShortcut: glyphs run together on a Mac, words join with + elsewhere (C-CTRL-14)', () => {
+  const original = globalThis.navigator;
+  try {
+    Object.defineProperty(globalThis, 'navigator', { value: { platform: 'MacIntel', userAgent: 'Mac' }, configurable: true });
+    assert.equal(spellShortcut('⌘/Ctrl ⇧ C'), '⌘⇧C');
+    Object.defineProperty(globalThis, 'navigator', { value: { platform: 'Linux x86_64', userAgent: 'X11' }, configurable: true });
+    assert.equal(spellShortcut('⌘/Ctrl ⇧ C'), 'Ctrl+Shift+C');
+    assert.equal(spellShortcut('↵'), '↵');
+  } finally {
+    Object.defineProperty(globalThis, 'navigator', { value: original, configurable: true });
+  }
 });
