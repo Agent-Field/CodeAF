@@ -61,6 +61,8 @@ Shell). On any conflict, the design files win over code and older docs.
 
 | # | Question | Assumption the app ships now |
 |---|---|---|
+| PU1 | Does undoing a rail close also navigate back to that place? | Reopen the place through the canonical visit operation and clear this window's closed marker; preserve the currently viewed place and all saved tabs. |
+| PU2 | What happens when a place Undo fails before all its receipts are consumed? | Keep unconsumed receipts after a transport failure for an explicit retry. Drop the step when the engine reports `cannot_undo` or `no_receipt`; never replay receipts already consumed. |
 | NAV-154 | If a rail visit or close fails, should the window still move? | A failed visit leaves the requested view open and reports the engine error. A failed close leaves the current place and its saved tabs open. Bulk close stops on the first refusal; earlier accepted closes remain applied. |
 | HRM1 | History specifies Delete… for archived rows, but the engine has no conversation-delete route. What should appear until deletion and Undo exist? | Ship no live Delete… action; the row exposes a confirmation callback only when supplied by a real host. Add to place stays absent until its filing lane connects it. |
 | JOB-C1 | Does Show full output bypass the background job log limit? | The typed client reads the largest retained response by omitting `tail`; the current bridge caps it at 1 MiB and preserves `truncated`. It does not claim that a truncated response is the complete log. |
