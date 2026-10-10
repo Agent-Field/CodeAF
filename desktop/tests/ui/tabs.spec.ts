@@ -190,7 +190,7 @@ test('platform tab shortcuts create, close, reopen, navigate and open overview',
  await page.keyboard.press('Escape');
  await page.getByRole('tab').first().click({ button: 'right' });
  const menu = page.getByRole('menu').first();
- await expect(menu.getByRole('menuitem', { name: /^Close tab\b/ }).locator('kbd')).toHaveText(mac ? '⌘W' : 'Ctrl W');
+ await expect(menu.getByRole('menuitem', { name: /^Close tab\b/ }).locator('kbd')).toHaveText(mac ? '⌘W' : 'Ctrl+W');
  await page.keyboard.press('Escape');
  const commandTabHandled = await page.evaluate(() => {
   const event = new KeyboardEvent('keydown', { key: 'Tab', code: 'Tab', metaKey: true, bubbles: true, cancelable: true });

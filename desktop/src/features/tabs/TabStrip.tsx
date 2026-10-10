@@ -107,7 +107,9 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
     setSeen(signature);
     if (departureIds(next) !== departureIds(departures)) setDepartures(next);
   }
-  // Every tab is drawn, hidden members included: a collapsed group whose members are all hidden must still show its capsule.
+  // Every tab is drawn, hidden members included, so a collapsed group whose members are all hidden
+  // still shows its capsule. Those members stay in the drawing model after the close motion ends, even
+  // when the active tab is outside the group.
   const shown = withDepartures(state.tabs, departures);
   const groups = groupsForDepartures(state.groups, departures);
   const departing = new Set(departures.map(item => item.tab.id));
