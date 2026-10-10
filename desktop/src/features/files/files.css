@@ -10,6 +10,8 @@
 .file-count { flex: none; font-family: var(--mono); font-size: var(--font-size-label); font-variant-numeric: tabular-nums; }
 .file-count[data-sign="add"] { color: var(--diff-count-add); }
 .file-count[data-sign="del"] { color: var(--danger); margin-inline-start: calc(var(--space-1) * -1); }
+/* Selection's paper shadow must not hide the keyboard ring on the file view toggle. */
+:where(html:not([data-input="pointer"])) .file-actions .segmented-option:focus-visible { box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 calc(var(--focus-ring-width) + var(--focus-halo-width)) var(--accent-soft); }
 .file-actions { flex: none; margin-inline-start: auto; display: flex; align-items: center; gap: var(--control-gap); }
 .button.file-editor { height: var(--editor-button-height); padding-inline: var(--editor-button-pad); gap: var(--editor-button-gap); border-radius: var(--radius-md); font-size: var(--font-size-body); color: var(--ink-2); }
 .file-base { flex: none; margin: 0; padding-inline: var(--file-head-pad-start) var(--file-head-pad-end); padding-block-end: var(--file-note-pad); font-size: var(--font-size-body); color: var(--ink-3); }
