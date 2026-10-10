@@ -325,7 +325,24 @@ func TestLifecycleDetachRejectsGetAndStaleConversation(t *testing.T) {
 }
 
 func TestLifecycleReaperUsesInjectedTicksAndStops(t *testing.T) {
-	f := newLifecycleFixture(t)
+	// New starts the production reaper, and startReaper ignores a second start.
+	// This clock has to be the first one, so the bridge is built without New.
+	f := &lifecycleFixture{now: time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC), file: filepath.Join(t.TempDir(), "session.jsonl")}
+	f.a = &lifecycleAgent{fakeAgent: fakeAgent{model: Model}}
+	f.b = &Bridge{
+		token: testToken, sessions: map[string]*conversation{}, icons: newFaviconCache(),
+		open: func(string) (Connection, error) {
+			f.opens.Add(1)
+			return Connection{Agent: f.a, Local: true,
+				Welcome: remote.Welcome{SessionFile: f.file, Workspace: t.TempDir(), Model: Model, Persistent: true, Launch: &remote.LaunchShape{OneModel: true}},
+				Close:   func() { f.closed.Add(1) }}, nil
+		},
+	}
+	t.Cleanup(func() { f.b.stopReaper(); f.b.Close() })
+	f.b.mu.Lock()
+	f.b.lifecycleLocked().now = func() time.Time { return f.now }
+	f.b.mu.Unlock()
+	f.id = f.attach(t)
 	f.detach(t)
 	ticks := make(chan time.Time)
 	now := f.now.Add(sessionIdleLimit)

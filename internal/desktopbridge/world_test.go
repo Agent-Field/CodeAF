@@ -223,8 +223,10 @@ func TestWorldKeepsNativeOriginsAndGivesForeignOnesNothing(t *testing.T) {
 			t.Fatalf("native origin %s: %d %q", origin, resp.StatusCode, resp.Header.Get("Access-Control-Allow-Origin"))
 		}
 	}
+	// The origin guard answers before the token check, so a foreign page is 403
+	// and learns nothing, including whether a token would have worked.
 	resp := get(t, srv, "/api/engine/world", "", "Origin", "https://evil.example")
-	if resp.StatusCode != 403 || resp.Header.Get("Access-Control-Allow-Origin") != "" {
+	if resp.StatusCode != http.StatusForbidden || resp.Header.Get("Access-Control-Allow-Origin") != "" {
 		t.Fatalf("foreign origin: %d %q", resp.StatusCode, resp.Header.Get("Access-Control-Allow-Origin"))
 	}
 }

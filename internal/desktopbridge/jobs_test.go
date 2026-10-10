@@ -363,6 +363,7 @@ func TestJobsRoutesNeedTheToken(t *testing.T) {
 	for _, p := range paths {
 		for _, auth := range []string{"", "Bearer nope"} {
 			r := httptest.NewRequest(p.method, p.path, strings.NewReader("{}"))
+			r.Host = "127.0.0.1:1420"
 			r.Header.Set("Content-Type", "application/json")
 			if auth != "" {
 				r.Header.Set("Authorization", auth)
