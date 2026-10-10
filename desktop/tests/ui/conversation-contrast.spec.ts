@@ -92,6 +92,9 @@ for (const scheme of ['light', 'dark'] as const) {
       await page.goto('/');
       const ink = await tokenColor(page, 'ink-3');
       const canvas = await tokenColor(page, 'canvas');
+      // setContent writes with document.open and leaves this page's timers running, so the
+      // disconnected-engine toast can land in the fixture. Unload the app first.
+      await page.goto('about:blank');
       await page.setContent(`<html lang="en"><head><title>Contrast contract</title></head><body style="background:${canvas};color:${ink}"><main>
         <kbd class="keyboard-shortcut">Ctrl W</kbd>
         <div class="rail-row" data-busy-closed><span class="nav-label">Closed and still running</span></div>

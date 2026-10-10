@@ -69,6 +69,16 @@ Shared, change with care and keep edits small: `tokens.json` (add keys, never re
 
 `.app-shell` is the frame (`--frame` ground), `Rail` is 252px (`--sidebar-width`: the design's 232px row column plus 10px padding each side), `.content-pane` is the column with the strip and the card(s), padded 8px right and bottom. A workspace tab draws `.workspace-pane` cards (radius 10, canvas, sh-1); other pages sit in `.content-card`. A split adds a 40px `.pane-header` per pane and a 1.5px accent-soft ring on the focused pane.
 
+## Window providers (`App.tsx`)
+
+The shell div carries `data-providers="places next-up focus-history"`, outer to inner. `ThemeProvider` stays outside App, in `main.tsx`.
+
+1. **PlacesShellProvider** — which place this window shows, and Go to. Focus history's restore calls that, so the shell is outside the history provider.
+2. **NextUpProvider** — one `createNextUp()` for this window. Skip and a pending Accept stay on it. The strip (`TabStrip`'s frame slot) draws the frame pill and the banner from `useNextUp`, which reads this provider. App does not draw a second pill or banner: Focus mode hides the strip, and the pill hides with it.
+3. **FocusHistoryProvider** — one wire per window label (`focusHistoryStorageKey`). Back and forward ask the shell to change place, then select the tab and put its drill back (a task id, or the tab's own page when the path is empty). The workspace uses this wire and does not keep a second stack.
+
+An attention item from an engine that omits the newer fields (`blocking`, `stakes`, `suggestion`, `holdingUp`, place ids) still counts on the pill. A missing `blocking` is read as blocking the turn. The rail has no Inbox row; that count is the pill.
+
 ## Rules that bind every lane
 
 Hover is a fill change only (120ms); press 80ms; focus ring for keyboard only; colour only on 6px glyphs (amber needs you, red failed); running is silent on a tab; fades are masks, never ellipses; menus are the shared `ContextMenu`/`DropdownMenu`; icons come from `components/ui/Icon.tsx` (lucide names missing from the animated set are noted in the lane report).

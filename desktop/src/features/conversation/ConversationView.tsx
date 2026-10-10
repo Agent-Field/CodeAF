@@ -88,11 +88,21 @@ function useTaskPanel(hasTasks: boolean, closed: boolean, onView: ConversationVi
   return { sheet, shown, close, open };
 }
 
-export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummary, onOpenTaskTab, onRename, autoFocus = true, split = false, focused = true, usingApi, onOpenSource, onAddToPlace }: ConversationViewProps) {
+export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummary, onOpenTaskTab, onRename, onOpenConversationTab, autoFocus = true, split = false, focused = true, usingApi, onOpenSource, onAddToPlace }: ConversationViewProps) {
   const beforeFirstTurn = useContext(FirstTurnContext);
   const newConversationPlace = useContext(NewConversationPlaceContext);
   const conversation = useConversation({ sessionFile: tab.sessionFile, onSessionFile: (sessionFile) => onView({ sessionFile }), beforeFirstTurn, newConversationPlace });
   const { model, snapshot, failed } = conversation;
+  // A refused outbox send comes back into an empty composer. Words typed since are left alone.
+  const appliedRestore = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const text = conversation.draftToRestore;
+    if (!text) { appliedRestore.current = undefined; return; }
+    if (appliedRestore.current === text) return;
+    appliedRestore.current = text;
+    if (tab.draft.trim() === '') onDraft(text);
+    conversation.ackDraftRestore();
+  }, [conversation.draftToRestore]);
   const walk = useNextUpWalkState();
   const [focusKey, setFocusKey] = useState<string>();
   // A tab opened from a web page brings that page's picture; the composer attaches it once and the offer is spent.
@@ -187,7 +197,7 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
   // Leaving the expanded view goes back the way the reader came, or to the conversation.
   const closeTasksView = () => setRoute(route.back.length ? goBack(route) : navigate(route, undefined));
   useTurnJump(scroller, !inTask && !tasksView);
-  const empty = !inTask && model.turns.length === 0 && model.preface.length === 0 && !failed;
+  const empty = !inTask && model.turns.length === 0 && model.preface.length === 0 && !failed && conversation.pendingSends.length === 0;
   const { done, total } = taskCounts(model.tasks);
   const barPanel = hasTasks && !inTask ? { label: `Tasks · ${done}/${total}`, shown: panel.shown, onToggle: panel.shown ? panel.close : panel.open } : undefined;
   // ⌘⇧K toggles the task panel exactly like the header button (design Shell 2h, I-IKY-16). Only the focused pane answers, so a split's
@@ -251,11 +261,12 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
                 <ConversationTranscript
                   {...blocks}
                   model={model}
+                  onOpenConversationTab={tab.sessionFile && onOpenConversationTab ? (anchor, background) => onOpenConversationTab?.(tab.sessionFile!, anchor, background) : undefined}
                   firstReplyAside={tab.sessionFile && model.turns[0]?.state === 'done' && model.turns[0].blocks.some(block => block.kind === 'answer') ? <FirstReplyPlaceOffer key={tab.sessionFile} sessionFile={tab.sessionFile} focused={focused}/> : undefined}
                   folded={folded}
                   onToggleFold={toggleFold}
                   failed={conversation.unreachable ? undefined : failed}
-                  sending={conversation.sending}
+                  sending={conversation.pendingSends}
                   onRetry={() => void retry()}
                 />
               )}

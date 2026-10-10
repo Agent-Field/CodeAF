@@ -11,7 +11,7 @@
 /* The live step has no chevron to read: its row is a still mark, a title and the command beneath (design v3 Work block · Live). */
 .work-step[data-state="running"] .work-step-head.button > .app-icon[data-icon="chevron"] { visibility: hidden; }
 .work-step-caption { overflow: hidden; padding-inline-start: calc(var(--row-action-icon) + var(--icon-xs) + var(--space-2) * 2); font-family: var(--mono); font-size: var(--type-mono-small-size); line-height: var(--work-caption-leading); color: var(--ink-3); text-overflow: ellipsis; white-space: nowrap; }
-.work-step[data-state="forming"] .work-step-title { opacity: var(--opacity-control-disabled); }
+.work-step[data-state="forming"] .work-step-title { opacity: var(--tool-forming-opacity); }
 .work-step[data-state="refused"] .work-step-title { text-decoration: line-through; text-decoration-color: var(--line); }
 
 /* Only the last running title receives the sweep; settled titles inherit Q19's quiet row ink. */

@@ -32,8 +32,7 @@ test('the rail is 252px (232px rows plus 10px padding), drawn like the design, w
   await expect(toggle).toHaveCSS('border-top-left-radius', '7px');
   await expect(toggle).toHaveCSS('color', await tokenColor(page, 'ink-3'));
   await expect(toggle.locator('.app-icon')).toHaveCSS('width', '15px');
-  for (const name of ['Now', 'Inbox']) {
-    const row = rail(page).getByRole('button', { name, exact: true });
+  for (const row of [rail(page).getByRole('button', { name: 'Now', exact: true }), rail(page).getByRole('button', { name: 'All places' })]) {
     expect((await row.boundingBox())!.height).toBe(px('rail-row-height'));
     await expect(row).toHaveCSS('border-top-left-radius', '8px');
     await expect(row).toHaveCSS('font-size', '13px');
@@ -51,7 +50,7 @@ test('the rail is 252px (232px rows plus 10px padding), drawn like the design, w
   await expect(open).toHaveCSS('box-shadow', /.+/);
   await expect(open).toHaveCSS('font-weight', '500');
   await expect(open).toHaveCSS('color', await tokenColor(page, 'ink'));
-  const other = rail(page).getByRole('button', { name: 'Inbox', exact: true });
+  const other = rail(page).getByRole('button', { name: 'All places' });
   await expect(other).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(other).toHaveCSS('color', await tokenColor(page, 'ink-2'));
   await expect(other).toHaveCSS('font-weight', '400');

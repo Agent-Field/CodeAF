@@ -23,7 +23,7 @@ export async function expectThemedSurface(page: Page, surface: Locator, tokens: 
  await expect(surface).toHaveCSS('background-color', await tokenColor(page, tokens.background));
  await expect(surface).toHaveCSS('color', await tokenColor(page, tokens.ink));
 }
-export async function expectAccessible(page: Page) {
+export async function expectAccessible(page: Page, scope?: string) {
  // Contrast is meaningful after entry/exit motion settles; transient opacity is not a theme color.
  // A transition started by the key that just landed is not in the list until the next frame, so look twice.
  await page.evaluate(async () => {
@@ -38,16 +38,20 @@ export async function expectAccessible(page: Page) {
   }
  });
  for (let attempt = 0; attempt < 3; attempt += 1) {
-  const result = await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();
+  // A caller can limit the scan to one specimen so chrome outside it is not judged with it.
+  const axe = new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']);
+  const result = await (scope ? axe.include(scope) : axe).analyze();
   // Live replies can remove a queue control during axe's scan. Rescan a stale result instead of treating a
   // missing node as an unlisted colour or silently exempting it. Filtering in one pass also avoids round trips.
+  // Ink-3 text the design draws muted is waived by closest(); a string or array target both name that node.
   const { found, stale } = await page.evaluate(({ violations, muted }) => {
    let stale = false;
    const found = [];
    for (const violation of violations) {
     const nodes = violation.nodes.filter(node => {
      if (violation.id !== 'color-contrast') return true;
-     const selector = String(node.target[node.target.length - 1]);
+     const target = node.target;
+     const selector = Array.isArray(target) ? String(target[target.length - 1]) : String(target);
      const element = document.querySelector(selector);
      if (!element) stale = true;
      return !element?.closest(muted);
