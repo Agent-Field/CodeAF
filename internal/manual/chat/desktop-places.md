@@ -216,6 +216,19 @@ Older records with no known wait say `picked by codeaf` without seconds.
 An answer you give keeps its attribution and local time, for example
 `Allow once · you · 14:02`.
 
+## Desktop composer: Paste as plain text and Queue instead
+
+In the desktop app, right-click the message field and choose **Paste as plain text**
+to insert clipboard text at the caret, replacing any selected text. Even a long paste
+stays in the field; this action creates no pasted-text card or attachment. If clipboard
+access fails, the draft stays and the composer says "Clipboard text could not be read.
+Paste with your keyboard instead."
+
+Right-click **Send**, **Stop** or **Steer** for **Queue instead**. It is enabled only
+while work is running and the field contains nonblank text. It sends the draft through
+the same queue action as Option+Enter (⌥↵) on macOS or Alt+Enter elsewhere, without
+stopping or steering the current work. A disabled composer cannot paste or queue.
+
 ## Review a question in an unfocused desktop split pane
 
 An unfocused conversation in a desktop split shows a small card above its compact
