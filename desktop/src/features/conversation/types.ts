@@ -2,7 +2,7 @@
 // shapes; only model/ builds them, from canonical engine records.
 // Nothing here is invented: a field is empty when the engine has not said it.
 
-import type { EngineQuestion, EngineTaskRow } from '../chat/engine-client';
+import type { ConversationPlan, DecisionAside, EngineQuestion, EngineTaskRow } from '../chat/engine-client';
 
 /** One tool call, paired by its canonical CallID. */
 export type ToolStep = {
@@ -73,6 +73,9 @@ export type Deliverable =
 /** Conversation-rhythm items of a turn, in order (ELEMENTS §1–2). */
 export type TurnBlock =
   | WorkBlock
+  | { kind: 'decision-receipt'; id: string; decision: DecisionAside }
+  | { kind: 'plan'; id: string; plan: ConversationPlan }
+  | { kind: 'remember-line'; id: string; text: string; undoReceipts?: string[] }
   | { kind: 'context-note'; id: string; text: string; undoReceipts?: string[] }
   | { kind: 'update'; id: string; text: string; cut: boolean; streaming: boolean } // Addressed interim update
   | { kind: 'answer'; id: string; text: string; streaming: boolean } // Answer final reply (Markdown)

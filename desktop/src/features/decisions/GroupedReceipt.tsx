@@ -20,12 +20,12 @@ export function GroupedReceipt({ actions, onOpen, onWhy }: { actions: readonly G
   if (shown.length === 0) return null;
   if (shown.length === 1) {
     const only = shown[0];
-    return <ReceiptLine questionId={only.questionId} placeName={only.placeName} reason={only.reason} denied={only.denied} onOpen={onOpen} onWhy={onWhy}/>;
+    return <ReceiptLine text={only.text} questionId={only.questionId} placeName={only.placeName} reason={only.reason} denied={only.denied} onOpen={onOpen} onWhy={onWhy}/>;
   }
   const phrases = shown.map(action => action.summary.trim()).filter(phrase => phrase.length > 0);
   const toggle = (event: MouseEvent) => { event.stopPropagation(); setOpen(value => !value); };
   // Sparkle, sentence and chevron are one flex row with an 8px gap. Newlines between them
   // would count as extra items, so the three children are adjacent.
   const summary = <Button className="decision-receipt-summary" aria-expanded={open} onClick={toggle}><Icon name="sparkle" size="tiny"/><span className="decision-receipt-text">{`Did ${shown.length} things`}{phrases.length > 0 && <>{` ${middle} `}{phrases.map((phrase, index) => <span key={`${phrase}-${index}`}>{index > 0 ? ', ' : null}<span className="decision-receipt-actor">{phrase}</span></span>)}</>}</span><span className="decision-receipt-chevron"><Icon name="chevron" size="micro" motion="disclosure"/></span></Button>;
-  return <div className="decision-receipt-group" data-open={open || undefined}>{summary}{open && shown.map(action => <ReceiptLine key={action.questionId} questionId={action.questionId} placeName={action.placeName} reason={action.reason} denied={action.denied} onOpen={onOpen} onWhy={onWhy}/>)}</div>;
+  return <div className="decision-receipt-group" data-open={open || undefined}>{summary}{open && shown.map(action => <ReceiptLine key={action.questionId} text={action.text} questionId={action.questionId} placeName={action.placeName} reason={action.reason} denied={action.denied} onOpen={onOpen} onWhy={onWhy}/>)}</div>;
 }

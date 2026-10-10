@@ -104,6 +104,9 @@ export function applyLive(turn: TurnV2, snapshot: EngineSnapshot, live?: LiveOve
   const seen = reconcile(recordedCalls(turn), live);
   addWork(turn, live, live.calls.filter((c) => !seen.has(c.id)), waiting);
   addSteers(turn, live);
+  if (live.plan && !turn.blocks.some(block => block.kind === 'plan' && block.plan.id === live.plan?.id)) {
+    turn.blocks.push({ kind: 'plan', id: `${turn.id}:plan:${live.plan.id}`, plan: live.plan });
+  }
   const text = live.text.trim() && !recordedText(snapshot.entries.map(asRich), live) ? live.text : '';
   if (text) turn.blocks.push({ kind: 'answer', id: `${turn.id}:live-text`, text, streaming: !live.textDone });
   if (text && !live.textDone) turn.state = 'streaming';

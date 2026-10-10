@@ -41,6 +41,8 @@ export type EngineQuestion = {
  pick?: { key: string; reason?: string; confidence?: 'sure' | 'fairly' | 'unsure'; percent?: number; basis?: string[]; wouldChange?: string };
  /** Set while the asking place is still learning this kind of question: how many of its last `of` proposals the person agreed with. */
  learning?: { place?: string; agreed: number; of: number };
+ /** Canonical learning mark sent by session.Question. */
+ proposal?: { place: string; agreed: number; of: number };
  stakes?: 'reversible' | 'costly' | 'irreversible';
  blocking?: { turn?: boolean; tasks?: string[] };
  asker?: { kind?: 'model' | 'engine' | 'task' | 'surface' | 'window'; name?: string };
@@ -50,6 +52,9 @@ export type EngineQuestion = {
  withdrawn?: { reason?: string; by?: string; at?: string };
 };
 export type EngineAnswer = { kind: string; id: number; ref?: string; key: string; picked?: string[]; change?: string; blanks?: Record<string,string>; scope?: string; dial?: number; decidedBy?: 'person' | 'dial' | 'record' | 'asker' | 'window'; /** The person took another answer than the one a learning place proposed. */ overruled?: boolean; comments?: Record<string,string> };
+export type DecisionWhy = { by: string; because?: string; percent?: number; reversible: boolean };
+export type DecisionAside = { kind: string; text: string; why?: DecisionWhy; children?: { decisionId: string; text: string; question: { kind: string; token: string }; why: DecisionWhy }[] };
+export type ConversationPlan = { id: string; steps: import('../decisions/client').PlanStep[]; reachesBeyond: boolean };
 export type EngineEntry = {
  Role: 'user' | 'assistant' | 'tool' | 'note' | 'aside'; Text: string;
  Answer?: boolean; Addressed?: boolean; Interrupted?: boolean;
@@ -61,6 +66,9 @@ export type EngineEntry = {
  TaskIDs?: string[] | null;
  /** What wrote an aside: "task" | "job" | "watch" | "resume"; absent when unknown. */
  AsideKind?: string;
+ Decision?: DecisionAside;
+ /** Optional structured plan on a persisted aside; older engines omit it. */
+ Plan?: ConversationPlan;
  /** Exact context-mutation receipts; absent for older/ambiguous notes. */
  UndoReceipts?: string[];
  /** A job aside's own short name (its label or command); absent when it has none. */

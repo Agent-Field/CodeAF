@@ -3,8 +3,9 @@ import type { Question } from './form';
 
 /** What the amber head says: the blocked reply first, then the asking task, else a plain nudge. */
 export function crumbOf(question: Question | undefined): { title: string; kind: string } {
-  if (question?.learning) {
-    const { place, agreed, of } = question.learning;
+  const proposal = question?.proposal ?? question?.learning;
+  if (proposal) {
+    const { place, agreed, of } = proposal;
     return { title: place ? `${place} is learning` : 'Learning', kind: of ? `· ${agreed} of ${of} agreed` : '' };
   }
   if (question?.blocking?.turn) return { title: 'The reply is waiting on this', kind: '' };
