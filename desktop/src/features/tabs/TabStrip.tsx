@@ -182,8 +182,12 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
 
   useEffect(() => {
     const selected = strip.current?.querySelector<HTMLElement>('[aria-selected="true"]');
-    selected?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
-    const frame = requestAnimationFrame(() => selected?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' }));
+    // The selected control is the title button. The chip around it also holds the close slot, and
+    // scrolling the button leaves that slot past the strip, so the active tab is not fully in view.
+    const chip = selected?.closest<HTMLElement>('.workspace-tab') ?? selected;
+    const reveal = () => chip?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+    reveal();
+    const frame = requestAnimationFrame(reveal);
     return () => cancelAnimationFrame(frame);
   }, [state.activeId, state.groups]);
 
