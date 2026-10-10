@@ -1,4 +1,4 @@
-import { useContext, useEffect, useSyncExternalStore } from 'react';
+import { useContext, useSyncExternalStore } from 'react';
 import { Button, Icon, Text } from '../../components/ui';
 import { openUrl } from '../../design/native';
 import type { WebFailure, WebNotice } from '../../design/nativeWeb';
@@ -11,6 +11,7 @@ import { WebHeader } from './WebHeader';
 import { webHost, subscribeWebHost } from './host';
 import { capture } from './shots';
 import { useWebPane } from './useWebPane';
+import { useWebEvents } from './useWebEvents';
 import { navigate, retry, step } from './views';
 import './web.css';
 
@@ -44,9 +45,7 @@ export function WebPane({ pane, actions }: PaneRenderProps) {
   const shown = state?.url || url;
   const title = state?.title.trim() || (shown ? siteOf(shown) : '');
 
-  // The tab is named by its page, and remembers the page it is on.
-  useEffect(() => { if (title) actions.onSummary({ title, firstLine: '', digest: shown ?? '' }); }, [title]);
-  useEffect(() => { if (state?.url && state.url !== url && /^https?:/i.test(state.url)) actions.onView({ target: { url: state.url } }); }, [state?.url]);
+  useWebEvents(state, url, actions);
 
   function go(next: string) {
     actions.onView({ target: { url: next } });
