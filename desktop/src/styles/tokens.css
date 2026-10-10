@@ -1153,6 +1153,9 @@
   --overturn-button-weight: var(--why-button-weight);
   --frame-blur: 40px;
   --frame-saturate: 1.4;
+  --search-field-gap: 10px;
+  --search-field-size: 13px;
+  --search-field-hint-size: 11px;
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);
