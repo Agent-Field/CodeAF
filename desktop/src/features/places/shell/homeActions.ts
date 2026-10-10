@@ -47,6 +47,9 @@ export function buildHomeActions({ shell, homeId, digests, strip, quickLook, ret
     if (!sessionFile) throw new Error('This chat cannot be opened here: the engine did not say where it is saved.');
     const existing = tabShowing(strip.state, sessionFile);
     if (existing) { if (!background) strip.dispatch({ type: 'select', id: existing }); return; }
+    // The closed record retains the tab’s position, group and view state, which a fresh tab would lose.
+    const closed = [...strip.state.closed].reverse().find(tab => panesOf(tab).some(pane => pane.sessionFile === sessionFile));
+    if (closed && !background) { strip.dispatch({ type: 'reopen-id', id: closed.id }); return; }
     const tab: Tab = newTab({ kind: 'conversation', title: chatTitle(chatId), titleSource: 'engine', sessionFile });
     strip.dispatch({ type: 'open', tab, background });
   };

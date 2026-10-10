@@ -596,6 +596,12 @@ var seamContract = []struct {
 	{http.MethodPost, "/councils/{id}/steer"},
 }
 
+// seamOwned says a row has a real handler in this package (knows_routes.go or
+// plan_routes.go), so the stub test leaves it to that file's own tests.
+func seamOwned(pattern string) bool {
+	return strings.Contains(pattern, "/knows") || strings.Contains(pattern, "/plan/{plan}/")
+}
+
 func seamExample(pattern string) string {
 	return "/api/engine" + strings.NewReplacer("{id}", "pl_1", "{line}", "line_7", "{plan}", "plan_9").Replace(pattern)
 }
@@ -606,8 +612,8 @@ func TestSeamRouteTableAnswers501UntilAHandlerLands(t *testing.T) {
 	}
 	for i, want := range seamContract {
 		got := seamTable[i]
-		if got.method != want.method || got.pattern != want.pattern {
-			t.Fatalf("row %d: got %s %s filled=%v, want %s %s", i, got.method, got.pattern, got.handle != nil, want.method, want.pattern)
+		if got.method != want.method || got.pattern != want.pattern || (got.handle != nil) != seamOwned(want.pattern) {
+			t.Fatalf("row %d: got %s %s filled=%v, want %s %s filled=%v", i, got.method, got.pattern, got.handle != nil, want.method, want.pattern, seamOwned(want.pattern))
 		}
 	}
 	b := New(testToken, func(string) (Connection, error) {
@@ -616,7 +622,7 @@ func TestSeamRouteTableAnswers501UntilAHandlerLands(t *testing.T) {
 	})
 	t.Cleanup(b.Close)
 	for _, route := range seamContract {
-		if strings.Contains(route.pattern, "/knows") {
+		if seamOwned(route.pattern) {
 			continue
 		}
 		body := ""
@@ -627,17 +633,6 @@ func TestSeamRouteTableAnswers501UntilAHandlerLands(t *testing.T) {
 		if w.Code != http.StatusNotImplemented || strings.TrimSpace(w.Body.String()) != `{"error":"`+seamNotImplemented+`"}` {
 			t.Errorf("%s %s: %d %s", route.method, route.pattern, w.Code, w.Body.String())
 		}
-	}
-	// A live session used to 404 these as an unknown action. A missing one used
-	// to say reattach. Both are the stub now.
-	liveBridge, _, id := fixture(t)
-	live := request(liveBridge, http.MethodPost, "/api/engine/sessions/"+id+"/plan/plan_9/cancel", "{}")
-	if live.Code != http.StatusNotImplemented || strings.Contains(live.Body.String(), "unknown engine action") {
-		t.Fatalf("live plan: %d %s", live.Code, live.Body.String())
-	}
-	missing := request(b, http.MethodPost, "/api/engine/sessions/missing/plan/plan_9/go", "{}")
-	if missing.Code != http.StatusNotImplemented || strings.Contains(missing.Body.String(), "reattach") {
-		t.Fatalf("missing plan: %d %s", missing.Code, missing.Body.String())
 	}
 	wrong := []struct{ method, path, sentence string }{
 		{http.MethodPost, "/api/engine/places/pl_1/decisions", "GET required"},
