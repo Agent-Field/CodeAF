@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Button, CodeText, Icon, IconButton, TextInput } from '../../../components/ui';
+import { Button, CodeText, Icon, IconButton, TextInput, useMoreBelow } from '../../../components/ui';
 import type { EngineTaskRow } from '../../chat/engine-client';
 import { rowFlags, rowKind } from '../taskState';
 import { TaskMark } from './TaskMark';
@@ -181,23 +181,6 @@ function Branch({ node, shared, depth }: { node: TaskNode; shared: Shared; depth
   );
 }
 
-/** True while the list has more beneath what shows, so the fade appears only on an edge with content beyond it. */
-function useMoreBelow(deps: readonly unknown[]) {
-  const list = useRef<HTMLDivElement>(null);
-  const [more, setMore] = useState(false);
-  const measure = () => {
-    const el = list.current;
-    if (el) setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 1);
-  };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(measure, deps);
-  useEffect(() => {
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, []);
-  return { list, more, measure };
-}
-
 export function TasksTable(props: TasksTableProps) {
   const { tasks, selectedId, onSelect, onClose, reasons, detail } = props;
   const [localFilter, setLocalFilter] = useState<TableFilter>('all');
@@ -207,7 +190,7 @@ export function TasksTable(props: TasksTableProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const now = useNow(taskProgress(tasks).running > 0, props.now);
   const tree = useMemo(() => filterTree(buildTaskTree(tasks), filter, query), [tasks, filter, query]);
-  const { list, more, measure } = useMoreBelow([tree, collapsed]);
+  const { ref: list, more, measure } = useMoreBelow();
 
   const toggle = (id: string) =>
     setCollapsed((before) => {

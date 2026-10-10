@@ -25,5 +25,6 @@
 
 /* Long briefs stay inside their own named keyboard-scrollable document. The cap is a provisional design token. */
 .task-detail-instructions-scroll { min-width: 0; max-height: var(--task-detail-brief-max-height); overflow-y: auto; overscroll-behavior: contain; }
+.task-detail-instructions-scroll[data-more] { -webkit-mask-image: linear-gradient(to bottom, black calc(100% - var(--edge-fade-block)), transparent); mask-image: linear-gradient(to bottom, black calc(100% - var(--edge-fade-block)), transparent); }
 .task-detail-instructions-scroll:focus-visible { outline: none; box-shadow: inset 0 0 0 var(--focus-ring-width) var(--accent); border-radius: var(--radius-xs); }
 .task-detail > :not(.task-detail-brief) { flex-shrink: 0; }
