@@ -1,8 +1,6 @@
 // Pure rules for file and diff tabs: how a path becomes a tab and how an open tab is found again.
 import type { Pane, Tab } from '../tabs/types.ts';
 import type { FileTarget } from '../tabs/view-state.ts';
-import type { IconName } from '../../components/ui/Icon.tsx';
-import { extensionOf, fileKind } from '../conversation/assets/paths.ts';
 
 export type FileTabKind = 'file' | 'diff';
 
@@ -29,17 +27,4 @@ export function findFileTab(tabs: readonly Tab[], candidate: Pick<Pane, 'kind' |
     if (hit) return hit.id;
   }
   return undefined;
-}
-
-/**
- * The file tab's type icon (Shell 2h, "File: by type: file-code-2, file-json, file-text, image").
- * JSON draws file-json and source code draws file-code-2, both from the pinned Lucide package behind
- * the central Icon; prose and anything unknown draw file-text, and pictures draw image (FF10).
- */
-export function fileTypeIcon(name: string): IconName {
-  const kind = fileKind(name);
-  if (kind === 'image') return 'image';
-  if (extensionOf(name) === 'json') return 'fileJson';
-  if (kind === 'code') return 'fileCode2';
-  return 'file';
 }
