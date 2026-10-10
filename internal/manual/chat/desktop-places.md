@@ -215,3 +215,11 @@ to the nearest whole second. Reopening the conversation keeps that wait.
 Older records with no known wait say `picked by codeaf` without seconds.
 An answer you give keeps its attribution and local time, for example
 `Allow once · you · 14:02`.
+
+## Review a question in an unfocused desktop split pane
+
+An unfocused conversation in a desktop split shows a small card above its compact
+reply field when the engine has a pending question. The card shows the question's
+title and a `Review` button. Review focuses that pane and opens its full question
+tray, returning to the latest content if you had scrolled away. With no pending
+question, the card is absent. Review does not answer the question.

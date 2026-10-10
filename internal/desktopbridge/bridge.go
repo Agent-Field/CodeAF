@@ -52,6 +52,9 @@ type Connection struct {
 	Welcome   remote.Welcome
 	FetchFile func(string) (remote.FetchedFile, error)
 	StatPaths func([]string) ([]remote.PathFact, error)
+	// ListDir is one folder of the engine's disk. Nil means this engine cannot
+	// list folders (fileslist.go). A relative path is the workspace's.
+	ListDir func(string) (remote.DirListing, error)
 	// The file and diff tabs' doors (workview.go). Nil means the engine cannot.
 	ReadText    func(string) (remote.TextFile, error)
 	FindFiles   func(string, int) (remote.FoundFiles, error)
@@ -188,6 +191,8 @@ type Bridge struct {
 	openIn OpenIn
 	// groups answers tab-group offers (tabgroups.go); nil makes none.
 	groups *TabGroups
+	// lifecycle tracks attached views separately from SSE connections (lifecycle.go).
+	lifecycle *sessionLifecycle
 }
 
 func New(token string, open Open) *Bridge {
