@@ -8,6 +8,7 @@ import { useShortcuts } from '../../../../design/useShortcuts';
 import { connectEngine, sendEngine } from '../../../chat/engine-client';
 import { FirstTurnContext, NewConversationPlaceContext } from '../../../conversation/firstTurn';
 import { panesOf, tabHolding, visibleTabs } from '../../model';
+import { newTabFieldEvent } from '../../../shell/newTabField';
 import { historyKind } from '../history';
 import { terminalKind, newTerminalShortcut } from '../terminal';
 import { webKind } from '../web';
@@ -50,6 +51,12 @@ function NewTabField({ host, paneId, focused, draft, onDraft }: { host: NewTabHo
   const newConversationPlace = useContext(NewConversationPlaceContext);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { if (focused) input.current?.focus(); }, [focused]);
+  // ⌘K while this empty tab is already the one showing has no tab change to focus from, so it asks directly.
+  useEffect(() => {
+    const onField = () => { if (focused) input.current?.focus(); };
+    window.addEventListener(newTabFieldEvent, onField);
+    return () => window.removeEventListener(newTabFieldEvent, onField);
+  }, [focused]);
   // A New tab that was already open is still mounted, so the arm is taken when it becomes the pane in front.
   // The settle waits a tick: StrictMode replays the effect, and clearing in the first pass would drop the prompt.
   useEffect(() => {

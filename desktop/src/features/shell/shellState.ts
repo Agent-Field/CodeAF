@@ -11,6 +11,9 @@ export function requestOpenKind(kind: ShellKind) {
   window.dispatchEvent(new CustomEvent<ShellKind>(shellEvent, { detail: kind }));
 }
 
+/** Development builds only: show the Activity or Design system page (they have no chrome; the palette that listed them is retired). */
+export const devPageEvent = 'codeaf:dev-page';
+
 export const shellLeaveEvent = 'codeaf:shell-leave';
 /** Ask the workspace to move off the tab of this kind (the rail's Workspace item while Settings is showing). */
 export function requestLeaveKind(kind: ShellKind) {

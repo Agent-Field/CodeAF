@@ -3,7 +3,7 @@
 * { box-sizing: border-box; }
 html, body, #root { width: 100%; height: 100%; }
 body { margin: 0; background: var(--chrome-canvas); color: var(--text); font-family: var(--font-sans); font-size: var(--font-size-body); font-weight: var(--font-weight-regular); letter-spacing: var(--tracking-body); -webkit-font-smoothing: antialiased; }
-.app-shell { min-width: 0; height: 100dvh; display: grid; grid-template-columns: var(--sidebar-width) minmax(0,1fr); transition: grid-template-columns var(--duration-sidebar) var(--ease-layout), padding var(--duration-sidebar) var(--ease-layout); padding: 0; background: var(--frame); }
+.app-shell { min-width: 0; height: 100dvh; display: grid; grid-template-columns: var(--sidebar-width) minmax(0,1fr); transition: background-color var(--nextup-walk-tint-duration), grid-template-columns var(--duration-sidebar) var(--ease-layout), padding var(--duration-sidebar) var(--ease-layout); padding: 0; background: var(--frame); }
 :root[data-environment="mac-desktop"] body { background: transparent; }
 :root[data-environment="mac-desktop"] .app-shell { background: var(--chrome-tint); }
 .content-pane { grid-column: 2; min-height: 0; display: flex; flex-direction: column; min-width: 0; padding: 0 var(--shell-card-inset) var(--shell-card-inset) 0; }
@@ -18,10 +18,6 @@ body { margin: 0; background: var(--chrome-canvas); color: var(--text); font-fam
 small { font-size: var(--font-size-caption); color: var(--muted); }.type-sample { font-size: var(--font-size-sample); color: var(--text); }
 .icon-specimens, .control-specimens { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .spacing-specimens { display: flex; align-items: flex-end; flex-wrap: wrap; gap: var(--space-4); }.spacing-sample { background: var(--chrome-accent); height: var(--space-2); margin-bottom: var(--space-2); }.spacing-sample-1 { width: var(--space-1); }.spacing-sample-2 { width: var(--space-2); }.spacing-sample-3 { width: var(--space-3); }.spacing-sample-4 { width: var(--space-4); }.spacing-sample-6 { width: var(--space-6); }.spacing-sample-8 { width: var(--space-8); }.spacing-sample-12 { width: var(--space-12); }
-.command-palette { width: min(var(--palette-max-width),calc(100vw - var(--space-6))); max-height: min(var(--palette-max-height),calc(100dvh - var(--space-6))); overflow: auto; border: var(--border-width) solid var(--border); border-radius: var(--radius-lg); padding: var(--space-compact); background: var(--overlay-surface); color: var(--text); box-shadow: var(--palette-shadow); }.command-palette::backdrop { background: var(--palette-backdrop); backdrop-filter: blur(var(--palette-blur)); }
-.palette-search { display: flex; align-items: center; gap: var(--space-compact); padding: var(--space-tight) var(--space-2); color: var(--muted); }
-.palette-close { border: 0; background: var(--chrome-field); color: var(--muted); border-radius: var(--radius-xs); padding: var(--space-three-quarter) var(--space-tiny); }
-.commands { border-top: var(--border-width) solid var(--border); padding-top: var(--space-2); margin-top: var(--space-1); }.commands button { width: 100%; display: flex; align-items: center; justify-content: space-between; border: 0; background: transparent; color: var(--text); padding: var(--space-3) var(--space-compact); border-radius: var(--radius-sm); text-align: left; }.commands button:hover { background: var(--chrome-field); }.commands .app-icon { color: var(--muted); }.no-results { padding: var(--space-3); }
 .sidebar-collapsed { grid-template-columns: 0 minmax(0,1fr); padding-left: var(--shell-card-inset); }.sidebar-collapsed .sidebar { visibility: hidden; opacity: var(--opacity-transparent); pointer-events: none; }
 :root[data-environment="mac-desktop"] .sidebar-collapsed .content-toolbar { padding-left: var(--native-controls-inset); }
 /* Media thresholds mirror tokens.json: CSS variables cannot be used in media conditions. */
@@ -40,11 +36,7 @@ small { font-size: var(--font-size-caption); color: var(--muted); }.type-sample 
  .type-code { max-width: 100%; overflow-wrap: anywhere; white-space: pre-wrap; }
 }
 
-.command-palette[open] { animation: surface-enter var(--duration-overlay) var(--ease-overlay); }
 /* Search focus is a local underline, not a rectangular native input outline. */
-.palette-search { border-bottom: var(--focus-input-width) solid transparent; }
-.palette-search .text-input:focus-visible { outline: none; box-shadow: none; }
-.palette-search:has(.text-input:focus-visible) { border-bottom-color: var(--focus-ring); }
 .workspace-page { flex: 1; min-height: 0; min-width: 0; display: flex; }
 .workspace-page[hidden] { display: none; }
 

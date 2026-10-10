@@ -6,6 +6,7 @@ import type { OutgoingFile } from '../chat/engine-client';
 import { AtPicker, useAtPicker } from './composer/AtPicker';
 import { PasteCard } from './composer/PasteCard';
 import { encodePasted, countLines, isLongPaste, splitPasted } from './composer/pastedText';
+import { LinkChip } from './assets';
 import { AttachmentTray } from './composer/AttachmentTray';
 import { ModelPicker } from './composer/ModelPicker';
 import type { ConversationModel } from './composer/useConversationModel';
@@ -41,6 +42,13 @@ export type ComposerProps = {
   /** Files a hand-off (a web page's picture) puts in the tray once, on mount. Nothing is sent. */
   offeredFiles?: File[];
   onOfferedFiles?: () => void;
+  /**
+   * The page chat-plus attached: its address and title, drawn as a link and not
+   * sent. The composer attaches files only, so this is the existing link chip
+   * rather than a second attachment kind.
+   */
+  offeredLink?: { url: string; title: string };
+  onOfferedLink?: () => void;
   /** Forces the drag appearance; for specimens, since real drags are global to the window. */
   dropState?: 'page' | 'over';
   /** The idle prompt in the empty field when the surface has its own words ("Start something in codeaf" on a place's Home). */
@@ -115,6 +123,14 @@ export function Composer(props: ComposerProps) {
     attachments.add(props.offeredFiles);
     props.onOfferedFiles?.();
   }, [props.offeredFiles]);
+  // Kept in state so settling the offer (the parent drops the prop) does not take the chip with it.
+  const [pageLink, setPageLink] = useState(props.offeredLink);
+  const linkTaken = useRef(false);
+  useEffect(() => {
+    if (linkTaken.current || !pageLink) return;
+    linkTaken.current = true;
+    props.onOfferedLink?.();
+  }, [pageLink]);
   const dropState = props.dropState ?? (drop.over ? 'over' : drop.pageDrag ? 'page' : undefined);
   const blank = draft.trim() === '' && attachments.items.length === 0 && pastes.length === 0;
   const atPicker = useAtPicker(field, props.sessionId, draft, onDraft, setPasteCaret);
@@ -131,6 +147,7 @@ export function Composer(props: ComposerProps) {
       onDraft('');
       setPastes([]);
       attachments.clear();
+      setPageLink(undefined);
     }
   }
 
@@ -206,7 +223,7 @@ export function Composer(props: ComposerProps) {
       <div
         ref={box}
         className="composer"
-        data-attached={attachments.items.length > 0 || undefined}
+        data-attached={attachments.items.length > 0 || pageLink ? true : undefined}
         data-running={running}
         data-steering={steering}
         data-disabled={disabled}
@@ -214,6 +231,13 @@ export function Composer(props: ComposerProps) {
         {...drop.handlers}
       >
         {dropState && <Text className="composer-drop-hint">Drop to attach</Text>}
+        {pageLink && (
+          <ul className="attachment-tray" aria-label="Attached page">
+            <li className="attachment">
+              <LinkChip href={pageLink.url} title={pageLink.title || undefined} />
+            </li>
+          </ul>
+        )}
         <AttachmentTray items={attachments.items} onRemove={attachments.remove} />
         {pastes.map((text, index) => (
           <PasteCard

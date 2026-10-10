@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { BreathingDot, Button, IconButton, StatusMark, TextInput } from '../../components/ui';
 import { NextUpChip, type NextUpProgress } from '../nextup/NextUpChip';
 import './conversation-bar.css';
+import { nextUpWalk, useNextUpWalkState } from '../nextup/useNextUpWalk';
 
 export type BarCounts = { running: number; needsYou: number };
 export type BarPanel = { label: string; shown: boolean; onToggle: () => void };
@@ -48,11 +49,13 @@ type BarProps = { children?: ReactNode; /** The conversation's name; when given 
 
 /** The pane's top row (design 1a to 1c): the title or the trail on the left, what is happening on the right, then the panel toggle. */
 export function ConversationBar({ children, title, onRename, counts, panel, lead, using, nextUp, onNeedsYou, onOpenFiltered, onTasksFilter }: BarProps) {
+  const walk = useNextUpWalkState();
   const openFiltered = onOpenFiltered ?? onTasksFilter;
   return (
     <div className="conversation-bar" data-lead={lead}>
       <div className="conversation-bar-lead">{lead === 'title' && title !== undefined ? <BarTitle title={title} onRename={onRename} /> : children}{lead === 'title' && <NextUpChip progress={nextUp} />}{lead === 'title' && using}</div>
       <span className="conversation-bar-counts">
+        {nextUp && walk.origin && <Button className="nextup-walk-return" onClick={() => nextUpWalk.exit()}>Back to {walk.origin.label}<span>Esc</span></Button>}
         <Count status="running" count={counts.running} words="running" onClick={openFiltered && (() => openFiltered('running'))} />
         <Count status="waiting" count={counts.needsYou} words={counts.needsYou === 1 ? 'needs you here' : 'need you here'} onClick={onNeedsYou ?? (openFiltered && (() => openFiltered('needs')))} />
       </span>

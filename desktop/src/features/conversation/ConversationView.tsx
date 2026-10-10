@@ -1,3 +1,8 @@
+import { EndCard } from '../nextup/EndCard';
+import { useNextUpWalkState } from '../nextup/useNextUpWalk';
+import { nextUpWalk } from '../nextup/useNextUpWalk';
+import { worldStore } from '../chat/world-store';
+import '../nextup/walk.css';
 import { blocksComposer } from './tray/layout';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { FirstTurnContext, NewConversationPlaceContext } from './firstTurn';
@@ -7,7 +12,7 @@ import design from '../../design/tokens.json';
 import { ENGINE_MODEL } from '../chat/engine-client';
 import { DEFAULT_MODEL_SHORT, useConversationModel } from './composer/useConversationModel';
 import type { Pane } from '../tabs/model';
-import { peekOfferedFiles, settleOfferedFiles } from '../web/useWorkspaceWeb';
+import { peekOfferedFiles, peekOfferedLink, settleOfferedFiles, settleOfferedLink } from '../web/useWorkspaceWeb';
 import { goBack, goForward, navigate, rootRoute, routeTask, TASKS_VIEW, toggleFlag, type TabView } from '../tabs/view-state';
 import { useHistoryKeys } from './Breadcrumb';
 import type { OutgoingFile } from '../chat/engine-client';
@@ -88,9 +93,11 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
   const newConversationPlace = useContext(NewConversationPlaceContext);
   const conversation = useConversation({ sessionFile: tab.sessionFile, onSessionFile: (sessionFile) => onView({ sessionFile }), beforeFirstTurn, newConversationPlace });
   const { model, snapshot, failed } = conversation;
+  const walk = useNextUpWalkState();
   const [focusKey, setFocusKey] = useState<string>();
   // A tab opened from a web page brings that page's picture; the composer attaches it once and the offer is spent.
   const [offered, setOffered] = useState(() => peekOfferedFiles(tab.id));
+  const [pageLink, setPageLink] = useState(() => peekOfferedLink(tab.id));
   const route = tab.route ?? rootRoute;
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -256,6 +263,7 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
             <div className="conversation-dock-layer">
               {showJump && <LatestPill working={model.running} since={liveSince(model)} onJump={jump} />}
               <div className="conversation-footer conversation-column">
+                {focused && walk.phase === 'clear' && walk.origin && <EndCard answeredCount={walk.answered} conversations={worldStore.getState().rows.map(row => ({ tasksRunning: row.tasks.running }))} originLabel={walk.origin.label} onReturn={() => nextUpWalk.exit()} />}
                 {folderNote && <Text role="status">{folderNote}</Text>}
                 {conversation.unreachable && <EngineNotice onRetry={() => void retry()} />}
                 {!inTask && (
@@ -278,6 +286,8 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
                       sessionId,
                       offeredFiles: offered,
                       onOfferedFiles: () => { settleOfferedFiles(tab.id); setOffered([]); },
+                      offeredLink: pageLink,
+                      onOfferedLink: () => { settleOfferedLink(tab.id); setPageLink(undefined); },
                     }}
                   />
                 )}

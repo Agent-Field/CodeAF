@@ -1,6 +1,7 @@
-import { useContext, useState, useSyncExternalStore } from 'react';
+import { useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Button, Icon, Text } from '../../components/ui';
 import { openUrl } from '../../design/native';
+import { webFind } from '../../design/nativeWeb';
 import type { WebFailure, WebNotice } from '../../design/nativeWeb';
 import { LoadingLine } from '../tabs/LoadingLine';
 import type { PaneRenderProps } from '../tabs/kinds/slots';
@@ -53,9 +54,23 @@ export function WebPane({ pane, focused, actions }: PaneRenderProps) {
   const pageTitle = state?.title.trim() || '';
 
   useWebEvents(state, url, actions);
-  // The find field itself waits on the native find command (W9); ⌘F only records that find was asked for.
+  // An empty native search proves the dependency exists before giving the person the field.
   const [finding, setFinding] = useState(false);
-  useWebKeys(pane.id, focused, () => setFinding(true));
+  const findRequest = useRef(0);
+  const findTarget = useRef({ focused, shown });
+  findTarget.current = { focused, shown };
+  useEffect(() => {
+    setFinding(false);
+    return () => { findRequest.current++; };
+  }, [shown, focused]);
+  useWebKeys(pane.id, focused, () => {
+    if (finding || !web.native || !state) return;
+    const id = ++findRequest.current;
+    void webFind(pane.id, '', true).then(() => {
+      if (id === findRequest.current && findTarget.current.focused && findTarget.current.shown === shown) setFinding(true);
+    }).catch(() => undefined);
+  });
+  function closeFind() { findRequest.current++; setFinding(false); }
 
   function go(next: string) {
     actions.onView({ target: { url: next } });
@@ -64,7 +79,7 @@ export function WebPane({ pane, focused, actions }: PaneRenderProps) {
   async function talkAboutPage() {
     if (!shown || !host?.startConversationWithPage) return;
     const shot = web.native ? await capture(pane.id, true) : null;
-    host.startConversationWithPage({ url: shown, title, shot: shot?.image });
+    host.startConversationWithPage({ url: shown, title, shot: shot?.image }, pane.id);
   }
 
   const live = web.native && !!state;
@@ -73,7 +88,7 @@ export function WebPane({ pane, focused, actions }: PaneRenderProps) {
   const failure = state?.failure && state.failure.kind !== 'certificate' ? failureText(state.failure, shown ?? '') : web.openError ? { title: 'This page did not open', detail: `${web.openError}.` } : null;
   return <div className="web-pane" data-pane={pane.id} data-loading={loading || undefined} data-find={finding || undefined}>
     <LoadingLine active={loading}/>
-    <WebHeader url={shown} favicon={favicons.get(pane.id)} loading={loading}
+    <WebHeader find={finding ? { search: (query, forward) => webFind(pane.id, query, forward), close: closeFind } : undefined} url={shown} favicon={favicons.get(pane.id)} loading={loading}
       canBack={historyOpen(state?.canBack)} canForward={historyOpen(state?.canForward)} canReload={live}
       status={state?.notice ? noticeLine[state.notice] : undefined} onGo={go}
       onStep={direction => step(pane.id, direction)}

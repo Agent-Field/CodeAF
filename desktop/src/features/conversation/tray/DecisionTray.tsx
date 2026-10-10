@@ -12,6 +12,8 @@ import { TrayFold } from './TrayFold';
 import { TrayHeader } from './TrayHeader';
 import { useMoreBelow } from './useBodyFade';
 import './tray.css';
+import { nextUpWalk, useNextUpWalkState } from '../../nextup/useNextUpWalk';
+import { worldStore } from '../../chat/world-store';
 import './tray-shell.css';
 
 export type DecisionTrayProps = {
@@ -62,6 +64,7 @@ function arrowsStayWithControl(target: EventTarget | null): boolean {
 }
 
 export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, renderImage, focusKey, compact, onReview }: DecisionTrayProps) {
+  const walk = useNextUpWalkState();
   const [later, setLater] = useState<Set<string>>(new Set());
   const [expanded] = useState<Set<string>>(new Set());
   const [held, setHeld] = useState<Record<string, EngineAnswer>>({});
@@ -174,6 +177,7 @@ export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, render
         onLater={batched ? undefined : () => fold(question)}
         single={tabs.length === 1 && folded.length === 0}
         renderImage={renderImage}
+        onSkip={walk.item && question.kind === walk.item.kind && question.id === walk.item.id ? () => nextUpWalk.skip(worldStore.getState().items) : undefined}
       />
     );
   }
@@ -210,6 +214,7 @@ export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, render
         {active && (
           <div className="tray-body" ref={bodyRef} data-more={moreBelow || undefined}>
             {body(active)}
+            {active.kind !== 'question' && walk.item && active.members.some(question => question.kind === walk.item!.kind && question.id === walk.item!.id) && <Button className="nextup-walk-skip" onClick={() => nextUpWalk.skip(worldStore.getState().items)}>Skip</Button>}
           </div>
         )}
       </section>

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 
+// The probe sits above the app's own walker (surface + 1), which would otherwise consume ⌘J and ⌘[ before it sees them.
 test('Iteration 2 registry routes Home, composer, chat and focus-history chords', async ({ page }) => {
   await page.goto('/');
   const result = await page.evaluate(async () => {
@@ -12,7 +13,7 @@ test('Iteration 2 registry routes Home, composer, chat and focus-history chords'
     const target = host.querySelector('button')!;
     const composer = host.querySelector('textarea')!;
     const ids: string[] = [];
-    const unregister = registerShortcuts(shortcutLayer.surface, (shortcut: { id: string }) => { ids.push(shortcut.id); return true; });
+    const unregister = registerShortcuts(shortcutLayer.surface + 2, (shortcut: { id: string }) => { ids.push(shortcut.id); return true; });
     const mac = /Mac/.test(navigator.platform);
     const primary = mac ? { metaKey: true } : { ctrlKey: true };
     const emit = (target: Element, key: string, modifiers = primary) => {
