@@ -137,8 +137,10 @@ test.describe('⌘Z, the window\'s structural Undo (Interactions, Undo)', () => 
   const mod = await primary(page);
   const start = ['Alpha', 'Beta', 'Gamma', 'Delta'];
   await expect.poll(() => strip(page)).toEqual(start);
+  await tabNamed(page, 'Alpha').click({ modifiers: [mod] });
   await tabNamed(page, 'Gamma').click({ modifiers: [mod] });
   await page.keyboard.press(`${mod}+g`);
+  await page.keyboard.press('Enter');
   await expect.poll(() => strip(page)).toEqual(['[New group: Alpha Gamma]', 'Beta', 'Delta']);
   await tabNamed(page, 'Beta').click({ button: 'right' });
   await page.getByRole('menuitem', { name: /^Pin tab/ }).click();
