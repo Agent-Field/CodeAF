@@ -1,16 +1,10 @@
-import { useEffect, useRef, type HTMLAttributes, type MouseEvent } from 'react';
-import { Button, DropdownMenu, HomeTitle, Icon, IconButton, TextInput, type MenuEntry } from '../../../components/ui';
+import { useEffect, useRef, type HTMLAttributes } from 'react';
+import { DropdownMenu, HomeTitle, IconButton, TextInput, type MenuEntry } from '../../../components/ui';
+import { PlaceBreadcrumb, type Crumb } from '../home/PlaceBreadcrumb';
 import { PlaceSwatch, type TintName } from './PlaceSwatch';
 import './places-components.css';
 
-export type Crumb = {
-  id: string;
-  label: string;
-  /** Click: Go to that place, or the root. */
-  onGo: () => void;
-  /** Command or Control click, or middle click. */
-  onGoInNewWindow?: () => void;
-};
+export type { Crumb };
 
 type PlaceHeadingProps = Omit<HTMLAttributes<HTMLElement>, 'title'> & {
   title: string;
@@ -26,14 +20,6 @@ type PlaceHeadingProps = Omit<HTMLAttributes<HTMLElement>, 'title'> & {
   onRename?: (name: string) => void;
   onRenameCancel?: () => void;
 };
-
-function CrumbLink({ crumb }: { crumb: Crumb }) {
-  const go = (event: MouseEvent<HTMLButtonElement>) => {
-    if ((event.metaKey || event.ctrlKey) && crumb.onGoInNewWindow) crumb.onGoInNewWindow(); else crumb.onGo();
-  };
-  return <Button variant="ghost" className="places-crumb" onClick={go}
-    onAuxClick={event => { if (event.button === 1 && crumb.onGoInNewWindow) { event.preventDefault(); crumb.onGoInNewWindow(); } }}>{crumb.label}</Button>;
-}
 
 /** Longer than the shared menu's exit animation (duration-overlay). */
 const menuHandoffMs = 1000;
@@ -62,12 +48,7 @@ function RenameField({ title, onRename, onCancel }: { title: string; onRename?: 
  * the 28px title and the ⋯ menu. Sections follow under their own 11px labels, outside this component. */
 export function PlaceHeading({ title, tint, breadcrumb = [], menu, menuLabel, renaming, onRename, onRenameCancel, className = '', ...props }: PlaceHeadingProps) {
   return <header {...props} className={`places-heading ${className}`}>
-    {breadcrumb.length > 0 && <nav aria-label="Breadcrumb"><ol className="places-crumbs">
-      {breadcrumb.map((crumb, index) => <li key={crumb.id} className="places-crumb-item">
-        {index > 0 && <Icon name="chevronRight" size="micro"/>}
-        <CrumbLink crumb={crumb}/>
-      </li>)}
-    </ol></nav>}
+    <PlaceBreadcrumb crumbs={breadcrumb}/>
     <div className="places-heading-row">
       <PlaceSwatch tint={tint} role="title"/>
       {renaming ? <RenameField title={title} onRename={onRename} onCancel={onRenameCancel}/> : <HomeTitle className="places-heading-title">{title}</HomeTitle>}
