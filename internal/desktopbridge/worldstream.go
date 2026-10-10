@@ -29,8 +29,9 @@ const (
 )
 
 // WorldRecord is one record on the engine-wide stream. Type is "world" (changed
-// rows and removed ids), "attention" (the whole open set) or "reset" (the whole
-// state, sent instead of a replay the ring can no longer give).
+// rows and removed ids), "attention" (the whole open set), "jobs" (one attached
+// chat's background jobs, jobs.go) or "reset" (the whole state, sent instead of
+// a replay the ring can no longer give).
 type WorldRecord struct {
 	Epoch   string          `json:"epoch"`
 	Seq     uint64          `json:"seq"`

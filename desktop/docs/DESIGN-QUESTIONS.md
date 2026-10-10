@@ -118,6 +118,8 @@ Shell). On any conflict, the design files win over code and older docs.
 | P-22 | Iteration 2 (design v3): Definition of "blocking" and ordering inside bands. | Blocking = Question.Blocking.Turn or names tasks; order inside a band by asked time, oldest first; irreversible last. |
 | P-23 | Iteration 2 (design v3): "After your next action of your own" folds the back chip: what counts. | Any click or key that is not the chip or ⌘[ itself, including typing in a composer. |
 | P-24 | Iteration 2 (design v3): Is focus history per window, per place, or global, and does it survive relaunch? | Per window, survives relaunch, bounded to 100 entries; tearing a tab off starts a fresh history in the new window. |
+| J1 | Shell §3c draws a job log and does not say how much of it a read returns, or what happens when the file is larger than the engine will hand across | Omitted `tail` is the last 1 MiB. `tail` is bytes and never more than that. The body is `{text,truncated}` after ANSI is stripped. A file the engine refuses to hand over is 409 with the engine's sentence; this route does not read the disk itself. |
+| J2 | What a successful stop answers, and what a cross-conversation jobs roll-up is called | Success is `{accepted:true}` plus `line` when Cancel returned a sentence. A `jobs` world record is `{chatId,running,jobs}`: `chatId` is the conversation folder name, `running` is how many jobs are still running (0 is sent), and `jobs` is the same shape as GET `/jobs`. |
 
 ## File lane integration notes
 

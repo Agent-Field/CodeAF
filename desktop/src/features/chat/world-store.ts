@@ -34,6 +34,8 @@ export function applyWorldRecord(state: WorldState, record: WorldRecord): WorldS
  if (record.type !== 'reset' && record.seq <= state.seq) return state;
  if (record.type === 'reset') return { ...state, status: 'live', error: undefined, epoch: record.epoch, seq: record.seq, rows: record.payload.rows, items: record.payload.items };
  if (record.type === 'attention') return { ...state, seq: record.seq, items: record.payload.items };
+ // A jobs roll-up is not a conversation row. Advance the cursor so the feed stays up; this store does not keep the shelf.
+ if (record.type === 'jobs') return { ...state, seq: record.seq };
  const removed = new Set(record.payload.removed);
  const changed = new Map(record.payload.rows.map(row => [row.session, row] as const));
  const rows = state.rows.filter(row => !removed.has(row.session)).map(row => changed.get(row.session) ?? row);
