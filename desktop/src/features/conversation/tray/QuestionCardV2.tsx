@@ -11,6 +11,7 @@ import { formOf, hasWordsField, isIrreversible, needsWords, type Option, type Qu
 import { IrreversibleAnswers, PermissionAnswers, type WhyToggle } from './AnswerForms';
 import { BlankFields, CheckList, DialField, Declines, PairRows, WordsField, type FormProps } from './InputForms';
 import { NonBlockingNote, doesNotBlock } from './NonBlockingNote';
+import { Proposal, isProposal } from './Proposal';
 import { OptionList, ScopeChoice, WordsPanel, hasButtonRow } from './OptionActions';
 
 export type QuestionCardProps = {
@@ -97,6 +98,7 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
     void send(answerFor(question, draft, option));
   }
 
+  if (isProposal(question)) return <Proposal question={question} busy={locked} now={now} held={held} onAnswer={onAnswer} onHold={onHold} />;
   const decide = decideAnswer(question);
   const props: FormProps = { question, draft, edit, locked };
   const always = (question.options ?? []).find((option) => option.widening);

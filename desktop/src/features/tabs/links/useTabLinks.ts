@@ -2,9 +2,11 @@
 // link that launched the app, and whenever Rust says another arrived) and focus or open the tab each names. Out: the
 // Copy link chord copies the active tab's link through the one TabActions object the menu uses.
 // A clicked system notification arrives the same way: Rust queues its conversation for this window, the conversation
-// opens through the same link path, and the question it named is brought forward in that conversation's tray.
+// opens through the same link path, and Next up starts at the item it named.
 // Outside the desktop app nothing can arrive, so only the chord is live there.
 import { useEffect, useRef, type Dispatch } from 'react';
+import { notificationWalk } from '../../nextup/notificationWalk';
+import { worldStore } from '../../chat/world-store';
 import { dispatchAttentionFocus } from '../../../lib/native/notify';
 import { nativeLinks, type NativeLinks } from '../../../design/nativeLinks';
 import { nativeControls, type NativeControls } from '../../../design/nativeControls';
@@ -58,12 +60,21 @@ export function useTabLinks({ enabled, state, dispatch, actions, native = native
       let targets: Awaited<ReturnType<typeof notices.claimNotices>>;
       try { targets = await notices.claimNotices(); } catch { return; }
       for (const target of targets) {
+        notificationWalk.start(target, worldStore.getState().items);
         if (target.itemId) dispatchAttentionFocus(target.itemId);
         // Asked for before the tab opens, so a conversation that mounts for it finds the request already waiting.
         if (target.question) questionFocus.request(target.chatId, target.question);
         void open(linkOf({ kind: 'chat', chatId: target.chatId }));
       }
     }
+    // Answering or withdrawing the current item advances the same walk, without sending a turn.
+    const stopWalk = notificationWalk.subscribe(() => {
+      const item = notificationWalk.current();
+      if (!item) return;
+      if (item.id) questionFocus.request(item.session, { kind: item.kind, id: item.id });
+      void open(linkOf({ kind: 'chat', chatId: item.session }));
+    });
+    const stopWorld = worldStore.subscribe(() => notificationWalk.update(worldStore.getState().items));
     let stop: (() => void) | undefined;
     void native.onReady(() => void claim()).then(off => { if (gone) off(); else stop = off; }, () => undefined);
     void claim();
@@ -72,7 +83,7 @@ export function useTabLinks({ enabled, state, dispatch, actions, native = native
       void notices.onNoticeActivated(() => void claimNotices()).then(off => { if (gone) off(); else stopNotices = off; }, () => undefined);
       void claimNotices();
     }
-    return () => { gone = true; stop?.(); stopNotices?.(); };
+    return () => { gone = true; stop?.(); stopNotices?.(); stopWalk(); stopWorld(); };
   }, [dispatch, native, notices, engine]);
 
   useEffect(() => {

@@ -5,6 +5,7 @@ import { ContextMenu, type MenuEntry } from '../../../components/ui';
 import { copyLinkShortcut, tabShortcuts } from '../../../design/keyboard';
 import { closeShortcutFor, closeStopShortcut, newGroupShortcut } from '../closing/shortcuts';
 import type { TabsApi } from '../context';
+import { placeFinishedJobItems } from '../../terminal/tabMenu';
 import { kindDef } from '../kinds/registry';
 import { focusedPane, splitCapacity, visibleTabs, type Tab, type TabGroup } from '../model';
 import { isPlaceHome } from '../reducers/home';
@@ -54,7 +55,10 @@ export function tabMenuItems(api: TabsApi, tab: Tab): MenuEntry[] {
   // A place's Home is not an ordinary tab: it never closes, moves or groups, so its menu is the place's own.
   if (isPlaceHome(tab)) return api.placeMenu ?? [];
   const toTheRight = visibleTabs(state).slice(visibleTabs(state).findIndex(t => t.id === tab.id) + 1).filter(t => !t.pinned && t.kind !== 'inbox');
-  return [
+  const pane = focusedPane(tab);
+  // Kind rows join the one tab menu. A finished job's Open log and Run again sit above Close; Remove job sits just under it.
+  const kindItems = kindDef(pane.kind).menuItems?.(pane, api) ?? [];
+  return placeFinishedJobItems([
     splitEntry(api, tab),
     groupEntry(api, tab),
     { id: 'pin', label: tab.pinned ? 'Unpin tab' : 'Pin tab', icon: 'pin', onSelect: () => dispatch({ type: 'pin', id: tab.id }) },
@@ -68,7 +72,7 @@ export function tabMenuItems(api: TabsApi, tab: Tab): MenuEntry[] {
     ...(api.isRunning(tab) ? [{ id: 'close-stop', label: 'Close and stop', shortcut: closeStopShortcut, onSelect: () => api.closeAndStop(tab.id) }] : []),
     { id: 'close-others', label: 'Close other tabs', disabled: !state.tabs.some(t => t.id !== tab.id && !t.pinned && t.kind !== 'inbox'), onSelect: () => api.closeMany({ type: 'close-others', id: tab.id }) },
     { id: 'close-right', label: 'Close tabs to the right', disabled: !toTheRight.length, onSelect: () => api.closeMany({ type: 'close-right', id: tab.id }) },
-  ];
+  ], kindItems);
 }
 
 /** The Inbox is the pinned tab that is always there: it has no menu. Strip and overview both ask here, so they can never disagree. */

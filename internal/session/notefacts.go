@@ -4,6 +4,7 @@ import (
 	"strconv"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/decide"
 )
 
 // Note kinds name WHAT WROTE a session-authored line, so a surface can draw a
@@ -22,6 +23,8 @@ const (
 	// NoteKindResume is the account a resumed session gives of the work the
 	// last process was interrupted in the middle of.
 	NoteKindResume = "resume"
+	// NoteKindDecision is the receipt for a question the app answered itself.
+	NoteKindDecision = decide.AsideKind
 )
 
 // noteFacts is what the session knows about one line it wrote, said by the code
@@ -44,10 +47,14 @@ type noteFacts struct {
 	// UndoReceipts is exact context mutation provenance, never recovered from text.
 	// Mixed batched notes deliberately drop this authority.
 	UndoReceipts []string `json:"undoReceipts,omitempty"`
+	// Receipts are the decisions the app made for the person that this note
+	// reports ([NoteKindDecision]). They ride in the journal so a reopened
+	// conversation redraws the same aside; they are never recovered from text.
+	Receipts []decide.Receipt `json:"receipts,omitempty"`
 }
 
 func (f noteFacts) empty() bool {
-	return f.Kind == "" && f.Title == "" && len(f.Tasks) == 0 && len(f.UndoReceipts) == 0
+	return f.Kind == "" && f.Title == "" && len(f.Tasks) == 0 && len(f.UndoReceipts) == 0 && len(f.Receipts) == 0
 }
 
 // taskFacts is the facts of a note reporting the given tasks as finished.
@@ -85,6 +92,7 @@ func mergeNoteFacts(all []noteFacts) noteFacts {
 			merged.Title = facts.Title
 		}
 		merged.Tasks = append(merged.Tasks, facts.Tasks...)
+		merged.Receipts = append(merged.Receipts, facts.Receipts...)
 	}
 	if len(titles) != 1 || merged.Kind == "" {
 		merged.Title = ""

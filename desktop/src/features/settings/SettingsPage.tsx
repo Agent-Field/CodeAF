@@ -2,6 +2,8 @@ import { useRef, useState, type KeyboardEvent } from 'react';
 import { Button, KeyboardShortcut, PageHeading, SectionHeading, Segmented, Text, TextInput } from '../../components/ui';
 import type { CatalogModel, ModelRole, PlacesSetting } from '../chat/engine-client';
 import { AppearanceSection } from './AppearanceSection';
+import { EngineSection } from './EngineSection';
+import { KeyStatus } from './KeyStatus';
 import { groupRoles, roleStateLine } from './groups';
 import { ModelSelect } from './ModelSelect';
 import { effortWord, SETTINGS_TAB_TITLE } from './summary';
@@ -117,7 +119,7 @@ function PlacesPolicy({ settings }: { settings: ModelSettings }) {
 }
 
 /**
- * The Models page: which three models are pinned to the composer, which model each kind of job runs on, grouped
+ * The Settings page, in reading order (and so keyboard order): Models, provider key, appearance, engine. Models: which three models are pinned to the composer, which model each kind of job runs on, grouped
  * into provisional sections, and how codeaf offers places. Every change is saved at once through the engine and
  * says so; there is no Save button.
  */
@@ -129,7 +131,6 @@ export function SettingsPage() {
         <PageHeading>{SETTINGS_TAB_TITLE}</PageHeading>
         <Receipt receipt={settings.receipt} />
       </header>
-      <AppearanceSection />
       <Text className="settings-note">These settings are provisional. Each job starts on the default model, and the defaults are engineering choices until Settings is designed.</Text>
       {settings.state === 'loading' && <Text>Reading your model choices…</Text>}
       {settings.state === 'unavailable' && <Text role="alert">The engine is not reachable, so model choices cannot be read.</Text>}
@@ -150,6 +151,9 @@ export function SettingsPage() {
           })}
         </>
       )}
+      <KeyStatus />
+      <AppearanceSection />
+      <EngineSection />
     </div>
   );
 }
