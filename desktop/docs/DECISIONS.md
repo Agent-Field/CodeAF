@@ -353,3 +353,23 @@ A document assertion checked 13 unique Open rows with non-empty questions
 and assumptions, the dated task section, all nine acceptance IDs and both
 integration gaps. `git diff --check` passed. Go build/vet/laws and manual
 retrieval probes were not run because no Go or user-visible feature changed.
+
+## t-d5-qa-nat-web: native web tab verification on macOS and Linux (2026-10-10)
+
+Decision: the checklist below is the record for the PR body. Lines marked **auto** are proven by `cargo test` (109 pass on Linux aarch64) or the existing Playwright/unit suites. Lines marked **manual** need a person at `npm run desktop:dev` on each OS with a real webview. This lane ran headless on Linux with no display and no Mac, so those lines are NOT recorded as passing. Nobody has run them on either OS yet.
+
+Finding fixed: `584cf68e3` removed the scoped `http:default` grant (loopback `/api/engine/*`) from `capabilities/default.json` while `engineFetch.ts` still calls `plugin:http`. In a packaged window every engine request would have been refused. `web::tests::native_http_accepts_only_engine_routes_on_loopback` was red on `d3-int` because of it. The grant is restored for `main` and `w-*` only; `web-*` still has no capability, and the test still proves a page cannot reach it.
+
+| # | Line | Linux | macOS | Evidence |
+| --- | --- | --- | --- | --- |
+| 1 | Page renders at the pane rect through split 1/2/4 | manual | manual | `policy::rectangles_stay_inside_the_window` (auto, clamping only) |
+| 2 | Rail collapse and window resize move the page | manual | manual | none automated |
+| 3 | Back, forward, reload | manual | manual | none automated |
+| 4 | Title, URL, loading, favicon events | manual | manual | none automated |
+| 5 | `target=_blank` becomes a web tab | manual | manual | `on_new_window` in `web.rs`; `about:blank` handled |
+| 6 | Menus, palette, Quick Look, overview, hover previews never covered | manual | manual | `weboverlay::tests` (hide-all/show-all idempotent, closed pane not re-shown) |
+| 7 | `window.__TAURI_INTERNALS__` undefined in the page | manual | manual | `web::tests::a_web_page_reaches_no_command_and_no_plugin` (IPC refused for `web-*`) |
+| 8 | fetch to the bridge refused from the page | manual | manual | `web::tests::native_http_accepts_only_engine_routes_on_loopback` (auto, now green) |
+| 9 | ⌘T / ⌘W with the page focused | manual | manual | `policy::app_chords_are_new_close_and_address_on_the_primary_modifier_only`; menu accelerators `menu.rs`, GTK accel group `platform.rs` |
+
+Gap, stated plainly: acceptance ("every line passes on both OSes") is not met until lines 1-6 and 9 are walked by hand on both machines and 7-8 are confirmed from the page's devtools. Lines 2-4 have no automated check at all.
