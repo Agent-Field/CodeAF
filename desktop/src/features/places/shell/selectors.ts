@@ -148,6 +148,12 @@ function sources(digest: HomeDigest): HomeSource[] | undefined {
   return list.map(source => ({ id: source.id, kind: source.kind, label: source.label || source.check.title || source.ref, state: source.check.state }));
 }
 
+/** The engine's "Since …" words, or nothing: a blank label or text draws no block (PL-133, no model call here). */
+function sinceOf(digest: HomeDigest): HomeView['recap'] {
+  const label = digest.recap?.label.trim(), text = digest.recap?.text.trim();
+  return label && text ? { label, text } : undefined;
+}
+
 /**
  * The Home view model (home-model.ts) from the engine's digest. For the root, `graph` (with archived places) supplies
  * the count line, the search pool with each place's path, and the archived toggle; the digest's own children stay
@@ -167,6 +173,7 @@ export function homeViewFromDigest(digest: HomeDigest, graph?: PlacesGraph, unpl
     sources: digest.kind === 'place' ? sources(digest) : undefined,
     pinned: digest.place?.pinned,
     decide: digest.place?.decide,
+    recap: sinceOf(digest),
   };
   if (digest.kind === 'root' && graph) {
     const index = indexPlaces(graph.places);
