@@ -170,3 +170,38 @@ test('⌘Z (Ctrl Z on Linux) is the structural Undo; ⌘⇧Z and ⌥⌘Z are not
   assert.equal(mac(key('Ω', { code: 'KeyZ', metaKey: true, altKey: true })), undefined);
   assert.equal(mac(key('z', { ctrlKey: true })), undefined);
 });
+
+test('Iteration 2 chords have distinct registry ids on Mac and Linux (P-5)', () => {
+  const cases = [
+    [true, 'j', { metaKey: true }, 'next-up'],
+    [false, 'j', { ctrlKey: true }, 'next-up'],
+    [true, '[', { metaKey: true, code: 'BracketLeft' }, 'back'],
+    [true, ']', { metaKey: true, code: 'BracketRight' }, 'forward'],
+    [false, 'ArrowLeft', { altKey: true }, 'back'],
+    [false, 'ArrowRight', { altKey: true }, 'forward'],
+    [false, '[', { ctrlKey: true, code: 'BracketLeft' }, undefined],
+    [false, ']', { ctrlKey: true, code: 'BracketRight' }, undefined],
+    [true, 'i', { metaKey: true }, undefined],
+    [false, 'i', { ctrlKey: true }, undefined],
+  ] as const;
+  for (const [mac, chord, modifiers, id] of cases) {
+    assert.deepEqual(shortcutOf(key(chord, modifiers), mac), id ? { id } : undefined, `${mac ? 'Mac' : 'Linux'} ${chord}`);
+    assert.equal(shortcutOf(key(chord, { ...modifiers, shiftKey: true }), mac)?.id === id && !!id, false);
+  }
+});
+
+test('Home Up is up-level; chat arrows keep turn navigation and composers keep caret keys', () => {
+  for (const mac of [true, false]) {
+    const primary = mac ? { metaKey: true } : { ctrlKey: true };
+    for (const [chord, id] of [['ArrowUp', 'turn-previous'], ['ArrowDown', 'turn-next']] as const) {
+      assert.deepEqual(shortcutOf(key(chord, primary), { mac }), { id });
+    }
+    assert.deepEqual(shortcutOf(key('ArrowUp', primary), { mac, home: true }), { id: 'up-level' });
+    assert.equal(shortcutOf(key('ArrowDown', primary), { mac, home: true }), undefined);
+    for (const value of ['', 'draft']) {
+      assert.equal(shortcutOf(key('ArrowUp', { ...primary, target: { tagName: 'TEXTAREA', value } }), { mac, home: true }), undefined);
+    }
+    assert.equal(shortcutOf(key('j', { ...primary, altKey: true }), { mac }), undefined);
+  }
+  assert.equal(shortcutOf(key('j', { ctrlKey: true }), { mac: false, terminal: true }), undefined);
+});

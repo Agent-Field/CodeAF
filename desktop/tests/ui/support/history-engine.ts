@@ -48,10 +48,11 @@ const keep = (c: MockConversation, filter: string) => {
   return true;
 };
 
-/** The History routes of the mock engine: list (paged, newest first), recap, messages, search and archive. */
+/** The History routes of the mock engine: list (paged, newest first), recap, messages, search, archive, delete and restore. */
 export function historyRoutes(history: MockHistory | undefined, json: (route: Route, value: unknown, status?: number) => Promise<void>) {
   const all = () => [...(history?.conversations ?? [])].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   const changes: { id: string; archived: boolean }[] = [];
+  const trash = new Map<string, MockConversation[]>();
   const handle = async (route: Route, parts: string[], method: string, body: Record<string, unknown>, url: URL) => {
     const [, id, action] = parts;
     if (!id && method === 'GET') {
@@ -71,6 +72,33 @@ export function historyRoutes(history: MockHistory | undefined, json: (route: Ro
         if (found) { found.archived = Boolean(body.archived); changed++; changes.push({ id: target, archived: found.archived }); }
       }
       return json(route, { changed });
+    }
+    if (id === 'delete' && method === 'POST') {
+      const ids = Array.isArray(body.ids) ? body.ids.filter((one): one is string => typeof one === 'string') : [];
+      const rows = history?.conversations ?? [];
+      for (const target of ids) {
+        const found = rows.find(c => c.id === target);
+        if (!found) continue;
+        if (found.open) return json(route, { error: 'a conversation that is open cannot be deleted' }, 409);
+        if (!found.archived) return json(route, { error: 'only archived conversations can be deleted' }, 409);
+      }
+      const moved: MockConversation[] = [];
+      for (const target of ids) {
+        const at = rows.findIndex(c => c.id === target);
+        if (at >= 0) moved.push(...rows.splice(at, 1));
+      }
+      if (!moved.length) return json(route, { deleted: 0 });
+      const token = `20261010T051400Z-${(trash.size + 1).toString(16).padStart(8, '0')}`;
+      trash.set(token, moved);
+      return json(route, { deleted: moved.length, undoToken: token });
+    }
+    if (id === 'restore' && method === 'POST') {
+      const token = typeof body.undoToken === 'string' ? body.undoToken : '';
+      const moved = trash.get(token);
+      if (!moved) return json(route, { error: 'nothing to restore' }, 404);
+      history?.conversations.push(...moved);
+      trash.delete(token);
+      return json(route, { restored: moved.length });
     }
     if (id === 'search') {
       const query = url.searchParams.get('q') ?? '';

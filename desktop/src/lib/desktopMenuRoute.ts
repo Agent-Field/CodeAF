@@ -1,5 +1,9 @@
 // The pure half of the native menu bridge: which payloads are tab commands and which are shell chords.
+// The event name lives here so a node test can dispatch it without loading the Tauri bridge.
 import type { Shortcut } from '../design/keyboard';
+
+/** The window event the native menu and an in-page tab open share. The workspace listens once. */
+export const desktopTabEvent = 'codeaf:desktop-tab-action';
 
 const actions = ['new', 'close', 'close-stop', 'reopen', 'overview', 'next', 'previous'] as const;
 export type DesktopTabAction = typeof actions[number];

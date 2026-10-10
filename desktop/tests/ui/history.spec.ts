@@ -237,7 +237,7 @@ test('the row menu continues, reads and archives; Archive is offered only for se
   await expect(page.getByRole('complementary', { name: 'Recap' })).toContainText('· archived');
   // An archived conversation is not offered Archive again; running work and a waiting question cannot be archived.
   await row(page, 'Fix it in the lexer').click({ button: 'right' });
-  await expect(menu.getByRole('menuitem')).toHaveText(['Continue', 'Read', 'Unarchive']);
+  await expect(menu.getByRole('menuitem')).toHaveText(['Continue', 'Read', 'Unarchive', 'Delete…']);
   await page.keyboard.press('Escape');
   await row(page, 'Trailing commas').click({ button: 'right' });
   await expect(page.getByRole('menuitem', { name: 'Archive' })).toBeDisabled();

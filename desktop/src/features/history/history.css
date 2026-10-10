@@ -63,6 +63,11 @@
 .history-row-main > .history-files { margin-top: var(--space-half); }
 .history-visually-hidden { position: absolute; width: var(--hairline); height: var(--hairline); overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
+/* The inline confirm takes the row's place (Interactions "Delete"). Soft fill, no edge accent, and the question fades rather than ellipsizing. */
+.history-delete-confirm { position: absolute; left: 0; right: 0; top: var(--history-top); height: var(--history-height); display: flex; align-items: center; gap: var(--space-tight); padding: 0 var(--space-row); border-radius: var(--tasks-table-row-radius); background: var(--field); color: var(--ink); }
+.history-delete-question { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; font-size: var(--type-label-size); font-weight: var(--type-label-strong); line-height: var(--type-label-leading); color: var(--ink); mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
+.history-delete-confirm .button { flex: none; }
+
 /* ---- file chips ---- */
 .history-files { display: flex; align-items: center; flex-wrap: nowrap; gap: var(--space-tight); min-width: 0; overflow: hidden; }
 .history-file { flex: none; }
@@ -125,7 +130,7 @@
 .button.history-toast-action.button-quiet { color: var(--ink); }
 
 /* ---- specimen ---- */
-.history-specimen-stack .history-row { position: static; height: auto; }
+.history-specimen-stack .history-row, .history-specimen-stack .history-delete-confirm { position: static; height: auto; min-height: var(--history-row-height); }
 .history-specimen-stack { width: 100%; min-width: 0; max-width: var(--history-list-width); display: flex; flex-direction: column; gap: var(--space-2); padding: var(--specimen-pad); border-radius: var(--specimen-radius); background: var(--canvas); box-shadow: var(--sh-1); }
 .history-specimen-label { font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); color: var(--ink-2); }
 .history-specimen-toast { position: relative; width: 100%; min-width: 0; display: flex; justify-content: center; height: var(--history-toast-height); }
