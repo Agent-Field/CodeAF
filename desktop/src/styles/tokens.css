@@ -367,6 +367,12 @@
   --filter-tab-height: 26px;
   --filter-tab-pad: 10px;
   --radius-filter-tab: 7px;
+  --filter-tab-gap: var(--space-1);
+  --filter-tab-size: var(--type-label-size);
+  --filter-tab-weight: var(--type-label-weight);
+  --filter-tab-weight-selected: var(--type-label-strong);
+  --filter-tab-leading: var(--type-label-leading);
+  --filter-tab-mask: var(--edge-fade-inline);
   --quicklook-width: 420px;
   --radius-quicklook: 14px;
   --button-height-tray: 30px;
