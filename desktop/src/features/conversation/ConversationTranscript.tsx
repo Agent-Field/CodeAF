@@ -20,8 +20,8 @@ type Props = BlockContext & {
   folded: Record<string, boolean>;
   onToggleFold: (turnId: string, folded: boolean) => void;
   failed?: FailedSend;
-  /** Words sent but not yet recorded. */
-  sending?: string;
+  /** Words sent but not yet recorded, oldest first. Each is drawn at 60%. */
+  sending?: string | readonly string[];
   onRetry: () => void;
 };
 
@@ -58,6 +58,7 @@ function PrefaceItem({ item, open, onToggle, onOpenTask, tasks, onPause, onResum
 /** The conversation itself: notes recorded before the first message, then the turns. */
 export function ConversationTranscript(props: Props) {
   const { model, folded, onToggleFold, failed, sending, onRetry } = props;
+  const pending = !sending ? [] : typeof sending === 'string' ? [sending] : sending;
   const lastId = model.turns[model.turns.length - 1]?.id;
   const renderFor = blockRenderer(props);
   const { earlier, recent } = splitEarlier(model.turns);
@@ -99,11 +100,11 @@ export function ConversationTranscript(props: Props) {
         </>
       )}
       {recent.map(renderTurn)}
-      {sending && (
-        <section className="turn-v2" data-pending="true">
-          <UserMessage text={sending} sending />
+      {pending.map((text, index) => (
+        <section className="turn-v2" key={`${index}:${text}`} data-pending="true">
+          <UserMessage text={text} sending />
         </section>
-      )}
+      ))}
       {failed && (
         <div className="conversation-failure">
           <ErrorItem text={failed.message} onRetry={failed.text || failed.files?.length ? onRetry : undefined} />
