@@ -49,7 +49,7 @@ test('the live step is pinned apart from the recorded steps and counts in the su
   assert.equal(model.steps.length, 1);
   assert.equal(model.live.state, 'running');
   assert.equal(model.live.command, 'go test');
-  assert.equal(logSummary(model.steps, model.live, false), 'Working · 2 commands');
+  assert.equal(logSummary(model.steps, model.live), 'Work log · 2 commands');
   assert.ok(isTaskRunning(page));
   const ended = taskPageModel(base({ Steps: [{ step: 1, command: 'ls' }], Live: { Step: 2, Command: 'stale' } }), NOW);
   assert.equal(ended.live, undefined);
@@ -68,8 +68,8 @@ test('refused steps read as refused, harness corrections are hidden, summary cou
   );
   assert.deepEqual(model.steps.map((s) => s.state), ['refused', 'done']);
   assert.equal(model.refused, 1);
-  assert.equal(logSummary(model.steps, undefined, true), 'Ran 2 commands · 1 refused');
-  assert.equal(logSummary([], undefined, true), '');
+  assert.equal(logSummary(model.steps, undefined), 'Work log · 2 commands · 1 refused');
+  assert.equal(logSummary([], undefined), '');
 });
 
 test('steps show the display command, not the run-copy cd or record shims', () => {

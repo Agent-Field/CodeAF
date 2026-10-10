@@ -13,6 +13,8 @@
   transition: mask-size var(--dur-fast) var(--ease);
 }
 .conversation-scroll[data-scrolled] { mask-size: 100% 100%, 100% 0%; }
+/* Design 1f: a sheet locks the scroll of the page it covers. */
+.conversation-main[data-sheet] .conversation-scroll { overflow-y: hidden; }
 @media (prefers-reduced-motion: reduce) { .conversation-scroll { transition: none; } }
 .conversation-main[hidden] { display: none; }
 /* Task view (design 1c): the column is the design's 640px reading width, and the note composer rests on the pane's foot. */

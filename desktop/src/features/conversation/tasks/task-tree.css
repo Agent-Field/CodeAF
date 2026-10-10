@@ -5,5 +5,5 @@
 .task-tree[data-depth="0"] > .task-tree-item + .task-tree-item { margin-top: var(--tasks-group-gap); }
 
 /* The guide hangs under the parent's chevron, one hairline per level, joined to its rows. */
-.task-tree:not([data-depth="0"]) { margin-inline-start: var(--tasks-nest-inset); padding-inline-start: var(--tasks-guide-pad); border-inline-start: var(--border-width) solid var(--line); }
+.task-tree:not([data-depth="0"]) { margin-inline-start: var(--tasks-nest-inset); padding-inline-start: var(--tasks-guide-pad); border-inline-start: var(--hairline) solid var(--line); }
 .task-tree[data-depth="1"] { margin-inline-start: var(--tasks-guide-inset); }
