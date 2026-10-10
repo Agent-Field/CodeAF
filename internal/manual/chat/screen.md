@@ -975,6 +975,10 @@ request shows its name without an empty quote. The same source details remain
 available after `/resume`, and the tasks themselves remain accessible in the task
 column.
 
+## Provider missing
+
+Provider missing means the line above the message box is not naming the machine that answered, or the live tok/s rate is not drawn. Nothing is being written right now, the model is on a directly connected service with no machine to name, or the session host is an older build that does not report them. That older host says `this conversation's engine is an older codeaf, so the provider and tok/s are not shown`.
+
 ## Provider missing or tok/s not showing — why via or the machine in brackets or the rate is not there, no rate after a follow-up
 
 The machine in brackets after the model on the line above the message box
@@ -2023,7 +2027,7 @@ The underline is drawn with colour, so a terminal set to draw **no colour at all
 (`NO_COLOR`, or `TERM=dumb`) shows no underline. Where colour is off but the terminal is
 real, the link is still there and still clickable; you just cannot see it in advance.
 
-## Which terminals can open a path, and which cannot
+## Which terminals can open a path, and which cannot — cmd click on a file name does nothing
 
 **They open:** iTerm2, Kitty, WezTerm, Ghostty, Windows Terminal, and the terminal
 built into VS Code. Inside tmux they open too, on tmux 3.4 and later.

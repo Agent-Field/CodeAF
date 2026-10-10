@@ -638,7 +638,7 @@ The last line counts what the pass did:
 examined 3, checked 2, fired 1, no 0, errors 0, rail waits 0, practice 0, learning 2
 ```
 
-## What did that task actually do — see one piece of work's turn-by-turn record, with codeaf why
+## What did that task actually do — see one piece of work's turn-by-turn record, one step of a headless run, with codeaf why
 
 This prints one piece of work's whole record: every turn, what it said, every tool it
 called with its arguments, what came back, and how it ended.

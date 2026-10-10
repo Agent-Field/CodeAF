@@ -1,4 +1,6 @@
-# Council chats between two places
+# Desktop council chats between two places
+
+A desktop council is the chat the desktop app opens when two places discuss one topic.
 
 ## Why is there a chat called Marketing with Software
 
