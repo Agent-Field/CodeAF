@@ -25,7 +25,23 @@ export type WorldRow = {
 export type AttentionItem = {
  key: string; session: string; kind: string; id?: number; text: string; sourceFolders: string[];
  title?: string; answerable: boolean; asked?: string;
+ /** What waiting on this question holds up. Older engines omit it; read it through `blockingOf`. */
+ blocking?: AttentionBlocking;
+ stakes?: AttentionStakes;
+ /** The engine's pick among the options, with the share of agreement and why. */
+ suggestion?: AttentionSuggestion;
+ /** The places the asking chat belongs to, ids and names index-aligned. */
+ placeIds?: string[]; placeNames?: string[];
+ /** Names of the work this question holds up. */
+ holdingUp?: string[];
+ /** Who settled it. Never present in Next up, which lists only open questions. */
+ decidedBy?: string;
 };
+export type AttentionBlocking = { turn: boolean; tasks: string[] };
+export type AttentionStakes = 'reversible' | 'costly' | 'irreversible';
+export type AttentionSuggestion = { key: string; label: string; percent: number; reason: string };
+/** An engine that does not say what a question blocks is treated as blocking the turn: the safe reading, since it keeps the question in front of the person. */
+export function blockingOf(item: AttentionItem): AttentionBlocking { return item.blocking ?? { turn: true, tasks: [] }; }
 export type WorldFull = { rows: WorldRow[]; items: AttentionItem[] };
 /** One engine background job, as GET /sessions/{id}/jobs and a `jobs` world record spell it. */
 export type EngineJob = {
