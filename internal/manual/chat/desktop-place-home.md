@@ -10,4 +10,8 @@ All places lists conversations that are not filed in any place. One place's own 
 
 ## Why a child place shows on the parent
 
-A desktop place home lists what needs you, what is running, and what failed in that place and in the places inside it. A row names the place the conversation is filed in, so a question in a child place still names that child when you are looking at the parent. A place can sit in more than one parent; its tile says "also in" and the other parents' names. The breadcrumb follows the first parent.
+A desktop place home lists what needs you, what is running, and what failed in that place and in the places inside it. A row names the place the conversation is filed in, so a question in a child place still names that child when you are looking at the parent.
+
+## What does also in mean on a place tile
+
+A place can sit in more than one parent; its tile says "also in" and the other parents' names. The breadcrumb follows the first parent.
