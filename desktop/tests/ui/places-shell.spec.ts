@@ -319,7 +319,7 @@ test('g. Add to another place… and a chat row’s Add to a place… each make 
   await expect(sheet.getByRole('option', { name: /^Config parser/ })).toHaveCount(0);
   await sheet.getByRole('combobox').fill('Marketing');
   await page.keyboard.press('Enter');
-  await expect.poll(() => rig.places.posts(`/places/${parser}/parents`).map(call => call.body)).toEqual([{ add: marketing }]);
+  await expect.poll(() => rig.places.posts(`/places/${parser}/parents`).map(call => call.body)).toEqual([{ add: marketing, ifGeneration: 0 }]);
   await expect(toast(page).last()).toContainText('Added “Config parser” to “Marketing”');
 
   await openAllPlaces(page, rig);
@@ -328,7 +328,7 @@ test('g. Add to another place… and a chat row’s Add to a place… each make 
   await page.getByRole('menuitem', { name: 'Add to a place…' }).click();
   await page.getByRole('dialog', { name: 'Add “Pricing for teams” to a place…' }).getByRole('combobox').fill('Software');
   await page.keyboard.press('Enter');
-  await expect.poll(() => rig.places.posts(`/places/${software}/members`).map(call => call.body)).toEqual([{ chats: ['sess-loose'] }]);
+  await expect.poll(() => rig.places.posts(`/places/${software}/members`).map(call => call.body)).toEqual([{ chats: ['sess-loose'], ifGeneration: 1 }]);
   await expect(page.locator('.places-chat-row', { hasText: 'Pricing for teams' })).toHaveCount(0);
 });
 
@@ -367,7 +367,7 @@ test('h. an empty place takes a typed folder and instructions; a refused source 
   await field.fill('/work/brand');
   await sheet.getByRole('radio', { name: 'Folder' }).click();
   await sheet.getByRole('button', { name: 'Add', exact: true }).click();
-  await expect.poll(() => rig.places.posts(`/places/${studio}/sources`).map(call => call.body)).toEqual([{ kind: 'folder', ref: '/work/brand' }]);
+  await expect.poll(() => rig.places.posts(`/places/${studio}/sources`).map(call => call.body)).toEqual([{ kind: 'folder', ref: '/work/brand', ifGeneration: 0 }]);
   await expect(sheet.getByRole('list', { name: 'Files and links' })).toContainText('brand');
   // The same folder again is refused, in the engine's words, and the sheet stays.
   await field.fill('/work/brand');
@@ -381,7 +381,7 @@ test('h. an empty place takes a typed folder and instructions; a refused source 
   await notes.getByRole('textbox', { name: 'Instructions for Studio' }).fill('Use the brand voice.');
   await notes.getByRole('button', { name: 'Save' }).click();
   await expect(notes).toHaveCount(0);
-  await expect.poll(() => rig.places.posts(`/places/${studio}`).map(call => call.body)).toEqual([{ instructions: 'Use the brand voice.' }]);
+  await expect.poll(() => rig.places.posts(`/places/${studio}`).map(call => call.body)).toEqual([{ instructions: 'Use the brand voice.', ifGeneration: 1 }]);
   expect(rig.places.state().places[0].instructions).toBe('Use the brand voice.');
 });
 
@@ -433,6 +433,14 @@ test('k. offline: the rail and All places say the engine is out of reach, invent
   const places = await installMockPlaces(page, garden());
   places.fail('graph', 'abort');
   places.fail('home', 'abort');
+  // Graph reads that started while the engine was unreachable must finish failing before it
+  // is allowed to answer. A read still queued in the route handler otherwise succeeds after
+  // the flag drops and takes the rail's Retry away before the click.
+  const pendingGraphs = new Set<import('@playwright/test').Request>();
+  const isGraph = (url: string, method: string) => method === 'GET' && /\/api\/engine\/places(\?|$)/.test(url);
+  page.on('request', request => { if (isGraph(request.url(), request.method())) pendingGraphs.add(request); });
+  page.on('requestfailed', request => pendingGraphs.delete(request));
+  page.on('requestfinished', request => pendingGraphs.delete(request));
   await page.goto('/');
   const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
   const rig: Rig = { engine, places, mac };
@@ -451,8 +459,10 @@ test('k. offline: the rail and All places say the engine is out of reach, invent
   places.fail('home', undefined);
   await notice.getByRole('button', { name: 'Retry' }).click();
   await expect(tile(page, 'Marketing')).toBeVisible();
+  await expect.poll(() => pendingGraphs.size).toBe(0);
+  await expect(rail(page).getByRole('button', { name: 'Retry' })).toBeVisible();
   places.fail('graph', undefined);
-  await rail(page).getByRole('button', { name: 'Retry' }).click();
+  await rail(page).getByRole('button', { name: 'Retry' }).evaluate(button => (button as HTMLButtonElement).click());
   await expect(railPlace(page, 'Marketing')).toBeVisible();
   await expect(rail(page).getByText('Can’t reach the engine')).toHaveCount(0);
 });
