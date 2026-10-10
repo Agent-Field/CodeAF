@@ -30,15 +30,21 @@ import {
 } from '../chat/engine-client';
 import type { SendMode } from './Composer';
 import { emptyLive, projectTurnsV2, reduceLive, type LiveOverlayV2, type ReceiptPlaces } from './model';
+import { beginPost, holdSend, restoreFront, type HeldSend } from './offline/outbox';
 import { questionKey } from './model/entry';
+import { toolReadOnce } from './toolReadOnce';
 import { blocksComposer } from './tray/layout';
 import type { ConversationModel } from './types';
 
-export type FailedSend = { text: string; mode: SendMode; message: string; files?: OutgoingFile[] };
+export type FailedSend = { text: string; mode: SendMode; message: string; files?: OutgoingFile[]; /** Set when this text was taken back out of the pane outbox. */ fromOutbox?: boolean };
 
 type Options = { sessionFile?: string; onSessionFile: (sessionFile: string) => void; beforeFirstTurn?: BeforeFirstTurn; newConversationPlace?: string };
 
 const BACKOFF_MS = [1000, 2000, 5000, 10000];
+
+// Survives a remount of this hook. Keyed by session and call so two chats
+// never share a body, and a failed read is dropped inside toolReadOnce.
+const toolReads = new Map<string, Promise<{ output: string; full: boolean }>>();
 
 export const emptyModel: ConversationModel = { title: '', turns: [], preface: [], running: false, questions: [], tasks: [] };
 
@@ -60,6 +66,12 @@ function deliver(id: string, text: string, mode: SendMode, files?: OutgoingFile[
   return files?.length ? sendEngineWithFiles(id, text, files) : sendEngine(id, text, mode);
 }
 
+function rememberHeld(box: { current: HeldSend[] }, held: readonly HeldSend[], setHeldTexts: (texts: string[]) => void) {
+  const next = [...held];
+  box.current = next;
+  setHeldTexts(next.map((item) => item.text));
+}
+
 export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, newConversationPlace }: Options) {
   const [snapshot, setSnapshot] = useState<EngineSnapshot>();
   const [live, setLive] = useState<LiveOverlayV2>(emptyLive());
@@ -69,6 +81,14 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, n
   const [failed, setFailed] = useState<FailedSend>();
   // The person's words between pressing Send and the engine recording them (design: Sending, optimistic at 60%).
   const [writing, setWriting] = useState<{ text: string; at: number }>();
+  // Plain-text sends held in this pane while the engine is not answering. Oldest first.
+  const [heldTexts, setHeldTexts] = useState<string[]>([]);
+  // A refused post is put back into an empty composer. The view applies it once.
+  const [draftToRestore, setDraftToRestore] = useState<string>();
+  const box = useRef<HeldSend[]>([]);
+  const onlineRef = useRef(false);
+  const unreachableRef = useRef(false);
+  const flushing = useRef(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const generation = useRef(0);
   const current = useRef<EngineSnapshot | undefined>(undefined);
@@ -119,9 +139,96 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, n
     reader.current = controller;
     watchEngine(value, receive, onEvent, controller.signal, () => current.current).catch(() => {
       if (controller.signal.aborted || own !== generation.current) return;
+      onlineRef.current = false;
       setOnline(false);
       reconnectLater();
     });
+  }
+
+  function remember(held: readonly HeldSend[]) {
+    rememberHeld(box, held, setHeldTexts);
+  }
+
+  /** The engine is answering again. Held sends may post; the unreachable line comes down. */
+  function markOnline() {
+    onlineRef.current = true;
+    setOnline(true);
+    unreachableRef.current = false;
+    setUnreachable(false);
+  }
+
+  /** Nothing answered. Held sends stay put until a later attach succeeds. */
+  function markUnreachable() {
+    unreachableRef.current = true;
+    setUnreachable(true);
+    onlineRef.current = false;
+    setOnline(false);
+  }
+
+  /**
+   * Post held plain text oldest first. A refusal puts that one message back
+   * for the composer and leaves anything sent after it still held. A lost
+   * connection puts the message back at the front so it is not skipped.
+   */
+  async function flushOutbox() {
+    if (flushing.current) return;
+    flushing.current = true;
+    const own = generation.current;
+    let paused = false;
+    try {
+      while (own === generation.current && onlineRef.current && box.current.length > 0) {
+        const target = current.current;
+        if (!target) { paused = true; break; }
+        if (firstTurn.current && !firstTurnDone.current && target.entries.length === 0) {
+          try {
+            await firstTurn.current(target.sessionFile);
+            if (own !== generation.current) return;
+            firstTurnDone.current = true;
+          } catch (reason) {
+            if (own !== generation.current) return;
+            if (isUnreachable(reason)) markUnreachable();
+            else refuseHeld(messageOf(reason));
+            paused = true;
+            break;
+          }
+        }
+        const step = beginPost(box.current);
+        if (!step.posting) break;
+        remember(step.held);
+        if (step.posting.mode !== 'queue') setLive(emptyLive(target.entries.length));
+        if (step.posting.mode === 'submit' && step.posting.text.trim()) setWriting({ text: step.posting.text, at: target.entries.length });
+        try {
+          const value = await deliver(target.id, step.posting.text, step.posting.mode);
+          if (own !== generation.current) return;
+          receive(value);
+        } catch (reason) {
+          if (own !== generation.current) return;
+          if (isUnreachable(reason)) {
+            remember(restoreFront(box.current, step.posting));
+            markUnreachable();
+          } else {
+            setFailed({ text: step.posting.text, mode: step.posting.mode, message: messageOf(reason), fromOutbox: true });
+            setDraftToRestore(step.posting.text);
+          }
+          paused = true;
+          break;
+        } finally {
+          if (own === generation.current) setWriting(undefined);
+        }
+      }
+    } finally {
+      flushing.current = false;
+    }
+    if (!paused && own === generation.current && onlineRef.current && box.current.length > 0) void flushOutbox();
+  }
+
+  /** The oldest held send could not be posted. It becomes the draft again; the rest stay held. */
+  function refuseHeld(message: string) {
+    const step = beginPost(box.current);
+    if (!step.posting) return;
+    remember(step.held);
+    setFailed({ text: step.posting.text, mode: step.posting.mode, message, fromOutbox: true });
+    setDraftToRestore(step.posting.text);
   }
 
   async function attach(saved?: string): Promise<EngineSnapshot | undefined> {
@@ -131,15 +238,17 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, n
       const value = await connectEngine(saved, newConversationPlace);
       if (own !== generation.current) return undefined;
       attempts.current = 0;
-      setOnline(true);
-      setUnreachable(false);
+      markOnline();
       receive(value);
       watch(value);
       if (value.sessionFile !== saved) announce.current(value.sessionFile);
+      await flushOutbox();
       return value;
     } catch (reason) {
       if (own === generation.current) {
+        onlineRef.current = false;
         setOnline(false);
+        unreachableRef.current = isUnreachable(reason);
         setUnreachable(isUnreachable(reason));
       }
       throw reason;
@@ -158,16 +267,42 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, n
   }, []);
 
   async function attached(): Promise<EngineSnapshot | undefined> {
-    if (online && current.current) return current.current;
+    if (onlineRef.current && current.current) return current.current;
     return attach(current.current?.sessionFile ?? file.current);
+  }
+
+  /** Plain text joins the pane outbox. Files and a blank do not. */
+  function holdLocally(text: string, mode: SendMode, files?: OutgoingFile[]): boolean {
+    const step = holdSend(box.current, { text, mode, files });
+    if (!step.accepted) return false;
+    remember(step.held);
+    return true;
   }
 
   async function send(text: string, mode: SendMode, files?: OutgoingFile[]): Promise<boolean> {
     const own = generation.current;
     setFailed(undefined);
+    // Already unreachable: hold plain text here. A send with files stays in the composer.
+    if (unreachableRef.current) {
+      if (holdLocally(text, mode, files)) return true;
+      setFailed({ text, mode, message: '', files });
+      return false;
+    }
+    // A send already waiting goes out first. This one lines up behind it.
+    if (!files?.length && (box.current.length > 0 || flushing.current)) {
+      if (!holdLocally(text, mode)) return false;
+      if (onlineRef.current) void flushOutbox();
+      return true;
+    }
+    let optimistic = false;
     try {
       const target = await attached();
       if (!target || own !== generation.current) return false;
+      if (!files?.length && (box.current.length > 0 || flushing.current)) {
+        if (!holdLocally(text, mode)) return false;
+        if (onlineRef.current) void flushOutbox();
+        return true;
+      }
       if (blocksComposer(target.questions ?? [])) throw new Error('Answer the question above first. Your message is kept.');
       if (firstTurn.current && !firstTurnDone.current && target.entries.length === 0) {
         await firstTurn.current(target.sessionFile);
@@ -175,24 +310,28 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, n
         if (own !== generation.current) return false;
       }
       if (mode !== 'queue') setLive(emptyLive(target.entries.length));
-      if (mode === 'submit' && text.trim()) setWriting({ text, at: target.entries.length });
+      if (mode === 'submit' && text.trim()) {
+        optimistic = true;
+        setWriting({ text, at: target.entries.length });
+      }
       const value = await deliver(target.id, text, mode, files);
       if (own !== generation.current) return false;
       receive(value);
       return true;
     } catch (reason) {
       if (own !== generation.current) return false;
-      // The header line is the only sentence for a quiet engine. An empty
-      // message keeps the draft for a later send and draws no second notice.
+      // The header line is the only sentence for a quiet engine. Plain text
+      // waits in this pane; a send with files keeps the draft and draws no second notice.
       if (isUnreachable(reason)) {
-        setUnreachable(true);
+        markUnreachable();
+        if (holdLocally(text, mode, files)) return true;
         setFailed({ text, mode, message: '', files });
-      } else {
-        setFailed({ text, mode, message: messageOf(reason), files });
+        return false;
       }
+      setFailed({ text, mode, message: messageOf(reason), files });
       return false;
     } finally {
-      if (own === generation.current) setWriting(undefined);
+      if (optimistic && own === generation.current) setWriting(undefined);
     }
   }
 
@@ -284,10 +423,10 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, n
   }
 
   /**
-   * Ask the engine again without sending the draft. The header line's probes
-   * and its Retry button use this, so the words the person typed stay put
-   * while the connection is checked. A success drops an empty failure that
-   * existed only because nothing answered.
+   * Ask the engine again without sending the composer's draft. Held plain-text
+   * sends post in order once that ask succeeds. The header line's probes and
+   * its Retry button use this. A success drops an empty failure that existed
+   * only because nothing answered.
    */
   async function reprobe(): Promise<boolean> {
     const own = generation.current;
@@ -308,22 +447,45 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, n
   async function retry(): Promise<boolean> {
     attempts.current = 0;
     window.clearTimeout(retryTimer.current);
+    // A refused outbox send is the next one out, ahead of anything still held.
+    if (failed?.fromOutbox && failed.text && !failed.files?.length) {
+      const text = failed.text;
+      const mode = failed.mode;
+      setFailed(undefined);
+      remember(restoreFront(box.current, { text, mode }));
+      if (unreachableRef.current) return true;
+      try {
+        const target = await attached();
+        if (target) await flushOutbox();
+      } catch {
+        // The words are held again. They go out when the engine next answers.
+      }
+      return true;
+    }
     if (failed?.text || failed?.files?.length) return send(failed.text, failed.mode, failed.files);
     const saved = current.current?.sessionFile ?? file.current;
     if (saved) await attach(saved).catch(() => undefined);
     return false;
   }
 
+  function ackDraftRestore() {
+    setDraftToRestore(undefined);
+  }
+
   function readFull(callId: string) {
     const target = current.current;
     if (!target) return Promise.reject(new Error('This conversation is not attached.'));
-    return readToolResult(target.id, callId);
+    // One GET per call for the life of the page. Opening the row, a development
+    // remount, and a new readFull on every snapshot would otherwise repeat it.
+    return toolReadOnce(toolReads, `${target.id}\0${callId}`, () => readToolResult(target.id, callId));
   }
 
   const model = useMemo(() => (snapshot ? buildModel(snapshot, live, places.current) : emptyModel), [snapshot, live]);
 
   // Once the engine has recorded anything newer than the send, the real message takes over.
-  const sending = writing && (snapshot?.entries.length ?? 0) <= writing.at ? writing.text : undefined;
+  // Held sends stay listed until they are the one being posted, so two copies of the same words both stay visible.
+  const sendingNow = writing && (snapshot?.entries.length ?? 0) <= writing.at ? writing.text : undefined;
+  const pendingSends = sendingNow ? [...heldTexts, sendingNow] : heldTexts;
 
-  return { model, snapshot, sending, online, connecting, unreachable, failed, busyKey, send, stop, answer, hold, controlTask, retry, reprobe, readFull, editQueue, moveQueue, removeQueue, sendQueueNow };
+  return { model, snapshot, pendingSends, draftToRestore, ackDraftRestore, online, connecting, unreachable, failed, busyKey, send, stop, answer, hold, controlTask, retry, reprobe, readFull, editQueue, moveQueue, removeQueue, sendQueueNow };
 }

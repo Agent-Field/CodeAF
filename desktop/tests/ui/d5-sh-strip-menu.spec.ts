@@ -17,9 +17,9 @@ for (const theme of ['light', 'dark'] as const) {
   await expect(menu.getByRole('menuitem')).toHaveCount(3);
   await expect(menu.getByRole('menuitem', { name: /^Reopen closed tab/ })).toBeDisabled();
   const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
-  await expect(menu.getByRole('menuitem', { name: /^New tab/ })).toContainText(mac ? '⌘ T' : 'Ctrl T');
-  await expect(menu.getByRole('menuitem', { name: /^Reopen closed tab/ })).toContainText(mac ? '⌘ ⇧ T' : 'Ctrl Shift T');
-  await expect(menu.getByRole('menuitem', { name: /^Show all tabs/ })).toContainText(mac ? '⌘ ⇧ \\' : 'Ctrl Shift A');
+  await expect(menu.getByRole('menuitem', { name: /^New tab/ })).toContainText(mac ? '⌘T' : 'Ctrl+T');
+  await expect(menu.getByRole('menuitem', { name: /^Reopen closed tab/ })).toContainText(mac ? '⌘⇧T' : 'Ctrl+Shift+T');
+  await expect(menu.getByRole('menuitem', { name: /^Show all tabs/ })).toContainText(mac ? '⌘⇧\\' : 'Ctrl+Shift+A');
   await menu.getByRole('menuitem', { name: /^New tab/ }).click();
   await expect(tabs).toHaveCount(before + 1);
   const primary = mac ? 'Meta' : 'Control';

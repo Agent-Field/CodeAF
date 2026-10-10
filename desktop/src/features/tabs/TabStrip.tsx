@@ -105,6 +105,7 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
     setSeen(signature);
     if (departureIds(next) !== departureIds(departures)) setDepartures(next);
   }
+  // Collapsed members remain in the drawing model so their capsule survives after motion ends.
   const shown = withDepartures(state.tabs, departures);
   const groups = groupsForDepartures(state.groups, departures);
   const departing = new Set(departures.map(item => item.tab.id));
