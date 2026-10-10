@@ -4,25 +4,26 @@ import { installMockEngine } from './support/mock-engine';
 import { plainReply } from './support/scenarios';
 
 // SH-168 / SH-169: at the small breakpoint the card stays 8px inside the window and
-// is at most min(300px, 100vw - 16px). A screen that cannot hover never opens one.
+// is at most min(300px, 100vw - 16px). Pins keep their preview at narrow widths;
+// ordinary inactive tabs compress to a title tooltip. A screen that cannot hover never opens a card.
 const delay = design.interaction.previewOpenDelay;
 const pad = Number.parseInt(design.foundation['preview-collision-padding'], 10);
 const column = Number.parseInt(design.foundation['preview-card-width'], 10);
 
 const tab = (id: string, title: string, over: Record<string, unknown> = {}) => ({ id, title, titleSource: 'manual', kind: 'conversation', draft: 'A saved thought', pinned: false, ...over });
 
-async function seed(page: Page) {
-  const tabs = [tab('a', 'Active tab'), tab('b', 'Port fix'), tab('c', 'Plain tab')];
+async function seed(page: Page, pinned = true) {
+  const tabs = [tab('a', 'Active tab'), tab('b', 'Port fix', { pinned }), tab('c', 'Plain tab')];
   const state = { tabs, groups: [], closed: [], activeId: 'a', nextNumber: tabs.length + 1, recentIds: tabs.map(item => item.id) };
   await page.addInitScript(value => { localStorage.setItem('codeaf.desktop.workspace.v1', value); }, JSON.stringify(state));
 }
 
 const card = (page: Page, title: string) => page.getByRole('group', { name: `Preview of ${title}`, exact: true });
 
-async function openWorkspace(page: Page) {
+async function openWorkspace(page: Page, pinned = true) {
   const base = plainReply();
   await installMockEngine(page, base);
-  await seed(page);
+  await seed(page, pinned);
   await page.goto('/');
   await expect(page.getByRole('tab', { name: 'Port fix', exact: true })).toBeVisible();
 }
@@ -78,5 +79,23 @@ test('a hover-none screen never opens a preview card', async ({ page }) => {
   await expect(card(page, 'Port fix')).toHaveCount(0);
   await port.focus();
   await page.waitForTimeout(delay * 0.4);
+  await expect(card(page, 'Port fix')).toHaveCount(0);
+});
+
+// Shell 3j compresses ordinary inactive tabs; their full title replaces the card.
+test('a compressed inactive tab shows its title tooltip and keeps keyboard navigation', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await openWorkspace(page, false);
+  const port = page.getByRole('tab', { name: 'Port fix', exact: true });
+  await expect(port.locator('..')).toHaveAttribute('data-compressed', 'true');
+  await port.hover();
+  await expect(page.getByRole('tooltip', { name: 'Port fix', exact: true })).toBeVisible();
+  await expect(card(page, 'Port fix')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await page.mouse.move(0, 0);
+  await page.getByRole('tab', { name: 'Active tab', exact: true }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(port).toBeFocused();
+  await expect(port).toHaveAttribute('aria-selected', 'true');
   await expect(card(page, 'Port fix')).toHaveCount(0);
 });
