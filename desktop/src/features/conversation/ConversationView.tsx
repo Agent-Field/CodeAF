@@ -14,6 +14,7 @@ import type { OutgoingFile } from '../chat/engine-client';
 import { EngineAssetProvider } from './assets';
 import { renderFile } from './blockRenderer';
 import type { SendMode } from './Composer';
+import type { NextUpProgress } from '../nextup/NextUpChip';
 import { ConversationBar } from './ConversationBar';
 import { UsingLine, usingVisible } from '../places/UsingLine';
 import { useUsing } from '../places/useUsing';
@@ -40,6 +41,8 @@ import './conversation-view.css';
 import { FirstReplyPlaceOffer } from '../places/FirstReplyPlaceOffer';
 
 export type ConversationViewProps = {
+  /** The shell walker supplies progress only to the conversation it is walking. */
+  nextUp?: NextUpProgress;
   tab: Pane;
   label: string;
   onDraft: (draft: string) => void;
@@ -80,7 +83,7 @@ function useTaskPanel(hasTasks: boolean, closed: boolean, onView: ConversationVi
   return { sheet, shown, close, open };
 }
 
-export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpenTaskTab, autoFocus = true, split = false, focused = true, usingApi, onOpenSource, onAddToPlace }: ConversationViewProps) {
+export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummary, onOpenTaskTab, autoFocus = true, split = false, focused = true, usingApi, onOpenSource, onAddToPlace }: ConversationViewProps) {
   const beforeFirstTurn = useContext(FirstTurnContext);
   const newConversationPlace = useContext(NewConversationPlaceContext);
   const conversation = useConversation({ sessionFile: tab.sessionFile, onSessionFile: (sessionFile) => onView({ sessionFile }), beforeFirstTurn, newConversationPlace });
@@ -185,7 +188,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   // The Using list is re-read when a turn lands or the work starts and stops: a place changed meanwhile applies from the next turn.
   const using = useUsing(usingApi, sessionId, `${model.turns.length}:${model.running}`);
   const barTitle = tab.titleSource ? label : '';
-  const showBar = inTask || Boolean(barTitle) || hasTasks || usingVisible(using);
+  const showBar = Boolean(nextUp) || model.questions.length > 0 || inTask || Boolean(barTitle) || hasTasks || usingVisible(using);
   const modelLabel = !snapshot || snapshot.model === ENGINE_MODEL ? MODEL_LABEL : snapshot.model;
   const modelShort = modelLabel === MODEL_LABEL ? DEFAULT_MODEL_SHORT : undefined;
   const conversationModel = useConversationModel(snapshot?.model);
@@ -216,7 +219,14 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
         {/* Now uses graphite for the empty start without changing the surrounding shell palette. */}
         <div className="conversation-main" data-empty={empty || undefined} data-tint={empty && !newConversationPlace ? 'graphite' : undefined} data-sheet={sheetLocksScroll || undefined} hidden={tasksView}>
           {showBar && (
-            <ConversationBar onTasksFilter={(tasksFilter) => { if (panel.sheet) panel.close(); onView({ tasksFilter, route: navigate(route, TASKS_VIEW) }); }} lead={inTask ? 'trail' : 'title'} counts={barCounts} panel={barPanel} using={<UsingLine control={using} onOpenSource={onOpenSource} onAddToPlace={onAddToPlace} />}>
+            <ConversationBar nextUp={nextUp} onNeedsYou={() => {
+              const first = model.questions[0];
+              if (!first) return;
+              if (panel.sheet) panel.close();
+              if (inTask) setRoute(navigate(route, undefined));
+              jump();
+              focusQuestion(questionKey(first));
+            }} onTasksFilter={(tasksFilter) => { if (panel.sheet) panel.close(); onView({ tasksFilter, route: navigate(route, TASKS_VIEW) }); }} lead={inTask ? 'trail' : 'title'} counts={barCounts} panel={barPanel} using={<UsingLine control={using} onOpenSource={onOpenSource} onAddToPlace={onAddToPlace} />}>
               {taskId ? <TaskRouteBar taskId={taskId} tasks={model.tasks} route={route} onRoute={setRoute} /> : <span className="conversation-bar-title">{barTitle}</span>}
             </ConversationBar>
           )}
