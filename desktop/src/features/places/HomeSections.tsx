@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Button, Icon, SectionLabel, Text } from '../../components/ui';
 import { LiveRows } from './live/LiveRows';
 import { PlaceTile, PlaceTileGrid } from './components/PlaceTile';
+import { NewPlaceTile } from './home/NewPlaceTile';
 import type { TintName } from './components/PlaceSwatch';
 import { childMeta, nameProblem, type HomeAttention, type HomeChild, type HomeConnection } from './home-model';
 import { canDropOn, dropMode, placeMenu, readDrag, writeDrag, type DropPayload, type PlaceActions } from './place-actions';
@@ -92,7 +93,7 @@ export function HomeAttentionSection({ items, actions, readOnly }: { items: read
 export { PlaceChats as HomeChatsSection } from './home/PlaceChats';
 
 /** The tile grid for a place's children, or a root's top-level places, or a search's results. It owns the inline create/rename tile and every drop. */
-export function HomePlacesSection({ label, places, parentId, parentName, parentTint, actions, readOnly, siblings, runner, drag, onDelete, allowNew = true, showLabel = true, newLabel, extraTiles, restore }: {
+export function HomePlacesSection({ label, places, parentId, parentName, actions, readOnly, siblings, runner, drag, onDelete, allowNew = true, showLabel = true, newLabel, extraTiles, restore }: {
   label: string; places: readonly HomeChild[]; parentId?: string; parentName?: string; parentTint?: TintName;
   actions: PlaceActions; readOnly?: boolean; siblings: readonly string[]; runner: Runner; drag: DragState; onDelete?: (place: HomeChild) => void; allowNew?: boolean; showLabel?: boolean; newLabel?: string; extraTiles?: ReactNode;
   /** Archived tiles offer Restore instead of Go to's neighbours: drawn as the same tiles, with their menu alone changed. */
@@ -100,18 +101,11 @@ export function HomePlacesSection({ label, places, parentId, parentName, parentT
 }) {
   const [selected, setSelected] = useState<string>();
   const [dropOn, setDropOn] = useState<string>();
-  const [creating, setCreating] = useState<{ name: string; tint: TintName } | undefined>();
   const [renaming, setRenaming] = useState<{ id: string; name: string; tint: TintName; original: string; originalTint: TintName } | undefined>();
   const showNew = allowNew && !!actions.create;
-  if (!places.length && !showNew && !creating && !extraTiles) return null;
+  if (!places.length && !showNew && !extraTiles) return null;
 
-  const createProblem = creating ? nameProblem(creating.name, siblings) : undefined;
   const renameProblem = renaming ? nameProblem(renaming.name, siblings, renaming.original) : undefined;
-  const submitCreate = async () => {
-    if (!creating || createProblem) return;
-    const ok = await runner.run(() => actions.create?.({ name: creating.name.trim(), tint: creating.tint === 'graphite' ? undefined : creating.tint, parent: parentId }));
-    if (ok) setCreating(undefined);
-  };
   const submitRename = async () => {
     if (!renaming || renameProblem) return;
     const { id, name, tint, original, originalTint } = renaming;
@@ -153,11 +147,8 @@ export function HomePlacesSection({ label, places, parentId, parentName, parentT
             void runner.run(() => actions.file?.(payload as DropPayload, place.id, dropMode(event)));
           }}/>;
       })}
-      {creating
-        ? <PlaceTile mode="creating" name={creating.name} tint={creating.tint} invalid={!!createProblem && !!creating.name.trim()} hint={creating.name.trim() && createProblem ? createProblem : '↵ create · Esc cancel'}
-            onNameChange={name => setCreating(previous => previous && { ...previous, name })} onTintChange={tint => setCreating(previous => previous && { ...previous, tint })}
-            onSubmit={() => void submitCreate()} onCancel={() => setCreating(undefined)}/>
-        : showNew && <PlaceTile mode="new" label={newLabel} disabled={readOnly || runner.busy} onCreate={() => setCreating({ name: '', tint: parentTint ?? 'graphite' })}/>}
+      {showNew && <NewPlaceTile key={parentId ?? 'root'} label={newLabel} places={places} siblings={siblings} parentId={parentId}
+        disabled={readOnly || runner.busy} onCreate={draft => runner.run(() => actions.create?.(draft))}/>}
       {extraTiles}
     </PlaceTileGrid>
   </section>;

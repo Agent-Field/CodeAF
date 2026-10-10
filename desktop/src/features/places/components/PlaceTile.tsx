@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type DragEvent, type HTMLAttributes, type KeyboardEvent, type MouseEvent } from 'react';
+import { useEffect, useId, useRef, type DragEvent, type HTMLAttributes, type KeyboardEvent, type MouseEvent, type Ref } from 'react';
 import { Button, ContextMenu, Icon, StatusMark, TextInput, type MenuEntry } from '../../../components/ui';
 import { PlaceSwatch, choosableTints, tintLabel, type TintName } from './PlaceSwatch';
 import './places-components.css';
@@ -56,6 +56,7 @@ type NewProps = CommonProps & {
   mode: 'new';
   label?: string;
   onCreate: () => void;
+  buttonRef?: Ref<HTMLButtonElement>;
   onKeyDown?: (event: KeyboardEvent<HTMLButtonElement>) => void;
 };
 type CreatingProps = CommonProps & {
@@ -71,6 +72,7 @@ type CreatingProps = CommonProps & {
   /** The caller's unique-name check failed: the field says so to a screen reader. */
   invalid?: boolean;
   hint?: string;
+  choices?: readonly TintName[];
 };
 export type PlaceTileProps = PlaceProps | NewProps | CreatingProps;
 
@@ -109,9 +111,9 @@ function PlaceTileBody(props: PlaceProps) {
   return menu && menu.length > 0 ? <ContextMenu items={menu} label={menuLabel ?? `${name} actions`}>{tile}</ContextMenu> : tile;
 }
 
-function NewPlaceTile({ label = 'New place', onCreate, onKeyDown, disabled, appearance, className = '', ...frame }: NewProps) {
+function NewPlaceTile({ label = 'New place', onCreate, buttonRef, onKeyDown, disabled, appearance, className = '', ...frame }: NewProps) {
   return <li {...frame} className={`places-tile ${className}`} data-mode="new" data-disabled={disabled || undefined} data-force={appearance}>
-    <Button variant="ghost" className="places-tile-main" data-places-tile-focusable disabled={disabled} data-force={appearance} onClick={onCreate} onKeyDown={onKeyDown}>
+    <Button variant="ghost" className="places-tile-main" data-places-tile-focusable disabled={disabled} data-force={appearance} ref={buttonRef} onClick={onCreate} onKeyDown={onKeyDown}>
       <Icon name="plus" size="md"/>
       <span className="places-tile-new-label">{label}</span>
     </Button>
@@ -119,7 +121,7 @@ function NewPlaceTile({ label = 'New place', onCreate, onKeyDown, disabled, appe
 }
 
 /** Inline create (8f): the tile becomes a field that takes a name and a tint. It owns focus while it is open. */
-function CreatingTile({ name, tint, onNameChange, onTintChange, onSubmit, onCancel, invalid, hint = '↵ create · Esc cancel', disabled, appearance, className = '', ...frame }: CreatingProps) {
+function CreatingTile({ name, tint, onNameChange, onTintChange, onSubmit, onCancel, invalid, hint = '↵ create · Esc cancel', choices = choosableTints, disabled, appearance, className = '', ...frame }: CreatingProps) {
   const field = useRef<HTMLInputElement>(null);
   const hintId = useId();
   const swatches = useRef<HTMLDivElement>(null);
@@ -128,15 +130,18 @@ function CreatingTile({ name, tint, onNameChange, onTintChange, onSubmit, onCanc
     const step = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
     if (!step) return;
     event.preventDefault();
-    const next = choosableTints[(index + step + choosableTints.length) % choosableTints.length];
+    const next = choices[(index + step + choices.length) % choices.length];
     onTintChange(next);
     swatches.current?.querySelector<HTMLElement>(`[data-tint-name="${next}"]`)?.closest('button')?.focus();
   };
-  return <li {...frame} className={`places-tile ${className}`} data-mode="creating" data-disabled={disabled || undefined} data-force={appearance}>
+  return <li {...frame} className={`places-tile ${className}`} data-mode="creating" data-disabled={disabled || undefined} data-force={appearance}
+    onKeyDown={event => {
+      if (event.key === 'Escape' && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); onCancel(); }
+    }}>
     <div className="places-tile-form">
       <div ref={swatches} role="radiogroup" aria-label="Tint" className="places-tile-choices">
-        {choosableTints.map((choice, index) => <Button key={choice} variant="ghost" role="radio" aria-checked={choice === tint} aria-label={tintLabel[choice]} className="places-tile-choice"
-          tabIndex={choice === tint || (!choosableTints.includes(tint) && index === 0) ? 0 : -1} disabled={disabled} onClick={() => onTintChange(choice)} onKeyDown={event => pick(event, index)}>
+        {choices.map((choice, index) => <Button key={choice} variant="ghost" role="radio" aria-checked={choice === tint} aria-label={tintLabel[choice]} className="places-tile-choice"
+          tabIndex={choice === tint || (!choices.includes(tint) && index === 0) ? 0 : -1} disabled={disabled} onClick={() => onTintChange(choice)} onKeyDown={event => pick(event, index)}>
           <PlaceSwatch tint={choice} role="choice" selected={choice === tint} dimmed={choice !== tint}/>
         </Button>)}
       </div>
