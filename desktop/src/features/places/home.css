@@ -19,8 +19,6 @@
 /* Loading, error, offline and a failed action: one quiet line and, when it can help, one button. */
 .home-notice { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
 .home-notice .type-body { flex: 1; min-width: 0; }
-.home-confirm { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) var(--places-row-pad); border-radius: var(--places-row-radius); background: var(--field); }
-.home-confirm-actions { display: flex; flex-wrap: wrap; gap: var(--space-tight); }
 
 /* All places: the title row carries the search at its right; the count line sits under it. */
 .all-places-heading { display: flex; flex-direction: column; gap: var(--space-compact); }

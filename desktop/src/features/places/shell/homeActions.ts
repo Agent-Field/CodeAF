@@ -4,6 +4,7 @@
 // folder chooser that makes a place from a repo exists only in the desktop app, so `openFolderAsPlace` is absent in a
 // browser (place-actions.ts "a verb that is not passed has no control").
 
+import design from '../../../design/tokens.json' with { type: 'json' };
 import { newTab } from '../../tabs/helpers';
 import type { Tab, WorkspaceAction, WorkspaceState } from '../../tabs/model';
 import { panesOf } from '../../tabs/model';
@@ -76,10 +77,10 @@ export function buildHomeActions({ shell, homeId, digests, strip, quickLook, ret
     archive: async id => { await write(`Archived ${quoted(name(id))}`, () => client.archivePlace(id), { subject: name(id) }); },
     restore: async id => { await write(`Restored ${quoted(name(id))}`, () => client.restorePlace(id), { subject: name(id) }); },
     loadDeletePreview: id => client.deletePreview(id),
-    // Delete keeps its Undo longer than other toasts (Interactions "a toast with Undo for 10s").
+    // Delete keeps its Undo for placeDeleteUndoMs (Interactions "a toast with Undo for 10s"), longer than other toasts.
     remove: async id => {
       const gone = name(id);
-      await write(`Deleted ${quoted(gone)}. No chat was deleted.`, () => client.deletePlace(id), { subject: gone, durationMs: 10_000 });
+      await write(`Deleted ${quoted(gone)}. No chat was deleted.`, () => client.deletePlace(id), { subject: gone, durationMs: design.interaction.placeDeleteUndoMs });
       if (homeId === id) await shell.goTo('now');
     },
     chooseMergeTarget: id => shell.openChooser({ kind: 'merge', placeId: id, placeName: name(id) ?? 'this place' }),
