@@ -60,7 +60,7 @@ export type PlaceRailSectionsProps = {
   slotShortcut: (index: number) => string;
   closeShortcut: string;
   newWindowShortcut: string;
-  /** App pages and the theme, drawn under All places. */
+  /** Settings, and the development Design system row, drawn under All places. */
   foot?: ReactNode;
 };
 
