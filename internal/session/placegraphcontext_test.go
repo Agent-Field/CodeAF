@@ -162,6 +162,53 @@ func TestPlaceGraphBlockRecomposesOnlyWhenGenerationMoves(t *testing.T) {
 	}
 }
 
+func TestTheChildReReadsOnlyWhenTheGenerationMoves(t *testing.T) {
+	f := newPlaceFixture(t)
+	p := f.place(t, "Software", placegraph.Context{Instructions: "rule one"})
+	completer := &scriptedCompleter{}
+	agent, _ := placedAgent(t, f, completer)
+	f.file(t, agent.id, p)
+
+	first := requestSystem(completer.request(turn(t, agent, completer, "one")))
+	if !strings.Contains(first, "rule one") {
+		t.Fatalf("missing the instruction:\n%s", first)
+	}
+	gen := agent.placeGraphStamp.generation
+	if gen == 0 {
+		t.Fatal("the turn did not record a generation")
+	}
+	raw, err := os.ReadFile(f.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "rule one") {
+		t.Fatal("the instruction is not in the file")
+	}
+	// A rewrite that leaves the revision alone is not a commit. The child
+	// compares the generation, so the model keeps the block it already has.
+	swapped := strings.Replace(string(raw), "rule one", "rule two", 1)
+	if err := os.WriteFile(f.path, []byte(swapped), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second := requestSystem(completer.request(turn(t, agent, completer, "two")))
+	if strings.Contains(second, "rule two") || !strings.Contains(second, "rule one") {
+		t.Fatalf("a rewrite that left the generation alone reached the model:\n%s", second)
+	}
+	if agent.placeGraphStamp.generation != gen {
+		t.Fatalf("generation moved from %d to %d without a commit", gen, agent.placeGraphStamp.generation)
+	}
+	if _, err := f.store.SetContext(p.ID, placegraph.Context{Instructions: "rule three"}); err != nil {
+		t.Fatal(err)
+	}
+	third := requestSystem(completer.request(turn(t, agent, completer, "three")))
+	if !strings.Contains(third, "rule three") || strings.Contains(third, "rule one") {
+		t.Fatalf("a commit must reach the next turn:\n%s", third)
+	}
+	if agent.placeGraphStamp.generation <= gen {
+		t.Fatal("a commit did not move the generation the child compares")
+	}
+}
+
 func TestAPlaceAddedMidTurnAppliesFromTheNextTurn(t *testing.T) {
 	f := newPlaceFixture(t)
 	p := f.place(t, "Marketing", placegraph.Context{Instructions: "Write in the brand voice"})

@@ -8,7 +8,9 @@ Places (id, name, ordered parents, tint, archive state, context, policy, reserve
 
 ## Storage
 
-One JSON file at a path the caller injects, plus `<path>.lock`. Every call takes the exclusive file lock (`internal/filelock`, 10 s default, then `ErrLocked`), re-reads the file, validates the result of the mutation, and replaces the file by temp + fsync + rename. Two processes on one path never lose an update.
+One JSON file at a path the caller injects, plus `<path>.lock`. The desktop bridge passes `home.Join("desktop", "places.json")`. Every call takes the exclusive file lock (`internal/filelock`, 10 s default, then `ErrLocked`), re-reads the file, validates the result of the mutation, and replaces the file by temp + fsync + rename. Two processes on one path never lose an update.
+
+`ReadGeneration(path)` and `Store.Generation` are that file's `revision`. A child engine compares them at turn start. The read takes no lock and does not repair the file: a missing file is 0, and an unreadable file is an error that names the path. `TouchOpened` rewrites the file and does not move the counter. Structural commits do.
 
 A damaged file is never deleted. Unparseable or structurally invalid (cycle, duplicate id, bad field) input is renamed to `<path>.corrupt-<time>-<id>` and the store starts empty (`Store.LastRecovery()` says so). Dangling references are dropped and listed, with a verbatim copy kept beside. A file from a newer schema version is refused and left alone.
 

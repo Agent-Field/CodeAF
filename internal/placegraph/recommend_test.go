@@ -618,8 +618,8 @@ func TestLookAlikeSiblingsAreOfferedAMergeThatKeepsTheGraphAcyclic(t *testing.T)
 	}
 	_, _ = g.rec.Accept(open[0].ID, AcceptEdit{})
 	snap, _ := g.store.Snapshot()
-	if id := findCycle(&snap.State); id != "" {
-		t.Fatalf("cycle through %s", id)
+	if names := (&snap.State).cycleNames(); names != "" {
+		t.Fatalf("cycle %s", names)
 	}
 }
 

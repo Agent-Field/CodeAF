@@ -2956,9 +2956,10 @@ type Agent struct {
 	// placeGraphText is the `# Places this conversation belongs to` block
 	// message[0] currently carries (placegraphcontext.go): what the places this
 	// conversation is filed under say to it. It is re-resolved at a turn's
-	// opening only when the graph or choices file moved (placeGraphStamp), and
-	// placeGraphBundle is the resolution it was rendered from, kept to say what
-	// changed the next time. Empty is a conversation in no place.
+	// opening only when the graph's generation or the choices file moved
+	// (placeGraphStamp). placeGraphBundle is the resolution it was rendered
+	// from, kept to say what changed the next time. Empty is a conversation
+	// in no place.
 	placeGraphText   string
 	placeGraphStamp  placeGraphStamp
 	placeGraphRead   bool
