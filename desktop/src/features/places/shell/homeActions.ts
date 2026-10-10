@@ -9,6 +9,7 @@ import type { Tab, WorkspaceAction, WorkspaceState } from '../../tabs/model';
 import { panesOf } from '../../tabs/model';
 import type { HomeDigest } from '../client';
 import type { PlaceActions } from '../place-actions';
+import { writeDecide } from '../PlaceMenuDecide';
 import type { PlacesShell } from './PlacesShell';
 import { sessionFileOf } from './selectors';
 
@@ -71,6 +72,7 @@ export function buildHomeActions({ shell, homeId, digests, strip, quickLook, ret
     setTint: async (id, tint) => { await write(`Changed the tint of ${quoted(name(id))}`, () => client.updatePlace(id, { tint }), { subject: name(id) }); },
     pin: async id => { await write(`Pinned ${quoted(name(id))} to the rail`, () => client.pinPlace(id), { subject: name(id) }); },
     unpin: async id => { await write(`Unpinned ${quoted(name(id))}`, () => client.unpinPlace(id), { subject: name(id) }); },
+    setDecide: (id, change) => writeDecide(shell, id, name(id) ?? 'this place', shell.index?.byId.get(id)?.decide, change).then(() => undefined),
     archive: async id => { await write(`Archived ${quoted(name(id))}`, () => client.archivePlace(id), { subject: name(id) }); },
     restore: async id => { await write(`Restored ${quoted(name(id))}`, () => client.restorePlace(id), { subject: name(id) }); },
     loadDeletePreview: id => client.deletePreview(id),

@@ -51,7 +51,7 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
   // Without a way to go, a breadcrumb would be a row of dead buttons, so it is not drawn.
   const breadcrumb = view.kind === 'place' && actions.goTo ? [crumb('root', 'All places'), ...view.breadcrumb.map(item => crumb(item.id, item.name))] : [];
   const isPlace = view.kind === 'place';
-  const menu = isPlace ? homeMenu({ id: view.id, name: view.title, tint: view.tint, pinned: view.pinned }, actions, {
+  const menu = isPlace ? homeMenu({ id: view.id, name: view.title, tint: view.tint, pinned: view.pinned, decide: view.decide }, actions, {
     readOnly, canRename: !!actions.rename, startRename: () => setRenaming(true), startDelete: deletion.start && (() => deletion.start?.({ id: view.id, name: view.title })), newWindowHint }) : [];
   const nothingYet = isPlace && !view.children.length && !view.chats.length && !view.attention.length;
   const siblings = view.children.map(child => child.name);
