@@ -35,3 +35,7 @@
   .web-header .web-more-action { display: grid; }
 }
 .web-address-input.text-input.text-input-field:focus-visible { background: var(--field); }
+
+.web-find { padding: 0; position: relative; }
+.web-find-input.text-input { padding-right: var(--web-find-count-space); }
+.web-find-count { position: absolute; right: var(--web-address-pad); pointer-events: none; color: var(--ink-3); font-size: var(--type-label-size); }
