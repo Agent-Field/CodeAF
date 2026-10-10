@@ -27,10 +27,18 @@ export type AttentionItem = {
  title?: string; answerable: boolean; asked?: string;
 };
 export type WorldFull = { rows: WorldRow[]; items: AttentionItem[] };
+/** One engine background job, as GET /sessions/{id}/jobs and a `jobs` world record spell it. */
+export type EngineJob = {
+ id: number; name?: string; command?: string; detail?: string; kind?: string; state?: string;
+ startedAt?: string; elapsedMs?: number; exitCode?: number; ticks?: number; logPath?: string;
+};
+/** One attached chat's jobs on the world feed. `running` is how many are still running. */
+export type JobsRollup = { chatId: string; running: number; jobs: EngineJob[] };
 export type WorldRecord =
  | { epoch?: string; seq: number; type: 'reset'; at: string; payload: WorldFull }
  | { epoch?: string; seq: number; type: 'world'; at: string; payload: { rows: WorldRow[]; removed: string[] } }
- | { epoch?: string; seq: number; type: 'attention'; at: string; payload: { items: AttentionItem[] } };
+ | { epoch?: string; seq: number; type: 'attention'; at: string; payload: { items: AttentionItem[] } }
+ | { epoch?: string; seq: number; type: 'jobs'; at: string; payload: JobsRollup };
 
 export class WorldError extends Error {
  readonly status: number;
@@ -106,6 +114,8 @@ export function parseWorldRecord(text: string): WorldRecord {
  if (record.type === 'reset' && Array.isArray(p.rows) && Array.isArray(p.items)) return value as WorldRecord;
  if (record.type === 'world' && Array.isArray(p.rows) && Array.isArray(p.removed)) return value as WorldRecord;
  if (record.type === 'attention' && Array.isArray(p.items)) return value as WorldRecord;
+ // A jobs roll-up is one chat's background work. Rejecting it here used to drop the whole world stream.
+ if (record.type === 'jobs' && typeof p.chatId === 'string' && p.chatId !== '' && Number.isSafeInteger(p.running) && (p.running as number) >= 0 && Array.isArray(p.jobs)) return value as WorldRecord;
  throw new WorldError('The engine sent an unknown world record.');
 }
 
