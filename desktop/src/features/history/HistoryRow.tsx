@@ -1,5 +1,6 @@
 import type { MouseEvent } from 'react';
 import { ContextMenu, Icon } from '../../components/ui';
+import { useAddToPlace } from './addToPlace';
 import { rowMenu, type HistoryPress } from './historyMenu';
 import { FileChips } from './FileChip';
 import { rowLead, rowLine, rowTrail, type Lead } from './model';
@@ -27,6 +28,7 @@ type Props = {
 
 /** One conversation in the list (Components "History row"): title, one sentence of substance, up to three changed files, a stamp. */
 export function HistoryRow({ item, now, selected, domId, onSelect, onOpen, onRead, onArchive, onDelete, placeRef }: Props) {
+  const addToPlace = useAddToPlace();
   const line = rowLine(item);
   const stateWord = item.state === 'needs-you' ? 'Needs you' : item.state === 'working' || (item.open && item.tasksRunning > 0) ? 'Working' : undefined;
   // A click selects. Shift-click extends from the anchor row. A command-click opens a new tab and moves to it (Shell: History); a middle click opens it behind, as a browser does. A double click continues.
@@ -36,7 +38,7 @@ export function HistoryRow({ item, now, selected, domId, onSelect, onOpen, onRea
     if (!event.shiftKey && event.detail > 1) onOpen(item, { newTab: false });
   };
   const middle = (event: MouseEvent) => { if (event.button === 1) { event.preventDefault(); onOpen(item, { newTab: true, background: true }); } };
-  return <ContextMenu label={`${item.title} actions`} items={rowMenu(item, onOpen, onRead, onArchive, onDelete)}>
+  return <ContextMenu label={`${item.title} actions`} items={rowMenu(item, onOpen, onRead, onArchive, onDelete, addToPlace)}>
     <div ref={placeRef} id={domId} role="option" aria-selected={selected} className="history-row" data-selected={selected || undefined} data-open={item.open || undefined} onClick={click} onAuxClick={middle}>
       <LeadMark lead={rowLead(item)}/>
       <div className="history-row-main">
