@@ -88,16 +88,19 @@ export type TabProps = FrameProps & {
   switcher?: { alert?: string };
   /** A hover preview is open on the strip. The full-title tooltip stays shut so the two never stack. */
   previewOpen?: boolean;
+  /** Muted words after the title, such as a finished job's `exit 0`. Absent draws nothing. */
+  meta?: string;
 };
 
 /**
  * One tab, per design 2h "Tabs": 30px, radius 8, 13px kind glyph, 12px title faded over its last 20px,
  * a close in a fixed 20px slot. All state is props; the primitive owns no data and no menus.
+ * `meta` sits after the title, outside its fade, so a finished job's `exit 0` stays readable (C-EDGE-5).
  * The full title is a shared tooltip only when the name is cut and this tab does not open a hover
  * preview (the active tab, and a compressed tab). The delay is the tooltip's own 500ms, the same
  * number as the preview open delay. Pressing the chip fills it with field-2 (tab.css).
  */
-export function Tab({ kind, title, icon, monogram, favicon, active = false, pinned = false, state, picked = false, badge = false, compressed = false, hover = false, closeMode = 'close', closeHint, closeShortcut, tabIndex, wrapSelect, onSelect, onClose, onRename, onKeyDown, frame, id, inGroup = false, specimen = false, placeTint, switcher, previewOpen = false, ...rest }: TabProps) {
+export function Tab({ kind, title, icon, monogram, favicon, active = false, pinned = false, state, picked = false, badge = false, compressed = false, hover = false, closeMode = 'close', closeHint, closeShortcut, tabIndex, wrapSelect, onSelect, onClose, onRename, onKeyDown, frame, id, inGroup = false, specimen = false, placeTint, switcher, previewOpen = false, meta, ...rest }: TabProps) {
   const home = !!placeTint;
   const titleShown = home || (!pinned && !compressed);
   const titleRef = useRef<HTMLSpanElement>(null);
@@ -106,9 +109,10 @@ export function Tab({ kind, title, icon, monogram, favicon, active = false, pinn
   const tip = overflow && (active || compressed) && !previewOpen ? title : '';
   const tooltip = useTooltip<HTMLButtonElement>(tip);
   const select = (
-    <Button {...tooltip.props} className="workspace-tab-select" role={specimen ? undefined : 'tab'} id={id} aria-controls={specimen ? undefined : 'workspace-tab-panel'} aria-selected={specimen ? undefined : active} aria-current={specimen && active ? true : undefined} aria-label={title} aria-description={[state && tabStateLabel[state], picked && 'Selected', !state && badge && (badge === 'failed' ? 'A task failed' : 'Needs you')].filter(Boolean).join(', ') || undefined} tabIndex={tabIndex ?? (active ? 0 : -1)} onClick={onSelect} onDoubleClick={onRename} onKeyDown={onKeyDown}>
+    <Button {...tooltip.props} className="workspace-tab-select" role={specimen ? undefined : 'tab'} id={id} aria-controls={specimen ? undefined : 'workspace-tab-panel'} aria-selected={specimen ? undefined : active} aria-current={specimen && active ? true : undefined} aria-label={title} aria-description={[state && tabStateLabel[state], titleShown && meta, picked && 'Selected', !state && badge && (badge === 'failed' ? 'A task failed' : 'Needs you')].filter(Boolean).join(', ') || undefined} tabIndex={tabIndex ?? (active ? 0 : -1)} onClick={onSelect} onDoubleClick={onRename} onKeyDown={onKeyDown}>
       {home && !state ? <PlaceSwatch tint={placeTint} role="rail"/> : <TabGlyph icon={icon} favicon={favicon} kind={kind} title={title} monogram={monogram} state={state}/>}
       {titleShown && <span ref={titleRef} className="workspace-tab-title">{title}</span>}
+      {titleShown && meta && <span className="workspace-tab-meta">{meta}</span>}
       {home && switcher && <>{switcher.alert && <span className="tab-dot" data-state="waiting" role="img" aria-label={switcher.alert}/>}<Icon name="switcher" size="micro"/></>}
       {badge && <span className="tab-badge" data-kind={badge} aria-hidden="true"/>}
     </Button>
