@@ -3,7 +3,7 @@
 import { PlacesError } from '../../../src/features/places/client';
 import type { PlaceSetting, PolicyField, UsingApi, UsingView } from '../../../src/features/places/using-types';
 
-export type Scenario = 'full' | 'quiet' | 'empty' | 'offline' | 'failing' | 'noengine' | 'absent' | 'slow';
+export type Scenario = 'full' | 'quiet' | 'empty' | 'offline' | 'failing' | 'noengine' | 'absent' | 'slow' | 'single';
 
 const origin = (placeId: string, sourceId: string, level = 0, addedBy: 'you' | 'ai' = 'you') => ({ placeId, sourceId, addedBy, level });
 
@@ -61,12 +61,22 @@ export function quietView(): UsingView {
   return view;
 }
 
+/** One place and nothing else in use: the header chip is that place's swatch and name (Places 9b). */
+export function singleView(): UsingView {
+  const view = quietView();
+  view.bundle.places = view.bundle.places.slice(0, 1);
+  view.bundle.sources = [];
+  view.bundle.counts = { places: 1, sources: 0 };
+  return view;
+}
+
 export type Calls = { kind: 'using' | 'choose' | 'apply'; field?: PolicyField; placeId?: string }[];
 
 /** An in-memory bridge: reads the scenario's list, and applies a choice or an apply by the engine's rules (409 / 422 included). */
 export function mockApi(scenario: Scenario, calls: Calls, flags: { choiceFails?: boolean } = {}): UsingApi | undefined {
   if (scenario === 'absent') return undefined;
   let view = scenario === 'empty' ? { ...quietView(), bundle: { ...quietView().bundle, places: [], sources: [], instructions: [], knows: [], policy: [], counts: { places: 0, sources: 0 } }, settings: [] }
+    : scenario === 'single' ? singleView()
     : scenario === 'quiet' ? quietView() : scenario === 'noengine' ? { ...fullView(), engine: { places: false, reason: 'This conversation was opened by another program, which reads no places.' }, settings: fullView().settings.map(s => ({ ...s, state: 'unavailable' as const })) }
     : fullView();
   let broken = scenario === 'offline' || scenario === 'failing';
