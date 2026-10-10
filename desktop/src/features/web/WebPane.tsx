@@ -1,5 +1,5 @@
 import { useContext, useEffect, useSyncExternalStore } from 'react';
-import { Button, Icon, IconButton, Text } from '../../components/ui';
+import { Button, Icon, Text } from '../../components/ui';
 import { openUrl } from '../../design/native';
 import type { WebFailure, WebNotice } from '../../design/nativeWeb';
 import { LoadingLine } from '../tabs/LoadingLine';
@@ -7,7 +7,7 @@ import type { PaneRenderProps } from '../tabs/kinds/slots';
 import { refusalSentence, siteOf } from './address';
 import { TabsApiContext } from '../tabs/context';
 import { useWebFavicons } from './favicons';
-import { AddressField } from './AddressField';
+import { WebHeader } from './WebHeader';
 import { webHost, subscribeWebHost } from './host';
 import { capture } from './shots';
 import { useWebPane } from './useWebPane';
@@ -64,16 +64,12 @@ export function WebPane({ pane, actions }: PaneRenderProps) {
   const failure = state?.failure ? failureText(state.failure, shown ?? '') : web.openError ? { title: 'This page did not open', detail: `${web.openError}.` } : null;
   return <div className="web-pane" data-pane={pane.id} data-loading={loading || undefined}>
     <LoadingLine active={loading}/>
-    <div className="web-header" role="toolbar" aria-label="Page">
-      <IconButton icon="back" iconSize="sm" label="Back" disabled={!historyOpen(state?.canBack)} onClick={() => step(pane.id, 'back')}/>
-      <IconButton icon="forward" iconSize="sm" label="Forward" disabled={!historyOpen(state?.canForward)} onClick={() => step(pane.id, 'forward')}/>
-      {loading
-        ? <IconButton icon="close" iconSize="sm" label="Stop loading" onClick={() => step(pane.id, 'stop')}/>
-        : <IconButton icon="reload" iconSize="sm" label="Reload" disabled={!live} onClick={() => step(pane.id, 'reload')}/>}
-      <AddressField favicon={favicons.get(pane.id)} url={shown} status={state?.notice ? noticeLine[state.notice] : undefined} onGo={go}/>
-      {host?.startConversationWithPage && shown && <IconButton icon="chatPlus" iconSize="sm" label="Start a conversation with this page" onClick={() => void talkAboutPage()}/>}
-      <IconButton icon="external" iconSize="sm" label="Open in browser" disabled={!shown} onClick={() => shown && void openUrl(shown)}/>
-    </div>
+    <WebHeader url={shown} favicon={favicons.get(pane.id)} loading={loading}
+      canBack={historyOpen(state?.canBack)} canForward={historyOpen(state?.canForward)} canReload={live}
+      status={state?.notice ? noticeLine[state.notice] : undefined} onGo={go}
+      onStep={direction => step(pane.id, direction)}
+      onChat={host?.startConversationWithPage && shown ? () => void talkAboutPage() : undefined}
+      onExternal={() => shown && void openUrl(shown)}/>
     <div ref={web.sheetRef} className="web-sheet" data-theme="light" data-covered={web.covered || undefined} data-blank={web.blank || undefined}>
       {web.blank ? null : <>
         {!web.native && shown && <div className="web-state">

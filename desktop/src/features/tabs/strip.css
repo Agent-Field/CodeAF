@@ -18,7 +18,15 @@
 .workspace-tab-more.button:hover:not(:disabled) { background: var(--tab-hover); color: var(--ink); }
 :root[data-environment="mac-desktop"] .sidebar-collapsed .workspace-tabbar { padding-left: var(--native-controls-inset); }
 .workspace-tab, .workspace-tab-action, .workspace-tab-more, .workspace-group-label, .workspace-tabbar > .icon-button { -webkit-app-region: no-drag; }
-@media (max-width: 600px) { .workspace-tabbar { padding: 0 var(--space-1); } }
+@media (max-width: 600px) {
+  .workspace-tabbar { padding: 0 var(--space-1); }
+  /* The active tab keeps its title and the 112px floor. A split's own rule would let it shrink past that.
+     Pinned and Home keep the widths they already have. Inactive chips are 44px via data-compressed. */
+  .workspace-tabstrip .workspace-tab[data-active="true"]:not(.is-pinned):not(.is-place-home) { min-width: var(--tab-min-width); }
+  /* A group member sits in a 112px slot. A compressed member is a 44px chip, so the slot follows the chip
+     or the strip keeps a hole. A collapsed member stays hidden: this rule does not match data-hidden. */
+  .workspace-tabstrip .workspace-group-tab-slot:not([data-hidden="true"]):has(.workspace-tab[data-compressed]) { flex: none; width: var(--tab-compressed-width); min-width: var(--tab-compressed-width); max-width: var(--tab-compressed-width); }
+}
 
 /* The live region that announces a group moved by keyboard; it draws nothing. */
 .workspace-strip-note { position: absolute; width: var(--hairline); height: var(--hairline); overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
