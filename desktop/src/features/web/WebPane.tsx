@@ -59,7 +59,7 @@ export function WebPane({ pane, actions }: PaneRenderProps) {
   async function talkAboutPage() {
     if (!shown || !host?.startConversationWithPage) return;
     const shot = web.native ? await capture(pane.id, true) : null;
-    host.startConversationWithPage({ url: shown, title, shot: shot?.image });
+    host.startConversationWithPage({ url: shown, title, shot: shot?.image }, pane.id);
   }
 
   const live = web.native && !!state;
