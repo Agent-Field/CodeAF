@@ -119,6 +119,7 @@ Shell). On any conflict, the design files win over code and older docs.
 | P-22 | Iteration 2 (design v3): Definition of "blocking" and ordering inside bands. | Blocking = Question.Blocking.Turn or names tasks; order inside a band by asked time, oldest first; irreversible last. |
 | P-23 | Iteration 2 (design v3): "After your next action of your own" folds the back chip: what counts. | Any click or key that is not the chip or ⌘[ itself, including typing in a composer. |
 | P-24 | Iteration 2 (design v3): Is focus history per window, per place, or global, and does it survive relaunch? | Per window, survives relaunch, bounded to 100 entries; tearing a tab off starts a fresh history in the new window. |
+| Q-FL1 | Folder listing time: the engine's row carries unix seconds as `mtime`, and POST `/files/stat` spells the same moment as RFC 3339 `modTime`. The design does not say which a folder row uses | GET `/files/list` keeps the engine's unix seconds and names the field `modTime`. It is omitted when the engine sent none. The row is name, dir, size and that time; the engine's mime is not on this route. |
 
 ## File lane integration notes
 
