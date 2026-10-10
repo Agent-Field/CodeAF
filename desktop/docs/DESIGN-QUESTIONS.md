@@ -93,6 +93,7 @@ Shell). On any conflict, the design files win over code and older docs.
 | Q-P13 | Design says "Allow 3 git actions?"; the engine's batch head reads "Allow N actions?" | The shipped wording is the tray's ("Allow N actions?"); the card does not invent a noun the engine did not send. |
 | Q-P14 | File, diff, terminal and web cards need a target (path, terminal id, URL) | `Pane.target` is an optional validated field kept across reload (`PaneTarget` in view-state.ts); the kind lanes write it. Until a lane sets it the card is kind and title only, never invented content. |
 | Q-P15 | A card whose read fails or is still loading | Kind and title only; no spinner, no error text (a read failure is not the person's to act on). The previous target's content is never shown for a different target. |
+| Q-FL1 | Folder listing time: the engine's row carries unix seconds as `mtime`, and POST `/files/stat` spells the same moment as RFC 3339 `modTime`. The design does not say which a folder row uses | GET `/files/list` keeps the engine's unix seconds and names the field `modTime`. It is omitted when the engine sent none. The row is name, dir, size and that time; the engine's mime is not on this route. |
 
 ## File lane integration notes
 
