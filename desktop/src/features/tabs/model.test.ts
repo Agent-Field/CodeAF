@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setIdSource } from './helpers.ts';
+import { cleanView } from './view-state.ts';
 import { initialWorkspace, panesOf, readWorkspace, storageKey, visibleTabs, workspaceReducer, type Tab, type WorkspaceAction, type WorkspaceState } from './model.ts';
 
 let counter = 0;
@@ -358,4 +359,16 @@ test('a pane target survives a reload; unknown or non-string fields are dropped'
     assert.deepEqual(s.tabs[0].target, { sessionId: 's1', path: 'internal/parse.go' });
     assert.equal(s.tabs[1].target, undefined);
   });
+});
+
+test('cleanView keeps a valid web url and drops a javascript: url', () => {
+  assert.deepEqual(cleanView({ web: { url: 'https://example.com/a' } }).web, { url: 'https://example.com/a' });
+  assert.equal(cleanView({ web: { url: 'javascript:alert(1)' } }).web, undefined);
+  assert.equal(cleanView({ web: { url: 'not a url' } }).web, undefined);
+  assert.equal(cleanView({ web: { url: 'javascript:1' }, sessionFile: 's.jsonl' }).sessionFile, 's.jsonl');
+});
+
+test('cleanView keeps job.jobId', () => {
+  assert.deepEqual(cleanView({ job: { jobId: 'j1' } }).job, { jobId: 'j1' });
+  assert.equal(cleanView({ job: { jobId: '' } }).job, undefined);
 });
