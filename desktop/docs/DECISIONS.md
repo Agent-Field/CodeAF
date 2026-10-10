@@ -373,3 +373,40 @@ Finding fixed: `584cf68e3` removed the scoped `http:default` grant (loopback `/a
 | 9 | ⌘T / ⌘W with the page focused | manual | manual | `policy::app_chords_are_new_close_and_address_on_the_primary_modifier_only`; menu accelerators `menu.rs`, GTK accel group `platform.rs` |
 
 Gap, stated plainly: acceptance ("every line passes on both OSes") is not met until lines 1-6 and 9 are walked by hand on both machines and 7-8 are confirmed from the page's devtools. Lines 2-4 have no automated check at all.
+
+## t-d5-settings-audit-policy: bounded Places hierarchy defaults and Settings categories (2026-10-10)
+
+**Decision: the four AI hierarchy caps stay engineering defaults, and they do not limit places a person makes. Depth 3 is not a design prohibition.** Settings keeps its four provisional role sections. Permissions is not drawn until that route exists. Policy rows stay one flat list under Places organization.
+
+### What the design says
+
+Measured on the rendered design pages (Chromium and WebKit, `getComputedStyle` / `getBoundingClientRect`):
+
+- Places §6e, a 12px span, 596×57.5625: "Expect 5–15 active places, 20–200 in total, and depth of 2–3 (deeper is allowed). … 50 reports is 50 places under one Reports parent."
+- Interactions Settings, a 12px span, 824×18.59375: "A tab (⌘,) laid out as a plain page: models, roles, permissions, appearance (theme, reduce motion follows the OS), engine connection."
+
+The design does not name the four role sections, and it does not give the numbers 6, 8 or 30.
+
+### What the code did, and what changed
+
+| Figure | Before this audit | Now |
+|---|---|---|
+| 5 chats, 30-day "Not now", filing and cluster offers on | Design rules, defaults kept | Unchanged |
+| Top-level / siblings / total AI places | 6 / 8 / 30, provisional, AI-created only | Unchanged |
+| Depth | Default 3, marked as a design figure, so Settings hid the provisional line | Default 3, bounds 1–6, **not** marked design. The row says places you make can go deeper. `CreatePlace` still has no depth cap |
+| 50 under one parent | Already allowed for a person; the sibling cap counts only offer-created places | Locked with a test |
+| Store ceiling | 2000 places, a runaway-file ceiling above the expected 20–200 | Unchanged |
+| Context ancestors | 2 levels | Unchanged |
+| Role sections | Conversation and tasks, Naming and summaries, Places organization, Memory, routing and safety | Unchanged, now locked in order |
+| Permissions section | Absent | Still absent. An empty heading would invent a control. `t-d5-be-settings-permissions` owns the route |
+| offers / limits / spend | Data on each row, not headings | Still data. The design draws no such headings |
+
+### Verification
+
+- Design pages above, Chromium and WebKit.
+- `make test-focus` passed for `TestTheDesignsOwnFiguresAreTheDefaults`, `TestOnlyTheDesignsOwnRulesAreMarkedDesign`, `TestAPersonMayNestFiftyReportsAndGoDeeperThanTheAiDefault`, `TestSettingsCategoriesStayInPageOrder`, `TestTheChatManualAnswersSettingsHierarchyQuestions`.
+- `npx tsc --noEmit -p .` and `npm run design:check` passed.
+- Playwright on port 1781, `reuseExistingServer: false`, output outside the repo: hierarchy spec and the places-save settings spec passed in Chromium and WebKit. The first run of the save spec failed because the mock dropped every `/places` call; policy writes are recorded again, and the rerun passed. Screenshots: `settings-hierarchy-{light,dark}-{chromium,webkit}.png` in the lane output directory.
+- `make test-laws` was red for three reasons that are not this change: `internal/e2e` `TestEveryLaunchOfCodeafStandsBehindTheHostGuard` names `desktop_places_e2e_test.go:55` (not edited here); two shared manual probes missed pages other than `desktop-settings-hierarchy`; `internal/session` reported the temporary Playwright config appearing mid-run. That config is deleted and is not in the commit.
+
+Open rows: SET-HIER-1 and SET-CAT-1 in DESIGN-QUESTIONS.md.

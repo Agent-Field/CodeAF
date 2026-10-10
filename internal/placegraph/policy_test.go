@@ -3,15 +3,43 @@ package placegraph
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 )
 
-// The figures the design states are kept exactly; a change to one of them is a
-// design change, not a tuning.
+// The figures the design states as rules are kept exactly. Depth 3 is the
+// expected depth from Places §6e, not one of those rules: the same sentence
+// says deeper is allowed, so the cap stays an engineering default.
 func TestTheDesignsOwnFiguresAreTheDefaults(t *testing.T) {
 	p := DefaultRecommendPolicy()
-	if p.MinClusterChats != 5 || p.DeclineSnoozeDays != 30 || p.MaxAIDepth != 3 {
+	if p.MinClusterChats != 5 || p.DeclineSnoozeDays != 30 || !p.FilingOffers || !p.ClusterOffers {
 		t.Fatalf("%+v", p)
+	}
+	if p.MaxAITopLevel != 6 || p.MaxAISiblings != 8 || p.MaxAIDepth != 3 || p.MaxAIPlaces != 30 {
+		t.Fatalf("hierarchy defaults %+v", p)
+	}
+}
+
+// Only the design's own rules are marked design. Depth is expected, not forbidden.
+func TestOnlyTheDesignsOwnRulesAreMarkedDesign(t *testing.T) {
+	var marked []string
+	var depth RecommendPolicyField
+	for _, field := range RecommendPolicyFields() {
+		if field.Design {
+			marked = append(marked, field.Key)
+		}
+		if field.Key == "maxAiDepth" {
+			depth = field
+		}
+	}
+	if strings.Join(marked, ",") != "filingOffers,clusterOffers,minClusterChats,declineSnoozeDays" {
+		t.Fatalf("design flags %v", marked)
+	}
+	if depth.Design || depth.Default != 3 || depth.Min != 1 || depth.Max != 6 || depth.Unit != "levels" {
+		t.Fatalf("%+v", depth)
+	}
+	if !strings.Contains(depth.Explain, "can go deeper") {
+		t.Fatalf("explain %q", depth.Explain)
 	}
 }
 

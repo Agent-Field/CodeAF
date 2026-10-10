@@ -130,7 +130,7 @@ hand-edited file is clamped to the bounds.
 | `autoFileConfidence` | 90% | 60–100 | provisional |
 | `maxAiTopLevel` | 6 | 0–50 | provisional |
 | `maxAiSiblings` | 8 | 0–100 | provisional |
-| `maxAiDepth` | 3 | 1–6 | **design** (depth 2–3) |
+| `maxAiDepth` | 3 | 1–6 | provisional (Places §6e expects depth 2–3 and allows deeper; this cap limits only places codeaf creates) |
 | `maxAiPlaces` | 30 | 0–500 | provisional |
 | `maxPending` | 3 | 1–20 | provisional (filing offers are per chat, not counted) |
 | `declineSnoozeDays` | 30 | 1–365 | **design** ("Not now" hides 30 days) |
@@ -246,8 +246,10 @@ gone`, and a cap that filled is `409 policy_limit`. Declining is `POST /places/p
 ## 6. Questions for the designer
 
 1. Is `autoFile` ever acceptable, and if so is 90% the bar?
-2. Caps: 6 top-level / 8 per parent / 30 total AI-created places — right scale for
-   "5–15 active, 20–200 total"?
+2. Caps: 6 top-level / 8 per parent / depth 3 / 30 total AI-created places — right
+   scale for "5–15 active, 20–200 total, depth 2–3 (deeper allowed), 50 under one
+   parent"? The audit in desktop/docs/DECISIONS.md (`t-d5-settings-audit-policy`)
+   keeps these as engineering defaults that do not limit places a person makes.
 3. Should a declined group stay quiet for 30 days even if it doubles in size?
 4. Where do Places organization settings live in the final Settings: global, or per Place?
 5. Should "Summaries" default to following "Chat titles" (current) or have its own default?

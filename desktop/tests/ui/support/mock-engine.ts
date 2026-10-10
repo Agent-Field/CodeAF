@@ -106,11 +106,18 @@ const ROLE_CATEGORIES = [
   { id: 'places', name: 'Places organization' },
   { id: 'memory', name: 'Memory, routing and safety' },
 ];
-/** A sample of internal/placegraph's policy table: one switch that is the design's figure, one provisional number. */
+/**
+ * A sample of internal/placegraph's policy table, plus the four hierarchy caps.
+ * Those four rows match policy.go: defaults, bounds, and the depth explain that
+ * says a person's own places can go deeper.
+ */
 const PLACES_POLICY = [
   { key: 'clusterOffers', group: 'offers', name: 'Offer new places', explain: 'When enough chats in no place belong together, offer to put them in a place. You approve every new place.', kind: 'switch', default: true, design: true },
   { key: 'autoFile', group: 'offers', name: 'File chats without asking', explain: 'Put a chat in a place you already have when codeaf is very sure, and say so.', kind: 'switch', default: false, design: false },
-  { key: 'maxAiTopLevel', group: 'limits', name: 'Top-level places codeaf may create', explain: 'Places you make yourself are never limited.', kind: 'number', default: 6, min: 0, max: 50, unit: 'places', design: false },
+  { key: 'maxAiTopLevel', group: 'limits', name: 'Top-level places codeaf may create', explain: "Counts only places created from codeaf's offers. Places you make yourself are never limited.", kind: 'number', default: 6, min: 0, max: 50, unit: 'places', design: false },
+  { key: 'maxAiSiblings', group: 'limits', name: 'Places codeaf may create under one parent', explain: "Counts only places created from codeaf's offers.", kind: 'number', default: 8, min: 0, max: 100, unit: 'places', design: false },
+  { key: 'maxAiDepth', group: 'limits', name: 'Deepest level for a new place', explain: "A top-level place is level 1. Places you make yourself can go deeper; this only limits places created from codeaf's offers.", kind: 'number', default: 3, min: 1, max: 6, unit: 'levels', design: false },
+  { key: 'maxAiPlaces', group: 'limits', name: 'Places codeaf may create in all', explain: "Counts active places created from codeaf's offers.", kind: 'number', default: 30, min: 0, max: 500, unit: 'places', design: false },
 ] as const;
 
 const emptyUsage = { Input: 0, Output: 0, CostUSD: 0, Duration: 0, Turns: 0 };
@@ -488,9 +495,10 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     const parts = url.pathname.replace(/^.*\/api\/engine/, '').split('/').filter(Boolean).map(decodeURIComponent);
     const body = (method === 'POST' || method === 'PUT') && request.postData() ? JSON.parse(request.postData()!) as Record<string, unknown> : {};
     const [root, id, action, arg] = parts;
-    // The window's own reads of the place graph and the world stream are not a conversation's calls; the Places
-    // mock (support/mock-places.ts) records those. A tab that must make no engine call is judged on the rest.
-    if (!['places', 'chats', 'world', 'events', 'workspaces'].includes(root)) calls.push({ method, path: url.pathname, body });
+    // Place, chat, world and workspace reads are not a conversation's calls. A Places
+    // policy write is a Settings save, so it stays on the list the settings specs read.
+    const policyWrite = root === 'places' && id === 'policy' && method !== 'GET';
+    if (policyWrite || !['places', 'chats', 'world', 'events', 'workspaces'].includes(root)) calls.push({ method, path: url.pathname, body });
     if (offline) return offline === '503' ? json(route, { error: 'engine unreachable' }, 503) : route.abort('connectionrefused');
     const forced = (key: keyof NonNullable<Scenario['fail']>) => {
       const status = scenario.fail?.[key];

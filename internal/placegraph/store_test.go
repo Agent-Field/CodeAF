@@ -665,3 +665,52 @@ func TestReservedManagerSurvivesRoundTripAndMerge(t *testing.T) {
 		t.Fatalf("merge dropped the reserved manager: %s", b.Manager)
 	}
 }
+
+// Places §6e expects 50 reports under one parent and says deeper than 2–3 is
+// allowed. Those are places a person makes. The AI caps (8 siblings, depth 3)
+// count only places created from offers, so they do not refuse this graph.
+func TestAPersonMayNestFiftyReportsAndGoDeeperThanTheAiDefault(t *testing.T) {
+	s, _ := newStore(t)
+	reports := mk(t, s, "Reports")
+	pol := DefaultRecommendPolicy()
+	var ai []string
+	for i := 1; i <= 50; i++ {
+		child := mk(t, s, fmt.Sprintf("Report %d", i), reports.ID)
+		if i <= pol.MaxAISiblings {
+			ai = append(ai, child.ID)
+		}
+	}
+	deep := mk(t, s, "Deep")
+	for level := 2; level <= 5; level++ {
+		deep = mk(t, s, fmt.Sprintf("Level %d", level), deep.ID)
+	}
+	sn := snap(t, s)
+	if n := len(sn.Children(reports.ID, false)); n != 50 {
+		t.Fatalf("%d reports under one parent", n)
+	}
+	if d := depthOf(sn, deep.ID); d != 5 {
+		t.Fatalf("person-made depth %d", d)
+	}
+	if ok, why := canCreateUnder(sn, pol, countAI(sn, ai[:pol.MaxAISiblings-1]), reports.ID); !ok {
+		t.Fatalf("one AI sibling still fits beside the person's reports: %s", why)
+	}
+	if ok, why := canCreateUnder(sn, pol, countAI(sn, ai), reports.ID); ok || why == "" {
+		t.Fatalf("sibling cap: ok=%v %q", ok, why)
+	}
+	var at3 string
+	for _, place := range sn.Places {
+		if place.Name == "Level 3" {
+			at3 = place.ID
+		}
+	}
+	if at3 == "" {
+		t.Fatal("Level 3 was not stored")
+	}
+	if d := depthOf(sn, at3); d != 3 {
+		t.Fatalf("Level 3 is depth %d", d)
+	}
+	// A new AI place under Level 3 would be depth 4, past the default of 3.
+	if ok, why := canCreateUnder(sn, pol, countAI(sn, nil), at3); ok || !strings.Contains(why, "too deep") {
+		t.Fatalf("AI create under Level 3: ok=%v %q", ok, why)
+	}
+}
