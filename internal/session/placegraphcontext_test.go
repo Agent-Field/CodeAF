@@ -267,7 +267,15 @@ func TestTheChangeLineIsJournaledAndReplays(t *testing.T) {
 		t.Fatalf("the model was not told what changed: %v", messageTexts(completer.request(at)))
 	}
 	sys := requestSystem(completer.request(at))
-	if !strings.Contains(sys, brand+" — a file; from Release") {
+	// A temporary directory may live under a repository on the runner, so
+	// repository facts can sit between the source kind and its attribution.
+	sourceNamed := false
+	for _, row := range strings.Split(sys, "\n") {
+		if strings.HasPrefix(row, "- "+brand+" — a file") && strings.HasSuffix(row, "; from Release") {
+			sourceNamed = true
+		}
+	}
+	if !sourceNamed {
 		t.Fatalf("the source is not named with its place:\n%s", sys)
 	}
 	find := func(where string, entries []DisplayEntry) {

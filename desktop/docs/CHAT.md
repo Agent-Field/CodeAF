@@ -113,6 +113,10 @@ leaves when it is not. No labels that describe the machine ("Engine connected",
 
 - One card above the composer pages through the waiting questions ("N of M"). Amber
   head with the task crumb; body at most 40vh, scrolling under a bottom fade.
+  With focus inside the card, ← and → move to the previous and next question and
+  stop at the ends (the arrow that cannot move stays at 40% opacity). A text
+  field that already holds characters keeps those keys for the caret; an empty
+  one does not. A screen reader hears "Question N of M".
 - When the reader is scrolled away from the tray, it shrinks to a 40px compact bar
   ("N need you", a one-line summary, Review) and returns on Review.
 - Choice cards: one radio card per option, the engine's pick first with a

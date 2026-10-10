@@ -100,6 +100,7 @@ func TestAStaleRevisionIs409WithTheCurrentDocument(t *testing.T) {
 func TestWorkspacesNeedTheTokenAndANativeOrigin(t *testing.T) {
 	b, dir := newWorkspaceBridge(t)
 	r := httptest.NewRequest("PUT", "/api/engine/workspaces/now", strings.NewReader(putBody(0, "w", sharedDoc("a"))))
+	r.Host = "127.0.0.1:1420"
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	b.ServeHTTP(w, r)
@@ -107,6 +108,7 @@ func TestWorkspacesNeedTheTokenAndANativeOrigin(t *testing.T) {
 		t.Fatalf("no token: %d", w.Code)
 	}
 	r = httptest.NewRequest("GET", "/api/engine/workspaces/now", nil)
+	r.Host = "127.0.0.1:1420"
 	r.Header.Set("Authorization", "Bearer "+testToken)
 	r.Header.Set("Origin", "https://evil.example")
 	w = httptest.NewRecorder()
@@ -115,6 +117,7 @@ func TestWorkspacesNeedTheTokenAndANativeOrigin(t *testing.T) {
 		t.Fatalf("a foreign origin with a token is refused: %d", w.Code)
 	}
 	r = httptest.NewRequest("GET", "/api/engine/workspaces/now", nil)
+	r.Host = "127.0.0.1:1420"
 	r.Header.Set("Authorization", "Bearer "+testToken)
 	r.Header.Set("Origin", "tauri://localhost")
 	w = httptest.NewRecorder()

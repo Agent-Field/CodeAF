@@ -12,11 +12,18 @@ import (
 // (none when nothing changed), and Undo lists the receipt ids to hand to
 // POST /places/undo. Nothing here is a promise the store did not make.
 type Mutation struct {
-	Revision uint64               `json:"revision"`
-	Receipts []placegraph.Receipt `json:"receipts"`
-	Noop     bool                 `json:"noop"`
-	Place    *PlaceDetail         `json:"place,omitempty"`
-	Undo     []string             `json:"undo"`
+	// Lifecycle counts describe direct memberships and child edges affected by the write.
+	Receipt  *placegraph.Receipt `json:"receipt,omitempty"`
+	Chats    *int                `json:"chats,omitempty"`
+	Children *int                `json:"children,omitempty"`
+	Revision uint64              `json:"revision"`
+	// Generation is Revision under the name the desktop client reads.
+	Generation uint64               `json:"generation"`
+	Rail       *RailView            `json:"rail,omitempty"`
+	Receipts   []placegraph.Receipt `json:"receipts"`
+	Noop       bool                 `json:"noop"`
+	Place      *PlaceDetail         `json:"place,omitempty"`
+	Undo       []string             `json:"undo"`
 	// Result carries what a delete or a merge did (store DeleteResult / MergeResult).
 	Result any `json:"result,omitempty"`
 	// Memberships are the filings a members write created.
@@ -39,7 +46,7 @@ func (p *Places) finish(w http.ResponseWriter, b *batch, placeID string, extra f
 		p.failStore(w, err, "", b.receipts)
 		return
 	}
-	m := Mutation{Revision: rev, Receipts: b.receipts, Noop: len(b.receipts) == 0, Undo: []string{}}
+	m := Mutation{Revision: rev, Generation: rev, Receipts: b.receipts, Noop: len(b.receipts) == 0, Undo: []string{}}
 	if m.Receipts == nil {
 		m.Receipts = []placegraph.Receipt{}
 	}
@@ -60,6 +67,9 @@ func (p *Places) finish(w http.ResponseWriter, b *batch, placeID string, extra f
 		extra(&m)
 	}
 	write(w, m)
+	if !m.Noop {
+		p.publishPlaces(m.Memberships)
+	}
 }
 
 // ---- places ----------------------------------------------------------------
@@ -259,76 +269,6 @@ type plainAsk struct {
 	Index      *int    `json:"index"`
 }
 
-func (p *Places) archive(w http.ResponseWriter, r *http.Request, id string, archive bool) {
-	var ask plainAsk
-	if !readBody(w, r, &ask) {
-		return
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if !p.staleRevision(w, ask.IfRevision) {
-		return
-	}
-	var rc placegraph.Receipt
-	var err error
-	if archive {
-		rc, err = p.Store.Archive(id)
-	} else {
-		rc, err = p.Store.Restore(id)
-	}
-	if err != nil {
-		p.failStore(w, err, "", nil)
-		return
-	}
-	var b batch
-	b.add(rc)
-	p.finish(w, &b, id, nil)
-}
-
-func (p *Places) deletePlace(w http.ResponseWriter, r *http.Request, id string) {
-	var ask plainAsk
-	if !readBody(w, r, &ask) {
-		return
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if !p.staleRevision(w, ask.IfRevision) {
-		return
-	}
-	res, rc, err := p.Store.DeletePlace(id)
-	if err != nil {
-		p.failStore(w, err, "", nil)
-		return
-	}
-	var b batch
-	b.add(rc)
-	p.finish(w, &b, "", func(m *Mutation) { m.Result = res })
-}
-
-func (p *Places) merge(w http.ResponseWriter, r *http.Request, id string) {
-	var ask plainAsk
-	if !readBody(w, r, &ask) {
-		return
-	}
-	if ask.Into == "" {
-		failPlaces(w, 400, "invalid", "Say which place to merge into.")
-		return
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if !p.staleRevision(w, ask.IfRevision) {
-		return
-	}
-	res, rc, err := p.Store.MergePlaces(id, ask.Into)
-	if err != nil {
-		p.failStore(w, err, "", nil)
-		return
-	}
-	var b batch
-	b.add(rc)
-	p.finish(w, &b, ask.Into, func(m *Mutation) { m.Result = res })
-}
-
 func (p *Places) pin(w http.ResponseWriter, r *http.Request, id string, pin bool) {
 	var ask plainAsk
 	if !readBody(w, r, &ask) {
@@ -370,39 +310,12 @@ func (p *Places) visit(w http.ResponseWriter, r *http.Request, id string) {
 		p.failStore(w, err, "", nil)
 		return
 	}
+	// Going somewhere also puts it at the top of the rail's Open section.
+	if err := p.Store.Visit(id); err != nil {
+		p.failStore(w, err, "", nil)
+		return
+	}
 	write(w, map[string]bool{"ok": true})
-}
-
-type undoAsk struct {
-	Receipts []string `json:"receipts"`
-}
-
-// undo takes receipts back newest first, so a request that lists the receipts
-// of a multi-step write in the order they were made unwinds them correctly. It
-// stops at the first the store refuses and says how many were undone.
-func (p *Places) undo(w http.ResponseWriter, r *http.Request) {
-	var ask undoAsk
-	if !readBody(w, r, &ask) {
-		return
-	}
-	if len(ask.Receipts) == 0 {
-		failPlaces(w, 400, "invalid", "There is nothing to undo.")
-		return
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	undone := 0
-	var rev uint64
-	for i := len(ask.Receipts) - 1; i >= 0; i-- {
-		var err error
-		if rev, err = p.Store.Undo(ask.Receipts[i]); err != nil {
-			status, code, sentence := storeFailure(err, "")
-			writeStatus(w, status, placesError{Error: sentence, Code: code, Undone: &undone})
-			return
-		}
-		undone++
-	}
-	write(w, map[string]any{"revision": rev, "undone": undone})
 }
 
 // ---- memberships -----------------------------------------------------------
@@ -483,6 +396,8 @@ func (p *Places) addMembers(w http.ResponseWriter, r *http.Request, id string) {
 	}
 	var b batch
 	var filed []placegraph.Membership
+	watch := p.watchChats(chats)
+	undo := map[string]string{}
 	for _, c := range chats {
 		if ask.MoveFrom != "" {
 			rc, err := p.Store.MoveChat(c, ask.MoveFrom, id, by)
@@ -491,6 +406,9 @@ func (p *Places) addMembers(w http.ResponseWriter, r *http.Request, id string) {
 				return
 			}
 			b.add(rc)
+			if !rc.Noop() {
+				undo[c] = rc.ID
+			}
 			continue
 		}
 		m, rc, err := p.Store.AddChat(c, id, by)
@@ -499,7 +417,13 @@ func (p *Places) addMembers(w http.ResponseWriter, r *http.Request, id string) {
 			return
 		}
 		b.add(rc)
+		if !rc.Noop() {
+			undo[c] = rc.ID
+		}
 		filed = append(filed, m)
+	}
+	if id != placegraph.NowID {
+		watch.announce(id, true, undo)
 	}
 	place := id
 	if id == placegraph.NowID {
@@ -527,6 +451,8 @@ func (p *Places) removeMembers(w http.ResponseWriter, r *http.Request, id string
 		return
 	}
 	var b batch
+	watch := p.watchChats(ask.Chats)
+	undo := map[string]string{}
 	for _, c := range ask.Chats {
 		rc, err := p.Store.RemoveChat(c, id)
 		if err != nil {
@@ -534,6 +460,10 @@ func (p *Places) removeMembers(w http.ResponseWriter, r *http.Request, id string
 			return
 		}
 		b.add(rc)
+		if !rc.Noop() {
+			undo[c] = rc.ID
+		}
 	}
+	watch.announce(id, false, undo)
 	p.finish(w, &b, id, nil)
 }

@@ -23,7 +23,7 @@ export function useTerminalTabs({ enabled, state, dispatch }: { enabled: boolean
   const live = useRef(state);
   live.current = state;
   useShortcuts(shortcutLayer.workspace, shortcut => {
-    if (shortcut.id !== 'terminal' || document.querySelector('dialog[open]')) return false;
+    if (shortcut.id !== 'terminal-new' || document.querySelector('dialog[open]')) return false;
     void openTerminalTab({ sessionFile: activeSessionFile(live.current) }).then(tab => dispatch({ type: 'open', tab, background: false }));
     return true;
   }, enabled);

@@ -20,7 +20,8 @@
 .summary-divider {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  /* The long-history card draws 14px between the words and each hairline, the same gap a compaction note uses. */
+  gap: var(--system-note-rule-gap);
   margin-block: var(--space-2);
   color: var(--ink-3);
   font-size: var(--type-caption-size);
