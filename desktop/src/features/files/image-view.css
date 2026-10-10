@@ -1,0 +1,3 @@
+/* The picture keeps its intrinsic dimensions while the fixed grid track caps both axes to the pane. */
+.file-body[data-picture] { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); place-items: center; padding: var(--image-view-padding); background: var(--image-view-background); }
+.file-picture { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
