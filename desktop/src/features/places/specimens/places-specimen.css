@@ -1,0 +1,8 @@
+/* Layout only for the Places specimen: the rows and chips style themselves. */
+.places-specimen-rail { display: flex; flex-wrap: wrap; gap: var(--space-6); padding: var(--space-4); border-radius: var(--radius-pane); background: var(--frame); }
+.places-specimen-rail-cell { width: var(--rail-row-specimen-width); display: flex; flex-direction: column; gap: var(--space-tight); }
+.places-specimen-rail-cell > small { font-size: var(--type-caption-size); color: var(--ink-3); }
+.places-specimen-chips { display: flex; flex-wrap: wrap; gap: var(--space-6); padding: var(--space-4); }
+.places-specimen-chips .places-specimen-rail-cell { width: auto; }
+.places-specimen-rail [data-hover] .rail-row-close { opacity: var(--opacity-opaque); }
+.places-specimen-rail [data-hover] .rail-row-trail { visibility: hidden; }
