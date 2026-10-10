@@ -26,8 +26,9 @@ func registerPlacesRoute(key string, h func(p *Places, w http.ResponseWriter, r 
 	placesRoutesTable[key] = h
 }
 
-// tableRoute serves a registered route, reporting whether one matched. The
-// bridge's CORS list has no DELETE, so only GET, POST and PUT are ever keyed.
+// tableRoute serves a registered route, reporting whether one matched. This
+// table is keyed with GET, POST and PUT. PATCH and DELETE for a knows line
+// are on the seam table, which ServeHTTP claims before this door.
 func (p *Places) tableRoute(w http.ResponseWriter, r *http.Request, parts []string) bool {
 	if len(placesRoutesTable) == 0 {
 		return false
