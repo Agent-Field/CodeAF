@@ -282,7 +282,7 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
                   <ConversationDock
                     compact={split && !focused ? { label } : undefined}
                     tray={{ questions: model.questions, busyKey: conversation.busyKey, onAnswer: conversation.answer, onHold: conversation.hold, focusKey, compact: away, onReview: jump }}
-                    queue={{ items: snapshot?.queue ?? [], onRemove: conversation.removeQueue, onEdit: conversation.editQueue, onMove: conversation.moveQueue }}
+                    queue={{ items: snapshot?.queue ?? [], onRemove: conversation.removeQueue, onEdit: conversation.editQueue, onMove: conversation.moveQueue, onSendNow: conversation.sendQueueNow }}
                     composer={{
                       draft: tab.draft,
                       onDraft,

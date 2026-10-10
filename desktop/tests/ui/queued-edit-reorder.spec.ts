@@ -84,9 +84,86 @@ test('a message whose turn has started refuses the change, says so and drops the
   await row.hover();
   await row.getByRole('button', { name: 'Edit queued message' }).click();
   await list.getByRole('textbox', { name: 'Edit queued message' }).fill('too late');
-  // The turn ends and the engine records both messages before Save arrives.
-  engine.advance();
+  // End the turn after Save leaves the browser, so the editor cannot disappear before the click.
+  await page.route('**/sessions/*/queue-edit', async (route) => {
+    engine.advance();
+    await route.fallback();
+  });
   await list.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('that message has already been sent')).toBeVisible();
   await expect(list).toHaveCount(0);
 });
+
+test('queued text opens the inline editor and Enter saves', async ({ page }) => {
+  const { engine, list } = await queued(page);
+  await list.getByRole('button', { name: 'first queued', exact: true }).click();
+  const field = list.getByRole('textbox', { name: 'Edit queued message' });
+  await expect(field).toBeFocused();
+  await field.fill('edited by text click');
+  await field.press('Enter');
+  await expect.poll(() => order(engine)).toEqual(['edited by text click', 'second queued', 'third queued']);
+});
+
+test('queued context menu has bounded moves, edits, sends now and removes', async ({ page }) => {
+  const { engine, list } = await queued(page);
+  const rows = list.getByRole('group');
+  await rows.first().click({ button: 'right' });
+  const menu = page.getByRole('menu', { name: 'Queued message actions' });
+  await expect(menu.getByRole('menuitem')).toHaveText(['Edit', 'Move up', 'Move down', 'Send now', 'Remove']);
+  await expect(menu.getByRole('menuitem', { name: 'Move up', exact: true })).toBeDisabled();
+  await expect(menu.getByRole('menuitem', { name: 'Move up', exact: true })).toHaveCSS('opacity', '0.4');
+  await menu.getByRole('menuitem', { name: 'Move down', exact: true }).click();
+  await expect.poll(() => order(engine)).toEqual(['second queued', 'first queued', 'third queued']);
+  await rows.first().focus();
+  await page.keyboard.press('Shift+F10');
+  await menu.getByRole('menuitem', { name: 'Edit', exact: true }).click();
+  await expect(list.getByRole('textbox', { name: 'Edit queued message' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await rows.first().focus();
+  await page.keyboard.press('Shift+F10');
+  await menu.getByRole('menuitem', { name: 'Send now', exact: true }).click();
+  await expect.poll(() => posts(engine, '/queue-send').length).toBe(1);
+  await expect.poll(() => order(engine)).toEqual(['first queued', 'third queued']);
+  await rows.nth(1).click({ button: 'right' });
+  await expect(menu.getByRole('menuitem', { name: 'Move down', exact: true })).toBeDisabled();
+  await menu.getByRole('menuitem', { name: 'Remove', exact: true }).click();
+  await expect.poll(() => order(engine)).toEqual(['first queued']);
+});
+
+test.describe('coarse pointers', () => {
+  test.use({ hasTouch: true });
+  test('queue actions stay visible and dragging is off at narrow widths', async ({ page }) => {
+    const { list } = await queued(page);
+    await page.setViewportSize({ width: 320, height: 560 });
+    const row = list.getByRole('group').first();
+    await expect(row.locator('..')).toHaveAttribute('draggable', 'false');
+    await expect(row.getByRole('button', { name: 'Edit queued message' })).toBeVisible();
+    await expect(row.locator('.queued-actions')).toHaveCSS('opacity', '1');
+    await row.getByRole('button', { name: 'Message actions for queued row' }).click();
+    await expect(page.getByRole('menuitem', { name: 'Send now', exact: true })).toBeVisible();
+  });
+});
+
+for (const colorScheme of ['light', 'dark'] as const) {
+  test.describe(`queue geometry ${colorScheme}`, () => {
+    test.use({ colorScheme, reducedMotion: 'reduce' });
+    test('rows preserve measured design geometry and hover changes only fill', async ({ page }) => {
+      const { list } = await queued(page);
+      const row = list.getByRole('group').first();
+      await page.mouse.move(0, 0);
+      const measure = () => row.evaluate(el => {
+        const css = getComputedStyle(el);
+        return { height: el.getBoundingClientRect().height, font: css.fontSize, radius: css.borderRadius, color: css.color, pad: css.padding, fill: css.backgroundColor };
+      });
+      const rest = await measure();
+      expect(rest).toMatchObject({ height: 30, font: '12px', radius: '10px' });
+      await row.hover();
+      const hover = await measure();
+      expect(hover.color).toBe(rest.color);
+      expect(hover.pad).toBe(rest.pad);
+      expect(hover.fill).not.toBe(rest.fill);
+      await row.click({ button: 'right' });
+      await expect(page.getByRole('menuitem', { name: 'Move up', exact: true })).toHaveCSS('opacity', '0.4');
+    });
+  });
+}
