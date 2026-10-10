@@ -317,3 +317,10 @@ test('the CSP gains nothing for windows, choosers or notifications', () => {
     "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: data: blob:; media-src 'self' data:; connect-src ipc: http://ipc.localhost http://127.0.0.1:*",
   );
 });
+
+test('the window leaves drag and drop to the page, so tabs can be dragged into a split', () => {
+  // On macOS the native drop handler swallows every HTML5 drag inside the view. Tab reordering,
+  // tear-off and the split edge zones are HTML5 drags, and no code listens for native drops.
+  const windows = (JSON.parse(read('tauri.conf.json')) as { app: { windows: { dragDropEnabled?: boolean }[] } }).app.windows;
+  for (const window of windows) assert.equal(window.dragDropEnabled, false);
+});
