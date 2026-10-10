@@ -3,7 +3,7 @@ import type { IconName } from '../../components/ui';
 import { handoffFor, placeList, provenance, sourceDetail, sourceName } from './using-model';
 import type { SourceHandoff, UsedSource, UsingBundle } from './using-types';
 
-const icons: Record<UsedSource['kind'], IconName> = { folder: 'folder', repo: 'branch', file: 'file', url: 'web', chat: 'tab' };
+const icons: Record<UsedSource['kind'], IconName> = { folder: 'folder', repo: 'folderGit', file: 'fileText', url: 'web', chat: 'tab' };
 
 type RowProps = {
   source: UsedSource;
@@ -30,7 +30,7 @@ function SourceRow({ source, bundle, held, onOpen }: RowProps) {
   return (
     <li className="using-row" data-kind="source" data-status={held ?? source.status} data-source-key={source.key}>
       <div className="using-row-main using-source-main">
-        <Icon name={missing ? 'fileMissing' : held === 'refused' ? 'ban' : icons[source.kind]} size="sm" />
+        <Icon name={missing ? 'fileMissing' : held === 'refused' ? 'ban' : icons[source.kind]} size="xs" />
         <span className="using-source-text">
           <span className="using-source-name">{name}</span>
           {detail && detail !== name && <span className="using-source-detail">{detail}</span>}
@@ -40,7 +40,7 @@ function SourceRow({ source, bundle, held, onOpen }: RowProps) {
       </div>
       {missing && <Tag tone="neutral" className="using-row-tag">Not found</Tag>}
       {held === 'left-out' && <Tag tone="neutral" className="using-row-tag">Left out</Tag>}
-      {held === 'refused' && <Tag tone="danger" className="using-row-tag">Refused</Tag>}
+      {held === 'refused' && <Tag tone="neutral" className="using-row-tag">Refused</Tag>}
       {onOpen && handoff && <IconButton size="row" icon="external" iconSize="sm" label={`Open ${name}`} className="using-row-open" onClick={() => onOpen(handoff)} />}
     </li>
   );
