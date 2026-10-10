@@ -9,3 +9,7 @@
 .council-decided-title { display: flex; align-items: center; gap: var(--council-decided-title-gap); font-size: var(--council-decided-title-size); font-weight: var(--council-decided-title-weight); }
 .council-decided-title .app-icon { color: var(--ink-3); }
 .council-decided-facts, .council-footer { font-size: var(--council-footer-size); color: var(--ink-3); }
+/* The pane's top row names the discussion by its two places: their tint squares, then "A with B". */
+.council-head { display: flex; flex: none; align-items: center; gap: var(--space-compact); height: var(--task-view-bar-height); padding: 0 var(--conversation-bar-pad-end) 0 var(--conversation-bar-pad-start); }
+.council-head-swatches { display: flex; gap: var(--space-1); }
+.council-head .council-head-title { margin: 0; overflow: hidden; font-size: var(--type-prose-size); font-weight: var(--type-label-strong); text-overflow: ellipsis; white-space: nowrap; }
