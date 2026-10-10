@@ -765,6 +765,9 @@
   --places-swatch-dim: .5;
   --places-tile-height: 84px;
   --places-tile-min: 140px;
+  --places-tile-grid-columns: 4;
+  --places-tile-narrow-min: 160px;
+  --places-tile-grid-slack: 1px;
   --places-tile-radius: var(--radius-card);
   --places-tile-pad-block: var(--space-3);
   --places-tile-pad-inline: var(--space-row);
