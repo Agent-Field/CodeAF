@@ -19,7 +19,8 @@ type HeaderProps = {
   onToggleLater: () => void;
 };
 
-/** The pinned head of the card: amber mark, crumb, and "2 of 5" with its two arrows. */
+/** The pinned head of the card: amber mark, crumb, and "2 of 5" with its two arrows.
+ * The count's accessible name is "Question N of M", the sentence a screen reader hears. */
 export function TrayHeader({ question, index, count, laterCount, laterOpen, onPage, onToggleLater }: HeaderProps) {
   const { title, kind } = crumbOf(question);
   return (
@@ -35,7 +36,7 @@ export function TrayHeader({ question, index, count, laterCount, laterOpen, onPa
         )}
         {count > 1 && (
           <>
-            <span className="tray-count" role="status">{`${index} of ${count}`}</span>
+            <span className="tray-count" role="status" aria-atomic="true" aria-label={`Question ${index} of ${count}`}>{`${index} of ${count}`}</span>
             <IconButton className="tray-arrow" label="Previous question" icon="chevronLeft" iconSize="xs" disabled={index <= 1} onClick={() => onPage(-1)} />
             <IconButton className="tray-arrow" label="Next question" icon="chevronRight" iconSize="xs" disabled={index >= count} onClick={() => onPage(1)} />
           </>
