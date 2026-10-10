@@ -98,7 +98,8 @@ export function GoToPalette({ open, places, childrenOf, now, onOpen, onOpenInNew
       search.current?.focus();
     } else if (!open && element.open) element.close();
   }, [open]);
-  useEffect(() => () => { if (dialog.current?.open && opener.current?.isConnected) opener.current.focus(); }, []);
+  // The dialog ref is already cleared when this cleanup runs, so the opener (forgotten by `closed` after a normal close) is the sign the sheet was open.
+  useEffect(() => () => { if (opener.current?.isConnected) opener.current.focus(); }, []);
   // The row height is a token, so it is read from a drawn row once rather than repeated here as a number.
   useEffect(() => {
     const measured = scroller.current?.querySelector('.palette-row')?.getBoundingClientRect().height;
