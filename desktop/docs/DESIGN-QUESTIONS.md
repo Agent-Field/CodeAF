@@ -307,6 +307,7 @@ R3 above is superseded: the rail now draws the Places sections from the engine's
 | PS10 | The Home composer's model | The chip shows the Conversation role's default (DS Flash) read-only; the chat's own picker takes over once it has a session. |
 | PS11 | "Ask codeaf about this output" from a terminal inside a place | It still starts an unplaced conversation (the terminal lane's own call). Filing it in the place needs that call to go through the place strip. |
 | PS12 | Now in graphite (Places 9d) | Graphite keeps the tint formula's frame chroma (.035) and drops ink-2 on the frame to 4.46:1 (overview filmstrip labels), failing the 4.5:1 contract. Now keeps the root palette; a place window takes its own tint. Needs a graphite frame with less chroma, or a ruling that Now stays untinted. |
+| ED-1 | Open in a chosen editor (C-EDGE-2) does not say which conversation's editor list the desktop asks, or that the page must pass a conversation id. The command is otherwise path plus editor id. | `open_with` also takes the conversation id the window already used for GET /editors. Rust canonicalises the path, confines it to the engine's roots, asks that conversation's editors route again, and starts the editor only when the id is on that fresh list. The id is a JSON field on the route's open action, never a command line. A browser build exports no opener, so the chosen-editor item stays absent. |
 
 ## Tab order, groups and reopen (tab integrity)
 
