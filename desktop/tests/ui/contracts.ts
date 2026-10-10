@@ -23,7 +23,7 @@ export async function expectThemedSurface(page: Page, surface: Locator, tokens: 
  await expect(surface).toHaveCSS('background-color', await tokenColor(page, tokens.background));
  await expect(surface).toHaveCSS('color', await tokenColor(page, tokens.ink));
 }
-export async function expectAccessible(page: Page) {
+export async function expectAccessible(page: Page, scope?: string) {
  // Contrast is meaningful after entry/exit motion settles; transient opacity is not a theme color.
  // A transition started by the key that just landed is not in the list until the next frame, so look twice.
  await page.evaluate(async () => {
@@ -37,7 +37,8 @@ export async function expectAccessible(page: Page) {
    await Promise.all(finite().map(animation => animation.finished.catch(() => undefined)));
   }
  });
- const result = await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();
+ const axe = new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']);
+ const result = await (scope ? axe.include(scope) : axe).analyze();
  const found = [];
  for (const violation of result.violations) {
   const nodes = [];
