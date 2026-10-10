@@ -69,7 +69,7 @@ export function QueuedRows({ items, onRemove, onEdit, onMove, onSendNow }: Props
   useEffect(() => {
     if (!editing) return;
     // The menu releases its inert background after the editor mounts, so focus follows that release.
-    const frame = requestAnimationFrame(() => list.current?.querySelector<HTMLInputElement>('.queued-edit input')?.focus());
+    const frame = requestAnimationFrame(() => list.current?.querySelector<HTMLElement>('.queued-edit textarea, .queued-edit input')?.focus());
     return () => cancelAnimationFrame(frame);
   }, [editing, list]);
   if (items.length === 0) return null;
