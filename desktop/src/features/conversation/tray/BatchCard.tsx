@@ -45,15 +45,19 @@ function Pager({ members, busy, onDone }: PagerProps) {
 
   return (
     <>
-      <div className="batch-pager">
-        <span className="batch-count">{`${index + 1} of ${members.length}`}</span>
-        <IconButton label="Previous action" icon="chevronLeft" iconSize="xs" disabled={index === 0} onClick={() => go(index - 1)} />
-        <IconButton label="Next action" icon="chevronRight" iconSize="xs" disabled={index === members.length - 1} onClick={() => go(index + 1)} />
+      <div className="tray-scroll">
+        <div className="batch-pager">
+          <span className="batch-count">{`${index + 1} of ${members.length}`}</span>
+          <IconButton label="Previous action" icon="chevronLeft" iconSize="xs" disabled={index === 0} onClick={() => go(index - 1)} />
+          <IconButton label="Next action" icon="chevronRight" iconSize="xs" disabled={index === members.length - 1} onClick={() => go(index + 1)} />
+        </div>
+        <h3 className="batch-title">{member.head}</h3>
       </div>
-      <h3 className="batch-title">{member.head}</h3>
-      <div className="batch-actions">
-        <Button variant="primary" className="batch-allow" disabled={busy} onClick={() => decide('allow')}>{decided[key] === 'allow' ? 'Allowed' : 'Allow'}</Button>
-        <Button variant="quiet" className="batch-deny" disabled={busy} onClick={() => decide('deny')}>{decided[key] === 'deny' ? 'Denied' : 'Deny'}</Button>
+      <div className="tray-pinned">
+        <div className="batch-actions">
+          <Button variant="primary" className="batch-allow" disabled={busy} onClick={() => decide('allow')}>{decided[key] === 'allow' ? 'Allowed' : 'Allow'}</Button>
+          <Button variant="quiet" className="batch-deny" disabled={busy} onClick={() => decide('deny')}>{decided[key] === 'deny' ? 'Denied' : 'Deny'}</Button>
+        </div>
       </div>
     </>
   );
@@ -74,20 +78,24 @@ export function BatchCard({ members, busy, onSend }: BatchProps) {
         <Pager members={members} busy={busy} onDone={sendEach} />
       ) : (
         <>
-          <Button className="batch-head" aria-expanded={open} aria-controls="batch-commands" onClick={() => setOpen(!open)}>
-            <h3 className="batch-title">{title}</h3>
-            <span className="batch-chevron" data-open={open}><Icon name="chevron" size="xs" /></span>
-          </Button>
-          {open && (
-            <ul className="batch-commands" id="batch-commands">
-              {members.map((member) => <li key={questionKey(member)}>{member.head}</li>)}
-            </ul>
-          )}
-          <div className="batch-actions">
-            <Button variant="primary" className="batch-allow" disabled={busy} onClick={() => sendAll('allow')}>Allow all</Button>
-            <Button variant="quiet" className="batch-deny" disabled={busy} onClick={() => sendAll('deny')}>Deny all</Button>
-            <Button className="batch-more" disabled={busy} onClick={() => setPaging(true)}>One by one</Button>
-            {doesNotBlock(members) && <NonBlockingNote />}
+          <div className="tray-scroll">
+            <Button className="batch-head" aria-expanded={open} aria-controls="batch-commands" onClick={() => setOpen(!open)}>
+              <h3 className="batch-title">{title}</h3>
+              <span className="batch-chevron" data-open={open}><Icon name="chevron" size="xs" /></span>
+            </Button>
+            {open && (
+              <ul className="batch-commands" id="batch-commands">
+                {members.map((member) => <li key={questionKey(member)}>{member.head}</li>)}
+              </ul>
+            )}
+          </div>
+          <div className="tray-pinned">
+            <div className="batch-actions">
+              <Button variant="primary" className="batch-allow" disabled={busy} onClick={() => sendAll('allow')}>Allow all</Button>
+              <Button variant="quiet" className="batch-deny" disabled={busy} onClick={() => sendAll('deny')}>Deny all</Button>
+              <Button className="batch-more" disabled={busy} onClick={() => setPaging(true)}>One by one</Button>
+              {doesNotBlock(members) && <NonBlockingNote />}
+            </div>
           </div>
         </>
       )}
