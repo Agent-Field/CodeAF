@@ -635,6 +635,14 @@ const (
 	// EventToolOutput carries literal stdout/stderr in Text while a user shell
 	// command is running. CallID owns the bytes; its result still ends the call.
 	EventToolOutput
+	// EventAutomationProposal asks the person whether to save one automation
+	// (automation_tool.go); Automation carries the card. Nothing is saved until
+	// it is answered.
+	EventAutomationProposal
+	// EventAutomationUpdate reports an automation changing because of a call
+	// in this turn — saved, paused, resumed, deleted, asked to run now. It is a
+	// report and never a question.
+	EventAutomationUpdate
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -941,6 +949,10 @@ type Event struct {
 	// Standing carries one EventStandingProposal or EventStandingUpdate's payload
 	// (standing_contract.go). It is nil on every other kind.
 	Standing *StandingNotice
+
+	// Automation carries one EventAutomationProposal or EventAutomationUpdate's
+	// payload (automation_tool.go). It is nil on every other kind.
+	Automation *AutomationNotice `json:",omitempty"`
 
 	// Subharness carries one EventSubharnessProposal's intake card
 	// (subharness_contract.go). It is nil on every other kind, and the ID beside
@@ -1522,6 +1534,16 @@ type Config struct {
 	// Standing is the ambient side (standing_contract.go, internal/standing).
 	// Nil is off: no belt tool, no card, no ticking from this process.
 	Standing *Standing
+
+	// Automations is the door to the automations store (automation_tool.go).
+	// Nil is off: no `automation` tool and no card — which is what a run of an
+	// automation is given, because nothing an automation does may arm another.
+	Automations *Automations
+
+	// AutomationRun is set on the session ONE RUN of an automation's work runs
+	// in, and only there: it puts `automation_report` on the belt and receives
+	// what the run reports (automation_run.go).
+	AutomationRun *AutomationRun
 
 	// standingItems overrides where [Standing.Store] would be read, and it is
 	// unexported because it exists for THIS PACKAGE'S TESTS and for nothing
@@ -2258,6 +2280,9 @@ type Config struct {
 	// spends has to be attributable to the promise the person made, and the only
 	// thing that knows which promise is the runner that built this config.
 	standingItemID string
+	// automationID is the id of the automation whose run this agent IS, so
+	// every call it makes lands in the usage ledger against that automation.
+	automationID string
 
 	// SpendRailUSD stops a session that has spent this much. 0 is off. The
 	// check happens BEFORE a turn starts (rail.go) and reads the session's own
@@ -3489,6 +3514,10 @@ type Agent struct {
 	// reserved, nothing is admitted, and the only thing the number has to do is
 	// name one outstanding question until it is answered (tools_standing.go).
 	standingSeq uint64
+	// automationAnswers and automationSeq are the same wait, for automation
+	// cards (automation_tool.go).
+	automationAnswers map[uint64]chan AutomationAnswer
+	automationSeq     uint64
 	// questionWords is THE WORDS of the questions this session has put, keyed by
 	// lane and token (question.go's [questionToken]).
 	//

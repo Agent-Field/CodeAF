@@ -240,6 +240,15 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 			// habit ([AnswerOption.Safe]).
 			{Key: "2", Label: "no", Safe: true},
 		}
+	case QuestionAutomation:
+		// THE KIND'S ROW, WITH NO AUTOMATION TO NARROW IT. A card is built from
+		// [AutomationOptions], which knows whether "run it now" means anything
+		// for that one automation; a bare kind can only promise the two
+		// answers every card has.
+		return []AnswerOption{
+			{Key: AutomationSaveKey, Label: "Save"},
+			{Key: AutomationNoKey, Label: "Don't save", Safe: true},
+		}
 	case QuestionStanding:
 		// THE KIND'S ROW, WITH NO ITEM TO NARROW IT. A card is built from
 		// [StandingOptions], which says the words for THAT item. This list is

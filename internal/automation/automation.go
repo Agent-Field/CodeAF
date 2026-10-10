@@ -109,6 +109,10 @@ type Automation struct {
 	// Seen is a watch's last decided judgment, "yes" or "no", and empty before
 	// its first. A watch speaks on the change from anything else to "yes".
 	Seen string `json:"seen,omitempty"`
+	// Memo is what a watch's look keeps between looks — a file watch's listing,
+	// so the next look can say what changed. It is the look's own business and
+	// opaque to everything else.
+	Memo string `json:"memo,omitempty"`
 }
 
 // Look is what a watch looks at, and the sentence its judgment is held to.
@@ -122,6 +126,10 @@ type Look struct {
 	// account's, most often.
 	Tool string          `json:"tool,omitempty"`
 	Args json.RawMessage `json:"args,omitempty"`
+	// Service is the connected account a Tool belongs to, when it is one: its
+	// tools are only on the belt once the service is put to use, so the look
+	// puts it to use first.
+	Service string `json:"service,omitempty"`
 	// Condition is what the model is asked of every look: "the latest run on
 	// main failed", "an invoice from Hetzner arrived".
 	Condition string `json:"condition"`

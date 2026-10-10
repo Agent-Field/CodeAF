@@ -227,6 +227,9 @@ type UsageLine struct {
 	// [UsageBySubject] prefers this one, because a person recognises the promise
 	// they made long before they recognise the run it spawned.
 	Standing string `json:"standing,omitempty"`
+	// Automation is the automation whose run or watch made the call
+	// (automation_run.go), and empty on every other line.
+	Automation string `json:"automation,omitempty"`
 	// Workspace is the project root the call was made against — what a page
 	// groups by, and empty for a conversation held nowhere in particular.
 	Workspace string `json:"workspace,omitempty"`
@@ -968,9 +971,10 @@ func (a *Agent) recordUsageLine(call bankedCall) {
 		// The conversation the work is rooted in, which is nothing at all in a
 		// conversation: Session above is already that answer, and writing it
 		// twice would be the one-source-of-truth law broken on the same row.
-		Root:      strings.TrimSpace(a.config.rootSession),
-		Standing:  strings.TrimSpace(a.config.standingItemID),
-		Workspace: strings.TrimSpace(a.config.Workspace),
+		Root:       strings.TrimSpace(a.config.rootSession),
+		Standing:   strings.TrimSpace(a.config.standingItemID),
+		Automation: strings.TrimSpace(a.config.automationID),
+		Workspace:  strings.TrimSpace(a.config.Workspace),
 	}
 
 	// THE ROW'S TWO NAMES GO ON THROUGH ONE DOOR ([TagUsage]), and the seat
@@ -1212,6 +1216,6 @@ func (a *Agent) recordUnbilledReceipt(model string) {
 	a.mu.Unlock()
 	RecordUnbilledCall(path, UsageLine{
 		Session: owner, Model: model, Task: usageTaskID(a.config.taskID),
-		Root: a.config.rootSession, Standing: a.config.standingItemID, Workspace: a.config.Workspace,
+		Root: a.config.rootSession, Standing: a.config.standingItemID, Automation: a.config.automationID, Workspace: a.config.Workspace,
 	})
 }

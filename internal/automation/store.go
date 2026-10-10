@@ -147,6 +147,7 @@ CREATE TABLE automations (
  status TEXT NOT NULL,
  next_ms INTEGER NOT NULL DEFAULT 0,
  seen TEXT NOT NULL DEFAULT '',
+ memo TEXT NOT NULL DEFAULT '',
  revision INTEGER NOT NULL DEFAULT 1,
  seq INTEGER NOT NULL DEFAULT 0
 );
@@ -194,7 +195,7 @@ func (s *Store) Create(a Automation) (Automation, error) {
 	a.Status = StatusActive
 	a.Created, a.Updated = now, now
 	a.Revision = 1
-	a.Seen = ""
+	a.Seen, a.Memo = "", ""
 	if a.Schedule.Repeats() && a.Schedule.Anchor.IsZero() && a.Schedule.Interval() > 0 {
 		a.Schedule.Anchor = now
 	}
@@ -223,7 +224,7 @@ func (s *Store) Create(a Automation) (Automation, error) {
 
 // Get reads one automation.
 func (s *Store) Get(id string) (Automation, error) {
-	row := s.db.QueryRow(`SELECT doc, status, next_ms, seen, revision FROM automations WHERE id = ?`, id)
+	row := s.db.QueryRow(`SELECT doc, status, next_ms, seen, memo, revision FROM automations WHERE id = ?`, id)
 	a, err := scanAutomation(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Automation{}, ErrNotFound
@@ -234,7 +235,7 @@ func (s *Store) Get(id string) (Automation, error) {
 // List is every automation, the ones waiting on the person first, then the
 // soonest to wake, then the rest.
 func (s *Store) List() ([]Automation, error) {
-	rows, err := s.db.Query(`SELECT doc, status, next_ms, seen, revision FROM automations`)
+	rows, err := s.db.Query(`SELECT doc, status, next_ms, seen, memo, revision FROM automations`)
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +265,7 @@ func (s *Store) Update(a Automation) (Automation, error) {
 	now := s.now()
 	var saved Automation
 	err := s.write(func(tx *sql.Tx, seq int64) error {
-		current, err := scanAutomation(tx.QueryRow(`SELECT doc, status, next_ms, seen, revision FROM automations WHERE id = ?`, a.ID))
+		current, err := scanAutomation(tx.QueryRow(`SELECT doc, status, next_ms, seen, memo, revision FROM automations WHERE id = ?`, a.ID))
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -273,9 +274,9 @@ func (s *Store) Update(a Automation) (Automation, error) {
 		}
 		a.Created, a.Updated = current.Created, now
 		a.Revision = current.Revision + 1
-		a.Status, a.Next, a.Seen = current.Status, current.Next, current.Seen
+		a.Status, a.Next, a.Seen, a.Memo = current.Status, current.Next, current.Seen, current.Memo
 		if lookChanged(current.Look, a.Look) {
-			a.Seen = ""
+			a.Seen, a.Memo = "", ""
 		}
 		if scheduleChanged(current.Schedule, a.Schedule) {
 			if a.Schedule.Repeats() && a.Schedule.Interval() > 0 {
@@ -299,8 +300,8 @@ func (s *Store) Update(a Automation) (Automation, error) {
 		if err != nil {
 			return err
 		}
-		_, err = tx.Exec(`UPDATE automations SET doc = ?, status = ?, next_ms = ?, seen = ?, revision = ?, seq = ? WHERE id = ?`,
-			string(doc), string(a.Status), ms(a.Next), a.Seen, a.Revision, seq, a.ID)
+		_, err = tx.Exec(`UPDATE automations SET doc = ?, status = ?, next_ms = ?, seen = ?, memo = ?, revision = ?, seq = ? WHERE id = ?`,
+			string(doc), string(a.Status), ms(a.Next), a.Seen, a.Memo, a.Revision, seq, a.ID)
 		saved = a
 		return err
 	})
@@ -318,7 +319,7 @@ func (s *Store) SetStatus(id string, status Status) (Automation, error) {
 	now := s.now()
 	var saved Automation
 	err := s.write(func(tx *sql.Tx, seq int64) error {
-		a, err := scanAutomation(tx.QueryRow(`SELECT doc, status, next_ms, seen, revision FROM automations WHERE id = ?`, id))
+		a, err := scanAutomation(tx.QueryRow(`SELECT doc, status, next_ms, seen, memo, revision FROM automations WHERE id = ?`, id))
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -376,10 +377,11 @@ func (s *Store) Delete(id string) error {
 // the clock writes columns, by name, and only while the person's revision is
 // still the one it read.
 
-// SetSeen records a watch's newest decided judgment.
-func (s *Store) SetSeen(id string, revision int64, seen string) error {
+// SetSeen records a watch's newest decided judgment, and what its look keeps
+// for the next one.
+func (s *Store) SetSeen(id string, revision int64, seen, memo string) error {
 	return s.write(func(tx *sql.Tx, seq int64) error {
-		res, err := tx.Exec(`UPDATE automations SET seen = ?, seq = ? WHERE id = ? AND revision = ?`, seen, seq, id, revision)
+		res, err := tx.Exec(`UPDATE automations SET seen = ?, memo = ?, seq = ? WHERE id = ? AND revision = ?`, seen, memo, seq, id, revision)
 		return changedUnless(res, err)
 	})
 }
@@ -409,7 +411,7 @@ func changedUnless(res sql.Result, err error) error {
 
 // Due is every active automation whose slot has come by now.
 func (s *Store) Due(now time.Time) ([]Automation, error) {
-	rows, err := s.db.Query(`SELECT doc, status, next_ms, seen, revision FROM automations WHERE status = ? AND next_ms > 0 AND next_ms <= ? ORDER BY next_ms`,
+	rows, err := s.db.Query(`SELECT doc, status, next_ms, seen, memo, revision FROM automations WHERE status = ? AND next_ms > 0 AND next_ms <= ? ORDER BY next_ms`,
 		string(StatusActive), ms(now))
 	if err != nil {
 		return nil, err
@@ -686,9 +688,9 @@ func (s *Store) write(change func(tx *sql.Tx, seq int64) error) error {
 type scanner interface{ Scan(dest ...any) error }
 
 func scanAutomation(row scanner) (Automation, error) {
-	var doc, status, seen string
+	var doc, status, seen, memo string
 	var next, revision int64
-	if err := row.Scan(&doc, &status, &next, &seen, &revision); err != nil {
+	if err := row.Scan(&doc, &status, &next, &seen, &memo, &revision); err != nil {
 		return Automation{}, err
 	}
 	var a Automation
@@ -700,6 +702,7 @@ func scanAutomation(row scanner) (Automation, error) {
 	a.Status = Status(status)
 	a.Next = fromMS(next)
 	a.Seen = seen
+	a.Memo = memo
 	a.Revision = revision
 	return a, nil
 }

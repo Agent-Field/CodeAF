@@ -1080,7 +1080,7 @@ func (a *Agent) personAskLanes() (asked bool, offered string, runs []*orchestrat
 	// was this predicate that did not look, and the lane's own comment already
 	// claimed the row said so.
 	asked = len(a.consent) > 0 || len(a.connectAsks) > 0 || len(a.harnessAsks) > 0 ||
-		len(a.standingAnswers) > 0 || len(a.subharnessAsks) > 0 || a.asked.anyLocked()
+		len(a.standingAnswers) > 0 || len(a.automationAnswers) > 0 || len(a.subharnessAsks) > 0 || a.asked.anyLocked()
 	for _, proposal := range a.taskAnswers {
 		if proposal != nil && proposal.notice.Deadline.IsZero() {
 			asked = true

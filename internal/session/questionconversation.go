@@ -67,6 +67,8 @@ func (a *Agent) ReplaceQuestion(ctx context.Context, answer Answer) (<-chan Even
 		owner.ResolveTask(q.ID, TaskAnswer{})
 	case QuestionStanding:
 		owner.ResolveStanding(q.ID, StandingAnswer{})
+	case QuestionAutomation:
+		owner.ResolveAutomation(q.ID, AutomationAnswer{})
 	case QuestionHarness:
 		owner.ResolveHarness(q.ID, false, "")
 	case QuestionSubharness:

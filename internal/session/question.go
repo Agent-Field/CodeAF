@@ -1465,6 +1465,12 @@ func questionAsked(event Event) (string, bool) {
 		}
 		return questionToken(QuestionStanding, strconv.FormatUint(event.Standing.ID, 10)), true
 
+	case EventAutomationProposal:
+		if event.Automation == nil || event.Automation.ID == 0 {
+			return "", false
+		}
+		return questionToken(QuestionAutomation, strconv.FormatUint(event.Automation.ID, 10)), true
+
 	case EventHarnessOffer:
 		if event.ID == 0 {
 			return "", false
@@ -2181,6 +2187,16 @@ func (a *Agent) applyToLane(answer Answer) error {
 		// and the claim is the ownership, so the handover is one locked step
 		// rather than the read-unlock-send it was.
 		return a.answerAsk(answer)
+	case QuestionAutomation:
+		// AN AUTOMATION CARD IS ANSWERED BY ITS OWN KEYS, and words alone are a
+		// correction ([AutomationAnswer.Change]): nothing is saved, and the
+		// model proposes again on what the person said.
+		reply, ok := automationAnswerOf(key, words)
+		if !ok {
+			return errAnswerEmpty
+		}
+		a.ResolveAutomation(answer.ID, reply)
+		return nil
 	case QuestionConsent, QuestionTask, QuestionStanding:
 		if answer.Kind == QuestionStanding && key == "" && words != "" {
 			// A STANDING CARD ANSWERED IN WORDS IS A CORRECTION, and it is not a
@@ -2443,6 +2459,10 @@ func (a *Agent) OpenQuestions() []Question {
 	for id := range a.standingAnswers {
 		standings = append(standings, id)
 	}
+	automations := make([]uint64, 0, len(a.automationAnswers))
+	for id := range a.automationAnswers {
+		automations = append(automations, id)
+	}
 	proposals := make(map[uint64]TaskNotice, len(a.taskAnswers))
 	for id, proposal := range a.taskAnswers {
 		if proposal != nil {
@@ -2486,6 +2506,9 @@ func (a *Agent) OpenQuestions() []Question {
 	}
 	for _, id := range standings {
 		open = append(open, a.standingQuestion(id))
+	}
+	for _, id := range automations {
+		open = append(open, a.automationQuestionOpen(id))
 	}
 	for id, notice := range proposals {
 		open = append(open, a.proposalQuestion(id, notice))
@@ -2758,6 +2781,28 @@ func harnessOfferReason(card Event) string {
 		parts = append(parts, hint)
 	}
 	return strings.Join(parts, " · ")
+}
+
+// automationQuestionOpen is an automation card still waiting, as the question
+// it was raised as: the card's own words where the lane banked them, and the
+// kind's answers where it did not.
+func (a *Agent) automationQuestionOpen(id uint64) Question {
+	token := strconv.FormatUint(id, 10)
+	return a.said(QuestionAutomation, token, Question{
+		ID:       id,
+		Kind:     QuestionAutomation,
+		Ask:      AskChoice,
+		Form:     FormCard,
+		Asker:    Asker{Kind: AskerModel},
+		Head:     a.presenceAsk().Text,
+		Reason:   AutomationAskReason,
+		Subject:  SubjectRef{Kind: SubjectOrder, ID: id},
+		Options:  AnswerOptions(QuestionAutomation),
+		Stakes:   StakesReversible,
+		Blocking: Blocking{Turn: true},
+		Scope:    []AnswerScope{ScopeOnce},
+		Input:    InputShape{Kind: InputText, Prompt: AutomationChangeHint},
+	})
 }
 
 // standingQuestion is a standing card as a question. Its answers are the ONE

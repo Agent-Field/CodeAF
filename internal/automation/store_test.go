@@ -162,7 +162,7 @@ func TestUpdateKeepsStateAndRestartsAChangedSchedule(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetSeen(a.ID, a.Revision, "yes"); err != nil {
+	if err := s.SetSeen(a.ID, a.Revision, "yes", "listing"); err != nil {
 		t.Fatal(err)
 	}
 	a.Title = "CI on main"
@@ -170,7 +170,7 @@ func TestUpdateKeepsStateAndRestartsAChangedSchedule(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if edited.Seen != "yes" || edited.Revision != 2 || !edited.Next.Equal(a.Next) {
+	if edited.Seen != "yes" || edited.Memo != "listing" || edited.Revision != 2 || !edited.Next.Equal(a.Next) {
 		t.Fatalf("a title edit disturbed state: %+v", edited)
 	}
 	*now = now.Add(time.Minute)
@@ -180,14 +180,14 @@ func TestUpdateKeepsStateAndRestartsAChangedSchedule(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again.Seen != "" {
+	if again.Seen != "" || again.Memo != "" {
 		t.Fatal("a changed condition kept what the old one had seen")
 	}
 	if want := now.Add(10 * time.Minute); !again.Next.Equal(want) {
 		t.Fatalf("a changed rhythm wakes at %v, want %v", again.Next, want)
 	}
 	// The clock's write with the old revision is refused.
-	if err := s.SetSeen(a.ID, a.Revision, "no"); !errors.Is(err, errChanged) {
+	if err := s.SetSeen(a.ID, a.Revision, "no", ""); !errors.Is(err, errChanged) {
 		t.Fatalf("a stale clock write = %v", err)
 	}
 }

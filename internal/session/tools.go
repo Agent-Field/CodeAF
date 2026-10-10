@@ -246,6 +246,12 @@ func (a *Agent) belt() []bare.Tool {
 	// firing's own headless session do not, because nothing unwatched may arm
 	// something that spends forever.
 	tools = append(tools, a.standingTools()...)
+	// automation (automation_tool.go) proposes and manages work on a clock, and
+	// is absent where there is no store or where the session is itself a task
+	// or an automation's run: nothing unwatched may arm something that runs on
+	// a clock. automation_report is the run's own door, on its belt alone.
+	tools = append(tools, a.automationTools()...)
+	tools = append(tools, a.automationReportTools()...)
 	tools = append(tools, a.harnessTools()...)
 	// The saved PROGRAMS, and the list that says which ones there are
 	// (tools_subharness.go). They are conditional on the same terms the three

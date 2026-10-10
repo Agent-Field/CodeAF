@@ -76,6 +76,9 @@ type Runner interface {
 type Sight struct {
 	// Text is the output, clipped to what a judgment can read.
 	Text string
+	// Memo is what the look wants back next time ([Automation.Memo]). It is
+	// kept once the look's judgment is decided.
+	Memo string
 	// USD is what the look itself cost — a tool on a paid service may.
 	USD float64
 }
@@ -417,14 +420,15 @@ func (c *Clock) watch(ctx context.Context, a Automation, run Run) Run {
 	case !judgment.Sure:
 		return c.ended(ctx, run, OutcomeUnchecked, firstNonEmpty(judgment.Line, "the model could not tell"), OutcomeUnchecked)
 	case !judgment.Met:
-		c.setSeen(a, "no")
+		c.setSeen(a, "no", sight.Memo)
 		run.Outcome, run.Line = OutcomeQuiet, firstNonEmpty(judgment.Line, "not yet")
 		return run
 	case a.Seen == "yes":
+		c.setSeen(a, "yes", sight.Memo)
 		run.Outcome, run.Line = OutcomeQuiet, firstNonEmpty(judgment.Line, "still true")
 		return run
 	}
-	c.setSeen(a, "yes")
+	c.setSeen(a, "yes", sight.Memo)
 	if a.Look.Once {
 		if err := c.Store.FinishWatch(a.ID, a.Revision); err != nil && !errors.Is(err, errChanged) {
 			c.log("could not finish " + a.Title + ": " + err.Error())
@@ -489,8 +493,8 @@ func (c *Clock) ended(ctx context.Context, run Run, outcome Outcome, line string
 
 // setSeen records a watch's judgment, unless the person changed the watch
 // while it was looking — their change is newer, and it reset what was seen.
-func (c *Clock) setSeen(a Automation, seen string) {
-	if err := c.Store.SetSeen(a.ID, a.Revision, seen); err != nil && !errors.Is(err, errChanged) {
+func (c *Clock) setSeen(a Automation, seen, memo string) {
+	if err := c.Store.SetSeen(a.ID, a.Revision, seen, memo); err != nil && !errors.Is(err, errChanged) {
 		c.log("could not record what " + a.Title + " saw: " + err.Error())
 	}
 }

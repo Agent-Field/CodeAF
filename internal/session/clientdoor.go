@@ -559,6 +559,10 @@ const (
 	// they ARE and both can spell `sentinel` again. That is issue #1010, whose
 	// spine is #928.
 	purposeSentinel callPurpose = "standing-check"
+	// purposeAutomationCheck is one automation watch's judgment: does what its
+	// look saw meet the condition? It resolves on [roles.RoleSentinel], the same
+	// low-tier seat, and is tagged for what it is.
+	purposeAutomationCheck callPurpose = "automation-check"
 	// purposeDocument is a rung of the document reader — the model's own eyes on
 	// a PDF the `read` tool cannot open as text. It is not a role because the
 	// reader resolves its model from the document settings and never from the
