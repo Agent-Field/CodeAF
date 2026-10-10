@@ -108,6 +108,13 @@ function addTool(input: Input, acc: Acc) {
   batch.calls.push(step);
 }
 
+/** A knowledge line keeps its remember receipt even when the engine filed the aside as a place change. */
+function savedRemember(entry: RichEntry): string | undefined {
+  const receipts = (entry.UndoReceipts ?? []).filter((id): id is string => typeof id === 'string' && id.length > 0);
+  if (!entry.Text.startsWith('Saved to ') || receipts.length !== 1 || !receipts[0].startsWith('remember_')) return undefined;
+  return receipts[0];
+}
+
 function addAside(input: Input, acc: Acc) {
   const { entry, index, snapshot } = input;
   const id = `${acc.turn.id}:${index}`;
@@ -121,6 +128,11 @@ function addAside(input: Input, acc: Acc) {
   }
   if (entry.AsideKind === 'remember-line' && entry.Text.trim()) {
     push(acc, index, { kind: 'remember-line', id, text: entry.Text, undoReceipts: entry.UndoReceipts });
+    return;
+  }
+  const remembered = savedRemember(entry);
+  if (remembered) {
+    push(acc, index, { kind: 'remember-line', id, text: entry.Text, undoReceipts: [remembered] });
     return;
   }
   if (!entry.Text.trim()) return;
