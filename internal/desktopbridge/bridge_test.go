@@ -549,3 +549,19 @@ func TestSnapshotCarriesRecentOutcomesOnlyWhenThereAreSome(t *testing.T) {
 		t.Fatalf("an outcome with no call must omit callId: %s", w.Body.String())
 	}
 }
+
+// The snapshot preserves the actual wait and omits it for older outcomes.
+func TestSnapshotCarriesClockReceiptElapsedSeconds(t *testing.T) {
+	b, a, id := stateFixture(t)
+	a.mu.Lock()
+	a.outcomes = []session.QuestionOutcome{{Kind: session.QuestionAsk, Token: "4", Outcome: session.QuestionDecided, Words: "Keep strict", By: "dial", ElapsedSeconds: 37.2}}
+	a.mu.Unlock()
+	w := request(b, "GET", "/api/engine/sessions/"+id, "")
+	var snapshot Snapshot
+	if err := json.Unmarshal(w.Body.Bytes(), &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.RecentOutcomes) != 1 || snapshot.RecentOutcomes[0].ElapsedSeconds != 37.2 {
+		t.Fatalf("clock receipt = %+v", snapshot.RecentOutcomes)
+	}
+}

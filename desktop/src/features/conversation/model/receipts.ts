@@ -33,6 +33,11 @@ function clock(iso?: string): string {
 }
 
 function decidedText(o: QuestionOutcome): string {
+  if (o.by === 'dial') {
+    const elapsed = o.elapsedSeconds;
+    const after = typeof elapsed === 'number' && Number.isFinite(elapsed) && elapsed > 0 ? ` after ${Math.round(elapsed)}s` : '';
+    return `${o.words || 'Answered'} · picked by codeaf${after}`;
+  }
   const who = o.by ? (DECIDERS[o.by] ?? o.by) : '';
   return [o.words || 'Answered', who, clock(o.at)].filter(Boolean).join(' · ');
 }

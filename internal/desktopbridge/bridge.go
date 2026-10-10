@@ -105,6 +105,8 @@ type OutcomeWire struct {
 	Words   string `json:"words"`
 	By      string `json:"by"`
 	At      string `json:"at"`
+	// ElapsedSeconds carries the recorded wait rather than an assumed thirty seconds.
+	ElapsedSeconds float64 `json:"elapsedSeconds,omitempty"`
 	// CallID is the call the question was about, so a reloaded window can put the
 	// receipt back in the turn that asked. Old engines omit it.
 	CallID string `json:"callId,omitempty"`
@@ -121,7 +123,7 @@ func recentOutcomes(a any) []OutcomeWire {
 	}
 	var wire []OutcomeWire
 	for _, o := range door.RecentQuestionOutcomes(20) {
-		wire = append(wire, OutcomeWire{Kind: string(o.Kind), Token: o.Token, Head: o.Head, Outcome: o.Outcome, Words: o.Words, By: o.By, At: o.At.UTC().Format(time.RFC3339), CallID: o.CallID})
+		wire = append(wire, OutcomeWire{Kind: string(o.Kind), Token: o.Token, Head: o.Head, Outcome: o.Outcome, Words: o.Words, By: o.By, At: o.At.UTC().Format(time.RFC3339), ElapsedSeconds: o.ElapsedSeconds, CallID: o.CallID})
 	}
 	return wire
 }
