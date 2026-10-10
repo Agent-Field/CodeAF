@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { savedWorkspace } from './support/synced-workspace';
 import { installMockEngine } from './support/mock-engine';
-import { emitState, installNativeWebMock, nativeCalls } from './support/native-web-mock';
+import { dismissCoveringToasts, emitState, installNativeWebMock, nativeCalls } from './support/native-web-mock';
 import { richReply } from './support/scenarios-v2';
 import { message, openApp, posts, send } from './support/conversation';
 
@@ -19,6 +19,8 @@ test('an address in the new-tab field opens a web tab; the page, the chat and th
   await page.route('**/api/engine/**', route => { engineCalls.push(`${route.request().method()} ${new URL(route.request().url()).pathname}`); return route.abort(); });
   await installNativeWebMock(page);
   await page.goto('/');
+  // The engine-down toast overlaps the sheet. Dismiss it so the page can show before the chat hides it.
+  await dismissCoveringToasts(page);
 
   // 1. Type an address: the first row opens the page, the second still asks the same words.
   await page.getByRole('button', { name: 'New tab', exact: true }).click();

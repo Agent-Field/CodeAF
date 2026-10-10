@@ -58,7 +58,7 @@ export function ToastView({ toast, onAction, onUndo, onHold, onDismiss, failure,
   };
   const alert = tone !== 'info';
   return (
-    <div className="toast" data-tone={tone} onPointerEnter={() => onHold?.(true)} onPointerLeave={() => onHold?.(false)} onFocus={() => onHold?.(true)} onBlur={onBlur} onKeyDown={onKeyDown}>
+    <div className="toast" data-tone={tone} data-native-cover="" onPointerEnter={() => onHold?.(true)} onPointerLeave={() => onHold?.(false)} onFocus={() => onHold?.(true)} onBlur={onBlur} onKeyDown={onKeyDown}>
       <span className="toast-dot" data-tone={tone} aria-hidden="true"/>
       {/* Keyed on the tone so a refusal mounts a fresh alert, which every screen reader announces; a role swapped in place is not. */}
       <span key={tone} className="toast-text" role={alert ? 'alert' : 'status'} aria-live={alert ? 'assertive' : 'polite'} aria-atomic="true">
