@@ -5,7 +5,7 @@ import type { NoteTone } from './types';
 import { usePlacesShell } from '../places/shell/PlacesShell';
 import { toasts } from '../../design/toasts';
 
-type NoteItemProps = { text: string; long?: boolean; tone?: NoteTone; undoReceipts?: string[] };
+type NoteItemProps = { text: string; long?: boolean; tone?: NoteTone; time?: string; undoReceipts?: string[] };
 
 const KIND: Record<NoteTone, SystemNoteKind> = { compaction: 'compaction', retry: 'retrying' };
 
@@ -25,7 +25,7 @@ function FoldedNote({ text }: { text: string }) {
   );
 }
 
-export function NoteItem({ text, long, tone, undoReceipts }: NoteItemProps) {
+export function NoteItem({ text, long, tone, time, undoReceipts }: NoteItemProps) {
   const shell = usePlacesShell();
   const [pending, setPending] = useState(false);
   const inFlight = useRef(false);
@@ -40,5 +40,5 @@ export function NoteItem({ text, long, tone, undoReceipts }: NoteItemProps) {
   };
   if (!text) return null;
   if (long) return <FoldedNote text={text} />;
-  return <SystemNote kind={tone ? KIND[tone] : 'info'} action={shell && undoReceipts?.length && !undone ? { label: pending ? 'Undoing…' : 'Undo', onClick: () => void undo() } : undefined}>{text}</SystemNote>;
+  return <SystemNote kind={tone ? KIND[tone] : 'info'} time={time} action={shell && undoReceipts?.length && !undone ? { label: pending ? 'Undoing…' : 'Undo', onClick: () => void undo() } : undefined}>{text}</SystemNote>;
 }

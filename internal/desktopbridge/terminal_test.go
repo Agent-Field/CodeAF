@@ -260,10 +260,12 @@ func TestClosingAnInteractiveTerminalDropsIt(t *testing.T) {
 func TestTerminalDoesNotInheritEngineSecrets(t *testing.T) {
 	t.Setenv("CODEAF_DESKTOP_TOKEN", "leak-canary-123")
 	t.Setenv("CODEAF_PLAIN_SETTING", "kept-canary")
+	t.Setenv("OPENROUTER_API_KEY", "or-leak-canary")
+	t.Setenv("OPENAI_API_KEY", "oai-leak-canary")
 	r := newTermRig(t)
 	info := r.start(t, `{"command":"env"}`)
 	got, _ := r.collect(t, info.ID, 0, "", 5*time.Second)
-	if strings.Contains(got, "leak-canary-123") || !strings.Contains(got, "kept-canary") || !strings.Contains(got, "TERM=xterm-256color") {
+	if strings.Contains(got, "leak-canary-123") || strings.Contains(got, "or-leak-canary") || strings.Contains(got, "oai-leak-canary") || !strings.Contains(got, "kept-canary") || !strings.Contains(got, "TERM=xterm-256color") {
 		t.Fatalf("environment: %q", got)
 	}
 }
