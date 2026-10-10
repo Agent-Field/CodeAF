@@ -201,6 +201,10 @@ func (p *Places) serve(w http.ResponseWriter, r *http.Request, parts []string) {
 			if needPost(w, r) {
 				p.undo(w, r)
 			}
+		case "from-folder":
+			if needPost(w, r) {
+				p.fromFolder(w, r)
+			}
 		case "stale":
 			if p.Stale == nil {
 				fail(w, 404, "unknown engine action")
