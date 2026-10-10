@@ -10,16 +10,10 @@
     "core:default",
     "core:window:allow-start-dragging",
     "core:window:allow-set-theme",
-    {
-      "identifier": "http:default",
-      "allow": [
-        {
-          "url": "http://127.0.0.1:*/api/engine/*"
-        },
-        {
-          "url": "http://localhost:*/api/engine/*"
-        }
-      ]
-    }
+    "core:window:allow-set-title",
+    "core:window:allow-set-badge-count",
+    "core:webview:allow-set-webview-position",
+    "dialog:allow-open",
+    "notification:default"
   ]
 }
