@@ -49,7 +49,8 @@ for (const scheme of ['light', 'dark'] as const) {
       expect(engine.calls.filter(call => call.path.endsWith('/answer'))).toHaveLength(0);
     });
 
-    for (const width of [320, 600, 1200]) {
+    // SH-211: at 600px and below only the focused pane is shown, so the card is measured at the narrowest width that still splits.
+    for (const width of [601, 1200]) {
       test(`CV-160: at ${width}px the card stays 38px, inside its pane, with no axe violations`, async ({ page }) => {
         await page.setViewportSize({ width, height: 800 });
         const { pane } = await openSplit(page, pendingQuestion());
@@ -62,6 +63,16 @@ for (const scheme of ['light', 'dark'] as const) {
         await expect(card.getByRole('button', { name: 'Review' })).toBeVisible();
         const result = await new AxeBuilder({ page }).include('.pane-mini-tray').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
         expect(result.violations.map(v => v.id)).toEqual([]);
+      });
+    }
+
+    for (const width of [320, 600]) {
+      test(`SH-211: at ${width}px the unfocused pane is not shown, so its mini-tray is not either`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 800 });
+        const { pane } = await openSplit(page, pendingQuestion());
+        await expect(pane).toBeHidden();
+        await expect(pane.locator('.pane-mini-tray')).toBeHidden();
+        await expect(page.locator('.workspace-pane').nth(0)).toBeVisible();
       });
     }
 
