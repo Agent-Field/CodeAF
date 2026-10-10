@@ -24,7 +24,7 @@ type TrayProps = {
   onReview?: () => void;
 };
 
-type QueueProps = { items: QueuedItem[]; onRemove: (id: string) => void; onEdit: (id: string, text: string) => void; onMove: (id: string, to: number) => void };
+type QueueProps = { items: QueuedItem[]; onRemove: (id: string) => void; onEdit: (id: string, text: string) => void; onMove: (id: string, to: number) => void; onSendNow: (id: string) => void };
 
 /** In an unfocused pane of a split the dock shows the 36px compact field (labelled with the conversation) in place of the tray and composer. */
 type Props = { tray: TrayProps; queue: QueueProps; composer: ComponentProps<typeof Composer>; compact?: { label: string } };
@@ -45,7 +45,7 @@ function Tray({ tray }: { tray: TrayProps }) {
 }
 
 function Queue({ queue }: { queue: QueueProps }) {
-  return <QueuedRows items={queue.items} onRemove={queue.onRemove} onEdit={queue.onEdit} onMove={queue.onMove} />;
+  return <QueuedRows items={queue.items} onRemove={queue.onRemove} onEdit={queue.onEdit} onMove={queue.onMove} onSendNow={queue.onSendNow} />;
 }
 
 /** Keeps the full composer mounted while compact, and hands it the keyboard (and a 200ms expand) when the pane takes focus. */
