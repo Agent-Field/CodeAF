@@ -94,7 +94,7 @@ export function ClosingSpecimen() {
     <span className="tabs-specimen-label">Inbox · background work and what needs you</span>
     <div className="closing-specimen-row">
       <div className="closing-specimen-cell">
-        <InboxList now={0} running={[{ id: 'a', title: 'Config stack', state: 'running', since: -120000 }, { id: 'b', title: 'Port fix to v1', state: 'waiting' }]} needsYou={[]} failed={[{ id: 'f', title: 'Lexer rewrite', failed: 2 }]} opener={() => noop} onSeen={noop}/>
+        <InboxList now={0} running={[{ id: 'a', title: 'Config stack', state: 'running', since: -120000 }, { id: 'b', title: 'Port fix to v1', state: 'waiting' }]} needsYou={[]} opener={() => noop}/>
       </div>
       <div className="closing-specimen-cell"><InboxList now={0} running={[]} needsYou={[]}/></div>
     </div>
