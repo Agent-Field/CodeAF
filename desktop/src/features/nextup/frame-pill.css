@@ -1,0 +1,65 @@
+/* The frame pill (Components "Frame pill"). 28h, r8, resting on the tab-hover fill.
+   Hover and press only change the fill: the words never recolor, and ghost's own
+   hover is switched off because it would. */
+
+.button.frame-pill {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--i2-pill-gap);
+  height: var(--i2-pill-height);
+  min-height: 0;
+  padding: 0 var(--i2-pill-pad-inline);
+  border: 0;
+  border-radius: var(--i2-pill-radius);
+  background-color: var(--i2-pill-fill);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+  line-height: normal;
+  white-space: nowrap;
+  filter: none;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+.frame-pill-glyph {
+  flex: none;
+  width: var(--mark-dot);
+  height: var(--mark-dot);
+  border-radius: var(--i2-banner-glyph-radius);
+  background-color: var(--amber);
+}
+
+.frame-pill-muted {
+  font-weight: var(--font-weight-regular);
+  color: var(--ink-3);
+}
+
+.button.frame-pill:hover:not(:disabled) {
+  background-color: var(--i2-pill-fill-hover);
+  color: var(--ink);
+  filter: none;
+}
+
+.button.frame-pill:active:not(:disabled) {
+  background-color: var(--i2-pill-fill-press);
+  filter: none;
+  transition-duration: var(--dur-press);
+}
+
+.button.frame-pill:focus-visible {
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft);
+}
+
+:where(html[data-input="pointer"]) .button.frame-pill:focus-visible {
+  box-shadow: none;
+}
+
+.frame-pill-specimen {
+  box-sizing: border-box;
+  display: flex;
+  min-height: 100vh;
+  padding: var(--space-8);
+  background-color: var(--canvas);
+}
