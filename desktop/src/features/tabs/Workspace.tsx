@@ -14,7 +14,6 @@ import { openKindAction } from '../shell/openKind';
 import { createTabActions } from './actions';
 import { observedClosedPanes } from './closing/background';
 import { useCloseStopKey } from './closing/useCloseStopKey';
-import { inboxFocus } from './closing/inboxFocus';
 import { useBackground } from './closing/useBackground';
 import { useClosing } from './closing/useClosing';
 import { useOverviewGesture } from './useOverviewGesture';
@@ -28,7 +27,7 @@ import { kindDef } from './kinds/registry';
 import { newTab } from './helpers';
 import { blockingOf, type AttentionItem } from '../chat/world-client';
 import { worldStore } from '../chat/world-store';
-import { focusedPane, freshWorkspace, panesOf, readWorkspace, visibleTabs, workspaceKey, workspaceReducer, type Pane, type Tab, type WorkspaceState, type WorkspaceAction } from './model';
+import { focusedPane, freshWorkspace, panesOf, readWorkspace, visibleTabs, workspaceKey, workspaceReducer, type Pane, type Tab, type WorkspaceState } from './model';
 import { FirstTurnContext, NewConversationPlaceContext, type BeforeFirstTurn } from '../conversation/firstTurn';
 import { placeTints, type TintName } from '../places/components/PlaceSwatch';
 import { onWorkspaceRequest } from '../places/shell/workspaceBus';
@@ -162,7 +161,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const { state } = sync;
   const { dispatch: rawDispatch, undo } = useStructuralUndo({ state, dispatch: sync.dispatch, enabled, keys: false });
   useUndoKeys({ undo }, enabled);
-  const dispatch = useCallback((action: WorkspaceAction) => { if (action.type === 'open-inbox') inboxFocus.request(); rawDispatch(action); }, [rawDispatch]);
+  const dispatch = rawDispatch;
   const shell = usePlacesShell();
   const [usingApi] = useState(createUsingClient);
   const [summaries, setSummaries] = useState<Record<string, TabSummary>>({});
@@ -361,11 +360,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
 
   const closing = useClosing({ state, dispatch, summaries });
   const { closeTab, closeAndStop } = closing;
-  const { background, markFailedSeen } = useBackground({ tabs: state.tabs, closed: state.closed, summaries, since: closing.sinceOf, stopping: closing.stopping, now });
-  // The Inbox appears the first time work outlives its tab or waits on the person.
-  // Failures summon it too: they are bounded (recent, unseen, a few) and leave with Seen.
-  const inboxWanted = background.running.length > 0 || background.needsYou.length > 0 || background.failed.length > 0;
-  useEffect(() => { if (inboxWanted) dispatch({ type: 'ensure-inbox' }); }, [inboxWanted]);
+  const { background } = useBackground({ tabs: state.tabs, closed: state.closed, summaries, since: closing.sinceOf, stopping: closing.stopping });
   useWindowHandoff(dispatch);
   useEffect(() => { if (sync.status.overtaken > 0) toasts.show({ key: `workspace-overtaken-${place}`, message: [`Another window changed ${sync.status.overtaken} of your tab edits. Your latest tab set is shown.`], tone: 'warning', onSettled: sync.acknowledge }); }, [sync.status.overtaken, place]);
   useEffect(() => { if (sync.status.error) toasts.show({ key: `workspace-status-${place}`, message: [sync.status.error], tone: 'warning', actions: [{ label: 'Try again', onSelect: sync.retry }] }); }, [sync.status.error, place]);
@@ -390,7 +385,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const historyHost = useHistoryWorkspace(state, dispatch);
   const [archived, dismissArchived] = useAutoArchive(state, dispatch, summaries, Date.now, sync.status.phase === 'saved' || sync.status.phase === 'saving');
 
-  const api: TabsApi = { workspaceKey: place, state, dispatch, summaries, now, closeTab, closeAndStop, closeMany: closing.closeMany, isRunning: closing.isRunning, background, markFailedSeen, openChat: onOpenChat ?? openChatHere, canOpenChat: id => !!worldStore.getState().rows.find(row => row.session === id)?.sessionFile, actions, reopenClosed: closing.reopenClosed, startRename, groupSelected, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename,
+  const api: TabsApi = { workspaceKey: place, state, dispatch, summaries, now, closeTab, closeAndStop, closeMany: closing.closeMany, isRunning: closing.isRunning, background, openChat: onOpenChat ?? openChatHere, canOpenChat: id => !!worldStore.getState().rows.find(row => row.session === id)?.sessionFile, actions, reopenClosed: closing.reopenClosed, startRename, groupSelected, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename,
     placeTint: place === 'now' ? undefined : placeTint, placeMenu, placeSwitcher };
   useNewTabKeys(api);
   const newTabHost = { state, summaries, dispatch, closeTab, receiveTransfer: sync.receiveTransfer };
