@@ -901,6 +901,8 @@
   --tooltip-gap: 8px;
   --places-dialog-width: 480px;
   --places-dialog-field-basis: 200px;
+  --toast-zero: 0px;
+  --toast-narrow-gutter: 12px;
   --toast-height: 40px;
   --toast-radius: var(--radius-card);
   --toast-pad-start: var(--space-row);
