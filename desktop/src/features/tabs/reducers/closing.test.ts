@@ -107,6 +107,13 @@ test('ensure-inbox adds one pinned Inbox first in the strip, once, without takin
   assert.equal(run(once, { type: 'ensure-inbox' }), once);
 });
 
+test('ensure-inbox sits after a place Home and still does not take focus', () => {
+  const home = tab('home', { kind: 'home', place: 'pl_reading', title: 'Reading', pinned: true });
+  const once = run(state([home, tab('a')], { activeId: 'a' }), { type: 'ensure-inbox' });
+  assert.deepEqual(ids(once), ['home', 'inbox', 'a']);
+  assert.equal(once.activeId, 'a');
+});
+
 test('open-inbox creates the Inbox when absent and focuses it; with it present it only focuses', () => {
   const opened = run(state([tab('a'), tab('b')], { activeId: 'b' }), { type: 'open-inbox' });
   assert.deepEqual(ids(opened), ['inbox', 'a', 'b']);

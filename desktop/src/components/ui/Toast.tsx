@@ -102,10 +102,10 @@ function RegionToast({ toast, channel }: { toast: ChannelToast; channel: Toasts 
 }
 
 /**
- * The window's one toast region (design 3l step 3, Components "Overlays"): one fixed stack at the bottom centre, newest
- * at the bottom. It is always on the page (empty, it draws nothing and takes no pointer) so the live regions inside it
- * are announced as they arrive, and it is a status, not a dialog, so it never takes focus. Mount it ONCE per window; a
- * specimen passes its own channel.
+ * The window's one toast region (design 3l step 3, Components "Overlays"): one toast, bottom centre. A newer toast
+ * replaces the one on screen. The region is always on the page (empty, it draws nothing and takes no pointer) so the
+ * live region inside it is announced as it arrives, and it is a status, not a dialog, so it never takes focus. Mount
+ * it ONCE per window; a specimen passes its own channel.
  */
 export function ToastRegion({ channel = windowToasts }: { channel?: Toasts }) {
   const list = useSyncExternalStore(channel.subscribe, channel.getToasts);
