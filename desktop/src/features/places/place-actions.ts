@@ -159,13 +159,3 @@ export function chatMenu(chatId: string, actions: PlaceActions, context: { readO
 export function homeMenu(place: MenuPlace, actions: PlaceActions, context: MenuContext = {}): MenuEntry[] {
   return placeMenu(place, actions, { ...context, current: true });
 }
-
-/** The sentence the delete confirmation reads, from the published DeleteImpact. Nothing is ever deleted but the place itself. */
-export function deleteSentence(name: string, impact: { children: number; chatsHere: number; wouldBeUnplaced: readonly string[] }): string {
-  const parts: string[] = [];
-  if (impact.children > 0) parts.push(`${impact.children} ${impact.children === 1 ? 'place inside it moves' : 'places inside it move'} up a level`);
-  if (impact.wouldBeUnplaced.length > 0) parts.push(`${impact.wouldBeUnplaced.length} ${impact.wouldBeUnplaced.length === 1 ? 'chat is' : 'chats are'} left in no place`);
-  else if (impact.chatsHere > 0) parts.push(`${impact.chatsHere} ${impact.chatsHere === 1 ? 'chat keeps its' : 'chats keep their'} other places`);
-  const detail = parts.length ? ` ${parts.join('; ')}.` : '';
-  return `Delete “${name}”?${detail} No chat is deleted.`;
-}

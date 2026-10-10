@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Button, Icon, IconButton, Row, RowActions, SectionLabel, Text } from '../../components/ui';
 import { LiveRows } from './live/LiveRows';
 import { ChatList, ChatRow } from './components/ChatRow';
 import { PlaceTile, PlaceTileGrid } from './components/PlaceTile';
 import type { TintName } from './components/PlaceSwatch';
-import { childMeta, nameProblem, shortTime, type HomeAttention, type HomeChat, type HomeSource, type HomeChild, type HomeConnection, type HomeDeleteImpact } from './home-model';
-import { canDropOn, chatMenu, dropMode, placeMenu, readDrag, writeDrag, deleteSentence, type DropPayload, type PlaceActions } from './place-actions';
+import { childMeta, nameProblem, shortTime, type HomeAttention, type HomeChat, type HomeSource, type HomeChild, type HomeConnection } from './home-model';
+import { canDropOn, chatMenu, dropMode, placeMenu, readDrag, writeDrag, type DropPayload, type PlaceActions } from './place-actions';
+import { type PlaceDeleteState } from './DeletePlaceConfirm';
 import { createDecisionsClient } from '../decisions/client';
 import type { DecideStatus } from '../decisions/StatusLine';
 import { DECIDED_CAP, type DecidedItem } from '../decisions/decidedModel';
@@ -249,35 +250,11 @@ export function HomeBanner({ message, onDismiss }: { message: string | undefined
   </div>;
 }
 
-export type DeleteState = { id: string; name: string; phase: 'loading' | 'ready' | 'error'; impact?: HomeDeleteImpact; message?: string };
-
-/** The inline "Delete place…" confirmation: it reads the published delete preview first, says what will happen, and only then offers Delete. */
-export function HomeDeleteConfirm({ state, onConfirm, onCancel, busy }: { state: DeleteState; onConfirm: () => void; onCancel: () => void; busy: boolean }): ReactNode {
-  const box = useRef<HTMLDivElement>(null);
-  // The menu that started this gives focus back to the place that opened it once its exit animation ends. For that short window Cancel takes
-  // focus back from the opener only, never from something the person chose.
-  useEffect(() => {
-    const claim = () => box.current?.querySelector<HTMLButtonElement>('[data-cancel]')?.focus();
-    const reclaim = (event: FocusEvent) => { const target = event.target as Element; if (target === document.body || target.hasAttribute('aria-haspopup') || target.hasAttribute('data-places-tile-focusable')) claim(); };
-    document.addEventListener('focusin', reclaim);
-    const first = setTimeout(claim, 0);
-    const done = setTimeout(() => document.removeEventListener('focusin', reclaim), 1000);
-    return () => { clearTimeout(first); clearTimeout(done); document.removeEventListener('focusin', reclaim); };
-  }, []);
-  return <div ref={box} className="home-confirm" role="group" aria-label={`Delete ${state.name}`} data-phase={state.phase}>
-    <Text tone="default" role={state.phase === 'error' ? 'alert' : 'status'}>
-      {state.phase === 'loading' ? `Checking what deleting “${state.name}” would change` : state.phase === 'error' ? state.message ?? 'Could not check what deleting would change.' : deleteSentence(state.name, state.impact as HomeDeleteImpact)}
-    </Text>
-    <div className="home-confirm-actions">
-      <Button variant="quiet" data-cancel onClick={onCancel}>Cancel</Button>
-      {state.phase === 'ready' && <Button variant="danger" loading={busy} onClick={onConfirm}>Delete place</Button>}
-    </div>
-  </div>;
-}
+export type DeleteState = PlaceDeleteState;
 
 /** Delete flow: preview first, confirm second. Only offered when the owner wired both the preview and the delete. */
 export function useDeleteFlow(actions: PlaceActions, runner: Runner) {
-  const [state, setState] = useState<DeleteState>();
+  const [state, setState] = useState<PlaceDeleteState>();
   const start = actions.loadDeletePreview && actions.remove ? (place: { id: string; name: string }) => {
     setState({ id: place.id, name: place.name, phase: 'loading' });
     actions.loadDeletePreview?.(place.id).then(
