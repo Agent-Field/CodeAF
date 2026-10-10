@@ -337,6 +337,7 @@ func (g *DecideGate) take(a *Agent, q *Question, placeID string, result decide.R
 		At:         at,
 	}
 	g.receipts = append(g.receipts, receipt)
+	a.queueDecisionReceipt(g.asideReceipt(q, placeID, decisionID, name, result, key, at))
 	a.emitQuestion(EventQuestionAnswered, *q, &answer)
 	g.remember(q, gateMemo{
 		outcome:   DecideTake,
@@ -382,6 +383,12 @@ func (g *DecideGate) decision(q *Question, placeID, id string, result decide.Res
 		At:         at,
 		Undo:       decide.Undo{Token: id},
 	}
+}
+
+// asideReceipt is the transcript's receipt for a decision just taken, built from
+// the same ledger row the store keeps so the two cannot disagree.
+func (g *DecideGate) asideReceipt(q *Question, placeID, id, place string, result decide.Result, key string, at time.Time) decide.Receipt {
+	return decide.ReceiptOf(g.decision(q, placeID, id, result, key, at), place)
 }
 
 func (g *DecideGate) person(q *Question, escalated bool) DecideResult {
@@ -440,19 +447,7 @@ func canTake(q Question, key string) bool {
 }
 
 func decisionReceiptText(ask AskKind, placeName, because string) string {
-	verb := "Decided"
-	if ask == AskPermission {
-		verb = "Allowed"
-	}
-	name := strings.TrimSpace(placeName)
-	if name == "" {
-		name = "this place"
-	}
-	because = strings.TrimSpace(because)
-	if because == "" {
-		return verb + " automatically by " + name + " · Why?"
-	}
-	return verb + " automatically by " + name + " · " + because + " · Why?"
+	return decide.Sentence(string(ask), placeName, because)
 }
 
 func clonePick(p *Pick) *Pick {

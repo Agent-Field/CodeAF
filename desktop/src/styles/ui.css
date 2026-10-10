@@ -1,3 +1,4 @@
+::selection { background: var(--accent-soft); }
 /* Reusable primitives. All design values come from design/tokens.json. */
 button, input, select { font: inherit; }
 /* Hover fills change over Foundations' fast step: 120ms ease (chrome-ease is the CSS ease curve). */

@@ -11,11 +11,27 @@
 .web-address-site { flex: none; max-width: 60%; overflow: hidden; white-space: nowrap; color: var(--ink); }
 .web-address-rest { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; color: var(--ink-3); mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
 .web-address-editing { padding: 0; background: transparent; }
+.button.web-address:active:not(:disabled) { transition-duration: var(--dur-press); }
 .web-address-input.text-input { flex: 1; min-width: 0; width: 100%; }
 .web-address-refusal { flex: none; max-width: 50%; overflow: hidden; white-space: nowrap; color: var(--ink-3); font-size: var(--type-caption-size); mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
 
-.web-sheet { position: relative; flex: 1; min-height: 0; min-width: 0; margin: 0 var(--web-sheet-inset) var(--web-sheet-inset); border-radius: var(--radius-web-sheet); background: var(--surface); overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.web-sheet { position: relative; flex: 1; min-height: 0; min-width: 0; margin: 0 var(--web-sheet-inset) var(--web-sheet-inset); border-radius: var(--radius-web-sheet); background: var(--web-sheet-fill); color: var(--web-sheet-ink); overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.web-sheet .text-default, .web-sheet .text-muted { color: var(--web-sheet-ink); }
+/* The stand-in while the native view is hidden. ink-3, not the sheet's own ink: the title is secondary text, and the rule above would otherwise paint it as the page's body colour. */
+.web-sheet .web-occluded-title { max-width: var(--web-state-max-width); padding: var(--space-4); color: var(--ink-3); text-align: center; overflow-wrap: anywhere; }
 .web-frozen { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top left; }
 .web-state { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); max-width: var(--web-state-max-width); padding: var(--space-4); text-align: center; color: var(--ink-3); }
 .web-state > .type-body { margin: 0; overflow-wrap: anywhere; }
 .web-state-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); margin-top: var(--space-2); }
+
+.web-header .web-muted-action { color: var(--ink-3); }
+.web-header .icon-button:hover:not(:disabled), .web-header .icon-button:active:not(:disabled) { color: var(--ink-2); }
+.web-header .web-muted-action:hover:not(:disabled), .web-header .web-muted-action:active:not(:disabled) { color: var(--ink-3); }
+.web-header .web-more-action { display: none; }
+.web-address-input.text-input.text-input-field { height: var(--web-address-height); min-height: var(--web-address-height); padding: 0 var(--web-address-pad); font-size: var(--type-label-size); }
+.web-address-specimen { min-width: 0; width: 100%; }
+@media (max-width: 600px) {
+  .web-header .web-wide-action { display: none; }
+  .web-header .web-more-action { display: grid; }
+}
+.web-address-input.text-input.text-input-field:focus-visible { background: var(--field); }

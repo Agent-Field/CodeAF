@@ -287,6 +287,7 @@ test('the capability reaches main and w-* only, never a web view, with the revie
   const reviewed = [
     'core:default',
     'core:window:allow-start-dragging',
+    'core:window:allow-toggle-maximize',
     'core:window:allow-set-theme',
     'core:window:allow-set-title',
     'core:window:allow-set-badge-count',

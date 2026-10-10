@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/council"
 	"github.com/Agent-Field/codeaf/internal/placegraph"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -37,6 +38,13 @@ type Places struct {
 	// "Since yesterday". Nil reads each conversation's own meta.json
 	// (places_digest.go); a test injects a fixture.
 	Recaps RecapReader
+	// Discussions lists every council. Nil means this desktop has none, and
+	// Home's live list has no discussion rows. A read error is treated as
+	// none for that list: a damaged file must not blank the rest of Home.
+	Discussions func() ([]council.Council, error)
+	// CouncilFile is the journal a council chat is opened from, or "" when
+	// the id is not one this store minted. Nil means no journal path.
+	CouncilFile func(chatID string) string
 	// Stale remembers "Not now" for the untouched-place suggestion (places_stale.go).
 	// Nil leaves both of its routes absent.
 	Stale *placegraph.StaleBook
@@ -61,6 +69,9 @@ type Places struct {
 	// answer that this bridge cannot.
 	door    *session.PlaceGraphDoor
 	choices *placegraph.ChoiceBook
+	// Decisions is the engine's door onto the decision ledgers (decisions.go).
+	// Nil leaves the log and status reads empty and the overturn route at 501.
+	Decisions *DecisionDoor
 	// allowsModel checks a place's default model against the same model list
 	// the settings page offers. UsePlaces fills it from the bridge's models.
 	allowsModel func(context.Context, string) bool
@@ -103,6 +114,9 @@ func (b *Bridge) UsePlaces(p *Places) {
 	if b.world != nil && b.world.ledger == nil {
 		b.world.ledger = b.decideLedger
 	}
+	// Councils may already be attached. Places is set, so Home and History
+	// can read that store now; UseCouncils does the same when it arrives later.
+	b.attachCouncilsLocked()
 }
 
 // ChatIDFromSessionFile is the canonical chat id of a conversation: the name of

@@ -29,7 +29,7 @@ test('New Window opens Now in Rust before renderer event routing', () => {
   assert.match(handler, /tauri::async_runtime::spawn/);
   assert.match(handler, /return;/);
   assert.ok(end < menu.indexOf('action_of(event.id().as_ref())'));
-  assert.match(windows, /trusted\(&webview\)\?;\s*open\(&app, &webview\.window\(\), request\)/);
+  assert.match(windows, /trusted\(webview\)\?;\s*open_with\(app, &webview\.window\(\), request, on_page_load\)/);
 });
 
 test('Close Window has no accelerator and the platform Window submenu is retained', () => {

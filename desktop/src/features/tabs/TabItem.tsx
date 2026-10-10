@@ -8,6 +8,7 @@ import { tabDragProps } from './hosts/dragHost';
 import { withTabMenu } from './hosts/menuHost';
 import { withPreview } from './hosts/previewHost';
 import { withSegmentTooltip } from './hosts/titleTooltipHost';
+import { splitTitle } from './helpers';
 import { focusedPane, panesOf, type Pane, type Tab } from './model';
 import { SplitTab } from './SplitTab';
 import { useWebFavicons } from '../web/favicons';
@@ -47,8 +48,26 @@ function navigate(api: TabsApi, order: readonly Tab[], tab: Tab) {
 /** ⌘-click on a Mac, Ctrl-click elsewhere: picks a tab for ⌘G instead of selecting it (Shell, "⌘-selecting and pressing ⌘G"). */
 const picks = (event: MouseEvent) => (isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey) && !event.altKey && !event.shiftKey;
 
+/**
+ * The 44px chip (Shell 3j "Compressed") is an inactive tab that would otherwise keep a title, and only at the
+ * small breakpoint. A pinned tab is already a 30px icon. A place Home keeps its name. The active tab keeps its title.
+ */
+export function compressesTab(narrow: boolean, active: boolean, pinned: boolean, home: boolean): boolean {
+  return narrow && !active && !pinned && !home;
+}
+
+/**
+ * A compressed split draws one chip, so a pane that is not the focused one still has to light it.
+ * Waiting outranks failed, the same order a full snapshot uses.
+ */
+function compressedSplitMark(marks: readonly (TabState | undefined)[]): TabState | undefined {
+  if (marks.includes('waiting')) return 'waiting';
+  if (marks.includes('failed')) return 'failed';
+  return undefined;
+}
+
 /** One strip item: the tab primitive composed with the menu, preview and drag hosts. */
-export function TabItem({ api, tab, order, inGroup = false }: { api: TabsApi; tab: Tab; order: readonly Tab[]; inGroup?: boolean }) {
+export function TabItem({ api, tab, order, inGroup = false, narrow = false }: { api: TabsApi; tab: Tab; order: readonly Tab[]; inGroup?: boolean; narrow?: boolean }) {
   const active = tab.id === api.state.activeId;
   const favicons = useWebFavicons(api.workspaceKey, panesOf(tab));
   const drag = tabDragProps(api, tab);
@@ -61,14 +80,28 @@ export function TabItem({ api, tab, order, inGroup = false }: { api: TabsApi; ta
   const previewOpen = useSyncExternalStore(api.previews.subscribe, () => api.previews.get() !== null);
   const choose = (id: string) => (event: MouseEvent) => api.dispatch(picks(event) ? { type: 'pick', id: tab.id } : { type: 'select', id });
   const frame = { ...drag, 'data-picked': picked || undefined, onPointerEnter: () => setEngaged(true), onPointerLeave: () => setEngaged(false), onFocus: () => setEngaged(true), onBlur: () => setEngaged(false) };
+  const home = isPlaceHome(tab);
+  const compressed = compressesTab(narrow, active, tab.pinned, home);
+  if (tab.split && compressed) {
+    const panes = panesOf(tab);
+    const focus = focusedPane(tab);
+    // One chip cannot show a segment per pane. The tooltip and the accessible name keep every pane title,
+    // joined the same way the split's own title is, and the segment row returns when this split is active.
+    const view = (
+      <TabView compressed icon={paneIcon(focus)} favicon={favicons.get(focus.id)} kind={focus.kind} title={splitTitle(panes)} monogram={monogramOf(focus)} active={false} inGroup={inGroup} picked={picked} state={compressedSplitMark(panes.map(pane => stateOfMark(api.summaries[pane.id]?.mark)))} id={tabDomId(tab)} frame={frame} previewOpen={previewOpen} onSelect={choose(focus.id)} onKeyDown={navigate(api, order, tab)}/>
+    );
+    return withTabMenu(api, tab, view);
+  }
   if (tab.split) {
     const { panes, focus } = tab.split;
     const segments = panes.map(pane => ({ id: pane.id, kind: pane.kind, title: pane.title, icon: paneIcon(pane), monogram: monogramOf(pane), favicon: favicons.get(pane.id), state: stateOfMark(api.summaries[pane.id]?.mark) }));
     return withTabMenu(api, tab, <SplitTab segments={segments} focus={focus} active={active} frame={frame} onSelectPane={(index, event) => choose(panes[index].id)(event)} wrapSegment={(segment, button) => withSegmentTooltip(api, tab, segment.title, button)} onClose={() => api.closeTab(tab.id)}/>);
   }
-  const switcher = isPlaceHome(tab) ? api.placeSwitcher : undefined;
+  const switcher = home ? api.placeSwitcher : undefined;
+  // The kind's words after the name. A finished job contributes `exit N`; everything else contributes nothing.
+  const meta = kindDef(tab.kind).tabMeta?.(tab, api.summaries[tab.id]);
   const view = (
-    <TabView icon={paneIcon(tab)} favicon={favicons.get(tab.id)} kind={tab.kind} title={tab.title} monogram={monogramOf(focusedPane(tab))} active={active} pinned={tab.pinned} placeTint={isPlaceHome(tab) ? api.placeTint ?? 'graphite' : undefined} inGroup={inGroup} picked={picked} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame} badge={tab.kind === 'inbox' && (api.background.needsYou.length > 0 ? 'needsYou' : api.background.failed.length > 0 ? 'failed' : false)}
+    <TabView compressed={compressed} icon={paneIcon(tab)} favicon={favicons.get(tab.id)} kind={tab.kind} title={tab.title} meta={meta} monogram={monogramOf(focusedPane(tab))} active={active} pinned={tab.pinned} placeTint={home ? api.placeTint ?? 'graphite' : undefined} inGroup={inGroup} picked={picked} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame} badge={tab.kind === 'inbox' && (api.background.needsYou.length > 0 ? 'needsYou' : api.background.failed.length > 0 ? 'failed' : false)}
       closeMode={stop ? 'stop' : 'close'} closeHint={stop ? 'Close and stop' : running ? 'Close · keeps running' : 'Close'} closeShortcut={stop ? closeStopShortcut : closeShortcutFor(tab.kind)}
       onSelect={choose(tab.id)} onClose={() => (stop ? api.closeAndStop(tab.id) : api.closeTab(tab.id))} onRename={() => api.startRename(tab.id)}
       onKeyDown={navigate(api, order, tab)} previewOpen={previewOpen} wrapSelect={select => (switcher ? <DropdownMenu label="Place switcher" items={switcher.items}>{select}</DropdownMenu> : withPreview(api, tab, select))} switcher={switcher && { alert: switcher.alert }}/>

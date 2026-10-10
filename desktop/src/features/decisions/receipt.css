@@ -1,0 +1,92 @@
+/* Inline decision receipt (Components "Inline receipt" and "Grouped receipt").
+   The shared ghost button is a 28px control. This line is 12px text in the flow, so that chrome
+   is cleared and only the fill states remain: hover is field over 120ms, press is field-2
+   darkened for 80ms. The place, the short action phrases and Why? stay ink-2; the rest is ink-3.
+   A denial uses the same colours. There is no red text and no edge accent. */
+.decision-receipt,
+.decision-receipt-summary.button {
+  margin: 0;
+  max-width: 100%;
+  font-family: var(--sans);
+  font-size: var(--decision-receipt-size);
+  font-weight: var(--decision-receipt-weight);
+  line-height: var(--decision-receipt-leading);
+  letter-spacing: normal;
+  color: var(--decision-receipt-color);
+}
+.decision-receipt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+}
+.decision-receipt-open.button,
+.decision-receipt-why.button,
+.decision-receipt-summary.button {
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  border-radius: var(--decision-receipt-radius);
+  background: transparent;
+  color: var(--decision-receipt-color);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  white-space: normal;
+  text-align: left;
+  justify-content: flex-start;
+}
+.decision-receipt-open.button,
+.decision-receipt-summary.button {
+  display: flex;
+  align-items: center;
+  gap: var(--decision-receipt-gap);
+  max-width: 100%;
+}
+.decision-receipt-summary.button { width: fit-content; }
+.decision-receipt-why.button,
+.decision-receipt-why.button:hover:not(:disabled),
+.decision-receipt-why.button:active:not(:disabled) { color: var(--decision-receipt-actor); }
+.decision-receipt-open.button:hover:not(:disabled),
+.decision-receipt-why.button:hover:not(:disabled),
+.decision-receipt-summary.button:hover:not(:disabled) {
+  background: var(--decision-receipt-hover);
+  color: var(--decision-receipt-color);
+}
+.decision-receipt-why.button:hover:not(:disabled) { color: var(--decision-receipt-actor); }
+.decision-receipt-open.button:active:not(:disabled),
+.decision-receipt-why.button:active:not(:disabled),
+.decision-receipt-summary.button:active:not(:disabled) {
+  background: var(--decision-receipt-press);
+  filter: brightness(var(--brightness-press));
+  transition-duration: var(--dur-press);
+}
+.decision-receipt-open.button:active:not(:disabled),
+.decision-receipt-summary.button:active:not(:disabled) { color: var(--decision-receipt-color); }
+.decision-receipt-actor { color: var(--decision-receipt-actor); }
+.decision-receipt-text { min-width: 0; }
+.decision-receipt-open .app-icon,
+.decision-receipt-summary .app-icon[data-icon="sparkle"] {
+  width: var(--decision-receipt-glyph);
+  height: var(--decision-receipt-glyph);
+  color: var(--decision-receipt-color);
+}
+.decision-receipt-chevron { display: inline-flex; flex: none; color: var(--decision-receipt-color); }
+.decision-receipt-chevron .app-icon {
+  width: var(--decision-receipt-chevron);
+  height: var(--decision-receipt-chevron);
+}
+/* Closed points down, as drawn. Opening turns it, the same disclosure motion as every other chevron. */
+.decision-receipt-group[data-open] .decision-receipt-chevron .app-icon[data-motion="disclosure"] {
+  transform: rotate(var(--motion-chevron-open));
+}
+.decision-receipt-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--decision-receipt-stack-gap);
+  max-width: 100%;
+  min-width: 0;
+}
