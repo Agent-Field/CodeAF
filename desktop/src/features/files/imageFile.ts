@@ -1,5 +1,5 @@
 // Pure rules for showing a picture in the File view. No DOM, so they run under node --test.
-import { extensionOf } from '../conversation/assets/paths.ts';
+import { fileKind } from '../conversation/assets/paths.ts';
 
 /**
  * The most a File view will decode: exactly the engine's own read cap (FetchFile, 16 << 20 bytes, see
@@ -8,16 +8,12 @@ import { extensionOf } from '../conversation/assets/paths.ts';
  */
 export const maxImageBytes = 16 * 1024 * 1024;
 
-/**
- * Raster formats only. SVG is deliberately absent: it is markup that can carry script, so it stays
- * the plain binary line here (the preview sheet's own rules for SVG are unchanged).
- */
-const rasterExt = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'bmp', 'ico']);
-const rasterMime = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'image/bmp', 'image/x-icon', 'image/vnd.microsoft.icon']);
-const canonicalBase64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+// SVG is safe in an image element, whose document cannot execute scripts.
+const imageMime = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'image/bmp', 'image/x-icon', 'image/vnd.microsoft.icon', 'image/svg+xml']);
+const canonicalBase64 = /^[A-Za-z0-9+/]*={0,2}$/;
 
 /** Whether the File view should ask for this path as a picture rather than as text. */
-export const isRasterImagePath = (path: string): boolean => rasterExt.has(extensionOf(path));
+export const isImagePath = (path: string): boolean => fileKind(path) === 'image';
 
 export type ImageVerdict = { ok: true; url: string } | { ok: false; reason: 'too-large' | 'unsafe' };
 
@@ -31,7 +27,10 @@ export function imageVerdict(file: { mime: string; size: number; dataBase64: str
   const base64Cap = Math.ceil(maxImageBytes / 3) * 4;
   if (file.size > maxImageBytes || file.dataBase64.length > base64Cap) return { ok: false, reason: 'too-large' };
   const mime = file.mime.split(';')[0].trim().toLowerCase();
-  if (!rasterMime.has(mime) || !canonicalBase64.test(file.dataBase64)) return { ok: false, reason: 'unsafe' };
+  const payload = file.dataBase64;
+  const bytes = payload.length / 4 * 3 - (payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0);
+  if (bytes > maxImageBytes) return { ok: false, reason: 'too-large' };
+  if (!imageMime.has(mime) || payload.length % 4 !== 0 || !canonicalBase64.test(payload)) return { ok: false, reason: 'unsafe' };
   return { ok: true, url: `data:${mime};base64,${file.dataBase64}` };
 }
 

@@ -17,38 +17,8 @@ import { EngineError, fetchEngine } from '../chat/engine-client.ts';
  * the conversation did not spool.
  */
 
-/** What sort of background work a job is, in the engine's own words. */
-export type JobKind = 'command' | 'watch' | 'render' | 'task';
-/** Where a job is. A stopped job is not a failed one. */
-export type JobState = 'running' | 'done' | 'failed' | 'stopped';
-
-/**
- * One engine background job, as GET /sessions/{id}/jobs spells it.
- * The same shape rides a `jobs` world record. Absent fields were omitted
- * by the bridge; they are not filled in here.
- */
-export type EngineJob = {
-  id: number;
-  name?: string;
-  command?: string;
-  detail?: string;
-  kind?: JobKind;
-  state?: JobState;
-  startedAt?: string;
-  /** How long it has run, in milliseconds. Absent at zero: nothing to draw. */
-  elapsedMs?: number;
-  /** Set only once the command has exited. Zero is a real exit and stays. */
-  exitCode?: number;
-  /** A watch's completed runs. Absent at zero, and for every other kind. */
-  ticks?: number;
-  logPath?: string;
-};
-
-/** What a successful stop answers. `line` is Cancel's sentence, when it had one. */
-export type JobStop = { accepted: true; line?: string };
-
-/** The tail of one job's log, after the bridge has stripped control bytes. */
-export type JobLog = { text: string; truncated: boolean };
+import type { EngineJob, JobKind, JobState, JobStop, JobLog } from './types.ts';
+export type { EngineJob, JobKind, JobState, JobStop, JobLog } from './types.ts';
 
 const kinds = new Set<string>(['command', 'watch', 'render', 'task']);
 const states = new Set<string>(['running', 'done', 'failed', 'stopped']);
@@ -132,7 +102,7 @@ function jobFrom(value: unknown): EngineJob {
   return job;
 }
 
-function listFrom(value: unknown): EngineJob[] {
+export function parseJobs(value: unknown): EngineJob[] {
   if (!Array.isArray(value)) invalid('job list');
   return value.map(jobFrom);
 }
@@ -176,7 +146,7 @@ function jobAction(id: string, jobId: string | number, action: 'stop' | 'log'): 
  * shelf is an empty list. Nothing here re-sorts.
  */
 export async function listJobs(id: string): Promise<EngineJob[]> {
-  return listFrom(await readBody(await fetchEngine(jobsPath(id)), 'job list'));
+  return parseJobs(await readBody(await fetchEngine(jobsPath(id)), 'job list'));
 }
 
 /**

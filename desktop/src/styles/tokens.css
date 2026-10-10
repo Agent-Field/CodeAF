@@ -2,6 +2,8 @@
 :root {
   color-scheme: light;
   --h: 240; --a: .13;
+  --image-view-padding: 0px;
+  --image-view-background: var(--canvas);
   --membership-note-gap: 8px;
   --membership-note-size: 12px;
   --membership-note-leading: normal;
@@ -539,6 +541,7 @@
   --composer-expand-max-height: 400px;
   --shell-card-inset: 8px;
   --preview-card-width: 300px;
+  --preview-collision-padding: 8px;
   --preview-card-inline-padding: 14px;
   --preview-card-pad: 12px 14px 14px;
   --preview-card-gap: 8px;

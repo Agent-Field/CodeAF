@@ -48,15 +48,19 @@ function placeOf(state: WorkspaceState, tab: Tab, group = state.groups.find(g =>
   return { before: state.tabs[index + 1]?.id, after: state.tabs[index - 1]?.id, group };
 }
 
-/** A closed tab with where it stood, for `closed`. A tab of this file's `close` and a pane closed out of a split both use it. */
-export const closedRecord = (tab: Tab, stood: ClosedPlace): ClosedTab => ({ ...tab, stood });
+/**
+ * A closed tab with where it stood and when it closed, for `closed`. A tab of this file's `close` and a pane closed
+ * out of a split both use it, so every way into the closed list carries the same `closedAt`.
+ */
+export const closedRecord = (tab: Tab, stood: ClosedPlace): ClosedTab => ({ ...tab, stood, closedAt: Date.now() });
 
 /**
  * Puts a closed tab back: before the tab that followed it, else after the tab that preceded it, else last; in its
  * group, which is made again from the record if closing emptied it. The tab becomes active and leaves `closed`.
  */
 export function restore(state: WorkspaceState, closed: ClosedTab, hint: ClosedPlace = {}): WorkspaceState {
-  const { stood, ...plain } = closed;
+  // `closedAt` stays on the closed list. Putting it back on the open tab would save a stale age.
+  const { stood, closedAt: _closedAt, ...plain } = closed;
   const where: ClosedPlace = { before: hint.before ?? stood?.before, after: hint.after ?? stood?.after, group: hint.group ?? stood?.group };
   const rest = state.closed.filter(t => t.id !== closed.id);
   // A tab that is somehow open already is only selected: two tabs never share an id.

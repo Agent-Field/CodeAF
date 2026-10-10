@@ -71,6 +71,22 @@ test('permission is requested once on first background need', async () => {
  assert.deepEqual(h.requests, [false, true]);
  assert.deepEqual(h.posted, []);
 });
+test('an unplaced chat is grouped under Now and a failure keeps that place', async () => {
+ const unplaced = harness();
+ await unplaced.update([item('q'), item('failed:chat', 'failed')]);
+ assert.equal(unplaced.posted[0].placeId, 'now');
+ assert.equal(unplaced.posted[0].placeName, 'Now');
+ assert.equal(unplaced.posted[1].placeName, 'Now');
+ const placed = harness();
+ placed.setPlaces({
+  members: [{ chatId: 'chat', placeId: 'pl_1' }, { chatId: 'chat', placeId: 'pl_2' }],
+  nodes: [{ id: 'pl_1', name: 'Release', archived: true }, { id: 'pl_2', name: 'Marketing' }],
+ });
+ await placed.update([item('q'), item('failed:chat', 'failed')]);
+ assert.equal(placed.posted[0].placeId, 'pl_2');
+ assert.equal(placed.posted[0].placeName, 'Marketing');
+ assert.equal(placed.posted[1].placeName, 'Marketing');
+});
 test('place identity and real words are handed to native delivery without invented content', async () => {
  const h = harness();
  h.setPlaces({ members: [{ chatId: 'chat', placeId: 'pl_1' }], nodes: [{ id: 'pl_1', name: 'Release' }] });
