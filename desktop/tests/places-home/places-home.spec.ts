@@ -5,7 +5,7 @@ import { INK3_TEXT, expectAccessible, tokenColor } from '../ui/contracts';
 // The Places Home against the designer's measurements (Places 8a to 8e) and the journeys a person takes through it. Numbers are read from the
 // design, not from tokens.json, so a drifting token fails here. Screenshots go outside the source tree, for review only.
 INK3_TEXT.push('.home-quiet', '.home-quicklook-hint', '.all-places-search', '.home-specimen-composer', '.places-tile-hint', '.home-archived-toggle', '.home-notice',
-  '.places-row-aside', '.places-row-muted', '.places-chat-excerpt', '.places-chat-time', '.places-tile-meta', '.places-crumb', '.type-section-label', '.places-heading-menu', '.places-chat-lead', '.places-tile-main', '.home-specimen-log');
+  '.places-row-aside', '.home-live-aside', '.home-live-detail', '.places-row-muted', '.places-chat-excerpt', '.places-chat-time', '.places-tile-meta', '.places-crumb', '.type-section-label', '.places-heading-menu', '.places-chat-lead', '.places-tile-main', '.home-specimen-log');
 const shots = process.env.PLACES_HOME_SHOTS ?? '/home/santosh/.codex/codeaf-design-run/places-home-shots';
 mkdirSync(shots, { recursive: true });
 
@@ -45,7 +45,7 @@ for (const theme of ['light', 'dark'] as const) {
       // Attention: 36px rows, two of them, the place named in muted words.
       await expect(attention(page, 'chat_port')).toHaveCSS('height', '36px');
       await expect(attention(page, 'chat_port')).toContainText('Port fix to v1 branch · in Config parser');
-      await expect(attention(page, 'chat_fixtures').locator('.places-row-aside')).toHaveText('running · 2m');
+      await expect(attention(page, 'chat_fixtures').locator('.home-live-aside')).toHaveText('running · 2m');
       // Tiles: 84px, three plus the New place tile, a status dot only on the one that needs you.
       await expect(tile(page, 'pl_software')).toHaveCSS('height', '84px');
       await expect(page.locator('.places-home, .home-places .places-tile')).toHaveCount(4);
@@ -417,9 +417,9 @@ test.describe('journeys', () => {
     await expect(page.getByRole('region', { name: 'Sources' })).toHaveCount(0);
   });
 
-  test('attention puts what needs you first, whatever order it arrives in', async ({ page }) => {
+  test('Live preserves the place feed order', async ({ page }) => {
     await open(page, 'place');
-    await expect(page.locator('.places-attention-row').first()).toHaveAttribute('data-attention-id', 'chat_port');
+    await expect(page.locator('[data-attention-id]').first()).toHaveAttribute('data-attention-id', 'chat_port');
   });
 
   test('narrow windows keep a 16px gutter and a full-width Quick Look', async ({ page }) => {
@@ -482,7 +482,7 @@ test.describe('journeys', () => {
   test('reduced motion removes the tile and row transitions', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await open(page, 'place');
-    for (const selector of ['.places-tile', '.places-chat-row', '.places-attention-row']) {
+    for (const selector of ['.places-tile', '.places-chat-row', '.home-live-row']) {
       const duration = await page.locator(selector).first().evaluate(el => getComputedStyle(el).transitionDuration);
       expect(duration.split(',').every(value => value.trim() === '0s'), `${selector}: ${duration}`).toBe(true);
     }

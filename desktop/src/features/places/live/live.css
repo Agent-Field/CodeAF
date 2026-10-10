@@ -1,0 +1,8 @@
+/* The Live list uses the same row geometry as the measured Decisions 12a specimen. */
+.home-live-list { display: flex; flex-direction: column; gap: var(--home-live-list-gap); list-style: none; padding: 0; margin: 0 var(--places-row-bleed); }
+.home-live-row.button { display: grid; grid-template-columns: var(--mark-dot) minmax(0, 1fr) auto; justify-content: stretch; align-items: center; width: 100%; min-height: var(--home-live-row-height); border-radius: var(--home-live-row-radius); padding: 0 var(--home-live-row-pad); gap: var(--home-live-row-gap); font-size: var(--home-live-title-size); font-weight: var(--font-weight-regular); line-height: var(--line-height-tight); color: var(--ink); text-align: left; background: transparent; transition: background-color var(--dur-fast) var(--ease); }
+.home-live-row.button:hover:not(:disabled) { background: var(--field); color: var(--ink); }
+.home-live-row.button:active:not(:disabled) { background: var(--field-2); color: var(--ink); transition-duration: var(--dur-press); }
+.home-live-text { min-width: 0; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to right, black calc(100% - var(--places-text-fade)), transparent); }
+.home-live-detail, .home-live-aside { color: var(--ink-3); }
+.home-live-aside { font-size: var(--home-live-aside-size); white-space: nowrap; }
