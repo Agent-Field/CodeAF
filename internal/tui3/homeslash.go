@@ -263,6 +263,10 @@ func homeFate(word, rest string) string {
 	case "help", "status", "cost", "budget", "cache", "debug", "update",
 		"stop", "remember", "forget":
 		return fateAnswers
+	case "always":
+		// BOTH FORMS ANSWER HERE, and home is where a rule is the person's
+		// everywhere rather than one project's (memory.go's [app.runAlways]).
+		return fateAnswers
 	}
 	return ""
 }

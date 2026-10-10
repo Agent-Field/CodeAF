@@ -195,7 +195,7 @@ func workerJournalName() string {
 // of what they did — every child's title, status and result — in place of the
 // interrupted-predecessor sentence, which is a fact about a different worker
 // and not about this one. The resume flag still rides the trajectory's steps.
-func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, wake, orders string, workspace ...string) string {
+func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, wake, rules, orders string, workspace ...string) string {
 	role := planIsTask
 	if root {
 		role = planIsRoot
@@ -249,7 +249,12 @@ func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, 
 	// brief and not the harness's note because it is a birth fact, not a
 	// mid-work sentence: the worker must read it on the opening message or it
 	// governed nothing.
-	if t := strings.TrimSpace(orders); t != "" {
+	//
+	// AND THE PERSON'S RULES CLOSE IT WITH THEM, ahead of the orders as in a
+	// node's brief: memories marked always, rendered by the caller
+	// ([AlwaysWorld]), on the same birth seam and for the same reason — a rule
+	// read after the worker's first message governed nothing it did before.
+	if t := strings.TrimSpace(joinWorldSections(rules, orders)); t != "" {
 		doc += "\n\n" + t
 	}
 	return doc

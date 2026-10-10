@@ -1805,6 +1805,10 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// hold now, and an order stood up while this conversation was open is not
 	// something the next turn may still be blind to (standing_world.go).
 	a.refreshStandingLocked()
+	// AND THE PERSON'S RULES, on the same trigger for the same reason: a rule
+	// set from another window, or from /always a moment ago, holds over the very
+	// next turn (memory_always.go).
+	a.refreshAlwaysLocked()
 	a.refreshSystemLocked()
 	hub := a.newReplayHubLocked()
 	a.hub = hub

@@ -242,6 +242,13 @@ type RunSpec struct {
 	// never disagree about what stands (#1549). Empty when nothing stands or
 	// the ambient side is off: no orders is no section, never an empty heading.
 	Standing string
+	// Always is the person's rules over this place — memories marked always —
+	// already rendered as the section a worker's brief closes on ([AlwaysWorld],
+	// read once per run for the conversation's own owners). It is the same
+	// answer a task node of this conversation reads ([TaskGraph.alwaysWorld]),
+	// so a plan-born worker works under the same rules. Empty when no rule holds
+	// or memory is off.
+	Always string
 }
 
 // ProgramEnding is a delegated run's program's own ending when it did not
@@ -1102,6 +1109,8 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		// sits in one place, and reading a folder per worker would be the same
 		// question asked ten times (standing_world.go).
 		Standing: a.standingWorld(),
+		// AND THE RULES, read once per run on the same argument.
+		Always: a.alwaysWorld(),
 	}
 }
 

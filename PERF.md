@@ -2911,6 +2911,18 @@ cost grows with that partition, rather than losing punctuation or older duplicat
 behind a retrieval ceiling. The canonical event journal is not periodically pruned;
 projection/context work is bounded, while durable history continues to grow.
 
+Rules — memories marked always — ride in message[0] and close every task brief, so
+their block is bounded twice: at most **12 rules** (`alwaysBlockMost`) and **2,400
+runes** of rule lines (`alwaysBlockRunes`, half the routed block's 4,800), whole rules
+only, the newest waiting behind a `…N more` line. The block carries no age and no
+clock-derived byte, so it is byte-identical from turn to turn until a rule changes,
+which is what keeps the cached prefix warm (`prefixcache_test.go`). The read is one
+statement per turn start through the partial index `memories_always_active`, which
+holds only active rules, so it is a seek over the rule count; a failed read keeps the
+last block rather than re-pricing the prefix to say nothing. Rules are excluded from
+the router's shortlist, the binding reads and the memory tidy, so no line is paid for
+twice.
+
 ## Conversation deletion completion
 
 Permanent deletion joins the task run's completion channel with

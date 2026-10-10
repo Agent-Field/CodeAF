@@ -228,6 +228,85 @@ func (a *app) runRemember(text string) tea.Cmd {
 	})
 }
 
+// alwaysAgent is the slice of the agent /always needs: keep one rule, and list
+// the rules in force. It is asserted beside [memoryAgent] rather than folded
+// into it for that interface's own reason — a rule is optional, and an agent
+// that keeps none simply does not have the verb — and both the in-process
+// session and the wire's agent answer it (internal/remote's memory.go).
+type alwaysAgent interface {
+	RememberAlways(text string, everywhere bool) (string, error)
+	AlwaysMemories(everywhere bool) ([]session.MemoryLine, error)
+}
+
+// runAlways is /always: bare, the rules in force here; with words, one kept as a
+// rule — put in front of every conversation and task where it holds
+// (internal/session's memory_always.go). The person typing it is the
+// confirmation, so it asks nothing.
+//
+// HOME IS EVERYWHERE. Typed on home, with no conversation in front of the person,
+// a rule is theirs in every project and the list is the rules that hold wherever
+// they work; typed in a conversation it holds in that conversation's project.
+// The engine decides the rest and says where in its receipt.
+func (a *app) runAlways(text string) tea.Cmd {
+	if _, ok := a.brain(); !ok {
+		a.note(memoryOffNote)
+		return nil
+	}
+	rules, ok := a.agent.(alwaysAgent)
+	if !ok {
+		a.note(memoryOffNote)
+		return nil
+	}
+	everywhere := a.at(pageHome)
+	if strings.TrimSpace(text) == "" {
+		return a.memoryCall(func() (string, error) {
+			lines, err := rules.AlwaysMemories(everywhere)
+			if err != nil {
+				return "could not read the rules · " + err.Error(), err
+			}
+			return alwaysText(lines, everywhere), nil
+		})
+	}
+	return a.memoryCall(func() (string, error) {
+		receipt, err := rules.RememberAlways(text, everywhere)
+		if err != nil {
+			if errors.Is(err, remote.ErrLate) {
+				// A LATE RECEIPT IS NOT A FAILED WRITE, for /remember's reason.
+				return "keeping that rule has not answered yet · check /always before trying again", err
+			}
+			return "could not keep that rule · " + err.Error(), err
+		}
+		return receipt, nil
+	})
+}
+
+// alwaysText renders the rules in force: a line saying where they hold, then
+// one rule per line with the id that names it. It is a function of its
+// arguments for [memoriesText]'s reason.
+//
+// THE EMPTY STATE IS ONE LINE AND IT SAYS HOW TO MAKE ONE, because a person who
+// asked what rules hold and heard nothing would not know the command they just
+// typed is also the way to keep one.
+func alwaysText(lines []session.MemoryLine, everywhere bool) string {
+	where := "here"
+	if everywhere {
+		where = "everywhere you work"
+	}
+	if len(lines) == 0 {
+		return "no rule holds " + where + " yet · /always <text> keeps one"
+	}
+	rows := make([]string, 0, len(lines)+1)
+	rows = append(rows, "rules in force "+where+" · "+groupedInt(len(lines)))
+	for _, line := range lines {
+		row := "· " + line.Text
+		if line.ID != "" {
+			row += "  (" + line.ID + ")"
+		}
+		rows = append(rows, row)
+	}
+	return strings.Join(rows, "\n")
+}
+
 // runForget drops ONE match because silently removing every match could erase
 // notes the person never meant to name, with no surface door to their contents.
 func (a *app) runForget(query string) tea.Cmd {

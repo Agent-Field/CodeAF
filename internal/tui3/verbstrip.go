@@ -314,4 +314,10 @@ const (
 	memoryFixWord    = "fix the wording"
 	memoryForgetWord = "forget it"
 	memoryUndoWord   = "put it back"
+	// The two spellings of `a`, one per state of the line under the cursor: an
+	// ordinary line is made a rule, put in front of every conversation and task
+	// where it holds; a rule goes back to coming up only when it bears on the
+	// work (internal/session's memory_always.go).
+	memoryAlwaysWord      = "make it always"
+	memoryWhenMattersWord = "only when it matters"
 )

@@ -93,30 +93,17 @@ func (s *Store) WriteContextual(req WriteRequest, e ContextualEvidence) (WriteRe
 
 // writeMemory is the whole body of both doors. evidence is nil for a plain
 // write and non-nil when the row and its provenance must land together.
+//
+// IT IS THREE PHASES, AND EACH IS A FUNCTION OF ITS OWN: the request made into
+// a payload this store will take ([writePayload]), the one transaction that
+// looks for the same words, and the decision of what the write becomes once it
+// has looked ([commitWrite]).
 func (s *Store) writeMemory(req WriteRequest, evidence *ContextualEvidence) (WriteResult, ContextualEvidence, error) {
 	var committed ContextualEvidence
-	owner := normalizeOwner(req.Owner)
-	if !ValidOwner(owner) {
-		return WriteResult{}, committed, fmt.Errorf("write memory: %w: an owner is required and %q is not one this build mints", ErrInvalid, req.Owner)
-	}
-	// EVIDENCE CANNOT FORGE A DIFFERENT OWNER. The row and its provenance land
-	// in one transaction, so the evidence MUST name the same blast radius the
-	// row does: a caller that slipped another owner's row into the pair is
-	// refused here, before either is written.
-	if evidence != nil && evidence.Owner != "" && normalizeOwner(evidence.Owner) != owner {
-		return WriteResult{}, committed, fmt.Errorf("write memory: %w: evidence owner %q is not the write owner %q", ErrInvalid, evidence.Owner, owner)
-	}
-	req.Title = redact.Secrets(req.Title)
-	req.Text = redact.Secrets(req.Text)
-	for i := range req.Tags {
-		req.Tags[i] = redact.Secrets(req.Tags[i])
-	}
-	payload, err := memoryPayloadFrom(Memory{Owner: owner, Type: req.Type, Title: req.Title, Text: req.Text, Tags: req.Tags, Always: req.Always})
+	owner, payload, err := writePayload(req, evidence)
 	if err != nil {
-		return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
+		return WriteResult{}, committed, err
 	}
-	payload.ID = NewMemoryID()
-	payload.SourceSession = strings.TrimSpace(req.SourceSession)
 	tx, err := s.beginWrite()
 	if err != nil {
 		return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
@@ -126,30 +113,7 @@ func (s *Store) writeMemory(req WriteRequest, evidence *ContextualEvidence) (Wri
 	if err != nil {
 		return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
 	}
-	if existing != nil && payload.Always && !existing.Always {
-		// THE SAME WORDS, ASKED FOR ALWAYS: the row that was there is promoted
-		// rather than joined by a twin (WriteRequest.Always says why it only
-		// ever raises).
-		result, committed, err := commitPromotedWrite(tx, owner, evidence, existing)
-		if err != nil {
-			return WriteResult{}, committed, err
-		}
-		if err := tx.Commit(); err != nil {
-			return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
-		}
-		return result, committed, nil
-	}
-	if existing != nil {
-		result, committed, err := commitDuplicateWrite(tx, owner, payload, evidence, existing)
-		if err != nil {
-			return WriteResult{}, committed, err
-		}
-		if err := tx.Commit(); err != nil {
-			return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
-		}
-		return result, committed, nil
-	}
-	result, committed, err := commitAddedWrite(tx, s.fts, payload, evidence, owner)
+	result, committed, err := commitWrite(tx, s.fts, owner, payload, evidence, existing)
 	if err != nil {
 		return WriteResult{}, committed, err
 	}
@@ -157,6 +121,53 @@ func (s *Store) writeMemory(req WriteRequest, evidence *ContextualEvidence) (Wri
 		return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
 	}
 	return result, committed, nil
+}
+
+// writePayload is a request made into the row this store would admit: the owner
+// proved, the evidence held to the same owner, every field redacted, and the
+// whole of it through the one gate every written memory passes
+// ([memoryPayloadFrom]). Validation comes before the transaction so an invalid
+// request can never become a successful skip.
+func writePayload(req WriteRequest, evidence *ContextualEvidence) (string, memoryPayload, error) {
+	owner := normalizeOwner(req.Owner)
+	if !ValidOwner(owner) {
+		return "", memoryPayload{}, fmt.Errorf("write memory: %w: an owner is required and %q is not one this build mints", ErrInvalid, req.Owner)
+	}
+	// EVIDENCE CANNOT FORGE A DIFFERENT OWNER. The row and its provenance land
+	// in one transaction, so the evidence MUST name the same blast radius the
+	// row does: a caller that slipped another owner's row into the pair is
+	// refused here, before either is written.
+	if evidence != nil && evidence.Owner != "" && normalizeOwner(evidence.Owner) != owner {
+		return "", memoryPayload{}, fmt.Errorf("write memory: %w: evidence owner %q is not the write owner %q", ErrInvalid, evidence.Owner, owner)
+	}
+	req.Title = redact.Secrets(req.Title)
+	req.Text = redact.Secrets(req.Text)
+	for i := range req.Tags {
+		req.Tags[i] = redact.Secrets(req.Tags[i])
+	}
+	payload, err := memoryPayloadFrom(Memory{Owner: owner, Type: req.Type, Title: req.Title, Text: req.Text, Tags: req.Tags, Always: req.Always})
+	if err != nil {
+		return "", memoryPayload{}, fmt.Errorf("write memory: %w", err)
+	}
+	payload.ID = NewMemoryID()
+	payload.SourceSession = strings.TrimSpace(req.SourceSession)
+	return owner, payload, nil
+}
+
+// commitWrite is what a write becomes once the transaction has looked for the
+// same words: a new row when nothing says them; the row that was there made a
+// rule, rather than joined by a twin, when this write asked for always and it
+// was not one (WriteRequest.Always says why that only ever raises); and
+// otherwise a skip of the row that beat it.
+func commitWrite(tx *sql.Tx, fts bool, owner string, payload memoryPayload, evidence *ContextualEvidence, existing *Memory) (WriteResult, ContextualEvidence, error) {
+	switch {
+	case existing == nil:
+		return commitAddedWrite(tx, fts, payload, evidence, owner)
+	case payload.Always && !existing.Always:
+		return commitPromotedWrite(tx, owner, evidence, existing)
+	default:
+		return commitDuplicateWrite(tx, owner, payload, evidence, existing)
+	}
 }
 
 // commitDuplicateWrite records the skip and, when provenance was supplied, lands

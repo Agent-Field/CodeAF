@@ -122,7 +122,7 @@ func TestCrewFactoryWiresLiveWebFromItsProfile(t *testing.T) {
 		}
 	}
 	write("exa", "fixture-key")
-	factory := CrewFactory(nil, t.TempDir(), profile, Seats{One: "test/model"}, "", func(string) session.Completer { return &webSeat{} })
+	factory := CrewFactory(nil, t.TempDir(), profile, Seats{One: "test/model"}, "", "", func(string) session.Completer { return &webSeat{} })
 	worker := factory(plandb.Task{}).(*BashWorker)
 	if worker.searchProvider == nil || worker.searchFetcher == nil {
 		t.Fatal("run worker lost the web pair")

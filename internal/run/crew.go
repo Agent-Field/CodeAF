@@ -124,7 +124,7 @@ type Seats struct {
 // for a tier key the profile has never held and only a row CLEARED on purpose
 // reads empty, so a fallback means somebody emptied a row rather than that the
 // profile is old.
-func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats, standing string, completerFor func(model string) session.Completer, sourceSets ...modelsource.Set) WorkerFactory {
+func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats, standing, always string, completerFor func(model string) session.Completer, sourceSets ...modelsource.Set) WorkerFactory {
 	// The admitted source set explains the refused account without resolving
 	// worker requests a second time. The completer still owns every route.
 	var sources modelsource.Set
@@ -135,6 +135,9 @@ func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 	}
 	workerFor := func(model string, completer session.Completer) *BashWorker {
 		worker := NewBashWorker(store, workspace, model, standing, completer)
+		// The person's rules ride beside the standing section on every worker
+		// this run seats, read once by the door that built the factory.
+		worker.always = always
 		// A run worker has no parent agent to inherit the web pair from. Bind
 		// the same live resolver the chat and CLI use to this run's profile.
 		worker.searchProvider, worker.searchFetcher = search.Live(func() search.Options {

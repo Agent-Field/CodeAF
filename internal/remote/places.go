@@ -147,17 +147,18 @@ func (s *server) placesCall(call Frame) (json.RawMessage, bool, error) {
 
 	case MethodMemorySnapshot, MethodMemoryChanged, MethodMemoryList,
 		MethodMemoryUpdate, MethodMemoryForget, MethodMemoryRestore,
-		MethodMemoryProvenance:
+		MethodMemoryProvenance, MethodMemorySetAlways:
 		if engine.Memory == nil {
-			// ONE REFUSAL FOR ALL SEVEN, because the store is one thing: an engine
+			// ONE REFUSAL FOR ALL EIGHT, because the store is one thing: an engine
 			// whose memory row is off has no snapshot to answer AND no line to
-			// forget, and seven different sentences about one absence would be
-			// seven chances for two screens to say it differently.
+			// forget, and eight different sentences about one absence would be
+			// eight chances for two screens to say it differently.
 			return nil, true, errors.New(engineOffWord + memoryOffWord)
 		}
 		payload, err := memoryCall(engine.Memory, call)
 		return payload, true, err
-	case MethodMemoryRemember, MethodMemoryForgetQuery, MethodMemoryMemories:
+	case MethodMemoryRemember, MethodMemoryForgetQuery, MethodMemoryMemories,
+		MethodMemoryRememberAlways, MethodMemoryAlways:
 		commands, ok := sess.current().(MemoryCommands)
 		if !ok || !commands.Remembers() {
 			return nil, true, errors.New(engineOffWord + memoryOffWord)
@@ -263,7 +264,7 @@ func (a *Agent) RemovePlace(path string) error {
 	return nil
 }
 
-// memoryCall is the seven doors, dispatched. It is split out of [placesCall] so
+// memoryCall is the eight doors, dispatched. It is split out of [placesCall] so
 // that the nil check above happens exactly once for all of them.
 func memoryCall(mem EngineMemory, call Frame) (json.RawMessage, error) {
 	switch call.Method {
@@ -331,11 +332,42 @@ func memoryCall(mem EngineMemory, call Frame) (json.RawMessage, error) {
 			return nil, err
 		}
 		return json.Marshal(MemoryOrigin{Session: where, Title: title, At: at})
+
+	case MethodMemorySetAlways:
+		args, err := arg[MemorySetAlwaysArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		return nil, mem.SetMemoryAlways(args.ID, args.Always)
 	}
 	return nil, errors.New(engineOffWord + "no such memory door")
 }
 
 func memoryCommandCall(commands MemoryCommands, call Frame) (json.RawMessage, error) {
+	// /always CARRIES ITS OWN ARGUMENTS — the words and where they were typed —
+	// so it is answered before the three that carry a bare string.
+	switch call.Method {
+	case MethodMemoryRememberAlways:
+		args, err := arg[MemoryAlwaysArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		receipt, err := commands.RememberAlways(args.Text, args.Everywhere)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(receipt)
+	case MethodMemoryAlways:
+		args, err := arg[MemoryAlwaysArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		lines, err := commands.AlwaysMemories(args.Everywhere)
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(lines)
+	}
 	text, err := arg[string](call)
 	if err != nil {
 		return nil, err

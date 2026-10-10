@@ -316,6 +316,12 @@ func (p tidyPass) run(ctx context.Context) (standing.Tidied, error) {
 	if err != nil {
 		return standing.Tidied{}, err
 	}
+	// THE TIDY NEVER SEES A RULE. A rule is the person's own words about work to
+	// come (memory_always.go), and a pass nobody watches that merged or replaced
+	// one would be rewriting an instruction the person gave rather than tidying
+	// what the machine noticed; it is not even shown one, so it cannot propose
+	// to. [applyConsolidatePlan] refuses them as well, for a plan that names one.
+	batch = withoutRules(batch)
 	if consolidateChanged(batch, p.mark.Seq) < consolidateFloor {
 		// NOT ENOUGH HAS MOVED, and the watermark is deliberately NOT advanced:
 		// the one line that did change is still owed a look, and stamping the
@@ -531,6 +537,11 @@ func applyConsolidatePlan(brain *store.Store, batch []store.Memory, owners []str
 		// for, or the quarantine — is refused here even though it sat in the
 		// batch. The pass never mutates what it was not authorized to.
 		if !authorized[row.Owner] {
+			continue
+		}
+		// NOR IS A RULE, whatever the plan says about it ([tidyPass.run] keeps
+		// rules out of what the call reads; this keeps them out of what it writes).
+		if row.Always {
 			continue
 		}
 		title, text := consolidateBody(op, row)

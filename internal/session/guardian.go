@@ -116,6 +116,12 @@ func (a *Agent) guardianAllows(ctx context.Context, hub *eventHub, call ai.ToolC
 	if a.actsInThePersonsName(call.Function.Name, json.RawMessage(call.Function.Arguments)) {
 		return false
 	}
+	// NOR ON A RULE THEY WILL WORK UNDER. A rule stands in front of every later
+	// conversation here, and whether it should is the person's call by
+	// definition; "plainly safe" is the wrong question to ask a stand-in about it.
+	if approval.KeepsARule(call.Function.Name, json.RawMessage(call.Function.Arguments)) {
+		return false
+	}
 	a.mu.Lock()
 	model := a.model
 	source := a.config.RolesSource
