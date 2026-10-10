@@ -578,6 +578,9 @@
   --pane-ring-width: 1.5px;
   --pane-gap: 8px;
   --pane-resize-hit: 8px;
+  --pane-resize-hit-coarse: 16px;
+  --hit-coarse-close: 24px;
+  --hit-coarse-row: 40px;
   --split-zone-band: 56px;
   --split-pill-height: 30px;
   --compact-composer-height: 36px;
