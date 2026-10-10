@@ -389,7 +389,7 @@ for (const theme of ['light', 'dark'] as const) {
   }
 }
 
-test('320px: the tile grid wraps and keyboard order stays in tile order', async ({ page }) => {
+test('320px: the tile grid wraps and arrow order stays in tile order', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 900 });
   await open(page);
   const grid = page.getByRole('list', { name: 'Places in codeaf' });
@@ -397,7 +397,8 @@ test('320px: the tile grid wraps and keyboard order stays in tile order', async 
   expect(new Set(boxes.map(box => box[0])).size).toBeLessThanOrEqual(2);
   for (const box of boxes) expect(box[2]).toBeGreaterThan(100);
   await grid.locator('[data-place-id="specimen-software"] .places-tile-main').focus();
-  await page.keyboard.press('Tab');
+  // The grid is one tab stop, so the arrow keys carry focus to the next tile in order.
+  await page.keyboard.press('ArrowRight');
   await expect(grid.locator('[data-place-id="specimen-reading"] .places-tile-main')).toBeFocused();
 });
 
@@ -408,4 +409,29 @@ test('reduced motion removes the fill transition but keeps the state', async ({ 
   await expect(row).toHaveCSS('transition-duration', /^0s(, 0s)*$/);
   await row.hover();
   await expect(row).toHaveCSS('background-color', await tokenColor(page, 'field'));
+});
+
+test('tile grid: one tab stop that follows focus, four columns, Command Enter opens a window', async ({ page }) => {
+  await open(page);
+  const grid = page.getByRole('list', { name: 'Places in codeaf' });
+  const stops = grid.locator('[data-places-tile-focusable][tabindex="0"]');
+  await expect(stops).toHaveCount(1);
+  const release = grid.locator('[data-place-id="specimen-release"] .places-tile-main');
+  await release.focus();
+  await expect(stops).toHaveCount(1);
+  await expect(release).toHaveAttribute('tabindex', '0');
+  await page.keyboard.press('ControlOrMeta+Enter');
+  await expect(log(page).last()).toHaveText('specimen-release:newWindow');
+  // Wide pages draw four equal columns; the New place tile is the last cell.
+  // The harness column is only 624px, so the grid is given a page-sized width to stand in for a wide Home.
+  await grid.evaluate(el => { el.style.width = '1100px'; });
+  const columns = await grid.evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length);
+  expect(columns).toBe(4);
+  const last = await grid.locator('.places-tile').last().getAttribute('data-mode');
+  expect(last).toBe('new');
+  // A narrow page keeps tiles at 160px or wider by dropping columns.
+  await grid.evaluate(el => { el.style.width = '400px'; });
+  const narrow = await grid.evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').map(parseFloat));
+  expect(narrow.length).toBeLessThan(4);
+  for (const width of narrow) expect(width).toBeGreaterThanOrEqual(160);
 });
