@@ -6,8 +6,9 @@ import { DiffBody } from './DiffBody';
 import { FileHeader, type FileView } from './FileHeader';
 import { FileLines, linesOf } from './FileLines';
 import { splitFilePath } from './fileTarget';
-import { imageVerdictOf, isRasterImagePath } from './imageFile';
+import { imageVerdictOf, isImagePath } from './imageFile';
 import type { Handoff, Load } from './useWorkView';
+import { ImageView } from './ImageView';
 import './files.css';
 
 /** The sentence the designer set for a diff whose start commit is gone from history (Shell Q24). */
@@ -27,7 +28,7 @@ export type FileSurfaceProps = {
   /** The whole file. Read only once a view needs it; `onNeedText` asks for it. */
   text?: Load<EngineTextFile>;
   onNeedText: () => void;
-  /** The file as a picture, for a raster image path only. Read only once the File view asks via `onNeedImage`. */
+  /** The file as a picture, for an image path. Read only once the File view asks via `onNeedImage`. */
   image?: Load<EngineFile>;
   onNeedImage?: () => void;
   handoff: Handoff;
@@ -68,17 +69,11 @@ const brokenLine = 'This image cannot be shown.';
 
 /** The one muted line a picture earns instead of showing, or null when it can be drawn. `broken` is the url that failed to decode. */
 function imageLine(image: Load<EngineFile> | undefined, broken: string | null): { line: string | null; url?: string } | undefined {
+  if (image?.status === 'failed') return { line: plain(image.message) };
   if (image?.status !== 'ready') return undefined;
   const verdict = imageVerdictOf(image.value);
   if (!verdict.ok) return { line: verdict.reason === 'too-large' ? `Too large to show · ${formatBytes(image.value.size)}` : 'Binary file' };
   return { line: broken === verdict.url ? brokenLine : null, url: verdict.url };
-}
-
-function ImageView({ image, state, name, deleted, onBroken }: { image?: Load<EngineFile>; state: ReturnType<typeof imageLine>; name: string; deleted: boolean; onBroken: (url: string) => void }) {
-  if (!image || image.status === 'loading') return <Message>Loading…</Message>;
-  if (image.status === 'failed') return <Message>{deleted ? 'This file was deleted.' : plain(image.message)}</Message>;
-  if (state?.line) return <Message>{state.line}</Message>;
-  return <img className="file-picture" src={state!.url} alt={name} onError={() => onBroken(state!.url!)}/>;
 }
 
 /**
@@ -92,7 +87,7 @@ export function FileSurface({ path, workspace, view, onView, diff, text, onNeedT
   const git = !!change?.git;
   const folder = outsideGit ? (dir ? `${dir} · not in git` : 'not in git') : dir;
   const shown: FileView = change && !git ? 'file' : view;
-  const picture = isRasterImagePath(path) && !!onNeedImage;
+  const picture = isImagePath(path) && !!onNeedImage;
   const [broken, setBroken] = useState<string | null>(null);
   const pictureState = shown === 'file' && picture ? imageLine(image, broken) : undefined;
   const refused = shown === 'file' && (picture ? !!pictureState?.line : text?.status === 'ready' && !!text.value.refusal);
