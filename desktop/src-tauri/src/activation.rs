@@ -55,6 +55,8 @@ pub struct Question {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Target {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub item_id: Option<String>,
     pub chat_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub question: Option<Question>,
@@ -668,6 +670,7 @@ mod tests {
 
     fn target(chat: &str, question: Option<(&str, u64)>) -> Target {
         Target {
+            item_id: None,
             chat_id: chat.into(),
             question: question.map(|(kind, id)| Question {
                 kind: kind.into(),

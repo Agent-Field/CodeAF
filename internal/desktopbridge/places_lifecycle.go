@@ -45,12 +45,15 @@ func lifecycleFields(m *Mutation, rc placegraph.Receipt, chats, children int) {
 
 // undoReceipt uses the store's receipt check so both undo routes refuse stale changes.
 func (p *Places) undoReceipt(w http.ResponseWriter, r *http.Request, token string) {
-	var ask struct{}
+	var ask plainAsk
 	if !readBody(w, r, &ask) {
 		return
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if !p.staleRevision(w, ask.IfRevision) {
+		return
+	}
 	revision, err := p.Store.Undo(token)
 	if err != nil {
 		p.failStore(w, err, "", nil)
@@ -147,8 +150,9 @@ func (p *Places) merge(w http.ResponseWriter, r *http.Request, id string) {
 }
 
 type undoAsk struct {
-	Receipts []string `json:"receipts"`
-	Token    string   `json:"token"`
+	IfRevision *uint64  `json:"ifRevision"`
+	Receipts   []string `json:"receipts"`
+	Token      string   `json:"token"`
 }
 
 // undo takes receipts back newest first, so a request that lists the receipts
@@ -172,6 +176,9 @@ func (p *Places) undo(w http.ResponseWriter, r *http.Request) {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if !p.staleRevision(w, ask.IfRevision) {
+		return
+	}
 	undone := 0
 	var rev uint64
 	for i := len(ask.Receipts) - 1; i >= 0; i-- {

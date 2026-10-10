@@ -1,8 +1,9 @@
 // Drag host (owned by the split lane): which tab is in flight, what dropping it on a tab or a group label
 // does (design 2g: "split zones in the content, group target in the strip"), and the edge drops that PaneGrid draws.
-import { useSyncExternalStore, type DragEvent } from 'react';
+import { useSyncExternalStore, type DragEvent, type KeyboardEvent } from 'react';
 import type { TabsApi } from '../context';
 import type { Tab, TabGroup } from '../model';
+import { blockNeighbour, blockSlots } from '../reducers/groups';
 
 export const tabDragType = 'application/codeaf-tab';
 /** A whole group in flight, dragged by its label (Interactions, group label: "Drag moves the whole group"). */
@@ -61,7 +62,7 @@ export function tabDragProps(api: TabsApi, tab: Tab) {
       draggedGroup = null;
       if (groupId) {
         event.preventDefault();
-        if (tab.groupId !== groupId) api.dispatch({ type: 'reorder-group', id: groupId, targetId: tab.id, after: zone === 'after' });
+        if (tab.groupId !== groupId) api.dispatch({ type: 'move-group-block', id: groupId, targetId: tab.id, after: zone === 'after' });
         return;
       }
       if (!id || id === tab.id) return;
@@ -77,8 +78,19 @@ export function tabDragProps(api: TabsApi, tab: Tab) {
  * Props for a group label. Dragging it carries the whole group. Dropping a tab on it moves the tab into the group and
  * opens it; dropping another group on it puts that group just before this one.
  */
-export function groupDragProps(api: TabsApi, group: TabGroup) {
+export function groupDragProps(api: TabsApi, group: TabGroup, announce?: (message: string) => void) {
   return {
+    // Alt+Shift+←/→ moves the whole block one slot (S-3g-18) and says where it went, since nothing else tells a screen reader.
+    onKeyDown: (event: KeyboardEvent) => {
+      if (!event.altKey || !event.shiftKey || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+      event.preventDefault();
+      const dir = event.key === 'ArrowLeft' ? -1 : 1;
+      const targetId = blockNeighbour(api.state.tabs, group.id, dir);
+      if (!targetId) return;
+      api.dispatch({ type: 'move-group-block', id: group.id, targetId, after: dir > 0 });
+      const slots = blockSlots(api.state.tabs);
+      announce?.(`Moved group ${group.title} to position ${slots.indexOf(group.id) + dir + 1} of ${slots.length}`);
+    },
     draggable: true,
     onDragStart: (event: DragEvent) => { event.dataTransfer.setData(groupDragType, group.id); event.dataTransfer.effectAllowed = 'move'; draggedGroup = group.id; },
     onDragEnd: () => { draggedGroup = null; },
@@ -90,7 +102,7 @@ export function groupDragProps(api: TabsApi, group: TabGroup) {
       const id = event.dataTransfer.getData(tabDragType);
       setDragged(null);
       draggedGroup = null;
-      if (groupId) { event.preventDefault(); if (groupId !== group.id) api.dispatch({ type: 'reorder-group', id: groupId, targetId: group.id }); }
+      if (groupId) { event.preventDefault(); if (groupId !== group.id) api.dispatch({ type: 'move-group-block', id: groupId, targetId: group.id }); }
       else if (id) { event.preventDefault(); api.dispatch({ type: 'move-group', id, groupId: group.id }); }
     },
   };

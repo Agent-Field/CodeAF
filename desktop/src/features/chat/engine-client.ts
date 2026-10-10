@@ -276,9 +276,11 @@ export async function watchEngine(snapshot: EngineSnapshot, onSnapshot: (snapsho
   if (!Number.isSafeInteger(item.seq) || item.seq < 0) throw new EngineError('The engine sent an invalid stream sequence.');
   if (item.seq <= after) return;
   if (item.type === 'snapshot') {
-   // A tail record is folded into what the window holds; one that cannot be folded ends the stream so the caller reattaches whole.
+   // A tail folds into the window when it holds one, and otherwise into this stream's preceding snapshot, so one replay batch chains before the window has caught up. A tail that cannot be folded ends the stream so the caller reattaches whole.
    const next = snapshotFrom(isTail(item.snapshot) ? mergeTail(held() ?? snapshot, item.snapshot) : item.snapshot);
    if (next.id !== snapshot.id || next.sessionFile !== snapshot.sessionFile) throw new EngineError('The engine stream changed conversations.');
+   // Each tail starts where the preceding snapshot ended, including within one replay batch.
+   snapshot = next;
    onSnapshot(next);
   } else if (item.type === 'event' && item.event && typeof item.event.kind === 'string') onEvent(item.event);
   else throw new EngineError('The engine sent an unknown stream record.');

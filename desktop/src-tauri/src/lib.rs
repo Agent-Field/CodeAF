@@ -10,6 +10,7 @@ mod native;
 #[doc(hidden)]
 pub mod notifications;
 // Public only so the native smoke test (tests/web_smoke.rs) can drive it.
+mod tabmove;
 #[doc(hidden)]
 pub mod web;
 mod windows;
@@ -181,6 +182,7 @@ pub fn run() {
             native::host_name,
             native::open_url,
             windows::window_open,
+            tabmove::tab_move_to_window,
             windows::window_move_tab,
             windows::window_claim_handoff,
             windows::window_list,
