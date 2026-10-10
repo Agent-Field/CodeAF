@@ -17,7 +17,7 @@ import { mintWith } from '../helpers';
 import { workspaceReducer, type WorkspaceAction, type WorkspaceState } from '../model';
 import { windowStructuralUndo, isUndoable, toastOwnsClose } from './structuralUndo';
 
-type Options = { state: WorkspaceState; dispatch: Dispatch<WorkspaceAction>; enabled: boolean };
+type Options = { state: WorkspaceState; dispatch: Dispatch<WorkspaceAction>; enabled: boolean; keys?: boolean };
 
 /** The words when the newest step's tabs changed since (in another window, usually), so nothing was undone. */
 export const undoRefusedMessage = 'Could not undo. These tabs have changed since.';
@@ -25,7 +25,7 @@ export const undoRefusedMessage = 'Could not undo. These tabs have changed since
 /** Only the overview may be open over the strip for ⌘Z to act; a rename or any other dialog keeps the key. */
 const blockedByDialog = () => !!document.querySelector('dialog[open]:not(.tab-overview)');
 
-export function useStructuralUndo({ state, dispatch, enabled }: Options) {
+export function useStructuralUndo({ state, dispatch, enabled, keys = true }: Options) {
   watchEditing();
   const stack = windowStructuralUndo;
   // The tab set as this window's own dispatches have left it, ahead of React's next render.
@@ -64,7 +64,7 @@ export function useStructuralUndo({ state, dispatch, enabled }: Options) {
   useShortcuts(shortcutLayer.workspace, (shortcut, event) => {
     if (shortcut.id !== 'undo' || isEditingTarget(event.target) || blockedByDialog()) return false;
     return undo();
-  }, enabled);
+  }, enabled && keys);
 
   return { dispatch: recording, undo, get steps() { return stack.size; } };
 }
