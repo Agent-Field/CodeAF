@@ -81,7 +81,8 @@ test('a chat row opens through the session file the engine reported, and only th
 
 test('Home chat digests use the matching engine recap, with waiting reasons first and missing evidence absent', () => {
   const digest = fixture('home-place');
-  digest.recap = { items: [
+  const recap = { label: 'Since yesterday', text: 'Updated the strict-mode fixtures.', since: '2026-10-09T13:00:00Z', chats: 2, unsummarised: 0 };
+  digest.recap = { ...recap, items: [
     { chatId: 'sess-run', line: 'Updated the strict-mode fixtures.' },
     { chatId: 'sess-need', line: 'Ported the parser.' },
     { chatId: 'other-chat', line: 'An unrelated decision.' },
@@ -91,6 +92,6 @@ test('Home chat digests use the matching engine recap, with waiting reasons firs
   assert.equal(view.chats.find(chat => chat.id === 'sess-need')?.excerpt, 'Allow the v1 branch push?');
   assert.equal(homeViewFromDigest({ ...digest, recap: undefined }).chats.find(chat => chat.id === 'sess-run')?.excerpt, undefined);
   const now = fixture('home-now');
-  now.recap = { items: [{ chatId: now.chats[0].id, line: 'The loose chat’s recap.' }] };
+  now.recap = { ...recap, chats: 1, items: [{ chatId: now.chats[0].id, line: 'The loose chat’s recap.' }] };
   assert.equal(homeViewFromDigest(fixture('home-root'), undefined, now).chats[0].excerpt, 'The loose chat’s recap.');
 });

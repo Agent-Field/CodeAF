@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Button, Icon, IconButton, Row, RowActions, SectionLabel, Text } from '../../components/ui';
+import { Button, Icon, SectionLabel, Text } from '../../components/ui';
 import { LiveRows } from './live/LiveRows';
 import { PlaceTile, PlaceTileGrid } from './components/PlaceTile';
 import type { TintName } from './components/PlaceSwatch';
-import { childMeta, nameProblem, type HomeAttention, type HomeSource, type HomeChild, type HomeConnection } from './home-model';
+import { childMeta, nameProblem, type HomeAttention, type HomeChild, type HomeConnection } from './home-model';
 import { canDropOn, dropMode, placeMenu, readDrag, writeDrag, type DropPayload, type PlaceActions } from './place-actions';
 import { type PlaceDeleteState } from './DeletePlaceConfirm';
 import { createDecisionsClient } from '../decisions/client';
@@ -163,25 +163,7 @@ export function HomePlacesSection({ label, places, parentId, parentName, parentT
   </section>;
 }
 
-const sourceWords: Record<NonNullable<HomeSource['state']>, string> = { ok: '', missing: 'missing', unreadable: 'unreadable', unknown: '' };
-
-/** The place's own sources, with its existing add verb available even after the empty Home disappears. */
-export function HomeSourcesSection({ placeId, sources, actions, readOnly, showAdd }: { placeId: string; sources: readonly HomeSource[]; actions: PlaceActions; readOnly?: boolean; showAdd?: boolean }) {
-  const add = showAdd && actions.addSources && !readOnly;
-  if (!sources.length && !add) return null;
-  const remove = actions.removeSource && !readOnly ? actions.removeSource : undefined;
-  return <section className="home-section home-sources" aria-label="Sources">
-    <SectionLabel>Sources</SectionLabel>
-    {sources.length > 0 && <ul className="home-source-list" aria-label="Sources">
-      {sources.map(source => <li key={source.id}><Row className="home-source" data-source-id={source.id} data-state={source.state}>
-        <span className="home-source-label">{source.label}</span>
-        <span className="home-source-note">{[source.kind, source.state ? sourceWords[source.state] : ''].filter(Boolean).join(' · ')}</span>
-        {remove && <RowActions><IconButton size="row" icon="close" iconSize="xs" label={`Remove ${source.label}`} onClick={() => void remove(placeId, source.id)}/></RowActions>}
-      </Row></li>)}
-    </ul>}
-    {add && <div className="home-empty-actions"><Button variant="quiet" onClick={() => actions.addSources?.(placeId)}><Icon name="attach" size="xs"/>Add files or links</Button></div>}
-  </section>;
-}
+export { SourcesList as HomeSourcesSection } from './home/SourcesList';
 
 /** The empty place of 8b: one sentence, the two optional actions that are wired, and the context line the engine wrote. Nothing else. */
 export function HomeEmptyPlace({ placeId, contextLine, actions, readOnly }: { placeId: string; contextLine?: string; actions: PlaceActions; readOnly?: boolean }) {
