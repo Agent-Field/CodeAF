@@ -26,6 +26,7 @@ const codeaf: HomeView = {
     place('pl_release', 'Release', 'tide', 0, 6, { tintSource: 'inherited', alsoIn: ['Software'], decide: { alwaysAsk: false, threshold: 90 } }),
   ],
   sources: [{ id: 'src_parse', kind: 'folder', label: 'codeaf/internal/parse', state: 'ok' }, { id: 'src_notes', kind: 'file', label: 'release-notes.md', state: 'missing' }],
+  instructions: 'Lexer owns tolerance. Parser stays strict.',
   chats: [
     { id: 'chat_commas', title: 'Trailing commas across the config stack', excerpt: 'Open · 4 tasks running', status: 'running', at: hoursAgo(1) },
     { id: 'chat_naming', title: 'Naming: codeaf vs CodeAF', excerpt: 'Decided lower-case everywhere', at: hoursAgo(24 * 3 + 2) },
@@ -111,7 +112,12 @@ export function HomeSpecimen({ scenario = 'place', withoutVerbs = false }: { sce
     chooseChatPlace: id => say(`chooseChatPlace:${id}`),
     addSources: id => say(`addSources:${id}`),
     removeSource: (id, source) => say(`removeSource:${id}:${source}`),
-    writeInstructions: id => say(`writeInstructions:${id}`),
+    saveInstructions: async (id, text) => {
+      if (text.includes('REFUSE')) throw new Error('Someone else changed these instructions.');
+      say(`saveInstructions:${id}:${text}`);
+      setView(current => current && current.id === id ? { ...current, instructions: text.trim() ? text : undefined } : current);
+    },
+    dropOnInstructions: async (id, source) => { say(`dropOnInstructions:${id}:${source.kind}:${source.ref}`); },
     acceptSuggestion: () => say('acceptSuggestion'),
     openFolderAsPlace: () => say('openFolder'),
     retry: () => say('retry'),

@@ -29,3 +29,6 @@ html[data-input="pointer"] .home-tab .home-tab-select.button:focus-visible { out
 .home-tab[data-force="focus"] .home-tab-select.button { outline: var(--focus-ring-width) solid transparent; box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
 
 .home-tab-hairline { flex: none; width: var(--border-width); height: var(--tab-divider-height); margin: 0 var(--space-tight); background: var(--line); }
+
+/* Home keeps its measured intrinsic width and does not enter like a newly opened conversation. */
+.home-tab.workspace-tab { max-width: none; animation: none; }

@@ -37,7 +37,7 @@ function paneIcon(pane: Pane): IconName | undefined {
 }
 
 /** Roving focus along the strip's reading order. */
-function navigate(api: TabsApi, order: readonly Tab[], tab: Tab, pendingFocus: RefObject<string | null>) {
+export function navigate(api: TabsApi, order: readonly Tab[], tab: Tab, pendingFocus: RefObject<string | null>) {
   return (event: KeyboardEvent) => {
     if (event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
       const focused = (event.target as HTMLElement).closest<HTMLElement>('[role="tab"]');
