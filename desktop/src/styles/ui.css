@@ -27,8 +27,8 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .button-primary { padding-inline: var(--control-pad-primary); background: var(--accent); color: var(--accent-ink); }
 .button-raised { background: var(--surface); box-shadow: var(--sh-1); }
 .button-quiet { background: var(--field); }
-/* Ghost text is ink-3, as the design draws it (owner rule: the design wins over the older ink-2 contrast deviation). */
-.button-ghost { padding-inline: var(--control-pad-ghost); color: var(--ink-3); }
+/* Ghost text is ink-2 (C-CTRL-4); ink-3 stays waived in the contracts until wave F. */
+.button-ghost { padding-inline: var(--control-pad-ghost); color: var(--ink-2); }
 .button-danger { background: var(--danger-soft); color: var(--danger); }
 .button-primary:hover:not(:disabled), .button-danger:hover:not(:disabled) { filter: brightness(var(--brightness-hover)); }
 .button-primary:active:not(:disabled), .button-danger:active:not(:disabled) { filter: brightness(var(--brightness-press)); }
@@ -72,7 +72,7 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .status-mark[data-status="incomplete"] { color: var(--mark-incomplete); }
 .status-mark[data-dense] { display: inline-flex; align-items: center; justify-content: center; width: var(--mark-dot); }
 .status-mark[data-dense] > * { flex: none; }
-.status-mark[data-dense][data-status="incomplete"] { color: var(--mark-failed); }
+.status-mark[data-dense][data-status="incomplete"] { color: var(--mark-incomplete); }
 .status-mark[data-dense][data-status="queued"] .status-mark-dot { width: var(--mark-dot); height: var(--mark-dot); box-shadow: inset 0 0 0 var(--tasks-ring-width) currentColor; }
 .status-mark[data-status="queued"] .status-mark-dot { width: var(--mark-ring); height: var(--mark-ring); background: transparent; box-shadow: inset 0 0 0 var(--mark-ring-width) currentColor; }
 
@@ -82,17 +82,18 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .row:hover, .row[data-selected] { background: var(--field); }
 .row-actions { display: flex; align-items: center; gap: var(--space-half); margin-left: auto; color: var(--ink-2); opacity: var(--opacity-transparent); transition: opacity var(--dur-fast) var(--ease); }
 :is(.row, [data-actions-host]):is(:hover, :focus-within) .row-actions { opacity: var(--opacity-opaque); }
+@media (pointer: coarse) { .icon-button { min-width: var(--hit); min-height: var(--hit); } }
 @media (hover: none), (pointer: coarse) { .row-actions { opacity: var(--opacity-opaque); } }
 
 /* Field: rest on field, focus on surface with a 1px accent ring and a 4px soft halo. */
 .text-input.text-input-field { height: var(--field-height); min-height: var(--field-height); padding: 0 var(--field-pad); border-radius: var(--radius-control); background: var(--field); color: var(--ink); font-size: var(--type-label-size); }
 .text-input-field::placeholder { color: var(--ink-3); }
-.text-input-field:focus-visible { background: var(--surface); }
+.text-input-field:focus-visible { background: var(--surface); box-shadow: 0 0 0 var(--field-focus-ring) var(--accent), 0 0 0 calc(var(--field-focus-ring) + var(--field-focus-halo)) var(--accent-soft); }
 
 /* Tooltip: icon-only buttons and truncated text; sh-2 and 11px text. Its position is measured. */
 .tooltip-shortcut { flex-shrink: 0; color: var(--ink-3); }
 /* A full tab title can be longer than a narrow window: the tooltip wraps inside the collision padding (overlay.collisionPadding, 12px = space-3) instead of running off the edge. */
-.tooltip { display: inline-flex; align-items: center; gap: var(--tooltip-gap); min-height: var(--tooltip-min-height); overflow-wrap: anywhere; position: fixed; top: 0; left: 0; z-index: var(--z-menu); max-width: min(var(--menu-max-width), calc(100vw - 2 * var(--space-3))); padding: var(--tooltip-pad-y) var(--tooltip-pad-x); border-radius: var(--radius-chip); background: var(--surface); color: var(--ink); box-shadow: var(--sh-2); font-family: var(--sans); font-size: var(--type-caption-size); font-weight: var(--type-label-weight); line-height: var(--tooltip-leading); pointer-events: none; }
+.tooltip { display: flex; align-items: center; gap: var(--tooltip-gap); height: var(--tooltip-height); overflow-wrap: anywhere; position: fixed; top: 0; left: 0; z-index: var(--z-menu); max-width: min(var(--menu-max-width), calc(100vw - 2 * var(--space-3))); padding: 0 var(--tooltip-pad-x); border-radius: var(--radius-chip); background: var(--surface); color: var(--ink); box-shadow: var(--sh-2); font-family: var(--sans); font-size: var(--type-caption-size); font-weight: var(--type-label-weight); line-height: var(--tooltip-leading); pointer-events: none; }
 .truncated-text { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* LEGACY CHROME CONTROLS. The sidebar, tab strip, overview, switcher, rename dialog, page toolbar and
