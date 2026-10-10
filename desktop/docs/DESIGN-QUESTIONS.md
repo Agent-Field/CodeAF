@@ -204,6 +204,7 @@ Shell). On any conflict, the design files win over code and older docs.
 | NT13 | New tab rows: the design draws square-terminal and file-code-2 at 15px | The set's terminal and file-code icons at 15px (a size on the row only). |
 | NT14 | New tab rows: hover versus selection | Pointer movement moves the highlight (one fill, field), so hover and selection never differ. Press uses field-2 for 80ms. |
 | NT15 | New tab field: the design draws the card at 600px of content plus 6px padding | The card is 612px wide in total (600 plus padding), shrinking to the card width minus a 16px gutter on narrow windows. |
+| NT16 | New tab (4c): how many "From history" rows before "See all N in History" | Up to three (the design draws two, the number that matched in its example). The section is drawn now that the History bridge exists, superseding NT2. |
 
 ## Split lane notes
 

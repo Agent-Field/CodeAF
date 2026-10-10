@@ -40,6 +40,11 @@ test('only the first conversations the section shows are kept, and one that coul
   assert.equal(rows.length <= fromHistoryLimit, true);
 });
 
+test('at most three conversations are listed, even when more are found', () => {
+  const candidates = ['a', 'b', 'c', 'd', 'e'].map(id => ({ id, line: '', item: item(id, id.toUpperCase()) }));
+  assert.deepEqual(matchesOf('q', candidates, new Map(), 9).rows.map(r => r.id), ['a', 'b', 'c']);
+});
+
 test('detail is the engine line, then archived, and nothing when there is neither', () => {
   assert.equal(historyDetail({ id: 'a', line: 'decided: x', item: item('a', 'A', { archived: true }) }), '· decided: x · archived');
   assert.equal(historyDetail({ id: 'a', line: '', item: item('a', 'A', { archived: true }) }), '· archived');
