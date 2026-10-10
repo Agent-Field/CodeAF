@@ -432,3 +432,124 @@ needed. Ledger rows added: SETTINGS-USING-283-1 and SETTINGS-USING-283-2.
 Decision: **no additional pinch wiring**. Shell 2h and Interactions require pinch-out, but renderer Ctrl+wheel cannot distinguish a physical pinch from ordinary zoom, and native delivery/cancellation has not been observed on either supported platform. The existing tab-strip-only `useOverviewGesture` is already wired; this research does not remove it or broaden it. Corrected stale OV2, which said no wiring existed.
 
 [Research and minimal native probe](research/d5-overview-pinch.md) distinguish macOS GestureEvent/Ctrl-wheel source evidence from GTK native magnification and from synthetic browser tests. Keep the overview button and platform keys as dependable doors. SH-190 native acceptance stays open until physical traces are recorded on macOS WKWebView and Linux WebKitGTK. No renderer, engine, tokens or manual behavior changed.
+
+
+## 2026-10-10 — t-d5-tab-set-permissions-research
+
+Coverage: TS-07. **Decision: Settings Permissions reads and writes the engine
+profile's default tool approval mode. It does not change the active conversation
+or claim to control every worker.** A real shared profile default exists, so
+an absent section solely on the grounds of no engine policy is unwarranted.
+The route and typed client already exist; the research decision and Settings
+integration are not ALREADY-DONE.
+
+### Design evidence and shipping assumption
+
+Interactions → Flows not drawn → Settings names a plain tab with models, roles,
+permissions, appearance and engine connection. It specifies no permission
+choices, scope or application timing. Iteration 2 I2.7 adds place decision-making;
+it does not turn Settings into a conversation override or replace the tool gate.
+Open ledger row TS-07 records the scope and timing assumption for integration.
+Owner decision D5's interim models page is older than this permissions brief.
+
+The rendered `v-Interactions.html` was opened locally with Playwright Chromium.
+The Settings label measured 200 × 18.59375 CSS pixels with
+`getBoundingClientRect`; the body uses the system font stack from
+`getComputedStyle`. This is a flow description, not a drawn Permissions
+control: those measurements do not establish a new control's geometry.
+
+### Engine evidence (paths and lines at this commit)
+
+1. **Shared default.** `internal/config/settings.go:155` names
+   `tools.approvalMode`; `:524` supplies `prompt`, `allow`, `deny`; `:1418`
+   defaults to `allow`. The registry row at `:2115` owns validation and profile
+   writes. `ToolApprovalModeAt` at `:3741` reads that profile and fails closed
+   to `prompt` for a malformed saved value. This is a profile default, not a
+   policy guaranteed across all projects and execution paths.
+2. **Conversation scope.** `internal/session/place.go:222` documents
+   `Meta.Approval` as a saved posture: `ask`, `guardian`, `allow`, `deny`, `auto`.
+   `internal/session/approvalposture.go:113` resolves the conversation word,
+   then launch posture, then the settings gate; `:163` begins
+   `SetApprovalPosture`, which rebuilds before swapping and stamps metadata at
+   `:191`. `auto` explicitly returns to the rows; it is not the global mode
+   `prompt`. `cmd/codeaf/chatv3.go:1476` restores the saved word on resume.
+3. **Overrides and timing.** `cmd/codeaf/chatv3_approval.go:64` builds a posture
+   using the project/profile rules and guardian switch; `cmd/codeaf/chatv3.go:1990`
+   resolves the blanket mode through the project layer. Place defaults can
+   also supply the conversation posture at turn opening
+   (`internal/session/placegraphpolicy.go:395`). Policies are immutable pointer
+   swaps (`internal/session/approvalgate.go:40`); saving profile rows alone
+   does not rebuild an already-running gate. `internal/session/session.go:1390`
+   documents that callers with no policy allow everything, and explicit worker
+   policies exist (`internal/session/bashbelt_worker.go:85`).
+4. **Roles and floors.** Guardian is the cheap safety classification role
+   (`internal/session/guardian.go:59`, `internal/roles/roles.go:49`), not another
+   global approval enum. `cmd/codeaf/chatv3_approval.go:68` maps `ask` to prompt
+   with guardian off and `guardian` to prompt with guardian on. Guardian cannot
+   approve actions in the person's name (`internal/session/guardian.go:116`).
+   Policy replacement retains the engine's safety floors
+   (`internal/session/approvalgate.go:34`); “allow” must not promise no questions.
+5. **Existing bridge.** `internal/desktopbridge/settings_permissions.go:17`
+   registers authenticated GET and PUT `/api/engine/settings/permissions`.
+   GET returns `{mode, modes}`; PUT accepts exactly `{mode}` and returns the
+   persisted result. It writes `models.ProfileDir` at `:43`, rejects an
+   unattached settings profile at `:27`, and never loops over live sessions.
+   `desktop/src/features/settings/settingsClient.ts:38` already wraps both
+   operations through `engineJson`. The desktop launch attaches its profile
+   at `cmd/codeaf/desktop_bridge.go:138`. The HTTP contract describes that
+   settings profile; it does not prove a forwarded conversation shares it.
+
+### Contract and follow-through for the integrator
+
+**t-d5-be-set-permissions-contract:** retain the existing settings GET/PUT route,
+registry-owned choices, authentication, strict validation and profile writer.
+No new bridge route is required for TS-07. Add mock-engine parity with that
+exact response shape and acknowledgements when the Settings control is wired.
+Document the write as a saved default for gates built subsequently: it does not
+retroactively rebuild open sessions or replace their saved/place/project/launch
+choices. A reconnect to an existing agent is not a new gate. An immediate
+all-session update would need a separate designed, remote-capable rebuild
+operation; do not silently implement one in this Settings write.
+
+**t-d5-tab-set-permissions:** use `permissions()` / `setPermissions()` for one
+shared Select under Permissions, labelled “Default approval mode”, with neutral
+labels “Ask before running”, “Allow by default”, “Deny by default” mapped to the
+engine's modes. Explain “Applies when a conversation's tool rules are next
+built. Open conversations keep their current rules.” Show no invented current
+mode while loading or when the capability is absent; surface a real refusal
+and retain the last acknowledged choice on failed writes. Do not present the
+profile value as the effective permission state of the selected conversation.
+The design does not supply these labels; they are the TS-07 shipping assumption.
+
+A conversation dial is a separate feature, outside TS-07. Existing GET
+`/sessions/{id}/using` reads its provenance and effective settings; POST
+`/sessions/{id}/using/apply` applies a value already decided by its places
+(`internal/desktopbridge/using.go:311`). It cannot set an arbitrary posture.
+If a conversation dial is later designed, propose
+**t-d5-be-conversation-permissions** for authenticated GET/PUT
+`/sessions/{id}/permissions` with `{available, stored?, resolved?, standing?,
+postures}` and PUT `{posture}`, delegated to `ApprovalDial`,
+`SetApprovalPosture` and the existing remote door
+(`internal/remote/approval.go:77`). Pair it with
+**t-d5-tab-conversation-permissions**. Missing gates mean absent controls;
+never write `meta.json` directly or invent a renderer-only override.
+
+### Manual, prompt and verification
+
+No product behavior changes in this research commit, so no manual or system
+prompt changes are required now. The UI follow-up must add a new
+`internal/manual/chat/desktop-settings-permissions.md` with a separate probe
+file explaining scope, application timing, overrides and remaining safety
+questions. Do not edit the shared desktop manual page. No system prompt change
+is needed for a settings-only control: it adds no model tool and permission
+checks stay in the engine. A later model-facing posture tool would need both
+prompt and manual updates in its own change.
+
+TypeScript compilation and design policy passed. All nine settings-client
+tests passed, including permission round trips and rejected acknowledgements.
+Focused bridge tests passed for all three modes, malformed writes, token
+requirements and missing profile. Seven focused session tests passed for
+posture persistence, auto/launch precedence, failed rebuilds, missing gates,
+rebuild preservation, pushed-policy use and nil-policy rejection. No Go,
+renderer, token or manual source changed; full Go build/vet/laws and application
+Chromium/WebKit specs are not applicable to this research-only commit.
