@@ -817,6 +817,14 @@
   --using-sheet-left: 0px;
   --using-sheet-top: 0px;
   --using-confirm-gap: 8px;
+  --palette-width: 620px;
+  --palette-height: 560px;
+  --palette-row-height: 34px;
+  --palette-input-height: 48px;
+  --place-menu-width: 230px;
+  --menu-swatch-size: 16px;
+  --menu-swatch-radius: 5px;
+  --menu-swatch-ring: 3.5px;
   --places-text-fade: var(--tab-title-fade);
   --places-attention-height: 36px;
   --places-chat-height: 44px;
@@ -1344,6 +1352,8 @@
   --places-swatch-graphite: oklch(.55 .012 250);
   --history-added: var(--success);
   --scrim: oklch(0 0 0 / .2);
+  --scrim-palette: oklch(0 0 0 / .18);
+  --scrim-quicklook: var(--scrim);
   --frame-glass: oklch(.93 .035 var(--h) / .8);
   --engine-notice-color: var(--ink-3);
 }
@@ -1395,6 +1405,7 @@
   --chrome-surface: var(--surface);
   --chrome-accent: var(--accent);
   --history-added: var(--success);
+  --scrim-quicklook: var(--scrim);
   --frame-glass: oklch(.93 .035 var(--h) / .8);
   --engine-notice-color: var(--ink-3);
 }
@@ -1487,6 +1498,8 @@
   --places-swatch-graphite: oklch(.55 .012 250);
   --history-added: var(--success);
   --scrim: oklch(0 0 0 / .4);
+  --scrim-palette: oklch(0 0 0 / .4);
+  --scrim-quicklook: var(--scrim);
   --frame-glass: oklch(.27 .035 var(--h) / .84);
   --engine-notice-color: var(--ink-3);
 }
@@ -1580,6 +1593,8 @@
   --places-swatch-graphite: oklch(.55 .012 250);
   --history-added: var(--success);
   --scrim: oklch(0 0 0 / .4);
+  --scrim-palette: oklch(0 0 0 / .4);
+  --scrim-quicklook: var(--scrim);
   --frame-glass: oklch(.27 .035 var(--h) / .84);
   --engine-notice-color: var(--ink-3);
   }
@@ -1674,6 +1689,8 @@
   --places-swatch-graphite: oklch(.55 .012 250);
   --history-added: var(--success);
   --scrim: oklch(0 0 0 / .2);
+  --scrim-palette: oklch(0 0 0 / .18);
+  --scrim-quicklook: var(--scrim);
   --frame-glass: oklch(.93 .035 var(--h) / .8);
   --engine-notice-color: var(--ink-3);
 }
@@ -1766,6 +1783,8 @@
   --places-swatch-graphite: oklch(.55 .012 250);
   --history-added: var(--success);
   --scrim: oklch(0 0 0 / .4);
+  --scrim-palette: oklch(0 0 0 / .4);
+  --scrim-quicklook: var(--scrim);
   --frame-glass: oklch(.27 .035 var(--h) / .84);
   --engine-notice-color: var(--ink-3);
 }
