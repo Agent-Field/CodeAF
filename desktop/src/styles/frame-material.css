@@ -1,0 +1,19 @@
+/* Only the rail and strip sample the backdrop. Blurring the whole shell would also blur beneath
+   opaque conversation and specimen pages, which stalls software-rendered windows. */
+:root[data-material="native"] .app-shell { background: var(--frame-glass); }
+:root[data-material="native"] body { background: transparent; }
+:root[data-material="glass"] .app-shell { background: transparent; }
+:root[data-material="glass"] .sidebar,
+:root[data-material="glass"] .workspace-tabbar,
+:root[data-material="glass"] .content-toolbar {
+  background: var(--frame-glass);
+  backdrop-filter: blur(var(--frame-blur)) saturate(var(--frame-saturate));
+}
+/* A window without focus or with an accessibility override uses the same solid ground everywhere. */
+:root[data-material="solid"] .app-shell,
+:root[data-material="solid"] .sidebar,
+:root[data-material="solid"] .workspace-tabbar,
+:root[data-material="solid"] .content-toolbar { background: var(--frame); backdrop-filter: none; }
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .app-shell, .sidebar, .workspace-tabbar, .content-toolbar { background: var(--frame); backdrop-filter: none; }
+}

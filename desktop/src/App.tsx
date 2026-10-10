@@ -7,15 +7,16 @@ import { FilesSpecimen } from './features/files/specimens/FilesSpecimen';
 import { PreviewSpecimen } from './features/tabs/specimens/PreviewSpecimen';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
-import { checkEngine } from './lib/engine';
 import { connectDesktopTabs } from './lib/desktopTabs';
-import { nativeControls } from './design/nativeControls';
 import { Button, IconButton, Icon, PageHeading, SectionHeading, Text, CodeText, Markdown, Surface, ContextMenu, DropdownMenu, WorkStateIndicator, ToastHost, iconNames, type MenuEntry } from './components/ui';
 import design from './design/tokens.json';
 import { useMediaQuery } from './design/useMediaQuery';
-import './styles/material.css';
+import './styles/frame-material.css';
+import './features/shell/touch.css';
 import './App.css';
-import { initMaterial } from './design/material';
+import { useWindowActive } from './design/useWindowActive';
+import { windowPlace } from './lib/native/windowPlace';
+import { useWindowKeys } from './features/shell/useWindowKeys';
 import { focusHistoryStorageKey, Workspace } from './features/tabs/Workspace';
 import { restoreNamedScroll } from './features/tabs/scroll/memoryStore';
 import type { FocusEntry } from './features/focus-history/model';
@@ -49,8 +50,8 @@ import { requestNewTabField } from './features/shell/newTabField';
 import { usePaletteKey } from './features/shell/usePaletteKey';
 
 /** Settings is a tab of the workspace (its own kind), so it is not a page here: its rail item opens that tab. */
-type Page = 'Workspace' | 'Activity' | 'Design system';
-const devPages: readonly Page[] = ['Workspace', 'Activity', 'Design system'];
+type Page = 'Workspace' | 'Design system';
+const devPages: readonly Page[] = ['Workspace', 'Design system'];
 const desktop = isTauri();
 const mac = desktop && /Mac/.test(navigator.platform);
 document.documentElement.dataset.environment = mac ? 'mac-desktop' : desktop ? 'desktop' : 'browser';
@@ -74,8 +75,10 @@ function restoreFocus(shell: PlacesShell, entry: FocusEntry) {
 
 function App() {
  useEffect(connectDesktopTabs, []);
- // The browser's glass blur over the whole Design system page stalls and kills the renderer under software rendering, so only the desktop shell (native or solid, never blurred by CSS) wires the material.
- useEffect(() => desktop ? initMaterial() : undefined, []);
+ useWindowActive();
+ useWindowKeys();
+ // Boot is synchronous so the first workspace reads this window's destination and storage key.
+ const [boot] = useState(windowPlace);
  const [page, setPage] = useState<Page>('Workspace');
  const narrow = useMediaQuery(`(max-width: ${design.breakpoints.small}px)`);
  const frame = useShellFrame(narrow);
@@ -90,8 +93,6 @@ function App() {
  }, [narrow, drawerOpen]);
  function navigate(next: Page) { setPage(next); setDrawerOpen(false); }
  function toggleSidebar() { if (narrow) setDrawerOpen(open => !open); else frame.toggleRail(); }
- const [engine, setEngine] = useState('Not checked');
- const [busy, setBusy] = useState(false);
  // The app layer of the shell's one shortcut registry (design/keyboard.ts): the rail and Focus mode work on every page (⌘K: usePaletteKey).
  useShortcuts(shortcutLayer.app, shortcut => {
   if (shortcut.id === 'rail') { toggleSidebar(); return true; }
@@ -106,14 +107,8 @@ function App() {
   window.addEventListener(devPageEvent, onPage);
   return () => window.removeEventListener(devPageEvent, onPage);
  }, []);
- async function health() {
-  setBusy(true);
-  try { const h = await checkEngine(); setEngine(`${h.status} · v${h.version} · ${h.platform}`); }
-  catch (e) { setEngine(String(e instanceof Error ? e.message : e)); }
-  finally { setBusy(false); }
- }
  const settingsOpen = page === 'Workspace' && activeKind === 'settings';
- const shell = usePlacesShellController();
+ const shell = usePlacesShellController(boot);
  const activeHome = useActiveHome();
  // Every place verb lands in the workspace: going somewhere from another page brings the workspace back.
  const enterWorkspace = useCallback(() => { setDrawerOpen(false); setPage('Workspace'); if (activeKind === 'settings') requestLeaveKind('settings'); }, [activeKind]);
@@ -124,13 +119,7 @@ function App() {
  const [nextUpWindow] = useState(() => createNextUp());
  const shellNow = useRef(shell);
  shellNow.current = shell;
- const [windowLabel, setWindowLabel] = useState('main');
- useEffect(() => {
-  let live = true;
-  void nativeControls().currentWindow().then(info => { if (live && info.label) setWindowLabel(info.label); }).catch(() => undefined);
-  return () => { live = false; };
- }, []);
- const focusWire = useFocusWireFor(focusHistoryStorageKey(windowLabel), entry => restoreFocus(shellNow.current, entry));
+ const focusWire = useFocusWireFor(focusHistoryStorageKey(boot.label), entry => restoreFocus(shellNow.current, entry));
  // No Inbox row. Questions in other conversations are the strip's frame pill, fed by nextUpWindow.
  // Settings is the bottom row. Design system sits above it only in a development build. Theme stays in that tab.
  const rail = usePlaceRail(shell, {
@@ -185,8 +174,7 @@ function App() {
    <div className="workspace-page" hidden={page !== 'Workspace'}><Workspace key={shell.place} place={shell.place} placeTitle={current?.name} placeTint={current?.effectiveTint} arrival={shell.arrival}
     firstTurn={shell.place === 'now' ? undefined : firstTurn} placeMenu={placeMenu} placeSwitcher={sidebarHidden ? placeSwitcher(shell, rail, switcherRowContents) : undefined}
     onActivate={() => { navigate('Workspace'); }} enabled={page === 'Workspace'} leading={stripToggle}/></div>
-   {page === 'Activity' && <div className="content-card"><div className="page-content"><PageHeading>Activity</PageHeading><Text className="intro">Your workspace is quiet. No sessions yet.</Text><Surface><div><SectionHeading>Local engine</SectionHeading><Text role="status">{engine}</Text></div><Button variant="quiet" loading={busy} onClick={health}>{busy ? 'Checking…' : 'Check engine'}</Button></Surface></div></div>}
-   {page === 'Design system' && <div className="content-card"><div className="page-content"><PageHeading>Less, but considered.</PageHeading><Text className="intro">Soft chrome. Native type. Space to focus.</Text><Surface direction="column"><SectionHeading>Surfaces</SectionHeading><div className="swatches">{['canvas','surface','overlay-surface','composer-surface','accent','text'].map(s => <div key={s}><div className={`swatch ${s}`}/><small>{s}</small></div>)}</div></Surface><Surface direction="column"><SectionHeading>Typography</SectionHeading><Text className="type-sample">The font your device calls home.</Text><Text>System sans for the interface. System monospace for code.</Text><CodeText>const workspace = "codeaf";</CodeText></Surface><Surface direction="column"><SectionHeading>Response typography</SectionHeading><Markdown>{'# A readable result\n\n## Findings\n\nUse `src/engine.ts` and `npm run check` without changing the interface font.\n\n### Next step\n\n**Emphasis**, lists and `inline code` use shared type.\n\n- One finding\n- Another finding\n\n| Item | State |\n| --- | --- |\n| Example | Ready |\n\n```ts\nconst ready = true;\n```'}</Markdown></Surface><Surface direction="column"><SectionHeading>Icon family</SectionHeading><Text>AnimateIcons · Lucide · one monochrome stroke style.</Text><div className="icon-specimens">{iconNames.map(name => <IconButton key={name} label={`${name} icon`} icon={name}/>)}</div></Surface><FoundationsSpecimen/><PrimitivesSpecimen/><ControlsSpecimen/><Surface direction="column"><SectionHeading>Work states</SectionHeading><Text>Still indicators. Full activity details live in tab previews.</Text><div className="control-specimens">{(['streaming','working','waiting','completed','stopped','failed','staged'] as const).map(phase=><div className="work-state-specimen" key={phase}><WorkStateIndicator phase={phase} label={`${phase} sample`}/><Text>{phase}</Text></div>)}</div></Surface><Surface direction="column"><SectionHeading>Menus and motion</SectionHeading><Text>Menus use the same quiet surfaces, focus, and keyboard controls.</Text><div className="control-specimens"><DropdownMenu label="Menu specimen" items={[{ id: 'workspace', label: 'Open workspace', icon: 'tab', onSelect: () => navigate('Workspace') }, { id: 'disabled', label: 'Unavailable action', disabled: true, onSelect: () => {} }]}><Button variant="raised">Open themed menu <Icon name="chevron" size="xs" motion="disclosure"/></Button></DropdownMenu><ContextMenu label="Context menu specimen" items={[{ id: 'workspace', label: 'Open workspace', onSelect: () => navigate('Workspace') }]}><Button variant="ghost">Right-click or Shift F10</Button></ContextMenu></div></Surface><TabsSpecimen/><GroupOfferSpecimen/><HistorySpecimen/><PreviewSpecimen/><GoToChooserSpecimen/><PlaceDialogsSpecimen/><ToastSpecimen/><FilesSpecimen/><NewTabSpecimen/><TerminalSpecimen/><WebAddressSpecimen/><RailSpecimen/><RailRowsSpecimen/><ConversationSpecimens/><Surface direction="column"><SectionHeading>Spacing</SectionHeading><div className="spacing-specimens">{[1,2,3,4,6,8,12].map(n => <div key={n}><div className={`spacing-sample spacing-sample-${n}`}/><small>{design.foundation[`space-${n}` as keyof typeof design.foundation]}</small></div>)}</div></Surface><Surface direction="column"><SectionHeading>Built-in care</SectionHeading><Text>Keyboard navigation, visible focus, reduced motion, and system appearance.</Text><Button variant="ghost" className="quiet-action" onClick={requestNewTabField}>Open the new-tab field <Icon name="arrow" size="xs" motion="directional"/></Button></Surface></div></div>}
+   {import.meta.env.DEV && page === 'Design system' && <div className="content-card"><div className="page-content"><PageHeading>Less, but considered.</PageHeading><Text className="intro">Soft chrome. Native type. Space to focus.</Text><Surface direction="column"><SectionHeading>Surfaces</SectionHeading><div className="swatches">{['canvas','surface','overlay-surface','composer-surface','accent','text'].map(s => <div key={s}><div className={`swatch ${s}`}/><small>{s}</small></div>)}</div></Surface><Surface direction="column"><SectionHeading>Typography</SectionHeading><Text className="type-sample">The font your device calls home.</Text><Text>System sans for the interface. System monospace for code.</Text><CodeText>const workspace = "codeaf";</CodeText></Surface><Surface direction="column"><SectionHeading>Response typography</SectionHeading><Markdown>{'# A readable result\n\n## Findings\n\nUse `src/engine.ts` and `npm run check` without changing the interface font.\n\n### Next step\n\n**Emphasis**, lists and `inline code` use shared type.\n\n- One finding\n- Another finding\n\n| Item | State |\n| --- | --- |\n| Example | Ready |\n\n```ts\nconst ready = true;\n```'}</Markdown></Surface><Surface direction="column"><SectionHeading>Icon family</SectionHeading><Text>AnimateIcons · Lucide · one monochrome stroke style.</Text><div className="icon-specimens">{iconNames.map(name => <IconButton key={name} label={`${name} icon`} icon={name}/>)}</div></Surface><FoundationsSpecimen/><PrimitivesSpecimen/><ControlsSpecimen/><Surface direction="column"><SectionHeading>Work states</SectionHeading><Text>Still indicators. Full activity details live in tab previews.</Text><div className="control-specimens">{(['streaming','working','waiting','completed','stopped','failed','staged'] as const).map(phase=><div className="work-state-specimen" key={phase}><WorkStateIndicator phase={phase} label={`${phase} sample`}/><Text>{phase}</Text></div>)}</div></Surface><Surface direction="column"><SectionHeading>Menus and motion</SectionHeading><Text>Menus use the same quiet surfaces, focus, and keyboard controls.</Text><div className="control-specimens"><DropdownMenu label="Menu specimen" items={[{ id: 'workspace', label: 'Open workspace', icon: 'tab', onSelect: () => navigate('Workspace') }, { id: 'disabled', label: 'Unavailable action', disabled: true, onSelect: () => {} }]}><Button variant="raised">Open themed menu <Icon name="chevron" size="xs" motion="disclosure"/></Button></DropdownMenu><ContextMenu label="Context menu specimen" items={[{ id: 'workspace', label: 'Open workspace', onSelect: () => navigate('Workspace') }]}><Button variant="ghost">Right-click or Shift F10</Button></ContextMenu></div></Surface><TabsSpecimen/><GroupOfferSpecimen/><HistorySpecimen/><PreviewSpecimen/><GoToChooserSpecimen/><PlaceDialogsSpecimen/><ToastSpecimen/><FilesSpecimen/><NewTabSpecimen/><TerminalSpecimen/><WebAddressSpecimen/><RailSpecimen/><RailRowsSpecimen/><ConversationSpecimens/><Surface direction="column"><SectionHeading>Spacing</SectionHeading><div className="spacing-specimens">{[1,2,3,4,6,8,12].map(n => <div key={n}><div className={`spacing-sample spacing-sample-${n}`}/><small>{design.foundation[`space-${n}` as keyof typeof design.foundation]}</small></div>)}</div></Surface><Surface direction="column"><SectionHeading>Built-in care</SectionHeading><Text>Keyboard navigation, visible focus, reduced motion, and system appearance.</Text><Button variant="ghost" className="quiet-action" onClick={requestNewTabField}>Open the new-tab field <Icon name="arrow" size="xs" motion="directional"/></Button></Surface></div></div>}
   </main>
   <PlacesOverlays shell={shell}/>
   {/* The window's ONE toast region: a closed tab's Stop it and a place's Undo stand in the same stack. */}
