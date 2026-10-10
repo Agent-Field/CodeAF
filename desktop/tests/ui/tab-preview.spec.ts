@@ -43,6 +43,9 @@ test('a 500ms hover opens the reference 328px padded text card; hovering the act
   expect(await card(page, 'Port fix').locator('.preview-card').evaluate(el => (el as HTMLElement).offsetWidth)).toBe(328);
   await expect(card(page, 'Port fix')).toContainText('Task');
   await expect(card(page, 'Port fix')).toContainText('Needs you');
+  const close = port.locator('..').getByRole('button', { name: 'Close Port fix', exact: true });
+  await expect(close).toBeVisible();
+  await expect(close).toHaveCSS('opacity', '1');
   await expect(card(page, 'Port fix')).toContainText('Allow 3 actions?');
   await page.mouse.move(0, 0);
   await expect(card(page, 'Port fix')).toHaveCount(0);
