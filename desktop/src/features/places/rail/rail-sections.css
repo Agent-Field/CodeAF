@@ -1,0 +1,2 @@
+/* The sections fill the rail under the toggle so All places stays at the foot while the list scrolls. */
+.rail-sections { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--rail-group-gap); }

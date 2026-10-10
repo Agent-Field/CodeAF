@@ -25,9 +25,7 @@ func TestPlacesWireFixtures(t *testing.T) {
 		work = real
 	}
 	repo := filepath.Join(work, "repo")
-	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	initGitFixture(t, repo)
 	got := map[string][]byte{}
 	capture := func(name, method, path string, body any, wantStatus int) json.RawMessage {
 		t.Helper()

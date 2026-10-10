@@ -291,7 +291,7 @@ jobs at random — each is scoped, and each row says its scope:
 `/files` is a full-screen list with its own keyboard, and the model picker takes every key
 while it is open, so none of them contend for one keystroke on one screen.
 
-## ? — the key that opens the key sheet
+## ? — the key that opens the key sheet, a list of keyboard shortcuts
 
 `?` **over an empty box** opens `/help`: every command and every chord, written into the
 transcript where you can scroll it. A row that is wider than the window wraps under the
