@@ -59,7 +59,10 @@ type attachedChat struct {
 	Title       string
 	Running     bool
 	Questions   int
-	UpdatedAt   time.Time
+	// Open are the questions themselves, which the attention producer reads for their
+	// heads; Questions stays the count the row publishes.
+	Open      []session.Question
+	UpdatedAt time.Time
 }
 
 // folderSig is everything the cheap pass looks at in one conversation folder.
@@ -90,6 +93,9 @@ type worldRows struct {
 	live      map[string]bool         // folders whose presence was fresh at the last read
 	attached  map[string]attachedChat
 	rows      map[string]WorldChatRow // by chat id, as last published
+	// changed runs under the lock after every merge, so a derived producer (attention)
+	// sees the rows and the attached questions exactly as they were just settled.
+	changed func()
 }
 
 // newWorldRows builds a producer over a places root. A nil publish drops records.
@@ -271,6 +277,9 @@ func diskRow(row session.SessionRow, index []session.TaskIndexEntry) WorldChatRo
 		if row.Runs(entry) {
 			out.TasksRunning++
 		}
+		if entry.Status == string(session.TaskFailed) && !entry.Live() {
+			out.Failed++
+		}
 	}
 	return out
 }
@@ -311,6 +320,9 @@ func (w *worldRows) mergeLocked() {
 		}
 	}
 	w.rows = next
+	if w.changed != nil {
+		defer w.changed()
+	}
 	if len(delta.Rows) == 0 && len(delta.Removed) == 0 {
 		return
 	}
@@ -349,7 +361,8 @@ func (b *Bridge) worldChanged(s *conversation) {
 	if a := s.conn.Agent; a != nil {
 		chat.Title = a.Title()
 		if door, ok := a.(interface{ OpenQuestions() []session.Question }); ok {
-			chat.Questions = len(door.OpenQuestions())
+			chat.Open = door.OpenQuestions()
+			chat.Questions = len(chat.Open)
 		} else if a.NeedsPerson() {
 			chat.Questions = 1
 		}
