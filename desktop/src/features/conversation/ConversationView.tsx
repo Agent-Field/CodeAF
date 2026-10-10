@@ -193,6 +193,8 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
             sessionId={sessionId}
             tasks={model.tasks}
             questions={model.questions}
+            filter={tab.tasksFilter ?? 'all'}
+            onFilter={(tasksFilter) => onView({ tasksFilter })}
             selectedId={tab.tasksSelected}
             onSelect={(id) => onView({ tasksSelected: id })}
             onClose={closeTasksView}
@@ -204,7 +206,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
         )}
         <div className="conversation-main" data-empty={empty || undefined} hidden={tasksView}>
           {showBar && (
-            <ConversationBar lead={inTask ? 'trail' : 'title'} counts={barCounts} panel={barPanel} using={<UsingLine control={using} onOpenSource={onOpenSource} onAddToPlace={onAddToPlace} />}>
+            <ConversationBar onTasksFilter={(tasksFilter) => { if (panel.sheet) panel.close(); onView({ tasksFilter, route: navigate(route, TASKS_VIEW) }); }} lead={inTask ? 'trail' : 'title'} counts={barCounts} panel={barPanel} using={<UsingLine control={using} onOpenSource={onOpenSource} onAddToPlace={onAddToPlace} />}>
               {taskId ? <TaskRouteBar taskId={taskId} tasks={model.tasks} route={route} onRoute={setRoute} /> : <span className="conversation-bar-title">{barTitle}</span>}
             </ConversationBar>
           )}

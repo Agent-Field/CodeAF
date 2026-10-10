@@ -2,6 +2,7 @@ import { useEffect, useState, type KeyboardEvent } from 'react';
 import { readTaskPage, type EngineAnswer, type EngineQuestion, type EngineTaskRow } from '../chat/engine-client';
 import { TaskDetailPane } from './detail/TaskDetailPane';
 import { questionKey } from './model/entry';
+import type { TasksFilter } from '../tabs/view-state';
 import { TasksTable } from './tasks/TasksTable';
 import { useNow } from './tasks/useNow';
 import { taskProgress } from './taskTree';
@@ -13,6 +14,8 @@ export type ExpandedTasksProps = {
   questions: EngineQuestion[];
   /** The row the reader last chose; the first waiting row, else the first row, when absent or gone. */
   selectedId?: string;
+  filter?: TasksFilter;
+  onFilter?: (filter: TasksFilter) => void;
   onSelect: (taskId: string) => void;
   onClose: () => void;
   onOpenTask: OpenTask;
@@ -87,7 +90,7 @@ export function ExpandedTasks(props: ExpandedTasksProps) {
   );
   return (
     <div className="expanded-tasks" onKeyDown={onKeyDown}>
-      <TasksTable tasks={tasks} selectedId={row?.ID} onSelect={props.onSelect} onClose={onClose} reasons={reasons} detail={detail} now={now} />
+      <TasksTable filter={props.filter} onFilter={props.onFilter} tasks={tasks} selectedId={row?.ID} onSelect={props.onSelect} onClose={onClose} reasons={reasons} detail={detail} now={now} />
     </div>
   );
 }

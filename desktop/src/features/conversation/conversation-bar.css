@@ -4,7 +4,7 @@
 .conversation-bar-lead { display: flex; flex: 1; align-items: center; min-width: 0; }
 .conversation-bar-title { overflow: hidden; margin: 0; font-size: var(--type-prose-size); font-weight: var(--type-label-strong); text-overflow: ellipsis; white-space: nowrap; }
 .conversation-bar-counts { display: flex; flex: none; align-items: center; gap: var(--conversation-bar-counts-gap); padding-inline-end: var(--space-tight); color: var(--ink-2); font-size: var(--type-label-size); }
-.conversation-bar-count { display: flex; align-items: center; gap: var(--conversation-bar-count-gap); white-space: nowrap; }
+.conversation-bar-count.button { min-height: 0; padding: 0; border-radius: var(--radius-sm); color: inherit; font: inherit; line-height: inherit; display: flex; align-items: center; gap: var(--conversation-bar-count-gap); white-space: nowrap; }
 .conversation-bar-toggle.icon-button { flex: none; color: var(--ink-3); }
 .conversation-bar-toggle.icon-button[aria-pressed="true"] { background: var(--field); }
 .conversation-bar-toggle.icon-button[aria-pressed="true"]:hover:not(:disabled) { background: var(--field-2); }
