@@ -7,7 +7,7 @@ import { useWebShot } from '../../web/shots';
 import { engineFileDiff, readEngineText, readTerminalOutput, terminalStateWords } from '../../chat/engine-client';
 import type { PreviewRenderProps } from '../kinds/slots';
 import { routeTask } from '../view-state';
-import { askOf, changedLines, headLines, questionsFor, stateOf, tailLines, type Ask } from './content';
+import { alsoOpenIn, askOf, changedLines, headLines, questionsFor, stateOf, tailLines, type Ask } from './content';
 import { PreviewButtons, PreviewCard, PreviewError, PreviewField, PreviewShot, PreviewState, PreviewText } from './PreviewCard';
 import { addressOf, targetOf } from './target';
 import { useLoaded } from './useLoaded';
@@ -20,7 +20,7 @@ function Actions({ ask, act }: { ask: Ask; act: PreviewRenderProps['act'] }) {
 /** A conversation or a task: the state, then what it asks or its last reply. A card that needs you carries its primary action. */
 export function SessionPreview({ pane, title, summary, act, openElsewhere }: PreviewRenderProps) {
   const otherPlaces = pane.kind === 'conversation' ? openElsewhere : undefined;
-  const contextNote = otherPlaces?.length ? `also open in ${otherPlaces[0].name}${otherPlaces.length > 1 ? ` and ${otherPlaces.length - 1} other ${otherPlaces.length === 2 ? 'place' : 'places'}` : ''}` : undefined;
+  const contextNote = alsoOpenIn(otherPlaces);
   const taskId = pane.kind === 'task' && pane.route ? routeTask(pane.route) : undefined;
   const state = stateOf(summary, taskId);
   const ask = askOf(questionsFor(summary, taskId));
