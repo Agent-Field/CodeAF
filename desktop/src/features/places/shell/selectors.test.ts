@@ -44,6 +44,14 @@ test('the rail: Pinned in the engine’s order, Open without closed places unles
   assert.deepEqual(railOrder(open), ['pl_0000000000000001', 'pl_0000000000000005']);
 });
 
+test('the Since block carries the engine words, and blank words draw nothing (PL-133)', () => {
+  const digest = fixture('home-place');
+  const recap = { label: 'Since yesterday', text: ' Two fixes landed. ', since: '2026-10-09T13:00:00Z', chats: 1, items: [], unsummarised: 0 };
+  assert.deepEqual(homeViewFromDigest({ ...digest, recap }).recap, { label: 'Since yesterday', text: 'Two fixes landed.' });
+  assert.equal(homeViewFromDigest({ ...digest, recap: { ...recap, text: '  ' } }).recap, undefined);
+  assert.equal(homeViewFromDigest({ ...digest, recap: undefined }).recap, undefined);
+});
+
 test('a place Home view carries only what the engine sent', () => {
   const view = homeViewFromDigest(fixture('home-place'));
   assert.equal(view.kind, 'place');
