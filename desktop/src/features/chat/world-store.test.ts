@@ -165,6 +165,15 @@ test('parseWorldRecord rejects shapes the engine never sends', () => {
  assert.equal(parseWorldRecord('{"seq":1,"type":"attention","at":"x","payload":{"items":[]}}').type, 'attention');
 });
 
+test('a places record is a world record and does not replace the rows', () => {
+ const record = parseWorldRecord('{"seq":5,"type":"places","at":"x","payload":{"generation":2,"nodes":[],"rail":{"pinned":[],"open":[]}}}');
+ assert.equal(record.type, 'places');
+ const next = applyWorldRecord({ status: 'live', seq: 4, rows: [row('keep')], items: [] }, record);
+ assert.equal(next.seq, 5);
+ assert.equal(next.rows[0].session, 'keep');
+ assert.throws(() => parseWorldRecord('{"seq":5,"type":"places","at":"x","payload":{"nodes":[]}}'), WorldError);
+});
+
 test('a jobs roll-up is a world record and does not replace the rows', () => {
  const record = parseWorldRecord('{"seq":4,"type":"jobs","at":"x","payload":{"chatId":"chat-9","running":1,"jobs":[{"id":4,"state":"running"}]}}');
  assert.equal(record.type, 'jobs');
