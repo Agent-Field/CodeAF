@@ -3,7 +3,7 @@ package manual
 import "testing"
 
 // These questions keep the collapsed group's surviving label discoverable in the person's words.
-func TestDesktopCollapsedGroupQuestionsReachTheirPage(t *testing.T) {
+func TestDesktopCollapsedGroupsAndKeyboardMenuQuestionsReachTheirPage(t *testing.T) {
 	for _, question := range []string{
 		"how do I collapse and expand a desktop tab group",
 		"does collapsing a desktop tab group stop work",
