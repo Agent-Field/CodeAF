@@ -2065,6 +2065,7 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 		}
 		a.recordDecision(record)
 		a.emitQuestion(EventQuestionAnswered, q, &answer)
+		a.notePersonLearning(q, answer)
 		return nil
 	}
 	// THE WORDS ARE CLAIMED BEFORE THE LANE IS TOUCHED. The lane is about to
@@ -2147,6 +2148,10 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 	if said || landingSaid {
 		a.emitQuestion(EventQuestionAnswered, q, &answer)
 	}
+	// A PERSON'S ANSWER IS WHAT THE PLACE LEARNS FROM. The gate's own answer
+	// is marked as the dial and records nothing here; an answer the person
+	// gave, including one that revises, is the learning outcome.
+	a.notePersonLearning(q, answer)
 	// AND EVERY OTHER WINDOW LEARNS THE SESSION IS NO LONGER STOPPED, on the
 	// beat the answer lands rather than on the presence heartbeat's next tick:
 	// home, the switcher and a second terminal all read that file, and a `needs

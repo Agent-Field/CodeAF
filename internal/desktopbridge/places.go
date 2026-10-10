@@ -98,6 +98,11 @@ func (b *Bridge) UsePlaces(p *Places) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.places = p
+	// The feed reads the ledger when it projects, so this is the function,
+	// not a path captured before the door exists.
+	if b.world != nil && b.world.ledger == nil {
+		b.world.ledger = b.decideLedger
+	}
 }
 
 // ChatIDFromSessionFile is the canonical chat id of a conversation: the name of

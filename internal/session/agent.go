@@ -439,6 +439,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// doorstep is emptied here: the answer is applied through the same one door
 	// as every other, and the conversation opens already settled rather than
 	// asking a question somebody answered yesterday.
+	// THE GATE IS ON BEFORE THAT DRAIN. An answer the person left while the
+	// window was shut is a person's answer, and the place should learn it;
+	// attaching afterwards would apply the answer and forget to record it.
+	agent.attachDecideGate()
 	agent.drainAnswers()
 	// AND THE SESSION STARTS SAYING IT IS HERE. The index above is what work
 	// came to; this is the claim that a PROCESS is alive right now, which no
