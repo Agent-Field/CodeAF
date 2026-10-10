@@ -111,3 +111,12 @@ export function onWebNewTab(handler: (request: WebNewTab) => void): Promise<Unli
     if (p && typeof p.opener === 'string' && typeof p.url === 'string') handler({ opener: p.opener, url: p.url });
   });
 }
+
+/** Public platform find APIs report presence and sometimes a total, never an ordinal. */
+export type WebFindResult = { found: boolean; matches?: number };
+
+export async function webFind(pane: string, query: string, forward: boolean): Promise<WebFindResult> {
+  const result = await invoke<WebFindResult>('web_find', { pane, query, forward });
+  if (typeof result?.found !== 'boolean') throw new Error('The page could not be searched');
+  return { found: result.found, ...(Number.isSafeInteger(result.matches) && result.matches! > 0 ? { matches: result.matches } : {}) };
+}
