@@ -1,4 +1,4 @@
-import { useContext, useSyncExternalStore } from 'react';
+import { useContext, useState, useSyncExternalStore } from 'react';
 import { Button, Icon, Text } from '../../components/ui';
 import { openUrl } from '../../design/native';
 import type { WebFailure, WebNotice } from '../../design/nativeWeb';
@@ -12,6 +12,7 @@ import { webHost, subscribeWebHost } from './host';
 import { capture } from './shots';
 import { useWebPane } from './useWebPane';
 import { useWebEvents } from './useWebEvents';
+import { useWebKeys } from './useWebKeys';
 import { navigate, retry, step } from './views';
 import './web.css';
 
@@ -37,7 +38,7 @@ function failureText(failure: WebFailure, url: string): { title: string; detail:
  * title, that title in ink-3. A title that has not arrived yet leaves only
  * the fill: there is no sentence saying the page is hidden.
  */
-export function WebPane({ pane, actions }: PaneRenderProps) {
+export function WebPane({ pane, focused, actions }: PaneRenderProps) {
   const url = pane.target?.url;
   const api = useContext(TabsApiContext);
   const favicons = useWebFavicons(api?.workspaceKey, [pane]);
@@ -51,6 +52,9 @@ export function WebPane({ pane, actions }: PaneRenderProps) {
   const pageTitle = state?.title.trim() || '';
 
   useWebEvents(state, url, actions);
+  // The find field itself waits on the native find command (W9); ⌘F only records that find was asked for.
+  const [finding, setFinding] = useState(false);
+  useWebKeys(pane.id, focused, () => setFinding(true));
 
   function go(next: string) {
     actions.onView({ target: { url: next } });
@@ -66,7 +70,7 @@ export function WebPane({ pane, actions }: PaneRenderProps) {
   const loading = !!state?.loading && !state.failure;
   const historyOpen = (flag: boolean | undefined) => live && (!state!.historyKnown || !!flag);
   const failure = state?.failure ? failureText(state.failure, shown ?? '') : web.openError ? { title: 'This page did not open', detail: `${web.openError}.` } : null;
-  return <div className="web-pane" data-pane={pane.id} data-loading={loading || undefined}>
+  return <div className="web-pane" data-pane={pane.id} data-loading={loading || undefined} data-find={finding || undefined}>
     <LoadingLine active={loading}/>
     <WebHeader url={shown} favicon={favicons.get(pane.id)} loading={loading}
       canBack={historyOpen(state?.canBack)} canForward={historyOpen(state?.canForward)} canReload={live}

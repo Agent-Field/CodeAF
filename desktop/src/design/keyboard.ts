@@ -58,7 +58,9 @@ export type ShortcutId =
   * ⌘N a new window on Now, ⌘Z undo the last structural action. `place-jump` carries the rail slot: 0 is Now, 1–9 the
   * pinned-then-open places (⌃ on a Mac; Alt elsewhere, because Ctrl+digit is already the tab jump there). */
  | 'next-up' | 'back' | 'forward' | 'up-level'
- | 'goto' | 'all-places' | 'place-home' | 'place-jump' | 'close-place' | 'new-window' | 'undo';
+ | 'goto' | 'all-places' | 'place-home' | 'place-jump' | 'close-place' | 'new-window' | 'undo'
+ /** The web pane's chords (⌘L address, ⌘R reload, ⌘F find). A web page holds the keys, so the native menu sends the same ids. */
+ | 'web-address' | 'web-reload' | 'web-find';
 export type Shortcut = { id: ShortcutId; index?: number };
 
 /** A text field with words in it keeps ⌘↑ and ⌘↓ as caret keys. */
@@ -173,6 +175,9 @@ export function shortcutOf(event: KeyEvent, platform: boolean | ShortcutContext 
  if (key === 't') return { id: 'new' };
  if (key === 'w') return { id: 'close' };
  if (key === 'g') return { id: 'group' };
+ if (key === 'l') return { id: 'web-address' };
+ if (key === 'r') return { id: 'web-reload' };
+ if (key === 'f') return { id: 'web-find' };
  if (key === 'o' && !typingInProseField(event.target)) return { id: 'open-file' };
  if (key === 's' || key === 'b') return { id: 'rail' };
  if (key === 'y') return { id: 'history' };
