@@ -68,6 +68,8 @@ export function ContextMenu({ children, items, label, onOpenChange, wide = false
    event.currentTarget.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: bounds.left + bounds.width / 2, clientY: bounds.bottom }));
    // A synthetic contextmenu opens the menu without moving focus, so the first item would not take the next key.
    requestAnimationFrame(() => {
+    // Radix may already have focused an item; a late frame must not undo keyboard navigation into a submenu.
+    if (document.activeElement?.closest('.app-menu')) return;
     document.querySelector<HTMLElement>('.app-menu-context[data-state="open"] [role^="menuitem"]:not([data-disabled])')?.focus();
    });
   }}>{children}</Context.Trigger>

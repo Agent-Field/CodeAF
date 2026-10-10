@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { PlaceHeading, type Crumb } from './components/PlaceHeading';
 import { AllPlacesPage } from './AllPlacesPage';
 import { DeletePlaceConfirm } from './DeletePlaceConfirm';
-import { HomeAttentionSection, HomeBanner, HomeChatsSection, HomeEmptyPlace, HomeFrame, HomeNotice, HomeRecap, useHomeSections, useDeleteFlow, useDragState, useRunner } from './HomeSections';
+import { HomeAttentionSection, HomeBanner, HomeChatsSection, HomeEmptyPlace, HomeFrame, HomeNotice, HomePlacesSection, HomeRecap, HomeSourcesSection, useHomeSections, useDeleteFlow, useDragState, useRunner } from './HomeSections';
 import type { HomeConnection, HomeView } from './home-model';
 import { StatusLine } from '../decisions/StatusLine';
 import { DecidedRows } from '../decisions/DecidedRows';
@@ -72,8 +72,12 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
     {suggestion}
     {view.recap && <HomeRecap label={view.recap.label} text={view.recap.text}/>}
     <HomeAttentionSection items={view.attention} actions={actions} readOnly={readOnly}/>
-    {!isPlace && <HomeChatsSection label="Not in any place" chats={view.chats} truncated={view.chatsTruncated} actions={actions} readOnly={readOnly}
-      drag={drag} now={clock}/>}
+    {/* Places 8b draws the place's child places, its own chats and its sources under the heading; a place Home that lists none would hide the work the place exists to hold. */}
+    {isPlace && !nothingYet && <HomePlacesSection label="Places" places={view.children} parentId={view.id} parentName={view.title} parentTint={view.tintSource === 'own' ? view.tint : undefined}
+      actions={actions} readOnly={readOnly} siblings={view.children.map(child => child.name)} runner={runner} drag={drag} onDelete={deletion.start}/>}
+    <HomeChatsSection label={isPlace ? 'Chats' : 'Not in any place'} chats={view.chats} truncated={view.chatsTruncated} actions={actions} readOnly={readOnly}
+      inPlaceId={isPlace ? view.id : undefined} drag={drag} now={clock}/>
+    {isPlace && <HomeSourcesSection placeId={view.id} sources={view.sources ?? []} actions={actions} readOnly={readOnly} showAdd={!nothingYet}/>}
     {isPlace && !nothingYet && <>
       <DecidedRows key={`${view.id}-decided`} items={(sections.decisions ?? []).map(item => ({ ...item, age: shortTime(item.at, clock) }))}/>
       {sections.knowledge && <KnowsList key={`${view.id}-knows`} placeName={view.title} lines={sections.knowledge.lines} now={clock}
