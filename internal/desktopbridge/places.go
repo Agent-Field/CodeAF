@@ -222,6 +222,12 @@ func (p *Places) serve(w http.ResponseWriter, r *http.Request, parts []string) {
 			}
 		}
 	case 2:
+		if parts[0] == "undo" {
+			if needPost(w, r) {
+				p.undoReceipt(w, r, parts[1])
+			}
+			return
+		}
 		if parts[1] == "delete-preview" {
 			if needGet(w, r) {
 				p.deletePreview(w, parts[0])
