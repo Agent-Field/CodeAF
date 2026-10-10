@@ -161,6 +161,6 @@ test('a send the engine never answers says so and keeps the draft', async ({ pag
  await expect.poll(() => engine.creates().length).toBe(1);
  await page.clock.runFor(ENGINE_REQUEST_TIMEOUT_MS + 1000);
  await expect(page.getByRole('status').filter({ hasText: 'codeaf engine is not running' })).toBeVisible();
- await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
+ await expect(page.getByRole('tabpanel').getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
  await expect(message(page)).toHaveValue('Still here after the wait');
 });
