@@ -26,6 +26,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
@@ -44,6 +45,10 @@ import (
 
 func main() {
 	home.Adopt(log.Printf)
+	// CODEAF SCHEDULES NOTHING ON THE MACHINE. The timers the feature that
+	// automations replaced installed are taken off this login on every start,
+	// whoever installed them (internal/automation's legacy.go).
+	automation.RemoveOldTimers()
 	registerRunningCLI()
 	os.Exit(execute())
 }
@@ -355,12 +360,16 @@ func run() error {
 	case "wake":
 		return runWake(os.Args[2:])
 	case "tick":
-		// One bounded pass over the standing items — the reminders, watches and
-		// routines a conversation left behind (tick.go). It is what the OS
-		// timer runs, and it is DELIBERATELY ABSENT from the usage text below
-		// for the same reason `engine` is: it draws nothing, asks nothing, and
-		// on an ordinary machine prints nothing at all.
-		return runTick(os.Args[2:])
+		// THE OLD TIMER'S VERB, KEPT SO IT ENDS QUIETLY. An operating-system
+		// timer installed by an older build still runs `codeaf tick` until this
+		// build's first start takes it off the machine (main above does that
+		// first); it is answered with nothing rather than an unknown verb.
+		return nil
+	case "clock":
+		// The one process that runs automations while a window is open
+		// (chatv3_clock.go). A window starts it; it is machinery, and like
+		// `engine` it is absent from the usage text.
+		return runClock(os.Args[2:])
 	case "doctor":
 		return runDoctor(os.Args[2:])
 	case "logs":

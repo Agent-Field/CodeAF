@@ -896,6 +896,86 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		}
 	}
 
+	// The model pool's judge is the launch's own: it reads every landing of THIS
+	// conversation, so it is built here and handed to the shared assembly.
+	// The Model Pool's judge reads every landing through the engine's one hook.
+	// It is built here, where the seats above are wired, so the answer to
+	// "may this process read the pool at all" is one posture for the whole
+	// door: a mode that forbids reading builds no hook, and a nil hook is the
+	// engine's own nothing. The ask is built once and a client is made from it
+	// per call, each billed to the judge's own seat.
+	var taskLanded func(session.TaskLanding)
+	// AN INDEPENDENT JUDGE CANNOT SHARE THE CREW MODEL. A one-model
+	// launch therefore leaves this optional scoring to an ordinary launch;
+	// it must neither judge new landings nor sweep earlier pending work.
+	if !opts.OneModel {
+		taskLanded = poolJudgeHook(settings, settings.ProfileDir, workspace,
+			config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now, "task")
+		// The runs a live process would have judged but a process death left unjudged,
+		// and the headless doors that never had this hook: at start, on a goroutine
+		// nobody waits on, judge the resumed session's own final-state nodes and the
+		// pending file's rows, each exactly once, bounded so it never holds the prompt. The
+		// process tracker cancels and joins it at close.
+		poolErrandGoCtx(settings.ProfileDir, "pool/judge-sweep", func(ctx context.Context) {
+			poolJudgeSweepRun(ctx, settings, settings.ProfileDir, found.Place.Tasks(),
+				config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now)
+		})
+	}
+
+	cfg, activeModels, subharnesses, err := v3ConfigFor(proc, opts, workspace, found.Place, transcript, taskLanded)
+	if err != nil {
+		return nil, err
+	}
+	harnesses := proc.Harnesses
+
+	// THE SHELF IS IMPORTED BEFORE THE FIRST MESSAGE. A person's skills for
+	// other harnesses — Claude Code, Codex, any agentskills.io reader — reach
+	// the shelf when the graph opens, not when some later tick finds the time:
+	// this door claims no residency (runChatV3's header), so the pass the
+	// resident reconciler runs on its own clock is run here, synchronously,
+	// after [v3Memory]'s graph is open and before the first prompt is built.
+	// The pass is idempotent — an unchanged disk journals nothing — so an open
+	// costs one scan and no writes, and a skill edited since the last open is
+	// re-read before the model ever sees the shelf.
+	importForeignSkillsBeforeFirstMessage(proc.skillShelf(), workspace)
+
+	// AND THIS PROCESS STARTS KEEPING TIME. Any open window takes the store's
+	// lock and runs the pass; the OS timer is the backup for "no terminal open"
+	// (chatv3_standing.go). It is here, beside [startPlaceSweep], because every
+	// v3 door assembles through this function — and the first pass is a whole
+	// interval away, so a launch that exits immediately has ticked nothing.
+	if cfg.Standing != nil && !opts.NoStandingTicks {
+		proc.startStandingTicks(cfg.Standing.Store)
+	}
+
+	return &v3Launch{
+		Settings:     settings,
+		Models:       activeModels,
+		Harnesses:    harnesses,
+		Config:       cfg,
+		Model:        chosen,
+		Workspace:    workspace,
+		Project:      project,
+		SessionFile:  transcript,
+		Resumed:      resumed,
+		Place:        found.Place,
+		Bucket:       found.Bucket,
+		Subharnesses: subharnesses,
+	}, nil
+}
+
+// v3ConfigFor assembles the session configuration for work in workspace: the
+// person's models, keys, governance, connected accounts, memory, media and
+// harness seams, from what the process already resolved at the door.
+//
+// IT IS THE ONE ASSEMBLY, shared by a conversation's launch and an automation's
+// run (chatv3_clock.go). It finds no conversation and starts nothing — which is
+// why the launch keeps those parts and an automation can call this: the launch
+// resumes the person's newest conversation in a project, and an automation
+// that did that would be writing into somebody's chat.
+func v3ConfigFor(proc *v3Process, opts v3Options, workspace string, place session.Place, transcript string, taskLanded func(session.TaskLanding)) (session.Config, *catalog.Catalog, v3Subharness, error) {
+	settings := proc.Settings
+	chosen := v3TalkModel(opts.Model, settings)
 	// The model catalog and the sub-harness registry, borrowed from the process
 	// rather than opened here (chatv3_process.go states why each must be one).
 	// The catalog's warm is already running and is waited for NOWHERE on this
@@ -932,30 +1012,6 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		media = v3ImageGen(mediaSettings)
 	}
 
-	// The Model Pool's judge reads every landing through the engine's one hook.
-	// It is built here, where the seats above are wired, so the answer to
-	// "may this process read the pool at all" is one posture for the whole
-	// door: a mode that forbids reading builds no hook, and a nil hook is the
-	// engine's own nothing. The ask is built once and a client is made from it
-	// per call, each billed to the judge's own seat.
-	var taskLanded func(session.TaskLanding)
-	// AN INDEPENDENT JUDGE CANNOT SHARE THE CREW MODEL. A one-model
-	// launch therefore leaves this optional scoring to an ordinary launch;
-	// it must neither judge new landings nor sweep earlier pending work.
-	if !opts.OneModel {
-		taskLanded = poolJudgeHook(settings, settings.ProfileDir, workspace,
-			config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now, "task")
-		// The runs a live process would have judged but a process death left unjudged,
-		// and the headless doors that never had this hook: at start, on a goroutine
-		// nobody waits on, judge the resumed session's own final-state nodes and the
-		// pending file's rows, each exactly once, bounded so it never holds the prompt. The
-		// process tracker cancels and joins it at close.
-		poolErrandGoCtx(settings.ProfileDir, "pool/judge-sweep", func(ctx context.Context) {
-			poolJudgeSweepRun(ctx, settings, settings.ProfileDir, found.Place.Tasks(),
-				config.CrewCatalog, poolJudgeAsk(proc.liveSettings(settings), settings.ProfileDir), time.Now)
-		})
-	}
-
 	cfg := session.Config{
 		Workspace:      workspace,
 		Model:          chosen,
@@ -970,14 +1026,14 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// The folder this conversation keeps everything in (Decision 26). It is
 		// the zero Place for a launch opened on a flat legacy transcript, which
 		// is what keeps that session deriving its sidecars the way it always did.
-		Place: found.Place,
+		Place: place,
 		// Where an adaptive run's write-capable nodes get their isolated
 		// worktrees (internal/orchestrate): the session folder's trees/ —
 		// Decision 26's own law, one per running node, swept with the session.
 		// The zero Place answers "" and the run degrades to sharing the
 		// workspace, which is the seam's honest answer for a legacy flat
 		// session.
-		WorktreeRoot: found.Place.Trees(),
+		WorktreeRoot: place.Trees(),
 		// The durable memory, on the store this time (internal/session's
 		// memory.go). It is opened once, here, because where a person's state
 		// lives is the door's decision — and it is opened AT ALL only when the
@@ -1120,6 +1176,8 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// something that spends forever. A task node and a firing's own session
 		// never see it: neither copies this config.
 		Standing: v3Standing(settings.ProfileDir),
+		// The automations store, opened once per process (chatv3_clock.go).
+		Automations: v3Automations(),
 		// THE DIVISION ROAD, on by default (internal/config's DefaultSwarm). A
 		// task that turns out to hold more than one worker's share may split
 		// itself into parts and stay to fold them back together
@@ -1134,9 +1192,9 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// What this session may do without asking, which model answers its
 	// auxiliary calls, and what it may spend. All three are settings rows, and a
 	// row that cannot be read stops the launch here rather than downstream.
-	cfg, err = applyV3Governance(cfg, settings.ProfileDir, opts.Yolo, opts.OneModel)
+	cfg, err := applyV3Governance(cfg, settings.ProfileDir, opts.Yolo, opts.OneModel)
 	if err != nil {
-		return nil, err
+		return session.Config{}, nil, v3Subharness{}, err
 	}
 	// AND WHO THIS SESSION IS WORKING FOR (internal/session's
 	// principal.go): the unattended flag and its ceiling, plus the door's own
@@ -1150,7 +1208,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		cfg.ApprovalGate = gate
 		cfg.ApprovalPolicy, cfg.Guardian, err = gate.Build(cfg.ApprovalPosture)
 		if err != nil {
-			return nil, err
+			return session.Config{}, nil, v3Subharness{}, err
 		}
 	}
 	cfg.Budget = opts.Budget
@@ -1195,41 +1253,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// (chatv3_subharness.go's UsePages). It is wired here because the runner it
 	// needs is the line above.
 	subharnesses.UsePages(harnesses, cfg.RunHarness)
-
-	// THE SHELF IS IMPORTED BEFORE THE FIRST MESSAGE. A person's skills for
-	// other harnesses — Claude Code, Codex, any agentskills.io reader — reach
-	// the shelf when the graph opens, not when some later tick finds the time:
-	// this door claims no residency (runChatV3's header), so the pass the
-	// resident reconciler runs on its own clock is run here, synchronously,
-	// after [v3Memory]'s graph is open and before the first prompt is built.
-	// The pass is idempotent — an unchanged disk journals nothing — so an open
-	// costs one scan and no writes, and a skill edited since the last open is
-	// re-read before the model ever sees the shelf.
-	importForeignSkillsBeforeFirstMessage(proc.skillShelf(), workspace)
-
-	// AND THIS PROCESS STARTS KEEPING TIME. Any open window takes the store's
-	// lock and runs the pass; the OS timer is the backup for "no terminal open"
-	// (chatv3_standing.go). It is here, beside [startPlaceSweep], because every
-	// v3 door assembles through this function — and the first pass is a whole
-	// interval away, so a launch that exits immediately has ticked nothing.
-	if cfg.Standing != nil && !opts.NoStandingTicks {
-		proc.startStandingTicks(cfg.Standing.Store)
-	}
-
-	return &v3Launch{
-		Settings:     settings,
-		Models:       activeModels,
-		Harnesses:    harnesses,
-		Config:       cfg,
-		Model:        chosen,
-		Workspace:    workspace,
-		Project:      project,
-		SessionFile:  transcript,
-		Resumed:      resumed,
-		Place:        found.Place,
-		Bucket:       found.Bucket,
-		Subharnesses: subharnesses,
-	}, nil
+	return cfg, activeModels, subharnesses, nil
 }
 
 // importForeignSkillsBeforeFirstMessage runs the foreign-skill import pass

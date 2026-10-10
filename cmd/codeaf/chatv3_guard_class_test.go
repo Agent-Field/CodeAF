@@ -36,6 +36,7 @@ func TestV3ProcessGuardGoClass(t *testing.T) {
 		"chatv3/host-reap":        {kind: "one-shot", stop: "exec.Cmd.Wait returns when the replaced ssh child exits"},
 		"chatv3/host-follow":      {kind: "one-shot", stop: "remote Follow channel closes with the host connection"},
 		"chatv3/telemetry-events": {kind: "one-shot", stop: "source event channel closes and countedEvents returns"},
+		"automations/retire":      {kind: "one-shot", stop: "the clock's own context ends when `codeaf clock` leaves, or the watcher cancels it on finding the binary replaced"},
 	}
 
 	got := processGuardScopes(t)

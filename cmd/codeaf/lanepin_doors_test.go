@@ -189,6 +189,7 @@ func TestEveryDoorReachesTheLaneRowsThroughTheProfileLoad(t *testing.T) {
 		"wake.go":            "codeaf wake, the resident's own pass",
 		"chatv3_standing.go": "the standing pass a codeaf window and `codeaf tick` both run",
 		"chatv3_process.go":  "the conversation",
+		"chatv3_clock.go":    "codeaf clock, the process that runs automations",
 	}
 	for name, door := range doors {
 		raw, err := os.ReadFile(name)
