@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent } from 'react';
 import { isMac } from '../../design/keyboard';
 import { useAltHeld } from './closing/altHeld';
 import { closeShortcutFor, closeStopShortcut } from './closing/shortcuts';
@@ -7,7 +7,7 @@ import type { TabsApi } from './context';
 import { tabDragProps } from './hosts/dragHost';
 import { withTabMenu } from './hosts/menuHost';
 import { withPreview } from './hosts/previewHost';
-import { withSegmentTooltip, withTitleTooltip } from './hosts/titleTooltipHost';
+import { withSegmentTooltip } from './hosts/titleTooltipHost';
 import { focusedPane, panesOf, type Tab } from './model';
 import { SplitTab } from './SplitTab';
 import { useWebFavicons } from '../web/favicons';
@@ -50,6 +50,8 @@ export function TabItem({ api, tab, order, inGroup = false }: { api: TabsApi; ta
   const stop = useAltHeld() && engaged && api.isRunning(tab);
   const running = api.isRunning(tab);
   const picked = !!api.state.picked?.includes(tab.id);
+  // While any preview card is open the tab's own full-title tooltip stays shut (Shell 3l: the two never stack).
+  const previewOpen = useSyncExternalStore(api.previews.subscribe, () => api.previews.get() !== null);
   const choose = (id: string) => (event: MouseEvent) => api.dispatch(picks(event) ? { type: 'pick', id: tab.id } : { type: 'select', id });
   const frame = { ...drag, 'data-picked': picked || undefined, onPointerEnter: () => setEngaged(true), onPointerLeave: () => setEngaged(false), onFocus: () => setEngaged(true), onBlur: () => setEngaged(false) };
   if (tab.split) {
@@ -62,7 +64,7 @@ export function TabItem({ api, tab, order, inGroup = false }: { api: TabsApi; ta
     <TabView favicon={favicons.get(tab.id)} kind={tab.kind} title={tab.title} monogram={monogramOf(focusedPane(tab))} active={active} pinned={tab.pinned} placeTint={isPlaceHome(tab) ? api.placeTint ?? 'graphite' : undefined} inGroup={inGroup} picked={picked} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame} badge={tab.kind === 'inbox' && (api.background.needsYou.length > 0 ? 'needsYou' : api.background.failed.length > 0 ? 'failed' : false)}
       closeMode={stop ? 'stop' : 'close'} closeHint={stop ? 'Close and stop' : running ? 'Close · keeps running' : 'Close'} closeShortcut={stop ? closeStopShortcut : closeShortcutFor(tab.kind)}
       onSelect={choose(tab.id)} onClose={() => (stop ? api.closeAndStop(tab.id) : api.closeTab(tab.id))} onRename={() => api.startRename(tab.id)}
-      onKeyDown={navigate(api, order, tab)} wrapSelect={select => (switcher ? <DropdownMenu label="Place switcher" items={switcher.items}>{select}</DropdownMenu> : withTitleTooltip(api, tab, select, trigger => withPreview(api, tab, trigger)))} switcher={switcher && { alert: switcher.alert }}/>
+      onKeyDown={navigate(api, order, tab)} previewOpen={previewOpen} wrapSelect={select => (switcher ? <DropdownMenu label="Place switcher" items={switcher.items}>{select}</DropdownMenu> : withPreview(api, tab, select))} switcher={switcher && { alert: switcher.alert }}/>
   );
   // The switcher menu hangs on the tab's own button, so its popup attributes land on a control and not on the frame.
   return withTabMenu(api, tab, view);
