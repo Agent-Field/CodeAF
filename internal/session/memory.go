@@ -2004,9 +2004,14 @@ func memoryTitleFrom(text string) string {
 
 // ── the one tool ────────────────────────────────────────────────────────────
 
-const rememberDescription = "Keep one durable user preference, correction or decision in a short line. Preserve conditions and exceptions; omit transcripts, repo facts and temporary state. In a chat filed under a place, save a knowledge line there by default, with Undo; with several places use the first parent-most and name that choice. Explicit user/project/env scopes use general memory, where related memories are reconciled."
+// rememberDescription is the contract of the verb, and the only place the
+// filed-chat rule is stated. The page used to say it too, which billed every
+// request for a law this sentence already carries, and a lean belt does not
+// save to a place at all (remember_place.go). The place block states its own
+// ranking when it is present, so the fixed prefix does not repeat that either.
+const rememberDescription = "Keep one durable user preference, correction or decision in a short line. Preserve conditions and exceptions; omit transcripts, repo facts and temporary state. A filed chat saves to its first parent-most place, with Undo. Related memories are reconciled."
 
-const rememberSchemaJSON = `{"type":"object","properties":{"text":{"type":"string","description":"The single line to remember, in plain words"},"scope":{"type":"string","enum":["place","user","project","env"],"description":"How far the truth reaches: this chat’s place by default when filed, otherwise this project; place explicitly requires a filed chat; user only for an explicitly personal rule across projects; env only for this machine"}},"required":["text"],"additionalProperties":false}`
+const rememberSchemaJSON = `{"type":"object","properties":{"text":{"type":"string","description":"The single line to remember, in plain words"},"scope":{"type":"string","enum":["place","user","project","env"],"description":"place when this chat is filed, else this project; user only for an explicitly personal rule across projects; env only for this machine"}},"required":["text"],"additionalProperties":false}`
 
 // The gloss a person reads beside a memory call is the thing itself —
 // "remember prefers tabs over spaces" — for the reason every other tool's gloss
