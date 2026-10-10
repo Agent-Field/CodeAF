@@ -1,0 +1,14 @@
+/* Places 9c / Components "Place switcher". The design sets a 280px content width with 5px of
+   padding, so the border box is 290px. The app is border-box, so the width includes that pad. */
+.app-menu.place-switcher { box-sizing: border-box; width: calc(var(--rail-switcher-width) + var(--menu-pad) * 2); border-radius: var(--radius-lg); }
+.place-switcher .menu-item { height: var(--rail-place-row-height); min-height: var(--rail-place-row-height); gap: var(--space-compact); padding: 0 var(--space-compact); font-size: var(--rail-row-font); border-radius: var(--rail-switcher-radius); transition: background-color var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease); }
+.place-switcher .menu-item[data-state="checked"] { background: var(--field-2); }
+.place-switcher .menu-item:active:not([data-disabled]) { filter: brightness(var(--brightness-press)); transition-duration: var(--dur-press); }
+.place-switcher .menu-check { display: none; }
+.place-switcher .menu-label { white-space: nowrap; overflow: hidden; mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
+/* Now and All places are identity glyphs, drawn in the quiet ink. Colour stays on the 6px status dot. */
+.place-switcher .menu-item > .app-icon { color: var(--ink-3); }
+.place-switcher .keyboard-shortcut[data-variant="inline"] { font-size: var(--rail-meta-font); }
+.place-switcher .menu-section-label { padding: var(--rail-switcher-label-pad-top) var(--space-compact) var(--rail-switcher-label-pad-bottom); font-size: var(--rail-meta-font); font-weight: var(--font-weight-medium); color: var(--ink-3); }
+/* The shared menu clears the keyboard ring. This column puts it back, and only while the last input was a key. */
+:where(html:not([data-input="pointer"])) .place-switcher .menu-item:focus-visible { box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 calc(var(--focus-ring-width) + var(--focus-halo-width)) var(--accent-soft); }

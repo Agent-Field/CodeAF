@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ThemeProvider } from '../../../src/design/ThemeProvider';
-import { Button, DropdownMenu } from '../../../src/components/ui';
+import { Button } from '../../../src/components/ui';
+import { Switcher } from '../../../src/features/places/rail/Switcher';
 import { PlaceRail, type PlaceRailProps } from '../../../src/features/shell/PlaceRail';
 import { placeSwitcher } from '../../../src/features/places/shell/placeSwitcher';
 import { switcherRowContents } from '../../../src/features/places/rail/switcherRowContents';
@@ -37,7 +38,7 @@ export function mountPlaceRail(theme: string, empty = false) {
       slotShortcut: index => `⌃${index}`, closeShortcut: '⌘⇧W', newWindowShortcut: '⌘↵', appItems: [],
     };
     const switcher = placeSwitcher({ place: current } as PlacesShell, props, switcherRowContents);
-    return <><div className="rail-row-fixture"><PlaceRail {...props}/></div><DropdownMenu label="Place switcher" className="place-switcher" items={switcher.items}><Button>Switch place</Button></DropdownMenu><output id="rail-calls">{calls.join('|')}</output></>;
+    return <><div className="rail-row-fixture"><PlaceRail {...props}/></div><Switcher items={switcher.items}><Button>Switch place</Button></Switcher><output id="rail-calls">{calls.join('|')}</output></>;
   }
   createRoot(host).render(<ThemeProvider><Specimen/></ThemeProvider>);
 }

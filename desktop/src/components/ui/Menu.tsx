@@ -13,7 +13,7 @@ export type MenuEntry =
  | { kind: 'separator'; id: string; label?: string }
  | { kind: 'submenu'; id: string; label: string; icon?: IconName; iconSlot?: boolean; disabled?: boolean; items: readonly MenuEntry[] }
  | { kind: 'swatches'; id: string; label: string; icon?: IconName; options: readonly MenuSwatchOption[]; selected?: string; onSelect: (id: string) => void };
-type MenuProps = { children: ReactElement; items: readonly MenuEntry[]; label: string; className?: string; onOpenChange?: (open: boolean) => void; /** The 240px menu of the design's tab menu; the default is 200px. */ wide?: boolean };
+type MenuProps = { children: ReactElement; items: readonly MenuEntry[]; label: string; className?: string; onOpenChange?: (open: boolean) => void; /** The 240px menu of the design's tab menu; the default is 200px. */ wide?: boolean; /** Which edge of the trigger the popup lines up with. Menus hang from the end; the place switcher hangs from the start of the Home tab. */ align?: 'start' | 'center' | 'end' };
 
 function useMenuLayer<T extends HTMLElement>(onOpenChange?: (open: boolean) => void) {
  const ref = useRef<T>(null);
@@ -133,11 +133,11 @@ export function ContextMenu({ children, items, label, onOpenChange, wide = false
   </Context.Content></Context.Portal>
  </Context.Root>;
 }
-export function DropdownMenu({ children, items, label, onOpenChange, className = '' }: MenuProps) {
+export function DropdownMenu({ children, items, label, onOpenChange, className = '', align = 'end' }: MenuProps) {
  const layer = useMenuLayer<HTMLButtonElement>(onOpenChange);
  return <Dropdown.Root open={layer.open} onOpenChange={layer.onOpenChange}>
   <Dropdown.Trigger ref={layer.ref} asChild>{children}</Dropdown.Trigger>
-  <Dropdown.Portal container={layer.modal}><Dropdown.Content onFocusCapture={focusFirstItem} aria-labelledby={undefined} aria-label={label} className={`app-menu app-menu-dropdown ${className}`} align="end" sideOffset={design.overlay.sideOffset} collisionPadding={design.overlay.collisionPadding}>
+  <Dropdown.Portal container={layer.modal}><Dropdown.Content onFocusCapture={focusFirstItem} aria-labelledby={undefined} aria-label={label} className={`app-menu app-menu-dropdown ${className}`} align={align} sideOffset={design.overlay.sideOffset} collisionPadding={design.overlay.collisionPadding}>
    <MenuItems items={items} type="dropdown" container={layer.modal}/>
   </Dropdown.Content></Dropdown.Portal>
  </Dropdown.Root>;

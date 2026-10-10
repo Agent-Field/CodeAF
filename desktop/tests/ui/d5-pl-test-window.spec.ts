@@ -81,4 +81,85 @@ for (const theme of ['light', 'dark']) {
     await page.reload();
     await expect(page.getByRole('tab', { name: 'Start from Home', exact: true })).toHaveAttribute('aria-selected', 'true');
   });
+
+  test(`collapsed Home opens the place switcher and the second slot jumps · ${theme}`, async ({ page }) => {
+    await page.addInitScript(theme => localStorage.setItem('codeaf-theme', theme), theme);
+    await installMockEngine(page, { initial: {} });
+    const config = 'pl_0011223344556677';
+    await installMockPlaces(page, {
+      places: [
+        { id: place, name: 'Reading', pinned: true, tint: 'tide' },
+        { id: other, name: 'Writing', pinned: true, tint: 'iris' },
+        { id: config, name: 'Config parser', parents: ['Reading'], lastOpenedAt: 'now', tint: 'rose' },
+      ],
+      chats: [{ id: 'need', title: 'Allow the push', places: ['Config parser'], needsYou: true, reason: 'Allow the push?' }],
+    });
+    await page.goto('/');
+    const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
+    const rail = page.locator('.app-shell .place-rail').first();
+    await rail.getByRole('button', { name: /^Reading/ }).click();
+    const home = page.locator('.workspace-tab.is-place-home');
+    await expect(home).toContainText('Reading');
+    await rail.getByRole('button', { name: 'Hide sidebar' }).click();
+    await expect(page.locator('.app-shell.sidebar-collapsed')).toHaveCount(1);
+    await expect(home.getByRole('tab')).toHaveAttribute('aria-description', '1 needs you in Config parser');
+    await home.getByRole('tab').click();
+    const menu = page.getByRole('menu', { name: 'Place switcher' });
+    await expect(menu).toBeVisible();
+    await menu.evaluate(el => Promise.all(el.getAnimations().map(animation => animation.finished)));
+    await expect(menu.getByText('Inbox')).toHaveCount(0);
+    await expect(menu.getByText('Pinned', { exact: true })).toBeVisible();
+    await expect(menu.getByText('Open', { exact: true })).toBeVisible();
+    const current = menu.getByRole('menuitemcheckbox', { name: /^Reading/ });
+    await expect(current).toHaveAttribute('aria-checked', 'true');
+    await expect(menu.getByRole('menuitemcheckbox', { name: /^Writing/ })).toContainText(mac ? '⌃2' : 'Alt+2');
+    await expect(menu.getByRole('menuitem', { name: /^All places/ })).toBeVisible();
+    const parent = menu.locator('.rail-place-path');
+    await expect(parent).toHaveText(' · Reading');
+    await expect(menu.getByRole('img', { name: '1 needs you in Config parser' })).toHaveCount(2);
+    const geometry = await current.evaluate(el => {
+      const row = getComputedStyle(el);
+      const box = el.getBoundingClientRect();
+      const pop = el.closest('[role="menu"]') as HTMLElement;
+      const menuStyle = getComputedStyle(pop);
+      const menuBox = pop.getBoundingClientRect();
+      const probe = document.createElement('div');
+      probe.style.background = 'var(--field-2)';
+      probe.style.color = 'var(--ink-3)';
+      document.body.append(probe);
+      const field = getComputedStyle(probe).backgroundColor;
+      const quiet = getComputedStyle(probe).color;
+      probe.remove();
+      const path = el.closest('[role="menu"]')!.querySelector('.rail-place-path') as HTMLElement;
+      const tab = document.querySelector('.home-tab-select') as HTMLElement;
+      const tabBox = tab.getBoundingClientRect();
+      return {
+        row: [box.width, box.height, row.fontSize, row.gap, row.borderRadius],
+        fill: row.backgroundColor === field,
+        parent: getComputedStyle(path).color === quiet,
+        menu: [menuBox.width, menuStyle.borderRadius, menuStyle.padding],
+        under: menuBox.y >= tabBox.bottom - 1 && Math.abs(menuBox.x - tabBox.x) < 8,
+      };
+    });
+    expect(geometry.row).toEqual([280, 32, '13px', '10px', '7px']);
+    expect(geometry.fill).toBe(true);
+    expect(geometry.parent).toBe(true);
+    expect(geometry.menu).toEqual([290, '12px', '5px']);
+    expect(geometry.under).toBe(true);
+    await expect(menu.getByRole('menuitemcheckbox', { name: /^Now/ })).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(current).toBeFocused();
+    await page.keyboard.press('ArrowUp');
+    await expect(menu.getByRole('menuitemcheckbox', { name: /^Now/ })).toBeFocused();
+    await page.keyboard.press(mac ? 'Control+Digit2' : 'Alt+Digit2');
+    await expect(home).toContainText('Writing');
+    await expect(page.getByRole('heading', { name: 'Writing', exact: true })).toBeVisible();
+    if (await menu.isVisible()) await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await home.getByRole('tab').click();
+    await expect(menu).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(home.getByRole('tab')).toBeFocused();
+  });
 }

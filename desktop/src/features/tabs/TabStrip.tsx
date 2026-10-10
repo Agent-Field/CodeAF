@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Button, DropdownMenu, Icon, IconButton } from '../../components/ui';
+import { Switcher } from '../places/rail/Switcher';
 import design from '../../design/tokens.json';
 import { useMediaQuery } from '../../design/useMediaQuery';
 import { overviewShortcut, tabShortcuts } from '../../design/keyboard';
@@ -219,7 +220,7 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
         {home && <HomeTab key={home.id} name={home.title} tint={api.placeTint ?? 'graphite'} active={state.activeId === home.id} id={tabDomId(home)} menu={api.placeMenu}
           onSelect={() => dispatch({ type: 'select', id: home.id })} onKeyDown={navigate(api, order, home, homeFocus)}
           switcher={!!api.placeSwitcher} needsYou={api.placeSwitcher?.alert}
-          wrapSelect={api.placeSwitcher ? select => <DropdownMenu className="place-switcher" label="Place switcher" items={api.placeSwitcher!.items}>{select}</DropdownMenu> : undefined}/>}
+          wrapSelect={api.placeSwitcher ? select => <Switcher items={api.placeSwitcher!.items}>{select}</Switcher> : undefined}/>}
         {pinned.map(tab => item(tab))}
         {pinned.length > 0 && <span className="workspace-tab-divider" role="separator" aria-orientation="vertical"/>}
         {items.map(entry => {
