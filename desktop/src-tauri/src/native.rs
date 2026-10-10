@@ -15,9 +15,9 @@ use std::time::Duration;
 
 use tauri::Manager;
 
-const OUTSIDE: &str = "That file is outside the workspace";
-const MISSING: &str = "That file no longer exists";
-const UNAVAILABLE: &str = "The workspace is unavailable";
+pub(crate) const OUTSIDE: &str = "That file is outside the workspace";
+pub(crate) const MISSING: &str = "That file no longer exists";
+pub(crate) const UNAVAILABLE: &str = "The workspace is unavailable";
 const ROOTS_PATH: &str = "/api/engine/roots";
 const ROOTS_WAIT: Duration = Duration::from_secs(2);
 /// A directory list is names, not a file. Past this the answer is not a roots list.
@@ -27,7 +27,7 @@ const ROOTS_CAP: usize = 64 * 1024;
 // directories the engine named. An empty list is a remote engine: nothing on
 // this disk is inside it, and the path is not statted first, because "missing"
 // would tell the window whether the file is here.
-fn confine(path: &str, roots: &[String]) -> Result<PathBuf, String> {
+pub(crate) fn confine(path: &str, roots: &[String]) -> Result<PathBuf, String> {
     if roots.is_empty() {
         return Err(OUTSIDE.into());
     }
@@ -170,8 +170,24 @@ fn token_is_safe(token: &str) -> bool {
     !token.is_empty() && token.bytes().all(|byte| (0x21..0x7f).contains(&byte))
 }
 
-fn fetch_roots(base_url: &str, token: &str) -> Result<Vec<String>, String> {
-    if !token_is_safe(token) {
+// One request writer for every call this process makes to the engine. open_with
+// asks the editors route through the same door as the roots list: loopback only,
+// the cached token, no redirect. A second client would be a second place a path
+// could be smuggled into a header.
+pub(crate) fn http_exchange(
+    base_url: &str,
+    token: &str,
+    method: &str,
+    path: &str,
+    body: Option<&[u8]>,
+) -> Result<Vec<u8>, String> {
+    if !token_is_safe(token) || !engine_path_ok(path) {
+        return Err(UNAVAILABLE.into());
+    }
+    if method != "GET" && method != "POST" {
+        return Err(UNAVAILABLE.into());
+    }
+    if method == "GET" && body.is_some() {
         return Err(UNAVAILABLE.into());
     }
     let target = roots_target(base_url)?;
@@ -184,14 +200,49 @@ fn fetch_roots(base_url: &str, token: &str) -> Result<Vec<String>, String> {
         .set_write_timeout(Some(ROOTS_WAIT))
         .map_err(|_| UNAVAILABLE.to_string())?;
     // Connection: close, and no redirect is ever issued. The token stays in this process.
-    let request = format!(
-        "GET {ROOTS_PATH} HTTP/1.1\r\nHost: {host}\r\nAuthorization: Bearer {token}\r\nAccept: application/json\r\nConnection: close\r\n\r\n",
-        host = target.host_header,
-    );
+    let len = body.map(|bytes| bytes.len()).unwrap_or(0);
+    let request = if method == "GET" {
+        format!(
+            "GET {path} HTTP/1.1\r\nHost: {host}\r\nAuthorization: Bearer {token}\r\nAccept: application/json\r\nConnection: close\r\n\r\n",
+            host = target.host_header,
+        )
+    } else {
+        format!(
+            "POST {path} HTTP/1.1\r\nHost: {host}\r\nAuthorization: Bearer {token}\r\nAccept: application/json\r\nContent-Type: application/json\r\nContent-Length: {len}\r\nConnection: close\r\n\r\n",
+            host = target.host_header,
+        )
+    };
     stream
         .write_all(request.as_bytes())
         .map_err(|_| UNAVAILABLE.to_string())?;
-    let raw = read_response(&mut stream)?;
+    if let Some(body) = body {
+        stream
+            .write_all(body)
+            .map_err(|_| UNAVAILABLE.to_string())?;
+    }
+    read_response(&mut stream)
+}
+
+// The request target is one path on this engine. A newline, a space or a second
+// host would turn it into another header. Query values arrive already escaped.
+fn engine_path_ok(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("/api/engine/") else {
+        return false;
+    };
+    if rest.is_empty() || rest.len() > 8192 || rest.contains("//") {
+        return false;
+    }
+    rest.bytes().all(|byte| {
+        byte.is_ascii_alphanumeric()
+            || matches!(
+                byte,
+                b'/' | b'?' | b'=' | b'&' | b'%' | b'-' | b'_' | b'.' | b'~'
+            )
+    })
+}
+
+fn fetch_roots(base_url: &str, token: &str) -> Result<Vec<String>, String> {
+    let raw = http_exchange(base_url, token, "GET", ROOTS_PATH, None)?;
     roots_from_http(&raw)
 }
 
@@ -244,24 +295,38 @@ fn response_complete(buf: &[u8]) -> bool {
     false
 }
 
-fn roots_from_http(raw: &[u8]) -> Result<Vec<String>, String> {
+pub(crate) struct HttpParts {
+    pub status: u16,
+    pub body: Vec<u8>,
+}
+
+// Status and body of one reply. A redirect is an error, not a second request:
+// the Location header is never dialed. 4xx and 5xx are returned so the caller
+// can refuse in its own words; they are not a roots list.
+pub(crate) fn http_parts(raw: &[u8]) -> Result<HttpParts, String> {
     let Some(header_end) = find_bytes(raw, b"\r\n\r\n") else {
         return Err(UNAVAILABLE.into());
     };
     let head = std::str::from_utf8(&raw[..header_end]).map_err(|_| UNAVAILABLE.to_string())?;
     let mut lines = head.split("\r\n");
-    let status = lines.next().unwrap_or("");
-    let mut parts = status.split_whitespace();
+    let status_line = lines.next().unwrap_or("");
+    let mut parts = status_line.split_whitespace();
     let version = parts.next().unwrap_or("");
     let code = parts.next().unwrap_or("");
-    if (version != "HTTP/1.0" && version != "HTTP/1.1") || code != "200" {
-        // A redirect is not followed. The body of any other status is not a roots list.
+    if version != "HTTP/1.0" && version != "HTTP/1.1" {
+        return Err(UNAVAILABLE.into());
+    }
+    let status: u16 = code.parse().map_err(|_| UNAVAILABLE.to_string())?;
+    if !(200..300).contains(&status) && !(400..600).contains(&status) {
+        return Err(UNAVAILABLE.into());
+    }
+    if content_encoding_is_set(&raw[..header_end]) {
         return Err(UNAVAILABLE.into());
     }
     let body = &raw[header_end + 4..];
-    let bytes = if transfer_is_chunked(raw[..header_end].as_ref()) {
+    let bytes = if transfer_is_chunked(&raw[..header_end]) {
         decode_chunked(body)?
-    } else if let Some(len) = content_length(raw[..header_end].as_ref()) {
+    } else if let Some(len) = content_length(&raw[..header_end]) {
         if len > body.len() || len > ROOTS_CAP {
             return Err(UNAVAILABLE.into());
         }
@@ -269,7 +334,16 @@ fn roots_from_http(raw: &[u8]) -> Result<Vec<String>, String> {
     } else {
         body.to_vec()
     };
-    if content_encoding_is_set(raw[..header_end].as_ref()) {
+    Ok(HttpParts {
+        status,
+        body: bytes,
+    })
+}
+
+fn roots_from_http(raw: &[u8]) -> Result<Vec<String>, String> {
+    let parts = http_parts(raw)?;
+    // A redirect is not followed. The body of any other status is not a roots list.
+    if parts.status != 200 {
         return Err(UNAVAILABLE.into());
     }
     #[derive(serde::Deserialize)]
@@ -277,7 +351,8 @@ fn roots_from_http(raw: &[u8]) -> Result<Vec<String>, String> {
         #[serde(default)]
         roots: Option<Vec<String>>,
     }
-    let parsed: RootsBody = serde_json::from_slice(&bytes).map_err(|_| UNAVAILABLE.to_string())?;
+    let parsed: RootsBody =
+        serde_json::from_slice(&parts.body).map_err(|_| UNAVAILABLE.to_string())?;
     Ok(parsed.roots.unwrap_or_default())
 }
 
@@ -357,7 +432,7 @@ fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 
 // The cached connection only. This does not start an engine: opening a file
 // must not be what brings the sidecar up, and a window-supplied token is not a parameter.
-async fn engine_roots(app: &tauri::AppHandle) -> Result<Vec<String>, String> {
+pub(crate) async fn engine_roots(app: &tauri::AppHandle) -> Result<Vec<String>, String> {
     let runtime = app.state::<crate::EngineRuntime>();
     let connection = {
         let guard = runtime.connection.lock().await;
@@ -368,6 +443,29 @@ async fn engine_roots(app: &tauri::AppHandle) -> Result<Vec<String>, String> {
     tauri::async_runtime::spawn_blocking(move || fetch_roots(&url, &token))
         .await
         .map_err(|_| UNAVAILABLE.to_string())?
+}
+
+// The same cached connection as the roots list. `path` is an engine route this
+// process built; the body is JSON this process built. Neither is a string the
+// window composed into a request line.
+pub(crate) async fn engine_http(
+    app: &tauri::AppHandle,
+    method: &'static str,
+    path: String,
+    body: Option<Vec<u8>>,
+) -> Result<Vec<u8>, String> {
+    let runtime = app.state::<crate::EngineRuntime>();
+    let connection = {
+        let guard = runtime.connection.lock().await;
+        guard.clone().ok_or_else(|| UNAVAILABLE.to_string())?
+    };
+    let url = connection.url;
+    let token = connection.token;
+    tauri::async_runtime::spawn_blocking(move || {
+        http_exchange(&url, &token, method, &path, body.as_deref())
+    })
+    .await
+    .map_err(|_| UNAVAILABLE.to_string())?
 }
 
 #[tauri::command]

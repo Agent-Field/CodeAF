@@ -2,6 +2,7 @@
 #[doc(hidden)]
 pub mod activation;
 mod dialogs;
+mod editors;
 mod links;
 #[cfg(target_os = "macos")]
 mod menu;
@@ -182,6 +183,7 @@ pub fn run() {
             links::link_claim,
             native::open_path,
             native::reveal_path,
+            editors::open_with,
             native::host_name,
             native::open_url,
             windows::window_open,
