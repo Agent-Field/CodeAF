@@ -1,0 +1,131 @@
+/* The frame-pill banner (Components "Banner (4s, then folds into the pill)").
+   The specimen's width is the content width: the measured border box is 340 plus the
+   14px side padding. The app's global border-box would swallow that padding and draw
+   a narrower card than the design, so this card opts back into content-box.
+   i2-banner-duration is its own 200ms, not dur-base: reduced motion zeros every dur-*
+   token, and this fade has to survive that so only the 8px slide is dropped. */
+
+.button.nextup-banner {
+  box-sizing: content-box;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--i2-banner-gap);
+  width: var(--i2-banner-width);
+  max-width: calc(100% - var(--i2-banner-pad-inline) * 2);
+  min-height: 0;
+  height: auto;
+  padding: var(--i2-banner-pad-block) var(--i2-banner-pad-inline);
+  border: 0;
+  border-radius: var(--i2-banner-radius);
+  background-color: var(--surface);
+  box-shadow: var(--i2-banner-shadow);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--i2-banner-head-size);
+  font-weight: var(--font-weight-regular);
+  line-height: normal;
+  text-align: start;
+  white-space: normal;
+  opacity: var(--opacity-opaque);
+  transform: translateY(var(--motion-rest));
+  transition-property: opacity, transform, background-color, filter;
+  transition-duration: var(--i2-banner-duration), var(--i2-banner-duration), var(--dur-fast), var(--dur-fast);
+  transition-timing-function: var(--ease), var(--ease), var(--ease), var(--ease);
+}
+
+/* Toward the pill on the way out and on the way back. The pill sits above this card. */
+.button.nextup-banner[data-phase="from-pill"],
+.button.nextup-banner[data-phase="into-pill"] {
+  opacity: var(--opacity-transparent);
+  transform: translateY(calc(-1 * var(--i2-banner-travel)));
+}
+
+.nextup-banner-glyph {
+  flex: none;
+  width: var(--i2-banner-glyph);
+  height: var(--i2-banner-glyph);
+  border-radius: var(--i2-banner-glyph-radius);
+  background-color: var(--amber);
+}
+
+.nextup-banner-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--i2-banner-line-gap);
+  min-width: 0;
+}
+
+.nextup-banner-head {
+  font-size: var(--i2-banner-head-size);
+  font-weight: var(--i2-banner-head-weight);
+  line-height: normal;
+  color: var(--ink);
+}
+
+.nextup-banner-detail,
+.nextup-banner-chord {
+  font-size: var(--i2-banner-head-size);
+  font-weight: var(--font-weight-regular);
+  line-height: normal;
+  color: var(--ink-3);
+}
+
+.nextup-banner-chord { flex: none; white-space: nowrap; }
+
+/* Hover is a fill change only. The head stays ink and the second line stays ink-3;
+   ghost's hover would recolor the whole control. */
+.button.nextup-banner:hover:not(:disabled) {
+  background-color: var(--i2-banner-hover);
+  color: var(--ink);
+  filter: none;
+}
+
+.button.nextup-banner:hover:not(:disabled) .nextup-banner-detail,
+.button.nextup-banner:hover:not(:disabled) .nextup-banner-chord,
+.button.nextup-banner:active:not(:disabled) .nextup-banner-detail,
+.button.nextup-banner:active:not(:disabled) .nextup-banner-chord {
+  color: var(--ink-3);
+}
+
+/* Press darkens the hover fill. The slide and the fade keep their own duration
+   so a click does not snap the fold down to the press step. */
+.button.nextup-banner:active:not(:disabled) {
+  background-color: var(--i2-banner-hover);
+  color: var(--ink);
+  filter: brightness(var(--brightness-press));
+  transition-duration: var(--i2-banner-duration), var(--i2-banner-duration), var(--dur-press), var(--dur-press);
+}
+
+/* Keyboard focus keeps the card shadow and adds the shared ring. A pointer press
+   does not: the ring is for the keyboard only. */
+.button.nextup-banner:focus-visible {
+  box-shadow: var(--i2-banner-shadow), 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft);
+}
+
+:where(html[data-input="pointer"]) .button.nextup-banner:focus-visible {
+  box-shadow: var(--i2-banner-shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button.nextup-banner,
+  .button.nextup-banner[data-phase="from-pill"],
+  .button.nextup-banner[data-phase="rest"],
+  .button.nextup-banner[data-phase="into-pill"] {
+    transform: none;
+  }
+}
+
+/* The measurement page. Padding keeps the card off the viewport edge so a
+   pointer can leave it. Not part of the product chrome. */
+.nextup-banner-specimen {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+  min-height: 100vh;
+  padding: var(--space-8);
+  background-color: var(--canvas);
+}
