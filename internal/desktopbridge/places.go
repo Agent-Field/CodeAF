@@ -48,6 +48,9 @@ type Places struct {
 	// publish puts a record on the world stream. UsePlaces points it at the
 	// bridge's feed; nil publishes nothing.
 	publish func(kind string, payload any)
+	// tell puts a placeChange event on one open conversation's own ring
+	// (placechange.go). UsePlaces points it at the bridge; nil tells nobody.
+	tell func(chat string, change PlaceChange)
 	// sweepStop ends the rail's 30-second sweep. Bridge.Close closes it.
 	sweepStop chan struct{}
 
@@ -85,6 +88,7 @@ func (b *Bridge) UsePlaces(p *Places) {
 	if p != nil {
 		p.live = b.liveChatIDs
 		p.allowsModel = b.allowsModel
+		p.tell = b.tellChat
 		p.publish = func(kind string, payload any) { b.worldFeed().Publish(kind, payload) }
 		if p.sweepStop == nil {
 			p.sweepStop = make(chan struct{})
@@ -201,6 +205,10 @@ func (p *Places) serve(w http.ResponseWriter, r *http.Request, parts []string) {
 			if needPost(w, r) {
 				p.undo(w, r)
 			}
+		case "from-folder":
+			if needPost(w, r) {
+				p.fromFolder(w, r)
+			}
 		case "stale":
 			if p.Stale == nil {
 				fail(w, 404, "unknown engine action")
@@ -218,6 +226,12 @@ func (p *Places) serve(w http.ResponseWriter, r *http.Request, parts []string) {
 			}
 		}
 	case 2:
+		if parts[0] == "undo" {
+			if needPost(w, r) {
+				p.undoReceipt(w, r, parts[1])
+			}
+			return
+		}
 		if parts[1] == "delete-preview" {
 			if needGet(w, r) {
 				p.deletePreview(w, parts[0])

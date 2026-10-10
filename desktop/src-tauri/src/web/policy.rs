@@ -165,6 +165,40 @@ pub fn label_for(pane: &str) -> String {
     format!("{LABEL_PREFIX}{pane}")
 }
 
+/// An app chord that must still reach codeaf while a web page holds the keys.
+/// `mac` is the host: Command is primary there, Control everywhere else.
+/// Shift and Alt stay with the page (⌘⇧T is reopen, and the page keeps its own).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AppChord {
+    NewTab,
+    CloseTab,
+    Address,
+}
+
+pub fn app_chord(
+    mac: bool,
+    key: char,
+    command: bool,
+    control: bool,
+    shift: bool,
+    alt: bool,
+) -> Option<AppChord> {
+    let primary = if mac {
+        command && !control
+    } else {
+        control && !command
+    };
+    if !primary || shift || alt {
+        return None;
+    }
+    match key.to_ascii_lowercase() {
+        't' => Some(AppChord::NewTab),
+        'w' => Some(AppChord::CloseTab),
+        'l' => Some(AppChord::Address),
+        _ => None,
+    }
+}
+
 /// A pane's rectangle in the window's logical pixels, as the renderer measured it.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct Rect {
@@ -358,6 +392,54 @@ mod tests {
             assert!(checked_pane(bad).is_err(), "{bad}");
         }
         assert_eq!(label_for("p1"), "web-p1");
+        assert_eq!(label_for("tab-12_a"), "web-tab-12_a");
+    }
+
+    #[test]
+    fn app_chords_are_new_close_and_address_on_the_primary_modifier_only() {
+        let chord = |mac, key, command, control, shift, alt| {
+            app_chord(mac, key, command, control, shift, alt)
+        };
+        assert_eq!(
+            chord(true, 't', true, false, false, false),
+            Some(AppChord::NewTab)
+        );
+        assert_eq!(
+            chord(true, 'W', true, false, false, false),
+            Some(AppChord::CloseTab)
+        );
+        assert_eq!(
+            chord(true, 'l', true, false, false, false),
+            Some(AppChord::Address)
+        );
+        assert_eq!(
+            chord(false, 't', false, true, false, false),
+            Some(AppChord::NewTab)
+        );
+        assert_eq!(
+            chord(false, 'w', false, true, false, false),
+            Some(AppChord::CloseTab)
+        );
+        assert_eq!(
+            chord(false, 'L', false, true, false, false),
+            Some(AppChord::Address)
+        );
+        // The other platform's primary, and anything with Shift or Alt, stays with the page.
+        for (mac, key, command, control, shift, alt) in [
+            (true, 't', false, true, false, false),
+            (false, 't', true, false, false, false),
+            (true, 't', true, false, true, false),
+            (false, 'w', false, true, false, true),
+            (true, 'l', true, true, false, false),
+            (false, 'r', false, true, false, false),
+            (false, 't', false, false, false, false),
+        ] {
+            assert_eq!(
+                chord(mac, key, command, control, shift, alt),
+                None,
+                "{key} mac={mac}"
+            );
+        }
     }
 
     #[test]
