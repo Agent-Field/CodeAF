@@ -14,6 +14,11 @@ const rail = (page: Page) => page.locator('.app-shell > .sidebar');
 const strip = (page: Page) => page.locator('.workspace-tabbar');
 const tabs = (page: Page) => page.getByRole('tab');
 const box = async (page: Page, selector: string) => (await page.locator(selector).first().boundingBox())!;
+// Pause the fake clock. install() keeps real time flowing, so a later fastForward would add to time that already passed.
+const freezeClock = async (page: Page) => {
+  await page.clock.install({ time: new Date('2026-10-09T12:00:00.000Z') });
+  await page.clock.pauseAt('2026-10-09T12:00:02.000Z');
+};
 const selectedIndex = async (page: Page) => (await tabs(page).evaluateAll(all => all.findIndex(tab => tab.getAttribute('aria-selected') === 'true')));
 test.beforeEach(async ({ page }) => { await page.route('**/api/engine/**', route => route.abort()); });
 
@@ -104,6 +109,72 @@ test('resting on the left 8px edge for 300ms peeks the collapsed rail over the c
   await page.mouse.move(120, 30);
   await rail(page).getByRole('button', { name: 'Show sidebar' }).click();
   await expect(page.locator('.app-shell')).not.toHaveClass(/sidebar-collapsed/);
+});
+
+test('left edge peek after 300ms, not before', async ({ page }) => {
+  await page.goto('/');
+  await page.mouse.move(600, 400);
+  await page.keyboard.press(`${mod}+s`);
+  await expect(rail(page)).toBeHidden();
+  // Collapsed, not Focus mode: the top 8px is not listening. Only the left edge is.
+  await expect(page.locator('.shell-hotzone[data-edge="top"]')).toHaveCount(0);
+  const zone = page.locator('.shell-hotzone[data-edge="left"]');
+  const zoneBox = await zone.evaluate(el => {
+    const style = getComputedStyle(el);
+    const box = el.getBoundingClientRect();
+    return { width: box.width, height: box.height, top: box.top, left: box.left, cssWidth: parseFloat(style.width) };
+  });
+  expect(zoneBox.cssWidth).toBe(px('shell-hotzone'));
+  expect(zoneBox).toMatchObject({ width: 8, left: 0, top: 0 });
+  expect(zoneBox.height).toBeGreaterThan(700);
+  await freezeClock(page);
+  await page.mouse.move(4, 400);
+  await expect(page.locator('.app-shell')).not.toHaveAttribute('data-peek');
+  await page.clock.fastForward(299);
+  await expect(page.locator('.app-shell')).not.toHaveAttribute('data-peek');
+  await expect(rail(page)).toBeHidden();
+  await page.clock.fastForward(1);
+  const shell = page.locator('.app-shell');
+  await expect(shell).toHaveAttribute('data-peek', 'rail');
+  await expect(rail(page)).toBeVisible();
+  // The slide has not finished. The pointer is already in the rectangle the rail rests in, so the overlay stays.
+  await page.mouse.move(120, 400);
+  await expect(shell).toHaveAttribute('data-peek', 'rail');
+  const paneLeft = await page.locator('.content-pane').evaluate(el => el.getBoundingClientRect().left);
+  expect(paneLeft).toBe(px('shell-card-inset'));
+  const overlay = await rail(page).evaluate(el => {
+    const box = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    return { y: box.y, width: box.width, position: style.position };
+  });
+  expect(overlay).toMatchObject({ y: 0, width: px('sidebar-width'), position: 'fixed' });
+  await page.mouse.move(600, 400);
+  await expect(shell).not.toHaveAttribute('data-peek');
+  await expect(rail(page)).toBeHidden();
+});
+
+test('reduced motion puts the peeked rail in place once the 300ms rest ends', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await page.mouse.move(600, 400);
+  await page.keyboard.press(`${mod}+s`);
+  await expect(rail(page)).toBeHidden();
+  await freezeClock(page);
+  await page.mouse.move(4, 400);
+  await expect(page.locator('.app-shell')).not.toHaveAttribute('data-peek');
+  await page.clock.fastForward(299);
+  await expect(page.locator('.app-shell')).not.toHaveAttribute('data-peek');
+  await page.clock.fastForward(1);
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-peek', 'rail');
+  const motion = await rail(page).evaluate(el => {
+    const style = getComputedStyle(el);
+    const box = el.getBoundingClientRect();
+    return { durations: style.transitionDuration.split(',').map(part => parseFloat(part)), x: box.x, y: box.y, width: box.width, position: style.position };
+  });
+  expect(motion.durations.every(part => part === 0)).toBe(true);
+  expect(motion).toMatchObject({ x: 0, y: 0, width: px('sidebar-width'), position: 'fixed' });
+  const paneLeft = await page.locator('.content-pane').evaluate(el => el.getBoundingClientRect().left);
+  expect(paneLeft).toBe(px('shell-card-inset'));
 });
 
 test('Focus mode (⌘⇧F) hides the rail and the strip; the top 8px brings the strip back, the left edge the rail; the key restores', async ({ page }) => {
