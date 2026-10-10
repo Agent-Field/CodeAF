@@ -46,7 +46,7 @@ for (const theme of ['light', 'dark'] as const) {
   expect(values.saturation).toBe('1.4');
   expect(values.scrim).toMatch(theme === 'light' ? /\/ 0\.2\)/ : /\/ 0\.4\)/);
   expect(values.palette).toBe(values.scrim);
-  expect(values.quicklook).toBe(values.scrim);
+  expect(values.quicklook).toMatch(/\/ 0\.2\)/);
   expect(values.selection).toBe(values.accentSoft);
   expect(values.selected).toBe('Colour roles');
   expect(values.width).toBeGreaterThan(0);
