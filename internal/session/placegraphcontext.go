@@ -147,6 +147,7 @@ func (a *Agent) refreshPlaceGraphLocked() {
 	}
 	a.placeGraphStamp, a.placeGraphRead, a.placeGraphBundle = stamp, true, bundle
 	a.placeGraphText = text
+	a.refreshRememberPlaceToolLocked()
 }
 
 // resolvePlaceGraph reads both files and resolves chatID through the one
