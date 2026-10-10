@@ -486,6 +486,8 @@
   --suggest-pill-pad: 0 6px 0 14px;
   --suggest-pill-top: 10px;
   --suggest-pill-gap: 10px;
+  --suggest-pill-dismiss: 22px;
+  --suggest-pill-z: 3;
   --scroll-anchor: 48px;
   --scroll-fade-top-clear: 40px;
   --scroll-fade-top-solid: 96px;
