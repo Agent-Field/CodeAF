@@ -76,11 +76,11 @@ export function ContextMenu({ children, items, label, onOpenChange, wide = false
   </Context.Content></Context.Portal>
  </Context.Root>;
 }
-export function DropdownMenu({ children, items, label, onOpenChange }: MenuProps) {
+export function DropdownMenu({ children, items, label, onOpenChange, className = '' }: MenuProps) {
  const layer = useMenuLayer<HTMLButtonElement>(onOpenChange);
  return <Dropdown.Root open={layer.open} onOpenChange={layer.onOpenChange}>
   <Dropdown.Trigger ref={layer.ref} asChild>{children}</Dropdown.Trigger>
-  <Dropdown.Portal container={layer.modal}><Dropdown.Content onFocusCapture={focusFirstItem} aria-label={label} className="app-menu app-menu-dropdown" align="end" sideOffset={design.overlay.sideOffset} collisionPadding={design.overlay.collisionPadding}>
+  <Dropdown.Portal container={layer.modal}><Dropdown.Content onFocusCapture={focusFirstItem} aria-label={label} className={`app-menu app-menu-dropdown ${className}`} align="end" sideOffset={design.overlay.sideOffset} collisionPadding={design.overlay.collisionPadding}>
    <MenuItems items={items} type="dropdown" container={layer.modal}/>
   </Dropdown.Content></Dropdown.Portal>
  </Dropdown.Root>;
