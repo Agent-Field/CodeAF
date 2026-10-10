@@ -12,6 +12,24 @@ export const MAX_RETIRED_PANES = 80;
 
 const isOffset = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0;
 
+/**
+ * Focus history stores a scroller by its `data-scroll-key` (`conversation`, `task-page`).
+ * The memory's own key is that name for the first scroller of its kind, the same key `keyOf` writes.
+ * A name with a separator is not a public key: those bytes belong to an unnamed fingerprint.
+ */
+export function namedScrollMemoryKey(name: string): string | undefined {
+  if (!name || /[#:]/.test(name)) return undefined;
+  return `k:${name}#0`;
+}
+
+/** The public scroller name stored on a focus step, or nothing when the memory key is not a named scroller. */
+export function publicScrollName(memoryKey: string): string | undefined {
+  const match = /^k:([^#]+)#0$/.exec(memoryKey);
+  const name = match?.[1];
+  if (!name || name.includes(':')) return undefined;
+  return name;
+}
+
 /** `left` was added after the first save format; a spot without one is a vertical-only spot. */
 function readSpot(value: unknown): ScrollSpot | undefined {
   if (!value || typeof value !== 'object') return undefined;
