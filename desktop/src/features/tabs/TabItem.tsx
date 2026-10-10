@@ -16,6 +16,7 @@ import { monogramOf } from '../web/address';
 import { DropdownMenu, type IconName } from '../../components/ui';
 import { kindDef } from './kinds/registry';
 import { isPlaceHome } from './reducers/home';
+import { isSelectionPress } from './selection';
 import { stripMiddleCloses } from './stripPointer';
 import { Tab as TabView, type TabState } from './Tab';
 
@@ -45,9 +46,6 @@ function navigate(api: TabsApi, order: readonly Tab[], tab: Tab) {
     requestAnimationFrame(() => document.getElementById(tabDomId(target))?.focus());
   };
 }
-
-/** ⌘-click on a Mac, Ctrl-click elsewhere: picks a tab for ⌘G instead of selecting it (Shell, "⌘-selecting and pressing ⌘G"). */
-const picks = (event: MouseEvent) => (isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey) && !event.altKey && !event.shiftKey;
 
 /**
  * The 44px chip (Shell 3j "Compressed") is an inactive tab that would otherwise keep a title, and only at the
@@ -87,8 +85,8 @@ export function TabItem({ api, tab, order, inGroup = false, narrow = false }: { 
   const picked = !!api.state.picked?.includes(tab.id);
   // While any preview card is open the tab's own full-title tooltip stays shut (Shell 3l: the two never stack).
   const previewOpen = useSyncExternalStore(api.previews.subscribe, () => api.previews.get() !== null);
-  const choose = (id: string) => (event: MouseEvent) => api.dispatch(picks(event) ? { type: 'pick', id: tab.id } : { type: 'select', id });
-  const frame = { ...drag, 'data-picked': picked || undefined, onMouseDown, onAuxClick, onPointerEnter: () => setEngaged(true), onPointerLeave: () => setEngaged(false), onFocus: () => setEngaged(true), onBlur: () => setEngaged(false) };
+  const choose = (id: string) => (event: MouseEvent) => api.dispatch(isSelectionPress(event, isMac) ? { type: 'pick', id: tab.id } : { type: 'select', id });
+  const frame = { ...drag, 'data-picked': picked || undefined, 'data-selected': picked || undefined, onMouseDown, onAuxClick, onPointerEnter: () => setEngaged(true), onPointerLeave: () => setEngaged(false), onFocus: () => setEngaged(true), onBlur: () => setEngaged(false) };
   const compressed = compressesTab(narrow, active, tab.pinned, home);
   if (tab.split && compressed) {
     const panes = panesOf(tab);
@@ -103,7 +101,7 @@ export function TabItem({ api, tab, order, inGroup = false, narrow = false }: { 
   if (tab.split) {
     const { panes, focus } = tab.split;
     const segments = panes.map(pane => ({ id: pane.id, kind: pane.kind, title: pane.title, icon: paneIcon(pane), monogram: monogramOf(pane), favicon: favicons.get(pane.id), state: stateOfMark(api.summaries[pane.id]?.mark) }));
-    return withTabMenu(api, tab, <SplitTab segments={segments} focus={focus} active={active} frame={frame} onSelectPane={(index, event) => choose(panes[index].id)(event)} wrapSegment={(segment, button) => withSegmentTooltip(api, tab, segment.title, button)} onClose={() => api.closeTab(tab.id)}/>);
+    return withTabMenu(api, tab, <SplitTab picked={picked} segments={segments} focus={focus} active={active} frame={frame} onSelectPane={(index, event) => choose(panes[index].id)(event)} wrapSegment={(segment, button) => withSegmentTooltip(api, tab, segment.title, button)} onClose={() => api.closeTab(tab.id)}/>);
   }
   const switcher = home ? api.placeSwitcher : undefined;
   // The kind's words after the name. A finished job contributes `exit N`; everything else contributes nothing.
