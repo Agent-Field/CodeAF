@@ -331,7 +331,13 @@ test('heading: breadcrumb, menu and inline rename', async ({ page }) => {
   await expect(log(page).last()).toHaveText('rename:codeaf desktop');
   await heading.getByRole('button', { name: 'Place actions' }).click();
   await page.getByRole('menuitem', { name: 'Rename inline' }).click();
-  await heading.getByRole('textbox', { name: 'Place name' }).press('Escape');
+  const again = heading.getByRole('textbox', { name: 'Place name' });
+  await again.fill('   ');
+  await again.press('Enter');
+  await expect(again).toHaveAttribute('aria-invalid', 'true');
+  await again.fill('x');
+  await expect(again).not.toHaveAttribute('aria-invalid', 'true');
+  await again.press('Escape');
   await expect(heading.getByRole('heading', { level: 1 })).toHaveText('codeaf desktop');
 });
 
