@@ -44,6 +44,14 @@ test('the rail: Pinned in the engine’s order, Open without closed places unles
   assert.deepEqual(railOrder(open), ['pl_0000000000000001', 'pl_0000000000000005']);
 });
 
+test('the Since block carries the engine words, and blank words draw nothing (PL-133)', () => {
+  const digest = fixture('home-place');
+  const recap = { label: 'Since yesterday', text: ' Two fixes landed. ', since: '2026-10-09T13:00:00Z', chats: 1, items: [], unsummarised: 0 };
+  assert.deepEqual(homeViewFromDigest({ ...digest, recap }).recap, { label: 'Since yesterday', text: 'Two fixes landed.' });
+  assert.equal(homeViewFromDigest({ ...digest, recap: { ...recap, text: '  ' } }).recap, undefined);
+  assert.equal(homeViewFromDigest({ ...digest, recap: undefined }).recap, undefined);
+});
+
 test('a place Home view carries only what the engine sent', () => {
   const view = homeViewFromDigest(fixture('home-place'));
   assert.equal(view.kind, 'place');
@@ -70,4 +78,21 @@ test('a chat row opens through the session file the engine reported, and only th
   digest.chats[0].sessionFile = '/h/.codeaf/v3/projects/app/sess-run/session.jsonl';
   assert.equal(sessionFileOf([undefined, digest], 'sess-run'), '/h/.codeaf/v3/projects/app/sess-run/session.jsonl');
   assert.equal(sessionFileOf([digest], 'sess-need'), undefined);
+});
+
+test('Home chat digests use the matching engine recap, with waiting reasons first and missing evidence absent', () => {
+  const digest = fixture('home-place');
+  const recap = { label: 'Since yesterday', text: 'Updated the strict-mode fixtures.', since: '2026-10-09T13:00:00Z', chats: 2, unsummarised: 0 };
+  digest.recap = { ...recap, items: [
+    { chatId: 'sess-run', line: 'Updated the strict-mode fixtures.' },
+    { chatId: 'sess-need', line: 'Ported the parser.' },
+    { chatId: 'other-chat', line: 'An unrelated decision.' },
+  ] };
+  const view = homeViewFromDigest(digest);
+  assert.equal(view.chats.find(chat => chat.id === 'sess-run')?.excerpt, 'Updated the strict-mode fixtures.');
+  assert.equal(view.chats.find(chat => chat.id === 'sess-need')?.excerpt, 'Allow the v1 branch push?');
+  assert.equal(homeViewFromDigest({ ...digest, recap: undefined }).chats.find(chat => chat.id === 'sess-run')?.excerpt, undefined);
+  const now = fixture('home-now');
+  now.recap = { ...recap, chats: 1, items: [{ chatId: now.chats[0].id, line: 'The loose chat’s recap.' }] };
+  assert.equal(homeViewFromDigest(fixture('home-root'), undefined, now).chats[0].excerpt, 'The loose chat’s recap.');
 });

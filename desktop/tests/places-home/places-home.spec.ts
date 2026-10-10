@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { INK3_TEXT, expectAccessible } from '../ui/contracts';
 
-INK3_TEXT.push('.status-line', '.knows-source', '.home-specimen-composer', '.home-specimen-log', '.places-crumb', '.type-section-label', '.home-live-aside', '.home-live-detail', '.decided-sub', '.decided-age');
+INK3_TEXT.push('.status-line', '.knows-source', '.home-specimen-composer', '.home-specimen-log', '.places-crumb', '.type-section-label', '.home-live-aside', '.home-live-detail', '.decided-sub', '.decided-age', '.home-source-note');
 
 const now = '2026-09-26T12:00:00Z';
 const knowledge = () => ({ revision: 1, stillTrue: [], lines: [{ id: 'k1', placeId: 'pl_codeaf', text: 'Use plain language', source: { kind: 'you-wrote' }, createdAt: now }] });

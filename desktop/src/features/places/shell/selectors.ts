@@ -126,11 +126,12 @@ function child(place: PlaceView, path?: readonly string[]): HomeChild {
   };
 }
 
-function chat(row: ChatRow): HomeChat {
+function chat(row: ChatRow, digest: HomeDigest): HomeChat {
   // Only the live presence says a chat is running or waiting; an all-time failure count is not "failed now".
   const status = row.needsYou ? 'waiting' : row.live && (row.tasks.running > 0 || row.doing === 'working') ? 'running' : undefined;
-  // The engine's own reason for waiting is the only excerpt there is; a summary it did not write is never made up.
-  return { id: row.id, title: row.title, excerpt: row.needsYou && row.reason ? row.reason : undefined, status, at: row.at, model: row.model };
+  // A waiting reason takes priority; otherwise the engine’s recap supplies the digest without a renderer model call.
+  const line = digest.recap?.items.find(item => item.chatId === row.id)?.line;
+  return { id: row.id, title: row.title, excerpt: row.needsYou && row.reason ? row.reason : line || undefined, status, at: row.at, model: row.model };
 }
 
 function attention(item: Attention, viewing: string): HomeView['attention'][number] {
@@ -148,6 +149,12 @@ function sources(digest: HomeDigest): HomeSource[] | undefined {
   return list.map(source => ({ id: source.id, kind: source.kind, label: source.label || source.check.title || source.ref, state: source.check.state }));
 }
 
+/** The engine's "Since …" words, or nothing: a blank label or text draws no block (PL-133, no model call here). */
+function sinceOf(digest: HomeDigest): HomeView['recap'] {
+  const label = digest.recap?.label.trim(), text = digest.recap?.text.trim();
+  return label && text ? { label, text } : undefined;
+}
+
 /**
  * The Home view model (home-model.ts) from the engine's digest. For the root, `graph` (with archived places) supplies
  * the count line, the search pool with each place's path, and the archived toggle; the digest's own children stay
@@ -162,12 +169,13 @@ export function homeViewFromDigest(digest: HomeDigest, graph?: PlacesGraph, unpl
     breadcrumb: digest.breadcrumb.map(crumb => ({ id: crumb.id, name: crumb.name })),
     attention: digest.attention.map(item => attention(item, id)),
     children: digest.children.map(place => child(place)),
-    chats: digest.chats.map(chat),
+    chats: digest.chats.map(row => chat(row, digest)),
     chatsTruncated: digest.chatsTruncated,
     sources: digest.kind === 'place' ? sources(digest) : undefined,
     instructions: digest.kind === 'place' && digest.place?.instructions.trim() ? digest.place.instructions : undefined,
     pinned: digest.place?.pinned,
     decide: digest.place?.decide,
+    recap: sinceOf(digest),
   };
   if (digest.kind === 'root' && graph) {
     const index = indexPlaces(graph.places);
@@ -178,7 +186,7 @@ export function homeViewFromDigest(digest: HomeDigest, graph?: PlacesGraph, unpl
     view.unplaced = { total: graph.totals.unplaced };
   }
   // The root's own chats are every placed chat; the page lists the ones in NO place, which is Now's digest.
-  if (digest.kind === 'root') { view.chats = unplaced ? unplaced.chats.map(chat) : []; view.chatsTruncated = unplaced?.chatsTruncated; }
+  if (digest.kind === 'root') { view.chats = unplaced ? unplaced.chats.map(row => chat(row, unplaced)) : []; view.chatsTruncated = unplaced?.chatsTruncated; }
   return view;
 }
 

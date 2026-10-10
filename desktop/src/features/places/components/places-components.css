@@ -37,8 +37,9 @@
 .places-row-aside { font-size: var(--places-row-aside-size); color: var(--ink-3); white-space: nowrap; }
 .places-attention-row[data-disabled], .places-chat-row[data-disabled], .places-tile[data-disabled] { opacity: var(--opacity-control-disabled); }
 .places-attention-row[data-dragging], .places-chat-row[data-dragging], .places-tile[data-dragging] { opacity: var(--places-drag-opacity); }
-/* A forced focus look for the specimen: the same ring the global :focus-visible rule draws. */
-.places-row-main[data-force="focus"], .places-tile-main[data-force="focus"] { box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
+/* A forced focus look for the specimen: the same ring the global :focus-visible rule draws.
+   The halo sits outside the 2px accent ring, so the soft spread is the ring plus the halo. */
+.places-row-main[data-force="focus"], .places-tile-main[data-force="focus"] { box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 calc(var(--focus-ring-width) + var(--focus-halo-width)) var(--accent-soft); }
 
 /* ---- Attention row: 36px, 9px radius, glyph + neutral text + right-hand words (8a). ---- */
 .places-attention-list { display: flex; flex-direction: column; gap: var(--places-row-list-gap); margin-inline: var(--places-row-bleed); }
@@ -75,16 +76,23 @@
 /* The History row is a card on the canvas: the same fills, 10px radius, no height of its own. */
 
 /* ---- Tile: 84px, surface + sh-1 (Components "Place tile"). Hover fills with --field and a press with --field-2 (the design draws no tile hover: Q-T1). ---- */
-.places-tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--places-tile-min), 1fr)); gap: var(--places-tile-grid-gap); }
+/* Four equal columns; a tile never narrows below the narrow minimum, and the slack keeps sub-pixel rounding from losing the fourth column, so a narrow page drops to fewer columns instead of squeezing names. */
+.places-tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(var(--places-tile-narrow-min), calc((100% - (var(--places-tile-grid-columns) - 1) * var(--places-tile-grid-gap)) / var(--places-tile-grid-columns) - var(--places-tile-grid-slack))), 1fr)); gap: var(--places-tile-grid-gap); }
 .places-tile { position: relative; height: var(--places-tile-height); border-radius: var(--places-tile-radius); background: var(--surface); box-shadow: var(--sh-1); }
 .places-tile:hover:not([data-disabled]):not([data-drop]), .places-tile[data-force="hover"] { background: var(--field); }
 .places-tile:active:not([data-disabled]):not([data-drop]), .places-tile[data-force="pressed"] { background: var(--field-2); }
+/* The fill lives on the tile, so the button's own press duration never reaches it. Press takes the 80ms step; hover stays at 120ms. */
+.places-tile:active:not([data-disabled]) { transition-duration: var(--dur-press); }
 .places-tile[data-selected] { box-shadow: var(--sh-1), 0 0 0 var(--places-tile-ring-selected) var(--accent); }
+/* The frame already carries the disabled opacity. The button inside is disabled too, and a second fade would stack. */
+.places-tile[data-disabled] .places-tile-main.button:disabled { opacity: var(--opacity-opaque); }
 .places-tile[data-drop] { background: var(--accent-soft); box-shadow: var(--sh-1), 0 0 0 var(--places-tile-ring-drop) var(--accent); }
 .places-tile-main.button { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: var(--places-tile-gap); width: 100%; height: 100%; min-height: 0; padding: var(--places-tile-pad-block) var(--places-tile-pad-inline); border-radius: inherit; background: transparent; color: var(--ink); line-height: var(--line-height-tight); text-align: left; white-space: normal; }
 .places-tile-main.button:hover:not(:disabled), .places-tile-main.button:active:not(:disabled) { background: transparent; color: var(--ink); }
 .places-tile-head { display: flex; align-items: center; gap: var(--places-tile-head-gap); }
 .places-tile-status { display: inline-flex; margin-left: auto; }
+/* The rolled-up mark is a 6px glyph. The shared mark box is 14px and would stretch the 12px swatch row. */
+.places-tile-status .status-mark { width: var(--mark-dot); height: var(--mark-dot); }
 .places-tile-name { margin-top: auto; font-size: var(--places-tile-name-size); font-weight: var(--places-tile-name-weight); }
 .places-tile-meta { font-size: var(--places-tile-meta-size); font-weight: var(--font-weight-regular); color: var(--ink-3); white-space: nowrap; overflow: hidden; mask-image: linear-gradient(to right, black calc(100% - var(--places-text-fade)), transparent); }
 .places-tile-drop { position: absolute; right: var(--places-tile-drop-inset); bottom: var(--places-tile-drop-inset); font-size: var(--places-tile-drop-size); font-weight: var(--font-weight-medium); color: var(--accent); }

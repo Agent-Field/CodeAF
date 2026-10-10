@@ -18,7 +18,7 @@ test('wave A preserves canonical swatch colours and emits only scoped tint rules
 test('wave A defines themed materials and routes landed backdrops through scrim', () => {
  assert.equal(design.foundation['frame-blur'], '40px');
  assert.equal(design.foundation['frame-saturate'], '1.4');
- assert.equal(design.foundation['places-quicklook-scrim'], 'var(--scrim)');
+ assert.equal(design.foundation['places-quicklook-scrim'], 'oklch(0 0 0 / .2)');
  for (const [theme, scrim, glass, tab] of [
   ['light', 'oklch(0 0 0 / .2)', 'oklch(.93 .035 var(--h) / .8)', 'oklch(1 0 0 / .55)'],
   ['dark', 'oklch(0 0 0 / .4)', 'oklch(.27 .035 var(--h) / .84)', 'oklch(1 0 0 / .09)'],

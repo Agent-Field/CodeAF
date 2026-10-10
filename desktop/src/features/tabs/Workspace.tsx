@@ -34,7 +34,8 @@ import { placeTints, type TintName } from '../places/components/PlaceSwatch';
 import { onWorkspaceRequest } from '../places/shell/workspaceBus';
 import { useWorkspaceSync } from '../workspace-sync/useWorkspaceSync';
 import type { WorkspaceKey } from '../workspace-sync/client';
-import { GroupOffer } from './GroupOffer';
+import { SuggestPill } from './SuggestPill';
+import { useUndoKeys } from './undo/useUndoKeys';
 import { createUsingClient } from '../places/using-client';
 import { usePlacesShell } from '../places/shell/PlacesShell';
 import { chatIdFromSessionFile } from '../places/client';
@@ -53,7 +54,7 @@ import { useNextUpKeys } from '../nextup/useNextUpKeys';
 import type { FocusEntry } from '../focus-history/model';
 import { useFocusWireFor, useOptionalFocusWire } from '../focus-history/useFocusHistory';
 import { routeTask } from './view-state';
-import { useScrollMemory } from './scroll/memoryStore';
+import { namedScrollSpots, useScrollMemory } from './scroll/memoryStore';
 import { questionFocus } from '../conversation/questionFocus';
 import { useTerminalTabs } from '../terminal/useTerminalTabs';
 import { useWorkspaceWeb } from '../web/useWorkspaceWeb';
@@ -159,7 +160,8 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const windowQuery = new URLSearchParams(window.location.search);
   const sync = useWorkspaceSync({ key: place as WorkspaceKey, initial: () => initialFor(place, placeTitle ?? 'Home'), focus: windowQuery.get('tab') ?? windowQuery.get('focusTab') ?? undefined });
   const { state } = sync;
-  const { dispatch: rawDispatch } = useStructuralUndo({ state, dispatch: sync.dispatch, enabled });
+  const { dispatch: rawDispatch, undo } = useStructuralUndo({ state, dispatch: sync.dispatch, enabled, keys: false });
+  useUndoKeys({ undo }, enabled);
   const dispatch = useCallback((action: WorkspaceAction) => { if (action.type === 'open-inbox') inboxFocus.request(); rawDispatch(action); }, [rawDispatch]);
   const shell = usePlacesShell();
   const [usingApi] = useState(createUsingClient);
@@ -297,16 +299,44 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
     return () => { live = false; };
   }, []);
   // The tab id is the step, not the pane inside a split. The first report after a saved stack is a relaunch, so a chip that was already there stays.
-  useEffect(() => {
-    focusWire.setTabs(place, state.tabs.map(tab => tab.id));
+  // Scroll and the draft ride on that step: switching places prunes every pane that is not on the strip being shown,
+  // and ⌘[ would otherwise come back to the tab at the bottom with no way to know where the reader had left it.
+  const noteFocus = () => {
     if (!activeTab) return;
     // A place's Home on the way to a question is navigation in progress, not another focus step.
     if (walk.phase === 'walking' && (focused.kind !== 'conversation' || conversationKey !== walk.item?.session)) return;
     if (walk.phase === 'returning' && focused.id !== walk.origin?.paneId) return;
     if (walk.phase === 'walking') focusWire.markCause('next-up');
     const task = focused.route ? routeTask(focused.route) : undefined;
-    focusWire.observe({ windowPlace: place, tabId: activeTab.id, drillPath: task ? [task] : [] });
-  }, [focusWire, place, state.tabs, activeTab, focused.route, walk.phase, walk.item?.key]);
+    const scroll = namedScrollSpots(focused.id);
+    focusWire.observe({
+      windowPlace: place, tabId: activeTab.id, drillPath: task ? [task] : [],
+      // Nothing read yet is not a position. Omitting it keeps spots the step already stored.
+      ...(scroll.length ? { scroll } : {}),
+      draftKey: focused.draft ? focused.id : null,
+    });
+  };
+  const noteFocusNow = useRef(noteFocus);
+  noteFocusNow.current = noteFocus;
+  useEffect(() => {
+    focusWire.setTabs(place, state.tabs.map(tab => tab.id));
+    noteFocusNow.current();
+  }, [focusWire, place, state.tabs, activeTab, focused.route, focused.draft, focused.id, walk.phase, walk.item?.key]);
+  // Scroll does not bubble. Capture on the workspace sees it after the pane's own frame has stored the spot.
+  useEffect(() => {
+    const root = gestureRoot.current;
+    if (!root) return;
+    let waiting = 0;
+    const note = () => {
+      if (waiting) return;
+      waiting = window.setTimeout(() => { waiting = 0; noteFocusNow.current(); }, 0);
+    };
+    root.addEventListener('scroll', note, true);
+    return () => {
+      root.removeEventListener('scroll', note, true);
+      if (waiting) window.clearTimeout(waiting);
+    };
+  }, []);
   useEffect(() => publishActiveHome(focused.kind === 'home' ? focused.place : undefined), [focused.kind, focused.place]);
 
   useEffect(() => {
@@ -382,8 +412,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   });
   return <TabsApiContext.Provider value={api}><section ref={gestureRoot} className="tab-workspace" aria-label="Conversation workspace" data-nextup-walk={walk.phase !== 'idle' || undefined}>
     <TabStrip api={api} leading={leading} back={back} frame={frame} overviewTrigger={overviewTrigger} onOverview={openOverview}/>
-    <NewConversationPlaceContext.Provider value={place === 'now' || place === 'root' ? undefined : place}><FirstTurnContext.Provider value={firstTurn}><NewTabHostContext.Provider value={newTabHost}><HistoryHostContext.Provider value={historyHost}><PaneGrid tab={active} tabs={state.tabs} dispatch={dispatch} actionsFor={actionsFor} retainedPaneIds={state.closed.flatMap(tab => panesOf(tab).map(pane => pane.id))}/></HistoryHostContext.Provider></NewTabHostContext.Provider></FirstTurnContext.Provider></NewConversationPlaceContext.Provider>
-    <GroupOffer api={api}/>
+    <NewConversationPlaceContext.Provider value={place === 'now' || place === 'root' ? undefined : place}><FirstTurnContext.Provider value={firstTurn}><NewTabHostContext.Provider value={newTabHost}><HistoryHostContext.Provider value={historyHost}><PaneGrid overlay={!api.overlayOpen && <SuggestPill api={api}/>} tab={active} tabs={state.tabs} dispatch={dispatch} actionsFor={actionsFor} retainedPaneIds={state.closed.flatMap(tab => panesOf(tab).map(pane => pane.id))}/></HistoryHostContext.Provider></NewTabHostContext.Provider></FirstTurnContext.Provider></NewConversationPlaceContext.Provider>
     {archived && <ArchiveToast count={archived.tabs.length} onDismiss={dismissArchived} onReview={() => { dispatch(openKindAction(state, 'history')); dismissArchived(); }} onRestore={() => { restoreArchived(archived, dispatch); dismissArchived(); }}/>}
     {switcher && <div className="workspace-switcher"><div ref={switcherFocus} className="workspace-switcher-list" role="listbox" tabIndex={0} aria-label="Switch tabs" aria-activedescendant={`switcher-${switcher.ids[switcher.index]}`}>
       {switcher.ids.map((id, index) => { const tab = state.tabs.find(t => t.id === id); return tab ? <Button key={id} id={`switcher-${id}`} className="workspace-switcher-item" role="option" aria-selected={index === switcher.index} tabIndex={-1} onClick={() => { dispatch({ type: 'select', id }); switcherRef.current = null; setSwitcher(null); }}><Icon name={tab.pinned ? 'pin' : kindDef(focusedPane(tab).kind).icon} size="sm"/><span>{tab.title}</span></Button> : null; })}

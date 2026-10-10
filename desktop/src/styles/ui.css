@@ -155,6 +155,20 @@ button:disabled { cursor: default; opacity: var(--opacity-control-disabled); }
 .menu-label { flex: 1; min-width: 0; }.menu-detail { flex: none; margin-left: var(--space-4); font-size: var(--type-label-size); color: var(--ink-3); white-space: nowrap; }.menu-item .keyboard-shortcut { color: var(--ink-3); font-size: var(--type-label-size); white-space: nowrap; }.menu-item > .app-icon { color: var(--ink-2); }.menu-item > .app-icon-xs:last-child { color: var(--ink-3); }
 .menu-item[data-highlighted], .menu-item[data-state="open"] { background: var(--field-2); }.menu-item:active:not([data-disabled]) { background: var(--field-2); }.menu-item[data-disabled] { opacity: var(--opacity-control-disabled); }
 .menu-item-danger { color: var(--danger); }.menu-item-danger > .app-icon { color: inherit; }.menu-check { display: flex; align-items: center; margin-left: auto; color: var(--ink-2); }.menu-separator { height: var(--hairline); background: var(--line); margin: var(--menu-sep-pad-y) var(--space-2); }
+/* Places 8f Tint: the word is a normal menu row; the squares sit under its label (icon + gaps = the 34px inset).
+   The ring is the cursor. Arrows move it and Enter picks, so the square's own colour stays the fill — a hover fill would hide the tint. */
+.menu-swatch-entry { display: flex; flex-direction: column; outline: none; }
+.menu-swatch-entry[data-highlighted] > .menu-swatch-label { background: var(--field-2); }
+.menu-swatches { display: flex; align-items: center; gap: var(--menu-swatch-gap); padding: var(--menu-swatch-pad-block-start) var(--menu-swatch-pad-inline-end) var(--menu-swatch-pad-block-end) var(--menu-swatch-inset); }
+.menu-swatch { flex: none; width: var(--menu-swatch-size); height: var(--menu-swatch-size); border-radius: var(--menu-swatch-radius); transition: filter var(--dur-fast) var(--chrome-ease); }
+.menu-swatch[data-selected] { box-shadow: 0 0 0 var(--menu-swatch-ring-gap) var(--surface), 0 0 0 var(--menu-swatch-ring) currentColor; }
+.menu-swatch:active { filter: brightness(var(--brightness-press)); transition-duration: var(--dur-press); }
+.menu-swatch[data-swatch="tide"] { background: var(--places-swatch-tide); color: var(--places-swatch-tide); }
+.menu-swatch[data-swatch="iris"] { background: var(--places-swatch-iris); color: var(--places-swatch-iris); }
+.menu-swatch[data-swatch="rose"] { background: var(--places-swatch-rose); color: var(--places-swatch-rose); }
+.menu-swatch[data-swatch="sand"] { background: var(--places-swatch-sand); color: var(--places-swatch-sand); }
+.menu-swatch[data-swatch="sage"] { background: var(--places-swatch-sage); color: var(--places-swatch-sage); }
+.menu-swatch[data-swatch="graphite"] { background: var(--places-swatch-graphite); color: var(--places-swatch-graphite); }
 
 /* Preview waits for intent; it is informational and never competes with menus. */
 .hover-preview { z-index: var(--z-overlay); width: min(var(--preview-card-width),calc(100vw - var(--space-6))); padding: var(--preview-card-pad); border: 0; border-radius: var(--radius-card); background: var(--surface); color: var(--ink); box-shadow: var(--sh-2); pointer-events: none; transform-origin: var(--radix-hover-card-content-transform-origin); }
@@ -181,7 +195,7 @@ button:disabled { cursor: default; opacity: var(--opacity-control-disabled); }
 @keyframes tab-enter { from { opacity: var(--opacity-transparent); } to { opacity: var(--opacity-opaque); } }
 .app-icon[data-icon="panelRight"] { transform: scaleX(-1); }
 /* Menu rows show selection through the highlight fill, not the focus ring. */
-.select-option:focus-visible, .menu-item:focus-visible { box-shadow: none; }
+.select-option:focus-visible, .menu-item:focus-visible, .menu-swatch-entry:focus-visible { box-shadow: none; }
 /* Split panes (Shell 3b): the full composer grows out of the 36px compact field. */
 @keyframes composer-expand { from { max-height: var(--compact-composer-height); opacity: var(--opacity-subtle); } to { max-height: var(--composer-expand-max-height); opacity: var(--opacity-opaque); } }
 

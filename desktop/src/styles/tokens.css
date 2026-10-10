@@ -765,6 +765,9 @@
   --places-swatch-dim: .5;
   --places-tile-height: 84px;
   --places-tile-min: 140px;
+  --places-tile-grid-columns: 4;
+  --places-tile-narrow-min: 160px;
+  --places-tile-grid-slack: 1px;
   --places-tile-radius: var(--radius-card);
   --places-tile-pad-block: var(--space-3);
   --places-tile-pad-inline: var(--space-row);
@@ -801,6 +804,9 @@
   --using-chip-height: 24px;
   --using-chip-pad: 8px;
   --using-chip-radius: 7px;
+  --using-popover-fade: 20px;
+  --using-popover-separator: 0.5px;
+  --using-popover-mobile-max-height: 70vh;
   --using-sheet-width: 380px;
   --using-sheet-radius: 12px;
   --using-sheet-pad: 6px;
@@ -825,6 +831,12 @@
   --menu-swatch-size: 16px;
   --menu-swatch-radius: 5px;
   --menu-swatch-ring: 3.5px;
+  --menu-swatch-gap: var(--space-tight);
+  --menu-swatch-inset: calc(var(--space-compact) + var(--icon-sm) + var(--space-compact));
+  --menu-swatch-pad-block-start: var(--space-tight);
+  --menu-swatch-pad-inline-end: var(--space-compact);
+  --menu-swatch-pad-block-end: var(--space-2);
+  --menu-swatch-ring-gap: var(--places-swatch-gap-menu);
   --places-text-fade: var(--tab-title-fade);
   --places-attention-height: 36px;
   --places-chat-height: 44px;
@@ -860,6 +872,9 @@
   --places-home-sentence-max: 480px;
   --places-home-empty-pad-top: 28px;
   --places-home-search-width: 220px;
+  --root-home-search-width: 240px;
+  --root-home-tile-height: 108px;
+  --root-home-tile-min: 140px;
   --places-home-suggestion-size: var(--type-label-size);
   --places-home-specimen-height: 640px;
   --places-notes-max: 520px;
@@ -874,7 +889,7 @@
   --places-quicklook-radius: 14px;
   --places-quicklook-pad-top: var(--space-section-inner);
   --places-quicklook-pad-bottom: 18px;
-  --places-quicklook-scrim: var(--scrim);
+  --places-quicklook-scrim: oklch(0 0 0 / .2);
   --history-list-width: 560px;
   --history-compact-width: 760px;
   --history-column-max-width: 884px;
@@ -1273,6 +1288,9 @@
   --primitives-specimen-gap: var(--foundations-section-gap);
   --primitives-specimen-row-gap: var(--space-2);
   --primitives-specimen-narrow: 320px;
+  --places-quicklook-gutter: 32px;
+  --places-quicklook-pad-inline: 24px;
+  --places-quicklook-content-gap: 14px;
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);

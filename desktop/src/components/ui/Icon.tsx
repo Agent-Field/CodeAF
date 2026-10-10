@@ -63,6 +63,7 @@ import { FileLockIcon } from '@animateicons/react/lucide/file-lock-icon';
 import { ClockIcon } from '@animateicons/react/lucide/clock-icon';
 import { GripVerticalIcon } from '@animateicons/react/lucide/grip-vertical-icon';
 import { PencilIcon } from '@animateicons/react/lucide/pencil-icon';
+import { PaletteIcon } from '@animateicons/react/lucide/palette-icon';
 import { ArrowUpRightIcon } from '@animateicons/react/lucide/arrow-up-right-icon';
 import { ShrinkIcon } from '@animateicons/react/lucide/shrink-icon';
 import { SlidersHorizontalIcon } from '@animateicons/react/lucide/sliders-horizontal-icon';
@@ -90,7 +91,6 @@ import { FoldVerticalIcon } from '@animateicons/react/lucide/fold-vertical-icon'
 import { ReplyIcon } from '@animateicons/react/lucide/reply-icon';
 import { QuoteIcon } from '@animateicons/react/lucide/quote-icon';
 import { EyeIcon } from '@animateicons/react/lucide/eye-icon';
-import { PaletteIcon } from '@animateicons/react/lucide/palette-icon';
 import { FolderPlusIcon } from '@animateicons/react/lucide/folder-plus-icon';
 import { useEffect, useRef } from 'react';
 import { useTheme } from '../../design/ThemeProvider';
