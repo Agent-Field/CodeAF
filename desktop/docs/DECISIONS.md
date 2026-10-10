@@ -383,3 +383,10 @@ Finding fixed (real): an effort click sent `{ model: role.model, effort }`, wher
 Checked and sound: same-key saves run in intent order (`saveQueue`); a duplicate Enter/blur shares one save; a failed save neither blocks a retry nor drops a newer intent; only the newest version applies its answer or its failure text; pinned slots re-read the saved list when they run, so overlapping pin edits compose; the receipt shows the latest failure, else "Saving…", else the saved line.
 
 Remaining gap, not fixed: the receipt is one shared line, so a failure on one control has no marker on its own row. Left for the coordinator (see DESIGN-QUESTIONS, SETTINGS-ROLE-282).
+
+
+## t-d5-sh-overview-pinch (2026-10-10)
+
+Decision: **no additional pinch wiring**. Shell 2h and Interactions require pinch-out, but renderer Ctrl+wheel cannot distinguish a physical pinch from ordinary zoom, and native delivery/cancellation has not been observed on either supported platform. The existing tab-strip-only `useOverviewGesture` is already wired; this research does not remove it or broaden it. Corrected stale OV2, which said no wiring existed.
+
+[Research and minimal native probe](research/d5-overview-pinch.md) distinguish macOS GestureEvent/Ctrl-wheel source evidence from GTK native magnification and from synthetic browser tests. Keep the overview button and platform keys as dependable doors. SH-190 native acceptance stays open until physical traces are recorded on macOS WKWebView and Linux WebKitGTK. No renderer, engine, tokens or manual behavior changed.
