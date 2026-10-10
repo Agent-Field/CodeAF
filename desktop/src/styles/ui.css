@@ -73,7 +73,7 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .status-mark[data-status="incomplete"] { color: var(--mark-incomplete); }
 .status-mark[data-dense] { display: inline-flex; align-items: center; justify-content: center; width: var(--mark-dot); }
 .status-mark[data-dense] > * { flex: none; }
-.status-mark[data-dense][data-status="incomplete"] { color: var(--mark-incomplete); }
+.status-mark[data-dense][data-status="incomplete"] { color: var(--mark-failed); }
 .status-mark[data-dense][data-status="queued"] .status-mark-dot { width: var(--mark-dot); height: var(--mark-dot); box-shadow: inset 0 0 0 var(--tasks-ring-width) currentColor; }
 .status-mark[data-status="queued"] .status-mark-dot { width: var(--mark-ring); height: var(--mark-ring); background: transparent; box-shadow: inset 0 0 0 var(--mark-ring-width) currentColor; }
 
