@@ -282,7 +282,10 @@ horizontal rule. Raw HTML stays off. Mermaid/math: not now.
 - One line: state glyph · title (medium) · one-line summary (muted) · chevron on hover.
   Narrow: the title stays whole and wraps; the summary takes a line of its own
   and ends in an ellipsis rather than squeezing the title.
-  Click opens the task in this tab; Cmd/Ctrl-click opens a background tab.
+  Click opens the task in this tab; Cmd/Ctrl-click or a middle click opens a background tab.
+  Right-click offers the same actions as the task row: Open in new tab, Pause or Resume
+  when that row allows it, and Stop. Until the plan row arrives the menu is only
+  Open in new tab.
 - Running tasks: the notice shows the live step in mono muted under the title.
 
 ---

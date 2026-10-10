@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { EngineTaskRow } from '../../chat/engine-client';
 import { TaskNotice } from '../TaskNotice';
 import type { TurnItem } from '../types';
 
@@ -20,6 +21,14 @@ const fixtures: TaskItem[] = [
 
 const LIVE: Record<string, string> = { n2: '$ go test ./internal/parse/... · 12s' };
 
+// The menu reads these the way a conversation's plan rows are read. The running and paused
+// notices are children, so Pause and Resume are available; the finished one is not.
+const rows: EngineTaskRow[] = [
+  { ID: 't-1', Title: 'Benchmark the tokenizer', Status: 'done' },
+  { ID: 't-2', Title: 'Update fixtures', Status: 'running', Parent: 'ship' },
+  { ID: 't-3', Title: 'Decide strict-mode default', Status: 'paused', Parent: 'ship' },
+];
+
 export function TaskNoticeSpecimen() {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   return (
@@ -32,6 +41,10 @@ export function TaskNoticeSpecimen() {
           open={Boolean(open[item.id])}
           onToggle={() => setOpen((prev) => ({ ...prev, [item.id]: !prev[item.id] }))}
           onOpenTask={() => undefined}
+          tasks={rows}
+          onPause={() => undefined}
+          onResume={() => undefined}
+          onStop={() => undefined}
         />
       ))}
     </div>

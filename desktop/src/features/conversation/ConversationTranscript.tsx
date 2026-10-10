@@ -25,9 +25,9 @@ type Props = BlockContext & {
   onRetry: () => void;
 };
 
-type PrefaceProps = Pick<BlockContext, 'open' | 'onToggle' | 'onOpenTask'> & { item: TurnItem };
+type PrefaceProps = Pick<BlockContext, 'open' | 'onToggle' | 'onOpenTask' | 'tasks' | 'onPause' | 'onResume' | 'onStop'> & { item: TurnItem };
 
-function PrefaceItem({ item, open, onToggle, onOpenTask }: PrefaceProps) {
+function PrefaceItem({ item, open, onToggle, onOpenTask, tasks, onPause, onResume, onStop }: PrefaceProps) {
   const hooks = useAssetMarkdownHooks();
   const expanded = Boolean(open[item.id]);
   switch (item.kind) {
@@ -38,7 +38,18 @@ function PrefaceItem({ item, open, onToggle, onOpenTask }: PrefaceProps) {
     case 'aside':
       return <AsideRow item={item} open={expanded} onToggle={() => onToggle(item.id)} />;
     case 'task':
-      return <TaskNotice item={item} open={expanded} onToggle={() => onToggle(item.id)} onOpenTask={onOpenTask} />;
+      return (
+        <TaskNotice
+          item={item}
+          open={expanded}
+          onToggle={() => onToggle(item.id)}
+          onOpenTask={onOpenTask}
+          tasks={tasks}
+          onPause={onPause}
+          onResume={onResume}
+          onStop={onStop}
+        />
+      );
     default:
       return null;
   }
@@ -76,7 +87,7 @@ export function ConversationTranscript(props: Props) {
       {model.preface.length > 0 && (
         <div className="conversation-preface">
           {model.preface.map((item) => (
-            <PrefaceItem key={item.id} item={item} open={props.open} onToggle={props.onToggle} onOpenTask={props.onOpenTask} />
+            <PrefaceItem key={item.id} item={item} open={props.open} onToggle={props.onToggle} onOpenTask={props.onOpenTask} tasks={props.tasks} onPause={props.onPause} onResume={props.onResume} onStop={props.onStop} />
           ))}
         </div>
       )}

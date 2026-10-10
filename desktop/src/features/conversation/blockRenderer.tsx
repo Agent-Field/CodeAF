@@ -21,6 +21,9 @@ export type BlockContext = {
   onToggle: (id: string, current?: boolean) => void;
   readFull?: ReadFull;
   onOpenTask: OpenTask;
+  onPause?: (taskId: string) => void;
+  onResume?: (taskId: string) => void;
+  onStop?: (taskId: string) => void;
   onFocusQuestion: (questionKey: string) => void;
 };
 
@@ -84,6 +87,10 @@ function task(block: Block<'task'>, ctx: BlockContext): ReactNode {
       open={Boolean(ctx.open[block.id])}
       onToggle={() => ctx.onToggle(block.id)}
       onOpenTask={ctx.onOpenTask}
+      tasks={ctx.tasks}
+      onPause={ctx.onPause}
+      onResume={ctx.onResume}
+      onStop={ctx.onStop}
     />
   );
 }
