@@ -187,10 +187,11 @@ type AnswerOption struct {
 // closes home — so a card met from home needs a key of its own to say no with.
 // [DeclineKey] is why the key is a `0` and not another digit.
 //
-// THIS IS THE ANSWER FOR THE KIND AND NOT FOR ONE CARD. An automation's card
-// is built from [AutomationOptions], which knows whether "run it now" means
-// anything for that one automation; a bare kind can only promise what every
-// card of it has.
+// THIS IS THE ANSWER FOR THE KIND AND NOT FOR ONE CARD: every answer any card
+// of the kind can take, which is what an answer left from another window is
+// checked against ([WriteAnswer]). One card is built from its own list —
+// [AutomationOptions] for an automation, which draws only the answers that mean
+// something for that one.
 //
 // THE CONSENT KEYS ARE NEW AND THE ANSWERS ARE NOT. In its own window the gate
 // is answered y / a / n; those letters cannot be borrowed here, because a letter
