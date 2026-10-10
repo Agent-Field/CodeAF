@@ -122,17 +122,8 @@ export async function createFromFolder(shell: PlacesShell): Promise<void> {
   if (picked.status === 'busy') throw new Error('Another chooser is already open.');
   if (picked.status !== 'picked') return;
   const folder = picked.paths[0];
-  const created = await shell.write(`Created “${folder.name}” from ${folder.name}`, async () => {
-    const made = await shell.client.createPlace({ name: folder.name });
-    const id = made.place?.id;
-    if (!id) return made;
-    try { return [made, await shell.client.addSource(id, { kind: 'folder', ref: folder.path })]; }
-    catch (failure) {
-      // The place exists; its source was refused. Undo stays available for the place itself.
-      shell.warn(failure);
-      return made;
-    }
-  }, { subject: folder.name });
+  const created = await shell.write('Opened a folder or repo as a place',
+    () => shell.client.fromFolder(folder.path), { subject: folder.name });
   const id = created[0]?.place?.id;
   if (id) await shell.goTo(id);
 }
