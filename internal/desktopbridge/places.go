@@ -109,6 +109,13 @@ func (b *Bridge) UsePlaces(p *Places) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.places = p
+	// The feed reads the ledger when it projects, so this is the function,
+	// not a path captured before the door exists.
+	if b.world != nil && b.world.ledger == nil {
+		b.world.ledger = b.decideLedger
+	}
+	// Councils may already be attached. Places is set, so Home and History
+	// can read that store now; UseCouncils does the same when it arrives later.
 	b.attachCouncilsLocked()
 }
 
