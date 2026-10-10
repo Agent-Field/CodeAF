@@ -1556,6 +1556,13 @@ both arms, and the caps rise by exactly that over sec's: measured on dev
 `baa2d7f0f` with sec (2026-10-07), the full cap is **57,817** bytes and the lean
 cap **50,189**, both dated in `prefixWaivers`.
 
+**The place rules stopped being paid twice (2026-10-10).** The desktop place
+block already states its ranking, disagreement and reference rules, and
+`remember` already states that a filed chat saves to its first parent-most
+place. The page's second copies of both came off, and the verb's sentence was
+tightened to the same law. The full cap is **57,783** bytes and the lean cap
+**50,171**. Both waivers in `prefixWaivers` fall to those measurements.
+
 ## Following through on a completion claim
 
 A turn may decline handoff once per request when its own continuation says no

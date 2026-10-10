@@ -567,9 +567,17 @@ const fixedPrefixTarget = 48_000
 // 190 bytes) and its item's frame are 203 bytes in both arms; 2026-10-07, on
 // dev baa2d7f0f with sec, the fixed prefix measures 57,749 and the lean
 // 50,171, and both waivers are sec's plus exactly that 203.
+//
+// 2026-10-10, two laws were on the page and again where they already lived.
+// The place block states its own ranking, disagreement and reference rules, so
+// `# Desktop place context` came off the page. `remember` states where a filed
+// chat saves, so the page's second copy of that rule came off and the verb's
+// sentence was tightened to the same law. Fixed measures 57,783 (page 22,809 +
+// tools 34,974) and lean 50,171 (page 22,505 + tools 27,666). Both waivers fall
+// to those measurements: fixed by 34, lean by 18.
 const (
-	fixedPrefixWaiver = 9_817
-	leanPrefixWaiver  = 18_689
+	fixedPrefixWaiver = 9_783
+	leanPrefixWaiver  = 18_671
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
