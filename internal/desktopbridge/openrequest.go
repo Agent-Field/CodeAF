@@ -21,6 +21,8 @@ import (
 
 // OpenRequest is the decoded body of POST /sessions.
 type OpenRequest struct {
+	// IfGeneration refuses a place selected from an older graph.
+	IfGeneration *uint64 `json:"ifGeneration"`
 	// SessionFile reopens that saved conversation.
 	SessionFile string `json:"sessionFile"`
 	// PlaceID starts a NEW conversation in that place.
