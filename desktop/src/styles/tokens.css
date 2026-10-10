@@ -897,6 +897,16 @@
   --i2-banner-shadow: var(--sh-2);
   --i2-banner-pad-block: 10px;
   --i2-banner-pad-inline: 14px;
+  --i2-banner-gap: var(--space-compact);
+  --i2-banner-line-gap: 1px;
+  --i2-banner-glyph: var(--mark-dot);
+  --i2-banner-glyph-radius: 99px;
+  --i2-banner-head-size: var(--font-size-body);
+  --i2-banner-head-weight: var(--font-weight-medium);
+  --i2-banner-duration: 200ms;
+  --i2-banner-travel: 8px;
+  --i2-banner-hold: 4000ms;
+  --i2-banner-hover: var(--field);
   --i2-header-chip-height: 24px;
   --i2-header-chip-radius: 99px;
   --i2-header-chip-fill: var(--field);
