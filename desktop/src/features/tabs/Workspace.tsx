@@ -5,8 +5,8 @@ import { Button, Icon, Text, TextInput, type MenuEntry } from '../../components/
 import { nativeControls } from '../../design/nativeControls';
 import design from '../../design/tokens.json';
 import { toasts } from '../../design/toasts';
-import { summarize, type TabSummary } from '../conversation/tabSummary';
-import { useBackgroundSessions } from '../conversation/useBackgroundSessions';
+import type { TabSummary } from '../conversation/tabSummary';
+import { mergeBackgroundSummary, useBackgroundSessions } from '../conversation/useBackgroundSessions';
 import { fileTab, findFileTab, type FileTabKind } from '../files/fileTarget';
 import { ArchiveToast } from '../history/ArchiveToast';
 import { HistoryHostContext, restoreArchived, useAutoArchive, useHistoryWorkspace } from '../history/host';
@@ -127,10 +127,16 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const active = state.tabs.find(tab => tab.id === state.activeId) ?? state.tabs[0];
   const visible = visibleTabs(state);
 
-  // Inactive tabs (every pane of them) keep observing their sessions; the active tab's panes stream themselves.
-  // Closed tabs whose work goes on keep being read too, so the Inbox follows them to the end.
+  // Inactive tabs take running, needs-you and title from the world stream. Only the open tab holds a
+  // conversation stream. A world row has no transcript, so a reply already read is kept.
+  const summariesNow = useRef(summaries);
+  summariesNow.current = summaries;
   const watched = [...state.tabs.filter(tab => tab.id !== active.id).flatMap(tab => panesOf(tab)), ...observedClosedPanes(state.closed, summaries)];
-  useBackgroundSessions(watched.filter(pane => pane.sessionFile).map(pane => ({ id: pane.id, sessionFile: pane.sessionFile! })), (id, snapshot) => receiveSummary(id, summarize(snapshot)));
+  useBackgroundSessions(watched.filter(pane => pane.sessionFile).map(pane => ({ id: pane.id, sessionFile: pane.sessionFile! })), (id, snapshot) => {
+    const summary = mergeBackgroundSummary(summariesNow.current[id], snapshot);
+    setSummaries(current => ({ ...current, [id]: summary }));
+    if (snapshot.title.trim()) dispatch({ type: 'title', id, title: snapshot.title.trim(), source: 'engine' });
+  });
   // The Home tab carries the place's current name; Go to (even to the place already shown) lands on it.
   // A strip mounted by a Go to (arrival already moved) lands on its Home; one mounted by a reload keeps its saved focus.
   const arrived = useRef(arrival > 0 ? -1 : arrival);
