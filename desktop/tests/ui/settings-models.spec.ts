@@ -31,8 +31,8 @@ test('the settings page lists the pinned models and one row per role', async ({ 
   await openSettings(page);
   const pinned = page.getByRole('region', { name: 'Pinned' });
   await expect(pinned.getByRole('button', { name: /^Pinned model/ })).toHaveText(['GLM 5.3 Flash', 'DeepSeek V4.1 Flash', 'GLM 5.3']);
-  // Each job sits under its section, in the engine's order.
-  await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Appearance', 'Engine', 'Pinned', 'Conversation and tasks', 'Naming and summaries', 'Places organization', 'Memory, routing and safety']);
+  // Each job sits under its section, in the engine's order; Provider key joins after them once the engine can say.
+  await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Pinned', 'Conversation and tasks', 'Naming and summaries', 'Places organization', 'Memory, routing and safety', 'Appearance', 'Engine']);
   for (const [section, name] of [['Conversation and tasks', 'Tasks'], ['Naming and summaries', 'Chat titles'], ['Places organization', 'Chat filing'], ['Memory, routing and safety', 'Memory']]) {
     await expect(page.getByRole('region', { name: section }).getByText(name, { exact: true })).toBeVisible();
   }
@@ -170,4 +170,14 @@ test('an engine without the Places organization routes still shows every model c
   const places = page.getByRole('region', { name: 'Places organization' });
   await expect(places.getByText('How codeaf offers places cannot be changed from this engine yet.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Model for Chat filing' })).toBeVisible();
+});
+
+test('the settings page keeps one column with no horizontal overflow at 320px', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await installMockEngine(page, scenario());
+  await openApp(page);
+  await openSettings(page);
+  await expect(page.getByRole('heading', { name: 'Engine', level: 2 })).toBeVisible();
+  const overflow = await page.locator('.settings-page').evaluate(el => el.scrollWidth - el.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
 });
