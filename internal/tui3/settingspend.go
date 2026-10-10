@@ -15,7 +15,7 @@ import (
 // ── THE SPENDING TAB ────────────────────────────────────────────────────────
 //
 // Money has ONE EDITOR and MANY DOORS (docs/design/spending/DESIGN.md). The
-// editor is this tab: the registry's four money rows, in the order a person
+// editor is this tab: the registry's three money rows, in the order a person
 // worries about them, with the day's own bill above them and — between them —
 // the two rails this build enforces somewhere a settings row cannot reach.
 //
@@ -25,9 +25,8 @@ import (
 //	 per plan          asks first above $100
 //	 per task          $5 a task                         set in /crew
 //	 per automation    $5 a run                          each automation may name its own
-//	 practice          $50 of the day
 //
-// Three of those seven base rows are READINGS and not settings, and the
+// Three of those six base rows are READINGS and not settings, and the
 // difference is the whole of what keeps this tab honest:
 //
 //   - `today` is where the eye lands, and it answers "what is it costing" before
@@ -43,8 +42,8 @@ import (
 //
 // Two more readings exist only when a figure is short: `unwritten` for a row
 // the disk could not take, and `unbilled` for a charged call no provider receipt
-// could price. Their zero state is absence, so the ordinary seven-row tab stays
-// exactly seven rows wide.
+// could price. Their zero state is absence, so the ordinary six-row tab stays
+// exactly six rows wide.
 //
 // EVERY VALUE ON THIS TAB IS A SENTENCE FRAGMENT COMPLETING "it may spend…",
 // and every one of them degrades through rowfit rather than being cut: the
@@ -61,15 +60,15 @@ type railReading struct {
 	receipt rowField
 }
 
-// spendingOrder is the four registry rows of this tab, in READING order: the
-// day (the bill), this conversation (the window in front of you), the plan (the
-// question), and codeaf's own slice. Not alphabetical, not registry order, not
-// by key — by how often a person worries about each one.
+// spendingOrder is the three registry rows of this tab, in READING order: the
+// day (the bill), this conversation (the window in front of you), and the plan
+// (the question). Not alphabetical, not registry order, not by key — by how
+// often a person worries about each one. A fourth, codeaf's own practice
+// slice, went with the background practice it paid for.
 var spendingOrder = []string{
 	config.KeyDailyBudget,
 	config.KeySpendRail,
 	config.KeyPlanConsent,
-	config.KeyPracticeBudget,
 }
 
 // spendingItems is the whole Spending tab, readings and rows interleaved.
@@ -113,7 +112,6 @@ func (s *sheet) spendingItems() []sheetItem {
 	add(config.KeySpendRail)
 	add(config.KeyPlanConsent)
 	items = append(items, sheetItem{read: taskReading(s.profileDir)}, sheetItem{read: automationReading()})
-	add(config.KeyPracticeBudget)
 	for _, key := range order {
 		if _, left := mine[key]; left {
 			add(key)
@@ -241,11 +239,11 @@ func automationReading() *railReading {
 // spendValue is the VALUE of one money row in up to three spellings.
 //
 // It is the registry's own reading — the figure, or the row's word for zero
-// ([config.Setting.EmptyLabel], which is where `no limit`, `never asks` and
-// `practice off` are written down once) — wrapped in the fragment that completes
-// "it may spend…" for the two rows that have one. `asks first above $100`
-// becomes `asks > $100` becomes `$100`, and the sentence survives three widths
-// further down than a string that could only be cut.
+// ([config.Setting.EmptyLabel], which is where `no limit` and `never asks` are
+// written down once) — wrapped in the fragment that completes "it may spend…"
+// for the row that has one. `asks first above $100` becomes `asks > $100`
+// becomes `$100`, and the sentence survives three widths further down than a
+// string that could only be cut.
 func spendValue(row config.Setting) rowField {
 	value := row.Value()
 	if value == "" {
@@ -260,8 +258,6 @@ func spendValue(row config.Setting) rowField {
 	switch row.Key {
 	case config.KeyPlanConsent:
 		return rowSay("asks first above "+value, "asks > "+value, value)
-	case config.KeyPracticeBudget:
-		return rowSay(value+" of the day", value)
 	}
 	return rowSay(value)
 }

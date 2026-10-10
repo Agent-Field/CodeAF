@@ -306,20 +306,21 @@ func TestEveryDoorLandsOnTheSameEditor(t *testing.T) {
 	if rail := config.SpendRailUSDAt(dir); rail != 5 {
 		t.Fatalf("/budget conversation 5 wrote %v", rail)
 	}
-	// Resident-only practice is not offered as a chat setting.
+	// Practice is gone, and so is its limit: the old word is answered in
+	// words rather than read as an amount for the day.
 	if _, available := budgetRowFor("practice"); available {
-		t.Fatal("resident-only budget door is offered")
+		t.Fatal("a budget door is offered for practice nothing does any more")
 	}
 	a.budget("practice")
 	refused := false
 	for _, entry := range a.entries {
-		refused = refused || strings.Contains(entry.text, "Practice limits are not used by chats")
+		refused = refused || strings.Contains(entry.text, budgetPracticeGone)
 	}
 	if !refused {
-		t.Fatal("unsupported practice door gave no explanation")
+		t.Fatal("the retired practice door gave no explanation")
 	}
-	if row, _ := a.registry().Row(config.KeyPracticeBudget); !row.ChatPresentation().Hidden {
-		t.Fatal("resident practice row is visible")
+	if _, present := a.registry().Row("practice_budget_usd"); present {
+		t.Fatal("the practice row is still registered")
 	}
 	// A TASK IS NOT A ROW, because there is no per-task rail to write.
 	if _, ok := budgetRowFor("task"); ok {

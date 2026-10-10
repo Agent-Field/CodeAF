@@ -3027,7 +3027,7 @@ turn ended, the same moment `today` does.
 **Three are rows you can edit** — daily spending, per-chat spending and the plan approval threshold. `per task` and `per standing run` are **readings**: they are real rails, and
 neither is a number a settings row could hold. The sections below say why.
 
-Open **Spending** for monetary limits. Resident practice settings are absent from chat settings because they do not control this chat surface. The separate resident’s practice default is `$50 of the day`; it is not a chat setting.
+Open **Spending** for monetary limits. There is no practice limit: codeaf no longer practises on its own, so nothing is set aside for it.
 
 ## Where are the spending limits — the Spending tab, and every door onto it
 
@@ -3074,15 +3074,9 @@ each row has a different word because each rail means something different at zer
 | `per day` | `no limit` |
 | `per conversation` | `no limit` |
 | `per plan` | `never asks` |
-| `practice` | `practice off` |
 
 That is the emptiness law applied to money: `$0` would read as *zero dollars allowed*,
-which is the exact opposite of what it means on three of these four rows.
-
-**`practice` is the one row where `0` is not "no limit".** Zero turns codeaf's
-self-practice **off** rather than uncapping it. Practice is work codeaf does while nobody
-is watching, so it is the one pocket that always has a bottom — there is no way to ask for
-unbounded practice, on purpose.
+which is the exact opposite of what it means on these rows.
 
 What a money row will accept, in its own words: `an amount in dollars, like 5 or 2.50 — or
 none for no limit`. Anything else comes back as `that's not a dollar amount — a number, or

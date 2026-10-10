@@ -74,12 +74,6 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM self_receipts`); err != nil {
 		return fmt.Errorf("rebuild self receipts: %w", err)
 	}
-	if _, err := tx.Exec(`DELETE FROM charters_fts`); err != nil {
-		return fmt.Errorf("rebuild charter index: %w", err)
-	}
-	if _, err := tx.Exec(`DELETE FROM charters`); err != nil {
-		return fmt.Errorf("rebuild charters: %w", err)
-	}
 	if _, err := tx.Exec(`DELETE FROM services_fts`); err != nil {
 		return fmt.Errorf("rebuild service index: %w", err)
 	}
@@ -452,12 +446,6 @@ func replayEvent(tx *sql.Tx, event Event, fts bool) error {
 		}
 		return applyAgentQuestionResolution(tx, payload, event.Seq, event.Time)
 
-	case EventStandingWatchOffered, EventStandingWatchEnabled,
-		EventStandingWatchDeclined, EventStandingWatchStoodDown, EventStandingWatchPass:
-		// Standing-watch state is journal-native. Validate it on replay; status
-		// and the never-ask-twice gate read event order directly.
-		return decodeStandingWatchEvent(event.Kind, event.Payload)
-
 	case EventUsageRecorded:
 		var payload NodeUsage
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
@@ -613,7 +601,7 @@ func replayEvent(tx *sql.Tx, event Event, fts bool) error {
 		return applyQuestionStatus(tx, payload, event.Seq)
 
 	case EventQuestionPracticeStarted:
-		var payload QuestionPracticeStarted
+		var payload questionPracticeStarted
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
 			return err
 		}
@@ -743,17 +731,18 @@ func replayEvent(tx *sql.Tx, event Event, fts bool) error {
 		}
 		return applyParameterChange(tx, payload, event.Seq)
 
-	case EventCharterCreated, EventCharterRevised, EventCharterStatusChanged,
-		EventCharterWatchAdvanced, EventCharterWoken, EventSentinelChecked,
-		EventCharterFired, EventCharterFiringBlocked, EventCharterFiringDeferred,
-		EventCharterProposalDeclined, EventCharterFiringProposed, EventCharterFiringDeclined,
-		EventCharterFiringReviewed, EventCharterPromoted, EventCharterDemoted:
-		return replayCharterEvent(tx, event)
-
 	default:
 		// The journal is expected to gain accounting and artifact events that do
 		// not affect the materialized views. Unknown kinds therefore remain
 		// durable but are intentionally a no-op during reconstruction.
+		//
+		// THE v1 SCHEDULER'S EVENTS LAND HERE NOW. Charters, their wakes,
+		// sentinel checks, firings, tenure and the standing-watch decisions
+		// were journaled by machinery that has been removed (see
+		// docs/design/automations/DESIGN.md), and the one table they built is
+		// no longer read by anything, so an old journal that holds them
+		// rebuilds everything else exactly as it did and simply leaves them
+		// where they are.
 		return nil
 	}
 }

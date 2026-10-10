@@ -9,7 +9,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/store"
-	"github.com/Agent-Field/codeaf/internal/watchdog"
 )
 
 // THE EMPTINESS LAW ON THE LAST LINE OF A HEADLESS RUN.
@@ -68,8 +67,8 @@ func TestTheFooterWritesASpendTheWayEverythingElseDoes(t *testing.T) {
 
 // `codeaf doctor` is what somebody runs when nothing works, and on a fresh
 // machine it read as a machine that had measured zero rather than one that had
-// not measured: `$0.00 today · rail $500.00` and `0 active charters · 0 pending
-// questions`.
+// not measured: `$0.00 today · rail $500.00` (and, beside it then, a count of
+// charters and questions that has since gone with the v1 scheduler).
 func TestDoctorDoesNotPrintAZeroItNeverMeasured(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "graph.db")
 	graph, err := store.Open(path)
@@ -80,7 +79,7 @@ func TestDoctorDoesNotPrintAZeroItNeverMeasured(t *testing.T) {
 		t.Fatal(err)
 	}
 	var output bytes.Buffer
-	if err := runDoctorWith([]string{"--db", path}, &output, 500, fakeDoctorWatch{status: watchdog.Status{}}); err != nil {
+	if err := runDoctorWith([]string{"--db", path}, &output, 500); err != nil {
 		t.Fatal(err)
 	}
 	printed := output.String()

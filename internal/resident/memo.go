@@ -1,8 +1,6 @@
 package resident
 
 import (
-	"time"
-
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -83,34 +81,8 @@ func (g *journalGate) due(graph *store.Store) bool {
 	return true
 }
 
-// timedMemo holds a derivation for a fixed span of wall clock, for the one read
-// the watermark cannot help with.
-//
-// The watermark works because the lanes that share a read run on passes where
-// nothing was written between them. A lane that only runs on passes where
-// something HAS been written gets no benefit from it at all — the memo would
-// miss every single time — and the practice loop is exactly that lane. So its
-// one very expensive derivation is held for a span instead, and the span is
-// chosen against what reads it: practice fires at most twice a day, behind a
-// twenty-minute idleness test and a one-minute charter poll, so a metric up to
-// a minute old changes no decision that clock is capable of making.
-type timedMemo[T any] struct {
-	filled bool
-	at     time.Time
-	value  T
-}
-
-// read answers from the memo while it is younger than ttl. A zero ttl disables
-// the memo entirely, which is what a test with a frozen clock wants.
-func (m *timedMemo[T]) read(now time.Time, ttl time.Duration, derive func() (T, error)) (T, error) {
-	if ttl > 0 && m.filled && !m.at.IsZero() && now.Sub(m.at) < ttl && !now.Before(m.at) {
-		return m.value, nil
-	}
-	value, err := derive()
-	if err != nil {
-		var zero T
-		return zero, err
-	}
-	m.filled, m.at, m.value = true, now, value
-	return value, nil
-}
+// A wall-clock memo stood here too, for the one read the watermark could not
+// help with: the practice loop's surprise metrics, a lane that only ran on
+// passes where something HAD been written. It went with the practice loop and
+// the rest of the v1 scheduler; the watermarked memos above are all that is
+// left, because every lane that remains shares its reads on quiet passes.

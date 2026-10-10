@@ -776,8 +776,8 @@ func TestRenderCompileContextRetrievesNotebookByCue(t *testing.T) {
 		t.Fatalf("active snapshot: %v", err)
 	}
 
-	got := New(graph, nil, nil).renderCompileContext(snapshot,
-		"change internal/resident/notebook.go:42")
+	got := New(graph, nil, nil).renderCompileContextFor(snapshot,
+		"change internal/resident/notebook.go:42", "")
 	if !strings.Contains(got, "cue extraction strips line-number suffixes") {
 		t.Fatalf("compile context omitted cue-scoped fact: %q", got)
 	}
@@ -1036,7 +1036,7 @@ func TestRenderCompileContextRecallsFoldBeyondActiveViewBudget(t *testing.T) {
 	if strings.Contains(activeOnly, "Keep the sentinel table explicit") {
 		t.Fatal("active graph unexpectedly contains the old fold digest fixture")
 	}
-	got := New(graph, nil, nil).renderCompileContext(snapshot, "Repair the celadon parser again")
+	got := New(graph, nil, nil).renderCompileContextFor(snapshot, "Repair the celadon parser again", "")
 	for _, want := range []string{"Keep the sentinel table explicit", "/workspace/celadon/notes.md"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("compile context omitted recalled %q:\n%s", want, got)
@@ -1121,9 +1121,8 @@ func TestCompileContextCarriesTheConversationTheInstructionCameFrom(t *testing.T
 	if strings.Index(got, "recent conversation in this session") < strings.Index(got, "jobs (newest first)") {
 		t.Fatalf("thread slice was not written into the volatile suffix:\n%s", got)
 	}
-	// A caller with no conversation behind it — a charter firing speaks its own
-	// template — gets exactly what it always got.
-	if quiet := New(graph, nil, nil).renderCompileContext(snapshot, "check the deploy"); strings.Contains(
+	// A caller with no conversation behind it gets exactly what it always got.
+	if quiet := New(graph, nil, nil).renderCompileContextFor(snapshot, "check the deploy", ""); strings.Contains(
 		quiet, "recent conversation in this session") {
 		t.Fatalf("sessionless compile grew a thread block:\n%s", quiet)
 	}

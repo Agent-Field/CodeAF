@@ -17,7 +17,9 @@ func TestSearchAnswersTheQuestionsPeopleActuallyAsk(t *testing.T) {
 		{"what happens when I'm gone every day", "daily-rhythm", "while you are gone"},
 		{"why did you ask before cancelling", "steering-work", "confirm"},
 		{"how does the boost model work", "models", "boost"},
-		{"what is a charter", "standing-goals", "charter"},
+		// Charters went with the v1 scheduler. A person on an older store can
+		// still ask, and the page that says what happened to them answers.
+		{"what is a charter", "daily-rhythm", "charter"},
 		// The ↻ line carries what ended the attempt, not only how much was
 		// picked up, and the page shows it that way.
 		{"why was my work picked up again", "surfaces",

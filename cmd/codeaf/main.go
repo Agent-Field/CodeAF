@@ -358,6 +358,11 @@ func run() error {
 	case "services":
 		return runServices(os.Args[2:])
 	case "wake":
+		// A verb that does nothing, kept for the operating-system timers an
+		// older build installed, which go on running it until this build's
+		// first start removes them (wake.go). It is DELIBERATELY ABSENT from
+		// the usage text below for the same reason `engine` is: nobody types
+		// it, and the one thing it must never do is exit 1.
 		return runWake(os.Args[2:])
 	case "tick":
 		// THE OLD TIMER'S VERB, KEPT SO IT ENDS QUIETLY. An operating-system
@@ -568,8 +573,6 @@ Housekeeping — changes state on disk or on the network
   codeaf services [--db path]
       long-running processes it was asked to keep
   codeaf services stop <name> [--db path]
-  codeaf wake [--db path] [--timeout 2m]
-      run one full background pass by hand and exit
   codeaf patch FILE --old TEXT --new TEXT | codeaf doc PATH [--pages A-B]
   codeaf web fetch URL | web search QUERY | codeaf image "PROMPT" --out PATH
   codeaf plandb <verb> [--db path] [--json]
@@ -672,10 +675,6 @@ A variable that pins a ` + "`/settings`" + ` row wins over that row.
   CODEAF_VIDEO_MODEL   video-generation model (catalog-resolved by default)
   CODEAF_VISION_MODEL  image-inspection proxy (talk, work, catalog-resolved)
   CODEAF_DOC_ENGINE    auto (default), local, free or ocr document reading
-  CODEAF_PRACTICE_BUDGET
-                       ` + usageDollars(config.DefaultPracticeBudgetUSD) + `  daily self-practice carve-out (0 = disabled)
-  CODEAF_PRACTICE_IDLE 20m  quiet period before self-practice
-  CODEAF_BRIEF_AFTER   4h  minimum absence before an arrival brief (0 = always)
   CODEAF_MAX_HOURS     how many hours an unattended chat --yolo session may
                        carry its own work on (default none: it stops when the
                        model stops); the window closes itself ` + strconv.Itoa(int(launchWallGrace/time.Minute)) + ` minutes

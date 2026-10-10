@@ -190,7 +190,6 @@ func TestChangeSettingRefusesEveryRowThatRestrainsIt(t *testing.T) {
 		{config.KeyTaskAutoApprove, "0"},
 		{config.KeyDailyBudget, "500"},
 		{config.KeyPlanConsent, "0"},
-		{config.KeyPracticeBudget, "50"},
 		{config.KeySpendRail, "0"},
 		{config.KeyTaskRepairRounds, "9"},
 		{config.KeyWorkingSet, "900000"},

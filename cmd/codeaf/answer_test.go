@@ -217,7 +217,6 @@ func newAnswerBrain(t *testing.T) *answerBrain {
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
 	t.Setenv("CODEAF_PROFILE_DIR", brain.dir)
 	t.Setenv("CODEAF_DAILY_BUDGET", "0")
-	t.Setenv("CODEAF_PRACTICE_BUDGET", "0")
 	t.Setenv("CODEAF_PLAN_CONSENT", "0")
 	return brain
 }

@@ -97,7 +97,6 @@ explicit instruction and still errors.
 | --- | --- | --- |
 | daily budget | `CODEAF_DAILY_BUDGET` | yes |
 | plan consent | `CODEAF_PLAN_CONSENT` | yes |
-| practice carve-out | `CODEAF_PRACTICE_BUDGET` | yes |
 | session ceiling | — | yes (also per-project) |
 | lifted-tier cap | `CODEAF_RESPONSE_LIFT_CAP` | **no** — plumbing, turned when a provider misbehaves or a run is held to a price |
 | standing per-firing | — | `per_run_usd` on the `stand` tool, per item |

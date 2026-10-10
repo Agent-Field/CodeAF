@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/pool/poolcfg"
 	"github.com/Agent-Field/codeaf/internal/standing"
@@ -241,8 +240,7 @@ func TestRegistryGroupsEveryCategoryAndEveryModelSlot(t *testing.T) {
 func TestSettingsResolveEnvironmentThenFileThenDefault(t *testing.T) {
 	dir := t.TempDir()
 	for _, name := range []string{
-		"CODEAF_DAILY_BUDGET", "CODEAF_PRACTICE_BUDGET", "CODEAF_PRACTICE_IDLE",
-		"CODEAF_BRIEF_AFTER", "CODEAF_TENURE_AFTER", "CODEAF_DOC_ENGINE", "CODEAF_VISION_MODEL",
+		"CODEAF_DAILY_BUDGET", "CODEAF_DOC_ENGINE", "CODEAF_VISION_MODEL",
 	} {
 		t.Setenv(name, "")
 	}
@@ -250,10 +248,6 @@ func TestSettingsResolveEnvironmentThenFileThenDefault(t *testing.T) {
 	rows := registry(t, dir)
 	defaults := map[string]string{
 		KeyDailyBudget:    formatDollars(DefaultDailyBudgetUSD),
-		KeyPracticeBudget: formatDollars(DefaultPracticeBudgetUSD),
-		KeyPracticeIdle:   "20m",
-		KeyBriefAfter:     "4h",
-		KeyTenureAfter:    "3",
 		KeyDocumentEngine: "auto",
 		KeyVisionModel:    "automatic",
 	}
@@ -269,10 +263,6 @@ func TestSettingsResolveEnvironmentThenFileThenDefault(t *testing.T) {
 
 	changes := map[string]string{
 		KeyDailyBudget:    "35.50",
-		KeyPracticeBudget: "$4",
-		KeyPracticeIdle:   "45m",
-		KeyBriefAfter:     "90m",
-		KeyTenureAfter:    "5",
 		KeyDocumentEngine: "local",
 		KeyVisionModel:    "seer/vision",
 	}
@@ -285,10 +275,6 @@ func TestSettingsResolveEnvironmentThenFileThenDefault(t *testing.T) {
 	reread := registry(t, dir)
 	persisted := map[string]string{
 		KeyDailyBudget:    "$35.5",
-		KeyPracticeBudget: "$4",
-		KeyPracticeIdle:   "45m",
-		KeyBriefAfter:     "1h30m",
-		KeyTenureAfter:    "5",
 		KeyDocumentEngine: "local",
 		KeyVisionModel:    "seer/vision",
 	}
@@ -312,11 +298,10 @@ func TestSettingsResolveEnvironmentThenFileThenDefault(t *testing.T) {
 	}
 
 	t.Setenv("CODEAF_DOC_ENGINE", "ocr")
-	t.Setenv("CODEAF_TENURE_AFTER", "9")
 	t.Setenv("CODEAF_VISION_MODEL", "pinned/vision")
 	pinned := registry(t, dir)
 	for key, want := range map[string]string{
-		KeyDocumentEngine: "ocr", KeyTenureAfter: "9", KeyVisionModel: "pinned/vision",
+		KeyDocumentEngine: "ocr", KeyVisionModel: "pinned/vision",
 	} {
 		row, _ := pinned.Row(key)
 		if got := row.Value(); got != want {
@@ -338,7 +323,7 @@ func TestLoadReadsPersistedSettings(t *testing.T) {
 	dir := t.TempDir()
 	rows := registry(t, dir)
 	for key, raw := range map[string]string{
-		KeyPracticeBudget: "6", KeyPracticeIdle: "5m", KeyBriefAfter: "30m",
+		KeyDailyBudget:    "6",
 		KeyDocumentEngine: "free",
 		KeyVisionModel:    "seer/vision",
 	} {
@@ -351,8 +336,7 @@ func TestLoadReadsPersistedSettings(t *testing.T) {
 	t.Setenv("CODEAF_BASE_URL", "http://127.0.0.1:1")
 	t.Setenv("CODEAF_PROFILE_DIR", dir)
 	for _, name := range []string{
-		"CODEAF_PRACTICE_BUDGET", "CODEAF_PRACTICE_IDLE", "CODEAF_BRIEF_AFTER",
-		"CODEAF_DOC_ENGINE", "CODEAF_VISION_MODEL",
+		"CODEAF_DAILY_BUDGET", "CODEAF_DOC_ENGINE", "CODEAF_VISION_MODEL",
 	} {
 		t.Setenv(name, "")
 	}
@@ -360,20 +344,19 @@ func TestLoadReadsPersistedSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.PracticeBudgetUSD != 6 || loaded.PracticeIdle != 5*time.Minute ||
-		loaded.BriefAfter != 30*time.Minute || loaded.DocumentEngine != "free" ||
+	if loaded.DailyBudgetUSD != 6 || loaded.DocumentEngine != "free" ||
 		loaded.VisionModel != "seer/vision" {
 		t.Fatalf("persisted settings did not reach Load: %+v", loaded)
 	}
 
 	// The environment still wins over everything written here.
 	t.Setenv("CODEAF_DOC_ENGINE", "ocr")
-	t.Setenv("CODEAF_BRIEF_AFTER", "2h")
+	t.Setenv("CODEAF_DAILY_BUDGET", "2")
 	loaded, err = Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.DocumentEngine != "ocr" || loaded.BriefAfter != 2*time.Hour {
+	if loaded.DocumentEngine != "ocr" || loaded.DailyBudgetUSD != 2 {
 		t.Fatalf("environment lost to the persisted file: %+v", loaded)
 	}
 }
@@ -382,8 +365,7 @@ func TestSettingEditorsRefuseNonsenseInPlainLanguage(t *testing.T) {
 	rows := registry(t, t.TempDir())
 	for key, raw := range map[string]string{
 		KeyDailyBudget:    "twenty dollars",
-		KeyBriefAfter:     "soonish",
-		KeyTenureAfter:    "many",
+		KeyTaskParallel:   "many",
 		KeyDocumentEngine: "tesseract",
 	} {
 		row, ok := rows.Row(key)
@@ -397,32 +379,6 @@ func TestSettingEditorsRefuseNonsenseInPlainLanguage(t *testing.T) {
 		if message := err.Error(); message == "" || strings.Contains(message, "strconv") {
 			t.Fatalf("%s error is not plain language: %v", key, err)
 		}
-	}
-}
-
-func TestTenurePersistsAndReachesTheProcessEnvironment(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("CODEAF_TENURE_AFTER", "")
-	rows := registry(t, dir)
-	row, _ := rows.Row(KeyTenureAfter)
-	if err := row.Apply("6"); err != nil {
-		t.Fatal(err)
-	}
-	if got := os.Getenv("CODEAF_TENURE_AFTER"); got != "6" {
-		t.Fatalf("tenure did not reach the running process: %q", got)
-	}
-	t.Setenv("CODEAF_TENURE_AFTER", "")
-	if got := TenureAfterAt(dir); got != 6 {
-		t.Fatalf("persisted tenure = %d", got)
-	}
-	InstallPersistedEnv(dir)
-	if got := os.Getenv("CODEAF_TENURE_AFTER"); got != "6" {
-		t.Fatalf("relaunch did not reinstall the persisted tenure: %q", got)
-	}
-	t.Setenv("CODEAF_TENURE_AFTER", "2")
-	InstallPersistedEnv(dir)
-	if got := os.Getenv("CODEAF_TENURE_AFTER"); got != "2" {
-		t.Fatalf("a set environment was overwritten: %q", got)
 	}
 }
 
@@ -1169,7 +1125,6 @@ func TestSpendRailsShipLargeEnoughNotToHinder(t *testing.T) {
 	}{
 		{"the daily rail", DefaultDailyBudgetUSD, 500},
 		{"the plan consent gate", DefaultPlanConsentUSD, 100},
-		{"the practice carve-out", DefaultPracticeBudgetUSD, 50},
 		{"the lifted-tier cap", taxonomy.DefaultTierCapUSD, 25},
 		{"a standing order's per-firing rail", standing.DefaultPerRunUSD, 5},
 	}
@@ -1187,8 +1142,8 @@ func TestSpendRailsShipLargeEnoughNotToHinder(t *testing.T) {
 	}
 }
 
-// TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans walks the four rows a
-// person actually turns. For each it checks the shipped reading against the
+// TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans walks the three rows
+// a person actually turns. For each it checks the shipped reading against the
 // constant that owns it — one source of truth, so a raise that forgot the row
 // fails here — and then writes 0 and reads the row back.
 //
@@ -1199,7 +1154,7 @@ func TestSpendRailsShipLargeEnoughNotToHinder(t *testing.T) {
 // already uses for its off state — and `$0` appears nowhere at all.
 func TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans(t *testing.T) {
 	for _, name := range []string{
-		"CODEAF_DAILY_BUDGET", "CODEAF_PRACTICE_BUDGET", "CODEAF_PLAN_CONSENT",
+		"CODEAF_DAILY_BUDGET", "CODEAF_PLAN_CONSENT",
 	} {
 		t.Setenv(name, "")
 	}
@@ -1210,10 +1165,6 @@ func TestEveryMoneyRowReadsItsNewDefaultAndSaysWhatZeroMeans(t *testing.T) {
 	}{
 		{KeyDailyBudget, DefaultDailyBudgetUSD, noLimitWord},
 		{KeyPlanConsent, DefaultPlanConsentUSD, "never asks"},
-		// The carve-out is the deliberate exception: zero switches practice off
-		// rather than uncapping it, and the receipt has to say THAT and not
-		// "no limit", or the row would be lying in the calmest possible voice.
-		{KeyPracticeBudget, DefaultPracticeBudgetUSD, "practice off"},
 		{KeySpendRail, DefaultSpendRailUSD, noLimitWord},
 	}
 	for _, rail := range rails {
@@ -1332,7 +1283,6 @@ func TestTheThreeCategoriesSpendingLeftBehind(t *testing.T) {
 	want := map[string]string{
 		KeyDailyBudget:      CategorySpending,
 		KeyPlanConsent:      CategorySpending,
-		KeyPracticeBudget:   CategorySpending,
 		KeySpendRail:        CategorySpending,
 		KeyToolApprovalMode: CategorySafety,
 		KeyGuardian:         CategorySafety,

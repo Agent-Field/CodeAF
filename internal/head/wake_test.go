@@ -220,7 +220,7 @@ func TestTheWakeOnlyCoversKindsTheHeadAlreadySpokeFor(t *testing.T) {
 	}
 	for _, kind := range []store.CommandKind{
 		store.CommandPause, store.CommandResume, store.CommandCancel,
-		store.CommandReprioritize, store.CommandCharterRetire,
+		store.CommandReprioritize,
 	} {
 		if receiptInterprets(kind) {
 			t.Fatalf("%s did exactly what the verb says and still buys a turn", kind)

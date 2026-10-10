@@ -22,11 +22,15 @@ type auditDial struct {
 	lowDirection, highDirection int
 }
 
+// auditRegistry is every dial the meta retrospective may turn, each against the
+// reversal class that is its evidence. A fourth, the proposal cadence, was
+// turned by how often the standing rules the retrospective offered were
+// declined; the offers went with the v1 scheduler, so that class has nothing
+// left to count and the dial stays where it was last left.
 var auditRegistry = []auditDial{
 	{"skill_promotions", store.ParameterSkillPromotionOccurrences, "skill promotion", -1, 1},
 	{"consolidations", store.ParameterConsolidationThreshold, "belief consolidation", -1, 1},
 	{"aging", store.ParameterBeliefRetentionThreshold, "belief aging", 1, -1},
-	{"proposals", store.ParameterProposalCadenceRuns, "proposal cadence", -1, 1},
 }
 
 func (r *Reconciler) metaRetrospect() []store.ParameterChange {

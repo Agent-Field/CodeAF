@@ -439,7 +439,8 @@ func TestExecJSONSaysWhyTheRunFailed(t *testing.T) {
 
 // A WALL UNDER A SECOND IS STILL A WALL. `--timeout` is a duration on every
 // door that has one, and two of them used to fold it down to a whole number of
-// seconds and multiply it back up. `--timeout 500ms` truncated to zero, and a
+// seconds and multiply it back up (the other was `codeaf wake`, whose pass went
+// with the v1 scheduler). `--timeout 500ms` truncated to zero, and a
 // zero wall is no wall at all — so the run was handed the FULL DEFAULT, the
 // opposite of what was typed, and `1500ms` quietly became one second.
 //
@@ -449,7 +450,7 @@ func TestExecJSONSaysWhyTheRunFailed(t *testing.T) {
 // not a guard, so the comparison is made on a form the author's formatting
 // cannot vary.
 func TestAWallUnderASecondIsNotRoundedAwayOnAnyDoor(t *testing.T) {
-	for _, source := range []string{"exec.go", "wake.go"} {
+	for _, source := range []string{"exec.go"} {
 		parsed, err := parser.ParseFile(token.NewFileSet(), source, nil, 0)
 		if err != nil {
 			t.Fatal(err)

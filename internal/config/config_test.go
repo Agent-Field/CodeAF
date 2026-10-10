@@ -13,7 +13,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -28,7 +27,6 @@ func settings(t *testing.T) Config {
 	t.Setenv("CODEAF_BASE_URL", "http://127.0.0.1:1")
 	t.Setenv("CODEAF_PROFILE_DIR", t.TempDir())
 	t.Setenv("CODEAF_DAILY_BUDGET", "")
-	t.Setenv("CODEAF_BRIEF_AFTER", "")
 	config, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -230,55 +228,21 @@ func TestMusicAndVideoPreferenceOrders(t *testing.T) {
 	}
 }
 
-func TestPracticeBudgetAndIdleDefaultsAndOverrides(t *testing.T) {
-	t.Setenv("CODEAF_PRACTICE_BUDGET", "")
-	t.Setenv("CODEAF_PRACTICE_IDLE", "")
-	got := settings(t)
-	if got.PracticeBudgetUSD != DefaultPracticeBudgetUSD || got.PracticeIdle != DefaultPracticeIdle {
-		t.Fatalf("practice defaults = $%v/%s", got.PracticeBudgetUSD, got.PracticeIdle)
-	}
-
+// The v1 scheduler's four variables are read by nothing now — the practice
+// carve-out and its quiet period, the arrival brief's absence and the tenure
+// count all went with the scheduler — so a shell that still exports one, even
+// spelled so badly the old reader refused to start, starts like any other.
+func TestTheRemovedSchedulerVariablesNoLongerStopALoad(t *testing.T) {
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
+	t.Setenv("CODEAF_BASE_URL", "http://127.0.0.1:1")
 	t.Setenv("CODEAF_PROFILE_DIR", t.TempDir())
-	t.Setenv("CODEAF_PRACTICE_BUDGET", "3.5")
-	t.Setenv("CODEAF_PRACTICE_IDLE", "45m")
-	got, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.PracticeBudgetUSD != 3.5 || got.PracticeIdle != 45*time.Minute {
-		t.Fatalf("practice overrides = $%v/%s", got.PracticeBudgetUSD, got.PracticeIdle)
-	}
-
-	for _, test := range []struct{ budget, idle string }{
-		{budget: "-1"}, {budget: "NaN"}, {idle: "-1m"}, {idle: "later"},
-	} {
-		t.Setenv("CODEAF_PRACTICE_BUDGET", test.budget)
-		t.Setenv("CODEAF_PRACTICE_IDLE", test.idle)
-		if _, err := Load(); err == nil {
-			t.Fatalf("invalid practice settings budget=%q idle=%q were accepted", test.budget, test.idle)
-		}
-	}
-}
-
-func TestBriefAfterConfiguration(t *testing.T) {
-	config := settings(t)
-	if config.BriefAfter != 4*time.Hour {
-		t.Fatalf("default brief threshold = %s, want 4h", config.BriefAfter)
-	}
-
-	t.Setenv("CODEAF_BRIEF_AFTER", "90m")
-	config, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if config.BriefAfter != 90*time.Minute {
-		t.Fatalf("configured brief threshold = %s, want 90m", config.BriefAfter)
-	}
-
+	t.Setenv("CODEAF_DAILY_BUDGET", "")
+	t.Setenv("CODEAF_PRACTICE_BUDGET", "-1")
+	t.Setenv("CODEAF_PRACTICE_IDLE", "later")
 	t.Setenv("CODEAF_BRIEF_AFTER", "-1h")
-	if _, err := Load(); err == nil {
-		t.Fatal("negative CODEAF_BRIEF_AFTER was accepted")
+	t.Setenv("CODEAF_TENURE_AFTER", "many")
+	if _, err := Load(); err != nil {
+		t.Fatalf("a variable nothing reads stopped the load: %v", err)
 	}
 }
 
@@ -698,9 +662,6 @@ func TestTheLaneBorrowRowIsNotReportedUnread(t *testing.T) {
 // pinned row refuses every write and this law is about what the writer does.
 func profileKeysWrittenByRows(t *testing.T) map[string]string {
 	t.Helper()
-	// writeTenure hands its value to the process environment as well as the
-	// file; this puts the variable back when the law is done.
-	t.Setenv("CODEAF_TENURE_AFTER", os.Getenv("CODEAF_TENURE_AFTER"))
 	written := map[string]string{}
 	for _, listed := range registry(t, t.TempDir()).Rows() {
 		if listed.Key == "" {

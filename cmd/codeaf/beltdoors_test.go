@@ -34,14 +34,16 @@ const helpLineCap = 117
 // them:
 //
 //   - `engine` and `clock` are machinery a window starts, not things a person
-//     runs by hand, and `tick` is the old timer's verb, kept so a timer an
-//     older build installed ends quietly; main.go says so where it dispatches
-//     them and internal/manual's running-from-the-terminal page says so again.
+//     runs by hand; main.go says so where it dispatches them and
+//     internal/manual's running-from-the-terminal page says so again.
+//   - `tick` and `wake` do nothing: they are kept only for the
+//     operating-system timers an older build installed, which run them until
+//     this build removes them (main.go, wake.go).
 //   - `show` and `revise` are the old top-level spellings of `plan show` and
 //     `plan revise`; the page names the commands they became.
 //   - `help` is the alias for `--help` itself.
 var doorsOffThePage = map[string]bool{
-	"engine": true, "tick": true, "clock": true, "show": true, "revise": true, "help": true,
+	"engine": true, "tick": true, "clock": true, "wake": true, "show": true, "revise": true, "help": true,
 }
 
 // THE FIRST GESTURE ON AN UNFAMILIAR DOOR IS `-h`, and it must not be a

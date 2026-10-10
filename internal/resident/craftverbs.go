@@ -15,7 +15,7 @@ import (
 // before this one, stop reaching for it, take that tool off the shelf.
 //
 // They arrive as ordinary journaled commands and are applied here, beside the
-// charter and service verbs, for the reason every other door in this system is
+// service verbs, for the reason every other door in this system is
 // one command kind: a verb that acted from the surface and a verb that acted
 // from a sentence would otherwise be two implementations of one promise, and
 // the one nobody was looking at would be the one that stopped being true.

@@ -1000,9 +1000,10 @@ func TestProductHomeMovesTheDefaultStore(t *testing.T) {
 // sitting in the JSON `deliverable` field where a caller reads the answer.
 //
 // `codeaf do` IS the answer to that question. A person who typed the verb has
-// already chosen "once, not standing", so the classification is settled by the
-// surface before a model reads a word: the temporal route is never taken, and
-// the ask compiles, plans, runs and delivers exactly like any other errand.
+// already chosen one run, so the classification is settled by the surface
+// before a model reads a word — and since the v1 scheduler went, there is no
+// temporal route left to take at all: the ask compiles, plans, runs and
+// delivers exactly like any other errand.
 func TestDoRunsAStandingSoundingAskOnceInsteadOfAskingToRatifyIt(t *testing.T) {
 	script := newScriptedBrain(t)
 	defer script.close()
@@ -1020,8 +1021,8 @@ func TestDoRunsAStandingSoundingAskOnceInsteadOfAskingToRatifyIt(t *testing.T) {
 			err, stdout.String(), stderr.String())
 	}
 	// The structural pin: the temporal compiler was never reached at all. Its
-	// prompt is the only door to a charter draft on this path, and a headless
-	// errand does not have that door.
+	// prompt was the only door to a charter draft on this path, and no build
+	// has that door any more.
 	if got := script.count("standing"); got != 0 {
 		t.Fatalf("the temporal compiler ran %d times on a one-shot errand, want 0", got)
 	}
@@ -1042,17 +1043,15 @@ func TestDoRunsAStandingSoundingAskOnceInsteadOfAskingToRatifyIt(t *testing.T) {
 	assertErrandIsHonest(t, outcome, nil)
 }
 
-// Defense in depth for the same law. The surface fact settles the classification
-// in the compiler, but a charter draft can still arrive from a provider that
-// emitted the key uninvited or a compiler that is not the head's. A draft that
-// reaches a process with no keyboard is auto-resolved the way the caller already
-// chose — once, not standing — journaled as retired, and then the work RUNS.
-// The failure mode this replaces is the one that matters: exiting having done
+// Defense in depth for the same law. A provider can still emit a charter key
+// nobody asked for — a model that remembers the old answer shape — and there is
+// nothing left to read it: the compile decodes without it, and the work RUNS.
+// The failure mode this guards is the one that matters: exiting having done
 // nothing.
-func TestDoResolvesAnUnexpectedCharterDraftAsOnceAndRunsTheWork(t *testing.T) {
+func TestDoIgnoresAnUninvitedCharterKeyAndRunsTheWork(t *testing.T) {
 	script := newScriptedBrain(t)
 	defer script.close()
-	script.compileDraftsCharter = true
+	script.compileAddsCharterKey = true
 	script.gatePasses = true
 
 	var stdout, stderr strings.Builder
@@ -1063,15 +1062,15 @@ func TestDoResolvesAnUnexpectedCharterDraftAsOnceAndRunsTheWork(t *testing.T) {
 		stdout: &stdout, stderr: &stderr, newClient: script.client,
 	})
 	if err != nil {
-		t.Fatalf("a charter draft ended the errand instead of being resolved: %v\nstderr:\n%s",
+		t.Fatalf("an uninvited charter key ended the errand: %v\nstderr:\n%s",
 			err, stderr.String())
 	}
 	outcome := decodeErrand(t, stdout.String())
 	if outcome.BlockedOn != "" {
-		t.Fatalf("the ratification card reached the caller anyway: %q", outcome.BlockedOn)
+		t.Fatalf("a question reached the caller: %q", outcome.BlockedOn)
 	}
 	if script.count("draft") == 0 {
-		t.Fatalf("the draft was resolved and the work still never ran:\n%s", stderr.String())
+		t.Fatalf("the work never ran:\n%s", stderr.String())
 	}
 	if !strings.Contains(outcome.Deliverable, firstDraftAnswer) {
 		t.Fatalf("the deliverable is not the work product: %q", outcome.Deliverable)
@@ -1393,10 +1392,11 @@ const (
 	unanswerableQuestion = "Which ledger is authoritative when the two disagree?"
 )
 
-// scriptedCharter is what a temporal compiler answers with — and what the
+// scriptedCharter is what the temporal compiler answered with — and what the
 // benchmark's two failing cells were handed for asks that were nothing of the
-// kind. The two-minute cadence is not invented here for colour; it is the
-// literal default standingWatch supplies when nobody stated a rhythm.
+// kind. The two-minute cadence was not invented for colour; it was the literal
+// default the head supplied when nobody stated a rhythm. No build asks for this
+// shape any more; it stays as what a provider remembering it would send.
 const scriptedCharter = `{"invariant":"Reconcile bank_export.csv against ledger.csv for June 2026 and flag every discrepancy",` +
 	`"watch":{"kind":"poll","cadence":"about every 2 minutes","schedule":""},` +
 	`"sentinel":"Decide whether the ledgers have diverged.",` +
@@ -1445,10 +1445,10 @@ type scriptedBrain struct {
 	// leafCost is what each call reports spending, which is what the consent
 	// desk's estimate is built from.
 	leafCost float64
-	// compileDraftsCharter makes the ORDINARY intent compiler hand back a
-	// charter, which is the shape a provider emitting an uninvited key produces
-	// — the case the structural pin cannot catch and the reconciler must.
-	compileDraftsCharter bool
+	// compileAddsCharterKey makes the ORDINARY intent compiler hand back an
+	// ordinary brief with a charter key beside it — the shape a provider that
+	// remembers the old answer produces, which nothing may read any more.
+	compileAddsCharterKey bool
 	// compilerAsks makes the compiler stop on a question instead of compiling.
 	compilerAsks string
 	// compileBlankGoal makes the compiler answer a well-formed object with no
@@ -1517,7 +1517,6 @@ func newScriptedBrain(t *testing.T) *scriptedBrain {
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
 	t.Setenv("CODEAF_PROFILE_DIR", script.dir)
 	t.Setenv("CODEAF_DAILY_BUDGET", "0")
-	t.Setenv("CODEAF_PRACTICE_BUDGET", "0")
 	if os.Getenv("CODEAF_PLAN_CONSENT") == "" {
 		t.Setenv("CODEAF_PLAN_CONSENT", "0")
 	}
@@ -1615,8 +1614,9 @@ func (s *scriptedBrain) serve(writer http.ResponseWriter, request *http.Request)
 func (s *scriptedBrain) reply(body string) string {
 	switch {
 	case strings.Contains(body, "You compile durable intent into one inert charter draft"):
-		// Reaching this at all on a headless errand is the defect. The count is
-		// the assertion; the answer is what the benchmark actually received.
+		// The temporal compiler's prompt. No build sends it any more, so
+		// reaching this at all is the defect coming back; the count is the
+		// assertion, and the answer is what the benchmark actually received.
 		s.tally("standing")
 		return s.say(scriptedCharter)
 
@@ -1630,11 +1630,9 @@ func (s *scriptedBrain) reply(body string) string {
 			return s.say(`{"title":"Release note and migration","scale":"task",` +
 				`"builds_on":[],"assumptions":[],"question":"","trial_of":0}`)
 		}
-		if s.compileDraftsCharter {
-			return s.say(`{"goal":"","scale":"task","builds_on":[],"assumptions":[],` +
-				`"question":"Stand this rule up?","question_options":[` +
-				`{"label":"yes, stand this up","value":"ratify"},` +
-				`{"label":"once, not standing","value":"once"}],` +
+		if s.compileAddsCharterKey {
+			return s.say(`{"goal":"Reconcile the two ledgers and flag every discrepancy.","scale":"task",` +
+				`"builds_on":[],"assumptions":[],"question":"",` +
 				`"trial_of":0,"charter":` + scriptedCharter + `}`)
 		}
 		if s.plansAPipeline {
@@ -2451,18 +2449,15 @@ func TestASettledErrandLeavesNoNodeOfItsOwnStillRunning(t *testing.T) {
 	}
 }
 
-// A one-shot schedules nothing for later. Self-practice is the resident's own
-// curiosity, and it was firing inside every headless run — writing a
-// practice-loop charter and its work into whatever store the run was pointed
-// at, including a person's own with --db. It costs almost nothing and it is not
-// the errand's, which is reason enough.
+// A one-shot schedules nothing for later. Self-practice was the resident's own
+// curiosity, and it once fired inside every headless run — writing its work
+// into whatever store the run was pointed at, including a person's own with
+// --db. The practice loop went with the v1 scheduler; this keeps the store an
+// errand leaves behind holding the errand and nothing of codeaf's own.
 func TestAHeadlessErrandSchedulesNoPractice(t *testing.T) {
 	script := newScriptedBrain(t)
 	script.gatePasses = true
 	defer script.close()
-	// The harness zeroes the practice budget for every other test here. This is
-	// the one run that must prove the gate rather than the setting.
-	t.Setenv("CODEAF_PRACTICE_BUDGET", "2")
 
 	database := filepath.Join(t.TempDir(), "graph.db")
 	var stdout, stderr strings.Builder
@@ -2478,16 +2473,6 @@ func TestAHeadlessErrandSchedulesNoPractice(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer graph.Close()
-	charters, err := graph.Charters()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, charter := range charters {
-		if strings.Contains(charter.ID, "practice") ||
-			charter.ProposalShape == store.PracticeCharterShape {
-			t.Fatalf("a one-shot errand stood up %q in the person's own store", charter.ID)
-		}
-	}
 	nodes, err := graph.SubtreeNodes(store.RootID)
 	if err != nil {
 		t.Fatal(err)

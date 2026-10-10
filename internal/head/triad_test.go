@@ -116,36 +116,6 @@ func TestATaskThatAmendsSettledWorkTakesTheCorrectionPath(t *testing.T) {
 	}
 }
 
-// A rule id and a sentence that could mean three different edits. Nothing is
-// guessed: the candidates come back in the person's terms, and the journal is
-// untouched — the same shape every ambiguity in this package has.
-func TestAChangeToARuleWithAmbiguousWordsHandsBackCandidates(t *testing.T) {
-	graph := openHeadStore(t)
-	charter := activateReminder(t, graph, "plants",
-		"remind me every sunday to water the plants", "every sunday", "water the plants")
-
-	user := postUser(t, graph, "rules", "sort that one out for me")
-	run := &beltRun{head: New(nil, graph), user: user}
-
-	answer, failed := run.execute(beltToolChange, beltArguments(t, map[string]any{
-		"target": charter.ID, "words": user.Body,
-	}))
-	if failed {
-		t.Fatalf("an unreadable rule change errored instead of offering candidates: %s", answer)
-	}
-	for _, want := range []string{"when it runs", "what it says", "going back to asking"} {
-		if !strings.Contains(answer, want) {
-			t.Fatalf("the candidates do not offer %q:\n%s", want, answer)
-		}
-	}
-	if run.acted {
-		t.Fatal("offering candidates counted as acting")
-	}
-	if commands := pendingCommandsOf(t, graph); len(commands) != 0 {
-		t.Fatalf("an ambiguous rule change journaled %+v", commands)
-	}
-}
-
 // The consent gate is reached by the same road control used, so a withdrawal
 // wide enough to cross it stops at the question with nothing journaled.
 func TestStoppingAWideSetRaisesTheConsentGate(t *testing.T) {

@@ -99,30 +99,27 @@ you one question, never a silent wrong action.
 ## What the front desk's hands actually are
 
 Reading is always safe and never needs permission: the board, one job's result,
-its plan, a file it wrote, the manual, what has been spent, what is on watch,
-what was finished in a window of time, and a search across everything
-remembered. Reads never queue anything.
+its plan, a file it wrote, the manual, what has been spent, what was finished in
+a window of time, and a search across everything remembered. Reads never queue anything.
 
 Three of those reads are total, and between them nothing the brain knows is out
 of reach from the conversation:
 
 - **recall** — one search over everything settled or said at once: what you
-  said, what you told it, what it did, the standing rules, the services. Each
+  said, what you told it, what it did, the services. Each
   hit comes back with real content and an id, and it can be narrowed to one
   kind of thing, to a window of time, or to one of your chats.
 - **open** — one thing whole. Work still running opens as its plan with every
   step's state, what its workers are saying right now, the files it has written
   so far and what it has spent; work that finished opens as its whole result,
   its files, its spend and how each part ended; a file opens as its actual
-  bytes; a standing rule, a service or a numbered notebook line opens as its
-  full record. Asked for it raw, it hands back the journal's own rows —
+  bytes; a service or a numbered notebook line opens as its full record. Asked for it raw, it hands back the journal's own rows —
   every event and every message attached to that job, unedited. Nothing here is
   truncated: anything longer than a page is *paged*, and the reply says which
   part of how many it is holding, so a fragment is never mistaken for the whole.
 - **status** — the whole system on one page: what is running, queued and
-  failed, what today has cost against your daily limit, what is on watch and
-  when each check is next, what is running as a service, and what has been
-  measured about how the work goes.
+  failed, what today has cost against your daily limit, what is running as a
+  service, and what has been measured about how the work goes.
 
 One read is about conversations rather than about work: **thread** opens another
 of your chats and hands back the end of it. It is only ever read when the front
@@ -139,15 +136,14 @@ The rest change something and each one journals:
   you are rejecting something already delivered and want the previous version to
   go back in with your criticism; the work it follows on from; and the model you
   named for it.
-- **change** — hand your own words, verbatim, to something already under way or
-  already standing: a live job, a standing rule, a service, a way of working.
+- **change** — hand your own words, verbatim, to something already under way:
+  a live job, a service, a way of working.
   It carries no verb at all. What your words MEAN for the work — tell the people
   already working, edit the remaining plan, both, or bring it forward — is
   decided by the side that can see the plan, and what it came to is said back to
   you when it lands.
-- **stop** — withdraw things: cancel live work, retire a standing rule or a way
-  of working, stop a service. Say pause or hold and the two kinds that can be
-  held are held instead of ended. "Everything" is the total one, and it asks
+- **stop** — withdraw things: cancel live work, retire a way of working, stop a
+  service. Say pause or hold and live work is held instead of ended. "Everything" is the total one, and it asks
   once about live work before touching it.
 - **bash** — run one shell command in the workspace, on your own machine. This
   is the one hand that changes what YOU experience rather than what codeaf

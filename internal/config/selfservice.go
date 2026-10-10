@@ -85,12 +85,11 @@ var selfServiceGuards = map[string]string{
 	KeyConsentTimeout:   guardConsent,
 	KeyTaskAutoApprove:  guardConsent,
 
-	// The rails on money, coarse to fine: the day, the ask-first threshold, the
-	// practice carve-out, one conversation, one node's retries, and the two caps
-	// on how much context a single worker may send and re-send at full price.
+	// The rails on money, coarse to fine: the day, the ask-first threshold, one
+	// conversation, one node's retries, and the two caps on how much context a
+	// single worker may send and re-send at full price.
 	KeyDailyBudget:      guardSpending,
 	KeyPlanConsent:      guardSpending,
-	KeyPracticeBudget:   guardSpending,
 	KeySpendRail:        guardSpending,
 	KeyTaskRepairRounds: guardSpending,
 	KeyWorkingSet:       guardSpending,

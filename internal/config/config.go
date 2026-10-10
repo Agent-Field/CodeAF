@@ -183,24 +183,6 @@ const (
 	// answers in words, which is exactly the shape both slots ask for.
 	preferredPerceptionModel = "google/gemini-2.5-flash"
 
-	// DefaultPracticeBudgetUSD is the daily carve-out reserved for self-origin
-	// curiosity work. The global rail remains an additional ceiling.
-	//
-	// IT IS A CARVE-OUT AND NOT A RAIL, which is why 0 reads the opposite way
-	// here than it does on every other money row in this file: 0 is no practice
-	// at all (internal/resident's WithPracticeLoop switches the loop off), never
-	// unbounded practice. There is no way to spell "practice without a ceiling"
-	// and that is deliberate — self-origin work runs while nobody is watching,
-	// so it is the one pocket that always has a bottom. Raised with the rail
-	// above so the carve-out is a real slice of a real day.
-	DefaultPracticeBudgetUSD = 50.0
-
-	DefaultPracticeIdle = 20 * time.Minute
-
-	// DefaultBriefAfter keeps ordinary short breaks silent. A longer absence
-	// earns one folded arrival summary when background life actually happened.
-	DefaultBriefAfter = 4 * time.Hour
-
 	// DefaultSwarm is whether cooperative decomposition is armed with nobody
 	// having said anything about it. It is TRUE from the swarm-road wave on;
 	// [Config.Swarm] carries the whole argument, and `CODEAF_SWARM=0` is the
@@ -241,25 +223,22 @@ type Config struct {
 	VoiceModel string
 	// Media model fields are capability slots. Empty means resolve at use
 	// from the live catalog, rather than trusting a floating default slug.
-	ImageModel        string
-	SpeechModel       string
-	MusicModel        string
-	VideoModel        string
-	VisionModel       string
-	DocumentEngine    string
-	Timeout           time.Duration
-	Reasoning         provider.Effort
-	ExecReasoning     provider.Effort
-	SpineSamples      int
-	MaxDepth          int
-	NodeBudget        int
-	DailyBudgetUSD    float64
-	PracticeBudgetUSD float64
+	ImageModel     string
+	SpeechModel    string
+	MusicModel     string
+	VideoModel     string
+	VisionModel    string
+	DocumentEngine string
+	Timeout        time.Duration
+	Reasoning      provider.Effort
+	ExecReasoning  provider.Effort
+	SpineSamples   int
+	MaxDepth       int
+	NodeBudget     int
+	DailyBudgetUSD float64
 	// PlanConsentUSD is the estimate above which a planned job asks before it
 	// starts. Zero never asks.
 	PlanConsentUSD float64
-	PracticeIdle   time.Duration
-	BriefAfter     time.Duration
 
 	// Swarm is the cooperative-decomposition mode, and it is ON by default
 	// ([DefaultSwarm]). On, a worker gains a verb for handing work back when
@@ -413,6 +392,14 @@ var retiredProfileKeys = map[string]bool{
 	"practice_demand_pct":  true, // reader removed by 84ba8503e
 	"propose_new_skills":   true, // reader removed by 84ba8503e
 	"attribution":          true, // reader removed on 2026-09-23: signing has no off
+	// The v1 resident's scheduler knobs: the practice carve-out and its quiet
+	// period, the arrival brief's absence (whose value Load copied onto a field
+	// nothing read), and the clean-firing count that earned a charter tenure.
+	// The scheduler went on 2026-10-10 (docs/design/automations/DESIGN.md).
+	"practice_budget_usd": true, // reader removed on 2026-10-10: the practice loop is gone
+	"practice_idle":       true, // reader removed on 2026-10-10: the practice loop is gone
+	"brief_after":         true, // reader removed on 2026-10-10: nothing read the field
+	"tenure_after":        true, // reader removed on 2026-10-10: charters are gone
 	// The retired crew rows are read once more, by the migration that removes
 	// them and says so in its own line (crewmigrate.go's [MigrateCrew]); the
 	// unread check must not say it a second time in a worse sentence.
@@ -522,9 +509,6 @@ func load(requireKey bool) (Config, error) {
 		MaxDepth:          DefaultMaxDepth,
 		NodeBudget:        DefaultNodeBudget,
 		DailyBudgetUSD:    DefaultDailyBudgetUSD,
-		PracticeBudgetUSD: DefaultPracticeBudgetUSD,
-		PracticeIdle:      DefaultPracticeIdle,
-		BriefAfter:        DefaultBriefAfter,
 		Swarm:             DefaultSwarm,
 		ProfileDir:        profileDir,
 	}
@@ -590,15 +574,6 @@ func load(requireKey bool) (Config, error) {
 	// the reserve goes on doing the one job it was written for: keeping the
 	// prompt small enough that the answer and its reasoning still fit.
 	ctxbudget.Configure(contextLaw(config.ProfileDir))
-	if config.PracticeIdle, err = PracticeIdleAt(config.ProfileDir); err != nil {
-		return Config{}, err
-	}
-	if config.BriefAfter, err = BriefAfterAt(config.ProfileDir); err != nil {
-		return Config{}, err
-	}
-	if config.PracticeBudgetUSD, err = PracticeBudgetUSDAt(config.ProfileDir); err != nil {
-		return Config{}, err
-	}
 	if config.DailyBudgetUSD, err = DailyBudgetUSDAt(config.ProfileDir); err != nil {
 		return Config{}, err
 	}

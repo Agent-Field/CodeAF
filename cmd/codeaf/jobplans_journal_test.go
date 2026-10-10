@@ -266,8 +266,9 @@ func TestASettledEndingReachesTheStoreAsAnEvent(t *testing.T) {
 	}
 }
 
-// The bounded wake pass has no store behind its registry. Losing that journal
-// must lose only a later restart's accuracy, never the in-memory leaf ending.
+// A registry built for one bounded pass has no store behind it. Losing that
+// journal must lose only a later restart's accuracy, never the in-memory leaf
+// ending.
 func TestARegistryWithNoStoreStillSettlesTheNode(t *testing.T) {
 	plans := newJobPlans(nil)
 	document := &plan.Graph{Goal: "build the thing", NextID: 2, Nodes: []plan.Node{{

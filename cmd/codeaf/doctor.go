@@ -8,31 +8,31 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/lease"
 	"github.com/Agent-Field/codeaf/internal/store"
-	"github.com/Agent-Field/codeaf/internal/watchdog"
 )
 
-type standingWatchStatus interface {
-	Status() (watchdog.Status, error)
-}
-
+// doctorSnapshot is everything doctor reports.
+//
+// Two rows it used to carry are gone with the v1 resident's scheduler
+// (docs/design/automations/DESIGN.md): `background timer`, which read the
+// operating-system timer that scheduler installed, and `standing`, which
+// counted its charters beside the questions still waiting on an answer.
+// Nothing installs a timer any more and nothing makes a charter, so a row
+// about either could only ever read "not installed" and nothing — a reading
+// of machinery that is not there.
 type doctorSnapshot struct {
-	BrainPath        string
-	BrainSize        int64
-	BrainExists      bool
-	Resident         string
-	Watch            watchdog.Status
-	Spend            float64
-	Rail             float64
-	RailUnlimited    bool
-	ActiveCharters   int
-	PendingQuestions int
+	BrainPath     string
+	BrainSize     int64
+	BrainExists   bool
+	Resident      string
+	Spend         float64
+	Rail          float64
+	RailUnlimited bool
 	// CallLog is where the model-call log is and how big it has got
 	// (internal/calllog), or nothing when nothing has ever been written to it.
 	CallLog callLogReport
@@ -41,7 +41,6 @@ type doctorSnapshot struct {
 	// worth changing: the command exists to tell somebody why nothing works,
 	// and a missing key is the most common answer there is.
 	Key keyReport
-	Now time.Time
 }
 
 // fallbackKeyEnv is the compatibility variable [config.Load] accepts for an
@@ -77,12 +76,12 @@ func runDoctor(args []string) error {
 	if err != nil {
 		return err
 	}
-	return runDoctorWith(args, os.Stdout, dailyBudget, nil)
+	return runDoctorWith(args, os.Stdout, dailyBudget)
 }
 
-// runDoctorWith is doctor with its one outside reading injectable: the standing
-// watch.
-func runDoctorWith(args []string, output io.Writer, dailyBudget float64, override standingWatchStatus) error {
+// runDoctorWith is doctor with where it writes and the day's rail handed in,
+// so a test reads the page without a profile behind it.
+func runDoctorWith(args []string, output io.Writer, dailyBudget float64) error {
 	flags := commandFlags("doctor")
 	database := flags.String("db", defaultChatDB(), storeFlagHelp)
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
@@ -114,15 +113,7 @@ func runDoctorWith(args []string, output io.Writer, dailyBudget float64, overrid
 		return fmt.Errorf("inspect brain file: %w", statErr)
 	}
 
-	watch := override
-	if watch == nil {
-		manager, managerErr := newStandingWatchManager(graph)
-		if managerErr != nil {
-			return managerErr
-		}
-		watch = manager
-	}
-	snapshot, err := collectDoctorSnapshot(path, graph, watch, dailyBudget, time.Now())
+	snapshot, err := collectDoctorSnapshot(path, graph, dailyBudget)
 	if err != nil {
 		return err
 	}
@@ -192,32 +183,16 @@ func readCallLogReport(path string) callLogReport {
 	return callLogReport{Path: path, Size: info.Size()}
 }
 
-func newStandingWatchManager(graph *store.Store) (*watchdog.Manager, error) {
-	var lastWake watchdog.LastWakeFunc
-	if graph != nil {
-		lastWake = graph.LastStandingWake
-	}
-	return watchdog.New(watchdog.Options{LastWake: lastWake})
-}
-
 // collectDoctorSnapshot reads everything doctor reports.
-func collectDoctorSnapshot(path string, graph *store.Store, watch standingWatchStatus, dailyBudget float64,
-	now time.Time) (doctorSnapshot, error) {
+func collectDoctorSnapshot(path string, graph *store.Store, dailyBudget float64) (doctorSnapshot, error) {
 	snapshot := doctorSnapshot{
 		BrainPath: path, Resident: readResident(residentLockFor(path)),
-		Rail: dailyBudget, RailUnlimited: dailyBudget <= 0, Now: now,
+		Rail: dailyBudget, RailUnlimited: dailyBudget <= 0,
 	}
 	if info, err := os.Stat(path); err == nil {
 		snapshot.BrainExists, snapshot.BrainSize = true, info.Size()
 	} else if !os.IsNotExist(err) {
 		return doctorSnapshot{}, fmt.Errorf("inspect brain file: %w", err)
-	}
-	if watch != nil {
-		status, err := watch.Status()
-		if err != nil {
-			return doctorSnapshot{}, fmt.Errorf("the background timer's state is unavailable")
-		}
-		snapshot.Watch = status
 	}
 	if graph == nil {
 		return snapshot, nil
@@ -227,16 +202,6 @@ func collectDoctorSnapshot(path string, graph *store.Store, watch standingWatchS
 		return doctorSnapshot{}, err
 	}
 	snapshot.Spend, snapshot.Rail, snapshot.RailUnlimited = rail.Spend, rail.Ceiling, rail.Unlimited
-	charters, err := graph.ActiveCharters()
-	if err != nil {
-		return doctorSnapshot{}, err
-	}
-	snapshot.ActiveCharters = len(charters)
-	questions, err := graph.UnresolvedQuestions(10000)
-	if err != nil {
-		return doctorSnapshot{}, err
-	}
-	snapshot.PendingQuestions = len(questions)
 	return snapshot, nil
 }
 
@@ -244,25 +209,6 @@ func formatDoctor(snapshot doctorSnapshot) string {
 	brain := snapshot.BrainPath + " · not created"
 	if snapshot.BrainExists {
 		brain = snapshot.BrainPath + " · " + humanBytes(snapshot.BrainSize)
-	}
-	watch := "not installed"
-	if snapshot.Watch.Installed {
-		watch = "installed"
-	}
-	if snapshot.Watch.LastWake.IsZero() {
-		watch += " · last wake not yet"
-	} else {
-		watch += " · last wake " + relativePast(snapshot.Watch.LastWake, snapshot.Now)
-	}
-	if snapshot.Watch.Installed && !snapshot.Watch.NextDue.IsZero() {
-		watch += " · next check " + relativeFuture(snapshot.Watch.NextDue, snapshot.Now)
-	}
-	// An arranged watch whose checks stopped landing is the one failure the
-	// user cannot see from the outside, so doctor says it rather than reading
-	// healthy while nothing has woken for several cadences.
-	if snapshot.Watch.Installed && !snapshot.Watch.LastWake.IsZero() &&
-		snapshot.Now.Sub(snapshot.Watch.LastWake) > 3*watchdog.Interval {
-		watch += " · checks look stalled"
 	}
 	// THE EMPTINESS LAW ON THE ONE PAGE PEOPLE OPEN WHEN NOTHING WORKS. A
 	// machine that has not spent anything today has not measured zero — it has
@@ -276,31 +222,11 @@ func formatDoctor(snapshot doctorSnapshot) string {
 	if today := config.SpentFigure(snapshot.Spend); today != "" {
 		spend = today + " today · " + rail
 	}
-	// The same law on the counts beside it: no charters and no questions is
-	// nothing to say, not two zeros.
-	var standingParts []string
-	if snapshot.ActiveCharters > 0 {
-		standingParts = append(standingParts, fmt.Sprintf("%d active %s",
-			snapshot.ActiveCharters, pluralWord(snapshot.ActiveCharters, "charter")))
-	}
-	if snapshot.PendingQuestions > 0 {
-		standingParts = append(standingParts, fmt.Sprintf("%d pending %s",
-			snapshot.PendingQuestions, pluralWord(snapshot.PendingQuestions, "question")))
-	}
-	// ── TWO LABELS THAT NAMED THE MACHINERY AND NOT THE MEASUREMENT ─────────
+	// ── A LABEL THAT NAMED THE MACHINERY AND NOT THE MEASUREMENT ─────────────
 	//
 	// `brain` was this row's word for the file the journal and every derived
 	// table live in. Nobody looking for where their data is searches for
 	// *brain*, and `--db`'s own help already called the same file a store.
-	//
-	// `standing watch` was the row about the background timer, and it is the
-	// RESIDENT's vocabulary — a different product in this binary, with a corpus
-	// of its own. A test forbids the chat's manual from speaking that word, so
-	// the manual could not quote doctor's own output and stay legal: the page
-	// had to describe the row in other words and hope a reader recognised it.
-	// The label moved and the ban stayed. What this row measures, in a
-	// developer's words, is what is running, since when, and whether it still
-	// answers — which is a background timer, and says so.
 	//
 	// ── AND THE ROW THAT WAS NOT THERE AT ALL ───────────────────────────────
 	//
@@ -309,15 +235,11 @@ func formatDoctor(snapshot doctorSnapshot) string {
 	// with 0 — saying nothing about the single most common reason nothing
 	// works. The key row goes FIRST because it is the answer to the question
 	// the command was opened with.
-	block := fmt.Sprintf("%-16s %s\n%-16s %s\n%-16s %s\n%-16s %s\n%-16s %s\n",
+	block := fmt.Sprintf("%-16s %s\n%-16s %s\n%-16s %s\n%-16s %s\n",
 		"key", formatKey(snapshot.Key),
 		"store", brain,
 		"resident", snapshot.Resident,
-		"background timer", watch,
 		"spend", spend)
-	if standing := strings.Join(standingParts, " · "); standing != "" {
-		block += fmt.Sprintf("%-16s %s\n", "standing", standing)
-	}
 	if line := formatCallLog(snapshot.CallLog); line != "" {
 		block += fmt.Sprintf("%-16s %s\n", "model calls", line)
 	}
@@ -408,32 +330,4 @@ func humanBytes(size int64) string {
 		}
 	}
 	return fmt.Sprintf("%d B", size)
-}
-
-func relativePast(then, now time.Time) string {
-	if then.After(now) {
-		return "just now"
-	}
-	delta := now.Sub(then)
-	switch {
-	case delta < time.Minute:
-		return "just now"
-	case delta < time.Hour:
-		return fmt.Sprintf("%dm ago", int(delta/time.Minute))
-	case delta < 24*time.Hour:
-		return fmt.Sprintf("%dh ago", int(delta/time.Hour))
-	default:
-		return then.Local().Format("2006-01-02 15:04")
-	}
-}
-
-func relativeFuture(then, now time.Time) string {
-	if !then.After(now) {
-		return "now"
-	}
-	delta := then.Sub(now)
-	if delta < time.Minute {
-		return "in less than a minute"
-	}
-	return fmt.Sprintf("in %dm", int((delta+time.Minute-1)/time.Minute))
 }

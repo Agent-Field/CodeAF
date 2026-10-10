@@ -73,62 +73,66 @@ func TestSelfReceiptEmitsFromSettledUsageAndCapturesLearning(t *testing.T) {
 	}
 }
 
-func TestTwoNothingSelfReceiptsPauseOriginatingCharterWithReason(t *testing.T) {
+// Work an older build's charter admitted can still be running when this build
+// takes over, and it still settles into a receipt. Its line of inquiry is named
+// after the rule it served — from the table that build left behind, when the
+// store has one — and two receipts that learned nothing retire the line the way
+// any other line retires. There is no charter left to pause, so none is.
+func TestTwoNothingSelfReceiptsOnAnOlderBuildsCharterRetireTheLine(t *testing.T) {
 	graph := openTestStore(t, filepath.Join(t.TempDir(), "self-charter-retire.db"))
-	charter := mustTestCharter(t, "charter-curiosity", CharterActive, CharterRails{
-		PerFiringBudgetUSD: 0.10, MaxFiringsPerDay: 3,
-	})
-	if err := graph.CreateCharter(charter); err != nil {
+	if _, err := graph.db.Exec(olderBuildsCharterSchema); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := graph.db.Exec(`INSERT INTO charters (id, invariant, watch, action, rails, status, ratification,
+		created_seq, updated_seq, created_at) VALUES ('charter-curiosity', ?, '{}', '{}', '{}', 'active', '{}', 1, 1, ?)`,
+		"Probe the parser frontier\nwhenever the machine is quiet", "2026-09-01T09:00:00Z"); err != nil {
 		t.Fatal(err)
 	}
 	for index, id := range []string{"curiosity-1", "curiosity-2"} {
-		spliceSelfLeaf(t, graph, id, "Probe the same open question", Provenance{CharterID: charter.ID})
+		spliceSelfLeaf(t, graph, id, "Probe the same open question", Provenance{CharterID: "charter-curiosity"})
 		settleSelfLeaf(t, graph, id, float64(index+1)/100)
-		current, found, err := graph.Charter(charter.ID)
-		if err != nil || !found {
-			t.Fatalf("charter after receipt %d found=%t err=%v", index+1, found, err)
-		}
-		want := CharterActive
-		if index == 1 {
-			want = CharterPaused
-		}
-		if current.Status != want {
-			t.Fatalf("charter after receipt %d = %s, want %s", index+1, current.Status, want)
-		}
 	}
 
+	receipts, err := graph.SelfReceipts(time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(receipts) != 2 || receipts[0].Origin != "Probe the parser frontier" ||
+		receipts[0].Scope != "charter:charter-curiosity" || receipts[0].TargetKind != "charter" {
+		t.Fatalf("receipts = %+v, want them named after the older build's rule", receipts)
+	}
 	events, err := graph.Events(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var retirement SelfInquiryRetirement
-	var pauseReason string
 	for _, event := range events {
 		switch event.Kind {
 		case EventSelfInquiryRetired:
 			if err := json.Unmarshal(event.Payload, &retirement); err != nil {
 				t.Fatal(err)
 			}
-		case EventCharterStatusChanged:
-			var payload charterStatusPayload
-			if err := json.Unmarshal(event.Payload, &payload); err != nil {
-				t.Fatal(err)
-			}
-			if payload.Status == CharterPaused {
-				pauseReason = payload.Ratification.Evidence
-			}
+		case EventKind("charter_status_changed"):
+			t.Fatalf("a removed rule was paused: %s", event.Payload)
 		}
 	}
-	if retirement.Action != "charter_paused" || retirement.Reason != selfInquiryRetirementReason ||
-		pauseReason != selfInquiryRetirementReason {
-		t.Fatalf("retirement=%+v pause reason=%q", retirement, pauseReason)
+	if retirement.Action != "line_retired" || retirement.Reason != selfInquiryRetirementReason ||
+		retirement.TargetID != "charter-curiosity" {
+		t.Fatalf("retirement=%+v", retirement)
 	}
 	if err := graph.Rebuild(); err != nil {
 		t.Fatal(err)
 	}
-	rebuilt, found, err := graph.Charter(charter.ID)
-	if err != nil || !found || rebuilt.Status != CharterPaused {
-		t.Fatalf("rebuilt charter = %+v found=%t err=%v", rebuilt, found, err)
+}
+
+// And on a store that never had the table, the rule's own id is its name.
+func TestASelfReceiptNamesACharterItCannotReadByItsID(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "self-charter-name.db"))
+	spliceSelfLeaf(t, graph, "curiosity-1", "Probe the same open question", Provenance{CharterID: "charter-9"})
+	settleSelfLeaf(t, graph, "curiosity-1", 0.01)
+	receipts, err := graph.SelfReceipts(time.Time{})
+	if err != nil || len(receipts) != 1 || receipts[0].Origin != "charter-9" {
+		t.Fatalf("receipts = %+v err=%v", receipts, err)
 	}
 }
 

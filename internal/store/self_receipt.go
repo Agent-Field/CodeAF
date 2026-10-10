@@ -243,12 +243,15 @@ func settleSelfReceiptForNodeTx(tx *sql.Tx, nodeID string) error {
 func selfReceiptIdentity(tx *sql.Tx, nodeID, title, group, brief, intent, charterID string,
 	trialOf int64) (origin, scope, targetKind, targetID string) {
 	if charterID != "" {
+		// Only work an older build admitted carries a charter, and only a store
+		// that older build opened has the table it was described in — so the
+		// read is allowed to fail, and the charter's own id is the name then.
 		origin = charterID
 		var invariant string
 		if err := tx.QueryRow(`SELECT invariant FROM charters WHERE id = ?`, charterID).Scan(&invariant); err == nil {
-			origin = firstCharterLine(invariant)
-		} else if err := tx.QueryRow(`SELECT invariant FROM legacy_charters WHERE id = ?`, charterID).Scan(&invariant); err == nil {
-			origin = firstCharterLine(invariant)
+			if line := strings.TrimSpace(strings.SplitN(invariant, "\n", 2)[0]); line != "" {
+				origin = bounded(line, 64)
+			}
 		}
 		return origin, "charter:" + charterID, "charter", charterID
 	}
@@ -290,31 +293,11 @@ func maybeRetireSelfInquiryTx(tx *sql.Tx, receipt SelfReceipt) error {
 		return nil
 	}
 
+	// A line aimed at a charter used to pause it here as well. Charters went
+	// with the v1 scheduler, so such a line — only ever an older build's — is
+	// retired like any other and there is nothing left to pause.
 	action := "line_retired"
 	switch receipt.TargetKind {
-	case "charter":
-		charter, err := charterInTx(tx, receipt.TargetID)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-		if err == nil && charter.Status == CharterActive {
-			payload := charterStatusPayload{
-				Status: CharterPaused,
-				Ratification: Ratification{
-					Origin:    OriginSelf,
-					SessionID: charter.Ratification.SessionID,
-					Evidence:  selfInquiryRetirementReason,
-				},
-			}
-			seq, _, err := appendEvent(tx, receipt.TargetID, EventCharterStatusChanged, payload)
-			if err != nil {
-				return err
-			}
-			if err := applyCharterStatus(tx, receipt.TargetID, payload, seq); err != nil {
-				return err
-			}
-			action = "charter_paused"
-		}
 	case "fact":
 		factSeq, err := strconv.ParseInt(receipt.TargetID, 10, 64)
 		if err == nil {

@@ -41,7 +41,7 @@ func (s Setting) ChatPresentation() SettingPresentation {
 		p.Scope = "This chat and the profile default"
 	}
 	switch s.Key {
-	case KeyPracticeIdle, KeyPracticeBudget, KeyBriefAfter, KeyTenureAfter, KeySplitPct:
+	case KeySplitPct:
 		p.Hidden = true // Resident-only controls have no live chat consumer.
 	case KeyMemoryEnabled:
 		p.Category, p.Label = "Memory", "remember across chats"

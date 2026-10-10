@@ -196,10 +196,9 @@ type Brief struct {
 	// brief deliberately compares. Zero means no experiment was shaped.
 	TrialOf int64 `json:"trial_of"`
 
-	// QuestionOptions is the generic selectable askback surface. Charter is set
-	// only by the temporal compiler; both omit cleanly for ordinary work.
+	// QuestionOptions is the generic selectable askback surface; it omits
+	// cleanly for ordinary work.
 	QuestionOptions []store.QuestionOption `json:"question_options,omitempty"`
-	Charter         *store.CharterSpec     `json:"charter,omitempty"`
 	// ServiceIntent is deterministic consent provenance; the provider never
 	// gets to infer whether a process may outlive its leaf.
 	ServiceIntent bool `json:"service_intent,omitempty"`
@@ -236,16 +235,15 @@ func NewCompiler(client Client) *Compiler {
 // surface that runs exactly one errand and then exits — `codeaf do`.
 //
 // This is the surface stating a fact about itself, not an opinion about the
-// work. "Once, not standing" is an option on the ratification card because a
-// person may want it; a person who typed `codeaf do "<task>"` has already
-// chosen it, in the verb, before the compiler read a word. Asking them again
-// is asking a question into a process with nobody at the keyboard, and the
-// live defect it caused was total: "flag every discrepancy" tripped the
-// temporal recognizer's `every <word>` cue, a plain reconciliation of two CSVs
-// was drafted as a standing rule with an invented two-minute cadence, and the
-// run exited in three seconds having done none of the work it was sent to do.
+// work: a person who typed `codeaf do "<task>"` has chosen one run, in the
+// verb, before the compiler read a word, and there is nobody at the keyboard to
+// ask anything of. The live defect that taught it was total: "flag every
+// discrepancy" read as recurring, a plain reconciliation of two CSVs was drafted
+// as a standing rule with an invented two-minute cadence, and the run exited in
+// three seconds having done none of the work it was sent to do.
 //
-// So the temporal route is not taken here at all, and the ordinary compiler is
+// The deterministic temporal route that drafted those rules is gone with the
+// v1 scheduler, so what is left is the reasoning half: the ordinary compiler is
 // told what surface it is compiling for. Nothing about the judgement of the
 // WORK changes; the classification that changes is the one the surface already
 // answered.
@@ -254,10 +252,9 @@ func (c *Compiler) WithOneShotErrands() *Compiler {
 	return c
 }
 
-// oneShotErrandBrief is that fact, in the prompt, for the reasoning half of
-// the rail. The deterministic route above is gated structurally; this is the
-// same law said to the model, which would otherwise be free to draft a
-// standing rule out of an ask that merely sounds recurrent.
+// oneShotErrandBrief is that fact, in the prompt: the law said to the model,
+// which would otherwise be free to read an ask that merely sounds recurrent as
+// something other than one piece of work to do now.
 const oneShotErrandBrief = "\n\nSurface: this instruction arrived as a single headless errand — one run, " +
 	"start to finish, with nobody at a keyboard. It is never a standing rule, a schedule, a watch or a " +
 	"recurring routine, however recurrent its wording sounds; compile it as work to be done once, now. " +
@@ -277,9 +274,6 @@ func (c *Compiler) WithModelResolver(resolve ModelResolver) *Compiler {
 func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext string) (Brief, error) {
 	if c == nil || c.client == nil {
 		return Brief{}, errors.New("compile intent: nil client")
-	}
-	if !c.oneShot && RecognizesStandingIntent(instruction) {
-		return c.compileStanding(ctx, instruction, graphContext)
 	}
 	serviceIntent := RecognizesServiceIntent(instruction)
 	words, wanted := RecognizeModelWords(instruction)
@@ -366,6 +360,27 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 		brief.ModelNote = modelReceiptNote(words, choice)
 	}
 	return brief, nil
+}
+
+// normalizeQuestionOptions keeps the options an askback can actually offer: a
+// label is what a person picks, so an option without one is dropped, and a
+// question left with none offers free text alone.
+func normalizeQuestionOptions(options []store.QuestionOption) []store.QuestionOption {
+	if len(options) == 0 {
+		return nil
+	}
+	normalized := make([]store.QuestionOption, 0, len(options))
+	for _, option := range options {
+		option.Label = strings.TrimSpace(option.Label)
+		option.Value = strings.TrimSpace(option.Value)
+		if option.Label != "" {
+			normalized = append(normalized, option)
+		}
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
 }
 
 // surfaceBrief is what the surface knows about itself and the model cannot

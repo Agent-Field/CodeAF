@@ -3,13 +3,9 @@ package head
 import (
 	"fmt"
 	"math"
-	"regexp"
-	"sort"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -84,104 +80,6 @@ func moneyUSD(amount float64) string {
 // model: the TUI, the receipts, the store.
 func dimeUSD(cost float64) string {
 	return fmt.Sprintf("$%.2f", math.Round(cost*10)/10)
-}
-
-// measuredCostPattern reads a per-run cost out of the measured self-knowledge
-// block. The spellings are the ones that block actually writes ("avg cost
-// $0.0017"), plus the bare "cost: $x" a briefer rendering uses.
-var measuredCostPattern = regexp.MustCompile(`(?i)(?:avg(?:erage)?\s+cost|cost)\s*[:=]?\s*\$([0-9]+(?:\.[0-9]+)?)`)
-
-// measuredStandingCost is what one firing of a standing rule should be priced
-// at, read off the measured history rather than guessed.
-//
-// It takes the MEDIAN of every measurement in the block rather than the first,
-// and the reason is what the block contains: one line per measured population,
-// each with a history of its own, because a figure that averaged a long
-// research leaf with a lookup would describe neither. Reading only the first
-// line meant the price of every standing rule was set by whichever line
-// happened to sort first.
-func measuredStandingCost(context string) (float64, bool) {
-	matches := measuredCostPattern.FindAllStringSubmatch(context, -1)
-	costs := make([]float64, 0, len(matches))
-	for _, match := range matches {
-		cost, err := strconv.ParseFloat(match[1], 64)
-		if err != nil || cost < 0 || math.IsNaN(cost) || math.IsInf(cost, 0) {
-			continue
-		}
-		costs = append(costs, cost)
-	}
-	if len(costs) == 0 {
-		return 0, false
-	}
-	sort.Float64s(costs)
-	return costs[len(costs)/2], true
-}
-
-// standingRails is the whole of what a charter proposal may claim about money,
-// and the model contributes none of it.
-//
-// The compiler is asked for rails and answers with them, and what it answers is
-// a guess dressed as a measurement: it has been shown the measured block and it
-// writes a number that looks plausible beside it. Before this, that number
-// survived whenever the block carried no measurement the pattern could read, and
-// its justification — free prose, with a dollar figure in it — survived always.
-// Both are now discarded and recomputed, which is the only arrangement under
-// which the sentence a person consents to is true.
-//
-// What the model is still trusted with is everything that is not arithmetic: the
-// invariant, the sentinel, the action, the cadence words.
-func standingRails(proposed store.CharterSpecRails, reminder bool, graphContext string) store.CharterSpecRails {
-	rails := proposed
-	measured, isMeasured := measuredStandingCost(graphContext)
-	switch {
-	case isMeasured:
-		rails.EstimatedCostUSD = measured
-	default:
-		// No measurement means no measurement. The default is the store's own
-		// backstop rather than whatever the model wrote, because a rail is a
-		// promise about spending and an unmeasured guess is not one.
-		rails.EstimatedCostUSD = defaultStandingCostUSD
-	}
-	if rails.MaxPerDay <= 0 {
-		rails.MaxPerDay = defaultStandingMaxPerDay
-		if reminder {
-			rails.MaxPerDay = 1
-		}
-	}
-	rails.MaxPerDayJustification = standingRailSentence(rails, reminder, isMeasured)
-	return rails
-}
-
-const (
-	// defaultStandingCostUSD backstops a rule proposed before anything has been
-	// measured. It IS the store's own per-firing backstop rather than a copy of
-	// it, so the number a proposal says and the number a charter is created
-	// with are one number that cannot drift.
-	defaultStandingCostUSD = standing.DefaultPerRunUSD
-	// defaultStandingMaxPerDay is the ordinary daily ceiling. A reminder gets
-	// one, because one a day is all a reminder is.
-	defaultStandingMaxPerDay = 10
-)
-
-// standingRailSentence is the money sentence itself, templated.
-//
-// It is the sentence the ratification question puts in front of the person, so
-// it says three things and each of them is computed: what one run costs, how
-// many runs a day are allowed, and what the worst day therefore is. It also says
-// whether the rate was MEASURED or is a standing default, because "about $0.15 a
-// run" read as a measurement when nothing has run yet is the same lie in a
-// smaller size.
-func standingRailSentence(rails store.CharterSpecRails, reminder, isMeasured bool) string {
-	rate := moneyUSD(rails.EstimatedCostUSD)
-	if !isMeasured {
-		rate += " (nothing measured yet)"
-	}
-	if reminder && rails.MaxPerDay == 1 {
-		return "one a day is all a reminder needs, at " + rate + " a run"
-	}
-	worst := rails.EstimatedCostUSD * float64(rails.MaxPerDay)
-	return fmt.Sprintf("%s a run, at most %d a day, so the worst day is about %s",
-		rate, rails.MaxPerDay, moneyUSD(worst))
 }
 
 // spendRateLines are the computed figures behind a money answer: what has

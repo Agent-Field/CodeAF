@@ -164,8 +164,7 @@ func TestManualCoversEveryCapabilityTheHeadDispatchesOn(t *testing.T) {
 		store.CommandSplice, store.CommandAmend, store.CommandCancel,
 		store.CommandPause, store.CommandResume, store.CommandRestart,
 		store.CommandReprioritize, store.CommandRedirect, store.CommandExpedite,
-		store.CommandCharterRatify, store.CommandServiceRestart,
-		store.CommandStandingWatchEnable,
+		store.CommandServiceRestart,
 	} {
 		for _, word := range strings.Split(string(kind), "_") {
 			wanted[word] = "command kind"
@@ -174,7 +173,7 @@ func TestManualCoversEveryCapabilityTheHeadDispatchesOn(t *testing.T) {
 	wanted[urgencyCue] = "recognizer"
 	wanted[ModelSlotBoost] = "model slot"
 	wanted[routeReflexKind] = "routing"
-	for _, word := range []string{"charter", "service", "notebook", "practice", "vision"} {
+	for _, word := range []string{"service", "notebook", "practice", "vision"} {
 		wanted[word] = "recognizer"
 	}
 	for term, source := range wanted {

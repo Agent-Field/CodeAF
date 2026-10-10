@@ -22,11 +22,12 @@ import (
 // first law), so the door that a refused turn can name has to be one a person
 // can type into the box they are already looking at. That is this.
 //
-// THE ROWS IT NAMES ARE THE ROWS THAT EXIST. `day`, `conversation`, `plan` and
-// `practice` are the four rails a person can turn; a task and a standing firing
-// are named on the tab as READINGS because this build enforces them somewhere a
-// settings row cannot reach (settingspend.go), and a command that accepted
-// `task 20` would be writing a number nothing reads.
+// THE ROWS IT NAMES ARE THE ROWS THAT EXIST. `day`, `conversation` and `plan`
+// are the three rails a person can turn; a task and a standing firing are named
+// on the tab as READINGS because this build enforces them somewhere a settings
+// row cannot reach (settingspend.go), and a command that accepted `task 20`
+// would be writing a number nothing reads. `practice` was a fourth, and is
+// answered in words because the docs of the day taught people to type it.
 
 // budgetRows is the word a person types against the registry row it names, and
 // the words are the tab's own labels rather than the keys behind them.
@@ -52,7 +53,7 @@ func budgetRowFor(word string) (string, bool) {
 	return "", false
 }
 
-// budgetWords is what a refusal offers back: the four rows, spelled the way the
+// budgetWords is what a refusal offers back: the rows, spelled the way the
 // command takes them. It is built from the table rather than typed out, so a
 // fifth rail cannot be added without the refusal learning about it.
 func budgetWords() string {
@@ -62,6 +63,12 @@ func budgetWords() string {
 	}
 	return strings.Join(said, ", ")
 }
+
+// budgetPracticeGone answers `/budget practice`. codeaf used to spend a slice of
+// the day practising on its own, and this was the limit on it; the practice
+// went with the background scheduler, so there is nothing left to limit.
+const budgetPracticeGone = "There is no practice limit any more — codeaf no longer practises on its own. " +
+	"Use /budget day, /budget conversation or /budget plan."
 
 // budget is /budget. The shapes are the design's own table:
 //
@@ -73,7 +80,7 @@ func budgetWords() string {
 func (a *app) budget(rest string) tea.Cmd {
 	rest = strings.TrimSpace(rest)
 	if word, _, _ := strings.Cut(rest, " "); strings.EqualFold(word, "practice") {
-		a.note("Practice limits are not used by chats. Use /budget day, /budget conversation or /budget plan.")
+		a.note(budgetPracticeGone)
 		return nil
 	}
 	if rest == "" {

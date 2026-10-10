@@ -340,27 +340,12 @@ func (r *Reconciler) questionExpiry(question store.AgentQuestion, now time.Time)
 			return fmt.Sprintf("originating job settled as %s", node.Status), true, nil
 		}
 	}
+	// A question an older build asked on a standing rule's behalf — to stand it
+	// up, to fire it, to keep it, to keep watching for it — waits on machinery
+	// that has been removed, so it can never be acted on. It lapses here, on the
+	// first pass that sees it, rather than sitting unanswerable forever.
 	if question.OriginCharterID != "" {
-		charter, found, err := r.store.Charter(question.OriginCharterID)
-		if err != nil {
-			return "", false, err
-		}
-		if !found {
-			return "originating charter no longer exists", true, nil
-		}
-		if charter.Status == store.CharterRetired {
-			return "originating charter retired", true, nil
-		}
+		return "standing rules were removed", true, nil
 	}
 	return "", false, nil
-}
-
-func questionCharterOrigin(options []store.QuestionOption) string {
-	for _, option := range options {
-		parts := strings.Split(option.Value, ":")
-		if len(parts) >= 3 && parts[0] == "charter" {
-			return strings.TrimSpace(parts[2])
-		}
-	}
-	return ""
 }
