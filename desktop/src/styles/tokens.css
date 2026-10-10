@@ -840,6 +840,7 @@
   --web-shot-height: 120px;
   --web-state-max-width: 360px;
   --menu-popup-min-width: 200px;
+  --terminal-menu-width: 230px;
   --composer-menu-width: calc(var(--menu-popup-min-width) + var(--menu-pad) * 2);
   --menu-wide-min-width: 240px;
   --menu-item-height: 28px;

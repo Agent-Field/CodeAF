@@ -104,7 +104,7 @@ export function TerminalPane({ pane, focused, actions }: PaneRenderProps) {
   return <div className="terminal-pane">
     <TerminalHeader
       title={info?.title ?? pane.title} meta={info ? metaLine(info) : ''} words={info ? terminalStateWords(info, now) : ''} tone={info ? toneOf(info) : undefined}
-      canStop={running} onRerun={rerun} removeLabel={removeLabel(info?.kind ?? 'terminal')} onStop={() => void stop()} readOutput={readOutput} onRemove={() => void remove()}/>
+      canStop={running} finishedJob={info?.kind === 'job' && !running} onClose={() => announceClosePane({ paneId: pane.id })} onRerun={rerun} removeLabel={removeLabel(info?.kind ?? 'terminal')} onStop={() => void stop()} readOutput={readOutput} onRemove={() => void remove()}/>
     {actionError && <Text className="terminal-action-error" role="alert">{actionError}</Text>}
     <div className="terminal-field" data-kind={info?.kind} data-note={refusal ? '' : undefined}>
       {refusal
