@@ -168,6 +168,10 @@ type State struct {
 	Memberships []Membership `json:"memberships"`
 	// Pinned is the rail's Pinned section, in the person's order (⌃1–9).
 	Pinned []string `json:"pinned"`
+	// Open is the rail's Open section, newest first (rail.go). It is soft state,
+	// like LastOpenedAt: it never bumps Revision, and validation drops rows whose
+	// place is gone rather than refusing the document.
+	Open []OpenRow `json:"open,omitempty"`
 }
 
 // Bounds. Design scale is 20–200 places and depth 2–3; these ceilings are for
@@ -227,6 +231,7 @@ const (
 	ActionPolicy     Action = "place.policy"
 	ActionPin        Action = "place.pin"
 	ActionUnpin      Action = "place.unpin"
+	ActionReorder    Action = "place.reorder"
 	ActionFile       Action = "chat.file"
 	ActionUnfile     Action = "chat.unfile"
 	ActionMove       Action = "chat.move"
