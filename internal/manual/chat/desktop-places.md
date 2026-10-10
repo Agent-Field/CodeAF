@@ -1,5 +1,21 @@
 # Desktop places
 
+## Desktop windows — opening a place, focusing a tab and closing a window
+
+Each desktop window is a view of one place. Opening another window does not start a
+second engine. A new window keeps the main window's size and minimum size, with the
+same native title bar and, on macOS, sidebar material. It opens 24 pixels down and
+right of the window that opened it. A requested saved tab is focused in that window.
+
+Closing an additional window never stops running work. Window titles end in `codeaf`;
+changing a title affects only the window that requested it. Web-page views cannot
+open, list, focus or title app windows.
+
+The native opening command currently accepts `now` and `p-` followed by twelve
+lowercase hexadecimal digits. Other keys are refused with “That is not a place
+codeaf knows”. The current graph uses a different ID spelling, so graph-place
+opening needs the integration contract reconciled; Now can open normally.
+
 ## What is a desktop place — work that belongs together, and what the AI is told about it
 
 In the codeaf **desktop app**, a conversation can be **filed under places**: named

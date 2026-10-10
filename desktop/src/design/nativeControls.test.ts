@@ -56,7 +56,7 @@ const pane = (extra: Partial<Pane> = {}): Pane => ({
   ...extra,
 });
 
-test('place keys mirror windows.rs exactly', () => {
+test('renderer place keys follow the current graph until the window contract is reconciled (WIN-46)', () => {
   for (const good of ['now', 'root', 'pl_0123456789abcdef']) assert.ok(isPlaceKey(good), good);
   for (const bad of ['', 'Now', 'pl_', 'pl_0123456789ABCDEF', 'pl_0123456789abcde', 'p-0123456789ab', 'now&token=x', '../now', 7, null])
     assert.ok(!isPlaceKey(bad), String(bad));
@@ -124,6 +124,13 @@ test('moving a tab: the source removes it only after the target claims it', asyn
   fire('window://handoff-claimed', { handoffId: 'h-1' });
   fire('window://handoff-claimed', { handoffId: 'h-1' });
   assert.deepEqual(removed, ['tab-7'], 'removed once');
+});
+
+test('opening a window accepts the native label without inventing a handoff', async () => {
+  const { bridge, calls } = fakeBridge({ window_open: 'w-2' });
+  const result = await createNativeControls(bridge).openPlaceWindow('now', { focusTab: 'target' });
+  assert.deepEqual(result, { label: 'w-2', handoffId: undefined, moved: false });
+  assert.deepEqual(calls[0], { command: 'window_open', args: { request: { placeKey: 'now', focusTab: 'target' } } });
 });
 
 test('moving into an open window and claiming there', async () => {
@@ -287,8 +294,9 @@ test('the capability reaches main and w-* only, never a web view, with no remote
 
 test('the CSP gains nothing for windows, choosers or notifications', () => {
   const csp = (JSON.parse(read('tauri.conf.json')) as { app: { security: { csp: string } } }).app.security.csp;
+  // Native web snapshots already use blob images; window commands add no source.
   assert.equal(
     csp,
-    "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: data:; media-src 'self' data:; connect-src ipc: http://ipc.localhost http://127.0.0.1:*",
+    "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: data: blob:; media-src 'self' data:; connect-src ipc: http://ipc.localhost http://127.0.0.1:*",
   );
 });

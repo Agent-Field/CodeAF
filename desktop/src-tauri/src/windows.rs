@@ -7,7 +7,7 @@
 //! the source window only removes its tab after the target has claimed it.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -25,8 +25,18 @@ const BAD_TITLE: &str = "That window title cannot be shown";
 /// How long a handoff waits for its window to claim it. A window that never
 /// loads must not hold a tab hostage, and the source keeps the tab meanwhile.
 const HANDOFF_TTL: Duration = Duration::from_secs(60);
-/// New windows step down and right from the window that opened them.
-const CASCADE: f64 = 24.0;
+/// Native geometry uses the same tokens as the generated main-window config.
+fn cascade_offset() -> f64 {
+    static OFFSET: OnceLock<f64> = OnceLock::new();
+    *OFFSET.get_or_init(|| {
+        let tokens: serde_json::Value =
+            serde_json::from_str(include_str!("../../src/design/tokens.json"))
+                .expect("Design tokens must be valid JSON");
+        tokens["windows"]["cascadeOffset"]
+            .as_f64()
+            .expect("The window cascade token must be a number")
+    })
+}
 const MAX_TITLE: usize = 200;
 const MAX_WINDOW_TITLE: usize = 120;
 const MAX_DRAFT: usize = 64 * 1024;
@@ -80,12 +90,12 @@ pub fn trusted<R: Runtime>(caller: &Webview<R>) -> Result<String, String> {
     }
 }
 
-/// `now`, `root`, or a placegraph id: `pl_` and sixteen lowercase hex digits.
+/// Only Now or a place id may enter a window URL; query syntax is refused.
 pub fn checked_place(key: &str) -> Result<&str, String> {
-    let id = key.strip_prefix("pl_").is_some_and(|hex| {
-        hex.len() == 16 && hex.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    let id = key.strip_prefix("p-").is_some_and(|hex| {
+        hex.len() == 12 && hex.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
     });
-    if key == "now" || key == "root" || id {
+    if key == "now" || id {
         Ok(key)
     } else {
         Err(NOT_A_PLACE.into())
@@ -276,6 +286,16 @@ impl Book {
         format!("w-{}", self.next + 1)
     }
 
+    /// Restored windows may already own labels before this book sees them.
+    fn allocate_available(&mut self, live: impl Fn(&str) -> bool) -> String {
+        loop {
+            let label = self.allocate();
+            if !live(&label) {
+                return label;
+            }
+        }
+    }
+
     fn sweep(&mut self, now: Instant) {
         self.pending
             .retain(|p| now.duration_since(p.at) < HANDOFF_TTL);
@@ -333,8 +353,12 @@ fn place_of<R: Runtime>(app: &AppHandle<R>, label: &str) -> String {
         .unwrap_or_else(|| "now".into())
 }
 
-fn window_url(place: &str) -> WebviewUrl {
-    WebviewUrl::App(format!("index.html?place={place}").into())
+fn window_url(place: &str, focus_tab: Option<&str>) -> WebviewUrl {
+    let mut url = format!("index.html?place={place}");
+    if let Some(id) = focus_tab {
+        url.push_str(&format!("&tab={id}"));
+    }
+    WebviewUrl::App(url.into())
 }
 
 #[derive(Debug, Deserialize)]
@@ -357,6 +381,30 @@ pub struct Opened {
     pub handoff_id: Option<String>,
 }
 
+/// Ordinary opening returns the label; tab moves retain their claim receipt.
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub enum OpenResult {
+    Label(String),
+    Handoff(Opened),
+}
+
+/// Copying the complete config preserves platform materials and future tokens.
+fn placed_config(
+    mut config: tauri::utils::config::WindowConfig,
+    label: &str,
+    place: &str,
+    position: LogicalPosition<f64>,
+    focus_tab: Option<&str>,
+) -> tauri::utils::config::WindowConfig {
+    config.label = label.into();
+    config.url = window_url(place, focus_tab);
+    config.center = false;
+    config.x = Some(position.x);
+    config.y = Some(position.y);
+    config
+}
+
 /// The new window is built from `main`'s own configuration, so its size,
 /// minimum size, macOS overlay title bar and vibrancy come from the one place
 /// that is generated from design tokens.
@@ -368,7 +416,7 @@ fn build<R: Runtime>(
     at: Option<Point>,
     focus_tab: Option<&str>,
 ) -> Result<WebviewWindow<R>, String> {
-    let mut config = app
+    let config = app
         .config()
         .app
         .windows
@@ -376,12 +424,6 @@ fn build<R: Runtime>(
         .find(|w| w.label == "main")
         .cloned()
         .ok_or("The main window configuration is missing")?;
-    config.label = label.into();
-    config.url = match focus_tab {
-        Some(id) => WebviewUrl::App(format!("index.html?place={place}&focusTab={id}").into()),
-        None => window_url(place),
-    };
-    config.center = false;
     let position = match at {
         Some(point) => LogicalPosition::new(point.x, point.y),
         None => {
@@ -390,11 +432,10 @@ fn build<R: Runtime>(
                 .outer_position()
                 .map(|p| p.to_logical::<f64>(scale))
                 .unwrap_or(LogicalPosition::new(0.0, 0.0));
-            LogicalPosition::new(origin.x + CASCADE, origin.y + CASCADE)
+            LogicalPosition::new(origin.x + cascade_offset(), origin.y + cascade_offset())
         }
     };
-    config.x = Some(position.x);
-    config.y = Some(position.y);
+    let config = placed_config(config, label, place, position, focus_tab);
     WebviewWindowBuilder::from_config(app, &config)
         .map_err(|_| "A new window could not be opened".to_string())?
         .build()
@@ -406,7 +447,7 @@ pub async fn window_open<R: Runtime>(
     app: AppHandle<R>,
     webview: Webview<R>,
     request: OpenRequest,
-) -> Result<Opened, String> {
+) -> Result<OpenResult, String> {
     let from = trusted(&webview)?;
     let place = checked_place(&request.place_key)?.to_string();
     if request.focus_tab.as_deref().is_some_and(|id| {
@@ -427,7 +468,7 @@ pub async fn window_open<R: Runtime>(
     let caller = webview.window();
     let (label, handoff_id) = {
         let mut book = book(&app)?;
-        let label = book.allocate();
+        let label = book.allocate_available(|label| app.get_window(label).is_some());
         let id = request
             .handoff
             .map(|tab| book.park(&from, &label, tab, Instant::now()));
@@ -447,7 +488,11 @@ pub async fn window_open<R: Runtime>(
         }
         return Err(error);
     }
-    Ok(Opened { label, handoff_id })
+    Ok(if handoff_id.is_some() {
+        OpenResult::Handoff(Opened { label, handoff_id })
+    } else {
+        OpenResult::Label(label)
+    })
 }
 
 #[derive(Debug, Deserialize)]
@@ -644,8 +689,8 @@ mod tests {
     }
 
     #[test]
-    fn place_keys_are_now_root_or_placegraph_ids() {
-        for good in ["now", "root", "pl_0123456789abcdef"] {
+    fn test_place_key_validation() {
+        for good in ["now", "p-0123456789ab", "p-000000000000", "p-ffffffffffff"] {
             assert_eq!(checked_place(good), Ok(good));
         }
         for bad in [
@@ -655,12 +700,16 @@ mod tests {
             "pl_0123456789ABCDEF",
             "pl_0123456789abcde",
             "pl_0123456789abcdef0",
-            "p-0123456789ab",
+            "root",
+            "p-0123456789AB",
+            "p-0123456789a",
+            "p-0123456789abc",
+            "p-0123456789ag",
             "now&token=x",
             "../now",
             "pl_0123456789abcdeg",
         ] {
-            assert!(checked_place(bad).is_err(), "{bad}");
+            assert_eq!(checked_place(bad), Err(NOT_A_PLACE.into()), "{bad}");
         }
     }
 
@@ -673,6 +722,53 @@ mod tests {
         book.forget(&a);
         assert_eq!(book.allocate(), "w-4");
         assert!(is_app_window(&a) && is_app_window(&b));
+    }
+
+    #[test]
+    fn labels_skip_live_windows_even_before_the_book_tracks_them() {
+        let mut book = Book::default();
+        assert_eq!(book.allocate_available(|label| label == "w-2"), "w-3");
+        book.forget("w-3");
+        assert_eq!(book.allocate_available(|_| false), "w-4");
+    }
+
+    #[test]
+    fn window_urls_name_the_place_and_optional_focused_tab() {
+        assert_eq!(
+            window_url("now", None),
+            WebviewUrl::App("index.html?place=now".into())
+        );
+        assert_eq!(
+            window_url("now", Some("tab-1")),
+            WebviewUrl::App("index.html?place=now&tab=tab-1".into())
+        );
+        assert_eq!(cascade_offset(), 24.0);
+    }
+
+    #[test]
+    fn windows_keep_main_geometry_and_platform_materials() {
+        for source in [
+            include_str!("../tauri.conf.json"),
+            include_str!("../tauri.macos.conf.json"),
+        ] {
+            let source: serde_json::Value = serde_json::from_str(source).unwrap();
+            let main: tauri::utils::config::WindowConfig =
+                serde_json::from_value(source["app"]["windows"][0].clone()).unwrap();
+            let mut expected = serde_json::to_value(&main).unwrap();
+            let opened = placed_config(
+                main,
+                "w-2",
+                "now",
+                LogicalPosition::new(24.0, 48.0),
+                Some("target"),
+            );
+            expected["label"] = serde_json::json!("w-2");
+            expected["url"] = serde_json::json!("index.html?place=now&tab=target");
+            expected["center"] = serde_json::json!(false);
+            expected["x"] = serde_json::json!(24.0);
+            expected["y"] = serde_json::json!(48.0);
+            assert_eq!(serde_json::to_value(opened).unwrap(), expected);
+        }
     }
 
     #[test]
@@ -754,6 +850,7 @@ mod tests {
     #[test]
     fn window_titles_are_suffixed_and_plain() {
         assert_eq!(window_title("Marketing").unwrap(), "Marketing — codeaf");
+        assert_eq!(window_title("codeaf").unwrap(), "codeaf");
         assert_eq!(window_title("  ").unwrap(), "codeaf");
         assert!(window_title("a\nb").is_err());
         assert!(window_title(&"x".repeat(MAX_WINDOW_TITLE + 1)).is_err());
@@ -912,7 +1009,7 @@ mod ipc_tests {
         let opened = call(
             &main,
             "window_open",
-            serde_json::json!({ "request": { "placeKey": "pl_0123456789abcdef", "handoff": handoff() } }),
+            serde_json::json!({ "request": { "placeKey": "p-0123456789ab", "handoff": handoff() } }),
         )
         .unwrap();
         assert_eq!(opened["label"], "w-2");
@@ -935,7 +1032,7 @@ mod ipc_tests {
         let context = call(&second, "window_context", serde_json::json!({})).unwrap();
         assert_eq!(
             context,
-            serde_json::json!({ "label": "w-2", "placeKey": "pl_0123456789abcdef" })
+            serde_json::json!({ "label": "w-2", "placeKey": "p-0123456789ab" })
         );
         let rows = call(&main, "window_list", serde_json::json!({})).unwrap();
         let labels: Vec<_> = rows
@@ -961,6 +1058,43 @@ mod ipc_tests {
             call(&main, "window_claim_handoff", serde_json::json!({})).unwrap()["handoffId"],
             "h-2"
         );
+    }
+
+    #[test]
+    fn opening_skips_live_labels_lists_places_and_accepts_titles_from_the_caller() {
+        let app = app();
+        let main = window(&app, "main");
+        let restored = window(&app, "w-2");
+        main.set_title("Main — codeaf").unwrap();
+        let label = call(
+            &main,
+            "window_open",
+            serde_json::json!({ "request": { "placeKey": "p-0123456789ab", "focusTab": "target" } }),
+        ).unwrap();
+        assert_eq!(label, "w-3");
+        let second = app.get_webview_window("w-3").unwrap();
+        assert!(call(&main, "window_focus", serde_json::json!({ "label": "w-3" })).is_ok());
+        call(
+            &second,
+            "window_set_title",
+            serde_json::json!({ "title": "Reading" }),
+        )
+        .unwrap();
+        let rows = call(&main, "window_list", serde_json::json!({})).unwrap();
+        assert_eq!(rows[0]["placeKey"], "now");
+        assert_eq!(rows[2]["placeKey"], "p-0123456789ab");
+        // Closing a view removes only its bookkeeping; the other views survive.
+        second.close().unwrap();
+        on_destroyed(app.handle(), "w-3");
+        assert!(app_window(app.handle(), main.label()).is_some());
+        assert!(app_window(app.handle(), restored.label()).is_some());
+        let label = call(
+            &main,
+            "window_open",
+            serde_json::json!({ "request": { "placeKey": "now" } }),
+        )
+        .unwrap();
+        assert_eq!(label, "w-4");
     }
 
     /// A web page in a window is a child view, and Tauri then stops counting
@@ -1022,10 +1156,11 @@ mod ipc_tests {
         let app = app();
         let main = window(&app, "main");
         for request in [
-            serde_json::json!({ "placeKey": "p-0123456789ab" }),
+            serde_json::json!({ "placeKey": "pl_0123456789abcdef" }),
             serde_json::json!({ "placeKey": "now", "handoff": { "kind": "conversation", "title": "x", "token": "t" } }),
             serde_json::json!({ "placeKey": "now", "url": "https://evil.example" }),
             serde_json::json!({ "placeKey": "now", "at": { "x": 1e12, "y": 0 } }),
+            serde_json::json!({ "placeKey": "now", "focusTab": "x&place=other" }),
         ] {
             assert!(call(
                 &main,
