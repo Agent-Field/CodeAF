@@ -13,7 +13,7 @@ import { routeTask } from '../view-state';
 import { questionsFor } from '../preview/content';
 import { useOpenElsewhere } from '../preview/useOpenElsewhere';
 import { usePreviewShown } from '../preview/usePreviewShown';
-import { usePreviewTrigger } from '../preview/usePreviewTrigger';
+import { previewCollisionPadding, usePreviewTrigger } from '../preview/usePreviewTrigger';
 
 /** What went wrong in words a person can act on; the engine's own message when it gave one. */
 const failureWords = (error: unknown) => `Not sent. ${error instanceof Error && error.message ? error.message : 'The engine did not answer.'}`;
@@ -70,7 +70,7 @@ function TabPreview({ api, tab, trigger }: { api: TabsApi; tab: Tab; trigger: Re
   const { open, swapped } = usePreviewShown(api.previews, tab.id);
   const handlers = usePreviewTrigger(api.previews, tab.id, open, disabled);
   return (
-    <HoverCard open={open && !disabled} trigger={trigger} triggerProps={handlers} role="group" aria-label={`Preview of ${tab.title}`} className="tab-preview" data-swap={swapped || undefined} onPointerEnter={api.previews.keepOpen} onPointerLeave={() => api.previews.scheduleClose(tab.id)}>
+    <HoverCard open={open && !disabled} collisionPadding={previewCollisionPadding} trigger={trigger} triggerProps={handlers} role="group" aria-label={`Preview of ${tab.title}`} className="tab-preview" data-swap={swapped || undefined} onPointerEnter={api.previews.keepOpen} onPointerLeave={() => api.previews.scheduleClose(tab.id)}>
       <PreviewBody api={api} tab={tab} enabled={open && !disabled}/>
     </HoverCard>
   );
