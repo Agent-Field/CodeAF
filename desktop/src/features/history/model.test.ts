@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { decidedBy, fullStamp, groupLabel, highlight, historyIdOf, idleTabs, indexOfRow, layout, metaLine, queryTerms, resultStamp, rowHeight, rowLead, rowLine, rowStamp, rowTrail, stepRow, stickyGroup, windowOf, type Metrics } from './model.ts';
+import { decidedBy, fullStamp, groupLabel, highlight, historyIdOf, idleTabs, indexOfRow, withWorldState, layout, metaLine, queryTerms, resultStamp, rowHeight, rowLead, rowLine, rowStamp, rowTrail, stepRow, stickyGroup, windowOf, type Metrics } from './model.ts';
 import type { HistoryItem } from './types.ts';
 
 // Friday 9 October 2026, 15:00 local time.
@@ -132,4 +132,24 @@ test('idleTabs: 12 hours idle, unless pinned, active, held (running or waiting) 
   };
   const tabs = [tab('old'), tab('fresh'), tab('exact'), tab('held'), tab('pinned', { pinned: true }), tab('active'), tab('empty', { hasSession: false }), tab('web', { kind: 'web' }), tab('unseen')];
   assert.deepEqual(idleTabs(tabs, 'active', activity, now), ['old', 'exact']);
+});
+
+test('a world needs-you record lifts a closed conversation\'s row to the amber glyph', () => {
+  const rows = [item('a'), item('b'), item('c')];
+  const merged = withWorldState(rows, [{ chatId: 'b', running: false, needsYou: 1, tasksRunning: 0 }]);
+  assert.deepEqual(merged.map(one => one.id), ['a', 'b', 'c'], 'order is by time alone');
+  assert.equal(merged[1].state, 'needs-you'); assert.equal(merged[1].open, true);
+  assert.equal(rowLead(merged[1]), 'needs-you');
+  assert.equal(merged[0], rows[0]);
+});
+
+test('a world running row marks a closed-but-running conversation working, matched by its transcript', () => {
+  const merged = withWorldState([item('a')], [{ chatId: 'x', sessionFile: '/s/a/transcript.jsonl', running: true, needsYou: 0, tasksRunning: 2 }]);
+  assert.equal(rowLead(merged[0]), 'working'); assert.equal(merged[0].tasksRunning, 2);
+});
+
+test('an idle world row or no world rows leaves the list untouched', () => {
+  const rows = [item('a')];
+  assert.equal(withWorldState(rows, []), rows);
+  assert.equal(withWorldState(rows, [{ chatId: 'a', running: false, needsYou: 0, tasksRunning: 0 }]), rows);
 });
