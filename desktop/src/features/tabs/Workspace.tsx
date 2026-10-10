@@ -76,7 +76,8 @@ function initialFor(place: string, title: string): WorkspaceState {
 }
 
 export function Workspace({ enabled, onActivate, leading, place = 'now', placeTitle, placeTint, arrival = 0, firstTurn, placeMenu, placeSwitcher, onOpenChat }: Props) {
-  const sync = useWorkspaceSync({ key: place as WorkspaceKey, initial: () => initialFor(place, placeTitle ?? 'Home'), focus: new URLSearchParams(window.location.search).get('focusTab') ?? undefined });
+  const windowQuery = new URLSearchParams(window.location.search);
+  const sync = useWorkspaceSync({ key: place as WorkspaceKey, initial: () => initialFor(place, placeTitle ?? 'Home'), focus: windowQuery.get('tab') ?? windowQuery.get('focusTab') ?? undefined });
   const { state } = sync;
   const { dispatch: rawDispatch } = useStructuralUndo({ state, dispatch: sync.dispatch, enabled });
   const dispatch = useCallback((action: WorkspaceAction) => { if (action.type === 'open-inbox') inboxFocus.request(); rawDispatch(action); }, [rawDispatch]);

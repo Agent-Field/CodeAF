@@ -8,12 +8,22 @@ export type Peek = 'rail' | 'strip';
 
 /** While the pointer is over one of these, the peek that revealed it stays on screen. */
 const peekSurfaces: Record<Peek, string> = { rail: '.app-shell > .sidebar', strip: '.workspace-tabbar, .content-toolbar' };
+// The delay is a rest on the edge, not the slide. Reduced motion already zeroes the overlay's
+// transition through the duration tokens; shortening the rest would open the rail on a pass across it.
 const peekDelay = parseFloat(design.foundation['rail-peek-delay']);
 
-const overAny = (event: PointerEvent, selector: string) => [...document.querySelectorAll(selector)].some(surface => {
+const covers = (event: PointerEvent, surface: Element, which: Peek) => {
+  // The rail slides in, so its painted box lags the rectangle it rests in. A pointer already
+  // in that rectangle has not left the overlay (Places 9e, R4).
+  if (which === 'rail') {
+    const width = (surface as HTMLElement).offsetWidth;
+    return event.clientX >= 0 && event.clientX <= width && event.clientY >= 0 && event.clientY <= window.innerHeight;
+  }
   const box = surface.getBoundingClientRect();
   return event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom;
-});
+};
+
+const overAny = (event: PointerEvent, which: Peek) => [...document.querySelectorAll(peekSurfaces[which])].some(surface => covers(event, surface, which));
 
 export function useShellFrame(narrow: boolean) {
   const [collapsed, setCollapsed] = useState(false);
@@ -33,7 +43,7 @@ export function useShellFrame(narrow: boolean) {
     const onMove = (event: PointerEvent) => {
       // A menu opened from the revealed strip keeps it until the menu closes.
       if (peek === 'strip' && document.querySelector('.workspace-tabbar [aria-expanded="true"]')) return;
-      if (!overAny(event, peekSurfaces[peek])) setPeek(null);
+      if (!overAny(event, peek)) setPeek(null);
     };
     const onLeave = () => setPeek(null);
     window.addEventListener('pointermove', onMove);

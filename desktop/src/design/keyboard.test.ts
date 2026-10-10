@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 // keyboard.ts reads navigator.platform at import; the matcher takes the platform as an argument.
 Object.defineProperty(globalThis, 'navigator', { value: { platform: 'Linux x86_64' }, configurable: true });
-const { shortcutOf, formatShortcut, shellShortcuts } = await import('./keyboard.ts');
+const { shortcutOf, formatShortcut, shellShortcuts, newTerminalShortcut, isNewTerminalShortcut } = await import('./keyboard.ts');
 
 const key = (key: string, over: Record<string, unknown> = {}) => ({ key, code: '', metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...over });
 const mac = (event: ReturnType<typeof key>) => shortcutOf(event, true);
@@ -51,6 +51,8 @@ test('Tasks panel tooltip formats the chord for a Mac', async () => {
     const macKeyboard = await import(new URL('./keyboard.ts?mac-shortcuts', import.meta.url).href);
     assert.equal(macKeyboard.shellShortcuts.tasks, macKeyboard.formatShortcut('⌘/Ctrl ⇧ K'));
     assert.equal(macKeyboard.shellShortcuts.tasks, '⌘ ⇧ K');
+    assert.equal(macKeyboard.newTerminalShortcut, '⌃`');
+    assert.equal(macKeyboard.shellShortcuts.openFile, '⌘O');
   } finally {
     Object.defineProperty(globalThis, 'navigator', { value: original, configurable: true });
   }
@@ -74,7 +76,7 @@ test('Linux: a terminal field keeps every plain Ctrl editing chord for the shell
 });
 
 test('Linux: a terminal field still hands Ctrl+`, Ctrl+Tab and Ctrl+Shift chords to the workspace', () => {
-  assert.deepEqual(inTerminal(key('`', { code: 'Backquote', ctrlKey: true })), { id: 'terminal' });
+  assert.deepEqual(inTerminal(key('`', { code: 'Backquote', ctrlKey: true })), { id: 'terminal-new' });
   assert.deepEqual(inTerminal(key('Tab', { ctrlKey: true })), { id: 'switch' });
   assert.deepEqual(inTerminal(key('Tab', { ctrlKey: true, shiftKey: true })), { id: 'switch-back' });
   assert.deepEqual(inTerminal(key('T', { ctrlKey: true, shiftKey: true })), { id: 'new' });
@@ -122,6 +124,43 @@ test('⌘O and Ctrl O are the new-tab field\'s Open file…; Shift or Alt makes 
   assert.equal(linux(key('o', { metaKey: true })), undefined);
   assert.equal(linux(key('O', { ctrlKey: true, shiftKey: true })), undefined);
   assert.equal(linux(key('o', { ctrlKey: true, altKey: true, code: 'KeyO' })), undefined);
+});
+
+const writing = { tagName: 'TEXTAREA', value: 'words' };
+const commandField = { tagName: 'INPUT', value: 'fix', getAttribute: (name: string) => (name === 'role' ? 'combobox' : null) };
+const shellField = { tagName: 'TEXTAREA', value: 'ls', closest: () => ({}) };
+
+test('⌃` is terminal-new on every platform and ⌘O is open-file; a prose field with words keeps both', async () => {
+  for (const matcher of [mac, linux]) {
+    assert.deepEqual(matcher(key('`', { code: 'Backquote', ctrlKey: true })), { id: 'terminal-new' });
+    assert.equal(matcher(key('`', { code: 'Backquote', ctrlKey: true, target: writing })), undefined);
+    assert.equal(matcher(key('`', { code: 'Backquote', metaKey: true })), undefined);
+    assert.equal(matcher(key('`', { code: 'Backquote', ctrlKey: true, shiftKey: true })), undefined);
+  }
+  assert.equal(isNewTerminalShortcut(key('`', { code: 'Backquote', ctrlKey: true })), true);
+  assert.equal(isNewTerminalShortcut(key('`', { code: 'Backquote', ctrlKey: true, target: writing })), false);
+  assert.equal(mac(key('o', { metaKey: true, target: writing })), undefined);
+  assert.equal(linux(key('o', { ctrlKey: true, target: writing })), undefined);
+  // An empty field is not typing, so the chords still belong to the shell.
+  assert.deepEqual(mac(key('o', { metaKey: true, target: { tagName: 'INPUT', value: '' } })), { id: 'open-file' });
+  assert.deepEqual(linux(key('`', { code: 'Backquote', ctrlKey: true, target: { tagName: 'TEXTAREA', value: '' } })), { id: 'terminal-new' });
+  // Shell 3f draws both hints beside a typed query, so the command field keeps them.
+  assert.deepEqual(mac(key('o', { metaKey: true, target: commandField })), { id: 'open-file' });
+  assert.deepEqual(linux(key('`', { code: 'Backquote', ctrlKey: true, target: commandField })), { id: 'terminal-new' });
+  // Inside a terminal the hidden textarea keeps ⌃`, even when it holds the current line.
+  assert.deepEqual(inTerminal(key('`', { code: 'Backquote', ctrlKey: true, target: shellField })), { id: 'terminal-new' });
+  assert.equal(inTerminal(key('o', { ctrlKey: true, target: shellField })), undefined);
+
+  const { buildSections, flatRows } = await import('../features/tabs/kinds/newtab/rows.ts');
+  const start = flatRows(buildSections({ query: 'fix', tabs: [], closed: [], files: [], terminal: true, terminalShortcut: newTerminalShortcut, fileShortcut: shellShortcuts.openFile }));
+  const terminal = start.find(row => row.kind === 'terminal');
+  const file = start.find(row => row.kind === 'openfile');
+  assert.equal(terminal?.label, 'New terminal');
+  assert.equal(terminal?.hint, newTerminalShortcut);
+  assert.equal(file?.label, 'Open file…');
+  assert.equal(file?.hint, shellShortcuts.openFile);
+  assert.equal(newTerminalShortcut, 'Ctrl `');
+  assert.equal(shellShortcuts.openFile, 'Ctrl O');
 });
 
 test('⌘Z (Ctrl Z on Linux) is the structural Undo; ⌘⇧Z and ⌥⌘Z are not', () => {

@@ -77,7 +77,18 @@ export type MockEngine = {
   replaceDiff: (path: string, diff: MockDiff) => void;
   /** Replace one file's bytes and stat with no event. */
   replaceFile: (path: string, file: MockFile) => void;
+  /** Drops (true) or restores (false) the connection: every engine route fails until restored. `how` picks a refused connection or a 503. */
+  setOffline: (offline: boolean, how?: 'refused' | '503') => void;
+  /** Streams a `retrying` event; `delaySeconds` travels in raw.Retry.DelaySeconds the way the engine sends it. */
+  retrying: (delaySeconds?: number, text?: string) => void;
+  /** Streams a `compacting` event, the engine's start of a summarization (it draws nothing). */
+  compacting: () => void;
+  /** Streams a `compacted` event, after which the Earlier-messages-summarized divider draws. */
+  compacted: () => void;
 };
+
+/** Output bodies over this many bytes are omitted from snapshots (d5-be-incremental-snapshot's cap); the full body is one GET /tools/{callId} away. */
+export const OUTPUT_CAP_BYTES = 16 * 1024;
 
 /** Names, one-line jobs, sections and states of the roles, as the engine reports them (a sample of each section). */
 const ROLES = [
@@ -119,6 +130,14 @@ function baseSnapshot(initial: Partial<EngineSnapshot>): EngineSnapshot {
     seq: 0,
     ...initial,
   };
+}
+
+/** The snapshot as the engine serves it: an over-cap Output becomes "" with OutputOmitted and OutputBytes set. */
+function elideOutputs(entries: EngineEntry[]): EngineEntry[] {
+  return entries.map(entry => {
+    const bytes = entry.Output ? Buffer.byteLength(entry.Output) : 0;
+    return bytes > OUTPUT_CAP_BYTES ? { ...entry, Output: '', OutputOmitted: true, OutputBytes: bytes } as EngineEntry : entry;
+  });
 }
 
 const json = (route: Route, value: unknown, status = 200) =>
@@ -198,6 +217,21 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     pending = undefined;
   };
 
+  // Offline drops every engine route, the way a stopped sidecar or a lost network does.
+  let offline: 'refused' | '503' | undefined;
+  const retrying = (delaySeconds?: number, text = 'the provider was busy') =>
+    emitEvent({ kind: 'retrying', text, tool: '', hint: '', raw: delaySeconds ? { Retry: { DelaySeconds: delaySeconds } } : {} });
+  const notice = (kind: 'compacting' | 'compacted') => emitEvent({ kind, text: '', tool: '', hint: '', raw: {} });
+
+  // GET /sessions/{id}?since=N: the header plus entries[N:]. A `since` past the end (a rewritten transcript) answers in full with reset:true.
+  const snapshotView = (since: string | null) => {
+    const { entries, ...header } = state;
+    if (since === null) return { ...header, entries: elideOutputs(entries) };
+    const from = Number(since);
+    const reset = !Number.isInteger(from) || from < 0 || from > entries.length;
+    return { ...header, entryCount: entries.length, from: reset ? 0 : from, ...(reset ? { reset: true } : {}), entries: elideOutputs(reset ? entries : entries.slice(from)) };
+  };
+
   const events = async (route: Route, after: number) => {
     const deadline = Date.now() + 60_000;
     while (!closed && Date.now() < deadline) {
@@ -250,6 +284,15 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     }
     publishQueue();
     return json(route, { accepted: true });
+  };
+
+  // Send now takes a queued message out of the queue: steered into the running turn, or submitted when idle.
+  const queueSend = (route: Route, body: Record<string, unknown>) => {
+    const from = queued.findIndex(item => item.id === body.id);
+    if (from < 0) return json(route, { error: 'that message has already been sent' }, 409);
+    const [item] = queued.splice(from, 1);
+    publishQueue();
+    return turn(route, { text: item.text, mode: state.running ? 'steer' : 'submit' });
   };
 
   // Answering records the decision the way the engine's recentOutcomes reports it.
@@ -440,6 +483,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     // The window's own reads of the place graph and the world stream are not a conversation's calls; the Places
     // mock (support/mock-places.ts) records those. A tab that must make no engine call is judged on the rest.
     if (!['places', 'chats', 'world', 'events', 'workspaces'].includes(root)) calls.push({ method, path: url.pathname, body });
+    if (offline) return offline === '503' ? json(route, { error: 'engine unreachable' }, 503) : route.abort('connectionrefused');
     const forced = (key: keyof NonNullable<Scenario['fail']>) => {
       const status = scenario.fail?.[key];
       return status ? json(route, { error: `Mock engine forced ${key} failure` }, status) : undefined;
@@ -464,9 +508,10 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     if (root !== 'sessions') return json(route, { error: 'unknown route' }, 404);
     if (!id) return forced('create') ?? json(route, history.titleOf(body.sessionFile) ? { ...state, title: history.titleOf(body.sessionFile) } : state);
     if (id !== state.id) return json(route, { error: 'reattach this conversation' }, 404);
-    if (!action) return forced('read') ?? json(route, state);
+    if (!action) return forced('read') ?? json(route, snapshotView(url.searchParams.get('since')));
     if (action === 'events') return forced('events') ?? events(route, Number(url.searchParams.get('after') ?? 0));
     if (action === 'turn') return forced('turn') ?? turn(route, body);
+    if (action === 'queue-send') return forced('queue') ?? queueSend(route, body);
     if (action === 'queue-edit' || action === 'queue-move' || action === 'queue-remove') return forced('queue') ?? queueAction(route, action, body);
     if (action === 'stop') {
       if (scenario.fail?.stop) return forced('stop');
@@ -511,5 +556,9 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     replaceDiff: (path: string, diff: MockDiff) => { scenario.diffs = { ...scenario.diffs, [path]: diff }; },
     /** Replace one file's bytes and stat, the way a shell command or another editor would, with no event. */
     replaceFile: (path: string, file: MockFile) => { scenario.files = { ...scenario.files, [path]: file }; },
+    setOffline: (on, how = 'refused') => { offline = on ? how : undefined; },
+    retrying,
+    compacting: () => notice('compacting'),
+    compacted: () => notice('compacted'),
   };
 }
