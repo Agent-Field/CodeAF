@@ -1,4 +1,4 @@
-import type { MouseEvent } from 'react';
+import type { MouseEvent, KeyboardEventHandler, ReactElement } from 'react';
 import { Button, ContextMenu, Icon, type MenuEntry } from '../../../components/ui';
 import { PlaceSwatch, type TintName } from '../components/PlaceSwatch';
 import './home-tab.css';
@@ -34,6 +34,10 @@ export type HomeTabProps = {
   appearance?: HomeTabAppearance;
   tabIndex?: number;
   id?: string;
+  /** The strip owns roving focus across Home and every other tab. */
+  onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
+  /** The shell attaches its shared switcher menu to the tab button. */
+  wrapSelect?: (select: ReactElement) => ReactElement;
 };
 
 /**
@@ -41,22 +45,25 @@ export type HomeTabProps = {
  * The trailing hairline is the rule before the other tabs. The strip's leading slot is where this
  * mounts; this component does not place itself.
  */
-export function HomeTab({ name, tint, active = false, switcher = false, switcherOpen, needsYou, menu, onSelect, onOpenSwitcher, appearance, tabIndex, id }: HomeTabProps) {
+export function HomeTab({ name, tint, active = false, switcher = false, switcherOpen, needsYou, menu, onSelect, onOpenSwitcher, appearance, tabIndex, id, onKeyDown, wrapSelect }: HomeTabProps) {
   const alert = needsYou?.trim() ?? '';
   const hasMenu = !!menu && menu.length > 0;
   const activate = () => { if (switcher) onOpenSwitcher?.(); else onSelect?.(); };
   // A right-click is the place menu. Stopping it here keeps the strip's own background menu from opening too.
   const keepPlaceMenu = (event: MouseEvent<HTMLDivElement>) => { if (hasMenu) event.stopPropagation(); };
+  const select = (
+    <Button className="home-tab-select" id={id} role="tab" aria-selected={active} aria-haspopup={switcher ? 'menu' : undefined} aria-expanded={switcher && switcherOpen !== undefined ? switcherOpen : undefined} aria-description={alert || undefined} tabIndex={tabIndex ?? (active ? 0 : -1)} onClick={activate} onKeyDown={onKeyDown}>
+      <span className="home-tab-mark">
+        <PlaceSwatch tint={tint} role="rail"/>
+        {alert && <span className="home-tab-alert" aria-hidden="true"/>}
+      </span>
+      {name && <span className="home-tab-name">{name}</span>}
+      {switcher && <span className="home-tab-switcher"><Icon name="switcher" size="tiny"/></span>}
+    </Button>
+  );
   const chip = (
-    <div className="home-tab" data-active={active} data-switcher={switcher || undefined} data-force={appearance} onContextMenu={keepPlaceMenu}>
-      <Button className="home-tab-select" id={id} role="tab" aria-selected={active} aria-haspopup={switcher ? 'menu' : undefined} aria-expanded={switcher && switcherOpen !== undefined ? switcherOpen : undefined} aria-description={alert || undefined} tabIndex={tabIndex ?? (active ? 0 : -1)} onClick={activate}>
-        <span className="home-tab-mark">
-          <PlaceSwatch tint={tint} role="rail"/>
-          {alert && <span className="home-tab-alert" aria-hidden="true"/>}
-        </span>
-        {name && <span className="home-tab-name">{name}</span>}
-        {switcher && <span className="home-tab-switcher"><Icon name="switcher" size="tiny"/></span>}
-      </Button>
+    <div className="home-tab workspace-tab is-place-home" data-active={active} data-switcher={switcher || undefined} data-force={appearance} onContextMenu={keepPlaceMenu}>
+      {wrapSelect ? wrapSelect(select) : select}
     </div>
   );
   return (
