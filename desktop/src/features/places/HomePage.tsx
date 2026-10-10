@@ -2,7 +2,8 @@ import { Button } from '../../components/ui';
 import { useState, type ReactNode } from 'react';
 import { PlaceHeading, type Crumb } from './components/PlaceHeading';
 import { AllPlacesPage } from './AllPlacesPage';
-import { HomeAttentionSection, HomeBanner, HomeChatsSection, HomeDeleteConfirm, HomeEmptyPlace, HomeFrame, HomeNotice, HomeRecap, useHomeSections, useDeleteFlow, useDragState, useRunner } from './HomeSections';
+import { DeletePlaceConfirm } from './DeletePlaceConfirm';
+import { HomeAttentionSection, HomeBanner, HomeChatsSection, HomeEmptyPlace, HomeFrame, HomeNotice, HomeRecap, useHomeSections, useDeleteFlow, useDragState, useRunner } from './HomeSections';
 import type { HomeConnection, HomeView } from './home-model';
 import { StatusLine } from '../decisions/StatusLine';
 import { DecidedRows } from '../decisions/DecidedRows';
@@ -42,7 +43,7 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
   const notices = <>
     <HomeNotice connection={connection} hasView onRetry={actions.retry}/>
     <HomeBanner message={runner.error} onDismiss={runner.clear}/>
-    {deletion.state && <HomeDeleteConfirm state={deletion.state} busy={runner.busy} onConfirm={() => void deletion.confirm()} onCancel={deletion.cancel}/>}
+    {deletion.state && <DeletePlaceConfirm state={deletion.state} busy={runner.busy} onConfirm={() => void deletion.confirm()} onCancel={deletion.cancel}/>}
   </>;
   const parentId = view.breadcrumb.length ? view.breadcrumb[view.breadcrumb.length - 1].id : 'root';
   const onUp = view.kind === 'place' && actions.goTo ? () => void runner.run(() => actions.goTo?.(parentId)) : undefined;

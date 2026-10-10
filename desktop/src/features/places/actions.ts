@@ -7,10 +7,11 @@
 // A plain drop, and "Add to another place…", add a parent and leave the ones it already has. Interactions describes
 // the place gesture the other way around; that disagreement is PA-1 in desktop/docs/DESIGN-QUESTIONS.md.
 
+import design from '../../design/tokens.json' with { type: 'json' };
 import { PlacesError, type AddedBy, type Mutation, type PlaceDetail, type PlacesClient, type Tint } from './client.ts';
 
-/** Interactions "Delete": the toast offers Undo for 10 seconds. Every other structural place action uses the shared toast duration. */
-export const PLACE_DELETE_UNDO_MS = 10_000;
+/** Interactions "Delete": the toast offers Undo for 10 seconds. The number lives in tokens so it cannot drift from the confirm. */
+export const PLACE_DELETE_UNDO_MS = design.interaction.placeDeleteUndoMs;
 
 /** What was done, so the undo stack can keep the step without parsing the sentence. */
 export type PlaceActionKind =
