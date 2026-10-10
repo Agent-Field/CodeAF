@@ -163,6 +163,7 @@ func TestTransferNeedsPOSTTheTokenAndANativeOrigin(t *testing.T) {
 	}
 	body := transferBody("i1", 0, 0, sharedDoc("a"), sharedDoc("b"))
 	r := httptest.NewRequest("POST", "/api/engine/workspaces/now/transfer", strings.NewReader(body))
+	r.Host = "127.0.0.1:1420"
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	b.ServeHTTP(w, r)
@@ -170,6 +171,7 @@ func TestTransferNeedsPOSTTheTokenAndANativeOrigin(t *testing.T) {
 		t.Fatalf("no token: %d", w.Code)
 	}
 	r = httptest.NewRequest("POST", "/api/engine/workspaces/now/transfer", strings.NewReader(body))
+	r.Host = "127.0.0.1:1420"
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Authorization", "Bearer "+testToken)
 	r.Header.Set("Origin", "https://evil.example")
@@ -179,6 +181,7 @@ func TestTransferNeedsPOSTTheTokenAndANativeOrigin(t *testing.T) {
 		t.Fatalf("foreign origin: %d", w.Code)
 	}
 	r = httptest.NewRequest("POST", "/api/engine/workspaces/now/transfer", strings.NewReader(body))
+	r.Host = "127.0.0.1:1420"
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Authorization", "Bearer "+testToken)
 	r.Header.Set("Origin", "tauri://localhost")

@@ -3168,6 +3168,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does /workspace path do", "commands"},
 		{"why can't I open a file outside the project", "desktop-roots"},
 		{"a conversation on another machine reports no folders", "desktop-roots"},
+		// Desktop conversation 1b: queued rows fold into the chip after the model name.
+		{"what is the N queued chip in the desktop composer", "desktop-queued-chip"},
+		{"I scrolled up and the queued messages disappeared", "desktop-queued-chip"},
+		// Desktop place context must answer additions, reversals and inheritance in everyday words.
+		{"what is a desktop place and what should the AI know", "desktop-places"},
+		{"what does Using 3 places mean", "desktop-places"},
+		{"which place's model wins", "desktop-places"},
+		{"some sources were left out of my desktop chat why", "desktop-places"},
+		{"adding a place in the middle of a reply applies next turn", "desktop-places"},
+		{"how do I Undo Now also using a place", "desktop-places"},
+		{"did archiving a desktop place delete my chats", "desktop-places"},
+		{"do desktop place instructions override what I say now", "desktop-places"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

@@ -93,7 +93,7 @@ func TestANewChatInAPlaceIsOpenedInItsFirstFolderAndSaysSo(t *testing.T) {
 	os.MkdirAll(first, 0o755)
 	os.MkdirAll(second, 0o755)
 	place := rig.placeWith("Lexer", folder(t, first), folder(t, second))
-	snap, code, _ := rig.snapshotOf(map[string]any{"place": place})
+	snap, code, _ := rig.snapshotOf(map[string]any{"placeId": place})
 	want, _ := filepath.EvalSymlinks(first)
 	if code != 200 || snap.Workspace != want {
 		t.Fatalf("open = %d, workspace %q, want %q", code, snap.Workspace, want)
@@ -116,12 +116,12 @@ func TestAPlaceWithNoFolderKeepsTheBridgeWorkspaceAndSaysNothing(t *testing.T) {
 	link := placegraph.Source{ID: "page", Kind: placegraph.SourceURL, Ref: "https://example.com/spec", AddedBy: placegraph.AddedByYou}
 	for name, place := range map[string]string{"no sources": rig.placeWith("Empty"), "only a page": rig.placeWith("Spec", link)} {
 		rig.opens.Store(0)
-		raw := rig.do("POST", "/sessions", map[string]any{"place": place}, new(json.RawMessage))
+		raw := rig.do("POST", "/sessions", map[string]any{"placeId": place}, new(json.RawMessage))
 		if raw != 200 || rig.opens.Load() != 1 || len(rig.foldersAsked()) != 0 {
 			t.Fatalf("%s: code %d, bridge opens %d, folders %v", name, raw, rig.opens.Load(), rig.foldersAsked())
 		}
 		var body map[string]json.RawMessage
-		rig.do("POST", "/sessions", map[string]any{"place": place}, &body)
+		rig.do("POST", "/sessions", map[string]any{"placeId": place}, &body)
 		if _, said := body["workingFolder"]; said {
 			t.Fatalf("%s: said something about a folder it never had", name)
 		}
@@ -134,7 +134,7 @@ func TestAPlaceWhoseFoldersCannotBeUsedFallsBackToTheLaunchWorkspaceAndExplainsW
 	os.MkdirAll(gone, 0o755)
 	place := rig.placeWith("Old", folder(t, gone))
 	os.Remove(gone)
-	snap, code, _ := rig.snapshotOf(map[string]any{"place": place})
+	snap, code, _ := rig.snapshotOf(map[string]any{"placeId": place})
 	if code != 200 || rig.opens.Load() != 1 || len(rig.foldersAsked()) != 0 {
 		t.Fatalf("code %d opens %d folders %v", code, rig.opens.Load(), rig.foldersAsked())
 	}
@@ -155,7 +155,7 @@ func TestASymlinkedSourceIsOpenedAtItsRealFolder(t *testing.T) {
 	}
 	// A record that kept the link's spelling (the add door stores it resolved; an older file may not).
 	place := rig.placeWith("Linked", placegraph.Source{ID: "s", Kind: placegraph.SourceFolder, Ref: link, AddedBy: placegraph.AddedByYou})
-	if _, code, _ := rig.snapshotOf(map[string]any{"place": place}); code != 200 {
+	if _, code, _ := rig.snapshotOf(map[string]any{"placeId": place}); code != 200 {
 		t.Fatalf("open = %d", code)
 	}
 	if want, _ := filepath.EvalSymlinks(real); len(rig.foldersAsked()) != 1 || rig.foldersAsked()[0] != want {
@@ -169,7 +169,7 @@ func TestAnEngineThatOpensTheChatSomewhereElseIsRefusedAndNothingIsFiled(t *test
 	elsewhere := t.TempDir()
 	rig.answers = func(string) string { return elsewhere }
 	place := rig.placeWith("Lexer", folder(t, dir))
-	_, code, e := rig.snapshotOf(map[string]any{"place": place})
+	_, code, e := rig.snapshotOf(map[string]any{"placeId": place})
 	if code != 409 || !strings.Contains(e.Error, elsewhere) {
 		t.Fatalf("open = %d %+v", code, e)
 	}
@@ -190,14 +190,14 @@ func TestAWindowCannotNameTheFolderAndAReattachNeverMovesTheWorkspace(t *testing
 	// A path is not a field of this request. The decoder refuses the body, so
 	// the door is never asked, rather than being asked and trusted to ignore it.
 	for _, key := range []string{"workspace", "workingFolder", "folder", "cwd", "path"} {
-		if _, code, e := rig.snapshotOf(map[string]any{"place": place, key: attacker}); code != 400 || !strings.Contains(e.Error, "invalid request") {
+		if _, code, e := rig.snapshotOf(map[string]any{"placeId": place, key: attacker}); code != 400 || !strings.Contains(e.Error, "invalid request") {
 			t.Fatalf("%s was accepted: %d %s", key, code, e.Error)
 		}
 	}
 	if len(rig.foldersAsked()) != 0 {
 		t.Fatalf("a refused body still opened %v", rig.foldersAsked())
 	}
-	if _, code, _ := rig.snapshotOf(map[string]any{"place": place}); code != 200 {
+	if _, code, _ := rig.snapshotOf(map[string]any{"placeId": place}); code != 200 {
 		t.Fatalf("the place itself did not open: %d", code)
 	}
 	for _, asked := range rig.foldersAsked() {
@@ -219,7 +219,7 @@ func TestABridgeWithNoFolderDoorKeepsTheChatWhereItWasLaunchedAndSaysSo(t *testi
 	src, _ := placegraph.NewSource(placegraph.SourceFolder, dir, placegraph.AddedByYou, placegraph.SourcePolicy{Deny: []string{}})
 	p, _, _ := rig.p.Store.CreatePlace(placegraph.NewPlace{Name: "Lexer", Context: placegraph.Context{Sources: []placegraph.Source{src}}})
 	var snap Snapshot
-	if code := rig.do("POST", "/sessions", map[string]any{"place": p.ID}, &snap); code != 200 || rig.opens.Load() != 1 {
+	if code := rig.do("POST", "/sessions", map[string]any{"placeId": p.ID}, &snap); code != 200 || rig.opens.Load() != 1 {
 		t.Fatalf("open = %d, opens %d", code, rig.opens.Load())
 	}
 	if wf := snap.WorkingFolder; wf == nil || wf.From != "launch" || wf.Note == "" {

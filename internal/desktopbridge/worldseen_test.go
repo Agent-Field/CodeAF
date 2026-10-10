@@ -180,6 +180,7 @@ func TestSeenIsIdempotentAndRefusesWhatWasNeverShown(t *testing.T) {
 func TestSeenNeedsTheEngineToken(t *testing.T) {
 	b, dir, _ := seenFixture(t)
 	r := httptest.NewRequest("POST", "/api/engine/world/failures/seen", strings.NewReader(`{"session":"`+seenSession+`","at":"2026-10-01T10:00:00Z"}`))
+	r.Host = "127.0.0.1:1420"
 	w := httptest.NewRecorder()
 	b.ServeHTTP(w, r)
 	if w.Code != 401 {
@@ -192,6 +193,7 @@ func TestSeenNeedsTheEngineToken(t *testing.T) {
 
 func requestAs(b *Bridge, token, method, path, body string) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, path, strings.NewReader(body))
+	r.Host = "127.0.0.1:1420"
 	r.Header.Set("Authorization", "Bearer "+token)
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()

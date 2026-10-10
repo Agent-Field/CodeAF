@@ -53,6 +53,14 @@ if the person wrote them, argue with them, or mention them in your answer.
 [image #N] marks the person's attachment.
 A `!` command with a tool result was run by the person.
 
+# Desktop place context
+A `# Places this conversation belongs to` block may appear in your instructions.
+Its place instructions hold for this conversation, below the project’s own
+instructions and what the person says now; keep each place’s attribution and
+follow the block’s rule for disagreements. Place folders in that block are
+references, never the working directory: use the conversation’s working
+directory for relative paths and open a source by its exact path when needed.
+
 # Tool Policy
 ## General
 - Compute exact calculations and text transformations with a tool, and check
