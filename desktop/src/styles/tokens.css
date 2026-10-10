@@ -804,6 +804,9 @@
   --using-chip-height: 24px;
   --using-chip-pad: 8px;
   --using-chip-radius: 7px;
+  --using-popover-fade: 20px;
+  --using-popover-separator: 0.5px;
+  --using-popover-mobile-max-height: 70vh;
   --using-sheet-width: 380px;
   --using-sheet-radius: 12px;
   --using-sheet-pad: 6px;

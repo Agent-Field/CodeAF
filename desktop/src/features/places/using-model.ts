@@ -229,7 +229,10 @@ export function wantedLine(decision: PolicyDecision, bundle: UsingBundle): strin
   if (decision.wanted.length === 0) return undefined;
   const values = new Set(decision.wanted.map(want => want.value));
   if (decision.outcome === 'agreed' && values.size === 1) return undefined;
-  const wants = decision.wanted.map((want: Want) => `${placeName(bundle, want.placeId)} wanted ${valueLabel(decision.field, want.value)}`);
+  // Once a value is decided, only the wishes that differed explain the conflict.
+  const differing = decision.outcome === 'needsPick' ? decision.wanted : decision.wanted.filter(want => want.value !== decision.value);
+  if (differing.length === 0) return undefined;
+  const wants = differing.map((want: Want) => `${placeName(bundle, want.placeId)} wanted ${valueLabel(decision.field, want.value)}`);
   if (decision.outcome === 'needsPick') return wants.join(' · ');
   const by = decision.decidedBy ? ` · ${placeName(bundle, decision.decidedBy)} ${decision.outcome === 'chosen' ? 'picked' : 'decided'}` : '';
   return `${wants.join(' · ')}${by}`;
