@@ -48,7 +48,8 @@ import { requestNextUp, TabStrip, type StripBack, type StripFrame } from './TabS
 import { bannerVisible, type NextUpBannerItem } from '../nextup/Banner';
 import { queueRowOf } from '../nextup/QueuePopover';
 import { useNextUp } from '../nextup/useNextUp';
-import { nextUpWalk, useNextUpWalk } from '../nextup/useNextUpWalk';
+import { nextUpWalk, useNextUpWalk, type WalkOrigin } from '../nextup/useNextUpWalk';
+import { useNextUpKeys } from '../nextup/useNextUpKeys';
 import type { FocusEntry } from '../focus-history/model';
 import { useFocusWireFor, useOptionalFocusWire } from '../focus-history/useFocusHistory';
 import { routeTask } from './view-state';
@@ -255,9 +256,10 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const focusWire = outerFocus ?? localFocus;
   const focusSnap = useSyncExternalStore(focusWire.subscribe, focusWire.getSnapshot, focusWire.getSnapshot);
   const scrollMemory = useScrollMemory();
+  const walkOrigin = (): WalkOrigin => ({ place, tabId: activeTab.id, paneId: focused.id, label: placeTitle ?? activeTab.title, conversation: conversationKey, draft: focused.draft, route: focused.route, scroll: scrollMemory?.get(focused.id) });
   const walk = useNextUpWalk({
     enabled, place,
-    origin: () => ({ place, tabId: activeTab.id, paneId: focused.id, label: placeTitle ?? activeTab.title, conversation: conversationKey, draft: focused.draft, route: focused.route, scroll: scrollMemory?.get(focused.id) }),
+    origin: walkOrigin,
     goTo: id => shell ? shell.goTo(id) : Promise.reject(new Error('That place is unavailable.')),
     warn: reason => shell?.warn(reason),
     open: item => {
@@ -277,6 +279,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
       if (origin.draft !== undefined) dispatch({ type: 'draft', id: origin.paneId, draft: origin.draft });
     },
   });
+  useNextUpKeys({ enabled, origin: walkOrigin, wire: focusWire });
   const backEntry = focusSnap.chip;
   const backName = backEntry ? backTargetName(backEntry, state.tabs, place, id => shell?.index?.byId.get(id)?.name) : '';
   const back: StripBack | undefined = walk.origin && walk.phase !== 'idle' ? {
