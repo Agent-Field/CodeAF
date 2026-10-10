@@ -15,9 +15,8 @@
 /* Places 10a empty sentence is 12px at 1.55, quieter than a row and larger than a section label. */
 .rail-hint { margin: 0; padding: 0 var(--space-2); font-size: var(--rail-hint-size); line-height: var(--rail-hint-leading); color: var(--ink-3); }
 
-/* The foot: All places, then the window's other pages, then the theme. */
+/* The foot: All places, then the development Design system row, then Settings. No theme control. */
 .rail-foot { margin-top: auto; display: flex; flex-direction: column; gap: var(--rail-row-gap); }
-.rail-foot .sidebar-bottom { margin-top: var(--space-2); }
 .place-rail .nav-item:hover { color: var(--ink-2); }
 .place-rail .nav-item.active:hover { color: var(--ink); }
 /* The insertion mark names a slot, while a filed chat highlights the place itself. */

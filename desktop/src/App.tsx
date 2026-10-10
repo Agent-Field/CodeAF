@@ -21,7 +21,7 @@ import { restoreNamedScroll } from './features/tabs/scroll/memoryStore';
 import type { FocusEntry } from './features/focus-history/model';
 import { FocusHistoryProvider, useFocusWireFor } from './features/focus-history/useFocusHistory';
 import { createNextUp, NextUpProvider } from './features/nextup/useNextUp';
-import { PlaceRail, type RailItem } from './features/shell/PlaceRail';
+import { PlaceRail } from './features/shell/PlaceRail';
 import { PlacesShellProvider, usePlacesShellController, type PlacesShell } from './features/places/shell/PlacesShell';
 import { PlacesOverlays } from './features/places/shell/PlacesOverlays';
 import { switcherRowContents } from './features/places/rail/switcherRowContents';
@@ -131,11 +131,13 @@ function App() {
   return () => { live = false; };
  }, []);
  const focusWire = useFocusWireFor(focusHistoryStorageKey(windowLabel), entry => restoreFocus(shellNow.current, entry));
- const appItems: RailItem[] = [];
  // No Inbox row. Questions in other conversations are the strip's frame pill, fed by nextUpWindow.
+ // Settings is the bottom row. Design system sits above it only in a development build. Theme stays in that tab.
  const rail = usePlaceRail(shell, {
   inert: narrow ? !drawerOpen : sidebarHidden && frame.peek !== 'rail', peeking: frame.peek === 'rail',
-  onToggle: () => narrow ? setDrawerOpen(false) : toggleSidebar(), appItems,
+  onToggle: () => narrow ? setDrawerOpen(false) : toggleSidebar(),
+  settings: { active: settingsOpen, onOpen: () => { navigate('Workspace'); requestOpenKind('settings'); } },
+  designSystem: import.meta.env.DEV ? { active: page === 'Design system', onOpen: () => navigate('Design system') } : undefined,
   onWorkspace: page === 'Workspace' && !settingsOpen, activeHome, onEnterWorkspace: enterWorkspace,
  });
  const sidebar = <PlaceRail {...rail}/>;

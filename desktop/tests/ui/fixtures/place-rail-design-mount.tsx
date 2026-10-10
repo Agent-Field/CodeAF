@@ -34,7 +34,7 @@ export function mountPlaceRail(theme: string, empty = false) {
         quickLook: id => call(`look:${id}`), newWindow: id => call(`window:${id}`), rename: id => call(`rename:${id}`),
         setTint: (id, tint) => call(`tint:${id}:${tint}`), fileChats: (ids, id) => call(`file:${ids.join(',')}:${id}`),
       },
-      slotShortcut: index => `⌃${index}`, closeShortcut: '⌘⇧W', newWindowShortcut: '⌘↵', appItems: [],
+      slotShortcut: index => `⌃${index}`, closeShortcut: '⌘⇧W', newWindowShortcut: '⌘↵',
     };
     const switcher = placeSwitcher({ place: current } as PlacesShell, props, switcherRowContents);
     return <><div className="rail-row-fixture"><PlaceRail {...props}/></div><DropdownMenu label="Place switcher" className="place-switcher" items={switcher.items}><Button>Switch place</Button></DropdownMenu><output id="rail-calls">{calls.join('|')}</output></>;
