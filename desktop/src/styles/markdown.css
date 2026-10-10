@@ -20,9 +20,9 @@
 .markdown blockquote { padding-left: var(--space-row); border-left: var(--rule-width) solid var(--line); color: var(--ink-2); }
 .markdown blockquote > :last-child { margin-bottom: 0; }
 
-.markdown a { color: var(--ink); text-decoration: underline; text-decoration-color: var(--ink-2); text-underline-offset: var(--space-three-quarter); border-radius: var(--radius-xs); transition: background-color var(--dur-fast) var(--ease); }
-.markdown a:hover { background: var(--field); text-decoration-color: var(--ink); }
-.markdown a:active { background: var(--field-2); }
+/* A reply link is the accent's job (Foundations §03). It rests without a line; the line appears under the pointer and under keyboard focus, in the text's own colour. The shared keyboard ring in ui.css is left alone, and a press adds no fill. */
+.markdown a { color: var(--accent); text-decoration: none; }
+.markdown a:hover, .markdown a:focus-visible { text-decoration: underline; text-decoration-color: currentColor; }
 
 /* Inline code sits on field; fenced code sits on the terminal field. */
 .markdown code { background: var(--field); border-radius: var(--radius-xs); padding: var(--border-width) var(--space-tiny); }
