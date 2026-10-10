@@ -101,8 +101,20 @@ and press Shift+F10 or the menu key, and choose **Archive**. A tab holding it
 leaves the strip. Archive is not offered while the conversation is running or
 waiting on you.
 
-The desktop has **no delete** for conversations yet. To remove one for good,
-use the terminal (see "Permanently deleting a conversation from Home").
+To remove one for good, see "Delete a conversation" below.
+
+## Delete a conversation — delete an archived conversation, undo within 10 seconds
+
+Only an **archived** conversation can be deleted; one that is not archived is
+refused ("only archived conversations can be deleted"), and so is one that is
+open in a window or running ("a conversation that is open cannot be deleted").
+A refused request deletes none of the conversations in it.
+
+Deleting moves the conversation's folder into a trash folder inside your
+codeaf home, so it leaves History at once. For 10 seconds you can **Undo**,
+which moves it back where it was. The trash is emptied of anything older than
+10 minutes each time the desktop starts, and after that a deleted
+conversation cannot be recovered. The terminal's Home delete works as before.
 
 ## Read an old conversation without opening it, or continue it — messages in History, the recap going out of date
 

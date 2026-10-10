@@ -79,6 +79,7 @@ func (b *Bridge) UseHistory(history *History) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.history = history
+	purgeTrash(time.Now())
 }
 
 // ── wire types ──────────────────────────────────────────────────────────────
@@ -244,6 +245,14 @@ func (b *Bridge) historyRoutes(w http.ResponseWriter, r *http.Request, path stri
 	case len(parts) == 2 && parts[1] == "archive":
 		if needPost(w, r) {
 			history.archive(w, r)
+		}
+	case len(parts) == 2 && parts[1] == "delete":
+		if needPost(w, r) {
+			b.deleteConversations(w, r, history)
+		}
+	case len(parts) == 2 && parts[1] == "restore":
+		if needPost(w, r) {
+			b.restoreConversations(w, r)
 		}
 	case len(parts) == 2 && parts[1] == "group-offers":
 		if needPost(w, r) {
