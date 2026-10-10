@@ -13,8 +13,9 @@ const WORD: Record<Phase, string> = {
 
 /**
  * Engine: where this window's engine runs, and whether it answers. The state is
- * ink, never red (I-IFL-6). Retry exists only while it is unreachable, and a
- * fresh attempt hides it again so the line can say it is reconnecting.
+ * ink-2, never red (I-IFL-6). Retry is the conversation's quiet ink-3 and exists
+ * only while the engine is unreachable. A fresh attempt hides it so the line can
+ * say it is reconnecting.
  */
 export function EngineSection() {
   const [phase, setPhase] = useState<Phase>('reconnecting');
