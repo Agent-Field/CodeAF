@@ -3530,6 +3530,11 @@ type Agent struct {
 	// reserved, nothing is admitted, and the only thing the number has to do is
 	// name one outstanding question until it is answered (tools_standing.go).
 	standingSeq uint64
+	// decideGate is the place-decision hook (decide_hook.go). Nil means every
+	// question reaches the person, which is every session until a place is
+	// wired to decide. It is published under mu and read without that lock
+	// held across the hook, because the hook answers the question.
+	decideGate *DecideGate
 	// questionWords is THE WORDS of the questions this session has put, keyed by
 	// lane and token (question.go's [questionToken]).
 	//
