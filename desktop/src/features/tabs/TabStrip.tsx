@@ -13,9 +13,11 @@ import { GroupCapsule, MemberSlot } from './GroupCapsule';
 import { groupDragProps } from './hosts/dragHost';
 import { overflowItems, withGroupMenu } from './hosts/menuHost';
 import { openStripBackgroundMenu, StripMenu } from './hosts/stripMenu';
-import { stateOfMark, TabItem, tabDomIds } from './TabItem';
+import { navigate, stateOfMark, TabItem, tabDomId, tabDomIds } from './TabItem';
 import { focusedPane, stripItems, visibleTabs, type Tab } from './model';
 import { departureIds, departuresFrom, exitHoldMs, groupsForDepartures, mergeDepartures, retainDepartures, withDepartures, type TabDeparture } from './tabExit';
+import { HomeTab } from '../places/home/HomeTab';
+import { isPlaceHome } from './reducers/home';
 import './strip.css';
 import './tab-motion.css';
 
@@ -80,6 +82,7 @@ export type StripBack = {
 export function TabStrip({ api, leading, back, frame, overviewTrigger, onOverview }: { api: TabsApi; leading?: ReactNode; back?: StripBack; frame?: StripFrame; overviewTrigger: RefObject<HTMLButtonElement | null>; onOverview: () => void }) {
   const { state, dispatch } = api;
   const strip = useRef<HTMLDivElement>(null);
+  const homeFocus = useRef<string | null>(null);
   // Shell 3j "Compressed", and the open question that makes it live: only while the window is at the small breakpoint.
   const narrow = useMediaQuery(`(max-width: ${design.breakpoints.small}px)`);
   const reduced = useMediaQuery('(prefers-reduced-motion: reduce)');
@@ -116,7 +119,8 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
   // Arrow keys and ⌘1–9 walk `order` (hidden members of a collapsed group are not stops). The drawn strip
   // still includes every member, so the pill "Label N" stays when none of those tabs is selected. A
   // departing tab is put back only so its slot can shrink; it is not in that keyboard order.
-  const pinned = shown.filter(tab => tab.pinned);
+  const home = shown.find(isPlaceHome);
+  const pinned = shown.filter(tab => tab.pinned && !isPlaceHome(tab));
   const items = stripItems({ tabs: shown, groups });
   // The strip only re-measures when its shape changes, never on a draft keystroke.
   const shape = JSON.stringify([state.activeId, state.groups, departures.map(item => item.tab.id), state.tabs.map(t => [t.id, t.title, t.pinned, t.groupId, t.split?.panes.map(p => [p.id, p.title])])]);
@@ -208,6 +212,10 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
       {back && <div className="workspace-back-slot"><BackChip key={back.key} parentName={back.parentName} onBack={back.onBack} onDismiss={back.onDismiss}/></div>}
       <div className="workspace-tablist-owner" role="tablist" aria-label="Conversation tabs" aria-owns={order.flatMap(tabDomIds).join(" ")}/>
       <div ref={strip} className="workspace-tabstrip" aria-label="Conversation tabs" data-fade-end={edge.end || undefined}>
+        {home && <HomeTab key={home.id} name={home.title} tint={api.placeTint ?? 'graphite'} active={state.activeId === home.id} id={tabDomId(home)} menu={api.placeMenu}
+          onSelect={() => dispatch({ type: 'select', id: home.id })} onKeyDown={navigate(api, order, home, homeFocus)}
+          switcher={!!api.placeSwitcher} needsYou={api.placeSwitcher?.alert}
+          wrapSelect={api.placeSwitcher ? select => <DropdownMenu label="Place switcher" items={api.placeSwitcher!.items}>{select}</DropdownMenu> : undefined}/>}
         {pinned.map(tab => item(tab))}
         {pinned.length > 0 && <span className="workspace-tab-divider" role="separator" aria-orientation="vertical"/>}
         {items.map(entry => {
