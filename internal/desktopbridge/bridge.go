@@ -522,6 +522,8 @@ func eventKind(k session.EventKind) string {
 		return "consent"
 	case session.EventQuestion:
 		return "question"
+	case session.EventPlan:
+		return "plan"
 	default:
 		return laterKind(k)
 	}
