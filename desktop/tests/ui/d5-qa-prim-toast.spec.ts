@@ -75,8 +75,9 @@ test('toast replacement, remaining timer, independent hover/focus and scoped Esc
   await expect(page.locator('.toast')).toHaveCount(0);
 });
 
-test('toast at 600px ellipsizes before actions; reduced motion removes interpolation', async ({ page }) => {
-  await page.setViewportSize({ width: 600, height: 560 });
+for (const width of [320, 600]) {
+test(`toast at ${width}px ellipsizes before actions; reduced motion removes interpolation`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 560 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
   await show(page, { message: 'A very long real notification sentence '.repeat(20) });
@@ -87,10 +88,10 @@ test('toast at 600px ellipsizes before actions; reduced motion removes interpola
     return { width: r.width, height: r.height, left: r.left, right: r.right, animation: s.animationName,
       ellipsis: getComputedStyle(message).textOverflow, clipped: message.scrollWidth > message.clientWidth };
   });
-  expect(geometry.width).toBeLessThanOrEqual(576);
+  expect(geometry.width).toBeLessThanOrEqual(width - 16);
   expect(geometry.height).toBe(40);
-  expect(geometry.left).toBeGreaterThanOrEqual(12);
-  expect(geometry.right).toBeLessThanOrEqual(588);
+  expect(geometry.left).toBeGreaterThanOrEqual(8);
+  expect(geometry.right).toBeLessThanOrEqual(width - 8);
   expect(geometry.animation).toBe('none');
   expect(geometry.ellipsis).toBe('ellipsis');
   expect(geometry.clipped).toBe(true);
@@ -98,3 +99,4 @@ test('toast at 600px ellipsizes before actions; reduced motion removes interpola
   await card.getByRole('button', { name: 'Undo' }).click();
   await expect(card).toHaveCount(0);
 });
+}

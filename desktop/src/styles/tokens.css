@@ -871,11 +871,6 @@
   --history-best-pad-x: 18px;
   --history-mark-radius: 3px;
   --history-mark-pad: 2px;
-  --history-toast-height: 40px;
-  --history-toast-bottom: 24px;
-  --history-toast-pad-start: 14px;
-  --history-toast-pad-end: 6px;
-  --history-toast-button-height: 26px;
   --history-overscan: 6;
   --history-page-size: 60;
   --history-total: 0px;
@@ -911,7 +906,7 @@
   --places-dialog-width: 480px;
   --places-dialog-field-basis: 200px;
   --toast-zero: 0px;
-  --toast-narrow-gutter: 12px;
+  --toast-narrow-gutter: var(--toast-gutter);
   --toast-height: 40px;
   --toast-radius: var(--radius-card);
   --toast-pad-start: var(--space-row);
@@ -923,7 +918,7 @@
   --toast-action-pad: var(--space-compact);
   --toast-stack-gap: var(--space-2);
   --toast-offset: var(--space-6);
-  --toast-gutter: var(--space-4);
+  --toast-gutter: 8px;
   --z-toast: 25;
   --places-goto-top: 90px;
   --places-goto-width: 620px;
@@ -1192,7 +1187,7 @@
   --search-field-hint-size: 11px;
   --motion-rise-row: 4px;
   --motion-rise-send: 6px;
-  --motion-rise-toast: 8px;
+  --motion-rise-toast: var(--toast-rise);
   --motion-place-slide: 6px;
   --motion-scale-quicklook: .96;
   --motion-fold-open: var(--motion-ask-open);
@@ -1215,6 +1210,8 @@
   --nextup-walk-skip-radius: 8px;
   --nextup-walk-return-gap: 6px;
   --nextup-walk-strip-return-width: 30px;
+  --toast-rise: 8px;
+  --toast-max-width: calc(100vw - var(--toast-gutter) * 2);
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);

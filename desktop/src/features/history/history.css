@@ -123,17 +123,17 @@
 .button.history-earlier { align-self: center; }
 
 /* ---- the archive toast ---- */
-.history-toast { position: absolute; left: 50%; bottom: var(--history-toast-bottom); transform: translateX(-50%); z-index: var(--z-overlay); display: flex; align-items: center; gap: var(--space-3); height: var(--history-toast-height); padding: 0 var(--history-toast-pad-end) 0 var(--history-toast-pad-start); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--sh-2); color: var(--ink); font-size: var(--type-label-size); white-space: nowrap; max-width: calc(100% - var(--space-6)); }
+.history-toast { position: absolute; left: 50%; bottom: var(--toast-offset); transform: translateX(-50%); z-index: var(--z-overlay); display: flex; align-items: center; gap: var(--space-3); height: var(--toast-height); padding: 0 var(--toast-pad-end) 0 var(--toast-pad-start); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--sh-2); color: var(--ink); font-size: var(--type-label-size); white-space: nowrap; max-width: calc(100% - var(--space-6)); }
 .history-toast .app-icon { flex: none; color: var(--ink-2); }
 .history-toast-text { overflow: hidden; text-overflow: ellipsis; }
-.button.history-toast-action { flex: none; min-height: var(--history-toast-button-height); height: var(--history-toast-button-height); padding: 0 var(--space-compact); border-radius: var(--radius-segment-item); color: var(--ink-2); }
+.button.history-toast-action { flex: none; min-height: var(--toast-action-height); height: var(--toast-action-height); padding: 0 var(--space-compact); border-radius: var(--radius-segment-item); color: var(--ink-2); }
 .button.history-toast-action.button-quiet { color: var(--ink); }
 
 /* ---- specimen ---- */
 .history-specimen-stack .history-row, .history-specimen-stack .history-delete-confirm { position: static; height: auto; min-height: var(--history-row-height); }
 .history-specimen-stack { width: 100%; min-width: 0; max-width: var(--history-list-width); display: flex; flex-direction: column; gap: var(--space-2); padding: var(--specimen-pad); border-radius: var(--specimen-radius); background: var(--canvas); box-shadow: var(--sh-1); }
 .history-specimen-label { font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); color: var(--ink-2); }
-.history-specimen-toast { position: relative; width: 100%; min-width: 0; display: flex; justify-content: center; height: var(--history-toast-height); }
+.history-specimen-toast { position: relative; width: 100%; min-width: 0; display: flex; justify-content: center; height: var(--toast-height); }
 .history-specimen-toast .history-toast { position: static; flex: 0 1 auto; min-width: 0; max-width: 100%; transform: none; }
 
 .history-specimen-best { width: 100%; min-width: 0; max-width: var(--history-column-max-width); }
