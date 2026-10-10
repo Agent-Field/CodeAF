@@ -938,6 +938,16 @@
   --back-header-size: 13px;
   --back-header-icon: 14px;
   --back-header-fade: 20px;
+  --i2-end-card-gap: 14px;
+  --i2-end-card-text-gap: 2px;
+  --i2-end-card-glyph-size: 18px;
+  --i2-end-card-title-size: 14px;
+  --i2-end-card-title-weight: 600;
+  --i2-end-card-note-size: 12px;
+  --i2-end-card-leading: normal;
+  --i2-end-card-button-pad: 14px;
+  --i2-end-card-button-weight: 500;
+  --i2-end-card-max-width: 660px;
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);
