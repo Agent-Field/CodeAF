@@ -20,9 +20,8 @@ for (const theme of ['light', 'dark']) {
     const row = page.getByRole('option', { name: /Fix it in the lexer/ });
     await row.click({ button: 'right' });
     const menu = page.getByRole('menu', { name: 'Fix it in the lexer actions' });
-    await expect(menu.getByRole('menuitem')).toHaveText(['Continue', 'Read', 'Unarchive']);
+    await expect(menu.getByRole('menuitem')).toHaveText(['Continue', 'Read', 'Unarchive', 'Delete…']);
     await expect(menu.getByRole('separator')).toHaveCount(1);
-    await expect(menu.getByRole('menuitem', { name: 'Delete…' })).toHaveCount(0);
     await menu.getByRole('menuitem', { name: 'Unarchive' }).click();
     await expect.poll(() => engine.history.archived()).toEqual([{ id: 'lexer', archived: false }]);
     await row.click({ button: 'right' });
