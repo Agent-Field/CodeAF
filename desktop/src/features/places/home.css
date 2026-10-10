@@ -2,7 +2,7 @@
    this file places them in the page column, so nothing here sets a colour, a font or a length that tokens.json does not own. */
 .home-page { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--canvas); color: var(--ink); font-family: var(--sans); }
 .home-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; align-items: center; mask-image: linear-gradient(to bottom, black calc(100% - var(--places-home-fade)), transparent); outline: none; }
-.home-column { width: 100%; max-width: var(--content-max-width); padding: var(--places-home-pad-top) var(--places-home-pad-inline) var(--places-home-fade); box-sizing: border-box; display: flex; flex-direction: column; gap: var(--places-home-gap); }
+.home-column { width: 100%; max-width: var(--places-home-column-max); padding: var(--places-home-pad-top) var(--places-home-pad-inline) var(--places-home-fade); box-sizing: border-box; display: flex; flex-direction: column; gap: var(--places-home-gap); }
 .home-composer { padding: 0 var(--places-home-pad-inline) var(--space-5); }
 .home-section { display: flex; flex-direction: column; gap: var(--space-compact); }
 .home-section.home-chats { gap: var(--space-half); }
@@ -58,6 +58,6 @@
 /* Decisions 12a keeps the status with the heading and the composer in the same reading column. */
 .home-heading-stack { display: flex; flex-direction: column; gap: var(--home-place-heading-gap); }
 .home-page[data-populated-place] .home-column { padding-top: var(--home-place-pad-top); gap: var(--home-place-section-gap); }
-.home-page[data-populated-place] .home-composer { width: 100%; max-width: var(--content-max-width); box-sizing: border-box; align-self: center; }
+.home-page[data-populated-place] .home-composer { width: 100%; max-width: var(--places-home-column-max); box-sizing: border-box; align-self: center; }
 
 .home-page[data-populated-place] .places-heading { gap: var(--home-place-heading-gap); }
