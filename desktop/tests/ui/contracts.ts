@@ -103,7 +103,7 @@ export const INK3_TEXT = [
  '.paste-card-lines', '.paste-card-preview', '.file-chip-dir', '.file-chip[data-state="missing"]', '.file-chip[data-state="outside"]', '.link-chip-domain',
  '.steer-landing', '.queued-esc', '.queued-more', '.queued-note', '.update-cut', '.turn-footer', '.work-live-time', '.work-time',
  '.work-step-head', '.work-step-tail', '.thinking-text', '.thinking-body', '.work-call-head', '.work-stat', '.work-call-time', '.work-call-status', '.work-call-text',
- '.task-notice-live', '.tray-header', '.choice-clock', '.tray-note', '.tray-holding', '.batch-pager',
+ '.task-notice-live', '.tray-header', '.choice-clock', '.tray-note', '.tray-holding', '.batch-pager', '.nextup-walk-skip',
  // Conversation 1e and Components draw Always allow…, Tell it… and "and say why" in ink-3. Settings Retry follows that quiet ink.
  '.answer-ghost', '.answer-why', '.settings-engine-retry',
  '.tasks-table-totals', '.tasks-table-tab-count', '.tasks-table-detail', '.tasks-table-group-count', '.tasks-table-state', '.tasks-table-age',
