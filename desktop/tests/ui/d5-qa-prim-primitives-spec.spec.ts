@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { tokenColor } from './contracts';
 
 for (const theme of ['light', 'dark']) {
@@ -46,4 +46,89 @@ for (const theme of ['light', 'dark'] as const) {
   expect(paint.padding).toBe('0px');
   expect(paint.borderRadius).toBe('0px');
  });
+}
+
+async function paintPosition(page: Page, token: string) {
+ return page.evaluate(name => {
+  const probe = document.createElement('span');
+  probe.style.backgroundPosition = `var(--${name}) 0px`;
+  document.body.append(probe);
+  const value = getComputedStyle(probe).backgroundPosition;
+  probe.remove();
+  return value;
+ }, token);
+}
+
+for (const theme of ['light', 'dark'] as const) {
+ for (const width of [320, 1200]) {
+  test(`FD-MO-6/8: cf-shimmer 2.4s and cf-breathe 2.8s in ${theme} at ${width}px`, async ({ page }) => {
+   await page.setViewportSize({ width, height: 560 });
+   await page.goto('/tests/motion-primitives/index.html');
+   await page.locator('html').evaluate((element, value) => element.setAttribute('data-theme', value), theme);
+   const live = page.getByText('Running the parser tests', { exact: true });
+   await expect(live).toHaveAttribute('data-shimmer', 'live');
+   await expect(live).toHaveCSS('animation-name', 'cf-shimmer');
+   await expect(live).toHaveCSS('animation-duration', '2.4s');
+   await expect(live).toHaveCSS('animation-iteration-count', 'infinite');
+   await expect(live).toHaveCSS('animation-timing-function', 'linear');
+   await expect(live).toHaveCSS('background-clip', 'text');
+   const liveColor = await live.evaluate(element => getComputedStyle(element).color);
+   expect(liveColor === 'rgba(0, 0, 0, 0)' || liveColor === 'transparent').toBe(true);
+   expect(await paintPosition(page, 'cf-shimmer-from')).toMatch(/^100%/);
+   expect(await paintPosition(page, 'cf-shimmer-to')).toMatch(/-150%/);
+   const frames = await page.evaluate(() => {
+    const named: Record<string, string[]> = {};
+    const visit = (rules: CSSRuleList) => {
+     for (const rule of rules) {
+      if (rule instanceof CSSKeyframesRule) named[rule.name] = [...rule.cssRules].map(frame => `${frame.keyText} ${frame.style.cssText}`);
+      if (rule instanceof CSSGroupingRule && rule.cssRules) visit(rule.cssRules);
+     }
+    };
+    for (const sheet of document.styleSheets) {
+     try { visit(sheet.cssRules); } catch { /* a cross-origin sheet has no rules to read */ }
+    }
+    return named;
+   });
+   const shimmerFrames = frames['cf-shimmer']?.join('\n') ?? '';
+   expect(shimmerFrames).toMatch(/\bfrom\b/);
+   expect(shimmerFrames).toMatch(/\bto\b/);
+   expect(shimmerFrames.includes('cf-shimmer-from') || shimmerFrames.includes('100%')).toBe(true);
+   expect(shimmerFrames.includes('cf-shimmer-to') || shimmerFrames.includes('-150%')).toBe(true);
+   const settled = page.getByText('Settled step', { exact: true });
+   await expect(settled).toHaveAttribute('data-shimmer', 'still');
+   await expect(settled).toHaveCSS('animation-name', 'none');
+   const dot = page.locator('.cf-breathe');
+   await expect(dot).toHaveCSS('animation-name', 'cf-breathe');
+   await expect(dot).toHaveCSS('animation-duration', '2.8s');
+   await expect(dot).toHaveCSS('animation-iteration-count', 'infinite');
+   await expect(dot).toHaveCSS('animation-timing-function', 'ease-in-out');
+   await expect(dot).toHaveCSS('width', '6px');
+   await expect(dot).toHaveCSS('height', '6px');
+   await expect(dot).toHaveCSS('background-color', await tokenColor(page, 'accent'));
+   const breatheFrames = frames['cf-breathe']?.join('\n') ?? '';
+   expect(breatheFrames.includes('breathe-from') || breatheFrames.includes('2px')).toBe(true);
+   expect(breatheFrames.includes('breathe-to') || breatheFrames.includes('4.5px')).toBe(true);
+   const box = (await dot.boundingBox())!;
+   expect(box.width).toBe(6);
+   expect(box.height).toBe(6);
+   await expect(dot).toHaveAttribute('aria-hidden', 'true');
+   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+
+  test(`FD-MO-9: reduced motion stops shimmer and breathe in ${theme} at ${width}px`, async ({ page }) => {
+   await page.emulateMedia({ reducedMotion: 'reduce' });
+   await page.setViewportSize({ width, height: 560 });
+   await page.goto('/tests/motion-primitives/index.html');
+   await page.locator('html').evaluate((element, value) => element.setAttribute('data-theme', value), theme);
+   const live = page.getByText('Running the parser tests', { exact: true });
+   await expect(live).toHaveCSS('animation-name', 'none');
+   await expect(live).toHaveCSS('color', await tokenColor(page, 'ink-2'));
+   const dot = page.locator('.cf-breathe');
+   await expect(dot).toHaveCSS('animation-name', 'none');
+   await expect(dot).toHaveCSS('box-shadow', 'none');
+   const box = (await dot.boundingBox())!;
+   expect(box.width).toBe(6);
+   expect(box.height).toBe(6);
+  });
+ }
 }

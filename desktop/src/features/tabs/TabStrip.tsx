@@ -183,8 +183,12 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
 
   useEffect(() => {
     const selected = strip.current?.querySelector<HTMLElement>('[aria-selected="true"]');
-    selected?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
-    const frame = requestAnimationFrame(() => selected?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' }));
+    // The selected control is the title button. The chip around it also holds the close slot, and
+    // scrolling the button leaves that slot past the strip, so the active tab is not fully in view.
+    const chip = selected?.closest<HTMLElement>('.workspace-tab') ?? selected;
+    const reveal = () => chip?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+    reveal();
+    const frame = requestAnimationFrame(reveal);
     return () => cancelAnimationFrame(frame);
   }, [state.activeId, state.groups]);
 
@@ -207,7 +211,8 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
           );
         })}
       </div>
-      <span className="workspace-strip-note" role="status" aria-live="polite" aria-atomic="true"><span key={moveNote.revision}>{moveNote.text}</span></span>
+      {/* The node stays mounted so a repeated move replaces the text (the key) and is read again. Until there are words it stays out of the accessibility tree, so an empty announcement is not a second status on the page. */}
+      <span className="workspace-strip-note" role="status" aria-live="polite" aria-atomic="true" aria-hidden={moveNote.text ? undefined : true}><span key={moveNote.revision}>{moveNote.text}</span></span>
       <div className="workspace-tab-actions">
         <IconButton className="workspace-tab-action" label="New tab" title={`New tab (${tabShortcuts.new})`} icon="plus" iconSize="sm" onClick={() => dispatch({ type: 'new' })}/>
         {edge.hidden > 0 && <DropdownMenu label="Tab actions" items={overflowItems(api)}><Button className="workspace-tab-more" aria-label="Tab actions">+{edge.hidden}<Icon name="chevron" size="micro" motion="disclosure"/></Button></DropdownMenu>}

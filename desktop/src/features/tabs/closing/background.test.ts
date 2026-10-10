@@ -21,6 +21,11 @@ test('work running in a conversation with no tab here is listed from the feed, w
   assert.deepEqual(out.running.map(i => [i.id, i.chatId, i.tabId, i.state]), [['chat:c1', 'c1', undefined, 'running']]);
 });
 
+test('a running row that names no conversation is not another window\'s work', () => {
+  const out = build({ world: { status: 'live', rows: [row('', { running: true, title: 'mirror' })], items: [] } });
+  assert.deepEqual(out.running, []);
+});
+
 test('a conversation open or closed here is described by its tab, never twice', () => {
   const world = { status: 'live' as const, rows: [row('c1', { running: true }), row('c2', { running: true })], items: [ask('c1')] };
   const out = build({ world, tabs: [tab('open', 'c1')], closed: [tab('gone', 'c2')] });

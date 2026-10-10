@@ -1,3 +1,6 @@
+import type { ReactNode } from 'react';
+import type { IconName } from '../components/ui/Icon';
+
 // The one toast channel. A feature calls `toasts.show(...)`; the single <ToastRegion/> draws whatever is current.
 // Kept free of React so node tests can drive it and so any lane can post without importing a component.
 //
@@ -19,6 +22,9 @@ export type ToastTone = 'info' | 'warning' | 'danger';
 export type ToastSpec = {
   message: readonly ToastPart[];
   tone?: ToastTone;
+  /** The primitive accepts rich text and a semantic icon without changing older sentence callers. */
+  content?: ReactNode;
+  lead?: 'dot' | IconName;
   /** Buttons before Undo, e.g. "Stop it". Choosing one dismisses the toast once it has run. */
   actions?: readonly ToastAction[];
   /** Takes the change back. Present means the region draws Undo; choosing it dismisses the toast once it has run. */

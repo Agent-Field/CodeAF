@@ -3,6 +3,8 @@ export { BrandMark } from './BrandMark';
 export { Button, IconButton, type ButtonVariant, type IconButtonSize } from './Button';
 export { useTooltip, TruncatedText } from './Tooltip';
 export { StatusMark, type Status } from './StatusMark';
+export { Shimmer } from './Shimmer';
+export { BreathingDot } from './BreathingDot';
 export { Segmented, type SegmentedOption } from './Segmented';
 export { FilterTabs, type FilterTabOption } from './FilterTabs';
 export { Chip, ChipButton, Tag, type TagTone } from './Chip';

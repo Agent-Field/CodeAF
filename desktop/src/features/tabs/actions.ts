@@ -51,6 +51,10 @@ export type TabActions = {
   moveToNewWindow(tab: Tab, at?: Point): Promise<boolean>;
   /** The same, into a window that is already open. */
   moveToWindow(tab: Tab, label: string): Promise<boolean>;
+  /** This window stops showing a tab a new window just opened on. The tab stays in the strip. */
+  releaseFocus(tab: Tab): void;
+  /** A new window did not open. The tab is untouched, and the shared toast says it is still here. */
+  moveFailed(tab: Tab): void;
 };
 
 export function createTabActions({ native, toasts, writeClipboard = text => navigator.clipboard.writeText(text), place, stillHere, handoffView, setTimer = (fn, ms) => setTimeout(fn, ms) }: TabActionsDeps): TabActions {
@@ -96,5 +100,7 @@ export function createTabActions({ native, toasts, writeClipboard = text => navi
       if (!canMove(tab)) return false;
       try { await native.moveTabToWindow(label, tab); watch(tab, 'that window'); return true; } catch { failed(tab, 'to that window'); return false; }
     },
+    releaseFocus(tab) { handoffView?.(tab.id); },
+    moveFailed(tab) { failed(tab, 'to a new window'); },
   };
 }

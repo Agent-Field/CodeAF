@@ -83,7 +83,7 @@ function useTaskPanel(hasTasks: boolean, closed: boolean, onView: ConversationVi
   return { sheet, shown, close, open };
 }
 
-export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummary, onOpenTaskTab, autoFocus = true, split = false, focused = true, usingApi, onOpenSource, onAddToPlace }: ConversationViewProps) {
+export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummary, onOpenTaskTab, onRename, autoFocus = true, split = false, focused = true, usingApi, onOpenSource, onAddToPlace }: ConversationViewProps) {
   const beforeFirstTurn = useContext(FirstTurnContext);
   const newConversationPlace = useContext(NewConversationPlaceContext);
   const conversation = useConversation({ sessionFile: tab.sessionFile, onSessionFile: (sessionFile) => onView({ sessionFile }), beforeFirstTurn, newConversationPlace });
@@ -227,8 +227,8 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
               if (inTask) setRoute(navigate(route, undefined));
               jump();
               focusQuestion(questionKey(first));
-            }} onTasksFilter={(tasksFilter) => { if (panel.sheet) panel.close(); onView({ tasksFilter, route: navigate(route, TASKS_VIEW) }); }} lead={inTask ? 'trail' : 'title'} counts={barCounts} panel={barPanel} using={<UsingLine control={using} onOpenSource={onOpenSource} onAddToPlace={onAddToPlace} />}>
-              {taskId ? <TaskRouteBar rootLabel={label} taskId={taskId} tasks={model.tasks} route={route} onRoute={setRoute} /> : <span className="conversation-bar-title">{barTitle}</span>}
+            }} onTasksFilter={(tasksFilter) => { if (panel.sheet) panel.close(); onView({ tasksFilter, route: navigate(route, TASKS_VIEW) }); }} lead={inTask ? 'trail' : 'title'} title={barTitle || undefined} onRename={barTitle ? onRename : undefined} counts={barCounts} panel={barPanel} using={<UsingLine control={using} onOpenSource={onOpenSource} onAddToPlace={onAddToPlace} />}>
+              {taskId ? <TaskRouteBar rootLabel={label} taskId={taskId} tasks={model.tasks} route={route} onRoute={setRoute} /> : null}
             </ConversationBar>
           )}
           <div ref={scroller} className="conversation-scroll" data-scroll-key={inTask ? 'task-page' : 'conversation'} data-scrolled={scrolled || undefined} data-task={inTask || undefined}>
