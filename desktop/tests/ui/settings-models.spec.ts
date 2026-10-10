@@ -32,14 +32,14 @@ test('the settings page lists the pinned models and one row per role', async ({ 
   const pinned = page.getByRole('region', { name: 'Pinned' });
   await expect(pinned.getByRole('button', { name: /^Pinned model/ })).toHaveText(['GLM 5.3 Flash', 'DeepSeek V4.1 Flash', 'GLM 5.3']);
   // Each job sits under its section, in the engine's order.
-  await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Appearance', 'Pinned', 'Conversation and tasks', 'Naming and summaries', 'Places organization', 'Memory, routing and safety']);
+  await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Appearance', 'Engine', 'Pinned', 'Conversation and tasks', 'Naming and summaries', 'Places organization', 'Memory, routing and safety']);
   for (const [section, name] of [['Conversation and tasks', 'Tasks'], ['Naming and summaries', 'Chat titles'], ['Places organization', 'Chat filing'], ['Memory, routing and safety', 'Memory']]) {
     await expect(page.getByRole('region', { name: section }).getByText(name, { exact: true })).toBeVisible();
   }
   await expect(page.getByRole('button', { name: 'Model for Tasks' })).toHaveText('DeepSeek V4.1 Flash');
   // Nothing differs from the default yet, so there is no Reset and no receipt.
   await expect(page.getByRole('button', { name: /^Reset/ })).toHaveCount(0);
-  await expect(page.getByRole('status')).toHaveText('');
+  await expect(page.locator('.settings-receipt')).toHaveText('');
 });
 
 test('changing a role saves at once, shows the receipt, offers effort, and can be reset', async ({ page }) => {
@@ -51,7 +51,7 @@ test('changing a role saves at once, shows the receipt, offers effort, and can b
   const rows = page.getByRole('listbox', { name: 'Models' }).getByRole('option');
   await expect(rows).toHaveText(['Kimi K3']);
   await rows.first().click();
-  await expect(page.getByRole('status')).toHaveText('Saved · applies to the next call');
+  await expect(page.locator('.settings-receipt')).toHaveText('Saved · applies to the next call');
   expect(puts(engine.calls).at(-1)).toMatchObject({ path: expect.stringMatching(/\/models\/roles\/tasks$/), body: { model: OTHER } });
   await expect(page.getByRole('button', { name: 'Model for Tasks' })).toHaveText('Kimi K3');
   const effort = page.getByRole('radiogroup', { name: 'Effort for Tasks' });
@@ -127,7 +127,7 @@ test('a job nothing calls yet says so, and a split job follows the one it came f
   await expect(page.locator('[data-role="tasks"]')).not.toContainText('Not in use yet');
   await page.getByRole('button', { name: 'Model for Chat titles' }).click();
   await page.getByRole('listbox', { name: 'Models' }).getByRole('option', { name: 'Kimi K3' }).click();
-  await expect(page.getByRole('status')).toHaveText('Saved · applies to the next call');
+  await expect(page.locator('.settings-receipt')).toHaveText('Saved · applies to the next call');
   // Summaries was split from the titles row; it runs on the titles choice until it has its own.
   await page.reload();
   await openSettings(page);
@@ -147,12 +147,12 @@ test('the Places organization choices save at once, refuse what they cannot hold
   await expect(places.locator('[data-setting="clusterOffers"]')).not.toContainText('Provisional default');
   await auto.getByRole('radio', { name: 'On' }).click();
   await expect.poll(() => puts(engine.calls).at(-1)).toMatchObject({ path: expect.stringMatching(/\/places\/policy\/autoFile$/), body: { value: true } });
-  await expect(page.getByRole('status')).toHaveText('Saved · applies to the next call');
+  await expect(page.locator('.settings-receipt')).toHaveText('Saved · applies to the next call');
 
   const cap = places.getByRole('spinbutton', { name: 'Top-level places codeaf may create' });
   await cap.fill('900');
   await cap.press('Enter');
-  await expect(page.getByRole('status')).toHaveText('Not saved · maxAiTopLevel is out of range');
+  await expect(page.locator('.settings-receipt')).toHaveText('Not saved · maxAiTopLevel is out of range');
   // A refused number is put back, so the field never shows what was not saved.
   await expect(cap).toHaveValue('6');
   await cap.fill('4');
