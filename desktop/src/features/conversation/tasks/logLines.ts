@@ -55,13 +55,13 @@ export const refusedCount = (lines: readonly LogLine[]): number => lines.filter(
 
 const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? '' : 's'}`;
 
-/** "Ran 14 commands · 1 refused" once finished; "Working · 14 commands" while it runs. Empty with nothing to show. */
-export function logSummary(lines: readonly LogLine[], live: LogLine | undefined, ended: boolean): string {
+/** "Work log · 7 commands · 1 refused". The live command counts. A refusal is named only when one happened. Empty with nothing to show. */
+export function logSummary(lines: readonly LogLine[], live: LogLine | undefined): string {
   const count = lines.length + (live ? 1 : 0);
   if (count === 0) return '';
   const refused = refusedCount(lines);
   const tail = refused ? ` · ${refused} refused` : '';
-  return (ended ? `Ran ${plural(count, 'command')}` : `Working · ${plural(count, 'command')}`) + tail;
+  return `Work log · ${plural(count, 'command')}${tail}`;
 }
 
 function authorWord(author?: string): string {

@@ -66,6 +66,10 @@ export function ContextMenu({ children, items, label, onOpenChange, wide = false
    event.preventDefault();
    const bounds = event.currentTarget.getBoundingClientRect();
    event.currentTarget.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: bounds.left + bounds.width / 2, clientY: bounds.bottom }));
+   // A synthetic contextmenu opens the menu without moving focus, so the first item would not take the next key.
+   requestAnimationFrame(() => {
+    document.querySelector<HTMLElement>('.app-menu-context[data-state="open"] [role^="menuitem"]:not([data-disabled])')?.focus();
+   });
   }}>{children}</Context.Trigger>
   <Context.Portal container={layer.modal}><Context.Content onFocusCapture={focusFirstItem} aria-label={label} className={`app-menu app-menu-context${wide ? ' app-menu-wide' : ''}`} collisionPadding={design.overlay.collisionPadding}>
    <MenuItems items={items} type="context" container={layer.modal}/>
