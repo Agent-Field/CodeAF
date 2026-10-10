@@ -1,13 +1,15 @@
 import type { ButtonHTMLAttributes, Ref } from 'react';
 import { Icon, type IconName, type IconSize } from './Icon';
 import { useTooltip } from './Tooltip';
+import './button-size.css';
 
 /** The designer's control set. Primary is the one action per surface; the safe choice is quiet.
  * Raised sits on a surface with sh-1; ghost is the bare, row-like default; danger is soft. */
 export type ButtonVariant = 'primary' | 'raised' | 'quiet' | 'ghost' | 'danger';
-type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { ref?: Ref<HTMLButtonElement>; variant?: ButtonVariant; loading?: boolean };
-export function Button({ variant = 'ghost', loading = false, disabled, className = '', type = 'button', ...props }: ButtonProps) {
- return <button {...props} type={type} className={`button button-${variant} ${className}`} disabled={disabled || loading} aria-busy={loading || undefined}/>;
+export type ButtonSize = 'control' | 'tray';
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { ref?: Ref<HTMLButtonElement>; variant?: ButtonVariant; size?: ButtonSize; loading?: boolean };
+export function Button({ variant = 'ghost', size = 'control', loading = false, disabled, className = '', type = 'button', ...props }: ButtonProps) {
+ return <button {...props} type={type} data-size={size} className={`button button-${variant} ${className}`} disabled={disabled || loading} aria-busy={loading || undefined}/>;
 }
 
 /** control: 28px toolbar button. row: 24px action inside a hovered row. message: 26px message action. */
