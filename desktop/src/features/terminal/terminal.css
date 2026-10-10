@@ -37,3 +37,9 @@ html:not([data-input="pointer"]) .terminal-ask-field:has(.terminal-ask-input:foc
 /* The finished-job specimen keeps one icon column even on the close and remove rows. */
 .terminal-menu { min-width: var(--terminal-menu-width); }
 .terminal-menu .menu-item:not(:has(> .app-icon))::before { content: ''; width: var(--icon-sm); flex: none; }
+
+/* The title yields space to state words and actions when the pane is narrow. */
+@media (max-width: 600px) {
+  .terminal-meta { display: none; }
+  .terminal-ask-field { max-width: none; }
+}
