@@ -1,12 +1,15 @@
 import { useState, type DragEvent, type MouseEvent, type ReactNode } from 'react';
 import { Button, ContextMenu, NavigationItem, ThemeSelect, type IconName, type MenuEntry } from '../../components/ui';
-import { choosableTints, tintLabel, type TintName } from '../places/components/PlaceSwatch';
+import type { TintName } from '../places/components/PlaceSwatch';
 import type { PlaceRowModel } from '../places/shell/contracts';
-import { chatDragType, placeDragType, readDrag, writeDrag } from '../places/place-actions';
+import { chatDragType, placeDragType, writeDrag } from '../places/place-actions';
+import { readPlaceDrag } from '../places/dnd/placeDnd';
 import type { RailSections } from '../places/shell/selectors';
 import { RailToggle } from './RailToggle';
 import { NowRow } from './NowRow';
 import { RailRow } from '../places/rail/RailRow';
+import { railMenu } from '../places/menus/railMenu';
+import { useRailNavigation } from '../places/rail/useRailNavigation';
 import './rail.css';
 import './place-rail.css';
 
@@ -72,28 +75,24 @@ function Section({ label, action, children }: { label: string; action?: ReactNod
 export function PlaceRail(props: PlaceRailProps) {
   const { inert, peeking, onToggle, now, sections, current, emptyHint, notice, allPlaces, actions, tabCount, slotShortcut, closeShortcut, newWindowShortcut, appItems } = props;
   const [over, setOver] = useState<string>();
+  const [dragging, setDragging] = useState<string>();
+  const [dropKind, setDropKind] = useState<'place' | 'chat'>();
+  const navigation = useRailNavigation(`${current}:${now.active}:${allPlaces?.active}:${sections?.pinned.map(p => p.id)}:${sections?.open.map(p => p.id)}`);
   const pinnedIds = sections?.pinned.map(place => place.id) ?? [];
   const slotOf = (id: string) => { const order = [...pinnedIds, ...(sections?.open.map(place => place.id) ?? [])]; const at = order.indexOf(id); return at >= 0 && at < 9 ? at + 1 : undefined; };
 
+  const indexOfPinned = (id: string) => pinnedIds.indexOf(id);
+
   function menu(place: PlaceRowModel, section: 'pinned' | 'open'): MenuEntry[] {
-    const groups: MenuEntry[][] = [[], [], [], []];
-    groups[0].push({ id: 'go', label: 'Go to', shortcut: '↵', onSelect: () => actions.go(place.id) });
-    if (actions.quickLook) groups[0].push({ id: 'quick-look', label: 'Quick Look', onSelect: () => actions.quickLook?.(place.id) });
-    if (actions.newWindow) groups[0].push({ id: 'new-window', label: 'Open in new window', shortcut: newWindowShortcut, onSelect: () => actions.newWindow?.(place.id) });
-    if (section === 'pinned' && actions.unpin) {
-      groups[1].push({ id: 'unpin', label: 'Unpin', onSelect: () => actions.unpin?.(place.id) });
-      const at = pinnedIds.indexOf(place.id);
-      // Keyboard reordering, the same thing a drag within Pinned does.
-      if (actions.pin && at > 0) groups[1].push({ id: 'up', label: 'Move up', onSelect: () => actions.pin?.(place.id, at - 1) });
-      if (actions.pin && at < pinnedIds.length - 1) groups[1].push({ id: 'down', label: 'Move down', onSelect: () => actions.pin?.(place.id, at + 1) });
-    } else if (actions.pin) groups[1].push({ id: 'pin', label: 'Pin', onSelect: () => actions.pin?.(place.id) });
-    if (actions.rename) groups[1].push({ id: 'rename', label: 'Rename…', onSelect: () => actions.rename?.(place.id) });
-    if (actions.setTint) groups[1].push({ kind: 'submenu', id: 'tint', label: 'Tint', items: choosableTints.map(tint => ({ id: `tint-${tint}`, label: tintLabel[tint], checked: tint === place.tint, onSelect: () => actions.setTint?.(place.id, tint) })) });
-    groups[2].push({ id: 'close', label: 'Close', shortcut: place.id === current ? closeShortcut : undefined, onSelect: () => actions.close(place.id) });
-    groups[2].push({ id: 'close-others', label: 'Close all others', disabled: !(sections?.open.some(other => other.id !== place.id)), onSelect: () => actions.closeOthers(place.id) });
-    const entries: MenuEntry[] = [];
-    groups.filter(group => group.length).forEach((group, index) => { if (index) entries.push({ kind: 'separator', id: `sep-${index}` }); entries.push(...group); });
-    return entries;
+    return railMenu({ ...place, pinned: section === 'pinned' }, {
+      goTo: actions.go, quickLook: actions.quickLook, newWindow: actions.newWindow, newWindowShortcut,
+      pin: actions.pin, unpin: actions.unpin, startRename: actions.rename, setTint: actions.setTint,
+      close: actions.close, closeOthers: actions.closeOthers,
+      closeShortcut: place.id === current ? closeShortcut : undefined,
+      closeOthersDisabled: !sections?.open.some(other => other.id !== place.id),
+      moveUp: actions.pin && indexOfPinned(place.id) > 0 ? id => actions.pin?.(id, indexOfPinned(id) - 1) : undefined,
+      moveDown: actions.pin && indexOfPinned(place.id) < pinnedIds.length - 1 ? id => actions.pin?.(id, indexOfPinned(id) + 1) : undefined,
+    });
   }
 
   // A place dragged within or into Pinned is pinned at that slot; one dragged into Open is unpinned. A chat dropped on a row is filed there.
@@ -104,18 +103,23 @@ export function PlaceRail(props: PlaceRailProps) {
       const chat = types.includes(chatDragType) && !!target.placeId && !!actions.fileChats;
       if (!place && !chat) return;
       event.preventDefault();
+      event.stopPropagation();
       event.dataTransfer.dropEffect = chat ? 'copy' : 'move';
+      setDropKind(chat ? 'chat' : 'place');
       setOver(`${target.section}:${target.index}`);
     },
     onDragLeave: () => setOver(undefined),
     onDrop: (event: DragEvent) => {
       setOver(undefined);
-      const payload = readDrag(event);
-      if (!payload) return;
+      const payload = readPlaceDrag({ types: [...event.dataTransfer.types], getData: type => event.dataTransfer.getData(type) });
+      if (!payload || (payload.kind !== 'place' && payload.kind !== 'chat')) return;
       event.preventDefault();
+      // A row's drop must not bubble into the section's end slot and perform the same write twice.
+      event.stopPropagation();
+      setDragging(undefined);
       if (payload.kind === 'chat') { if (target.placeId) actions.fileChats?.(payload.ids, target.placeId); return; }
-      for (const id of payload.ids) {
-        if (target.section === 'pinned') actions.pin?.(id, target.index);
+      for (const [offset, id] of payload.ids.entries()) {
+        if (target.section === 'pinned') actions.pin?.(id, target.index + offset);
         else if (pinnedIds.includes(id)) actions.unpin?.(id);
       }
     },
@@ -127,9 +131,26 @@ export function PlaceRail(props: PlaceRailProps) {
       <RailRow name={place.name} parentName={place.parentName} tint={place.tint} active={place.id === current}
         status={place.status} statusLabel={place.statusLabel} closedButBusy={place.closedButBusy}
         close={section === 'open' ? { onClose: () => actions.close(place.id), tabs: tabCount?.(place.id), shortcut: place.id === current ? closeShortcut : undefined } : undefined}
-        containerProps={{ 'data-drop': over === `${section}:${index}` || undefined,
-          draggable: !!actions.pin, onDragStart: event => writeDrag(event, { kind: 'place', ids: [place.id] }),
+        containerProps={{ 'data-drop': dropKind === 'chat' && over === `${section}:${index}` || undefined,
+          className: `${dropKind === 'place' && over === `${section}:${index}` ? 'rail-insertion' : ''} ${dragging === place.id ? 'rail-dragging' : ''}`,
+          draggable: !!actions.pin, onDragStart: event => {
+            writeDrag(event, { kind: 'place', ids: [place.id] });
+            // The browser captures the ghost before React renders the dragged state.
+            event.currentTarget.classList.add('rail-dragging');
+            const box = event.currentTarget.getBoundingClientRect();
+            event.dataTransfer.setDragImage(event.currentTarget, event.clientX - box.left, event.clientY - box.top);
+            setDragging(place.id);
+          },
+          onDragEnd: () => { setDragging(undefined); setOver(undefined); },
           ...dropProps({ section, index, placeId: place.id }) }}
+        onKeyDown={event => {
+          if (event.key === ' ' && !event.altKey && !event.metaKey && !event.ctrlKey && actions.quickLook) { event.preventDefault(); actions.quickLook(place.id); }
+          if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown') && section === 'pinned' && actions.pin) {
+            event.preventDefault();
+            const next = index + (event.key === 'ArrowUp' ? -1 : 1);
+            if (next >= 0 && next < pinnedIds.length) actions.pin(place.id, next);
+          }
+        }}
         aria-keyshortcuts={slot ? slotShortcut(slot).replace('⌃', 'Control+').replace('Alt ', 'Alt+') : undefined}
         onClick={event => (primaryClick(event) && actions.newWindow ? actions.newWindow(place.id) : actions.go(place.id))}
         onAuxClick={event => { if (event.button === 1 && actions.newWindow) { event.preventDefault(); actions.newWindow(place.id); } }}/>
@@ -138,7 +159,7 @@ export function PlaceRail(props: PlaceRailProps) {
 
   const pinned = sections?.pinned ?? [];
   const open = sections?.open ?? [];
-  return <aside className="sidebar rail place-rail" aria-label="Main navigation" inert={inert}>
+  return <aside {...navigation} className="sidebar rail place-rail" aria-label="Main navigation" inert={inert}>
     <div className="rail-head" data-tauri-drag-region>
       <RailToggle placement="rail" collapsed={peeking} onClick={onToggle}/>
     </div>
@@ -146,15 +167,16 @@ export function PlaceRail(props: PlaceRailProps) {
       <div className="rail-group">
         <NowRow now={now} primaryClick={primaryClick}/>
       </div>
-      {pinned.length > 0 && <Section label="Pinned"><div className="rail-rows" {...dropProps({ section: 'pinned', index: pinned.length })}>{pinned.map((place, index) => row(place, 'pinned', index))}</div></Section>}
-      {open.length > 0 && <Section label="Open" action={<Button variant="ghost" className="rail-section-action" onClick={actions.closeAll}>Close all</Button>}>
-        <div className="rail-rows" {...dropProps({ section: 'open', index: open.length })}>{open.map((place, index) => row(place, 'open', index))}</div>
+      {(pinned.length > 0 || dragging) && <Section label="Pinned"><div className={`rail-rows rail-drop-section ${dropKind === 'place' && over === `pinned:${pinned.length}` ? 'rail-insertion-end' : ''}`} {...dropProps({ section: 'pinned', index: pinned.length })}>{pinned.map((place, index) => row(place, 'pinned', index))}</div></Section>}
+      {(open.length > 0 || dragging) && <Section label="Open" action={open.length > 0 ? <Button variant="ghost" className="rail-section-action" onClick={actions.closeAll}>Close all</Button> : undefined}>
+        <div className={`rail-rows rail-drop-section ${dropKind === 'place' && over === `open:${open.length}` ? 'rail-insertion-end' : ''}`} {...dropProps({ section: 'open', index: open.length })}>{open.map((place, index) => row(place, 'open', index))}</div>
       </Section>}
       {emptyHint && !pinned.length && !open.length && <p className="rail-hint">Places you open show here. Pin the ones you live in.</p>}
       {notice && <p className="rail-hint" role="status">{notice.text}{notice.onRetry && <> · <Button variant="ghost" className="rail-section-action" onClick={notice.onRetry}>Retry</Button></>}</p>}
     </nav>
     <div className="rail-foot">
       {allPlaces && <NavigationItem icon="allPlaces" active={allPlaces.active} onClick={event => (primaryClick(event) && allPlaces.onOpenInNewTab ? allPlaces.onOpenInNewTab() : allPlaces.onOpen())}
+        onAuxClick={event => { if (event.button === 1 && allPlaces.onOpenInNewTab) { event.preventDefault(); allPlaces.onOpenInNewTab(); } }}
         trail={<span className="rail-meta">{allPlaces.shortcut}</span>}>All places</NavigationItem>}
       {appItems.length > 0 && <nav className="rail-nav rail-app" aria-label="App">{appItems.map(item => <NavigationItem key={item.label} icon={item.icon} active={item.active} data-hover={item.hover || undefined} onClick={item.onSelect}>{item.label}</NavigationItem>)}</nav>}
       {appItems.length > 0 && <div className="sidebar-bottom"><ThemeSelect/></div>}
