@@ -17,9 +17,9 @@ const typed = buildSections({
   closed: [{ ...tab('c', 'Fix it in the lexer'), closedAt: specimenNow - 3_600_000 }],
   now: specimenNow,
   files: [{ path: 'internal/parse/testdata/fixtures.go', name: 'fixtures.go', dir: 'internal/parse/testdata' }],
-  terminal: true, terminalShortcut: '⌃`', fileShortcut: '⌘O', history, seeAllShortcut: '⌘↵',
+  terminal: true, web: true, terminalShortcut: '⌃`', fileShortcut: '⌘O', history, seeAllShortcut: '⌘↵',
 });
-const empty = buildSections({ query: '', tabs: [], closed: [], files: [], terminal: true, terminalShortcut: '⌃`', fileShortcut: '⌘O' });
+const empty = buildSections({ query: '', tabs: [], closed: [], files: [], terminal: true, web: true, terminalShortcut: '⌃`', fileShortcut: '⌘O' });
 const caption = 'Type a question, a file, a URL, or a command.';
 
 /** The new-tab field, typed and empty (design 3f, Components "Command field"). Specimen only: none of this is live data. */

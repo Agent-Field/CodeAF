@@ -10,6 +10,7 @@ import { FirstTurnContext, NewConversationPlaceContext } from '../../../conversa
 import { panesOf, tabHolding, visibleTabs } from '../../model';
 import { historyKind } from '../history';
 import { terminalKind, newTerminalShortcut } from '../terminal';
+import { webKind } from '../web';
 import type { PaneRenderProps } from '../slots';
 import { useNewTabHost, type NewTabHost } from './api';
 import { siteOf } from '../../../web/address';
@@ -70,7 +71,7 @@ function NewTabField({ host, paneId, focused, draft, onDraft }: { host: NewTabHo
   // History answers only when it is backed and the workspace gave the field its host; otherwise the section is absent, not broken.
   const asking = historyKind.backed && !!history;
   const found = useHistoryMatches(query, asking);
-  const sections = useMemo(() => buildSections({ query, tabs: others, closed: state.closed, files, terminal: terminalKind.backed, terminalShortcut, fileShortcut, history: found, seeAllShortcut: seeAllHistoryShortcut }), [query, others, state.closed, files, found]);
+  const sections = useMemo(() => buildSections({ query, tabs: others, closed: state.closed, files, terminal: terminalKind.backed, web: webKind.backed, terminalShortcut, fileShortcut, history: found, seeAllShortcut: seeAllHistoryShortcut }), [query, others, state.closed, files, found]);
   const rows = flatRows(sections);
   const active = rows[Math.min(index, rows.length - 1)];
 
