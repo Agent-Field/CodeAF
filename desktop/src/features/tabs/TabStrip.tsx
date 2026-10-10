@@ -140,7 +140,9 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
     const tolerance = parseFloat(design.foundation['border-width']);
     const measure = () => {
       const bounds = viewport.getBoundingClientRect();
-      const end = viewport.scrollWidth - viewport.clientWidth - viewport.scrollLeft > tolerance;
+      // The mask is on whenever the strip overflows, not only while tabs remain past the right edge: revealing the
+      // newest tab scrolls to the end, and the strip must still read as one that scrolls under a mask.
+      const end = viewport.scrollWidth - viewport.clientWidth > tolerance;
       // A tab counts as hidden when any part of it lies outside the strip's visible box.
       const hidden = Array.from(viewport.querySelectorAll<HTMLElement>('[role="tab"]')).filter(el => {
         if (el.closest('[inert]')) return false;
