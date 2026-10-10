@@ -1,0 +1,16 @@
+/* The outer surface owns the halo so the keyboard ring follows the full search field. */
+.search-field { display: flex; align-items: center; gap: var(--search-field-gap); box-sizing: border-box; height: var(--search-field-height); min-width: 0; padding: 0 var(--search-field-pad); border-radius: var(--search-field-radius); background: var(--surface); box-shadow: var(--sh-1); color: var(--ink-3); transition: background-color var(--dur-fast) var(--ease); }
+.search-field:hover { background: var(--field); }
+.search-field:active { background: var(--field-2); transition-duration: var(--dur-press); }
+.search-field > .app-icon { width: var(--search-field-icon); height: var(--search-field-icon); }
+.search-field > input { flex: 1; width: 100%; min-width: 0; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink); font-family: var(--sans); font-size: var(--search-field-size); font-weight: var(--font-weight-regular); appearance: none; }
+.search-field > input::placeholder { color: var(--ink-3); opacity: var(--opacity-opaque); }
+/* Native search decorations would duplicate the shared icon and change the measured input geometry. */
+.search-field > input::-webkit-search-decoration,
+.search-field > input::-webkit-search-cancel-button { appearance: none; }
+.search-field > input:focus-visible { outline: none; box-shadow: none; }
+html:not([data-input="pointer"]) .search-field:has(> input:focus-visible) { outline: var(--focus-ring-width) solid transparent; box-shadow: var(--sh-1), 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 calc(var(--focus-ring-width) + var(--focus-halo-width)) var(--accent-soft); }
+.search-field-hint { flex: none; margin-left: auto; }
+.search-field-hint > .keyboard-shortcut[data-variant="inline"] { font-size: var(--search-field-hint-size); }
+@media (max-width: 600px) { .search-field-hint { display: none; } }
+@media (prefers-reduced-motion: reduce) { .search-field { transition: none; } }
