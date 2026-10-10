@@ -22,12 +22,14 @@
 // stood by accident" and gets an owned session in a private work directory
 // (cmd/codeaf's chatv3_layout.go), which is not the shape any of these
 // scenarios are about, so the workspace is always a repository.
-// Every run also gets scheduler stand-ins and a separate login folder. The
-// machine's own background timer is never this suite's timer.
+// AND EVERY RUN STANDS BEHIND THE HOST GUARD (hostguard_test.go): a login
+// folder of its own, stand-ins for the machine's schedulers and notifiers, and
+// the automations clock off unless the scenario is about it. Every start of the
+// product takes the old timers off the login it runs as, and every window
+// starts a clock, so none of that may ever be the developer's.
 package e2e
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -361,9 +363,11 @@ func startFresh(t *testing.T, name, home, ws string, cols, rows int, args ...str
 // front of the assignments, then the state root and the terminal.
 func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows int, args ...string) *rig {
 	t.Helper()
-	// THE PRODUCT WRITES THE TIMER DEFINITION UNDER HOME BEFORE IT ASKS
-	// SYSTEMCTL OR LAUNCHCTL TO LOAD IT. Both must belong to this rig, or
-	// #1631 replaces the developer's timer with a deleted checkout.
+	// EVERY START TAKES THE OLD TIMERS OFF THE LOGIN IT RUNS AS, AND EVERY
+	// WINDOW STARTS A CLOCK. The login, the schedulers it would ask and the
+	// clock's switch all belong to this rig, or a test run boots the
+	// developer's own timers out of launchd or systemd (#1631 is where the
+	// guard began, when a launch could still install one).
 	g := guardHost(t, home)
 	// EVERY RUN ON THIS HOST NAMES ITS OWN RIG. Several checkouts run this
 	// suite at once on one machine, and with a fixed session name each start()
@@ -493,18 +497,6 @@ func (r *rig) lit(text string) {
 	}
 	time.Sleep(120 * time.Millisecond)
 }
-
-// ctrlEnter is `ask here` without leaving the box.
-//
-// TWO SPELLINGS, BOTH SENT AS THE BYTES A TERMINAL SENDS. home.go binds
-// "ctrl+enter" and "alt+enter" to one call and says why: ctrl+enter only
-// reaches the app on a terminal that can tell it from a plain enter. Bubble Tea
-// v2 asks for the kitty protocol and modifyOtherKeys unconditionally, so
-// CSI 13;5u decodes as ctrl+enter — this suite sends that one, and alt+enter
-// (ESC CR) is the fallback every terminal delivers.
-func (r *rig) ctrlEnter() { r.lit("\x1b[13;5u") }
-
-func (r *rig) altEnter() { r.lit("\x1b\r") }
 
 // mouseTo moves the pointer to a 1-based cell with an SGR motion report, which
 // is what the all-motion mode the app turns on in View() asks for.
@@ -684,15 +676,12 @@ func (r *rig) dump() {
 		}
 		fmt.Fprintf(&b, "  %s (%d bytes)\n", rel, size)
 		switch filepath.Base(path) {
-		case "transcript.jsonl", "inbox.jsonl", "log", "wake.log", "usage.jsonl", "calls.jsonl":
+		// clock.log is the automations clock's own account of what it could
+		// not do (internal/automation's LogName), which is the first thing a
+		// failed clock scenario needs read.
+		case "transcript.jsonl", "log", "clock.log", "usage.jsonl", "calls.jsonl":
 			if raw, err := os.ReadFile(path); err == nil && len(raw) > 0 {
 				fmt.Fprintf(&b, "%s\n", clip(string(raw), 4000))
-			}
-		default:
-			if strings.HasSuffix(path, ".json") && strings.Contains(path, "standing") {
-				if raw, err := os.ReadFile(path); err == nil {
-					fmt.Fprintf(&b, "%s\n", clip(string(raw), 2000))
-				}
 			}
 		}
 		return nil
@@ -705,18 +694,6 @@ func clip(s string, n int) string {
 		return s
 	}
 	return s[:n] + "\n… clipped"
-}
-
-// tick runs one pass of the ambient side from outside every window, exactly as
-// the launchd agent and the systemd timer do.
-func tick(t *testing.T, home string) string {
-	t.Helper()
-	command := guardedCommand(t, context.Background(), home, append(os.Environ(), "CODEAF_HOME="+home), binary(t), "tick")
-	out, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("codeaf tick: %v\n%s", err, out)
-	}
-	return string(out)
 }
 
 // ── seeding ─────────────────────────────────────────────────────────────────
@@ -861,66 +838,6 @@ func writeJSON(t *testing.T, path string, value any) {
 	}
 }
 
-// seedNews puts notes in one conversation's inbox — what a firing left when no
-// window was open. It is the [standing.Note] shape, written the way
-// standing.Deliver writes it.
-func seedNews(t *testing.T, sessionDir string, texts ...string) {
-	t.Helper()
-	var b strings.Builder
-	for i, text := range texts {
-		note := map[string]any{
-			"at":    time.Now().Add(-time.Duration(i+1) * time.Minute).Format(time.RFC3339Nano),
-			"item":  fmt.Sprintf("%016x", 0x2000000000000000+i),
-			"words": fmt.Sprintf("watch number %d", i+1),
-			"kind":  "said",
-			"text":  text,
-		}
-		raw, err := json.Marshal(note)
-		if err != nil {
-			t.Fatalf("seed news: %v", err)
-		}
-		b.Write(raw)
-		b.WriteString("\n")
-	}
-	if err := os.WriteFile(filepath.Join(sessionDir, "inbox.jsonl"), []byte(b.String()), 0o644); err != nil {
-		t.Fatalf("seed news: %v", err)
-	}
-}
-
-// projectInbox is what the project's own inbox holds — road 4 of a firing's
-// delivery, and the only address an `ask here` errand has when no window is up.
-func projectInbox(t *testing.T, home, workspace string) string {
-	t.Helper()
-	root := filepath.Join(home, "v3", "standing")
-	var found string
-	_ = filepath.WalkDir(filepath.Join(root, "inbox"), func(path string, entry os.DirEntry, err error) error {
-		if err != nil || entry.IsDir() || filepath.Base(path) != "inbox.jsonl" {
-			return nil
-		}
-		found = path
-		return nil
-	})
-	if found == "" {
-		// The layout is standing.ProjectInboxDir's; walk the whole standing root
-		// rather than repeating its encoding here.
-		_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
-			if err != nil || entry.IsDir() || filepath.Base(path) != "inbox.jsonl" {
-				return nil
-			}
-			found = path
-			return nil
-		})
-	}
-	if found == "" {
-		return ""
-	}
-	raw, err := os.ReadFile(found)
-	if err != nil {
-		return ""
-	}
-	return string(raw)
-}
-
 // sessionTranscripts is every conversation this run wrote, so a test can prove
 // what reached the journal when the screen is the thing in question.
 func sessionTranscripts(t *testing.T, home string) map[string]string {
@@ -936,138 +853,4 @@ func sessionTranscripts(t *testing.T, home string) map[string]string {
 		return nil
 	})
 	return out
-}
-
-// ── what stood, as the store wrote it ───────────────────────────────────────
-
-// standingRecord is the part of one standing item's file this suite reads.
-//
-// THE MODEL OWNS THIS VOCABULARY AND THE TEST MAY NOT ASSUME IT. What a reminder
-// is CALLED and what it SAYS when it fires are written by the model on the day —
-// one run named the same order `drink water reminder` and fired `💧 Time to
-// drink water!` — so a test that waited for the person's own sentence would be
-// waiting for words nothing promised. The record on disk is the one place both
-// are stated, so the needles come off it, exactly as every needle about the
-// SURFACE comes off internal/tui3's own sources (tuiwords_test.go).
-type standingRecord struct {
-	ID            string `json:"id"`
-	Words         string `json:"words"`
-	Status        string `json:"status"`
-	RetiredWhy    string `json:"retiredWhy"`
-	LastCheckLine string `json:"lastCheckLine"`
-	When          struct {
-		Kind string    `json:"kind"`
-		At   time.Time `json:"at"`
-	} `json:"when"`
-	Does struct {
-		Kind string `json:"kind"`
-		Say  string `json:"say"`
-	} `json:"does"`
-	Rails struct {
-		Expires time.Time `json:"expires"`
-	} `json:"rails"`
-	Brief struct {
-		Title string `json:"title"`
-	} `json:"brief"`
-}
-
-// standingRecords is every item this run stood, read from the store's own
-// directory. The layout is internal/standing's: one `<id>.json` beside a folder
-// of the same name.
-func standingRecords(t *testing.T, home string) []standingRecord {
-	t.Helper()
-	dir := filepath.Join(home, "v3", "standing")
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
-	var out []standingRecord
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
-			continue
-		}
-		raw, err := os.ReadFile(filepath.Join(dir, entry.Name()))
-		if err != nil {
-			continue
-		}
-		var record standingRecord
-		// A file in this directory that is not an item — the watch offer is one —
-		// simply has none of these fields, and is told apart by having no id.
-		if err := json.Unmarshal(raw, &record); err != nil || strings.TrimSpace(record.ID) == "" {
-			continue
-		}
-		out = append(out, record)
-	}
-	return out
-}
-
-// standingRecordOtherThan is the one record whose id is not id, when exactly one
-// is; two or more is not an answer, so it reports none.
-func standingRecordOtherThan(t *testing.T, home, id string) (standingRecord, bool) {
-	t.Helper()
-	var others []standingRecord
-	for _, record := range standingRecords(t, home) {
-		if record.ID != id {
-			others = append(others, record)
-		}
-	}
-	if len(others) != 1 {
-		return standingRecord{}, false
-	}
-	return others[0], true
-}
-
-// standingRecordAbout is the item whose words hold a given word, which is how a
-// test names the one it asked for without knowing what the model called it.
-func standingRecordAbout(t *testing.T, home, word string) (standingRecord, bool) {
-	t.Helper()
-	for _, record := range standingRecords(t, home) {
-		// The model can shorten the request in Words while keeping its subject
-		// in the title or the sentence the reminder will say.
-		if strings.Contains(strings.ToLower(record.Words), strings.ToLower(word)) ||
-			strings.Contains(strings.ToLower(record.Brief.Title), strings.ToLower(word)) ||
-			strings.Contains(strings.ToLower(record.Does.Say), strings.ToLower(word)) {
-			return record, true
-		}
-	}
-	return standingRecord{}, false
-}
-
-// standingRecordByID is that item read again, after the pass has had its say
-// about it.
-func standingRecordByID(t *testing.T, home, id string) standingRecord {
-	t.Helper()
-	for _, record := range standingRecords(t, home) {
-		if record.ID == id {
-			return record
-		}
-	}
-	return standingRecord{}
-}
-
-// standingRecordsDump is every record in one paragraph, for a failure that has
-// to say what the store actually holds.
-func standingRecordsDump(t *testing.T, home string) string {
-	t.Helper()
-	var b strings.Builder
-	for _, record := range standingRecords(t, home) {
-		fmt.Fprintf(&b, "  %s %q — %s/%s · due %s · expires %s · says %q · %s\n",
-			record.ID, record.Words, record.Status, record.RetiredWhy,
-			record.When.At.Format(time.RFC3339), record.Rails.Expires.Format(time.RFC3339),
-			record.Does.Say, record.LastCheckLine)
-	}
-	if b.Len() == 0 {
-		return "  (the store holds no items)"
-	}
-	return b.String()
-}
-
-// firstWords is the first n words of a sentence, which is the needle a screen
-// can be searched for when the whole sentence would be cut by a column edge.
-func firstWords(said string, n int) string {
-	fields := strings.Fields(said)
-	if len(fields) > n {
-		fields = fields[:n]
-	}
-	return strings.Join(fields, " ")
 }

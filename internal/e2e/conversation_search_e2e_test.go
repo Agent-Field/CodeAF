@@ -68,7 +68,7 @@ func TestConversationSearchLive(t *testing.T) {
 			if agent.Model() != e2eModel {
 				t.Fatalf("wrong model: %s", agent.Model())
 			}
-			out := w.say(agent, sc.ask, answerNo)
+			out := w.say(agent, sc.ask)
 			searches := 0
 			queries := 0
 			evidence := ""

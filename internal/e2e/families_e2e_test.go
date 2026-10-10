@@ -140,9 +140,9 @@ var textRoles = func() []roles.Role {
 func familyConfig(w *world) func(*session.Config) {
 	profile := w.settings.ProfileDir
 	return func(cfg *session.Config) {
-		// THE DIVISION ROAD ITSELF. Nil here is the whole feature off — no
+		// THE DIVISION ROAD ITSELF. Off here is the whole feature off — no
 		// divide_work on any worker's belt — so every scenario below depends on
-		// this line, exactly as the ambient lane depends on Standing.
+		// this line.
 		cfg.Divide = true
 		cfg.TaskModel = config.TaskModelAt(profile)
 		cfg.TaskParallel = config.TaskParallelAt(profile)
@@ -162,10 +162,10 @@ func familyConfig(w *world) func(*session.Config) {
 		// isolation or landing. Repair rounds go with it for the same reason.
 		cfg.TaskAudit = false
 		cfg.TaskRepairRounds = 0
-		// AND THE WORKERS MAY WRITE. The ambient lane's policy allows the
-		// reading tools only, which is right for a conversation that reads and
-		// remembers; a task worker writes files and runs git, and a node's own
-		// consent question reaches no drain loop out here.
+		// AND THE WORKERS MAY WRITE. A conversation's own policy ([world.policy])
+		// allows the reading tools only, which is right for a conversation that
+		// reads and remembers; a task worker writes files and runs git, and a
+		// node's own consent question reaches no drain loop out here.
 		policy, err := approval.Load(map[string]any{"default": "allow"})
 		if err != nil {
 			panic("approval.Load: " + err.Error())
@@ -527,16 +527,16 @@ func TestFamilies(t *testing.T) {
 	t.Setenv("CODEAF_SPLITGATE", "0")
 
 	t.Run("a three-section report on a folder ground", func(t *testing.T) {
-		threeSectionsOnAFolder(t, &world{t: t, home: w.home, settings: w.settings, store: w.store})
+		threeSectionsOnAFolder(t, &world{t: t, home: w.home, settings: w.settings})
 	})
 	t.Run("a two-part write-up on a repository ground", func(t *testing.T) {
-		twoPartsOnARepository(t, &world{t: t, home: w.home, settings: w.settings, store: w.store})
+		twoPartsOnARepository(t, &world{t: t, home: w.home, settings: w.settings})
 	})
 	t.Run("two parts that claim one file", func(t *testing.T) {
-		oneFileClaimedTwice(t, &world{t: t, home: w.home, settings: w.settings, store: w.store})
+		oneFileClaimedTwice(t, &world{t: t, home: w.home, settings: w.settings})
 	})
 	t.Run("an edit made in the folder while it ran", func(t *testing.T) {
-		anEditMadeWhileItRan(t, &world{t: t, home: w.home, settings: w.settings, store: w.store})
+		anEditMadeWhileItRan(t, &world{t: t, home: w.home, settings: w.settings})
 	})
 }
 

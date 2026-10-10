@@ -209,7 +209,7 @@ func runCustody(t *testing.T, w *world, attempt int) *custodyRun {
 	run.pieces = run.awaitHeldPieces()
 	t.Logf("ATTEMPT %d: %d pieces out under the conversation: %s", attempt, len(run.pieces), run.pieceLog())
 
-	w.say(agent, custodyAsk, answerNo)
+	w.say(agent, custodyAsk)
 
 	run.wall = time.Since(started)
 	run.rows = readCustodyRows(t, place.Tasks())
@@ -700,9 +700,10 @@ func custodyConfig(w *world) func(*session.Config) {
 		// SETTLED for the whole of the turn — which is the entire fact
 		// [Agent.piecesStillOut] reads — without a worktree, a worker or a call.
 		cfg.TaskMinFreeMB = custodyMemoryFloor
-		// AND THE TURN MAY WRITE. The ambient lane's policy allows the reading tools
-		// only, which is right for a conversation that reads and remembers; this one
-		// has to cross the write allowance to reach the road at all.
+		// AND THE TURN MAY WRITE. A conversation's own policy ([world.policy])
+		// allows the reading tools only, which is right for a conversation that
+		// reads and remembers; this one has to cross the write allowance to reach
+		// the road at all.
 		policy, err := approval.Load(map[string]any{"default": "allow"})
 		if err != nil {
 			panic("approval.Load: " + err.Error())

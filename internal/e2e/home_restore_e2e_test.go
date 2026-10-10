@@ -41,9 +41,9 @@ func TestHomeRestoredNavigationNoModel(t *testing.T) {
 			}
 			if width > 44 {
 				r.keys("Up")
-				r.waitFor(10*time.Second, "enter asks this here")
+				r.waitFor(10*time.Second, say(t, "homeAskHereHint"))
 				r.keys("Down")
-				r.waitFor(10*time.Second, "enter starts a new conversation")
+				r.waitFor(10*time.Second, say(t, "homeStartHint"))
 			}
 			t.Logf("restored choices at %d columns:\n%s", width, screen)
 
@@ -87,7 +87,7 @@ func TestHomeRestoredSubmissionDoorsWithStub(t *testing.T) {
 	r.lit("answer in the home pane")
 	r.waitFor(10*time.Second, say(t, "homeStartWord"))
 	r.keys("Up")
-	r.waitFor(10*time.Second, "enter asks this here")
+	r.waitFor(10*time.Second, say(t, "homeAskHereHint"))
 	r.keys("Enter")
 	pane := r.waitFor(20*time.Second, stopStubDone, say(t, "exchangeBack"))
 	t.Logf("ask here received the endpoint's answer in its own pane:\n%s", pane)
