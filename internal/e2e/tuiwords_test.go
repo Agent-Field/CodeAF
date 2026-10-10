@@ -206,48 +206,73 @@ var tuiWords = map[string]tuiWord{
 		why:    "the panel of folders, never empty; clicking a project selects the next message’s folder",
 	},
 	"homePanelRunning": {
-		screen: "sessions",
-		why: "the recent conversation section, newest first. It was " +
-			"`running` until 2026-09-17, and now shares its word with the bar's second tab, which it folds into",
+		screen: "activity",
+		why: "the recent conversation section, newest first, and the row a question raised in another window " +
+			"arrives on. It was `running` until 2026-09-17 and `sessions` after that, and it shares its word " +
+			"(tasksplace.go's sessionsWord) with the bar's fourth place, which its heading opens",
 	},
 	"switcherSinceLeft": {
 		screen: "since you left",
-		why:    "the panel over what happened while nobody was looking",
+		why: "the panel over what happened while nobody was looking — work that landed, files a conversation " +
+			"made, and every automation run that ended while the person was away",
 	},
 	"homePanelSpend": {
 		screen: "spend",
-		why:    "the day and the fortnight on home, and the third word of the four-place bar",
+		why:    "the day and the fortnight on home: a panel pinned to the rail whatever it holds",
 	},
 	"homePanelNext": {
-		screen: "standing",
-		why:    "every standing order this machine will act on — reminders, routines, watches, rules — soonest first",
+		screen: "automations",
+		why: "every automation this machine will run on the clock — reminders, scheduled work and watches — soonest " +
+			"first. It is the place's own name (place_automations.go's placeAutomationsWord: the tab, the heading " +
+			"and the command), so the suite also types it after a `/` to open the place. It was `standing` until " +
+			"automations replaced standing orders",
 	},
 	"homeRunningWhisper": {
 		screen: "your recent conversations appear here",
-		why: "what `sessions` says with nothing under it — the whisper law (DESIGN §4): an empty panel names " +
+		why: "what `activity` says with nothing under it — the whisper law (DESIGN §4): an empty panel names " +
 			"what arrives there and never announces that it is empty. It is short enough to stand on one line " +
 			"at a hundred and twenty cells, which is why it is the whisper the suite waits for",
 	},
 
+	// THE BAR DRAWS EVERY PLACE BY ITS WORD WITH THE FIRST LETTER RAISED
+	// (topnav.go's navLabel), so each row below names the word the source
+	// spells and the label the screen shows. The order is placeBarOrder's.
 	"barHomeWord": {
-		screen: "home",
-		why:    "the first of the six places on the wordmark row",
-	},
-	"barTeamsWord": {
-		screen: "teams",
-		why:    "the second place on the wordmark row",
+		screen: "Home",
+		source: "home",
+		why:    "the first of the seven places on the wordmark row",
 	},
 	"barChatsWord": {
-		screen: "chats",
-		why:    "the third place on the wordmark row",
+		screen: "Chats",
+		source: "chats",
+		why:    "the second place on the wordmark row",
+	},
+	"barTeamsWord": {
+		screen: "AI teams",
+		why: "the third place on the wordmark row. It is TWO WORDS ON ONE LABEL, which is why the suite reads the " +
+			"bar as labels in order and not as a row of fields",
 	},
 	"barSessionsWord": {
-		screen: "sessions",
-		why:    "the fourth place on the wordmark row, and the place the sessions heading opens",
+		screen: "Activity",
+		source: "activity",
+		why: "the fourth place on the wordmark row — the one home's `activity` heading opens. It was `sessions` " +
+			"until the place was named for what is in it",
+	},
+	"barMemoryWord": {
+		screen: "Memory",
+		source: "memory",
+		why:    "the fifth place on the wordmark row, which stands on the bar before the first memory is saved",
+	},
+	"barSpendWord": {
+		screen: "Spend",
+		source: "spend",
+		why:    "the sixth place on the wordmark row, and the place home's `spend` heading opens",
 	},
 	"barSettingsWord": {
-		screen: "settings",
-		why:    "the last of the six — standing, memory and search are off the bar and reached by command",
+		screen: "Settings",
+		source: "settings",
+		why: "the last of the seven — automations is off the bar and reached by `/automations`, by `alt+7` and by " +
+			"home's `automations` heading, and it joins the bar only while somebody stands in it",
 	},
 	"chatFootEffortWord": {
 		screen: "alt+e effort · alt+a approvals",
@@ -257,7 +282,8 @@ var tuiWords = map[string]tuiWord{
 	},
 	"chatWorkingFootWord": {
 		screen: "esc interrupt",
-		why:    "the conversation's working foot while a reminder's turn is ending, before the home gesture returns",
+		why: "the conversation's foot while a turn is in flight: the key that ends it, standing where the home " +
+			"gesture stands at rest. It is how a scenario knows there is a middle of a turn to interrupt",
 	},
 	"pulseWantWord": {
 		screen: " want you",
@@ -298,9 +324,20 @@ var tuiWords = map[string]tuiWord{
 		screen: "working",
 		why:    "the tail an errand's row wears while its turn is in flight",
 	},
-	"homeAskStoodTail": {
-		screen: "stood",
-		why:    "the tail an errand's row wears once something stands because of it",
+	"homeAskSavedTail": {
+		screen: "saved",
+		why: "the tail an errand's row wears once an automation it asked for was saved (homeexchange.go's " +
+			"homeAskSavedTail). It was `stood` while what an errand made was a standing order",
+	},
+	"homeAskHereHint": {
+		screen: "enter asks this here",
+		why: "the hint under the box while the cursor is on the `ask here` row — one ↑ off the action row — which " +
+			"is how a scenario knows the enter it is about to press asks rather than opens",
+	},
+	"homeStartHint": {
+		screen: "enter starts a new conversation",
+		why: "the same hint over the other action row, where the cursor rests while something is typed: the " +
+			"enter that opens a conversation for what is in the box",
 	},
 	// The three words of the live strip. They are GLIMPSED and never waited for —
 	// a spinner missed on a fast reply is a fast reply — but they are needles all
@@ -320,20 +357,20 @@ var tuiWords = map[string]tuiWord{
 		source: "running",
 		why:    "the pane while a call of this turn is executing",
 	},
-	"homeAskStoodWord": {
-		screen: "kept · this exchange is filed under it",
-		why:    "the pane saying the exchange is filed under what it made",
+	"homeAskSavedWord": {
+		screen: "saved · /automations lists it",
+		why: "the pane's own note once an automation the exchange asked for is saved, and where to find it. It was " +
+			"`kept · this exchange is filed under it` while what an errand made was a standing order",
 	},
 	"exchangeAnswerHint": {
-		screen: "Don't remind me",
-		source: "Don't remind me",
+		screen: "Don't save",
 		pkg:    "internal/session",
-		why: "the answers a ONE-OFF REMINDER's card offers, spelled in full under the box at every width. " +
-			"There are two rows and the key that asks for the box: a reminder has no `3 just once` to give, " +
-			"and since #189 the line is built from the answers the question carries rather than typed out, so " +
-			"it cannot name one. Since the standing card moved onto the question block (#780) the correction " +
-			"is `o other` — the key table's own word — rather than a `2` row. The source is the first " +
-			"answer's own constant, because the sentence is no longer a literal anywhere",
+		why: "the answers an AUTOMATION card offers, named under the box while the pane holds the keyboard. Since " +
+			"#189 the line is built from the answers the question carries rather than typed out " +
+			"(homeexchange.go's exchangeAnswerWords), so a reminder's card — `1 Save · 0 Don't save`, with no " +
+			"`2 Save and run it now` because a reminder has nothing to try — is offered exactly those. The source " +
+			"is the decline's own label (internal/session's AutomationOptions), because the sentence is no longer " +
+			"a literal anywhere. It was `Don't remind me` while the card was a standing order's",
 	},
 	"exchangeFollowUp": {
 		screen: "enter sends a follow-up",
@@ -347,38 +384,59 @@ var tuiWords = map[string]tuiWord{
 		screen: "enter or tab answer this ",
 		why:    "the hint while the cursor stands on an errand row that is asking something",
 	},
-	"standRemindYes": {
-		screen: "Remind me",
-		pkg:    "internal/session",
-		why:    "the yes on a one-off reminder, which is what the errand in this suite asks for",
-	},
-	"standSetWord": {
-		screen: "set up",
-		why:    "the other half — what a settled card keeps as its verdict",
-	},
-
-	// ── what stands, and what it costs ───────────────────────────────────────
-	"homeKeepingWord": {
-		screen: " standing order",
-		why:    "the count at the foot of the task column while something stands, and a door onto the standing place — `◦ 2 standing orders`, respelled from `keeping an eye on 2` on 2026-09-09 because that named nothing a person could type, and moved off the status row on the same day; /status and the phone sheet keep the same words under `watching`",
-	},
-	"homeWatchLabel": {
-		screen: "keeping watch",
-		why:    "/status's line about whether anything checks the world with no window open",
-	},
 	"consentRowLine": {
 		screen: "needs your ok to run ",
 		pkg:    "internal/session",
 		why:    "the whole sentence a consent gate hands another window — written once by the engine, repeated on home's row with nothing added to it",
 	},
-	"standSaidTag": {
-		screen: "said: ",
-		why:    "the clause a firing's own row wears in the conversation it lands in",
+
+	// ── automations: the card, the place and the clock ────────────────────────
+	//
+	// docs/design/automations/DESIGN.md is the design and automations_e2e_test.go
+	// reads it off a real screen. What an automation is CALLED and what it SAYS
+	// are the scenario's own words (its scripted model chose them, or its typed
+	// command did), so they are typed there; what is here is what the surface
+	// says around them.
+	"autoRemindHead": {
+		screen: "wants to remind you",
+		pkg:    "internal/session",
+		why: "the head of a reminder's card — the KIND of thing being asked, built once by the engine " +
+			"(automation_contract.go's AutomationHead) and drawn by every surface",
 	},
-	"standingFiredWord": {
-		screen: "fired ",
-		pkg:    "internal/standing",
-		why:    "what the `since you left` block says about a watch that went off while nobody was here",
+	"autoSaveAnswer": {
+		screen: "Save",
+		pkg:    "internal/session",
+		why: "the yes on an automation's card, which the settled card keeps as its answer — `drink water · Save · " +
+			"saved`. It was `Remind me` while the card was a standing order's",
+	},
+	"autoSavedVerdict": {
+		screen: "saved",
+		why: "the other half — what a settled card keeps as its verdict (automation.go's autoSavedWord). It was " +
+			"`set up` while the card was a standing order's",
+	},
+	"autoTypedHead": {
+		screen: "save this automation?",
+		why: "the head of the card a TYPED `/automations add …` ends on (automationscmd.go's typedAddHead): the " +
+			"exact grammar, read with no model in between, still saves nothing until somebody says yes",
+	},
+	"autoTypedSavedWord": {
+		screen: "saved ",
+		why:    "the receipt a typed card's yes leaves on the message line, ahead of the automation's own title",
+	},
+	"autoKindReminderWord": {
+		screen: "reminder",
+		why:    "the kind a row of the automations place names first, for an automation that says a fixed line",
+	},
+	"autoLastWord": {
+		screen: "last ",
+		why:    "the clause on an automation's row that says how its last run went (automationsplace.go's autoLastWord)",
+	},
+	"autoRunDoneWord": {
+		screen: "done",
+		pkg:    "internal/automation",
+		why: "what a run that ended well came to — the task-state word, spelled once by internal/automation's " +
+			"Outcome.Word — on the one dim line a finished run writes into the conversation that made it, and " +
+			"after `last ` on its row of the place. A reminder's run is always this: it calls no model",
 	},
 
 	// ── the money, said the same way wherever it is read ─────────────────────
@@ -396,8 +454,11 @@ var tuiWords = map[string]tuiWord{
 		why:    "the receipt beside the per-conversation ceiling — the ENGINE's registry writes it and the tab only relays it",
 	},
 	"spendConversationRow": {
-		screen: "per conversation",
-		why:    "the Spending row the `this one` receipt hangs off",
+		screen: "per-chat spending limit",
+		pkg:    "internal/config",
+		why: "the Spending row the `this one` receipt hangs off. The tab draws the registry's own label for the " +
+			"row (internal/config's settings_presentation.go), not the `per conversation` internal/tui3 still " +
+			"keeps beside it — which is why this row names the package that writes what the screen shows",
 	},
 
 	// ── waiting on a machine that has gone quiet ─────────────────────────────
@@ -405,7 +466,7 @@ var tuiWords = map[string]tuiWord{
 	// THE PHASE CLOCK COMPOSES BOTH OF ITS SENTENCES AT THE DRAW, out of halves
 	// two packages own (internal/tui3's phase.go, and the clock that feeds it in
 	// internal/provider). So each half is its own row and the suite asserts the
-	// join, which is the shape `standRemindYes` and `standSetWord` already have.
+	// join, which is the shape `autoSaveAnswer` and `autoSavedVerdict` already have.
 	// What varies is not a needle: the machine that went quiet is whatever this
 	// run pinned, and the provider a rescue would go to is whatever the frontier
 	// named. What stands still is the clause around them.

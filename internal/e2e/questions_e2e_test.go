@@ -34,9 +34,9 @@
 // tuiwords_test.go, whose untagged gate reads the surface's own sources back —
 // that is the law this package has carried since #184. Sentences the MODEL
 // spells are steered by the prompt in each scenario and are typed here as
-// literals, exactly as the standing lane types the words it asked a model for:
-// a table of product sentences is a source of truth, and a table of things a
-// model happened to say is a table of coincidences.
+// literals, exactly as automations_e2e_test.go types the words its scripted
+// model chose: a table of product sentences is a source of truth, and a table
+// of things a model happened to say is a table of coincidences.
 //
 // AND AN ANSWER IS BOTH, SO IT IS COMPOSED RATHER THAN PASTED. `1 delete it` is
 // the scenario's own word with the PRODUCT's key grammar in front of it, so it

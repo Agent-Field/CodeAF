@@ -2,8 +2,8 @@
 
 package e2e
 
-// TestTUIE2E is the ambient side of v3, driven end to end: the real binary, a
-// real terminal, a real model, and the screen read back with capture-pane.
+// TestTUIE2E is v3's own surface, driven end to end: the real binary, a real
+// terminal, a real model, and the screen read back with capture-pane.
 //
 // Every subtest builds its own CODEAF_HOME and its own repository, and NOT ONE
 // STRING IS WRITTEN DOWN HERE. Every needle comes through [say] out of the table
@@ -18,7 +18,7 @@ package e2e
 //
 //	go test -tags e2e -count=1 -timeout 120m -v ./internal/e2e/
 //
-// Forty minutes is enough for TestTUIE2E alone (about seventeen). The FULL
+// Forty minutes is enough for TestTUIE2E alone. The FULL
 // tagged package — ManualOnTheWire, QuestionsE2E, roomfeed, families, custody,
 // contracts — does not fit in forty: Spark's #807 run hit the ceiling before
 // TestTUIE2E started. Prefer `make test-e2e-tui` for the ambient surface, or
@@ -27,9 +27,14 @@ package e2e
 // OPENROUTER_API_KEY, OPENAI_API_KEY, then the profile's api_key row).
 // CLAUDE.md's Tests section says the same thing.
 //
+// AUTOMATIONS ARE NOT HERE. `ask here`, the reminder a window's clock says and
+// the narrow window's stacked exchange were subtests of this test while what
+// they made was a standing order; they need no key now, and they are
+// automations_e2e_test.go's [TestAutomationsE2E].
+//
 // ── TWO WIDTHS, AND THE REASON IS IN THE PRODUCT ────────────────────────────
 //
-// Home at rest is seven panels, and the width chooses the columns
+// Home at rest is its panels, and the width chooses the columns
 // (internal/tui3's homegrid.go): two from a hundred and ten cells, three from a
 // hundred and seventy. There is NO CARD AT REST at any width; the one card left
 // stands beside a SEARCH, from a hundred and thirty-six cells (homebridge.go).
@@ -44,19 +49,17 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // modelPatience is how long any one real turn is given. deepseek-v4-flash
-// answers a one-line question in seconds; a reminder that has to reach for the
-// `stand` tool takes longer, and a machine under load takes longer again.
+// answers a one-line question in seconds; a turn that has to reach for a tool
+// takes longer, and a machine under load takes longer again.
 const modelPatience = 90 * time.Second
 
 // runPatience is how long a RUN is given, and it is not [modelPatience] because
@@ -99,12 +102,9 @@ func TestTUIE2E(t *testing.T) {
 
 	t.Run("home_opens_on_launch_with_recent_sessions", testHomeShape)
 	t.Run("a_real_conversation_on_the_panels_and_its_search_card", testRealConversation)
-	t.Run("ask_here_end_to_end", testAskHere)
-	t.Run("the_firing_reaches_the_person", testFiringReachesThePerson)
 	t.Run("answer_from_home_across_two_windows", testAnswerFromHome)
 	t.Run("hover_previews_the_match_under_the_pointer", testHover)
 	t.Run("a_panel_folds_and_typing_sees_through_it", testFold)
-	t.Run("narrow_window_ask_here", testNarrow)
 	t.Run("the_projects_panel_is_the_view_by_project", testGrouped)
 	t.Run("one_figure_on_every_spend_surface", testOneSpendFigure)
 	t.Run("plain_launch_opens_connections_and_harnesses", testPlainLaunchConnectionsAndHarnesses)
@@ -375,8 +375,10 @@ func waitForLandingReceipt(t *testing.T, seedDir, receipt string) {
 
 // ── 1 ───────────────────────────────────────────────────────────────────────
 
-// testHomeShape reads Home's current sessions, projects, spend, activity and
-// scheduled panels, then drives the command and double-space routes back to it.
+// testHomeShape reads home at rest — the `activity` list of conversations, and
+// the `projects`, `spend`, `since you left` and `automations` panels — and the
+// seven places on the wordmark row, then drives the command and double-space
+// routes back to it.
 func testHomeShape(t *testing.T) {
 	home := newHome(t, nil)
 	for i, name := range []string{"alpha", "beta", "gamma", "delta", "epsilon"} {
@@ -390,22 +392,29 @@ func testHomeShape(t *testing.T) {
 
 	// EVERY PANEL IS ON THE PAGE. Forty rows is room for all five at their
 	// floors in two columns, so a heading missing here is a panel the grid lost
-	// rather than one a short frame squeezed out.
+	// rather than one a short frame squeezed out. A heading is read where a
+	// heading stands — opening its column ([headingColumn]) — because `spend`
+	// and `activity` are also words of the bar above them.
 	for _, name := range []string{"homePanelProjects",
 		"homePanelRunning", "switcherSinceLeft", "homePanelSpend", "homePanelNext"} {
-		if !strings.Contains(screen, say(t, name)) {
+		if panelBlock(screen, say(t, name)) == "" {
 			t.Errorf("home has no %q panel:\n%s", say(t, name), screen)
 		}
 	}
 	if strings.Contains(screen, say(t, "homeRunningWhisper")) {
 		t.Errorf("populated sessions still show the empty-panel hint:\n%s", screen)
 	}
-	// THE BAR IS SIX WORDS on the wordmark row. Standing, memory and search are
-	// reached by command and by alt+7…9; teams and chats stand before sessions.
-	want := []string{say(t, "barHomeWord"), say(t, "barTeamsWord"), say(t, "barChatsWord"),
-		say(t, "barSessionsWord"), say(t, "homePanelSpend"), say(t, "barSettingsWord")}
-	if got := barWords(screen, want[0], want[len(want)-1]); strings.Join(got, " ") != strings.Join(want, " ") {
-		t.Errorf("the tab bar reads %q, want %q:\n%s", got, want, screen)
+	// THE BAR IS SEVEN PLACES on the wordmark row, each by its label, in
+	// placeBarOrder's order. Automations is the one place off it: it is reached
+	// by command, by alt+7 and by home's `automations` heading, and it joins the
+	// bar only while somebody stands in it.
+	want := []string{say(t, "barHomeWord"), say(t, "barChatsWord"), say(t, "barTeamsWord"),
+		say(t, "barSessionsWord"), say(t, "barMemoryWord"), say(t, "barSpendWord"), say(t, "barSettingsWord")}
+	if row, ok := barInOrder(screen, want); !ok {
+		t.Errorf("the tab bar reads %q, want the labels %q in that order:\n%s", row, want, screen)
+	}
+	if row, _ := barInOrder(screen, want); strings.Contains(row, strings.ToUpper(say(t, "homePanelNext")[:1])+say(t, "homePanelNext")[1:]) {
+		t.Errorf("the tab bar carries the automations place while nobody stands in it: %q", row)
 	}
 
 	// Home includes recent saved conversations, even before a tab opens them.
@@ -574,188 +583,6 @@ func testRealConversation(t *testing.T) {
 	r.waitFor(10*time.Second, cardWant, say(t, "homeFactsActive"), say(t, "homeCardMoreWord"))
 }
 
-// ── 3 ───────────────────────────────────────────────────────────────────────
-
-// testAskHere is the whole `ask here` flow against the real model: the two
-// action rows, the errand's own row and its tails, the card, the answer, and the
-// row still being there after the screen it was asked on has been closed and
-// reopened.
-//
-// THE EXCHANGE IS THE SCREEN WHILE IT HOLDS THE KEYBOARD, AT EVERY WIDTH. It
-// sat beside the list at [tuiWide] once; the grid has no pane column at any
-// width, so an errand stacks over the panels exactly as it always did on a
-// narrow frame (internal/tui3's homeStacked), and its row on `threads` —
-// with the `waiting on you` / `stood` tails this subtest is really about — is
-// what `esc` puts back. So every tail is read on the list after the keyboard
-// has left the pane, and every word of the pane is read while it holds it.
-//
-// WHAT WENT. The old subtest ended by looking for a `◦ remind me …` row under
-// the project on home, drawn by the standing band a project used to carry. There
-// is no such band any more: the resting list is what wants you now, and what
-// stands lives on the standing place (internal/manual/chat/home.md says so in as
-// many words). What replaced the assertion is the settled card's own words in
-// the pane, which say the same thing about the same act.
-func testAskHere(t *testing.T) {
-	home := newHome(t, nil)
-	ws := newWorkspace(t, "askws", false)
-	r := start(t, "afe2e_ask", home, ws, tuiWide, 45)
-
-	// One ordinary conversation first, so this project has something on home for
-	// the exchange row to sit above.
-	r.lit("say ok and nothing else")
-	r.keys("Enter")
-	r.waitForAny(modelPatience, "ok", "OK", "Ok")
-
-	r.lit("/home")
-	time.Sleep(700 * time.Millisecond)
-	r.keys("Enter")
-	r.waitFor(20*time.Second, say(t, "placeRestWord"))
-
-	r.lit("remind me in 1 minute to drink water")
-	time.Sleep(700 * time.Millisecond)
-	typed := r.capture()
-	if !strings.Contains(typed, say(t, "homeAskHereWord")+": ") ||
-		!strings.Contains(typed, say(t, "homeStartWord")+": ") {
-		t.Errorf("the two action rows are not both drawn while something is typed:\n%s", typed)
-	}
-	t.Logf("the action rows while typing:\n%s", typed)
-
-	// ctrl+enter, sent as the CSI 13;5u a kitty-protocol terminal sends. It
-	// hands the keyboard straight to the pane, and a pane holding the keyboard
-	// always names both ways back out of it.
-	r.ctrlEnter()
-	pane := r.waitFor(25*time.Second, say(t, "homeAskHereWord"), say(t, "exchangeBack"))
-	t.Logf("the exchange took the screen:\n%s", pane)
-
-	// The pane's own clock, caught in flight. It lives for seconds, so this is
-	// a fast poll and it is a finding rather than a failure when it is missed.
-	// Everything the pane draws is kept so the tool rows can be read afterwards.
-	seen := []string{pane}
-	if caught, ok := r.glimpse(25*time.Second,
-		say(t, "homeAskThinkWord"), say(t, "homeAskWriteWord"), say(t, "homeAskRunWord")); ok {
-		t.Logf("the live strip was caught mid-turn:\n%s", caught)
-		seen = append(seen, caught)
-	} else {
-		t.Logf("FINDING: never caught the live strip in the pane")
-	}
-
-	// THE TAILS ARE THE LIST'S, so the keyboard goes back to it: one esc over an
-	// empty follow-up box hands it over, and the errand stays as the first row of
-	// `threads`. Its tail says `working` while the turn is in flight and
-	// `waiting on you` once the card is up — and a model that reaches for the
-	// card inside a second or two can beat the first read, which is a fast reply
-	// and not a missing tail.
-	r.keys("Escape")
-	hit, listed := r.waitForAny(25*time.Second, say(t, "homeAskWorkingWord"), say(t, "notifyAskWord"))
-	if !strings.Contains(listed, "? remind me in 1 minute") {
-		t.Errorf("esc did not put the list back with the exchange row on it:\n%s", listed)
-	}
-	if hit == say(t, "homeAskWorkingWord") {
-		t.Logf("the exchange row is working:\n%s", listed)
-	} else {
-		t.Logf("FINDING: the card was up before the list was read, so the `%s` tail was not seen",
-			say(t, "homeAskWorkingWord"))
-	}
-	waiting := r.waitFor(modelPatience, "? remind me in 1 minute", say(t, "notifyAskWord"))
-	t.Logf("the card arrived and the row tail says it is waiting on somebody:\n%s", waiting)
-
-	// AN EXCHANGE OUTLIVES THE SCREEN IT WAS ASKED ON. This one is holding a
-	// card, which is the case asking-from-home.md states outright: closing home
-	// does not touch it, and neither does opening another conversation. The
-	// keyboard is already on the list, so ONE esc closes home.
-	r.keys("Escape") // home closes into the conversation underneath
-	time.Sleep(2500 * time.Millisecond)
-	r.lit("/home")
-	time.Sleep(700 * time.Millisecond)
-	r.keys("Enter")
-	again := r.waitFor(20*time.Second, say(t, "placeRestWord"))
-	if !strings.Contains(again, "? remind me in 1 minute") || !strings.Contains(again, say(t, "notifyAskWord")) {
-		t.Errorf("the exchange did not outlive the screen it was asked on:\n%s", again)
-	}
-	t.Logf("home reopened and the exchange is still waiting on somebody:\n%s", again)
-
-	// Walk onto the row and hand the keyboard to the pane. THE HINT UNDER THE BOX
-	// IS THE ORACLE for where the cursor is standing: the switcher's rows carry
-	// no `›` lead of their own, and the one line that changes with the cursor is
-	// the hint (internal/tui3's homeHint).
-	// The exchange follows the conversation row selected when Home opens.
-	if !walkTo(r, say(t, "homeAnswerHint"), "Down") {
-		t.Fatalf("could not put the cursor back on the exchange row:\n%s", r.capture())
-	}
-	r.keys("Enter")
-	card := r.waitFor(20*time.Second, say(t, "exchangeAnswerHint"))
-	// The card is drawn over several frames; give it one before reading the
-	// answers off it, or this reads a half-painted row.
-	time.Sleep(2 * time.Second)
-	card = r.capture()
-	seen = append(seen, card)
-	t.Logf("enter on the row gave the pane the keyboard, with the card on it:\n%s", card)
-
-	// THE ANSWERS ARE READ OFF THE FOOT AND NOT OFF THE CHIPS. The chips give
-	// their words up to fit whatever room the card has — `[ 1 yes ]  [ 2 change
-	// ]  [ 0 no ]` — while the hint under the box spells every answer in full at
-	// every width (internal/tui3's exchangeHint). So the foot is where this suite
-	// reads what a person is being offered.
-	//
-	// AND THE FOOT NAMES WHAT THE CARD DREW AND NOTHING MORE (#189, fixed). It
-	// used to say `3 just once` over a one-off reminder whose card offers no
-	// such chip, because the line was a third hardcoded copy of a sentence
-	// internal/tui3 already kept two correct spellings of. It is built from the
-	// chips now, so the reminder this subtest asks for is offered three answers
-	// and the needle spells three.
-	if !strings.Contains(card, say(t, "exchangeFollowUp")) {
-		t.Errorf("the foot does not say what enter does in the pane:\n%s", card)
-	}
-	if !strings.Contains(card, say(t, "exchangeBack")) {
-		t.Errorf("the foot does not name the way back to the list:\n%s", card)
-	}
-
-	// WHAT THE MODEL ACTUALLY DID. No tool row may say `unknown`
-	// (asking-from-home.md states it), and the instructions forbid running
-	// `date` to learn the time (keeping-an-eye.md).
-	all := strings.Join(seen, "\n")
-	if strings.Contains(all, "unknown") {
-		t.Errorf("a tool row said `unknown`:\n%s", firstMatch(all, "unknown"))
-	}
-	if strings.Contains(all, "bash · date") || strings.Contains(all, "bash date") {
-		t.Logf("FINDING: the model still ran `date` before setting the reminder: %s",
-			firstMatch(all, "date"))
-	} else {
-		t.Logf("the model did not run `date` — it used the Now line in its instructions")
-	}
-	t.Logf("tool rows drawn in the pane: %s", strings.Join(toolRows(seen), " | "))
-
-	// A YES HANDS THE KEYBOARD BACK TO THE LIST BY ITSELF (internal/tui3's
-	// homeKey, "the two zones"), so the row's tail is what says it landed.
-	r.lit("1")
-	stood := r.waitFor(30*time.Second, "? remind me in 1 minute", say(t, "homeAskStoodTail"))
-	t.Logf("answered `1` — the row says something stands:\n%s", stood)
-
-	// AND THE SETTLED CARD IS ONE ENTER AWAY. The pane keeps the exchange as it
-	// ended — the answer, what it set up, and where the exchange is filed — and
-	// enter on the row is how a person reads it again.
-	r.keys("Enter")
-	settled := r.waitFor(20*time.Second, say(t, "exchangeBack"))
-	time.Sleep(1500 * time.Millisecond)
-	settled = r.capture()
-	t.Logf("the settled exchange, reopened:\n%s", settled)
-	if !strings.Contains(settled, say(t, "standRemindYes")) || !strings.Contains(settled, say(t, "standSetWord")) {
-		t.Errorf("the settled card does not carry the answer and its verdict:\n%s", settled)
-	}
-	if !strings.Contains(settled, say(t, "homeAskStoodWord")) {
-		t.Errorf("the pane does not say the exchange is filed under what it made:\n%s", settled)
-	}
-
-	// esc puts the list back, and the exchange is still a row on it: a settled
-	// errand stays where it was asked until it is put away.
-	r.keys("Escape")
-	back := r.waitFor(20*time.Second, say(t, "homePanelProjects"), "? remind me in 1 minute")
-	if strings.Contains(back, "› remind me in 1 minute to drink water") {
-		t.Errorf("esc left the pane drawn over the list:\n%s", back)
-	}
-	t.Logf("esc brought the list back with the settled row on it:\n%s", back)
-}
-
 // walkTo steps the cursor along the list, one press of `key` at a time, until
 // the hint under the box says it is standing on the row this test wants, and
 // answers whether it got there.
@@ -777,339 +604,6 @@ func walkTo(r *rig, hint, key string) bool {
 	return strings.Contains(r.capture(), hint)
 }
 
-// ── 4 ───────────────────────────────────────────────────────────────────────
-
-// testFiringReachesThePerson stands a one-minute reminder, sits in an ordinary
-// conversation of the same project, and waits for the window's own pass to
-// fire it. Then it quits, fires a second one from outside every window with
-// `codeaf tick`, and reopens to read what was left waiting.
-//
-// WHAT WENT. The second half used to reopen from ANOTHER project, put the
-// pointer on a folded `▸ firews` line and read the news band off the project
-// card that only such a line drew. Folded project lines went with the home
-// rethink and nothing on the desktop builds one now, so what a person actually
-// meets when they come back is read instead: the project's own inbox, which is
-// the road a firing takes with no window open, and home's `since you left`
-// block, which is where that firing surfaces.
-func testFiringReachesThePerson(t *testing.T) {
-	if testing.Short() {
-		t.Skip("this one waits for the five-minute standing pass")
-	}
-	requireMachineTimerUntouched(t)
-	// THE TASK COLUMN IS PINNED OPEN, because the standing count below is drawn
-	// at its foot and nowhere else on the frame (internal/tui3's railFootRows).
-	// newHome copies the profile of whoever runs this, and a machine whose owner
-	// put the column away with ctrl+g — this one's does — hides the very line
-	// under test; secondwindow_e2e_test.go pins it for the same reason.
-	home := newHome(t, map[string]any{config.KeyTaskColumn: true, config.KeyStandingBackground: config.BackgroundOn})
-	ws := newWorkspace(t, "firews", false)
-	r := start(t, "afe2e_fire", home, ws, tuiWide, 45)
-	started := time.Now()
-
-	// An ordinary conversation to sit in. A firing whose origin is an `ask
-	// here` exchange has no room of its own, so road 2 of the delivery — any
-	// other open conversation of the same project — is the one under test.
-	r.lit("say ok and nothing else")
-	r.keys("Enter")
-	r.waitForAny(modelPatience, "ok", "OK", "Ok")
-
-	openHome(t, r)
-	standReminder(t, r, "remind me in 1 minute to drink water")
-	// THE APPROVAL MUST LOAD ONLY THIS RIG'S TIMER. A definition under the
-	// developer's HOME would point every later five-minute pass at a checkout
-	// this suite will delete (#1631).
-	installDeadline := time.Now().Add(30 * time.Second)
-	var calls []string
-	installed := false
-	for {
-		calls = r.host.calls(t)
-		for _, call := range calls {
-			if runtime.GOOS == "linux" && call == "systemctl --user enable --now "+standing.LinuxTickTimer {
-				installed = true
-			}
-			if runtime.GOOS == "darwin" && strings.HasPrefix(call, "launchctl bootstrap ") && strings.HasSuffix(call, standing.DarwinTickLabel+".plist") {
-				installed = true
-			}
-		}
-		if installed || time.Now().After(installDeadline) {
-			break
-		}
-		time.Sleep(pollEvery)
-	}
-	t.Logf("rig scheduler calls: %v", calls)
-	if !installed {
-		t.Errorf("the rig never loaded its timer; scheduler calls: %v", calls)
-	}
-	if runtime.GOOS == "linux" {
-		definition := filepath.Join(r.host.login, ".config", "systemd", "user", strings.TrimSuffix(standing.LinuxTickTimer, ".timer")+".service")
-		raw, err := os.ReadFile(definition)
-		if err != nil || !strings.Contains(string(raw), "Environment=\"CODEAF_HOME="+r.home+"\"") {
-			t.Errorf("rig service definition %s must name CODEAF_HOME=%s: %v, content %q", definition, r.home, err, raw)
-		}
-	} else if runtime.GOOS == "darwin" {
-		definition := filepath.Join(r.host.login, "Library", "LaunchAgents", standing.DarwinTickLabel+".plist")
-		if _, err := os.Stat(definition); err != nil {
-			t.Errorf("rig plist %s: %v", definition, err)
-		}
-	}
-
-	// Back into the conversation and wait. The window runs the same pass the
-	// timer runs, every standing.Interval (five minutes), the first one an
-	// interval after launch. Answering the card hands the keyboard back to its
-	// settled exchange row, immediately below the conversation we opened. Walk
-	// onto that conversation and open it: ctrl+t acts only on a conversation
-	// row, so sending it from the exchange row silently left this test on Home
-	// while it looked there for a conversation-only firing row (#1344).
-	r.keys("Up")
-	r.keys("Enter")
-	// The conversation's foot says `esc interrupt` while the reminder's turn
-	// is still ending; its home gesture returns when that work is quiet.
-	r.waitForAny(20*time.Second, say(t, "homeDoorWord"), say(t, "chatWorkingFootWord"))
-
-	// /status, while something stands: the derived `keeping watch` line, and the
-	// `◦ 1 standing order` line at the foot of the task column. That count was a
-	// segment of the STATUS ROW until #747 (10800e6ee) moved it under the
-	// column's tally — the words are the same, the place is not, and this
-	// subtest went on waiting on the status row with the column put away.
-	// IT IS WAITED FOR AND NOT READ IN THE SAME INSTANT. The count behind that
-	// line is asked on the frame, so over a connection it is answered from a
-	// cache that refreshes behind itself — the seam's stated law rather than an
-	// optimization (cmd/codeaf's hostStanding) — and an item that stood a second
-	// ago reaches it on the next beat.
-	//
-	// AND THERE ARE THREE BEATS BETWEEN THE DISK AND THAT SEGMENT, not one, so
-	// the wait is a minute rather than the twenty seconds that caught it on a
-	// quiet machine and missed it on a loaded one: the item is written by the
-	// ERRAND's process, read back by the ENGINE, held by the surface's own
-	// far-side cache on hostStandingEvery, and read off THAT by a count the
-	// column keeps for keepEvery. How long it actually took is logged, because
-	// a count that takes half a minute to appear is a papercut worth having a
-	// number for.
-	keepingAt := time.Now()
-	if _, ok := r.glimpse(time.Minute, say(t, "homeKeepingWord")); !ok {
-		t.Errorf("the task column never grew a `◦ N standing orders` line while an item stands:\n%s", r.capture())
-	} else {
-		t.Logf("the `◦ N standing orders` line arrived %s after the item stood", time.Since(keepingAt).Round(time.Second))
-	}
-	r.lit("/status")
-	time.Sleep(700 * time.Millisecond)
-	r.keys("Enter")
-	status := r.waitFor(20*time.Second, say(t, "homeWatchLabel"))
-	t.Logf("/status while something stands:\n%s", status)
-	if !strings.Contains(status, say(t, "homeKeepingWord")) {
-		t.Errorf("/status says nothing about the orders standing here:\n%s", status)
-	}
-
-	// WHAT THE ITEM ITSELF SAYS IT WILL SAY. The model names the standing order
-	// and writes the sentence it fires, and neither is anything this test may
-	// assume: one run called it `drink water reminder` and fired
-	// `💧 Time to drink water!`. So the record on disk is read and the needles
-	// are taken off it — which is the same law the rest of this suite follows
-	// for the surface's own words, applied to the one vocabulary the MODEL owns.
-	item, ok := standingRecordAbout(t, home, "water")
-	if !ok {
-		t.Fatalf("nothing stood for the water reminder at all. records:\n%s", standingRecordsDump(t, home))
-	}
-	t.Logf("the item that stood: %q, due %s, saying %q",
-		item.Brief.Title, item.When.At.Format(time.RFC3339), item.Does.Say)
-
-	// Now wait for the pass. It is one interval from launch plus the minute the
-	// reminder asked for, with room for a slow machine.
-	wait := 6*time.Minute + 30*time.Second - time.Since(started)
-	if wait < time.Minute {
-		wait = time.Minute
-	}
-	t.Logf("waiting %s for the window's own standing pass", wait.Round(time.Second))
-	// TWO NEEDLES, BECAUSE THE JOURNAL AND THE SCREEN SAY IT DIFFERENTLY. The
-	// steering line the engine injects carries what the item fires; the ROW the
-	// surface draws wears the item's own short name and then what the firing said
-	// (internal/tui3's standName, pinned by TestAStandingUpdateIsExactlyOneLine).
-	// So the transcript is searched for the sentence and the screen for the row.
-	said := say(t, "standSaidTag")
-	// THE ROW WEARS THE PERSON'S OWN WORDS, CUT SHORT — internal/tui3's standName
-	// takes the head of what was asked for, not the name the model gave the item
-	// (which is often empty), so the needle is the head of the item's `words`.
-	drawnRow := firstWords(item.Words, 5)
-	if drawnRow == "" {
-		t.Fatalf("the item that stood has no words to look for:\n%s", standingRecordsDump(t, home))
-	}
-	// AND THE ROAD IT TAKES IS THE MACHINE'S TO CHOOSE, WHICH IS WHY BOTH ARE
-	// WATCHED FOR. Roads 1 and 2 are "is it open HERE" — a map from session id to
-	// agent inside the process that ran the pass (session's standing_run.go) — so
-	// only a pass in the process holding this project's conversations can take
-	// one. On this machine that is the engine, and another pass can beat it to
-	// the item: the OS timer's `codeaf tick` is a process of its own with an empty
-	// registry, and it reaches a person down road 4 instead, through the project's
-	// inbox. Both ends AT A PERSON, which is what this subtest is named for, and
-	// the second half below proves road 4 the whole way to the next window's
-	// screen. A subtest that demanded road 2 would be asserting which of two
-	// correct passes woke up first.
-	deadline := time.Now().Add(wait)
-	drawn := false
-	delivered, filed := false, false
-	journal := ""
-	for time.Now().Before(deadline) {
-		if screen := r.capture(); strings.Contains(screen, drawnRow) && strings.Contains(screen, said) {
-			drawn = true
-		}
-		for path, raw := range sessionTranscripts(t, home) {
-			if strings.Contains(raw, firstWords(item.Does.Say, 4)) {
-				delivered, journal = true, path
-			}
-		}
-		if strings.Contains(projectInbox(t, home, ws), firstWords(item.Does.Say, 4)) {
-			filed = true
-		}
-		if drawn || delivered || filed {
-			break
-		}
-		time.Sleep(2 * time.Second)
-	}
-	screen := r.capture()
-	switch {
-	case delivered:
-		t.Logf("the firing reached the conversation's journal: %s", journal)
-	case filed:
-		t.Logf("the firing was filed under the project by a pass with no conversation open in it — "+
-			"road 4, which the second half below follows to the screen:\n%s", projectInbox(t, home, ws))
-	}
-	if !delivered && !filed {
-		// AND THE SUITE SAYS WHY, RATHER THAN JUST THAT. An item whose expiry is
-		// not after its own moment is retired by rail one of the pass before
-		// anything is ever due (internal/standing/tick.go), so it can never fire —
-		// and the `stand` tool accepts such a proposal today (issue #188). That is
-		// a product defect and not this test's, and a failure that did not name it
-		// costs somebody the hour it cost to find.
-		later := standingRecordByID(t, home, item.ID)
-		if !later.Rails.Expires.IsZero() && !later.Rails.Expires.After(later.When.At) {
-			t.Fatalf("DEFECT (issue #188): the item stood with an expiry at or before its own moment — "+
-				"expires %s, due %s — so the pass retired it (%q) instead of ever firing it.\nscreen:\n%s",
-				later.Rails.Expires.Format(time.RFC3339), later.When.At.Format(time.RFC3339),
-				later.LastCheckLine, screen)
-		}
-		t.Fatalf("the firing never reached the person at all — nothing in any transcript and nothing "+
-			"filed under the project.\nrecord:\n%s\nscreen:\n%s", standingRecordsDump(t, home), screen)
-	}
-	switch {
-	case drawn:
-		t.Logf("the firing is drawn in the conversation:\n%s", screen)
-	case delivered:
-		t.Errorf("DEFECT: the firing reached the conversation but was never DRAWN in it.\n"+
-			"The journal holds the line as a session-authored note, and the model answered it, "+
-			"but no `%s … %s` row appears on the screen the person is looking at:\n%s", drawnRow, said, screen)
-	default:
-		t.Logf("FINDING: the pass that fired it was not the one holding this project's conversations, " +
-			"so there was no room for a row — the words went to the project's inbox instead")
-	}
-
-	// ── the second half: nobody is here when it fires ──
-	//
-	// A firing wakes the conversation it lands in, so the model may still be
-	// answering it. esc ends whatever is in flight before the next errand.
-	r.keys("Escape")
-	time.Sleep(2 * time.Second)
-	openHome(t, r)
-	standReminder(t, r, "remind me in 1 minute to stretch")
-	r.keys("Escape")
-	time.Sleep(2 * time.Second)
-	r.quit()
-
-	time.Sleep(75 * time.Second)
-	out := tick(t, home)
-	t.Logf("`codeaf tick` said %q", strings.TrimSpace(out))
-
-	second, ok := standingRecordAbout(t, home, "stretch")
-	if !ok {
-		// THE MODEL OWNS A REMINDER'S WORDS, and a cheap one can drop the subject:
-		// it saved "remind me in 1 minute", saying "Your 1-minute reminder has
-		// arrived." This half proves the firing reaches the person, so the record
-		// is the one that stood after the first; a missing one still fails.
-		if second, ok = standingRecordOtherThan(t, home, item.ID); ok {
-			t.Logf("FINDING: the model saved the stretch reminder without its subject: %q, saying %q",
-				second.Words, second.Does.Say)
-		}
-	}
-	if !ok {
-		t.Fatalf("nothing stood for the stretch reminder. records:\n%s", standingRecordsDump(t, home))
-	}
-	inbox := projectInbox(t, home, ws)
-	if !strings.Contains(inbox, firstWords(second.Does.Say, 4)) {
-		t.Errorf("nothing was left waiting for the person after the tick — the item fires %q. project inbox:\n%s",
-			second.Does.Say, inbox)
-	} else {
-		t.Logf("the firing was filed under the project for the next window:\n%s", inbox)
-	}
-
-	// AND THE NEXT WINDOW IS TOLD, TWICE OVER. A launch in a project that already
-	// holds a conversation resumes it rather than opening home, so the first thing
-	// the person meets is the firing itself, drained out of the inbox into the
-	// conversation it belongs to and drawn as its own row.
-	said2 := firstWords(second.Does.Say, 3)
-	if said2 == "" {
-		t.Fatalf("the second item says nothing when it fires:\n%s", standingRecordsDump(t, home))
-	}
-	r2 := start(t, "afe2e_fire_back", home, ws, tuiWide, 45)
-	// THE INBOX BEING EMPTIED IS THE ORACLE, AND THE ROW IS A GLIMPSE. Road 4
-	// ends when the next ordinary conversation in the project drains the file
-	// whole on its way in (session's [Agent.drainStandingInbox]) — one `while
-	// you were away` fold for the model, one dim row per firing for the person —
-	// and the drain is the half that is a fact rather than a frame.
-	//
-	// THE ROW IS NOT WAITED FOR, because the same firing WAKES the conversation
-	// it lands in: the reply that wake produces closes the work fold over
-	// everything behind it (workfold.go), and the row can be gone before anybody
-	// looks. That is a real hole and it is recorded as a finding here rather than
-	// asserted, exactly as the `since you left` block below it is — the delivery
-	// itself is proved twice over above and by the drain below.
-	drained := false
-	for deadline := time.Now().Add(40 * time.Second); time.Now().Before(deadline); {
-		if strings.TrimSpace(projectInbox(t, home, ws)) == "" {
-			drained = true
-			break
-		}
-		time.Sleep(pollEvery)
-	}
-	if !drained {
-		t.Errorf("the project's inbox still holds the firing after the next window opened it:\n%s",
-			projectInbox(t, home, ws))
-	} else {
-		t.Logf("the window that came back drained the project's inbox")
-	}
-	if caught, ok := r2.glimpse(30*time.Second, said2, say(t, "standSaidTag")); ok {
-		t.Logf("the window that came back was told what happened while it was shut:\n%s", caught)
-	} else {
-		t.Logf("FINDING: the firing was drained into the conversation but its own row was never on the "+
-			"frame — the wake it carries starts a reply, and the work fold closes over what is behind "+
-			"one (workfold.go):\n%s", r2.capture())
-	}
-
-	// AND HOME'S OWN ACCOUNT OF IT IS DEMANDED. What happened while nobody was
-	// looking is the `since you left` panel, built from every standing item
-	// whose last firing is later than the look stamp — the ones that still stand
-	// AND the ones that stood down (internal/tui3/switcher.go's addLedger).
-	//
-	// THIS WAS A FINDING IN THIS SUBTEST'S OWN LOG FOR A WHILE, AND IT WAS A REAL
-	// HOLE. A one-off reminder retires in the pass that fires it, so by the time
-	// this window is up there is no live item left; a ledger that walked only the
-	// bands drew nothing at all about the reminder that had just gone off with the
-	// terminal shut — which is the commonest thing that happens while nobody is
-	// looking. The reading carries the retired firings out now
-	// (internal/tui3/homestanding.go's standItems), so the log is an assertion.
-	openHome(t, r2)
-	time.Sleep(3 * time.Second)
-	news := r2.capture()
-	// THE HEADING ALONE PROVES NOTHING NOW: an empty `since you left` keeps its
-	// heading and its whisper (DESIGN §4), so the firing's own line is the claim.
-	if !strings.Contains(news, say(t, "switcherSinceLeft")) {
-		t.Errorf("home drew no `%s` panel at all:\n%s", say(t, "switcherSinceLeft"), news)
-	} else if !strings.Contains(news, say(t, "standingFiredWord")) {
-		t.Errorf("a watch fired while no window was open and home's `%s` panel does not say so:\n%s",
-			say(t, "switcherSinceLeft"), news)
-	} else {
-		t.Logf("home's `since you left` block names the firing:\n%s", firstMatch(news, say(t, "standingFiredWord")))
-	}
-}
-
 // openHome opens the screen with the slash command, which is the door that
 // works whatever the machine holds.
 func openHome(t *testing.T, r *rig) {
@@ -1118,30 +612,6 @@ func openHome(t *testing.T, r *rig) {
 	time.Sleep(700 * time.Millisecond)
 	r.keys("Enter")
 	r.waitFor(20*time.Second, say(t, "placeRestWord"))
-}
-
-// standReminder types one sentence into home's box, asks it there, waits for
-// the card and says yes. It is scenario 3's flow reduced to what the scenarios
-// after it need from it.
-func standReminder(t *testing.T, r *rig, words string) {
-	t.Helper()
-	r.lit(words)
-	time.Sleep(600 * time.Millisecond)
-	r.ctrlEnter()
-	// ctrl+enter HANDS THE KEYBOARD STRAIGHT TO THE PANE, so the digit reaches
-	// the card with nothing walked onto — and the foot naming the card's own
-	// answers is how this helper knows the card is up and the pane has it. A
-	// reminder's card draws three of them and the foot names three (#189).
-	//
-	// IT IS NOT THE ROW'S `waiting on you` TAIL ANY MORE. The pane stacks over
-	// the grid while it holds the keyboard (internal/tui3's homeStacked), so the
-	// row is not on the screen to wear a tail until the keyboard leaves. (Subtest
-	// 3 takes the other road on purpose: it hands the keyboard back, reads the
-	// tail on the list, and walks onto the row.)
-	r.waitFor(modelPatience, say(t, "exchangeAnswerHint"))
-	r.lit("1")
-	r.waitFor(30*time.Second, say(t, "homeAskStoodTail"))
-	t.Logf("stood: %q\n%s", words, r.capture())
 }
 
 // ── 5 ───────────────────────────────────────────────────────────────────────
@@ -1174,9 +644,10 @@ func testAnswerFromHome(t *testing.T) {
 	// from there. So B opens its own project, and A's conversation is a row on
 	// B's list like any other.
 	b := start(t, "afe2e_b", home, newWorkspace(t, "consentws-b", false), tuiPlain, 40)
-	// A's QUESTION ARRIVES ON ITS EXISTING CONVERSATION ROW. Home shows the
-	// question and answers in that row's description while it is selected. A
-	// digit still answers the top question from anywhere on home.
+	// A's QUESTION ARRIVES ON ITS EXISTING CONVERSATION ROW, on home's
+	// `activity` list. Home shows the question and answers in that row's
+	// description while it is selected. A digit still answers the top question
+	// from anywhere on home.
 	b.waitFor(40*time.Second, say(t, "questionOtherWindowWord"))
 	if !walkTo(b, say(t, "answersAllowOnce"), "Up") {
 		t.Fatalf("could not select the question on its session row:\n%s", b.capture())
@@ -1201,7 +672,8 @@ func testAnswerFromHome(t *testing.T) {
 		t.Errorf("home's row wrote its own grammar around the gate's sentence:\n%s", firstMatch(row, say(t, "consentRowLine")))
 	}
 
-	// THE QUESTION BELONGS TO THE SESSIONS ROW, not a duplicate attention row.
+	// THE QUESTION BELONGS TO THE CONVERSATION'S OWN ROW under `activity`, and
+	// is not drawn a second time as a row of its own.
 	if !strings.Contains(row, say(t, "homePanelRunning")) ||
 		strings.Count(row, say(t, "consentRowLine")) != 1 {
 		t.Errorf("the selected session does not carry exactly one question:\n%s", row)
@@ -1355,49 +827,6 @@ func testFold(t *testing.T) {
 // foldCounts is the shape of a shut fold as a person reads it off the frame: a
 // count, the word, and nothing after it but the row's own padding.
 var foldCounts = regexp.MustCompile(`\b\d+ more\s*$`)
-
-// ── 8 ───────────────────────────────────────────────────────────────────────
-
-// testNarrow is the phone-shaped window: sixty cells, where home has no room
-// for two columns and the exchange takes the whole screen.
-func testNarrow(t *testing.T) {
-	home := newHome(t, nil)
-	seedProject(t, home, "narrowseed", 9, 20*time.Minute)
-	ws := newWorkspace(t, "narrowws", false)
-	r := start(t, "afe2e_narrow", home, ws, 60, 30)
-
-	screen := r.waitFor(25*time.Second, "home")
-	t.Logf("home at 60x30:\n%s", screen)
-
-	r.lit("what day is it")
-	time.Sleep(600 * time.Millisecond)
-	typed := r.capture()
-	t.Logf("typing at 60 cells:\n%s", typed)
-	r.ctrlEnter()
-
-	stacked := r.waitFor(30*time.Second, "what day is it")
-	t.Logf("the exchange at 60 cells:\n%s", stacked)
-	if strings.Contains(stacked, "narrowseed") || strings.Contains(stacked, "Seed Narrowseed") {
-		t.Errorf("the narrow exchange did not take the whole screen — the list is still drawn:\n%s", stacked)
-	}
-	if caught, ok := r.glimpse(20*time.Second,
-		say(t, "homeAskThinkWord"), say(t, "homeAskWriteWord"), say(t, "homeAskRunWord")); ok {
-		t.Logf("the live strip on a narrow window:\n%s", caught)
-	} else {
-		t.Logf("FINDING: no live strip caught on the narrow window")
-	}
-
-	hit, replied := r.waitForAny(modelPatience, "2026", "today", "Today")
-	t.Logf("the reply arrived on the narrow window (%q):\n%s", hit, replied)
-
-	r.keys("Escape")
-	back := r.waitFor(20*time.Second, "? what day is it")
-	t.Logf("esc brought the list back with the exchange row on it:\n%s", back)
-
-	r.keys("Enter")
-	reopened := r.waitFor(20*time.Second, "› what day is it")
-	t.Logf("enter reopened the exchange:\n%s", reopened)
-}
 
 // ── 9 ───────────────────────────────────────────────────────────────────────
 
@@ -1557,27 +986,33 @@ func nextColumn(runes []rune, from int) int {
 	return -1
 }
 
-// barWords reads the places between home and settings on the wordmark row.
-// The wordmark stands before home and the machine's pulse stands after settings.
-func barWords(screen, first, last string) []string {
-	for _, line := range strings.Split(screen, "\n") {
-		fields := strings.Fields(line)
-		for i, field := range fields {
-			if strings.Trim(field, "[]") != first {
-				continue
-			}
-			for j := i + 1; j < len(fields); j++ {
-				if strings.Trim(fields[j], "[]") == last {
-					words := append([]string(nil), fields[i:j+1]...)
-					for k := range words {
-						words[k] = strings.Trim(words[k], "[]")
-					}
-					return words
-				}
-			}
-		}
+// barInOrder finds the wordmark row — the first line carrying the first label
+// — and reports whether every label stands on it in the order given, each
+// after the one before. It answers the row for the log either way.
+//
+// IT READS LABELS AND NOT FIELDS. `AI teams` is one place in two words, so a
+// reader that split the row on spaces would count a place that is not there;
+// the wordmark before the first label and the pulse after the last are simply
+// not asked about.
+func barInOrder(screen string, labels []string) (string, bool) {
+	if len(labels) == 0 {
+		return "", false
 	}
-	return nil
+	for _, line := range strings.Split(screen, "\n") {
+		if !strings.Contains(line, labels[0]) {
+			continue
+		}
+		at := 0
+		for _, label := range labels {
+			found := strings.Index(line[at:], label)
+			if found < 0 {
+				return strings.TrimSpace(line), false
+			}
+			at += found + len(label)
+		}
+		return strings.TrimSpace(line), true
+	}
+	return "", false
 }
 
 // headingRow answers whether a project's name stands ALONE on a line of the
@@ -1659,34 +1094,6 @@ func firstMatch(screen, sub string) string {
 	return ""
 }
 
-// toolRows is every `tool · something` row the pane drew, deduplicated, so a
-// report can say what the model actually reached for.
-func toolRows(screens []string) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, screen := range screens {
-		for _, line := range strings.Split(screen, "\n") {
-			// A running row leads with one of the braille spinner's eight
-			// frames, so the leading glyph is stripped before the tool name is
-			// read rather than every frame being spelled out here.
-			trimmed := strings.TrimLeft(strings.TrimSpace(line), "⠁⠂⠄⠈⠐⠠⠆⠇⠋⠙⠸⠼⠴⠦⠧⠹⢀⡀✗ ")
-			for _, tool := range []string{"bash ", "read ", "stand ", "ls ", "write ", "manual ", "watch "} {
-				if strings.HasPrefix(trimmed, tool) && !seen[trimmed] {
-					seen[trimmed] = true
-					out = append(out, trimmed)
-				}
-			}
-		}
-	}
-	if len(out) == 0 {
-		return []string{"(none seen)"}
-	}
-	if len(out) > 12 {
-		out = append(out[:12], fmt.Sprintf("… and %d more", len(out)-12))
-	}
-	return out
-}
-
 // ── 10 ──────────────────────────────────────────────────────────────────────
 
 // testOneSpendFigure is issue #269 end to end: run a turn, press escape in the
@@ -1713,20 +1120,23 @@ func testOneSpendFigure(t *testing.T) {
 	// A machine with no conversations on it opens straight into one, which is
 	// the state this scenario wants: one conversation, so the machine's day and
 	// this conversation's total are the same money read two ways. The wait is
-	// on the WORKSPACE's own name in the status line rather than on a product
-	// sentence, because the welcome screen a fresh machine opens on draws none
-	// of the rules the other subtests wait for.
-	r.waitFor(20*time.Second, "spendws")
+	// on the greeting's own starter line, which that first conversation stands
+	// on. It was on the workspace's name in the status line, which a frame of
+	// this width now cuts from the foot's `project:` clause.
+	r.waitFor(20*time.Second, say(t, "starterTaskWord"))
 
 	// A question with a long answer, so there is a middle to interrupt.
 	r.lit("count slowly from one to two hundred, one number per line")
 	time.Sleep(600 * time.Millisecond)
 	r.keys("Enter")
-	if caught, ok := r.glimpse(modelPatience,
-		say(t, "homeAskThinkWord"), say(t, "homeAskWriteWord")); ok {
+	// THE CONVERSATION'S OWN FOOT SAYS A TURN IS IN FLIGHT: `esc interrupt`
+	// stands where the home gesture stands at rest. It is glimpsed rather than
+	// waited for, because a turn that finished first is a fast reply and the
+	// figures below must agree all the same.
+	if caught, ok := r.glimpse(modelPatience, say(t, "chatWorkingFootWord")); ok {
 		t.Logf("the turn was in flight when escape was pressed:\n%s", caught)
 	} else {
-		t.Logf("FINDING: the live strip was never caught — the turn may have finished first")
+		t.Logf("FINDING: the working foot was never caught — the turn may have finished first")
 	}
 	r.keys("Escape")
 	// The ledger's writer is a background goroutine and both places read the

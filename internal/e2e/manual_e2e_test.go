@@ -517,22 +517,6 @@ func TestManualOpensWithNoKeyAndNoModel(t *testing.T) {
 		t.Logf("the answer carries %s labels, exit 0", label)
 	})
 
-	t.Run("a home standing-order due-time question", func(t *testing.T) {
-		const asked = "when does a standing order go off on home"
-		out, code := runManualCommand(t, codeaf, home, asked)
-		if code != 0 {
-			t.Fatalf("`codeaf manual %q` exited %d:\n%s", asked, code, shorten(out, 400))
-		}
-		label := manual.PersonSectionOpen("home")
-		if !strings.Contains(out, label) {
-			t.Fatalf("%q did not return the corrected home section labelled %s; got %v", asked, label, labelsOf(renderedSections(out)))
-		}
-		if !strings.Contains(out, "Home does not show when a waiting order will next go off") {
-			t.Errorf("%q returned the home page without its corrected due-time guidance", asked)
-		}
-		t.Logf("`codeaf manual %q` reached %s and explained where the due time is shown", asked, label)
-	})
-
 	t.Run("a page that does not exist", func(t *testing.T) {
 		out, code := runManualCommand(t, codeaf, home, "no-such-page")
 		if code == 0 {
@@ -628,11 +612,11 @@ func aPlainWorkspace(t *testing.T) string {
 	return dir
 }
 
-// manualConfig is the departure this lane makes from the ambient one: nothing
-// here is about standing orders, so the seam is off and there is no card for
-// anybody to press. The person's own approval rules already allow `manual`.
+// manualConfig is the departure this lane makes from an ordinary conversation:
+// nobody is watching, so nothing a turn does may stop on a question — a call
+// that would ask is refused instead (AskConsent false), and there is no card
+// for anybody to press. The person's own approval rules already allow `manual`.
 func manualConfig(cfg *session.Config) {
-	cfg.Standing = nil
 	cfg.AskConsent = false
 }
 
@@ -653,7 +637,7 @@ func runManualScenario(t *testing.T, w *world, name, question string, check func
 	for attempt := 1; attempt <= manualAttempts; attempt++ {
 		started := time.Now()
 		agent, place := w.open(aPlainWorkspace(t), manualConfig)
-		out := w.say(agent, question, answerYes)
+		out := w.say(agent, question)
 		wall := time.Since(started)
 		usd, models := ledgerSince(t, started)
 
