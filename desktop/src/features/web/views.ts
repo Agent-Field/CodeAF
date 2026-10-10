@@ -10,7 +10,9 @@
 // not on screen, while anything of the app's floats over it (covers.ts), while
 // the pane draws its own error over the sheet, and while the window is hidden.
 // While any of those covers a page, one overlay hold hides every web view in
-// the window and the sheet stays blank. A drag of a tab or a group holds too.
+// the window. The sheet keeps its fill and WebPane writes the page title when
+// the page has one. Registered overlays (occlusion.ts) count as the same kind
+// of cover. A drag of a tab or a group holds too.
 
 import {
   nativeWebAvailable, onWebFocusAddress, onWebNewTab, onWebState, webClose, webHistory, webList, webNavigate, webOpen, webBounds, webVisible,
@@ -21,6 +23,7 @@ import {
 } from '../../lib/native/webOverlay';
 import { focusAddress } from './addressFocus';
 import { coverBoxes, isCovered } from './covers';
+import { overlayBoxes, subscribeOcclusion } from './occlusion';
 import { openFromPage } from './host';
 import { capture, forgetShot } from './shots';
 
@@ -143,6 +146,8 @@ function start() {
   watchPixelRatio();
   // A hold going up or down changes every sheet (blank, or the page again).
   subscribeWebOverlay(() => { notify(); schedule(); });
+  // A registered overlay has no DOM mutation of its own when it is only a rectangle.
+  subscribeOcclusion(schedule);
   installWebOverlayDragGuard();
   observers = { resize, mutation };
 }
@@ -179,7 +184,7 @@ const sameRect = (a: WebRect | null, b: WebRect) => !!a && a.x === b.x && a.y ==
 
 function tick() {
   const rescale = scaleChanged();
-  const covers = coverBoxes();
+  const covers = [...coverBoxes(), ...overlayBoxes()];
   const windowShown = document.visibilityState !== 'hidden';
   let changed = false;
   let anyCovered = false;

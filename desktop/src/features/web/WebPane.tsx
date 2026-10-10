@@ -31,8 +31,10 @@ function failureText(failure: WebFailure, url: string): { title: string; detail:
  * a sheet inset in the card. The page itself is a native view placed over the
  * sheet by views.ts; this component draws only what is not the page: the
  * loading line, a failure, and outside the desktop app an honest line with
- * Open in browser. While a menu or other overlay holds the window the sheet
- * is blank: the native view is hidden, and nothing is written in its place.
+ * Open in browser. While a menu or other overlay holds the window the native
+ * view is hidden. The sheet keeps its fill and, once the page has reported a
+ * title, that title in ink-3. A title that has not arrived yet leaves only
+ * the fill: there is no sentence saying the page is hidden.
  */
 export function WebPane({ pane, actions }: PaneRenderProps) {
   const url = pane.target?.url;
@@ -43,6 +45,9 @@ export function WebPane({ pane, actions }: PaneRenderProps) {
   const state = web.state;
   const shown = state?.url || url;
   const title = state?.title.trim() || (shown ? siteOf(shown) : '');
+  // The document title only. The site name already lives in the address row,
+  // and a title the page has not reported yet is nothing (the fill stands alone).
+  const pageTitle = state?.title.trim() || '';
 
   // The tab is named by its page, and remembers the page it is on.
   useEffect(() => { if (title) actions.onSummary({ title, firstLine: '', digest: shown ?? '' }); }, [title]);
@@ -71,7 +76,7 @@ export function WebPane({ pane, actions }: PaneRenderProps) {
       onChat={host?.startConversationWithPage && shown ? () => void talkAboutPage() : undefined}
       onExternal={() => shown && void openUrl(shown)}/>
     <div ref={web.sheetRef} className="web-sheet" data-theme="light" data-covered={web.covered || undefined} data-blank={web.blank || undefined}>
-      {web.blank ? null : <>
+      {web.blank ? (pageTitle ? <Text className="web-occluded-title">{pageTitle}</Text> : null) : <>
         {!web.native && shown && <div className="web-state">
           <Icon name="web" size="lg"/>
           <Text tone="default">Web pages open in the desktop app</Text>
