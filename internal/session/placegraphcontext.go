@@ -56,8 +56,9 @@ import (
 // conversation. It is persisted bytes like the other NoteKind constants.
 const NoteKindPlaces = "places"
 
-// placeGraphHeading is the block's heading; the system prompt and the manual
-// name it, and the tests find the block by it.
+// placeGraphHeading is the block's heading. The block states its own ranking,
+// disagreement and reference rules when it is present, so the fixed prefix
+// does not repeat them. Tests find the block by this heading.
 const placeGraphHeading = "# Places this conversation belongs to"
 
 // PlaceGraphDoor is how a conversation finds the place graph. Nil (the default)
