@@ -1,6 +1,7 @@
 import type { SnapshotTail } from '../../../src/features/chat/snapshotMerge';
 import type { Page, Route } from '@playwright/test';
 import { historyRoutes, type HistoryHandle, type MockHistory } from './history-engine';
+import { answerWorldRoute, createWorldEngine } from './world-engine';
 import { installPlacesEngine } from './places-engine';
 import type { PlacesFixture, PlacesFixtureName } from './places-fixture';
 import type { AttentionItem, WorldRow } from '../../../src/features/chat/world-client';
@@ -183,7 +184,10 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
   let turnIndex = 0;
   let pending: ScriptedTurn | undefined;
   let closed = false;
-  page.on('close', () => { closed = true; });
+  // Empty on purpose: this feed must not invent a day of places, jobs or a key on top of
+  // the places graph and the history lane. It answers only the families the handler below leaves.
+  const worldEngine = createWorldEngine('empty');
+  page.on('close', () => { closed = true; worldEngine.close(); });
 
   // The world feed: every change is one full `reset` record, which the client applies at any cursor.
   // The places record rides that reset and is repeated as its own envelope one sequence later, so a
@@ -592,6 +596,10 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     if (root === 'models') return models(route, parts, method, body);
     if (root === 'places' && parts[1] === 'policy') return placesPolicy(route, parts, method, body);
     if (root === 'history') return history.handle(route, parts, method, body, url);
+    // Places, Using, the session stream, workspace CAS and History already answered above.
+    // GET /world with no scenario.world stays 404: that absence is the feed contract.
+    // What is left (settings, and any other world-mock family this handler does not own) is one call.
+    if (root !== 'sessions' && root !== 'world' && await answerWorldRoute(worldEngine, route)) return;
     if (root !== 'sessions') return json(route, { error: 'unknown route' }, 404);
     if (!id) {
       const refused = forced('create');
