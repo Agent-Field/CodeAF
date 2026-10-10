@@ -596,9 +596,11 @@ var seamContract = []struct {
 	{http.MethodPost, "/councils/{id}/steer"},
 }
 
-// seamOwned says a row has a real handler in this package (plan_routes.go), so
-// the stub test leaves it to that file's own tests.
-func seamOwned(pattern string) bool { return strings.Contains(pattern, "/plan/{plan}/") }
+// seamOwned says a row has a real handler in this package (knows_routes.go or
+// plan_routes.go), so the stub test leaves it to that file's own tests.
+func seamOwned(pattern string) bool {
+	return strings.Contains(pattern, "/knows") || strings.Contains(pattern, "/plan/{plan}/")
+}
 
 func seamExample(pattern string) string {
 	return "/api/engine" + strings.NewReplacer("{id}", "pl_1", "{line}", "line_7", "{plan}", "plan_9").Replace(pattern)
@@ -703,6 +705,18 @@ func TestSeamRouteRegistrationReplacesTheStub(t *testing.T) {
 		t.Fatalf("GET steer ran the POST handler (%d calls)", calls)
 	}
 	lineCalls := 0
+	const linePattern = "/places/{id}/knows/{line}"
+	var original seamHandler
+	for _, route := range seamTable {
+		if route.method == http.MethodPatch && route.pattern == linePattern {
+			original = route.handle
+		}
+	}
+	clearSeamRoute(http.MethodPatch, linePattern)
+	t.Cleanup(func() {
+		clearSeamRoute(http.MethodPatch, linePattern)
+		registerSeamRoute(http.MethodPatch, linePattern, original)
+	})
 	registerSeamRoute(http.MethodPatch, "/places/{id}/knows/{line}", func(_ *Bridge, w http.ResponseWriter, _ *http.Request, ids map[string]string) {
 		lineCalls++
 		if ids["id"] != "pl_1" || ids["line"] != "line_7" {
@@ -710,7 +724,6 @@ func TestSeamRouteRegistrationReplacesTheStub(t *testing.T) {
 		}
 		write(w, map[string]bool{"accepted": true})
 	})
-	t.Cleanup(func() { clearSeamRoute(http.MethodPatch, "/places/{id}/knows/{line}") })
 	if request(b, http.MethodPatch, "/api/engine/places/pl_1/knows/line_7", "{}").Code != http.StatusOK || lineCalls != 1 {
 		t.Fatalf("knows line was not dispatched (%d)", lineCalls)
 	}

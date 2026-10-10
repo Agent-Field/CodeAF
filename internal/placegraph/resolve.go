@@ -324,7 +324,18 @@ func (s *Snapshot) resolveInstructions(cps []ContextPlace, budget int) []UsedIns
 	out := []UsedInstruction{}
 	byText := map[string]int{}
 	for _, cp := range cps {
-		text := strings.TrimSpace(s.Places[s.byID[cp.PlaceID]].Context.Instructions)
+		// The compatibility prose remains readable, but live knowledge is the
+		// same source for the engine prompt and the desktop's Using list.
+		words := []string{}
+		if legacy := strings.TrimSpace(s.Places[s.byID[cp.PlaceID]].Context.Instructions); legacy != "" {
+			words = append(words, legacy)
+		}
+		for _, line := range s.Knowledge(cp.PlaceID) {
+			if line.ReplacedBy == "" {
+				words = append(words, line.Text)
+			}
+		}
+		text := strings.TrimSpace(strings.Join(words, "\n\n"))
 		if text == "" {
 			continue
 		}
