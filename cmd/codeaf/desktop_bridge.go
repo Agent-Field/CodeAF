@@ -187,6 +187,9 @@ func runDesktopBridge(args []string) error {
 		return fmt.Errorf("places: %w", err)
 	}
 	bridge.UseHistory(&desktopbridge.History{Root: session.PlacesRoot()})
+	// The world feed reads the persisted home world; it is named here rather
+	// than left to the lazy default so the door owns which state root it watches.
+	bridge.UseWorld(desktopbridge.NewWorldFeed(session.ReadHome))
 	// Each window place's tab set lives beside the place graph, in a folder the
 	// bridge is handed rather than one it picks: so a --places file in a test or
 	// a throwaway home carries its tab sets with it.
