@@ -8,9 +8,9 @@ import design from '../../design/tokens.json';
 /** One square in a swatches row. `id` is a place tint (`tide`, `rose`, …); an id with no token paints nothing. */
 export type MenuSwatchOption = { id: string; label: string };
 export type MenuEntry =
- | { kind?: 'action'; id: string; label: string; icon?: IconName; shortcut?: string; detail?: string; disabled?: boolean; checked?: boolean; danger?: boolean; onSelect: () => void }
+ | { kind?: 'action'; id: string; label: string; icon?: IconName; /** An empty 14px column, so words line up with rows that have a glyph. */ iconSlot?: boolean; shortcut?: string; detail?: string; disabled?: boolean; checked?: boolean; danger?: boolean; onSelect: () => void }
  | { kind: 'separator'; id: string }
- | { kind: 'submenu'; id: string; label: string; icon?: IconName; disabled?: boolean; items: readonly MenuEntry[] }
+ | { kind: 'submenu'; id: string; label: string; icon?: IconName; iconSlot?: boolean; disabled?: boolean; items: readonly MenuEntry[] }
  | { kind: 'swatches'; id: string; label: string; icon?: IconName; options: readonly MenuSwatchOption[]; selected?: string; onSelect: (id: string) => void };
 type MenuProps = { children: ReactElement; items: readonly MenuEntry[]; label: string; className?: string; onOpenChange?: (open: boolean) => void; /** The 240px menu of the design's tab menu; the default is 200px. */ wide?: boolean };
 
@@ -38,7 +38,8 @@ function focusFirstItem(event: FocusEvent<HTMLDivElement>) {
  event.currentTarget.querySelector<HTMLElement>('[role^="menuitem"]:not([data-disabled])')?.focus();
 }
 function EntryContents({ entry }: { entry: Exclude<MenuEntry, { kind: 'separator' } | { kind: 'swatches' }> }) {
- return <>{entry.icon && <Icon name={entry.icon} size="sm"/>}<span className="menu-label">{entry.label}</span>{entry.kind === 'submenu'
+ // A row with no glyph still holds the icon column. Delete place… is danger words only, and the words stay aligned.
+ return <>{entry.icon ? <Icon name={entry.icon} size="sm"/> : entry.iconSlot ? <span className="menu-icon-slot" aria-hidden="true"/> : null}<span className="menu-label">{entry.label}</span>{entry.kind === 'submenu'
   ? <Icon name="chevronRight" size="xs"/>
   : <>{'detail' in entry && entry.detail && <span className="menu-detail">{entry.detail}</span>}{entry.shortcut && <KeyboardShortcut label={entry.shortcut} variant="inline"/>}</>}</>;
 }

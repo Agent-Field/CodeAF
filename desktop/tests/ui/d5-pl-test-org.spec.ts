@@ -263,3 +263,100 @@ test('d5-pl-test-org: tint row is five squares, and left/right then Enter picks 
   await expect.poll(() => places.calls.filter(call => call.method === 'POST' && call.body.tint === 'rose')).toHaveLength(1);
   await expect(reading).toHaveAttribute('data-tint-name', 'rose');
 });
+
+/** Labels in menu order, with a rule written as —. Shortcuts and the danger row are read beside the label. */
+async function menuRows(menu: ReturnType<Page['getByRole']>) {
+  return menu.locator(':scope > [role^="menuitem"], :scope > [role="separator"], :scope > [role="radiogroup"]').evaluateAll(nodes => nodes.map(node => {
+    if (node.getAttribute('role') === 'separator') return { label: '—', shortcut: '', icon: '', slot: false, danger: false };
+    return {
+      label: node.querySelector('.menu-label')?.textContent ?? '',
+      shortcut: node.querySelector('kbd')?.textContent ?? '',
+      icon: node.querySelector('.app-icon')?.getAttribute('data-icon') ?? '',
+      slot: !!node.querySelector('.menu-icon-slot'),
+      danger: node.classList.contains('menu-item-danger'),
+    };
+  }));
+}
+
+test('d5-pl-test-org: the tile menu, the Home ⋯ and the Home tab each list their rows', async ({ page }) => {
+  test.setTimeout(60_000);
+  await openAllPlaces(page);
+  await tile(page, 'Reading').locator('.places-tile-main').click({ button: 'right' });
+  const tileMenu = page.getByRole('menu', { name: 'Reading actions' });
+  await expect(tileMenu).toBeVisible();
+  const tileRows = await menuRows(tileMenu);
+  expect(tileRows.map(row => row.label)).toEqual([
+    'Go to', 'Quick Look', 'Open in new window', '—',
+    'Rename', 'Tint', 'Add to another place…', 'Merge into…', 'Pin to rail', '—',
+    'Archive', 'Delete place…',
+  ]);
+  expect(tileRows[0]).toMatchObject({ shortcut: '↵', icon: 'arrow' });
+  expect(tileRows[1]).toMatchObject({ shortcut: 'Space', icon: 'eye' });
+  // The tile passes no host label, so the row keeps the drawing's ⌘↵. spellShortcut leaves that string as written.
+  expect(tileRows[2]).toMatchObject({ shortcut: '⌘↵', icon: 'appWindow' });
+  expect(tileRows[6]).toMatchObject({ icon: 'folderInput' });
+  expect(tileRows[8]).toMatchObject({ icon: 'pin' });
+  expect(tileRows[10]).toMatchObject({ icon: 'archive' });
+  const deleted = tileRows[11];
+  expect(deleted).toMatchObject({ danger: true, icon: '', slot: true });
+
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+    const item = tileMenu.getByRole('menuitem', { name: 'Delete place…' });
+    await expect(item.locator('.app-icon')).toHaveCount(0);
+    const paint = await item.evaluate(el => {
+      // The row transitions colour, so a theme flip is mid-blend until the transition is cancelled.
+      const previous = el.style.transition;
+      el.style.transition = 'none';
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--danger)';
+      document.documentElement.appendChild(probe);
+      const norm = (value: string) => {
+        const ctx = document.createElement('canvas').getContext('2d');
+        if (!ctx) return value;
+        ctx.fillStyle = '#000';
+        ctx.fillStyle = value;
+        return ctx.fillStyle;
+      };
+      const danger = norm(getComputedStyle(probe).color);
+      probe.style.color = 'var(--ink)';
+      const ink = norm(getComputedStyle(probe).color);
+      probe.remove();
+      const color = norm(getComputedStyle(el).color);
+      el.style.transition = previous;
+      return { color, danger, ink, slot: el.querySelector('.menu-icon-slot')?.getBoundingClientRect().width ?? 0 };
+    });
+    expect(paint.color, theme).toBe(paint.danger);
+    expect(paint.color, theme).not.toBe(paint.ink);
+    expect(paint.slot, theme).toBeCloseTo(14, 0);
+  }
+
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
+  await page.getByRole('menuitem', { name: 'Go to' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Reading' })).toBeVisible();
+
+  // The ⋯ button's name wins over the menu's aria-label, so the open menu is "Place actions".
+  await page.getByRole('button', { name: 'Place actions', exact: true }).click();
+  const home = page.getByRole('menu', { name: 'Place actions' });
+  await expect(home).toBeVisible();
+  expect((await menuRows(home)).map(row => row.label)).toEqual([
+    'Open in new window', '—',
+    'Rename', 'Tint', 'Add to another place…', 'Merge into…', 'Pin to rail', '—',
+    'Archive', 'Delete place…',
+  ]);
+  await page.keyboard.press('Escape');
+
+  await page.getByRole('tab', { name: 'Reading' }).click({ button: 'right' });
+  // The strip names a tab's menu from the tab title. HomeTab's own label is the inner one.
+  const tab = page.getByRole('menu', { name: 'Actions for Reading' });
+  await expect(tab).toBeVisible();
+  expect((await menuRows(tab)).map(row => row.label)).toEqual([
+    'Open in new window', '—',
+    'Rename', 'Tint', 'Add to another place…', 'Merge into…', 'Pin to rail', '—',
+    'Close place',
+  ]);
+  await expect(tab.getByRole('menuitem', { name: 'Archive' })).toHaveCount(0);
+  await expect(tab.getByRole('menuitem', { name: 'Delete place…' })).toHaveCount(0);
+  await expect(tab.getByRole('menuitem', { name: 'Go to' })).toHaveCount(0);
+  await expect(tab.getByRole('menuitem', { name: 'Quick Look' })).toHaveCount(0);
+});
