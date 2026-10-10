@@ -1250,11 +1250,15 @@ func (a *app) newHomeView(world session.World, known bool) homeView {
 // was simply not asked for on that road. So there is one list, and a reading
 // added to it is a reading every road takes.
 //
-// Order matters in two places and nowhere else: the bands come first because
-// the machine's counts are taken over them, and the folders are statted after
-// the bands because a project home knows only through a watch is one of the
-// projects this has to answer for ([homeView.readGone]).
+// Order matters in one place: the shape the column is drawn in is settled
+// first, because every build after it reads it.
 func (a *app) furnishHome() {
+	// phone lane: the one fact the column's own build needs and cannot ask the
+	// app for — which shape it is drawn in (homephone.go). It is settled here
+	// because this is the one call that runs before every build of the list;
+	// the frame settles it again before it draws, for a terminal that changed
+	// width in between.
+	a.home.phone = a.homePhone()
 	// WHAT THE AUTOMATIONS HAVE BEEN DOING, as the watcher last read it: the
 	// `automations` panel and the runs `since you left` names
 	// (homepanel_next.go, switcher.go).
@@ -1274,7 +1278,7 @@ func (a *app) furnishHome() {
 	// because that index is a file and a card is a draw.
 	a.readHomeArtifacts()
 	// AND WHAT THE MACHINE SAYS ABOUT ITSELF IS READ WITH THE WORLD TOO: the
-	// pulse line's money and counts are derived from these bands, and a reading
+	// pulse line's money and counts are derived from this reading, and a reading
 	// taken on its own clock would be a top line describing a machine the column
 	// below it had already moved past (homemachine.go's [app.readMachine]).
 	// Home's own line leaves the counts out; the next frame out of home draws

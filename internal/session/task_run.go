@@ -2196,17 +2196,6 @@ func (g *TaskGraph) announce(node *TaskNode) {
 	}
 }
 
-// reportHome is [TaskGraph.report] for a graph whose home is filled in AFTER it
-// is built: it reads the home field at the moment of the report and answers
-// nothing before there is one. A standing firing's own graph had that shape,
-// and nothing builds one now; a conversation's graph binds the method directly
-// ([Agent.graph]) because by then there is an agent to bind to.
-func (g *TaskGraph) reportHome(node *TaskNode) {
-	if g != nil && g.home != nil {
-		g.home.reportTaskNode(node)
-	}
-}
-
 // node looks one up by id.
 func (g *TaskGraph) node(id uint64) *TaskNode {
 	g.mu.Lock()
@@ -4877,13 +4866,8 @@ func (a *Agent) emitTaskUpdate(notice TaskNotice) {
 // the work it handed off. A surface holds it for the life of the session and
 // stops reading when it stops drawing.
 //
-// AND THE FIRST SUBSCRIBER IS HANDED THE BACKLOG, ONCE: what was queued while
-// the window was shut ([Agent.standingNews], which nothing has queued since
-// standing orders went). A second lane on the same session is a second view of
-// the same conversation, not a second person arriving.
-//
-// EVERY subscriber is handed the task ROSTER, by contrast, not only the first:
-// the rows are facts about the graph rather than news, and a lane opened by a
+// EVERY subscriber is handed the task ROSTER: the rows are facts about the
+// graph rather than news, and a lane opened by a
 // surface with nothing drawn yet — a conversation resumed from its checkpoint,
 // one switched back to behind home — needs all of them to rebuild its column
 // ([Agent.replayTaskRoster]).
@@ -4913,8 +4897,6 @@ func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
 		return stream.out, func() {}
 	}
 	a.taskWatchers = append(a.taskWatchers, stream)
-	news := a.standingNews
-	a.standingNews = nil
 	a.mu.Unlock()
 	// THE ROSTER GOES OUT FIRST OF ALL, to EVERY new lane. A lane is opened by
 	// a surface that has no rows yet — a conversation resumed from its
@@ -4925,13 +4907,6 @@ func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
 	// that watched all along re-hears what it already drew, and drawing a row
 	// twice is drawing it once (tui3's taskUpdate keys rows by id).
 	a.replayTaskRoster(stream)
-	// THE BACKLOG GOES OUT BEFORE THE STREAM DOES, so a surface that attached a
-	// moment late would see the card rather than a lane that looks like it
-	// never fired. Nothing has queued one since standing orders went
-	// ([Agent.standingNews]).
-	for _, event := range news {
-		stream.send(event)
-	}
 	var once sync.Once
 	return stream.out, func() {
 		once.Do(func() {

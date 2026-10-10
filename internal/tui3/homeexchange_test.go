@@ -1296,7 +1296,8 @@ func TestThePaneSaysWhatItIsDoingWhileItWorks(t *testing.T) {
 
 // TestAToolRowIsReadableAndNeverSaysUnknown is the fourth complaint: the pane
 // drew `bash · unknown` and `stand · unknown`, because the fallback gloss for a
-// call with no hint was [errText] of a nil error.
+// call with no hint was [errText] of a nil error. The automation tool that
+// replaced `stand` says what it is doing in the place's own words.
 func TestAToolRowIsReadableAndNeverSaysUnknown(t *testing.T) {
 	lab := newErrandLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "pricing research", "/tmp/alpha", time.Now())
@@ -1310,10 +1311,10 @@ func TestAToolRowIsReadableAndNeverSaysUnknown(t *testing.T) {
 	})
 	a.errandEvent(ex, session.Event{Kind: session.EventToolEnd, Tool: "bash"})
 	a.errandEvent(ex, session.Event{
-		Kind: session.EventToolBegin, Tool: "stand",
-		Args: `{"op":"propose","words":"remind me at 6 to leave"}`, Hint: "stand",
+		Kind: session.EventToolBegin, Tool: "automation",
+		Args: `{"op":"propose","title":"leave","words":"remind me at 6 to leave"}`, Hint: "automation",
 	})
-	a.errandEvent(ex, session.Event{Kind: session.EventToolEnd, Tool: "stand", Hint: "stand"})
+	a.errandEvent(ex, session.Event{Kind: session.EventToolEnd, Tool: "automation", Hint: "automation"})
 
 	frame := homeText(a)
 	if strings.Contains(frame, "unknown") {
@@ -1322,8 +1323,8 @@ func TestAToolRowIsReadableAndNeverSaysUnknown(t *testing.T) {
 	if !strings.Contains(frame, "bash · date +%H:%M") {
 		t.Fatalf("the bash row does not say what it ran:\n%s", frame)
 	}
-	if !strings.Contains(frame, "stand · proposing remind me at 6 to leave") {
-		t.Fatalf("the stand row does not say what it is doing:\n%s", frame)
+	if !strings.Contains(frame, "automation · proposing leave") {
+		t.Fatalf("the automation row does not say what it is doing:\n%s", frame)
 	}
 }
 

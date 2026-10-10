@@ -162,7 +162,16 @@ func TestTheVerbKeyActsOnTheRowThePointerIsOn(t *testing.T) {
 	if line, ok := a.home.focusedLine(); !ok || line.kind != homeSession {
 		t.Fatalf("home did not open on a conversation, so the two rows cannot be told apart:\n%s", homeText(a))
 	}
-	asking := homeLineOfKind(t, a, homeSession, "beta asking")
+	asking := -1
+	for at, line := range a.home.lines {
+		if line.kind == homeSession && line.row.Title == "beta asking" {
+			asking = at
+			break
+		}
+	}
+	if asking < 0 {
+		t.Fatalf("the conversation stopped on a question has no row on the column:\n%s", homeText(a))
+	}
 	a.homeHover(4, homeLineY(t, a, asking))
 
 	a.homeKey(key("right"))
@@ -174,8 +183,8 @@ func TestTheVerbKeyActsOnTheRowThePointerIsOn(t *testing.T) {
 		words = append(words, v.word)
 	}
 	joined := strings.Join(words, ", ")
-	if !strings.Contains(joined, "delete") {
-		t.Fatalf("→ did not offer the previewed conversation's own verbs, it offered %q", joined)
+	if !strings.Contains(joined, "do it") {
+		t.Fatalf("→ did not offer the previewed question's own answers, it offered %q", joined)
 	}
 	if strings.Contains(joined, "close") {
 		t.Fatalf("→ acted on the cursor's conversation instead of the row on the screen: %q", joined)

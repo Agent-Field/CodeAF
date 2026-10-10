@@ -315,8 +315,8 @@ func TestAnsweringLeavesTheSystemPromptByteForByte(t *testing.T) {
 }
 
 // AND IT RIDES ALONG THE NEXT TIME THE PROMPT IS REBUILT FOR SOME OTHER REASON —
-// a folder attached, a standing order agreed — which is a moment the prefix is
-// being paid for anyway.
+// a folder attached, a rule set — which is a moment the prefix is being paid
+// for anyway.
 func TestTheRecordRidesTheNextRebuildOfTheSystemPrompt(t *testing.T) {
 	agent, _ := questionSession(t, "rrrr2222rrrr2222", nil)
 	agent.mu.Lock()
@@ -325,7 +325,7 @@ func TestTheRecordRidesTheNextRebuildOfTheSystemPrompt(t *testing.T) {
 	agent.recordDecision(DecisionRecord{Head: "which storage shape", Picked: []string{"1"}, By: DecidedByPerson})
 
 	agent.mu.Lock()
-	agent.standingText = "\n\nstanding orders\n- keep the tests green"
+	agent.alwaysText = "\n\nAlways:\n- keep the tests green"
 	agent.refreshSystemLocked()
 	carried := messageText(agent.messages[0])
 	agent.mu.Unlock()

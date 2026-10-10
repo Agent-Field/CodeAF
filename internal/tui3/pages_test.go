@@ -317,7 +317,7 @@ func TestTheMapDrawsInTheCellsThatWereAlreadyThere(t *testing.T) {
 	// after the six with theirs: the map is the one surface whose job is to show
 	// every key, so `alt+7`…`alt+8` are on it.
 	if bar := after[navRow]; !strings.Contains(bar, "1 Home") || !strings.Contains(bar, "2 AI teams") || !strings.Contains(bar, "3 Chats") ||
-		!strings.Contains(bar, "6 Settings") || !strings.Contains(bar, "7 Standing") || !strings.Contains(bar, "8 Memory") || strings.Contains(bar, "9 search") {
+		!strings.Contains(bar, "6 Settings") || !strings.Contains(bar, "7 Automations") || !strings.Contains(bar, "8 Memory") || strings.Contains(bar, "9 search") {
 		t.Fatalf("the map put no numbers on the tab bar: %q", bar)
 	}
 	// AND THE CHORD LIST IS THE HINT LINE.
@@ -827,8 +827,8 @@ func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	// AND A ROOM OFF THE BAR IS ON IT WHILE YOU STAND IN IT. A bar with no word
 	// lit is a bar that does not know where you are.
 	walkTo(t, a, pageAutomations)
-	if bar := navPlaces(a, 120, false); !strings.Contains(bar, "Settings  Standing") {
-		t.Fatalf("standing in memory, the bar does not say so: %q", bar)
+	if bar := navPlaces(a, 120, false); !strings.Contains(bar, "Settings  Automations") {
+		t.Fatalf("standing in automations, the bar does not say so: %q", bar)
 	}
 }
 

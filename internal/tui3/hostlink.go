@@ -168,14 +168,13 @@ type HeldQuestion struct {
 	Since time.Time
 }
 
-// The four kinds this build draws. They are spelled here rather than imported
+// The three kinds this build draws. They are spelled here rather than imported
 // because this package cannot see internal/remote, and they are a closed list
 // on purpose — see [app.replayHeld] for what an unrecognised one does.
 const (
-	heldConsent  = "consent"
-	heldStanding = "standing"
-	heldHarness  = "harness"
-	heldConnect  = "connect"
+	heldConsent = "consent"
+	heldHarness = "harness"
+	heldConnect = "connect"
 )
 
 // ── 1. the note, on the status line ─────────────────────────────────────────
@@ -428,7 +427,7 @@ func (a *app) replayHeld(msg heldMsg) tea.Cmd {
 	var cmds []tea.Cmd
 	for _, q := range msg.questions {
 		switch q.Kind {
-		case heldConsent, heldStanding, heldHarness, heldConnect:
+		case heldConsent, heldHarness, heldConnect:
 		default:
 			continue
 		}

@@ -352,9 +352,12 @@ func TestQuotedDoorNamesSendTheWholeSentenceAsProse(t *testing.T) {
 	}
 }
 
+// A DOOR NAME IS A WORD THAT CAN ACT ON A SEND, and `/task` is the one door
+// left now that standing orders are gone; an ordinary command such as
+// `/automations` keeps its chip in the transcript however it is quoted.
 func TestQuotedDoorNamesStayPlainInTheOrdinarySendTranscript(t *testing.T) {
 	for _, quotes := range [][2]string{{"'", "'"}, {"\"", "\""}, {"‘", "’"}, {"“", "”"}} {
-		for _, word := range []string{"task", "automations"} {
+		for _, word := range []string{"task"} {
 			line := "What does " + quotes[0] + "/" + word + quotes[1] + " do?"
 			t.Run(line, func(t *testing.T) {
 				base := &fakeAgent{model: "m"}

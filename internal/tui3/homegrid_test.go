@@ -155,7 +155,7 @@ func TestAtOneEightyTheFieldIsOneColumnAndTheMiddleIsNoPanels(t *testing.T) {
 	}
 	// AND THE QUIET PANELS ARE ALL IN THE LAST COLUMN, none of them left behind
 	// in the field beside a panel that has something to say.
-	for _, word := range []string{"spend", "since you left", "standing"} {
+	for _, word := range []string{"spend", "since you left", "automations"} {
 		if _, at := homeRowOf(frame, word); at != railCol {
 			t.Fatalf("%q is at cell %d, want the rail at %d:\n%s", word, at, railCol, frame)
 		}
@@ -637,8 +637,8 @@ func TestAWhisperWrapsAtItsColumnAndIsNeverCut(t *testing.T) {
 	a := newLiveLab(t).open()
 	frame := homeText(a)
 	_, rail := homeRowOf(frame, "projects")
-	first, head := homeRowOf(frame, "reminders, routines")
-	second, at := homeRowOf(frame, `6" or`)
+	first, head := homeRowOf(frame, "reminders, scheduled work")
+	second, at := homeRowOf(frame, `or "every morning`)
 	if first < 0 || second != first+1 || at != head || at != rail+homeGridLead {
 		t.Fatalf("the scheduled whisper is cut rather than wrapped in the rail:\n%s", frame)
 	}

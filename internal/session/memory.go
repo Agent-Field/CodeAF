@@ -2267,9 +2267,8 @@ func (a *Agent) refreshSystemLocked() {
 	}
 	// THE PERSON'S RULES RIDE IN THE HEAD because a rule moves only when somebody
 	// sets or takes one back, so on every other turn the block renders byte for
-	// byte (memory_always.go). The standing block after them is always empty now
-	// ([Agent.standingText]).
-	head := a.system + a.placesText + a.alwaysText + a.standingText
+	// byte (memory_always.go).
+	head := a.system + a.placesText + a.alwaysText
 	if head != a.systemHead {
 		a.systemHead = head
 		a.recordShown = a.recordText

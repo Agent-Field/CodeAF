@@ -4533,7 +4533,7 @@ func superviseResident(ctx context.Context, serve func(context.Context) error,
 			log.Printf("resident loop abandoned after %d restarts; background work has stopped", consecutive)
 			if announce != nil {
 				announce("my background half has stopped and I could not restart it — " +
-					"standing rules, watching and follow-up work are paused until codeaf is restarted. " +
+					"follow-up work is paused until codeaf is restarted. " +
 					"The reason is in the log: " + firstLine(fmt.Sprint(err)))
 			}
 			return

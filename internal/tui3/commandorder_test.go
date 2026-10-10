@@ -21,28 +21,29 @@ func TestCommandCatalogueIncludesTheCompleteArgumentForms(t *testing.T) {
 	}
 }
 
-// THE WORDS FORM LEADS THE PAIR, AND THE FINISHED WORD STILL GETS ITS PAGE.
-// /standing has two rows on purpose: the one that makes an order (the act the
-// command exists for — the owner's own ruling) and the one that opens the page
-// of what already stands. A person still typing is offered the act first; a
-// person who has typed the whole word, or an alias for it, is about to run
-// that word, and enter must answer with the bare form rather than swallowing a
-// deliberately typed command into a draft still waiting for words.
-func TestStandingOffersTheWordsFormFirstWhileTyping(t *testing.T) {
+// THE LIST LEADS THE PAIR, AND THE FINISHED WORD STILL GETS ITS PAGE.
+// /automations has two rows on purpose: the place that lists them, and the
+// exact line that adds one. A person still typing the word is offered the list
+// first — saying what they want in the conversation is the ordinary way to make
+// one, and the typed line is for somebody who already knows its grammar.
+func TestAutomationsOffersTheListFirstWhileTyping(t *testing.T) {
 	var m menu
 	m.open = true
-	m.rank("stand")
+	m.rank("autom")
 	got, ok := m.choice()
 	if !ok {
 		t.Fatal("a partial word matched nothing")
 	}
-	if got.name != "standing" || got.args == "" {
-		t.Fatalf("the leading row for a partial word is /%s %q — want the words form of /standing", got.name, got.args)
+	if got.name != "automations" || got.args != "" {
+		t.Fatalf("the leading row for a partial word is /%s %q — want the bare /automations", got.name, got.args)
 	}
 }
 
+// A person who has typed the whole word is about to run that word, and enter
+// must answer with the bare form rather than swallowing a deliberately typed
+// command into a draft still waiting for words.
 func TestAFinishedCommandWordChoosesItsBareForm(t *testing.T) {
-	for _, word := range []string{"standing", "orders", "task", "redo", "workspace"} {
+	for _, word := range []string{"automations", "task", "redo", "workspace"} {
 		var m menu
 		m.open = true
 		m.rank(word)
@@ -51,9 +52,6 @@ func TestAFinishedCommandWordChoosesItsBareForm(t *testing.T) {
 			t.Fatalf("%q matched nothing", word)
 		}
 		want := word
-		if word == "orders" {
-			want = "standing"
-		}
 		if got.name != want || got.args != "" {
 			t.Fatalf("enter on the finished word %q would take /%s %q — want the bare form", word, got.name, got.args)
 		}

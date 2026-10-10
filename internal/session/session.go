@@ -2923,10 +2923,6 @@ type Agent struct {
 	// ([Agent.landVolatileLocked]), and no longer in message[0], because it
 	// moves every time a delta lands and message[0] is in front of everything.
 	cardText string
-	// standingText was the <standing> block message[0] carried while standing
-	// orders existed. Nothing in this build sets it, so it renders nothing: what
-	// the person holds over a conversation now is the rules below.
-	standingText string
 	// alwaysText is the <always> block message[0] currently carries
 	// (memory_always.go): the person's rules over this place, read from the
 	// memory store at the start of every turn. An unchanged set renders the same
@@ -3528,14 +3524,6 @@ type Agent struct {
 	// it: a node's most important event lands minutes after the turn that
 	// proposed it ended, when there is no hub to send it to.
 	taskWatchers []*eventStream
-	// standingNews was the queue of what standing orders fired while this
-	// window was SHUT, folded inside New before any surface had subscribed.
-	// Nothing in this build queues to it; the first [Agent.TaskUpdates] still
-	// takes whatever it holds, which is nothing.
-	standingNews []Event
-	// standingHeld was the set of staged standing-inbox files a live fold
-	// owned. Nothing in this build reads or writes it.
-	standingHeld map[string]bool
 	// jobRows is the roster id minted for each background job, keyed by the
 	// registry's own number for it. The two numberings are separate counters and
 	// a row keyed on the registry's would collide with a task's, which is why

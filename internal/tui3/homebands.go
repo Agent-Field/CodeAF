@@ -268,15 +268,12 @@ const (
 	bandOrderGone        = 5   // the folder this project lived in is not there any more
 	bandOrderState       = 10  // what it is doing right now, and what it is stopped on
 	bandOrderAnswer      = 15  // the question it is stopped on, answerable from here
-	bandOrderNews        = 30  // what happened since you last looked
 	bandOrderWork        = 40  // the tasks it ran, with what they came to
 	bandOrderDeliverable = 50  // the files it produced
-	bandOrderNextUp      = 60  // retired with standing orders: the items that would wake next
 	bandOrderLeftOff     = 70  // where the conversation left off
 	bandOrderRepo        = 80  // where the repository stands
 	bandOrderFolders     = 85  // the folders it is about beyond the one it stands in
 	bandOrderSpend       = 90  // what it has cost
-	bandOrderThinking    = 93  // retired with standing orders: an item's thinking rung
 	bandOrderKeys        = 100 // what the keyboard does here, always last
 )
 

@@ -13,12 +13,12 @@ import (
 func TestPickedHarnessKeepsDemotedDoorPlain(t *testing.T) {
 	a, agent, _ := pickApp(t, demoHarness("review-diff", "read a diff"))
 	a.harnChip = "review-diff"
-	typeInto(t, a, "say /standing")
+	typeInto(t, a, "say /task")
 	drive(t, a, key("backspace"))
 	typeInto(t, a, " and /compact")
 	sameRuns(t, boxRuns(a), []string{"/compact"}, "the demoted draft")
 	drive(t, a, key("enter"))
-	if agent.runs != 1 || agent.text != "say /standing and /compact" {
+	if agent.runs != 1 || agent.text != "say /task and /compact" {
 		t.Fatalf("picked harness received %q in %d runs", agent.text, agent.runs)
 	}
 	e := lastUserEntry(t, a)
@@ -33,7 +33,7 @@ func TestGuardSendKeepsRestingDoorsPlain(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			a := newTestApp(&fakeAgent{model: "m"})
-			a.guard = &steerGuard{text: "later /compact and say /standing", title: "repair /task"}
+			a.guard = &steerGuard{text: "later /compact and say /task", title: "repair /task"}
 			a.guardSend(revive)
 			e := lastUserEntry(t, a)
 			if revive && !strings.HasPrefix(e.text, "The task ") {
@@ -52,7 +52,7 @@ func TestReplayedMessageKeepsRestingDoorsPlain(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			a := newTestApp(&fakeAgent{model: "m"})
-			recorded := session.DisplayEntry{Role: "user", Text: "日本 later\t/compact and say /standing"}
+			recorded := session.DisplayEntry{Role: "user", Text: "日本 later\t/compact and say /task"}
 			if pictures {
 				recorded.ImageRefs = []string{"picture.png"}
 			}
@@ -69,7 +69,7 @@ func TestReplayedBriefKeepsRestingDoorsPlain(t *testing.T) {
 	for _, role := range []string{"user", "aside"} {
 		t.Run(role, func(t *testing.T) {
 			a := newTestApp(&fakeAgent{model: "m"})
-			raw := "THE WORK\n\nlater /compact and say /standing"
+			raw := "THE WORK\n\nlater /compact and say /task"
 			blocks, _ := a.replayBlocks([]session.DisplayEntry{{Role: role, Text: raw}}, roomReplay(0))
 			if len(blocks) != 1 || !blocks[0].brief || blocks[0].text != raw {
 				t.Fatalf("the instruction did not retain its journal text: %+v", blocks)
@@ -85,7 +85,7 @@ func TestReplayedBriefKeepsRestingDoorsPlain(t *testing.T) {
 
 func TestFollowUpKeepsRestingDoorsPlain(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
-	a.follows = []queued{{text: "later /compact and say /standing", ch: make(chan session.Event)}}
+	a.follows = []queued{{text: "later /compact and say /task", ch: make(chan session.Event)}}
 	a.startFollow()
 	e := lastUserEntry(t, a)
 	sameRuns(t, chipRuns(a.renderEntry(0, e, 30)...), []string{"/compact"}, "the follow-up transcript")
@@ -98,7 +98,7 @@ func TestQuestionReplacementKeepsRestingDoorsPlain(t *testing.T) {
 	lab.raise(consentAsk())
 	lab.tick(questionSettle * 2)
 	lab.press("o")
-	words := "later /compact and say /standing"
+	words := "later /compact and say /task"
 	lab.a.input.setText(words)
 	lab.press("enter")
 	if len(agent.replaced) != 1 || agent.replaced[0].Change != words {
@@ -120,7 +120,7 @@ func TestClarificationKeepsRestingDoorsPlain(t *testing.T) {
 
 func TestSteeredCorrectionKeepsChipsAndRestingDoorsPlain(t *testing.T) {
 	a, agent := steerableTurn(t, "reading the tree. ")
-	typeInto(t, a, "say /standing")
+	typeInto(t, a, "say /task")
 	drive(t, a, key("backspace"))
 	typeInto(t, a, " and /compact later")
 	words := a.input.String()
@@ -144,7 +144,7 @@ func TestSteeredCorrectionKeepsChipsAndRestingDoorsPlain(t *testing.T) {
 func TestReplayedCorrectionKeepsChipsAndRestingDoorsPlain(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	blocks, _ := a.replayBlocks([]session.DisplayEntry{{
-		Role: "user", Text: "later /compact and say /standing",
+		Role: "user", Text: "later /compact and say /task",
 		Steer: &session.SteerMark{Consumed: true},
 	}}, chatReplay(0))
 	if len(blocks) != 1 || blocks[0].kind != entrySteer {
@@ -161,9 +161,9 @@ func TestWaitingMessageKeepsChipsAndDemotedDoorsPlain(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			a := newTestApp(&fakeAgent{model: "m"})
-			words := "日本 later\t/compact and say /standing"
-			at := len([]rune(words[:strings.Index(words, "/standing")]))
-			p := parked{text: words, plain: []segment{{from: at, to: at + len("/standing")}}}
+			words := "日本 later\t/compact and say /task"
+			at := len([]rune(words[:strings.Index(words, "/task")]))
+			p := parked{text: words, plain: []segment{{from: at, to: at + len("/task")}}}
 			if pictures {
 				p.chips = []chip{{path: "picture.png"}}
 			}

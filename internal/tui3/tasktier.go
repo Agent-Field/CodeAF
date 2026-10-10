@@ -278,9 +278,3 @@ func tierWordShed(word string) string {
 // the two have not drifted. The words it replaced — `needs your look`, `awaiting
 // review`, `unverified` — were three surfaces' private names for one reading.
 const tierYourCallWord = "your call"
-
-// tierReasonSep hangs a reason off that word, for the same rows: `your call ·
-// the fix touches migrations`. It is [tierSep] under another name because a row
-// composed by hand and a row composed by [session.TaskStatus.RowWord] must be
-// punctuated identically or the eye reads two kinds of row.
-const tierReasonSep = tierSep
