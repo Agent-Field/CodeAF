@@ -1,7 +1,8 @@
 // The renderer's one door to codeaf's native controls: windows, choosers,
 // notifications and the dock badge. Every call goes to a typed Rust command
-// (src-tauri/src/windows.rs, dialogs.rs, notifications.rs); the renderer holds
-// no dialog or notification plugin permission of its own.
+// (src-tauri/src/windows.rs, dialogs.rs, notifications.rs). The capability
+// still names dialog:allow-open and notification:default, because that is the
+// reviewed allow-list for main and w-*; shell and filesystem grants stay off.
 //
 // Kept free of React so node tests can import it. The bridge is injectable; the
 // default one talks to Tauri, and outside Tauri every call answers honestly that
