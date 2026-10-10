@@ -52,6 +52,7 @@ import { useFocusWireFor, useOptionalFocusWire } from '../focus-history/useFocus
 import { routeTask } from './view-state';
 import { useTerminalTabs } from '../terminal/useTerminalTabs';
 import { useWorkspaceWeb } from '../web/useWorkspaceWeb';
+import { useGroupKeys } from './useGroupKeys';
 import { useDesktopTabActions, useTabKeys, type Switcher } from './useTabKeys';
 import { useWindowHandoff } from './useWindowHandoff';
 import { useTabLinks } from './links/useTabLinks';
@@ -311,6 +312,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   useTabLinks({ enabled, state, dispatch, actions });
   useCloseStopKey(enabled, () => closeAndStop(state.activeId));
   function startRename(id: string, group = false) { setRename({ id, group, value: (group ? state.groups : state.tabs).find(item => item.id === id)?.title ?? '' }); }
+  const groupSelected = useGroupKeys({ enabled, state, dispatch, startRename });
   useTabKeys({ enabled, state, dispatch, visible, overviewOpen, setOverviewOpen, closeTab, switcherRef, setSwitcher });
   useTerminalTabs({ enabled, state, dispatch });
   // Web tabs: a page's new window and a link's open-in-tab modifier open a web tab, a page can start a conversation, and a closed tab's native view closes.
@@ -319,7 +321,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const historyHost = useHistoryWorkspace(state, dispatch);
   const [archived, dismissArchived] = useAutoArchive(state, dispatch, summaries, Date.now, sync.status.phase === 'saved' || sync.status.phase === 'saving');
 
-  const api: TabsApi = { workspaceKey: place, state, dispatch, summaries, now, closeTab, closeAndStop, closeMany: closing.closeMany, isRunning: closing.isRunning, background, markFailedSeen, openChat: onOpenChat ?? openChatHere, canOpenChat: id => !!worldStore.getState().rows.find(row => row.session === id)?.sessionFile, actions, reopenClosed: closing.reopenClosed, startRename, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename,
+  const api: TabsApi = { workspaceKey: place, state, dispatch, summaries, now, closeTab, closeAndStop, closeMany: closing.closeMany, isRunning: closing.isRunning, background, markFailedSeen, openChat: onOpenChat ?? openChatHere, canOpenChat: id => !!worldStore.getState().rows.find(row => row.session === id)?.sessionFile, actions, reopenClosed: closing.reopenClosed, startRename, groupSelected, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename,
     placeTint: place === 'now' ? undefined : placeTint, placeMenu, placeSwitcher };
   const newTabHost = { state, summaries, dispatch, closeTab, receiveTransfer: sync.receiveTransfer };
   const actionsFor = (pane: Pane): PaneActions => ({
