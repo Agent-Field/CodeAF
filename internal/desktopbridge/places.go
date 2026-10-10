@@ -48,6 +48,9 @@ type Places struct {
 	// publish puts a record on the world stream. UsePlaces points it at the
 	// bridge's feed; nil publishes nothing.
 	publish func(kind string, payload any)
+	// tell puts a placeChange event on one open conversation's own ring
+	// (placechange.go). UsePlaces points it at the bridge; nil tells nobody.
+	tell func(chat string, change PlaceChange)
 	// sweepStop ends the rail's 30-second sweep. Bridge.Close closes it.
 	sweepStop chan struct{}
 
@@ -85,6 +88,7 @@ func (b *Bridge) UsePlaces(p *Places) {
 	if p != nil {
 		p.live = b.liveChatIDs
 		p.allowsModel = b.allowsModel
+		p.tell = b.tellChat
 		p.publish = func(kind string, payload any) { b.worldFeed().Publish(kind, payload) }
 		if p.sweepStop == nil {
 			p.sweepStop = make(chan struct{})

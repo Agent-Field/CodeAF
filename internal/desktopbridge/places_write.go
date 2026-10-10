@@ -396,6 +396,8 @@ func (p *Places) addMembers(w http.ResponseWriter, r *http.Request, id string) {
 	}
 	var b batch
 	var filed []placegraph.Membership
+	watch := p.watchChats(chats)
+	undo := map[string]string{}
 	for _, c := range chats {
 		if ask.MoveFrom != "" {
 			rc, err := p.Store.MoveChat(c, ask.MoveFrom, id, by)
@@ -404,6 +406,9 @@ func (p *Places) addMembers(w http.ResponseWriter, r *http.Request, id string) {
 				return
 			}
 			b.add(rc)
+			if !rc.Noop() {
+				undo[c] = rc.ID
+			}
 			continue
 		}
 		m, rc, err := p.Store.AddChat(c, id, by)
@@ -412,7 +417,13 @@ func (p *Places) addMembers(w http.ResponseWriter, r *http.Request, id string) {
 			return
 		}
 		b.add(rc)
+		if !rc.Noop() {
+			undo[c] = rc.ID
+		}
 		filed = append(filed, m)
+	}
+	if id != placegraph.NowID {
+		watch.announce(id, true, undo)
 	}
 	place := id
 	if id == placegraph.NowID {
@@ -440,6 +451,8 @@ func (p *Places) removeMembers(w http.ResponseWriter, r *http.Request, id string
 		return
 	}
 	var b batch
+	watch := p.watchChats(ask.Chats)
+	undo := map[string]string{}
 	for _, c := range ask.Chats {
 		rc, err := p.Store.RemoveChat(c, id)
 		if err != nil {
@@ -447,6 +460,10 @@ func (p *Places) removeMembers(w http.ResponseWriter, r *http.Request, id string
 			return
 		}
 		b.add(rc)
+		if !rc.Noop() {
+			undo[c] = rc.ID
+		}
 	}
+	watch.announce(id, false, undo)
 	p.finish(w, &b, id, nil)
 }
