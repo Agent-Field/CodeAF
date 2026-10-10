@@ -61,6 +61,7 @@ Shell). On any conflict, the design files win over code and older docs.
 
 | # | Question | Assumption the app ships now |
 |---|---|---|
+| LIFE1 | When does the ten-minute engine idle grace start after detached work or a question ends between reaper sweeps? | Start at the first one-minute sweep that confirms no views, streams, work or questions remain. Never count busy time toward the grace. A quiet final detach starts the grace immediately; repeated detaches do not extend it. |
 | Q30 | RESOLVED by the latest Interactions page: ⌘1–9 jump to tabs and ⌥⌘1–3 switch pinned models, so the two no longer share keys | ⌘1–9 jump to tabs; ⌥⌘1–3 pick pinned models. No conflict remains. |
 | OV1 | The earlier Shell spec opened the overview with ⌘↑; the latest Shell and Interactions pages say ⌘⇧\ (or a pinch out) and give ⌘↑/⌘↓ to stepping between messages | ⌘⇧\ (Ctrl Shift A off the Mac) and the grid icon open it; the overview no longer listens for ⌘↑. |
 | OV2 | Pinch out opens the overview (Shell 2h) | Not wired: the browser and the webview report no reliable pinch event. The grid icon and the keys open it. |
