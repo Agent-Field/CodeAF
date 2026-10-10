@@ -383,3 +383,7 @@ Finding fixed (real): an effort click sent `{ model: role.model, effort }`, wher
 Checked and sound: same-key saves run in intent order (`saveQueue`); a duplicate Enter/blur shares one save; a failed save neither blocks a retry nor drops a newer intent; only the newest version applies its answer or its failure text; pinned slots re-read the saved list when they run, so overlapping pin edits compose; the receipt shows the latest failure, else "Saving…", else the saved line.
 
 Remaining gap, not fixed: the receipt is one shared line, so a failure on one control has no marker on its own row. Left for the coordinator (see DESIGN-QUESTIONS, SETTINGS-ROLE-282).
+
+## t-d5-sh-focus-native-lights: traffic lights in Focus mode and peek (2026-10-10)
+
+Decision: option (b). Tauri 2.12.1 and tao 0.37.1 have no runtime API to hide the macOS traffic lights (`titlebar_buttons_hidden` is creation-time only, `set_closable` only disables). A small native command `window_set_traffic_lights(window, visible: bool)` calls `standardWindowButton(...).setHidden` on the main thread; the renderer hides the lights with the strip in Focus mode and shows them with the top-8px peek. This reverses the earlier SH-013 assumption (lights always visible), because the design puts the lights inside the strip. Full reasoning, signature and risks: `docs/research/d5-focus-traffic-lights.md`. No code changed in this lane; the native writer owns a new d5-nat task. Not verified on a Mac (headless Linux lane, no network, so no newer plugin was ruled out).
