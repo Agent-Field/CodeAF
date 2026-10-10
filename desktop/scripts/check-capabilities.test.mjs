@@ -18,6 +18,8 @@ const target = {
     'dialog:allow-open',
     'notification:default',
   ],
+  // The one scoped grant: engineFetch uses plugin:http, so packaged windows need it, but only for the engine's own path.
+  scopedGrants: [{ identifier: 'http:default', allow: [{ url: 'http://127.0.0.1:*/api/engine/*' }, { url: 'http://localhost:*/api/engine/*' }] }],
 };
 
 function checkContract(files, config) {
@@ -61,9 +63,11 @@ function checkContract(files, config) {
       const identifier = typeof permission === 'string' ? permission : permission?.identifier;
       assert.ok(typeof identifier === 'string' && !identifier.startsWith('shell:'),
         `${name}: shell-plugin permissions are forbidden`);
-      assert.ok(typeof permission === 'string' && target.permissions.includes(permission),
+      const scoped = typeof permission === 'object' &&
+        target.scopedGrants.some(grant => JSON.stringify(grant) === JSON.stringify(permission));
+      assert.ok(scoped || (typeof permission === 'string' && target.permissions.includes(permission)),
         `${name}: permission outside exact allow-list: ${identifier}`);
-      permissions.add(permission);
+      if (!scoped) permissions.add(permission);
     }
   }
   assert.deepEqual([...windows].sort(), [...target.windows].sort(),

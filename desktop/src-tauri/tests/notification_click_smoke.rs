@@ -317,15 +317,15 @@ mod linux {
             Some("smoke-scenario".into()),
         );
         run.check(
-            "two places become two notifications",
+            "three items become three notifications in two groups",
             posted
                 .as_ref()
-                .is_ok_and(|p| p.posted == 2 && p.groups == 2 && p.skipped.is_none()),
+                .is_ok_and(|p| p.posted == 3 && p.groups == 2 && p.skipped.is_none()),
             format!("{posted:?}"),
         );
         let got = wait(Duration::from_secs(10), || {
             let all = shown.lock().unwrap().clone();
-            (all.len() == 2).then_some(all)
+            (all.len() == 3).then_some(all)
         })
         .unwrap_or_default();
         let grouped = got.iter().find(|s| s.summary == "Marketing").cloned();
@@ -377,7 +377,9 @@ mod linux {
             "a genuine click reaches the window with that question",
             arrived.is_some()
                 && claimed.as_ref().is_ok_and(|c| {
-                    *c == json!([{"chatId": "s1", "question": {"kind": "consent", "id": 7}}])
+                    // The two Marketing notifications are indistinguishable to the stub, so either may be clicked.
+                    *c == json!([{"chatId": "s1", "itemId": "s1:consent:7", "question": {"kind": "consent", "id": 7}}])
+                        || *c == json!([{"chatId": "s2", "itemId": "s2:choice:3", "question": {"kind": "choice", "id": 3}}])
                 }),
             format!("claim {claimed:?}"),
         );
@@ -448,11 +450,16 @@ mod linux {
         let claimed = activation::notify_claim(app.clone(), main.clone())
             .map(|c| serde_json::to_value(c).unwrap());
         run.check(
-            "a grouped click skips the question already answered",
+            "a click never carries an answered question",
             arrived.is_some()
-                && claimed.as_ref().is_ok_and(|c| {
-                    *c == json!([{"chatId": "x2", "question": {"kind": "choice", "id": 5}}])
-                }),
+                && claimed
+                    .as_ref()
+                    .is_ok_and(|c| {
+                        // The stub cannot tell the two notifications apart, so either may be clicked:
+                        // the answered x1 opens its chat bare, the pending x2 keeps its question.
+                        *c == json!([{"chatId": "x1"}])
+                            || *c == json!([{"chatId": "x2", "itemId": "x2:choice:5", "question": {"kind": "choice", "id": 5}}])
+                    }),
             format!("claim {claimed:?}"),
         );
 
@@ -520,7 +527,7 @@ mod linux {
         let caught_up = post(&main, &vec![q2.clone()], 13);
         run.check(
             "alternating windows: each question and failure is posted once",
-            first.as_ref().is_ok_and(|p| p.0 == 1)
+            first.as_ref().is_ok_and(|p| p.0 == 2)
                 && echo.as_ref().is_ok_and(|p| p.0 == 0)
                 && answered.as_ref().is_ok_and(|p| p.0 == 0)
                 && failed_main.as_ref().is_ok_and(|p| p.0 == 1)
@@ -541,14 +548,14 @@ mod linux {
         );
         let posted = wait(Duration::from_secs(10), || {
             let all = shown.lock().unwrap().clone();
-            (all.len() >= before + 2).then_some(all[before..].to_vec())
+            (all.len() >= before + 3).then_some(all[before..].to_vec())
         })
         .unwrap_or_default();
         std::thread::sleep(Duration::from_millis(500));
         let total = shown.lock().unwrap().len() - before;
         run.check(
-            "the notification server was asked to show exactly two",
-            total == 2,
+            "the notification server was asked to show exactly three, one per item",
+            total == 3,
             format!(
                 "{:?}",
                 posted
@@ -576,8 +583,9 @@ mod linux {
             );
         }
         run.check(
-            "the stale window did not point the grouped click back at the answered question",
-            claimed == [json!({"chatId": "y2", "question": {"kind": "choice", "id": 9}})],
+            "the stale window never points a click at the answered question",
+            claimed == [json!({"chatId": "y1"})]
+                || claimed == [json!({"chatId": "y2", "itemId": "y2:choice:9", "question": {"kind": "choice", "id": 9}})],
             format!("claim {claimed:?}"),
         );
     }

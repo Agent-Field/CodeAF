@@ -199,7 +199,7 @@ for (const theme of ['light', 'dark'] as const) {
       await model(page).scrollIntoViewIfNeeded();
       await page.mouse.move(0, 0);
       await pill(model(page), 28, 8);
-      await color(model(page), 'ink-2');
+      await color(model(page), 'ink-3');
       await mark(model(page).locator('.app-icon'), 11);
       await keyboardFocus(page, model(page));
       await page.keyboard.press('Enter');

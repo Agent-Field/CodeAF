@@ -28,6 +28,9 @@ func TestPlacesWireFixtures(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(repo, ".git", "HEAD"), []byte("ref: refs/heads/main\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	got := map[string][]byte{}
 	capture := func(name, method, path string, body any, wantStatus int) json.RawMessage {
 		t.Helper()

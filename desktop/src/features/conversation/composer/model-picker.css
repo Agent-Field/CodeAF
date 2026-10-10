@@ -1,4 +1,4 @@
-/* The composer's model label: quiet ink-3 text (design 1e) that lifts to a field fill on hover. */
+/* The composer's model label: quiet ink-3 text (design 1e) that lifts to a field fill on hover (fill only; the ink never changes). */
 .model-picker.button {
   min-height: var(--control-height);
   min-width: 0;
@@ -9,13 +9,20 @@
   font-size: var(--type-label-size);
   line-height: var(--type-label-leading);
   font-weight: var(--type-label-weight);
-  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease);
+}
+
+/* Press darkens over the 80ms press duration, as every other control does. */
+.model-picker.button:active:not(:disabled) {
+  filter: brightness(var(--brightness-press));
+  transition-duration: var(--dur-press);
 }
 
 .model-picker.button:hover:not(:disabled),
 .model-picker.button[data-state='open'] {
   background: var(--field);
-  color: var(--ink);
+  /* The ghost button's own hover would lift the ink; the label keeps its ink-3. */
+  color: var(--ink-3);
 }
 
 .model-picker-label {

@@ -65,7 +65,7 @@ export function ModelPicker({ models, selectedId, onSelect, effort, pinnedCount 
         onClick={() => setOpen(value => !value)}
       >
         <span className="model-picker-label">{shortName(selected)}</span>
-        <Icon name="chevron" size="xs" />
+        <Icon name="chevron" size="micro" />
       </Button>
       {hint && tip.element}
       {open && (
