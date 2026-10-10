@@ -353,6 +353,7 @@ test('tabs idle for 12 hours archive themselves at launch, with one toast to Rev
   await page.goto('/');
   const toast = page.getByRole('status').filter({ hasText: 'Archived' });
   await expect(toast).toHaveText(/Archived 2 tabs idle for more than 12h/);
+  await toast.locator('.toast').hover();
   // Pinned, active, recent, waiting-on-you and empty tabs stay; the two idle ones leave the strip.
   for (const name of ['Active one', 'Recent', 'Waiting on you', 'Pinned old']) await expect(page.getByRole('tab', { name: new RegExp(name) })).toHaveCount(1);
   await expect(page.getByRole('tab', { name: /Old A/ })).toHaveCount(0);
@@ -361,8 +362,9 @@ test('tabs idle for 12 hours archive themselves at launch, with one toast to Rev
   // Nothing is deleted: the archive route is asked once for the two conversations, best effort.
   expect(engine.calls.some(call => call.method === 'POST' && call.path.endsWith('/history/archive') && JSON.stringify(call.body.ids) === JSON.stringify(['old-a', 'old-b']) && call.body.archived === true)).toBe(true);
   // Geometry from the design: 40px high, radius 12, sh-2, centred.
-  expect((await toast.boundingBox())!.height).toBe(px('history-toast-height'));
-  await expect(toast).toHaveCSS('border-top-left-radius', '12px');
+  await expect(page.locator('.history-toast')).toHaveCount(0);
+  expect((await toast.locator('.toast').boundingBox())!.height).toBe(px('toast-height'));
+  await expect(toast.locator('.toast')).toHaveCSS('border-top-left-radius', f['radius-card']);
   await expect(toast.getByRole('button', { name: 'Review' })).toHaveCSS('font-size', '12px');
   await toast.getByRole('button', { name: 'Restore all' }).click();
   await expect(toast).toHaveCount(0);
@@ -393,5 +395,32 @@ test('Escape dismisses the toast and the tabs stay archived', async ({ page }) =
   await expect(toast).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(toast).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: /Old A/ })).toHaveCount(0);
+});
+
+
+test('the shared archive toast holds its six-second clock on hover and keyboard focus', async ({ page }) => {
+  await page.clock.install({ time: NOW });
+  await page.clock.pauseAt(new Date(NOW.getTime() + 1000));
+  await installMockEngine(page, withSeeded());
+  await seedTabs(page);
+  await page.goto('/');
+  const notice = page.getByRole('status', { name: 'Notifications' });
+  const card = notice.locator('.toast');
+  await expect(card).toContainText('Archived 2 tabs idle for more than 12h');
+  await card.hover();
+  await page.clock.runFor(design.interaction.toastDuration + 1);
+  await expect(card).toBeVisible();
+  await notice.getByRole('button', { name: 'Review' }).focus();
+  await page.mouse.move(0, 0);
+  await page.clock.runFor(design.interaction.toastDuration + 1);
+  await expect(card).toBeVisible();
+  await page.keyboard.press('Tab');
+  await expect(notice.getByRole('button', { name: 'Restore all' })).toBeFocused();
+  await page.clock.runFor(design.interaction.toastDuration + 1);
+  await expect(card).toBeVisible();
+  await page.keyboard.press('Tab');
+  await page.clock.runFor(design.interaction.toastDuration + 250);
+  await expect(card).toHaveCount(0);
   await expect(page.getByRole('tab', { name: /Old A/ })).toHaveCount(0);
 });
