@@ -24,6 +24,8 @@ desktop.roles.checking
 desktop.roles.conversation
 desktop.roles.memory
 desktop.roles.naming
+desktop.roles.placecouncil
+desktop.roles.placedeciding
 desktop.roles.placefiling
 desktop.roles.placesuggest
 desktop.roles.planning
