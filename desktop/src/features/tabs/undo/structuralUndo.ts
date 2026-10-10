@@ -22,10 +22,11 @@ export const isUndoable = (type: string) => structural.has(type) || closing.has(
 
 export type UndoStep =
   | { kind: 'reopen'; ids: string[] }
-  | { kind: 'structure'; action: WorkspaceAction };
+  | { kind: 'structure'; action: WorkspaceAction }
+  | { kind: 'external'; undo: () => Promise<void> };
 
 /** What ⌘Z should do now. `refused` means the newest step's tabs changed since; it has been dropped. */
-export type UndoPlan = { kind: 'apply'; actions: WorkspaceAction[] } | { kind: 'refused' } | { kind: 'empty' };
+export type UndoPlan = { kind: 'apply'; actions: WorkspaceAction[] } | { kind: 'refused' } | { kind: 'empty' } | { kind: 'external'; undo: () => Promise<void> };
 
 export function stepFor(before: WorkspaceState, action: WorkspaceAction, after: WorkspaceState): UndoStep | undefined {
   if (after === before) return undefined;
@@ -41,21 +42,50 @@ export function stepFor(before: WorkspaceState, action: WorkspaceAction, after: 
 
 export function createStructuralUndo(limit = undoLimit) {
   let steps: UndoStep[] = [];
+  const listeners = new Set<() => void>();
+  const emit = () => listeners.forEach(listener => listener());
+  const append = (step: UndoStep) => { steps = [...steps, step].slice(-limit); emit(); };
   return {
+    subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    getSnapshot: () => steps.length,
+    /** A receipt joins the same chronology and capacity as tab inverses, never a second ring. */
+    register(run: () => Promise<void>) {
+      // Keyboard and toast can choose the same inverse before the engine responds, so they share one promise.
+      let pending: Promise<void> | undefined;
+      const forget = () => { steps = steps.filter(other => other !== step); emit(); };
+      const step: UndoStep & { kind: 'external' } = { kind: 'external', undo: () => {
+        if (pending) return pending;
+        if (!steps.includes(step)) return Promise.resolve();
+        pending = Promise.resolve().then(run).then(forget).finally(() => { pending = undefined; });
+        return pending;
+      } };
+      append(step);
+      return { undo: step.undo, forget };
+    },
+    /** The app-layer fallback only consumes the newest step if it belongs to an external owner. */
+    async undoExternal() {
+      const step = steps[steps.length - 1];
+      if (step?.kind !== 'external') return false;
+      await step.undo();
+      return true;
+    },
     get size() { return steps.length; },
     /** Records the step a change of this window's made, if it is structural. The oldest falls off past `limit`. */
     record(before: WorkspaceState, action: WorkspaceAction, after: WorkspaceState) {
       const step = stepFor(before, action, after);
-      if (step) steps = [...steps, step].slice(-limit);
+      if (step) append(step);
     },
     /**
-     * Takes the newest step off and says how to undo it against `state`. A close whose tabs are already open again
+     * Plans the newest step against `state`; an external inverse stays until it succeeds so a failed connection
+     * can be retried. A close whose tabs are already open again
      * (the closing toast's own Undo, or ⌘⇧T) is spent and skipped; a step that no longer applies is refused.
      */
     take(state: WorkspaceState): UndoPlan {
       while (steps.length) {
         const step = steps[steps.length - 1];
+        if (step.kind === 'external') return { kind: 'external', undo: step.undo };
         steps = steps.slice(0, -1);
+        emit();
         if (step.kind === 'reopen') {
           const closed = step.ids.filter(id => state.closed.some(tab => tab.id === id));
           if (closed.length) return { kind: 'apply', actions: [...closed].reverse().map(id => ({ type: 'reopen-id', id })) };
@@ -66,7 +96,10 @@ export function createStructuralUndo(limit = undoLimit) {
       }
       return { kind: 'empty' };
     },
-    clear() { steps = []; },
+    clear() { steps = []; emit(); },
   };
 }
 export type StructuralUndo = ReturnType<typeof createStructuralUndo>;
+
+// Each native webview has its own module realm, so this stack cannot cross windows or survive a reload.
+export const windowStructuralUndo = createStructuralUndo();
