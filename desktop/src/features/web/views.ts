@@ -11,9 +11,10 @@
 // the pane draws its own error over the sheet, and while the window is hidden.
 
 import {
-  nativeWebAvailable, onWebNewTab, onWebState, webClose, webHistory, webList, webNavigate, webOpen, webBounds, webVisible,
+  nativeWebAvailable, onWebFocusAddress, onWebNewTab, onWebState, webClose, webHistory, webList, webNavigate, webOpen, webBounds, webVisible,
   type WebHistoryStep, type WebRect, type WebState,
 } from '../../design/nativeWeb';
+import { focusAddress } from './addressFocus';
 import { coverBoxes, isCovered } from './covers';
 import { openFromPage } from './host';
 import { capture, forgetShot } from './shots';
@@ -96,6 +97,7 @@ function start() {
     schedule();
   });
   void onWebNewTab(request => openFromPage(request.url, request.opener));
+  void onWebFocusAddress(pane => focusAddress(pane));
   // Views from before a renderer reload: adopt them, and close the unclaimed.
   void webList().then(list => {
     for (const state of list) {

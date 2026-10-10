@@ -61,7 +61,7 @@ export function WebPane({ pane, actions }: PaneRenderProps) {
   const loading = !!state?.loading && !state.failure;
   const historyOpen = (flag: boolean | undefined) => live && (!state!.historyKnown || !!flag);
   const failure = state?.failure ? failureText(state.failure, shown ?? '') : web.openError ? { title: 'This page did not open', detail: `${web.openError}.` } : null;
-  return <div className="web-pane" data-loading={loading || undefined}>
+  return <div className="web-pane" data-pane={pane.id} data-loading={loading || undefined}>
     <LoadingLine active={loading}/>
     <div className="web-header" role="toolbar" aria-label="Page">
       <IconButton icon="back" iconSize="sm" label="Back" disabled={!historyOpen(state?.canBack)} onClick={() => step(pane.id, 'back')}/>
