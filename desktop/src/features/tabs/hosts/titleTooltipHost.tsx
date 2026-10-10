@@ -1,7 +1,7 @@
-// Title tooltip host (TA-STRIP-07, design 3l): the full title in the shared 500ms tooltip for the tabs whose title
-// the strip cannot show or does not show: the active tab, a pinned tab (icon only) and any tab whose title is cut.
-// An inactive tab's hover preview already holds its title, so it never gets a tooltip too, and no tooltip opens while
-// any preview card is open: two cards must not overlap.
+// Split-segment title tooltip (TA-STRIP-07, design 3l). A plain tab's full-title tooltip lives on the tab
+// primitive (`Tab` + `useTitleOverflow`): active and compressed chips, and only when the name is cut.
+// A split has no hover preview, so each segment of the active split, and any cut segment, names itself here.
+// No tooltip opens while a preview card is open: two cards must not overlap.
 import { cloneElement, useState, useSyncExternalStore, type PointerEvent, type FocusEvent, type ReactElement } from 'react';
 import { useTooltip } from '../../../components/ui';
 import type { TabsApi } from '../context';
@@ -13,7 +13,7 @@ const isCut = (button: HTMLElement) => {
   return !!title && title.scrollWidth > title.clientWidth;
 };
 
-/** The hook behind `withTitleTooltip`; `previewable` is true while this tab's own hover preview can open. */
+/** `previewable` is true while this segment's own hover preview can open. A split segment passes false. */
 export function useTitleTooltip(api: Pick<TabsApi, 'previews'>, title: string, { active, pinned, previewable }: { active: boolean; pinned: boolean; previewable: boolean }) {
   const [cut, setCut] = useState(false);
   const previewOpen = useSyncExternalStore(api.previews.subscribe, api.previews.get) !== null;
@@ -27,12 +27,6 @@ type Flags = { active: boolean; pinned: boolean; previewable: boolean };
 function TitleTooltip({ api, title, flags, select, compose }: { api: TabsApi; title: string; flags: Flags; select: ReactElement; compose: (trigger: ReactElement) => ReactElement }) {
   const tooltip = useTitleTooltip(api, title, flags);
   return <>{compose(cloneElement(select, tooltip.props))}{tooltip.element}</>;
-}
-
-/** Wraps a tab's select button. `compose` adds the next host (the hover preview) around the button this host has fitted. */
-export function withTitleTooltip(api: TabsApi, tab: Tab, select: ReactElement, compose: (trigger: ReactElement) => ReactElement = trigger => trigger): ReactElement {
-  const active = tab.id === api.state.activeId;
-  return <TitleTooltip api={api} title={tab.title} flags={{ active, pinned: tab.pinned, previewable: !active && !api.overlayOpen }} select={select} compose={compose}/>;
 }
 
 /** A split tab's segment: a split has no hover preview, so every segment of the active split, and any cut one, names itself. */
