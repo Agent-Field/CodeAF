@@ -862,6 +862,14 @@
   --places-home-search-width: 220px;
   --places-home-suggestion-size: var(--type-label-size);
   --places-home-specimen-height: 640px;
+  --places-notes-max: 520px;
+  --places-notes-pad-block: var(--space-row);
+  --places-notes-pad-inline: var(--space-4);
+  --places-notes-radius: var(--radius-lg);
+  --places-notes-gap: var(--space-tight);
+  --places-notes-size: var(--type-prose-size);
+  --places-notes-leading: 1.7;
+  --places-notes-weight: var(--font-weight-regular);
   --places-quicklook-width: 520px;
   --places-quicklook-radius: 14px;
   --places-quicklook-pad-top: var(--space-section-inner);
