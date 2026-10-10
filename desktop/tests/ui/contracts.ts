@@ -25,9 +25,17 @@ export async function expectThemedSurface(page: Page, surface: Locator, tokens: 
 }
 export async function expectAccessible(page: Page) {
  // Contrast is meaningful after entry/exit motion settles; transient opacity is not a theme color.
+ // A transition started by the key that just landed is not in the list until the next frame, so look twice.
  await page.evaluate(async () => {
-  const animations = document.getAnimations().filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity);
-  await Promise.all(animations.map(animation => animation.finished.catch(() => undefined)));
+  const finite = () => document.getAnimations().filter(animation => animation.playState === 'running' && animation.effect?.getComputedTiming().iterations !== Infinity);
+  for (let pass = 0; pass < 3; pass += 1) {
+   const running = finite();
+   if (running.length === 0) {
+    await new Promise(resolve => requestAnimationFrame(() => resolve(undefined)));
+    if (finite().length === 0) return;
+   }
+   await Promise.all(finite().map(animation => animation.finished.catch(() => undefined)));
+  }
  });
  const result = await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();
  const found = [];

@@ -125,7 +125,7 @@ test('since= answers the header plus the entries tail, eliding over-cap outputs'
   const entries = [{ Role: 'user' as const, Text: 'a' }, toolEntry(1, 'small'), toolEntry(2, big(9000)), { Role: 'assistant' as const, Text: 'done' }];
   await installMockEngine(page, { initial: { entries, title: 'T' } });
   const tail = (await call(page, '/sessions/mock-1?since=2')).body;
-  expect(tail).toMatchObject({ title: 'T', entryCount: 4, from: 2 });
+  expect(tail).toMatchObject({ header: { title: 'T', entryCount: 4 }, from: 2 });
   expect(tail.reset).toBeUndefined();
   expect(tail.entries.map((e: any) => e.Role)).toEqual(['tool', 'assistant']);
   expect(tail.entries[0]).toMatchObject({ Output: '', OutputOmitted: true, OutputBytes: 18000 });

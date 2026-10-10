@@ -32,12 +32,12 @@ test('the settings page lists the pinned models and one row per role', async ({ 
   const pinned = page.getByRole('region', { name: 'Pinned' });
   await expect(pinned.getByRole('button', { name: /^Pinned model/ })).toHaveText(['GLM 5.3 Flash', 'DeepSeek V4.1 Flash', 'GLM 5.3']);
   // Each job sits under its section, in the engine's order.
-  await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Pinned', 'Conversation and tasks', 'Naming and summaries', 'Places organization', 'Memory, routing and safety']);
+  await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Appearance', 'Pinned', 'Conversation and tasks', 'Naming and summaries', 'Places organization', 'Memory, routing and safety']);
   for (const [section, name] of [['Conversation and tasks', 'Tasks'], ['Naming and summaries', 'Chat titles'], ['Places organization', 'Chat filing'], ['Memory, routing and safety', 'Memory']]) {
     await expect(page.getByRole('region', { name: section }).getByText(name, { exact: true })).toBeVisible();
   }
   await expect(page.getByRole('button', { name: 'Model for Tasks' })).toHaveText('DeepSeek V4.1 Flash');
-  // Nothing differs from the default yet, so there is no Reset and no receipt.
+  // Nothing differs from the default yet, so there is no Reset and the receipt is blank.
   await expect(page.getByRole('button', { name: /^Reset/ })).toHaveCount(0);
   await expect(page.getByRole('status')).toHaveText('');
 });

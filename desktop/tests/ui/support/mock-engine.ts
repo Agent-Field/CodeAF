@@ -169,6 +169,19 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
   // The world feed: every change is one full `reset` record, which the client applies at any cursor.
   let world = scenario.world ? structuredClone(scenario.world) : undefined;
   let worldSeq = 1;
+  // Inactive tabs read this mirror instead of holding a session stream. It speaks the
+  // world client's row (chatId, numeric needsYou) and carries the questions the preview answers.
+  // It has no `session` field: the inbox's older feed lists a running row with one as another
+  // window's work, and this mirror is the same conversation the window already has open.
+  let sessionWorldSeq = 1;
+  const sessionRow = () => ({
+    chatId: state.id || 'mock-1', sessionFile: state.sessionFile, sessionId: state.id, sessionSeq: state.seq,
+    title: state.title, workspace: state.workspace, running: state.running,
+    needsYou: state.needsPerson ? Math.max(state.questions?.length ?? 0, 1) : 0,
+    failed: 0, tasksRunning: (state.tasks ?? []).filter(task => task.Status === 'running').length,
+    tasksTotal: (state.tasks ?? []).length, attached: true, archived: false, questions: state.questions ?? [],
+  });
+  const sessionWorldRecord = () => ({ epoch: 'mock-session', seq: sessionWorldSeq, type: 'reset', at: new Date().toISOString(), payload: { rows: [sessionRow()], items: [] } });
   const worldRecord = () => ({ seq: worldSeq, type: 'reset', at: new Date().toISOString(), payload: structuredClone(world!) });
   const worldEvents = async (route: Route, after: number) => {
     const deadline = Date.now() + 60_000;
@@ -182,9 +195,22 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     }
     await route.abort().catch(() => undefined);
   };
+  const sessionEvents = async (route: Route, after: number) => {
+    const deadline = Date.now() + 60_000;
+    while (!closed && Date.now() < deadline) {
+      if (sessionWorldSeq > after) {
+        const record = sessionWorldRecord();
+        await route.fulfill({ status: 200, headers: { 'Cache-Control': 'no-cache' }, contentType: 'text/event-stream', body: `: connected\n\nid: ${record.seq}\ndata: ${JSON.stringify(record)}\n\n` });
+        return;
+      }
+      await new Promise(r => setTimeout(r, 25));
+    }
+    await route.abort().catch(() => undefined);
+  };
 
   const publish = () => {
     state = { ...state, seq: state.seq + 1, updatedAt: new Date().toISOString() };
+    sessionWorldSeq += 1;
     const { entries, ...header } = structuredClone(state);
     const reset = publishedEntries > entries.length;
     const from = reset ? 0 : publishedEntries;
@@ -488,14 +514,16 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     const [root, id, action, arg] = parts;
     // The window's own reads of the place graph and the world stream are not a conversation's calls; the Places
     // mock (support/mock-places.ts) records those. A tab that must make no engine call is judged on the rest.
-    if (!['places', 'chats', 'world', 'events', 'workspaces'].includes(root)) calls.push({ method, path: url.pathname, body });
+    // Place-graph reads are not a conversation's calls. A settings write to policy is: the test has to see it.
+    const policyWrite = root === 'places' && parts[1] === 'policy' && method !== 'GET';
+    if (!['places', 'chats', 'world', 'events', 'workspaces'].includes(root) || policyWrite) calls.push({ method, path: url.pathname, body });
     if (offline) return offline === '503' ? json(route, { error: 'engine unreachable' }, 503) : route.abort('connectionrefused');
     const forced = (key: keyof NonNullable<Scenario['fail']>) => {
       const status = scenario.fail?.[key];
       return status ? json(route, { error: `Mock engine forced ${key} failure` }, status) : undefined;
     };
     if (world && root === 'world') return json(route, { seq: worldSeq, ...structuredClone(world) });
-    if (world && root === 'events') return worldEvents(route, Number(url.searchParams.get('after') ?? 0));
+    if (root === 'events') return (world ? worldEvents : sessionEvents)(route, Number(url.searchParams.get('after') ?? 0));
     // Fixture workspace CAS mirrors the real route; workspace reads never count as conversation calls.
     if (root === 'workspaces' && id) {
       const current = workspaces.get(id) ?? { key: id, revision: 0, workspace: null };
@@ -512,7 +540,16 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     if (root === 'places' && parts[1] === 'policy') return placesPolicy(route, parts, method, body);
     if (root === 'history') return history.handle(route, parts, method, body, url);
     if (root !== 'sessions') return json(route, { error: 'unknown route' }, 404);
-    if (!id) return forced('create') ?? json(route, history.titleOf(body.sessionFile) ? { ...state, title: history.titleOf(body.sessionFile) } : state);
+    if (!id) {
+      const refused = forced('create');
+      if (refused) return refused;
+      // Attaching a saved conversation keeps that file. Replacing it with the mock's
+      // default made a second Continue look like a different chat and open a duplicate tab.
+      const requested = typeof body.sessionFile === 'string' ? body.sessionFile : '';
+      const titled = history.titleOf(body.sessionFile);
+      if (requested || titled) state = { ...state, ...(requested ? { sessionFile: requested } : {}), ...(titled ? { title: titled } : {}) };
+      return json(route, state);
+    }
     if (id !== state.id) return json(route, { error: 'reattach this conversation' }, 404);
     if (!action) {
       const since = url.searchParams.get('since');

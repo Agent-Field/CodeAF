@@ -15,6 +15,8 @@ cancel an install already downloading, and the launch check still makes its one
 request and names what is out. A release whose automatic install failed
 three times stops being tried on its own.
 
+## What `/update` installs, which channel it picks, and a build it will not replace
+
 A release candidate gets the notice when its stable line is published. An equal
 or ahead build gets nothing. Source and unstamped builds make no launch request,
 and their `/update` answers `this codeaf was built from source · rebuild with

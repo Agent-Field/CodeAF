@@ -72,23 +72,40 @@ export function createAttentionNotifications(source: Source, port: NotificationP
  };
 }
 
-/** Browser previews have no OS notification delivery and never request notification permission. */
+/**
+ * Browser previews have no OS notification delivery and never request notification permission.
+ * The list is the chat world feed's, the same one the Inbox reads. The newer world client
+ * rejects that feed (it wants chatId and a numeric needs-you count), so posting from it
+ * never named a question or a failure.
+ */
 export function connectAttentionNotifications(): () => void {
  let disposed = false;
  let stop: (() => void) | undefined;
  void Promise.all([
-  import('@tauri-apps/api/core'), import('@tauri-apps/api/window'),
-  import('../../design/nativeControls.ts'), import('../../features/world/worldClient.ts'),
- ]).then(([core, windows, controls, world]) => {
+  import('@tauri-apps/api/core'),
+  import('../../design/nativeControls.ts'),
+  import('../../features/chat/world-store.ts'),
+  import('../../features/tabs/closing/signals.ts'),
+  import('../../features/tabs/closing/failedSeen.ts'),
+ ]).then(([core, controls, store, signals, seen]) => {
   if (disposed || !core.isTauri()) return;
   const native = controls.nativeControls();
-  const controller = createAttentionNotifications(world.worldClient, {
-   focused: async () => (await native.listWindows()).some(window => window.focused) || await windows.getCurrentWindow().isFocused(),
-   permission: async ask => (await native.notificationPermission(ask)).state === 'granted',
-   post: (items, seq, epoch) => native.notifyAttention(items, seq, epoch),
-   badge: (count, seq, epoch) => native.setBadge(count, seq, epoch),
-  });
-  controller.start(); stop = controller.stop;
+  let last = '';
+  const post = () => {
+   const state = store.worldStore.getState();
+   if (state.status !== 'live' || !state.epoch || !(state.seq > 0)) return;
+   const items = signals.attentionSignals(state, seen.readFailedSeen(), Date.now());
+   const count = state.rows.reduce((total, row) => total + (!row.archived && row.needsYou ? 1 : 0), 0);
+   const key = `${state.epoch}:${state.seq}:${count}:${items.map(item => item.id).join('\n')}`;
+   if (key === last) return;
+   last = key;
+   // Rust announces only while no window is focused. The call still names the reading it came from.
+   void native.notifyAttention(items, state.seq, state.epoch).catch(() => undefined);
+   void native.setBadge(count, state.seq, state.epoch).catch(() => undefined);
+  };
+  const unsubscribe = store.worldStore.subscribe(post);
+  post();
+  stop = unsubscribe;
  }).catch(() => undefined);
  return () => { disposed = true; stop?.(); };
 }

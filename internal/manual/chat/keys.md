@@ -1269,6 +1269,8 @@ included — which is the same gesture as pressing a task's thinking row inside 
 exactly its own cells first, and the press never moves the caret in your draft. It does
 not open a list: the list is `/effort`.
 
+## `/effort` sets this conversation's rung, and when the rung will not move
+
 **`/effort` opens the ladder**: six rows — `auto` first, then the five rungs cheapest
 first — with the row you are on marked. `↑`/`↓` walk it, `enter` applies, `esc` closes,
 and `alt+e` moves the cursor down a row while the list is up. While the list is up

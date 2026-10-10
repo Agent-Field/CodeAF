@@ -485,6 +485,14 @@ and memory doors. `/memory <query>` and `/memories` read that machine's store, w
 `/remember` and `/forget` write it. When memory is really off there, they say exactly:
 `memory is off for this session · turn it on under /settings`.
 
+## Why won't permissions show the rules on the machine I used with host
+
+`/permissions` (and `/perms`) describe rules that belong to the machine running the
+session. Over `--host` this build has no wire door for them, so the panel will not
+show that machine's rules, and it will not read or change the rules on the machine
+you are sitting at. It names the connected machine and says `change it on that machine`.
+Set the rules there, on that machine, then reconnect.
+
 ## Did cache clean delete the laptop cache or the remote machine's cache?
 
 Neither. Over `--host`, `/cache`, `/cache clean`, and `/cache clean now` cannot reach the
