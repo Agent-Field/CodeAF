@@ -62,7 +62,9 @@ Shell). On any conflict, the design files win over code and older docs.
 | # | Question | Assumption the app ships now |
 |---|---|---|
 | CV-R1 | How should clock receipts round fractional waits or display older records without a wait? | Round the actual recorded wait to the nearest whole second. Without a known positive wait, show “picked by codeaf” without an invented duration. Person receipts retain “you · HH:MM”. |
+| CV160 | Which title does the unfocused pane mini-tray show when several questions are pending? | Ship the first standing question in the full tray’s existing order (deeper clarification first, then oldest), without adding a count to the title. |
 | CV-N1 | The retrying event carries no delay today (`RetryNews` has none); where does a countdown come from | The overlay reads `Retry.DelaySeconds` from the event if a future engine sends it and shows it as a static mono `Ns` beside "Retrying" (nothing otherwise, Q15). It does not tick. While compacting nothing is drawn; on `compacted` the "Earlier messages summarized" divider appears live. |
+| LIFE1 | When does the ten-minute engine idle grace start after detached work or a question ends between reaper sweeps? | Start at the first one-minute sweep that confirms no views, streams, work or questions remain. Never count busy time toward the grace. A quiet final detach starts the grace immediately; repeated detaches do not extend it. |
 | Q30 | RESOLVED by the latest Interactions page: ⌘1–9 jump to tabs and ⌥⌘1–3 switch pinned models, so the two no longer share keys | ⌘1–9 jump to tabs; ⌥⌘1–3 pick pinned models. No conflict remains. |
 | OV1 | The earlier Shell spec opened the overview with ⌘↑; the latest Shell and Interactions pages say ⌘⇧\ (or a pinch out) and give ⌘↑/⌘↓ to stepping between messages | ⌘⇧\ (Ctrl Shift A off the Mac) and the grid icon open it; the overview no longer listens for ⌘↑. |
 | OV2 | Pinch out opens the overview (Shell 2h) | Not wired: the browser and the webview report no reliable pinch event. The grid icon and the keys open it. |
@@ -119,6 +121,8 @@ Shell). On any conflict, the design files win over code and older docs.
 | P-22 | Iteration 2 (design v3): Definition of "blocking" and ordering inside bands. | Blocking = Question.Blocking.Turn or names tasks; order inside a band by asked time, oldest first; irreversible last. |
 | P-23 | Iteration 2 (design v3): "After your next action of your own" folds the back chip: what counts. | Any click or key that is not the chip or ⌘[ itself, including typing in a composer. |
 | P-24 | Iteration 2 (design v3): Is focus history per window, per place, or global, and does it survive relaunch? | Per window, survives relaunch, bounded to 100 entries; tearing a tab off starts a fresh history in the new window. |
+| Q-FL1 | Folder listing time: the engine's row carries unix seconds as `mtime`, and POST `/files/stat` spells the same moment as RFC 3339 `modTime`. The design does not say which a folder row uses | GET `/files/list` keeps the engine's unix seconds and names the field `modTime`. It is omitted when the engine sent none. The row is name, dir, size and that time; the engine's mime is not on this route. |
+| AT1 | Choosing an @ file: Conversation 1e does not draw what lands in the field (one coverage note says the relative path as literal text, another says a `@path` token) | The whole `@token`, from the `@` through the next whitespace, is replaced by the workspace-relative path. No `@` is left in front, and the caret sits immediately after the path. Text outside the token stays. An `@` inside a word (an email) is not a token. |
 
 ## File lane integration notes
 
