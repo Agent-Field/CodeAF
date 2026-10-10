@@ -257,7 +257,8 @@ export function createNativeControls(bridge: NativeBridge = defaultBridge()) {
       if (handoff) request.handoff = handoff;
       if (options.at) request.at = options.at;
       if (options.focusTab) request.focusTab = options.focusTab;
-      const opened = await bridge.invoke<{ label: string; handoffId?: string }>('window_open', { request });
+      const result = await bridge.invoke<string | { label: string; handoffId?: string }>('window_open', { request });
+      const opened = typeof result === 'string' ? { label: result } : result;
       if (opened.handoffId && options.pane) started.set(opened.handoffId, options.pane.id);
       return { label: opened.label, handoffId: opened.handoffId, moved: Boolean(opened.handoffId) };
     },
