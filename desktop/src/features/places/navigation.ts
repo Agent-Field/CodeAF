@@ -5,7 +5,7 @@ import type { PlacesClient } from './client.ts';
 import type { PlacesGraph, PlaceView } from './wire.ts';
 
 export type NavigationDeps = {
-  client: Pick<PlacesClient, 'graph' | 'railOp'>;
+  client: Pick<PlacesClient, 'graph' | 'visit' | 'railOp'>;
   windows: Pick<NativeControls, 'desktop' | 'openPlaceWindow'>;
   graph: () => PlacesGraph | undefined;
   current: () => Exclude<PlaceKey, 'root'>;
@@ -32,7 +32,9 @@ export function createPlaceNavigation(deps: NavigationDeps) {
   };
   const visit = async (key: string) => {
     if (key === 'now' || key === 'root') return;
-    // The destination remains usable if the soft MRU write fails; the failure is still reported.
+    // Last-opened is the canonical visit. The window has already moved; a refusal is reported and does not send it back.
+    try { await deps.client.visit(key); } catch (failure) { deps.warn(failure); }
+    // The rail's Open list is a separate soft write, with the same rule: keep the destination if it fails.
     try { await deps.client.railOp({ op: 'visit', place: key }); } catch (failure) { deps.warn(failure); }
     await deps.refresh();
   };
