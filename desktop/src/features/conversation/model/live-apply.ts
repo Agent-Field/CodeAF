@@ -74,11 +74,12 @@ function tailWork(turn: TurnV2): WorkBlock {
 function addWork(turn: TurnV2, live: LiveOverlayV2, fresh: LiveCall[], waiting: ReadonlySet<string>) {
   const thinking = live.thinking;
   const thought = thinking.text.length > 0 || thinking.startedAt !== undefined;
-  if (!fresh.length && !thought && !live.retry) return;
+  if (!fresh.length && !thought && !live.retry && !live.compacted) return;
   const block = tailWork(turn);
   block.steps.push(...liveSteps(fresh, waiting));
   if (thought) block.thinking = { text: thinking.text, streaming: thinking.seconds === undefined, seconds: thinking.seconds };
-  if (live.retry) block.notes.push({ kind: 'note', id: `${turn.id}:retry`, text: `Retrying — ${live.retry}`, tone: 'retry' });
+  if (live.compacted) block.notes.push({ kind: 'note', id: `${turn.id}:compacted`, text: 'Earlier messages summarized', tone: 'compaction' });
+  if (live.retry) block.notes.push({ kind: 'note', id: `${turn.id}:retry`, text: `Retrying — ${live.retry}`, tone: 'retry', time: live.retryDelay ? `${Math.ceil(live.retryDelay)}s` : undefined });
   block.summary = summarize(block.steps, thinking.seconds);
 }
 

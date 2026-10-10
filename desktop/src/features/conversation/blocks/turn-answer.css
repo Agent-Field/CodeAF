@@ -46,3 +46,4 @@
 .turn-footer-dot { display: grid; place-items: center; width: var(--mark-box); height: var(--mark-box); }
 .turn-footer-dot::before { content: ""; width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--accent); }
 
+.turn-footer-time { color: var(--ink-3); font-family: var(--mono); font-size: var(--type-mono-small-size); font-variant-numeric: tabular-nums; }
