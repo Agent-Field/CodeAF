@@ -10,6 +10,7 @@ const SESSION = 'mock-session-1.jsonl';
 const scenario = (): Scenario => ({
   ...plainReply(),
   terminals: [
+    { id: 'shell-1', title: 'zsh', output: '$ ' },
     { id: 'job-1', command: 'nightly-bench', title: 'nightly-bench', output: 'goos: darwin\r\npkg: codeaf/internal/parse\r\n\x1b[32mok\x1b[0m codeaf/parse 4.2s\r\n\x1b[31mFAIL\x1b[0m codeaf/load\r\nBenchmarkLoadAll-10\r\n' },
     { id: 'failed-1', command: 'make lint', title: 'make lint', state: 'exited', exitCode: 2, endedAt: new Date(Date.now() - 60_000).toISOString(), output: '\x1b[31mlint failed\x1b[0m\r\n' },
     { id: 'done-1', command: 'make test', title: 'make test', state: 'exited', exitCode: 0, endedAt: new Date(Date.now() - 120_000).toISOString(), output: 'all green\r\n' },
@@ -197,7 +198,7 @@ test('a finished job shows its exit words, takes no input, and keeps its log', a
   await expect(header(page).locator('.terminal-state')).toHaveText(/^exit 0 · 2m \d+s ago$/);
   await expect(header(page).locator('.terminal-mark')).toHaveAttribute('data-tone', 'done');
   await expect(screenText(page)).toContainText('all green');
-  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
   await page.locator('.terminal-field').click();
   await page.keyboard.type('x');
   expect(engine.calls.filter(c => c.path.endsWith('/input'))).toHaveLength(0);
@@ -278,13 +279,16 @@ test('a finished job offers Run again, which starts the same command in a new ta
   await expect(header(page).locator('.terminal-meta')).toHaveText('/mock-workspace · job');
 });
 
-test('a running job and a shell offer no Run again', async ({ page }) => {
-  await installMockEngine(page, scenario());
-  await openOn(page, 'job-1', 'nightly-bench');
-  await page.getByRole('button', { name: 'More', exact: true }).click();
-  await expect(page.getByRole('menuitem', { name: 'Copy output', exact: true })).toBeVisible();
-  await expect(page.getByRole('menuitem', { name: 'Run again', exact: true })).toHaveCount(0);
-});
+for (const [id, title, remove] of [['job-1', 'nightly-bench', 'Remove job'], ['shell-1', 'zsh', 'Remove terminal']]) {
+  test(`a running ${title} menu offers only copy and remove`, async ({ page }) => {
+    await installMockEngine(page, scenario());
+    await openOn(page, id, title);
+    await expect(header(page).locator('.terminal-state')).toContainText('Running');
+    await page.getByRole('button', { name: 'More', exact: true }).click();
+    await expect(page.getByRole('menu').locator('.menu-label')).toHaveText(['Copy output', remove]);
+    await expect(page.getByRole('menu').locator('[data-disabled]')).toHaveCount(0);
+  });
+}
 
 test('the tab carries the failed dot only when the program ended with an error; running stays silent', async ({ page }) => {
   await installMockEngine(page, scenario());
@@ -357,4 +361,16 @@ test('failed Stop keeps the terminal attached and shows the engine error', async
   await expect(page.getByRole('alert')).toContainText('Could not stop: connection lost');
   await expect(screenText(page)).toContainText('BenchmarkLoadAll-10');
   await expect(header(page).locator('.terminal-state')).toHaveText(/^Running/);
+});
+
+
+test('a finished job menu closes its tab without removing the job or stopping it', async ({ page }) => {
+  const engine = await installMockEngine(page, scenario());
+  await openOn(page, 'done-1', 'make test');
+  await expect(header(page).locator('.terminal-state')).toContainText('exit 0');
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await expect(page.getByRole('menu').locator('.menu-label')).toHaveText(['Run again', 'Close tab', 'Remove job']);
+  await page.getByRole('menuitem', { name: /Close tab/ }).click();
+  await expect(header(page)).toHaveCount(0);
+  expect(engine.calls.filter(c => /\/(remove|close)$/.test(c.path))).toHaveLength(0);
 });

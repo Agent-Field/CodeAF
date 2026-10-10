@@ -33,3 +33,7 @@ html:not([data-input="pointer"]) .terminal-ask-field:has(.terminal-ask-input:foc
 
 /* The job specimen fades old log lines. A shell prompt starts at the top and must stay legible. */
 .terminal-field[data-kind="terminal"] { mask-image: none; }
+
+/* The finished-job specimen keeps one icon column even on the close and remove rows. */
+.terminal-menu { min-width: var(--terminal-menu-width); }
+.terminal-menu .menu-item:not(:has(> .app-icon))::before { content: ''; width: var(--icon-sm); flex: none; }
