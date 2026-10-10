@@ -49,7 +49,11 @@ type Decision struct {
 	// Subject is the subject class the learning ring joins to AskKind
 	// (shell-read, git). Empty means the ask kind stands alone (choice,
 	// judgement). It is the class, not one particular command.
-	Subject    string    `json:"subject"`
+	Subject string `json:"subject"`
+	// Command is the score subject, such as "go test". Empty means this row
+	// is not history for a command. It is the family of command, not one
+	// particular invocation.
+	Command    string    `json:"command,omitempty"`
 	Action     string    `json:"action"`
 	By         string    `json:"by"`
 	Because    string    `json:"because"`
