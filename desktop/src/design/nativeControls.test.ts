@@ -282,8 +282,10 @@ test('every command the adapter invokes is a registered Rust handler', () => {
 });
 
 test('the capability reaches main and w-* only, never a web view, with the reviewed grants and no shell', () => {
-  // dialog:allow-open and notification:default are on the reviewed allow-list.
-  // Shell and filesystem grants stay off; a web page view is never named.
+  // dialog:allow-open, notification:default, and http:default are on the
+  // reviewed allow-list. The http grant is the scoped loopback engine
+  // transport restored in capabilities/default.json; shell and filesystem
+  // grants stay off, and a web page view is never named.
   const reviewed = [
     'core:default',
     'core:window:allow-start-dragging',
@@ -294,6 +296,7 @@ test('the capability reaches main and w-* only, never a web view, with the revie
     'core:webview:allow-set-webview-position',
     'dialog:allow-open',
     'notification:default',
+    'http:default',
   ];
   assert.deepEqual((JSON.parse(read('capabilities/default.json')) as { windows: string[] }).windows, ['main', 'w-*']);
   for (const file of readdirSync(new URL('capabilities/', tauriDir))) {
