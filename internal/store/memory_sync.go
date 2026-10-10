@@ -55,6 +55,11 @@ func memorySyncKinds() []EventKind {
 		EventMemoryAdd, EventMemoryUpdate, EventMemorySupersede,
 		EventMemoryForget, EventMemoryRestore,
 		EventMemorySkipped, EventMemoryWriteFailed, EventMemoryRehomed,
+		// A RULE TRAVELS WITH THE WORDS IT GOVERNS BY. A store that folded the
+		// add and dropped the flag would hold the person's rule as a line it
+		// recalls when it happens to seem relevant, which is the one thing the
+		// person said it must not be.
+		EventMemoryAlways,
 	}
 }
 
@@ -269,6 +274,8 @@ func foldMemoryEvent(tx *sql.Tx, event Event, seq int64, fts bool, allow func(ow
 		return foldMemoryRestore(tx, event, seq, fts, allow)
 	case EventMemoryRehomed:
 		return foldMemoryRehomed(tx, event, seq, fts, allow)
+	case EventMemoryAlways:
+		return foldMemoryAlways(tx, event, seq, fts, allow)
 	default:
 		return foldMemoryObservability(tx, event, seq, fts, allow)
 	}

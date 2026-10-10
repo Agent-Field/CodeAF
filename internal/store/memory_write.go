@@ -41,6 +41,15 @@ type WriteRequest struct {
 	// SourceSession is the conversation that supplied the words, for the
 	// provenance card.
 	SourceSession string
+	// Always asks for a RULE: the row is put in front of every conversation and
+	// task at its owner's scope (memory_always.go).
+	//
+	// ON A DUPLICATE IT ONLY EVER RAISES. An always request whose words are
+	// already remembered promotes that row ([WriteOutcomePromoted]); an ordinary
+	// request whose words are already a rule is a skip and leaves the rule a
+	// rule. A person who said "always" once and then mentioned the same thing in
+	// passing has not taken the rule back.
+	Always bool
 }
 
 // WriteResult is the door's answer: what happened, and why, in words a person
@@ -49,7 +58,7 @@ type WriteResult struct {
 	// Memory is the stored row for an added write, and the row that beat this
 	// one for a skipped one.
 	Memory Memory
-	// Outcome is `added` or `skipped-duplicate`.
+	// Outcome is `added`, `skipped-duplicate` or `promoted`.
 	Outcome string
 	// Why is the one-line reason, spelled for the surface that offered the
 	// write. Empty on an added write.
@@ -102,7 +111,7 @@ func (s *Store) writeMemory(req WriteRequest, evidence *ContextualEvidence) (Wri
 	for i := range req.Tags {
 		req.Tags[i] = redact.Secrets(req.Tags[i])
 	}
-	payload, err := memoryPayloadFrom(Memory{Owner: owner, Type: req.Type, Title: req.Title, Text: req.Text, Tags: req.Tags})
+	payload, err := memoryPayloadFrom(Memory{Owner: owner, Type: req.Type, Title: req.Title, Text: req.Text, Tags: req.Tags, Always: req.Always})
 	if err != nil {
 		return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
 	}
@@ -116,6 +125,19 @@ func (s *Store) writeMemory(req WriteRequest, evidence *ContextualEvidence) (Wri
 	existing, err := writeDuplicateOn(tx, owner, payload.Text)
 	if err != nil {
 		return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
+	}
+	if existing != nil && payload.Always && !existing.Always {
+		// THE SAME WORDS, ASKED FOR ALWAYS: the row that was there is promoted
+		// rather than joined by a twin (WriteRequest.Always says why it only
+		// ever raises).
+		result, committed, err := commitPromotedWrite(tx, owner, evidence, existing)
+		if err != nil {
+			return WriteResult{}, committed, err
+		}
+		if err := tx.Commit(); err != nil {
+			return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
+		}
+		return result, committed, nil
 	}
 	if existing != nil {
 		result, committed, err := commitDuplicateWrite(tx, owner, payload, evidence, existing)
