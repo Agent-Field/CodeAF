@@ -1,6 +1,6 @@
 // The workspace: owns the reducer state and composes the strip, the content card and the dialogs.
 // Everything with a lane of its own lives in a sibling file (see ARCHITECTURE.md).
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Button, Icon, Text, TextInput, type MenuEntry } from '../../components/ui';
 import { nativeControls } from '../../design/nativeControls';
 import design from '../../design/tokens.json';
@@ -25,10 +25,11 @@ import { tabMenuFor } from './hosts/menuHost';
 import { NewTabHostContext } from './kinds/newtab/api';
 import { kindDef } from './kinds/registry';
 import { newTab } from './helpers';
+import { blockingOf, type AttentionItem } from '../chat/world-client';
 import { worldStore } from '../chat/world-store';
 import { focusedPane, freshWorkspace, panesOf, readWorkspace, visibleTabs, workspaceKey, workspaceReducer, type Pane, type Tab, type WorkspaceState, type WorkspaceAction } from './model';
 import { FirstTurnContext, NewConversationPlaceContext, type BeforeFirstTurn } from '../conversation/firstTurn';
-import type { TintName } from '../places/components/PlaceSwatch';
+import { placeTints, type TintName } from '../places/components/PlaceSwatch';
 import { onWorkspaceRequest } from '../places/shell/workspaceBus';
 import { useWorkspaceSync } from '../workspace-sync/useWorkspaceSync';
 import type { WorkspaceKey } from '../workspace-sync/client';
@@ -42,7 +43,13 @@ import { publishActiveHome } from '../shell/shellState';
 import { PaneGrid } from './PaneGrid';
 import { createPreviewStore } from './preview/previewStore';
 import { TabOverview } from './TabOverview';
-import { TabStrip } from './TabStrip';
+import { requestNextUp, TabStrip, type StripBack, type StripFrame } from './TabStrip';
+import { bannerVisible, type NextUpBannerItem } from '../nextup/Banner';
+import { queueRowOf } from '../nextup/QueuePopover';
+import { useNextUp } from '../nextup/useNextUp';
+import type { FocusEntry } from '../focus-history/model';
+import { useFocusWireFor, useOptionalFocusWire } from '../focus-history/useFocusHistory';
+import { routeTask } from './view-state';
 import { useTerminalTabs } from '../terminal/useTerminalTabs';
 import { useWorkspaceWeb } from '../web/useWorkspaceWeb';
 import { useGroupKeys } from './useGroupKeys';
@@ -50,6 +57,73 @@ import { useDesktopTabActions, useTabKeys, type Switcher } from './useTabKeys';
 import { useWindowHandoff } from './useWindowHandoff';
 import { useTabLinks } from './links/useTabLinks';
 import './workspace.css';
+
+/** Per window, so two windows do not share a back stack (P-24). The browser's one window is `main`. The seam spec duplicates the `main` key because it cannot import this module. */
+export const focusHistoryStorageKey = (label: string) => `codeaf.desktop.focus.v1.${label}`;
+
+/** A place tint the swatch knows. Anything else is graphite, the neutral, rather than a colour the feed invented. */
+function swatchTint(value: string | undefined): TintName {
+  return (placeTints as readonly string[]).includes(value ?? '') ? value as TintName : 'graphite';
+}
+
+/**
+ * The banner's second line: the conversation the feed named, then the work the question holds up.
+ * One named task is spelled; several become a count. Nothing named leaves the line off.
+ */
+function bannerDetail(item: AttentionItem): string | undefined {
+  const conversation = typeof item.title === 'string' ? item.title.trim() : '';
+  const named = (item.holdingUp ?? []).map(name => name.trim()).filter(name => name !== '');
+  const tasks = blockingOf(item).tasks.filter(name => typeof name === 'string' && name.trim() !== '');
+  const count = named.length || tasks.length;
+  const hold = count > 1 ? `holding up ${count} tasks` : count === 1 ? `holding up ${named[0] || tasks[0]}` : '';
+  const line = [conversation, hold].filter(part => part !== '').join(' · ');
+  return line || undefined;
+}
+
+function bannerFrom(item: AttentionItem): NextUpBannerItem {
+  const blocking = blockingOf(item);
+  return {
+    id: item.key,
+    blocking: blocking.turn || blocking.tasks.some(name => typeof name === 'string' && name !== ''),
+    head: typeof item.text === 'string' ? item.text : '',
+    detail: bannerDetail(item),
+  };
+}
+
+/**
+ * A banner for a blocking question that arrives after the feed's first reading. Questions already
+ * waiting when the window opens stay on the pill and do not slide out.
+ */
+function useArrivingBanner(elsewhere: readonly AttentionItem[]): NextUpBannerItem | null {
+  const world = useSyncExternalStore(worldStore.subscribe, worldStore.getState, worldStore.getState);
+  const seeded = useRef(false);
+  const known = useRef(new Set<string>());
+  const [current, setCurrent] = useState<NextUpBannerItem | null>(null);
+  const worldKeys = world.items.map(item => item.key).join('\0');
+  const elsewhereKeys = elsewhere.map(item => item.key).join('\0');
+  useEffect(() => {
+    if (!seeded.current) {
+      if (world.status !== 'live' && world.items.length === 0) return;
+      seeded.current = true;
+      known.current = new Set(world.items.map(item => item.key));
+      return;
+    }
+    const fresh = elsewhere.find(item => !known.current.has(item.key) && bannerVisible(bannerFrom(item)));
+    for (const item of world.items) if (item.key) known.current.add(item.key);
+    if (fresh) setCurrent(bannerFrom(fresh));
+  }, [worldKeys, elsewhereKeys, world.status, world.items, elsewhere]);
+  return current;
+}
+
+/** Where Back returns. Another place is named as a place; a tab in this place is named by its title. Unknown is nothing. */
+function backTargetName(entry: FocusEntry, tabs: readonly Tab[], place: string, placeName: (id: string) => string | undefined): string {
+  if (entry.windowPlace !== place) {
+    if (entry.windowPlace === 'now') return 'Now';
+    if (entry.windowPlace === 'root') return 'All places';
+    return placeName(entry.windowPlace) ?? '';
+  }
+  return tabs.find(tab => tab.id === entry.tabId)?.title ?? '';
+}
 
 type Props = {
   enabled: boolean; onActivate: () => void; leading?: ReactNode;
@@ -148,7 +222,54 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
     dispatch({ type: 'home-ensure', place, title: placeTitle, focus });
   }, [place, placeTitle, arrival]);
   useEffect(() => onWorkspaceRequest(dispatch), [dispatch]);
-  const focused = focusedPane(state.tabs.find(tab => tab.id === state.activeId) ?? state.tabs[0]);
+  const activeTab = state.tabs.find(tab => tab.id === state.activeId) ?? state.tabs[0];
+  const focused = focusedPane(activeTab);
+  // P-3: the conversation you're in is the focused pane's. A task or file on that session is the same conversation.
+  const conversationKey = focused.sessionFile ? chatIdFromSessionFile(focused.sessionFile) : '';
+  const queue = useNextUp(conversationKey);
+  const banner = useArrivingBanner(queue.items);
+  const tintOf = (placeId: string | undefined): TintName => swatchTint(placeId ? shell?.index?.byId.get(placeId)?.effectiveTint : undefined);
+  const frame: StripFrame = {
+    count: queue.count,
+    rows: queue.items.map(item => queueRowOf(item, tintOf)),
+    acceptable: queue.acceptable.length,
+    banner,
+    onOpen: () => requestNextUp(),
+    onJump: itemKey => requestNextUp({ itemKey }),
+    onStart: () => requestNextUp(),
+    onAccept: () => { void queue.accept(); },
+  };
+  // The walk and the app-level wire land in later files. Until then this window keeps its own stack, and prefers one the app already opened.
+  const outerFocus = useOptionalFocusWire();
+  const [windowLabel, setWindowLabel] = useState('main');
+  const focusNavigate = useRef<(entry: FocusEntry) => void>(() => {});
+  focusNavigate.current = entry => {
+    if (entry.windowPlace !== place) void shell?.goTo(entry.windowPlace);
+    dispatch({ type: 'select', id: entry.tabId });
+  };
+  const localFocus = useFocusWireFor(outerFocus ? undefined : focusHistoryStorageKey(windowLabel), entry => focusNavigate.current(entry));
+  const focusWire = outerFocus ?? localFocus;
+  const focusSnap = useSyncExternalStore(focusWire.subscribe, focusWire.getSnapshot, focusWire.getSnapshot);
+  const backEntry = focusSnap.chip;
+  const backName = backEntry ? backTargetName(backEntry, state.tabs, place, id => shell?.index?.byId.get(id)?.name) : '';
+  const back: StripBack | undefined = backEntry && backName ? {
+    key: `${focusSnap.history.cursor}:${backEntry.windowPlace}:${backEntry.tabId}:${backEntry.drillPath.join('/')}`,
+    parentName: backName,
+    onBack: () => { focusWire.back(); },
+    onDismiss: () => { focusWire.dismissChip(); },
+  } : undefined;
+  useEffect(() => {
+    let live = true;
+    void nativeControls().currentWindow().then(info => { if (live && info.label) setWindowLabel(info.label); });
+    return () => { live = false; };
+  }, []);
+  // The tab id is the step, not the pane inside a split. The first report after a saved stack is a relaunch, so a chip that was already there stays.
+  useEffect(() => {
+    focusWire.setTabs(place, state.tabs.map(tab => tab.id));
+    if (!activeTab) return;
+    const task = focused.route ? routeTask(focused.route) : undefined;
+    focusWire.observe({ windowPlace: place, tabId: activeTab.id, drillPath: task ? [task] : [] });
+  }, [focusWire, place, state.tabs, activeTab, focused.route]);
   useEffect(() => publishActiveHome(focused.kind === 'home' ? focused.place : undefined), [focused.kind, focused.place]);
 
   useEffect(() => {
@@ -222,7 +343,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
     onAddToPlace: shell && pane.sessionFile ? () => { const chatId = chatIdFromSessionFile(pane.sessionFile!); if (chatId) shell.openChooser({ kind: 'file', chatIds: [chatId], chatTitle: pane.title, exclude: [] }); } : undefined,
   });
   return <TabsApiContext.Provider value={api}><section ref={gestureRoot} className="tab-workspace" aria-label="Conversation workspace">
-    <TabStrip api={api} leading={leading} overviewTrigger={overviewTrigger} onOverview={openOverview}/>
+    <TabStrip api={api} leading={leading} back={back} frame={frame} overviewTrigger={overviewTrigger} onOverview={openOverview}/>
     <NewConversationPlaceContext.Provider value={place === 'now' || place === 'root' ? undefined : place}><FirstTurnContext.Provider value={firstTurn}><NewTabHostContext.Provider value={newTabHost}><HistoryHostContext.Provider value={historyHost}><PaneGrid tab={active} tabs={state.tabs} dispatch={dispatch} actionsFor={actionsFor} retainedPaneIds={state.closed.flatMap(tab => panesOf(tab).map(pane => pane.id))}/></HistoryHostContext.Provider></NewTabHostContext.Provider></FirstTurnContext.Provider></NewConversationPlaceContext.Provider>
     <GroupOffer api={api}/>
     {archived && <ArchiveToast count={archived.tabs.length} onDismiss={dismissArchived} onReview={() => { dispatch(openKindAction(state, 'history')); dismissArchived(); }} onRestore={() => { restoreArchived(archived, dispatch); dismissArchived(); }}/>}

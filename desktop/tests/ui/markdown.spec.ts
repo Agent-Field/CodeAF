@@ -8,6 +8,11 @@ async function render(page: Page, text: string) {
  await installMockEngine(page, plainReply());
  await openApp(page);
  await expect(page.locator('.conversation-scroll > .conversation-column')).toBeAttached();
+ // Vite records these module URLs as they load. Reading them in the same turn as open can miss one.
+ await page.waitForFunction(() => {
+  const names = performance.getEntriesByType('resource').map(entry => entry.name);
+  return names.some(url => /\/react\.js\?/.test(url)) && names.some(url => /\/react-dom_client\.js\?/.test(url));
+ });
  await page.evaluate(async (text) => {
   const markdownPath = '/src/components/ui/Markdown.tsx';
   const resources = performance.getEntriesByType('resource').map(entry => entry.name);
@@ -37,7 +42,7 @@ test('assistant Markdown renders GFM structure with the shared typography and th
  await expect(prose.getByRole('link', { name: 'Source' })).toHaveAttribute('rel', 'noopener noreferrer');
  for (const theme of ['light', 'dark']) {
   await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
-  const styles = await prose.locator('.markdown').evaluate(el => ({ color: getComputedStyle(el).color, expected: (() => { const probe = document.createElement('span'); probe.style.color = 'var(--ink)'; document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; })(), family: getComputedStyle(el).fontFamily, rootFamily: getComputedStyle(document.documentElement).getPropertyValue('--font-sans').trim() }));
+  const styles = await prose.locator('.markdown').evaluate(el => { const probe = document.createElement('span'); probe.style.color = 'var(--ink)'; el.append(probe); const expected = getComputedStyle(probe).color; probe.remove(); return { color: getComputedStyle(el).color, expected, family: getComputedStyle(el).fontFamily, rootFamily: getComputedStyle(document.documentElement).getPropertyValue('--font-sans').trim() }; });
   expect(styles.color).toBe(styles.expected); expect(styles.family).toContain('system-ui');
  }
  await expectAccessible(page); await expectNoUnstyledControls(page);

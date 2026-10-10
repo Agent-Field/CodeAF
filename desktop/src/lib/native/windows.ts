@@ -77,6 +77,27 @@ export type NewWindowKey = { key: string; ctrlKey: boolean; metaKey: boolean; sh
 
 export type NativeWindows = ReturnType<typeof createNativeWindows>;
 
+/**
+ * True when this process can open another native window. The desktop app reports that; a browser does not,
+ * so a menu that asks here leaves "Move to new window" off instead of drawing it disabled.
+ */
+export function reportsMultiwindow(windows: Pick<NativeWindows, 'desktop'> = createNativeWindows()): boolean {
+  return windows.desktop;
+}
+
+/**
+ * "Move to new window" (Shell 3g). Opens this tab's place in another window and tells only that window to show
+ * the tab. The menu passes no drop point, so the window cascades. A browser, a tab id or a place the native
+ * door does not accept opens nothing: the caller says so, and Now is not used as a stand-in for another place.
+ */
+export async function tabMoveToWindow(tab: { id: string }, placeKey?: string, windows: NativeWindows = createNativeWindows()): Promise<boolean> {
+  if (!windows.desktop || !isTabId(tab.id)) return false;
+  const place = placeKey === undefined ? windows.currentPlaceKey() : (isPlaceKey(placeKey) ? placeKey : undefined);
+  if (!place) return false;
+  await windows.moveTabToNewWindow(tab.id, place);
+  return true;
+}
+
 export function createNativeWindows(bridge: WindowsBridge = defaultBridge()) {
   const api = {
     desktop: bridge.desktop,
