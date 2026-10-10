@@ -150,6 +150,15 @@ test('a task opened from a grouped conversation joins its group, at the end', ()
   assert.deepEqual(strip(run(s, { type: 'open-task', tab: tab('t', { kind: 'task' }), background: true, from: 'z' })), ['[g: a b]', 'z', 't']);
 });
 
+test('a task opened from a pinned conversation remains loose and never pins itself', () => {
+  const s = state([tab('p', { pinned: true }), tab('a', { groupId: 'g' }), tab('z')], { groups: [group('g')] });
+  const opened = run(s, { type: 'open-task', tab: tab('t', { kind: 'task' }), background: true, from: 'p' });
+  assert.deepEqual(strip(opened), ['p', '[g: a]', 'z', 't']);
+  assert.equal(opened.tabs.find(tab => tab.id === 't')?.groupId, undefined);
+  assert.equal(opened.tabs.find(tab => tab.id === 't')?.pinned, false);
+  assert.equal(opened.activeId, s.activeId);
+});
+
 test('an emptied group name takes a default no other group has', () => {
   const s = state([tab('a', { groupId: 'g1' }), tab('b', { groupId: 'g2' })], { groups: [group('g1', 'New group'), group('g2', 'Docs')] });
   const renamed = run(s, { type: 'rename-group', id: 'g2', title: '  ' });
