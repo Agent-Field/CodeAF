@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { placeShortcuts } from '../../../design/keyboard';
 import { NewTabHostContext } from '../../tabs/kinds/newtab/api';
 import type { PaneRenderProps } from '../../tabs/kinds/slots';
@@ -16,6 +16,9 @@ import './home-pane.css';
 import { usePlaceOffers } from '../usePlaceOffers';
 import { PlaceOfferLine } from '../PlaceOfferLine';
 import { FirstPlaceTabOffer } from '../FirstPlaceTabOffer';
+import { proposalsClient } from '../proposals-client';
+import { Suggestion } from '../home/Suggestion';
+import { browserSnoozes, suppliedSuggestions, writeSnooze } from '../suggestions';
 
 type Read = { digest?: HomeDigest; unplaced?: HomeDigest; failure?: PlacesError | Error };
 
@@ -75,9 +78,9 @@ export function HomePane({ pane, focused, actions: paneActions }: PaneRenderProp
   const id = pane.place ?? 'root';
   const read = useHomeRead(id);
   const offers = usePlaceOffers(id === 'root', id, false, focused);
-  const proposal = offers.offers.find(offer => (offer.kind === 'move' || offer.kind === 'create') && (offer.chatIds?.length ?? 0) > 0);
-  const offerName = proposal?.kind === 'create' ? proposal.name : proposal?.placeId ? shell?.index?.byId.get(proposal.placeId)?.name : undefined;
   const [looking, setLooking] = useState<string>();
+  const heldOffer = useRef(false);
+  const [hiddenOffer, setHiddenOffer] = useState<string>();
   const now = useMemo(() => new Date(), [read.digest, read.unplaced]);
   const stale = useStale(id === 'root' ? shell : undefined);
   const view = useMemo(() => {
@@ -95,8 +98,39 @@ export function HomePane({ pane, focused, actions: paneActions }: PaneRenderProp
   const composer = view?.kind === 'place' && strip
     ? <HomeComposer shell={shell} placeId={view.id} placeName={view.title} draft={pane.draft} onDraft={paneActions.onDraft} dispatch={strip.dispatch} offline={connection.state === 'offline'}/>
     : undefined;
+  // A create of at least five chats is the card. A move or a file stays the sparkles line, so Move them keeps its sentence.
+  const snoozes = browserSnoozes(now);
+  const offered = suppliedSuggestions(offers.offers.map(offer => ({
+    id: offer.id, kind: offer.kind, name: offer.name, reason: offer.reason, chatCount: offer.chatIds?.length,
+    placeName: offer.kind === 'create' ? offer.name : offer.placeId ? shell.index?.byId.get(offer.placeId)?.name : undefined,
+  })), now, snoozes).find(item => item.layout === 'card');
+  const card = offered?.layout === 'card' ? offered : undefined;
+  const hidden = new Set(snoozes.map(snooze => snooze.id));
+  const lineProposal = offers.offers.find(offer => !hidden.has(offer.id) && offer.id !== hiddenOffer && (offer.kind === 'move' || offer.kind === 'file') && (offer.chatIds?.length ?? 0) > 0);
+  const lineName = lineProposal?.placeId ? shell.index?.byId.get(lineProposal.placeId)?.name : undefined;
+  async function settleCard(accept: boolean) {
+    const proposal = card && offers.offers.find(offer => offer.id === card.id);
+    if (!shell || !card || !proposal || heldOffer.current) return;
+    heldOffer.current = true;
+    try {
+      if (accept) await shell.write(`Created “${card.title}”`, () => proposalsClient.accept(proposal), { subject: card.title });
+      else {
+        await proposalsClient.decline(proposal.id);
+        writeSnooze(localStorage, proposal.id, new Date());
+      }
+      setHiddenOffer(proposal.id);
+    } catch (failure) { shell.warn(failure); }
+    finally { heldOffer.current = false; offers.refresh(); }
+  }
+  const suggestion = connection.state === 'ready' && ((card && card.id !== hiddenOffer) || (lineProposal && lineName))
+    ? <>
+        {card && card.id !== hiddenOffer && <Suggestion key={card.id} layout="card" kicker={card.kicker} title={card.title} detail={card.detail} label={card.label}
+          actions={card.actions.map(action => ({ ...action, tone: action.id === 'not-now' ? 'quiet' : 'field', onSelect: () => settleCard(action.id === 'create') }))}/>}
+        {lineProposal && lineName && <PlaceOfferLine key={lineProposal.id} proposal={lineProposal} text={`${lineProposal.chatIds?.length} of these look like they belong in ${lineName}`} action="Move them" onSettled={offers.refresh}/>}
+      </>
+    : read.digest?.kind === 'place' ? <FirstPlaceTabOffer key={id} digest={read.digest} active={focused}/> : undefined;
   return <div className="home-pane">
-    <HomePage view={view} connection={connection} actions={homeActions} composer={composer} now={now} newWindowHint={placeShortcuts.openInNewWindow} suggestion={proposal && offerName && connection.state === 'ready' ? <PlaceOfferLine key={proposal.id} proposal={proposal} text={`${proposal.chatIds?.length} of these look like they belong in ${offerName}`} action={proposal.kind === 'create' ? `Create ${offerName}` : 'Move them'} onSettled={offers.refresh}/> : read.digest?.kind === 'place' ? <FirstPlaceTabOffer key={id} digest={read.digest} active={focused}/> : undefined}/>
+    <HomePage view={view} connection={connection} actions={homeActions} composer={composer} now={now} newWindowHint={placeShortcuts.openInNewWindow} suggestion={suggestion}/>
     {looking && <PlaceQuickLook id={looking} actions={homeActions} onClose={() => setLooking(undefined)}/>}
   </div>;
 }

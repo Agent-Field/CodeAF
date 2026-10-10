@@ -1,0 +1,62 @@
+/* Suggested place card (Components, measured: 212px, pad 10×12, radius 10, gap 8, sh-1).
+   The sparkles stay ink-3. Create is a field fill; Not now is ink-3 on nothing.
+   Hover and press come from the shared button. No border and no state colour on the words. */
+
+.suggestion-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--suggestion-card-gap);
+  box-sizing: border-box;
+  width: var(--suggestion-card-width);
+  max-width: 100%;
+  padding: var(--suggestion-card-pad-y) var(--suggestion-card-pad-x);
+  border-radius: var(--suggestion-card-radius);
+  background: var(--surface);
+  box-shadow: var(--sh-1);
+  font-size: var(--font-size-body);
+  color: var(--ink);
+}
+
+.suggestion-kicker {
+  display: flex;
+  align-items: center;
+  gap: var(--suggestion-kicker-gap);
+  color: var(--ink-3);
+  font-size: var(--suggestion-kicker-size);
+  font-weight: var(--font-weight-medium);
+  line-height: normal;
+}
+
+.suggestion-kicker > .app-icon { color: var(--ink-3); }
+
+.suggestion-title {
+  font-size: var(--suggestion-title-size);
+  font-weight: var(--font-weight-medium);
+  line-height: normal;
+  color: var(--ink);
+}
+
+.suggestion-detail {
+  color: var(--ink-2);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--suggestion-detail-leading);
+}
+
+.suggestion-actions { display: flex; flex-wrap: wrap; gap: var(--suggestion-action-gap); }
+
+.suggestion-action.button {
+  min-height: var(--suggestion-action-height);
+  height: var(--suggestion-action-height);
+  border-radius: var(--suggestion-action-radius);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+  line-height: normal;
+}
+
+.suggestion-action-field.button { padding: 0 var(--suggestion-action-pad); background: var(--field); color: var(--ink); }
+.suggestion-action-quiet.button { padding: 0 var(--suggestion-action-pad-quiet); background: transparent; color: var(--ink-3); }
+.suggestion-action-field.button:hover:not(:disabled) { background: var(--field-2); color: var(--ink); }
+.suggestion-action-quiet.button:hover:not(:disabled) { background: var(--field); color: var(--ink); }
+.suggestion-action-field.button:active:not(:disabled),
+.suggestion-action-quiet.button:active:not(:disabled) { background: var(--field-2); color: var(--ink); filter: brightness(var(--brightness-press)); }
