@@ -18,7 +18,7 @@ const HIERARCHY = [
   { key: 'maxAiPlaces', name: 'Places codeaf may create in all', value: '30', min: '0', max: '500', provisional: 'Provisional default: 30 places' },
 ] as const;
 
-const SECTIONS = ['Pinned', 'Conversation and tasks', 'Naming and summaries', 'Places organization', 'Memory, routing and safety', 'Appearance', 'Engine'];
+const SECTIONS = ['Pinned', 'Conversation and tasks', 'Naming and summaries', 'Places organization', 'Memory, routing and safety', 'Provider key', 'Appearance', 'Engine'];
 
 async function chooseTheme(page: Page, theme: 'light' | 'dark') {
   await page.getByRole('combobox', { name: 'Theme', exact: true }).click();

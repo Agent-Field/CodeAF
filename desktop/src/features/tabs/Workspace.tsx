@@ -221,13 +221,15 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   });
   // The Home tab carries the place's current name; Go to (even to the place already shown) lands on it.
   // A strip mounted by a Go to (arrival already moved) lands on its Home; one mounted by a reload keeps its saved focus.
+  // Canonical reads and other windows can replace the import seed after arrival, so every changed tab set must
+  // keep Home first too. The reducer leaves an already correct Home alone, preserving this window's later focus.
   const arrived = useRef(arrival > 0 ? -1 : arrival);
   useEffect(() => {
     if (place === 'now' || !placeTitle) return;
     const focus = arrived.current !== arrival;
     arrived.current = arrival;
     dispatch({ type: 'home-ensure', place, title: placeTitle, focus });
-  }, [place, placeTitle, arrival]);
+  }, [place, placeTitle, arrival, state.tabs, dispatch]);
   useEffect(() => onWorkspaceRequest(dispatch), [dispatch]);
   const activeTab = state.tabs.find(tab => tab.id === state.activeId) ?? state.tabs[0];
   const focused = focusedPane(activeTab);
