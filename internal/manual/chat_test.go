@@ -3169,6 +3169,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// Desktop conversation 1b: queued rows fold into the chip after the model name.
 		{"what is the N queued chip in the desktop composer", "desktop-queued-chip"},
 		{"I scrolled up and the queued messages disappeared", "desktop-queued-chip"},
+		// A native web view paints above the window, so a menu hides the page.
+		{"why the web page went blank when I opened a menu", "desktop-web-overlay"},
+		{"the web page disappeared behind a menu", "desktop-web-overlay"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

@@ -21,7 +21,7 @@ export function ArchiveToast({ count, onReview, onRestore, onDismiss }: Props) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onDismiss]);
-  return <div className="history-toast" role="status" onPointerEnter={hold} onPointerLeave={arm} onFocus={hold} onBlur={arm}>
+  return <div className="history-toast" role="status" data-native-cover="" onPointerEnter={hold} onPointerLeave={arm} onFocus={hold} onBlur={arm}>
     <Icon name="archive" size="xs"/>
     <span className="history-toast-text">Archived {count} {count === 1 ? 'tab' : 'tabs'} idle for more than 12h</span>
     <Button variant="ghost" className="history-toast-action" onClick={onReview}>Review</Button>
