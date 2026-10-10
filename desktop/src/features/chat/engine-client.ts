@@ -191,7 +191,7 @@ export async function readEngine(id: string, since?: number, held?: EngineSnapsh
  try { return snapshotFrom(mergeTail(held, body)); }
  catch (error) { if (error instanceof EngineError) throw error; return readEngine(id); }
 }
-async function action(id: string, kind: 'turn' | 'stop' | 'answer' | 'queue-edit' | 'queue-move' | 'queue-remove', body?: unknown): Promise<EngineSnapshot> {
+async function action(id: string, kind: 'turn' | 'stop' | 'answer' | 'queue-edit' | 'queue-move' | 'queue-remove' | 'queue-send', body?: unknown): Promise<EngineSnapshot> {
  const response = await fetchEngine(`${sessionPath(id)}/${kind}`, { method: 'POST', body: JSON.stringify(body ?? {}) });
  const result: unknown = await response.json();
  if (!result || typeof result !== 'object' || !('accepted' in result) || result.accepted !== true) throw new EngineError('The engine did not accept this action.');
@@ -206,6 +206,8 @@ export function editQueued(id: string, queued: string, text: string): Promise<En
 export function moveQueued(id: string, queued: string, to: number): Promise<EngineSnapshot> { return action(id, 'queue-move', { id: queued, to }); }
 /** Takes a queued message back so it never runs. Refused (409) once its turn has started. */
 export function removeQueued(id: string, queued: string): Promise<EngineSnapshot> { return action(id, 'queue-remove', { id: queued }); }
+/** Sends a queued message immediately; the engine decides whether to steer or start a turn. */
+export function sendQueuedNow(sessionId: string, id: string): Promise<EngineSnapshot> { return action(sessionId, 'queue-send', { id }); }
 export function stopEngine(id: string): Promise<EngineSnapshot> { return action(id, 'stop'); }
 /** Identity and explicit canonical option keys cross unchanged; only the engine resolves a question. */
 export function answerEngine(id: string, answer: EngineAnswer): Promise<EngineSnapshot> { return action(id, 'answer', answer); }
