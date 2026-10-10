@@ -480,10 +480,13 @@
   --task-composer-max-width: 592px;
   --task-view-column-width: 640px;
   --task-view-bar-height: 52px;
-  --conversation-bar-pad-start: 22px;
-  --conversation-bar-pad-end: 12px;
+  --conversation-bar-pad-start: 20px;
+  --conversation-bar-pad-end: 10px;
   --conversation-bar-count-gap: 7px;
   --conversation-bar-counts-gap: 16px;
+  --conversation-bar-title-pad: 4px;
+  --conversation-bar-hover-duration: 120ms;
+  --conversation-bar-rename-width: 28ch;
   --task-composer-clearance: 20px;
   --task-composer-pad-start: 16px;
   --task-worker-note-max-width: 85%;
@@ -1566,5 +1569,5 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  :root { --duration: var(--duration-none); --duration-fast: var(--duration-none); --duration-sidebar: var(--duration-none); --duration-overlay: var(--duration-none); --duration-directional: var(--duration-none); --motion-travel: var(--motion-rest); --motion-directional-travel: var(--motion-rest); --motion-scale-enter: var(--motion-scale-rest); --motion-scale-popover: var(--motion-scale-rest); --duration-work: var(--duration-none); --shimmer-duration: var(--duration-none); --dur-press: var(--duration-none); --dur-fast: var(--duration-none); --dur-base: var(--duration-none); --dur-slow: var(--duration-none); --dur-spring: var(--duration-none); --task-view-shimmer-duration: var(--duration-none); --latest-shimmer-duration: var(--duration-none); --i2-banner-duration: var(--duration-none); --motion-rise-row: var(--motion-rest); --motion-rise-send: var(--motion-rest); --motion-rise-toast: var(--motion-rest); --motion-place-slide: var(--motion-rest); --motion-scale-quicklook: var(--motion-scale-rest); --breathe-duration: var(--duration-none); --breathe-from: var(--motion-rest); --breathe-to: var(--motion-rest); --cf-shimmer-duration: var(--duration-none); --motion-tab-collapse: var(--duration-none); }
+  :root { --duration: var(--duration-none); --duration-fast: var(--duration-none); --duration-sidebar: var(--duration-none); --duration-overlay: var(--duration-none); --duration-directional: var(--duration-none); --motion-travel: var(--motion-rest); --motion-directional-travel: var(--motion-rest); --motion-scale-enter: var(--motion-scale-rest); --motion-scale-popover: var(--motion-scale-rest); --duration-work: var(--duration-none); --shimmer-duration: var(--duration-none); --dur-press: var(--duration-none); --dur-fast: var(--duration-none); --dur-base: var(--duration-none); --dur-slow: var(--duration-none); --dur-spring: var(--duration-none); --task-view-shimmer-duration: var(--duration-none); --conversation-bar-hover-duration: var(--duration-none); --latest-shimmer-duration: var(--duration-none); --i2-banner-duration: var(--duration-none); --motion-rise-row: var(--motion-rest); --motion-rise-send: var(--motion-rest); --motion-rise-toast: var(--motion-rest); --motion-place-slide: var(--motion-rest); --motion-scale-quicklook: var(--motion-scale-rest); --breathe-duration: var(--duration-none); --breathe-from: var(--motion-rest); --breathe-to: var(--motion-rest); --cf-shimmer-duration: var(--duration-none); --motion-tab-collapse: var(--duration-none); }
 }
