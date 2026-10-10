@@ -8,8 +8,8 @@ import type { Tab, WorkspaceState } from '../types.ts';
 export type HomeAction =
   /** Makes the place's Home the pinned first tab, titled with the place's name; `focus` selects it (Go to lands on Home). */
   | { type: 'home-ensure'; place: string; title: string; focus?: boolean }
-  /** Focuses the All places tab of this strip, or opens one (after the active tab, or at the end in the background). */
-  | { type: 'home-root'; background?: boolean }
+  /** Focuses All places, or opens a fresh view when the shortcut or a background press asks for one. */
+  | { type: 'home-root'; background?: boolean; fresh?: boolean }
   /** Another window saved this place's tabs: take them, keeping this window's own focus when that tab still exists. */
   | { type: 'adopt'; state: WorkspaceState };
 
@@ -41,8 +41,8 @@ export function reduceHome(state: WorkspaceState, action: { type: string }): Wor
       return normalize({ ...state, tabs, activeId, recentIds: focus ? [home.id, ...state.recentIds] : state.recentIds });
     }
     case 'home-root': {
-      const { background } = a as Extract<HomeAction, { type: 'home-root' }>;
-      const root = state.tabs.find(isRootHome);
+      const { background, fresh } = a as Extract<HomeAction, { type: 'home-root' }>;
+      const root = !fresh && !background ? state.tabs.find(isRootHome) : undefined;
       if (root) return background ? state : normalize({ ...state, activeId: root.id, recentIds: [root.id, ...state.recentIds] });
       const tab = newTab({ kind: 'home', place: 'root', title: ALL_PLACES_TITLE, titleSource: 'manual' });
       const at = state.tabs.findIndex(t => t.id === state.activeId);
