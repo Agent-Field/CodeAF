@@ -17,11 +17,11 @@ one-line hint a user would actually thank you for).
 
 ### Just talk — the compiler classifies, you don't
 **What**: There are no mode commands. Plain language becomes an answer, a
-reflex, a task, a project, or a standing goal based on the *shape* of the
+reflex, a task, a project, or an automation based on the *shape* of the
 ask — scale is read from structure, duration from temporal language.
 **Where**: the chat input, always.
 **How**: "open that file" → instant reflex; "fix the flaky test" → task;
-"whenever a PR opens, review it" → standing-goal ratification card.
+"every morning at 9, check the open PRs" → an automation's card.
 **Tip seed**: You never need to tell codeaf how big a job is — say what
 you want; it decides ceremony, and misreads are corrected by just saying so.
 
@@ -40,8 +40,8 @@ conversationally; the head resolves which node you mean, asks back with
 options only when ambiguous, and gates consequential surgery behind a
 confirm question.
 **Where**: chat, any time work is on the graph.
-**How**: "cancel the audio job", "make the PR watcher hourly", "stop
-watching PRs".
+**How**: "cancel the audio job", "stop that test run", "make it check
+only the api package".
 **Tip seed**: You can redirect running work by talking about it — no need
 to find an id or a kill switch.
 
@@ -136,47 +136,44 @@ run `codeaf plan|revise|run --model <work> --plan-model <plan>`.
 `work` — the graph, the replans, and the gate get the judgment while the
 leaves stay cheap.
 
-## 3. Standing goals — it acts without being asked
+## 3. Automations — work on a clock
 
-### Say it once, it stands forever
-**What**: Durable language ("whenever…", "every morning…", "keep the
-suite green", "remind me tomorrow at 9") is *recognized*, never declared —
-no /goal command exists. What comes back is the one ceremony in the
-system: a ratification card quoting the watch, cost (from measured
-history when available), and rails, with `▸ 1 yes · ▸ 2 change cadence ·
-▸ 3 once, not standing`.
-**Where**: chat; the card appears before anything stands.
-**Tip seed**: "Remind me Friday at 3" or "watch this folder" just works —
-you'll approve the standing cost once, then it's furniture.
+### Say it once, it runs on its own
+**What**: A reminder ("remind me at 6 to leave"), scheduled work ("every
+Monday at 9, draft the weekly update") or a watch ("tell me when CI on main
+goes red") is *recognized* from what the sentence is, and comes back as a
+card: the schedule in words and exactly, what a watch looks at and the
+condition it is held to, the line or the brief, where work runs, and what
+one run may spend. Nothing is saved until you answer `1`.
+**Where**: chat; or typed exactly with `/automations add …`.
+**Tip seed**: "Remind me Friday at 3" just works — the card shows exactly
+when, and nothing is saved until you say yes.
 
-### The standing rail — felt, not seen
-**What**: One dim line per charter above tasks (`⏱ pr-watch · last fired
-2h · 3 today`), breathing only while a sentinel evaluates or a firing
-runs. Routine "checked, nothing to do" firings never touch the thread —
-only questions, deliveries, and failures earn a card.
-**Where**: the rail (alt+g or header ⟨tasks⟩).
-**Tip seed**: Quiet standing lines are good news — a goal only speaks
-when it has something worth saying.
+### Only while codeaf is open
+**What**: Automations run while a codeaf window is open, in one clock
+process every window shares. Anything that fell due while it was closed
+runs once when it opens, marked late. A run's result is one dim line in
+the conversation that made it — the model is not woken — and a desktop
+notification.
+**Where**: automatic; `/automations` lists them.
+**Tip seed**: A watch on CI tells you when it goes red and then stays
+quiet while it stays red.
 
-### Zoom from goal to everything it ever did
-**What**: Click a standing line → the charter card: invariant in your
-words, watch, rails, and firing history (when, outcome, cost). Click a
-firing → its full job graph, the same flight recorder every task has.
-Esc walks back up: graph → card → rail.
-**Where**: rail → charter card → firing drill-in.
-**Tip seed**: Wondering what a goal has been doing? Click its line — the
-history with costs is one click deep, the full graphs two.
+### Every run, with its cost
+**What**: `/automations` shows each automation's kind, schedule, next run
+and last result; `enter` opens its history — every run, how late, what it
+came to and what it cost — and `enter` on a run opens its transcript. `→`
+shows the row's keys: run now, pause, edit, delete, open where it was asked.
+**Where**: `/automations`.
+**Tip seed**: Wondering what a watch has been doing? Its history is one
+key deep, costs included.
 
-### Manage goals by talking (or clicking)
-**What**: "pause the PR watcher", "make it hourly", "stop watching PRs" —
-references resolve by searching the invariants; ambiguity asks back with
-options. The charter card offers the same verbs as clicks, and offers only
-the ones this charter's state can perform: pause or resume, retire, and edit
-cadence — which turns the row itself into a field rather than opening a
-dialog. A proposal's first row stands it up. Click and sentence journal the
-identical typed charter command. `/standing` lists all charters.
-**Tip seed**: There's no goals settings page — say "pause it" or click
-the goal's line; both end in the same journaled event.
+### Rules are memories, not automations
+**What**: "Always run the tests before a commit" has no moment and nothing
+to run: it is a memory marked always, in front of every conversation and
+task from then on. `/always <text>` keeps one; `/always` lists them.
+**Where**: chat, `/always`, the memory place.
+**Tip seed**: A rule you keep repeating can be said once with `/always`.
 
 ## 4. Money, not tokens
 
@@ -300,14 +297,14 @@ from this evidence.
 
 ### Three places: thread · board · self
 **What**: The header's left side is the whole map — thread (the conversation,
-home), board (live jobs, the graph, standing goals — the old tasks rail
-promoted), self (the employee's file: today's receipts, the competence map,
-newest beliefs, and each standing goal's tenure grade). Attention dots light
-per place from that place's own sources; esc always walks home to thread.
+home), board (live jobs and the graph — the old tasks rail promoted), self
+(the employee's file: today's receipts, the competence map and newest
+beliefs). Attention dots light per place from that place's own sources; esc
+always walks home to thread.
 **Where**: click the words, or alt+1 / alt+2 / alt+3 (alt+g and ⟨tasks⟩ still
 open the board); `/self`.
 **Tip seed**: Wondering what it's learned or earned lately? alt+3 opens its
-file — receipts, competence, beliefs, and tenure, one calm column.
+file — receipts, competence and beliefs, one calm column.
 
 ### The presence line — you can hear it working
 **What**: One dim line in the rail (and dock hint) while the resident works on

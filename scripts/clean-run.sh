@@ -2,7 +2,7 @@
 # clean-run.sh opens bin/codeaf as though it had never run on this machine,
 # except that it still knows who you are: your settings (models, crew,
 # services) and your keys are copied into a fresh state root, and nothing else
-# is. No conversation, project, task, memory, standing order or notice from
+# is. No conversation, project, task, memory, automation or notice from
 # ~/.codeaf is there, so every try of a new build starts from the same place.
 #
 # The state root is moved with CODEAF_HOME (internal/home), which moves every

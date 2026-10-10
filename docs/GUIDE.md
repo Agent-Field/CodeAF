@@ -156,8 +156,9 @@ codeaf chat --once "summarize the changes"  # print one reply and exit
 codeaf resume
 ```
 
-`enter` sends a message or steers a running answer. `ctrl+enter` makes a standing
-order. `esc` interrupts or, pressed twice at rest, opens rewind. `ctrl+c` interrupts
+`enter` sends a message or steers a running answer. `ctrl+enter` mid-answer queues
+the draft to run after the current turn. `esc` interrupts or, pressed twice at rest,
+opens rewind. `ctrl+c` interrupts
 mid-turn; twice within 1.5 seconds while idle quits.
 
 <details>
@@ -188,12 +189,12 @@ mid-turn; twice within 1.5 seconds while idle quits.
 </details>
 
 Once the conversation has begun, a column stands down the right-hand side of a wide
-terminal — the tasks and standing orders over this conversation, or, while there are
-none, `+ /task` and `+ /standing` with `❯ ctrl+g hide` under them.
+terminal — the tasks and automations of this conversation, or, while there are none,
+`+ /task` and `+ /automations` with `❯ ctrl+g hide` under them.
 
 Slash commands cover models, conversations, work, memory, permissions, and spending.
 Start with `/help`. Common doors are `/model`, `/new`, `/resume`, `/workspace`, `/task`,
-`/history`, `/standing`, `/memory`, `/remember`, `/permissions`, `/status`, `/cost`,
+`/history`, `/automations`, `/memory`, `/remember`, `/permissions`, `/status`, `/cost`,
 `/spend`, `/budget`, `/compact`, `/rewind`, `/manual`, `/help`, and `/quit`. `/drafts`
 keeps the last ten cleared drafts; `enter` restores one and `d` lets one go.
 
@@ -208,7 +209,8 @@ keeps the last ten cleared drafts; `enter` restores one and `d` lets one go.
 | `/workspace <path>` | `anchor this conversation to a project` |
 | `/task <brief>` | `start work you can walk away from` |
 | `/history` | `every task this project has run · ctrl+.` |
-| `/standing <words>` | `keep this true · a card, never work done once` |
+| `/automations` | `what runs on a clock · run, pause, edit or delete one` |
+| `/automations add <title> …` | `…or add one exactly, read back on a card first` |
 | `/memory` | `inspect and change what is remembered` |
 | `/remember <text>` | `keep one thing across conversations` |
 | `/permissions` | `what runs without asking · drop one with d` |
@@ -289,9 +291,18 @@ A task page shows the instruction, folded work and calls, steering, the report, 
 pinned line with activity, duration, cost and call count. `/task <brief>` is the direct
 door; `/history` opens the project's task history.
 
-Standing orders use `/standing <words>` or `ctrl+enter`. They become cards and stay true
-after the conversation. Memory keeps person-, project-, or machine-scoped records in
-`graph.db`; `/memory`, `/memories`, `/remember` and `/forget` change them.
+Automations are work codeaf does on a clock: a reminder (`remind me at 6 to leave`),
+scheduled work (`every Monday at 9, draft the weekly update`), or a watch (`tell me when
+CI on main goes red`). Say one in a conversation, or type it exactly with
+`/automations add …`; either way it is read back on a card and nothing is saved until
+you say yes. They run only while a codeaf window is open, and anything that fell due
+while it was closed runs once when it opens, marked late. `/automations` lists them,
+with every run's history.
+
+Memory keeps person-, project-, or machine-scoped records in `graph.db`; `/memory`,
+`/memories`, `/remember` and `/forget` change them. A rule for all future work —
+`always run the tests before a commit` — is a memory marked always: `/always <text>`
+keeps one, and it is in front of every conversation and task from then on.
 
 ## Models, keys, and spending
 
@@ -384,7 +395,7 @@ but it reaches the network for the catalog and stops with
 
 </details>
 
-See [the headless contract](docs/HEADLESS.md) and [ambient work](docs/AMBIENT.md).
+See [the headless contract](docs/HEADLESS.md) and [automations](docs/design/automations/DESIGN.md).
 
 ## Work on another machine
 
@@ -426,4 +437,4 @@ and [AGENTS.md](AGENTS.md) before contributing.
 
 Start with [the documentation map](docs/README.md); the enduring references are the
 [design language](docs/DESIGN-LANGUAGE.md), [remote access](docs/REMOTE.md), the
-[headless contract](docs/HEADLESS.md) and [ambient work](docs/AMBIENT.md).
+[headless contract](docs/HEADLESS.md) and [automations](docs/design/automations/DESIGN.md).

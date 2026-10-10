@@ -16,12 +16,12 @@ owes, and a question asked every time is a question nobody reads.
 **Zero means no limit.** On every rail where a ceiling can be lifted, `0` is the
 person's own instruction and the reader honours it — including a `0` written
 down, which survives a restart rather than reverting to the default in the
-morning. The two exceptions are named below, and both are exceptions because
+morning. The exceptions are named below, and each is an exception because
 zero already meant something narrower and truer.
 
 ---
 
-## The four rows a person turns
+## The three rows a person turns
 
 `/settings` → **spending**. These are the whole of what most people ever touch.
 
@@ -29,23 +29,20 @@ zero already meant something narrower and truer.
 | --- | --- | --- | --- | --- | --- |
 | **daily budget** | `daily_budget_usd` | $20 | **$500** | posts a blocking question — *"Daily budget reached -- $x spent of $y. Say the word and I'll continue"*. Nothing dies. | no limit |
 | **ask before spending** | `plan_consent_usd` | $3 | **$100** | a planned job above this estimate quotes its step count and price and waits | never asks |
-| **practice budget** | `practice_budget_usd` | $2 | **$50** | codeaf's own self-practice stops for the day | **practice off** — see below |
 | **session ceiling** | `session.spendRailUSD` | $0 | **$0** (unchanged) | refuses the NEXT turn; the turn in flight always finishes; the refused message is never journaled | no ceiling |
 
 Each row grows a **receipt** — the dim line beside its value — that says what a
-bare `$0` cannot: `no limit`, `never asks`, `practice off`. The daily rail keeps
-today's spend beside the word: `no limit · $4.25 today`.
+bare `$0` cannot: `no limit`, `never asks`. The daily rail keeps today's spend
+beside the word: `no limit · $4.25 today`.
 
-**The practice carve-out is the one row where `0` is not "no limit".** It is a
-*carve-out* and not a ceiling: zero switches self-practice off entirely
-(`internal/resident`'s `WithPracticeLoop`), and there is deliberately no way to
-spell "practice without a bound" — self-origin work runs while nobody is
-watching, so it is the one pocket that always has a bottom.
+**The practice budget row is gone (2026-10-10)** with the v1 resident's practice
+loop it bounded; its key is retired and an older profile's value is read by
+nothing.
 
 **The crew's two limits live on `/crew`, not on this tab.** The **per task** row
 here reads the per-task limit and opens nothing new: it is set with
 `/crew cap task <dollars>` or on the panel's cap row (`per task $5 · crew daily cap none`).
-It is the second rail where `0` is not "no limit" — a task always has a limit, so
+It is a rail where `0` is not "no limit" — a task always has a limit, so
 `0` and `none` are refused and an emptied box is $5 again. The crew's **daily
 cap** beside it is unset until somebody sets it with `/crew cap <dollars>`, and
 `/crew cap off` takes it away.
@@ -56,10 +53,9 @@ cap** beside it is unset until somebody sets it with `/crew cap <dollars>`, and
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | daily budget | `internal/config/config.go` `DefaultDailyBudgetUSD` | 20 | **500** | USD/day | asks; nothing dies | yes |
 | 2 | plan consent | `internal/config/settings.go` `DefaultPlanConsentUSD` | 3 | **100** | USD estimate | plan waits for a yes | yes (never asks) |
-| 3 | practice carve-out | `internal/config/config.go` `DefaultPracticeBudgetUSD` | 2 | **50** | USD/day | self-practice stops | **no — 0 is off** |
 | 4 | session ceiling | `internal/config/settings.go` `DefaultSpendRailUSD` | 0 | **0** | USD/session | refuses the next turn | yes |
 | 5 | lifted-tier cap | `internal/taxonomy/limits.go` `DefaultTierCapUSD` | 2 | **25** | USD per piece of work | stops buying a stronger model; the verdict comes back as work | yes |
-| 6 | standing per-firing | `internal/standing/standing.go` `DefaultPerRunUSD` | 0.15 | **5** | USD per firing | interrupts that firing | **yes — newly so** |
+| 6 | automation per run | `internal/automation/automation.go` `DefaultUSD` (and `DefaultTime`, 30m) | 0.15 (a standing firing) | **5** | USD per run | stops that run: `incomplete · reached its $5.00 cap` | no — 0 reads as the default |
 | 7 | adaptive-run tank | `internal/session/orchestrate.go` `DefaultRunCapUSD` | 10 | **100** | USD per run | parks at a gate and asks for a top-up; running nodes finish | yes |
 | 8 | workflow run bound | `internal/craft/types.go` `DefaultRunBudgetUSD` | 2.50 | **50** | USD per run | *"Cost check -- … Say the word and I'll keep going"* | no — 0 reads as the default |
 | 9 | workflow ceiling | `internal/craft/types.go` `MaxRunBudgetUSD` | 10 | **500** | USD | the most a workflow file may grant itself | n/a |
@@ -99,7 +95,7 @@ explicit instruction and still errors.
 | plan consent | `CODEAF_PLAN_CONSENT` | yes |
 | session ceiling | — | yes (also per-project) |
 | lifted-tier cap | `CODEAF_RESPONSE_LIFT_CAP` | **no** — plumbing, turned when a provider misbehaves or a run is held to a price |
-| standing per-firing | — | `per_run_usd` on the `stand` tool, per item |
+| automation per run | — | the card's limits, per automation (`usd` and `time` in a typed `/automations` line) |
 | adaptive-run tank | — | the composer's third line, per run |
 | unattended budget | `CODEAF_MAX_COST` / `CODEAF_MAX_HOURS` | no — flags |
 | per-task limit | — | `/crew cap task` (`models.crew.task_cap`) |

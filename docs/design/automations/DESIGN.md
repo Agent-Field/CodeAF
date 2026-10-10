@@ -34,19 +34,42 @@ America/Toronto · cron 0 9 * * 1`) with the next time it will run; for a watch,
 what it looks at (the command, the files or the tool) and the condition it is
 held to; the line it says or the brief it runs; where work runs (`in your
 checkout` or `in a separate worktree, kept for review`); and the limits (`30m ·
-$5 a run`). A watch also shows its estimated cost (`about $0.40 a day while
-codeaf is open`), because the model judges every look.
+$5 a run`).
 
 **Three ways in, one card.** Said in a conversation (the model calls the
 `automation` tool); typed with exact syntax (`/automations add …`, no model in
 between); or edited on the list (`e` puts the automation's own
-`/automations edit …` line in the box). All three end on the same card.
+`/automations edit …` line in the box). All three end on a card, and nothing is
+saved before the person says yes on it. A typed line's card is the surface's
+own (`save this automation?`, `save this change?`), because no model asked.
+
+**The typed grammar** is a word and one value per clause, a value with a space
+in it quoted (`internal/automation`'s `command.go`):
+
+```
+/automations add "weekly update" every "0 9 * * 1" do "draft the weekly update"
+/automations add leave at 18:00 say "time to leave"
+/automations add "ci on main" every 15m look "gh run list -b main -L 1" until "the latest run failed" once say "CI on main is red"
+/automations edit 3f2a every 30m
+/automations run 3f2a · pause 3f2a · resume 3f2a · delete 3f2a
+```
+
+The clauses are `title`, `at` (`18:00`, `tomorrow 18:00`, `2026-10-12T09:00`),
+`in` (`20m`), `every` (a cron line or an interval), `zone`, `say`, `do`, `look`
+(a command), `files` (a glob), `until` (the condition), `time` and `usd` (the
+limits), `folder`, and the flags `once`, `worktree` and `checkout`. An id may be
+any unique prefix. A moment that has already passed is refused. Every
+automation writes back out as the `edit` line that would make it what it is, so
+the line `e` puts in the box changes nothing when it is saved unedited.
 
 **`/automations`** opens the list: every automation with its mark, title, kind,
-schedule, next run and last result. Keys: `enter` its history (every run: when,
-how late, what it came to, what it cost, its transcript), `r` run now, `p`
-pause or resume, `s` stop a run in progress, `e` edit, `d` delete, `o` open the
-conversation that made it.
+schedule, next run and last result. `enter` opens its history (every run: when,
+how late, what it came to, what it cost; `enter` on a run opens its transcript),
+and `esc` steps back out. The row's own keys are drawn by `→`, the verb strip
+every place uses: `r` run now (`check now` on a watch, `say it now` on a
+reminder), `p` pause or resume, `s` stop a run in progress (drawn only then),
+`e` edit, `d` delete (pressed twice), `o` open the conversation that made it.
+The letters work while the strip is drawn.
 
 **When a run ends** the conversation that made it gets one dim line — not in
 the transcript, and the model is not woken — and the person gets a desktop
@@ -54,10 +77,11 @@ notification. Opening a conversation shows the lines for runs that ended while
 it was closed. A watch's quiet looks ("nothing new") are never news; its row
 says when it last looked.
 
-**Closing codeaf** with a run in progress, from the last open window, asks
-first: `1 automation is running — quit anyway? It stops.` Quitting stops it and
-records it as stopped. Closing the terminal outright cannot ask; the run is
-stopped and recorded the same way.
+**Closing codeaf** with a run in progress, from the last open window, warns
+first: `1 automation is running — quitting stops it · ctrl+c again to quit`
+(`· /quit again to quit` when it was `/quit`). The same gesture within ten
+seconds quits; the clock then stops the run and records it as stopped. Closing
+the terminal outright cannot warn; the run is stopped and recorded the same way.
 
 ### The words
 
@@ -197,10 +221,12 @@ units — whoever installed them.
 **Work** runs as a headless session built exactly like one of the person's
 conversations, in the clock process:
 
-- the configuration comes from the same assembly as a conversation's (extracted
-  from `openV3Launch` as `v3SessionConfig`; the launch itself is never called,
-  because it resumes the person's newest conversation): models, keys,
-  governance, **connected accounts**, memory and its *always* rules, media;
+- the configuration comes from the same assembly as a conversation's
+  (`v3ConfigFor`, the half of `openV3Launch` that builds a config; the launch
+  itself is never called, because it resumes the person's newest
+  conversation): models, keys, governance, **connected accounts**, media, and
+  the brain lent **read-only** — its *always* rules are read before the first
+  action, and nothing the run turns up is remembered;
 - **the person's own approval rules** (the interactive reading, never the
   headless default and never allow-all), with nobody to ask: a call that would
   ask is refused, and the first such refusal stops the run as `your call`
@@ -231,9 +257,10 @@ from the database, windows on another machine through one wire call,
   in it;
 - refreshes the list and the counts;
 - raises a desktop notification for a delivered run — once per run per machine
-  (an `O_EXCL` claim file decides which window), through the terminal's
-  notification escape and, on macOS, `osascript`, unless the terminal is known
-  to be focused.
+  (the run's `told` column is claimed in the store, and only the window whose
+  claim lands raises it) — through `osascript` on macOS and `notify-send` on
+  Linux, and the terminal's own notification escape where neither answers;
+  never while the window is known to be focused.
 
 The quit question reads the same snapshot: runs in progress, and the windows
 open other than this one.
@@ -259,22 +286,38 @@ stable order, capped. A recalled memory is unchanged: retrieved when relevant.
 
 - `internal/standing`, the `stand` tool and every standing door in
   `internal/session`, `internal/tui3` (the page, home's standing band and panel,
-  the margin section, the threshold line, the foot count, the `ask here`
-  exchange) and `cmd/codeaf` (`chatv3_standing.go`, `tick.go`,
-  `chatv3_exchange.go`); `/standing` and `/orders`; the remote wire's
-  `Standing.*` methods; the background-checks setting.
+  the margin section, the threshold line, the foot count) and `cmd/codeaf`
+  (`chatv3_standing.go`, the ticker, the background repair, the host's
+  standing cache); `/standing` and `/orders`; the remote wire's `Standing.*`
+  methods, `ResolveStanding` and the marked submit; the background-checks
+  setting, whose key is retired.
 - The v1 resident's scheduler: its charters, watches, sentinels, tenure and
-  practice loop, `internal/watchdog`, `codeaf wake` and the doctor's timer rows.
-- The manual pages `keeping-an-eye`, `standing-orders` and `asking-from-home`,
-  and every standing passage elsewhere.
+  practice loop, `internal/watchdog` and the doctor's timer rows. `codeaf tick`
+  and `codeaf wake` survive only as hidden verbs that do nothing and exit 0, for
+  a timer an older build installed until this build's first start removes it.
+- The manual pages `keeping-an-eye` and `standing-orders`, and every standing
+  passage elsewhere.
 
 **Existing standing items are not migrated** (the owner's call). The folder
 `~/.codeaf/v3/standing/` is left on disk and no longer read. Collections that
 named a standing item keep the row; it resolves to nothing.
 
-**Re-homed, not deleted:** the memory tidy, which rode the standing pass, runs
-in the clock process; spend attribution names automations; `codeaf do` and plan
-workers read *always* memories where they read standing orders.
+**Re-homed, not deleted:**
+
+- The memory tidy, which rode the standing pass, rides the clock: asked every
+  five minutes while a window is open, one at a time and bounded to two
+  minutes, and it keeps its own gates — fifteen quiet minutes on the machine
+  and six hours since the last pass.
+- Home's `ask here` errands, which lived under the standing root, live in
+  `~/.codeaf/v3/errands`. The launch sweep reaps one that went nowhere after a
+  week, unless an automation was saved from it, because "open where it was
+  asked" reads that conversation.
+- Spend attribution names automations, and an older ledger line's standing item
+  is read as one.
+- `codeaf do` and plan workers read *always* memories where they read standing
+  orders.
+- An unattended goal owner no longer says yes to a card on the person's behalf:
+  an automation needs the person's own yes.
 
 ## Build order
 
