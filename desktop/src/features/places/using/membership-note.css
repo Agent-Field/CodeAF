@@ -1,0 +1,8 @@
+/* The note keeps the design's inline text rhythm; only the layers mark has a flex gap. */
+.membership-note { display: flex; align-items: center; gap: var(--membership-note-gap); color: var(--ink-3); font-size: var(--membership-note-size); line-height: var(--membership-note-leading); }
+.membership-note > .app-icon { flex: none; width: var(--membership-note-icon); height: var(--membership-note-icon); }
+.membership-note-text { min-width: var(--space-0); overflow-wrap: anywhere; }
+.membership-note-place { color: var(--ink-2); }
+.button.membership-note-undo { display: inline; min-height: var(--space-0); padding: var(--space-0); color: var(--ink-2); font-size: inherit; font-weight: var(--type-label-weight); line-height: inherit; vertical-align: baseline; }
+.button.membership-note-undo:hover:not(:disabled) { background: var(--field); color: var(--ink-2); }
+.button.membership-note-undo:active:not(:disabled) { background: var(--field-2); color: var(--ink-2); }
