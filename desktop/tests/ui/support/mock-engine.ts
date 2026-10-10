@@ -1,6 +1,8 @@
 import type { SnapshotTail } from '../../../src/features/chat/snapshotMerge';
 import type { Page, Route } from '@playwright/test';
 import { historyRoutes, type HistoryHandle, type MockHistory } from './history-engine';
+import { installPlacesEngine } from './places-engine';
+import type { PlacesFixture, PlacesFixtureName } from './places-fixture';
 import type { AttentionItem, WorldRow } from '../../../src/features/chat/world-client';
 import type { EngineEntry, EngineEvent, EngineFile, EngineFileDiff, EngineSnapshot, EngineTaskPage, TerminalInfo } from '../../../src/features/chat/engine-client';
 
@@ -56,6 +58,11 @@ export type Scenario = {
   models?: { id: string; name: string; efforts?: string[] }[];
   /** false: the engine serves no /places/policy route (an engine before the Places organization settings). */
   placesPolicy?: false;
+  /**
+   * Places graph on /places* (not /places/policy), /chats/{id}/places and /sessions/{id}/using,
+   * and as places records on the world stream. Absent: an empty graph, so nothing is invented.
+   */
+  places?: PlacesFixtureName | PlacesFixture;
   /** The engine-wide world feed (GET /world, GET /events). Absent: the engine serves no feed and both routes answer 404. */
   world?: { rows: WorldRow[]; items: AttentionItem[]; jobs?: { chatId: string; running: number; jobs: unknown[] }[] };
   /** Forced HTTP failure per endpoint, e.g. { turn: 409 }. */
@@ -179,13 +186,20 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
   page.on('close', () => { closed = true; });
 
   // The world feed: every change is one full `reset` record, which the client applies at any cursor.
+  // The places record rides that reset and is repeated as its own envelope one sequence later, so a
+  // reader that only understands envelopes and a reader that only understands resets both see the graph.
   let world = scenario.world ? structuredClone(scenario.world) : undefined;
-  let worldSeq = 1;
+  let worldSeq = 2;
   // Inactive tabs read this mirror instead of holding a session stream. It speaks the
   // world client's row (chatId, numeric needsYou) and carries the questions the preview answers.
   // It has no `session` field: the inbox's older feed lists a running row with one as another
   // window's work, and this mirror is the same conversation the window already has open.
   let sessionWorldSeq = 1;
+  // Empty unless a scenario names a fixture. A write publishes again through onChange.
+  const placesEngine = await installPlacesEngine(page, scenario.places ?? 'empty', [], {
+    onChange: () => { if (world) worldSeq += 2; else sessionWorldSeq += 1; },
+  });
+  const placesSnapshot = () => structuredClone(placesEngine.placesRecord());
   const sessionRow = () => ({
     chatId: state.id || 'mock-1', sessionFile: state.sessionFile, sessionId: state.id, sessionSeq: state.seq,
     title: state.title, workspace: state.workspace, running: state.running,
@@ -193,14 +207,23 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     failed: 0, tasksRunning: (state.tasks ?? []).filter(task => task.Status === 'running').length,
     tasksTotal: (state.tasks ?? []).length, attached: true, archived: false, questions: state.questions ?? [],
   });
-  const sessionWorldRecord = () => ({ epoch: 'mock-session', seq: sessionWorldSeq, type: 'reset', at: new Date().toISOString(), payload: { rows: [sessionRow()], items: [] } });
-  const worldRecord = () => ({ epoch: 'mock-world', seq: worldSeq, type: 'reset', at: new Date().toISOString(), payload: structuredClone(world!) });
+  const sessionWorldRecord = () => ({ epoch: 'mock-session', seq: sessionWorldSeq, type: 'reset', at: new Date().toISOString(), payload: { rows: [sessionRow()], items: [], places: placesSnapshot() } });
+  const worldBatch = () => {
+    const places = placesSnapshot();
+    const at = new Date().toISOString();
+    const payload = { ...structuredClone(world!), places };
+    return [
+      { epoch: 'mock-world', seq: worldSeq - 1, type: 'reset' as const, at, payload },
+      { epoch: 'mock-world', seq: worldSeq, type: 'places' as const, at, payload: places },
+    ];
+  };
   const worldEvents = async (route: Route, after: number) => {
     const deadline = Date.now() + 60_000;
     while (!closed && Date.now() < deadline) {
       if (worldSeq > after) {
-        const record = worldRecord();
-        await route.fulfill({ status: 200, headers: { 'Cache-Control': 'no-cache' }, contentType: 'text/event-stream', body: `: connected\n\nid: ${record.seq}\ndata: ${JSON.stringify(record)}\n\n` });
+        const records = worldBatch().filter(record => record.seq > after);
+        const body = ': connected\n\n' + records.map(record => `id: ${record.seq}\ndata: ${JSON.stringify(record)}\n\n`).join('');
+        await route.fulfill({ status: 200, headers: { 'Cache-Control': 'no-cache' }, contentType: 'text/event-stream', body });
         return;
       }
       await new Promise(r => setTimeout(r, 25));
@@ -527,7 +550,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     return json(route, roleView(role));
   };
 
-  const workspaces = new Map<string, { key: string; revision: number; workspace: unknown }>();
+  const workspaces = new Map<string, { key: string; revision: number; writer?: string; workspace: unknown }>();
   const history = historyRoutes(scenario.history, json);
 
   await page.route('**/api/engine/**', async route => {
@@ -542,18 +565,24 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     const policyWrite = root === 'places' && id === 'policy' && method !== 'GET';
     if (policyWrite || !['places', 'chats', 'world', 'events', 'workspaces'].includes(root)) calls.push({ method, path: url.pathname, body });
     if (offline) return offline === '503' ? json(route, { error: 'engine unreachable' }, 503) : route.abort('connectionrefused');
+    // The places engine registered first. This handler is newer, so it owns every engine path and
+    // hands the graph, chat membership and Using back. /places/policy stays here: Settings reads it.
+    const placesRoute = (root === 'places' && id !== 'policy') || (root === 'chats' && action === 'places') || (root === 'sessions' && action === 'using');
+    if (placesRoute) return route.fallback();
     const forced = (key: keyof NonNullable<Scenario['fail']>) => {
       const status = scenario.fail?.[key];
       return status ? json(route, { error: `Mock engine forced ${key} failure` }, status) : undefined;
     };
-    if (world && root === 'world') return json(route, { seq: worldSeq, ...structuredClone(world) });
+    if (world && root === 'world') return json(route, { seq: worldSeq, ...structuredClone(world), places: placesSnapshot() });
     if (root === 'events') return (world ? worldEvents : sessionEvents)(route, Number(url.searchParams.get('after') ?? 0));
     // Fixture workspace CAS mirrors the real route; workspace reads never count as conversation calls.
     if (root === 'workspaces' && id) {
+      if (parts.length !== 2 || !/^(now|pl_[0-9a-f]{16})$/.test(id)) return json(route, { error: 'there is no such tab set', code: 'unknown_key' }, 404);
+      if (!['GET', 'PUT'].includes(method)) return json(route, { error: 'GET or PUT required' }, 405);
       const current = workspaces.get(id) ?? { key: id, revision: 0, workspace: null };
       if (method === 'PUT') {
-        if (body.revision !== current.revision) return json(route, { error: 'Tabs changed in another window', code: 'conflict', current }, 409);
-        const saved = { key: id, revision: current.revision + 1, workspace: body.workspace };
+        if (body.revision !== current.revision) return json(route, { error: 'these tabs changed in another window', code: 'conflict', current }, 409);
+        const saved = { key: id, revision: current.revision + 1, writer: String(body.writer ?? ''), workspace: body.workspace };
         workspaces.set(id, saved);
         return json(route, saved);
       }
@@ -620,7 +649,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
   const setWorld: MockEngine['setWorld'] = next => {
     if (!world) throw new Error('setWorld needs scenario.world');
     world = { rows: next.rows ?? world.rows, items: next.items ?? world.items, jobs: next.jobs ?? world.jobs };
-    worldSeq += 1;
+    worldSeq += 2;
   };
 
   return {

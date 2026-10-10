@@ -1,0 +1,11 @@
+/* The Using chip (Places 6f, P-CMP-5). Geometry comes from tokens.json (using-chip-*); the shared Button carries press, focus and
+   disabled. Hover and open are a fill change only: --field closed, --field-2 on hover and while the popover is open. */
+
+.using-chip.button { background: var(--field); min-height: var(--using-chip-height); height: var(--using-chip-height); padding: 0 var(--using-chip-pad); gap: var(--space-tight); border-radius: var(--using-chip-radius); font-weight: var(--type-label-weight); max-width: 100%; color: var(--ink-2); }
+.using-chip.button:hover:not(:disabled), .using-chip.button:active:not(:disabled), .using-chip.button[aria-expanded="true"] { background: var(--field-2); }
+.using-chip[data-tone="failed"] .app-icon:first-child { color: var(--danger); }
+.using-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.using-chip .app-icon { color: var(--ink-2); }
+.using-chip .app-icon:last-child:not(:first-child) { color: var(--ink-3); }
+/* A narrow pane keeps the chip but tightens its padding; the popover has the rest. */
+@media (max-width: 600px) { .using-chip.button { padding: 0 var(--space-tight); } }

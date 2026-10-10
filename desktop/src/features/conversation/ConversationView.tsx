@@ -106,6 +106,7 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
   const walk = useNextUpWalkState();
   const [focusKey, setFocusKey] = useState<string>();
   // A tab opened from a web page brings that page's picture; the composer attaches it once and the offer is spent.
+  const [droppedFiles, setDroppedFiles] = useState<File[]>();
   const [offered, setOffered] = useState(() => peekOfferedFiles(tab.id));
   const [pageLink, setPageLink] = useState(() => peekOfferedLink(tab.id));
   const route = tab.route ?? rootRoute;
@@ -238,7 +239,7 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
         {/* Now uses graphite for the empty start without changing the surrounding shell palette. */}
         <div className="conversation-main" data-empty={empty || undefined} data-tint={empty && !newConversationPlace ? 'graphite' : undefined} data-sheet={sheetLocksScroll || undefined} hidden={tasksView}>
           {showBar && (
-            <ConversationBar nextUp={nextUp} onTasksFilter={(tasksFilter) => { if (panel.sheet) panel.close(); onView({ tasksFilter, route: navigate(route, TASKS_VIEW) }); }} lead={inTask ? 'trail' : 'title'} title={barTitle || undefined} onRename={barTitle ? onRename : undefined} counts={barCounts} panel={barPanel} using={<UsingLine control={using} onOpenSource={onOpenSource} onAddToPlace={onAddToPlace} />}>
+            <ConversationBar nextUp={nextUp} onTasksFilter={(tasksFilter) => { if (panel.sheet) panel.close(); onView({ tasksFilter, route: navigate(route, TASKS_VIEW) }); }} lead={inTask ? 'trail' : 'title'} title={barTitle || undefined} onRename={barTitle ? onRename : undefined} counts={barCounts} panel={barPanel} using={<UsingLine control={using} onOpenSource={onOpenSource} onAddToPlace={onAddToPlace} onDropFiles={setDroppedFiles} />}>
               {taskId ? <TaskRouteBar rootLabel={label} taskId={taskId} tasks={model.tasks} route={route} onRoute={setRoute} /> : null}
             </ConversationBar>
           )}
@@ -297,6 +298,8 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
                       autoFocus,
                       sessionId,
                       offeredFiles: offered,
+                      droppedFiles,
+                      onDroppedFiles: () => setDroppedFiles(undefined),
                       onOfferedFiles: () => { settleOfferedFiles(tab.id); setOffered([]); },
                       offeredLink: pageLink,
                       onOfferedLink: () => { settleOfferedLink(tab.id); setPageLink(undefined); },

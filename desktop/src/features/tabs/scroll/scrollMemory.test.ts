@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { MAX_PANES, MAX_RETIRED_PANES, MAX_SPOTS_PER_PANE, ScrollMemory } from './scrollMemory.ts';
+import { MAX_PANES, MAX_RETIRED_PANES, MAX_SPOTS_PER_PANE, namedScrollMemoryKey, publicScrollName, ScrollMemory } from './scrollMemory.ts';
 
 const spot = (top: number, over: Partial<{ left: number; end: boolean }> = {}) => ({ top, left: 0, end: false, ...over });
 
@@ -72,4 +72,13 @@ test('a save round-trips, retired panes included, and a malformed one costs only
   assert.deepEqual([...mixed.get('a').entries()], [['good', { top: 5, left: 0, end: false }]]);
   assert.equal(mixed.get('b').size, 0);
   assert.deepEqual(mixed.retiredIds(), ['a']);
+});
+
+test('a focus step names a scroller by its data-scroll-key, which is the memory key of the first one', () => {
+  assert.equal(namedScrollMemoryKey('conversation'), 'k:conversation#0');
+  assert.equal(publicScrollName('k:conversation#0'), 'conversation');
+  assert.equal(namedScrollMemoryKey(''), undefined);
+  assert.equal(namedScrollMemoryKey('k:conversation'), undefined);
+  assert.equal(publicScrollName('k:conversation#1'), undefined);
+  assert.equal(publicScrollName('s:div.conversation-scroll:ab#0'), undefined);
 });

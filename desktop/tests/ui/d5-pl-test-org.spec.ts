@@ -161,3 +161,105 @@ test('d5-pl-test-org: delete place names unplaced chats and places that move up,
   expect(places.posts('/delete')).toHaveLength(2);
   expect(places.posts('/places/undo')).toHaveLength(1);
 });
+
+test('d5-pl-test-org: tint row is five squares, and left/right then Enter picks one', async ({ page }) => {
+  test.setTimeout(60_000);
+  const { places } = await openAllPlaces(page);
+  const reading = tile(page, 'Reading');
+  await reading.locator('.places-tile-main').click({ button: 'right' });
+  const group = page.getByRole('radiogroup', { name: 'Tint' });
+  await expect(group).toBeVisible();
+  await expect(group.getByRole('radio', { name: 'Graphite' })).toHaveCount(0);
+  const names = ['Tide', 'Rose', 'Sage', 'Sand', 'Iris'];
+  for (const name of names) await expect(group.getByRole('radio', { name })).toHaveCount(1);
+  await expect(group.getByRole('radio', { name: 'Tide' })).toHaveAttribute('aria-checked', 'true');
+
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+    const measured = await group.evaluate(el => {
+      const row = el.querySelector('.menu-swatches');
+      const squares = [...el.querySelectorAll<HTMLElement>('.menu-swatch')];
+      const selected = el.querySelector<HTMLElement>('.menu-swatch[data-selected]');
+      const menu = el.closest('.app-menu');
+      if (!row || squares.length !== 5 || !selected || !menu) return null;
+      const rowStyle = getComputedStyle(row);
+      const menuStyle = getComputedStyle(menu);
+      const boxes = squares.map(square => square.getBoundingClientRect());
+      const menuBox = menu.getBoundingClientRect();
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--places-swatch-tide)';
+      el.appendChild(probe);
+      const tide = getComputedStyle(probe).color;
+      probe.remove();
+      return {
+        width: boxes[0].width,
+        height: boxes[0].height,
+        radius: getComputedStyle(squares[0]).borderTopLeftRadius,
+        gap: boxes[1].left - boxes[0].right,
+        padTop: rowStyle.paddingTop,
+        padRight: rowStyle.paddingRight,
+        padBottom: rowStyle.paddingBottom,
+        padLeft: rowStyle.paddingLeft,
+        inset: boxes[0].left - menuBox.left - parseFloat(menuStyle.paddingLeft),
+        borderLeft: getComputedStyle(squares[0]).borderLeftWidth,
+        shadow: getComputedStyle(selected).boxShadow,
+        tide,
+        selectedColor: getComputedStyle(selected).color,
+      };
+    });
+    expect(measured, theme).toBeTruthy();
+    expect(measured!.width, theme).toBeCloseTo(16, 0);
+    expect(measured!.height, theme).toBeCloseTo(16, 0);
+    expect(measured!.radius, theme).toBe('5px');
+    expect(measured!.gap, theme).toBeCloseTo(6, 0);
+    expect(measured!.padTop, theme).toBe('6px');
+    expect(measured!.padRight, theme).toBe('10px');
+    expect(measured!.padBottom, theme).toBe('8px');
+    expect(measured!.padLeft, theme).toBe('34px');
+    expect(measured!.inset, theme).toBeCloseTo(34, 0);
+    expect(measured!.borderLeft, theme).toBe('0px');
+    expect(measured!.shadow, theme).toContain('2px');
+    expect(measured!.shadow, theme).toContain('3.5px');
+    expect(measured!.selectedColor, theme).toBe(measured!.tide);
+  }
+
+  const tide = group.getByRole('radio', { name: 'Tide' });
+  const box = await tide.boundingBox();
+  expect(box).toBeTruthy();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.down();
+  const pressed = await tide.evaluate(el => getComputedStyle(el).transitionDuration);
+  expect(pressed).toMatch(/0\.08s/);
+  await page.mouse.move(0, 0);
+  await page.mouse.up();
+  await expect(group).toBeVisible();
+
+  for (let step = 0; step < 8 && await group.evaluate(el => el !== document.activeElement); step += 1) await page.keyboard.press('ArrowDown');
+  await expect(group).toBeFocused();
+  const labelFill = await group.locator('.menu-swatch-label').evaluate(el => {
+    const probe = document.createElement('span');
+    probe.style.background = 'var(--field-2)';
+    el.appendChild(probe);
+    const field = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    const hover = getComputedStyle(el).transitionDuration;
+    const ring = getComputedStyle(el.closest('.menu-swatch-entry')!).boxShadow;
+    // The suite clock is frozen, so a 120ms fill transition never leaves its first frame. Dropping it reveals the settled colour.
+    el.style.transition = 'none';
+    return { fill: getComputedStyle(el).backgroundColor, field, hover, ring };
+  });
+  expect(labelFill.fill).toBe(labelFill.field);
+  expect(labelFill.hover).toMatch(/0\.12s/);
+  expect(labelFill.ring).toBe('none');
+
+  await page.keyboard.press('ArrowLeft');
+  await expect(group.getByRole('radio', { name: 'Iris' })).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('ArrowRight');
+  await expect(tide).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('ArrowRight');
+  await expect(group.getByRole('radio', { name: 'Rose' })).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Enter');
+  await expect(group).toHaveCount(0);
+  await expect.poll(() => places.calls.filter(call => call.method === 'POST' && call.body.tint === 'rose')).toHaveLength(1);
+  await expect(reading).toHaveAttribute('data-tint-name', 'rose');
+});
