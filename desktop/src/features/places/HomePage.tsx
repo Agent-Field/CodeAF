@@ -69,7 +69,7 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
     {isPlace && <StatusLine status={sections.status}/>}
     </div>
     {notices}
-    {!isPlace && suggestion}
+    {suggestion}
     {view.recap && <HomeRecap label={view.recap.label} text={view.recap.text}/>}
     <HomeAttentionSection items={view.attention} actions={actions} readOnly={readOnly}/>
     {!isPlace && <HomeChatsSection label="Not in any place" chats={view.chats} truncated={view.chatsTruncated} actions={actions} readOnly={readOnly}
