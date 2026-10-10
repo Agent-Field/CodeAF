@@ -11,8 +11,8 @@ test('nothing is drawn without the engine\'s figures or a handler', () => {
 test('Always ask me is a checked toggle and keeps the threshold out of the change', () => {
   const calls: DecideChange[] = [];
   const [ask] = decideEntries('p1', { alwaysAsk: true, threshold: 80 }, (_id, change) => void calls.push(change));
-  assert.ok(ask.kind !== 'separator' && ask.kind !== 'submenu' && ask.checked === true);
-  if (ask.kind !== 'separator' && ask.kind !== 'submenu') ask.onSelect();
+  assert.ok(ask.kind !== 'separator' && ask.kind !== 'submenu' && ask.kind !== 'swatches' && ask.checked === true);
+  if (ask.kind !== 'separator' && ask.kind !== 'submenu' && ask.kind !== 'swatches') ask.onSelect();
   assert.deepEqual(calls, [{ alwaysAsk: false }]);
 });
 
@@ -21,10 +21,10 @@ test('the confidence submenu checks the current figure, keeps one the presets la
   const sub = decideEntries('p1', { alwaysAsk: false, threshold: 85 }, (_id, change) => void calls.push(change))[1];
   assert.equal(sub.kind, 'submenu');
   if (sub.kind !== 'submenu') return;
-  const checked = sub.items.filter(item => item.kind !== 'separator' && item.kind !== 'submenu' && item.checked);
-  assert.deepEqual(checked.map(item => (item.kind === 'separator' ? '' : item.label)), ['85%']);
-  const hundred = sub.items.find(item => item.kind !== 'separator' && item.label === '100%');
-  if (hundred && hundred.kind !== 'separator' && hundred.kind !== 'submenu') hundred.onSelect();
+  const checked = sub.items.filter(item => item.kind !== 'separator' && item.kind !== 'submenu' && item.kind !== 'swatches' && item.checked);
+  assert.deepEqual(checked.map(item => (item.kind === 'separator' || item.kind === 'swatches' ? '' : item.label)), ['85%']);
+  const hundred = sub.items.find(item => item.kind !== 'separator' && item.kind !== 'swatches' && item.label === '100%');
+  if (hundred && hundred.kind !== 'separator' && hundred.kind !== 'submenu' && hundred.kind !== 'swatches') hundred.onSelect();
   assert.deepEqual(calls, [{ threshold: 100 }]);
 });
 
