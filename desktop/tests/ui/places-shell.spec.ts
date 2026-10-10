@@ -274,8 +274,8 @@ test('f. rail: pin from the menu, close from × and ⌘⇧W, closed-but-running 
 
   // A needs-you roll-up draws the amber dot with words a screen reader can say.
   rig.places.setStatus(software, { needsYou: 1 });
-  const dot = railRow(page, 'Software').locator('.rail-dot');
-  await expect(dot).toHaveAttribute('data-state', 'waiting');
+  const dot = railRow(page, 'Software').locator('.status-mark');
+  await expect(dot).toHaveAttribute('data-status', 'waiting');
   await expect(dot).toHaveAccessibleName(/needs? you/);
 
   // ⌃1 / Alt 1 is the first rail place; ⌃0 / Alt 0 is Now.
