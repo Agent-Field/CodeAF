@@ -16,9 +16,7 @@ func TestFromFolderRouteMakesTheRepoPlaceOnceAndOffersUnfiledChats(t *testing.T)
 	base, _ := filepath.EvalSymlinks(t.TempDir())
 	repo := filepath.Join(base, "now")
 	sub := filepath.Join(repo, "web")
-	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	initGitFixture(t, repo)
 	if err := os.MkdirAll(sub, 0o700); err != nil {
 		t.Fatal(err)
 	}
