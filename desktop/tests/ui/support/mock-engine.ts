@@ -183,7 +183,8 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
 
   const publish = () => {
     state = { ...state, seq: state.seq + 1, updatedAt: new Date().toISOString() };
-    log.push({ seq: state.seq, type: 'snapshot', snapshot: structuredClone(state) });
+    // The stream carries the same omission as a read, so a window never receives an over-cap body it would not get from GET.
+    log.push({ seq: state.seq, type: 'snapshot', snapshot: { ...structuredClone(state), entries: elideOutputs(structuredClone(state.entries)) } });
   };
   const emitEvent = (event: EngineEvent) => {
     state = { ...state, seq: state.seq + 1 };

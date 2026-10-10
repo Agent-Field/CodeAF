@@ -57,6 +57,7 @@ export function toolStep(entry: RichEntry, index: number, ctx: StepCtx): ToolSte
     args: entry.Args ?? '',
     output,
     ...(covered ? { covered } : {}),
+    ...(entry.OutputOmitted ? { outputOmitted: true } : {}),
     state: callState(entry, index, ctx),
     entryIndex: index,
     tookMs: tookOf(entry),
