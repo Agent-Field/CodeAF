@@ -1,6 +1,7 @@
 import type { SnapshotTail } from '../../../src/features/chat/snapshotMerge';
 import type { Page, Route } from '@playwright/test';
 import { historyRoutes, type HistoryHandle, type MockHistory } from './history-engine';
+import { firstPlaceFolder } from './session-place';
 import { installPlacesEngine } from './places-engine';
 import type { PlacesFixture, PlacesFixtureName } from './places-fixture';
 import type { AttentionItem, WorldRow } from '../../../src/features/chat/world-client';
@@ -601,6 +602,20 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
       const requested = typeof body.sessionFile === 'string' ? body.sessionFile : '';
       const titled = history.titleOf(body.sessionFile);
       if (requested || titled) state = { ...state, ...(requested ? { sessionFile: requested } : {}), ...(titled ? { title: titled } : {}) };
+      // A new chat names a place and no folder. The bridge opens it in that place's first usable folder and says so;
+      // a place with none keeps the launch workspace and says nothing.
+      const placeId = typeof body.placeId === 'string' ? body.placeId : '';
+      if (!requested && placeId) {
+        const folder = firstPlaceFolder(page, placeId);
+        if (folder) {
+          const label = folder.split('/').filter(Boolean).pop();
+          state = { ...state, workspace: folder, workingFolder: { from: 'place', path: folder, ...(label ? { label } : {}) } };
+        } else {
+          const { workingFolder, ...rest } = state;
+          void workingFolder;
+          state = rest;
+        }
+      }
       // Same cap as a read. Attach is how a window comes back after this double
       // closes the event stream after each batch; a raw snapshot would put an
       // over-cap tool result back on screen, so opening the call would not fetch it.

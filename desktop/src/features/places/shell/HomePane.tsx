@@ -96,7 +96,7 @@ export function HomePane({ pane, focused, actions: paneActions }: PaneRenderProp
 
   if (!shell) return <div className="home-pane"><p className="home-quiet">Places are not available in this window.</p></div>;
   const composer = view?.kind === 'place' && strip
-    ? <HomeComposer shell={shell} placeId={view.id} placeName={view.title} draft={pane.draft} onDraft={paneActions.onDraft} dispatch={strip.dispatch} offline={connection.state === 'offline'}/>
+    ? (empty: boolean) => <HomeComposer shell={shell} placeId={view.id} placeName={view.title} draft={pane.draft} onDraft={paneActions.onDraft} dispatch={strip.dispatch} empty={empty} offline={connection.state === 'offline'}/>
     : undefined;
   // A create of at least five chats is the card. A move or a file stays the sparkles line, so Move them keeps its sentence.
   const snoozes = browserSnoozes(now);
