@@ -314,25 +314,24 @@ test.describe('in the desktop app (typed native mock)', () => {
     await expect(page.locator('.web-address-rest')).toHaveText('/encoding/json#Decoder');
   });
 
-  test("a page's new window opens a web tab in front with the workspace's host, never a window", async ({ page }) => {
+  test("a page's new window opens a background web tab after the opener, never a window", async ({ page }) => {
     await page.goto('/');
     await expect.poll(async () => (await nativeCalls(page, 'web_open')).length).toBe(1);
     await emitNewTab(page, PANE, 'https://go.dev/play');
-    await expect.poll(async () => (await nativeCalls(page, 'web_open')).length).toBe(2);
-    const opened = (await nativeCalls(page, 'web_open'))[1].args;
-    expect(opened.url).toBe('https://go.dev/play');
-    expect(opened.pane).not.toBe(PANE);
-    await expect(page.locator('.workspace-tab[data-active="true"]')).toHaveAttribute('data-kind', 'web');
-    await expect(page.locator('.web-address-site')).toHaveText('go.dev');
+    await expect(page.locator('.workspace-tabstrip .workspace-tab-title')).toHaveText(['Config stack', 'pkg.go.dev', 'go.dev']);
+    await expect(page.locator('.workspace-tab[data-active="true"] .workspace-tab-title')).toHaveText('pkg.go.dev');
+    expect((await nativeCalls(page, 'web_open')).length).toBe(1);
     expect(await nativeCalls(page, 'open_url')).toEqual([]);
   });
 
-  test('with no workspace host a page\'s new window goes to the default browser, as a link chip does', async ({ page }) => {
+  test('clearing the web host still opens a background tab and does not send the address to the browser', async ({ page }) => {
     await page.goto('/');
     await expect.poll(async () => (await nativeCalls(page, 'web_open')).length).toBe(1);
     await page.evaluate(async () => { (await import('/src/features/web/host.ts')).setWebHost(null); });
     await emitNewTab(page, PANE, 'https://go.dev/blog');
-    await expect.poll(async () => (await nativeCalls(page, 'open_url')).map(c => c.args)).toEqual([{ url: 'https://go.dev/blog' }]);
+    await expect(page.locator('.workspace-tabstrip .workspace-tab-title')).toHaveText(['Config stack', 'pkg.go.dev', 'go.dev']);
+    await expect(page.locator('.workspace-tab[data-active="true"] .workspace-tab-title')).toHaveText('pkg.go.dev');
+    expect(await nativeCalls(page, 'open_url')).toEqual([]);
     expect((await nativeCalls(page, 'web_open')).length).toBe(1);
   });
 
