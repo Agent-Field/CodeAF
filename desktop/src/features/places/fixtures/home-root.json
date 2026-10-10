@@ -110,6 +110,10 @@
         "descendants": 2
       },
       "createdAt": "2026-10-09T12:01:00Z",
+      "decide": {
+        "alwaysAsk": false,
+        "threshold": 90
+      },
       "effectiveTint": "iris",
       "hasInstructions": true,
       "id": "pl_0000000000000001",
@@ -143,6 +147,10 @@
         "descendants": 1
       },
       "createdAt": "2026-10-09T12:01:00Z",
+      "decide": {
+        "alwaysAsk": false,
+        "threshold": 90
+      },
       "effectiveTint": "tide",
       "hasInstructions": false,
       "id": "pl_0000000000000003",

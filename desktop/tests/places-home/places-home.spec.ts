@@ -325,6 +325,24 @@ test.describe('journeys', () => {
     await expect(tile(page, 'pl_release')).toHaveCount(0);
   });
 
+  test('menus: Always ask me toggles and Decision confidence… writes the chosen figure', async ({ page }) => {
+    await open(page, 'place');
+    await tile(page, 'pl_release').click({ button: 'right' });
+    const ask = page.getByRole('menuitemcheckbox', { name: 'Always ask me' });
+    await expect(ask).toHaveAttribute('aria-checked', 'false');
+    await ask.click();
+    await expect(log(page).last()).toHaveText('decide:pl_release:true:');
+    await tile(page, 'pl_release').click({ button: 'right' });
+    await expect(page.getByRole('menuitemcheckbox', { name: 'Always ask me' })).toHaveAttribute('aria-checked', 'true');
+    await page.getByRole('menuitem', { name: 'Decision confidence…' }).click();
+    await expect(page.getByRole('menuitemcheckbox', { name: '90%' })).toHaveAttribute('aria-checked', 'true');
+    await page.getByRole('menuitemcheckbox', { name: '70%' }).click();
+    await expect(log(page).last()).toHaveText('decide:pl_release::70');
+    // A place the engine did not describe draws neither entry.
+    await tile(page, 'pl_marketing').click({ button: 'right' });
+    await expect(page.getByRole('menuitemcheckbox', { name: 'Always ask me' })).toHaveCount(0);
+  });
+
   test('the Home menu renames the title in place, and Escape cancels', async ({ page }) => {
     await open(page, 'place');
     await page.getByRole('button', { name: 'Place actions' }).click();

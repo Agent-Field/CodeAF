@@ -21,6 +21,7 @@ import { GoToChooserSpecimen } from './features/places/shell/GoToChooserSpecimen
 import { PlaceDialogsSpecimen, ToastSpecimen } from './features/places/shell/PlaceDialogsSpecimen';
 import { chatIdFromSessionFile } from './features/places/client';
 import { homeMenu } from './features/places/place-actions';
+import { writeDecide } from './features/places/PlaceMenuDecide';
 import { placeShortcuts } from './design/keyboard';
 import { TabsSpecimen } from './features/tabs/specimens/TabsSpecimen';
 import { GroupOfferSpecimen } from './features/tabs/specimens/GroupOfferSpecimen';
@@ -101,7 +102,8 @@ function App() {
   catch (failure) { throw new Error(`This chat could not be filed in “${current?.name ?? 'this place'}”: ${failure instanceof Error ? failure.message : 'the engine refused'}. Nothing was sent; your words are kept.`); }
   void shell.refresh();
  }, [shell.place, shell.client, current?.name]);
- const placeMenu: MenuEntry[] | undefined = current ? [...homeMenu({ id: current.id, name: current.name, tint: current.effectiveTint, pinned: current.pinned }, {
+ const placeMenu: MenuEntry[] | undefined = current ? [...homeMenu({ id: current.id, name: current.name, tint: current.effectiveTint, pinned: current.pinned, decide: current.decide }, {
+  setDecide: (id, change) => void writeDecide(shell, id, current.name, current.decide, change).catch(shell.warn),
   goToInNewWindow: id => shell.goToInNewWindow(id),
   pin: id => void shell.write(`Pinned “${current.name}” to the rail`, () => shell.client.pinPlace(id), { subject: current.name }).catch(shell.warn),
   unpin: id => void shell.write(`Unpinned “${current.name}”`, () => shell.client.unpinPlace(id), { subject: current.name }).catch(shell.warn),
