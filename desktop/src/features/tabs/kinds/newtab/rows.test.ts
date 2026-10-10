@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { relativeTime } from '../../../conversation/tabSummary.ts';
 import type { Tab } from '../../types.ts';
 import { askLabel, buildSections, flatRows, splitMatch, tabDigit, titleFromText, type RowInput } from './rows.ts';
 
@@ -27,6 +28,19 @@ test('typed text puts the conversation row first, then Start, then Matching in f
   assert.deepEqual(flatRows(sections).map(r => r.id), ['ask', 'openfile', 'file:a/fixtures.go', 'tab:t1', 'closed:c1']);
   const tabRow = flatRows(sections).find(r => r.id === 'tab:t1')!;
   assert.deepEqual([tabRow.hint, tabRow.dot, tabRow.detail], ['⌘3', true, 'open tab']);
+});
+
+test('a recently closed row says how long ago, and a save with no close time says closed', () => {
+  const now = Date.parse('2026-10-10T16:00:00Z');
+  const hour = now - 3_600_000;
+  const rows = flatRows(buildSections(input({
+    query: 'fix',
+    now,
+    closed: [{ ...tab('c1', 'Fix it in the lexer'), closedAt: hour }, tab('old', 'fix later'), { ...tab('bad', 'fix me'), closedAt: Number.NaN }],
+  })));
+  assert.equal(rows.find(row => row.id === 'closed:c1')!.detail, `closed ${relativeTime(hour, now)}`);
+  assert.equal(rows.find(row => row.id === 'closed:old')!.detail, 'closed');
+  assert.equal(rows.find(row => row.id === 'closed:bad')!.detail, 'closed');
 });
 
 test('no matches means no Matching section', () => {

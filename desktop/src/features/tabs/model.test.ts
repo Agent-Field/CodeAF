@@ -352,6 +352,17 @@ test('initialWorkspace is one empty conversation', () => {
   assert.equal(s.activeId, s.tabs[0].id);
 });
 
+test('a closed tab keeps a close time and drops one that is not a time', () => {
+  const open = { id: 'a', title: 'A', draft: '', pinned: false };
+  const kept = { id: 'c', title: 'C', draft: '', pinned: false, closedAt: 1_700_000_000_000 };
+  const dropped = { id: 'd', title: 'D', draft: '', pinned: false, closedAt: -1 };
+  withStorage({ tabs: [open], groups: [], closed: [kept, dropped], activeId: 'a', nextNumber: 2 }, () => {
+    const s = readWorkspace();
+    assert.equal(s.closed.find(t => t.id === 'c')!.closedAt, 1_700_000_000_000);
+    assert.equal(s.closed.find(t => t.id === 'd')!.closedAt, undefined);
+  });
+});
+
 test('a pane target survives a reload; unknown or non-string fields are dropped', () => {
   const tabs = [{ id: 'f', title: 'parse.go', kind: 'file', draft: '', pinned: false, target: { path: 'internal/parse.go', sessionId: 's1', extra: 1, url: 5 } }, { id: 'g', title: 'g', kind: 'file', draft: '', pinned: false, target: ['x'] }];
   withStorage({ tabs, groups: [], closed: [], activeId: 'f', nextNumber: 3, recentIds: ['f', 'g'] }, () => {
