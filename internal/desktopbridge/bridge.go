@@ -224,6 +224,9 @@ func (b *Bridge) Close() {
 		if b.world != nil {
 			b.world.Close()
 		}
+		if b.places != nil && b.places.sweepStop != nil {
+			close(b.places.sweepStop)
+		}
 		for _, s := range b.sessions {
 			close(s.done)
 			s.terminals().closeAll()
