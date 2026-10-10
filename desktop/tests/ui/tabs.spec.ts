@@ -252,8 +252,8 @@ test('tab close sits in a fixed slot: shown on hover and on the active tab, neve
 test('overview cards show persisted work and mark the active tab with a ring', async ({ page }) => {
  await page.goto('/');
  const instruction = 'Inspect the shared engine boundary';
+ // An unsent line is the persisted work: a send with the engine unreachable is held in the offline outbox and leaves no draft.
  await page.getByRole('textbox', { name: 'Message', exact: true }).fill(instruction);
- await page.getByRole('textbox', { name: 'Message', exact: true }).press('Enter');
  await page.getByRole('button', { name: 'New tab', exact: true }).click();
  await page.reload();
  await page.getByRole('button', { name: 'All tabs', exact: true }).click();
