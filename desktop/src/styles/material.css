@@ -1,0 +1,11 @@
+/* Frame material (Foundations §09). Every frame surface paints the solid --frame by default; the material attribute
+   set by design/material.ts upgrades it. The rail and the strip have no fill of their own, so the shell carries it. */
+.app-shell { background: var(--frame); transition: background-color var(--dur-slow) var(--chrome-ease); }
+:root[data-material="native"] .app-shell { background: var(--frame-glass); }
+:root[data-material="glass"] .app-shell { background: var(--frame-glass); backdrop-filter: blur(var(--frame-blur)) saturate(var(--frame-saturate)); }
+:root[data-material="native"] body { background: transparent; }
+/* Solid wins whenever the material is solid, including the rail and the strip should they ever paint themselves. */
+:root[data-material="solid"] .app-shell, :root[data-material="solid"] .sidebar, :root[data-material="solid"] .content-toolbar { background: var(--frame); backdrop-filter: none; }
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .app-shell, .sidebar, .content-toolbar { background: var(--frame); backdrop-filter: none; }
+}
