@@ -1,0 +1,26 @@
+/* The Overturn confirmation (Decisions 12c, Interactions "Overturn"). It is the Why card's own surface and spacing, so it
+   reads as the next step of the same popover rather than a new kind of dialog. */
+.overturn {
+ display: flex;
+ flex-direction: column;
+ gap: var(--overturn-gap);
+ width: var(--overturn-width);
+ padding: var(--overturn-pad-block) var(--overturn-pad-inline);
+ border-radius: var(--overturn-radius);
+ box-shadow: var(--overturn-shadow);
+ background: var(--surface);
+ color: var(--ink);
+ font-family: var(--sans);
+}
+.overturn-title { font-size: var(--overturn-title-size); font-weight: var(--overturn-title-weight); }
+.overturn-used { font-size: var(--overturn-body-size); color: var(--overturn-used-color); }
+.overturn-choices, .overturn-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: var(--overturn-button-gap); }
+.overturn-failure { font-size: var(--overturn-body-size); color: var(--ink-2); }
+.overturn-button.button {
+ height: var(--overturn-button-height);
+ min-height: var(--overturn-button-height);
+ padding: var(--space-0) var(--overturn-button-pad);
+ border-radius: var(--overturn-button-radius);
+ font-size: var(--overturn-button-size);
+ font-weight: var(--overturn-button-weight);
+}

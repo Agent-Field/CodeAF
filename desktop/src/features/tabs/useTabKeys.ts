@@ -1,5 +1,6 @@
 // Keyboard and native-menu wiring for the workspace (owned by the rail-and-keys lane). Every chord is decided by
 // design/keyboard.ts (one registry for the whole shell); this hook only says what each one does to the workspace.
+import { isOpenWebDetail, webOpenAction } from '../web/open.ts';
 import { useEffect, useRef, type Dispatch, type MutableRefObject } from 'react';
 import { desktopTabEvent, isDesktopTabAction } from '../../lib/desktopTabs';
 import { shortcutLayer } from '../../design/keyboard';
@@ -106,6 +107,14 @@ export function useDesktopTabActions({ state, dispatch, visible, renaming, onAct
         // A background open leaves the person where they are, including on the all-tabs layer.
         if (!action.background) { onActivate(); setOverviewOpen(false); }
         dispatch(next);
+        return;
+      }
+      // A web open rides it too: the link chip does not hold the strip. A refused scheme never gets this far.
+      if (isOpenWebDetail(action)) {
+        if (renaming) return;
+        if (!action.background) { onActivate(); setOverviewOpen(false); }
+        pending.push(action.tab);
+        dispatch(webOpenAction([...openTabs.current, ...pending.slice(0, -1)], action));
         return;
       }
       if (!isDesktopTabAction(action) || renaming) return;

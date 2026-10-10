@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Button, DropdownMenu, Icon, IconButton } from '../../components/ui';
 import design from '../../design/tokens.json';
+import { useMediaQuery } from '../../design/useMediaQuery';
 import { overviewShortcut, tabShortcuts } from '../../design/keyboard';
 import type { TabsApi } from './context';
 import { GroupCapsule, MemberSlot } from './GroupCapsule';
@@ -14,11 +15,15 @@ import './strip.css';
 /**
  * The strip (46px): pinned tabs, a hairline, then tabs and group capsules, "+" and, at the far right, the
  * overview grid. Tabs compress from 190px to 112px, then the strip scrolls under a 40px mask at its right
- * edge and a "+N" menu lists every tab. No scrollbar, no chevron buttons, no wheel hijacking.
+ * edge and a "+N" menu lists every tab. At the small breakpoint an inactive tab that still has a title
+ * becomes the 44px chip instead; the active tab keeps its title and the 112px floor. No scrollbar, no
+ * chevron buttons, no wheel hijacking.
  */
 export function TabStrip({ api, leading, overviewTrigger, onOverview }: { api: TabsApi; leading?: ReactNode; overviewTrigger: RefObject<HTMLButtonElement | null>; onOverview: () => void }) {
   const { state, dispatch } = api;
   const strip = useRef<HTMLDivElement>(null);
+  // Shell 3j "Compressed", and the open question that makes it live: only while the window is at the small breakpoint.
+  const narrow = useMediaQuery(`(max-width: ${design.breakpoints.small}px)`);
   const [edge, setEdge] = useState({ end: false, hidden: 0 });
   const [moveNote, setMoveNote] = useState('');
   const order = visibleTabs(state);
@@ -28,7 +33,7 @@ export function TabStrip({ api, leading, overviewTrigger, onOverview }: { api: T
   const items = stripItems(state);
   // The strip only re-measures when its shape changes, never on a draft keystroke.
   const shape = JSON.stringify([state.activeId, state.groups, state.tabs.map(t => [t.id, t.title, t.pinned, t.groupId, t.split?.panes.map(p => [p.id, p.title])])]);
-  const item = (tab: Tab, inGroup = false) => <TabItem key={tab.id} api={api} tab={tab} order={order} inGroup={inGroup}/>;
+  const item = (tab: Tab, inGroup = false) => <TabItem key={tab.id} api={api} tab={tab} order={order} inGroup={inGroup} narrow={narrow}/>;
 
   useEffect(() => {
     const viewport = strip.current;

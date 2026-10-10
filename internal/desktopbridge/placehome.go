@@ -71,13 +71,34 @@ type homeChat struct {
 	At           time.Time `json:"at,omitzero"`
 }
 
+// homeLiveRow is one thing still happening on this Home. Kind is discussion,
+// running, closed or needsYou. Turn and Of are set only for a discussion:
+// how many turns it has taken, and the cap. A closed row is work that is
+// still running after the chat's window let go of it.
+type homeLiveRow struct {
+	Kind        string    `json:"kind"`
+	ChatID      string    `json:"chatId,omitempty"`
+	SessionFile string    `json:"sessionFile,omitempty"`
+	TaskID      string    `json:"taskId,omitempty"`
+	CouncilID   string    `json:"councilId,omitempty"`
+	Title       string    `json:"title"`
+	Detail      string    `json:"detail,omitempty"`
+	Turn        *int      `json:"turn,omitempty"`
+	Of          int       `json:"of,omitempty"`
+	StartedAt   time.Time `json:"startedAt,omitzero"`
+}
+
 // homeResponse is GET /places/{id}/home. Unplaced is present only for All
 // places (id root), and only when at least one conversation is in no place.
+// Live is the work still going, including discussions. Decided is how many
+// discussions filed here have reached an outcome; zero is omitted.
 type homeResponse struct {
 	Place      *PlaceDetail    `json:"place,omitempty"`
 	Breadcrumb []Crumb         `json:"breadcrumb"`
 	Since      *homeSince      `json:"since,omitempty"`
 	Attention  []homeAttention `json:"attention"`
+	Live       []homeLiveRow   `json:"live"`
+	Decided    int             `json:"decided,omitempty"`
 	Children   []homeChild     `json:"children"`
 	Chats      []homeChat      `json:"chats,omitempty"`
 	Unplaced   []homeChat      `json:"unplaced,omitempty"`
@@ -92,7 +113,7 @@ func (p *Places) home(w http.ResponseWriter, id string) {
 	if !ok {
 		return
 	}
-	out := homeResponse{Breadcrumb: []Crumb{}, Attention: []homeAttention{}, Children: []homeChild{}}
+	out := homeResponse{Breadcrumb: []Crumb{}, Attention: []homeAttention{}, Children: []homeChild{}, Live: []homeLiveRow{}}
 	var direct, incl []string
 	var visited time.Time
 	subtree := map[string]bool{}
@@ -137,6 +158,7 @@ func (p *Places) home(w http.ResponseWriter, id string) {
 		out.Since = p.homeSince(x, incl, visited)
 	}
 	out.Attention = x.homeAttention(incl, subtree)
+	out.Live, out.Decided = p.homeFeed(x, id, incl, subtree)
 	write(w, out)
 }
 
