@@ -1,16 +1,22 @@
 import { test, expect, type Page } from '@playwright/test';
 import { expectAccessible, expectNoUnstyledControls } from './contracts';
+import { installMockEngine } from './support/mock-engine';
+import { plainReply } from './support/scenarios';
+import { openApp } from './support/conversation';
 
 async function render(page: Page, text: string) {
- await page.goto('/');
+ await installMockEngine(page, plainReply());
+ await openApp(page);
+ await expect(page.locator('.conversation-scroll > .conversation-column')).toBeAttached();
  await page.evaluate(async (text) => {
   const markdownPath = '/src/components/ui/Markdown.tsx';
-  const reactPath = '/node_modules/.vite/deps/react.js';
-  const clientPath = '/node_modules/.vite/deps/react-dom_client.js';
+  const resources = performance.getEntriesByType('resource').map(entry => entry.name);
+  const reactPath = resources.find(url => /\/react\.js\?/.test(url))!;
+  const clientPath = resources.find(url => /\/react-dom_client\.js\?/.test(url))!;
   const themePath = '/src/design/ThemeProvider.tsx';
   const [{ Markdown }, { default: React }, { default: ReactDOM }, { ThemeProvider }] = await Promise.all([import(markdownPath), import(reactPath), import(clientPath), import(themePath)]);
   const container = document.createElement('section'); container.id = 'markdown-specimen'; container.setAttribute('aria-label', 'Markdown specimen');
-  document.querySelector('.conversation-column')!.replaceChildren(container);
+  document.querySelector('.conversation-scroll > .conversation-column')!.replaceChildren(container);
   const root = ReactDOM.createRoot(container);
   root.render(React.createElement(ThemeProvider, null, React.createElement(Markdown, null, text)));
   (window as unknown as { updateMarkdown: (text: string) => void }).updateMarkdown = (text: string) => root.render(React.createElement(ThemeProvider, null, React.createElement(Markdown, null, text)));
