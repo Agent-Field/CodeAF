@@ -2,7 +2,6 @@ import { savedWorkspace } from './support/synced-workspace';
 import { test, expect, type Page } from '@playwright/test';
 import { expectAccessible, tokenColor } from './contracts';
 import { installMockEngine } from './support/mock-engine';
-import { pendingQuestion } from './support/scenarios';
 import type { AttentionItem, WorldRow } from '../../src/features/chat/world-client';
 
 // The menus lane on top of the current shell: the shared toast with its structural Undo, a close-and-stop that fails, and the
@@ -250,30 +249,14 @@ test.describe('failed tasks and the Inbox', () => {
   });
 });
 
-test.describe('open-inbox lands on the oldest question', () => {
-  const asked = (session: string, text: string, ago: number): AttentionItem => ({ ...ask(session, text), asked: new Date(Date.now() - ago).toISOString() });
-  const openFromShell = (page: Page) => page.evaluate(() => window.dispatchEvent(new CustomEvent('codeaf:shell-open', { detail: 'inbox' })));
-
-  test('the shell request lists and orders the question that has waited longest first', async ({ page }) => {
-    await installMockEngine(page, { ...running, initial: { running: false, entries: [] }, world: { rows: [row('n', { title: 'Newer', needsYou: true }), row('o', { title: 'Older', needsYou: true })], items: [asked('n', 'Newer?', 60_000), asked('o', 'Older?', 3_600_000)] } });
-    await seed(page, [{ id: 'a', title: 'Intro' }], 'a');
-    await page.goto('/');
-    await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toBeVisible({ timeout: 8000 });
-    await openFromShell(page);
-    const card = page.getByRole('region', { name: 'Inbox' });
-    await expect(card).toBeVisible();
-    const rows = card.locator('[data-section="needsYou"] li');
-    await expect(rows.first()).toContainText('Older');
-    await expect(rows.nth(1)).toContainText('Newer');
-  });
-
-  test('with a tab-backed question the row is a button and receives focus', async ({ page }) => {
-    const asking = pendingQuestion();
-    await installMockEngine(page, { ...asking, initial: { ...asking.initial, running: true } });
-    await seed(page, [{ id: 'a', title: 'Intro' }, { id: 'b', title: 'Release v2.4', running: true }], 'a');
-    await page.goto('/');
-    await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toBeVisible({ timeout: 8000 });
-    await openFromShell(page);
-    await expect(page.getByRole('region', { name: 'Inbox' }).getByRole('button', { name: /Release v2.4/ })).toBeFocused();
-  });
+test('a shell-open event for inbox leaves the current tab in place', async ({ page }) => {
+  await installMockEngine(page, { ...running, initial: { running: false, entries: [] }, world: { rows: [row('o', { title: 'Older', needsYou: true })], items: [ask('o', 'Older?')] } });
+  await seed(page, [{ id: 'a', title: 'Intro' }], 'a');
+  await page.goto('/');
+  const intro = page.getByRole('tab', { name: 'Intro', exact: true });
+  await expect(intro).toHaveAttribute('aria-selected', 'true');
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('codeaf:shell-open', { detail: 'inbox' })));
+  await expect(intro).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('region', { name: 'Inbox' })).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Places' }).getByRole('button', { name: 'Inbox', exact: true })).toHaveCount(0);
 });

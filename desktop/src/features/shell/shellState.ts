@@ -2,12 +2,14 @@
 // request to open a kind. The workspace owns its tabs; the rail only needs to light the item that is open.
 import { useSyncExternalStore } from 'react';
 import type { TabKind } from '../tabs/kinds/types';
-import type { ShellKind } from './openKind';
+import { isShellKind, type ShellKind } from './openKind';
 
 export const shellEvent = 'codeaf:shell-open';
 
-/** Ask the workspace to open (or focus) the tab of this kind. */
+/** Ask the workspace to open (or focus) the tab of this kind. Settings and History only; the rail has no Inbox to open. */
 export function requestOpenKind(kind: ShellKind) {
+  // A cast cannot smuggle inbox back onto this door. The listener repeats the check for a forged event.
+  if (!isShellKind(kind)) return;
   window.dispatchEvent(new CustomEvent<ShellKind>(shellEvent, { detail: kind }));
 }
 
@@ -17,6 +19,7 @@ export const devPageEvent = 'codeaf:dev-page';
 export const shellLeaveEvent = 'codeaf:shell-leave';
 /** Ask the workspace to move off the tab of this kind (the rail's Workspace item while Settings is showing). */
 export function requestLeaveKind(kind: ShellKind) {
+  if (!isShellKind(kind)) return;
   window.dispatchEvent(new CustomEvent<ShellKind>(shellLeaveEvent, { detail: kind }));
 }
 
