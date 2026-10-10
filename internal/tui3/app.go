@@ -353,7 +353,7 @@ type entry struct {
 
 	// steer is THE ONE CORRECTION this block is, on [entrySteer] and nil on every
 	// other kind (steerelbow.go). It is a pointer for the reason [entry.card] and
-	// [entry.stand] are: the outcome lands on the block minutes after it was
+	// [entry.auto] are: the outcome lands on the block minutes after it was
 	// drawn, and the lane that lands it holds the block by index rather than
 	// copying it.
 	//
@@ -597,9 +597,9 @@ type entry struct {
 	// card: a row and the verdict on it must not be able to disagree.
 	card *taskCard
 	// conn is the sign-in this entry draws, for kind entryConnect and for
-	// nothing else (connect.go). It is a POINTER for the reason the two cards
-	// above are: the row opens waiting and a later event settles it in place, and
-	// the row and that state must never be able to disagree.
+	// nothing else (connect.go). It is a POINTER for the reason the card above
+	// is: the row opens waiting and a later event settles it in place, and the
+	// row and that state must never be able to disagree.
 	conn *connectCard
 	// done is the card a landed node writes, for kind entryDone and for nothing
 	// else (taskdone.go). Like [entry.card] it is a POINTER, because the card
@@ -989,9 +989,9 @@ type app struct {
 	chatCreditWarning   string
 	homeCreditWarning   string
 	// errandHome is the person's own home directory, resolved ONCE at `open` and
-	// held: the `~` project an item that belongs to no repository runs in
-	// ([app.errandPlace], [app.readBareBands], and homeexchange.go's
-	// [errandHomeDir] is where it comes from).
+	// held: the `~` project an errand that belongs to no repository runs in
+	// ([app.errandPlace]; homeexchange.go's [errandHomeDir] is where it comes
+	// from).
 	//
 	// IT IS A FIELD BECAUSE THE FRAME ASKS FOR IT. The composer's own line names
 	// where a send lands on every paint — `app.View → … → a.composerOpensAt →
@@ -2072,7 +2072,7 @@ type app struct {
 	// THE LINK SIDE (hostlink.go). link is what the door can tell this surface
 	// about the connection the conversation is on the far end of. Its zero value
 	// is every local session — no segment, no notice, no waiting room — which is
-	// the same absence the seam above draws when the ambient side is off.
+	// the same absence the seam above draws when automations are off.
 	link LinkSeam
 	// newsSilenceSaid is whether this window has already said that its engine
 	// sends no status-line news (hostlink.go's [app.sayNewsSilence]). It is said
@@ -4588,10 +4588,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, a.permPanelPress(msg.Mouse().Y)
 			}
 			// THE STANDING PAGE USED TO BE READ HERE, under the two registry
-			// panels. It is a PLACE now and is read with the other three of them,
-			// above — one rung for every surface that takes the whole frame,
-			// rather than one place resolved among the overlays that are drawn
-			// inside a conversation.
+			// panels, until it became a PLACE read with the others above — one
+			// rung for every surface that takes the whole frame, rather than one
+			// place resolved among the overlays that are drawn inside a
+			// conversation. The automations place that replaced it is read there.
 			//
 			// AND /subharness IS THE FOURTH OF THESE PANELS, on the standing
 			// page's old terms and for a sharper version of its reason: one of
@@ -4737,13 +4737,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// AND THE MONEY SEGMENT IS A DOOR ONTO THE SPENDING TAB, read here
 			// for the same reason and in the same way: two segments of one row,
-			// neither of them swallowing the other's columns (moneydoor.go). The
-			// standing count was a third and is a line at the foot of the task
-			// column now, answered by that column's own press (standdoor.go).
+			// neither of them swallowing the other's columns (moneydoor.go).
 			if cmd := a.moneyPress(msg.Mouse().X, msg.Mouse().Y); cmd != nil {
 				return a, cmd
 			}
-			// AND THE MODEL SEGMENT IS THE FOURTH: the status row's identity
+			// AND THE MODEL SEGMENT IS THE SECOND: the status row's identity
 			// cluster carries the name of what is answering, and pressing a name
 			// is how a person changes it (render.go's [app.identityParts]).
 			if a.statusPress(msg.Mouse().X, msg.Mouse().Y) {

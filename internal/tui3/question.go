@@ -594,10 +594,9 @@ func (a *app) raiseQuestion(q questionShown) {
 			q.clockAt, q.clockFor = a.questions[i].clockAt, a.questions[i].clockFor
 		}
 		// AND THE WORDS ON THE ANSWERS DO NOT CHANGE UNDER A HAND. A lane that
-		// dresses the engine's option list with the card's own spelling — the
-		// standing card's `yes, set it up` where the kind's list says `yes`,
-		// consent's `always, this command` where it says `always` — would
-		// otherwise have that dressing wiped off by the bare object a
+		// dresses the engine's option list with the card's own spelling —
+		// consent's `always, this command` where the kind's list says `always`
+		// — would otherwise have that dressing wiped off by the bare object a
 		// reattaching watcher re-sends, respelling every answer on screen while
 		// somebody read them. THE KEYS ARE THE TEST AND THE WORDS ARE NOT: a
 		// list offering the same answers is the same question said twice, and a
@@ -3223,8 +3222,8 @@ func (a *app) questionEnter(head questionShown, typing bool) (tea.Cmd, bool) {
 	// side, and takes this key while there ARE words).
 	//
 	// AND THE WAY OUT IS NOT THE WHOLE QUESTION. A correction, a connect key or
-	// a standing card is still a question WITH ANSWERS, and every question with
-	// answers has a pointer the arrows walk ([questionPointerStart]) — a
+	// an automation card is still a question WITH ANSWERS, and every question
+	// with answers has a pointer the arrows walk ([questionPointerStart]) — a
 	// standing card whose Enter did nothing while the pointer stood on
 	// `1 keep this rule` was the owner, 2026-09-25 (#1506). So the give-up below
 	// yields to a pointer: enter over an empty box takes the answer the pointer
@@ -3234,8 +3233,8 @@ func (a *app) questionEnter(head questionShown, typing bool) (tea.Cmd, bool) {
 		// THE POINTER STANDS FOR A PICK ONLY WHERE A PICK EXISTS. A connect
 		// question keeps exactly one answer, the way out, and that answer is
 		// taken by a digit, never by enter — enter there means the words ([#1506
-		// broke it wide]). A standing card is a real choice between answers, so
-		// a pointer standing on one of them IS the pick enter takes.
+		// broke it wide]). An automation card is a real choice between answers,
+		// so a pointer standing on one of them IS the pick enter takes.
 		choice := head.question.Ask == session.AskChoice || head.question.Ask == session.AskJudgement
 		under := choice && head.pick >= 0 && head.pick < len(head.question.Options)
 		picked := head.question.Pick != nil && strings.TrimSpace(head.question.Pick.Key) != ""
@@ -3448,10 +3447,9 @@ func (a *app) questionWritingRow(q questionShown) string {
 // questionChangeCarriesThePointer says whether the words `c` sends travel
 // with the pointed answer's key. THEY DO FOR THE MODEL'S OWN ASK — "2, but
 // keep the sqlite file" is one answer with a rider, and the asker reads the
-// key — and for nothing else: a standing card's change is a correction of
-// when or where and approves nothing, a consent's is a sentence beside the
-// call, and each of those lanes has read a bare [session.Answer.Change] since
-// before the block had a pointer.
+// key — and for nothing else: an automation card's change is a correction of
+// when, what or where and approves nothing, a consent's is a sentence beside
+// the call, and each of those lanes reads a bare [session.Answer.Change].
 func questionChangeCarriesThePointer(q session.Question) bool {
 	return q.Kind == session.QuestionAsk
 }

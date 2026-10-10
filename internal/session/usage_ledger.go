@@ -82,8 +82,8 @@ package session
 // cache share is not — the journal this line's session id names has it), which
 // of the five router slots a call ran under (nothing records that anywhere; the
 // seat is the tier's chair and NOT the router's slot), and any title for a task
-// or a standing item — only their ids, which a page joins against the task
-// index and the standing store it is already reading.
+// or an automation — only their ids, which a page joins against the task index
+// and the automations it is already reading.
 
 import (
 	"bufio"
@@ -111,12 +111,11 @@ import (
 // of one path are two ledgers with half a person's spending in each.
 const UsageLedgerName = "usage.jsonl"
 
-// usageDayLayout is the LOCAL calendar day a line belongs to, spelled exactly
-// as internal/standing's daily ledger spells its own file names
-// (standing.go's LedgerPath). A day is the unit a person asks about — "what did
-// Tuesday cost" — and it is local because their Tuesday is, so a line carries
-// the day it was made in beside the instant it was made at, and no reader has
-// to re-derive a calendar from a timestamp in some other zone.
+// usageDayLayout is the LOCAL calendar day a line belongs to, as an ISO date.
+// A day is the unit a person asks about — "what did Tuesday cost" — and it is
+// local because their Tuesday is, so a line carries the day it was made in
+// beside the instant it was made at, and no reader has to re-derive a calendar
+// from a timestamp in some other zone.
 const usageDayLayout = "2006-01-02"
 
 // UsageLedgerPath is this machine's ledger, resolved through internal/home so
@@ -130,7 +129,7 @@ func UsageLedgerPath() string { return home.Join("v3", UsageLedgerName) }
 // Every field is a fact somebody asked for by name on the spend page, and there
 // is nothing here that is not: which day, which model, what for, how many calls,
 // how many tokens, how much money, and the three ids that say what the money was
-// spent ON — a conversation, a piece of work, a standing promise.
+// spent ON — a conversation, a piece of work, an automation.
 type UsageLine struct {
 	// At is the instant the call was journaled, RFC3339 with nanoseconds.
 	At time.Time `json:"at"`
@@ -202,7 +201,7 @@ type UsageLine struct {
 	Task string `json:"task,omitempty"`
 	// Root is the CONVERSATION the work this call was made inside belongs to,
 	// and it is empty on a conversation's own line — where Session already names
-	// it — and on a standing firing no conversation asked for.
+	// it — and on an automation's run, which its automation owns.
 	//
 	// IT IS THE ONE FIELD THAT MAKES A FAMILY ADDABLE. Session on a node's line
 	// is the NODE's journal, which is a file nobody outside the family has heard

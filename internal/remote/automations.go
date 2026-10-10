@@ -153,9 +153,9 @@ func (s *server) automationsCall(call Frame) (json.RawMessage, bool, error) {
 }
 
 // automationsAnswer is one store answer as a result's payload, or the store's
-// own refusal. The refusal travels in the store's words, for the reason
-// [Client.SaveStanding] gives: a row redrawn as changed over a store that
-// refused the change would be the screen lying about somebody else's disk.
+// own refusal. The refusal travels in the store's words: a row redrawn as
+// changed over a store that refused the change would be the screen lying about
+// somebody else's disk.
 func automationsAnswer[T any](value T, err error) (json.RawMessage, bool, error) {
 	if err != nil {
 		return nil, true, err

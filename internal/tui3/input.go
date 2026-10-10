@@ -916,10 +916,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// every terminal there is until both of their names were bound (see the
 		// caret jumps below, and steer.go).
 		//
-		// It is above the newline pair below for standmark.go's reason exactly:
-		// those two are the other spellings of a different gesture, and a chord
-		// that fell through to them would open a line where somebody meant to
-		// correct an answer.
+		// It is above the newline pair below because those two are the other
+		// spellings of a different gesture, and a chord that fell through to
+		// them would open a line where somebody meant to correct an answer.
 		if a.state == stateWorking {
 			return a.enter()
 		}
@@ -932,10 +931,10 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// that one sits under enter: each of the three is a narrower claim than
 		// the one before it, and the narrowest is read last.
 		//
-		// It is above the newline pair below for standmark.go's reason exactly:
-		// those two are the other spellings of a different gesture, and a chord
-		// that fell through to them would open a line where somebody meant to
-		// stop an answer.
+		// It is above the newline pair below for the same reason: those two are
+		// the other spellings of a different gesture, and a chord that fell
+		// through to them would open a line where somebody meant to stop an
+		// answer.
 		return a.bargeIn()
 
 	case "shift+enter", "alt+enter", "ctrl+j":
@@ -1438,10 +1437,10 @@ func (a *app) enter() tea.Cmd { return a.enterLine() }
 
 // enterLine is the send key's whole road. The chord that used to add a marked
 // reading to it — ctrl+enter, "keep this true" — is queueing's now
-// (followup.go), and the marked door is the typed command alone
-// (standmark.go's [app.standingSay]); everything a message does to this surface
-// — the transcript line, the turn number, the recall history, the draft file —
-// is the same whichever way the sentence was handed over.
+// (followup.go), and the marked reading went with standing orders; everything a
+// message does to this surface — the transcript line, the turn number, the
+// recall history, the draft file — is the same whichever way the sentence was
+// handed over.
 func (a *app) enterLine() tea.Cmd {
 	if a.tmemberStart.key == a.frontTabKey() && a.tmemberStart.said.pending {
 		a.note("The member is still being added")

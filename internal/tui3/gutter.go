@@ -35,26 +35,17 @@ import (
 // [app.railJoin] cuts that overhang back with an ellipsis, which is where a
 // running call's spinner went when the indent law made the same mistake.
 //
-// And EVERY TARGET THIS SURFACE RESOLVES BY COLUMN MOVES WITH THE TEXT. There
-// are seven of them and they arrive in two shapes:
-//
-//   - ON THE ROW ITSELF — a link's span, a cut table's foot, a bash row's
-//     `click to background` clause (render.go's [row]). These are minted fresh
-//     into a throwaway row on every pass, so [gutterPass] moves them outright.
-//   - ON A CARD THAT OUTLIVES THE PASS — a proposal's answers and its models
-//     (task.go's [taskCard]), a standing order's chips (standing.go), and the
-//     answers of a node that needs a look (taskdone.go's [taskDone]). A card's
-//     rows can come back from the entry cache with its spans untouched, so
-//     [app.gutterCards] moves them by the DIFFERENCE between the gutter they
-//     already carry and the one this frame wants — which is why each of the
-//     three carries a `gut`.
+// And EVERY TARGET THIS SURFACE RESOLVES BY COLUMN MOVES WITH THE TEXT. Each
+// is ON THE ROW ITSELF — a link's span, a cut table's foot, a bash row's
+// `click to background` clause (render.go's [row]) — minted fresh into a
+// throwaway row on every pass, so [gutterPass] moves them outright. The cards
+// that kept answers of their own no longer do (see below).
 //
 // Every one of them is compared against the RAW screen x — [app.linkPress],
-// [app.footPress], [app.keepPress], [app.choicePress], [app.standingPress],
-// [app.settlePress] — because the transcript's left edge WAS screen column
-// zero. Shift the text without shifting the spans and every task reference and
-// every `[ yes ]` on the screen answers a click two columns to its left, which
-// is the defect this file exists to not have.
+// [app.footPress], [app.keepPress] — because the transcript's left edge WAS
+// screen column zero. Shift the text without shifting the spans and every task
+// reference on the screen answers a click two columns to its left, which is
+// the defect this file exists to not have.
 
 // textGutterCols is how many columns the reading gutter takes at this width, and
 // it is asked at layout and again at the pass that applies it for

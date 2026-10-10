@@ -279,11 +279,12 @@ var callSiteRoles = map[string]lane.Role{
 	// `consolidate`, already had a row below because internal/roles has that
 	// word: the tidy-up and the role are the same errand and the same reading.
 	//
-	// internal/session/standing_run.go: one standing item's yes-or-no, on every
-	// check of every item forever. It is spelled `standing-check` and NOT
-	// `sentinel`, which is already the resident's own quorum errand above and is
-	// judged: this one sets lane.RoleStanding on its own context, and pricing it
-	// as a judge would put a wait nobody is having into the table.
+	// The retired standing check: one standing item's yes-or-no, made by
+	// internal/session's standing_run.go (now gone) on every check of every
+	// item. It was spelled `standing-check` and NOT `sentinel`, which is already
+	// the resident's own quorum errand above and is judged: it set
+	// lane.RoleStanding on its own context, and pricing it as a judge would put
+	// a wait nobody is having into the table.
 	"standing-check": lane.RoleStanding,
 	// internal/session/automation_run.go: one watch's yes-or-no on what it
 	// looked at, the errand that replaced the standing check above and is

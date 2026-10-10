@@ -620,14 +620,13 @@ var settingUI = map[string]settingMeta{
 	// a setting a person can reach many ways has to read the same in all of them:
 	// this row is where the INSTALL'S rung is written, and the nearer scopes that
 	// outrank it — a conversation's own rung beside the model above the message box
-	// (effortchip.go), a task's (taskeffort.go), a standing item's
-	// (homeband_thinking.go), and the level dialled onto one model in `/model`
-	// (palette.go) — take the same chord or key over their own surfaces. A row
-	// that set a default without saying the default could be overridden is a row
-	// people come back to confused.
+	// (effortchip.go), a task's (taskeffort.go), and the level dialled onto one
+	// model in `/model` (palette.go) — take the same chord or key over their own
+	// surfaces. A row that set a default without saying the default could be
+	// overridden is a row people come back to confused.
 	//
-	// HOME'S RESTING CARD USED TO BE A SECOND DOOR ONTO THIS ROW and is retired
-	// (homeeffort.go says why), so the sentence no longer offers it.
+	// HOME'S RESTING CARD USED TO BE A SECOND DOOR ONTO THIS ROW and is retired,
+	// so the sentence no longer offers it.
 	config.KeyEffort: {
 		tab: tabProviders, label: "thinking", widget: widgetCycle,
 		about: "how hard the model thinks, unless something nearer the work says " +

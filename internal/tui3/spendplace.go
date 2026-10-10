@@ -61,11 +61,11 @@ type spendReading struct {
 	subjects []session.SubjectSpend
 	loudest  session.DaySpend
 	loudFor  session.SubjectSpend
-	// names is the join THE LEDGER CANNOT MAKE FOR ITSELF: a task id, a standing
-	// id or a conversation id against the word a person calls that thing. The
-	// ledger holds ids and nothing else and says so
+	// names is the join THE LEDGER CANNOT MAKE FOR ITSELF: a task id, an
+	// automation id or a conversation id against the word a person calls that
+	// thing. The ledger holds ids and nothing else and says so
 	// ([session.SubjectSpend.ID]), so the page reads the titles off the records
-	// it is already holding — the world's task index, the standing seam — and
+	// it is already holding — the world's task index, the automations — and
 	// hands them here ([spendReading.naming]). A subject nobody could name keeps
 	// its id, which is a worse row than a title and a better one than a blank.
 	names map[string]string
@@ -1052,7 +1052,7 @@ const spendAutomationWord = "by automation"
 //
 // THE LEDGER ABOVE AND THIS BELOW ARE TWO DIFFERENT MONEY. Everything the page
 // draws above counts the calls THIS MACHINE made — the conversation, the
-// titles, the standing promises, the work — while this counts what a run's own
+// titles, the automations, the work — while this counts what a run's own
 // tasks were charged, which the plan store writes per seat as the worker harness
 // spends (internal/session's PlanSpend). They stand on one page because a person
 // reading a bill wants both: what the machine cost, and how the work it sent off
@@ -1328,7 +1328,7 @@ func spendRowIn(fields []string, table spendTable, ink func(int, string) string,
 }
 
 // spendFigureWord is one figure and the word for what it counts — `9,400 calls`,
-// `88 firings` — with the UNIT PADDED to the widest spelling in its own column.
+// `1 call` — with the UNIT PADDED to the widest spelling in its own column.
 //
 // DIGITS ARE COMPARED FROM THE RIGHT, and the column right-aligns whole fields,
 // so a row saying `1 call` beside one saying `9,400 calls` would line its `call`
@@ -1412,7 +1412,7 @@ const (
 //
 // THE CAPTION DOES NOT PROMISE IT, and no longer needs to. It read `what ran it ·
 // by the model, and the role it was bound to` while every heading on this page
-// was a sentence; the headings are `by model`, `by topic`, `by standing order`
+// was a sentence; the headings are `by model`, `by topic`, `by automation`
 // now and name only how each table cuts the money — the calls and the tokens are
 // not enumerated up there either.
 //

@@ -1008,8 +1008,9 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 
 // submitUser is Submit's body with the MESSAGE left to the caller: the closed
 // check, the steering splice, the spend rail and the turn are the same four
-// things whatever the person's message turned out to be, and the second door
-// onto them is a draft they marked standing (standing_mark.go).
+// things whatever the person's message turned out to be, and the other doors
+// onto them are a `!` command the person ran ([Agent.SubmitBash]) and a child's
+// brief (task_child_run.go).
 //
 // It is factored rather than copied for [Agent.SubmitImage]'s own reason: the
 // steering rules and the rail are laws about a turn starting, and two functions
@@ -1222,17 +1223,16 @@ type userMessage struct {
 	wake bool
 
 	// said is THE PERSON'S OWN WORDS, when what the model reads is not only
-	// them. Empty in every ordinary case, and set by two doors: a draft the
-	// person MARKED STANDING, whose message carries an instruction in front of
-	// the sentence (standing_mark.go), and a message that names a team or a
-	// conversation, whose message carries that reference's digest after the
-	// sentence (mention.go).
+	// them. Empty in every ordinary case, and set where the session writes
+	// beside the sentence: the plan digest in front of it (plandigest.go), a
+	// team's or a conversation's digest after it when the message names one
+	// (mention.go), and the skills suited to it (skillturn.go).
 	//
-	// THE INSTRUCTION IS THE MODEL'S AND THE JOURNAL IS THE PERSON'S. A
-	// transcript that replayed the instruction would show somebody a paragraph
-	// they never typed, on the row that is supposed to be the one thing on the
-	// screen that is theirs — so the journal and the store keep this, and only
-	// the messages this turn reasons from carry the rest.
+	// WHAT THE SESSION WROTE IS THE MODEL'S AND THE JOURNAL IS THE PERSON'S. A
+	// transcript that replayed it would show somebody a paragraph they never
+	// typed, on the row that is supposed to be the one thing on the screen that
+	// is theirs — so the journal and the store keep this, and only the messages
+	// this turn reasons from carry the rest.
 	said string
 
 	// lead is how many of the message's leading content parts the SESSION put
@@ -1714,11 +1714,10 @@ func (u userMessage) empty() bool {
 // the conversation, and a data URL rendered into one would be unreadable.
 //
 // AND IT IS THE PERSON'S WORDS, never the session's in front of them. A message
-// the plan digest or a standing mark opens is read by the model whole, but what
-// a reader of the message wants — the recall, the owed answer, the ask a
-// `forward` carries into a task — is what the person typed, and a digest read
-// back as their ask would forward the run's own rows into a worker as the
-// person's sentence.
+// the plan digest opens is read by the model whole, but what a reader of the
+// message wants — the recall, the owed answer, the ask a `forward` carries into
+// a task — is what the person typed, and a digest read back as their ask would
+// forward the run's own rows into a worker as the person's sentence.
 func (u userMessage) text() string {
 	if u.said != "" {
 		return u.said
@@ -2507,9 +2506,9 @@ func (a *Agent) Close() error {
 	a.cancelOrchestrationsLocked()
 	a.mu.Unlock()
 	// AND THE PROCESS STOPS SAYING IT HOLDS THIS CONVERSATION, before anything
-	// below can take time: a firing that lands during the quit writes to the
-	// inbox rather than onto a queue that will never be drained again
-	// (standing_run.go).
+	// below can take time: a window that is closing is not somebody in front of
+	// this process, and every reader of the registry should stop counting it at
+	// once (livesessions.go's [someoneIsWatching]).
 	forgetLiveSession(a)
 	// AND THE LANE SHEET STOPS BEATING FOR A SESSION THAT HAS LEFT. Cancel
 	// its fetch and join any cache write before the state directory can be
@@ -2707,10 +2706,11 @@ func (a *Agent) recordUserLocked(user userMessage) {
 	a.alignReasoningLocked()
 	a.messages = append(a.messages, user.message)
 	a.messageReasoning = append(a.messageReasoning, provider.MessageReasoning{})
-	// AND WHAT IS KEPT IS WHAT THEY SAID. A marked draft's message carries an
-	// instruction the person never typed and never sees (standing_mark.go); the
-	// turn reasons from it and nothing outlives it, because a replay is a
-	// reading of the conversation and that paragraph was never part of one.
+	// AND WHAT IS KEPT IS WHAT THEY SAID. A message the session wrote beside —
+	// the plan digest, a reference's digest — carries words the person never
+	// typed and never sees ([userMessage.said]); the turn reasons from them and
+	// nothing outlives them, because a replay is a reading of the conversation
+	// and that paragraph was never part of one.
 	kept := user.journaled()
 	// The store's copy is taken before the journal's early return: a session
 	// with no file still has a conversation worth keeping, and the person's own

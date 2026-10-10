@@ -44,10 +44,10 @@ import (
 // LinkSeam is what a door that opened this conversation over a connection can
 // tell the surface about that connection.
 //
-// It is functions rather than a handle for [StandingSeam]'s reason: the door
-// owns what the link IS and this package owns what a person reads, and a test
-// of "what does the status line say while it is reconnecting" should be a
-// string handed over rather than a pipe torn in half.
+// It is functions rather than a handle because the door owns what the link IS
+// and this package owns what a person reads, and a test of "what does the
+// status line say while it is reconnecting" should be a string handed over
+// rather than a pipe torn in half.
 //
 // The zero value is a surface with no connection to report — every local
 // session, every test, and every headless frame. Nothing half-works there: no
@@ -62,8 +62,7 @@ type LinkSeam struct {
 	// is laid out twice per frame and the frame turns thirty times a second, so
 	// a Note that reached for the wire would be a terminal that stopped
 	// repainting for as long as the far machine took to answer — on a link that
-	// had just died, ten seconds per frame ([hostStanding] in cmd/codeaf states
-	// the whole of that law about its own seam, and keeps a cache to obey it).
+	// had just died, ten seconds per frame.
 	//
 	// This one needs no cache, and that is a fact about the client rather than
 	// a hope: the sentence is built from a field the redial loop has already
@@ -145,9 +144,8 @@ type LinkSeam struct {
 // HeldQuestion is one card raised while no window was attached to the
 // conversation, as the far machine kept it.
 //
-// It is this package's own type and not internal/remote's, for [StandingSeam]'s
-// reason again — this package does not import the wire — and it is three of the
-// wire's four fields with the event already unwrapped.
+// It is this package's own type and not internal/remote's, and it is three of
+// the wire's four fields with the event already unwrapped.
 //
 // THE FOURTH IS THE STREAM IT BELONGS TO, AND IT IS DELIBERATELY NOT HERE. The
 // wire carries it so a surface can put a card back where it was in a room with
@@ -155,11 +153,11 @@ type LinkSeam struct {
 // goes — over the input, in the order the questions were raised — so a field
 // for it would be a field nobody reads.
 type HeldQuestion struct {
-	// Kind is which door answers this: "consent", "standing", "harness",
-	// "connect". A KIND THIS BUILD DOES NOT KNOW IS SKIPPED, which is the
-	// wire's stated contract: a newer engine holding a question this surface
-	// cannot draw must leave that question waiting for a build that can, rather
-	// than be drawn as something it is not or refuse the conversation.
+	// Kind is which door answers this: "consent", "harness" or "connect". A
+	// KIND THIS BUILD DOES NOT KNOW IS SKIPPED, which is the wire's stated
+	// contract: a newer engine holding a question this surface cannot draw must
+	// leave that question waiting for a build that can, rather than be drawn as
+	// something it is not or refuse the conversation.
 	Kind string
 	// Event is the event that raised it, so the card drawn is the card that
 	// would have been drawn live.
@@ -406,11 +404,11 @@ func (a *app) askHeld() tea.Cmd {
 //
 // EACH ONE GOES THROUGH THE DOOR ITS LIVE TWIN GOES THROUGH ([app.event]), and
 // that is the whole design: this surface already knows how to draw a permission
-// question, a reminder asking to stand, a harness offer and an account request,
-// and every one of those answers back through a call keyed by the card's own id
-// rather than by the stream it came down. So a held card is not a second kind
-// of card — it is the same card, arriving by a different road, and the key that
-// answers it is the key that always answered it.
+// question, a harness offer and an account request, and every one of those
+// answers back through a call keyed by the card's own id rather than by the
+// stream it came down. So a held card is not a second kind of card — it is the
+// same card, arriving by a different road, and the key that answers it is the
+// key that always answered it.
 //
 // A KIND THIS BUILD DOES NOT KNOW IS SKIPPED AND NOT GUESSED AT. The far
 // machine may be a newer build holding a question this one has never drawn; a

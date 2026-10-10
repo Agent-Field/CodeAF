@@ -115,7 +115,7 @@ var looksMu sync.Mutex
 // not in it. All four are one fact for every caller: there is no origin to
 // measure this place's news from, so nothing in it is news.
 //
-// Places are plain strings — "home", "tasks", "standing", "memory", "spend",
+// Places are plain strings — "home", "tasks", "automations", "memory", "spend",
 // "search", "settings" — and NOT an enum here, because the list of places is the
 // surface's to decide and a records package that held one would be the second
 // place it was written down.

@@ -614,8 +614,8 @@ func (a *app) questionOffers(q questionShown, need questionNeed) bool {
 		if q.question.Input.Kind == session.InputText {
 			// A question answered in words has nothing for enter to take while
 			// the box is empty AND nothing stands under the pointer — the same
-			// give-up [app.questionEnter] makes ([#1506]): a correction or a
-			// standing card still carries answers the arrows walk, so a
+			// give-up [app.questionEnter] makes ([#1506]): a correction or an
+			// automation card still carries answers the arrows walk, so a
 			// pointer on one is enter taking it.
 			if q.question.Pick != nil && strings.TrimSpace(q.question.Pick.Key) != "" {
 				return true

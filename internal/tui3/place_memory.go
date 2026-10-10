@@ -509,7 +509,7 @@ func (a *app) openMemory() tea.Cmd {
 	// there is no store here to hold any of it — is said once on the note
 	// ([memoryOffNote], [memoryPlace.footer]).
 	shelves, why := a.memorySnapshot()
-	// AND IT JOINS THE EXCLUSION LAW, for the standing place's reason exactly
+	// AND IT JOINS THE EXCLUSION LAW, for the reason every place does
 	// ([app.standDownFullscreen]).
 	a.standDownFullscreen()
 	a.page = pageMemory

@@ -23,11 +23,12 @@ import (
 // can type into the box they are already looking at. That is this.
 //
 // THE ROWS IT NAMES ARE THE ROWS THAT EXIST. `day`, `conversation` and `plan`
-// are the three rails a person can turn; a task and a standing firing are named
-// on the tab as READINGS because this build enforces them somewhere a settings
-// row cannot reach (settingspend.go), and a command that accepted `task 20`
-// would be writing a number nothing reads. `practice` was a fourth, and is
-// answered in words because the docs of the day taught people to type it.
+// are the three rails a person can turn; a task and an automation's run are
+// named on the tab as READINGS because this build enforces them somewhere a
+// settings row cannot reach (settingspend.go), and a command that accepted
+// `task 20` would be writing a number nothing reads. `practice` was a fourth,
+// and is answered in words because the docs of the day taught people to type
+// it.
 
 // budgetRows is the word a person types against the registry row it names, and
 // the words are the tab's own labels rather than the keys behind them.

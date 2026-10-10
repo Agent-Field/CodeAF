@@ -677,11 +677,10 @@ const (
 
 	// MethodPlacesWorld is the walk of the engine machine's places root: every
 	// project, every conversation in it, and the work each of those ran
-	// ([session.ReadWorld]). It is the reading FIVE of the surface's seven
-	// places are built from — home lists it, tasks reads the task rows inside
-	// it, standing walks its projects to ask what else keeps an eye on that
-	// machine, spend joins its titles onto the ledger's ids, and search opens
-	// the conversation behind a hit out of it — so one door answers all five.
+	// ([session.ReadWorld]). It is the reading FOUR of the surface's places are
+	// built from — home lists it, tasks reads the task rows inside it, spend
+	// joins its titles onto the ledger's ids, and search opens the conversation
+	// behind a hit out of it — so one door answers all four.
 	MethodPlacesWorld = "Places.World" // nothing → session.World
 	// MethodPing is one empty frame out and one empty frame back. The surface
 	// times that round trip on its own machine; a timestamp carried between two
@@ -1623,8 +1622,8 @@ type PathFact struct {
 // So this carries the raw event and the identity needed to answer it, and the
 // surface replays it through the same door a live one goes through.
 type HeldQuestion struct {
-	// Kind is which resolve-door answers this: "consent", "standing",
-	// "harness", "connect". It is a string rather than an enum because the
+	// Kind is which resolve-door answers this: "consent", "harness" or
+	// "connect" (held.go). It is a string rather than an enum because the
 	// envelope is the contract and a newer engine holding a kind this build
 	// does not draw must not be a broken conversation — an unknown kind is
 	// SKIPPED by the surface, which leaves the question waiting for a build

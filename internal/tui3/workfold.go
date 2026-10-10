@@ -338,7 +338,7 @@ func deriveWorkfolds(es []entry, runningTurn int) map[int]workfold {
 		asks = append(asks, compactions...)
 		sort.Ints(asks)
 		// AN ASK STANDS, AND THE WORK BEFORE IT STILL FOLDS. A task proposal, a
-		// sign-in or a standing card is a thing the work could not decide alone,
+		// sign-in or an automation card is a thing the work could not decide alone,
 		// so no chip may cover it. It used to keep the WHOLE turn open instead:
 		// the moment a turn ended on `/senior-dev`'s approval card, every thought
 		// and call above the card unfolded at once, a screenful of machinery

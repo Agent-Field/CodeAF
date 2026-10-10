@@ -311,7 +311,7 @@ func openChatV3Local(launch localLaunch) error {
 	options.Notice = joinNotice(options.Notice, link.said())
 	// AND HOME CAN ASK SOMETHING WITHOUT OPENING A CONVERSATION. `ask here` is
 	// the second action row on home, and it is answered by an agent this process
-	// builds against a folder under the standing root ([localErrandDoor],
+	// builds against a folder under the errands root ([localErrandDoor],
 	// chatv3_exchange.go) — so before this line, every launch that took the
 	// engine road met `this window cannot ask from home`, which since #653 made
 	// this road the ordinary one was every ordinary launch.
@@ -319,9 +319,9 @@ func openChatV3Local(launch localLaunch) error {
 	// IT IS BOUND ON THIS ROAD AND NO OTHER, like [tui3.Options.EngineAnswers]
 	// above it, and for the same fact: the engine here is a process on THIS
 	// machine, so a session opened in this terminal writes to the disk the
-	// errand's own folder and standing store live on. Over --host the folder
-	// would be made on the laptop and the work would run against the wrong
-	// machine, so there the seam stays absent and home says so once.
+	// errand's own folder and the automations store live on. Over --host the
+	// folder would be made on the laptop and the work would run against the
+	// wrong machine, so there the seam stays absent and home says so once.
 	errand, closeErrands := localErrandDoor(launch, welcome)
 	// AND WHATEVER IT OPENED IS CLOSED HOWEVER THIS SURFACE RETURNS, beside the
 	// fleet's own close above: an errand is a real session with a real journal,
@@ -723,9 +723,10 @@ func localErrandDoor(launch localLaunch, welcome remote.Welcome) (func(tui3.Erra
 			// program (chatv3_lanes.go's [v3LanesHere]), and the gate may ASK,
 			// because there is a surface and it answers — chatv3.go states both
 			// beside the same pair of lines. Without the second the errand's
-			// `stand` refused every proposal with `nobody is here to say yes —
-			// this can only be set up in a conversation`, which is the honest
-			// answer for a headless run and a lie about a card on somebody's home.
+			// `automation` refuses every proposal with `nobody is here to say yes
+			// — an automation can only be set up in a conversation somebody is
+			// in`, which is the honest answer for a headless run and a lie about
+			// a card on somebody's home.
 			cfg, _ := v3Shape(boot.Config, v3LanesHere())
 			cfg.AskConsent = true
 			open = v3Errand(cfg, welcome.Workspace, boot.Settings.ProfileDir, launch.shape != nil && launch.shape.Yolo)

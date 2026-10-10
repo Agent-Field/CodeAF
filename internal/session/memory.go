@@ -2190,17 +2190,17 @@ func (a *Agent) memoryTools() []bare.Tool {
 }
 
 // refreshSystemLocked rebuilds message[0] from the base prompt, the folders
-// somebody attached, the person's standing orders and this session's record of
-// what it has decided.
+// somebody attached, the person's rules marked always and this session's record
+// of what it has decided.
 //
 // message[0] is REPLACED rather than appended to: a.system stays the base, so
 // every refresh renders base + current blocks instead of stacking one act's
 // block on top of the last one's.
 //
-// THE ATTACHED FOLDERS ARE THE THIRD BLOCK and they are here for the standing
-// orders' reason exactly: a folder somebody attached holds for the life of the
-// conversation until they remove it, so it moves once per deliberate act and
-// otherwise renders byte for byte (placescontext.go).
+// THE ATTACHED FOLDERS ARE HERE for the rules' reason exactly: a folder
+// somebody attached holds for the life of the conversation until they remove
+// it, so it moves once per deliberate act and otherwise renders byte for byte
+// (placescontext.go).
 //
 // THE DECISION RECORD IS A SNAPSHOT AND NOT A LIVE READING, and that is the one
 // thing in this block that does not move when the thing behind it does. A
@@ -2210,21 +2210,21 @@ func (a *Agent) memoryTools() []bare.Tool {
 // answer's own tool result is in front of it either way, and what the record is
 // FOR is the gate that refuses the same question twice ([Question.Check] reads
 // the file, not this). So the section is re-read only when message[0] is being
-// rebuilt for some OTHER reason — a folder attached, a standing order agreed,
-// the clock brought forward — all of which re-price the prefix anyway, and every
+// rebuilt for some OTHER reason — a folder attached, a rule set, the clock
+// brought forward — all of which re-price the prefix anyway, and every
 // decision made since rides in the transcript where it happened.
 //
 // WHAT LIVES HERE IS WHAT MOVES ONLY ON A DELIBERATE ACT, and that is the whole
 // rule. message[0] sits in front of every message there is, so one changed byte
 // in it re-prices the entire transcript at the uncached rate — five times the
 // cached one — on the very next request. The base prompt never moves. A folder
-// somebody attached holds until they remove it. An order was agreed on a card
-// and holds until the person says otherwise, and a conversation may run all day
-// without one moving (standing_world.go). A decision is recorded when a question
-// is answered and never again. Each of those is a thing a person did, at most a
-// handful of times in a session, and what it costs is the same cold prefix the
-// clock costs when it is brought forward (prompt.go's clockRefresh), for the
-// same reason: a model reasoning from a stale standing fact is worse than a
+// somebody attached holds until they remove it. A rule holds until the person
+// takes it back, and a conversation may run all day without one moving
+// (memory_always.go). A decision is recorded when a question is answered and
+// never again. Each of those is a thing a person did, at most a handful of
+// times in a session, and what it costs is the same cold prefix the clock
+// costs when it is brought forward (prompt.go's clockRefresh), for the same
+// reason: a model reasoning from a stale standing fact is worse than a
 // re-priced conversation.
 //
 // THE BLOCKS THAT MOVE ON A TURN ARE NOT HERE, and the memory block was the last
@@ -2265,10 +2265,10 @@ func (a *Agent) refreshSystemLocked() {
 		a.recordRead = true
 		a.recordText = DecisionsSection(a.Decisions())
 	}
-	// THE PERSON'S RULES RIDE BESIDE THEIR STANDING ORDERS, ahead of them as in a
-	// task brief, and for those orders' reason: a rule moves only when somebody
+	// THE PERSON'S RULES RIDE IN THE HEAD because a rule moves only when somebody
 	// sets or takes one back, so on every other turn the block renders byte for
-	// byte (memory_always.go).
+	// byte (memory_always.go). The standing block after them is always empty now
+	// ([Agent.standingText]).
 	head := a.system + a.placesText + a.alwaysText + a.standingText
 	if head != a.systemHead {
 		a.systemHead = head

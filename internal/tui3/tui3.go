@@ -530,8 +530,7 @@ type Options struct {
 	// AND IT MAY NOT BLOCK. It is asked on the open and on the three-second beat,
 	// which are the two moments a place may read anything — but over a wire those
 	// are still moments a person is waiting through. The door answers from a
-	// cache that refreshes behind itself (cmd/codeaf's [hostWorld]), which is the
-	// same bargain and the same law [StandingSeam.Items] already keeps.
+	// cache that refreshes behind itself (cmd/codeaf's [hostWorld]).
 	World func() (session.World, bool)
 
 	// WorldRoot is the state root [Options.World] was walked under, on the disk

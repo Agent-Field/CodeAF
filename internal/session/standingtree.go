@@ -252,9 +252,9 @@ func keptAside(place PlaceRef, workspace string) bool {
 }
 
 // workspaceStoodIn is the directory this conversation is standing in, canonical,
-// read under the lock that moves it. It is NOT [Agent.standingWorkspace], which
-// answers a different question (where a standing item belongs, home included);
-// this one is only ever the folder a copy must never be made of.
+// read under the lock that moves it. It is NOT [Agent.automationWorkspace],
+// which answers a different question (where an automation made here runs, home
+// included); this one is only ever the folder a copy must never be made of.
 //
 // IT TAKES THE LOCK BECAUSE THE ANSWER MOVES. `anchor_workspace` rewrites both
 // [Config.Workspace] and [Config.Place] under a.mu in one breath

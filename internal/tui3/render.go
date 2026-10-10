@@ -675,9 +675,9 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		// [taskLink]).
 		links := 0
 		for n, text := range rows {
-			// A STANDING CARD HAS NO PRESSABLE ROW ANY MORE. Its answers are the
+			// AN AUTOMATION CARD HAS NO PRESSABLE ROW. Its answers are the
 			// question, and the question is drawn — and pressed — above the box
-			// like every other one (standing.go, question.go's [app.questionPress]).
+			// like every other one (automation.go, question.go's [app.questionPress]).
 			drawn := row{text: text, entry: i, hit: hit}
 			// THE LINK PASS RUNS ON THE MODEL'S OWN ROWS AND ON NOTHING ELSE
 			// (markdown.go). It is applied HERE — after the block was rendered and
@@ -2063,14 +2063,14 @@ const (
 // THE PAINT IS CARRIED RATHER THAN ASKED FOR AGAIN, AND THAT IS THE WHOLE OF
 // WHY THIS FIELD EXISTS. Every width decision this row makes is made from the
 // PLAIN cluster ([app.paintParts] says so out loud): the gap between the two
-// clusters, the right-aligned row's indent, and the columns the keeping and
-// money doors are pressed on (standdoor.go, moneydoor.go) are all arithmetic on
-// what the plain string measured. So a painted segment that measures one cell
-// more than the text it was measured as makes a row a cell wider than the
-// frame — and the renderer under us composes into a cell grid exactly the
-// terminal's width, so what happens is not a wrap but a QUIET CUT: the last
-// cell of the row is dropped, and `⠋ working · 10s` is drawn `⠋ working · 10`.
-// The two doors are meanwhile one column left of where they are drawn.
+// clusters, the right-aligned row's indent, and the columns its doors are
+// pressed on (moneydoor.go) are all arithmetic on what the plain string
+// measured. So a painted segment that measures one cell more than the text it
+// was measured as makes a row a cell wider than the frame — and the renderer
+// under us composes into a cell grid exactly the terminal's width, so what
+// happens is not a wrap but a QUIET CUT: the last cell of the row is dropped,
+// and `⠋ working · 10s` is drawn `⠋ working · 10`. The doors are meanwhile one
+// column left of where they are drawn.
 //
 // The state word is where that happened. It carries the turn's count-up clock,
 // [app.stateSegment] reads [app.now] to build it, and `now` is `time.Now()` in
@@ -2625,9 +2625,9 @@ func (a *app) telemetry(width int) []hudPart {
 	add(segAmbient, a.ambientSegment())
 	add(segYolo, a.approvalSegment())
 	// THE FACTS OFF THE LINE. The crew word, the session delta, the per-turn
-	// burn, the open count and the standing count are not drawn on the status
-	// row (foot.go's [groupOff]) — the phone sheet and /status still say all
-	// five, and this list is where both read.
+	// burn and the open count are not drawn on the status row (foot.go's
+	// [groupOff]) — the phone sheet and /status still say all four, and this
+	// list is where both read.
 	add(segCrew, a.crewSegment())
 	add(segDelta, a.deltaSegment())
 	add(segBurn, a.burnSegment())
@@ -2723,9 +2723,6 @@ func (a *app) paintPart(part hudPart) string {
 	if part.paint != "" {
 		return part.paint
 	}
-	// The standing count is not here any more: it is a line at the foot of the
-	// task column, and it is painted where it is drawn (task.go's
-	// [app.railStandingLine]).
 	switch part.kind {
 	case segCost:
 		// MONEY IS A DOOR AND A BOUND, and this is the only segment on the line
@@ -4093,25 +4090,20 @@ func (a *app) hintWord() string {
 	case a.spell.asking:
 		// THE EXPANSION IS OUT. The slot the chord was named in is where the
 		// spinner for it belongs — the person pressed a key at the end of this
-		// line and this is the line answering (spellout.go). It ranks above the two
-		// offers below because it is not an offer: it is something happening.
+		// line and this is the line answering (spellout.go). It ranks above the
+		// offer below because it is not an offer: it is something happening.
 		return a.spellWorkingWord()
 	case a.slashTagHint() != "":
-		// A LIVE TAG OWNS ENTER, so its line outranks the two optional chords
-		// below. A HINT MAY ONLY NAME A KEY THAT WORKS, and exactly one tag is the
+		// A LIVE TAG OWNS ENTER, so its line outranks the optional chord below.
+		// A HINT MAY ONLY NAME A KEY THAT WORKS, and exactly one tag is the
 		// only state where enter has the promised alternate meaning.
 		return a.slashTagHint()
 	case a.spellOffered():
 		// AND THE DRAFT LOOKS LIKE SOMETHING TO BUILD, with room left to say what
-		// it means, so the slot offers to spell it out (spellout.go). It ranks
-		// directly UNDER the standing hint because these two are the only lines
-		// here that are about the sentence being typed rather than about a state
-		// the surface is in — but the sharing itself is decided in
-		// [app.spellOffered], which answers no while the standing hint is up, so
-		// this ordering is a statement of the same rule and never a second one.
+		// it means, so the slot offers to spell it out (spellout.go).
 		//
-		// It costs no rows, for the reason the line above it costs none: this is
-		// the legend, which is on the frame in every state.
+		// It costs no rows: this is the legend, which is on the frame in every
+		// state.
 		return spellOutHint
 	case a.railAway && a.railAvail() && a.headHint() == "":
 		// THE COLUMN IS AWAY AND THIS SESSION HAS RUN SOMETHING (task.go's

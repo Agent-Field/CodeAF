@@ -1033,8 +1033,8 @@ func errandSentence(text string, chips []chip) string {
 // belongs to no project — and the honest answer there is the project THIS WINDOW
 // is in, because it is the only one this window can open anything in. A window
 // standing in no project at all falls through to the person's home directory,
-// which is where a machine-wide item's work runs
-// ([standing.Item.Workspace]).
+// which is where an automation that belongs to no project runs
+// ([automation.Automation.Workspace]).
 //
 // THE BUCKET AND THE WORKSPACE ALWAYS AGREE, and that is why they are answered
 // together rather than in two places. A folder promoted into one project's
@@ -1087,14 +1087,13 @@ func (a *app) errandWorkspaceOf(dir string) string {
 }
 
 // errandHomeDir is the `~` project: a reminder belongs to no repository, and
-// the person's own home directory is where a machine-wide item's work runs
-// ([standing.Item.Workspace] says the same). A process with no home directory
-// falls back to where it is standing, which is the last ABSOLUTE answer there
-// is — and the answer has to be absolute, because it is written into an item's
-// own `Workspace` and read back by another process with another working
-// directory. `.` would match only the items some other run had also written `.`
-// for, so it would lose the machine-wide ones ([standing.Store.ForWorkspace]
-// compares the two cleaned paths), and it would draw as a literal `.` where the
+// the person's own home directory is where an automation that belongs to no
+// project runs ([automation.Automation.Workspace] says the same). A process
+// with no home directory falls back to where it is standing, which is the last
+// ABSOLUTE answer there is — and the answer has to be absolute, because it is
+// written into an automation's own `Workspace` and read back by another process
+// with another working directory, the clock that runs it. `.` would name
+// wherever that process stands, and it would draw as a literal `.` where the
 // composer's line draws `~`.
 //
 // IT IS READ ONCE, AT `open`, AND HELD ON [app.errandHome]. The frame reaches
@@ -1529,7 +1528,7 @@ func (a *app) exchangePane(ex *homeExchange, width, room int, pal palette) []str
 	}
 	// The hit targets are rebuilt with the rows that carry them, and cleared
 	// first: a stale offer row is a click that promotes an exchange the frame
-	// no longer offers to promote ([standingCard.choiceRow] states the law).
+	// no longer offers to promote (hover.go states the law).
 	ex.offerAt, ex.askAt = -1, nil
 	var out []string
 	out = append(out, pal.bold(pal.ink(fit(homeAskHereWord, width))))
@@ -2126,11 +2125,10 @@ func exchangeHint(ex *homeExchange) string {
 			// row on the card: `c` says "I will take one of these, but not as it
 			// stands", and the sentence that follows is the correction.
 			//
-			// ITS WORD IS THE KEY TABLE'S OWN (questionkeys.go) and not this
-			// lane's, because a key spelled in two places is a key that means two
-			// things the first week one of them moves. On a standing card it is
-			// `change when or where`, which the card itself says on the row it
-			// settles into; here it is the one word every question spells it with.
+			// ITS WORD IS THE KEY TABLE'S OWN (questionkeys.go's
+			// [questionVerbWord]) and not this lane's, because a key spelled in
+			// two places is a key that means two things the first week one of
+			// them moves — an automation card's `Change…` included.
 			if verb, ok := questionVerbFor(questionCommentKey); ok {
 				parts = append(parts, verb.key+" "+questionVerbWord(*ex.ask, verb))
 			}

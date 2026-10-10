@@ -7,7 +7,7 @@ package main
 //
 // ───────────────────────────────────────────────────────────────────────────
 // MERGE NOTE (lane errand). Everything in this file is new, and the only line
-// this lane added outside it is the `Errand:` / `StandingRoot:` pair in
+// this lane added outside it is the `Errand:` / `ErrandsRoot:` pair in
 // chatv3.go's tui3.Options literal. If that literal has moved under another
 // lane, the pair is the whole of what has to be carried across.
 // ───────────────────────────────────────────────────────────────────────────
@@ -16,7 +16,7 @@ package main
 // session folder in THIS project's bucket and hands back where it put it, which
 // is exactly the thing an errand must not have: a folder under v3/projects is a
 // row on home, and asking from home exists so that an errand is not one. So the
-// surface names the folder — under the standing root, where nothing scans — and
+// surface names the folder — under the errands root, where nothing scans — and
 // this points the same config at it. The model, the roles, the rail and the
 // gate are all properties of the LAUNCH and are inherited unchanged; the gate is
 // re-read AS IT STANDS NOW for the reason chatv3_approval.go gives.
@@ -71,10 +71,10 @@ func v3Errand(cfg session.Config, workspace, profileDir string, yolo bool) func(
 			fresh.SpendRailUSD = orders.CapUSD
 		}
 		// ── lane time ── AND IT SAYS WHAT IT IS. An exchange is a pane that
-		// closes with home, not a room somebody sits in, so it is never a
-		// steering target for a standing item that fires (internal/session's
-		// standing_run.go). Its own card still ratifies: that goes through the
-		// agent the surface is holding and not through the live registry.
+		// closes with home, not a room somebody sits in, so it is never counted
+		// as a live window (internal/session's livesessions.go). Its own card
+		// still ratifies: that goes through the agent the surface is holding and
+		// not through the live registry.
 		fresh.Errand = true
 		// A BORROWED PLACE ON A FOLDER NOBODY BORROWED IT FOR. The exchange is
 		// not owned — it has no work/ of its own and litters nothing, because it

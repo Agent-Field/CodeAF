@@ -1908,18 +1908,16 @@ type Config struct {
 
 	// Effort is the rung this session was HANDED — the work's own rung, filling
 	// the ladder's task scope. It is set on a child: a task worker gets the
-	// task's rung, a standing firing gets the item's. EMPTY IS THE HONEST
-	// DEFAULT and means nobody set one for this piece of work, which is every
-	// conversation a person opens themselves.
+	// task's rung. EMPTY IS THE HONEST DEFAULT and means nobody set one for this
+	// piece of work, which is every conversation a person opens themselves.
 	Effort effort.Rung
 
 	// EffortRole is what this session is FOR, and it is the rung of last resort
-	// before the install's default: a standing firing and its checks stay cheap
-	// however deep the install is dialled, and an errand asks for nothing at
-	// all. THE ZERO VALUE IS NOT A ROLE and falls through to DefaultEffort,
-	// which is the right answer for a caller that has not thought about it — a
-	// headless --once, a test — because it is the same answer a person's own
-	// conversation gets.
+	// before the install's default: an errand asks for nothing at all, and a
+	// task worker on the bash belt starts low. THE ZERO VALUE IS NOT A ROLE and
+	// falls through to DefaultEffort, which is the right answer for a caller
+	// that has not thought about it — a headless --once, a test — because it is
+	// the same answer a person's own conversation gets.
 	EffortRole effort.Role
 
 	// DefaultEffort is the install's `effort` row, read by the door
@@ -2094,17 +2092,15 @@ type Config struct {
 	// sits in. It is a conversation in every other way — a real model, a real
 	// transcript, a card it can answer — so InTask would be a lie about it.
 	//
-	// IT CHANGES EXACTLY ONE THING: an errand is never registered as a live
-	// delivery target (standing_run.go). A firing steered into an exchange is
-	// news typed into a forty-cell pane that closes with home, and the person
-	// sitting in an ordinary conversation in the same window is never told —
-	// which is what happened the first time a reminder made from home ever
-	// fired.
+	// IT TAKES THE EXCHANGE OUT OF WHAT BELONGS TO THE ROOM A PERSON SITS IN. A
+	// forty-cell pane that closes with home is not that room, so an errand never
+	// registers as a live window ([registerLiveSession]), and the typing probe,
+	// the newer-build notice, the launch's and the day's limits and a steward
+	// are none of its business either.
 	//
-	// Ratifying the exchange's OWN card is untouched by this, and the two are
-	// separate lanes on purpose: a card is answered through the agent the
-	// surface is holding ([Agent.ResolveStanding]), never through the registry,
-	// so an exchange still proposes and still hears yes.
+	// Ratifying the exchange's OWN card is untouched by this: a card is answered
+	// through the agent the surface is holding ([Agent.ResolveAutomation]), never
+	// through the registry, so an exchange still proposes and still hears yes.
 	Errand bool
 
 	// roomThread says this agent is a node somebody TALKS TO rather than a
@@ -2172,10 +2168,10 @@ type Config struct {
 	fixesDir string
 	// droppings is THE FAMILY'S SESSION FOLDER, carried by an agent that has no
 	// folder of its own: a task node's worker, a part's worker under that one, a
-	// fork's hand, an adaptive run's child, an auditor, a standing probe. It is
-	// read in exactly one place ([Config.droppingsPlace]) and answers exactly one
-	// question — where a job log or a stubbed tool result lands (landing.go
-	// states the law and the failure that wrote it).
+	// fork's hand, an adaptive run's child, an auditor. It is read in exactly
+	// one place ([Config.droppingsPlace]) and answers exactly one question —
+	// where a job log or a stubbed tool result lands (landing.go states the law
+	// and the failure that wrote it).
 	//
 	// IT IS NOT Place UNDER A SECOND NAME, and the distinction is the whole point.
 	// Setting Place on a worker would make the worker a SESSION: it would stamp
@@ -2927,19 +2923,17 @@ type Agent struct {
 	// ([Agent.landVolatileLocked]), and no longer in message[0], because it
 	// moves every time a delta lands and message[0] is in front of everything.
 	cardText string
-	// standingText is the <standing> block message[0] currently carries
-	// (standing_world.go): the orders the person holds over this conversation,
-	// which the model must work within. It sits under mu beside the three blocks
-	// below for their reason, and it is re-rendered at the start of every turn —
-	// an unchanged set renders the same bytes, so a conversation whose orders
-	// have not moved leaves message[0] exactly as the provider cached it.
+	// standingText was the <standing> block message[0] carried while standing
+	// orders existed. Nothing in this build sets it, so it renders nothing: what
+	// the person holds over a conversation now is the rules below.
 	standingText string
 	// alwaysText is the <always> block message[0] currently carries
 	// (memory_always.go): the person's rules over this place, read from the
-	// memory store at the start of every turn beside the standing orders and for
-	// their reason. A read that fails keeps the last block it had, because a
-	// rule the model was working under a turn ago has not stopped holding
-	// because a disk was busy.
+	// memory store at the start of every turn. An unchanged set renders the same
+	// bytes, so a conversation whose rules have not moved leaves message[0]
+	// exactly as the provider cached it. A read that fails keeps the last block
+	// it had, because a rule the model was working under a turn ago has not
+	// stopped holding because a disk was busy.
 	alwaysText string
 	// placesText is the `# Attached folders` block message[0] currently carries
 	// (placescontext.go): the folders the PERSON attached to this conversation,
@@ -2965,8 +2959,8 @@ type Agent struct {
 	// ([Agent.refreshSystemLocked] holds the whole argument).
 	//
 	// systemHead is everything in message[0] AHEAD of the record — the base
-	// prompt, the attached folders, the standing orders — as it was last
-	// rendered, and it is the whole of how that moment is recognised.
+	// prompt, the attached folders, the rules — as it was last rendered, and it
+	// is the whole of how that moment is recognised.
 	recordText  string
 	recordShown string
 	systemHead  string
@@ -3534,20 +3528,13 @@ type Agent struct {
 	// it: a node's most important event lands minutes after the turn that
 	// proposed it ended, when there is no hub to send it to.
 	taskWatchers []*eventStream
-	// standingNews is what fired while this window was SHUT, waiting for a
-	// reader ([Agent.drainStandingInbox]). It is a queue and not a send because
-	// the fold is built inside New — before the caller holds the agent, before
-	// any surface has subscribed to anything — so a send there would go to an
-	// empty list of watchers and the person would open a conversation with news
-	// in it and see nothing. The first [Agent.TaskUpdates] takes it.
+	// standingNews was the queue of what standing orders fired while this
+	// window was SHUT, folded inside New before any surface had subscribed.
+	// Nothing in this build queues to it; the first [Agent.TaskUpdates] still
+	// takes whatever it holds, which is nothing.
 	standingNews []Event
-	// standingHeld are the staged standing-inbox files a live, unsettled fold
-	// already owns, keyed by the staged file's path ([standing.DrainFile.Path]).
-	// A drain hands a file over; until the fold it fed is durably journaled and
-	// the file acknowledged, a repeat drain — construction and every surface
-	// attach both ask ([Agent.WatchTaskUpdates]) — must NOT queue the same notes
-	// again or acknowledge a file another fold is still waiting to retire. A
-	// path leaves this map when its acknowledgement runs.
+	// standingHeld was the set of staged standing-inbox files a live fold
+	// owned. Nothing in this build reads or writes it.
 	standingHeld map[string]bool
 	// jobRows is the roster id minted for each background job, keyed by the
 	// registry's own number for it. The two numberings are separate counters and

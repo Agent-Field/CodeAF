@@ -1349,9 +1349,9 @@ func (f *feed) reserveResponseContinuation() {
 //
 // IT ASKS ABOUT THE LAST ENTRY AND NEVER ABOUT THE WHOLE TRANSCRIPT. Anything at
 // all landing in between — an answer, a tool call, another note — puts the
-// repeat in a new place, where it is news again: "nothing stands here yet" under
-// the reply that just talked about standing orders is a different sentence from
-// the one four lines up, and a transcript that swallowed it would be answering a
+// repeat in a new place, where it is news again: "nothing made yet." under the
+// reply that just talked about making files is a different sentence from the
+// one four lines up, and a transcript that swallowed it would be answering a
 // deliberate command with silence.
 func (f *feed) note(text string) { f.noteWritten(text, false, nil) }
 

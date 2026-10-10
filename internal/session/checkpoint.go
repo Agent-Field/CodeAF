@@ -3121,9 +3121,9 @@ func (a *Agent) checkpointSettle(ctx context.Context, hub *eventHub, turn *Usage
 //     exactly the reader an unattended ending needs, so it takes the same road as
 //     a watched conversation.
 //   - AND NOT A LINE THE SESSION WROTE THAT NOBODY OWES AN ANSWER FOR. An ambient
-//     note — a standing run's own instruction, a delta nobody has to reply to — is
-//     the session talking to itself, and ending one of those with a task would be
-//     the session spending money on its own sentence.
+//     note — a delta nobody has to reply to — is the session talking to itself,
+//     and ending one of those with a task would be the session spending money on
+//     its own sentence.
 //   - AND NOT MID-INTERRUPT. A turn the person has just stopped is a turn they
 //     have said they do not want; moving its remains onto the rail would be
 //     answering an interrupt with a task.

@@ -267,9 +267,10 @@ func tierWordShed(word string) string {
 }
 
 // tierYourCallWord is the word a your-call row wears, for the few rows on this
-// surface that are NOT reading a [session.TaskStatus] — home's standing items
-// and the news lines under them, which are the same fact about a different
-// object: the machine has done what it can and somebody has to say something.
+// surface that are NOT reading a [session.TaskStatus] — the tasks page's heading
+// over that tier, and the line home's needs panel opens with
+// ([needsYourCallLead]) — which carry the same fact: the machine has done what
+// it can and somebody has to say something.
 //
 // IT IS THE ENGINE'S SPELLING AND NOT A SECOND ONE. internal/session keeps the
 // word unexported because no engine caller needs it, so it is written here once

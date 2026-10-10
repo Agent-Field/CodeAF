@@ -13,13 +13,14 @@ import (
 
 // leftPanel is `since you left` (docs/design/home-mission-control/DESIGN.md §1,
 // §3 P3): what happened on its own while nobody was looking, newest first — a
-// line per task that landed, a line per file a conversation made, the watches
-// that fired and what memory learned. The heading carries how long the person
-// was away, measured from the look stamp.
+// line per task that landed, a line per file a conversation made, the
+// automations that ran and what memory learned. The heading carries how long
+// the person was away, measured from the look stamp.
 //
 // EVERY LINE IS A DOOR (SCREEN 1a). A task opens its record, a file opens
-// itself, a firing opens standing and memory's line opens memory — the switcher's
-// own ledger rows ([switcherReading.addLedger]), each carrying its door.
+// itself, an automation's run opens automations and memory's line opens memory
+// — the switcher's own ledger rows ([switcherReading.addLedger]), each carrying
+// its door.
 type leftPanel struct{ homePanelBase }
 
 // SAID ONCE ACROSS THE COLUMNS. A landing whose check is still the person's is
@@ -79,7 +80,7 @@ func taskLedgerKey(task session.TaskIndexEntry) string {
 }
 
 // leftKey is a ledger line's identity beside its place word ([homeLine.sameRow]):
-// the task, the file, or — for a firing or memory's line — its words.
+// the task, the file, or — for an automation's run or memory's line — its words.
 func leftKey(row switcherRow) string {
 	switch {
 	case row.task != nil:

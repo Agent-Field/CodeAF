@@ -554,7 +554,7 @@ func (a *app) landTakeover(transcript string) {
 	}
 	// A ROW THAT IS WAITING ON A PERSON IS NOT ASKED ABOUT MOVING FIRST. The
 	// row under the cursor may be stopped on a question of its own — the
-	// model's, a consent, a standing card — and home draws that question's
+	// model's, a consent, an automation card — and home draws that question's
 	// answers on the row's own keys (homeband_answer.go). Those answers are
 	// what wants somebody, and the move is one enter away as it always was;
 	// raising the move card here would put its `1 move it here` over the row's

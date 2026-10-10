@@ -116,8 +116,8 @@ func (a *app) statusItems() []deckItem {
 	}
 	// phone lane: `keeping watch` used to be added HERE and nowhere else, which
 	// made it the one fact /status carried that the phone's own sheet did not —
-	// on the tier where every other fact had moved into that sheet. It is part of
-	// [app.deckItems] now, so both surfaces say it and neither says it twice.
+	// on the tier where every other fact had moved into that sheet. It moved into
+	// [app.deckItems], and then went with standing orders.
 	// THE BUILD IS A LOOKUP FACT, NOT LIVE TELEMETRY. It stays off the bottom
 	// row and phone sheet, where an immutable revision would spend a row all
 	// session, and appears here whole when a person asks which codeaf is

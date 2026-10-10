@@ -25,9 +25,9 @@ const KeyAPIKey = "api_key"
 const APIKeyEnv = "OPENROUTER_API_KEY"
 
 // PersistedAPIKey reads the api_key stored in the profile config file. It is
-// the durable rung of Load's key resolution: a timer-driven `codeaf wake` runs
-// with no shell environment, so the profile file is the only place a key can
-// survive to reach it.
+// the durable rung of Load's key resolution: a key pasted into the first-run
+// setup is kept there, where a process that never saw the shell environment
+// that set a variable can still find one.
 func PersistedAPIKey(profileDir string) string {
 	values, err := readProfileConfig(profileDir)
 	if err != nil {

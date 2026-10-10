@@ -42,17 +42,14 @@ const (
 	// thought about would be an odd thing to spend on titling it.
 	RoleErrand Role = "errand"
 
-	// RoleStanding is one firing of a standing item, running unattended. It
-	// carries no floor of its own: what keeps a firing from inheriting a depth
-	// nobody meant it to have is that the conversation's dial does not reach it
-	// (see [roleFloor]).
+	// RoleStanding was one firing of a standing item, running unattended. No
+	// call names it now: an automation's run is the person's own conversation
+	// done later, on the [RoleChat] seat (internal/session's automation_run.go).
 	RoleStanding Role = "standing"
 
-	// RoleSentinel is the yes-or-no in front of a firing: has the thing the
-	// person asked about happened? It is a judgment on evidence already
-	// gathered and it runs on every check of every item forever — so the item's
-	// own rung is the only thing that ever asks it to think, and an item that
-	// asked for nothing sends nothing.
+	// RoleSentinel was the yes-or-no in front of a firing. No call names it now
+	// either: an automation watch's judgment never asks this ladder for a rung
+	// (internal/session's automation_run.go).
 	RoleSentinel Role = "sentinel"
 )
 
@@ -72,9 +69,9 @@ const (
 // every item, to models whose own defaults it knew nothing about; and it was a
 // floor rather than a cap, so on a model that thinks less than "low" by default
 // it bought deliberation nobody wanted. The half of it that was worth keeping
-// is kept where it belongs and by a different mechanism: a standing run does
-// not inherit the conversation's dial at all (internal/session's standing_run.go
-// sets DefaultEffort to None), so the only rung that reaches a firing is the one
+// was kept by a different mechanism: a standing run did not inherit the
+// conversation's dial at all (internal/session's standing_run.go set
+// DefaultEffort to None), so the only rung that reached a firing was the one
 // written on the item's own card.
 //
 // ERRAND STAYS, and it is the one entry that is not a choice about depth: [None]
@@ -107,7 +104,7 @@ type Scope struct {
 	Conversation Rung
 
 	// Task is the rung set on the piece of work this call belongs to
-	// (the task checkpoint's `effort`, a standing item's `does.effort`).
+	// (the task checkpoint's `effort`).
 	Task Rung
 
 	// Role is what the call is for. It decides nothing when a scope above it

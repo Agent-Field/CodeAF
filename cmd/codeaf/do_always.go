@@ -13,8 +13,7 @@ import (
 //
 // IT OPENS THE STORE FOR THE READ AND CLOSES IT AFTER. A headless run holds no
 // brain of its own, and one read at the start of the run is the whole of what it
-// needs from one: the rules are a birth fact of the run, read once, the way the
-// standing section beside them is.
+// needs from one: the rules are a birth fact of the run, read once.
 //
 // MEMORY OFF IS RULES OFF, and a store that will not open is no section either,
 // which is the same emptiness law every other birth section reads: a run with no

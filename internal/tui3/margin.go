@@ -140,7 +140,8 @@ func (a *app) marginHead(width int, hasTasks bool) []railLine {
 }
 
 // marginRows is everything the column draws UNDER this conversation's work: the
-// tasks section's own door, then the standing section, then the jobs section.
+// tasks section's own door, then the automations section, then the jobs
+// section.
 //
 // The blank line between sections is the separation this surface always uses —
 // whitespace, never a rule, which is the design law a border would break — and
@@ -151,10 +152,10 @@ func (a *app) marginHead(width int, hasTasks bool) []railLine {
 // height out of the column before the roster's window is measured), so it is
 // asked how many rows it may have and it answers with a block that fits. What it
 // gives up under pressure is stated by [marginStandFit] and [marginJobsFit]:
-// standing orders go first, one at a time, and jobs keep every running one and
-// count the history they could not fit. Live work is reserved before standing
-// spends ([app.jobSectionMin]), which is the same trade the roster's own live
-// head makes.
+// automations go first, one at a time, and jobs keep every running one and
+// count the history they could not fit. Live work is reserved before the
+// automations spend ([app.jobSectionMin]), which is the same trade the roster's
+// own live head makes.
 func (a *app) marginRows(width, room int) []railLine {
 	if room < 1 {
 		return nil
@@ -211,20 +212,21 @@ const railWorkFloor = 6
 //
 // THE FLOOR COMES OUT FIRST AND THE BLOCK LIVES ON WHAT IS ABOVE IT. A roster
 // with nothing in it lends the whole column, which is why a fresh session still
-// draws both doors and every order over it; a roster with two hundred lines in it
-// lends whatever is over [railWorkFloor], and the block spends that in the order
-// [marginStandFit] and [marginJobsFit] state.
+// draws both doors and every automation it set up; a roster with two hundred
+// lines in it lends whatever is over [railWorkFloor], and the block spends that
+// in the order [marginStandFit] and [marginJobsFit] state.
 func marginRoomFor(avail, work int) int { return max(0, avail-min(work, railWorkFloor)) }
 
-// marginStandFit is how many orders the standing section draws in the rows it has
-// been given, and it is the whole of what this column gives up when it is short.
+// marginStandFit is how many automations the automations section draws in the
+// rows it has been given, and it is the whole of what this column gives up when
+// it is short.
 //
-// [marginStandCost] IS WHAT THE BLOCK SPENDS BEFORE ITS FIRST ORDER, so what is
-// left over is what the orders get. A section that cannot show one order shows
-// none at all (see [app.marginRows]).
+// [marginStandCost] IS WHAT THE BLOCK SPENDS BEFORE ITS FIRST AUTOMATION, so
+// what is left over is what the automations get. A section that cannot show one
+// shows none at all (see [app.marginRows]).
 //
 // AND IT NEVER TAKES MORE THAN [marginStandMax], however tall the frame is. The
-// column is a glance at what governs this conversation and not the list of it:
+// column is a glance at what this conversation set up and not the list of it:
 // past a handful the rows stop being read one by one, and the list a person wants
 // then is the page the door beneath them types the command for. The rest are
 // counted on the label rather than dropped in silence.
@@ -254,11 +256,11 @@ func marginJobsFit(settled, room, live int) int {
 	return left - 1
 }
 
-// marginStandHead is the standing section's label, with the count of the orders
-// this column could not fit riding on it.
+// marginStandHead is the automations section's label, with the count of the
+// automations this column could not fit riding on it.
 //
-//	standing              every order it has is on screen
-//	standing · 7 more     and the shape when they are not
+//	automations              every one it has is on screen
+//	automations · 7 more     and the shape when they are not
 //
 // IT IS THE TASKS LABEL'S OWN SHAPE (`tasks · 3 working`, [app.marginHead]): one
 // vocabulary for the two sections of one column, the figure in the data ink and
@@ -278,8 +280,8 @@ func (a *app) marginStandHead(width, hidden int) string {
 	return a.pal.dim(fit(marginStandWord, room)+" · ") + a.pal.data(itoa(hidden)) + a.pal.dim(tail)
 }
 
-// marginDoorLine is one of the column's two doors — `+ /task` and `+ /standing`
-// — as it is drawn.
+// marginDoorLine is one of the column's two doors — `+ /task` and
+// `+ /automations` — as it is drawn.
 //
 // THE `+` IS THE CONTROL AND THE WORDS ARE THE LABEL, which is the same split
 // the standing column's own door already makes ([app.railDoorLine]): the chord

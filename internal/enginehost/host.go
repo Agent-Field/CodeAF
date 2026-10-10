@@ -47,15 +47,12 @@ var ErrHostRunning = errors.New("engine host: another host already holds this wo
 // there is nothing to be the host of, so it exits and the next `codeaf engine`
 // starts a new one — which costs one process spawn and is invisible.
 //
-// THIS DOES NOT PUT THE AMBIENT SIDE TO SLEEP, and that is the one interaction
-// worth stating. Standing items are not held by this process: a firing runs
-// inside whichever process holds the store's tick lock — any live window, or
-// the operating system's timer running `codeaf tick` with nobody sitting
-// anywhere (cmd/codeaf's chatv3_standing.go states that law). A host that exits
-// hands the tick back to that timer exactly as a closed terminal does. So the
-// two lifetimes are deliberately NOT married: standing work already keeps a
-// machine warm on its own terms, and a host that stayed up forever to guard it
-// would be a second answer to a question that already has one.
+// AND THE AUTOMATIONS CLOCK IS NOT MARRIED TO IT, which is the one interaction
+// worth stating. Automations run in `codeaf clock` while a window is open
+// (cmd/codeaf's chatv3_clock.go), and this process's only part in that is to
+// count an attached window as open for as long as it stays attached
+// (internal/remote's automations.go). A host with nobody attached holds no
+// window, so whether it stays up or leaves changes nothing the clock counts.
 // sessionIdle is a var rather than a const so a test can ask what the policy
 // DECIDES without waiting half an hour to find out. Nothing in the product
 // writes it.
@@ -302,8 +299,8 @@ func (h *Host) attach(conn net.Conn) {
 		},
 	}); err != nil {
 		// A host has no terminal and no person to tell, so a broken connection
-		// goes to a file an operator can read afterwards — the same destination
-		// and the same reason the standing pass's failures have.
+		// goes to a file an operator can read afterwards — the destination, and
+		// the reason, the automations clock's failures have too.
 		h.note("connection: " + err.Error())
 	}
 }

@@ -126,7 +126,7 @@ Nothing else. No preamble, no closing line, no headings, no bold, no code fences
 
 // SpellOut expands one draft into the block the surface draws under the box.
 //
-// It is a door beside [Agent.SubmitStanding] rather than a flag on one, because
+// It is a door beside [Agent.Submit] rather than a flag on it, because
 // the two are not the same kind of thing at all: that one SENDS a message, and
 // this one sends nothing — no turn starts, no transcript grows, and the person
 // may well throw the answer away. It is an optional door for that reason too,

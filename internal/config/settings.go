@@ -1507,8 +1507,8 @@ type Setting struct {
 	// the completeness test can tell them apart.
 	Unit string
 
-	// UnitOne is [Setting.Unit] at exactly one — `1 clean firing` rather than
-	// `1 clean firings`. Empty means the unit reads the same at every number,
+	// UnitOne is [Setting.Unit] at exactly one — `1 level` rather than
+	// `1 levels`. Empty means the unit reads the same at every number,
 	// which is true of every symbol and of `tok`, `MB` and `per core`.
 	UnitOne string
 

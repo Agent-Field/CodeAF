@@ -232,7 +232,7 @@ type MemoryOrigin struct {
 // does not have (cmd/codeaf's [v3Brain] satisfies both by construction).
 //
 // NIL IS MEMORY OFF ON THAT MACHINE, and it is answered as a refusal rather than
-// as an empty store — the same reading [Engine.World] and [Engine.StandingItems]
+// as an empty store — the same reading [Engine.World] and [Engine.Automations]
 // already ask for. The surface keeps the difference, because "that machine
 // remembers nothing" and "that machine is not remembering" are two sentences and
 // only one of them is about a setting.

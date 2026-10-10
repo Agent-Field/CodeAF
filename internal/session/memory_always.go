@@ -22,7 +22,7 @@ package session
 // nobody could prove the identity of — keeps its rules for the person, and the
 // receipt says so rather than letting the reach be a surprise.
 //
-// A RULE IS READ WHERE WORK IS BORN, with the standing orders it replaces:
+// A RULE IS READ WHERE WORK IS BORN, where the standing orders it replaces were:
 //
 //   - a conversation's message[0], at the start of every turn ([Agent.refreshAlwaysLocked]);
 //   - a task node's brief, once per frontier pass ([TaskGraph.alwaysWorld]);
@@ -201,8 +201,7 @@ func (a *Agent) refreshAlwaysLocked() {
 }
 
 // alwaysBlock is the <always> block message[0] carries, or "" when no rule
-// holds. It is tagged the way <memory> and <standing> are tagged, and joined on
-// the same way.
+// holds. It is tagged the way <memory> is tagged, and joined on the same way.
 func alwaysBlock(rules []store.Memory) string {
 	section := renderAlwaysRules(rules, "")
 	if section == "" {

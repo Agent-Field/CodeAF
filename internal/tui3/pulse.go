@@ -209,8 +209,8 @@ func (a *app) pulseParts(now time.Time, pal palette, mode pulseMode) pulseParts 
 		//
 		// AND IT IS THE DAY THE WHOLE MACHINE HAD, not this conversation's: every
 		// model call written down since midnight, wherever it was made — the chat
-		// in front of the person, a task running behind it, a standing order that
-		// fired at six.
+		// in front of the person, a task running behind it, an automation that
+		// ran at six.
 		//
 		// THE CEILING IS DRAWN ONLY WHERE THERE IS ONE. A machine with no
 		// allowance set has no denominator, and `$0.55 / ` with nothing after it
@@ -239,9 +239,9 @@ func (a *app) pulseParts(now time.Time, pal palette, mode pulseMode) pulseParts 
 	return p
 }
 
-// pulseClock is the day and the time, in the words this surface already uses
-// for both: a lowercase weekday, as a standing item's `mon 8am` is, and a
-// twelve-hour clock with its am or pm on it.
+// pulseClock is the day and the time: a lowercase weekday, as the surface's
+// relative times write one (internal/tui2's reltime), and a twelve-hour clock
+// with its am or pm on it.
 //
 // IT IS NEVER A BARE `9:41`. Half the hours of the day are ambiguous without
 // the suffix, and a dashboard whose clock could mean either of two times is a

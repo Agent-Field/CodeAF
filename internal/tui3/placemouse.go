@@ -90,8 +90,8 @@ func placeBodyLine(y, top, shown int) (int, bool) {
 // that fits on screen with the cursor still on screen.
 //
 // THE WINDOW FOLLOWS THE CURSOR AND IS NEVER SCROLLED ON ITS OWN. It is the
-// bargain the task page, home and the standing place all already struck, and it
-// is what makes the wheel and `↓` one gesture rather than two — a place with an
+// bargain the task page, home and the automations place all already struck, and
+// it is what makes the wheel and `↓` one gesture rather than two — a place with an
 // offset of its own would need a second key to bring the cursor back into view.
 // A body that fits whole has no window at all, which is the common case and
 // costs nothing.
