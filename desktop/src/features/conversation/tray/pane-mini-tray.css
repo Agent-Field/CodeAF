@@ -1,0 +1,5 @@
+/* Components C-SPLIT-4 keeps the question title monochrome; only its six-pixel mark asks for attention. */
+.pane-mini-tray { display: flex; align-items: center; gap: var(--space-compact); min-width: 0; height: var(--split-tray-height); padding: 0 var(--space-tight) 0 var(--space-row); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--sh-1); color: var(--ink); font-size: var(--type-label-size); }
+.pane-mini-tray-dot { flex: none; width: var(--mark-dot); height: var(--mark-dot); border-radius: var(--radius-pill); background: var(--amber); }
+.pane-mini-tray-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; font-weight: var(--type-label-strong); mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
+.button.pane-mini-tray-review { flex: none; height: var(--split-tray-button-height); min-height: var(--split-tray-button-height); padding: 0 var(--control-pad-ghost); border-radius: var(--radius-segment-item); color: var(--ink); font-size: var(--type-label-size); font-weight: var(--type-label-strong); }
