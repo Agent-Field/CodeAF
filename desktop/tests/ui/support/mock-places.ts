@@ -380,6 +380,28 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
     return mutation([receipt], get(id));
   }
 
+  /** Opening a folder makes a top-level place named after that folder, with the folder as its one source. The same folder again is the place already made. */
+  function fromFolder(body: Record<string, unknown>) {
+    checkRevision(body);
+    const raw = typeof body.path === 'string' ? body.path.trim() : '';
+    if (!raw.startsWith('/')) throw new Refusal(400, 'invalid_source', 'A folder needs its full path.');
+    const path = raw.replace(/\/+$/, '') || '/';
+    if (!disk.has(path)) throw new Refusal(404, 'invalid_source', 'That path doesn\'t exist.');
+    const existing = store.places.find(place => !place.archived && (place.sources[0]?.kind === 'folder' || place.sources[0]?.kind === 'repo') && place.sources[0]?.ref === path);
+    if (existing) return mutation([], existing);
+    const name = path.split('/').filter(Boolean).pop() ?? path;
+    if (siblingsTaken(name, [])) throw new Refusal(409, 'name_taken', 'Another place here already has that name.');
+    const id = nextId('pl');
+    const receipt = commit('place.create', id, () => {
+      store.places.push({
+        id, name, parents: [], tint: leastUsed(), archived: false, createdAt: now(),
+        instructions: '', policy: {},
+        sources: [{ id: nextId('src'), kind: 'folder', ref: path, label: name, addedBy: 'you', at: now(), check: { state: 'ok' } }],
+      });
+    });
+    return mutation([receipt], get(id));
+  }
+
   function update(id: string, body: Record<string, unknown>) {
     checkRevision(body);
     const place = must(id);
@@ -715,6 +737,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
       if (method !== 'POST') return json(route, { error: 'method not allowed' }, 405);
       if (!id) return json(route, create(body));
       if (id === 'undo') return json(route, undo(body));
+      if (id === 'from-folder') return json(route, fromFolder(body));
       if (id === 'rail') {
         checkRevision(body);
         const placeId = String(body.place ?? '');
