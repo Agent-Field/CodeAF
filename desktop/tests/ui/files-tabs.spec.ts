@@ -114,7 +114,8 @@ test('the Open in menu shows the copy-path key and the key copies the path of th
   await openWithDiff(page);
   await openDiffTab(page);
   await page.locator('.file-head').getByRole('button', { name: 'Open in' }).click();
-  await expect(page.getByRole('menuitem', { name: /^Copy path/ })).toContainText(/(⌘ ?⇧ ?C|Ctrl ?Shift ?C)/);
+  // Kbd spelling (C-CTRL-14): glyphs run together on a Mac (⌘⇧C); words join with "+" elsewhere (Ctrl+Shift+C).
+  await expect(page.getByRole('menuitem', { name: /^Copy path/ })).toContainText(/(⌘⇧C|Ctrl\+Shift\+C)/);
   await page.keyboard.press('Escape');
   if (browserName === 'chromium') {
     await page.keyboard.press('Control+Shift+C');
