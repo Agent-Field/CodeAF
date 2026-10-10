@@ -1,0 +1,33 @@
+/* Decided automatically on a place Home (Decisions 12a). The row is content-box, as drawn:
+   min-height 40px plus 4px/12px padding, so the border box is 48px. Colour stays off the words. */
+
+.decided { display: flex; flex-direction: column; gap: var(--i2-decided-section-gap); }
+.decided-head { display: flex; align-items: center; min-width: 0; }
+.decided-all.button { margin-left: auto; min-height: 0; padding: 0; border-radius: var(--radius-xs); background: transparent; color: var(--i2-decided-all-color); font-size: var(--i2-decided-all-size); font-weight: var(--font-weight-regular); line-height: normal; }
+.decided-all.button:hover:not(:disabled) { background: var(--i2-decided-hover); color: var(--i2-decided-all-color); }
+.decided-all.button:active:not(:disabled) { background: var(--i2-decided-press); color: var(--i2-decided-all-color); transition-duration: var(--dur-press); }
+
+.decided-list { display: flex; flex-direction: column; margin: var(--i2-decided-list-margin); padding: 0; list-style: none; }
+.decided-row { position: relative; display: flex; list-style: none; }
+
+/* The button is the grid, so the fill, the radius and the keyboard ring are one control.
+   The app's border-box reset would fold the 4px padding into the 40px minimum and
+   draw a 40px row. 12a is content-box: width auto fills the list, and the border box
+   stays 48px. width 100% would add the padding on top of the list and spill. */
+.decided-main.button { box-sizing: content-box; display: grid; grid-template-columns: var(--i2-decided-row-columns); gap: var(--i2-decided-row-gap); align-items: center; flex: 1 1 auto; width: auto; min-width: 0; min-height: var(--i2-decided-row-min-height); padding: var(--i2-decided-row-pad); border-radius: var(--i2-decided-row-radius); background: transparent; color: var(--ink); font-size: var(--i2-decided-title-size); font-weight: var(--font-weight-regular); line-height: normal; text-align: left; white-space: normal; transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.decided-main.button:hover:not(:disabled), .decided-main[data-force="hover"] { background: var(--i2-decided-hover); color: var(--ink); }
+.decided-main.button:active:not(:disabled), .decided-main[data-force="pressed"] { background: var(--i2-decided-press); color: var(--ink); transition-duration: var(--dur-press); }
+.decided-main[data-force="focus"] { box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
+
+.decided-check { display: grid; place-items: center; color: var(--i2-decided-check-color); }
+.decided-text { display: flex; flex-direction: column; min-width: 0; }
+.decided-title, .decided-sub { min-width: 0; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to right, black calc(100% - var(--i2-decided-text-fade)), transparent); }
+.decided-sub { font-size: var(--i2-decided-sub-size); color: var(--i2-decided-sub-color); }
+.decided-age { font-size: var(--i2-decided-age-size); color: var(--i2-decided-age-color); white-space: nowrap; }
+
+/* Why? sits under the row that opened it. The paper is this card; renderWhy replaces only the body (DEC-4). */
+.decided-why { box-sizing: content-box; position: absolute; z-index: var(--z-overlay); top: 100%; left: 0; width: var(--i2-decided-why-width); max-width: 100%; margin-top: var(--i2-decided-why-offset); padding: var(--i2-decided-why-pad); border-radius: var(--i2-decided-why-radius); background: var(--surface); color: var(--ink); box-shadow: var(--i2-decided-why-shadow); display: flex; flex-direction: column; gap: var(--i2-decided-why-gap); animation: popover-enter var(--dur-fast) var(--ease); transform-origin: top left; }
+.decided-why-title { font-size: var(--i2-decided-why-title-size); font-weight: var(--i2-decided-why-title-weight); line-height: normal; }
+.decided-why-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--i2-decided-why-grid-gap); font-size: var(--i2-decided-why-body-size); line-height: normal; }
+.decided-why-key { color: var(--i2-decided-why-key-color); }
+@media (prefers-reduced-motion: reduce) { .decided-why { animation: none; } }
