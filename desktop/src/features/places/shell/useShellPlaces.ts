@@ -34,7 +34,7 @@ export function railActions(shell: PlacesShell): PlaceRailActions {
   };
 }
 
-type RailInputs = Pick<PlaceRailProps, 'inert' | 'peeking' | 'onToggle' | 'appItems'> & {
+type RailInputs = Pick<PlaceRailProps, 'inert' | 'peeking' | 'onToggle' | 'settings' | 'designSystem'> & {
   /** True while the workspace page is showing (the rail's place rows then read as open). */
   onWorkspace: boolean;
   /** The focused Home tab's place (`root` for All places). */
