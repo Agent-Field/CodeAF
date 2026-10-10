@@ -55,7 +55,7 @@ export function WorkStepView({ step, shimmer, open, onToggle, now, ...render }: 
         <Icon name="chevron" size="xs" motion="disclosure" />
         <StepLead state={state} />
         {isSettled(state) && <Icon name={categoryIcon(step.category)} size="xs" />}
-        <span className={shimmer ? 'work-step-title thinking-shimmer' : 'work-step-title'}>{step.title}</span>
+        <span className="work-step-title" data-shimmer={shimmer && state === 'running' || undefined}>{step.title}</span>
         <StepTail state={state} time={time} decision={step.calls.length === 1 ? step.calls[0].decision : undefined} />
       </Button>
       {caption && <span className="work-step-caption">{caption}</span>}
