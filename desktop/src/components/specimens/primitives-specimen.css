@@ -1,0 +1,13 @@
+/* Layout for the Shared primitives board. The controls keep their own paint. */
+.primitives-specimen { display: flex; flex-direction: column; gap: var(--primitives-specimen-gap); min-width: 0; color: var(--ink); font: var(--type-label-weight) var(--type-label-size)/var(--type-label-leading) var(--sans); }
+.primitives-specimen p { margin: 0; color: var(--ink-2); }
+.primitives-specimen-group { display: flex; flex-direction: column; gap: var(--primitives-specimen-row-gap); min-width: 0; }
+.primitives-specimen-label { font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); color: var(--ink-2); }
+.primitives-specimen-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--primitives-specimen-row-gap); min-width: 0; }
+.primitives-specimen-narrow { width: min(100%, var(--primitives-specimen-narrow)); max-width: var(--primitives-specimen-narrow); min-width: 0; }
+.primitives-specimen-field { flex: 1 1 var(--primitives-specimen-narrow); max-width: var(--primitives-specimen-narrow); min-width: 0; }
+.primitives-specimen-field .search-field { width: 100%; }
+.primitives-specimen .toast { max-width: 100%; min-width: var(--toast-zero); }
+.primitives-specimen-swatch, .primitives-specimen-motion, .primitives-specimen-stop { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--ink-2); }
+.primitives-specimen-ink { color: var(--ink); }
+.primitives-specimen-accent { color: var(--accent); }
