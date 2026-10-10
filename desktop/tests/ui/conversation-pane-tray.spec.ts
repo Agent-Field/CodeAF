@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { installMockEngine, type Scenario } from './support/mock-engine';
 import { pendingQuestion, plainReply } from './support/scenarios';
@@ -47,6 +48,22 @@ for (const scheme of ['light', 'dark'] as const) {
       await expect(card).toHaveCount(0);
       expect(engine.calls.filter(call => call.path.endsWith('/answer'))).toHaveLength(0);
     });
+
+    for (const width of [320, 600, 1200]) {
+      test(`CV-160: at ${width}px the card stays 38px, inside its pane, with no axe violations`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 800 });
+        const { pane } = await openSplit(page, pendingQuestion());
+        const card = pane.locator('.pane-mini-tray');
+        await expect(card).toBeVisible();
+        const [cardBox, paneBox] = await Promise.all([card.boundingBox(), pane.boundingBox()]);
+        expect(cardBox!.height).toBe(38);
+        expect(cardBox!.x).toBeGreaterThanOrEqual(paneBox!.x);
+        expect(cardBox!.x + cardBox!.width).toBeLessThanOrEqual(paneBox!.x + paneBox!.width);
+        await expect(card.getByRole('button', { name: 'Review' })).toBeVisible();
+        const result = await new AxeBuilder({ page }).include('.pane-mini-tray').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+        expect(result.violations.map(v => v.id)).toEqual([]);
+      });
+    }
 
     for (const withdrawn of [false, true]) {
       test(`CV-160: ${withdrawn ? 'withdrawn questions' : 'no questions'} leaves no mini-tray`, async ({ page }) => {
