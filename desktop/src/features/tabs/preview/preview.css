@@ -1,5 +1,5 @@
 /* The tab hover preview and the overview card (Shell 3k, Components "Tab hover preview · overview card"). Values are tokens. */
-.preview-card { display: flex; flex-direction: column; gap: var(--preview-card-gap); width: calc(var(--preview-card-width) + var(--preview-card-inline-padding) * 2); max-width: calc(100vw - var(--space-6)); padding: var(--preview-card-pad); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--sh-2); color: var(--ink); font-family: var(--sans); text-align: left; }
+.preview-card { display: flex; flex-direction: column; gap: var(--preview-card-gap); width: calc(var(--preview-card-width) + var(--preview-card-inline-padding) * 2); max-width: min(calc(var(--preview-card-width) + var(--preview-card-inline-padding) * 2), calc(100vw - var(--preview-collision-padding) * 2)); padding: var(--preview-card-pad); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--sh-2); color: var(--ink); font-family: var(--sans); text-align: left; }
 .preview-head { display: flex; align-items: center; gap: var(--preview-head-gap); font-size: var(--type-caption-size); color: var(--ink-3); }
 .preview-kind { flex: none; }
 .preview-state { display: flex; align-items: center; gap: var(--preview-count-gap); min-width: 0; margin-left: auto; font-family: inherit; }
@@ -37,6 +37,12 @@
 .tab-preview[data-state="open"][data-swap] { animation: none; }
 .tab-preview[data-state="closed"] { animation: surface-exit var(--duration) var(--chrome-ease); }
 @media (prefers-reduced-motion: reduce) { .tab-preview[data-state] { animation: none; } }
+
+/* At the small breakpoint the card stays inside the window: at most the 300px column, and never wider than the viewport minus the collision padding on both sides. */
+@media (max-width: 600px) {
+  .tab-preview,
+  .preview-card { max-width: min(var(--preview-card-width), calc(100vw - var(--preview-collision-padding) * 2)); }
+}
 
 /* The6e small other-Place view note reuses the preview header typography. */
 .preview-context { font-size: var(--font-size-label); color: var(--ink-3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
