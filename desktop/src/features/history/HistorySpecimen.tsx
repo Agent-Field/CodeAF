@@ -1,5 +1,6 @@
 import { SectionHeading, Surface, Text } from '../../components/ui';
 import { ArchiveToast } from './ArchiveToast';
+import { DeleteConfirm } from './DeleteConfirm';
 import { HistoryRow } from './HistoryRow';
 import { BestMatchCard } from './SearchResults';
 import type { HistoryItem } from './types';
@@ -27,6 +28,8 @@ export function HistorySpecimen() {
     </div>
     <span className="history-specimen-label">Best match</span>
     <div className="history-specimen-best"><BestMatchCard best={{ item: rows[2].item, answer: 'Decided to keep strict mode as the default and fix it in the lexer', terms: ['lexer'] }} now={now} terms={['lexer']} onRecap={noop} onJump={noop} onContinue={noop}/></div>
+    <span className="history-specimen-label">Delete · inline confirm</span>
+    <div className="history-specimen-stack" aria-label="Delete confirm specimen"><DeleteConfirm count={14} autoFocus={false} onCancel={noop} onConfirm={noop}/></div>
     <span className="history-specimen-label">Toast · auto-archive</span>
     <div className="history-specimen-toast"><ArchiveToast count={6} onReview={noop} onRestore={noop} onDismiss={noop}/></div>
   </Surface>;
