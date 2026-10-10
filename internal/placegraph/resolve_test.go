@@ -237,6 +237,81 @@ func TestSourcesBeyondTheBudgetAreTrimmedAndListed(t *testing.T) {
 	}
 }
 
+func TestResolveUsesPerChatBudgetsWithoutChangingDefaults(t *testing.T) {
+	s, _ := newStore(t)
+	var sources []Source
+	for i := range ContextSourceBudget + 1 {
+		sources = append(sources, Source{ID: fmt.Sprintf("s%d", i), Kind: SourceURL, Ref: fmt.Sprintf("https://budget.example/%d", i), AddedBy: AddedByYou})
+	}
+	parent := placeWith(t, s, "Parent", Context{Instructions: "parent words"}, Policy{})
+	child := placeWith(t, s, "Child", Context{Sources: sources, Instructions: "ééé"}, Policy{}, parent.ID)
+	file(t, s, "c", child)
+	sn := snap(t, s)
+	b := sn.Resolve("c", ResolveOptions{Sources: noDeny, Budget: ResolveBudget{Sources: 2, InstructionBytes: 5}})
+	if len(b.Sources) != 2 || b.Counts.Sources != 2 || len(b.Trimmed) != len(sources)-2 {
+		t.Fatalf("per-chat sources = %d, trimmed = %d, counts = %+v", len(b.Sources), len(b.Trimmed), b.Counts)
+	}
+	if b.Instructions[0].Text != "éé" || b.Instructions[1].Text != "p" || !b.Instructions[0].Trimmed || !b.Instructions[1].Trimmed {
+		t.Fatalf("per-chat instructions = %+v", b.Instructions)
+	}
+	if !strings.Contains(b.Trimmed[0].Reason, "2 sources") {
+		t.Fatalf("trim reason must name the applied budget: %+v", b.Trimmed[0])
+	}
+	defaults := sn.Resolve("c", ResolveOptions{Sources: noDeny})
+	if len(defaults.Sources) != ContextSourceBudget || defaults.Instructions[0].Trimmed || defaults.Instructions[1].Trimmed {
+		t.Fatalf("custom resolution changed defaults: %+v", defaults)
+	}
+	larger := sn.Resolve("c", ResolveOptions{Sources: noDeny, Budget: ResolveBudget{Sources: len(sources)}})
+	if len(larger.Sources) != len(sources) || len(larger.Trimmed) != 0 || larger.Instructions[0].Trimmed {
+		t.Fatalf("independent source override = %+v", larger)
+	}
+}
+
+func TestSourceBudgetKeepsPlaceOrderAndListsNewestLast(t *testing.T) {
+	s, _ := newStore(t)
+	source := func(id string, day int) Source {
+		return Source{ID: id, Kind: SourceURL, Ref: "https://order.example/" + id, AddedBy: AddedByYou, At: time.Date(2026, 10, day, 0, 0, 0, 0, time.UTC)}
+	}
+	// Reverse timestamps deliberately, so insertion order cannot satisfy the test.
+	parent := placeWith(t, s, "Parent", Context{Sources: []Source{source("parent-new", 4), source("parent-old", 1)}}, Policy{})
+	child := placeWith(t, s, "Child", Context{Sources: []Source{source("child-new", 3), source("child-old", 2)}}, Policy{}, parent.ID)
+	file(t, s, "c", child)
+	sn := snap(t, s)
+	b := sn.Resolve("c", ResolveOptions{Sources: noDeny, Budget: ResolveBudget{Sources: 1}})
+	if len(b.Sources) != 1 || b.Sources[0].From[0].SourceID != "child-old" {
+		t.Fatalf("direct place's oldest source must be given first: %+v", b.Sources)
+	}
+	var ids []string
+	for _, src := range b.Trimmed {
+		ids = append(ids, src.From[0].SourceID)
+	}
+	if strings.Join(ids, ",") != "child-new,parent-old,parent-new" {
+		t.Fatalf("trimmed order = %v", ids)
+	}
+	if sn.Places[sn.byID[child.ID]].Context.Sources[0].ID != "child-new" {
+		t.Fatal("resolution reordered the shared snapshot")
+	}
+}
+
+func TestSourceDatesKeepUnknownAndEqualDatesInSavedOrder(t *testing.T) {
+	s, _ := newStore(t)
+	date := time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)
+	var sources []Source
+	for _, id := range []string{"dated-first", "unknown-first", "dated-second", "unknown-second"} {
+		src := Source{ID: id, Kind: SourceURL, Ref: "https://dates.example/" + id, AddedBy: AddedByYou}
+		if strings.HasPrefix(id, "dated") {
+			src.At = date
+		}
+		sources = append(sources, src)
+	}
+	p := placeWith(t, s, "Dates", Context{Sources: sources}, Policy{})
+	file(t, s, "c", p)
+	b := snap(t, s).Resolve("c", ResolveOptions{Sources: noDeny, Budget: ResolveBudget{Sources: 2}})
+	if b.Sources[0].From[0].SourceID != "unknown-first" || b.Sources[1].From[0].SourceID != "unknown-second" || b.Trimmed[0].From[0].SourceID != "dated-first" || b.Trimmed[1].From[0].SourceID != "dated-second" {
+		t.Fatalf("source date ordering = given %+v trimmed %+v", b.Sources, b.Trimmed)
+	}
+}
+
 func TestRefusedSourcesDoNotSpendTheBudget(t *testing.T) {
 	s, _ := newStore(t)
 	srcs := []Source{{ID: "bad", Kind: SourceURL, Ref: "ftp://x.example/", AddedBy: AddedByAI}}
