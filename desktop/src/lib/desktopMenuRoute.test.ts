@@ -34,3 +34,13 @@ test('isDesktopTabAction accepts exactly the tab commands and no shell chord', (
   for (const action of tab) assert.equal(isDesktopTabAction(action), true);
   for (const other of ['settings', 'focus', 'sidebar', 'history', 'new-window', 'Close', '', 'constructor']) assert.equal(isDesktopTabAction(other), false);
 });
+
+test('web menu ids reach the workspace event but are not tab actions', async () => {
+  const { deliverDesktopAction, isDesktopTabAction } = await import('./desktopMenuRoute.ts');
+  const seen: string[] = [];
+  for (const id of ['web-address', 'web-reload', 'web-find']) {
+    assert.equal(deliverDesktopAction(id, a => seen.push(a), () => false), true);
+    assert.equal(isDesktopTabAction(id), false);
+  }
+  assert.deepEqual(seen, ['web-address', 'web-reload', 'web-find']);
+});
