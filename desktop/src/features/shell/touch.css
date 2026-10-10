@@ -18,8 +18,12 @@
     opacity: var(--opacity-opaque);
   }
 
-  /* Rail rows are 40px: Now, a place, All places, and the other pages under them. */
-  .sidebar.rail .nav-item {
+  /* Rail rows are 40px: Now, a place, All places, and the other pages under them.
+     A place row's own height (.rail .rail-row-main.nav-item) is three classes, so the
+     coarse rule has to name that class or a finger keeps the 32px mouse row. The
+     specimen is not .sidebar, so it stays 32px. */
+  .sidebar.rail .nav-item,
+  .sidebar.rail .rail-row-main.nav-item {
     height: var(--hit-coarse-row);
     min-height: var(--hit-coarse-row);
   }

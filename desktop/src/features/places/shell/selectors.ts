@@ -134,8 +134,15 @@ function chat(row: ChatRow, digest: HomeDigest): HomeChat {
   return { id: row.id, title: row.title, excerpt: row.needsYou && row.reason ? row.reason : line || undefined, status, at: row.at, model: row.model };
 }
 
-function attention(item: Attention, viewing: string): HomeView['attention'][number] {
+/** "running · 2m" from the engine's own start and read instants; under a minute, or an unreadable instant, draws the plain word. The digest's read time is the clock so the answer never depends on when it is drawn. */
+function runningWords(since: string | undefined, readAt: string): string | undefined {
+  const minutes = Math.floor((Date.parse(readAt) - Date.parse(since ?? '')) / 60_000);
+  return Number.isFinite(minutes) && minutes >= 1 ? `running · ${minutes}m` : undefined;
+}
+
+function attention(item: Attention, viewing: string, readAt: string): HomeView['attention'][number] {
   return {
+    statusText: item.kind === 'running' ? runningWords(item.since, readAt) : undefined,
     id: item.chatId, title: item.chatTitle || 'Untitled chat',
     placeName: item.placeId && item.placeId !== viewing ? item.placeName : undefined,
     status: item.kind === 'needsYou' ? 'waiting' : 'running', detail: item.text && item.text !== item.chatTitle ? item.text : undefined,
@@ -167,7 +174,7 @@ export function homeViewFromDigest(digest: HomeDigest, graph?: PlacesGraph, unpl
     tint: digest.place?.effectiveTint ?? 'graphite',
     tintSource: digest.place ? (digest.place.tint ? 'own' : 'inherited') : undefined,
     breadcrumb: digest.breadcrumb.map(crumb => ({ id: crumb.id, name: crumb.name })),
-    attention: digest.attention.map(item => attention(item, id)),
+    attention: digest.attention.map(item => attention(item, id, digest.readAt)),
     children: digest.children.map(place => child(place)),
     chats: digest.chats.map(row => chat(row, digest)),
     chatsTruncated: digest.chatsTruncated,
