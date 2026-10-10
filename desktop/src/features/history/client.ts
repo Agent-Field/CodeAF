@@ -1,6 +1,6 @@
-// The typed client for the engine's history routes. Reads only, plus the one archive write.
+// The typed client for the engine's history routes. Reads, plus archive, delete and restore.
 import { fetchEngine } from '../chat/engine-client';
-import type { ArchiveResult, HistoryDetail, HistoryFilter, HistoryMessages, HistoryPage, SearchResult } from './types';
+import type { ArchiveResult, DeleteResult, HistoryDetail, HistoryFilter, HistoryMessages, HistoryPage, SearchResult } from './types';
 
 const query = (params: Record<string, string | number | undefined>) => {
   const search = new URLSearchParams();
@@ -38,4 +38,18 @@ export async function searchHistory(text: string, filter: HistoryFilter = 'all',
 export async function archiveHistory(ids: string[], archived: boolean): Promise<ArchiveResult> {
   const response = await fetchEngine('/history/archive', { method: 'POST', body: JSON.stringify({ ids, archived }) });
   return await response.json() as ArchiveResult;
+}
+
+/** Moves archived conversations into the trash. The engine refuses a set that includes one still open. */
+export async function deleteHistory(ids: string[]): Promise<DeleteResult> {
+  const response = await fetchEngine('/history/delete', { method: 'POST', body: JSON.stringify({ ids }) });
+  const body = await response.json() as Partial<DeleteResult>;
+  return { deleted: body.deleted ?? 0, undoToken: body.undoToken };
+}
+
+/** Puts a delete back, using the token the delete route returned. */
+export async function restoreHistory(undoToken: string): Promise<number> {
+  const response = await fetchEngine('/history/restore', { method: 'POST', body: JSON.stringify({ undoToken }) });
+  const body = await response.json() as { restored?: number };
+  return body.restored ?? 0;
 }
