@@ -1,9 +1,10 @@
 import './work.css';
 import './workBlock.css';
 import { Fragment, useState } from 'react';
-import { Button, Icon } from '../../../components/ui';
+import { Button, ContextMenu, Icon } from '../../../components/ui';
 import type { WorkBlock, WorkStep } from '../types';
 import { spoken, summaryParts } from './format';
+import { workLogText } from './copyLog';
 import type { WorkRender } from './props';
 import { ThinkingView } from './ThinkingView';
 import { useNow, useWorkOpen } from './useNow';
@@ -64,10 +65,12 @@ export function WorkBlockView({ block, paused, open, onToggle, now: given, ...re
   const thought = thinking && <ThinkingView text={thinking.text} streaming={thinking.streaming && !waiting} seconds={thinking.seconds} />;
   return (
     <div className="work-block" data-live={block.live || undefined}>
-      <Button className="work-toggle" aria-expanded={isOpen} aria-label={summaryLabel(block, now)} onClick={onToggle ?? auto.toggle}>
-        <Icon name="chevron" size="xs" motion="disclosure" />
-        <Summary block={block} now={now} shimmer={!isOpen && !waiting} />
-      </Button>
+      <ContextMenu label="Work actions" items={[{ id: 'copy-log', label: 'Copy log', icon: 'copy', disabled: block.steps.length === 0, onSelect: () => void workLogText(block, render.readFull).then((text) => navigator.clipboard.writeText(text)).catch(() => undefined) }]}>
+        <Button className="work-toggle" aria-expanded={isOpen} aria-label={summaryLabel(block, now)} onClick={onToggle ?? auto.toggle}>
+          <Icon name="chevron" size="xs" motion="disclosure" />
+          <Summary block={block} now={now} shimmer={!isOpen && !waiting} />
+        </Button>
+      </ContextMenu>
       {isOpen && (
         <div className="work-body">
           {thinking && !thinking.streaming && thought}
