@@ -688,6 +688,11 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}, alsoS
           }
           return json(route, { placeId: id, revision, state: 'none' });
         }
+        // Home's three section reads (status line, decided rows, what the place knows) belong to other owners; this shell mock answers them
+        // empty so a place Home draws its chats instead of an "unknown route" notice. Their own specs seed them with content.
+        if (verb === 'decide-status') { must(id); return json(route, { mode: 'none' }); }
+        if (verb === 'decisions') { must(id); return json(route, { decisions: [] }); }
+        if (verb === 'knows') { must(id); return json(route, { revision: 1, stillTrue: [], lines: [] }); }
         if (verb) return json(route, { error: 'unknown route', code: 'not_found' }, 404);
         return json(route, home(id));
       }
