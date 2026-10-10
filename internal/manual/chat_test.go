@@ -3168,6 +3168,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does /workspace path do", "commands"},
 		{"how do I move a tab to a new window", "desktop-tab-move-window"},
 		{"what happens when I drag a tab outside the strip", "desktop-tab-move-window"},
+		{"why can't I open a file outside the project", "desktop-roots"},
+		{"a conversation on another machine reports no folders", "desktop-roots"},
 		// Desktop conversation 1b: queued rows fold into the chip after the model name.
 		{"what is the N queued chip in the desktop composer", "desktop-queued-chip"},
 		{"I scrolled up and the queued messages disappeared", "desktop-queued-chip"},
