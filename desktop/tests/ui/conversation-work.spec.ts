@@ -116,3 +116,54 @@ test('a handed-off read shows its answer and a target, never raw JSON or the eng
   // A tool the row cannot name keeps its extra input, as plain words.
   await expect(page.locator('pre[aria-label="Input"]')).toHaveText('path: /home/santosh/sandbox/notes\ndepth: 2');
 });
+
+
+test('an open file preview survives a parent snapshot rerender', async ({ page }) => {
+  const engine = await openRich(page);
+  await page.locator('.answer-block').getByRole('button', { name: 'auth_test.go' }).click();
+  const preview = page.getByRole('dialog', { name: 'Preview of auth_test.go' });
+  await expect(preview).toContainText('now := fixedClock()');
+  engine.update({ title: 'Renamed while preview is open' });
+  await expect(page.getByRole('tab', { name: 'Renamed while preview is open' })).toBeVisible();
+  await expect(preview).toContainText('now := fixedClock()');
+  await preview.getByRole('button', { name: 'Close preview' }).click();
+  await expect(preview).toHaveCount(0);
+});
+
+test('fresh markdown hooks retain the open asset preview and use the latest link callback', async ({ page }) => {
+  await installMockEngine(page, richReply());
+  await openApp(page);
+  await page.evaluate(async () => {
+    const load = new Function('url', 'return import(url)') as (url: string) => Promise<any>;
+    const resources = performance.getEntriesByType('resource').map(entry => entry.name);
+    const reactModule = await load(resources.find(url => /\/react\.js\?/.test(url))!);
+    const React = reactModule.default ?? reactModule;
+    const clientModule = await load(resources.find(url => /\/react-dom_client\.js\?/.test(url))!);
+    const { createRoot } = clientModule.default ?? clientModule;
+    const { Markdown } = await load('/src/components/ui/Markdown.tsx');
+    const { Overlay } = await load('/src/features/conversation/assets/Overlay.tsx');
+    function StatefulPreview() {
+      const [open, setOpen] = React.useState(false);
+      return React.createElement(React.Fragment, null,
+        React.createElement('button', { onClick: () => setOpen(true) }, 'fixture.txt'),
+        open && React.createElement(Overlay, { label: 'Preview of fixture.txt', variant: 'sheet', onClose: () => setOpen(false) },
+          React.createElement('p', null, 'Retained preview'), React.createElement('button', { onClick: () => setOpen(false) }, 'Close preview')));
+    }
+    const mount = document.createElement('section'); mount.setAttribute('aria-label', 'Markdown lifecycle fixture'); document.body.append(mount);
+    const root = createRoot(mount);
+    const render = (revision: number) => root.render(React.createElement(Markdown, {
+      renderInlineCode: () => React.createElement(StatefulPreview),
+      onOpenLink: () => mount.setAttribute('data-link-revision', String(revision)),
+    }, '`fixture.txt` and [documentation](https://example.com/docs)'));
+    (window as any).rerenderMarkdownFixture = () => render(2); render(1);
+  });
+  const fixture = page.getByRole('region', { name: 'Markdown lifecycle fixture' });
+  await fixture.getByRole('button', { name: 'fixture.txt' }).click();
+  const preview = page.getByRole('dialog', { name: 'Preview of fixture.txt' });
+  await expect(preview).toContainText('Retained preview');
+  await page.evaluate(() => (window as any).rerenderMarkdownFixture());
+  await expect(preview).toContainText('Retained preview');
+  await preview.getByRole('button', { name: 'Close preview' }).click();
+  await fixture.getByRole('link', { name: 'documentation' }).click();
+  await expect(fixture).toHaveAttribute('data-link-revision', '2');
+});

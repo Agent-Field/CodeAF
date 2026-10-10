@@ -1,10 +1,10 @@
-import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Icon } from './Icon';
 import { CodeText } from './Typography';
 import { CopyButton } from './CopyButton';
 import { useMoreToRight } from './useMoreToRight';
-import type { ReactElement, ReactNode } from 'react';
+import { createContext, useContext, type ReactElement, type ReactNode } from 'react';
 import '../../styles/markdown.css';
 
 /** A hook returns a node to take over an element, or undefined to keep the default rendering. */
@@ -51,12 +51,13 @@ function Table({ children }: { children?: ReactNode }) {
  const { ref, more, measure } = useMoreToRight();
  return <div ref={ref} className="markdown-table-scroll" role="region" aria-label="Response table" tabIndex={0} data-more={more} onScroll={measure}><table>{children}</table></div>;
 }
-export function Markdown({ children, className = '', tone = 'primary', onOpenLink, renderLink, renderInlineCode, renderImage }: MarkdownProps) {
- const resolvesLocal = !!(renderLink || renderImage);
- const transform = (value: string) => safeMarkdownUrl(value) || (resolvesLocal ? localReference(value) : '');
- return <div className={`markdown ${className}`} data-tone={tone}><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml urlTransform={transform} components={{
+// Renderer component types remain stable across parent updates. Hooks travel through context,
+// so refreshed callbacks do not remount asset chips, previews or code-copy controls.
+const MarkdownRenderContext = createContext<MarkdownHooks & Pick<MarkdownProps, 'onOpenLink'>>({});
+const markdownComponents: Components = {
   pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
   code: ({ children, className }) => {
+   const { renderInlineCode } = useContext(MarkdownRenderContext);
    // Fenced code carries a language or ends in a newline; anything else is an inline span a hook may enrich.
    const text = textOf(children);
    const inline = !className && !text.endsWith('\n');
@@ -70,24 +71,31 @@ export function Markdown({ children, className = '', tone = 'primary', onOpenLin
   th: ({ children, style }) => <th scope="col" data-align={style?.textAlign}>{children}</th>,
   td: ({ children, style }) => <td data-align={style?.textAlign}>{children}</td>,
   a: ({ href, children }) => {
+   const { renderLink, onOpenLink } = useContext(MarkdownRenderContext);
    const hooked = href && renderLink ? renderLink(href, children) : undefined;
    if (hooked !== undefined) return <>{hooked}</>;
    return !href || !safeMarkdownUrl(href) ? <span>{children}</span> : <a href={href} target={href.startsWith('#') ? undefined : '_blank'} rel={href.startsWith('#') ? undefined : 'noopener noreferrer'} onClick={event => { if (!href.startsWith('#') && onOpenLink) { event.preventDefault(); onOpenLink(href); } }}>{children}</a>;
   },
   img: ({ src, alt }) => {
+   const { renderImage, onOpenLink } = useContext(MarkdownRenderContext);
    const hooked = typeof src === 'string' && renderImage ? renderImage(src, alt ?? '') : undefined;
    if (hooked !== undefined) return <>{hooked}</>;
    const href = typeof src === 'string' ? safeMarkdownUrl(src) : '';
    const label = alt ? `Image: ${alt}` : 'Referenced image';
    return href ? <a href={href} target="_blank" rel="noopener noreferrer" onClick={event => { if (onOpenLink) { event.preventDefault(); onOpenLink(href); } }}>{label}</a> : <span>{label}</span>;
   },
- }}>{children}</ReactMarkdown></div>;
+};
+export function Markdown({ children, className = '', tone = 'primary', onOpenLink, renderLink, renderInlineCode, renderImage }: MarkdownProps) {
+ const resolvesLocal = !!(renderLink || renderImage);
+ const transform = (value: string) => safeMarkdownUrl(value) || (resolvesLocal ? localReference(value) : '');
+ return <MarkdownRenderContext.Provider value={{ onOpenLink, renderLink, renderInlineCode, renderImage }}><div className={`markdown ${className}`} data-tone={tone}><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml urlTransform={transform} components={markdownComponents}>{children}</ReactMarkdown></div></MarkdownRenderContext.Provider>;
 }
 
 /** Inline content keeps its surrounding heading or label typography and never creates block controls. */
+const inlineComponents: Components = {
+ p: ({ children }) => <>{children}</>,
+ code: ({ children }) => <CodeText className="inline-code">{children}</CodeText>,
+};
 export function InlineMarkdown({ children }: { children: string }) {
- return <ReactMarkdown skipHtml allowedElements={['p', 'strong', 'em', 'del', 'code']} unwrapDisallowed components={{
-  p: ({ children }) => <>{children}</>,
-  code: ({ children }) => <CodeText className="inline-code">{children}</CodeText>,
- }}>{children}</ReactMarkdown>;
+ return <ReactMarkdown skipHtml allowedElements={['p', 'strong', 'em', 'del', 'code']} unwrapDisallowed components={inlineComponents}>{children}</ReactMarkdown>;
 }
