@@ -1202,6 +1202,15 @@
   --cf-shimmer-mid: var(--latest-shimmer-mid);
   --cf-shimmer-far: var(--latest-shimmer-far);
   --motion-tab-collapse: var(--dur-base);
+  --nextup-walk-tint-duration: 320ms;
+  --nextup-walk-return-height: 26px;
+  --nextup-walk-return-radius: 7px;
+  --nextup-walk-control-pad: 10px;
+  --nextup-walk-control-size: 12px;
+  --nextup-walk-skip-height: 30px;
+  --nextup-walk-skip-radius: 8px;
+  --nextup-walk-return-gap: 6px;
+  --nextup-walk-strip-return-width: 30px;
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);
@@ -1569,5 +1578,5 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  :root { --duration: var(--duration-none); --duration-fast: var(--duration-none); --duration-sidebar: var(--duration-none); --duration-overlay: var(--duration-none); --duration-directional: var(--duration-none); --motion-travel: var(--motion-rest); --motion-directional-travel: var(--motion-rest); --motion-scale-enter: var(--motion-scale-rest); --motion-scale-popover: var(--motion-scale-rest); --duration-work: var(--duration-none); --shimmer-duration: var(--duration-none); --dur-press: var(--duration-none); --dur-fast: var(--duration-none); --dur-base: var(--duration-none); --dur-slow: var(--duration-none); --dur-spring: var(--duration-none); --task-view-shimmer-duration: var(--duration-none); --conversation-bar-hover-duration: var(--duration-none); --latest-shimmer-duration: var(--duration-none); --i2-banner-duration: var(--duration-none); --motion-rise-row: var(--motion-rest); --motion-rise-send: var(--motion-rest); --motion-rise-toast: var(--motion-rest); --motion-place-slide: var(--motion-rest); --motion-scale-quicklook: var(--motion-scale-rest); --breathe-duration: var(--duration-none); --breathe-from: var(--motion-rest); --breathe-to: var(--motion-rest); --cf-shimmer-duration: var(--duration-none); --motion-tab-collapse: var(--duration-none); }
+  :root { --duration: var(--duration-none); --duration-fast: var(--duration-none); --duration-sidebar: var(--duration-none); --duration-overlay: var(--duration-none); --duration-directional: var(--duration-none); --motion-travel: var(--motion-rest); --motion-directional-travel: var(--motion-rest); --motion-scale-enter: var(--motion-scale-rest); --motion-scale-popover: var(--motion-scale-rest); --duration-work: var(--duration-none); --shimmer-duration: var(--duration-none); --dur-press: var(--duration-none); --dur-fast: var(--duration-none); --dur-base: var(--duration-none); --dur-slow: var(--duration-none); --dur-spring: var(--duration-none); --task-view-shimmer-duration: var(--duration-none); --conversation-bar-hover-duration: var(--duration-none); --latest-shimmer-duration: var(--duration-none); --i2-banner-duration: var(--duration-none); --motion-rise-row: var(--motion-rest); --motion-rise-send: var(--motion-rest); --motion-rise-toast: var(--motion-rest); --motion-place-slide: var(--motion-rest); --motion-scale-quicklook: var(--motion-scale-rest); --breathe-duration: var(--duration-none); --breathe-from: var(--motion-rest); --breathe-to: var(--motion-rest); --cf-shimmer-duration: var(--duration-none); --motion-tab-collapse: var(--duration-none); --nextup-walk-tint-duration: var(--duration-none); }
 }

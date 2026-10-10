@@ -2,7 +2,7 @@
 // A graph place wears the effective tint the engine already resolved, inheritance included.
 // A place the graph has not named yet wears nothing: unknown renders as nothing.
 //
-// The value is the current place's tint on this render. Nothing eases between two tints.
+// The value is the current place's tint on this render; the frame background crossfades in the shell CSS.
 // The attribute is written on document.body before paint so the frame and any menu portalled
 // onto the body inherit the same tokens. macOS keeps its overlay title bar and sidebar vibrancy,
 // and Linux keeps its decorated window: this module never calls the native window.
