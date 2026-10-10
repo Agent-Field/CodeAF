@@ -162,6 +162,7 @@ Shell). On any conflict, the design files win over code and older docs.
 | SH-011 | Does the empty strip space drag the window? | Yes: it is its own `.workspace-tab-spacer` carrying `data-tauri-drag-region`; tabs, group labels, +, +N and the overview button stay no-drag. |
 | SH-012 | Double-click on the empty strip | Toggles maximize, the title-bar convention, through the drag region's native behaviour (capability `core:window:allow-toggle-maximize`). |
 | OP1 | What Open in editor and Reveal say when the engine's directory list cannot be read (the design names the outside sentence only) | "The workspace is unavailable". An empty list is different: every path is refused with "That file is outside the workspace", and the path is not checked on disk first. A file that was there and is gone, when the list did load, says "That file no longer exists". |
+| BG-ROW-1 | A world row has running, a needs-you count, a failed count and a title, and no last reply or question text. What does a background tab keep from the last time it was open, and which mark wins when several are set? | The row updates running, needs-you and the engine title. A reply already read stays. Questions already read stay while the count is still above zero, and leave when it is zero; a question that arrives while the tab is in the background is not worded until the tab is opened. Needs-you outranks running, and running outranks a landed failure. No row yet leaves the tab as it was. The journal path matches a row before the chat folder does. |
 
 ## File lane integration notes
 
