@@ -30,8 +30,9 @@ function failureText(failure: WebFailure, url: string): { title: string; detail:
  * the address, start a conversation with the page, open in the browser) over
  * a sheet inset in the card. The page itself is a native view placed over the
  * sheet by views.ts; this component draws only what is not the page: the
- * loading line, a frozen picture while the app covers the page, a failure,
- * and outside the desktop app an honest line with Open in browser.
+ * loading line, a failure, and outside the desktop app an honest line with
+ * Open in browser. While a menu or other overlay holds the window the sheet
+ * is blank: the native view is hidden, and nothing is written in its place.
  */
 export function WebPane({ pane, actions }: PaneRenderProps) {
   const url = pane.target?.url;
@@ -73,23 +74,25 @@ export function WebPane({ pane, actions }: PaneRenderProps) {
       {host?.startConversationWithPage && shown && <IconButton icon="chatPlus" iconSize="sm" label="Start a conversation with this page" onClick={() => void talkAboutPage()}/>}
       <IconButton icon="external" iconSize="sm" label="Open in browser" disabled={!shown} onClick={() => shown && void openUrl(shown)}/>
     </div>
-    <div ref={web.sheetRef} className="web-sheet" data-covered={web.covered || undefined}>
-      {!web.native && shown && <div className="web-state">
-        <Icon name="web" size="lg"/>
-        <Text tone="default">Web pages open in the desktop app</Text>
-        <Text>This window cannot show {siteOf(shown)}.</Text>
-        <Button variant="raised" onClick={() => void openUrl(shown)}>Open in browser</Button>
-      </div>}
-      {web.native && failure && <div className="web-state" role="alert">
-        <Icon name="warn" size="lg"/>
-        <Text tone="default">{failure.title}</Text>
-        <Text>{failure.detail}</Text>
-        <div className="web-state-actions">
-          <Button variant="raised" onClick={() => retry(pane.id)}>Try again</Button>
-          {shown && <Button onClick={() => void openUrl(shown)}>Open in browser</Button>}
-        </div>
-      </div>}
-      {web.native && !failure && web.covered && typeof web.shot === 'object' && <img className="web-frozen" src={web.shot.image} alt=""/>}
+    <div ref={web.sheetRef} className="web-sheet" data-covered={web.covered || undefined} data-blank={web.blank || undefined}>
+      {web.blank ? null : <>
+        {!web.native && shown && <div className="web-state">
+          <Icon name="web" size="lg"/>
+          <Text tone="default">Web pages open in the desktop app</Text>
+          <Text>This window cannot show {siteOf(shown)}.</Text>
+          <Button variant="raised" onClick={() => void openUrl(shown)}>Open in browser</Button>
+        </div>}
+        {web.native && failure && <div className="web-state" role="alert">
+          <Icon name="warn" size="lg"/>
+          <Text tone="default">{failure.title}</Text>
+          <Text>{failure.detail}</Text>
+          <div className="web-state-actions">
+            <Button variant="raised" onClick={() => retry(pane.id)}>Try again</Button>
+            {shown && <Button onClick={() => void openUrl(shown)}>Open in browser</Button>}
+          </div>
+        </div>}
+        {web.native && !failure && web.covered && typeof web.shot === 'object' && <img className="web-frozen" src={web.shot.image} alt=""/>}
+      </>}
     </div>
   </div>;
 }

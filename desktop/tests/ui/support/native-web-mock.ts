@@ -8,7 +8,7 @@ import { installNativeHttpMock } from './native-http-mock';
 // It is NOT native proof: no page is loaded, no view is drawn and no snapshot
 // is taken by a platform. The snapshot it returns is a fixed 1x1 PNG.
 
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
 export type NativeCall = { cmd: string; args: Record<string, unknown> };
 export type MockState = { pane: string; url: string; title: string; loading: boolean; canBack: boolean; canForward: boolean; historyKnown: boolean; failure: unknown; notice: unknown };
@@ -46,6 +46,10 @@ export async function installNativeWebMock(page: Page, options: { snapshot?: boo
       if (cmd === 'engine_connection' || cmd === 'engine_health') return fail('The local engine could not start');
       if (cmd === 'open_url') return urlOk(args.url) ? null : fail('Only web links can be opened');
       if (cmd === 'web_list') return [...views.values()];
+      // Window-wide overlay hold. No pane: every view on this window hides, and
+      // the show lists only the panes the renderer still wants.
+      if (cmd === 'web_hide_all') return null;
+      if (cmd === 'web_show_all') return Array.isArray(args.panes) ? null : fail('bad');
       // Rust answers null when no tab is waiting for this window (windows.rs window_claim_handoff); every boot asks.
       if (cmd === 'window_claim_handoff') return null;
       if (!cmd.startsWith('web_')) return fail(`Command ${cmd} not found`);
@@ -106,6 +110,19 @@ export const emitState = (page: Page, pane: string, change: Partial<MockState>) 
 
 export const emitNewTab = (page: Page, opener: string, url: string) =>
   page.evaluate(([o, u]) => (window as unknown as { __nativeWeb: { emit: (e: string, p: unknown) => void } }).__nativeWeb.emit('web://new-tab', { opener: o, url: u }), [opener, url] as const);
+
+/**
+ * The workspace says the engine is down with a toast. That toast overlaps the
+ * web sheet, so every native page stays hidden until the toast is gone. A test
+ * that is not about the toast dismisses it the way the toast itself does:
+ * Escape on its button. The same error does not show it again.
+ */
+export async function dismissCoveringToasts(page: Page) {
+  const toast = page.locator('.toast');
+  await toast.first().waitFor({ state: 'visible', timeout: 2000 }).catch(() => undefined);
+  for (let i = 0; i < 3 && await toast.count(); i++) await toast.getByRole('button').first().press('Escape');
+  await expect(toast).toHaveCount(0);
+}
 
 /** A workspace with one web tab (and a conversation beside it) for the pane under test. */
 export async function seedWebTab(page: Page, url = 'https://pkg.go.dev/encoding/json#Decoder', id = 'webpane1') {

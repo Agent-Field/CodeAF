@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { expectAccessible, expectNoUnstyledControls } from './contracts';
-import { emitNewTab, emitState, installNativeWebMock, MOCK_SHOT, nativeCalls, seedWebTab } from './support/native-web-mock';
+import { dismissCoveringToasts, emitNewTab, emitState, installNativeWebMock, nativeCalls, seedWebTab } from './support/native-web-mock';
 import design from '../../src/design/tokens.json' with { type: 'json' };
 
 // The web tab (design 3d). The browser has no native views, so these tests use
@@ -36,7 +36,17 @@ test.describe('outside the desktop app', () => {
 });
 
 test.describe('in the desktop app (typed native mock)', () => {
-  test.beforeEach(async ({ page }) => { await installNativeWebMock(page); await seedWebTab(page); });
+  test.beforeEach(async ({ page }) => {
+    await installNativeWebMock(page);
+    await seedWebTab(page);
+    // The engine-down toast covers the sheet and would hide the page for the whole test.
+    const go = page.goto.bind(page);
+    page.goto = async (url, options) => {
+      const response = await go(url, options);
+      await dismissCoveringToasts(page);
+      return response;
+    };
+  });
 
   test('opens one child view over the sheet with the pane id, the address and the measured rectangle', async ({ page }) => {
     await page.goto('/');
@@ -113,20 +123,29 @@ test.describe('in the desktop app (typed native mock)', () => {
     expect((await nativeCalls(page, 'web_navigate')).length).toBe(1);
   });
 
-  test('anything of the app over the page hides the view and shows the last picture; closing it restores the view', async ({ page }) => {
+  test('anything of the app over the page hides the view and leaves the sheet blank; closing it restores the view', async ({ page }) => {
     await page.goto('/');
     await expect.poll(async () => (await nativeCalls(page, 'web_open')).length).toBe(1);
     await emitState(page, PANE, { loading: true });
     await emitState(page, PANE, { loading: false, title: 'encoding/json' });
     await expect.poll(async () => (await nativeCalls(page, 'web_snapshot')).length).toBeGreaterThan(0);
-    // The overview is a modal: every web view hides under it.
+    // The overview is a modal: every web view hides under it. The sheet is blank:
+    // no sentence, and the snapshot stays on the card rather than under the menu.
+    await expect.poll(() => lastVisible(page)).toBe(true);
+    const hides = (await nativeCalls(page, 'web_hide_all')).length;
+    const shows = (await nativeCalls(page, 'web_show_all')).length;
     await page.getByRole('button', { name: /All tabs/ }).first().click();
     await expect(page.getByRole('dialog', { name: /All tabs overview/ })).toBeVisible();
     await expect.poll(() => lastVisible(page)).toBe(false);
-    await expect(page.locator('img.web-frozen')).toHaveAttribute('src', MOCK_SHOT);
+    await expect.poll(async () => (await nativeCalls(page, 'web_hide_all')).length).toBe(hides + 1);
+    const sheet = page.locator('.web-sheet');
+    await expect(sheet).toHaveAttribute('data-blank', 'true');
+    await expect(sheet.locator('img.web-frozen')).toHaveCount(0);
+    await expect(sheet).not.toContainText(/page hidden|menu is open/i);
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog', { name: /All tabs overview/ })).toHaveCount(0);
     await expect.poll(() => lastVisible(page)).toBe(true);
+    await expect.poll(async () => (await nativeCalls(page, 'web_show_all')).length).toBe(shows + 1);
     await expect(page.locator('img.web-frozen')).toHaveCount(0);
     // A tab's context menu covers part of the card.
     await page.locator('.workspace-tab[data-active="true"]').click({ button: 'right' });
@@ -205,7 +224,7 @@ test.describe('in the desktop app (typed native mock)', () => {
     await page.goto('/');
     await expect.poll(async () => (await nativeCalls(page, 'web_open')).length).toBe(1);
     await emitState(page, PANE, { loading: false, notice: 'download' });
-    await expect(page.getByRole('status')).toHaveText('Downloads do not open in web tabs');
+    await expect(page.locator('.web-address-rest')).toHaveText('Downloads do not open in web tabs');
     await emitState(page, PANE, { notice: null });
     await expect(page.locator('.web-address-rest')).toHaveText('/encoding/json#Decoder');
   });
