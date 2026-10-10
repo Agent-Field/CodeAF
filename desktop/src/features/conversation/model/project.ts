@@ -125,7 +125,7 @@ function addAside(input: Input, acc: Acc) {
   }
   if (!entry.Text.trim()) return;
   const item = asideItem(entry, `${acc.turn.id}:${index}`, snapshot);
-  if (entry.AsideKind === 'places' && item.kind === 'note') push(acc,index,{kind:'context-note',id:item.id,text:item.text,undoReceipts:item.undoReceipts});
+  if (entry.AsideKind === 'places' && item.kind === 'note') push(acc, index, { kind: 'placeChange', id: item.id, text: item.text, undoReceipts: item.undoReceipts });
   else if (item.kind === 'task') push(acc, index, { ...item, kind: 'task' });
   else openWork(acc, index).notes.push(item);
 }
@@ -149,6 +149,8 @@ function prefaceItem({ entry, index, snapshot }: Input): TurnItem | undefined {
   const id = `preface:${index}`;
   if (entry.Role === 'assistant') return { kind: 'text', id, text: entry.Text, streaming: false };
   if (entry.Role === 'note') return { kind: 'note', id, text: entry.Text, tone: 'compaction' };
+  // A membership line recorded before the first message is still that line, not a work note.
+  if (entry.Role === 'aside' && entry.AsideKind === 'places') return { kind: 'placeChange', id, text: entry.Text, undoReceipts: entry.UndoReceipts };
   return entry.Role === 'aside' ? asideItem(entry, id, snapshot) : undefined;
 }
 
