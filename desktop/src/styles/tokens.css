@@ -2,6 +2,10 @@
 :root {
   color-scheme: light;
   --h: 240; --a: .13;
+  --membership-note-gap: 8px;
+  --membership-note-size: 12px;
+  --membership-note-leading: normal;
+  --membership-note-icon: 12px;
   --font-sans: var(--sans);
   --font-mono: var(--mono);
   --radius-sm: 6px;
