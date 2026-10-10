@@ -13,7 +13,10 @@ test('macOS and Windows desktops are native', () => {
   assert.equal(m({ desktop: true, platform: 'MacIntel' }), 'native');
   assert.equal(m({ desktop: true, platform: 'Win32' }), 'native');
 });
-test('Linux desktop is solid', () => assert.equal(m({ desktop: true, platform: 'Linux x86_64' }), 'solid'));
+test('Linux desktop uses glass when supported and solid otherwise', () => {
+  assert.equal(m({ desktop: true, platform: 'Linux x86_64' }), 'glass');
+  assert.equal(m({ desktop: true, platform: 'Linux x86_64', backdropFilter: false }), 'solid');
+});
 test('an inactive window is solid in every environment', () => {
   for (const env of [{}, { desktop: true, platform: 'MacIntel' }]) assert.equal(m({ ...env, active: false }), 'solid');
 });

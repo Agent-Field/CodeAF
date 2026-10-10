@@ -25,10 +25,10 @@ for (const theme of ['Light', 'Dark']) {
    await openAppearance(page);
    await page.getByRole('option', { name: `${theme} appearance`, exact: true }).click();
    await page.setViewportSize({ width, height: width < design.nativeWindow.minWidth ? 480 : design.nativeWindow.minHeight });
-   for (const name of ['Now', 'Activity', 'Design system']) {
+   for (const name of ['Now', 'Design system']) {
     await openNavigation(page);
     if (name === 'Now') await page.getByRole('button', { name, exact: true }).click();
-    else { await page.keyboard.press('Escape'); await openPage(page, name as 'Activity' | 'Design system'); }
+    else { await page.keyboard.press('Escape'); await openPage(page, name as 'Design system'); }
     await expect(page.getByRole('dialog', { name: 'Navigation', exact: true })).not.toBeVisible();
     await expectNoHorizontalOverflow(page);
     await expectNoUnstyledControls(page);
@@ -39,8 +39,8 @@ for (const theme of ['Light', 'Dark']) {
      await bottom.click();
      await expect(page.getByRole('combobox', { name: 'Search or start' })).toBeFocused();
      await expectNoHorizontalOverflow(page);
-     await openPage(page, 'Activity');
-     await expect(page.locator('.page-title')).toHaveText('Activity');
+     await openPage(page, 'Design system');
+     await expect(page.locator('.page-title')).toHaveText('Design system');
     }
    }
   });
@@ -86,7 +86,7 @@ test('narrow navigation traps focus, themes nested menus, dismisses, and preserv
  await expect(page.getByRole('button', { name: 'Now', exact: true })).toBeVisible();
  await page.getByRole('button', { name: 'Hide sidebar' }).click();
  await page.setViewportSize({ width: 320, height: 480 });
- await show.click(); await openPage(page, 'Activity');
+ await show.click(); await openPage(page, 'Design system');
  await page.setViewportSize({ width: 1200, height: 800 });
  await expect(page.getByRole('button', { name: 'Now', exact: true })).not.toBeVisible();
  await expect(show).toBeVisible();
