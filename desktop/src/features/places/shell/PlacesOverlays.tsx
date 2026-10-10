@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { PlaceDetail } from '../client';
 import type { ChooserMode } from './contracts';
+import { PlacePickerHost } from '../palette/PlacePickerHost';
 import { GoToChooser } from './GoToChooser';
 import { PlaceQuickLook } from './HomePane';
 import { InstructionsDialog, NameDialog, SourcesDialog } from './PlaceDialogs';
@@ -105,6 +106,7 @@ export function PlacesOverlays({ shell }: { shell: PlacesShell }) {
         if (!id) throw new Error(`“${typed}” was not created.`);
         await chooseFor(shell, mode, () => typed)(id);
       }}/>}
+    <PlacePickerHost places={rows} childrenOf={shell.index?.childrenOf ?? new Map()} now={now}/>
     {shell.dialog && <PlaceDialog key={JSON.stringify(shell.dialog)} shell={shell} request={shell.dialog}/>}
     {shell.lookAt && <PlaceQuickLook id={shell.lookAt} onClose={() => shell.quickLook(undefined)} actions={{ goTo: id => shell.goTo(id), goToInNewWindow: id => shell.goToInNewWindow(id) }}/>}
   </>;
