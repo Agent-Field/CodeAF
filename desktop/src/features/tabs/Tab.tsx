@@ -33,7 +33,7 @@ export function KindIcon({ kind, title, icon, monogram, favicon }: { kind: TabKi
       : <span className="tab-monogram" data-hue={monogramHue(source)} aria-hidden="true">{source.trim().charAt(0).toLowerCase()}</span>;
   }
   const def = kindDef(kind);
-  return <Icon name={icon ?? def.glyph?.(title) ?? def.icon} size={kind === 'inbox' ? 'sm' : 'xs'}/>;
+  return <Icon name={icon ?? def.glyph?.(title) ?? def.icon} size={'xs'}/>;
 }
 
 /** The leading mark: an amber or red 6px dot when the tab needs you or failed, otherwise the kind glyph. */

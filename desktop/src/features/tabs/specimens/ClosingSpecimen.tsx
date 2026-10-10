@@ -1,7 +1,6 @@
 import { Icon, KeyboardShortcut, ToastView, type IconName } from '../../../components/ui';
 import { closeShortcut, closeStopShortcut, newGroupShortcut } from '../closing/shortcuts';
 import { Tab } from '../Tab';
-import { InboxList } from '../kinds/inbox/InboxPane';
 import './closing-specimen.css';
 
 type Row = { id: string; label: string; icon?: IconName; shortcut?: string; submenu?: boolean; highlighted?: boolean; danger?: boolean } | 'separator';
@@ -90,13 +89,6 @@ export function ClosingSpecimen() {
         <div className="tabs-specimen-wide"><Tab specimen kind="file" title="lexer.go" hover tabIndex={-1} onClose={noop} closeHint="Close" closeShortcut={closeShortcut}/></div>
         <Tip text="Close" shortcut={closeShortcut}/>
       </div>
-    </div>
-    <span className="tabs-specimen-label">Inbox · background work and what needs you</span>
-    <div className="closing-specimen-row">
-      <div className="closing-specimen-cell">
-        <InboxList now={0} running={[{ id: 'a', title: 'Config stack', state: 'running', since: -120000 }, { id: 'b', title: 'Port fix to v1', state: 'waiting' }]} needsYou={[]} opener={() => noop}/>
-      </div>
-      <div className="closing-specimen-cell"><InboxList now={0} running={[]} needsYou={[]}/></div>
     </div>
   </div>;
 }

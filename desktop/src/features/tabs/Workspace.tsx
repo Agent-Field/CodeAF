@@ -27,7 +27,7 @@ import { kindDef } from './kinds/registry';
 import { newTab } from './helpers';
 import { blockingOf, type AttentionItem } from '../chat/world-client';
 import { worldStore } from '../chat/world-store';
-import { focusedPane, freshWorkspace, panesOf, readWorkspace, visibleTabs, workspaceKey, workspaceReducer, type Pane, type Tab, type WorkspaceState } from './model';
+import { focusedPane, freshWorkspace, panesOf, readWorkspace, visibleTabs, workspaceKey, workspaceReducer, type Pane, type Tab, type WorkspaceState, type WorkspaceAction } from './model';
 import { FirstTurnContext, NewConversationPlaceContext, type BeforeFirstTurn } from '../conversation/firstTurn';
 import { placeTints, type TintName } from '../places/components/PlaceSwatch';
 import { onWorkspaceRequest } from '../places/shell/workspaceBus';
@@ -161,7 +161,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const { state } = sync;
   const { dispatch: rawDispatch, undo } = useStructuralUndo({ state, dispatch: sync.dispatch, enabled, keys: false });
   useUndoKeys({ undo }, enabled);
-  const dispatch = rawDispatch;
+  const dispatch = useCallback((action: WorkspaceAction) => { if (action.type === 'open-inbox') { window.dispatchEvent(new Event('codeaf:next-up-start')); return; } rawDispatch(action); }, [rawDispatch]);
   const shell = usePlacesShell();
   const [usingApi] = useState(createUsingClient);
   const [summaries, setSummaries] = useState<Record<string, TabSummary>>({});

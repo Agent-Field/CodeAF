@@ -59,7 +59,7 @@ export type TabActions = {
 
 export function createTabActions({ native, toasts, writeClipboard = text => navigator.clipboard.writeText(text), place, stillHere, handoffView, setTimer = (fn, ms) => setTimeout(fn, ms) }: TabActionsDeps): TabActions {
   // A place's Home never leaves its strip; the Inbox is the window's own.
-  const canMove = (tab: Tab) => native.desktop && (handoffView !== undefined || !tab.split) && tab.kind !== 'inbox' && tab.kind !== 'home';
+  const canMove = (tab: Tab) => native.desktop && (handoffView !== undefined || !tab.split) && tab.kind !== 'home';
   const failed = (tab: Tab, what: string) => toasts.show({ message: ['Could not move ', { strong: tab.title }, ` ${what}. It is still here.`], tone: 'danger' });
   /** Said once, and only if nothing claimed the tab: the source kept it, so nothing is lost, but the person is told the window did not take it. */
   const watch = (tab: Tab, where: string) => {

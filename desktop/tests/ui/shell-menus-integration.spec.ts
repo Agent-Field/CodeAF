@@ -56,17 +56,23 @@ test.describe('closing that fails to stop (3l)', () => {
   });
 });
 
-test('failures, questions and background work on the world feed summon no Inbox tab and no tab dot', async ({ page }) => {
-  await installMockEngine(page, {
-    ...running, initial: { running: false, entries: [] },
-    world: { rows: [row('w1', { title: 'Nightly build', running: true }), row('w2', { title: 'Release notes', needsYou: true }), row('w3', { title: 'Lexer rewrite', failed: 2, at: recent() })], items: [ask('w2', 'Which branch should the notes cover?')] },
+test.describe('retired Inbox stays absent from the world feed', () => {
+  test('running work, questions and failures cannot recreate the retired tab', async ({ page }) => {
+    await installMockEngine(page, { ...running, initial: { running: false, entries: [] }, world: {
+      rows: [row('w1', { running: true }), row('w2', { needsYou: true }), row('w3', { failed: 2, at: recent() })],
+      items: [ask('w2', 'Which branch?')],
+    } });
+    await seed(page, [{ id: 'a', title: 'Intro' }], 'a');
+    await page.goto('/');
+    await expect.poll(() => page.evaluate(async () => {
+      const { worldStore } = await import('/src/features/chat/world-store.ts');
+      return worldStore.getState().rows.some(row => row.session === 'w3');
+    })).toBe(true);
+    await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
+    await expect(page.locator('.inbox-card')).toHaveCount(0);
+    await expect(page.locator('.tab-badge')).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'Intro', exact: true })).toHaveAttribute('aria-selected', 'true');
   });
-  await seed(page, [{ id: 'a', title: 'Intro' }], 'a');
-  await page.goto('/');
-  await expect(page.getByRole('tab', { name: 'Intro', exact: true })).toBeVisible();
-  await page.waitForTimeout(1500);
-  await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
-  await expect(page.locator('.tab-badge')).toHaveCount(0);
 });
 
 test.describe('the tab menu offers only what can work', () => {

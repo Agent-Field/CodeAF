@@ -22,12 +22,13 @@
 // Offline, the window keeps working on its own copy, the queue is kept (and saved locally, so a reload does not
 // lose it), the status says the engine cannot be reached, and saving is retried on a doubling delay, never in a
 // busy loop. No request here calls a model.
+import { isRetiredInbox } from '../tabs/kinds/retired.ts';
 import { createId, setIdSource } from '../tabs/helpers.ts';
 import { workspaceReducer, type Tab, type WorkspaceAction, type WorkspaceState } from '../tabs/model.ts';
 import { visibleTabs } from '../tabs/helpers.ts';
 import { WorkspaceSyncError, type WorkspaceClient, type WorkspaceKey, type WorkspaceRecord } from './client.ts';
 import { limits, retryCeilingMs, retryFloorMs, saveDelayMs } from './limits.ts';
-import { compose, duplicateIds, emptyLocal, localOf, sharedOf, sharedText, type SharedWorkspace, type WindowLocal } from './shared.ts';
+import { parseShared, compose, duplicateIds, emptyLocal, localOf, sharedOf, sharedText, type SharedWorkspace, type WindowLocal } from './shared.ts';
 
 /**
  * One queued change: the action, the ids its reducer minted the first time it ran, and what a toggle meant.
@@ -140,9 +141,9 @@ export function createWorkspaceController(options: ControllerOptions) {
   const mirrorDrafts = options.mirrorDrafts ?? true;
 
   const saved = options.persisted;
-  let base: SharedWorkspace | undefined = saved?.base;
+  let base: SharedWorkspace | undefined = saved?.base ? parseShared(saved.base) : undefined;
   let revision = saved?.revision ?? 0;
-  let pending: Entry[] = [...(saved?.pending ?? []), ...(options.adopted ?? [])];
+  let pending: Entry[] = [...(saved?.pending ?? []), ...(options.adopted ?? [])].filter(entry => !(entry.action.type === 'open' && isRetiredInbox(entry.action.tab)));
   let inflight: Entry[] | null = null;
   let relocating = false;
   let movedTo: Record<string, WorkspaceKey> = {};

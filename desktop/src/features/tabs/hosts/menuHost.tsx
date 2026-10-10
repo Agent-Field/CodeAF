@@ -17,7 +17,7 @@ const separator = (id: string): MenuEntry => ({ kind: 'separator', id });
 function splitEntry(api: TabsApi, tab: Tab): MenuEntry {
   const { state, dispatch } = api;
   const full = (tab.split?.panes.length ?? 1) >= splitCapacity;
-  const partners = state.tabs.filter(other => other.id !== tab.id && !other.split && other.kind !== 'inbox');
+  const partners = state.tabs.filter(other => other.id !== tab.id && !other.split);
   return {
     kind: 'submenu', id: 'split', label: 'Open in split', icon: 'split', disabled: full || !partners.length,
     items: partners.map(other => ({ id: other.id, label: other.title, icon: kindDef(other.kind).icon, onSelect: () => dispatch({ type: 'split-merge', id: tab.id, withId: other.id }) })),
@@ -65,7 +65,7 @@ export function tabMenuItems(api: TabsApi, tab: Tab): MenuEntry[] {
   const { state, dispatch } = api;
   // A place's Home is not an ordinary tab: it never closes, moves or groups, so its menu is the place's own.
   if (isPlaceHome(tab)) return api.placeMenu ?? [];
-  const toTheRight = visibleTabs(state).slice(visibleTabs(state).findIndex(t => t.id === tab.id) + 1).filter(t => !t.pinned && t.kind !== 'inbox');
+  const toTheRight = visibleTabs(state).slice(visibleTabs(state).findIndex(t => t.id === tab.id) + 1).filter(t => !t.pinned);
   const pane = focusedPane(tab);
   // Kind rows join the one tab menu. A finished job's Open log and Run again sit above Close; Remove job sits just under it.
   const kindItems = kindDef(pane.kind).menuItems?.(pane, api) ?? [];
@@ -81,13 +81,13 @@ export function tabMenuItems(api: TabsApi, tab: Tab): MenuEntry[] {
     { id: 'close', label: 'Close tab', shortcut: closeShortcutFor(tab.kind), onSelect: () => api.closeTab(tab.id) },
     // The explicit path for people who never hold Option (3l). Nothing running means nothing to stop, so it is not offered.
     ...(api.isRunning(tab) ? [{ id: 'close-stop', label: 'Close and stop', shortcut: closeStopShortcut, onSelect: () => api.closeAndStop(tab.id) }] : []),
-    { id: 'close-others', label: 'Close other tabs', disabled: !state.tabs.some(t => t.id !== tab.id && !t.pinned && t.kind !== 'inbox'), onSelect: () => api.closeMany({ type: 'close-others', id: tab.id }) },
+    { id: 'close-others', label: 'Close other tabs', disabled: !state.tabs.some(t => t.id !== tab.id && !t.pinned), onSelect: () => api.closeMany({ type: 'close-others', id: tab.id }) },
     { id: 'close-right', label: 'Close tabs to the right', disabled: !toTheRight.length, onSelect: () => api.closeMany({ type: 'close-right', id: tab.id }) },
   ], kindItems);
 }
 
-/** The Inbox is the pinned tab that is always there: it has no menu. Strip and overview both ask here, so they can never disagree. */
-export const tabMenuFor = (api: TabsApi, tab: Tab): MenuEntry[] | undefined => (tab.kind === 'inbox' ? undefined : tabMenuItems(api, tab));
+/** Strip and overview ask the same menu builder so their available actions cannot disagree. */
+export const tabMenuFor = (api: TabsApi, tab: Tab): MenuEntry[] | undefined => tabMenuItems(api, tab);
 
 export const withTabMenu = (api: TabsApi, tab: Tab, node: ReactElement): ReactElement => {
   const items = tabMenuFor(api, tab);

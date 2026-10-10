@@ -27,11 +27,9 @@ test('a missing transfer counts as a refused drop', () => {
   assert.deepEqual(dragRelease({ dataTransfer: null, clientX: -1, clientY: 2, screenX: 3, screenY: 4 }), { dropEffect: 'none', clientX: -1, clientY: 2, screenX: 3, screenY: 4 });
 });
 
-test('pinned tabs and the Inbox never tear off, and a tab that cannot move does not either', () => {
+test('pinned tabs and Home never tear off, and a tab that cannot move does not either', () => {
   assert.equal(mayTearOff(tab(), true), true);
   assert.equal(mayTearOff(tab({ pinned: true }), true), false);
-  assert.equal(mayTearOff(tab({ kind: 'inbox' }), true), false);
-  assert.equal(mayTearOff(tab({ kind: 'inbox', pinned: true }), true), false);
   assert.equal(mayTearOff(tab(), false), false);
   assert.equal(mayTearOff(tab({ kind: 'home', pinned: true }), false), false);
 });

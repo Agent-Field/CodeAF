@@ -36,7 +36,7 @@ export function backgroundItems(closed: readonly Tab[], summaries: Summaries, si
 
 /** Open tabs that wait on the person. The Inbox itself never lists itself. */
 export function needsYouItems(tabs: readonly Tab[], summaries: Summaries): NeedsYouItem[] {
-  return tabs.filter(tab => tab.kind !== 'inbox' && panesOf(tab).some(pane => summaries[pane.id]?.mark === 'waiting')).map(tab => ({ id: tab.id, tabId: tab.id, title: tab.title }));
+  return tabs.filter(tab => panesOf(tab).some(pane => summaries[pane.id]?.mark === 'waiting')).map(tab => ({ id: tab.id, tabId: tab.id, title: tab.title }));
 }
 
 /** How many of the newest closed tabs are read once after a reload, to learn whether their work still goes on. */

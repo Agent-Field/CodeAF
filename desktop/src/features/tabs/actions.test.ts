@@ -44,10 +44,10 @@ test('a clipboard that refuses is said in a danger toast, never as copied', asyn
   assert.equal(toasts.getToast()?.tone, 'danger');
 });
 
-test('a tab can move only in the desktop app, as one pane, and never the Inbox', () => {
+test('a tab can move only in the desktop app, as one pane, and never Home', () => {
   const on = createTabActions({ native: native(), toasts: createToasts() });
   assert.equal(on.canMove(tab()), true);
-  assert.equal(on.canMove(tab({ kind: 'inbox' })), false);
+  assert.equal(on.canMove(tab({ kind: 'home', place: 'root' })), false);
   assert.equal(on.canMove(tab({ split: { layout: '1x2', focus: 0, panes: [] } })), false);
   assert.equal(createTabActions({ native: native({ desktop: false }), toasts: createToasts() }).canMove(tab()), false);
 });
