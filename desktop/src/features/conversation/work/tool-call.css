@@ -1,6 +1,6 @@
 /* Tool call row (components §3.3): lead, target, stat, state word, time. One 28px line, ink-2 at 12px. Layout only. */
 .work-call { display: flex; flex-direction: column; min-width: 0; }
-.work-call-head { position: relative; display: grid; grid-template-columns: var(--tool-row-lead) minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); min-height: var(--row-h); border-radius: var(--radius-chip); color: var(--ink-3); font-size: var(--type-label-size); }
+.work-call-head { position: relative; display: grid; grid-template-columns: var(--tool-row-lead) minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); min-height: var(--row-h); border-radius: var(--radius-chip); color: var(--ink-3); font-size: var(--type-label-size); line-height: var(--tool-row-leading); }
 .work-call-head:hover { background: var(--field); }
 .work-call-head:active { background: var(--field-2); }
 .work-call-head:has(.work-call-toggle:focus-visible) { outline: var(--focus-ring-width) solid transparent; box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
@@ -15,6 +15,8 @@
 .work-call[data-state="stopped"] .work-call-toggle, .work-call[data-state="refused"] .work-call-toggle { color: var(--ink-3); }
 
 .work-call-main { display: flex; align-items: center; gap: var(--space-tight); min-width: 0; }
+.work-call-file .chip.file-chip { line-height: var(--tool-row-leading); }
+.work-call[data-tool="read"] .work-call-file .file-chip > .app-icon { display: none; }
 .work-call-file { position: relative; z-index: 1; display: inline-flex; min-width: 0; }
 .work-call-text, .work-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .work-call-text { color: var(--ink); }

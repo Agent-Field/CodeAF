@@ -80,7 +80,7 @@ export function ToolCallRow({ call, open, onToggle, phase, now, ...render }: Pro
   const stat = callStat(call);
   const time = timeOf(call, state, now);
   return (
-    <div className="work-call" data-state={state}>
+    <div className="work-call" data-state={state} data-tool={call.tool}>
       <div className="work-call-head">
         <Button className="work-call-toggle" aria-expanded={open} aria-label={`${call.tool.replace(/_/g, ' ')} ${targetText(target)}`} onClick={onToggle}>
           <Lead call={call} state={state} />
