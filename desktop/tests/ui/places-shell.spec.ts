@@ -467,20 +467,14 @@ test('k. offline: the rail and All places say the engine is out of reach, invent
   await expect(rail(page).getByText('Can’t reach the engine')).toHaveCount(0);
 });
 
-test('inbox: the rail’s Inbox lists the waiting question and opens its conversation', async ({ page }) => {
+test('a waiting question is the frame pill, and the rail has no Inbox row', async ({ page }) => {
   await boot(page, {
     places: [{ name: 'Software', tint: 'iris' }],
     chats: [{ id: 'sess-need', title: 'Port fix to v1', places: ['Software'], needsYou: true, reason: 'Allow the v1 branch push?' }],
     live: [NEW_CHAT],
   });
-  await rail(page).getByRole('button', { name: /^Inbox/ }).click();
-  // The rail's Inbox is the one Inbox card (design 3l): the conversation stopped on a question is a Needs you row.
-  const needs = page.locator('.inbox-card').getByRole('region', { name: 'Needs you' }).or(page.locator('.inbox-card section').filter({ hasText: 'Needs you' }));
-  const row = needs.getByRole('button', { name: /Port fix to v1/ });
-  await expect(row).toBeVisible();
-  await expect(row).toContainText('needs you');
-  await row.click();
-  await expect(tabs(page).filter({ hasText: 'Port fix to v1' })).toHaveAttribute('aria-selected', 'true');
+  await expect(rail(page).getByRole('button', { name: /^Inbox/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /need you elsewhere/ })).toBeVisible();
 });
 
 async function setTheme(page: Page, theme: 'Light' | 'Dark') {
