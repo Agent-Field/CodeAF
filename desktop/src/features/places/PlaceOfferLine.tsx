@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Button, Icon } from '../../components/ui';
 import { proposalsClient, type PlaceProposal } from './proposals-client';
+import { writeSnooze } from './suggestions';
 import { usePlacesShell } from './shell/PlacesShell';
 import './home.css';
 
@@ -16,7 +17,11 @@ export function PlaceOfferLine({ proposal, text, action, onSettled }: { proposal
     held.current = true; setBusy(true);
     try {
       if (accept) await shell.write(text, () => proposalsClient.accept(proposal));
-      else await proposalsClient.decline(proposal.id);
+      else {
+        await proposalsClient.decline(proposal.id);
+        // The engine's decline is the durable snooze. This record hides the same id if that read is slow, for the same 30 days.
+        writeSnooze(localStorage, proposal.id, new Date());
+      }
       setDecided(true);
     } catch (failure) { shell.warn(failure); }
     finally { held.current = false; setBusy(false); onSettled(); }
