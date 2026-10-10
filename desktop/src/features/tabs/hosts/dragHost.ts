@@ -1,9 +1,11 @@
-// Drag host (owned by the split lane): which tab is in flight, what dropping it on a tab or a group label
-// does (design 2g: "split zones in the content, group target in the strip"), and the edge drops that PaneGrid draws.
+// Drag host: which tab is in flight, what dropping it on a tab or a group label does (design 2g: "split zones
+// in the content, group target in the strip"), the edge drops that PaneGrid draws, and a release outside the
+// window, which opens that tab in a new window (Interactions, "Dragging a tab out of the strip makes a new window").
 import { useSyncExternalStore, type DragEvent, type KeyboardEvent } from 'react';
 import type { TabsApi } from '../context';
 import type { Tab, TabGroup } from '../model';
 import { blockNeighbour, blockSlots } from '../reducers/groups';
+import { dragRelease, mayTearOff, tabMoveToWindow, tearOffAt } from './tearOff';
 
 export const tabDragType = 'application/codeaf-tab';
 /** A whole group in flight, dragged by its label (Interactions, group label: "Drag moves the whole group"). */
@@ -44,7 +46,14 @@ export function tabDragProps(api: TabsApi, tab: Tab) {
   return {
     draggable: true,
     onDragStart: (event: DragEvent) => { event.dataTransfer.setData(tabDragType, tab.id); event.dataTransfer.effectAllowed = 'move'; setDragged(tab.id); },
-    onDragEnd: () => setDragged(null),
+    onDragEnd: (event: DragEvent) => {
+      setDragged(null);
+      // The client box is this window. A pointer past it, and a drop nobody accepted, is a new window at the
+      // pointer. The move itself is the same door as the menu, so a browser, a failure and a running turn stay put.
+      const at = tearOffAt(dragRelease(event), { width: window.innerWidth, height: window.innerHeight });
+      if (!at || !mayTearOff(tab, api.actions.canMove(tab))) return;
+      tabMoveToWindow(tab, () => { void api.actions.moveToNewWindow(tab, at); });
+    },
     onDragOver: (event: DragEvent<HTMLElement>) => {
       const group = carriesGroup(event);
       if (group ? !draggedGroup || tab.groupId === draggedGroup : !carriesTab(event) || dragged === tab.id) return;
