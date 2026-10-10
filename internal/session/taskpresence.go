@@ -672,6 +672,16 @@ func (a *Agent) presenceAskingOptions(kind QuestionKind, id uint64, text string,
 // is: every question that holds a turn comes through here, so this is the one
 // place a member's asking event can be raised and taken down ([Agent.teamAsking]).
 func (a *Agent) presenceAskingWhole(q Question, announce func()) func() {
+	if q.Asked.IsZero() {
+		q.Asked = time.Now()
+	}
+	// THE GATE RUNS BEFORE THE DESK. A place that answers the question must
+	// not publish it as something a person still has to answer, and a place
+	// that is only proposing has to have attached that proposal first so the
+	// row the desk banks is the row the person sees.
+	if a.decideBeforePresence(&q) {
+		return func() {}
+	}
 	forgetDesk := a.presenceAskingQuestion(q)
 	letGo := a.raiseQuestion(q, announce)
 	teamDown := a.teamAsking(q)
