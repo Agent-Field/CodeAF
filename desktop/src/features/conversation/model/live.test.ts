@@ -215,3 +215,20 @@ test('task-only questions cannot pause foreground tools even when a worker reuse
   assert.equal(works(project({ ...q, blocking: { turn: true }, withdrawn: { reason: 'resolved' } }).blocks)[0].steps[0].state, 'running');
   assert.equal(works(project({ id: 7, kind: 'choice', head: 'Older question', ask: 'Proceed?', subject: { callId: 'c' } }).blocks)[0].steps[0].state, 'waiting');
 });
+
+test('a retry shows the delay the engine sent, and nothing when it sent none', () => {
+  const withDelay = reduceLive(emptyLive(), event('retrying', { text: 'busy', raw: { Retry: { DelaySeconds: 3.2 } } }), 1);
+  const note = works(running([user('go')], withDelay).blocks)[0].notes[0];
+  assert.deepEqual(note.kind === 'note' && [note.text, note.time], ['Retrying — busy', '4s']);
+  const without = works(running([user('go')], reduceLive(emptyLive(), event('retrying', { text: 'busy' }), 1)).blocks)[0].notes[0];
+  assert.equal(without.kind === 'note' && without.time, undefined);
+});
+
+test('compacted inserts the summarized divider live; compacting draws nothing', () => {
+  const compacting = reduceLive(emptyLive(), event('compacting'), 1);
+  assert.equal(works(running([user('go')], compacting).blocks).length, 0);
+  const done = reduceLive(compacting, event('compacted'), 1);
+  const note = works(running([user('go')], done).blocks)[0].notes[0];
+  assert.deepEqual(note.kind === 'note' && [note.text, note.tone], ['Earlier messages summarized', 'compaction']);
+  assert.equal(reduceLive(done, event('retrying'), 1).compacted, true);
+});
