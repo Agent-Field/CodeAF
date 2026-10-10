@@ -1,6 +1,5 @@
 import type { MouseEvent } from 'react';
-import { NavigationItem } from '../../components/ui';
-import { PlaceDot } from '../places/PlaceDot';
+import { RailRow } from '../places/rail/RailRow';
 import { nowCount } from './nowCount';
 import type { PlaceRailProps } from './PlaceRail';
 
@@ -13,8 +12,8 @@ type NowModel = PlaceRailProps['now'] & { hover?: boolean };
  */
 export function NowRow({ now, primaryClick }: { now: NowModel; primaryClick: (event: MouseEvent) => boolean }) {
   const count = nowCount(now.count);
-  return <NavigationItem icon="now" active={now.active} data-hover={now.hover || undefined} aria-keyshortcuts={now.shortcut}
+  return <RailRow name="Now" icon="now" active={now.active} data-hover={now.hover || undefined} aria-keyshortcuts={now.shortcut}
     onContextMenu={event => event.preventDefault()} onClick={event => (primaryClick(event) && now.onNewWindow ? now.onNewWindow() : now.onGo())}
     onAuxClick={event => { if (event.button === 1 && now.onNewWindow) { event.preventDefault(); now.onNewWindow(); } }}
-    trail={<>{count !== undefined && <span className="rail-meta" data-rail-count>{count}</span>}<PlaceDot status={now.status} label={now.statusLabel}/></>}>Now</NavigationItem>;
+    meta={count !== undefined ? <span data-rail-count>{count}</span> : undefined} status={now.status} statusLabel={now.statusLabel}/>;
 }
