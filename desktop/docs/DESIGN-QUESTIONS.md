@@ -61,6 +61,7 @@ Shell). On any conflict, the design files win over code and older docs.
 
 | # | Question | Assumption the app ships now |
 |---|---|---|
+| CV-R1 | How should clock receipts round fractional waits or display older records without a wait? | Round the actual recorded wait to the nearest whole second. Without a known positive wait, show “picked by codeaf” without an invented duration. Person receipts retain “you · HH:MM”. |
 | CV-N1 | The retrying event carries no delay today (`RetryNews` has none); where does a countdown come from | The overlay reads `Retry.DelaySeconds` from the event if a future engine sends it and shows it as a static mono `Ns` beside "Retrying" (nothing otherwise, Q15). It does not tick. While compacting nothing is drawn; on `compacted` the "Earlier messages summarized" divider appears live. |
 | Q30 | RESOLVED by the latest Interactions page: ⌘1–9 jump to tabs and ⌥⌘1–3 switch pinned models, so the two no longer share keys | ⌘1–9 jump to tabs; ⌥⌘1–3 pick pinned models. No conflict remains. |
 | OV1 | The earlier Shell spec opened the overview with ⌘↑; the latest Shell and Interactions pages say ⌘⇧\ (or a pinch out) and give ⌘↑/⌘↓ to stepping between messages | ⌘⇧\ (Ctrl Shift A off the Mac) and the grid icon open it; the overview no longer listens for ⌘↑. |

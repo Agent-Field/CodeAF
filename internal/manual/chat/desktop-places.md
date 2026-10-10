@@ -205,3 +205,13 @@ keeps the directory it was given. The desktop process stays where it was launche
 The model does not follow the folder. A new chat still takes a place's model and permissions
 when its **first turn** opens. A later change still applies at the **next turn**. A choice you
 made in the chat still wins.
+
+## Desktop question receipts — picked by codeaf or answered by you
+
+An answered question leaves a quiet check and its picked label in the conversation.
+A clock-picked answer reads, for example, `Keep strict` followed by
+`picked by codeaf after 30s`. The seconds are the actual recorded wait, rounded
+to the nearest whole second. Reopening the conversation keeps that wait.
+Older records with no known wait say `picked by codeaf` without seconds.
+An answer you give keeps its attribution and local time, for example
+`Allow once · you · 14:02`.

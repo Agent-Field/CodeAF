@@ -108,3 +108,28 @@ test('a waiting call shows its step as waiting', () => {
   const work = turns[0].blocks[0];
   assert.equal(work.kind === 'work' && work.steps[0].state, 'waiting');
 });
+
+test('a clock-picked outcome names codeaf and the actual elapsed seconds, live and on replay', () => {
+  const outcome: QuestionOutcome = { kind: 'ask', token: '4', outcome: 'decided', words: 'Keep strict', by: 'dial', elapsedSeconds: 37.2, at: '2026-10-09T14:02:00Z', callId: 'c1' };
+  const places = new Map<string, string>();
+  projectTurnsV2(snap(entries, { questions: [consent({ kind: 'ask' })] as never }), undefined, places);
+  const snapshot = { ...snap(entries), recentOutcomes: [outcome] };
+  for (const remembered of [places, undefined]) {
+    const { turns } = projectTurnsV2(snapshot, undefined, remembered);
+    assert.deepEqual(receipts(turns[0].blocks).map((r) => [r.state, r.text]), [['decided', 'Keep strict · picked by codeaf after 37s']]);
+  }
+});
+
+test('a clock-picked outcome never invents elapsed seconds absent from an older record', () => {
+  for (const elapsedSeconds of [undefined, 0, -1, NaN, Infinity]) {
+    const outcome: QuestionOutcome = { kind: 'ask', token: '4', outcome: 'decided', words: 'Keep strict', by: 'dial', elapsedSeconds, callId: 'c1' };
+    const { turns } = projectTurnsV2({ ...snap(entries), recentOutcomes: [outcome] });
+    assert.equal(receipts(turns[0].blocks)[0].text, 'Keep strict · picked by codeaf');
+  }
+});
+
+test('the design thirty-second receipt uses the recorded wait', () => {
+  const outcome: QuestionOutcome = { kind: 'ask', token: '4', outcome: 'decided', words: 'Keep strict', by: 'dial', elapsedSeconds: 30, callId: 'c1' };
+  const { turns } = projectTurnsV2({ ...snap(entries), recentOutcomes: [outcome] });
+  assert.equal(receipts(turns[0].blocks)[0].text, 'Keep strict · picked by codeaf after 30s');
+});
