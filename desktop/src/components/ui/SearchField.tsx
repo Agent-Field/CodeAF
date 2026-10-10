@@ -18,7 +18,7 @@ export function SearchField({ label, placeholder, value, onChange, shortcut = 'M
  const hint = shortcut.replace('Mod', '⌘/Ctrl').replace(/\+/g, ' ');
  return <div className="search-field">
   <Icon name="search" />
-  <input ref={ref} type="search" aria-label={label} placeholder={placeholder} value={value}
+  <input className="text-input-search" ref={ref} type="search" aria-label={label} placeholder={placeholder} value={value}
    onChange={event => onChange(event.currentTarget.value)}
    onKeyDown={event => {
     if (event.key !== 'Escape' || event.nativeEvent.isComposing) return;
