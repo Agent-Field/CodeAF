@@ -553,14 +553,46 @@ func automationBinding(cfg Config) Config {
 	return cfg
 }
 
+// Work carries out one run of an automation's brief as unattended work, in
+// three phases with one function each: the run's own configuration, the turn
+// watched for the two reasons to stop it, and what it came to.
 func (r *automationRunner) Work(ctx context.Context, item automation.Automation, run automation.Run, evidence string) (automation.Report, error) {
+	setup, err := r.setUpWork(item, run)
+	if err != nil {
+		return automation.Report{Transcript: setup.dir}, err
+	}
+	agent, err := r.newChild(setup.cfg)
+	if err != nil {
+		return automation.Report{Transcript: setup.dir}, err
+	}
+	defer func() { _ = agent.Close() }()
+	events, err := agent.Submit(ctx, automationBrief(item, evidence))
+	if err != nil {
+		return automation.Report{Transcript: setup.dir}, err
+	}
+	limit := item.Limits.Effective().USD
+	return workReport(agent, setup, watchWork(agent, events, limit), limit)
+}
+
+// workSetup is one run's configuration and what its report needs from it: the
+// run's folder (empty until a failure has a folder to point at), the door the
+// run reports through, and where kept work went.
+type workSetup struct {
+	cfg        Config
+	dir        string
+	report     *AutomationRun
+	branchNote string
+}
+
+// setUpWork builds the run's configuration from the person's own assembly.
+func (r *automationRunner) setUpWork(item automation.Automation, run automation.Run) (workSetup, error) {
 	runDir := filepath.Join(r.root, "runs", item.ID, strconv.FormatInt(run.ID, 10))
 	if err := os.MkdirAll(runDir, 0o700); err != nil {
-		return automation.Report{}, err
+		return workSetup{}, err
 	}
 	cfg, err := r.base(item.Workspace)
 	if err != nil {
-		return automation.Report{}, err
+		return workSetup{}, err
 	}
 	place := Place{Dir: runDir, Workspace: item.Workspace}
 	cfg.Workspace = item.Workspace
@@ -580,64 +612,69 @@ func (r *automationRunner) Work(ctx context.Context, item automation.Automation,
 	report := &AutomationRun{}
 	cfg.AutomationRun = report
 	cfg.automationID = item.ID
-	branchNote := ""
+	setup := workSetup{cfg: cfg, dir: runDir, report: report}
 	if item.Worktree {
 		tree, err := automationWorktree(cfg, item)
 		if err != nil {
-			return automation.Report{Transcript: runDir}, err
+			return setup, err
 		}
-		cfg.Workspace = tree.dir
-		cfg.Place.Workspace = tree.dir
-		branchNote = "work kept on " + tree.branch + " in " + tree.dir
+		setup.cfg.Workspace = tree.dir
+		setup.cfg.Place.Workspace = tree.dir
+		setup.branchNote = "work kept on " + tree.branch + " in " + tree.dir
 	}
 	_ = SaveMeta(runDir, Meta{
-		ID: place.ID(), Title: item.Title, Workspace: item.Workspace, Model: cfg.Model, Created: time.Now(),
+		ID: place.ID(), Title: item.Title, Workspace: item.Workspace, Model: setup.cfg.Model, Created: time.Now(),
 	})
-	agent, err := r.newChild(cfg)
-	if err != nil {
-		return automation.Report{Transcript: runDir}, err
-	}
-	defer func() { _ = agent.Close() }()
-	events, err := agent.Submit(ctx, automationBrief(item, evidence))
-	if err != nil {
-		return automation.Report{Transcript: runDir}, err
-	}
-	limit := item.Limits.Effective().USD
-	var (
-		fault  error
-		needs  string
-		capped bool
-	)
+	return setup, nil
+}
+
+// workEnd is how a run's turn ended, read off its events.
+type workEnd struct {
+	fault  error
+	needs  string
+	capped bool
+}
+
+// watchWork drains a run's turn, stopping it the moment it needs the person or
+// reaches its money cap.
+func watchWork(agent *Agent, events <-chan Event, limit float64) workEnd {
+	var end workEnd
 	for event := range events {
 		switch event.Kind {
 		case EventToolFailed:
-			if needs == "" && automationNeedsPerson(event.Hint+" "+event.Output) {
-				needs = automationNeedsLine(event)
+			if end.needs == "" && automationNeedsPerson(event.Hint+" "+event.Output) {
+				end.needs = automationNeedsLine(event)
 				agent.InterruptFor(StopByWorkStopped)
 			}
 		case EventToolFinished:
-			if !capped && limit > 0 && agent.Usage().CostUSD >= limit {
-				capped = true
+			if !end.capped && limit > 0 && agent.Usage().CostUSD >= limit {
+				end.capped = true
 				agent.InterruptFor(StopByWorkStopped)
 			}
 		case EventError:
 			if event.Err != nil {
-				fault = event.Err
+				end.fault = event.Err
 			}
 		}
 	}
+	return end
+}
+
+// workReport is what a run came to: the person's ok it stopped on, the cap it
+// reached, a fault, or its own report.
+func workReport(agent *Agent, setup workSetup, end workEnd, limit float64) (automation.Report, error) {
 	// THE LAST THING IT SAID is read from the run's own transcript, the one
 	// account of the turn that does not depend on how its text was streamed.
 	lastWords := strings.TrimSpace(lastSaid(agent))
-	out := automation.Report{USD: agent.Usage().CostUSD, Transcript: runDir}
-	status, summary, reported := report.result()
+	out := automation.Report{USD: agent.Usage().CostUSD, Transcript: setup.dir}
+	status, summary, reported := setup.report.result()
 	switch {
-	case needs != "":
-		out.Outcome, out.Line = automation.OutcomeYourCall, needs
-	case capped:
+	case end.needs != "":
+		out.Outcome, out.Line = automation.OutcomeYourCall, end.needs
+	case end.capped:
 		out.Outcome, out.Line = automation.OutcomeIncomplete, fmt.Sprintf("reached its $%.2f cap", limit)
-	case fault != nil && !reported:
-		return out, fault
+	case end.fault != nil && !reported:
+		return out, end.fault
 	case reported && status == "done":
 		out.Outcome, out.Line, out.Detail = automation.OutcomeDone, firstLineOf(summary), summary
 	case reported:
@@ -647,8 +684,8 @@ func (r *automationRunner) Work(ctx context.Context, item automation.Automation,
 		// last thing the run said is kept as the detail, never as the result.
 		out.Detail = lastWords
 	}
-	if branchNote != "" {
-		out.Detail = strings.TrimSpace(out.Detail + "\n\n" + branchNote)
+	if setup.branchNote != "" {
+		out.Detail = strings.TrimSpace(out.Detail + "\n\n" + setup.branchNote)
 	}
 	return out, nil
 }
