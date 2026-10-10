@@ -3187,6 +3187,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I Undo Now also using a place", "desktop-places"},
 		{"did archiving a desktop place delete my chats", "desktop-places"},
 		{"do desktop place instructions override what I say now", "desktop-places"},
+		// A native web view paints above the window, so a menu hides the page.
+		{"why the web page went blank when I opened a menu", "desktop-web-overlay"},
+		{"the web page disappeared behind a menu", "desktop-web-overlay"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

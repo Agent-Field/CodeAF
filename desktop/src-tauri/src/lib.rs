@@ -13,6 +13,9 @@ pub mod notifications;
 mod tabmove;
 #[doc(hidden)]
 pub mod web;
+// Hides every web view on the calling window while a menu is up, and shows
+// the ones still open when it closes. The renderer holds the refcount.
+mod weboverlay;
 mod windows;
 
 use std::sync::Mutex;
@@ -202,7 +205,9 @@ pub fn run() {
             web::web_history,
             web::web_close,
             web::web_snapshot,
-            web::web_list
+            web::web_list,
+            weboverlay::web_hide_all,
+            weboverlay::web_show_all
         ])
         .build(tauri::generate_context!())
         .expect("error while building codeaf")

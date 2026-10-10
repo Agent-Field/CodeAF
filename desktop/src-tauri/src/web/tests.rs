@@ -185,6 +185,7 @@ fn a_view_belongs_to_the_window_that_opened_it() {
             state: WebState::new("p1", &url),
             load: 0,
             finished: 0,
+            shown: false,
         },
     );
     assert!(owns_view(&handle, "web-p1", "main").unwrap());

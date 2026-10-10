@@ -9,11 +9,16 @@
 // for each view, where it goes and whether it shows: hidden while its pane is
 // not on screen, while anything of the app's floats over it (covers.ts), while
 // the pane draws its own error over the sheet, and while the window is hidden.
+// While any of those covers a page, one overlay hold hides every web view in
+// the window and the sheet stays blank. A drag of a tab or a group holds too.
 
 import {
   nativeWebAvailable, onWebFocusAddress, onWebNewTab, onWebState, webClose, webHistory, webList, webNavigate, webOpen, webBounds, webVisible,
   type WebHistoryStep, type WebRect, type WebState,
 } from '../../design/nativeWeb';
+import {
+  forgetWebPane, holdWebOverlay, installWebOverlayDragGuard, subscribeWebOverlay, trackWebPane, webOverlayHeld,
+} from '../../lib/native/webOverlay';
 import { focusAddress } from './addressFocus';
 import { coverBoxes, isCovered } from './covers';
 import { openFromPage } from './host';
@@ -44,7 +49,10 @@ type Slot = {
 };
 
 /** What a pane renders from: the page's state, whether the app covers it, and why it failed to open. */
-export type PaneView = { state: WebState | null; covered: boolean; openError?: string };
+export type PaneView = { state: WebState | null; covered: boolean; blank: boolean; openError?: string };
+
+/** One hold for the whole window while any mounted page is covered. Released when none is. */
+let coverHold: (() => void) | null = null;
 
 const slots = new Map<string, Slot>();
 const states = new Map<string, WebState>();
@@ -64,11 +72,21 @@ const views = new Map<string, PaneView>();
 /** Stable per pane between changes, for useSyncExternalStore. */
 export function paneView(pane: string): PaneView {
   const slot = slots.get(pane);
-  const next: PaneView = { state: states.get(pane) ?? null, covered: slot?.covered ?? false, openError: slot?.openError };
+  const next: PaneView = { state: states.get(pane) ?? null, covered: slot?.covered ?? false, blank: webOverlayHeld(), openError: slot?.openError };
   const last = views.get(pane);
-  if (last && last.state === next.state && last.covered === next.covered && last.openError === next.openError) return last;
+  if (last && last.state === next.state && last.covered === next.covered && last.blank === next.blank && last.openError === next.openError) return last;
   views.set(pane, next);
   return next;
+}
+
+function syncCoverHold(covered: boolean) {
+  if (covered) {
+    if (!coverHold) coverHold = holdWebOverlay('cover');
+  } else if (coverHold) {
+    const release = coverHold;
+    coverHold = null;
+    release();
+  }
 }
 
 function slotFor(pane: string, url: string): Slot {
@@ -119,6 +137,9 @@ function start() {
   mutation.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'data-state', 'hidden', 'open'] });
   window.addEventListener('resize', schedule);
   document.addEventListener('visibilitychange', schedule);
+  // A hold going up or down changes every sheet (blank, or the page again).
+  subscribeWebOverlay(() => { notify(); schedule(); });
+  installWebOverlayDragGuard();
   observers = { resize, mutation };
 }
 
@@ -136,31 +157,49 @@ function tick() {
   const covers = coverBoxes();
   const windowShown = document.visibilityState !== 'hidden';
   let changed = false;
+  let anyCovered = false;
+  // Measure first. The hold is taken from that, and only then does a view move
+  // or change visibility, so the frame a menu closes does not hide and show.
+  const measured = new Map<string, { rect: WebRect; want: boolean }>();
   for (const slot of slots.values()) {
     if (!slot.mounted || !slot.sheet) {
+      if (slot.native === 'open') trackWebPane(slot.pane, false);
+      continue;
+    }
+    const box = slot.sheet.getBoundingClientRect();
+    const rect: WebRect = { x: Math.round(box.left), y: Math.round(box.top), width: Math.round(box.width), height: Math.round(box.height) };
+    const covered = isCovered(rect, covers);
+    if (covered) anyCovered = true;
+    if (covered !== slot.covered) {
+      slot.covered = covered;
+      changed = true;
+      // The picture a hover card or overview card shows. The sheet itself stays
+      // blank while the hold is up: the page must not paint over the menu.
+      if (covered && slot.sentVisible) void capture(slot.pane);
+    }
+    const failed = !!states.get(slot.pane)?.failure;
+    const want = windowShown && !covered && !failed && rect.width >= 1 && rect.height >= 1;
+    if (slot.native === 'open') trackWebPane(slot.pane, want);
+    measured.set(slot.pane, { rect, want });
+  }
+  syncCoverHold(anyCovered);
+  const held = webOverlayHeld();
+  for (const slot of slots.values()) {
+    const place = measured.get(slot.pane);
+    if (!place) {
       if (slot.native === 'open' && slot.sentVisible !== false) {
         slot.sentVisible = false;
         enqueue(slot, () => webVisible(slot.pane, false));
       }
       continue;
     }
-    const box = slot.sheet.getBoundingClientRect();
-    const rect: WebRect = { x: Math.round(box.left), y: Math.round(box.top), width: Math.round(box.width), height: Math.round(box.height) };
-    const covered = isCovered(rect, covers);
-    if (covered !== slot.covered) {
-      slot.covered = covered;
-      changed = true;
-      // The frozen frame the pane draws while covered is the latest picture.
-      if (covered && slot.sentVisible) void capture(slot.pane);
-    }
-    const failed = !!states.get(slot.pane)?.failure;
-    const show = windowShown && !covered && !failed && rect.width >= 1 && rect.height >= 1;
+    const show = place.want && !held;
     if (slot.native === 'none') {
       slot.native = 'opening';
       slot.openError = undefined;
-      enqueue(slot, () => webOpen(slot.pane, slot.url, rect, show).then(state => {
+      enqueue(slot, () => webOpen(slot.pane, slot.url, place.rect, show).then(state => {
         slot.native = 'open';
-        slot.sentRect = rect;
+        slot.sentRect = place.rect;
         slot.sentVisible = show;
         if (!states.has(slot.pane)) states.set(slot.pane, state);
         notify();
@@ -177,9 +216,9 @@ function tick() {
       slot.sentVisible = false;
       enqueue(slot, () => webVisible(slot.pane, false));
     }
-    if (show && !sameRect(slot.sentRect, rect)) {
-      slot.sentRect = rect;
-      enqueue(slot, () => webBounds(slot.pane, rect));
+    if (show && !sameRect(slot.sentRect, place.rect)) {
+      slot.sentRect = place.rect;
+      enqueue(slot, () => webBounds(slot.pane, place.rect));
     }
     if (show && slot.sentVisible !== true) {
       slot.sentVisible = true;
@@ -222,6 +261,8 @@ export function closeView(pane: string) {
   states.delete(pane);
   views.delete(pane);
   forgetShot(pane);
+  // Before the native close, so a release already queued does not show it.
+  forgetWebPane(pane);
   if (slot && (slot.native === 'open' || slot.native === 'opening')) enqueue(slot, () => webClose(pane));
   notify();
 }

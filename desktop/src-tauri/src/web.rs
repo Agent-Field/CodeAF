@@ -100,6 +100,9 @@ struct Entry {
     /// Bumped on every load start; a watcher for an older load stops.
     load: u64,
     finished: u64,
+    /// The view is on screen. An overlay hide and a hidden tab both clear it,
+    /// so a later show does not uncover a page that was not showing.
+    shown: bool,
 }
 
 #[derive(Default)]
@@ -442,6 +445,8 @@ pub async fn web_open<R: Runtime>(
                 state: WebState::new(&pane, &url),
                 load: 0,
                 finished: 0,
+                // Created hidden. It is marked shown only after it is left on screen.
+                shown: false,
             },
         );
     }
@@ -466,8 +471,13 @@ pub async fn web_open<R: Runtime>(
     // While the page holds the keys, a document listener in the app never runs.
     // Linux registers the three app chords on the window; macOS uses the menu.
     platform::bind_app_chords(&app, caller.label(), &view, &pane);
-    if !visible {
+    // An overlay already up must win over the pane's own request to be seen:
+    // a page created under a menu would otherwise paint over it.
+    let conceal = !visible || crate::weboverlay::is_holding(caller.window().label());
+    if conceal {
         let _ = view.hide();
+    } else {
+        mark_shown(&app, &label, true)?;
     }
     let (fail_app, fail_label) = (app.clone(), label.clone());
     platform::watch_failures(
@@ -540,9 +550,92 @@ pub async fn web_visible<R: Runtime>(
     pane: String,
     visible: bool,
 ) -> Result<(), String> {
-    let view = owned_view(&caller, &pane)?;
-    let done = if visible { view.show() } else { view.hide() };
-    done.map_err(|_| "The page could not change".into())
+    if visible && crate::weboverlay::is_holding(caller.window().label()) {
+        // The overlay still owns visibility. Showing now would paint the page
+        // over the menu. The release shows the panes that are still open.
+        let _ = owned_view(&caller, &pane)?;
+        return Ok(());
+    }
+    let alive = if visible {
+        reveal_pane(&caller, &pane)?
+    } else {
+        conceal_pane(&caller, &pane)?
+    };
+    if !alive {
+        return Err("That web page is closed".into());
+    }
+    Ok(())
+}
+
+fn mark_shown<R: Runtime>(app: &AppHandle<R>, label: &str, shown: bool) -> Result<(), String> {
+    let views = views(app);
+    let mut map = views.0.lock().map_err(|_| "Web pages are unavailable")?;
+    if let Some(entry) = map.get_mut(label) {
+        entry.shown = shown;
+    }
+    Ok(())
+}
+
+/// Panes on this caller's window whose views are currently on screen.
+pub(crate) fn shown_panes<R: Runtime>(caller: &Webview<R>) -> Result<Vec<String>, String> {
+    let owner = caller_label(caller)?;
+    let views = views(caller.app_handle());
+    let map = views.0.lock().map_err(|_| "Web pages are unavailable")?;
+    Ok(map
+        .values()
+        .filter(|entry| entry.owner == owner && entry.shown)
+        .map(|entry| entry.state.pane.clone())
+        .collect())
+}
+
+/// Whether this caller still has that pane's view. A closed pane is false.
+pub(crate) fn view_is_open<R: Runtime>(caller: &Webview<R>, pane: &str) -> Result<bool, String> {
+    let Ok(pane) = policy::checked_pane(pane) else {
+        return Ok(false);
+    };
+    let owner = caller_label(caller)?;
+    let label = policy::label_for(pane);
+    let app = caller.app_handle();
+    let owns = owns_view(app, &label, &owner)?;
+    Ok(owns && app.get_webview(&label).is_some())
+}
+
+/// Hides one owned view and remembers that it is not on screen. False when the
+/// pane is already gone, so a close during a hide is not an error.
+pub(crate) fn conceal_pane<R: Runtime>(caller: &Webview<R>, pane: &str) -> Result<bool, String> {
+    let Ok(pane) = policy::checked_pane(pane) else {
+        return Ok(false);
+    };
+    let owner = caller_label(caller)?;
+    let label = policy::label_for(pane);
+    let app = caller.app_handle();
+    let owns = owns_view(app, &label, &owner)?;
+    let Some(view) = app.get_webview(&label).filter(|_| owns) else {
+        return Ok(false);
+    };
+    view.hide()
+        .map_err(|_| "The page could not change".to_string())?;
+    mark_shown(app, &label, false)?;
+    Ok(true)
+}
+
+/// Shows one owned view. False when the pane was closed, which is the whole
+/// point of calling it after an overlay: a closed page is not brought back.
+pub(crate) fn reveal_pane<R: Runtime>(caller: &Webview<R>, pane: &str) -> Result<bool, String> {
+    let Ok(pane) = policy::checked_pane(pane) else {
+        return Ok(false);
+    };
+    let owner = caller_label(caller)?;
+    let label = policy::label_for(pane);
+    let app = caller.app_handle();
+    let owns = owns_view(app, &label, &owner)?;
+    let Some(view) = app.get_webview(&label).filter(|_| owns) else {
+        return Ok(false);
+    };
+    view.show()
+        .map_err(|_| "The page could not change".to_string())?;
+    mark_shown(app, &label, true)?;
+    Ok(true)
 }
 
 #[derive(Clone, Copy, Debug, serde::Deserialize, PartialEq, Eq)]
