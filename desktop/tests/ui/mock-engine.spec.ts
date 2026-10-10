@@ -207,3 +207,13 @@ test('places routes, Using and world-stream places records come from the mounted
   expect(next.map((record: { type: string }) => record.type)).toEqual(['reset', 'places']);
   expect(next[1].payload.nodes).toHaveLength(201);
 });
+
+test('settings come from the mounted world engine, and History and an absent world feed stay put', async ({ page }) => {
+  await installMockEngine(page, { initial: { entries: [] } });
+  expect((await call(page, '/settings/key')).body).toEqual({ present: false });
+  expect((await call(page, '/settings/engine')).body).toEqual({ local: true, connection: 'local' });
+  expect((await call(page, '/settings/permissions', 'PUT', { mode: 'secret-canary' })).status).toBe(400);
+  expect((await call(page, '/settings/permissions', 'PUT', { mode: 'allow' })).body).toMatchObject({ mode: 'allow' });
+  expect((await call(page, '/history')).body).toMatchObject({ total: 0, items: [] });
+  expect((await call(page, '/world')).status).toBe(404);
+});
