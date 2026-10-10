@@ -1,3 +1,6 @@
+import { chatIdFromSessionFile } from '../places/client';
+import { nextUpWalk } from '../nextup/useNextUpWalk';
+import { worldStore } from '../chat/world-store';
 // One tab's attachment to its engine session. Attaching only reads: no session
 // is created until the person sends, and detaching never stops the work.
 
@@ -204,6 +207,7 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, n
     setBusyKey(questionKey(value));
     try {
       receive(await answerEngine(target.id, value));
+      nextUpWalk.acknowledge(target.sessionFile ? chatIdFromSessionFile(target.sessionFile) : target.id, value, worldStore.getState().items);
       return true;
     } catch {
       // The card says the answer did not go through and keeps it.
