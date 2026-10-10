@@ -158,6 +158,12 @@ test('records before the first user message are the preface', () => {
   assert.deepEqual(preface.map((p) => p.kind), ['note']);
 });
 
+test('a membership line recorded before the first message stays a place change', () => {
+  const { preface } = projectTurnsV2(snap([entry({ Role: 'aside', AsideKind: 'places', Text: 'Now also using Release: brand-voice.md', UndoReceipts: ['rc_1'] })]));
+  assert.equal(preface[0]?.kind, 'placeChange');
+  if (preface[0]?.kind === 'placeChange') assert.deepEqual(preface[0].undoReceipts, ['rc_1']);
+});
+
 test('a repeated CallID updates the call instead of adding a row', () => {
   const turn = first([
     user('go'),
@@ -229,9 +235,9 @@ test('time spent waiting on a question is not worked time', () => {
 
 test('context changes stay chronological outside collapsed work and carry exact Undo authority',()=>{
  const turn=first([user('go'),tool('read','c1',{path:'a.go'}),entry({Role:'aside',AsideKind:'places',Text:'Now also using Release',UndoReceipts:['rc_exact']}),final('Done.')]);
- assert.deepEqual(kinds(turn.blocks),['work','context-note','answer']);
+ assert.deepEqual(kinds(turn.blocks),['work','placeChange','answer']);
  const note=turn.blocks[1];
- assert.equal(note.kind,'context-note');
- if(note.kind==='context-note') assert.deepEqual(note.undoReceipts,['rc_exact']);
+ assert.equal(note.kind,'placeChange');
+ if(note.kind==='placeChange') assert.deepEqual(note.undoReceipts,['rc_exact']);
  assert.deepEqual(works(turn.blocks)[0].notes,[]);
 });

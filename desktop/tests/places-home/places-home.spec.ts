@@ -45,15 +45,20 @@ for (const theme of ['light', 'dark']) {
     await expect(page.locator('.home-column')).toHaveCSS('row-gap', '24px');
     await expect(page.locator('.home-heading-stack')).toHaveCSS('row-gap', '10px');
     await expect(page.locator('.status-line')).toHaveCSS('font-size', '12px');
-    const selectors = ['.places-crumbs', '.places-heading-row', '.status-line', '.home-recap', '.home-live', '.decided', '.knows-heading', '.knows-add'];
-    const positions = await Promise.all(selectors.map(selector => page.locator(selector).evaluate(el => el.getBoundingClientRect().top)));
+    // In-flow order, measured inside the scroll. The composer is the dock under that scroll, so its viewport top stays put once the column is taller than the pane.
+    const flow = ['.places-crumbs', '.places-heading-row', '.status-line', '.home-recap', '.home-live', '.home-instructions', '.home-sources', '.decided', '.knows-heading', '.knows-add'];
+    const positions = await page.locator('.home-scroll').evaluate((scroll, selectors) => {
+      const base = scroll.getBoundingClientRect().top;
+      return (selectors as string[]).map(selector => {
+        const el = scroll.querySelector(selector);
+        return el ? el.getBoundingClientRect().top - base : Number.NaN;
+      });
+    }, flow);
+    expect(positions.every(value => Number.isFinite(value))).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
-    // The composer stays below the scroller while longer merged sections continue underneath its mask.
-    const dock = await page.locator('.home-page').evaluate(el => ({
-      scrollBottom: el.querySelector('.home-scroll')!.getBoundingClientRect().bottom,
-      composerTop: el.querySelector('.home-composer')!.getBoundingClientRect().top,
-    }));
-    expect(dock.composerTop).toBeCloseTo(dock.scrollBottom);
+    const scrollBox = await page.locator('.home-scroll').boundingBox();
+    const dockBox = await page.locator('.home-composer').boundingBox();
+    expect(dockBox!.y).toBeCloseTo(scrollBox!.y + scrollBox!.height);
     await expect(page.locator('.home-suggestion')).toHaveCount(0);
     await page.locator('[data-decided-id="d1"] button').click();
     await expect(page.getByRole('dialog', { name: 'Why?' })).toContainText('97%');
@@ -159,7 +164,9 @@ for (const theme of ['light', 'dark'] as const) {
       await page.getByRole('button', { name: 'Add files or links' }).click();
       await expect(log(page).last()).toHaveText('addSources:pl_launch');
       await page.getByRole('button', { name: 'Write instructions' }).click();
-      await expect(log(page).last()).toHaveText('writeInstructions:pl_launch');
+      await expect(page.getByRole('textbox', { name: 'Instructions' })).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('region', { name: 'Instructions' })).toHaveCount(0);
       await page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('button', { name: 'Marketing' }).click();
       await expect(log(page).last()).toHaveText('goTo:pl_marketing');
     });

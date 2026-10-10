@@ -41,6 +41,9 @@ export type ComposerProps = {
   autoFocus?: boolean;
   /** Files a hand-off (a web page's picture) puts in the tray once, on mount. Nothing is sent. */
   offeredFiles?: File[];
+  /** Repeated drops from the Using popover enter the same chat-only attachment tray. */
+  droppedFiles?: File[];
+  onDroppedFiles?: () => void;
   onOfferedFiles?: () => void;
   /**
    * The page chat-plus attached: its address and title, drawn as a link and not
@@ -120,6 +123,11 @@ export function Composer(props: ComposerProps) {
   const disabled = !!disabledReason;
   const attachments = useAttachments();
   const picker = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!props.droppedFiles?.length) return;
+    attachments.add(props.droppedFiles);
+    props.onDroppedFiles?.();
+  }, [props.droppedFiles, attachments.add]);
   const drop = useFileDrop(attachments.add, !disabled);
   // A ref, not state: StrictMode replays effects and a remounted tray must not take the same offer twice.
   const offerTaken = useRef(false);

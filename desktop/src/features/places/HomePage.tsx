@@ -10,6 +10,7 @@ import { StatusLine } from '../decisions/StatusLine';
 import { DecidedRows } from '../decisions/DecidedRows';
 import { KnowsList } from './knows/KnowsList';
 import { shortTime } from './home-model';
+import { Instructions } from './home/Instructions';
 import { homeMenu, type PlaceActions } from './place-actions';
 
 export type HomePageProps = {
@@ -34,6 +35,7 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
   const drag = useDragState();
   const deletion = useDeleteFlow(actions, runner);
   const [renaming, setRenaming] = useState(false);
+  const [instructionsFor, setInstructionsFor] = useState<string>();
   const readOnly = connection.state === 'offline';
   const clock = now ?? new Date();
   const sections = useHomeSections(view?.kind === 'place' ? view.id : undefined, view, connection.state !== 'ready');
@@ -78,6 +80,10 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
       actions={actions} readOnly={readOnly} siblings={view.children.map(child => child.name)} runner={runner} drag={drag} onDelete={deletion.start}/>}
     <HomeChatsSection label={isPlace ? 'Chats' : 'Not in any place'} chats={view.chats} truncated={view.chatsTruncated} actions={actions} readOnly={readOnly}
       inPlaceId={isPlace ? view.id : undefined} drag={drag} now={clock}/>
+    {isPlace && !nothingYet && <Instructions key={view.id} placeId={view.id} instructions={view.instructions} open={instructionsFor === view.id} readOnly={readOnly}
+      onSave={actions.saveInstructions && (text => actions.saveInstructions?.(view.id, text))}
+      onDropSource={actions.dropOnInstructions && (source => actions.dropOnInstructions?.(view.id, source))}
+      onDismiss={() => setInstructionsFor(current => current === view.id ? undefined : current)}/>}
     {isPlace && <HomeSourcesSection key={`${view.id}-sources`} placeId={view.id} sources={view.sources ?? []} actions={actions} readOnly={readOnly} showAdd={!nothingYet}/>}
     {isPlace && !nothingYet && <>
       <DecidedRows key={`${view.id}-decided`} items={(sections.decisions ?? []).map(item => ({ ...item, age: shortTime(item.at, clock) }))}/>
@@ -86,6 +92,13 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
     </>}
     {isPlace && sections.error && <div className="home-notice" role="alert"><span>{sections.error}</span>
       {!readOnly && <Button variant="quiet" onClick={sections.refresh}>Retry Home sections</Button>}</div>}
-    {nothingYet && <HomeEmptyPlace placeId={view.id} contextLine={view.contextLine} actions={actions} readOnly={readOnly}/>}
+    {nothingYet && <>
+      <HomeEmptyPlace placeId={view.id} contextLine={view.contextLine} contextParents={view.contextParents} revision={view} actions={actions} readOnly={readOnly}
+        onWriteInstructions={actions.saveInstructions && !readOnly ? () => setInstructionsFor(view.id) : undefined}/>
+      <Instructions key={view.id} placeId={view.id} instructions={view.instructions} open={instructionsFor === view.id} readOnly={readOnly}
+        onSave={actions.saveInstructions && (text => actions.saveInstructions?.(view.id, text))}
+        onDropSource={actions.dropOnInstructions && (source => actions.dropOnInstructions?.(view.id, source))}
+        onDismiss={() => setInstructionsFor(current => current === view.id ? undefined : current)}/>
+    </>}
   </HomeFrame>;
 }

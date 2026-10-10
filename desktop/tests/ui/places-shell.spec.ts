@@ -377,10 +377,11 @@ test('h. an empty place takes a typed folder and instructions; a refused source 
   await expect(sheet).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Write instructions' }).click();
-  const notes = page.getByRole('dialog', { name: 'Instructions for “Studio”' });
-  await notes.getByRole('textbox', { name: 'Instructions for Studio' }).fill('Use the brand voice.');
-  await notes.getByRole('button', { name: 'Save' }).click();
-  await expect(notes).toHaveCount(0);
+  const notes = page.getByRole('region', { name: 'Instructions' });
+  const instructions = notes.getByRole('textbox', { name: 'Instructions' });
+  await expect(instructions).toBeFocused();
+  await instructions.fill('Use the brand voice.');
+  await instructions.blur();
   await expect.poll(() => rig.places.posts(`/places/${studio}`).map(call => call.body)).toEqual([{ instructions: 'Use the brand voice.', ifGeneration: 1 }]);
   expect(rig.places.state().places[0].instructions).toBe('Use the brand voice.');
 });

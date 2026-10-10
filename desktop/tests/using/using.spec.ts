@@ -86,7 +86,7 @@ for (const theme of ['light', 'dark'] as const) {
       const s = sheet(page);
       await expect(s).toHaveCSS('border-top-left-radius', '12px');
       const places = s.getByRole('list', { name: 'Places this conversation belongs to' });
-      await expect(places.getByRole('listitem')).toHaveText(['Config parser', 'Release', 'codeaf · inherited through Release']);
+      await expect(places.getByRole('listitem')).toHaveText(['Config parser', 'Release', 'codeaf · inherited']);
       const instructions = s.locator('[data-kind="instruction"]');
       await expect(instructions).toHaveCount(3);
       await expect(instructions.nth(0)).toContainText('Keep strict mode the default for public APIs');
@@ -110,7 +110,7 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(given.getByRole('listitem')).toHaveCount(5);
       await expect(given.locator('[data-source-key="file:/work/brand-voice.md"]')).toContainText('Release · added by the AI');
       await expect(given.locator('[data-source-key="repo:/work/codeaf/internal/parse"]')).toContainText('Config parser');
-      await expect(s.getByText('1 source left out for room · 1 refused · 1 not found')).toBeVisible();
+      await expect(s.getByText('1 refused · 1 not found')).toBeVisible();
       await expect(s.getByRole('list', { name: 'Sources left out for room' }).getByText('Left out')).toBeVisible();
       const refused = s.getByRole('list', { name: 'Sources refused' });
       await expect(refused).toContainText('The codeaf folder holds credentials, so it is never given to a model.');
