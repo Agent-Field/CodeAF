@@ -7,7 +7,9 @@ package tui3
 // NOTHING HERE READS THE DISK. The list is the watcher's last reading of the
 // store (automationwatch.go) and a history is what the place asked for when it
 // was opened, so a frame drawn on every keystroke costs arithmetic and nothing
-// else (ARCHITECTURE.md's three layers).
+// else (ARCHITECTURE.md's three layers). AND NOTHING HERE TAKES THE APP: a
+// reading is data in and rows out (placelaws_test.go's law 5), so the palette
+// and the one glyph door are handed in.
 //
 // ONE ROW SAYS ONE AUTOMATION, ONCE. Its mark says what state it is in, its
 // title is the person's own name for it, and one dim sentence says when it runs
