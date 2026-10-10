@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { EngineQuestion } from '../chat/engine-client.ts';
+import type { EngineQuestion, EngineSnapshot } from '../chat/engine-client.ts';
 import type { WorldRow } from '../world/types.ts';
 import type { TabSummary } from './tabSummary.ts';
 import { mergeBackgroundSummary, rowForTarget, updatesFromWorldRows, type SessionTarget } from './useBackgroundSessions.ts';
@@ -46,6 +46,24 @@ test('a missing row does not invent a snapshot, and a row that leaves clears the
   assert.deepEqual(cleared.questions, []);
   assert.equal(cleared.digest, 'The fixtures run now.');
   assert.equal(cleared.sessionId, 'session-1');
+});
+
+const snapshot = (over: Partial<EngineSnapshot> = {}): EngineSnapshot => ({
+  id: 'mock-1', sessionFile: 'f.jsonl', workspace: '', model: '', persistent: true,
+  running: false, needsPerson: true, entries: [], tasks: [], usage: { Input: 0, Output: 0, CostUSD: 0, Duration: 0, Turns: 0 },
+  title: 'Storage', seq: 1, questions: [question], ...over,
+});
+
+test('a first read keeps the session and its questions, and a later read replaces them', () => {
+  const first = mergeBackgroundSummary(undefined, snapshot());
+  assert.equal(first.sessionId, 'mock-1');
+  assert.deepEqual(first.questions, [question]);
+  const added = { ...question, id: 2, head: 'Run once more' };
+  const second = mergeBackgroundSummary(first, snapshot({ seq: 2, questions: [question, added] }));
+  assert.deepEqual(second.questions?.map(item => item.id), [1, 2]);
+  assert.equal(second.sessionId, 'mock-1');
+  const quiet = mergeBackgroundSummary(second, snapshot({ seq: 3, needsPerson: false, questions: [] }));
+  assert.deepEqual(quiet.questions, []);
 });
 
 test('running, needs-you and title come from the row and a reply already read stays', () => {

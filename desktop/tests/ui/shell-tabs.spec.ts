@@ -105,6 +105,9 @@ test('a split is one merged tab with a segment per pane, a 40px pane title and a
 });
 
 test('the Design system page shows every tab kind and state, light and dark', async ({ page }) => {
+  // Two accessibility passes over the whole design system. Webkit under the suite's
+  // four workers does not finish that inside the default 30s, and the checks themselves do not change.
+  test.setTimeout(60_000);
   for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.goto('/');

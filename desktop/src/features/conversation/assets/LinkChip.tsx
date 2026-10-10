@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
+import { ContextMenu, useTooltip } from '../../../components/ui';
+import { nativeWebAvailable } from '../../../design/nativeWeb';
 import { isMac } from '../../../design/keyboard';
-import { toAddress } from '../../web/address';
-import { webHost } from '../../web/host';
+import { openWebTab } from '../../web/open';
 import { useAssets, useFavicon } from './AssetContext';
 import { hostnameOf, monogramHue, monogramLetter, registrableDomain } from './paths';
 
@@ -16,48 +17,64 @@ export function SiteIcon({ domain }: { domain: string }) {
   );
 }
 
-function open(event: React.MouseEvent, href: string, openUrl: (url: string) => Promise<void>) {
-  // The platform's open-in-new-tab modifier (Command on a Mac, Control elsewhere) opens a web tab when the workspace has
-  // a web host; it is the same gesture a browser uses for a background tab, and an address the policy refuses stays a link.
-  if (event.button === 0 && (isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey) && !event.shiftKey && !event.altKey) {
-    const host = webHost();
-    const address = toAddress(href);
-    if (host && 'url' in address) {
-      event.preventDefault();
-      host.openWebTab(address.url);
-      return;
-    }
+function open(event: MouseEvent, href: string, openUrl: (url: string) => Promise<void>) {
+  const primary = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+  const webGesture = event.button === 1 || (event.button === 0 && primary && !event.shiftKey && !event.altKey);
+  if (webGesture) {
+    event.preventDefault();
+    // The native capability is checked before dispatch so browser builds never create an unusable web tab.
+    if (nativeWebAvailable() && openWebTab(href)) return;
+    void openUrl(href).catch(() => undefined);
+    return;
   }
-  // Other modified clicks keep the browser's own behaviour; the plain click goes through the native bridge.
-  if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
   event.preventDefault();
   void openUrl(href).catch(() => undefined);
+}
+
+/** Both chip and prose links share the URL actions so their labels never change where a gesture goes. */
+function UrlLink({ href, className, children }: { href: string; className: string; children: ReactNode }) {
+  const assets = useAssets();
+  const tooltip = useTooltip<HTMLAnchorElement>(href, {}, { describe: true });
+  return (
+    <>
+      <ContextMenu label="Link actions" items={[{
+        id: 'copy-link', label: 'Copy link', icon: 'copy',
+        onSelect: () => void navigator.clipboard.writeText(href).catch(() => undefined),
+      }]}>
+        <a className={className} href={href} target="_blank" rel="noopener noreferrer" {...tooltip.props}
+          onClick={event => open(event, href, assets.openUrl)}
+          onAuxClick={event => { if (event.button === 1) open(event, href, assets.openUrl); }}>
+          {children}
+        </a>
+      </ContextMenu>
+      {tooltip.element}
+    </>
+  );
 }
 
 export type LinkChipProps = { href: string; title?: string };
 
 export function LinkChip({ href, title }: LinkChipProps) {
-  const assets = useAssets();
   const domain = hostnameOf(href);
   if (!domain) return <span className="asset-plain">{title ?? href}</span>;
   return (
-    <a className="chip link-chip" href={href} title={href} target="_blank" rel="noopener noreferrer" onClick={event => open(event, href, assets.openUrl)}>
+    <UrlLink className="chip link-chip" href={href}>
       <SiteIcon domain={domain} />
       <span className="link-chip-title">{title || domain}</span>
       {title && <span className="link-chip-domain">{domain}</span>}
-    </a>
+    </UrlLink>
   );
 }
 
 /** A link with its own words stays a text link; only a small site icon leads it. */
 export function TextLink({ href, children }: { href: string; children: ReactNode }) {
-  const assets = useAssets();
   const domain = hostnameOf(href);
   if (!domain) return <span>{children}</span>;
   return (
-    <a className="text-link" href={href} title={href} target="_blank" rel="noopener noreferrer" onClick={event => open(event, href, assets.openUrl)}>
+    <UrlLink className="text-link" href={href}>
       <SiteIcon domain={domain} />
       {children}
-    </a>
+    </UrlLink>
   );
 }

@@ -3,6 +3,10 @@ import { Button, DropdownMenu, Icon, IconButton } from '../../components/ui';
 import design from '../../design/tokens.json';
 import { useMediaQuery } from '../../design/useMediaQuery';
 import { overviewShortcut, tabShortcuts } from '../../design/keyboard';
+import { BackChip } from '../focus-history/BackChip';
+import { Banner, type NextUpBannerItem } from '../nextup/Banner';
+import { FramePill, framePillVisible } from '../nextup/FramePill';
+import { QueuePopover, type QueueRow } from '../nextup/QueuePopover';
 import type { TabsApi } from './context';
 import { GroupCapsule, MemberSlot } from './GroupCapsule';
 import { groupDragProps } from './hosts/dragHost';
@@ -30,13 +34,49 @@ function releaseWidth(box: HTMLElement) {
 }
 
 /**
- * The strip (46px): pinned tabs, a hairline, then tabs and group capsules, "+" and, at the far right, the
- * overview grid. Tabs compress from 190px to 112px, then the strip scrolls under a 40px mask at its right
+ * The walk listens for this. The strip does not import the walker: that module lands in its own file,
+ * and a click here has to reach it without this file changing again.
+ */
+export const nextUpStartEvent = 'codeaf:next-up-start';
+
+/** `itemKey` is the question to open. Absent, the walk starts at the front of the queue. */
+export type NextUpStartDetail = { itemKey?: string };
+
+/** Asks the walk to start. A window with no listener yet still shows the pill; the click is not lost as a navigation. */
+export function requestNextUp(detail: NextUpStartDetail = {}) {
+  window.dispatchEvent(new CustomEvent<NextUpStartDetail>(nextUpStartEvent, { detail }));
+}
+
+/** The queue hung on the right end of the strip. Zero draws nothing: the slot is absent, not an empty pill. */
+export type StripFrame = {
+  count: number;
+  rows: readonly QueueRow[];
+  acceptable: number;
+  banner: NextUpBannerItem | null;
+  onOpen: () => void;
+  onJump: (key: string) => void;
+  onStart: () => void;
+  onAccept: () => void;
+};
+
+/** The return chip. `key` changes on each jump the person did not start, so a dismissed chip can appear again. */
+export type StripBack = {
+  key: string;
+  parentName: string;
+  onBack: () => void;
+  onDismiss: () => void;
+};
+
+/**
+ * The strip (46px): an optional back chip, then pinned tabs, a hairline, tabs and group capsules, "+" and
+ * the overview grid, then the drag spacer's empty room, then the frame pill. The pill is outside the
+ * scrolling tabs and outside that spacer, so window drag stays on the empty room and the pill stays a
+ * control. Tabs compress from 190px to 112px, then the strip scrolls under a 40px mask at its right
  * edge and a "+N" menu lists every tab. At the small breakpoint an inactive tab that still has a title
  * becomes the 44px chip instead; the active tab keeps its title and the 112px floor. No scrollbar, no
  * chevron buttons, no wheel hijacking.
  */
-export function TabStrip({ api, leading, overviewTrigger, onOverview }: { api: TabsApi; leading?: ReactNode; overviewTrigger: RefObject<HTMLButtonElement | null>; onOverview: () => void }) {
+export function TabStrip({ api, leading, back, frame, overviewTrigger, onOverview }: { api: TabsApi; leading?: ReactNode; back?: StripBack; frame?: StripFrame; overviewTrigger: RefObject<HTMLButtonElement | null>; onOverview: () => void }) {
   const { state, dispatch } = api;
   const strip = useRef<HTMLDivElement>(null);
   // Shell 3j "Compressed", and the open question that makes it live: only while the window is at the small breakpoint.
@@ -142,14 +182,19 @@ export function TabStrip({ api, leading, overviewTrigger, onOverview }: { api: T
 
   useEffect(() => {
     const selected = strip.current?.querySelector<HTMLElement>('[aria-selected="true"]');
-    selected?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
-    const frame = requestAnimationFrame(() => selected?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' }));
+    // The selected control is the title button. The chip around it also holds the close slot, and
+    // scrolling the button leaves that slot past the strip, so the active tab is not fully in view.
+    const chip = selected?.closest<HTMLElement>('.workspace-tab') ?? selected;
+    const reveal = () => chip?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+    reveal();
+    const frame = requestAnimationFrame(reveal);
     return () => cancelAnimationFrame(frame);
   }, [state.activeId, state.groups]);
 
   return (
     <div className="workspace-tabbar" data-tauri-drag-region onContextMenu={openStripBackgroundMenu}>
       {leading}
+      {back && <div className="workspace-back-slot"><BackChip key={back.key} parentName={back.parentName} onBack={back.onBack} onDismiss={back.onDismiss}/></div>}
       <div className="workspace-tablist-owner" role="tablist" aria-label="Conversation tabs" aria-owns={order.flatMap(tabDomIds).join(" ")}/>
       <div ref={strip} className="workspace-tabstrip" aria-label="Conversation tabs" data-fade-end={edge.end || undefined}>
         {pinned.map(tab => item(tab))}
@@ -165,13 +210,20 @@ export function TabStrip({ api, leading, overviewTrigger, onOverview }: { api: T
           );
         })}
       </div>
-      <span className="workspace-strip-note" role="status" aria-live="polite">{moveNote}</span>
+      {moveNote ? <span className="workspace-strip-note" role="status" aria-live="polite">{moveNote}</span> : null}
       <div className="workspace-tab-actions">
         <IconButton className="workspace-tab-action" label="New tab" title={`New tab (${tabShortcuts.new})`} icon="plus" iconSize="sm" onClick={() => dispatch({ type: 'new' })}/>
         {edge.hidden > 0 && <DropdownMenu label="Tab actions" items={overflowItems(api)}><Button className="workspace-tab-more" aria-label="Tab actions">+{edge.hidden}<Icon name="chevron" size="micro" motion="disclosure"/></Button></DropdownMenu>}
         <StripMenu api={api} onOverview={onOverview}/>
         <IconButton ref={overviewTrigger} className="workspace-tab-action workspace-overview-trigger" label="All tabs" title={`All tabs (${overviewShortcut})`} icon="grid" iconSize="sm" onClick={onOverview}/>
       </div>
+      {frame && framePillVisible(frame.count) && <div className="workspace-frame-slot">
+        {/* The banner is first so the popover, later at the same layer, paints over it while both are open. */}
+        <div className="workspace-frame-banner"><Banner item={frame.banner} onOpen={frame.onJump}/></div>
+        <QueuePopover rows={frame.rows} acceptable={frame.acceptable} onJump={frame.onJump} onStart={frame.onStart} onAccept={frame.onAccept}>
+          <FramePill count={frame.count} onOpen={frame.onOpen}/>
+        </QueuePopover>
+      </div>}
     </div>
   );
 }

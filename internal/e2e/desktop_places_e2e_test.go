@@ -22,7 +22,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -52,8 +51,10 @@ func startDesktopBridge(t *testing.T) *bridgeDoor {
 	bin := binary(t)
 	w := newWorld(t) // key, throwaway CODEAF_HOME, profile — all via the product's own roads
 	pinEveryRole(t)
-	cmd := exec.Command(bin, "desktop-bridge", "--listen", "127.0.0.1:0", "--workspace", t.TempDir())
-	cmd.Env = append(os.Environ(), "CODEAF_HOME="+w.home, "CODEAF_DESKTOP_TOKEN=")
+	// guardedCommand is the only door that may start codeaf: an unguarded
+	// launch can replace the developer's timer with one pointing at this
+	// throwaway checkout (#1631).
+	cmd := guardedCommand(t, context.Background(), w.home, append(os.Environ(), "CODEAF_HOME="+w.home, "CODEAF_DESKTOP_TOKEN="), bin, "desktop-bridge", "--listen", "127.0.0.1:0", "--workspace", t.TempDir())
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)

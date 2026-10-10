@@ -49,7 +49,7 @@ for (const theme of ['Light','Dark','System']) {
 }
 test('navigation is still; action motion is bounded; collapse has a real transition', async ({page})=>{
  await page.goto('/');
- const navigation=page.getByRole('button',{name:'Inbox',exact:true});
+ const navigation=page.getByRole('navigation',{name:'Places'}).getByRole('button',{name:'Inbox',exact:true});
  await navigation.hover();
  await expect(navigation.locator('.app-icon')).toHaveAttribute('data-motion','none');
  expect(await navigation.locator('svg').evaluate(el=>el.getAnimations({subtree:true}).length)).toBe(0);

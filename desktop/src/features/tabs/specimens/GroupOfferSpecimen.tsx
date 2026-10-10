@@ -28,7 +28,7 @@ function Sandbox({ onReset }: { onReset: () => void }) {
   const [previews] = useState(() => createPreviewStore(design.interaction.previewCloseDelay));
   const next = useRef(1);
   const trigger = useRef<HTMLButtonElement>(null);
-  const api = { state, dispatch, summaries: {}, now: 0, closeTab: (id: string) => dispatch({ type: 'close', id }), startRename: noop, receiveSummary: noop, overlayOpen: false, previews, closeAndStop: noop, closeMany: noop, isRunning: () => false, background: { running: [], needsYou: [], failed: [] }, markFailedSeen: noop, reopenClosed: noop, actions: { linkFor: () => undefined, copyLink: async () => false, canMove: () => false, moveToNewWindow: async () => false, moveToWindow: async () => false } };
+  const api = { state, dispatch, summaries: {}, now: 0, closeTab: (id: string) => dispatch({ type: 'close', id }), startRename: noop, receiveSummary: noop, overlayOpen: false, previews, closeAndStop: noop, closeMany: noop, isRunning: () => false, background: { running: [], needsYou: [], failed: [] }, markFailedSeen: noop, reopenClosed: noop, actions: { linkFor: () => undefined, copyLink: async () => false, canMove: () => false, moveToNewWindow: async () => false, moveToWindow: async () => false, releaseFocus: () => undefined, moveFailed: () => undefined } };
   return <section className="group-offer-specimen" aria-label="Group suggestion specimen">
     <SectionHeading>Group suggestion</SectionHeading>
     <Text>Specimen. Three or more loose tabs from one session get one pill, once per launch; Group and the X are remembered for 30 days.</Text>
