@@ -3171,6 +3171,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what is the line under a chat on a place home", "desktop-place-home"},
 		{"where are chats that are not in any place", "desktop-place-home"},
 		{"what does also in mean on a place tile", "desktop-place-home"},
+		{"how do I move a tab to a new window", "desktop-tab-move-window"},
+		{"what happens when I drag a tab outside the strip", "desktop-tab-move-window"},
 		// Desktop conversation 1b: queued rows fold into the chip after the model name.
 		{"what is the N queued chip in the desktop composer", "desktop-queued-chip"},
 		{"I scrolled up and the queued messages disappeared", "desktop-queued-chip"},
