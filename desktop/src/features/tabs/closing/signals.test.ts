@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { AttentionItem, WorldRow } from '../../chat/world-client.ts';
-import { buildBackgroundWork, failedListLimit, recentFailureMs } from './background.ts';
+import { recentFailureMs } from './background.ts';
 import { attentionSignals, failureNoticeId, noticeFailureLimit, noticeQuestionLimit } from './signals.ts';
 
 const NOW = Date.parse('2026-10-09T12:00:00Z');
@@ -14,15 +14,12 @@ const ids = (list: { id: string }[]) => list.map(item => item.id);
 
 test('a failure is named by the engine, so two windows reading the same feed post the same list', () => {
   const world = live([failing('aaaa000000000001', '2026-10-09T11:00:00Z', { at: '2026-10-09T11:00:00Z' }), failing('aaaa000000000002', '2026-10-09T11:30:00Z', { at: '2026-10-09T11:30:00Z' })]);
-  // Window A has just sent its "seen" mark for one failure and keeps an old count record; window B has neither.
+  // Window A keeps an old count record for one failure; window B has none. The engine's own fact decides for both.
   const a = attentionSignals(world, { aaaa000000000001: 9 }, NOW);
   const b = attentionSignals(world, {}, NOW);
   assert.deepEqual(a, b);
   assert.deepEqual(ids(a), ['failed:aaaa000000000002:2026-10-09T11:30:00Z', 'failed:aaaa000000000001:2026-10-09T11:00:00Z']);
   assert.deepEqual(a[0], { id: 'failed:aaaa000000000002:2026-10-09T11:30:00Z', kind: 'failed', chatTitle: 'T aaaa000000000002', text: 'A task failed', chatId: 'aaaa000000000002' });
-  // The Inbox, by contrast, hides the failure this window marked at once: that is why the notifications do not use it.
-  const inbox = buildBackgroundWork({ tabs: [], closed: [], summaries: {}, since: {}, stopping: new Set(), world, seen: {}, pending: { aaaa000000000001: '2026-10-09T11:00:00Z' }, now: NOW });
-  assert.deepEqual(inbox.failed.map(item => item.chatId), ['aaaa000000000002']);
 });
 
 test('a failure leaves the list only when the engine says it was seen, and a newer one is a new notification', () => {
@@ -51,11 +48,10 @@ test('old, archived and deleted failures are not announced, and nothing is annou
   assert.deepEqual(attentionSignals({ status: 'unavailable', rows: [failing('aaaa000000000004', ago(0))], items: [asking('aaaa000000000004', 1)] }, {}, NOW), []);
 });
 
-test('the list is not the Inbox\'s five, and stays within what Rust accepts', () => {
+test('the list stays within what Rust accepts, and stays within what Rust accepts', () => {
   const rows = Array.from({ length: noticeFailureLimit + 10 }, (_, i) => failing(`bbbb${String(i).padStart(12, '0')}`, ago(i), { at: ago(i * 1000) }));
   const items = Array.from({ length: noticeQuestionLimit + 10 }, (_, i) => asking('aaaa000000000001', i + 1));
   const list = attentionSignals(live(rows, items), {}, NOW);
-  assert.ok(failedListLimit < noticeFailureLimit);
   assert.equal(list.filter(item => item.kind === 'failed').length, noticeFailureLimit);
   assert.equal(list.filter(item => item.kind === 'needsYou').length, noticeQuestionLimit);
   assert.ok(list.length <= 256);

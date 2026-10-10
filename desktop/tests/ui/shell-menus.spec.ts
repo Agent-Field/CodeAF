@@ -2,6 +2,7 @@ import { openPage } from './support/shell-navigation';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { expectAccessible, expectNoUnstyledControls, expectThemedSurface, menuSurface, tokenColor } from './contracts';
 import { installMockEngine, type MockEngine } from './support/mock-engine';
+import { pendingQuestion } from './support/scenarios';
 import design from '../../src/design/tokens.json' with { type: 'json' };
 
 // Design 3g (tab menu, group label menu), Components "Context menu" and 3l (closing running work).
@@ -251,8 +252,8 @@ test.describe('closing running work (3l)', () => {
     await expectAccessible(page);
     await toast.getByRole('button', { name: 'Undo' }).click();
     await expect(toast).toHaveCount(0);
-    // The work outlived its tab, so the pinned Inbox opened first in the strip and stays after Undo.
-    expect(await names(page)).toEqual(['Inbox', 'Intro', 'Config stack', 'lexer.go']);
+    // The work outlived its tab, but Home's Live section carries it now: no Inbox tab opens, before or after Undo.
+    expect(await names(page)).toEqual(['Intro', 'Config stack', 'lexer.go']);
     await expect(page.getByRole('tab', { name: 'Config stack', exact: true })).toHaveAttribute('aria-selected', 'true');
     expect(stops(engine)).toBe(0);
   });
@@ -288,13 +289,25 @@ test.describe('closing running work (3l)', () => {
     await expect.poll(() => engine.calls.some(call => call.path.endsWith('/sessions'))).toBe(true);
     await slot(page, 'Config stack').hover();
     await closeButton(page, 'Config stack').click();
-    await expect(page.locator('.toast')).toContainText('closed and still running');
+    await expect(page.locator('.toast')).toContainText('Config stack closed and still running');
     await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
+    await expect(page.locator('.tab-badge')).toHaveCount(0);
     await page.locator('.toast').getByRole('button', { name: 'Undo' }).click();
     await expect(page.getByRole('tab', { name: 'Config stack', exact: true })).toBeVisible();
     expect(stops(engine)).toBe(0);
   });
 
+  test('a question in a background tab summons no Inbox and puts no dot on a tab', async ({ page }) => {
+    const asked = pendingQuestion();
+    const engine = await installMockEngine(page, { ...asked, initial: { ...asked.initial, needsPerson: false, questions: [], running: false } });
+    await seed(page, [{ id: 'a', title: 'Intro' }, { id: 'b', title: 'Release v2.4', running: true }], { active: 'a' });
+    await page.goto('/');
+    await engine.update({ running: true, needsPerson: true, questions: asked.initial.questions });
+    await expect(page.getByRole('tab', { name: 'Release v2.4', exact: true })).toBeVisible();
+    await page.waitForTimeout(1500);
+    await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
+    await expect(page.locator('.tab-badge')).toHaveCount(0);
+  });
 });
 
 test('the Design system page shows the menus, the closing states without Inbox, light and dark', async ({ page }) => {

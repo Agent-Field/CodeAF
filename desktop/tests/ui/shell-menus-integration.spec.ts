@@ -5,7 +5,7 @@ import { installMockEngine } from './support/mock-engine';
 import type { AttentionItem, WorldRow } from '../../src/features/chat/world-client';
 
 // The menus lane on top of the current shell: the shared toast with its structural Undo, a close-and-stop that fails, and the
-// retirement of Inbox when engine-wide background work arrives. The mock engine holds one session; a tab with
+// absence of the retired Inbox summons. The mock engine holds one session; a tab with
 // that sessionFile is running, a tab without one is idle. Nothing here calls a model.
 const SESSION = 'mock-session-1.jsonl';
 const running = { initial: { running: true, title: '', entries: [{ Role: 'user', Text: 'Trailing commas across the config stack' }] } };
@@ -21,7 +21,7 @@ const recent = () => new Date(Date.now() - 60_000).toISOString();
 const noOverflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 
 test.describe('closing that fails to stop (3l)', () => {
-  test('Close and stop that cannot stop leaves the work visible, with Try again and a structural Undo', async ({ page }) => {
+  test('Close and stop that cannot stop keeps the work running, with Try again and a structural Undo', async ({ page }) => {
     const engine = await installMockEngine(page, { ...running, fail: { stop: 500 } });
     await seed(page, [{ id: 'a', title: 'Intro' }, { id: 'b', title: 'Config stack', running: true }], 'b');
     await page.goto('/');
@@ -32,9 +32,8 @@ test.describe('closing that fails to stop (3l)', () => {
     await expect(toast).toContainText('Could not stop Config stack. It is still running.');
     expect(await toast.getByRole('button').allTextContents()).toEqual(['Try again', 'Undo']);
     await expect(toast.locator('.toast-dot')).toHaveCSS('background-color', await tokenColor(page, 'danger'));
-    // The tab is gone but the work is not: it is on the Inbox's running list.
-    await page.getByRole('tab', { name: 'Inbox', exact: true }).click();
-    await expect(page.getByRole('region', { name: 'Inbox' }).getByRole('button', { name: /Config stack/ })).toBeVisible();
+    // The tab is gone but the work is not: Home's Live section carries it, and no Inbox tab opens.
+    await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
     // Undo is reached by keyboard and reopens the tab where it was.
     await toast.getByRole('button', { name: 'Undo' }).focus();
     await page.keyboard.press('Enter');
@@ -71,6 +70,7 @@ test.describe('retired Inbox stays absent from the world feed', () => {
     })).toBe(true);
     await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
     await expect(page.locator('.inbox-card')).toHaveCount(0);
+    await expect(page.locator('.tab-badge')).toHaveCount(0);
     await expect(page.getByRole('tab', { name: 'Intro', exact: true })).toHaveAttribute('aria-selected', 'true');
   });
 });
