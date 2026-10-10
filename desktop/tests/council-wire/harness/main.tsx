@@ -21,6 +21,7 @@ w.__council = {
   calls,
   say: (speaker: string, text: string) => lines.push({ speaker, text }),
   decide: () => { council = { ...council, state: 'decided', outcome: 'promise it outside strict mode', turns: 3, closedAt: '2026-10-10T12:05:00Z' }; },
+  escalate: () => { council = { ...council, state: 'escalated', turns: 6, closedAt: '2026-10-10T12:06:00Z' }; },
   setSession: (file: string) => { listed = file; },
 };
 let listed = base.sessionFile as string;
