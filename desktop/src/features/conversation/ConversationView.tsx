@@ -46,6 +46,10 @@ export type ConversationViewProps = {
   onView: (change: TabView) => void;
   onSummary: (summary: TabSummary) => void;
   onOpenTaskTab: (taskId: string, title: string) => void;
+  /** Renames this conversation's tab by hand (Conversation I-ICV-6). */
+  onRename?: (title: string) => void;
+  /** Opens another tab on the same saved session, optionally at an anchor (Flows I-IFL-16). */
+  onOpenConversationTab?: (sessionFile: string, anchor?: string, background?: boolean) => void;
   /** Whether the composer takes focus on mount. A split passes false for panes that are not focused. */
   autoFocus?: boolean;
   /** True while the pane is one of several in a split. */

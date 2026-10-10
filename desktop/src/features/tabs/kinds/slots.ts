@@ -16,6 +16,10 @@ export type PaneActions = {
   onSummary: (summary: TabSummary) => void;
   /** Opens a task from this pane as a background task tab. */
   onOpenTaskTab: (taskId: string, title: string) => void;
+  /** Renames this pane's tab by hand; the title is then manual and no later summary replaces it. */
+  onRename: (title: string) => void;
+  /** Opens a conversation tab bound to the same saved session, optionally at an anchor, in the background when asked. */
+  onOpenConversationTab: (sessionFile: string, anchor?: string, background?: boolean) => void;
   /** Opens a workspace file from this pane as a file tab, or its changes as a diff tab. */
   onOpenFile: (path: string, kind: 'file' | 'diff') => void;
 };
