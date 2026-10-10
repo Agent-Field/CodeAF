@@ -64,6 +64,14 @@ test('a place Home view carries only what the engine sent', () => {
   assert.ok(view.chats.every(chat => chat.status === undefined || chat.status === 'running' || chat.status === 'waiting'));
 });
 
+test('a running row says how long it has run, from the engine’s own instants, and a needs-you row says nothing extra', () => {
+  const digest = fixture('home-place');
+  const rows = homeViewFromDigest({ ...digest, readAt: '2026-10-09T12:00:30Z' }).attention;
+  assert.deepEqual(rows.map(a => [a.status, a.statusText]), [['waiting', undefined], ['running', 'running · 2m']]);
+  const early = homeViewFromDigest({ ...digest, readAt: '2026-10-09T11:58:30Z' }).attention;
+  assert.equal(early[1].statusText, undefined);
+});
+
 test('All places lists the chats in no place from Now’s digest, with the graph’s totals and paths', () => {
   const graph = fixture('graph');
   const view = homeViewFromDigest(fixture('home-root'), graph, fixture('home-now'));
