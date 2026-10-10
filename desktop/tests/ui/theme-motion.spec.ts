@@ -27,14 +27,11 @@ for (const theme of ['Light','Dark','System']) {
   await page.keyboard.press('Escape');
   await expect(trigger).toBeFocused();
   await expect(trigger).toHaveCSS('outline-width',design.foundation['focus-ring-width']);
+  // ⌘K is the New-tab field (SH-OQ5): focused, no dialog, themed like the rest of the card.
   await page.keyboard.press('Control+k');
-  const palette = page.getByRole('dialog'); await expectThemedSurface(page,palette);
-  const input=page.getByRole('textbox',{name:'Search commands'});
-  await expect(input).toBeFocused(); await expect(input).toHaveCSS('outline-style','none');
-  await expect(page.locator('.palette-search')).toHaveCSS('border-bottom-color',await tokenColor(page,'focus-ring'));
+  const field=page.getByRole('combobox',{name:'Search or start'});
+  await expect(field).toBeFocused(); await expect(page.getByRole('dialog')).toHaveCount(0);
   await expectAccessible(page);
-  await input.fill('no match'); await expect(page.getByText('No matching commands')).toBeVisible();
-  await page.keyboard.press('Escape');
   await openPage(page, 'Design system');
   await expectAccessible(page);
   await expectNoUnstyledControls(page);
@@ -54,7 +51,7 @@ test('navigation is still; action motion is bounded; collapse has a real transit
  await expect(navigation.locator('.app-icon')).toHaveAttribute('data-motion','none');
  expect(await navigation.locator('svg').evaluate(el=>el.getAnimations({subtree:true}).length)).toBe(0);
  await openPage(page, 'Design system');
- const action=page.getByRole('button',{name:'Open command palette',exact:true});
+ const action=page.getByRole('button',{name:'Open the new-tab field',exact:true});
  await action.hover();
  await expect(action.locator('.app-icon')).toHaveCSS('transform',`matrix(1, 0, 0, 1, ${parseFloat(design.foundation['motion-directional-travel'])}, 0)`);
  await expect(action.locator('.app-icon')).toHaveCSS('transition-duration',`${parseFloat(design.foundation['duration-directional'])/1000}s`);
@@ -70,12 +67,12 @@ test('reduced motion disables every shared transition and keyframe',async({page}
  await page.emulateMedia({reducedMotion:'reduce'}); await page.goto('/');
  await expect(page.locator('.app-shell')).toHaveCSS('transition-duration','0s, 0s');
  await openPage(page, 'Design system');
- await page.getByRole('button',{name:'Open command palette',exact:true}).hover();
- await expect(page.getByRole('button',{name:'Open command palette',exact:true}).locator('.app-icon')).toHaveAttribute('data-motion','none');
+ await page.getByRole('button',{name:'Open the new-tab field',exact:true}).hover();
+ await expect(page.getByRole('button',{name:'Open the new-tab field',exact:true}).locator('.app-icon')).toHaveAttribute('data-motion','none');
  await openAppearance(page);
  await expect(page.getByRole('listbox')).toHaveCSS('animation-duration','0s');
  await page.keyboard.press('Escape'); await page.keyboard.press('Control+k');
- await expect(page.getByRole('dialog')).toHaveCSS('animation-duration','0s');
+ await expect(page.getByRole('combobox',{name:'Search or start'})).toBeFocused();
 });
 test('theme menu keyboard selection, persistence, outside dismissal and selection state',async({page})=>{
  await page.goto('/'); await openPage(page, 'Settings'); const trigger=page.getByRole('combobox',{name:'Theme'});

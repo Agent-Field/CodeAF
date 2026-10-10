@@ -907,7 +907,7 @@ server or an independently implemented agent.
 In a desktop conversation with tasks, **⌘⇧K** on a Mac or **Ctrl+Shift+K** on
 Windows and Linux toggles the Tasks panel. With no tasks, the shortcut does
 nothing. The task's own view does not claim this shortcut. **⌘K** or **Ctrl+K**
-without Shift remains the command palette shortcut.
+without Shift goes to the New tab field.
 
 ## Closing a desktop tab and reattaching an idle conversation
 
