@@ -198,6 +198,7 @@ Shell). On any conflict, the design files win over code and older docs.
 | NT10 | New tab: choosing a recently closed row | Superseded by TI10: the closed tab comes back whole where it stood, and the field goes. |
 | NT11 | New tab: Enter on the first row while the engine is away | The tab becomes a conversation anyway and keeps the typed words as its draft, with the composer's own Retry line. Nothing is lost. |
 | NT12 | New tab: a file row | The tab becomes kind `file` with its path and the session that can read it. The file viewer is not backed yet, so the tab shows the file placeholder until the file lane lands. `path` was added to the persisted tab view for this. |
+| SH-GD1 | At the strip's end, Alt+Shift+←/→ on a group label has no neighbour to pass. Does it wrap, or stop? | It stops and says nothing; pinned tabs are never passed, so the first slot is just after the last pin. The announcement reads "Moved group <name> to position N of M", counting loose tabs and whole groups, not pins. |
 | NT13 | New tab rows: the design draws square-terminal and file-code-2 at 15px | The set's terminal and file-code icons at 15px (a size on the row only). |
 | NT14 | New tab rows: hover versus selection | Pointer movement moves the highlight (one fill, field), so hover and selection never differ. Press uses field-2 for 80ms. |
 | NT15 | New tab field: the design draws the card at 600px of content plus 6px padding | The card is 612px wide in total (600 plus padding), shrinking to the card width minus a 16px gutter on narrow windows. |

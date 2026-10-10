@@ -19,3 +19,6 @@
 :root[data-environment="mac-desktop"] .sidebar-collapsed .workspace-tabbar { padding-left: var(--native-controls-inset); }
 .workspace-tab, .workspace-tab-action, .workspace-tab-more, .workspace-group-label, .workspace-tabbar > .icon-button { -webkit-app-region: no-drag; }
 @media (max-width: 600px) { .workspace-tabbar { padding: 0 var(--space-1); } }
+
+/* The live region that announces a group moved by keyboard; it draws nothing. */
+.workspace-strip-note { position: absolute; width: var(--hairline); height: var(--hairline); overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
