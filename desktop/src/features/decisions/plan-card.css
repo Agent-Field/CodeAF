@@ -1,0 +1,29 @@
+.plan-card {
+ display: flex;
+ flex-direction: column;
+ gap: var(--plan-card-gap);
+ max-width: var(--plan-card-max-width);
+ padding: var(--plan-card-pad-block) var(--plan-card-pad-inline);
+ border-radius: var(--plan-card-radius);
+ box-shadow: var(--plan-card-shadow);
+ background: var(--surface);
+ color: var(--ink);
+ font-family: var(--sans);
+}
+.plan-card-head { font-size: var(--plan-card-head-size); font-weight: var(--plan-card-head-weight); }
+.plan-card-steps { display: flex; flex-direction: column; gap: var(--plan-card-steps-gap); margin: 0; padding: 0; list-style: none; font-size: var(--plan-card-step-size); }
+.plan-card-step { display: flex; align-items: center; gap: var(--plan-card-step-gap); }
+.plan-card-glyph { flex: none; display: inline-flex; color: var(--ink-3); }
+.plan-card-glyph .app-icon { width: var(--plan-card-glyph-size); height: var(--plan-card-glyph-size); }
+.plan-card-target { font-weight: var(--plan-card-target-weight); }
+.plan-card-skipped { color: var(--ink-3); }
+.plan-card-edit-input.text-input-field { flex: 1; height: var(--plan-card-edit-height); min-height: var(--plan-card-edit-height); font-size: var(--plan-card-step-size); }
+.plan-card-buttons { display: flex; gap: var(--plan-card-buttons-gap); }
+.plan-card-buttons .button {
+ height: var(--plan-card-button-height);
+ min-height: var(--plan-card-button-height);
+ padding: var(--space-0) var(--plan-card-button-pad);
+ border-radius: var(--plan-card-button-radius);
+ font-size: var(--plan-card-button-size);
+ font-weight: var(--plan-card-button-weight);
+}
