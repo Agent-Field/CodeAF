@@ -145,6 +145,7 @@ func TestSettingsRoutesNeedTheToken(t *testing.T) {
 	// ServeHTTP refuses before any route runs, which is the production gate
 	// the integrator's call sits behind.
 	r := httptest.NewRequest(http.MethodGet, "/api/engine/settings/key", nil)
+	r.Host = "127.0.0.1:1420"
 	w := httptest.NewRecorder()
 	b.ServeHTTP(w, r)
 	if w.Code != http.StatusUnauthorized {

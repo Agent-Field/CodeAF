@@ -283,18 +283,22 @@ func (x *placeIndex) rail() RailView {
 			rv.Pinned = append(rv.Pinned, x.view(pl))
 		}
 	}
+	// The store's Open rows are the section, newest first. A row the person
+	// closed stays only while the place is busy, which is the store's own rule.
 	var open []PlaceView
-	for _, pl := range x.snap.Places {
-		if pl.Archived || x.pinned(pl.ID) || pl.LastOpenedAt.IsZero() {
+	for _, row := range x.snap.Open {
+		pl, found := x.snap.Place(row.PlaceID)
+		if !found || pl.Archived || x.pinned(pl.ID) {
 			continue
 		}
 		v := x.view(pl)
 		busy := v.StatusInclusive.Running > 0 || v.StatusInclusive.NeedsYou > 0
-		if busy || x.now.Sub(pl.LastOpenedAt) < railOpenWindow {
-			open = append(open, v)
+		// An idle row is hidden at read time too, so the rail is right between sweeps.
+		if !busy && (row.Closed || x.now.Sub(row.TouchedAt) >= placegraph.OpenIdle) {
+			continue
 		}
+		open = append(open, v)
 	}
-	sort.SliceStable(open, func(i, j int) bool { return open[i].LastOpenedAt.After(open[j].LastOpenedAt) })
 	if len(open) > railOpenMax {
 		open = open[:railOpenMax]
 	}
@@ -443,13 +447,17 @@ func (x *placeIndex) attention(ids []string, subtree map[string]bool) []Attentio
 // ---- read routes -----------------------------------------------------------
 
 type graphResponse struct {
-	Revision uint64               `json:"revision"`
-	Places   []PlaceView          `json:"places"`
-	Rail     RailView             `json:"rail"`
-	Now      NowView              `json:"now"`
-	Totals   Totals               `json:"totals"`
-	ReadAt   time.Time            `json:"readAt"`
-	Recovery *placegraph.Recovery `json:"recovery,omitempty"`
+	Revision uint64 `json:"revision"`
+	// Generation and Nodes are Revision and Places under the desktop client's names.
+	Generation uint64               `json:"generation"`
+	Nodes      []PlaceView          `json:"nodes"`
+	Unplaced   []string             `json:"unplaced"`
+	Places     []PlaceView          `json:"places"`
+	Rail       RailView             `json:"rail"`
+	Now        NowView              `json:"now"`
+	Totals     Totals               `json:"totals"`
+	ReadAt     time.Time            `json:"readAt"`
+	Recovery   *placegraph.Recovery `json:"recovery,omitempty"`
 }
 
 func (p *Places) graph(w http.ResponseWriter, r *http.Request) {
@@ -458,13 +466,14 @@ func (p *Places) graph(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	withArchived := r.URL.Query().Get("archived") == "1"
-	out := graphResponse{Revision: x.snap.Revision, Places: []PlaceView{}, Rail: x.rail(), Now: x.nowView(), Totals: x.totals(), ReadAt: x.now, Recovery: p.Store.LastRecovery()}
+	out := graphResponse{Revision: x.snap.Revision, Generation: x.snap.Revision, Unplaced: append([]string{}, x.unplaced()...), Places: []PlaceView{}, Rail: x.rail(), Now: x.nowView(), Totals: x.totals(), ReadAt: x.now, Recovery: p.Store.LastRecovery()}
 	for _, pl := range x.snap.Places {
 		if pl.Archived && !withArchived {
 			continue
 		}
 		out.Places = append(out.Places, x.view(pl))
 	}
+	out.Nodes = out.Places
 	write(w, out)
 }
 

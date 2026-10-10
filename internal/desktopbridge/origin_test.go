@@ -7,15 +7,9 @@ import (
 	"testing"
 )
 
-// guarded is the handler as the integrator wires it: the guard first, then the bridge.
+// guarded is the handler the desktop command serves.
 func guarded(b *Bridge) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if status, msg := guardRequest(r); status != 0 {
-			fail(w, status, msg)
-			return
-		}
-		b.ServeHTTP(w, r)
-	})
+	return b.Handler()
 }
 
 func guardedGet(h http.Handler, host, origin string, token bool) *httptest.ResponseRecorder {

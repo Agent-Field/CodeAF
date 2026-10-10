@@ -489,7 +489,31 @@ where
     R: Runtime,
     F: Fn(WebviewWindow<R>, PageLoadPayload<'_>) + Send + Sync + 'static,
 {
-    let from = trusted(webview)?;
+    trusted(webview)?;
+    open_with(app, &webview.window(), request, on_page_load)
+}
+
+/// The native menu uses the same opening path without asking the focused webview
+/// to forward its accelerator. Renderer callers must pass `trusted` first.
+pub fn open<R: Runtime>(
+    app: &AppHandle<R>,
+    caller: &Window<R>,
+    request: OpenRequest,
+) -> Result<OpenResult, String> {
+    open_with(app, caller, request, |_, _| {})
+}
+
+fn open_with<R, F>(
+    app: &AppHandle<R>,
+    caller: &Window<R>,
+    request: OpenRequest,
+    on_page_load: F,
+) -> Result<OpenResult, String>
+where
+    R: Runtime,
+    F: Fn(WebviewWindow<R>, PageLoadPayload<'_>) + Send + Sync + 'static,
+{
+    let from = caller.label();
     let place = checked_place(&request.place_key)?.to_string();
     if let Some(id) = request.focus_tab.as_deref() {
         checked_focus_tab(id)?;
@@ -500,19 +524,18 @@ where
     if request.at.is_some_and(|p| !p.finite()) {
         return Err(BAD_POSITION.into());
     }
-    let caller = webview.window();
     let (label, handoff_id) = {
         let mut book = book(app)?;
         let label = book.allocate_available(|label| app.get_window(label).is_some());
         let id = request
             .handoff
-            .map(|tab| book.park(&from, &label, tab, Instant::now()));
+            .map(|tab| book.park(from, &label, tab, Instant::now()));
         book.places.insert(label.clone(), place.clone());
         (label, id)
     };
     if let Err(error) = build(
         app,
-        &caller,
+        caller,
         &label,
         &place,
         request.at,

@@ -19,6 +19,10 @@ func (s *conversation) extra(w http.ResponseWriter, r *http.Request, parts []str
 		s.statFiles(w, r)
 	case len(parts) == 4 && parts[2] == "files" && parts[3] == "list":
 		s.listFiles(w, r)
+	case len(parts) >= 3 && parts[2] == "jobs":
+		s.jobsRoute(w, r, parts[3:])
+	case len(parts) == 3 && parts[2] == "detach":
+		s.bridge.detach(w, r, s)
 	case len(parts) == 4 && parts[2] == "files" && parts[3] == "text":
 		s.fileText(w, r)
 	case len(parts) == 4 && parts[2] == "files" && parts[3] == "find":
@@ -37,6 +41,8 @@ func (s *conversation) extra(w http.ResponseWriter, r *http.Request, parts []str
 		s.holdQuestion(w, r)
 	case len(parts) >= 3 && parts[2] == "terminals":
 		s.terminalRoute(w, r, parts[3:])
+	case len(parts) == 3 && parts[2] == "sources":
+		s.chatSource(w, r)
 	case len(parts) == 3 && parts[2] == "favicon":
 		s.favicon(w, r)
 	default:

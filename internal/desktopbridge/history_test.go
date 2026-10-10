@@ -406,7 +406,9 @@ func TestHistoryNeedsTheTokenAndAnswersEmptyWithNoRoot(t *testing.T) {
 		t.Fatalf("search with no history = %+v", found)
 	}
 	bare := httptest.NewRecorder()
-	b.ServeHTTP(bare, httptest.NewRequest("GET", "/api/engine/history", nil))
+	unauthed := httptest.NewRequest("GET", "/api/engine/history", nil)
+	unauthed.Host = "127.0.0.1:1420"
+	b.ServeHTTP(bare, unauthed)
 	if bare.Code != 401 {
 		t.Fatalf("history without the token = %d, want 401", bare.Code)
 	}
