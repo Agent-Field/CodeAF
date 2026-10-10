@@ -6,7 +6,7 @@ import { INK3_TEXT, expectAccessible } from '../ui/contracts';
 // places, sources and settings below are invented for the tests. What is asserted is the contract: the engine's own state word is the
 // only thing that says a setting is in use, a choice and an apply are real POSTs, and a failure stays on screen.
 // Screenshots go outside the source tree, for review only.
-INK3_TEXT.push('.using-label', '.using-sublabel', '.using-note', '.using-row-aside', '.using-source-detail', '.using-source-note', '.using-place[data-inherited]',
+INK3_TEXT.push('.using-label', '.using-sublabel', '.using-note', '.using-row-aside', '.using-row-source', '.using-row-text[data-replaced]', '.using-source-detail', '.using-source-note', '.using-place[data-inherited]',
   '.using-choice-value', '.using-harness-mock', '.using-harness-body', '.using-harness-log', '.using-row-main .app-icon', '.using-row-open');
 const shots = process.env.USING_SHOTS ?? '/home/santosh/.codex/codeaf-design-run/using-ui-shots';
 mkdirSync(shots, { recursive: true });
@@ -68,13 +68,20 @@ for (const theme of ['light', 'dark'] as const) {
       const places = s.getByRole('list', { name: 'Places this conversation belongs to' });
       await expect(places.getByRole('listitem')).toHaveText(['Config parser', 'Release', 'codeaf · inherited through Release']);
       const instructions = s.locator('[data-kind="instruction"]');
-      await expect(instructions).toHaveCount(2);
+      await expect(instructions).toHaveCount(3);
       await expect(instructions.nth(0)).toContainText('Keep strict mode the default for public APIs');
       await expect(instructions.nth(0)).toContainText('Config parser');
-      // The longest is cut short for the model, and the sheet says so; a click opens the whole text.
-      await expect(instructions.nth(1)).toContainText('Release, codeaf');
-      await expect(instructions.nth(1).getByText('Cut short')).toBeVisible();
+      await expect(instructions.nth(0).locator('.using-row-source')).toHaveText('you added');
+      // A knows line, not the joined prose: the place and the learned caption, and the prompt's cut stays a note.
+      await expect(instructions.nth(1)).toContainText('Release');
+      await expect(instructions.nth(1).locator('.using-row-source')).toHaveText('Learned from 3 of your answers');
+      await expect(instructions.nth(1).getByText('Cut short')).toHaveCount(0);
       await expect(s.getByText('1 cut short to fit the instruction limit; the model reads the rest.')).toBeVisible();
+      const struck = instructions.nth(2);
+      await expect(struck).toContainText('Lead with internal names');
+      await expect(struck).toContainText('Release');
+      await expect(struck.locator('.using-row-source')).toHaveText(/^Replaced (Sun|Mon|Tue|Wed|Thu|Fri|Sat) · kept for 7 days$/);
+      expect(await struck.locator('[data-replaced]').evaluate(el => getComputedStyle(el).textDecorationLine)).toBe('line-through');
       const longer = instructions.nth(1).locator('.using-row-text');
       const folded = (await longer.boundingBox())!.height;
       await instructions.nth(1).getByRole('button').click();

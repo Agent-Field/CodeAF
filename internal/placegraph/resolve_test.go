@@ -413,7 +413,7 @@ func TestAnUnplacedChatUsesNothingAndSaysEmptyLists(t *testing.T) {
 		t.Fatalf("bundle = %+v", b)
 	}
 	raw, _ := json.Marshal(b)
-	for _, field := range []string{`"places":[]`, `"instructions":[]`, `"sources":[]`, `"trimmed":[]`, `"refused":[]`, `"policy":[]`} {
+	for _, field := range []string{`"places":[]`, `"instructions":[]`, `"knows":[]`, `"sources":[]`, `"trimmed":[]`, `"refused":[]`, `"policy":[]`} {
 		if !strings.Contains(string(raw), field) {
 			t.Fatalf("%s missing from %s", field, raw)
 		}
@@ -624,5 +624,38 @@ func TestAFailedChoiceWriteKeepsTheOldPickAndSaysSo(t *testing.T) {
 				t.Fatalf("the earlier pick did not survive the failed write: %+v", d)
 			}
 		})
+	}
+}
+
+func TestUsingListsKnowsLinesThePromptLeavesOutWhenReplaced(t *testing.T) {
+	s, _ := newStore(t)
+	marketing := placeWith(t, s, "Marketing", Context{Instructions: "legacy prose"}, Policy{})
+	file(t, s, "c", marketing)
+	learned, _, err := s.AddLine(Line{PlaceID: marketing.ID, Text: "Lead pricing with free for one seat", Source: LineSource{Kind: LineLearned, Answers: 3}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replaced, _, err := s.AddLine(Line{PlaceID: marketing.ID, Text: "Lead with usage pricing", Source: LineSource{Kind: LineYouWrote}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replaced.ReplacedBy = learned.ID
+	replaced.ReplacedAt = time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	if _, err := s.UpdateLine(replaced); err != nil {
+		t.Fatal(err)
+	}
+	b := snap(t, s).Resolve("c", ResolveOptions{Sources: noDeny})
+	if len(b.Knows) != 2 || b.Knows[0].ID != learned.ID || b.Knows[0].Source.Kind != LineLearned || b.Knows[0].Source.Answers != 3 || b.Knows[0].PlaceID != marketing.ID {
+		t.Fatalf("live line = %+v", b.Knows)
+	}
+	if b.Knows[1].ID != replaced.ID || b.Knows[1].ReplacedBy != learned.ID || b.Knows[1].Text != replaced.Text {
+		t.Fatalf("replaced line = %+v", b.Knows[1])
+	}
+	joined := ""
+	for _, in := range b.Instructions {
+		joined += in.Text + "\n"
+	}
+	if strings.Contains(joined, replaced.Text) || !strings.Contains(joined, learned.Text) || !strings.Contains(joined, "legacy prose") {
+		t.Fatalf("prompt instructions = %+v", b.Instructions)
 	}
 }
