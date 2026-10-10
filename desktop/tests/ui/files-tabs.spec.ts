@@ -77,6 +77,23 @@ test('a Go file tab draws file-code-2 from the central Icon in its header', asyn
   const glyph = page.locator('.file-head .app-icon[data-icon="fileCode2"]');
   await expect(glyph).toHaveCount(1);
   await expect(glyph.locator('svg')).toHaveClass(/lucide-file-code2/);
+  await expect(page.getByRole('tab', { name: /auth_test\.go/ }).locator('[data-icon="diff"]')).toBeVisible();
+});
+
+test('a file tab for x.json shows the json icon in the strip and the header', async ({ page }) => {
+  await openWithDiff(page, { files: { 'x.json': { mime: 'application/json', dataBase64: b64('{"ok":true}\n') } } });
+  await page.getByRole('button', { name: 'New tab', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Search or start' }).fill('x.json');
+  // "x.json" also matches the web-address row. The file row is the Matching one, once the workspace search returns.
+  await page.getByRole('group', { name: 'Matching' }).getByRole('option', { name: 'x.json', exact: true }).click();
+  const tab = page.getByRole('tab', { name: 'x.json', exact: true });
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+  const stripIcon = tab.locator('[data-icon="fileJson"]');
+  await expect(stripIcon).toBeVisible();
+  await expect(stripIcon.locator('svg')).toHaveClass(/lucide-file-json/);
+  const headIcon = page.locator('.file-head .app-icon[data-icon="fileJson"]');
+  await expect(headIcon).toHaveCount(1);
+  await expect(headIcon.locator('svg')).toHaveClass(/lucide-file-json/);
 });
 
 test('a plain click on a file chip opens the preview sheet; Command-click or a middle click opens the tab (Interactions)', async ({ page }) => {

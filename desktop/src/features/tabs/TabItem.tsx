@@ -8,11 +8,12 @@ import { tabDragProps } from './hosts/dragHost';
 import { withTabMenu } from './hosts/menuHost';
 import { withPreview } from './hosts/previewHost';
 import { withSegmentTooltip, withTitleTooltip } from './hosts/titleTooltipHost';
-import { focusedPane, panesOf, type Tab } from './model';
+import { focusedPane, panesOf, type Pane, type Tab } from './model';
 import { SplitTab } from './SplitTab';
 import { useWebFavicons } from '../web/favicons';
 import { monogramOf } from '../web/address';
-import { DropdownMenu } from '../../components/ui';
+import { DropdownMenu, type IconName } from '../../components/ui';
+import { kindDef } from './kinds/registry';
 import { isPlaceHome } from './reducers/home';
 import { Tab as TabView, type TabState } from './Tab';
 
@@ -24,6 +25,12 @@ export const tabDomIds = (tab: Tab) => panesOf(tab).map(pane => `tab-${pane.id}`
 
 /** Running is silent: only waiting and failed marks reach the tab. */
 export const stateOfMark = (mark?: TabMark): TabState | undefined => (mark === 'waiting' ? 'waiting' : mark === 'failed' ? 'failed' : undefined);
+
+/** The kind's per-pane icon, when it is a registry name. A favicon or monogram stays on the web path. */
+function paneIcon(pane: Pane): IconName | undefined {
+  const picked = kindDef(pane.kind).iconFor?.(pane);
+  return typeof picked === 'string' ? picked : undefined;
+}
 
 /** Roving focus along the strip's reading order. */
 function navigate(api: TabsApi, order: readonly Tab[], tab: Tab) {
@@ -54,12 +61,12 @@ export function TabItem({ api, tab, order, inGroup = false }: { api: TabsApi; ta
   const frame = { ...drag, 'data-picked': picked || undefined, onPointerEnter: () => setEngaged(true), onPointerLeave: () => setEngaged(false), onFocus: () => setEngaged(true), onBlur: () => setEngaged(false) };
   if (tab.split) {
     const { panes, focus } = tab.split;
-    const segments = panes.map(pane => ({ id: pane.id, kind: pane.kind, title: pane.title, monogram: monogramOf(pane), favicon: favicons.get(pane.id), state: stateOfMark(api.summaries[pane.id]?.mark) }));
+    const segments = panes.map(pane => ({ id: pane.id, kind: pane.kind, title: pane.title, icon: paneIcon(pane), monogram: monogramOf(pane), favicon: favicons.get(pane.id), state: stateOfMark(api.summaries[pane.id]?.mark) }));
     return withTabMenu(api, tab, <SplitTab segments={segments} focus={focus} active={active} frame={frame} onSelectPane={(index, event) => choose(panes[index].id)(event)} wrapSegment={(segment, button) => withSegmentTooltip(api, tab, segment.title, button)} onClose={() => api.closeTab(tab.id)}/>);
   }
   const switcher = isPlaceHome(tab) ? api.placeSwitcher : undefined;
   const view = (
-    <TabView favicon={favicons.get(tab.id)} kind={tab.kind} title={tab.title} monogram={monogramOf(focusedPane(tab))} active={active} pinned={tab.pinned} placeTint={isPlaceHome(tab) ? api.placeTint ?? 'graphite' : undefined} inGroup={inGroup} picked={picked} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame} badge={tab.kind === 'inbox' && (api.background.needsYou.length > 0 ? 'needsYou' : api.background.failed.length > 0 ? 'failed' : false)}
+    <TabView icon={paneIcon(tab)} favicon={favicons.get(tab.id)} kind={tab.kind} title={tab.title} monogram={monogramOf(focusedPane(tab))} active={active} pinned={tab.pinned} placeTint={isPlaceHome(tab) ? api.placeTint ?? 'graphite' : undefined} inGroup={inGroup} picked={picked} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame} badge={tab.kind === 'inbox' && (api.background.needsYou.length > 0 ? 'needsYou' : api.background.failed.length > 0 ? 'failed' : false)}
       closeMode={stop ? 'stop' : 'close'} closeHint={stop ? 'Close and stop' : running ? 'Close · keeps running' : 'Close'} closeShortcut={stop ? closeStopShortcut : closeShortcutFor(tab.kind)}
       onSelect={choose(tab.id)} onClose={() => (stop ? api.closeAndStop(tab.id) : api.closeTab(tab.id))} onRename={() => api.startRename(tab.id)}
       onKeyDown={navigate(api, order, tab)} wrapSelect={select => (switcher ? <DropdownMenu label="Place switcher" items={switcher.items}>{select}</DropdownMenu> : withTitleTooltip(api, tab, select, trigger => withPreview(api, tab, trigger)))} switcher={switcher && { alert: switcher.alert }}/>
