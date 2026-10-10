@@ -1,0 +1,6 @@
+.ink3-probe { color: var(--ink-3); }
+.ink2-probe { color: var(--ink-2); }
+.danger-probe { color: var(--danger); }
+.field-probe { background: var(--field); }
+.field2-probe { background: var(--field-2); }
+#log { white-space: pre-wrap; }

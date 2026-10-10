@@ -35,7 +35,7 @@ export class PlacesError extends Error {
   }
 }
 
-export type PlacesRequest = { method: 'GET' | 'POST'; body?: unknown; signal?: AbortSignal };
+export type PlacesRequest = { method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; body?: unknown; signal?: AbortSignal };
 /** Sends one request to /api/engine{path} and returns the parsed JSON, or throws PlacesError. */
 export type PlacesTransport = (path: string, request: PlacesRequest) => Promise<unknown>;
 

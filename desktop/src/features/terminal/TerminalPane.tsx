@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button, Text } from '../../components/ui';
 import { askAboutTerminalOutput, closeTerminal, readTerminalOutput, removeTerminal, terminalStateWords } from '../chat/engine-client';
 import { labelLine } from '../conversation/tabSummary';
@@ -9,6 +9,8 @@ import { announceClosePane, announceOpenConversation, announceOpenTerminal } fro
 import { startFor, startSentence } from './open';
 import { bindingFor, legacyTerminalView, terminalView } from './target';
 import { metaLine, removeLabel, toneOf } from './state';
+import { offerTerminalTabMeta, type TabMetaSource } from './tabMeta';
+import { offerTerminalTabMenu, type FinishedJobOffer } from './tabMenu';
 import type { TerminalBinding } from './bindings';
 import { TerminalHeader } from './TerminalHeader';
 import { TerminalScreen, type ScreenHandle } from './TerminalScreen';
@@ -47,10 +49,14 @@ export function TerminalPane({ pane, focused, actions }: PaneRenderProps) {
   // The workspace builds its actions afresh each render, so the latest one is read through a ref and the effect runs only when what it reports changes.
   const summarize = useRef(actions.onSummary);
   summarize.current = actions.onSummary;
+  const menuFacts = useRef<FinishedJobOffer>({ finished: false, onRemove: () => {} });
+  const metaFacts = useRef<TabMetaSource | undefined>(undefined);
   const title = info?.title; const endedAt = info?.endedAt;
-  useEffect(() => {
+  // Before paint, so the tab right-click, the exit words and the header agree in the same frame.
+  // Kind, state and exit code are deps because `exit 0` changes none of the title, the end time or the failed mark.
+  useLayoutEffect(() => {
     if (title) summarize.current({ title, firstLine: '', digest: '', mark: failed ? 'failed' : undefined, updatedAt: endedAt ? Date.parse(endedAt) : undefined });
-  }, [title, endedAt, failed]);
+  }, [title, endedAt, failed, info?.kind, info?.state, info?.exitCode]);
   // A tab saved before the durable target carried none: write it onto the pane through the tab action, once.
   const hydrate = useRef(actions.onView);
   hydrate.current = actions.onView;
@@ -87,8 +93,18 @@ export function TerminalPane({ pane, focused, actions }: PaneRenderProps) {
     announceClosePane({ paneId: pane.id });
   }
   /** A finished job again: the same command, as a new job tab under the same conversation (Components, "Finished job · tab menu"). */
-  const command = info?.kind === 'job' && !running ? info.command : undefined;
+  const finishedJob = info?.kind === 'job' && !running;
+  const command = finishedJob ? info?.command : undefined;
   const rerun = command && info ? () => announceOpenTerminal({ sessionFile: binding?.sessionFile, command, title: info.title }) : undefined;
+  const onRemove = () => { void remove(); };
+  const onClose = () => announceClosePane({ paneId: pane.id });
+  // The same functions the header receives. Published during render, not in an effect: the summary
+  // layout effect above re-renders the strip before a later effect would run, and that render is the one that builds the tab menu.
+  menuFacts.current = { finished: finishedJob, onRerun: rerun, onRemove };
+  offerTerminalTabMenu(pane.id, () => menuFacts.current);
+  // Published during render, like the menu: the summary effect above re-renders the strip, and that render reads the words.
+  metaFacts.current = info ? { kind: info.kind, state: info.state, exitCode: info.exitCode } : undefined;
+  offerTerminalTabMeta(pane.id, () => metaFacts.current);
   async function readOutput() {
     const selected = screen?.selection() ?? '';
     if (selected.trim()) return selected;
@@ -104,7 +120,7 @@ export function TerminalPane({ pane, focused, actions }: PaneRenderProps) {
   return <div className="terminal-pane">
     <TerminalHeader
       title={info?.title ?? pane.title} meta={info ? metaLine(info) : ''} words={info ? terminalStateWords(info, now) : ''} tone={info ? toneOf(info) : undefined}
-      canStop={running} finishedJob={info?.kind === 'job' && !running} onClose={() => announceClosePane({ paneId: pane.id })} onRerun={rerun} removeLabel={removeLabel(info?.kind ?? 'terminal')} onStop={() => void stop()} readOutput={readOutput} onRemove={() => void remove()}/>
+      canStop={running} finishedJob={finishedJob} onClose={onClose} onRerun={rerun} removeLabel={removeLabel(info?.kind ?? 'terminal')} onStop={() => void stop()} readOutput={readOutput} onRemove={onRemove}/>
     {actionError && <Text className="terminal-action-error" role="alert">{actionError}</Text>}
     <div className="terminal-field" data-kind={info?.kind} data-note={refusal ? '' : undefined}>
       {refusal
