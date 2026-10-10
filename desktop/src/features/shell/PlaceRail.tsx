@@ -3,8 +3,10 @@ import { NavigationItem, ThemeSelect, type IconName } from '../../components/ui'
 import type { RailSections } from '../places/shell/selectors';
 import { PlaceRailSections, type PlaceRailActions, type RailNow } from '../places/rail/PlaceRail';
 import { RailToggle } from './RailToggle';
+import { useLongPress } from './useLongPress';
 import './rail.css';
 import './place-rail.css';
+import './touch.css';
 
 export type { PlaceRailActions };
 
@@ -42,11 +44,14 @@ export type PlaceRailProps = {
  * that count to the frame pill. On first launch the sections are Now and All places, with no heading.
  */
 export function PlaceRail(props: PlaceRailProps) {
+  // The shared listener keeps finger holds working after the place list moved into its own component.
+  useLongPress();
   const { inert, peeking, onToggle, appItems, ...sections } = props;
   const foot: ReactNode = appItems.length > 0 ? <>
     <nav className="rail-nav rail-app" aria-label="App">{appItems.map(item => <NavigationItem key={item.label} icon={item.icon} active={item.active} data-hover={item.hover || undefined} onClick={item.onSelect}>{item.label}</NavigationItem>)}</nav>
     <div className="sidebar-bottom"><ThemeSelect/></div>
   </> : undefined;
+
   return <aside className="sidebar rail place-rail" aria-label="Main navigation" inert={inert}>
     <div className="rail-head" data-tauri-drag-region>
       <RailToggle placement="rail" collapsed={peeking} onClick={onToggle}/>
