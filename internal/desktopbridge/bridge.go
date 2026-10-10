@@ -186,6 +186,8 @@ type Bridge struct {
 	openIn OpenIn
 	// groups answers tab-group offers (tabgroups.go); nil makes none.
 	groups *TabGroups
+	// lifecycle tracks attached views separately from SSE connections (lifecycle.go).
+	lifecycle *sessionLifecycle
 }
 
 func New(token string, open Open) *Bridge {
