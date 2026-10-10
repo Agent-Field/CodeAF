@@ -35,3 +35,6 @@
   .web-header .web-more-action { display: grid; }
 }
 .web-address-input.text-input.text-input-field:focus-visible { background: var(--field); }
+
+/* A failed page uses the sheet's muted ink; its state colour belongs to the tab. */
+.web-sheet .web-status-line { color: var(--ink-3); }
