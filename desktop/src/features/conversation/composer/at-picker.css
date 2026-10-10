@@ -1,0 +1,98 @@
+/* The @ list (C-MENU, I-C1f-26). Surface paper, sh-2, no border. The row's hover and
+   keyboard fill is field-2; press darkens that fill. Colour stays off the text. */
+
+.at-picker {
+  position: fixed;
+  left: var(--at-picker-left);
+  bottom: var(--at-picker-bottom);
+  z-index: var(--z-menu);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: var(--at-picker-span);
+  max-height: var(--at-picker-max-height);
+  overflow: auto;
+  padding: var(--at-picker-pad);
+  border-radius: var(--at-picker-radius);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--sh-2);
+  animation: popover-enter var(--dur-fast) var(--chrome-ease);
+}
+
+.at-picker-row.button {
+  box-sizing: border-box;
+  justify-content: flex-start;
+  width: 100%;
+  height: var(--at-picker-row-height);
+  min-height: var(--at-picker-row-height);
+  gap: var(--at-picker-row-gap);
+  padding: 0 var(--at-picker-row-pad);
+  border-radius: var(--at-picker-row-radius);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--type-prose-size);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--type-label-leading);
+  text-align: left;
+  cursor: default;
+  transition: background var(--dur-fast) var(--ease), filter var(--dur-fast) var(--ease);
+}
+
+.at-picker-row.button:hover:not(:disabled),
+.at-picker-row.button[aria-selected='true'] {
+  background: var(--field-2);
+  color: var(--ink);
+}
+
+.at-picker-row.button:active:not(:disabled) {
+  background: var(--field-2);
+  filter: brightness(var(--brightness-press));
+  transition-duration: var(--dur-press);
+}
+
+/* The keyboard fill is the row. The ring stays on the field, which still holds the caret. */
+.at-picker-row.button:focus,
+.at-picker-row.button:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.at-picker-row .app-icon { color: var(--ink-2); }
+
+.at-picker-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.at-picker-dir {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-3);
+}
+
+.at-picker-dir-head {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.at-picker-dir-tail { flex: none; white-space: nowrap; }
+
+@media (pointer: coarse) {
+  .at-picker-row.button {
+    height: var(--at-picker-row-height-coarse);
+    min-height: var(--at-picker-row-height-coarse);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .at-picker { animation: none; }
+}
