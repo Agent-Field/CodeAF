@@ -4,13 +4,13 @@
 // still says the design's words. A zero or an unknown is left out (the emptiness law). A place's manager is reserved
 // and is not a field here, because it changes nothing a person reads.
 
+import { OPEN_IDLE_MS, isIdle } from './idle.ts';
 import type { Membership, Tint } from './wire.ts';
 
 /** The five hues a new top-level place may be given, in the palette's order. Graphite is "no tint chosen", not a pick. */
 const PICKABLE_TINTS: readonly Tint[] = ['tide', 'iris', 'rose', 'sand', 'sage'];
 
-/** How long an Open place may sit untouched before it leaves the rail (Places 10a). Pinned places are never on this clock. */
-export const OPEN_IDLE_MS = 12 * 60 * 60 * 1000;
+export { OPEN_IDLE_MS };
 
 /** ⌃1–9. Places 9c numbers Pinned and then Open; the tenth place has no number. */
 export const PLACE_NUMBER_MAX = 9;
@@ -347,13 +347,6 @@ function latestVisits(visits: readonly WindowVisit[]): WindowVisit[] {
     .map(entry => entry.visit);
 }
 
-function idleSince(touchedAt: string, now: string): boolean {
-  const at = Date.parse(touchedAt);
-  const clock = Date.parse(now);
-  if (Number.isNaN(at) || Number.isNaN(clock)) return false;
-  return clock - at >= OPEN_IDLE_MS;
-}
-
 /** ⌃1–9 in rail order: every pinned place, then Open. A duplicate is not numbered twice, and the tenth place is absent. */
 export function placeNumbers(pinnedIds: readonly string[], openIds: readonly string[]): ReadonlyMap<string, number> {
   const numbers = new Map<string, number>();
@@ -391,7 +384,7 @@ export function railSections(store: PlaceStore, window: WindowOpen, activity: Re
     if (visit.closed) {
       if (!busy) continue;
       closedBusy.add(visit.placeId);
-    } else if (idleSince(visit.touchedAt, window.now) && !busy) continue;
+    } else if (isIdle(visit.touchedAt, window.now) && !busy) continue;
     seen.add(visit.placeId);
     openIds.push(visit.placeId);
   }
