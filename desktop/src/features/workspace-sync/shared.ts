@@ -9,6 +9,7 @@
 // every other window jump.
 //
 // Everything here is pure: no storage, no network, no React.
+import { retainSelection } from '../tabs/selection.ts';
 import { cleanView } from '../tabs/view-state.ts';
 import { kindOrDefault } from '../tabs/kinds/types.ts';
 import { clampRatio, layoutFits, makeSplit, titleRank, visibleTabs } from '../tabs/helpers.ts';
@@ -77,7 +78,7 @@ export function compose(shared: SharedWorkspace, local: WindowLocal, before?: Wo
     activeId = holder?.id ?? neighbour(before, tabs, activeId) ?? tabs[0].id;
   }
   const recentIds = [...new Set([activeId!, ...local.recentIds.filter(holds), ...tabs.map(tab => tab.id)])];
-  return { tabs, groups: shared.groups, closed, nextNumber: shared.nextNumber, activeId: activeId!, recentIds };
+  return { tabs, groups: shared.groups, closed, nextNumber: shared.nextNumber, activeId: activeId!, recentIds, ...(before?.picked ? { picked: retainSelection(before.picked, tabs) } : {}) };
 }
 
 function neighbour(before: WorkspaceState | undefined, tabs: Tab[], gone: string | undefined): string | undefined {
