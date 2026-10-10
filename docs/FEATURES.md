@@ -149,19 +149,6 @@ history when available), and rails, with `▸ 1 yes · ▸ 2 change cadence ·
 **Tip seed**: "Remind me Friday at 3" or "watch this folder" just works —
 you'll approve the standing cost once, then it's furniture.
 
-### It keeps watch when you're not here
-**What**: The first time a charter is ratified, and only then, one
-question is asked in the resident's voice: "Should I keep watching this
-when you're not here? `▸ 1 yes, always · ▸ 2 only while I'm around`".
-Yes arranges a quiet five-minute check that keeps running with no
-terminal open, and answers with a single line. Either answer is durable
-and the question is never asked twice — not after a restart, not on the
-next charter.
-**Where**: chat, immediately after the first ratification.
-**Tip seed**: Say "yes, always" once and your standing goals keep firing
-with every window closed; say "only while I'm around" and they wait for
-you — either way you're asked exactly once.
-
 ### The standing rail — felt, not seen
 **What**: One dim line per charter above tasks (`⏱ pr-watch · last fired
 2h · 3 today`), breathing only while a sentinel evaluates or a firing
@@ -191,14 +178,6 @@ identical typed charter command. `/standing` lists all charters.
 **Tip seed**: There's no goals settings page — say "pause it" or click
 the goal's line; both end in the same journaled event.
 
-### It may propose — you always dispose
-**What**: When the retrospective notices the same-shaped ask ≥3 times, it
-may propose one charter per reflection — the same ratification card,
-marked `proposed · noticed you ask this most mornings`, default-declined.
-Declining is remembered and never re-asked.
-**Tip seed**: If codeaf notices you asking for the same thing most
-mornings, it will offer — once — to just do it every morning.
-
 ## 4. Money, not tokens
 
 ### The dollar rail
@@ -213,10 +192,9 @@ Headless: `CODEAF_DAILY_BUDGET`, `--yes-spend` to preauthorize.
 dollars run out, work pauses and asks; `/budget 50` resumes it.
 
 ### Every modality is railed
-**What**: Image/speech/music/video generation, charter firings,
-transcription — all draw admission from the same daily rail and record
-real cost from the provider's usage data. Charter firings carry
-per-firing quotes and daily caps on top.
+**What**: Image/speech/music/video generation and transcription all draw
+admission from the same daily rail and record real cost from the
+provider's usage data.
 **Tip seed**: One number governs everything codeaf spends today — check
 it any time with /budget.
 
@@ -270,35 +248,20 @@ permanent and searchable, including packed history.
 
 ### The retrospective — territories, proposals, self-knowledge
 **What**: A background reflection packs settled jobs into territories
-(folds of folds), audits beliefs, proposes charters, and updates
-per-model self-knowledge — attending first to whatever surprised it.
+(folds of folds), audits beliefs, and updates per-model self-knowledge —
+attending first to whatever surprised it.
 **Tip seed**: Old jobs get packed into territories — the rail stays calm
 at any history size, and nothing is deleted, only folded.
 
 ## 6. The curious employee — self-directed life on rails
 
-### The practice loop — it studies its own weaknesses
-**What**: Real work leaves behind *questions* (gaps revealed by failures,
-corrections, and scopes where its predictions stay wrong past enough
-samples). When you're away and nothing user-origin is in flight, a
-practice charter with its own small dollar carve-out picks the highest
-value question — relevance × execution-verifiability × measured learning
-progress — and splices an `origin: self` practice job. Results feed the
-surprise ledger and the skill forge, never your thread. Questions whose
-scope shows no surprise reduction after two rounds retire automatically.
-**Where**: automatic when idle; `CODEAF_PRACTICE_BUDGET` (default $2/day,
-0 disables), `CODEAF_PRACTICE_IDLE` (default 20m).
-**Tip seed**: The quiet hours aren't idle — codeaf practices what it got
-wrong last week, on its own budget, and stops when practice stops paying.
-
 ### The morning brief — arrival, folded
 **What**: Open chat after a real absence and the first thing in the
 thread is one collapsed card: "While you were away — N things done, a
-question, $X." Enter unfolds slim rows (done, failed, fired charters,
-facts learned, spend), each anchored to durable provenance. Short breaks
-stay silent; nothing happened means nothing appears.
-**Where**: automatic on session open; `CODEAF_BRIEF_AFTER` (default 4h,
-0 = always).
+question, $X." Enter unfolds slim rows (done, failed, facts learned,
+spend), each anchored to durable provenance. Short breaks stay silent;
+nothing happened means nothing appears.
+**Where**: automatic on session open, after an absence of 4h or more.
 **Tip seed**: You don't owe the scrollback anything — the arrival fold is
 the complete account of what happened while you were gone.
 
@@ -313,11 +276,11 @@ journaled reason.
 in the dock is its saved-up 1:1 list, never a popup.
 
 ### Curiosity receipts — self-spend must pay learning rent
-**What**: Every dollar spent on itself (practice, retrospectives, folds)
-produces a journaled receipt: what it tried, what it cost, what was
-learned (facts, skills, surprise delta) — or explicitly "nothing." Two
-consecutive nothing-receipts on an inquiry line auto-retire it and pause
-its charter, with the reason journaled as self-origin evidence.
+**What**: Every dollar spent on itself (retrospectives, folds) produces a
+journaled receipt: what it tried, what it cost, what was learned (facts,
+skills, surprise delta) — or explicitly "nothing." Two consecutive
+nothing-receipts on an inquiry line auto-retire it, with the reason
+journaled as self-origin evidence.
 **Where**: `codeaf why self` prints today's receipts; surfaces read
 `SelfSpendToday` as one number.
 **Tip seed**: Ask `codeaf why self` — every cent it spent on itself comes
@@ -328,23 +291,10 @@ themselves.
 **What**: From the surprise ledger, failure rates, installed skills, and
 territories, every scope is classified strong / frontier (the 25–75%
 learnable band) / weak / stale. The head answers "what are you good at?"
-from this evidence, and the frontier list is exactly what the practice
-loop targets.
+from this evidence.
 **Where**: `codeaf competence` for the calm rows; in chat, just ask.
 **Tip seed**: "What are you actually good at now?" gets a measured answer
 — strong scopes, the learning frontier, and where it still struggles.
-
-### Probation → tenure — autonomy is earned, not granted
-**What**: Every new charter starts on probation: a firing produces a
-proposal ("I would have done X now — approve?") instead of work. Three
-consecutive approved, green firings promote it — one line in the thread,
-"I'll handle this on my own now" — and it fires autonomously. A failure,
-budget breach, or rejected output demotes it back; two demotions pause it.
-"Always allow" promotes immediately; "never" declines and pauses.
-**Where**: automatic on all charters; `CODEAF_TENURE_AFTER` tunes the
-threshold.
-**Tip seed**: New standing goals ask before acting — approve a few good
-runs and they earn tenure; one bad run and they're back to asking.
 
 ## 7. The surface
 
@@ -430,22 +380,12 @@ plan, run it with the atomic linear harness. Learning surfaces
 **Tip seed**: CI and scripts use codeaf plan/run — same tools, same
 rails, no chat needed.
 
-### `codeaf wake`
-**What**: One watch pass over due charters — evaluate sentinels, fire
-what's due, journal the pass, exit. This is the command the standing
-watch runs for you every five minutes; running it by hand is the same
-pass, now.
-**Tip seed**: codeaf wake runs one standing pass right now instead of
-waiting for the next check.
-
 ### `codeaf doctor`
-**What**: Five calm rows and nothing else: the brain file and its size,
-who is resident right now, whether the standing watch is on with its last
-wake and next check, today's spend against the rail, and how many goals
-are active with how many questions pending. The same rows ground the
-answer when you ask "who's keeping watch?" in chat.
-**Tip seed**: codeaf doctor answers "is it actually running, and what has
-it cost me today?" in five lines.
+**What**: A few calm rows and nothing else: whether a key is set and
+where it came from, the store and its size, who is resident right now,
+today's spend against the rail, and where the model-call log is.
+**Tip seed**: codeaf doctor answers "can it reach a model, and what has
+it cost me today?" in a handful of lines.
 
 ### `codeaf competence` / `codeaf why self`
 **What**: The self-knowledge pair from the CLI: measured per-scope
@@ -461,8 +401,7 @@ each belief stands on.
 
 ### Environment
 **What**: `CODEAF_DAILY_BUDGET`, `CODEAF_PREAUTHORIZE_SPEND`/`--yes-spend`,
-`CODEAF_PRACTICE_BUDGET`, `CODEAF_PRACTICE_IDLE`, `CODEAF_BRIEF_AFTER`,
-`CODEAF_TENURE_AFTER`, `CODEAF_VOICE_MODEL`, `CODEAF_IMAGE_MODEL`,
+`CODEAF_VOICE_MODEL`, `CODEAF_IMAGE_MODEL`,
 `CODEAF_SPEECH_MODEL`, `CODEAF_MUSIC_MODEL`, `CODEAF_VIDEO_MODEL`,
 profile dir config at `~/.codeaf/config.json`.
 
