@@ -9,7 +9,7 @@ change the text. Buttons keep their text unselectable.
 
 ## Why is the background dimmer behind an overlay in Dark appearance?
 
-Quick Look and the command palette dim the content behind them with a shared
+Quick Look and Go to dim the content behind them with a shared
 black scrim: 20% in Light appearance and 40% in Dark. The stronger Dark scrim
 is the current design assumption for legibility. It does not change the
 underlying content or signal a work state.

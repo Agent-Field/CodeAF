@@ -21,7 +21,7 @@ export function RailSpecimen() {
     <SectionHeading>Rail</SectionHeading>
     <Text>Specimen. 232px, no fill of its own (the frame shows through). Inbox and Now, then Pinned and Open places with their tint square and one status dot, then All places. The open row reads like the active tab; a closed place still running stays muted. The toggle is ink-3, 26px in the rail and 30px with a hairline in the strip.</Text>
     <div className="rail-specimen" inert aria-hidden="true" data-rail-specimen>
-      <div className="rail-specimen-frame"><PlaceRail inert={false} paletteOpen={false} peeking={false} onToggle={noop} onSearch={noop}
+      <div className="rail-specimen-frame"><PlaceRail inert={false} peeking={false} onToggle={noop}
         inbox={{ count: 1, active: false, onOpen: noop }} now={{ active: false, shortcut: '⌃0', onGo: noop }}
         sections={{ pinned, open }} current="specimen-config"
         allPlaces={{ active: false, shortcut: '⌘⇧P', onOpen: noop }} actions={actions} slotShortcut={index => `⌃${index}`} closeShortcut="⌘⇧W" newWindowShortcut="⌘↵" appItems={[]}/></div>
