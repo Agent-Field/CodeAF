@@ -63,3 +63,9 @@
   padding: var(--space-8);
   background-color: var(--canvas);
 }
+
+/* At 600px and below the strip has no room for the pill's trailing words: they squeezed the tab list to nothing and left
+   the tabs unreachable. The count and its glyph stay; the pill's aria-label still carries the whole sentence. */
+@media (max-width: 600px) {
+  .frame-pill-muted { display: none; }
+}
