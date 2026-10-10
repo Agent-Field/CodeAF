@@ -423,13 +423,16 @@ var notices = []notice{
 		retire: eventTaskTyped,
 	},
 	{
-		// THE OTHER HALF OF THE SAME LESSON: an automation is made by saying
-		// what you want and when, in the conversation, and the card shows the
-		// real schedule before anything is saved. It retires on the same event
-		// as the row that names the place, because the two are one lesson.
+		// THE OTHER HALF OF THE SAME LESSON: an automation is made by typing it
+		// exactly or by saying what you want and when, and the card shows the
+		// real schedule before anything is saved. It LEADS WITH THE COMMAND
+		// because home's row says a key or a command first (hometip_test.go),
+		// and it keeps its id, which a profile that retired it still holds. It
+		// retires on the same event as the row that names the place, because
+		// the two are one lesson.
 		id: "automations-by-saying", slot: slotHint,
 		armed:  ready,
-		text:   "say what to do and when, like every Monday at 9, and it becomes an automation",
+		text:   "/automations add sets one up exactly · or just say when, like every Monday at 9",
 		retire: eventAutomationsOpened,
 	},
 	{

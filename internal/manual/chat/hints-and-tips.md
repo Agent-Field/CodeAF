@@ -150,10 +150,10 @@ build if the two disagree), so a tip you saw is on it word for word.
   it. It is the first tip a conversation says, ahead of `/task`.
 - `/task starts a single-shot task on the side` — after the first exchange. Retired when
   `/task` is typed, bare or with a brief.
-- `say what to do and when, like every Monday at 9, and it becomes an automation` — from
+- `/automations add sets one up exactly · or just say when, like every Monday at 9` — from
   the first minute on home and after the first exchange in a conversation. It is the other
-  half of the `/automations` row above — the place lists them, and saying one is how one
-  is made — and it retires with that row, on the same two gestures.
+  half of the `/automations` row above — the place lists them, and this is how one is made,
+  typed exactly or simply said — and it retires with that row, on the same two gestures.
 - `/manual answers any question about codeaf` — retired when
   `/manual` is typed, bare or with a question.
 - `ctrl+shift+t reopens the last conversation tab` — retired the first time the chord is
