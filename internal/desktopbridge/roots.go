@@ -7,15 +7,14 @@ package desktopbridge
 // engines this bridge actually holds and from the place graph on this machine,
 // and the native side confines to it.
 //
-// The route-table integrator inserts this after the token check in ServeHTTP:
+// ServeHTTP routes here right after the token check:
 //
 //	if path == "/roots" {
 //		b.roots(w, r)
 //		return
 //	}
 //
-// Until that line lands, tests call roots directly. The token is checked here
-// as well, so that direct call cannot skip it.
+// The token is checked here as well, so a direct call cannot skip it.
 
 import (
 	"errors"
