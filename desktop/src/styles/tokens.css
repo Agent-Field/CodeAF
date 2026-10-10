@@ -883,6 +883,8 @@
   --i2-pill-fill: var(--tab-hover);
   --i2-pill-pad-inline: 10px;
   --i2-pill-gap: 7px;
+  --i2-pill-fill-hover: var(--field);
+  --i2-pill-fill-press: var(--field-2);
   --i2-queue-pop-width: 380px;
   --i2-queue-pop-radius: 12px;
   --i2-queue-pop-shadow: var(--sh-2);
