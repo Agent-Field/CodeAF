@@ -71,6 +71,32 @@ test('partial streaming Markdown and long content fit a narrow document', async 
  expect(await prose.locator('pre').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
 });
 
+test('issue tables preserve whole identifiers and headers without overflowing the page', async ({ page }) => {
+ const prose = await render(page, '| # | Opened | Labels | Title |\n| --- | --- | --- | --- |\n| 1101 | 10-09 | question | Test A2Agent through AgentField AIConfig model selection |\n| 1093 | 10-03 | enhancement | Add decision primitive similar to skill and reasoner |\n| 1088 | 10-01 | enhancement | Python/TS SDKs: align status-callback retry policy with the Go SDK (#1081) |');
+ for (const width of [1200, 800, 480, 320]) {
+  await page.setViewportSize({ width, height: 800 });
+  for (const theme of ['light', 'dark']) {
+   await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+   await expect(prose.locator('th')).toHaveText(['#', 'Opened', 'Labels', 'Title']);
+   const geometry = await prose.locator('th, td:first-child, td:nth-child(2)').evaluateAll(cells => cells.map(cell => {
+    const range = document.createRange(); range.selectNodeContents(cell);
+    return { text: cell.textContent, height: range.getBoundingClientRect().height, lineHeight: parseFloat(getComputedStyle(cell).lineHeight) };
+   }));
+   for (const cell of geometry) expect(cell.height, `${width}px ${theme}: ${cell.text}`).toBeLessThanOrEqual(cell.lineHeight);
+   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+   const region = prose.getByRole('region', { name: 'Response table' });
+   await expect(region).toHaveAttribute('tabindex', '0');
+   if (width === 320) {
+    expect(await region.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
+    await region.evaluate(el => el.scrollLeft = 0);
+    await region.focus(); await page.keyboard.press('ArrowRight');
+    await expect.poll(() => region.evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
+   }
+   if (process.env.CODEAF_UI_SCREENSHOTS && (width === 1200 || width === 320)) await prose.screenshot({ path: `${process.env.CODEAF_UI_SCREENSHOTS}/${test.info().project.name}-${theme}-${width}.png` });
+  }
+ }
+});
+
 
 test('document headings and explicit code use semantic hierarchy and centralized type tokens', async ({ page }) => {
  const prose = await render(page, '# Objective\n\nReadable prose with `src/main.ts`.\n\n## Workstream\n\n### Task\n\n```sh\nnpm run check\n```');
