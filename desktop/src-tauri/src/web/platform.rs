@@ -364,6 +364,192 @@ pub use layer::{adopt, place};
 /// True where a load failure only shows as loading stopping without a finish.
 pub const POLLS_FOR_FAILURE: bool = cfg!(target_os = "macos");
 
+/// On Linux a key pressed in the page never reaches the app's document, and
+/// there is no menu bar to catch it. The three app chords are window
+/// accelerators; the page forwards them because WebKit would otherwise keep
+/// the key. macOS uses the menu, which already runs with the page focused.
+#[cfg(target_os = "linux")]
+mod chords {
+    use super::super::policy::{self, AppChord};
+    use super::{Runtime, Webview};
+    use gtk::gdk;
+    use gtk::prelude::{AccelGroupExtManual, *};
+    use std::cell::RefCell;
+    use tauri::AppHandle;
+
+    /// Marks a child page so a bubbled key is not treated as the app's own view.
+    const WEB_PAGE: &str = "codeaf-web-page";
+    /// Keeps the accelerator group alive for the window.
+    const HELD: &str = "codeaf-web-accels";
+
+    thread_local! {
+        static FORWARDING: RefCell<bool> = const { RefCell::new(false) };
+        static CHORD_PANE: RefCell<Option<String>> = const { RefCell::new(None) };
+    }
+
+    struct Held {
+        _group: gtk::AccelGroup,
+        _closures: Vec<gtk::glib::Closure>,
+    }
+
+    /// Clears the forward flag even when activation returns early.
+    struct Forwarding;
+
+    impl Forwarding {
+        fn begin(pane: &str) -> Self {
+            FORWARDING.with(|slot| *slot.borrow_mut() = true);
+            CHORD_PANE.with(|slot| *slot.borrow_mut() = Some(pane.to_string()));
+            Forwarding
+        }
+    }
+
+    impl Drop for Forwarding {
+        fn drop(&mut self) {
+            FORWARDING.with(|slot| *slot.borrow_mut() = false);
+            CHORD_PANE.with(|slot| *slot.borrow_mut() = None);
+        }
+    }
+
+    fn letter(key: gdk::keys::Key) -> Option<char> {
+        let key = *key;
+        if key == *gdk::keys::constants::t || key == *gdk::keys::constants::T {
+            Some('t')
+        } else if key == *gdk::keys::constants::w || key == *gdk::keys::constants::W {
+            Some('w')
+        } else if key == *gdk::keys::constants::l || key == *gdk::keys::constants::L {
+            Some('l')
+        } else {
+            None
+        }
+    }
+
+    fn focus_is_web_page(window: &gtk::Window) -> bool {
+        let mut widget = window.focused_widget();
+        while let Some(current) = widget {
+            if unsafe { current.data::<bool>(WEB_PAGE) }.is_some() {
+                return true;
+            }
+            widget = current.parent();
+        }
+        false
+    }
+
+    fn ensure<R: Runtime>(app: &AppHandle<R>, owner: &str, window: &gtk::Window) {
+        if unsafe { window.data::<Held>(HELD) }.is_some() {
+            return;
+        }
+        let group = gtk::AccelGroup::new();
+        window.add_accel_group(&group);
+        let mut closures = Vec::new();
+        let app = app.clone();
+        let owner = owner.to_string();
+        for (key, chord) in [
+            (*gdk::keys::constants::t, AppChord::NewTab),
+            (*gdk::keys::constants::w, AppChord::CloseTab),
+            (*gdk::keys::constants::l, AppChord::Address),
+        ] {
+            let app = app.clone();
+            let owner = owner.clone();
+            let closure = <gtk::AccelGroup as AccelGroupExtManual>::connect_accel_group(
+                &group,
+                key,
+                gdk::ModifierType::CONTROL_MASK,
+                gtk::AccelFlags::empty(),
+                move |_, target, _, _| {
+                    let forwarded = FORWARDING.with(|slot| *slot.borrow());
+                    let Some(window) = target.downcast_ref::<gtk::Window>() else {
+                        return false;
+                    };
+                    // A key that bubbled out of the app's own view is already
+                    // handled there. Only a page, or a page forwarding, counts.
+                    if !forwarded && !focus_is_web_page(window) {
+                        return false;
+                    }
+                    let pane = CHORD_PANE.with(|slot| slot.borrow().clone());
+                    super::super::deliver_chord(&app, &owner, pane.as_deref(), chord);
+                    true
+                },
+            );
+            closures.push(closure);
+        }
+        unsafe {
+            window.set_data(
+                HELD,
+                Held {
+                    _group: group,
+                    _closures: closures,
+                },
+            );
+        }
+    }
+
+    pub fn bind_app_chords<R: Runtime>(
+        app: &AppHandle<R>,
+        owner: &str,
+        view: &Webview<R>,
+        pane: &str,
+    ) {
+        let app = app.clone();
+        let owner = owner.to_string();
+        let pane = pane.to_string();
+        let _ = view.with_webview(move |platform| {
+            let page: gtk::Widget = platform.inner().upcast();
+            unsafe { page.set_data(WEB_PAGE, true) };
+            let Some(window) = page
+                .toplevel()
+                .and_then(|top| top.downcast::<gtk::Window>().ok())
+            else {
+                return;
+            };
+            ensure(&app, &owner, &window);
+            let pane = pane.clone();
+            let window = window.clone();
+            page.connect_key_press_event(move |_page, event| {
+                let mods = event.state() & gtk::accelerator_get_default_mod_mask();
+                let Some(letter) = letter(event.keyval()) else {
+                    return gtk::glib::Propagation::Proceed;
+                };
+                let command = mods.contains(gdk::ModifierType::SUPER_MASK)
+                    || mods.contains(gdk::ModifierType::META_MASK);
+                if policy::app_chord(
+                    false,
+                    letter,
+                    command,
+                    mods.contains(gdk::ModifierType::CONTROL_MASK),
+                    mods.contains(gdk::ModifierType::SHIFT_MASK),
+                    mods.contains(gdk::ModifierType::MOD1_MASK),
+                )
+                .is_none()
+                {
+                    return gtk::glib::Propagation::Proceed;
+                }
+                // Activate the registered chord, not the raw keyval: Caps Lock
+                // reports T, and the accelerator is bound to t.
+                let key = match letter {
+                    't' => *gdk::keys::constants::t,
+                    'w' => *gdk::keys::constants::w,
+                    _ => *gdk::keys::constants::l,
+                };
+                let _forward = Forwarding::begin(&pane);
+                let _ = gtk::accel_groups_activate(&window, key, gdk::ModifierType::CONTROL_MASK);
+                gtk::glib::Propagation::Stop
+            });
+        });
+    }
+}
+
+#[cfg(target_os = "linux")]
+pub use chords::bind_app_chords;
+
+#[cfg(not(target_os = "linux"))]
+pub fn bind_app_chords<R: Runtime>(
+    _app: &tauri::AppHandle<R>,
+    _owner: &str,
+    _view: &Webview<R>,
+    _pane: &str,
+) {
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
