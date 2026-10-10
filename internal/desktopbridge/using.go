@@ -244,8 +244,9 @@ func (p *Places) writeUsing(w http.ResponseWriter, s *conversation, chatID strin
 }
 
 type usingAsk struct {
-	Field   placegraph.PolicyField `json:"field"`
-	PlaceID string                 `json:"placeId"`
+	IfRevision *uint64                `json:"ifRevision"`
+	Field      placegraph.PolicyField `json:"field"`
+	PlaceID    string                 `json:"placeId"`
 }
 
 // decision finds the conversation's decision for one field.
@@ -265,6 +266,9 @@ func decision(b *placegraph.Bundle, field placegraph.PolicyField) (placegraph.Po
 func (p *Places) choose(w http.ResponseWriter, r *http.Request, s *conversation, chatID string) {
 	var ask usingAsk
 	if !readBody(w, r, &ask) {
+		return
+	}
+	if !p.staleRevision(w, ask.IfRevision) {
 		return
 	}
 	if !ask.Field.Valid() || strings.TrimSpace(ask.PlaceID) == "" {
@@ -304,6 +308,9 @@ func (p *Places) choose(w http.ResponseWriter, r *http.Request, s *conversation,
 func (p *Places) apply(w http.ResponseWriter, r *http.Request, s *conversation, chatID string) {
 	var ask usingAsk
 	if !readBody(w, r, &ask) {
+		return
+	}
+	if !p.staleRevision(w, ask.IfRevision) {
 		return
 	}
 	if !ask.Field.Valid() || ask.PlaceID != "" {
