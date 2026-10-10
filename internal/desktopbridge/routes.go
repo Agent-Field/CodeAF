@@ -17,6 +17,8 @@ func (s *conversation) extra(w http.ResponseWriter, r *http.Request, parts []str
 		s.readFile(w, r)
 	case len(parts) == 4 && parts[2] == "files" && parts[3] == "stat":
 		s.statFiles(w, r)
+	case len(parts) == 4 && parts[2] == "files" && parts[3] == "list":
+		s.listFiles(w, r)
 	case len(parts) == 4 && parts[2] == "files" && parts[3] == "text":
 		s.fileText(w, r)
 	case len(parts) == 4 && parts[2] == "files" && parts[3] == "find":
