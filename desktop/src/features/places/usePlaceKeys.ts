@@ -6,8 +6,13 @@ import { placeKeyCommand } from './keys';
 import { railOrder, railSections } from './shell/selectors';
 import type { PlacesShell } from './shell/PlacesShell';
 import { requestWorkspace } from './shell/workspaceBus';
+import { useWindowKeys } from '../shell/useWindowKeys';
 
 export function usePlaceKeys(shell: PlacesShell, onEnterWorkspace: () => void) {
+  // New Window is a window command. It is registered here so the running app has it; App may register
+  // it again. The first handler to accept the chord is the only one that opens, so a second call does not
+  // open a second window. Returning false below lets that handler run, and lets a browser keep the key.
+  useWindowKeys();
   const graph = shell.places.graph;
   const order = useMemo(() => (graph ? railOrder(railSections(graph, shell.closed, shell.place)) : []), [graph, shell.closed, shell.place]);
   useEffect(() => registerShortcuts(shortcutLayer.app, shortcut => {
@@ -27,7 +32,8 @@ export function usePlaceKeys(shell: PlacesShell, onEnterWorkspace: () => void) {
         else shell.closePlace(shell.place);
         return true;
       case 'up': void shell.up().catch(shell.warn); return true;
-      case 'new-window': void shell.goToInNewWindow('now').catch(shell.warn); return true;
+      // useWindowKeys owns this id. Taking it here would open Now inside this window in a browser.
+      case 'new-window': return false;
       case 'undo': void shell.undoLast().catch(shell.warn); return true;
     }
   }), [shell, order, onEnterWorkspace]);
