@@ -61,6 +61,7 @@ Shell). On any conflict, the design files win over code and older docs.
 
 | # | Question | Assumption the app ships now |
 |---|---|---|
+| CV-A1 | Where does a conversation tab opened with an anchor (I-IFL-16) scroll to, when the tab route has no anchor slot? | `onOpenConversationTab` opens a tab on the same session file and ignores the anchor; it opens at the end of the transcript. |
 | CV-R1 | How should clock receipts round fractional waits or display older records without a wait? | Round the actual recorded wait to the nearest whole second. Without a known positive wait, show “picked by codeaf” without an invented duration. Person receipts retain “you · HH:MM”. |
 | CV160 | Which title does the unfocused pane mini-tray show when several questions are pending? | Ship the first standing question in the full tray’s existing order (deeper clarification first, then oldest), without adding a count to the title. |
 | CV-WN1 | Which task-page records count as worker notes when the engine omits an author or uses a task ID? | The engine's Person flag selects the person's bubble; an explicit chat author keeps “Conversation”. Other non-person text notes use “Note from worker”, including unnamed and sibling workers. Landing-only records retain their existing result form. |

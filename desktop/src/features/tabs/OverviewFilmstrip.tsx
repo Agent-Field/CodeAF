@@ -13,7 +13,7 @@ import { PaneHeader } from './PaneGrid';
 
 /** Mounted panes: the centre card and this many on each side. Cards beyond that are masked or off screen. */
 const liveReach = 3;
-const idle: PaneActions = { onDraft: () => {}, onView: () => {}, onSummary: () => {}, onOpenTaskTab: () => {}, onOpenFile: () => {} };
+const idle: PaneActions = { onDraft: () => {}, onView: () => {}, onSummary: () => {}, onOpenTaskTab: () => {}, onOpenFile: () => {}, onRename: () => {}, onOpenConversationTab: () => {} };
 
 /** The tab's panes as they are in the workspace, but inert: nothing in them takes focus, a key or a click. */
 function LivePane({ tab }: { tab: Tab }) {
