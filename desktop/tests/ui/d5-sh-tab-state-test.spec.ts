@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page, type Route } from '@playwright/test';
+import design from '../../src/design/tokens.json' with { type: 'json' };
 import type { WorldRecord, WorldRow } from '../../src/features/world/types';
 import { expectAccessible, tokenColorIn } from './contracts';
 import { expectNoHorizontalOverflow } from './support/conversation';
@@ -76,23 +77,32 @@ for (const scheme of ['light', 'dark'] as const) {
       const background = page.getByRole('tab', { name: 'Background', exact: true });
       const chip = page.locator('.workspace-tab', { has: background });
       const title = background.locator('.workspace-tab-title');
-      await expect(title).toHaveCSS('color', await tokenColorIn(background, 'ink-2'));
+      // Shell 3j: at the small breakpoint an inactive tab is the 44px chip and does not draw a title.
+      // The ink lift is that title's colour, so it is measured only while the title is on screen.
+      const titled = width > design.breakpoints.small;
+      if (titled) await expect(title).toHaveCSS('color', await tokenColorIn(background, 'ink-2'));
+      else {
+        await expect(chip).toHaveAttribute('data-compressed', 'true');
+        await expect(title).toHaveCount(0);
+      }
       const quietMarkup = await background.innerHTML();
 
       await publish(1, { running: true, tasksRunning: 7, tasksTotal: 12 });
-      // Counts and running are real engine inputs, but the entire tab remains the quiet kind glyph and title.
+      // Counts and running are real engine inputs, but the tab stays the quiet kind glyph (and its title, when the chip draws one).
       await expect.poll(() => background.innerHTML()).toBe(quietMarkup);
       await expect(background.locator('.app-icon')).toHaveCount(1);
       await expect(chip.locator('.tab-dot, .tab-badge, [role="status"], [role="progressbar"]')).toHaveCount(0);
       await expect(background).not.toHaveAttribute('aria-description');
-      await expect(background).toHaveText('Background');
-      await expect(title).toHaveCSS('color', await tokenColorIn(background, 'ink-2'));
+      if (titled) {
+        await expect(background).toHaveText('Background');
+        await expect(title).toHaveCSS('color', await tokenColorIn(background, 'ink-2'));
+      }
 
       await publish(1, { needsYou: 1 });
       await expectDot(background, 'Needs you');
       await expect(background.locator('.app-icon')).toHaveCount(0);
       await expect(background).toHaveAttribute('aria-description', 'Needs you');
-      await expect(title).toHaveCSS('color', await tokenColorIn(background, 'ink'));
+      if (titled) await expect(title).toHaveCSS('color', await tokenColorIn(background, 'ink'));
       await expect(background).toHaveAttribute('aria-selected', 'false');
       await expect(reading).toHaveAttribute('aria-selected', 'true');
       await page.clock.resume();
@@ -104,7 +114,7 @@ for (const scheme of ['light', 'dark'] as const) {
       await expect(background.locator('.app-icon')).toHaveCount(0);
       await expect(background).toHaveAttribute('aria-description', 'Failed');
       await expect(background.getByRole('img', { name: 'Needs you' })).toHaveCount(0);
-      await expect(title).toHaveCSS('color', await tokenColorIn(background, 'ink-2'));
+      if (titled) await expect(title).toHaveCSS('color', await tokenColorIn(background, 'ink-2'));
       await expect(background).toHaveAttribute('aria-selected', 'false');
       expect(engine.calls.filter(call => call.method === 'POST' && call.path === '/api/engine/sessions').map(call => call.body.sessionFile)).toEqual([tabs[0].sessionFile]);
       await expectNoHorizontalOverflow(page);
