@@ -32,8 +32,6 @@ export type PlaceRailProps = {
   /** True when the rail is not on screen: its controls leave the tab order. */
   inert: boolean; peeking: boolean;
   onToggle: () => void;
-  /** Inbox: absent where nothing backs it (no row, never a dead one). */
-  inbox?: { count: number; active: boolean; onOpen: () => void };
   now: { active: boolean; status?: 'waiting' | 'failed'; statusLabel?: string; shortcut: string; onGo: () => void; onNewWindow?: () => void };
   /** Pinned and Open; absent while the engine has no Places to read. */
   sections?: RailSections;
@@ -64,13 +62,14 @@ function Section({ label, action, children }: { label: string; action?: ReactNod
 }
 
 /**
- * The rail of Places (6a, 10a; helper PRAIL): Inbox and Now; Pinned, the places the person lives in, in their order;
- * Open, every other place they went to, newest first; and All places at the foot. Two marks per row and never more:
- * the tint square on the left is identity, the dot on the right is status (amber needs you, red failed; running
- * draws nothing). On first launch, with no places at all, there is no Places heading of any kind.
+ * The rail of Places (6a, 8e, 10a; helper PRAIL): Now; Pinned, the places the person lives in, in their order;
+ * Open, every other place they went to, newest first; and All places at the foot. There is no Inbox row.
+ * Two marks per row and never more: the tint square on the left is identity, the dot on the right is status
+ * (amber needs you, red failed; running draws nothing). On first launch, with no places at all, there is no
+ * Places heading of any kind — Now, and All places when the engine can open it.
  */
 export function PlaceRail(props: PlaceRailProps) {
-  const { inert, peeking, onToggle, inbox, now, sections, current, emptyHint, notice, allPlaces, actions, tabCount, slotShortcut, closeShortcut, newWindowShortcut, appItems } = props;
+  const { inert, peeking, onToggle, now, sections, current, emptyHint, notice, allPlaces, actions, tabCount, slotShortcut, closeShortcut, newWindowShortcut, appItems } = props;
   const [over, setOver] = useState<string>();
   const pinnedIds = sections?.pinned.map(place => place.id) ?? [];
   const slotOf = (id: string) => { const order = [...pinnedIds, ...(sections?.open.map(place => place.id) ?? [])]; const at = order.indexOf(id); return at >= 0 && at < 9 ? at + 1 : undefined; };
@@ -149,8 +148,7 @@ export function PlaceRail(props: PlaceRailProps) {
     </div>
     <nav className="rail-nav" aria-label="Places">
       <div className="rail-group">
-        {inbox && <NavigationItem icon="inbox" active={inbox.active} onClick={inbox.onOpen} onContextMenu={event => event.preventDefault()} trail={inbox.count > 0 ? <Dot status="waiting" label={`${inbox.count} ${inbox.count === 1 ? 'needs' : 'need'} you`}/> : undefined}>Inbox</NavigationItem>}
-        {/* Inbox and Now draw no menu (Interactions, right-click "—"). Swallowing the event keeps the webview's own menu off those rows. */}
+        {/* Now draws no menu (Interactions, right-click "—"). Swallowing the event keeps the webview's own menu off the row. */}
         <NavigationItem icon="now" active={now.active} aria-keyshortcuts={now.shortcut} onContextMenu={event => event.preventDefault()} onClick={event => (primaryClick(event) && now.onNewWindow ? now.onNewWindow() : now.onGo())}
           onAuxClick={event => { if (event.button === 1 && now.onNewWindow) { event.preventDefault(); now.onNewWindow(); } }}
           trail={<Dot status={now.status} label={now.statusLabel}/>}>Now</NavigationItem>

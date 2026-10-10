@@ -63,7 +63,9 @@ test.beforeEach(async ({ page }) => { await page.addInitScript(() => { try { loc
 
 test('a. first launch: Now and All places only; All places names a place inline and Undo takes it back', async ({ page }) => {
   const rig = await boot(page, { live: [NEW_CHAT] });
+  await expect(rail(page).getByRole('button', { name: 'Now', exact: true })).toBeVisible();
   await expect(rail(page).getByRole('button', { name: 'All places' })).toBeVisible();
+  await expect(rail(page).getByRole('button', { name: 'Inbox', exact: true })).toHaveCount(0);
   await expect(rail(page).getByText('Pinned', { exact: true })).toHaveCount(0);
   await expect(rail(page).getByText('Open', { exact: true })).toHaveCount(0);
 
@@ -88,6 +90,23 @@ test('a. first launch: Now and All places only; All places names a place inline 
   await expect.poll(() => rig.places.posts('/places/undo').length).toBe(1);
   await expect(tile).toHaveCount(0);
   expect(rig.places.state().places).toEqual([]);
+});
+
+test('collapsed rail switcher lists Now, the rail places and All places, never Inbox', async ({ page }) => {
+  await boot(page);
+  await railPlace(page, 'Marketing').click();
+  await expect(homeTab(page)).toBeVisible();
+  await rail(page).getByRole('button', { name: 'Hide sidebar' }).click();
+  await expect(page.locator('.app-shell.sidebar-collapsed')).toHaveCount(1);
+  await homeTab(page).getByRole('tab').click();
+  const menu = page.getByRole('menu', { name: 'Place switcher' });
+  await expect(menu).toBeVisible();
+  // Checked rows are menuitemcheckbox. Now, places and All places are present; Inbox is neither role.
+  await expect(menu.getByRole('menuitem', { name: /^Inbox/ })).toHaveCount(0);
+  await expect(menu.getByRole('menuitemcheckbox', { name: /^Inbox/ })).toHaveCount(0);
+  await expect(menu.getByRole('menuitemcheckbox', { name: /^Now/ })).toBeVisible();
+  await expect(menu.getByRole('menuitemcheckbox', { name: /^Marketing/ })).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: /^All places/ })).toBeVisible();
 });
 
 test('b. Go to via the chooser lands on the place Home; Now gives back its own tabs and the root palette', async ({ page }) => {

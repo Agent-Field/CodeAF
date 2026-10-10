@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setIdSource } from '../tabs/helpers.ts';
 import { initialWorkspace, workspaceReducer, type Tab, type WorkspaceState } from '../tabs/model.ts';
-import { leaveKindAction, openKindAction } from './openKind.ts';
+import { isShellKind, leaveKindAction, openKindAction } from './openKind.ts';
 
 let counter = 0;
 setIdSource(() => `id${++counter}`);
@@ -18,6 +18,12 @@ test('the first request opens a Settings tab and focuses it; a second focuses th
   const again = workspaceReducer({ ...first, activeId: 'a' }, openKindAction({ ...first, activeId: 'a' }, 'settings'));
   assert.equal(again.tabs.filter(t => t.kind === 'settings').length, 1);
   assert.equal(again.activeId, settings[0].id);
+});
+
+test('inbox is not a shell kind, so the rail cannot ask the workspace to open it', () => {
+  assert.equal(isShellKind('inbox'), false);
+  assert.equal(isShellKind('settings'), true);
+  assert.equal(isShellKind('history'), true);
 });
 
 test('leaving Settings goes to the most recent other tab, or opens a new one when there is none', () => {

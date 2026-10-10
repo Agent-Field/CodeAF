@@ -1,16 +1,12 @@
-// The window-level wiring of Places: the rail's model, the keys, the window tint, and the attention the engine-wide
-// world stream reports, handed to the native notifications and the dock badge. App calls these once.
+// The window-level wiring of Places: the rail's model, the keys, and the window tint. App calls these once.
+// Questions that need the person are the strip's frame pill, not a rail row.
 
-import { useMemo, useSyncExternalStore } from 'react';
+import { useMemo } from 'react';
 import { placeShortcuts } from '../../../design/keyboard';
-import type { AttentionItem } from '../../../design/nativeControls';
-import { worldStore } from '../../chat/world-store';
 import { parseWorkspace, workspaceKey } from '../../tabs/model';
 import type { PlaceRailActions, PlaceRailProps } from '../../shell/PlaceRail';
-import type { MenuEntry } from '../../../components/ui';
 import type { PlacesShell } from './PlacesShell';
 import { railSections, rollupStatus } from './selectors';
-import { requestOpenKind } from '../../shell/shellState';
 
 /** How many tabs a place has open, from its saved tab set (the rail's close hint). */
 function tabCount(id: string): number {
@@ -44,11 +40,6 @@ type RailInputs = Pick<PlaceRailProps, 'inert' | 'peeking' | 'onToggle' | 'appIt
   /** The focused Home tab's place (`root` for All places). */
   activeHome?: string;
   onEnterWorkspace: () => void;
-  /**
-   * The retired Inbox row. Omitted, the rail and the collapsed switcher draw no Inbox.
-   * Next up's frame pill is the count now; a caller that still passes this keeps the old row.
-   */
-  inbox?: { count: number; active: boolean };
 };
 
 export function usePlaceRail(shell: PlacesShell, inputs: RailInputs): PlaceRailProps {
@@ -59,11 +50,9 @@ export function usePlaceRail(shell: PlacesShell, inputs: RailInputs): PlaceRailP
   const allPlacesActive = inputs.onWorkspace && inputs.activeHome === 'root';
   const notice = status === 'offline' ? { text: 'Can’t reach the engine', onRetry: () => void shell.refresh() }
     : status === 'error' ? { text: shell.places.error ?? 'Places could not be read', onRetry: () => void shell.refresh() } : undefined;
-  const { inbox, onWorkspace: _onWorkspace, activeHome: _activeHome, onEnterWorkspace: _enter, ...rest } = inputs;
+  const { onWorkspace: _onWorkspace, activeHome: _activeHome, onEnterWorkspace: _enter, ...rest } = inputs;
   return {
     ...rest,
-    // Absent means no row. A passed count still opens the old tab, for a caller that has not dropped it.
-    ...(inbox ? { inbox: { ...inbox, onOpen: enter(() => requestOpenKind('inbox')) } } : {}),
     now: {
       active: inputs.onWorkspace && shell.place === 'now' && !allPlacesActive, shortcut: placeShortcuts.slot(0),
       status: rollupStatus(graph?.now.status), statusLabel: graph && graph.now.status.needsYou > 0 ? `${graph.now.status.needsYou} need${graph.now.status.needsYou === 1 ? 's' : ''} you in Now` : undefined,
@@ -86,30 +75,5 @@ export { usePlaceKeys } from '../usePlaceKeys';
 // The frame tint lives in useWindowTint: Now and the root are graphite, and the swap is the attribute before paint.
 export { useWindowTint } from '../useWindowTint';
 
-/**
- * What needs the person, from the engine-wide world stream, for the rail's Inbox count. The system notifications and
- * the dock badge are posted by the workspace (tabs/closing/useBackground.ts), which also knows the failures: posting a
- * second, failure-less list from here made Rust forget the failures and announce them again.
- */
-export function useAttentionNotices() {
-  const world = useSyncExternalStore(worldStore.subscribe, worldStore.getState);
-  // Every world attention item is a question a conversation is stopped on (its `kind` is the question's own kind:
-  // consent, choice…). The stream reports no "failed now" item, so failures never count here.
-  const items = useMemo<AttentionItem[]>(() => world.items.map(item => ({ id: item.key, kind: 'needsYou' as const, chatTitle: item.title || 'Untitled chat', text: item.text })), [world.items]);
-  return { items, status: world.status };
-}
-
-/** The Home tab's place switcher while the rail is put away (Places 9c): Now, the rail's places with their slot keys, All places. Inbox is listed only when the rail was given that row. */
-export function placeSwitcher(shell: PlacesShell, rail: PlaceRailProps): { items: MenuEntry[]; alert?: string } {
-  const sections = rail.sections ?? { pinned: [], open: [] };
-  const order = [...sections.pinned, ...sections.open];
-  const items: MenuEntry[] = [];
-  if (rail.inbox) items.push({ id: 'inbox', label: rail.inbox.count ? `Inbox · ${rail.inbox.count}` : 'Inbox', icon: 'inbox', onSelect: rail.inbox.onOpen });
-  items.push({ id: 'now', label: 'Now', icon: 'now', shortcut: placeShortcuts.slot(0), checked: shell.place === 'now', onSelect: rail.now.onGo });
-  if (order.length) items.push({ kind: 'separator', id: 'places' });
-  order.forEach((place, index) => items.push({ id: place.id, label: place.parentName ? `${place.name} · ${place.parentName}` : place.name, checked: place.id === shell.place,
-    shortcut: index < 9 ? placeShortcuts.slot(index + 1) : undefined, onSelect: () => rail.actions.go(place.id) }));
-  if (rail.allPlaces) { items.push({ kind: 'separator', id: 'all' }); items.push({ id: 'all-places', label: 'All places', icon: 'allPlaces', shortcut: placeShortcuts.allPlaces, onSelect: rail.allPlaces.onOpen }); }
-  const elsewhere = order.find(place => place.id !== shell.place && place.status === 'waiting');
-  return { items, alert: elsewhere?.statusLabel };
-}
+// The collapsed-rail menu is pure and tested on its own. App still imports it from here.
+export { placeSwitcher } from './placeSwitcher.ts';

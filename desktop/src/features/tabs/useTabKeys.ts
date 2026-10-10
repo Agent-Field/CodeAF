@@ -6,7 +6,7 @@ import { desktopTabEvent, isDesktopTabAction } from '../../lib/desktopTabs';
 import { shortcutLayer } from '../../design/keyboard';
 import { useShortcuts } from '../../design/useShortcuts';
 import { isOpenJobDetail, jobOpenAction } from '../jobs/open';
-import { leaveKindAction, openKindAction, type ShellKind } from '../shell/openKind';
+import { isShellKind, leaveKindAction, openKindAction } from '../shell/openKind';
 import { newTabFieldAction, newTabFieldEvent } from '../shell/newTabField';
 import { publishActiveKind, shellEvent, shellLeaveEvent } from '../shell/shellState';
 import { kindDef } from './kinds/registry';
@@ -142,16 +142,18 @@ export function useDesktopTabActions({ state, dispatch, visible, renaming, onAct
   }, [onActivate, renaming, state]);
   useEffect(() => {
     const onOpenKind = (event: Event) => {
-      const kind = (event as CustomEvent<ShellKind>).detail;
-      if (!kindDef(kind).backed || renaming) return;
+      const kind = (event as CustomEvent<string>).detail;
+      // Inbox used to travel on this event. Anything that is not Settings or History is ignored.
+      if (!isShellKind(kind) || !kindDef(kind).backed || renaming) return;
       setOverviewOpen(false);
       dispatch(openKindAction(state, kind));
       onActivate();
     };
     const onLeaveKind = (event: Event) => {
-      if (renaming) return;
+      const kind = (event as CustomEvent<string>).detail;
+      if (!isShellKind(kind) || renaming) return;
       setOverviewOpen(false);
-      dispatch(leaveKindAction(state, (event as CustomEvent<ShellKind>).detail));
+      dispatch(leaveKindAction(state, kind));
       onActivate();
     };
     window.addEventListener(shellEvent, onOpenKind);
