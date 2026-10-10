@@ -97,7 +97,9 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
   const focusNeighbour = useRef(false);
   if (seen !== signature) {
     const gone = departuresFrom(orderRef.current, order, groupsRef.current);
-    if (gone.length > 0) focusNeighbour.current = true;
+    // Only a close hands focus to an existing neighbour. A tab replaced by a new one (Continue from History) selects a tab the strip
+    // never held, whose pane takes the keyboard itself; focusing its tab button here would make the composer stand aside.
+    if (gone.length > 0 && orderRef.current.some(tab => tab.id === state.activeId)) focusNeighbour.current = true;
     const next = mergeDepartures(departures, retainDepartures(reduced, gone), new Set(order.map(tab => tab.id)));
     setSeen(signature);
     if (departureIds(next) !== departureIds(departures)) setDepartures(next);
