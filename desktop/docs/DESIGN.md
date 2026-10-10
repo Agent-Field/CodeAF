@@ -183,8 +183,9 @@ and [Arc's recent-tab switcher](https://resources.arc.net/hc/en-us/articles/2561
 Mac also uses Command+Shift+[ / ] for adjacent tabs and Command+Shift+\ for
 the overview, following Safari's horizontal-tab conventions. Linux uses
 Control+PageUp / PageDown for adjacent tabs and Control+Shift+A for overview.
-Command / Control+O is the new-tab field's "Open file…" and belongs to that
-field alone.
+Command / Control+O opens or focuses a New tab and asks for part of a file
+name (Shell 3f). The focused new-tab field handles it; from any other tab the
+same chord opens or focuses that field.
 
 The full title of a tab is a 500ms tooltip for the active tab, a pinned tab and
 a cut title; an inactive tab's hover preview already carries it, and a tooltip

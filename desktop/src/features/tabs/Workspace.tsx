@@ -23,6 +23,7 @@ import { TabsApiContext, type TabsApi } from './context';
 import type { PaneActions } from './kinds/slots';
 import { tabMenuFor } from './hosts/menuHost';
 import { NewTabHostContext } from './kinds/newtab/api';
+import { useNewTabKeys } from './kinds/newtab/useNewTabKeys';
 import { kindDef } from './kinds/registry';
 import { newTab } from './helpers';
 import { worldStore } from '../chat/world-store';
@@ -200,6 +201,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
 
   const api: TabsApi = { workspaceKey: place, state, dispatch, summaries, now, closeTab, closeAndStop, closeMany: closing.closeMany, isRunning: closing.isRunning, background, markFailedSeen, openChat: onOpenChat ?? openChatHere, canOpenChat: id => !!worldStore.getState().rows.find(row => row.session === id)?.sessionFile, actions, reopenClosed: closing.reopenClosed, startRename, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename,
     placeTint: place === 'now' ? undefined : placeTint, placeMenu, placeSwitcher };
+  useNewTabKeys(api);
   const newTabHost = { state, summaries, dispatch, closeTab, receiveTransfer: sync.receiveTransfer };
   const actionsFor = (pane: Pane): PaneActions => ({
     onDraft: draft => dispatch({ type: 'draft', id: pane.id, draft }),

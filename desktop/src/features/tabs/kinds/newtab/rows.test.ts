@@ -13,8 +13,15 @@ test('with nothing typed the field offers only the start rows', () => {
   assert.deepEqual(flatRows(sections).map(r => r.id), ['openfile']);
 });
 
-test('the terminal row is absent until a terminal is backed', () => {
-  assert.deepEqual(flatRows(buildSections(input({ terminal: true }))).map(r => r.id), ['terminal', 'openfile']);
+test('the terminal row is absent until a terminal is backed, and then it carries the New terminal chord', () => {
+  const off = flatRows(buildSections(input()));
+  assert.deepEqual(off.map(row => row.label), ['Open file…']);
+  assert.equal(off[0].hint, '⌘O');
+  const on = flatRows(buildSections(input({ terminal: true, terminalShortcut: '⌃`', fileShortcut: '⌘O' })));
+  assert.deepEqual(on.map(row => [row.id, row.label, row.hint, row.kind]), [
+    ['terminal', 'New terminal', '⌃`', 'terminal'],
+    ['openfile', 'Open file…', '⌘O', 'openfile'],
+  ]);
 });
 
 test('typed text puts the conversation row first, then Start, then Matching in file, tab, closed order', () => {
