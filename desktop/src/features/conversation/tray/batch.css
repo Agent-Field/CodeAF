@@ -15,4 +15,6 @@
 .batch-pager { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-half); padding-right: var(--space-2); color: var(--ink-3); font-size: var(--type-caption-size); }
 .batch-pager .icon-button { width: var(--row-action-size); height: var(--row-action-size); border-radius: var(--radius-row-action); color: var(--ink-2); }
 .batch-pager .icon-button:hover:not(:disabled), .batch-pager .icon-button:active:not(:disabled) { color: var(--ink-2); }
+/* One by one uses the same end arrow as the question pager, so its disabled side is 40% too. */
+.batch-pager .icon-button:disabled { color: var(--ink-3); opacity: var(--tray-arrow-disabled-opacity); }
 .batch-count { padding-right: var(--space-1); font-variant-numeric: tabular-nums; }
