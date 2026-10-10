@@ -3,3 +3,4 @@
 .rail-specimen-frame { width: var(--sidebar-width); }
 .rail-specimen-frame .sidebar { height: auto; padding-bottom: var(--space-3); }
 .rail-specimen-strip { display: flex; align-items: center; height: var(--tab-strip-height); padding: 0 var(--space-2); }
+.rail-specimen-frame > small { display: block; padding: 0 var(--space-2) var(--space-tight); font-size: var(--type-caption-size); color: var(--ink-3); }

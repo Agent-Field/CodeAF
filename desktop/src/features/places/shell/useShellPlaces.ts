@@ -55,7 +55,7 @@ export function usePlaceRail(shell: PlacesShell, inputs: RailInputs): PlaceRailP
     ...rest,
     now: {
       active: inputs.onWorkspace && shell.place === 'now' && !allPlacesActive, shortcut: placeShortcuts.slot(0),
-      status: rollupStatus(graph?.now.status), statusLabel: graph && graph.now.status.needsYou > 0 ? `${graph.now.status.needsYou} need${graph.now.status.needsYou === 1 ? 's' : ''} you in Now` : undefined,
+      count: graph?.now.status.running, status: rollupStatus(graph?.now.status), statusLabel: graph && graph.now.status.needsYou > 0 ? `${graph.now.status.needsYou} need${graph.now.status.needsYou === 1 ? 's' : ''} you in Now` : undefined,
       onGo: enter(() => void shell.goTo('now')), onNewWindow: () => void shell.goToInNewWindow('now').catch(shell.warn),
     },
     sections,

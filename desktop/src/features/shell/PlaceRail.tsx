@@ -5,6 +5,7 @@ import type { PlaceRowModel } from '../places/shell/contracts';
 import { chatDragType, placeDragType, readDrag, writeDrag } from '../places/place-actions';
 import type { RailSections } from '../places/shell/selectors';
 import { RailToggle } from './RailToggle';
+import { NowRow } from './NowRow';
 import { PlaceDot as Dot } from '../places/PlaceDot';
 import './rail.css';
 import './place-rail.css';
@@ -32,7 +33,7 @@ export type PlaceRailProps = {
   /** True when the rail is not on screen: its controls leave the tab order. */
   inert: boolean; peeking: boolean;
   onToggle: () => void;
-  now: { active: boolean; status?: 'waiting' | 'failed'; statusLabel?: string; shortcut: string; onGo: () => void; onNewWindow?: () => void };
+  now: { active: boolean; count?: number; status?: 'waiting' | 'failed'; statusLabel?: string; shortcut: string; onGo: () => void; onNewWindow?: () => void };
   /** Pinned and Open; absent while the engine has no Places to read. */
   sections?: RailSections;
   /** The place this window shows (its row reads as the open one). */
@@ -148,10 +149,7 @@ export function PlaceRail(props: PlaceRailProps) {
     </div>
     <nav className="rail-nav" aria-label="Places">
       <div className="rail-group">
-        {/* Now draws no menu (Interactions, right-click "—"). Swallowing the event keeps the webview's own menu off the row. */}
-        <NavigationItem icon="now" active={now.active} aria-keyshortcuts={now.shortcut} onContextMenu={event => event.preventDefault()} onClick={event => (primaryClick(event) && now.onNewWindow ? now.onNewWindow() : now.onGo())}
-          onAuxClick={event => { if (event.button === 1 && now.onNewWindow) { event.preventDefault(); now.onNewWindow(); } }}
-          trail={<Dot status={now.status} label={now.statusLabel}/>}>Now</NavigationItem>
+        <NowRow now={now} primaryClick={primaryClick}/>
       </div>
       {pinned.length > 0 && <Section label="Pinned"><div className="rail-rows" {...dropProps({ section: 'pinned', index: pinned.length })}>{pinned.map((place, index) => row(place, 'pinned', index))}</div></Section>}
       {open.length > 0 && <Section label="Open" action={<Button variant="ghost" className="rail-section-action" onClick={actions.closeAll}>Close all</Button>}>
