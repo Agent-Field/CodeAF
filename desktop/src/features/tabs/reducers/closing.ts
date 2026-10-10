@@ -4,6 +4,14 @@ import { createId, normalize, visibleTabs } from '../helpers.ts';
 import { reduceTabs, type TabAction } from './tabs.ts';
 import type { Pane, Tab, TabGroup, WorkspaceState } from '../types.ts';
 
+/**
+ * A close time worth showing. `closedRecord` stamps milliseconds when a tab enters the closed list; a save from
+ * before that, or a value that is not a time, is dropped so the new-tab row says "closed" rather than a nonsense age.
+ */
+export function closedAtOf(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
 export type ClosingAction =
   /** Closes every tab but this one. Pinned tabs stay, like a browser's. */
   | { type: 'close-others'; id: string }
@@ -66,7 +74,9 @@ export function reduceClosing(state: WorkspaceState, action: { type: string }): 
       const tabs = [...state.tabs];
       const before = tabs.findIndex(t => t.id === a.before);
       const after = tabs.findIndex(t => t.id === a.after);
-      tabs.splice(before >= 0 ? before : after >= 0 ? after + 1 : tabs.length, 0, { ...tab, groupId });
+      // The close time belongs to the closed list. An open tab that kept it would save a stale age.
+      const { closedAt: _closedAt, ...opening } = tab;
+      tabs.splice(before >= 0 ? before : after >= 0 ? after + 1 : tabs.length, 0, { ...opening, groupId });
       return normalize({ ...state, tabs, groups: groups.map(g => (g.id === groupId ? { ...g, collapsed: false } : g)), closed: state.closed.filter(t => t.id !== a.id), activeId: tab.id, recentIds: [tab.id, ...state.recentIds.filter(id => id !== tab.id)] });
     }
     case 'restore-closed': {
