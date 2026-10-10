@@ -193,6 +193,7 @@ func (s *Store) Undo(receiptID string) (uint64, error) {
 			restored.Places[i].LastOpenedAt = t
 		}
 	}
+	restored.Open = append([]OpenRow(nil), cur.Open...)
 	restored.Revision = cur.Revision + 1
 	if _, err := validateState(restored, false); err != nil {
 		return 0, err

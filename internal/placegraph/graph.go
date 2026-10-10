@@ -35,6 +35,7 @@ func (st *State) clone() *State {
 		Places:      make([]Place, len(st.Places)),
 		Memberships: append([]Membership{}, st.Memberships...),
 		Pinned:      append([]string{}, st.Pinned...),
+		Open:        append([]OpenRow(nil), st.Open...),
 	}
 	for i, p := range st.Places {
 		c.Places[i] = p.clone()
@@ -327,6 +328,7 @@ func validateState(st *State, repair bool) ([]string, error) {
 		}
 	}
 	st.Pinned = pins
+	st.pruneOpen(ids)
 	return repairs, nil
 }
 
