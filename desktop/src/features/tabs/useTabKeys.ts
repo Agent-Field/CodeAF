@@ -7,6 +7,7 @@ import { shortcutLayer } from '../../design/keyboard';
 import { useShortcuts } from '../../design/useShortcuts';
 import { isOpenJobDetail, jobOpenAction } from '../jobs/open';
 import { leaveKindAction, openKindAction, type ShellKind } from '../shell/openKind';
+import { newTabFieldAction, newTabFieldEvent } from '../shell/newTabField';
 import { publishActiveKind, shellEvent, shellLeaveEvent } from '../shell/shellState';
 import { kindDef } from './kinds/registry';
 import { focusedPane, type Tab, type WorkspaceAction, type WorkspaceState } from './model';
@@ -127,6 +128,18 @@ export function useDesktopTabActions({ state, dispatch, visible, renaming, onAct
     window.addEventListener(desktopTabEvent, onMenuAction);
     return () => window.removeEventListener(desktopTabEvent, onMenuAction);
   }, [onActivate, renaming, state.activeId, visible]);
+  // ⌘K / the rail ask for the New-tab field: show the empty one that exists, or open one (never a second empty tab).
+  useEffect(() => {
+    const onField = () => {
+      if (renaming) return;
+      setOverviewOpen(false);
+      const next = newTabFieldAction(state);
+      if (next) dispatch(next);
+      onActivate();
+    };
+    window.addEventListener(newTabFieldEvent, onField);
+    return () => window.removeEventListener(newTabFieldEvent, onField);
+  }, [onActivate, renaming, state]);
   useEffect(() => {
     const onOpenKind = (event: Event) => {
       const kind = (event as CustomEvent<ShellKind>).detail;
