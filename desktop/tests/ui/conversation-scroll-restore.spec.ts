@@ -3,6 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { installMockEngine, type Scenario } from './support/mock-engine';
 import { expectNoHorizontalOverflow, message } from './support/conversation';
 import { pendingQuestion } from './support/scenarios';
+import { storageKeyFor } from '../../src/features/tabs/scroll/scrollStorage';
 
 // CV-241, CV-244, CV-246, CV-286: the dock's reserved space and gradient, the Latest pill's entrance, scroll restore across a
 // reload, and the narrow widths. The engine is a mock; the scroller, dock and pill are the real components.
@@ -14,6 +15,12 @@ const long: Scenario = {
 const scroller = (page: Page) => page.locator('.conversation-scroll');
 const gap = (page: Page) => scroller(page).evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop);
 const ready = (page: Page) => expect(page.getByText('Paragraph 90 of a long reply', { exact: false })).toBeVisible();
+// Read the durable spot, so a reload tests restoration rather than racing the save throttle or a busy frame.
+const savedSpot = (page: Page) => page.evaluate(({ namespace, base }) => {
+  const token = sessionStorage.getItem(namespace);
+  const raw = localStorage.getItem(`${base}${token}`);
+  return raw ? JSON.parse(raw).panes?.a?.['k:conversation#0'] ?? null : null;
+}, { namespace: 'codeaf.desktop.windowToken', base: storageKeyFor('browser.') });
 const open = async (page: Page, scenario: Scenario = long) => {
   const engine = await installMockEngine(page, scenario);
   // A saved conversation, so the long reply is there on open and again after a reload (the seed is written once per tab session).
@@ -58,37 +65,47 @@ for (const scheme of ['light', 'dark'] as const) {
     test('CV-244: the Latest pill enters with a fade and a 4px rise', async ({ page }) => {
       const engine = await open(page);
       await ready(page);
+      // Capture the actual entrance at insertion; a browser round trip can outlast the 200ms animation.
+      await page.evaluate(() => {
+        const observer = new MutationObserver(() => {
+          const pill = document.querySelector<HTMLElement>('.latest-pill');
+          if (!pill) return;
+          const enter = pill.getAnimations().find(a => (a as CSSAnimation).animationName === 'latest-pill-enter');
+          pill.dataset.enterFrames = JSON.stringify(enter ? (enter.effect as KeyframeEffect).getKeyframes().map(k => ({ opacity: String(k.opacity), transform: String(k.transform) })) : []);
+          observer.disconnect();
+        });
+        observer.observe(document.querySelector('.conversation-main')!, { childList: true, subtree: true });
+      });
       // A pill needs something live while the reader is away from the end.
       engine.update({ running: true });
       await scroller(page).evaluate(el => { el.scrollTop = 0; });
       const pill = page.getByRole('button', { name: /^Latest/ });
       await expect(pill).toBeVisible();
-      const frames = await pill.evaluate(el => el.getAnimations().map(a => ({ name: (a as CSSAnimation).animationName, keys: (a.effect as KeyframeEffect).getKeyframes().map(k => ({ opacity: String(k.opacity), transform: String(k.transform) })) })));
-      const enter = frames.find(f => f.name === 'latest-pill-enter');
-      expect(enter).toBeTruthy();
-      expect(enter!.keys[0].opacity).toBe('0');
+      const frames = await pill.evaluate(el => JSON.parse((el as HTMLElement).dataset.enterFrames ?? '[]') as { opacity: string; transform: string }[]);
+      expect(frames).toHaveLength(2);
+      expect(frames[0].opacity).toBe('0');
       // Computed keyframes spell the 4px rise as a function or a matrix, depending on the engine.
-      expect(enter!.keys[0].transform).toMatch(/translateY\(4px\)|translate\(0px, 4px\)|matrix\(1, 0, 0, 1, 0, 4\)/);
+      expect(frames[0].transform).toMatch(/translateY\(4px\)|translate\(0px, 4px\)|matrix\(1, 0, 0, 1, 0, 4\)/);
     });
 
     test('CV-246: an unanchored reader returns to the same place after a reload; an anchored one reopens at the bottom', async ({ page }) => {
+      // This case performs three page loads; shared-runner startup must not consume the final restore assertion's budget.
+      test.setTimeout(60_000);
       await open(page);
       await ready(page);
       await scroller(page).evaluate(el => { el.scrollTop = 1200; });
-      // The position is saved a beat after the last scroll event, so let it land before the page goes away.
-      await page.waitForTimeout(600);
+      await expect.poll(() => savedSpot(page)).toMatchObject({ top: 1200, end: false });
       await page.reload();
       await expect(message(page)).toBeVisible();
       await expect.poll(async () => Math.abs((await scroller(page).evaluate(el => el.scrollTop)) - 1200), { timeout: 8000 }).toBeLessThanOrEqual(3);
       expect(await gap(page)).toBeGreaterThan(48);
 
-      // Back to the end the way a reader does it: a wheel over the transcript, after the restore has let go of it.
-      await page.waitForTimeout(800);
+      // A real wheel ends restoration immediately and returns the reader to the end.
       const box = (await scroller(page).boundingBox())!;
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       await page.mouse.wheel(0, 20000);
       await expect.poll(() => gap(page)).toBeLessThanOrEqual(2);
-      await page.waitForTimeout(600);
+      await expect.poll(() => savedSpot(page)).toMatchObject({ end: true });
       await page.reload();
       await expect(message(page)).toBeVisible();
       await ready(page);
