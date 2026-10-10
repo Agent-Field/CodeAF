@@ -93,6 +93,7 @@ Shell). On any conflict, the design files win over code and older docs.
 | Q-P13 | Design says "Allow 3 git actions?"; the engine's batch head reads "Allow N actions?" | The shipped wording is the tray's ("Allow N actions?"); the card does not invent a noun the engine did not send. |
 | Q-P14 | File, diff, terminal and web cards need a target (path, terminal id, URL) | `Pane.target` is an optional validated field kept across reload (`PaneTarget` in view-state.ts); the kind lanes write it. Until a lane sets it the card is kind and title only, never invented content. |
 | Q-P15 | A card whose read fails or is still loading | Kind and title only; no spinner, no error text (a read failure is not the person's to act on). The previous target's content is never shown for a different target. |
+| AT1 | Choosing an @ file: Conversation 1e does not draw what lands in the field (one coverage note says the relative path as literal text, another says a `@path` token) | The whole `@token`, from the `@` through the next whitespace, is replaced by the workspace-relative path. No `@` is left in front, and the caret sits immediately after the path. Text outside the token stays. An `@` inside a word (an email) is not a token. |
 
 ## File lane integration notes
 
