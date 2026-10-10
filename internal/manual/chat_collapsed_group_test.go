@@ -3,7 +3,7 @@ package manual
 import "testing"
 
 // These probes keep a collapsed group's pill reachable in the person's words.
-func TestDesktopCollapsedGroupQuestionsReachTheirPage(t *testing.T) {
+func TestDesktopCollapsedGroupPageAnswersItsQuestions(t *testing.T) {
 	for _, question := range []string{
 		"where is my collapsed group when I am in another tab",
 		"the group pill shows Needs you when a hidden tab needs you",
