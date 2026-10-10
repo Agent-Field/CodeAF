@@ -24,19 +24,19 @@ async function openWorkspace(page: Page) {
     chatId: tab.id, sessionFile: tab.sessionFile, title: tab.title, running: false,
     needsYou: 0, failed: 0, tasksRunning: 0, tasksTotal: 0, attached: false, archived: false,
   }));
-  let held: Route | undefined;
+  // The tab strip and the notification path each hold their own world stream, so a record is delivered to every waiting one.
+  let held: Route[] = [];
   let seq = 1;
   let acknowledged = 0;
   const fulfill = (route: Route, record: WorldRecord) => route.fulfill({
     contentType: 'text/event-stream', body: `id: ${record.seq}\ndata: ${JSON.stringify(record)}\n\n`,
   });
   await page.route('**/api/engine/events?*', async route => {
-    if (new URL(route.request().url()).searchParams.get('after') === '0') {
-      await fulfill(route, { epoch: 'tab-state', seq, type: 'reset', at: '2026-10-10T12:00:00Z', payload: { rows, items: [] } });
-    } else {
-      acknowledged = Number(new URL(route.request().url()).searchParams.get('after'));
-      held = route;
-    }
+    const after = Number(new URL(route.request().url()).searchParams.get('after'));
+    acknowledged = Math.max(acknowledged, after);
+    // A stream that connects late, or reconnects behind the feed, is told the whole present, as the engine does for a cursor it cannot replay.
+    if (after < seq) await fulfill(route, { epoch: 'tab-state', seq, type: 'reset', at: '2026-10-10T12:00:00Z', payload: { rows, items: [] } });
+    else held.push(route);
   });
   await page.goto('/');
   await expect(page.getByText('Keep reading this conversation.', { exact: true })).toBeVisible();
@@ -44,11 +44,12 @@ async function openWorkspace(page: Page) {
   const publish = async (index: number, patch: Partial<WorldRow>) => {
     // Advancing the reconnect clock keeps the stream test independent of wall-clock sleeps.
     await page.clock.runFor(1100);
-    await expect.poll(() => held !== undefined).toBe(true);
+    await expect.poll(() => held.length > 0).toBe(true);
     rows[index] = { ...rows[index], ...patch };
-    const route = held!;
-    held = undefined;
-    await fulfill(route, { epoch: 'tab-state', seq: ++seq, type: 'world', at: '2026-10-10T12:00:01Z', payload: { rows: [rows[index]], removed: [] } });
+    const routes = held;
+    held = [];
+    const record: WorldRecord = { epoch: 'tab-state', seq: ++seq, type: 'world', at: '2026-10-10T12:00:01Z', payload: { rows: [rows[index]], removed: [] } };
+    for (const route of routes) await fulfill(route, record);
     await page.clock.runFor(1100);
     await expect.poll(() => acknowledged).toBe(seq);
   };

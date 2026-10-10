@@ -25,7 +25,7 @@ export function mountRailRows(theme: string) {
       now: { active: false, count: 3, shortcut: '⌃0', onGo: () => setVisited('now') },
       sections: { pinned: [place('pinned', 'Personal', { pinned: true, tint: 'sand' })], open },
       actions: { go: setVisited, close: id => setOpen(rows => rows.filter(row => row.id !== id)), closeAll: () => setOpen([]), closeOthers: () => {} },
-      tabCount: () => 4, slotShortcut: index => `⌃${index}`, closeShortcut: '⌘⇧W', newWindowShortcut: '⌘N', appItems: [],
+      tabCount: () => 4, slotShortcut: index => `⌃${index}`, closeShortcut: '⌘⇧W', newWindowShortcut: '⌘N',
     }), h('output', { id: 'visited' }, visited));
   }
   createRoot(host).render(h(ThemeProvider, null, h(Demo)));

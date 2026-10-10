@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent, type PointerEvent, type ReactElement, type ReactNode } from 'react';
 import * as Context from '@radix-ui/react-context-menu';
 import * as Dropdown from '@radix-ui/react-dropdown-menu';
+import { synthesizeContextMenu } from './contextMenuEvent';
 import { Icon, type IconName } from './Icon';
 import { KeyboardShortcut } from './KeyboardShortcut';
 import design from '../../design/tokens.json';
@@ -8,11 +9,11 @@ import design from '../../design/tokens.json';
 /** One square in a swatches row. `id` is a place tint (`tide`, `rose`, …); an id with no token paints nothing. */
 export type MenuSwatchOption = { id: string; label: string };
 export type MenuEntry =
- | { kind?: 'action'; id: string; label: string; icon?: IconName; /** An empty 14px column, so words line up with rows that have a glyph. */ iconSlot?: boolean; shortcut?: string; detail?: string; disabled?: boolean; checked?: boolean; danger?: boolean; onSelect: () => void }
- | { kind: 'separator'; id: string }
+ | { kind?: 'action'; id: string; label: string; lead?: ReactNode; trail?: ReactNode; labelSuffix?: ReactNode; icon?: IconName; /** An empty 14px column, so words line up with rows that have a glyph. */ iconSlot?: boolean; shortcut?: string; detail?: string; disabled?: boolean; checked?: boolean; danger?: boolean; onSelect: () => void }
+ | { kind: 'separator'; id: string; label?: string }
  | { kind: 'submenu'; id: string; label: string; icon?: IconName; iconSlot?: boolean; disabled?: boolean; items: readonly MenuEntry[] }
  | { kind: 'swatches'; id: string; label: string; icon?: IconName; options: readonly MenuSwatchOption[]; selected?: string; onSelect: (id: string) => void };
-type MenuProps = { children: ReactElement; items: readonly MenuEntry[]; label: string; className?: string; onOpenChange?: (open: boolean) => void; /** The 240px menu of the design's tab menu; the default is 200px. */ wide?: boolean };
+type MenuProps = { children: ReactElement; items: readonly MenuEntry[]; label: string; className?: string; onOpenChange?: (open: boolean) => void; /** The 240px menu of the design's tab menu; the default is 200px. */ wide?: boolean; /** Which edge of the trigger the popup lines up with. Menus hang from the end; the place switcher hangs from the start of the Home tab. */ align?: 'start' | 'center' | 'end' };
 
 function useMenuLayer<T extends HTMLElement>(onOpenChange?: (open: boolean) => void) {
  const ref = useRef<T>(null);
@@ -39,14 +40,14 @@ function focusFirstItem(event: FocusEvent<HTMLDivElement>) {
 }
 function EntryContents({ entry }: { entry: Exclude<MenuEntry, { kind: 'separator' } | { kind: 'swatches' }> }) {
  // A row with no glyph still holds the icon column. Delete place… is danger words only, and the words stay aligned.
- return <>{entry.icon ? <Icon name={entry.icon} size="sm"/> : entry.iconSlot ? <span className="menu-icon-slot" aria-hidden="true"/> : null}<span className="menu-label">{entry.label}</span>{entry.kind === 'submenu'
+ return <>{'lead' in entry && entry.lead ? entry.lead : entry.icon ? <Icon name={entry.icon} size="sm"/> : entry.iconSlot ? <span className="menu-icon-slot" aria-hidden="true"/> : null}<span className="menu-label">{entry.label}{'labelSuffix' in entry && entry.labelSuffix}</span>{entry.kind === 'submenu'
   ? <Icon name="chevronRight" size="xs"/>
-  : <>{'detail' in entry && entry.detail && <span className="menu-detail">{entry.detail}</span>}{entry.shortcut && <KeyboardShortcut label={entry.shortcut} variant="inline"/>}</>}</>;
+  : <>{entry.trail}{'detail' in entry && entry.detail && <span className="menu-detail">{entry.detail}</span>}{entry.shortcut && <KeyboardShortcut label={entry.shortcut} variant="inline"/>}</>}</>;
 }
 function MenuItems({ items, type, container }: { items: readonly MenuEntry[]; type: 'context' | 'dropdown'; container?: HTMLElement }) {
  const P = type === 'context' ? Context : Dropdown;
  return <>{items.map(entry => {
-  if (entry.kind === 'separator') return <P.Separator key={entry.id} className="menu-separator"/>;
+  if (entry.kind === 'separator') return entry.label ? <P.Label key={entry.id} className="menu-section-label">{entry.label}</P.Label> : <P.Separator key={entry.id} className="menu-separator"/>;
   if (entry.kind === 'swatches') return <SwatchRow key={entry.id} entry={entry} Item={P.Item}/>;
   if (entry.kind === 'submenu') return <P.Sub key={entry.id}>
    <P.SubTrigger className="menu-item" disabled={entry.disabled}><EntryContents entry={entry}/></P.SubTrigger>
@@ -122,28 +123,21 @@ export function ContextMenu({ children, items, label, onOpenChange, wide = false
  const layer = useMenuLayer<HTMLSpanElement>(onOpenChange);
  return <Context.Root onOpenChange={layer.onOpenChange}>
   <Context.Trigger ref={layer.ref} asChild onKeyDown={event => {
-   // macOS WebKit does not synthesize this browser event for Shift+F10.
+   // macOS WebKit does not synthesize this browser event for Shift+F10. The same helper opens the menu for a coarse long-press.
    if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
    event.preventDefault();
-   const bounds = event.currentTarget.getBoundingClientRect();
-   event.currentTarget.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: bounds.left + bounds.width / 2, clientY: bounds.bottom }));
-   // A synthetic contextmenu opens the menu without moving focus, so the first item would not take the next key.
-   requestAnimationFrame(() => {
-    // Radix may already have focused an item; a late frame must not undo keyboard navigation into a submenu.
-    if (document.activeElement?.closest('.app-menu')) return;
-    document.querySelector<HTMLElement>('.app-menu-context[data-state="open"] [role^="menuitem"]:not([data-disabled])')?.focus();
-   });
+   synthesizeContextMenu(event.currentTarget);
   }}>{children}</Context.Trigger>
   <Context.Portal container={layer.modal}><Context.Content onFocusCapture={focusFirstItem} aria-label={label} className={`app-menu app-menu-context${wide ? ' app-menu-wide' : ''} ${className}`} collisionPadding={design.overlay.collisionPadding}>
    <MenuItems items={items} type="context" container={layer.modal}/>
   </Context.Content></Context.Portal>
  </Context.Root>;
 }
-export function DropdownMenu({ children, items, label, onOpenChange, className = '' }: MenuProps) {
+export function DropdownMenu({ children, items, label, onOpenChange, className = '', align = 'end' }: MenuProps) {
  const layer = useMenuLayer<HTMLButtonElement>(onOpenChange);
  return <Dropdown.Root open={layer.open} onOpenChange={layer.onOpenChange}>
   <Dropdown.Trigger ref={layer.ref} asChild>{children}</Dropdown.Trigger>
-  <Dropdown.Portal container={layer.modal}><Dropdown.Content onFocusCapture={focusFirstItem} aria-label={label} className={`app-menu app-menu-dropdown ${className}`} align="end" sideOffset={design.overlay.sideOffset} collisionPadding={design.overlay.collisionPadding}>
+  <Dropdown.Portal container={layer.modal}><Dropdown.Content onFocusCapture={focusFirstItem} aria-labelledby={undefined} aria-label={label} className={`app-menu app-menu-dropdown ${className}`} align={align} sideOffset={design.overlay.sideOffset} collisionPadding={design.overlay.collisionPadding}>
    <MenuItems items={items} type="dropdown" container={layer.modal}/>
   </Dropdown.Content></Dropdown.Portal>
  </Dropdown.Root>;

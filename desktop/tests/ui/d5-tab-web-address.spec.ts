@@ -1,16 +1,21 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { openPage } from './support/shell-navigation';
 import { dismissCoveringToasts, emitState, installNativeWebMock, nativeCalls, seedWebTab } from './support/native-web-mock';
 
 const url = 'https://pkg.go.dev/encoding/json#Decoder';
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/engine/**', route => route.abort());
+});
+
+// Only live-pane tests need native views; the Design system draws its states without IPC.
+async function prepareNativePane(page: Page) {
   await installNativeWebMock(page);
   await seedWebTab(page);
-});
+}
 
 for (const theme of ['light', 'dark']) {
   test(`${theme}: measured address geometry, selection, navigation and Escape`, async ({ page }) => {
+    await prepareNativePane(page);
     await page.addInitScript(theme => localStorage.setItem('codeaf-theme', theme), theme);
     await page.goto('/');
     await dismissCoveringToasts(page);
@@ -59,6 +64,7 @@ for (const theme of ['light', 'dark']) {
 
   for (const width of [320, 480, 600, 601]) {
     test(`${theme}: page actions fold at ${width}px`, async ({ page }) => {
+      await prepareNativePane(page);
       await page.addInitScript(theme => localStorage.setItem('codeaf-theme', theme), theme);
       await page.setViewportSize({ width, height: 800 });
       await page.goto('/');
@@ -87,7 +93,6 @@ for (const theme of ['light', 'dark']) {
   test(`${theme}: Design system includes all four address states`, async ({ page }) => {
     await page.addInitScript(theme => localStorage.setItem('codeaf-theme', theme), theme);
     await page.goto('/');
-    await dismissCoveringToasts(page);
     await openPage(page, 'Design system');
     const specimen = page.locator('[aria-label="Web address specimen"]');
     await expect(specimen).toBeVisible();

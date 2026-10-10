@@ -8,7 +8,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useToasts } from '../../../components/ui';
-import { nativeControls, placeFromSearch, type NativeControls } from '../../../design/nativeControls';
+import { nativeControls, type NativeControls } from '../../../design/nativeControls';
 import { PlacesError, type Mutation, type PlacesClient } from '../client';
 import type { ChooserMode, WindowPlace } from './contracts';
 import { indexPlaces, type PlaceIndex } from './selectors';
@@ -16,6 +16,7 @@ import { placesStore, usePlaces, type PlacesState } from './placesStore';
 import { requestWorkspace } from './workspaceBus';
 import { createPlaceNavigation } from '../navigation';
 import { createPlaceUndo } from '../undo';
+import { windowPlace, windowPlaceStorageKey, type WindowPlace as WindowBoot } from '../../../lib/native/windowPlace';
 import { windowStructuralUndo } from '../../tabs/undo/structuralUndo';
 
 export type DialogRequest =
@@ -70,7 +71,6 @@ export const PlacesShellProvider = PlacesShellContext.Provider;
 export const usePlacesShell = () => useContext(PlacesShellContext);
 
 const closedKey = 'codeaf.desktop.places.closed';
-const windowPlaceKey = (label: string) => `codeaf.desktop.window.${label}.place`;
 export const isWindowPlace = (value: unknown): value is WindowPlace => value === 'now' || (typeof value === 'string' && /^pl_[0-9a-f]{16}$/.test(value));
 const message = (failure: unknown) => (failure instanceof Error && failure.message ? failure.message : 'That did not work. Nothing was changed.');
 
@@ -81,27 +81,14 @@ function readClosed(): Map<string, string> {
   } catch { return new Map(); }
 }
 
-/** Where this window starts: the address a new window was opened with, else the place this window last showed. */
-function startingPlace(): { place: WindowPlace; allPlaces: boolean } {
-  const asked = new URLSearchParams(location.search).get('place');
-  if (asked) {
-    const key = placeFromSearch(location.search);
-    return key === 'root' ? { place: 'now', allPlaces: true } : { place: key as WindowPlace, allPlaces: false };
-  }
-  try {
-    const saved = localStorage.getItem(windowPlaceKey('main'));
-    if (isWindowPlace(saved)) return { place: saved, allPlaces: false };
-  } catch { /* An unavailable store starts in Now. */ }
-  return { place: 'now', allPlaces: false };
-}
-
-export function usePlacesShellController(): PlacesShell {
+/** App passes its boot before Workspace mounts; standalone shell callers use the same native boot door. */
+export function usePlacesShellController(boot?: WindowBoot): PlacesShell {
   const places = usePlaces();
   const client = placesStore.client;
   const native = useMemo(() => nativeControls(), []);
-  const [start] = useState(startingPlace);
-  const [place, setPlace] = useState<WindowPlace>(start.place);
-  const [label, setLabel] = useState('main');
+  const [start] = useState(() => boot ?? windowPlace());
+  const [place, setPlace] = useState<WindowPlace>(start.placeKey === 'root' ? 'now' : start.placeKey);
+  const label = start.label;
   const [arrival, setArrival] = useState(0);
   const [closed, setClosed] = useState(readClosed);
   const [chooser, setChooser] = useState<ChooserMode>();
@@ -115,9 +102,8 @@ export function usePlacesShellController(): PlacesShell {
   const index = useMemo(() => (places.graph ? indexPlaces(places.graph.places) : undefined), [places.graph]);
 
   // A window opened on All places shows Now with an All places tab (Places 9e "All places doesn't travel with you").
-  useEffect(() => { if (start.allPlaces) requestAnimationFrame(() => requestWorkspace({ type: 'home-root' })); }, [start.allPlaces]);
-  useEffect(() => { void native.currentWindow().then(context => setLabel(context.label)).catch(() => undefined); }, [native]);
-  useEffect(() => { try { localStorage.setItem(windowPlaceKey(label), place); } catch { /* Not remembering the place is not worth an interruption. */ } }, [label, place]);
+  useEffect(() => { if (start.placeKey === 'root') requestAnimationFrame(() => requestWorkspace({ type: 'home-root' })); }, [start.placeKey]);
+  useEffect(() => { try { localStorage.setItem(windowPlaceStorageKey(label), place); } catch { /* Not remembering the place is not worth an interruption. */ } }, [label, place]);
   useEffect(() => { try { localStorage.setItem(closedKey, JSON.stringify(Object.fromEntries(closed))); } catch { /* As above. */ } }, [closed]);
 
   const warn = useCallback((failure: unknown) => { show({ text: message(failure), tone: 'warning', actions: [] }); }, [show]);

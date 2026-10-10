@@ -1915,3 +1915,39 @@ blends the two meanings.
 | **total** | **163** |
 
 Tasks: 85 in ~/.codex/codeaf-design-run/d5-inventory/tasks-backend.json (1 composite t-d5-be-pg, 6 decision/research, 11 QA incl. one manual review, 10 integrator-only). Every partial/missing row above names at least one task that lists it in `covers`.
+
+## Place rail verification — t-d5-pl-railg (2026-10-10)
+
+The historical inventory above remains the source-to-task map. This lane measures
+v3 Places 6a, 9c and 10a through Playwright, using computed styles and bounding
+rectangles. The design's rail is 252px including padding, with a 232px row column;
+rows have 32px height, 13px type, 10px gaps and 8px horizontal padding. Switcher
+rows are 280×32px with a 7px radius, separate section headings and a selected
+field-2 fill. Iteration 2 removes Inbox from both surfaces.
+
+| Coverage rows | Result and evidence |
+|---|---|
+| PL-042–045, PL-054, PL-056–058, PL-060, PL-073 | Rail row geometry, tint/status marks, selected lift, close tooltip, keyboard ring and touch menu: `rail-place-row.spec.ts`. Roving focus, Enter and Space: `place-rail-design.spec.ts`. Status roll-up uses the engine projection and is covered by `shell/selectors.test.ts`; running draws no dot. |
+| PL-050–053, PL-063–064, PL-069 | Section order, Close all, first launch, place menu pin/unpin, closing busy work and slot keys: the focused rail journeys in `places-shell.spec.ts`, plus `shell/selectors.test.ts`. All places middle-click now uses the new-tab callback. No disabled/archived row is introduced. |
+| PL-065–066, PL-068 | Drag insertion/ghost, pin/reorder/unpin, empty destination sections and exactly one callback per drop: `place-rail-design.spec.ts`. The production rail now uses the node-tested `menus/railMenu.ts` builder, including Tint squares and keyboard reorder. |
+| PL-081–082, PL-085 | `place-rail-design.spec.ts` measures switcher rows in Light/Dark, asserts Pinned/Open labels, tint squares, amber/red marks, selected soft fill and Escape focus restoration. `placeSwitcher.test.ts` covers place numbering and the elsewhere-needs-you label; the existing collapsed-rail shell journey covers Home wiring. |
+| PL-067 | **Gap:** chat-id payloads reach the canonical membership callback once. File/folder/link and strip-tab filing are not wired by `PlaceRail`; the separate `dnd/placeDnd.ts` and `dnd/filing.ts` models pass unit tests but do not prove end-to-end filing. This remains the filing dependency, not a completed row. |
+
+Assumption added: PL-RAIL-514 in DESIGN-QUESTIONS.md. Go build/vet and the new
+manual page's retrieval probes pass. The law gate encounters the pre-existing
+`what does also in mean on a place tile` retrieval failure at
+`internal/manual/chat_test.go:3220`; removing this lane's new manual page
+reproduces the same failure. Shared desktop manual pages remain untouched.
+
+The broader `npm run design:test` run has 105 passes and two existing failures:
+`check-capabilities.test.mjs` rejects `http:default`, and
+`check-native-commands.test.mjs` finds renderer command `web_find` without a
+registered handler. Their failing source/configuration files are unchanged by
+this lane. The duplicate dark scrim colour remains that suite’s declared TODO.
+
+Browser results: 33/34 rail/token checks initially passed; the one WebKit
+measurement caught the popup opening transform. Waiting for its animation
+completion gives 4/4 switcher reruns passing in Light/Dark across both engines.
+All 20 focused shell integration checks pass. All 6 close/status-tooltip/touch
+checks pass after preserving the attention dot beside Close. The 62 focused
+node tests, TypeScript, design policy and five new manual retrieval probes pass.
