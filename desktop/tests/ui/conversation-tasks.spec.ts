@@ -53,7 +53,7 @@ test('a task notice opens the task in the same tab; Back and Ctrl+[ return', asy
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByRole('tab')).toHaveCount(1);
-  await crumbs(page).getByRole('button', { name: 'Back' }).click();
+  await crumbs(page).getByRole('button').click();
   await expect(crumbs(page)).toHaveCount(0);
   await expect(page.getByText('I split the work into three parts.')).toBeVisible();
   await notice().click();
