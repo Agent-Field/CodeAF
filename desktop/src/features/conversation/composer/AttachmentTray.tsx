@@ -11,7 +11,7 @@ function RemoveButton({ item, onRemove }: RowProps) {
       className="attachment-remove"
       label={`Remove ${item.file.name}`}
       icon="close"
-      iconSize="xs"
+      iconSize={item.picture ? "xs" : "micro"}
       onClick={() => onRemove(item.id)}
     />
   );
@@ -28,10 +28,9 @@ function Picture(props: RowProps) {
 
 function FileChip(props: RowProps) {
   return (
-    <li className="attachment attachment-file">
-      <Icon name="file" size="sm" />
-      <Text className="attachment-name">{props.item.file.name}</Text>
-      <Text className="attachment-size">{formatSize(props.item.file.size)}</Text>
+    <li className="attachment attachment-file" title={`${props.item.file.name} · ${formatSize(props.item.file.size)}`} aria-label={`${props.item.file.name}, ${formatSize(props.item.file.size)}`}>
+      <Icon name="file" size="tiny" />
+      <Text tone="default" className="attachment-name">{props.item.file.name}</Text>
       <RemoveButton {...props} />
     </li>
   );

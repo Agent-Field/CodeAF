@@ -259,3 +259,11 @@
 .composer-dock[data-variant='home'] .attachment-tray,
 .composer-dock[data-variant='home'] .paste-card,
 .composer-dock[data-variant='home'] .composer-error { grid-column: 1 / -1; }
+
+/* Pending attachments use the catalogue's compact top row without changing Home's inline composer. */
+.composer-dock:not([data-variant="home"]) .composer[data-attached] {
+  padding-top: var(--space-compact);
+  padding-left: var(--space-3);
+}
+.composer-dock:not([data-variant="home"]) .composer[data-attached] .composer-field { padding-left: var(--space-1); }
+.composer-dock:not([data-variant="home"]) .composer[data-attached] .composer-row { margin-left: calc(-1 * var(--space-1)); }

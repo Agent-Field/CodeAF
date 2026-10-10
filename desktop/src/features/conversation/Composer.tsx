@@ -152,6 +152,7 @@ export function Composer(props: ComposerProps) {
     <div className="composer-dock" data-docked={docked} data-variant={props.variant}>
       <div
         className="composer"
+        data-attached={attachments.items.length > 0 || undefined}
         data-running={running}
         data-steering={steering}
         data-disabled={disabled}
