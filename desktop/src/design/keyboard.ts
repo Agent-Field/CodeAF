@@ -49,7 +49,7 @@ type KeyEvent = Pick<KeyboardEvent, 'key' | 'code' | 'metaKey' | 'ctrlKey' | 'sh
  */
 export type ShortcutId =
  | 'new' | 'close' | 'reopen' | 'group' | 'next' | 'previous' | 'switch' | 'switch-back' | 'jump'
- | 'open-file' | 'terminal' | 'overview' | 'turn-previous' | 'turn-next' | 'history' | 'tasks' | 'rail' | 'focus' | 'palette' | 'models' | 'model-pin' | 'settings'
+ | 'open-file' | 'terminal' | 'overview' | 'turn-previous' | 'turn-next' | 'history' | 'tasks-panel' | 'rail' | 'focus' | 'palette' | 'models' | 'model-pin' | 'settings'
  /** Places (Interactions "Shortcuts"): ⌘P Go to a place, ⌘⇧P All places, ⌘0 this place's Home, ⌘⇧W close this place,
   * ⌘N a new window on Now, ⌘Z undo the last structural action. `place-jump` carries the rail slot: 0 is Now, 1–9 the
   * pinned-then-open places (⌃ on a Mac; Alt elsewhere, because Ctrl+digit is already the tab jump there). */
@@ -119,7 +119,8 @@ export function shortcutOf(event: KeyEvent, platform: boolean | ShortcutContext 
  const key = event.key.toLowerCase();
  if (event.shiftKey) {
   if (key === 't') return { id: 'reopen' };
-  if (key === 'k') return { id: 'tasks' };
+  // The conversation surface claims this chord before the workspace (Interactions I-ICV-34 and I-IKY-16).
+  if (key === 'k') return { id: 'tasks-panel' };
   if (key === 'f') return { id: 'focus' };
   if (key === 'p') return { id: 'all-places' };
   if (key === 'w') return { id: 'close-place' };

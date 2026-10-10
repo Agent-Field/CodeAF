@@ -174,7 +174,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   const { done, total } = taskCounts(model.tasks);
   const barPanel = hasTasks && !inTask ? { label: `Tasks · ${done}/${total}`, shown: panel.shown, onToggle: panel.shown ? panel.close : panel.open } : undefined;
   // ⌘⇧K toggles the task panel (design Shell 2h); a conversation without tasks has no panel, so the key is left alone.
-  useShortcuts(shortcutLayer.surface, shortcut => { if (shortcut.id !== 'tasks' || !barPanel) return false; barPanel.onToggle(); return true; }, !tasksView);
+  useShortcuts(shortcutLayer.surface, shortcut => { if (shortcut.id !== 'tasks-panel' || !barPanel) return false; barPanel.onToggle(); return true; }, !tasksView);
   const barCounts = { running: taskProgress(model.tasks).running, needsYou: model.questions.length };
   // The Using list is re-read when a turn lands or the work starts and stops: a place changed meanwhile applies from the next turn.
   const using = useUsing(usingApi, sessionId, `${model.turns.length}:${model.running}`);
