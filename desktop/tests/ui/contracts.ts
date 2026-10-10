@@ -100,7 +100,7 @@ export const INK3_TEXT = [
  '.menu-item .keyboard-shortcut', '.tooltip-shortcut', '.inbox-head', '.inbox-meta', '.inbox-empty', '.closing-specimen-note',
  '.latest-pill-time', '.system-note', '.task-panel-count', '.earlier-row', '.summary-divider',
  '.composer-attach', '.composer-queue', '.model-picker', '.model-popover .keyboard-shortcut', '.model-popover-all', '.model-popover-effort-option',
- '.paste-card-lines', '.paste-card-preview', '.file-chip-dir', '.file-chip[data-state="missing"]', '.file-chip[data-state="outside"]', '.link-chip-domain',
+ '.paste-card-lines', '.paste-card-preview', '.file-chip-dir', '.at-picker-dir', '.file-chip[data-state="missing"]', '.file-chip[data-state="outside"]', '.link-chip-domain',
  '.steer-landing', '.queued-esc', '.queued-more', '.queued-note', '.update-cut', '.turn-footer', '.work-live-time', '.work-time',
  '.work-step-head', '.work-step-tail', '.thinking-text', '.thinking-body', '.work-call-head', '.work-stat', '.work-call-time', '.work-call-status', '.work-call-text',
  '.task-notice-live', '.tray-header', '.choice-clock', '.tray-note', '.tray-holding', '.batch-pager', '.nextup-walk-skip',
