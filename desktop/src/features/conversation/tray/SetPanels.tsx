@@ -23,7 +23,7 @@ export function ReviewPanel({ members, held, onGo, onSendAll }: ReviewProps) {
   }
   return (
     <section className="tray-card" aria-label="Review your answers">
-      <div className="tray-scroll">
+      <div className="tray-scroll" tabIndex={0}>
       <header className="tray-card-head">
         <h3 className="tray-head">Review your answers</h3>
       </header>

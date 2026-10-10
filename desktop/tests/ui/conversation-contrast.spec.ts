@@ -4,7 +4,7 @@ import type { EngineQuestion } from '../../src/features/chat/engine-client';
 import { installMockEngine } from './support/mock-engine';
 import { pendingQuestion, plainReply, withTasks } from './support/scenarios';
 import { richReply, trayQuestions } from './support/scenarios-v2';
-import { expectAccessible } from './contracts';
+import { expectAccessible, tokenColor } from './contracts';
 import { openApp, posts, send } from './support/conversation';
 
 // ink-3 is the designer exact colour for muted text and reads 3.1 to 4.5:1 on the surfaces. The owner rule is that the design wins,
@@ -36,6 +36,10 @@ for (const scheme of ['light', 'dark'] as const) {
       await page.goto('/');
       await openPage(page, 'Design system');
       await expect(page.locator('.page-title')).toHaveText('Design system');
+      const warning = page.locator('.closing-specimen .toast').last();
+      await warning.evaluate(toast => toast.setAttribute('data-tone', 'warning'));
+      await expect(warning.locator('.toast-text')).toHaveCSS('color', await tokenColor(page, 'ink'));
+      for (const scroll of await page.locator('.tray-scroll, .tray-compare').all()) await expect(scroll).toHaveAttribute('tabindex', '0');
       await expectAccessible(page);
     });
 
@@ -53,6 +57,7 @@ for (const scheme of ['light', 'dark'] as const) {
       await openApp(page);
       await send(page, 'Fix the flaky login test and draw a logo');
       await expect(page.getByText('so the login test no longer reads the real time.')).toBeVisible();
+      await expect(page.locator('.link-chip-title')).toHaveCSS('color', await tokenColor(page, 'ink'));
       await expectAccessible(page);
       await page.getByRole('button', { name: /^Worked \d+s · / }).click();
       await page.getByRole('button', { name: /^Pinning the clock/ }).click();
@@ -81,6 +86,27 @@ for (const scheme of ['light', 'dark'] as const) {
     test('the decision tray', async ({ page }) => {
       await openWithQuestions(page, trayQuestions());
       await expectAccessible(page);
+    });
+
+    test('the muted-text waiver stays limited to design roles and contrast', async ({ page }) => {
+      await page.goto('/');
+      const ink = await tokenColor(page, 'ink-3');
+      const canvas = await tokenColor(page, 'canvas');
+      // setContent writes with document.open and leaves this page's timers running, so the
+      // disconnected-engine toast can land in the fixture. Unload the app first.
+      await page.goto('about:blank');
+      await page.setContent(`<html lang="en"><head><title>Contrast contract</title></head><body style="background:${canvas};color:${ink}"><main>
+        <kbd class="keyboard-shortcut">Ctrl W</kbd>
+        <div class="rail-row" data-busy-closed><span class="nav-label">Closed and still running</span></div>
+      </main></body></html>`);
+      await expectAccessible(page);
+      // An ordinary rail title cannot inherit the closed-row exception.
+      await page.locator('.rail-row').evaluate(row => row.removeAttribute('data-busy-closed'));
+      await expect(expectAccessible(page)).rejects.toThrow('color-contrast');
+      await page.locator('.rail-row').evaluate(row => row.setAttribute('data-busy-closed', ''));
+      // Matching muted text still has to satisfy every other accessibility rule.
+      await page.locator('main').evaluate(root => root.insertAdjacentHTML('beforeend', '<button class="keyboard-shortcut"></button>'));
+      await expect(expectAccessible(page)).rejects.toThrow('button-name');
     });
   });
 }

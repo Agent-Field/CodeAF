@@ -1,7 +1,6 @@
 /* Work rhythm (ELEMENTS §0). The block container and its guide live in workBlock.css. */
 .work-step-head.button { min-height: var(--step-row-height); padding-inline: var(--space-half); gap: var(--space-tight); max-width: 100%; justify-content: flex-start; font-size: var(--font-size-body); text-align: left; }
 .work-step-head.button { width: 100%; }
-.work-note[data-tone="warning"] { color: var(--amber); }
 
 .work-step-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .work-time { flex: none; color: var(--ink-3); font-variant-numeric: tabular-nums; }
@@ -13,6 +12,7 @@
 .work-pre { box-sizing: border-box; width: 100%; margin: 0; padding: var(--space-2) var(--space-3); max-height: var(--tool-output-max-height); overflow: auto; background: var(--field); border-radius: var(--radius-sm); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); }
 .work-pre .type-code { color: inherit; }
 .work-more.button { min-height: var(--icon-button-size); padding-inline: var(--space-half); font-size: var(--font-size-label); }
+/* A warning note stays ink-2. Colour belongs on the 6px mark, so a failed full read is a sentence in the same ink as every other note. */
 .work-note { margin: 0; font-size: var(--font-size-label); color: var(--ink-2); }
 .work-list { margin: 0; padding-inline-start: var(--space-4); }
 

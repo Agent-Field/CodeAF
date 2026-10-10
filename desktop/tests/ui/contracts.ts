@@ -37,22 +37,42 @@ export async function expectAccessible(page: Page, scope?: string) {
    await Promise.all(finite().map(animation => animation.finished.catch(() => undefined)));
   }
  });
- const axe = new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']);
- const result = await (scope ? axe.include(scope) : axe).analyze();
- const found = [];
- for (const violation of result.violations) {
-  const nodes = [];
-  for (const node of violation.nodes) {
-   if (violation.id !== 'color-contrast' || !(await isDesignInk3(page, node.target))) nodes.push(node.target);
-  }
-  if (nodes.length) found.push({ id: violation.id, nodes });
+ for (let attempt = 0; attempt < 3; attempt += 1) {
+  // A caller can limit the scan to one specimen so chrome outside it is not judged with it.
+  const axe = new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']);
+  const result = await (scope ? axe.include(scope) : axe).analyze();
+  // Live replies can remove a queue control during axe's scan. Rescan a stale result instead of treating a
+  // missing node as an unlisted colour or silently exempting it. Filtering in one pass also avoids round trips.
+  // Ink-3 text the design draws muted is waived by closest(); a string or array target both name that node.
+  const { found, stale } = await page.evaluate(({ violations, muted }) => {
+   let stale = false;
+   const found = [];
+   for (const violation of violations) {
+    const nodes = violation.nodes.filter(node => {
+     if (violation.id !== 'color-contrast') return true;
+     const target = node.target;
+     const selector = Array.isArray(target) ? String(target[target.length - 1]) : String(target);
+     const element = document.querySelector(selector);
+     if (!element) stale = true;
+     return !element?.closest(muted);
+    }).map(node => node.target);
+    if (nodes.length) found.push({ id: violation.id, nodes });
+   }
+   return { found, stale };
+  }, { violations: result.violations, muted: INK3_TEXT.join(',') });
+  if (stale && attempt < 2) continue;
+  expect(found).toEqual([]);
+  return;
  }
- expect(found).toEqual([]);
 }
 // The designer draws muted text in ink-3 (about 3.6:1 on the canvas). The owner rule is that the design wins, so the
 // color-contrast rule is waived for these exact selectors and for nothing else: every other axe rule still applies
 // to them, and every other element still has to pass color-contrast.
 export const INK3_TEXT = [
+ // Components draws both shortcut variants in ink-3; Places mutes only a closed-but-running rail row.
+ '.keyboard-shortcut', '.rail-row[data-busy-closed] .nav-label',
+ // Shell 3i draws neighbouring titles in ink-2 under the card's 0.9 opacity on frame; the centre title keeps ink.
+ '.overview-film-item[data-cursor="false"] .overview-film-label > span:last-child',
  '.menu-item .keyboard-shortcut', '.tooltip-shortcut', '.inbox-head', '.inbox-meta', '.inbox-empty', '.closing-specimen-note',
  '.latest-pill-time', '.system-note', '.task-panel-count', '.earlier-row', '.summary-divider',
  '.composer-attach', '.composer-queue', '.model-picker', '.model-popover .keyboard-shortcut', '.model-popover-all', '.model-popover-effort-option',
@@ -77,10 +97,6 @@ export const INK3_TEXT = [
  // The Go to chooser and the place dialogs (Places 4a to 4e, Interactions "Go to"): counts, section labels, times, hints.
  '.goto-count', '.goto-section', '.goto-meta', '.goto-hints', '.goto-context', '.place-dialog-quiet', '.place-dialog-source-meta',
 ];
-async function isDesignInk3(page: Page, target: unknown) {
- const selector = Array.isArray(target) ? String(target[target.length - 1]) : String(target);
- return page.evaluate(([css, list]) => Boolean(document.querySelector(css)?.closest(list)), [selector, INK3_TEXT.join(',')] as const);
-}
 export async function expectNoUnstyledControls(page: Page, scope?: string) {
  // One in-page pass: per-control locator round trips cost ~15s over the Design system specimen in webkit.
  const offenders = await page.evaluate(selector => {

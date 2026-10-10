@@ -45,7 +45,7 @@ function Pager({ members, busy, onDone }: PagerProps) {
 
   return (
     <>
-      <div className="tray-scroll">
+      <div className="tray-scroll" tabIndex={0}>
         <div className="batch-pager">
           <span className="batch-count">{`${index + 1} of ${members.length}`}</span>
           <IconButton label="Previous action" icon="chevronLeft" iconSize="xs" disabled={index === 0} onClick={() => go(index - 1)} />
@@ -78,7 +78,7 @@ export function BatchCard({ members, busy, onSend }: BatchProps) {
         <Pager members={members} busy={busy} onDone={sendEach} />
       ) : (
         <>
-          <div className="tray-scroll">
+          <div className="tray-scroll" tabIndex={0}>
             <Button className="batch-head" aria-expanded={open} aria-controls="batch-commands" onClick={() => setOpen(!open)}>
               <h3 className="batch-title">{title}</h3>
               <span className="batch-chevron" data-open={open}><Icon name="chevron" size="xs" /></span>
