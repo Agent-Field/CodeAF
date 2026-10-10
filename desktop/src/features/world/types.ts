@@ -1,6 +1,6 @@
 import type { Membership, PlaceView, RailView } from '../places/client.ts';
 
-/** These fields mirror WorldChatRow, InboxItem and jobWire in desktopbridge. */
+/** These fields mirror WorldChatRow, InboxItem and jobWire in desktopbridge; InboxItem retains its wire spelling from the superseded presentation. */
 export type WorldRow = {
  chatId: string; sessionFile?: string; title?: string; workspace?: string;
  running: boolean; needsYou: number; failed: number; tasksRunning: number;

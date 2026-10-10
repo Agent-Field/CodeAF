@@ -197,9 +197,9 @@ test.describe('closing running work (3l)', () => {
     await expect(page.getByRole('tab', { name: 'Config stack', exact: true })).toHaveCount(0);
     await expect.poll(() => stops(engine)).toBe(1);
     expect(engine.snapshot().running).toBe(false);
-    // Stopping is not leaving work behind: no toast, no Inbox.
+    // Stopping leaves no closing toast or extra tab.
     await expect(page.locator('.toast')).toHaveCount(0);
-    await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
+    expect(await names(page)).toEqual(['lexer.go']);
   });
 
   test('the explicit paths: right-click lists both closes for running work, and the key stops it', async ({ page }) => {
@@ -252,7 +252,7 @@ test.describe('closing running work (3l)', () => {
     await expectAccessible(page);
     await toast.getByRole('button', { name: 'Undo' }).click();
     await expect(toast).toHaveCount(0);
-    // The work outlived its tab, but Home's Live section carries it now: no Inbox tab opens, before or after Undo.
+    // Home's Live section carries closed work; Undo restores the exact strip.
     expect(await names(page)).toEqual(['Intro', 'Config stack', 'lexer.go']);
     await expect(page.getByRole('tab', { name: 'Config stack', exact: true })).toHaveAttribute('aria-selected', 'true');
     expect(stops(engine)).toBe(0);
@@ -282,7 +282,7 @@ test.describe('closing running work (3l)', () => {
     expect(stops(engine)).toBe(1);
   });
 
-  test('closing background work never recreates a pinned Inbox', async ({ page }) => {
+  test('closing background work preserves the remaining strip', async ({ page }) => {
     const engine = await installMockEngine(page, running);
     await seed(page, [{ id: 'a', title: 'Intro' }, { id: 'b', title: 'Config stack', running: true }], { active: 'b' });
     await page.goto('/');
@@ -290,27 +290,29 @@ test.describe('closing running work (3l)', () => {
     await slot(page, 'Config stack').hover();
     await closeButton(page, 'Config stack').click();
     await expect(page.locator('.toast')).toContainText('Config stack closed and still running');
-    await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
+    expect(await names(page)).toEqual(['Intro']);
     await expect(page.locator('.tab-badge')).toHaveCount(0);
     await page.locator('.toast').getByRole('button', { name: 'Undo' }).click();
     await expect(page.getByRole('tab', { name: 'Config stack', exact: true })).toBeVisible();
     expect(stops(engine)).toBe(0);
   });
 
-  test('a question in a background tab summons no Inbox and puts no dot on a tab', async ({ page }) => {
+  test('a question in a background tab counts on Next up and leaves the strip unchanged', async ({ page }) => {
     const asked = pendingQuestion();
-    const engine = await installMockEngine(page, { ...asked, initial: { ...asked.initial, needsPerson: false, questions: [], running: false } });
+    const engine = await installMockEngine(page, { ...asked, initial: { ...asked.initial, needsPerson: false, questions: [], running: false }, world: { rows: [], items: [] } });
     await seed(page, [{ id: 'a', title: 'Intro' }, { id: 'b', title: 'Release v2.4', running: true }], { active: 'a' });
     await page.goto('/');
     await engine.update({ running: true, needsPerson: true, questions: asked.initial.questions });
+    const question = asked.initial.questions![0];
+    engine.setWorld({ items: [{ key: `mock-1:${question.kind}:${question.id}`, session: 'mock-1', kind: question.kind, id: question.id, text: question.head, title: 'Release v2.4', sourceFolders: [], answerable: true }] });
+    await expect(page.getByRole('button', { name: /^1 need you elsewhere/ })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Release v2.4', exact: true })).toBeVisible();
-    await page.waitForTimeout(1500);
-    await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
+    await expect.poll(() => names(page)).toEqual(['Intro', 'Release v2.4']);
     await expect(page.locator('.tab-badge')).toHaveCount(0);
   });
 });
 
-test('the Design system page shows the menus, the closing states without Inbox, light and dark', async ({ page }) => {
+test('the Design system page shows the menus, the closing states, light and dark', async ({ page }) => {
   // The accessibility pass covers the whole design system. Under four workers it does not finish in the default 30s.
   test.setTimeout(60_000);
   for (const scheme of ['light', 'dark'] as const) {
@@ -325,7 +327,6 @@ test('the Design system page shows the menus, the closing states without Inbox, 
     await expect(sheet.locator('.toast')).toHaveCount(2);
     await expect(sheet.locator('.toast').first()).toHaveCSS('height', '40px');
     await expect(sheet.locator('[data-close-mode="stop"]')).toHaveCount(1);
-    await expect(sheet.locator('.inbox-card')).toHaveCount(0);
     // This lane owns the closing specimen; unrelated tray specimens have their own accessibility suites.
     await expectAccessible(page, '[data-closing-specimen]'); await expectNoUnstyledControls(page, '[data-closing-specimen]');
   }

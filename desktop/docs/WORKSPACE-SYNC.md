@@ -27,7 +27,7 @@ not done yet (see Gaps).
 | file, diff | `path`/`file` (path + Changes/File) | none beyond the tab itself |
 | terminal | the tab; the terminal it shows is bound by pane id in `codeaf.desktop.terminals.v1` (same origin, so both windows read one binding) | both windows attach the same engine terminal; the terminal lane decides whether two attaches are allowed. A terminal exiting closes its tab in both: the second close is a no-op |
 | web | `target.url` (and `target.shot`, which nothing writes today) | a data-URL screenshot written into `shot` would meet the 256 KiB refusal, said in words |
-| settings, history, inbox, newtab | the tab | History's idle archive runs once per window mount (12 h idle, never the window's active tab, `codeaf.desktop.activity.v1`); a second window's archive of the same tabs is a no-op |
+| settings, history, newtab | the tab | History's idle archive runs once per window mount (12 h idle, never the window's active tab, `codeaf.desktop.activity.v1`); a second window's archive of the same tabs is a no-op |
 | home (Places shell) | the place's pinned Home | `home-ensure` is a no-op on an existing Home; two first Homes converge on one |
 
 Window-local and NOT synced, by design: the overview's grid/filmstrip choice (`TabOverview` `viewKey`),

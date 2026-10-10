@@ -26,15 +26,20 @@ Workspace.tsx  (owns useReducer(workspaceReducer), summaries, dialogs; builds Ta
 - `workspaceReducer` composes slices: `reducers/tabs.ts` (new, open, open-task, select, pick, close, reopen, reopen-id, pin, rename, title, view, draft, reorder), `reducers/groups.ts` (group, group-picked, move-group, reorder-group, rename-group, collapse-group, ungroup), `reducers/split.ts` (split-merge, split-close-pane, split-focus, split-layout, split-unmerge, split-group). `view`, `draft`, `title`, `rename` and `select` accept a tab id OR a pane id.
 - To add actions: new file `reducers/<lane>.ts` exporting `XAction` and `reduceX(state, action)` that returns `undefined` for foreign actions; add the type to `WorkspaceAction` and the function to `slices` in `model.ts` (two one-line edits). Add cases to your own tests in `<lane>.test.ts`, not `model.test.ts`.
 
-## Inbox retirement (Iteration 2)
+## Next up and retained work (Iteration 2)
 
-Inbox is no longer a kind or a pane. `kinds/retired.ts` drops its saved slots before
-kind fallback in local and shared workspace readers. Other tabs, closed chats,
-drafts and surviving split panes remain. An Inbox-only save opens one quiet New tab.
-Old `ensure-inbox` actions replay as no-ops; shell `open-inbox` requests and
-`codeaf://inbox` addresses start the existing Next up walker. Transfer offers ignore
-retired slots. The historical Inbox references in lane ownership below are superseded
-by this rule; `closing/background.ts` remains the data source for closing work.
+Next up walks the engine's attention feed, opening each actual conversation with
+its question focused in the tray. The frame pill counts only questions elsewhere;
+the current conversation owns its local count. Closing work preserves it under
+Live on place Home and never inserts another tab. Undo restores the exact strip.
+
+**Superseded: Inbox compatibility.** `kinds/retired.ts` drops saved `inbox` slots
+before kind fallback in local and shared readers, preserving other tabs, drafts,
+closed chats and surviving split panes. A retired-only save opens one quiet New
+tab. Old `ensure-inbox` actions replay as no-ops. Workspace `open-inbox` actions
+and `codeaf://inbox` links start Next up; forged shell-open events for that kind
+are ignored by the shell's Settings/History-only guard. Transfer offers ignore
+retired slots. These bytes are migration seams, never a current kind or pane.
 
 ## Kinds registry (`kinds/`)
 
@@ -50,14 +55,14 @@ History search in the new-tab field offers two matches and See all; Ctrl/Cmd Ent
 | Lane | Owns |
 | --- | --- |
 | hover preview | `hosts/previewHost.tsx`, each kind's `preview`, new `preview/` folder |
-| menus and closing | `hosts/menuHost.tsx`, `actions.ts` (typed `TabActions`: link, move to window), `useWindowHandoff.ts` (claim and release, both halves of a move), `reducers/closing.ts` + `reducers/handoff.ts`, `closing/` (Alt stop, `closeMany` bulk closes behind one `restore-closed` Undo, `background.ts` closed-tab observation model, `useBackground.ts` world feed; closed-but-running work is read by Home's Live section, not by an Inbox, and nothing auto-opens an Inbox tab or lights a tab dot; `failedSeen.ts` is only the count fallback `signals.ts` uses for engines without `unseenFailed`), `kinds/inbox.ts` + `kinds/inbox/`, `Tab.tsx` `closeMode` wiring in `TabItem.tsx`. The toast is shared: post with `toasts.show` from `design/toasts.ts`, drawn once by `ToastRegion` (undo is a slot of the toast, never a feature-drawn button). Seam for the rail: dispatch `{ type: 'open-inbox' }`. Seam for the shell: `<Workspace onOpenChat>` lets the Inbox open work that has no tab here. Closing never stops engine work; "Close and stop" calls the session stop endpoint through `closing/stopWork.ts` and a failure stays on screen (toast + Inbox). "Copy link" is ABSENT (no deep-link scheme exists); "Move to new window" is desktop-only and two-phase (the source tab leaves only when the new window claims it; an unclaimed handoff is reported once after `HANDOFF_CLAIM_WAIT_MS` and the tab stays). Shell seam: the `codeaf:shell-open` event with detail `inbox` (or `{type:'open-inbox'}`) opens the Inbox on its oldest question. The closing toast reads "<title> closed and still running · Stop it · Undo" (6s). |
+| menus and closing | `hosts/menuHost.tsx`, typed `actions.ts`, `useWindowHandoff.ts`, `reducers/closing.ts`, `reducers/handoff.ts`, `closing/`, and `TabItem.tsx` close-mode wiring. Bulk closes share one structural Undo. `closing/background.ts` and `useBackground.ts` retain engine-fed work for Home's Live section; `failedSeen.ts` supplies the count fallback for engines without `unseenFailed`. Closing detaches the view; Close and stop calls `closing/stopWork.ts`, and failure stays in the shared toast with Try again and Undo. Post through `toasts.show`; `ToastRegion` draws it once. Move to new window is desktop-only and two-phase: the source leaves only after the target claims it; unclaimed handoffs retain the source tab. The running-close toast reads "<title> closed and still running · Stop it · Undo" (6s). |
 | split panes | `reducers/split.ts`, `PaneGrid.tsx`, `panes.css`, `split-tab.css`, `hosts/dragHost.ts` (edge drops), `PaneHeader` controls |
 | overview and filmstrip | `TabOverview.tsx` (the layer, bar, keys, cursor), `OverviewCard.tsx`, `OverviewFilmstrip.tsx`, `overview-model.ts` (pure order and filter, node test), `overview.css`, `specimens/OverviewSpecimen.tsx`. No `.overview-*` rules live in `styles/ui.css` any more. |
 | new tab field | `kinds/newtab.ts` (+ its folder), switch `new` to kind `newtab` in `reducers/tabs.ts` |
 | history tab | `kinds/history.ts`, new `features/history/` |
 | rail and keys | `features/shell/Rail.tsx`, `rail.css`, `useTabKeys.ts`, `design/keyboard.ts` |
 | conversation (A3) | `kinds/ConversationPane.tsx` callers, conversation header "Tasks 5/14" button (not built here: it would collide with `features/conversation/` files) |
-| kind lanes (file, diff, web, terminal, settings, inbox) | their own `kinds/<kind>.ts`, flip `backed` when an engine/bridge source exists |
+| kind lanes (file, diff, web, terminal, settings) | their own `kinds/<kind>.ts`, flip `backed` when an engine/bridge source exists |
 
 Shared, change with care and keep edits small: `tokens.json` (add keys, never rename), `Tab.tsx`/`tab.css` (the primitive: states are props), `model.ts` slice list, `TabItem.tsx` (three host calls), `Workspace.tsx`.
 
@@ -66,7 +71,7 @@ Shared, change with care and keep edits small: `tokens.json` (add keys, never re
 - **Title tooltip** (`Tab.tsx` + `useTitleOverflow.ts`): the shared 500ms tooltip with the full title when the name is cut and no hover preview opens (the active tab, a compressed tab). An inactive tab's hover preview already holds its title, and no tooltip opens while any preview card is open. A split's segments still use `hosts/titleTooltipHost.tsx` through `SplitTab`'s `wrapSegment`.
 - **⌘/Ctrl O** is ShortcutId `open-file` in `design/keyboard.ts`. The focused new-tab field runs the Open file… row's own pick. From any other tab, `useNewTabKeys` opens a New tab or focuses one already open, and the caption becomes "Type part of a file name." A dialog that is open keeps the chord.
 - **Overview card press** (Interactions "Overview card · ⌘-click / middle: Background tab"): every card is a tab that is ALREADY open, so a ⌘/Ctrl-click or middle-click opens nothing: the active tab and the overlay stay as they are and only the cursor moves to the card (`backgroundPress` in `OverviewCard.tsx`, predicate `isBackgroundPress` in `overview-model.ts`). A plain click opens and closes the overview.
-- **Overview card menu** is `tabMenuFor(api, tab)` from `hosts/menuHost.tsx`, the strip's own builder, passed down as `TabOverview`'s `menuFor`. There is no second menu array; the Inbox has no menu in either place. `ToastRegion` draws inside an open modal dialog so a toast posted from the overview is seen.
+- **Overview card menu** is `tabMenuFor(api, tab)` from `hosts/menuHost.tsx`, the strip's own builder, passed down as `TabOverview`'s `menuFor`. There is no second menu array. `ToastRegion` draws inside an open modal dialog so a toast posted from the overview is seen.
 ## Group suggestion
 
 `offerRules.ts` (pure, node-tested: `findOffers`, canonical chat ids, the 30-day memory), `canonicalOffers.ts` (`canonicalGroupOffers`), `useGroupOffer.ts` (settled once-per-set ask, shown-this-launch, decide), `GroupOffer.tsx` (`GroupOffer` takes the `TabsApi`; `GroupOfferPill` is the drawing) and `group-offer.css`. It dispatches the reducer's own `group` action and owns no tab state. Decisions GO1 to GO8 in `docs/DESIGN-QUESTIONS.md`; wiring in the report `tab-group-offer-api.md` and `tab-group-offer-completion-api.md`.
@@ -87,7 +92,7 @@ The shell div carries `data-providers="places next-up focus-history"`, outer to 
 2. **NextUpProvider** — one `createNextUp()` for this window. Skip and a pending Accept stay on it. The strip (`TabStrip`'s frame slot) draws the frame pill and the banner from `useNextUp`, which reads this provider. App does not draw a second pill or banner: Focus mode hides the strip, and the pill hides with it.
 3. **FocusHistoryProvider** — one wire per window label (`focusHistoryStorageKey`). Back and forward ask the shell to change place, then select the tab and put its drill back (a task id, or the tab's own page when the path is empty). The workspace uses this wire and does not keep a second stack.
 
-An attention item from an engine that omits the newer fields (`blocking`, `stakes`, `suggestion`, `holdingUp`, place ids) still counts on the pill. A missing `blocking` is read as blocking the turn. The rail has no Inbox row; that count is the pill.
+An attention item from an engine that omits the newer fields (`blocking`, `stakes`, `suggestion`, `holdingUp`, place ids) still counts on the pill. A missing `blocking` is read as blocking the turn. The elsewhere count appears once, in the frame pill.
 
 ## Rules that bind every lane
 

@@ -139,7 +139,7 @@ type Props = {
   modelNames?: Readonly<Record<string, string>>;
   tab: Tab; summaries: Readonly<Record<string, TabSummary>>; now: number;
   active: boolean; cursor: boolean;
-  /** The tab's own menu, built by the shared tab menu builder; absent for a tab that has none (the Inbox). */
+  /** The tab's own menu, built by the shared tab menu builder; absent for a tab that has none. */
   menu?: MenuEntry[];
   /** A plain press. */
   onOpen: () => void;

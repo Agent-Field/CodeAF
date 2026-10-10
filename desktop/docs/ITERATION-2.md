@@ -11,7 +11,7 @@ a seam or a passing component test does not establish end-to-end availability.
 
 ## Attention and navigation: I2.1–I2.6, I2.11
 
-There is no Inbox rail row or Inbox tab. The window frame owns one
+The Inbox rail row and tab are superseded by Next up (I2.1). The frame owns one
 “N need you elsewhere · ⌘J” pill, outside every tab. It excludes the current
 conversation and disappears at zero. Hover lists pending questions; click or
 Next up opens each question in its actual conversation, with its tray open.
@@ -52,8 +52,8 @@ workspace and app handlers. Fields retain caret movement and overlays own Escape
 | Place Home | ⌘0 | Ctrl+0 |
 | Go to / All places | ⌘P / ⌘⇧P | Ctrl+P / Ctrl+Shift+P |
 
-⌘I is removed; it must not reopen Inbox. ⌘[ is focus history, never Home's
-parent action. Control+Tab remains tab switching on every platform.
+⌘I is removed; the Inbox shortcut is superseded (I2.6). ⌘[ is focus history,
+never Home's parent action. Control+Tab remains tab switching on every platform.
 
 ## Decide gate and learning: I2.7–I2.8, I2.14
 
@@ -162,7 +162,7 @@ its own probes in `internal/manual/chat_desktop_iteration_two_test.go`. Feature
 pages remain authoritative for live limits; shared desktop pages and the shared
 probe table are deliberately untouched by this lane.
 
-The I2 override table in [DESIGN-COVERAGE.md](DESIGN-COVERAGE.md) retires the d5
-Inbox presentation tasks and maps their surviving obligations to Next up and Home.
+The I2 override table in [DESIGN-COVERAGE.md](DESIGN-COVERAGE.md) records the
+superseded d5 Inbox presentation tasks and maps their surviving obligations to Next up and Home.
 Historical totals are not recomputed into current acceptance counts. No new design
 assumption is introduced by this documentation task; no Open ledger row is needed.

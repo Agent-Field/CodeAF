@@ -595,7 +595,7 @@ Recorded the fourteen shell coverage questions as SH-OQ1–SH-OQ14. The rows are
 
 Calls, from Shell 2b/2h/3g/3j/3l, Interactions, Iteration 2 I2.1, and the code:
 
-1. **Home, then Inbox.** The place Home is the first pinned slot. An Inbox tab is the next pin, never the first. I2.1 replaces Inbox with Next up, so the lasting strip has no Inbox chip. `ensure-inbox` now inserts after Home.
+1. **Home first.** The place Home is the first pinned slot. Next up lives in the frame. Superseded: I2.1 removes the old Inbox pin; `ensure-inbox` is now a migration no-op.
 2. **⌥⌘W is Close and stop.** Close other tabs has no chord. Already true in `closing/shortcuts.ts` and the tab menu (M1). ⌥⌘1–3 stay the pinned models (Q30, R1).
 3. **Absent until backed.** Copy link and Move to new window are omitted when they cannot work, and shown when they can (menu host, DL1–DL6, M5). They are not drawn disabled.
 4. **⌘-click selects; middle-click closes.** ⌘-click already toggles a pick (TI6). Middle-click now closes an unpinned tab the way × does. A pin and a place Home stay. Overview cards stay OV14.
@@ -608,7 +608,7 @@ Calls, from Shell 2b/2h/3g/3j/3l, Interactions, Iteration 2 I2.1, and the code:
 11. **Window-local versus shared.** Already `windowLocal.ts`: active tab, recents, selection, overview, undo and rail state are per window; tabs, groups and the closed list are shared. Place pins stay engine-wide (PLD-13).
 12. **⌘B stays beside ⌘S.** Already R2. This row does not remove it.
 13. **Pinch-out is not built.** Already OV2.
-14. **Inbox and Now have no menu.** Right-click on those rail rows is swallowed so the webview menu does not open. Place rows keep their menu.
+14. **Now has no menu.** Right-click on that rail row is swallowed so the webview menu does not open. Place rows keep their menu.
 
 Ambiguity 8 (Close N tabs and running work) stays M7: the close keeps work running and the toast offers Undo.
 ## t-d5-tab-web-find-research: find in a native web page (2026-10-10)

@@ -376,7 +376,7 @@ test('the Design system page shows the rail specimen, light and dark', async ({ 
     const specimen = page.locator('[data-rail-specimen]');
     await specimen.scrollIntoViewIfNeeded();
     await expect(specimen.locator('.nav-item')).toHaveCount(7);
-    await expect(specimen.locator('.nav-item', { hasText: /^Inbox$/ })).toHaveCount(0);
+    await expect(specimen.locator('.nav-item').first()).toContainText('Now');
     await expect(specimen.locator('.status-mark[data-status="waiting"]')).toHaveCount(1);
     await expect(specimen.locator('.nav-item.active')).toHaveCount(1);
     await expectAccessible(page);

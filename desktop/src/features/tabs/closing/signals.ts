@@ -1,9 +1,9 @@
 // The list the system notifications and the badge follow: what the whole machine is waiting on, read from the engine's
 // world feed and from nothing that belongs to one window.
 //
-// WHY NOT THE INBOX'S OWN LIST. Every window posts this list to Rust, and Rust treats an id missing from the newest
-// list as answered. The Inbox hides a failure the moment this window sends its "seen" mark (before the engine echoes
-// it), lists only the five newest, and keeps a count record for old engines that each window reads once. Built from
+// SUPERSEDED INBOX PRESENTATION (I2.1). Every window posts this list to Rust, and Rust treats an id missing from the newest
+// list as answered. The superseded Inbox hid a failure the moment this window sends its "seen" mark (before the engine echoes
+// it), listed only the five newest, and kept a count record for old engines that each window reads once. Built from
 // those, two windows looking at the same feed reading would post different lists, and the one without a failure would
 // make the other announce it again. So a failure is named here by the engine's own fact: `unseenFailed` and the landing
 // instant of the newest failure. Only a row from an engine that predates that mark falls back to this window's record,

@@ -5,7 +5,7 @@ import { installMockEngine } from './support/mock-engine';
 import type { AttentionItem, WorldRow } from '../../src/features/chat/world-client';
 
 // The menus lane on top of the current shell: the shared toast with its structural Undo, a close-and-stop that fails, and the
-// absence of the retired Inbox summons. The mock engine holds one session; a tab with
+// Next up frame count. The mock engine holds one session; a tab with
 // that sessionFile is running, a tab without one is idle. Nothing here calls a model.
 const SESSION = 'mock-session-1.jsonl';
 const running = { initial: { running: true, title: '', entries: [{ Role: 'user', Text: 'Trailing commas across the config stack' }] } };
@@ -32,8 +32,9 @@ test.describe('closing that fails to stop (3l)', () => {
     await expect(toast).toContainText('Could not stop Config stack. It is still running.');
     expect(await toast.getByRole('button').allTextContents()).toEqual(['Try again', 'Undo']);
     await expect(toast.locator('.toast-dot')).toHaveCSS('background-color', await tokenColor(page, 'danger'));
-    // The tab is gone but the work is not: Home's Live section carries it, and no Inbox tab opens.
-    await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
+    // Closing detaches the view and preserves the remaining strip.
+    await expect(page.getByRole('tab')).toHaveCount(1);
+    await expect(page.getByRole('tab', { name: 'Intro', exact: true })).toBeVisible();
     // Undo is reached by keyboard and reopens the tab where it was.
     await toast.getByRole('button', { name: 'Undo' }).focus();
     await page.keyboard.press('Enter');
@@ -56,8 +57,8 @@ test.describe('closing that fails to stop (3l)', () => {
   });
 });
 
-test.describe('retired Inbox stays absent from the world feed', () => {
-  test('running work, questions and failures cannot recreate the retired tab', async ({ page }) => {
+test.describe('Next up owns the world question count', () => {
+  test('only questions count on the frame pill and the strip stays unchanged', async ({ page }) => {
     await installMockEngine(page, { ...running, initial: { running: false, entries: [] }, world: {
       rows: [row('w1', { running: true }), row('w2', { needsYou: true }), row('w3', { failed: 2, at: recent() })],
       items: [ask('w2', 'Which branch?')],
@@ -68,8 +69,8 @@ test.describe('retired Inbox stays absent from the world feed', () => {
       const { worldStore } = await import('/src/features/chat/world-store.ts');
       return worldStore.getState().rows.some(row => row.session === 'w3');
     })).toBe(true);
-    await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
-    await expect(page.locator('.inbox-card')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^1 need you elsewhere/ })).toBeVisible();
+    await expect(page.getByRole('tab')).toHaveCount(1);
     await expect(page.locator('.tab-badge')).toHaveCount(0);
     await expect(page.getByRole('tab', { name: 'Intro', exact: true })).toHaveAttribute('aria-selected', 'true');
   });
@@ -135,8 +136,8 @@ test.describe('bulk closes have one structural Undo', () => {
       const toast = page.locator('.toast').filter({ hasText: /^Closed / });
       await expect(toast).toContainText(/Closed \d tabs?/);
       const undo = toast.getByRole('button', { name: 'Undo' });
-      await undo.focus();
-      await page.keyboard.press('Enter');
+      // Press on the control so menu focus restoration cannot redirect Enter to a tab.
+      await undo.press('Enter');
       await expect(toast).toHaveCount(0);
       expect(await order(page)).toEqual(before);
       expect((await saved(page)).tabs.find(t => t.id === 's')!.split!.panes).toHaveLength(2);
@@ -156,15 +157,15 @@ test.describe('bulk closes have one structural Undo', () => {
   });
 });
 
-// The rail no longer has an Inbox door. A shell-open for inbox is ignored: the current tab stays, and Places has no Inbox row.
-test('a shell-open event for inbox leaves the current tab in place', async ({ page }) => {
+// Superseded: I2.1 removed the Inbox shell kind. Forged legacy events cannot change the current tab.
+test('a superseded Inbox shell event leaves the current tab in place', async ({ page }) => {
   await installMockEngine(page, { ...running, initial: { running: false, entries: [] }, world: { rows: [row('o', { title: 'Older', needsYou: true })], items: [ask('o', 'Older?')] } });
   await seed(page, [{ id: 'a', title: 'Intro' }], 'a');
   await page.goto('/');
   const intro = page.getByRole('tab', { name: 'Intro', exact: true });
   await expect(intro).toHaveAttribute('aria-selected', 'true');
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent('codeaf:shell-open', { detail: 'inbox' })));
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('codeaf:shell-open', { detail: 'inbox' } /* Superseded: I2.1 legacy event. */)));
   await expect(intro).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('region', { name: 'Inbox' })).toHaveCount(0);
-  await expect(page.getByRole('navigation', { name: 'Places' }).getByRole('button', { name: 'Inbox', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('tab')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: /^1 need you elsewhere/ })).toBeVisible();
 });

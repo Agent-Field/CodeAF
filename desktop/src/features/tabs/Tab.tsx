@@ -54,8 +54,7 @@ export type TabProps = FrameProps & {
   active?: boolean;
   pinned?: boolean;
   state?: TabState;
-  /** Inbox only: the one pinned tab that carries a dot. */
-  /** The Inbox's corner dot: something needs you (amber) or a task failed (red). Absent means nothing to say. */
+  /** A corner glyph reports real needs-you or failed work supplied by the tab owner; absence stays quiet. */
   badge?: false | 'needsYou' | 'failed';
   /** Icon-only at the narrowest widths (the 44px "compressed" tab). */
   compressed?: boolean;
