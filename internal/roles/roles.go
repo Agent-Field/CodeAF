@@ -306,6 +306,12 @@ const (
 	// place exists at all. LOW all the same, because a person approves every
 	// place it names. Registered by its caller, for RolePlaceFile's reason.
 	RolePlaceSuggest Role = "placesuggest"
+	// RoleCouncil speaks for one place in a discussion with another place
+	// (internal/council's runner): a reply that weighs what that place knows
+	// against what the other has said, at most six per discussion. WORKER,
+	// because the cheap tier argues badly. Registered by its caller, for
+	// RolePlaceFile's reason.
+	RoleCouncil Role = "council"
 )
 
 // Tier is a class of model the person configures once. Roles are open; tiers
@@ -583,7 +589,7 @@ var vocabulary = []Role{
 	RoleAuditor, RoleCaption, RoleCareful, RoleConsolidate,
 	RoleDesigner, RoleDivision, RoleGuardian, RoleHandoff,
 	RoleImageGen, RoleIntake, RoleJobName, RoleMarkReader,
-	RolePlaceFile, RolePlaceSuggest,
+	RolePlaceFile, RolePlaceSuggest, RoleCouncil,
 	RolePlanner, RoleRecap, RoleReflex, RoleRepair, RoleRouter,
 	RoleRouterConfirm, RoleSentinel, RoleShaper, RoleSpeech,
 	RoleSpellOut, RoleTaskName, RoleTitle, RoleVideo,
