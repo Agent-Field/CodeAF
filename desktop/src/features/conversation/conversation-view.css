@@ -33,8 +33,9 @@
 .conversation-main[data-empty] .conversation-dock-layer { margin-top: 0; padding-top: 0; background: none; }
 .conversation-footer { position: relative; display: flex; flex-direction: column; gap: var(--space-2); padding-bottom: var(--space-5); }
 
-.engine-notice { display: flex; align-items: center; justify-content: center; gap: var(--space-2); max-width: var(--chat-column-max-width); margin: 0 auto var(--space-2); color: var(--ink-2); font-size: var(--font-size-label); }
-.engine-notice .button { font-size: var(--font-size-label); }
+/* I-IFL-3/5/6: one muted line directly under the header, aligned with it. Ink only. */
+.engine-notice { display: flex; align-items: center; gap: var(--engine-notice-gap); margin: 0; padding: var(--engine-notice-pad-block) var(--conversation-bar-pad-end) var(--engine-notice-pad-block) var(--conversation-bar-pad-start); color: var(--engine-notice-color); font-size: var(--engine-notice-size); line-height: var(--engine-notice-leading); }
+.engine-notice-retry.button { height: auto; min-height: 0; padding: 0; border-radius: var(--radius-sm); color: inherit; font-size: inherit; font-weight: inherit; line-height: inherit; }
 
 .task-route { display: flex; flex: 1; flex-direction: column; gap: var(--space-4); min-width: 0; }
 .conversation-specimen { display: flex; flex-direction: column; gap: var(--space-2); width: 100%; min-width: 0; padding-block: var(--space-3); border-top: var(--border-width) solid var(--line); }

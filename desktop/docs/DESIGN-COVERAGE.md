@@ -1274,8 +1274,8 @@ Tests named are Playwright specs under `tests/ui/` (Chromium + WebKit) unless ma
 | CV-262 | Interrupted turn (engine restart/crash mid-turn) | Design silent (ambiguity 21) | model/steps.ts maps Interrupted → stopped | partial (ASSUME: reads as "Stopped", same as a person's Stop, per Q22's settled ink; untested) | t-d5-cv-test-notices |
 | CV-263 | Retrying: accent dot + text + mono countdown | Comp §3.5; C-NOTE-3 | TurnFooter.tsx "Retrying" (no time), SystemNote time prop | partial (no countdown even when the engine sends a delay) | t-d5-cv-live-notices |
 | CV-264 | Compacting / compacted while live | Comp C-NOTE-4 | model/live.ts (no compacting handler); settled divider exists | partial (ASSUME: the "Earlier messages summarized" divider appears when the compacted event arrives; nothing new during compacting) | t-d5-cv-live-notices |
-| CV-265 | Engine offline: one muted line "Reconnecting to the engine…" under the header | Int Flows; I-IFL-3 | EngineNotice.tsx ("codeaf engine is not running" + Retry, in the dock) | partial (wrong wording and position) | t-d5-cv-offline-notice |
-| CV-266 | Past 30s: "Can't reach the engine · Retry", nothing red | I-IFL-5/6 | EngineNotice.tsx | missing | t-d5-cv-offline-notice |
+| CV-265 | Engine offline: one muted line "Reconnecting to the engine…" under the header | Int Flows; I-IFL-3 | EngineNotice.tsx, offline/reconnect.ts | complete (d5-cv-test-notices "offline: reconnecting under the header…") | — |
+| CV-266 | Past 30s: "Can't reach the engine · Retry", nothing red | I-IFL-5/6 | EngineNotice.tsx, offline/reconnect.ts | complete (same spec, after the fake clock passes 30s) | — |
 | CV-267 | Offline: composer stays editable; sends queue locally and go out on reconnect | I-IFL-4 | useConversation FailedSend keeps the draft only | missing | t-d5-cv-offline-queue |
 | CV-268 | No modal error dialogs | I-IFL-24 | — | partial (law holds by inspection; no test) | t-d5-cv-test-notices |
 | **Cross-cutting interaction law** ||||||

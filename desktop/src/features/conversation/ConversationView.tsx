@@ -202,7 +202,7 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
   const modelShort = modelLabel === MODEL_LABEL ? DEFAULT_MODEL_SHORT : undefined;
   const conversationModel = useConversationModel(snapshot?.model);
   const showJump = unanchored && (behind || model.running) && !inTask;
-  const showFooter = !inTask || conversation.unreachable;
+  const showFooter = !inTask;
   const folder = snapshot?.workingFolder;
   const folderNote = folder?.note ?? (folder?.skipped?.length ? `Skipped ${folder.skipped.length} unavailable ${folder.skipped.length === 1 ? 'place folder' : 'place folders'}. This chat works in ${folder.label || folder.path || snapshot?.workspace}.` : undefined);
 
@@ -232,6 +232,8 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
               {taskId ? <TaskRouteBar rootLabel={label} taskId={taskId} tasks={model.tasks} route={route} onRoute={setRoute} /> : null}
             </ConversationBar>
           )}
+          {/* Under the header, including when the header itself is absent: the line is the pane's top notice (I-IFL-3). */}
+          <EngineNotice active={conversation.unreachable} onProbe={() => conversation.reprobe()} />
           <div ref={scroller} className="conversation-scroll" data-scroll-key={inTask ? 'task-page' : 'conversation'} data-scrolled={scrolled || undefined} data-task={inTask || undefined}>
             <div ref={content} className="conversation-column">
               {taskId ? (
@@ -265,7 +267,6 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
               <div className="conversation-footer conversation-column">
                 {focused && walk.phase === 'clear' && walk.origin && <EndCard answeredCount={walk.answered} conversations={worldStore.getState().rows.map(row => ({ tasksRunning: row.tasks.running }))} originLabel={walk.origin.label} onReturn={() => nextUpWalk.exit()} />}
                 {folderNote && <Text role="status">{folderNote}</Text>}
-                {conversation.unreachable && <EngineNotice onRetry={() => void retry()} />}
                 {!inTask && (
                   <ConversationDock
                     compact={split && !focused ? { label } : undefined}

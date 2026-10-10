@@ -167,8 +167,10 @@ leaves when it is not. No labels that describe the machine ("Engine connected",
 - No "Connect engine" button. A new tab is quiet; the first Send creates the
   session (`connectEngine()`), then sends. Saved tabs reattach automatically on open
   (`connectEngine(sessionFile)`). No provider call happens until the person sends.
-- If the engine is unreachable, the composer shows one muted line
-  `codeaf engine is not running` with a Retry button; the draft stays.
+- If the engine is unreachable, one muted line under the header reads
+  `Reconnecting to the engine…` while the client retries. After 30s it reads
+  `Can't reach the engine` with a quiet Retry. Nothing turns red. The line
+  disappears when the engine answers. The draft stays.
 - **Separate AI calls** — exactly one, and it is the engine's: the conversation
   title, generated asynchronously after the first message by the engine's title
   lane on the auxiliary role (same fixed model), delivered via the snapshot `title`.
