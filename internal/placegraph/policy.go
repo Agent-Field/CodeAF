@@ -3,13 +3,16 @@ package placegraph
 // The recommendation policy: every number and switch that decides when codeaf
 // offers to file a chat, group chats into a new place, or merge two places.
 //
-// EVERY DEFAULT HERE IS A PROVISIONAL ENGINEERING CHOICE, NOT A DESIGN DECISION.
-// The figures the design does state are kept exactly (five chats to suggest a
-// new place, "Not now" hides a suggestion for thirty days, one filing offer
-// after the first reply, depth two to three); the rest were picked to keep the
-// graph small and quiet until the designer decides. docs/AI-ROLES-AND-PLACES-POLICY.md
-// lists which is which, and changing a default changes that page in the same
-// commit.
+// EVERY DEFAULT HERE IS A PROVISIONAL ENGINEERING CHOICE, NOT A DESIGN DECISION,
+// except the figures the design states as rules. Those are kept exactly: five
+// chats to suggest a new place, "Not now" hides a suggestion for thirty days,
+// and one filing offer after the first reply. Depth of 2–3 is what Places §6e
+// expects, and it says deeper is allowed, so the depth cap's default of 3 is
+// NOT marked as a design figure: it limits only places codeaf creates, and a
+// person can make a deeper place or raise the cap. The other numbers were
+// picked to keep the graph small and quiet until the designer decides.
+// docs/AI-ROLES-AND-PLACES-POLICY.md lists which is which, and changing a
+// default changes that page in the same commit.
 //
 // THE POLICY NEVER REORGANISES ANYTHING BY ITSELF. Creating, moving and merging
 // are proposals a person approves (recommend.go). The one automatic action is
@@ -126,8 +129,8 @@ var policyFields = []RecommendPolicyField{
 		"Counts only places created from codeaf's offers.", "places",
 		8, 0, 100, false, func(p *RecommendPolicy) *int { return &p.MaxAISiblings }),
 	intField("maxAiDepth", PolicyGroupLimits, "Deepest level for a new place",
-		"A top-level place is level 1.", "levels",
-		3, 1, 6, true, func(p *RecommendPolicy) *int { return &p.MaxAIDepth }),
+		"A top-level place is level 1. Places you make yourself can go deeper; this only limits places created from codeaf's offers.", "levels",
+		3, 1, 6, false, func(p *RecommendPolicy) *int { return &p.MaxAIDepth }),
 	intField("maxAiPlaces", PolicyGroupLimits, "Places codeaf may create in all",
 		"Counts active places created from codeaf's offers.", "places",
 		30, 0, 500, false, func(p *RecommendPolicy) *int { return &p.MaxAIPlaces }),

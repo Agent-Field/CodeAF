@@ -111,6 +111,26 @@ func TestTheEngineRunsWhatThePageShowsForAnInheritedRole(t *testing.T) {
 	}
 }
 
+// The four section names and their order are the Settings page. Interactions
+// lists permissions as its own page section; it is not one of these groups.
+func TestSettingsCategoriesStayInPageOrder(t *testing.T) {
+	got := DesktopRoleCategories()
+	want := []DesktopCategory{
+		{ID: DesktopCategoryConversation, Name: "Conversation and tasks"},
+		{ID: DesktopCategoryNaming, Name: "Naming and summaries"},
+		{ID: DesktopCategoryPlaces, Name: "Places organization"},
+		{ID: DesktopCategoryMemory, Name: "Memory, routing and safety"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("%d sections", len(got))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("section %d: got %+v want %+v", i, got[i], want[i])
+		}
+	}
+}
+
 func TestEveryRoleSitsInOneOfThePagesSections(t *testing.T) {
 	sections := map[string]bool{}
 	for _, c := range DesktopRoleCategories() {
