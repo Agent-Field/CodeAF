@@ -5,6 +5,7 @@ import type { PlaceRowModel } from '../places/shell/contracts';
 import { chatDragType, placeDragType, readDrag, writeDrag } from '../places/place-actions';
 import type { RailSections } from '../places/shell/selectors';
 import { RailToggle } from './RailToggle';
+import { PlaceDot as Dot } from '../places/PlaceDot';
 import './rail.css';
 import './place-rail.css';
 
@@ -54,11 +55,6 @@ export type PlaceRailProps = {
 };
 
 const primaryClick = (event: MouseEvent) => event.metaKey || event.ctrlKey;
-
-function Dot({ status, label }: { status?: 'waiting' | 'failed'; label?: string }) {
-  if (!status) return null;
-  return <span className="rail-dot" data-state={status} role="img" aria-label={label ?? (status === 'waiting' ? 'Needs you' : 'Failed')} title={label}/>;
-}
 
 function Section({ label, action, children }: { label: string; action?: ReactNode; children: ReactNode }) {
   return <section className="rail-group" aria-label={label}>
