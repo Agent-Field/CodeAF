@@ -29,6 +29,9 @@ export type HomeChild = {
 };
 
 export type HomeAttention = {
+  /** Details and council counts are present only when the engine supplies them. */
+  detail?: string;
+  turns?: { current: number; total: number };
   /** The chat or task id this row opens. */
   id: string;
   title: string;
