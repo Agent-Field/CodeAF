@@ -116,7 +116,7 @@ export const INK3_TEXT = [
  '.history-file-added', '.history-files-more', '.history-recap-meta', '.history-recap-label', '.history-decision-by', '.history-back', '.history-best-head', '.history-results-heading',
  '.rail .new-item kbd', '.rail-section-label', '.rail-place-path', '.rail-hint', '.rail-meta',
  // The live place Home and All places draw these in ink-3 (Places 8a to 8e); the Places suites waive the same list.
- '.home-quiet', '.home-quicklook-hint', '.all-places-search', '.places-tile-hint', '.home-archived-toggle', '.home-notice',
+ '.home-quiet', '.home-quicklook-hint', '.all-places-search', '.places-tile-hint', '.home-archived-toggle', '.home-notice', '.home-source-note',
  '.places-row-aside', '.places-row-muted', '.places-chat-excerpt', '.places-chat-time', '.places-tile-meta', '.places-crumb', '.type-section-label', '.places-heading-menu', '.places-chat-lead', '.places-tile-main',
  // The Go to chooser and the place dialogs (Places 4a to 4e, Interactions "Go to"): counts, section labels, times, hints.
  '.goto-count', '.goto-section', '.goto-meta', '.goto-hints', '.goto-context', '.place-dialog-quiet', '.place-dialog-source-meta',

@@ -1,0 +1,30 @@
+/* The notes card measured from Components ("Notes (plain for now)"): 520px of content, 14px by 16px of padding,
+   12px radius, 13px type on a 1.7 line, field fill, 6px between the prose and the notes line. max-width is the
+   content box plus the inline padding, because the specimen's 520px is content-box (the border box measured 552).
+   A narrow column uses the width it has. Hover and press change the fill only. */
+.home-instructions {
+  display: flex; flex-direction: column; gap: var(--places-notes-gap); box-sizing: border-box; width: 100%;
+  max-width: calc(var(--places-notes-max) + var(--places-notes-pad-inline) + var(--places-notes-pad-inline));
+  padding: var(--places-notes-pad-block) var(--places-notes-pad-inline); border-radius: var(--places-notes-radius);
+  background: var(--field); transition: background-color var(--dur-fast) var(--ease);
+}
+.home-instructions[data-drop] { background: var(--field-2); }
+
+.home-instructions-prose { margin: 0; color: var(--ink); font-size: var(--places-notes-size); font-weight: var(--places-notes-weight); line-height: var(--places-notes-leading); white-space: pre-wrap; overflow-wrap: anywhere; }
+.home-instructions-prose.button {
+  display: block; width: 100%; height: auto; min-height: 0; padding: 0; border-radius: var(--radius-xs);
+  background: transparent; color: var(--ink); font-size: var(--places-notes-size); font-weight: var(--places-notes-weight);
+  line-height: var(--places-notes-leading); text-align: start; white-space: pre-wrap; justify-content: flex-start;
+}
+.home-instructions-prose.button:hover:not(:disabled) { background: var(--field-2); color: var(--ink); }
+.home-instructions-prose.button:active:not(:disabled) { background: var(--field-2); color: var(--ink); filter: brightness(var(--brightness-press)); transition-duration: var(--dur-press); }
+
+.home-instructions-editor.text-area,
+.home-instructions-note.text-input {
+  min-height: 0; padding: 0; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--ink);
+  font-family: var(--sans); font-size: var(--places-notes-size); font-weight: var(--places-notes-weight); line-height: var(--places-notes-leading);
+}
+.home-instructions-editor.text-area { resize: none; min-height: calc(var(--places-notes-size) * var(--places-notes-leading) * 2); }
+.home-instructions-note.text-input { height: calc(var(--places-notes-size) * var(--places-notes-leading)); }
+.home-instructions-note.text-input::placeholder { color: var(--ink-3); opacity: var(--opacity-opaque); }
+.home-instructions-error { margin: 0; font-size: var(--type-label-size); line-height: var(--line-height-body); }
