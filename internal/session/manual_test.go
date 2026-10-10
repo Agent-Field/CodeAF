@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/manual"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
@@ -32,15 +33,64 @@ func TestTheManualMentionsEveryToolOnTheBelt(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	agent.config.Memory = db
+	// AND THE AUTOMATIONS STORE IS OPENED, for the shelf's reason. `automation` is
+	// on the belt only where a store sits behind it (automation_tool.go), and every
+	// conversation door hands one in — so a gate that built the belt without one
+	// would let the verb that sets up every reminder ship with no page.
+	autos, err := automation.Open(filepath.Join(t.TempDir(), "automations"))
+	if err != nil {
+		t.Fatalf("open gate automations store: %v", err)
+	}
+	t.Cleanup(func() { _ = autos.Close() })
+	agent.config.Automations = &Automations{Store: autos}
 	agent.tools = agent.belt()
 	tools := agent.offeredTools()
 	if len(tools) == 0 {
 		t.Fatal("the belt is empty")
 	}
+	carriesAutomation := false
 	for _, tool := range tools {
 		if !manual.Chat().Mentions(tool.Name) {
 			t.Errorf("no chat manual page mentions the %s tool — add it to internal/manual/chat/", tool.Name)
 		}
+		if tool.Name == "automation" {
+			carriesAutomation = true
+		}
+	}
+	if !carriesAutomation {
+		t.Fatal("a conversation with an automations store was not given the automation verb, so this gate checked nothing about it")
+	}
+}
+
+// AND A RUN OF AN AUTOMATION CARRIES A VERB NO CONVERSATION HAS.
+//
+// A piece of scheduled work says how it went with automation_report, which is on
+// the belt of a run and of nothing else (automation_run.go) — the conversation's
+// `automation` verb is taken away there, because nothing an automation does may
+// arm another. The gate above builds a conversation's belt, so it never sees the
+// report verb, and a person asking "how does a scheduled run say it is done" is
+// asking in the words the tool is named in. So the belt is built the way the
+// runner builds it — a task's posture, with the run's report door — and checked
+// where the tool actually lives.
+func TestTheManualMentionsTheAutomationRunsOwnTool(t *testing.T) {
+	agent := &Agent{config: Config{
+		Workspace:     t.TempDir(),
+		ProfileDir:    t.TempDir(),
+		InTask:        true,
+		AutomationRun: &AutomationRun{},
+	}}
+	found := false
+	agent.tools = agent.belt()
+	for _, tool := range agent.offeredTools() {
+		if !manual.Chat().Mentions(tool.Name) {
+			t.Errorf("no chat manual page mentions the %s tool — add it to internal/manual/chat/", tool.Name)
+		}
+		if tool.Name == "automation_report" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("a run of an automation was not given the verb it reports how it went with")
 	}
 }
 

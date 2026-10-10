@@ -3,7 +3,7 @@
 ## How do I group chats in logical folders
 
 `codeaf collections` is a local command for organizing references to conversations,
-tasks, ongoing items and files. A collection is a logical folder with a stable ID
+tasks and files. A collection is a logical folder with a stable ID
 and name. Several collections can reference the same record. Collections can
 contain other collections, including one child shared by several parents;
 circular membership is refused. Renaming a collection preserves its ID.
@@ -65,6 +65,8 @@ belong to collections.
 
 Use `codeaf collections add <collection-id> <kind> <record-id>`.
 The kinds are `collection`, `conversation`, `task`, `standing` and `artifact`.
+The fourth is still accepted but names nothing codeaf runs any more, and there is no
+kind for an automation.
 A task also requires `--session <conversation-id>` because task numbers repeat
 in different conversations. For example, `codeaf collections add <collection-id>
 task 1 --session <conversation-id>` records that specific task.

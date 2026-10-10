@@ -299,7 +299,7 @@ somewhere else because it thinks it knows better.
 
 **The pin belongs to your home, not to one conversation.** Every door reads the same
 profile row when it opens: `codeaf do`, `codeaf exec`, `codeaf plan`, `codeaf run` and
-the background pass all honour the host you picked, just as the chat does. A run from a
+an automation's run all honour the host you picked, just as the chat does. A run from a
 terminal and a task running overnight therefore ask for your pinned host too.
 
 ## A model with no hosts measured yet — the model picker says no machine has been measured for this model, and no host list opens
@@ -380,10 +380,10 @@ writing, `y` is a `y`. And it does **not** change your pin. Saying yes rescues
 *this* answer; the next request goes to the host you pinned, because that is
 what pinning means.
 
-With nobody watching — a task running unattended, a standing order firing
-overnight — there is nobody to ask, so a pinned host that has gone quiet
-past the patience for that kind of work borrows another one for that answer and
-says so in the log. An instruction whose author cannot be reached is honoured by
+With nobody watching — a task running unattended, an automation's scheduled
+work — there is nobody to ask, so a pinned host that has gone quiet past the
+patience for that kind of work borrows another one for that answer and says so
+in the log. An instruction whose author cannot be reached is honoured by
 getting them their answer.
 
 ## Waiting on a model that is thinking
@@ -450,9 +450,9 @@ progress. Of the calls still silent at ten seconds, more than three quarters
 answer perfectly well.
 
 **Work nobody is watching waits longer, on purpose.** A task node gets thirty
-seconds and a standing pass sixty, because nobody is sitting in front of them
-and a second request costs money. They are never silent either — the same
-sentence is on their row.
+seconds and a watch's judgment of what it saw sixty, because nobody is sitting in
+front of them and a second request costs money. A task's row is never silent
+either — the same sentence is on it.
 
 **Ten seconds always does something, even when a second request is too
 expensive.** A second request to another host costs real money, so every
@@ -496,8 +496,8 @@ who the work is for, and it is the same clock for every kind of failure:
 | whose work | gives up after |
 | --- | --- |
 | a turn you are watching, or a task node with its room open | 90 seconds |
-| a task node nobody is watching, a memory pass, a side errand | 4 minutes 30 |
-| a standing order, a check, a design pass | 9 minutes |
+| a task node nobody is watching, an automation's scheduled work, a memory pass, a side errand | 4 minutes 30 |
+| a watch's judgment, a check, a design pass | 9 minutes |
 | the one-token measurement behind the model list | 45 seconds |
 
 While it is trying, the status row counts the hosts rather than the tries:
@@ -577,7 +577,7 @@ enough to reach the ordinary ceiling can then trigger action.
 Every kind of call this build makes says how long it is willing to wait before
 something is done about a silence: ten seconds for a chat turn, for a step of a
 task you are watching, and for the quick lookups behind a keypress; thirty for
-work running in the background; a minute for a standing pass; five seconds for
+work running in the background; a minute for a watch's judgment; five seconds for
 the one-token checks codeaf makes of a host itself. That number is not only a
 stopwatch. It is also what decides which hosts the
 request is allowed to go to at all.
@@ -596,7 +596,7 @@ things follow from that, and both are deliberate:
 
 - **The same host is refused for one kind of call and used for another.** A
   host that takes twenty seconds is out of the question for something in
-  front of your typing and perfectly fine for a standing pass.
+  front of your typing and perfectly fine for a watch's judgment.
 - **Nothing is ever refused when there is nothing better.** If every host
   serving a model is beyond the limit, none of them is refused — the request
   goes to the best of them rather than nowhere.

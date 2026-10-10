@@ -485,7 +485,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// here (#404).
 		{"where does codeaf write its log file", "starting-codeaf"},
 		{"what is chat.log", "starting-codeaf"},
-		{"does status show background checks on the remote machine", "keeping-an-eye"},
+		// The background checks this asked about are automations now, and
+		// `/status` over a connection reads the far machine's.
+		{"does status show background checks on the remote machine", "automations"},
 		// The ↻ line, asked the way somebody meets it: they saw a piece of work
 		// go round again and want the sentence that says what ended it.
 		{"why was my work picked up again", "adaptive-runs"},
@@ -2394,26 +2396,28 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does the thinking cycle go back to auto", "keys"},
 		{"I cleared the thinking rung and it still says high", "keys"},
 
-		// The eleventh wave: the ambient side — the things a conversation leaves
-		// behind that keep working after the window is closed. Every one of
-		// these is said in the ordinary words somebody uses when they are NOT
-		// asking for work now, which is the whole recognition problem: "run the
-		// tests" is a turn, and "run the tests whenever I push" is one of these.
-		{"remind me at 6 to leave", "keeping-an-eye"},
-		{"tell me when ci goes red", "keeping-an-eye"},
-		{"can you run something every monday morning", "keeping-an-eye"},
-		{"does it keep working when I close the terminal", "keeping-an-eye"},
-		{"how do I stop a reminder", "keeping-an-eye"},
-		// The two clocks, asked apart: how often codeaf LOOKS, which is one
-		// figure for everything standing, and a cadence somebody gave an item
-		// themselves, which is the one they name when they want it to stop.
-		{"how often does my watch check", "keeping-an-eye"},
-		{"stop the thing that runs every hour", "keeping-an-eye"},
+		// The eleventh wave: what a conversation leaves behind to happen later.
+		// Every one of these is said in the ordinary words somebody uses when
+		// they are NOT asking for work now, which is the whole recognition
+		// problem: "run the tests" is a turn, and "run the tests whenever I push"
+		// is one of these. They were the standing side's and are AUTOMATIONS'
+		// since 2026-10-10 (automations.md) — and the honest answer to the
+		// closed-terminal question changed with them: an automation runs only
+		// while a codeaf window is open.
+		{"remind me at 6 to leave", "automations"},
+		{"tell me when ci goes red", "automations"},
+		{"can you run something every monday morning", "automations"},
+		{"does it keep working when I close the terminal", "automations"},
+		{"how do I stop a reminder", "automations"},
+		// The two clocks, asked apart: how often a watch looks, which is its own
+		// rhythm now rather than one figure for everything, and the rhythm
+		// somebody names when they want the thing to stop.
+		{"how often does my watch check", "automations"},
+		{"stop the thing that runs every hour", "automations"},
 		// Asked by somebody who has not set a key yet and wants to know whether
-		// the standing side is doing anything at all in the meantime. The answer
-		// is half yes — the walk happens, the judgments do not — and it has to
-		// come from the page rather than be guessed at.
-		{"does the background check run before I set an API key?", "keeping-an-eye"},
+		// anything is happening in the meantime. A reminder needs no model; a
+		// watch's every look ends `couldn't check` until there is a key.
+		{"does the background check run before I set an API key?", "automations"},
 		// The eleventh wave: the ambient side arriving on home. Each of these is
 		// asked by somebody LOOKING at a row they did not expect — a glyph they
 		// have not met, a segment at the foot of the frame, a card that appeared
@@ -2436,18 +2440,23 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// reading it, and where an errand said at home leaves its record. Both
 		// were asked by the first person to use this, and the corpus answered
 		// the first one wrongly — it described a countdown that is now gone.
-		{"how long do I have to answer the card", "keeping-an-eye"},
-		{"where is the record of a reminder I made from home", "keeping-an-eye"},
+		{"how long do I have to answer the card", "automations"},
+		{"where is the record of a reminder I made from home", "asking-from-home"},
 		// Asked in a person's own words after they met their first card and
 		// could not see a way out of it, could not tell what the options meant,
-		// and expected to be able to change the `where ·` band they were being
-		// shown. Every one of these is now on the card itself; the pages say so.
-		{"how do I cancel this card", "keeping-an-eye"},
-		{"I don't understand these options", "keeping-an-eye"},
-		{"what does just once mean", "keeping-an-eye"},
-		{"what kind of standing card is this", "keeping-an-eye"},
-		{"why did it say the reminder was never set up after I said just once", "keeping-an-eye"},
-		{"can I change everywhere to just this project", "standing-orders"},
+		// and expected to be able to change what they were being shown. The card
+		// they meet now is an automation's, and its answers are `1 Save`,
+		// `2 Save and run it now`, `0 Don't save` and `o Change…`; the old
+		// standing card's words are answered where automations.md says what
+		// became of them.
+		{"how do I cancel this card", "automations"},
+		{"I don't understand these options", "automations"},
+		{"what does just once mean", "automations"},
+		{"what kind of standing card is this", "automations"},
+		{"why did it say the reminder was never set up after I said just once", "automations"},
+		// A rule's reach is the memory's own — this project, or everywhere when
+		// it is typed on home — and there is no narrowing an automation.
+		{"can I change everywhere to just this project", "what-i-remember"},
 		// The twelfth wave: answering a question from home. Both are asked by
 		// somebody looking at a `▲` row and wondering whether they have to walk
 		// to the terminal it belongs to — which, for the ordinary answers, they
@@ -2515,9 +2524,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// A reminder made from `ask here` fired into the exchange behind home's
 		// pane and they were never told, sitting two panes away in an ordinary
 		// chat; and every "remind me in 2 mins" opened with a `bash date …` row
-		// they could see and asked about.
-		{"where does my reminder show up when it fires", "keeping-an-eye"},
-		{"why did it run date before setting the reminder", "keeping-an-eye"},
+		// they could see and asked about. An automation's run now draws its line
+		// in the conversation that made it and raises a desktop notification,
+		// and the `automation` tool ends every answer with the time.
+		{"where does my reminder show up when it fires", "automations"},
+		{"why did it run date before setting the reminder", "automations"},
 		// The wave that made an exchange a row that outlives the screen it was
 		// asked on. All three are the person's own words after using `ask here`:
 		// the card was answered for them because looking at another chat closed
@@ -2528,27 +2539,29 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is the answer from home showing asterisks and hashes", "asking-from-home"},
 		{"does the ask here pane format the answer", "asking-from-home"},
 		{"can I ask two things from home at once", "asking-from-home"},
-		{"why did it set my reminder for a time that already passed", "keeping-an-eye"},
-		{"why is there no once on my reminder card", "keeping-an-eye"},
+		{"why did it set my reminder for a time that already passed", "automations"},
+		{"why is there no once on my reminder card", "automations"},
 		// The e2e suite found the firing that reached a conversation and was
 		// never drawn in it. The page now says what is drawn and when, and this
 		// is the sentence a person types when it looks like nothing happened.
-		{"a reminder fired but nothing showed up in my chat", "keeping-an-eye"},
+		{"a reminder fired but nothing showed up in my chat", "automations"},
 		// The wave that gave a standing card an outright no on the two surfaces
 		// that have no `esc` to spare. Both of these are what a person types
 		// when a card is up and they do not want the thing.
 		{"how do I say no to a reminder from home", "home"},
-		{"how do I decline a standing card", "keeping-an-eye"},
+		{"how do I decline a standing card", "automations"},
 		// The wave that moved the standing card's answers onto the question
 		// block. `esc` on that card used to be the outright no and is *later*
 		// now, and the change chip became a key — both are what a person types
-		// when the hand they learned stops doing what it did.
-		{"I pressed esc on a reminder card and it did not say no", "keeping-an-eye"},
-		{"where did 2 change when or where go on the standing card", "keeping-an-eye"},
-		{"how do I change the time on a standing card", "keeping-an-eye"},
+		// when the hand they learned stops doing what it did. The automation
+		// card kept both: `esc` is later, and `o Change…` is the correction.
+		{"I pressed esc on a reminder card and it did not say no", "automations"},
+		{"where did 2 change when or where go on the standing card", "automations"},
+		{"how do I change the time on a standing card", "automations"},
 		// The wave that gave the engine on the far machine its own ambient
-		// side. This is what a person asks before they rely on it.
-		{"do reminders work over --host", "keeping-an-eye"},
+		// side. This is what a person asks before they rely on it — and what an
+		// attached window keeps running there now is that machine's automations.
+		{"do reminders work over --host", "running-on-another-machine"},
 		{"where does a reminder I set up over --host actually run", "running-on-another-machine"},
 		// The wave that made home able to answer about money and about the
 		// ambient side being idle. The first is asked by somebody looking at a
@@ -2558,11 +2571,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// keep.
 		{"how much has this conversation cost on home", "home"},
 		{"is the ambient side off", "home"},
-		{"how many times did my watch run this week", "keeping-an-eye"},
+		{"how many times did my watch run this week", "automations"},
 		// `●` used to mean only "firing", and only inside the one window doing
-		// it. It is now a marker on disk that every window reads, so a person
-		// can meet the dot without having started anything themselves.
-		{"why does my watch show a filled dot right now", "keeping-an-eye"},
+		// it. An automation's mark is read off the store every window reads, so
+		// a person can meet a running one without having started anything
+		// themselves.
+		{"why does my watch show a filled dot right now", "automations"},
 		// The wave that gave home a phone shape. Three sentences a person types
 		// with the terminal in one hand: what this screen even is at that width,
 		// how to answer another window's question from it, and how to reach a
@@ -2570,24 +2584,26 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I use home on my phone", "home"},
 		{"how do I approve a command from my phone", "home"},
 		{"how do I open a task by tapping", "tasks"},
-		// Background checks are on out of the box now, and the two sentences a
-		// person says about that are the plain question and the plain wish.
-		{"does it run when my terminal is closed", "keeping-an-eye"},
-		// And the same question asked as a fear rather than as a feature, which
-		// the page answered wrongly for as long as the engine has existed.
-		{"if I close this window does the chat stop", "keeping-an-eye"},
-		{"turn off background checks", "keeping-an-eye"},
-		{"i have two copies of codeaf, which one runs the background checks", "keeping-an-eye"},
-		{"two copies of codeaf and my reminders fired twice", "keeping-an-eye"},
-		{"does CODEAF_HOME move the background timer", "keeping-an-eye"},
+		// The background checks that were on out of the box are gone — nothing is
+		// installed on the machine, and an automation runs only while a window is
+		// open — and the two sentences a person says about that are still the
+		// plain question and the plain wish.
+		{"does it run when my terminal is closed", "automations"},
+		// And the same question asked as a fear rather than as a feature: the
+		// conversation itself goes on in its engine when the window closes.
+		{"if I close this window does the chat stop", "home"},
+		{"turn off background checks", "automations"},
+		{"i have two copies of codeaf, which one runs the background checks", "automations"},
+		{"two copies of codeaf and my reminders fired twice", "automations"},
+		{"does CODEAF_HOME move the background timer", "automations"},
 		// App-closed watch with no window and no helper, a key that is missing or
 		// disconnected, the one-shot that must not toast, and a pass the machine
-		// slept through. Each is the question a person asks about the ambient
-		// side's real limits.
-		{"does a watch keep running with the app closed, is there a helper", "keeping-an-eye"},
-		{"my key is missing or disconnected will my reminder retry", "keeping-an-eye"},
-		{"will a once watch pop a desktop notification or toast", "keeping-an-eye"},
-		{"what happens to a check missed while my computer was off", "keeping-an-eye"},
+		// slept through. Each is the question a person asks about an
+		// automation's real limits.
+		{"does a watch keep running with the app closed, is there a helper", "automations"},
+		{"my key is missing or disconnected will my reminder retry", "automations"},
+		{"will a once watch pop a desktop notification or toast", "automations"},
+		{"what happens to a check missed while my computer was off", "automations"},
 		// The wave that gave the ambient side a reach: an order that governs one
 		// chat, one project, or everything. Each of these is what somebody types
 		// looking at the page, at the card's `where` band, or at the one line a
@@ -2595,14 +2611,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// A RULE IS A MEMORY MARKED ALWAYS NOW (what-i-remember.md's `Always`
 		// sections; docs/design/automations/DESIGN.md), so the questions about
 		// making one, which rules hold here and how far one reaches are answered
-		// on the memory page, while the standing page keeps its own words.
+		// on the memory page. What stood on a clock is an automation, and the
+		// standing page's own words — the page, the count, the line a
+		// conversation opened with — are answered where automations.md says what
+		// became of them.
 		{"what rules do you have here", "what-i-remember"},
 		{"how do I make it always do something", "what-i-remember"},
-		{"do you have automations", "standing-orders"},
-		{"what does the standing orders page show", "standing-orders"},
+		{"do you have automations", "automations"},
+		{"what does the standing orders page show", "automations"},
 		{"does this rule apply to all my projects", "what-i-remember"},
-		{"not in this project", "standing-orders"},
-		{"why does it say 3 standing orders here", "standing-orders"},
+		{"not in this project", "what-i-remember"},
+		{"why does it say 3 standing orders here", "automations"},
 		{"when does a standing order go off on home", "home"},
 		// The wave that gave a rule with no trigger a shape of its own. These are
 		// the words somebody uses for one before they have heard the word
@@ -2611,7 +2630,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// I meant always rather than just now.
 		{"always do it this way", "what-i-remember"},
 		{"can you remember my coding style rule", "what-i-remember"},
-		{"how do I set a standing order", "standing-orders"},
+		{"how do I set a standing order", "automations"},
 		{"how does it know I mean always", "what-i-remember"},
 		{"is that an instruction or a rule", "what-i-remember"},
 		{"our conventions for this repo", "what-i-remember"},
@@ -2623,16 +2642,79 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I switch a rule off without forgetting it", "what-i-remember"},
 		{"how many rules ride along in every conversation", "what-i-remember"},
 		// The deliberate gesture and the visible door, in the words of somebody
-		// reaching for them — or noticing that recognition missed.
-		{"how do I force it to be standing", "standing-orders"},
-		// The word nobody on this surface uses and everybody types: there is no
-		// delete, and the page has to be reachable by the two ways somebody asks
-		// for one before they learn that stopping is what it is called.
-		{"delete a standing order", "standing-orders"},
-		{"get rid of a standing order", "standing-orders"},
-		{"how do I make this permanent", "standing-orders"},
+		// reaching for them — or noticing that recognition missed. The exact
+		// door for something on a clock is `/automations add` now, and for a
+		// rule `/always`.
+		{"how do I force it to be standing", "automations"},
+		// The words somebody types for getting rid of one. An automation has a
+		// real delete — `d`, twice — and the page has to be reachable in the old
+		// words as well as the new.
+		{"delete a standing order", "automations"},
+		{"get rid of a standing order", "automations"},
+		{"how do I make this permanent", "what-i-remember"},
 		{"it didn't notice this was a rule and did it once", "what-i-remember"},
-		{"can I click keeping an eye on 2", "standing-orders"},
+		{"can I click keeping an eye on 2", "automations"},
+		// THE AUTOMATIONS WAVE (automations.md, docs/design/automations/DESIGN.md):
+		// a reminder, scheduled work or a watch, on a clock, only while a codeaf
+		// window is open. Asked the ways people meet them — saying one, typing
+		// one exactly, finding the list, a card in front of them, a line or a
+		// banner they did not expect, what one costs, and what they cannot do.
+		{"what is an automation", "automations"},
+		{"what is the difference between a reminder and a watch", "automations"},
+		{"remind me in 20 minutes", "automations"},
+		{"every weekday at 8:30 run the tests", "automations"},
+		{"can you check something every 15 minutes", "automations"},
+		{"tell me when a new invoice arrives in my mail", "automations"},
+		{"how do I list my automations", "automations"},
+		{"how do I turn off a reminder", "automations"},
+		{"how do I resume a paused automation", "automations"},
+		{"how do I run an automation now", "automations"},
+		{"how do I stop a run that is going", "automations"},
+		{"how do I edit a reminder", "automations"},
+		{"how do I change the time of a reminder", "automations"},
+		{"what does d again deletes it mean", "automations"},
+		{"what does open where it was asked do", "automations"},
+		{"why did I get this reminder", "automations"},
+		{"what did my automation do last week", "automations"},
+		{"what does couldn't check mean", "automations"},
+		{"what does ran out of its 30m mean", "automations"},
+		{"what does codeaf closed before it finished mean", "automations"},
+		{"what does nothing new mean", "automations"},
+		{"what does late mean on an automation", "automations"},
+		{"will my reminder fire if codeaf is closed", "automations"},
+		{"will my reminder run if my laptop is asleep", "automations"},
+		{"can I quit while an automation is running", "automations"},
+		{"why did quitting say an automation is running", "automations"},
+		{"do I get a desktop notification when a reminder goes off", "automations"},
+		{"why no notification for my reminder", "automations"},
+		{"does a reminder cost anything", "automations"},
+		{"how much can one automation run spend", "automations"},
+		{"can I give an automation more time", "automations"},
+		{"how do I write a cron schedule", "automations"},
+		{"what time zone does a schedule use", "automations"},
+		{"can I schedule something on the first of the month", "automations"},
+		{"what does the automation card show", "automations"},
+		{"what does o Change do on the card", "automations"},
+		{"what does save and run it now do", "automations"},
+		{"what is save this automation", "automations"},
+		{"what does /automations add do", "automations"},
+		{"how do I type an automation exactly", "automations"},
+		{"how do I find an automation's id", "automations"},
+		{"is there a phone notification for automations", "automations"},
+		{"can a watch trigger on a webhook", "automations"},
+		{"will an automation run twice", "automations"},
+		{"can an automation set up another automation", "automations"},
+		{"can a task set up a reminder", "automations"},
+		{"does scheduled work run in a worktree", "automations"},
+		{"keep the work on a branch for review", "automations"},
+		{"what is codeaf clock", "automations"},
+		{"what is CODEAF_NO_AUTOMATIONS", "automations"},
+		{"what is the automation_report tool", "automations"},
+		{"where is the automations database", "automations"},
+		{"where did standing orders go", "automations"},
+		{"what happened to /standing", "automations"},
+		{"is my old standing order still there", "automations"},
+		{"do automations work over ssh", "running-on-another-machine"},
 		// The wave that gave home's landed rows an aim. Somebody looking at a
 		// `needs you` row that has sat for four days asks two things — what does
 		// pressing it actually show me, and how do I make it go away — and both
@@ -3171,18 +3253,29 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 	}
 }
 
-// #1469: home lists waiting standing orders without their due time. A person
-// asking when one goes off there must reach the correction and the standing
-// place door, not the old promise of a time at the row's right edge.
-func TestHomeStandingOrderQuestionPointsToTheDueTimeDoor(t *testing.T) {
-	const asked = "when does a standing order go off on home"
-	const says = "Home does not show when a waiting order will next go off"
-	for _, section := range Chat().Search(asked, DefaultResults) {
-		if section.Page == "home" && strings.Contains(section.Body, says) {
-			return
+// #1469: home listed waiting standing orders without their due time, and a person
+// asking when one goes off there had to be sent to the standing place for it.
+// Standing orders are automations now (automations.md), and home's `automations`
+// panel draws when each one goes off next, in the sentence under the cursor — so
+// the question, asked in the old words and in the new ones, must reach the
+// section that says where that is read, and never a promise home does not keep.
+func TestHomeAutomationQuestionFindsWhenItGoesOffNext(t *testing.T) {
+	const says = "the sentence `/automations` draws, which says when it goes"
+	for _, asked := range []string{
+		"when does a standing order go off on home",
+		"when does my reminder go off on home",
+	} {
+		reached := false
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if strings.Contains(section.Body, says) {
+				reached = true
+				break
+			}
+		}
+		if !reached {
+			t.Errorf("%q does not reach the section that says where home shows when an automation goes off next", asked)
 		}
 	}
-	t.Fatalf("%q does not reach the home section that directs the reader to the due time", asked)
 }
 
 // People should be told when a provider skips the key box and when its list
@@ -3761,12 +3854,16 @@ func TestTheRerunQuestionsReachTheirCorrectedSections(t *testing.T) {
 		says     []string
 	}{
 		{
-			// q2: a judge is a model, and only the provider serving that model
-			// opens the door — not any connected provider.
+			// q2: a judge is a model. Since automations replaced standing orders a
+			// watch whose provider went away does not go quiet: every look ends
+			// `couldn't check` with the reason, what it had seen is untouched, and
+			// the next look on its rhythm is the retry — so connecting the provider
+			// again is the whole of the way back.
 			question: "my codeaf background watch stopped after disconnecting OpenRouter what happens and how do I restore it",
-			page:     "keeping-an-eye",
-			title:    "Will a watch retry if my API key is missing or disconnected",
-			says:     []string{"judges on", "OpenRouter", "lives on holds a credential", "connecting something\nunrelated"},
+			page:     "automations",
+			title:    "Will a watch retry if my API key is missing or the provider is disconnected",
+			says: []string{"it ends `couldn't check` with the reason", "it changes\nnothing about what the watch has seen",
+				"The next look on its rhythm simply tries again", "connecting the provider again (`/connect`)"},
 		},
 		{
 			// q5: the task's approved/confirmed binding is a local read before
@@ -3792,11 +3889,14 @@ func TestTheRerunQuestionsReachTheirCorrectedSections(t *testing.T) {
 			says:     []string{"Searching an old conversation does not bring it back", "reading, not remembering", "suppression above that makes forgetting hold"},
 		},
 		{
-			// q1: the catch-up is requested, not guaranteed, while off or asleep.
+			// q1: nothing runs while the machine is off or every window is closed —
+			// there is no operating-system timer to ask any more — and what fell
+			// due catches up ONCE when a window is next open, marked late, rather
+			// than once per slot it missed.
 			question: "what happens to a check missed while my computer was off",
-			page:     "keeping-an-eye",
-			title:    "When will it run next, and how often does it check",
-			says:     []string{"a request, not a", "operating system's to decide", "simply\nbe skipped"},
+			page:     "automations",
+			title:    "Does it run in the background when codeaf is closed",
+			says:     []string{"runs once", "marked `late`", "next slot is the first after now", "Nothing is installed on the"},
 		},
 	}
 	for _, ask := range asked {

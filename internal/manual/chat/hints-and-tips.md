@@ -140,18 +140,20 @@ build if the two disagree), so a tip you saw is on it word for word.
   when you run `/files`.
 - `/resume opens an earlier conversation` — when you start in a directory that already has
   a conversation. Retired when you run `/resume`.
-- `/standing turns a message into a rule work must follow` — once this directory has three or more earlier
-  conversations. Retired when a standing order is made or the standing page opened.
+- `/automations lists what codeaf does on a clock while it is open` — once this directory
+  has three or more earlier conversations. Retired the first time the automations place
+  opens, by any door (`/automations`, `alt+7`, a row that leads there), or the first time
+  an automation is proposed to you on a card in a conversation.
 - `space space takes you back to home` — after the first exchange, in a conversation only
   (never on home itself). Retired the first time two spaces in an empty box open home,
   from a conversation or from a place; reaching home by `/home` or the tab does not retire
   it. It is the first tip a conversation says, ahead of `/task`.
 - `/task starts a single-shot task on the side` — after the first exchange. Retired when
   `/task` is typed, bare or with a brief.
-- `/standing makes your message a rule instead of a request` — retired when a standing
-  order is made or the standing page opened. It teaches the same door as the `/standing`
-  row above and retires with it, so the two say a rule in the same words. (It named the
-  `ctrl+enter` chord until 2026-09-30, when queueing took that chord over.)
+- `say what to do and when, like every Monday at 9, and it becomes an automation` — from
+  the first minute on home and after the first exchange in a conversation. It is the other
+  half of the `/automations` row above — the place lists them, and saying one is how one
+  is made — and it retires with that row, on the same two gestures.
 - `/manual answers any question about codeaf` — retired when
   `/manual` is typed, bare or with a question.
 - `ctrl+shift+t reopens the last conversation tab` — retired the first time the chord is
@@ -201,9 +203,8 @@ build if the two disagree), so a tip you saw is on it word for word.
 **Memory, accounts and the rest**
 
 - `/remember carries a fact forward, /forget drops it` — retired when `/remember` is typed.
-  It is the only row that names two commands as a pair, because the two rows about keeping
-  something used to be told apart by nothing: a standing order is a condition the work has
-  to honour and a memory is a fact carried forward.
+  It is the only row that names two commands as a pair: the fact, and the way back out of
+  it.
 - `/connect links Notion, Slack and other accounts` — retired when the connect panel
   is reached for.
 - `/autonomy sets how questions are handled while you are away` — after the first

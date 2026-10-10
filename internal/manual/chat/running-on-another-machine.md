@@ -209,10 +209,11 @@ The **far** machine owns the conversation and everything it touches:
 - connected accounts
 - the harness registry
 - the session file the conversation is written to
-- **everything you set up that keeps working** — reminders, watches, rules, overnight work:
-  the store they live in, the clock that checks them, and the machine they run on
-- **the places** — home, tasks and standing all list the far machine's own disk, because a
-  place is a listing of a machine and the machine that matters is the one the work is on
+- **your automations and your rules** — reminders, scheduled work and watches, and the
+  memories marked always: the stores they live in, the clock that runs the automations, and
+  the machine they run on (*Automations on another machine*, below)
+- **the places** — home, tasks and automations all list the far machine's own disk, because
+  a place is a listing of a machine and the machine that matters is the one the work is on
   (*The places over --host*, on the Places page)
 
 The **near** machine — the one you are sitting at — owns the surface:
@@ -273,7 +274,7 @@ on a remote path — expect to see the full path.
 Yes, and they show **the far machine's**.
 
 `space` `space` opens the home of the machine your session runs on: its projects, its
-conversations, what each of them ran, and what keeps an eye on it. `enter` on a row opens
+conversations, what each of them ran, and its automations. `enter` on a row opens
 that conversation beside the one you are in — the engine gives it a connection of its own
 and the chat you came from keeps running, the same door `codeaf resume` uses locally. The right end of the tab bar reads `on <machine>` so you can
 see whose afternoon you are looking at, and it is not there at all on a local session.
@@ -615,48 +616,27 @@ The task roster lists this far conversation's work. Its rows come from the far
     bytes to the far conversation's `attachments/` folder. Generated and viewed pictures
     take the reverse road automatically so their far bytes can be painted in this terminal.
 
-## Reminders and watches over --host — they work, and they belong to that machine
+## Reminders and watches over --host — they work, and they are that machine's automations
 
-**Standing items cross this wire as ordinary events**, and your answer crosses back as its
-own frame — which is why they were the one ambient capability a connection never took away,
-back when a design card and an adaptive run's gate had no road here at all. The design card
-has one now (*Building a new sub-harness*, above); the run's gate still does not.
+`remind me at 6`, `tell me when CI on main goes red` and `every Monday post the standup`
+all work over `--host` and `--at`. The conversation over there proposes the automation, its
+card crosses the connection like any other question, and you answer it here with `1`, `2`,
+`0` or `o`. What to know is **whose machine it is on**:
 
-So `remind me at 6`, `tell me when CI on main goes red` and `every Monday post the standup`
-all work over `--host`. What to know is **whose machine they are on**:
+- It is saved in the **far** machine's store and runs in the far machine's workspace, under
+  that machine's profile, keys and approval rules — never this laptop's.
+- `/automations` (`alt+7`), home's `automations` panel and the `automations` line of
+  `/status` all show that machine's automations, and `→` then `r`, `p`, `e` or `d` on a row
+  writes to its store. A write that store refuses is shown as its own refusal on the message
+  line, never redrawn as done.
+- `/automations add …` typed in this window saves it over there too, and its rhythm is read
+  in that machine's time zone.
+- `ask here` on a remote home answers `this window cannot ask from home` — say it in the
+  conversation instead (*Asking from home*).
 
-- The item is created, checked and fired on the **far** machine, in the far machine's
-  workspace, under the far machine's own profile rules — not this laptop's.
-- It keeps working after this window closes and after the connection drops.
-- Background checks belong to the **far** machine: the first thing you set up over the
-  connection installs its timer, and the `background checks` settings row turns that one.
-  Neither ever touches the machine you are sitting at.
-- Pausing or stopping one writes to the far machine's store, and a write that store
-  refuses is shown as its own refusal rather than redrawn as done.
-
-**Home works and is about the far machine; the standing place works in half.** Home lists
-that machine's projects with each one's `◦` item band under it, and the `p`/`s` keys live on
-them.
-
-The standing place over a connection draws ONE of its shelves: **what stands anywhere else
-on that machine**. The shelf for *what stands on this conversation*, and the one for
-*exceptions*, are both empty — not because nothing stands, but because the reading behind
-them is a door the connection does not carry. For the same reason the `◦ 2 standing orders`
-count at the foot of the task column is **absent** over `--host`: there is no line rather
-than a wrong number.
-
-To see and change what stands on the conversation itself, open it on the machine it runs on.
-This is a gap and not a design: the doors exist on that machine and nothing carries them
-across yet.
-
-Two readings are absent over a connection, and each says nothing rather than guessing:
-
-- **`/status` prints no `keeping watch` line.** The OS timer is the far machine's and its
-  state is read from a file on that disk. A line drawn from this laptop's timer would be a
-  status about a machine nobody consulted.
-- **No row ever shows the firing mark `◐`.** Nothing on any disk says an item is firing at
-  this instant — a run is in flight inside whichever process holds the tick lock — so the
-  surface does not claim it. That is true locally too.
+Nothing is installed on either machine to run them. When they run and when they stop is
+under *Automations on another machine* — in short, only while a window is open on that
+machine or attached to it.
 
 ## Automations on another machine — which machine runs them, and when they stop
 

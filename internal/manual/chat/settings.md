@@ -76,7 +76,9 @@ change are omitted; supported model controls remain in Models.
 ## General — interface preferences and hints
 
 **General** contains mouse interaction, completed tool details, tool icons, chat
-switching, the task sidebar, updates and background reminders. **Show hints** is
+switching, the task sidebar and updates. There is no background reminders row: codeaf
+installs no timer, and automations run only while a codeaf window is open
+(*Automations*). **Show hints** is
 positive: on shows contextual tips, off hides them. Keyboard instructions and
 setting explanations stay visible either way. **Completed tool details** offers
 **collapsed** or **expanded** without changing the meaning of an existing profile.

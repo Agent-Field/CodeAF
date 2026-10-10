@@ -365,8 +365,9 @@ Three things that look like the same picture and are not:
   page then says `nothing on this page yet — it fills in as the task works`. The roster's row for it
   says `queued`; the page fills when it starts.
 - **A row that was never a task.** A background job — a server, a build, a watch, a video
-  render — sits in the `jobs` section under `tasks` and `standing`, not among the families,
-  and its page is a card, not a chat, because a job has no agent and writes no transcript.
+  render — sits in the `jobs` section under the tasks and the automations, not among the
+  families, and its page is a card, not a chat, because a job has no agent and writes no
+  transcript.
   What it shows is the name, the handle `job 4`, the command, the clock or ending, and the
   end of its log. A job that has not written its first line yet draws no tail and no error.
   Its row is the one under the `jobs` label.

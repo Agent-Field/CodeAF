@@ -527,8 +527,12 @@ func TestManualOpensWithNoKeyAndNoModel(t *testing.T) {
 		if !strings.Contains(out, label) {
 			t.Fatalf("%q did not return the corrected home section labelled %s; got %v", asked, label, labelsOf(renderedSections(out)))
 		}
-		if !strings.Contains(out, "Home does not show when a waiting order will next go off") {
-			t.Errorf("%q returned the home page without its corrected due-time guidance", asked)
+		// STANDING ORDERS ARE AUTOMATIONS NOW, and home's `automations` panel says
+		// when each one goes off next, in the sentence `/automations` draws
+		// (internal/manual's TestHomeAutomationQuestionFindsWhenItGoesOffNext asks
+		// the same question without the binary).
+		if !strings.Contains(out, "which says when it goes off next") {
+			t.Errorf("%q returned the home page without saying where an automation's next time is shown", asked)
 		}
 		t.Logf("`codeaf manual %q` reached %s and explained where the due time is shown", asked, label)
 	})

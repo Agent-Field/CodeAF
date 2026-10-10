@@ -27,7 +27,7 @@ over about a second and a quarter, and is then still.
 
 **Nothing else is drawn.** No column of tasks on the right, no rule with the legend in
 it — so no conversation name and no model above the box yet — no `+ /task` or
-`+ /standing` doors, no `❯ ctrl+g hide`, no `$0.00` and no token count on the status
+`+ /automations` doors, no `❯ ctrl+g hide`, no `$0.00` and no token count on the status
 line — only `idle` at the right of the status row. Every one of those arrives with the
 conversation rather than before it (see the other headings on this page).
 
@@ -89,7 +89,7 @@ box and the picker's filter stays at the foot of the frame where its list is.
 ## Where is the task column, the sidebar, the right rail on a new conversation — what happened to the sidebar, the column on the right is missing
 
 **The column on the right is absent while it has nothing to say.** On an untouched
-empty conversation there is no column, no border, no `+ /task`, no `+ /standing`, no
+empty conversation there is no column, no border, no `+ /task`, no `+ /automations`, no
 `❯ ctrl+g hide`, and no two-column edge from a column you closed in an earlier session.
 The conversation is laid out at the full width of the terminal.
 
@@ -97,11 +97,11 @@ It appears the moment there is something true to put on it:
 
 - **your first keystroke** — the conversation has begun, and the column stands from then
   on exactly as the tasks page describes, doors and all, at 100 columns or more;
-- **a task** — a standing task landing on this conversation raises it;
-- **a standing order** reaching this conversation — a session with orders over it meets
-  the column on its very first frame, with the orders on it.
+- **a task** — a task landing on this conversation raises it.
 
-The `+ /task` and `+ /standing` doors are not lost: `/` lists every command, and the
+Automations do not raise it: the column lists only the automations a conversation set up
+itself, and a new one has set up none — every automation is in `/automations`. The
+`+ /task` and `+ /automations` doors are not lost: `/` lists every command, and the
 line under the message box says `/task <brief> starts work`. `ctrl+g` on the empty
 screen counts as a first keystroke like any other — the greeting goes, and the key then
 does what it always does, which is to close the column it would just have raised; press

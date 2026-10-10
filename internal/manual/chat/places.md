@@ -6,7 +6,7 @@ A **place** is a full-screen view in codeaf. The main bar groups your daily work
 
 `Home` · `Chats` · `AI teams` · `Activity` · `Memory` · `Spend` · `Settings`
 
-AI teams groups AI chats around ongoing work, with an optional AI manager. Activity shows work across chats and delegated tasks. Memory is always available, including before anything has been saved. Standing orders remain accessible through `/standing`, their shortcut, and the map; their label appears when that view is open.
+AI teams groups AI chats around ongoing work, with an optional AI manager. Activity shows work across chats and delegated tasks. Memory is always available, including before anything has been saved. Automations are reached through `/automations`, `alt+7` and the map; their word joins the bar only while that place is open.
 
 They are drawn on the **top line of every page**, right after the `codeaf` wordmark, on a
 place and in a conversation alike. This manual still calls that row of words **the bar**:
@@ -57,7 +57,7 @@ Four ways, and they all reach the same seven rooms:
 - **`tab`** — the next place **on the bar**, round again from the last. **`shift+tab`** —
   the one before. The order follows the visible bar; Chats returns to the conversation.
 - **`alt+1`** … **`alt+8`** (**`opt+1`** … **`opt+8`** on a Mac) jump straight to one, **from a
-  place or from a conversation**. Shortcuts preserve their established destinations even though the visual order changed: home (1), AI teams (2), chats (3), activity (4), spend (5), settings (6), standing (7), memory (8). Hold `alt` and press the digit. macOS draws the modifier as `opt`
+  place or from a conversation**. Shortcuts preserve their established destinations even though the visual order changed: home (1), AI teams (2), chats (3), activity (4), spend (5), settings (6), automations (7), memory (8). Hold `alt` and press the digit. macOS draws the modifier as `opt`
   because that is the key's name on a Mac keycap; Linux and Windows draw it `alt+`, and it is the same
   chord either way. `tab` and the shift-arrows are not like them: in a conversation those
   already belong to path completion and to the caret, so the digits are the one class of
@@ -68,17 +68,17 @@ Four ways, and they all reach the same seven rooms:
   so (kitty, ghostty, WezTerm, foot, Windows Terminal are the usual ones). `ctrl+.` draws the
   map there too. Where the terminal has said nothing, these do nothing and are never drawn —
   the map's own line names them exactly when they are live.
-- **type its name** — on home, typing `sta` offers the standing place beside the
+- **type its name** — on home, typing `aut` offers the automations place beside the
   conversations that match. A place ranks first, wears `▸`, and says `a place` out at the
   right margin. Home's list is a **drop-up** — it is read upward, out of the box you typed
   into — so ranking first means the offered place sits **below every conversation the same
   words matched**, one row above `ask here` and `start a new conversation`, which is the
   nearest row to your hand.
   Where the place can say what is behind it without going to the disk for it, the margin
-  says that too: `a place · 6 orders, 1 fired today` on standing. A place that has nothing
-  to count, or nothing in it, says `a place` alone.
-- **a command** — `/home`, `/history`, `/standing`, `/memory`, `/settings`. Each opens the
-  place it names.
+  says that too: `a place · 2 automations on the clock` on automations. A place that has
+  nothing to count, or nothing in it, says `a place` alone.
+- **a command** — `/home`, `/history`, `/automations`, `/memory`, `/settings`. Each opens
+  the place it names.
 - **click the word**: the top line itself is the control, from a place or from a
   conversation. Each word is a button a cell wider than the word on both sides, and a press
   anywhere on that button goes there; a press on the air before the first word or after the
@@ -206,14 +206,14 @@ that chat.
 
 Three gestures, the same on all seven places:
 
-- **List rows have one selection.** On home, tasks, standing, memory, spend,
+- **List rows have one selection.** On home, tasks, automations, memory, spend,
   moving the mouse onto a row selects it. Keyboard navigation immediately takes over
   and clears the old mouse highlight. A parked pointer cannot reclaim the selection;
   move it again to switch back. Leaving the list keeps the latest selection. Settings
   retains its separate hover preview. Home's `projects` rows are not selected by the
   mouse: the pointer only underlines a project's name, and a click picks that folder for
   the next message without moving the selection.
-- **a click on a row opens it**, exactly as `enter` on it would: on standing and spend the first press puts the cursor there and opens what the row names. **A click
+- **a click on a row opens it**, exactly as `enter` on it would: on automations and spend the first press puts the cursor there and opens what the row names — on automations, that row's history. **A click
   never spends**: on memory, where `enter` on a line asks the model about it, the press
   opens the line's card instead, and on a shelf it folds the shelf. The verbs stay keys.
   Home keeps the same grammar — one click on a row or a fold opens it, and a panel's
@@ -235,7 +235,7 @@ and a click opens. Its own section is above.
 
 **Only home has a message box.** Type a sentence on home and `enter` starts a conversation
 carrying it; `alt+enter` sends it off as a task instead (the composer layer, below). No
-other place starts anything: there is no box under tasks, standing, memory, spend, `enter` on those pages opens the row under the cursor and nothing else, and
+other place starts anything: there is no box under tasks, automations, memory, spend, `enter` on those pages opens the row under the cursor and nothing else, and
 `alt+enter` does nothing there. `tab` to home, or `alt+1`, when you want to start something
 — its rule already says where the conversation will land and what it will run on.
 
@@ -249,11 +249,11 @@ is gone (2026-09-17).
 narrows the conversation list by conversation name, project name or path, or nested task
 name. Matching conversations keep their complete task trees. The letters draw on the
 control row at the top beside the `⌕` mark. On **memory** the head row echoes the filter in place of
-`type to filter`. Spend and standing take no text.
+`type to filter`. Spend and automations take no text.
 
 **Two spaces still open home from every place.** On a place with a filter they are typed
-into the empty filter and taken back out; on spend and standing, which have nothing to type
-into, the two bare spaces are counted, and any other key between them disarms the door.
+into the empty filter and taken back out; on spend and automations, which have nothing to
+type into, the two bare spaces are counted, and any other key between them disarms the door.
 
 ## A new conversation in Sessions — no title, counted chat below the screen
 
@@ -412,28 +412,31 @@ The last two classes are bound where there is something to bind. `alt+<letter>` 
 `alt+s` on the memory place, which changes which shelf it is showing; home's panels have no
 second shape, so `alt+g` and `alt+q` do nothing there. `shift+<arrow>` is a place's time
 window — `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is — and
-three places have one: **activity** (when it ran), **standing** (when it fired) and **spend**
-(which days). All three draw the same control on their own head row, at the right of the
-line: `shift+← aug 12 – aug 25 →`, with `shift+↑ coarser` beside it where the line has room.
+two places have one: **activity** (when it ran) and **spend** (which days). Both draw the
+same control on their own head row, at the right of the line: `shift+← aug 12 – aug 25 →`,
+with `shift+↑ coarser` beside it where the line has room.
 The label between the arrows is the control and the reading at once, so the span is on the
 screen once and the keys that move it are beside it. A place with no window to move answers
 those keys with nothing rather than with something that is not drawn, and so does a terminal
 too narrow to draw the control — and the zoom is bound only where its own clause fits, for
-the same reason. **memory has no time window**; its `shift+<arrow>` keys do nothing.
+the same reason. **Memory and automations have no time window**; their `shift+<arrow>` keys
+do nothing.
 
 ## What the right arrow does on a row — the verbs, and why letters are safe there
 
 Press `→` on a row that can be acted on and a strip of verbs opens **directly under that
-row**, on every place that has verbs — home, tasks, standing and memory:
+row**, on every place that has verbs — home, tasks, automations and memory. On a row of
+automations it reads:
 
 ```
-p pause   s stop   n not here
+r run now   p pause   e edit   d delete   o open where it was asked
 ```
 
 On memory they are `c open the card`, `e fix the wording` and `f forget it`. On home the
-verbs are the row's own — a question's first two answers on its own answer keys, `x delete`, `c copy name`, `n new in project`, `o open folder`, and
-`p pause it` or `r resume it` on a standing item, `s stop` on a task this window runs,
-`its chats` and `open folder` on a project. On home, `→` opens the selected row's
+verbs are the row's own — a question's first two answers on its own answer keys, `x delete`, `c copy name`, `n new in project`, `o open folder`,
+`s stop` on a task this window runs,
+`its chats` and `open folder` on a project. Home's `automations` panel has no verbs: `enter`
+on it opens the automations place, where they are. On home, `→` opens the selected row's
 options at every width; the arrows stay in the list.
 
 While those options are drawn, **those letters are the verbs** and the composer is asleep.
@@ -508,7 +511,7 @@ Neither of them ever ends in `…`, and neither ever cuts inside a word.
 
 Press `alt+.` and the whole key map appears **in the cells you were already reading**:
 
-- the bar shows the established shortcut numbers beside each destination: `1 home`, `3 chats`, `2 AI teams`, `4 activity`, `8 memory`, `5 spend`, `6 settings`, followed by `7 standing`. Visual order does not change shortcut destinations.
+- the bar shows the established shortcut numbers beside each destination: `1 Home`, `3 Chats`, `2 AI teams`, `4 Activity`, `8 Memory`, `5 Spend`, `6 Settings`, followed by `7 Automations`, which the bar otherwise draws only while you are in it. Visual order does not change shortcut destinations.
 - the hint line becomes the chord list
 
 `?` over an empty box draws the same map, which is what that key means on a place — show me
@@ -529,7 +532,7 @@ being held down — it only reports what arrived.
 
 The first place, and the one codeaf opens on. Everything on this machine, from every
 project, in one, two or three columns — one `sessions` list of the fifteen most recent
-conversations, then question rows, `projects`, `since you left`, `spend`, and `standing`.
+conversations, then question rows, `projects`, `since you left`, `spend`, and `automations`.
 Open tabs and saved history share that list, with closed conversations dimmed. Which
 column a panel stands in follows what it holds: every panel with rows is in the **field** at
 the left, and the **rail** at the right holds `projects` and `spend` at its top and, under
@@ -597,33 +600,41 @@ Surviving siblings and their conversations remain. Deleted records cannot be rec
 Folder actions are local. Permanent deletion is also available over a connection when
 that engine advertises the capability. Stopping work without deletion remains a separate action.
 
-## standing — what runs without being asked, and where to type on the standing page
+## automations — what runs on a clock, and why there is nowhere to type on it (where the standing page was)
 
-The orders that fire on their own, on four shelves each under its own heading: this
-conversation's, this project's, the machine's, and then `in other projects` — everything
-else standing on this computer that does not reach the conversation you are in.
-`/standing` and `/orders` open it, and so does `alt+7`. It is not on the tab bar.
+Everything codeaf does on a clock while it is open — reminders, scheduled work and watches.
+`/automations` and `alt+7` open it, and so does the `automations` heading on home; typing
+`aut` on home offers it as `a place · 1 automation on the clock`, counting those not paused
+or finished. It is not one of the bar's words until you are in it — the pointer on it then
+says `what codeaf does on a clock while it is open` — and the map (`alt+.`) shows it as
+`7 Automations`. One row per automation: its mark, its title, and one dim sentence.
 
-`enter` opens where an order was asked for. `→` opens the row's verbs — `p pause`, `s stop`,
-and `n not here` on the three shelves that reach this conversation. Those three used to be
-bare letters; they moved onto the strip when standing became a place with a composer under
-it, because every printable key belongs to the composer. On the `in other projects` shelf
-only `p` and `s` are offered: `n` names an exception in a place that order never reached,
-so it is not there at all.
+```
+weekly update   scheduled work · every Monday at 09:00 · next Mon 12 Oct at 09:00 · last done
+```
 
-Each row also says **how much rope** the order has — `asks first`, `earning trust 3/5`, or
-`trusted alone` — which is the fact that decides whether you have to watch it.
+Active ones come first, soonest first, then paused, then finished. `enter` opens a row's
+history, every run newest first, and `enter` on a run of work opens that run's own
+transcript; `esc` goes back to the list. `→` opens the row's verbs — `r run now` (`check
+now` on a watch, `say it now` on a reminder), `s stop the run` while one is in hand,
+`p pause` or `resume`, `e edit`, `d delete` (asked twice), `o open where it was asked` —
+and the foot names them:
+`enter its history · → verbs: run now, pause, edit, delete, open where it was asked · tab next place · esc`.
 
-Nothing is behind a fold — `↑ ↓` walks every order and the list scrolls with the cursor.
-Under the row you are on, an order that has been looked at adds a short `last look`
-paragraph. The header carries a time window for **when it fired**: `shift+←→` moves it,
-`shift+↑↓` changes how coarse it is, and it opens holding every firing this computer has.
-The standing orders page has the whole of it.
+**There is nowhere to type on it.** It takes no text and has no time window; a letter is a
+verb only while the strip or the foot names it. An automation is made elsewhere — said in a
+conversation, typed as `/automations add …` in a message box, or asked with `ask here` on
+home — and each of those ends on a card that saves nothing until you say yes. With none
+saved the place is its heading over
+`reminders, scheduled work and watches · "remind me at 6" or "every morning at 9"`.
+
+It has the slot the standing orders page had: standing orders are gone, `/standing` is not a
+command any more, and *Automations* has the whole of what replaced them.
 
 ## memory — what is held true
 
 What codeaf holds true about you and this machine, with what kind of thing each line is, how
-it has done, `helped 19 · bore on 3`, and how old it is out at the right. `/memory` and `/memories` open it, and so does `alt+8`. It is not on the tab bar.
+it has done, `helped 19 · bore on 3`, and how old it is out at the right. `/memory` and `/memories` open it, and so does `alt+8`. It is on the tab bar, between `Activity` and `Spend`.
 
 The page is **shelves** — you, this project, this machine — biggest first, with the biggest
 one open and the rest rolled up. Type to filter what is already on the page, **every letter
@@ -652,19 +663,20 @@ it. It reads one machine-wide ledger — a line per model call — so the figure
 and not an estimate.
 
 **It is the whole machine and not this session**, which is why a figure here can be larger
-than anything this conversation did: every window, every task and every standing run on
+than anything this conversation did: every window, every task and every automation run on
 this machine writes into that one ledger, including a session opened from another machine
 over `--host` whose calls are still made here. For this session alone, ask `/cost`.
 
 The window with its sparkline, and then **one cut of the ledger**: `by topic` — what the
 money was for — or `by model`, which is the same money added up the other way. The heading
 is the control that swaps them: walk the cursor onto it and it wears arrows, `← by topic →`,
-and `←`, `→` or `enter` step between the two. It opens on `by topic`. Standing orders get a
-heading of their own under that cut, because a promise is one of the things money was for.
+and `←`, `→` or `enter` step between the two. It opens on `by topic`. Automations get a
+heading of their own under that cut, `by automation`, because something on a clock is one of
+the things money was for.
 
 `enter` on a row of `by topic` opens the thing the money went on — a task opens its own
-record card, a standing promise opens the standing place on that order, and a conversation
-opens where you left it. A thing the record no longer holds says so and stays put. The
+record card, an automation opens the automations place with the cursor on it, and a
+conversation opens where you left it. A thing the record no longer holds says so and stays put. The
 dearest twenty are shown; `enter` or a click on `▸ 11 more` draws the rest, and `▾ 11 fewer`
 folds them back. The cursor arrives on the first of them — the biggest thing the money went
 on. `shift+←` and `shift+→` move the window by its own length; `shift+↑` and `shift+↓`
@@ -754,8 +766,8 @@ anywhere off the menu, puts it away and leaves everything else as it was.
 
 **The wordmark and the place you are standing in never fold**, and neither does the word the
 bar's cursor is on or a place wearing a count. `alt+1`…`alt+8` still go straight to a place
-whether or not its word is on the row, and the numbers never move: the six on the bar are
-`alt+1`…`alt+6`, then standing and memory are `alt+7`…`alt+8`.
+whether or not its word is on the row, and the numbers never move: `alt+7` is automations,
+drawn on the row only while you are in it, and `alt+8` is memory.
 
 The tab strip, drawn only inside a chat, keeps its own narrowing: long names are cut at a word,
 the names shrink until every tab fits, then the strip scrolls with `‹` `›`, and `+3` counts
@@ -775,9 +787,8 @@ an hour ago, `alt+4`, `alt+7` and `alt+8` all open:
 
 - **activity**, headed `activity`:
   `work you send off with /task lands here, and its record stays`
-- **standing**, headed `standing orders`:
-  `reminders, watches and routines · "remind me at 6" or "every morning at 9"`
-  No shelf and no time window is drawn under it.
+- **automations**, headed `automations`:
+  `reminders, scheduled work and watches · "remind me at 6" or "every morning at 9"`
 - **memory**, headed `memory`:
   `what it has learned about you and this machine · /remember adds a line`
   If this build is not remembering anything at all, the rule under the page also says
@@ -795,8 +806,8 @@ There is no "coming soon", no greyed-out list and no empty table with headings o
 page that draws the furniture of a feature it does not have looks like a bug rather than like
 a plan.
 
-Commands behave the same way. `/history` on a machine that has run nothing, `/standing` on
-one nothing stands on, and `/memory` with no store all open their place and let it teach.
+Commands behave the same way. `/history` on a machine that has run nothing, `/automations`
+on one with nothing saved, and `/memory` with no store all open their place and let it teach.
 They used to write one line into the conversation and open nothing; on a fresh machine that
 was every door onto those three pages, so the first thing a new person tried appeared not to
 work.
@@ -807,7 +818,7 @@ A tab wears a number when **something in that place has changed since you last l
 place** — not how many things are in there. A permanent count is furniture, and furniture is
 what people stop seeing.
 
-Home, tasks, standing and memory can wear one. Spend is a sum,
+Home, tasks, automations and memory can wear one. Spend is a sum,
 and settings is how this machine is set — a number in front of any of those would be a number
 about nothing.
 
@@ -821,7 +832,9 @@ greets you with a bare bar rather than with a count over every tab. An unknown c
 as nothing rather than as a zero.
 
 On memory the number is the memories learned plus the ones let go of since you were last
-there. The counts are recomputed on the same three-second beat the places read on, so a tab
+there. On automations it is how many automations have last run to something worth telling
+you — anything but a watch's `nothing new` — since you last left the place, each counted
+once however many times it ran. The counts are recomputed on the same three-second beat the places read on, so a tab
 loses its number within a few seconds of the place being read rather than the instant you
 walk in.
 
@@ -835,20 +848,20 @@ to it — rather than a room in the machine, so it has no tab and `tab` does not
 
 **A place is a listing of one machine's disk, and over `--host` that machine is the one your
 session runs on.** Home lists the conversations under `~/.codeaf/v3`; tasks lists the work
-those conversations ran; standing lists what keeps an eye on that machine; spend adds up the
+those conversations ran; automations lists what that machine does on a clock; spend adds up the
 ledger every model call there writes a line into; memory reads what those sessions learned. Over a
 connection there are two machines with those directories on them.
 
-**Home, tasks and standing now read the far machine's.** They ask the engine for its own
+**Home, tasks and automations read the far machine's.** They ask the engine for its own
 reading and draw that. Settings is deliberately mixed; spend and memory use their
 own remote stores when the engine supports them:
 
 | Place | Over `--host` |
 |---|---|
-| **home** | the far machine's projects and conversations |
+| **home** | the far machine's projects, conversations and automations |
 | **teams** | the far machine's teams, their packets and their spend; the team card's settings rows are that machine's, and `Wrap up first` is offered only when its engine answers the wrap-up doors |
 | **activity** | the far machine's work, out of the same reading |
-| **standing** | the far machine's orders — both what stands on this conversation and what stands anywhere else on that machine |
+| **automations** | the far machine's automations, changed in its store; none when it could not open that store — never this laptop's |
 | **settings** | this computer's rows; the sheet says the far conversation reads its profile on the other machine |
 | **spend** | the far machine's priced model calls |
 | **memory** | the far machine's memories; fixing and forgetting a line write there too |

@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/automation"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	executor "github.com/Agent-Field/codeaf/internal/exec"
-	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // THE PAGES QUOTE FIGURES THE CODE OWNS, AND MARKDOWN CANNOT INTERPOLATE.
@@ -112,8 +112,28 @@ func quotedFacts(t *testing.T) []quotedFact {
 	decay, notDecay := counted(sourceNumber(t, "../router/crew.go", "redoDecayAfter"))
 	steps, notSteps := counted(sourceNumber(t, "../router/crew.go", "redoOffsetCeiling"))
 	shortlist, notShortlist := counted(sourceNumber(t, "../session/taskmodel.go", "taskModelShortlist"))
-	minutesWord, notMinutesWord := counted(int(standing.Interval / time.Minute))
 	ceilingTimes, otherCeilingTimes := counted(int(config.CrewCheckCeilingTimes))
+	// AN AUTOMATION'S TWO LIMITS are the figures a card quotes when nobody named
+	// any, and the pages that explain a run stopping quote them back in the
+	// card's own spellings — `30m` and `$5.00` — as well as in prose.
+	runMinutes := strconv.Itoa(int(automation.DefaultTime / time.Minute))
+	var otherRunMinutes []string
+	for _, minutes := range []int{5, 10, 15, 20, 45, 60, 90, 120} {
+		if word := strconv.Itoa(minutes); word != runMinutes {
+			otherRunMinutes = append(otherRunMinutes, word)
+		}
+	}
+	runDollars := dollarsOwed(automation.DefaultUSD)
+	runCard := fmt.Sprintf("$%.2f", automation.DefaultUSD)
+	var otherRunDollars, otherRunCards []string
+	for amount := 1; amount <= 10; amount++ {
+		if word := strconv.Itoa(amount); word != runDollars {
+			otherRunDollars = append(otherRunDollars, word)
+		}
+		if card := fmt.Sprintf("$%.2f", float64(amount)); card != runCard {
+			otherRunCards = append(otherRunCards, card)
+		}
+	}
 	taskDollars := config.CrewTaskMoney(config.CrewTaskCapDefault)
 	var otherTaskDollars []string
 	for amount := 1; amount <= 10; amount++ {
@@ -343,15 +363,33 @@ func quotedFacts(t *testing.T) []quotedFact {
 			{"worker-harness", "**$%s** out of the box"},
 		},
 	}, {
-		fact: "what one firing may spend", owner: "standing.DefaultPerRunUSD",
-		value:  dollarsOwed(standing.DefaultPerRunUSD),
-		quotes: []quotedIn{{"models-and-cost", "| **per standing run** | `$%s a firing` |"}},
+		// THE TIME ONE RUN OF AN AUTOMATION MAY TAKE when nobody named one. The
+		// card quotes it as `30m`, a run that ran out of it says so in the same
+		// spelling, and the page about cost says it in words.
+		fact: "how long one automation run may take", owner: "automation.DefaultTime",
+		value: runMinutes, others: otherRunMinutes,
+		quotes: []quotedIn{
+			{"automations", "the card shows both: **%s minutes**"},
+			{"automations", "`up to %sm and"},
+			{"automations", "`incomplete · ran out of its %sm`"},
+		},
 	}, {
-		// The pass, which the page states in words because a person asking how
-		// often their watch checks is not asking for a duration.
-		fact: "how often everything standing is checked", owner: "standing.Interval",
-		value: minutesWord, others: notMinutesWord,
-		quotes: []quotedIn{{"keeping-an-eye", "Everything standing is checked every %s minutes."}},
+		// AND WHAT ONE RUN MAY SPEND, which the Spending tab reads out as a rail it
+		// has no settings row for.
+		fact: "what one automation run may spend", owner: "automation.DefaultUSD",
+		value: runDollars, others: otherRunDollars,
+		quotes: []quotedIn{
+			{"automations", "minutes** and **$%s a run** unless you named others"},
+			{"models-and-cost", "| **per automation** | `$%s a run` |"},
+		},
+	}, {
+		// The same figure in the card's own spelling, which keeps its cents.
+		fact: "what one automation run may spend, as its card says it", owner: "automation.DefaultUSD",
+		value: runCard, others: otherRunCards,
+		quotes: []quotedIn{
+			{"automations", "m and %s a run`"},
+			{"automations", "`incomplete · reached its %s cap`"},
+		},
 	}, {
 		// THE ↻ LINE'S WHY IS THE CODE'S WORD FOR THE BOUND, NOT THE PAGE'S.
 		// That line said only how many turns it picked up, and the page showed
