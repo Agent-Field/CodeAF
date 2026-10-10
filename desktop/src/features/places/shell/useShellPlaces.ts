@@ -55,12 +55,14 @@ export function usePlaceRail(shell: PlacesShell, inputs: RailInputs): PlaceRailP
     ...rest,
     now: {
       active: inputs.onWorkspace && shell.place === 'now' && !allPlacesActive, shortcut: placeShortcuts.slot(0),
-      count: graph?.now.status.running, status: rollupStatus(graph?.now.status), statusLabel: graph && graph.now.status.needsYou > 0 ? `${graph.now.status.needsYou} need${graph.now.status.needsYou === 1 ? 's' : ''} you in Now` : undefined,
+      // Places 8e draws this as the unplaced-chat count ("Not in any place"), not how many are running.
+      count: graph?.now.chats, status: rollupStatus(graph?.now.status), statusLabel: graph && graph.now.status.needsYou > 0 ? `${graph.now.status.needsYou} need${graph.now.status.needsYou === 1 ? 's' : ''} you in Now` : undefined,
       onGo: enter(() => void shell.goTo('now')), onNewWindow: () => void shell.goToInNewWindow('now').catch(shell.warn),
     },
     sections,
     current: inputs.onWorkspace && !allPlacesActive && shell.place !== 'now' ? shell.place : undefined,
     emptyHint: !!graph && graph.places.some(place => !place.archived),
+    livePlaces: graph ? graph.places.filter(place => !place.archived).length : undefined,
     notice,
     // All places exists wherever the engine has a Places door; a bridge without one draws no row rather than a dead one.
     allPlaces: status === 'unavailable' ? undefined : { active: allPlacesActive, shortcut: placeShortcuts.allPlaces, onOpen: enter(() => shell.openAllPlaces()), onOpenInNewTab: enter(() => shell.openAllPlaces(true)) },
