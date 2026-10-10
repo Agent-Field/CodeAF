@@ -902,6 +902,13 @@ the desktop supplies a call identity rather than an arbitrary file path. Display
 output is capped at 1 MiB and identifies partial results honestly. This is a development preview, not a new
 server or an independently implemented agent.
 
+## Desktop Tasks panel shortcut — Cmd+Shift+K or Ctrl+Shift+K
+
+In a desktop conversation with tasks, **⌘⇧K** on a Mac or **Ctrl+Shift+K** on
+Windows and Linux toggles the Tasks panel. With no tasks, the shortcut does
+nothing. The task's own view does not claim this shortcut. **⌘K** or **Ctrl+K**
+without Shift remains the command palette shortcut.
+
 ## Closing a desktop tab and reattaching an idle conversation
 
 Closing a desktop tab detaches its view without stopping work. The bridge's
