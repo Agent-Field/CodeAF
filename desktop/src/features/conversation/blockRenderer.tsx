@@ -3,6 +3,7 @@
 
 import type { ReactNode } from 'react';
 import type { EngineTaskRow } from '../chat/engine-client';
+import { MembershipNote } from '../places/using/MembershipNote';
 import { DeliverableView, FileChip, ImageGrid, LinkChip, type FigureItem } from './assets';
 import { DecisionAsideView, TranscriptPlan } from './DecisionAsideView';
 import { NoteItem } from './NoteItem';
@@ -128,7 +129,7 @@ export function blockRenderer(ctx: BlockContext) {
         case 'decision-receipt': return <DecisionAsideView decision={block.decision} onOpen={ctx.onFocusQuestion}/>;
         case 'plan': return ctx.sessionId ? <TranscriptPlan plan={block.plan} sessionId={ctx.sessionId}/> : null;
         case 'remember-line': return <NoteItem text={block.text} undoReceipts={block.undoReceipts}/>;
-        case 'context-note': return <NoteItem text={block.text} undoReceipts={block.undoReceipts}/>;
+        case 'placeChange': return <MembershipNote text={block.text} undoReceipts={block.undoReceipts} placeName={block.placeName}/>;
         case 'work':
           return <WorkBlock block={block} turn={turn} ctx={ctx} />;
         case 'task':
