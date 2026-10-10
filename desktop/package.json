@@ -28,6 +28,7 @@
     "test:ui": "playwright test",
     "test:places-components": "playwright test --config playwright.places-components.config.ts",
     "test:places-home": "playwright test --config playwright.places-home.config.ts",
+    "test:overturn-flow": "playwright test --config playwright.overturn-flow.config.ts",
     "test:why-popover": "playwright test --config playwright.why-popover.config.ts",
     "test:using": "playwright test --config playwright.using.config.ts",
     "test:workspace-sync": "playwright test --config playwright.workspace-sync.config.ts",
