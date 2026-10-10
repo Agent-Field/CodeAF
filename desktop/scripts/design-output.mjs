@@ -8,8 +8,9 @@ const tint = ({ h, a, swatch }) => `--h: ${h}; --a: ${a}; --swatch: ${swatch};`;
 const tints = Object.entries(design.tints.hues).map(([name, hue]) => `[data-tint="${name}"] { ${tint(hue)} }`).join('\n');
 const dark = `  color-scheme: dark;\n${declarations(design.themes.dark)}`;
 // Reduced motion also covers component durations and new motion distances as tokens are added.
+// i2-banner-duration stays: the banner drops its 8px slide and keeps the 200ms fade (NB-3).
 const reducedMotion = Object.keys(design.foundation).flatMap(key => {
- if ((key.startsWith('dur') || key.endsWith('-duration') || key === 'motion-tab-collapse') && key !== 'duration-none') return [`--${key}: var(--duration-none);`];
+ if ((key.startsWith('dur') || key.endsWith('-duration') || key === 'motion-tab-collapse') && key !== 'duration-none' && key !== 'i2-banner-duration') return [`--${key}: var(--duration-none);`];
  if (key.startsWith('motion-scale-') && key !== 'motion-scale-rest') return [`--${key}: var(--motion-scale-rest);`];
  if (key.startsWith('motion-rise-') || ['motion-travel', 'motion-directional-travel', 'motion-place-slide', 'breathe-from', 'breathe-to'].includes(key)) return [`--${key}: var(--motion-rest);`];
  return [];
