@@ -37,13 +37,22 @@ export function StateDot({ mark }: { mark: TabMark }) {
 
 /**
  * The press handlers of a card or filmstrip item: a plain click opens, a ⌘/Ctrl-click or a middle-click is the
- * background press. The middle button fires `auxclick`, not `click`, and its mousedown is cancelled so the platform's
- * autoscroll (or primary-selection paste) never starts on top of the layer.
+ * background press. Cancel middle-button autoscroll and guard the ensuing PRIMARY paste separately:
+ * Chromium can still send paste to a different focused field after canceled mouse events.
  */
 export function backgroundPress(open: () => void, background: () => void) {
   return {
     onClick: (event: MouseEvent) => (isBackgroundPress(event, isMac) ? background() : open()),
-    onAuxClick: (event: MouseEvent) => { if (event.button === 1) { event.preventDefault(); background(); } },
+    onAuxClick: (event: MouseEvent) => { if (event.button === 1) {
+      event.preventDefault();
+      // Chromium can paste PRIMARY into the focused filter after a canceled auxclick.
+      // Suppress only the paste caused by this background press, then release the guard.
+      const doc = event.currentTarget.ownerDocument;
+      const preventPaste = (paste: Event) => paste.preventDefault();
+      doc.addEventListener('paste', preventPaste, { capture: true, once: true });
+      setTimeout(() => doc.removeEventListener('paste', preventPaste, true), 0);
+      background();
+    } },
     onMouseDown: (event: MouseEvent) => { if (event.button === 1) event.preventDefault(); },
   };
 }

@@ -248,6 +248,26 @@ test.describe('the overview card (TA-OV-05, TA-OV-06)', () => {
       await expect(card(page, 'Lexer')).toHaveAttribute('data-cursor', 'true');
     });
 
+    test('middle background press protects the filter from PRIMARY paste and releases ordinary paste', async ({ page }) => {
+      await setup(page);
+      const filter = overview(page).getByRole('textbox', { name: 'Filter tabs' });
+      await filter.fill('Lex');
+      const protectedPaste = await card(page, 'Lexer').getByRole('button', { name: 'Open Lexer' }).evaluate(button => {
+        button.dispatchEvent(new MouseEvent('auxclick', { button: 1, bubbles: true, cancelable: true }));
+        const field = document.querySelector('[aria-label="Filter tabs"]')!;
+        return !field.dispatchEvent(new Event('paste', { bubbles: true, cancelable: true }));
+      });
+      expect(protectedPaste).toBe(true);
+      await expect(filter).toHaveValue('Lex');
+      await expect(card(page, 'Lexer')).toHaveAttribute('data-cursor', 'true');
+      await untouched(page);
+      const ordinaryPaste = await filter.evaluate(async field => {
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        return field.dispatchEvent(new Event('paste', { bubbles: true, cancelable: true }));
+      });
+      expect(ordinaryPaste).toBe(true);
+    });
+
     test('in the filmstrip a modified press moves the cursor and does not open the centre card', async ({ page }) => {
       await setup(page);
       await overview(page).getByRole('radio', { name: 'Filmstrip' }).check();
