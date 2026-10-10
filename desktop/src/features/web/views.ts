@@ -137,10 +137,34 @@ function start() {
   mutation.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'data-state', 'hidden', 'open'] });
   window.addEventListener('resize', schedule);
   document.addEventListener('visibilitychange', schedule);
+  // Moving the window to another screen keeps the CSS rectangle and changes
+  // the scale. Forget the placed rectangle so the next frame sends it again;
+  // the native side reads the window scale when it places the view.
+  watchPixelRatio();
   // A hold going up or down changes every sheet (blank, or the page again).
   subscribeWebOverlay(() => { notify(); schedule(); });
   installWebOverlayDragGuard();
   observers = { resize, mutation };
+}
+
+let pixelRatio = typeof window === 'undefined' ? 1 : window.devicePixelRatio;
+
+function watchPixelRatio() {
+  const query = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+  const onChange = () => {
+    query.removeEventListener('change', onChange);
+    schedule();
+    watchPixelRatio();
+  };
+  query.addEventListener('change', onChange);
+}
+
+/** True on the frame the window's scale changed. The CSS rectangle can be unchanged. */
+function scaleChanged(): boolean {
+  const next = window.devicePixelRatio;
+  if (next === pixelRatio) return false;
+  pixelRatio = next;
+  return true;
 }
 
 export function schedule() {
@@ -154,6 +178,7 @@ export function schedule() {
 const sameRect = (a: WebRect | null, b: WebRect) => !!a && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
 
 function tick() {
+  const rescale = scaleChanged();
   const covers = coverBoxes();
   const windowShown = document.visibilityState !== 'hidden';
   let changed = false;
@@ -216,7 +241,7 @@ function tick() {
       slot.sentVisible = false;
       enqueue(slot, () => webVisible(slot.pane, false));
     }
-    if (show && !sameRect(slot.sentRect, place.rect)) {
+    if (show && (rescale || !sameRect(slot.sentRect, place.rect))) {
       slot.sentRect = place.rect;
       enqueue(slot, () => webBounds(slot.pane, place.rect));
     }

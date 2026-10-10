@@ -70,7 +70,7 @@ export function WebPane({ pane, actions }: PaneRenderProps) {
       onStep={direction => step(pane.id, direction)}
       onChat={host?.startConversationWithPage && shown ? () => void talkAboutPage() : undefined}
       onExternal={() => shown && void openUrl(shown)}/>
-    <div ref={web.sheetRef} className="web-sheet" data-covered={web.covered || undefined} data-blank={web.blank || undefined}>
+    <div ref={web.sheetRef} className="web-sheet" data-theme="light" data-covered={web.covered || undefined} data-blank={web.blank || undefined}>
       {web.blank ? null : <>
         {!web.native && shown && <div className="web-state">
           <Icon name="web" size="lg"/>
