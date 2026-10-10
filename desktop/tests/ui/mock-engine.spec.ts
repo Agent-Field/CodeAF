@@ -132,6 +132,10 @@ test('since= answers the header plus the entries tail, eliding over-cap outputs'
   const full = (await call(page, '/sessions/mock-1')).body;
   expect(full.entries).toHaveLength(4);
   expect(full.entries[1].Output).toBe('small');
+  // Reattach is the body a dropped stream asks for, so it elides the same way a read does.
+  const reattached = (await call(page, '/sessions', 'POST', { sessionFile: 'mock-session-1.jsonl' })).body;
+  expect(reattached.entries[2]).toMatchObject({ Output: '', OutputOmitted: true, OutputBytes: 18000 });
+  expect(reattached.entries[1].Output).toBe('small');
   const rewritten = (await call(page, '/sessions/mock-1?since=9')).body;
   expect(rewritten).toMatchObject({ reset: true, from: 0 });
   expect(rewritten.entries).toHaveLength(4);
