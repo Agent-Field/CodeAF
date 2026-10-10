@@ -18,6 +18,8 @@ import { focusedPane, stripItems, visibleTabs, type Tab } from './model';
 import { departureIds, departuresFrom, exitHoldMs, groupsForDepartures, mergeDepartures, retainDepartures, withDepartures, type TabDeparture } from './tabExit';
 import { HomeTab } from '../places/home/HomeTab';
 import { isPlaceHome } from './reducers/home';
+import { useLongPress } from '../shell/useLongPress';
+import '../shell/touch.css';
 import './strip.css';
 import './tab-motion.css';
 
@@ -80,6 +82,8 @@ export type StripBack = {
  * chevron buttons, no wheel hijacking.
  */
 export function TabStrip({ api, leading, back, frame, overviewTrigger, onOverview }: { api: TabsApi; leading?: ReactNode; back?: StripBack; frame?: StripFrame; overviewTrigger: RefObject<HTMLButtonElement | null>; onOverview: () => void }) {
+  // A finger hold on a tab or a group label opens the menu that control already has. No prop on TabItem or the capsule: the listener finds them.
+  useLongPress();
   const { state, dispatch } = api;
   const strip = useRef<HTMLDivElement>(null);
   const homeFocus = useRef<string | null>(null);

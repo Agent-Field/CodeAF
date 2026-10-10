@@ -7,8 +7,10 @@ import type { RailSections } from '../places/shell/selectors';
 import { RailToggle } from './RailToggle';
 import { NowRow } from './NowRow';
 import { PlaceDot as Dot } from '../places/PlaceDot';
+import { useLongPress } from './useLongPress';
 import './rail.css';
 import './place-rail.css';
+import './touch.css';
 
 /** One of the window's other pages, drawn quietly under All places. `hover` forces the hover fill, for the specimen. */
 export type RailItem = { label: string; icon: IconName; active: boolean; onSelect: () => void; hover?: boolean };
@@ -70,6 +72,8 @@ function Section({ label, action, children }: { label: string; action?: ReactNod
  * Places heading of any kind — Now, and All places when the engine can open it.
  */
 export function PlaceRail(props: PlaceRailProps) {
+  // A finger hold on a place row opens the menu that row already has. The strip calls this too; one listener covers both.
+  useLongPress();
   const { inert, peeking, onToggle, now, sections, current, emptyHint, notice, allPlaces, actions, tabCount, slotShortcut, closeShortcut, newWindowShortcut, appItems } = props;
   const [over, setOver] = useState<string>();
   const pinnedIds = sections?.pinned.map(place => place.id) ?? [];
