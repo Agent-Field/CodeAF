@@ -372,6 +372,7 @@ func (g *DecideGate) decision(q *Question, placeID, id string, result decide.Res
 		},
 		AskKind:    string(q.Ask),
 		Subject:    class,
+		Command:    scoreSubject(questionCommand(*q)),
 		Action:     action,
 		By:         placeID,
 		Because:    strings.TrimSpace(result.Because),

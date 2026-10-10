@@ -127,6 +127,19 @@ type AttentionSuggestion struct {
 	Reason  string `json:"reason,omitempty"`
 }
 
+// decideLedger is the folder of per-place decision files beside the graph
+// this bridge was given. It is read when the world is projected, not when the
+// feed is built, so a graph attached a moment later is still the one consulted.
+func (b *Bridge) decideLedger() string {
+	b.mu.Lock()
+	p := b.places
+	b.mu.Unlock()
+	if p == nil || p.door == nil || strings.TrimSpace(p.door.Path) == "" {
+		return ""
+	}
+	return session.DecideLedgerDir(p.door.Path)
+}
+
 // attentionGraph reads the graph attached to this bridge, rather than a global store.
 func (b *Bridge) attentionGraph() *placegraph.Snapshot {
 	b.mu.Lock()
@@ -163,7 +176,7 @@ type worldFull struct {
 
 const maxLiveTasks = 20
 
-func projectWorld(w session.World, graphs ...*placegraph.Snapshot) ([]WorldRow, []AttentionItem) {
+func projectWorld(w session.World, ledger string, graphs ...*placegraph.Snapshot) ([]WorldRow, []AttentionItem) {
 	rows := []WorldRow{}
 	items := []AttentionItem{}
 	for _, project := range w.Projects {
@@ -175,6 +188,19 @@ func projectWorld(w session.World, graphs ...*placegraph.Snapshot) ([]WorldRow, 
 				// an older presence stamp is still fresh.
 				if !attentionPending(r) {
 					continue
+				}
+				// A place ledger is the other proof an answer was delivered.
+				// Confidence is not: a sure place that never wrote the answer
+				// still needs the person.
+				full := r.Presence.Question.Full
+				if ledger != "" && full != nil && len(graphs) > 0 && graphs[0] != nil {
+					var ids []string
+					for _, membership := range graphs[0].PlacesOf(r.ID) {
+						ids = append(ids, membership.PlaceID)
+					}
+					if session.LedgerDecided(ledger, r.ID, string(full.Kind), full.Token(), ids) {
+						continue
+					}
 				}
 				item := attentionFor(r, row)
 				if r.Presence.Question.Full != nil && len(graphs) > 0 && graphs[0] != nil {

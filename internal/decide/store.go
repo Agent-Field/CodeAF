@@ -47,11 +47,23 @@ type Store struct {
 	recovered string
 }
 
+// LedgerFile is the file Open uses for placeID. Callers that only want to
+// know whether a ledger exists yet stat this path: Open creates the directory,
+// and listing creates the lock, so a poll must not Open a place that has
+// never decided anything.
+func LedgerFile(dir, placeID string) (string, error) {
+	if placeID == "" || placeID == "." || placeID == ".." || strings.ContainsAny(placeID, `/\`+"\x00") {
+		return "", fmt.Errorf("%w: place id %q", ErrInvalid, placeID)
+	}
+	return filepath.Join(dir, placeID+".decisions.json"), nil
+}
+
 // Open returns the store for placeID under dir (the directory beside the
 // placegraph state). The file is created on first write, not here.
 func Open(dir, placeID string, now func() time.Time) (*Store, error) {
-	if placeID == "" || placeID == "." || placeID == ".." || strings.ContainsAny(placeID, `/\`+"\x00") {
-		return nil, fmt.Errorf("%w: place id %q", ErrInvalid, placeID)
+	path, err := LedgerFile(dir, placeID)
+	if err != nil {
+		return nil, err
 	}
 	if now == nil {
 		now = time.Now
@@ -59,7 +71,7 @@ func Open(dir, placeID string, now func() time.Time) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	return &Store{path: filepath.Join(dir, placeID+".decisions.json"), now: now}, nil
+	return &Store{path: path, now: now}, nil
 }
 
 // Recovered returns where the last damaged file was set aside, or "".
