@@ -44,7 +44,8 @@ export function useTabLinks({ enabled, state, dispatch, actions, native = native
       try {
         const outcome = await resolveLink(raw, () => latest.current.tabs, engine);
         // The claim is made: even if this effect was torn down meanwhile, the link must land, or it would open nowhere.
-        if (outcome.kind === 'focus') dispatch({ type: 'select', id: outcome.id });
+        if (outcome.kind === 'next-up') window.dispatchEvent(new Event('codeaf:next-up-start'));
+        else if (outcome.kind === 'focus') dispatch({ type: 'select', id: outcome.id });
         else if (outcome.kind === 'open') dispatch({ type: 'open', tab: outcome.tab, background: false });
         else toasts.show({ message: [outcome.sentence], tone: 'danger' });
       } finally { pending.delete(key); }

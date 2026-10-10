@@ -135,13 +135,6 @@ test('⌘-click picks tabs and ⌘G groups them with the active tab where the fi
   assert.deepEqual(strip(alone), ['a', `[${alone.groups[0].id}: b]`, 'c', 'd']);
 });
 
-test('⌘G never puts the Inbox in a group', () => {
-  const s = state([tab('inbox', { kind: 'inbox', pinned: true }), tab('a')], { activeId: 'a', picked: ['inbox'] });
-  const grouped = run(s, { type: 'group-picked' });
-  assert.equal(groupOf(grouped, 'inbox'), undefined);
-  assert.ok(grouped.tabs.find(t => t.id === 'inbox')!.pinned);
-});
-
 test('a task opened from a grouped conversation joins its group, at the end', () => {
   const s = state([tab('a', { groupId: 'g' }), tab('b', { groupId: 'g' }), tab('z')], { groups: [group('g')] });
   const opened = run(s, { type: 'open-task', tab: tab('t', { kind: 'task' }), background: true, from: 'a' });

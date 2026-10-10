@@ -45,10 +45,10 @@ test('close-right closes the unpinned tabs after this one in reading order', () 
   assert.deepEqual(run(state([tab('a'), tab('b')]), { type: 'close-right', id: 'b' }).tabs.length, 2);
 });
 
-test('the Inbox is never closed by a bulk close and cannot be duplicated', () => {
-  const base = state([tab('inbox', { kind: 'inbox', pinned: true }), tab('a'), tab('b')], { activeId: 'a' });
-  assert.deepEqual(ids(run(base, { type: 'close-others', id: 'a' })), ['inbox', 'a']);
-  assert.deepEqual(ids(run(base, { type: 'duplicate', id: 'inbox' })), ['inbox', 'a', 'b']);
+test('bulk close preserves pinned tabs and duplicating an absent tab does nothing', () => {
+  const base = state([tab('pinned', { pinned: true }), tab('a'), tab('b')], { activeId: 'a' });
+  assert.deepEqual(ids(run(base, { type: 'close-others', id: 'a' })), ['pinned', 'a']);
+  assert.deepEqual(ids(run(base, { type: 'duplicate', id: 'missing' })), ['pinned', 'a', 'b']);
 });
 
 test('close-group closes every member and the group goes with them', () => {
@@ -70,9 +70,9 @@ test('reopen-id puts the chosen tab back where it was, in its group, and makes i
 });
 
 test('reopen-id follows its neighbours when the strip changed, and falls back to the tab before it', () => {
-  const s = state([tab('inbox', { kind: 'inbox', pinned: true }), tab('a'), tab('c')], { closed: [tab('b')] });
-  assert.deepEqual(ids(run(s, { type: 'reopen-id', id: 'b', before: 'c', after: 'a' })), ['inbox', 'a', 'b', 'c']);
-  assert.deepEqual(ids(run(s, { type: 'reopen-id', id: 'b', before: 'gone', after: 'a' })), ['inbox', 'a', 'b', 'c']);
+  const s = state([tab('pinned', { pinned: true }), tab('a'), tab('c')], { closed: [tab('b')] });
+  assert.deepEqual(ids(run(s, { type: 'reopen-id', id: 'b', before: 'c', after: 'a' })), ['pinned', 'a', 'b', 'c']);
+  assert.deepEqual(ids(run(s, { type: 'reopen-id', id: 'b', before: 'gone', after: 'a' })), ['pinned', 'a', 'b', 'c']);
 });
 
 test('reopen-id of a tab that is not closed changes nothing, and a missing index appends', () => {
@@ -98,29 +98,10 @@ test('duplicate of a split gives every pane a new id', () => {
   assert.ok(copy.panes.every(p => p.id !== 'p1' && p.id !== 'p2'));
 });
 
-test('ensure-inbox adds one pinned Inbox first in the strip, once, without taking focus', () => {
-  const once = run(state([tab('a'), tab('b')], { activeId: 'b' }), { type: 'ensure-inbox' });
-  assert.deepEqual(ids(once), ['inbox', 'a', 'b']);
-  assert.equal(once.tabs[0].pinned, true);
-  assert.equal(once.tabs[0].kind, 'inbox');
-  assert.equal(once.activeId, 'b');
-  assert.equal(run(once, { type: 'ensure-inbox' }), once);
-});
-
-test('ensure-inbox sits after a place Home and still does not take focus', () => {
-  const home = tab('home', { kind: 'home', place: 'pl_reading', title: 'Reading', pinned: true });
-  const once = run(state([home, tab('a')], { activeId: 'a' }), { type: 'ensure-inbox' });
-  assert.deepEqual(ids(once), ['home', 'inbox', 'a']);
-  assert.equal(once.activeId, 'a');
-});
-
-test('open-inbox creates the Inbox when absent and focuses it; with it present it only focuses', () => {
-  const opened = run(state([tab('a'), tab('b')], { activeId: 'b' }), { type: 'open-inbox' });
-  assert.deepEqual(ids(opened), ['inbox', 'a', 'b']);
-  assert.equal(opened.activeId, 'inbox');
-  const again = run({ ...opened, activeId: 'a' }, { type: 'open-inbox' });
-  assert.deepEqual(ids(again), ['inbox', 'a', 'b']);
-  assert.equal(again.activeId, 'inbox');
+test('retired Inbox actions cannot create a pinned slot or change focus', () => {
+  const before = state([tab('a'), tab('b')], { activeId: 'b' });
+  assert.equal(run(before, { type: 'ensure-inbox' }), before);
+  assert.equal(run(before, { type: 'open-inbox' }), before);
 });
 
 test('release-moved removes the tab without a closed record, and leaves split tabs and unknown ids alone', () => {

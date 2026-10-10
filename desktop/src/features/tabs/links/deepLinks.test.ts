@@ -35,9 +35,8 @@ test('a saved conversation copies its chat id, never its transcript path', () =>
   assert.ok(!link!.includes('home'));
 });
 
-test('a conversation that was never sent, a new tab, settings, history and the Inbox have no link', () => {
-  for (const kind of ['conversation', 'newtab', 'settings', 'history', 'inbox'] as const) assert.equal(linkForPane(pane({ kind })), undefined, kind);
-  assert.equal(linkForTab(tab({ kind: 'inbox', sessionFile: SESSION })), undefined);
+test('a conversation that was never sent, a new tab, settings and history have no link', () => {
+  for (const kind of ['conversation', 'newtab', 'settings', 'history'] as const) assert.equal(linkForPane(pane({ kind })), undefined, kind);
 });
 
 test('a task tab and a conversation showing a task copy the task; the expanded tasks view copies the chat', () => {
@@ -90,4 +89,11 @@ test('every link a pane copies parses back to the same link', () => {
     assert.ok(parsed.ok, link);
     assert.equal(parsed.ok && parsed.canonical, link);
   }
+});
+
+test('retired Inbox addresses resolve to Next up, without creating a tab', async () => {
+  const { resolveLink } = await import('./openLink.ts');
+  const engine = new Proxy({}, { get() { throw new Error('Next up must not read a conversation'); } });
+  assert.deepEqual(await resolveLink('codeaf://inbox', () => [], engine as never), { kind: 'next-up', link: 'codeaf://inbox' });
+  for (const raw of ['codeaf://inbox/extra', 'codeaf://inbox?token=no', 'codeaf://inbox#fragment']) assert.equal(parseDeepLink(raw).ok, false);
 });

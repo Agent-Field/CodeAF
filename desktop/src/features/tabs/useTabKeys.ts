@@ -143,7 +143,8 @@ export function useDesktopTabActions({ state, dispatch, visible, renaming, onAct
   useEffect(() => {
     const onOpenKind = (event: Event) => {
       const kind = (event as CustomEvent<string>).detail;
-      // Inbox used to travel on this event. Anything that is not Settings or History is ignored.
+      // Inbox used to travel on this event and is now Next up: a stale sender still gets the walk, never a tab.
+      if (kind === 'inbox' && !renaming) { window.dispatchEvent(new Event('codeaf:next-up-start')); return; }
       if (!isShellKind(kind) || !kindDef(kind).backed || renaming) return;
       setOverviewOpen(false);
       dispatch(openKindAction(state, kind));

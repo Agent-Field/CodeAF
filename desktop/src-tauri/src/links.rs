@@ -111,6 +111,10 @@ pub fn check(raw: &str) -> Result<(), Problem> {
         return Err(Problem::Malformed);
     }
     let rest = &raw[SCHEME.len()..];
+    // Retired Inbox addresses reach the renderer, which starts Next up instead.
+    if rest == "inbox" || rest == "inbox/" {
+        return Ok(());
+    }
     let (path, query) = match rest.split_once('?') {
         Some((path, query)) => (path, Some(query)),
         None => (rest, None),

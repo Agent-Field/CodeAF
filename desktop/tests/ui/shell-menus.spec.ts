@@ -282,9 +282,9 @@ test.describe('closing running work (3l)', () => {
     expect(stops(engine)).toBe(1);
   });
 
-  test('closed-but-running work opens no Inbox tab and lights no dot; Home Live is where it is read', async ({ page }) => {
+  test('closing background work never recreates a pinned Inbox', async ({ page }) => {
     const engine = await installMockEngine(page, running);
-    await seed(page, [{ id: 'a', title: 'Intro' }, { id: 'b', title: 'Config stack', running: true }, { id: 'c', title: 'lexer.go' }], { active: 'b' });
+    await seed(page, [{ id: 'a', title: 'Intro' }, { id: 'b', title: 'Config stack', running: true }], { active: 'b' });
     await page.goto('/');
     await expect.poll(() => engine.calls.some(call => call.path.endsWith('/sessions'))).toBe(true);
     await slot(page, 'Config stack').hover();
@@ -292,6 +292,9 @@ test.describe('closing running work (3l)', () => {
     await expect(page.locator('.toast')).toContainText('Config stack closed and still running');
     await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
     await expect(page.locator('.tab-badge')).toHaveCount(0);
+    await page.locator('.toast').getByRole('button', { name: 'Undo' }).click();
+    await expect(page.getByRole('tab', { name: 'Config stack', exact: true })).toBeVisible();
+    expect(stops(engine)).toBe(0);
   });
 
   test('a question in a background tab summons no Inbox and puts no dot on a tab', async ({ page }) => {
@@ -307,7 +310,7 @@ test.describe('closing running work (3l)', () => {
   });
 });
 
-test('the Design system page shows the menus, the closing states and the Inbox, light and dark', async ({ page }) => {
+test('the Design system page shows the menus, the closing states without Inbox, light and dark', async ({ page }) => {
   // The accessibility pass covers the whole design system. Under four workers it does not finish in the default 30s.
   test.setTimeout(60_000);
   for (const scheme of ['light', 'dark'] as const) {
@@ -322,7 +325,7 @@ test('the Design system page shows the menus, the closing states and the Inbox, 
     await expect(sheet.locator('.toast')).toHaveCount(2);
     await expect(sheet.locator('.toast').first()).toHaveCSS('height', '40px');
     await expect(sheet.locator('[data-close-mode="stop"]')).toHaveCount(1);
-    await expect(sheet.locator('.inbox-card')).toHaveCount(2);
+    await expect(sheet.locator('.inbox-card')).toHaveCount(0);
     // This lane owns the closing specimen; unrelated tray specimens have their own accessibility suites.
     await expectAccessible(page, '[data-closing-specimen]'); await expectNoUnstyledControls(page, '[data-closing-specimen]');
   }

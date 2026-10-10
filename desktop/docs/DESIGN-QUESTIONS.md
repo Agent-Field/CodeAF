@@ -61,6 +61,7 @@ Shell). On any conflict, the design files win over code and older docs.
 
 | # | Question | Assumption the app ships now |
 |---|---|---|
+| IR1 | What opens if a saved workspace contains only retired Inbox slots? | Drop Inbox, open one quiet New tab, and preserve closed chats and the tab counter. Mixed splits retain every surviving pane; one surviving pane becomes a plain tab with the holder id. |
 | TILE-DND-1 | Components draws a tile drop target as "Add here", and Places 8g says holding Option moves instead of adding. Does the label change while Option is held? | It stays "Add here". Option changes the drop from an added parent or membership into a move, and the cursor from copy to move. The words and the accent label do not change. Letting go off a tile writes nothing. |
 | HC-482 | Places 8a says "Start something in <place>" and 8b says "Start the first chat in <place>". Which sentence is used when a place has child places, decisions or knowledge but no chat of its own? | "Start the first chat" is the empty Home screen only: no chats, children, attention, sources, decisions or knowledge. Any of those switches the prompt to "Start something in <place>". |
 | PL-HOME-KIND-469 | The design names a Home place key but specifies no persisted field spelling. Should existing workspace documents change their Home address? | Keep the existing validated `place` field (`pl_…` or `root`) as the Home key; it already restores saved tabs. The kind registry routes both through HomePane, whose HomePage selects RootHome for `root`. |

@@ -268,14 +268,14 @@ test('two windows typing into the same draft at once: the later typing wins, and
   assert.equal(a.getStatus().overtaken + b.getStatus().overtaken, 1, 'the overwritten words are counted once');
 });
 
-test('native focused-view arrival survives an automatic Inbox insertion before canonical load', async () => {
+test('native focused-view arrival ignores a retired Inbox action before canonical load', async () => {
   const { engine, time, a } = await twoWindows('first', 'web-target');
   const incoming = createWorkspaceController({ key: 'now', client: engine.client(), writer: 'win-incoming', initial: seed('fresh-import'), focus: 'web-target', clock: time.clock });
   incoming.dispatch({ type: 'ensure-inbox' });
   incoming.start();
   await time.advance(100);
   assert.equal(incoming.getState().activeId, 'web-target');
-  assert.deepEqual(ids(incoming.getState()), ['inbox', 'first', 'web-target']);
+  assert.deepEqual(ids(incoming.getState()), ['first', 'web-target']);
   assert.equal(a.getState().activeId, 'first', 'source focus stays window-local');
 });
 
@@ -568,4 +568,49 @@ test('a delayed same-lifecycle watch response cannot rewind an acknowledged term
   assert.equal(controller.getState().activeId, 'terminal');
   assert.equal(controller.getState().tabs.filter(tab=>tab.id==='terminal').length, 1);
   controller.stop();
+});
+
+test('saved Inbox slots drop without losing other tabs, drafts, groups or closed records', async () => {
+  const { parseShared } = await import('./shared.ts');
+  const { parseWorkspace } = await import('../tabs/model.ts');
+  const old = { tabs: [{ id: 'inbox', kind: 'inbox', pinned: true }, tab('keep', { draft: 'keep my words', groupId: 'g' })], groups: [{ id: 'g', title: 'Work', collapsed: false }], closed: [tab('closed'), { id: 'old', kind: 'inbox' }], nextNumber: 9, activeId: 'inbox', recentIds: ['inbox', 'keep'] };
+  const local = parseWorkspace(JSON.stringify(old))!;
+  assert.deepEqual(ids(local), ['keep']);
+  assert.equal(local.activeId, 'keep');
+  assert.equal(local.tabs[0].draft, 'keep my words');
+  assert.deepEqual(local.closed.map(t => t.id), ['closed']);
+  const base = parseShared({ ...old, schema: 1 })!;
+  const engine = createTestEngine(), time = createManualClock();
+  engine.write('now', { ...old, schema: 1 } as never);
+  const controller = createWorkspaceController({ key: 'now', writer: 'migrate', client: engine.client(), initial: seed('fallback'), persisted: { base, revision: 1, pending: [], local: { activeId: 'inbox', recentIds: ['inbox', 'keep'], focus: {}, scroll: {} } }, clock: time.clock });
+  controller.start(); await time.advance(50);
+  assert.deepEqual(ids(controller.getState()), ['keep']);
+  assert.equal(controller.getState().tabs[0].draft, 'keep my words');
+  assert.deepEqual(controller.getState().groups, old.groups);
+  controller.stop();
+});
+
+test('an Inbox-only save becomes a quiet New tab and mixed splits keep their remaining draft', async () => {
+  const { parseWorkspace } = await import('../tabs/model.ts');
+  const { parseShared } = await import('./shared.ts');
+  const old = { tabs: [{ id: 'inbox', kind: 'inbox', pinned: true }], closed: [tab('closed')], groups: [], nextNumber: 4 };
+  for (const state of [parseWorkspace(JSON.stringify(old))!, parseShared({ ...old, schema: 1 })!]) {
+    assert.equal(state.tabs[0].kind, 'newtab');
+    assert.deepEqual(state.closed.map(t => t.id), ['closed']);
+    assert.equal(state.nextNumber, 4);
+  }
+  const split = { ...tab('split'), split: { layout: '1x2', focus: 1, panes: [{ id: 'gone', kind: 'inbox' }, tab('keep', { draft: 'surviving pane' })] } };
+  for (const state of [parseWorkspace(JSON.stringify({ ...old, tabs: [split] }))!, parseShared({ ...old, schema: 1, tabs: [split] })!]) {
+    assert.equal(state.tabs[0].id, 'split');
+    assert.equal(state.tabs[0].draft, 'surviving pane');
+    assert.equal(state.tabs[0].split, undefined);
+  }
+});
+
+test('an offline queued Inbox open cannot recreate the retired kind on reload', () => {
+  const engine = createTestEngine();
+  const pending = [{ action: { type: 'open', background: false, tab: { ...tab('inbox'), kind: 'inbox', pinned: true } }, ids: [] }];
+  const controller = createWorkspaceController({ key: 'now', writer: 'old-window', client: engine.client(), initial: seed('keep'), persisted: { revision: 0, pending: pending as never, local: { activeId: 'inbox', recentIds: ['inbox'], focus: {}, scroll: {} } } });
+  assert.deepEqual(ids(controller.getState()), ['keep']);
+  assert.equal(controller.inspect().pending.length, 0);
 });

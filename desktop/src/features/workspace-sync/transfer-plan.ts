@@ -1,3 +1,4 @@
+import { isRetiredInbox } from '../tabs/kinds/retired.ts';
 import type { SharedTab, SharedWorkspace, WindowLocal } from './shared.ts';
 import { newTab } from '../tabs/helpers.ts';
 import type { Pane } from '../tabs/types.ts';
@@ -11,8 +12,8 @@ const within = (path: string, root: string) => {
 };
 /** Whole splits move only when every pane belongs. Unknown, pinned and navigation panes stay in Now. */
 export function matchingTabs(workspace: SharedWorkspace, match: TransferMatch): string[] {
-  return workspace.tabs.filter(tab => !tab.pinned && panes(tab).every(pane => {
-    if (pane.kind === 'home' || pane.kind === 'inbox' || !pane.sessionFile) return false;
+  return workspace.tabs.filter(tab => !tab.pinned && !isRetiredInbox(tab) && panes(tab).every(pane => {
+    if (pane.kind === 'home' || isRetiredInbox(pane) || !pane.sessionFile) return false;
     const chat = match.resolve(pane.sessionFile);
     return !!chat && (chat.placeIds.includes(match.placeId) || match.sources.some(s => (s.kind === 'folder' || s.kind === 'repo') && within(chat.workspace, s.ref)));
   })).map(tab => tab.id);
@@ -24,9 +25,11 @@ const canonical = (value: unknown) => JSON.stringify(value, (_key, next) => next
 const same = (a: unknown, b: unknown) => canonical(a) === canonical(b);
 /** Rebase a fixed set of intended ids over the newest pair, without substituting newly opened tabs. */
 export function planTransfer(source: SharedWorkspace, destination: SharedWorkspace, ids: readonly string[], emptySource?: SharedTab): TransferPlan {
-  const wanted = new Set(ids), moving = source.tabs.filter(t => wanted.has(t.id));
+  const retired = new Set(source.tabs.filter(isRetiredInbox).map(tab => tab.id));
+  const wanted = new Set(ids.filter(id => !retired.has(id))), moving = source.tabs.filter(t => wanted.has(t.id));
+  if (!wanted.size && retired.size && ids.length) return { source, destination, receipt: { tabIds: [], tabs: [], groups: [], sourceOrder: source.tabs.map(tab => tab.id) } };
   if (!moving.length || moving.length !== wanted.size) throw new Error('Some matching tabs changed. Review the offer again.');
-  if (moving.some(t => t.pinned || panes(t).some(p => p.kind === 'home' || p.kind === 'inbox'))) throw new Error('Navigation and pinned tabs stay here.');
+  if (moving.some(t => t.pinned || panes(t).some(p => p.kind === 'home' || isRetiredInbox(p)))) throw new Error('Navigation and pinned tabs stay here.');
   const remaining = source.tabs.filter(t => !wanted.has(t.id));
   const placeholder = !remaining.length ? emptySource ?? newTab() : undefined;
   if (placeholder) remaining.push(placeholder);

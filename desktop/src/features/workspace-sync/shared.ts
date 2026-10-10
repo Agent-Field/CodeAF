@@ -9,10 +9,11 @@
 // every other window jump.
 //
 // Everything here is pure: no storage, no network, no React.
+import { withoutInbox } from '../tabs/kinds/retired.ts';
 import { retainSelection } from '../tabs/selection.ts';
 import { cleanView } from '../tabs/view-state.ts';
 import { kindOrDefault } from '../tabs/kinds/types.ts';
-import { clampRatio, layoutFits, makeSplit, titleRank, visibleTabs } from '../tabs/helpers.ts';
+import { newTab, clampRatio, layoutFits, makeSplit, titleRank, visibleTabs } from '../tabs/helpers.ts';
 import { closedAtOf } from '../tabs/reducers/closing.ts';
 import type { ClosedTab, Pane, SplitLayout, Tab, TabGroup, TitleSource, WorkspaceState } from '../tabs/model.ts';
 import { limits } from './limits.ts';
@@ -151,8 +152,10 @@ export function duplicateIds(state: Pick<WorkspaceState, 'tabs' | 'closed' | 'gr
 /** Validates a shared document from the engine; undefined when it does not hold a usable tab set. */
 export function parseShared(value: unknown): SharedWorkspace | undefined {
   if (!isObject(value) || value.schema !== 1 || !Array.isArray(value.tabs) || !Array.isArray(value.groups) || !Array.isArray(value.closed)) return undefined;
-  const tabs = value.tabs.map(readTab);
-  const closed = value.closed.map(readTab);
+  if (!value.tabs.length) return undefined;
+  const migrated = withoutInbox(value.tabs);
+  const tabs = (migrated.length ? migrated : [newTab({ kind: 'newtab' })]).map(readTab);
+  const closed = withoutInbox(value.closed).map(readTab);
   if (!tabs.length || tabs.some(t => !t) || closed.some(t => !t) || !value.groups.every(isGroup)) return undefined;
   const doc: SharedWorkspace = {
     schema: 1, tabs: tabs as SharedTab[], groups: value.groups as TabGroup[], closed: closed as SharedTab[],
