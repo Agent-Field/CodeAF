@@ -731,3 +731,10 @@ Click any row there to open that task's room. The trail at the top of the room r
 `<conversation> ▸ <parent title> ▸ <this task>`, and a click on the parent's name in it
 opens the parent's room again. `esc` returns to the conversation. This opens a room
 rather than changing the rail's fold.
+
+## Note from worker — notes on a desktop task page
+
+The desktop task page shows a worker's recorded notes under “Note from worker”,
+left-aligned in muted text. Your own notes appear in a right-aligned bubble.
+Only notes supplied by the engine are shown; a task with no recorded notes has
+no worker-note entry. Notes from the conversation are labelled “Conversation”.
