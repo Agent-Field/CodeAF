@@ -150,10 +150,10 @@ func TestViewDisconnectDoesNotStopTurnAndReplaySurvives(t *testing.T) {
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
 		b.sessions[id].mu.Lock()
-		records := append([]Record(nil), b.sessions[id].records...)
+		records := append([]replayRecord(nil), b.sessions[id].records...)
 		b.sessions[id].mu.Unlock()
 		if len(records) == 3 {
-			if records[0].Event.Text != "reply" || records[2].Snapshot.Running || a.stopped.Load() != 0 {
+			if records[0].Event.Text != "reply" || records[2].Snapshot.Header.Running || a.stopped.Load() != 0 {
 				t.Fatalf("view changed work: %+v", records)
 			}
 			return
@@ -338,7 +338,7 @@ func TestCanonicalTitleArrivalAfterTurnPublishesSnapshot(t *testing.T) {
 		s.mu.Lock()
 		found := false
 		for _, r := range s.records {
-			if r.Snapshot != nil && r.Snapshot.Title == "the canonical generated name" {
+			if r.Snapshot != nil && r.Snapshot.Header.Title == "the canonical generated name" {
 				found = true
 			}
 		}
@@ -406,10 +406,10 @@ func TestWorkerPlanChangePublishesWithoutTaskNoticeOrAICall(t *testing.T) {
 	a.mu.Unlock()
 	s.refreshPlanRead()
 	s.mu.Lock()
-	records := append([]Record(nil), s.records...)
+	records := append([]replayRecord(nil), s.records...)
 	stamp := s.updatedAt
 	s.mu.Unlock()
-	if len(records) != 1 || records[0].Snapshot == nil || len(records[0].Snapshot.Tasks) != 1 || records[0].Snapshot.Tasks[0].ID != "child" {
+	if len(records) != 1 || records[0].Snapshot == nil || len(records[0].Snapshot.Header.Tasks) != 1 || records[0].Snapshot.Header.Tasks[0].ID != "child" {
 		t.Fatal("worker-created row never reached view")
 	}
 	s.refreshPlanRead()

@@ -19,6 +19,7 @@ export function TabStrip({ api, leading, overviewTrigger, onOverview }: { api: T
   const { state, dispatch } = api;
   const strip = useRef<HTMLDivElement>(null);
   const [edge, setEdge] = useState({ end: false, hidden: 0 });
+  const [moveNote, setMoveNote] = useState('');
   const order = visibleTabs(state);
   // The strip draws `state.tabs` as it stands (the reducer keeps pinned tabs first and each group one run), so what a
   // person sees, what the arrow keys walk and what ⌘1–9 count are one order.
@@ -70,15 +71,17 @@ export function TabStrip({ api, leading, overviewTrigger, onOverview }: { api: T
           const { group, members } = entry;
           return (
             <GroupCapsule key={group.id} title={group.title} count={members.length} collapsed={group.collapsed} needsYou={members.some(t => stateOfMark(api.summaries[focusedPane(t).id]?.mark) === 'waiting')}
-              onToggle={() => dispatch({ type: 'collapse-group', id: group.id })} labelProps={groupDragProps(api, group)} wrapLabel={label => withGroupMenu(api, group, label)}>
+              onToggle={() => dispatch({ type: 'collapse-group', id: group.id })} labelProps={groupDragProps(api, group, setMoveNote)} wrapLabel={label => withGroupMenu(api, group, label)}>
               {members.map(tab => <MemberSlot key={tab.id} hidden={group.collapsed && tab.id !== state.activeId}>{item(tab, !group.collapsed)}</MemberSlot>)}
             </GroupCapsule>
           );
         })}
       </div>
+      <span className="workspace-strip-note" role="status" aria-live="polite">{moveNote}</span>
       <div className="workspace-tab-actions">
         <IconButton className="workspace-tab-action" label="New tab" title={`New tab (${tabShortcuts.new})`} icon="plus" iconSize="sm" onClick={() => dispatch({ type: 'new' })}/>
         {edge.hidden > 0 && <DropdownMenu label="Tab actions" items={overflowItems(api)}><Button className="workspace-tab-more" aria-label="Tab actions">+{edge.hidden}<Icon name="chevron" size="micro" motion="disclosure"/></Button></DropdownMenu>}
+        <div className="workspace-tab-spacer" data-tauri-drag-region/>
         <IconButton ref={overviewTrigger} className="workspace-tab-action workspace-overview-trigger" label="All tabs" title={`All tabs (${overviewShortcut})`} icon="grid" iconSize="sm" onClick={onOverview}/>
       </div>
     </div>

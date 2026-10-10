@@ -281,14 +281,27 @@ test('every command the adapter invokes is a registered Rust handler', () => {
   assert.ok(invoked.size >= 12, `found ${invoked.size} commands`);
 });
 
-test('the capability reaches main and w-* only, never a web view, with no remote URLs or plugin grants', () => {
+test('the capability reaches main and w-* only, never a web view, with the reviewed grants and no shell', () => {
+  // dialog:allow-open and notification:default are on the reviewed allow-list.
+  // Shell and filesystem grants stay off; a web page view is never named.
+  const reviewed = [
+    'core:default',
+    'core:window:allow-start-dragging',
+    'core:window:allow-set-theme',
+    'core:window:allow-set-title',
+    'core:window:allow-set-badge-count',
+    'core:webview:allow-set-webview-position',
+    'dialog:allow-open',
+    'notification:default',
+  ];
   assert.deepEqual((JSON.parse(read('capabilities/default.json')) as { windows: string[] }).windows, ['main', 'w-*']);
   for (const file of readdirSync(new URL('capabilities/', tauriDir))) {
     const capability = JSON.parse(read(`capabilities/${file}`)) as { windows?: string[]; webviews?: string[]; remote?: unknown; permissions: unknown[] };
     for (const label of [...(capability.windows ?? []), ...(capability.webviews ?? [])]) assert.ok(label === 'main' || label === 'w-*', `${file}: ${label}`);
     assert.equal(capability.remote, undefined, `${file} grants no remote origin`);
     const grants = capability.permissions.map(p => (typeof p === 'string' ? p : (p as { identifier: string }).identifier));
-    for (const grant of grants) assert.ok(!/^(dialog|notification|shell|fs):/.test(grant), `${file}: ${grant} is reached through typed commands instead`);
+    for (const grant of grants) assert.ok(!/^(shell|fs):/.test(grant), `${file}: ${grant} is not a reviewed grant`);
+    if (file === 'default.json') assert.deepEqual(grants, reviewed);
   }
 });
 

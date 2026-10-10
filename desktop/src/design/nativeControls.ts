@@ -1,7 +1,8 @@
 // The renderer's one door to codeaf's native controls: windows, choosers,
 // notifications and the dock badge. Every call goes to a typed Rust command
-// (src-tauri/src/windows.rs, dialogs.rs, notifications.rs); the renderer holds
-// no dialog or notification plugin permission of its own.
+// (src-tauri/src/windows.rs, dialogs.rs, notifications.rs). The capability
+// still names dialog:allow-open and notification:default, because that is the
+// reviewed allow-list for main and w-*; shell and filesystem grants stay off.
 //
 // Kept free of React so node tests can import it. The bridge is injectable; the
 // default one talks to Tauri, and outside Tauri every call answers honestly that
@@ -50,8 +51,8 @@ export type AttentionKind = 'needsYou' | 'failed' | 'running';
 /** A question as its conversation's tray names it: the engine's question kind and id. */
 export type NoticeQuestion = { kind: string; id: number };
 /** Where a click on a system notification lands: a conversation and, while it waits, the question to focus. */
-export type NoticeTarget = { chatId: string; question?: NoticeQuestion };
-export type AttentionItem = { id: string; kind: AttentionKind; chatTitle: string; text: string; placeId?: string; placeName?: string } & Partial<NoticeTarget>;
+export type NoticeTarget = { itemId?: string; chatId: string; question?: NoticeQuestion };
+export type AttentionItem = { id: string; kind: AttentionKind; chatTitle: string; text: string; placeId?: string; placeName?: string; silent?: boolean } & Partial<NoticeTarget>;
 export type NotificationPermission = { state: 'granted' | 'denied' | 'unavailable'; verified: boolean };
 export type NotifyResult = { posted: number; groups: number; skipped: 'focused' | 'nothing-new' | 'denied' | 'stale' | 'unavailable' | null };
 /** On Linux `applied` means the launcher was asked; whether it draws a count depends on the desktop. */
@@ -158,10 +159,11 @@ export function noticeTarget(chatId: string | undefined, question?: { kind: stri
 /** A target as claimed from Rust, or nothing when it is not that shape. */
 export function claimedTarget(raw: unknown): NoticeTarget | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
-  const { chatId, question } = raw as Record<string, unknown>;
+  const { chatId, question, itemId } = raw as Record<string, unknown>;
   if (typeof chatId !== 'string' || !NOTICE_ID.test(chatId)) return undefined;
-  if (question === undefined) return { chatId };
-  return isQuestion(question) ? { chatId, question: { kind: question.kind, id: question.id } } : undefined;
+  const identity = typeof itemId === 'string' && itemId.length <= HANDOFF_LIMITS.id ? { itemId } : {};
+  if (question === undefined) return { chatId, ...identity };
+  return isQuestion(question) ? { chatId, ...identity, question: { kind: question.kind, id: question.id } } : undefined;
 }
 
 /** The badge counts questions waiting on the person; failures and running work do not. */
@@ -331,7 +333,7 @@ export function createNativeControls(bridge: NativeBridge = defaultBridge()) {
 
     /**
      * Hands the whole current attention list to Rust, which announces only what
-     * is new, only while no codeaf window is focused, one notification per place.
+     * is new, only while no codeaf window is focused, one notification per new item.
      * Send the full list every time: an item missing from it counts as answered. `seq` is the world-feed sequence the
      * list was derived from; a window behind another window's reading is ignored ('stale'), so it cannot bring an
      * answered question back.

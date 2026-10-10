@@ -19,6 +19,8 @@ export type GroupAction =
    * other group when `targetId` names a group or one of its members. Pinned tabs stay first.
    */
   | { type: 'reorder-group'; id: string; targetId: string; after?: boolean }
+  /** The same move under the name the group label's drag and Alt+Shift+←/→ use (S-3g-18): the block keeps its member order. */
+  | { type: 'move-group-block'; id: string; targetId: string; after?: boolean }
   | { type: 'rename-group'; id: string; title: string }
   | { type: 'collapse-group'; id: string }
   | { type: 'ungroup'; id: string };
@@ -32,6 +34,36 @@ function makeGroup(state: WorkspaceState, ids: readonly string[], title?: string
   const group: TabGroup = { id: createId(), title: title?.trim() || nextGroupTitle(state.groups), collapsed: false };
   // The arrange law gathers the members where the first of them stands, so the new group keeps that place.
   return normalize({ ...state, picked: [], groups: [...state.groups, group], tabs: state.tabs.map(t => (members.has(t.id) ? { ...t, pinned: false, groupId: group.id } : t)) });
+}
+
+/** A group's block slot in the strip: loose tabs and whole groups in order, pinned tabs excluded (they never move). */
+export function blockSlots(tabs: readonly Tab[]): string[] {
+  const slots: string[] = [];
+  for (const tab of tabs) {
+    const slot = tab.groupId ?? tab.id;
+    if (!tab.pinned && !slots.includes(slot)) slots.push(slot);
+  }
+  return slots;
+}
+
+/** What Alt+Shift+←/→ drops the group beside: the neighbouring slot in that direction, or undefined at the strip's end. */
+export const blockNeighbour = (tabs: readonly Tab[], groupId: string, dir: -1 | 1): string | undefined => {
+  const slots = blockSlots(tabs);
+  return slots[slots.indexOf(groupId) + dir];
+};
+
+function moveBlock(state: WorkspaceState, id: string, targetId: string, after?: boolean): WorkspaceState {
+  const members = state.tabs.filter(t => t.groupId === id);
+  const target = state.tabs.find(t => t.id === targetId);
+  const targetGroup = state.groups.some(g => g.id === targetId) ? targetId : target && !target.pinned ? target.groupId : undefined;
+  if (!members.length || targetGroup === id || (!target && !targetGroup)) return state;
+  const rest = state.tabs.filter(t => t.groupId !== id);
+  const run = runOf(rest, targetGroup);
+  const wanted = run ? (after ? run.end + 1 : run.start) : rest.indexOf(target!) + (after ? 1 : 0);
+  // Pinned tabs stand first whatever the drop says, so a block dropped before one lands after the last pin.
+  const at = Math.max(wanted, pinnedCount(rest));
+  const tabs = [...rest.slice(0, at), ...members, ...rest.slice(at)];
+  return tabs.every((t, index) => t === state.tabs[index]) ? state : { ...state, tabs };
 }
 
 export function reduceGroups(state: WorkspaceState, action: { type: string }): WorkspaceState | undefined {
@@ -52,18 +84,8 @@ export function reduceGroups(state: WorkspaceState, action: { type: string }): W
       const wanted = anchor ? rest.indexOf(anchor) + (a.beside!.after ? 1 : 0) : run ? run.end + 1 : state.tabs.indexOf(tab);
       return normalize({ ...state, groups, tabs: insertAt(rest, moved, fitIndex(rest, moved, wanted)) });
     }
-    case 'reorder-group': {
-      const members = state.tabs.filter(t => t.groupId === a.id);
-      const target = state.tabs.find(t => t.id === a.targetId);
-      const targetGroup = state.groups.some(g => g.id === a.targetId) ? a.targetId : target && !target.pinned ? target.groupId : undefined;
-      if (!members.length || targetGroup === a.id || (!target && !targetGroup)) return state;
-      const rest = state.tabs.filter(t => t.groupId !== a.id);
-      const run = runOf(rest, targetGroup);
-      const wanted = run ? (a.after ? run.end + 1 : run.start) : rest.indexOf(target!) + (a.after ? 1 : 0);
-      const at = Math.max(wanted, pinnedCount(rest));
-      const tabs = [...rest.slice(0, at), ...members, ...rest.slice(at)];
-      return tabs.every((t, index) => t === state.tabs[index]) ? state : { ...state, tabs };
-    }
+    case 'reorder-group':
+    case 'move-group-block': return moveBlock(state, a.id, a.targetId, a.after);
     // An emptied name takes the next default name no other group has, so two groups are never both "New group".
     case 'rename-group': return { ...state, groups: state.groups.map(g => (g.id === a.id ? { ...g, title: a.title.trim() || nextGroupTitle(state.groups.filter(other => other.id !== a.id)) } : g)) };
     case 'collapse-group': return { ...state, groups: state.groups.map(g => (g.id === a.id ? { ...g, collapsed: !g.collapsed } : g)) };

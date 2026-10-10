@@ -11,7 +11,7 @@ export const undoLimit = 20;
 
 /** Changes ⌘Z takes back. Opening, typing, naming, selecting and collapsing are not structural and are never steps. */
 const structural = new Set([
-  'pin', 'group', 'group-picked', 'ungroup', 'move-group', 'reorder', 'reorder-group',
+  'pin', 'group', 'group-picked', 'ungroup', 'move-group', 'reorder', 'reorder-group', 'move-group-block',
   'split-merge', 'split-unmerge', 'split-group', 'split-close-pane', 'split-swap', 'split-layout',
 ]);
 /** Closing is taken back by Reopen, which puts each tab back where it stood (reducers/tabs.ts `restore`). */

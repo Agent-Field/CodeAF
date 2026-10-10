@@ -244,7 +244,8 @@ func (s *conversation) chatSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var ask struct {
-		Path string `json:"path"`
+		Path         string  `json:"path"`
+		IfGeneration *uint64 `json:"ifGeneration"`
 	}
 	if !decode(w, r, &ask) {
 		return

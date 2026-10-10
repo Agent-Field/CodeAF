@@ -9,7 +9,9 @@ import { message } from './support/conversation';
 // empty POST /sessions creates a new one, the way the canonical bridge does.
 // The engine is a real loopback server, not a page.route fulfilment, so an
 // idle event stream holds a real browser connection exactly as the live engine's
-// does. Browsers allow six connections per host; that limit is what this guards.
+// does. Browsers allow six connections per host. Only the open tab holds a
+// conversation stream; a tab in the background reads the world stream and does
+// not GET /sessions/{id}.
 type Call = { method: string; path: string; body: Record<string, unknown> };
 
 const SAVED = 6;
@@ -135,21 +137,34 @@ test('a new tab beside six saved tabs sends to a new session of its own', async 
  await expect(sentWords(page, 'Hello from the seventh tab')).toHaveCount(0);
 });
 
-test('reload attaches each saved tab exactly once', async ({ page }) => {
+test('reload attaches the open saved tab exactly once', async ({ page }) => {
  await seedSavedTabs(page);
+ // The open tab is Saved 1. The other five stay in the background and do not attach.
  const attachedOnce = async () => {
   await expect(savedLine(page, 1)).toBeVisible();
-  await expect.poll(() => new Set(engine.creates().map(call => call.body.sessionFile)).size).toBe(SAVED);
-  // Give a second, duplicate attach time to show itself before counting.
+  await expect.poll(() => engine.creates().map(call => String(call.body.sessionFile ?? ''))).toEqual(['saved-1.jsonl']);
   await page.waitForTimeout(500);
-  const files = engine.creates().map(call => String(call.body.sessionFile)).sort();
-  expect(files).toEqual(Array.from({ length: SAVED }, (_, index) => `saved-${index + 1}.jsonl`).sort());
+  expect(engine.creates().map(call => String(call.body.sessionFile ?? ''))).toEqual(['saved-1.jsonl']);
  };
  await page.goto('/');
  await attachedOnce();
  engine.calls.length = 0;
  await page.reload();
  await attachedOnce();
+});
+
+const sessionGets = (calls: Call[]) => calls.filter(call => call.method === 'GET' && /^\/api\/engine\/sessions\/[^/]+$/.test(call.path));
+
+test('a background tab does not repeat GET /sessions/{id}', async ({ page }) => {
+ await page.clock.install();
+ await seedSavedTabs(page);
+ await page.goto('/');
+ await expect(savedLine(page, 1)).toBeVisible();
+ const before = sessionGets(engine.calls).length;
+ // The old background read was every 2s. Ten seconds of timers must not add one.
+ await page.clock.fastForward(10_000);
+ expect(sessionGets(engine.calls).length).toBe(before);
+ expect(before).toBe(0);
 });
 
 test('a send the engine never answers says so and keeps the draft', async ({ page }) => {

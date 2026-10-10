@@ -226,6 +226,14 @@ func (p *Places) serve(w http.ResponseWriter, r *http.Request, parts []string) {
 			}
 		}
 	case 2:
+		// Checked before undo: "undo" is also a reserved place word, and its
+		// effective-model question must reach the 400 "reserved" answer.
+		if parts[1] == "effective-model" {
+			if needGet(w, r) {
+				p.effectiveModel(w, parts[0])
+			}
+			return
+		}
 		if parts[0] == "undo" {
 			if needPost(w, r) {
 				p.undoReceipt(w, r, parts[1])
@@ -235,12 +243,6 @@ func (p *Places) serve(w http.ResponseWriter, r *http.Request, parts []string) {
 		if parts[1] == "delete-preview" {
 			if needGet(w, r) {
 				p.deletePreview(w, parts[0])
-			}
-			return
-		}
-		if parts[1] == "effective-model" {
-			if needGet(w, r) {
-				p.effectiveModel(w, parts[0])
 			}
 			return
 		}

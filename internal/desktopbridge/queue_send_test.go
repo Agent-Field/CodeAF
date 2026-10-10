@@ -200,7 +200,7 @@ func TestQueueSendNowSteersWhileRunning(t *testing.T) {
 	}
 	s.mu.Lock()
 	seq := s.seq
-	var snap *Snapshot
+	var snap *SnapshotTail
 	for i := len(s.records) - 1; i >= 0; i-- {
 		if s.records[i].Snapshot != nil {
 			snap = s.records[i].Snapshot
@@ -208,7 +208,7 @@ func TestQueueSendNowSteersWhileRunning(t *testing.T) {
 		}
 	}
 	s.mu.Unlock()
-	if seq <= before || snap == nil || queueTexts(snap.Queue) != "one,three" {
+	if seq <= before || snap == nil || queueTexts(snap.Header.Queue) != "one,three" {
 		t.Fatalf("snapshot not published: seq %d→%d queue %v", before, seq, snap)
 	}
 }
