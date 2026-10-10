@@ -8058,6 +8058,11 @@ func (a *app) slash(line string) tea.Cmd {
 	case "forget":
 		return a.runForget(rest)
 
+	case "always":
+		// The person's rules (memory.go's [app.runAlways]): bare, the ones in
+		// force here; with words, one kept.
+		return a.runAlways(rest)
+
 	case "crew":
 		// The crew panel and its four shortcuts (crew.go, crewpanel.go): what is
 		// allowed and what is pinned, which persists; nothing else about a crew

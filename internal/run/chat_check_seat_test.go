@@ -90,7 +90,7 @@ func TestUnderOneModelEveryRunSeatIsTheConversationsModel(t *testing.T) {
 		config.KeyTierMastermindModel: "vendor/profile-thinking",
 	})
 	recorder := &recordingCompleter{}
-	factory := run.CrewFactory(store, t.TempDir(), dir, run.Seats{One: "vendor/one"}, "", recorder.forModel)
+	factory := run.CrewFactory(store, t.TempDir(), dir, run.Seats{One: "vendor/one"}, "", "", recorder.forModel)
 	for _, id := range []string{store.RootID(), "one", "review", "discriminate"} {
 		recorder.models = nil
 		factory(*store.Task(id))

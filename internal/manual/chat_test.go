@@ -2592,11 +2592,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// chat, one project, or everything. Each of these is what somebody types
 		// looking at the page, at the card's `where` band, or at the one line a
 		// conversation opens with.
-		{"what rules do you have here", "standing-orders"},
-		{"how do I make it always do something", "standing-orders"},
+		// A RULE IS A MEMORY MARKED ALWAYS NOW (what-i-remember.md's `Always`
+		// sections; docs/design/automations/DESIGN.md), so the questions about
+		// making one, which rules hold here and how far one reaches are answered
+		// on the memory page, while the standing page keeps its own words.
+		{"what rules do you have here", "what-i-remember"},
+		{"how do I make it always do something", "what-i-remember"},
 		{"do you have automations", "standing-orders"},
 		{"what does the standing orders page show", "standing-orders"},
-		{"does this rule apply to all my projects", "standing-orders"},
+		{"does this rule apply to all my projects", "what-i-remember"},
 		{"not in this project", "standing-orders"},
 		{"why does it say 3 standing orders here", "standing-orders"},
 		{"when does a standing order go off on home", "home"},
@@ -2605,12 +2609,19 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// "standing" at all — a style rule, a convention, a preference — plus the
 		// two questions the shape provokes: how do I set one, and how does it know
 		// I meant always rather than just now.
-		{"always do it this way", "standing-orders"},
-		{"can you remember my coding style rule", "standing-orders"},
+		{"always do it this way", "what-i-remember"},
+		{"can you remember my coding style rule", "what-i-remember"},
 		{"how do I set a standing order", "standing-orders"},
-		{"how does it know I mean always", "standing-orders"},
-		{"is that an instruction or a rule", "standing-orders"},
-		{"our conventions for this repo", "standing-orders"},
+		{"how does it know I mean always", "what-i-remember"},
+		{"is that an instruction or a rule", "what-i-remember"},
+		{"our conventions for this repo", "what-i-remember"},
+		// And the rule in the words of somebody about to make one, and the
+		// command that makes it.
+		{"how do I make it always use tabs", "what-i-remember"},
+		{"make a rule for this repo", "what-i-remember"},
+		{"/always", "what-i-remember"},
+		{"how do I switch a rule off without forgetting it", "what-i-remember"},
+		{"how many rules ride along in every conversation", "what-i-remember"},
 		// The deliberate gesture and the visible door, in the words of somebody
 		// reaching for them — or noticing that recognition missed.
 		{"how do I force it to be standing", "standing-orders"},
@@ -2620,7 +2631,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"delete a standing order", "standing-orders"},
 		{"get rid of a standing order", "standing-orders"},
 		{"how do I make this permanent", "standing-orders"},
-		{"it didn't notice this was a rule and did it once", "standing-orders"},
+		{"it didn't notice this was a rule and did it once", "what-i-remember"},
 		{"can I click keeping an eye on 2", "standing-orders"},
 		// The wave that gave home's landed rows an aim. Somebody looking at a
 		// `needs you` row that has sat for four days asks two things — what does

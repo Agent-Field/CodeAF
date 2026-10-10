@@ -252,11 +252,7 @@ func (a *Agent) memoryOwners() []string {
 // admission) can read the owner set it was admitted under rather than whatever
 // project the conversation has since anchored to. It is the one list builder.
 func (a *Agent) memoryOwnersFor(projectKey string) []string {
-	owners := []string{store.OwnerUser, store.OwnerMachine}
-	if key := strings.TrimSpace(projectKey); key != "" {
-		owners = append(owners, store.OwnerProject(key))
-	}
-	return owners
+	return MemoryOwners(projectKey)
 }
 
 // reflexClient is this session's own client pinned to the reflex model, or nil
@@ -1313,11 +1309,30 @@ func (a *Agent) applyCandidate(ctx context.Context, client reflex.Completer, can
 // applyCandidateFrom settles one candidate and, when source is non-nil (the
 // post-turn pass), publishes the claim's provenance in the memory write's own
 // transaction.
+//
+// IT NEVER WRITES A RULE. The post-turn pass and every ordinary mouth come
+// through here, and a rule is the person's to set ([Agent.keepRule] is the one
+// door that asks for one), so this is [Agent.settleCandidate] with always off.
 func (a *Agent) applyCandidateFrom(ctx context.Context, client reflex.Completer, candidate reflex.ExtractResult, source *memoryTurnEvidence) (store.Memory, error) {
+	return a.settleCandidate(ctx, client, candidate, source, false)
+}
+
+// settleCandidate is the whole settle, for an ordinary line or — with always —
+// a rule.
+//
+// THE TWO SETTLE DIFFERENTLY AGAINST WHAT IS ALREADY A RULE, and only in one
+// direction. An ordinary line never sees a rule among its neighbours, so neither
+// the post-turn pass nor a passing /remember can refine, retire or quietly
+// re-word a rule the person set; the same words written again reach the store's
+// own door, which skips them and leaves the rule standing. A rule sees everything
+// in its owner, and whichever way the decider settles it — a new row, a line
+// refined, a line replaced, a line it already says — the row it lands on is a
+// rule ([Agent.settleUpdate], [Agent.settleSupersede], [Agent.settleRuleSkip]).
+func (a *Agent) settleCandidate(ctx context.Context, client reflex.Completer, candidate reflex.ExtractResult, source *memoryTurnEvidence, always bool) (store.Memory, error) {
 	if strings.TrimSpace(candidate.Text) == "" {
 		return store.Memory{}, errors.New("session: a memory with no text says nothing")
 	}
-	fresh := a.memoryDraft(candidate)
+	fresh := a.lineDraft(candidate, always)
 	// ONE PROVENANCE ROW, BUILT ONCE. When the caller is the post-turn settle it
 	// hands the turn source, and the row lands in the same transaction as the
 	// memory it belongs to; the explicit doors (source nil) keep their own
@@ -1338,6 +1353,9 @@ func (a *Agent) applyCandidateFrom(ctx context.Context, client reflex.Completer,
 		// next turn's extraction can settle it again, which is cheaper than a
 		// duplicate the door never got to catch.
 		return store.Memory{}, fmt.Errorf("the dedup search failed: %w", err)
+	}
+	if !always {
+		neighbors = withoutRules(neighbors)
 	}
 	if len(neighbors) == 0 {
 		// NOTHING NEAR IT IS NOT A QUESTION. A store with no opinion about this
@@ -1382,8 +1400,57 @@ func (a *Agent) applyCandidateFrom(ctx context.Context, client reflex.Completer,
 		return a.settleUpdate(owners, decided, fresh, evidence)
 	case "supersede":
 		return a.settleSupersede(owners, decided, fresh, evidence)
+	case "skip":
+		if always {
+			return a.settleRuleSkip(owners, decided, neighbors)
+		}
 	}
 	return store.Memory{}, nil
+}
+
+// withoutRules is a dedup neighbour list with every rule taken out
+// ([Agent.settleCandidate] says why an ordinary line never settles against one).
+func withoutRules(memories []store.Memory) []store.Memory {
+	kept := memories[:0:0]
+	for _, memory := range memories {
+		if !memory.Always {
+			kept = append(kept, memory)
+		}
+	}
+	return kept
+}
+
+// settleRuleSkip is a rule the decider found already said: the line that says
+// it becomes the rule, rather than the person's always being dropped because
+// the words were already there.
+//
+// THE LINE IS THE ONE THE DECIDER NAMED, OR THE ONLY ONE IT WAS SHOWN, and never
+// a guess between several: with no target and more than one neighbour this
+// answers nothing, and the caller lands the rule through the store's own door
+// ([Agent.writeLine]), which promotes an exact duplicate and otherwise adds the
+// rule beside the near ones. The target is checked against the owners this
+// write may touch first, as the update and supersede halves check theirs.
+func (a *Agent) settleRuleSkip(owners []string, decided reflex.DecideResult, neighbors []store.Memory) (store.Memory, error) {
+	target := strings.TrimSpace(decided.TargetID)
+	if target == "" && len(neighbors) == 1 {
+		target = neighbors[0].ID
+	}
+	if target == "" {
+		return store.Memory{}, nil
+	}
+	visible, err := a.memory.store.GetMemories(owners, []string{target})
+	if err != nil {
+		return store.Memory{}, fmt.Errorf("checking the rule's line: %w", err)
+	}
+	if len(visible) == 0 {
+		return store.Memory{}, nil
+	}
+	if err := a.memory.store.SetMemoryAlwaysForOwners(owners, target, true); err != nil {
+		return store.Memory{}, err
+	}
+	kept := visible[0]
+	kept.Always = true
+	return kept, nil
 }
 
 // memoryNeighborsWithEvidence decorates the dedup neighbors with their latest
@@ -1454,7 +1521,10 @@ func (a *Agent) settleUpdate(owners []string, decided reflex.DecideResult, fresh
 	if err != nil {
 		return store.Memory{}, fmt.Errorf("checking update target: %w", err)
 	}
-	if len(visible) == 0 {
+	// AN ORDINARY LINE NEVER REWORDS A RULE, even when a decider names one it was
+	// never shown ([Agent.settleCandidate] keeps rules out of what it is shown;
+	// this keeps them out of what it can reach). It settles as a skip.
+	if len(visible) == 0 || (visible[0].Always && !fresh.Always) {
 		return store.Memory{}, nil
 	}
 	if evidence != nil {
@@ -1464,7 +1534,17 @@ func (a *Agent) settleUpdate(owners []string, decided reflex.DecideResult, fresh
 	} else if err := a.memory.store.UpdateMemoryForOwners(owners, decided.TargetID, fresh.Title, fresh.Text, fresh.Tags, fresh.SourceSession); err != nil {
 		return store.Memory{}, err
 	}
-	return store.Memory{ID: decided.TargetID, Title: fresh.Title, Text: fresh.Text}, nil
+	// A RULE THAT REFINED A LINE MAKES THAT LINE THE RULE. The update corrects
+	// the words in place and says nothing about the flag, so it is set here,
+	// through the same owner-guarded door, rather than left on a line the person
+	// asked to be always and is now merely recalled.
+	if fresh.Always && !visible[0].Always {
+		if err := a.memory.store.SetMemoryAlwaysForOwners(owners, decided.TargetID, true); err != nil {
+			return store.Memory{}, err
+		}
+	}
+	return store.Memory{ID: decided.TargetID, Owner: visible[0].Owner, Title: fresh.Title, Text: fresh.Text,
+		Always: fresh.Always || visible[0].Always}, nil
 }
 
 // settleSupersede is the retirement half. The old line is read BEFORE it is
@@ -1478,7 +1558,8 @@ func (a *Agent) settleSupersede(owners []string, decided reflex.DecideResult, fr
 	if err != nil {
 		return store.Memory{}, fmt.Errorf("checking supersession target: %w", err)
 	}
-	if len(visible) == 0 {
+	// NOR RETIRES ONE, for [Agent.settleUpdate]'s reason.
+	if len(visible) == 0 || (visible[0].Always && !fresh.Always) {
 		return store.Memory{}, nil
 	}
 	retired := visible[0]
@@ -1518,6 +1599,22 @@ func (a *Agent) memoryDraft(candidate reflex.ExtractResult) store.Memory {
 	return fresh
 }
 
+// lineDraft is [Agent.memoryDraft] for a line that may be a RULE.
+//
+// A RULE IS STORED AS A PREFERENCE, whatever the words looked like. It is how a
+// person wants things done here, which is what the type means; and it is the one
+// type an older build's tidy never retires (memory_consolidate.go's
+// [consolidateMayRetire]), so a build that does not know the flag cannot replace
+// the person's rule with a line of its own on the store they share.
+func (a *Agent) lineDraft(candidate reflex.ExtractResult, always bool) store.Memory {
+	fresh := a.memoryDraft(candidate)
+	if always {
+		fresh.Always = true
+		fresh.Type = store.MemoryPreference
+	}
+	return fresh
+}
+
 // addThroughDoor is the add half of the write path: the store's dedup door,
 // with the draft's owner. The door answers a skip with the row that beat this
 // one, which the caller reads as "already kept" — the same answer the decider's
@@ -1536,6 +1633,7 @@ func (a *Agent) addThroughDoorFrom(fresh store.Memory, evidence *store.Contextua
 		Text:          fresh.Text,
 		Tags:          fresh.Tags,
 		SourceSession: fresh.SourceSession,
+		Always:        fresh.Always,
 	}
 	var (
 		result store.WriteResult
@@ -1566,8 +1664,20 @@ func (a *Agent) addThroughDoorFrom(fresh store.Memory, evidence *store.Contextua
 // The returned title is the one that landed — the existing row's when the
 // write was skipped, the new row's when it was added.
 func (a *Agent) writeRemembered(text, scope string) (string, error) {
+	memory, err := a.writeLine(text, scope, false)
+	if err != nil {
+		return "", err
+	}
+	return memory.Title, nil
+}
+
+// writeLine is [Agent.writeRemembered] answering the row that landed rather than
+// only its title, and taking always: the one write path for an ordinary line
+// and for a rule ([Agent.keepRule]), so the two cannot come to settle by two
+// different rules.
+func (a *Agent) writeLine(text, scope string, always bool) (store.Memory, error) {
 	if !a.memoryWritable() {
-		return "", errors.New("this build is not remembering anything")
+		return store.Memory{}, errors.New("this build is not remembering anything")
 	}
 	// /remember AND THE remember TOOL ARE DOORS TOO. A person pasting a token
 	// beside what they want kept must not have it stored and rendered; the
@@ -1575,7 +1685,7 @@ func (a *Agent) writeRemembered(text, scope string) (string, error) {
 	// clean as well.
 	text = redact.Secrets(strings.Join(strings.Fields(text), " "))
 	if text == "" {
-		return "", errors.New("there is nothing to remember")
+		return store.Memory{}, errors.New("there is nothing to remember")
 	}
 	if strings.TrimSpace(scope) == "" {
 		scope = store.MemoryScopeProject
@@ -1587,20 +1697,16 @@ func (a *Agent) writeRemembered(text, scope string) (string, error) {
 		Title: memoryTitleFrom(text),
 		Text:  text,
 	}
+	draft := a.lineDraft(candidate, always)
 	client := a.reflexClient()
 	if client == nil {
 		// NO REFLEX IS NOT NO MEMORY. A person who typed /remember said what
 		// they wanted kept; refusing them because a router model is unreachable
 		// would be losing their words to somebody else's outage. The store's
 		// own dedup door still runs, so a retype is still a skip.
-		memory, err := a.addThroughDoor(a.memoryDraft(candidate))
-		if err != nil {
-			return "", err
-		}
-		return memory.Title, nil
+		return a.addThroughDoor(draft)
 	}
-	ctx := a.memoryContext()
-	memory, err := a.applyCandidate(ctx, client, candidate)
+	memory, err := a.settleCandidate(a.memoryContext(), client, candidate, nil, always)
 	if err != nil {
 		// THE MODEL IS NOT A PERMISSION. A decider that could not answer — an
 		// outage, a nonsense reply — does not lose the words a person typed;
@@ -1608,18 +1714,25 @@ func (a *Agent) writeRemembered(text, scope string) (string, error) {
 		// The failure is journaled either way, so the person can see the
 		// settle never happened even though the save did.
 		a.journalMemoryFailure("explicit-settle", err)
-		memory, fallbackErr := a.addThroughDoor(a.memoryDraft(candidate))
+		memory, fallbackErr := a.addThroughDoor(draft)
 		if fallbackErr != nil {
-			return "", err
+			return store.Memory{}, err
 		}
-		return memory.Title, nil
+		return memory, nil
 	}
 	if memory.Title == "" {
+		if always {
+			// A RULE THE DECIDER FOUND ALREADY SAID STILL LANDS AS A RULE. The
+			// store's own door promotes the line when its words are the same
+			// and adds the rule when they are only near; dropping it here would
+			// lose the one word the person said that mattered.
+			return a.addThroughDoor(draft)
+		}
 		// The decider skipped it: the store already holds this, which is the
 		// answer rather than a failure.
-		return candidate.Title, nil
+		return store.Memory{Title: candidate.Title}, nil
 	}
-	return memory.Title, nil
+	return memory, nil
 }
 
 // saySuperseded is the one dim line a retirement gets, and the reason it exists
@@ -1684,8 +1797,14 @@ func (a *Agent) sayMemory(text string) {
 
 // ── what a person and the model can ask for by hand ─────────────────────────
 
-// MemoryLine is one remembered thing as a surface prints it.
-type MemoryLine struct{ ID, Title, Text string }
+// MemoryLine is one remembered thing as a surface prints it. Always marks a
+// rule — a line put in front of every conversation and task where it holds
+// (memory_always.go) — so a list can say which of its lines are standing over
+// the work and which come up only when they bear on it.
+type MemoryLine struct {
+	ID, Title, Text string
+	Always          bool
+}
 
 // Remembers reports whether this session has a brain at all.
 //
@@ -1842,11 +1961,16 @@ func (a *Agent) Memories(query string) ([]MemoryLine, error) {
 	if err != nil {
 		return nil, err
 	}
+	return memoryLines(found), nil
+}
+
+// memoryLines is store rows as a surface prints them, the flag included.
+func memoryLines(found []store.Memory) []MemoryLine {
 	lines := make([]MemoryLine, 0, len(found))
 	for _, memory := range found {
-		lines = append(lines, MemoryLine{ID: memory.ID, Title: memory.Title, Text: memory.Text})
+		lines = append(lines, MemoryLine{ID: memory.ID, Title: memory.Title, Text: memory.Text, Always: memory.Always})
 	}
-	return lines, nil
+	return lines
 }
 
 // memoryContext is the session's own background context, or the process's when
@@ -1998,9 +2122,24 @@ func memoryTitleFrom(text string) string {
 
 // ── the one tool ────────────────────────────────────────────────────────────
 
-const rememberDescription = "Keep one durable user preference, correction or decision in a short line. Preserve conditions and exceptions; omit transcripts, repo facts and temporary state. Related memories are reconciled; the result names the saved title."
+// rememberDescription is what the model reads before it calls, and its second
+// half is RECOGNITION: a rule is only kept if the model notices that an ordinary
+// sentence was one, and nothing else in this build watches for those words.
+//
+// RECOGNITION IS A TEST, NOT A WORD LIST. "Always" and "never" are how people
+// emphasise the work in front of them as often as how they set a rule for work
+// to come, so what is carried is the discharge test — a sentence the work at
+// hand satisfies and then forgets is not a rule, whatever words it wears — and
+// what to do when that is genuinely unclear: follow it now and offer the rule in
+// one line, because a question about a rule nobody wanted costs the person's
+// trust in the next one. It is said in as few bytes as hold it, because this
+// string rides in front of every request (prefixbudget_test.go weighs it) —
+// which is also why the `always` field carries no description of its own: this
+// sentence is its description, and a second one would be the same rule paid for
+// twice.
+const rememberDescription = "Keep one durable user preference, correction or decision in a short line. Preserve conditions and exceptions; omit transcripts, repo facts and temporary state. Related memories are reconciled; the result names the saved title. always: a rule in every later turn and task, once the person agrees. Not for what the work at hand satisfies, even said as always or never; unsure, follow it now and offer always."
 
-const rememberSchemaJSON = `{"type":"object","properties":{"text":{"type":"string","description":"The single line to remember, in plain words"},"scope":{"type":"string","enum":["user","project","env"],"description":"How far the truth reaches: this project by default; user only for an explicitly personal rule across projects; env only for this machine"}},"required":["text"],"additionalProperties":false}`
+const rememberSchemaJSON = `{"type":"object","properties":{"text":{"type":"string","description":"The single line to remember, in plain words"},"scope":{"type":"string","enum":["user","project","env"],"description":"How far the truth reaches: this project by default; user only for an explicitly personal rule across projects; env only for this machine"},"always":{"type":"boolean"}},"required":["text"],"additionalProperties":false}`
 
 // The gloss a person reads beside a memory call is the thing itself —
 // "remember prefers tabs over spaces" — for the reason every other tool's gloss
@@ -2023,11 +2162,23 @@ func (a *Agent) memoryTools() []bare.Tool {
 		Schema:      json.RawMessage(rememberSchemaJSON),
 		Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
-				Text  string `json:"text"`
-				Scope string `json:"scope"`
+				Text   string `json:"text"`
+				Scope  string `json:"scope"`
+				Always bool   `json:"always"`
 			}
 			if err := decodeToolArguments(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
+			}
+			if parsed.Always {
+				// THE PERSON HAS ALREADY SAID YES BY THE TIME THIS RUNS: a rule is
+				// a question the consent gate never lets through on its own
+				// (internal/approval's KeepsARule), so reaching this line is the
+				// confirmation.
+				kept, err := a.keepRule(parsed.Text, parsed.Scope)
+				if err != nil {
+					return "Could not keep that as a rule: " + err.Error(), true, nil
+				}
+				return modelRuleReceipt(kept), false, nil
 			}
 			title, err := a.RememberScoped(parsed.Text, parsed.Scope)
 			if err != nil {
@@ -2114,7 +2265,11 @@ func (a *Agent) refreshSystemLocked() {
 		a.recordRead = true
 		a.recordText = DecisionsSection(a.Decisions())
 	}
-	head := a.system + a.placesText + a.standingText
+	// THE PERSON'S RULES RIDE BESIDE THEIR STANDING ORDERS, ahead of them as in a
+	// task brief, and for those orders' reason: a rule moves only when somebody
+	// sets or takes one back, so on every other turn the block renders byte for
+	// byte (memory_always.go).
+	head := a.system + a.placesText + a.alwaysText + a.standingText
 	if head != a.systemHead {
 		a.systemHead = head
 		a.recordShown = a.recordText

@@ -2245,6 +2245,13 @@ func (s v3Brain) UpdateMemory(id, title, text string, tags []string) error {
 func (s v3Brain) ForgetMemory(id string) error  { return s.brain.ForgetMemory(id) }
 func (s v3Brain) RestoreMemory(id string) error { return s.brain.RestoreMemory(id) }
 
+// SetMemoryAlways is the place's `a` — by the raw id the page is showing, which
+// is the person's own surface managing a row it drew (internal/store's raw-door
+// contract on [store.Store.UpdateMemory]).
+func (s v3Brain) SetMemoryAlways(id string, always bool) error {
+	return s.brain.SetMemoryAlways(id, always)
+}
+
 func (s v3Brain) MemoryProvenance(id string) (string, string, time.Time, error) {
 	return s.brain.MemoryProvenance(id)
 }

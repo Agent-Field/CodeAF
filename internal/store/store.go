@@ -813,6 +813,12 @@ func Open(path string) (*Store, error) {
 	if err := migrateMemoriesOwner(db); err != nil {
 		return closeOnError(fmt.Errorf("migrate memory owners: %w", err))
 	}
+	// AND THE RULES COLUMN AFTER THE OWNERS, because its index names both: a
+	// store from before either existed has neither until the two passes above
+	// and this one have run, in this order (memory_always.go).
+	if err := migrateMemoriesAlways(db); err != nil {
+		return closeOnError(fmt.Errorf("migrate memory rules: %w", err))
+	}
 	// The memory index is created only where a probe proved FTS5 works; the
 	// flag is what every memory read checks before it asks the index anything.
 	// The OTHER FTS tables above are still unconditional — a build where FTS5

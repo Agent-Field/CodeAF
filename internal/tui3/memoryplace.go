@@ -127,7 +127,10 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 		shelfText := strings.ToLower(memoryShelfName(shelf))
 		shelfScore, shelfMatch := fuzzy.Score(shelfText, terms)
 		for _, memory := range shelf.Memories {
-			text := strings.ToLower(strings.Join([]string{memory.Title, memory.Text, memory.Type, memory.Status, strings.Join(memory.Tags, " ")}, " "))
+			// A RULE ANSWERS TO ITS OWN WORD, so typing `always` narrows the page
+			// to the lines in front of every conversation — the question a person
+			// asks of this page when they want to know what they have set.
+			text := strings.ToLower(strings.Join([]string{memory.Title, memory.Text, memory.Type, memory.Status, strings.Join(memory.Tags, " "), memoryRuleFact(memory)}, " "))
 			score, match := fuzzy.Score(text, terms)
 			if query == "" || shelfMatch || match {
 				candidate.lines = append(candidate.lines, memory)
@@ -198,10 +201,18 @@ func readMemory(shelves store.MemoryShelves, open map[string]bool, filter string
 		for j := 0; j < shown; j++ {
 			memory := shelf.lines[j]
 			copy := memory
+			facts := []rowField{rowSay(memoryTypeWord(memory.Type)), rowSay(memoryHelp(memory, now))}
+			// A RULE SAYS SO FIRST, because it is the fact that changes what the
+			// line DOES: every other line here comes up when it bears on the work,
+			// and this one is in front of all of it. The facts fall off the end of
+			// a narrow row, so the first one is the one that survives.
+			if rule := memoryRuleFact(memory); rule != "" {
+				facts = append([]rowField{rowSay(rule)}, facts...)
+			}
 			r.lines = append(r.lines, memoryReadingLine{
 				kind: memoryReadingMemory, shelf: key, memory: &copy,
 				label: tokens.GlyphProseBullet + " " + memory.Title,
-				facts: []rowField{rowSay(memoryTypeWord(memory.Type)), rowSay(memoryHelp(memory, now))},
+				facts: facts,
 				age:   sinceAt(memory.UpdatedAt, now),
 			})
 		}
@@ -379,6 +390,26 @@ func memoryHelp(memory store.Memory, now time.Time) string {
 		parts = append(parts, "bore on "+groupedInt(memory.MissCount))
 	}
 	return strings.Join(parts, " · ")
+}
+
+// memoryRuleFactWord is the fact a rule wears on its row and its card: the
+// feature's own word, so the page, the command and the manual say one thing.
+const memoryRuleFactWord = "always"
+
+// memoryRuleFact is that word on a line that is a rule and still held, and ""
+// on every other line. A rule that was let go of or replaced is history, and
+// history is not in front of anything — held is read the way [memoryHelp] reads
+// it, as every status that is not one of those two.
+func memoryRuleFact(memory store.Memory) string {
+	if memory.Always && memoryHeld(memory) {
+		return memoryRuleFactWord
+	}
+	return ""
+}
+
+// memoryHeld is whether a line is still held rather than history.
+func memoryHeld(memory store.Memory) bool {
+	return memory.Status != store.MemoryForgotten && memory.Status != store.MemorySuperseded
 }
 
 func sameDay(a, b time.Time) bool {

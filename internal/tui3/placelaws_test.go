@@ -491,6 +491,11 @@ func (p panicMemory) RestoreMemory(id string) error {
 	return nil
 }
 
+func (p panicMemory) SetMemoryAlways(id string, always bool) error {
+	p.blame("make a line a rule")
+	return nil
+}
+
 func (p panicMemory) UpdateMemory(id, title, text string, tags []string) error {
 	p.blame("rewrite a line")
 	return nil
@@ -527,7 +532,7 @@ func (p panicMemory) ListMemories(scope string, limit int) ([]store.Memory, erro
 // than grepped — the same call [TestTheReadingLayersImportNoApp] makes and for
 // the same reason.
 func TestEachVerbWordIsSpelledOnce(t *testing.T) {
-	words := []string{memoryCardWord, memoryFixWord, memoryForgetWord, memoryUndoWord}
+	words := []string{memoryCardWord, memoryFixWord, memoryForgetWord, memoryUndoWord, memoryAlwaysWord, memoryWhenMattersWord}
 	seen := map[string]int{}
 	fset := token.NewFileSet()
 	entries, err := os.ReadDir(".")

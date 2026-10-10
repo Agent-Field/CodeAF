@@ -62,7 +62,13 @@ type BashWorker struct {
 	// It is the same section a task node of the conversation reads, so a
 	// plan-born worker works under the house rules too (#1549). Empty means
 	// nothing stands, and no section is rendered.
-	standing  string
+	standing string
+	// always is the person's rules over this place — memories marked always —
+	// rendered by the door ([session.AlwaysWorld]) and closed on by the worker's
+	// brief ahead of the standing orders. It is set by the run's factory rather
+	// than taken by [NewBashWorker], because it is the factory's door that read
+	// them. Empty means no rule holds, and no section is rendered.
+	always    string
 	completer session.Completer
 	// The door explains a refused account without changing the request road
 	// already owned by the injected completer.
@@ -147,7 +153,7 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 	// THE BRIEF IS SAID ONCE, on the first round. Every round after it goes out
 	// on the harness's own note, because a round only begins again when the last
 	// one ended on words with no action.
-	brief := session.BeltWorkerBrief(w.store, &task, task.ID == w.store.RootID(), len(past) > 0, WakeClause(runCtx), w.standing, w.workspace)
+	brief := session.BeltWorkerBrief(w.store, &task, task.ID == w.store.RootID(), len(past) > 0, WakeClause(runCtx), w.always, w.standing, w.workspace)
 	// noAction counts replies in a row that carried no tool call. A reply that
 	// did call a tool resets the run to one — its own trailing words are the
 	// first of the new run — and the fourth in a row fails the task.

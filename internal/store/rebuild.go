@@ -666,6 +666,17 @@ func replayEvent(tx *sql.Tx, event Event, fts bool) error {
 		// back to quarantine on every rebuild.
 		return applyMemoryRehomed(tx, event.Payload, event.Seq)
 
+	case EventMemoryAlways:
+		// A RULE SET OR TAKEN BACK IS A FACT ABOUT THE ROW, so the replay must
+		// reproduce it — a rebuild that dropped it would turn every rule the
+		// person set on an existing line back into a line that is merely
+		// recalled (memory_always.go).
+		var payload memoryAlwaysPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyMemoryAlways(tx, payload)
+
 	case EventMemorySkipped, EventMemoryWriteFailed:
 		// Observability events: they name what a device went through and touch
 		// no view. Durable in the journal, a no-op in the views.

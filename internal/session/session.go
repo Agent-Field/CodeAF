@@ -2954,6 +2954,13 @@ type Agent struct {
 	// an unchanged set renders the same bytes, so a conversation whose orders
 	// have not moved leaves message[0] exactly as the provider cached it.
 	standingText string
+	// alwaysText is the <always> block message[0] currently carries
+	// (memory_always.go): the person's rules over this place, read from the
+	// memory store at the start of every turn beside the standing orders and for
+	// their reason. A read that fails keeps the last block it had, because a
+	// rule the model was working under a turn ago has not stopped holding
+	// because a disk was busy.
+	alwaysText string
 	// placesText is the `# Attached folders` block message[0] currently carries
 	// (placescontext.go): the folders the PERSON attached to this conversation,
 	// named absolutely, with each one's own house rules scoped to it. It sits

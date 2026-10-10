@@ -77,6 +77,10 @@ type MemoryStore interface {
 	ForgetMemory(id string) error
 	RestoreMemory(id string) error
 	MemoryProvenance(id string) (string, string, time.Time, error)
+	// SetMemoryAlways is `a` on a line: the line made a rule — put in front of
+	// every conversation and task where it holds — or a rule made an ordinary
+	// line again.
+	SetMemoryAlways(id string, always bool) error
 }
 
 type memoryStore = MemoryStore
@@ -388,6 +392,11 @@ func (p *memoryPlace) card(width int, pal palette) []string {
 	}
 	rows = append(rows, "")
 	var about []string
+	// A RULE SAYS SO FIRST on its card, for the reason it does on its row
+	// (memoryplace.go's [memoryRuleFact]).
+	if rule := memoryRuleFact(memory); rule != "" {
+		about = append(about, rule)
+	}
 	if memory.Type != "" {
 		about = append(about, memory.Type)
 	}
@@ -638,6 +647,64 @@ func (a *app) memoryKey(msg tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
+// memoryRuleVerb is the word `a` wears on this line, and whether it is offered
+// at all. A rule can always go back to an ordinary line; a line can become a
+// rule only while it is held and its project is known — a line in quarantine is
+// never put in front of anything (internal/store's [store.OwnerLegacyProject]),
+// so a key that made it a rule would promise what the store refuses.
+func memoryRuleVerb(memory store.Memory) (string, bool) {
+	if !memoryHeld(memory) {
+		return "", false
+	}
+	if memory.Always {
+		return memoryWhenMattersWord, true
+	}
+	if memory.Owner == store.OwnerLegacyProject {
+		return "", false
+	}
+	return memoryAlwaysWord, true
+}
+
+// memoryRuleUnchangedWord is a toggle the store would not take. Its own text is
+// not carried onto the screen, for [memoryUnreadableWord]'s reason.
+const memoryRuleUnchangedWord = "that line could not be changed just now"
+
+// toggleRule is `a`: the line made a rule, or the rule made an ordinary line,
+// and the held snapshot corrected in place for [memoryPlace.setText]'s reason —
+// the write has landed, and re-reading the store to learn one flag this process
+// just set would be the page asking the disk what it already knows.
+func (p *memoryPlace) toggleRule(a *app, memory store.Memory) {
+	if a.memory == nil {
+		return
+	}
+	want := !memory.Always
+	if err := a.memory.SetMemoryAlways(memory.ID, want); err != nil {
+		p.footer = memoryRuleUnchangedWord
+		return
+	}
+	p.setAlways(memory.ID, want)
+	if want {
+		p.footer = "always · '" + memory.Title + "' is in front of every conversation now"
+		return
+	}
+	// The strip's own word, said back in the receipt rather than spelled twice
+	// (placelaws_test.go's [TestEachVerbWordIsSpelledOnce]).
+	p.footer = "'" + memory.Title + "' comes up " + memoryWhenMattersWord + " now"
+}
+
+// setAlways corrects one line's rule flag in the held snapshot.
+func (p *memoryPlace) setAlways(id string, always bool) {
+	for i := range p.shelves.Shelves {
+		for j := range p.shelves.Shelves[i].Memories {
+			if p.shelves.Shelves[i].Memories[j].ID == id {
+				p.shelves.Shelves[i].Memories[j].Always = always
+				p.rank()
+				return
+			}
+		}
+	}
+}
+
 // setText corrects one line's wording in the held snapshot.
 func (p *memoryPlace) setText(id, text string) {
 	for i := range p.shelves.Shelves {
@@ -825,6 +892,15 @@ func (placeMemory) verbs(a *app) []verb {
 				}
 				return nil
 			}})
+		// AND `a`, WHERE THE LINE CAN BE A RULE OR ALREADY IS ONE. It is the
+		// person's own surface choosing, so it asks nothing: a line made a rule
+		// here is in front of the next turn of every conversation it holds over.
+		if word, ok := memoryRuleVerb(memory); ok {
+			verbs = append(verbs, verb{key: 'a', word: word, do: func() tea.Cmd {
+				p.toggleRule(a, memory)
+				return nil
+			}})
+		}
 	}
 	// AND THE UNDO WHENEVER THERE IS SOMETHING TO PUT BACK, WITH OR WITHOUT A ROW
 	// UNDER THE CURSOR. It is the one verb here that is about the PLACE and not
@@ -904,7 +980,13 @@ func (placeMemory) hint(a *app) string {
 	if stop, ok := a.mem.reading.at(a.mem.cursor); ok && stop.fold != "" {
 		return foldEnterWord(a.mem.shelfOpen[stop.fold]) + " · type to filter · alt+s walk the shelves"
 	}
-	if _, ok := a.mem.choice(); ok {
+	if memory, ok := a.mem.choice(); ok {
+		// AND `a` IN THE WORD FOR THIS LINE'S STATE, last, so a narrow foot drops
+		// it before the verbs SCREEN 1f names ([hintFit] drops whole clauses from
+		// the end).
+		if word, offered := memoryRuleVerb(memory); offered {
+			return memoryLineHint + " · a " + word
+		}
 		return memoryLineHint
 	}
 	return memoryShelfHint

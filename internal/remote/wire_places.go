@@ -82,7 +82,7 @@ const (
 	// ── the memory doors ────────────────────────────────────────────────────
 	//
 	// THE MEMORY PLACE IS THE ONLY PLACE ON THIS SURFACE THAT WRITES, and that is
-	// why there are seven of these rather than one reading. A place that listed
+	// why there are eight of these rather than one reading. A place that listed
 	// the far machine's memories and edited this one's would be worse than a
 	// place that crossed nothing at all: every row on it would be true and every
 	// key on it would land somewhere else. So the whole seam crosses, readings
@@ -118,6 +118,17 @@ const (
 	// MethodMemoryProvenance is where and when one memory was learned, asked for
 	// the ONE id whose card is open rather than for every row on the page.
 	MethodMemoryProvenance = "Memory.Provenance" // string (id) → MemoryOrigin
+	// MethodMemorySetAlways is `a` on a line: the line made a rule, or a rule
+	// made an ordinary line again. It is a place write, beside the three above,
+	// and acts by the id the page is showing.
+	MethodMemorySetAlways = "Memory.SetAlways" // MemorySetAlwaysArgs → nothing
+	// MethodMemoryRememberAlways and MethodMemoryAlways are the transcript's
+	// /always: keep one rule through the conversation's own engine, and list the
+	// rules in force. They are commands beside Remember and Memories, for the
+	// reason those are: they act for the conversation, whose project decides
+	// where a rule holds.
+	MethodMemoryRememberAlways = "Memory.RememberAlways" // MemoryAlwaysArgs → receipt
+	MethodMemoryAlways         = "Memory.Always"         // MemoryAlwaysArgs → []session.MemoryLine
 )
 
 // LedgerArgs is how far back the spend place is looking.
@@ -191,6 +202,20 @@ type MemoryUpdateArgs struct {
 	Tags  []string `json:"tags,omitempty"`
 }
 
+// MemorySetAlwaysArgs is one line's rule flag, set or cleared.
+type MemorySetAlwaysArgs struct {
+	ID     string `json:"id"`
+	Always bool   `json:"always"`
+}
+
+// MemoryAlwaysArgs is /always as the wire carries it: the rule's words (empty
+// for the listing), and whether it was typed where no conversation is in front
+// of the person, which keeps it for them everywhere rather than in a project.
+type MemoryAlwaysArgs struct {
+	Text       string `json:"text,omitempty"`
+	Everywhere bool   `json:"everywhere,omitempty"`
+}
+
 // MemoryOrigin is where and when one memory was learned: the conversation's own
 // id, its title, and the instant. It is the store's three return values with
 // names on them, for [MemoryChange]'s reason.
@@ -201,7 +226,7 @@ type MemoryOrigin struct {
 }
 
 // EngineMemory is the ENGINE MACHINE'S memory store as this wire needs it, and
-// it is deliberately the same seven methods internal/tui3's MemoryStore asks
+// it is deliberately the same eight methods internal/tui3's MemoryStore asks
 // for — one interface, satisfied by the same adapter at both ends, so that a
 // method added to the place cannot land here as a method the far end silently
 // does not have (cmd/codeaf's [v3Brain] satisfies both by construction).
@@ -219,6 +244,8 @@ type EngineMemory interface {
 	ForgetMemory(id string) error
 	RestoreMemory(id string) error
 	MemoryProvenance(id string) (sessionID, sessionTitle string, writtenAt time.Time, err error)
+	// SetMemoryAlways makes one line a rule, or a rule an ordinary line again.
+	SetMemoryAlways(id string, always bool) error
 }
 
 // MemoryCommands is the transcript-facing memory door carried by a hosted
@@ -229,6 +256,10 @@ type MemoryCommands interface {
 	Remember(text string) (string, error)
 	Forget(query string) (string, error)
 	Memories(query string) ([]session.MemoryLine, error)
+	// RememberAlways and AlwaysMemories are /always: keep one rule, and list the
+	// rules in force (internal/session's memory_always.go).
+	RememberAlways(text string, everywhere bool) (string, error)
+	AlwaysMemories(everywhere bool) ([]session.MemoryLine, error)
 }
 
 // ConversationDeleteArgs carries explicit manager choices from the confirmation.

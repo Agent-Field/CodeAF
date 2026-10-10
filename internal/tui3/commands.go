@@ -254,6 +254,13 @@ var commands = []command{
 	{name: "memories", args: "<query>", desc: "…only the ones matching a word"},
 	{name: "remember", args: "<text>", desc: "keep one thing across conversations"},
 	{name: "forget", args: "<query>", desc: "drop what is remembered about something"},
+	// AND THE RULES, the fourth errand onto what it knows: a line kept in front
+	// of every conversation and task rather than recalled when it seems to bear
+	// (internal/session's memory_always.go). Two rows for the /memories reason:
+	// the bare form is the list of what holds here, and a single row carrying
+	// <text> would make that list unreachable from the menu.
+	{name: "always", desc: "the rules in force here · in front of every conversation and task"},
+	{name: "always", args: "<text>", desc: "…keep one as a rule for this project · for you, from home"},
 	// AND WHAT codeaf WORKS WITH, beside what it knows about you: the crew a
 	// task runs on — worker, planner, checker — picked per task (crew.go). The
 	// bare form is the panel; the four shortcuts are how anything on it

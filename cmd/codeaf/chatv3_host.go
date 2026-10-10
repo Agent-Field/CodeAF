@@ -1692,6 +1692,11 @@ func (h *hostMemory) RestoreMemory(id string) error {
 	h.refresh(500, time.Time{})
 	return err
 }
+func (h *hostMemory) SetMemoryAlways(id string, always bool) error {
+	err := h.client.SetMemoryAlways(id, always)
+	h.refresh(500, time.Time{})
+	return err
+}
 func (h *hostMemory) MemoryProvenance(id string) (string, string, time.Time, error) {
 	return h.client.MemoryProvenance(id)
 }

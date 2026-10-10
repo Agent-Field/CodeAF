@@ -1373,6 +1373,37 @@ func (c *Client) MemoryProvenance(id string) (string, string, time.Time, error) 
 	return out.Session, out.Title, out.At, nil
 }
 
+// SetMemoryAlways is the place's `a`: one line made a rule on the engine
+// machine, or a rule made an ordinary line again.
+func (c *Client) SetMemoryAlways(id string, always bool) error {
+	_, err := c.call(nil, MethodMemorySetAlways, MemorySetAlwaysArgs{ID: id, Always: always})
+	return err
+}
+
+// RememberAlways is /always through the conversation's own engine, answering
+// the receipt that engine wrote — it is the one that knows where the rule holds.
+func (c *Client) RememberAlways(text string, everywhere bool) (string, error) {
+	payload, err := c.call(nil, MethodMemoryRememberAlways, MemoryAlwaysArgs{Text: text, Everywhere: everywhere})
+	if err != nil {
+		return "", err
+	}
+	var receipt string
+	err = json.Unmarshal(payload, &receipt)
+	return receipt, err
+}
+
+// AlwaysMemories is the bare /always: the rules in force for the conversation
+// on the engine machine.
+func (c *Client) AlwaysMemories(everywhere bool) ([]session.MemoryLine, error) {
+	payload, err := c.call(nil, MethodMemoryAlways, MemoryAlwaysArgs{Everywhere: everywhere})
+	if err != nil {
+		return nil, err
+	}
+	var lines []session.MemoryLine
+	err = json.Unmarshal(payload, &lines)
+	return lines, err
+}
+
 func (c *Client) Remember(text string) (string, error) {
 	payload, err := c.call(nil, MethodMemoryRemember, text)
 	if err != nil {

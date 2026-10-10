@@ -203,7 +203,7 @@ func (p Policy) Check(tool string, args json.RawMessage) Decision {
 	tool = strings.TrimSpace(tool)
 	base := p.base(tool, args)
 	if tool != ToolBash {
-		return p.maybeAllowSelfAsking(tool, p.maybeAllowReadOnly(tool, args, base))
+		return keepsARuleFloor(tool, args, p.maybeAllowSelfAsking(tool, p.maybeAllowReadOnly(tool, args, base)))
 	}
 	command, ok := bashCommand(args)
 	if !ok {

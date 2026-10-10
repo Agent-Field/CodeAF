@@ -1553,7 +1553,13 @@ func (g *TaskGraph) runFrontier() {
 	// in one place, so the answer is the same for all of them, and reading a
 	// folder per starting node would be the same question asked ten times
 	// (standing_world.go).
-	orders := g.standingWorld()
+	//
+	// AND THE PERSON'S RULES, beside them and for the same reason: one place, one
+	// answer, read once a pass and outside the lock (memory_always.go). They are
+	// joined onto the same closing section, rules first, so a brief reads what
+	// always holds before what the person has standing; an empty one is left out
+	// by the join itself.
+	orders := joinWorldSections(g.alwaysWorld(), g.standingWorld())
 
 	g.mu.Lock()
 	// A CLOSED SESSION HAS NO RUNNING NODES, so a pass that arrives after the
@@ -1913,7 +1919,8 @@ func (g *TaskGraph) readinessLocked(node *TaskNode) (bool, string) {
 // THE ORDERS COME LAST AND NOT FIRST. What the node is doing and what it was
 // told by the work ahead of it are the job; the orders are the conditions the
 // job is done under, and a brief that opened with them would read as the job
-// being about the conditions. `orders` is [TaskGraph.standingWorld]'s answer,
+// being about the conditions. `orders` is the person's rules
+// ([TaskGraph.alwaysWorld]) and [TaskGraph.standingWorld]'s answer, joined,
 // resolved ONCE per frontier pass outside this lock.
 func (g *TaskGraph) briefLocked(node *TaskNode, orders string) string {
 	brief := g.inheritedLocked(node)

@@ -20,11 +20,13 @@ The memory commands have two postures:
   the conversation.
 - `/remember <text>` — keep one thing.
 - `/forget <query>` — drop the one thing that best matches.
+- `/always <text>` — keep a **rule**, put in front of every conversation and task
+  here; bare `/always` lists the rules in force (*Always — make it always do something*, below).
 
 Memory can be turned off entirely. The `memory` row in `/settings` is on by
 default; off, nothing is carried, nothing is written, neither of the two calls
-below is made, and the background tidy never runs. With it off, `/remember`,
-`/forget` and `/memories` answer:
+below is made, no rule rides along, and the background tidy never runs. With it
+off, `/remember`, `/forget`, `/always` and `/memories` answer:
 
 ```
 memory is off for this session · turn it on under /settings
@@ -231,7 +233,9 @@ and every field on the row is joined by the one separator this surface joins fac
 
 The **title is whole** whatever the frame is; the facts behind it are a ranked prefix, so a
 narrow terminal drops `helped 19 · bore on 3` from the end rather than cutting the line's own
-words. The age stays out at the right.
+words. The age stays out at the right. A **rule** leads its facts with `always` —
+`· use tabs in this repository · always · preference · new` — and typing `always` narrows
+the page to the rules.
 
 `helped` is how many times a line actually changed an answer; `bore on` is how many times it
 was put in front of a model and had nothing to do with the reply. A line that was **let go**
@@ -258,12 +262,13 @@ next place now, and a view of a place belongs to the `alt+<letter>` class.
 **The foot says what the row under the cursor can be asked for**, so it is two sentences:
 
 ```
-enter ask me about it · e fix the wording · f forget it · tab next place · esc
+enter ask me about it · e fix the wording · f forget it · a make it always · tab next place · esc
 enter open a shelf · type to filter · alt+s walk the shelves · tab next place · esc
 ```
 
-`e` and `f` are the row's `→` strip, which is where they are bound: press `→` first and the
-letters are the verbs while it is drawn.
+`e`, `f` and `a` are the row's `→` strip, which is where they are bound: press `→` first and
+the letters are the verbs while it is drawn. On a rule `a` reads `a only when it matters`; a
+narrow foot drops it first.
 
 `esc` clears the filter if there is one in it, and leaves the place on the second press.
 
@@ -323,8 +328,8 @@ While the strip is drawn its letters are the verbs and the filter box is asleep;
 `←` closes it and every letter is a character again.
 
 The strip is offered **only on a line**, and on a line it carries `c open the card`,
-`e fix the wording` and `f forget it` — plus `u put it back` while there is something to
-undo. A shelf heading, the section line and the teaching prose at the top of a nearly-empty
+`e fix the wording` and `f forget it`, then `a make it always` (`a only when it matters` on a
+rule) — plus `u put it back` while there is something to undo. A shelf heading, the section line and the teaching prose at the top of a nearly-empty
 page all have nothing to fix and nothing to forget, so `→` on any of them opens nothing.
 
 ## How do I forget a memory and undo forgetting one?
@@ -647,6 +652,83 @@ memory rather than making a second — **and the settling step no longer needs
 the model to be up**: if the small memory model cannot answer, the line is
 still kept through the store's own duplicate check, and the failed settle is
 recorded in the journal rather than lost.
+
+## Always — make it always do something: a rule like always use tabs, never touch the public API, coding style, conventions for this repo
+
+A **rule** is a memory marked *always*. An ordinary memory comes up when it
+bears on what you asked; a rule is put in front of **every turn** of every
+conversation where it holds, and closes the brief of every task started there.
+It is for the conventions and preferences that govern work nobody has done yet.
+
+Two ways to make one:
+
+- **`/always <text>`** keeps it now and asks nothing — you typing it is the
+  confirmation:
+
+  ```
+  always · always use tabs in this repository · in this project
+  ```
+
+- **Say it.** When I recognise a rule in what you said I keep it with `remember`
+  set to *always*, and that always asks you first, on a card headed
+  `needs your ok to keep a rule`, because it will sit in front of every later
+  conversation. That card has no "always" answer: each rule is asked about by
+  itself. With nobody there to answer — inside a task, a headless run — it is not
+  kept.
+
+**Where it holds** is memory's own reach: this project by default; typed on home,
+for you in every project (`· in every project`). A conversation with no project
+of its own keeps its rules for you and says so:
+`· in every project, since this conversation has no project of its own`. There is
+no rule for one conversation only, and no "not here" exception.
+
+Bare `/always` lists the rules in force here — `rules in force here · 2`, then
+one rule per line with its id — or says
+`no rule holds here yet · /always <text> keeps one`. On home it lists the rules
+that hold everywhere you work.
+
+## Rules in every conversation and task — how many ride along, seeing, switching off and forgetting a rule
+
+**Where a rule reaches:** every turn of every conversation where it holds —
+including a small model's lean conversation, which does no other memory work;
+the brief of every task started there, which ends
+`If you cannot honour one of these, say so in your report.`; the workers of a
+plan; and a headless `codeaf do` in that folder.
+
+**How many:** yours first, then this machine's, then the project's, each oldest
+first. At most **twelve** rules and about **2,400** characters ride along; the
+newest wait, and the block says `…3 more`. A rule shows no age, and the block does
+not change from one turn to the next unless a rule does.
+
+**Seeing them:** bare `/always`, or the memory place, where a rule wears `always`
+as its first fact and on its card, and typing `always` filters the page to rules.
+
+**Switching one off:** `→` then `a` on a line in the memory place —
+`make it always` on an ordinary line, `only when it matters` on a rule. The line
+above the composer says `always · '<title>' is in front of every conversation now`
+or `'<title>' comes up only when it matters now`. A line nobody could prove the
+project of cannot be made a rule.
+
+**Forgetting one:** `/forget <query>` or `f`, as for any memory.
+
+The same words remembered again stay one rule, and `/always` on words already
+remembered makes that line the rule. Nothing learned in the background makes,
+unmakes or replaces a rule, and the tidy never touches one. **Memory off is rules
+off:** `/always` answers
+`memory is off for this session · turn it on under /settings`.
+
+## Is that an instruction or a rule — how it knows you mean always, and when it didn't notice a rule and did it once
+
+The test is whether the sentence can be satisfied by the work in front of me and
+then forgotten. "Make sure this site has three pages" is done once it has three
+pages, however it is worded — an instruction for this work. "Never force-push a
+shared branch" can be broken tomorrow by work nobody has started — a rule. A
+sentence about the thing being built right now ("always validate the input in this
+form") is emphasis on this work.
+
+When it is genuinely unclear I follow it now and offer, in one line, to keep it
+always — rather than raising a card you did not want. If I missed one and only
+did it once, `/always <text>` keeps it without asking.
 
 ## Forgetting something
 
