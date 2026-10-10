@@ -183,8 +183,9 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
   const empty = !inTask && model.turns.length === 0 && model.preface.length === 0 && !failed;
   const { done, total } = taskCounts(model.tasks);
   const barPanel = hasTasks && !inTask ? { label: `Tasks · ${done}/${total}`, shown: panel.shown, onToggle: panel.shown ? panel.close : panel.open } : undefined;
-  // ⌘⇧K toggles the task panel (design Shell 2h); a conversation without tasks has no panel, so the key is left alone.
-  useShortcuts(shortcutLayer.surface, shortcut => { if (shortcut.id !== 'tasks-panel' || !barPanel) return false; barPanel.onToggle(); return true; }, !tasksView);
+  // ⌘⇧K toggles the task panel exactly like the header button (design Shell 2h, I-IKY-16). Only the focused pane answers, so a split's
+  // other panes do not race for the key; a conversation without tasks has no panel, so the key is left alone.
+  useShortcuts(shortcutLayer.surface, shortcut => { if (shortcut.id !== 'tasks-panel' || !barPanel) return false; barPanel.onToggle(); return true; }, !tasksView && focused);
   const barCounts = { running: taskProgress(model.tasks).running, needsYou: model.questions.length };
   // The Using list is re-read when a turn lands or the work starts and stops: a place changed meanwhile applies from the next turn.
   const using = useUsing(usingApi, sessionId, `${model.turns.length}:${model.running}`);
@@ -220,14 +221,7 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
         {/* Now uses graphite for the empty start without changing the surrounding shell palette. */}
         <div className="conversation-main" data-empty={empty || undefined} data-tint={empty && !newConversationPlace ? 'graphite' : undefined} data-sheet={sheetLocksScroll || undefined} hidden={tasksView}>
           {showBar && (
-            <ConversationBar nextUp={nextUp} onNeedsYou={() => {
-              const first = model.questions[0];
-              if (!first) return;
-              if (panel.sheet) panel.close();
-              if (inTask) setRoute(navigate(route, undefined));
-              jump();
-              focusQuestion(questionKey(first));
-            }} onTasksFilter={(tasksFilter) => { if (panel.sheet) panel.close(); onView({ tasksFilter, route: navigate(route, TASKS_VIEW) }); }} lead={inTask ? 'trail' : 'title'} title={barTitle || undefined} onRename={barTitle ? onRename : undefined} counts={barCounts} panel={barPanel} using={<UsingLine control={using} onOpenSource={onOpenSource} onAddToPlace={onAddToPlace} />}>
+            <ConversationBar nextUp={nextUp} onTasksFilter={(tasksFilter) => { if (panel.sheet) panel.close(); onView({ tasksFilter, route: navigate(route, TASKS_VIEW) }); }} lead={inTask ? 'trail' : 'title'} title={barTitle || undefined} onRename={barTitle ? onRename : undefined} counts={barCounts} panel={barPanel} using={<UsingLine control={using} onOpenSource={onOpenSource} onAddToPlace={onAddToPlace} />}>
               {taskId ? <TaskRouteBar rootLabel={label} taskId={taskId} tasks={model.tasks} route={route} onRoute={setRoute} /> : null}
             </ConversationBar>
           )}
