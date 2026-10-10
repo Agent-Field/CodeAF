@@ -216,14 +216,14 @@ export function HomeSourcesSection({ placeId, sources, actions, readOnly, showAd
 }
 
 /** The empty place of 8b: one sentence, the two optional actions that are wired, and the context line the engine wrote. Nothing else. */
-export function HomeEmptyPlace({ placeId, contextLine, actions, readOnly }: { placeId: string; contextLine?: string; actions: PlaceActions; readOnly?: boolean }) {
-  const add = actions.addSources && !readOnly, write = actions.writeInstructions && !readOnly;
+export function HomeEmptyPlace({ placeId, contextLine, actions, readOnly, onWriteInstructions }: { placeId: string; contextLine?: string; actions: PlaceActions; readOnly?: boolean; onWriteInstructions?: () => void }) {
+  const add = actions.addSources && !readOnly, write = !!onWriteInstructions && !readOnly;
   return <>
     <section className="home-empty" aria-label="Empty place">
       <p className="home-empty-sentence">Nothing here yet. Start a chat below, drag chats in from anywhere, or drop in what this place should know.</p>
       {(add || write) && <div className="home-empty-actions">
         {add && <Button variant="quiet" onClick={() => actions.addSources?.(placeId)}><Icon name="attach" size="xs"/>Add files or links</Button>}
-        {write && <Button variant="quiet" onClick={() => actions.writeInstructions?.(placeId)}><Icon name="pencil" size="xs"/>Write instructions</Button>}
+        {write && <Button variant="quiet" onClick={onWriteInstructions}><Icon name="pencil" size="xs"/>Write instructions</Button>}
       </div>}
     </section>
     {contextLine && <p className="home-quiet home-context">{contextLine}</p>}
