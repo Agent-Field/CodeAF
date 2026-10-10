@@ -213,7 +213,8 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
             onHold={conversation.hold}
           />
         )}
-        <div className="conversation-main" data-empty={empty || undefined} data-sheet={sheetLocksScroll || undefined} hidden={tasksView}>
+        {/* Now uses graphite for the empty start without changing the surrounding shell palette. */}
+        <div className="conversation-main" data-empty={empty || undefined} data-tint={empty && !newConversationPlace ? 'graphite' : undefined} data-sheet={sheetLocksScroll || undefined} hidden={tasksView}>
           {showBar && (
             <ConversationBar onTasksFilter={(tasksFilter) => { if (panel.sheet) panel.close(); onView({ tasksFilter, route: navigate(route, TASKS_VIEW) }); }} lead={inTask ? 'trail' : 'title'} counts={barCounts} panel={barPanel} using={<UsingLine control={using} onOpenSource={onOpenSource} onAddToPlace={onAddToPlace} />}>
               {taskId ? <TaskRouteBar taskId={taskId} tasks={model.tasks} route={route} onRoute={setRoute} /> : <span className="conversation-bar-title">{barTitle}</span>}
