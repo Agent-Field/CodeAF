@@ -60,5 +60,5 @@ export function EditorHandoff({ path, workspace, handoff, menu = false, keys = f
     { id: 'copy', label: 'Copy path', icon: 'copy', shortcut: copyPathShortcut, onSelect: copyFull },
     { id: 'copy-relative', label: 'Copy relative path', icon: 'copy', onSelect: () => void copy(path) },
   ];
-  return <DropdownMenu label="Open in" items={items}><Button className="file-editor">Open in<Icon name="chevron" size="xs"/></Button></DropdownMenu>;
+  return <DropdownMenu label="Open in" items={items} className="file-editors-menu"><Button className="file-editor">Open in<Icon name="chevron" size="xs"/></Button></DropdownMenu>;
 }
