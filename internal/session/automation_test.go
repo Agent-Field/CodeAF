@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/automation"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // automationCall is one scripted `automation` call.
@@ -439,5 +440,54 @@ func TestWorkOutcomesComeFromTheReport(t *testing.T) {
 	quiet := run(finalText("I'll start by reading the git log."))
 	if quiet.Outcome != "" || quiet.Line != "" || !strings.Contains(quiet.Detail, "I'll start by") {
 		t.Fatalf("an unreported run = %+v", quiet)
+	}
+}
+
+// THE PERSON'S DAILY LIMIT HOLDS OVER A RUN OF WORK. Once today's spending has
+// reached it, a run does not start — no session is opened and nothing is spent
+// — and it comes back as the person's call, naming the limit and the door that
+// changes it.
+func TestAWorkRunDoesNotStartPastTheDailyLimit(t *testing.T) {
+	store := automationStoreFor(t)
+	item, err := store.Create(automation.Automation{Title: "weekly", Workspace: t.TempDir(), Schedule: automation.Schedule{Every: "1d"}, Action: automation.Action{Do: "draft it"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := t.TempDir()
+	if err := config.WriteDailyBudgetUSD(profile, 1.00); err != nil {
+		t.Fatal(err)
+	}
+	held := automationSpentToday
+	t.Cleanup(func() { automationSpentToday = held })
+	automationSpentToday = func() float64 { return 1.25 }
+
+	runner := NewAutomationRunner(func(workspace string) (Config, error) {
+		return Config{Workspace: workspace, Model: "test/model", System: "SYSTEM", ProfileDir: profile}, nil
+	}, store.Root()).(*automationRunner)
+	runner.child = func(Config) (*Agent, error) {
+		t.Fatal("a run past the daily limit opened a session")
+		return nil, nil
+	}
+	report, err := runner.Work(context.Background(), item, automation.Run{ID: 8, AutomationID: item.ID}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Outcome != automation.OutcomeYourCall || !strings.Contains(report.Line, "today's spending limit is reached") ||
+		!strings.Contains(report.Line, "/budget day changes it") {
+		t.Fatalf("a run past the daily limit = %+v", report)
+	}
+
+	// AND UNDER IT, THE RUN GOES AHEAD.
+	automationSpentToday = func() float64 { return 0.25 }
+	opened := false
+	runner.child = func(cfg Config) (*Agent, error) {
+		opened = true
+		return newAgent(cfg, &scriptedCompleter{steps: []step{finalText("ok")}})
+	}
+	if _, err := runner.Work(context.Background(), item, automation.Run{ID: 9, AutomationID: item.ID}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if !opened {
+		t.Fatal("a run under the daily limit never started")
 	}
 }

@@ -27,7 +27,7 @@ zero already meant something narrower and truer.
 
 | Row | Key | Was | Now | What it does when it fires | `0` |
 | --- | --- | --- | --- | --- | --- |
-| **daily budget** | `daily_budget_usd` | $20 | **$500** | posts a blocking question — *"Daily budget reached -- $x spent of $y. Say the word and I'll continue"*. Nothing dies. | no limit |
+| **daily budget** | `daily_budget_usd` | $20 | **$500** | posts a blocking question — *"Daily budget reached -- $x spent of $y. Say the word and I'll continue"*. Nothing dies. An automation's run of work does not start, and reads `your call`. | no limit |
 | **ask before spending** | `plan_consent_usd` | $3 | **$100** | a planned job above this estimate quotes its step count and price and waits | never asks |
 | **session ceiling** | `session.spendRailUSD` | $0 | **$0** (unchanged) | refuses the NEXT turn; the turn in flight always finishes; the refused message is never journaled | no ceiling |
 

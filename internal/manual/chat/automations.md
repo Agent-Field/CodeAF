@@ -288,7 +288,7 @@ are. From inside that conversation it says `you are already in it`. You can also
 | --- | --- |
 | `done` | a reminder said its line, a watch's condition turned true, or work reported it finished |
 | `nothing new` | a watch looked and the condition was not met, or still holds since it last spoke |
-| `your call` | work stopped on a call only you could allow: `needed your ok to run bash git push` |
+| `your call` | work stopped on a call only you could allow: `needed your ok to run bash git push`; or did not start because today's spending limit is reached |
 | `incomplete` | work did not finish: `ran out of its 30m`, `reached its $5.00 cap`, `a fault: …`, its own summary, or `it ended without saying how it went` |
 | `stopped` | `stopped by you`, `codeaf closed before it finished`, or `the automation was deleted` |
 | `couldn't check` | a watch could not look or be judged: `couldn't look: …`, `couldn't decide: …`, `ran out of time`, or why the model could not tell |
@@ -436,6 +436,12 @@ minutes** and **$5 a run** unless you named others — "give it an hour and at m
 typed `time` and `usd`. Work that reaches its money stops as
 `incomplete · reached its $5.00 cap`; a run out of time is `incomplete · ran out of its 30m`
 (`couldn't check · ran out of time` for a watch).
+
+**Your daily spending limit holds over work too.** Once today's spending has reached it, a
+run of work does not start, and nothing is spent on it: it reads `your call · today's
+spending limit is reached · $512 spent of $500 · /budget day changes it`. A watch's looks are
+not held to it — each one costs a fraction of a cent, and a refused look would be news every
+few minutes — but work a watch would run is.
 
 On `/spend` the automations have a table of their own, `by automation`: each one with how
 many calls it made, what one call cost (`$0.01 a call`) and its total. The Spending tab of

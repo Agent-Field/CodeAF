@@ -34,7 +34,9 @@ America/Toronto · cron 0 9 * * 1`) with the next time it will run; for a watch,
 what it looks at (the command, the files or the tool) and the condition it is
 held to; the line it says or the brief it runs; where work runs (`in your
 checkout` or `in a separate worktree, kept for review`); and the limits (`30m ·
-$5 a run`).
+$5 a run`). A watch also shows its estimated cost (`about $0.40 a day while
+codeaf is open`), because the model judges every look; with no known price for
+the judging model it shows nothing.
 
 **Three ways in, one card.** Said in a conversation (the model calls the
 `automation` tool); typed with exact syntax (`/automations add …`, no model in
