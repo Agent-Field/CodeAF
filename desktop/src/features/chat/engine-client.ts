@@ -1,4 +1,5 @@
 import { engineFetch } from '../../design/engineFetch.ts';
+import { isTail, mergeTail } from './snapshotMerge.ts';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 
 /** Canonical read-only transport from session.PlanTaskRow. No engine policy lives here. */
@@ -51,7 +52,10 @@ export type EngineEntry = {
  Role: 'user' | 'assistant' | 'tool' | 'note' | 'aside'; Text: string;
  Answer?: boolean; Addressed?: boolean; Interrupted?: boolean;
  Tool?: string; Hint?: string; CallID?: string; Answered?: boolean; Failed?: boolean;
- Args?: string; Output?: string; Caption?: string; CaptionCategory?: string;
+ Args?: string; Output?: string;
+ /** The engine left a large Output out of the snapshot; fetch it with readToolResult when the view needs it. */
+ OutputOmitted?: boolean; OutputBytes?: number;
+ Caption?: string; CaptionCategory?: string;
  TaskIDs?: string[] | null;
  /** What wrote an aside: "task" | "job" | "watch" | "resume"; absent when unknown. */
  AsideKind?: string;
@@ -174,8 +178,18 @@ async function openSession(body: { sessionFile?: string; place?: string }): Prom
  const response = await fetchEngine('/sessions', { method: 'POST', body: JSON.stringify(body) });
  return snapshotFrom(await response.json());
 }
-export async function readEngine(id: string): Promise<EngineSnapshot> {
- return snapshotFrom(await (await fetchEngine(sessionPath(id))).json());
+/**
+ * Reads a conversation. With `since` (how many entries the window already
+ * holds) the engine answers with a tail, which is merged into `held`; a
+ * tail that cannot be merged falls back to one whole read, so a window never
+ * shows a transcript it could not check.
+ */
+export async function readEngine(id: string, since?: number, held?: EngineSnapshot): Promise<EngineSnapshot> {
+ if (since === undefined || !held) return snapshotFrom(await (await fetchEngine(sessionPath(id))).json());
+ const body: unknown = await (await fetchEngine(`${sessionPath(id)}?since=${since}`)).json();
+ if (!isTail(body)) return snapshotFrom(body);
+ try { return snapshotFrom(mergeTail(held, body)); }
+ catch (error) { if (error instanceof EngineError) throw error; return readEngine(id); }
 }
 async function action(id: string, kind: 'turn' | 'stop' | 'answer' | 'queue-edit' | 'queue-move' | 'queue-remove', body?: unknown): Promise<EngineSnapshot> {
  const response = await fetchEngine(`${sessionPath(id)}/${kind}`, { method: 'POST', body: JSON.stringify(body ?? {}) });
