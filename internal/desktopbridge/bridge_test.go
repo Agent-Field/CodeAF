@@ -604,10 +604,17 @@ func TestSeamRouteTableAnswers501UntilAHandlerLands(t *testing.T) {
 	if len(seamTable) != len(seamContract) {
 		t.Fatalf("seam table has %d routes, the contract lists %d", len(seamTable), len(seamContract))
 	}
+	// Council list and steer have their handler. Every other row is still the
+	// empty slot that answers 501 until its own file lands.
+	landed := map[string]bool{
+		http.MethodGet + " /councils":             true,
+		http.MethodPost + " /councils/{id}/steer": true,
+	}
 	for i, want := range seamContract {
 		got := seamTable[i]
-		if got.method != want.method || got.pattern != want.pattern || got.handle != nil {
-			t.Fatalf("row %d: got %s %s filled=%v, want %s %s empty", i, got.method, got.pattern, got.handle != nil, want.method, want.pattern)
+		key := got.method + " " + got.pattern
+		if got.method != want.method || got.pattern != want.pattern || (got.handle != nil) != landed[key] {
+			t.Fatalf("row %d: got %s %s filled=%v, want %s %s filled=%v", i, got.method, got.pattern, got.handle != nil, want.method, want.pattern, landed[want.method+" "+want.pattern])
 		}
 	}
 	b := New(testToken, func(string) (Connection, error) {
@@ -621,6 +628,19 @@ func TestSeamRouteTableAnswers501UntilAHandlerLands(t *testing.T) {
 			body = `{"threshold":90,"alwaysAsk":true}`
 		}
 		w := request(b, route.method, seamExample(route.pattern), body)
+		if landed[route.method+" "+route.pattern] {
+			switch route.pattern {
+			case "/councils":
+				if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"councils":[]`) {
+					t.Errorf("%s %s: %d %s", route.method, route.pattern, w.Code, w.Body.String())
+				}
+			default:
+				if w.Code != http.StatusConflict {
+					t.Errorf("%s %s: %d %s", route.method, route.pattern, w.Code, w.Body.String())
+				}
+			}
+			continue
+		}
 		if w.Code != http.StatusNotImplemented || strings.TrimSpace(w.Body.String()) != `{"error":"`+seamNotImplemented+`"}` {
 			t.Errorf("%s %s: %d %s", route.method, route.pattern, w.Code, w.Body.String())
 		}
@@ -680,7 +700,7 @@ func TestSeamRouteTableAnswers501UntilAHandlerLands(t *testing.T) {
 }
 
 func TestSeamRouteRegistrationReplacesTheStub(t *testing.T) {
-	const method, pattern = http.MethodPost, "/councils/{id}/steer"
+	const method, pattern = http.MethodPost, "/decisions/{id}/overturn"
 	var got map[string]string
 	var calls int
 	registerSeamRoute(method, pattern, func(_ *Bridge, w http.ResponseWriter, _ *http.Request, ids map[string]string) {
@@ -694,17 +714,17 @@ func TestSeamRouteRegistrationReplacesTheStub(t *testing.T) {
 		return Connection{}, nil
 	})
 	t.Cleanup(b.Close)
-	w := request(b, method, "/api/engine/councils/council_1/steer", "{}")
-	if w.Code != http.StatusOK || calls != 1 || got["id"] != "council_1" {
-		t.Fatalf("steer: %d calls=%d ids=%v body=%s", w.Code, calls, got, w.Body.String())
+	w := request(b, method, "/api/engine/decisions/pl_1/overturn", "{}")
+	if w.Code != http.StatusOK || calls != 1 || got["id"] != "pl_1" {
+		t.Fatalf("overturn: %d calls=%d ids=%v body=%s", w.Code, calls, got, w.Body.String())
 	}
 	// A sibling slot stays empty, and the wrong method does not run the handler.
 	still := request(b, http.MethodPost, "/api/engine/places/pl_1/knows/line_7/still-true", "{}")
 	if still.Code != http.StatusNotImplemented {
 		t.Fatalf("still-true: %d %s", still.Code, still.Body.String())
 	}
-	if request(b, http.MethodGet, "/api/engine/councils/council_1/steer", "").Code != http.StatusMethodNotAllowed || calls != 1 {
-		t.Fatalf("GET steer ran the POST handler (%d calls)", calls)
+	if request(b, http.MethodGet, "/api/engine/decisions/pl_1/overturn", "").Code != http.StatusMethodNotAllowed || calls != 1 {
+		t.Fatalf("GET overturn ran the POST handler (%d calls)", calls)
 	}
 	lineCalls := 0
 	registerSeamRoute(http.MethodPatch, "/places/{id}/knows/{line}", func(_ *Bridge, w http.ResponseWriter, _ *http.Request, ids map[string]string) {
@@ -719,7 +739,7 @@ func TestSeamRouteRegistrationReplacesTheStub(t *testing.T) {
 		t.Fatalf("knows line was not dispatched (%d)", lineCalls)
 	}
 	clearSeamRoute(method, pattern)
-	if request(b, method, "/api/engine/councils/council_1/steer", "{}").Code != http.StatusNotImplemented {
+	if request(b, method, "/api/engine/decisions/pl_1/overturn", "{}").Code != http.StatusNotImplemented {
 		t.Fatal("clearing the handler left it installed")
 	}
 	registerSeamRoute(method, pattern, func(*Bridge, http.ResponseWriter, *http.Request, map[string]string) {})

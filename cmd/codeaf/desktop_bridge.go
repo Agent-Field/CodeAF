@@ -187,6 +187,13 @@ func runDesktopBridge(args []string) error {
 		return fmt.Errorf("places: %w", err)
 	}
 	bridge.UseHistory(&desktopbridge.History{Root: session.PlacesRoot()})
+	// Discussions live beside the place graph. The session folders are not a
+	// project bucket: History asks the council store for them (council_routes.go).
+	councilStore, councilRun, err := desktopbridge.OpenCouncils(placeStore, desktopCouncilPath(placeDoor.Path), desktopCouncilSessions(placeDoor.Path))
+	if err != nil {
+		return fmt.Errorf("councils: %w", err)
+	}
+	bridge.UseCouncils(councilStore, councilRun)
 	// The world feed reads the persisted home world; it is named here rather
 	// than left to the lazy default so the door owns which state root it watches.
 	bridge.UseWorld(desktopbridge.NewWorldFeed(session.ReadHome))
@@ -246,6 +253,18 @@ func desktopPlacesPath(flag string) (string, error) {
 // a "workspaces" folder next to the place graph (PLACES-ARCHITECTURE §3.4).
 func desktopWorkspacesDir(graphPath string) string {
 	return filepath.Join(filepath.Dir(graphPath), "workspaces")
+}
+
+// desktopCouncilPath is the councils document, next to the place graph.
+func desktopCouncilPath(graphPath string) string {
+	return filepath.Join(filepath.Dir(graphPath), "councils.json")
+}
+
+// desktopCouncilSessions is where a discussion's ordinary chat folder is
+// minted. It sits next to the graph, not under the places root, so a
+// discussion does not become a project on the terminal's home.
+func desktopCouncilSessions(graphPath string) string {
+	return filepath.Join(filepath.Dir(graphPath), "council-sessions")
 }
 
 // desktopHello is the hello a desktop conversation is opened with. The place
