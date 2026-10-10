@@ -61,6 +61,8 @@ Shell). On any conflict, the design files win over code and older docs.
 
 | # | Question | Assumption the app ships now |
 |---|---|---|
+| WIN-46 | The native-window brief requires `now` / `p-<12 lowercase hex>`, while the current engine and renderer use `root` / `pl_<16 lowercase hex>`. Which contract should integration use? | `window_open` enforces the lane brief and refuses the other spellings with “That is not a place codeaf knows”. The integrator must reconcile place IDs before graph places can open end to end. |
+| WIN-47 | How does the brief's bare-label `window_open` result coexist with the existing tab-move claim receipt? | Ordinary opening returns a label string. A request carrying a tab handoff retains `{label, handoffId}` so the source waits for the target to claim it. The renderer accepts both. |
 | CV-A1 | Where does a conversation tab opened with an anchor (I-IFL-16) scroll to, when the tab route has no anchor slot? | `onOpenConversationTab` opens a tab on the same session file and ignores the anchor; it opens at the end of the transcript. |
 | CV-R1 | How should clock receipts round fractional waits or display older records without a wait? | Round the actual recorded wait to the nearest whole second. Without a known positive wait, show “picked by codeaf” without an invented duration. Person receipts retain “you · HH:MM”. |
 | CM2 | How should a composer context menu fit when neither side of its anchor has the nominal menu width? | Limit its width to Radix’s measured available space; labels wrap naturally, keeping both the action and shortcut reachable without horizontal clipping. |
