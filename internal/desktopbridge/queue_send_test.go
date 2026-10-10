@@ -164,6 +164,21 @@ func waitIdle(t *testing.T, b *Bridge, path string) {
 
 // A send while work is running steers that message into the turn and leaves
 // the others queued, in both the snapshot and the engine.
+func TestQueueSendNowThroughBridgeRoute(t *testing.T) {
+	b, a, path := sendFixture(t)
+	queued := queueWords(t, b, path, "send this now")
+	body := `{"id":` + strconv.Quote(queued[0].ID) + `}`
+	requireAccepted(t, request(b, http.MethodPost, path+"/queue-send", body))
+	steers, submits := a.sent()
+	if len(steers) != 1 || steers[0] != "send this now" || len(submits) != 0 {
+		t.Fatalf("steers %q, submits %q", steers, submits)
+	}
+	if queue := snapshotQueue(t, b, path); len(queue) != 0 {
+		t.Fatalf("queue after send: %+v", queue)
+	}
+	requireAlreadySent(t, request(b, http.MethodPost, path+"/queue-send", body))
+}
+
 func TestQueueSendNowSteersWhileRunning(t *testing.T) {
 	b, a, path := sendFixture(t)
 	q := queueWords(t, b, path, "one", "two", "three")
