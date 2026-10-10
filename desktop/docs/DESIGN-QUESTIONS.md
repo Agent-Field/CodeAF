@@ -61,6 +61,8 @@ Shell). On any conflict, the design files win over code and older docs.
 
 | # | Question | Assumption the app ships now |
 |---|---|---|
+| PLAN-172-target | How are the plan card's chat, task and place destinations encoded? | Each step carries a target object with one canonical string ID under `chat`, `task` or `place`; unused alternatives are omitted. The existing task-history `PlanStep` remains separate from `PlanCardStep`. |
+| PLAN-172-undo | Does a proposed plan carry an Undo token before anything has run? | No. The proposal carries only its ID, ordered steps and `reachesBeyond` boundary. Undo belongs to each executed action's receipt, as Decisions 12e requires; this types lane adds no executor or Undo endpoint. |
 | NAV-154 | If a rail visit or close fails, should the window still move? | A failed visit leaves the requested view open and reports the engine error. A failed close leaves the current place and its saved tabs open. Bulk close stops on the first refusal; earlier accepted closes remain applied. |
 | HRM1 | History specifies Delete… for archived rows, but the engine has no conversation-delete route. What should appear until deletion and Undo exist? | Ship no live Delete… action; the row exposes a confirmation callback only when supplied by a real host. Add to place stays absent until its filing lane connects it. |
 | JOB-C1 | Does Show full output bypass the background job log limit? | The typed client reads the largest retained response by omitting `tail`; the current bridge caps it at 1 MiB and preserves `truncated`. It does not claim that a truncated response is the complete log. |
