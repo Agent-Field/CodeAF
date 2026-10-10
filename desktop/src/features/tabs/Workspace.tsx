@@ -47,9 +47,12 @@ import { requestNextUp, TabStrip, type StripBack, type StripFrame } from './TabS
 import { bannerVisible, type NextUpBannerItem } from '../nextup/Banner';
 import { queueRowOf } from '../nextup/QueuePopover';
 import { useNextUp } from '../nextup/useNextUp';
+import { nextUpWalk, useNextUpWalk } from '../nextup/useNextUpWalk';
 import type { FocusEntry } from '../focus-history/model';
 import { useFocusWireFor, useOptionalFocusWire } from '../focus-history/useFocusHistory';
 import { routeTask } from './view-state';
+import { useScrollMemory } from './scroll/memoryStore';
+import { questionFocus } from '../conversation/questionFocus';
 import { useTerminalTabs } from '../terminal/useTerminalTabs';
 import { useWorkspaceWeb } from '../web/useWorkspaceWeb';
 import { useDesktopTabActions, useTabKeys, type Switcher } from './useTabKeys';
@@ -238,7 +241,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
     onStart: () => requestNextUp(),
     onAccept: () => { void queue.accept(); },
   };
-  // The walk and the app-level wire land in later files. Until then this window keeps its own stack, and prefers one the app already opened.
+  // The workspace keeps window history and prefers the outer wire when the shell supplies one.
   const outerFocus = useOptionalFocusWire();
   const [windowLabel, setWindowLabel] = useState('main');
   const focusNavigate = useRef<(entry: FocusEntry) => void>(() => {});
@@ -249,9 +252,35 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const localFocus = useFocusWireFor(outerFocus ? undefined : focusHistoryStorageKey(windowLabel), entry => focusNavigate.current(entry));
   const focusWire = outerFocus ?? localFocus;
   const focusSnap = useSyncExternalStore(focusWire.subscribe, focusWire.getSnapshot, focusWire.getSnapshot);
+  const scrollMemory = useScrollMemory();
+  const walk = useNextUpWalk({
+    enabled, place,
+    origin: () => ({ place, tabId: activeTab.id, paneId: focused.id, label: placeTitle ?? activeTab.title, conversation: conversationKey, draft: focused.draft, route: focused.route, scroll: scrollMemory?.get(focused.id) }),
+    goTo: id => shell ? shell.goTo(id) : Promise.reject(new Error('That place is unavailable.')),
+    warn: reason => shell?.warn(reason),
+    open: item => {
+      const row = worldStore.getState().rows.find(row => row.session === item.session);
+      if (!row?.sessionFile) { shell?.warn(new Error('The engine did not say where this conversation is saved.')); return; }
+      focusWire.markCause('next-up');
+      const existing = state.tabs.flatMap(tab => panesOf(tab)).find(pane => pane.kind === 'conversation' && pane.sessionFile === row.sessionFile);
+      const pane = existing ?? newTab({ kind: 'conversation', title: row.title || 'Untitled chat', titleSource: 'engine', sessionFile: row.sessionFile });
+      dispatch(existing ? { type: 'select', id: pane.id } : { type: 'open', background: false, tab: pane as Tab });
+      if (existing?.route) dispatch({ type: 'view', id: pane.id, change: { route: undefined } });
+      if (item.id !== undefined) questionFocus.request(item.session, { kind: item.kind, id: item.id });
+    },
+    restore: origin => {
+      for (const [key, spot] of origin.scroll ?? []) scrollMemory?.set(origin.paneId, key, spot);
+      dispatch({ type: 'select', id: origin.paneId });
+      dispatch({ type: 'view', id: origin.paneId, change: { route: origin.route } });
+      if (origin.draft !== undefined) dispatch({ type: 'draft', id: origin.paneId, draft: origin.draft });
+    },
+  });
   const backEntry = focusSnap.chip;
   const backName = backEntry ? backTargetName(backEntry, state.tabs, place, id => shell?.index?.byId.get(id)?.name) : '';
-  const back: StripBack | undefined = backEntry && backName ? {
+  const back: StripBack | undefined = walk.origin && walk.phase !== 'idle' ? {
+    key: `walk:${walk.origin.place}:${walk.origin.tabId}`, parentName: walk.origin.label,
+    onBack: () => nextUpWalk.exit(), onDismiss: () => {},
+  } : backEntry && backName ? {
     key: `${focusSnap.history.cursor}:${backEntry.windowPlace}:${backEntry.tabId}:${backEntry.drillPath.join('/')}`,
     parentName: backName,
     onBack: () => { focusWire.back(); },
@@ -266,9 +295,13 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   useEffect(() => {
     focusWire.setTabs(place, state.tabs.map(tab => tab.id));
     if (!activeTab) return;
+    // A place's Home on the way to a question is navigation in progress, not another focus step.
+    if (walk.phase === 'walking' && (focused.kind !== 'conversation' || conversationKey !== walk.item?.session)) return;
+    if (walk.phase === 'returning' && focused.id !== walk.origin?.paneId) return;
+    if (walk.phase === 'walking') focusWire.markCause('next-up');
     const task = focused.route ? routeTask(focused.route) : undefined;
     focusWire.observe({ windowPlace: place, tabId: activeTab.id, drillPath: task ? [task] : [] });
-  }, [focusWire, place, state.tabs, activeTab, focused.route]);
+  }, [focusWire, place, state.tabs, activeTab, focused.route, walk.phase, walk.item?.key]);
   useEffect(() => publishActiveHome(focused.kind === 'home' ? focused.place : undefined), [focused.kind, focused.place]);
 
   useEffect(() => {
@@ -340,7 +373,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
     },
     onAddToPlace: shell && pane.sessionFile ? () => { const chatId = chatIdFromSessionFile(pane.sessionFile!); if (chatId) shell.openChooser({ kind: 'file', chatIds: [chatId], chatTitle: pane.title, exclude: [] }); } : undefined,
   });
-  return <TabsApiContext.Provider value={api}><section ref={gestureRoot} className="tab-workspace" aria-label="Conversation workspace">
+  return <TabsApiContext.Provider value={api}><section ref={gestureRoot} className="tab-workspace" aria-label="Conversation workspace" data-nextup-walk={walk.phase !== 'idle' || undefined}>
     <TabStrip api={api} leading={leading} back={back} frame={frame} overviewTrigger={overviewTrigger} onOverview={openOverview}/>
     <NewConversationPlaceContext.Provider value={place === 'now' || place === 'root' ? undefined : place}><FirstTurnContext.Provider value={firstTurn}><NewTabHostContext.Provider value={newTabHost}><HistoryHostContext.Provider value={historyHost}><PaneGrid tab={active} tabs={state.tabs} dispatch={dispatch} actionsFor={actionsFor} retainedPaneIds={state.closed.flatMap(tab => panesOf(tab).map(pane => pane.id))}/></HistoryHostContext.Provider></NewTabHostContext.Provider></FirstTurnContext.Provider></NewConversationPlaceContext.Provider>
     <GroupOffer api={api}/>

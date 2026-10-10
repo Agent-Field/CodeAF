@@ -1,3 +1,8 @@
+import { EndCard } from '../nextup/EndCard';
+import { useNextUpWalkState } from '../nextup/useNextUpWalk';
+import { nextUpWalk } from '../nextup/useNextUpWalk';
+import { worldStore } from '../chat/world-store';
+import '../nextup/walk.css';
 import { blocksComposer } from './tray/layout';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { FirstTurnContext, NewConversationPlaceContext } from './firstTurn';
@@ -88,6 +93,7 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
   const newConversationPlace = useContext(NewConversationPlaceContext);
   const conversation = useConversation({ sessionFile: tab.sessionFile, onSessionFile: (sessionFile) => onView({ sessionFile }), beforeFirstTurn, newConversationPlace });
   const { model, snapshot, failed } = conversation;
+  const walk = useNextUpWalkState();
   const [focusKey, setFocusKey] = useState<string>();
   // A tab opened from a web page brings that page's picture; the composer attaches it once and the offer is spent.
   const [offered, setOffered] = useState(() => peekOfferedFiles(tab.id));
@@ -262,6 +268,7 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
             <div className="conversation-dock-layer">
               {showJump && <LatestPill working={model.running} since={liveSince(model)} onJump={jump} />}
               <div className="conversation-footer conversation-column">
+                {focused && walk.phase === 'clear' && walk.origin && <EndCard answeredCount={walk.answered} conversations={worldStore.getState().rows.map(row => ({ tasksRunning: row.tasks.running }))} originLabel={walk.origin.label} onReturn={() => nextUpWalk.exit()} />}
                 {folderNote && <Text role="status">{folderNote}</Text>}
                 {conversation.unreachable && <EngineNotice onRetry={() => void retry()} />}
                 {!inTask && (
