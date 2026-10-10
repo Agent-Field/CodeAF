@@ -93,6 +93,7 @@ Shell). On any conflict, the design files win over code and older docs.
 | Q-P13 | Design says "Allow 3 git actions?"; the engine's batch head reads "Allow N actions?" | The shipped wording is the tray's ("Allow N actions?"); the card does not invent a noun the engine did not send. |
 | Q-P14 | File, diff, terminal and web cards need a target (path, terminal id, URL) | `Pane.target` is an optional validated field kept across reload (`PaneTarget` in view-state.ts); the kind lanes write it. Until a lane sets it the card is kind and title only, never invented content. |
 | Q-P15 | A card whose read fails or is still loading | Kind and title only; no spinner, no error text (a read failure is not the person's to act on). The previous target's content is never shown for a different target. |
+| WF1 | Web-tab favicon when the site has no usable icon, redirects off the host, or inlines the icon (Shell 3d only says the real favicon, else a monogram) | GET /favicon?url= answers 200 and `{}` when nothing usable was fetched, and the tab draws its monogram. The page is read only through `</head>` or 64KiB. Only the first `<link rel=icon>` is used; if that link names another public host, that host is fetched too. A redirect to another host is not followed. A `data:image` icon is kept only when it is a non-SVG image of at most 64KiB. A miss is remembered for the same hour as a hit. |
 
 ## File lane integration notes
 
