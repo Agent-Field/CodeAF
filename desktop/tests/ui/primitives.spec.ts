@@ -1,7 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
-import { INK3_TEXT, tokenColor, tokenColorIn } from './contracts';
+import { INK3_TEXT, expectNoUnstyledControls, tokenColor, tokenColorIn } from './contracts';
 import { installMockEngine } from './support/mock-engine';
 import { openPage } from './support/shell-navigation';
 
@@ -411,6 +411,7 @@ for (const theme of themes) {
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: async () => undefined }, configurable: true });
    });
    await openSpecimen(page, theme);
+   await expectNoUnstyledControls(page, '.primitives-specimen');
    const search = page.locator('.primitives-specimen').getByRole('searchbox', { name: 'Search conversations' });
    await search.fill('raft');
    await expect(search).toHaveValue('raft');
