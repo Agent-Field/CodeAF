@@ -20,7 +20,8 @@
 .icon-button.tray-arrow { width: var(--row-action-size); height: var(--row-action-size); border-radius: var(--radius-row-action); color: var(--ink-2); }
 .icon-button.tray-arrow:hover:not(:disabled) { background: var(--field); color: var(--ink-2); }
 .icon-button.tray-arrow:active:not(:disabled) { background: var(--field-2); color: var(--ink-2); }
-.icon-button.tray-arrow:disabled { color: var(--ink-3); opacity: var(--opacity-control-disabled); }
+/* Conversation draws the pager's end arrow at 40% of the whole control. Shared disabled controls stay on opacity-control-disabled, which Components draws at 60%. */
+.icon-button.tray-arrow:disabled { color: var(--ink-3); opacity: var(--tray-arrow-disabled-opacity); }
 .button.tray-later { min-height: var(--row-action-size); padding-inline: var(--space-2); border-radius: var(--radius-row-action); color: var(--ink-2); font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); }
 
 .tray-folded { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding: var(--space-2) var(--tray-pad-end) 0 var(--tray-pad-inline); list-style: none; }

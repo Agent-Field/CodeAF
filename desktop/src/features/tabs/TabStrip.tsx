@@ -100,13 +100,16 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
   const focusNeighbour = useRef(false);
   if (seen !== signature) {
     const gone = departuresFrom(tabsRef.current, state.tabs, groupsRef.current);
-    if (gone.length > 0) focusNeighbour.current = true;
+    // Only a close hands focus to an existing neighbour. A tab replaced by a new one (Continue from History) selects a tab the strip
+    // never held, whose pane takes the keyboard itself; focusing its tab button here would make the composer stand aside.
+    if (gone.length > 0 && tabsRef.current.some(tab => tab.id === state.activeId)) focusNeighbour.current = true;
     const next = mergeDepartures(departures, retainDepartures(reduced, gone), new Set(state.tabs.map(tab => tab.id)));
     setSeen(signature);
     if (departureIds(next) !== departureIds(departures)) setDepartures(next);
   }
-  // Hidden members remain in the drawing model so a collapsed group's capsule survives after motion
-  // ends, even when the active tab is outside the group.
+  // Every tab is drawn, hidden members included, so a collapsed group whose members are all hidden
+  // still shows its capsule. Those members stay in the drawing model after the close motion ends, even
+  // when the active tab is outside the group.
   const shown = withDepartures(state.tabs, departures);
   const groups = groupsForDepartures(state.groups, departures);
   const departing = new Set(departures.map(item => item.tab.id));
@@ -139,7 +142,9 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
     const tolerance = parseFloat(design.foundation['border-width']);
     const measure = () => {
       const bounds = viewport.getBoundingClientRect();
-      const end = viewport.scrollWidth - viewport.clientWidth - viewport.scrollLeft > tolerance;
+      // The mask is on whenever the strip overflows, not only while tabs remain past the right edge: revealing the
+      // newest tab scrolls to the end, and the strip must still read as one that scrolls under a mask.
+      const end = viewport.scrollWidth - viewport.clientWidth > tolerance;
       // A tab counts as hidden when any part of it lies outside the strip's visible box.
       const hidden = Array.from(viewport.querySelectorAll<HTMLElement>('[role="tab"]')).filter(el => {
         if (el.closest('[inert]')) return false;

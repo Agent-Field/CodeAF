@@ -457,6 +457,7 @@
   --tray-pinned-reserve: 96px;
   --tray-shadow-room: 24px;
   --tray-mark-radius: 99px;
+  --tray-arrow-disabled-opacity: 0.4;
   --queue-row-height: 30px;
   --queue-edit-height: 34px;
   --queue-more-height: 28px;
