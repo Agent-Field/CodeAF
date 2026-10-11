@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/placegraph"
+	"github.com/Agent-Field/codeaf/internal/placeorg"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -122,6 +123,9 @@ type PlaceAdvice struct {
 	Detached func(sessionFile string) (Connection, error)
 	// DetachedIdle overrides detachedIdle; zero is the default (tests).
 	DetachedIdle time.Duration
+	// Organizer is the placeorg run. Nil leaves organizing on the folder rule
+	// and the same-name merges, and the new routes answer 404.
+	Organizer *Organizer
 
 	b      *Bridge
 	ctx    context.Context
@@ -178,6 +182,7 @@ func (b *Bridge) UsePlaceAdvice(a *PlaceAdvice) error {
 	}
 	a.b = b
 	b.advice = a
+	b.places.advice = a
 	b.mu.Unlock()
 	a.startOnce.Do(func() {
 		a.ctx, a.cancel = context.WithCancel(context.Background())
@@ -222,6 +227,9 @@ func (a *PlaceAdvice) close() {
 	if bg != nil {
 		bg.idle.Stop()
 		closeConn(bg.conn)
+	}
+	if a.Organizer != nil {
+		a.Organizer.stop()
 	}
 	a.cancel()
 	select {
@@ -292,6 +300,24 @@ func (a *PlaceAdvice) enqueueLocked(chat string, s *conversation) {
 // pass already queued or running, or one finished within organizeGap, is
 // enough.
 func (a *PlaceAdvice) requestOrganize() bool {
+	if a.Organizer != nil {
+		a.mu.Lock()
+		closed := a.closed
+		recent := !a.lastPass.IsZero() && a.now().Sub(a.lastPass) < organizeGap
+		a.mu.Unlock()
+		if closed || recent {
+			return false
+		}
+		// The idle pass and the older organize route are an add-on run.
+		// A run already going is not queued again.
+		if ok, _ := a.Organizer.start(a, a.ctx, placeorg.ModeAddOn); !ok {
+			return false
+		}
+		a.mu.Lock()
+		a.lastPass = a.now()
+		a.mu.Unlock()
+		return true
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.closed || a.organize || a.busy == "organize" {
@@ -309,7 +335,7 @@ func (a *PlaceAdvice) requestOrganize() bool {
 // passed since the last one.
 func (a *PlaceAdvice) idle() {
 	pol := a.policy()
-	if !pol.ClusterOffers && !pol.MergeOffers {
+	if a.Organizer == nil && !pol.ClusterOffers && !pol.MergeOffers {
 		return
 	}
 	if a.b.anyRunning() {
@@ -414,6 +440,9 @@ func (a *PlaceAdvice) fileChat(ctx context.Context, chat string, s *conversation
 		ask = a.askThrough(a.detachedAsker(), "saved")
 	}
 	rec := a.recommender(ask)
+	if a.Organizer != nil && a.Organizer.stream != nil {
+		rec.Decide = a.organizerFiling
+	}
 	offer, err := rec.FileChat(ctx, evidence, a.library())
 	a.settleAsk(offer != nil && offer.Status == placegraph.StatusPending, err)
 }

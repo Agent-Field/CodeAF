@@ -408,6 +408,9 @@ func (p *Places) addMembers(w http.ResponseWriter, r *http.Request, id string) {
 			b.add(rc)
 			if !rc.Noop() {
 				undo[c] = rc.ID
+				if by == placegraph.AddedByYou {
+					p.noteHandMove(c, ask.MoveFrom, memberDestination(id))
+				}
 			}
 			continue
 		}
@@ -419,6 +422,9 @@ func (p *Places) addMembers(w http.ResponseWriter, r *http.Request, id string) {
 		b.add(rc)
 		if !rc.Noop() {
 			undo[c] = rc.ID
+			if by == placegraph.AddedByYou {
+				p.noteHandMove(c, "", memberDestination(id))
+			}
 		}
 		filed = append(filed, m)
 	}
@@ -434,6 +440,22 @@ func (p *Places) addMembers(w http.ResponseWriter, r *http.Request, id string) {
 			m.Memberships = filed
 		}
 	})
+}
+
+// memberDestination is the place a hand move landed in. Now is not a place
+// the organiser can make an exemplar of, so a move there teaches nothing.
+func memberDestination(id string) string {
+	if id == placegraph.NowID || id == placegraph.RootID {
+		return ""
+	}
+	return id
+}
+
+func (p *Places) noteHandMove(chat, from, to string) {
+	if p.advice == nil || to == "" {
+		return
+	}
+	p.advice.noteHandMove(chat, from, to)
 }
 
 func (p *Places) removeMembers(w http.ResponseWriter, r *http.Request, id string) {

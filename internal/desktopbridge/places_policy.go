@@ -191,6 +191,10 @@ func (a *PlaceAdvice) serve(w http.ResponseWriter, r *http.Request, places *Plac
 			if !readBody(w, r, &struct{}{}) {
 				return
 			}
+			if a.dropOrganizerPlan(id) {
+				a.writeView(w, 200, rec)
+				return
+			}
 			if err := rec.Decline(id); err != nil {
 				failOffer(w, err)
 				return
@@ -209,8 +213,28 @@ func (a *PlaceAdvice) accept(w http.ResponseWriter, r *http.Request, places *Pla
 		Name         string   `json:"name"`
 		ChatIDs      []string `json:"chatIds"`
 		OfferVersion string   `json:"offerVersion"`
+		Skip         []int    `json:"skip"`
 	}
 	if !readBody(w, r, &ask) {
+		return
+	}
+	places.mu.Lock()
+	receipt, handled, err := a.takeOrganizerPlan(id, ask.Skip)
+	places.mu.Unlock()
+	if handled || err != nil {
+		if err != nil {
+			failOffer(w, err)
+			return
+		}
+		view, viewErr := a.view(rec)
+		if viewErr != nil {
+			failOffer(w, viewErr)
+			return
+		}
+		write(w, map[string]any{
+			"proposal": placegraph.Proposal{ID: id, Status: placegraph.StatusAccepted},
+			"receipt":  receipt.ID, "receipts": []placegraph.Receipt{receipt}, "view": view,
+		})
 		return
 	}
 	if ask.OfferVersion != "" {
@@ -237,7 +261,7 @@ func (a *PlaceAdvice) accept(w http.ResponseWriter, r *http.Request, places *Pla
 	// The places door serialises its own read-modify-write changes with this
 	// lock; an accept is several store verbs and is held to the same order.
 	places.mu.Lock()
-	result, err := rec.Accept(id, placegraph.AcceptEdit{Name: strings.TrimSpace(ask.Name), ChatIDs: ask.ChatIDs})
+	result, err := rec.Accept(id, placegraph.AcceptEdit{Name: strings.TrimSpace(ask.Name), ChatIDs: ask.ChatIDs, Skip: ask.Skip})
 	places.mu.Unlock()
 	if err != nil {
 		failOffer(w, err)
@@ -248,7 +272,11 @@ func (a *PlaceAdvice) accept(w http.ResponseWriter, r *http.Request, places *Pla
 		failOffer(w, err)
 		return
 	}
-	write(w, map[string]any{"proposal": result.Proposal, "placeId": result.PlaceID, "receipts": result.Receipts, "view": view})
+	body := map[string]any{"proposal": result.Proposal, "placeId": result.PlaceID, "receipts": result.Receipts, "view": view}
+	if len(result.Receipts) == 1 && result.Receipts[0].ID != "" {
+		body["receipt"] = result.Receipts[0].ID
+	}
+	write(w, body)
 }
 
 func (a *PlaceAdvice) writeView(w http.ResponseWriter, status int, rec *placegraph.Recommender) {

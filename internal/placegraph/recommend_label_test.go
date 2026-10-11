@@ -1,7 +1,6 @@
 package placegraph
 
 import (
-	"context"
 	"errors"
 	"testing"
 )
@@ -41,16 +40,10 @@ func TestAnAnswerMayNameAShownPlaceButNeverAnUnshownOne(t *testing.T) {
 }
 
 func TestAFilingAnswerThatNamesThePlaceIsOffered(t *testing.T) {
-	g := newRig(t)
-	p, _, err := g.store.CreatePlace(NewPlace{Name: "Release pipeline"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	g.model.answer = func(ModelRequest) (string, error) {
-		return `{"place": "Release pipeline", "confidence": 96}`, nil
-	}
-	offer, err := g.rec.FileChat(context.Background(), ChatEvidence{ChatID: "c1", Title: "Release code-signing timeout in CI", Replies: 1}, nil)
-	if err != nil || offer == nil || offer.PlaceID != p.ID || offer.Basis != BasisModel {
-		t.Fatalf("offer %+v, %v", offer, err)
+	// The organiser files a chat. This package no longer turns a model
+	// answer into an offer; the parser still has to read the name.
+	i, conf, err := readFileAnswer(`{"place": "Release pipeline", "confidence": 96}`, []string{"Release pipeline"})
+	if err != nil || i != 0 || conf != 96 {
+		t.Fatalf("%d %d %v", i, conf, err)
 	}
 }

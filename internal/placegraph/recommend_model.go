@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 	"unicode"
@@ -49,47 +48,10 @@ const (
 	MaxSuggestedNameRunes = 40
 )
 
+// label is the short name a model is shown: p1, c3. It is never a real id.
 func label(prefix string, i int) string { return prefix + strconv.Itoa(i+1) }
 
-func placeLine(s *Snapshot, p Place) string {
-	crumb := []string{}
-	for _, a := range s.Breadcrumb(p.ID) {
-		crumb = append(crumb, a.Name)
-	}
-	crumb = append(crumb, p.Name)
-	line := strings.Join(crumb, " › ")
-	if ins := strings.TrimSpace(p.Context.Instructions); ins != "" {
-		line += " — " + oneLine(clipRunes(ins, 200))
-	}
-	return line
-}
-
-func chatLine(c ChatEvidence) string {
-	parts := []string{oneLine(clipRunes(c.Title, 200))}
-	if s := strings.TrimSpace(c.Summary); s != "" {
-		parts = append(parts, oneLine(clipRunes(s, 300)))
-	} else if m := strings.TrimSpace(c.FirstMessage); m != "" {
-		parts = append(parts, oneLine(clipRunes(m, 300)))
-	}
-	return strings.Join(parts, " — ")
-}
-
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
-
-// fileQuestion asks which of the offered places a chat belongs in.
-func fileQuestion(s *Snapshot, chat ChatEvidence, cands []candidate) ModelRequest {
-	var b strings.Builder
-	b.WriteString("Chat:\n")
-	b.WriteString(chatLine(chat))
-	b.WriteString("\n\nPlaces:\n")
-	for i, c := range cands {
-		fmt.Fprintf(&b, "%s: %s\n", label("p", i), placeLine(s, c.place))
-	}
-	b.WriteString("\nWhich one place does this chat clearly belong in? If none fits well, say none. " +
-		"Answer with the place's label (p1, p2, ...), not its name. " +
-		`Answer {"place": "<label or none>", "confidence": <0-100>}.`)
-	return ModelRequest{Role: roles.RolePlaceFile, System: recommendSystem, User: b.String()}
-}
 
 type fileAnswer struct {
 	Place      string `json:"place"`
@@ -136,56 +98,6 @@ func PickIndex(answer, prefix string, names []string) (int, bool) {
 	}
 	return found, found >= 0
 }
-
-// candidateNames are the candidates' place names in label order.
-func candidateNames(cands []candidate) []string {
-	names := make([]string, len(cands))
-	for i, c := range cands {
-		names[i] = c.place.Name
-	}
-	return names
-}
-
-// suggestQuestion asks whether a group of chats belongs together, and if so
-// whether one of the offered places already holds them or what a new place
-// should be called and where it should sit.
-func suggestQuestion(s *Snapshot, chats []ChatEvidence, existing []candidate, parents []Place) ModelRequest {
-	var b strings.Builder
-	b.WriteString("Chats in no place:\n")
-	for i, c := range chats {
-		fmt.Fprintf(&b, "%s: %s\n", label("c", i), chatLine(c))
-	}
-	if len(existing) > 0 {
-		b.WriteString("\nExisting places that might already fit:\n")
-		for i, c := range existing {
-			fmt.Fprintf(&b, "%s: %s\n", label("p", i), placeLine(s, c.place))
-		}
-	}
-	if len(parents) > 0 {
-		b.WriteString("\nPlaces a new place could go under:\n")
-		for i, p := range parents {
-			fmt.Fprintf(&b, "%s: %s\n", label("u", i), placeLine(s, p))
-		}
-	}
-	b.WriteString("\nDo most of these chats clearly belong together? List only the ones that do. " + groupingGuard +
-		"Prefer an existing place when one fits. Otherwise name a new place in one to four plain words. " +
-		"Use labels (c1, p1, u1), not names, wherever a label is asked for. " + suggestShape)
-	return ModelRequest{Role: roles.RolePlaceSuggest, System: recommendSystem, User: b.String()}
-}
-
-// groupingGuard names what is NOT a reason to belong together. Measured on
-// real saved conversations: smoke-test chats that asked unrelated things in
-// one folder, chats whose opening message was the same pasted brief or team
-// preamble, and quick questions with nothing in common but their shape.
-const groupingGuard = "Chats belong together only when they are about the same subject or project — " +
-	"not because they share a folder, a pasted brief or preamble, a tool, or a kind of request such as quick questions, checks or tests. " +
-	"Judge the concrete topic of each person's request. A shared coding tool, vendor, task system or version-control process is not a shared project. " +
-	"Do not invent a broad umbrella such as development, workflows or troubleshooting to connect different subjects. " +
-	"Exclude any member that only fits that umbrella; prefer no offer over combining unrelated subjects. "
-
-// suggestShape is the answer both group questions ask for.
-const suggestShape = `Answer {"belong": true|false, "chats": ["c1", ...], "use": "<existing p label or empty>", ` +
-	`"name": "<new place name or empty>", "under": "<u label or root>", "confidence": <0-100>}.`
 
 type suggestAnswer struct {
 	Belong     *bool    `json:"belong"`

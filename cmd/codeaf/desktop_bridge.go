@@ -174,7 +174,7 @@ func runDesktopBridge(args []string) error {
 			notProjects = append(notProjects, real)
 		}
 	}
-	if err := bridge.UsePlaceAdvice(&desktopbridge.PlaceAdvice{Ledger: ledger, SharedWorkspace: resolved, NotProjects: notProjects, Policy: func() placegraph.RecommendPolicy {
+	advice := &desktopbridge.PlaceAdvice{Ledger: ledger, SharedWorkspace: resolved, NotProjects: notProjects, Policy: func() placegraph.RecommendPolicy {
 		return config.DesktopPlacesPolicy(profileDir)
 	}, Detached: func(file string) (desktopbridge.Connection, error) {
 		// An empty session would mean "this workspace's latest", which mints
@@ -189,8 +189,12 @@ func runDesktopBridge(args []string) error {
 			return desktopbridge.Connection{}, err
 		}
 		return dial(desktopReader(workspace, file, placeDoor.Path))
-	}}); err != nil {
+	}}
+	if err := bridge.UsePlaceAdvice(advice); err != nil {
 		return fmt.Errorf("places: %w", err)
+	}
+	if err := desktopbridge.WireOrganizer(advice, filepath.Dir(placeDoor.Path)); err != nil {
+		return fmt.Errorf("places organize: %w", err)
 	}
 	bridge.UseHistory(&desktopbridge.History{Root: session.PlacesRoot()})
 	// Discussions live beside the place graph. The session folders are not a

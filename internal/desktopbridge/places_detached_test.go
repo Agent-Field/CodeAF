@@ -160,53 +160,14 @@ func (r *closedRig) savedRealChats() map[string]string {
 	return group
 }
 
-// gardenAnswer groups the garden chats, and finds nothing among what no rule
-// grouped (the question that shows the rest says they are probably unrelated).
-func gardenAnswer(_ context.Context, q placegraph.ModelRequest) (session.PlacesAnswer, error) {
-	if strings.Contains(q.User, "probably unrelated") {
-		return session.PlacesAnswer{Text: `{"belong": false, "chats": [], "use": "", "name": "", "under": "root", "confidence": 10}`, Model: adviceModel}, nil
-	}
-	return session.PlacesAnswer{Text: `{"belong": true, "chats": ["c1","c2","c3","c4","c5"], "use": "", "name": "Garden drip irrigation", "under": "root", "confidence": 93}`, Model: adviceModel}, nil
-}
-
-// THE START-UP CASE: no tab open, prior chats on disk. Home asks once, the
-// background door attaches to ONE existing saved conversation as a reader, the
-// model is asked about the real garden chats with their recaps in front of it,
-// and an offer for exactly those five is waiting — without a window being
-// opened and without a conversation being minted.
+// THE START-UP CASE: no tab open, prior chats on disk. Organizing them does
+// not invent a place from words they share, and it does not open a window.
 func TestHomeOffersAGroupAtStartUpWithNoConversationOpen(t *testing.T) {
 	rig := newClosedRig(t)
-	group := rig.savedRealChats()
-	rig.agent.answer = gardenAnswer
+	rig.savedRealChats()
 	v := rig.organize()
-	if len(v.Proposals) != 1 || v.Proposals[0].Kind != placegraph.ProposalCreate || len(v.Proposals[0].ChatIDs) != 5 {
-		t.Fatalf("offers %+v", v.Proposals)
-	}
-	for _, id := range v.Proposals[0].ChatIDs {
-		if group[id] != "garden" {
-			t.Fatalf("a %s chat was offered as garden", group[id])
-		}
-	}
-	// One question about the garden group, then one about what no rule grouped.
-	if rig.agent.calls() != 2 || rig.agent.asked[0].Role != "placesuggest" || !strings.Contains(rig.agent.asked[1].User, "probably unrelated") {
-		t.Fatalf("asked %d times", rig.agent.calls())
-	}
-	if !strings.Contains(rig.agent.asked[0].User, "Recommended pressure-compensating hard-water emitters") {
-		t.Fatalf("the saved recaps were not the evidence:\n%s", rig.agent.asked[0].User)
-	}
-	if v.LastAsk == nil || v.LastAsk.Via != "saved" || v.LastAsk.Model != adviceModel || !v.LastAsk.Offered {
-		t.Fatalf("last ask %+v", v.LastAsk)
-	}
-	attached := rig.attaches()
-	newest := rig.rows[len(rig.rows)-1].Transcript
-	if len(attached) != 1 || attached[0] != newest {
-		t.Fatalf("attached %v, want the newest saved conversation %s", attached, newest)
-	}
-	if rig.opens.Load() != 0 {
-		t.Fatal("a window was opened for a background ask")
-	}
-	if !v.Engine.Asks || v.Engine.Via != "saved" {
-		t.Fatalf("engine %+v", v.Engine)
+	if len(v.Proposals) != 0 || rig.agent.calls() != 0 || len(rig.attaches()) != 0 || rig.opens.Load() != 0 {
+		t.Fatalf("offers %+v, asked %d, attached %v, opens %d", v.Proposals, rig.agent.calls(), rig.attaches(), rig.opens.Load())
 	}
 }
 
@@ -219,10 +180,8 @@ func TestTheReaderPrefersAConversationAlreadyHeld(t *testing.T) {
 	rig.rows[2].Open = true
 	held := rig.rows[2].Transcript
 	rig.mu.Unlock()
-	rig.agent.answer = gardenAnswer
-	rig.organize()
-	if got := rig.attaches(); len(got) != 1 || got[0] != held {
-		t.Fatalf("attached %v, want the held %s", got, held)
+	if got := rig.advice.backgroundFile(); got != held {
+		t.Fatalf("reader %q, want the held %s", got, held)
 	}
 }
 
@@ -239,8 +198,8 @@ func TestAnEmptyLibraryAsksNothing(t *testing.T) {
 	}
 }
 
-// A job the rules answer opens nothing: a group sharing a real folder is
-// named after it without a model, so no reader is attached for it.
+// A shared folder is not a new place from this pass, and no reader is
+// attached for it.
 func TestAJobTheRulesAnswerAttachesNothing(t *testing.T) {
 	rig := newClosedRig(t)
 	at := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
@@ -248,7 +207,7 @@ func TestAJobTheRulesAnswerAttachesNothing(t *testing.T) {
 		rig.saved(id, "notes "+id, nil, at, "/home/u/garden")
 	}
 	v := rig.organize()
-	if len(v.Proposals) != 1 || len(rig.attaches()) != 0 || rig.agent.calls() != 0 {
+	if len(v.Proposals) != 0 || len(rig.attaches()) != 0 || rig.agent.calls() != 0 {
 		t.Fatalf("offers %v, attached %v, asked %d", v.Proposals, rig.attaches(), rig.agent.calls())
 	}
 }
@@ -273,7 +232,10 @@ func TestAReaderThatOpenedAnotherConversationIsRefused(t *testing.T) {
 	rig.welcome = func(string) remote.Welcome {
 		return remote.Welcome{SessionFile: filepath.Join(rig.root, "minted", "transcript.jsonl"), PlaceAsk: true}
 	}
-	rig.agent.answer = gardenAnswer
+	ask := rig.advice.askThrough(rig.advice.detachedAsker(), "saved")
+	if _, err := ask(context.Background(), placegraph.ModelRequest{Role: "placesuggest", System: "s", User: "u"}); err == nil {
+		t.Fatal("a minted conversation was accepted")
+	}
 	v := rig.organize()
 	if rig.agent.calls() != 0 || rig.closes.Load() != 1 || len(v.Proposals) != 0 {
 		t.Fatalf("asked %d, closed %d, offers %v", rig.agent.calls(), rig.closes.Load(), v.Proposals)
@@ -291,12 +253,10 @@ func TestAReaderThatOpenedAnotherConversationIsRefused(t *testing.T) {
 func TestTheBackgroundConnectionIsCachedAndAlwaysClosed(t *testing.T) {
 	rig := newClosedRig(t)
 	rig.savedRealChats()
-	calls := 0
-	rig.agent.answer = func(ctx context.Context, q placegraph.ModelRequest) (session.PlacesAnswer, error) {
-		calls++
-		return session.PlacesAnswer{Text: `{"belong": false, "chats": [], "use": "", "name": "", "under": "root", "confidence": 10}`, Model: adviceModel}, nil
+	file := rig.advice.backgroundFile()
+	if _, err := rig.advice.detached(context.Background(), file); err != nil {
+		t.Fatal(err)
 	}
-	rig.organize()
 	if len(rig.attaches()) != 1 || rig.closes.Load() != 0 {
 		t.Fatalf("attached %v closed %d", rig.attaches(), rig.closes.Load())
 	}

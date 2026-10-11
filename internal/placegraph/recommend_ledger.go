@@ -190,6 +190,18 @@ func (l *Ledger) writeLocked(st *ledgerState, now time.Time) error {
 }
 
 // view runs fn on a fresh read without writing.
+// AIPlaceIDs lists places created by accepting an offer. The organiser marks
+// those as its own, so a refresh may dissolve them and must not dissolve a
+// place the person made.
+func (l *Ledger) AIPlaceIDs() ([]string, error) {
+	var ids []string
+	err := l.view(time.Now(), func(st *ledgerState) error {
+		ids = append([]string{}, st.AIPlaces...)
+		return nil
+	})
+	return ids, err
+}
+
 func (l *Ledger) view(now time.Time, fn func(*ledgerState) error) error {
 	release, err := l.acquire()
 	if err != nil {

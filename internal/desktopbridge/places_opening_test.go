@@ -80,8 +80,8 @@ func TestTheHomeFolderIsNotAProject(t *testing.T) {
 	}
 	project.agent.answer = c.answer
 	w := project.organize()
-	if len(w.Proposals) != 1 || w.Proposals[0].Basis != placegraph.BasisFolder || w.Proposals[0].Name != "shed" || len(w.Proposals[0].ChatIDs) != 6 {
-		t.Fatalf("a project folder inside home was not offered as itself: %+v", w.Proposals)
+	if len(w.Proposals) != 0 || project.agent.calls() != 0 {
+		t.Fatalf("a folder of chats is not a new place from this pass: %+v calls %d", w.Proposals, project.agent.calls())
 	}
 }
 
@@ -99,13 +99,8 @@ func TestASavedChatIsWeighedOnItsOpeningMessage(t *testing.T) {
 	rig.organize()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if len(c.asked) != 1 {
-		t.Fatalf("asked %d questions", len(c.asked))
-	}
-	for i := range quick {
-		if want := "Opening number " + string(rune('A'+i)); !strings.Contains(c.asked[0].User, want) {
-			t.Fatalf("%q did not reach the question:\n%s", want, c.asked[0].User)
-		}
+	if len(c.asked) != 0 {
+		t.Fatalf("organizing saved chats asked %d questions", len(c.asked))
 	}
 }
 

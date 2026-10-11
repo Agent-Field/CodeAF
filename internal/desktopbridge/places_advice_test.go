@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/placegraph"
+	"github.com/Agent-Field/codeaf/internal/placeorg"
 	"github.com/Agent-Field/codeaf/internal/remote"
-	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -52,17 +52,18 @@ func (a *askingAgent) calls() int { a.mu.Lock(); defer a.mu.Unlock(); return len
 const adviceModel = "deepseek/deepseek-v4.1-flash"
 
 type adviceRig struct {
-	t      *testing.T
-	b      *Bridge
-	agent  *askingAgent
-	store  *placegraph.Store
-	ledger string
-	advice *PlaceAdvice
-	policy placegraph.RecommendPolicy
-	rows   []session.SessionRow
-	mu     sync.Mutex
-	asks   bool
-	ended  atomic.Int32
+	t         *testing.T
+	b         *Bridge
+	agent     *askingAgent
+	store     *placegraph.Store
+	ledger    string
+	advice    *PlaceAdvice
+	policy    placegraph.RecommendPolicy
+	rows      []session.SessionRow
+	workspace string
+	mu        sync.Mutex
+	asks      bool
+	ended     atomic.Int32
 }
 
 func newAdviceRig(t *testing.T, asks bool) *adviceRig {
@@ -84,7 +85,11 @@ func newAdviceRig(t *testing.T, asks bool) *adviceRig {
 	rig.store = store
 	sessionFile := filepath.Join(dir, "chat-1", "session.jsonl")
 	rig.b = New(testToken, func(string) (Connection, error) {
-		return Connection{Agent: rig.agent, Welcome: remote.Welcome{SessionFile: sessionFile, Workspace: "/desk", Model: Model, Persistent: true, PlaceAsk: rig.asks, Launch: &remote.LaunchShape{OneModel: true}}, Close: func() {}}, nil
+		ws := "/desk"
+		if rig.workspace != "" {
+			ws = rig.workspace
+		}
+		return Connection{Agent: rig.agent, Welcome: remote.Welcome{SessionFile: sessionFile, Workspace: ws, Model: Model, Persistent: true, PlaceAsk: rig.asks, Launch: &remote.LaunchShape{OneModel: true}}, Close: func() {}}, nil
 	})
 	places := NewPlaces(store)
 	places.World = func() session.World {
@@ -104,6 +109,15 @@ func newAdviceRig(t *testing.T, asks bool) *adviceRig {
 	}
 	t.Cleanup(rig.b.Close)
 	return rig
+}
+
+func (r *adviceRig) folderPlace(name, folder string) string {
+	r.t.Helper()
+	p, _, err := r.store.CreatePlace(placegraph.NewPlace{Name: name, Context: placegraph.Context{Sources: []placegraph.Source{{Kind: placegraph.SourceRepo, Ref: folder, AddedBy: placegraph.AddedByYou}}}})
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	return p.ID
 }
 
 func (r *adviceRig) place(name string) string {
@@ -196,41 +210,27 @@ func eventually(t *testing.T, what string, ok func() bool) {
 
 func TestASettledTurnAsksTheChatsEngineOnceAndOffersThePlace(t *testing.T) {
 	rig := newAdviceRig(t, true)
-	release := rig.place("Release pipeline")
-	rig.agent.answer = func(_ context.Context, req placegraph.ModelRequest) (session.PlacesAnswer, error) {
-		return session.PlacesAnswer{Text: `{"place":"p1","confidence":90}`, Model: adviceModel}, nil
-	}
+	rig.workspace = "/work/release"
+	release := rig.folderPlace("Release pipeline", "/work/release")
 	before, _ := rig.store.Revision()
 	id := rig.open()
 	rig.settle(id, true)
 	eventually(t, "an offer", func() bool { v, _ := rig.view(); return len(v.Proposals) == 1 })
-	// The offer lands in the ledger before the job writes down what its ask
-	// came to, so the record is only final once the worker has gone quiet.
 	rig.idle()
 	v, _ := rig.view()
 	p := v.Proposals[0]
-	if p.Kind != placegraph.ProposalFile || p.PlaceID != release || p.ChatIDs[0] != "chat-1" || p.Basis != placegraph.BasisModel || p.OfferVersion == "" {
+	if p.Kind != placegraph.ProposalFile || p.PlaceID != release || p.ChatIDs[0] != "chat-1" || p.Basis != placegraph.BasisFolder || p.OfferVersion == "" {
 		t.Fatalf("offered %+v", p)
 	}
-	if rig.agent.calls() != 1 || rig.agent.asked[0].Role != roles.RolePlaceFile {
-		t.Fatalf("asked %d times: %+v", rig.agent.calls(), rig.agent.asked)
-	}
-	if !strings.Contains(rig.agent.asked[0].User, "release pipeline fails on the signing step") {
-		t.Fatalf("the question did not carry the chat's own opening message:\n%s", rig.agent.asked[0].User)
-	}
-	if strings.Contains(rig.agent.asked[0].User, "/desk") {
-		t.Fatal("the folder every desktop chat runs in was sent as evidence")
-	}
-	if v.LastAsk == nil || v.LastAsk.Model != adviceModel || v.LastAsk.Role != "placefile" || v.LastAsk.Error != "" || !v.LastAsk.Offered {
-		t.Fatalf("the answering model was not recorded: %+v", v.LastAsk)
+	if rig.agent.calls() != 0 {
+		t.Fatalf("a folder match asked the model %d times", rig.agent.calls())
 	}
 	if after, _ := rig.store.Revision(); after != before {
 		t.Fatal("an offer changed the graph before anyone accepted it")
 	}
-	// A second settled turn of the same chat is not a second question.
 	rig.settle(id, true)
 	rig.idle()
-	if rig.agent.calls() != 1 {
+	if rig.agent.calls() != 0 {
 		t.Fatalf("the same chat was asked about %d times", rig.agent.calls())
 	}
 }
@@ -301,14 +301,10 @@ func TestARefusalOrMalformedAnswerOffersNothingAndChangesNothing(t *testing.T) {
 			}
 			before, _ := rig.store.Revision()
 			rig.settle(rig.open(), true)
-			eventually(t, "the question", func() bool { return rig.agent.calls() == 1 })
 			rig.idle()
 			v, _ := rig.view()
-			if after, _ := rig.store.Revision(); len(v.Proposals) != 0 || after != before {
-				t.Fatalf("offers %+v, revision %d→%d", v.Proposals, before, after)
-			}
-			if v.LastAsk == nil || v.LastAsk.Offered || v.LastAsk.Error == "" {
-				t.Fatalf("the unused answer was not said: %+v", v.LastAsk)
+			if after, _ := rig.store.Revision(); len(v.Proposals) != 0 || after != before || rig.agent.calls() != 0 {
+				t.Fatalf("offers %+v, revision %d→%d, calls %d", v.Proposals, before, after, rig.agent.calls())
 			}
 		})
 	}
@@ -316,10 +312,8 @@ func TestARefusalOrMalformedAnswerOffersNothingAndChangesNothing(t *testing.T) {
 
 func TestAcceptIsCheckedAgainstTheOfferSeenAndHappensOnce(t *testing.T) {
 	rig := newAdviceRig(t, true)
-	release := rig.place("Release pipeline")
-	rig.agent.answer = func(context.Context, placegraph.ModelRequest) (session.PlacesAnswer, error) {
-		return session.PlacesAnswer{Text: `{"place":"p1","confidence":90}`, Model: adviceModel}, nil
-	}
+	rig.workspace = "/work/release"
+	release := rig.folderPlace("Release pipeline", "/work/release")
 	rig.settle(rig.open(), true)
 	eventually(t, "an offer", func() bool { v, _ := rig.view(); return len(v.Proposals) == 1 })
 	v, _ := rig.view()
@@ -352,10 +346,8 @@ func TestAcceptIsCheckedAgainstTheOfferSeenAndHappensOnce(t *testing.T) {
 
 func TestDeclineClosesTheOfferAndTheChatIsNotAskedAgain(t *testing.T) {
 	rig := newAdviceRig(t, true)
-	rig.place("Release pipeline")
-	rig.agent.answer = func(context.Context, placegraph.ModelRequest) (session.PlacesAnswer, error) {
-		return session.PlacesAnswer{Text: `{"place":"p1","confidence":90}`, Model: adviceModel}, nil
-	}
+	rig.workspace = "/work/release"
+	rig.folderPlace("Release pipeline", "/work/release")
 	id := rig.open()
 	rig.settle(id, true)
 	eventually(t, "an offer", func() bool { v, _ := rig.view(); return len(v.Proposals) == 1 })
@@ -365,7 +357,7 @@ func TestDeclineClosesTheOfferAndTheChatIsNotAskedAgain(t *testing.T) {
 	}
 	rig.settle(id, true)
 	rig.idle()
-	if v, _ := rig.view(); len(v.Proposals) != 0 || rig.agent.calls() != 1 {
+	if v, _ := rig.view(); len(v.Proposals) != 0 || rig.agent.calls() != 0 {
 		t.Fatalf("offers %+v after decline, %d calls", v.Proposals, rig.agent.calls())
 	}
 }
@@ -387,27 +379,26 @@ func TestADamagedLedgerIsSetAsideAndSaid(t *testing.T) {
 
 func TestClosingTheBridgeCancelsAQuestionInFlight(t *testing.T) {
 	rig := newAdviceRig(t, true)
-	rig.place("Release pipeline")
 	started := make(chan struct{})
 	var cancelled atomic.Bool
-	rig.agent.answer = func(ctx context.Context, _ placegraph.ModelRequest) (session.PlacesAnswer, error) {
+	rig.advice.Organizer = &Organizer{State: placeorg.NewState(), Run: func(ctx context.Context, _ *placeorg.Corpus, _ placeorg.Options) (*placeorg.Plan, error) {
 		close(started)
 		<-ctx.Done()
 		cancelled.Store(true)
-		return session.PlacesAnswer{}, ctx.Err()
+		return nil, ctx.Err()
+	}}
+	if ok, _ := rig.advice.Organizer.start(rig.advice, rig.advice.ctx, placeorg.ModeAddOn); !ok {
+		t.Fatal("the run did not start")
 	}
-	rig.settle(rig.open(), true)
 	<-started
 	finished := make(chan struct{})
 	go func() { rig.b.Close(); close(finished) }()
 	select {
 	case <-finished:
 	case <-time.After(6 * time.Second):
-		t.Fatal("closing the bridge waited on a model")
+		t.Fatal("closing the bridge waited on an organizing run")
 	}
-	if !cancelled.Load() {
-		t.Fatal("the question in flight was not cancelled")
-	}
+	eventually(t, "the organizing run to be cancelled", cancelled.Load)
 }
 
 func TestOrganizeIsAskedOnceAndRunsInTheBackground(t *testing.T) {
@@ -427,12 +418,10 @@ func TestOrganizeIsAskedOnceAndRunsInTheBackground(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("a second organize inside the gap was queued: %d", w.Code)
 	}
+	rig.idle()
 	v, _ := rig.view()
-	if len(v.Proposals) != 1 || v.Proposals[0].Kind != placegraph.ProposalCreate || len(v.Proposals[0].ChatIDs) != 5 {
-		t.Fatalf("offers %+v", v.Proposals)
-	}
-	if rig.agent.calls() != 0 {
-		t.Fatal("a group sharing a folder asked the model")
+	if len(v.Proposals) != 0 || rig.agent.calls() != 0 {
+		t.Fatalf("a shared folder is not a new place from this pass: %+v calls %d", v.Proposals, rig.agent.calls())
 	}
 }
 

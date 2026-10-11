@@ -8,6 +8,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/placeorg"
+	"github.com/Agent-Field/codeaf/internal/placeorg/steer"
+	"github.com/Agent-Field/codeaf/internal/placeorg/stream"
 )
 
 // The fixtures are the REAL answers of the real handlers over a deterministic
@@ -101,5 +105,52 @@ func TestPlacesWireFixtures(t *testing.T) {
 		if !bytes.Equal(want, data) {
 			t.Errorf("the wire answer %q changed; regenerate the fixtures (UPDATE_PLACES_FIXTURES=1) and check the TypeScript client still parses them\n--- committed\n%s\n--- now\n%s", name, want, data)
 		}
+	}
+}
+
+// TestPlacesContractCoversTheOrganizerRoutes is the §14 extension. The
+// fixture capture above stays on the graph the TypeScript client already
+// parses. These routes are the organiser's own door, so they are asserted
+// here rather than by rewriting those fixtures.
+func TestPlacesContractCoversTheOrganizerRoutes(t *testing.T) {
+	rig := newAdviceRig(t, true)
+	for _, call := range []struct{ method, path string }{
+		{"GET", "/api/engine/places/organize"},
+		{"POST", "/api/engine/places/organize"},
+		{"POST", "/api/engine/places/organize/cancel"},
+		{"GET", "/api/engine/places/tree"},
+		{"POST", "/api/engine/places/guess"},
+		{"POST", "/api/engine/places/steer"},
+	} {
+		w := request(rig.b, call.method, call.path, `{}`)
+		if w.Code != 404 {
+			t.Fatalf("%s %s without an organiser: %d %s", call.method, call.path, w.Code, w.Body.String())
+		}
+	}
+	desk := rig.place("Desk")
+	rig.advice.Organizer = &Organizer{State: placeorg.NewState(), stream: stream.New(), steer: steer.New()}
+	w := request(rig.b, "GET", "/api/engine/places/organize", "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"running":false`) {
+		t.Fatalf("organize: %d %s", w.Code, w.Body.String())
+	}
+	w = request(rig.b, "GET", "/api/engine/places/tree", "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"places"`) {
+		t.Fatalf("tree: %d %s", w.Code, w.Body.String())
+	}
+	w = request(rig.b, "GET", "/api/engine/places/"+desk+"/lenses", "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"lenses"`) {
+		t.Fatalf("lenses: %d %s", w.Code, w.Body.String())
+	}
+	w = request(rig.b, "POST", "/api/engine/places/guess", `{}`)
+	if w.Code != 200 || strings.TrimSpace(w.Body.String()) != "{}" {
+		t.Fatalf("guess: %d %s", w.Code, w.Body.String())
+	}
+	w = request(rig.b, "POST", "/api/engine/places/steer", `{"scope":"`+desk+`","sentence":""}`)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"understood":false`) {
+		t.Fatalf("steer: %d %s", w.Code, w.Body.String())
+	}
+	w = request(rig.b, "POST", "/api/engine/places/organize/cancel", "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"cancelled":false`) {
+		t.Fatalf("cancel idle: %d %s", w.Code, w.Body.String())
 	}
 }

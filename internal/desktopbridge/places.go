@@ -48,6 +48,10 @@ type Places struct {
 	// Stale remembers "Not now" for the untouched-place suggestion (places_stale.go).
 	// Nil leaves both of its routes absent.
 	Stale *placegraph.StaleBook
+	// advice is the organiser door, set by UsePlaceAdvice. Nil leaves the
+	// organising routes absent: a bridge that was not given one answers 404
+	// rather than a route that fails on every call.
+	advice *PlaceAdvice
 
 	// live lists the chat ids of conversations this bridge holds open. A
 	// conversation the person just started may not be in the world yet; it is

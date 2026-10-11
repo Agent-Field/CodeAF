@@ -1,10 +1,8 @@
 package placegraph
 
-// The deterministic half of recommendations: reading words out of chats and
-// places, scoring a chat against a place, grouping chats in no place, and the
-// caps on what the AI may create. Nothing here calls a model, and everything
-// here is ordered so the same graph and the same chats always give the same
-// answer.
+// The deterministic half of recommendations: the folder rule, the caps on
+// what the AI may create, and same-name merges. Grouping chats into a new
+// place moved to the organiser. Nothing here calls a model.
 //
 // WHY RULES FIRST. A model asked "which of my 200 places is this?" is slow,
 // costs a whole prompt of place names per chat, and can answer with a place
@@ -102,48 +100,50 @@ func folderHolds(source, chat string) bool {
 	return chat == source || strings.HasPrefix(chat, source+string(filepath.Separator))
 }
 
-// placeWords is what a place says about itself, weighted: its own name most,
-// its sources' labels next, then its instructions, its ancestors' names and the
-// titles of chats already filed there.
-func placeWords(s *Snapshot, p Place, library map[string]ChatEvidence) map[string]int {
-	w := map[string]int{}
-	add := func(text string, weight int) {
-		for k := range words(text) {
-			if w[k] < weight {
-				w[k] = weight
+// folderMatch is the one rule still answered here: the deepest place whose
+// folder source covers the chat, or, failing that, a place where most filed
+// chats already ran in that same folder. Shared words are not a reason.
+func folderMatch(s *Snapshot, folder string, exclude map[string]bool, library map[string]ChatEvidence) (Place, int, bool) {
+	if folder == "" {
+		return Place{}, 0, false
+	}
+	var best Place
+	bestDepth, conf := -1, 0
+	found := false
+	for _, p := range s.Places {
+		if p.Archived || exclude[p.ID] {
+			continue
+		}
+		hit, c := false, 0
+		for _, src := range p.Context.Sources {
+			if (src.Kind == SourceFolder || src.Kind == SourceRepo) && folderHolds(src.Ref, folder) {
+				hit, c = true, workspaceSourceConf
+				break
 			}
 		}
-	}
-	add(p.Name, 3)
-	for _, src := range p.Context.Sources {
-		add(src.Label, 2)
-		if src.Kind == SourceFolder || src.Kind == SourceRepo || src.Kind == SourceFile {
-			add(filepath.Base(src.Ref), 2)
+		if !hit {
+			members, same := 0, 0
+			for _, id := range s.ChatsIn(p.ID, false) {
+				if ev, ok := library[id]; ok {
+					members++
+					if cleanFolder(ev.Workspace) == cleanFolder(folder) {
+						same++
+					}
+				}
+			}
+			if same >= 2 && same*2 > members {
+				hit, c = true, workspaceMembersConf
+			}
+		}
+		if !hit {
+			continue
+		}
+		d := depthOf(s, p.ID)
+		if !found || d > bestDepth || (d == bestDepth && (p.Name < best.Name || (p.Name == best.Name && p.ID < best.ID))) {
+			best, bestDepth, conf, found = p, d, c, true
 		}
 	}
-	add(clipRunes(p.Context.Instructions, 2000), 1)
-	for _, a := range s.ContextAncestors(p.ID) {
-		if ap, ok := s.Place(a.PlaceID); ok {
-			add(ap.Name, 1)
-		}
-	}
-	for i, id := range s.ChatsIn(p.ID, false) {
-		if i >= 50 {
-			break
-		}
-		if c, ok := library[id]; ok {
-			add(c.Title, 1)
-		}
-	}
-	return w
-}
-
-// candidate is one place scored for one chat or one group of chats.
-type candidate struct {
-	place      Place
-	confidence int
-	basis      string
-	shared     int
+	return best, conf, found
 }
 
 // Bases: why an offer was made, in the person's own terms on the reason line.
@@ -152,312 +152,9 @@ const (
 	BasisWords    = "words"
 	BasisModel    = "model"
 	BasisSameName = "same-name"
+	// BasisOrganizer is a filing the organiser filer decided.
+	BasisOrganizer = "organizer"
 )
-
-// scorePlace scores what a chat (or a group's shared words and folder) says
-// against one place. Zero means no reason at all to consider it.
-func scorePlace(s *Snapshot, p Place, folder string, said map[string]bool, library map[string]ChatEvidence) candidate {
-	c := candidate{place: p}
-	if folder != "" {
-		for _, src := range p.Context.Sources {
-			if (src.Kind == SourceFolder || src.Kind == SourceRepo) && folderHolds(src.Ref, folder) {
-				c.confidence, c.basis = workspaceSourceConf, BasisFolder
-				return c
-			}
-		}
-		members, same := 0, 0
-		for _, id := range s.ChatsIn(p.ID, false) {
-			if m, ok := library[id]; ok {
-				members++
-				if cleanFolder(m.Workspace) == cleanFolder(folder) {
-					same++
-				}
-			}
-		}
-		if same >= 2 && same*2 > members {
-			c.confidence, c.basis = workspaceMembersConf, BasisFolder
-			return c
-		}
-	}
-	pw := placeWords(s, p, library)
-	score := 0
-	for w := range said {
-		if pw[w] > 0 {
-			c.shared++
-			score += pw[w]
-		}
-	}
-	if c.shared == 0 {
-		return c
-	}
-	c.confidence, c.basis = min(lexicalConfidenceCap, 20+8*score), BasisWords
-	return c
-}
-
-// rankCandidates scores every active place the chats are not already in and
-// returns the ones with any reason, best first, ties by name then id.
-func rankCandidates(s *Snapshot, folder string, said map[string]bool, exclude map[string]bool, library map[string]ChatEvidence) []candidate {
-	var out []candidate
-	for _, p := range s.Places {
-		if p.Archived || exclude[p.ID] {
-			continue
-		}
-		if c := scorePlace(s, p, folder, said, library); c.confidence > 0 {
-			out = append(out, c)
-		}
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		a, b := out[i], out[j]
-		if a.confidence != b.confidence {
-			return a.confidence > b.confidence
-		}
-		if a.shared != b.shared {
-			return a.shared > b.shared
-		}
-		if a.place.Name != b.place.Name {
-			return a.place.Name < b.place.Name
-		}
-		return a.place.ID < b.place.ID
-	})
-	return out
-}
-
-// cluster is a group of chats in no place that rules found to belong together.
-type cluster struct {
-	chats  []ChatEvidence
-	folder string          // shared folder, when that is why they belong
-	core   map[string]bool // words most of them share
-}
-
-func (c cluster) ids() []string {
-	out := make([]string, len(c.chats))
-	for i, ch := range c.chats {
-		out[i] = ch.ChatID
-	}
-	sort.Strings(out)
-	return out
-}
-
-// findClusters groups chats in no place. First by shared folder, which is the
-// strongest signal there is; then the rest by shared words, single-link with a
-// core-word check. Groups smaller than minSize are dropped. Largest first.
-func findClusters(chats []ChatEvidence, minSize int) []cluster {
-	byFolder := map[string][]ChatEvidence{}
-	var loose []ChatEvidence
-	for _, c := range chats {
-		if f := cleanFolder(c.Workspace); f != "" {
-			byFolder[f] = append(byFolder[f], c)
-		} else {
-			loose = append(loose, c)
-		}
-	}
-	var out []cluster
-	folders := make([]string, 0, len(byFolder))
-	for f := range byFolder {
-		folders = append(folders, f)
-	}
-	sort.Strings(folders)
-	for _, f := range folders {
-		group := byFolder[f]
-		if len(group) >= minSize {
-			out = append(out, cluster{chats: group, folder: f, core: coreWords(group)})
-		} else {
-			loose = append(loose, group...)
-		}
-	}
-	byWords := wordClusters(loose, minSize)
-	out = append(out, byWords...)
-	grouped := map[string]bool{}
-	for _, cl := range byWords {
-		for _, c := range cl.chats {
-			grouped[c.ChatID] = true
-		}
-	}
-	var rest []ChatEvidence
-	for _, c := range loose {
-		if !grouped[c.ChatID] {
-			rest = append(rest, c)
-		}
-	}
-	out = append(out, anchorClusters(rest, minSize)...)
-	sort.SliceStable(out, func(i, j int) bool {
-		if len(out[i].chats) != len(out[j].chats) {
-			return len(out[i].chats) > len(out[j].chats)
-		}
-		return out[i].ids()[0] < out[j].ids()[0]
-	})
-	return out
-}
-
-func wordClusters(chats []ChatEvidence, minSize int) []cluster {
-	sort.SliceStable(chats, func(i, j int) bool { return chats[i].ChatID < chats[j].ChatID })
-	sets := make([]map[string]bool, len(chats))
-	for i, c := range chats {
-		// TITLES ONLY. A recap is written in its writer's own vocabulary —
-		// "discussed", "recommended", "codeaf" — so two recaps share words
-		// whatever they are about, and a pairwise rule over them links chats
-		// that have nothing in common. Recaps reach grouping through
-		// [anchorClusters], whose title rule is what keeps that vocabulary out.
-		sets[i] = words(clipRunes(c.Title, 200))
-	}
-	parent := make([]int, len(chats))
-	for i := range parent {
-		parent[i] = i
-	}
-	var find func(int) int
-	find = func(i int) int {
-		for parent[i] != i {
-			parent[i] = parent[parent[i]]
-			i = parent[i]
-		}
-		return i
-	}
-	for i := range chats {
-		for j := i + 1; j < len(chats); j++ {
-			inter, union := 0, len(sets[i])
-			for w := range sets[j] {
-				if sets[i][w] {
-					inter++
-				} else {
-					union++
-				}
-			}
-			if inter >= 2 && union > 0 && float64(inter)/float64(union) >= clusterJaccard {
-				parent[find(j)] = find(i)
-			}
-		}
-	}
-	groups := map[int][]ChatEvidence{}
-	var roots []int
-	for i, c := range chats {
-		r := find(i)
-		if _, ok := groups[r]; !ok {
-			roots = append(roots, r)
-		}
-		groups[r] = append(groups[r], c)
-	}
-	var out []cluster
-	for _, r := range roots {
-		g := groups[r]
-		if len(g) < minSize {
-			continue
-		}
-		core := coreWords(g)
-		if len(core) == 0 {
-			continue
-		}
-		out = append(out, cluster{chats: g, core: core})
-	}
-	return out
-}
-
-// anchorClusters groups chats around ONE TOPIC WORD, which is the shape real
-// chats about one thing actually have.
-//
-// MEASURED, NOT ASSUMED. On thirteen real conversations (two groups of five
-// and three strays, every title and recap written by
-// deepseek/deepseek-v4.1-flash on 2026-10-09) the pairwise rule above linked
-// none of the twenty same-group pairs: short titles about one subject share
-// one word, not a third of their words — "Tomato drip emitter mineral clogs"
-// and "Half-inch vs quarter-inch drip tubing" share "drip" and nothing else.
-// Adding the recaps to the pairwise sets made it worse, because a longer text
-// has a larger union. No threshold separates those groups, so none was moved.
-//
-// THE RULE: a word anchors a group when the chats that use it — in their
-// title, their recap or their opening message — number at least minSize, AND
-// at least half of them use it IN THEIR TITLE. The title is what a chat is
-// about; the recap is what was said in it. Requiring the title is what keeps a
-// recap's own vocabulary ("discussed", "recommended", "codeaf") from anchoring
-// anything, since no title says it, while still letting a recap bring in a
-// chat whose title named the subject another way. Groups are taken largest
-// first and a chat joins at most one; the model is still asked whether the
-// group belongs together before anything is offered.
-func anchorClusters(chats []ChatEvidence, minSize int) []cluster {
-	if len(chats) < minSize {
-		return nil
-	}
-	sort.SliceStable(chats, func(i, j int) bool { return chats[i].ChatID < chats[j].ChatID })
-	type anchor struct {
-		word    string
-		members []int
-	}
-	reach := map[string][]int{}
-	inTitle := map[string]int{}
-	titles := make([]map[string]bool, len(chats))
-	for i, c := range chats {
-		title := words(clipRunes(c.Title, 200))
-		titles[i] = title
-		for w := range title {
-			inTitle[w]++
-		}
-		said := words(clipRunes(c.Summary, 600) + " " + clipRunes(c.FirstMessage, 600))
-		for w := range title {
-			said[w] = true
-		}
-		for w := range said {
-			reach[w] = append(reach[w], i)
-		}
-	}
-	var anchors []anchor
-	for w, members := range reach {
-		if len(members) >= minSize && inTitle[w]*2 >= len(members) {
-			anchors = append(anchors, anchor{w, members})
-		}
-	}
-	sort.Slice(anchors, func(i, j int) bool {
-		if len(anchors[i].members) != len(anchors[j].members) {
-			return len(anchors[i].members) > len(anchors[j].members)
-		}
-		return anchors[i].word < anchors[j].word
-	})
-	taken := make([]bool, len(chats))
-	var out []cluster
-	for _, a := range anchors {
-		var group []ChatEvidence
-		titled := 0
-		for _, i := range a.members {
-			if !taken[i] {
-				group = append(group, chats[i])
-				if titles[i][a.word] {
-					titled++
-				}
-			}
-		}
-		// The title rule holds for what is LEFT, so a group cannot be the
-		// recap-only remainder of a topic a larger group already took.
-		if len(group) < minSize || titled*2 < len(group) {
-			continue
-		}
-		for _, i := range a.members {
-			taken[i] = true
-		}
-		core := coreWords(group)
-		core[a.word] = true
-		out = append(out, cluster{chats: group, core: core})
-	}
-	return out
-}
-
-// coreWords are the words at least clusterCoreShare of the chats share.
-func coreWords(chats []ChatEvidence) map[string]bool {
-	count := map[string]int{}
-	for _, c := range chats {
-		// Title and opening message only, for [wordClusters]' reason: the
-		// core is matched against place names, and a recap's vocabulary
-		// would match a place called "Recommendations".
-		for w := range words(clipRunes(c.Title, 200) + " " + clipRunes(c.FirstMessage, 600)) {
-			count[w]++
-		}
-	}
-	core := map[string]bool{}
-	need := int(float64(len(chats))*clusterCoreShare + 0.999)
-	for w, n := range count {
-		if n >= need {
-			core[w] = true
-		}
-	}
-	return core
-}
 
 // ---- caps on what the AI creates ---------------------------------------------
 
