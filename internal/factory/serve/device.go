@@ -18,6 +18,12 @@ import (
 const githubTimeout = 15 * time.Second
 const deviceFlowLimit = 256
 
+// githubSignInScope asks for the profile and for private repositories.
+// Classic device flow has no read-only private-repository scope, and GitHub
+// answers 404 for a private repository the token cannot see. The token is
+// kept only in memory so that check can run.
+const githubSignInScope = "read:user repo"
+
 // deviceFlows retains GitHub's secret until exchange or expiry. Only the
 // factory's opaque flow secret leaves the service, bound to its original caller.
 type deviceFlows struct {
@@ -75,7 +81,7 @@ func (h *Handler) startDevice(w http.ResponseWriter, r *http.Request) {
 		ExpiresIn       int    `json:"expires_in"`
 	}
 	err := h.githubJSON(r, http.MethodPost, "https://github.com/login/device/code",
-		url.Values{"client_id": {h.config.GitHubClientID}, "scope": {"read:user"}}.Encode(), "", &gh)
+		url.Values{"client_id": {h.config.GitHubClientID}, "scope": {githubSignInScope}}.Encode(), "", &gh)
 	if err != nil {
 		h.fail(w, http.StatusBadGateway, err.Error())
 		return
@@ -191,21 +197,24 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	session := accessSession{id: "session_" + id, expires: h.now().Add(accessSessionTTL),
-		profile: &profile, tokenID: flow.tokenID, invitedBy: flow.invitedBy}
+	now := h.now()
+	session := accessSession{id: "session_" + id, expires: now.Add(accessSessionTTL), created: now, lastSeen: now,
+		profile: &profile, tokenID: flow.tokenID, invitedBy: flow.invitedBy, device: deviceLabel(r),
+		githubToken: exchange.AccessToken}
 	if flow.tokenID != "" {
-		if err := tokens.Bind(h.config.TokensPath, flow.tokenID, profile, h.now()); h.failed(w, err) {
+		if err := tokens.Bind(h.config.TokensPath, flow.tokenID, profile, now); h.failed(w, err) {
 			return
 		}
 	}
 	h.sessions.mu.Lock()
 	for key, old := range h.sessions.ids {
-		if !h.now().Before(old.expires) {
+		if !now.Before(old.expires) {
 			delete(h.sessions.ids, key)
 		}
 	}
 	h.sessions.ids[credential] = session
 	h.sessions.mu.Unlock()
+	h.viewer.see(profile, flow.invitedBy, now, now, exchange.AccessToken)
 	h.setSessionCookie(w, r, credential, session)
 	h.write(w, http.StatusOK, api.SignedIn{Factory: h.factory, AccessToken: credential, TokenType: "bearer",
 		ExpiresIn: int(accessSessionTTL.Seconds()), Me: h.meBody(profile, session.id, session.invitedBy)})

@@ -34,6 +34,9 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case data := <-ticks:
+			if !h.viewerWantsTick(r, data) {
+				continue
+			}
 			fmt.Fprintf(w, "event: changed\ndata: %s\n\n", data)
 			flusher.Flush()
 		}

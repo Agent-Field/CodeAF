@@ -1,6 +1,10 @@
 package api
 
-import "github.com/Agent-Field/codeaf/internal/factory/tokens"
+import (
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/factory/tokens"
+)
 
 // Profile is the GitHub identity checked at sign-in, never a client claim.
 type Profile = tokens.Profile
@@ -43,4 +47,43 @@ type SignedIn struct {
 	TokenType   string  `json:"token_type"`
 	ExpiresIn   int     `json:"expires_in"`
 	Me          Me      `json:"me"`
+}
+
+// Member is one GitHub person who has signed in. Sessions is how many of
+// their sign-ins are still live, not a list of those sign-ins.
+type Member struct {
+	Handle    string    `json:"handle"`
+	Name      string    `json:"name"`
+	AvatarURL string    `json:"avatar_url"`
+	JoinedAt  time.Time `json:"joined_at"`
+	LastSeen  time.Time `json:"last_seen"`
+	InvitedBy string    `json:"invited_by,omitempty"`
+	Sessions  int       `json:"sessions"`
+}
+
+// Members is `GET /v1/members`.
+type Members struct {
+	Factory Factory  `json:"factory"`
+	Members []Member `json:"members"`
+}
+
+// Session is one sign-in of the caller. Device is the label captured then.
+type Session struct {
+	ID       string    `json:"id"`
+	Device   string    `json:"device"`
+	Created  time.Time `json:"created"`
+	LastSeen time.Time `json:"last_seen"`
+	Current  bool      `json:"current"`
+}
+
+// Sessions is `GET /v1/me/sessions`.
+type Sessions struct {
+	Factory  Factory   `json:"factory"`
+	Sessions []Session `json:"sessions"`
+}
+
+// SignedOut is `POST /v1/me/sessions/signout-others`.
+type SignedOut struct {
+	Factory   Factory `json:"factory"`
+	SignedOut int     `json:"signed_out"`
 }

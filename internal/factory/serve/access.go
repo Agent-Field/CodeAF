@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,12 +23,18 @@ const accessFormLimit = 4096
 // accessSession is one browser sign-in. tokenID is empty when the host
 // config token created it. An invite row's id is kept so the session dies
 // when that row is revoked or expires, even inside the cookie's 30 days.
+// githubToken is the person's GitHub credential for repository checks. It
+// stays in this process and is never written to disk or returned on the wire.
 type accessSession struct {
-	expires   time.Time
-	invitedBy string
-	tokenID   string
-	id        string
-	profile   *api.Profile
+	expires     time.Time
+	created     time.Time
+	lastSeen    time.Time
+	invitedBy   string
+	tokenID     string
+	id          string
+	device      string
+	githubToken string
+	profile     *api.Profile
 }
 
 // accessSessions keeps opaque browser credentials only in the running service.
@@ -75,6 +82,9 @@ func (h *Handler) credential(r *http.Request) (accessSession, bool) {
 					break
 				}
 			}
+			if session.profile != nil && h.viewer != nil {
+				h.viewer.see(*session.profile, session.invitedBy, time.Time{}, h.now(), "")
+			}
 			return session, true
 		}
 		return h.liveSession(token)
@@ -100,6 +110,12 @@ func (h *Handler) liveSession(key string) (accessSession, bool) {
 				break
 			}
 		}
+	}
+	// Every use of the session is the person being here.
+	session.lastSeen = h.now()
+	h.sessions.ids[key] = session
+	if session.profile != nil && h.viewer != nil {
+		h.viewer.see(*session.profile, session.invitedBy, session.created, session.lastSeen, session.githubToken)
 	}
 	return session, true
 }
@@ -232,7 +248,8 @@ func (h *Handler) access(w http.ResponseWriter, r *http.Request) {
 			delete(h.sessions.ids, old)
 		}
 	}
-	h.sessions.ids[sessionID] = accessSession{expires: expires, invitedBy: invitedBy, tokenID: tokenID, id: "session_" + publicID}
+	h.sessions.ids[sessionID] = accessSession{expires: expires, created: now, lastSeen: now,
+		invitedBy: invitedBy, tokenID: tokenID, id: "session_" + publicID, device: deviceLabel(r)}
 	h.sessions.mu.Unlock()
 	h.setSessionCookie(w, r, sessionID, accessSession{expires: expires})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -249,10 +266,29 @@ func (h *Handler) revokeSessions(w http.ResponseWriter, r *http.Request) {
 	h.sessions.mu.Lock()
 	clear(h.sessions.ids)
 	h.sessions.mu.Unlock()
+	if h.viewer != nil {
+		h.viewer.mu.Lock()
+		clear(h.viewer.github)
+		h.viewer.mu.Unlock()
+	}
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
 		Revoked bool        `json:"revoked"`
 	}{h.factory, true})
+}
+
+// deviceLabel is the sign-in's device line. The client does not send a
+// separate name, so the User-Agent is the label, trimmed to one short line.
+func deviceLabel(r *http.Request) string {
+	label := strings.Join(strings.Fields(r.UserAgent()), " ")
+	if label == "" {
+		return "this device"
+	}
+	const max = 80
+	if len(label) > max {
+		label = label[:max]
+	}
+	return label
 }
 
 const accessForm = `<!doctype html>

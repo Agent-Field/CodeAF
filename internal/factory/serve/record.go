@@ -2,8 +2,11 @@ package serve
 
 import (
 	"bytes"
+	"encoding/csv"
 	"errors"
+	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,27 +33,59 @@ func (h *Handler) audit(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusBadRequest, "format must be json or csv")
 		return
 	}
-	if format == "csv" {
+	_, viewer := h.repoAccess(r, nil)
+	if format == "csv" && !viewer {
 		// Finish reading before sending headers so disk failures retain JSON errors.
 		var data bytes.Buffer
 		if h.failed(w, h.config.Record.CSV(r.Context(), &data, since)) {
 			return
 		}
-		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-		w.Header().Set("Content-Disposition", `attachment; filename="factory-record.csv"`)
-		w.Header().Set("X-Factory-Address", h.factory.Address)
-		w.Header().Set("X-Factory-Version", h.factory.Version)
-		_, _ = w.Write(data.Bytes())
+		h.sendAuditCSV(w, data.Bytes())
 		return
 	}
 	events, err := h.config.Record.Since(r.Context(), since)
 	if h.failed(w, err) {
 		return
 	}
+	if viewer {
+		events = h.filterAudit(r, events)
+	}
+	if format == "csv" {
+		var data bytes.Buffer
+		if h.failed(w, writeAuditCSV(&data, events)) {
+			return
+		}
+		h.sendAuditCSV(w, data.Bytes())
+		return
+	}
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory    `json:"factory"`
 		Events  []record.Event `json:"events"`
 	}{h.factory, events})
+}
+
+// writeAuditCSV matches record.CSV's columns so a filtered export is the
+// same file with rows removed, not a second dialect.
+func writeAuditCSV(out io.Writer, events []record.Event) error {
+	w := csv.NewWriter(out)
+	if err := w.Write([]string{"id", "at", "kind", "job", "handle", "cost", "detail"}); err != nil {
+		return err
+	}
+	for _, e := range events {
+		if err := w.Write([]string{e.ID, e.At.Format(time.RFC3339Nano), e.Kind, strconv.Itoa(e.Job), e.Handle, strconv.FormatFloat(e.Cost, 'f', -1, 64), e.Detail}); err != nil {
+			return err
+		}
+	}
+	w.Flush()
+	return w.Error()
+}
+
+func (h *Handler) sendAuditCSV(w http.ResponseWriter, data []byte) {
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="factory-record.csv"`)
+	w.Header().Set("X-Factory-Address", h.factory.Address)
+	w.Header().Set("X-Factory-Version", h.factory.Version)
+	_, _ = w.Write(data)
 }
 
 var errSignInApproval = errors.New("GitHub sign-in is required to approve")

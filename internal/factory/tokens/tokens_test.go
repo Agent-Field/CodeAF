@@ -49,6 +49,29 @@ func TestAddRemoveRoundTrip(t *testing.T) {
 	}
 }
 
+func TestBindKeepsTheFirstJoin(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tokens.json")
+	row, err := Mint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Add(path, row); err != nil {
+		t.Fatal(err)
+	}
+	joined := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
+	profile := Profile{Handle: "priya", Name: "Priya Nair"}
+	if err := Bind(path, row.ID, profile, joined); err != nil {
+		t.Fatal(err)
+	}
+	if err := Bind(path, row.ID, profile, joined.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil || len(got) != 1 || got[0].Profile == nil || got[0].Profile.Handle != "priya" || !got[0].Joined.Equal(joined) {
+		t.Fatalf("bound = %+v, %v", got, err)
+	}
+}
+
 func TestWhitespaceTokenIsRefused(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "tokens.json")
 	if err := Add(path, Token{ID: "tok_ab", Token: "two words"}); err == nil {

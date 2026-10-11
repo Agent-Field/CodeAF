@@ -1758,7 +1758,8 @@ capacity and the caller's handle), `GET /v1/jobs/{id}` (one full job),
 `GET /v1/jobs/{id}/thread` (that job's manager thread), `GET /v1/events`
 (a stream of changed ticks), `GET /v1/repos` (watched names and available repositories),
 `GET /v1/repos/{owner}/{repo}/pipeline` (the pipeline read through the repository's
-recipe), `GET /v1/github` (login and connection method), and `GET /v1/me`.
+recipe), `GET /v1/github` (login and connection method), `GET /v1/me`,
+`GET /v1/members` and `GET /v1/me/sessions`.
 Every JSON response, including an error, carries `factory: {address, version}`.
 The pipeline includes any lines that could not load. Rules come from GitHub's default
 branch even without a checkout; an absent file returns `source: "defaults"`. A file
@@ -1807,8 +1808,9 @@ answer HTTP 502 and require starting a new flow.
 
 Success checks GitHub's `/user`, sets an HttpOnly session cookie, and returns
 `{factory, access_token, token_type:"bearer", expires_in, me}`. The app sends
-that factory token as a bearer; GitHub's token never leaves the factory. Only
-`read:user` is requested; `me.scopes` reports the scopes GitHub granted. Sessions
+that factory token as a bearer. The factory requests `read:user` and `repo`;
+`me.scopes` reports the scopes GitHub granted. GitHub's token stays in memory
+for repository checks and is never returned or written to disk. Sessions
 last 30 days, until revoke-sessions, invite revocation/expiry or service restart.
 The public `session_id` is separate from the credential. An invite binds to its
 first GitHub handle; another handle cannot replace it. Unsigned invites can
@@ -1819,6 +1821,50 @@ Optional `team` restricts signed-in handles. Someone outside it gets HTTP 403:
 `this GitHub handle is not on the factory team`. The host token and open loopback
 retain owner access. HTTP job-action audit handles use the caller; a worker's
 posted event uses that worker's registered handle.
+
+## factory members — who has joined
+
+`GET /v1/members` lists GitHub people who have signed in. Each member has
+`handle`, `name`, `avatar_url`, `joined_at`, `last_seen`, `sessions` (how many
+of their sign-ins are still live) and `invited_by` when an invite was used.
+The list is the same for every caller who can open the factory. A restart
+keeps someone who accepted an invite: the profile and `joined_at` are stored
+on that invite row. A loopback sign-in that did not use an invite is remembered
+only until the service restarts. `sessions` is 0 when they have no live sign-in.
+Contract stays 1. This list does not sign anyone out.
+
+## sign out a factory session
+
+`GET /v1/me/sessions` lists this caller's own sign-ins. Each has `id`, `device`
+(the User-Agent at sign-in, or `this device` when the client sent none),
+`created`, `last_seen` and `current`. `current` is true for the credential on
+this request. `DELETE /v1/me/sessions/{id}` signs out that one session when it
+is yours. Another person's id answers HTTP 404 `session not found`.
+`POST /v1/me/sessions/signout-others` signs out your other sessions, leaves the
+one you called it with, and returns `{factory, signed_out}`. Signing out does
+not revoke an invite token and does not stop a machine that attached with its
+own worker credential. `codeaf factory revoke-sessions` still signs every
+browser out and still requires the host access token. Sessions last 30 days
+and are dropped when the service restarts.
+
+## repos you can see — no_visible_repos
+
+A caller who has signed in with GitHub sees only repositories that account can
+read. The factory calls GitHub `GET /repos/{owner}/{repo}` with that person's
+token and remembers each answer for 10 minutes. The queue's jobs, repositories,
+pipeline strip, queued count and daily total follow that set, and so do audit
+events, `GET /v1/repos`, pipeline, dry run and a changed tick that names a job.
+A `*` tick still arrives: the following read is filtered, and the tick names no
+repository. When any repository is hidden, since-counters, `machines_online`,
+`busy` and `spent_today` are cleared because they are factory-wide, and
+`capacity.daily` is the sum of the visible jobs' costs. A viewer who can read
+every repository still sees the factory-wide totals. A job or repository they
+cannot read answers HTTP 404, `job not found` or `repository not found`. A
+viewer who can read none of the factory's repositories gets HTTP 200 with an
+empty queue and `reason` `no_visible_repos`. Loopback without a signed-in
+session, and the host access token, still see the whole floor. After a restart
+the GitHub token is gone, so a returning invite sees `no_visible_repos` until
+they sign in again. The token is never returned and never written to disk.
 
 ## Your machines — busy, idle, offline — and pick up unassigned
 

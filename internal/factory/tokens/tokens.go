@@ -44,7 +44,9 @@ type Token struct {
 	InvitedBy string    `json:"invited_by,omitempty"`
 	Expires   time.Time `json:"expires,omitempty"`
 	Created   time.Time `json:"created,omitempty"`
-	Profile   *Profile  `json:"profile,omitempty"`
+	// Joined is when this row's holder first signed in with GitHub.
+	Joined  time.Time `json:"joined,omitempty"`
+	Profile *Profile  `json:"profile,omitempty"`
 }
 
 // Mint chooses a new id and secret. The caller sets InvitedBy, Expires and
@@ -196,6 +198,11 @@ func Bind(path, id string, profile Profile, now time.Time) error {
 			return os.ErrPermission
 		}
 		row.Profile = &profile
+		// The first sign-in is when they joined. A later sign-in must not
+		// move that instant.
+		if row.Joined.IsZero() {
+			row.Joined = now
+		}
 		return Save(path, rows)
 	}
 	return os.ErrPermission

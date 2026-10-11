@@ -3,6 +3,7 @@ package serve
 import (
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -81,14 +82,7 @@ func (h *Handler) githubJSON(r *http.Request, method, endpoint, body, token stri
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	client := http.Client{Timeout: githubTimeout}
-	if h.config.GitHubHTTPClient != nil {
-		client = *h.config.GitHubHTTPClient
-	}
-	if client.Timeout == 0 {
-		client.Timeout = githubTimeout
-	}
-	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	client := h.githubClient()
 	response, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("GitHub sign-in is unavailable")
@@ -98,4 +92,41 @@ func (h *Handler) githubJSON(r *http.Request, method, endpoint, body, token stri
 		return fmt.Errorf("GitHub sign-in returned HTTP %d", response.StatusCode)
 	}
 	return decodeGitHub(response.Body, out)
+}
+
+// githubClient is the one HTTP client every GitHub call uses. Tests replace
+// the transport and keep the published URLs. Redirects are not followed, so
+// a credential cannot be replayed onto a different host.
+func (h *Handler) githubClient() http.Client {
+	client := http.Client{Timeout: githubTimeout}
+	if h.config.GitHubHTTPClient != nil {
+		client = *h.config.GitHubHTTPClient
+	}
+	if client.Timeout == 0 {
+		client.Timeout = githubTimeout
+	}
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return client
+}
+
+// githubStatus is a GitHub status code. A transport failure is an error;
+// 404 and 403 are answers, not failures, so the caller can cache them.
+func (h *Handler) githubStatus(r *http.Request, method, endpoint, token string) (int, error) {
+	req, err := http.NewRequestWithContext(r.Context(), method, endpoint, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "codeaf-factory")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	client := h.githubClient()
+	response, err := client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1<<20))
+	return response.StatusCode, nil
 }

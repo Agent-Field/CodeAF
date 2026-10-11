@@ -88,6 +88,7 @@ type Handler struct {
 	workers  *workerService
 	sessions *accessSessions
 	auth     *deviceFlows
+	viewer   *viewerState
 }
 
 // New binds the seam's reads and verbs; absent doors refuse rather than panic.
@@ -99,6 +100,7 @@ func New(seam factory.Seam, config Config) *Handler {
 		factory: api.Factory{Address: config.Address, Version: config.Version}, mux: http.NewServeMux()}
 	h.sessions = &accessSessions{ids: make(map[string]accessSession), now: time.Now}
 	h.auth = &deviceFlows{pending: make(map[string]*deviceFlow)}
+	h.viewer = newViewerState()
 	h.route("/v1/auth/device", map[string]http.HandlerFunc{http.MethodPost: h.startDevice})
 	h.route("/v1/auth/device/poll", map[string]http.HandlerFunc{http.MethodPost: h.pollDevice})
 	h.route("/access", map[string]http.HandlerFunc{http.MethodGet: h.access, http.MethodPost: h.access})
@@ -114,6 +116,10 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/about", h.about)
 	h.read("/v1/me", h.me)
 	h.route("/v1/me/takes_unassigned", map[string]http.HandlerFunc{http.MethodPut: h.setTakes})
+	h.read("/v1/members", h.members)
+	h.read("/v1/me/sessions", h.mySessions)
+	h.route("/v1/me/sessions/signout-others", map[string]http.HandlerFunc{http.MethodPost: h.signOutOthers})
+	h.route("/v1/me/sessions/{id}", map[string]http.HandlerFunc{http.MethodDelete: h.deleteSession})
 	h.read("/v1/audit", h.audit)
 	h.verbs()
 	h.workerRoutes()
@@ -204,15 +210,33 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
+	s, reason, whole := h.forViewer(r, s)
 	q := api.FromSnapshot(s, handle)
 	q.Factory = h.factory
+	q.Reason = reason
+	if reason != "" {
+		if q.Jobs == nil {
+			q.Jobs = []api.Job{}
+		}
+		if q.Repos == nil {
+			q.Repos = []api.Repo{}
+		}
+		if q.Strip == nil {
+			q.Strip = []api.Cell{}
+		}
+	}
+	// Held-by is stamped only onto jobs this caller can already see.
+	// Machine counts and spent today are floor-wide, so a narrower view
+	// leaves them at zero rather than describing hidden repositories.
 	online, busy, err := h.applyPresence(q.Jobs)
 	if h.failed(w, err) {
 		return
 	}
-	q.Capacity.MachinesOnline, q.Capacity.Busy = online, busy
-	if h.config.SpentToday != nil {
-		q.Since.SpentToday = h.config.SpentToday()
+	if whole {
+		q.Capacity.MachinesOnline, q.Capacity.Busy = online, busy
+		if h.config.SpentToday != nil {
+			q.Since.SpentToday = h.config.SpentToday()
+		}
 	}
 	h.write(w, http.StatusOK, q)
 }
@@ -249,6 +273,11 @@ func (h *Handler) findJob(w http.ResponseWriter, r *http.Request) (factory.Item,
 	}
 	for _, it := range s.Items {
 		if it.ID == id {
+			// A hidden job is the same answer as a missing one, so the
+			// caller cannot tell which repositories exist.
+			if !h.repoVisible(r, itemRepo(it)) {
+				break
+			}
 			return it, true
 		}
 	}
@@ -279,6 +308,20 @@ func (h *Handler) repos(w http.ResponseWriter, r *http.Request) {
 	if watched == nil {
 		watched = []string{}
 	}
+	keys := append([]string{}, watched...)
+	for _, repo := range available {
+		keys = append(keys, repo.Full)
+	}
+	if allow, filter := h.repoAccess(r, keys); filter {
+		watched = keepNames(watched, allow)
+		next := make([]factory.RepoInfo, 0, len(available))
+		for _, repo := range available {
+			if allow[strings.ToLower(strings.TrimSpace(repo.Full))] {
+				next = append(next, repo)
+			}
+		}
+		available = next
+	}
 	repos := make([]Repository, len(available))
 	for i, repo := range available {
 		repos[i] = Repository{repo.Full, repo.Name, repo.Owner, repo.Private, repo.Pushed, repo.Open, repo.Dir}
@@ -296,6 +339,10 @@ func (h *Handler) splitRepo(w http.ResponseWriter, r *http.Request) (owner, repo
 	owner, repo = r.PathValue("owner"), r.PathValue("repo")
 	if strings.ContainsAny(owner+repo, "/\\") || owner == "." || owner == ".." || repo == "." || repo == ".." {
 		h.fail(w, http.StatusBadRequest, "repository must be owner/name")
+		return "", "", false
+	}
+	if !h.repoVisible(r, owner+"/"+repo) {
+		h.fail(w, http.StatusNotFound, "repository not found")
 		return "", "", false
 	}
 	return owner, repo, true

@@ -49,7 +49,7 @@ func (g *fakeGitHub) client() *http.Client {
 			if err := r.ParseForm(); err != nil {
 				g.t.Fatal(err)
 			}
-			if r.Method != "POST" || r.Form.Get("client_id") != "client" || r.Form.Get("scope") != "read:user" {
+			if r.Method != "POST" || r.Form.Get("client_id") != "client" || r.Form.Get("scope") != "read:user repo" {
 				g.t.Fatalf("start = %+v", r.Form)
 			}
 			body = `{"device_code":"github-secret","user_code":"ABCD-EFGH","verification_uri":"https://github.com/login/device","interval":5,"expires_in":900}`
@@ -75,6 +75,12 @@ func (g *fakeGitHub) client() *http.Client {
 				status = g.userStatus
 			}
 		default:
+			// Repository visibility checks use the exchanged token. Existing
+			// sign-in tests treat every repository as readable.
+			if r.Method == http.MethodGet && strings.HasPrefix(r.URL.String(), "https://api.github.com/repos/") && r.Header.Get("Authorization") == "Bearer github-access-secret" {
+				body = `{}`
+				break
+			}
 			g.t.Fatalf("unexpected GitHub URL %s", r.URL)
 		}
 		return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil

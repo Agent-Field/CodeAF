@@ -281,6 +281,10 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusBadRequest, "new job requires repo and title")
 		return
 	}
+	if !h.repoVisible(r, body.Repo) {
+		h.fail(w, http.StatusNotFound, "repository not found")
+		return
+	}
 	if body.Autostart && !h.requireVerb(w, h.seam.Launch != nil) {
 		return
 	}

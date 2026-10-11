@@ -33,6 +33,10 @@ type Factory struct {
 	Version string `json:"version"`
 }
 
+// ReasonNoVisibleRepos is Queue.Reason when a signed-in GitHub viewer can
+// read none of this factory's repositories. The HTTP status stays 200.
+const ReasonNoVisibleRepos = "no_visible_repos"
+
 // Queue is `GET /v1/queue`: the whole floor as one person sees it.
 type Queue struct {
 	Factory  Factory    `json:"factory"`
@@ -43,6 +47,8 @@ type Queue struct {
 	Capacity Capacity   `json:"capacity"`
 	Me       string     `json:"me"`
 	Desk     *QueueDesk `json:"desk,omitempty"`
+	// Reason is set only for a signed-in viewer who can see no repository.
+	Reason string `json:"reason,omitempty"`
 }
 
 // QueueDesk is what the TUI page reads off the floor that the dashboard does
