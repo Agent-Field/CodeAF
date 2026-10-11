@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/live"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
@@ -119,7 +120,9 @@ func (st *Store) Create(it factory.Item) (factory.Item, error) {
 			return err
 		}
 		return st.underItemLock(it.ID, func() error {
-			return writeAtomic(st.ItemPath(it.ID), data)
+			return live.Commit(st.root, live.Changes(factory.Item{}, it, st.now()), func() error {
+				return writeAtomic(st.ItemPath(it.ID), data)
+			})
 		})
 	})
 	if err != nil {
@@ -253,7 +256,9 @@ func (st *Store) Save(it factory.Item) error {
 		if err != nil {
 			return err
 		}
-		return writeAtomic(st.ItemPath(it.ID), data)
+		return live.Commit(st.root, live.Changes(current.Item, it, st.now()), func() error {
+			return writeAtomic(st.ItemPath(it.ID), data)
+		})
 	})
 }
 
@@ -294,6 +299,16 @@ func (st *Store) update(id int, stamp bool, change func(*factory.Item) error) er
 		}
 		it := current.Item
 		before := current.Item
+		// The callback can edit an ask in place; retain its old notification facts.
+		if before.Asking != nil {
+			copy := *before.Asking
+			copy.Options = append([]string(nil), copy.Options...)
+			before.Asking = &copy
+		}
+		if before.PublishStatus != nil {
+			copy := *before.PublishStatus
+			before.PublishStatus = &copy
+		}
 		if err := change(&it); err != nil {
 			return err
 		}
@@ -311,7 +326,9 @@ func (st *Store) update(id int, stamp bool, change func(*factory.Item) error) er
 		if err != nil {
 			return err
 		}
-		return writeAtomic(st.ItemPath(id), data)
+		return live.Commit(st.root, live.Changes(before, it, now), func() error {
+			return writeAtomic(st.ItemPath(id), data)
+		})
 	})
 }
 

@@ -13,8 +13,8 @@ import (
 )
 
 // A store write is a temp file, a rename, and a lock file beside the
-// document. Those are one change to a client, so the watch waits out
-// changeDebounce after the last filesystem event before it looks.
+// document. Those are one change to a client, so the watch batches them
+// within changeDebounce before it looks.
 // The manual's event-stream section states this duration and changePoll.
 const changeDebounce = 100 * time.Millisecond
 
@@ -112,11 +112,11 @@ func (w *rootWatch) loop() {
 	}
 }
 
-// arm restarts the debounce. A burst resets it, so the snapshot is taken
-// once, after the burst has gone quiet.
+// arm bounds a burst to one debounce window. Continuous worker writes must
+// not keep an open page waiting indefinitely for the filesystem to go quiet.
 func (w *rootWatch) arm() {
 	if w.timer != nil {
-		w.timer.Stop()
+		return
 	}
 	w.timer = time.AfterFunc(changeDebounce, func() {
 		select {
@@ -133,6 +133,7 @@ func (w *rootWatch) stopTimer() {
 }
 
 func (w *rootWatch) publish() {
+	w.timer = nil
 	next := snapshot(w.root)
 	if next.sig == w.snap.sig {
 		return

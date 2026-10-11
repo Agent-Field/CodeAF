@@ -2220,16 +2220,33 @@ There is no record page at `/audit` on this service; the team view is in the app
 
 ## factory event stream and a job's manager thread
 
-`GET /v1/events` is a server-sent event stream, not a JSON document. When a
-file in the factory root changes, the stream sends one `changed` tick:
-`event: changed`, and `data` set to that job's id, or `*` when the change
-is not exactly one job file. A burst of writes is one tick, held 100ms, so
-a document's temporary file and its rename do not count as two changes. If
-the filesystem watch is silent, the root is re-read every 2 seconds and a
-tick is sent only when something changed. The tick carries no job body.
-Read `GET /v1/jobs/{id}` or `GET /v1/queue` again for the current factory. A
-factory with no root to watch keeps the stream open and sends nothing. A
-client that connects late is not sent earlier ticks.
+`GET /v1/events` is a server-sent event stream. `changed` keeps its plain job
+id or `*` data; read that job or the queue again. Filesystem pushes are batched
+within 100ms even during continuous writes. A missing watch falls back to a
+2-second root scan.
+
+Typed JSON events also arrive with `id: live_<number>`:
+- `needs_you {job, kind, since}`: approve_plan, approve_proof, question,
+  spending_limit, out_of_attempts or publish_failed; empty kind removes the job from Needs you.
+- `question {job, kind}`, `approved {job, by}` and `taken {job, by}` name a
+  changed ask or the person whose accepted action moved the job. Free asks use
+  text, yes_no or options; approval asks use their Needs you kind.
+- `publishing {job, state}` sends queued, pushing, opened and failed transitions;
+  `published {job, pr}` carries `{number,url}` for a PR (null for a comment);
+  `publish_failed {job, reason}` carries the failure code, or detail without one.
+- `machine {name, status}` names busy, idle or offline. Silence sends offline
+  after the heartbeat deadline without the app polling.
+
+The factory saves every typed transition before returning from its write, so
+rapid publishing changes survive batching. The last 200 typed events survive a
+restart. Reconnect with `Last-Event-ID` to read events strictly after that id.
+An expired or unknown id replays the saved window and sends `changed` with `*`;
+read the queue for current state. A first connection starts with live events.
+Only visible jobs reach the viewer, including replay. Machine events name your
+own idle machines or machines tied to visible jobs. Slow clients catch up within the
+saved window. Every 20 seconds `: keepalive` keeps an idle stream alive without
+changing its event id or requesting a read. A factory without a store sends
+keepalives only. `/v1` Contract stays 1.
 
 ## factory manager thread on another machine, pending replies and delivered messages
 

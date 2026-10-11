@@ -130,6 +130,8 @@ type loopCtl struct {
 	carry    string
 	benchNo  int
 	released bool
+	// finishing says the final proof write is in progress, under floorLoop.mu.
+	finishing bool
 }
 
 type loopAnswer struct {
@@ -1288,9 +1290,13 @@ func (lp *floorLoop) land(c *loopCtl) {
 	}
 	now := lp.r.now()
 	shipped := false
+	lp.mu.Lock()
+	c.finishing = true
+	lp.mu.Unlock()
 	err := lp.move(c, "", EventLanded, "landed", func(it *factory.Item) error {
 		it.Publish = mode
 		shipped = landItem(it, now)
+
 		return nil
 	})
 	if err == nil && shipped {
@@ -1755,10 +1761,32 @@ func (r *Runner) SendBack(id int, words string) error {
 		return errors.New("say what to prove")
 	}
 	lp := r.loop()
-	lp.mu.Lock()
-	if lp.ctls[id] != nil {
+	for {
+		lp.mu.Lock()
+		previous := lp.ctls[id]
+		if previous == nil {
+			break
+		}
+		finishing := previous.finishing
 		lp.mu.Unlock()
-		return r.notLanded(id)
+		if !finishing {
+			return r.notLanded(id)
+		}
+		// Notifications can expose landed before drive unwinds. Wait for that
+		// final store write, then retire only the finished control. Keeping it
+		// active until the write ends lets the worker still report the proof.
+		previous.wmu.Lock()
+		it, err := r.opts.Store.Get(id)
+		if err != nil {
+			previous.wmu.Unlock()
+			return err
+		}
+		if it.State != factory.StateLanded {
+			previous.wmu.Unlock()
+			return r.notLanded(id)
+		}
+		lp.release(previous)
+		previous.wmu.Unlock()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), answers: make(chan loopAnswer, 1), phase: -1}

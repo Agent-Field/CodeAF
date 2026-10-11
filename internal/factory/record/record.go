@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/live"
 	"github.com/Agent-Field/codeaf/internal/factory/publish"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/filelock"
@@ -72,6 +73,14 @@ func Open(st *store.Store, options Options) (*Record, error) {
 	return &Record{root: st.Root(), now: options.Now}, nil
 }
 
+// Root is where this record and its bounded live replay are persisted.
+func (r *Record) Root() string {
+	if r == nil {
+		return ""
+	}
+	return r.root
+}
+
 // Append mints identity and time here, never from an agent's reported fields.
 // SYNC BEFORE CONSENT: a returned receipt must already be on disk.
 func (r *Record) Append(ctx context.Context, event Event) (Event, error) {
@@ -104,7 +113,21 @@ func (r *Record) Append(ctx context.Context, event Event) (Event, error) {
 		if err = f.Sync(); err != nil {
 			return err
 		}
-		return f.Close()
+		if err := f.Close(); err != nil {
+			return err
+		}
+		// Accepted decisions reach open pages even when they do not rewrite a job.
+		kind := ""
+		switch event.Kind {
+		case Approved:
+			kind = "approved"
+		case Took:
+			kind = "taken"
+		}
+		if kind != "" {
+			return live.Append(r.root, live.New(kind, event.Job, live.Payload{Job: event.Job, By: event.Handle}))
+		}
+		return nil
 	})
 	if err != nil {
 		return Event{}, err

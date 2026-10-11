@@ -83,12 +83,16 @@ type Handler struct {
 	mux     *http.ServeMux
 	watch   *rootWatch
 
-	workers   *workerService
-	sessions  *accessSessions
-	auth      *deviceFlows
-	viewer    *viewerState
-	consentMu sync.Mutex
-	replays   replayCache
+	workers        *workerService
+	sessions       *accessSessions
+	auth           *deviceFlows
+	viewer         *viewerState
+	consentMu      sync.Mutex
+	replays        replayCache
+	machinesMu     sync.Mutex
+	machines       map[string]machineRow
+	machinesTimer  *time.Timer
+	machinesClosed bool
 }
 
 // New binds the seam's reads and verbs; absent doors refuse rather than panic.
@@ -129,7 +133,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	})
 	// The dashboard lives in the codeaf app; outside /v1 the factory only says so.
 	h.read("/", h.root)
-	if root := strings.TrimSpace(config.Root); root != "" {
+	if root := strings.TrimSpace(h.eventRoot()); root != "" {
 		h.watch = watchRoot(root)
 	}
 	return h
@@ -144,6 +148,14 @@ func (h *Handler) root(w http.ResponseWriter, r *http.Request) {
 // Close stops the filesystem watch. The HTTP server can still be running;
 // a change after Close is not delivered.
 func (h *Handler) Close() {
+	if h != nil {
+		h.machinesMu.Lock()
+		h.machinesClosed = true
+		if h.machinesTimer != nil {
+			h.machinesTimer.Stop()
+		}
+		h.machinesMu.Unlock()
+	}
 	if h != nil && h.watch != nil {
 		h.watch.stop()
 	}
@@ -173,6 +185,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != path.Clean(r.URL.Path) {
 		h.fail(w, http.StatusNotFound, "factory endpoint not found")
 		return
+	}
+	if workerPath(r.URL.Path) || r.URL.Path == "/v1/workers/attach" {
+		defer h.machineEvents()
 	}
 	h.idempotent(w, r)
 }

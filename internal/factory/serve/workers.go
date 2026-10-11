@@ -237,6 +237,7 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 		// A pull sits open for up to thirty seconds. That wait is the idle
 		// machine's heartbeat: three missed intervals, not the lease TTL.
 		h.workers.heard(worker.ID, h.workers.now())
+		h.machineEvents()
 		held, err := h.workers.desk.Pull(worker)
 		if err == nil {
 			h.pulled(w, held)

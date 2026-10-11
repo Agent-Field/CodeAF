@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/live"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 )
 
@@ -613,3 +614,13 @@ type Approve struct {
 	Edited bool    `json:"edited,omitempty"`
 	Expect *Expect `json:"expect,omitempty"`
 }
+
+// LiveEvent is the small typed JSON payload on GET /v1/events. The SSE event
+// name selects its fields; the durable id rides in the frame's id line.
+type LiveEvent = live.Payload
+
+// PublishedEvent is the PR receipt, with pr null for an issue comment.
+type PublishedEvent = live.PublishedPayload
+
+// PublishFailedEvent names the failure code or the report's reason.
+type PublishFailedEvent = live.FailedPayload

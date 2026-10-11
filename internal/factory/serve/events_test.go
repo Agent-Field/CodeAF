@@ -3,6 +3,7 @@ package serve_test
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -11,6 +12,8 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
@@ -94,5 +97,103 @@ func collectEvents(ctx context.Context, t *testing.T, url string, ready chan str
 		}
 		b.WriteString(line)
 		b.WriteByte('\n')
+	}
+}
+
+func TestRapidPublishingAndNeedsYouReachOpenStreamWithinOneSecond(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	it, err := st.Create(factory.Item{Title: "publish", State: factory.StateRunning})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config
+	cfg.Store = st
+	seam := factory.Seam{Load: func() (factory.Snapshot, error) { items, err := st.List(); return factory.Snapshot{Items: items}, err }}
+	h := serve.New(seam, cfg)
+	s := httptest.NewServer(h)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer func() { cancel(); s.Close(); h.Close() }()
+	events := make(chan string, 32)
+	ready := make(chan struct{})
+	go collectEvents(ctx, t, s.URL+"/v1/events", ready, events)
+	select {
+	case <-ready:
+	case <-time.After(time.Second):
+		t.Fatal("stream did not connect")
+	}
+	history, err := record.Open(st, record.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, action := range []record.Event{
+		{Kind: record.Approved, Job: it.ID, Handle: "Sam"},
+		{Kind: record.Took, Job: it.ID, Handle: "Mei"},
+	} {
+		if _, err := history.Append(context.Background(), action); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, state := range []string{"queued", "pushing", "opened", "failed"} {
+		err := st.Update(it.ID, func(it *factory.Item) error {
+			it.MarkPublishing(state, "", "", now)
+			if state == "opened" {
+				it.PublishStatus.PR = &factory.PublishedPR{Number: 12, URL: "https://github.com/acme/api/pull/12"}
+			}
+			if state == "failed" {
+				it.State = factory.StateLanded
+				it.PublishStatus.Code = "no_push_permission"
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	timeout := time.After(time.Second)
+	states := []string{}
+	published, failed, need, approved, taken := false, false, false, false, false
+	for !published || !failed || !need || !approved || !taken || len(states) != 4 {
+		select {
+		case frame := <-events:
+			lines := strings.Split(frame, "\n")
+			kind, data := "", ""
+			for _, line := range lines {
+				if strings.HasPrefix(line, "event: ") {
+					kind = strings.TrimPrefix(line, "event: ")
+				}
+				if strings.HasPrefix(line, "data: ") {
+					data = strings.TrimPrefix(line, "data: ")
+				}
+			}
+			if kind == "changed" {
+				continue
+			}
+			var p api.LiveEvent
+			if err := json.Unmarshal([]byte(data), &p); err != nil {
+				t.Fatal(err)
+			}
+			switch kind {
+			case "approved":
+				approved = p.By == "sam"
+			case "taken":
+				taken = p.By == "mei"
+			case "publishing":
+				states = append(states, p.State)
+			case "published":
+				published = p.PR != nil && p.PR.Number == 12
+			case "publish_failed":
+				failed = p.Reason == "no_push_permission"
+			case "needs_you":
+				need = p.Kind != nil && *p.Kind == "publish_failed" && p.Since != nil
+			}
+		case <-timeout:
+			t.Fatalf("events missed one-second deadline: states %v published %v failed %v need %v", states, published, failed, need)
+		}
+	}
+	if strings.Join(states, ",") != "queued,pushing,opened,failed" {
+		t.Fatalf("transitions %v", states)
 	}
 }
