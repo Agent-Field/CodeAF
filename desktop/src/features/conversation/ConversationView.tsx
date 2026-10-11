@@ -297,6 +297,7 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
                       recallLast: () => model.turns[model.turns.length - 1]?.user,
                       autoFocus,
                       sessionId,
+                      placeSnapshot: snapshot,
                       offeredFiles: offered,
                       droppedFiles,
                       onDroppedFiles: () => setDroppedFiles(undefined),

@@ -1,3 +1,4 @@
+import { PlaceViews } from './guess/PlaceViews';
 import { SinceBlock } from './home/SinceBlock';
 import { Button } from '../../components/ui';
 import { useState, type ReactNode } from 'react';
@@ -43,6 +44,7 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
   const runner = useRunner();
   const drag = useDragState();
   const deletion = useDeleteFlow(actions, runner);
+  const [viewChats, setViewChats] = useState<readonly string[]>();
   const [renaming, setRenaming] = useState(false);
   const [instructionsFor, setInstructionsFor] = useState<string>();
   const readOnly = connection.state === 'offline';
@@ -87,7 +89,8 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
     {/* Places 8b draws the place's child places, its own chats and its sources under the heading; a place Home that lists none would hide the work the place exists to hold. */}
     {isPlace && !nothingYet && <HomePlacesSection label="Places" places={view.children} parentId={view.id} parentName={view.title} parentTint={view.tintSource === 'own' ? view.tint : undefined}
       actions={actions} readOnly={readOnly} siblings={view.children.map(child => child.name)} runner={runner} drag={drag} onDelete={deletion.start}/>}
-    <HomeChatsSection label={isPlace ? 'Chats' : 'Not in any place'} chats={view.chats} truncated={view.chatsTruncated} actions={actions} readOnly={readOnly}
+    {isPlace && <PlaceViews key={view.id} placeId={view.id} revision={view} disabled={connection.state !== 'ready'} onFilter={setViewChats}/>}
+    <HomeChatsSection label={isPlace ? 'Chats' : 'Not in any place'} chats={viewChats ? view.chats.filter(chat => viewChats.includes(chat.id)) : view.chats} truncated={view.chatsTruncated} actions={actions} readOnly={readOnly}
       inPlaceId={isPlace ? view.id : undefined} drag={drag} now={clock}/>
     {isPlace && !nothingYet && <Instructions key={view.id} placeId={view.id} instructions={view.instructions} open={instructionsFor === view.id} readOnly={readOnly}
       onSave={actions.saveInstructions && (text => actions.saveInstructions?.(view.id, text))}
