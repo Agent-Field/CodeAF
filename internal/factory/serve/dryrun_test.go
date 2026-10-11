@@ -46,6 +46,10 @@ func dryRunFloor() []factory.Item {
 			Triage: factory.Triage{Size: "S", Est: 1.5, TriagedAt: now}},
 		{ID: 80, Repo: "acme/web", State: factory.StateQueued, Kind: factory.KindIssue, Labels: []string{"agent-ready"},
 			Triage: factory.Triage{Size: "S", Est: 1, TriagedAt: now}},
+		{ID: 2104, Repo: "Web", Product: "Acme", State: factory.StateNew, Kind: factory.KindIssue, Labels: []string{"agent-ready"}, Cap: 5,
+			Triage: factory.Triage{Size: "S", Est: 1, TriagedAt: now}},
+		{ID: 2105, Repo: "web", Product: "other", State: factory.StateNew, Kind: factory.KindIssue, Labels: []string{"agent-ready"},
+			Triage: factory.Triage{Size: "S", Est: 1, TriagedAt: now}},
 	}
 }
 
@@ -69,11 +73,12 @@ func TestDryRunAppliesStartToTheBacklog(t *testing.T) {
 	}
 	body := getDryRun(t, seam, "/v1/repos/acme/web/dryrun")
 	want := api.DryRun{
-		WouldStart: []int{2088, 2090},
+		WouldStart: []int{2088, 2090, 2104},
 		WouldAsk: []api.Ask{
 			{Job: 2077, Reason: "touches auth/keys.go (auth/**)"},
 			{Job: 70, Reason: "over your cap of $1"},
 		},
+		WouldWait: []api.Ask{{Job: 60, Reason: "no agent-ready label"}},
 	}
 	if !reflect.DeepEqual(body.DryRun, want) {
 		t.Fatalf("dry run = %+v", body.DryRun)
@@ -94,6 +99,9 @@ func TestDryRunWithNoCheckoutUsesDefaults(t *testing.T) {
 	body := getDryRun(t, seam, "/v1/repos/acme/web/dryrun")
 	if len(body.WouldStart) != 0 || len(body.WouldAsk) != 0 {
 		t.Fatalf("defaults named a label: %+v", body.DryRun)
+	}
+	if len(body.WouldWait) != 1 || body.WouldWait[0].Job != 4 || body.WouldWait[0].Reason != "nothing starts on its own" {
+		t.Fatalf("wait = %+v", body.WouldWait)
 	}
 }
 

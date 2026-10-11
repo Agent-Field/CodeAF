@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os/exec"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -125,6 +126,9 @@ func TestSettingsReadsUseSeam(t *testing.T) {
 	if me.Contract != api.Contract || me.CodeafVersion == "" {
 		t.Fatalf("me version = %q contract %d", me.CodeafVersion, me.Contract)
 	}
+	if me.Access != "token" || me.PollingEvery != "1m0s" || me.ServedBy != "factory" {
+		t.Fatalf("me facts = %+v", me)
+	}
 	if me.Handle != "octocat" || me.Machines == nil || me.TakesUnassigned == nil || me.Scopes == nil || me.Name != "" || me.AvatarURL != "" || me.SessionID != "" {
 		t.Fatalf("me = %+v", me)
 	}
@@ -209,6 +213,10 @@ func TestErrorsCarryFactory(t *testing.T) {
 			_ = json.Unmarshal(w.Body.Bytes(), &body)
 			if body["error"] == nil {
 				t.Fatal("missing error sentence")
+			}
+			id, _ := body["request_id"].(string)
+			if !regexp.MustCompile(`^[0-9a-f]{8}$`).MatchString(id) {
+				t.Fatalf("request_id = %q", body["request_id"])
 			}
 		})
 	}

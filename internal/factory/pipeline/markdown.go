@@ -18,6 +18,7 @@ import (
 func FromMarkdown(text string) File {
 	recipe, parsed := factory.Parse(text)
 	f := Defaults()
+	f.Text = text
 	f.Source = SourceMarkdown
 	f.markdownAdapt = copyAdapt(recipe.Adapt)
 	f.Pipeline = map[factory.Kind][]string{}

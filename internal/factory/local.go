@@ -535,7 +535,7 @@ func localLoad(st ItemStore, started, now time.Time, recipe func(repo string) Re
 	snap := Snapshot{
 		Now:   now,
 		Items: items,
-		Shift: Shift{Since: started},
+		Shift: shiftSince(items, started, now),
 		// THE CHAT IS ALWAYS A SOURCE, and the terminal is the other door work
 		// comes in by. Neither writes outward: nothing here posts anywhere.
 		Sources: []SourceInfo{{Name: string(OriginChat), Writes: false}, {Name: string(OriginTerminal)}},
@@ -547,9 +547,6 @@ func localLoad(st ItemStore, started, now time.Time, recipe func(repo string) Re
 		if it.Repo != "" && !seen[it.Repo] {
 			seen[it.Repo] = true
 			names = append(names, it.Repo)
-		}
-		if it.Created.After(started) {
-			snap.Shift.Arrived++
 		}
 		if it.State == StateRunning {
 			snap.Benches++

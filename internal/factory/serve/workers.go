@@ -195,6 +195,22 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 	h.write(w, http.StatusCreated, api.WorkerAttached{Factory: h.factory, WorkerID: worker.ID, Credential: credential})
 }
 
+// machineFor is the attached worker's machine for this handle, or "" when
+// nobody with that handle has registered on this server.
+func (h *Handler) machineFor(handle string) string {
+	if h == nil || h.workers == nil || strings.TrimSpace(handle) == "" {
+		return ""
+	}
+	h.workers.mu.RLock()
+	defer h.workers.mu.RUnlock()
+	for _, reg := range h.workers.credentials {
+		if strings.EqualFold(reg.Worker.Handle, handle) && strings.TrimSpace(reg.Worker.Machine) != "" {
+			return reg.Worker.Machine
+		}
+	}
+	return ""
+}
+
 func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 	if !h.workerReady(w) {
 		return

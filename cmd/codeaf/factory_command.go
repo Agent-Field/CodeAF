@@ -197,7 +197,16 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 	if len(hostConfigs) > 0 {
 		host = hostConfigs[0]
 	}
+	// A window serves with an empty token and polls GitHub. `codeaf factory`
+	// always has a token and does not poll, so it does not claim an interval.
+	servedBy := "factory"
+	var poll time.Duration
+	if token == "" {
+		servedBy = "tui"
+		poll = factoryPollEvery
+	}
 	handler := serve.New(seam, serve.Config{GitHubClientID: host.GitHubClientID, Team: host.Team, Address: address, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
+		ServedBy: servedBy, PollingEvery: poll,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			return factoryRules().Load(ctx, repo, dir, home.Join("factory.yaml"))
 		},

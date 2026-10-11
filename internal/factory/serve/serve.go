@@ -4,11 +4,15 @@ package serve
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"net/http"
+	"net/url"
 	"path"
 	"sort"
 	"strconv"
@@ -57,6 +61,20 @@ type Config struct {
 	// the stream stays open and sends no ticks, which is a handler with no
 	// store of its own rather than a broken watch.
 	Root string
+	// Name is the label a join preview shows. Empty uses the address host,
+	// or "codeaf" when the address has none.
+	Name string
+	// ServedBy is "tui" when a window is serving and "factory" when
+	// `codeaf factory` is. Empty is derived from the access token.
+	ServedBy string
+	// Access is loopback, token or tailnet. Empty is derived.
+	Access string
+	// Needs is what a joiner must present: none, token or device.
+	// Empty is derived from Access. device is only what the host sets.
+	Needs string
+	// SpentToday is the runner's day figure when this process holds the
+	// ledger. Nil uses the floor's own reading of the same rule.
+	SpentToday func() float64
 }
 
 // Handler keeps the seam and host identity together for every response.
@@ -93,6 +111,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/repos/{owner}/{repo}/pipeline", h.pipeline)
 	h.read("/v1/repos/{owner}/{repo}/dryrun", h.dryrun)
 	h.read("/v1/github", h.github)
+	h.read("/v1/about", h.about)
 	h.read("/v1/me", h.me)
 	h.route("/v1/me/takes_unassigned", map[string]http.HandlerFunc{http.MethodPut: h.setTakes})
 	h.read("/v1/audit", h.audit)
@@ -133,7 +152,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-	} else if r.URL.Path != "/access" && !h.allowed(r) {
+	} else if r.URL.Path != "/access" && r.URL.Path != "/v1/about" && !h.allowed(r) {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="factory"`)
 		h.fail(w, http.StatusUnauthorized, "a bearer access token or live session is required; open /access to enter the token")
 		return
@@ -192,6 +211,9 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q.Capacity.MachinesOnline, q.Capacity.Busy = online, busy
+	if h.config.SpentToday != nil {
+		q.Since.SpentToday = h.config.SpentToday()
+	}
 	h.write(w, http.StatusOK, q)
 }
 
@@ -292,15 +314,9 @@ func (h *Handler) pipeline(w http.ResponseWriter, r *http.Request) {
 	if len(problems) == 0 && h.failed(w, err) {
 		return
 	}
-	p := api.FromRecipe(recipe)
-	// RecipeAt guarantees defaults without a checkout, but does not say
-	// whether a known checkout has a file. Leave that unknown source absent.
-	if p.Source == "" && dir == "" {
-		p.Source = "defaults"
-	}
-	notes := make([]string, len(problems))
-	for i, problem := range problems {
-		notes[i] = problem.Error()
+	p, notes, ok := h.readPipeline(w, r, owner+"/"+repo, dir, recipe, problems)
+	if !ok {
+		return
 	}
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
@@ -360,6 +376,95 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	h.write(w, http.StatusOK, body)
 }
 
+// about is the join preview. It is the one /v1 read that does not require a
+// token, and it names no job or repository.
+func (h *Handler) about(w http.ResponseWriter, r *http.Request) {
+	h.write(w, http.StatusOK, struct {
+		Factory       api.Factory `json:"factory"`
+		Name          string      `json:"name"`
+		CodeafVersion string      `json:"codeaf_version"`
+		Contract      int         `json:"contract"`
+		Needs         string      `json:"needs"`
+		Access        string      `json:"access"`
+		PollingEvery  string      `json:"polling_every,omitempty"`
+		ServedBy      string      `json:"served_by"`
+	}{h.factory, h.aboutName(), h.factory.Version, api.Contract, h.needsWord(),
+		h.accessMode(), h.pollingEvery(), h.servedBy()})
+}
+
+func (h *Handler) accessMode() string {
+	switch h.config.Access {
+	case "loopback", "token", "tailnet":
+		return h.config.Access
+	}
+	if strings.TrimSpace(h.config.AccessToken) != "" {
+		return "token"
+	}
+	if loopbackListen(h.config.Address) {
+		return "loopback"
+	}
+	return "tailnet"
+}
+
+func (h *Handler) needsWord() string {
+	switch h.config.Needs {
+	case "token", "device", "none":
+		return h.config.Needs
+	}
+	if h.accessMode() == "token" {
+		return "token"
+	}
+	return "none"
+}
+
+func (h *Handler) servedBy() string {
+	if s := strings.TrimSpace(h.config.ServedBy); s != "" {
+		return s
+	}
+	if strings.TrimSpace(h.config.AccessToken) == "" && h.accessMode() == "loopback" {
+		return "tui"
+	}
+	return "factory"
+}
+
+func (h *Handler) pollingEvery() string {
+	if h.config.PollingEvery > 0 {
+		return h.config.PollingEvery.String()
+	}
+	return ""
+}
+
+func (h *Handler) aboutName() string {
+	if n := strings.TrimSpace(h.config.Name); n != "" {
+		return n
+	}
+	u, err := url.Parse(h.config.Address)
+	if err != nil {
+		return "codeaf"
+	}
+	host := u.Hostname()
+	if host == "" {
+		return "codeaf"
+	}
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+		return "localhost"
+	}
+	return host
+}
+
+func loopbackListen(address string) bool {
+	u, err := url.Parse(address)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 func (h *Handler) require(w http.ResponseWriter, exists bool) bool {
 	if !exists {
 		h.fail(w, http.StatusNotImplemented, "this factory does not provide that read")
@@ -391,9 +496,20 @@ func (h *Handler) failed(w http.ResponseWriter, err error) bool {
 
 func (h *Handler) fail(w http.ResponseWriter, status int, words string) {
 	h.write(w, status, struct {
-		Factory api.Factory `json:"factory"`
-		Error   string      `json:"error"`
-	}{h.factory, words})
+		Factory   api.Factory `json:"factory"`
+		Error     string      `json:"error"`
+		RequestID string      `json:"request_id"`
+	}{h.factory, words, requestID()})
+}
+
+// requestID is four random bytes, hex. Every error body carries one so a
+// person can name the refusal they saw.
+func requestID() string {
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "00000000"
+	}
+	return hex.EncodeToString(b[:])
 }
 
 func (h *Handler) write(w http.ResponseWriter, status int, body any) {

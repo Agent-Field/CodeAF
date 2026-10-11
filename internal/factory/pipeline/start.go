@@ -40,11 +40,19 @@ type Decision struct {
 }
 
 // DryRun is the settings sentence: which of these jobs would start, and which
-// would ask first. A job in neither list is waiting on a label.
+// would ask first. WouldWait is every job that is not a candidate, with the
+// reason it is waiting. Why stays the ask reasons only.
 type DryRun struct {
 	WouldStart []int
 	WouldAsk   []int
+	WouldWait  []Wait
 	Why        map[int][]string
+}
+
+// Wait is one backlog job that would neither start nor ask, and why.
+type Wait struct {
+	ID     int
+	Reason string
 }
 
 // Decide applies start. A job outside the file asks; it does not take a lease.
@@ -112,7 +120,7 @@ func JobFromItem(it factory.Item) Job {
 
 // Dry is [Decide] for a list, in the list's order.
 func (f File) Dry(jobs []Job) DryRun {
-	d := DryRun{WouldStart: []int{}, WouldAsk: []int{}, Why: map[int][]string{}}
+	d := DryRun{WouldStart: []int{}, WouldAsk: []int{}, WouldWait: []Wait{}, Why: map[int][]string{}}
 	for _, job := range jobs {
 		switch dec := f.Decide(job); {
 		case dec.Start:
@@ -120,9 +128,31 @@ func (f File) Dry(jobs []Job) DryRun {
 		case dec.Ask:
 			d.WouldAsk = append(d.WouldAsk, job.ID)
 			d.Why[job.ID] = append([]string(nil), dec.Reasons...)
+		default:
+			d.WouldWait = append(d.WouldWait, Wait{ID: job.ID, Reason: waitReason(f.Start.Labels)})
 		}
 	}
 	return d
+}
+
+// waitReason is the sentence a dry run shows for a job that is not a
+// candidate. An unnamed label means nothing starts; one named label is the
+// sentence the settings page uses.
+func waitReason(labels []string) string {
+	var named []string
+	for _, label := range labels {
+		if label = strings.TrimSpace(label); label != "" {
+			named = append(named, label)
+		}
+	}
+	switch len(named) {
+	case 0:
+		return "nothing starts on its own"
+	case 1:
+		return "no " + named[0] + " label"
+	default:
+		return "no " + strings.Join(named, " or ") + " label"
+	}
 }
 
 func (f File) candidate(j Job) bool {

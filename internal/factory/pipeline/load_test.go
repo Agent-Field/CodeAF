@@ -29,6 +29,9 @@ func TestLoadReadsTheWorkingTreeWhenThereIsNoBranch(t *testing.T) {
 	if strings.Join(f.Start.Labels, ",") != "agent-ready" || f.Start.MaxCost != 1 {
 		t.Fatalf("file = %+v", f.Start)
 	}
+	if !strings.Contains(f.Text, "agent-ready") {
+		t.Fatal("the repository text was not kept")
+	}
 	if err := os.Remove(filepath.Join(dir, pipeline.RepoFile)); err != nil {
 		t.Fatal(err)
 	}
@@ -90,8 +93,11 @@ func TestLoadMergedTightensWithThePersonalFile(t *testing.T) {
 	if f.Start.MaxCost != 1 || strings.Join(f.Start.Labels, ",") != "agent-ready" {
 		t.Fatalf("merged = %+v", f.Start)
 	}
+	if !f.Personal || !strings.Contains(f.PersonalText, "max_cost: 1") || !strings.Contains(f.Text, "max_cost: 2") {
+		t.Fatalf("personal text = %q repo text = %q personal %v", f.PersonalText, f.Text, f.Personal)
+	}
 	f, err = pipeline.LoadMerged(dir, filepath.Join(home, "missing.yaml"))
-	if err != nil || f.Start.MaxCost != 2 {
+	if err != nil || f.Start.MaxCost != 2 || f.Personal {
 		t.Fatalf("missing personal = %+v %v", f.Start, err)
 	}
 }

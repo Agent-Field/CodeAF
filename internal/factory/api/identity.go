@@ -16,6 +16,9 @@ type Me struct {
 	InvitedBy       string          `json:"invited_by,omitempty"`
 	Machines        []Machine       `json:"machines"`
 	TakesUnassigned map[string]bool `json:"takes_unassigned"`
+	Access          string          `json:"access"`
+	PollingEvery    string          `json:"polling_every,omitempty"`
+	ServedBy        string          `json:"served_by"`
 }
 
 // Device describes the code to enter on GitHub and the opaque code to poll here.

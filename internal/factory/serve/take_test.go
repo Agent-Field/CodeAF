@@ -86,6 +86,42 @@ func TestTakeAssignsMeAndRefusesAJobSomeoneElseHolds(t *testing.T) {
 	}
 }
 
+func TestTakeRecordsTheMachine(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := record.Open(st, record.Options{Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config
+	cfg.Store = st
+	cfg.Record = rec
+	seam := factory.Seam{
+		Load: func() (factory.Snapshot, error) {
+			items, err := st.List()
+			return factory.Snapshot{Items: items}, err
+		},
+		GitHub: func(context.Context) (factory.GitHubLink, error) {
+			return factory.GitHubLink{Login: "me"}, nil
+		},
+	}
+	h := serve.New(seam, cfg)
+	w := verbRequest(h, "POST", "/v1/workers/attach", `{"machine":"priya-mbp","name":"laptop","handle":"me"}`)
+	checkJSON(t, w, 201)
+	job, err := st.Create(factory.Item{Title: "open work", Repo: "owner/repo", State: factory.StateQueued})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w = verbRequest(h, "POST", fmt.Sprintf("/v1/jobs/%d/take", job.ID), "")
+	checkJSON(t, w, 200)
+	events, err := rec.Since(context.Background(), time.Time{})
+	if err != nil || len(events) != 1 || events[0].Kind != record.Took || events[0].Detail != "priya-mbp" {
+		t.Fatalf("record = %+v, %v", events, err)
+	}
+}
+
 type takenJob struct {
 	AssignedTo string `json:"assigned_to"`
 	State      string `json:"state"`

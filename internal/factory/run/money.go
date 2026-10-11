@@ -162,28 +162,13 @@ func (m *Money) SpentToday() float64 {
 	}
 	now := m.clock()
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.roll(now)
-	y, mo, d := now.Date()
-	isToday := func(t time.Time) bool {
-		if t.IsZero() {
-			return false
-		}
-		ty, tm, td := t.In(now.Location()).Date()
-		return ty == y && tm == mo && td == d
+	paid := make(map[int]float64, len(m.today))
+	for id, usd := range m.today {
+		paid[id] = usd
 	}
-	var sum float64
-	for _, it := range items {
-		if it.Stream == nil {
-			continue
-		}
-		if usd, ok := m.today[it.ID]; ok {
-			sum += usd
-		} else if isToday(it.Changed) || isToday(it.Stream.Started) || isToday(it.Stream.Ended) {
-			sum += it.Stream.Spent
-		}
-	}
-	return sum
+	m.mu.Unlock()
+	return factory.DaySpend(items, paid, now)
 }
 
 // Rail is the day's rail in dollars, 0 for none.

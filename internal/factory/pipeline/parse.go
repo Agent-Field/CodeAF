@@ -19,9 +19,11 @@ func Parse(text string) (File, error) {
 	f, err := parse(text, true)
 	if err != nil {
 		d := Defaults()
+		d.Text = text
 		d.Problems = []Problem{{Where: RepoFile, Why: err.Error()}}
 		return d, err
 	}
+	f.Text = text
 	return f, nil
 }
 
@@ -29,7 +31,12 @@ func Parse(text string) (File, error) {
 // not the defaults, so [Merge] can tell a tighter cap from a file that never
 // mentioned one.
 func ParsePersonal(text string) (File, error) {
-	return parse(text, false)
+	f, err := parse(text, false)
+	if err != nil {
+		return f, err
+	}
+	f.Text = text
+	return f, nil
 }
 
 func parse(text string, defaults bool) (File, error) {

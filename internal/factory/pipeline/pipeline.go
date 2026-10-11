@@ -57,6 +57,12 @@ type File struct {
 	// (factory.FromMainBranch and its siblings), empty until [Load].
 	Source string
 	From   string
+	// Text is the repository file as it was read. PersonalText is the
+	// personal file when [MergePersonal] tightened this read, and Personal
+	// says that file was applied.
+	Text         string
+	PersonalText string
+	Personal     bool
 	// Problems are lines that did not load. The rest of the file did.
 	Problems []Problem
 

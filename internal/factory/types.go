@@ -532,15 +532,17 @@ func itoa(n int) string {
 }
 
 // Shift is the handover: what happened since the person last looked.
+// SpentToday is the runner's day figure ([DaySpend]), separate from Spent.
 type Shift struct {
-	Since    time.Time
-	Shipped  int
-	Arrived  int
-	Asked    int
-	Handled  int
-	Spent    float64
-	Hours    [24]int
-	Shipping []string
+	Since      time.Time
+	Shipped    int
+	Arrived    int
+	Asked      int
+	Handled    int
+	Spent      float64
+	SpentToday float64
+	Hours      [24]int
+	Shipping   []string
 }
 
 // Snapshot is everything a frame needs, copied off the loop. A frame reads

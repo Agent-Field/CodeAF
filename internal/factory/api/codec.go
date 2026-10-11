@@ -187,11 +187,11 @@ func mapList[A, B any](in []A, f func(A) B) []B {
 }
 
 func fromShift(s factory.Shift) Since {
-	return Since{At: s.Since, Shipped: s.Shipped, Arrived: s.Arrived, Asked: s.Asked, Handled: s.Handled, Spent: s.Spent, Hours: s.Hours, Shipping: s.Shipping}
+	return Since{At: s.Since, Shipped: s.Shipped, Arrived: s.Arrived, Asked: s.Asked, Handled: s.Handled, Spent: s.Spent, SpentToday: s.SpentToday, Hours: s.Hours, Shipping: s.Shipping}
 }
 
 func toShift(s Since) factory.Shift {
-	return factory.Shift{Since: s.At, Shipped: s.Shipped, Arrived: s.Arrived, Asked: s.Asked, Handled: s.Handled, Spent: s.Spent, Hours: s.Hours, Shipping: s.Shipping}
+	return factory.Shift{Since: s.At, Shipped: s.Shipped, Arrived: s.Arrived, Asked: s.Asked, Handled: s.Handled, Spent: s.Spent, SpentToday: s.SpentToday, Hours: s.Hours, Shipping: s.Shipping}
 }
 
 func fromSource(s factory.SourceInfo) Source {

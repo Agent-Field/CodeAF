@@ -22,7 +22,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 )
 
-// Contract is the wire contract version `GET /v1/me` reports. Bump it only for
+// Contract is the wire contract version `GET /v1/me` and `GET /v1/about` report. Bump it only for
 // a breaking wire change (a field removed, renamed or re-typed, a verb's
 // meaning changed); additive fields never bump it.
 const Contract = 1
@@ -61,15 +61,18 @@ type QueueDesk struct {
 }
 
 // Since is the handover: what happened since the person last looked.
+// SpentToday is the runner's figure for the calendar day, which is not Spent:
+// Spent counts only what began during this shift.
 type Since struct {
-	At       time.Time `json:"at"`
-	Shipped  int       `json:"shipped"`
-	Arrived  int       `json:"arrived"`
-	Asked    int       `json:"asked"`
-	Handled  int       `json:"handled"`
-	Spent    float64   `json:"spent"`
-	Hours    [24]int   `json:"hours"`
-	Shipping []string  `json:"shipping,omitempty"`
+	At         time.Time `json:"at"`
+	Shipped    int       `json:"shipped"`
+	Arrived    int       `json:"arrived"`
+	Asked      int       `json:"asked"`
+	Handled    int       `json:"handled"`
+	Spent      float64   `json:"spent"`
+	SpentToday float64   `json:"spent_today"`
+	Hours      [24]int   `json:"hours"`
+	Shipping   []string  `json:"shipping,omitempty"`
 }
 
 // Cell is one chip of the pipeline strip: a step with jobs in it, and whether
@@ -124,7 +127,9 @@ type Repo struct {
 }
 
 // Pipeline is a repository's steps in order, per kind of job, and the policy
-// every proof must show (code: [factory.Recipe]).
+// every proof must show (code: [factory.Recipe]). Text, Start, Size, Origin
+// and Personal are the file the pipeline route read; a queue repository's
+// pipeline leaves them empty because the floor's recipe does not carry them.
 type Pipeline struct {
 	Problems []string             `json:"problems,omitempty"`
 	Source   string               `json:"source,omitempty"` // file, markdown or defaults, from internal/factory/pipeline
@@ -133,24 +138,50 @@ type Pipeline struct {
 	Policy   []string             `json:"policy,omitempty"`
 	Habits   []string             `json:"habits,omitempty"`
 	Adapt    map[string]string    `json:"adapt,omitempty"`
+	// Text is the repository file as it was read. PersonalText is
+	// ~/.codeaf/factory.yaml when that file tightened the read.
+	Text         string      `json:"text,omitempty"`
+	PersonalText string      `json:"personal_text,omitempty"`
+	Personal     bool        `json:"personal,omitempty"`
+	Origin       string      `json:"origin,omitempty"` // main, working tree, defaults
+	Start        *StartBlock `json:"start,omitempty"`
+	Size         *SizeBlock  `json:"size,omitempty"`
+}
+
+// StartBlock is the file's start: what may begin without a person.
+type StartBlock struct {
+	Labels   []string `json:"labels"`
+	MaxSize  string   `json:"max_size"`
+	MaxCost  float64  `json:"max_cost"`
+	Never    []string `json:"never"`
+	AskFirst []string `json:"ask_first"`
+}
+
+// SizeBlock is the file's size: how S, M and L are decided.
+type SizeBlock struct {
+	PRLines [2]int `json:"pr_lines"`
+	Issue   string `json:"issue"`
 }
 
 // StepDef is one step as the pipeline defines it (code: [factory.Stage]).
 type StepDef struct {
-	Name   string   `json:"name"`
-	Kind   string   `json:"kind,omitempty"`
-	Ask    string   `json:"ask,omitempty"`
-	Until  string   `json:"until,omitempty"`
-	Max    int      `json:"max,omitempty"`
-	Fixed  bool     `json:"fixed,omitempty"`
-	Custom bool     `json:"custom,omitempty"`
-	Off    bool     `json:"off,omitempty"`
-	When   string   `json:"when,omitempty"`   // desk
-	Effort string   `json:"effort,omitempty"` // desk
-	Fanout string   `json:"fanout,omitempty"` // desk
-	Proof  []string `json:"proof,omitempty"`  // desk
-	Why    string   `json:"why,omitempty"`    // desk
-	By     string   `json:"by,omitempty"`     // desk
+	Name  string `json:"name"`
+	Kind  string `json:"kind,omitempty"`
+	Ask   string `json:"ask,omitempty"`
+	Until string `json:"until,omitempty"`
+	// UntilSentence is the file's until line before it is folded into the
+	// runner's word (done, clean, green, proven). The pipeline route sets it.
+	UntilSentence string   `json:"until_sentence,omitempty"`
+	Max           int      `json:"max,omitempty"`
+	Fixed         bool     `json:"fixed,omitempty"`
+	Custom        bool     `json:"custom,omitempty"`
+	Off           bool     `json:"off,omitempty"`
+	When          string   `json:"when,omitempty"`   // desk
+	Effort        string   `json:"effort,omitempty"` // desk
+	Fanout        string   `json:"fanout,omitempty"` // desk
+	Proof         []string `json:"proof,omitempty"`  // desk
+	Why           string   `json:"why,omitempty"`    // desk
+	By            string   `json:"by,omitempty"`     // desk
 }
 
 // Job states, as the API says them (ARCHITECTURE §2).
@@ -436,10 +467,12 @@ type Worker struct {
 }
 
 // DryRun is what a repository's pipeline file would do to the jobs on the
-// floor now.
+// floor now. WouldWait is every backlog job that would neither start nor
+// ask, with the reason it is waiting.
 type DryRun struct {
 	WouldStart []int `json:"would_start"`
 	WouldAsk   []Ask `json:"would_ask"`
+	WouldWait  []Ask `json:"would_wait"`
 }
 
 // Ask is one job the pipeline would ask about first, and why.

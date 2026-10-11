@@ -94,6 +94,11 @@ func MergePersonal(repo File, personal string, err error) (File, error) {
 	merged.Problems = append(append([]Problem{}, repo.Problems...), probs...)
 	merged.Source = repo.Source
 	merged.From = repo.From
+	// The repository text stays the file that was read. The personal file
+	// is named beside it so a client can say which lines came from home.
+	merged.Text = repo.Text
+	merged.Personal = true
+	merged.PersonalText = pf.Text
 	return merged, err
 }
 

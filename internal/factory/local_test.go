@@ -60,6 +60,50 @@ func TestLocalLoadReflectsAdds(t *testing.T) {
 	}
 }
 
+func TestLocalLoadFillsTheShift(t *testing.T) {
+	_, st := openLocal(t)
+	started := time.Now().Add(-time.Hour)
+	now := time.Now()
+	before := started.Add(-time.Minute)
+	mk := func(it factory.Item) {
+		t.Helper()
+		if _, err := st.Create(it); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk(factory.Item{Repo: "acme/web", Num: 42, State: factory.StateShipped, Created: now, Changed: now,
+		Stream: &factory.Stream{Started: now, Ended: now}})
+	mk(factory.Item{Repo: "acme/web", State: factory.StateNeedsYou, Question: "which file?", Created: now, Changed: now,
+		Asking: &factory.Asked{At: now, Question: "which file?"}})
+	mk(factory.Item{Repo: "acme/web", State: factory.StateRunning, Created: now, Changed: now,
+		Stream: &factory.Stream{Started: now, Log: []factory.LogLine{{At: now, Tone: "said", Text: "yes · carrying on"}}}})
+	mk(factory.Item{Repo: "acme/web", State: factory.StateRunning, Created: now, Changed: now,
+		Activity: []factory.Event{{At: now, What: "signed off"}}})
+	mk(factory.Item{Repo: "acme/web", State: factory.StateRunning, Created: now, Changed: now,
+		Stream: &factory.Stream{Spent: 1.25, Started: now}})
+	mk(factory.Item{Repo: "acme/web", State: factory.StateRunning, Created: before, Changed: now,
+		Stream: &factory.Stream{Spent: 2, Started: before}})
+	mk(factory.Item{Repo: "acme/web", State: factory.StateLanded, Question: "prove it", Created: now, Changed: now,
+		Asking: &factory.Asked{At: now, Question: "prove it"}})
+	mk(factory.Item{Repo: "acme/web", State: factory.StateNeedsYou, Question: "old", Created: before, Changed: before,
+		Asking: &factory.Asked{At: before, Question: "old"}})
+
+	snap, err := factory.LocalSeam(st, started).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sh := snap.Shift
+	if !sh.Since.Equal(started) || sh.Arrived != 6 || sh.Shipped != 1 || len(sh.Shipping) != 1 || sh.Shipping[0] != "#42" {
+		t.Fatalf("shift counts = %+v", sh)
+	}
+	if sh.Asked != 1 || sh.Handled != 2 || sh.Spent != 1.25 || sh.SpentToday != 3.25 {
+		t.Fatalf("shift money = %+v", sh)
+	}
+	if sh.Hours[now.Hour()] == 0 {
+		t.Fatalf("hours = %v", sh.Hours)
+	}
+}
+
 // The words a person types become a title and chips.
 func TestLocalNewLiftsChips(t *testing.T) {
 	_, st := openLocal(t)

@@ -42,7 +42,7 @@ func (h *Handler) dryrun(w http.ResponseWriter, r *http.Request) {
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
 		api.DryRun
-	}{h.factory, wireDry(file.Dry(backlog(snap.Items, full)))})
+	}{h.factory, wireDry(file.Dry(backlog(snap.Items, owner, repo)))})
 }
 
 // pipelineFile is the checkout's pipeline, or the defaults when this machine
@@ -58,15 +58,30 @@ func pipelineFile(dir string) (pipeline.File, error) {
 
 // backlog is the jobs still new on repo, in the floor's order. Queued and
 // running work has already left the backlog, so a dry run does not offer it.
-func backlog(items []factory.Item, repo string) []pipeline.Job {
+// A GitHub item stores the short name in Repo and the owner in Product;
+// a floor item stores owner/name in Repo. Both match.
+func backlog(items []factory.Item, owner, name string) []pipeline.Job {
 	var jobs []pipeline.Job
 	for _, it := range items {
-		if it.State != factory.StateNew || !strings.EqualFold(it.Repo, repo) {
+		if it.State != factory.StateNew || !sameRepo(it, owner, name) {
 			continue
 		}
 		jobs = append(jobs, pipeline.JobFromItem(it))
 	}
 	return jobs
+}
+
+// sameRepo matches owner/name, and a short Repo when Product is that owner
+// or was never set. A different product's short name does not match.
+func sameRepo(it factory.Item, owner, name string) bool {
+	if strings.EqualFold(it.Repo, owner+"/"+name) {
+		return true
+	}
+	if !strings.EqualFold(strings.TrimSpace(it.Repo), name) {
+		return false
+	}
+	product := strings.TrimSpace(it.Product)
+	return product == "" || strings.EqualFold(product, owner)
 }
 
 // wireDry is the pipeline's lists in the API's words. One reason string is
@@ -75,9 +90,13 @@ func wireDry(d pipeline.DryRun) api.DryRun {
 	out := api.DryRun{
 		WouldStart: append([]int{}, d.WouldStart...),
 		WouldAsk:   make([]api.Ask, 0, len(d.WouldAsk)),
+		WouldWait:  make([]api.Ask, 0, len(d.WouldWait)),
 	}
 	for _, id := range d.WouldAsk {
 		out.WouldAsk = append(out.WouldAsk, api.Ask{Job: id, Reason: strings.Join(d.Why[id], " · ")})
+	}
+	for _, wait := range d.WouldWait {
+		out.WouldWait = append(out.WouldWait, api.Ask{Job: wait.ID, Reason: wait.Reason})
 	}
 	return out
 }

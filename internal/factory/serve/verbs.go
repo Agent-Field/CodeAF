@@ -74,7 +74,7 @@ func (h *Handler) take(w http.ResponseWriter, r *http.Request, it factory.Item) 
 		return
 	}
 	if h.config.Record != nil {
-		if _, err := h.config.Record.Append(r.Context(), record.Event{Kind: record.Took, Job: it.ID, Handle: me, Cost: jobCost(it)}); h.failed(w, err) {
+		if _, err := h.config.Record.Append(r.Context(), record.Event{Kind: record.Took, Job: it.ID, Handle: me, Cost: jobCost(it), Detail: h.machineFor(me)}); h.failed(w, err) {
 			return
 		}
 	}

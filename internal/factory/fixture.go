@@ -123,7 +123,7 @@ func Fixture(now time.Time) Snapshot {
 		Benches: 6,
 		Daily:   11.31,
 		Rail:    60,
-		Shift:   Shift{Since: h(8), Shipped: 1, Arrived: 4, Asked: 1, Handled: 0, Spent: 8.44, Hours: hours, Shipping: []string{"#1663"}},
+		Shift:   Shift{Since: h(8), Shipped: 1, Arrived: 4, Asked: 1, Handled: 0, Spent: 8.44, SpentToday: 7.07, Hours: hours, Shipping: []string{"#1663"}},
 		Sources: []SourceInfo{{Name: "github", Writes: true, Polled: now.Add(-14 * time.Second)}, {Name: string(OriginChat)}},
 	}
 }

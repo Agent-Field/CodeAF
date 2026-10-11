@@ -1,0 +1,129 @@
+package factory
+
+import (
+	"strings"
+	"time"
+)
+
+// DaySpend is the runner's figure for today. paid is what this process
+// recorded today, by item id. An item in paid counts that figure instead of
+// its whole stream, even when the figure is zero. A nil map means the caller
+// has no ledger of its own, so an item that moved, started or ended today
+// counts its whole stream spend. Triage reads are not added.
+func DaySpend(items []Item, paid map[int]float64, now time.Time) float64 {
+	y, mo, d := now.Date()
+	isToday := func(t time.Time) bool {
+		if t.IsZero() {
+			return false
+		}
+		ty, tm, td := t.In(now.Location()).Date()
+		return ty == y && tm == mo && td == d
+	}
+	var sum float64
+	for _, it := range items {
+		if it.Stream == nil {
+			continue
+		}
+		if usd, ok := paid[it.ID]; ok {
+			sum += usd
+		} else if isToday(it.Changed) || isToday(it.Stream.Started) || isToday(it.Stream.Ended) {
+			sum += it.Stream.Spent
+		}
+	}
+	return sum
+}
+
+// shiftSince is the handover a real floor can fill from its items. Spent is
+// only streams that started after the window opened. SpentToday is [DaySpend]
+// with no process ledger, so a stream that started earlier still counts today
+// when the item moved today.
+func shiftSince(items []Item, started, now time.Time) Shift {
+	sh := Shift{Since: started, SpentToday: DaySpend(items, nil, now)}
+	for _, it := range items {
+		if it.Created.After(started) {
+			sh.Arrived++
+			sh.noteHour(it.Created, now)
+		}
+		if it.State == StateShipped {
+			if at := shippedAt(it); at.After(started) {
+				sh.Shipped++
+				sh.Shipping = append(sh.Shipping, it.Ref())
+				sh.noteHour(at, now)
+			}
+		}
+		if at, ok := askedAt(it, started); ok {
+			sh.Asked++
+			sh.noteHour(at, now)
+		}
+		if n, at := handledSince(it, started); n > 0 {
+			sh.Handled += n
+			sh.noteHour(at, now)
+		}
+		if it.Stream != nil && it.Stream.Spent > 0 && it.Stream.Started.After(started) {
+			sh.Spent += it.Stream.Spent
+		}
+	}
+	return sh
+}
+
+func (sh *Shift) noteHour(t, now time.Time) {
+	if t.IsZero() || t.Before(now.Add(-24*time.Hour)) || t.After(now.Add(time.Minute)) {
+		return
+	}
+	sh.Hours[t.In(now.Location()).Hour()]++
+}
+
+func shippedAt(it Item) time.Time {
+	if it.Stream != nil && !it.Stream.Ended.IsZero() {
+		return it.Stream.Ended
+	}
+	return it.Changed
+}
+
+// askedAt is an open question that arrived during the shift. Landed proof
+// still carries a question and is not an ask.
+func askedAt(it Item, started time.Time) (time.Time, bool) {
+	if it.State == StateLanded || (it.State != StateNeedsYou && it.Question == "") {
+		return time.Time{}, false
+	}
+	at := it.Changed
+	if it.Asking != nil && !it.Asking.At.IsZero() {
+		at = it.Asking.At
+	}
+	if !at.After(started) {
+		return time.Time{}, false
+	}
+	return at, true
+}
+
+// handledSince counts answers and sign-offs written after the window opened.
+// The words are the ones the runner stores: a yes, a no, a noted reply, and
+// the two sign-off activities.
+func handledSince(it Item, started time.Time) (int, time.Time) {
+	var n int
+	var at time.Time
+	if it.Stream != nil {
+		for _, line := range it.Stream.Log {
+			if !line.At.After(started) || line.Tone != "said" {
+				continue
+			}
+			text := line.Text
+			if text == "yes · carrying on" || text == "no" || strings.HasPrefix(text, "noted:") {
+				n++
+				at = line.At
+			}
+		}
+	}
+	for _, ev := range it.Activity {
+		if !ev.At.After(started) {
+			continue
+		}
+		if ev.What == "signed off" || ev.What == "signed off with changes" {
+			n++
+			if ev.At.After(at) {
+				at = ev.At
+			}
+		}
+	}
+	return n, at
+}
