@@ -9,5 +9,7 @@
   "session_id": "session_fixture",
   "invited_by": "sam",
   "machines": [],
-  "takes_unassigned": {}
+  "takes_unassigned": {},
+  "access": "token",
+  "served_by": "factory"
 }
