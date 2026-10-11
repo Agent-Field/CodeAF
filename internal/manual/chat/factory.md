@@ -1706,6 +1706,69 @@ refused with `job id must be a positive integer`.
 Both follow the same access rule as the other reads. The thread's JSON
 body carries `factory: {address, version}`.
 
+## factory HTTP workers — attach, pull a job and heartbeat
+
+`POST /v1/workers/attach` takes `{"name":"laptop","handle":"sam"}` and answers
+HTTP 201 with `{factory, worker_id, credential}`. Loopback attach needs no access
+token; remote attach requires the factory access token. Each attach creates a
+fresh worker identity. Credentials last for this handler's lifetime; after a
+server restart attach again and let the former hold expire.
+
+All other worker endpoints require `Authorization: Bearer <credential>`, even
+on loopback. The floor access token cannot replace a worker credential, and a
+worker credential cannot read the remote floor. Missing or wrong credentials
+answer HTTP 401 with `a bearer worker credential is required`.
+
+`GET /v1/workers/pull` waits at most thirty seconds for a queued job and answers
+HTTP 200 with `{factory, lease, job}`, or HTTP 204 without a body. One worker holds
+one job, and two workers cannot pull the same job. Only jobs belonging to the
+worker's handle are offered. Attach can also take
+`"takes_unassigned":{"owner/repo":true}`: this opts into unassigned jobs in that
+repository, never jobs assigned to somebody else.
+
+The lease includes `id`, `job`, `worker`, `handle` and `expires_at`.
+`POST /v1/workers/leases/{id}/heartbeat` answers `{factory, lease}` with a renewed
+expiry. The default hold lasts one minute. Expired running jobs return to the
+queue. A renewed hold keeps its id; a new hold gets a different id. Another
+worker's hold answers HTTP 403 with `lease belongs to another worker`; an expired
+or completed hold answers HTTP 409 with `lease is no longer live`.
+
+## factory HTTP worker reports — step results, logs, cost, claims, questions and PR
+
+`POST /v1/workers/leases/{id}/report` takes an incremental JSON object:
+
+```json
+{"steps":[{"name":"proof","state":"done","round":1,"result":{"done":true,"output":"checks pass","cost":0.25}}],"log":[{"tone":"test","text":"checks pass"}],"cost":0.25,"claims":[{"text":"checks pass","proven":true,"evidence":{"kind":"test","ref":"go test"}}],"pr":{"number":42,"url":"https://github.com/owner/repo/pull/42","ci":"green"}}
+```
+
+Every field is optional. Cost is newly incurred dollars, added once per report;
+a step result's cost is descriptive and is not added again. Send each increment
+once. Log lines are stamped by the factory and keep the runner's newest 400 lines.
+Step results keep its output limit of 16 KiB, notes, findings, exit status, claims
+and chat id. Claims from a proof step join the proof sheet; policy evidence joins
+the policy sheet. Top-level claims merge by their text. Reports name existing
+steps and cannot change the pipeline or answer an approve step.
+
+A `question` takes `text`, optional `from_step`, `kind`, `options`, `pick` and
+`why`; it puts the job in `needs_you`. There is one open question per job.
+`pr` keeps a published PR's number, URL and CI separately from the source issue.
+Reports update the job reads through the runner's existing store writes, without
+replacing the job or its ownership. Invalid reports answer HTTP 400 and write
+nothing. Bodies obey the same one-object, 1 MiB limit as other job actions.
+
+## factory HTTP worker done — release the lease and keep the approval gate
+
+`POST /v1/workers/leases/{id}/done` releases the hold after writing its final
+state. An empty body or `{}` uses the runner's landing behavior: proof waits for
+your approval, or a clean proof with no approve step finishes automatically.
+`{"state":"needs_you","ready":true}` also lands the proof. `{"state":"needs_you"}`
+requires a question already on the job. `backlog` and `dropped` report interrupted
+or dropped work. `{"state":"done"}` is accepted only for clean proof with no
+approve step; otherwise it answers HTTP 400 with `job requires proof approval`.
+Success answers HTTP 200 with the factory identity. Completed holds reject later
+heartbeats and reports. These endpoints provide the Go service protocol; this
+handler does not itself start a worker process or add a CLI join command.
+
 ## what the factory does not do yet
 
 Be plain about this when asked:
@@ -1713,7 +1776,9 @@ Be plain about this when asked:
 - **Items arrive three ways:** from a chat with `factory_add` (after you answer its card), from
   `n` on the floor, and from the GitHub repositories you watch (see connecting github). They
   are kept on this machine and are still there next launch.
-- **Items run on this machine only.** `r` and `L` run them (see running an item), and stop,
+- **The HTTP service accepts worker reports from other machines.** The existing floor runner
+  still runs locally; this handler does not start or join worker processes. `r` and `L` run
+  local items (see running an item), and stop,
   pause, answers, steering, approve, request changes and re-run checks work from any window on
   it.
 - **Only GitHub is connected.** No GitLab or Linear.
@@ -1839,7 +1904,8 @@ clean one up, `git worktree remove <folder>` in your checkout, and the branch st
 Factory items are saved on this machine, in the v3 factory folder under the codeaf home:
 `~/.codeaf/v3/factory`, or `v3/factory` under `CODEAF_HOME` when that is set. Each item is one
 small file named by its number, such as `1.json`, and a change rewrites that file. They are not
-in any repository and not on any server; nothing is posted, synced or uploaded. The same folder
+in any repository. The HTTP service keeps worker reports in its host store; ordinary
+local runs keep them on this machine. Saving a job does not itself post to GitHub. The same folder
 holds `repos.json` (the GitHub repositories you watch), `repos/` (the repositories a run cloned
 because this machine had no checkout of them), `sources.json` (when GitHub was last
 read, the day rail and what a triage read costs) and `busy.json` (what is being read right now). A chat's

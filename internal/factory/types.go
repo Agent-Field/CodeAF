@@ -299,6 +299,14 @@ type Claim struct {
 	Medium   string // test · screenshot · transcript · benchmark · policy
 }
 
+// PullRequest keeps the published work separate from the source issue, so
+// reporting its receipt never changes the identity of the job being run.
+type PullRequest struct {
+	Number int
+	URL    string
+	CI     string
+}
+
 // Item is one row on the floor.
 type Item struct {
 	ID      int
@@ -392,6 +400,9 @@ type Item struct {
 	Base    string `json:",omitempty"`
 	Head    string `json:",omitempty"`
 	HeadSHA string `json:",omitempty"`
+	// PullRequest is the published receipt, kept separately from the source.
+	PullRequest *PullRequest `json:",omitempty"`
+
 	// Activity is the item's own short history, oldest first: it arrived, it
 	// changed upstream, it was read, a conversation was made, its stages
 	// changed. At most [ActivityMost] are kept; the oldest go first.

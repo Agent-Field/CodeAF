@@ -1001,7 +1001,7 @@ func (lp *floorLoop) spender(c *loopCtl) func(usd float64) {
 			if it.Stream == nil {
 				it.Stream = &factory.Stream{}
 			}
-			it.Stream.Spent += usd
+			addCost(it, usd)
 			return nil
 		})
 	}
@@ -1069,43 +1069,7 @@ func (lp *floorLoop) fold(c *loopCtl, before factory.Item, st factory.Stage, i i
 	}
 	now := lp.r.now()
 	_ = lp.write(c, func(it *factory.Item) error {
-		ph := &it.Stream.Phases[i]
-		if res.Chat != "" {
-			ph.Chat = res.Chat
-		}
-		// THE RESULT OUTLIVES THE PROCESS: a run revived after a restart
-		// reads it back ([Runner.revive]), so later steps keep their
-		// `before this stage` lines.
-		kept := res
-		kept.Edit = nil
-		if len(kept.Output) > factory.ResultOutputMost {
-			kept.Output = strings.ToValidUTF8(kept.Output[:factory.ResultOutputMost], "")
-		}
-		ph.Result = &kept
-		it.Stream.Findings = res.Findings
-		sheet := makesSheet(st)
-		for _, cl := range res.Claims {
-			switch {
-			case cl.Medium == "policy":
-				it.Policy = mergeClaim(it.Policy, cl)
-			case sheet:
-				it.Proof = mergeClaim(it.Proof, cl)
-			default:
-				if text := oneLine(cl.Text); text != "" {
-					loopSay(it, now, "thought", "claimed: "+text)
-				}
-			}
-		}
-		if line := loopFirstLine(res.Output); line != "" {
-			tone := "said"
-			if kindOf(st) == factory.StageCheck {
-				tone = "test"
-			}
-			loopSay(it, now, tone, st.Name+": "+line)
-		}
-		if !factory.Met(st, res) && res.Done {
-			ph.Note = shortfall(res)
-		}
+		foldResult(it, st, i, res, now)
 		if res.Edit == nil {
 			return nil
 		}
@@ -1220,20 +1184,7 @@ func (lp *floorLoop) land(c *loopCtl) {
 	now := lp.r.now()
 	shipped := false
 	err := lp.move(c, "", EventLanded, "landed", func(it *factory.Item) error {
-		it.State = factory.StateLanded
-		it.Question, it.QKind = "", ""
-		it.Stream.Ended = now
-		it.Stream.Paused = false
-		if n := len(it.Stream.Phases); n > 0 {
-			it.Stream.Cur = n - 1
-		}
-		if !factory.HasApprove(*it) && len(it.Proof) > 0 && clean(*it) {
-			it.State = factory.StateShipped
-			shipped = true
-			loopSay(it, now, "ok", "shipped · habit · proof all green")
-			return nil
-		}
-		loopSay(it, now, "said", "landed · proof sheet ready · your approval")
+		shipped = landItem(it, now)
 		return nil
 	})
 	if err == nil && shipped {

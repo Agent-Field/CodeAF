@@ -70,6 +70,9 @@ func FromItem(it factory.Item) Job {
 		CreatedAt:  it.Created,
 		Desk:       fromDesk(it),
 	}
+	if pr := it.PullRequest; pr != nil {
+		j.PR = &PR{Number: pr.Number, URL: pr.URL, CI: pr.CI}
+	}
 	if j.State == "" {
 		j.State = string(it.State)
 	}
@@ -106,6 +109,9 @@ func ToItem(j Job) factory.Item {
 		Comments: mapList(d.Comments, toComment), Files: mapList(d.Files, toFile),
 		CheckRuns: mapList(d.CheckRuns, toCheckRun), Base: d.Base, Head: d.Head, HeadSHA: d.HeadSHA,
 		Activity: mapList(d.Activity, toActivity),
+	}
+	if pr := j.PR; pr != nil {
+		it.PullRequest = &factory.PullRequest{Number: pr.Number, URL: pr.URL, CI: pr.CI}
 	}
 	it.Stages, it.Stream = unsteps(j)
 	unquestions(&it, j.Questions)

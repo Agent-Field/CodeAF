@@ -3,6 +3,8 @@
 package lease
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
@@ -28,6 +30,8 @@ var (
 // Lease is the persisted and wire shape, so the worker and person survive a
 // server restart without a second registry becoming the ownership authority.
 type Lease struct {
+	// ID distinguishes successive holds on the same job so delayed reports cannot write into a new run.
+	ID        string    `json:"id,omitempty"`
 	Job       int       `json:"job"`
 	Worker    string    `json:"worker"`
 	Handle    string    `json:"handle"`
@@ -123,7 +127,11 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 			if !eligible(it, worker) || find(doc, it.ID) != nil {
 				continue
 			}
-			taken = Lease{Job: it.ID, Worker: worker.ID, Handle: worker.Handle, ExpiresAt: now.Add(d.ttl)}
+			var token [16]byte
+			if _, err := rand.Read(token[:]); err != nil {
+				return false, err
+			}
+			taken = Lease{ID: "lease_" + hex.EncodeToString(token[:]), Job: it.ID, Worker: worker.ID, Handle: worker.Handle, ExpiresAt: now.Add(d.ttl)}
 			return false, d.reserve(doc, worker, taken)
 		}
 		return false, ErrNoJob

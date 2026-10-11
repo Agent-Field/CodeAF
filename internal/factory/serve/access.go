@@ -5,7 +5,6 @@ import (
 	"crypto/subtle"
 	"net"
 	"net/http"
-	"strings"
 )
 
 func (h *Handler) allowed(r *http.Request) bool {
@@ -20,15 +19,11 @@ func (h *Handler) allowed(r *http.Request) bool {
 	if h.config.AccessToken == "" {
 		return false
 	}
-	values := r.Header.Values("Authorization")
-	if len(values) != 1 {
-		return false
-	}
-	parts := strings.Fields(values[0])
-	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+	token := bearer(r)
+	if token == "" {
 		return false
 	}
 	// Fixed-size hashes keep token length out of the comparison's timing.
-	want, got := sha256.Sum256([]byte(h.config.AccessToken)), sha256.Sum256([]byte(parts[1]))
+	want, got := sha256.Sum256([]byte(h.config.AccessToken)), sha256.Sum256([]byte(token))
 	return subtle.ConstantTimeCompare(want[:], got[:]) == 1
 }

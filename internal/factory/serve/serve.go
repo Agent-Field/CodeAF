@@ -17,8 +17,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/serve/web"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 // Config is supplied by the host so the handler never reads a person's home
@@ -28,6 +30,12 @@ type Config struct {
 	Version      string
 	AccessToken  string
 	PollingEvery time.Duration
+	// Store enables worker writes to the same documents the local runner uses.
+	Store *store.Store
+	// LeaseOptions supplies the claims desk's TTL and deterministic clock.
+	LeaseOptions lease.Options
+	// PullWait bounds long polling; zero uses 30 seconds and larger values are capped.
+	PullWait time.Duration
 	// Record is supplied by the host at the same root as the job store.
 	Record *record.Record
 	// RecordApproval supports hosts that bind recording through their own door.
@@ -45,6 +53,8 @@ type Handler struct {
 	factory api.Factory
 	mux     *http.ServeMux
 	watch   *rootWatch
+
+	workers *workerService
 }
 
 // New binds the seam's reads and verbs; absent doors refuse rather than panic.
@@ -64,6 +74,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/me", h.me)
 	h.read("/v1/audit", h.audit)
 	h.verbs()
+	h.workerRoutes()
 	h.mux.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusNotFound, "factory endpoint not found")
 	})
@@ -87,7 +98,13 @@ func (h *Handler) Close() {
 // floor to a remote caller without the host's access token.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	if !h.allowed(r) {
+	if workerPath(r.URL.Path) {
+		var ok bool
+		r, ok = h.authorizeWorker(w, r)
+		if !ok {
+			return
+		}
+	} else if !h.allowed(r) {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="factory"`)
 		h.fail(w, http.StatusUnauthorized, "a bearer access token is required")
 		return

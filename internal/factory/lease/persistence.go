@@ -59,15 +59,15 @@ func (d *Desk) read() (document, error) {
 // validate refuses an unreadable desk rather than treating it as empty. Losing
 // evidence of ownership is never permission to start the same work again.
 func validate(leases []Lease) error {
-	jobs, workers := map[int]bool{}, map[string]bool{}
+	jobs, workers, ids := map[int]bool{}, map[string]bool{}, map[string]bool{}
 	for _, held := range leases {
 		if held.Job <= 0 || held.Worker == "" || factory.NormalizeHandle(held.Handle) == "" || held.ExpiresAt.IsZero() {
 			return fmt.Errorf("factory lease: invalid lease for job %d", held.Job)
 		}
-		if jobs[held.Job] || workers[held.Worker] {
+		if jobs[held.Job] || workers[held.Worker] || (held.ID != "" && ids[held.ID]) {
 			return fmt.Errorf("factory lease: duplicate job or worker in leases.json")
 		}
-		jobs[held.Job], workers[held.Worker] = true, true
+		jobs[held.Job], workers[held.Worker], ids[held.ID] = true, true, true
 	}
 	return nil
 }

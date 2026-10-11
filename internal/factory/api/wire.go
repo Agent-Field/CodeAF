@@ -189,7 +189,7 @@ type Job struct {
 	Questions        []Question `json:"questions,omitempty"`
 	Cost             float64    `json:"cost"`
 	CreatedAt        time.Time  `json:"created_at"`
-	PR               *PR        `json:"pr,omitempty"` // future: the pull request the factory opened
+	PR               *PR        `json:"pr,omitempty"` // The worker reports the published receipt.
 	Desk             *JobDesk   `json:"desk,omitempty"`
 }
 

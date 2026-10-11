@@ -67,7 +67,7 @@ func (m *Money) Spend(id int) func(usd float64) {
 				if it.Stream == nil {
 					it.Stream = &factory.Stream{}
 				}
-				it.Stream.Spent += usd
+				addCost(it, usd)
 				it.Stream.Activity = bump(it.Stream.Activity, slide)
 				return nil
 			})

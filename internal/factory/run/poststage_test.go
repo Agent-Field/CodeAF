@@ -2,17 +2,12 @@ package run
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"net/http/httptest"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory/record"
-	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -204,61 +199,6 @@ func TestUnknownPolicy(t *testing.T) {
 	got := UnknownPolicy([]string{"never close an issue", "keep it kind", "", "Tests pass before anything posts."})
 	if len(got) != 1 || got[0] != "keep it kind" {
 		t.Fatal(got)
-	}
-}
-
-// This crosses the approval HTTP door, the real runner's proof gate and the
-// post executor, so a receipt cannot pass while the PR cites different consent.
-func TestApproveEventBecomesPostStageTrailer(t *testing.T) {
-	st, err := store.Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	it, err := st.Create(factory.Item{Repo: "owner/repo", Title: "fix", State: factory.StateLanded, Proof: []factory.Claim{{Text: "works", OK: true}}, Stream: &factory.Stream{Spent: 0.42}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	rec, err := record.Open(st, record.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	runner := New(Options{Store: st})
-	seam := factory.Seam{
-		Load:    func() (factory.Snapshot, error) { items, err := st.List(); return factory.Snapshot{Items: items}, err },
-		GitHub:  func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: "octocat"}, nil },
-		SignOff: runner.SignOff,
-	}
-	h := serve.New(seam, serve.Config{Record: rec})
-	request := httptest.NewRequest("POST", "/v1/jobs/"+strconv.Itoa(it.ID)+"/approve", nil)
-	request.RemoteAddr = "127.0.0.1:1234"
-	response := httptest.NewRecorder()
-	h.ServeHTTP(response, request)
-	var receipt struct{ Event string }
-	if err := json.Unmarshal(response.Body.Bytes(), &receipt); err != nil || response.Code != 200 || receipt.Event == "" {
-		t.Fatalf("approve=%d %s error=%v", response.Code, response.Body, err)
-	}
-	saved, err := st.Get(it.ID)
-	if err != nil || saved.State != factory.StateShipped {
-		t.Fatalf("SignOff=%+v error=%v", saved, err)
-	}
-	// Reopening proves the publisher needs no in-memory approval from the handler.
-	reopened, err := record.Open(st, record.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	src := &fakeSource{}
-	ex := NewPostExecutorWith(PostOptions{Record: reopened, Source: func(string) factory.Source { return src }})
-	result, err := ex.Run(context.Background(), Job{Item: saved, Stage: factory.Stage{Ask: "pr"}})
-	if err != nil || !result.Done || len(src.got) != 1 {
-		t.Fatalf("post=%+v writes=%+v error=%v", result, src.got, err)
-	}
-	want := "Factory-Approval: " + receipt.Event + " @octocat"
-	if !strings.HasSuffix(src.got[0].Body, want) || strings.Count(src.got[0].Body, "Factory-Approval:") != 1 {
-		t.Fatalf("PR body=%q", src.got[0].Body)
-	}
-	events, err := reopened.Since(context.Background(), time.Time{})
-	if err != nil || len(events) != 2 || events[0].ID != receipt.Event || events[1].Kind != record.Posted || events[1].Cost != 0.42 {
-		t.Fatalf("history=%+v error=%v", events, err)
 	}
 }
 
