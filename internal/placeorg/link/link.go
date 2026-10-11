@@ -59,6 +59,11 @@ type Linker struct {
 	// Demoted is set per run. It is not safe to share across runs that
 	// overlap, and the runner does not overlap them.
 	Demoted []placeorg.Op
+	// end holds the end-anchor vector per chat, in corpus order, when the
+	// run has later messages to embed; homes is the histogram of the last
+	// Link: extra homes per chat, including zero.
+	end   [][]float32
+	homes map[int]int
 }
 
 // New returns a linker that reads axes and thresholds from state. State may
@@ -71,6 +76,20 @@ func New(state *placeorg.State) *Linker {
 // before Link, so the groups become views even though the tree no longer
 // has them.
 func (l *Linker) SetDemoted(ops []placeorg.Op) { l.Demoted = ops }
+
+// SetEnd hands the linker the end-anchor vectors, one per corpus chat, so a
+// chat earns homes where it ended up as well as where it began. Without
+// them only the start anchor counts; unknown renders as nothing.
+func (l *Linker) SetEnd(vectors [][]float32) { l.end = vectors }
+
+// Homes is the histogram of extra homes per chat from the last Link.
+func (l *Linker) Homes() map[int]int {
+	out := make(map[int]int, len(l.homes))
+	for k, v := range l.homes {
+		out[k] = v
+	}
+	return out
+}
 
 // compile-time check that the stage is the interface the runner holds.
 var _ placeorg.Linker = (*Linker)(nil)
@@ -86,18 +105,22 @@ func (l *Linker) Link(ctx context.Context, t *placeorg.Tree, corpus *placeorg.Co
 	if t == nil || corpus == nil {
 		return nil, nil
 	}
-	state, demoted := (*placeorg.State)(nil), []placeorg.Op(nil)
+	state, demoted, end := (*placeorg.State)(nil), []placeorg.Op(nil), [][]float32(nil)
 	if l != nil {
 		state = l.state
 		demoted = l.Demoted
+		end = l.end
 	}
 	var ops []placeorg.Op
 	ops = append(ops, groupLenses(t, corpus, demoted)...)
 	ops = append(ops, monthLenses(t, corpus)...)
 	ops = append(ops, axisLenses(t, corpus, state, monthPlaces(ops))...)
-	linked, err := shortcutOps(ctx, corpus, vectors, forest(t), state)
+	linked, hist, err := shortcutOps(ctx, corpus, vectors, end, t, state)
 	if err != nil {
 		return nil, err
+	}
+	if l != nil {
+		l.homes = hist
 	}
 	return append(ops, linked...), nil
 }

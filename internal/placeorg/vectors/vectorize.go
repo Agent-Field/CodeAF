@@ -25,7 +25,8 @@ var _ placeorg.Vectorizer = (*Vectorizer)(nil)
 // New returns a Vectorizer whose caches live in dir.
 func New(dir string) *Vectorizer { return &Vectorizer{dir: dir} }
 
-// Vectorize returns one vector per chat in corpus order, all from one space.
+// Vectorize returns one START vector per chat in corpus order, all from one
+// space, and caches optional END anchors separately for later home scoring.
 // It serves every chat already cached from the cache, embeds only the rest
 // through primary, and on ANY failure there abandons primary for this run and
 // embeds the whole corpus through local (still cache first), reporting
@@ -51,15 +52,40 @@ func (v *Vectorizer) Vectorize(ctx context.Context, corpus *placeorg.Corpus, pri
 	return local.Space(), vecs, true, nil
 }
 
-// through fills every chat's vector from one embedder's space.
+// through fills both anchors in one space and returns only START, because
+// the structural stages must not change when a conversation's subject drifts.
 func (v *Vectorizer) through(ctx context.Context, corpus *placeorg.Corpus, e placeorg.Embedder) ([][]float32, error) {
-	store, err := Open(v.dir, e.Space(), e.Dims())
+	out, err := v.throughChats(ctx, corpus.Chats, e, false)
+	if err != nil {
+		return nil, err
+	}
+	var ends []placeorg.Chat
+	for _, chat := range corpus.Chats {
+		if chat.EndText != "" {
+			ends = append(ends, placeorg.Chat{ID: chat.ID, Text: chat.EndText})
+		}
+	}
+	if len(ends) > 0 {
+		if _, err := v.throughChats(ctx, ends, e, true); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// throughChats keeps the two anchor caches independent so editing a tail
+// never invalidates the start vector that determines the tree's structure.
+func (v *Vectorizer) throughChats(ctx context.Context, chats []placeorg.Chat, e placeorg.Embedder, end bool) ([][]float32, error) {
+	open := Open
+	if end {
+		open = OpenEnd
+	}
+	store, err := open(v.dir, e.Space(), e.Dims())
 	if err != nil {
 		return nil, err
 	}
 	defer store.Close()
 
-	chats := corpus.Chats
 	hashes := make([]string, len(chats))
 	ids := make([]string, len(chats))
 	for i, c := range chats {

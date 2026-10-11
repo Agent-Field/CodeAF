@@ -56,8 +56,8 @@ func TestParityMatchesTheReferenceOps(t *testing.T) {
 			t.Fatalf("%s sets differ\ngot %d %v\nwant %d %v", kind, len(got[kind]), sizes(got[kind]), len(want[kind]), sizes(want[kind]))
 		}
 	}
-	if len(got[placeorg.OpInterpose]) != 0 || len(got[placeorg.OpSplit]) != 0 {
-		t.Fatalf("interpose %d split %d", len(got[placeorg.OpInterpose]), len(got[placeorg.OpSplit]))
+	if len(got[placeorg.OpInterpose]) != 0 || len(got[placeorg.OpSplit]) != 0 || len(got[placeorg.OpLift]) != 0 {
+		t.Fatalf("interpose %d split %d lift %d", len(got[placeorg.OpInterpose]), len(got[placeorg.OpSplit]), len(got[placeorg.OpLift]))
 	}
 	if judge.calls == 0 {
 		t.Fatal("the facet question was never asked")

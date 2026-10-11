@@ -3,6 +3,7 @@ package placeorg
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -21,8 +22,6 @@ const (
 	MaxFanout = 9
 	// Quorum is the fewest chats that make a place, after duplicates fold.
 	Quorum = 4
-	// MaxLinks is the most shortcuts a chat may have.
-	MaxLinks = 2
 	// MaxNameWords is the longest a name may be.
 	MaxNameWords = 2
 )
@@ -50,7 +49,7 @@ var Invariants = []Invariant{
 	{Name: "fan-out within " + strconv.Itoa(MaxFanout), Check: checkFanout},
 	{Name: "every place has at least " + strconv.Itoa(Quorum) + " chats", Check: checkQuorum},
 	{Name: "names unique tree-wide, one or two words", Check: checkNames},
-	{Name: "at most " + strconv.Itoa(MaxLinks) + " shortcuts per chat", Check: checkLinks},
+	{Name: "every extra home is earned, and in a branch of its own", Check: checkLinks},
 	{Name: "forest: one parent per place", Check: checkForest},
 	{Name: "every op in the plan is in the journal and replays to this tree", Check: checkReplay},
 	{Name: "a home for every chat, duplicates beside their representative", Check: checkHomes},
@@ -146,10 +145,44 @@ func checkNames(t *Tree, _ *Plan, _ *Corpus) error {
 	return nil
 }
 
-func checkLinks(t *Tree, _ *Plan, _ *Corpus) error {
+// checkLinks has no cap to count: a chat may be in as many places as it
+// earns. It fails on what an earned home cannot be. Every link the plan made
+// carries the score it reached and the bar it had to clear (floor and margin
+// at its anchor), and must have reached it. A chat is never also in its own
+// home nor in an ancestor of it, and two of its extra homes never share a
+// parent, since sibling places are one branch and one home.
+func checkLinks(t *Tree, p *Plan, _ *Corpus) error {
+	if p != nil {
+		for _, op := range p.Ops {
+			if op.Kind != OpLink || op.Proposed {
+				continue
+			}
+			if len(op.Scores) < 2 || op.Scores[1] <= 0 || op.Scores[0] < op.Scores[1] {
+				return fmt.Errorf("%s is also in %s without clearing the floor and margin", op.Chat, op.Place)
+			}
+		}
+	}
 	for chat, links := range t.links {
-		if len(links) > MaxLinks {
-			return fmt.Errorf("%s is also in %d places", chat, len(links))
+		home := t.home[chat]
+		parents := map[string]string{}
+		if n := t.nodes[home]; n != nil && n.Parent != "" {
+			parents[n.Parent] = home
+		}
+		for _, id := range links {
+			if id == home {
+				return fmt.Errorf("%s is also in the place it lives in", chat)
+			}
+			if home != "" && t.within(home, id) {
+				return fmt.Errorf("%s is also in %s, which holds the place it lives in", chat, id)
+			}
+			n := t.nodes[id]
+			if n == nil || n.Parent == "" {
+				continue
+			}
+			if other, ok := parents[n.Parent]; ok {
+				return fmt.Errorf("%s is also in %s and %s, one branch counted twice", chat, other, id)
+			}
+			parents[n.Parent] = id
 		}
 	}
 	return nil
@@ -285,6 +318,8 @@ func replayOne(t *Tree, op Op) error {
 		// A proposed birth, split or interpose has not created its place yet.
 		// An applied one has.
 		return expectPresent(t, op, !op.Proposed)
+	case OpLift:
+		return expectLifted(t, op)
 	case OpMerge:
 		if op.Proposed {
 			if _, ok := t.nodes[op.Place]; !ok {
@@ -333,6 +368,31 @@ func expectGone(t *Tree, op Op) error {
 	return nil
 }
 
+// expectLifted: a proposed lift has not moved the children yet. An applied
+// one has made each child a root, and the parent no longer lists them.
+func expectLifted(t *Tree, op Op) error {
+	parent, ok := t.nodes[op.Place]
+	if !ok {
+		return fmt.Errorf("%s is already gone", op.Place)
+	}
+	for _, id := range op.Children {
+		n, childOK := t.nodes[id]
+		if !childOK {
+			return fmt.Errorf("%s is missing", id)
+		}
+		if op.Proposed {
+			if n.Parent != op.Place {
+				return fmt.Errorf("%s is not inside %s", id, op.Place)
+			}
+			continue
+		}
+		if n.Parent != "" || slices.Contains(parent.Children, id) {
+			return fmt.Errorf("%s is still inside %s", id, op.Place)
+		}
+	}
+	return nil
+}
+
 // expectPresent: want says the place should exist.
 func expectPresent(t *Tree, op Op, want bool) error {
 	_, ok := t.nodes[op.Place]
@@ -347,7 +407,7 @@ func expectPresent(t *Tree, op Op, want bool) error {
 
 func knownKind(k OpKind) bool {
 	switch k {
-	case OpBirth, OpCollapse, OpDissolve, OpInterpose, OpDemote, OpSplit,
+	case OpBirth, OpCollapse, OpDissolve, OpInterpose, OpLift, OpDemote, OpSplit,
 		OpFile, OpPark, OpInbox, OpLink, OpName, OpRename, OpMerge, OpLens,
 		OpExemplar, OpConstraint, OpAxis:
 		return true
@@ -440,7 +500,7 @@ func checkAddOn(_ *Tree, p *Plan, _ *Corpus) error {
 
 func structural(k OpKind) bool {
 	switch k {
-	case OpCollapse, OpDissolve, OpDemote, OpRename, OpMerge, OpSplit, OpInterpose, OpBirth:
+	case OpCollapse, OpDissolve, OpDemote, OpRename, OpMerge, OpSplit, OpInterpose, OpLift, OpBirth:
 		return true
 	default:
 		return false

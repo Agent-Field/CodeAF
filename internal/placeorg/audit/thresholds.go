@@ -18,6 +18,13 @@ const (
 	// not actually separate places. The reference uses 0.80.
 	interposeSepMax = 0.80
 
+	// sepMin is the similarity below which a root's places are not one
+	// subject. It starts at 0.45, the floor a chat must clear to find a
+	// home. On the saved reference embeddings the places a real parent
+	// kept sit together at 0.739, 0.829 and 0.854, all above this line,
+	// so that line is left where it started.
+	sepMin = 0.45
+
 	// interposeDistance is how close two place centroids must be, as
 	// 1 − cosine, before average-linkage grouping puts them together.
 	// 0.30 is the reference's distance threshold (similarity at least 0.70).

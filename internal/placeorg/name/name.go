@@ -10,7 +10,11 @@ import (
 )
 
 // Stage returns naming operations; the Runner retains the only tree-writing door.
-type Stage struct{}
+type Stage struct {
+	// Owner is the person's own name words from their profile; the corpus adds
+	// the account name its chats ran under.
+	Owner []string
+}
 
 var _ placeorg.Namer = (*Stage)(nil)
 var _ placeorg.Judged = (*Stage)(nil)
@@ -110,8 +114,8 @@ func (s *Stage) Name(ctx context.Context, t *placeorg.Tree, corpus *placeorg.Cor
 	return s.nameNodes(ctx, Nodes(t), corpus, judge)
 }
 
-func (*Stage) nameNodes(ctx context.Context, nodes []placeorg.Node, corpus *placeorg.Corpus, judge placeorg.Judge) ([]placeorg.Op, error) {
-	idx := NewIndex(corpus)
+func (s *Stage) nameNodes(ctx context.Context, nodes []placeorg.Node, corpus *placeorg.Corpus, judge placeorg.Judge) ([]placeorg.Op, error) {
+	idx := NewIndex(corpus).WithOwner(s.Owner...)
 	taken := map[string]bool{}
 	for _, n := range nodes {
 		if n.Name != "" {
@@ -127,8 +131,27 @@ func (*Stage) nameNodes(ctx context.Context, nodes []placeorg.Node, corpus *plac
 			continue
 		}
 		members := Members(nodes, n.ID)
-		valid := idx.Validator(members, taken)
 		candidates := idx.Candidates(members)
+		contextText := Titles(corpus, members, 10)
+		// The charter is written first because it is what lets a word that few
+		// titles use still count as the place's own vocabulary.
+		var charterLine string
+		if n.Parent == "" && judge != nil && contextText != "" {
+			charterValid := func(raw string) (string, bool) {
+				line := strings.TrimSpace(raw)
+				return line, line != "" && !strings.ContainsAny(line, "\r\n") && len(strings.Fields(line)) <= 10
+			}
+			fields := strings.Fields(contextText)
+			charterFallback := strings.Join(fields[:min(10, len(fields))], " ")
+			charter := judge.Write(ctx, placeorg.Question{Role: placeorg.RolePlaceCharter, Purpose: "Say what these chats are about in one line of at most ten words.", Context: contextText, MaxTokens: 40}, charterValid, charterFallback)
+			line, ok := charterValid(charter.Written)
+			if !ok || charter.FellBack {
+				line = charterFallback
+			}
+			charterLine = line
+			contextText = "These chats are about: " + line + "\n" + contextText
+		}
+		valid := idx.ValidatorWithCharter(members, taken, charterLine)
 		var fallback string
 		for _, candidate := range candidates {
 			if generic[candidate] {
@@ -139,27 +162,19 @@ func (*Stage) nameNodes(ctx context.Context, nodes []placeorg.Node, corpus *plac
 				break
 			}
 		}
+		// With no usable hint word the charter's own words name the place.
+		if fallback == "" {
+			for _, w := range strings.Fields(charterLine) {
+				if clean, ok := valid(strings.Trim(w, ".,:;!?\"'")); ok {
+					fallback = clean
+					break
+				}
+			}
+		}
 		// A missing candidate remains a no-op on silence, while a semantic pick may still name it.
 		const noName = "No supported name."
 		if fallback == "" {
 			fallback = noName
-		}
-		contextText := Titles(corpus, members, 10)
-		if n.Parent == "" && judge != nil {
-			charterValid := func(raw string) (string, bool) {
-				line := strings.TrimSpace(raw)
-				return line, line != "" && !strings.ContainsAny(line, "\r\n") && len(strings.Fields(line)) <= 10
-			}
-			charterFallback := strings.Join(strings.Fields(contextText)[:min(10, len(strings.Fields(contextText)))], " ")
-			if charterFallback == "" {
-				charterFallback = fallback
-			}
-			charter := judge.Write(ctx, placeorg.Question{Role: placeorg.RolePlaceCharter, Purpose: "Say what these chats are about in one line of at most ten words.", Context: contextText, MaxTokens: 40}, charterValid, charterFallback)
-			line, ok := charterValid(charter.Written)
-			if !ok || charter.FellBack {
-				line = charterFallback
-			}
-			contextText = "These chats are about: " + line + "\n" + contextText
 		}
 		var used []string
 		for text := range taken {

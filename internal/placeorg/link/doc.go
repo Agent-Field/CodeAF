@@ -3,11 +3,15 @@
 // place's flat list. A view is never a place: this stage returns no op
 // that creates a node.
 //
-// Shortcuts follow the reference rule. A chat is scored against the
+// Extra homes are earned, not capped. A chat is scored against the
 // finest places (the deepest nodes that survived, which are the leaf
-// communities when any fine community survived). A place within Delta of
-// the best score and at or above Floor is a shortcut, after the single
-// best itself is set aside, and at most MaxLinks of them are kept. Floor
+// communities when any fine community survived), at its start anchor and,
+// when SetEnd supplied end vectors, at its end anchor too. A place within
+// Delta of that anchor's best and at or above Floor is earned. Homes are
+// counted by distinct branch: leaves under one parent are one home. The
+// place the chat lives in, its fit when it has none, and every ancestor of
+// it are set aside. Each link records its score and the bar it cleared,
+// which is what the homes invariant checks, and Homes gives the histogram. Floor
 // and Delta come from State.Thresholds for the tree's space when that
 // space was calibrated, and otherwise from the reference figures 0.45
 // and 0.03.

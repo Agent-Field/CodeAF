@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/placegraph"
 	"github.com/Agent-Field/codeaf/internal/placeorg"
+	"github.com/Agent-Field/codeaf/internal/placeorg/vectors"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -126,6 +127,11 @@ type PlaceAdvice struct {
 	// Organizer is the placeorg run. Nil leaves organizing on the folder rule
 	// and the same-name merges, and the new routes answer 404.
 	Organizer *Organizer
+	// Settled hands the organiser real END text after the existing settle wait.
+	// It runs even when the filing ledger already considered the chat, because
+	// later messages can earn homes without replacing its recorded primary.
+	// Nil leaves the organiser's drift capability absent until it is wired.
+	Settled func(context.Context, placeorg.Chat) error
 
 	b      *Bridge
 	ctx    context.Context
@@ -444,6 +450,23 @@ func (a *PlaceAdvice) fileChat(ctx context.Context, chat string, s *conversation
 		rec.Decide = a.organizerFiling
 	}
 	offer, err := rec.FileChat(ctx, evidence, a.library())
+	if err == nil && a.Settled != nil {
+		chat := placeorg.FromEvidence(evidence, "", time.Time{})
+		chat.Text = clipRunes(strings.TrimSpace(evidence.Title+"\n"+evidence.FirstMessage), placeorg.TextRunes)
+		var users []string
+		var lastAssistant string
+		for _, entry := range s.conn.Agent.Transcript() {
+			if entry.Role == "user" {
+				users = append(users, entry.Text)
+			} else if entry.Role == "assistant" && !entry.Interrupted && entry.Tool == "" {
+				lastAssistant = entry.Text
+			}
+		}
+		chat.EndText = vectors.EndText(chat.Title, users, lastAssistant)
+		if chat.EndText != "" {
+			err = a.Settled(ctx, chat)
+		}
+	}
 	a.settleAsk(offer != nil && offer.Status == placegraph.StatusPending, err)
 }
 

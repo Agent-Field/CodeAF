@@ -32,10 +32,51 @@ type Index struct {
 	docs  map[string][]string
 	df    map[string]int
 	n     int
+	// owner holds the lowercase words that are the person's own name. A place
+	// named for the person tells the person nothing, so Validator refuses them.
+	owner map[string]bool
+}
+
+// MinTitleChats is how many member chats must carry a name word in their
+// titles before it counts as the place's own vocabulary rather than an accident.
+const MinTitleChats = 2
+
+// homeUser reads the person's account name from the folders their chats ran
+// in: the segment after /home or /Users that most chats share. It is derived
+// from the corpus, never written down, so another person's library works alike.
+func homeUser(chats []placeorg.Chat) string {
+	counts := map[string]int{}
+	for _, c := range chats {
+		parts := strings.Split(strings.ReplaceAll(c.Workspace, "\\", "/"), "/")
+		for i := 0; i+1 < len(parts); i++ {
+			if parts[i] == "home" || parts[i] == "Users" {
+				counts[strings.ToLower(parts[i+1])]++
+				break
+			}
+		}
+	}
+	best := ""
+	for w, n := range counts {
+		if n > counts[best] || (n == counts[best] && w < best) {
+			best = w
+		}
+	}
+	return best
+}
+
+// WithOwner adds words from the person's profile (their name, handle) to the
+// words the corpus already revealed, and returns the index for chaining.
+func (idx *Index) WithOwner(words ...string) *Index {
+	for _, w := range words {
+		for _, part := range tokenRE.FindAllString(strings.ToLower(w), -1) {
+			idx.owner[part] = true
+		}
+	}
+	return idx
 }
 
 func NewIndex(corpus *placeorg.Corpus) *Index {
-	idx := &Index{docs: map[string][]string{}, df: map[string]int{}}
+	idx := &Index{docs: map[string][]string{}, df: map[string]int{}, owner: map[string]bool{}}
 	for _, c := range corpus.Chats {
 		if k := corpus.Kinds[c.ID]; k == placeorg.KindProbe || k == placeorg.KindDuplicate {
 			continue
@@ -60,6 +101,7 @@ func NewIndex(corpus *placeorg.Corpus) *Index {
 			idx.df[w]++
 		}
 	}
+	idx.WithOwner(homeUser(idx.chats))
 	return idx
 }
 
@@ -107,6 +149,13 @@ func (idx *Index) Candidates(members []string) []string {
 // Validator keeps the dominant spelling in member titles; message spelling is a backstop.
 // Semantic picks may combine member words, but cannot introduce an unsupported word.
 func (idx *Index) Validator(members []string, taken map[string]bool) placeorg.Validator {
+	return idx.ValidatorWithCharter(members, taken, "")
+}
+
+// ValidatorWithCharter also refuses a name word that is the person's own name,
+// or that fewer than MinTitleChats member titles use unless the charter line
+// says it: a rare token names an accident, not a subject.
+func (idx *Index) ValidatorWithCharter(members []string, taken map[string]bool, charter string) placeorg.Validator {
 	member := map[string]bool{}
 	for _, id := range members {
 		member[id] = true
@@ -117,6 +166,20 @@ func (idx *Index) Validator(members []string, taken map[string]bool) placeorg.Va
 			titles = append(titles, c.Title)
 			texts = append(texts, c.Text)
 		}
+	}
+	inTitles := map[string]int{}
+	for _, title := range titles {
+		seen := map[string]bool{}
+		for _, w := range tokenRE.FindAllString(strings.ToLower(title), -1) {
+			if !seen[w] {
+				seen[w] = true
+				inTitles[w]++
+			}
+		}
+	}
+	meant := map[string]bool{}
+	for _, w := range tokenRE.FindAllString(strings.ToLower(charter), -1) {
+		meant[w] = true
 	}
 	spell := dominant(titles)
 	for key, value := range dominant(texts) {
@@ -138,7 +201,10 @@ func (idx *Index) Validator(members []string, taken map[string]bool) placeorg.Va
 			if !generic[key] && !stop[key] {
 				allGeneric = false
 			}
-			if spell[key] == "" {
+			if spell[key] == "" || idx.owner[key] {
+				return "", false
+			}
+			if !generic[key] && !stop[key] && inTitles[key] < MinTitleChats && !meant[key] {
 				return "", false
 			}
 			fields[i] = spell[key]

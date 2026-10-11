@@ -1,0 +1,24 @@
+{
+  "note": "The latest tree put Codeaf Spark (69 chats) and Agent Fieldwork (85) under one root, Uwm Japa (156). This is that shape at quorum size: the two places share no derived anchor and their centroids are orthogonal, so the root is not a parent.",
+  "roots": ["uwm"],
+  "nodes": [
+    {"id": "uwm", "name": "Uwm Japa", "depth": 1, "children": ["spark", "field"], "members": ["p0", "p1", "p2", "p3"]},
+    {"id": "spark", "parent": "uwm", "name": "Codeaf Spark", "depth": 2, "members": ["s0", "s1", "s2", "s3"]},
+    {"id": "field", "parent": "uwm", "name": "Agent Fieldwork", "depth": 2, "members": ["f0", "f1", "f2", "f3"]}
+  ],
+  "anchors": {
+    "s0": {"spark": 1},
+    "s1": {"spark": 1},
+    "s2": {"spark": 1},
+    "s3": {"spark": 1},
+    "f0": {"fieldwork": 1},
+    "f1": {"fieldwork": 1},
+    "f2": {"fieldwork": 1},
+    "f3": {"fieldwork": 1}
+  },
+  "vectors": {
+    "s0": [1, 0], "s1": [1, 0], "s2": [1, 0], "s3": [1, 0],
+    "f0": [0, 1], "f1": [0, 1], "f2": [0, 1], "f3": [0, 1],
+    "p0": [0.6, 0.6], "p1": [0.6, 0.6], "p2": [0.6, 0.6], "p3": [0.6, 0.6]
+  }
+}

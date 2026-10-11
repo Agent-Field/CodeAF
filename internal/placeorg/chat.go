@@ -32,6 +32,10 @@ type Chat struct {
 	// person message cut to TextRunes, with lines that repeat across many
 	// chats removed first (boilerplate briefs and preambles are not subject).
 	Text string
+	// EndText is the optional title and conversation tail prepared from real
+	// messages by the caller. It is empty for a single-message chat and is
+	// embedded separately; structural stages continue to use Text only.
+	EndText string
 	// Title is kept separately because names and anchors weigh it more.
 	Title string
 	// Workspace is the chat's folder as the engine reports it; RepoKey is the
