@@ -1852,32 +1852,33 @@ attached willing to take everything. The toggle never lets a machine pull a
 job that already belongs to someone else. A factory with no store answers
 HTTP 501 with `this factory does not provide that action`.
 
-## factory about, pipeline file, dry run and today's spend
+## factory about, pipeline file, dry run and spent today
 
-`GET /v1/about` answers before any token. The body is
-`name`, `codeaf_version`, `contract`, `needs`, `access`, `polling_every` and `served_by`.
-`needs` is `token`, `device` or `none`. `access` is `loopback`, `token` or `tailnet`.
-`served_by` is `tui` when a window is serving and `factory` when `codeaf factory` is.
-`polling_every` is present when this host polls GitHub, and absent when it does not.
-A loopback address with no token is `name` `localhost`, `access` `loopback`, `needs`
-`none` and `served_by` `tui`. A configured access token is `needs` `token` and
-`access` `token`. This read names no job and no repository. `GET /v1/me` carries the
-same `access`, `polling_every` and `served_by`.
+`GET /v1/about` answers before any token. The body is `name`, `codeaf_version`,
+`contract`, `needs`, `access`, `polling_every` and `served_by`. `needs` is `token`,
+`device` or `none`. `access` is `loopback`, `token` or `tailnet`. `served_by` is
+`tui` when a window is serving and `factory` when `codeaf factory` is. `polling_every`
+is present when this host polls GitHub, and absent when it does not. A loopback
+address with no token is `name` `localhost`, `access` `loopback`, `needs` `none` and
+`served_by` `tui`. A configured access token is `needs` `token` and `access` `token`.
+This read names no job and no repository. `GET /v1/me` carries the same `access`,
+`polling_every` and `served_by`.
 
 `GET /v1/repos/{owner}/{repo}/pipeline` returns the file that was read. `text` is the
 repository file. `personal` is true when `~/.codeaf/factory.yaml` tightened it, and
 `personal_text` is that file. `origin` is `main`, `working tree` or `defaults`.
-`start` is `labels`, `max_size`, `max_cost`, `never` and `ask_first`. `size` is
-`pr_lines` and `issue`. Each step's `until` stays `done`, `clean`, `green` or `proven`.
-`until_sentence` is the file's own until line, such as `the plan names its files`.
+The `start` object is `labels`, `max_size`, `max_cost`, `never` and `ask_first`.
+`size` is `pr_lines` and `issue`. Each step's `until` stays `done`, `clean`, `green`
+or `proven`. `until_sentence` is the file's own until line, such as
+`the plan names its files`.
 
 `GET /v1/repos/{owner}/{repo}/dryrun` adds `would_wait`, each `{job, reason}`.
-With one start label the reason is `no agent-ready label` when that label is
-`agent-ready`. With no start label the reason is `nothing starts on its own`.
-A GitHub job stored as the short repository name matches
-`owner/name`. `GET /v1/queue`'s `since` fills `shipped`, `asked`, `handled` and `spent`
-from the floor. `spent_today` is what was spent today. `spent` counts only streams
-that started since the window opened. Every error body, including HTTP 401
+One named label yields `no agent-ready label` when that label is `agent-ready`.
+No named label yields `nothing starts on its own`. A GitHub job stored as the short
+repository name matches `owner/name`. `GET /v1/queue`'s `since` fills `shipped`,
+`asked`, `handled` and `spent` from the floor. `spent_today` is what was spent today.
+`spent` counts only streams that began after the window opened. Every error body,
+including HTTP 401
 `a bearer access token or live session is required; open /access to enter the token`,
 carries `request_id`, eight hex characters. Taking a job records the attached
 machine's name when that machine has registered.
