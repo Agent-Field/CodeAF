@@ -142,6 +142,7 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 	it := api.ToItem(pulled.Job)
 	j := &job{o: o, w: w, lease: pulled.Lease.ID, id: it.ID}
 	defer os.Remove(o.Mirror.ItemPath(it.ID))
+	pulledTalk, pulledNotes := it.Talk, it.Notes
 	start := stand(&it, pulled.Signals)
 	if err := o.Mirror.Save(it); err != nil {
 		j.refuse(ctx, err)
@@ -151,7 +152,11 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		j.refuse(ctx, err)
 		return
 	}
+	// THE BASELINE IS THE JOB AS STARTED, less what the factory never held:
+	// the manager conversation and the brief the start wrote are the run's
+	// and go in the first report.
 	j.sent, _ = o.Mirror.Get(it.ID)
+	j.sent.Talk, j.sent.Notes = pulledTalk, pulledNotes
 	report := time.NewTicker(o.ReportEvery)
 	defer report.Stop()
 	beat := time.NewTicker(o.BeatEvery)

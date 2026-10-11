@@ -1,8 +1,11 @@
 package run
 
 import (
+	"encoding/json"
 	"reflect"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
@@ -42,7 +45,43 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 	if len(cur.Notes) > len(prev.Notes) && reflect.DeepEqual(cur.Notes[:len(prev.Notes)], prev.Notes) {
 		r.Notes = append([]string(nil), cur.Notes[len(prev.Notes):]...)
 	}
+	r.Log = without(r.Log, echoes(prev, r))
 	return r, !reflect.DeepEqual(r, factory.RunReport{})
+}
+
+// echoes are the log lines the server writes itself when it applies r (a
+// step's first line, its claims, the question), found by applying r to a copy
+// of prev. The runner wrote the same lines here; sending them too would say
+// each twice.
+func echoes(prev factory.Item, r factory.RunReport) []factory.LogLine {
+	raw, err := json.Marshal(prev)
+	if err != nil {
+		return nil
+	}
+	var sim factory.Item
+	if json.Unmarshal(raw, &sim) != nil {
+		return nil
+	}
+	sim.State = factory.StateRunning
+	r.Log = nil
+	if ApplyReport(&sim, r, time.Time{}) != nil {
+		return nil
+	}
+	return newLines(streamOf(prev).Log, streamOf(sim).Log)
+}
+
+// without is lines less one line of the same tone and words for each echo.
+func without(lines, echoes []factory.LogLine) []factory.LogLine {
+	var kept []factory.LogLine
+	for _, l := range lines {
+		i := slices.IndexFunc(echoes, func(e factory.LogLine) bool { return e.Tone == l.Tone && e.Text == l.Text })
+		if i >= 0 {
+			echoes = slices.Delete(echoes, i, i+1)
+			continue
+		}
+		kept = append(kept, l)
+	}
+	return kept
 }
 
 func streamOf(it factory.Item) factory.Stream {

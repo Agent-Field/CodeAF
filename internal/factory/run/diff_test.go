@@ -26,13 +26,15 @@ func TestDiffReportsTheRunnersWritesOnly(t *testing.T) {
 	cur.Stream = &factory.Stream{Started: prev.Stream.Started, Spent: 0.75, Log: append([]factory.LogLine(nil), prev.Stream.Log...),
 		Phases: []factory.Phase{{Name: "plan", Kind: factory.StageChat, State: factory.PhaseDone, Round: 1, Result: &factory.StageResult{Done: true, Output: "a plan"}},
 			{Name: factory.ApproveName, Kind: factory.StageGate, State: factory.PhaseDone}}}
-	cur.Stream.Log = append(cur.Stream.Log, factory.LogLine{Tone: "said", Text: "plan: a plan"}, factory.LogLine{Tone: "said", Text: sayLanded})
+	cur.Stream.Log = append(cur.Stream.Log, factory.LogLine{Tone: "said", Text: "plan: a plan"},
+		factory.LogLine{Tone: "said", Text: "steer: shorter"}, factory.LogLine{Tone: "said", Text: sayLanded})
 	cur.State = factory.StateLanded
 	r, ok := Diff(prev, cur)
 	if !ok || len(r.Stages) != 1 || r.Stages[0].Name != "plan" || r.Stages[0].Result == nil {
 		t.Fatalf("steps reported: %+v", r.Stages)
 	}
-	if r.Cost != 0.25 || len(r.Log) != 1 || r.Log[0].Text != "plan: a plan" {
+	// `plan: a plan` is the server's own line for the result: not sent.
+	if r.Cost != 0.25 || len(r.Log) != 1 || r.Log[0].Text != "steer: shorter" {
 		t.Fatalf("cost %v, log %+v", r.Cost, r.Log)
 	}
 	if r.Pipeline != nil || r.Question != nil {
@@ -44,6 +46,15 @@ func TestDiffReportsTheRunnersWritesOnly(t *testing.T) {
 	}
 	if ph := server.Stream.Phases[0]; ph.State != factory.PhaseDone || ph.Result == nil || ph.Result.Output != "a plan" {
 		t.Fatalf("the server's plan step: %+v", ph)
+	}
+	said := 0
+	for _, l := range server.Stream.Log {
+		if l.Text == "plan: a plan" {
+			said++
+		}
+	}
+	if said != 1 {
+		t.Fatalf("the server's log says the result %d times: %+v", said, server.Stream.Log)
 	}
 	if _, ok := Diff(cur, cur); ok {
 		t.Fatal("no change was reported as one")
