@@ -918,6 +918,23 @@ type v3Launch struct {
 	Subharnesses v3Subharness
 }
 
+// v3AdoptPin gives a launch that chose neither a model nor a pin the
+// --one-model pin recorded on the conversation it reopens ([session.Meta]'s
+// OneModel). The pin is a fact about the conversation, written once by the
+// launch that made it; every later opener reads it here rather than each
+// carrying the window's flags.
+func v3AdoptPin(opts v3Options, dir string) v3Options {
+	if opts.OneModel || strings.TrimSpace(opts.Model) != "" || strings.TrimSpace(dir) == "" {
+		return opts
+	}
+	meta, err := session.LoadMeta(dir)
+	if err != nil || !meta.OneModel || strings.TrimSpace(meta.Model) == "" {
+		return opts
+	}
+	opts.OneModel, opts.Model = true, strings.TrimSpace(meta.Model)
+	return opts
+}
+
 func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// The profile, the catalog, the harness registry and the stores were all
 	// resolved once, at the door (chatv3_process.go). Everything below this line
@@ -939,6 +956,14 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		return nil, err
 	}
 	transcript, resumed := found.Transcript, found.Resumed
+	// A PINNED CONVERSATION STAYS PINNED. A launch that chose no model and no
+	// pin (a team wake's hello, a second host, a headless resume) reopening a
+	// conversation born under --one-model takes that conversation's pin, so
+	// every call it makes stays on the pinned model ([v3AdoptPin]).
+	if resumed {
+		opts = v3AdoptPin(opts, found.Place.Dir)
+		chosen = v3TalkModel(opts.Model, settings)
+	}
 	// THE TOOLS ROOT IS THE SESSION'S OWN ANSWER. A borrowed session works in
 	// the project it borrowed; an owned one works in its own work/ directory,
 	// which is prepared here because nothing downstream may find it missing.

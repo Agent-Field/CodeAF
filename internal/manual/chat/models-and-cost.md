@@ -1317,6 +1317,10 @@ the same model and one-model posture, so they cannot reopen your usual crew.
 The factory worker carries that posture into its manager and stage conversations,
 including resumed stages. A later launch in the same process updates the worker's
 launch config; newly opened conversations use that launch's model and posture.
+The pin is saved with each conversation it opens (`oneModel` in the conversation's
+`meta.json`). When codeaf reopens one of those conversations without naming a model,
+such as a team wake, a factory stage on another session host, or `codeaf resume`
+without `--model`, the conversation stays on its pinned model and posture.
 
 Without it, the calls codeaf makes on your behalf go to the crew, which is the point of the
 crew — but it means a session started with `--model X` did not spend all of its money on X.

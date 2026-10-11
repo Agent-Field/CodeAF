@@ -67,7 +67,7 @@ func (a *Agent) stampUserLocked(text string) {
 	title := placeholderTitle(text)
 	a.metaStamp().Owe(func() {
 		a.updateMeta(dir, snapshot, func(meta *Meta) {
-			meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
+			meta.Model, meta.OneModel, meta.Effort, meta.Approval = snapshot.Model, snapshot.OneModel, snapshot.Effort, snapshot.Approval
 			meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
 			meta.LastUserAt = at
 			if strings.TrimSpace(meta.Title) == "" {
@@ -281,7 +281,7 @@ func (a *Agent) updateMeta(dir string, snapshot Meta, patch func(*Meta)) {
 			meta.Created = snapshot.Created
 		}
 		if meta.Model == "" {
-			meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
+			meta.Model, meta.OneModel, meta.Effort, meta.Approval = snapshot.Model, snapshot.OneModel, snapshot.Effort, snapshot.Approval
 		}
 		if meta.Places == nil {
 			meta.Places = snapshot.Places
@@ -316,6 +316,8 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 	if model := strings.TrimSpace(a.model); model != "" {
 		meta.Model = model
 	}
+	// The pin is written with the model it pins, so a headless reopen keeps it.
+	meta.OneModel = a.config.OneModel
 	// The rung is written whatever it is, absence included, because absence is
 	// a value a person can choose their way back to: a session dialled to max
 	// and then turned off again has to come back off rather than back at max.
@@ -375,7 +377,7 @@ func (a *Agent) stampTrees() { a.stampMeta() }
 func (a *Agent) stampMeta() {
 	dir, snapshot := a.metaSnapshotAt()
 	a.updateMeta(dir, snapshot, func(meta *Meta) {
-		meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
+		meta.Model, meta.OneModel, meta.Effort, meta.Approval = snapshot.Model, snapshot.OneModel, snapshot.Effort, snapshot.Approval
 		meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
 	})
 }

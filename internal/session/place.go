@@ -200,6 +200,13 @@ type Meta struct {
 	Owned bool `json:"owned,omitempty"`
 	// Model is the conversation's model at last save, for the picker row.
 	Model string `json:"model,omitempty"`
+	// OneModel marks a conversation whose model is a `--one-model` pin
+	// ([Config.OneModel]): every text call it makes rides Model. It is here so
+	// the pin travels with the conversation rather than with the window that
+	// opened it — a host that opens the conversation headless later (a team
+	// wake, a factory stage, a second host) reads it back and keeps the promise
+	// instead of falling to the profile's default model and crew.
+	OneModel bool `json:"oneModel,omitempty"`
 	// Build names the codeaf that most recently wrote this identity.
 	Build string `json:"build,omitempty"`
 	// Effort is the rung on the effort ladder this conversation was set to —
