@@ -38,6 +38,10 @@ type Entry struct {
 	Op       *Op       `json:"op,omitempty"`
 	// Note is one line of prose for anything else.
 	Note string `json:"note,omitempty"`
+	// Model is the model this run asks. A judgment's Pick names the model
+	// that actually answered when one did, which can differ when a pin is
+	// not what served the call.
+	Model string `json:"Model,omitempty"`
 	// Spent is the running total at this line.
 	Spent Spent `json:"spent"`
 }

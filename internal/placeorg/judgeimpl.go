@@ -45,8 +45,8 @@ var _ Judge = (*meteredJudge)(nil)
 // or the fallback.
 func (j *meteredJudge) Choose(ctx context.Context, q Question, fallback Option) Pick {
 	pick := Pick{Key: fallback.Key, FellBack: true}
-	answer, cost, why := j.exchange(ctx, q, choosePrompt(q))
-	pick.CostUSD = cost
+	answer, cost, model, why := j.exchange(ctx, q, choosePrompt(q))
+	pick.CostUSD, pick.Model = cost, model
 	if why == "" {
 		if key, ok := matchOption(answer, q.Options); ok {
 			pick.Key, pick.FellBack = key, false
@@ -62,8 +62,8 @@ func (j *meteredJudge) Choose(ctx context.Context, q Question, fallback Option) 
 // validator accepts it; otherwise the fallback.
 func (j *meteredJudge) Write(ctx context.Context, q Question, valid Validator, fallback string) Pick {
 	pick := Pick{Written: fallback, FellBack: true}
-	answer, cost, why := j.exchange(ctx, q, writePrompt(q))
-	pick.CostUSD = cost
+	answer, cost, model, why := j.exchange(ctx, q, writePrompt(q))
+	pick.CostUSD, pick.Model = cost, model
 	if why == "" {
 		if clean, ok := valid(answer); ok {
 			pick.Written, pick.FellBack = clean, false
@@ -77,24 +77,24 @@ func (j *meteredJudge) Write(ctx context.Context, q Question, valid Validator, f
 
 // exchange spends one call, if the budget has one left, and returns the raw
 // answer. A non-empty why says no usable answer came back.
-func (j *meteredJudge) exchange(ctx context.Context, q Question, prompt string) (answer string, cost float64, why string) {
+func (j *meteredJudge) exchange(ctx context.Context, q Question, prompt string) (answer string, cost float64, model, why string) {
 	if why = j.reserve(); why != "" {
-		return "", 0, why
+		return "", 0, "", why
 	}
 	if j.ask == nil {
-		return "", 0, "no model is available"
+		return "", 0, "", "no model is available"
 	}
 	if err := ctx.Err(); err != nil {
-		return "", 0, "the run was cancelled"
+		return "", 0, "", "the run was cancelled"
 	}
-	raw, err := j.ask(ctx, placegraph.ModelRequest{Role: q.Role, System: judgeSystem, User: prompt})
+	raw, err := j.ask(ctx, placegraph.ModelRequest{Role: q.Role, System: judgeSystem, User: prompt, AnsweredBy: &model})
 	if err != nil {
-		return "", 0, "the model did not answer"
+		return "", 0, model, "the model did not answer"
 	}
 	if j.price != nil {
 		cost = j.price(prompt, raw)
 	}
-	return strings.TrimSpace(raw), cost, ""
+	return strings.TrimSpace(raw), cost, model, ""
 }
 
 // reserve counts the call before it is made, so two stages asking at once

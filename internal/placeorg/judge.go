@@ -54,7 +54,7 @@ type Question struct {
 type Pick struct {
 	Key      string
 	Written  string
-	Model    string
+	Model    string `json:"Model,omitempty"`
 	FellBack bool
 	Why      string
 	CostUSD  float64
