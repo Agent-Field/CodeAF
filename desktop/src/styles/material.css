@@ -2,7 +2,9 @@
    browsers blur only chrome so opaque content never samples a second blur. */
 .app-shell { background: var(--frame); }
 :root[data-material="native"] body { background: transparent; }
-:root[data-material="native"] .app-shell { background: var(--frame-glass); backdrop-filter: none; }
+/* macOS already draws the blurred desktop beneath the view, so the native frame adds only the place tint at a light
+   weight. The heavier --frame-glass tint is for the browser fallback, where CSS blur is the only material. */
+:root[data-material="native"] .app-shell { background: color-mix(in oklch, var(--frame) var(--frame-native-tint), transparent); backdrop-filter: none; }
 :root[data-material="native"] .app-shell :is(.sidebar, .workspace-tabbar, .content-toolbar) { background: transparent; backdrop-filter: none; }
 :root[data-material="glass"] .app-shell { background: transparent; backdrop-filter: none; }
 :root[data-material="glass"] .app-shell :is(.sidebar, .workspace-tabbar, .content-toolbar) {
