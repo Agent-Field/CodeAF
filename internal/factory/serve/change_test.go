@@ -39,7 +39,7 @@ func TestWorkerChangeFactsReachJobAndQueueAndSurviveRestart(t *testing.T) {
 		t.Fatalf("saved facts = %+v, %v", saved, err)
 	}
 	before, _ := f.st.Revision(it.ID)
-	f.request(t, "POST", path, worker.Credential, api.WorkerReport{Change: &factory.Change{Files: []factory.ChangedFile{{Path: "fix.go", Added: -1, Status: "modified"}}}}, 400, nil)
+	f.request(t, "POST", path, worker.Credential, api.WorkerReport{Change: &factory.Change{Files: []factory.ChangedFile{{Path: "fix.go", Added: -1, Status: "modified"}}}}, 422, nil)
 	after, _ := f.st.Revision(it.ID)
 	if before != after {
 		t.Fatal("invalid change report wrote the job")

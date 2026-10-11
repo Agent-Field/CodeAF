@@ -157,7 +157,7 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Handle == "" {
 		if !loopbackRequest(r) {
-			h.fail(w, http.StatusBadRequest, "worker attach requires a handle")
+			h.fail(w, http.StatusUnprocessableEntity, "worker attach requires a handle")
 			return
 		}
 		// Only a worker on this machine may use the factory's person when
@@ -169,7 +169,7 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 		body.Handle = handle
 	}
 	if body.Name == "" || body.Handle == "" {
-		h.fail(w, http.StatusBadRequest, "worker attach requires name and handle")
+		h.fail(w, http.StatusUnprocessableEntity, "worker attach requires name and handle")
 		return
 	}
 	id, err := secret()
@@ -274,7 +274,7 @@ func (h *Handler) pulled(w http.ResponseWriter, held lease.Lease) {
 	if h.workerError(w, err) {
 		return
 	}
-	h.write(w, http.StatusOK, api.WorkerPull{Factory: h.factory, Lease: workerLease(held), Job: api.FromItem(it), Signals: wireSignals(signals)})
+	h.write(w, http.StatusOK, api.WorkerPull{Factory: h.factory, Lease: workerLease(held), Job: h.withVersion(api.FromItem(it)), Signals: wireSignals(signals)})
 }
 
 func wireSignals(in []lease.Signal) []api.WorkerSignal {
@@ -346,7 +346,7 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 	}
 	state, ok := api.ToWorkerState(body)
 	if !ok {
-		h.fail(w, http.StatusBadRequest, "unknown final job state")
+		h.fail(w, http.StatusUnprocessableEntity, "unknown final job state")
 		return
 	}
 	h.applyWorker(w, r, true, func(it *factory.Item) error {
@@ -396,7 +396,7 @@ func (h *Handler) applyWorker(w http.ResponseWriter, r *http.Request, complete b
 		return invalid
 	})
 	if invalid != nil {
-		h.fail(w, http.StatusBadRequest, invalid.Error())
+		h.fail(w, http.StatusUnprocessableEntity, invalid.Error())
 		return
 	}
 	if !h.workerError(w, err) {

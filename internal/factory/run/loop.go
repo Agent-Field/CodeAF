@@ -1624,26 +1624,37 @@ func (r *Runner) SignOff(id int, edited bool) (bool, error) {
 	return HabitDue(r.opts.Store, repo), nil
 }
 
+// ApprovalRefused is the proof gate's check without marking the item. The
+// HTTP door runs it before writing an approval, so a claim that is not shown
+// never leaves a receipt the publish door would then refuse.
+func ApprovalRefused(it *factory.Item, edited bool) error {
+	if it.State != factory.StateLanded {
+		return fmt.Errorf("%s has not landed", it.Ref())
+	}
+	if edited {
+		return nil
+	}
+	bad := 0
+	for _, cl := range append(append([]factory.Claim(nil), it.Proof...), it.Policy...) {
+		if !cl.OK {
+			bad++
+		}
+	}
+	if bad == 1 {
+		return fmt.Errorf("%s has a claim not shown", it.Ref())
+	}
+	if bad > 1 {
+		return fmt.Errorf("%s has %d claims not shown", it.Ref(), bad)
+	}
+	return nil
+}
+
 // approveStored is the proof gate's own check and mark, on the stored item: a
 // landed item, every claim shown unless the person changed something first
 // (edited), its question down and the approval's activity word noted.
 func approveStored(it *factory.Item, edited bool, now time.Time) error {
-	if it.State != factory.StateLanded {
-		return fmt.Errorf("%s has not landed", it.Ref())
-	}
-	if !edited {
-		bad := 0
-		for _, cl := range append(append([]factory.Claim(nil), it.Proof...), it.Policy...) {
-			if !cl.OK {
-				bad++
-			}
-		}
-		if bad == 1 {
-			return fmt.Errorf("%s has a claim not shown", it.Ref())
-		}
-		if bad > 1 {
-			return fmt.Errorf("%s has %d claims not shown", it.Ref(), bad)
-		}
+	if err := ApprovalRefused(it, edited); err != nil {
+		return err
 	}
 	it.Question, it.QKind = "", ""
 	if edited {

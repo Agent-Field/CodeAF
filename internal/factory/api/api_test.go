@@ -474,3 +474,40 @@ func fill(v reflect.Value, path string, depth int) {
 		v.SetMapIndex(k, e)
 	}
 }
+
+func TestQuestionKindsOptionsAndCapNumbers(t *testing.T) {
+	capJob := factory.Item{
+		ID: 1, State: factory.StateNeedsYou, Question: "the cap is spent", QKind: "cap", Cap: 4,
+		Stream: &factory.Stream{Spent: 4.5, Cur: 0, Phases: []factory.Phase{{Name: "write"}}},
+	}
+	qs := FromItem(capJob).Questions
+	if len(qs) != 1 || qs[0].Kind != "cap" || qs[0].Limit != 4 || qs[0].Spent != 4.5 || qs[0].NextLimit != 8 {
+		t.Fatalf("cap question %+v", qs)
+	}
+	if !reflect.DeepEqual(qs[0].Options, []string{"yes", "no"}) {
+		t.Fatalf("cap options %+v", qs[0].Options)
+	}
+	choice := factory.Item{Question: "which way", QKind: "step", Asking: &factory.Asked{
+		Question: "which way", With: factory.AskedYou, Options: []string{"keep", "drop"}, Stage: "plan",
+	}}
+	got := FromItem(choice).Questions
+	if len(got) != 1 || got[0].Kind != "step" || !reflect.DeepEqual(got[0].Options, []string{"keep", "drop"}) {
+		t.Fatalf("choice %+v", got)
+	}
+	if FromItem(factory.Item{Question: "approve the plan?", QKind: factory.QKindApprove}).Questions[0].Kind != "plan" {
+		t.Fatal("approve step did not read as plan")
+	}
+	rounds := "take one more round, or go on as is?"
+	if FromItem(factory.Item{Question: rounds, QKind: "scope"}).Questions[0].Kind != "max_rounds" {
+		t.Fatal("rounds ask did not read as max_rounds")
+	}
+	if FromItem(factory.Item{Question: "is this the proof?", QKind: "proof"}).Questions[0].Kind != "proof" {
+		t.Fatal("proof kind was rewritten")
+	}
+	if back := ToItem(FromItem(factory.Item{ID: 3, Question: "approve the plan?", QKind: factory.QKindApprove})); back.QKind != factory.QKindApprove {
+		t.Fatalf("plan round trip stored %q", back.QKind)
+	}
+	if back := ToItem(FromItem(factory.Item{ID: 3, Question: rounds, QKind: "scope"})); back.QKind != "scope" {
+		t.Fatalf("rounds round trip stored %q", back.QKind)
+	}
+}

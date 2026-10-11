@@ -24,13 +24,13 @@ func (h *Handler) audit(w http.ResponseWriter, r *http.Request) {
 		var err error
 		since, err = time.Parse(time.RFC3339Nano, words)
 		if err != nil {
-			h.fail(w, http.StatusBadRequest, "since must be an RFC3339 timestamp")
+			h.fail(w, http.StatusUnprocessableEntity, "since must be an RFC3339 timestamp")
 			return
 		}
 	}
 	format := r.URL.Query().Get("format")
 	if format != "" && format != "json" && format != "csv" {
-		h.fail(w, http.StatusBadRequest, "format must be json or csv")
+		h.fail(w, http.StatusUnprocessableEntity, "format must be json or csv")
 		return
 	}
 	_, viewer := h.repoAccess(r, nil)
@@ -122,8 +122,9 @@ func jobCost(it factory.Item) float64 {
 	return 0
 }
 
-// The identity is resolved before touching the job, and only successful verbs
-// enter the history. Approvals have their stricter write-before-consent door.
+// The identity is resolved before touching the job, and only a verb the door
+// accepted enters the history. An approve-step yes uses the same receipt as
+// approve, written after the answer door accepts.
 func (h *Handler) recordAction(r *http.Request, it factory.Item, kind, detail string, door func() error) error {
 	if h.config.Record == nil {
 		return door()
@@ -147,28 +148,38 @@ func (h *Handler) recordedID(door func(int) error, kind string) jobAction {
 
 func (h *Handler) recordedWords(door func(int, string) error, kind string) jobAction {
 	return func(w http.ResponseWriter, r *http.Request, it factory.Item) {
-		if words, ok := h.words(w, r); ok {
+		if words, ok := h.words(w, r, it, "request_changes"); ok {
 			h.finish(w, h.recordAction(r, it, kind, words, func() error { return door(it.ID, words) }))
 		}
 	}
 }
 
-// A yes through Answer is still consent at an approve step. Both public doors
-// must leave the same durable receipt before waking the runner.
+// A yes through Answer is still consent at an approve step. The receipt is
+// written only after that door accepts, so a refused yes leaves no approved event.
 func (h *Handler) recordAnswer(r *http.Request, it factory.Item, yes bool, words string) error {
 	handle, err := h.callerHandle(r)
 	if err != nil {
 		return err
 	}
+	if err := h.seam.Answer(it.ID, yes, words); err != nil {
+		return err
+	}
 	eventID := ""
+	at := time.Now()
+	if h.workers != nil {
+		at = h.workers.now()
+	}
 	if yes && it.QKind == factory.QKindApprove {
 		eventID, err = h.recordApproval(r, it, false)
 		if err != nil {
 			return err
 		}
-	}
-	if err := h.seam.Answer(it.ID, yes, words); err != nil {
-		return err
+	} else if h.config.Record != nil {
+		event, err := h.config.Record.Append(r.Context(), record.Event{Kind: record.Answered, Job: it.ID, Handle: handle, Cost: jobCost(it), Detail: words})
+		if err != nil {
+			return err
+		}
+		eventID, at = event.ID, event.At
 	}
 	text := words
 	if text == "" {
@@ -177,17 +188,6 @@ func (h *Handler) recordAnswer(r *http.Request, it factory.Item, yes bool, words
 		} else {
 			text = "no"
 		}
-	}
-	at := time.Now()
-	if h.workers != nil {
-		at = h.workers.now()
-	}
-	if eventID == "" && h.config.Record != nil {
-		event, err := h.config.Record.Append(r.Context(), record.Event{Kind: record.Answered, Job: it.ID, Handle: handle, Cost: jobCost(it), Detail: words})
-		if err != nil {
-			return err
-		}
-		eventID, at = event.ID, event.At
 	}
 	return h.keepAnswered(it, factory.Answer{By: handle, Text: text, At: at, Event: eventID})
 }

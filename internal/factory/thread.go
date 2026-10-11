@@ -37,6 +37,11 @@ type Question struct {
 	Pick     string     `json:"pick,omitempty"`
 	Why      string     `json:"why,omitempty"`
 	At       *time.Time `json:"at,omitempty"`
+	// Limit, Spent and NextLimit are a cap question's numbers, derived when
+	// the job is read. NextLimit is the cap a yes would allow.
+	Limit     float64 `json:"limit,omitempty"`
+	Spent     float64 `json:"spent,omitempty"`
+	NextLimit float64 `json:"next_limit,omitempty"`
 }
 
 // Answer preserves the person, words, clock and receipt after an ask closes.

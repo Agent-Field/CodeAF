@@ -29,6 +29,9 @@ var Verbs = []Verb{
 	{"recheck", []string{"Reverify"}},
 	{"shape", []string{"Shape"}},
 	{"take", nil},
+	// Release is un-take: the person who took the job lets it go. Like take,
+	// it is the lease desk's door and has no Seam field.
+	{"release", nil},
 	{"prioritize", []string{"Mark"}},
 	{"reply", []string{"Say"}},
 

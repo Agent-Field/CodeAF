@@ -1,6 +1,7 @@
 package api
 
 import (
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -383,26 +384,74 @@ func toActivity(a Activity) factory.Event   { return factory.Event{At: a.At, Wha
 func questions(it factory.Item) []Question {
 	var out []Question
 	if it.Question != "" {
-		q := Question{Text: it.Question, State: "open", Kind: it.QKind}
+		q := Question{Text: it.Question, State: "open", Kind: questionKindOut(it.QKind, it.Question)}
 		if st := it.Stream; st != nil && st.Cur >= 0 && st.Cur < len(st.Phases) {
 			q.FromStep = st.Phases[st.Cur].Name
 		}
+		annotateQuestion(&q, it)
 		out = append(out, q)
 	}
 	if a := it.Asking; a != nil {
 		at := a.At
 		q := Question{Text: a.Question, State: "open", Kind: QuestionAsked, FromStep: a.Stage,
-			With: a.With, Options: a.Options, Pick: a.Pick, Why: a.Why, At: &at}
+			With: a.With, Options: append([]string(nil), a.Options...), Pick: a.Pick, Why: a.Why, At: &at}
 		// A reported ask holds the same words in Question and Asking. Keep
 		// its gate kind and its answer details together on one wire entry.
 		if a.With == factory.AskedYou && it.Question != "" && it.Question == a.Question {
-			q.Kind = it.QKind
+			q.Kind = questionKindOut(it.QKind, it.Question)
+			annotateQuestion(&q, it)
 			out[0] = q
 		} else {
 			out = append(out, q)
 		}
 	}
 	return append(out, it.AnsweredQuestions...)
+}
+
+// questionKindOut is the kind a person reads. The store keeps the runner's
+// words (approve, scope); the wire says plan and max_rounds. Anything else,
+// including proof and step, is already the wire's word.
+func questionKindOut(kind, text string) string {
+	switch kind {
+	case factory.QKindApprove:
+		return "plan"
+	case "scope":
+		if strings.Contains(text, "one more round") {
+			return "max_rounds"
+		}
+	}
+	return kind
+}
+
+// questionKindIn is the store's word for a kind the wire showed, so a job
+// that left the factory and came back still has the runner's kind.
+func questionKindIn(kind string) string {
+	switch kind {
+	case "plan":
+		return factory.QKindApprove
+	case "max_rounds":
+		return "scope"
+	default:
+		return kind
+	}
+}
+
+// annotateQuestion adds the numbers and choices a cap or rounds question
+// carries. Choices the step did not offer are filled only when nothing is
+// stored beside the question, so a round trip does not invent an answer list.
+func annotateQuestion(q *Question, it factory.Item) {
+	if q.Kind == "cap" {
+		q.Limit = it.Cap
+		if it.Stream != nil {
+			q.Spent = it.Stream.Spent
+		}
+		if it.Cap > 0 {
+			q.NextLimit = it.Cap * 2
+		}
+	}
+	if len(q.Options) == 0 && it.Asking == nil && (q.Kind == "cap" || q.Kind == "max_rounds") {
+		q.Options = []string{"yes", "no"}
+	}
 }
 
 func unquestions(it *factory.Item, qs []Question) {
@@ -412,7 +461,7 @@ func unquestions(it *factory.Item, qs []Question) {
 			continue
 		}
 		if q.Kind != QuestionAsked {
-			it.Question, it.QKind = q.Text, q.Kind
+			it.Question, it.QKind = q.Text, questionKindIn(q.Kind)
 			if q.With != factory.AskedYou {
 				continue
 			}

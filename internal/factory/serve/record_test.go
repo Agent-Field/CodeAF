@@ -98,7 +98,7 @@ func TestRecordedVerbsAndAuditExport(t *testing.T) {
 	for _, tc := range []struct{ path, body, kind string }{
 		{"/v1/jobs/2/run", "", record.Started},
 		{"/v1/jobs/1/answer", `{"yes":false,"words":"revise, please"}`, record.Answered},
-		{"/v1/jobs/9/approve", "", record.Approved},
+		{"/v1/jobs/9/approve", `{"edited":true}`, record.Approved},
 		{"/v1/jobs/9/request_changes", `{"words":"show restart"}`, record.RequestChanges},
 		{"/v1/jobs/2/drop", "", record.Dropped},
 		{"/v1/jobs", `{"repo":"owner/repo","title":"fix","autostart":true}`, record.AutoStarted},
@@ -129,7 +129,7 @@ func TestRecordedVerbsAndAuditExport(t *testing.T) {
 		t.Fatalf("export=%v error=%v headers=%v", rows, err, w.Header())
 	}
 	for _, path := range []string{"/v1/audit?since=no", "/v1/audit?format=xml"} {
-		checkJSON(t, verbRequest(h, "GET", path, ""), 400)
+		checkJSON(t, verbRequest(h, "GET", path, ""), 422)
 	}
 }
 
@@ -166,7 +166,7 @@ func TestDurableApprovalBeforeSignOffAndRecordFailureRefusesConsent(t *testing.T
 				}
 				return false, nil
 			}
-			w := verbRequest(serve.New(s, cfg), "POST", "/v1/jobs/9/approve", "")
+			w := verbRequest(serve.New(s, cfg), "POST", "/v1/jobs/9/approve", `{"edited":true}`)
 			status := 200
 			if fail {
 				status = 500
@@ -181,7 +181,7 @@ func TestDurableApprovalBeforeSignOffAndRecordFailureRefusesConsent(t *testing.T
 
 func TestApprovalWithoutRecordRefusesConsent(t *testing.T) {
 	s, calls := spyVerbs(t, nil)
-	w := verbRequest(serve.New(s, config), "POST", "/v1/jobs/9/approve", "")
+	w := verbRequest(serve.New(s, config), "POST", "/v1/jobs/9/approve", `{"edited":true}`)
 	checkJSON(t, w, 500)
 	if len(*calls) != 0 {
 		t.Fatal("approval without record reached consent")
@@ -194,11 +194,15 @@ func TestAnswerYesAtApproveRecordsBeforeWakingRunner(t *testing.T) {
 	s.GitHub = func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: "octocat"}, nil }
 	s.Answer = func(id int, yes bool, words string) error {
 		events, err := cfg.Record.Since(context.Background(), time.Time{})
-		if err != nil || len(events) != 1 || events[0].Kind != record.Approved || events[0].Job != id || !yes {
-			t.Fatalf("answer has no consent: %+v %v", events, err)
+		if err != nil || len(events) != 0 || !yes {
+			t.Fatalf("receipt written before the door accepted: %+v %v", events, err)
 		}
 		return nil
 	}
 	w := verbRequest(serve.New(s, cfg), "POST", "/v1/jobs/1/answer", `{"yes":true}`)
 	checkJSON(t, w, 200)
+	events, err := cfg.Record.Since(context.Background(), time.Time{})
+	if err != nil || len(events) != 1 || events[0].Kind != record.Approved || events[0].Job != 1 {
+		t.Fatalf("receipt after the door: %+v %v", events, err)
+	}
 }

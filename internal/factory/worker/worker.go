@@ -338,12 +338,12 @@ func (j *job) beat(ctx context.Context) bool {
 	if err == nil {
 		j.keepLocal(hb.Lease)
 	}
-	j.signals(ctx, hb.Signals)
-	return true
+	return j.signals(ctx, hb.Signals)
 }
 
-// signals uses the runner for step verbs and the manager for replies.
-func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) {
+// signals uses the runner for step verbs and the manager for replies. Stop
+// answers false so the worker does not report the job back as backlog.
+func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 	r := j.o.Runner
 	for _, s := range signals {
 		switch s.Verb {
@@ -357,8 +357,13 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) {
 			_ = r.Steer(j.id, s.Words)
 		case lease.SignalShape:
 			j.shape(ctx)
+		case lease.SignalStop:
+			// Drop asked this machine to stop. Stop keeps the branch.
+			_ = r.Stop(j.id)
+			return false
 		}
 	}
+	return true
 }
 
 // reply serializes manager turns while reporting and renewing continue.

@@ -7,9 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
@@ -25,7 +23,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
-	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
@@ -212,6 +209,9 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	}
 	s, reason, whole := h.forViewer(r, s)
 	q := api.FromSnapshot(s, handle)
+	for i := range q.Jobs {
+		q.Jobs[i] = h.withVersion(q.Jobs[i])
+	}
 	q.Factory = h.factory
 	q.Reason = reason
 	if reason != "" {
@@ -246,7 +246,7 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	jobs := []api.Job{api.FromItem(it)}
+	jobs := []api.Job{h.withVersion(api.FromItem(it))}
 	if _, _, err := h.applyPresence(jobs); h.failed(w, err) {
 		return
 	}
@@ -261,7 +261,7 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) findJob(w http.ResponseWriter, r *http.Request) (factory.Item, bool) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil || id <= 0 {
-		h.fail(w, http.StatusBadRequest, "job id must be a positive integer")
+		h.fail(w, http.StatusUnprocessableEntity, "job id must be a positive integer")
 		return factory.Item{}, false
 	}
 	if !h.require(w, h.seam.Load != nil) {
@@ -338,7 +338,7 @@ func (h *Handler) repos(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) splitRepo(w http.ResponseWriter, r *http.Request) (owner, repo string, ok bool) {
 	owner, repo = r.PathValue("owner"), r.PathValue("repo")
 	if strings.ContainsAny(owner+repo, "/\\") || owner == "." || owner == ".." || repo == "." || repo == ".." {
-		h.fail(w, http.StatusBadRequest, "repository must be owner/name")
+		h.fail(w, http.StatusUnprocessableEntity, "repository must be owner/name")
 		return "", "", false
 	}
 	if !h.repoVisible(r, owner+"/"+repo) {
@@ -520,33 +520,16 @@ func (h *Handler) require(w http.ResponseWriter, exists bool) bool {
 }
 
 func (h *Handler) failed(w http.ResponseWriter, err error) bool {
-	if err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, fs.ErrNotExist):
-			status = http.StatusNotFound
-		case errors.Is(err, fs.ErrPermission), errors.Is(err, errSignInApproval):
-			status = http.StatusForbidden
-		case errors.Is(err, context.DeadlineExceeded):
-			status = http.StatusGatewayTimeout
-		case errors.Is(err, context.Canceled):
-			status = http.StatusRequestTimeout
-		case errors.Is(err, run.ErrAlreadyRunning):
-			// A second run conflicts with the one already under way. The
-			// sentence stays the refusal the runner wrote.
-			status = http.StatusConflict
-		}
-		h.fail(w, status, err.Error())
+	if err == nil {
+		return false
 	}
-	return err != nil
+	status, reason := classify(err)
+	h.refuse(w, status, err.Error(), reason, "", nil, "")
+	return true
 }
 
 func (h *Handler) fail(w http.ResponseWriter, status int, words string) {
-	h.write(w, status, struct {
-		Factory   api.Factory `json:"factory"`
-		Error     string      `json:"error"`
-		RequestID string      `json:"request_id"`
-	}{h.factory, words, requestID()})
+	h.refuse(w, status, words, reasonFor(status), "", nil, "")
 }
 
 // requestID is four random bytes, hex. Every error body carries one so a

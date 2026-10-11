@@ -36,6 +36,9 @@ const (
 	// shaping turn now. Nothing is launched. A job nobody holds is not
 	// signaled: the factory runs that turn itself, where the worker lives.
 	SignalShape = "shape"
+	// SignalStop tells the holding worker to stop. Drop sends it. Stop keeps
+	// the branch; the signal does not delete it.
+	SignalStop = "stop"
 )
 
 // Signal is one verb a person asked of a job, with the door's own arguments.

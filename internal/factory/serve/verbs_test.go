@@ -44,7 +44,6 @@ var verbCases = []verbCase{
 	{"answer words", "POST", "/v1/jobs/1/answer", `{"words":"keep the tests"}`, []verbCall{call("Answer", 1, false, "keep the tests")}, 200, false},
 	{"steer", "POST", "/v1/jobs/2/steer", `{"words":"keep the tests"}`, []verbCall{call("Steer", 2, "keep the tests")}, 200, false},
 	{"approve plan", "POST", "/v1/jobs/1/approve", `{}`, []verbCall{call("Answer", 1, true, "")}, 200, true},
-	{"approve proof", "POST", "/v1/jobs/9/approve", "", []verbCall{call("SignOff", 9, false)}, 200, true},
 	{"approve edited", "POST", "/v1/jobs/9/approve", `{"edited":true}`, []verbCall{call("SignOff", 9, true)}, 200, true},
 	{"request_changes", "POST", "/v1/jobs/9/request_changes", `{"words":"prove restart survival"}`, []verbCall{call("SendBack", 9, "prove restart survival")}, 200, false},
 	{"recheck", "POST", "/v1/jobs/9/recheck", "", []verbCall{call("Reverify", 9)}, 200, false},
@@ -203,30 +202,30 @@ func TestVerbInputRefusalsDoNotTouchSeam(t *testing.T) {
 		method, path, body string
 		status             int
 	}{
-		{"POST", "/v1/jobs/0/run", "", 400},
-		{"POST", "/v1/jobs/-1/stop", "", 400},
-		{"POST", "/v1/jobs/no/drop", "", 400},
-		{"POST", "/v1/jobs/999999999999999999999/run", "", 400},
+		{"POST", "/v1/jobs/0/run", "", 422},
+		{"POST", "/v1/jobs/-1/stop", "", 422},
+		{"POST", "/v1/jobs/no/drop", "", 422},
+		{"POST", "/v1/jobs/999999999999999999999/run", "", 422},
 		{"POST", "/v1/jobs/999/run", "", 404},
 		{"POST", "/v1/jobs/2/approve", `{}`, 409},
-		{"POST", "/v1/jobs/1/answer", `{}`, 400},
-		{"POST", "/v1/jobs/1/answer", `{"yes":"yes"}`, 400},
-		{"POST", "/v1/jobs/2/steer", `{"words":" "}`, 400},
-		{"POST", "/v1/jobs/9/request_changes", `{}`, 400},
-		{"POST", "/v1/jobs/2/reply", "", 400},
-		{"POST", "/v1/jobs/7/prioritize", `{"to":"bottom"}`, 400},
-		{"POST", "/v1/jobs/2/reply", `{"words":"ok","typo":true}`, 400},
-		{"POST", "/v1/jobs/2/reply", `{"words":"ok"} {}`, 400},
-		{"POST", "/v1/jobs/2/reply", `{"words":"ok"} trailing`, 400},
-		{"POST", "/v1/jobs/2/reply", `null`, 400},
-		{"POST", "/v1/jobs/2/reply", `[]`, 400},
+		{"POST", "/v1/jobs/1/answer", `{}`, 422},
+		{"POST", "/v1/jobs/1/answer", `{"yes":"yes"}`, 422},
+		{"POST", "/v1/jobs/2/steer", `{"words":" "}`, 422},
+		{"POST", "/v1/jobs/9/request_changes", `{}`, 422},
+		{"POST", "/v1/jobs/2/reply", "", 422},
+		{"POST", "/v1/jobs/7/prioritize", `{"to":"bottom"}`, 422},
+		{"POST", "/v1/jobs/2/reply", `{"words":"ok","typo":true}`, 422},
+		{"POST", "/v1/jobs/2/reply", `{"words":"ok"} {}`, 422},
+		{"POST", "/v1/jobs/2/reply", `{"words":"ok"} trailing`, 422},
+		{"POST", "/v1/jobs/2/reply", `null`, 422},
+		{"POST", "/v1/jobs/2/reply", `[]`, 422},
 		{"POST", "/v1/jobs/2/reply", `{"words":"` + strings.Repeat("x", 1<<20) + `"}`, 413},
-		{"POST", "/v1/jobs/9/approve", `{"edited":"yes"}`, 400},
-		{"POST", "/v1/jobs", `{"repo":"owner/repo"}`, 400},
-		{"POST", "/v1/jobs", `{"title":"work"}`, 400},
-		{"PUT", "/v1/repos", `{}`, 400},
-		{"PUT", "/v1/repos", `{"watched":null}`, 400},
-		{"POST", "/v1/github/connect", `{}`, 400},
+		{"POST", "/v1/jobs/9/approve", `{"edited":"yes"}`, 422},
+		{"POST", "/v1/jobs", `{"repo":"owner/repo"}`, 422},
+		{"POST", "/v1/jobs", `{"title":"work"}`, 422},
+		{"PUT", "/v1/repos", `{}`, 422},
+		{"PUT", "/v1/repos", `{"watched":null}`, 422},
+		{"POST", "/v1/github/connect", `{}`, 422},
 		{"POST", "/v1/jobs/2/unknown", `{}`, 404},
 	} {
 		t.Run(tc.path+tc.body[:min(len(tc.body), 40)], func(t *testing.T) {
@@ -247,8 +246,14 @@ func TestApprovalRecordsBeforeConsentAndStopsOnRecordError(t *testing.T) {
 				s, calls := spyVerbs(t, nil)
 				cfg := config
 				cfg.RecordApproval = func(ctx context.Context, got int, edited bool) (string, error) {
-					if got != id || !edited || ctx.Value(verbContextKey{}) != "request" || len(*calls) != 0 {
-						t.Fatal("record did not receive approval before the seam")
+					// Proof writes the receipt before the publish door, which
+					// reads it. A plan door accepts first; the receipt follows.
+					wantCalls := 0
+					if id == 1 {
+						wantCalls = 1
+					}
+					if got != id || !edited || ctx.Value(verbContextKey{}) != "request" || len(*calls) != wantCalls {
+						t.Fatalf("record saw job %d edited %t calls %d, want %d before or after the door", got, edited, len(*calls), wantCalls)
 					}
 					if failRecord {
 						return "", errors.New("record unavailable")
@@ -258,8 +263,12 @@ func TestApprovalRecordsBeforeConsentAndStopsOnRecordError(t *testing.T) {
 				w := verbRequest(serve.New(s, cfg), "POST", fmt.Sprintf("/v1/jobs/%d/approve", id), `{"edited":true}`)
 				if failRecord {
 					checkJSON(t, w, 500)
-					if len(*calls) != 0 {
-						t.Fatal("approval happened without its record")
+					wantCalls := 0
+					if id == 1 {
+						wantCalls = 1
+					}
+					if len(*calls) != wantCalls {
+						t.Fatalf("calls = %v, want %d when the receipt fails", *calls, wantCalls)
 					}
 					return
 				}

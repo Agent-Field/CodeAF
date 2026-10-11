@@ -230,6 +230,10 @@ type Job struct {
 	Title string `json:"title"`
 	URL   string `json:"url,omitempty"`
 	State string `json:"state"`
+	// Version is how many times this job's document has been written. Zero
+	// means the response has no store behind it. A verb may send it back in
+	// expect so a stale page is refused instead of acting on a job that moved.
+	Version int `json:"version,omitempty"`
 	// Ready is the needs_you sub-state of a job that landed and waits for
 	// its proof to be approved.
 	Ready            bool       `json:"ready,omitempty"`
@@ -362,8 +366,17 @@ const (
 	QuestionAsked = "asked"
 )
 
-// Question is a question a job waits on.
+// Question is a question a job waits on. The shape lives with the job so an
+// open ask and an answered one cannot drift.
 type Question = factory.Question
+
+// Expect is the job a caller last read. Every job verb accepts one. A field
+// that no longer matches is a stale read: the verb does not run.
+type Expect struct {
+	State   string `json:"state,omitempty"`
+	Step    string `json:"step,omitempty"`
+	Version *int   `json:"version,omitempty"`
+}
 
 // Answer preserves who answered, when, and the factory event.
 type Answer = factory.Answer

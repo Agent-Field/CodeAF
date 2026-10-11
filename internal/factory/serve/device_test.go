@@ -189,7 +189,7 @@ func TestDeviceSignInBindsCallerCookieBearerInviteAndAudit(t *testing.T) {
 	}
 	for _, action := range []struct{ path, body string }{
 		{"/v1/jobs/2/run", ""}, {"/v1/jobs/2/drop", ""},
-		{"/v1/jobs/9/approve", ""}, {"/v1/jobs/1/answer", `{"yes":false,"words":"revise"}`},
+		{"/v1/jobs/9/approve", `{"edited":true}`}, {"/v1/jobs/1/answer", `{"yes":false,"words":"revise"}`},
 		{"/v1/jobs/9/request_changes", `{"words":"show restart"}`},
 	} {
 		path := action.path

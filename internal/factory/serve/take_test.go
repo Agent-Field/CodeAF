@@ -72,7 +72,7 @@ func TestTakeAssignsMeAndRefusesAJobSomeoneElseHolds(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &refused); err != nil {
 		t.Fatal(err)
 	}
-	if refused.Error != "job belongs to another person" || !strings.Contains(refused.Error, " ") {
+	if refused.Error != "already taken by @other" || !strings.Contains(refused.Error, " ") {
 		t.Fatalf("refusal = %q", refused.Error)
 	}
 	events, err = rec.Since(context.Background(), time.Time{})

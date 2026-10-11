@@ -230,9 +230,9 @@ func TestContractCoversEverySeamVerb(t *testing.T) {
 	}
 	for _, verb := range api.Verbs {
 		if len(verb.Seam) == 0 {
-			// Take is owned by the lease desk and has no Seam equivalent;
-			// worker endpoint tests cover it against the real store instead.
-			if verb.Name != "take" {
+			// Take and release are owned by the lease desk and have no Seam
+			// equivalent; the serve tests cover them against the real store.
+			if verb.Name != "take" && verb.Name != "release" {
 				t.Errorf("new server-owned verb %q needs a contract", verb.Name)
 			}
 			continue

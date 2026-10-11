@@ -1931,9 +1931,10 @@ machine's name when that machine has registered.
 
 ## factory HTTP job actions — run, stop, pause, resume, drop, answer, reply and shape
 
-Send `POST /v1/jobs/{id}/run`, `/stop`, `/pause`, `/resume`, `/drop`, `/recheck` or `/shape`
-without a body to run, stop, hold, continue, drop, re-run a job's checks, or give its
-manager one shaping turn. `/shape` runs nothing and launches nothing. When a worker holds
+Send `POST /v1/jobs/{id}/run`, `/stop`, `/pause`, `/resume`, `/recheck` or `/shape`
+without a body to run, stop, hold, continue, re-run a job's checks, or give its
+manager one shaping turn. `/drop` takes no body, or `{"words":"why"}`; the words
+are the audit detail, a holding worker is told to stop, and the branch is kept. `/shape` runs nothing and launches nothing. When a worker holds
 the job the factory leaves `shape` on the lease and the response has no `line`; otherwise
 `line` is what that turn recorded. A factory with no shaping turn and no holder answers
 HTTP 501 with `this factory does not provide that action`.
@@ -1947,21 +1948,57 @@ factory's existing selection door; no other priority destination is supported.
 
 Every response includes `factory: {address, version}`. Successful actions answer
 HTTP 200. An absent action answers HTTP 501 with
-`this factory does not provide that action`. Invalid input answers HTTP 400;
-an unknown job answers HTTP 404 with `job not found`. Wrong methods answer
-HTTP 405 with an Allow header. A seam error answers HTTP 500, except missing
-data (404), permission denied (403), a deadline (504), cancellation (408), or
-a job that is already running (409). `POST /v1/jobs/{id}/run` on a running job
-answers HTTP 409 with its sentence, `#12 is already running`.
+`this factory does not provide that action`. Invalid input answers HTTP 422
+with `reason` `bad_input`; an unknown job answers HTTP 404 with `job not found`
+and `reason` `not_found`. Not allowed is HTTP 403 with `reason` `not_allowed`.
+Wrong methods answer HTTP 405 with an Allow header. A crash answers HTTP 500
+with no `reason`. A deadline is HTTP 504 and cancellation is HTTP 408.
+A job that is already running answers HTTP 409 with `reason` `conflict` and
+its sentence, `#12 is already running`. A stale `expect` is also HTTP 409;
+see already approved, already taken, or the job moved on.
 Actions accept the same bearer token or live session as reads off loopback.
 Bodies with fields must be one JSON object, at most 1 MiB; extra fields are refused, and a larger
 body answers HTTP 413 with `JSON body exceeds 1 MiB`.
+
+## already approved, already taken, or the job moved on — expect, drop and release
+
+Every `POST /v1/jobs/{id}/<verb>` accepts an optional `expect`:
+`{"state":"needs_you","step":"approve","version":4}`. Leave out a field you did
+not read. When one no longer matches, the factory answers HTTP 409 and does not
+change the job. `reason` is `stale`. `now_state` is the state now. `by` and `at`
+are set when the factory knows who moved it and when.
+
+The `error` sentence is one of three. A job already done, or already publishing,
+says `already approved by @raj at 11:58` (`by` is `@raj`, `at` is that time).
+Take of a job someone holds says `already taken by @mei`. Anything else that
+moved says `job moved on while you looked`.
+
+`POST /v1/jobs/{id}/drop` takes `{"words":"why"}` or no body. The words are the
+detail on the `dropped` audit event. A worker holding the job is told to stop.
+Stop keeps the branch, and drop does not delete it. The job becomes `dropped`.
+
+`POST /v1/jobs/{id}/release` is un-take. The person who took the job clears that
+take and the record says `released`. The branch is kept. A job nobody took
+answers HTTP 409 with `job is not taken`. Someone else answers HTTP 403 with
+`only @mei can release this job`. Without a lease desk the answer is HTTP 501.
+
+`POST /v1/jobs/{id}/approve` takes `{"edited":true}` when a claim is not shown.
+Without it the answer is HTTP 409 `#N has a claim not shown` and no `approved`
+event is written. A plan approval writes `approved` only after the answer door
+accepts.
+
+A question carries `kind`: `step`, `cap`, `max_rounds`, `plan` or `proof`.
+`plan` is an approve step. `max_rounds` is the offer of one more round.
+`options` lists the choices that step offered. A cap or one-more-round question
+with none lists `yes` and `no`. A cap question also carries `limit`, `spent`
+and `next_limit`, and `next_limit` is the cap a yes would allow.
 
 ## approving at the proof gate publishes — the pull request, the commit and the trailer
 
 Approving a landed item (`s`, `e`, the web's approve, `POST /v1/jobs/{id}/approve`) is
 the one way its work leaves your machine, and it always waits for a person. The factory
-records your approval first (`evt_` and eight hex digits, under your GitHub handle), then
+records your approval (`evt_` and eight hex digits, under your GitHub handle) only
+after the claim check accepts, then
 queues the job again with a publish for a worker; its log says `approved · publishing`,
 then `publishing · Factory-Approval: evt_… @handle`.
 
@@ -2009,10 +2046,11 @@ approving at the proof gate publishes). Any other job answers
 HTTP 409 with `job is not waiting for approval`.
 
 Success answers HTTP 200 with `{"factory":{"address":"…","version":"…"},
-"event":"evt_…"}`: the id of the approval the factory's record wrote before the
-approval door ran, which the pull request's trailer cites. A factory with no
-record refuses with `approval requires a factory record`; if the write fails, no
-approval happens. A failed approval returns an error without an event.
+"event":"evt_…"}`. A claim that is not shown, and no `edited`, answers HTTP 409
+with `#N has a claim not shown` and writes no event. When the check passes, the
+receipt is written and the publish door reads it as the trailer. A plan approval
+writes the receipt only after the answer door accepts. A refused door leaves no
+`approved` event. A factory with no record refuses with `approval requires a factory record`.
 
 ## factory HTTP add a job, watched repositories and connect GitHub
 
@@ -2027,7 +2065,7 @@ and the request returns the start error.
 `PUT /v1/repos` takes `{"watched":["owner/repo"]}` to replace the watched list;
 an empty array clears it. `POST /v1/github/connect` takes `{"token":"…"}` to
 connect GitHub; `{"token":""}` selects gh's existing login. Both answer HTTP 200
-with the factory identity. An omitted watched array or token answers HTTP 400.
+with the factory identity. An omitted watched array or token answers HTTP 422.
 These routes use the same access check and error statuses as job actions.
 
 ## where is the web ui — factory dashboard address and team view in the codeaf app
@@ -2119,8 +2157,8 @@ server restart attach again and let the former hold expire.
 
 On loopback, an empty or omitted `handle` uses the factory's connected GitHub
 login, the same identity as Take, Approve and `/v1/me`. Without that login it
-answers HTTP 400 with `worker attach requires name and handle`. Off loopback,
-an empty handle answers HTTP 400 with `worker attach requires a handle`, even
+answers HTTP 422 with `worker attach requires name and handle`. Off loopback,
+an empty handle answers HTTP 422 with `worker attach requires a handle`, even
 with a valid access token or cookie. Only the socket peer decides loopback;
 forwarded headers and the requested hostname do not.
 
@@ -2210,7 +2248,7 @@ A `question` takes `text`, optional `from_step`, `kind`, `options`, `pick` and
 factory's timestamp. Answering the question removes it from the job read.
 `pr` keeps a published PR's number, URL and CI separately from the source issue.
 Reports update the job reads through the runner's existing store writes, without
-replacing the job or its ownership. Invalid reports answer HTTP 400 and write
+replacing the job or its ownership. Invalid reports answer HTTP 422 and write
 nothing. Bodies obey the same one-object, 1 MiB limit as other job actions.
 
 ## factory HTTP worker done — release the lease and keep the approval gate
@@ -2222,7 +2260,7 @@ your approval, or a clean proof with no approve step finishes automatically.
 requires a question already on the job. `backlog` and `dropped` report interrupted
 or dropped work. `{"state":"done"}` is accepted for clean proof with no approve
 step, or for a published job: one with a recorded approval and a reported pull
-request or issue comment URL, which ships and records `posted`. Otherwise it answers HTTP 400 with
+request or issue comment URL, which ships and records `posted`. Otherwise it answers HTTP 422 with
 `job requires proof approval`.
 Success answers HTTP 200 with the factory identity. Completed holds reject later
 heartbeats and reports. Every `codeaf` speaks this protocol as its worker loop.

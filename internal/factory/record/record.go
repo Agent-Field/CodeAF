@@ -21,15 +21,18 @@ import (
 )
 
 const (
-	Started        = "started"
-	Stopped        = "stopped"
-	AutoStarted    = "auto_started"
-	AskedFirst     = "asked_first"
-	Approved       = "approved"
-	Answered       = "answered"
-	Posted         = "posted"
-	Took           = "took"
-	Dropped        = "dropped"
+	Started     = "started"
+	Stopped     = "stopped"
+	AutoStarted = "auto_started"
+	AskedFirst  = "asked_first"
+	Approved    = "approved"
+	Answered    = "answered"
+	Posted      = "posted"
+	Took        = "took"
+	Dropped     = "dropped"
+	// Released is un-take: the person who took the job let it go. It does not
+	// withdraw an approval the way a drop does.
+	Released       = "released"
 	RequestChanges = "request_changes"
 )
 
@@ -105,7 +108,7 @@ func (r *Record) Append(ctx context.Context, event Event) (Event, error) {
 
 func validate(e Event) error {
 	switch e.Kind {
-	case Started, Stopped, AutoStarted, AskedFirst, Approved, Answered, Posted, Took, Dropped, RequestChanges:
+	case Started, Stopped, AutoStarted, AskedFirst, Approved, Answered, Posted, Took, Dropped, Released, RequestChanges:
 	default:
 		return fmt.Errorf("factory record: unknown event kind %q", e.Kind)
 	}

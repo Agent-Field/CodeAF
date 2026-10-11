@@ -13,27 +13,29 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 func (h *Handler) verbs() {
 	s := h.seam
-	h.postJob("run", s.Launch != nil, h.recordedID(s.Launch, record.Started))
-	h.postJob("stop", s.Stop != nil, h.stop)
-	h.postJob("pause", s.Hold != nil, h.holdVerb(true))
-	h.postJob("resume", s.Hold != nil, h.holdVerb(false))
-	h.postJob("drop", s.Dismiss != nil, h.recordedID(s.Dismiss, record.Dropped))
+	h.postJob("run", s.Launch != nil, h.guarded("run", h.recordedID(s.Launch, record.Started)))
+	h.postJob("stop", s.Stop != nil, h.guarded("stop", h.stop))
+	h.postJob("pause", s.Hold != nil, h.guarded("pause", h.holdVerb(true)))
+	h.postJob("resume", s.Hold != nil, h.guarded("resume", h.holdVerb(false)))
+	h.postJob("drop", s.Dismiss != nil, h.drop)
 	h.postJob("answer", s.Answer != nil, h.answer)
-	h.postJob("steer", s.Steer != nil, h.wordsVerb(s.Steer))
+	h.postJob("steer", s.Steer != nil, h.wordsVerb("steer", s.Steer))
 	h.postJob("approve", true, h.approve)
 	h.postJob("request_changes", s.SendBack != nil, h.recordedWords(s.SendBack, record.RequestChanges))
-	h.postJob("recheck", s.Reverify != nil, h.idVerb(s.Reverify))
+	h.postJob("recheck", s.Reverify != nil, h.guarded("recheck", h.idVerb(s.Reverify)))
 	// Shape is present even when the seam has no Shape door: a worker holding
 	// the job is signaled, and only a job nobody holds needs the local turn.
-	h.postJob("shape", true, h.shape)
-	// Take is the lease desk's own door, not a seam field. The desk exists
-	// only after the worker routes open it, so the handler checks then.
+	h.postJob("shape", true, h.guarded("shape", h.shape))
+	// Take and release are the lease desk's own doors, not seam fields. The
+	// desk exists only after the worker routes open it, so the handler checks then.
 	h.postJob("take", true, h.take)
+	h.postJob("release", true, h.release)
 	h.postJob("prioritize", s.Mark != nil, h.prioritize)
 	h.postJob("reply", h.config.Store != nil || s.Say != nil, h.reply)
 	h.route("/v1/jobs", map[string]http.HandlerFunc{http.MethodPost: h.newJob})
@@ -59,7 +61,10 @@ func (h *Handler) postJob(verb string, exists bool, action jobAction) {
 // and leaves the work queued. A job the person rule already gave to someone
 // else is refused in a sentence, and the refusal is not recorded.
 func (h *Handler) take(w http.ResponseWriter, r *http.Request, it factory.Item) {
-	if !h.workerReady(w) {
+	var body struct {
+		Expect *api.Expect `json:"expect,omitempty"`
+	}
+	if !h.decode(w, r, &body, true) || !h.fresh(w, r, it, "take", body.Expect) || !h.workerReady(w) {
 		return
 	}
 	me, err := h.callerHandle(r)
@@ -67,10 +72,10 @@ func (h *Handler) take(w http.ResponseWriter, r *http.Request, it factory.Item) 
 		return
 	}
 	if me == "" {
-		h.fail(w, http.StatusBadRequest, "take requires a GitHub login")
+		h.fail(w, http.StatusUnprocessableEntity, "take requires a GitHub login")
 		return
 	}
-	if err := h.workers.desk.Assign(it.ID, me); h.takeFailed(w, err) {
+	if err := h.workers.desk.Assign(it.ID, me); h.takeFailed(w, it, err) {
 		return
 	}
 	if h.config.Record != nil {
@@ -85,20 +90,76 @@ func (h *Handler) take(w http.ResponseWriter, r *http.Request, it factory.Item) 
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
 		api.Job
-	}{h.factory, api.FromItem(updated)})
+	}{h.factory, h.withVersion(api.FromItem(updated))})
+}
+
+// release is POST /v1/jobs/{id}/release. The person who took the job lets it
+// go. The branch stays, and a worker's hold is not cleared here.
+func (h *Handler) release(w http.ResponseWriter, r *http.Request, it factory.Item) {
+	var body struct {
+		Expect *api.Expect `json:"expect,omitempty"`
+	}
+	if !h.decode(w, r, &body, true) || !h.fresh(w, r, it, "release", body.Expect) || !h.workerReady(w) {
+		return
+	}
+	me, err := h.callerHandle(r)
+	if h.failed(w, err) {
+		return
+	}
+	if me == "" {
+		h.fail(w, http.StatusUnprocessableEntity, "release requires a GitHub login")
+		return
+	}
+	if err := h.workers.desk.Release(it.ID, me); h.releaseFailed(w, it, err) {
+		return
+	}
+	if h.config.Record != nil {
+		if _, err := h.config.Record.Append(r.Context(), record.Event{Kind: record.Released, Job: it.ID, Handle: me, Cost: jobCost(it)}); h.failed(w, err) {
+			return
+		}
+	}
+	updated, err := h.workers.st.Get(it.ID)
+	if h.failed(w, err) {
+		return
+	}
+	h.write(w, http.StatusOK, struct {
+		Factory api.Factory `json:"factory"`
+		api.Job
+	}{h.factory, h.withVersion(api.FromItem(updated))})
 }
 
 // takeFailed maps the person rule and a live worker hold onto 409. The
-// sentence is what the dashboard shows; the lease package prefix stays off it.
-func (h *Handler) takeFailed(w http.ResponseWriter, err error) bool {
-	switch {
-	case err == nil:
+// sentence is what the page shows; the lease package prefix stays off it.
+func (h *Handler) takeFailed(w http.ResponseWriter, it factory.Item, err error) bool {
+	if err == nil {
 		return false
-	case errors.Is(err, lease.ErrPerson):
-		h.fail(w, http.StatusConflict, "job belongs to another person")
+	}
+	if errors.Is(err, lease.ErrPerson) || errors.Is(err, lease.ErrLeased) {
+		h.taken(w, it)
 		return true
-	case errors.Is(err, lease.ErrLeased):
-		h.fail(w, http.StatusConflict, "job is already taken")
+	}
+	if errors.Is(err, store.ErrNotFound) {
+		h.fail(w, http.StatusNotFound, "job not found")
+		return true
+	}
+	return h.failed(w, err)
+}
+
+func (h *Handler) releaseFailed(w http.ResponseWriter, it factory.Item, err error) bool {
+	if err == nil {
+		return false
+	}
+	state := h.withVersion(api.FromItem(it)).State
+	switch {
+	case errors.Is(err, lease.ErrNotTaken):
+		h.refuse(w, http.StatusConflict, "job is not taken", "conflict", "", nil, state)
+		return true
+	case errors.Is(err, lease.ErrPerson):
+		who := it.Taker
+		if who == "" {
+			who = it.Person()
+		}
+		h.refuse(w, http.StatusForbidden, "only @"+who+" can release this job", "not_allowed", "@"+who, nil, state)
 		return true
 	case errors.Is(err, store.ErrNotFound):
 		h.fail(w, http.StatusNotFound, "job not found")
@@ -106,6 +167,16 @@ func (h *Handler) takeFailed(w http.ResponseWriter, err error) bool {
 	default:
 		return h.failed(w, err)
 	}
+}
+
+func (h *Handler) taken(w http.ResponseWriter, it factory.Item) {
+	state := h.withVersion(api.FromItem(it)).State
+	who := it.Person()
+	if who == "" {
+		h.refuse(w, http.StatusConflict, "job is already taken", "conflict", "", nil, state)
+		return
+	}
+	h.refuse(w, http.StatusConflict, "already taken by @"+who, "conflict", "@"+who, nil, state)
 }
 
 func (h *Handler) idVerb(door func(int) error) jobAction {
@@ -120,9 +191,9 @@ func (h *Handler) holdVerb(on bool) jobAction {
 	}
 }
 
-func (h *Handler) wordsVerb(door func(int, string) error) jobAction {
+func (h *Handler) wordsVerb(verb string, door func(int, string) error) jobAction {
 	return func(w http.ResponseWriter, r *http.Request, it factory.Item) {
-		if words, ok := h.words(w, r); ok {
+		if words, ok := h.words(w, r, it, verb); ok {
 			h.finish(w, door(it.ID, words))
 		}
 	}
@@ -130,14 +201,15 @@ func (h *Handler) wordsVerb(door func(int, string) error) jobAction {
 
 func (h *Handler) answer(w http.ResponseWriter, r *http.Request, it factory.Item) {
 	var body struct {
-		Yes   *bool  `json:"yes"`
-		Words string `json:"words"`
+		Yes    *bool       `json:"yes"`
+		Words  string      `json:"words"`
+		Expect *api.Expect `json:"expect,omitempty"`
 	}
-	if !h.decode(w, r, &body, false) {
+	if !h.decode(w, r, &body, false) || !h.fresh(w, r, it, "answer", body.Expect) {
 		return
 	}
 	if body.Yes == nil && strings.TrimSpace(body.Words) == "" {
-		h.fail(w, http.StatusBadRequest, "answer requires yes or words")
+		h.fail(w, http.StatusUnprocessableEntity, "answer requires yes or words")
 		return
 	}
 	yes := body.Yes != nil && *body.Yes
@@ -146,22 +218,64 @@ func (h *Handler) answer(w http.ResponseWriter, r *http.Request, it factory.Item
 
 func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Item) {
 	var body struct {
-		Edited bool `json:"edited"`
+		Edited bool        `json:"edited"`
+		Expect *api.Expect `json:"expect,omitempty"`
 	}
-	if !h.decode(w, r, &body, true) {
+	if !h.decode(w, r, &body, true) || !h.fresh(w, r, it, "approve", body.Expect) || h.failed(w, h.approvalIdentity(r)) {
 		return
 	}
-	door := h.approvalDoor(w, it, body.Edited)
-	if door == nil {
+	// A CLAIM THE DOOR WOULD REFUSE NEVER BECOMES A RECEIPT. The check runs
+	// first. The publish door then reads that receipt as its trailer, so the
+	// write sits between the check and the door. A plan approval is an
+	// answer: the receipt is written only after that door accepts.
+	if it.State == factory.StateLanded {
+		if !h.requireVerb(w, h.seam.SignOff != nil) {
+			return
+		}
+		if err := run.ApprovalRefused(&it, body.Edited); err != nil {
+			h.refuse(w, http.StatusConflict, err.Error(), "conflict", "", nil, h.withVersion(api.FromItem(it)).State)
+			return
+		}
+		event, err := h.recordApproval(r, it, body.Edited)
+		if h.failed(w, err) {
+			return
+		}
+		if _, err = h.seam.SignOff(it.ID, body.Edited); h.failed(w, err) {
+			return
+		}
+		h.wroteApproval(w, r, it, event)
 		return
 	}
-	event, err := h.recordApproval(r, it, body.Edited)
-	if h.failed(w, err) {
+	if it.State == factory.StateNeedsYou && it.QKind == factory.QKindApprove {
+		if !h.requireVerb(w, h.seam.Answer != nil) {
+			return
+		}
+		if h.failed(w, h.seam.Answer(it.ID, true, "")) {
+			return
+		}
+		event, err := h.recordApproval(r, it, body.Edited)
+		if h.failed(w, err) {
+			return
+		}
+		h.wroteApproval(w, r, it, event)
 		return
 	}
-	if h.failed(w, door()) {
-		return
+	h.notWaiting(w, r, it)
+}
+
+// approvalIdentity refuses an unsigned invite before any receipt is written.
+func (h *Handler) approvalIdentity(r *http.Request) error {
+	handle, err := h.callerHandle(r)
+	if err != nil {
+		return err
 	}
+	if strings.HasPrefix(handle, "invited:") {
+		return errSignInApproval
+	}
+	return nil
+}
+
+func (h *Handler) wroteApproval(w http.ResponseWriter, r *http.Request, it factory.Item, event string) {
 	if it.Question != "" {
 		handle, err := h.callerHandle(r)
 		if h.failed(w, err) {
@@ -175,43 +289,55 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 			return
 		}
 	}
+	h.writeApproval(w, event)
+}
+
+func (h *Handler) writeApproval(w http.ResponseWriter, event string) {
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
 		Event   string      `json:"event"`
 	}{h.factory, event})
 }
 
-// approvalDoor chooses from the stored gate, never from a caller's guess.
-// The seam still enforces proof and policy before it ships anything.
-func (h *Handler) approvalDoor(w http.ResponseWriter, it factory.Item, edited bool) func() error {
-	if it.State == factory.StateLanded {
-		if !h.requireVerb(w, h.seam.SignOff != nil) {
-			return nil
-		}
-		return func() error {
-			_, err := h.seam.SignOff(it.ID, edited)
-			return err
+func (h *Handler) notWaiting(w http.ResponseWriter, r *http.Request, it factory.Item) {
+	job := h.withVersion(api.FromItem(it))
+	if job.State == api.StateDone || it.Publishing || it.State == factory.StateShipped {
+		sentence, by, at := h.approvedSentence(r, it)
+		h.refuse(w, http.StatusConflict, sentence, "conflict", by, at, job.State)
+		return
+	}
+	h.refuse(w, http.StatusConflict, "job is not waiting for approval", "conflict", "", nil, job.State)
+}
+
+// drop records optional words and tells a holding worker to stop. The branch
+// is kept: nothing here deletes it.
+func (h *Handler) drop(w http.ResponseWriter, r *http.Request, it factory.Item) {
+	var body struct {
+		Words  string      `json:"words"`
+		Expect *api.Expect `json:"expect,omitempty"`
+	}
+	if !h.decode(w, r, &body, true) || !h.fresh(w, r, it, "drop", body.Expect) {
+		return
+	}
+	words := strings.TrimSpace(body.Words)
+	if h.workers != nil && h.workers.desk != nil {
+		if _, err := h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalStop, Words: words}); h.failed(w, err) {
+			return
 		}
 	}
-	if it.State == factory.StateNeedsYou && it.QKind == factory.QKindApprove {
-		if !h.requireVerb(w, h.seam.Answer != nil) {
-			return nil
-		}
-		return func() error { return h.seam.Answer(it.ID, true, "") }
-	}
-	h.fail(w, http.StatusConflict, "job is not waiting for approval")
-	return nil
+	h.finish(w, h.recordAction(r, it, record.Dropped, words, func() error { return h.seam.Dismiss(it.ID) }))
 }
 
 func (h *Handler) prioritize(w http.ResponseWriter, r *http.Request, it factory.Item) {
 	var body struct {
-		To string `json:"to"`
+		To     string      `json:"to"`
+		Expect *api.Expect `json:"expect,omitempty"`
 	}
-	if !h.decode(w, r, &body, false) {
+	if !h.decode(w, r, &body, false) || !h.fresh(w, r, it, "prioritize", body.Expect) {
 		return
 	}
 	if body.To != "top" {
-		h.fail(w, http.StatusBadRequest, "prioritize requires to: top")
+		h.fail(w, http.StatusUnprocessableEntity, "prioritize requires to: top")
 		return
 	}
 	h.finish(w, h.seam.Mark([]int{it.ID}, true))
@@ -245,7 +371,7 @@ func (h *Handler) shape(w http.ResponseWriter, r *http.Request, it factory.Item)
 }
 
 func (h *Handler) reply(w http.ResponseWriter, r *http.Request, it factory.Item) {
-	if words, ok := h.words(w, r); ok {
+	if words, ok := h.words(w, r, it, "reply"); ok {
 		if h.config.Store != nil {
 			if !h.workerReady(w) {
 				return
@@ -278,7 +404,7 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.TrimSpace(body.Repo) == "" || strings.TrimSpace(body.Title) == "" {
-		h.fail(w, http.StatusBadRequest, "new job requires repo and title")
+		h.fail(w, http.StatusUnprocessableEntity, "new job requires repo and title")
 		return
 	}
 	if !h.repoVisible(r, body.Repo) {
@@ -318,7 +444,7 @@ func (h *Handler) setRepos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.Watched == nil {
-		h.fail(w, http.StatusBadRequest, "watched must be an array of repository names")
+		h.fail(w, http.StatusUnprocessableEntity, "watched must be an array of repository names")
 		return
 	}
 	h.finish(w, h.seam.SetRepos(*body.Watched))
@@ -335,21 +461,22 @@ func (h *Handler) connectGitHub(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.Token == nil {
-		h.fail(w, http.StatusBadRequest, "connect requires token; an empty token selects gh")
+		h.fail(w, http.StatusUnprocessableEntity, "connect requires token; an empty token selects gh")
 		return
 	}
 	h.finish(w, h.seam.ConnectGitHub(r.Context(), *body.Token))
 }
 
-func (h *Handler) words(w http.ResponseWriter, r *http.Request) (string, bool) {
+func (h *Handler) words(w http.ResponseWriter, r *http.Request, it factory.Item, verb string) (string, bool) {
 	var body struct {
-		Words string `json:"words"`
+		Words  string      `json:"words"`
+		Expect *api.Expect `json:"expect,omitempty"`
 	}
-	if !h.decode(w, r, &body, false) {
+	if !h.decode(w, r, &body, false) || !h.fresh(w, r, it, verb, body.Expect) {
 		return "", false
 	}
 	if strings.TrimSpace(body.Words) == "" {
-		h.fail(w, http.StatusBadRequest, "words must not be empty")
+		h.fail(w, http.StatusUnprocessableEntity, "words must not be empty")
 		return "", false
 	}
 	return body.Words, true
@@ -364,7 +491,7 @@ func (h *Handler) decode(w http.ResponseWriter, r *http.Request, out any, option
 		if errors.As(err, &tooLarge) {
 			h.fail(w, http.StatusRequestEntityTooLarge, "JSON body exceeds 1 MiB")
 		} else {
-			h.fail(w, http.StatusBadRequest, "could not read JSON body")
+			h.fail(w, http.StatusUnprocessableEntity, "could not read JSON body")
 		}
 		return false
 	}
@@ -373,17 +500,17 @@ func (h *Handler) decode(w http.ResponseWriter, r *http.Request, out any, option
 		return true
 	}
 	if len(data) == 0 || data[0] != '{' {
-		h.fail(w, http.StatusBadRequest, "body must be a JSON object")
+		h.fail(w, http.StatusUnprocessableEntity, "body must be a JSON object")
 		return false
 	}
 	d := json.NewDecoder(bytes.NewReader(data))
 	d.DisallowUnknownFields()
 	if err := d.Decode(out); err != nil {
-		h.fail(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		h.fail(w, http.StatusUnprocessableEntity, "invalid JSON body: "+err.Error())
 		return false
 	}
 	if d.Decode(new(any)) != io.EOF {
-		h.fail(w, http.StatusBadRequest, "body must contain one JSON object")
+		h.fail(w, http.StatusUnprocessableEntity, "body must contain one JSON object")
 		return false
 	}
 	return true

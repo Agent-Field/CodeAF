@@ -35,6 +35,9 @@ var (
 	ErrNoLease    = errors.New("factory lease: no live lease for this job")
 	ErrPerson     = errors.New("factory lease: job belongs to another person")
 	ErrWorker     = errors.New("factory lease: job belongs to another worker")
+	// ErrNotTaken is an un-take of a job nobody has taken. A forge assignee
+	// is not a take, so release does not clear one.
+	ErrNotTaken = errors.New("factory lease: job is not taken")
 )
 
 // Lease is the persisted and wire shape, so the worker and person survive a
@@ -135,6 +138,27 @@ func (d *Desk) Assign(id int, handle string) error {
 				return ErrPerson
 			}
 			it.Taker = handle
+			return nil
+		})
+	})
+}
+
+// Release is un-take. The person who took the job lets it go. A worker's
+// hold is left alone: release does not stop the run or delete the branch.
+func (d *Desk) Release(id int, handle string) error {
+	handle = factory.NormalizeHandle(handle)
+	if handle == "" {
+		return errors.New("factory lease: a person needs a handle")
+	}
+	return d.change(func(doc *document, now time.Time) (bool, error) {
+		return false, d.store.Update(id, func(it *factory.Item) error {
+			if it.Taker == "" {
+				return ErrNotTaken
+			}
+			if factory.NormalizeHandle(it.Taker) != handle {
+				return ErrPerson
+			}
+			it.Taker = ""
 			return nil
 		})
 	})

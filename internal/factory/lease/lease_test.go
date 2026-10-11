@@ -435,3 +435,24 @@ func TestOnlyQueuedWorkIsOfferedAndInputsAreRequired(t *testing.T) {
 		t.Fatal("accepted negative TTL")
 	}
 }
+
+func TestReleaseClearsOnlyThePersonsTake(t *testing.T) {
+	f := setup(t)
+	it := f.add(t, factory.Item{})
+	if err := f.desk.Release(it.ID, "sam"); !errors.Is(err, lease.ErrNotTaken) {
+		t.Fatalf("untaken: %v", err)
+	}
+	if err := f.desk.Assign(it.ID, "sam"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.desk.Release(it.ID, "other"); !errors.Is(err, lease.ErrPerson) {
+		t.Fatalf("someone else: %v", err)
+	}
+	if err := f.desk.Release(it.ID, " @Sam "); err != nil {
+		t.Fatal(err)
+	}
+	read, err := f.store.Get(it.ID)
+	if err != nil || read.Taker != "" || read.State != factory.StateQueued {
+		t.Fatalf("after release: %+v %v", read, err)
+	}
+}

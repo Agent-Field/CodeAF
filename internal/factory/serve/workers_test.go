@@ -150,13 +150,13 @@ func TestWorkerAttachOwnerFallbackOnlyOnLoopback(t *testing.T) {
 		{"IPv4 fallback", "127.0.0.1:1234", "", " @OWNER ", "owner", 201, 1},
 		{"IPv6 fallback", "[::1]:1234", "", "owner", "owner", 201, 1},
 		{"mapped fallback", "[::ffff:127.0.0.1]:1234", "", "owner", "owner", 201, 1},
-		{"local no owner", "127.0.0.1:1234", "", "", "", 400, 1},
-		{"remote empty", "192.0.2.1:1234", "", "owner", "", 400, 0},
-		{"remote cookie", "192.0.2.1:1234", "", "owner", "", 400, 0},
-		{"remote blank", "192.0.2.1:1234", " @ ", "owner", "", 400, 0},
+		{"local no owner", "127.0.0.1:1234", "", "", "", 422, 1},
+		{"remote empty", "192.0.2.1:1234", "", "owner", "", 422, 0},
+		{"remote cookie", "192.0.2.1:1234", "", "owner", "", 422, 0},
+		{"remote blank", "192.0.2.1:1234", " @ ", "owner", "", 422, 0},
 		{"remote own handle", "192.0.2.1:1234", " @WORKER-PERSON ", "owner", "worker-person", 201, 0},
-		{"hostname peer", "localhost:1234", "", "owner", "", 400, 0},
-		{"missing peer port", "127.0.0.1", "", "owner", "", 400, 0},
+		{"hostname peer", "localhost:1234", "", "owner", "", 422, 0},
+		{"missing peer port", "127.0.0.1", "", "owner", "", 422, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st, err := store.Open(t.TempDir())
@@ -198,7 +198,7 @@ func TestWorkerAttachOwnerFallbackOnlyOnLoopback(t *testing.T) {
 			if w.Code != tc.status || personCalls != tc.wantPersonCalls {
 				t.Fatalf("attach: HTTP %d %s, person calls %d; want HTTP %d, calls %d", w.Code, w.Body.String(), personCalls, tc.status, tc.wantPersonCalls)
 			}
-			if tc.status == 400 {
+			if tc.status == 422 {
 				want := "worker attach requires a handle"
 				if tc.wantPersonCalls != 0 {
 					want = "worker attach requires name and handle"
@@ -301,7 +301,7 @@ func TestWorkerAttachPullHeartbeatReportAndDone(t *testing.T) {
 	if !reflect.DeepEqual(restored.PullRequest, it.PullRequest) {
 		t.Fatal("PR lost in codec round trip")
 	}
-	f.request(t, "POST", endpoint+"/done", first.Credential, api.WorkerDone{State: api.StateDone}, 400, nil)
+	f.request(t, "POST", endpoint+"/done", first.Credential, api.WorkerDone{State: api.StateDone}, 422, nil)
 	f.request(t, "POST", endpoint+"/done", first.Credential, api.WorkerDone{State: api.StateNeedsYou, Ready: true}, 200, nil)
 	it, err = f.st.Get(job.ID)
 	if err != nil || it.State != factory.StateLanded || it.Stream.Ended.IsZero() {
@@ -320,7 +320,7 @@ func TestCommentReceiptCannotApproveProof(t *testing.T) {
 	endpoint := "/v1/workers/leases/" + pulled.Lease.ID
 	report := api.WorkerReport{Publish: "comment", CommentURL: "https://github.com/owner/repo/issues/12#issuecomment-7"}
 	f.request(t, "POST", endpoint+"/report", worker.Credential, report, 200, nil)
-	f.request(t, "POST", endpoint+"/done", worker.Credential, api.WorkerDone{State: api.StateDone}, 400, nil)
+	f.request(t, "POST", endpoint+"/done", worker.Credential, api.WorkerDone{State: api.StateDone}, 422, nil)
 	it, err := f.st.Get(job.ID)
 	if err != nil || it.State == factory.StateShipped {
 		t.Fatalf("an unapproved comment shipped: %+v, error %v", it, err)
@@ -353,6 +353,9 @@ func TestWorkerDiffReportsOneQuestionOnTheWire(t *testing.T) {
 			wantKind := kind
 			if wantKind == "" {
 				wantKind = "step"
+			}
+			if wantKind == factory.QKindApprove {
+				wantKind = "plan"
 			}
 			stamp := time.Unix(0, f.clock.Load()).UTC()
 			want := []api.Question{{Text: cur.Question, State: "open", Kind: wantKind, FromStep: stage,
@@ -462,7 +465,7 @@ func TestWorkerReportInvalidInputWritesNothing(t *testing.T) {
 		api.WorkerReport{Cost: 1, PR: &api.PR{Number: 0}},
 		map[string]any{"item": map[string]any{"state": "done"}},
 	} {
-		f.request(t, "POST", path, worker.Credential, body, 400, nil)
+		f.request(t, "POST", path, worker.Credential, body, 422, nil)
 	}
 	after, err := f.st.Revision(job.ID)
 	if err != nil || after != before {
