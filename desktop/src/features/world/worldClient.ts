@@ -1,4 +1,4 @@
-import type { AttentionItem, EngineJob, PlacesRecord, WorkspaceRecord, WorldRecord, WorldRow } from './types.ts';
+import type { AttentionItem, EngineJob, PlacesOrganizing, PlacesRecord, WorkspaceRecord, WorldRecord, WorldRow } from './types.ts';
 
 export type WorldTransport = (path: string, init: RequestInit) => Promise<Response>;
 export type WorldClientOptions = {
@@ -7,6 +7,12 @@ export type WorldClientOptions = {
  setTimer?: (fn: () => void, ms: number) => unknown;
  clearTimer?: (handle: unknown) => void;
 };
+/** A progress record the settings line can trust. Anything else is a protocol error, same as a bad row. */
+function organizingOf(payload: PlacesOrganizing): PlacesOrganizing {
+ if (!payload || typeof payload.run !== 'string' || !payload.run || typeof payload.stage !== 'string' || !Number.isSafeInteger(payload.done) || payload.done < 0 || !Number.isSafeInteger(payload.total) || payload.total < 0) throw new Error('Invalid places organizing record.');
+ return { run: payload.run, stage: payload.stage, done: payload.done, total: payload.total, cancellable: payload.cancellable !== false };
+}
+
 const EMPTY_ROWS: readonly WorldRow[] = Object.freeze([]);
 const EMPTY_ITEMS: readonly AttentionItem[] = Object.freeze([]);
 const EMPTY_JOBS: readonly EngineJob[] = Object.freeze([]);
@@ -28,6 +34,7 @@ export function createWorldClient(options: WorldClientOptions = {}) {
  let rows: readonly WorldRow[] = EMPTY_ROWS, items: readonly AttentionItem[] = EMPTY_ITEMS;
  let jobs = new Map<string, readonly EngineJob[]>();
  let places: PlacesRecord | undefined;
+ let organizing: PlacesOrganizing | undefined;
  let workspaces = new Map<string, WorkspaceRecord>();
  let seq = 0, epoch: string | undefined;
  let hasRecord = false;
@@ -51,7 +58,7 @@ export function createWorldClient(options: WorldClientOptions = {}) {
   if (record.type === 'attention' || record.type === 'reset') {
    if (!Array.isArray(record.payload.items) || record.payload.items.some(item => typeof item.id !== 'string' || typeof item.chatId !== 'string')) throw new Error('Invalid world attention.');
   }
-  const oldRows = rows, oldItems = items, oldJobs = jobs, oldPlaces = places, oldWorkspaces = workspaces;
+  const oldRows = rows, oldItems = items, oldJobs = jobs, oldPlaces = places, oldWorkspaces = workspaces, oldOrganizing = organizing;
   switch (record.type) {
    case 'reset': {
     replaceRows(record.payload.rows);
@@ -59,6 +66,8 @@ export function createWorldClient(options: WorldClientOptions = {}) {
     jobs = new Map((record.payload.jobs ?? []).map(value => [value.chatId, stable(jobs.get(value.chatId) ?? EMPTY_JOBS, value.jobs)]));
     places = stable(places, record.payload.places);
     workspaces = new Map((record.payload.workspaces ?? []).map(value => [value.key, stable(workspaces.get(value.key) ?? value, value)]));
+    // A restarted engine's progress belongs to the new run, which has not reported one yet.
+    organizing = undefined;
     break;
    }
    case 'world': {
@@ -75,6 +84,7 @@ export function createWorldClient(options: WorldClientOptions = {}) {
     break;
    }
    case 'places': places = stable(places, record.payload); break;
+   case 'placesOrganizing': organizing = stable(organizing, organizingOf(record.payload)); break;
    case 'workspace': {
     const next = stable(workspaces.get(record.payload.key), record.payload);
     if (next !== workspaces.get(record.payload.key)) workspaces = new Map(workspaces).set(record.payload.key, record.payload);
@@ -83,7 +93,7 @@ export function createWorldClient(options: WorldClientOptions = {}) {
   }
   seq = record.seq; epoch = record.epoch; hasRecord = true;
   // Cursors advance even on an unchanged payload; selectors only notify for data changes.
-  if (oldRows !== rows || oldItems !== items || !same(oldJobs && [...oldJobs], [...jobs]) || oldPlaces !== places || !same([...oldWorkspaces], [...workspaces])) {
+  if (oldRows !== rows || oldItems !== items || !same(oldJobs && [...oldJobs], [...jobs]) || oldPlaces !== places || oldOrganizing !== organizing || !same([...oldWorkspaces], [...workspaces])) {
    for (const listener of [...listeners.values()]) listener();
   }
  }
@@ -136,6 +146,7 @@ export function createWorldClient(options: WorldClientOptions = {}) {
   attention: () => items,
   jobs: (chatId: string) => jobs.get(chatId) ?? EMPTY_JOBS,
   lastPlaces: () => places,
+  organizing: () => organizing,
   lastWorkspace: (key: string) => workspaces.get(key),
   subscribe(listener: () => void): () => void {
    const key = Symbol();

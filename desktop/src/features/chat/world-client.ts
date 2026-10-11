@@ -57,7 +57,8 @@ export type WorldRecord =
  | { epoch?: string; seq: number; type: 'world'; at: string; payload: { rows: WorldRow[]; removed: string[] } }
  | { epoch?: string; seq: number; type: 'attention'; at: string; payload: { items: AttentionItem[] } }
  | { epoch?: string; seq: number; type: 'jobs'; at: string; payload: JobsRollup }
- | { epoch?: string; seq: number; type: 'places'; at: string; payload: PlacesStreamRecord };
+ | { epoch?: string; seq: number; type: 'places'; at: string; payload: PlacesStreamRecord }
+ | { epoch?: string; seq: number; type: 'placesOrganizing'; at: string; payload: { run: string; stage: string; done: number; total: number; cancellable?: boolean } };
 
 export class WorldError extends Error {
  readonly status: number;
@@ -137,6 +138,8 @@ export function parseWorldRecord(text: string): WorldRecord {
  if (record.type === 'jobs' && typeof p.chatId === 'string' && p.chatId !== '' && Number.isSafeInteger(p.running) && (p.running as number) >= 0 && Array.isArray(p.jobs)) return value as WorldRecord;
  // A places record is the graph. Rejecting it dropped the feed the same way a jobs record used to.
  if (record.type === 'places' && Number.isSafeInteger(p.generation) && (p.generation as number) >= 0 && Array.isArray(p.nodes) && !!p.rail && typeof p.rail === 'object') return value as WorldRecord;
+ // Organising progress. Rejecting an unknown type drops the whole feed, the way a places record used to.
+ if (record.type === 'placesOrganizing' && typeof p.run === 'string' && p.run !== '' && typeof p.stage === 'string' && Number.isSafeInteger(p.done) && (p.done as number) >= 0 && Number.isSafeInteger(p.total) && (p.total as number) >= 0 && (p.cancellable === undefined || typeof p.cancellable === 'boolean')) return value as WorldRecord;
  throw new WorldError('The engine sent an unknown world record.');
 }
 

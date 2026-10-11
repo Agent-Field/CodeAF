@@ -174,6 +174,18 @@ test('a places record is a world record and does not replace the rows', () => {
  assert.throws(() => parseWorldRecord('{"seq":5,"type":"places","at":"x","payload":{"nodes":[]}}'), WorldError);
 });
 
+test('placesOrganizing keeps the chats and a reset drops the progress', () => {
+ const record = parseWorldRecord('{"seq":6,"type":"placesOrganizing","at":"x","payload":{"run":"run-1","stage":"vectors","done":1,"total":1240,"cancellable":true}}');
+ assert.equal(record.type, 'placesOrganizing');
+ const next = applyWorldRecord({ status: 'live', seq: 5, rows: [row('keep')], items: [] }, record);
+ assert.equal(next.rows[0].session, 'keep');
+ assert.equal(next.organizing?.stage, 'vectors');
+ assert.equal(next.organizing?.total, 1240);
+ const reset = applyWorldRecord(next, { seq: 7, type: 'reset', at: 'x', payload: { rows: [row('keep')], items: [] } });
+ assert.equal(reset.organizing, undefined);
+ assert.throws(() => parseWorldRecord('{"seq":6,"type":"placesOrganizing","at":"x","payload":{"stage":"vectors","done":1,"total":1}}'), WorldError);
+});
+
 test('a jobs roll-up is a world record and does not replace the rows', () => {
  const record = parseWorldRecord('{"seq":4,"type":"jobs","at":"x","payload":{"chatId":"chat-9","running":1,"jobs":[{"id":4,"state":"running"}]}}');
  assert.equal(record.type, 'jobs');

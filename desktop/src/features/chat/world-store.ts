@@ -16,6 +16,8 @@ export type WorldState = {
  seq: number;
  rows: readonly WorldRow[];
  items: readonly AttentionItem[];
+ /** The latest organising-run progress. Settings reads it; this store does not interpret the stage. */
+ organizing?: { run: string; stage: string; done: number; total: number; cancellable: boolean };
 };
 
 export type WorldStoreOptions = {
@@ -32,12 +34,13 @@ export function applyWorldRecord(state: WorldState, record: WorldRecord): WorldS
  // A reset is the engine saying the cursor is unusable; it is applied even at an equal seq.
  if (record.epoch && state.epoch && record.epoch !== state.epoch && record.type !== 'reset') return state;
  if (record.type !== 'reset' && record.seq <= state.seq) return state;
- if (record.type === 'reset') return { ...state, status: 'live', error: undefined, epoch: record.epoch, seq: record.seq, rows: record.payload.rows, items: record.payload.items };
+ if (record.type === 'reset') return { ...state, status: 'live', error: undefined, epoch: record.epoch, seq: record.seq, rows: record.payload.rows, items: record.payload.items, organizing: undefined };
  if (record.type === 'attention') return { ...state, seq: record.seq, items: record.payload.items };
  // A jobs roll-up is not a conversation row. Advance the cursor so the feed stays up; this store does not keep the shelf.
  if (record.type === 'jobs') return { ...state, seq: record.seq };
  // A places record is the graph. This store does not keep it; advancing the cursor keeps the feed up.
  if (record.type === 'places') return { ...state, seq: record.seq };
+ if (record.type === 'placesOrganizing') return { ...state, seq: record.seq, organizing: { run: record.payload.run, stage: record.payload.stage, done: record.payload.done, total: record.payload.total, cancellable: record.payload.cancellable !== false } };
  const removed = new Set(record.payload.removed);
  const changed = new Map(record.payload.rows.map(row => [row.session, row] as const));
  const rows = state.rows.filter(row => !removed.has(row.session)).map(row => changed.get(row.session) ?? row);

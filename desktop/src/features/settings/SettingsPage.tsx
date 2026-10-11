@@ -2,6 +2,7 @@ import { useRef, useState, type KeyboardEvent } from 'react';
 import { Button, KeyboardShortcut, PageHeading, SectionHeading, Segmented, Text, TextInput } from '../../components/ui';
 import type { CatalogModel, ModelRole, PlacesSetting } from '../chat/engine-client';
 import { AppearanceSection } from './AppearanceSection';
+import { PlacesOrganize } from './PlacesOrganize';
 import { EngineSection } from './EngineSection';
 import { KeyStatus } from './KeyStatus';
 import { groupRoles, roleStateLine } from './groups';
@@ -146,6 +147,7 @@ export function SettingsPage() {
                   {roles.map(role => <RoleRow key={role.id} role={role} settings={settings} />)}
                 </ul>
                 {category.id === 'places' && <PlacesPolicy settings={settings} />}
+                {category.id === 'places' && <PlacesOrganize />}
               </section>
             );
           })}

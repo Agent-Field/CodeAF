@@ -1,0 +1,64 @@
+/* Organize now, under Places organization. Layout only: the controls keep the shared look.
+   The progress line is ink-3. Colour stays on the 6px mark. No left border. */
+
+.places-organize { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); margin-top: var(--space-4); min-width: 0; }
+.places-organize-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); max-width: 100%; }
+.places-organize-note { margin: 0; color: var(--ink-2); }
+
+.places-organize-progress,
+.places-organize-last,
+.places-organize-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  max-width: 100%;
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-leading);
+}
+.places-organize-progress,
+.places-organize-last { color: var(--ink-3); }
+.places-organize-error { color: var(--ink-2); }
+.places-organize-progress span,
+.places-organize-error span { min-width: 0; overflow-wrap: anywhere; }
+
+.places-organize-sheet {
+  width: min(var(--places-dialog-width), calc(100% - var(--space-8)));
+  max-height: calc(100% - var(--space-8));
+  box-sizing: border-box;
+  padding: 0;
+  border: 0;
+  border-radius: var(--places-quicklook-radius);
+  background: var(--overlay-surface);
+  color: var(--ink);
+  box-shadow: var(--sh-3);
+  overflow: hidden;
+  animation: surface-enter var(--duration-overlay) var(--ease-overlay);
+}
+.places-organize-sheet[open] { display: flex; flex-direction: column; }
+.places-organize-sheet::backdrop { background: var(--places-quicklook-scrim); }
+.places-organize-sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  padding: var(--space-section) var(--space-6);
+  overflow-y: auto;
+}
+.places-organize-summary { margin: 0; color: var(--ink-2); }
+.places-organize-ops { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.places-organize-op.button-ghost {
+  width: 100%;
+  justify-content: flex-start;
+  white-space: normal;
+  text-align: left;
+  color: var(--ink);
+}
+/* Included is a soft fill. Hover and press change that fill only, and the words stay ink. */
+.places-organize-op.button-ghost[aria-checked='true'] { background: var(--field); }
+.places-organize-op.button-ghost:hover:not(:disabled),
+.places-organize-op.button-ghost:active:not(:disabled) { background: var(--field-2); color: var(--ink); }
+.places-organize-op.button-ghost:active:not(:disabled) { filter: brightness(var(--brightness-press)); }
+.places-organize-check { display: grid; place-items: center; width: var(--icon-sm); flex: none; }
+.places-organize-op[aria-checked='false'] .places-organize-check { opacity: var(--opacity-transparent); }
+.places-organize-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-tight); }

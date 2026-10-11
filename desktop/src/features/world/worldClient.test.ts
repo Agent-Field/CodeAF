@@ -118,6 +118,16 @@ test('subscribers share one stream and duplicate cleanup cannot close another su
  assert.equal((await import('./worldClient.ts')).worldClient, worldClient);
 });
 
+test('placesOrganizing is the progress line and a reset drops it', async () => {
+ const h = harness(), stop = h.listen();
+ await h.send(record(3, 'reset', { rows: [row('a')], items: [] }));
+ await h.send(record(4, 'placesOrganizing', { run: 'run-1', stage: 'name', done: 12, total: 30, cancellable: true }));
+ assert.deepEqual(h.client.organizing(), { run: 'run-1', stage: 'name', done: 12, total: 30, cancellable: true });
+ await h.send(record(5, 'reset', { rows: [row('a')], items: [] }));
+ assert.equal(h.client.organizing(), undefined);
+ stop();
+});
+
 test('retry doubles to its cap and final unsubscribe cancels a pending retry', async () => {
  const h = harness(), stop = h.listen();
  for (const delay of [1000, 2000, 4000, 8000, 16000, 30000, 30000]) {

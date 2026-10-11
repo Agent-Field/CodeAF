@@ -19,6 +19,8 @@ export type EngineJob = {
 };
 export type JobsRollup = { chatId: string; running: number; jobs: EngineJob[] };
 export type PlacesRecord = { generation: number; nodes: PlaceView[]; rail: RailView; members?: Membership[] };
+/** One organising-run progress event. The settings page draws its line from this. */
+export type PlacesOrganizing = { run: string; stage: string; done: number; total: number; cancellable: boolean };
 /** Workspace notifications invalidate the saved document; they are not that document. */
 export type WorkspaceRecord = { key: string; revision: number; writer?: string };
 export type WorldFull = {
@@ -32,4 +34,5 @@ export type WorldRecord =
  | Envelope<'attention', { items: AttentionItem[] }>
  | Envelope<'jobs', JobsRollup>
  | Envelope<'places', PlacesRecord>
+ | Envelope<'placesOrganizing', PlacesOrganizing>
  | Envelope<'workspace', WorkspaceRecord>;
