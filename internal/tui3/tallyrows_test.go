@@ -210,7 +210,15 @@ func TestTheTasksFootStillCountsEveryPieceByItsActualState(t *testing.T) {
 // branches and the corpus is asked for what they produced, so neither heading can
 // be restated as a literal that drifts.
 func TestTheManualQuotesBothTasksOpeningHeadingsExactly(t *testing.T) {
-	loc := time.FixedZone("fixture", -4*60*60)
+	// The window buckets days in the viewer's LOCAL zone, on purpose: spend and
+	// subtask counts are attributed to the writer's own calendar day (session's
+	// usageBucketStart, and the "THE DAY IS THE WRITER'S" law on SpendToday). So
+	// the fixture clock has to live in that same zone, or the rendered `since`
+	// date — which the chat manual quotes verbatim — shifts by a day on any host
+	// where a fixed foreign offset crosses midnight once read as local. A
+	// `-04:00` clock did exactly that: green on a UTC runner, red on a UTC+8 box,
+	// `aug 11` versus `aug 12` (#1808).
+	loc := time.Local
 	now := time.Date(2026, time.August, 25, 13, 11, 0, 0, loc)
 	win := session.LastDays(now, 15)
 
