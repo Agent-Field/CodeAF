@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { loadedCache } from './loadedCache.ts';
 
 export type Loaded<T> = { key: string; value: T } | undefined;
 
@@ -6,17 +7,18 @@ export type Loaded<T> = { key: string; value: T } | undefined;
 export const valueFor = <T,>(loaded: Loaded<T>, key: string | undefined): T | undefined => (key !== undefined && loaded?.key === key ? loaded.value : undefined);
 
 /**
- * Loads once per key while the card is open. The result is stored WITH the key it answered, and a result for any
- * other key is never returned: a card that moves to a different target shows nothing until that target's own read
- * lands, never the last target's contents. A failed read leaves the card with its title; nothing is invented.
+ * Returns already-known content during render. Concurrent cards share one read per resource and revision;
+ * closing the overview does not discard it. A changed target never displays the previous target's result.
  */
-export function useLoaded<T>(key: string | undefined, load: () => Promise<T>): T | undefined {
+export function useLoaded<T>(key: string | undefined, load: () => Promise<T>, revision = ''): T | undefined {
   const [loaded, setLoaded] = useState<Loaded<T>>();
   useEffect(() => {
     if (!key) return;
     let live = true;
-    load().then(value => { if (live) setLoaded({ key, value }); }, () => {});
+    const known = loadedCache.read<T>(key);
+    // A cache hit already drew during render; setting state again would repaint every card on reopen.
+    loadedCache.load(key, revision, load).then(value => { if (live && value !== known) setLoaded({ key, value }); }, () => {});
     return () => { live = false; };
-  }, [key]);
-  return valueFor(loaded, key);
+  }, [key, revision]);
+  return loadedCache.read<T>(key) ?? valueFor(loaded, key);
 }

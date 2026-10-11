@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { EngineError, readTerminal, resizeTerminal, watchTerminal, writeTerminal, type TerminalInfo } from '../chat/engine-client';
 import { sessionFor } from './open';
+import { previewTailBytes, rememberTerminal } from '../tabs/preview/resourceContent';
 import type { ScreenHandle } from './TerminalScreen';
 
 /** What the pane draws instead of the screen, when there is no terminal to draw. */
@@ -49,10 +50,11 @@ export function useTerminalFeed(binding: { sessionFile?: string; terminalId?: st
     (async () => {
       let sessionId: string;
       let job = false;
+      let record: TerminalInfo;
       try {
         sessionId = (await sessionFor(binding?.sessionFile)).id;
         if (signal.aborted) return;
-        const record = await readTerminal(sessionId, terminalId);
+        record = await readTerminal(sessionId, terminalId);
         if (signal.aborted) return;
         targetRef.current = { sessionId, terminalId }; setTarget(targetRef.current);
         job = record.kind === 'job';
@@ -65,6 +67,9 @@ export function useTerminalFeed(binding: { sessionFile?: string; terminalId?: st
         return;
       }
       let after = 0; let first = true; let exited = false;
+      // Keep only a small tail for previews; opening All tabs must not start a second terminal stream.
+      let tail = '';
+      const decoder = new TextDecoder();
       while (!signal.aborted && !exited) {
         try {
           await watchTerminal(sessionId, terminalId, after, (bytes, end, cut) => {
@@ -73,7 +78,9 @@ export function useTerminalFeed(binding: { sessionFile?: string; terminalId?: st
             if (cut) screen.write(`\x1b[2m${trimmedLine}\x1b[0m\r\n`);
             first = false;
             screen.write(bytes); after = end;
-          }, final => { exited = true; setInfo(final); }, signal);
+            tail = ((cut ? '' : tail) + decoder.decode(bytes, { stream: true })).slice(-previewTailBytes);
+            rememberTerminal(sessionId, terminalId, { info: record, text: tail });
+          }, final => { exited = true; setInfo(final); rememberTerminal(sessionId, terminalId, { info: final, text: tail }); }, signal);
         } catch (failure) {
           if (signal.aborted) return;
           if (isGone(failure)) { setNote({ text: gone }); return; }
