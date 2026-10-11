@@ -24,8 +24,10 @@ export type PlaceRailProps = {
   now: RailNow;
   /** Pinned and Open; absent while the engine has no Places to read. */
   sections?: RailSections;
-  /** The place this window shows (its row reads as the open one). */
+  /** The place of the tab in front (its row reads as the open one). */
   current?: string;
+  /** The place Focus is on, if any. */
+  focused?: string;
   /** True when the graph has places but none is pinned or open: the one quiet line of 10a "Empty". */
   emptyHint?: boolean;
   /** Non-archived places from a completed read. Zero hides the All places shortcut (Places 8e). */
@@ -34,8 +36,6 @@ export type PlaceRailProps = {
   notice?: { text: string; onRetry?: () => void };
   allPlaces?: { active: boolean; shortcut: string; onOpen: () => void; onOpenInNewTab?: () => void };
   actions: PlaceRailActions;
-  /** The open tab count of a place in this window, for the close hint ("Close Marketing · 4 tabs"). */
-  tabCount?: (id: string) => number;
   slotShortcut: (index: number) => string;
   closeShortcut: string;
   newWindowShortcut: string;

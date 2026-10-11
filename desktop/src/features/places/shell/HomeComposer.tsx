@@ -14,6 +14,8 @@ type HomeComposerProps = {
   shell: PlacesShell;
   placeId: string;
   placeName: string;
+  /** The Home tab this composer is in: the new chat opens right after it and belongs to the place. */
+  homeTabId: string;
   draft: string;
   onDraft: (draft: string) => void;
   /** The strip the new chat opens in. Without one the composer is not drawn. */
@@ -37,7 +39,7 @@ const titleOf = (text: string) => text.split('\n').find(line => line.trim())?.tr
  * nothing is sent, the words stay, and a second send reuses the session already made instead of leaving another
  * empty one behind.
  */
-export function HomeComposer({ shell, placeId, placeName, draft, onDraft, dispatch, empty, offline }: HomeComposerProps) {
+export function HomeComposer({ shell, placeId, placeName, homeTabId, draft, onDraft, dispatch, empty, offline }: HomeComposerProps) {
   // The chip names the model the first message will really run on: the places' decision when they make one, else the
   // saved Conversation role. While that is unknown it names nothing, because a guessed model is a wrong one.
   const effective = useEffectiveModel(shell.client, placeId, shell.places.graph?.revision, offline);
@@ -69,8 +71,8 @@ export function HomeComposer({ shell, placeId, placeName, draft, onDraft, dispat
       const id = session.snapshot.id;
       if (files?.length) await sendEngineWithFiles(id, text, files); else await sendEngine(id, text);
       created.current = undefined;
-      const tab = newTab({ kind: 'conversation', title: titleOf(text), titleSource: 'message', sessionFile: session.snapshot.sessionFile });
-      dispatch({ type: 'open', tab, background: behind, at: 1 });
+      const tab = newTab({ kind: 'conversation', title: titleOf(text), titleSource: 'message', sessionFile: session.snapshot.sessionFile, memberOf: [placeId] });
+      dispatch({ type: 'open', tab, background: behind, after: homeTabId });
       return true;
     } catch (failure) {
       setError(failure instanceof Error && failure.message ? failure.message : 'The chat did not start. Your words are kept.');

@@ -17,7 +17,14 @@ export type Split = { layout: SplitLayout; focus: number; panes: Pane[]; ratios?
  * it keeps the strip position, group and pin, and holds up to four panes in `split`; its own
  * content fields are then unused (see panesOf).
  */
-export type Tab = Pane & { pinned: boolean; groupId?: string; split?: Split };
+export type Tab = Pane & {
+  pinned: boolean; groupId?: string; split?: Split;
+  /**
+   * The places this tab belongs to besides the one a Home carries itself. Places are libraries (owner decision
+   * 2026-10-11), so a tab may belong to several; Focus filters the strip by it and never moves a tab.
+   */
+  memberOf?: string[];
+};
 export type TabGroup = { id: string; title: string; collapsed: boolean };
 
 /**

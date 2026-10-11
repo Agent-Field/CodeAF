@@ -91,8 +91,9 @@ export type RailSections = { pinned: PlaceRowModel[]; open: PlaceRowModel[] };
 /**
  * The rail's two sections (Places 10a). Pinned is the engine's order. Open is the engine's list (visited in the last
  * 12h, or with work inside, newest first) minus the places the person closed in this window since they last went
- * there; a closed place that is still running or waiting stays, muted, until the work settles. The window's own place
- * is always in Open while it is not pinned, because going to a place is what puts it there.
+ * there; a closed place that is still running or waiting stays, muted, until the work settles. The place of the tab in
+ * front is added to Open while it is not pinned, because going to a place is what puts it there, but closing it still
+ * takes it off: places are libraries, and a Home tab left open is not a reason to keep the row.
  */
 export function railSections(graph: PlacesGraph, closed: ReadonlyMap<string, string>, current?: string): RailSections {
   const index = indexPlaces(graph.places);
@@ -103,7 +104,7 @@ export function railSections(graph: PlacesGraph, closed: ReadonlyMap<string, str
     if (!place || place.archived || seen.has(place.id)) return;
     const closedAt = closed.get(place.id);
     const reopened = closedAt !== undefined && !!place.lastOpenedAt && place.lastOpenedAt > closedAt;
-    const isClosed = closedAt !== undefined && !reopened && place.id !== current;
+    const isClosed = closedAt !== undefined && !reopened;
     if (isClosed && !isBusy(place)) return;
     seen.add(place.id);
     open.push(placeRow(place, index, isClosed));

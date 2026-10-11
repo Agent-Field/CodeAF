@@ -16,14 +16,18 @@ function rig(desktop = false) {
   a.pinned = false;
   b.pinned = false;
   graph.rail.open = [a, b];
+  // The shell's place follows the tab in front, so opening a Home is what moves it (here, openHome stands in for that).
   let current: Exclude<PlaceKey, 'root'> = 'now';
-  let focuses = 0;
+  let focus: string | undefined;
+  const opened: string[] = [];
   let roots = 0;
   const closed = new Set<string>();
   const calls: string[] = [];
   const warnings: unknown[] = [];
   const work = { running: true, stopCalls: 0 };
-  const tabs = new Map([['now', [{ id: 'loose', draft: 'Now draft' }]], [A, [{ id: 'working', draft: 'Keep this', work }]], [B, [{ id: 'other', draft: 'Other draft' }]]]);
+  // One strip for every place: going to a place may add a tab to it and must never replace it.
+  const strip = [{ id: 'loose', draft: 'Now draft', work }, { id: 'other', draft: 'Other draft' }];
+  const stripBefore = [...strip];
   let refuse = '';
   const client = {
     graph: async () => graph,
@@ -41,39 +45,50 @@ function rig(desktop = false) {
   };
   const nav = createPlaceNavigation({
     client, windows: { desktop, openPlaceWindow: async key => { calls.push(`window:${key}`); return { moved: false }; } },
-    graph: () => graph, current: () => current, setPlace: key => { current = key; },
-    focusHome: () => { focuses++; }, openRoot: () => { roots++; },
+    graph: () => graph, current: () => current,
+    openHome: key => { opened.push(key); current = key as typeof current; },
+    focused: () => focus, setFocus: key => { focus = key; }, openRoot: () => { roots++; },
     setClosed: (key, value) => { if (value) closed.add(key); else closed.delete(key); },
     refresh: async () => {}, warn: error => warnings.push(error),
   });
-  return { nav, graph, calls, closed, warnings, work, tabs, client, current: () => current, focuses: () => focuses, roots: () => roots, refuse: (op: string) => { refuse = op; } };
+  return { nav, graph, calls, closed, warnings, work, strip, stripBefore, opened, client, current: () => current, focus: () => focus, setFocus: (key: string | undefined) => { focus = key; }, roots: () => roots, refuse: (op: string) => { refuse = op; } };
 }
 
-test('Go to visits the Open MRU and focuses Home on every arrival without stopping work', async () => {
+test('Go to opens the place’s Home as a tab on every arrival, visits the Open MRU and leaves the strip alone', async () => {
   const r = rig();
-  const saved = r.tabs.get(A);
   await r.nav.goTo(A);
   await r.nav.goTo(B);
   await r.nav.goTo(A);
-  assert.equal(r.current(), A);
+  assert.deepEqual(r.opened, [A, B, A]);
   assert.equal(r.graph.rail.open[0].id, A);
-  assert.equal(r.focuses(), 3);
-  assert.equal(r.tabs.get(A), saved);
+  assert.deepEqual(r.strip, r.stripBefore);
   assert.deepEqual(r.calls.filter(call => call.startsWith('touch:')), [`touch:${A}`, `touch:${B}`, `touch:${A}`]);
   assert.deepEqual(r.work, { running: true, stopCalls: 0 });
 });
 
-test('close leaves Now, keeps saved tabs for restore and revisits the rail on reopening', async () => {
+test('Go to ends a Focus on another place, keeps one on the same place, and Now clears it', async () => {
+  const r = rig();
+  r.setFocus(A);
+  await r.nav.goTo(B);
+  assert.equal(r.focus(), undefined);
+  r.setFocus(A);
+  await r.nav.goTo(A);
+  assert.equal(r.focus(), A);
+  await r.nav.goTo('now');
+  assert.equal(r.focus(), undefined);
+  assert.deepEqual(r.opened, [B, A]);
+});
+
+test('close takes the place off the rail, ends a Focus on it and closes no tab', async () => {
   const r = rig();
   await r.nav.goTo(A);
-  const saved = r.tabs.get(A);
+  r.setFocus(A);
   await r.nav.closePlace(A);
-  assert.equal(r.current(), 'now');
   assert.ok(r.closed.has(A));
+  assert.equal(r.focus(), undefined);
   assert.ok(!r.graph.rail.open.some(place => place.id === A));
-  assert.equal(r.tabs.get(A), saved);
+  assert.deepEqual(r.strip, r.stripBefore);
   await r.nav.goTo(A);
-  assert.equal(r.tabs.get(r.current()), saved);
   assert.equal(r.closed.has(A), false);
   assert.equal(r.work.running, true);
 });
@@ -85,7 +100,6 @@ test('bulk close keeps the chosen place and pinned places', async () => {
   await r.nav.goTo(A);
   await r.nav.closeAllOthers(A);
   assert.deepEqual(r.calls.filter(call => call.startsWith('close:')), [`close:${B}`]);
-  assert.equal(r.current(), A);
 });
 
 test('up follows the primary parent, then opens root as a Home tab in the current window', async () => {
@@ -105,7 +119,7 @@ test('native new-window navigation leaves this window and its saved tabs untouch
   await r.nav.goTo(B, { newWindow: true });
   await r.nav.openInNewWindow('root');
   assert.equal(r.current(), A);
-  assert.equal(r.focuses(), 1);
+  assert.deepEqual(r.opened, [A]);
   assert.deepEqual(r.calls, [`touch:${A}`, `visit:${A}`, `window:${B}`, `touch:${B}`, `visit:${B}`, 'window:root']);
 });
 
@@ -114,7 +128,7 @@ test('browser new-window actions fall back to Go to in this window', async () =>
   await r.nav.openInNewWindow(A);
   await r.nav.goTo(B, { newWindow: true });
   assert.equal(r.current(), B);
-  assert.equal(r.focuses(), 2);
+  assert.deepEqual(r.opened, [A, B]);
   assert.ok(!r.calls.some(call => call.startsWith('window:')));
 });
 
@@ -143,8 +157,9 @@ test('a refused close preserves the current workspace; a failed visit reports it
   const r = rig();
   await r.nav.goTo(A);
   r.refuse('close');
+  r.setFocus(A);
   await assert.rejects(r.nav.closePlace(A), /Engine refused/);
-  assert.equal(r.current(), A);
+  assert.equal(r.focus(), A);
   assert.equal(r.closed.size, 0);
   r.refuse('visit');
   await r.nav.goTo(B);

@@ -29,7 +29,9 @@ async function boot(page: Page): Promise<Rig> {
 }
 
 const tabs = (page: Page) => page.locator('.workspace-tabstrip').getByRole('tab');
-const home = (page: Page) => page.locator('.workspace-tab.is-place-home');
+// Places are libraries: several Homes can be tabs at once. `home` is the one in front; `homeOf` finds one by its place's name.
+const home = (page: Page) => page.locator('.workspace-tab.is-place-home[data-active="true"]');
+const homeOf = (page: Page, name: string) => page.locator('.workspace-tab.is-place-home').filter({ hasText: name });
 const composer = (page: Page) => page.locator('.home-composer').getByRole('textbox', { name: 'Message' });
 const isCreate = (call: { method: string; path: string }) => call.method === 'POST' && call.path === '/sessions';
 const isFiling = (placeId: string) => (call: { method: string; path: string }) => call.method === 'POST' && call.path === `/places/${placeId}/members`;
@@ -52,15 +54,17 @@ for (const theme of ['light', 'dark'] as const) {
     await page.locator('.app-shell .place-rail').locator('.rail-row').filter({ has: page.locator('.rail-place-name', { hasText: /^Marketing/ }) }).locator('.rail-place').click();
     await expect(home(page)).toContainText('Marketing');
     await expect(composer(page)).toHaveAttribute('placeholder', 'Start something in Marketing');
-    await expect(home(page)).toHaveCount(1);
+    await expect(page.locator('.workspace-tab.is-place-home')).toHaveCount(2);
 
     await composer(page).fill('Draft the launch email');
     await composer(page).press('Enter');
     const opened = tabs(page).filter({ hasText: 'Draft the launch email' });
     await expect(opened).toHaveAttribute('aria-selected', 'true');
-    await expect(tabs(page).nth(1)).toHaveAccessibleName('Draft the launch email');
-    await expect(home(page)).toHaveCount(1);
-    await expect(page.locator('.workspace-tab[data-kind="conversation"]')).toHaveCount(1);
+    // It opens right after the Marketing Home it was started from, beside the Launch site Home, which stays.
+    const labels = await tabs(page).evaluateAll(els => els.map(el => el.getAttribute('aria-label') ?? el.textContent?.trim() ?? ''));
+    expect(labels[labels.findIndex(label => /Marketing/.test(label)) + 1]).toBe('Draft the launch email');
+    await expect(page.locator('.workspace-tab.is-place-home')).toHaveCount(2);
+    await expect(page.locator('.workspace-tab[data-kind="conversation"]')).toHaveCount(2);
 
     const create = rig.places.traffic.findIndex(isCreate);
     const file = rig.places.traffic.findIndex(isFiling(marketing));
@@ -72,14 +76,13 @@ for (const theme of ['light', 'dark'] as const) {
     expect(rig.engine.snapshot().workspace).toBe('/work/brand');
     expect(rig.engine.snapshot().workingFolder).toMatchObject({ from: 'place', path: '/work/brand' });
 
-    await tabs(page).first().click();
-    await expect(tabs(page).first()).toHaveAttribute('aria-selected', 'true');
+    await homeOf(page, 'Marketing').getByRole('tab').click();
+    await expect(homeOf(page, 'Marketing').getByRole('tab')).toHaveAttribute('aria-selected', 'true');
     await composer(page).fill('Second thought, in the background');
     await composer(page).press(`${primary}+Enter`);
-    await expect(tabs(page)).toHaveCount(3);
+    await expect(tabs(page)).toHaveCount(5);
     await expect.poll(() => rig.engine.calls.filter(call => call.path.endsWith('/turn')).map(call => call.body.text)).toContain('Second thought, in the background');
-    await expect(tabs(page).first()).toHaveAttribute('aria-selected', 'true');
-    await expect(home(page)).toHaveCount(1);
-    await expect(page.locator('.workspace-tab[data-kind="conversation"]')).toHaveCount(2);
+    await expect(homeOf(page, 'Marketing').getByRole('tab')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('.workspace-tab[data-kind="conversation"]')).toHaveCount(3);
   });
 }

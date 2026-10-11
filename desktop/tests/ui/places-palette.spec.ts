@@ -255,8 +255,8 @@ for (const theme of THEMES) {
     await expect(chooser(page).getByRole('option')).toHaveCount(0);
     await page.keyboard.press(`${primary}+KeyN`);
     await expect(chooser(page)).toHaveCount(0);
-    await expect(tabs(page).first()).toHaveAccessibleName('Garden');
-    await expect(tabs(page).first()).toHaveAttribute('aria-selected', 'true');
+    // The new place's Home opens as a tab after the one in front (places are libraries); it is not the first tab.
+    await expect(tabs(page).filter({ hasText: 'Garden' })).toHaveAttribute('aria-selected', 'true');
     expect(places.state().places.map(place => place.name)).toEqual(['Garden']);
   });
 }

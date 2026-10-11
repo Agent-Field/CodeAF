@@ -1,4 +1,4 @@
-// A walk belongs to the window, so it survives the workspace remount at a place switch.
+// A walk belongs to the window, not to the workspace that started it.
 // The feed removes vanished questions in one publication; no empty intermediate card is shown.
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import type { Pane } from '../tabs/model.ts';
@@ -70,12 +70,10 @@ export function createNextUpWalk() {
 export const nextUpWalk = createNextUpWalk();
 export const useNextUpWalkState = () => useSyncExternalStore(nextUpWalk.subscribe, nextUpWalk.getSnapshot, nextUpWalk.getSnapshot);
 
-/** The workspace supplies its canonical navigation, which also sets the frame tint and rail selection. */
+/** The workspace supplies how a walk opens a conversation and puts the reader back where they were. */
 export function useNextUpWalk(options: {
  enabled: boolean;
  origin: () => WalkOrigin;
- place: string;
- goTo: (place: string) => Promise<void>;
  open: (item: AttentionItem) => void;
  restore: (origin: WalkOrigin) => void;
  warn: (reason: unknown) => void;
@@ -109,18 +107,16 @@ export function useNextUpWalk(options: {
   if (state.phase !== 'walking') landed.current = undefined;
   const origin = state.origin;
   if (state.phase === 'returning' && origin) {
-   if (options.place !== origin.place) { void options.goTo(origin.place).catch(options.warn); return; }
    options.restore(origin); nextUpWalk.returned(); return;
   }
   const item = state.item;
   if (state.phase !== 'walking' || !item) return;
-  const place = item.placeIds?.includes(options.place) ? options.place : item.placeIds?.[0] ?? 'now';
-  if (options.place !== place) { void options.goTo(place).catch(options.warn); return; }
-  const destination = `${options.place}:${item.key}`;
+  // Places are libraries: every conversation opens in this one strip, so a walk never has to change places first.
+  const destination = item.key;
   // Strict Mode replays effects; one arrival must still open only one tab.
   if (landed.current === destination) return;
   landed.current = destination;
   options.open(item);
- }, [options.enabled, options.place, state.phase, itemKey]);
+ }, [options.enabled, state.phase, itemKey]);
  return state;
 }

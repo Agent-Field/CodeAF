@@ -20,11 +20,11 @@ export function usePlaceKeys(shell: PlacesShell, onEnterWorkspace: () => void) {
     if (!command) return false;
     switch (command.type) {
       case 'go-to-chooser': shell.openChooser({ kind: 'go' }); return true;
-      case 'all-places': onEnterWorkspace(); requestWorkspace({ type: 'home-root', fresh: true }); return true;
+      case 'all-places': onEnterWorkspace(); shell.setFocus(undefined); requestWorkspace({ type: 'home-root', fresh: true }); return true;
       case 'home':
         if (shell.place === 'now') { shell.warn(new Error('Now has no Home. Go to a place to see its Home.')); return true; }
         onEnterWorkspace();
-        requestWorkspace({ type: 'home-ensure', place: shell.place, title: shell.index?.byId.get(shell.place)?.name ?? 'Home', focus: true });
+        requestWorkspace({ type: 'home-open', place: shell.place, title: shell.index?.byId.get(shell.place)?.name ?? 'Home' });
         return true;
       case 'jump': onEnterWorkspace(); void shell.goTo(command.place).catch(shell.warn); return true;
       case 'close-place':

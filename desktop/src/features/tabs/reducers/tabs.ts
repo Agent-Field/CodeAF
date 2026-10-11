@@ -5,13 +5,13 @@ import type { TabView } from '../view-state.ts';
 import type { TabKind } from '../kinds/types.ts';
 import { fitIndex, initialWorkspace, insertAt, mapContent, newConversationTitle, newTabTitle, newTab, normalize, pinnedCount, rankOf, tabHolding, titleRank, visibleTabs } from '../helpers.ts';
 import type { ClosedPlace, ClosedTab, Tab, TabGroup, WorkspaceState } from '../types.ts';
-import { isPlaceHome } from './home.ts';
 
 export type TabAction =
-  | { type: 'new'; groupId?: string; kind?: TabKind }
+  | { type: 'new'; groupId?: string; kind?: TabKind; /** The place Focus is on: a tab opened while focused belongs to it. */ place?: string }
   /** `at` places the tab at that strip index (a chat started from a place's Home opens right after Home), fitted to the
-   * strip's order law; default the end. */
-  | { type: 'open'; tab: Tab; background: boolean; at?: number }
+   * strip's order law; default the end. `after` is the same by tab id: right after that tab, which places are libraries make the
+   * only honest way to say "beside the Home it was started from". */
+  | { type: 'open'; tab: Tab; background: boolean; at?: number; after?: string }
   /**
    * Opening a task. `from` is the pane it was opened from: the task joins that tab's group (Shell, "Tasks opened from a
    * conversation join its group automatically"), at the end of the group.
@@ -83,7 +83,7 @@ export function reduceTabs(state: WorkspaceState, action: { type: string }): Wor
   switch (a.type) {
     case 'new': {
       const kind = a.kind ?? 'newtab';
-      const tab = newTab({ groupId: a.groupId, kind, ...(kind === 'newtab' ? { title: newTabTitle } : {}) });
+      const tab = newTab({ groupId: a.groupId, kind, ...(a.place ? { memberOf: [a.place] } : {}), ...(kind === 'newtab' ? { title: newTabTitle } : {}) });
       return { ...state, tabs: [...state.tabs, tab], activeId: tab.id, recentIds: [tab.id, ...state.recentIds], nextNumber: state.nextNumber + 1, groups: uncollapse(state, a.groupId) };
     }
     case 'open':
@@ -91,7 +91,9 @@ export function reduceTabs(state: WorkspaceState, action: { type: string }): Wor
       const opener = a.type === 'open-task' && a.from ? tabHolding(state, a.from) : undefined;
       // The arrange law gathers a member at the end of its group's run, so joining is only taking the group's id.
       const tab = opener?.groupId && !opener.pinned ? { ...a.tab, pinned: false, groupId: opener.groupId } : a.tab;
-      const at = a.type === 'open' && a.at !== undefined ? fitIndex(state.tabs, tab, a.at) : state.tabs.length;
+      const anchor = a.type === 'open' && a.after ? state.tabs.findIndex(t => t.id === a.after) : -1;
+      const wanted = a.type === 'open' ? (anchor >= 0 ? anchor + 1 : a.at) : undefined;
+      const at = wanted !== undefined ? fitIndex(state.tabs, tab, wanted) : state.tabs.length;
       return { ...state, tabs: insertAt(state.tabs, tab, at), activeId: a.background ? state.activeId : tab.id, recentIds: a.background ? [...state.recentIds, tab.id] : [tab.id, ...state.recentIds] };
     }
     case 'pick': {
@@ -110,8 +112,7 @@ export function reduceTabs(state: WorkspaceState, action: { type: string }): Wor
     }
     case 'close': {
       const closing = state.tabs.find(t => t.id === a.id);
-      // A place's Home is the strip's first tab and never closes (Interactions "Home tab (pinned)").
-      if (!closing || isPlaceHome(closing)) return state;
+      if (!closing) return state;
       const order = visibleTabs({ ...state, groups: state.groups });
       const index = order.findIndex(t => t.id === closing.id);
       const remaining = order.filter(t => t.id !== closing.id);
@@ -129,7 +130,7 @@ export function reduceTabs(state: WorkspaceState, action: { type: string }): Wor
       const tab = state.closed.find(t => t.id === a.id);
       return tab ? restore(state, tab, { before: a.before, after: a.after, group: a.group }) : state;
     }
-    case 'pin': if (state.tabs.some(t => t.id === a.id && isPlaceHome(t))) return state; return normalize({ ...state, tabs: state.tabs.map(t => (t.id === a.id ? { ...t, pinned: !t.pinned, groupId: undefined } : t)) });
+    case 'pin': return normalize({ ...state, tabs: state.tabs.map(t => (t.id === a.id ? { ...t, pinned: !t.pinned, groupId: undefined } : t)) });
     case 'rename': return mapContent(state, a.id, pane => ({ ...pane, title: a.title.trim() || newConversationTitle, titleSource: 'manual' }));
     case 'title': {
       const title = a.title.trim();
@@ -146,7 +147,7 @@ export function reduceTabs(state: WorkspaceState, action: { type: string }): Wor
     case 'reorder': {
       const tab = state.tabs.find(t => t.id === a.id);
       const target = state.tabs.find(t => t.id === a.targetId);
-      if (!tab || !target || tab.id === target.id || isPlaceHome(tab) || (isPlaceHome(target) && !a.after)) return state;
+      if (!tab || !target || tab.id === target.id) return state;
       const rest = state.tabs.filter(t => t.id !== tab.id);
       const pinned = pinnedCount(rest);
       const wanted = rest.indexOf(target) + (a.after ? 1 : 0);

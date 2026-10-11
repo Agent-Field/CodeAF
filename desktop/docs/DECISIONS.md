@@ -675,3 +675,13 @@ The owner lost a hand-built tab setup by clicking a place tile on All places, wh
 - **Save and restore.** Leaving a place already persisted its tab set per window and place (workspace-sync `windowStore`), and returning restored it. The part that did not survive was scroll: the scroll memory pruned every pane outside the strip on show, so a place switch dropped the left place's positions. `savedPaneIds` now keeps the panes this window saved under other places.
 - **Back/forward** already records a place switch in the focus history; `tests/ui/place-navigation.spec.ts` pins that ⌘[ returns across one.
 
+## t-places-lib-focus: places are libraries; the rail opens Home as a tab and Focus filters the strip (owner decision, 11 Oct)
+
+Overrides Places 9e "switching places swaps tabs" and the part of t-fix-place-nav that kept the rail as the one switch. Places are libraries, not workspaces: there is ONE tab set and a place selection never replaces it.
+
+- **Rail, ⌘P and every page click** dispatch `home-open`: the place's Home is an ordinary, closable tab after the active one, or the open one is focused. The pinned per-place Home, `home-ensure`, `adopt`, the per-place workspace key and the Home-tab place switcher are deleted. `windowLocal.ts` and `workspaceSync.ts` (already unreferenced) are deleted with their tests; `shellState.ts` stays, because it still carries the active tab's kind and Home to the rail and the Settings request door.
+- **Membership.** A tab carries `memberOf` (additive, validated by both readers). `placesOf(tab)` is a Home's own place or `memberOf`. Dragging a tab onto a rail row (the shared pointer drag, payload kind `tab`) dispatches `tab-place`, which only adds, and files the chats the tab holds with the engine.
+- **Focus** lives in the places shell (window-local, `shell.focus`). It is a filter (`inFocus`) read by the strip, the tab keys and the frame tint; the reducer never sees it, so it cannot close or move a tab. `stampFocus` gives tabs opened while focused that membership. Ending it: the strip chip, the rail button or ⌘-click again, Now, closing or archiving the place, or going to another place.
+- **The place of the window** (`shell.place`) now FOLLOWS the active tab (`shownPlace`), so the rail highlight, the native title and the menus need no second source of truth. Only `followTab` moves it.
+- **Chats opened from a place Home** open beside the current tab and keep that place. Next up and focus history no longer change places before acting: there is one strip.
+- Proof: `tests/ui/place-navigation.spec.ts` (behaviours 1 to 6, chromium and webkit), `src/features/places/librarySelection.test.ts` (no code path replaces the tab set on a place selection), reducer and navigation unit tests.

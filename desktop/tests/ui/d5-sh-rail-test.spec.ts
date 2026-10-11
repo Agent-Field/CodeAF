@@ -222,7 +222,8 @@ test.describe('rail Now, retired Inbox, compact width', () => {
 
       const readingRow = rail(page).locator(`[data-rail-item="${reading}"]`);
       await readingRow.click();
-      await expect(page.locator('body')).toHaveAttribute('data-tint', 'sage');
+      // Places are libraries: the click opens Reading's Home as a tab; only Focus tints the frame.
+      await expect(page.locator('body')).toHaveAttribute('data-tint', 'graphite');
       await expect.poll(() => page.evaluate(() => localStorage.getItem('codeaf.desktop.window.main.place'))).toBe(reading);
       await expect(now).not.toHaveAttribute('aria-current', 'page');
       await now.hover();
@@ -234,9 +235,9 @@ test.describe('rail Now, retired Inbox, compact width', () => {
       await expect(now).toHaveCSS('background-color', await tokenColor(page, 'field-2'));
       expect(millis(await now.evaluate(el => getComputedStyle(el).transitionDuration))).toBe(80);
       await page.mouse.up();
-      await expect(now).toHaveAttribute('aria-current', 'page');
+      // Now shows every tab and closes none; the tab in front still decides the highlighted row.
+      await expect(page.getByRole('tab', { name: 'Reading', exact: true })).toBeVisible();
       await expect(page.locator('body')).toHaveAttribute('data-tint', 'graphite');
-      await expect.poll(() => page.evaluate(() => localStorage.getItem('codeaf.desktop.window.main.place'))).toBe('now');
       expect(await now.evaluate(el => getComputedStyle(el).boxShadow)).not.toBe(await focusRing(page));
 
       await readingRow.click();
@@ -245,20 +246,19 @@ test.describe('rail Now, retired Inbox, compact width', () => {
       await expect(now).toBeFocused();
       expect(await now.evaluate(el => getComputedStyle(el).boxShadow)).toBe(await focusRing(page));
       await page.keyboard.press('Enter');
-      await expect(now).toHaveAttribute('aria-current', 'page');
-      await expect.poll(() => page.evaluate(() => localStorage.getItem('codeaf.desktop.window.main.place'))).toBe('now');
+      await expect(page.getByRole('tab', { name: 'Reading', exact: true })).toBeVisible();
 
       await now.click({ button: 'right' });
       await expect(page.getByRole('menu')).toHaveCount(0);
 
       await readingRow.click();
       await now.click({ button: 'middle' });
-      await expect(page.locator('body')).toHaveAttribute('data-tint', 'sage');
+      await expect(page.getByRole('tab', { name: 'Reading', exact: true })).toHaveAttribute('aria-selected', 'true');
       await now.click({ modifiers: ['Control'] });
-      await expect(now).toHaveAttribute('aria-current', 'page');
+      await expect(page.getByRole('tab', { name: 'Reading', exact: true })).toBeVisible();
       await readingRow.click();
       await now.click({ modifiers: ['Meta'] });
-      await expect(now).toHaveAttribute('aria-current', 'page');
+      await expect(page.getByRole('tab', { name: 'Reading', exact: true })).toBeVisible();
       await expect(page.locator('body')).toHaveAttribute('data-tint', 'graphite');
       expect(await page.evaluate(() => (window as unknown as { __openedUrls: string[] }).__openedUrls)).toEqual([]);
       await expect(page.getByRole('tab', { name: 'Inbox', exact: true })).toHaveCount(0);
@@ -278,7 +278,7 @@ test.describe('rail Now, retired Inbox, compact width', () => {
     test(`native command, control and middle click open Now without leaving this window · ${theme}`, async ({ page }) => {
       await boot(page, theme, 'quiet', true);
       await rail(page).locator(`[data-rail-item="${reading}"]`).click();
-      await expect(page.locator('body')).toHaveAttribute('data-tint', 'sage');
+      await expect(page.locator('body')).toHaveAttribute('data-tint', 'graphite');
       const now = nowRow(page);
       await now.click({ modifiers: ['Control'] });
       await now.click({ modifiers: ['Meta'] });
@@ -288,7 +288,7 @@ test.describe('rail Now, retired Inbox, compact width', () => {
         { cmd: 'window_open', args: { request: { placeKey: 'now' } } },
         { cmd: 'window_open', args: { request: { placeKey: 'now' } } },
       ]);
-      await expect(page.locator('body')).toHaveAttribute('data-tint', 'sage');
+      await expect(page.locator('body')).toHaveAttribute('data-tint', 'graphite');
       await expect(page.getByRole('button', { name: /^Reading/ }).first()).toHaveAttribute('aria-current', 'page');
       await now.click({ button: 'right' });
       await expect(page.getByRole('menu')).toHaveCount(0);
@@ -344,7 +344,8 @@ test.describe('rail Now, retired Inbox, compact width', () => {
         await show.click();
         await nowRow(page).click();
         await expect(drawer).not.toBeVisible();
-        await expect.poll(() => page.evaluate(() => localStorage.getItem('codeaf.desktop.window.main.place'))).toBe('now');
+        // Now closes nothing, so Reading's Home is still the tab in front and the place follows it.
+        await expect.poll(() => page.evaluate(() => localStorage.getItem('codeaf.desktop.window.main.place'))).toBe(reading);
       });
     }
   }

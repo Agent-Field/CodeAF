@@ -234,7 +234,7 @@ test('d5-pl-test-org: tint row is five squares, and left/right then Enter picks 
   await page.mouse.up();
   await expect(group).toBeVisible();
 
-  for (let step = 0; step < 8 && await group.evaluate(el => el !== document.activeElement); step += 1) await page.keyboard.press('ArrowDown');
+  for (let step = 0; step < 12 && await group.evaluate(el => el !== document.activeElement); step += 1) await page.keyboard.press('ArrowDown');
   await expect(group).toBeFocused();
   const labelFill = await group.locator('.menu-swatch-label').evaluate(el => {
     const probe = document.createElement('span');
@@ -278,7 +278,7 @@ async function menuRows(menu: ReturnType<Page['getByRole']>) {
   }));
 }
 
-test('d5-pl-test-org: the tile menu, the Home ⋯ and the Home tab each list their rows', async ({ page }) => {
+test('d5-pl-test-org: the tile menu and the Home ⋯ list their rows, and a Home tab has the ordinary tab menu', async ({ page }) => {
   test.setTimeout(60_000);
   await openAllPlaces(page);
   await tile(page, 'Reading').locator('.places-tile-main').click({ button: 'right' });
@@ -335,9 +335,9 @@ test('d5-pl-test-org: the tile menu, the Home ⋯ and the Home tab each list the
   await page.getByRole('menuitem', { name: 'Go to' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Reading' })).toBeVisible();
 
-  // The ⋯ button's name wins over the menu's aria-label, so the open menu is "Place actions".
+  // The hidden All places pane is still mounted beside the Home now (nothing is replaced), so the menu keeps its own label.
   await page.getByRole('button', { name: 'Place actions', exact: true }).click();
-  const home = page.getByRole('menu', { name: 'Place actions' });
+  const home = page.getByRole('menu', { name: /^(Place|Reading) actions$/ });
   await expect(home).toBeVisible();
   expect((await menuRows(home)).map(row => row.label)).toEqual([
     'Open in new window', '—',
@@ -346,19 +346,13 @@ test('d5-pl-test-org: the tile menu, the Home ⋯ and the Home tab each list the
   ]);
   await page.keyboard.press('Escape');
 
+  // Places are libraries (owner decision 2026-10-11): a Home is an ordinary tab, so its menu is the ordinary tab menu.
   await page.getByRole('tab', { name: 'Reading' }).click({ button: 'right' });
-  // A place's Home owns its menu and labels it "Place menu"; the strip's "Actions for <title>" wraps only ordinary tabs.
-  const tab = page.getByRole('menu', { name: 'Place menu' });
+  const tab = page.getByRole('menu', { name: /^Actions for Reading/ });
   await expect(tab).toBeVisible();
-  expect((await menuRows(tab)).map(row => row.label)).toEqual([
-    'Open in new window', '—',
-    'Rename', 'Tint', 'Add to another place…', 'Merge into…', 'Pin to rail', '—',
-    'Close place',
-  ]);
-  await expect(tab.getByRole('menuitem', { name: 'Archive' })).toHaveCount(0);
+  await expect(tab.getByRole('menuitem', { name: /^Close/ }).first()).toBeVisible();
   await expect(tab.getByRole('menuitem', { name: 'Delete place…' })).toHaveCount(0);
   await expect(tab.getByRole('menuitem', { name: 'Go to' })).toHaveCount(0);
-  await expect(tab.getByRole('menuitem', { name: 'Quick Look' })).toHaveCount(0);
 });
 
 /** Press, cross the 4px threshold, and land on the target. Option is down before the release so the drop sees it. */

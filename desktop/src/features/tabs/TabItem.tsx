@@ -14,9 +14,7 @@ import { SplitTab } from './SplitTab';
 import { useWebFavicons } from '../web/favicons';
 import { monogramOf } from '../web/address';
 import { type IconName } from '../../components/ui';
-import { Switcher } from '../places/rail/Switcher';
 import { kindDef } from './kinds/registry';
-import { isPlaceHome } from './reducers/home';
 import { isSelectionPress } from './selection';
 import { stripMiddleCloses } from './stripPointer';
 import { announce } from './announce';
@@ -45,8 +43,8 @@ export function navigate(api: TabsApi, order: readonly Tab[], tab: Tab, pendingF
       if (!focused) return;
       event.preventDefault();
       event.stopPropagation();
-      // The keyboard move stays in its section; place Home remains the fixed first tab.
-      const section = api.state.tabs.filter(item => !isPlaceHome(item) && item.pinned === tab.pinned && item.groupId === tab.groupId);
+      // The keyboard move stays in its section.
+      const section = api.state.tabs.filter(item => item.pinned === tab.pinned && item.groupId === tab.groupId);
       const index = section.findIndex(item => item.id === tab.id);
       const direction = event.key === 'ArrowRight' ? 1 : -1;
       const target = section[index + direction];
@@ -96,8 +94,8 @@ export function TabItem({ api, tab, order, inGroup = false, narrow = false }: { 
   const active = tab.id === api.state.activeId;
   const favicons = useWebFavicons(api.workspaceKey, panesOf(tab));
   const drag = useTabDrag(api, tab);
-  const home = isPlaceHome(tab);
-  // Middle-click is the × (SH-OQ4): the view closes and the work keeps running. A pin and a place Home have no close.
+  const home = tab.kind === 'home' && !!tab.place && tab.place !== 'root';
+  // Middle-click is the × (SH-OQ4): the view closes and the work keeps running. A pin has no close.
   const onMouseDown = (event: MouseEvent) => { if (event.button === 1) event.preventDefault(); };
   const onAuxClick = (event: MouseEvent) => {
     if (event.button !== 1) return;
@@ -129,14 +127,13 @@ export function TabItem({ api, tab, order, inGroup = false, narrow = false }: { 
     const segments = panes.map(pane => ({ id: pane.id, kind: pane.kind, title: pane.title, icon: paneIcon(pane), monogram: monogramOf(pane), favicon: favicons.get(pane.id), state: stateOfMark(api.summaries[pane.id]?.mark) }));
     return withTabMenu(api, tab, <SplitTab picked={picked} segments={segments} focus={focus} active={active} frame={{ ...frame, onKeyDown: navigate(api, order, tab, pendingFocus) }} onSelectPane={(index, event) => choose(panes[index].id)(event)} wrapSegment={(segment, button) => withSegmentTooltip(api, tab, segment.title, button)} onClose={() => api.closeTab(tab.id)}/>);
   }
-  const switcher = home ? api.placeSwitcher : undefined;
   // The kind's words after the name. A finished job contributes `exit N`; everything else contributes nothing.
   const meta = kindDef(tab.kind).tabMeta?.(tab, api.summaries[tab.id]);
   const view = (
-    <TabView compressed={compressed} icon={paneIcon(tab)} favicon={favicons.get(tab.id)} kind={tab.kind} title={tab.title} meta={meta} monogram={monogramOf(focusedPane(tab))} active={active} pinned={tab.pinned} placeTint={home ? api.placeTint ?? 'graphite' : undefined} inGroup={inGroup} picked={picked} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame}
+    <TabView compressed={compressed} icon={paneIcon(tab)} favicon={favicons.get(tab.id)} kind={tab.kind} title={tab.title} meta={meta} monogram={monogramOf(focusedPane(tab))} active={active} pinned={tab.pinned} placeTint={home ? api.tintOf?.(tab.place!) ?? 'graphite' : undefined} inGroup={inGroup} picked={picked} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame}
       closeMode={stop ? 'stop' : 'close'} closeHint={stop ? 'Close and stop' : running ? 'Close · keeps running' : 'Close'} closeShortcut={stop ? closeStopShortcut : closeShortcutFor(tab.kind)}
       onSelect={choose(tab.id)} onClose={() => (stop ? api.closeAndStop(tab.id) : api.closeTab(tab.id))} onRename={() => api.startRename(tab.id)}
-      onKeyDown={navigate(api, order, tab, pendingFocus)} previewOpen={previewOpen} wrapSelect={select => (switcher ? <Switcher items={switcher.items}>{select}</Switcher> : withPreview(api, tab, select))} switcher={switcher && { alert: switcher.alert }}/>
+      onKeyDown={navigate(api, order, tab, pendingFocus)} previewOpen={previewOpen} wrapSelect={select => withPreview(api, tab, select)}/>
   );
   // The switcher menu hangs on the tab's own button, so its popup attributes land on a control and not on the frame.
   return withTabMenu(api, tab, view);

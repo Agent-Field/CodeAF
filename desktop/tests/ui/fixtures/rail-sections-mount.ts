@@ -35,7 +35,7 @@ export function mountRailSections(theme: string, scene: RailScene, drawer = fals
       livePlaces,
       allPlaces: { active: false, shortcut: '⌘⇧P', onOpen: () => note('all'), onOpenInNewTab: () => note('all-tab') },
       actions: {
-        go: id => note(`go:${id}`), newWindow: id => note(`window:${id}`), close: id => note(`close:${id}`),
+        go: id => note(`go:${id}`), newWindow: id => note(`window:${id}`), focus: id => note(`focus:${id}`), close: id => note(`close:${id}`),
         closeAll: () => note('close-all'), closeOthers: () => note('close-others'),
       },
       slotShortcut: index => `⌃${index}`, closeShortcut: '⌘⇧W', newWindowShortcut: '⌘N',

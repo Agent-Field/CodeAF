@@ -68,8 +68,10 @@ export function buildHomeActions({ shell, homeId, digests, strip, quickLook, ret
     // The closed record retains the tab’s position, group and view state, which a fresh tab would lose.
     const closed = [...strip.state.closed].reverse().find(tab => panesOf(tab).some(pane => pane.sessionFile === sessionFile));
     if (closed && !background) { strip.dispatch({ type: 'reopen-id', id: closed.id }); return; }
-    const tab: Tab = newTab({ kind: 'conversation', title: chatTitle(chatId), titleSource: 'engine', sessionFile });
-    strip.dispatch({ type: 'open', tab, background });
+    // A chat opened from a place's Home is a new tab right beside the one you are on, and it keeps that place.
+    const member = homeId !== 'root' && homeId !== 'now' ? { memberOf: [homeId] } : {};
+    const tab: Tab = newTab({ kind: 'conversation', title: chatTitle(chatId), titleSource: 'engine', sessionFile, ...member });
+    strip.dispatch({ type: 'open', tab, background, after: strip.state.activeId });
   };
   // The place's Home as a tab right after the active one, or the tab already showing it. Deleting, archiving and
   // missing places are refused here with the same sentences the rail's Go to gives.

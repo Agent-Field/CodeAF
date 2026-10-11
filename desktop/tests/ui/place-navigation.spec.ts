@@ -1,34 +1,31 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import { installMockEngine } from './support/mock-engine';
 import { installMockPlaces, sessionFileFor, type PlacesSeed } from './support/mock-places';
 
-// Owner rule (10 Oct): a click inside a page opens a NEW TAB in this window; only the rail and ⌘P switch the place.
-// Switching away saves the exact tab set, and Now restores it (docs/DECISIONS.md).
+// OWNER DECISION 2026-10-11 (docs/DECISIONS.md "Places are libraries"): a rail click opens the place's Home as a tab in the
+// strip that is already showing; Focus filters the strip and tints the frame; nothing is ever replaced, closed or moved.
 
-const conversation = (id: string, extra: object = {}) => ({ id, kind: 'conversation' as const, title: id, titleSource: 'manual' as const, draft: '', pinned: false, ...extra });
+const READING = 'pl_0000000000000a01';
+const WRITING = 'pl_0000000000000a02';
+const conversation = (id: string, memberOf?: string[]) => ({ id, kind: 'conversation' as const, title: id, titleSource: 'manual' as const, draft: '', pinned: false, ...(memberOf ? { memberOf } : {}) });
 const seedTabs = {
-  tabs: [
-    conversation('Alpha'),
-    conversation('Beta', { groupId: 'g1' }),
-    conversation('Gamma', { groupId: 'g1' }),
-    {
-      id: 'Split', kind: 'conversation', title: 'Split', titleSource: 'manual', draft: '', pinned: false,
-      split: { layout: '1x2', focus: 0, panes: [conversation('Left'), conversation('Right')] },
-    },
-  ],
-  groups: [{ id: 'g1', title: 'Pair', collapsed: false }], closed: [], activeId: 'Gamma', recentIds: ['Gamma'], nextNumber: 9,
+  tabs: [conversation('Alpha', [READING]), conversation('Beta', [WRITING]), conversation('Gamma', [READING, WRITING]), conversation('Delta')],
+  groups: [], closed: [], activeId: 'Delta', recentIds: ['Delta'], nextNumber: 9,
 };
 
 const seed = (): PlacesSeed => ({
-  places: [{ name: 'Reading', tint: 'iris', pinned: true }, { name: 'Writing', tint: 'rose', pinned: true }],
-  chats: [{ id: 'loose', title: 'A loose chat' }],
-  live: ['mock-1'],
+  places: [{ id: READING, name: 'Reading', tint: 'iris', pinned: true }, { id: WRITING, name: 'Writing', tint: 'rose', pinned: true }],
+  chats: [{ id: 'read-chat', title: 'Notes on Borges', places: ['Reading'] }],
 });
 
 const rail = (page: Page) => page.locator('.app-shell .place-rail');
 const strip = (page: Page) => page.locator('.workspace-tabstrip');
 const names = (page: Page) => strip(page).getByRole('tab').evaluateAll(els => els.map(el => el.getAttribute('aria-label') ?? el.textContent?.trim() ?? ''));
 const selected = (page: Page) => strip(page).locator('[role="tab"][aria-selected="true"]');
+const row = (page: Page, name: string) => rail(page).locator('.rail-row', { has: page.getByRole('button', { name: new RegExp(`^${name}`) }) }).first();
+const open = (page: Page, name: string) => row(page, name).getByRole('button', { name: new RegExp(`^${name}`) }).first();
+const focusButton = (page: Page, name: string) => row(page, name).getByRole('button', { name: new RegExp(`(Focus|focusing) on ${name}$`) });
+const now = (page: Page) => rail(page).getByRole('button', { name: 'Now', exact: true });
 
 async function boot(page: Page, theme: 'light' | 'dark') {
   await page.addInitScript(value => localStorage.setItem('codeaf-theme', value), theme);
@@ -39,70 +36,133 @@ async function boot(page: Page, theme: 'light' | 'dark') {
   await expect(strip(page).getByRole('tab', { name: 'Alpha' })).toBeVisible();
 }
 
+/** The shared pointer drag: press on the source, pass the threshold, move over the target, release. */
+async function dragTo(page: Page, source: Locator, target: Locator) {
+  const from = (await source.boundingBox())!;
+  const to = (await target.boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2 + 12, from.y + from.height / 2 + 12, { steps: 4 });
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 });
+  await page.mouse.move(to.x + to.width / 2 + 1, to.y + to.height / 2, { steps: 2 });
+  await page.mouse.up();
+}
+
 for (const theme of ['light', 'dark'] as const) {
-  test(`${theme}: a tile opens a tab, the rail switches, Now restores the exact setup, reload keeps it`, async ({ page }) => {
+  test(`${theme}: (1)(5) a rail click opens the Home as a tab or focuses the open one, and Now shows every tab`, async ({ page }) => {
     await boot(page, theme);
     const before = await names(page);
-    await expect(strip(page).locator('.workspace-split-tab')).toHaveCount(1);
-    await expect(selected(page)).toHaveAccessibleName(/Gamma/);
-
-    // 1. All places opens as a tab; a tile in it opens a NEW tab and leaves the rest alone.
-    await rail(page).getByRole('button', { name: /^All places/ }).click();
-    await expect(page.getByRole('heading', { level: 1, name: 'All places' })).toBeVisible();
-    await page.locator('.places-tile[data-mode="place"] [data-places-tile-focusable]').filter({ hasText: 'Reading' }).click();
+    await open(page, 'Reading').click();
     await expect(page.getByRole('heading', { level: 1, name: 'Reading' })).toBeVisible();
-    const after = await names(page);
-    expect(after.length).toBe(before.length + 2);
-    for (const name of before) expect(after).toContain(name);
-    await expect(strip(page).locator('.workspace-split-tab')).toHaveCount(1);
-    await expect(rail(page).getByRole('button', { name: 'Now', exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(selected(page)).toHaveAccessibleName(/Reading/);
+    const afterOne = await names(page);
+    expect(afterOne.length).toBe(before.length + 1);
+    for (const name of before) expect(afterOne).toContain(name);
 
-    // Clicking the same tile again focuses the open tab instead of duplicating it.
-    await strip(page).getByRole('tab', { name: 'All places' }).click();
-    await page.locator('.places-tile[data-mode="place"] [data-places-tile-focusable]').filter({ hasText: 'Reading' }).click();
-    expect((await names(page)).length).toBe(after.length);
+    await open(page, 'Writing').click();
+    expect((await names(page)).length).toBe(before.length + 2);
+    // Clicking a place that is already open focuses its tab; it never opens a second one.
+    await open(page, 'Reading').click();
+    expect((await names(page)).length).toBe(before.length + 2);
+    await expect(selected(page)).toHaveAccessibleName(/Reading/);
 
-    // 2. The rail switches the whole set.
-    const leftOn = await selected(page).getAttribute('aria-label');
-    await rail(page).getByRole('button', { name: /^Writing/ }).first().click();
-    await expect(strip(page).getByRole('tab', { name: 'Alpha' })).toHaveCount(0);
-    await expect(page.getByRole('heading', { level: 1, name: 'Writing' })).toBeVisible();
+    // Now shows all open tabs, unfiltered (and ends a Focus that was on).
+    await focusButton(page, 'Reading').click({ force: true });
+    await expect(strip(page).getByRole('tab', { name: 'Delta' })).toHaveCount(0);
+    await now(page).click();
+    expect((await names(page)).length).toBe(before.length + 2);
+    await expect(page.locator('.focus-chip')).toHaveCount(0);
 
-    // 3. Now brings the exact setup back, including the tab added in it.
-    await rail(page).getByRole('button', { name: 'Now', exact: true }).click();
-    expect(await names(page)).toEqual(after);
-    await expect(selected(page)).toHaveAttribute('aria-label', leftOn!);
-    await expect(strip(page).locator('.workspace-split-tab')).toHaveCount(1);
-    await expect(strip(page).locator('.workspace-tab-group')).toHaveCount(1);
-
-    // 4. Reload keeps it.
+    // Reload keeps the same tab set.
     await page.reload();
-    await expect.poll(() => names(page)).toEqual(after);
-    await expect(selected(page)).toHaveAttribute('aria-label', leftOn!);
+    await expect.poll(async () => (await names(page)).length).toBe(before.length + 2);
   });
 
-  test(`${theme}: ⌘-click opens behind, ⌥-click on a rail row opens its Home as a tab, ⌘[ returns across a switch`, async ({ page }) => {
+  test(`${theme}: (6) the rail highlights the place of the active tab`, async ({ page }) => {
+    await boot(page, theme);
+    await expect(now(page)).toHaveAttribute('aria-current', 'page');
+    await strip(page).getByRole('tab', { name: 'Alpha' }).click();
+    await expect(open(page, 'Reading')).toHaveAttribute('aria-current', 'page');
+    await strip(page).getByRole('tab', { name: 'Beta' }).click();
+    await expect(open(page, 'Writing')).toHaveAttribute('aria-current', 'page');
+    await expect(open(page, 'Reading')).not.toHaveAttribute('aria-current', 'page');
+    await strip(page).getByRole('tab', { name: 'Delta' }).click();
+    await expect(now(page)).toHaveAttribute('aria-current', 'page');
+  });
+
+  test(`${theme}: (2) Focus filters the strip, tints the frame, closes nothing, and every exit clears it`, async ({ page }) => {
     await page.addInitScript(() => { Object.defineProperty(navigator, 'platform', { value: 'MacIntel' }); });
     await boot(page, theme);
+    const shell = page.locator('.app-shell');
     const before = await names(page);
-    await rail(page).getByRole('button', { name: /^All places/ }).click();
-    const tile = (name: string) => page.locator('.places-tile[data-mode="place"] [data-places-tile-focusable]').filter({ hasText: name });
-    await tile('Reading').click({ modifiers: ['Meta'] });
-    // Behind: All places stays the selected tab and Reading's Home exists beside it.
-    await expect(strip(page).getByRole('tab', { name: 'Reading', exact: true })).toHaveAttribute('aria-selected', 'false');
-    await expect(selected(page)).toHaveAccessibleName('All places');
-    expect((await names(page)).length).toBe(before.length + 2);
+    await expect(shell).toHaveAttribute('data-tint', 'graphite');
 
-    await rail(page).getByRole('button', { name: /^Writing/ }).first().click({ modifiers: ['Alt'] });
-    await expect(selected(page)).toHaveAccessibleName('Writing');
-    for (const name of before) expect(await names(page)).toContain(name);
-    await expect(rail(page).getByRole('button', { name: 'Now', exact: true })).toHaveAttribute('aria-current', 'page');
+    // The hover button filters to the place's tabs and tints the frame with the place's tint.
+    await row(page, 'Reading').hover();
+    await focusButton(page, 'Reading').click();
+    await expect(page.locator('.focus-chip')).toContainText('Reading');
+    await expect(shell).toHaveAttribute('data-tint', 'iris');
+    await expect.poll(() => names(page)).toEqual(['Alpha', 'Gamma']);
+    await expect(selected(page)).toHaveAccessibleName(/Alpha|Gamma/);
 
-    // A plain rail click switches; ⌘[ comes back to the setup it left.
-    const now = await names(page);
-    await rail(page).getByRole('button', { name: /^Reading/ }).first().click();
-    await expect(strip(page).getByRole('tab', { name: 'Alpha' })).toHaveCount(0);
-    await page.keyboard.press('Meta+BracketLeft');
-    await expect.poll(() => names(page)).toEqual(now);
+    // New tabs opened while focused belong to the place, so they stay in the filtered strip.
+    await page.getByRole('button', { name: 'New tab', exact: true }).click();
+    await expect(strip(page).getByRole('tab')).toHaveCount(3);
+
+    // The chip clears the filter and every tab is back, in the order it had.
+    await page.locator('.focus-chip').click();
+    await expect(page.locator('.focus-chip')).toHaveCount(0);
+    await expect(shell).toHaveAttribute('data-tint', 'graphite');
+    expect(await names(page)).toEqual([...before, expect.any(String)]);
+
+    // ⌘-click on the row filters; Focus again, and Now, clear it.
+    await open(page, 'Writing').click({ modifiers: ['Meta'] });
+    await expect(shell).toHaveAttribute('data-tint', 'rose');
+    await expect.poll(() => names(page)).toEqual(['Beta', 'Gamma']);
+    await row(page, 'Writing').hover();
+    await focusButton(page, 'Writing').click();
+    await expect(page.locator('.focus-chip')).toHaveCount(0);
+    await open(page, 'Writing').click({ modifiers: ['Meta'] });
+    await now(page).click();
+    await expect(page.locator('.focus-chip')).toHaveCount(0);
+    expect((await names(page)).length).toBe(before.length + 1);
+  });
+
+  test(`${theme}: (3) a chat opened from a place Home is a new tab beside the current one and keeps its place`, async ({ page }) => {
+    await boot(page, theme);
+    await open(page, 'Reading').click();
+    await expect(page.getByRole('heading', { level: 1, name: 'Reading' })).toBeVisible();
+    const before = await names(page);
+    await page.getByRole('region', { name: 'Chats', exact: true }).locator('[data-chat-id="read-chat"] button').click();
+    const after = await names(page);
+    expect(after.length).toBe(before.length + 1);
+    const at = before.findIndex(name => /Reading/.test(name));
+    expect(after[at + 1]).toMatch(/Notes on Borges/);
+    await expect(selected(page)).toHaveAccessibleName(/Notes on Borges/);
+    await expect(open(page, 'Reading')).toHaveAttribute('aria-current', 'page');
+    // It belongs to Reading: a Focus on Reading keeps it, a Focus on Writing does not.
+    await row(page, 'Reading').hover();
+    await focusButton(page, 'Reading').click();
+    await expect(strip(page).getByRole('tab', { name: /Notes on Borges/ })).toBeVisible();
+    await page.locator('.focus-chip').click();
+    await row(page, 'Writing').hover();
+    await focusButton(page, 'Writing').click();
+    await expect(strip(page).getByRole('tab', { name: /Notes on Borges/ })).toHaveCount(0);
+  });
+
+  test(`${theme}: (4) dragging a tab onto a rail place adds membership and moves nothing`, async ({ page }) => {
+    await boot(page, theme);
+    const before = await names(page);
+    await dragTo(page, strip(page).getByRole('tab', { name: 'Alpha' }), row(page, 'Writing'));
+    // Nothing moved or closed.
+    expect(await names(page)).toEqual(before);
+    // Alpha now belongs to Writing as well as Reading (multi-membership).
+    await row(page, 'Writing').hover();
+    await focusButton(page, 'Writing').click();
+    await expect.poll(() => names(page)).toEqual(['Alpha', 'Beta', 'Gamma']);
+    await page.locator('.focus-chip').click();
+    await row(page, 'Reading').hover();
+    await focusButton(page, 'Reading').click();
+    await expect.poll(() => names(page)).toEqual(['Alpha', 'Gamma']);
   });
 }

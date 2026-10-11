@@ -180,7 +180,8 @@ for (const theme of ['light', 'dark'] as const) {
     await marketing.hover();
     await close.hover();
     const tooltip = page.getByRole('tooltip');
-    await expect(tooltip).toHaveText('Close Marketing · 4 tabs⌘⇧W');
+    // Closing a place closes no tab (places are libraries), so the tooltip no longer counts tabs.
+    await expect(tooltip).toHaveText('Close Marketing⌘⇧W');
     await expect(tooltip.locator('.tooltip-shortcut')).toHaveText('⌘⇧W');
     await close.click();
     await expect(marketing).toHaveCount(0);
@@ -196,8 +197,11 @@ for (const theme of ['light', 'dark'] as const) {
     const chord = await primary(page);
     await page.keyboard.press(`${chord}+KeyT`);
     await expect(page.getByRole('tab', { name: 'New tab', exact: true })).toBeVisible();
+    // ⌘⇧W closes the place of the tab in front, so bring Quiet's Home forward first; no tab is closed by it.
+    await page.locator('.workspace-tab.is-place-home').getByRole('tab').click();
     await page.keyboard.press(`${chord}+Shift+KeyW`);
     await expect(row(page, 'Quiet')).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'New tab', exact: true })).toBeVisible();
     await page.keyboard.press(`${chord}+KeyP`);
     await page.getByRole('dialog', { name: 'Go to a place, or create one' }).getByRole('combobox').fill('Quiet');
     await page.keyboard.press('Enter');

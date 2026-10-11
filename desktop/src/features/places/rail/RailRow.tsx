@@ -15,21 +15,25 @@ export type RailRowProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'childr
   meta?: ReactNode;
   closedButBusy?: boolean;
   close?: { onClose: () => void; tabs?: number; shortcut?: string };
+  /** Focus filters the strip to this place (owner decision 2026-10-11). `on` keeps the button drawn, as a soft fill. */
+  focus?: { on: boolean; onToggle: () => void };
   containerProps?: HTMLAttributes<HTMLDivElement> & { 'data-drop'?: boolean; ref?: Ref<HTMLDivElement> };
 };
 
 /** One row serves both icon-led navigation and tint-led places, so their states and keyboard focus cannot drift. */
-export function RailRow({ name, active, icon, tint, parentName, status, statusLabel, meta, closedButBusy, close, containerProps, className = '', ...props }: RailRowProps) {
+export function RailRow({ name, active, icon, tint, parentName, status, statusLabel, meta, closedButBusy, close, focus, containerProps, className = '', ...props }: RailRowProps) {
   const canClose = close && !closedButBusy;
   const tabs = close?.tabs;
   const closeTitle = `Close ${name}${tabs && tabs > 0 ? ` · ${tabs} ${tabs === 1 ? 'tab' : 'tabs'}` : ''}`;
-  return <div {...containerProps} className={`rail-row ${containerProps?.className ?? ''}`} data-status={status} data-busy-closed={closedButBusy || undefined} data-closable={canClose ? true : undefined}>
+  return <div {...containerProps} className={`rail-row ${containerProps?.className ?? ''}`} data-status={status} data-busy-closed={closedButBusy || undefined} data-closable={canClose ? true : undefined} data-focusable={focus ? true : undefined} data-focused={focus?.on || undefined}>
     <NavigationItem {...props} className={`rail-row-main ${tint ? 'rail-place' : ''} ${className}`} active={active} icon={icon}
       lead={tint ? <PlaceSwatch tint={tint} role="rail"/> : undefined}
       trail={<span className="rail-row-trail">{meta !== undefined && meta !== null && meta !== '' && meta !== 0 && <span className="rail-meta">{meta}</span>}<PlaceDot status={status} label={statusLabel}/></span>}>
       <span className="rail-place-name">{name}{parentName && <span className="rail-place-path"> · {parentName}</span>}</span>
       {closedButBusy && <span className="rail-place-path rail-place-closed">closed · still running</span>}
     </NavigationItem>
+    {focus && <IconButton className="rail-row-focus" icon="eye" iconSize="micro" label={focus.on ? `Stop focusing on ${name}` : `Focus on ${name}`}
+      aria-pressed={focus.on} onClick={event => { event.stopPropagation(); focus.onToggle(); }}/>}
     {canClose && <IconButton className="rail-row-close" icon="close" iconSize="micro" label={`Close ${name}`}
       title={closeTitle} shortcut={close.shortcut} onClick={event => { event.stopPropagation(); close.onClose(); }}/>}
   </div>;

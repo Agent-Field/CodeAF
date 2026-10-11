@@ -1,5 +1,6 @@
-// Navigation changes views, never sessions. The workspace already saves each place's tabs under its own key;
-// leaving that document intact is the stash that makes reopening restore drafts, groups and running conversations.
+// Navigation changes views, never sessions, and places are libraries (owner decision 2026-10-11): going to a place
+// opens its Home as a tab in the strip that is already showing, or focuses the one that is open. No tab is ever
+// closed, moved or replaced by it, so drafts, groups and running conversations stay where they were.
 import type { NativeControls, PlaceKey } from '../../design/nativeControls.ts';
 import type { PlacesClient } from './client.ts';
 import type { PlacesGraph, PlaceView } from './wire.ts';
@@ -9,9 +10,11 @@ export type NavigationDeps = {
   windows: Pick<NativeControls, 'desktop' | 'openPlaceWindow'>;
   graph: () => PlacesGraph | undefined;
   current: () => Exclude<PlaceKey, 'root'>;
-  setPlace: (key: Exclude<PlaceKey, 'root'>) => void;
-  /** Arrival focuses Home after the destination workspace mounts, even on a repeated visit. */
-  focusHome: () => void;
+  /** Asks the strip for the place's Home as a tab, or for the one already open to come forward. */
+  openHome: (key: string, title: string) => void;
+  /** The place Focus is filtering the strip to, if any. */
+  focused: () => string | undefined;
+  setFocus: (key: string | undefined) => void;
   openRoot: () => void;
   setClosed: (key: string, closed: boolean) => void;
   refresh: () => Promise<void>;
@@ -43,13 +46,17 @@ export function createPlaceNavigation(deps: NavigationDeps) {
   const goTo = async (key: string, options: { newWindow?: boolean } = {}): Promise<void> => {
     if (options.newWindow && deps.windows.desktop) { await openInNewWindow(key); return; }
     const turn = ++arrival;
-    await checked(key);
+    const target = await checked(key);
     // A slow canonical lookup must not send the window back after a newer navigation completed.
     if (turn !== arrival) return;
-    if (key === 'root') { deps.openRoot(); return; }
-    deps.setPlace(key as Exclude<PlaceKey, 'root'>);
+    // All places is not in any one place's Focus, so asking for it ends the Focus rather than hiding what was asked for.
+    if (key === 'root') { deps.setFocus(undefined); deps.openRoot(); return; }
+    // Now shows every open tab, unfiltered.
+    if (key === 'now' || !target) { deps.setFocus(undefined); return; }
+    // The Home just asked for is not in another place's Focus, and hiding it would look like nothing happened.
+    if (deps.focused() !== key) deps.setFocus(undefined);
     deps.setClosed(key, false);
-    deps.focusHome();
+    deps.openHome(key, target.name);
     await visit(key);
   };
   const openInNewWindow = async (key: string): Promise<void> => {
@@ -64,11 +71,8 @@ export function createPlaceNavigation(deps: NavigationDeps) {
     // Only mark a place closed after the engine accepts it; a refused close keeps its tabs and rail row visible.
     await deps.client.railOp({ op: 'close', place: key });
     deps.setClosed(key, true);
-    if (deps.current() === key) {
-      ++arrival;
-      deps.setPlace('now');
-      deps.focusHome();
-    }
+    // Closing a place takes it off the rail; its tabs stay open, but a Focus on it has nothing left to name.
+    if (deps.focused() === key) deps.setFocus(undefined);
     await deps.refresh();
   };
   const closeAllOthers = async (except?: string): Promise<void> => {

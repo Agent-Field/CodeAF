@@ -17,7 +17,7 @@ import { reduceUndo, type UndoAction } from './reducers/undo.ts';
 import type { ClosedPlace, ClosedTab, Pane, SplitLayout, Tab, TabGroup, TitleSource, WorkspaceState } from './types.ts';
 
 export type { ClosedPlace, ClosedTab, Pane, Split, SplitLayout, Tab, TabGroup, TitleSource, WorkspaceState } from './types.ts';
-export { initialWorkspace, panesOf, focusedPane, isSplit, visibleTabs, stripItems, tabHolding, splitCapacity, type StripItem } from './helpers.ts';
+export { initialWorkspace, panesOf, placesOf, inFocus, focusedPane, isSplit, visibleTabs, stripItems, tabHolding, splitCapacity, type StripItem } from './helpers.ts';
 export const storageKey = 'codeaf.desktop.workspace.v1';
 
 /**
@@ -62,12 +62,18 @@ function readSplit(value: unknown): Tab['split'] {
   return makeSplit(panes as Pane[], focus, layout && layoutFits(layout, panes.length) ? layout : undefined, ratios);
 }
 
+/** A tab's saved places; a value that is not a list of ids is dropped, as the tab is not worth discarding for it. */
+export function readMembership(value: unknown): { memberOf?: string[] } {
+  const ids = Array.isArray(value) ? [...new Set(value.filter((id): id is string => isString(id) && !!id))] : [];
+  return ids.length ? { memberOf: ids } : {};
+}
+
 function readTab(value: unknown): Tab | undefined {
   const pane = readPane(value);
   const t = value as Partial<Tab> | null;
   if (!pane || !t || typeof t.pinned !== 'boolean' || (t.groupId !== undefined && !isString(t.groupId))) return undefined;
   const split = readSplit(t.split);
-  const tab: Tab = { ...pane, pinned: t.pinned, groupId: t.groupId, split };
+  const tab: Tab = { ...pane, pinned: t.pinned, groupId: t.groupId, split, ...readMembership(t.memberOf) };
   return split ? withSplitTitle(tab) : { ...tab, split: undefined };
 }
 

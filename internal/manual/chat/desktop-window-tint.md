@@ -2,8 +2,9 @@
 
 ## Why did the window colour change when I went to a place?
 
-Going to a place swaps the desktop window frame to that place's tint at once.
-There is no fade. The frame and the accent use the place's colour: tide, iris,
+Turning Focus on a place swaps the desktop window frame to that place's tint at once.
+There is no fade. Going to a place without Focus leaves the frame graphite.
+The frame and the accent use the place's colour: tide, iris,
 rose, sand, sage, or graphite. A place inside another shows the colour it
 inherited, until that place picks a colour of its own. A place the app has not
 loaded yet leaves the frame untinted.

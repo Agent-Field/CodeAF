@@ -14,17 +14,26 @@
 .rail-row-trail:empty { display: none; }
 .rail-meta { flex: none; font-size: var(--rail-meta-font); color: var(--ink-3); }
 .rail-row-close.icon-button { position: absolute; top: 50%; right: var(--space-tight); transform: translateY(-50%); width: var(--rail-close-size); height: var(--rail-close-size); color: var(--ink-3); background: var(--tab-hover); opacity: var(--opacity-transparent); pointer-events: none; }
+.rail-row-focus.icon-button { position: absolute; top: 50%; right: var(--space-tight); transform: translateY(-50%); width: var(--rail-close-size); height: var(--rail-close-size); color: var(--ink-3); background: var(--tab-hover); opacity: var(--opacity-transparent); pointer-events: none; }
+.rail-row-focus.icon-button:hover:not(:disabled) { color: var(--ink-3); background: var(--field-2); }
+.rail-row-focus.icon-button:active:not(:disabled) { background: var(--field-2); transition-duration: var(--dur-press); }
+/* A focused place keeps its button drawn, as a soft fill, so the filter is never a hidden state. */
+.rail-row[data-focused] .rail-row-focus.icon-button { opacity: var(--opacity-opaque); pointer-events: auto; color: var(--ink); background: var(--field-2); }
+.rail-row[data-closable] .rail-row-focus { right: calc(var(--space-tight) * 2 + var(--rail-close-size)); }
+.rail-row[data-status] .rail-row-focus { right: calc(var(--space-2) + var(--rail-dot-size) + var(--space-compact)); }
+.rail-row[data-status][data-closable] .rail-row-focus { right: calc(var(--space-2) + var(--rail-dot-size) + var(--space-compact) * 2 + var(--rail-close-size)); }
 .rail-row-close.icon-button:hover:not(:disabled) { color: var(--ink-3); background: var(--field-2); }
 .rail-row-close.icon-button:active:not(:disabled) { background: var(--field-2); transition-duration: var(--dur-press); }
 /* Attention stays hoverable beside close; replacing the dot would make its own tooltip unreachable. */
 .rail-row[data-status] .rail-row-close { right: calc(var(--space-2) + var(--rail-dot-size) + var(--space-compact)); }
 /* Rows without attention exchange their metadata for close; touch uses the row's existing menu. */
 @media (hover: hover) and (pointer: fine) {
-  .rail-row[data-closable]:hover .rail-row-close, .rail-row[data-closable]:focus-within .rail-row-close { opacity: var(--opacity-opaque); pointer-events: auto; }
-  .rail-row[data-closable]:not([data-status]):hover .rail-row-trail, .rail-row[data-closable]:not([data-status]):focus-within .rail-row-trail { visibility: hidden; }
-  .rail-row[data-closable]:hover .rail-meta, .rail-row[data-closable]:focus-within .rail-meta { visibility: hidden; }
+  .rail-row[data-closable]:hover .rail-row-close, .rail-row[data-closable]:focus-within .rail-row-close,
+  .rail-row[data-focusable]:hover .rail-row-focus, .rail-row[data-focusable]:focus-within .rail-row-focus { opacity: var(--opacity-opaque); pointer-events: auto; }
+  .rail-row:is([data-closable], [data-focusable]):not([data-status]):hover .rail-row-trail, .rail-row:is([data-closable], [data-focusable]):not([data-status]):focus-within .rail-row-trail { visibility: hidden; }
+  .rail-row:is([data-closable], [data-focusable]):hover .rail-meta, .rail-row:is([data-closable], [data-focusable]):focus-within .rail-meta { visibility: hidden; }
 }
-@media (hover: none), (pointer: coarse) { .rail-row-close.icon-button { display: none; } }
+@media (hover: none), (pointer: coarse) { .rail-row-close.icon-button, .rail-row:not([data-focused]) .rail-row-focus.icon-button { display: none; } }
 /* The selected lift must not override the shared keyboard ring, including while the row is hovered. */
 :where(html:not([data-input="pointer"])) .rail .rail-row-main.nav-item:focus-visible { box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
 /* The browser specimen uses the design's 232px row column without widening the production rail. */

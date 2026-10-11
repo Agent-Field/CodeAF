@@ -84,20 +84,18 @@ const nativeCalls = (page: Page, command: string) => page.evaluate(command => (w
 for (const theme of ['light', 'dark']) for (const width of [320, 600, 1200]) {
   test(`SH-090/152/192/300/301/302/311: same-place windows share tabs, keep focus and toast local · ${theme} · ${width}px`, async ({ context, page }) => {
     const b = await context.newPage();
-    const foreign = await context.newPage();
-    const pages = [page, b, foreign];
+    // Places are libraries (2026-10-11): a window on another place shares this tab set, so it is no longer an isolation witness.
+    const pages = [page, b];
     for (const view of pages) await appearance(view, theme, width);
     const engine = await sharedEngine(pages);
     await page.goto('/?place=now&tab=Alpha');
     await b.goto('/?place=now&tab=Beta');
-    await foreign.goto(`/?place=${otherPlace}`);
     await expect(chip(page, 'Alpha')).toHaveAttribute('aria-selected', 'true');
     await expect(chip(b, 'Beta')).toHaveAttribute('aria-selected', 'true');
     await page.keyboard.press(`${primary}+t`);
     await expect(strip(page).getByRole('tab')).toHaveCount(3);
     await expect(strip(b).getByRole('tab')).toHaveCount(3);
     await expect(chip(b, 'Beta')).toHaveAttribute('aria-selected', 'true');
-    await expect(chip(foreign, 'Alpha')).toHaveCount(0);
     engine.publishNeedsYou();
     for (const view of [page, b]) await expect(chip(view, 'Alpha').locator('..').getByRole('img', { name: 'Needs you', exact: true })).toBeVisible();
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+Backslash' : 'Control+Shift+a');

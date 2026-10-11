@@ -56,7 +56,7 @@ async function goVia(page: Page, rig: Rig, name: string) {
   await chooser(page).getByRole('combobox').fill(name);
   await page.keyboard.press('Enter');
   await expect(chooser(page)).toHaveCount(0);
-  await expect(homeTab(page)).toContainText(name);
+  await expect(homeTab(page).filter({ hasText: name })).toBeVisible();
 }
 
 test.beforeEach(async ({ page }) => { await page.addInitScript(() => { try { localStorage.removeItem('codeaf-theme'); } catch { /* none */ } }); });
@@ -92,23 +92,7 @@ test('a. first launch: Now and All places only; All places names a place inline 
   expect(rig.places.state().places).toEqual([]);
 });
 
-test('collapsed rail switcher lists Now, the rail places and All places', async ({ page }) => {
-  await boot(page);
-  await railPlace(page, 'Marketing').click();
-  await expect(homeTab(page)).toBeVisible();
-  await rail(page).getByRole('button', { name: 'Hide sidebar' }).click();
-  await expect(page.locator('.app-shell.sidebar-collapsed')).toHaveCount(1);
-  await homeTab(page).getByRole('tab').click();
-  const menu = page.getByRole('menu', { name: 'Place switcher' });
-  await expect(menu).toBeVisible();
-  // Checked rows are menuitemcheckbox; the switcher contains only place navigation.
-  await expect(menu.getByRole('menuitemcheckbox', { name: /^Now/ })).toBeVisible();
-  await expect(menu.getByRole('menuitemcheckbox', { name: /^Marketing/ })).toBeVisible();
-  await expect(menu.getByRole('menuitem', { name: /^All places/ })).toBeVisible();
-  await expect(menu.locator('[role=menuitem], [role=menuitemcheckbox]')).toHaveCount(3);
-});
-
-test('b. Go to via the chooser lands on the place Home; Now gives back its own tabs and the root palette', async ({ page }) => {
+test('b. Go to via the chooser opens the place Home as a tab beside the others; Now leaves every tab where it was', async ({ page }) => {
   const rig = await boot(page);
   // A draft typed in Now must survive the trip.
   const composer = page.getByRole('textbox', { name: 'Message', exact: true });
@@ -124,17 +108,18 @@ test('b. Go to via the chooser lands on the place Home; Now gives back its own t
   await expect(chooser(page)).toHaveCount(0);
 
   const id = rig.places.id('Config parser');
-  await expect(tabs(page).first()).toHaveAccessibleName('Config parser');
-  await expect(tabs(page).first()).toHaveAttribute('aria-selected', 'true');
+  // Places are libraries (2026-10-11): the Home is a tab after the one in front, the draft's tab stays, and no Focus tints the frame.
+  await expect(tabs(page)).toHaveCount(2);
+  await expect(tabs(page).nth(1)).toHaveAccessibleName('Config parser');
+  await expect(tabs(page).nth(1)).toHaveAttribute('aria-selected', 'true');
   await expect(homeTab(page).locator('.place-swatch')).toHaveAttribute('data-tint-name', 'iris');
-  await expect(homeTab(page).getByRole('button', { name: /^Close/ })).toHaveCount(0);
-  await expect(page.locator('body')).toHaveAttribute('data-tint', 'iris');
+  await expect(page.locator('body')).toHaveAttribute('data-tint', 'graphite');
   await expect.poll(() => rig.places.posts('/places/rail').filter(call => call.body?.op === 'visit' && call.body?.place === id).length).toBe(1);
   await expect(section(page, 'Open').locator('.rail-place', { hasText: 'Config parser' })).toHaveAttribute('aria-current', 'page');
 
   await rail(page).getByRole('button', { name: 'Now', exact: true }).click();
-  await expect(page.locator('body')).toHaveAttribute('data-tint', 'graphite'); // Now is graphite (Places 9d).
-  await expect(homeTab(page)).toHaveCount(0);
+  await expect(tabs(page)).toHaveCount(2);
+  await tabs(page).first().click();
   await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toHaveValue('a draft kept in Now');
 });
 
@@ -146,29 +131,28 @@ const isCreate = (call: { method: string; path: string }) => call.method === 'PO
 const isFiling = (placeId: string) => (call: { method: string; path: string }) => call.method === 'POST' && call.path === `/places/${placeId}/members`;
 const isTurn = (call: { method: string; path: string }) => call.method === 'POST' && call.path === `/sessions/${NEW_CHAT}/turn`;
 
-test('c. each place keeps its own tab set, across places and across a reload', async ({ page }) => {
+test('c. every place shares the one tab set, across places and across a reload', async ({ page }) => {
   const rig = await boot(page);
   await railPlace(page, 'Marketing').click();
   await expect(homeTab(page)).toContainText('Marketing');
   await page.keyboard.press(`${primary(rig)}+KeyT`);
   const field = page.getByRole('combobox', { name: 'Search or start' });
   await expect(field).toBeFocused();
-  // The quiet New tab is the place's second tab.
-  await expect(tabs(page)).toHaveCount(2);
-  await expect(tabs(page).nth(1)).toHaveAccessibleName('New tab');
+  // The quiet New tab sits after the Marketing Home, beside the tab the window started with.
+  await expect(tabs(page)).toHaveCount(3);
+  await expect(tabs(page).nth(2)).toHaveAccessibleName('New tab');
 
   await goVia(page, rig, 'Software');
-  await expect(tabs(page).first()).toHaveAccessibleName('Software');
-  await expect(tabs(page).filter({ hasText: 'New tab' })).toHaveCount(0);
+  await expect(tabs(page)).toHaveCount(4);
+  await expect(tabs(page).filter({ hasText: 'New tab' })).toHaveCount(1);
 
   await railPlace(page, 'Marketing').click();
-  await expect(tabs(page).first()).toHaveAccessibleName('Marketing');
-  await expect(tabs(page).nth(1)).toHaveAccessibleName('New tab');
+  await expect(tabs(page)).toHaveCount(4);
+  await expect(tabs(page).filter({ hasText: 'Marketing' })).toHaveAttribute('aria-selected', 'true');
 
   await page.reload();
-  await expect(tabs(page).first()).toHaveAccessibleName('Marketing');
-  await expect(tabs(page).nth(1)).toHaveAccessibleName('New tab');
-  await expect(page.locator('body')).toHaveAttribute('data-tint', 'rose');
+  await expect(tabs(page)).toHaveCount(4);
+  await expect(tabs(page).filter({ hasText: 'New tab' })).toHaveCount(1);
 });
 
 test('d. the Home composer creates, files, then sends; ↵ focuses the new tab and ⌘↵ leaves it behind', async ({ page }) => {
@@ -180,7 +164,7 @@ test('d. the Home composer creates, files, then sends; ↵ focuses the new tab a
   await composer.press('Enter');
   const opened = tabs(page).filter({ hasText: 'Draft the launch email' });
   await expect(opened).toHaveAttribute('aria-selected', 'true');
-  await expect(tabs(page).nth(1)).toHaveAccessibleName('Draft the launch email');
+  await expect(tabs(page).nth(2)).toHaveAccessibleName('Draft the launch email');
   const [create, file, turn] = order(rig, isCreate, isFiling(id), isTurn);
   expect(create).toBeGreaterThanOrEqual(0);
   expect(rig.places.traffic[create].body).toEqual({ placeId: id });
@@ -188,14 +172,14 @@ test('d. the Home composer creates, files, then sends; ↵ focuses the new tab a
   expect(turn).toBeGreaterThan(file);
   expect(rig.places.traffic[file].body).toMatchObject({ chats: [NEW_CHAT] });
 
-  await tabs(page).first().click();
+  await homeTab(page).getByRole('tab').click();
   await composer.fill('Second thought, in the background');
   await composer.press(`${primary(rig)}+Enter`);
   // The conversation mock holds one session, so the background tab takes that session's engine title; what matters is
   // that a third tab opened, its turn went out, and Home kept the focus.
-  await expect(tabs(page)).toHaveCount(3);
+  await expect(tabs(page)).toHaveCount(4);
   await expect.poll(() => rig.engine.calls.filter(call => call.path.endsWith('/turn')).map(call => call.body.text)).toContain('Second thought, in the background');
-  await expect(tabs(page).first()).toHaveAttribute('aria-selected', 'true');
+  await expect(homeTab(page).getByRole('tab')).toHaveAttribute('aria-selected', 'true');
 });
 
 test('d. a refused filing sends nothing, keeps the words and says why', async ({ page }) => {
@@ -209,13 +193,15 @@ test('d. a refused filing sends nothing, keeps the words and says why', async ({
   await expect(page.locator('.home-composer').getByRole('alert')).toContainText('“Marketing”');
   await expect(composer).toHaveValue('Draft the launch email');
   expect(rig.engine.calls.filter(call => call.path.endsWith('/turn'))).toEqual([]);
-  await expect(tabs(page)).toHaveCount(1);
+  await expect(tabs(page)).toHaveCount(2);
 });
 
-test('e. ⌘T inside a place files the new chat before its first turn', async ({ page }) => {
+test('e. ⌘T while Focus is on a place files the new chat before its first turn', async ({ page }) => {
   const rig = await boot(page);
   const id = rig.places.id('Marketing');
-  await railPlace(page, 'Marketing').click();
+  // Only a Focus gives the strip a place: a new tab opened while it is on belongs to the place, and its chat is filed there.
+  await railPlace(page, 'Marketing').click({ modifiers: [rig.mac ? 'Meta' : 'Control'] });
+  await expect(page.locator('.focus-chip')).toContainText('Marketing');
   await page.keyboard.press(`${primary(rig)}+KeyT`);
   const field = page.getByRole('combobox', { name: 'Search or start' });
   await field.fill('Plan the webinar');
@@ -281,13 +267,12 @@ test('f. rail: pin from the menu, close from × and ⌘⇧W, closed-but-running 
   await expect(railRow(page, 'Docs')).toHaveAttribute('data-busy-closed', 'true');
   await expect(railRow(page, 'Docs')).toContainText('closed · still running');
 
-  // ⌘⇧W closes the place the window shows and the window goes to Now.
+  // ⌘⇧W closes the place of the tab in front. It leaves the rail and closes no tab (places are libraries).
   await railPlace(page, 'Docs').click();
   await expect(homeTab(page)).toContainText('Docs');
   await expect(railRow(page, 'Docs')).not.toHaveAttribute('data-busy-closed', 'true');
   await page.keyboard.press(`${primary(rig)}+Shift+KeyW`);
-  await expect(page.locator('body')).toHaveAttribute('data-tint', 'graphite'); // Now is graphite (Places 9d).
-  await expect(homeTab(page)).toHaveCount(0);
+  await expect(homeTab(page)).toHaveCount(1);
   await expect(railRow(page, 'Docs')).toContainText('closed · still running');
 
   // A needs-you roll-up draws the amber dot with words a screen reader can say.
@@ -298,11 +283,11 @@ test('f. rail: pin from the menu, close from × and ⌘⇧W, closed-but-running 
 
   // ⌃1 / Alt 1 is the first rail place; ⌃0 / Alt 0 is Now.
   await page.keyboard.press(slot(rig, 1));
-  await expect(homeTab(page)).toContainText('Marketing');
-  await expect(page.locator('body')).toHaveAttribute('data-tint', 'rose');
+  await expect(homeTab(page).filter({ hasText: 'Marketing' })).toHaveAttribute('data-active', 'true');
   await page.keyboard.press(slot(rig, 0));
-  await expect(homeTab(page)).toHaveCount(0);
-  await expect(rail(page).getByRole('button', { name: 'Now', exact: true })).toHaveAttribute('aria-current', 'page');
+  // Now opens nothing and closes nothing: both Homes stay, and no Focus is on.
+  await expect(homeTab(page)).toHaveCount(2);
+  await expect(page.locator('.focus-chip')).toHaveCount(0);
 });
 
 const tile = (page: Page, name: string) => page.locator('.places-tile[data-mode="place"]').filter({ has: page.locator('.places-tile-name', { hasText: new RegExp(`^${name}$`) }) });
@@ -431,11 +416,11 @@ test('j. a terminal tab and a file tab still open inside a place strip', async (
   const composer = page.locator('.home-composer').getByRole('textbox', { name: 'Message' });
   await composer.fill('Where is the lexer?');
   await composer.press('Enter');
-  await expect(tabs(page)).toHaveCount(2);
+  await expect(tabs(page)).toHaveCount(3);
 
   await page.keyboard.press('Control+Backquote');
   await expect(page.locator('.workspace-tab[data-kind="terminal"]')).toHaveCount(1);
-  await expect(tabs(page).first()).toHaveAccessibleName('Marketing');
+  await expect(homeTab(page)).toContainText('Marketing');
 
   // Focus is in the terminal: off a Mac plain Ctrl+T belongs to the shell, so the new tab is Ctrl+Shift+T there.
   await page.keyboard.press(rig.mac ? 'Meta+KeyT' : 'Control+Shift+KeyT');
@@ -443,8 +428,7 @@ test('j. a terminal tab and a file tab still open inside a place strip', async (
   await page.getByRole('option', { name: /lexer\.go/ }).click();
   await expect(page.getByRole('tab', { name: 'lexer.go', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('.file-text').getByText('// lexer content', { exact: true })).toBeVisible();
-  await expect(tabs(page).first()).toHaveAccessibleName('Marketing');
-  await expect(page.locator('body')).toHaveAttribute('data-tint', 'rose');
+  await expect(homeTab(page)).toContainText('Marketing');
 });
 
 test('k. offline: the rail and All places say the engine is out of reach, invent nothing, and Retry recovers', async ({ page }) => {

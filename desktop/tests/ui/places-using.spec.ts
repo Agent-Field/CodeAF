@@ -166,12 +166,14 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(note.getByRole('button', { name: 'Undo', exact: true })).toHaveCount(0);
   });
 
-  test(`PL-262: ⌘T in a place starts a chat that belongs to it and uses its context · ${theme}`, async ({ page }) => {
+  test(`PL-262: ⌘T while Focus is on a place starts a chat that belongs to it and uses its context · ${theme}`, async ({ page }) => {
     const fixture: PlacesSeed = seed();
     fixture.chats = [];
     const rig = await boot(page, theme, fixture);
     const id = rig.places.id('Marketing');
-    await railPlace(page, 'Marketing').click();
+    // Places are libraries: a new chat belongs to a place while Focus is on it (⌘-click the row).
+    await railPlace(page, 'Marketing').click({ modifiers: [primary(rig)] });
+    await expect(page.locator('.focus-chip')).toContainText('Marketing');
     await page.keyboard.press(`${primary(rig)}+KeyT`);
     const field = page.getByRole('combobox', { name: 'Search or start' });
     await expect(field).toBeFocused();

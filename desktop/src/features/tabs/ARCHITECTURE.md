@@ -26,6 +26,10 @@ Workspace.tsx  (owns useReducer(workspaceReducer), summaries, dialogs; builds Ta
 - `workspaceReducer` composes slices: `reducers/tabs.ts` (new, open, open-task, select, pick, close, reopen, reopen-id, pin, rename, title, view, draft, reorder), `reducers/groups.ts` (group, group-picked, move-group, reorder-group, rename-group, collapse-group, ungroup), `reducers/split.ts` (split-merge, split-close-pane, split-focus, split-layout, split-unmerge, split-group). `view`, `draft`, `title`, `rename` and `select` accept a tab id OR a pane id.
 - To add actions: new file `reducers/<lane>.ts` exporting `XAction` and `reduceX(state, action)` that returns `undefined` for foreign actions; add the type to `WorkspaceAction` and the function to `slices` in `model.ts` (two one-line edits). Add cases to your own tests in `<lane>.test.ts`, not `model.test.ts`.
 
+## Places are libraries (owner decision 2026-10-11)
+
+There is ONE tab set (`stripKey` in `Workspace.tsx`, the v1 key), whatever place is selected, and no code path replaces it on a place selection (`features/places/librarySelection.test.ts` pins that). A Home is an ordinary tab opened by `home-open`. A tab belongs to places through `memberOf` (`placesOf` in `helpers.ts`; a Home belongs to its own place); `tab-place` adds one. **Focus** is a filter held by the places shell, never by the reducer: `inFocus` hides tabs from the strip (`TabStrip`) and the keys (`Workspace`) and nothing else, `focusModel.ts` says which tab to bring forward and which place the shell shows, and `focusStamp.ts` gives tabs opened while focused their membership. `FocusChip.tsx` (features/places) is the strip's way out. Decisions D8 and PLB-1 to PLB-8 in `docs/DESIGN-QUESTIONS.md`.
+
 ## Next up and retained work (Iteration 2)
 
 Next up walks the engine's attention feed, opening each actual conversation with

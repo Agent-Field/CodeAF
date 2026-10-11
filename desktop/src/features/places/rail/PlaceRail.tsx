@@ -15,8 +15,10 @@ import './rail-sections.css';
 /** What a rail row can ask for. Each is wired by the shell; one that is absent has no menu entry and no gesture. */
 export type PlaceRailActions = {
   go: (id: string) => void;
-  /** ⌥-click and ⌘/Ctrl-click: the place's Home as a tab in this window, without switching to the place. */
-  openTab?: (id: string) => void;
+  /** The hover button and ⌘/Ctrl-click: filter the strip to this place, or stop (owner decision 2026-10-11). Clicking a row opens its Home as a tab. */
+  focus?: (id: string) => void;
+  /** A tab dropped on a row joins that place; nothing moves, and a tab may belong to several. */
+  addTab?: (tabId: string, placeId: string) => void;
   newWindow?: (id: string) => void;
   quickLook?: (id: string) => void;
   pin?: (id: string, index?: number) => void;
@@ -46,8 +48,10 @@ export type PlaceRailSectionsProps = {
   now: RailNow;
   /** Pinned and Open; absent while the engine has no Places to read. */
   sections?: RailSections;
-  /** The place this window shows (its row reads as the open one). */
+  /** The place of the tab in front (its row reads as the open one). */
   current?: string;
+  /** The place Focus is on, if any: its row keeps the Focus button drawn. */
+  focused?: string;
   /** True when the graph has places but none is pinned or open: the quiet line of 10a "Empty". */
   emptyHint?: boolean;
   /**
@@ -58,7 +62,6 @@ export type PlaceRailSectionsProps = {
   notice?: { text: string; onRetry?: () => void };
   allPlaces?: { active: boolean; shortcut: string; onOpen: () => void; onOpenInNewTab?: () => void };
   actions: PlaceRailActions;
-  tabCount?: (id: string) => number;
   slotShortcut: (index: number) => string;
   closeShortcut: string;
   newWindowShortcut: string;
@@ -74,6 +77,7 @@ type RailTarget = { section: 'pinned' | 'open'; index: number; placeId?: string 
 
 /** A place can land in Pinned when pinning exists, or in Open when unpinning does. A chat lands only on a row that can file it. */
 function railAccepts(payload: DragPayload, target: RailTarget, actions: PlaceRailActions): boolean {
+  if (payload.kind === 'tab') return !!target.placeId && !!actions.addTab;
   const body = dropPayloadFromPointer(payload);
   if (!body) return false;
   if (body.kind === 'place') return target.section === 'pinned' ? !!actions.pin : !!actions.unpin;
@@ -81,8 +85,10 @@ function railAccepts(payload: DragPayload, target: RailTarget, actions: PlaceRai
 }
 
 function railCommit(payload: DragPayload, target: RailTarget, actions: PlaceRailActions, pinnedIds: readonly string[]): boolean {
+  if (!railAccepts(payload, target, actions)) return false;
+  if (payload.kind === 'tab') { actions.addTab?.(payload.id, target.placeId!); return true; }
   const body = dropPayloadFromPointer(payload);
-  if (!body || !railAccepts(payload, target, actions)) return false;
+  if (!body) return false;
   if (body.kind === 'chat') {
     if (target.placeId) actions.fileChats?.(body.ids, target.placeId);
     return true;
@@ -112,10 +118,10 @@ function RailSectionRows({ section, index, actions, pinnedIds, setOver, children
 }
 
 /** One place row. The pointer starts on the row, so a press on its button still picks the place up. */
-function RailPlace({ place, section, index, actions, pinnedIds, over, setOver, menuItems, slot, slotShortcut, closeShortcut, current, tabCount, focus, onClick, onAuxClick, onKeyDown }: {
+function RailPlace({ place, section, index, actions, pinnedIds, over, setOver, menuItems, slot, slotShortcut, closeShortcut, current, focused, focus, onClick, onAuxClick, onKeyDown }: {
   place: PlaceRowModel; section: 'pinned' | 'open'; index: number; actions: PlaceRailActions; pinnedIds: readonly string[];
   over?: string; setOver: (key: string | undefined) => void; menuItems: MenuEntry[]; slot?: number; slotShortcut: (index: number) => string;
-  closeShortcut: string; current?: string; tabCount?: (id: string) => number;
+  closeShortcut: string; current?: string; focused?: string;
   focus: { 'data-rail-item': string; tabIndex: number; onFocus: () => void };
   onClick: (event: MouseEvent<HTMLButtonElement>) => void;
   onAuxClick: (event: MouseEvent<HTMLButtonElement>) => void;
@@ -134,7 +140,8 @@ function RailPlace({ place, section, index, actions, pinnedIds, over, setOver, m
   return <ContextMenu label={`${place.name} actions`} items={menuItems}>
     <RailRow name={place.name} parentName={place.parentName} tint={place.tint} active={place.id === current}
       status={place.status} statusLabel={place.statusLabel} closedButBusy={place.closedButBusy}
-      close={section === 'open' ? { onClose: () => actions.close(place.id), tabs: tabCount?.(place.id), shortcut: place.id === current ? closeShortcut : undefined } : undefined}
+      close={section === 'open' ? { onClose: () => actions.close(place.id), shortcut: place.id === current ? closeShortcut : undefined } : undefined}
+      focus={actions.focus ? { on: focused === place.id, onToggle: () => actions.focus?.(place.id) } : undefined}
       containerProps={{ ref: dropRef, 'data-drop': over === `${section}:${index}` || undefined, ...pointer }}
       aria-keyshortcuts={slot ? slotShortcut(slot).replace('⌃', 'Control+').replace('Alt ', 'Alt+') : undefined}
       {...focus} onClick={onClick} onAuxClick={onAuxClick} onKeyDown={onKeyDown}/>
@@ -154,7 +161,7 @@ function Section({ label, action, children }: { label: string; action?: ReactNod
  * are the frame pill, so this list never draws one. Archived places are left out entirely.
  */
 export function PlaceRailSections(props: PlaceRailSectionsProps) {
-  const { now, sections, current, emptyHint, livePlaces, notice, allPlaces, actions, tabCount, slotShortcut, closeShortcut, newWindowShortcut, foot } = props;
+  const { now, sections, current, focused, emptyHint, livePlaces, notice, allPlaces, actions, slotShortcut, closeShortcut, newWindowShortcut, foot } = props;
   const [over, setOver] = useState<string>();
   const [cursor, setCursor] = useState<string>();
   const [announcement, setAnnouncement] = useState('');
@@ -169,7 +176,7 @@ export function PlaceRailSections(props: PlaceRailSectionsProps) {
 
   function menu(place: PlaceRowModel, section: 'pinned' | 'open') {
     return railMenu({ id: place.id, tint: place.tint, pinned: section === 'pinned' }, {
-      goTo: actions.go, quickLook: actions.quickLook, newWindow: actions.newWindow, newWindowShortcut,
+      goTo: actions.go, focus: actions.focus, focused: place.id === focused, quickLook: actions.quickLook, newWindow: actions.newWindow, newWindowShortcut,
       pin: actions.pin, unpin: actions.unpin, startRename: actions.rename, setTint: actions.setTint,
       close: actions.close, closeOthers: actions.closeOthers,
       closeShortcut: place.id === current ? closeShortcut : undefined,
@@ -183,9 +190,9 @@ export function PlaceRailSections(props: PlaceRailSectionsProps) {
 
   function row(place: PlaceRowModel, section: 'pinned' | 'open', index: number) {
     return <RailPlace key={place.id} place={place} section={section} index={index} actions={actions} pinnedIds={pinnedIds} over={over} setOver={setOver}
-      menuItems={menu(place, section)} slot={slotOf(place.id)} slotShortcut={slotShortcut} closeShortcut={closeShortcut} current={current} tabCount={tabCount}
+      menuItems={menu(place, section)} slot={slotOf(place.id)} slotShortcut={slotShortcut} closeShortcut={closeShortcut} current={current} focused={focused}
       focus={focusProps(place.id)}
-      onClick={event => ((primaryClick(event) || event.altKey) && actions.openTab ? actions.openTab(place.id) : primaryClick(event) && actions.newWindow ? actions.newWindow(place.id) : actions.go(place.id))}
+      onClick={event => (primaryClick(event) && actions.focus ? actions.focus(place.id) : actions.go(place.id))}
       onAuxClick={event => { if (event.button === 1 && actions.newWindow) { event.preventDefault(); actions.newWindow(place.id); } }}
       onKeyDown={event => {
         if (event.key === ' ' && !event.altKey && !event.metaKey && !event.ctrlKey && actions.quickLook) { event.preventDefault(); actions.quickLook(place.id); }

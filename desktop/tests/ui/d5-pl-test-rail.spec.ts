@@ -104,7 +104,8 @@ test('clicks follow the shell rows: Now, a place, All places, Close all', async 
   await rail(page).locator('[data-rail-item="now"]').dispatchEvent('auxclick', { button: 1 });
   await expect(page.locator('#rail-log')).toHaveText('now-window');
   await rail(page).locator('[data-rail-item="codeaf"]').click({ modifiers: ['Control'] });
-  await expect(page.locator('#rail-log')).toHaveText('window:codeaf');
+  // A modified click is Focus (owner decision 2026-10-11); a new window is the middle click and the menu.
+  await expect(page.locator('#rail-log')).toHaveText('focus:codeaf');
   await rail(page).locator('[data-rail-item="codeaf"]').dispatchEvent('auxclick', { button: 1 });
   await expect(page.locator('#rail-log')).toHaveText('window:codeaf');
   await rail(page).locator('[data-rail-item="config"]').click();

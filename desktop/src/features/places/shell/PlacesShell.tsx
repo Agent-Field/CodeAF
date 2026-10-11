@@ -26,14 +26,22 @@ export type DialogRequest =
   | { kind: 'create'; parent?: string; name?: string };
 
 export type PlacesShell = {
-  /** The place this window shows. */
+  /** The place of the tab in front (`now` when it belongs to none). Places are libraries: this follows the active tab, it is not a workspace. */
   place: WindowPlace;
+  /** The place Focus filters the strip to and tints the frame with; undefined when the strip shows every tab. Window-local. */
+  focus?: string;
+  setFocus: (id: string | undefined) => void;
+  /** Focus on the place, or off when it already is. */
+  toggleFocus: (id: string) => void;
+  /** The workspace reports the place of its active tab. This is the only thing that moves `place`. */
+  followTab: (place: string) => void;
+  /** The place this window was opened on, until the strip has opened its Home (once, after its tabs have loaded). */
+  boot?: { id: string; name: string };
+  bootDone: () => void;
   places: PlacesState;
   index?: PlaceIndex;
   client: PlacesClient;
   native: NativeControls;
-  /** Moves on every Go to, so the strip focuses its Home even when the place did not change (Places 8g "Clicking a place"). */
-  arrival: number;
   /** Places closed in this window, with the instant they were closed (ISO). Going to one again clears it. */
   closed: ReadonlyMap<string, string>;
   /** 'now', 'root' (All places, a tab here) or a place id. Rejects with a sentence when the place cannot be gone to. */
@@ -89,7 +97,7 @@ export function usePlacesShellController(boot?: WindowBoot): PlacesShell {
   const [start] = useState(() => boot ?? windowPlace());
   const [place, setPlace] = useState<WindowPlace>(start.placeKey === 'root' ? 'now' : start.placeKey);
   const label = start.label;
-  const [arrival, setArrival] = useState(0);
+  const [focus, setFocus] = useState<string>();
   const [closed, setClosed] = useState(readClosed);
   const [chooser, setChooser] = useState<ChooserMode>();
   const [dialog, setDialog] = useState<DialogRequest>();
@@ -101,21 +109,28 @@ export function usePlacesShellController(boot?: WindowBoot): PlacesShell {
   const show = toasts.show;
   const index = useMemo(() => (places.graph ? indexPlaces(places.graph.places) : undefined), [places.graph]);
 
-  // A window opened on All places shows Now with an All places tab (Places 9e "All places doesn't travel with you").
+  // A window opened on All places shows an All places tab (Places 9e "All places doesn't travel with you"); one opened on
+  // a place shows that place's Home as a tab, which the strip opens once its tabs have loaded (`boot`).
   useEffect(() => { if (start.placeKey === 'root') requestAnimationFrame(() => requestWorkspace({ type: 'home-root' })); }, [start.placeKey]);
+  const [booted, setBooted] = useState(false);
   useEffect(() => { try { localStorage.setItem(windowPlaceStorageKey(label), place); } catch { /* Not remembering the place is not worth an interruption. */ } }, [label, place]);
   useEffect(() => { try { localStorage.setItem(closedKey, JSON.stringify(Object.fromEntries(closed))); } catch { /* As above. */ } }, [closed]);
 
   const warn = useCallback((failure: unknown) => { show({ text: message(failure), tone: 'warning', actions: [] }); }, [show]);
 
-  // A place that was deleted or archived elsewhere cannot be shown: the window says so and goes to Now.
+  const bootPlace = start.placeKey === 'root' || start.placeKey === 'now' || booted ? undefined : index?.byId.get(start.placeKey);
+  const bootHome = useMemo(() => (bootPlace ? { id: bootPlace.id, name: bootPlace.name } : undefined), [bootPlace?.id, bootPlace?.name]);
+  const bootDone = useCallback(() => setBooted(true), []);
+
+  // A place that was deleted or archived elsewhere cannot stay in Focus: the window says so and shows every tab again.
   const current = place !== 'now' ? index?.byId.get(place) : undefined;
+  const focused = focus ? index?.byId.get(focus) : undefined;
   useEffect(() => {
-    if (place === 'now' || places.status !== 'ready' || !index) return;
-    if (current && !current.archived) return;
-    setPlace('now');
-    show({ text: current ? `“${current.name}” is archived, so this window shows Now.` : 'That place no longer exists, so this window shows Now.', tone: 'warning', actions: [] });
-  }, [place, places.status, index, current, show]);
+    if (!focus || places.status !== 'ready' || !index) return;
+    if (focused && !focused.archived) return;
+    setFocus(undefined);
+    show({ text: focused ? `“${focused.name}” is archived, so Focus is off.` : 'That place no longer exists, so Focus is off.', tone: 'warning', actions: [] });
+  }, [focus, places.status, index, focused, show]);
 
   // The native title says where the window is ("Marketing — codeaf").
   const title = place === 'now' ? 'Now' : current?.name ?? '';
@@ -150,12 +165,14 @@ export function usePlacesShellController(boot?: WindowBoot): PlacesShell {
   }, []);
 
   const openAllPlaces = useCallback((background = false) => {
+    // All places is in no place, so a Focus would hide the tab that was just asked for.
+    if (!background) setFocus(undefined);
     if (!requestWorkspace({ type: 'home-root', background })) show({ text: 'All places opens in the workspace. Go to the workspace first.', tone: 'warning', actions: [] });
   }, [show]);
 
   // Async navigation reads the latest window and graph rather than a render captured before an engine write.
-  const navigationState = useRef({ place, graph: places.graph });
-  navigationState.current = { place, graph: places.graph };
+  const navigationState = useRef({ place, focus, graph: places.graph });
+  navigationState.current = { place, focus, graph: places.graph };
   const navigation = useMemo(() => createPlaceNavigation({
     client: { graph: client.graph, visit: (id, generation) => client.visit(id, generation), railOp: async operation => {
       const result = await client.railOp(operation);
@@ -175,8 +192,9 @@ export function usePlacesShellController(boot?: WindowBoot): PlacesShell {
     } }, windows: native,
     graph: () => navigationState.current.graph,
     current: () => navigationState.current.place,
-    setPlace: key => { navigationState.current.place = key; setPlace(key); },
-    focusHome: () => setArrival(n => n + 1),
+    openHome: (key, title) => { requestWorkspace({ type: 'home-open', place: key, title }); },
+    focused: () => navigationState.current.focus,
+    setFocus,
     openRoot: openAllPlaces,
     setClosed: (key, isClosed) => setClosed(before => {
       if (key === 'now' || key === 'root') return before;
@@ -191,8 +209,11 @@ export function usePlacesShellController(boot?: WindowBoot): PlacesShell {
   const closePlace = useCallback((id: string) => { void navigation.closePlace(id).catch(warn); }, [navigation, warn]);
   const closeOpen = useCallback((except?: string) => { void navigation.closeAllOthers(except).catch(warn); }, [navigation, warn]);
 
+  const followTab = useCallback((key: string) => { if (isWindowPlace(key)) setPlace(key); }, []);
+  const toggleFocus = useCallback((id: string) => setFocus(before => (before === id ? undefined : id)), []);
+
   return {
-    place, places, index, client, native, arrival, closed,
+    place, focus, setFocus, toggleFocus, followTab, boot: bootHome, bootDone, places, index, client, native, closed,
     goTo, goToInNewWindow, openAllPlaces, closePlace, closeOpen, up: navigation.up,
     chooser, openChooser: setChooser, closeChooser: () => setChooser(undefined),
     lookAt, quickLook: setLookAt,

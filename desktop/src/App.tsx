@@ -8,7 +8,7 @@ import { PreviewSpecimen } from './features/tabs/specimens/PreviewSpecimen';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
 import { connectDesktopTabs } from './lib/desktopTabs';
-import { Button, IconButton, Icon, PageHeading, SectionHeading, Text, CodeText, Markdown, Surface, ContextMenu, DropdownMenu, WorkStateIndicator, ToastHost, iconNames, type MenuEntry } from './components/ui';
+import { Button, IconButton, Icon, PageHeading, SectionHeading, Text, CodeText, Markdown, Surface, ContextMenu, DropdownMenu, WorkStateIndicator, ToastHost, iconNames } from './components/ui';
 import design from './design/tokens.json';
 import { useMediaQuery } from './design/useMediaQuery';
 import './features/shell/touch.css';
@@ -23,17 +23,13 @@ import type { FocusEntry } from './features/focus-history/model';
 import { FocusHistoryProvider, useFocusWireFor } from './features/focus-history/useFocusHistory';
 import { createNextUp, NextUpProvider } from './features/nextup/useNextUp';
 import { PlaceRail } from './features/shell/PlaceRail';
-import { PlacesShellProvider, usePlacesShellController, type PlacesShell } from './features/places/shell/PlacesShell';
+import { PlacesShellProvider, usePlacesShellController } from './features/places/shell/PlacesShell';
 import { PlacesOverlays } from './features/places/shell/PlacesOverlays';
-import { switcherRowContents } from './features/places/rail/switcherRowContents';
-import { placeSwitcher, usePlaceKeys, usePlaceRail, useWindowTint } from './features/places/shell/useShellPlaces';
+import { usePlaceKeys, usePlaceRail, useWindowTint } from './features/places/shell/useShellPlaces';
 import { requestWorkspace } from './features/places/shell/workspaceBus';
 import { GoToChooserSpecimen } from './features/places/shell/GoToChooserSpecimen';
 import { PlaceDialogsSpecimen, ToastSpecimen } from './features/places/shell/PlaceDialogsSpecimen';
 import { chatIdFromSessionFile } from './features/places/client';
-import { homeMenu } from './features/places/place-actions';
-import { writeDecide } from './features/places/PlaceMenuDecide';
-import { placeShortcuts } from './design/keyboard';
 import { TabsSpecimen } from './features/tabs/specimens/TabsSpecimen';
 import { GroupOfferSpecimen } from './features/tabs/specimens/GroupOfferSpecimen';
 import { RailSpecimen } from './features/shell/specimens/RailSpecimen';
@@ -58,20 +54,15 @@ const mac = desktop && /Mac/.test(navigator.platform);
 document.documentElement.dataset.environment = mac ? 'mac-desktop' : desktop ? 'desktop' : 'browser';
 
 /**
- * Puts focus back on a history step. The same place selects at once. Another place waits until that
- * strip is listening: Go to resolves after the engine, and the select is one turn later so it is not dropped.
- * A drill is the task id the workspace recorded; none means the tab's own page.
+ * Puts focus back on a history step. Places are libraries, so every step is a tab in the one strip and selecting
+ * it is enough. A drill is the task id the workspace recorded; none means the tab's own page.
  */
-function restoreFocus(shell: PlacesShell, entry: FocusEntry) {
+function restoreFocus(entry: FocusEntry) {
  const task = entry.drillPath[0];
- const apply = () => {
-  // Before the pane mounts: a place switch has already dropped this pane from scroll memory.
-  restoreNamedScroll(entry.tabId, entry.scroll);
-  requestWorkspace({ type: 'select', id: entry.tabId });
-  requestWorkspace({ type: 'view', id: entry.tabId, change: { route: task ? { taskId: task, back: [], forward: [] } : undefined } });
- };
- if (entry.windowPlace === shell.place) { apply(); return; }
- void shell.goTo(entry.windowPlace).then(() => { window.setTimeout(apply, 0); }).catch(shell.warn);
+ // Before the pane mounts: the pane may have been dropped from scroll memory since the step was taken.
+ restoreNamedScroll(entry.tabId, entry.scroll);
+ requestWorkspace({ type: 'select', id: entry.tabId });
+ requestWorkspace({ type: 'view', id: entry.tabId, change: { route: task ? { taskId: task, back: [], forward: [] } : undefined } });
 }
 
 function App() {
@@ -116,12 +107,12 @@ function App() {
  usePlaceKeys(shell, enterWorkspace);
  usePaletteKey(enterWorkspace);
  // The shell wears this name so the frame tokens resolve on the window. The hook also writes it on document.body before paint, so a menu portalled onto the body inherits the same tokens. Now and the root are graphite; a place the graph has not named wears nothing.
- const frameTint = useWindowTint(shell);
+ const frameTint = useWindowTint({ place: shell.focus ?? 'now', index: shell.index });
  // One controller per window. Skip and a pending Accept stay here, not on the module singleton.
  const [nextUpWindow] = useState(() => createNextUp());
  const shellNow = useRef(shell);
  shellNow.current = shell;
- const focusWire = useFocusWireFor(focusHistoryStorageKey(boot.label), entry => restoreFocus(shellNow.current, entry));
+ const focusWire = useFocusWireFor(focusHistoryStorageKey(boot.label), restoreFocus);
  // No Inbox row. Questions in other conversations are the strip's frame pill, fed by nextUpWindow.
  // Settings is the bottom row. Design system sits above it only in a development build. Theme stays in that tab.
  const rail = usePlaceRail(shell, {
@@ -132,26 +123,17 @@ function App() {
   onWorkspace: page === 'Workspace' && !settingsOpen, activeHome, onEnterWorkspace: enterWorkspace,
  });
  const sidebar = <PlaceRail {...rail}/>;
- const current = shell.place === 'now' ? undefined : shell.index?.byId.get(shell.place);
- // A chat started in a place's strip is filed there between its creation and its first turn (conversation/firstTurn.ts).
+ // A chat started while Focus is on a place is filed there between its creation and its first turn (conversation/firstTurn.ts).
+ const focusId = shell.focus;
+ const focusName = focusId ? shell.index?.byId.get(focusId)?.name : undefined;
  const firstTurn = useCallback(async (sessionFile: string) => {
-  if (shell.place === 'now') return;
+  if (!focusId) return;
   const chatId = chatIdFromSessionFile(sessionFile);
   if (!chatId) throw new Error('The engine did not say where the new chat is saved, so it was not filed. Nothing was sent.');
-  try { await shell.client.addChats(shell.place, [chatId], { addedBy: 'you' }); }
-  catch (failure) { throw new Error(`This chat could not be filed in “${current?.name ?? 'this place'}”: ${failure instanceof Error ? failure.message : 'the engine refused'}. Nothing was sent; your words are kept.`); }
+  try { await shell.client.addChats(focusId, [chatId], { addedBy: 'you' }); }
+  catch (failure) { throw new Error(`This chat could not be filed in “${focusName ?? 'this place'}”: ${failure instanceof Error ? failure.message : 'the engine refused'}. Nothing was sent; your words are kept.`); }
   void shell.refresh();
- }, [shell.place, shell.client, current?.name]);
- const placeMenu: MenuEntry[] | undefined = current ? [...homeMenu({ id: current.id, name: current.name, tint: current.effectiveTint, pinned: current.pinned, decide: current.decide }, {
-  setDecide: (id, change) => void writeDecide(shell, id, current.name, current.decide, change).catch(shell.warn),
-  goToInNewWindow: id => shell.goToInNewWindow(id),
-  pin: id => void shell.write(`Pinned “${current.name}” to the rail`, () => shell.client.pinPlace(id), { subject: current.name }).catch(shell.warn),
-  unpin: id => void shell.write(`Unpinned “${current.name}”`, () => shell.client.unpinPlace(id), { subject: current.name }).catch(shell.warn),
-  setTint: (id, next) => void shell.write(`Changed the tint of “${current.name}”`, () => shell.client.updatePlace(id, { tint: next }), { subject: current.name }).catch(shell.warn),
-  chooseAnotherParent: id => shell.openChooser({ kind: 'parent', placeId: id, placeName: current.name }),
-  chooseMergeTarget: id => shell.openChooser({ kind: 'merge', placeId: id, placeName: current.name }),
- }, { canRename: true, startRename: id => shell.openDialog({ kind: 'rename', placeId: id }), newWindowHint: placeShortcuts.openInNewWindow }),
-  { kind: 'separator', id: 'close-separator' }, { id: 'close-place', label: 'Close place', shortcut: placeShortcuts.close, onSelect: () => shell.closePlace(current.id) }] : undefined;
+ }, [focusId, shell.client, focusName]);
  const stripToggle = sidebarHidden ? <RailToggle ref={sidebarToggle} placement="strip" collapsed onClick={toggleSidebar}/> : undefined;
  // Outer to inner: the place, then Next up, then focus history (its restore asks the shell to move).
  // The strip draws the frame pill and the banner from the Next up provider. A second pair here would leave the strip.
@@ -173,8 +155,7 @@ function App() {
     {stripToggle}
     <span className="page-title">{page}</span>
    </header>}
-   <div className="workspace-page" hidden={page !== 'Workspace'}><Workspace key={shell.place} place={shell.place} placeTitle={current?.name} placeTint={current?.effectiveTint} arrival={shell.arrival}
-    firstTurn={shell.place === 'now' ? undefined : firstTurn} placeMenu={placeMenu} placeSwitcher={sidebarHidden ? placeSwitcher(shell, rail, switcherRowContents) : undefined}
+   <div className="workspace-page" hidden={page !== 'Workspace'}><Workspace firstTurn={focusId ? firstTurn : undefined}
     onActivate={() => { navigate('Workspace'); }} enabled={page === 'Workspace'} leading={stripToggle}/></div>
    {import.meta.env.DEV && page === 'Design system' && <div className="content-card"><div className="page-content"><PageHeading>Less, but considered.</PageHeading><Text className="intro">Soft chrome. Native type. Space to focus.</Text><Surface direction="column"><SectionHeading>Surfaces</SectionHeading><div className="swatches">{['canvas','surface','overlay-surface','composer-surface','accent','text'].map(s => <div key={s}><div className={`swatch ${s}`}/><small>{s}</small></div>)}</div></Surface><Surface direction="column"><SectionHeading>Typography</SectionHeading><Text className="type-sample">The font your device calls home.</Text><Text>System sans for the interface. System monospace for code.</Text><CodeText>const workspace = "codeaf";</CodeText></Surface><Surface direction="column"><SectionHeading>Response typography</SectionHeading><Markdown>{'# A readable result\n\n## Findings\n\nUse `src/engine.ts` and `npm run check` without changing the interface font.\n\n### Next step\n\n**Emphasis**, lists and `inline code` use shared type.\n\n- One finding\n- Another finding\n\n| Item | State |\n| --- | --- |\n| Example | Ready |\n\n```ts\nconst ready = true;\n```'}</Markdown></Surface><Surface direction="column"><SectionHeading>Icon family</SectionHeading><Text>AnimateIcons · Lucide · one monochrome stroke style.</Text><div className="icon-specimens">{iconNames.map(name => <IconButton key={name} label={`${name} icon`} icon={name}/>)}</div></Surface><FoundationsSpecimen/><PrimitivesSpecimen/><ControlsSpecimen/><Surface direction="column"><SectionHeading>Work states</SectionHeading><Text>Still indicators. Full activity details live in tab previews.</Text><div className="control-specimens">{(['streaming','working','waiting','completed','stopped','failed','staged'] as const).map(phase=><div className="work-state-specimen" key={phase}><WorkStateIndicator phase={phase} label={`${phase} sample`}/><Text>{phase}</Text></div>)}</div></Surface><Surface direction="column"><SectionHeading>Menus and motion</SectionHeading><Text>Menus use the same quiet surfaces, focus, and keyboard controls.</Text><div className="control-specimens"><DropdownMenu label="Menu specimen" items={[{ id: 'workspace', label: 'Open workspace', icon: 'tab', onSelect: () => navigate('Workspace') }, { id: 'disabled', label: 'Unavailable action', disabled: true, onSelect: () => {} }]}><Button variant="raised">Open themed menu <Icon name="chevron" size="xs" motion="disclosure"/></Button></DropdownMenu><ContextMenu label="Context menu specimen" items={[{ id: 'workspace', label: 'Open workspace', onSelect: () => navigate('Workspace') }]}><Button variant="ghost">Right-click or Shift F10</Button></ContextMenu></div></Surface><TabsSpecimen/><GroupOfferSpecimen/><HistorySpecimen/><PreviewSpecimen/><GoToChooserSpecimen/><PlaceDialogsSpecimen/><ToastSpecimen/><FilesSpecimen/><NewTabSpecimen/><TerminalSpecimen/><WebAddressSpecimen/><RailSpecimen/><RailRowsSpecimen/><PlacesSpecimen/><ConversationSpecimens/><Surface direction="column"><SectionHeading>Spacing</SectionHeading><div className="spacing-specimens">{[1,2,3,4,6,8,12].map(n => <div key={n}><div className={`spacing-sample spacing-sample-${n}`}/><small>{design.foundation[`space-${n}` as keyof typeof design.foundation]}</small></div>)}</div></Surface><Surface direction="column"><SectionHeading>Built-in care</SectionHeading><Text>Keyboard navigation, visible focus, reduced motion, and system appearance.</Text><Button variant="ghost" className="quiet-action" onClick={requestNewTabField}>Open the new-tab field <Icon name="arrow" size="xs" motion="directional"/></Button></Surface></div></div>}
   </main>

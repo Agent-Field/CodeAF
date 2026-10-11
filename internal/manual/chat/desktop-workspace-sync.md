@@ -2,18 +2,17 @@
 
 ## Why do two windows show the same tabs
 
-Two desktop windows open on the same place show one tab set. Open a tab, close one,
+Two desktop windows show one tab set. Open a tab, close one,
 pin one, or type a draft in either window and the other window follows. There is not
-a second copy of the tabs. A window is a view of that place. Now has its own tab set,
-and each place has its own; switching place shows the tabs you left there, and work
-that was running keeps running.
+a second copy of the tabs. A window is a view of that set. Places are libraries, so every place shares
+the one tab set; going to a place opens its Home as a tab and work that was running
+keeps running.
 
 ## Where did the tabs I already had go
 
 Tabs saved on this computer before places kept their own tab set are copied into Now
 the first time Now has none. That happens once. The old copy is left where it was, so
-nothing is deleted, and a later empty Now does not copy them in again. A place that
-already has tabs is left as it is.
+nothing is deleted, and a later empty Now does not copy them in again. Tabs an older version saved under a place on its own are not merged into the strip.
 
 ## Which tab is selected in each window
 

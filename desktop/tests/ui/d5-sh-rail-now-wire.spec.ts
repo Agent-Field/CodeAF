@@ -49,11 +49,12 @@ async function mount(page: Page, theme: string, native = false) {
   await page.goto('/');
   await page.getByRole('button', { name: /^Reading/ }).first().click();
   await expect(page.getByRole('tab', { name: 'Reading', exact: true })).toBeVisible();
-  await expect(page.locator('body')).toHaveAttribute('data-tint', 'sage');
+  // Places are libraries: going to a place opens its Home as a tab and leaves the frame graphite; only Focus tints it.
+  await expect(page.locator('body')).toHaveAttribute('data-tint', 'graphite');
 }
 
 for (const theme of ['light', 'dark']) {
-  test(`Now restores unplaced tabs and graphite; browser command-click also enters the workspace · ${theme}`, async ({ page }) => {
+  test(`Now shows every tab and stays graphite; browser command-click also enters the workspace · ${theme}`, async ({ page }) => {
     await page.addInitScript(() => {
       Object.assign(window, { __openedUrls: [], open: (url: string) => {
         (window as unknown as { __openedUrls: string[] }).__openedUrls.push(url);
@@ -62,21 +63,21 @@ for (const theme of ['light', 'dark']) {
     });
     await mount(page, theme);
     await now(page).click();
+    // Now opens and closes nothing: the Reading Home stays beside the draft. The tab in front decides the highlighted row.
+    await expect(page.getByRole('tab', { name: 'Reading', exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: 'Unplaced draft', exact: true }).click();
     await expect(now(page)).toHaveAttribute('aria-current', 'page');
     await expect(page.locator('body')).toHaveAttribute('data-tint', 'graphite');
-    await expect(page.getByRole('tab', { name: 'Reading', exact: true })).toHaveCount(0);
     await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toHaveValue('Keep my Now draft');
     await expect.poll(() => page.evaluate(() => localStorage.getItem('codeaf.desktop.window.main.place'))).toBe('now');
     await expect(now(page)).toHaveCSS('font-size', '13px');
     expect((await now(page).boundingBox())!.height).toBe(32);
     await page.getByRole('button', { name: /^Reading/ }).first().click();
     await now(page).click({ button: 'middle' });
-    await expect(page.locator('body')).toHaveAttribute('data-tint', 'sage');
+    await expect(page.getByRole('tab', { name: 'Reading', exact: true })).toHaveAttribute('aria-selected', 'true');
     await openPage(page, 'Settings');
     await now(page).click({ modifiers: ['Meta'] });
-    await expect(now(page)).toHaveAttribute('aria-current', 'page');
     await expect(page.getByRole('button', { name: 'New tab', exact: true })).toBeVisible();
-    await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toHaveValue('Keep my Now draft');
     await expect(page.locator('body')).toHaveAttribute('data-tint', 'graphite');
     expect(await page.evaluate(() => (window as unknown as { __openedUrls: string[] }).__openedUrls)).toEqual([]);
     await now(page).click({ button: 'right' });
@@ -91,7 +92,7 @@ for (const theme of ['light', 'dark']) {
       { cmd: 'window_open', args: { request: { placeKey: 'now' } } },
       { cmd: 'window_open', args: { request: { placeKey: 'now' } } },
     ]);
-    await expect(page.locator('body')).toHaveAttribute('data-tint', 'sage');
+    await expect(page.locator('body')).toHaveAttribute('data-tint', 'graphite');
     await expect(page.getByRole('tab', { name: 'Reading', exact: true })).toHaveAttribute('aria-selected', 'true');
   });
 }

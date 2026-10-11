@@ -4,8 +4,8 @@ import { installMockEngine, type MockEngine, type Scenario } from './support/moc
 import { installMockPlaces, sessionFileFor, type PlacesSeed } from './support/mock-places';
 
 // Places window (PL-023, PL-024, PL-083, PL-084, PL-096, PL-099, PL-251, PL-259, PL-260).
-// The frame wears the place tint, Go to brings that place's strip back onto Home, the collapsed Home tab
-// is the switcher, the left edge peeks the rail, and two windows share one tab set. Strings are the design's.
+// Places are libraries (owner decision 2026-10-11): the frame wears a place's tint while Focus is on it, Go to opens
+// the place's Home as a tab in the one strip, the left edge peeks the rail, and every window shares one tab set.
 
 const READING = 'pl_aaaaaaaaaaaaaaaa';
 const MARKETING = 'pl_bbbbbbbbbbbbbbbb';
@@ -107,13 +107,14 @@ function workspaceHub(seed: Record<string, Record<string, unknown>> = {}, names:
 
 const tab = (fields: Record<string, unknown>) => ({ titleSource: 'manual', pinned: false, draft: '', ...fields });
 
-function readingStrip(sessionFile?: string) {
+/** The one shared tab set: two tabs that belong to Reading and one that belongs to Marketing. */
+function sharedStrip(sessionFile?: string) {
   return {
     schema: 1,
     tabs: [
-      tab({ id: 'home-reading', kind: 'home', place: READING, title: 'Reading', pinned: true }),
-      tab({ id: 'tab-span', kind: 'conversation', title: 'Spanner TrueTime', ...(sessionFile ? { sessionFile } : {}) }),
-      tab({ id: 'tab-web', kind: 'web', title: 'raft.github.io', target: { url: 'https://raft.github.io/' } }),
+      tab({ id: 'tab-span', kind: 'conversation', title: 'Spanner TrueTime', memberOf: [READING], ...(sessionFile ? { sessionFile } : {}) }),
+      tab({ id: 'tab-web', kind: 'web', title: 'raft.github.io', memberOf: [READING], target: { url: 'https://raft.github.io/' } }),
+      tab({ id: 'tab-brand', kind: 'conversation', title: 'Brand voice', memberOf: [MARKETING] }),
     ],
     groups: [],
     closed: [],
@@ -122,7 +123,13 @@ function readingStrip(sessionFile?: string) {
 }
 
 const rail = (page: Page) => page.locator('.app-shell .place-rail').first();
-const homeSelect = (page: Page) => page.locator('.home-tab-select');
+const homeSelect = (page: Page) => page.locator('.workspace-tab.is-place-home').first().getByRole('tab');
+/** The hover button on a rail row: Focus filters the strip to that place and tints the frame. */
+const focusOn = async (page: Page, name: RegExp) => {
+  const row = rail(page).locator('.rail-row', { has: page.getByRole('button', { name }) }).first();
+  await row.hover();
+  await row.getByRole('button', { name: /^(Stop focusing on|Focus on) / }).click();
+};
 const stops = (engine: MockEngine) => engine.calls.filter(call => call.method === 'POST' && call.path.endsWith('/stop'));
 
 async function boot(page: Page, theme: Theme, seed: PlacesSeed = garden(), scenario?: Scenario, hub?: ReturnType<typeof workspaceHub>) {
@@ -226,7 +233,10 @@ for (const theme of ['light', 'dark'] as const) {
     await expectTint(page, theme, 'graphite');
     await expect(page.locator('.shell-hotzone[data-edge="left"]')).toHaveCount(0);
 
+    // Going to a place opens its Home and leaves the frame alone; only Focus tints it (places are libraries).
     await rail(page).getByRole('button', { name: /^Marketing/ }).click();
+    await expectTint(page, theme, 'graphite');
+    await focusOn(page, /^Marketing/);
     await expectTint(page, theme, 'rose');
     for (const width of WIDTHS) {
       await page.setViewportSize({ width, height: 800 });
@@ -238,64 +248,68 @@ for (const theme of ['light', 'dark'] as const) {
     }
     await page.setViewportSize({ width: 1200, height: 800 });
 
-    // Config parser has no tint of its own. It inherits Reading, so the frame is iris.
+    // Config parser has no tint of its own. It inherits Reading, so a Focus on it wears iris.
     await rail(page).getByRole('button', { name: /^Config parser/ }).click();
+    await expectTint(page, theme, 'graphite');
+    await focusOn(page, /^Config parser/);
     await expectTint(page, theme, 'iris');
     await rail(page).getByRole('button', { name: 'All places' }).click();
     await expect(page.getByRole('tab', { name: 'All places', exact: true })).toHaveAttribute('aria-selected', 'true');
-    await expectTint(page, theme, 'iris');
+    await expectTint(page, theme, 'graphite');
     await rail(page).getByRole('button', { name: 'Now', exact: true }).click();
     await expectTint(page, theme, 'graphite');
   });
 
-  test(`PL-096 Go to Reading restores its strip and lands on Home in ${theme}`, async ({ page }) => {
+  test(`PL-096 Go to Reading opens its Home as a tab among the others, and Focus narrows the strip in ${theme}`, async ({ page }) => {
     test.setTimeout(60_000);
-    const hub = workspaceHub({ [READING]: readingStrip() });
+    const hub = workspaceHub({ now: sharedStrip() });
     const rig = await boot(page, theme, garden(), undefined, hub);
+    await expect(page.getByRole('tab', { name: 'Brand voice', exact: true })).toBeVisible();
     await rail(page).getByRole('button', { name: /^Reading/ }).click();
     await expect(page.getByRole('heading', { name: 'Reading', exact: true })).toBeVisible();
     await expect(homeSelect(page)).toHaveAttribute('aria-selected', 'true');
-    await expectTint(page, theme, 'iris');
-    await expect(page.getByRole('tab', { name: 'Spanner TrueTime', exact: true })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'raft.github.io', exact: true })).toBeVisible();
+    await expectTint(page, theme, 'graphite');
+    // Nothing was replaced: all three tabs are still there beside the new Home.
+    for (const name of ['Spanner TrueTime', 'raft.github.io', 'Brand voice']) await expect(page.getByRole('tab', { name, exact: true })).toBeVisible();
 
+    await focusOn(page, /^Reading/);
+    await expectTint(page, theme, 'iris');
+    await expect(page.getByRole('tab', { name: 'Brand voice', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'Spanner TrueTime', exact: true })).toBeVisible();
     await page.getByRole('tab', { name: 'raft.github.io', exact: true }).click();
     await expect(page.getByText('Web pages open in the desktop app', { exact: true })).toBeVisible();
     await expect(page.getByText('This window cannot show raft.github.io.', { exact: true })).toBeVisible();
     await expect(page.locator('.web-state').getByRole('button', { name: 'Open in browser', exact: true })).toBeVisible();
 
+    // All places is in no place: asking for it ends the Focus and shows every tab again.
     await rail(page).getByRole('button', { name: 'All places' }).click();
     await expect(page.getByRole('tab', { name: 'All places', exact: true })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('tab', { name: 'Spanner TrueTime', exact: true })).toBeVisible();
-    await expectTint(page, theme, 'iris');
-    // Leave only after the strip is saved. Closing the place drops a save that has not been sent yet.
-    await expect.poll(() => JSON.stringify(hub.docs.get(READING)?.workspace ?? {})).toContain('All places');
+    await expect(page.getByRole('tab', { name: 'Brand voice', exact: true })).toBeVisible();
+    await expectTint(page, theme, 'graphite');
 
     await rail(page).getByRole('button', { name: /^Marketing/ }).click();
     await expect(page.getByRole('heading', { name: 'Marketing', exact: true })).toBeVisible();
+    await focusOn(page, /^Marketing/);
     await expectTint(page, theme, 'rose');
     await expect(page.getByRole('tab', { name: 'Spanner TrueTime', exact: true })).toHaveCount(0);
     await expect(page.getByRole('tab', { name: 'raft.github.io', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('tab', { name: 'All places', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'Brand voice', exact: true })).toBeVisible();
 
+    // The slot key goes to Reading: its Home is already open, so it is focused, and the Focus on Marketing ends.
     await page.keyboard.press(rig.slot(1));
     await expect(page.getByRole('heading', { name: 'Reading', exact: true })).toBeVisible();
     await expect(homeSelect(page)).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('tab', { name: 'Spanner TrueTime', exact: true })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'raft.github.io', exact: true })).toBeVisible();
-    await expect(page.getByRole('tab', { name: 'All places', exact: true })).toBeVisible();
-    await expectTint(page, theme, 'iris');
+    for (const name of ['Spanner TrueTime', 'raft.github.io', 'Brand voice', 'All places']) await expect(page.getByRole('tab', { name, exact: true })).toBeVisible();
+    await expectTint(page, theme, 'graphite');
     for (const width of WIDTHS) {
       await page.setViewportSize({ width, height: 800 });
-      // At 600 and under the rail is a drawer, so the Home tab also carries the needs-you name.
       await expect(page.getByRole('tab', { name: /^Reading/ })).toBeVisible();
       await expect(page.getByRole('tab', { name: 'Spanner TrueTime', exact: true })).toBeVisible();
-      await expect(page.getByRole('tab', { name: 'raft.github.io', exact: true })).toBeVisible();
       await expectNoOverflow(page);
     }
   });
 
-  test(`PL-083 PL-084 the slot keys and the collapsed switcher in ${theme}`, async ({ page }) => {
+  test(`PL-083 PL-084 the slot keys open Homes and the collapsed rail has no switcher in ${theme}`, async ({ page }) => {
     test.setTimeout(90_000);
     const rig = await boot(page, theme);
     await expect(rail(page).getByRole('button', { name: 'Now', exact: true })).toHaveAttribute('aria-current', 'page');
@@ -312,13 +326,13 @@ for (const theme of ['light', 'dark'] as const) {
     await page.keyboard.press(rig.slot(1));
     await expect(rail(page).getByRole('button', { name: /^Reading/ })).toHaveAttribute('aria-current', 'page');
     await expect(page.getByRole('heading', { name: 'Reading', exact: true })).toBeVisible();
-    await expect(page.locator('body')).toHaveAttribute('data-tint', 'iris');
+    await expect(page.locator('body')).toHaveAttribute('data-tint', 'graphite');
     await page.keyboard.press(rig.slot(2));
     await expect(rail(page).getByRole('button', { name: /^Marketing/ })).toHaveAttribute('aria-current', 'page');
-    await expect(page.locator('body')).toHaveAttribute('data-tint', 'rose');
+    // Now opens nothing and ends no tab: the rail still shows the place of the tab in front.
     await page.keyboard.press(rig.slot(0));
-    await expect(rail(page).getByRole('button', { name: 'Now', exact: true })).toHaveAttribute('aria-current', 'page');
-    await expect(page.locator('body')).toHaveAttribute('data-tint', 'graphite');
+    await expect(rail(page).getByRole('button', { name: /^Marketing/ })).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('.focus-chip')).toHaveCount(0);
     await page.keyboard.press(rig.slot(1));
     // A click focuses the row, but the keyboard ring stays off while the pointer owns the input.
     const software = rail(page).getByRole('button', { name: /^Software/ });
@@ -329,60 +343,16 @@ for (const theme of ['light', 'dark'] as const) {
 
     await page.keyboard.press(`${rig.mod}+s`);
     await expect(page.locator('.app-shell')).toHaveClass(/sidebar-collapsed/);
-    await tabTo(page, '.home-tab-select');
-    await expect(homeSelect(page)).toHaveAttribute('aria-haspopup', 'menu');
-    await expect(homeSelect(page)).toHaveAttribute('aria-description', '1 needs you in Config parser');
-    await page.keyboard.press('Enter');
-    const menu = page.getByRole('menu', { name: 'Place switcher' });
-    await expect(menu).toBeVisible();
-    await page.keyboard.press('ArrowDown');
-    const focusedItem = page.locator('.place-switcher .menu-item:focus');
-    await expect(focusedItem).toBeFocused();
-    // The menu's own focus move follows the key. Wait until the browser treats that focus as visible.
-    await expect.poll(async () => focusedItem.evaluate(el => el.matches(':focus-visible'))).toBe(true);
-    await expect(focusedItem).toHaveCSS('box-shadow', await ringShadow(page, 'menu'));
-    await expect(menu.getByRole('menuitemcheckbox', { name: /^Now/ })).toContainText(rig.shortcut(0));
-    await expect(menu.getByRole('menuitemcheckbox', { name: /^Reading/ })).toContainText(rig.shortcut(1));
-    await expect(menu.getByRole('menuitemcheckbox', { name: /^Config parser/ })).toContainText(rig.shortcut(4));
-    await expect(menu.getByRole('menuitemcheckbox', { name: /^Reading/ })).toHaveAttribute('aria-checked', 'true');
-    await expect(menu.getByRole('menuitemcheckbox', { name: /^Reading/ })).toHaveCSS('background-color', await tokenColor(page, 'field-2'));
-    await expect(menu.getByText('Pinned', { exact: true })).toBeVisible();
-    await expect(menu.getByText('Open', { exact: true })).toBeVisible();
-    await expect(menu.locator('.rail-place-path')).toHaveText(' · Reading');
-    // The child needs you, and Reading carries that same roll-up, so both rows say it.
-    await expect(menu.getByRole('menuitemcheckbox', { name: /1 needs you in Config parser/ })).toHaveCount(2);
-    await expect(menu.getByRole('menuitemcheckbox', { name: /^Config parser/ }).getByRole('img', { name: '1 needs you in Config parser' })).toBeVisible();
-    await expect(menu.getByRole('menuitem', { name: /^All places/ })).toBeVisible();
-    await expect(menu.getByText('Inbox')).toHaveCount(0);
-    await expect(menu.locator('[role=menuitem], [role=menuitemcheckbox]')).toHaveCount(6);
-    // Subpixel layout reports a fraction under the token. The painted size is still 290 by 32.
-    expect(Math.round((await menu.boundingBox())!.width)).toBe(290);
-    expect(Math.round((await menu.locator('.menu-item').first().boundingBox())!.height)).toBe(32);
-    await expect(menu.locator('.menu-item').first()).toHaveCSS('font-size', '13px');
-    await expect(menu.locator('.menu-item').first()).toHaveCSS('border-top-left-radius', '7px');
-    await expect(menu).toHaveCSS('border-top-left-radius', '12px');
-    const homeBox = (await page.locator('.home-tab').boundingBox())!;
-    const menuBox = (await menu.boundingBox())!;
-    expect(Math.abs(menuBox.x - homeBox.x)).toBeLessThanOrEqual(8);
-    expect(menuBox.y).toBeGreaterThanOrEqual(homeBox.y + homeBox.height - 2);
-    await page.keyboard.press('Escape');
-    await expect(menu).toBeHidden();
-    await expect(homeSelect(page)).toBeFocused();
+    // The Home tab is an ordinary tab now: with the rail hidden it opens no place switcher.
+    await homeSelect(page).first().click();
+    await expect(page.getByRole('menu', { name: 'Place switcher' })).toHaveCount(0);
 
     for (const width of [600, 320] as const) {
       await page.setViewportSize({ width, height: 800 });
       await expect(page.locator('.shell-hotzone[data-edge="left"]')).toHaveCount(0);
       await expect(page.locator('.shell-hotzone[data-edge="top"]')).toHaveCount(0);
       await expect(page.getByRole('dialog', { name: 'Navigation' })).toHaveCount(0);
-      await expect(homeSelect(page)).toHaveAttribute('aria-haspopup', 'menu');
-      await homeSelect(page).click();
-      await expect(menu).toBeVisible();
-      await expect(menu.getByRole('menuitemcheckbox', { name: /^Now/ })).toBeVisible();
-      await expect(menu.getByRole('menuitemcheckbox', { name: /1 needs you in Config parser/ })).toHaveCount(2);
-      const narrowMenu = (await menu.boundingBox())!;
-      expect(narrowMenu.x).toBeGreaterThanOrEqual(0);
-      expect(narrowMenu.x + narrowMenu.width).toBeLessThanOrEqual(width);
-      await page.keyboard.press('Escape');
+      await expect(homeSelect(page)).not.toHaveAttribute('aria-haspopup', 'menu');
       await expectNoOverflow(page);
     }
   });
@@ -440,43 +410,41 @@ for (const theme of ['light', 'dark'] as const) {
     } else expect(motion.durations.some(part => part > 0)).toBe(true);
   });
 
-  test(`PL-099 the same chat stays one run in two places in ${theme}`, async ({ page }) => {
+  test(`PL-099 the same chat filed in two places is one tab and one run in ${theme}`, async ({ page }) => {
     test.setTimeout(60_000);
-    const hub = workspaceHub({}, { [MARKETING]: 'Marketing', [SOFTWARE]: 'Software' });
+    const hub = workspaceHub();
     const scenario: Scenario = { initial: { entries: [{ Role: 'user', Text: 'Ship the launch copy' }], title: 'Launch copy', running: true, sessionFile: sessionFileFor('launch') } };
     const rig = await boot(page, theme, garden(), scenario, hub);
+    const launch = page.getByRole('tab', { name: 'Launch copy', exact: true });
     const openLaunch = async () => {
       await page.getByRole('region', { name: 'Chats' }).getByRole('button', { name: /Launch copy/ }).click();
-      await expect(page.getByRole('tab', { name: 'Launch copy', exact: true })).toHaveAttribute('aria-selected', 'true');
+      await expect(launch).toHaveAttribute('aria-selected', 'true');
       await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible();
     };
     await rail(page).getByRole('button', { name: /^Marketing/ }).click();
     const rowMotion = await page.locator('.places-chat-row').first().evaluate(el => getComputedStyle(el).transitionDuration.split(',').map(part => parseFloat(part)));
     if (theme === 'dark') expect(rowMotion.every(part => part === 0)).toBe(true);
     await openLaunch();
-    await expect.poll(() => JSON.stringify(hub.docs.get(MARKETING)?.workspace ?? {})).toContain(sessionFileFor('launch'));
+    // Places are libraries: Software's Home lists the same chat, and opening it focuses the tab that is already open.
     await rail(page).getByRole('button', { name: /^Software/ }).click();
     await openLaunch();
-    await expect.poll(() => [...hub.docs.values()].filter(doc => JSON.stringify(doc.workspace).includes(sessionFileFor('launch'))).length).toBe(2);
-    await homeSelect(page).click();
-    await page.getByRole('tab', { name: 'Launch copy', exact: true }).hover();
-    await expect(page.locator('.preview-context')).toHaveText('also open in Marketing');
+    await expect(launch).toHaveCount(1);
+    await expect.poll(() => JSON.stringify(hub.docs.get('now')?.workspace ?? {})).toContain(sessionFileFor('launch'));
     const before = stops(rig.engine).length;
+    await launch.hover();
     await page.getByRole('button', { name: 'Close Launch copy', exact: true }).click();
-    await expect(page.getByRole('tab', { name: 'Launch copy', exact: true })).toHaveCount(0);
+    await expect(launch).toHaveCount(0);
     expect(stops(rig.engine)).toHaveLength(before);
     await rail(page).getByRole('button', { name: /^Marketing/ }).click();
-    await expect(page.getByRole('tab', { name: 'Launch copy', exact: true })).toBeVisible();
-    await page.getByRole('tab', { name: 'Launch copy', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible();
+    await openLaunch();
     expect(stops(rig.engine)).toHaveLength(before);
   });
 }
 
-test('PL-251 two windows on Reading share one tab set and keep their own focus', async ({ browser }) => {
+test('PL-251 two windows share one tab set and keep their own focus', async ({ browser }) => {
   test.setTimeout(90_000);
   for (const theme of ['light', 'dark'] as const) {
-    const hub = workspaceHub({ [READING]: readingStrip(sessionFileFor('spanner')) });
+    const hub = workspaceHub({ now: sharedStrip(sessionFileFor('spanner')) });
     const contexts = await Promise.all([0, 1].map(() => browser.newContext({ viewport: { width: 1200, height: 800 }, colorScheme: theme })));
     try {
       const pages = await Promise.all(contexts.map(context => context.newPage()));
@@ -497,11 +465,11 @@ test('PL-251 two windows on Reading share one tab set and keep their own focus',
       const mac = await a.evaluate(() => /Mac/.test(navigator.platform));
       const mod = mac ? 'Meta' : 'Control';
       await a.getByRole('tab', { name: 'Spanner TrueTime', exact: true }).click();
-      await expect(b.locator('.home-tab-select')).toHaveAttribute('aria-selected', 'true');
+      await expect(b.locator('.workspace-tab.is-place-home').getByRole('tab')).toHaveAttribute('aria-selected', 'true');
       const composer = a.getByRole('textbox', { name: 'Message', exact: true });
       await expect(composer).toBeVisible();
       await composer.fill('one composer state');
-      await expect.poll(() => JSON.stringify(hub.docs.get(READING)?.workspace ?? {}), { timeout: 10_000 }).toContain('one composer state');
+      await expect.poll(() => JSON.stringify(hub.docs.get('now')?.workspace ?? {}), { timeout: 10_000 }).toContain('one composer state');
       await b.getByRole('tab', { name: 'Spanner TrueTime', exact: true }).click();
       await expect(b.getByRole('textbox', { name: 'Message', exact: true })).toHaveValue('one composer state');
       await a.keyboard.press(`${mod}+t`);

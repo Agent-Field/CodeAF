@@ -2,11 +2,11 @@
 
 ## Why is Inbox missing from the desktop rail and the place switcher
 
-The desktop side rail has no Inbox row. It lists Now, then Pinned places, then Open places, then All places. The place switcher that opens from the Home tab while the rail is hidden lists the same places: Now, each place on the rail, and All places. It does not list Inbox. A question waiting in another conversation is counted on the frame pill at the right end of the tab strip. The pill is absent when that count is zero.
+The desktop side rail has no Inbox row. It lists Now, then Pinned places, then Open places, then All places. Go to (Command+P), which is how you move between places while the rail is hidden, lists the same places: Now, each place on the rail, and All places. It does not list Inbox. A question waiting in another conversation is counted on the frame pill at the right end of the tab strip. The pill is absent when that count is zero.
 
 ## What does the collapsed desktop rail place switcher list
 
-Hide the side rail and press the Home tab. The menu is Now, then the places currently on the rail (pinned first, then open), then All places. Each of the first nine places keeps its slot key. A place that needs you, other than the one you are in, keeps its amber mark on the Home tab. There is no Inbox entry in that menu.
+Hide the side rail and press Command+P (Control+P on Linux). The list is Now, then the places currently on the rail (pinned first, then open), then All places. Each of the first nine places keeps its slot key. There is no Inbox entry in that list.
 
 ## What does the desktop rail show on first launch
 

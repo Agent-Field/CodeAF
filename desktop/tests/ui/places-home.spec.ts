@@ -34,7 +34,8 @@ const garden = (): PlacesSeed => ({
 });
 
 const rail = (page: Page) => page.locator('.app-shell .place-rail');
-const homeTab = (page: Page) => page.locator('.workspace-tab.is-place-home');
+// Places are libraries: several Homes can be tabs at once, so a Home is found by its place's name.
+const homeTab = (page: Page, name = 'codeaf') => page.locator('.workspace-tab.is-place-home').filter({ hasText: name });
 const composer = (page: Page) => page.locator('.home-composer').getByRole('textbox', { name: 'Message' });
 const placeTiles = (page: Page) => page.locator('.places-tile[data-mode="place"] [data-places-tile-focusable]');
 const tileNamed = (page: Page, name: string) => page.locator('.places-tile[data-mode="place"]').filter({ has: page.locator('.places-tile-name', { hasText: new RegExp(`^${name}$`) }) }).locator('[data-places-tile-focusable]');
@@ -245,7 +246,8 @@ for (const theme of ['light', 'dark'] as const) {
     await composer(page).fill('Draft the launch email');
     await composer(page).press('Enter');
     await expect(page.getByRole('tab', { name: 'Draft the launch email' })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator('.workspace-tabstrip').getByRole('tab').nth(1)).toHaveAccessibleName('Draft the launch email');
+    const labels = await page.locator('.workspace-tabstrip').getByRole('tab').evaluateAll(els => els.map(el => el.getAttribute('aria-label') ?? el.textContent?.trim() ?? ''));
+    expect(labels[labels.findIndex(label => /codeaf/.test(label)) + 1]).toBe('Draft the launch email');
     await expect(homeTab(page)).toHaveCount(1);
 
     await homeTab(page).getByRole('tab').click();
@@ -335,6 +337,7 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(page.getByRole('heading', { level: 1, name: 'Garden' })).toBeVisible();
     // OWNER RULE (10 Oct): a tile inside a page opens a tab; the window stays where it was (tests/ui/place-navigation.spec.ts).
     await expect(page.locator('.workspace-tabstrip').getByRole('tab', { name: 'Garden', exact: true })).toHaveAttribute('aria-selected', 'true');
-    await expect(rail(page).getByRole('button', { name: 'Now', exact: true })).toHaveAttribute('aria-current', 'page');
+    // The rail highlights the place of the tab in front.
+    await expect(rail(page).getByRole('button', { name: /^Garden/ })).toHaveAttribute('aria-current', 'page');
   });
 }

@@ -86,18 +86,16 @@ test('records a tab change and a place switch, skips a background open, and ⌘[
   expect(afterTab.entries[1].windowPlace).toBe('now');
   expect(afterTab.cursor).toBe(1);
 
-  const marketing = places.id('Marketing');
   await page.locator('.app-shell .place-rail').first().locator('.rail-row').filter({ has: page.locator('.rail-place-name', { hasText: /^Marketing/ }) }).locator('.rail-place').click();
-  await expect(page.locator('body')).toHaveAttribute('data-tint', 'rose');
+  // Places are libraries: the rail opens Marketing's Home as a tab in the one strip, so every step is in that strip.
   await expect(page.locator('.workspace-tab.is-place-home')).toContainText('Marketing');
-  await expect.poll(async () => (await saved(page)).entries.map(entry => entry.windowPlace)).toEqual(['now', 'now', marketing]);
+  await expect.poll(async () => (await saved(page)).entries.map(entry => entry.windowPlace)).toEqual(['now', 'now', 'now']);
   const left = await saved(page);
   expect(left.entries[0].scroll.find(spot => spot.key === 'conversation')?.top).toBe(120);
   expect(left.entries[0].draftKey).toBe('origin');
 
   await page.keyboard.press(back);
   await expect(page.getByRole('tab', { name: 'New tab', exact: true })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.locator('body')).toHaveAttribute('data-tint', 'graphite');
   await page.keyboard.press(back);
   await expect(page.getByRole('tab', { name: 'Config stack', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toHaveValue('Keep my draft');
@@ -108,8 +106,8 @@ test('records a tab change and a place switch, skips a background open, and ⌘[
   await page.keyboard.press(forward);
   await expect(page.getByRole('tab', { name: 'New tab', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.keyboard.press(forward);
-  await expect(page.locator('body')).toHaveAttribute('data-tint', 'rose');
   await expect(page.locator('.workspace-tab.is-place-home')).toContainText('Marketing');
+  await expect(page.locator('.workspace-tab.is-place-home')).toHaveAttribute('data-active', 'true');
   await noPermanentButtons(page);
 });
 

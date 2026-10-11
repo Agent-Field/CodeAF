@@ -1,7 +1,7 @@
 // The workspace: owns the reducer state and composes the strip, the content card and the dialogs.
 // Everything with a lane of its own lives in a sibling file (see ARCHITECTURE.md).
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { Button, Icon, Text, TextInput, type MenuEntry } from '../../components/ui';
+import { Button, Icon, Text, TextInput } from '../../components/ui';
 import { nativeControls } from '../../design/nativeControls';
 import design from '../../design/tokens.json';
 import { toasts } from '../../design/toasts';
@@ -27,9 +27,12 @@ import { kindDef } from './kinds/registry';
 import { newTab } from './helpers';
 import { blockingOf, type AttentionItem } from '../chat/world-client';
 import { worldStore } from '../chat/world-store';
-import { focusedPane, freshWorkspace, panesOf, readWorkspace, visibleTabs, workspaceKey, workspaceReducer, type Pane, type Tab, type WorkspaceState, type WorkspaceAction } from './model';
+import { focusedPane, inFocus, panesOf, readWorkspace, visibleTabs, workspaceKey, type Pane, type Tab, type WorkspaceAction } from './model';
 import { FirstTurnContext, NewConversationPlaceContext, type BeforeFirstTurn } from '../conversation/firstTurn';
 import { placeTints, type TintName } from '../places/components/PlaceSwatch';
+import { fileTabChats } from '../places/tabFiling';
+import { landingFor, shownPlace } from './focusModel';
+import { stampFocus } from './focusStamp';
 import { onWorkspaceRequest } from '../places/shell/workspaceBus';
 import { useWorkspaceSync } from '../workspace-sync/useWorkspaceSync';
 import type { WorkspaceKey } from '../workspace-sync/client';
@@ -122,51 +125,36 @@ function useArrivingBanner(elsewhere: readonly AttentionItem[]): NextUpBannerIte
   return current;
 }
 
-/** Where Back returns. Another place is named as a place; a tab in this place is named by its title. Unknown is nothing. */
-function backTargetName(entry: FocusEntry, tabs: readonly Tab[], place: string, placeName: (id: string) => string | undefined): string {
-  if (entry.windowPlace !== place) {
-    if (entry.windowPlace === 'now') return 'Now';
-    if (entry.windowPlace === 'root') return 'All places';
-    return placeName(entry.windowPlace) ?? '';
-  }
+/** Where Back returns: the tab it names, by its title. Places are libraries, so there is one strip and never another place to name. Unknown is nothing. */
+function backTargetName(entry: FocusEntry, tabs: readonly Tab[]): string {
   return tabs.find(tab => tab.id === entry.tabId)?.title ?? '';
 }
 
+/** The one tab set every place shares (places are libraries, owner decision 2026-10-11). It keeps the v1 key. */
+const stripKey: WorkspaceKey = 'now';
+
 type Props = {
   enabled: boolean; onActivate: () => void; leading?: ReactNode;
-  /** The window's place: `now` or a design-graph place id. Each has its own saved tab set (model.ts workspaceKey). */
-  place?: string;
-  /** The place's name and tint for its Home tab; absent until the graph has been read. */
-  placeTitle?: string; placeTint?: TintName;
-  /** Moves on every Go to: the strip then focuses its Home. */
-  arrival?: number;
   /** Files a new chat in this place between its creation and its first turn (conversation/firstTurn.ts). */
   firstTurn?: BeforeFirstTurn;
-  /** The menu of this strip's Home tab. */
-  placeMenu?: MenuEntry[];
-  /** While the rail is put away, the Home tab is the place switcher. */
-  placeSwitcher?: { items: MenuEntry[]; alert?: string };
   /** Opens a conversation by its chat id. Absent, the strip opens it itself from the world feed (`openChatHere`). */
   onOpenChat?: (chatId: string) => void;
 };
 
-/** The saved tabs of a place, with its Home pinned first when it is a design-graph place. */
-function initialFor(place: string, title: string): WorkspaceState {
-  const home = place === 'now' ? undefined : { id: place, title };
-  const state = readWorkspace(workspaceKey(place), () => freshWorkspace(home));
-  return home ? workspaceReducer(state, { type: 'home-ensure', place: home.id, title }) : state;
-}
-
-export function Workspace({ enabled, onActivate, leading, place = 'now', placeTitle, placeTint, arrival = 0, firstTurn, placeMenu, placeSwitcher, onOpenChat }: Props) {
+export function Workspace({ enabled, onActivate, leading, firstTurn, onOpenChat }: Props) {
   const windowQuery = new URLSearchParams(window.location.search);
-  const sync = useWorkspaceSync({ key: place as WorkspaceKey, initial: () => initialFor(place, placeTitle ?? 'Home'), focus: windowQuery.get('tab') ?? windowQuery.get('focusTab') ?? undefined });
+  const sync = useWorkspaceSync({ key: stripKey, initial: () => readWorkspace(workspaceKey(stripKey)), focus: windowQuery.get('tab') ?? windowQuery.get('focusTab') ?? undefined });
   const { state } = sync;
-  // Panes saved under the other places stay in scroll memory, so Now and a place restore their scroll as well as their tabs.
-  const otherPlacePanes = useMemo(() => savedPaneIds(safeLocal(), windowWriter(), place as WorkspaceKey), [place]);
+  // Panes saved by an older build's per-place strips stay in scroll memory, so their scroll is restored if they come back.
+  const otherPlacePanes = useMemo(() => savedPaneIds(safeLocal(), windowWriter(), stripKey), []);
   const { dispatch: rawDispatch, undo } = useStructuralUndo({ state, dispatch: sync.dispatch, enabled, keys: false });
   useUndoKeys({ undo }, enabled);
-  const dispatch = useCallback((action: WorkspaceAction) => { if (action.type === 'open-inbox') { window.dispatchEvent(new Event('codeaf:next-up-start')); return; } rawDispatch(action); }, [rawDispatch]);
   const shell = usePlacesShell();
+  const focus = shell?.focus;
+  const focusNow = useRef(focus);
+  focusNow.current = focus;
+  const dispatch = useCallback((action: WorkspaceAction) => { if (action.type === 'open-inbox') { window.dispatchEvent(new Event('codeaf:next-up-start')); return; } rawDispatch(stampFocus(action, focusNow.current)); }, [rawDispatch]);
+  // The place the shell shows is the active tab's, so the rail, the title and the frame follow whichever tab is in front.
   const [usingApi] = useState(createUsingClient);
   const [summaries, setSummaries] = useState<Record<string, TabSummary>>({});
   const [now, setNow] = useState(Date.now);
@@ -210,7 +198,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const renameInput = useRef<HTMLInputElement>(null);
   const overviewTrigger = useRef<HTMLButtonElement>(null);
   const active = state.tabs.find(tab => tab.id === state.activeId) ?? state.tabs[0];
-  const visible = visibleTabs(state);
+  const visible = inFocus(visibleTabs(state), focus, state.activeId);
 
   // Inactive tabs take running, needs-you and title from the world stream. Only the open tab holds a
   // conversation stream. A world row has no transcript, so a reply already read is kept.
@@ -222,19 +210,32 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
     setSummaries(current => ({ ...current, [id]: summary }));
     if (snapshot.title.trim()) dispatch({ type: 'title', id, title: snapshot.title.trim(), source: 'engine' });
   });
-  // The Home tab carries the place's current name; Go to (even to the place already shown) lands on it.
-  // A strip mounted by a Go to (arrival already moved) lands on its Home; one mounted by a reload keeps its saved focus.
-  // Canonical reads and other windows can replace the import seed after arrival, so every changed tab set must
-  // keep Home first too. The reducer leaves an already correct Home alone, preserving this window's later focus.
-  const arrived = useRef(arrival > 0 ? -1 : arrival);
-  useEffect(() => {
-    if (place === 'now' || !placeTitle) return;
-    const focus = arrived.current !== arrival;
-    arrived.current = arrival;
-    dispatch({ type: 'home-ensure', place, title: placeTitle, focus });
-  }, [place, placeTitle, arrival, state.tabs, dispatch]);
-  useEffect(() => onWorkspaceRequest(dispatch), [dispatch]);
+  // Dropping a tab on a rail row asks the strip to add the place; the chats it holds are filed with the engine too.
+  const stateNow = useRef(state);
+  stateNow.current = state;
+  useEffect(() => onWorkspaceRequest(action => {
+    dispatch(action);
+    if (action.type === 'tab-place' && shell) fileTabChats(shell, stateNow.current.tabs.find(tab => tab.id === action.id), action.place);
+  }), [dispatch, shell]);
   const activeTab = state.tabs.find(tab => tab.id === state.activeId) ?? state.tabs[0];
+  // A window opened on a place opens that place's Home once the tab set has loaded: earlier, the canonical read would replace it.
+  const boot = shell?.boot;
+  useEffect(() => {
+    if (!boot || sync.status.phase === 'loading') return;
+    dispatch({ type: 'home-open', place: boot.id, title: boot.name });
+    shell.bootDone();
+  }, [boot, sync.status.phase]);
+  const followTab = shell?.followTab;
+  const activePlace = shownPlace(activeTab, focus);
+  useEffect(() => followTab?.(activePlace), [followTab, activePlace]);
+  // Turning Focus on while another place's tab is in front brings the place's own most recent tab forward, or its Home.
+  // Only the turning on does: a tab the person picks later (All places, a Home from a page) stays in front, and is drawn.
+  const focusName = focus ? shell?.index?.byId.get(focus)?.name : undefined;
+  useEffect(() => {
+    if (!focus || inFocus([activeTab], focus).length) return;
+    const landing = landingFor(state, focus);
+    dispatch(landing ? { type: 'select', id: landing } : { type: 'home-open', place: focus, title: focusName ?? 'Home' });
+  }, [focus]);
   const focused = focusedPane(activeTab);
   // P-3: the conversation you're in is the focused pane's. A task or file on that session is the same conversation.
   const conversationKey = focused.sessionFile ? chatIdFromSessionFile(focused.sessionFile) : '';
@@ -255,19 +256,15 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const outerFocus = useOptionalFocusWire();
   const [windowLabel, setWindowLabel] = useState('main');
   const focusNavigate = useRef<(entry: FocusEntry) => void>(() => {});
-  focusNavigate.current = entry => {
-    if (entry.windowPlace !== place) void shell?.goTo(entry.windowPlace);
-    dispatch({ type: 'select', id: entry.tabId });
-  };
+  focusNavigate.current = entry => { dispatch({ type: 'select', id: entry.tabId }); };
   const localFocus = useFocusWireFor(outerFocus ? undefined : focusHistoryStorageKey(windowLabel), entry => focusNavigate.current(entry));
   const focusWire = outerFocus ?? localFocus;
   const focusSnap = useSyncExternalStore(focusWire.subscribe, focusWire.getSnapshot, focusWire.getSnapshot);
   const scrollMemory = useScrollMemory();
-  const walkOrigin = (): WalkOrigin => ({ place, tabId: activeTab.id, paneId: focused.id, label: placeTitle ?? activeTab.title, conversation: conversationKey, draft: focused.draft, route: focused.route, scroll: scrollMemory?.get(focused.id) });
+  const walkOrigin = (): WalkOrigin => ({ place: stripKey, tabId: activeTab.id, paneId: focused.id, label: activeTab.title, conversation: conversationKey, draft: focused.draft, route: focused.route, scroll: scrollMemory?.get(focused.id) });
   const walk = useNextUpWalk({
-    enabled, place,
+    enabled,
     origin: walkOrigin,
-    goTo: id => shell ? shell.goTo(id) : Promise.reject(new Error('That place is unavailable.')),
     warn: reason => shell?.warn(reason),
     open: item => {
       const row = worldStore.getState().rows.find(row => row.session === item.session);
@@ -288,7 +285,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   });
   useNextUpKeys({ enabled, origin: walkOrigin, wire: focusWire });
   const backEntry = focusSnap.chip;
-  const backName = backEntry ? backTargetName(backEntry, state.tabs, place, id => shell?.index?.byId.get(id)?.name) : '';
+  const backName = backEntry ? backTargetName(backEntry, state.tabs) : '';
   const back: StripBack | undefined = walk.origin && walk.phase !== 'idle' ? {
     key: `walk:${walk.origin.place}:${walk.origin.tabId}`, parentName: walk.origin.label,
     onBack: () => nextUpWalk.exit(), onDismiss: () => {},
@@ -315,7 +312,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
     const task = focused.route ? routeTask(focused.route) : undefined;
     const scroll = namedScrollSpots(focused.id);
     focusWire.observe({
-      windowPlace: place, tabId: activeTab.id, drillPath: task ? [task] : [],
+      windowPlace: stripKey, tabId: activeTab.id, drillPath: task ? [task] : [],
       // Nothing read yet is not a position. Omitting it keeps spots the step already stored.
       ...(scroll.length ? { scroll } : {}),
       draftKey: focused.draft ? focused.id : null,
@@ -324,9 +321,9 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const noteFocusNow = useRef(noteFocus);
   noteFocusNow.current = noteFocus;
   useEffect(() => {
-    focusWire.setTabs(place, state.tabs.map(tab => tab.id));
+    focusWire.setTabs(stripKey, state.tabs.map(tab => tab.id));
     noteFocusNow.current();
-  }, [focusWire, place, state.tabs, activeTab, focused.route, focused.draft, focused.id, walk.phase, walk.item?.key]);
+  }, [focusWire, state.tabs, activeTab, focused.route, focused.draft, focused.id, walk.phase, walk.item?.key]);
   // Scroll does not bubble. Capture on the workspace sees it after the pane's own frame has stored the spot.
   useEffect(() => {
     const root = gestureRoot.current;
@@ -366,16 +363,13 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const { closeTab, closeAndStop } = closing;
   const { background } = useBackground({ tabs: state.tabs, closed: state.closed, summaries, since: closing.sinceOf, stopping: closing.stopping });
   useWindowHandoff(dispatch);
-  useEffect(() => { if (sync.status.overtaken > 0) toasts.show({ key: `workspace-overtaken-${place}`, message: [`Another window changed ${sync.status.overtaken} of your tab edits. Your latest tab set is shown.`], tone: 'warning', onSettled: sync.acknowledge }); }, [sync.status.overtaken, place]);
-  useEffect(() => { if (sync.status.error) toasts.show({ key: `workspace-status-${place}`, message: [sync.status.error], tone: 'warning', actions: [{ label: 'Try again', onSelect: sync.retry }] }); }, [sync.status.error, place]);
-  // A tab moves to a new window on THIS strip's place, which a Places window can change after it opened.
-  const placeNow = useRef(place);
-  placeNow.current = place;
+  useEffect(() => { if (sync.status.overtaken > 0) toasts.show({ key: `workspace-overtaken-${stripKey}`, message: [`Another window changed ${sync.status.overtaken} of your tab edits. Your latest tab set is shown.`], tone: 'warning', onSettled: sync.acknowledge }); }, [sync.status.overtaken]);
+  useEffect(() => { if (sync.status.error) toasts.show({ key: `workspace-status-${stripKey}`, message: [sync.status.error], tone: 'warning', actions: [{ label: 'Try again', onSelect: sync.retry }] }); }, [sync.status.error]);
   const syncNow = useRef(sync);
   syncNow.current = sync;
   const latestState = useRef(state);
   latestState.current = state;
-  const [actions] = useState(() => createTabActions({ native: nativeControls(), toasts, place: () => placeNow.current, handoffView: id => { syncNow.current.handoff(id); }, stillHere: id => latestState.current.tabs.some(tab => tab.id === id) }));
+  const [actions] = useState(() => createTabActions({ native: nativeControls(), toasts, place: () => stripKey, handoffView: id => { syncNow.current.handoff(id); }, stillHere: id => latestState.current.tabs.some(tab => tab.id === id) }));
   // Incoming durable links reuse canonical dispatch and never start work.
   useTabLinks({ enabled, state, dispatch, actions });
   useCloseStopKey(enabled, () => closeAndStop(state.activeId));
@@ -389,8 +383,8 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const historyHost = useHistoryWorkspace(state, dispatch);
   const [archived, dismissArchived] = useAutoArchive(state, dispatch, summaries, Date.now, sync.status.phase === 'saved' || sync.status.phase === 'saving');
 
-  const api: TabsApi = { workspaceKey: place, state, dispatch, summaries, now, closeTab, closeAndStop, closeMany: closing.closeMany, isRunning: closing.isRunning, background, openChat: onOpenChat ?? openChatHere, canOpenChat: id => !!worldStore.getState().rows.find(row => row.session === id)?.sessionFile, actions, reopenClosed: closing.reopenClosed, startRename, groupSelected, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename,
-    placeTint: place === 'now' ? undefined : placeTint, placeMenu, placeSwitcher };
+  const api: TabsApi = { workspaceKey: stripKey, state, dispatch, summaries, now, closeTab, closeAndStop, closeMany: closing.closeMany, isRunning: closing.isRunning, background, openChat: onOpenChat ?? openChatHere, canOpenChat: id => !!worldStore.getState().rows.find(row => row.session === id)?.sessionFile, actions, reopenClosed: closing.reopenClosed, startRename, groupSelected, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename,
+    tintOf: id => tintOf(id), focusPlace: focus };
   useNewTabKeys(api);
   const newTabHost = { state, summaries, dispatch, closeTab, receiveTransfer: sync.receiveTransfer };
   const actionsFor = (pane: Pane): PaneActions => ({
@@ -413,7 +407,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   });
   return <TabsApiContext.Provider value={api}><section ref={gestureRoot} className="tab-workspace" aria-label="Conversation workspace" data-nextup-walk={walk.phase !== 'idle' || undefined}>
     <TabStrip api={api} leading={leading} back={back} frame={frame} overviewTrigger={overviewTrigger} onOverview={openOverview}/>
-    <NewConversationPlaceContext.Provider value={place === 'now' || place === 'root' ? undefined : place}><FirstTurnContext.Provider value={firstTurn}><NewTabHostContext.Provider value={newTabHost}><HistoryHostContext.Provider value={historyHost}><PaneGrid overlay={!api.overlayOpen && <SuggestPill api={api}/>} tab={active} tabs={state.tabs} dispatch={dispatch} actionsFor={actionsFor} retainedPaneIds={[...state.closed.flatMap(tab => panesOf(tab).map(pane => pane.id)), ...otherPlacePanes]}/></HistoryHostContext.Provider></NewTabHostContext.Provider></FirstTurnContext.Provider></NewConversationPlaceContext.Provider>
+    <NewConversationPlaceContext.Provider value={focus}><FirstTurnContext.Provider value={firstTurn}><NewTabHostContext.Provider value={newTabHost}><HistoryHostContext.Provider value={historyHost}><PaneGrid overlay={!api.overlayOpen && <SuggestPill api={api}/>} tab={active} tabs={state.tabs} dispatch={dispatch} actionsFor={actionsFor} retainedPaneIds={[...state.closed.flatMap(tab => panesOf(tab).map(pane => pane.id)), ...otherPlacePanes]}/></HistoryHostContext.Provider></NewTabHostContext.Provider></FirstTurnContext.Provider></NewConversationPlaceContext.Provider>
     {/* The specimen is not the live strip. Open chats ask the engine which ones share a topic, and Group uses the reducer's own action. */}
     <GroupOffer api={api}/>
     {archived && <ArchiveToast count={archived.tabs.length} onDismiss={dismissArchived} onReview={() => { dispatch(openKindAction(state, 'history')); dismissArchived(); }} onRestore={() => { restoreArchived(archived, dispatch); dismissArchived(); }}/>}

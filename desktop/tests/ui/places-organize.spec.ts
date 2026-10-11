@@ -70,7 +70,7 @@ for (const theme of THEMES) for (const width of WIDTHS) {
     await page.keyboard.press('Shift+F10');
     const menu = page.getByRole('menu', { name: 'Software actions' });
     await expect(menu).toBeVisible();
-    await expect(menu.getByRole('menuitem')).toHaveText([/^Go to/, /^Quick Look/, /^Open in new window/, 'Pin', 'Rename', 'Close', 'Close all others']);
+    await expect(menu.getByRole('menuitem')).toHaveText([/^Go to/, 'Focus', /^Quick Look/, /^Open in new window/, 'Pin', 'Rename', 'Close', 'Close all others']);
     // The tint row is five named squares, the place's own tint is the selected one, and Graphite is never offered.
     const tint = menu.getByRole('radiogroup', { name: 'Tint' });
     await expect(tint.getByRole('radio')).toHaveText(['', '', '', '', '']);

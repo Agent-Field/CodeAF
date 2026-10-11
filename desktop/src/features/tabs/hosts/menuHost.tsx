@@ -9,7 +9,6 @@ import type { TabsApi } from '../context';
 import { placeFinishedJobItems } from '../../terminal/tabMenu';
 import { kindDef } from '../kinds/registry';
 import { focusedPane, splitCapacity, visibleTabs, type Tab, type TabGroup } from '../model';
-import { isPlaceHome } from '../reducers/home';
 
 const separator = (id: string): MenuEntry => ({ kind: 'separator', id });
 
@@ -63,8 +62,6 @@ function transferEntries(api: TabsApi, tab: Tab): MenuEntry[] {
 
 export function tabMenuItems(api: TabsApi, tab: Tab): MenuEntry[] {
   const { state, dispatch } = api;
-  // A place's Home is not an ordinary tab: it never closes, moves or groups, so its menu is the place's own.
-  if (isPlaceHome(tab)) return api.placeMenu ?? [];
   const toTheRight = visibleTabs(state).slice(visibleTabs(state).findIndex(t => t.id === tab.id) + 1).filter(t => !t.pinned);
   const pane = focusedPane(tab);
   // Kind rows join the one tab menu. A finished job's Open log and Run again sit above Close; Remove job sits just under it.

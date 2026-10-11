@@ -6,7 +6,8 @@ import test from 'node:test';
 const src = readFileSync(new URL('./App.tsx', import.meta.url), 'utf8');
 
 test('the app shell wears the window tint the hook returns', () => {
-  assert.match(src, /const frameTint = useWindowTint\(shell\)/);
+  // The frame wears a tint only while Focus is on a place (places are libraries, not workspaces).
+  assert.match(src, /const frameTint = useWindowTint\(\{ place: shell\.focus \?\? 'now'/);
   assert.match(src, /data-tint=\{frameTint\}/);
   assert.match(src, /className=\{`app-shell /);
 });

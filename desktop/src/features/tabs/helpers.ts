@@ -34,6 +34,20 @@ export const splitMinimum = 2;
 export const layoutFits = (layout: SplitLayout, count: number) => (layout === '2x2' ? count >= 3 && count <= splitCapacity : count === splitMinimum);
 export const defaultLayout = (count: number): SplitLayout => (count > splitMinimum ? '2x2' : '1x2');
 
+/** The places a tab belongs to: a Home belongs to its own, any other tab to its `memberOf`. */
+export function placesOf(tab: Pick<Tab, 'kind' | 'place' | 'memberOf'>): string[] {
+  return tab.kind === 'home' && tab.place ? [tab.place] : tab.memberOf ?? [];
+}
+
+/**
+ * The tabs Focus on `place` keeps in the strip. No focus keeps every tab; filtering is a view and never closes or moves one.
+ * `keepId` is the tab in front: it stays drawn even when it is not in the place (All places, or a Home opened from a page),
+ * because a strip that hides the tab you are looking at has told you nothing.
+ */
+export function inFocus<T extends Pick<Tab, 'id' | 'kind' | 'place' | 'memberOf'>>(tabs: readonly T[], place: string | undefined, keepId?: string): T[] {
+  return place ? tabs.filter(tab => tab.id === keepId || placesOf(tab).includes(place)) : [...tabs];
+}
+
 export function newTab(init: Partial<Tab> = {}): Tab {
   return { id: createId(), title: newConversationTitle, draft: '', pinned: false, ...init, kind: init.kind ?? defaultKind };
 }

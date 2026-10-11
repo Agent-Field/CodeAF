@@ -3,12 +3,13 @@
 ## How do I switch places with the desktop rail hidden?
 
 Hide or show the desktop rail with Command+S (Control+S on Linux); Command+B
-also works. With the rail hidden, the pinned Home tab opens the place switcher.
-It lists Now, Pinned places in your order, Open places, and All places.
-Each place keeps its tint square; amber means something needs you and red means
-something failed. Running work has no status dot. Parent names appear beside
-nested places. Arrow keys move through the switcher, Enter goes to the chosen
-place, and Escape dismisses it and returns focus to Home.
+also works. With the rail hidden there is no place switcher in the strip any more: a place's
+Home is an ordinary tab. Press Command+P (Control+P on Linux) for Go to, which lists
+Now, Pinned places in your order, Open places, and All places, or use the Control
+(Alt on Linux) number keys. Each place keeps its tint square; amber means something
+needs you and red means something failed. Running work has no status dot. Parent
+names appear beside nested places. Enter goes to the chosen place, which opens its
+Home as a tab, and Escape dismisses it.
 
 Control+0 goes to Now on macOS, and Control+1 through Control+9 go to places,
 Pinned first followed by Open. Linux uses Alt+0 through Alt+9 for places.

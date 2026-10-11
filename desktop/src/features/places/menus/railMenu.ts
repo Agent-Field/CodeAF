@@ -11,6 +11,9 @@ export type RailMenuRow = { id: string; tint: TintName; pinned: boolean };
  */
 export type RailMenuActions = {
   goTo?: (placeId: string) => void;
+  /** Filters the strip to this place, or stops when it already does. */
+  focus?: (placeId: string) => void;
+  focused?: boolean;
   quickLook?: (placeId: string) => void;
   newWindow?: (placeId: string) => void;
   newWindowShortcut?: string;
@@ -44,6 +47,7 @@ const act = (id: string, label: string, onSelect: () => void, extra: { shortcut?
 export function railMenu(row: RailMenuRow, actions: RailMenuActions): MenuEntry[] {
   const groups: MenuEntry[][] = [[], [], []];
   if (actions.goTo) groups[0].push(act('go', 'Go to', () => actions.goTo?.(row.id), { shortcut: '↵' }));
+  if (actions.focus) groups[0].push(act('focus', actions.focused ? 'Stop focusing' : 'Focus', () => actions.focus?.(row.id)));
   if (actions.quickLook) groups[0].push(act('quick-look', 'Quick Look', () => actions.quickLook?.(row.id), { shortcut: 'Space' }));
   if (actions.newWindow) groups[0].push(act('new-window', 'Open in new window', () => actions.newWindow?.(row.id), { shortcut: actions.newWindowShortcut }));
   if (row.pinned ? actions.unpin : actions.pin) {

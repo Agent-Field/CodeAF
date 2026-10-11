@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from 'react';
 import { Button, DropdownMenu, Icon, IconButton } from '../../components/ui';
-import { Switcher } from '../places/rail/Switcher';
 import design from '../../design/tokens.json';
 import { useMediaQuery } from '../../design/useMediaQuery';
 import { overviewShortcut, tabShortcuts } from '../../design/keyboard';
@@ -14,11 +13,10 @@ import { GroupCapsule, MemberSlot } from './GroupCapsule';
 import { useGroupDrag } from './hosts/dragHost';
 import { overflowItems, withGroupMenu } from './hosts/menuHost';
 import { openStripBackgroundMenu, StripMenu } from './hosts/stripMenu';
-import { navigate, stateOfMark, TabItem, tabDomId, tabDomIds } from './TabItem';
-import { focusedPane, stripItems, visibleTabs, type Tab, type TabGroup } from './model';
+import { stateOfMark, TabItem, tabDomIds } from './TabItem';
+import { FocusChip } from '../places/FocusChip';
+import { focusedPane, inFocus, stripItems, visibleTabs, type Tab, type TabGroup } from './model';
 import { departureIds, departuresFrom, exitHoldMs, groupsForDepartures, mergeDepartures, retainDepartures, withDepartures, type TabDeparture } from './tabExit';
-import { HomeTab } from '../places/home/HomeTab';
-import { isPlaceHome } from './reducers/home';
 import { useLongPress } from '../shell/useLongPress';
 import '../shell/touch.css';
 import './strip.css';
@@ -95,14 +93,14 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
   useLongPress();
   const { state, dispatch } = api;
   const strip = useRef<HTMLDivElement>(null);
-  const homeFocus = useRef<string | null>(null);
   // Shell 3j "Compressed", and the open question that makes it live: only while the window is at the small breakpoint.
   const narrow = useMediaQuery(`(max-width: ${design.breakpoints.small}px)`);
   const reduced = useMediaQuery('(prefers-reduced-motion: reduce)');
   const [edge, setEdge] = useState({ end: false, hidden: 0 });
   const [moveNote, setMoveNote] = useStripAnnouncement(strip);
   const [departures, setDepartures] = useState<TabDeparture[]>([]);
-  const order = visibleTabs(state);
+  // Focus is a filter: it hides tabs from the strip and from the keys, and closes and moves nothing.
+  const order = inFocus(visibleTabs(state), api.focusPlace, state.activeId);
   // Closing compares the full tab list, not the visible one. A collapsed group's hidden members leave the
   // visible order without leaving the document; treating that as a close dropped the pill whenever the
   // selected tab stood outside the group. A draft keystroke does not change this id list, so it does not
@@ -126,17 +124,16 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
   // Every tab is drawn, hidden members included, so a collapsed group whose members are all hidden
   // still shows its capsule. Those members stay in the drawing model after the close motion ends, even
   // when the active tab is outside the group.
-  const shown = withDepartures(state.tabs, departures);
+  const shown = inFocus(withDepartures(state.tabs, departures), api.focusPlace, state.activeId);
   const groups = groupsForDepartures(state.groups, departures);
   const departing = new Set(departures.map(item => item.tab.id));
   // Arrow keys and ⌘1–9 walk `order` (hidden members of a collapsed group are not stops). The drawn strip
   // still includes every member, so the pill "Label N" stays when none of those tabs is selected. A
   // departing tab is put back only so its slot can shrink; it is not in that keyboard order.
-  const home = shown.find(isPlaceHome);
-  const pinned = shown.filter(tab => tab.pinned && !isPlaceHome(tab));
+  const pinned = shown.filter(tab => tab.pinned);
   const items = stripItems({ tabs: shown, groups });
   // The strip only re-measures when its shape changes, never on a draft keystroke.
-  const shape = JSON.stringify([state.activeId, state.groups, departures.map(item => item.tab.id), state.tabs.map(t => [t.id, t.title, t.pinned, t.groupId, t.split?.panes.map(p => [p.id, p.title])])]);
+  const shape = JSON.stringify([state.activeId, api.focusPlace, state.groups, departures.map(item => item.tab.id), state.tabs.map(t => [t.id, t.title, t.pinned, t.groupId, t.split?.panes.map(p => [p.id, p.title])])]);
   // A closing tab is inert and hidden from assistive tech for the whole collapse. The ref pins its live width, then
   // lets the transition take that width to zero. Doing it here, not in state, keeps a second render from skipping the start.
   const release = useCallback((el: HTMLDivElement | null) => {
@@ -222,13 +219,10 @@ export function TabStrip({ api, leading, back, frame, overviewTrigger, onOvervie
   return (
     <div className="workspace-tabbar" data-tauri-drag-region onContextMenu={openStripBackgroundMenu}>
       {leading}
+      <FocusChip/>
       {back && <div className="workspace-back-slot"><BackChip key={back.key} parentName={back.parentName} onBack={back.onBack} onDismiss={back.onDismiss}/></div>}
       <div className="workspace-tablist-owner" role="tablist" aria-label="Conversation tabs" aria-owns={order.flatMap(tabDomIds).join(" ")}/>
       <div ref={strip} className="workspace-tabstrip" aria-label="Conversation tabs" data-fade-end={edge.end || undefined}>
-        {home && <HomeTab key={home.id} name={home.title} tint={api.placeTint ?? 'graphite'} active={state.activeId === home.id} id={tabDomId(home)} menu={api.placeMenu}
-          onSelect={() => dispatch({ type: 'select', id: home.id })} onKeyDown={navigate(api, order, home, homeFocus)}
-          switcher={!!api.placeSwitcher} needsYou={api.placeSwitcher?.alert}
-          wrapSelect={api.placeSwitcher ? select => <Switcher items={api.placeSwitcher!.items}>{select}</Switcher> : undefined}/>}
         {pinned.map(tab => item(tab))}
         {pinned.length > 0 && <span className="workspace-tab-divider" role="separator" aria-orientation="vertical"/>}
         {items.map(entry => {
