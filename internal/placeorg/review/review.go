@@ -15,7 +15,10 @@ const MaxTokens = 400
 const maxOutlineRunes = 24000
 
 // Stage reviews names and suggests merges without changing the tree.
-type Stage struct{}
+type Stage struct {
+	// Owner is the person's own name words from their profile.
+	Owner []string
+}
 
 var _ placeorg.Reviewer = (*Stage)(nil)
 var _ placeorg.Judged = (*Stage)(nil)
@@ -39,7 +42,7 @@ func (s *Stage) Review(ctx context.Context, t *placeorg.Tree, corpus *placeorg.C
 	return s.reviewNodes(ctx, name.Nodes(t), corpus, judge)
 }
 
-func (*Stage) reviewNodes(ctx context.Context, nodes []placeorg.Node, corpus *placeorg.Corpus, judge placeorg.Judge) ([]placeorg.Op, error) {
+func (s *Stage) reviewNodes(ctx context.Context, nodes []placeorg.Node, corpus *placeorg.Corpus, judge placeorg.Judge) ([]placeorg.Op, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -77,7 +80,7 @@ func (*Stage) reviewNodes(ctx context.Context, nodes []placeorg.Node, corpus *pl
 	if !ok || pick.FellBack {
 		return nil, nil
 	}
-	idx := name.NewIndex(corpus)
+	idx := name.NewIndex(corpus).WithOwner(s.Owner...)
 	var ops []placeorg.Op
 	for _, n := range nodes {
 		raw, exists := a.Renames[n.Name]

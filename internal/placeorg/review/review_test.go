@@ -61,3 +61,28 @@ func TestReviewCancellationAndEmptyTree(t *testing.T) {
 		t.Fatal(ops, err)
 	}
 }
+
+func TestReviewRefusesTheOwnersNameAndRareTokens(t *testing.T) {
+	c := &placeorg.Corpus{Chats: []placeorg.Chat{
+		{ID: "1", Workspace: "/home/zorvin/x", Title: "Orchid Care", Text: "orchid care zorvin"},
+		{ID: "2", Workspace: "/home/zorvin/x", Title: "Orchid Soil", Text: "orchid soil zorvin"},
+	}}
+	nodes := []placeorg.Node{{ID: "a", Name: "Plants", Members: []string{"1", "2"}}}
+	judge := &replay{raw: `{"renames":{"Plants":"Zorvin Care"}}`}
+	ops, err := (&Stage{}).reviewNodes(context.Background(), nodes, c, judge)
+	if err != nil || len(ops) != 0 {
+		t.Fatal(ops, err)
+	}
+}
+
+func TestReviewKeepsASupportedRename(t *testing.T) {
+	c := &placeorg.Corpus{Chats: []placeorg.Chat{
+		{ID: "1", Workspace: "/home/zorvin/x", Title: "Orchid Care", Text: "orchid care"},
+		{ID: "2", Workspace: "/home/zorvin/x", Title: "Orchid Soil", Text: "orchid soil"},
+	}}
+	nodes := []placeorg.Node{{ID: "a", Name: "Plants", Members: []string{"1", "2"}}}
+	ops, err := (&Stage{}).reviewNodes(context.Background(), nodes, c, &replay{raw: `{"renames":{"Plants":"Orchid"}}`})
+	if err != nil || len(ops) != 1 || ops[0].Name != "Orchid" {
+		t.Fatal(ops, err)
+	}
+}
