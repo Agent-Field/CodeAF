@@ -10,21 +10,30 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"gopkg.in/yaml.v3"
 )
 
 type factoryHostConfig struct {
-	Listen      string   `yaml:"listen"`
-	AccessToken string   `yaml:"access_token"`
-	Repos       []string `yaml:"repos"`
+	Listen         string   `yaml:"listen"`
+	AccessToken    string   `yaml:"access_token"`
+	Repos          []string `yaml:"repos"`
+	GitHubClientID string   `yaml:"github_client_id,omitempty"`
+	Team           []string `yaml:"team,omitempty"`
 }
 
 // MarshalYAML keeps omission distinct from an explicit empty repository list,
 // because only the latter is an instruction to clear the saved selection.
 func (cfg factoryHostConfig) MarshalYAML() (any, error) {
 	doc := map[string]any{"listen": cfg.Listen, "access_token": cfg.AccessToken}
+	if cfg.GitHubClientID != "" {
+		doc["github_client_id"] = cfg.GitHubClientID
+	}
+	if len(cfg.Team) > 0 {
+		doc["team"] = cfg.Team
+	}
 	if cfg.Repos != nil {
 		doc["repos"] = cfg.Repos
 	}
@@ -106,6 +115,11 @@ func readFactoryHostConfig(path string) (factoryHostConfig, error) {
 	}
 	if strings.TrimSpace(cfg.AccessToken) != cfg.AccessToken || strings.ContainsAny(cfg.AccessToken, " \t\r\n") {
 		return cfg, fmt.Errorf("factory config %s: access_token must contain no whitespace", path)
+	}
+	for _, member := range cfg.Team {
+		if !inviteHandleOK(factory.NormalizeHandle(member)) {
+			return cfg, fmt.Errorf("factory config %s: team must contain GitHub handles", path)
+		}
 	}
 	for _, repo := range cfg.Repos {
 		if !store.RepoName(repo) {

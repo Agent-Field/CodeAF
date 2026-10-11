@@ -33,6 +33,11 @@ type Config struct {
 	Address     string
 	Version     string
 	AccessToken string
+	// GitHubClientID enables GitHub device sign-in; Team optionally restricts handles.
+	GitHubClientID string
+	Team           []string
+	// GitHubHTTPClient permits a fake transport while keeping production URLs fixed.
+	GitHubHTTPClient *http.Client
 	// TokensPath names access-token rows beside the host config. Empty means
 	// only AccessToken is accepted. It is read on each request so invite and
 	// revoke apply without restarting the service.
@@ -64,6 +69,7 @@ type Handler struct {
 
 	workers  *workerService
 	sessions *accessSessions
+	auth     *deviceFlows
 }
 
 // New binds the seam's reads and verbs; absent doors refuse rather than panic.
@@ -74,6 +80,9 @@ func New(seam factory.Seam, config Config) *Handler {
 	h := &Handler{seam: seam, config: config,
 		factory: api.Factory{Address: config.Address, Version: config.Version}, mux: http.NewServeMux()}
 	h.sessions = &accessSessions{ids: make(map[string]accessSession), now: time.Now}
+	h.auth = &deviceFlows{pending: make(map[string]*deviceFlow)}
+	h.route("/v1/auth/device", map[string]http.HandlerFunc{http.MethodPost: h.startDevice})
+	h.route("/v1/auth/device/poll", map[string]http.HandlerFunc{http.MethodPost: h.pollDevice})
 	h.route("/access", map[string]http.HandlerFunc{http.MethodGet: h.access, http.MethodPost: h.access})
 	h.route("/v1/access/revoke-sessions", map[string]http.HandlerFunc{http.MethodPost: h.revokeSessions})
 	h.read("/v1/queue", h.queue)
@@ -128,6 +137,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnauthorized, "a bearer access token or live session is required; open /access to enter the token")
 		return
 	}
+	if session, ok := h.credential(r); ok && session.profile != nil && !h.teamAllows(session.profile.Handle) {
+		h.fail(w, http.StatusForbidden, "this GitHub handle is not on the factory team")
+		return
+	}
 	// Noncanonical paths are refused here so ServeMux cannot replace the JSON
 	// contract with an HTML redirect that carries no factory identity.
 	if r.URL.Path != path.Clean(r.URL.Path) {
@@ -167,7 +180,7 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	handle, err := h.seam.PersonHandle(r.Context())
+	handle, err := h.callerHandle(r)
 	if h.failed(w, err) {
 		return
 	}
@@ -311,23 +324,16 @@ func (h *Handler) github(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
-	handle, err := h.seam.PersonHandle(r.Context())
+	handle, err := h.callerHandle(r)
 	if h.failed(w, err) {
 		return
 	}
-	// Identity is the connected GitHub login until viewer sessions and worker
-	// registration can supply the person's own machines and preferences.
-	// invited_by is set only when this caller holds an invite token. The host
-	// token, and a loopback call with no token, leave it out.
-	h.write(w, http.StatusOK, struct {
-		Factory         api.Factory     `json:"factory"`
-		CodeafVersion   string          `json:"codeaf_version"`
-		Contract        int             `json:"contract"`
-		Handle          string          `json:"handle"`
-		InvitedBy       string          `json:"invited_by,omitempty"`
-		Machines        []api.Worker    `json:"machines"`
-		TakesUnassigned map[string]bool `json:"takes_unassigned"`
-	}{h.factory, h.factory.Version, api.Contract, handle, h.invitedBy(r), []api.Worker{}, map[string]bool{}})
+	session, _ := h.credential(r)
+	profile := api.Profile{Handle: handle, Scopes: []string{}}
+	if session.profile != nil {
+		profile = *session.profile
+	}
+	h.write(w, http.StatusOK, h.meBody(profile, session.id, session.invitedBy))
 }
 
 func (h *Handler) require(w http.ResponseWriter, exists bool) bool {
@@ -343,7 +349,7 @@ func (h *Handler) failed(w http.ResponseWriter, err error) bool {
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
 			status = http.StatusNotFound
-		case errors.Is(err, fs.ErrPermission):
+		case errors.Is(err, fs.ErrPermission), errors.Is(err, errSignInApproval):
 			status = http.StatusForbidden
 		case errors.Is(err, context.DeadlineExceeded):
 			status = http.StatusGatewayTimeout

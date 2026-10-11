@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -52,6 +53,8 @@ func (h *Handler) audit(w http.ResponseWriter, r *http.Request) {
 	}{h.factory, events})
 }
 
+var errSignInApproval = errors.New("GitHub sign-in is required to approve")
+
 func (h *Handler) recordApproval(r *http.Request, it factory.Item, edited bool) (string, error) {
 	if h.config.Record == nil {
 		if h.config.RecordApproval != nil {
@@ -59,9 +62,12 @@ func (h *Handler) recordApproval(r *http.Request, it factory.Item, edited bool) 
 		}
 		return "", errors.New("approval requires a factory record")
 	}
-	handle, err := h.seam.PersonHandle(r.Context())
+	handle, err := h.callerHandle(r)
 	if err != nil {
 		return "", err
+	}
+	if strings.HasPrefix(handle, "invited:") {
+		return "", errSignInApproval
 	}
 	detail := "proof"
 	if it.State != factory.StateLanded {
@@ -87,7 +93,7 @@ func (h *Handler) recordAction(r *http.Request, it factory.Item, kind, detail st
 	if h.config.Record == nil {
 		return door()
 	}
-	handle, err := h.seam.PersonHandle(r.Context())
+	handle, err := h.callerHandle(r)
 	if err != nil {
 		return err
 	}
@@ -115,7 +121,7 @@ func (h *Handler) recordedWords(door func(int, string) error, kind string) jobAc
 // A yes through Answer is still consent at an approve step. Both public doors
 // must leave the same durable receipt before waking the runner.
 func (h *Handler) recordAnswer(r *http.Request, it factory.Item, yes bool, words string) error {
-	handle, err := h.seam.PersonHandle(r.Context())
+	handle, err := h.callerHandle(r)
 	if err != nil {
 		return err
 	}

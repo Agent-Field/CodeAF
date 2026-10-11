@@ -26,6 +26,8 @@ type accessSession struct {
 	expires   time.Time
 	invitedBy string
 	tokenID   string
+	id        string
+	profile   *api.Profile
 }
 
 // accessSessions keeps opaque browser credentials only in the running service.
@@ -56,24 +58,50 @@ func (h *Handler) now() time.Time {
 }
 
 func (h *Handler) allowed(r *http.Request) bool {
-	if loopbackRequest(r) {
+	if _, ok := h.credential(r); ok {
 		return true
 	}
-	if _, _, ok := h.identifyToken(bearer(r)); ok {
-		return true
+	return loopbackRequest(r)
+}
+
+// credential gives explicit credentials precedence over an open loopback peer.
+func (h *Handler) credential(r *http.Request) (accessSession, bool) {
+	if token := bearer(r); token != "" {
+		if by, id, ok := h.identifyToken(token); ok {
+			session := accessSession{invitedBy: by, tokenID: id, id: id}
+			for _, row := range h.tokenRows() {
+				if row.ID == id {
+					session.profile = row.Profile
+					break
+				}
+			}
+			return session, true
+		}
+		return h.liveSession(token)
 	}
-	cookie, err := r.Cookie(accessCookieName)
-	if err != nil {
-		return false
+	if cookie, err := r.Cookie(accessCookieName); err == nil {
+		return h.liveSession(cookie.Value)
 	}
+	return accessSession{}, false
+}
+
+func (h *Handler) liveSession(key string) (accessSession, bool) {
 	h.sessions.mu.Lock()
 	defer h.sessions.mu.Unlock()
-	session, ok := h.sessions.ids[cookie.Value]
+	session, ok := h.sessions.ids[key]
 	if !ok || !h.sessionUsable(session) {
-		delete(h.sessions.ids, cookie.Value)
-		return false
+		delete(h.sessions.ids, key)
+		return accessSession{}, false
 	}
-	return true
+	if session.profile == nil && session.tokenID != "" {
+		for _, row := range h.tokenRows() {
+			if row.ID == session.tokenID {
+				session.profile = row.Profile
+				break
+			}
+		}
+	}
+	return session, true
 }
 
 // identifyToken accepts the host config token or an unexpired row. The row's
@@ -158,29 +186,6 @@ func (h *Handler) sessionUsable(session accessSession) bool {
 	return false
 }
 
-// invitedBy is who invited the caller, when the bearer or the live session
-// came from an invite row. Anyone else gets "".
-func (h *Handler) invitedBy(r *http.Request) string {
-	if token := bearer(r); token != "" {
-		by, _, ok := h.identifyToken(token)
-		if !ok {
-			return ""
-		}
-		return by
-	}
-	cookie, err := r.Cookie(accessCookieName)
-	if err != nil {
-		return ""
-	}
-	h.sessions.mu.Lock()
-	session, ok := h.sessions.ids[cookie.Value]
-	h.sessions.mu.Unlock()
-	if !ok || !h.sessionUsable(session) {
-		return ""
-	}
-	return session.invitedBy
-}
-
 func (h *Handler) access(w http.ResponseWriter, r *http.Request) {
 	// The one-time query must not travel to dashboard resources as a referrer.
 	w.Header().Set("Referrer-Policy", "no-referrer")
@@ -207,12 +212,16 @@ func (h *Handler) access(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnauthorized, "invalid access token")
 		return
 	}
-	secret := make([]byte, 32)
-	if _, err := rand.Read(secret); err != nil {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
 		h.fail(w, http.StatusInternalServerError, "could not create an access session")
 		return
 	}
-	sessionID := hex.EncodeToString(secret)
+	sessionID := hex.EncodeToString(bytes)
+	publicID, err := secret()
+	if h.failed(w, err) {
+		return
+	}
 	h.sessions.mu.Lock()
 	now := h.now()
 	expires := now.Add(accessSessionTTL)
@@ -223,11 +232,9 @@ func (h *Handler) access(w http.ResponseWriter, r *http.Request) {
 			delete(h.sessions.ids, old)
 		}
 	}
-	h.sessions.ids[sessionID] = accessSession{expires: expires, invitedBy: invitedBy, tokenID: tokenID}
+	h.sessions.ids[sessionID] = accessSession{expires: expires, invitedBy: invitedBy, tokenID: tokenID, id: "session_" + publicID}
 	h.sessions.mu.Unlock()
-	http.SetCookie(w, &http.Cookie{Name: accessCookieName, Value: sessionID, Path: "/",
-		HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil,
-		MaxAge: int(accessSessionTTL.Seconds()), Expires: expires})
+	h.setSessionCookie(w, r, sessionID, accessSession{expires: expires})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 

@@ -18,6 +18,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
 // ErrExists is an id collision. The caller mints another id.
@@ -25,6 +27,14 @@ var ErrExists = errors.New("access token id already exists")
 
 // ErrNotFound is an id that is not in the file.
 var ErrNotFound = errors.New("no access token")
+
+// Profile keeps only public GitHub facts; the GitHub token is never persisted.
+type Profile struct {
+	Handle    string   `json:"handle"`
+	Name      string   `json:"name"`
+	AvatarURL string   `json:"avatar_url"`
+	Scopes    []string `json:"scopes"`
+}
 
 // Token is one access token row. InvitedBy and Expires are set for an invite
 // and left empty for a row that does not expire and names nobody.
@@ -34,6 +44,7 @@ type Token struct {
 	InvitedBy string    `json:"invited_by,omitempty"`
 	Expires   time.Time `json:"expires,omitempty"`
 	Created   time.Time `json:"created,omitempty"`
+	Profile   *Profile  `json:"profile,omitempty"`
 }
 
 // Mint chooses a new id and secret. The caller sets InvitedBy, Expires and
@@ -155,4 +166,37 @@ func writePrivate(path string, body []byte) error {
 		return err
 	}
 	return os.Rename(f.Name(), path)
+}
+
+// Bind remembers who accepted an invite under the same lock as invite and revoke.
+// A shared invite cannot silently switch from one GitHub person to another.
+func Bind(path, id string, profile Profile, now time.Time) error {
+	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if err := filelock.Lock(lock, true, false); err != nil {
+		return err
+	}
+	defer func() { _ = filelock.Unlock(lock) }()
+	rows, err := Load(path)
+	if err != nil {
+		return err
+	}
+	for i := range rows {
+		row := &rows[i]
+		if row.ID != id {
+			continue
+		}
+		if !row.Expires.IsZero() && !now.Before(row.Expires) {
+			return os.ErrPermission
+		}
+		if row.Profile != nil && row.Profile.Handle != profile.Handle {
+			return os.ErrPermission
+		}
+		row.Profile = &profile
+		return Save(path, rows)
+	}
+	return os.ErrPermission
 }

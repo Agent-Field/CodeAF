@@ -239,7 +239,13 @@ func serveFactoryHere(st *store.Store, seam factory.Seam) (factoryTarget, error)
 		release()
 		return factoryTarget{}, err
 	}
-	service, err := startFactoryService(context.Background(), st, seam, listener, "", factoryTokensPath(home.Join("factory", "config.yaml")))
+	host, err := readFactoryHostConfig(home.Join("factory", "config.yaml"))
+	if err != nil {
+		listener.Close()
+		release()
+		return factoryTarget{}, err
+	}
+	service, err := startFactoryService(context.Background(), st, seam, listener, "", factoryTokensPath(home.Join("factory", "config.yaml")), host)
 	if err != nil {
 		listener.Close()
 		release()

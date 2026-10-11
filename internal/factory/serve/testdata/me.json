@@ -1,0 +1,13 @@
+{
+  "factory": {"address": "http://factory", "version": "test"},
+  "codeaf_version": "test",
+  "contract": 1,
+  "handle": "priya",
+  "name": "Priya Nair",
+  "avatar_url": "https://avatars.githubusercontent.com/u/42",
+  "scopes": ["read:user", "read:org"],
+  "session_id": "session_fixture",
+  "invited_by": "sam",
+  "machines": [],
+  "takes_unassigned": {}
+}

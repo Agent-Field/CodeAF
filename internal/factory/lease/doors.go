@@ -64,7 +64,13 @@ func (d *Doors) Launch(id int) error {
 // Stop puts the job back to new and takes its lease away: the worker learns
 // it on its next heartbeat or report, which the server no longer accepts, and
 // stops its runner. A dead worker needs to learn nothing.
-func (d *Doors) Stop(id int) error {
+func (d *Doors) Stop(id int) error { return d.stop(id, nil) }
+
+// StopAs records the caller when the HTTP door has authenticated one.
+// An unknown caller stays blank; only the local Stop door uses the job's person.
+func (d *Doors) StopAs(id int, handle string) error { return d.stop(id, &handle) }
+
+func (d *Doors) stop(id int, caller *string) error {
 	history, err := record.Open(d.desk.store, record.Options{Now: d.desk.now})
 	if err != nil {
 		return err
@@ -75,7 +81,7 @@ func (d *Doors) Stop(id int) error {
 		}
 		// THE PERSON'S STOP WINS: keep it durable while the job is locked,
 		// before intake can see the job back in the backlog.
-		if _, err := history.Append(context.Background(), record.Event{Kind: record.Stopped, Job: id, Handle: it.Person()}); err != nil {
+		if _, err := history.Append(context.Background(), record.Event{Kind: record.Stopped, Job: id, Handle: stopHandle(caller, it.Person())}); err != nil {
 			return false, err
 		}
 		it.Publishing = false
@@ -219,4 +225,11 @@ func (d *Doors) Reverify(id int) error {
 		signal(doc, id, Signal{Verb: SignalRecheck})
 		return true, nil
 	})
+}
+
+func stopHandle(caller *string, person string) string {
+	if caller != nil {
+		return *caller
+	}
+	return person
 }

@@ -141,7 +141,7 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer,
 	// who the token belongs to: without the connection doors an approval from
 	// the browser is refused ("approval requires a forge handle").
 	seam := factorygithub.Connect(factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(), factory.WithRepoDirs(st.CheckoutDir)), factoryProfile(""))
-	service, err := startFactoryService(ctx, st, seam, listener, cfg.AccessToken, factoryTokensPath(configPath))
+	service, err := startFactoryService(ctx, st, seam, listener, cfg.AccessToken, factoryTokensPath(configPath), cfg)
 	if err != nil {
 		return err
 	}
@@ -185,7 +185,7 @@ type factoryService struct {
 // receipt other codeaf processes on this machine discover it by. It is the one
 // start both `codeaf factory` and a window serving in-process make, so the two
 // can never answer differently. ctx bounds the long polls and change streams.
-func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam, listener net.Listener, token, tokensPath string) (*factoryService, error) {
+func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam, listener net.Listener, token, tokensPath string, hostConfigs ...factoryHostConfig) (*factoryService, error) {
 	address := "http://" + listener.Addr().String()
 	history, err := record.Open(st, record.Options{})
 	if err != nil {
@@ -193,7 +193,11 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 	}
 	// The service's watch, worker reports and record share the jobs' root, so
 	// clients observe the same files the runner writes.
-	handler := serve.New(seam, serve.Config{Address: address, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
+	var host factoryHostConfig
+	if len(hostConfigs) > 0 {
+		host = hostConfigs[0]
+	}
+	handler := serve.New(seam, serve.Config{GitHubClientID: host.GitHubClientID, Team: host.Team, Address: address, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			return factoryRules().Load(ctx, repo, dir, home.Join("factory.yaml"))
 		},

@@ -122,6 +122,13 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body.Name, body.Handle = strings.TrimSpace(body.Name), factory.NormalizeHandle(body.Handle)
+	if session, ok := h.credential(r); ok && session.profile != nil {
+		if body.Handle != "" && body.Handle != session.profile.Handle {
+			h.fail(w, http.StatusForbidden, "worker handle must match the signed-in caller")
+			return
+		}
+		body.Handle = session.profile.Handle
+	}
 	if body.Handle == "" {
 		if !loopbackRequest(r) {
 			h.fail(w, http.StatusBadRequest, "worker attach requires a handle")
@@ -307,7 +314,7 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 		if it.PullRequest != nil {
 			detail = "pr · " + it.PullRequest.URL
 		}
-		_, _ = h.config.Record.Append(r.Context(), record.Event{Kind: record.Posted, Job: it.ID, Handle: run.TrailerHandle(trailer), Cost: jobCost(*it), Detail: detail})
+		_, _ = h.config.Record.Append(r.Context(), record.Event{Kind: record.Posted, Job: it.ID, Handle: requestWorker(r).Handle, Cost: jobCost(*it), Detail: detail})
 		return nil
 	})
 }

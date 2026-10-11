@@ -21,7 +21,9 @@ reach that worker through its lease. With no worker attached, a job stays `queue
 
 The factory host config is `~/.codeaf/factory/config.yaml`; `codeaf factory --config path`
 selects another. `--listen` overrides its `listen` value. Supported keys are `listen`,
-`access_token` and `repos` (an array of `owner/name` strings). A missing token is generated
+`access_token`, `repos` (an array of `owner/name` strings), `github_client_id`
+(the OAuth app client id with device flow enabled) and optional `team` (GitHub
+handles, such as `team: [priya, "@sam"]`). A missing token is generated
 and saved in a private file. Unknown keys, invalid repository names and multiple YAML
 documents are refused. A supplied `repos` list replaces the watched repositories;
 an omitted list keeps the saved selection, and `repos: []` clears it.
@@ -1752,7 +1754,7 @@ the triage reason dim before the age (`main is red    6h`), the first thing a na
 ## factory HTTP read endpoints and access token
 
 The factory HTTP handler exposes `GET /v1/queue` (jobs, repositories, pipeline strip,
-capacity and the connected GitHub handle), `GET /v1/jobs/{id}` (one full job),
+capacity and the caller's handle), `GET /v1/jobs/{id}` (one full job),
 `GET /v1/jobs/{id}/thread` (that job's manager thread), `GET /v1/events`
 (a stream of changed ticks), `GET /v1/repos` (watched names and available repositories),
 `GET /v1/repos/{owner}/{repo}/pipeline` (the pipeline read through the repository's
@@ -1770,14 +1772,52 @@ access is refused. Forwarded headers do not grant loopback access. Without eithe
 credential the service answers HTTP 401 with
 `a bearer access token or live session is required; open /access to enter the token`.
 
-`/v1/me` currently uses the factory's connected GitHub login, normalized to lowercase
-without a leading `@`, as its handle, with an
-empty machines list and no unassigned-work preferences. With no GitHub connection,
-the handle is blank. When the caller used an invite token, `invited_by` names who
-invited them; otherwise that field is absent. These reads do not create a viewer session. A read whose seam
+`/v1/me` returns the caller's lowercase `handle`, GitHub `name`, `avatar_url`,
+`scopes` array, public `session_id`, and `invited_by` when an invite was used.
+`codeaf_version` identifies the build and `contract` remains 1. Machines and
+unassigned-work preferences remain empty. Before GitHub sign-in, an invite's
+handle is `invited:<by>`; after sign-in the same token returns that holder's
+GitHub profile, including after a factory restart. A host access token or a
+credential-free loopback request uses the factory owner's connected GitHub login
+(blank without a connection), with blank profile fields and no session id.
+These reads do not create a viewer session. A read whose seam
 door is absent answers HTTP 501 with `this factory does not provide that read`;
 an unknown job answers HTTP 404 with `job not found`. These read endpoints accept GET.
 Run this handler with `codeaf factory` or `codeaf factory serve`.
+
+## factory GitHub sign-in — device code, poll, profile and team allowlist
+
+Set `github_client_id` in the factory host config to your GitHub OAuth app's
+client id, enable device flow in that app, and restart `codeaf factory serve`.
+With no client id, start answers HTTP 501:
+`GitHub device sign-in needs github_client_id in the factory host config`.
+Both sign-in routes use the existing access gate: remote callers need an invite
+or host token, or the cookie from `/access`; loopback stays open.
+
+`POST /v1/auth/device` (no body or `{}`) returns `{factory, device_code,
+user_code, verification_uri, interval, expires_in}`. Enter `user_code` at
+`verification_uri`; poll with `POST /v1/auth/device/poll {"device_code":"..."}`
+using the same credential. The code expires after `expires_in` seconds. Wait at
+least `interval` seconds between polls. HTTP 202 returns `error` and `interval`:
+`authorization_pending` means wait; `slow_down` increases the interval by five
+seconds. Expiry answers HTTP 410 `expired_token`; a declined sign-in answers
+HTTP 403 `access_denied`. A different caller or reused code answers HTTP 400. GitHub profile failures
+answer HTTP 502 and require starting a new flow.
+
+Success checks GitHub's `/user`, sets an HttpOnly session cookie, and returns
+`{factory, access_token, token_type:"bearer", expires_in, me}`. The app sends
+that factory token as a bearer; GitHub's token never leaves the factory. Only
+`read:user` is requested; `me.scopes` reports the scopes GitHub granted. Sessions
+last 30 days, until revoke-sessions, invite revocation/expiry or service restart.
+The public `session_id` is separate from the credential. An invite binds to its
+first GitHub handle; another handle cannot replace it. Unsigned invites can
+act under `invited:<by>`, but approval requires GitHub sign-in (HTTP 403
+`GitHub sign-in is required to approve`).
+
+Optional `team` restricts signed-in handles. Someone outside it gets HTTP 403:
+`this GitHub handle is not on the factory team`. The host token and open loopback
+retain owner access. HTTP job-action audit handles use the caller; a worker's
+posted event uses that worker's registered handle.
 
 ## factory HTTP job actions — run, stop, pause, resume, drop, answer, reply and shape
 
@@ -1962,7 +2002,9 @@ a client reads the job back. New asks still appear with `state: open`.
 `POST /v1/workers/attach` takes `{"machine":"laptop","name":"laptop (pid 123)","handle":"sam"}` and answers
 HTTP 201 with `{factory, worker_id, credential}`. Loopback attach needs no access
 token; remote attach requires the factory access token. Each attach creates a
-fresh worker identity. Credentials last for this handler's lifetime; after a
+fresh worker identity. A signed-in caller can attach only under their own
+handle (omitting it fills that handle); a different supplied handle answers
+HTTP 403 `worker handle must match the signed-in caller`. Credentials last for this handler's lifetime; after a
 server restart attach again and let the former hold expire.
 
 On loopback, an empty or omitted `handle` uses the factory's connected GitHub
@@ -2238,8 +2280,8 @@ these reads. This change adds no record key to the terminal factory.
 The service's Approve door writes an `approved` event with an `evt_` id followed by
 eight hexadecimal digits before asking the runner to approve the plan or proof.
 It returns that id as `event`. Answering yes at an approve step also records consent
-before the runner continues. The handle comes from the connected forge identity,
-not the caller's body. A missing identity, unavailable record or failed disk write
+before the runner continues. The handle comes from the caller's signed-in GitHub profile, or the access
+credential's identity before sign-in; the caller's body cannot choose it. A missing identity, unavailable record or failed disk write
 refuses approval. A runner refusal can leave the recorded approval attempt; it
 does not make the job done or bypass the proof gate.
 

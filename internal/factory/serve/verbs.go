@@ -19,7 +19,7 @@ import (
 func (h *Handler) verbs() {
 	s := h.seam
 	h.postJob("run", s.Launch != nil, h.recordedID(s.Launch, record.Started))
-	h.postJob("stop", s.Stop != nil, h.idVerb(s.Stop))
+	h.postJob("stop", s.Stop != nil, h.stop)
 	h.postJob("pause", s.Hold != nil, h.holdVerb(true))
 	h.postJob("resume", s.Hold != nil, h.holdVerb(false))
 	h.postJob("drop", s.Dismiss != nil, h.recordedID(s.Dismiss, record.Dropped))
@@ -62,7 +62,7 @@ func (h *Handler) take(w http.ResponseWriter, r *http.Request, it factory.Item) 
 	if !h.workerReady(w) {
 		return
 	}
-	me, err := h.seam.PersonHandle(r.Context())
+	me, err := h.callerHandle(r)
 	if h.failed(w, err) {
 		return
 	}
@@ -163,7 +163,7 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 		return
 	}
 	if it.Question != "" {
-		handle, err := h.seam.PersonHandle(r.Context())
+		handle, err := h.callerHandle(r)
 		if h.failed(w, err) {
 			return
 		}
@@ -250,7 +250,7 @@ func (h *Handler) reply(w http.ResponseWriter, r *http.Request, it factory.Item)
 			if !h.workerReady(w) {
 				return
 			}
-			from, err := h.seam.PersonHandle(r.Context())
+			from, err := h.callerHandle(r)
 			if h.failed(w, err) {
 				return
 			}
@@ -398,4 +398,17 @@ func (h *Handler) finish(w http.ResponseWriter, err error) {
 			Factory api.Factory `json:"factory"`
 		}{h.factory})
 	}
+}
+
+// stop supplies the caller before the lease door writes its durable stop receipt.
+func (h *Handler) stop(w http.ResponseWriter, r *http.Request, it factory.Item) {
+	handle, err := h.callerHandle(r)
+	if h.failed(w, err) {
+		return
+	}
+	if h.workers.desk != nil {
+		h.finish(w, lease.NewDoors(h.workers.desk).StopAs(it.ID, handle))
+		return
+	}
+	h.finish(w, h.recordAction(r, it, record.Stopped, "", func() error { return h.seam.Stop(it.ID) }))
 }

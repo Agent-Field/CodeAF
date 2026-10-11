@@ -191,7 +191,7 @@ func TestApprovingTheProofPublishesThePullRequest(t *testing.T) {
 			t.Fatal(err)
 		}
 		last := events[len(events)-1]
-		if last.Kind == record.Posted && last.Handle == "octocat" && last.Detail == "pr · "+it.PullRequest.URL {
+		if last.Kind == record.Posted && last.Handle == "me" && last.Detail == "pr · "+it.PullRequest.URL {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -276,7 +276,7 @@ func TestNoDiffHTTPApprovalPublishesCommentAndFinishes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, event := range events {
-		if event.Kind == record.Posted && event.Handle == "octocat" && event.Detail == "comment · "+url {
+		if event.Kind == record.Posted && event.Handle == "me" && event.Detail == "comment · "+url {
 			return
 		}
 	}
