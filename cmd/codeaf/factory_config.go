@@ -17,6 +17,7 @@ import (
 )
 
 type factoryHostConfig struct {
+	Name           string   `yaml:"name,omitempty"`
 	Listen         string   `yaml:"listen"`
 	AccessToken    string   `yaml:"access_token"`
 	Repos          []string `yaml:"repos"`
@@ -28,6 +29,9 @@ type factoryHostConfig struct {
 // because only the latter is an instruction to clear the saved selection.
 func (cfg factoryHostConfig) MarshalYAML() (any, error) {
 	doc := map[string]any{"listen": cfg.Listen, "access_token": cfg.AccessToken}
+	if cfg.Name != "" {
+		doc["name"] = cfg.Name
+	}
 	if cfg.GitHubClientID != "" {
 		doc["github_client_id"] = cfg.GitHubClientID
 	}
@@ -113,6 +117,10 @@ func readFactoryHostConfig(path string) (factoryHostConfig, error) {
 	}
 	if strings.TrimSpace(cfg.Listen) == "" {
 		cfg.Listen = factoryDefaultListen
+	}
+	cfg.Name, err = factory.NormalizeName(cfg.Name)
+	if err != nil {
+		return cfg, fmt.Errorf("factory config %s: %w", path, err)
 	}
 	if strings.TrimSpace(cfg.AccessToken) != cfg.AccessToken || strings.ContainsAny(cfg.AccessToken, " \t\r\n") {
 		return cfg, fmt.Errorf("factory config %s: access_token must contain no whitespace", path)

@@ -1,5 +1,5 @@
 {
-  "factory": {"address": "http://factory", "version": "test"},
+  "factory": {"name": "agentfield", "address": "http://factory", "version": "test"},
   "members": [{
     "handle": "priya",
     "name": "Priya Nair",

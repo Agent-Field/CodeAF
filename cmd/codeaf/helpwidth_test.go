@@ -128,6 +128,7 @@ func helpPages(t *testing.T) []helpPage {
 		{"cache", runCache},
 		{"devices", runDevices},
 		{"factory", runFactory},
+		{"factory name", func(args []string) error { return runFactory(append([]string{"name"}, args...)) }},
 		{"factory steps", func(args []string) error { return runFactory(append([]string{"steps"}, args...)) }},
 		{"factory token", func(args []string) error { return runFactory(append([]string{"token"}, args...)) }},
 		{"factory token add", func(args []string) error { return runFactory(append([]string{"token", "add"}, args...)) }},

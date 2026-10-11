@@ -1,5 +1,5 @@
 {
-  "factory": {"address": "http://factory", "version": "test"},
+  "factory": {"name": "agentfield", "address": "http://factory", "version": "test"},
   "codeaf_version": "test",
   "contract": 1,
   "handle": "priya",

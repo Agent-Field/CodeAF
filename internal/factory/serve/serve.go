@@ -63,8 +63,8 @@ type Config struct {
 	// the stream stays open and sends no ticks, which is a handler with no
 	// store of its own rather than a broken watch.
 	Root string
-	// Name is the label a join preview shows. Empty uses the address host,
-	// or "codeaf" when the address has none.
+	// Name is the factory's display name. Empty uses the first watched
+	// repository's owner, or this machine's short hostname without repositories.
 	Name string
 	// ServedBy is "tui" when a window is serving and "factory" when
 	// `codeaf factory` is. Empty is derived from the access token.
@@ -106,6 +106,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	}
 	h := &Handler{seam: seam, config: config,
 		factory: api.Factory{Address: config.Address, Version: config.Version}, mux: http.NewServeMux()}
+	h.factory.Name = factory.DisplayName(config.Name, h.nameRepos())
 	h.sessions = &accessSessions{ids: make(map[string]accessSession), now: time.Now}
 	h.auth = &deviceFlows{pending: make(map[string]*deviceFlow)}
 	h.viewer = newViewerState()
@@ -529,21 +530,7 @@ func (h *Handler) pollingEvery() string {
 }
 
 func (h *Handler) aboutName() string {
-	if n := strings.TrimSpace(h.config.Name); n != "" {
-		return n
-	}
-	u, err := url.Parse(h.config.Address)
-	if err != nil {
-		return "codeaf"
-	}
-	host := u.Hostname()
-	if host == "" {
-		return "codeaf"
-	}
-	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
-		return "localhost"
-	}
-	return host
+	return h.factory.Name
 }
 
 func loopbackListen(address string) bool {

@@ -41,7 +41,7 @@ func runFactory(args []string) error {
 	verb := "serve"
 	if len(args) > 0 {
 		switch args[0] {
-		case "serve", "steps", "convert", "token", "revoke", "revoke-sessions":
+		case "serve", "steps", "convert", "token", "revoke", "revoke-sessions", "name":
 			verb, args = args[0], args[1:]
 		}
 	}
@@ -60,6 +60,9 @@ func runFactory(args []string) error {
 	}
 	if verb == "token" {
 		return runFactoryToken(args)
+	}
+	if verb == "name" {
+		return runFactoryName(args)
 	}
 	if verb == "revoke" {
 		return runFactoryRevoke(args)
@@ -83,7 +86,7 @@ func runFactory(args []string) error {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return wrongCall("use codeaf factory serve, steps, convert, token, revoke or revoke-sessions")
+		return wrongCall("use codeaf factory serve, steps, convert, token, revoke, revoke-sessions or name")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -202,7 +205,7 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		servedBy = "tui"
 		poll = factoryPollEvery
 	}
-	handler := serve.New(seam, serve.Config{GitHubClientID: host.GitHubClientID, Team: host.Team, Address: address, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
+	handler := serve.New(seam, serve.Config{Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: address, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
 		ServedBy: servedBy, PollingEvery: poll,
 		PersonProfile: factoryPeople().Profile, CodeOwners: factoryPeople().Owners,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {

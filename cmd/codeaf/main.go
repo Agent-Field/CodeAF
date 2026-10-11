@@ -536,7 +536,7 @@ Look at what happened — read-only, no key, nothing spent
   codeaf version
       print the build this binary was cut from (--version and -v say the same)
 Housekeeping — changes state on disk or on the network
-  codeaf factory [serve|steps|convert|token|revoke] | codeaf attach <url>
+  codeaf factory [serve|name|steps|convert|token|revoke] | codeaf attach <url>
       serve on ` + factoryDefaultListen + `; token add|list|revoke; codeaf detach undoes it
   codeaf connect
       list the providers this profile knows and which are connected

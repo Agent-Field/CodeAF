@@ -30,6 +30,7 @@ const Contract = 1
 
 // Factory names the server every response comes from.
 type Factory struct {
+	Name    string `json:"name"`
 	Address string `json:"address"`
 	Version string `json:"version"`
 }

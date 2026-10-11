@@ -20,7 +20,7 @@ reach that worker through its lease. With no worker attached, a job stays `queue
 ## factory host config — config.yaml, access token and watched repositories
 
 The factory host config is `~/.codeaf/factory/config.yaml`; `codeaf factory --config path`
-selects another. `--listen` overrides its `listen` value. Supported keys are `listen`,
+selects another. `--listen` overrides its `listen` value. Supported keys are optional `name`, `listen`,
 `access_token`, `repos` (an array of `owner/name` strings), `github_client_id`
 (the OAuth app client id with device flow enabled) and optional `team` (GitHub
 handles, such as `team: [priya, "@sam"]`). A missing token is generated
@@ -29,6 +29,22 @@ documents are refused. A supplied `repos` list replaces the watched repositories
 an omitted list keeps the saved selection, and `repos: []` clears it.
 This host config is separate from a repository's pipeline file.
 `CODEAF_HOME` moves the default config and factory discovery paths.
+
+## codeaf factory name — show or change the factory display name
+
+`codeaf factory name` prints the factory's display name. `codeaf factory name "Our team"`
+saves `name: Our team` in the host config and prints it. Both accept `--config path`
+before the text. Words can be quoted or passed as separate arguments.
+The name is trimmed, limited to 40 Unicode characters, and cannot contain control
+characters (including tabs or newlines). An empty quoted string clears the setting.
+An unset name uses the owner of the first watched repository in the saved, sorted
+selection; with no repositories it uses the factory machine's short hostname.
+Reading a default does not save it or create an access token.
+
+Restart the factory service after changing its name or watched selection. The name
+is chosen at start and is the same for every caller. Every `/v1` response carrying
+`factory` includes `factory.name` beside `address` and `version`. `/v1/about` also
+keeps its top-level `name` with the same value. Contract remains 1.
 
 ## factory discovery — serve.json, bound address and stale service receipts
 
@@ -1904,12 +1920,14 @@ HTTP 501 with `this factory does not provide that action`.
 
 ## factory about, pipeline file, dry run and spent today
 
-`GET /v1/about` answers before any token. The body is `name`, `codeaf_version`,
+`GET /v1/about` answers before any token. The body is `factory`, `name`, `codeaf_version`,
 `contract`, `needs`, `access`, `polling_every` and `served_by`. `needs` is `token`,
 `device` or `none`. `access` is `loopback`, `token` or `tailnet`. `served_by` is
 `tui` when a window is serving and `factory` when `codeaf factory` is. `polling_every`
-is present when this host polls GitHub, and absent when it does not. A loopback
-address with no token is `name` `localhost`, `access` `loopback`, `needs` `none` and
+is present when this host polls GitHub, and absent when it does not. `name` and
+`factory.name` are the configured display name, the first watched repository's
+owner, or the host's short hostname without repositories. A loopback
+address with no token is `access` `loopback`, `needs` `none` and
 `served_by` `tui`. A configured access token is `needs` `token` and `access` `token`.
 This read names no job and no repository. `GET /v1/me` carries the same `access`,
 `polling_every` and `served_by`.
@@ -2141,7 +2159,7 @@ door, which still enforces the claims and policy gate and then publishes (see
 approving at the proof gate publishes). Any other job answers
 HTTP 409 with `job is not waiting for approval`.
 
-Success answers HTTP 200 with `{"factory":{"address":"…","version":"…"},
+Success answers HTTP 200 with `{"factory":{"name":"…","address":"…","version":"…"},
 "event":"evt_…"}`. A claim that is not shown, and no `edited`, answers HTTP 409
 with `#N has a claim not shown` and writes no event. When the check passes, the
 receipt is written and the publish door reads it as the trailer. A plan approval

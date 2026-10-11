@@ -29,7 +29,7 @@ func TestFixtureReadsOverHTTP(t *testing.T) {
 	var q api.Queue
 	getJSON(t, s.URL+"/v1/queue", &q)
 	want := api.FromSnapshot(factory.Fixture(now), "")
-	want.Factory = api.Factory{Address: config.Address, Version: config.Version}
+	want.Factory = api.Factory{Name: "agentfield", Address: config.Address, Version: config.Version}
 	// JSON normalizes time locations and nil maps, so compare against the
 	// codec after the same wire round trip rather than its in-memory form.
 	data, err := json.Marshal(want)
