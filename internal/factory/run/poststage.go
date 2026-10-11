@@ -64,7 +64,7 @@ func NewPostExecutorWith(o PostOptions) Executor {
 		case "pr":
 			action.Draft = strings.EqualFold(strings.TrimSpace(rest), "draft")
 			action.Branch = branchFor(it)
-			action.Body = proofList(it, job.Prior) + "\n\nby codeaf's factory floor"
+			action.Body = proofList(it, job.Prior) + "\n\nby codeaf factory"
 		case "close":
 		default:
 			return factory.StageResult{}, fmt.Errorf("a post stage says comment, label, pr or close")

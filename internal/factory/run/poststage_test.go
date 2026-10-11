@@ -66,7 +66,7 @@ func TestVerbs(t *testing.T) {
 	}
 	runPost(t, f, nil, item(), "pr draft", nil)
 	p := f.got[2]
-	if !p.Draft || p.Branch != "factory/12-fix-the-parser" || !strings.Contains(p.Body, "✓ parses\n✕ fast") || !strings.HasSuffix(p.Body, "by codeaf's factory floor") {
+	if !p.Draft || p.Branch != "factory/12-fix-the-parser" || !strings.Contains(p.Body, "✓ parses\n✕ fast") || !strings.HasSuffix(p.Body, "by codeaf factory") {
 		t.Fatalf("%+v", p)
 	}
 	runPost(t, f, nil, item(), "close", nil)

@@ -285,7 +285,7 @@ func PublishBody(it factory.Item, trailer string) string {
 	if list := proofList(factory.Item{Proof: claims}, nil); list != "" {
 		b.WriteString(list + "\n")
 	}
-	b.WriteString("\nby codeaf's factory floor\n\n" + trailer)
+	b.WriteString("\nby codeaf factory\n\n" + trailer)
 	return b.String()
 }
 
