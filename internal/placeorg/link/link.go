@@ -67,6 +67,11 @@ func New(state *placeorg.State) *Linker {
 	return &Linker{state: state}
 }
 
+// SetDemoted hands the linker this run's demoted groups. The runner calls it
+// before Link, so the groups become views even though the tree no longer
+// has them.
+func (l *Linker) SetDemoted(ops []placeorg.Op) { l.Demoted = ops }
+
 // compile-time check that the stage is the interface the runner holds.
 var _ placeorg.Linker = (*Linker)(nil)
 

@@ -1,6 +1,14 @@
 package placeorg
 
-import "time"
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"time"
+)
 
 // The organiser's own persisted state: places-org.json beside the store. It
 // holds what the store has no field for and what the next run must read
@@ -69,4 +77,103 @@ type RunSummary struct {
 	Summary string    `json:"summary"`
 	// Outcome is "offered", "applied", "declined" or "cancelled".
 	Outcome string `json:"outcome"`
+}
+
+// NewState is an organiser file with nothing in it yet. Every map is made, so
+// a caller writes to it without checking.
+func NewState() *State {
+	return &State{
+		Version:        StateVersion,
+		Thresholds:     map[SpaceID]Thresholds{},
+		Axes:           map[string]Axis{},
+		Lenses:         map[string][]Lens{},
+		Kinds:          map[string]Kind{},
+		Representative: map[string]string{},
+	}
+}
+
+// LoadState reads places-org.json. A missing file is a new organiser, not an
+// error. A file that is damaged, or was written by a newer build, is moved
+// aside and never deleted, and recovery says where it went so the settings
+// page can tell the person; the organiser then starts empty rather than
+// trust a file it cannot read.
+func LoadState(path string, now func() time.Time) (st *State, recovery string, err error) {
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return NewState(), "", nil
+	}
+	if err != nil {
+		return nil, "", fmt.Errorf("placeorg: reading %s: %w", path, err)
+	}
+	var doc State
+	if jerr := json.Unmarshal(raw, &doc); jerr != nil {
+		return setAside(path, "it is not readable", now)
+	}
+	if doc.Version > StateVersion {
+		return setAside(path, "a newer version wrote it", now)
+	}
+	fresh := NewState()
+	fresh.fill(doc)
+	return fresh, "", nil
+}
+
+// fill copies a decoded document over a made one, keeping the made maps
+// wherever the file had none.
+func (s *State) fill(doc State) {
+	s.Space, s.Exemplars, s.Constraints, s.LastRun = doc.Space, doc.Exemplars, doc.Constraints, doc.LastRun
+	if doc.Thresholds != nil {
+		s.Thresholds = doc.Thresholds
+	}
+	if doc.Axes != nil {
+		s.Axes = doc.Axes
+	}
+	if doc.Lenses != nil {
+		s.Lenses = doc.Lenses
+	}
+	if doc.Kinds != nil {
+		s.Kinds = doc.Kinds
+	}
+	if doc.Representative != nil {
+		s.Representative = doc.Representative
+	}
+}
+
+func setAside(path, reason string, now func() time.Time) (*State, string, error) {
+	if now == nil {
+		now = time.Now
+	}
+	aside := fmt.Sprintf("%s.corrupt-%s", path, now().UTC().Format("20060102T150405.000000000Z"))
+	if err := os.Rename(path, aside); err != nil {
+		return nil, "", fmt.Errorf("placeorg: cannot set aside %s (%s): %w", path, reason, err)
+	}
+	return NewState(), reason + "; the old copy is at " + aside, nil
+}
+
+// Save writes the document whole to a sibling file and renames it over the
+// old one, so a crash leaves either the old state or the new and never half.
+func (s *State) Save(path string) error {
+	s.Version = StateVersion
+	raw, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return fmt.Errorf("placeorg: encoding the organiser state: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("placeorg: %w", err)
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("placeorg: %w", err)
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(raw); err != nil {
+		tmp.Close()
+		return fmt.Errorf("placeorg: writing %s: %w", path, err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("placeorg: writing %s: %w", path, err)
+	}
+	if err := os.Chmod(tmp.Name(), 0o600); err != nil {
+		return fmt.Errorf("placeorg: %w", err)
+	}
+	return os.Rename(tmp.Name(), path)
 }
