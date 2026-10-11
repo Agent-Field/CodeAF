@@ -2,7 +2,7 @@
 # anywhere else — so a stale copy can't shadow a fresh one.
 BINARY := bin/codeaf
 
-.PHONY: all build build-check build-cross debug demo-home clean-run embed web manual-pack-law furrow test test-focus test-report test-quick test-tooling test-touched test-touched-preflight pr-ready test-laws fmt-check test-packed-manual manual-gates test-remote test-e2e test-e2e-tui vet check size clean \
+.PHONY: all build build-check build-cross debug demo-home clean-run embed web manual-pack-law furrow test test-focus test-report test-quick test-tooling test-touched test-touched-preflight pr-ready test-laws fmt-check test-packed-manual manual-gates test-remote test-web-e2e test-e2e test-e2e-tui vet check size clean \
         changelog changelog-new changelog-check changelog-preview
 
 # What the shipped binary is allowed to weigh, in bytes, checked in beside the
@@ -303,6 +303,11 @@ test-packed-manual: embed
 #
 # It SKIPS, green, wherever there is no docker — so it is safe in any pipeline
 # on the day the pipeline cannot yet run it.
+# Browser smokes of the factory dashboard (settings, new job, audit, approve).
+# Opt-in: they install a pinned Playwright in a temp dir and drive system Chrome.
+test-web-e2e:
+	CODEAF_WEB_SMOKE=1 go test -count=1 -timeout 15m -run 'Playwright' ./internal/factory/serve/
+
 test-remote:
 	go test -tags docker_e2e -count=1 -run TestRemoteTwoMachines -timeout 20m ./internal/e2e/
 

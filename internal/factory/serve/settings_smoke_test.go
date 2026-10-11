@@ -88,6 +88,14 @@ func playwrightModules(t *testing.T) string {
 func linkPlaywright(t *testing.T, modules string) {
 	t.Helper()
 	dest := filepath.Join("web", "node_modules")
+	// A clean checkout has no node_modules; the directory is removed again
+	// only if it was ours to make, so a real install is never touched.
+	if _, err := os.Stat(dest); os.IsNotExist(err) {
+		if err := os.MkdirAll(dest, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Remove(dest) })
+	}
 	entries, err := os.ReadDir(modules)
 	if err != nil {
 		t.Fatal(err)
