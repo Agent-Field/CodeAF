@@ -1765,7 +1765,7 @@ capacity and the caller's handle), `GET /v1/jobs/{id}` (one full job),
 (a stream of changed ticks), `GET /v1/repos` (watched names and available repositories),
 `GET /v1/repos/{owner}/{repo}/pipeline` (the pipeline read through the repository's
 recipe), `GET /v1/github` (login and connection method), `GET /v1/me`,
-`GET /v1/members` and `GET /v1/me/sessions`.
+`GET /v1/members`, `GET /v1/people/{handle}` and `GET /v1/me/sessions`.
 Every JSON response, including an error, carries `factory: {address, version}`.
 The pipeline includes any lines that could not load. Rules come from GitHub's default
 branch even without a checkout; an absent file returns `source: "defaults"`. A file
@@ -2730,3 +2730,50 @@ old step knobs cannot be represented. A section-wide Markdown `fixed` setting re
 in force when Markdown is read; saved YAML uses individual fixed steps instead, and
 conversion warns about that difference. Conversion never adds start rules, so it cannot
 turn on automatic intake. YAML takes precedence once committed on the default branch.
+
+## factory people cards — avatar, handle, role, assigned jobs and questions
+
+`GET /v1/people/{handle}` returns a person card: `handle`, GitHub `name`,
+`avatar_url`, `html_url`, `role` (`member` or `outside`), optional `last_seen`,
+`owns`, optional `assigned_now`, `waiting_on`, `questions`, and `machines`.
+Contract stays 1. Handles are lowercase; a leading `@` is accepted.
+
+GitHub's public users API supplies profiles, including issue authors who never
+signed in. Successful reads are cached for 24 hours, then checked with ETag.
+Members and sessions supply role and last seen; the connected host is also a
+member. Outside people have no last seen. Unknown last seen and zero counts
+are omitted. `assigned_now` counts visible jobs assigned to this person except
+shipped or dismissed. `waiting_on` counts those with a needs-you reason;
+`questions` counts plain questions among them. Opening an issue does not assign
+its author. The existing job reply/question routes are the way to ask; this
+read creates no question.
+
+`GET /v1/queue` includes `people: {handle: {name, avatar_url}}` for every handle
+its visible jobs mention, including assignees, issue authors, approvers,
+reviewers, answerers, comment authors, owners and live holders. Rows share that
+map without fetching each profile. A profile outage keeps the queue readable
+with member data or blank profile fields. An unknown person with no profile or
+visible association answers 404 `person not found`; an invalid handle answers
+422 `person handle must be a GitHub handle`.
+
+## factory CODEOWNERS — Owns paths, planned files and changed-file owners
+
+A card's `owns` is `[{repo, path}]`, with each declared CODEOWNERS pattern for
+that handle qualified by a visible repository. The factory reads GitHub's default
+branch, in this order: `.github/CODEOWNERS`, `CODEOWNERS`, `docs/CODEOWNERS`.
+The first existing file wins. Files, absence and failures are cached until the
+next poll. The job branch never supplies ownership.
+
+`job.owners` lists sorted individual handles owning its planned files, source PR
+files and worker-reported changed files. The last matching rule wins for each
+file; a rule without owners clears earlier ownership. Directory patterns,
+`*`, `**` and `?` are supported. Team and email owners are not expanded into
+people; negation, bracket ranges and escaped patterns are skipped. An ownership
+read failure leaves no ownership facts for that repository.
+
+Viewer access applies before enrichment: cards count only visible jobs and list
+only visible ownership. A partial viewer sees only machines holding a visible
+job; hidden holds and idle machines are omitted. A viewer with no visible
+repositories gets no ownership, counts or machines. A whole-floor viewer gets
+that person's full roster with `busy`, `idle` or `offline`, using the same
+heartbeat rule as `/v1/me`.

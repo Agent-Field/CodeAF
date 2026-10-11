@@ -12,6 +12,11 @@ import (
 // access-token rows that have bound a GitHub profile, so a restart does not
 // forget someone who signed in.
 func (h *Handler) members(w http.ResponseWriter, r *http.Request) {
+	h.write(w, http.StatusOK, api.Members{Factory: h.factory, Members: h.memberList()})
+}
+
+// memberList gives cards and the member route the same role and last-seen facts.
+func (h *Handler) memberList() []api.Member {
 	type row struct {
 		profile  api.Profile
 		joined   time.Time
@@ -95,7 +100,7 @@ func (h *Handler) members(w http.ResponseWriter, r *http.Request) {
 			JoinedAt: m.joined, LastSeen: m.lastSeen, Sessions: m.sessions,
 		})
 	}
-	h.write(w, http.StatusOK, api.Members{Factory: h.factory, Members: out})
+	return out
 }
 
 // mySessions is GET /v1/me/sessions: this caller's sign-ins only.

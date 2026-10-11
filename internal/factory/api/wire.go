@@ -40,15 +40,16 @@ const ReasonNoVisibleRepos = "no_visible_repos"
 
 // Queue is `GET /v1/queue`: the whole floor as one person sees it.
 type Queue struct {
-	Factory  Factory         `json:"factory"`
-	Since    Since           `json:"since"`
-	Jobs     []Job           `json:"jobs"`
-	Repos    []Repo          `json:"repos"`
-	Strip    []Cell          `json:"strip"`
-	Capacity Capacity        `json:"capacity"`
-	Me       string          `json:"me"`
-	Desk     *QueueDesk      `json:"desk,omitempty"`
-	NeedsYou []NeedsYouGroup `json:"needs_you,omitempty"`
+	People   map[string]factory.PersonSummary `json:"people"`
+	Factory  Factory                          `json:"factory"`
+	Since    Since                            `json:"since"`
+	Jobs     []Job                            `json:"jobs"`
+	Repos    []Repo                           `json:"repos"`
+	Strip    []Cell                           `json:"strip"`
+	Capacity Capacity                         `json:"capacity"`
+	Me       string                           `json:"me"`
+	Desk     *QueueDesk                       `json:"desk,omitempty"`
+	NeedsYou []NeedsYouGroup                  `json:"needs_you,omitempty"`
 	// Reason is set only for a signed-in viewer who can see no repository.
 	Reason string `json:"reason,omitempty"`
 }
@@ -224,6 +225,7 @@ const (
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
+	Owners []string        `json:"owners,omitempty"`
 	Change *factory.Change `json:"change,omitempty"`
 	// Draft is known only for source PR jobs; published PRs carry pr.draft.
 	Draft *bool  `json:"draft,omitempty"`

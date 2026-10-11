@@ -30,6 +30,10 @@ import (
 // Config is supplied by the host so the handler never reads a person's home
 // or guesses the published address from a client-controlled Host header.
 type Config struct {
+	// PersonProfile reads cached public GitHub identity, including outside authors.
+	PersonProfile func(context.Context, string) (factory.GitHubPerson, error)
+	// CodeOwners reads a watched repository's cached default-branch ownership.
+	CodeOwners func(context.Context, string) ([]factory.CodeOwner, error)
 	// Pipeline reads the same repository rules as intake, including personal limits.
 	Pipeline    func(context.Context, string, string) (pipeline.File, error)
 	Address     string
@@ -121,6 +125,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/me", h.me)
 	h.route("/v1/me/takes_unassigned", map[string]http.HandlerFunc{http.MethodPut: h.setTakes})
 	h.read("/v1/members", h.members)
+	h.read("/v1/people/{handle}", h.person)
 	h.read("/v1/me/sessions", h.mySessions)
 	h.route("/v1/me/sessions/signout-others", map[string]http.HandlerFunc{http.MethodPost: h.signOutOthers})
 	h.route("/v1/me/sessions/{id}", map[string]http.HandlerFunc{http.MethodDelete: h.deleteSession})
@@ -233,6 +238,7 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s, reason, whole := h.forViewer(r, s)
+	s, _ = h.withPeople(r, s)
 	q := api.FromSnapshot(s, handle)
 	for i := range q.Jobs {
 		q.Jobs[i] = h.withVersion(q.Jobs[i])
@@ -263,6 +269,11 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 			q.Since.SpentToday = h.config.SpentToday()
 		}
 	}
+	for _, job := range q.Jobs {
+		if job.HeldBy != nil {
+			h.addSummary(r, q.People, job.HeldBy.Handle)
+		}
+	}
 	h.write(w, http.StatusOK, q)
 }
 
@@ -276,6 +287,12 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jobs := []api.Job{h.withVersion(api.FromItem(it))}
+	if h.config.CodeOwners != nil {
+		rules, err := h.config.CodeOwners(r.Context(), itemRepo(it))
+		if err == nil {
+			jobs[0].Owners = factory.OwnersFor(rules, itemFiles(it))
+		}
+	}
 	jobs[0].Can = api.CanFor(it, handle)
 	if _, _, err := h.applyPresence(jobs); h.failed(w, err) {
 		return

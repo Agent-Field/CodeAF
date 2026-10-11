@@ -116,6 +116,7 @@ func Fixture(now time.Time) Snapshot {
 	}
 	items[4].Failure = &Failure{Step: "test", Code: CodeToolError, Detail: "main is red", Attempts: 1, Machine: "ci", Next: FailureStopped, At: h(6)}
 	items[1].HeadCommit = "1111111111111111111111111111111111111111"
+	items[1].Owners = []string{"priya"}
 	items[9].HeadCommit = "2222222222222222222222222222222222222222"
 	items[9].PullRequest = &PullRequest{
 		Number: 1664, URL: "https://github.com/agentfield/codeaf/pull/1664", State: PRMerged,
@@ -131,6 +132,11 @@ func Fixture(now time.Time) Snapshot {
 	hours[(now.Hour()+24-4)%24] = 5
 	hours[(now.Hour()+24-1)%24] = 2
 	return Snapshot{
+		People: map[string]PersonSummary{
+			"santosh": {Name: "Santosh", AvatarURL: "https://avatars.githubusercontent.com/u/1"},
+			"priya":   {Name: "Priya Nair", AvatarURL: "https://avatars.githubusercontent.com/u/42"},
+			"abir":    {Name: "Abir"}, "olu": {Name: "Olu"}, "mateo": {Name: "Mateo"}, "mei": {Name: "Mei"},
+		},
 		Now:     now,
 		Repos:   []Repo{codeaf, platform, whisper},
 		Items:   items,

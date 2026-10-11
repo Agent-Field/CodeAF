@@ -69,6 +69,7 @@ func factoryIntake(st *store.Store) *intake.Intake {
 			}
 			for _, repo := range repos {
 				factoryRules().Refresh(ctx, repo, st.CheckoutDir(repo))
+				factoryPeople().RefreshOwners(ctx, repo)
 			}
 			return ctx.Err()
 		},
@@ -83,6 +84,27 @@ func factoryIntake(st *store.Store) *intake.Intake {
 			return seam.Launch(id)
 		},
 	})
+}
+
+// Identity and ownership reads share one loader per profile with the poll.
+var factoryPeopleCaches = struct {
+	sync.Mutex
+	profiles map[string]*factorygithub.PeopleLoader
+}{profiles: map[string]*factorygithub.PeopleLoader{}}
+
+func factoryPeople() *factorygithub.PeopleLoader {
+	profile := factoryProfile("")
+	factoryPeopleCaches.Lock()
+	defer factoryPeopleCaches.Unlock()
+	if loader := factoryPeopleCaches.profiles[profile]; loader != nil {
+		return loader
+	}
+	loader := factorygithub.NewPeopleLoader(func(ctx context.Context) factorygithub.PeopleAPI {
+		token, _ := factorygithub.TokenAt(ctx, profile)
+		return forge.NewClient(token)
+	}, nil)
+	factoryPeopleCaches.profiles[profile] = loader
+	return loader
 }
 
 // Every factory door in this process shares the same repository and blob cache.

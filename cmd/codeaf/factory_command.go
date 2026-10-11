@@ -204,6 +204,7 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 	}
 	handler := serve.New(seam, serve.Config{GitHubClientID: host.GitHubClientID, Team: host.Team, Address: address, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
 		ServedBy: servedBy, PollingEvery: poll,
+		PersonProfile: factoryPeople().Profile, CodeOwners: factoryPeople().Owners,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			return factoryRules().Load(ctx, repo, dir, home.Join("factory.yaml"))
 		},

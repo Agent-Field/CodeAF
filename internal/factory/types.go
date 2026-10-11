@@ -364,6 +364,8 @@ type PullRequest struct {
 const QKindAskFirst = "ask_first"
 
 type Item struct {
+	// Owners is derived from default-branch CODEOWNERS for the wire and fixture.
+	Owners  []string `json:",omitempty"`
 	ID      int
 	Repo    string   // the repo it arrived on
 	Product string   // the product team that owns it
@@ -610,6 +612,8 @@ type Shift struct {
 // Snapshot is everything a frame needs, copied off the loop. A frame reads
 // memory only (framedisk law), so the seam hands over values, never a store.
 type Snapshot struct {
+	// People holds queue identity summaries; repository reads supply the live map.
+	People  map[string]PersonSummary
 	Now     time.Time
 	Repos   []Repo
 	Items   []Item

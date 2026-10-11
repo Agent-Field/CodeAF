@@ -10,12 +10,19 @@ import (
 
 // FromSnapshot is the floor as `GET /v1/queue` says it to me.
 func FromSnapshot(s factory.Snapshot, me string) Queue {
+	people := map[string]factory.PersonSummary{}
 	jobs := make([]Job, len(s.Items))
 	for i, it := range s.Items {
+		for _, handle := range factory.MentionedHandles(it) {
+			if handle = factory.NormalizeHandle(handle); handle != "" {
+				people[handle] = s.People[handle]
+			}
+		}
 		jobs[i] = FromItem(it)
 		jobs[i].Can = CanFor(it, me)
 	}
 	return Queue{
+		People:   people,
 		Since:    fromShift(s.Shift),
 		Jobs:     jobs,
 		Repos:    fromRepos(s.Repos, s.Checkouts),
@@ -61,7 +68,8 @@ func ToSnapshot(q Queue, jobs []Job) factory.Snapshot {
 		d = &QueueDesk{}
 	}
 	return factory.Snapshot{
-		Now: d.Now, Repos: toRepos(q.Repos), Items: mapList(jobs, ToItem),
+		People: q.People,
+		Now:    d.Now, Repos: toRepos(q.Repos), Items: mapList(jobs, ToItem),
 		Benches: q.Capacity.Benches, Daily: q.Capacity.Daily, Rail: q.Capacity.Rail,
 		Shift: toShift(q.Since), Sources: mapList(d.Sources, toSource),
 		Busy: d.Busy, BusyAll: d.BusyAll, LastReadCost: d.LastReadCost,
@@ -72,6 +80,7 @@ func ToSnapshot(q Queue, jobs []Job) factory.Snapshot {
 // Lost names the Go fields the wire does not carry, and why. The round-trip
 // test reads it, so a field is either carried or named here.
 var Lost = map[string]string{
+	"Snapshot.People":   "the queue projects identities onto mentioned handles only; unrelated cached profiles do not cross",
 	"Item.OldGate":      "read into approve steps on load and never in memory",
 	"Stage.OldGate":     "read into approve steps on load and never in memory",
 	"Stage.OldGateWhen": "read into approve steps on load and never in memory",
@@ -84,7 +93,8 @@ var Lost = map[string]string{
 // FromItem is one item as a job.
 func FromItem(it factory.Item) Job {
 	j := Job{
-		ID: it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
+		Owners: append([]string(nil), it.Owners...),
+		ID:     it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
 		HeadCommit: it.HeadCommit, Publishing: it.PublishStatus, Change: it.Change, Publish: it.Publish, CommentURL: it.CommentURL,
 		State: stateOut[it.State], Ready: it.State == factory.StateLanded, Gate: gate(it),
 		AssignedTo:       it.Person(),
@@ -220,7 +230,8 @@ func ToItem(j Job) factory.Item {
 		d = &JobDesk{}
 	}
 	it := factory.Item{
-		ID: j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL,
+		Owners: append([]string(nil), j.Owners...),
+		ID:     j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL,
 		HeadCommit: j.HeadCommit, PublishStatus: j.Publishing, Change: j.Change, ChangeBase: d.ChangeBase, Publish: j.Publish, CommentURL: j.CommentURL,
 		WorktreeMachine: d.WorktreeMachine, Publishing: d.Publishing,
 		State: stateIn(j), Created: j.CreatedAt,
