@@ -228,6 +228,10 @@ func openChatV3At(launch atLaunch) error {
 	// one is resolved here; the only thing that differs between the two doors is
 	// the pipe, so anything that differed in the surface would be a bug.
 	options, _ := hostOptions(fleet, client.Welcome(), launch.pick)
+	// THE FACTORY PAGE IS THE ATTACHED ONE, OR NONE (factory_attach.go): the
+	// far engine's floor listens on the far machine's loopback, which this
+	// window cannot dial, so only a factory named by `codeaf attach` is drawn.
+	options.Factory, options.FactoryAddress = factoryAttachedSeam(options.ProfileDir)
 	options.Restart = launch.restart
 	return runSurface(context.Background(), options)
 }

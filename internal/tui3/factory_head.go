@@ -51,7 +51,18 @@ const (
 	factoryHeadQuietWords  = "quiet · " + factoryHeadNothingWords
 	factoryHeadNoWaitWords = "nothing waits on you"
 	factoryHeadHoursWord   = "24h"
+	// factoryAddressWord leads the clause naming where the floor is served.
+	factoryAddressWord = "factory"
 )
+
+// factoryAddress is the host and port of the factory the page talks to, or ""
+// when the launch named none.
+func (a *app) factoryAddress() string {
+	if a.factoryAddr == nil {
+		return ""
+	}
+	return a.factoryAddr()
+}
 
 // factorySparkSteps and factorySparkASCII are the sparkline's two alphabets,
 // lowest first. The ASCII one is what a screen reader or a terminal without
@@ -137,6 +148,16 @@ func (a *app) factoryHeadLine(snap factory.Snapshot, width int) string {
 	}
 	if fresh, painted := a.factoryHeadFresh(snap); fresh != "" {
 		add(fresh, painted)
+	}
+	// AND WHERE THE FLOOR IS, LAST AND QUIET: the factory this window talks to,
+	// which a narrow line drops first. On a quiet floor the quiet sentence
+	// still leads it.
+	if addr := a.factoryAddress(); addr != "" {
+		if len(segs) == 0 {
+			add(factoryHeadQuietWords, pal.dim(factoryHeadQuietWords))
+		}
+		w := factoryAddressWord + " · " + addr
+		add(w, pal.dim(w))
 	}
 	mark := a.linearMark("◆", "*")
 	if len(segs) == 0 {
@@ -431,7 +452,11 @@ func (a *app) factoryHeadFloor(snap factory.Snapshot, width int) string {
 	if rightW > 0 {
 		room -= rightW + rowGutter
 	}
-	facts := rowTail(factoryHeadFactsSpun(snap, a.factorySpin()), room)
+	fields := factoryHeadFactsSpun(snap, a.factorySpin())
+	if addr := a.factoryAddress(); addr != "" {
+		fields = append(fields, rowSay(factoryAddressWord+" · "+addr))
+	}
+	facts := rowTail(fields, room)
 	if facts == "" && right == "" {
 		return ""
 	}

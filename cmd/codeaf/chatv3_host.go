@@ -563,6 +563,10 @@ func openChatV3Host(launch hostLaunch) error {
 	})
 	defer fleet.closeAll()
 	options, _ := hostOptions(fleet, welcome, launch.pick)
+	// THE FACTORY PAGE IS THE ATTACHED ONE, OR NONE (factory_attach.go): the
+	// far engine's floor listens on the far machine's loopback, which this
+	// window cannot dial, so only a factory named by `codeaf attach` is drawn.
+	options.Factory, options.FactoryAddress = factoryAttachedSeam(options.ProfileDir)
 	options.Restart = launch.restart
 	// THE SAME WAY THE SURFACE IS RUN AT EVERY OTHER DOOR (chatv3_surface.go):
 	// the byte meter and the logger redirect are the terminal's business rather

@@ -523,6 +523,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	startFactoryRunner(floor, workspace, settings.ProfileDir, cfg)
 	settled.SessionFile, settled.Resumed = transcript, resumed
 	seam := &v3Seam{proc: proc, boot: &settled, seed: seed, floor: floor, floorAt: workspace}
+	factoryPage, factoryAddress := factoryLaunchSeam(floor, workspace, settings.ProfileDir)
 
 	// The byte meter and the logger redirect both belong to the surface rather
 	// than to this door, and [runSurface] (chatv3_surface.go) is where every
@@ -605,8 +606,10 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// opened above, the zero seam when that store could not be opened, and
 		// the mock or a still fixture when one is switched on, with this
 		// workspace as the repo new work lands on when the floor has none yet
-		// (factory.go).
-		Factory: factoryHere(factorySeam(floor, workspace, settings.ProfileDir), workspace),
+		// (factory.go). It reaches that floor over HTTP, as every window does
+		// (factory_attach.go).
+		Factory:        factoryPage,
+		FactoryAddress: factoryAddress,
 		Fresh: func() (tui3.Agent, string, error) {
 			conv, err := seam.start("")
 			if err != nil {

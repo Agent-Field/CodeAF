@@ -232,3 +232,27 @@ func TestFactoryALandedItemCountsAsWaiting(t *testing.T) {
 		t.Fatalf("the fixture counts %d waiting, want %d", n, want)
 	}
 }
+
+// THE FACTORY'S ADDRESS IS ONE QUIET CLAUSE, on the one line and on the full
+// strip's facts row, and a launch that named none draws no clause.
+func TestFactoryHeadNamesTheFactoryAddress(t *testing.T) {
+	a := factoryHeadLab(t, factory.Fixture(factoryTestNow))
+	a.factoryAddr = func() string { return "127.0.0.1:53121" }
+	if rows := factoryHeadPlain(a, 140); !strings.Contains(rows[3], "factory · 127.0.0.1:53121") {
+		t.Errorf("the full strip's facts row has no address:\n%q", rows[3])
+	}
+	a.fp.headFull = false
+	if rows := factoryHeadPlain(a, 140); !strings.Contains(rows[0], "factory · 127.0.0.1:53121") {
+		t.Errorf("the one line has no address:\n%q", rows[0])
+	}
+	snap := factory.Fixture(factoryTestNow)
+	snap.Shift, snap.Items, snap.Daily, snap.Rail, snap.Sources = factory.Shift{Since: snap.Shift.Since}, nil, 0, 0, nil
+	a.fp.snap = snap
+	if row := factoryHeadPlain(a, 140)[0]; !strings.Contains(row, factoryHeadQuietWords+" · factory · 127.0.0.1:53121") {
+		t.Errorf("a quiet floor lost its quiet sentence or its address:\n%q", row)
+	}
+	a.factoryAddr = nil
+	if row := factoryHeadPlain(a, 140)[0]; strings.Contains(row, "factory ·") {
+		t.Errorf("a launch with no address drew one:\n%q", row)
+	}
+}

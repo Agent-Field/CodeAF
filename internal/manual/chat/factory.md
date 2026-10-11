@@ -27,6 +27,39 @@ a stale file, so discovery readers must check the process is alive. One service
 may run per codeaf home; a second refuses instead of replacing its discovery.
 `CODEAF_HOME` moves both the default config and discovery paths.
 
+## codeaf attach and codeaf detach — which factory a window talks to, the factory address line
+
+The factory page always reads its floor through the factory's HTTP service. When `codeaf`
+starts, the window picks the factory in this order:
+
+1. `~/.codeaf/v3/factory/attach.json`, written by `codeaf attach <url>`: that factory.
+2. A live `serve.json`: the factory another codeaf on this machine already serves (its
+   process is alive and it answers `GET /v1/queue`).
+3. Otherwise the window serves this machine's floor itself on `127.0.0.1:0`, loopback only and
+   without an access token, and writes `serve.json` so the next window uses it.
+
+So a second window on the same machine reads the first window's factory. If the window that
+serves closes, the other windows take the serving over on their next read. The handover line
+ends with the address, for example `factory · 127.0.0.1:53121`; a narrow line drops it first.
+Run, stop, pause, answer and the other job verbs go to that factory. Talking to an item (`T`),
+the foreman (`m`), recipes, checkouts, stage edits, budget, thinking and refresh stay on this
+machine, because chats and checkouts live here. Runs are still carried out by the codeaf
+process that holds this machine's `run.lock`.
+
+`codeaf attach <url> [--name name] [--token token]` saves the factory at `url`
+(`http://host:port`) for new windows. `--name` is how this machine is named there (default:
+its hostname). `--token` is the access token that `codeaf factory token` prints on that
+factory's machine; a factory off loopback refuses calls without it. `codeaf attach` does not
+dial the factory. `codeaf detach` removes `attach.json`; new windows then use this machine's
+factory again. Windows already open keep their factory until they are restarted.
+
+Over `--host` or `--at`, the window draws the factory named in this machine's `attach.json`.
+With nothing attached, it draws `nothing connected yet`: the far engine's floor listens on the
+far machine's loopback, which this window cannot reach.
+
+A window attached to `codeaf factory` running alone can read the floor, but run, stop and the
+other runner verbs refuse there, because that service starts no runner.
+
 ## codeaf factory token — print or rotate the access token
 
 `codeaf factory token` prints the host config's access token, creating and saving
@@ -95,8 +128,8 @@ or added from a chat, kept under the codeaf home (see where factory items are sa
 first one arrives the floor draws one dim line under the handover,
 `work arrives here from chat, from n, and from the repositories you connect` (or, with
 repositories watched, what their read is doing; see after connecting github), and `n new` still
-works. Only when that floor cannot be opened, or over `--host` or `--at` to another machine,
-does the page draw
+works. Only when that floor cannot be opened, or over `--host` or `--at` to another machine
+with nothing attached (see codeaf attach), does the page draw
 `nothing connected yet · the factory floor arrives here when a chat splits work off or a repo is connected`.
 The only key it offers then is `esc back`.
 

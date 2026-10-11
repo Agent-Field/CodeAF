@@ -1483,6 +1483,8 @@ type app struct {
 	// snapshot, the cursor and whether a read is out (factory_page.go).
 	factory factory.Seam
 	fp      factoryPage
+	// factoryAddr is where that seam's factory is (Options.FactoryAddress).
+	factoryAddr func() string
 	// fic is the live item cards' clock (factoryitemcard.go): one beat every
 	// three seconds while a conversation holding a card is in front.
 	fic factoryItemCards
@@ -3045,6 +3047,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		stands:              opts.Standing,
 		teamsDisk:           teamsDisk{door: opts.Teams},
 		factory:             opts.Factory,
+		factoryAddr:         opts.FactoryAddress,
 		link:                opts.Link,
 		conns:               opts.Connections,
 		harn:                opts.Harnesses,

@@ -448,10 +448,12 @@ func localDoors(options *tui3.Options, welcome remote.Welcome, settings config.C
 	// connected. The engine on the other half of this road carries the chat's
 	// `factory_add` into the same folder (engine.go's [engineFactoryHere]), so
 	// a yes on the card and `n` on the floor both land on the floor drawn here.
-	// --host and --at never reach this line: the floor there is the other
-	// machine's, and their window has no factory seam at all (factory.go).
+	// THE PAGE TALKS TO THE FLOOR OVER HTTP (factory_attach.go): the factory
+	// attach.json names, else the one another window on this machine serves,
+	// else one this window serves itself, composed with this machine's own
+	// doors. --host and --at reach the attached factory only ([factoryAttachedSeam]).
 	floor := v3Factory()
-	options.Factory = factoryHere(factorySeam(floor, welcome.Workspace, profileDir), welcome.Workspace)
+	options.Factory, options.FactoryAddress = factoryLaunchSeam(floor, welcome.Workspace, profileDir)
 	// AND THIS WINDOW POLLS THE FLOOR IT DRAWS, whatever the engine does. The
 	// engine on the other half of this road may be a build from days ago with
 	// no poll at all (2026-10-08: a window with the factory attached to an

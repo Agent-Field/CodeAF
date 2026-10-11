@@ -1184,6 +1184,13 @@ type Options struct {
 	// what arrives there and offers no key that would need a door.
 	Factory factory.Seam
 
+	// FactoryAddress is the host and port of the factory Factory talks to, for
+	// the page's one quiet line (`factory · 127.0.0.1:53121`). Nil or empty
+	// draws no clause: a fixture or a page with nothing connected has no
+	// address to name. It is a func because a window whose factory went away
+	// moves to another one without being handed a new seam.
+	FactoryAddress func() string
+
 	// Link is what the door can tell this surface about the connection the
 	// conversation is on the far end of: the sentence to draw while a dropped
 	// link is being redialled, the empty round trip to measure on a slow clock,

@@ -129,34 +129,13 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer)
 		return fmt.Errorf("factory cannot listen on %s: %w", listen, err)
 	}
 	defer listener.Close()
-	address := "http://" + listener.Addr().String()
 	seam := factory.LocalSeam(st, time.Now(), factoryPipelineOption(), factory.WithRepoDirs(st.CheckoutDir))
-	history, err := record.Open(st, record.Options{})
+	service, err := startFactoryService(ctx, st, seam, listener, cfg.AccessToken)
 	if err != nil {
 		return err
 	}
-	// The service's watch, worker reports and record share the jobs' root, so
-	// clients observe the same files without starting execution in this process.
-	handler := serve.New(seam, serve.Config{Address: address, AccessToken: cfg.AccessToken, Store: st, Root: st.Root(), Record: history})
-	defer handler.Close()
-	server := &http.Server{
-		Handler: handler, ReadHeaderTimeout: 10 * time.Second,
-		// Long polls and change streams must end with the service, otherwise
-		// graceful shutdown waits on clients that are waiting on this process.
-		BaseContext: func(net.Listener) context.Context { return ctx },
-	}
-	done := make(chan error, 1)
-	guard.Go("factory HTTP service", func() { done <- server.Serve(listener) })
-	defer server.Close()
-	discovery := filepath.Join(st.Root(), "serve.json")
-	body, err := json.Marshal(factoryDiscovery{URL: address, PID: os.Getpid(), Token: cfg.AccessToken})
-	if err != nil {
-		return err
-	}
-	if err := writeFactoryPrivate(discovery, append(body, '\n')); err != nil {
-		return err
-	}
-	defer os.Remove(discovery)
+	defer service.close()
+	address, server, done := service.url, service.server, service.done
 	if _, err := fmt.Fprintln(out, address); err != nil {
 		return err
 	}
@@ -175,6 +154,57 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer)
 		}
 		return err
 	}
+}
+
+// factoryService is one running factory HTTP service: the handler over a
+// seam, its server on a listener, and the serve.json receipt naming it.
+type factoryService struct {
+	url       string
+	server    *http.Server
+	handler   *serve.Handler
+	done      chan error
+	discovery string
+}
+
+// startFactoryService serves seam on listener and writes serve.json, the
+// receipt other codeaf processes on this machine discover it by. It is the one
+// start both `codeaf factory` and a window serving in-process make, so the two
+// can never answer differently. ctx bounds the long polls and change streams.
+func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam, listener net.Listener, token string) (*factoryService, error) {
+	address := "http://" + listener.Addr().String()
+	history, err := record.Open(st, record.Options{})
+	if err != nil {
+		return nil, err
+	}
+	// The service's watch, worker reports and record share the jobs' root, so
+	// clients observe the same files the runner writes.
+	handler := serve.New(seam, serve.Config{Address: address, AccessToken: token, Store: st, Root: st.Root(), Record: history})
+	server := &http.Server{
+		Handler: handler, ReadHeaderTimeout: 10 * time.Second,
+		// Long polls and change streams must end with the service, otherwise
+		// graceful shutdown waits on clients that are waiting on this process.
+		BaseContext: func(net.Listener) context.Context { return ctx },
+	}
+	s := &factoryService{url: address, server: server, handler: handler, done: make(chan error, 1),
+		discovery: filepath.Join(st.Root(), "serve.json")}
+	guard.Go("factory HTTP service", func() { s.done <- server.Serve(listener) })
+	body, err := json.Marshal(factoryDiscovery{URL: address, PID: os.Getpid(), Token: token})
+	if err == nil {
+		err = writeFactoryPrivate(s.discovery, append(body, '\n'))
+	}
+	if err != nil {
+		s.close()
+		return nil, err
+	}
+	return s, nil
+}
+
+// close stops serving and takes the receipt down, so nobody discovers a
+// service that is gone.
+func (s *factoryService) close() {
+	_ = os.Remove(s.discovery)
+	_ = s.server.Close()
+	s.handler.Close()
 }
 
 // factoryFileLock coordinates service discovery and token writes across
