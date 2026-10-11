@@ -334,8 +334,8 @@ func TestNothingOutsideTheFunnelTalksToAModelEndpoint(t *testing.T) {
 // ── (b) ONE FUNCTION PUTS A COMPLETION ON THE WIRE ──────────────────────────
 
 // funnelWireSenders is every function in this package that hands a request to
-// an http.Client, and there are six because there are six kinds of thing this
-// adapter fetches.
+// an http.Client. Each named exception is a request with its own bounded
+// contract rather than another completion path.
 //
 //	send         every chat completion, and the only one with the retry loop,
 //	             the limiter, the backoff and the call log around it
@@ -350,7 +350,9 @@ func TestNothingOutsideTheFunnelTalksToAModelEndpoint(t *testing.T) {
 //
 // probeConnection is a credential-free HEAD of the configured origin. Its
 // contract tests forbid a prompt, a request body or redirect following.
-var funnelWireSenders = []string{"Fetch", "doEndpoint", "fetchReceiptAt", "probeConnection", "probeLane", "send"}
+// Embed sends fixed-space vectors rather than a completion; its context bounds
+// the single attempt and the session records its detached usage.
+var funnelWireSenders = []string{"Embed", "Fetch", "doEndpoint", "fetchReceiptAt", "probeConnection", "probeLane", "send"}
 
 // funnelSendCallers is every function that reaches [Client.send].
 //

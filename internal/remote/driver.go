@@ -307,6 +307,7 @@ var watcherReads = map[string]bool{
 	MethodDetach:        true,
 	MethodPing:          true,
 	MethodPlacesAsk:     true,
+	MethodPlacesEmbed:   true,
 }
 
 func watcherMay(method string) bool { return watcherReads[method] }

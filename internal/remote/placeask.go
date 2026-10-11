@@ -80,6 +80,9 @@ func placeAskWithin(budget time.Duration) (context.Context, context.CancelFunc) 
 // was it at all. A false hands the call on to the refusal an engine from before
 // this door answers.
 func placeAskCall(agent WrappedAgent, call Frame) (json.RawMessage, bool, error) {
+	if call.Method == MethodPlacesEmbed {
+		return placeEmbedCall(agent, call)
+	}
 	if call.Method != MethodPlacesAsk {
 		return nil, false, nil
 	}
@@ -132,4 +135,56 @@ func (a *Agent) AskPlaces(ctx context.Context, req placegraph.ModelRequest) (ses
 		return session.PlacesAnswer{}, err
 	}
 	return out, nil
+}
+
+// MethodPlacesEmbed carries a batch through the engine's embedding account.
+const MethodPlacesEmbed = "Places.Embed"
+
+// PlacesEmbedArgs carries a duration because peer clocks need not agree.
+type PlacesEmbedArgs struct {
+	Texts  []string      `json:"texts"`
+	Budget time.Duration `json:"budget,omitempty"`
+}
+
+type placeEmbedDoor interface {
+	EmbedPlaces(context.Context, []string) ([][]float32, error)
+}
+
+func placeEmbedCall(agent WrappedAgent, call Frame) (json.RawMessage, bool, error) {
+	door, ok := agent.(placeEmbedDoor)
+	if !ok {
+		return nil, true, errors.New("this engine cannot embed places")
+	}
+	args, err := arg[PlacesEmbedArgs](call)
+	if err != nil {
+		return nil, true, err
+	}
+	if args.Budget < 0 {
+		return nil, true, context.DeadlineExceeded
+	}
+	ctx, cancel := placeAskWithin(args.Budget)
+	defer cancel()
+	vectors, err := door.EmbedPlaces(ctx, args.Texts)
+	if err != nil {
+		return nil, true, err
+	}
+	payload, err := json.Marshal(vectors)
+	return payload, true, err
+}
+
+// EmbedPlaces keeps the key and the bill on the engine's machine.
+func (a *Agent) EmbedPlaces(ctx context.Context, texts []string) ([][]float32, error) {
+	budget, ok := teamAskBudget(ctx)
+	if !ok {
+		return nil, context.DeadlineExceeded
+	}
+	payload, err := a.c.callWithin(ctx, MethodPlacesEmbed, PlacesEmbedArgs{Texts: texts, Budget: budget}, placeAskCeiling)
+	if err != nil {
+		return nil, err
+	}
+	var vectors [][]float32
+	if err := json.Unmarshal(payload, &vectors); err != nil {
+		return nil, err
+	}
+	return vectors, nil
 }

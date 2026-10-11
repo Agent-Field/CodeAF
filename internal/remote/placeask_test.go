@@ -176,3 +176,48 @@ func TestThePlacesAskWaitsPastTheGetterDeadline(t *testing.T) {
 		t.Fatalf("model answer discarded: %+v %v", answer, err)
 	}
 }
+
+// The same embedding door works on a reader connection without borrowing a turn.
+func (a *placeAgent) EmbedPlaces(ctx context.Context, texts []string) ([][]float32, error) {
+	a.calls++
+	deadline, ok := ctx.Deadline()
+	a.deadline = ok
+	if ok {
+		a.left = time.Until(deadline)
+	}
+	vectors := make([][]float32, len(texts))
+	for i := range texts {
+		vectors[i] = []float32{float32(len(texts[i]))}
+	}
+	return vectors, nil
+}
+
+func TestPlacesEmbeddingsCrossTheWire(t *testing.T) {
+	far := &placeAgent{fakeAgent: &fakeAgent{model: "m"}}
+	loop := askLoop(t, far)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	vectors, err := loop.Client.Agent().EmbedPlaces(ctx, []string{"abc", "de"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(vectors) != 2 || vectors[0][0] != 3 || vectors[1][0] != 2 || far.calls != 1 || !far.deadline || far.left > 5*time.Second {
+		t.Fatalf("vectors %v, calls %d, budget %v", vectors, far.calls, far.left)
+	}
+	if !watcherMay(MethodPlacesEmbed) || classify(MethodPlacesEmbed) != classGetter {
+		t.Fatal("embeddings must be a watcher read")
+	}
+	before := far.calls
+	if _, err := loop.Client.call(nil, MethodPlacesEmbed, PlacesEmbedArgs{Texts: []string{"a"}, Budget: -1}); err == nil || far.calls != before {
+		t.Fatal("expired embedding called the engine")
+	}
+}
+
+func TestOldEngineRefusesPlacesEmbeddings(t *testing.T) {
+	loop := askLoop(t, &fakeAgent{model: "m"})
+	if _, err := loop.Client.Agent().EmbedPlaces(context.Background(), []string{"a"}); err == nil {
+		t.Fatal("old engine accepted embeddings")
+	}
+}
+
+var _ placeEmbedDoor = (*session.Agent)(nil)

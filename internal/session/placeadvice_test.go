@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/placegraph"
+	"github.com/Agent-Field/codeaf/internal/placeorg"
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
@@ -18,7 +19,7 @@ import (
 // turns the desktop's two rows live, and LOW is the tier a person-approved
 // offer belongs on.
 func TestThePlaceRolesAreRegisteredLow(t *testing.T) {
-	for _, role := range []roles.Role{roles.RolePlaceFile, roles.RolePlaceSuggest} {
+	for _, role := range append([]roles.Role{roles.RolePlaceFile, roles.RolePlaceSuggest}, organiserPlaceRoles...) {
 		tier, ok := roles.TierOf(role)
 		if !ok || tier != roles.TierLow {
 			t.Errorf("%s resolves on %q (registered %v), want %q", role, tier, ok, roles.TierLow)
@@ -33,10 +34,11 @@ func TestAskPlacesRefusesWithoutACall(t *testing.T) {
 	agent, _ := newTestAgent(t, client, func(c *Config) { c.RolesSource = nameSettings() })
 	ctx := context.Background()
 	for name, req := range map[string]placegraph.ModelRequest{
-		"another role": {Role: roles.RoleTitle, System: "s", User: "u"},
-		"no role":      {System: "s", User: "u"},
-		"no system":    {Role: roles.RolePlaceFile, User: "u"},
-		"no question":  {Role: roles.RolePlaceSuggest, System: "s", User: "  "},
+		"another role":                {Role: roles.RoleTitle, System: "s", User: "u"},
+		"embedding is not a question": {Role: roles.Role("placeembed"), System: "s", User: "u"},
+		"no role":                     {System: "s", User: "u"},
+		"no system":                   {Role: roles.RolePlaceFile, User: "u"},
+		"no question":                 {Role: roles.RolePlaceSuggest, System: "s", User: "  "},
 	} {
 		if got, err := agent.AskPlaces(ctx, req); err == nil || got != (PlacesAnswer{}) {
 			t.Errorf("%s: answered %+v, %v", name, got, err)
@@ -57,7 +59,7 @@ func TestAskPlacesRefusesWithoutACall(t *testing.T) {
 // answered comes back with the raw answer, so the desktop can say and price
 // what was asked. The journal's line names the role it was asked for.
 func TestAskPlacesAsksTheRoleOnceAndNamesTheModel(t *testing.T) {
-	for _, role := range []roles.Role{roles.RolePlaceFile, roles.RolePlaceSuggest} {
+	for _, role := range append([]roles.Role{roles.RolePlaceFile, roles.RolePlaceSuggest}, organiserPlaceRoles...) {
 		t.Run(string(role), func(t *testing.T) {
 			client := &scriptedCompleter{steps: []step{func(context.Context, []ai.Message) (*ai.Response, error) {
 				return textResponse(`{"place":"p1"}`), nil
@@ -113,5 +115,18 @@ func TestAPlacesAnswerIsCappedOnARuneBoundary(t *testing.T) {
 	}
 	if capPlacesAnswer("p1") != "p1" {
 		t.Fatal("a short answer was changed")
+	}
+}
+
+// The allow-list contains exactly the six stage roles the contract publishes.
+func TestPlacesOrganiserRoleAllowList(t *testing.T) {
+	want := []roles.Role{placeorg.RolePlaceName, placeorg.RolePlaceCharter, placeorg.RolePlaceFacet, placeorg.RolePlaceReview, placeorg.RolePlaceSteer, placeorg.RolePlaceKind}
+	if len(want) != len(organiserPlaceRoles) {
+		t.Fatal("organiser role count changed")
+	}
+	for i, role := range want {
+		if organiserPlaceRoles[i] != role {
+			t.Fatalf("role %d: got %s, want %s", i, organiserPlaceRoles[i], role)
+		}
 	}
 }
