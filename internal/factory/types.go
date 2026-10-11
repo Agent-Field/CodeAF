@@ -369,15 +369,26 @@ type Item struct {
 	OldGate  Gate `json:"Gate,omitempty"`
 	Stream   *Stream
 	Question string
-	QKind    string // plan · cap · scope · step · ask_first
+	// QKind is why the item is waiting: approve, cap, scope, step, ask_first
+	// or out_of_attempts. The wire's needs_you.kind is derived from this.
+	QKind string
 	// AskedFirstReason keeps the matched rule visible after the question is answered.
 	AskedFirstReason string `json:",omitempty"`
-	Proof            []Claim
-	Policy           []Claim
-	Marked           bool
-	Labels           []string
-	Checks           string
-	Diff             string
+	// Ask is the person's own words when the job did not start from a GitHub
+	// issue. A GitHub issue keeps that on the wire and leaves Ask empty.
+	Ask *JobAsk `json:",omitempty"`
+	// Failure is a step that errored. Nil means the job has not failed.
+	// It is not a question.
+	Failure *Failure `json:",omitempty"`
+	// PublishError is the first line of a publish that failed. The job stays
+	// landed so the approval already recorded can retry. Empty means none.
+	PublishError string `json:",omitempty"`
+	Proof        []Claim
+	Policy       []Claim
+	Marked       bool
+	Labels       []string
+	Checks       string
+	Diff         string
 	// Asking is the question a step of the run put to the manager and that
 	// is not answered yet (the inbox, internal/factory/run's inbox.go): with
 	// the manager while it reads it, with the person once the manager sent it

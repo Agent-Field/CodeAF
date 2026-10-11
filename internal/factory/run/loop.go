@@ -227,6 +227,7 @@ func (r *Runner) Launch(id int) error {
 		}
 		it.State = factory.StateQueued
 		it.PublishStatus, it.Publishing = nil, false
+		it.PublishError = ""
 		it.Question, it.QKind = "", ""
 		it.Proof, it.Policy = nil, nil
 		it.Stream = &factory.Stream{Started: now, Phases: loopPhases(*it)}
@@ -745,16 +746,9 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 
 	exec := lp.r.opts.Exec[kindOf(st)]
 	if exec == nil {
-		note := fmt.Sprintf("codeaf cannot run a %s stage here", kindOf(st))
-		a, ok := lp.ask(c, i, "cannot", "scope", name+" cannot run here · skip it, or stop?", factory.PhaseFailed, note, askLine(failedLead(name, ""), name+" cannot run here · skip it, or stop?"))
-		if !ok {
-			return false
-		}
-		if !a.yes && a.words == "" {
-			lp.stop(c)
-			return false
-		}
-		return lp.skip(c, i, name)
+		// A stage this machine cannot run is a failure, not a question.
+		lp.failStop(c, name, fmt.Errorf("codeaf cannot run a %s stage here", kindOf(st)))
+		return false
 	}
 
 	round := max(it.Stream.Phases[i].Round, 1)
@@ -826,19 +820,8 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			continue
 		}
 		if err != nil {
-			q := fmt.Sprintf("%s did not finish: %s · skip it, or stop?", name, loopFirstLine(err.Error()))
-			a, ok := lp.ask(c, i, "failed", "scope", q, factory.PhaseFailed, name+" did not finish", askLine(failedLead(name, ""), q))
-			if !ok {
-				return false
-			}
-			switch {
-			case a.words != "":
-				lp.addNote(c.id, a.words)
-				continue
-			case a.yes:
-				return lp.skip(c, i, name)
-			}
-			lp.stop(c)
+			// A step that errored is a failure, not a question. The job stops.
+			lp.failStop(c, name, err)
 			return false
 		}
 		if res.Spent > 0 {
@@ -859,16 +842,32 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 				until = factory.UntilDone
 			}
 			note := fmt.Sprintf("%s is not %s after %s", name, until, roundsWord(round))
-			q := note + ": " + shortfall(res) + " · one more round, or go on as is?"
-			a, ok := lp.ask(c, i, "rounds", "scope", q, factory.PhaseFailed, note, askLine(failedLead(name, failCount(res)), q))
+			q := note + ": " + shortfall(res) + " · try once more, send it back, or cancel the job?"
+			// OUT OF ATTEMPTS IS A QUESTION, not a failed step. The phase waits.
+			a, ok := lp.ask(c, i, "rounds", factory.QKindOutOfAttempts, q, factory.PhaseWaiting, note, askLine("", q))
 			if !ok {
 				return false
 			}
-			if !a.yes && a.words == "" {
-				lp.say(c, "said", "going on as is · "+note)
-				return lp.finish(c, i, name, note)
+			switch factory.OutOfAttemptsChoice(a.yes, a.words) {
+			case factory.ChoiceSendBack:
+				cur, getErr := lp.r.opts.Store.Get(c.id)
+				if getErr != nil || cur.Stream == nil {
+					return false
+				}
+				if prev := previousWork(cur.Stream.Phases, i); prev >= 0 {
+					return lp.back(c, i, prev, factory.SendBackReason(a.words))
+				}
+				lp.stop(c)
+				return false
+			case factory.ChoiceCancel:
+				lp.stop(c)
+				return false
 			}
-			lp.addNote(c.id, a.words)
+			words := a.words
+			if token := strings.ToLower(strings.TrimSpace(words)); token == factory.ChoiceTryOnceMore || token == "yes" {
+				words = ""
+			}
+			lp.addNote(c.id, words)
 			round++
 			limit = round
 			continue
@@ -1076,16 +1075,49 @@ func (lp *floorLoop) capCheck(c *loopCtl, i int, name string) bool {
 	if !ok {
 		return false
 	}
-	if !a.yes {
+	if !factory.IsContinue(a.yes, a.words) {
 		lp.stop(c)
 		return false
 	}
 	now := lp.r.now()
 	return lp.write(c, func(it *factory.Item) error {
-		it.Cap *= 2
-		loopSay(it, now, "said", "budget raised to "+loopUSD(it.Cap)+" · carrying on")
+		NoteContinue(it, now)
 		return nil
 	}) == nil
+}
+
+// NoteContinue raises this job's cap when the spend has reached it, and says
+// so once. A second caller sees the raised cap and leaves it, so the HTTP
+// door and this loop cannot double the same continue.
+func NoteContinue(it *factory.Item, now time.Time) bool {
+	if !factory.ContinueJob(it) {
+		return false
+	}
+	loopSay(it, now, "said", "budget raised to "+loopUSD(it.Cap)+" · carrying on")
+	return true
+}
+
+// previousWork is the last finished step before i that is not an approve
+// step, or -1 when there is nowhere to send the work back to.
+func previousWork(ph []factory.Phase, i int) int {
+	for k := i - 1; k >= 0; k-- {
+		if ph[k].Kind != factory.StageGate && ph[k].State == factory.PhaseDone {
+			return k
+		}
+	}
+	return -1
+}
+
+// failStop records a step that errored and stops the job. The failure is not
+// a question: nobody is asked to skip it.
+func (lp *floorLoop) failStop(c *loopCtl, step string, err error) {
+	now := lp.r.now()
+	code, detail := factory.ClassifyFailure(err.Error())
+	_ = lp.write(c, func(it *factory.Item) error {
+		it.Failure = &factory.Failure{Step: step, Code: code, Detail: detail, Next: factory.FailureStopped, At: now}
+		return nil
+	})
+	lp.stop(c)
 }
 
 // fold writes what a round said onto the item: its result for the stages
@@ -1779,6 +1811,7 @@ func sendBackStored(it *factory.Item, words string, now time.Time) (string, erro
 	s.Ended = time.Time{}
 	it.State = factory.StateQueued
 	it.PublishStatus, it.Publishing = nil, false
+	it.PublishError = ""
 	loopSay(it, now, "said", "changes requested: "+words)
 	return name, nil
 }

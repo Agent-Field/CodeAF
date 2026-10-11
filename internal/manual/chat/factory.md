@@ -855,14 +855,15 @@ window cannot make the item's conversation there is no box.
 A run stops and asks when it cannot go on alone, and the item moves to **needs you**. The
 question is the run's own sentence, drawn as is in the peek (under the title) and on the item
 page's second row, its `?` amber: `plan is ready · continue, or send it back?`,
-`review is not clean after 2 rounds: 3 findings · one more round, or go on as is?` (one round
+`review is not clean after 2 rounds: 3 findings · try once more, send it back, or cancel the job?` (one round
 is `after 1 round`, one finding `1 finding`),
-`budget of $5 reached · $5 more, or stop?`, `review did not finish: … · skip it, or stop?`.
+`budget of $5 reached · $5 more, or stop?`. A step that errored does not ask. The job carries
+`failure` and stops.
 
-- `y` answers yes: continue, one more round, $5 more, skip it. The bottom line says
+- `y` answers yes: continue, try once more, or $5 more. The bottom line says
   `answered #12 · yes`.
 - `n` answers no: at an approve step it sends the run back to the step before; for a spent
-  budget it stops the item; for rounds it goes on as is. It says `answered #12 · no` (`answered #12 · send back` at an approve step).
+  budget it stops the item; when the rounds are used up it cancels the job. It says `answered #12 · no` (`answered #12 · send back` at an approve step).
 - `a` opens `answer ›` for words (`go, but keep the old flag`); they reach the next round's
   brief (at an approve step: the run continues with them) and it says `answered #12 in words`.
 
@@ -1974,11 +1975,66 @@ Without it the answer is HTTP 409 `#N has a claim not shown` and no `approved`
 event is written. A plan approval writes `approved` only after the answer door
 accepts.
 
-A question carries `kind`: `step`, `cap`, `max_rounds`, `plan` or `proof`.
-`plan` is an approve step. `max_rounds` is the offer of one more round.
-`options` lists the choices that step offered. A cap or one-more-round question
-with none lists `yes` and `no`. A cap question also carries `limit`, `spent`
-and `next_limit`, and `next_limit` is the cap a yes would allow.
+A question carries `kind`: `step`, `cap`, `max_rounds`, `plan`, `proof` or
+`out_of_attempts`. `plan` is an approve step. `max_rounds` is an older rounds
+question. `out_of_attempts` is the current one, and its options are
+`try_once_more`, `send_back` and `cancel_job`. `options` lists the choices
+that step offered. A cap question also carries `limit`, `spent` and
+`next_limit`, and `next_limit` is the cap a yes would allow.
+
+## needs you — six kinds, and who may answer
+
+A waiting job carries `needs_you`: `kind`, `since`, `who_can_answer`, and
+`question` when the wait is a question. The kinds are `approve_plan`,
+`approve_proof`, `question`, `spending_limit`, `out_of_attempts` and
+`publish_failed`. The queue groups jobs by that kind. Adding a kind is a
+change to codeaf, not a value an app can invent.
+
+`question` is `id`, `kind` (`text`, `yes_no` or `options`), `text`, `options`,
+`from_step`, `asks` (a handle) and `who_can_answer`. A free question's
+`who_can_answer` is `anyone_with_repo`. Plan approval, proof approval, a
+spending limit, out of attempts and a failed publish are `job_person`. When
+the job has a person, someone else gets HTTP 403 `only @raj can answer this`.
+A job with no person yet can still be answered. `answered` is `{by, text, at, event}`
+once it has been answered.
+
+## a spending limit is an answer, not a setting
+
+When a job reaches its cap it waits as `spending_limit`: `limit`, `spent`,
+`next_limit` and `currency` (`USD`). The run asks `budget of $5 reached · $5 more, or stop?`.
+Answering `continue`, or yes, raises this one job to `next_limit`. That number
+is codeaf's: the cap doubled. The app does not send it, and a body that tries
+to is refused. Stop does not raise it. The raise is an `answered` event. It is
+not a setting, and it does not change any other job.
+
+## out of attempts, and a step that failed
+
+A step that used its rounds without its until holding asks
+`try once more, send it back, or cancel the job?`. That is `out_of_attempts`,
+a question, options `try_once_more`, `send_back` and `cancel_job`. Only the
+job's person answers. `send_back` needs a reason (`send back requires a reason`
+otherwise) and returns to the previous step. `cancel_job`, or no, stops the job.
+There is no going on as is.
+
+A step that errored — a crash, a tool or provider error, or the machine lost
+after the lease expired — is `failure`: `step`, `code`, `detail`, `next` and
+`at`. `code` is `crash`, `tool_error`, `provider_error` or `machine_lost`.
+`next` is `stopped` or `requeued`. It is not a question. The job does not ask
+to skip the step. A lost machine requeues the job. Any other error stops it.
+
+A publish that fails stays in needs you as `publish_failed`, in the same place
+as the other waits, with `could not publish: …` on its log and `publish_error`
+on the job. The approval already recorded stays valid for that same commit.
+Retry publishing does not write a second approval.
+
+## a job without a GitHub issue
+
+Work typed in the app or in the terminal carries `ask`: `text`, `by`, `at` and
+`source`. `source` is `app` or `tui`. A job that started from a GitHub issue
+carries `ask` with `issue` (`number`, `url`, `title`) and `text`, and does not
+also store a typed ask. The pull request body starts with that ask, then
+`Closes #12.` when the job closes an issue. A job with no ask text leaves the
+body as it was.
 
 ## approving at the proof gate publishes — the pull request, the commit and the trailer
 
@@ -1993,7 +2049,8 @@ Before opening the proof gate, the holding worker commits the worktree with the
 item's title and reports `head_commit`. Approval names that exact commit. The publishing
 worker refuses a moved head or uncommitted edits; it pushes the approved item's
 branch (`factory/<number>-<slug>`) to `origin` with your connected GitHub token, never
-with force, and opens the pull request into the default branch. The body is `Closes #12.`
+with force, and opens the pull request into the default branch. The body starts with the
+ask when the job has one, then `Closes #12.`
 for an issue with new commits, `Proof · N of M claims shown`, one `✓`/`✕` line per claim, and the trailer
 as its last line. The item becomes shipped with its pull request (`pr` on the wire), and
 the record says `posted · pr · <url>`. A pull request already open from that branch is
@@ -2006,11 +2063,10 @@ request with the same body and trailer, and the item's `pr` is that pull request
 
 **Never without consent.** An approve with no recorded approval publishes nothing and
 says `job requires a recorded approval before publishing`. A push or a write that fails
-lands the item again with `could not publish: …` on its log. The approval stays valid
-for the same commit: use **Retry publishing**, without another approval. A changed
-commit needs approval again. The
-lease records the worker's stable machine id, and the job keeps that id after the lease
-ends. Publishing, re-running checks and resumed runs are offered only to workers on
+lands the item again in needs you as publish failed, with `could not publish: …` on its log.
+The approval stays valid for the same commit: use **Retry publishing**, without another
+approval. A changed commit needs approval again. The lease records the worker's stable
+machine id, and the job keeps that id after the lease ends. Publishing, re-running checks and resumed runs are offered only to workers on
 that machine, including a new process or another slot there. While queued it says
 `waiting for <machine>` (or `publishing · waiting for <machine>` after approval).
 If that machine is offline, the job waits for it; another machine never takes it.

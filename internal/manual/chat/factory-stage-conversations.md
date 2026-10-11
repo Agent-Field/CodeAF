@@ -48,7 +48,7 @@ The last round found: … Fix those in the checkout first, run the tests, then r
 report only what remains.`, carrying what the last round said and the claims it could not show
 (the first 1,500 characters), so a round never just looks at the same unchanged checkout
 again. Nothing is added on a run until done, and a check just runs its command again. When
-the rounds run out, it asks you `one more round, or go on as is?`.
+the rounds run out, it asks you `try once more, send it back, or cancel the job?`.
 
 ## where a stage's conversation opens — watch a running stage, open it afterwards
 
@@ -96,8 +96,8 @@ as the manager's own message and marked as the run's (a surface may draw them as
   for the stages after it (else the last sentence its conversation said); a part with nothing in
   it is left out, so a free instant stage is `plan done · <what it said>`;
 - `asking you: plan is ready · continue, or send it back?` when the run holds at an approve step
-  (the manager can explain what it waits on), and after a stage that fell short,
-  `test failed 1 of 2 · asking you: <question>`;
+  (the manager can explain what it waits on), and after a stage that used its rounds,
+  `asking you: <question>`;
 - `sent back to plan: <your words>` when you said no at an approve step;
 - `budget of $5 reached · asking you`;
 - `plan asks: <question>` when a stage asks something, then `manager answered plan: <answer>` or

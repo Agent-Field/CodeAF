@@ -28,6 +28,7 @@ func QueueItem(it *factory.Item, now time.Time) error {
 	}
 	it.State = factory.StateQueued
 	it.PublishStatus, it.Publishing = nil, false
+	it.PublishError = ""
 	it.Question, it.QKind = "", ""
 	it.Proof, it.Policy = nil, nil
 	it.Stream = &factory.Stream{Started: now, Phases: loopPhases(*it)}
@@ -122,5 +123,6 @@ func RecheckItem(it *factory.Item) error {
 	}
 	it.State = factory.StateQueued
 	it.PublishStatus, it.Publishing = nil, false
+	it.PublishError = ""
 	return nil
 }

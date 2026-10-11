@@ -592,6 +592,7 @@ func localNew(st ItemStore, repo, words string, now time.Time, recipe Recipe) (i
 		Created: now,
 		Changed: now,
 		Cap:     c.Cap,
+		Ask:     &JobAsk{Text: title, At: now, Source: AskTUI},
 		Triage:  Triage{Type: GuessType(title)},
 		Stages:  CopyStages(recipe.For(KindIssue)),
 	}

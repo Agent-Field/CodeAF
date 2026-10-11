@@ -212,25 +212,148 @@ func (h *Handler) answer(w http.ResponseWriter, r *http.Request, it factory.Item
 		Commit string      `json:"commit"`
 		Yes    *bool       `json:"yes"`
 		Words  string      `json:"words"`
+		Choice string      `json:"choice"`
+		Reason string      `json:"reason"`
 		Expect *api.Expect `json:"expect,omitempty"`
 	}
 	if !h.decode(w, r, &body, false) || !h.fresh(w, r, it, "answer", body.Expect) {
 		return
 	}
-	if body.Yes == nil && strings.TrimSpace(body.Words) == "" {
-		h.fail(w, http.StatusUnprocessableEntity, "answer requires yes or words")
+	yes, words, ok := h.applyChoice(w, body.Yes, body.Words, body.Choice, body.Reason)
+	if !ok {
 		return
 	}
-	yes := body.Yes != nil && *body.Yes
 	if yes && it.QKind == factory.QKindApprove && !h.commitFresh(w, it, body.Commit) {
 		return
 	}
-	h.finish(w, h.recordAnswer(r, it, yes, body.Words))
+	if !h.mayAnswer(w, r, it) {
+		return
+	}
+	if factory.IsContinue(yes, words) && it.QKind == "cap" && h.config.Store != nil {
+		now := time.Now()
+		if h.workers != nil {
+			now = h.workers.now()
+		}
+		if err := h.config.Store.Update(it.ID, func(item *factory.Item) error {
+			run.NoteContinue(item, now)
+			return nil
+		}); h.failed(w, err) {
+			return
+		}
+	}
+	err := h.recordAnswer(r, it, yes, words)
+	if err != nil && factory.IsContinue(yes, words) && it.QKind == "cap" && h.config.Store != nil && strings.Contains(err.Error(), "is not waiting on you") {
+		if qerr := h.releaseCapWait(it.ID); h.failed(w, qerr) {
+			return
+		}
+		h.finish(w, h.recordContinued(r, it, words))
+		return
+	}
+	h.finish(w, err)
+}
+
+// applyChoice maps the wire's choice onto yes and words. send_back requires
+// a reason. An unknown choice is refused. yes or words alone still answer.
+func (h *Handler) applyChoice(w http.ResponseWriter, yes *bool, words, choice, reason string) (bool, string, bool) {
+	switch strings.ToLower(strings.TrimSpace(choice)) {
+	case "":
+	case factory.ChoiceContinue:
+		t := true
+		yes = &t
+		if strings.TrimSpace(words) == "" {
+			words = factory.ChoiceContinue
+		}
+	case factory.ChoiceTryOnceMore:
+		t := true
+		yes = &t
+		if strings.TrimSpace(words) == "" {
+			words = factory.ChoiceTryOnceMore
+		}
+	case factory.ChoiceCancel, "stop":
+		f := false
+		yes = &f
+		if strings.TrimSpace(words) == "" {
+			words = factory.ChoiceCancel
+		}
+	case factory.ChoiceSendBack:
+		why := strings.TrimSpace(reason)
+		if why == "" {
+			why = factory.SendBackReason(words)
+		}
+		if why == "" {
+			h.fail(w, http.StatusUnprocessableEntity, "send back requires a reason")
+			return false, "", false
+		}
+		f := false
+		yes = &f
+		words = factory.ChoiceSendBack + ": " + why
+	default:
+		h.fail(w, http.StatusUnprocessableEntity, "choice must be continue, try_once_more, send_back or cancel_job")
+		return false, "", false
+	}
+	if yes == nil && factory.IsContinue(false, words) {
+		t := true
+		yes = &t
+	}
+	if yes == nil && strings.TrimSpace(words) == "" {
+		h.fail(w, http.StatusUnprocessableEntity, "answer requires yes or words")
+		return false, "", false
+	}
+	return yes != nil && *yes, words, true
+}
+
+// mayAnswer refuses a job-person kind when the caller is not that person.
+// A job with no person yet, and a free question, are not this check.
+func (h *Handler) mayAnswer(w http.ResponseWriter, r *http.Request, it factory.Item) bool {
+	if !factory.JobPersonOnly(factory.NeedsKind(it)) {
+		return true
+	}
+	who := it.Person()
+	if who == "" {
+		return true
+	}
+	handle, err := h.callerHandle(r)
+	if h.failed(w, err) {
+		return false
+	}
+	if factory.NormalizeHandle(handle) == who {
+		return true
+	}
+	h.refuse(w, http.StatusForbidden, "only @"+who+" can answer this", "not_allowed", "@"+who, nil, h.withVersion(api.FromItem(it)).State)
+	return false
+}
+
+// releaseCapWait clears a spending question nobody is holding and queues the
+// job, so continue still raises the cap when KeepAnswer would refuse it.
+func (h *Handler) releaseCapWait(id int) error {
+	return h.config.Store.Update(id, func(it *factory.Item) error {
+		it.Question, it.QKind = "", ""
+		it.State = factory.StateQueued
+		if s := it.Stream; s != nil && s.Cur >= 0 && s.Cur < len(s.Phases) && s.Phases[s.Cur].State == factory.PhaseWaiting {
+			s.Phases[s.Cur].State = factory.PhaseRunning
+		}
+		return nil
+	})
+}
+
+func (h *Handler) recordContinued(r *http.Request, it factory.Item, words string) error {
+	if h.config.Record == nil {
+		return nil
+	}
+	handle, err := h.callerHandle(r)
+	if err != nil {
+		return err
+	}
+	_, err = h.config.Record.Append(r.Context(), record.Event{Kind: record.Answered, Job: it.ID, Handle: handle, Cost: jobCost(it), Detail: words})
+	return err
 }
 
 func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Item) {
 	var body api.Approve
 	if !h.decode(w, r, &body, true) || !h.commitFresh(w, it, body.Commit) || !h.fresh(w, r, it, "approve", body.Expect) || h.failed(w, h.approvalIdentity(r)) {
+		return
+	}
+	if !h.mayAnswer(w, r, it) {
 		return
 	}
 	// A CLAIM THE DOOR WOULD REFUSE NEVER BECOMES A RECEIPT. The check runs
@@ -244,6 +367,21 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 		if err := run.ApprovalRefused(&it, body.Edited); err != nil {
 			h.refuse(w, http.StatusConflict, err.Error(), "conflict", "", nil, h.withVersion(api.FromItem(it)).State)
 			return
+		}
+		// A PUBLISH THAT FAILED KEEPS THE APPROVAL ALREADY RECORDED. Retry
+		// publishes that same commit and does not write a second receipt.
+		if factory.NeedsKind(it) == factory.NeedsPublishFailed && h.config.Record != nil {
+			trailer, err := h.config.Record.Trailer(r.Context(), it.ID)
+			if h.failed(w, err) {
+				return
+			}
+			if run.ValidTrailer(trailer) {
+				if _, err = h.seam.SignOff(it.ID, body.Edited); h.failed(w, err) {
+					return
+				}
+				h.writeApproval(w, approvalEventID(trailer))
+				return
+			}
 		}
 		event, err := h.recordApproval(r, it, body.Edited)
 		if h.failed(w, err) {
@@ -427,6 +565,7 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
+	h.stampAsk(r, id, body.Title, body.Text)
 	if body.Autostart && h.failed(w, h.recordAction(r, factory.Item{ID: id}, record.AutoStarted, "", func() error { return h.seam.Launch(id) })) {
 		return
 	}
@@ -434,6 +573,47 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 		Factory api.Factory `json:"factory"`
 		ID      int         `json:"id"`
 	}{h.factory, id})
+}
+
+// stampAsk records the app's ask on a job this factory's store holds.
+// The body carries the person's words, never a cap.
+func (h *Handler) stampAsk(r *http.Request, id int, title, text string) {
+	if h.config.Store == nil {
+		return
+	}
+	if _, err := h.config.Store.Get(id); err != nil {
+		return
+	}
+	by, err := h.callerHandle(r)
+	if err != nil {
+		return
+	}
+	ask := strings.TrimSpace(text)
+	if ask == "" {
+		ask = strings.TrimSpace(title)
+	}
+	now := time.Now()
+	if h.workers != nil {
+		now = h.workers.now()
+	}
+	_ = h.config.Store.Update(id, func(it *factory.Item) error {
+		it.Ask = &factory.JobAsk{Text: ask, By: by, At: now, Source: factory.AskApp}
+		if it.Starter == "" && by != "" {
+			it.Starter = by
+		}
+		if strings.TrimSpace(it.Body) == "" {
+			it.Body = ask
+		}
+		return nil
+	})
+}
+
+func approvalEventID(trailer string) string {
+	fields := strings.Fields(trailer)
+	if len(fields) < 2 {
+		return ""
+	}
+	return fields[1]
 }
 
 func (h *Handler) setRepos(w http.ResponseWriter, r *http.Request) {

@@ -72,6 +72,9 @@ func PublishItem(it *factory.Item, edited bool, now time.Time) error {
 	if err := approveStored(it, edited, now); err != nil {
 		return err
 	}
+	// A retry of a publish that failed starts clean. The approval already
+	// recorded is the one this queue carries.
+	it.PublishError = ""
 	it.State = factory.StateQueued
 	it.MarkPublishing("queued", "", "", now)
 	loopSay(it, now, "said", "approved · publishing")
@@ -107,8 +110,10 @@ func ShipPublished(it *factory.Item, now time.Time) error {
 // commit, push and open the pull request, or post a comment for proof-only
 // work and pull request jobs, then ship the job with its receipt. It runs on its own
 // goroutine, so [Runner.Running] holds while it works and the worker keeps
-// beating; a publish that fails lands the job again with the reason on its
-// log, for the person to retry with the same approval.
+// beating; a publish that fails leaves the job landed, marks publishing
+// failed, and keeps the reason on its log and in PublishError. The approval
+// already recorded stays valid for that same commit, and retrying does not
+// ask for a second one.
 func (r *Runner) Publish(id int, trailer string) error {
 	trailer = strings.TrimSpace(trailer)
 	if !ValidTrailer(trailer) {
@@ -158,8 +163,13 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 	if err != nil {
 		_ = lp.write(c, func(it *factory.Item) error {
 			it.State = factory.StateLanded
+			detail := loopFirstLine(err.Error())
+			if detail == "" {
+				detail = "could not publish"
+			}
+			it.PublishError = detail
 			it.MarkPublishing("failed", publish.ErrorCode(err), strings.TrimSpace(publish.ErrorDetail(err)), now)
-			loopSay(it, now, "fail", "could not publish: "+loopFirstLine(err.Error()))
+			loopSay(it, now, "fail", "could not publish: "+detail)
 			return nil
 		})
 		return
@@ -172,6 +182,7 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 			it.Publish, url = "pr", receipt.pr.URL
 		}
 		it.State = factory.StateShipped
+		it.PublishError = ""
 		it.MarkPublishing("opened", "", "", now)
 		loopSay(it, now, "ok", "published · "+url)
 		return nil
@@ -322,6 +333,10 @@ func commitApproved(git Git, dir string, it factory.Item, trailer string) error 
 // claim, and the trailer as the last line.
 func PublishBody(it factory.Item, trailer string) string {
 	var b strings.Builder
+	if ask := factory.AskText(it); ask != "" {
+		b.WriteString(ask)
+		b.WriteString("\n\n")
+	}
 	if it.Kind == factory.KindIssue && it.Num > 0 {
 		fmt.Fprintf(&b, "Closes #%d.\n\n", it.Num)
 	}

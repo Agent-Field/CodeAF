@@ -381,6 +381,24 @@ func TestAPublishThatFailsLandsTheJobAgain(t *testing.T) {
 	if last := it.Stream.Log[len(it.Stream.Log)-1]; last.Tone != "fail" || last.Text != "could not publish: #12 has no remote to push to" {
 		t.Fatalf("last line = %+v", last)
 	}
+	if it.PublishError != "#12 has no remote to push to" {
+		t.Fatalf("publish error = %q", it.PublishError)
+	}
+}
+
+func TestPublishBodyStartsWithTheAsk(t *testing.T) {
+	local := PublishBody(factory.Item{Kind: factory.KindIssue, Num: 12, Title: "Fix it", Ask: &factory.JobAsk{Text: "Count once."}}, testTrailer)
+	if !strings.HasPrefix(local, "Count once.\n\n") || !strings.Contains(local, "Closes #12.") || !strings.HasSuffix(local, "\n"+testTrailer) {
+		t.Fatalf("local body = %q", local)
+	}
+	issue := PublishBody(factory.Item{Kind: factory.KindIssue, Origin: factory.OriginForge, Num: 12, URL: "https://github.com/acme/api/issues/12", Title: "Fix it", Body: "From the issue."}, testTrailer)
+	if !strings.HasPrefix(issue, "From the issue.\n\nCloses #12.") {
+		t.Fatalf("issue body = %q", issue)
+	}
+	plain := PublishBody(factory.Item{Kind: factory.KindIssue, Num: 12, Title: "Fix it"}, testTrailer)
+	if !strings.HasPrefix(plain, "Closes #12.") {
+		t.Fatalf("a job with no ask changed the body: %q", plain)
+	}
 }
 
 func TestTrailerHandle(t *testing.T) {

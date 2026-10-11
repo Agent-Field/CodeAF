@@ -278,6 +278,10 @@ func TestExpiryRequeuesAtTheDeadlineAndCanBePulledAgain(t *testing.T) {
 		t.Fatalf("at deadline: %+v, %v", expired, err)
 	}
 	f.state(t, it.ID, factory.StateQueued)
+	lost, err := f.store.Get(it.ID)
+	if err != nil || lost.Failure == nil || lost.Failure.Code != factory.CodeMachineLost || lost.Failure.Next != factory.FailureRequeued || lost.Failure.Detail != "the machine holding the work was lost" {
+		t.Fatalf("expiry failure: %+v %v", lost.Failure, err)
+	}
 	if got, err := f.desk.Expire(); err != nil || len(got) != 0 {
 		t.Fatalf("second expiry: %+v, %v", got, err)
 	}
@@ -318,6 +322,10 @@ func TestRequeueRequiresTheHolderAndKeepsThePerson(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.state(t, it.ID, factory.StateQueued)
+	released, err := f.store.Get(it.ID)
+	if err != nil || released.Failure != nil {
+		t.Fatalf("a voluntary requeue recorded a failure: %+v %v", released.Failure, err)
+	}
 	if _, err := f.desk.Pull(worker("desktop", "other")); !errors.Is(err, lease.ErrNoJob) {
 		t.Fatalf("person changed on release: %v", err)
 	}

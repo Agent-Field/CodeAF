@@ -1249,9 +1249,9 @@ var tuiWords = map[string]tuiWord{
 		why:    "the bottom line after y or n on a waiting item: the answer reached the runner",
 	},
 	"factoryRoundsAsk": {
-		screen: "one more round, or go on as is?",
+		screen: "try once more, send it back, or cancel the job?",
 		pkg:    "internal/factory/run",
-		why:    "the runner's question when a stage hits its max; the run answers it no, which goes on as is",
+		why:    "the runner's question when a stage hits its max; the run answers yes once, and a second ask fails rather than looping",
 	},
 	"factoryLandedLog": {
 		screen: "landed · proof sheet ready · your approval",

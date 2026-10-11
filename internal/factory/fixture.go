@@ -88,9 +88,11 @@ func Fixture(now time.Time) Snapshot {
 			Activity: []Event{{At: h(4), What: "opened by olu"}, {At: h(2), What: "commented by santosh"}},
 			Triage:   Triage{Type: "bug", Size: "M", Area: "messages", Readiness: 40, Est: 4, Read: "underspecified; two questions for the author first", Questions: []string{"which network, and how slow?", "does it happen on a fresh install too?"}, Priority: 4}},
 		{ID: 7, Repo: platform.Name, Num: 702, Kind: KindIssue, Title: "split from chat: spend ledger store, the write half", Author: "santosh", Tier: TierOwner, Origin: OriginChat, Created: h(2), Changed: h(2), State: StateNew, Cap: 8, Stages: stages(codeaf),
+			Ask:    &JobAsk{Text: "split from chat: spend ledger store, the write half", By: "santosh", At: h(2), Source: AskTUI},
 			Triage: Triage{Type: "feat", Size: "M", Area: "billing", Readiness: 90, Est: 6, Read: "your own chat wrote the brief; sized from it"}},
 		{ID: 8, Repo: codeaf.Name, Num: 1540, Kind: KindIssue, Title: "meter crashes at midnight rollover", Author: "santosh", Tier: TierOwner, Origin: OriginTerminal, Synced: false, Created: m(12), Changed: m(12), State: StateNew, Cap: 5, Stages: stages(codeaf),
 			Body:   "Written in the terminal. Not on GitHub yet.",
+			Ask:    &JobAsk{Text: "Written in the terminal. Not on GitHub yet.", By: "santosh", At: m(12), Source: AskTUI},
 			Triage: Triage{Type: "bug", Size: "S", Area: "tui", Readiness: 75, Est: 2, Read: "your own words; no triage needed beyond sizing", Priority: 3}},
 		{ID: 9, Repo: codeaf.Name, Num: 1661, URL: "https://github.com/agentfield/codeaf/issues/1661", Kind: KindIssue, Title: "probes fire once, then retire", Author: "santosh", Tier: TierOwner, Origin: OriginForge, Created: h(3), Changed: h(1), State: StateLanded, Stream: landed, Cap: 5, Stages: stages(codeaf), Diff: "+218 −44",
 			Proof: []Claim{

@@ -330,7 +330,7 @@ func TestCommentReceiptCannotApproveProof(t *testing.T) {
 func TestWorkerDiffReportsOneQuestionOnTheWire(t *testing.T) {
 	for _, kind := range []string{factory.QKindApprove, "step", "cap", ""} {
 		t.Run("kind="+kind, func(t *testing.T) {
-			f := workerSetup(t)
+			f := workerSetupAs(t, "sam")
 			job := f.add(t, "sam")
 			worker := f.attach(t, "sam")
 			pulled := f.pull(t, worker)

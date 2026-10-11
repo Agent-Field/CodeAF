@@ -49,8 +49,7 @@ const (
 	sayStarted   = "%s started"                                 // plan started
 	sayDone      = "%s done"                                    // plan done · 2m · $0.04 · what it said
 	sayAsking    = "asking you: %s"                             // asking you: plan is ready · go, or change it?
-	sayFailed    = "%s failed%s"                                // test failed 1 of 2, said before the question
-	sayFailedAsk = "%s · asking you: %s"                        // test failed 1 of 2 · asking you: …
+	sayFailedAsk = "%s · asking you: %s"                        // a lead, then the question
 	sayCapAsk    = "budget of %s reached · asking you"          // budget of $5 reached · asking you
 	sayAnswered  = "answered: %s"                               // answered: yes · answered: no · answered: <words>
 	sayChanges   = "changes requested: %s"                      // the person's request changes
@@ -372,30 +371,6 @@ func askLine(lead, question string) string {
 		return fmt.Sprintf(sayFailedAsk, lead, question)
 	}
 	return fmt.Sprintf(sayAsking, question)
-}
-
-// failedLead is a stage's failure as the manager says it before a question:
-// `test failed 1 of 2`, `write failed`.
-func failedLead(name, detail string) string {
-	if detail = strings.TrimSpace(detail); detail != "" {
-		detail = " " + detail
-	}
-	return fmt.Sprintf(sayFailed, name, detail)
-}
-
-// failCount is a round's shortfall in the fewest words: `1 of 2` for claims
-// shown, else what [shortfall] says.
-func failCount(res factory.StageResult) string {
-	if res.Done && res.Findings == 0 && res.Exit == 0 && len(res.Claims) > 0 {
-		shown := 0
-		for _, cl := range res.Claims {
-			if cl.OK && strings.TrimSpace(cl.Evidence) != "" {
-				shown++
-			}
-		}
-		return strconv.Itoa(shown) + " of " + strconv.Itoa(len(res.Claims))
-	}
-	return shortfall(res)
 }
 
 // doneLine is `plan done · 2m · $0.04 · what it said`, each part left out when

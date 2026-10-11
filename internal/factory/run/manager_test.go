@@ -147,25 +147,24 @@ func TestTheManagerHearsEveryStageInOrderInTheFloorsWords(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	q := "test is not proven after 1 round: 1 of 2 claims shown · one more round, or go on as is?"
+	q := "test is not proven after 1 round: 1 of 2 claims shown · try once more, send it back, or cancel the job?"
 	g.asked(id, q)
 	m := "manager-" + strconv.Itoa(id)
-	talk.waitSaid(t, m, "test failed 1 of 2 · asking you: "+q)
+	talk.waitSaid(t, m, "asking you: "+q)
 	if err := g.r.Answer(id, false, ""); err != nil {
 		t.Fatal(err)
 	}
-	g.waitState(id, factory.StateLanded)
-	talk.waitSaid(t, m, sayLanded)
+	g.waitState(id, factory.StateNew)
+	talk.waitSaid(t, m, sayStopped)
 	want := []string{
 		"plan started",
 		"plan done · $0.04 · Read the ledger first.",
 		"write started",
 		"write done · $0.27 · ledger.go +9 -1",
 		"test started",
-		"test failed 1 of 2 · asking you: " + q,
+		"asking you: " + q,
 		"answered: no",
-		"test done · 1 passed, 1 failed",
-		"landed · proof sheet ready · your approval",
+		"stopped",
 	}
 	if got := talk.lines(m); strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("the manager heard:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))

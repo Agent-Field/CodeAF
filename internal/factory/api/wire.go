@@ -39,14 +39,15 @@ const ReasonNoVisibleRepos = "no_visible_repos"
 
 // Queue is `GET /v1/queue`: the whole floor as one person sees it.
 type Queue struct {
-	Factory  Factory    `json:"factory"`
-	Since    Since      `json:"since"`
-	Jobs     []Job      `json:"jobs"`
-	Repos    []Repo     `json:"repos"`
-	Strip    []Cell     `json:"strip"`
-	Capacity Capacity   `json:"capacity"`
-	Me       string     `json:"me"`
-	Desk     *QueueDesk `json:"desk,omitempty"`
+	Factory  Factory         `json:"factory"`
+	Since    Since           `json:"since"`
+	Jobs     []Job           `json:"jobs"`
+	Repos    []Repo          `json:"repos"`
+	Strip    []Cell          `json:"strip"`
+	Capacity Capacity        `json:"capacity"`
+	Me       string          `json:"me"`
+	Desk     *QueueDesk      `json:"desk,omitempty"`
+	NeedsYou []NeedsYouGroup `json:"needs_you,omitempty"`
 	// Reason is set only for a signed-in viewer who can see no repository.
 	Reason string `json:"reason,omitempty"`
 }
@@ -246,10 +247,15 @@ type Job struct {
 	Claims           []Claim    `json:"claims,omitempty"`
 	// PlannedFiles are the paths the plan step named, so the brief can say
 	// how many it planned against how many the change touched.
-	PlannedFiles []string   `json:"planned_files,omitempty"`
-	Questions    []Question `json:"questions,omitempty"`
-	Cost         float64    `json:"cost"`
-	CreatedAt    time.Time  `json:"created_at"`
+	PlannedFiles  []string       `json:"planned_files,omitempty"`
+	Questions     []Question     `json:"questions,omitempty"`
+	NeedsYou      *NeedsYou      `json:"needs_you,omitempty"`
+	SpendingLimit *SpendingLimit `json:"spending_limit,omitempty"`
+	Failure       *Failure       `json:"failure,omitempty"`
+	Ask           *JobAsk        `json:"ask,omitempty"`
+	PublishError  string         `json:"publish_error,omitempty"`
+	Cost          float64        `json:"cost"`
+	CreatedAt     time.Time      `json:"created_at"`
 	// HeldBy is the machine working this job now. It is set from the live
 	// lease, including when that machine belongs to someone else: the roster
 	// on /v1/me does not list another person's machines.
@@ -260,6 +266,72 @@ type Job struct {
 	HeadCommit string              `json:"head_commit,omitempty"`
 	Publishing *factory.Publishing `json:"publishing,omitempty"`
 	Desk       *JobDesk            `json:"desk,omitempty"`
+}
+
+// NeedsYou is why a job is waiting, and since when. question is set for a
+// free question and for out of attempts. The other kinds carry no question.
+type NeedsYou struct {
+	Kind         string         `json:"kind"`
+	Since        time.Time      `json:"since"`
+	WhoCanAnswer string         `json:"who_can_answer,omitempty"`
+	Question     *NeedsQuestion `json:"question,omitempty"`
+}
+
+// NeedsQuestion is the ask on a needs-you kind that is a question.
+// who_can_answer is anyone_with_repo or job_person. answered is set once
+// somebody has answered; an open ask leaves it out.
+type NeedsQuestion struct {
+	ID           string   `json:"id"`
+	Kind         string   `json:"kind"`
+	Text         string   `json:"text,omitempty"`
+	Options      []string `json:"options,omitempty"`
+	FromStep     string   `json:"from_step,omitempty"`
+	Asks         string   `json:"asks,omitempty"`
+	WhoCanAnswer string   `json:"who_can_answer"`
+	Answered     *Answer  `json:"answered,omitempty"`
+}
+
+// SpendingLimit is the cap a continue answer would raise. next_limit comes
+// from codeaf. The app never sends it. currency is USD.
+type SpendingLimit struct {
+	Limit     float64 `json:"limit"`
+	Spent     float64 `json:"spent"`
+	NextLimit float64 `json:"next_limit"`
+	Currency  string  `json:"currency"`
+}
+
+// Failure is a step that errored. next is requeued or stopped. It is not a
+// question, and the app shows it as a failure.
+type Failure struct {
+	Step   string    `json:"step,omitempty"`
+	Code   string    `json:"code"`
+	Detail string    `json:"detail,omitempty"`
+	Next   string    `json:"next"`
+	At     time.Time `json:"at"`
+}
+
+// JobAsk is how the job was requested. A GitHub issue fills issue and text.
+// Work typed in the app or the TUI fills text, by, at and source.
+type JobAsk struct {
+	Text   string     `json:"text,omitempty"`
+	By     string     `json:"by,omitempty"`
+	At     *time.Time `json:"at,omitempty"`
+	Source string     `json:"source,omitempty"`
+	Issue  *AskIssue  `json:"issue,omitempty"`
+}
+
+// AskIssue is the GitHub issue a job was started from.
+type AskIssue struct {
+	Number int    `json:"number"`
+	URL    string `json:"url,omitempty"`
+	Title  string `json:"title,omitempty"`
+}
+
+// NeedsYouGroup is one needs-you kind and the jobs waiting in it, in floor
+// order. Kinds with nothing waiting are left out.
+type NeedsYouGroup struct {
+	Kind string `json:"kind"`
+	Jobs []int  `json:"jobs"`
 }
 
 // JobDesk is what the TUI page reads off a job that the dashboard does not

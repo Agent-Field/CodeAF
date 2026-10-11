@@ -329,6 +329,13 @@ func holder(doc *document, id int, worker string) (*Lease, error) {
 }
 
 func (d *Desk) queue(id int) error {
+	return d.queueJob(id, time.Time{})
+}
+
+// queueJob returns a running job to the queue. lost is set when the hold
+// expired: that is the machine lost after the lease's own wait, and the job
+// records a failure. A worker letting go passes the zero time and records none.
+func (d *Desk) queueJob(id int, lost time.Time) error {
 	// A no-op must not stamp Changed or append activity to finished work.
 	unchanged := errors.New("factory lease: job is not running")
 	err := d.store.Update(id, func(it *factory.Item) error {
@@ -336,6 +343,17 @@ func (d *Desk) queue(id int) error {
 			return unchanged
 		}
 		it.State = factory.StateQueued
+		if !lost.IsZero() {
+			step := ""
+			if it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
+				step = it.Stream.Phases[it.Stream.Cur].Name
+			}
+			it.Failure = &factory.Failure{
+				Step: step, Code: factory.CodeMachineLost,
+				Detail: "the machine holding the work was lost",
+				Next:   factory.FailureRequeued, At: lost,
+			}
+		}
 		return nil
 	})
 	if errors.Is(err, store.ErrNotFound) || errors.Is(err, unchanged) {
@@ -353,7 +371,7 @@ func (d *Desk) expire(doc *document, now time.Time) ([]Lease, error) {
 			kept = append(kept, held)
 			continue
 		}
-		if err := d.queue(held.Job); err != nil {
+		if err := d.queueJob(held.Job, now); err != nil {
 			return nil, fmt.Errorf("factory lease: requeue job %d: %w", held.Job, err)
 		}
 		expired = append(expired, held)

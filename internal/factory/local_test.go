@@ -122,6 +122,9 @@ func TestLocalNewLiftsChips(t *testing.T) {
 	if it.Cap != 8 || len(it.Stages) < 2 || it.Stages[1].Name != factory.ApproveName || factory.StageIndex(it.Stages, "approve2") >= 0 {
 		t.Fatalf("stages %+v cap %v; want approve after plan, 8", it.Stages, it.Cap)
 	}
+	if it.Ask == nil || it.Ask.Text != "fix the ledger double count" || it.Ask.Source != factory.AskTUI || it.Ask.At.IsZero() {
+		t.Fatalf("ask = %+v", it.Ask)
+	}
 	if it.Origin != factory.OriginTerminal || it.State != factory.StateNew || it.Tier != factory.TierOwner || it.Kind != factory.KindIssue || it.Num != 0 {
 		t.Fatalf("New = %+v", it)
 	}

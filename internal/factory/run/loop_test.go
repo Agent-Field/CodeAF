@@ -330,31 +330,59 @@ func TestUntilCleanWithMaxTwoLoopsTwiceThenAsks(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	q := "review is not clean after 2 rounds: 2 findings · one more round, or go on as is?"
+	q := "review is not clean after 2 rounds: 2 findings · try once more, send it back, or cancel the job?"
 	it := g.asked(id, q)
-	if calls.Load() != 2 || it.QKind != "scope" {
+	if calls.Load() != 2 || it.QKind != factory.QKindOutOfAttempts {
 		t.Fatalf("calls %d, kind %q", calls.Load(), it.QKind)
 	}
-	if ph := it.Stream.Phases[0]; ph.State != factory.PhaseFailed || ph.Note != "review is not clean after 2 rounds" || ph.Round != 2 {
+	if ph := it.Stream.Phases[0]; ph.State != factory.PhaseWaiting || ph.Note != "review is not clean after 2 rounds" || ph.Round != 2 {
 		t.Fatalf("phase = %+v", ph)
 	}
 	if err := g.r.Answer(id, true, ""); err != nil {
 		t.Fatal(err)
 	}
-	g.asked(id, "review is not clean after 3 rounds: 2 findings · one more round, or go on as is?")
+	g.asked(id, "review is not clean after 3 rounds: 2 findings · try once more, send it back, or cancel the job?")
 	if calls.Load() != 3 {
 		t.Fatalf("one more round ran %d calls", calls.Load())
 	}
 	if err := g.r.Answer(id, false, ""); err != nil {
 		t.Fatal(err)
 	}
-	it = g.waitState(id, factory.StateLanded)
-	if it.Stream.Phases[0].State != factory.PhaseDone || !logHas(it, "going on as is · review is not clean after 3 rounds") {
-		t.Fatalf("going on = %+v", it.Stream)
+	it = g.waitState(id, factory.StateNew)
+	if it.Question != "" || it.Failure != nil || !logHas(it, "stopped · branch kept") {
+		t.Fatalf("cancel = %+v failure %+v", it.Stream, it.Failure)
 	}
 }
 
-func TestAFailedExecutorAsksToSkipOrStop(t *testing.T) {
+func TestOutOfAttemptsSendBackRunsThePreviousStep(t *testing.T) {
+	g := newRig(t, map[factory.StageKind]Executor{
+		factory.StageChat: ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
+			if job.Stage.Name == "review" {
+				return factory.StageResult{Done: true, Findings: 1}, nil
+			}
+			return done(""), nil
+		}),
+	}, nil)
+	review := chat("review")
+	review.Until, review.Max = "clean", 1
+	id := g.add("tidy", chat("plan"), review)
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	q := "review is not clean after 1 round: 1 finding · try once more, send it back, or cancel the job?"
+	g.asked(id, q)
+	if err := g.r.Answer(id, false, "send_back: use the other file"); err != nil {
+		t.Fatal(err)
+	}
+	it := g.wait(id, "sent back and asking again", func(it factory.Item) bool {
+		return logHas(it, "sent back to plan: use the other file") && it.Question == q && it.Stream != nil && it.Stream.Phases[0].Round >= 2
+	})
+	if it.Stream.Phases[0].Round < 2 {
+		t.Fatalf("plan did not run again: %+v", it.Stream.Phases[0])
+	}
+}
+
+func TestAFailedExecutorStopsWithAFailure(t *testing.T) {
 	g := newRig(t, map[factory.StageKind]Executor{
 		factory.StageChat: ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
 			if job.Stage.Name == "write" {
@@ -367,29 +395,24 @@ func TestAFailedExecutorAsksToSkipOrStop(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	g.asked(id, "write did not finish: the worktree is gone · skip it, or stop?")
-	if err := g.r.Answer(id, true, ""); err != nil {
-		t.Fatal(err)
+	it := g.waitState(id, factory.StateNew)
+	if it.Question != "" || it.Failure == nil || it.Failure.Step != "write" || it.Failure.Code != factory.CodeToolError || it.Failure.Next != factory.FailureStopped || it.Failure.Detail != "the worktree is gone" {
+		t.Fatalf("failure = %+v question %q", it.Failure, it.Question)
 	}
-	it := g.waitState(id, factory.StateLanded)
-	if it.Stream.Phases[0].State != factory.PhaseFailed || it.Stream.Phases[1].State != factory.PhaseDone {
+	if it.Stream.Phases[0].State != factory.PhaseFailed {
 		t.Fatalf("phases = %+v", it.Stream.Phases)
 	}
 
-	// A kind nothing runs fails its stage with a sentence, never a panic.
+	// A kind nothing runs is the same failure, never a question and never a panic.
 	check := factory.Stage{Name: "test", Kind: factory.StageCheck, Ask: "go test ./...", Until: "green"}
 	id = g.add("two", check, chat("review"))
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	it = g.asked(id, "test cannot run here · skip it, or stop?")
-	if it.Stream.Phases[0].Note != "codeaf cannot run a check stage here" {
-		t.Fatalf("note = %q", it.Stream.Phases[0].Note)
+	it = g.waitState(id, factory.StateNew)
+	if it.Question != "" || it.Failure == nil || it.Failure.Code != factory.CodeToolError || it.Failure.Detail != "codeaf cannot run a check stage here" || it.Failure.Next != factory.FailureStopped {
+		t.Fatalf("cannot-run failure = %+v question %q", it.Failure, it.Question)
 	}
-	if err := g.r.Answer(id, false, ""); err != nil {
-		t.Fatal(err)
-	}
-	g.waitState(id, factory.StateNew)
 }
 
 func TestThePlanEditIsAppliedUnderAdaptAndAskedUnderAsk(t *testing.T) {

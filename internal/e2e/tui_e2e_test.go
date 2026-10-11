@@ -2664,8 +2664,8 @@ const factoryRunPatience = 26 * time.Minute
 // GitHub, `r` on #1 launches it, and every stage of codeaf's default recipe
 // runs as a conversation in the checkout until the item lands with its proof
 // sheet. A question the run asks is answered the way a person in a hurry
-// would: yes, except `one more round` of a stage at its max, which is no (go
-// on as is), so a review that keeps one finding open cannot loop the bill.
+// would: yes. A stage at its max asks to try once more; the run answers yes
+// once, and a second ask fails the test rather than looping the bill.
 //
 // WHAT IS ASSERTED IS WHAT THE RUN LEFT, NOT WHAT THE MODEL SAID: the row
 // under LANDED, a plan line and a test line in the item's stream, the landed
@@ -2740,6 +2740,7 @@ func testFactoryRunsAnIssue(t *testing.T) {
 
 	deadline := time.Now().Add(factoryRunPatience)
 	var it factoryRunItem
+	roundsAsked := false
 	for {
 		it = factoryItemNum(t, home, 1)
 		if it.State == "landed" {
@@ -2759,7 +2760,10 @@ func testFactoryRunsAnIssue(t *testing.T) {
 			}
 			key := "y"
 			if strings.Contains(it.Question, say(t, "factoryRoundsAsk")) {
-				key = "n"
+				if roundsAsked {
+					t.Fatalf("the run asked for another round again (%q); refusing to loop", it.Question)
+				}
+				roundsAsked = true
 			}
 			t.Logf("the run asked %q · answering %s", it.Question, key)
 			r.keys(key)

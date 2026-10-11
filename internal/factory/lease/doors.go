@@ -178,6 +178,7 @@ func (d *Doors) SignOff(id int, edited bool) (bool, error) {
 		}
 		if it.PublishStatus != nil && it.PublishStatus.State == "failed" {
 			it.State = factory.StateQueued
+			it.PublishError = ""
 			it.MarkPublishing("queued", "", "", now)
 		} else if err := run.PublishItem(it, edited, now); err != nil {
 			return false, err

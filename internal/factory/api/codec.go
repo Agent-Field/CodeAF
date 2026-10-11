@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -20,11 +21,31 @@ func FromSnapshot(s factory.Snapshot, me string) Queue {
 		Strip:    strip(jobs),
 		Capacity: Capacity{Benches: s.Benches, Daily: s.Daily, Rail: s.Rail, Queued: s.Count(factory.StateQueued)},
 		Me:       me,
+		NeedsYou: groupNeedsYou(jobs),
 		Desk: &QueueDesk{
 			Now: s.Now, Sources: mapList(s.Sources, fromSource), Busy: s.Busy, BusyAll: s.BusyAll,
 			LastReadCost: s.LastReadCost, Marked: s.Marked, Checkouts: s.Checkouts,
 		},
 	}
+}
+
+// groupNeedsYou buckets waiting jobs by kind, in the fixed enum order.
+// A kind with no job is omitted, and the job ids stay in floor order.
+func groupNeedsYou(jobs []Job) []NeedsYouGroup {
+	buckets := map[string][]int{}
+	for _, j := range jobs {
+		if j.NeedsYou == nil || j.NeedsYou.Kind == "" {
+			continue
+		}
+		buckets[j.NeedsYou.Kind] = append(buckets[j.NeedsYou.Kind], j.ID)
+	}
+	var out []NeedsYouGroup
+	for _, kind := range factory.NeedsYouKinds {
+		if ids := buckets[kind]; len(ids) > 0 {
+			out = append(out, NeedsYouGroup{Kind: kind, Jobs: ids})
+		}
+	}
+	return out
 }
 
 // ToSnapshot is the inverse a client seam's Load answers: the floor rebuilt
@@ -97,7 +118,81 @@ func FromItem(it factory.Item) Job {
 			j.Step.Name = st.Phases[st.Cur].Name
 		}
 	}
+	j.NeedsYou = needsYou(it)
+	j.SpendingLimit = spendingLimit(it)
+	j.Failure = failureOf(it)
+	j.Ask = jobAsk(it)
+	j.PublishError = it.PublishError
 	return j
+}
+
+func needsYou(it factory.Item) *NeedsYou {
+	kind := factory.NeedsKind(it)
+	if kind == "" {
+		return nil
+	}
+	ny := &NeedsYou{Kind: kind, Since: factory.NeedsSince(it), WhoCanAnswer: factory.WhoCanAnswer(kind)}
+	if kind == factory.NeedsQuestion || kind == factory.NeedsOutOfAttempts {
+		ny.Question = needsQuestion(it)
+	}
+	return ny
+}
+
+func needsQuestion(it factory.Item) *NeedsQuestion {
+	form, options, who := factory.QuestionForm(it)
+	q := &NeedsQuestion{
+		ID: itQuestionID(it.ID), Kind: form, Text: it.Question, Options: options, WhoCanAnswer: who,
+	}
+	if it.Question == "" && it.Asking != nil {
+		q.Text = it.Asking.Question
+	}
+	if it.Asking != nil && it.Asking.Stage != "" {
+		q.FromStep = it.Asking.Stage
+	} else if st := it.Stream; st != nil && st.Cur >= 0 && st.Cur < len(st.Phases) {
+		q.FromStep = st.Phases[st.Cur].Name
+	}
+	if asks := it.Person(); asks != "" {
+		q.Asks = asks
+	}
+	return q
+}
+
+func itQuestionID(id int) string { return fmt.Sprintf("q%d", id) }
+
+func spendingLimit(it factory.Item) *SpendingLimit {
+	if factory.NeedsKind(it) != factory.NeedsSpendingLimit {
+		return nil
+	}
+	spent := 0.0
+	if it.Stream != nil {
+		spent = it.Stream.Spent
+	}
+	return &SpendingLimit{Limit: it.Cap, Spent: spent, NextLimit: factory.NextJobCap(it.Cap), Currency: factory.CurrencyUSD}
+}
+
+func failureOf(it factory.Item) *Failure {
+	if it.Failure == nil {
+		return nil
+	}
+	f := it.Failure
+	return &Failure{Step: f.Step, Code: f.Code, Detail: f.Detail, Next: f.Next, At: f.At}
+}
+
+// jobAsk prefers the stored ask. A GitHub issue with no stored ask is derived
+// and is not written back, so a round trip cannot invent a second copy.
+func jobAsk(it factory.Item) *JobAsk {
+	if it.Ask != nil {
+		a := &JobAsk{Text: it.Ask.Text, By: it.Ask.By, Source: it.Ask.Source}
+		if !it.Ask.At.IsZero() {
+			at := it.Ask.At
+			a.At = &at
+		}
+		return a
+	}
+	if !factory.GitHubIssue(it) {
+		return nil
+	}
+	return &JobAsk{Text: it.Body, Issue: &AskIssue{Number: it.Num, URL: it.URL, Title: it.Title}}
 }
 
 // ToItem is one job as an item.
@@ -130,6 +225,16 @@ func ToItem(j Job) factory.Item {
 		it.Draft = *j.Draft
 	}
 	it.AskedFirstReason = j.AskedFirstReason
+	it.PublishError = j.PublishError
+	if a := j.Ask; a != nil && a.Issue == nil {
+		it.Ask = &factory.JobAsk{Text: a.Text, By: a.By, Source: a.Source}
+		if a.At != nil {
+			it.Ask.At = *a.At
+		}
+	}
+	if f := j.Failure; f != nil {
+		it.Failure = &factory.Failure{Step: f.Step, Code: f.Code, Detail: f.Detail, Next: f.Next, At: f.At}
+	}
 	it.Stages, it.Stream = unsteps(j)
 	unquestions(&it, j.Questions)
 	return it
@@ -449,8 +554,11 @@ func annotateQuestion(q *Question, it factory.Item) {
 			q.Spent = it.Stream.Spent
 		}
 		if it.Cap > 0 {
-			q.NextLimit = it.Cap * 2
+			q.NextLimit = factory.NextJobCap(it.Cap)
 		}
+	}
+	if it.QKind == factory.QKindOutOfAttempts && len(q.Options) == 0 {
+		q.Options = append([]string(nil), factory.OutOfAttemptOptions...)
 	}
 	if len(q.Options) == 0 && it.Asking == nil && (q.Kind == "cap" || q.Kind == "max_rounds") {
 		q.Options = []string{"yes", "no"}
