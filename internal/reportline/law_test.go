@@ -68,13 +68,13 @@ func TestEverySurfaceThatQuotesAReportRoutesThroughFirstProse(t *testing.T) {
 			}
 			if _, watched := mustRoute[fn.Name.Name]; watched {
 				seen[fn.Name.Name] = true
-				if bodyCallsSanctionedReader(fn.Body) {
+				if bodyCallsAny(fn.Body, "FirstProse", "firstProseLine") {
 					mustRoute[fn.Name.Name] = true
 				}
 			}
 			if fn.Name.Name == "firstProseLine" {
 				wrapperSeen = true
-				if bodyCallsFirstProse(fn.Body) {
+				if bodyCallsAny(fn.Body, "FirstProse") {
 					wrapperReachesFirstProse = true
 				}
 			}
@@ -101,9 +101,13 @@ func TestEverySurfaceThatQuotesAReportRoutesThroughFirstProse(t *testing.T) {
 	}
 }
 
-// bodyCallsSanctionedReader reports whether body calls reportline.FirstProse or
-// the tui3 wrapper firstProseLine.
-func bodyCallsSanctionedReader(body *ast.BlockStmt) bool {
+// bodyCallsAny reports whether body contains a call whose function name — a bare
+// identifier or the selector's final name — is one of names.
+func bodyCallsAny(body *ast.BlockStmt, names ...string) bool {
+	allow := make(map[string]bool, len(names))
+	for _, name := range names {
+		allow[name] = true
+	}
 	found := false
 	ast.Inspect(body, func(node ast.Node) bool {
 		call, ok := node.(*ast.CallExpr)
@@ -112,36 +116,9 @@ func bodyCallsSanctionedReader(body *ast.BlockStmt) bool {
 		}
 		switch fun := call.Fun.(type) {
 		case *ast.SelectorExpr:
-			if fun.Sel.Name == "FirstProse" {
-				found = true
-			}
+			found = found || allow[fun.Sel.Name]
 		case *ast.Ident:
-			if fun.Name == "firstProseLine" || fun.Name == "FirstProse" {
-				found = true
-			}
-		}
-		return true
-	})
-	return found
-}
-
-// bodyCallsFirstProse reports whether body calls FirstProse by selector or name.
-func bodyCallsFirstProse(body *ast.BlockStmt) bool {
-	found := false
-	ast.Inspect(body, func(node ast.Node) bool {
-		call, ok := node.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-		switch fun := call.Fun.(type) {
-		case *ast.SelectorExpr:
-			if fun.Sel.Name == "FirstProse" {
-				found = true
-			}
-		case *ast.Ident:
-			if fun.Name == "FirstProse" {
-				found = true
-			}
+			found = found || allow[fun.Name]
 		}
 		return true
 	})
