@@ -14,7 +14,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
-var remoteJobDoors = []string{"Pause", "SetStage", "AddStage", "SetCap", "SetEffort", "Edit", "Refresh", "Talk", "Shape", "Sync", "AskAuthor", "BankStages", "Open"}
+// Shape is on the wire: an attached window posts it, and the factory runs the
+// turn or leaves it on the holding worker's lease. It is not a local floor door.
+var remoteJobDoors = []string{"Pause", "SetStage", "AddStage", "SetCap", "SetEffort", "Edit", "Refresh", "Talk", "Sync", "AskAuthor", "BankStages", "Open"}
 
 func assertRemoteJobDoorsNil(t *testing.T, seam factory.Seam) {
 	t.Helper()
@@ -36,7 +38,7 @@ func TestFactoryRemoteAttachmentHidesJobDoorsInBothLaunches(t *testing.T) {
 	for _, seam := range []factory.Seam{launch, attached} {
 		assertRemoteJobDoorsNil(t, seam)
 		assertRemoteJobDoorsNil(t, seam.Job(1))
-		if seam.Launch == nil || seam.Hold == nil || seam.SetRepos == nil || seam.Clone == nil {
+		if seam.Launch == nil || seam.Hold == nil || seam.Shape == nil || seam.SetRepos == nil || seam.Clone == nil {
 			t.Fatal("the remote guard removed a wired or repository door")
 		}
 	}
