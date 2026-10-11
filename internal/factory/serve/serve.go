@@ -173,6 +173,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if r.URL.Path != "/access" && r.URL.Path != "/v1/about" && !h.allowed(r) {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="factory"`)
+		// A secret that was sent and refused names why. A request with no
+		// secret keeps the sentence that says how to sign in.
+		if token := bearer(r); token != "" {
+			h.refuseToken(w, token)
+			return
+		}
 		h.fail(w, http.StatusUnauthorized, "a bearer access token or live session is required; open /access to enter the token")
 		return
 	}
@@ -265,7 +271,12 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	handle, err := h.callerHandle(r)
+	if h.failed(w, err) {
+		return
+	}
 	jobs := []api.Job{h.withVersion(api.FromItem(it))}
+	jobs[0].Can = api.CanFor(it, handle)
 	if _, _, err := h.applyPresence(jobs); h.failed(w, err) {
 		return
 	}

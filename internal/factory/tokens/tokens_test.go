@@ -43,7 +43,7 @@ func TestAddRemoveRoundTrip(t *testing.T) {
 		t.Fatalf("second remove = %v", err)
 	}
 	got, err = Load(path)
-	if err != nil || len(got) != 0 {
+	if err != nil || len(got) != 1 || !got[0].Revoked || got[0].Token != "" || !got[0].Matches(row.Token) {
 		t.Fatalf("after remove = %+v, %v", got, err)
 	}
 }

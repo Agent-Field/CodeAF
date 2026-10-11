@@ -1,6 +1,7 @@
 package factory
 
 import (
+	"strconv"
 	"strings"
 	"time"
 )
@@ -31,6 +32,14 @@ const (
 	CodeMachineLost    = "machine_lost"
 	FailureRequeued    = "requeued"
 	FailureStopped     = "stopped"
+	// RoundLinesMost is how many per-round lines one step keeps. A loop's
+	// own max is the bound when it is smaller. The list cannot grow with a
+	// report that names a huge round.
+	RoundLinesMost     = 32
+	LinkExpired        = "expired"
+	LinkRevoked        = "revoked"
+	LinkUnknown        = "unknown"
+	ReasonNotJobPerson = "not_job_person"
 	AskApp             = "app"
 	AskTUI             = "tui"
 	CurrencyUSD        = "USD"
@@ -63,13 +72,40 @@ type JobAsk struct {
 
 // Failure is a step that errored. It is not a question and it does not wait
 // for an answer. Next is requeued when the machine was lost, and stopped
-// when the step itself errored.
+// when the step itself errored. Attempts is how many tries that step had
+// already made. Machine is the one that was holding the work.
 type Failure struct {
-	Step   string    `json:",omitempty"`
-	Code   string    `json:",omitempty"`
-	Detail string    `json:",omitempty"`
-	Next   string    `json:",omitempty"`
-	At     time.Time `json:",omitempty"`
+	Step     string    `json:",omitempty"`
+	Code     string    `json:",omitempty"`
+	Detail   string    `json:",omitempty"`
+	Attempts int       `json:",omitempty"`
+	Machine  string    `json:",omitempty"`
+	Next     string    `json:",omitempty"`
+	At       time.Time `json:",omitempty"`
+}
+
+// RoundLine is one finished try of a loop step. The step keeps one line per
+// round, bounded by RoundCap, so out of attempts can show what each try did.
+type RoundLine struct {
+	Round   int       `json:",omitempty"`
+	Summary string    `json:",omitempty"`
+	At      time.Time `json:",omitempty"`
+}
+
+// Acts is who may use each verb on this job. It is computed for one caller.
+// The job's person may approve, run again, cancel the job and retry
+// publishing. A plain question and a reply are anyone who can see the repo.
+// Spending and out of attempts are the job's person, and that is Answer.
+// AssignToMe is an unassigned job. A job with no person yet is open to the
+// caller for the job-person verbs.
+type Acts struct {
+	Approve      bool
+	RunAgain     bool
+	CancelJob    bool
+	RetryPublish bool
+	Answer       bool
+	AssignToMe   bool
+	Reply        bool
 }
 
 // NextJobCap is the ceiling a continue answer allows. THE NUMBER COMES FROM
@@ -293,4 +329,114 @@ func firstLine(s string) string {
 		s = strings.TrimSpace(s[:i])
 	}
 	return s
+}
+
+// RoundSummary is the one line a finished round leaves on the step.
+func RoundSummary(res StageResult) string {
+	if line := firstLine(res.Output); line != "" {
+		return line
+	}
+	switch {
+	case res.Findings == 1:
+		return "1 finding"
+	case res.Findings > 1:
+		return strconv.Itoa(res.Findings) + " findings"
+	case res.Exit != 0:
+		return "exit " + strconv.Itoa(res.Exit)
+	case res.Done:
+		return "done"
+	default:
+		return "no result"
+	}
+}
+
+// RoundCap is how many round lines a step may keep: its max, or the round
+// it has been allowed to reach when that is higher, and never more than
+// RoundLinesMost.
+func RoundCap(max, round int) int {
+	if max < 1 {
+		max = 1
+	}
+	if round > max {
+		max = round
+	}
+	if max > RoundLinesMost {
+		return RoundLinesMost
+	}
+	return max
+}
+
+// NoteRound records one finished try. A repeat of the same round replaces
+// the earlier line. The list stays within cap.
+func NoteRound(ph *Phase, cap int, line RoundLine) {
+	if ph == nil || line.Round < 1 {
+		return
+	}
+	if cap < 1 {
+		cap = 1
+	}
+	replaced := false
+	for i := range ph.Rounds {
+		if ph.Rounds[i].Round == line.Round {
+			ph.Rounds[i] = line
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		ph.Rounds = append(ph.Rounds, line)
+	}
+	if len(ph.Rounds) > cap {
+		ph.Rounds = append([]RoundLine(nil), ph.Rounds[len(ph.Rounds)-cap:]...)
+	}
+}
+
+// NewFailure is the failure a step just had. attempts is at least 1.
+func NewFailure(step, code, detail, machine, next string, attempts int, at time.Time) Failure {
+	if attempts < 1 {
+		attempts = 1
+	}
+	return Failure{Step: step, Code: code, Detail: detail, Attempts: attempts, Machine: machine, Next: next, At: at}
+}
+
+// StampFailure writes the failure on the job and on the named step, when
+// that step is in the run. The step's state is left as it was: a requeued
+// step is still the one a worker continues, and marking it failed would
+// skip it.
+func StampFailure(it *Item, f Failure) {
+	if it == nil {
+		return
+	}
+	cp := f
+	it.Failure = &cp
+	if it.Stream == nil {
+		return
+	}
+	for i := range it.Stream.Phases {
+		if it.Stream.Phases[i].Name != f.Step {
+			continue
+		}
+		step := f
+		it.Stream.Phases[i].Failure = &step
+		return
+	}
+}
+
+// MayAct is the who-may-act table for one caller. caller is a forge handle.
+func MayAct(it Item, caller string) Acts {
+	caller = NormalizeHandle(caller)
+	person := it.Person()
+	owner := person == "" || caller == person
+	var answer bool
+	switch NeedsKind(it) {
+	case NeedsQuestion:
+		answer = true
+	case NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts:
+		answer = owner
+	}
+	assign := person == ""
+	return Acts{
+		Approve: owner, RunAgain: owner, CancelJob: owner, RetryPublish: owner,
+		Answer: answer, AssignToMe: assign, Reply: true,
+	}
 }

@@ -35,7 +35,7 @@ func Fixture(now time.Time) Snapshot {
 	stages := func(r Repo) []Stage { return append([]Stage{}, r.Recipe.Stages...) }
 
 	running := &Stream{Started: m(26), Spent: 1.42, Bench: 1, Activity: []int{1, 2, 5, 3, 6, 4, 2, 5},
-		Phases: []Phase{{Name: "plan", State: PhaseDone}, {Name: ApproveName, Kind: StageGate, State: PhaseDone}, {Name: "write", State: PhaseDone, Tasks: 3}, {Name: "test", State: PhaseDone}, {Name: "review", State: PhaseRunning, Round: 1, Left: 4 * time.Minute, Note: "3 findings"}, {Name: "neaten", State: PhasePending}, {Name: "proof", State: PhasePending}},
+		Phases: []Phase{{Name: "plan", State: PhaseDone}, {Name: ApproveName, Kind: StageGate, State: PhaseDone}, {Name: "write", State: PhaseDone, Tasks: 3}, {Name: "test", State: PhaseDone, Round: 1, Rounds: []RoundLine{{Round: 1, Summary: "12 passed", At: m(9)}}}, {Name: "review", State: PhaseRunning, Round: 1, Left: 4 * time.Minute, Note: "3 findings"}, {Name: "neaten", State: PhasePending}, {Name: "proof", State: PhasePending}},
 		Cur:    4,
 		Log: []LogLine{
 			{At: m(26), Glyph: "✳", Tone: "thought", Text: "reading #1551 · the filter is read before the tree exists; ordering, not state"},
@@ -114,6 +114,7 @@ func Fixture(now time.Time) Snapshot {
 			items[i].Comments = []Comment{}
 		}
 	}
+	items[4].Failure = &Failure{Step: "test", Code: CodeToolError, Detail: "main is red", Attempts: 1, Machine: "ci", Next: FailureStopped, At: h(6)}
 	items[1].HeadCommit = "1111111111111111111111111111111111111111"
 	items[9].HeadCommit = "2222222222222222222222222222222222222222"
 	items[9].PullRequest = &PullRequest{

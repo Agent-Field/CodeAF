@@ -58,7 +58,11 @@ func (h *Handler) workerRoutes() {
 	}
 	svc := &workerService{st: h.config.Store, now: now, wait: wait, credentials: map[[32]byte]registeredWorker{}}
 	if svc.st != nil {
-		svc.desk, svc.err = lease.Open(svc.st, h.config.LeaseOptions)
+		opts := h.config.LeaseOptions
+		if opts.Record == nil {
+			opts.Record = h.config.Record
+		}
+		svc.desk, svc.err = lease.Open(svc.st, opts)
 	}
 	h.workers = svc
 	h.route("/v1/workers/attach", map[string]http.HandlerFunc{http.MethodPost: h.attachWorker})
@@ -240,7 +244,7 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 		h.machineEvents()
 		held, err := h.workers.desk.Pull(worker)
 		if err == nil {
-			h.pulled(w, held)
+			h.pulled(w, r, held)
 			return
 		}
 		if errors.Is(err, lease.ErrWorkerBusy) {
@@ -266,7 +270,7 @@ func workerLease(held lease.Lease) api.WorkerLease {
 	return api.WorkerLease{ThreadOnly: held.ThreadOnly, ID: held.ID, Job: held.Job, Worker: held.Worker, Machine: held.Machine, Handle: held.Handle, ExpiresAt: held.ExpiresAt}
 }
 
-func (h *Handler) pulled(w http.ResponseWriter, held lease.Lease) {
+func (h *Handler) pulled(w http.ResponseWriter, r *http.Request, held lease.Lease) {
 	it, err := h.workers.st.Get(held.Job)
 	if h.failed(w, err) {
 		return
@@ -275,7 +279,9 @@ func (h *Handler) pulled(w http.ResponseWriter, held lease.Lease) {
 	if h.workerError(w, err) {
 		return
 	}
-	h.write(w, http.StatusOK, api.WorkerPull{Factory: h.factory, Lease: workerLease(held), Job: h.withVersion(api.FromItem(it)), Signals: wireSignals(signals)})
+	job := h.withVersion(api.FromItem(it))
+	job.Can = api.CanFor(it, requestWorker(r).Handle)
+	h.write(w, http.StatusOK, api.WorkerPull{Factory: h.factory, Lease: workerLease(held), Job: job, Signals: wireSignals(signals)})
 }
 
 func wireSignals(in []lease.Signal) []api.WorkerSignal {
@@ -326,7 +332,28 @@ func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
 		h.applyWorker(w, r, false, func(it *factory.Item) error { return factory.MergeThread(it, report.Thread, report.Delivered) })
 		return
 	}
-	h.applyWorker(w, r, false, func(it *factory.Item) error { return run.ApplyReport(it, report, h.workers.now()) })
+	h.applyWorker(w, r, false, func(it *factory.Item) error {
+		before := failureKey(it.Failure)
+		if err := run.ApplyReport(it, report, h.workers.now()); err != nil {
+			return err
+		}
+		after := it.Failure
+		if after == nil || failureKey(after) == before || h.config.Record == nil {
+			return nil
+		}
+		_, _ = h.config.Record.Append(r.Context(), record.Event{
+			Kind: record.StepFailed, Job: it.ID,
+			Detail: after.Code + " · " + after.Step + " · " + after.Next,
+		})
+		return nil
+	})
+}
+
+func failureKey(f *factory.Failure) string {
+	if f == nil {
+		return ""
+	}
+	return f.Step + "\n" + f.Code + "\n" + f.Next + "\n" + f.At.UTC().Format(time.RFC3339Nano)
 }
 
 func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {

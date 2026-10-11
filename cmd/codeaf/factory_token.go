@@ -124,6 +124,9 @@ func listFactoryTokens(out io.Writer, configPath string) error {
 		return err
 	}
 	for _, row := range rows {
+		if row.Revoked {
+			continue
+		}
 		when := ""
 		if !row.Expires.IsZero() {
 			when = " " + row.Expires.UTC().Format(time.RFC3339)

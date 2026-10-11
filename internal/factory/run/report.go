@@ -232,6 +232,21 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 		}
 		foldResult(it, st, i, *step.Result, now)
 	}
+	if len(step.Rounds) > 0 {
+		ph.Rounds = append([]factory.RoundLine(nil), step.Rounds...)
+		// A report cannot leave more lines than the step's own max.
+		cap := factory.RoundCap(st.Max, ph.Round)
+		if len(ph.Rounds) > cap {
+			ph.Rounds = append([]factory.RoundLine(nil), ph.Rounds[len(ph.Rounds)-cap:]...)
+		}
+	}
+	if step.Failure != nil {
+		f := *step.Failure
+		if f.Step == "" {
+			f.Step = step.Name
+		}
+		factory.StampFailure(it, f)
+	}
 	return nil
 }
 
@@ -253,6 +268,13 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 		kept.Output = strings.ToValidUTF8(kept.Output[:factory.ResultOutputMost], "")
 	}
 	ph.Result = &kept
+	round := ph.Round
+	if round < 1 {
+		round = 1
+	}
+	factory.NoteRound(ph, factory.RoundCap(st.Max, round), factory.RoundLine{
+		Round: round, Summary: factory.RoundSummary(kept), At: now,
+	})
 	it.Stream.Findings = res.Findings
 	sheet := makesSheet(st)
 	for _, cl := range res.Claims {

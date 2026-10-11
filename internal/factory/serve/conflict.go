@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -75,8 +76,16 @@ func (h *Handler) moved(w http.ResponseWriter, r *http.Request, it factory.Item,
 	case verb == "take" && it.Person() != "":
 		sentence = "already taken by @" + it.Person()
 		by = "@" + it.Person()
+		h.takenConflict(w, it, sentence, "stale", job.State)
+		return
 	case job.State == api.StateDone || it.Publishing || it.State == factory.StateShipped:
-		sentence, by, at = h.approvedSentence(r, it)
+		var eventID, commit string
+		sentence, by, at, eventID, commit = h.approvedSentence(r, it)
+		h.writeRefusal(w, http.StatusConflict, refusalBody{
+			Error: sentence, Reason: "stale", By: by, At: at, NowState: job.State,
+			ApprovedBy: by, Event: eventID, Commit: commit,
+		})
+		return
 	default:
 		if p := it.Person(); p != "" {
 			by = "@" + p
@@ -89,54 +98,152 @@ func (h *Handler) moved(w http.ResponseWriter, r *http.Request, it factory.Item,
 	h.refuse(w, http.StatusConflict, sentence, "stale", by, at, job.State)
 }
 
-func (h *Handler) approvedSentence(r *http.Request, it factory.Item) (string, string, *time.Time) {
-	handle, when, ok := h.latestApproval(r.Context(), it.ID)
+func (h *Handler) approvedSentence(r *http.Request, it factory.Item) (string, string, *time.Time, string, string) {
+	handle, eventID, commit, when, ok := h.latestApproval(r.Context(), it.ID)
 	if !ok {
 		handle = it.Person()
 		when = it.Changed
+		commit = it.HeadCommit
 	}
 	if handle == "" {
 		handle = "someone"
 	}
 	by := "@" + handle
 	if when.IsZero() {
-		return "already approved by " + by, by, nil
+		return "already approved by " + by, by, nil, eventID, commit
 	}
 	stamp := when.UTC()
-	return fmt.Sprintf("already approved by %s at %s", by, stamp.Format("15:04")), by, &stamp
+	return fmt.Sprintf("already approved by %s at %s", by, stamp.Format("15:04")), by, &stamp, eventID, commit
 }
 
-func (h *Handler) latestApproval(ctx context.Context, id int) (string, time.Time, bool) {
+func (h *Handler) latestApproval(ctx context.Context, id int) (handle, eventID, commit string, when time.Time, ok bool) {
 	if h.config.Record == nil {
-		return "", time.Time{}, false
+		return "", "", "", time.Time{}, false
 	}
 	events, err := h.config.Record.Since(ctx, time.Time{})
 	if err != nil {
-		return "", time.Time{}, false
+		return "", "", "", time.Time{}, false
 	}
 	for i := len(events) - 1; i >= 0; i-- {
 		e := events[i]
 		if e.Job == id && e.Kind == record.Approved && e.Handle != "" {
-			return e.Handle, e.At, true
+			return e.Handle, e.ID, e.Commit, e.At, true
 		}
 	}
-	return "", time.Time{}, false
+	return "", "", "", time.Time{}, false
 }
 
 type refusalBody struct {
-	Factory   api.Factory `json:"factory"`
-	Error     string      `json:"error"`
-	Reason    string      `json:"reason,omitempty"`
-	By        string      `json:"by,omitempty"`
-	At        *time.Time  `json:"at,omitempty"`
-	NowState  string      `json:"now_state,omitempty"`
-	RequestID string      `json:"request_id"`
+	Factory       api.Factory `json:"factory"`
+	Error         string      `json:"error"`
+	Reason        string      `json:"reason,omitempty"`
+	By            string      `json:"by,omitempty"`
+	At            *time.Time  `json:"at,omitempty"`
+	NowState      string      `json:"now_state,omitempty"`
+	Taker         string      `json:"taker,omitempty"`
+	Machine       string      `json:"machine,omitempty"`
+	ApprovedBy    string      `json:"approved_by,omitempty"`
+	Event         string      `json:"event,omitempty"`
+	Commit        string      `json:"commit,omitempty"`
+	CurrentCommit string      `json:"current_commit,omitempty"`
+	HeadCommit    string      `json:"head_commit,omitempty"`
+	JobPerson     string      `json:"job_person,omitempty"`
+	RequestID     string      `json:"request_id"`
 }
 
 func (h *Handler) refuse(w http.ResponseWriter, status int, words, reason, by string, at *time.Time, nowState string) {
-	h.write(w, status, refusalBody{
-		Factory: h.factory, Error: words, Reason: reason, By: by, At: at, NowState: nowState, RequestID: requestID(),
+	h.writeRefusal(w, status, refusalBody{Error: words, Reason: reason, By: by, At: at, NowState: nowState})
+}
+
+func (h *Handler) writeRefusal(w http.ResponseWriter, status int, body refusalBody) {
+	body.Factory = h.factory
+	if body.RequestID == "" {
+		body.RequestID = requestID()
+	}
+	h.write(w, status, body)
+}
+
+// notJobPerson is the who-may-act refusal. job_person is who may, with @.
+func (h *Handler) notJobPerson(w http.ResponseWriter, it factory.Item, who string) {
+	state := ""
+	if it.ID != 0 {
+		state = h.withVersion(api.FromItem(it)).State
+	}
+	h.writeRefusal(w, http.StatusForbidden, refusalBody{
+		Error: "only @" + who + " can do this", Reason: factory.ReasonNotJobPerson,
+		JobPerson: "@" + who, NowState: state,
 	})
+}
+
+// takenConflict names who holds the job, when, and the machine when one is known.
+func (h *Handler) takenConflict(w http.ResponseWriter, it factory.Item, sentence, reason, state string) {
+	who := it.Person()
+	by := ""
+	if who != "" {
+		by = "@" + who
+	}
+	var at *time.Time
+	machine := it.WorktreeMachine
+	if held, ok := h.holdOf(it.ID); ok {
+		if !held.Since.IsZero() {
+			stamp := held.Since.UTC()
+			at = &stamp
+		}
+		if held.Machine != "" {
+			machine = held.Machine
+		}
+	}
+	if at == nil && !it.Changed.IsZero() {
+		stamp := it.Changed.UTC()
+		at = &stamp
+	}
+	h.writeRefusal(w, http.StatusConflict, refusalBody{
+		Error: sentence, Reason: reason, By: by, At: at, NowState: state, Taker: by, Machine: machine,
+	})
+}
+
+func (h *Handler) holdOf(id int) (lease.Lease, bool) {
+	if h.workers == nil || h.workers.desk == nil {
+		return lease.Lease{}, false
+	}
+	rows, err := h.workers.desk.Live()
+	if err != nil {
+		return lease.Lease{}, false
+	}
+	for _, row := range rows {
+		if row.Job == id {
+			return row, true
+		}
+	}
+	return lease.Lease{}, false
+}
+
+// onlyOwner runs the verb when the caller is the job's person, or the job
+// has no person yet. Otherwise the answer is 403 not_job_person.
+func (h *Handler) onlyOwner(action jobAction) jobAction {
+	return func(w http.ResponseWriter, r *http.Request, it factory.Item) {
+		if !h.owns(w, r, it) {
+			return
+		}
+		action(w, r, it)
+	}
+}
+
+// owns is true when the job has no person yet, or the caller is that person.
+func (h *Handler) owns(w http.ResponseWriter, r *http.Request, it factory.Item) bool {
+	who := it.Person()
+	if who == "" {
+		return true
+	}
+	handle, err := h.callerHandle(r)
+	if h.failed(w, err) {
+		return false
+	}
+	if factory.NormalizeHandle(handle) == who {
+		return true
+	}
+	h.notJobPerson(w, it, who)
+	return false
 }
 
 func reasonFor(status int) string {

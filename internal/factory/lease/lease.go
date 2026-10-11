@@ -11,7 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"context"
+
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
@@ -76,17 +79,21 @@ type Worker struct {
 }
 
 // Options makes time deterministic in tests; a zero TTL uses DefaultTTL.
+// Record, when set, receives a step_failed event when a hold expires and
+// the job goes back to the queue.
 type Options struct {
-	TTL time.Duration
-	Now func() time.Time
+	TTL    time.Duration
+	Now    func() time.Time
+	Record *record.Record
 }
 
 // Desk uses the store's root so every server opening the same factory shares
 // the same flock, rather than trusting a mutex in one server process.
 type Desk struct {
-	store *store.Store
-	ttl   time.Duration
-	now   func() time.Time
+	store  *store.Store
+	ttl    time.Duration
+	now    func() time.Time
+	record *record.Record
 }
 
 // Open holds no handles. Reading is deferred to each operation so a desk
@@ -104,7 +111,7 @@ func Open(st *store.Store, options Options) (*Desk, error) {
 	if options.Now == nil {
 		options.Now = time.Now
 	}
-	return &Desk{store: st, ttl: options.TTL, now: options.Now}, nil
+	return &Desk{store: st, ttl: options.TTL, now: options.Now, record: options.Record}, nil
 }
 
 // TTL is the hold length this desk renews to.
@@ -329,37 +336,53 @@ func holder(doc *document, id int, worker string) (*Lease, error) {
 }
 
 func (d *Desk) queue(id int) error {
-	return d.queueJob(id, time.Time{})
+	return d.queueJob(id, time.Time{}, "")
 }
 
 // queueJob returns a running job to the queue. lost is set when the hold
 // expired: that is the machine lost after the lease's own wait, and the job
 // records a failure. A worker letting go passes the zero time and records none.
-func (d *Desk) queueJob(id int, lost time.Time) error {
+// machine is the hold's machine, empty when the worker did not name one.
+func (d *Desk) queueJob(id int, lost time.Time, machine string) error {
 	// A no-op must not stamp Changed or append activity to finished work.
 	unchanged := errors.New("factory lease: job is not running")
+	var failed factory.Failure
 	err := d.store.Update(id, func(it *factory.Item) error {
 		if it.State != factory.StateRunning || paused(*it) {
 			return unchanged
 		}
 		it.State = factory.StateQueued
-		if !lost.IsZero() {
-			step := ""
-			if it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
-				step = it.Stream.Phases[it.Stream.Cur].Name
-			}
-			it.Failure = &factory.Failure{
-				Step: step, Code: factory.CodeMachineLost,
-				Detail: "the machine holding the work was lost",
-				Next:   factory.FailureRequeued, At: lost,
+		if lost.IsZero() {
+			return nil
+		}
+		step := ""
+		attempts := 1
+		if it.Stream != nil && it.Stream.Cur >= 0 && it.Stream.Cur < len(it.Stream.Phases) {
+			ph := it.Stream.Phases[it.Stream.Cur]
+			step = ph.Name
+			if ph.Round > attempts {
+				attempts = ph.Round
 			}
 		}
+		if machine == "" {
+			machine = it.WorktreeMachine
+		}
+		failed = factory.NewFailure(step, factory.CodeMachineLost, "the machine holding the work was lost", machine, factory.FailureRequeued, attempts, lost)
+		factory.StampFailure(it, failed)
 		return nil
 	})
 	if errors.Is(err, store.ErrNotFound) || errors.Is(err, unchanged) {
 		return nil
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	if !lost.IsZero() && d.record != nil {
+		_, _ = d.record.Append(context.Background(), record.Event{
+			Kind: record.StepFailed, Job: id, Detail: failed.Code + " · " + failed.Step + " · " + failed.Next,
+		})
+	}
+	return nil
 }
 
 func paused(it factory.Item) bool { return it.Stream != nil && it.Stream.Paused }
@@ -371,7 +394,7 @@ func (d *Desk) expire(doc *document, now time.Time) ([]Lease, error) {
 			kept = append(kept, held)
 			continue
 		}
-		if err := d.queueJob(held.Job, now); err != nil {
+		if err := d.queueJob(held.Job, now, held.Machine); err != nil {
 			return nil, fmt.Errorf("factory lease: requeue job %d: %w", held.Job, err)
 		}
 		expired = append(expired, held)

@@ -1,6 +1,7 @@
 package lease_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
@@ -291,6 +293,42 @@ func TestExpiryRequeuesAtTheDeadlineAndCanBePulledAgain(t *testing.T) {
 	}
 	if _, err := f.desk.Heartbeat(it.ID, "laptop"); !errors.Is(err, lease.ErrWorker) {
 		t.Fatalf("old worker renewed replacement: %v", err)
+	}
+}
+
+func TestExpiryKeepsTheStepAndRecordsIt(t *testing.T) {
+	f := setup(t)
+	rec, err := record.Open(f.store, record.Options{Now: func() time.Time { return f.now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	desk, err := lease.Open(f.store, lease.Options{Now: func() time.Time { return f.now }, Record: rec})
+	if err != nil {
+		t.Fatal(err)
+	}
+	it := f.add(t, factory.Item{Assignee: "sam", Stream: &factory.Stream{Cur: 0, Phases: []factory.Phase{{Name: "write", State: factory.PhaseRunning, Round: 2}}}})
+	held, err := desk.Pull(lease.Worker{ID: "laptop", Handle: "sam", Machine: "ci-box"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.now = held.ExpiresAt
+	if _, err := desk.Expire(); err != nil {
+		t.Fatal(err)
+	}
+	lost, err := f.store.Get(it.ID)
+	if err != nil || lost.State != factory.StateQueued || lost.Failure == nil {
+		t.Fatalf("requeued = %+v %v", lost, err)
+	}
+	if lost.Failure.Attempts != 2 || lost.Failure.Machine != "ci-box" || lost.Failure.Next != factory.FailureRequeued || lost.Failure.Code != factory.CodeMachineLost {
+		t.Fatalf("failure = %+v", lost.Failure)
+	}
+	ph := lost.Stream.Phases[0]
+	if ph.State == factory.PhaseFailed || ph.Failure == nil || ph.Failure.Next != factory.FailureRequeued {
+		t.Fatalf("step was finished by the expiry: %+v", ph)
+	}
+	events, err := rec.Since(context.Background(), time.Time{})
+	if err != nil || len(events) != 1 || events[0].Kind != record.StepFailed || events[0].Job != it.ID || events[0].Detail != factory.CodeMachineLost+" · write · "+factory.FailureRequeued {
+		t.Fatalf("record = %+v %v", events, err)
 	}
 }
 

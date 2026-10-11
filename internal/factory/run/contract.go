@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
@@ -202,6 +203,10 @@ type Options struct {
 	// turn that answers nothing all send the question to the person. The
 	// inbox lane added it, additively.
 	Inbox func(ctx context.Context, it factory.Item, q factory.Asked) (InboxReply, error)
+	// Record receives a step_failed event when a step errors. Nil keeps the
+	// failure on the job and writes no audit line. The worker's mirror
+	// leaves this nil; the factory that accepts the report writes the event.
+	Record *record.Record
 }
 
 // InboxReply is the manager's answer to a step's question: Answer is its

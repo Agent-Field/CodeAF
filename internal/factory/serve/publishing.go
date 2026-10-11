@@ -2,10 +2,12 @@ package serve
 
 import (
 	"errors"
-	"github.com/Agent-Field/codeaf/internal/filelock"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/filelock"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
@@ -29,18 +31,24 @@ func (h *Handler) commitFresh(w http.ResponseWriter, it factory.Item, commit str
 	if commit == it.HeadCommit {
 		return true
 	}
-	h.changedSinceOpened(w, it.HeadCommit)
+	h.changedSinceOpened(w, it)
 	return false
 }
 
-func (h *Handler) changedSinceOpened(w http.ResponseWriter, head string) {
-	h.write(w, http.StatusConflict, struct {
-		Factory    api.Factory `json:"factory"`
-		Error      string      `json:"error"`
-		Reason     string      `json:"reason"`
-		HeadCommit string      `json:"head_commit"`
-		RequestID  string      `json:"request_id"`
-	}{h.factory, "This job changed since you opened it", "changed_since_opened", head, requestID()})
+func (h *Handler) changedSinceOpened(w http.ResponseWriter, it factory.Item) {
+	var at *time.Time
+	if !it.Changed.IsZero() {
+		stamp := it.Changed.UTC()
+		at = &stamp
+	}
+	by := ""
+	if p := it.Person(); p != "" {
+		by = "@" + p
+	}
+	h.writeRefusal(w, http.StatusConflict, refusalBody{
+		Error: "This job changed since you opened it", Reason: "changed_since_opened",
+		By: by, At: at, Commit: it.HeadCommit, CurrentCommit: it.HeadCommit, HeadCommit: it.HeadCommit,
+	})
 }
 
 // retryPublish reuses a durable proof receipt, never another approval event.
@@ -58,10 +66,14 @@ func (h *Handler) retryPublish(w http.ResponseWriter, r *http.Request, it factor
 	}
 	person := it.Person()
 	if person == "" {
-		person, _, _ = h.latestApproval(r.Context(), it.ID)
+		person, _, _, _, _ = h.latestApproval(r.Context(), it.ID)
 	}
-	if person == "" || person != handle {
+	if person == "" {
 		h.fail(w, http.StatusForbidden, "only the job's person can Retry publishing")
+		return
+	}
+	if factory.NormalizeHandle(handle) != person {
+		h.notJobPerson(w, it, person)
 		return
 	}
 	if _, err := h.config.Record.TrailerFor(r.Context(), it.ID, it.HeadCommit); err != nil {
@@ -105,7 +117,7 @@ func (h *Handler) changedApproval(w http.ResponseWriter, r *http.Request, err er
 		return false
 	}
 	if latest, ok := h.findJob(w, r); ok {
-		h.changedSinceOpened(w, latest.HeadCommit)
+		h.changedSinceOpened(w, latest)
 	}
 	return true
 }

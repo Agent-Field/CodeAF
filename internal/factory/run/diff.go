@@ -151,7 +151,7 @@ func stepsMoved(prev, cur []factory.Phase) []factory.StageReport {
 	var out []factory.StageReport
 	for _, ph := range cur {
 		old, seen := was[ph.Name]
-		if seen && old.State == ph.State && old.Round == ph.Round && reflect.DeepEqual(old.Result, ph.Result) {
+		if seen && old.State == ph.State && old.Round == ph.Round && reflect.DeepEqual(old.Result, ph.Result) && reflect.DeepEqual(old.Rounds, ph.Rounds) && reflect.DeepEqual(old.Failure, ph.Failure) {
 			continue
 		}
 		if ph.Kind == factory.StageGate {
@@ -162,6 +162,13 @@ func stepsMoved(prev, cur []factory.Phase) []factory.StageReport {
 			res := *ph.Result
 			res.Edit = nil
 			step.Result = &res
+		}
+		if len(ph.Rounds) > 0 && (!seen || !reflect.DeepEqual(old.Rounds, ph.Rounds)) {
+			step.Rounds = append([]factory.RoundLine(nil), ph.Rounds...)
+		}
+		if ph.Failure != nil && (!seen || !reflect.DeepEqual(old.Failure, ph.Failure)) {
+			f := *ph.Failure
+			step.Failure = &f
 		}
 		out = append(out, step)
 	}

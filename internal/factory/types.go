@@ -271,6 +271,13 @@ type Phase struct {
 	// ended, and again once it is sent back to run. The wire's step.at is
 	// this instant.
 	At time.Time `json:",omitempty"`
+	// Rounds is one line per finished try, oldest first, bounded to the
+	// step's max. The last Result stays; these lines are what each try did.
+	Rounds []RoundLine `json:",omitempty"`
+	// Failure is set while this step is the one that errored. A later round
+	// of the same step clears it, and clears the job's failure for this
+	// step. The record keeps the incident.
+	Failure *Failure `json:",omitempty"`
 }
 
 // ResultOutputMost is how much of a step's output [Phase.Result] keeps, in

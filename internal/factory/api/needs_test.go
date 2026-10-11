@@ -108,17 +108,32 @@ func TestOutOfAttemptsIsAQuestionAndFailureIsNot(t *testing.T) {
 	when := time.Date(2026, 10, 11, 15, 0, 0, 0, time.UTC)
 	failed := FromItem(factory.Item{
 		ID: 8, State: factory.StateNew,
-		Failure: &factory.Failure{Step: "write", Code: factory.CodeToolError, Detail: "the worktree is gone", Next: factory.FailureStopped, At: when},
+		Failure: &factory.Failure{Step: "write", Code: factory.CodeToolError, Detail: "the worktree is gone", Attempts: 2, Machine: "box", Next: factory.FailureStopped, At: when},
+		Stream: &factory.Stream{Cur: 0, Phases: []factory.Phase{{
+			Name: "write", State: factory.PhaseFailed, Round: 2,
+			Rounds:  []factory.RoundLine{{Round: 1, Summary: "2 findings", At: when}, {Round: 2, Summary: "still red", At: when}},
+			Failure: &factory.Failure{Step: "write", Code: factory.CodeToolError, Detail: "the worktree is gone", Attempts: 2, Machine: "box", Next: factory.FailureStopped, At: when},
+		}}},
 	})
+	failed.Can = CanFor(factory.Item{Assignee: "sam"}, "mei")
 	if failed.NeedsYou != nil || len(failed.Questions) != 0 {
 		t.Fatalf("a failure became a question: %+v %+v", failed.NeedsYou, failed.Questions)
 	}
-	if failed.Failure == nil || failed.Failure.Code != factory.CodeToolError || failed.Failure.Next != factory.FailureStopped || !failed.Failure.At.Equal(when) {
+	if failed.Failure == nil || failed.Failure.Code != factory.CodeToolError || failed.Failure.Next != factory.FailureStopped || failed.Failure.Attempts != 2 || failed.Failure.Machine != "box" || !failed.Failure.At.Equal(when) {
 		t.Fatalf("failure = %+v", failed.Failure)
 	}
+	if len(failed.Steps) == 0 || len(failed.Steps[0].Rounds) != 2 || failed.Steps[0].Rounds[1].Summary != "still red" || failed.Steps[0].Failure == nil || failed.Steps[0].Failure.Attempts != 2 {
+		t.Fatalf("step failure = %+v", failed.Steps)
+	}
+	if failed.Can.Approve || failed.Can.Answer || !failed.Can.Reply || failed.Can.AssignToMe {
+		t.Fatalf("can = %+v", failed.Can)
+	}
 	back := ToItem(failed)
-	if back.Failure == nil || back.Failure.Detail != "the worktree is gone" || back.Failure.Step != "write" {
+	if back.Failure == nil || back.Failure.Detail != "the worktree is gone" || back.Failure.Step != "write" || back.Failure.Attempts != 2 || back.Failure.Machine != "box" {
 		t.Fatalf("failure round trip = %+v", back.Failure)
+	}
+	if back.Stream == nil || len(back.Stream.Phases) == 0 || len(back.Stream.Phases[0].Rounds) != 2 || back.Stream.Phases[0].Failure == nil {
+		t.Fatalf("step round trip = %+v", back.Stream)
 	}
 }
 

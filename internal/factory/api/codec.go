@@ -13,6 +13,7 @@ func FromSnapshot(s factory.Snapshot, me string) Queue {
 	jobs := make([]Job, len(s.Items))
 	for i, it := range s.Items {
 		jobs[i] = FromItem(it)
+		jobs[i].Can = CanFor(it, me)
 	}
 	return Queue{
 		Since:    fromShift(s.Shift),
@@ -172,8 +173,27 @@ func failureOf(it factory.Item) *Failure {
 	if it.Failure == nil {
 		return nil
 	}
-	f := it.Failure
-	return &Failure{Step: f.Step, Code: f.Code, Detail: f.Detail, Next: f.Next, At: f.At}
+	return failureWire(*it.Failure)
+}
+
+func failureWire(f factory.Failure) *Failure {
+	return &Failure{Step: f.Step, Code: f.Code, Detail: f.Detail, Attempts: f.Attempts, Machine: f.Machine, Next: f.Next, At: f.At}
+}
+
+func failureItem(f *Failure) *factory.Failure {
+	if f == nil {
+		return nil
+	}
+	return &factory.Failure{Step: f.Step, Code: f.Code, Detail: f.Detail, Attempts: f.Attempts, Machine: f.Machine, Next: f.Next, At: f.At}
+}
+
+// CanFor is MayAct in the wire's field names.
+func CanFor(it factory.Item, caller string) Can {
+	a := factory.MayAct(it, caller)
+	return Can{
+		Approve: a.Approve, RunAgain: a.RunAgain, CancelJob: a.CancelJob,
+		RetryPublish: a.RetryPublish, Answer: a.Answer, AssignToMe: a.AssignToMe, Reply: a.Reply,
+	}
 }
 
 // jobAsk prefers the stored ask. A GitHub issue with no stored ask is derived
@@ -229,7 +249,7 @@ func ToItem(j Job) factory.Item {
 		}
 	}
 	if f := j.Failure; f != nil {
-		it.Failure = &factory.Failure{Step: f.Step, Code: f.Code, Detail: f.Detail, Next: f.Next, At: f.At}
+		it.Failure = failureItem(f)
 	}
 	it.Stages, it.Stream = unsteps(j)
 	unquestions(&it, j.Questions)
@@ -671,7 +691,21 @@ func runStep(s Step, p factory.Phase) Step {
 		at := p.At
 		s.At = &at
 	}
+	s.Failure = failureWireOrNil(p.Failure)
+	if len(p.Rounds) > 0 {
+		s.Rounds = make([]RoundLine, len(p.Rounds))
+		for i, line := range p.Rounds {
+			s.Rounds[i] = RoundLine{Round: line.Round, Summary: line.Summary, At: line.At}
+		}
+	}
 	return s
+}
+
+func failureWireOrNil(f *factory.Failure) *Failure {
+	if f == nil {
+		return nil
+	}
+	return failureWire(*f)
 }
 
 // unsteps gives each step back to its own list: the pipeline's stages, and
@@ -711,6 +745,13 @@ func toPhase(s Step) factory.Phase {
 	}
 	if s.At != nil {
 		p.At = *s.At
+	}
+	p.Failure = failureItem(s.Failure)
+	if len(s.Rounds) > 0 {
+		p.Rounds = make([]factory.RoundLine, len(s.Rounds))
+		for i, line := range s.Rounds {
+			p.Rounds[i] = factory.RoundLine{Round: line.Round, Summary: line.Summary, At: line.At}
+		}
 	}
 	return p
 }

@@ -40,6 +40,9 @@ const (
 	// opened. The handle, when GitHub named one, is who merged it.
 	PRMerged = "pr_merged"
 	PRClosed = "pr_closed"
+	// StepFailed is a step that errored. It is not a person's decision. The
+	// detail is code, step and next, so the audit can show what happened.
+	StepFailed = "step_failed"
 )
 
 // Event is the persisted and wire shape; approval receipts use these exact ids.
@@ -137,7 +140,7 @@ func (r *Record) Append(ctx context.Context, event Event) (Event, error) {
 
 func validate(e Event) error {
 	switch e.Kind {
-	case Started, Stopped, AutoStarted, AskedFirst, Approved, Answered, Posted, Took, Dropped, Released, RequestChanges, PRMerged, PRClosed:
+	case Started, Stopped, AutoStarted, AskedFirst, Approved, Answered, Posted, Took, Dropped, Released, RequestChanges, PRMerged, PRClosed, StepFailed:
 	default:
 		return fmt.Errorf("factory record: unknown event kind %q", e.Kind)
 	}

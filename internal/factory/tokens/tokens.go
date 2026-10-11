@@ -9,6 +9,8 @@ package tokens
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -36,12 +38,18 @@ type Profile struct {
 }
 
 // Token is one access token row. Expires is set when the row should stop
-// working, and left empty for a row that does not expire.
+// working, and left empty for a row that does not expire. InvitedBy is set
+// when someone minted the row as an invite; a plain access token leaves it
+// empty. Revoked keeps the row as a tombstone so a later presentation can
+// say the link was revoked. The secret is cleared; TokenHash is what matches.
 type Token struct {
-	ID      string    `json:"id"`
-	Token   string    `json:"token"`
-	Expires time.Time `json:"expires,omitempty"`
-	Created time.Time `json:"created,omitempty"`
+	ID        string    `json:"id"`
+	Token     string    `json:"token,omitempty"`
+	TokenHash string    `json:"token_hash,omitempty"`
+	InvitedBy string    `json:"invited_by,omitempty"`
+	Expires   time.Time `json:"expires,omitempty"`
+	Created   time.Time `json:"created,omitempty"`
+	Revoked   bool      `json:"revoked,omitempty"`
 	// Joined is when this row's holder first signed in with GitHub.
 	Joined  time.Time `json:"joined,omitempty"`
 	Profile *Profile  `json:"profile,omitempty"`
@@ -115,30 +123,72 @@ func Add(path string, row Token) error {
 	return Save(path, append(rows, row))
 }
 
-// Remove deletes the row with id.
+// Remove retires the row. A second revoke is ErrNotFound. The secret is
+// replaced by its hash so a later presentation can be told the link was
+// revoked, and list no longer shows the row.
 func Remove(path, id string) error {
 	rows, err := Load(path)
 	if err != nil {
 		return err
 	}
-	next := make([]Token, 0, len(rows))
 	found := false
-	for _, row := range rows {
-		if row.ID == id {
-			found = true
+	for i := range rows {
+		if rows[i].ID != id {
 			continue
 		}
-		next = append(next, row)
+		if rows[i].Revoked {
+			return ErrNotFound
+		}
+		rows[i].TokenHash = hashSecret(rows[i].Token)
+		rows[i].Token = ""
+		rows[i].Revoked = true
+		found = true
+		break
 	}
 	if !found {
 		return ErrNotFound
 	}
-	return Save(path, next)
+	return Save(path, rows)
+}
+
+// hashSecret is the hex sha256 of a token secret.
+func hashSecret(secret string) string {
+	sum := sha256.Sum256([]byte(secret))
+	return hex.EncodeToString(sum[:])
+}
+
+// Matches is true when secret is this row's token, including a revoked row
+// that kept only the hash.
+func (t Token) Matches(secret string) bool {
+	if secret == "" {
+		return false
+	}
+	got := sha256.Sum256([]byte(secret))
+	if t.Token != "" {
+		want := sha256.Sum256([]byte(t.Token))
+		if subtle.ConstantTimeCompare(want[:], got[:]) == 1 {
+			return true
+		}
+	}
+	if t.TokenHash == "" {
+		return false
+	}
+	raw, err := hex.DecodeString(t.TokenHash)
+	if err != nil || len(raw) != sha256.Size {
+		return false
+	}
+	return subtle.ConstantTimeCompare(raw, got[:]) == 1
 }
 
 func (t Token) valid() error {
 	if t.ID == "" || strings.TrimSpace(t.ID) != t.ID {
 		return errors.New("access token id is empty")
+	}
+	if t.Revoked {
+		if t.TokenHash == "" {
+			return errors.New("revoked access token has no hash")
+		}
+		return nil
 	}
 	if t.Token == "" || strings.TrimSpace(t.Token) != t.Token || strings.ContainsAny(t.Token, " \t\r\n") {
 		return errors.New("access token must contain no whitespace")
@@ -190,7 +240,7 @@ func Bind(path, id string, profile Profile, now time.Time) error {
 		if row.ID != id {
 			continue
 		}
-		if !row.Expires.IsZero() && !now.Before(row.Expires) {
+		if row.Revoked || (!row.Expires.IsZero() && !now.Before(row.Expires)) {
 			return os.ErrPermission
 		}
 		if row.Profile != nil && row.Profile.Handle != profile.Handle {

@@ -40,8 +40,10 @@ type PipelineChange struct {
 // StageReport addresses a pipeline step by name, so a report cannot invent a
 // new step or depend on an index that a person changed between reports.
 type StageReport struct {
-	Name   string
-	State  PhaseState
-	Round  int
-	Result *StageResult
+	Name    string
+	State   PhaseState
+	Round   int
+	Result  *StageResult
+	Rounds  []RoundLine
+	Failure *Failure
 }

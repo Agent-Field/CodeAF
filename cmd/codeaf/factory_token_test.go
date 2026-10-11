@@ -64,8 +64,14 @@ func TestFactoryTokenAddPrintsTheSecretAndRevokesTheRow(t *testing.T) {
 		t.Fatalf("second revoke = %v", err)
 	}
 	left, err := tokens.Load(factoryTokensPath(configPath))
-	if err != nil || len(left) != 0 {
+	if err != nil || len(left) != 1 || !left[0].Revoked || left[0].Token != "" || !left[0].Matches(secret) {
 		t.Fatalf("rows after revoke = %+v, %v", left, err)
+	}
+	hidden, err := captureStdout(t, func() error {
+		return runFactory([]string{"token", "list", "--config", configPath})
+	})
+	if err != nil || strings.TrimSpace(hidden) != "" {
+		t.Fatalf("list after revoke = %q, %v", hidden, err)
 	}
 }
 

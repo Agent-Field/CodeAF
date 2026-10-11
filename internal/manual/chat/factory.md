@@ -122,26 +122,40 @@ negative duration is refused: `expiry must be a duration like 7d or 24h`.
 
 The token is a row in `tokens.json` beside `config.yaml`, with `expires`.
 `codeaf factory token list` prints each row as `id time` and does not print the
-secret. `codeaf factory token` still prints the host token. `codeaf factory revoke <id>`
-removes that row and prints `revoked <id>`. An unknown id is refused:
-`no access token <id>`. A running service reads the file on the next request,
-so a revoked or expired token stops working without a restart, including a
-browser session created from it. `codeaf factory revoke-sessions` signs every
-browser out and does not delete these rows. A row from `token add` cannot revoke
-sessions; that still takes the host config's access token.
+secret. A revoked row is hidden. `codeaf factory token` still prints the host token.
+`codeaf factory revoke <id>` retires that row and prints `revoked <id>`. The
+secret is replaced by a hash, so a later use can be told the link was revoked.
+Revoking an unknown id, or a row already revoked, is refused: `no access token <id>`.
+A running service reads the file on the next request, so a revoked or expired
+token stops working without a restart, including a browser session created from
+it. `codeaf factory revoke-sessions` signs every browser out and does not delete
+these rows. A row from `token add` cannot revoke sessions; that still takes the
+host config's access token.
 
 Off loopback, send `Authorization: Bearer <token>` or enter the token at
 `/access`. `codeaf attach <url> --token <token>` saves the address and token in
 `attach.json`. `CODEAF_HOME` moves `tokens.json` with the rest of the factory
 host config.
 
+## a refused link — expired, revoked or unknown
+
+A bearer token or an `/access` token that was sent and refused answers HTTP 401
+`{"reason":"expired"|"revoked"|"unknown"}`. `expired` is `this link has expired`.
+`revoked` is `this link was revoked`. `unknown` is `this link is not recognized`.
+`invited_by` and `created_at` are set for an expired or revoked row the factory
+still has, so the app can say ask @santosh for a new link. An unknown token
+has neither. A request that sent no token keeps
+`a bearer access token or live session is required; open /access to enter the token`.
+
 ## factory browser access — /access, session cookie and revoke-sessions
 
 On another machine, open the factory service's `/access` page and enter the access
 token from `codeaf factory token`. The form submits by POST; alternatively visit
 `/access?token=<access token>` once. Success sets a random session cookie and
-redirects to `/`, removing the token from the URL. A bad token returns
-HTTP 401 and creates no session. The token is never stored in the cookie.
+redirects to `/`, removing the token from the URL. A token that is expired,
+revoked or unknown returns HTTP 401 with `reason` `expired`, `revoked` or
+`unknown`, and creates no session. `invited_by` and `created_at` are set when
+the row is still known. The token is never stored in the cookie.
 Malformed forms or submissions larger than 4096 bytes return HTTP 400 with
 `invalid access form`.
 
@@ -1940,7 +1954,9 @@ Every response includes `factory: {address, version}`. Successful actions answer
 HTTP 200. An absent action answers HTTP 501 with
 `this factory does not provide that action`. Invalid input answers HTTP 422
 with `reason` `bad_input`; an unknown job answers HTTP 404 with `job not found`
-and `reason` `not_found`. Not allowed is HTTP 403 with `reason` `not_allowed`.
+and `reason` `not_found`. A verb the caller may not use because they are not
+the job's person is HTTP 403 with `reason` `not_job_person` and `job_person`
+`@sam`. Release of someone else's take stays HTTP 403 with `reason` `not_allowed`.
 Wrong methods answer HTTP 405 with an Allow header. A crash answers HTTP 500
 with no `reason`. A deadline is HTTP 504 and cancellation is HTTP 408.
 A job that is already running answers HTTP 409 with `reason` `conflict` and
@@ -1959,9 +1975,13 @@ change the job. `reason` is `stale`. `now_state` is the state now. `by` and `at`
 are set when the factory knows who moved it and when.
 
 The `error` sentence is one of three. A job already done, or already publishing,
-says `already approved by @raj at 11:58` (`by` is `@raj`, `at` is that time).
-Take of a job someone holds says `already taken by @mei`. Anything else that
-moved says `job moved on while you looked`.
+says `already approved by @raj at 11:58` (`by` is `@raj`, `at` is that time,
+`approved_by` the same, `event` the approval id, `commit` the approved commit).
+Take of a job someone holds says `already taken by @mei`, with `taker` `@mei`,
+`at` when they took it, and `machine` when the worktree or the hold names one.
+Anything else that moved says `job moved on while you looked`. A head that
+moved since the page opened is `changed_since_opened`, with `by`, `at`,
+`commit`, `current_commit` and `head_commit`.
 
 `POST /v1/jobs/{id}/drop` takes `{"words":"why"}` or no body. The words are the
 detail on the `dropped` audit event. A worker holding the job is told to stop.
@@ -1983,6 +2003,21 @@ question. `out_of_attempts` is the current one, and its options are
 `try_once_more`, `send_back` and `cancel_job`. `options` lists the choices
 that step offered. A cap question also carries `limit`, `spent` and
 `next_limit`, and `next_limit` is the cap a yes would allow.
+
+## who may act — can on every job, not_job_person
+
+Every job carries `can`: `approve`, `run_again`, `cancel_job`, `retry_publish`,
+`answer`, `assign_to_me` and `reply`. Each is true or false for this caller.
+Approve, run again, cancel job and retry publishing are the job's person.
+A plain question's answer is anyone who can see the repository. Reply is
+anyone who can see the job. `assign_to_me` is true only when the job has no
+person yet. A job with no person yet still allows the person's verbs.
+
+When `can` is false for that verb, the POST answers HTTP 403
+`{"reason":"not_job_person","job_person":"@sam"}` and `only @sam can do this`.
+An answer keeps the sentence `only @sam can answer this`. A job in the wrong
+state is still HTTP 409. Take of a job someone else holds stays HTTP 409
+`already taken by @mei`. Release of someone else's take stays `not_allowed`.
 
 ## needs you — six kinds, and who may answer
 
@@ -2018,11 +2053,19 @@ job's person answers. `send_back` needs a reason (`send back requires a reason`
 otherwise) and returns to the previous step. `cancel_job`, or no, stops the job.
 There is no going on as is.
 
+A loop step keeps one line per finished round in `rounds`: `round`, `summary`
+and `at`. The list stops at the step's max, or at the round a try-once-more
+was allowed to reach, and never past 32. Out of attempts can show what each
+try did.
+
 A step that errored — a crash, a tool or provider error, or the machine lost
-after the lease expired — is `failure`: `step`, `code`, `detail`, `next` and
-`at`. `code` is `crash`, `tool_error`, `provider_error` or `machine_lost`.
-`next` is `stopped` or `requeued`. It is not a question. The job does not ask
-to skip the step. A lost machine requeues the job. Any other error stops it.
+after the lease expired — is `failure` on the job and on that step: `step`,
+`code`, `detail`, `attempts`, `machine`, `next` and `at`. `code` is `crash`,
+`tool_error`, `provider_error` or `machine_lost`. `next` is `stopped` or
+`requeued`. `attempts` is how many tries that step had made. `machine` is the
+one that was holding the work. It is not a question. The job does not ask
+to skip the step. A lost machine requeues the job and leaves the step runnable.
+Any other error stops it. The record says `step_failed`.
 
 A publish that fails stays in needs you as `publish_failed`, in the same place
 as the other waits, with `could not publish: …` on its log and `publish_error`
@@ -2090,7 +2133,8 @@ A clean worktree with commits of its own still publishes a pull request.
 `"edited":true` when approving a result with a claim not shown. Use the job's
 `head_commit` as it stood when you opened it. A moved head returns HTTP 409
 `{"reason":"changed_since_opened","head_commit":"<new head>"}` with
-`This job changed since you opened it`. A reported head without `commit` returns
+`This job changed since you opened it`, plus `by`, `at`, `commit` and
+`current_commit`. A reported head without `commit` returns
 422. Only older jobs with no reported head retain `{}` or no-body approval. A job waiting at an approve
 step receives a yes answer. A ready proof goes through the factory's sign-off
 door, which still enforces the claims and policy gate and then publishes (see
@@ -2581,8 +2625,8 @@ the bar.
 A factory service supplied with a record keeps append-only `events.jsonl` beside its
 saved jobs. Each event has `id`, `at`, `kind`, `job`, `handle`, `cost` and `detail`.
 The record accepts starts (`started`, `auto_started`), stops (`stopped`), intake questions (`asked_first`), approvals (`approved`),
-answers (`answered`), posts (`posted`), takes (`took`), drops (`dropped`) and
-requests for changes (`request_changes`). Service run, answer, drop and request
+answers (`answered`), posts (`posted`), takes (`took`), releases (`released`), drops (`dropped`),
+requests for changes (`request_changes`), step failures (`step_failed`), and a pull request this factory opened merging or closing (`pr_merged`, `pr_closed`). Service run, answer, drop and request
 changes doors record successful actions; the stop door records the stop before returning
 the job to backlog. Automatic starts through Add work record
 `auto_started`. The claims desk's Take wiring remains a separate service connection.

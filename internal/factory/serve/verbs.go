@@ -19,15 +19,15 @@ import (
 
 func (h *Handler) verbs() {
 	s := h.seam
-	h.postJob("run", s.Launch != nil, h.guarded("run", h.recordedID(s.Launch, record.Started)))
+	h.postJob("run", s.Launch != nil, h.guarded("run", h.onlyOwner(h.recordedID(s.Launch, record.Started))))
 	h.postJob("stop", s.Stop != nil, h.guarded("stop", h.stop))
 	h.postJob("pause", s.Hold != nil, h.guarded("pause", h.holdVerb(true)))
 	h.postJob("resume", s.Hold != nil, h.guarded("resume", h.holdVerb(false)))
-	h.postJob("drop", s.Dismiss != nil, h.drop)
+	h.postJob("drop", s.Dismiss != nil, h.onlyOwner(h.drop))
 	h.postJob("answer", s.Answer != nil, h.answer)
 	h.postJob("steer", s.Steer != nil, h.wordsVerb("steer", s.Steer))
 	h.postJob("approve", true, h.approve)
-	h.postJob("retry_publish", h.config.Store != nil && h.seam.SignOff != nil, h.guarded("retry_publish", h.retryPublish))
+	h.postJob("retry_publish", h.config.Store != nil && h.seam.SignOff != nil, h.guarded("retry_publish", h.onlyOwner(h.retryPublish)))
 	h.postJob("request_changes", s.SendBack != nil, h.recordedWords(s.SendBack, record.RequestChanges))
 	h.postJob("recheck", s.Reverify != nil, h.guarded("recheck", h.idVerb(s.Reverify)))
 	// Shape is present even when the seam has no Shape door: a worker holding
@@ -95,10 +95,12 @@ func (h *Handler) take(w http.ResponseWriter, r *http.Request, it factory.Item) 
 	if h.failed(w, err) {
 		return
 	}
+	job := h.withVersion(api.FromItem(updated))
+	job.Can = api.CanFor(updated, me)
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
 		api.Job
-	}{h.factory, h.withVersion(api.FromItem(updated))})
+	}{h.factory, job})
 }
 
 // release is POST /v1/jobs/{id}/release. The person who took the job lets it
@@ -130,10 +132,12 @@ func (h *Handler) release(w http.ResponseWriter, r *http.Request, it factory.Ite
 	if h.failed(w, err) {
 		return
 	}
+	job := h.withVersion(api.FromItem(updated))
+	job.Can = api.CanFor(updated, me)
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
 		api.Job
-	}{h.factory, h.withVersion(api.FromItem(updated))})
+	}{h.factory, job})
 }
 
 // takeFailed maps the person rule and a live worker hold onto 409. The
@@ -184,7 +188,7 @@ func (h *Handler) taken(w http.ResponseWriter, it factory.Item) {
 		h.refuse(w, http.StatusConflict, "job is already taken", "conflict", "", nil, state)
 		return
 	}
-	h.refuse(w, http.StatusConflict, "already taken by @"+who, "conflict", "@"+who, nil, state)
+	h.takenConflict(w, it, "already taken by @"+who, "conflict", state)
 }
 
 func (h *Handler) idVerb(door func(int) error) jobAction {
@@ -319,7 +323,10 @@ func (h *Handler) mayAnswer(w http.ResponseWriter, r *http.Request, it factory.I
 	if factory.NormalizeHandle(handle) == who {
 		return true
 	}
-	h.refuse(w, http.StatusForbidden, "only @"+who+" can answer this", "not_allowed", "@"+who, nil, h.withVersion(api.FromItem(it)).State)
+	h.writeRefusal(w, http.StatusForbidden, refusalBody{
+		Error: "only @" + who + " can answer this", Reason: factory.ReasonNotJobPerson,
+		By: "@" + who, JobPerson: "@" + who, NowState: h.withVersion(api.FromItem(it)).State,
+	})
 	return false
 }
 
@@ -353,7 +360,7 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 	if !h.decode(w, r, &body, true) || !h.commitFresh(w, it, body.Commit) || !h.fresh(w, r, it, "approve", body.Expect) || h.failed(w, h.approvalIdentity(r)) {
 		return
 	}
-	if !h.mayAnswer(w, r, it) {
+	if !h.owns(w, r, it) {
 		return
 	}
 	// A CLAIM THE DOOR WOULD REFUSE NEVER BECOMES A RECEIPT. The check runs
@@ -443,8 +450,11 @@ func (h *Handler) writeApproval(w http.ResponseWriter, event string) {
 func (h *Handler) notWaiting(w http.ResponseWriter, r *http.Request, it factory.Item) {
 	job := h.withVersion(api.FromItem(it))
 	if job.State == api.StateDone || it.Publishing || it.State == factory.StateShipped {
-		sentence, by, at := h.approvedSentence(r, it)
-		h.refuse(w, http.StatusConflict, sentence, "conflict", by, at, job.State)
+		sentence, by, at, eventID, commit := h.approvedSentence(r, it)
+		h.writeRefusal(w, http.StatusConflict, refusalBody{
+			Error: sentence, Reason: "conflict", By: by, At: at, NowState: job.State,
+			ApprovedBy: by, Event: eventID, Commit: commit,
+		})
 		return
 	}
 	h.refuse(w, http.StatusConflict, "job is not waiting for approval", "conflict", "", nil, job.State)

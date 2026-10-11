@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 )
@@ -119,35 +120,54 @@ func (h *Handler) liveSession(key string) (accessSession, bool) {
 	return session, true
 }
 
-// identifyToken accepts the host config token or an unexpired row. The row's
-// id comes back so a session can remember it. The host token matches with an
-// empty id.
+// tokenHit is what a presented secret is. reason is empty when it may be
+// used. expired, revoked and unknown are refusals. invitedBy and created
+// are set for a row we still have, so the app can name who to ask.
+type tokenHit struct {
+	id        string
+	reason    string
+	invitedBy string
+	created   time.Time
+}
+
+// identifyToken accepts the host config token or an unexpired, unrevoked
+// row. The row's id comes back so a session can remember it. The host token
+// matches with an empty id.
 func (h *Handler) identifyToken(token string) (id string, ok bool) {
-	if token == "" {
+	hit := h.classifyToken(token)
+	if hit.reason != "" {
 		return "", false
 	}
-	got := sha256.Sum256([]byte(token))
-	floor := h.sameSecret(h.config.AccessToken, got)
+	return hit.id, token != "" && (hit.id != "" || h.floorToken(token))
+}
+
+// classifyToken says why a secret cannot be used. A live row or the host
+// token has an empty reason. An expired or revoked row keeps who invited
+// and when the row was made. Anything else is unknown, with neither.
+func (h *Handler) classifyToken(token string) tokenHit {
+	if token == "" {
+		return tokenHit{reason: factory.LinkUnknown}
+	}
 	now := h.now()
-	var match tokens.Token
-	matched := false
 	for _, row := range h.tokenRows() {
-		if !h.sameSecret(row.Token, got) {
+		if !row.Matches(token) {
 			continue
 		}
-		if !row.Expires.IsZero() && !now.Before(row.Expires) {
-			continue
+		hit := tokenHit{id: row.ID, invitedBy: row.InvitedBy, created: row.Created}
+		switch {
+		case row.Revoked:
+			hit.reason = factory.LinkRevoked
+		case !row.Expires.IsZero() && !now.Before(row.Expires):
+			hit.reason = factory.LinkExpired
+		default:
+			return hit
 		}
-		match = row
-		matched = true
+		return hit
 	}
-	if matched {
-		return match.ID, true
+	if h.floorToken(token) {
+		return tokenHit{}
 	}
-	if floor {
-		return "", true
-	}
-	return "", false
+	return tokenHit{reason: factory.LinkUnknown}
 }
 
 func (h *Handler) sameSecret(secret string, got [sha256.Size]byte) bool {
@@ -194,11 +214,51 @@ func (h *Handler) sessionUsable(session accessSession) bool {
 	}
 	now := h.now()
 	for _, row := range h.tokenRows() {
-		if row.ID == session.tokenID && (row.Expires.IsZero() || now.Before(row.Expires)) {
+		if row.ID == session.tokenID && !row.Revoked && (row.Expires.IsZero() || now.Before(row.Expires)) {
 			return true
 		}
 	}
 	return false
+}
+
+// refuseToken answers 401 for a secret that was presented and refused.
+// reason is expired, revoked or unknown. invited_by and created_at are set
+// when the row is still on disk, so the app can say who to ask for a new link.
+func (h *Handler) refuseToken(w http.ResponseWriter, token string) {
+	hit := h.classifyToken(token)
+	reason := hit.reason
+	if reason == "" {
+		reason = factory.LinkUnknown
+	}
+	words := "this link is not recognized"
+	switch reason {
+	case factory.LinkExpired:
+		words = "this link has expired"
+	case factory.LinkRevoked:
+		words = "this link was revoked"
+	default:
+		reason = factory.LinkUnknown
+	}
+	var created *time.Time
+	invited := ""
+	if reason != factory.LinkUnknown {
+		invited = strings.TrimSpace(hit.invitedBy)
+		if invited != "" && !strings.HasPrefix(invited, "@") {
+			invited = "@" + invited
+		}
+		if !hit.created.IsZero() {
+			stamp := hit.created.UTC()
+			created = &stamp
+		}
+	}
+	h.write(w, http.StatusUnauthorized, struct {
+		Factory   api.Factory `json:"factory"`
+		Error     string      `json:"error"`
+		Reason    string      `json:"reason"`
+		InvitedBy string      `json:"invited_by,omitempty"`
+		CreatedAt *time.Time  `json:"created_at,omitempty"`
+		RequestID string      `json:"request_id"`
+	}{h.factory, words, reason, invited, created, requestID()})
 }
 
 func (h *Handler) access(w http.ResponseWriter, r *http.Request) {
@@ -224,7 +284,7 @@ func (h *Handler) access(w http.ResponseWriter, r *http.Request) {
 	}
 	tokenID, ok := h.identifyToken(token)
 	if !ok {
-		h.fail(w, http.StatusUnauthorized, "invalid access token")
+		h.refuseToken(w, token)
 		return
 	}
 	bytes := make([]byte, 32)

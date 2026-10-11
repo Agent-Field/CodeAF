@@ -269,6 +269,8 @@ type Job struct {
 	HeadCommit string              `json:"head_commit,omitempty"`
 	Publishing *factory.Publishing `json:"publishing,omitempty"`
 	Desk       *JobDesk            `json:"desk,omitempty"`
+	// Can is computed for the caller. It is not stored on the job.
+	Can Can `json:"can"`
 }
 
 // NeedsYou is why a job is waiting, and since when. question is set for a
@@ -304,13 +306,37 @@ type SpendingLimit struct {
 }
 
 // Failure is a step that errored. next is requeued or stopped. It is not a
-// question, and the app shows it as a failure.
+// question, and the app shows it as a failure. attempts is how many tries
+// the step had made. machine is the one that was holding the work.
 type Failure struct {
-	Step   string    `json:"step,omitempty"`
-	Code   string    `json:"code"`
-	Detail string    `json:"detail,omitempty"`
-	Next   string    `json:"next"`
-	At     time.Time `json:"at"`
+	Step     string    `json:"step,omitempty"`
+	Code     string    `json:"code"`
+	Detail   string    `json:"detail,omitempty"`
+	Attempts int       `json:"attempts,omitempty"`
+	Machine  string    `json:"machine,omitempty"`
+	Next     string    `json:"next"`
+	At       time.Time `json:"at"`
+}
+
+// RoundLine is one finished try of a loop step.
+type RoundLine struct {
+	Round   int       `json:"round"`
+	Summary string    `json:"summary,omitempty"`
+	At      time.Time `json:"at"`
+}
+
+// Can is which verbs this caller may use on this job. It follows the
+// who-may-act table: the job's person for approve, run again, cancel job
+// and retry publishing; anyone who can see the repo for a plain question
+// and for reply. false is the app hiding the button.
+type Can struct {
+	Approve      bool `json:"approve"`
+	RunAgain     bool `json:"run_again"`
+	CancelJob    bool `json:"cancel_job"`
+	RetryPublish bool `json:"retry_publish"`
+	Answer       bool `json:"answer"`
+	AssignToMe   bool `json:"assign_to_me"`
+	Reply        bool `json:"reply"`
 }
 
 // JobAsk is how the job was requested. A GitHub issue fills issue and text.
@@ -407,19 +433,21 @@ type StepAt struct {
 type Step struct {
 	Tests *factory.TestCounts `json:"tests,omitempty"`
 	StepDef
-	State      string     `json:"state"`
-	Round      int        `json:"round,omitempty"`
-	Result     string     `json:"result,omitempty"`
-	Cost       float64    `json:"cost,omitempty"`
-	At         *time.Time `json:"at,omitempty"`      // when the step ended; absent until it does
-	Note       string     `json:"note,omitempty"`    // desk
-	Tasks      int        `json:"tasks,omitempty"`   // desk
-	LeftMS     int64      `json:"left_ms,omitempty"` // desk
-	Chat       string     `json:"chat,omitempty"`    // desk
-	Handle     string     `json:"handle,omitempty"`  // desk
-	RunKind    string     `json:"run_kind,omitempty"`
-	InPipeline bool       `json:"in_pipeline"`
-	InRun      bool       `json:"in_run"`
+	State      string      `json:"state"`
+	Round      int         `json:"round,omitempty"`
+	Result     string      `json:"result,omitempty"`
+	Rounds     []RoundLine `json:"rounds,omitempty"`
+	Failure    *Failure    `json:"failure,omitempty"`
+	Cost       float64     `json:"cost,omitempty"`
+	At         *time.Time  `json:"at,omitempty"`      // when the step ended; absent until it does
+	Note       string      `json:"note,omitempty"`    // desk
+	Tasks      int         `json:"tasks,omitempty"`   // desk
+	LeftMS     int64       `json:"left_ms,omitempty"` // desk
+	Chat       string      `json:"chat,omitempty"`    // desk
+	Handle     string      `json:"handle,omitempty"`  // desk
+	RunKind    string      `json:"run_kind,omitempty"`
+	InPipeline bool        `json:"in_pipeline"`
+	InRun      bool        `json:"in_run"`
 }
 
 // Claim is one row of a proof sheet.

@@ -25,6 +25,7 @@ import (
 	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
@@ -791,6 +792,12 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			ph := &it.Stream.Phases[i]
 			setPhaseState(ph, factory.PhaseRunning, now)
 			ph.Round = round
+			// A step that is running again is no longer the failed step.
+			// The record keeps the earlier incident.
+			ph.Failure = nil
+			if it.Failure != nil && it.Failure.Step == name {
+				it.Failure = nil
+			}
 			if resume == "" {
 				// A fresh chat reads the answers in its brief's notes.
 				ph.Chat = ""
@@ -1115,10 +1122,26 @@ func previousWork(ph []factory.Phase, i int) int {
 func (lp *floorLoop) failStop(c *loopCtl, step string, err error) {
 	now := lp.r.now()
 	code, detail := factory.ClassifyFailure(err.Error())
+	var attempts int
+	var machine string
 	_ = lp.write(c, func(it *factory.Item) error {
-		it.Failure = &factory.Failure{Step: step, Code: code, Detail: detail, Next: factory.FailureStopped, At: now}
+		attempts = 1
+		machine = it.WorktreeMachine
+		if it.Stream != nil {
+			for i := range it.Stream.Phases {
+				if it.Stream.Phases[i].Name == step && it.Stream.Phases[i].Round > attempts {
+					attempts = it.Stream.Phases[i].Round
+				}
+			}
+		}
+		factory.StampFailure(it, factory.NewFailure(step, code, detail, machine, factory.FailureStopped, attempts, now))
 		return nil
 	})
+	if lp.r.opts.Record != nil {
+		_, _ = lp.r.opts.Record.Append(context.Background(), record.Event{
+			Kind: record.StepFailed, Job: c.id, Detail: code + " · " + step + " · " + factory.FailureStopped,
+		})
+	}
 	lp.stop(c)
 }
 
