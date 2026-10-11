@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
 )
@@ -269,17 +270,14 @@ func talkHandle(it factory.Item) string {
 	return h
 }
 
-// factoryItemRecipe is the recipe an item runs under: its repository's file
-// when this machine knows the checkout, the default recipe otherwise — the
-// same reading the floor makes ([factory.LocalSeam]'s recipe).
+// factoryItemRecipe shares the forge-backed rules the floor and intake read.
 func factoryItemRecipe(dirs func(string) string, it factory.Item) factory.Recipe {
-	if dir := strings.TrimSpace(dirs(it.Repo)); dir != "" {
-		if r, _, err := factoryPipelineRecipe(dir); err == nil {
-			return r
-		}
+	dir := ""
+	if dirs != nil {
+		dir = strings.TrimSpace(dirs(it.Repo))
 	}
-	r, _, _ := factoryPipelineRecipe("")
-	return r
+	f, _ := factoryRules().Load(context.Background(), it.Repo, dir, home.Join("factory.yaml"))
+	return f.Recipe()
 }
 
 // talkBrief is the opening note: the marker, the manager's five blocks
@@ -454,12 +452,13 @@ func (d storeItemDoor) Apply(_ context.Context, item int, change session.ItemCha
 // card shows before and after its line ([session.RecipeRows]). It is asked of
 // the same checkout the bank writes to, so an unknown checkout refuses here in
 // the bank's own words, before the person is asked anything.
-func (d fileRecipeDoor) Stages(_ context.Context, repo string, kind factory.Kind) ([]string, error) {
+func (d fileRecipeDoor) Stages(ctx context.Context, repo string, kind factory.Kind) ([]string, error) {
 	dir, err := d.dir(repo)
 	if err != nil {
 		return nil, err
 	}
-	recipe, _, err := factoryPipelineRecipe(dir)
+	file, err := factoryRules().Load(ctx, repo, dir, home.Join("factory.yaml"))
+	recipe := file.Recipe()
 	if err != nil {
 		return nil, err
 	}

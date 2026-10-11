@@ -131,9 +131,8 @@ type Seam struct {
 	// login, and anything else is a token kept in the profile.
 	ConnectGitHub func(ctx context.Context, token string) error
 	// RecipeAt is a repository's recipe as its file says it, the lines that
-	// did not load, and the folder it was read from ("" when this machine does
-	// not know where the repository is checked out, and the recipe is then the
-	// default one).
+	// did not load, and the optional local checkout folder. Shared rules may
+	// be read from the forge even when this machine has no checkout.
 	RecipeAt func(repo string) (r Recipe, problems []Problem, dir string, err error)
 	// SaveRecipe writes a whole recipe to the repository's recipe file.
 	SaveRecipe func(repo string, r Recipe) error

@@ -2,6 +2,12 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,9 +15,12 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
+	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/home"
+	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
 func TestFactoryRecipeAtAndRunnerReadYAMLFirst(t *testing.T) {
@@ -60,5 +69,87 @@ func TestFactoryConvertPrintsYAMLAndWarnsAboutLostKnobs(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(filepath.Dir(path), "factory.yaml")); !os.IsNotExist(err) {
 		t.Fatal("convert wrote a file")
+	}
+}
+
+// This drives the host's intake and HTTP doors with no checkout or model.
+func TestFactoryRulesFromForgeReachIntakeAndPipeline(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	text := "start:\n  labels: [agent-ready]\n"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/owner/repo/contents/"+pipeline.RepoFile {
+			http.NotFound(w, r)
+			return
+		}
+		if r.URL.Query().Get("ref") != "" {
+			t.Error("rules supplied a branch instead of reading the default")
+		}
+		json.NewEncoder(w).Encode(map[string]string{"type": "file", "encoding": "base64", "content": base64.StdEncoding.EncodeToString([]byte(text)), "sha": fmt.Sprintf("blob-%s", text)})
+	}))
+	defer srv.Close()
+	loader := factorygithub.NewPipelineLoader(func(context.Context) factorygithub.PipelineAPI { return forge.NewClient("stub").WithBaseURL(srv.URL) })
+	factoryRuleCaches.Lock()
+	factoryRuleCaches.profiles[factoryProfile("")] = loader
+	factoryRuleCaches.Unlock()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetRepos([]string{"owner/repo"}); err != nil {
+		t.Fatal(err)
+	}
+	it, err := st.Create(factory.Item{Repo: "owner/repo", Kind: factory.KindIssue, Tier: factory.TierOwner,
+		Title: "Fix documentation", State: factory.StateNew, Labels: []string{"agent-ready"},
+		Triage: factory.Triage{Size: "S", Est: 1, TriagedAt: time.Unix(100, 0)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := factoryIntake(st)
+	if err := in.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	items, err := st.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].ID != it.ID || items[0].State != factory.StateQueued {
+		t.Fatalf("intake did not queue checkout-free job: %+v", items)
+	}
+	seam := factory.LocalSeam(st, time.Now(), factoryPipelineOption(), factory.WithRepoDirs(st.CheckoutDir))
+	handler := serve.New(seam, serve.Config{})
+	read := func() struct {
+		Source   string
+		Problems []string
+	} {
+		t.Helper()
+		req := httptest.NewRequest("GET", "/v1/repos/owner/repo/pipeline", nil)
+		req.RemoteAddr = "127.0.0.1:1234"
+		out := httptest.NewRecorder()
+		handler.ServeHTTP(out, req)
+		var payload struct {
+			Source   string
+			Problems []string
+		}
+		if out.Code != 200 {
+			t.Fatalf("pipeline HTTP %d: %s", out.Code, out.Body.String())
+		}
+		if err := json.Unmarshal(out.Body.Bytes(), &payload); err != nil {
+			t.Fatal(err)
+		}
+		return payload
+	}
+	if got := read(); got.Source != "file" || len(got.Problems) != 0 {
+		t.Fatalf("pipeline %+v", got)
+	}
+	text = "start: ["
+	if err := in.Once(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(); got.Source != "file" || len(got.Problems) == 0 || !strings.Contains(got.Problems[0], pipeline.RepoFile) {
+		t.Fatalf("parse error disappeared: %+v", got)
+	}
+	_, problems, dir, err := seam.RecipeAt("owner/repo")
+	if err == nil || len(problems) == 0 || dir != "" {
+		t.Fatalf("recipe page read: %+v, %q, %v", problems, dir, err)
 	}
 }

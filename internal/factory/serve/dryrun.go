@@ -26,7 +26,12 @@ func (h *Handler) dryrun(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	file, err := pipelineFile(dir)
+	var file pipeline.File
+	if h.config.Pipeline != nil {
+		file, err = h.config.Pipeline(r.Context(), full, dir)
+	} else {
+		file, err = pipelineFile(dir)
+	}
 	if h.failed(w, err) {
 		return
 	}

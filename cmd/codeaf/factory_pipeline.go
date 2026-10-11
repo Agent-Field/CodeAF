@@ -1,27 +1,30 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/intake"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/home"
+	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
-func factoryPipelineRecipe(dir string) (factory.Recipe, []factory.Problem, error) {
-	return pipeline.RecipeLoader(home.Join("factory.yaml"))(dir)
-}
-
 func factoryPipelineOption() factory.LocalOption {
-	return factory.WithRecipeLoader(factoryPipelineRecipe)
+	return factory.WithRepositoryRecipeLoader(func(repo, dir string) (factory.Recipe, []factory.Problem, error) {
+		f, err := factoryRules().Load(context.Background(), repo, dir, home.Join("factory.yaml"))
+		return f.Recipe(), f.RecipeProblems(), err
+	})
 }
 
 func runFactoryConvert(args []string, out, warnings io.Writer) error {
@@ -59,12 +62,18 @@ func factoryIntake(st *store.Store) *intake.Intake {
 	history, _ := record.Open(st, record.Options{})
 	return intake.New(st, intake.Options{
 		Record: history,
-		Load: func(repo string) (pipeline.File, error) {
-			dir := st.CheckoutDir(repo)
-			if dir == "" {
-				return pipeline.Defaults(), nil
+		Refresh: func(ctx context.Context) error {
+			repos, err := st.Repos()
+			if err != nil {
+				return err
 			}
-			return pipeline.LoadMerged(dir, home.Join("factory.yaml"))
+			for _, repo := range repos {
+				factoryRules().Refresh(ctx, repo, st.CheckoutDir(repo))
+			}
+			return ctx.Err()
+		},
+		Load: func(repo string) (pipeline.File, error) {
+			return factoryRules().Load(context.Background(), repo, st.CheckoutDir(repo), home.Join("factory.yaml"))
 		},
 		Launch: func(id int) error {
 			seam := factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(), factory.WithRepoDirs(st.CheckoutDir))
@@ -74,4 +83,29 @@ func factoryIntake(st *store.Store) *intake.Intake {
 			return seam.Launch(id)
 		},
 	})
+}
+
+// Every factory door in this process shares the same repository and blob cache.
+// Profiles have separate loaders so changing a home cannot reuse another token's read.
+var factoryRuleCaches = struct {
+	sync.Mutex
+	profiles map[string]*factorygithub.PipelineLoader
+}{profiles: map[string]*factorygithub.PipelineLoader{}}
+
+func factoryRules() *factorygithub.PipelineLoader {
+	profile := factoryProfile("")
+	factoryRuleCaches.Lock()
+	defer factoryRuleCaches.Unlock()
+	if loader := factoryRuleCaches.profiles[profile]; loader != nil {
+		return loader
+	}
+	loader := factorygithub.NewPipelineLoader(func(ctx context.Context) factorygithub.PipelineAPI {
+		token, _ := factorygithub.TokenAt(ctx, profile)
+		if token == "" {
+			return nil
+		}
+		return forge.NewClient(token)
+	})
+	factoryRuleCaches.profiles[profile] = loader
+	return loader
 }

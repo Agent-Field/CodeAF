@@ -225,7 +225,10 @@ func toRepos(rs []Repo) []factory.Repo {
 // FromRecipe is a recipe as a pipeline, for `GET .../pipeline` as much as for
 // the repositories on the queue.
 func FromRecipe(r factory.Recipe) Pipeline {
-	p := Pipeline{Steps: mapList(r.Stages, fromStage), Policy: r.Policy, Habits: r.Habits}
+	p := Pipeline{Source: r.Source, Steps: mapList(r.Stages, fromStage), Policy: r.Policy, Habits: r.Habits}
+	for _, problem := range r.Problems {
+		p.Problems = append(p.Problems, problem)
+	}
 	if r.ByKind != nil {
 		p.ByKind = make(map[string][]StepDef, len(r.ByKind))
 		for k, st := range r.ByKind {
@@ -242,7 +245,10 @@ func FromRecipe(r factory.Recipe) Pipeline {
 }
 
 func toRecipe(p Pipeline) factory.Recipe {
-	r := factory.Recipe{Stages: mapList(p.Steps, toStage), Policy: p.Policy, Habits: p.Habits}
+	r := factory.Recipe{Source: p.Source, Stages: mapList(p.Steps, toStage), Policy: p.Policy, Habits: p.Habits}
+	for _, problem := range p.Problems {
+		r.Problems = append(r.Problems, problem)
+	}
 	if p.ByKind != nil {
 		r.ByKind = make(map[factory.Kind][]factory.Stage, len(p.ByKind))
 		for k, st := range p.ByKind {

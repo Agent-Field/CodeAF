@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -27,6 +28,8 @@ import (
 // Config is supplied by the host so the handler never reads a person's home
 // or guesses the published address from a client-controlled Host header.
 type Config struct {
+	// Pipeline reads the same repository rules as intake, including personal limits.
+	Pipeline     func(context.Context, string, string) (pipeline.File, error)
 	Address      string
 	Version      string
 	AccessToken  string
@@ -257,13 +260,14 @@ func (h *Handler) pipeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	recipe, problems, dir, err := h.seam.RecipeAt(owner + "/" + repo)
-	if h.failed(w, err) {
+	// A failed file read is still a repository payload with its reason.
+	if len(problems) == 0 && h.failed(w, err) {
 		return
 	}
 	p := api.FromRecipe(recipe)
 	// RecipeAt guarantees defaults without a checkout, but does not say
 	// whether a known checkout has a file. Leave that unknown source absent.
-	if dir == "" {
+	if p.Source == "" && dir == "" {
 		p.Source = "defaults"
 	}
 	notes := make([]string, len(problems))

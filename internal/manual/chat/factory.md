@@ -548,12 +548,18 @@ skipped neaten · why: touches the call row`. A later change by someone else nam
 
 ## the recipe is read from the main branch — a pull request cannot change the law for its own review
 
-codeaf reads `.codeaf/factory.yaml` first, then `.codeaf/factory.md`, from the checkout's main branch, the copy git holds at
-`origin/HEAD` (else `main`, else `master`), never from the branch you have checked out and never
-from a pull request's branch. An edit to the file counts once it is merged. Only when there is
-no git or no main branch to read is the working file read; a main branch without the file runs
-the default recipe. codeaf's log says which, once per checkout: `recipe from main branch`,
-`recipe from working tree` or `recipe from default`.
+codeaf reads `.codeaf/factory.yaml` through GitHub from the repository's default branch,
+then `.codeaf/factory.md` when YAML is absent. No local checkout is needed to read
+start rules. A pull request cannot change the rules for its own run.
+
+Parsed files are cached by blob SHA and refreshed on each intake tick. If GitHub is
+not connected or the connection is offline, a known local checkout is the fallback:
+`origin/HEAD` (else `main`, else `master`), with the working file used only when no
+main branch can be read. An absent file on GitHub means defaults; it never selects
+a different local file. A file GitHub refuses to read or YAML that cannot be parsed
+keeps automatic intake stopped and shows its reason in the pipeline's `/v1` payload
+and on the factory recipe page (`E`). A failed read without an offline checkout also
+shows its reason. Personal `~/.codeaf/factory.yaml` limits still tighten the result.
 
 ## the handover
 
@@ -1762,8 +1768,9 @@ capacity and the connected GitHub handle), `GET /v1/jobs/{id}` (one full job),
 `GET /v1/repos/{owner}/{repo}/pipeline` (the pipeline read through the repository's
 recipe), `GET /v1/github` (login and connection method), and `GET /v1/me`.
 Every JSON response, including an error, carries `factory: {address, version}`.
-The pipeline includes any lines that could not load; without a known checkout it
-returns defaults with `source: "defaults"`.
+The pipeline includes any lines that could not load. Rules come from GitHub's default
+branch even without a checkout; an absent file returns `source: "defaults"`. A file
+that cannot be read or parsed includes the reason in `problems`.
 
 Loopback connections are open. Connections from any other address require
 `Authorization: Bearer <access token>` using the host configuration's access token,
@@ -2057,11 +2064,9 @@ Be plain about this when asked:
 - **Opening an item page does not shape its steps in a window attached to a session host.**
   The manager's reading on open runs only in a codeaf that runs its own conversations.
 - **Only GitHub is connected.** No GitLab or Linear.
-- **The recipe file is read only where codeaf knows the checkout.** It is read for the
-  repository you opened codeaf in, and for any watched GitHub repository whose checkout codeaf
-  has seen you open. Every other repository runs the default recipe until then, and for those
-  `b` is not offered, no habit is offered for banking, and the recipe page (`E`) is drawn but
-  not changed.
+- **Writing a recipe still needs a local checkout.** Reading rules through GitHub
+  needs no checkout. Without one, `b` and banking stay absent; the recipe page (`E`)
+  shows the shared pipeline and any read problems, but cannot save edits.
 - **The day rail stops launches, not running items.** A job pulled past it goes back to
   backlog with the reason on its log; an item already running goes on.
 - **Only an approval or a post stage writes to GitHub.** Approving a landed item opens its

@@ -216,9 +216,14 @@ func FormatSteps() string {
 // the issue steps. The empty list stays on [File.Pipeline], which is the file.
 func (f File) Recipe() factory.Recipe {
 	r := factory.Recipe{
+		Source: f.Source,
+
 		Adapt:  copyAdapt(f.markdownAdapt),
 		Policy: append([]string(nil), f.Rules...),
 		ByKind: map[factory.Kind][]factory.Stage{},
+	}
+	for _, problem := range f.Problems {
+		r.Problems = append(r.Problems, problem.Error())
 	}
 	for kind, names := range f.Pipeline {
 		stages := f.stages(names)
@@ -318,6 +323,15 @@ func copyAdapt(modes map[factory.Kind]factory.AdaptMode) map[factory.Kind]factor
 	out := make(map[factory.Kind]factory.AdaptMode, len(modes))
 	for kind, mode := range modes {
 		out[kind] = mode
+	}
+	return out
+}
+
+// RecipeProblems preserves file locations when the read crosses the seam.
+func (f File) RecipeProblems() []factory.Problem {
+	out := make([]factory.Problem, len(f.Problems))
+	for i, p := range f.Problems {
+		out[i] = factory.Problem{Line: p.Line, Text: p.Where, Why: p.Why}
 	}
 	return out
 }

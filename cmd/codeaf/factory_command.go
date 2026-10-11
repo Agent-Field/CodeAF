@@ -18,6 +18,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -200,7 +201,11 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 	}
 	// The service's watch, worker reports and record share the jobs' root, so
 	// clients observe the same files the runner writes.
-	handler := serve.New(seam, serve.Config{Address: address, AccessToken: token, Store: st, Root: st.Root(), Record: history})
+	handler := serve.New(seam, serve.Config{Address: address, AccessToken: token, Store: st, Root: st.Root(), Record: history,
+		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
+			return factoryRules().Load(ctx, repo, dir, home.Join("factory.yaml"))
+		},
+	})
 	server := &http.Server{
 		Handler: handler, ReadHeaderTimeout: 10 * time.Second,
 		// Long polls and change streams must end with the service, otherwise

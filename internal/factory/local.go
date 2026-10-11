@@ -269,6 +269,11 @@ func WithRecipeLoader(load func(string) (Recipe, []Problem, error)) LocalOption 
 	return func(o *localOptions) { o.loadRecipe = load }
 }
 
+// WithRepositoryRecipeLoader reads rules by repository even without a checkout.
+func WithRepositoryRecipeLoader(load func(repo, dir string) (Recipe, []Problem, error)) LocalOption {
+	return func(o *localOptions) { o.loadRepoRecipe = load }
+}
+
 func (o localOptions) defaultRecipe() Recipe {
 	if o.loadRecipe != nil {
 		r, _, _ := o.loadRecipe("")
@@ -285,13 +290,14 @@ func (o localOptions) load(dir string) (Recipe, []Problem, error) {
 }
 
 type localOptions struct {
-	loadRecipe func(string) (Recipe, []Problem, error)
-	runner     RunnerDoors
-	dirs       func(repo string) string
-	lister     RepoLister
-	talk       func(ctx context.Context, it Item) (string, error)
-	shape      func(ctx context.Context, id int) (string, error)
-	refetch    func(ctx context.Context, it Item) error
+	loadRepoRecipe func(string, string) (Recipe, []Problem, error)
+	loadRecipe     func(string) (Recipe, []Problem, error)
+	runner         RunnerDoors
+	dirs           func(repo string) string
+	lister         RepoLister
+	talk           func(ctx context.Context, it Item) (string, error)
+	shape          func(ctx context.Context, id int) (string, error)
+	refetch        func(ctx context.Context, it Item) error
 }
 
 // WithRefetch gives the local seam its three source doors, [Seam.Refresh],
@@ -473,6 +479,14 @@ func (o localOptions) dir(repo string) (string, error) {
 // line that did not load is left out, so one repository's mistyped file never
 // takes the whole floor down with it.
 func (o localOptions) recipe(repo string) Recipe {
+	if o.loadRepoRecipe != nil && repo != "" {
+		dir := ""
+		if o.dirs != nil {
+			dir = strings.TrimSpace(o.dirs(repo))
+		}
+		r, _, _ := o.loadRepoRecipe(repo, dir)
+		return r
+	}
 	if o.dirs == nil || repo == "" {
 		return o.defaultRecipe()
 	}
@@ -657,16 +671,26 @@ func localSettings(seam *Seam, st ItemStore, o localOptions) {
 			return keeper.SetRail(usd)
 		}
 	}
-	if o.dirs == nil {
+	if o.dirs == nil && o.loadRepoRecipe == nil {
 		return
 	}
 	seam.RecipeAt = func(repo string) (Recipe, []Problem, string, error) {
-		dir := strings.TrimSpace(o.dirs(repo))
+		dir := ""
+		if o.dirs != nil {
+			dir = strings.TrimSpace(o.dirs(repo))
+		}
+		if o.loadRepoRecipe != nil {
+			r, probs, err := o.loadRepoRecipe(repo, dir)
+			return r, probs, dir, err
+		}
 		if dir == "" {
 			return o.defaultRecipe(), nil, "", nil
 		}
 		r, probs, err := o.load(dir)
 		return r, probs, dir, err
+	}
+	if o.dirs == nil {
+		return
 	}
 	seam.SaveRecipe = func(repo string, r Recipe) error {
 		dir, err := o.dir(repo)

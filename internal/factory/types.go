@@ -135,10 +135,13 @@ type Stage struct {
 // the recipe file keeps under `## habits` (recipefile.go), which a [Repo]
 // carries as its own Habits once loaded.
 type Recipe struct {
-	Stages []Stage
-	ByKind map[Kind][]Stage
-	Policy []string
-	Habits []string
+	// Source and Problems keep the pipeline read visible on every surface.
+	Source   string
+	Problems []string
+	Stages   []Stage
+	ByKind   map[Kind][]Stage
+	Policy   []string
+	Habits   []string
 	// Adapt is how much the plan stage may change an item's stages, per kind.
 	// A kind it does not name is [AdaptFree]; read it through [Recipe.AdaptFor].
 	Adapt map[Kind]AdaptMode

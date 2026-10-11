@@ -118,12 +118,13 @@ type Repo struct {
 // Pipeline is a repository's steps in order, per kind of job, and the policy
 // every proof must show (code: [factory.Recipe]).
 type Pipeline struct {
-	Source string               `json:"source,omitempty"` // future: `file` or `defaults`, from internal/factory/pipeline
-	Steps  []StepDef            `json:"steps"`
-	ByKind map[string][]StepDef `json:"by_kind,omitempty"`
-	Policy []string             `json:"policy,omitempty"`
-	Habits []string             `json:"habits,omitempty"`
-	Adapt  map[string]string    `json:"adapt,omitempty"`
+	Problems []string             `json:"problems,omitempty"`
+	Source   string               `json:"source,omitempty"` // file, markdown or defaults, from internal/factory/pipeline
+	Steps    []StepDef            `json:"steps"`
+	ByKind   map[string][]StepDef `json:"by_kind,omitempty"`
+	Policy   []string             `json:"policy,omitempty"`
+	Habits   []string             `json:"habits,omitempty"`
+	Adapt    map[string]string    `json:"adapt,omitempty"`
 }
 
 // StepDef is one step as the pipeline defines it (code: [factory.Stage]).

@@ -269,7 +269,7 @@ func factoryProfile(profileDir string) string {
 // factoryRepoDirs answers where a repository is checked out, by the name the
 // floor shows. THREE RULES, IN ORDER: the workspace's own folder when repo is
 // that folder's name (the person opened codeaf inside it), else the folder the
-// store has recorded for it, else "" (unknown, and the default recipe runs).
+// store has recorded for it, else "" (unknown; rules still come from the forge).
 func factoryRepoDirs(st *store.Store, workspace string) func(repo string) string {
 	here := ""
 	if w := strings.TrimSpace(workspace); w != "" {

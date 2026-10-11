@@ -71,6 +71,12 @@ func Load(dir string) (File, error) {
 // that cannot be read leaves the checkout's file as it was.
 func LoadMerged(dir, personal string) (File, error) {
 	repo, err := Load(dir)
+	return MergePersonal(repo, personal, err)
+}
+
+// MergePersonal tightens any repository read with the same personal limits.
+func MergePersonal(repo File, personal string, err error) (File, error) {
+	repo = cloneFile(repo)
 	if strings.TrimSpace(personal) == "" {
 		return repo, err
 	}
@@ -534,4 +540,15 @@ func cloneFile(f File) File {
 		out.set.pipeline[kind] = on
 	}
 	return out
+}
+
+// ValidateText applies the same file limit to checkout and forge reads.
+func ValidateText(text string) error {
+	if len(text) > maxFileBytes {
+		return fmt.Errorf("%s is too large", RepoFile)
+	}
+	if strings.ContainsRune(text, 0) {
+		return fmt.Errorf("%s is not text", RepoFile)
+	}
+	return nil
 }

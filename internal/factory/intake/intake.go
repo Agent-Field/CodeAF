@@ -19,9 +19,10 @@ import (
 
 // Options injects repository policy and the existing launch door; tests need no model.
 type Options struct {
-	Load   func(string) (pipeline.File, error)
-	Launch func(int) error
-	Record *record.Record
+	Refresh func(context.Context) error
+	Load    func(string) (pipeline.File, error)
+	Launch  func(int) error
+	Record  *record.Record
 }
 
 type Intake struct {
@@ -54,6 +55,11 @@ func (in *Intake) Once(ctx context.Context) error {
 		return nil
 	}
 	defer release()
+	if in.opts.Refresh != nil {
+		if err := in.opts.Refresh(ctx); err != nil {
+			return err
+		}
+	}
 	items, err := in.st.List()
 	if err != nil {
 		return err
