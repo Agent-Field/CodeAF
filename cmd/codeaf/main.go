@@ -531,9 +531,8 @@ Look at what happened — read-only, no key, nothing spent
   codeaf version
       print the build this binary was cut from (--version and -v say the same)
 Housekeeping — changes state on disk or on the network
-  codeaf factory [serve] [--listen addr] [--config path]
-  codeaf factory steps|convert|token [--rotate]
-      serve on ` + factoryDefaultListen + `, print step prompts or print/rotate the token
+  codeaf factory [serve|steps|convert|token] [--listen addr] [--config path]
+      serve on ` + factoryDefaultListen + `; steps, convert Markdown, print/rotate token
   codeaf connect
       list the providers this profile knows and which are connected
   codeaf connect <provider> [--no-browser] [--region intl|cn]
