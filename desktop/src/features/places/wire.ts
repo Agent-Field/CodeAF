@@ -49,7 +49,7 @@ export type PlacesStatus = {
   now: NowView; totals: PlacesTotals;
 };
 
-export type ChatPlace = { id: string; name: string; tint: Tint; addedBy: AddedBy };
+export type ChatPlace = { id: string; name: string; tint: Tint; addedBy: AddedBy; link?: boolean };
 export type ChatRow = {
   id: string; title: string; project: string; workspace: string;
   /** The conversation's journal: the path a window reattaches with. Absent when the engine could not say. */
@@ -60,6 +60,7 @@ export type ChatRow = {
   places: ChatPlace[];
   /** Who filed it in the place this Home is about. */
   addedBy?: AddedBy;
+  link?: boolean;
 };
 export type Attention = {
   kind: 'needsYou' | 'running'; chatId: string; chatTitle: string; placeId: string; placeName: string;
@@ -100,7 +101,7 @@ export type Mutation = {
 export type DeleteImpact = { children: number; chatsHere: number; wouldBeUnplaced: string[] };
 export type ChatPlacesAnswer = {
   chatId: string; known: boolean; workspace?: string; sessionFile?: string;
-  places: { id: string; name: string; tint: Tint; addedBy: AddedBy; at?: string; archived: boolean }[];
+  places: { id: string; name: string; tint: Tint; addedBy: AddedBy; link?: boolean; at?: string; archived: boolean }[];
 };
 export type UndoAnswer = { revision: number; undone: number };
 /** A place named by the model rule: who decided, or who wanted what. */

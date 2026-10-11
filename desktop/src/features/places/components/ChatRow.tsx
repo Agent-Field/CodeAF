@@ -25,6 +25,7 @@ type ChatRowProps = Omit<HTMLAttributes<HTMLLIElement>, 'title' | 'onClick' | 'o
   variant?: 'home' | 'history';
   /** History only, non-interactive: the artifact line (file chips, decisions) under the excerpt. */
   details?: ReactNode;
+  trailing?: ReactNode;
   selected?: boolean;
   /** This row is being dragged (to file the chat into a place). */
   dragging?: boolean;
@@ -42,7 +43,7 @@ type ChatRowProps = Omit<HTMLAttributes<HTMLLIElement>, 'title' | 'onClick' | 'o
 };
 
 /** The one chat row, shared by a place's Home and History. Everything shown comes from props: no state is made up. */
-export function ChatRow({ id, title, excerpt, status, statusLabel, model, timeLabel, timeIso, variant = 'home', details, selected, dragging, disabled, onOpen, onOpenInNewTab, onKeyDown, menu, menuLabel, appearance, className = '', ref, ...frame }: ChatRowProps) {
+export function ChatRow({ id, title, excerpt, status, statusLabel, model, timeLabel, timeIso, variant = 'home', details, trailing, selected, dragging, disabled, onOpen, onOpenInNewTab, onKeyDown, menu, menuLabel, appearance, className = '', ref, ...frame }: ChatRowProps) {
   const open = (event: MouseEvent<HTMLButtonElement>) => {
     if ((event.metaKey || event.ctrlKey) && onOpenInNewTab) onOpenInNewTab(); else onOpen();
   };
@@ -59,6 +60,7 @@ export function ChatRow({ id, title, excerpt, status, statusLabel, model, timeLa
         {excerpt && <span className="places-chat-excerpt">{excerpt}</span>}
         {details && <span className="places-chat-details">{details}</span>}
       </span>
+      {trailing}
       {timeLabel && (timeIso ? <time className="places-chat-time" dateTime={timeIso}>{timeLabel}</time> : <span className="places-chat-time">{timeLabel}</span>)}
     </Button>
   </li>;

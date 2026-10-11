@@ -1318,6 +1318,16 @@
   --places-quicklook-gutter: 32px;
   --places-quicklook-pad-inline: 24px;
   --places-quicklook-content-gap: 14px;
+  --place-guess-pill-height: 24px;
+  --place-guess-pill-radius: 6px;
+  --place-guess-pill-padding: 6px;
+  --place-guess-font-size: 12px;
+  --place-guess-gap: 8px;
+  --place-guess-home-gap: 12px;
+  --place-guess-mark-size: 11px;
+  --place-guess-mark-gap: 4px;
+  --place-guess-reply-margin: 0px;
+  --place-guess-min-width: 0px;
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);

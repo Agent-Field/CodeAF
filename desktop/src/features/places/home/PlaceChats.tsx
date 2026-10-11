@@ -1,3 +1,4 @@
+import { AlsoIn } from '../guess/PlaceViews';
 import type { KeyboardEvent } from 'react';
 import { SectionLabel } from '../../../components/ui';
 import { usePointerDrag } from '../../../components/ui/usePointerDrag';
@@ -25,7 +26,7 @@ function FilingChat({ chat, canCarry, drag, now, actions, readOnly, inPlaceId, r
     onEnd: () => drag.set(undefined),
   } : null);
   return <ChatRow {...pointer} id={chat.id} title={chat.title || 'Untitled chat'} excerpt={chat.excerpt} status={chat.status} model={chat.model}
-    timeLabel={shortTime(chat.at, now)} timeIso={chat.at} disabled={!actions.openChat} onKeyDown={moveFocus}
+    trailing={<AlsoIn text={chat.alsoIn}/>} timeLabel={shortTime(chat.at, now)} timeIso={chat.at} disabled={!actions.openChat} onKeyDown={moveFocus}
     onOpen={() => void runner.run(() => actions.openChat?.(chat.id))} onOpenInNewTab={actions.openChatInNewTab && (() => void runner.run(() => actions.openChatInNewTab?.(chat.id)))}
     menu={chatMenu(chat.id, actions, { readOnly, inPlaceId })} dragging={drag.payload?.kind === 'chat' && drag.payload.ids.includes(chat.id)}/>;
 }
