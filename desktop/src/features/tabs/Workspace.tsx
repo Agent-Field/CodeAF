@@ -46,6 +46,8 @@ import { chatIdFromSessionFile } from '../places/client';
 import type { SourceHandoff } from '../places/using-types';
 import { openPath } from '../../design/native';
 import { publishActiveHome } from '../shell/shellState';
+import { publishRecent, recentItems } from '../shell/recent';
+import { kindIcon, tabMark } from './OverviewCard';
 import { PaneGrid } from './PaneGrid';
 import { createPreviewStore } from './preview/previewStore';
 import { TabOverview } from './TabOverview';
@@ -363,6 +365,8 @@ export function Workspace({ enabled, onActivate, leading, firstTurn, onOpenChat 
   const closing = useClosing({ state, dispatch, summaries });
   const { closeTab, closeAndStop } = closing;
   const { background } = useBackground({ tabs: state.tabs, closed: state.closed, summaries, since: closing.sinceOf, stopping: closing.stopping });
+  // The rail's Recent reads this window's closed list (the one ⌘⇧T reopens from); it is published, never copied into a second store.
+  useEffect(() => publishRecent(recentItems(state.closed, state.tabs, tab => ({ icon: kindIcon(tab), mark: tabMark(tab, summaries) }))), [state.closed, state.tabs, summaries]);
   useWindowHandoff(dispatch);
   useEffect(() => { if (sync.status.overtaken > 0) toasts.show({ key: `workspace-overtaken-${stripKey}`, message: [`Another window changed ${sync.status.overtaken} of your tab edits. Your latest tab set is shown.`], tone: 'warning', onSettled: sync.acknowledge }); }, [sync.status.overtaken]);
   useEffect(() => { if (sync.status.error) toasts.show({ key: `workspace-status-${stripKey}`, message: [sync.status.error], tone: 'warning', actions: [{ label: 'Try again', onSelect: sync.retry }] }); }, [sync.status.error]);

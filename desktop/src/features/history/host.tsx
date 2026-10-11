@@ -139,8 +139,11 @@ export function useAutoArchive(state: WorkspaceState, dispatch: Dispatch<Workspa
   return [archived, () => setArchived(undefined)];
 }
 
-/** Restore all: every archived tab comes back, in the background, and History forgets it was archived. */
+/**
+ * Restore all: every archived tab comes back, in the background, and History forgets it was archived. An archived tab
+ * sits in the Reopen list (Recent shows it), so it comes back from there; opening it again would leave one id in both places.
+ */
 export function restoreArchived(archived: Archived, dispatch: Dispatch<WorkspaceAction>) {
-  for (const tab of archived.tabs) dispatch({ type: 'open', tab, background: true });
+  for (const tab of archived.tabs) dispatch({ type: 'reopen-id', id: tab.id, background: true });
   void archiveHistory([...new Set(archived.tabs.map(tab => historyIdOf(tab.sessionFile ?? '')))], false).catch(() => undefined);
 }

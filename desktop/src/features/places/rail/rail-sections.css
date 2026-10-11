@@ -1,3 +1,10 @@
 /* The sections fill the rail under the toggle so All places stays at the foot while the list scrolls. */
 .rail-sections { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--rail-group-gap); }
 .rail-announce { position: absolute; width: var(--hairline); height: var(--hairline); overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Recent: the header is a disclosure that reads as the other section labels; the chevron is the only addition. */
+.rail-recent-head.button { display: flex; align-items: center; gap: var(--space-tight); min-width: 0; height: auto; min-height: 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; border-radius: var(--radius-control); transition: color var(--dur-fast) var(--ease); }
+.rail-recent-head.button:hover:not(:disabled) { background: var(--tab-hover); }
+.rail-recent-head.button:focus-visible { outline: none; box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
+.rail-recent-head .app-icon { color: var(--ink-3); }
+.rail-recent-meta { display: inline-flex; align-items: center; gap: var(--space-compact); }

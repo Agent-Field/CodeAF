@@ -8,6 +8,7 @@ import type { RailSections } from '../shell/selectors';
 import { railMenu } from '../menus/railMenu';
 import { NowRow } from '../../shell/NowRow';
 import { railShortcutVisible, shownPlaces, stepRail, type RailKey } from './railFocus';
+import { RailRecent } from './RailRecent';
 import { RailRow } from './RailRow';
 import { keyboardMoveTarget, movedAnnouncement, pinnedDropIndex } from './railDnd';
 import './rail-sections.css';
@@ -231,6 +232,7 @@ export function PlaceRailSections(props: PlaceRailSectionsProps) {
       {open.length > 0 && <Section label="Open" action={<Button variant="ghost" className="rail-section-action" onClick={actions.closeAll}>Close all</Button>}>
         <RailSectionRows section="open" index={open.length} actions={actions} pinnedIds={pinnedIds} setOver={setOver}>{open.map((place, index) => row(place, 'open', index))}</RailSectionRows>
       </Section>}
+      <RailRecent focusProps={focusProps}/>
       {emptyHint && pinned.length === 0 && open.length === 0 && <p className="rail-hint">Places you open show here. Pin the ones you live in.</p>}
       {notice && <p className="rail-hint" role="status">{notice.text}{notice.onRetry && <> · <Button variant="ghost" className="rail-section-action" onClick={notice.onRetry}>Retry</Button></>}</p>}
     </nav>

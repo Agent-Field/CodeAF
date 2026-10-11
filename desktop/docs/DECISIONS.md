@@ -2,6 +2,16 @@
 
 Dated decisions taken without waiting for the designer. Each section is titled with its plandb task id.
 
+## t-rail-recent: a Recent section in the rail (2026-10-11)
+
+**Decision (owner request): the rail ends with a Recent section of the last five tabs closed in this window.** A design addition, not an override: nothing the design draws changes.
+
+Why:
+
+- While working it is hard to get quickly back to something just closed. The design reaches it only through ⌘⇧T, the ⌘Y History tab and the ⌘T search, and none is visible.
+- There is one store. Recent reads the workspace's `closed` list (`features/shell/recent.ts` only shapes it into rows), so ⌘⇧T, the ⌘T search and the rail can never disagree. Forget removes from that list; it never deletes a conversation.
+- Archiving a tab for idleness now feeds that list too, so those tabs show here. Rows use the rail's own row, type and hover rules. Ledger rows RR-1 to RR-6 in DESIGN-QUESTIONS.md say what was assumed.
+
 ## t-d5-be-key-set-decision: entering or replacing the provider key in Settings (2026-10-10)
 
 **Decision: v1 does not set or replace the provider key from the app.** The engine builds no write route and the UI draws no key field. Covers BE-SET-07 (Shell IX S-IX-12).

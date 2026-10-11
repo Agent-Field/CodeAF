@@ -20,12 +20,13 @@ test('history-replace swaps the tab in place, keeping its pin and group, and sel
   assert.deepEqual(run(base, { type: 'history-replace', id: 'zzz', tab: tab('c') }), base);
 });
 
-test('history-archive removes tabs without feeding Reopen, and moves the selection off a removed tab', () => {
+test('history-archive removes tabs and feeds Reopen (so Recent shows them), and moves the selection off a removed tab', () => {
   const base = state([tab('a'), tab('b'), tab('c')], { activeId: 'b' });
   const next = run(base, { type: 'history-archive', ids: ['a', 'b'] });
   assert.deepEqual(next.tabs.map(t => t.id), ['c']);
   assert.equal(next.activeId, 'c');
-  assert.deepEqual(next.closed, []);
+  assert.deepEqual(next.closed.map(t => t.id), ['a', 'b']);
+  assert.ok(next.closed.every(t => typeof t.closedAt === 'number'));
   assert.deepEqual(run(base, { type: 'history-archive', ids: ['nope'] }), base);
   // The last tab is never taken: a workspace always has one.
   assert.deepEqual(run(state([tab('a')]), { type: 'history-archive', ids: ['a'] }).tabs.map(t => t.id), ['a']);

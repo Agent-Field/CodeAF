@@ -1,6 +1,7 @@
 // Reducer slice: closing many tabs, reopening a chosen one where it was, and duplicating.
 // Closing only detaches a view (the engine keeps the work), so every closed tab lands in `closed` and can be reopened.
 import { createId, normalize, visibleTabs } from '../helpers.ts';
+import { reduceSplit, type SplitAction } from './split.ts';
 import { reduceTabs, type TabAction } from './tabs.ts';
 import type { Pane, Tab, TabGroup, WorkspaceState } from '../types.ts';
 
@@ -31,6 +32,10 @@ export type ClosingAction =
    * removed comes back with its own metadata; a tab or group that exists again is left alone.
    */
   | { type: 'restore-closed'; tabs: readonly Tab[]; order: readonly string[]; groups: readonly TabGroup[]; activeId: string }
+  /** Reopens a closed tab as a pane of the tab in front (the rail's Recent "Open in split"). When the two cannot split, it opens beside it instead. */
+  | { type: 'reopen-split'; id: string }
+  /** Takes one closed tab off the Reopen list (the rail's Recent "Forget"), or every one when no id is given. The conversation is never deleted. */
+  | { type: 'forget-closed'; id?: string }
   /** A copy of the tab right after it: the same session, draft and view, new ids. */
   | { type: 'duplicate'; id: string }
   /** An old saved action is ignored; Inbox no longer owns a pinned slot. */
@@ -74,6 +79,15 @@ export function reduceClosing(state: WorkspaceState, action: { type: string }): 
       tabs.splice(before >= 0 ? before : after >= 0 ? after + 1 : tabs.length, 0, { ...opening, groupId });
       return normalize({ ...state, tabs, groups: groups.map(g => (g.id === groupId ? { ...g, collapsed: false } : g)), closed: state.closed.filter(t => t.id !== a.id), activeId: tab.id, recentIds: [tab.id, ...state.recentIds.filter(id => id !== tab.id)] });
     }
+    case 'reopen-split': {
+      const reopen: TabAction = { type: 'reopen-id', id: a.id, background: true, nextToActive: true };
+      const reopened = reduceTabs(state, reopen);
+      if (!reopened || reopened === state) return state;
+      const merge: SplitAction = { type: 'split-merge', id: state.activeId, withId: a.id };
+      const merged = reduceSplit(reopened, merge);
+      return merged && merged !== reopened ? merged : reopened;
+    }
+    case 'forget-closed': return { ...state, closed: a.id === undefined ? [] : state.closed.filter(t => t.id !== a.id) };
     case 'restore-closed': {
       const present = new Set(state.tabs.map(t => t.id));
       const back = a.tabs.filter(t => !present.has(t.id));

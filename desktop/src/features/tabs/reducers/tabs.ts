@@ -28,7 +28,7 @@ export type TabAction =
    * Reopens one chosen closed tab the same way. `before`, `after` and `group` override the recorded place; they are
    * for callers that remembered a place themselves (the closing toast's Undo).
    */
-  | { type: 'reopen-id'; id: string; before?: string; after?: string; group?: TabGroup }
+  | { type: 'reopen-id'; id: string; before?: string; after?: string; group?: TabGroup; background?: boolean; nextToActive?: boolean }
   /** ⌘-click (Ctrl-click on Linux): adds a tab to, or takes it out of, the tabs ⌘G will group. The active tab can also carry the explicit selection fill. */
   | { type: 'pick'; id: string }
   | { type: 'clear-picks' }
@@ -53,9 +53,15 @@ function paneById(state: WorkspaceState, id: string): Pane | undefined {
 }
 
 /** Where a tab stands, as its neighbours and its group, for Reopen. */
-function placeOf(state: WorkspaceState, tab: Tab, group = state.groups.find(g => g.id === tab.groupId)): ClosedPlace {
+export function placeOf(state: WorkspaceState, tab: Tab, group = state.groups.find(g => g.id === tab.groupId)): ClosedPlace {
   const index = state.tabs.indexOf(tab);
   return { before: state.tabs[index + 1]?.id, after: state.tabs[index - 1]?.id, group };
+}
+
+/** The slot right after the tab in front: the rail's Recent opens a tab beside the one you are on, not where it once stood. */
+function besideActive(state: WorkspaceState): ClosedPlace {
+  const index = state.tabs.findIndex(t => t.id === state.activeId);
+  return { before: state.tabs[index + 1]?.id, after: state.tabs[index]?.id };
 }
 
 /**
@@ -148,7 +154,10 @@ export function reduceTabs(state: WorkspaceState, action: { type: string }): Wor
     }
     case 'reopen-id': {
       const tab = state.closed.find(t => t.id === a.id);
-      return tab ? restore(state, tab, { before: a.before, after: a.after, group: a.group }) : state;
+      if (!tab) return state;
+      const reopened = a.nextToActive ? restore(state, { ...tab, stood: undefined }, besideActive(state)) : restore(state, tab, { before: a.before, after: a.after, group: a.group });
+      // A background open (the rail's Recent, ⌘-click) puts the tab back without taking the front.
+      return a.background ? { ...reopened, activeId: state.activeId, recentIds: state.recentIds } : reopened;
     }
     case 'pin': return normalize({ ...state, tabs: state.tabs.map(t => (t.id === a.id ? { ...t, pinned: !t.pinned, groupId: undefined } : t)) });
     case 'rename': return mapContent(state, a.id, pane => ({ ...pane, title: a.title.trim() || newConversationTitle, titleSource: 'manual' }));

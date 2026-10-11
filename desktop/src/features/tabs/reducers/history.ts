@@ -2,13 +2,17 @@
 // archiving idle tabs. Opening it is the shell's one singleton door, openKindAction (shell/openKind.ts), which ⌘Y
 // and the archive toast's Review both go through. A slice returns undefined for an action it does not own.
 import { normalize, visibleTabs } from '../helpers.ts';
+import { closedRecord, placeOf } from './tabs.ts';
 import type { Tab, WorkspaceState } from '../types.ts';
 
 export type HistoryAction =
   /** Puts `tab` where tab `id` sits (position, pin and group stay) and selects it: "Continue" replaces History. */
   | { type: 'history-replace'; id: string; tab: Tab }
-  /** Takes tabs off the strip without adding them to the Reopen list: they live on in History. */
+  /** Takes tabs off the strip. They live on in History and also join the Reopen list, so the rail's Recent shows them (owner decision 2026-10-11). */
   | { type: 'history-archive'; ids: string[] };
+
+/** How many closed tabs the Reopen list keeps; the close reducer holds the same bound. */
+const closedLimit = 20;
 
 export function reduceHistory(state: WorkspaceState, action: { type: string }): WorkspaceState | undefined {
   const a = action as HistoryAction;
@@ -27,7 +31,8 @@ export function reduceHistory(state: WorkspaceState, action: { type: string }): 
       if (tabs.length === state.tabs.length || !tabs.length) return state;
       const order = visibleTabs(state);
       const activeId = tabs.some(tab => tab.id === state.activeId) ? state.activeId : (order.find(tab => !gone.has(tab.id)) ?? tabs[0]).id;
-      return normalize({ ...state, tabs, activeId });
+      const archived = state.tabs.filter(tab => gone.has(tab.id)).map(tab => closedRecord(tab, placeOf(state, tab)));
+      return normalize({ ...state, tabs, activeId, closed: [...state.closed.filter(tab => !gone.has(tab.id)), ...archived].slice(-closedLimit) });
     }
     default:
       return undefined;
