@@ -17,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/serve/web"
 )
 
 // Config is supplied by the host so the handler never reads a person's home
@@ -53,9 +54,11 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/github", h.github)
 	h.read("/v1/me", h.me)
 	h.verbs()
-	h.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	h.mux.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusNotFound, "factory endpoint not found")
 	})
+	// Everything outside /v1 is the dashboard, which routes in the browser.
+	h.read("/", web.Handler().ServeHTTP)
 	return h
 }
 

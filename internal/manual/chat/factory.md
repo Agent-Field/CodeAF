@@ -1658,6 +1658,28 @@ connect GitHub; `{"token":""}` selects gh's existing login. Both answer HTTP 200
 with the factory identity. An omitted watched array or token answers HTTP 400.
 These routes use the same access check and error statuses as job actions.
 
+## factory web dashboard
+
+The factory HTTP handler also serves the web dashboard: every path outside `/v1`
+answers with the dashboard page, so a link such as `/jobs/12` opens the page
+directly, and the page reads the floor from `/v1` on the same address. Paths
+under `/v1` that name no endpoint still answer the JSON `factory endpoint not
+found`. The same access rule applies: loopback is open, and another address
+needs the access token. The dashboard pages answer GET only.
+
+The page today has a sidebar with the factory address (click it for Settings),
+`New job`, three views, `Mine` (jobs waiting on you), `Unassigned` (jobs nobody
+has taken that are not done) and `Everything` (all jobs), and `More` with `Audit
+log` and `Settings`. A view shows the since line (`since <time> · <n> merged ·
+<n> need you · $<spent>`), the pipeline strip (one chip per step with jobs, `⚑`
+where an approve waits), and the jobs grouped Needs you, Running, Queued,
+Backlog, Done and Dropped, each row with kind, job, title, state phrase, step
+`k/n`, cost and age. On a phone the sidebar opens from the menu button and rows
+keep job, title, state and cost. The page reads the queue again when the factory
+sends a change; a factory without the change stream is read once per load. The
+job page, New job, Audit log and Settings say `Coming`: they are not built yet,
+and the dashboard cannot approve, answer or start anything yet.
+
 ## what the factory does not do yet
 
 Be plain about this when asked:
