@@ -1,0 +1,25 @@
+{
+  "cases": [
+    {
+      "name": "a chat follows the majority of its finest group",
+      "chats": [
+        {"id": "a", "fine": 0, "mid": 5, "coarse": 3, "wantFine": 0, "wantMid": 5, "wantRoot": 3},
+        {"id": "b", "fine": 0, "mid": 5, "coarse": 3, "wantFine": 0, "wantMid": 5, "wantRoot": 3},
+        {"id": "c", "fine": 0, "mid": 9, "coarse": 3, "wantFine": 0, "wantMid": 5, "wantRoot": 3},
+        {"id": "d", "fine": 1, "mid": 9, "coarse": 7, "wantFine": 1, "wantMid": 9, "wantRoot": 7},
+        {"id": "e", "fine": 1, "mid": 9, "coarse": 7, "wantFine": 1, "wantMid": 9, "wantRoot": 7},
+        {"id": "f", "fine": 1, "mid": 5, "coarse": 7, "wantFine": 1, "wantMid": 9, "wantRoot": 7},
+        {"id": "g", "fine": -1, "mid": -1, "coarse": -1, "inbox": true}
+      ]
+    },
+    {
+      "name": "a tie keeps the smaller parent id",
+      "chats": [
+        {"id": "a", "fine": 0, "mid": 4, "coarse": 1, "wantFine": 0, "wantMid": 2, "wantRoot": 1},
+        {"id": "b", "fine": 0, "mid": 2, "coarse": 1, "wantFine": 0, "wantMid": 2, "wantRoot": 1},
+        {"id": "c", "fine": 1, "mid": 4, "coarse": 1, "wantFine": 1, "wantMid": 2, "wantRoot": 1},
+        {"id": "d", "fine": 1, "mid": 2, "coarse": 1, "wantFine": 1, "wantMid": 2, "wantRoot": 1}
+      ]
+    }
+  ]
+}
