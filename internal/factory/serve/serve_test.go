@@ -121,11 +121,16 @@ func TestSettingsReadsUseSeam(t *testing.T) {
 		t.Fatalf("github = %+v", github)
 	}
 	var me struct {
+		CodeafVersion   string          `json:"codeaf_version"`
+		Contract        int             `json:"contract"`
 		Handle          string          `json:"handle"`
 		Machines        []api.Worker    `json:"machines"`
 		TakesUnassigned map[string]bool `json:"takes_unassigned"`
 	}
 	read("/v1/me", &me)
+	if me.Contract != api.Contract || me.CodeafVersion == "" {
+		t.Fatalf("me version = %q contract %d", me.CodeafVersion, me.Contract)
+	}
 	if me.Handle != "octocat" || me.Machines == nil || me.TakesUnassigned == nil {
 		t.Fatalf("me = %+v", me)
 	}

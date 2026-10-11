@@ -21,6 +21,11 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 )
 
+// Contract is the wire contract version `GET /v1/me` reports. Bump it only for
+// a breaking wire change (a field removed, renamed or re-typed, a verb's
+// meaning changed); additive fields never bump it.
+const Contract = 1
+
 // Factory names the server every response comes from.
 type Factory struct {
 	Address string `json:"address"`

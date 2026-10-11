@@ -305,10 +305,12 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	// registration can supply the person's own machines and preferences.
 	h.write(w, http.StatusOK, struct {
 		Factory         api.Factory     `json:"factory"`
+		CodeafVersion   string          `json:"codeaf_version"`
+		Contract        int             `json:"contract"`
 		Handle          string          `json:"handle"`
 		Machines        []api.Worker    `json:"machines"`
 		TakesUnassigned map[string]bool `json:"takes_unassigned"`
-	}{h.factory, handle, []api.Worker{}, map[string]bool{}})
+	}{h.factory, h.factory.Version, api.Contract, handle, []api.Worker{}, map[string]bool{}})
 }
 
 func (h *Handler) require(w http.ResponseWriter, exists bool) bool {
