@@ -18,6 +18,16 @@ import (
 // DefaultTTL keeps a disconnected worker's job from remaining taken forever.
 const DefaultTTL = time.Minute
 
+// HeartbeatEvery is how often a worker renews a live lease. The worker loop's
+// default beat is this same duration, so a quiet machine and a missed beat
+// are measured on one clock.
+const HeartbeatEvery = 2 * time.Second
+
+// OfflineMisses is how many heartbeat intervals may pass with nothing heard
+// before a machine is offline. THREE MISSED BEATS, NOT THE LEASE TTL: the
+// hold can still be live after the machine has gone quiet.
+const OfflineMisses = 3
+
 var (
 	ErrNoJob      = errors.New("factory lease: no queued job for this worker")
 	ErrLeased     = errors.New("factory lease: job is already taken")
@@ -38,9 +48,14 @@ type Lease struct {
 	// ThreadOnly lends the manager to a reply without restarting job steps.
 	ThreadOnly bool `json:"thread_only,omitempty"`
 	// Publish keeps a collected approval recoverable if the publisher vanishes.
-	Publish   string    `json:"publish,omitempty"`
-	Handle    string    `json:"handle"`
-	ExpiresAt time.Time `json:"expires_at"`
+	Publish string `json:"publish,omitempty"`
+	Handle  string `json:"handle"`
+	// Since is when this hold began. HeartbeatAt is the last renewal. Both
+	// stay on the lease so a restart can still say who is working and when
+	// they were last heard, without a second presence file.
+	Since       time.Time `json:"since,omitempty"`
+	HeartbeatAt time.Time `json:"heartbeat_at,omitempty"`
+	ExpiresAt   time.Time `json:"expires_at"`
 }
 
 // EveryRepo in TakesUnassigned is consent to unassigned work in every
@@ -87,6 +102,21 @@ func Open(st *store.Store, options Options) (*Desk, error) {
 		options.Now = time.Now
 	}
 	return &Desk{store: st, ttl: options.TTL, now: options.Now}, nil
+}
+
+// TTL is the hold length this desk renews to.
+func (d *Desk) TTL() time.Duration { return d.ttl }
+
+// Live is the holds that are still inside their TTL, after releasing any
+// that have expired. Reading presence reaps the same way a pull does, so a
+// job is not described as held once its lease is gone.
+func (d *Desk) Live() ([]Lease, error) {
+	var live []Lease
+	err := d.change(func(doc *document, now time.Time) (bool, error) {
+		live = append([]Lease(nil), doc.Leases...)
+		return false, nil
+	})
+	return live, err
 }
 
 // Assign implements Take: it gives an unassigned item a person, not a worker.
@@ -143,7 +173,7 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 			if _, err := rand.Read(token[:]); err != nil {
 				return false, err
 			}
-			taken = Lease{ID: "lease_" + hex.EncodeToString(token[:]), Job: it.ID, Worker: worker.ID, Machine: worker.Machine, Handle: worker.Handle, ExpiresAt: now.Add(d.ttl), ThreadOnly: it.State != factory.StateQueued || paused(it)}
+			taken = Lease{ID: "lease_" + hex.EncodeToString(token[:]), Job: it.ID, Worker: worker.ID, Machine: worker.Machine, Handle: worker.Handle, Since: now, HeartbeatAt: now, ExpiresAt: now.Add(d.ttl), ThreadOnly: it.State != factory.StateQueued || paused(it)}
 			return false, d.reserve(doc, worker, taken)
 		}
 		return false, ErrNoJob
@@ -187,6 +217,7 @@ func (d *Desk) Heartbeat(id int, worker string) (Lease, error) {
 			return false, err
 		}
 		held.ExpiresAt = now.Add(d.ttl)
+		held.HeartbeatAt = now
 		renewed = *held
 		return true, nil
 	})

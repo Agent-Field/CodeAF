@@ -94,6 +94,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/repos/{owner}/{repo}/dryrun", h.dryrun)
 	h.read("/v1/github", h.github)
 	h.read("/v1/me", h.me)
+	h.route("/v1/me/takes_unassigned", map[string]http.HandlerFunc{http.MethodPut: h.setTakes})
 	h.read("/v1/audit", h.audit)
 	h.verbs()
 	h.workerRoutes()
@@ -186,17 +187,27 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	}
 	q := api.FromSnapshot(s, handle)
 	q.Factory = h.factory
+	online, busy, err := h.applyPresence(q.Jobs)
+	if h.failed(w, err) {
+		return
+	}
+	q.Capacity.MachinesOnline, q.Capacity.Busy = online, busy
 	h.write(w, http.StatusOK, q)
 }
 
 func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 	it, ok := h.findJob(w, r)
-	if ok {
-		h.write(w, http.StatusOK, struct {
-			Factory api.Factory `json:"factory"`
-			api.Job
-		}{h.factory, api.FromItem(it)})
+	if !ok {
+		return
 	}
+	jobs := []api.Job{api.FromItem(it)}
+	if _, _, err := h.applyPresence(jobs); h.failed(w, err) {
+		return
+	}
+	h.write(w, http.StatusOK, struct {
+		Factory api.Factory `json:"factory"`
+		api.Job
+	}{h.factory, jobs[0]})
 }
 
 // findJob gives every job door the same id and existence checks, without
@@ -333,7 +344,20 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	if session.profile != nil {
 		profile = *session.profile
 	}
-	h.write(w, http.StatusOK, h.meBody(profile, session.id, session.invitedBy))
+	// Machines are this caller's own. Another handle is not listed; it
+	// appears only as held_by on a job this caller can already see.
+	machines, err := h.viewerMachines(handle)
+	if h.failed(w, err) {
+		return
+	}
+	takes, err := h.savedTakes(handle)
+	if h.failed(w, err) {
+		return
+	}
+	body := h.meBody(profile, session.id, session.invitedBy)
+	body.Machines = machines
+	body.TakesUnassigned = takes
+	h.write(w, http.StatusOK, body)
 }
 
 func (h *Handler) require(w http.ResponseWriter, exists bool) bool {

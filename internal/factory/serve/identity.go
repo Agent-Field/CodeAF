@@ -32,7 +32,7 @@ func (h *Handler) meBody(profile api.Profile, id, by string) api.Me {
 		profile.Scopes = []string{}
 	}
 	return api.Me{Factory: h.factory, CodeafVersion: h.factory.Version, Contract: api.Contract,
-		Profile: profile, SessionID: id, InvitedBy: by, Machines: []api.Worker{}, TakesUnassigned: map[string]bool{}}
+		Profile: profile, SessionID: id, InvitedBy: by, Machines: []api.Machine{}, TakesUnassigned: map[string]bool{}}
 }
 
 func (h *Handler) teamAllows(handle string) bool {

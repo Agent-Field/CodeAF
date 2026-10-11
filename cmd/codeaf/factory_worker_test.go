@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"runtime"
 	"testing"
 	"time"
 
@@ -70,6 +71,9 @@ func TestFactoryWorkerAttachRequiresOwnLoginOffLoopback(t *testing.T) {
 			}
 			if !reflect.DeepEqual(attach.TakesUnassigned, wantTakes) {
 				t.Fatalf("unassigned work: %v; want %v", attach.TakesUnassigned, wantTakes)
+			}
+			if attach.OS != runtime.GOOS || attach.CodeafVersion == "" {
+				t.Fatalf("machine facts: %+v", attach)
 			}
 		})
 	}

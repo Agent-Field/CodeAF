@@ -246,6 +246,9 @@ func TestHeartbeatRenewsOnlyTheHolder(t *testing.T) {
 	if err != nil || !renewed.ExpiresAt.Equal(f.now.Add(lease.DefaultTTL)) {
 		t.Fatalf("heartbeat: %+v, %v", renewed, err)
 	}
+	if renewed.Since.IsZero() || !renewed.Since.Equal(held.Since) || !renewed.HeartbeatAt.Equal(f.now) {
+		t.Fatalf("hold times: pulled %+v renewed %+v", held, renewed)
+	}
 	f.now = held.ExpiresAt
 	expired, err := f.desk.Expire()
 	if err != nil || len(expired) != 0 {

@@ -5,7 +5,8 @@ import "github.com/Agent-Field/codeaf/internal/factory/tokens"
 // Profile is the GitHub identity checked at sign-in, never a client claim.
 type Profile = tokens.Profile
 
-// Me describes this caller while preserving the first version's empty machine facts.
+// Me describes this caller. machines are that handle's own; another person's
+// machine is not listed here.
 type Me struct {
 	Factory       Factory `json:"factory"`
 	CodeafVersion string  `json:"codeaf_version"`
@@ -13,7 +14,7 @@ type Me struct {
 	Profile
 	SessionID       string          `json:"session_id"`
 	InvitedBy       string          `json:"invited_by,omitempty"`
-	Machines        []Worker        `json:"machines"`
+	Machines        []Machine       `json:"machines"`
 	TakesUnassigned map[string]bool `json:"takes_unassigned"`
 }
 

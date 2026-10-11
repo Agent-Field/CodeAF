@@ -12,6 +12,8 @@ type WorkerAttach struct {
 	Machine         string          `json:"machine,omitempty"`
 	Name            string          `json:"name"`
 	Handle          string          `json:"handle"`
+	OS              string          `json:"os,omitempty"`
+	CodeafVersion   string          `json:"codeaf_version,omitempty"`
 	TakesUnassigned map[string]bool `json:"takes_unassigned,omitempty"`
 }
 

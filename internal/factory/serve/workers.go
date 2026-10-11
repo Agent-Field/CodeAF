@@ -33,11 +33,16 @@ type workerService struct {
 	credentials map[[32]byte]registeredWorker
 }
 
-// registeredWorker retains the machine name beside its identity without
-// putting bearer secrets into the floor's public worker facts.
+// registeredWorker retains the machine beside its identity without putting
+// bearer secrets into the floor's public facts. Last is the last request
+// that proved this process is still there: an attach, a pull in progress,
+// or a lease heartbeat.
 type registeredWorker struct {
-	Name   string
-	Worker lease.Worker
+	Name    string
+	OS      string
+	Version string
+	Last    time.Time
+	Worker  lease.Worker
 }
 
 type workerKey struct{}
@@ -90,7 +95,28 @@ func (h *Handler) authorizeWorker(w http.ResponseWriter, r *http.Request) (*http
 		h.fail(w, http.StatusUnauthorized, "a bearer worker credential is required")
 		return r, false
 	}
+	// Heard after the lock is released: heard takes the write lock, and
+	// holding the read lock across it would deadlock.
+	h.workers.heard(worker.Worker.ID, h.workers.now())
 	return r.WithContext(context.WithValue(r.Context(), workerKey{}, worker.Worker)), true
+}
+
+// heard moves a worker's last heartbeat forward. A clock that went backwards
+// does not erase a newer beat.
+func (s *workerService) heard(id string, at time.Time) {
+	if s == nil || id == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, row := range s.credentials {
+		if row.Worker.ID != id || !at.After(row.Last) {
+			continue
+		}
+		row.Last = at
+		s.credentials[key] = row
+		return
+	}
 }
 
 func requestWorker(r *http.Request) lease.Worker {
@@ -161,7 +187,10 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 	}
 	worker := lease.Worker{Machine: body.Machine, ID: "worker_" + id, Handle: body.Handle, TakesUnassigned: body.TakesUnassigned}
 	h.workers.mu.Lock()
-	h.workers.credentials[sha256.Sum256([]byte(credential))] = registeredWorker{Name: body.Name, Worker: worker}
+	h.workers.credentials[sha256.Sum256([]byte(credential))] = registeredWorker{
+		Name: body.Name, OS: strings.TrimSpace(body.OS), Version: strings.TrimSpace(body.CodeafVersion),
+		Last: h.workers.now(), Worker: worker,
+	}
 	h.workers.mu.Unlock()
 	h.write(w, http.StatusCreated, api.WorkerAttached{Factory: h.factory, WorkerID: worker.ID, Credential: credential})
 }
@@ -181,7 +210,18 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		held, err := h.workers.desk.Pull(requestWorker(r))
+		// THE SAVED TOGGLE WINS. Attach records what this process was willing
+		// to take. Once this handle has a persisted takes_unassigned map,
+		// every pull the worker loop makes uses that map. Re-read each wait
+		// so a toggle saved during the long poll is the next offer.
+		worker, err := h.consent(requestWorker(r))
+		if h.failed(w, err) {
+			return
+		}
+		// A pull sits open for up to thirty seconds. That wait is the idle
+		// machine's heartbeat: three missed intervals, not the lease TTL.
+		h.workers.heard(worker.ID, h.workers.now())
+		held, err := h.workers.desk.Pull(worker)
 		if err == nil {
 			h.pulled(w, held)
 			return

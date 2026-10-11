@@ -8,9 +8,11 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"sync"
 
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/client"
@@ -114,7 +116,10 @@ func (d *factoryWorkerDial) attach(ctx context.Context, person factory.Seam) (ap
 			}
 		}
 	}
-	return api.WorkerAttach{Machine: machine, Name: name + " (pid " + strconv.Itoa(os.Getpid()) + ")", Handle: handle, TakesUnassigned: takes}, nil
+	return api.WorkerAttach{
+		Machine: machine, Name: name + " (pid " + strconv.Itoa(os.Getpid()) + ")", Handle: handle,
+		OS: runtime.GOOS, CodeafVersion: buildinfo.String(), TakesUnassigned: takes,
+	}, nil
 }
 
 // factoryLoopback says base is a factory on this machine.

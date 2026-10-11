@@ -1774,8 +1774,9 @@ credential the service answers HTTP 401 with
 
 `/v1/me` returns the caller's lowercase `handle`, GitHub `name`, `avatar_url`,
 `scopes` array, public `session_id`, and `invited_by` when an invite was used.
-`codeaf_version` identifies the build and `contract` remains 1. Machines and
-unassigned-work preferences remain empty. Before GitHub sign-in, an invite's
+`codeaf_version` identifies the build and `contract` remains 1. `machines` lists
+that handle's own machines. `takes_unassigned` is the map last saved for that
+handle, or `{}` when none has been saved. Before GitHub sign-in, an invite's
 handle is `invited:<by>`; after sign-in the same token returns that holder's
 GitHub profile, including after a factory restart. A host access token or a
 credential-free loopback request uses the factory owner's connected GitHub login
@@ -1818,6 +1819,38 @@ Optional `team` restricts signed-in handles. Someone outside it gets HTTP 403:
 `this GitHub handle is not on the factory team`. The host token and open loopback
 retain owner access. HTTP job-action audit handles use the caller; a worker's
 posted event uses that worker's registered handle.
+
+## Your machines — busy, idle, offline — and pick up unassigned
+
+`GET /v1/me` `machines` lists only the caller's own machines. Each has `name`,
+`os`, `codeaf_version`, `status` (`busy`, `idle` or `offline`), `job` when a
+job is held, and `last_heartbeat`. Slots on one machine are one row. `offline`
+means nothing has been heard for three heartbeat intervals: the worker beats
+every 2 seconds, and three missed beats is offline. That is not the one-minute
+lease. `busy` is a recent heartbeat and a live hold. `idle` is a recent
+heartbeat and no hold. A quiet machine can still be named on its job until
+the lease expires.
+
+Another person's machine is not in this list. On a job the caller can already
+see, that machine appears only as `held_by`: `machine`, `handle`,
+`heartbeat_at` (the last renewal) and `since` (when the hold began).
+
+`GET /v1/queue` `capacity` adds `machines_online` and `busy`. Online is every
+handle's machines that are busy or idle. Busy is those holding a job. Offline
+machines count in neither. Zero is sent, so an older factory is the one that
+omits the fields.
+
+`PUT /v1/me/takes_unassigned` with `{"owner/repo":true}` saves, for this
+handle, which repositories these machines may pull when a job has no person.
+`false` or a repo left out means they do not. `{"*":true}` is every repository.
+The body replaces the previous map; `{}` clears it. It is kept in the factory
+store and is still there after a restart. Until a map has been saved, each
+worker keeps the consent it sent at attach: on loopback, every repository;
+elsewhere, repositories this machine has a checkout of. After a map is saved,
+every later pull by that handle uses the saved map, including a worker that
+attached willing to take everything. The toggle never lets a machine pull a
+job that already belongs to someone else. A factory with no store answers
+HTTP 501 with `this factory does not provide that action`.
 
 ## factory HTTP job actions — run, stop, pause, resume, drop, answer, reply and shape
 
@@ -2028,7 +2061,9 @@ HTTP 200 with `{factory, lease, job}`, or HTTP 204 without a body. One worker ho
 one job, and two workers cannot pull the same job. Only jobs belonging to the
 worker's handle are offered. Attach can also take
 `"takes_unassigned":{"owner/repo":true}`: this opts into unassigned jobs in that
-repository, never jobs assigned to somebody else.
+repository, never jobs assigned to somebody else. A map saved with
+`PUT /v1/me/takes_unassigned` replaces that consent on later pulls. `os` and
+`codeaf_version` name the machine for `GET /v1/me`.
 
 The lease includes `id`, `job`, `worker`, `machine`, `handle` and `expires_at`.
 `machine` is stable across processes and slots; the built-in worker uses its hostname.

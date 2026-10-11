@@ -16,6 +16,7 @@ func (d *Desk) Renew(id, worker string) (Lease, error) {
 			return false, err
 		}
 		held.ExpiresAt = now.Add(d.ttl)
+		held.HeartbeatAt = now
 		renewed = *held
 		return true, nil
 	})

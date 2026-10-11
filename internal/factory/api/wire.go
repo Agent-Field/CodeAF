@@ -82,11 +82,18 @@ type Cell struct {
 
 // Capacity is how much the floor may run and spend.
 type Capacity struct {
-	Benches int      `json:"benches"`
-	Daily   float64  `json:"daily"`
-	Rail    float64  `json:"rail"`
-	Queued  int      `json:"queued"`
-	Workers []Worker `json:"workers,omitempty"` // future: the lease desk supplies it
+	Benches int     `json:"benches"`
+	Daily   float64 `json:"daily"`
+	Rail    float64 `json:"rail"`
+	Queued  int     `json:"queued"`
+	// MachinesOnline counts machines heard inside the offline window, busy
+	// or idle, every handle. Busy counts those holding a job. Both are
+	// counts, so zero is sent: an absent field would be an older factory.
+	MachinesOnline int `json:"machines_online"`
+	Busy           int `json:"busy"`
+	// Workers remains for an older reader. Presence is machines_online and
+	// busy; this list is not filled.
+	Workers []Worker `json:"workers,omitempty"`
 }
 
 // Source is a connected source of jobs (desk).
@@ -199,10 +206,14 @@ type Job struct {
 	Questions    []Question `json:"questions,omitempty"`
 	Cost         float64    `json:"cost"`
 	CreatedAt    time.Time  `json:"created_at"`
-	PR           *PR        `json:"pr"` // Null when the worker published a comment.
-	Publish      string     `json:"publish,omitempty"`
-	CommentURL   string     `json:"comment,omitempty"`
-	Desk         *JobDesk   `json:"desk,omitempty"`
+	// HeldBy is the machine working this job now. It is set from the live
+	// lease, including when that machine belongs to someone else: the roster
+	// on /v1/me does not list another person's machines.
+	HeldBy     *HeldBy  `json:"held_by,omitempty"`
+	PR         *PR      `json:"pr"` // Null when the worker published a comment.
+	Publish    string   `json:"publish,omitempty"`
+	CommentURL string   `json:"comment,omitempty"`
+	Desk       *JobDesk `json:"desk,omitempty"`
 }
 
 // JobDesk is what the TUI page reads off a job that the dashboard does not
@@ -385,7 +396,37 @@ type Message = factory.Message
 // Event is one line of the record: who did what to which job, at what cost.
 type Event = record.Event
 
-// Worker is a codeaf that pulls jobs from the factory.
+// Machine status words on GET /v1/me.
+const (
+	MachineBusy    = "busy"
+	MachineIdle    = "idle"
+	MachineOffline = "offline"
+)
+
+// Machine is one of the caller's own codeaf processes, as GET /v1/me lists it.
+// Another person's machine is not a row here; it shows up only as a job's
+// [HeldBy] when the caller can see that job.
+type Machine struct {
+	Name          string    `json:"name"`
+	OS            string    `json:"os"`
+	CodeafVersion string    `json:"codeaf_version"`
+	Status        string    `json:"status"`
+	Job           int       `json:"job,omitempty"`
+	LastHeartbeat time.Time `json:"last_heartbeat"`
+}
+
+// HeldBy is the live hold on a job: which machine, whose, when it last
+// renewed, and when the hold began.
+type HeldBy struct {
+	Machine     string    `json:"machine"`
+	Handle      string    `json:"handle"`
+	HeartbeatAt time.Time `json:"heartbeat_at"`
+	Since       time.Time `json:"since"`
+}
+
+// Worker is a codeaf that pulls jobs from the factory. GET /v1/me lists
+// [Machine] rows instead; this shape is the older capacity list and stays
+// so a field already on the wire is not renamed.
 type Worker struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`

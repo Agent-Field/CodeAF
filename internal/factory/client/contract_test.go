@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
@@ -185,6 +186,41 @@ func errorWords(err error) string {
 		return ""
 	}
 	return err.Error()
+}
+
+// Presence is additive: contract stays 1, and the fields already on
+// capacity are still there beside the new counts.
+func TestPresenceContractStaysAdditive(t *testing.T) {
+	if api.Contract != 1 {
+		t.Fatalf("contract bumped to %d; machine presence is additive", api.Contract)
+	}
+	tags := func(v any) map[string]bool {
+		typ := reflect.TypeOf(v)
+		out := map[string]bool{}
+		for i := 0; i < typ.NumField(); i++ {
+			name, _, _ := strings.Cut(typ.Field(i).Tag.Get("json"), ",")
+			if name != "" && name != "-" {
+				out[name] = true
+			}
+		}
+		return out
+	}
+	for _, name := range []string{"name", "os", "codeaf_version", "status", "job", "last_heartbeat"} {
+		if !tags(api.Machine{})[name] {
+			t.Errorf("machine missing %s", name)
+		}
+	}
+	for _, name := range []string{"machine", "handle", "heartbeat_at", "since"} {
+		if !tags(api.HeldBy{})[name] {
+			t.Errorf("held_by missing %s", name)
+		}
+	}
+	got := tags(api.Capacity{})
+	for _, name := range []string{"benches", "daily", "rail", "queued", "workers", "machines_online", "busy"} {
+		if !got[name] {
+			t.Errorf("capacity missing %s", name)
+		}
+	}
 }
 
 func TestContractCoversEverySeamVerb(t *testing.T) {

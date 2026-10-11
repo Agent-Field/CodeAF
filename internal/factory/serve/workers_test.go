@@ -30,7 +30,9 @@ type workerFixture struct {
 	clock   atomic.Int64
 }
 
-func workerSetup(t *testing.T) *workerFixture {
+func workerSetup(t *testing.T) *workerFixture { return workerSetupAs(t, "") }
+
+func workerSetupAs(t *testing.T, login string) *workerFixture {
 	t.Helper()
 	st, err := store.Open(t.TempDir())
 	if err != nil {
@@ -49,6 +51,11 @@ func workerSetup(t *testing.T) *workerFixture {
 		items, err := st.List()
 		return factory.Snapshot{Items: items}, err
 	}, Answer: lease.NewDoors(desk).Answer}
+	if login != "" {
+		seam.GitHub = func(context.Context) (factory.GitHubLink, error) {
+			return factory.GitHubLink{Login: login}, nil
+		}
+	}
 	f.handler = serve.New(seam, cfg)
 	f.server = httptest.NewServer(f.handler)
 	t.Cleanup(f.server.Close)

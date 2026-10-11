@@ -307,6 +307,29 @@ func TestNilIsNotEmpty(t *testing.T) {
 	}
 }
 
+func TestFixtureQueueCarriesPresenceCounts(t *testing.T) {
+	b, err := json.Marshal(FromSnapshot(factory.Fixture(at), "me"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(b, &raw); err != nil {
+		t.Fatal(err)
+	}
+	capacity, _ := raw["capacity"].(map[string]any)
+	if capacity["machines_online"] != float64(0) || capacity["busy"] != float64(0) {
+		t.Fatalf("fixture capacity %#v", capacity)
+	}
+	if _, ok := capacity["workers"]; ok {
+		t.Fatal("the unused workers list was serialized")
+	}
+	for _, job := range raw["jobs"].([]any) {
+		if _, ok := job.(map[string]any)["held_by"]; ok {
+			t.Fatal("the fixture has no lease, so no job carries held_by")
+		}
+	}
+}
+
 func TestWireSpeaksSnakeCase(t *testing.T) {
 	b, err := json.Marshal(FromSnapshot(factory.Fixture(at), "me"))
 	if err != nil {

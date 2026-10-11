@@ -48,7 +48,8 @@ type Options struct {
 	// Slots is how many jobs run at once; each slot is its own worker.
 	Slots int
 	// ReportEvery and BeatEvery pace the reports and the heartbeats (the
-	// heartbeat is also how a person's verbs arrive); zero is 500ms and 2s.
+	// heartbeat is also how a person's verbs arrive); zero is 500ms and
+	// [lease.HeartbeatEvery]. Three missed beats is offline.
 	ReportEvery, BeatEvery time.Duration
 }
 
@@ -58,7 +59,7 @@ func Run(ctx context.Context, opts Options) {
 		opts.ReportEvery = 500 * time.Millisecond
 	}
 	if opts.BeatEvery <= 0 {
-		opts.BeatEvery = 2 * time.Second
+		opts.BeatEvery = lease.HeartbeatEvery
 	}
 	slots := max(opts.Slots, 1)
 	done := make(chan struct{}, slots)
