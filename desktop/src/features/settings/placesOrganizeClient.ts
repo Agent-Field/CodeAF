@@ -47,6 +47,10 @@ export function createOrganizeClient(transport: OrganizeTransport = liveTranspor
   return {
     read,
     start,
+    /** "Not now" on the first-run offer. The engine remembers it per profile. */
+    dismissOffer: async (): Promise<void> => {
+      await transport('/places/organize/offer/dismiss', { method: 'POST', body: {} });
+    },
     cancel: async (): Promise<OrganizeSnapshot> => {
       await transport('/places/organize/cancel', { method: 'POST', body: {} });
       return read();

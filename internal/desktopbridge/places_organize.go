@@ -42,6 +42,7 @@ func init() {
 	registerPlacesRoute("POST /places/organize", postOrganize)
 	registerPlacesRoute("GET /places/organize", getOrganize)
 	registerPlacesRoute("POST /places/organize/cancel", postOrganizeCancel)
+	registerPlacesRoute("POST /places/organize/offer/dismiss", postOrganizeOfferDismiss)
 	registerPlacesRoute("GET /places/tree", getPlaceTree)
 	registerPlacesRoute("POST /places/guess", postGuess)
 	registerPlacesRoute("POST /places/steer", postSteer)
@@ -121,6 +122,61 @@ type organizeWire struct {
 	Progress *placeorg.Progress   `json:"progress,omitempty"`
 	Last     *placeorg.RunSummary `json:"last,omitempty"`
 	Plan     *planWire            `json:"plan,omitempty"`
+	// Offer is present only while the first-run offer is due. It carries the
+	// number the sentence names, so the screen never counts for itself.
+	Offer *offerWire `json:"offer,omitempty"`
+}
+
+type offerWire struct {
+	Unplaced int `json:"unplaced"`
+}
+
+// OrganizeOfferMin is how many chats in no place make the first-run offer to
+// organize them. Fewer is a library the person can still sort by hand.
+const OrganizeOfferMin = 12
+
+// offer reports whether the first-run offer is due for this many unplaced
+// chats. It is a pure read of the organiser's memory: no model call.
+func (o *Organizer) offer(unplaced int) *offerWire {
+	if o == nil || o.State == nil || unplaced < OrganizeOfferMin {
+		return nil
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	// A run in flight or a plan awaiting a yes already is the offer.
+	if o.running || o.held != nil || o.State.Organized {
+		return nil
+	}
+	if at := o.State.OfferDismissedAt; at > 0 && unplaced < 2*at {
+		return nil
+	}
+	return &offerWire{Unplaced: unplaced}
+}
+
+func postOrganizeOfferDismiss(p *Places, w http.ResponseWriter, r *http.Request, _ string) {
+	if !needPost(w, r) {
+		return
+	}
+	org := p.organizer()
+	if org == nil || org.State == nil {
+		fail(w, 404, "unknown engine action")
+		return
+	}
+	if !readBody(w, r, &struct{}{}) {
+		return
+	}
+	x, ok := p.indexQuiet()
+	if !ok {
+		failPlaces(w, 503, "unavailable", "Your places could not be read.")
+		return
+	}
+	org.mu.Lock()
+	org.State.OfferDismissedAt = max(len(x.unplaced()), 1)
+	org.mu.Unlock()
+	if org.statePath != "" {
+		_ = org.State.Save(org.statePath)
+	}
+	write(w, map[string]bool{"dismissed": true})
 }
 
 // memVectors is the correction channel's view of vectors this process has
@@ -543,7 +599,11 @@ func getOrganize(p *Places, w http.ResponseWriter, r *http.Request, _ string) {
 		fail(w, 404, "unknown engine action")
 		return
 	}
-	write(w, org.snapshotWire())
+	wire := org.snapshotWire()
+	if x, ok := p.indexQuiet(); ok {
+		wire.Offer = org.offer(len(x.unplaced()))
+	}
+	write(w, wire)
 }
 
 func postOrganizeCancel(p *Places, w http.ResponseWriter, r *http.Request, _ string) {
@@ -611,6 +671,9 @@ func (a *PlaceAdvice) takeOrganizerPlan(id string, skip []int) (placegraph.Recei
 	}
 	o.mu.Lock()
 	o.held = nil
+	if o.State != nil {
+		o.State.Organized = true
+	}
 	if o.last != nil {
 		o.last.Outcome = "applied"
 		if o.State != nil {

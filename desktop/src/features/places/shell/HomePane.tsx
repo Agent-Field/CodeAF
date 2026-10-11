@@ -18,6 +18,7 @@ import { PlaceOfferLine } from '../PlaceOfferLine';
 import { FirstPlaceTabOffer } from '../FirstPlaceTabOffer';
 import { proposalsClient } from '../proposals-client';
 import { Suggestion } from '../home/Suggestion';
+import { OrganizeOffer } from '../home/OrganizeOffer';
 import { browserSnoozes, suppliedSuggestions, writeSnooze } from '../suggestions';
 
 type Read = { digest?: HomeDigest; unplaced?: HomeDigest; failure?: PlacesError | Error };
@@ -128,7 +129,8 @@ export function HomePane({ pane, focused, actions: paneActions }: PaneRenderProp
           actions={card.actions.map(action => ({ ...action, tone: action.id === 'not-now' ? 'quiet' : 'field', onSelect: () => settleCard(action.id === 'create') }))}/>}
         {lineProposal && lineName && <PlaceOfferLine key={lineProposal.id} proposal={lineProposal} text={`${lineProposal.chatIds?.length} of these look like they belong in ${lineName}`} action="Move them" onSettled={offers.refresh}/>}
       </>
-    : read.digest?.kind === 'place' ? <FirstPlaceTabOffer key={id} digest={read.digest} active={focused}/> : undefined;
+    : read.digest?.kind === 'place' ? <FirstPlaceTabOffer key={id} digest={read.digest} active={focused}/>
+    : id === 'root' && connection.state === 'ready' ? <OrganizeOffer/> : undefined;
   return <div className="home-pane">
     <HomePage view={view} connection={connection} actions={homeActions} composer={composer} now={now} newWindowHint={placeShortcuts.openInNewWindow} suggestion={suggestion}/>
     {looking && <PlaceQuickLook id={looking} actions={homeActions} onClose={() => setLooking(undefined)}/>}

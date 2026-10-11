@@ -45,6 +45,8 @@ export type OrganizeSnapshot = {
   progress?: OrganizeProgress;
   last?: OrganizeLast;
   plan?: OrganizePlan;
+  /** Present only while the engine says the first-run offer is due. unplaced is the number the sentence names. */
+  offer?: { unplaced: number };
 };
 
 export type OrganizePlanView = {
@@ -213,7 +215,8 @@ function planOf(value: unknown): OrganizePlan | undefined {
 export function parseOrganizeSnapshot(value: unknown): OrganizeSnapshot {
   if (!isObject(value) || typeof value.running !== 'boolean') throw new Error('The engine returned an invalid organizing status.');
   const progress = value.progress == null ? undefined : progressOf(value.progress);
-  return { running: value.running, progress, last: lastOf(value.last), plan: planOf(value.plan) };
+  const offer = isObject(value.offer) && isInt(value.offer.unplaced) && value.offer.unplaced > 0 ? { unplaced: value.offer.unplaced } : undefined;
+  return { running: value.running, progress, last: lastOf(value.last), plan: planOf(value.plan), offer };
 }
 
 function pushId(ids: string[], value: unknown) {
@@ -280,3 +283,6 @@ export const organizeFixtures: Record<string, OrganizeFixture> = {
 export function screenOf(fixture: OrganizeFixture): OrganizeScreen {
   return organizeScreen(fixture.snapshot, fixture.feed, fixture.unavailable ?? '');
 }
+
+/** The first-run offer's sentence. The count is the engine's, never counted on the screen. */
+export const offerLine = (unplaced: number) => `You have ${count(unplaced)} chats. Organize them into places?`;

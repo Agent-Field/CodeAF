@@ -120,7 +120,7 @@ export function PlacesOrganizeView(props: ViewProps) {
 }
 
 /** Live block. Mounted only after GET /places/organize answers, so a missing route draws nothing. */
-function PlacesOrganizeLive({ initial }: { initial: OrganizeSnapshot }) {
+function PlacesOrganizeLive({ initial, onFinished }: { initial: OrganizeSnapshot; onFinished?: () => void }) {
   const primary = useWorld(selectOrganizing);
   const secondary = useSyncExternalStore(worldStore.subscribe, selectStoredOrganizing, selectStoredOrganizing);
   const [snap, setSnap] = useState(initial);
@@ -177,6 +177,7 @@ function PlacesOrganizeLive({ initial }: { initial: OrganizeSnapshot }) {
       await organizeClient.decline(snap.plan.id);
       setSheet(false);
       await refresh();
+      onFinished?.();
     })}
     onAccept={() => void run(async () => {
       if (!snap.plan) return;
@@ -187,6 +188,7 @@ function PlacesOrganizeLive({ initial }: { initial: OrganizeSnapshot }) {
       setSheet(false);
       setSnap(current => current ? { ...current, plan: undefined, running: false } : current);
       await refresh();
+      onFinished?.();
     })}
     onUndo={() => void run(async () => {
       if (!undoId) return;
@@ -199,7 +201,7 @@ function PlacesOrganizeLive({ initial }: { initial: OrganizeSnapshot }) {
 }
 
 /** Settings mount. Absent until the engine serves an organizing status. */
-export function PlacesOrganize() {
+export function PlacesOrganize({ onFinished }: { onFinished?: () => void } = {}) {
   const [snap, setSnap] = useState<OrganizeSnapshot | null>(null);
   const [failure, setFailure] = useState('');
   useEffect(() => {
@@ -214,7 +216,7 @@ export function PlacesOrganize() {
   }, []);
   if (failure) return <Text className="places-organize-note">{failure}</Text>;
   if (!snap) return null;
-  return <PlacesOrganizeLive initial={snap} />;
+  return <PlacesOrganizeLive initial={snap} onFinished={onFinished} />;
 }
 
 /** Measurement page (`?specimen=places-organize&fixture=`). The product never opens this. */

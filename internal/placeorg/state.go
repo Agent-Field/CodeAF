@@ -55,6 +55,14 @@ type State struct {
 	Kinds          map[string]Kind   `json:"kinds,omitempty"`
 	Representative map[string]string `json:"representative,omitempty"`
 	LastRun        *RunSummary       `json:"lastRun,omitempty"`
+	// Organized is true once the person has accepted a plan from an organising
+	// run. The first-run offer to organize existing chats never returns after.
+	Organized bool `json:"organized,omitempty"`
+	// OfferDismissedAt is how many chats were in no place when the person said
+	// "Not now" to that offer; zero means it was never dismissed. The offer
+	// returns only when the count has doubled. It lives here, with the rest of
+	// the organiser's memory per profile, and never in renderer storage.
+	OfferDismissedAt int `json:"offerDismissedAt,omitempty"`
 }
 
 // Thresholds are the park figures for one space.
@@ -121,6 +129,7 @@ func LoadState(path string, now func() time.Time) (st *State, recovery string, e
 // wherever the file had none.
 func (s *State) fill(doc State) {
 	s.Space, s.Exemplars, s.Constraints, s.LastRun = doc.Space, doc.Exemplars, doc.Constraints, doc.LastRun
+	s.Organized, s.OfferDismissedAt = doc.Organized, doc.OfferDismissedAt
 	if doc.Thresholds != nil {
 		s.Thresholds = doc.Thresholds
 	}

@@ -87,6 +87,7 @@ var bridgeRoutes = []string{
 	"/api/engine/places/proposals/{offer}/decline",
 	"/api/engine/places/organize",
 	"/api/engine/places/organize/cancel",
+	"/api/engine/places/organize/offer/dismiss",
 	"/api/engine/places/tree",
 	"/api/engine/places/guess",
 	"/api/engine/places/steer",

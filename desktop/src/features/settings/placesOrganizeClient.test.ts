@@ -49,3 +49,21 @@ test('a refusal that is not 409 still fails the start', async () => {
   const client = createOrganizeClient(async () => { throw new OrganizeError('no', 500); });
   await assert.rejects(() => client.start('add-on'), (error: OrganizeError) => error.status === 500);
 });
+
+test('the first-run offer is read from the status and Not now posts its own route', async () => {
+  const calls: string[] = [];
+  const client = createOrganizeClient(async (path, request) => {
+    calls.push(`${request.method} ${path}`);
+    return request.method === 'GET' ? { running: false, offer: { unplaced: 14 } } : { dismissed: true };
+  });
+  assert.deepEqual((await client.read()).offer, { unplaced: 14 });
+  await client.dismissOffer();
+  assert.deepEqual(calls, ['GET /places/organize', 'POST /places/organize/offer/dismiss']);
+});
+
+test('a status with no offer, or a nonsense one, offers nothing', async () => {
+  for (const offer of [undefined, null, { unplaced: 0 }, { unplaced: 'many' }]) {
+    const client = createOrganizeClient(async () => ({ running: false, offer }));
+    assert.equal((await client.read()).offer, undefined);
+  }
+});

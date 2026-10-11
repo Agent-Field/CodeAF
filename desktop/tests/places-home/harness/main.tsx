@@ -7,6 +7,7 @@ import ReactDOM from 'react-dom/client';
 import { ThemeProvider } from '../../../src/design/ThemeProvider';
 import { HomeSpecimen, homeScenarios, type HomeScenario } from '../../../src/features/places/specimens/HomeSpecimen';
 
+import { OrganizeOffer } from '../../../src/features/places/home/OrganizeOffer';
 import { LiveRowsHarness } from '../../../src/features/places/live/LiveRowsHarness';
 
 const params = new URLSearchParams(location.search);
@@ -14,6 +15,6 @@ const requested = params.get('scenario') ?? 'place';
 const scenario = (requested in homeScenarios ? requested : 'place') as HomeScenario;
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
-    <ThemeProvider><main className="places-harness">{params.has('live') ? <LiveRowsHarness/> : <HomeSpecimen key={`${scenario}${params.get('bare')}`} scenario={scenario} withoutVerbs={params.get('bare') === '1'}/> }</main></ThemeProvider>
+    <ThemeProvider><main className="places-harness">{params.has('offer') ? <OrganizeOffer/> : params.has('live') ? <LiveRowsHarness/> : <HomeSpecimen key={`${scenario}${params.get('bare')}`} scenario={scenario} withoutVerbs={params.get('bare') === '1'}/> }</main></ThemeProvider>
   </React.StrictMode>,
 );

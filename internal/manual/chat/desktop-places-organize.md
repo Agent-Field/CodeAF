@@ -25,3 +25,13 @@ When the run has a plan, a sheet titled Review opens. The summary is the sentenc
 ## Undo organizing places
 
 After you accept, Undo puts that one change back. It uses the one receipt the accept returned.
+
+## Organize my old chats into places
+
+If you already have a dozen or more chats that are in no place and you have never accepted an organize, All places offers once: "You have 14 chats. Organize them into places?" Organize starts the add to what's there run and shows the same progress and Review sheet as Organize now in Settings. Nothing is applied until you press Accept in Review.
+
+Not now hides the offer. codeaf remembers that in your profile, not in the window, so it stays hidden after a restart. It comes back only when the chats in no place have doubled since you said Not now. Once you accept a plan, the offer does not come back. Options opens Settings, where Start fresh is. Fewer than twelve chats in no place, or an engine that cannot organize, shows no offer.
+
+## Sort existing conversations into places
+
+To sort conversations you already have, use the offer on All places while it shows, or Organize now in Settings under Places organization at any time. Both use the same run, progress and Review.

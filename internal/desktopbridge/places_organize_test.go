@@ -3,6 +3,9 @@ package desktopbridge
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"github.com/Agent-Field/codeaf/internal/session"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -289,4 +292,69 @@ func organizingPublished(b *Bridge) bool {
 		time.Sleep(10 * time.Millisecond)
 	}
 	return false
+}
+
+// offerRig gives the rig n conversations that are in no place.
+func offerRig(t *testing.T, n int, state *placeorg.State) *adviceRig {
+	t.Helper()
+	rig := newAdviceRig(t, true)
+	rig.mu.Lock()
+	for i := 0; i < n; i++ {
+		rig.rows = append(rig.rows, session.SessionRow{ID: fmt.Sprintf("chat-%d", i), Title: "A chat"})
+	}
+	rig.mu.Unlock()
+	rig.advice.Organizer = &Organizer{State: state, statePath: filepath.Join(t.TempDir(), "places-org.json")}
+	return rig
+}
+
+func offerOf(t *testing.T, rig *adviceRig) *offerWire {
+	t.Helper()
+	w := request(rig.b, "GET", "/api/engine/places/organize", "")
+	var got organizeWire
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+	return got.Offer
+}
+
+func TestTheFirstRunOfferNeedsEnoughUnplacedChats(t *testing.T) {
+	if got := offerOf(t, offerRig(t, OrganizeOfferMin-1, placeorg.NewState())); got != nil {
+		t.Fatalf("offered below the minimum: %+v", got)
+	}
+	if got := offerOf(t, offerRig(t, OrganizeOfferMin, placeorg.NewState())); got == nil || got.Unplaced != OrganizeOfferMin {
+		t.Fatalf("not offered at the minimum: %+v", got)
+	}
+	organized := placeorg.NewState()
+	organized.Organized = true
+	if got := offerOf(t, offerRig(t, 30, organized)); got != nil {
+		t.Fatalf("offered after a plan was accepted: %+v", got)
+	}
+}
+
+func TestNotNowSilencesTheOfferUntilTheCountDoubles(t *testing.T) {
+	state := placeorg.NewState()
+	rig := offerRig(t, 14, state)
+	if w := request(rig.b, "POST", "/api/engine/places/organize/offer/dismiss", `{}`); w.Code != 200 {
+		t.Fatalf("dismiss: %d %s", w.Code, w.Body.String())
+	}
+	if state.OfferDismissedAt != 14 || offerOf(t, rig) != nil {
+		t.Fatalf("dismissed at %d, offer %+v", state.OfferDismissedAt, offerOf(t, rig))
+	}
+	// The dismissal is on disk, so a restart keeps it.
+	reread, _, err := placeorg.LoadState(rig.advice.Organizer.statePath, time.Now)
+	if err != nil || reread.OfferDismissedAt != 14 {
+		t.Fatalf("reread: %v %+v", err, reread)
+	}
+	rig.mu.Lock()
+	for i := 14; i < 28; i++ {
+		rig.rows = append(rig.rows, session.SessionRow{ID: fmt.Sprintf("chat-%d", i), Title: "A chat"})
+	}
+	rig.mu.Unlock()
+	// The world read is cached for a moment; the test lets it go.
+	rig.b.places.cacheMu.Lock()
+	rig.b.places.cacheDone = false
+	rig.b.places.cacheMu.Unlock()
+	if got := offerOf(t, rig); got == nil || got.Unplaced != 28 {
+		t.Fatalf("not offered again at double: %+v", got)
+	}
 }

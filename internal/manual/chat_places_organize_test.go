@@ -12,6 +12,9 @@ func TestDesktopPlacesOrganizeQuestionsReachTheirPage(t *testing.T) {
 		"how do I uncheck a change when I review the plan",
 		"what does Not now do on the organize review",
 		"how do I undo organizing places",
+		"organize my old chats into places",
+		"sort existing conversations into places",
+		"codeaf asked if I want to organize my chats and I pressed Not now, when does it come back",
 	} {
 		t.Run(question, func(t *testing.T) {
 			for _, section := range Chat().Search(question, DefaultResults) {
