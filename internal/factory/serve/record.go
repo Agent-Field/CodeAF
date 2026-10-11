@@ -59,7 +59,7 @@ func (h *Handler) recordApproval(r *http.Request, it factory.Item, edited bool) 
 		}
 		return "", errors.New("approval requires a factory record")
 	}
-	link, err := h.link(r)
+	handle, err := h.seam.PersonHandle(r.Context())
 	if err != nil {
 		return "", err
 	}
@@ -70,7 +70,7 @@ func (h *Handler) recordApproval(r *http.Request, it factory.Item, edited bool) 
 	if edited {
 		detail += " · edited"
 	}
-	event, err := h.config.Record.Append(r.Context(), record.Event{Kind: record.Approved, Job: it.ID, Handle: link.Login, Cost: jobCost(it), Detail: detail})
+	event, err := h.config.Record.Append(r.Context(), record.Event{Kind: record.Approved, Job: it.ID, Handle: handle, Cost: jobCost(it), Detail: detail})
 	return event.ID, err
 }
 
@@ -87,14 +87,14 @@ func (h *Handler) recordAction(r *http.Request, it factory.Item, kind, detail st
 	if h.config.Record == nil {
 		return door()
 	}
-	link, err := h.link(r)
+	handle, err := h.seam.PersonHandle(r.Context())
 	if err != nil {
 		return err
 	}
 	if err := door(); err != nil {
 		return err
 	}
-	_, err = h.config.Record.Append(r.Context(), record.Event{Kind: kind, Job: it.ID, Handle: link.Login, Cost: jobCost(it), Detail: detail})
+	_, err = h.config.Record.Append(r.Context(), record.Event{Kind: kind, Job: it.ID, Handle: handle, Cost: jobCost(it), Detail: detail})
 	return err
 }
 

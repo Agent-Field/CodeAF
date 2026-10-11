@@ -1,11 +1,11 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 	"net/url"
 	"os"
-	"os/user"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -90,7 +90,11 @@ func readFactoryWorkerCreds() map[string][]string {
 // unassigned work it takes. ITS OWN FACTORY'S WORK IS ALL ITS PERSON'S, so a
 // machine on a loopback factory takes every job; on a factory elsewhere it
 // takes unassigned work only for the repositories it has a checkout of.
-func (d *factoryWorkerDial) attach() api.WorkerAttach {
+func (d *factoryWorkerDial) attach(ctx context.Context, person factory.Seam) (api.WorkerAttach, error) {
+	handle, err := person.PersonHandle(ctx)
+	if err != nil {
+		return api.WorkerAttach{}, err
+	}
 	machine, _ := os.Hostname()
 	name := machine
 	a, attached := readFactoryAttachment()
@@ -106,18 +110,7 @@ func (d *factoryWorkerDial) attach() api.WorkerAttach {
 			}
 		}
 	}
-	return api.WorkerAttach{Machine: machine, Name: name + " (pid " + strconv.Itoa(os.Getpid()) + ")", Handle: factoryHandle(), TakesUnassigned: takes}
-}
-
-// factoryHandle is the person this machine works for: the account it runs
-// as, until worker registration carries the person's forge handle.
-func factoryHandle() string {
-	if u, err := user.Current(); err == nil {
-		if h := factory.NormalizeHandle(u.Username); h != "" {
-			return h
-		}
-	}
-	return "me"
+	return api.WorkerAttach{Machine: machine, Name: name + " (pid " + strconv.Itoa(os.Getpid()) + ")", Handle: handle, TakesUnassigned: takes}, nil
 }
 
 // factoryLoopback says base is a factory on this machine.

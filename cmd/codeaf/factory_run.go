@@ -124,8 +124,12 @@ func startFactoryWorker(st *store.Store, workspace, profileDir string, parent se
 		})
 		guard.Go("factory/worker", func() {
 			defer os.RemoveAll(mirror.Root())
+			attach, err := dial.attach(ctx, factorygithub.Connect(factory.Seam{}, factoryProfile(profileDir)))
+			if err != nil {
+				return
+			}
 			factoryworker.Run(ctx, factoryworker.Options{
-				Dial: dial.dial, Keep: dial.keep, Attach: dial.attach(), Runner: r, Mirror: mirror, Slots: factoryBenches(),
+				Dial: dial.dial, Keep: dial.keep, Attach: attach, Runner: r, Mirror: mirror, Slots: factoryBenches(),
 				LocalLease: factoryLocalLease(mirror),
 			})
 		})

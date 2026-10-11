@@ -121,6 +121,15 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body.Name, body.Handle = strings.TrimSpace(body.Name), factory.NormalizeHandle(body.Handle)
+	if body.Handle == "" {
+		// A worker without its own forge login uses the factory's person,
+		// exactly as Take does, so an attached machine can pull taken work.
+		handle, err := h.seam.PersonHandle(r.Context())
+		if h.failed(w, err) {
+			return
+		}
+		body.Handle = handle
+	}
 	if body.Name == "" || body.Handle == "" {
 		h.fail(w, http.StatusBadRequest, "worker attach requires name and handle")
 		return

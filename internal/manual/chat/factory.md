@@ -119,6 +119,12 @@ kept; completed work and work waiting on a person keep their state. A late heart
 cannot renew an expired lease. Releasing a lease early also returns running work to
 the queue.
 
+Workers introduce their person by the connected GitHub login, using the same
+identity resolution as Take, Approve and `/v1/me`. With no local GitHub login,
+the worker uses the factory's connected login. The operating system's username
+is never a forge handle. Without either login, attach is refused rather than
+registering a different person from the one who takes the job.
+
 **Where a job runs.** Every `codeaf` runs a worker loop against its factory (the one it
 serves, the one in `serve.json`, or the one in `attach.json`); `--no-worker` turns it off,
 and `CODEAF_FACTORY_NO_WORKER=1` does the same for a session host. The worker attaches once
@@ -1734,7 +1740,8 @@ With no token configured, remote access is refused. Forwarded headers do not gra
 loopback access. Without either credential the service answers HTTP 401 with
 `a bearer access token or live session is required; open /access to enter the token`.
 
-`/v1/me` currently uses the factory's connected GitHub login as its handle, with an
+`/v1/me` currently uses the factory's connected GitHub login, normalized to lowercase
+without a leading `@`, as its handle, with an
 empty machines list and no unassigned-work preferences. With no GitHub connection,
 the handle is blank. These reads do not create a viewer session. A read whose seam
 door is absent answers HTTP 501 with `this factory does not provide that read`;
@@ -1992,6 +1999,10 @@ HTTP 201 with `{factory, worker_id, credential}`. Loopback attach needs no acces
 token; remote attach requires the factory access token. Each attach creates a
 fresh worker identity. Credentials last for this handler's lifetime; after a
 server restart attach again and let the former hold expire.
+
+With an empty or omitted `handle`, attach uses the factory's connected GitHub
+login, the same identity as Take, Approve and `/v1/me`. Without that login it
+answers HTTP 400 with `worker attach requires name and handle`.
 
 All other worker endpoints require `Authorization: Bearer <credential>`, even
 on loopback. The floor access token cannot replace a worker credential, and a

@@ -154,11 +154,11 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	link, err := h.link(r)
+	handle, err := h.seam.PersonHandle(r.Context())
 	if h.failed(w, err) {
 		return
 	}
-	q := api.FromSnapshot(s, link.Login)
+	q := api.FromSnapshot(s, handle)
 	q.Factory = h.factory
 	h.write(w, http.StatusOK, q)
 }
@@ -297,7 +297,7 @@ func (h *Handler) github(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
-	link, err := h.link(r)
+	handle, err := h.seam.PersonHandle(r.Context())
 	if h.failed(w, err) {
 		return
 	}
@@ -308,7 +308,7 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 		Handle          string          `json:"handle"`
 		Machines        []api.Worker    `json:"machines"`
 		TakesUnassigned map[string]bool `json:"takes_unassigned"`
-	}{h.factory, link.Login, []api.Worker{}, map[string]bool{}})
+	}{h.factory, handle, []api.Worker{}, map[string]bool{}})
 }
 
 func (h *Handler) require(w http.ResponseWriter, exists bool) bool {

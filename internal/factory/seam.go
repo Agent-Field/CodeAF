@@ -2,6 +2,20 @@ package factory
 
 import "context"
 
+// PersonHandle resolves ownership through the connected forge so taking,
+// approving and working a job agree about the person. An absent connection
+// leaves the handle empty; an OS account never supplies a forge identity.
+func (s Seam) PersonHandle(ctx context.Context) (string, error) {
+	if s.GitHub == nil {
+		return "", nil
+	}
+	link, err := s.GitHub(ctx)
+	if err != nil {
+		return "", err
+	}
+	return NormalizeHandle(link.Login), nil
+}
+
 // Seam is every door the surface has onto the factory, as a struct of funcs
 // so a fixture, a local engine and a hosted one are the same shape (the pattern
 // tui3.TeamsSeam set). Every func may touch disk, the network and the clock:

@@ -61,11 +61,10 @@ func (h *Handler) take(w http.ResponseWriter, r *http.Request, it factory.Item) 
 	if !h.workerReady(w) {
 		return
 	}
-	link, err := h.link(r)
+	me, err := h.seam.PersonHandle(r.Context())
 	if h.failed(w, err) {
 		return
 	}
-	me := factory.NormalizeHandle(link.Login)
 	if me == "" {
 		h.fail(w, http.StatusBadRequest, "take requires a GitHub login")
 		return
