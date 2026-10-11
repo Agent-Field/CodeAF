@@ -1,11 +1,7 @@
 package factory
 
 import (
-	"errors"
 	"fmt"
-	"io/fs"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -13,7 +9,7 @@ import (
 )
 
 // The recipe file is a repository's recipe written the way the floor itself
-// spells one, so a person edits it by hand and the floor writes it back:
+// spelled one. This grammar is read-only compatibility input:
 //
 //	# factory recipe · codeaf
 //
@@ -57,8 +53,11 @@ import (
 // [Problem] that names it, and everything else loads; a missing section is
 // the default recipe's for that kind, and a missing file is the default recipe.
 
-// RecipeFile is where a repository keeps its recipe, relative to its root.
+// RecipeFile is the read-only Markdown compatibility input.
 const RecipeFile = ".codeaf/factory.md"
+
+// PipelineFile is the shared recipe every writer saves.
+const PipelineFile = ".codeaf/factory.yaml"
 
 // recipeTitle is the file's first line.
 const recipeTitle = "# factory recipe · codeaf"
@@ -607,204 +606,4 @@ func Load(repoDir string) (Recipe, []Problem, error) {
 	}
 	r, probs := Parse(text)
 	return r, probs, nil
-}
-
-// Save writes r to <repoDir>/.codeaf/factory.md, making .codeaf when it
-// is not there. The write is whole or not at all: a temporary file beside it,
-// renamed over.
-func Save(repoDir string, r Recipe) error {
-	return writeRecipeText(repoDir, Format(r))
-}
-
-func writeRecipeText(repoDir, text string) error {
-	path := filepath.Join(repoDir, RecipeFile)
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(dir, ".factory-*.md")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.WriteString(text); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
-}
-
-// recipeText is the file as it stands, or the default recipe written out when
-// there is none, so a first bank writes a file that reads whole.
-func recipeText(repoDir string) (string, error) {
-	data, err := os.ReadFile(filepath.Join(repoDir, RecipeFile))
-	if errors.Is(err, fs.ErrNotExist) {
-		return Format(DefaultRecipe()), nil
-	}
-	return string(data), err
-}
-
-// BankRecipeStages writes stages into the file's section for kind and leaves
-// every other section as it was written, problems and all: A BANK CHANGES ONE
-// SECTION, so a line the person mistyped elsewhere is still theirs to fix, not
-// something the floor quietly dropped on the way through.
-func BankRecipeStages(repoDir string, kind Kind, stages []Stage) error {
-	if kind == "" {
-		kind = KindIssue
-	}
-	if len(stages) == 0 {
-		return errors.New("there are no stages to bank")
-	}
-	text, err := recipeText(repoDir)
-	if err != nil {
-		return err
-	}
-	f := splitSections(text)
-	if i := f.find(string(kind)); i >= 0 {
-		if _, word := sectionWord(f.secs[i].head); AdaptMode(word) == AdaptFixed {
-			stages = unfixed(stages)
-		}
-	}
-	f.replace(string(kind), StageLines(stages))
-	return writeRecipeText(repoDir, f.join())
-}
-
-// BankRecipeHabit appends a sentence to the file's habits, once: a sentence
-// already there is not written twice.
-func BankRecipeHabit(repoDir, sentence string) error {
-	sentence = oneLine(sentence)
-	if sentence == "" {
-		return errors.New("say the habit")
-	}
-	text, err := recipeText(repoDir)
-	if err != nil {
-		return err
-	}
-	f := splitSections(text)
-	i := f.find(sectionHabits)
-	if i < 0 {
-		f.secs = append(f.secs, recipeSection{head: "## " + sectionHabits})
-		i = len(f.secs) - 1
-	}
-	for _, l := range f.secs[i].body {
-		if s, ok := bullet(strings.TrimSpace(l)); ok && s == sentence {
-			return nil
-		}
-	}
-	f.secs[i].body = append(trimBlank(f.secs[i].body), "- "+sentence)
-	return writeRecipeText(repoDir, f.join())
-}
-
-// BankRecipePolicy appends a sentence to the file's policy, once, exactly as
-// [BankRecipeHabit] appends a habit: a sentence already there is not written
-// twice, and every other section is left as it was written.
-func BankRecipePolicy(repoDir, sentence string) error {
-	sentence = oneLine(sentence)
-	if sentence == "" {
-		return errors.New("say the policy")
-	}
-	text, err := recipeText(repoDir)
-	if err != nil {
-		return err
-	}
-	f := splitSections(text)
-	i := f.find(sectionPolicy)
-	if i < 0 {
-		// THE POLICY GOES BEFORE THE HABITS when the file has none yet, which
-		// is the order [Format] writes them in.
-		at := len(f.secs)
-		if h := f.find(sectionHabits); h >= 0 {
-			at = h
-		}
-		f.secs = append(f.secs[:at], append([]recipeSection{{head: "## " + sectionPolicy}}, f.secs[at:]...)...)
-		i = at
-	}
-	for _, l := range f.secs[i].body {
-		if s, ok := bullet(strings.TrimSpace(l)); ok && s == sentence {
-			return nil
-		}
-	}
-	f.secs[i].body = append(trimBlank(f.secs[i].body), "- "+sentence)
-	return writeRecipeText(repoDir, f.join())
-}
-
-// recipeFile is a recipe file cut at its `## ` headings, each section's lines
-// kept exactly as written.
-type recipeFile struct {
-	pre  []string
-	secs []recipeSection
-}
-
-type recipeSection struct {
-	head string
-	body []string
-}
-
-func splitSections(text string) recipeFile {
-	var f recipeFile
-	for _, l := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
-		if strings.HasPrefix(strings.TrimSpace(l), "## ") {
-			f.secs = append(f.secs, recipeSection{head: strings.TrimSpace(l)})
-			continue
-		}
-		if len(f.secs) == 0 {
-			f.pre = append(f.pre, l)
-		} else {
-			f.secs[len(f.secs)-1].body = append(f.secs[len(f.secs)-1].body, l)
-		}
-	}
-	return f
-}
-
-func (f recipeFile) find(name string) int {
-	for i, s := range f.secs {
-		if n, _ := sectionWord(s.head); n == name {
-			return i
-		}
-	}
-	return -1
-}
-
-// replace sets a stage section's lines. A kind the file has no section for
-// gains one before the policy and the habits, which close the file.
-func (f *recipeFile) replace(name string, lines []string) {
-	if i := f.find(name); i >= 0 {
-		f.secs[i].body = lines
-		return
-	}
-	at := len(f.secs)
-	for i, s := range f.secs {
-		if n, _ := sectionWord(s.head); n == sectionPolicy || n == sectionHabits {
-			at = i
-			break
-		}
-	}
-	sec := recipeSection{head: "## " + name, body: lines}
-	f.secs = append(f.secs[:at], append([]recipeSection{sec}, f.secs[at:]...)...)
-}
-
-// join writes the file back with one blank line between sections.
-func (f recipeFile) join() string {
-	out := trimBlank(f.pre)
-	for _, s := range f.secs {
-		if len(out) > 0 {
-			out = append(out, "")
-		}
-		out = append(out, s.head)
-		out = append(out, trimBlank(s.body)...)
-	}
-	return strings.Join(out, "\n") + "\n"
-}
-
-func trimBlank(lines []string) []string {
-	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
-		lines = lines[:len(lines)-1]
-	}
-	return lines
 }

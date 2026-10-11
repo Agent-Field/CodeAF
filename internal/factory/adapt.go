@@ -391,9 +391,9 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (Item, []string, err
 
 // FixedRefusal is the one sentence every road says when it is asked to change
 // a stage the recipe file fixes ([Stage.Fixed]), whoever asked:
-// `security is fixed by the recipe · change .codeaf/factory.md to change it`.
+// `security is fixed by the recipe · change .codeaf/factory.yaml to change it`.
 func FixedRefusal(name string) error {
-	return errors.New(strings.TrimSpace(name) + " is fixed by the recipe · change " + RecipeFile + " to change it")
+	return errors.New(strings.TrimSpace(name) + " is fixed by the recipe · change " + PipelineFile + " to change it")
 }
 
 // StageFixed says whether the stage at i of an item's stages is fixed: the

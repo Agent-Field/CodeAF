@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
@@ -70,7 +71,7 @@ func recipeDoor(st *store.Store, workspace string) session.RecipeDoor {
 	return fileRecipeDoor{dirs: factoryRepoDirs(st, workspace)}
 }
 
-// fileRecipeDoor writes one line into a repository's `.codeaf/factory.md`.
+// fileRecipeDoor writes one line into a repository's `.codeaf/factory.yaml`.
 type fileRecipeDoor struct {
 	dirs func(repo string) string
 }
@@ -89,7 +90,7 @@ func (d fileRecipeDoor) dir(repo string) (string, error) {
 // own reader, and a stage of the same name already there is replaced where it
 // stands, so the section gains exactly one line or changes exactly one.
 //
-// THE SECTION IS WRITTEN WHOLE, through [factory.BankRecipeStages], which is
+// THE SECTION IS WRITTEN WHOLE, through [pipeline.Files.BankStages], which is
 // the floor's own `b`: a kind the file has no section for starts from the
 // stages that kind runs today, so adding a stage never quietly drops the rest.
 func (d fileRecipeDoor) BankStage(_ context.Context, repo string, kind factory.Kind, line string) error {
@@ -111,17 +112,17 @@ func bankStageAt(dir string, kind factory.Kind, line string) error {
 	if len(add) != 1 {
 		return errors.New("a stage is one line: N. name · kind · ask · knobs")
 	}
-	recipe, _, err := factory.Load(dir)
+	file, err := pipeline.Working(dir)
 	if err != nil {
 		return err
 	}
-	stages := factory.CopyStages(recipe.For(kind))
+	stages := factory.CopyStages(file.Recipe().For(kind))
 	if i := factory.StageIndex(stages, add[0].Name); i >= 0 {
 		stages[i] = add[0]
 	} else {
 		stages = append(stages, add[0])
 	}
-	return factory.BankRecipeStages(dir, kind, stages)
+	return (pipeline.Files{}).BankStages(dir, kind, stages)
 }
 
 // BankNote is the road a yes takes: the line is written on a branch of its
@@ -135,32 +136,32 @@ func (d fileRecipeDoor) BankNote(ctx context.Context, n session.RecipeNotice) (s
 	switch {
 	case n.Policy != "":
 		return factory.BankRecipeChange(ctx, dir, n.Policy, n.Why, "- "+n.Policy,
-			func(d string) error { return factory.BankRecipePolicy(d, n.Policy) })
+			func(d string) error { return (pipeline.Files{}).BankRule(d, n.Policy) })
 	case n.Habit != "":
 		return factory.BankRecipeChange(ctx, dir, n.Habit, n.Why, "- "+n.Habit,
-			func(d string) error { return factory.BankRecipeHabit(d, n.Habit) })
+			func(d string) error { return (pipeline.Files{}).BankRule(d, n.Habit) })
 	}
 	kind := factory.Kind(n.Kind)
 	return factory.BankRecipeChange(ctx, dir, n.Line, n.Why, n.Line,
 		func(d string) error { return bankStageAt(d, kind, n.Line) })
 }
 
-// BankPolicy adds one sentence under `## policy`.
+// BankPolicy adds one sentence under YAML rules.
 func (d fileRecipeDoor) BankPolicy(_ context.Context, repo, sentence string) error {
 	dir, err := d.dir(repo)
 	if err != nil {
 		return err
 	}
-	return factory.BankRecipePolicy(dir, sentence)
+	return (pipeline.Files{}).BankRule(dir, sentence)
 }
 
-// BankHabit adds one sentence under `## habits`.
+// BankHabit adds one sentence under YAML rules.
 func (d fileRecipeDoor) BankHabit(_ context.Context, repo, sentence string) error {
 	dir, err := d.dir(repo)
 	if err != nil {
 		return err
 	}
-	return factory.BankRecipeHabit(dir, sentence)
+	return (pipeline.Files{}).BankRule(dir, sentence)
 }
 
 // factorySeam is the factory page's seam for this launch.

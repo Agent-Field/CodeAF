@@ -42,11 +42,9 @@ type ItemStore interface {
 //
 // A NIL STORE IS NO FLOOR: the zero Seam, whose every door is absent.
 //
-// The two bank doors are the exception, and only with [WithRepoDirs]: when
-// the seam is told where a repository is checked out, a repo's recipe and
-// habits are read from its `.codeaf/factory.md` (recipefile.go), BankStages
-// writes an item's stages into that file and Bank appends a habit to it.
-// Without that option they stay nil, because there is nowhere to write.
+// Banking requires both [WithRepoDirs] and [WithRecipeFiles]. The pipeline
+// interpreter supplies the YAML writer, so every save uses the same encoder.
+// Without either option the write doors stay absent.
 func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 	if st == nil || st.Root() == "" {
 		return Seam{}
@@ -191,7 +189,7 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 	if o.refetch != nil {
 		localRefresh(&seam, st, o.refetch)
 	}
-	if o.dirs != nil {
+	if o.dirs != nil && o.files != nil {
 		seam.BankStages = func(id int) error {
 			it, err := localItem(st, id)
 			if err != nil {
@@ -201,7 +199,7 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 			if err != nil {
 				return err
 			}
-			return BankRecipeStages(dir, it.Kind, it.Stages)
+			return o.files.BankStages(dir, it.Kind, it.Stages)
 		}
 		seam.BankNote = func(repo, sentence string) (string, error) {
 			dir, err := o.dir(repo)
@@ -209,7 +207,7 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 				return "", err
 			}
 			return BankRecipeChange(context.Background(), dir, sentence, "A habit the factory offered after clean sign-offs.", "- "+sentence,
-				func(d string) error { return BankRecipeHabit(d, sentence) })
+				func(d string) error { return o.files.BankRule(d, sentence) })
 		}
 		seam.Bank = func(repo, sentence string) error {
 			_, err := seam.BankNote(repo, sentence)
@@ -292,6 +290,7 @@ func (o localOptions) load(dir string) (Recipe, []Problem, error) {
 type localOptions struct {
 	loadRepoRecipe func(string, string) (Recipe, []Problem, error)
 	loadRecipe     func(string) (Recipe, []Problem, error)
+	files          RecipeFiles
 	runner         RunnerDoors
 	dirs           func(repo string) string
 	lister         RepoLister
@@ -689,7 +688,7 @@ func localSettings(seam *Seam, st ItemStore, o localOptions) {
 		r, probs, err := o.load(dir)
 		return r, probs, dir, err
 	}
-	if o.dirs == nil {
+	if o.dirs == nil || o.files == nil {
 		return
 	}
 	seam.SaveRecipe = func(repo string, r Recipe) error {
@@ -697,7 +696,7 @@ func localSettings(seam *Seam, st ItemStore, o localOptions) {
 		if err != nil {
 			return err
 		}
-		return Save(dir, r)
+		return o.files.Save(dir, r)
 	}
 	localRecipeOffer(seam, st, o)
 }
@@ -714,7 +713,7 @@ func localRecipeOffer(seam *Seam, st ItemStore, o localOptions) {
 		if dir == "" {
 			return false, nil
 		}
-		if _, err := os.Stat(filepath.Join(dir, RecipeFile)); !errors.Is(err, fs.ErrNotExist) {
+		if _, err := os.Stat(filepath.Join(dir, PipelineFile)); !errors.Is(err, fs.ErrNotExist) {
 			return false, nil
 		}
 		mu.Lock()
@@ -735,10 +734,10 @@ func localRecipeOffer(seam *Seam, st ItemStore, o localOptions) {
 		if err != nil {
 			return "", err
 		}
-		if _, err := os.Stat(filepath.Join(dir, RecipeFile)); !errors.Is(err, fs.ErrNotExist) {
-			return "", fmt.Errorf("%s has a recipe already · %s", repo, RecipeFile)
+		if _, err := os.Stat(filepath.Join(dir, PipelineFile)); !errors.Is(err, fs.ErrNotExist) {
+			return "", fmt.Errorf("%s has a recipe already · %s", repo, PipelineFile)
 		}
-		if err := Save(dir, o.recipe(repo)); err != nil {
+		if err := o.files.WriteDefault(dir); err != nil {
 			return "", err
 		}
 		return checkoutBranch(dir), nil

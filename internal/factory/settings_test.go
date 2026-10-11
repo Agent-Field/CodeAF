@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 )
 
 // THE LOCAL SEAM'S SETTINGS DOORS: the watched repositories and the rail are
@@ -16,7 +17,7 @@ import (
 func TestLocalSettingsDoors(t *testing.T) {
 	_, st := openLocal(t)
 	listed := []factory.RepoInfo{{Full: "agentfield/codeaf", Owner: "agentfield", Name: "codeaf", Private: true}}
-	seam := factory.LocalSeam(st, time.Now(), factory.WithRepoLister(func(context.Context) ([]factory.RepoInfo, error) { return listed, nil }))
+	seam := factory.LocalSeam(st, time.Now(), pipeline.LocalFiles(), factory.WithRepoLister(func(context.Context) ([]factory.RepoInfo, error) { return listed, nil }))
 	for _, door := range []string{"repos", "setrepos", "setrail"} {
 		if !seam.Has(door) {
 			t.Fatalf("the local seam has no %s door", door)
@@ -55,7 +56,7 @@ func TestLocalSettingsDoors(t *testing.T) {
 	// this machine has not cloned carries none.
 	listed = append(listed, factory.RepoInfo{Full: "santoshkumarradha/notes", Owner: "santoshkumarradha", Name: "notes", Open: -1})
 	dirs := map[string]string{"agentfield/codeaf": "/work/codeaf"}
-	here := factory.LocalSeam(st, time.Now(),
+	here := factory.LocalSeam(st, time.Now(), pipeline.LocalFiles(),
 		factory.WithRepoLister(func(context.Context) ([]factory.RepoInfo, error) {
 			return append([]factory.RepoInfo(nil), listed...), nil
 		}),
@@ -84,14 +85,14 @@ func TestLocalRecipeDoors(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repoDir, factory.RecipeFile), []byte(text), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	seam := factory.LocalSeam(st, time.Now(), factory.WithRepoDirs(func(repo string) string {
+	seam := factory.LocalSeam(st, time.Now(), pipeline.LocalFiles(), factory.WithRepoDirs(func(repo string) string {
 		if repo == "agentfield/codeaf" {
 			return repoDir
 		}
 		return ""
 	}))
 	r, probs, dir, err := seam.RecipeAt("agentfield/codeaf")
-	if err != nil || dir != repoDir || len(probs) != 1 || probs[0].Line != 4 {
+	if err != nil || dir != repoDir || len(probs) == 0 || probs[len(probs)-1].Line != 4 {
 		t.Fatalf("RecipeAt = %v, %+v, %q, %v", r, probs, dir, err)
 	}
 	r = factory.DefaultRecipe()

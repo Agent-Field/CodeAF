@@ -30,7 +30,7 @@ func stageLocked(s factory.Stage) bool { return s.On && stageFixed(s) }
 
 // factoryFixedWords is the one sentence every refusal of a fixed stage says,
 // the engine's own (FixedRefusal, on factory/fixed):
-// `security is fixed by the recipe · change .codeaf/factory.md to change it`.
+// `security is fixed by the recipe · change .codeaf/factory.yaml to change it`.
 func factoryFixedWords(name string) string {
 	return name + " " + wordFixedByRecipe + rowSep + wordChangeTheRecipeFile
 }

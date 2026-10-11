@@ -1,7 +1,7 @@
 package main
 
 // The recipe door behind `factory_recipe`: one line into the repository's own
-// `.codeaf/factory.md`, found the way the floor finds it, and a refusal in a
+// `.codeaf/factory.yaml`, found the way the floor finds it, and a refusal in a
 // person's words when codeaf does not know where the repository is.
 
 import (
@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -34,13 +35,14 @@ func TestFactoryRecipeDoorBanksOneLineIntoTheWorkspacesRecipe(t *testing.T) {
 	}
 	door := recipeDoor(st, web)
 	ctx := context.Background()
-	defaults := len(factory.DefaultRecipe().For(factory.KindIssue))
+	defaults := len(pipeline.Defaults().Recipe().For(factory.KindIssue)) + 1
 
 	// A stage the kind already has by name is replaced where it stands.
 	if err := door.BankStage(ctx, "web", factory.KindIssue, "security · chat · read it for auth holes · when touches auth"); err != nil {
 		t.Fatal(err)
 	}
-	recipe, problems, err := factory.Load(web)
+	file, err := pipeline.Load(web)
+	recipe, problems := file.Recipe(), file.Problems
 	if err != nil || len(problems) > 0 {
 		t.Fatalf("the banked file does not read: %v %v", err, problems)
 	}
@@ -48,7 +50,7 @@ func TestFactoryRecipeDoorBanksOneLineIntoTheWorkspacesRecipe(t *testing.T) {
 	if len(stages) != defaults {
 		t.Fatalf("replacing a stage changed the count: %d, want %d", len(stages), defaults)
 	}
-	if i := factory.StageIndex(stages, "security"); i < 0 || stages[i].Ask != "read it for auth holes" {
+	if i := factory.StageIndex(stages, "security"); i < 0 || !strings.Contains(stages[i].Ask, "read it for auth holes") {
 		t.Fatalf("security stage = %+v", stages)
 	}
 
@@ -56,7 +58,8 @@ func TestFactoryRecipeDoorBanksOneLineIntoTheWorkspacesRecipe(t *testing.T) {
 	if err := door.BankStage(ctx, "web", factory.KindIssue, "docs · chat · update the readme"); err != nil {
 		t.Fatal(err)
 	}
-	recipe, _, _ = factory.Load(web)
+	file, _ = pipeline.Load(web)
+	recipe = file.Recipe()
 	if got := recipe.For(factory.KindIssue); len(got) != defaults+1 || got[len(got)-1].Name != "docs" {
 		t.Fatalf("after a new stage: %+v", got)
 	}
@@ -67,13 +70,14 @@ func TestFactoryRecipeDoorBanksOneLineIntoTheWorkspacesRecipe(t *testing.T) {
 	if err := door.BankHabit(ctx, "web", "PRs from my own issues ship when proof is green"); err != nil {
 		t.Fatal(err)
 	}
-	recipe, problems, _ = factory.Load(web)
-	if len(problems) > 0 || len(recipe.Policy) != 1 || recipe.Policy[0] != "never post without green tests" ||
-		len(recipe.Habits) != 1 || recipe.Habits[0] != "PRs from my own issues ship when proof is green" {
+	file, _ = pipeline.Load(web)
+	recipe, problems = file.Recipe(), file.Problems
+	if len(problems) > 0 || len(recipe.Policy) != 2 || recipe.Policy[0] != "never post without green tests" ||
+		len(recipe.Habits) != 0 || recipe.Policy[1] != "PRs from my own issues ship when proof is green" {
 		t.Fatalf("policy %q habits %q problems %v", recipe.Policy, recipe.Habits, problems)
 	}
-	data, _ := os.ReadFile(filepath.Join(web, factory.RecipeFile))
-	if strings.Index(string(data), "## policy") > strings.Index(string(data), "## habits") {
+	data, _ := os.ReadFile(filepath.Join(web, pipeline.RepoFile))
+	if !strings.Contains(string(data), "rules:") || strings.Contains(string(data), "## habits") {
 		t.Fatalf("policy is written after habits:\n%s", data)
 	}
 }
@@ -133,13 +137,13 @@ func TestFactoryRecipeDoorBanksANoteOnABranchInAGitCheckout(t *testing.T) {
 	if want := "written · committed on factory/recipe-security · no remote to push to"; note != want {
 		t.Fatalf("note = %q", note)
 	}
-	if _, err := os.Stat(filepath.Join(web, factory.RecipeFile)); err == nil {
+	if _, err := os.Stat(filepath.Join(web, pipeline.RepoFile)); err == nil {
 		t.Fatal("the checkout's file was written")
 	}
-	cmd := exec.Command("git", "show", "factory/recipe-security:"+factory.RecipeFile)
+	cmd := exec.Command("git", "show", "factory/recipe-security:"+pipeline.RepoFile)
 	cmd.Dir = web
 	out, err := cmd.CombinedOutput()
-	if err != nil || !strings.Contains(string(out), "security · chat") {
+	if err != nil || !strings.Contains(string(out), "prompt: read it for auth holes") {
 		t.Fatalf("branch file: %v\n%s", err, out)
 	}
 }

@@ -21,10 +21,10 @@ import (
 )
 
 func factoryPipelineOption() factory.LocalOption {
-	return factory.WithRepositoryRecipeLoader(func(repo, dir string) (factory.Recipe, []factory.Problem, error) {
+	return factory.WithOptions(pipeline.LocalFiles(), factory.WithRepositoryRecipeLoader(func(repo, dir string) (factory.Recipe, []factory.Problem, error) {
 		f, err := factoryRules().Load(context.Background(), repo, dir, home.Join("factory.yaml"))
 		return f.Recipe(), f.RecipeProblems(), err
-	})
+	}))
 }
 
 func runFactoryConvert(args []string, out, warnings io.Writer) error {

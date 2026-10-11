@@ -2,7 +2,7 @@ package factory
 
 // A TAUGHT LINE IS A CHANGE FOR THE TEAM, NOT A SILENT WRITE.
 //
-// `.codeaf/factory.md` in a repository is the team's law. When a line is banked
+// `.codeaf/factory.yaml` in a repository is the team's law. When a line is banked
 // from a conversation (a stage, a policy sentence, a habit), the file is written
 // on a branch `factory/recipe-<word>` cut from the default branch, committed as
 // `recipe: <the sentence>` with no trailers, pushed when a remote exists, and
@@ -31,8 +31,8 @@ const (
 	RecipeNotePR       = "written · pull request #%d opened for the team"
 	RecipeNotePushed   = "written · branch %s pushed · open the pull request when you want"
 	RecipeNoteLocal    = "written · committed on %s · no remote to push to"
-	RecipeNotePlain    = "written · .codeaf/factory.md (not a git repository)"
-	RecipeNoteHad      = "already in .codeaf/factory.md · nothing to change"
+	RecipeNotePlain    = "written · .codeaf/factory.yaml (not a git repository)"
+	RecipeNoteHad      = "already in .codeaf/factory.yaml · nothing to change"
 	recipeNotePushFail = "written · committed on %s · could not push: %s"
 )
 
@@ -133,7 +133,7 @@ func BankRecipeChange(ctx context.Context, dir, sentence, why, line string, writ
 	if err := write(filepath.Join(wt, sub)); err != nil {
 		return "", err
 	}
-	if _, err := gitRun(ctx, wt, "add", "--", filepath.Join(sub, RecipeFile)); err != nil {
+	if _, err := gitRun(ctx, wt, "add", "--", filepath.Join(sub, PipelineFile)); err != nil {
 		return "", err
 	}
 	if _, err := gitRun(ctx, wt, "diff", "--cached", "--quiet"); err == nil {
@@ -156,7 +156,7 @@ func BankRecipeChange(ctx context.Context, dir, sentence, why, line string, writ
 		if body == "" {
 			body = "Taught in conversation."
 		}
-		body += "\n\nAdds to `.codeaf/factory.md`:\n\n    " + oneLine(line)
+		body += "\n\nAdds to `.codeaf/factory.yaml`:\n\n    " + oneLine(line)
 		cmd := exec.CommandContext(ctx, gh, "pr", "create", "--title", sentence, "--body", body, "--head", branch, "--base", defName)
 		cmd.Dir = top
 		var out bytes.Buffer

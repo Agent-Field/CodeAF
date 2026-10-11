@@ -3,11 +3,14 @@ package factory_test
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 )
 
 // THE WORD AFTER THE KIND says how much plan may change that kind's stages;
@@ -76,18 +79,30 @@ func TestRecipeAdaptBadWordIsAProblem(t *testing.T) {
 	}
 }
 
-// A BANK CHANGES ONE SECTION AND KEEPS ITS HEADING, the word after it included.
-func TestBankKeepsTheAdaptWord(t *testing.T) {
+// Banking converts a section-wide Markdown constraint to individual YAML steps.
+func TestBankConvertsTheAdaptWord(t *testing.T) {
 	dir := t.TempDir()
-	if err := factory.Save(dir, mustParse(t, "## issue · fixed\n1. plan\n")); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, ".codeaf"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := factory.BankRecipeStages(dir, factory.KindIssue, factory.DefaultRecipe().Stages[:2]); err != nil {
+	const text = "## issue · fixed\n1. plan\n"
+	if err := os.WriteFile(filepath.Join(dir, factory.RecipeFile), []byte(text), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	r, probs, err := factory.Load(dir)
-	if err != nil || len(probs) != 0 || r.AdaptFor(factory.KindIssue) != factory.AdaptFixed || len(r.Stages) != 2 {
-		t.Fatalf("after a bank: %+v %+v %v", r, probs, err)
+	f, err := pipeline.Working(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := (pipeline.Files{}).BankStages(dir, factory.KindIssue, f.Recipe().Stages); err != nil {
+		t.Fatal(err)
+	}
+	got, err := pipeline.Load(dir)
+	if err != nil || !got.Recipe().Stages[0].Fixed {
+		t.Fatalf("after a bank: %+v %v", got, err)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, factory.RecipeFile))
+	if string(data) != text {
+		t.Fatal("Markdown input changed")
 	}
 }
 

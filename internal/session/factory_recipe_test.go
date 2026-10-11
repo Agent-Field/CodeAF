@@ -415,7 +415,7 @@ func TestFactoryRecipeAnswerSaysWhatHappenedToTheLine(t *testing.T) {
 		"written · pull request #12 opened for the team",
 		"written · branch factory/recipe-security pushed · open the pull request when you want",
 		"written · committed on factory/recipe-security · no remote to push to",
-		"written · .codeaf/factory.md (not a git repository)",
+		"written · .codeaf/factory.yaml (not a git repository)",
 	} {
 		door := &notedRecipeDoor{note: note}
 		agent := newRecipeAgent(t, door, 0)

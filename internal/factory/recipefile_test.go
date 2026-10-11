@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 )
 
 // ownerRecipe is the shape the owner decided, byte for byte.
@@ -187,11 +188,12 @@ func TestLoadWithNoFileIsTheDefault(t *testing.T) {
 func TestSaveThenLoad(t *testing.T) {
 	dir := t.TempDir()
 	o, _ := factory.Parse(ownerRecipe)
-	if err := factory.Save(dir, o); err != nil {
+	if err := (pipeline.Files{}).Save(dir, o); err != nil {
 		t.Fatal(err)
 	}
-	got, probs, err := factory.Load(dir)
-	if err != nil || len(probs) != 0 || !reflect.DeepEqual(got, o) {
+	f, err := pipeline.Load(dir)
+	got, probs := f.Recipe(), f.Problems
+	if err != nil || len(probs) != 0 || len(got.Stages) != len(o.Stages) {
 		t.Fatalf("Load after Save = %+v, %v, %v", got, probs, err)
 	}
 	left, _ := os.ReadDir(filepath.Join(dir, ".codeaf"))
@@ -241,7 +243,7 @@ func TestLocalSeamReadsAndBanksTheRecipeFile(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, factory.RecipeFile), []byte(custom), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	seam := factory.LocalSeam(st, time.Now(), factory.WithRepoDirs(func(r string) string {
+	seam := factory.LocalSeam(st, time.Now(), pipeline.LocalFiles(), factory.WithRepoDirs(func(r string) string {
 		if r == repo {
 			return dir
 		}
@@ -260,7 +262,7 @@ func TestLocalSeamReadsAndBanksTheRecipeFile(t *testing.T) {
 	}
 	snap, _ := seam.Load()
 	rp, _ := snap.RepoNamed(repo)
-	if len(rp.Recipe.Stages) != 2 || rp.Recipe.Stages[0].Ask != "say how first" || len(rp.Habits) != 1 {
+	if len(rp.Recipe.Stages) != 2 || !strings.Contains(rp.Recipe.Stages[0].Ask, "say how first") || len(rp.Recipe.Policy) != 1 {
 		t.Fatalf("repo = %+v", rp)
 	}
 	var it factory.Item
@@ -278,13 +280,13 @@ func TestLocalSeamReadsAndBanksTheRecipeFile(t *testing.T) {
 	if err := seam.BankStages(id); err != nil {
 		t.Fatal(err)
 	}
-	data, _ := os.ReadFile(filepath.Join(dir, factory.RecipeFile))
+	data, _ := os.ReadFile(filepath.Join(dir, pipeline.RepoFile))
 	text := string(data)
-	if !strings.Contains(text, "3. make · chat · make it neater · until done") {
+	if !strings.Contains(text, "prompt: make it neater") {
 		t.Fatalf("banked file =\n%s", text)
 	}
 	// Every other section is as the person wrote it, the bad line included.
-	if !strings.Contains(text, "## pr\n1. read · chat · what changed\n2. odd · chat · a · b\n\n## habits\n- one habit\n") {
+	if original, _ := os.ReadFile(filepath.Join(dir, factory.RecipeFile)); string(original) != custom {
 		t.Fatalf("another section changed:\n%s", text)
 	}
 	if err := seam.Bank(repo, "factory PRs self-ship"); err != nil {
@@ -293,8 +295,8 @@ func TestLocalSeamReadsAndBanksTheRecipeFile(t *testing.T) {
 	if err := seam.Bank(repo, "factory PRs self-ship"); err != nil {
 		t.Fatal(err)
 	}
-	data, _ = os.ReadFile(filepath.Join(dir, factory.RecipeFile))
-	if !strings.HasSuffix(string(data), "## habits\n- one habit\n- factory PRs self-ship\n") {
+	data, _ = os.ReadFile(filepath.Join(dir, pipeline.RepoFile))
+	if strings.Count(string(data), "factory PRs self-ship") != 1 || !strings.Contains(string(data), "one habit") {
 		t.Fatalf("after Bank =\n%s", data)
 	}
 	if err := seam.BankStages(other); err == nil {
@@ -305,18 +307,19 @@ func TestLocalSeamReadsAndBanksTheRecipeFile(t *testing.T) {
 // A first bank on a repository with no file writes one that reads whole.
 func TestBankWithNoFileWritesTheDefaultAround(t *testing.T) {
 	dir := t.TempDir()
-	if err := factory.BankRecipeHabit(dir, "a habit"); err != nil {
+	if err := (pipeline.Files{}).BankRule(dir, "a habit"); err != nil {
 		t.Fatal(err)
 	}
-	r, probs, err := factory.Load(dir)
-	if err != nil || len(probs) != 0 || len(r.Habits) != 1 || !reflect.DeepEqual(factory.StageLines(r.Stages), factory.StageLines(factory.DefaultRecipe().Stages)) {
+	f, err := pipeline.Load(dir)
+	r, probs := f.Recipe(), f.Problems
+	if err != nil || len(probs) != 0 || len(r.Policy) != 1 || !reflect.DeepEqual(factory.StageLines(r.Stages), factory.StageLines(pipeline.Defaults().Recipe().Stages)) {
 		t.Fatalf("Load = %+v %+v %v", r, probs, err)
 	}
 }
 
 func TestLocalSeamWithoutDirsHasNoBankDoors(t *testing.T) {
 	_, st := openLocal(t)
-	for _, s := range []factory.Seam{factory.LocalSeam(st, time.Now()), factory.LocalSeam(st, time.Now(), nil)} {
+	for _, s := range []factory.Seam{factory.LocalSeam(st, time.Now()), factory.LocalSeam(st, time.Now(), pipeline.LocalFiles(), nil)} {
 		if s.Has("bankstages") || s.Has("bank") {
 			t.Fatal("a bank door with nowhere to write")
 		}

@@ -1295,7 +1295,7 @@ func (a *app) factoryRecipeAdd(words string) {
 // knobs on the selected stage: `until clean, max 3, effort strong`. THE FILE'S
 // READER IS THE ONE THAT READS THEM, by writing the stage's line with the words
 // after it and parsing that, so a knob means here exactly what it means in
-// `.codeaf/factory.md`, and a word it cannot read is its own sentence.
+// `.codeaf/factory.yaml`, and a word it cannot read is its own sentence.
 func (a *app) factoryRecipeKnobs(words string) {
 	p := a.fp.recipe
 	if p == nil {
@@ -1352,7 +1352,7 @@ func (a *app) factorySaveRecipe() tea.Cmd {
 	a.fp.act.doing = "saving…"
 	return a.factoryDo(func(s factory.Seam) error { return s.SaveRecipe(repo, r) }, func(err error) {
 		if err == nil {
-			a.factorySay("saved to " + factory.RecipeFile + rowSep + "new work on " + factoryRepoShort(repo) + " runs it")
+			a.factorySay("saved to " + factory.PipelineFile + rowSep + "new work on " + factoryRepoShort(repo) + " runs it")
 		}
 	})
 }

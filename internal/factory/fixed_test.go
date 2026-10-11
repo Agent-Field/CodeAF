@@ -9,9 +9,10 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 )
 
-const fixedSentence = "security is fixed by the recipe · change .codeaf/factory.md to change it"
+const fixedSentence = "security is fixed by the recipe · change .codeaf/factory.yaml to change it"
 
 // A STAGE LINE MAY END `· fixed`, and the file writes it back.
 func TestRecipeFileFixedRoundTrips(t *testing.T) {
@@ -39,11 +40,12 @@ func TestRecipeFileFixedRoundTrips(t *testing.T) {
 	}
 	// The bank writes the section back with the word on.
 	dir := t.TempDir()
-	if err := factory.BankRecipeStages(dir, factory.KindIssue, r.Stages); err != nil {
+	if err := (pipeline.Files{}).BankStages(dir, factory.KindIssue, r.Stages); err != nil {
 		t.Fatal(err)
 	}
-	data, _ := os.ReadFile(filepath.Join(dir, factory.RecipeFile))
-	if !strings.Contains(string(data), "· fixed\n") {
+	data, _ := os.ReadFile(filepath.Join(dir, pipeline.RepoFile))
+	got, err := pipeline.Parse(string(data))
+	if err != nil || !got.Recipe().Stages[1].Fixed {
 		t.Fatalf("the bank dropped fixed:\n%s", data)
 	}
 }

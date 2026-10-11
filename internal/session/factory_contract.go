@@ -97,7 +97,7 @@ func (a *Agent) ResolveFactory(id string, answer FactoryAnswer) {
 
 // RecipeDoor is the one thing the chat may do to a repository's recipe: add a
 // line to it. The launch implements it over the repository's own
-// `.codeaf/factory.md` (internal/factory's recipefile.go), found the way the
+// `.codeaf/factory.yaml` (internal/factory's recipefile.go), found the way the
 // floor finds it; each verb writes exactly one line and answers why not in a
 // person's words when it cannot.
 //

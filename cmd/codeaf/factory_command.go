@@ -96,22 +96,8 @@ func runFactory(args []string) error {
 }
 
 func printFactorySteps(out io.Writer) error {
-	r := factory.DefaultRecipe()
-	for _, kind := range []factory.Kind{factory.KindIssue, factory.KindPR, factory.KindCI} {
-		if _, err := fmt.Fprintf(out, "## %s pipeline\n", kind); err != nil {
-			return err
-		}
-		for _, step := range r.For(kind) {
-			prompt := step.Ask
-			if step.Kind == factory.StageGate {
-				prompt = "a person approves before the job continues"
-			}
-			if _, err := fmt.Fprintf(out, "%s: %s\n", step.Name, prompt); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	_, err := io.WriteString(out, pipeline.FormatSteps())
+	return err
 }
 
 // serveFactory owns the HTTP service and triage: it runs no job. Its runner doors

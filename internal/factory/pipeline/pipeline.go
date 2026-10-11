@@ -18,7 +18,7 @@ import (
 
 const (
 	// RepoFile is the pipeline file inside a repository, slash-separated.
-	RepoFile = ".codeaf/factory.yaml"
+	RepoFile = factory.PipelineFile
 
 	// SourceDefaults is a repository with no pipeline file.
 	SourceDefaults = "defaults"

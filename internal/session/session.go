@@ -659,7 +659,7 @@ const (
 	// EventFactoryProposal does, and on the same task lane.
 	EventRecipeProposal
 	// EventRecipeBanked says the line is in the repository's
-	// `.codeaf/factory.md` now, so a surface reading the recipe reads it again.
+	// `.codeaf/factory.yaml` now, so a surface reading the recipe reads it again.
 	EventRecipeBanked
 	// EventItemProposal is the card `factory_item` raises: the chat wants to
 	// change the ONE floor item its conversation is about — its stages, gate,

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 )
 
 // THE FIRST OFFER'S DOORS: a known checkout with no recipe file is owed the
@@ -37,7 +38,7 @@ func TestLocalRecipeOfferWriteAndNotNow(t *testing.T) {
 		}
 		return ""
 	}
-	seam := factory.LocalSeam(st, time.Now(), factory.WithRepoDirs(dirs))
+	seam := factory.LocalSeam(st, time.Now(), pipeline.LocalFiles(), factory.WithRepoDirs(dirs))
 	for _, door := range []string{"recipeoffer", "writerecipe", "recipenotnow"} {
 		if !seam.Has(door) {
 			t.Fatalf("a seam told where repositories are has no %s door", door)
@@ -57,8 +58,9 @@ func TestLocalRecipeOfferWriteAndNotNow(t *testing.T) {
 	if err != nil || branch != "main" {
 		t.Fatalf("WriteRecipe = %q, %v", branch, err)
 	}
-	r, probs, err := factory.Load(codeaf)
-	if err != nil || len(probs) > 0 || len(r.For(factory.KindIssue)) != len(factory.DefaultRecipe().For(factory.KindIssue)) {
+	file, err := pipeline.Load(codeaf)
+	r, probs := file.Recipe(), file.Problems
+	if err != nil || len(probs) > 0 || len(r.For(factory.KindIssue)) != len(pipeline.Defaults().Recipe().For(factory.KindIssue)) {
 		t.Fatalf("the written recipe reads %+v, %v, %v", r, probs, err)
 	}
 	if due, _ := seam.RecipeOffer(ctx, "agentfield/codeaf"); due {
@@ -74,7 +76,7 @@ func TestLocalRecipeOfferWriteAndNotNow(t *testing.T) {
 	if err := seam.RecipeNotNow("santoshkumarradha/notes"); err != nil {
 		t.Fatal(err)
 	}
-	again := factory.LocalSeam(st, time.Now(), factory.WithRepoDirs(dirs))
+	again := factory.LocalSeam(st, time.Now(), pipeline.LocalFiles(), factory.WithRepoDirs(dirs))
 	if due, err := again.RecipeOffer(ctx, "santoshkumarradha/notes"); err != nil || due {
 		t.Fatalf("not now was not kept: %v, %v", due, err)
 	}

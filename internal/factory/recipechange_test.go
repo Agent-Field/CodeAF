@@ -1,8 +1,10 @@
-package factory
+package factory_test
 
 import (
 	"context"
 	"fmt"
+	. "github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,7 +42,7 @@ func repoWithCommit(t *testing.T) string {
 }
 
 func habitWriter(sentence string) func(string) error {
-	return func(d string) error { return BankRecipeHabit(d, sentence) }
+	return func(d string) error { return (pipeline.Files{}).BankRule(d, sentence) }
 }
 
 // fakeGh puts a gh on PATH that records its args and prints a pull request URL.
@@ -76,7 +78,7 @@ func TestRecipeChangeNotAGitRepositoryWritesTheFile(t *testing.T) {
 	if err != nil || note != RecipeNotePlain {
 		t.Fatalf("note = %q, err = %v", note, err)
 	}
-	if data, _ := os.ReadFile(filepath.Join(dir, RecipeFile)); !strings.Contains(string(data), "- ship on green") {
+	if data, _ := os.ReadFile(filepath.Join(dir, PipelineFile)); !strings.Contains(string(data), "- ship on green") {
 		t.Fatalf("file:\n%s", data)
 	}
 }
@@ -102,13 +104,13 @@ func TestRecipeChangeNoRemoteCommitsOnABranchAndLeavesTheCheckoutAlone(t *testin
 	if got := sh(t, dir, "rev-parse", "--abbrev-ref", "HEAD"); got != "main" {
 		t.Fatalf("checkout moved to %s", got)
 	}
-	if _, err := os.Stat(filepath.Join(dir, RecipeFile)); err == nil {
+	if _, err := os.Stat(filepath.Join(dir, PipelineFile)); err == nil {
 		t.Fatal("the checkout's own file was written")
 	}
 	if msg := sh(t, dir, "log", "-1", "--format=%B", "factory/recipe-security"); msg != "recipe: Security review on auth" {
 		t.Fatalf("message = %q", msg)
 	}
-	if show := sh(t, dir, "show", "factory/recipe-security:"+RecipeFile); !strings.Contains(show, "- Security review on auth") {
+	if show := sh(t, dir, "show", "factory/recipe-security:"+PipelineFile); !strings.Contains(show, "- Security review on auth") {
 		t.Fatalf("branch file:\n%s", show)
 	}
 	if wts := sh(t, dir, "worktree", "list", "--porcelain"); strings.Count(wts, "worktree ") != 1 {
@@ -165,10 +167,10 @@ func TestRecipeChangeWithGhOpensAPullRequest(t *testing.T) {
 func TestRecipeChangeALineAlreadyThereChangesNothing(t *testing.T) {
 	noGh(t)
 	dir := repoWithCommit(t)
-	if err := BankRecipeHabit(dir, "ship on green"); err != nil {
+	if err := (pipeline.Files{}).BankRule(dir, "ship on green"); err != nil {
 		t.Fatal(err)
 	}
-	sh(t, dir, "add", RecipeFile)
+	sh(t, dir, "add", PipelineFile)
 	sh(t, dir, "commit", "-q", "-m", "recipe")
 	note, err := BankRecipeChange(context.Background(), dir, "ship on green", "", "- ship on green", habitWriter("ship on green"))
 	if err != nil || note != RecipeNoteHad {

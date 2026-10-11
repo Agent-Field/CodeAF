@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
@@ -206,12 +207,7 @@ func TestFactoryStepsPrintsEveryBuiltInPrompt(t *testing.T) {
 	if err := printFactorySteps(&out); err != nil {
 		t.Fatal(err)
 	}
-	recipe := factory.DefaultRecipe()
-	for _, kind := range []factory.Kind{factory.KindIssue, factory.KindPR, factory.KindCI} {
-		for _, step := range recipe.For(kind) {
-			if step.Ask != "" && !strings.Contains(out.String(), step.Name+": "+step.Ask) {
-				t.Errorf("%s prompt missing from built-ins", step.Name)
-			}
-		}
+	if out.String() != pipeline.FormatSteps() {
+		t.Fatalf("built-ins differ: %s", out.String())
 	}
 }

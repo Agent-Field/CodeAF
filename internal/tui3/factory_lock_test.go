@@ -27,7 +27,7 @@ func factoryFixing(t *testing.T, names ...string) {
 // THE ONE SENTENCE, spelled out once here so a change to it is a change a
 // person sees in this test.
 func TestFactoryFixedWordsAreTheSentence(t *testing.T) {
-	if got, want := factoryFixedWords("security"), "security is fixed by the recipe · change .codeaf/factory.md to change it"; got != want {
+	if got, want := factoryFixedWords("security"), "security is fixed by the recipe · change .codeaf/factory.yaml to change it"; got != want {
 		t.Fatalf("the refusal is %q, want %q", got, want)
 	}
 }
@@ -238,7 +238,7 @@ func TestFactoryFirstRecipeOfferWritesOnY(t *testing.T) {
 	if got := strings.Join(f.said(), " "); got != "WriteRecipe(agentfield/codeaf)" {
 		t.Fatalf("y on the offer asked %q", got)
 	}
-	if want := "recipe written · .codeaf/factory.md on main"; a.pageMsg != want {
+	if want := "recipe written · .codeaf/factory.yaml on main"; a.pageMsg != want {
 		t.Fatalf("the note says %q, want %q", a.pageMsg, want)
 	}
 	if text := factoryFrameText(a); strings.Contains(text, factoryOfferHead) {

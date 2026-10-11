@@ -533,7 +533,7 @@ func TestFactoryRecipePageTabsProblemAndSave(t *testing.T) {
 	if f.saved == nil || f.saved.For(factory.KindIssue)[1].On || f.saved.For(factory.KindIssue)[0].Max != 3 {
 		t.Fatalf("the saved recipe is %+v", f.saved)
 	}
-	if !strings.Contains(a.pageMsg, "saved to .codeaf/factory.md") {
+	if !strings.Contains(a.pageMsg, "saved to .codeaf/factory.yaml") {
 		t.Fatalf("note after b = %q", a.pageMsg)
 	}
 	drive(t, a, key("esc"))

@@ -2,7 +2,7 @@ package session
 
 // THE CHAT'S DOOR ONTO A REPOSITORY'S RECIPE — BEHIND A CARD.
 //
-// A repository's recipe (`.codeaf/factory.md`, internal/factory's recipefile.go)
+// A repository's recipe (`.codeaf/factory.yaml`, internal/factory/pipeline)
 // is the stages its factory work runs through, the policy it is held to and the
 // habits the person has banked. A conversation is often where a rule is first
 // said out loud: "in this repo always run a security review when auth is
@@ -81,7 +81,7 @@ var recipeKinds = []string{string(factory.KindIssue), string(factory.KindPR), st
 
 const factoryRecipeDescription = "Offer one line for a repository's factory recipe, its policy or its habits, when the person says something that belongs there: " +
 	"\"in this repo always run a security review when auth is touched\" is a stage, \"never post without green tests\" is policy, \"PRs from my own issues ship when proof is green\" is a habit. " +
-	"Give exactly one of stage, policy or habit. " +
+	"Give exactly one of stage, policy or habit. Saved changes go to .codeaf/factory.yaml: a step is a prompt with optional until and max; policy and habits are rules. " +
 	"A stage is one line in the recipe grammar, `name · kind · ask · knobs`, for example `security · chat · read it for auth holes · when touches auth`; a line the recipe cannot read is refused with the reason, so fix it and call again. " +
 	"NOTHING IS WRITTEN BY CALLING THIS: the person is shown a card with the line, and only their `bank it` writes it. " +
 	"If they type a change instead, nothing is written and you are told their words: propose again with them."

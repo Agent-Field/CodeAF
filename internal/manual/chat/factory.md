@@ -128,10 +128,9 @@ After revocation, enter the token at `/access` again.
 
 ## codeaf factory steps — print built-in step prompts
 
-`codeaf factory steps` prints the installed built-in step names and prompts grouped by
-issue, pull request and CI pipeline, including security, which starts disabled. The command
-currently prints the older Markdown defaults, including checks for PRs and bisect / fix for CI; its prompts can
-be copied into YAML, but its groups differ from the YAML defaults.
+`codeaf factory steps` prints pipeline's built-in prompts and stop sentences: plan, approve,
+write, test, review, security, proof and read. These are the YAML defaults; security runs
+only when a pipeline names it.
 `approve` is a person's approval rather than a model prompt. Copy a prompt under
 the same name in `.codeaf/factory.yaml` to override it; add a new name to `pipeline` to
 run a custom step. This command needs no model key, changes no jobs and accepts no arguments.
@@ -392,7 +391,7 @@ red CI uses read → write → test → proof. Publishing still needs a person's
 The peek shows a waiting job's steps as names and a running job's progress as marks.
 The job page lists the steps. Steps skipped or switched off there are dim. On a waiting
 job, `1` to `9` switch steps, `s` adds one in words, and `b` banks them as the repository's
-older Markdown recipe. YAML takes precedence over that saved Markdown.
+shared YAML pipeline in `.codeaf/factory.yaml`.
 
 The current runner holds nine steps per job. YAML names allow lowercase letters, digits
 and hyphens, 2 to 32 characters; the runner removes hyphens and accepts one word, 2 to 12
@@ -430,10 +429,11 @@ name or defines a new prompt. Merely defining a new step does not put it in a pi
 `fixed` keeps named steps from being changed or skipped. `rules` are sentences every job
 obeys: recognised publishing rules are enforced by code; other sentences reach the model.
 
-When YAML is absent, `.codeaf/factory.md` is read and converted in memory. Existing `b`,
-`E` save, habit banking and `factory_recipe` still write Markdown, so those writes cannot
-override YAML. YAML takes precedence. Use `codeaf factory convert` to print a conversion
-and review its warnings.
+When YAML is absent, `.codeaf/factory.md` is read and converted in memory as read-only
+compatibility input. YAML takes precedence. `b`, `E` save, habit banking and `factory_recipe` all write
+`.codeaf/factory.yaml` through the same encoder. Banking preserves existing start rules,
+size thresholds and unrelated prompts; policy and habits become `rules`. Use
+`codeaf factory convert` to print a conversion and review its warnings.
 Unknown keys and invalid values are named as problems; the rest loads. Invalid YAML syntax
 stops automatic intake. A personal `~/.codeaf/factory.yaml` may only tighten repository rules.
 
@@ -478,9 +478,8 @@ job's settings or in words. Each change goes through the same bounds in code.
 In `.codeaf/factory.yaml`, `fixed: [approve, proof]` is the default. A fixed step's prompt,
 thinking and rounds cannot be changed, and it cannot be skipped or switched off by the
 manager, plan or you. Switching it on is allowed. Change the repository's pipeline file
-on its default branch to change that constraint. The current refusal still names the
-older file: `security is fixed by the recipe · change .codeaf/factory.md to change it`.
-If YAML exists, changing that Markdown file does not change the constraint.
+on its default branch to change that constraint. The refusal says
+`security is fixed by the recipe · change .codeaf/factory.yaml to change it`.
 
 The runner also keeps names unique and limits a job to nine steps, limits a new ask to 240 cells,
 and refuses to skip proof, an approve step or a step named by a publishing rule. One
@@ -739,7 +738,7 @@ mid-run, and its stages carry no numbers. `enter` here does nothing.
 
 A stage the recipe file fixes is the team's law, and it shows it: the lock `§` stands where its
 `on` would, the row is dim, and its number does not switch it off. Pressing it says
-`security is fixed by the recipe · change .codeaf/factory.md to change it` on the note line,
+`security is fixed by the recipe · change .codeaf/factory.yaml to change it` on the note line,
 with the stage's own name. The recipe page `E` refuses the same way: its number, `w` on it, and
 `s` words that name it all say that sentence, and its pane shows the lock with the ask dim.
 Switching a fixed stage that is off on is never refused.
@@ -1205,23 +1204,23 @@ spinner that moves is work still going:
 After three approvals in a row without edits, the bottom of the right column offers a habit:
 `habit forming — 3 approvals without edits on codeaf` and
 `factory PRs from your own issues self-ship when the proof is green? [y] bank it · [n] not yet`.
-`y` writes that sentence into the repository's habits, under `## habits` in its
-`.codeaf/factory.md`, the way a taught line is written: on a branch `factory/recipe-<word>` in a
+`y` writes that sentence into the repository's `rules` in its
+`.codeaf/factory.yaml`, the way a taught line is written: on a branch `factory/recipe-<word>` in a
 temporary worktree, committed as `recipe: <the sentence>`, pushed when a remote exists and opened
 as a pull request when `gh` exists, so a teammate reviews it like code. The note line says exactly
 one of `written · pull request #<N> opened for the team`,
 `written · branch factory/recipe-<word> pushed · open the pull request when you want`,
 `written · committed on factory/recipe-<word> · no remote to push to` or
-`written · .codeaf/factory.md (not a git repository)`. `n` puts the offer away. The offer comes only where banking can be written.
+`written · .codeaf/factory.yaml (not a git repository)`. `n` puts the offer away. The offer comes only where banking can be written.
 
 ## no recipe in the repo yet — write it so the team shares it
 
-When an item of a repository lands and that repository's checkout has no `.codeaf/factory.md`,
+When an item of a repository lands and that repository's checkout has no `.codeaf/factory.yaml`,
 the bottom of the right column offers, once, where the habit offer stands:
 `no recipe in codeaf yet` and
 `write the recipe into the repo so the team shares it? [y] write it · [n] not now`.
-`y` writes the recipe the factory runs for it today into the checkout's `.codeaf/factory.md`, and
-the note line says `recipe written · .codeaf/factory.md on main` with the branch the checkout
+`y` writes the built-in YAML pipeline (or the existing Markdown recipe converted in memory) into the checkout's `.codeaf/factory.yaml`, and
+the note line says `recipe written · .codeaf/factory.yaml on main` with the branch the checkout
 stands on. `n` puts the offer away for that repository for good: the factory's store keeps the
 no, so no window asks again. The offer comes only where the recipe can be written, a file that is
 there already is never written over, and a habit offer standing at the same time is answered first.
@@ -1261,11 +1260,12 @@ intake can start eligible forge work separately (see why did this start by itsel
 
 Say a rule out loud ("in my repo always run a security review when auth is touched",
 "never post without green tests", "for PRs, two review rounds") and codeaf can offer it to
-the repository's recipe, `.codeaf/factory.md`, with the `factory_recipe` tool. It is there
+the repository's recipe, `.codeaf/factory.yaml`, with the `factory_recipe` tool. It is there
 exactly where `factory_add` is, on the ordinary launch on your own machine, and absent over
-`--host`, `--at`, from `--once` and inside a task. This door still writes the older Markdown
-file; when `.codeaf/factory.yaml` exists, edit that YAML on the default branch instead.
-Banking Markdown does not override YAML.
+`--host`, `--at`, from `--once` and inside a task. It writes YAML: steps are prompts
+with optional `until` and `max`, and policy or habit sentences go under `rules`.
+Older stage conditions are carried in the prompt; retired knobs such as thinking and
+fanout have no YAML representation.
 
 It offers a single line: a stage for `issue`, `pr` or `ci` in the file's grammar
 (`security · read it for auth holes · when touches auth`), a policy sentence, or a habit.
@@ -1280,7 +1280,7 @@ the sentence; and `why:` with the reason when the chat gave one. It answers to
 `1 bank it`, `2 not now`, or words (`say what to change… (enter sends it)`).
 
 - **`bank it`** writes the line and, in a checkout that is a git repository, **opens a change for
-  the team** instead of writing silently, because the older Markdown recipe is shared and a
+  the team** instead of writing silently, because the YAML pipeline is shared and a
   teammate should review a taught line like code. The line is written on a branch
   `factory/recipe-<word>` (the first word of the line; a taken name gets `-2`, `-3`) cut from the
   default branch, committed as `recipe: <the sentence as typed>` with no trailers, pushed when a
@@ -1292,8 +1292,8 @@ the sentence; and `why:` with the reason when the chat gave one. It answers to
   - `written · pull request #<N> opened for the team`: the branch was pushed and `gh` opened the pull request.
   - `written · branch factory/recipe-<word> pushed · open the pull request when you want`: pushed, and `gh` is not there.
   - `written · committed on factory/recipe-<word> · no remote to push to`: committed on the branch, kept in the checkout's repository.
-  - `written · .codeaf/factory.md (not a git repository)`: the file was written in place.
-  A line the file already has changes nothing: `already in .codeaf/factory.md · nothing to change`.
+  - `written · .codeaf/factory.yaml (not a git repository)`: the file was written in place.
+  A line the file already has changes nothing: `already in .codeaf/factory.yaml · nothing to change`.
   codeaf is told `<line> is in <repo>'s recipe for <kind>`
   (or `… is in <repo>'s policy`, `… is in <repo>'s habits`) and the card says `banked`.
 - **`not now`**: `nothing was banked: the person said no.`
@@ -1625,17 +1625,18 @@ factory's only repository). With every repository showing it says
 It is the item page with no item: the kinds `issue · pr · ci` across the top with the current one
 in ink and `recipe · <repo>` at the right, the stage rail at the left and the selected stage at
 the right (its knobs, its sentence, `runs first` or `runs after <stage>`, or
-`switched off in this recipe`). A line of `.codeaf/factory.md` that did not load is one dim line
+`switched off in this recipe`). A pipeline problem is one dim line
 above the rail, `line 7: until is one of done, clean, green, proven`.
 
 - `[` `]` (or `h` `l`) switch the kind, `↑` `↓` walk the stages, `esc factory` goes back.
 - Where codeaf knows the checkout: `1-9 stages` switch a stage on or off, `s add a stage` adds
   one in words (`+ stage ›`), `e thinking` steps its thinking, `w` sets its knobs in the recipe
   file's own words
-  (`until clean, max 3, effort strong`; a word it cannot read says why), and `b` saves the whole
-  recipe, every kind, to `.codeaf/factory.md`:
-  `saved to .codeaf/factory.md · new work on codeaf runs it`. This save writes the older
-  Markdown file; YAML still takes precedence. Merge changes into the default branch
+  (`until clean, max 3`; a word it cannot read says why), and `b` saves the whole
+  recipe, every kind, to `.codeaf/factory.yaml`:
+  `saved to .codeaf/factory.yaml · new work on codeaf runs it`. Start and size settings
+  are preserved. Conditions and proof requests become prompt text; thinking and
+  fanout have no YAML representation and are omitted. Merge changes into the default branch
   before new forge jobs read them.
 - Where it does not, the page is drawn but not changed, and the note line says
   `codeaf does not know where <owner/name> is checked out`.

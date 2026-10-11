@@ -236,11 +236,11 @@ const (
 // every key on the floor says for it, after the stage's name.
 const (
 	wordFixedByRecipe       = "is fixed by the recipe"
-	wordChangeTheRecipeFile = "change " + factory.RecipeFile + " to change it"
+	wordChangeTheRecipeFile = "change " + factory.PipelineFile + " to change it"
 )
 
 // The first offer of a recipe file (factory_recipeoffer.go): a repository with
-// no `.codeaf/factory.md` whose first item lands is asked once whether to
+// no `.codeaf/factory.yaml` whose first item lands is asked once whether to
 // write one, at the bottom of the right column where the habit offer stands.
 const (
 	wordNoRecipe       = "no recipe in"

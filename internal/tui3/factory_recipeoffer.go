@@ -14,7 +14,7 @@ import (
 // A REPOSITORY WITH NO RECIPE FILE IS OFFERED ONE ONCE (owner decision,
 // 2026-10-08). When an item of a repository stands landed on the floor and
 // the seam says the repository is owed the offer ([factory.Seam.RecipeOffer]:
-// a known checkout with no `.codeaf/factory.md`, never put away), the bottom
+// a known checkout with no `.codeaf/factory.yaml`, never put away), the bottom
 // of the right column offers it where the habit offer stands, in the habit
 // offer's own two lines:
 //
@@ -128,14 +128,14 @@ func (a *app) factoryRecipeNotNow() tea.Cmd {
 }
 
 // factoryRecipeWrittenWords is the note line after `y`:
-// `recipe written · .codeaf/factory.md on main`, and the repository in place
+// `recipe written · .codeaf/factory.yaml on main`, and the repository in place
 // of the branch when the checkout stands on none.
 func factoryRecipeWrittenWords(repo, branch string) string {
 	where := strings.TrimSpace(branch)
 	if where == "" {
 		where = factoryRepoShort(repo)
 	}
-	return wordRecipeWritten + rowSep + factory.RecipeFile + " " + wordOn + " " + where
+	return wordRecipeWritten + rowSep + factory.PipelineFile + " " + wordOn + " " + where
 }
 
 // factoryRecipeOfferRows is the offer's two lines at the bottom of the right

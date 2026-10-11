@@ -291,7 +291,7 @@ func (a *app) factoryOpenItem() (tea.Cmd, bool) {
 // ── THE MANAGER SHAPES THE STEPS WHEN SOMEBODY ASKS ─────────────────────────
 //
 // The owner's journey (2026-10-09). Opening an issue runs nothing: the steps
-// are the recipe's (the repository's `.codeaf/factory.md`, else the built-in
+// are the recipe's (the repository's `.codeaf/factory.yaml`, else the built-in
 // one). The manager shapes them in exactly three ways:
 //
 //   - ▶ run on an item the manager never shaped: the runner's own shaping

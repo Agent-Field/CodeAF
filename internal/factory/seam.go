@@ -194,7 +194,7 @@ type Seam struct {
 	Clone func(ctx context.Context, repo string) (dir string, err error)
 
 	// THE FIRST OFFER OF A RECIPE FILE: a repository with no
-	// `.codeaf/factory.md` is asked once, when its first item lands, whether
+	// `.codeaf/factory.yaml` is asked once, when its first item lands, whether
 	// to write one so the team shares it. Three doors, one offer:
 	//
 	// RecipeOffer says whether repo is owed the offer: this machine knows its
@@ -204,7 +204,7 @@ type Seam struct {
 	RecipeOffer func(ctx context.Context, repo string) (due bool, err error)
 	// WriteRecipe writes the recipe the floor runs for repo today (the
 	// default one, since there is no file) into its checkout's
-	// `.codeaf/factory.md`, and answers the branch the checkout stands on, ""
+	// `.codeaf/factory.yaml`, and answers the branch the checkout stands on, ""
 	// when that is not a branch. A file already there is never written over.
 	WriteRecipe func(ctx context.Context, repo string) (branch string, err error)
 	// RecipeNotNow puts the offer away for repo for good: the no is kept by
