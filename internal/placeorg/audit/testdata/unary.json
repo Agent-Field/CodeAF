@@ -1,0 +1,7 @@
+{
+  "roots": ["r"],
+  "nodes": [
+    {"id": "r", "depth": 1, "children": ["m"]},
+    {"id": "m", "parent": "r", "depth": 2, "members": ["a", "b", "c", "d", "e"]}
+  ]
+}
