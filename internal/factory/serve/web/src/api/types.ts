@@ -140,6 +140,8 @@ export interface Job {
   step?: StepAt
   steps: Step[]
   claims?: Claim[]
+  // Paths the plan step named. The brief counts them against desk.files.
+  planned_files?: string[]
   questions?: Question[]
   cost: number
   created_at: string

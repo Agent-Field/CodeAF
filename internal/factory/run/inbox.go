@@ -242,7 +242,7 @@ func keepStored(it *factory.Item, word string, now time.Time) error {
 		if i := askingPhase(s, q.Stage); i >= 0 {
 			ph := &s.Phases[i]
 			if ph.State == factory.PhaseWaiting {
-				ph.State = factory.PhaseRunning
+				setPhaseState(ph, factory.PhaseRunning, now)
 			}
 			ph.Carry = append(ph.Carry, note)
 		}

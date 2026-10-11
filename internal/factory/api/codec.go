@@ -67,6 +67,7 @@ func FromItem(it factory.Item) Job {
 		AskedFirstReason: it.AskedFirstReason,
 		Steps:            steps(it),
 		Claims:           mapList(it.Proof, fromClaim),
+		PlannedFiles:     append([]string(nil), it.PlannedFiles...),
 		Questions:        questions(it),
 		CreatedAt:        it.Created,
 		Desk:             fromDesk(it),
@@ -105,7 +106,8 @@ func ToItem(j Job) factory.Item {
 		Tier: factory.Tier(d.Tier), Origin: factory.Origin(d.Origin), Synced: d.Synced, Changed: d.ChangedAt,
 		Triage: toTriage(d.Triage), Cap: d.Cap,
 		Proof: mapList(j.Claims, toClaim), Policy: mapList(d.Policy, toClaim),
-		Marked: d.Marked, Labels: d.Labels, Checks: d.Checks, Diff: d.Diff,
+		PlannedFiles: append([]string(nil), j.PlannedFiles...),
+		Marked:       d.Marked, Labels: d.Labels, Checks: d.Checks, Diff: d.Diff,
 		Adapted: d.Adapted, Notes: d.Notes, Talk: d.Talk, Heard: d.Heard,
 		Comments: mapList(d.Comments, toComment), Files: mapList(d.Files, toFile),
 		CheckRuns: mapList(d.CheckRuns, toCheckRun), Base: d.Base, Head: d.Head, HeadSHA: d.HeadSHA,
@@ -442,6 +444,10 @@ func runStep(s Step, p factory.Phase) Step {
 	if r := p.Result; r != nil {
 		s.Result, s.Cost = r.Output, r.Spent
 	}
+	if !p.At.IsZero() {
+		at := p.At
+		s.At = &at
+	}
 	return s
 }
 
@@ -479,6 +485,9 @@ func toPhase(s Step) factory.Phase {
 		Round: s.Round, Tasks: s.Tasks, Left: time.Duration(s.LeftMS) * time.Millisecond, Chat: s.Chat, Handle: s.Handle}
 	if s.Result != "" || s.Cost != 0 {
 		p.Result = &factory.StageResult{Output: s.Result, Spent: s.Cost}
+	}
+	if s.At != nil {
+		p.At = *s.At
 	}
 	return p
 }

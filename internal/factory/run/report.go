@@ -103,7 +103,7 @@ func reportQuestion(it *factory.Item, question *factory.Asked, kind string, now 
 			return fmt.Errorf("question names an unknown step")
 		}
 		it.Stream.Cur = i
-		it.Stream.Phases[i].State = factory.PhaseWaiting
+		setPhaseState(&it.Stream.Phases[i], factory.PhaseWaiting, now)
 	}
 	it.Asking = &q
 	it.State = factory.StateNeedsYou
@@ -170,7 +170,7 @@ func reportStep(it *factory.Item, step factory.StageReport, now time.Time) error
 	}
 	ph := &it.Stream.Phases[i]
 	if step.State != "" {
-		ph.State = step.State
+		setPhaseState(ph, step.State, now)
 	}
 	if step.Round > 0 {
 		ph.Round = step.Round
@@ -226,6 +226,27 @@ func foldResult(it *factory.Item, st factory.Stage, i int, res factory.StageResu
 	}
 	if !factory.Met(st, res) && res.Done {
 		ph.Note = shortfall(res)
+	}
+	// THE PLAN'S FILE LIST IS THE BRIEF'S. A later plan that names files
+	// replaces the list; one that names none leaves the previous list.
+	if strings.EqualFold(strings.TrimSpace(st.Name), "plan") {
+		if files := planFiles(res); len(files) > 0 {
+			it.PlannedFiles = files
+		}
+	}
+}
+
+// setPhaseState moves a phase and stamps its finish. Done and failed are the
+// ends the brief's clock reads (step.at). Pending and running clear a stamp,
+// so a step sent back does not keep the time it ended before. Waiting leaves
+// the stamp alone: a question is not an ending.
+func setPhaseState(ph *factory.Phase, state factory.PhaseState, now time.Time) {
+	ph.State = state
+	switch state {
+	case factory.PhaseDone, factory.PhaseFailed:
+		ph.At = now
+	case factory.PhasePending, factory.PhaseRunning:
+		ph.At = time.Time{}
 	}
 }
 

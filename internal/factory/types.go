@@ -264,6 +264,10 @@ type Phase struct {
 	// out, its output cut at [ResultOutputMost]), kept so a run revived
 	// after a restart still hands the steps after it what came before.
 	Result *StageResult `json:",omitempty"`
+	// At is when the phase ended, done or failed. Zero while it has not
+	// ended, and again once it is sent back to run. The wire's step.at is
+	// this instant.
+	At time.Time `json:",omitempty"`
 }
 
 // ResultOutputMost is how much of a step's output [Phase.Result] keeps, in
@@ -397,6 +401,10 @@ type Item struct {
 	// most twenty; nil for anything that is not a pull request, or for one
 	// whose files are not read yet (its Diff is then not read yet either).
 	Files []FileChange
+	// PlannedFiles are the paths the plan step named, in the order it named
+	// them. The brief counts them against the files the change touched. Nil
+	// until a plan reports a list.
+	PlannedFiles []string `json:",omitempty"`
 	// CheckRuns are the checks on a pull request's head, one per run. Checks
 	// stays the one-word summary the row draws; these are what the page lists.
 	CheckRuns []CheckRun

@@ -186,11 +186,14 @@ type Job struct {
 	Step             *StepAt    `json:"step,omitempty"`
 	Steps            []Step     `json:"steps"`
 	Claims           []Claim    `json:"claims,omitempty"`
-	Questions        []Question `json:"questions,omitempty"`
-	Cost             float64    `json:"cost"`
-	CreatedAt        time.Time  `json:"created_at"`
-	PR               *PR        `json:"pr,omitempty"` // The worker reports the published receipt.
-	Desk             *JobDesk   `json:"desk,omitempty"`
+	// PlannedFiles are the paths the plan step named, so the brief can say
+	// how many it planned against how many the change touched.
+	PlannedFiles []string   `json:"planned_files,omitempty"`
+	Questions    []Question `json:"questions,omitempty"`
+	Cost         float64    `json:"cost"`
+	CreatedAt    time.Time  `json:"created_at"`
+	PR           *PR        `json:"pr,omitempty"` // The worker reports the published receipt.
+	Desk         *JobDesk   `json:"desk,omitempty"`
 }
 
 // JobDesk is what the TUI page reads off a job that the dashboard does not
@@ -262,7 +265,7 @@ type Step struct {
 	Round      int        `json:"round,omitempty"`
 	Result     string     `json:"result,omitempty"`
 	Cost       float64    `json:"cost,omitempty"`
-	At         *time.Time `json:"at,omitempty"`      // future: the runner does not stamp a step's finish yet
+	At         *time.Time `json:"at,omitempty"`      // when the step ended; absent until it does
 	Note       string     `json:"note,omitempty"`    // desk
 	Tasks      int        `json:"tasks,omitempty"`   // desk
 	LeftMS     int64      `json:"left_ms,omitempty"` // desk

@@ -63,8 +63,8 @@ func ResumeItem(it *factory.Item, now time.Time) error {
 // AnswerHeld takes the question down from a job a worker holds: the worker's
 // runner hears the answer through the lease and logs it. An approve step is
 // passed (yes) or sent back to wait (no) here, because only a person's door
-// moves it.
-func AnswerHeld(it *factory.Item, yes bool) error {
+// moves it. Passing it stamps the step's finish, which the brief's clock reads.
+func AnswerHeld(it *factory.Item, yes bool, now time.Time) error {
 	if it.State != factory.StateNeedsYou || strings.TrimSpace(it.Question) == "" {
 		return fmt.Errorf("%s is not waiting on you", it.Ref())
 	}
@@ -78,11 +78,11 @@ func AnswerHeld(it *factory.Item, yes bool) error {
 	ph := &s.Phases[s.Cur]
 	switch {
 	case ph.Kind != factory.StageGate:
-		ph.State = factory.PhaseRunning
+		setPhaseState(ph, factory.PhaseRunning, now)
 	case yes:
-		ph.State = factory.PhaseDone
+		setPhaseState(ph, factory.PhaseDone, now)
 	default:
-		ph.State = factory.PhasePending
+		setPhaseState(ph, factory.PhasePending, now)
 	}
 	return nil
 }

@@ -153,6 +153,61 @@ func TestStepsLineUpPipelineAndRun(t *testing.T) {
 	}
 }
 
+// TestStepFinishAndPlannedFiles: a run job's finish time and the plan's
+// file list are on the job the dashboard reads, including GET /v1/jobs/{id}
+// which embeds this Job.
+func TestStepFinishAndPlannedFiles(t *testing.T) {
+	at := time.Date(2026, 10, 11, 15, 4, 0, 0, time.UTC)
+	it := factory.Item{
+		ID: 7, State: factory.StateRunning, Title: "fix",
+		PlannedFiles: []string{"internal/a.go", "internal/b.go"},
+		Stream: &factory.Stream{Cur: 0, Started: at, Phases: []factory.Phase{
+			{Name: "plan", State: factory.PhaseDone, At: at, Result: &factory.StageResult{Output: "a plan", Spent: 0.2}},
+			{Name: "write", State: factory.PhaseRunning},
+		}},
+	}
+	j := FromItem(it)
+	if j.Steps[0].At == nil || !j.Steps[0].At.Equal(at) {
+		t.Fatalf("step.at %+v", j.Steps[0].At)
+	}
+	if j.Steps[1].At != nil {
+		t.Fatalf("a step still running carries %v", j.Steps[1].At)
+	}
+	if !reflect.DeepEqual(j.PlannedFiles, it.PlannedFiles) {
+		t.Fatalf("planned %v", j.PlannedFiles)
+	}
+	raw, err := json.Marshal(struct {
+		Factory Factory `json:"factory"`
+		Job
+	}{Factory{Address: "localhost", Version: "test"}, j})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatal(err)
+	}
+	files, _ := wire["planned_files"].([]any)
+	if len(files) != 2 || files[0] != "internal/a.go" {
+		t.Fatalf("planned_files %#v", wire["planned_files"])
+	}
+	steps, _ := wire["steps"].([]any)
+	plan, _ := steps[0].(map[string]any)
+	if plan["at"] != at.Format(time.RFC3339Nano) {
+		t.Fatalf("step.at %v", plan["at"])
+	}
+	if _, ok := steps[1].(map[string]any)["at"]; ok {
+		t.Fatal("running step has at")
+	}
+	back := ToItem(j)
+	if !back.Stream.Phases[0].At.Equal(at) || !reflect.DeepEqual(back.PlannedFiles, it.PlannedFiles) {
+		t.Fatalf("round trip planned %v at %v", back.PlannedFiles, back.Stream.Phases[0].At)
+	}
+	if !back.Stream.Phases[1].At.IsZero() {
+		t.Fatal("running step's finish came back")
+	}
+}
+
 func TestStatesAndGates(t *testing.T) {
 	cases := []struct {
 		state     factory.State

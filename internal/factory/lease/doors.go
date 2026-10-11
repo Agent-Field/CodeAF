@@ -121,7 +121,7 @@ func (d *Doors) Answer(id int, yes bool, words string) error {
 		if held == nil {
 			return false, run.KeepAnswer(it, yes, words, now)
 		}
-		if err := run.AnswerHeld(it, yes); err != nil {
+		if err := run.AnswerHeld(it, yes, now); err != nil {
 			return false, err
 		}
 		signal(doc, id, Signal{Verb: SignalAnswer, Yes: yes, Words: words})

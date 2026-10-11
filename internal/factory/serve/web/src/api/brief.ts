@@ -64,13 +64,23 @@ export function approveConsequence(job: Job): string {
   }
 }
 
-/** `changed 4 files · +164 −22` from the files a pull request changes, when known. */
+function fileWord(n: number): string {
+  return n === 1 ? "file" : "files"
+}
+
+/** `planned 4 files · changed 4 · +164 −22`, or just the changed half when no plan named files. */
 export function changedLine(job: Job): string {
-  const files = job.desk?.files
-  if (!files?.length) return ""
+  const planned = job.planned_files?.length ?? 0
+  const files = job.desk?.files ?? []
+  const changed = files.length
   const added = files.reduce((n, f) => n + (f.added ?? 0), 0)
   const removed = files.reduce((n, f) => n + (f.removed ?? 0), 0)
-  return `changed ${files.length} ${files.length === 1 ? "file" : "files"} · +${added} −${removed}`
+  if (planned > 0 && changed > 0) {
+    return `planned ${planned} ${fileWord(planned)} · changed ${changed} · +${added} −${removed}`
+  }
+  if (planned > 0) return `planned ${planned} ${fileWord(planned)}`
+  if (changed === 0) return ""
+  return `changed ${changed} ${fileWord(changed)} · +${added} −${removed}`
 }
 
 const ciMarks: Record<string, string> = { pass: "✓", passed: "✓", success: "✓", green: "✓", fail: "✕", failed: "✕", failure: "✕", red: "✕" }

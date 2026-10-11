@@ -507,7 +507,7 @@ func (lp *floorLoop) askIn(ctx context.Context, c *loopCtl, i int, pending, qkin
 		if i >= 0 && i < len(it.Stream.Phases) {
 			ph := &it.Stream.Phases[i]
 			name = ph.Name
-			ph.State = state
+			setPhaseState(ph, state, now)
 			if note != "" {
 				ph.Note = note
 				loopSay(it, now, "fail", note)
@@ -551,7 +551,7 @@ func (lp *floorLoop) askIn(ctx context.Context, c *loopCtl, i int, pending, qkin
 		it.State = factory.StateRunning
 		it.Question, it.QKind = "", ""
 		if i >= 0 && i < len(it.Stream.Phases) {
-			it.Stream.Phases[i].State = factory.PhaseRunning
+			setPhaseState(&it.Stream.Phases[i], factory.PhaseRunning, lp.r.now())
 		}
 		loopSay(it, lp.r.now(), "said", said)
 		return nil
@@ -589,8 +589,9 @@ func (lp *floorLoop) approve(c *loopCtl, i int, name string) bool {
 		}
 	}
 	if last {
+		now := lp.r.now()
 		return lp.write(c, func(it *factory.Item) error {
-			it.Stream.Phases[i].State = factory.PhaseDone
+			setPhaseState(&it.Stream.Phases[i], factory.PhaseDone, now)
 			return nil
 		}) == nil
 	}
@@ -622,7 +623,7 @@ func (lp *floorLoop) back(c *loopCtl, i, prev int, words string) bool {
 	name := ""
 	err := lp.write(c, func(it *factory.Item) error {
 		for _, k := range []int{prev, i} {
-			it.Stream.Phases[k].State = factory.PhasePending
+			setPhaseState(&it.Stream.Phases[k], factory.PhasePending, now)
 			it.Stream.Phases[k].Left = 0
 		}
 		ph := &it.Stream.Phases[prev]
@@ -661,9 +662,10 @@ func (lp *floorLoop) addNote(id int, words string) {
 // finish marks phase i done, with an event.
 func (lp *floorLoop) finish(c *loopCtl, i int, name, note string) bool {
 	spent := 0.0
+	now := lp.r.now()
 	err := lp.move(c, name, EventDone, note, func(it *factory.Item) error {
 		if i < len(it.Stream.Phases) {
-			it.Stream.Phases[i].State = factory.PhaseDone
+			setPhaseState(&it.Stream.Phases[i], factory.PhaseDone, now)
 			it.Stream.Phases[i].Left = 0
 			if note != "" {
 				it.Stream.Phases[i].Note = note
@@ -692,9 +694,10 @@ func (lp *floorLoop) finish(c *loopCtl, i int, name, note string) bool {
 
 // skip leaves phase i failed and goes on, as the person said.
 func (lp *floorLoop) skip(c *loopCtl, i int, name string) bool {
+	now := lp.r.now()
 	return lp.write(c, func(it *factory.Item) error {
 		if i < len(it.Stream.Phases) {
-			it.Stream.Phases[i].State = factory.PhaseFailed
+			setPhaseState(&it.Stream.Phases[i], factory.PhaseFailed, now)
 		}
 		loopSay(it, lp.r.now(), "said", "skipping "+name)
 		return nil
@@ -767,7 +770,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			// that round (a pause cut it): the step asks again if it must.
 			dropStaleAsk(it)
 			ph := &it.Stream.Phases[i]
-			ph.State = factory.PhaseRunning
+			setPhaseState(ph, factory.PhaseRunning, now)
 			ph.Round = round
 			if resume == "" {
 				// A fresh chat reads the answers in its brief's notes.
@@ -1238,7 +1241,7 @@ func (lp *floorLoop) stop(c *loopCtl) {
 				if s.Cur < len(s.Phases) {
 					switch s.Phases[s.Cur].State {
 					case factory.PhaseRunning, factory.PhaseWaiting:
-						s.Phases[s.Cur].State = factory.PhaseFailed
+						setPhaseState(&s.Phases[s.Cur], factory.PhaseFailed, now)
 					}
 				}
 				s.Ended = now
