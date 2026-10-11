@@ -36,6 +36,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"codeaf ignores my OPENAI_API_KEY", "starting-codeaf"},
 
 		{"what can you do", "what-i-can-do"},
+		{"how do I attach to a team factory", "factory"},
+		{"how do I detach from a team factory", "factory"},
+		{"where is the factory dashboard address", "factory"},
+		{"what is factory serve.json", "factory"},
+		{"can I use the factory over --host or --at", "factory"},
 		{"how do I connect github to the factory floor", "factory"},
 		{"which github repositories does the factory watch", "factory"},
 		{"I watched repos but the floor is empty", "factory"},
@@ -4028,6 +4033,54 @@ func TestFactoryVerbWordsReachTheirSection(t *testing.T) {
 			}
 		}
 		if !found {
+			t.Errorf("%q does not reach factory · %s; it reached %v", c.asked, c.title, where)
+		}
+	}
+}
+
+// A team attachment must reach the command and its access requirements, because
+// finding an unrelated factory section would leave the person unable to connect.
+func TestTeamFactoryQuestionsReachTheServiceInstructions(t *testing.T) {
+	for _, c := range []struct {
+		asked, title string
+		says         []string
+	}{
+		{
+			asked: "how do I attach to a team factory",
+			title: "how do I attach to a team factory",
+			says:  []string{"codeaf attach <url>", "--token", "codeaf factory token", "attach.json", "does not dial", "codeaf detach"},
+		},
+		{
+			asked: "where is the factory dashboard address",
+			title: "factory dashboard address",
+			says:  []string{"Agent-Field/codeaf-desk", "GET /", "text/plain", "API at /v1", "/access"},
+		},
+		{
+			asked: "what is factory serve.json",
+			title: "factory discovery",
+			says:  []string{"serve.json", "{url, pid, token}", "process is alive", "GET /v1/queue", "SIGTERM"},
+		},
+		{
+			asked: "can I use the factory over --host or --at",
+			title: "factory over --host or --at",
+			says:  []string{"codeaf attach <url>", "attach.json", "this machine", "does not discover or forward"},
+		},
+	} {
+		reached := false
+		var where []string
+		for _, section := range Chat().Search(c.asked, DefaultResults) {
+			where = append(where, section.Page+" · "+section.Title)
+			if section.Page != "factory" || !strings.HasPrefix(section.Title, c.title) {
+				continue
+			}
+			reached = true
+			for _, needle := range c.says {
+				if !strings.Contains(section.Body, needle) {
+					t.Errorf("%q reached %q but its body omits %q", c.asked, section.Title, needle)
+				}
+			}
+		}
+		if !reached {
 			t.Errorf("%q does not reach factory · %s; it reached %v", c.asked, c.title, where)
 		}
 	}

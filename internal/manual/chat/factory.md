@@ -1,70 +1,90 @@
 # The factory
 
-## codeaf factory serve — start the service, listen address and host config
+## codeaf factory serve — start the service and choose its listen address
 
 `codeaf factory` (also `codeaf factory serve`) runs the factory HTTP service alone,
-without opening the chat or running a job itself. `GET /` answers one line: the
-factory has no web page; open it in codeaf (TUI) or the codeaf app, API at `/v1`. It prints its bound HTTP address.
+without opening chat or running a job itself. It prints its bound HTTP address.
 The default is `127.0.0.1:7420`. Use `--listen 127.0.0.1:0` for an available port,
 or `--listen 0.0.0.0:7420` to accept connections from other machines.
 `GET /v1/queue` reads the saved jobs over loopback without an access token.
-Starting this service does not start GitHub polling or a worker in this process.
-It does read who the token belongs to (`GH_TOKEN`, `GITHUB_TOKEN`, a saved token, or gh once allowed), so
-`GET /v1/github` names the login and an approval from the app is recorded under that handle.
-Run queues a job; any codeaf attached to this factory (`codeaf attach <url>`, then
-`codeaf`) runs a worker that pulls it, runs it on its own machine and reports back
-(see workers, taken jobs and lease expiry). Stop, pause, answers and steering reach
-that worker through its lease.
+`GET /` is a one-line pointer to codeaf (TUI), the codeaf app and `/v1`, not a dashboard.
+The team view lives in the codeaf app (`Agent-Field/codeaf-desk`).
 
-The host config is `~/.codeaf/factory/config.yaml`; `--config path` selects another.
-`--listen` overrides its `listen` value. Supported keys are `listen`, `access_token`
-and `repos` (an array of `owner/name` strings). A missing token is generated and
-saved in a private file. Unknown keys, invalid repository names and multiple YAML
+Starting this service does not start GitHub polling or a worker in this process.
+It does read who the token belongs to (`GH_TOKEN`, `GITHUB_TOKEN`, a saved token,
+or gh once allowed), so `GET /v1/github` names the login and an approval from the
+app is recorded under that handle. Run queues a job; an attached worker pulls it,
+runs it on its own machine and reports back. Stop, pause, answers and steering
+reach that worker through its lease. With no worker attached, a job stays `queued`.
+
+## factory host config — config.yaml, access token and watched repositories
+
+The factory host config is `~/.codeaf/factory/config.yaml`; `codeaf factory --config path`
+selects another. `--listen` overrides its `listen` value. Supported keys are `listen`,
+`access_token` and `repos` (an array of `owner/name` strings). A missing token is generated
+and saved in a private file. Unknown keys, invalid repository names and multiple YAML
 documents are refused. A supplied `repos` list replaces the watched repositories;
 an omitted list keeps the saved selection, and `repos: []` clears it.
 This host config is separate from a repository's pipeline file.
+`CODEAF_HOME` moves the default config and factory discovery paths.
+
+## factory discovery — serve.json, bound address and stale service receipts
 
 While serving, `~/.codeaf/v3/factory/serve.json` contains `{url, pid, token}`;
 its `url` is the actual bound address, including the selected port. The file is
 private and removed on normal exit, interrupt or SIGTERM. A forced kill can leave
-a stale file, so discovery readers must check the process is alive. One service
-may run per codeaf home; a second refuses instead of replacing its discovery.
-`CODEAF_HOME` moves both the default config and discovery paths.
+a stale file: codeaf ignores it unless the process is alive and the factory answers
+`GET /v1/queue`. One service may run per codeaf home; a second refuses instead of
+replacing its discovery. `CODEAF_HOME` moves the discovery path.
+A window serving its factory in-process removes `serve.json` when it closes.
 
-## codeaf attach and codeaf detach — which factory a window talks to, the factory address line
+## how do I attach to a team factory — codeaf attach and codeaf detach
 
-The factory page always reads its floor through the factory's HTTP service. When `codeaf`
-starts, the window picks the factory in this order:
+Run `codeaf attach <url> [--name name] [--token token]`, then open a new `codeaf`
+window and `/factory`. The URL is the factory service's address, such as
+`http://team-host:7420`; HTTPS addresses work too. `--name` is how this machine is
+named there (default: its hostname). For a factory off loopback, ask its operator
+for the access token printed by `codeaf factory token` on the factory's machine
+and supply it with `--token`. Remote calls without that token are refused.
 
-1. `~/.codeaf/v3/factory/attach.json`, written by `codeaf attach <url>`: that factory.
-2. A live `serve.json`: the factory another codeaf on this machine already serves (its
-   process is alive and it answers `GET /v1/queue`).
-3. Otherwise the window serves this machine's floor itself on `127.0.0.1:0`, loopback only and
-   without an access token, and writes `serve.json` so the next window uses it.
+`codeaf attach` saves the address, name and token in the private
+`~/.codeaf/v3/factory/attach.json`; it does not dial the factory or prove it is reachable.
+New windows use the saved factory. Windows already open keep their factory until
+restarted. One codeaf home attaches to one factory at a time.
+`codeaf detach` removes `attach.json`; new windows then find or serve this machine's
+factory again. `CODEAF_HOME` moves the attachment path.
 
-So a second window on the same machine reads the first window's factory. If the window that
-serves closes, the other windows take the serving over on their next read. The handover line
-ends with the address, for example `factory · 127.0.0.1:53121`; a narrow line drops it first.
-Run, stop, pause, answer and the other job verbs go to that factory. Talking to an item (`T`),
-the foreman (`m`), recipes, checkouts, stage edits, budget, thinking and refresh stay on this
-machine, because chats and checkouts live here. Every codeaf also runs a worker against the
-same factory, unless started with `--no-worker`: it pulls queued jobs and runs them on this
-machine (see workers, taken jobs and lease expiry). A window that serves the factory takes
-`serve.json` down when it closes.
+The factory's jobs run on workers, using the worker machine's checkouts and model keys.
+An ordinary codeaf launch runs a worker against its selected factory; `--no-worker`
+turns it off. For a remote factory, this machine needs its own connected GitHub login
+before its worker can start. With no worker available, a job stays `queued`.
 
-`codeaf attach <url> [--name name] [--token token]` saves the factory at `url`
-(`http://host:port`) for new windows. `--name` is how this machine is named there (default:
-its hostname). `--token` is the access token that `codeaf factory token` prints on that
-factory's machine; a factory off loopback refuses calls without it. `codeaf attach` does not
-dial the factory. `codeaf detach` removes `attach.json`; new windows then use this machine's
-factory again. Windows already open keep their factory until they are restarted.
+## which factory a window talks to — service discovery and the factory address line
 
-Over `--host` or `--at`, the window draws the factory named in this machine's `attach.json`.
-With nothing attached, it draws `nothing connected yet`: the far engine's floor listens on the
-far machine's loopback, which this window cannot reach.
+The factory page reads its floor through HTTP. When an ordinary local `codeaf`
+window starts, it selects the factory in this order:
 
-A window attached to `codeaf factory` running alone runs that factory's jobs on its own
-machine: its worker pulls them. With no worker attached, a job you run stays `queued`.
+1. `~/.codeaf/v3/factory/attach.json`, written by `codeaf attach <url>`.
+2. A live `serve.json`: another codeaf on this machine already serves it, its process
+   is alive and it answers `GET /v1/queue`.
+3. Otherwise the window serves this machine's floor itself on `127.0.0.1:0`, loopback
+   only and without an access token, and writes `serve.json` for the next window.
+
+A second window on the same machine reads the first window's factory. If the serving
+window closes, another window finds or starts a service on its next read. The handover
+line ends with its address, for example `factory · 127.0.0.1:53121`; a narrow line drops
+it first. Run, stop, pause, answer and the other HTTP job actions go to that factory.
+Repository checkouts and recipes stay local. Job keys that need a local run are offered
+on an attached remote factory only while this machine holds that job's live worker lease
+(see attached factory on another machine — local job keys and worker leases).
+
+## factory over --host or --at — attach to a team service from a remote chat window
+
+A chat window using `--host` or `--at` can read the factory named by
+`codeaf attach <url> [--token token]` on this machine. Attach before opening the
+window, then use `/factory`. The attachment comes from this machine's `attach.json`,
+not the far engine's home. The far engine's own factory listens on its loopback;
+this window does not discover or forward that service automatically.
 
 ## factory one-model pin — triage, size and estimate
 
@@ -164,13 +184,12 @@ off, or that a connected repository sends, stands in rows grouped by where each 
 it with `/factory`, `alt+9` (`opt+9` on a Mac), the map (`alt+.`), or the `Factory` button on the
 tab bar, third after `Home` and `Chats`. `esc` goes back to the conversation.
 
-On this machine the page reads your own factory floor: the items you made with `n` on the page
-or added from a chat, kept under the codeaf home (see where factory items are saved). Until the
+The page reads the selected factory's floor through its HTTP service (see which factory a
+window talks to). Jobs you add with `n` or from a chat are kept by that factory. Until the
 first one arrives the floor draws one dim line under the handover,
 `work arrives here from chat, from n, and from the repositories you connect` (or, with
 repositories watched, what their read is doing; see after connecting github), and `n new` still
-works. Only when that floor cannot be opened, or over `--host` or `--at` to another machine
-with nothing attached (see codeaf attach), does the page draw
+works. When no factory connection is available, the page draws
 `nothing connected yet · the factory floor arrives here when a chat splits work off or a repo is connected`.
 The only key it offers then is `esc back`.
 
@@ -1862,123 +1881,34 @@ connect GitHub; `{"token":""}` selects gh's existing login. Both answer HTTP 200
 with the factory identity. An omitted watched array or token answers HTTP 400.
 These routes use the same access check and error statuses as job actions.
 
-## factory web dashboard
+## factory dashboard address — team view in the codeaf app
 
-The factory HTTP handler also serves the web dashboard: every path outside `/v1`,
-except the public `/access` token form, answers with the dashboard page,
-so a link such as `/jobs/12` opens the page
-directly, and the page reads the floor from `/v1` on the same address. Paths
-under `/v1` that name no endpoint still answer the JSON `factory endpoint not
-found`. The same access rule applies: loopback is open, and another address
-needs the access token or a live session from `/access`.
-The dashboard pages answer GET only.
+The factory's HTTP address is a service address, not a browser dashboard.
+The team view lives in the codeaf app (`Agent-Field/codeaf-desk`); connect that
+app to the factory service. The terminal view opens with `/factory` in codeaf.
+The app's screens and browser behavior belong to that separate repository.
 
-The page today has a sidebar with the factory address (click it for Settings),
-`New job`, three views, `Mine` (jobs assigned to you, and jobs waiting on you),
-`Unassigned` (jobs nobody has taken that are not done) and `Everything` (all
-jobs), and `More` with `Audit log` and `Settings`. A view shows the since line
-(`since <time> · <n> merged · <n> need you · $<spent>`), the pipeline strip (one
-chip per step with jobs, `⚑` where an approve waits), one chip per repository
-(click it to hide or show that repository's jobs), the capacity line (`<n>
-queued · <n> benches · $<spent> of $<rail> today`), and the jobs grouped Needs
-you, Running, Queued, Backlog, Done and Dropped. Each row has kind, job, title,
-state phrase, step `k/n` with a bar, cost and age, and the person holding it
-once any job is held. The row's button is `Approve` on a job that waits at a plan,
-proof or cap gate, `Answer` on a question gate (it opens a box for yes, no or
-words), and `Take` on a job nobody holds; `Take` is dimmed with the tooltip `not
-available yet` because the factory has no take endpoint. A refused action shows
-the factory's sentence at the top. Click a row, or press `enter`, to open the
-job. Keys: `j` and `k` move the cursor, `enter` opens, `y` approves, `a`
-answers, `?` lists the keys. On a phone the sidebar opens from the menu button
-and rows keep job, title, state, cost and the button. The page reads the queue
-again when the factory sends a change; a factory without the change stream is
-read once per load. New job is `/new` and the audit log is `/audit`. Settings
-is its own page.
+`GET /` answers `text/plain` with one line:
+`codeaf factory <version> — open it in codeaf (TUI) or the codeaf app; API at /v1`.
+Other paths outside `/v1`, such as `/jobs/12`, `/settings`, `/new` and `/audit`,
+answer that same pointer, rather than job, settings or record pages.
+The public `/access` token form remains available. Outside loopback, the pointer
+and API need a bearer access token or a live session from `/access`.
+Unknown paths under `/v1` return the JSON error `factory endpoint not found`.
 
-The job page (`/jobs/<id>`) is the brief. The header shows badges for kind,
-state, step `k/n`, cost and age, then `waiting on you since <time>`, `asked
-first: <reason>`, `assigned to @<handle>`, a `PR #<n> · ci <mark>` line and `View
-on GitHub`; a fact the factory does not have is left out. The step rail marks
-each step (`✓` done, `⚑` waits on a person, `●` running, `○` to come), with
-`(fixed)`, `· custom` and `↻ round/max until <words>` on a loop. Results has
-one card per step that ran, in markdown, with the last two open. Claims lists
-each claim with its evidence and `✓ proven` or `unproven`. Questions shows each
-open question with its step, subject and who it is routed to, and a line to
-answer it. The codeaf thread shows the job's manager conversation and takes a
-one-shot reply; deep steering stays in the TUI. Cost lists each step and the
-total. A bar at the bottom holds `Approve` (its words say what it does, such as
-`Approve plan → continue to write`, `Approve → open pull request` or
-`Approve → comment on #N`; dimmed
-unless an approve waits), `Request changes` (asks for words), `Re-run checks`
-and `Drop`, each confirmed in a box. A taken approve shows `Approved · recorded
-as evt_…`; a refused verb shows the factory's sentence.
+The app reads the factory's `/v1` JSON API and `/v1/events` change stream.
+`codeaf attach` uses the same service address for new terminal windows;
+`serve.json` records the bound service address for discovery on its host.
 
-## factory web settings — this factory, repos and your machines
+## factory HTTP record — audit events and CSV export
 
-Settings is the dashboard page at `/settings`, also opened by clicking the
-factory address. The line under the title is that address. Two sections.
-
-**This factory.** GitHub is `GET /v1/github`. Connected, it says `connected as
-@<login> via <gh, token or env> · polling every <n>s`. With no login it says
-`not connected`. Connect and Reconnect send `POST /v1/github/connect` with
-`{"token":"…"}`. An empty token selects gh's existing login. Access is
-read-only: on this laptop it says `localhost only` and `no sign-in on this
-laptop`; from any other address it says `access token`. Repos are `GET
-/v1/repos`. The Watch switch sends `PUT /v1/repos` with
-`{"watched":["owner/repo"]}`, replacing the whole watched list. Open a
-repository for its pipeline, `GET /v1/repos/<owner>/<repo>/pipeline`, which is
-read-only. The badge says `read-only · edit in the repo`, or `defaults` when
-there is no file. No file says `no file · using defaults`. Dry run is `GET /v1/repos/<owner>/<repo>/dryrun`. It answers `would_start`
-(job ids) and `would_ask` (each `job` and its `reason`) for jobs still new
-on that repository. A job without one of the named labels is in neither
-list. No checkout uses the defaults, so both lists are empty. The page says
-`Nothing starts from a dry run.`
-
-**You.** Your machines are `GET /v1/me`: name, status (`busy`, `idle` or
-`offline`), the current job, and `takes unassigned: owner/repo` when
-`takes_unassigned` names that repository. Attach shows `codeaf attach
-<address>` and Copy. Take unassigned jobs is a switch per repository showing
-that map. The factory has no write for it yet, so moving a switch says `not
-available`. Sign out says `Ends this session. Your GitHub credential is
-removed from the factory.` It is hidden on loopback, where the factory keeps
-no session. Off loopback the button is shown and says `not available` until a
-sign-out endpoint exists.
-
-## factory web new job
-
-New job is the dashboard page at `/new`, opened by the `New job` button.
-It opens an issue on GitHub and puts the job in your Backlog. The card says
-`Send a job to the factory`. Auto-start rules from `.codeaf/factory.yaml`
-decide when it runs.
-
-Repository is a select. The list is the repositories on the floor, plus any
-repository `GET /v1/repos` says you can see. Title is required. Description
-is optional. The switch `Auto-start when rules allow` starts on. `Send to
-factory` sends `POST /v1/jobs` with `{"repo","title","text","autostart"}`.
-Success says `Sent to factory` and `<where> is in your Backlog`, where
-`<where>` is `owner/repo #<number>` when the floor has that job, or
-`job <id>` from the create answer. A factory with no new-job door answers
-`this factory does not provide that action`, and the page shows that sentence.
-
-## factory web audit log
-
-The audit log is the dashboard page at `/audit`. It reads `GET /v1/audit`
-and lists events in append order under Time, User, Action and Cost. A blank
-handle is shown as `factory`. A cost of zero is left blank. Tabs are `All`,
-`Approvals` (`approved`), `Answers` (`answered`), `Starts` (`started` and
-`auto_started`) and `Takes` (`took`). A drop, a post or a request for
-changes stays on `All`. An empty tab says `No events of this kind yet.`
-
-The action line is built from the event. `took #N`, `started #N`,
-`auto-started #N` (and `auto-started #N by rule <detail>` when a rule is
-recorded), `posted <detail>`, `answered #N`, `approved #N · <event id>`,
-`requested changes on #N · <event id>`, `dropped #N`. `#N` is the job's
-GitHub number when the floor has that job, otherwise the factory job id.
-Detail is appended with ` · ` on an answer or a drop.
-
-`Export` downloads `factory-record.csv` from `GET /v1/audit?format=csv`
-(columns `id`, `at`, `kind`, `job`, `handle`, `cost`, `detail`). A factory
-with no record says `this factory does not provide that read`.
+`GET /v1/audit` reads the factory's record as JSON `{factory, events}`.
+`since=<RFC3339 timestamp>` limits the read to later events.
+`GET /v1/audit?format=csv` downloads `factory-record.csv`, with columns
+`id`, `at`, `kind`, `job`, `handle`, `cost`, `detail`.
+A factory with no record says `this factory does not provide that read`.
+These reads require the same access as the other factory API calls.
+There is no record page at `/audit` on this service; the team view is in the app.
 
 ## factory event stream and a job's manager thread
 
@@ -2144,8 +2074,8 @@ Be plain about this when asked:
   ship, post or change an item, and the person's `L` is the only way to run its selection.
 - **`CODEAF_FACTORY_FIXTURE=1`** shows a still, made-up floor (three repositories, ten items)
   in place of yours, with no verbs.
-- **Over `--host` or `--at` to another machine** the page draws `nothing connected yet`, the
-  chat has no `factory_add`, and nothing polls GitHub.
+- **Over `--host` or `--at`**, the factory page can read the service named by this machine's
+  `codeaf attach` (see factory over --host or --at). The remote chat has no `factory_add`.
 - **`Factory ? N` on the tab bar appears only after the first open** of `/factory`.
 
 ## running an item — r and L, where the run stops
@@ -2173,16 +2103,12 @@ stages, ships by itself when every claim was shown.
   for at most two hours, and ends with `stage_result` (see a stage is a conversation).
 - A **gate** waits for you.
 
-**Every verb works from any window.** One process on this machine runs the floor's items, the
-owner: on the ordinary launch it is the session host, so items keep running when the terminal
-closes; with `--no-host` it is the first window that opened the floor. Every window still has every
-verb: run, stop, pause, answer, steer, approve, request changes and re-run checks. A window that is not
-the owner hands the verb to the owner, which carries it out within about a second, and a refusal
-(the day rail, `#12 has landed · approve it, or request changes`) is said on that window's bottom
-line in the owner's own words. If nothing answers within five seconds the window says
-`the floor's runner did not answer · this window's engine may be another build · restart codeaf`
-and nothing happens later. The usual cause is a window attached to an engine of another codeaf
-build, one that does not run the floor; quit codeaf and start it again so both are the same build.
+**Every HTTP job action works from any window on the same factory.** Run queues the job
+for an attached worker. Stop releases its lease; pause, answers and steering reach the
+worker through its heartbeat, within about two seconds. Approval and request changes
+also go to that factory. No window owns execution: a worker runs the job on its own
+machine. Local job keys need that machine's live lease when attached to a remote factory
+(see attached factory on another machine — local job keys and worker leases).
 
 **What a stage may do.** A chat stage runs with the allow posture (what `--yolo` gives) in the
 item's own worktree, never your checkout, so it edits files and runs commands without asking; your own approval
