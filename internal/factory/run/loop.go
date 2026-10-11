@@ -45,6 +45,24 @@ const (
 // errLoopStopped is a write refused because the item was stopped under it.
 var errLoopStopped = errors.New("factory run: the item was stopped")
 
+// ErrAlreadyRunning marks a launch refused because the job is already under
+// way. The text a person reads stays the job's own sentence ("#12 is already
+// running"); this value is only how a door recognizes that refusal.
+var ErrAlreadyRunning = errors.New("already running")
+
+// alreadyRunningError keeps that sentence while Unwrap names the marker, so a
+// status mapping can see the refusal without rewriting what the floor said.
+type alreadyRunningError struct{ sentence string }
+
+func (e alreadyRunningError) Error() string { return e.sentence }
+
+func (e alreadyRunningError) Unwrap() error { return ErrAlreadyRunning }
+
+// AlreadyRunning is the refusal for ref, in the job's own words.
+func AlreadyRunning(ref string) error {
+	return alreadyRunningError{ref + " is already running"}
+}
+
 // floorLoop is the runner's state: every item in flight, the benches and the
 // queue for them, and what each item's stages have said so far.
 type floorLoop struct {
@@ -172,7 +190,7 @@ func (r *Runner) Launch(id int) error {
 	lp.mu.Lock()
 	if lp.ctls[id] != nil {
 		lp.mu.Unlock()
-		return fmt.Errorf("%s is already running", it.Ref())
+		return AlreadyRunning(it.Ref())
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), answers: make(chan loopAnswer, 1), phase: -1, launch: true}
@@ -253,7 +271,7 @@ func launchable(it factory.Item) error {
 	case factory.StateShipped:
 		return fmt.Errorf("%s has shipped", it.Ref())
 	}
-	return fmt.Errorf("%s is already running", it.Ref())
+	return AlreadyRunning(it.Ref())
 }
 
 // loopPhases compiles an item's stages into its phases, in order: a stage
@@ -1444,7 +1462,7 @@ func (r *Runner) revive(it factory.Item) error {
 	lp.mu.Lock()
 	if lp.ctls[id] != nil {
 		lp.mu.Unlock()
-		return fmt.Errorf("%s is already running", it.Ref())
+		return AlreadyRunning(it.Ref())
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), answers: make(chan loopAnswer, 1), phase: -1}

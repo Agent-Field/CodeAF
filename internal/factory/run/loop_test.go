@@ -181,7 +181,7 @@ func TestLaunchRefusesWhatIsAlreadyRunningAndAStrangersWrite(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	if err := g.r.Launch(id); err == nil || err.Error() != "#1 is already running" {
+	if err := g.r.Launch(id); err == nil || err.Error() != "#1 is already running" || !errors.Is(err, ErrAlreadyRunning) {
 		t.Fatalf("second launch = %v", err)
 	}
 	close(release)
@@ -1077,7 +1077,7 @@ func TestRunOnAnItemNobodyPausedIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitStarted(t, p)
-	if err := g.r.Launch(id); err == nil || !strings.Contains(err.Error(), "already running") {
+	if err := g.r.Launch(id); err == nil || err.Error() != "#1 is already running" || !errors.Is(err, ErrAlreadyRunning) {
 		t.Fatalf("launch on a running item = %v", err)
 	}
 	close(p.release)

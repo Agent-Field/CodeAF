@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/serve/web"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
@@ -329,6 +330,10 @@ func (h *Handler) failed(w http.ResponseWriter, err error) bool {
 			status = http.StatusGatewayTimeout
 		case errors.Is(err, context.Canceled):
 			status = http.StatusRequestTimeout
+		case errors.Is(err, run.ErrAlreadyRunning):
+			// A second run conflicts with the one already under way. The
+			// sentence stays the refusal the runner wrote.
+			status = http.StatusConflict
 		}
 		h.fail(w, status, err.Error())
 	}

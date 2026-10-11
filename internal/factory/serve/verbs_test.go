@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 )
 
@@ -154,6 +155,26 @@ func TestVerbsCallSeamAndMapErrors(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+func TestRunOnARunningJobAnswers409(t *testing.T) {
+	s, calls := spyVerbs(t, nil)
+	refusal := run.AlreadyRunning("#2")
+	s.Launch = func(id int) error {
+		*calls = append(*calls, call("Launch", id))
+		return refusal
+	}
+	w := verbRequest(serve.New(s, config), "POST", "/v1/jobs/2/run", "")
+	checkJSON(t, w, http.StatusConflict)
+	var body struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Error != refusal.Error() || len(*calls) != 1 {
+		t.Fatalf("response = %s calls = %v", w.Body, *calls)
 	}
 }
 

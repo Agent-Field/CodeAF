@@ -50,7 +50,7 @@ func (d *Doors) Launch(id int) error {
 	}
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if held != nil {
-			return false, fmt.Errorf("%s is already running", it.Ref())
+			return false, run.AlreadyRunning(it.Ref())
 		}
 		if err := run.QueueItem(it, now); err != nil {
 			return false, err

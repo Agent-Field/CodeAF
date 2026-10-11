@@ -1749,7 +1749,9 @@ HTTP 200. An absent action answers HTTP 501 with
 `this factory does not provide that action`. Invalid input answers HTTP 400;
 an unknown job answers HTTP 404 with `job not found`. Wrong methods answer
 HTTP 405 with an Allow header. A seam error answers HTTP 500, except missing
-data (404), permission denied (403), a deadline (504) or cancellation (408).
+data (404), permission denied (403), a deadline (504), cancellation (408), or
+a job that is already running (409). `POST /v1/jobs/{id}/run` on a running job
+answers HTTP 409 with its sentence, `#12 is already running`.
 Actions accept the same bearer token or live session as reads off loopback.
 Bodies with fields must be one JSON object, at most 1 MiB; extra fields are refused, and a larger
 body answers HTTP 413 with `JSON body exceeds 1 MiB`.
