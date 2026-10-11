@@ -64,6 +64,7 @@ var factoryProcess struct {
 	mirror      string
 	workerShape func(ctx context.Context, id int) (string, error)
 	stop        context.CancelFunc
+	parent      session.Config
 }
 
 // factoryShapeHere is this process's Shape door, nil before
@@ -96,8 +97,11 @@ func startFactoryWorker(st *store.Store, workspace, profileDir string, parent se
 	if st == nil {
 		return
 	}
+	// THE WORKER OUTLIVES A WINDOW. A later launch may pin its model, so new
+	// manager and stage conversations must not keep the first window's crew.
+	setFactoryProcess(func() { factoryProcess.parent = parent })
 	factoryProcess.once.Do(func() {
-		turns := factoryShapeTurns(st, workspace, profileDir, parent)
+		turns := factoryShapeTurnsFrom(st, workspace, profileDir, factoryWorkerParent)
 		setFactoryProcess(func() { factoryProcess.shape = factoryShapeDoor(st, workspace, profileDir, turns) })
 		if strings.TrimSpace(env.Get(factoryNoWorkerEnv)) == "1" {
 			return
@@ -113,7 +117,8 @@ func startFactoryWorker(st *store.Store, workspace, profileDir string, parent se
 		})
 		ctx, cancel := context.WithCancel(context.Background())
 		setFactoryProcess(func() { factoryProcess.stop = cancel })
-		r := buildFactoryRunner(mirror, st, workspace, profileDir, factoryStageMaker(st, workspace, profileDir, parent), turns)
+		maker := factoryStageMakerFrom(st, workspace, profileDir, factoryWorkerParent)
+		r := buildFactoryRunner(mirror, st, workspace, profileDir, maker, turns)
 		dial := newFactoryWorkerDial(st, func() (factoryTarget, error) {
 			return resolveFactory(st, factorySeam(st, workspace, profileDir))
 		})
@@ -125,6 +130,14 @@ func startFactoryWorker(st *store.Store, workspace, profileDir string, parent se
 			})
 		})
 	})
+}
+
+// factoryWorkerParent reads the latest launch under the worker's lock, so a
+// conversation opened after a one-model launch inherits that launch's pin.
+func factoryWorkerParent() session.Config {
+	factoryProcess.mu.Lock()
+	defer factoryProcess.mu.Unlock()
+	return factoryProcess.parent
 }
 
 // clearDeadFactoryMirrors removes the mirrors of worker processes that are

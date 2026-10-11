@@ -1314,6 +1314,9 @@ you are talking to**, for that session only.
 That includes auxiliary calls such as naming, memory routing, answer checks and the
 long-answer reader. Helper sessions opened beside this machine's session host carry
 the same model and one-model posture, so they cannot reopen your usual crew.
+The factory worker carries that posture into its manager and stage conversations,
+including resumed stages. A later launch in the same process updates the worker's
+launch config; newly opened conversations use that launch's model and posture.
 
 Without it, the calls codeaf makes on your behalf go to the crew, which is the point of the
 crew — but it means a session started with `--model X` did not spend all of its money on X.

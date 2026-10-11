@@ -91,11 +91,17 @@ type shapeTurns struct {
 // factoryShapeTurns is this process's shaping turns, opened from parent, the
 // launch's own config.
 func factoryShapeTurns(st *store.Store, workspace, profileDir string, parent session.Config) *shapeTurns {
+	return factoryShapeTurnsFrom(st, workspace, profileDir, func() session.Config { return parent })
+}
+
+// factoryShapeTurnsFrom reads the launch when a manager opens, because the
+// worker survives the window whose launch first built its shaping door.
+func factoryShapeTurnsFrom(st *store.Store, workspace, profileDir string, current func() session.Config) *shapeTurns {
 	return &shapeTurns{
 		dirs: factoryRepoDirs(st, workspace),
 		live: liveManagerTurnFor,
 		open: func(_ context.Context, it factory.Item, door session.RunDoor, cheap bool) (managerTurn, error) {
-			return openManagerTurn(parent, workspace, profileDir, it, door, cheap)
+			return openManagerTurn(current(), workspace, profileDir, it, door, cheap)
 		},
 	}
 }

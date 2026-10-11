@@ -36,6 +36,7 @@ type stageModel struct {
 	mu     sync.Mutex
 	belts  [][]string
 	briefs []string
+	models []string
 }
 
 // stageCall is one tool call in a stage model's script, its arguments as JSON.
@@ -56,7 +57,10 @@ func newScriptedStageModel(t *testing.T, script ...stageCall) *stageModel {
 			return
 		}
 		raw, _ := io.ReadAll(r.Body)
-		var req recordedRequest
+		var req struct {
+			recordedRequest
+			Model string `json:"model"`
+		}
 		if err := json.Unmarshal(raw, &req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -76,6 +80,7 @@ func newScriptedStageModel(t *testing.T, script ...stageCall) *stageModel {
 			call = &script[answered]
 		}
 		m.mu.Lock()
+		m.models = append(m.models, req.Model)
 		if len(belt) > 0 {
 			m.belts = append(m.belts, belt)
 			m.briefs = append(m.briefs, string(raw))

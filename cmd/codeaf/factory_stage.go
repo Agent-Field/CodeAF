@@ -47,6 +47,7 @@ import (
 // stageMaker opens stage conversations from parent, the launch's own config.
 type stageMaker struct {
 	parent     session.Config
+	current    func() session.Config
 	workspace  string
 	profileDir string
 }
@@ -54,6 +55,12 @@ type stageMaker struct {
 // factoryStageMaker is this process's maker.
 func factoryStageMaker(_ *store.Store, workspace, profileDir string, parent session.Config) factoryrun.ConversationMaker {
 	return stageMaker{parent: parent, workspace: workspace, profileDir: profileDir}
+}
+
+// factoryStageMakerFrom reads the worker's current launch for each round,
+// including a resumed round whose journal predates the one-model launch.
+func factoryStageMakerFrom(_ *store.Store, workspace, profileDir string, current func() session.Config) stageMaker {
+	return stageMaker{current: current, workspace: workspace, profileDir: profileDir}
 }
 
 // Open makes the conversation, joins it to the item's team, and starts its
@@ -134,17 +141,21 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 // stageConfig aims the launch's config at the stage's conversation: the
 // folder a pause cut short when the spec resumes one, else a new folder.
 func (m stageMaker) stageConfig(spec factoryrun.ConversationSpec, bucket, where string) (session.Config, error) {
+	parent := m.parent
+	if m.current != nil {
+		parent = m.current()
+	}
 	if resume := strings.TrimSpace(spec.Resume); resume != "" {
 		if _, err := os.Stat(resume); err != nil {
-			return m.parent, err
+			return parent, err
 		}
-		return v3Reopen(m.parent, resume, where)
+		return v3Reopen(parent, resume, where)
 	}
 	place, err := v3MintSession(bucket, where, v3StampLaunchDir(v3LaunchDir(), where), false)
 	if err != nil {
-		return m.parent, err
+		return parent, err
 	}
-	return v3PointAt(m.parent, place)
+	return v3PointAt(parent, place)
 }
 
 // factoryPostureEnv pins the posture a stage conversation runs at, in the
