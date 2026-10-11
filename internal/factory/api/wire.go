@@ -178,7 +178,7 @@ type Job struct {
 	Gate             string     `json:"gate"`
 	WaitingSince     *time.Time `json:"waiting_since,omitempty"`
 	AskedFirstReason string     `json:"asked_first_reason,omitempty"` // future: the pipeline's start rules
-	AssignedTo       string     `json:"assigned_to,omitempty"`        // future: the lease desk
+	AssignedTo       string     `json:"assigned_to,omitempty"`
 	Step             *StepAt    `json:"step,omitempty"`
 	Steps            []Step     `json:"steps"`
 	Claims           []Claim    `json:"claims,omitempty"`
@@ -193,10 +193,15 @@ type Job struct {
 // draw (DESIGN-BRIEF §5: triage, tier, origin, labels, checks, comments,
 // files and activity are code-only on the dashboard).
 type JobDesk struct {
-	Product   string    `json:"product,omitempty"`
-	Places    []string  `json:"places,omitempty"`
-	Body      string    `json:"body,omitempty"`
-	Author    string    `json:"author,omitempty"`
+	Product string   `json:"product,omitempty"`
+	Places  []string `json:"places,omitempty"`
+	Body    string   `json:"body,omitempty"`
+	Author  string   `json:"author,omitempty"`
+	// The routing facts stay separate so a round trip cannot turn a local
+	// Take into a forge assignment or forget who started the work.
+	Assignee  string    `json:"assignee,omitempty"`
+	Starter   string    `json:"starter,omitempty"`
+	Taker     string    `json:"taker,omitempty"`
 	Tier      string    `json:"tier,omitempty"`
 	Origin    string    `json:"origin,omitempty"`
 	Synced    bool      `json:"synced,omitempty"`

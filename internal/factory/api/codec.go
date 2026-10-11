@@ -63,11 +63,12 @@ func FromItem(it factory.Item) Job {
 	j := Job{
 		ID: it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
 		State: stateOut[it.State], Ready: it.State == factory.StateLanded, Gate: gate(it),
-		Steps:     steps(it),
-		Claims:    mapList(it.Proof, fromClaim),
-		Questions: questions(it),
-		CreatedAt: it.Created,
-		Desk:      fromDesk(it),
+		AssignedTo: it.Person(),
+		Steps:      steps(it),
+		Claims:     mapList(it.Proof, fromClaim),
+		Questions:  questions(it),
+		CreatedAt:  it.Created,
+		Desk:       fromDesk(it),
 	}
 	if j.State == "" {
 		j.State = string(it.State)
@@ -96,6 +97,7 @@ func ToItem(j Job) factory.Item {
 		ID: j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL,
 		State: stateIn(j), Created: j.CreatedAt,
 		Product: d.Product, Places: d.Places, Body: d.Body, Author: d.Author,
+		Assignee: d.Assignee, Starter: d.Starter, Taker: d.Taker,
 		Tier: factory.Tier(d.Tier), Origin: factory.Origin(d.Origin), Synced: d.Synced, Changed: d.ChangedAt,
 		Triage: toTriage(d.Triage), Cap: d.Cap,
 		Proof: mapList(j.Claims, toClaim), Policy: mapList(d.Policy, toClaim),
@@ -290,6 +292,7 @@ func toClaim(c Claim) factory.Claim {
 func fromDesk(it factory.Item) *JobDesk {
 	d := &JobDesk{
 		Product: it.Product, Places: it.Places, Body: it.Body, Author: it.Author,
+		Assignee: it.Assignee, Starter: it.Starter, Taker: it.Taker,
 		Tier: string(it.Tier), Origin: string(it.Origin), Synced: it.Synced, ChangedAt: it.Changed,
 		Triage: fromTriage(it.Triage), Cap: it.Cap, Policy: mapList(it.Policy, fromClaim),
 		Marked: it.Marked, Labels: it.Labels, Checks: it.Checks, Diff: it.Diff,

@@ -22,6 +22,7 @@ package factory
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -395,6 +396,23 @@ type Item struct {
 	// changed upstream, it was read, a conversation was made, its stages
 	// changed. At most [ActivityMost] are kept; the oldest go first.
 	Activity []Event
+}
+
+// Person is who may run the item. The forge assignee takes precedence over
+// local intent, and an explicit Take supersedes an earlier start.
+func (it Item) Person() string {
+	for _, handle := range []string{it.Assignee, it.Taker, it.Starter} {
+		if handle = NormalizeHandle(handle); handle != "" {
+			return handle
+		}
+	}
+	return ""
+}
+
+// NormalizeHandle lets workers and stored ownership compare forge handles
+// without treating display prefixes or case as a different person.
+func NormalizeHandle(handle string) string {
+	return strings.ToLower(strings.TrimPrefix(strings.TrimSpace(handle), "@"))
 }
 
 // Comment is one thing said on an item, by its author's login.

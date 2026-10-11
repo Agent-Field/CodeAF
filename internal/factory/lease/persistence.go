@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
@@ -60,7 +61,7 @@ func (d *Desk) read() (document, error) {
 func validate(leases []Lease) error {
 	jobs, workers := map[int]bool{}, map[string]bool{}
 	for _, held := range leases {
-		if held.Job <= 0 || held.Worker == "" || cleanHandle(held.Handle) == "" || held.ExpiresAt.IsZero() {
+		if held.Job <= 0 || held.Worker == "" || factory.NormalizeHandle(held.Handle) == "" || held.ExpiresAt.IsZero() {
 			return fmt.Errorf("factory lease: invalid lease for job %d", held.Job)
 		}
 		if jobs[held.Job] || workers[held.Worker] {

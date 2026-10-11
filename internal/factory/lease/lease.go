@@ -77,7 +77,7 @@ func Open(st *store.Store, options Options) (*Desk, error) {
 // Assign implements Take: it gives an unassigned item a person, not a worker.
 // Pull remains the only door that reserves a worker and starts a queued job.
 func (d *Desk) Assign(id int, handle string) error {
-	handle = cleanHandle(handle)
+	handle = factory.NormalizeHandle(handle)
 	if handle == "" {
 		return errors.New("factory lease: a person needs a handle")
 	}
@@ -86,7 +86,7 @@ func (d *Desk) Assign(id int, handle string) error {
 			return false, ErrLeased
 		}
 		return false, d.store.Update(id, func(it *factory.Item) error {
-			if owner := person(*it); owner != "" && owner != handle {
+			if owner := it.Person(); owner != "" && owner != handle {
 				return ErrPerson
 			}
 			it.Taker = handle
@@ -98,7 +98,7 @@ func (d *Desk) Assign(id int, handle string) error {
 // Pull takes the oldest eligible queued item. One worker holds one job; an
 // opt-in applies only to unassigned work in that exact repository.
 func (d *Desk) Pull(worker Worker) (Lease, error) {
-	worker.Handle = cleanHandle(worker.Handle)
+	worker.Handle = factory.NormalizeHandle(worker.Handle)
 	if strings.TrimSpace(worker.ID) == "" || worker.Handle == "" {
 		return Lease{}, errors.New("factory lease: a worker needs an id and handle")
 	}
@@ -213,23 +213,10 @@ func eligible(it factory.Item, worker Worker) bool {
 	if it.State != factory.StateQueued || paused(it) {
 		return false
 	}
-	if owner := person(it); owner != "" {
+	if owner := it.Person(); owner != "" {
 		return owner == worker.Handle
 	}
 	return worker.TakesUnassigned[it.Repo]
-}
-
-func person(it factory.Item) string {
-	for _, handle := range []string{it.Assignee, it.Taker, it.Starter} {
-		if handle = cleanHandle(handle); handle != "" {
-			return handle
-		}
-	}
-	return ""
-}
-
-func cleanHandle(handle string) string {
-	return strings.ToLower(strings.TrimPrefix(strings.TrimSpace(handle), "@"))
 }
 
 func find(doc *document, id int) *Lease {
