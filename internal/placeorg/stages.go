@@ -119,7 +119,7 @@ type Reviewer interface {
 }
 
 // Linker adds shortcuts for the multi-home minority (a second place within
-// Delta of the best and above Floor, at most MaxLinks) and lenses: demoted
+// Delta of the best and above Floor, uncapped, one per branch) and lenses: demoted
 // groups, by-month on any place with enough chats, and steering axes.
 type Linker interface {
 	Link(ctx context.Context, t *Tree, corpus *Corpus, vectors [][]float32) ([]Op, error)

@@ -44,6 +44,13 @@ func plant(t *testing.T, roots []string, nodes ...*placeorg.Node) *placeorg.Tree
 	view.roots = append([]string(nil), roots...)
 	for _, n := range nodes {
 		view.nodes[n.ID] = n
+		for _, child := range n.Children {
+			for _, c := range nodes {
+				if c.ID == child {
+					c.Parent = n.ID
+				}
+			}
+		}
 		for _, chat := range n.Members {
 			if _, ok := view.home[chat]; !ok {
 				view.home[chat] = n.ID
@@ -119,25 +126,13 @@ func TestShortcutFixtureUsesTheMarginAndIgnoresShallowerPlaces(t *testing.T) {
 	}
 	var nodes []*placeorg.Node
 	var roots []string
-	var children []string
+	// Every place is its own top-level branch: siblings under one parent
+	// collapse into one home, and this fixture is about the margin and the
+	// depth, not the branch. Depth stays as the fixture says, so only the
+	// depth-3 places are scored and the depth-1 place is not.
 	for _, p := range fix.Places {
 		nodes = append(nodes, node(p.ID, p.Depth, nil, nil, p.Centroid))
-		if p.Depth == 1 {
-			roots = append(roots, p.ID)
-		} else {
-			children = append(children, p.ID)
-		}
-	}
-	if len(roots) != 1 {
-		t.Fatalf("the fixture needs one depth-1 place, has %v", roots)
-	}
-	// The finer places hang under the root so the forest can reach them.
-	// Their depth stays 3, so they are the shortcut candidates. The depth-1
-	// place is not scored.
-	for i, p := range fix.Places {
-		if p.Depth == 1 {
-			nodes[i].Children = children
-		}
+		roots = append(roots, p.ID)
 	}
 	var ids []string
 	var vecs [][]float32
@@ -163,7 +158,10 @@ func TestShortcutFixtureUsesTheMarginAndIgnoresShallowerPlaces(t *testing.T) {
 	}
 }
 
-func TestAtMostTwoShortcutsAndARaisedFloorDropsTheNeighbour(t *testing.T) {
+// TestSiblingLeavesCollapseIntoOneHome: three tied leaves under one parent
+// are one branch, so the chat earns no extra home there. Uncapped, four
+// distinct branches that all clear the bar are four extra homes.
+func TestSiblingLeavesCollapseIntoOneHomeAndDistinctBranchesAreUncapped(t *testing.T) {
 	same := []float32{1, 0, 0, 0}
 	ops, err := New(nil).Link(context.Background(), plant(t, []string{"root"},
 		node("root", 1, nil, []string{"a", "b", "c"}, nil),
@@ -174,41 +172,85 @@ func TestAtMostTwoShortcutsAndARaisedFloorDropsTheNeighbour(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := linksOf(ops)["chat"]
-	if len(got) != placeorg.MaxLinks {
-		t.Fatalf("got %v, want %d shortcuts", got, placeorg.MaxLinks)
-	}
-	// The tied best is the lowest id, "a", and it is not a shortcut.
-	if !reflect.DeepEqual(got, []string{"b", "c"}) {
-		t.Fatalf("tied places linked %v, want b and c", got)
+	if got := linksOf(ops)["chat"]; len(got) != 0 {
+		t.Fatalf("siblings in one branch earned %v, want none", got)
 	}
 
-	state := &placeorg.State{
-		Space:      "ref",
-		Thresholds: map[placeorg.SpaceID]placeorg.Thresholds{"ref": {Floor: 0.995, Delta: 0.03}},
+	var nodes []*placeorg.Node
+	var roots []string
+	for _, id := range []string{"a", "b", "c", "d", "e"} {
+		roots = append(roots, id)
+		nodes = append(nodes, node(id, 1, nil, nil, same))
 	}
-	near := []float32{0.99, 0.14106736, 0, 0}
-	tree := plant(t, []string{"root"},
-		node("root", 1, nil, []string{"alpha", "beta"}, nil),
-		node("alpha", 2, nil, nil, []float32{1, 0, 0, 0}),
-		node("beta", 2, nil, nil, near),
+	linker := New(nil)
+	ops, err = linker.Link(context.Background(), plant(t, roots, nodes...), chatsOf("chat"), vectorsOf(same))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := linksOf(ops)["chat"]; len(got) != 4 {
+		t.Fatalf("five tied branches earned %v, want four extra homes", got)
+	}
+	if got := linker.Homes(); !reflect.DeepEqual(got, map[int]int{4: 1}) {
+		t.Fatalf("homes histogram %v, want 4 homes for one chat", got)
+	}
+	for _, op := range ops {
+		if op.Kind == placeorg.OpLink && (len(op.Scores) != 2 || op.Scores[0] < op.Scores[1]) {
+			t.Fatalf("link %v does not carry a score that clears its bar", op)
+		}
+	}
+}
+
+// TestADriftedChatEarnsTheHomeItEndedIn: the start vector fits only "a", the
+// end vector fits only "b"; both are earned, and "a" is the fit.
+func TestADriftedChatEarnsTheHomeItEndedIn(t *testing.T) {
+	tree := plant(t, []string{"a", "b"},
+		node("a", 1, nil, nil, []float32{1, 0, 0, 0}),
+		node("b", 1, nil, nil, []float32{0, 1, 0, 0}),
 	)
-	ops, err = New(state).Link(context.Background(), tree, chatsOf("chat"), vectorsOf([]float32{1, 0, 0, 0}))
+	linker := New(nil)
+	ops, err := linker.Link(context.Background(), tree, chatsOf("chat"), vectorsOf([]float32{1, 0, 0, 0}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := linksOf(ops)["chat"]; len(got) != 0 {
-		t.Fatalf("a neighbour below the calibrated floor was linked: %v", got)
+		t.Fatalf("without an end anchor got %v, want none", got)
+	}
+	linker.SetEnd(vectorsOf([]float32{0, 1, 0, 0}))
+	ops, err = linker.Link(context.Background(), tree, chatsOf("chat"), vectorsOf([]float32{1, 0, 0, 0}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := linksOf(ops)["chat"]; !reflect.DeepEqual(got, []string{"b"}) {
+		t.Fatalf("drift earned %v, want b", got)
+	}
+}
+
+// TestNoHomeInAnAncestorOfWhereTheChatLives: a chat living in a leaf is not
+// also listed in that leaf's parent, even when the parent is scored.
+func TestNoHomeInAnAncestorOfWhereTheChatLives(t *testing.T) {
+	same := []float32{1, 0, 0, 0}
+	tree := plant(t, []string{"top", "other"},
+		node("top", 1, nil, []string{"leaf"}, same),
+		node("leaf", 2, []string{"chat"}, nil, same),
+		node("other", 1, nil, nil, same),
+	)
+	ops, err := New(nil).Link(context.Background(), tree, chatsOf("chat"), vectorsOf(same))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range linksOf(ops)["chat"] {
+		if p == "top" || p == "leaf" {
+			t.Fatalf("chat linked into %s, which holds or is its home", p)
+		}
 	}
 }
 
 func TestAProbeIsNotAlsoInAPlace(t *testing.T) {
 	corpus := chatsOf("probe", "real")
 	corpus.Kinds = map[string]placeorg.Kind{"probe": placeorg.KindProbe}
-	tree := plant(t, []string{"root"},
-		node("root", 1, nil, []string{"alpha", "beta"}, nil),
-		node("alpha", 2, nil, nil, []float32{1, 0, 0, 0}),
-		node("beta", 2, nil, nil, []float32{1, 0, 0, 0}),
+	tree := plant(t, []string{"alpha", "beta"},
+		node("alpha", 1, nil, nil, []float32{1, 0, 0, 0}),
+		node("beta", 1, nil, nil, []float32{1, 0, 0, 0}),
 	)
 	ops, err := New(nil).Link(context.Background(), tree, corpus, vectorsOf([]float32{1, 0, 0, 0}, []float32{1, 0, 0, 0}))
 	if err != nil {
