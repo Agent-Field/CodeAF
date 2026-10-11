@@ -146,6 +146,15 @@ func factoryWorkerParent() session.Config {
 	return factoryProcess.parent
 }
 
+// setFactoryModelPin publishes a launch's pin when this process has no local
+// conversation config, keeping triage on the same source as manager and stage calls.
+func setFactoryModelPin(model string, oneModel bool) {
+	setFactoryProcess(func() {
+		factoryProcess.parent.Model = model
+		factoryProcess.parent.OneModel = oneModel
+	})
+}
+
 // clearDeadFactoryMirrors removes the mirrors of worker processes that are
 // gone: a process killed mid-job never removed its own, and its jobs went
 // back to the queue when their leases expired.

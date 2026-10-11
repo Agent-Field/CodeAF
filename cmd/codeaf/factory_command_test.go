@@ -25,6 +25,8 @@ func (ready factoryReady) Write(body []byte) (int, error) {
 }
 
 func TestFactoryCommandServesQueueAndOwnsDiscovery(t *testing.T) {
+	previous := factoryWorkerParent()
+	t.Cleanup(func() { setFactoryProcess(func() { factoryProcess.parent = previous }) })
 	t.Setenv(home.EnvVar, t.TempDir())
 	configPath := home.Join("factory", "config.yaml")
 	if err := writeFactoryPrivate(configPath, []byte("listen: 127.0.0.1:0\naccess_token: test-secret\nrepos: [owner/repo]\n")); err != nil {
@@ -41,7 +43,7 @@ func TestFactoryCommandServesQueueAndOwnsDiscovery(t *testing.T) {
 	defer cancel()
 	ready := make(factoryReady, 1)
 	done := make(chan error, 1)
-	go func() { done <- serveFactory(ctx, configPath, "", ready) }()
+	go func() { done <- serveFactory(ctx, configPath, "", ready, "", false) }()
 	var address string
 	select {
 	case address = <-ready:
@@ -98,7 +100,7 @@ func TestFactoryCommandServesQueueAndOwnsDiscovery(t *testing.T) {
 	if err != nil || len(repos) != 1 || repos[0] != "owner/repo" {
 		t.Fatalf("configured repos: %v, %v", repos, err)
 	}
-	if err := serveFactory(ctx, configPath, "127.0.0.1:0", io.Discard); err == nil || !strings.Contains(err.Error(), "already running") {
+	if err := serveFactory(ctx, configPath, "127.0.0.1:0", io.Discard, "", false); err == nil || !strings.Contains(err.Error(), "already running") {
 		t.Fatalf("second service should refuse: %v", err)
 	}
 	if after := readFactoryTestFile(t, discoveryPath); !bytes.Equal(after, originalDiscovery) {
@@ -123,6 +125,14 @@ func TestFactoryCommandServesQueueAndOwnsDiscovery(t *testing.T) {
 	}
 	if _, err := os.Stat(discoveryPath); !os.IsNotExist(err) {
 		t.Fatalf("discovery survives service exit: %v", err)
+	}
+}
+
+func TestFactoryCommandAcceptsOneModelFlags(t *testing.T) {
+	_, stderr := captureUsage(t)
+	err := runFactory([]string{"--one-model", "--model", "deepseek/deepseek-v4.1-flash", "unexpected"})
+	if err != exitStatus(2) || !strings.Contains(stderr.String(), "use codeaf factory") {
+		t.Fatalf("factory did not accept the model flags before checking arguments: %v, %s", err, stderr.String())
 	}
 }
 

@@ -435,7 +435,7 @@ func startFactoryPoll(st *store.Store, profileDir string) {
 	// behind (store.ClearBusy), before it starts any work of its own, so no
 	// row spins for work nobody is doing.
 	factoryBusyClear.Do(func() { _ = st.ClearBusy() })
-	startFactoryTriage(st)
+	startFactoryTriage(context.Background(), st)
 	factoryPoll.Do(func() {
 		guard.Go("factory/github-poll", func() {
 			ctx := context.Background()

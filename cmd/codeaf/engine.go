@@ -988,6 +988,9 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	// cfg ([remote.Engine.Fresh] and Open below both start from it).
 	var floorStore *factorystore.Store
 	if engineFactoryHere(hello) {
+		// The first floor read must inherit this hello's pin before opening
+		// the store starts triage, just as the window publishes its launch.
+		setFactoryProcess(func() { factoryProcess.parent = cfg })
 		cfg.Factory = factoryDoor(engineFactory(proc.ProfileDir))
 		// And `factory_recipe`'s door, on the same law and the same store.
 		cfg.Recipe = recipeDoor(engineFactory(proc.ProfileDir), workspace)

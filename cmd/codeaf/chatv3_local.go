@@ -453,6 +453,9 @@ func localDoors(options *tui3.Options, welcome remote.Welcome, settings config.C
 	// else one this window serves itself, composed with this machine's own
 	// doors. --host and --at reach the attached factory only ([factoryAttachedSeam]).
 	floor := v3Factory()
+	// THE WINDOW'S TRIAGE SHARES THE ENGINE'S PIN. Publish the resolved launch
+	// before this process opens its service or starts reading the floor.
+	setFactoryModelPin(welcome.Model, welcome.Launch != nil && welcome.Launch.OneModel)
 	options.Factory, options.FactoryAddress = factoryLaunchSeam(floor, welcome.Workspace, profileDir)
 	// AND THIS WINDOW POLLS THE FLOOR IT DRAWS, whatever the engine does. The
 	// engine on the other half of this road may be a build from days ago with

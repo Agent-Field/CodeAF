@@ -33,8 +33,8 @@ var factoryTriage sync.Once
 
 // startFactoryTriage starts this process's cheap read of new items over st,
 // beside the GitHub poll and under the same rule: ONLY THE PROCESS THAT OPENED
-// THE FLOOR FOR A PERSON'S WINDOW ([startFactoryPoll] calls it), ONE PER
-// PROCESS, STOPPED WITH THE PROCESS, and a launch never waits on it.
+// THE FLOOR FOR A PERSON'S WINDOW ([startFactoryPoll] calls it) OR A FACTORY
+// SERVER, ONE PER PROCESS, STOPPED WITH ITS CONTEXT, and a launch never waits on it.
 //
 // A CAPABILITY WITH NOTHING BEHIND IT IS ABSENT. Until a key resolves there is
 // no worker at all: a small loop ([waitForFactoryTriage]) looks again every
@@ -44,13 +44,12 @@ var factoryTriage sync.Once
 // it until this process ends, so two processes on one machine (two windows, or
 // a window and its engine) never pay twice for one item: the one that lost
 // looks again every [factoryWatchEvery] and takes over when the holder exits.
-func startFactoryTriage(st *store.Store) {
+func startFactoryTriage(ctx context.Context, st *store.Store) {
 	if st == nil {
 		return
 	}
 	factoryTriage.Do(func() {
 		guard.Go("factory/triage", func() {
-			ctx := context.Background()
 			call, release := waitForFactoryTriage(ctx, st, config.Load, factoryWatchEvery)
 			if call == nil {
 				return
@@ -96,7 +95,8 @@ func waitForFactoryTriage(ctx context.Context, st *store.Store, load func() (con
 // THE CHEAPEST SEAT THE CREW OFFERS: the `small work` row ([config.TierSeatAt]
 // on the low tier), the seat a title, a caption and a task's name ride. A row
 // the person cleared on purpose reads empty and follows the conversation's
-// model, exactly as every other low-tier errand does.
+// model, exactly as every other low-tier errand does. Under --one-model the
+// launch's pin replaces that seat, including on a server with no conversation.
 //
 // THE SETTINGS ARE READ WHEN THE WORKER ASKS, NOT WHEN IT IS BUILT, as the
 // pool's judge reads them (poolrecord.go): a key changed in /settings is the
@@ -144,8 +144,12 @@ func factoryTriageCallNoting(load func() (config.Config, error), noted func(usd 
 }
 
 // factoryTriageModel is the small-work seat's model for this profile, or the
-// conversation's when that row was cleared.
+// conversation's when that row was cleared. The launch's one-model pin wins
+// before any profile row, including when the server has no conversation.
 func factoryTriageModel(settings config.Config) string {
+	if parent := factoryWorkerParent(); parent.OneModel {
+		return strings.TrimSpace(parent.Model)
+	}
 	if m := strings.TrimSpace(config.TierSeatAt(settings.ProfileDir, config.ModelTierLow).Model); m != "" {
 		return m
 	}

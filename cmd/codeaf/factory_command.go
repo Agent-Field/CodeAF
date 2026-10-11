@@ -12,9 +12,11 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
@@ -71,6 +73,8 @@ func runFactory(args []string) error {
 	flags := commandFlags("factory")
 	listen := flags.String("listen", "", "address to listen on")
 	path := flags.String("config", home.Join("factory", "config.yaml"), "host configuration")
+	model := flags.String("model", "", "model slug for the factory")
+	oneModel := flags.Bool("one-model", false, "every factory text call runs on the named model; the tier rows stand down")
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
@@ -79,7 +83,15 @@ func runFactory(args []string) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return serveFactory(ctx, *path, *listen, os.Stdout)
+	modelName := strings.TrimSpace(*model)
+	if *oneModel && modelName == "" {
+		settings, err := config.LoadKeyless()
+		if err != nil {
+			return err
+		}
+		modelName = v3TalkModel("", settings)
+	}
+	return serveFactory(ctx, *path, *listen, os.Stdout, modelName, *oneModel)
 }
 
 func printFactorySteps(out io.Writer) error {
@@ -101,11 +113,11 @@ func printFactorySteps(out io.Writer) error {
 	return nil
 }
 
-// serveFactory owns only the HTTP service: it runs no job. Its runner doors
+// serveFactory owns the HTTP service and triage: it runs no job. Its runner doors
 // are the lease's, so a run pressed anywhere queues the job for whichever
 // attached worker pulls it, and every other verb reaches that worker through
 // its lease (factory_run.go).
-func serveFactory(ctx context.Context, configPath, listen string, out io.Writer) error {
+func serveFactory(ctx context.Context, configPath, listen string, out io.Writer, model string, oneModel bool) error {
 	st, err := store.Open(v3FactoryRoot())
 	if err != nil {
 		return err
@@ -141,6 +153,10 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer)
 		return err
 	}
 	defer service.close()
+	// THE SERVER HAS NO CONVERSATION, so its launch supplies the model pin
+	// on the same parent the desk's worker uses. Triage reads it for every request.
+	setFactoryModelPin(model, oneModel)
+	startFactoryTriage(ctx, st)
 	address, server, done := service.url, service.server, service.done
 	if _, err := fmt.Fprintln(out, address); err != nil {
 		return err

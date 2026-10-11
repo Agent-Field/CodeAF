@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -58,6 +59,15 @@ func TestFactoryConversationsInheritALaterOneModelLaunch(t *testing.T) {
 	startFactoryWorker(st, workspace, profile, launch.Config)
 	parent := factoryWorkerParent()
 	assertFactoryPin(t, parent, pinned)
+	call, ok := factoryTriageCall(func() (config.Config, error) {
+		return config.Config{APIKey: "sk-test", BaseURL: model.server.URL, Model: "profile/default", ProfileDir: profile}, nil
+	})
+	if !ok {
+		t.Fatal("no triage call for the pinned desk")
+	}
+	if _, err := call(context.Background(), "read this item"); err != nil {
+		t.Fatal(err)
+	}
 
 	stageSettle = time.Millisecond
 	t.Cleanup(func() { stageSettle = unattendedRunSettleTick })

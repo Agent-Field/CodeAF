@@ -23,6 +23,9 @@ import (
 
 func TestTheHostRoadStartsTheFloorsPollAndTriage(t *testing.T) {
 	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
+	const pinned = "deepseek/deepseek-v4.1-flash"
+	previous := factoryWorkerParent()
+	t.Cleanup(func() { setFactoryProcess(func() { factoryProcess.parent = previous }) })
 	type call struct {
 		root, workspace, profile string
 	}
@@ -30,6 +33,9 @@ func TestTheHostRoadStartsTheFloorsPollAndTriage(t *testing.T) {
 	stock := factoryFloorHere
 	t.Cleanup(func() { factoryFloorHere = stock })
 	factoryFloorHere = func(st *store.Store, workspace, profileDir string) {
+		if parent := factoryWorkerParent(); !parent.OneModel || parent.Model != pinned {
+			t.Error("the host road started triage before publishing the engine's model pin")
+		}
 		if st == nil {
 			t.Error("the host road started the floor's work with no store")
 			return
@@ -40,7 +46,8 @@ func TestTheHostRoadStartsTheFloorsPollAndTriage(t *testing.T) {
 	profile := t.TempDir()
 	workspace := t.TempDir()
 	var options tui3.Options
-	localDoors(&options, remote.Welcome{Workspace: workspace, ProfileDir: profile}, config.Config{ProfileDir: profile})
+	localDoors(&options, remote.Welcome{Workspace: workspace, ProfileDir: profile, Model: pinned,
+		Launch: &remote.LaunchShape{OneModel: true}}, config.Config{ProfileDir: profile})
 
 	if options.Factory.Load == nil {
 		t.Fatal("the host road drew no floor")

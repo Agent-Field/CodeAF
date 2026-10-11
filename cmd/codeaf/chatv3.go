@@ -416,6 +416,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// repository's checkout, when its origin names one. The session-host road
 	// starts the same three (chatv3_local.go's [localDoors]); factory.go's
 	// [factoryFloorHere] is the one call both make.
+	// THE FLOOR'S FIRST READ ALREADY BELONGS TO THIS LAUNCH: publish the
+	// conversation's pin before starting triage, rather than after the agent opens.
+	setFactoryProcess(func() { factoryProcess.parent = cfg })
 	factoryFloorHere(floor, workspace, settings.ProfileDir)
 	// AND THAT SURFACE HOLDS EVERY STANDING LANE, which is a second fact and not
 	// the same one: a design card, a subharness intake card and an adaptive

@@ -66,6 +66,15 @@ far machine's loopback, which this window cannot reach.
 A window attached to `codeaf factory` running alone runs that factory's jobs on its own
 machine: its worker pulls them. With no worker attached, a job you run stays `queued`.
 
+## factory one-model pin — triage, size and estimate
+
+`codeaf factory --one-model --model X` pins every text call the factory server makes to `X`,
+including the triage read that supplies size and estimate. Without `--model`, `--one-model`
+uses the same saved or default chat model as the desk. The `small work` row stands down while
+pinned. A factory served in-process by plain `codeaf --one-model --model X` inherits the desk's
+pin; new manager and stage conversations on that desk follow it too.
+An already running factory has its own launch: restart it with the flags to pin its calls.
+
 ## codeaf factory token — print or rotate the access token
 
 `codeaf factory token` prints the host config's access token, creating and saving
@@ -1580,7 +1589,8 @@ read. While it runs the row says `refreshing`; while triage reads an item it say
 `refreshing 8 items · 3 done` while it runs. **Before it starts, the floor shows what it would
 cost:** the number of items times the average cost of a triage read here, or $0.0005
 an item when no read has been priced yet. Nothing is read or spent until you say yes. Each read it
-causes is a call on the cheapest seat, and a row on the spend ledger named `factory triage`.
+causes follows the factory's one-model pin when set, otherwise the cheapest seat, and writes
+a row on the spend ledger named `factory triage`.
 
 With no GitHub connected, `u` on a GitHub item says `github is not connected`. `u` and `U` are on
 your own floor only, never on the still fixture.
@@ -1680,7 +1690,9 @@ token can be changed there.
 ## triage on arrival — the read, size, estimate and risk, from one cheap call
 
 Every new item on the floor is read once, by one call on the cheapest seat (the `small work`
-row in /settings; a row you cleared follows the conversation's model). The call sees the item's
+row in /settings; a row you cleared follows the conversation's model). With `--one-model`,
+the factory follows the launch's model pin, including triage, size and estimate; the `small work`
+row stands down. The call sees the item's
 title, its text cut to 3000 characters, its labels, its kind, its repository and its last three
 comments (each cut to 600 characters, so the read sees where the discussion stands), and answers:
 
@@ -1702,8 +1714,8 @@ quotes the last read's cost.
 
 The read itself never dismisses, labels or comments. After the read, intake evaluates the
 repository's explicit start rules and may run a job or ask first (see automatic intake).
-Without start rules it remains facts drawn dim. It runs only in the window that opened the
-floor, one window per machine, and only while a key resolves; with no key there is no reading
+Without start rules it remains facts drawn dim. It runs in the window that opened the
+floor or in `codeaf factory`, one process per machine, and only while a key resolves; with no key there is no reading
 at all. Each call is a row on the spend ledger named `factory triage`, on the low seat.
 
 ## order the floor — O
