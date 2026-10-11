@@ -47,6 +47,9 @@ func (a *app) factorySheet() []factorySheetGroup {
 		}
 	}
 	it, ok := a.factoryCursorItem()
+	if ok {
+		seam = seam.Job(it.ID)
+	}
 	// ON THE ITEM PAGE `space` IS THE TOP BAR'S CONTROL (factory_bar.go), and
 	// the sheet names it first, by what it does now; select and pause are the
 	// floor's.
@@ -77,7 +80,7 @@ func (a *app) factorySheet() []factorySheetGroup {
 		case factory.StateQueued, factory.StateRunning:
 			row(&do, seam.Has("stop"), keyStop, wordStop)
 			row(&do, chat, keyChat, wordChat)
-			row(&do, seam.Has("pause") && it.State == factory.StateRunning && !page, keyPause, wordPause+" or "+wordResume)
+			row(&do, factoryCanPause(seam) && it.State == factory.StateRunning && !page, keyPause, wordPause+" or "+wordResume)
 			row(&do, a.factorySteerable(it), keySteer, wordSteer)
 			row(&set, seam.Has("seteffort"), keyThinking, wordThinking)
 		case factory.StateNeedsYou:

@@ -1995,6 +1995,27 @@ approve step; otherwise it answers HTTP 400 with `job requires proof approval`.
 Success answers HTTP 200 with the factory identity. Completed holds reject later
 heartbeats and reports. Every `codeaf` speaks this protocol as its worker loop.
 
+## attached factory on another machine — local job keys and worker leases
+
+When `attach.json` names a factory outside loopback, job keys that need this
+machine's store are absent unless a worker on this machine holds that job.
+An unrelated local item with the same number never enables them. This covers
+the pause fallback, budget, thinking, stage switches and additions, manager
+edits and chat, shape steps, refresh, sync, ask the author, save stages as a
+recipe, and open on GitHub.
+
+For a held job, available local keys act on the worker's mirror of its run,
+never on this machine's own factory floor. A receipt identifies the factory,
+job, worker and lease expiry; a completed, expired or dead worker removes those
+keys on the next read. Local calls check the receipt again before acting; a
+failed receipt check says `this job is no longer running on this machine`.
+Shaping needs this process's own configured worker; another process's shaping
+door stays absent. Repository checkout and recipe keys keep their local meaning.
+
+The HTTP job actions still go to the attached factory: run, stop, pause and
+resume, answers, steering, approval, request changes and re-run checks work
+through its worker leases, including when the job runs on another machine.
+
 ## what the factory does not do yet
 
 Be plain about this when asked:

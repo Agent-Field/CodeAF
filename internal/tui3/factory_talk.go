@@ -40,7 +40,7 @@ func (a *app) factoryTalk(it factory.Item) tea.Cmd {
 // conversation's box once it is open, typed and not sent: the timeline's box
 // hands its words over this way (factory_timeline.go). "" puts nothing there.
 func (a *app) factoryTalkSaying(it factory.Item, words string) tea.Cmd {
-	seam, id := a.factory, it.ID
+	seam, id := a.factory.Job(it.ID), it.ID
 	// THE NOTE LINE SPINS WHILE THE CONVERSATION IS MADE OR FOUND, which can
 	// take a beat on the first ask (factory_busy.go).
 	a.fp.act.doing = "opening " + it.Ref() + "'s conversation…"

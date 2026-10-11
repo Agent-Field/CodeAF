@@ -2,6 +2,7 @@ package api
 
 import (
 	"reflect"
+	"sync"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
@@ -40,6 +41,84 @@ func Compose(remote, local factory.Seam) factory.Seam {
 		}
 	}
 	return out
+}
+
+// ComposeJobs keeps job-id doors on the machine that holds the job. Here
+// answers whether the factory is loopback; worker answers a local mirror's
+// seam, or the zero seam for a job this machine does not hold. Both selectors
+// are reads of cached facts, so drawing a key never does disk or network I/O.
+// Calls reselect the door because a lease may end after the key was drawn.
+func ComposeJobs(remote, local factory.Seam, here func() bool, worker func(int) factory.Seam) factory.Seam {
+	selectLocal := func(id int) factory.Seam {
+		if here() {
+			return local
+		}
+		if worker != nil {
+			return worker(id)
+		}
+		return factory.Seam{}
+	}
+	var mu sync.Mutex
+	cache := map[string]factory.Seam{}
+	compose := func(id int) factory.Seam {
+		selected := reflect.ValueOf(selectLocal(id))
+		mask := make([]byte, selected.NumField())
+		for i := range mask {
+			if jobDoor(selected.Type().Field(i).Name, selected.Field(i).Type()) && !selected.Field(i).IsNil() {
+				mask[i] = 1
+			}
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if out, ok := cache[string(mask)]; ok {
+			return out
+		}
+		out := Compose(remote, local)
+		o, l := reflect.ValueOf(&out).Elem(), selected
+		for i := 0; i < o.NumField(); i++ {
+			name := o.Type().Field(i).Name
+			if !jobDoor(name, o.Field(i).Type()) {
+				continue
+			}
+			if l.Field(i).IsNil() {
+				o.Field(i).Set(reflect.Zero(o.Field(i).Type()))
+				continue
+			}
+			o.Field(i).Set(reflect.MakeFunc(o.Field(i).Type(), func(args []reflect.Value) []reflect.Value {
+				at := 0
+				if args[at].Kind() != reflect.Int {
+					at++
+				}
+				door := reflect.ValueOf(selectLocal(int(args[at].Int()))).Field(i)
+				if door.IsNil() {
+					return refused(door.Type())
+				}
+				return door.Call(args)
+			}))
+		}
+		out.ForJob = nil
+		// MANY ROWS SHARE THE SAME CAPABILITIES. Their dispatchers select by
+		// the call's job id, so a paint need not rebuild reflection closures.
+		cache[string(mask)] = out
+		return out
+	}
+	out := compose(0)
+	out.ForJob = compose
+	return out
+}
+
+// jobDoor recognizes the TUI-only doors whose first non-context argument is
+// a job id. Repository and floor doors keep their local meaning.
+func jobDoor(name string, t reflect.Type) bool {
+	if _, only := TUIOnly[name]; !only || name == "ForJob" {
+		return false
+	}
+	for i := 0; i < min(t.NumIn(), 2); i++ {
+		if t.In(i).Kind() == reflect.Int {
+			return true
+		}
+	}
+	return false
 }
 
 // Through is a seam whose wired doors call current() at the moment of the

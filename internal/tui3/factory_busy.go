@@ -197,7 +197,7 @@ func factoryCostWord(usd float64) string {
 // seam's Refresh door, off the loop, and the note line says so until the floor
 // says the read is over ([app.factoryFoldBusy]).
 func (a *app) factoryReread(it factory.Item) tea.Cmd {
-	if a.factory.Refresh == nil {
+	if a.factory.Job(it.ID).Refresh == nil {
 		return nil
 	}
 	id := it.ID
@@ -209,7 +209,7 @@ func (a *app) factoryReread(it factory.Item) tea.Cmd {
 	// THE COST OF A READ IS THE FLOOR'S LAST PRICED READ: the door answers only
 	// whether it worked, and the snapshot carries what a read costs.
 	usd := a.fp.snap.LastReadCost
-	return a.factoryDo(func(s factory.Seam) error {
+	return a.factoryDoJob(id, func(s factory.Seam) error {
 		ctx, cancel := context.WithTimeout(context.Background(), factoryRefreshWait)
 		defer cancel()
 		return s.Refresh(ctx, id)
@@ -332,7 +332,7 @@ func (a *app) factoryReadLine(it factory.Item, measure int) string {
 		}
 		return fit(pal.accent(a.factorySpin())+" "+pal.dim(line), measure)
 	}
-	door := a.factory.Has("refresh")
+	door := a.factory.Job(it.ID).Has("refresh")
 	var parts []string
 	switch at := it.Triage.TriagedAt; {
 	case !at.IsZero() && !a.fp.snap.Now.IsZero():

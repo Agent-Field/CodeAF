@@ -137,7 +137,22 @@ func (a *app) factoryDo(act func(s factory.Seam) error, then func(err error)) te
 // factoryDoThen is [app.factoryDo] whose `then` hands the loop a command of
 // its own, for the save that arms a re-read (factory_settings.go).
 func (a *app) factoryDoThen(act func(s factory.Seam) error, then func(err error) tea.Cmd) tea.Cmd {
-	seam := a.factory
+	return a.factoryDoSeam(a.factory, act, then)
+}
+
+// factoryDoJob captures the available doors at the gesture. Their lease
+// guards refuse a call if the job moves before the ordered operation runs.
+func (a *app) factoryDoJob(id int, act func(s factory.Seam) error, then func(err error)) tea.Cmd {
+	return a.factoryDoSeam(a.factory.Job(id), act, func(err error) tea.Cmd {
+		if then != nil {
+			then(err)
+		}
+		return nil
+	})
+}
+
+// factoryDoSeam keeps the selected job doors through the off-loop operation.
+func (a *app) factoryDoSeam(seam factory.Seam, act func(s factory.Seam) error, then func(err error) tea.Cmd) tea.Cmd {
 	return a.offLoop(func() func(bool) tea.Cmd {
 		err := act(seam)
 		var snap factory.Snapshot
@@ -242,12 +257,18 @@ func (a *app) factorySteerable(it factory.Item) bool {
 	return false
 }
 
+// factoryCanPause includes the wire's explicit Hold door even when the local
+// Pause fallback is absent for a job running on another machine.
+func factoryCanPause(seam factory.Seam) bool {
+	return seam.Hold != nil || seam.Pause != nil
+}
+
 // factoryPauseKey is `space` on a running item: it pauses, and on a paused
 // one resumes, through the one Pause door. It answers false on any other
 // item, where `space` goes on meaning what it meant.
 func (a *app) factoryPauseKey() (tea.Cmd, bool) {
 	it, ok := a.factoryCursorItem()
-	if !ok || it.State != factory.StateRunning || !a.factory.Has("pause") {
+	if !ok || it.State != factory.StateRunning || !factoryCanPause(a.factory.Job(it.ID)) {
 		return nil, false
 	}
 	a.pageMsg = ""
@@ -385,7 +406,7 @@ func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// the item, never a change to it. On the item page it is the manager's
 	// chat in the center (factory_host.go), and on the floor, or a page too
 	// narrow to host it, the chat surface's own.
-	if ok && (k == "T" || k == "shift+t") && a.factory.Has("talk") {
+	if ok && (k == "T" || k == "shift+t") && a.factory.Job(it.ID).Has("talk") {
 		a.pageMsg = ""
 		if a.fp.open && a.factoryCanHost() {
 			return a.factoryTalkHere(it), true
@@ -405,7 +426,7 @@ func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// `u` READS THE ITEM AGAIN in every state, and `g` OPENS IT ON ITS FORGE
 	// wherever it has a page there and the seam has the door; on an item
 	// that lives only on this machine `g` keeps its sync meaning, below.
-	if k == "u" && a.factory.Has("refresh") {
+	if k == "u" && a.factory.Job(it.ID).Has("refresh") {
 		return a.factoryReread(it), true
 	}
 	// `p` IS `shape steps`: the manager's shaping turn, in its chat on the
@@ -414,7 +435,7 @@ func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.pageMsg = ""
 		return a.factoryShapeSteps(it), true
 	}
-	if k == "g" && it.URL != "" && it.Origin != factory.OriginTerminal && a.factory.Has("open") {
+	if k == "g" && it.URL != "" && it.Origin != factory.OriginTerminal && a.factory.Job(it.ID).Has("open") {
 		a.pageMsg = ""
 		return a.factoryOpenForge(it), true
 	}
@@ -481,7 +502,7 @@ func (a *app) factoryOnSettingsRow(it factory.Item) bool {
 
 // factoryNewKey is a key on a new (or dismissed) item: its card's keys.
 func (a *app) factoryNewKey(it factory.Item, k string) (tea.Cmd, bool) {
-	seam, id := a.factory, it.ID
+	seam, id := a.factory.Job(it.ID), it.ID
 	switch k {
 	case keyRun:
 		// `r` RUNS THE ITEM AS IT STANDS: every stage, holding at each
@@ -509,7 +530,7 @@ func (a *app) factoryNewKey(it factory.Item, k string) (tea.Cmd, bool) {
 	case "c":
 		if seam.Has("setcap") {
 			usd := factoryNextCap(it.Cap)
-			return a.factoryDo(func(s factory.Seam) error { return s.SetCap(id, usd) }, nil), true
+			return a.factoryDoJob(id, func(s factory.Seam) error { return s.SetCap(id, usd) }, nil), true
 		}
 	case "e":
 		return a.factoryCycleEffort(it)
@@ -527,7 +548,7 @@ func (a *app) factoryNewKey(it factory.Item, k string) (tea.Cmd, bool) {
 				return nil, true
 			}
 			on := !stages[at].On
-			return a.factoryDo(func(s factory.Seam) error { return s.SetStage(id, at, on) }, nil), true
+			return a.factoryDoJob(id, func(s factory.Seam) error { return s.SetStage(id, at, on) }, nil), true
 		}
 	case "s":
 		if seam.Has("addstage") {
@@ -543,7 +564,7 @@ func (a *app) factoryNewKey(it factory.Item, k string) (tea.Cmd, bool) {
 		if seam.Has("bankstages") {
 			repo := factoryRepoShort(it.Repo)
 			a.fp.act.doing = "banking…"
-			return a.factoryDo(func(s factory.Seam) error { return s.BankStages(id) }, func(err error) {
+			return a.factoryDoJob(id, func(s factory.Seam) error { return s.BankStages(id) }, func(err error) {
 				if err == nil {
 					a.factorySay("these stages are " + repo + "'s recipe now")
 				}
@@ -552,15 +573,15 @@ func (a *app) factoryNewKey(it factory.Item, k string) (tea.Cmd, bool) {
 	case "g":
 		if seam.Has("sync") && it.Origin == factory.OriginTerminal {
 			on := !it.Synced
-			return a.factoryDo(func(s factory.Seam) error { return s.Sync(id, on) }, nil), true
+			return a.factoryDoJob(id, func(s factory.Seam) error { return s.Sync(id, on) }, nil), true
 		}
 	case "a":
 		if seam.Has("askauthor") && len(nonEmpty(it.Triage.Questions)) > 0 {
-			return a.factoryDo(func(s factory.Seam) error { return s.AskAuthor(id) }, nil), true
+			return a.factoryDoJob(id, func(s factory.Seam) error { return s.AskAuthor(id) }, nil), true
 		}
 	case "d":
 		if seam.Has("dismiss") {
-			return a.factoryDo(func(s factory.Seam) error { return s.Dismiss(id) }, nil), true
+			return a.factoryDoJob(id, func(s factory.Seam) error { return s.Dismiss(id) }, nil), true
 		}
 	}
 	return nil, false
@@ -568,7 +589,7 @@ func (a *app) factoryNewKey(it factory.Item, k string) (tea.Cmd, bool) {
 
 // factoryStreamKey is a key on an item on a bench or waiting for one.
 func (a *app) factoryStreamKey(it factory.Item, k string) (tea.Cmd, bool) {
-	seam, id := a.factory, it.ID
+	seam, id := a.factory.Job(it.ID), it.ID
 	switch k {
 	case "x":
 		if seam.Has("stop") {
@@ -584,7 +605,7 @@ func (a *app) factoryStreamKey(it factory.Item, k string) (tea.Cmd, bool) {
 
 // factoryNeedsKey is a key on an item waiting on the person.
 func (a *app) factoryNeedsKey(it factory.Item, k string) (tea.Cmd, bool) {
-	seam, id := a.factory, it.ID
+	seam, id := a.factory.Job(it.ID), it.ID
 	switch k {
 	case "y", "n":
 		if seam.Has("answer") {
@@ -621,7 +642,7 @@ func (a *app) factoryNeedsKey(it factory.Item, k string) (tea.Cmd, bool) {
 // sign-off on a row not shown, in its own sentence (`#9 has a claim not
 // shown`), and that sentence is what the note line says.
 func (a *app) factoryLandedKey(it factory.Item, k string) (tea.Cmd, bool) {
-	seam, id := a.factory, it.ID
+	seam, id := a.factory.Job(it.ID), it.ID
 	switch k {
 	case "enter":
 		if failed := factoryFirstFailed(it); failed != "" {
@@ -721,7 +742,7 @@ func (a *app) factoryHabitYes() tea.Cmd {
 // factoryCycleEffort is `e`: the running stage's effort, or the first stage's
 // on an item that has not started, steps "" → cheap → strong → "".
 func (a *app) factoryCycleEffort(it factory.Item) (tea.Cmd, bool) {
-	if !a.factory.Has("seteffort") {
+	if !a.factory.Job(it.ID).Has("seteffort") {
 		return nil, false
 	}
 	at := factoryEffortStage(a.fp.snap, it)
@@ -730,7 +751,7 @@ func (a *app) factoryCycleEffort(it factory.Item) (tea.Cmd, bool) {
 		return nil, true
 	}
 	id, next := it.ID, factoryNextEffort(stages[at].Effort)
-	return a.factoryDo(func(s factory.Seam) error { return s.SetEffort(id, at, next) }, nil), true
+	return a.factoryDoJob(id, func(s factory.Seam) error { return s.SetEffort(id, at, next) }, nil), true
 }
 
 // factoryEffortStage is the stage `e` turns: the one behind the running phase,
@@ -881,10 +902,10 @@ func (a *app) factorySubmit(ask factoryAsk, words string) tea.Cmd {
 	if cmd, took := a.factorySettingsSubmit(ask, words); took {
 		return cmd
 	}
-	seam, id := a.factory, ask.id
+	seam, id := a.factory.Job(ask.id), ask.id
 	switch ask.kind {
 	case factoryAskStage:
-		return a.factoryDo(func(s factory.Seam) error { return s.AddStage(id, words) }, nil)
+		return a.factoryDoJob(id, func(s factory.Seam) error { return s.AddStage(id, words) }, nil)
 	case factoryAskSteer:
 		return a.factoryVerb(id, func(s factory.Seam) error { return s.Steer(id, words) }, func(it factory.Item) string {
 			return "steered " + it.Ref()
@@ -934,7 +955,7 @@ func (a *app) factorySubmit(ask factoryAsk, words string) tea.Cmd {
 func (a *app) factoryWords(id int, words string, seam factory.Seam) tea.Cmd {
 	it, ok := a.factoryItemByID(id)
 	if ok && it.Stream != nil && seam.Has("steer") {
-		return a.factoryDo(func(s factory.Seam) error { return s.Steer(id, words) }, nil)
+		return a.factoryDoJob(id, func(s factory.Seam) error { return s.Steer(id, words) }, nil)
 	}
 	usd, rounds, effort, rest := factory.LiftChips(words)
 	at := -1
@@ -949,7 +970,7 @@ func (a *app) factoryWords(id int, words string, seam factory.Seam) tea.Cmd {
 		kept = append(kept, "“"+rest+"”")
 	}
 	none := (usd == nil || !seam.Has("setcap")) && (effort == "" || at < 0 || !seam.Has("seteffort"))
-	return a.factoryDo(func(s factory.Seam) error {
+	return a.factoryDoJob(id, func(s factory.Seam) error {
 		if usd != nil && s.SetCap != nil {
 			if err := s.SetCap(id, *usd); err != nil {
 				return err
@@ -1075,7 +1096,7 @@ func (a *app) factoryAskLine(ask *factoryAsk, measure int) string {
 // Open door names the page, and the platform's opener (opener.go) opens it,
 // both off the loop. The note line says where it went, or why it did not.
 func (a *app) factoryOpenForge(it factory.Item) tea.Cmd {
-	open, id, ref := a.factory.Open, it.ID, it.Ref()
+	open, id, ref := a.factory.Job(it.ID).Open, it.ID, it.Ref()
 	return a.offLoop(func() func(bool) tea.Cmd {
 		url, err := open(id)
 		url = strings.TrimSpace(url)
@@ -1142,7 +1163,7 @@ func (a *app) factoryVerbRail(it factory.Item) []string {
 // (factory_verbs.go) all read, so the three cannot name different verbs for
 // one item.
 func (a *app) factoryVerbRows(it factory.Item) []factorySheetRow {
-	seam := a.factory
+	seam := a.factory.Job(it.ID)
 	var out []factorySheetRow
 	add := func(ok bool, key, word string) {
 		if ok {
@@ -1160,8 +1181,8 @@ func (a *app) factoryVerbRows(it factory.Item) []factorySheetRow {
 		add(seam.Has("stop"), keyStop, wordStop)
 		chat()
 		paused := it.Stream != nil && it.Stream.Paused
-		add(seam.Has("pause") && it.State == factory.StateRunning && !paused, keyPause, wordPause)
-		add(seam.Has("pause") && it.State == factory.StateRunning && paused, keyPause, wordResume)
+		add(factoryCanPause(seam) && it.State == factory.StateRunning && !paused, keyPause, wordPause)
+		add(factoryCanPause(seam) && it.State == factory.StateRunning && paused, keyPause, wordResume)
 		add(a.factorySteerable(it), keySteer, wordSteer)
 	case factory.StateNeedsYou:
 		yes, no := factoryYesNo(it)

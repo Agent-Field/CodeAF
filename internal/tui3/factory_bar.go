@@ -75,7 +75,7 @@ func (a *app) factoryControlOf(it factory.Item) factoryControl {
 	switch {
 	case a.factoryHeldAt(it) >= 0 && a.factory.Has("answer"):
 		return factoryControlContinue
-	case it.State == factory.StateRunning && a.factory.Has("pause"):
+	case it.State == factory.StateRunning && factoryCanPause(a.factory.Job(it.ID)):
 		if it.Stream != nil && it.Stream.Paused {
 			return factoryControlResume
 		}

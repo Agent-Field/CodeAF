@@ -366,7 +366,7 @@ func (a *app) factoryTLRecord(path string) (session.Record, bool) {
 // row, kind [factoryAskManager], drawn on the pane's last row with the draft
 // `esc` kept. A box that has them already keeps its words.
 func (a *app) factoryTLOpenBox(it factory.Item) {
-	if !a.factory.Has("talk") || a.factoryBoxFocused() {
+	if !a.factory.Job(it.ID).Has("talk") || a.factoryBoxFocused() {
 		return
 	}
 	tl := a.factoryTL(it)
@@ -387,7 +387,7 @@ func (a *app) factoryBoxFocused() bool {
 // the person to send there.
 func (a *app) factoryTimelineSend(id int, words string) tea.Cmd {
 	it, ok := a.factoryItemByID(id)
-	if !ok || !a.factory.Has("talk") {
+	if !ok || !a.factory.Job(it.ID).Has("talk") {
 		return nil
 	}
 	if !a.factory.Has("say") {

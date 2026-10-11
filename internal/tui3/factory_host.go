@@ -196,7 +196,7 @@ func (a *app) factoryManagerRow(it factory.Item) {
 // keys when it lands (`enter`, `T`); the cursor merely resting on the row
 // does not.
 func (a *app) factoryTalkFetch(it factory.Item, focus bool) tea.Cmd {
-	seam, id := a.factory, it.ID
+	seam, id := a.factory.Job(it.ID), it.ID
 	if seam.Talk == nil {
 		return nil
 	}
@@ -274,7 +274,7 @@ func (a *app) factoryTalkFetch(it factory.Item, focus bool) tea.Cmd {
 // at once, and so does one whose chat refused to open: the turn then runs
 // headless and lands in the conversation all the same.
 func (a *app) factoryAfterManager(it factory.Item, do func() tea.Cmd) tea.Cmd {
-	if !a.fp.open || !a.factory.Has("talk") || !a.factoryCanHost() {
+	if !a.fp.open || !a.factory.Job(it.ID).Has("talk") || !a.factoryCanHost() {
 		return do()
 	}
 	a.factoryManagerRow(it)
@@ -373,11 +373,11 @@ func (a *app) factoryHostSync() tea.Cmd {
 // asked anything, the first time the cursor rests on its manager row. nil on
 // every other row, and once asked.
 func (a *app) factoryTalkAuto() tea.Cmd {
-	if !a.at(pageFactory) || !a.fp.open || !a.factory.Has("talk") || !a.factoryCanHost() || a.fp.act.doing != "" {
+	if !a.at(pageFactory) || !a.fp.open || !a.factoryCanHost() || a.fp.act.doing != "" {
 		return nil
 	}
 	it, ok := a.factoryCursorItem()
-	if !ok || a.fp.host.talkAsked[it.ID] {
+	if !ok || !a.factory.Job(it.ID).Has("talk") || a.fp.host.talkAsked[it.ID] {
 		return nil
 	}
 	r, ok := a.factoryPageRowAt(it)

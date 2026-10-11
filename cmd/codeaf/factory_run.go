@@ -57,10 +57,12 @@ const factoryStageWall = 2 * time.Hour
 // factoryProcess is what this process built for the floor once: the manager's
 // shaping door every window's page uses, and the worker loop's stop.
 var factoryProcess struct {
-	once  sync.Once
-	mu    sync.Mutex
-	shape func(ctx context.Context, id int) (string, error)
-	stop  context.CancelFunc
+	once        sync.Once
+	mu          sync.Mutex
+	shape       func(ctx context.Context, id int) (string, error)
+	mirror      string
+	workerShape func(ctx context.Context, id int) (string, error)
+	stop        context.CancelFunc
 }
 
 // factoryShapeHere is this process's Shape door, nil before
@@ -104,6 +106,10 @@ func startFactoryWorker(st *store.Store, workspace, profileDir string, parent se
 		if err != nil {
 			return
 		}
+		setFactoryProcess(func() {
+			factoryProcess.mirror = mirror.Root()
+			factoryProcess.workerShape = factoryShapeDoor(mirror, workspace, profileDir, turns)
+		})
 		ctx, cancel := context.WithCancel(context.Background())
 		setFactoryProcess(func() { factoryProcess.stop = cancel })
 		r := buildFactoryRunner(mirror, st, workspace, profileDir, factoryStageMaker(st, workspace, profileDir, parent), turns)
@@ -114,6 +120,7 @@ func startFactoryWorker(st *store.Store, workspace, profileDir string, parent se
 			defer os.RemoveAll(mirror.Root())
 			factoryworker.Run(ctx, factoryworker.Options{
 				Dial: dial.dial, Keep: dial.keep, Attach: dial.attach(), Runner: r, Mirror: mirror, Slots: factoryBenches(),
+				LocalLease: factoryLocalLease(mirror),
 			})
 		})
 	})

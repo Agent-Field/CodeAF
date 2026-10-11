@@ -166,7 +166,7 @@ type factoryPageRow struct {
 // the actions included, and skip nothing.
 func (a *app) factoryItemRows(it factory.Item) []factoryPageRow {
 	rows := []factoryPageRow{{kind: factoryPageIssue, at: -1}}
-	if a.factory.Has("talk") {
+	if a.factory.Job(it.ID).Has("talk") {
 		rows = append(rows, factoryPageRow{kind: factoryPageManager, at: -1})
 	}
 	stages := a.factoryItemStages(it)
@@ -310,7 +310,7 @@ func (a *app) factoryOpenItem() (tea.Cmd, bool) {
 // factoryShapeable says whether `shape steps` works on item it here: the
 // seam has the Shape door and the item has steps still to come.
 func (a *app) factoryShapeable(it factory.Item) bool {
-	if !a.factory.Has("shape") {
+	if !a.factory.Job(it.ID).Has("shape") {
 		return false
 	}
 	switch it.State {
@@ -337,7 +337,7 @@ func (a *app) factoryShapeSteps(it factory.Item) tea.Cmd {
 // the note line says the door's line: what the manager set, `the recipe
 // stands`, or why the turn did not happen.
 func (a *app) factoryShapeNow(id int) tea.Cmd {
-	shape := a.factory.Shape
+	shape := a.factory.Job(id).Shape
 	if shape == nil || a.fp.shaping[id] {
 		return nil
 	}
@@ -562,7 +562,7 @@ func (a *app) factoryFocusCenter() bool {
 	if !ok {
 		return false
 	}
-	if r, ok := a.factoryPageRowAt(it); ok && r.kind == factoryPageManager && a.factory.Has("talk") {
+	if r, ok := a.factoryPageRowAt(it); ok && r.kind == factoryPageManager && a.factory.Job(it.ID).Has("talk") {
 		a.pageMsg = ""
 		a.factoryTLOpenBox(it)
 		return true
@@ -585,9 +585,9 @@ const (
 // it, so they cannot disagree.
 func (a *app) factoryIssueEnter(it factory.Item) factoryIssueDoor {
 	switch {
-	case a.factory.Has("talk"):
+	case a.factory.Job(it.ID).Has("talk"):
 		return factoryIssueTalk
-	case it.URL != "" && it.Origin != factory.OriginTerminal && a.factory.Has("open"):
+	case it.URL != "" && it.Origin != factory.OriginTerminal && a.factory.Job(it.ID).Has("open"):
 		return factoryIssueForge
 	}
 	return factoryIssueNone
@@ -1085,7 +1085,7 @@ func (a *app) factoryItemCrumbsAt(it factory.Item, x0, measure int) string {
 // factoryRefOpens says whether `g` opens the item on github: it has a page
 // there, it did not start on this machine, and the seam has the door.
 func (a *app) factoryRefOpens(it factory.Item) bool {
-	return it.URL != "" && it.Origin != factory.OriginTerminal && a.factory.Has("open")
+	return it.URL != "" && it.Origin != factory.OriginTerminal && a.factory.Job(it.ID).Has("open")
 }
 
 // factoryCrumbPress is a press on a crumb: `Factory` puts the floor back as

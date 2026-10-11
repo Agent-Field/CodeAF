@@ -365,7 +365,7 @@ func factoryLaunchSeam(st *store.Store, workspace, profileDir string) (factory.S
 		return local, nil
 	}
 	conn := newFactoryConnection(func() (factoryTarget, error) { return resolveFactory(st, local) })
-	return factoryHere(api.Compose(conn.remote(), local), workspace), conn.address
+	return factoryHere(conn.compose(local, st, workspace, profileDir), workspace), conn.address
 }
 
 // factoryAttachedSeam is the page's seam for a --host or --at window: the
@@ -378,9 +378,10 @@ func factoryAttachedSeam(profileDir string) (factory.Seam, func() string) {
 	if !ok {
 		return factory.Seam{}, nil
 	}
-	local := factorySeam(v3Factory(), "", profileDir)
+	st := v3Factory()
+	local := factorySeam(st, "", profileDir)
 	conn := newFactoryConnection(func() (factoryTarget, error) {
 		return factoryTarget{url: a.URL, token: a.Token}, nil
 	})
-	return api.Compose(conn.remote(), local), conn.address
+	return conn.compose(local, st, "", profileDir), conn.address
 }

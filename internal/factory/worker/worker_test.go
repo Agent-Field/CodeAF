@@ -28,8 +28,12 @@ type rig struct {
 	run   *run.Runner
 }
 
-func newRig(t *testing.T) rig {
+func newRig(t *testing.T, localLease ...func(string, api.WorkerLease)) rig {
 	t.Helper()
+	var keepLocal func(string, api.WorkerLease)
+	if len(localLease) > 0 {
+		keepLocal = localLease[0]
+	}
 	st, err := store.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -77,6 +81,7 @@ func newRig(t *testing.T) rig {
 			Attach:      api.WorkerAttach{Name: "laptop", Handle: "me", TakesUnassigned: map[string]bool{lease.EveryRepo: true}},
 			Runner:      r,
 			Mirror:      mirror,
+			LocalLease:  keepLocal,
 			Slots:       2,
 			ReportEvery: 20 * time.Millisecond,
 			BeatEvery:   20 * time.Millisecond,
@@ -84,6 +89,48 @@ func newRig(t *testing.T) rig {
 	}()
 	t.Cleanup(func() { cancel(); <-done })
 	return rig{st: st, floor: client.Open(server.URL, "").Seam(), doors: seam, run: r}
+}
+
+func TestWorkerLocalReceiptFollowsPullHeartbeatAndRelease(t *testing.T) {
+	type receipt struct {
+		base string
+		held api.WorkerLease
+	}
+	receipts := make(chan receipt, 100)
+	g := newRig(t, func(base string, held api.WorkerLease) { receipts <- receipt{base, held} })
+	id := g.add(t, factory.Stage{Name: factory.ApproveName, Kind: factory.StageGate, On: true}, check("true"))
+	if err := g.floor.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	next := func() receipt {
+		t.Helper()
+		select {
+		case r := <-receipts:
+			return r
+		case <-time.After(5 * time.Second):
+			t.Fatal("the worker did not update its local lease receipt")
+			return receipt{}
+		}
+	}
+	pulled := next()
+	if pulled.base == "" || pulled.held.ID == "" || pulled.held.Job != id || pulled.held.Worker == "" {
+		t.Fatalf("pull receipt = %+v", pulled)
+	}
+	renewed := next()
+	if renewed.base != pulled.base || renewed.held.ID != pulled.held.ID || !renewed.held.ExpiresAt.After(pulled.held.ExpiresAt) {
+		t.Fatalf("renewed receipt = %+v, pull = %+v", renewed, pulled)
+	}
+	if err := g.floor.Stop(id); err != nil {
+		t.Fatal(err)
+	}
+	for r := next(); ; r = next() {
+		if r.held.ID == "" {
+			if r.held.Job != id || r.base != pulled.base {
+				t.Fatalf("release receipt = %+v", r)
+			}
+			break
+		}
+	}
 }
 
 func (g rig) add(t *testing.T, stages ...factory.Stage) int {

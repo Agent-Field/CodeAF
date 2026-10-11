@@ -91,3 +91,52 @@ func TestThroughFollowsTheCurrentSeam(t *testing.T) {
 		t.Fatal("a door the current seam lacks answered no error")
 	}
 }
+
+func TestComposeJobsKeepsRemoteJobDoorsOffTheLocalFloor(t *testing.T) {
+	var said string
+	local, remote := marked("local floor", &said), marked("remote", &said)
+	here := false
+	workers := map[int]factory.Seam{7: marked("worker mirror", &said)}
+	seam := api.ComposeJobs(remote, local, func() bool { return here }, func(id int) factory.Seam { return workers[id] })
+	// EVERY JOB-ID DOOR IS CHECKED, including doors added after this test.
+	for _, id := range []int{0, 1, 7} {
+		v := reflect.ValueOf(seam.Job(id))
+		for i := 0; i < v.NumField(); i++ {
+			f := v.Type().Field(i)
+			if _, only := api.TUIOnly[f.Name]; !only || f.Name == "ForJob" {
+				continue
+			}
+			job := false
+			for j := 0; j < min(f.Type.NumIn(), 2); j++ {
+				job = job || f.Type.In(j).Kind() == reflect.Int
+			}
+			if !job {
+				continue
+			}
+			if got := v.Field(i).IsNil(); got != (id != 7) {
+				t.Errorf("job %d: %s nil = %v", id, f.Name, got)
+			}
+		}
+	}
+	if err := seam.Job(1).Launch(1); err != nil || said != "remote" {
+		t.Fatalf("wired launch = %q, %v", said, err)
+	}
+	if err := seam.Job(7).SetCap(7, 8); err != nil || said != "worker mirror" {
+		t.Fatalf("held cap = %q, %v", said, err)
+	}
+	cap := seam.Job(7).SetCap
+	delete(workers, 7)
+	said = ""
+	if err := cap(7, 9); err == nil || said != "" {
+		t.Fatalf("released cap = %q, %v; want a refusal without a local call", said, err)
+	}
+	here = true
+	if err := seam.Job(1).SetCap(1, 10); err != nil || said != "local floor" {
+		t.Fatalf("loopback cap = %q, %v", said, err)
+	}
+	here = false
+	said = ""
+	if err := cap(1, 11); err == nil || said != "" {
+		t.Fatalf("a captured door crossed floors: %q, %v", said, err)
+	}
+}

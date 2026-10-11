@@ -36,6 +36,9 @@ type Options struct {
 	// Runner runs the jobs over Mirror.
 	Runner *run.Runner
 	Mirror *store.Store
+	// LocalLease keeps this machine's receipt of a pulled or renewed lease.
+	// An empty lease removes the receipt before the mirror is put away.
+	LocalLease func(base string, lease api.WorkerLease)
 	// Slots is how many jobs run at once; each slot is its own worker on the
 	// factory, because a lease is one job for one worker.
 	Slots int
@@ -142,12 +145,14 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 	it := api.ToItem(pulled.Job)
 	j := &job{o: o, w: w, lease: pulled.Lease.ID, id: it.ID}
 	defer os.Remove(o.Mirror.ItemPath(it.ID))
+	defer j.keepLocal(api.WorkerLease{Job: it.ID})
 	pulledTalk, pulledNotes := it.Talk, it.Notes
 	start := stand(&it, pulled.Signals)
 	if err := o.Mirror.Save(it); err != nil {
 		j.refuse(ctx, err)
 		return
 	}
+	j.keepLocal(pulled.Lease)
 	if err := start(o.Runner, it.ID); err != nil {
 		j.refuse(ctx, err)
 		return
@@ -247,6 +252,9 @@ func (j *job) beat(ctx context.Context) bool {
 	if gone(err) {
 		return false
 	}
+	if err == nil {
+		j.keepLocal(hb.Lease)
+	}
 	r := j.o.Runner
 	for _, s := range hb.Signals {
 		switch s.Verb {
@@ -264,9 +272,17 @@ func (j *job) beat(ctx context.Context) bool {
 // drop lets the job go here: the factory stopped it, or this process is
 // ending and the lease will expire into the queue for another worker.
 func (j *job) drop() {
+	j.keepLocal(api.WorkerLease{Job: j.id})
 	_ = j.o.Runner.Stop(j.id)
 	for deadline := time.Now().Add(5 * time.Second); j.o.Runner.Running(j.id) && time.Now().Before(deadline); {
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// keepLocal records only leases the factory actually granted or renewed.
+func (j *job) keepLocal(held api.WorkerLease) {
+	if j.o.LocalLease != nil {
+		j.o.LocalLease(j.w.Base(), held)
 	}
 }
 

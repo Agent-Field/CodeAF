@@ -12,6 +12,11 @@ import "context"
 // A nil func is a door that does not exist, and the surface draws no key for
 // it: a capability that cannot work is absent, not broken.
 type Seam struct {
+	// ForJob selects this job's local capabilities without doing I/O. A
+	// remote floor has no local job doors unless a worker here holds it.
+	// Nil keeps the ordinary seam; the returned seam still reads the remote floor.
+	ForJob func(id int) Seam
+
 	// Load copies the floor. It is the only read.
 	Load func() (Snapshot, error)
 
@@ -192,6 +197,15 @@ type Seam struct {
 	// RecipeNotNow puts the offer away for repo for good: the no is kept by
 	// the store, so it is asked once.
 	RecipeNotNow func(repo string) error
+}
+
+// Job answers the doors available for id, retaining the ordinary seam when
+// its capabilities do not depend on where the job runs.
+func (s Seam) Job(id int) Seam {
+	if s.ForJob != nil {
+		return s.ForJob(id)
+	}
+	return s
 }
 
 // ShapeAlready is what [Seam.Shape] answers while a shaping turn for the item
