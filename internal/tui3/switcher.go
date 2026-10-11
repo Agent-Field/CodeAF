@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/reportline"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
 )
@@ -383,12 +384,14 @@ func switcherStandingNote(view StandingItemView) string {
 // the word back off, because there the panel's own heading already says it.
 const switcherAsksWord = "asks: "
 
+// switcherFirstLine is the first line of a text that says something — a question,
+// a reason, an activity note, or a task's outcome. It reads through
+// reportline.FirstProse (#931), so a report that opens with a fenced block gives
+// its first prose line rather than the row of backticks around it, the same
+// reading the landed card and the tasks table take; a leading fence marker says
+// nothing in any of these contexts.
 func switcherFirstLine(s string) string {
-	s = strings.TrimSpace(s)
-	if at := strings.IndexByte(s, '\n'); at >= 0 {
-		s = s[:at]
-	}
-	return strings.TrimSpace(s)
+	return reportline.FirstProse(s)
 }
 
 func switcherPlural(n int, one, many string) string {
