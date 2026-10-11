@@ -91,6 +91,12 @@ func linkPlaywright(t *testing.T, modules string) {
 }
 
 func TestSettingsPlaywright(t *testing.T) {
+	// A BROWSER SMOKE IS OPT-IN. A clean checkout has no node_modules and CI
+	// runs no browser, so the ordinary suite must pass without either; the
+	// smoke runs only when someone asks for it with CODEAF_WEB_SMOKE=1.
+	if os.Getenv("CODEAF_WEB_SMOKE") != "1" {
+		t.Skip("browser smoke: set CODEAF_WEB_SMOKE=1 to run it")
+	}
 	if _, err := exec.LookPath("google-chrome"); err != nil {
 		if _, err := exec.LookPath("google-chrome-stable"); err != nil {
 			t.Skip("settings smoke needs google-chrome")
