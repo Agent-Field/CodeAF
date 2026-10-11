@@ -3,8 +3,9 @@
 import { toggleSelection } from '../selection.ts';
 import type { TabView } from '../view-state.ts';
 import type { TabKind } from '../kinds/types.ts';
-import { fitIndex, initialWorkspace, insertAt, mapContent, newConversationTitle, newTabTitle, newTab, normalize, pinnedCount, rankOf, tabHolding, titleRank, visibleTabs } from '../helpers.ts';
-import type { ClosedPlace, ClosedTab, Tab, TabGroup, WorkspaceState } from '../types.ts';
+import { fitIndex, initialWorkspace, insertAt, mapContent, newConversationTitle, newTabTitle, newTab, normalize, panesOf, pinnedCount, rankOf, tabHolding, titleRank, visibleTabs } from '../helpers.ts';
+import { openAsTab, releaseRoute } from '../openAsTab.ts';
+import type { ClosedPlace, ClosedTab, Pane, Tab, TabGroup, WorkspaceState } from '../types.ts';
 import { isPlaceHome } from './home.ts';
 
 export type TabAction =
@@ -14,7 +15,8 @@ export type TabAction =
   | { type: 'open'; tab: Tab; background: boolean; at?: number }
   /**
    * Opening a task. `from` is the pane it was opened from: the task joins that tab's group (Shell, "Tasks opened from a
-   * conversation join its group automatically"), at the end of the group.
+   * conversation join its group automatically"), at the end of the group. When that pane is already drilled into
+   * this task, the new tab takes the drill and the source pops back to the route underneath.
    */
   | { type: 'open-task'; tab: Tab; background: boolean; from?: string }
   /** `id` is a tab id, or a pane id inside a split (which also focuses that pane). */
@@ -43,6 +45,12 @@ export type TabAction =
   | { type: 'reorder'; id: string; targetId: string; after?: boolean };
 
 const uncollapse = (state: WorkspaceState, groupId?: string) => state.groups.map(g => (g.id === groupId ? { ...g, collapsed: false } : g));
+
+/** The pane `id` names, whether it is a plain tab or one side of a split. */
+function paneById(state: WorkspaceState, id: string): Pane | undefined {
+  const holder = tabHolding(state, id);
+  return holder ? panesOf(holder).find(pane => pane.id === id) : undefined;
+}
 
 /** Where a tab stands, as its neighbours and its group, for Reopen. */
 function placeOf(state: WorkspaceState, tab: Tab, group = state.groups.find(g => g.id === tab.groupId)): ClosedPlace {
@@ -88,11 +96,23 @@ export function reduceTabs(state: WorkspaceState, action: { type: string }): Wor
     }
     case 'open':
     case 'open-task': {
-      const opener = a.type === 'open-task' && a.from ? tabHolding(state, a.from) : undefined;
+      let base = state;
+      let opening = a.tab;
+      if (a.type === 'open-task' && a.from && a.tab.route?.taskId) {
+        const source = paneById(state, a.from);
+        const placed = openAsTab(source, a.tab.route.taskId);
+        const release = placed.release;
+        // Same drill: the new tab keeps the history below the conversation, and this pane pops.
+        if (release && source) {
+          base = mapContent(state, source.id, pane => ({ ...pane, route: releaseRoute(release) }));
+          opening = { ...a.tab, route: placed.route };
+        }
+      }
+      const opener = a.type === 'open-task' && a.from ? tabHolding(base, a.from) : undefined;
       // The arrange law gathers a member at the end of its group's run, so joining is only taking the group's id.
-      const tab = opener?.groupId && !opener.pinned ? { ...a.tab, pinned: false, groupId: opener.groupId } : a.tab;
-      const at = a.type === 'open' && a.at !== undefined ? fitIndex(state.tabs, tab, a.at) : state.tabs.length;
-      return { ...state, tabs: insertAt(state.tabs, tab, at), activeId: a.background ? state.activeId : tab.id, recentIds: a.background ? [...state.recentIds, tab.id] : [tab.id, ...state.recentIds] };
+      const tab = opener?.groupId && !opener.pinned ? { ...opening, pinned: false, groupId: opener.groupId } : opening;
+      const at = a.type === 'open' && a.at !== undefined ? fitIndex(base.tabs, tab, a.at) : base.tabs.length;
+      return { ...base, tabs: insertAt(base.tabs, tab, at), activeId: a.background ? base.activeId : tab.id, recentIds: a.background ? [...base.recentIds, tab.id] : [tab.id, ...base.recentIds] };
     }
     case 'pick': {
       if (!state.tabs.some(t => t.id === a.id)) return state;
