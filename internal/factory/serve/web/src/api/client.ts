@@ -1,4 +1,4 @@
-import type { ApiError, Queue } from "./types"
+import type { ApiError, Approved, Job, Queue, Thread } from "./types"
 
 // The API is same-origin at /v1 (ARCHITECTURE §7). Every failure, whether the
 // server's {error} or a network fault, reaches the page as one FactoryError
@@ -41,6 +41,13 @@ function post(path: string, body: unknown = {}) {
 
 export const api = {
   queue: () => request<Queue>("/queue"),
-  approve: (id: number) => post(`/jobs/${id}/approve`),
+  job: (id: number) => request<Job>(`/jobs/${id}`),
+  thread: (id: number) => request<Thread>(`/jobs/${id}/thread`),
+  // The approval is recorded before it acts; the response names that event.
+  approve: (id: number) => post(`/jobs/${id}/approve`) as Promise<Approved>,
+  requestChanges: (id: number, words: string) => post(`/jobs/${id}/request_changes`, { words }),
+  recheck: (id: number) => post(`/jobs/${id}/recheck`),
+  drop: (id: number) => post(`/jobs/${id}/drop`),
+  reply: (id: number, words: string) => post(`/jobs/${id}/reply`, { words }),
   answer: (id: number, answer: { yes: boolean } | { words: string }) => post(`/jobs/${id}/answer`, answer),
 }

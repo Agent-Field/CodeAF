@@ -302,6 +302,16 @@ export interface Message {
   text: string
 }
 
+/** `GET /v1/jobs/{id}/thread`: the job's one manager thread. */
+export interface Thread extends Envelope {
+  messages: Message[]
+}
+
+/** `POST /v1/jobs/{id}/approve`: the audit event the approval was recorded as. */
+export interface Approved extends Envelope {
+  event: string
+}
+
 export interface Event {
   id: string
   at: string

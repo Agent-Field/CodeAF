@@ -1,15 +1,11 @@
-import { BrowserRouter, Route, Routes, useParams } from "react-router"
+import { BrowserRouter, Route, Routes } from "react-router"
 
 import { QueueProvider } from "@/api/queue"
 import { Layout } from "@/components/layout"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { Coming } from "@/pages/coming"
+import { JobPage } from "@/pages/job"
 import { QueuePage } from "@/pages/queue"
-
-function JobPage() {
-  const { id } = useParams()
-  return <Coming title={`Job ${id}`} what="The job brief: steps, results, claims, questions and the approve." />
-}
 
 // Paths are real URLs: the factory answers any non-/v1 path with this page,
 // so a link to /jobs/12 opens straight onto that job.
