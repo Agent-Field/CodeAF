@@ -62,6 +62,7 @@ var Lost = map[string]string{
 func FromItem(it factory.Item) Job {
 	j := Job{
 		ID: it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
+		Publish: it.Publish, CommentURL: it.CommentURL,
 		State: stateOut[it.State], Ready: it.State == factory.StateLanded, Gate: gate(it),
 		AssignedTo:       it.Person(),
 		AskedFirstReason: it.AskedFirstReason,
@@ -100,6 +101,7 @@ func ToItem(j Job) factory.Item {
 	}
 	it := factory.Item{
 		ID: j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL,
+		Publish: j.Publish, CommentURL: j.CommentURL,
 		WorktreeMachine: d.WorktreeMachine, Publishing: d.Publishing,
 		State: stateIn(j), Created: j.CreatedAt,
 		Product: d.Product, Places: d.Places, Body: d.Body, Author: d.Author,

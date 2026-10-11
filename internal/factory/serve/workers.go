@@ -256,18 +256,22 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 			return run.FinishReport(it, state, now)
 		}
 		// A WORKER NEVER APPROVES: done as shipped is a publish only beside
-		// the job's recorded approval and a reported pull request; anything
+		// the job's recorded approval and a reported PR or comment; anything
 		// else is the proof gate's to decide, as it always has been.
 		trailer := h.approval(r.Context(), it.ID)
-		if trailer == "" || it.PullRequest == nil {
+		if trailer == "" || (it.PullRequest == nil && it.CommentURL == "") {
 			return run.FinishReport(it, state, now)
 		}
 		if err := run.ShipPublished(it, now); err != nil {
 			return err
 		}
-		// The pull request is already out, so a record that cannot take the
+		// The approved proof is already out, so a record that cannot take the
 		// line does not strand the job's lease.
-		_, _ = h.config.Record.Append(r.Context(), record.Event{Kind: record.Posted, Job: it.ID, Handle: run.TrailerHandle(trailer), Cost: jobCost(*it), Detail: "pr · " + it.PullRequest.URL})
+		detail := "comment · " + it.CommentURL
+		if it.PullRequest != nil {
+			detail = "pr · " + it.PullRequest.URL
+		}
+		_, _ = h.config.Record.Append(r.Context(), record.Event{Kind: record.Posted, Job: it.ID, Handle: run.TrailerHandle(trailer), Cost: jobCost(*it), Detail: detail})
 		return nil
 	})
 }

@@ -1781,13 +1781,15 @@ The worker that takes it commits everything left in the item's worktree as one c
 the item's title, a blank line, `Factory-Approval: evt_… @handle` — pushes the item's
 branch (`factory/<number>-<slug>`) to `origin` with your connected GitHub token, never
 with force, and opens the pull request into the default branch. The body is `Closes #12.`
-for an issue, `Proof · N of M claims shown`, one `✓`/`✕` line per claim, and the trailer
+for an issue with new commits, `Proof · N of M claims shown`, one `✓`/`✕` line per claim, and the trailer
 as its last line. The item becomes shipped with its pull request (`pr` on the wire), and
 the record says `posted · pr · <url>`. A pull request already open from that branch is
 reused, not opened twice.
 
 **A pull request item** is not pushed to: approving it posts one comment on that pull
 request with the same body and trailer, and the item's `pr` is that pull request.
+
+## publishing failures, approval consent and the worker machine
 
 **Never without consent.** An approve with no recorded approval publishes nothing and
 says `job requires a recorded approval before publishing`. A push or a write that fails
@@ -1798,6 +1800,16 @@ that machine, including a new process or another slot there. While queued it say
 `waiting for <machine>` (or `publishing · waiting for <machine>` after approval).
 If that machine is offline, the job waits for it; another machine never takes it.
 The TUI says `publishing` between approval and the pull request, then `shipped`.
+
+## no diff at the proof gate — approve with an issue comment
+
+If the worktree is clean and its branch has no commits beyond
+the default branch, approving posts the proof summary as a comment on the issue,
+with `Factory-Approval: evt_… @handle` as its last line. Nothing is pushed and no
+pull request is opened. The proof gate says `Approve → comment on #N`; the wire
+says `publish: "comment"` instead of `publish: "pr"`. The job becomes done with
+`pr: null` and `comment: "<comment url>"`, and the record says `posted · comment · <url>`.
+A clean worktree with commits of its own still publishes a pull request.
 
 ## factory HTTP approve — plan approval, proof approval and the event receipt
 
@@ -1875,7 +1887,8 @@ open question with its step, subject and who it is routed to, and a line to
 answer it. The codeaf thread shows the job's manager conversation and takes a
 one-shot reply; deep steering stays in the TUI. Cost lists each step and the
 total. A bar at the bottom holds `Approve` (its words say what it does, such as
-`Approve plan → continue to write` or `Approve → open pull request`; dimmed
+`Approve plan → continue to write`, `Approve → open pull request` or
+`Approve → comment on #N`; dimmed
 unless an approve waits), `Request changes` (asks for words), `Re-run checks`
 and `Drop`, each confirmed in a box. A taken approve shows `Approved · recorded
 as evt_…`; a refused verb shows the factory's sentence.
@@ -2004,7 +2017,7 @@ queue. A renewed hold keeps its id; a new hold gets a different id. Another
 worker's hold answers HTTP 403 with `lease belongs to another worker`; an expired
 or completed hold answers HTTP 409 with `lease is no longer live`.
 
-## factory HTTP worker reports — step results, logs, cost, claims, questions and PR
+## factory HTTP worker reports — step results, logs, cost, claims, questions and published receipts
 
 `POST /v1/workers/leases/{id}/report` takes an incremental JSON object:
 
@@ -2014,7 +2027,9 @@ or completed hold answers HTTP 409 with `lease is no longer live`.
 
 Every field is optional. Cost is newly incurred dollars, added once per report;
 a step result's cost is descriptive and is not added again. Send each increment
-once. Log lines are stamped by the factory and keep the runner's newest 400 lines.
+once. Worker reports also carry `publish: "pr"` or `publish: "comment"`; a published
+issue comment is reported as `comment: "<comment url>"` with no PR.
+Log lines are stamped by the factory and keep the runner's newest 400 lines.
 Step results keep its output limit of 16 KiB, notes, findings, exit status, claims
 and chat id. Claims from a proof step join the proof sheet; policy evidence joins
 the policy sheet. Top-level claims merge by their text. Reports cannot answer an
@@ -2042,7 +2057,7 @@ your approval, or a clean proof with no approve step finishes automatically.
 requires a question already on the job. `backlog` and `dropped` report interrupted
 or dropped work. `{"state":"done"}` is accepted for clean proof with no approve
 step, or for a published job: one with a recorded approval and a reported pull
-request, which ships and records `posted`. Otherwise it answers HTTP 400 with
+request or issue comment URL, which ships and records `posted`. Otherwise it answers HTTP 400 with
 `job requires proof approval`.
 Success answers HTTP 200 with the factory identity. Completed holds reject later
 heartbeats and reports. Every `codeaf` speaks this protocol as its worker loop.
@@ -2089,7 +2104,7 @@ Be plain about this when asked:
 - **The day rail stops launches, not running items.** A job pulled past it goes back to
   backlog with the reason on its log; an item already running goes on.
 - **Only an approval or a post stage writes to GitHub.** Approving a landed item opens its
-  pull request (see approving at the proof gate publishes); a post stage writes a comment,
+  pull request or posts proof-only work as an issue comment (see approving at the proof gate publishes); a post stage writes a comment,
   labels, a close or a pull request, only what the recipe's policy allows, and only after
   the job's approval is recorded.
 - **The diff does not open yet.** `d` on a landed item says where it will be.

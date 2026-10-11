@@ -14,6 +14,8 @@ type RunReport struct {
 	Question     *Asked
 	QuestionKind string
 	PR           *PullRequest
+	Publish      string
+	CommentURL   string
 	// Talk is the job's manager conversation, once the worker made it.
 	Talk string
 	// Notes are sentences the run added to the job's notes, oldest first.

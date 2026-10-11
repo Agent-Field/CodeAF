@@ -18,7 +18,23 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 	if it.State != factory.StateRunning && it.State != factory.StateNeedsYou {
 		return fmt.Errorf("job is no longer running")
 	}
+	if report.PR != nil && report.CommentURL != "" {
+		return fmt.Errorf("publish reports either a pr or a comment")
+	}
 	ensureStream(it, now)
+	if report.Publish != "" {
+		if report.Publish != "pr" && report.Publish != "comment" {
+			return fmt.Errorf("publish must be pr or comment")
+		}
+		it.Publish = report.Publish
+	}
+	if report.CommentURL != "" {
+		if strings.TrimSpace(report.CommentURL) == "" {
+			return fmt.Errorf("comment requires a url")
+		}
+		it.CommentURL = report.CommentURL
+		it.PullRequest = nil
+	}
 	if err := applyPipeline(it, report.Pipeline); err != nil {
 		return err
 	}
@@ -124,6 +140,7 @@ func reportPR(it *factory.Item, receipt *factory.PullRequest) error {
 	}
 	pr := *receipt
 	it.PullRequest = &pr
+	it.CommentURL = ""
 	return nil
 }
 

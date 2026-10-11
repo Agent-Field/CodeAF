@@ -56,6 +56,13 @@ export function JobHeader({ job }: { job: Job }) {
         )}
         {job.asked_first_reason && <p data-testid="asked-first">asked first: {job.asked_first_reason}</p>}
         {job.assigned_to && <p data-testid="assigned-to">assigned to @{job.assigned_to}</p>}
+        {job.comment && (
+          <p data-testid="comment-line">
+            <a className="underline" href={job.comment} target="_blank" rel="noopener noreferrer">
+              Proof comment on #{job.number}
+            </a>
+          </p>
+        )}
         {job.pr && (
           <p data-testid="pr-line">
             <a className="underline" href={job.pr.url} target="_blank" rel="noopener noreferrer">

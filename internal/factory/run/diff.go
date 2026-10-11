@@ -39,6 +39,12 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 		pr := *cur.PullRequest
 		r.PR = &pr
 	}
+	if cur.Publish != prev.Publish {
+		r.Publish = cur.Publish
+	}
+	if cur.CommentURL != prev.CommentURL {
+		r.CommentURL = cur.CommentURL
+	}
 	if strings.TrimSpace(cur.Talk) != strings.TrimSpace(prev.Talk) {
 		r.Talk = cur.Talk
 	}

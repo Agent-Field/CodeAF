@@ -212,6 +212,22 @@ func TestWorkerAttachPullHeartbeatReportAndDone(t *testing.T) {
 	f.request(t, "POST", endpoint+"/report", first.Credential, report, 409, nil)
 }
 
+// A receipt alone never replaces the person's recorded proof approval.
+func TestCommentReceiptCannotApproveProof(t *testing.T) {
+	f := workerSetup(t)
+	job := f.add(t, "sam")
+	worker := f.attach(t, "sam")
+	pulled := f.pull(t, worker)
+	endpoint := "/v1/workers/leases/" + pulled.Lease.ID
+	report := api.WorkerReport{Publish: "comment", CommentURL: "https://github.com/owner/repo/issues/12#issuecomment-7"}
+	f.request(t, "POST", endpoint+"/report", worker.Credential, report, 200, nil)
+	f.request(t, "POST", endpoint+"/done", worker.Credential, api.WorkerDone{State: api.StateDone}, 400, nil)
+	it, err := f.st.Get(job.ID)
+	if err != nil || it.State == factory.StateShipped {
+		t.Fatalf("an unapproved comment shipped: %+v, error %v", it, err)
+	}
+}
+
 func TestWorkerDiffReportsOneQuestionOnTheWire(t *testing.T) {
 	for _, kind := range []string{factory.QKindApprove, "step", "cap", ""} {
 		t.Run("kind="+kind, func(t *testing.T) {

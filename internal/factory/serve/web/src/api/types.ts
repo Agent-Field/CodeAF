@@ -145,7 +145,9 @@ export interface Job {
   questions?: Question[]
   cost: number
   created_at: string
-  pr?: PR
+  pr: PR | null
+  publish?: "pr" | "comment"
+  comment?: string
   desk?: JobDesk
 }
 

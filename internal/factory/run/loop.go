@@ -1215,9 +1215,14 @@ func loopFirstLine(s string) string {
 // approve step ([factory.HasApprove]) and a proof sheet with every claim
 // shown ships itself: that is a banked habit. No sheet is no green proof.
 func (lp *floorLoop) land(c *loopCtl) {
+	mode := ""
+	if it, err := lp.r.opts.Store.Get(c.id); err == nil {
+		mode = lp.r.publishPreview(it)
+	}
 	now := lp.r.now()
 	shipped := false
 	err := lp.move(c, "", EventLanded, "landed", func(it *factory.Item) error {
+		it.Publish = mode
 		shipped = landItem(it, now)
 		return nil
 	})

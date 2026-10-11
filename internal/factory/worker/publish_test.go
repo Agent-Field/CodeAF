@@ -2,10 +2,13 @@ package worker_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -16,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/client"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
+	"github.com/Agent-Field/codeaf/internal/factory/serve"
 )
 
 // pullSource is the forge, faked: it keeps what was written and answers a
@@ -33,6 +37,9 @@ func (s *pullSource) Write(_ context.Context, a factory.Action) (factory.Receipt
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.got = append(s.got, a)
+	if a.Verb == "comment" {
+		return factory.Receipt{URL: "https://github.com/acme/api/issues/12#issuecomment-7"}, nil
+	}
 	return factory.Receipt{URL: "https://github.com/acme/api/pull/7", Number: 7}, nil
 }
 
@@ -192,4 +199,86 @@ func TestApprovingTheProofPublishesThePullRequest(t *testing.T) {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
+}
+
+// Approval through the HTTP door publishes a proof-only job as an issue
+// comment. Its receipt survives the worker report, done and floor read.
+func TestNoDiffHTTPApprovalPublishesCommentAndFinishes(t *testing.T) {
+	checkout := filepath.Join(t.TempDir(), "api")
+	git(t, "", "init", "-q", "-b", "main", checkout)
+	git(t, checkout, "commit", "--allow-empty", "-q", "-m", "first")
+	bare := filepath.Join(t.TempDir(), "remote.git")
+	git(t, "", "init", "-q", "--bare", bare)
+	git(t, checkout, "remote", "add", "origin", bare)
+	git(t, checkout, "push", "-q", "origin", "main")
+	git(t, checkout, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+	workdirs := run.NewWorkdirs(filepath.Join(t.TempDir(), "work"), run.ExecGit{})
+	src := &pullSource{}
+	g := newRigWith(t, nil, func(o *run.Options) {
+		o.Source = func(string) factory.Source { return src }
+		o.Workdir = func(it factory.Item) (string, error) { return workdirs.For(it, checkout) }
+		o.Push = func(string, string) error { t.Error("no-diff approval pushed"); return nil }
+	})
+	id := g.add(t, factory.Stage{Name: factory.ApproveName, Kind: factory.StageGate, On: true}, check("true"))
+	if err := g.st.Update(id, func(it *factory.Item) error {
+		it.Kind, it.Num, it.Repo = factory.KindIssue, 12, "acme/api"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.floor.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	g.waitFor(t, id, factory.StateNeedsYou)
+	if err := g.doors.Answer(id, true, ""); err != nil {
+		t.Fatal(err)
+	}
+	landed := g.waitFor(t, id, factory.StateLanded)
+	if landed.Publish != "comment" {
+		t.Fatalf("proof gate publish = %q", landed.Publish)
+	}
+	seam := g.doors
+	seam.GitHub = func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: "octocat"}, nil }
+	handler := serve.New(seam, serve.Config{Store: g.st, Record: g.record})
+	defer handler.Close()
+	request := httptest.NewRequest("POST", "/v1/jobs/"+strconv.Itoa(id)+"/approve", nil)
+	request.RemoteAddr = "127.0.0.1:1234"
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	var receipt struct{ Event string }
+	if err := json.Unmarshal(response.Body.Bytes(), &receipt); err != nil || response.Code != 200 || receipt.Event == "" {
+		t.Fatalf("approve = %d %s, error %v", response.Code, response.Body, err)
+	}
+	it := g.waitFor(t, id, factory.StateShipped)
+	url := "https://github.com/acme/api/issues/12#issuecomment-7"
+	if it.PullRequest != nil || it.CommentURL != url || it.Publish != "comment" {
+		t.Fatalf("done receipt = %+v", it)
+	}
+	writes := src.writes()
+	trailer := "Factory-Approval: " + receipt.Event + " @octocat"
+	if len(writes) != 1 || writes[0].Verb != "comment" || !strings.HasSuffix(writes[0].Body, "\n"+trailer) || !strings.Contains(writes[0].Body, "Proof ·") {
+		t.Fatalf("writes = %+v", writes)
+	}
+	if branches := git(t, bare, "branch", "--list", "factory/*"); branches != "" {
+		t.Fatalf("no-diff approval pushed %q", branches)
+	}
+	snap, err := g.floor.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, x := range snap.Items {
+		if x.ID == id && (x.State != factory.StateShipped || x.PullRequest != nil || x.CommentURL != url || x.Publish != "comment") {
+			t.Fatalf("floor receipt = %+v", x)
+		}
+	}
+	events, err := g.record.Since(context.Background(), time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range events {
+		if event.Kind == record.Posted && event.Handle == "octocat" && event.Detail == "comment · "+url {
+			return
+		}
+	}
+	t.Fatalf("no comment in the record: %+v", events)
 }

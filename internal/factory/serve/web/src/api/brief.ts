@@ -34,6 +34,7 @@ export function approveLabel(job: Job): string {
       return next ? `Approve plan → continue to ${next}` : "Approve plan → continue"
     }
     case "proof":
+      if (job.publish === "comment") return `Approve → comment on #${job.number}`
       return job.kind === "pr" ? "Approve → mark pull request ready" : "Approve → open pull request"
     case "cap":
       return "Approve → raise the cap"
@@ -54,7 +55,10 @@ export function approveConsequence(job: Job): string {
     case "proof": {
       const claims = job.claims ?? []
       const odd = unproven(claims)
-      const lead = `Approving the proof ${job.kind === "pr" ? "marks the pull request ready" : "opens the pull request"}.`
+      const action = job.publish === "comment"
+        ? `posts a comment on #${job.number}`
+        : job.kind === "pr" ? "marks the pull request ready" : "opens the pull request"
+      const lead = `Approving the proof ${action}.`
       return claims.length === 0
         ? lead
         : `${lead} ${claims.length - odd} of ${claims.length} claims have evidence${odd ? `; ${odd} ${odd === 1 ? "is" : "are"} unproven` : ""}.`

@@ -425,6 +425,11 @@ type Item struct {
 	HeadSHA string `json:",omitempty"`
 	// PullRequest is the published receipt, kept separately from the source.
 	PullRequest *PullRequest `json:",omitempty"`
+	// Publish is the proof gate's next action, pr or comment, as measured by
+	// the worker's worktree. Empty means the worker has not measured it yet.
+	Publish string `json:",omitempty"`
+	// CommentURL is the receipt for approved proof that needed no new commit.
+	CommentURL string `json:",omitempty"`
 
 	// Activity is the item's own short history, oldest first: it arrived, it
 	// changed upstream, it was read, a conversation was made, its stages

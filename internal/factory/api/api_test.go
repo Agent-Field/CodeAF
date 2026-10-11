@@ -61,6 +61,33 @@ func TestVerbNamesAreUnique(t *testing.T) {
 
 var at = time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)
 
+// A comment receipt keeps pr explicitly null and survives both wire doors.
+func TestPublishedCommentRoundTripsWithNullPR(t *testing.T) {
+	url := "https://github.com/acme/api/issues/12#issuecomment-7"
+	it := factory.Item{ID: 12, State: factory.StateShipped, Publish: "comment", CommentURL: url}
+	j := FromItem(it)
+	raw, err := json.Marshal(j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		t.Fatal(err)
+	}
+	pr, present := fields["pr"]
+	if !present || pr != nil || fields["comment"] != url || fields["publish"] != "comment" || fields["state"] != StateDone {
+		t.Fatalf("published wire = %s", raw)
+	}
+	back := ToItem(j)
+	if back.PullRequest != nil || back.CommentURL != url || back.Publish != "comment" || back.State != factory.StateShipped {
+		t.Fatalf("comment receipt lost in job codec: %+v", back)
+	}
+	report := factory.RunReport{Publish: "comment", CommentURL: url}
+	if got := ToWorkerReport(FromRunReport(report)); !reflect.DeepEqual(got, report) {
+		t.Fatalf("comment receipt lost in worker codec: %+v", got)
+	}
+}
+
 // wire is the trip a client seam's Load makes: through JSON and back.
 func wire(t *testing.T, s factory.Snapshot) factory.Snapshot {
 	t.Helper()

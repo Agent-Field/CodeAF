@@ -22,7 +22,69 @@ func (p *prSource) Write(ctx context.Context, a factory.Action) (factory.Receipt
 	if _, err := p.fakeSource.Write(ctx, a); err != nil {
 		return factory.Receipt{}, err
 	}
+	if a.Verb == "comment" {
+		return factory.Receipt{URL: "https://github.com/acme/api/issues/12#issuecomment-7"}, nil
+	}
 	return factory.Receipt{URL: "https://github.com/acme/api/pull/7", Number: 7}, nil
+}
+
+// A proof-only job publishes on the issue, even when its branch is behind
+// the default or its old work has already landed there. It never pushes.
+func TestPublishNoCommitsCommentsWithoutPushing(t *testing.T) {
+	for _, state := range []string{"same head", "behind default", "already landed"} {
+		t.Run(state, func(t *testing.T) {
+			g := newPublishRig(t, factory.Item{Num: 12, Kind: factory.KindIssue, Repo: "acme/api", Title: "Prove it", Proof: []factory.Claim{{Text: "checks pass", OK: true}}})
+			mustGit(t, g.dir, "restore", "ledger.go")
+			if state == "already landed" {
+				mustGit(t, g.dir, "commit", "--allow-empty", "-q", "-m", "old work")
+			}
+			base := mustGit(t, g.dir, "rev-parse", "HEAD")
+			mustGit(t, g.dir, "update-ref", "refs/remotes/origin/trunk", base)
+			mustGit(t, g.dir, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk")
+			if state == "behind default" {
+				next := mustGit(t, g.dir, "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "default moved")
+				mustGit(t, g.dir, "update-ref", "refs/remotes/origin/trunk", next)
+			}
+			g.r.opts.Push = func(string, string) error { t.Error("a proof-only job pushed"); return nil }
+			before := mustGit(t, g.dir, "rev-parse", "HEAD")
+			if got := g.r.publishPreview(g.item(t)); got != "comment" {
+				t.Fatalf("publish preview = %q", got)
+			}
+			if err := g.r.Publish(g.id, testTrailer); err != nil {
+				t.Fatal(err)
+			}
+			it := g.settle(t)
+			if it.State != factory.StateShipped || it.PullRequest != nil || it.Publish != "comment" || it.CommentURL != "https://github.com/acme/api/issues/12#issuecomment-7" {
+				t.Fatalf("published job = %+v", it)
+			}
+			if len(g.src.got) != 1 || g.src.got[0].Verb != "comment" || !strings.HasSuffix(g.src.got[0].Body, "\n"+testTrailer) || !strings.Contains(g.src.got[0].Body, "✓ checks pass") {
+				t.Fatalf("writes = %+v", g.src.got)
+			}
+			if after := mustGit(t, g.dir, "rev-parse", "HEAD"); after != before {
+				t.Fatalf("proof-only publish created a commit: %s -> %s", before, after)
+			}
+			if branches := mustGit(t, g.bare, "branch", "--list"); branches != "" {
+				t.Fatalf("proof-only publish pushed %q", branches)
+			}
+		})
+	}
+}
+
+// A worker may already have committed its fix; clean does not mean no work.
+func TestPublishCleanWorktreeWithOwnCommitStillOpensPR(t *testing.T) {
+	g := newPublishRig(t, factory.Item{Num: 12, Kind: factory.KindIssue, Repo: "acme/api", Title: "Prove it"})
+	mustGit(t, g.dir, "add", "ledger.go")
+	mustGit(t, g.dir, "commit", "-q", "-m", "fix")
+	if got := g.r.publishPreview(g.item(t)); got != "pr" {
+		t.Fatalf("publish preview = %q", got)
+	}
+	if err := g.r.Publish(g.id, testTrailer); err != nil {
+		t.Fatal(err)
+	}
+	it := g.settle(t)
+	if it.State != factory.StateShipped || it.PullRequest == nil || it.CommentURL != "" || g.src.got[0].Verb != "pr" {
+		t.Fatalf("published job = %+v, writes = %+v", it, g.src.got)
+	}
 }
 
 // publishRig is a landed job in a real worktree whose checkout pushes to a
@@ -74,6 +136,15 @@ func newPublishRig(t *testing.T, it factory.Item) publishRig {
 	return publishRig{st: st, r: r, src: src, bare: bare, dir: dir, id: saved.ID}
 }
 
+func (g publishRig) item(t *testing.T) factory.Item {
+	t.Helper()
+	it, err := g.st.Get(g.id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return it
+}
+
 func (g publishRig) settle(t *testing.T) factory.Item {
 	t.Helper()
 	for deadline := time.Now().Add(10 * time.Second); g.r.Running(g.id); time.Sleep(5 * time.Millisecond) {
@@ -95,6 +166,9 @@ func (g publishRig) settle(t *testing.T) factory.Item {
 // shipped with its pr.
 func TestPublishCommitsPushesAndOpensThePullRequestWithTheTrailer(t *testing.T) {
 	g := newPublishRig(t, factory.Item{Num: 12, Kind: factory.KindIssue, Repo: "acme/api", Title: "Total double-counts", Proof: []factory.Claim{{Text: "go test passes", OK: true}}})
+	if got := g.r.publishPreview(g.item(t)); got != "pr" {
+		t.Fatalf("dirty worktree publish preview = %q", got)
+	}
 	if err := g.r.Publish(g.id, testTrailer); err != nil {
 		t.Fatal(err)
 	}

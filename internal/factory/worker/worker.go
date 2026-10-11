@@ -329,12 +329,12 @@ func (j *job) refuse(ctx context.Context, why error) {
 }
 
 // final is the state the job ended in, as done says it. Landing is decided
-// again on the server from the proof it holds; a job shipped with a pull
-// request says done, which the server takes only beside a recorded approval.
+// again on the server from the proof it holds; a job shipped with a PR or
+// comment says done, which the server takes only beside a recorded approval.
 func final(it factory.Item) api.WorkerDone {
 	switch it.State {
 	case factory.StateShipped:
-		if it.PullRequest != nil {
+		if it.PullRequest != nil || it.CommentURL != "" {
 			return api.WorkerDone{State: api.StateDone}
 		}
 		return api.WorkerDone{}
