@@ -1791,11 +1791,11 @@ laptop`; from any other address it says `access token`. Repos are `GET
 `{"watched":["owner/repo"]}`, replacing the whole watched list. Open a
 repository for its pipeline, `GET /v1/repos/<owner>/<repo>/pipeline`, which is
 read-only. The badge says `read-only · edit in the repo`, or `defaults` when
-there is no file. No file says `no file · using defaults`. Dry run is `GET /v1/repos/<owner>/<repo>/dryrun`: `start:` on jobs still
-new there, as `would_start` (job ids) and `would_ask` (`job`, `reason`). No
-start label means neither list. No checkout is the defaults, so both lists
-are empty. The page says `Under these rules, N issues would auto-start now:
-#… · M would ask first: #… <reason>` and `Nothing starts from a dry run.`
+there is no file. No file says `no file · using defaults`. Dry run is `GET /v1/repos/<owner>/<repo>/dryrun`. It answers `would_start`
+(job ids) and `would_ask` (each `job` and its `reason`) for jobs still new
+on that repository. A job without one of the named labels is in neither
+list. No checkout uses the defaults, so both lists are empty. The page says
+`Nothing starts from a dry run.`
 
 **You.** Your machines are `GET /v1/me`: name, status (`busy`, `idle` or
 `offline`), the current job, and `takes unassigned: owner/repo` when
