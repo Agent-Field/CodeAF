@@ -1,6 +1,6 @@
 # The factory
 
-## codeaf factory serve — start the service and choose its listen address
+## codeaf factory serve — HTTP service, listen address and worker execution
 
 `codeaf factory` (also `codeaf factory serve`) runs the factory HTTP service alone,
 without opening chat or running a job itself. It prints its bound HTTP address.
@@ -10,7 +10,7 @@ or `--listen 0.0.0.0:7420` to accept connections from other machines.
 `GET /` is a one-line pointer to codeaf (TUI), the codeaf app and `/v1`, not a dashboard.
 The team view lives in the codeaf app (`Agent-Field/codeaf-desk`).
 
-Starting this service does not start GitHub polling or a worker in this process.
+This service process has no GitHub polling or worker loop.
 It does read who the token belongs to (`GH_TOKEN`, `GITHUB_TOKEN`, a saved token,
 or gh once allowed), so `GET /v1/github` names the login and an approval from the
 app is recorded under that handle. Run queues a job; an attached worker pulls it,
