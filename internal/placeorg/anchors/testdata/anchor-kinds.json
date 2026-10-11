@@ -1,0 +1,24 @@
+{
+  "Chats": [
+    {
+      "ID": "first",
+      "Title": "Orchid #123",
+      "Text": "Follow team/widget#42 and https://example.org/team/widget/pull/43",
+      "Workspace": "/srv/lunar-map-553",
+      "RepoKey": "repository-one"
+    },
+    {
+      "ID": "second",
+      "Text": "orchid research-tools",
+      "Workspace": "/srv/lunar-map-554",
+      "RepoKey": "repository-one"
+    },
+    { "ID": "unknown", "Workspace": "/tmp" }
+  ],
+  "ConfirmedNames": ["Orchid Research-tools"],
+  "Want": {
+    "first": ["orchid", "#123", "#42", "team/widget#42", "#43", "team/widget#43", "workspace:lunar-map", "repo:repository-one"],
+    "second": ["orchid", "research-tools", "workspace:lunar-map", "repo:repository-one"],
+    "unknown": []
+  }
+}
