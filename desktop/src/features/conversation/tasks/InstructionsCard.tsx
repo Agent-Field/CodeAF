@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent } from 'react';
-import { Button, Markdown, TextArea } from '../../../components/ui';
+import { Button, Markdown, TextArea, useMoreBelow } from '../../../components/ui';
 import { parseBrief } from './brief';
 import { FullBrief } from './FullBrief';
 import './instructions-card.css';
@@ -57,6 +57,8 @@ export function InstructionsCard({ text, onAmend }: InstructionsCardProps) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [full, setFull] = useState(false);
+  // Measures the capped body: the fade and the Show all toggle exist only while text runs past the cap.
+  const { ref: bodyRef, more } = useMoreBelow();
   if (!text.trim()) return null;
   const brief = parseBrief(text);
   return (
@@ -65,6 +67,9 @@ export function InstructionsCard({ text, onAmend }: InstructionsCardProps) {
         <Button className="instructions-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
           Instructions
         </Button>
+        {!editing && (open || more) && (
+          <Button className="instructions-more" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'Show less' : 'Show all'}</Button>
+        )}
         {onAmend && !editing && <Button className="instructions-edit" onClick={() => setEditing(true)}>Edit</Button>}
       </div>
       {editing && onAmend ? (
@@ -77,7 +82,7 @@ export function InstructionsCard({ text, onAmend }: InstructionsCardProps) {
           onCancel={() => setEditing(false)}
         />
       ) : (
-        <div className="instructions-body" data-open={open || undefined}>
+        <div ref={bodyRef} className="instructions-body" data-open={open || undefined} data-more={(!open && more) || undefined}>
           <Markdown tone="secondary">{brief.summary}</Markdown>
         </div>
       )}

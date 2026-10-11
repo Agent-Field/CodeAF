@@ -107,7 +107,7 @@ export const INK3_TEXT = [
  // Conversation 1e and Components draw Always allow…, Tell it… and "and say why" in ink-3. Settings Retry follows that quiet ink.
  '.answer-ghost', '.answer-why', '.settings-engine-retry',
  '.tasks-table-totals', '.tasks-table-tab-count', '.tasks-table-detail', '.tasks-table-group-count', '.tasks-table-state', '.tasks-table-age',
- '.task-row-meta', '.task-log-outcome', '.task-note-receipt', '.task-note-author', '.instructions-toggle', '.instructions-edit', '.breadcrumb-link',
+ '.task-row-meta', '.task-log-outcome', '.task-note-receipt', '.task-note-author', '.instructions-toggle', '.instructions-more', '.instructions-edit', '.breadcrumb-link',
  '.task-detail-crumb', '.task-detail-state', '.task-detail-fact dt', '.task-detail-label', '.text-input-field', '.task-composer-field',
  '.overview-card-head', '.overview-card-empty', '.overview-card-foot', '.overview-section-count', '.overview-film-position', '.overview-film-hint', '.overview-film-label .app-icon',
  '.markdown-code-lang', '.turn-folded', '.update-eyebrow', '.answer-worked', '.receipt-rest', '.receipt[data-state="withdrawn"]', '.work-step-caption', '.file-chip-added', '.changes-added', '.work-add', '.work-diff-sign',

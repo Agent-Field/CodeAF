@@ -3,7 +3,9 @@
 .conversation-main { background: var(--canvas); display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
 .conversation-scroll { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; padding-block: var(--space-6) calc(var(--scroll-fade-dock) + var(--scroll-dock-clearance)); }
 /* Top edge: a mask, on only once content sits above it (design 1f, Scroll edges). Never an overlay.
-   Two layers add up: the ramp (transparent at 40, opaque at 96) and a solid layer that covers the
+   The design draws the header over the scroller, so its 40px clear band is the header itself. Here the header is its own
+   row above the scroller, so the ramp starts at the scroller's top edge and lasts the design's 40px.
+   Two layers add up: the ramp and a solid layer that covers the
    whole edge at rest. Scrolled, the solid layer shrinks away over 120ms and the ramp shows. */
 .conversation-scroll {
   mask-image: linear-gradient(to bottom, transparent var(--scroll-fade-top-clear), black var(--scroll-fade-top-solid)), linear-gradient(black, black);

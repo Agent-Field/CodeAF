@@ -9,7 +9,13 @@
 .instructions-edit.button:hover:not(:disabled) { background: transparent; color: var(--ink); }
 
 .instructions-body { min-width: 0; color: var(--ink-2); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); }
-.instructions-body:not([data-open]) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--task-view-clamp-lines); line-clamp: var(--task-view-clamp-lines); overflow: hidden; }
+/* Closed, the brief is capped at the clamp lines. While text runs past the cap, the last lines fade out
+   (design: clipped text fades, it never ends in a hard cut or an ellipsis) and Show all opens it. */
+.instructions-body:not([data-open]) { max-height: calc(var(--task-view-clamp-lines) * var(--type-prose-leading) * var(--type-prose-size)); overflow: hidden; }
+.instructions-body[data-more] { -webkit-mask-image: linear-gradient(to bottom, black calc(100% - var(--edge-fade-block)), transparent); mask-image: linear-gradient(to bottom, black calc(100% - var(--edge-fade-block)), transparent); }
+.instructions-more.button { margin-inline-start: auto; min-height: 0; padding: 0; color: var(--ink-3); font-size: var(--type-label-size); line-height: var(--type-label-leading); }
+.instructions-more.button:hover:not(:disabled) { background: transparent; color: var(--ink); }
+.instructions-more.button + .instructions-edit.button { margin-inline-start: var(--space-3); }
 
 .instructions-editor { display: flex; flex-direction: column; gap: var(--space-2); }
 .instructions-field.text-area { width: 100%; box-sizing: border-box; resize: vertical; padding: var(--space-2) var(--space-3); border: 0; border-radius: var(--radius-control); background: var(--surface); color: var(--ink); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); }

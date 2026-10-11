@@ -175,6 +175,30 @@ test('the Instructions card shows the task, not the engine brief; the full brief
   await expect(card.getByText('src/settings.tsx using the shared primitives.')).toBeVisible();
 });
 
+test('a long brief fades at three lines with Show all; a short one has neither', async ({ page }) => {
+  const long = Array.from({ length: 12 }, (_, i) => `Line ${i + 1} of the brief keeps going so it wraps past the three line cap.`).join(' ');
+  await startWithTasks(page, (scenario) => { scenario.taskPages!['2'].Description = long; });
+  await openTask(page);
+  const card = page.getByRole('region', { name: 'Instructions' });
+  const body = card.locator('.instructions-body');
+  const more = card.getByRole('button', { name: 'Show all' });
+  await expect(more).toBeVisible();
+  await expect(body).toHaveAttribute('data-more', 'true');
+  await more.click();
+  await expect(card.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true');
+  await expect(body).not.toHaveAttribute('data-more', 'true');
+  await expect(body.getByText(/Line 12 of the brief/)).toBeVisible();
+});
+
+test('a short brief has no Show all and no fade', async ({ page }) => {
+  await startWithTasks(page, (scenario) => { scenario.taskPages!['2'].Description = 'Rename one file.'; });
+  await openTask(page);
+  const card = page.getByRole('region', { name: 'Instructions' });
+  await expect(card.getByText('Rename one file.')).toBeVisible();
+  await expect(card.getByRole('button', { name: 'Show all' })).toHaveCount(0);
+  await expect(card.locator('.instructions-body')).not.toHaveAttribute('data-more', 'true');
+});
+
 test('a landing note reads as a result with the branch in secondary text', async ({ page }) => {
   await startWithTasks(page, (scenario) => {
     scenario.taskPages!['2'].Notes = [{ Author: '2', Body: 'landed on task/create-src-a3-txt-d3389b: 2 files', At: '2026-10-09T10:00:00Z' }];
