@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 )
 
 // Options injects repository policy and the existing launch door; tests need no model.
@@ -146,7 +147,7 @@ func Job(it factory.Item) pipeline.Job {
 		}
 	}
 	j.Paths = append(j.Paths, pathWords.FindAllString(text, -1)...)
-	j.LinesKnown = it.Kind == factory.KindPR && it.Files != nil && len(it.Files) < 20
+	j.LinesKnown = it.Kind == factory.KindPR && it.Files != nil && len(it.Files) < forge.FilesMost
 	for _, file := range it.Files {
 		j.Paths = append(j.Paths, file.Path)
 		j.Lines += file.Added + file.Removed
