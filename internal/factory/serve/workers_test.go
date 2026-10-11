@@ -134,6 +134,98 @@ func (f *workerFixture) pull(t *testing.T, worker api.WorkerAttached) api.Worker
 	return pulled
 }
 
+func TestWorkerAttachOwnerFallbackOnlyOnLoopback(t *testing.T) {
+	for _, tc := range []struct {
+		name, peer, handle, login, wantHandle string
+		status                                int
+		wantPersonCalls                       int
+	}{
+		{"IPv4 fallback", "127.0.0.1:1234", "", " @OWNER ", "owner", 201, 1},
+		{"IPv6 fallback", "[::1]:1234", "", "owner", "owner", 201, 1},
+		{"mapped fallback", "[::ffff:127.0.0.1]:1234", "", "owner", "owner", 201, 1},
+		{"local no owner", "127.0.0.1:1234", "", "", "", 400, 1},
+		{"remote empty", "192.0.2.1:1234", "", "owner", "", 400, 0},
+		{"remote cookie", "192.0.2.1:1234", "", "owner", "", 400, 0},
+		{"remote blank", "192.0.2.1:1234", " @ ", "owner", "", 400, 0},
+		{"remote own handle", "192.0.2.1:1234", " @WORKER-PERSON ", "owner", "worker-person", 201, 0},
+		{"hostname peer", "localhost:1234", "", "owner", "", 400, 0},
+		{"missing peer port", "127.0.0.1", "", "owner", "", 400, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st, err := store.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			personCalls := 0
+			seam := factory.Seam{GitHub: func(context.Context) (factory.GitHubLink, error) {
+				personCalls++
+				return factory.GitHubLink{Login: tc.login}, nil
+			}}
+			cfg := config
+			cfg.Store, cfg.PullWait = st, time.Millisecond
+			h := serve.New(seam, cfg)
+			t.Cleanup(h.Close)
+			body, err := json.Marshal(api.WorkerAttach{Name: "laptop", Handle: tc.handle})
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := httptest.NewRequest("POST", "/v1/workers/attach", bytes.NewReader(body))
+			r.RemoteAddr = tc.peer
+			r.Host = "localhost"
+			r.Header.Set("Authorization", "Bearer "+cfg.AccessToken)
+			if tc.name == "remote cookie" {
+				access := httptest.NewRequest("GET", "/access?token="+cfg.AccessToken, nil)
+				access.RemoteAddr = tc.peer
+				cookie := httptest.NewRecorder()
+				h.ServeHTTP(cookie, access)
+				if cookie.Code != http.StatusSeeOther || len(cookie.Result().Cookies()) != 1 {
+					t.Fatalf("access cookie: HTTP %d %s", cookie.Code, cookie.Body.String())
+				}
+				r.Header.Del("Authorization")
+				r.AddCookie(cookie.Result().Cookies()[0])
+			}
+			r.Header.Set("X-Forwarded-For", "127.0.0.1")
+			r.Header.Set("Forwarded", "for=127.0.0.1;host=localhost")
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			if w.Code != tc.status || personCalls != tc.wantPersonCalls {
+				t.Fatalf("attach: HTTP %d %s, person calls %d; want HTTP %d, calls %d", w.Code, w.Body.String(), personCalls, tc.status, tc.wantPersonCalls)
+			}
+			if tc.status == 400 {
+				want := "worker attach requires a handle"
+				if tc.wantPersonCalls != 0 {
+					want = "worker attach requires name and handle"
+				}
+				var refused struct {
+					Error string `json:"error"`
+				}
+				if err := json.Unmarshal(w.Body.Bytes(), &refused); err != nil || refused.Error != want {
+					t.Fatalf("refusal: %s, %v; want %q", w.Body.String(), err, want)
+				}
+				return
+			}
+			var attached api.WorkerAttached
+			if err := json.Unmarshal(w.Body.Bytes(), &attached); err != nil {
+				t.Fatal(err)
+			}
+			f := &workerFixture{st: st}
+			if tc.wantHandle != "owner" {
+				f.add(t, "owner")
+			}
+			job := f.add(t, tc.wantHandle)
+			r = httptest.NewRequest("GET", "/v1/workers/pull", nil)
+			r.RemoteAddr = tc.peer
+			r.Header.Set("Authorization", "Bearer "+attached.Credential)
+			w = httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			var pulled api.WorkerPull
+			if err := json.Unmarshal(w.Body.Bytes(), &pulled); err != nil || w.Code != 200 || pulled.Job.ID != job.ID || pulled.Lease.Handle != tc.wantHandle {
+				t.Fatalf("worker pulled wrong person's job: HTTP %d %s, %v", w.Code, w.Body.String(), err)
+			}
+		})
+	}
+}
+
 func TestWorkerAttachPullHeartbeatReportAndDone(t *testing.T) {
 	f := workerSetup(t)
 	job := f.add(t, "sam")

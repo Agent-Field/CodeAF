@@ -2000,9 +2000,16 @@ token; remote attach requires the factory access token. Each attach creates a
 fresh worker identity. Credentials last for this handler's lifetime; after a
 server restart attach again and let the former hold expire.
 
-With an empty or omitted `handle`, attach uses the factory's connected GitHub
+On loopback, an empty or omitted `handle` uses the factory's connected GitHub
 login, the same identity as Take, Approve and `/v1/me`. Without that login it
-answers HTTP 400 with `worker attach requires name and handle`.
+answers HTTP 400 with `worker attach requires name and handle`. Off loopback,
+an empty handle answers HTTP 400 with `worker attach requires a handle`, even
+with a valid access token or cookie. Only the socket peer decides loopback;
+forwarded headers and the requested hostname do not.
+
+The built-in worker sends this machine's own connected GitHub login. Attached
+to a remote factory without one, it refuses to start with
+`codeaf needs your GitHub login to work for this factory`.
 
 All other worker endpoints require `Authorization: Bearer <credential>`, even
 on loopback. The floor access token cannot replace a worker credential, and a

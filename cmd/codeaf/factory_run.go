@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -126,6 +127,7 @@ func startFactoryWorker(st *store.Store, workspace, profileDir string, parent se
 			defer os.RemoveAll(mirror.Root())
 			attach, err := dial.attach(ctx, factorygithub.Connect(factory.Seam{}, factoryProfile(profileDir)))
 			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
 				return
 			}
 			factoryworker.Run(ctx, factoryworker.Options{

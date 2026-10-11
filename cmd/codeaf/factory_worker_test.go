@@ -6,17 +6,74 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/client"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
+
+func TestFactoryWorkerAttachRequiresOwnLoginOffLoopback(t *testing.T) {
+	for _, tc := range []struct {
+		name, base, login string
+		wantError         bool
+	}{
+		{"remote login", "https://factory.example", " @WORKER-PERSON ", false},
+		{"remote no login", "https://factory.example", "", true},
+		{"remote blank login", "https://factory.example", " @ ", true},
+		{"IPv4 loopback", "http://127.0.0.1:8080", "", false},
+		{"IPv6 loopback", "http://[::1]:8080", "", false},
+		{"localhost", "http://localhost:8080", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(home.EnvVar, t.TempDir())
+			st, err := store.Open(v3FactoryRoot())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := st.SetCheckout("owner/repo", t.TempDir()); err != nil {
+				t.Fatal(err)
+			}
+			body, err := json.Marshal(factoryAttachment{URL: tc.base, Name: "my-worker"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := writeFactoryPrivate(factoryAttachPath(), body); err != nil {
+				t.Fatal(err)
+			}
+			person := factory.Seam{GitHub: func(context.Context) (factory.GitHubLink, error) {
+				return factory.GitHubLink{Login: tc.login}, nil
+			}}
+			attach, err := newFactoryWorkerDial(st, nil).attach(context.Background(), person)
+			if tc.wantError {
+				if err == nil || err.Error() != "codeaf needs your GitHub login to work for this factory" {
+					t.Fatalf("missing login refusal: %v", err)
+				}
+				if !reflect.DeepEqual(attach, api.WorkerAttach{}) {
+					t.Fatalf("refused worker still has an introduction: %+v", attach)
+				}
+				return
+			}
+			if err != nil || attach.Handle != factory.NormalizeHandle(tc.login) {
+				t.Fatalf("worker introduction: %+v, %v", attach, err)
+			}
+			wantTakes := map[string]bool{lease.EveryRepo: true}
+			if !factoryLoopback(tc.base) {
+				wantTakes = map[string]bool{"repo": true}
+			}
+			if !reflect.DeepEqual(attach.TakesUnassigned, wantTakes) {
+				t.Fatalf("unassigned work: %v; want %v", attach.TakesUnassigned, wantTakes)
+			}
+		})
+	}
+}
 
 // This drives the worker's real introduction and HTTP lease door because a
 // desk-only fixture cannot catch the OS account replacing the forge login.

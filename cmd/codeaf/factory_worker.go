@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/url"
 	"os"
@@ -98,6 +99,9 @@ func (d *factoryWorkerDial) attach(ctx context.Context, person factory.Seam) (ap
 	machine, _ := os.Hostname()
 	name := machine
 	a, attached := readFactoryAttachment()
+	if attached && !factoryLoopback(a.URL) && handle == "" {
+		return api.WorkerAttach{}, errors.New("codeaf needs your GitHub login to work for this factory")
+	}
 	if attached && a.Name != "" {
 		name = a.Name
 	}

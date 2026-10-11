@@ -26,7 +26,7 @@ type accessSessions struct {
 	now func() time.Time
 }
 
-func (h *Handler) allowed(r *http.Request) bool {
+func loopbackRequest(r *http.Request) bool {
 	// Only the socket peer can grant loopback access. Forwarded headers and
 	// hostnames come from callers and must never open the floor.
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -34,6 +34,13 @@ func (h *Handler) allowed(r *http.Request) bool {
 		if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
 			return true
 		}
+	}
+	return false
+}
+
+func (h *Handler) allowed(r *http.Request) bool {
+	if loopbackRequest(r) {
+		return true
 	}
 	if h.validAccessToken(bearer(r)) {
 		return true
