@@ -1,0 +1,15 @@
+{
+  "space": "ref",
+  "places": [
+    {"id": "alpha", "depth": 3, "centroid": [1, 0, 0, 0]},
+    {"id": "beta", "depth": 3, "centroid": [0.99, 0.14106735979665884, 0, 0]},
+    {"id": "gamma", "depth": 3, "centroid": [0, 1, 0, 0]},
+    {"id": "flat", "depth": 1, "centroid": [0, 0, 0, 1]}
+  ],
+  "chats": [
+    {"id": "near-alpha", "vector": [1, 0, 0, 0], "shortcuts": ["beta"]},
+    {"id": "near-gamma", "vector": [0, 1, 0, 0], "shortcuts": []},
+    {"id": "below-floor", "vector": [0, 0, 1, 0], "shortcuts": []},
+    {"id": "only-flat", "vector": [0, 0, 0, 1], "shortcuts": []}
+  ]
+}
