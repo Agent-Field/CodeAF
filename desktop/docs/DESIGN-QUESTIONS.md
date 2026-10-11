@@ -61,6 +61,8 @@ Shell). On any conflict, the design files win over code and older docs.
 
 | # | Question | Assumption the app ships now |
 |---|---|---|
+| PO-STREAM-1 | How is the live guess's confidence chosen, and what are the other places named beside it? | Confidence is how close the draft is, as a percent capped at 100. A folder that already belongs to a place is 100. Others are at most two place ids that also fit. A draft that fits nothing is not shown. |
+| PO-STREAM-2 | When a new chat fits two places at the same depth about equally and nobody answers, which place keeps it? | The closer one. The broader place wins only when it sits higher in the tree. |
 | SH-NOW-BROWSER-535 | Interactions assigns middle-click Now to a native window; what should it do in a browser without native windows? | No action on middle-click. Command/Control-click takes the plain switch path, as required by the lane brief; the row has no right-click menu or advertised native window action. |
 | PL-SW-533 | Components draws the place switcher at an absolute spot in the 9c frame and does not name the gap under the Home tab, or what a list taller than the menu does. | The popover's start edge lines up with the Home tab and uses the shared menu's 8px side offset. A longer list scrolls inside the shared menu's max height. |
 | PL-RAIL-DND-531 | Places 10a names the MIME `application/codeaf-place`; the app, home tiles and instructions already share `application/x-codeaf-place`. Does a file, link or tab dropped on a rail row file into it? | Keep the shared `x-` spelling so every existing drop target still accepts rail drags. Rail rows file chats only; file, link and tab drops on a row are not wired yet (filing lives in dnd/filing.ts) and are left for the filing lane. |
