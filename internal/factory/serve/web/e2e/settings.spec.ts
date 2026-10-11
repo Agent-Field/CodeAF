@@ -20,9 +20,12 @@ test("toggle a repo and open its pipeline", async ({ page }) => {
 
   await page.getByTestId("repo-open-acme/web").click()
   const pipeline = page.getByTestId("pipeline-acme/web")
-  await expect(pipeline).toContainText("no file · using defaults")
+  await expect(pipeline).toContainText("read-only · edit in the repo")
   await expect(pipeline).toContainText("plan")
-  await expect(page.getByTestId("dryrun-acme/web")).toHaveText("not available")
+  await expect(page.getByTestId("dryrun-acme/web")).toHaveText(
+    "Under these rules, 2 issues would auto-start now: #2088 #2090 · 2 would ask first: #2077 touches auth/keys.go (auth/**) · #70 over your cap of $1",
+  )
+  await expect(page.getByText("Nothing starts from a dry run.")).toBeVisible()
   const command = page.getByTestId("attach-command")
   await expect(command).toContainText("codeaf attach")
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"])

@@ -195,7 +195,9 @@ func TestErrorsCarryFactory(t *testing.T) {
 		{"GET", "/v1/jobs/999/thread", 404},
 		{"GET", "/v1/queue/", 404}, {"GET", "/v1//queue", 404},
 		{"GET", "/v1/repos/a%2Fb/repo/pipeline", 400},
+		{"GET", "/v1/repos/a%2Fb/repo/dryrun", 400},
 		{"GET", "/v1/repos", 501}, {"GET", "/v1/repos/owner/repo/pipeline", 501},
+		{"GET", "/v1/repos/owner/repo/dryrun", 501},
 		{"POST", "/v1/queue", 405},
 	} {
 		t.Run(tc.method+tc.path, func(t *testing.T) {
@@ -225,7 +227,7 @@ func TestSeamFailuresAndAbsentIdentity(t *testing.T) {
 	seam.GitHub = func(context.Context) (factory.GitHubLink, error) {
 		return factory.GitHubLink{}, errors.New("github unavailable")
 	}
-	for _, path := range []string{"/v1/queue", "/v1/jobs/1", "/v1/repos", "/v1/repos/o/r/pipeline", "/v1/github", "/v1/me"} {
+	for _, path := range []string{"/v1/queue", "/v1/jobs/1", "/v1/repos", "/v1/repos/o/r/pipeline", "/v1/repos/o/r/dryrun", "/v1/github", "/v1/me"} {
 		r := httptest.NewRequest(http.MethodGet, path, nil)
 		r.RemoteAddr = "127.0.0.1:1234"
 		w := httptest.NewRecorder()

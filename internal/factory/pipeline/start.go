@@ -77,6 +77,39 @@ func (f File) Decide(j Job) Decision {
 	return Decision{Start: true}
 }
 
+// JobFromItem is one floor item as a job the file can decide.
+//
+// Cost is the triage estimate, and only after a triage has been stamped:
+// an unread cost is not over the cap. A pull request's size is its changed
+// lines, which exist only once its files were read; a letter someone typed
+// is not that measurement. Ask-first sentences are judged by a model, and
+// nothing on the item stores that judgment, so Judged stays false and a
+// file that names those sentences asks rather than starts.
+func JobFromItem(it factory.Item) Job {
+	j := Job{
+		ID: it.ID, Kind: it.Kind, Tier: it.Tier,
+		Labels:    append([]string(nil), it.Labels...),
+		Size:      it.Triage.Size,
+		Cap:       it.Cap,
+		Cost:      it.Triage.Est,
+		CostKnown: !it.Triage.TriagedAt.IsZero(),
+	}
+	if it.Files == nil {
+		return j
+	}
+	j.Paths = make([]string, 0, len(it.Files))
+	for _, file := range it.Files {
+		j.Lines += file.Added + file.Removed
+		if file.Path != "" {
+			j.Paths = append(j.Paths, file.Path)
+		}
+	}
+	if it.Kind == factory.KindPR {
+		j.LinesKnown = true
+	}
+	return j
+}
+
 // Dry is [Decide] for a list, in the list's order.
 func (f File) Dry(jobs []Job) DryRun {
 	d := DryRun{WouldStart: []int{}, WouldAsk: []int{}, Why: map[int][]string{}}

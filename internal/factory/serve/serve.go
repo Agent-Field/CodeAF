@@ -74,6 +74,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/events", h.events)
 	h.route("/v1/repos", map[string]http.HandlerFunc{http.MethodGet: h.repos, http.MethodPut: h.setRepos})
 	h.read("/v1/repos/{owner}/{repo}/pipeline", h.pipeline)
+	h.read("/v1/repos/{owner}/{repo}/dryrun", h.dryrun)
 	h.read("/v1/github", h.github)
 	h.read("/v1/me", h.me)
 	h.read("/v1/audit", h.audit)
@@ -229,10 +230,20 @@ func (h *Handler) repos(w http.ResponseWriter, r *http.Request) {
 	}{h.factory, watched, repos})
 }
 
-func (h *Handler) pipeline(w http.ResponseWriter, r *http.Request) {
-	owner, repo := r.PathValue("owner"), r.PathValue("repo")
+// splitRepo is the owner and name in the path. A slash inside either
+// piece would be a second repository, so it is refused before any read.
+func (h *Handler) splitRepo(w http.ResponseWriter, r *http.Request) (owner, repo string, ok bool) {
+	owner, repo = r.PathValue("owner"), r.PathValue("repo")
 	if strings.ContainsAny(owner+repo, "/\\") || owner == "." || owner == ".." || repo == "." || repo == ".." {
 		h.fail(w, http.StatusBadRequest, "repository must be owner/name")
+		return "", "", false
+	}
+	return owner, repo, true
+}
+
+func (h *Handler) pipeline(w http.ResponseWriter, r *http.Request) {
+	owner, repo, ok := h.splitRepo(w, r)
+	if !ok {
 		return
 	}
 	if !h.require(w, h.seam.RecipeAt != nil) {

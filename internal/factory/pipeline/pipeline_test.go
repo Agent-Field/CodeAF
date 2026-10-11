@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
@@ -365,6 +366,35 @@ func TestLabelSizeUsesTheLargestLabel(t *testing.T) {
 	job.Labels = []string{"agent-ready"}
 	if d := f.Decide(job); !d.Ask || !strings.Contains(strings.Join(d.Reasons, " "), "no size label") {
 		t.Fatalf("none = %+v", d)
+	}
+}
+
+func TestJobFromItemKeepsTheFactsDecideReads(t *testing.T) {
+	when := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
+	issue := factory.Item{
+		ID: 7, Kind: factory.KindIssue, Tier: factory.TierOwner, Labels: []string{"agent-ready"},
+		Cap: 5, Triage: factory.Triage{Size: "S", Est: 1.5, TriagedAt: when},
+	}
+	got := pipeline.JobFromItem(issue)
+	if !got.CostKnown || got.Cost != 1.5 || got.Size != "S" || got.LinesKnown || got.Cap != 5 {
+		t.Fatalf("issue = %+v", got)
+	}
+	unread := issue
+	unread.Triage.TriagedAt = time.Time{}
+	if pipeline.JobFromItem(unread).CostKnown {
+		t.Fatal("an unread estimate counted as a cost")
+	}
+	pr := factory.Item{
+		ID: 8, Kind: factory.KindPR, Tier: factory.TierStranger,
+		Files: []factory.FileChange{{Path: "auth/keys.go", Added: 3, Removed: 1}, {Path: "", Added: 9}},
+	}
+	got = pipeline.JobFromItem(pr)
+	if !got.LinesKnown || got.Lines != 13 || len(got.Paths) != 1 || got.Paths[0] != "auth/keys.go" {
+		t.Fatalf("pull request = %+v", got)
+	}
+	pr.Files = nil
+	if pipeline.JobFromItem(pr).LinesKnown {
+		t.Fatal("unread files counted as a measurement")
 	}
 }
 

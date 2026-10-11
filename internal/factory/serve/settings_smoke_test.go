@@ -11,17 +11,31 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 )
 
-// settingsSmokeSeam is a floor the settings page can change. The repositories
-// have no checkout, so the pipeline read is the defaults and the page has to
-// say there is no file. Watched starts without acme/web so the smoke's switch
-// is a real PUT, read back from this seam.
-func settingsSmokeSeam() factory.Seam {
+// settingsSmokeSeam is a floor the settings page can change. acme/web has a
+// checkout whose start rules the dry run applies to the backlog on that
+// repository. Watched starts without acme/web so the smoke's switch is a real
+// PUT, read back from this seam.
+func settingsSmokeSeam(t *testing.T) factory.Seam {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".codeaf"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, pipeline.RepoFile), []byte(dryRunYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	var mu sync.Mutex
 	watched := []string{"acme/api"}
 	seam := factory.FixtureSeam(now)
+	seam.Load = func() (factory.Snapshot, error) {
+		snap := factory.Fixture(now)
+		snap.Items = append(snap.Items, dryRunFloor()...)
+		return snap, nil
+	}
 	seam.GitHub = func(context.Context) (factory.GitHubLink, error) {
 		return factory.GitHubLink{Login: "santosh", Via: factory.ViaGH}, nil
 	}
@@ -40,7 +54,10 @@ func settingsSmokeSeam() factory.Seam {
 		watched = append([]string(nil), names...)
 		return nil
 	}
-	seam.RecipeAt = func(string) (factory.Recipe, []factory.Problem, string, error) {
+	seam.RecipeAt = func(repo string) (factory.Recipe, []factory.Problem, string, error) {
+		if repo == "acme/web" {
+			return factory.DefaultRecipe(), nil, dir, nil
+		}
 		return factory.DefaultRecipe(), nil, "", nil
 	}
 	return seam
@@ -107,7 +124,7 @@ func TestSettingsPlaywright(t *testing.T) {
 	}
 	modules := playwrightModules(t)
 	linkPlaywright(t, modules)
-	srv := httptest.NewServer(serve.New(settingsSmokeSeam(), config))
+	srv := httptest.NewServer(serve.New(settingsSmokeSeam(t), config))
 	t.Cleanup(srv.Close)
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()

@@ -376,7 +376,7 @@ export interface PipelineRead extends Envelope, Pipeline {
   checkout?: string
 }
 
-/** `GET /v1/repos/{owner}/{repo}/dryrun`. Absent until that endpoint exists. */
+/** `GET /v1/repos/{owner}/{repo}/dryrun`: start rules applied to the backlog. */
 export interface DryRunRead extends Envelope, DryRun {}
 
 /** `GET /v1/me`: the person looking, their machines, and unassigned-work choices. */
