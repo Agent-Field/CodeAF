@@ -1585,7 +1585,8 @@ the triage reason dim before the age (`main is red    6h`), the first thing a na
 
 The factory HTTP handler exposes `GET /v1/queue` (jobs, repositories, pipeline strip,
 capacity and the connected GitHub handle), `GET /v1/jobs/{id}` (one full job),
-`GET /v1/repos` (watched names and available repositories),
+`GET /v1/jobs/{id}/thread` (that job's manager thread), `GET /v1/events`
+(a stream of changed ticks), `GET /v1/repos` (watched names and available repositories),
 `GET /v1/repos/{owner}/{repo}/pipeline` (the pipeline read through the repository's
 recipe), `GET /v1/github` (login and connection method), and `GET /v1/me`.
 Every JSON response, including an error, carries `factory: {address, version}`.
@@ -1679,6 +1680,31 @@ keep job, title, state and cost. The page reads the queue again when the factory
 sends a change; a factory without the change stream is read once per load. The
 job page, New job, Audit log and Settings say `Coming`: they are not built yet,
 and the dashboard cannot approve, answer or start anything yet.
+
+## factory event stream and a job's manager thread
+
+`GET /v1/events` is a server-sent event stream, not a JSON document. When a
+file in the factory root changes, the stream sends one `changed` tick:
+`event: changed`, and `data` set to that job's id, or `*` when the change
+is not exactly one job file. A burst of writes is one tick, held 100ms, so
+a document's temporary file and its rename do not count as two changes. If
+the filesystem watch is silent, the root is re-read every 2 seconds and a
+tick is sent only when something changed. The tick carries no job body.
+Read `GET /v1/jobs/{id}` or `GET /v1/queue` again for the current floor. A
+factory with no root to watch keeps the stream open and sends nothing. A
+client that connects late is not sent earlier ticks.
+
+`GET /v1/jobs/{id}/thread` reads the job's manager transcript and returns
+JSON `messages`, a list of `{at, from, text}`. `from` is `manager` for the
+manager's lines and `user` for the person's. Tool rows are left out. `at`
+is when that line was written. A job with no transcript yet, a missing
+file, or no spoken lines returns `messages: []`. Opening the thread does
+not create the transcript and does not append to it. An unknown
+job answers `job not found`. A job id that is not a positive integer is
+refused with `job id must be a positive integer`.
+
+Both follow the same access rule as the other reads. The thread's JSON
+body carries `factory: {address, version}`.
 
 ## what the factory does not do yet
 

@@ -21,11 +21,19 @@ func TestDashboardAtRootAndAPIUnderV1(t *testing.T) {
 		"/jobs/12":   "text/html",
 		"/v1/queue":  "application/json",
 		"/v1/nope":   "application/json",
-		"/v1/events": "application/json",
+		"/v1/events": "text/event-stream",
 	} {
 		res, err := http.Get(s.URL + path)
 		if err != nil {
 			t.Fatal(err)
+		}
+		// The event stream stays open, so reading it to EOF would never return.
+		if want == "text/event-stream" {
+			res.Body.Close()
+			if got := res.Header.Get("Content-Type"); res.StatusCode != http.StatusOK || !strings.HasPrefix(got, want) {
+				t.Errorf("GET %s = %d %q, want 200 %s", path, res.StatusCode, got, want)
+			}
+			continue
 		}
 		body, _ := io.ReadAll(res.Body)
 		res.Body.Close()

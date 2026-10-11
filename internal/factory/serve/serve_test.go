@@ -191,6 +191,8 @@ func TestErrorsCarryFactory(t *testing.T) {
 		{"GET", "/v1/jobs/0", 400}, {"GET", "/v1/jobs/-1", 400},
 		{"GET", "/v1/jobs/no", 400}, {"GET", "/v1/jobs/999999999999999999999", 400},
 		{"GET", "/v1/jobs/999", 404}, {"GET", "/v1/missing", 404},
+		{"GET", "/v1/jobs/0/thread", 400}, {"GET", "/v1/jobs/no/thread", 400},
+		{"GET", "/v1/jobs/999/thread", 404},
 		{"GET", "/v1/queue/", 404}, {"GET", "/v1//queue", 404},
 		{"GET", "/v1/repos/a%2Fb/repo/pipeline", 400},
 		{"GET", "/v1/repos", 501}, {"GET", "/v1/repos/owner/repo/pipeline", 501},

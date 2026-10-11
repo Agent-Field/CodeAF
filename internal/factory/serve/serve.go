@@ -32,6 +32,10 @@ type Config struct {
 	Record *record.Record
 	// RecordApproval supports hosts that bind recording through their own door.
 	RecordApproval func(ctx context.Context, id int, edited bool) (event string, err error)
+	// Root is the factory directory the event stream watches. Empty means
+	// the stream stays open and sends no ticks, which is a handler with no
+	// store of its own rather than a broken watch.
+	Root string
 }
 
 // Handler keeps the seam and host identity together for every response.
@@ -40,6 +44,7 @@ type Handler struct {
 	config  Config
 	factory api.Factory
 	mux     *http.ServeMux
+	watch   *rootWatch
 }
 
 // New binds the seam's reads and verbs; absent doors refuse rather than panic.
@@ -51,6 +56,8 @@ func New(seam factory.Seam, config Config) *Handler {
 		factory: api.Factory{Address: config.Address, Version: config.Version}, mux: http.NewServeMux()}
 	h.read("/v1/queue", h.queue)
 	h.read("/v1/jobs/{id}", h.job)
+	h.read("/v1/jobs/{id}/thread", h.thread)
+	h.read("/v1/events", h.events)
 	h.route("/v1/repos", map[string]http.HandlerFunc{http.MethodGet: h.repos, http.MethodPut: h.setRepos})
 	h.read("/v1/repos/{owner}/{repo}/pipeline", h.pipeline)
 	h.read("/v1/github", h.github)
@@ -62,7 +69,18 @@ func New(seam factory.Seam, config Config) *Handler {
 	})
 	// Everything outside /v1 is the dashboard, which routes in the browser.
 	h.read("/", web.Handler().ServeHTTP)
+	if root := strings.TrimSpace(config.Root); root != "" {
+		h.watch = watchRoot(root)
+	}
 	return h
+}
+
+// Close stops the filesystem watch. The HTTP server can still be running;
+// a change after Close is not delivered.
+func (h *Handler) Close() {
+	if h != nil && h.watch != nil {
+		h.watch.stop()
+	}
 }
 
 // ServeHTTP checks the peer before routing, so even errors cannot reveal the
