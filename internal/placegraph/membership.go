@@ -13,6 +13,15 @@ import (
 	"time"
 )
 
+// Membership records a home or shortcut without changing older JSON rows.
+type Membership struct {
+	ChatID  string    `json:"chatId"`
+	PlaceID string    `json:"placeId"`
+	AddedBy AddedBy   `json:"addedBy"`
+	Link    bool      `json:"link,omitempty"`
+	At      time.Time `json:"at,omitzero"`
+}
+
 // ---- Snapshot queries ------------------------------------------------------
 
 // activeIn reports whether a membership counts: its place exists and is not archived.

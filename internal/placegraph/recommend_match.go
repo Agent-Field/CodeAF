@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -81,9 +82,9 @@ func chatWords(c ChatEvidence) map[string]bool {
 	return words(clipRunes(c.Title, 200) + " " + clipRunes(c.Summary, 600) + " " + clipRunes(c.FirstMessage, 600))
 }
 
-// cleanFolder is a caller-supplied folder in comparable form, or "" when it is
+// CleanFolder is a caller-supplied folder in comparable form, or "" when it is
 // not an absolute path. It is only ever compared, never opened or written.
-func cleanFolder(p string) string {
+func CleanFolder(p string) string {
 	p = strings.TrimSpace(p)
 	if p == "" || !filepath.IsAbs(p) {
 		return ""
@@ -561,4 +562,13 @@ func clipRunes(s string, n int) string {
 		return s
 	}
 	return string(r[:n])
+}
+
+func cleanFolder(p string) string { return CleanFolder(p) }
+
+// SameNameMerges finds active sibling pairs, preferring a person's place over
+// an AI-created one and then the older place. Snoozes belong to the caller's ledger.
+func SameNameMerges(snap *Snapshot, aiPlaces []string) []Proposal {
+	r := &Recommender{Now: func() time.Time { return time.Time{} }}
+	return r.mergeOffers(snap, &ledgerState{AIPlaces: aiPlaces}, DefaultRecommendPolicy())
 }

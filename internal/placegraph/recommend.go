@@ -84,6 +84,8 @@ const (
 	ProposalCreate ProposalKind = "create"
 	// ProposalMerge merges FromPlaceID into PlaceID (Store.MergePlaces).
 	ProposalMerge ProposalKind = "merge"
+	// ProposalPlan applies an organising run as one undoable commit.
+	ProposalPlan ProposalKind = "plan"
 )
 
 // ProposalStatus is where an offer stands.
@@ -107,6 +109,7 @@ type Proposal struct {
 	// ID is derived from what the offer is ABOUT (the chat, the group of chats,
 	// the pair of places), so asking twice yields the same offer, never two.
 	ID          string         `json:"id"`
+	Ops         []PlanOp       `json:"ops,omitempty"`
 	Kind        ProposalKind   `json:"kind"`
 	Status      ProposalStatus `json:"status"`
 	ChatIDs     []string       `json:"chatIds,omitempty"`
@@ -143,6 +146,8 @@ type AcceptEdit struct {
 	Name string `json:"name,omitempty"`
 	// ChatIDs narrows a group to the chats the person kept.
 	ChatIDs []string `json:"chatIds,omitempty"`
+	// Skip contains operation indexes the person unchecked, counted from zero.
+	Skip []int `json:"skip,omitempty"`
 }
 
 // AcceptResult is what accepting did. Receipts are in the order they were
@@ -741,6 +746,31 @@ func (r *Recommender) accept(id string, edit AcceptEdit, auto bool) (AcceptResul
 		if err != nil {
 			return err
 		}
+
+		if p.Kind == ProposalPlan {
+			ops, err := selectedPlan(p.Ops, edit)
+			if err != nil {
+				outcome = err
+				return nil
+			}
+			rc, err := r.Store.applyPlan(ops, &p.Revision, func(work *State) error { return planPolicy(work, ops, st.AIPlaces, pol) })
+			if err != nil {
+				outcome = err
+				return nil
+			}
+			st.Proposals[i].Status, st.Proposals[i].DecidedAt = StatusAccepted, now
+			for _, op := range ops {
+				if op.Kind == PlanCreate && !containsString(st.AIPlaces, op.PlaceID) {
+					st.AIPlaces = append(st.AIPlaces, op.PlaceID)
+				}
+			}
+			receipts := []Receipt{}
+			if !rc.Noop() {
+				receipts = append(receipts, rc)
+			}
+			res = AcceptResult{Proposal: st.Proposals[i], Receipts: receipts}
+			return nil
+		}
 		chats, name, err := check(snap, pol, st, p, edit)
 		if err != nil {
 			// An offer the graph moved past, or one the caps now refuse, is
@@ -797,6 +827,12 @@ func check(snap *Snapshot, pol RecommendPolicy, st *ledgerState, p Proposal, edi
 		}
 	}
 	switch p.Kind {
+	case ProposalPlan:
+		if p.Revision != snap.Revision {
+			return nil, "", errStale
+		}
+		return nil, "", nil
+
 	case ProposalFile:
 		if !active(p.PlaceID) || len(chats) != 1 {
 			return nil, "", errStale
@@ -896,4 +932,93 @@ func (r *Recommender) apply(p Proposal, chats []string, name string) ([]Receipt,
 		keep(rc)
 	}
 	return receipts, placeID, nil
+}
+
+// selectedPlan only narrows an offer; a caller cannot supply replacement operations.
+func selectedPlan(ops []PlanOp, edit AcceptEdit) ([]PlanOp, error) {
+	if edit.Name != "" || len(edit.ChatIDs) != 0 {
+		return nil, fmt.Errorf("%w: plan edits take skip indexes", ErrInvalid)
+	}
+	skip := map[int]bool{}
+	for _, i := range edit.Skip {
+		if i < 0 || i >= len(ops) || skip[i] {
+			return nil, fmt.Errorf("%w: invalid skip index", ErrInvalid)
+		}
+		skip[i] = true
+	}
+	selected := make([]PlanOp, 0, len(ops))
+	for i, op := range ops {
+		if !skip[i] {
+			selected = append(selected, op)
+		}
+	}
+	return selected, nil
+}
+
+// planPolicy counts every surviving plan-created place against the existing AI
+// limits under the graph lock. Places the person made never consume these caps.
+func planPolicy(work *State, ops []PlanOp, aiPlaces []string, pol RecommendPolicy) error {
+	ai := append([]string(nil), aiPlaces...)
+	for _, op := range ops {
+		if op.Kind == PlanCreate && !containsString(ai, op.PlaceID) {
+			ai = append(ai, op.PlaceID)
+		}
+	}
+	for _, op := range ops {
+		if op.Kind != PlanCreate {
+			continue
+		}
+		p := work.find(op.PlaceID)
+		if p == nil || p.Archived {
+			continue
+		}
+		// canCreateUnder evaluates capacity before a birth, so exclude this birth.
+		others := work.clone()
+		kept := others.Places[:0:0]
+		for _, row := range others.Places {
+			if row.ID != p.ID {
+				kept = append(kept, row)
+			}
+		}
+		others.Places = kept
+		snapshot := newSnapshot(others)
+		parents := p.Parents
+		if len(parents) == 0 {
+			parents = []string{""}
+		}
+		for _, parent := range parents {
+			if ok, _ := canCreateUnder(snapshot, pol, countAI(snapshot, ai), parent); !ok {
+				return ErrPolicyLimit
+			}
+		}
+	}
+	return nil
+}
+
+// ProposePlan records a completed organiser's offer without changing the graph.
+// A run id is supplied by the caller, not a model; repeating that run keeps the
+// same decision and operations. Acceptance rechecks the captured revision.
+func (r *Recommender) ProposePlan(runID string, ops []PlanOp, summary string) (Proposal, error) {
+	if err := validID(runID); err != nil {
+		return Proposal{}, err
+	}
+	snapshot, err := r.Store.Snapshot()
+	if err != nil {
+		return Proposal{}, err
+	}
+	now := r.now()
+	proposal := Proposal{ID: proposalID("plan|" + runID), Kind: ProposalPlan, Status: StatusPending, Revision: snapshot.Revision, CreatedAt: now, Reason: summary}
+	proposal.Ops = append([]PlanOp(nil), ops...)
+	for i := range proposal.Ops {
+		proposal.Ops[i].Parents = append([]string(nil), ops[i].Parents...)
+	}
+	err = r.Ledger.update(now, func(st *ledgerState) error {
+		if i := st.find(proposal.ID); i >= 0 {
+			proposal = st.Proposals[i]
+			return errUnchanged
+		}
+		st.Proposals = append(st.Proposals, proposal)
+		return nil
+	})
+	return proposal, err
 }
