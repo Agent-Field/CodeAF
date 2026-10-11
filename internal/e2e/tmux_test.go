@@ -125,16 +125,9 @@ func newHome(t *testing.T, overrides map[string]any) string {
 	}
 	// The model this suite is about, and the gate posture every scenario but
 	// the consent one wants.
-	for _, key := range []string{config.KeyChatModel, config.KeyTaskModel,
-		config.KeyTierWorkerModel, config.KeyTierLowModel, config.KeyTierHighModel,
-		config.KeyTierReflexModel, config.KeyTierMastermindModel, config.KeyModelFallbacks} {
-		rows[key] = e2eModel
+	for key, value := range pinnedTextModels(e2eModel) {
+		rows[key] = value
 	}
-	var pins []string
-	for _, role := range textRoles {
-		pins = append(pins, string(role)+":"+e2eModel)
-	}
-	rows[config.KeyModelRoles] = strings.Join(pins, ",")
 	// AND THE MARKS ARE PINNED TO THE PLAIN TIER, for the same reason
 	// [newWorld] pins them: tokens.DetectGlyphSet turns the nerd-font tier ON
 	// for any terminal it cannot veto, and tmux under TERM=xterm-256color is

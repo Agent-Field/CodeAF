@@ -11,9 +11,9 @@
 // can actually reach — which is the whole point of an end-to-end lane, and the
 // one thing an in-package test cannot promise.
 //
-// WHAT IT COSTS. Every turn rides deepseek/deepseek-v4-flash through
-// OpenRouter, and so does the sentinel: the throwaway profile below pins the
-// LOW tier to the same model, so a run of the whole file is a few cents. The
+// WHAT IT COSTS. Every turn rides deepseek/deepseek-v4.1-flash through
+// OpenRouter, and so does every helper: the throwaway profile below pins all
+// text roles to the same model, so a run of the whole file is a few cents. The
 // build tag keeps it out of `go test ./...` and the t.Skip keeps it out of a
 // machine with no key.
 //
@@ -38,21 +38,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
-// e2eModel is the model the person asked for. The transcripts spell it
-// "~deepseek/deepseek-v4-flash-latest"; the leading "~" is OpenRouter's own
-// alias marker and is dropped everywhere in this build (internal/catalog's
-// normalizeID, internal/provider's normalizeModel), so the plain slug is the
-// same model and is what the settings row takes.
+// e2eModel pins the whole verification run, including its auxiliary calls.
 var e2eModel = liveVerificationModel()
-
-// One explicit override reaches the conversation, worker, auxiliary-role and
-// fallback pins together. A lane must still verify its recorded model receipts.
-func liveVerificationModel() string {
-	if model := strings.TrimSpace(os.Getenv("CODEAF_E2E_MODEL")); model != "" {
-		return model
-	}
-	return "deepseek/deepseek-v4-flash"
-}
 
 // personConfig is the credentials this lane borrows: the profile in the
 // person's OWN codeaf home, read before the throwaway one is put in front of
@@ -129,24 +116,21 @@ func newWorld(t *testing.T) *world {
 		t.Fatalf("write the key into the throwaway profile: %v", err)
 	}
 
-	// The model, chosen the way a person chooses one: the model.talk row, which
-	// is what cmd/codeaf's v3TalkModel reads before it falls back to the
-	// environment. The LOW tier is pinned to the same model so the sentinel —
-	// registered at roles.TierLow in standing_run.go — rides the model this run
-	// is about rather than whatever the person happens to have there.
-	// The talk row goes through its own writer: the registry's model slots
-	// refuse without a live SetModel seam, because changing the model a RUNNING
-	// conversation rides is /model's job and not a settings write.
+	// Every text slot is pinned before any session or sentinel is opened.
+	// A copied profile must not send helper calls to the person's usual crew.
 	if err := config.WriteChatModel("", e2eModel); err != nil {
 		t.Fatalf("write %s: %v", config.KeyChatModel, err)
 	}
 	registry := config.NewSettings(config.SettingsOptions{})
-	for _, key := range []string{config.KeyTierLowModel, config.KeyTierHighModel} {
+	for key, value := range pinnedTextModels(e2eModel) {
+		if key == config.KeyChatModel {
+			continue
+		}
 		row, found := registry.Row(key)
 		if !found {
 			t.Fatalf("the settings registry has no row %q", key)
 		}
-		if err := row.Apply(e2eModel); err != nil {
+		if err := row.Apply(value.(string)); err != nil {
 			t.Fatalf("write %s: %v", key, err)
 		}
 	}

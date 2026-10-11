@@ -3,6 +3,7 @@ package main
 import (
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -26,6 +27,40 @@ func oneModelProfile(t *testing.T) string {
 		"task.model":              "task/model",
 		"models.fallbacks":        "fallback/one,fallback/two",
 	})
+}
+
+func TestLocalHelperSessionsKeepTheHostsOneModelPosture(t *testing.T) {
+	const model = "deepseek/deepseek-v4.1-flash"
+	for _, one := range []bool{false, true} {
+		opts := localErrandOptions(remote.Welcome{
+			Model: model, Workspace: t.TempDir(), SessionFile: "host/session.jsonl",
+			Launch: &remote.LaunchShape{OneModel: one},
+		})
+		if opts.Model != model || opts.OneModel != one || !opts.NoStandingTicks || !opts.Interactive {
+			t.Fatalf("host posture lost: %+v", opts)
+		}
+		cfg, err := applyV3Governance(session.Config{Model: opts.Model, Workspace: opts.Workspace},
+			oneModelProfile(t), opts.Yolo, opts.OneModel)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !one {
+			if cfg.RolesSource == nil {
+				t.Fatal("ordinary helper lost its crew")
+			}
+			continue
+		}
+		for _, role := range roles.Vocabulary() {
+			switch role {
+			case roles.RoleVision, roles.RoleImageGen, roles.RoleSpeech, roles.RoleVideo:
+				continue
+			}
+			got, err := roles.Resolve(roles.Source(cfg.RolesSource), role, cfg.Model)
+			if err != nil || got != model {
+				t.Errorf("helper role %s = %q, %v; want %q", role, got, err, model)
+			}
+		}
+	}
 }
 
 func TestOneModelSettlesEveryTextSlotOnTheSessionModel(t *testing.T) {

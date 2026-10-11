@@ -54,7 +54,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/config"
-	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -118,20 +117,6 @@ func pinEveryTextModel(t *testing.T) {
 	t.Logf("PINNED every text model row at %s (tiers, task, %d roles, fallbacks); lanes=%d",
 		e2eModel, len(textRoles), familyLanes)
 }
-
-// textRoles is every role in internal/roles that answers with words. The media
-// four are absent for [pinEveryTextModel]'s reason.
-var textRoles = func() []roles.Role {
-	var text []roles.Role
-	for _, role := range roles.Vocabulary() {
-		switch role {
-		case roles.RoleVision, roles.RoleImageGen, roles.RoleSpeech, roles.RoleVideo:
-			continue
-		}
-		text = append(text, role)
-	}
-	return text
-}()
 
 // familyConfig is what the v3 door wires for work, applied to a conversation
 // this lane drives directly. Everything here is a row cmd/codeaf reads

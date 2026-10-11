@@ -831,18 +831,7 @@ func localErrandDoor(launch localLaunch, welcome remote.Welcome) (func(tui3.Erra
 				fault = err
 				return
 			}
-			boot, err := openV3Launch(proc, v3Options{
-				Model:       launch.model,
-				Interactive: true,
-				Workspace:   welcome.Workspace,
-				Session:     welcome.SessionFile,
-				// AND THIS PROCESS DOES NOT KEEP TIME. The engine on the other end
-				// of the socket holds this project's conversations, so it is the
-				// one whose pass can put a firing into the conversation somebody is
-				// sitting in rather than into the project's inbox
-				// ([v3Options.NoStandingTicks] carries the whole of why).
-				NoStandingTicks: true,
-			})
+			boot, err := openV3Launch(proc, localErrandOptions(welcome))
 			if err != nil {
 				fault = err
 				return
@@ -883,4 +872,15 @@ func localErrandDoor(launch localLaunch, welcome remote.Welcome) (func(tui3.Erra
 			held.closeAll()
 		}
 	}
+}
+
+// localErrandOptions carries the host's settled model and posture into the
+// surface's helper sessions, so those sessions cannot reopen an ordinary crew
+// beside a one-model conversation. The host alone owns standing ticks.
+func localErrandOptions(welcome remote.Welcome) v3Options {
+	opts := engineLaunchOptions(remote.Hello{Model: welcome.Model, Launch: welcome.Launch},
+		welcome.Workspace, welcome.SessionFile)
+	opts.Interactive = true
+	opts.NoStandingTicks = true
+	return opts
 }

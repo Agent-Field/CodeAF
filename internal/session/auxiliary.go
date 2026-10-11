@@ -111,6 +111,8 @@ func (a *Agent) callRoleChecked(ctx context.Context, role roles.Role, sessionDef
 	// so reading it live here moves the crew-only rungs WITH the work rather than
 	// leaving the errands beside a turn talking to a model they do not know about.
 	if a.config.OneModel {
+		// A copied source must not let a role pin outrank the one-model floor.
+		source = nil
 		sessionDefault = a.model
 	}
 	a.mu.Unlock()

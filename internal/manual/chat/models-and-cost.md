@@ -1311,6 +1311,10 @@ absurd for eight words of title.
 `codeaf chat --one-model` and `codeaf resume --one-model` run **every text call on the model
 you are talking to**, for that session only.
 
+That includes auxiliary calls such as naming, memory routing, answer checks and the
+long-answer reader. Helper sessions opened beside this machine's session host carry
+the same model and one-model posture, so they cannot reopen your usual crew.
+
 Without it, the calls codeaf makes on your behalf go to the crew, which is the point of the
 crew — but it means a session started with `--model X` did not spend all of its money on X.
 Measured on one trivial task: 22% of the dollars went to a model the run never named. That is
