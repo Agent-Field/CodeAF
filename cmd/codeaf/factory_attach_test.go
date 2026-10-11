@@ -28,20 +28,8 @@ func attachLab(t *testing.T) *store.Store {
 	if _, err := st.Create(factory.Item{Repo: "owner/repo", Title: "attach fixture", Kind: factory.KindIssue, State: factory.StateNew}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(stopFactoryServingHere)
+	t.Cleanup(closeFactoryServingHere)
 	return st
-}
-
-// stopFactoryServingHere ends this process's in-process service, as the
-// process ending would.
-func stopFactoryServingHere() {
-	factoryServingHere.mu.Lock()
-	defer factoryServingHere.mu.Unlock()
-	if s := factoryServingHere.service; s != nil {
-		s.close()
-		factoryServingHere.release()
-	}
-	factoryServingHere.service, factoryServingHere.release = nil, nil
 }
 
 // serveElsewhere is another process's service on this machine, as seen
@@ -96,6 +84,28 @@ func TestFactoryLaunchServesInProcessAndWritesDiscovery(t *testing.T) {
 	}
 	if seam.Talk == nil || seam.Launch == nil {
 		t.Fatal("the composed seam lost a local door (Talk) or a wired one (Launch)")
+	}
+}
+
+// THE RECEIPT GOES WITH THE SERVICE: when the window that serves ends, its
+// serve.json is gone and serve.lock is free for the next window to serve.
+func TestFactoryServingHereTakesItsReceiptDown(t *testing.T) {
+	st := attachLab(t)
+	if _, err := serveFactoryHere(st, factory.LocalSeam(st, time.Now())); err != nil {
+		t.Fatal(err)
+	}
+	receipt := filepath.Join(st.Root(), "serve.json")
+	if _, err := os.Stat(receipt); err != nil {
+		t.Fatalf("no serve.json while serving: %v", err)
+	}
+	closeFactoryServingHere()
+	if _, err := os.Stat(receipt); !os.IsNotExist(err) {
+		t.Fatalf("serve.json outlived its service: %v", err)
+	}
+	release, err := factoryFileLock(filepath.Join(st.Root(), "serve.lock"), true)
+	defer release()
+	if err != nil {
+		t.Fatalf("serve.lock was not given back: %v", err)
 	}
 }
 
