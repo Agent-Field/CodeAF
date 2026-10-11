@@ -92,9 +92,10 @@ when the place is saved.
 Places exist only in the desktop app. A conversation opened in the terminal reads no
 places, and the Using list says its settings are not applied to it.
 
-## Why didn't the place's permissions apply — a place never loosens them by itself
+## The place says allow but the chat still asks me before running commands — a place never loosens permissions by itself
 
-A place's permissions are applied only when they let **no more** run without asking than
+The place can say `allow` and the chat still asks you before running commands. A place's
+permissions are applied only when they let **no more** run without asking than
 the conversation does now (`deny` < `ask` < `guardian` < `allow`; `auto` counts as whatever your
 settings stand at). A place that would loosen them — say `allow` on a conversation that asks — is
 **held**: the Using list says `This would let more run without asking than this

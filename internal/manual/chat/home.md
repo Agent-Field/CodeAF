@@ -2050,6 +2050,19 @@ It never moves while the list lifts under your typing, and it goes empty on the
 all of it drops bands from the bottom and never touches the name. Nothing that is zero is
 drawn.
 
+## What is next up on this home card
+
+**On the card beside a search, next up is the scheduled band**: the standing orders for
+that conversation's project, soonest first, with rules that never wake at the end. A row
+is your own words and when it happens, as `◦ the 6am repo watch · in 4m`. A watch that
+has already looked says `checked 4m ago`; a rule says `holds`. Two rows show, then
+`…N more items`. Nothing scheduled draws no rows.
+
+**On the resting home the same orders are the `standing` panel**, with nothing at a row's
+right — the time is the line under the cursor (`reminder · goes off tomorrow 9:00am`).
+`enter` on a row opens the standing place. An order stopped on you is a row of
+`needs you`, not of `standing`.
+
 ## Copy a conversation name from Home
 
 Select a conversation and press `→` to show its options. The four ordinary actions are

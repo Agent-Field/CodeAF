@@ -2762,6 +2762,17 @@ over the calls. Every page opens on the actions.
 It is a chord, so it never costs a character: the room's box keeps what you typed. It is
 not bound on any other task's page.
 
+## How do I stop a task from the chat without opening it
+
+Press `x` over an empty message box in the chat. You do not open the task first. When
+the roster does not hold the keyboard and exactly one stoppable task row is visible,
+`x` takes that row. With two or more, `x` does nothing until `alt+t` puts the cursor on
+the task. `x` never stops the task by itself: it raises `Stop this task?`, `1` moves
+onto `stop it`, and `enter` takes it. `esc` is `keep going`. A sentence already in the
+box means `x` types the letter x.
+
+On home, `ctrl+x` on a tasks row this window holds asks to stop that task the same way.
+
 ## Stopping work with `x` — the confirmation card, why the stop card needs enter as well as the number
 
 `x` raises one card above the message box:
