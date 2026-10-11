@@ -129,6 +129,25 @@ func TestOneJobPerWorkerSurvivesReopen(t *testing.T) {
 	}
 }
 
+func TestALiveLeaseProtectsAJobPutBackInTheQueue(t *testing.T) {
+	f := setup(t)
+	it := f.add(t, factory.Item{Assignee: "sam"})
+	if _, err := f.desk.Pull(worker("laptop", "sam")); err != nil {
+		t.Fatal(err)
+	}
+	// A concurrent queue writer cannot revoke the claims desk's ownership by
+	// changing only the item state; the persisted lease remains authoritative.
+	if err := f.store.Update(it.ID, func(it *factory.Item) error {
+		it.State = factory.StateQueued
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.open(t).Pull(worker("desktop", "sam")); !errors.Is(err, lease.ErrNoJob) {
+		t.Fatalf("second worker took a live lease: %v", err)
+	}
+}
+
 func TestPersonRule(t *testing.T) {
 	cases := []struct {
 		name   string
