@@ -231,4 +231,12 @@ test('the task view follows the panel: an ended task says so and cannot take not
   await expect(page.getByText('This task has finished, so it cannot read a note.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send note' })).toBeDisabled();
   await expect(page.locator('.task-view-body').getByText('Done', { exact: true })).toBeVisible();
+  // The transcript scrolls under the sticky bar: the ended bar keeps solid paper and its strip keeps the dock ramp.
+  const looks = await page.locator('.task-composer-bar').evaluate((bar) => {
+    const style = getComputedStyle(bar);
+    return { opacity: style.opacity, paper: style.backgroundColor, ramp: getComputedStyle(bar.parentElement!).backgroundImage };
+  });
+  expect(looks.opacity).toBe('1');
+  expect(looks.paper).not.toMatch(/rgba\(.*, 0(\.\d+)?\)$|transparent/);
+  expect(looks.ramp).toContain('linear-gradient');
 });
