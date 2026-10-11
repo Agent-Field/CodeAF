@@ -37,13 +37,16 @@ export function initMaterial(): () => void {
   const reduced = window.matchMedia('(prefers-reduced-transparency: reduce)');
   const contrast = window.matchMedia('(prefers-contrast: more)');
   let active = document.hasFocus();
+  const windowsDesktop = isTauri() && /Win/.test(navigator.platform);
+  // Until the shell confirms Mica support, Windows paints the conservative solid fallback.
+  let nativeAvailable = !windowsDesktop;
   // Writing an attribute its own value still queues a mutation record. The terminal reads its theme through a probe element
   // appended inside the body, and re-reads whenever <html> attributes mutate, so an unconditional write here made the two
   // observers wake each other forever. Only a change is written.
   const write = (name: 'windowActive' | 'material', value: string) => { if (root.dataset[name] !== value) root.dataset[name] = value; };
   const apply = () => {
     write('windowActive', String(active));
-    write('material', resolveMaterial({
+    write('material', windowsDesktop && !nativeAvailable ? 'solid' : resolveMaterial({
       desktop: isTauri(),
       platform: navigator.platform,
       active,
@@ -70,6 +73,11 @@ export function initMaterial(): () => void {
       const off = await getCurrentWindow().onFocusChanged(({ payload }) => { active = payload; apply(); });
       if (closed) off(); else unlisten = off;
     }).catch(() => {});
+  }
+  if (windowsDesktop) {
+    void import('@tauri-apps/api/core').then(({ invoke }) => invoke<{ nativeMaterial?: boolean }>('window_context'))
+      .then(context => { if (!closed) { nativeAvailable = context.nativeMaterial === true; apply(); } })
+      .catch(() => {});
   }
   apply();
   return () => {

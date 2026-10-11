@@ -494,6 +494,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tauri-winrt-notification",
  "webkit2gtk",
+ "windows-version",
  "zbus",
 ]
 

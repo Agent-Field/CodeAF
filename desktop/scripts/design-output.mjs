@@ -64,8 +64,8 @@ export const generatedFiles = {
 // Native window geometry follows the same foundation; unrelated Tauri settings remain native-owned.
 for (const path of ['src-tauri/tauri.conf.json', 'src-tauri/tauri.macos.conf.json']) {
  const config = JSON.parse(readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'));
- const { trafficLightPosition, ...geometry } = design.nativeWindow;
+ const { trafficLightPosition, vibrancyWindowsMinBuild, ...geometry } = design.nativeWindow;
  config.app.windows = config.app.windows.map(window => window.label === 'main'
-  ? { ...window, ...geometry, ...(path.includes('macos') ? { trafficLightPosition } : {}) } : window);
+  ? { ...window, ...geometry, trafficLightPosition } : window);
  generatedFiles[path] = JSON.stringify(config, null, 2) + '\n';
 }

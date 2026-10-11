@@ -87,3 +87,7 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+# Native material selection follows the same Windows version support as Tauri.
+[target.'cfg(windows)'.dependencies.windows-version]
+version = "0.1"

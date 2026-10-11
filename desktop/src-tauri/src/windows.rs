@@ -703,6 +703,8 @@ pub fn window_set_title<R: Runtime>(webview: Webview<R>, title: String) -> Resul
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WindowContext {
+    #[cfg(windows)]
+    pub native_material: bool,
     pub label: String,
     pub place_key: String,
 }
@@ -714,6 +716,18 @@ pub fn window_context<R: Runtime>(
 ) -> Result<WindowContext, String> {
     let label = trusted(&webview)?;
     Ok(WindowContext {
+        // Unsupported Windows versions paint solid rather than exposing an absent Mica layer.
+        #[cfg(windows)]
+        native_material: {
+            let tokens: serde_json::Value =
+                serde_json::from_str(include_str!("../../src/design/tokens.json"))
+                    .expect("Design tokens must be valid JSON");
+            let minimum = tokens["nativeWindow"]["vibrancyWindowsMinBuild"]
+                .as_u64()
+                .expect("The Mica minimum build token must be a number");
+            let version = windows_version::OsVersion::current();
+            version.major >= 10 && u64::from(version.build) >= minimum
+        },
         place_key: place_of(&app, &label),
         label,
     })

@@ -19,7 +19,21 @@
         "minWidth": 800,
         "minHeight": 560,
         "decorations": true,
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "transparent": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "windowEffects": {
+          "effects": [
+            "sidebar",
+            "mica"
+          ],
+          "state": "followsWindowActiveState"
+        },
+        "trafficLightPosition": {
+          "x": 16,
+          "y": 18
+        }
       }
     ],
     "security": {
