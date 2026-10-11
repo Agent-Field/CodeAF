@@ -77,6 +77,23 @@ func TestFactoryCommandServesQueueAndOwnsDiscovery(t *testing.T) {
 	if err != nil || response.StatusCode != http.StatusOK || !bytes.Contains(body, []byte("command fixture")) {
 		t.Fatalf("queue: status=%d body=%s error=%v", response.StatusCode, body, err)
 	}
+	response, err = client.Get(address + "/v1/audit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("record is absent from the service: status=%d", response.StatusCode)
+	}
+	response, err = client.Post(address+"/v1/workers/attach", "application/json", strings.NewReader(`{"name":"test worker","handle":"tester"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err = io.ReadAll(response.Body)
+	response.Body.Close()
+	if err != nil || response.StatusCode != http.StatusCreated || !bytes.Contains(body, []byte(`"credential"`)) {
+		t.Fatalf("worker connection: status=%d body=%s error=%v", response.StatusCode, body, err)
+	}
 	repos, err := st.Repos()
 	if err != nil || len(repos) != 1 || repos[0] != "owner/repo" {
 		t.Fatalf("configured repos: %v, %v", repos, err)
@@ -86,6 +103,14 @@ func TestFactoryCommandServesQueueAndOwnsDiscovery(t *testing.T) {
 	}
 	if after := readFactoryTestFile(t, discoveryPath); !bytes.Equal(after, originalDiscovery) {
 		t.Fatal("second service replaced discovery")
+	}
+	response, err = client.Get(address + "/v1/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("change stream: status=%d", response.StatusCode)
 	}
 	cancel()
 	select {

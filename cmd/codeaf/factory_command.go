@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/filelock"
@@ -117,7 +118,20 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer)
 	defer listener.Close()
 	address := "http://" + listener.Addr().String()
 	seam := factory.LocalSeam(st, time.Now(), factory.WithRepoDirs(st.CheckoutDir))
-	server := &http.Server{Handler: serve.New(seam, serve.Config{Address: address, AccessToken: cfg.AccessToken}), ReadHeaderTimeout: 10 * time.Second}
+	history, err := record.Open(st, record.Options{})
+	if err != nil {
+		return err
+	}
+	// The service's watch, worker reports and record share the jobs' root, so
+	// clients observe the same files without starting execution in this process.
+	handler := serve.New(seam, serve.Config{Address: address, AccessToken: cfg.AccessToken, Store: st, Root: st.Root(), Record: history})
+	defer handler.Close()
+	server := &http.Server{
+		Handler: handler, ReadHeaderTimeout: 10 * time.Second,
+		// Long polls and change streams must end with the service, otherwise
+		// graceful shutdown waits on clients that are waiting on this process.
+		BaseContext: func(net.Listener) context.Context { return ctx },
+	}
 	done := make(chan error, 1)
 	guard.Go("factory HTTP service", func() { done <- server.Serve(listener) })
 	defer server.Close()

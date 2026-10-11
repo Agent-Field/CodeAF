@@ -8,6 +8,8 @@ The default is `127.0.0.1:7420`. Use `--listen 127.0.0.1:0` for an available por
 or `--listen 0.0.0.0:7420` to accept connections from other machines.
 `GET /v1/queue` reads the saved jobs over loopback without an access token.
 Starting this service does not start execution, GitHub polling or a worker.
+The HTTP service supplies its saved jobs to worker reports, its change stream and
+its record; it keeps no worker running in this process.
 Actions that need those absent doors refuse rather than starting work locally.
 
 The host config is `~/.codeaf/factory/config.yaml`; `--config path` selects another.
