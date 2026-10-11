@@ -1564,6 +1564,30 @@ The bottom line names the current order, `O order · first`. In the `first` orde
 the triage reason dim before the age (`main is red    6h`), the first thing a narrow row drops.
 `O` does nothing on the item page. The choice lasts until codeaf closes; it is not saved.
 
+## factory HTTP read endpoints and access token
+
+The factory HTTP handler exposes `GET /v1/queue` (jobs, repositories, pipeline strip,
+capacity and the connected GitHub handle), `GET /v1/jobs/{id}` (one full job),
+`GET /v1/repos` (watched names and available repositories),
+`GET /v1/repos/{owner}/{repo}/pipeline` (the pipeline read through the repository's
+recipe), `GET /v1/github` (login and connection method), and `GET /v1/me`.
+Every JSON response, including an error, carries `factory: {address, version}`.
+The pipeline includes any lines that could not load; without a known checkout it
+returns defaults with `source: "defaults"`.
+
+Loopback connections are open. Connections from any other address require
+`Authorization: Bearer <access token>` using the host configuration's access token.
+With no token configured, remote access is refused. Forwarded headers do not grant
+loopback access. A missing or wrong token answers HTTP 401 with
+`a bearer access token is required`.
+
+`/v1/me` currently uses the factory's connected GitHub login as its handle, with an
+empty machines list and no unassigned-work preferences. With no GitHub connection,
+the handle is blank. These reads do not create a viewer session. A read whose seam
+door is absent answers HTTP 501 with `this factory does not provide that read`;
+an unknown job answers HTTP 404 with `job not found`. The handler accepts GET only.
+This handler is a Go component; it does not itself add a CLI server command.
+
 ## what the factory does not do yet
 
 Be plain about this when asked:
