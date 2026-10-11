@@ -196,3 +196,45 @@ func TestCandidateTiesAndDominantTitleSpelling(t *testing.T) {
 		t.Fatal("repeated words in one member do not meet support", got)
 	}
 }
+
+func namesCorpus() *placeorg.Corpus {
+	ws := "/home/zorvin/work"
+	return &placeorg.Corpus{Chats: []placeorg.Chat{
+		{ID: "a", Workspace: ws, Title: "Orchid Care", Text: "orchid care zorvin quasar"},
+		{ID: "b", Workspace: ws, Title: "Orchid Soil", Text: "orchid soil zorvin"},
+		{ID: "c", Workspace: ws, Title: "Quasar Notes", Text: "notes"},
+		{ID: "d", Workspace: ws, Title: "Misc", Text: "misc"},
+	}}
+}
+
+func TestNameRefusesThePersonsOwnNameAndRareTokens(t *testing.T) {
+	members := []string{"a", "b", "c"}
+	idx := NewIndex(namesCorpus())
+	valid := idx.Validator(members, map[string]bool{})
+	for _, bad := range []string{"Zorvin", "Orchid Zorvin", "Quasar"} {
+		if got, ok := valid(bad); ok {
+			t.Fatalf("%q was accepted as %q", bad, got)
+		}
+	}
+	if got, ok := valid("Orchid"); !ok || got != "Orchid" {
+		t.Fatal(got, ok)
+	}
+	// A profile word is refused even when no path in the corpus shows it.
+	if _, ok := NewIndex(namesCorpus()).WithOwner("Orchid Radha").Validator(members, map[string]bool{})("Orchid"); ok {
+		t.Fatal("profile name accepted")
+	}
+	// The charter line gives a rare token its meaning.
+	if got, ok := idx.ValidatorWithCharter(members, map[string]bool{}, "Quasar observation notes")("Quasar"); !ok || got != "Quasar" {
+		t.Fatal(got, ok)
+	}
+}
+
+func TestNamingFallsBackToTheCharterWhenTheAIPicksARareToken(t *testing.T) {
+	c := namesCorpus()
+	nodes := []placeorg.Node{{ID: "r", Members: []string{"a", "b", "c"}}}
+	judge := &fakeJudge{answers: []string{"Orchid care", "Zorvin Quasar"}}
+	ops, err := (&Stage{}).nameNodes(context.Background(), nodes, c, judge)
+	if err != nil || len(ops) != 1 || ops[0].Name != "Orchid" {
+		t.Fatal(ops, err)
+	}
+}
