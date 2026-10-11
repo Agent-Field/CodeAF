@@ -1975,6 +1975,9 @@ sentences to the job's notes.
 
 A `question` takes `text`, optional `from_step`, `kind`, `options`, `pick` and
 `why`; it puts the job in `needs_you`. There is one open question per job.
+`GET /v1/jobs/{id}` returns that reported ask once in `questions`, keeping its
+`kind`, step, options, pick and reason together with `with: "you"` and the
+factory's timestamp. Answering the question removes it from the job read.
 `pr` keeps a published PR's number, URL and CI separately from the source issue.
 Reports update the job reads through the runner's existing store writes, without
 replacing the job or its ownership. Invalid reports answer HTTP 400 and write

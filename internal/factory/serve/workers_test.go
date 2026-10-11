@@ -18,6 +18,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
@@ -40,10 +41,14 @@ func workerSetup(t *testing.T) *workerFixture {
 	cfg := config
 	cfg.Store, cfg.PullWait = st, time.Millisecond
 	cfg.LeaseOptions = lease.Options{Now: func() time.Time { return time.Unix(0, f.clock.Load()).UTC() }}
+	desk, err := lease.Open(st, cfg.LeaseOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
 	seam := factory.Seam{Load: func() (factory.Snapshot, error) {
 		items, err := st.List()
 		return factory.Snapshot{Items: items}, err
-	}}
+	}, Answer: lease.NewDoors(desk).Answer}
 	f.handler = serve.New(seam, cfg)
 	f.server = httptest.NewServer(f.handler)
 	t.Cleanup(f.server.Close)
@@ -190,7 +195,7 @@ func TestWorkerAttachPullHeartbeatReportAndDone(t *testing.T) {
 	}
 	var got api.Job
 	f.request(t, "GET", fmt.Sprintf("/v1/jobs/%d", job.ID), "", nil, 200, &got)
-	if got.PR == nil || got.PR.Number != 42 || got.Cost != .25 || len(got.Claims) != 1 || len(got.Questions) == 0 {
+	if got.PR == nil || got.PR.Number != 42 || got.Cost != .25 || len(got.Claims) != 1 || len(got.Questions) != 1 {
 		t.Fatalf("job read lost report facts: %+v", got)
 	}
 	restored := api.ToItem(got)
@@ -205,6 +210,57 @@ func TestWorkerAttachPullHeartbeatReportAndDone(t *testing.T) {
 	}
 	f.request(t, "POST", endpoint+"/heartbeat", first.Credential, nil, 409, nil)
 	f.request(t, "POST", endpoint+"/report", first.Credential, report, 409, nil)
+}
+
+func TestWorkerDiffReportsOneQuestionOnTheWire(t *testing.T) {
+	for _, kind := range []string{factory.QKindApprove, "step", "cap", ""} {
+		t.Run("kind="+kind, func(t *testing.T) {
+			f := workerSetup(t)
+			job := f.add(t, "sam")
+			worker := f.attach(t, "sam")
+			pulled := f.pull(t, worker)
+			prev, cur := api.ToItem(pulled.Job), api.ToItem(pulled.Job)
+			stage := "proof"
+			if kind == factory.QKindApprove {
+				stage = "approve"
+			}
+			cur.State, cur.Question, cur.QKind = factory.StateNeedsYou, "continue with this choice?", kind
+			cur.Asking = &factory.Asked{Stage: stage, Question: cur.Question, With: factory.AskedYou,
+				Options: []string{"yes", "no"}, Pick: "yes", Why: "the person chooses"}
+			report, moved := run.Diff(prev, cur)
+			if !moved || report.Question == nil {
+				t.Fatalf("diff lost the question: %+v", report)
+			}
+			endpoint := "/v1/workers/leases/" + pulled.Lease.ID
+			f.request(t, "POST", endpoint+"/report", worker.Credential, api.FromRunReport(report), 200, nil)
+			var got api.Job
+			f.request(t, "GET", fmt.Sprintf("/v1/jobs/%d", job.ID), "", nil, 200, &got)
+			wantKind := kind
+			if wantKind == "" {
+				wantKind = "step"
+			}
+			stamp := time.Unix(0, f.clock.Load()).UTC()
+			want := []api.Question{{Text: cur.Question, State: "open", Kind: wantKind, FromStep: stage,
+				With: factory.AskedYou, Options: cur.Asking.Options, Pick: "yes", Why: cur.Asking.Why, At: &stamp}}
+			if !reflect.DeepEqual(got.Questions, want) {
+				t.Fatalf("GET job questions = %+v; want %+v", got.Questions, want)
+			}
+			stored, err := f.st.Get(job.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			restored := api.ToItem(got)
+			if restored.Question != stored.Question || restored.QKind != stored.QKind || !reflect.DeepEqual(restored.Asking, stored.Asking) {
+				t.Fatalf("client lost the held question: %+v; stored %+v", restored, stored)
+			}
+			f.request(t, "POST", fmt.Sprintf("/v1/jobs/%d/answer", job.ID), "", map[string]bool{"yes": false}, 200, nil)
+			got = api.Job{}
+			f.request(t, "GET", fmt.Sprintf("/v1/jobs/%d", job.ID), "", nil, 200, &got)
+			if len(got.Questions) != 0 {
+				t.Fatalf("answered question remains on the wire: %+v", got.Questions)
+			}
+		})
+	}
 }
 
 func TestWorkerCredentialsAndLeaseOwnership(t *testing.T) {

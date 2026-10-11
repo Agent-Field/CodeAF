@@ -184,6 +184,30 @@ func TestStatesAndGates(t *testing.T) {
 	}
 }
 
+func TestQuestionCodecKeepsDistinctAsksAndRoundTripsCombinedAsks(t *testing.T) {
+	for _, tc := range []struct {
+		name, text, with string
+		count            int
+	}{
+		{"reported ask", "continue?", factory.AskedYou, 1},
+		{"different question", "which file?", factory.AskedYou, 2},
+		{"manager holds same words", "continue?", factory.AskedManager, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			it := factory.Item{State: factory.StateNeedsYou, Question: "continue?", QKind: factory.QKindApprove,
+				Asking: &factory.Asked{Stage: "approve", Question: tc.text, With: tc.with, At: at,
+					Options: []string{"yes", "no"}, Pick: "yes", Why: "your choice"}}
+			got := wire(t, factory.Snapshot{Items: []factory.Item{it}})
+			if qs := FromItem(it).Questions; len(qs) != tc.count {
+				t.Fatalf("questions = %+v; want %d asks", qs, tc.count)
+			}
+			for _, d := range diff(reflect.ValueOf(it), reflect.ValueOf(got.Items[0]), "Item") {
+				t.Error(d)
+			}
+		})
+	}
+}
+
 // TestNilIsNotEmpty: the two lists whose nil means "not read yet" keep the
 // difference across the wire.
 func TestNilIsNotEmpty(t *testing.T) {

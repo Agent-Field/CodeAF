@@ -370,8 +370,16 @@ func questions(it factory.Item) []Question {
 	}
 	if a := it.Asking; a != nil {
 		at := a.At
-		out = append(out, Question{Text: a.Question, State: "open", Kind: QuestionAsked, FromStep: a.Stage,
-			With: a.With, Options: a.Options, Pick: a.Pick, Why: a.Why, At: &at})
+		q := Question{Text: a.Question, State: "open", Kind: QuestionAsked, FromStep: a.Stage,
+			With: a.With, Options: a.Options, Pick: a.Pick, Why: a.Why, At: &at}
+		// A reported ask holds the same words in Question and Asking. Keep
+		// its gate kind and its answer details together on one wire entry.
+		if a.With == factory.AskedYou && it.Question != "" && it.Question == a.Question {
+			q.Kind = it.QKind
+			out[0] = q
+		} else {
+			out = append(out, q)
+		}
 	}
 	return out
 }
@@ -380,7 +388,9 @@ func unquestions(it *factory.Item, qs []Question) {
 	for _, q := range qs {
 		if q.Kind != QuestionAsked {
 			it.Question, it.QKind = q.Text, q.Kind
-			continue
+			if q.With != factory.AskedYou {
+				continue
+			}
 		}
 		a := &factory.Asked{Stage: q.FromStep, Question: q.Text, Options: q.Options, Pick: q.Pick, With: q.With, Why: q.Why}
 		if q.At != nil {
