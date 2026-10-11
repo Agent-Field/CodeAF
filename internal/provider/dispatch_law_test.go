@@ -31,6 +31,8 @@ const dispatcherFile = "dispatch.go"
 // of them is a completion: a law that pretended they did not exist would be a
 // law nobody could keep.
 //
+//   - embeddings.go posts vectors in a fixed space, not a completion. It has
+//     no stream or model fallback; the organiser owns the fallback space.
 //   - media.go posts an image, a transcription or a document parse. It has no
 //     token stream, no lane belief and no relaxation ladder — [lane.RoleMedia]
 //     is the role that says so — and its retries are the media API's own.
@@ -43,6 +45,7 @@ const dispatcherFile = "dispatch.go"
 //     fails: it answers "unknown" and the call above it decides.
 var sendsForACompletion = map[string]string{
 	dispatcherFile:    "the one loop",
+	"embeddings.go":   "fixed-space vectors, with no completion or model fallback",
 	"media.go":        "an image, a transcription or a document parse — no stream, no ladder",
 	"receipt.go":      "an accounting read about a call that has already ended",
 	"connectivity.go": "is the origin there",

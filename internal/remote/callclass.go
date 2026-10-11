@@ -166,7 +166,7 @@ func classify(method string) callClass {
 		MethodTeamsName, MethodTeamsPropose,
 		// And the places ask, for the same reason: a model's opinion on where a
 		// chat belongs is worth nothing once the turn it waited behind is over.
-		MethodPlacesAsk:
+		MethodPlacesAsk, MethodPlacesEmbed:
 		return classGetter
 	case MethodQuestionResolve, MethodQuestionHold,
 		MethodConsent, MethodConsentRemember,
