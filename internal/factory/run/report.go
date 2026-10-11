@@ -21,6 +21,15 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 	if report.PR != nil && report.CommentURL != "" {
 		return fmt.Errorf("publish reports either a pr or a comment")
 	}
+	if report.Change != nil {
+		if err := validateChange(report.Change); err != nil {
+			return err
+		}
+		it.Change = report.Change
+	}
+	if report.ChangeBase != "" {
+		it.ChangeBase = report.ChangeBase
+	}
 	ensureStream(it, now)
 	if report.Publish != "" {
 		if report.Publish != "pr" && report.Publish != "comment" {

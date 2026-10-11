@@ -3,6 +3,8 @@ package factory
 // RunReport is a worker's incremental write, not a replacement item. Keeping the
 // identity and pipeline out of it preserves changes a person made meanwhile.
 type RunReport struct {
+	Change     *Change
+	ChangeBase string
 	// Pipeline is the job's steps after the worker's runner reshaped them (the
 	// manager's first turn, or a plan's edit, both bounded by the recipe). Nil
 	// is no change. It lands before Stages, which may name a new step.

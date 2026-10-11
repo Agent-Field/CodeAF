@@ -940,6 +940,9 @@ func (lp *floorLoop) round(c *loopCtl, exec Executor, job Job) (res factory.Stag
 	c.roundCancel = cancel
 	lp.mu.Unlock()
 	res, err = runIn(rctx, exec, job)
+	if rctx.Err() == nil && job.dirErr == nil {
+		lp.recordChange(c, job, res)
+	}
 	lp.mu.Lock()
 	c.roundCancel = nil
 	cut := rctx.Err() != nil
@@ -1002,6 +1005,12 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 	// (workdir.go), else in the repository's checkout; a worktree that could
 	// not be made fails the round rather than running in the person's tree.
 	dir, dirErr := lp.jobDir(it)
+	if dirErr == nil && dir != "" && it.ChangeBase == "" {
+		if base := changeBase(dir, it); base != "" {
+			it.ChangeBase = base
+			_ = lp.write(c, func(saved *factory.Item) error { saved.ChangeBase = base; return nil })
+		}
+	}
 	return Job{
 		Item:   it,
 		Stage:  st,
@@ -1806,7 +1815,11 @@ func (lp *floorLoop) reverifyRun(c *loopCtl) {
 		}) != nil {
 			return
 		}
-		res, err := runIn(c.ctx, exec, lp.job(c, st, index, i, ph.Round+1))
+		job := lp.job(c, st, index, i, ph.Round+1)
+		res, err := runIn(c.ctx, exec, job)
+		if c.ctx.Err() == nil && job.dirErr == nil {
+			lp.recordChange(c, job, res)
+		}
 		if c.ctx.Err() != nil {
 			return
 		}

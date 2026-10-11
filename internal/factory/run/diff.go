@@ -25,6 +25,12 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 	if pipelineMoved(prev, cur) {
 		r.Pipeline = &factory.PipelineChange{Stages: cur.Stages, Phases: cs.Phases}
 	}
+	if !reflect.DeepEqual(prev.Change, cur.Change) {
+		r.Change = cur.Change
+	}
+	if prev.ChangeBase != cur.ChangeBase {
+		r.ChangeBase = cur.ChangeBase
+	}
 	r.Stages = stepsMoved(ps.Phases, cs.Phases)
 	r.Log = newLines(ps.Log, cs.Log)
 	if cur.State == factory.StateLanded || cur.State == factory.StateShipped {

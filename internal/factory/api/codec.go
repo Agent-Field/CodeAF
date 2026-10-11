@@ -62,7 +62,7 @@ var Lost = map[string]string{
 func FromItem(it factory.Item) Job {
 	j := Job{
 		ID: it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
-		Publish: it.Publish, CommentURL: it.CommentURL,
+		Change: it.Change, Publish: it.Publish, CommentURL: it.CommentURL,
 		State: stateOut[it.State], Ready: it.State == factory.StateLanded, Gate: gate(it),
 		AssignedTo:       it.Person(),
 		AskedFirstReason: it.AskedFirstReason,
@@ -73,8 +73,14 @@ func FromItem(it factory.Item) Job {
 		CreatedAt:        it.Created,
 		Desk:             fromDesk(it),
 	}
+	// Preserve a stored true flag for future job kinds as well. A false flag
+	// is known only for a PR; other jobs leave the field absent.
+	if it.Kind == factory.KindPR || it.Draft {
+		draft := it.Draft
+		j.Draft = &draft
+	}
 	if pr := it.PullRequest; pr != nil {
-		j.PR = &PR{Number: pr.Number, URL: pr.URL, CI: pr.CI}
+		j.PR = &PR{Number: pr.Number, URL: pr.URL, CI: pr.CI, Draft: pr.Draft}
 	}
 	if j.State == "" {
 		j.State = string(it.State)
@@ -101,7 +107,7 @@ func ToItem(j Job) factory.Item {
 	}
 	it := factory.Item{
 		ID: j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL,
-		Publish: j.Publish, CommentURL: j.CommentURL,
+		Change: j.Change, ChangeBase: d.ChangeBase, Publish: j.Publish, CommentURL: j.CommentURL,
 		WorktreeMachine: d.WorktreeMachine, Publishing: d.Publishing,
 		State: stateIn(j), Created: j.CreatedAt,
 		Product: d.Product, Places: d.Places, Body: d.Body, Author: d.Author,
@@ -117,7 +123,10 @@ func ToItem(j Job) factory.Item {
 		Activity: mapList(d.Activity, toActivity),
 	}
 	if pr := j.PR; pr != nil {
-		it.PullRequest = &factory.PullRequest{Number: pr.Number, URL: pr.URL, CI: pr.CI}
+		it.PullRequest = &factory.PullRequest{Number: pr.Number, URL: pr.URL, CI: pr.CI, Draft: pr.Draft}
+	}
+	if j.Draft != nil {
+		it.Draft = *j.Draft
 	}
 	it.AskedFirstReason = j.AskedFirstReason
 	it.Stages, it.Stream = unsteps(j)
@@ -310,7 +319,7 @@ func toClaim(c Claim) factory.Claim {
 
 func fromDesk(it factory.Item) *JobDesk {
 	d := &JobDesk{
-		WorktreeMachine: it.WorktreeMachine, Publishing: it.Publishing,
+		ChangeBase: it.ChangeBase, WorktreeMachine: it.WorktreeMachine, Publishing: it.Publishing,
 		Product: it.Product, Places: it.Places, Body: it.Body, Author: it.Author,
 		Assignee: it.Assignee, Starter: it.Starter, Taker: it.Taker,
 		Tier: string(it.Tier), Origin: string(it.Origin), Synced: it.Synced, ChangedAt: it.Changed,
@@ -456,7 +465,7 @@ func runStep(s Step, p factory.Phase) Step {
 		s.RunKind = string(p.Kind)
 	}
 	if r := p.Result; r != nil {
-		s.Result, s.Cost = r.Output, r.Spent
+		s.Result, s.Cost, s.Tests = r.Output, r.Spent, r.Tests
 	}
 	if !p.At.IsZero() {
 		at := p.At
@@ -497,8 +506,8 @@ func toPhase(s Step) factory.Phase {
 	}
 	p := factory.Phase{Name: s.Name, Kind: factory.StageKind(kind), State: factory.PhaseState(s.State), Note: s.Note,
 		Round: s.Round, Tasks: s.Tasks, Left: time.Duration(s.LeftMS) * time.Millisecond, Chat: s.Chat, Handle: s.Handle}
-	if s.Result != "" || s.Cost != 0 {
-		p.Result = &factory.StageResult{Output: s.Result, Spent: s.Cost}
+	if s.Result != "" || s.Cost != 0 || s.Tests != nil {
+		p.Result = &factory.StageResult{Output: s.Result, Spent: s.Cost, Tests: s.Tests}
 	}
 	if s.At != nil {
 		p.At = *s.At

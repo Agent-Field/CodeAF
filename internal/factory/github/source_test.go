@@ -28,6 +28,7 @@ type fixture struct {
 	issueBody string
 	issueTag  string
 	pullTag   string
+	pullDraft bool
 	checksRun bool
 	hits      map[string]int
 	sinces    []string
@@ -103,12 +104,12 @@ func (f *fixture) handle(w http.ResponseWriter, r *http.Request) {
 		js([]map[string]any{})
 	case key == "GET /repos/acme/api/pulls":
 		tagged(f.pullTag, []map[string]any{
-			{"number": 9, "title": "feat: tree rails", "body": "rails", "user": map[string]any{"login": "santosh"},
+			{"number": 9, "draft": f.pullDraft, "title": "feat: tree rails", "body": "rails", "user": map[string]any{"login": "santosh"},
 				"labels": []map[string]any{{"name": "ui"}}, "created_at": at(0), "updated_at": at(2),
 				"html_url": "https://github.com/acme/api/pull/9", "head": map[string]any{"sha": "abc"}},
 		})
 	case key == "GET /repos/acme/api/pulls/9":
-		js(map[string]any{"number": 9, "additions": 30, "deletions": 25, "changed_files": 2, "head": map[string]any{"sha": "abc"}, "updated_at": at(2),
+		js(map[string]any{"number": 9, "draft": f.pullDraft, "additions": 30, "deletions": 25, "changed_files": 2, "head": map[string]any{"sha": "abc"}, "updated_at": at(2),
 			"title": "feat: tree rails", "body": "rails", "user": map[string]any{"login": "santosh"}, "labels": []map[string]any{{"name": "ui"}},
 			"created_at": at(0), "html_url": "https://github.com/acme/api/pull/9", "comments": 1})
 	case key == "GET /repos/acme/api/issues/7":
@@ -553,5 +554,45 @@ func TestPullHeadNamesAForksOwner(t *testing.T) {
 	}
 	if got := pullHead("acme", "api", forge.Pull{}); got != "" {
 		t.Errorf("no head = %q", got)
+	}
+}
+
+// Draft transitions must reach an existing job without replacing its local
+// change facts, including the transition back to a ready PR.
+func TestPollRetainsDraftFlagAndLocalChangeFacts(t *testing.T) {
+	f := newFixture()
+	_, api := f.serve(t)
+	st := openStore(t)
+	if err := st.SetRepos([]string{"acme/api"}); err != nil {
+		t.Fatal(err)
+	}
+	src := New(api, nil, nil)
+	ctx := context.Background()
+	now := func() time.Time { return f.t0 }
+	if _, err := PollOnce(ctx, src, st, "", now); err != nil {
+		t.Fatal(err)
+	}
+	items, _ := st.List()
+	pr := byNum(items)[9]
+	change := &factory.Change{Branch: "factory/pr-9"}
+	if err := st.Update(pr.ID, func(it *factory.Item) error { it.Change = change; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	for _, draft := range []bool{true, false} {
+		f.mu.Lock()
+		f.pullDraft = draft
+		if draft {
+			f.pullTag = `"draft"`
+		} else {
+			f.pullTag = `"ready"`
+		}
+		f.mu.Unlock()
+		if _, err := PollOnce(ctx, src, st, "", now); err != nil {
+			t.Fatal(err)
+		}
+		got, err := st.Get(pr.ID)
+		if err != nil || got.Draft != draft || got.Change == nil || got.Change.Branch != change.Branch {
+			t.Fatalf("draft transition = %+v, %v", got, err)
+		}
 	}
 }

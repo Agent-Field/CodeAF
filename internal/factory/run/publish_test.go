@@ -226,7 +226,7 @@ func TestApprovingAPullRequestPostsAReviewComment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved, err := st.Create(factory.Item{Num: 40, Kind: factory.KindPR, Repo: "acme/api", Title: "Speed up", URL: "https://github.com/acme/api/pull/40", State: factory.StateLanded, Stream: &factory.Stream{}})
+	saved, err := st.Create(factory.Item{Num: 40, Kind: factory.KindPR, Draft: true, Repo: "acme/api", Title: "Speed up", URL: "https://github.com/acme/api/pull/40", State: factory.StateLanded, Stream: &factory.Stream{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +238,7 @@ func TestApprovingAPullRequestPostsAReviewComment(t *testing.T) {
 	}
 	g := publishRig{st: st, r: r, id: saved.ID}
 	it := g.settle(t)
-	if it.State != factory.StateShipped || it.PullRequest == nil || it.PullRequest.Number != 40 || it.PullRequest.URL != saved.URL {
+	if it.State != factory.StateShipped || it.PullRequest == nil || !it.PullRequest.Draft || it.PullRequest.Number != 40 || it.PullRequest.URL != saved.URL {
 		t.Fatalf("job = %s %+v", it.State, it.PullRequest)
 	}
 	if pushed || len(src.got) != 1 || src.got[0].Verb != "comment" || !strings.HasSuffix(src.got[0].Body, "\n"+testTrailer) {

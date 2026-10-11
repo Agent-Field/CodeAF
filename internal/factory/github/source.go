@@ -632,7 +632,7 @@ func (s *Source) pullItem(ctx context.Context, owner, name string, p forge.Pull,
 		Checks: ChecksWords(state),
 		Diff:   DiffWords(p.Additions, p.Deletions),
 		Triage: factory.Triage{Type: "review", Size: pullSize(p.Additions + p.Deletions)},
-		Base:   p.Base, Head: pullHead(owner, name, p), HeadSHA: p.HeadSHA,
+		Draft:  p.Draft, Base: p.Base, Head: pullHead(owner, name, p), HeadSHA: p.HeadSHA,
 	}
 }
 

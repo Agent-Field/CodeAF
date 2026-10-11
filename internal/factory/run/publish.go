@@ -184,7 +184,7 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 		if url == "" {
 			url = rcpt.URL
 		}
-		return published{pr: &factory.PullRequest{Number: it.Num, URL: url}}, nil
+		return published{pr: &factory.PullRequest{Number: it.Num, URL: url, Draft: it.Draft}}, nil
 	}
 	if r.opts.Workdir == nil {
 		return published{}, fmt.Errorf("codeaf does not know where %s is checked out", it.Ref())

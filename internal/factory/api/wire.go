@@ -214,6 +214,9 @@ const (
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
+	Change *factory.Change `json:"change,omitempty"`
+	// Draft is known only for source PR jobs; published PRs carry pr.draft.
+	Draft *bool  `json:"draft,omitempty"`
 	ID    int    `json:"id"`
 	Repo  string `json:"repo"`
 	Num   int    `json:"number"`
@@ -251,6 +254,7 @@ type Job struct {
 // draw (DESIGN-BRIEF §5: triage, tier, origin, labels, checks, comments,
 // files and activity are code-only on the dashboard).
 type JobDesk struct {
+	ChangeBase      string    `json:"change_base,omitempty"`
 	Thread          []Message `json:"thread,omitempty"`
 	WorktreeMachine string    `json:"worktree_machine,omitempty"`
 	Publishing      bool      `json:"publishing,omitempty"`
@@ -314,6 +318,7 @@ type StepAt struct {
 // may be in the job's pipeline, in its run, or both; the two flags say which,
 // so the codec can give each half back to its own list.
 type Step struct {
+	Tests *factory.TestCounts `json:"tests,omitempty"`
 	StepDef
 	State      string     `json:"state"`
 	Round      int        `json:"round,omitempty"`
@@ -359,6 +364,7 @@ type Answer = factory.Answer
 
 // PR is the pull request a job opened.
 type PR struct {
+	Draft  bool   `json:"draft"`
 	Number int    `json:"number"`
 	URL    string `json:"url"`
 	CI     string `json:"ci,omitempty"`

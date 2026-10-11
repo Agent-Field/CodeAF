@@ -134,6 +134,7 @@ func runCheck(ctx context.Context, opts CheckOptions, job Job) (factory.StageRes
 		findings = 1
 	}
 	return factory.StageResult{
+		Tests:    testCounts(buf.String()),
 		Done:     exit == 0,
 		Findings: findings,
 		Exit:     exit,

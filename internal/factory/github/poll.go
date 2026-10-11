@@ -257,6 +257,7 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 					it.Diff = in.Diff
 				}
 				if in.Kind == factory.KindPR {
+					it.Draft = in.Draft
 					if in.Files != nil {
 						it.Files = in.Files
 					}
@@ -306,7 +307,7 @@ func forgeChanged(old, in factory.Item) bool {
 	// A pull request handed over before its files were read says nothing
 	// about its files or line counts.
 	detailed := in.Kind != factory.KindPR || in.Files != nil
-	if old.Title != in.Title || old.Body != in.Body || old.Checks != in.Checks || (detailed && old.Diff != in.Diff) {
+	if old.Draft != in.Draft || old.Title != in.Title || old.Body != in.Body || old.Checks != in.Checks || (detailed && old.Diff != in.Diff) {
 		return true
 	}
 	if in.Tier != "" && old.Tier != in.Tier {

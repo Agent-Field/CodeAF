@@ -2108,6 +2108,34 @@ queue. A renewed hold keeps its id; a new hold gets a different id. Another
 worker's hold answers HTTP 403 with `lease belongs to another worker`; an expired
 or completed hold answers HTTP 409 with `lease is no longer live`.
 
+## factory changed files, diff stat, branch, test counts and draft pull requests
+
+`GET /v1/jobs/{id}` and `GET /v1/queue` can include `change` on any job,
+including an issue or a job written in codeaf without a GitHub issue. The machine
+holding the job reads its worktree after a step finishes, including failed
+checks and re-run checks. `change.files` lists each `path`, `status` (`added`,
+`modified`, `removed`) and any nonzero `added` and `removed` line counts.
+`change.stat` totals the files and lines; `change.branch` names the actual branch.
+Committed, staged, unstaged and untracked files count; ignored files do not.
+Renames list the old path removed and the new one added. Binary files have no
+line counts. The list is complete, unlike GitHub's twenty-file detail list.
+The comparison stays at the issue's initial commit or the PR's merge base, so
+committing during a step does not hide the earlier work.
+
+`change.tests` has one row per check that reports counts:
+`{"step":"test","passed":12,"failed":1,"skipped":2}`. The same counts appear
+at `steps[].tests`. Counts are read from Go verbose or JSON output, TAP, or a
+pytest summary, before the output tail is cut. A plain package `ok`, an exit
+code, or green CI cannot tell how many tests ran; counts are omitted then.
+Each check keeps only its latest counts; running it again without counts clears
+the previous counts. Unknown facts and zero totals are absent. Before the
+machine reports, `change` is absent. If a later file read fails, the last
+readable snapshot stays. A source PR job carries `draft: true` or `false`;
+a published PR receipt carries `pr.draft`.
+
+These fields are additive in Contract 1. The holding machine reports them
+through `POST /v1/workers/leases/{id}/report`; they survive pauses and restarts.
+
 ## factory HTTP worker reports — step results, logs, cost, claims, questions and published receipts
 
 `POST /v1/workers/leases/{id}/report` takes an incremental JSON object:

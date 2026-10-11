@@ -313,6 +313,7 @@ type Claim struct {
 // PullRequest keeps the published work separate from the source issue, so
 // reporting its receipt never changes the identity of the job being run.
 type PullRequest struct {
+	Draft  bool
 	Number int
 	URL    string
 	CI     string
@@ -338,6 +339,12 @@ type Item struct {
 	Created time.Time
 	Changed time.Time
 	State   State
+
+	// ChangeBase pins the comparison before the first round so commits made by
+	// later rounds do not disappear from the reported change.
+	ChangeBase string  `json:",omitempty"`
+	Change     *Change `json:",omitempty"`
+	Draft      bool    `json:",omitempty"`
 	// WorktreeMachine keeps resumed runs and publishing beside the files the
 	// first worker made, even after its lease expires or the factory restarts.
 	WorktreeMachine string `json:",omitempty"`

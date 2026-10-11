@@ -28,8 +28,10 @@ type WorkerAttached struct {
 // WorkerReport carries incremental results. Cost is newly incurred dollars,
 // so a result's own cost is descriptive and is not added a second time.
 type WorkerReport struct {
-	Thread    []Message `json:"thread,omitempty"`
-	Delivered []string  `json:"delivered,omitempty"`
+	Change     *factory.Change `json:"change,omitempty"`
+	ChangeBase string          `json:"change_base,omitempty"`
+	Thread     []Message       `json:"thread,omitempty"`
+	Delivered  []string        `json:"delivered,omitempty"`
 	// Pipeline is the job's steps after the worker's runner reshaped them;
 	// absent is no change. Only an approve step's presence is checked.
 	Pipeline   []Step       `json:"pipeline,omitempty"`
@@ -55,14 +57,15 @@ type StepReport struct {
 
 // StepResult preserves the evidence that later steps need after a restart.
 type StepResult struct {
-	Done     bool     `json:"done"`
-	Findings int      `json:"findings,omitempty"`
-	Claims   []Claim  `json:"claims,omitempty"`
-	Output   string   `json:"output,omitempty"`
-	Exit     int      `json:"exit,omitempty"`
-	Notes    []string `json:"notes,omitempty"`
-	Cost     float64  `json:"cost,omitempty"`
-	Chat     string   `json:"chat,omitempty"`
+	Tests    *factory.TestCounts `json:"tests,omitempty"`
+	Done     bool                `json:"done"`
+	Findings int                 `json:"findings,omitempty"`
+	Claims   []Claim             `json:"claims,omitempty"`
+	Output   string              `json:"output,omitempty"`
+	Exit     int                 `json:"exit,omitempty"`
+	Notes    []string            `json:"notes,omitempty"`
+	Cost     float64             `json:"cost,omitempty"`
+	Chat     string              `json:"chat,omitempty"`
 }
 
 // WorkerDone names the final product state; ready distinguishes proof that
@@ -74,7 +77,7 @@ type WorkerDone struct {
 
 // ToWorkerReport is the single vocabulary boundary for worker writes.
 func ToWorkerReport(r WorkerReport) factory.RunReport {
-	out := factory.RunReport{Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, toClaim), Talk: r.Talk, Notes: r.Notes, Publish: r.Publish, CommentURL: r.CommentURL}
+	out := factory.RunReport{Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, toClaim), Talk: r.Talk, Notes: r.Notes, Publish: r.Publish, CommentURL: r.CommentURL}
 	if r.Pipeline != nil {
 		stages, stream := unsteps(Job{Steps: r.Pipeline, Desk: &JobDesk{Run: &Run{}}})
 		out.Pipeline = &factory.PipelineChange{Stages: stages, Phases: stream.Phases}
@@ -82,7 +85,7 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 	for _, s := range r.Steps {
 		stage := factory.StageReport{Name: s.Name, State: factory.PhaseState(s.State), Round: s.Round}
 		if res := s.Result; res != nil {
-			stage.Result = &factory.StageResult{Done: res.Done, Findings: res.Findings, Claims: mapList(res.Claims, toClaim), Output: res.Output, Exit: res.Exit, Notes: res.Notes, Spent: res.Cost, Chat: res.Chat}
+			stage.Result = &factory.StageResult{Tests: res.Tests, Done: res.Done, Findings: res.Findings, Claims: mapList(res.Claims, toClaim), Output: res.Output, Exit: res.Exit, Notes: res.Notes, Spent: res.Cost, Chat: res.Chat}
 		}
 		out.Stages = append(out.Stages, stage)
 	}
@@ -94,7 +97,7 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 		out.QuestionKind = q.Kind
 	}
 	if pr := r.PR; pr != nil {
-		out.PR = &factory.PullRequest{Number: pr.Number, URL: pr.URL, CI: pr.CI}
+		out.PR = &factory.PullRequest{Number: pr.Number, URL: pr.URL, CI: pr.CI, Draft: pr.Draft}
 	}
 	return out
 }
@@ -102,7 +105,7 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 // FromRunReport is the worker's half of the same boundary: what its runner
 // wrote, in the wire's words. [ToWorkerReport] reads it back.
 func FromRunReport(r factory.RunReport) WorkerReport {
-	out := WorkerReport{Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, fromClaim), Talk: r.Talk, Notes: r.Notes,
+	out := WorkerReport{Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, fromClaim), Talk: r.Talk, Notes: r.Notes,
 		Log: mapList(r.Log, fromLog), Publish: r.Publish, CommentURL: r.CommentURL}
 	if p := r.Pipeline; p != nil {
 		out.Pipeline = steps(factory.Item{Stages: p.Stages, Stream: &factory.Stream{Phases: p.Phases}})
@@ -110,7 +113,7 @@ func FromRunReport(r factory.RunReport) WorkerReport {
 	for _, s := range r.Stages {
 		step := StepReport{Name: s.Name, State: string(s.State), Round: s.Round}
 		if res := s.Result; res != nil {
-			step.Result = &StepResult{Done: res.Done, Findings: res.Findings, Claims: mapList(res.Claims, fromClaim),
+			step.Result = &StepResult{Tests: res.Tests, Done: res.Done, Findings: res.Findings, Claims: mapList(res.Claims, fromClaim),
 				Output: res.Output, Exit: res.Exit, Notes: res.Notes, Cost: res.Spent, Chat: res.Chat}
 		}
 		out.Steps = append(out.Steps, step)
@@ -119,7 +122,7 @@ func FromRunReport(r factory.RunReport) WorkerReport {
 		out.Question = &Question{FromStep: q.Stage, Text: q.Question, Options: q.Options, Pick: q.Pick, Why: q.Why, Kind: r.QuestionKind}
 	}
 	if pr := r.PR; pr != nil {
-		out.PR = &PR{Number: pr.Number, URL: pr.URL, CI: pr.CI}
+		out.PR = &PR{Number: pr.Number, URL: pr.URL, CI: pr.CI, Draft: pr.Draft}
 	}
 	return out
 }

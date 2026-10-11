@@ -301,6 +301,8 @@ var untilWords = []string{UntilDone, UntilClean, UntilProven, UntilGreen}
 // a findings count of 0 on a round that never reported would otherwise read
 // exactly like green and clean.
 type StageResult struct {
+	// Tests is absent when the command did not report individual outcomes.
+	Tests    *TestCounts `json:",omitempty"`
 	Done     bool
 	Findings int
 	Claims   []Claim
