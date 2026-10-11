@@ -2199,10 +2199,11 @@ the bar.
 
 A factory service supplied with a record keeps append-only `events.jsonl` beside its
 saved jobs. Each event has `id`, `at`, `kind`, `job`, `handle`, `cost` and `detail`.
-The record accepts starts (`started`, `auto_started`), intake questions (`asked_first`), approvals (`approved`),
+The record accepts starts (`started`, `auto_started`), stops (`stopped`), intake questions (`asked_first`), approvals (`approved`),
 answers (`answered`), posts (`posted`), takes (`took`), drops (`dropped`) and
 requests for changes (`request_changes`). Service run, answer, drop and request
-changes doors record successful actions; automatic starts through Add work record
+changes doors record successful actions; the stop door records the stop before returning
+the job to backlog. Automatic starts through Add work record
 `auto_started`. The claims desk's Take wiring remains a separate service connection.
 
 `GET /v1/audit` returns `events` with the factory identity. Add `?since=<RFC3339 timestamp>`
@@ -2262,6 +2263,13 @@ Triage judges `ask_first` sentences in its existing cheap call; an omitted judgm
 first. PR size uses measured file changes; an unread or truncated file list asks first.
 An unreadable pipeline cannot start a job. Existing launch restrictions still apply,
 including the day rail and the restriction on writing work submitted by strangers.
+
+## stopped job stays stopped — stop, run and go under automatic intake
+
+A stopped job stays stopped until you run it. Its `stopped` event keeps intake from
+starting it again, even if the start label remains or the factory server restarts.
+Run (or go) starts it again through the person's door; intake never restarts a job
+you stopped or asks to start it again.
 
 ## codeaf factory convert — convert Markdown to YAML
 

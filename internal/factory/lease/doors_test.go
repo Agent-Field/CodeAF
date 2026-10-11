@@ -3,6 +3,8 @@ package lease_test
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -90,6 +92,29 @@ func TestAStopReleasesTheLease(t *testing.T) {
 	f.state(t, it.ID, factory.StateNew)
 	if _, err := f.desk.Drain(held.ID, "w1"); !errors.Is(err, lease.ErrNoLease) {
 		t.Fatalf("the stopped job's lease is still live: %v", err)
+	}
+	history, err := record.Open(f.store, record.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := history.Since(context.Background(), f.now.Add(-1))
+	if err != nil || len(events) != 1 || events[0].Kind != record.Stopped || events[0].Job != it.ID {
+		t.Fatalf("stop history = %+v; error = %v", events, err)
+	}
+}
+
+func TestStopRecordFailureKeepsTheJobAndLease(t *testing.T) {
+	f := setup(t)
+	it, held := f.running(t)
+	if err := os.Mkdir(filepath.Join(f.store.Root(), "events.jsonl"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := lease.NewDoors(f.desk).Stop(it.ID); err == nil {
+		t.Fatal("stop succeeded without keeping the person's decision")
+	}
+	f.state(t, it.ID, factory.StateRunning)
+	if _, err := f.desk.Drain(held.ID, "w1"); err != nil {
+		t.Fatalf("a failed stop released the lease: %v", err)
 	}
 }
 

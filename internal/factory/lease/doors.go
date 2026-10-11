@@ -65,8 +65,17 @@ func (d *Doors) Launch(id int) error {
 // it on its next heartbeat or report, which the server no longer accepts, and
 // stops its runner. A dead worker needs to learn nothing.
 func (d *Doors) Stop(id int) error {
+	history, err := record.Open(d.desk.store, record.Options{Now: d.desk.now})
+	if err != nil {
+		return err
+	}
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if err := run.StopItem(it, now); err != nil {
+			return false, err
+		}
+		// THE PERSON'S STOP WINS: keep it durable while the job is locked,
+		// before intake can see the job back in the backlog.
+		if _, err := history.Append(context.Background(), record.Event{Kind: record.Stopped, Job: id, Handle: it.Person()}); err != nil {
 			return false, err
 		}
 		it.Publishing = false

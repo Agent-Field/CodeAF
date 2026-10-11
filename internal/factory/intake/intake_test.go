@@ -2,6 +2,9 @@ package intake_test
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,8 +15,10 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/intake"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/factory/triage"
 )
@@ -129,4 +134,90 @@ func TestPlanPathsReachTheNeverRule(t *testing.T) {
 	if d := f.Decide(intake.Job(it)); !d.Ask || !strings.Contains(strings.Join(d.Reasons, " "), "auth/**") {
 		t.Fatalf("decision: %+v", d)
 	}
+}
+
+func TestStoppedJobStaysStoppedUntilPersonRunsIt(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	st, err := store.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(100, 0)
+	it, err := st.Create(factory.Item{Repo: "owner/repo", Num: 1, Kind: factory.KindIssue,
+		State: factory.StateNew, Labels: []string{"agent-ready"},
+		Triage: factory.Triage{TriagedAt: now, Size: "S", Est: 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := pipeline.Parse("start:\n  labels: [agent-ready]\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var history *record.Record
+	var desk *lease.Desk
+	var in *intake.Intake
+	var handler *serve.Handler
+	open := func() {
+		t.Helper()
+		st, err = store.Open(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		history, err = record.Open(st, record.Options{Now: func() time.Time { return now }})
+		if err != nil {
+			t.Fatal(err)
+		}
+		desk, err = lease.Open(st, lease.Options{Now: func() time.Time { return now }})
+		if err != nil {
+			t.Fatal(err)
+		}
+		doors := lease.NewDoors(desk)
+		in = intake.New(st, intake.Options{Record: history, Load: func(string) (pipeline.File, error) { return f, nil }, Launch: doors.Launch})
+		seam := factory.LocalSeam(st, now, factory.WithRunner(doors))
+		handler = serve.New(seam, serve.Config{Store: st, Record: history, AccessToken: "test-stop-token"})
+	}
+	tick := func(want factory.State) {
+		t.Helper()
+		if err := in.Once(ctx); err != nil {
+			t.Fatal(err)
+		}
+		got, err := st.Get(it.ID)
+		if err != nil || got.State != want {
+			t.Fatalf("job state = %s, want %s; error = %v", got.State, want, err)
+		}
+	}
+	post := func(verb string) {
+		t.Helper()
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/v1/jobs/%d/%s", it.ID, verb), nil)
+		req.Header.Set("Authorization", "Bearer test-stop-token")
+		handler.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", verb, w.Code, w.Body)
+		}
+	}
+	open()
+	tick(factory.StateQueued)
+	post("stop")
+	for range 5 {
+		tick(factory.StateNew)
+	}
+	open()
+	for range 5 {
+		tick(factory.StateNew)
+	}
+	// A changed rule must not turn the person's stop into another question.
+	f.Start.MaxCost = 0.5
+	tick(factory.StateNew)
+	events, err := history.Since(ctx, time.Time{})
+	if err != nil || len(events) != 2 || events[0].Kind != record.AutoStarted || events[1].Kind != record.Stopped {
+		t.Fatalf("stop history = %+v; error = %v", events, err)
+	}
+	post("run")
+	tick(factory.StateQueued)
+	if _, err := desk.Pull(lease.Worker{ID: "w1", Handle: "sam", TakesUnassigned: map[string]bool{lease.EveryRepo: true}}); err != nil {
+		t.Fatal(err)
+	}
+	tick(factory.StateRunning)
 }

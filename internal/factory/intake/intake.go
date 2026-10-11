@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
@@ -87,8 +88,8 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 	if decision.Ask {
 		kind, reason = record.AskedFirst, strings.Join(decision.Reasons, "; ")
 		err = in.st.Update(it.ID, func(cur *factory.Item) error {
-			if cur.State != factory.StateNew {
-				return errMoved
+			if err := in.canStart(ctx, *cur); err != nil {
+				return err
 			}
 			cur.Stages = factory.CopyStages(f.Recipe().For(cur.Kind))
 			cur.State, cur.QKind = factory.StateNeedsYou, factory.QKindAskFirst
@@ -100,8 +101,8 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 		// YAML may define a different pipeline from the one copied on arrival.
 		// The launch door must see those steps before it compiles the run.
 		err = in.st.Update(it.ID, func(cur *factory.Item) error {
-			if cur.State != factory.StateNew {
-				return errMoved
+			if err := in.canStart(ctx, *cur); err != nil {
+				return err
 			}
 			cur.Stages = factory.CopyStages(f.Recipe().For(cur.Kind))
 			return nil
@@ -121,6 +122,25 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 }
 
 var errMoved = errors.New("intake: job already moved")
+
+// canStart reads the stop history under the job's update lock, so a stop
+// after Once listed the backlog still wins. Only a person's Run door may
+// restart a job they stopped; labels never restore that permission.
+func (in *Intake) canStart(ctx context.Context, it factory.Item) error {
+	if it.State != factory.StateNew {
+		return errMoved
+	}
+	events, err := in.opts.Record.Since(ctx, time.Time{})
+	if err != nil {
+		return err
+	}
+	for _, event := range events {
+		if event.Job == it.ID && event.Kind == record.Stopped {
+			return errMoved
+		}
+	}
+	return nil
+}
 
 // pathWords retains directories as well as filenames, so "touch auth/" asks
 // before a plan exists. Plans and triage's inferred paths use the same matcher.
