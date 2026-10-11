@@ -1,22 +1,26 @@
 ---
 kind: internal
-title: the tasks-heading manual test pins its clock to the local zone, so it no longer fails east of UTC
+title: the tasks-page test fixtures pin their clocks to the local zone, so they no longer fail east of UTC
 pr: 1809
 surface: [chat]
 invalidates:
   - >-
-    TestTheManualQuotesBothTasksOpeningHeadingsExactly was believed to be a
-    deterministic, host-independent test. It built its fixture clock in a fixed
-    -04:00 zone while the tasks window buckets days in the viewer's LOCAL zone
-    (usageBucketStart, and the "THE DAY IS THE WRITER'S" law on SpendToday), so
-    the rendered `since aug 11` the chat manual quotes rendered as `aug 12` on a
-    host far enough east that the foreign offset crossed midnight — green on a
-    UTC runner, red on a UTC+8 box (#1808). The fixture clock is now built in
-    time.Local, so the test reads the same date under every $TZ.
+    The tasks-page tests were believed to be deterministic and host-independent.
+    They built their fixture clocks in a fixed -04:00 zone while the tasks window
+    buckets days in the viewer's LOCAL zone (usageBucketStart, and the "THE DAY
+    IS THE WRITER'S" law on SpendToday), so a date the tests assert — the chat
+    manual's `since aug 11`, and the `shift+← aug 2 – aug 25 →` window control —
+    shifted by a day once the foreign offset was read as local on a host far
+    enough east: green on a UTC runner, red on a UTC+8 box (#1808). Every
+    tasks-page fixture clock is now built in time.Local, so the tests read the
+    same dates under every $TZ.
 ---
 
 No product behavior changed: the window following the viewer's local calendar
-day is deliberate and stays. Only the test was host-dependent, because it
-injected a fixed -04:00 clock and then asserted a manual string that only
-matched in the author's timezone band. Verified identical green from
-Pacific/Pago_Pago (UTC-11) to Pacific/Kiritimati (UTC+14).
+day is deliberate and stays. The tests were host-dependent because each fixture
+injected a fixed -04:00 clock and then asserted dates that only matched in the
+author's timezone band — one shared cause across tallyrows_test.go,
+tasksplace_test.go, tasksparked_test.go, tasksconversation_test.go and
+taskstable_test.go, two of whose tests were already red on a UTC+8 box.
+Verified identical green from Pacific/Pago_Pago (UTC-11) to Pacific/Kiritimati
+(UTC+14).
