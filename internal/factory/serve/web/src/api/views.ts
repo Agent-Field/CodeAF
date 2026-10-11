@@ -38,3 +38,19 @@ export const groups: { state: JobState; title: string }[] = [
   { state: "done", title: "Done" },
   { state: "dropped", title: "Dropped" },
 ]
+
+// What a row's action button does, from the job alone (DESIGN-BRIEF §4.1):
+// unassigned jobs are taken, a question gate is answered, any other gate is
+// approved. One place decides it, so the button and the y/a keys agree.
+export type Act = "take" | "approve" | "answer"
+
+export function actFor(job: Job): Act | null {
+  if (job.state === "needs_you") return job.gate === "question" ? "answer" : "approve"
+  if (!job.assigned_to && (job.state === "queued" || job.state === "backlog")) return "take"
+  return null
+}
+
+// The order rows are drawn in, which is also the order j/k walk.
+export function ordered(jobs: Job[]): Job[] {
+  return groups.flatMap((g) => jobs.filter((j) => j.state === g.state))
+}

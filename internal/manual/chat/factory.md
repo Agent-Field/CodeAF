@@ -1669,17 +1669,26 @@ found`. The same access rule applies: loopback is open, and another address
 needs the access token. The dashboard pages answer GET only.
 
 The page today has a sidebar with the factory address (click it for Settings),
-`New job`, three views, `Mine` (jobs waiting on you), `Unassigned` (jobs nobody
-has taken that are not done) and `Everything` (all jobs), and `More` with `Audit
-log` and `Settings`. A view shows the since line (`since <time> · <n> merged ·
-<n> need you · $<spent>`), the pipeline strip (one chip per step with jobs, `⚑`
-where an approve waits), and the jobs grouped Needs you, Running, Queued,
-Backlog, Done and Dropped, each row with kind, job, title, state phrase, step
-`k/n`, cost and age. On a phone the sidebar opens from the menu button and rows
-keep job, title, state and cost. The page reads the queue again when the factory
-sends a change; a factory without the change stream is read once per load. The
-job page, New job, Audit log and Settings say `Coming`: they are not built yet,
-and the dashboard cannot approve, answer or start anything yet.
+`New job`, three views, `Mine` (jobs assigned to you, and jobs waiting on you),
+`Unassigned` (jobs nobody has taken that are not done) and `Everything` (all
+jobs), and `More` with `Audit log` and `Settings`. A view shows the since line
+(`since <time> · <n> merged · <n> need you · $<spent>`), the pipeline strip (one
+chip per step with jobs, `⚑` where an approve waits), one chip per repository
+(click it to hide or show that repository's jobs), the capacity line (`<n>
+queued · <n> benches · $<spent> of $<rail> today`), and the jobs grouped Needs
+you, Running, Queued, Backlog, Done and Dropped. Each row has kind, job, title,
+state phrase, step `k/n` with a bar, cost and age, and the person holding it
+once any job is held. The row's button is `Approve` on a job that waits at a plan,
+proof or cap gate, `Answer` on a question gate (it opens a box for yes, no or
+words), and `Take` on a job nobody holds; `Take` is dimmed with the tooltip `not
+available yet` because the factory has no take endpoint. A refused action shows
+the factory's sentence at the top. Click a row, or press `enter`, to open the
+job. Keys: `j` and `k` move the cursor, `enter` opens, `y` approves, `a`
+answers, `?` lists the keys. On a phone the sidebar opens from the menu button
+and rows keep job, title, state, cost and the button. The page reads the queue
+again when the factory sends a change; a factory without the change stream is
+read once per load. The job page, New job, Audit log and Settings say `Coming`:
+they are not built yet.
 
 ## factory event stream and a job's manager thread
 

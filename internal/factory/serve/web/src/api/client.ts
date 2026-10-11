@@ -31,6 +31,16 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T
 }
 
+function post(path: string, body: unknown = {}) {
+  return request<unknown>(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  })
+}
+
 export const api = {
   queue: () => request<Queue>("/queue"),
+  approve: (id: number) => post(`/jobs/${id}/approve`),
+  answer: (id: number, answer: { yes: boolean } | { words: string }) => post(`/jobs/${id}/answer`, answer),
 }
