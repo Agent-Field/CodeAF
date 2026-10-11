@@ -1,5 +1,47 @@
 # The factory
 
+## codeaf factory serve — start the service, listen address and host config
+
+`codeaf factory` (also `codeaf factory serve`) runs the factory HTTP service alone,
+without opening the chat or starting a worker. It prints its bound HTTP address.
+The default is `127.0.0.1:7420`. Use `--listen 127.0.0.1:0` for an available port,
+or `--listen 0.0.0.0:7420` to accept connections from other machines.
+`GET /v1/queue` reads the saved jobs over loopback without an access token.
+Starting this service does not start execution, GitHub polling or a worker.
+Actions that need those absent doors refuse rather than starting work locally.
+
+The host config is `~/.codeaf/factory/config.yaml`; `--config path` selects another.
+`--listen` overrides its `listen` value. Supported keys are `listen`, `access_token`
+and `repos` (an array of `owner/name` strings). A missing token is generated and
+saved in a private file. Unknown keys, invalid repository names and multiple YAML
+documents are refused. A supplied `repos` list replaces the watched repositories;
+an omitted list keeps the saved selection, and `repos: []` clears it.
+This host config is separate from a repository's pipeline file.
+
+While serving, `~/.codeaf/v3/factory/serve.json` contains `{url, pid, token}`;
+its `url` is the actual bound address, including the selected port. The file is
+private and removed on normal exit, interrupt or SIGTERM. A forced kill can leave
+a stale file, so discovery readers must check the process is alive. One service
+may run per codeaf home; a second refuses instead of replacing its discovery.
+`CODEAF_HOME` moves both the default config and discovery paths.
+
+## codeaf factory token — print or rotate the access token
+
+`codeaf factory token` prints the host config's access token, creating and saving
+one if it is missing. `codeaf factory token --rotate` replaces it with a fresh
+random token and prints that token. Both accept `--config path`.
+Restart a running factory after rotation: the running service and its discovery
+file keep the token loaded at startup until they exit. Remote callers send
+`Authorization: Bearer <access token>`; loopback callers do not need it.
+
+## codeaf factory steps — print built-in step prompts
+
+`codeaf factory steps` prints the built-in step names and prompts grouped by issue,
+pull request and CI pipeline, including the security step that starts disabled.
+It reads the same defaults as a fresh pipeline, so names and prompts follow the
+installed build. `approve` names a person's approval rather than a model prompt.
+This command needs no model key, changes no jobs and accepts no arguments.
+
 ## workers, taken jobs and lease expiry
 
 The factory service's claims desk keeps one lease per job and one job per worker in
@@ -1604,7 +1646,7 @@ empty machines list and no unassigned-work preferences. With no GitHub connectio
 the handle is blank. These reads do not create a viewer session. A read whose seam
 door is absent answers HTTP 501 with `this factory does not provide that read`;
 an unknown job answers HTTP 404 with `job not found`. These read endpoints accept GET.
-This handler is a Go component; it does not itself add a CLI server command.
+Run this handler with `codeaf factory` or `codeaf factory serve`.
 
 ## factory HTTP job actions — run, stop, pause, resume, drop, answer and reply
 

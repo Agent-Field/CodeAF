@@ -307,6 +307,8 @@ func run() error {
 		// MACHINE'S, which is why it is a command here rather than something a
 		// surface can do down the wire (chatv3_at.go).
 		return runDevices(os.Args[2:])
+	case "factory":
+		return runFactory(os.Args[2:])
 	case "do":
 		return runDo(os.Args[2:])
 	case "plan":
@@ -529,6 +531,12 @@ Look at what happened — read-only, no key, nothing spent
   codeaf version
       print the build this binary was cut from (--version and -v say the same)
 Housekeeping — changes state on disk or on the network
+  codeaf factory [serve] [--listen address] [--config path]
+      serve the factory alone; default listen ` + factoryDefaultListen + `
+  codeaf factory steps
+      print the built-in step prompts for each pipeline
+  codeaf factory token [--rotate] [--config path]
+      print the access token, or replace it; restart the service after rotation
   codeaf connect
       list the providers this profile knows and which are connected
   codeaf connect <provider> [--no-browser] [--region intl|cn]
