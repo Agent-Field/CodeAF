@@ -15,6 +15,7 @@ import { useAttachments } from './composer/useAttachments';
 import { useFileDrop } from './composer/useFileDrop';
 import { useKeyboardFocus } from './composer/useKeyboardFocus';
 import './composer.css';
+import { ComposerGuess } from '../places/guess/GuessPill';
 
 export type SendMode = 'submit' | 'steer' | 'queue';
 
@@ -61,6 +62,7 @@ export type ComposerProps = {
    * With none yet (a chat that has not been sent) the list stays absent.
    */
   sessionId?: string;
+  placeSnapshot?: import('../chat/engine-client').EngineSnapshot;
   /**
    * Conversation 1b: the queued rows have folded into this chip because the reader
    * is more than a viewport from the end. `count` is the real queue length.
@@ -326,6 +328,7 @@ export function Composer(props: ComposerProps) {
             ) : props.modelLabel && (
               <ModelPicker models={[{ id: props.modelLabel, label: props.modelLabel, short: props.modelShort }]} selectedId={props.modelLabel} />
             )}
+            {props.variant !== 'home' && <ComposerGuess draft={draft} snapshot={props.placeSnapshot} disabled={disabled}/>}
             {props.queueChip && props.queueChip.count > 0 && (
               <Button className="composer-queue-chip" onClick={props.queueChip.onOpen}>{`${props.queueChip.count} queued`}</Button>
             )}

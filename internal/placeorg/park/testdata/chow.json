@@ -1,0 +1,38 @@
+{
+  "cases": [
+    {
+      "name": "a smaller place that is clearly closer",
+      "floor": 0.45,
+      "margin": 0.04,
+      "places": [
+        {"id": "r", "depth": 1, "members": ["c"]},
+        {"id": "m", "parent": "r", "depth": 2, "members": ["d"]},
+        {"id": "f", "parent": "m", "depth": 3, "members": ["a", "b"]}
+      ],
+      "chats": [
+        {"id": "a", "vector": [1, 0], "level": "leaf"},
+        {"id": "b", "vector": [1, 0], "level": "leaf"},
+        {"id": "d", "vector": [0, 1], "level": "root"},
+        {"id": "c", "vector": [0, 1], "level": "root"}
+      ],
+      "counts": {"r": 4, "m": 3, "f": 2}
+    },
+    {
+      "name": "a smaller place that is only as close as the one above it",
+      "floor": 0.45,
+      "margin": 0.04,
+      "places": [
+        {"id": "r", "depth": 1, "members": ["c"]},
+        {"id": "m", "parent": "r", "depth": 2, "members": ["d"]},
+        {"id": "f", "parent": "m", "depth": 3, "members": ["a", "b"]}
+      ],
+      "chats": [
+        {"id": "a", "vector": [1, 0], "level": "mid"},
+        {"id": "b", "vector": [1, 0], "level": "mid"},
+        {"id": "d", "vector": [1, 0], "level": "mid"},
+        {"id": "c", "vector": [0, 1], "level": "inbox"}
+      ],
+      "counts": {"r": 3, "m": 3, "f": 2}
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import { alsoIn } from '../guess/model.ts';
 // Pure selectors from the engine's Places answers (client.ts) to what the shell draws. React-free and clock-free so
 // node tests can pin every rule. Nothing here invents a status, a count or a sentence the engine did not send: a
 // number that is zero or unknown is left out (the emptiness law), and a recap the engine did not write is absent.
@@ -131,7 +132,7 @@ function chat(row: ChatRow, digest: HomeDigest): HomeChat {
   const status = row.needsYou ? 'waiting' : row.live && (row.tasks.running > 0 || row.doing === 'working') ? 'running' : undefined;
   // A waiting reason takes priority; otherwise the engine’s recap supplies the digest without a renderer model call.
   const line = digest.recap?.items.find(item => item.chatId === row.id)?.line;
-  return { id: row.id, title: row.title, excerpt: row.needsYou && row.reason ? row.reason : line || undefined, status, at: row.at, model: row.model };
+  return { alsoIn: alsoIn(row, digest.kind === 'place' ? digest.place?.id : undefined), id: row.id, title: row.title, excerpt: row.needsYou && row.reason ? row.reason : line || undefined, status, at: row.at, model: row.model };
 }
 
 /** "running · 2m" from the engine's own start and read instants; under a minute, or an unreadable instant, draws the plain word. The digest's read time is the clock so the answer never depends on when it is drawn. */

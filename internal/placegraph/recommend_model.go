@@ -114,13 +114,13 @@ func readFileAnswer(raw string, names []string) (int, int, error) {
 	return i, clampPercent(*a.Confidence), nil
 }
 
-// pickIndex reads a label the model was shown, or — because a real model,
+// PickIndex reads a label the model was shown, or — because a real model,
 // shown "p1: Release pipeline", answers "Release pipeline" as often as "p1"
 // (measured on deepseek/deepseek-v4.1-flash, 2026-10-09) — the exact name of
 // exactly one of the places it was shown. A name it was not shown, or one two
 // shown places share, is still refused: THE MODEL CAN ONLY EVER POINT AT A
 // PLACE IT WAS SHOWN, never name one into being.
-func pickIndex(answer, prefix string, names []string) (int, bool) {
+func PickIndex(answer, prefix string, names []string) (int, bool) {
 	if i, ok := labelIndex(answer, prefix, len(names)); ok {
 		return i, true
 	}
@@ -253,11 +253,12 @@ func readSuggestAnswer(raw string, nChats int, existing, parents []string) (*sug
 	return out, nil
 }
 
-// cleanSuggestedName holds a model-written name to the graph's name rules and
+// CleanSuggestedName holds a model-written name to the graph's name rules and
 // to the shape of a label: no path separators, no URL, no leading dot, no
 // quotes, at most MaxSuggestedNameRunes. Nothing about it is ever used as a
 // path; the rules are there so it cannot even look like one on a tile.
-func cleanSuggestedName(raw string) (string, error) {
+// CleanSuggestedName accepts only a bounded, safe place name from a model.
+func CleanSuggestedName(raw string) (string, error) {
 	name := strings.Trim(oneLine(raw), "\"'`“”‘’ .")
 	n, err := cleanName(name)
 	if err != nil {
@@ -278,9 +279,9 @@ func cleanSuggestedName(raw string) (string, error) {
 	return n, nil
 }
 
-// decodeObject reads exactly one JSON object from a model answer, allowing the
+// DecodeObject reads exactly one JSON object from a model answer, allowing the
 // fenced block small models like to wrap it in, and nothing else around it.
-func decodeObject(raw string, into any) error {
+func DecodeObject(raw string, into any) error {
 	s := strings.TrimSpace(raw)
 	if strings.HasPrefix(s, "```") {
 		s = strings.TrimPrefix(s, "```json")
@@ -313,3 +314,9 @@ func labelIndex(s, prefix string, n int) (int, bool) {
 }
 
 func clampPercent(n int) int { return max(0, min(100, n)) }
+
+func decodeObject(raw string, into any) error { return DecodeObject(raw, into) }
+func pickIndex(answer, prefix string, names []string) (int, bool) {
+	return PickIndex(answer, prefix, names)
+}
+func cleanSuggestedName(raw string) (string, error) { return CleanSuggestedName(raw) }

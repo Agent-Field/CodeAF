@@ -46,6 +46,7 @@ export type HomeAttention = {
 };
 
 export type HomeChat = {
+  alsoIn?: string;
   id: string;
   /** Empty means unnamed: it is never invented. */
   title: string;

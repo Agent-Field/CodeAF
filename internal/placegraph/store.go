@@ -59,6 +59,10 @@ type Store struct {
 type receiptEntry struct {
 	Receipt
 	before *State
+	// Plans retain the original bytes because one run must be undone exactly.
+	planBefore  []byte
+	planAfter   []byte
+	planMissing bool
 }
 
 const lockPoll = 10 * time.Millisecond
@@ -158,8 +162,9 @@ func (s *Store) Receipts() []Receipt {
 // returns the new revision. It refuses with ErrRevisionConflict unless the graph
 // is exactly as that commit left it: any commit since, by this window or another
 // process, makes the undo ambiguous, and a silent partial undo is worse than a
-// refusal. Undo is itself a commit (the revision rises) but is not undoable; there
-// is no redo. Place visit times (LastOpenedAt) are carried over, not rolled back.
+// refusal. Ordinary Undo increases the revision and keeps current visit times;
+// it is not undoable and there is no redo. Plans instead restore the original
+// file bytes, including the prior revision and visits.
 func (s *Store) Undo(receiptID string) (uint64, error) {
 	release, err := s.acquire()
 	if err != nil {
@@ -182,6 +187,27 @@ func (s *Store) Undo(receiptID string) (uint64, error) {
 	}
 	if cur.Revision != e.AfterRevision {
 		return 0, ErrRevisionConflict
+	}
+	// Plan Undo restores the original file, including its revision and visits.
+	// Compare bytes as well as revision so a reused revision cannot authorize
+	// taking back a different change after another plan was undone.
+	if e.Action == ActionPlan {
+		data, err := readCapped(s.opts.Path)
+		if err != nil {
+			return 0, err
+		}
+		if !bytes.Equal(data, e.planAfter) {
+			return 0, ErrRevisionConflict
+		}
+		if e.planMissing {
+			if err := os.Remove(s.opts.Path); err != nil {
+				return 0, err
+			}
+		} else if err := s.writeBytesLocked(e.planBefore); err != nil {
+			return 0, err
+		}
+		s.receipts = s.receipts[:at]
+		return e.before.Revision, nil
 	}
 	restored := e.before.clone()
 	opened := map[string]time.Time{}
@@ -241,6 +267,16 @@ func (s *Store) mutate(fn func(st *State, now time.Time) (*change, error)) (Rece
 	if _, err := validateState(work, false); err != nil {
 		return Receipt{}, err
 	}
+	var planBefore []byte
+	planMissing := false
+	if ch.action == ActionPlan {
+		planBefore, err = readCapped(s.opts.Path)
+		if errors.Is(err, os.ErrNotExist) {
+			planMissing = true
+		} else if err != nil {
+			return Receipt{}, err
+		}
+	}
 	if err := s.writeLocked(work); err != nil {
 		return Receipt{}, err
 	}
@@ -252,7 +288,12 @@ func (s *Store) mutate(fn func(st *State, now time.Time) (*change, error)) (Rece
 		AfterRevision:  work.Revision,
 		At:             now,
 	}
-	s.receipts = append(s.receipts, &receiptEntry{Receipt: rc, before: cur})
+	entry := &receiptEntry{Receipt: rc, before: cur}
+	if ch.action == ActionPlan {
+		entry.planBefore, entry.planMissing = planBefore, planMissing
+		entry.planAfter, _ = json.MarshalIndent(work, "", " ")
+	}
+	s.receipts = append(s.receipts, entry)
 	// Provenance only; inability to save it removes the optional note action.
 	s.recordContextReceipt(rc)
 	if len(s.receipts) > MaxUndo {
@@ -408,6 +449,11 @@ func (s *Store) writeLocked(st *State) error {
 	if err != nil {
 		return err
 	}
+	return s.writeBytesLocked(data)
+}
+
+// writeBytesLocked shares the atomic replacement path with exact plan Undo.
+func (s *Store) writeBytesLocked(data []byte) error {
 	if len(data) > MaxFileBytes {
 		return ErrTooLarge
 	}

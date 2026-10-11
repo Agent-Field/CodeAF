@@ -1,3 +1,4 @@
+import { GuessSpecimen } from './features/places/guess/GuessSpecimen';
 import './design/inputModality';
 import { ThemeProvider } from './design/ThemeProvider';
 import React from "react";
@@ -18,7 +19,7 @@ import.meta.hot?.dispose(stopNotifications);
 // The banner is measured on its own page so the shell's other live regions are
 // not in the way. The product never navigates here; the strip mounts Banner.
 const specimen = new URLSearchParams(window.location.search).get('specimen');
-const page = specimen === 'places-organize' ? <PlacesOrganizeSpecimen/> : specimen === 'nextup-banner' ? <BannerSpecimen/> : specimen === 'frame-pill' ? <FramePillSpecimen/> : specimen === 'queue-popover' ? <QueuePopoverSpecimen/> : specimen === 'filter-tabs' ? <FilterTabsSpecimen/> : specimen === 'select' ? <SelectSpecimen/> : specimen === 'suggest-pill' ? <SuggestPillSpecimen/> : <App/>;
+const page = import.meta.env.DEV && specimen === 'places-guess' ? <GuessSpecimen/> : specimen === 'places-organize' ? <PlacesOrganizeSpecimen/> : specimen === 'nextup-banner' ? <BannerSpecimen/> : specimen === 'frame-pill' ? <FramePillSpecimen/> : specimen === 'queue-popover' ? <QueuePopoverSpecimen/> : specimen === 'filter-tabs' ? <FilterTabsSpecimen/> : specimen === 'select' ? <SelectSpecimen/> : specimen === 'suggest-pill' ? <SuggestPillSpecimen/> : <App/>;
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

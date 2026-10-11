@@ -151,15 +151,6 @@ type Place struct {
 	LastOpenedAt time.Time       `json:"lastOpenedAt,omitzero"`
 }
 
-// Membership files one chat under one place. The chat id is whatever canonical id
-// the caller uses for a conversation; this package never checks that it exists.
-type Membership struct {
-	ChatID  string    `json:"chatId"`
-	PlaceID string    `json:"placeId"`
-	AddedBy AddedBy   `json:"addedBy"`
-	At      time.Time `json:"at,omitzero"`
-}
-
 // State is the persisted document and, copied, the Snapshot a caller reads.
 type State struct {
 	Version int `json:"version"`
@@ -168,7 +159,8 @@ type State struct {
 	// KnowsMigrated makes paragraph import durable across independent windows.
 	KnowsMigrated bool `json:"knowsMigrated,omitempty"`
 	// Revision counts structural commits. It starts at 0 for a store that has
-	// never written and rises by one per commit. TouchOpened does not move it,
+	// never written and rises by one per commit. Exact plan Undo restores the
+	// prior revision. TouchOpened does not move it,
 	// so going to a place never invalidates an undo.
 	Revision    uint64       `json:"revision"`
 	Places      []Place      `json:"places"`
