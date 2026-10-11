@@ -1,3 +1,4 @@
+import { rememberDiff, rememberFile, rememberPreviewSession, rememberTerminal } from '../tabs/preview/resourceContent.ts';
 import { engineFetch } from '../../design/engineFetch.ts';
 import { isTail, mergeTail } from './snapshotMerge.ts';
 import { invoke, isTauri } from '@tauri-apps/api/core';
@@ -187,7 +188,10 @@ export function connectEngine(sessionFile?: string, place?: string): Promise<Eng
 }
 async function openSession(body: { sessionFile?: string; placeId?: string }): Promise<EngineSnapshot> {
  const response = await fetchEngine('/sessions', { method: 'POST', body: JSON.stringify(body) });
- return snapshotFrom(await response.json());
+ const snapshot = snapshotFrom(await response.json());
+ rememberPreviewSession(snapshot.sessionFile, snapshot.id);
+ if (body.sessionFile) rememberPreviewSession(body.sessionFile, snapshot.id);
+ return snapshot;
 }
 /**
  * Reads a conversation. With `since` (how many entries the window already
@@ -349,7 +353,9 @@ export type EngineFileDiff = {
 export type EngineEditorTarget = { path: string; abs: string; host: string; local: boolean };
 /** Read one workspace file as text (1MB cap; binary and large files come back with `refusal`). */
 export async function readEngineText(id: string, path: string): Promise<EngineTextFile> {
- return (await (await fetchEngine(`${sessionPath(id)}/files/text?path=${encodeURIComponent(path)}`)).json()) as EngineTextFile;
+ const file = (await (await fetchEngine(`${sessionPath(id)}/files/text?path=${encodeURIComponent(path)}`)).json()) as EngineTextFile;
+ rememberFile(id, path, file);
+ return file;
 }
 /** Files matching a query, best first (gitignore-aware); an empty query matches nothing. */
 export async function findEngineFiles(id: string, query: string, limit = 20): Promise<EngineFoundFiles> {
@@ -362,7 +368,9 @@ export async function engineChanges(id: string, paths: string[] = []): Promise<E
 }
 /** One file's diff against the base, with hunks and counts. */
 export async function engineFileDiff(id: string, path: string): Promise<EngineFileDiff> {
- return (await (await fetchEngine(`${sessionPath(id)}/diff?path=${encodeURIComponent(path)}`)).json()) as EngineFileDiff;
+ const diff = (await (await fetchEngine(`${sessionPath(id)}/diff?path=${encodeURIComponent(path)}`)).json()) as EngineFileDiff;
+ rememberDiff(id, path, diff);
+ return diff;
 }
 /** Absolute path for "Open in editor"; 404 when the file is gone, 403 outside the workspace. */
 export async function engineEditorTarget(id: string, path: string): Promise<EngineEditorTarget> {
@@ -465,7 +473,9 @@ export async function watchTerminal(id: string, terminal: string, after: number,
 export async function readTerminalOutput(id: string, terminal: string, tailBytes?: number): Promise<{ text: string; truncated: boolean; info: TerminalInfo }> {
   const r = await (await fetchEngine(`${terminalPath(id, terminal, 'output')}${tailBytes ? `?tail=${tailBytes}` : ''}`)).json() as { text?: unknown; truncated?: unknown; info?: unknown };
   if (typeof r.text !== 'string') throw new EngineError('The engine returned invalid terminal output.');
-  return { text: r.text, truncated: r.truncated === true, info: terminalInfo(r.info) };
+  const output = { text: r.text, truncated: r.truncated === true, info: terminalInfo(r.info) };
+  rememberTerminal(id, terminal, output);
+  return output;
 }
 /**
  * "Ask codeaf about this output": sends the question with the selected text, or

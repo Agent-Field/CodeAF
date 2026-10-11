@@ -124,6 +124,12 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
   useEffect(() => {
     if (snapshot) onSummary(summarize(snapshot, Boolean(failed?.text)));
   }, [snapshot, failed]);
+  const taskTitle = taskId ? model.tasks.find((row) => row.ID === taskId)?.Title : undefined;
+  useEffect(() => {
+    // A split hands a drill to a task pane before the task's name is known, so the name arrives with the plan rows.
+    if (tab.kind !== 'task' || tab.title || tab.titleSource === 'manual' || !taskTitle || !onRename) return;
+    onRename(taskTitle);
+  }, [tab.kind, tab.title, tab.titleSource, taskTitle, onRename]);
   useHistoryKeys(() => setRoute(goBack(route)), () => setRoute(goForward(route)));
 
   function openTask(taskId: string, background: boolean) {
@@ -321,6 +327,9 @@ export function ConversationView({ nextUp, tab, label, onDraft, onView, onSummar
             onClose={panel.close}
             onExpand={() => {
               if (panel.sheet) panel.close();
+              // Already showing a task: Expand opens that view as a tab. The open-task seam pops this pane back.
+              // From the transcript there is no drill to hand over, so Expand still opens the tasks table.
+              if (taskId) { openTask(taskId, true); return; }
               setRoute(navigate(route, TASKS_VIEW));
             }}
             variant={panel.sheet ? 'sheet' : 'column'}

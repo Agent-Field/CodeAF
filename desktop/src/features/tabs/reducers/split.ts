@@ -2,6 +2,7 @@
 // Merging, closing a pane, moving focus, changing layout and unmerging are all pure here; the drag
 // gestures that call them belong to the split lane.
 import { clampRatio, createId, defaultLayout, layoutFits, makeSplit, normalize, paneOf, splitCapacity, tabOf, withSplitTitle } from '../helpers.ts';
+import { panesOpeningIntoSplit } from '../openAsTab.ts';
 import { closedRecord } from './tabs.ts';
 import type { SplitLayout, Tab, WorkspaceState } from '../types.ts';
 
@@ -102,7 +103,8 @@ function merge(state: WorkspaceState, id: string, withId: string, layout?: Split
   const guest = state.tabs.find(t => t.id === withId);
   if (!host || !guest || host.id === guest.id || host.pinned || guest.pinned) return state;
   const own = host.split ? host.split.panes : [paneOf(host)];
-  const joining = guest.split ? guest.split.panes : [paneOf(guest)];
+  // A guest drilled into a task hands that view to a new pane and pops back, so the split is not two copies of it.
+  const joining = panesOpeningIntoSplit(guest.split ? guest.split.panes : [paneOf(guest)], createId);
   const panes = at === 'start' ? [...joining, ...own] : [...own, ...joining];
   if (panes.length > splitCapacity) return state;
   const kept = host.split && !layout && layoutFits(host.split.layout, panes.length) ? host.split.layout : undefined;

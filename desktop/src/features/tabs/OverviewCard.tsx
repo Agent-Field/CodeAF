@@ -16,6 +16,7 @@ import { isBackgroundPress, liveCommandLines, overviewCardState } from './overvi
 import { askOf, questionsFor } from './preview/content';
 import { PreviewButtons, PreviewContents, PreviewField } from './preview/PreviewCard';
 import { routeTask } from './view-state';
+import { usePreviewVisible } from './preview/usePreviewVisible';
 
 const markRank: TabMark[] = ['waiting', 'failed', 'working'];
 
@@ -156,6 +157,7 @@ const halfOf = (point: DragPoint, element: HTMLElement) => { const box = element
 export function OverviewCard({ tab, summaries, now, active, cursor, menu, onOpen, onBackground, onClose, onDropTab, modelNames }: Props) {
   const act = useCardActions(tab, onOpen);
   const el = useRef<HTMLElement | null>(null);
+  const shown = usePreviewVisible(el, active || cursor);
   const pointer = usePointerDrag({ payload: { kind: 'tab', id: tab.id } });
   const dropRef = useDropTarget(onDropTab ? {
     kind: 'overview-card',
@@ -187,7 +189,7 @@ export function OverviewCard({ tab, summaries, now, active, cursor, menu, onOpen
           {state.words && <span className="overview-card-state">{dot && <StateDot mark={dot}/>}{state.words}</span>}
         </div>
         <span className="overview-card-title">{tab.title}</span>
-        <div className="overview-card-body"><CardBody tab={tab} summaries={summaries} now={now} act={act}/></div>
+        <div className="overview-card-body">{shown && <CardBody tab={tab} summaries={summaries} now={now} act={act}/>}</div>
         {footer && <span className="overview-card-foot">{footer}</span>}
       </div>
       {onClose && <IconButton className="overview-card-close" label={`Close ${tab.title}`} icon="close" iconSize="micro" onClick={onClose}/>}
