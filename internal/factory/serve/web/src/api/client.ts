@@ -1,4 +1,4 @@
-import type { ApiError, Approved, DryRunRead, Envelope, GitHubLink, Job, Me, PipelineRead, Queue, RepoList, Thread } from "./types"
+import type { ApiError, Approved, AuditLog, Created, DryRunRead, Envelope, GitHubLink, Job, Me, PipelineRead, Queue, RepoList, Thread } from "./types"
 
 // The API is same-origin at /v1 (ARCHITECTURE §7). Every failure, whether the
 // server's {error} or a network fault, reaches the page as one FactoryError
@@ -66,4 +66,9 @@ export const api = {
   dryRun: (owner: string, repo: string) =>
     request<DryRunRead>(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/dryrun`),
   me: () => request<Me>("/me"),
+  // New job. text is the description; autostart is sent even when false so
+  // the factory does not have to guess the switch.
+  newJob: (body: { repo: string; title: string; text: string; autostart: boolean }) =>
+    send<Created>("POST", "/jobs", body),
+  audit: () => request<AuditLog>("/audit"),
 }

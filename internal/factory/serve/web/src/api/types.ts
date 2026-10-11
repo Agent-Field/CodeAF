@@ -314,6 +314,16 @@ export interface Approved extends Envelope {
   event: string
 }
 
+/** `POST /v1/jobs`: the id of the job just created. */
+export interface Created extends Envelope {
+  id: number
+}
+
+/** `GET /v1/audit`: the append-only record, oldest first. */
+export interface AuditLog extends Envelope {
+  events: Event[]
+}
+
 export interface Event {
   id: string
   at: string

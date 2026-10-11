@@ -1756,8 +1756,8 @@ job. Keys: `j` and `k` move the cursor, `enter` opens, `y` approves, `a`
 answers, `?` lists the keys. On a phone the sidebar opens from the menu button
 and rows keep job, title, state, cost and the button. The page reads the queue
 again when the factory sends a change; a factory without the change stream is
-read once per load. New job and Audit log say `Coming`: they are not built
-yet. Settings is its own page.
+read once per load. New job is `/new` and the audit log is `/audit`. Settings
+is its own page.
 
 The job page (`/jobs/<id>`) is the brief. The header shows badges for kind,
 state, step `k/n`, cost and age, then `waiting on you since <time>`, `asked
@@ -1806,6 +1806,42 @@ available`. Sign out says `Ends this session. Your GitHub credential is
 removed from the factory.` It is hidden on loopback, where the factory keeps
 no session. Off loopback the button is shown and says `not available` until a
 sign-out endpoint exists.
+
+## factory web new job
+
+New job is the dashboard page at `/new`, opened by the `New job` button.
+It opens an issue on GitHub and puts the job in your Backlog. The card says
+`Send a job to the factory`. Auto-start rules from `.codeaf/factory.yaml`
+decide when it runs.
+
+Repository is a select. The list is the repositories on the floor, plus any
+repository `GET /v1/repos` says you can see. Title is required. Description
+is optional. The switch `Auto-start when rules allow` starts on. `Send to
+factory` sends `POST /v1/jobs` with `{"repo","title","text","autostart"}`.
+Success says `Sent to factory` and `<where> is in your Backlog`, where
+`<where>` is `owner/repo #<number>` when the floor has that job, or
+`job <id>` from the create answer. A factory with no new-job door answers
+`this factory does not provide that action`, and the page shows that sentence.
+
+## factory web audit log
+
+The audit log is the dashboard page at `/audit`. It reads `GET /v1/audit`
+and lists events in append order under Time, User, Action and Cost. A blank
+handle is shown as `factory`. A cost of zero is left blank. Tabs are `All`,
+`Approvals` (`approved`), `Answers` (`answered`), `Starts` (`started` and
+`auto_started`) and `Takes` (`took`). A drop, a post or a request for
+changes stays on `All`. An empty tab says `No events of this kind yet.`
+
+The action line is built from the event. `took #N`, `started #N`,
+`auto-started #N` (and `auto-started #N by rule <detail>` when a rule is
+recorded), `posted <detail>`, `answered #N`, `approved #N · <event id>`,
+`requested changes on #N · <event id>`, `dropped #N`. `#N` is the job's
+GitHub number when the floor has that job, otherwise the factory job id.
+Detail is appended with ` · ` on an answer or a drop.
+
+`Export` downloads `factory-record.csv` from `GET /v1/audit?format=csv`
+(columns `id`, `at`, `kind`, `job`, `handle`, `cost`, `detail`). A factory
+with no record says `this factory does not provide that read`.
 
 ## factory event stream and a job's manager thread
 
