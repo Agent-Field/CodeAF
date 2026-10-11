@@ -37,7 +37,7 @@ func runFactory(args []string) error {
 	verb := "serve"
 	if len(args) > 0 {
 		switch args[0] {
-		case "serve", "steps", "token":
+		case "serve", "steps", "token", "revoke-sessions":
 			verb, args = args[0], args[1:]
 		}
 	}
@@ -54,6 +54,16 @@ func runFactory(args []string) error {
 	if verb == "token" {
 		return runFactoryToken(args)
 	}
+	if verb == "revoke-sessions" {
+		flags := commandFlags("factory revoke-sessions")
+		if err := parseCommandFlags(flags, args); err != nil {
+			return err
+		}
+		if flags.NArg() != 0 {
+			return wrongCall("codeaf factory revoke-sessions takes no arguments")
+		}
+		return revokeFactorySessions(os.Stdout)
+	}
 	flags := commandFlags("factory")
 	listen := flags.String("listen", "", "address to listen on")
 	path := flags.String("config", home.Join("factory", "config.yaml"), "host configuration")
@@ -61,7 +71,7 @@ func runFactory(args []string) error {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return wrongCall("use codeaf factory [serve], codeaf factory steps or codeaf factory token")
+		return wrongCall("use codeaf factory [serve], steps, token or revoke-sessions")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

@@ -130,6 +130,7 @@ func helpPages(t *testing.T) []helpPage {
 		{"factory", runFactory},
 		{"factory steps", func(args []string) error { return runFactory(append([]string{"steps"}, args...)) }},
 		{"factory token", func(args []string) error { return runFactory(append([]string{"token"}, args...)) }},
+		{"factory revoke-sessions", func(args []string) error { return runFactory(append([]string{"revoke-sessions"}, args...)) }},
 		{"plan new", func(args []string) error { return runPlanNew("plan new", args) }},
 		{"plan run", func(args []string) error { return runGraph("plan run", args) }},
 		{"patch", runPatch},

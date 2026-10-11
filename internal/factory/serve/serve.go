@@ -54,7 +54,8 @@ type Handler struct {
 	mux     *http.ServeMux
 	watch   *rootWatch
 
-	workers *workerService
+	workers  *workerService
+	sessions *accessSessions
 }
 
 // New binds the seam's reads and verbs; absent doors refuse rather than panic.
@@ -64,6 +65,9 @@ func New(seam factory.Seam, config Config) *Handler {
 	}
 	h := &Handler{seam: seam, config: config,
 		factory: api.Factory{Address: config.Address, Version: config.Version}, mux: http.NewServeMux()}
+	h.sessions = &accessSessions{ids: make(map[string]time.Time), now: time.Now}
+	h.route("/access", map[string]http.HandlerFunc{http.MethodGet: h.access, http.MethodPost: h.access})
+	h.route("/v1/access/revoke-sessions", map[string]http.HandlerFunc{http.MethodPost: h.revokeSessions})
 	h.read("/v1/queue", h.queue)
 	h.read("/v1/jobs/{id}", h.job)
 	h.read("/v1/jobs/{id}/thread", h.thread)
@@ -95,7 +99,7 @@ func (h *Handler) Close() {
 }
 
 // ServeHTTP checks the peer before routing, so even errors cannot reveal the
-// floor to a remote caller without the host's access token.
+// floor to a remote caller without the host's access token or a live session.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if workerPath(r.URL.Path) {
@@ -104,9 +108,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-	} else if !h.allowed(r) {
+	} else if r.URL.Path != "/access" && !h.allowed(r) {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="factory"`)
-		h.fail(w, http.StatusUnauthorized, "a bearer access token is required")
+		h.fail(w, http.StatusUnauthorized, "a bearer access token or live session is required; open /access to enter the token")
 		return
 	}
 	// Noncanonical paths are refused here so ServeMux cannot replace the JSON

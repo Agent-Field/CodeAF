@@ -34,7 +34,29 @@ one if it is missing. `codeaf factory token --rotate` replaces it with a fresh
 random token and prints that token. Both accept `--config path`.
 Restart a running factory after rotation: the running service and its discovery
 file keep the token loaded at startup until they exit. Remote callers send
-`Authorization: Bearer <access token>`; loopback callers do not need it.
+`Authorization: Bearer <access token>` or use a live browser session; loopback
+callers do not need either.
+
+## factory browser access — /access, session cookie and revoke-sessions
+
+On another machine, open the factory service's `/access` page and enter the access
+token from `codeaf factory token`. The form submits by POST; alternatively visit
+`/access?token=<access token>` once. Success sets a random session cookie and
+redirects to `/`, removing the token from the dashboard URL. A bad token returns
+HTTP 401 and creates no session. The token is never stored in the cookie.
+Malformed forms or submissions larger than 4096 bytes return HTTP 400 with
+`invalid access form`.
+
+The cookie is HttpOnly and SameSite=Strict, covers the dashboard and `/v1`, and
+expires after 30 days. It is Secure when the service receives HTTPS directly.
+Sessions live only in the running service; restarting signs every browser out.
+An expired, unknown or revoked cookie returns HTTP 401 off loopback.
+
+`codeaf factory revoke-sessions` signs every browser out of the running service
+for this codeaf home and prints `factory sessions revoked`. It accepts no arguments
+and uses the private discovery receipt to reach the local service. Without a
+running service it refuses. Bearer callers keep working; the token is not rotated.
+After revocation, enter the token at `/access` again to open the dashboard.
 
 ## codeaf factory steps — print built-in step prompts
 
@@ -1638,10 +1660,11 @@ The pipeline includes any lines that could not load; without a known checkout it
 returns defaults with `source: "defaults"`.
 
 Loopback connections are open. Connections from any other address require
-`Authorization: Bearer <access token>` using the host configuration's access token.
+`Authorization: Bearer <access token>` using the host configuration's access token,
+or a live session cookie created by entering that token at `/access`.
 With no token configured, remote access is refused. Forwarded headers do not grant
-loopback access. A missing or wrong token answers HTTP 401 with
-`a bearer access token is required`.
+loopback access. Without either credential the service answers HTTP 401 with
+`a bearer access token or live session is required; open /access to enter the token`.
 
 `/v1/me` currently uses the factory's connected GitHub login as its handle, with an
 empty machines list and no unassigned-work preferences. With no GitHub connection,
@@ -1668,8 +1691,8 @@ HTTP 200. An absent action answers HTTP 501 with
 an unknown job answers HTTP 404 with `job not found`. Wrong methods answer
 HTTP 405 with an Allow header. A seam error answers HTTP 500, except missing
 data (404), permission denied (403), a deadline (504) or cancellation (408).
-Actions require the same bearer token as reads off loopback. Bodies with fields
-must be one JSON object, at most 1 MiB; extra fields are refused, and a larger
+Actions accept the same bearer token or live session as reads off loopback.
+Bodies with fields must be one JSON object, at most 1 MiB; extra fields are refused, and a larger
 body answers HTTP 413 with `JSON body exceeds 1 MiB`.
 
 ## factory HTTP approve — plan approval, proof approval and the event receipt
@@ -1705,12 +1728,14 @@ These routes use the same access check and error statuses as job actions.
 
 ## factory web dashboard
 
-The factory HTTP handler also serves the web dashboard: every path outside `/v1`
-answers with the dashboard page, so a link such as `/jobs/12` opens the page
+The factory HTTP handler also serves the web dashboard: every path outside `/v1`,
+except the public `/access` token form, answers with the dashboard page,
+so a link such as `/jobs/12` opens the page
 directly, and the page reads the floor from `/v1` on the same address. Paths
 under `/v1` that name no endpoint still answer the JSON `factory endpoint not
 found`. The same access rule applies: loopback is open, and another address
-needs the access token. The dashboard pages answer GET only.
+needs the access token or a live session from `/access`.
+The dashboard pages answer GET only.
 
 The page today has a sidebar with the factory address (click it for Settings),
 `New job`, three views, `Mine` (jobs assigned to you, and jobs waiting on you),
