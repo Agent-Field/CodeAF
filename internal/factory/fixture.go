@@ -110,6 +110,8 @@ func Fixture(now time.Time) Snapshot {
 			items[i].Comments = []Comment{}
 		}
 	}
+	items[1].Thread = []Message{{ID: "line_fixture", From: "manager", Text: "The filter ordering fix is in progress.", At: m(2)}}
+	items[1].AnsweredQuestions = []Question{{Text: "Keep the current filter?", Kind: "scope", State: "answered", Answer: &Answer{By: "santosh", Text: "yes", At: m(5), Event: "evt_fixture"}}}
 	var hours [24]int
 	hours[(now.Hour()+24-6)%24] = 3
 	hours[(now.Hour()+24-4)%24] = 5

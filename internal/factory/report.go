@@ -20,6 +20,9 @@ type RunReport struct {
 	Talk string
 	// Notes are sentences the run added to the job's notes, oldest first.
 	Notes []string
+	// Thread carries spoken lines; Delivered acknowledges pending reply IDs.
+	Thread    []Message
+	Delivered []string
 }
 
 // PipelineChange is the job's stages and the run's phase list as the worker's

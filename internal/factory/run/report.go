@@ -55,6 +55,9 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 		it.Talk = talk
 	}
 	it.Notes = append(it.Notes, report.Notes...)
+	if err := factory.MergeThread(it, report.Thread, report.Delivered); err != nil {
+		return err
+	}
 	return reportPR(it, report.PR)
 }
 

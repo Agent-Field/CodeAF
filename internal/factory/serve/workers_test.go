@@ -364,8 +364,8 @@ func TestWorkerDiffReportsOneQuestionOnTheWire(t *testing.T) {
 			f.request(t, "POST", fmt.Sprintf("/v1/jobs/%d/answer", job.ID), "", map[string]bool{"yes": false}, 200, nil)
 			got = api.Job{}
 			f.request(t, "GET", fmt.Sprintf("/v1/jobs/%d", job.ID), "", nil, 200, &got)
-			if len(got.Questions) != 0 {
-				t.Fatalf("answered question remains on the wire: %+v", got.Questions)
+			if len(got.Questions) != 1 || got.Questions[0].State != "answered" || got.Questions[0].Answer == nil || got.Questions[0].Answer.Text != "no" {
+				t.Fatalf("answered question history lost: %+v", got.Questions)
 			}
 		})
 	}

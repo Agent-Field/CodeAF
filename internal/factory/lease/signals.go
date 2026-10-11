@@ -23,6 +23,8 @@ const (
 	SignalAnswer = "answer"
 	// SignalSteer carries words for the round running now.
 	SignalSteer = "steer"
+	// SignalReply carries a pending manager reply; ID is acknowledged by report.
+	SignalReply = "reply"
 	// SignalRecheck asks the pulling worker to run the checks of a landed job
 	// again instead of running its steps.
 	SignalRecheck = "recheck"
@@ -38,6 +40,7 @@ const (
 
 // Signal is one verb a person asked of a job, with the door's own arguments.
 type Signal struct {
+	ID    string `json:"id,omitempty"`
 	Verb  string `json:"verb"`
 	Yes   bool   `json:"yes,omitempty"`
 	Words string `json:"words,omitempty"`
@@ -62,6 +65,15 @@ func (d *Desk) drain(id, worker string, publishing bool) ([]Signal, error) {
 		held, err := identified(doc, id, worker)
 		if err != nil {
 			return false, err
+		}
+		it, err := d.store.Get(held.Job)
+		if err != nil {
+			return false, err
+		}
+		for _, m := range it.Thread {
+			if m.State == "pending" {
+				out = append(out, Signal{Verb: SignalReply, ID: m.ID, Words: m.Text})
+			}
 		}
 		var kept []Signal
 		for _, s := range doc.Signals[held.Job] {

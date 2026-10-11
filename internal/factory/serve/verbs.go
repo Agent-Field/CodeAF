@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
@@ -34,7 +35,7 @@ func (h *Handler) verbs() {
 	// only after the worker routes open it, so the handler checks then.
 	h.postJob("take", true, h.take)
 	h.postJob("prioritize", s.Mark != nil, h.prioritize)
-	h.postJob("reply", s.Say != nil, h.reply)
+	h.postJob("reply", h.config.Store != nil || s.Say != nil, h.reply)
 	h.route("/v1/jobs", map[string]http.HandlerFunc{http.MethodPost: h.newJob})
 	h.route("/v1/github/connect", map[string]http.HandlerFunc{http.MethodPost: h.connectGitHub})
 }
@@ -161,6 +162,19 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 	if h.failed(w, door()) {
 		return
 	}
+	if it.Question != "" {
+		handle, err := h.seam.PersonHandle(r.Context())
+		if h.failed(w, err) {
+			return
+		}
+		at := time.Now()
+		if h.workers != nil {
+			at = h.workers.now()
+		}
+		if h.failed(w, h.keepAnswered(it, factory.Answer{By: handle, Text: "yes", At: at, Event: event})) {
+			return
+		}
+	}
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
 		Event   string      `json:"event"`
@@ -232,6 +246,20 @@ func (h *Handler) shape(w http.ResponseWriter, r *http.Request, it factory.Item)
 
 func (h *Handler) reply(w http.ResponseWriter, r *http.Request, it factory.Item) {
 	if words, ok := h.words(w, r); ok {
+		if h.config.Store != nil {
+			if !h.workerReady(w) {
+				return
+			}
+			from, err := h.seam.PersonHandle(r.Context())
+			if h.failed(w, err) {
+				return
+			}
+			if from == "" {
+				from = "user"
+			}
+			h.finish(w, h.workers.desk.Reply(it.ID, from, words))
+			return
+		}
 		h.finish(w, h.seam.Say(r.Context(), it.ID, words))
 	}
 }

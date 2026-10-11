@@ -35,6 +35,8 @@ type Lease struct {
 	Job     int    `json:"job"`
 	Worker  string `json:"worker"`
 	Machine string `json:"machine,omitempty"`
+	// ThreadOnly lends the manager to a reply without restarting job steps.
+	ThreadOnly bool `json:"thread_only,omitempty"`
 	// Publish keeps a collected approval recoverable if the publisher vanishes.
 	Publish   string    `json:"publish,omitempty"`
 	Handle    string    `json:"handle"`
@@ -141,7 +143,7 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 			if _, err := rand.Read(token[:]); err != nil {
 				return false, err
 			}
-			taken = Lease{ID: "lease_" + hex.EncodeToString(token[:]), Job: it.ID, Worker: worker.ID, Machine: worker.Machine, Handle: worker.Handle, ExpiresAt: now.Add(d.ttl)}
+			taken = Lease{ID: "lease_" + hex.EncodeToString(token[:]), Job: it.ID, Worker: worker.ID, Machine: worker.Machine, Handle: worker.Handle, ExpiresAt: now.Add(d.ttl), ThreadOnly: it.State != factory.StateQueued || paused(it)}
 			return false, d.reserve(doc, worker, taken)
 		}
 		return false, ErrNoJob
@@ -168,7 +170,9 @@ func (d *Desk) reserve(doc *document, worker Worker, taken Lease) error {
 		if it.WorktreeMachine == "" {
 			it.WorktreeMachine = taken.Machine
 		}
-		it.State = factory.StateRunning
+		if !taken.ThreadOnly {
+			it.State = factory.StateRunning
+		}
 		return nil
 	})
 }
@@ -228,13 +232,25 @@ func (d *Desk) Requeue(id int, worker string) error {
 }
 
 func eligible(it factory.Item, worker Worker) bool {
-	if it.State != factory.StateQueued || paused(it) || (it.WorktreeMachine != "" && it.WorktreeMachine != worker.Machine) {
+	if (it.State != factory.StateQueued || paused(it)) && !pendingReply(it) || (it.WorktreeMachine != "" && it.WorktreeMachine != worker.Machine) {
 		return false
 	}
 	if owner := it.Person(); owner != "" {
 		return owner == worker.Handle
 	}
 	return worker.TakesUnassigned[it.Repo] || worker.TakesUnassigned[EveryRepo]
+}
+
+func pendingReply(it factory.Item) bool {
+	if it.Talk == "" {
+		return false
+	}
+	for _, m := range it.Thread {
+		if m.State == "pending" {
+			return true
+		}
+	}
+	return false
 }
 
 func find(doc *document, id int) *Lease {

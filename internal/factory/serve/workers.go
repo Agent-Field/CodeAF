@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -198,7 +199,7 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 }
 
 func workerLease(held lease.Lease) api.WorkerLease {
-	return api.WorkerLease{ID: held.ID, Job: held.Job, Worker: held.Worker, Machine: held.Machine, Handle: held.Handle, ExpiresAt: held.ExpiresAt}
+	return api.WorkerLease{ThreadOnly: held.ThreadOnly, ID: held.ID, Job: held.Job, Worker: held.Worker, Machine: held.Machine, Handle: held.Handle, ExpiresAt: held.ExpiresAt}
 }
 
 func (h *Handler) pulled(w http.ResponseWriter, held lease.Lease) {
@@ -216,7 +217,7 @@ func (h *Handler) pulled(w http.ResponseWriter, held lease.Lease) {
 func wireSignals(in []lease.Signal) []api.WorkerSignal {
 	out := make([]api.WorkerSignal, len(in))
 	for i, s := range in {
-		out[i] = api.WorkerSignal{Verb: s.Verb, Yes: s.Yes, Words: s.Words}
+		out[i] = api.WorkerSignal{ID: s.ID, Verb: s.Verb, Yes: s.Yes, Words: s.Words}
 	}
 	return out
 }
@@ -247,6 +248,20 @@ func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	report := api.ToWorkerReport(body)
+	only, err := h.workers.desk.ThreadOnly(r.PathValue("lease"), requestWorker(r).ID)
+	if h.workerError(w, err) {
+		return
+	}
+	if only {
+		rest := report
+		rest.Thread, rest.Delivered = nil, nil
+		if !reflect.DeepEqual(rest, factory.RunReport{}) {
+			h.fail(w, http.StatusBadRequest, "manager reply cannot change job steps")
+			return
+		}
+		h.applyWorker(w, r, false, func(it *factory.Item) error { return factory.MergeThread(it, report.Thread, report.Delivered) })
+		return
+	}
 	h.applyWorker(w, r, false, func(it *factory.Item) error { return run.ApplyReport(it, report, h.workers.now()) })
 }
 
@@ -256,6 +271,14 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 	}
 	var body api.WorkerDone
 	if !h.decode(w, r, &body, true) {
+		return
+	}
+	only, err := h.workers.desk.ThreadOnly(r.PathValue("lease"), requestWorker(r).ID)
+	if h.workerError(w, err) {
+		return
+	}
+	if only {
+		h.applyWorker(w, r, true, func(*factory.Item) error { return nil })
 		return
 	}
 	state, ok := api.ToWorkerState(body)

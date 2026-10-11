@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,10 +12,68 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
+
+func TestAnsweredQuestionKeepsItsPersonWordsClockAndEvent(t *testing.T) {
+	for _, verb := range []string{"answer", "approve"} {
+		t.Run(verb, func(t *testing.T) {
+			cfg := recordConfig(t)
+			st, err := store.Open(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg.Store = st
+			cfg.LeaseOptions = lease.Options{Now: func() time.Time { return now }}
+			job, err := st.Create(factory.Item{State: factory.StateNeedsYou, Question: "continue?", QKind: factory.QKindApprove})
+			if err != nil {
+				t.Fatal(err)
+			}
+			seam := factory.Seam{
+				Load:   func() (factory.Snapshot, error) { items, err := st.List(); return factory.Snapshot{Items: items}, err },
+				GitHub: func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: "Sam"}, nil },
+				Answer: func(id int, yes bool, words string) error {
+					return st.Update(id, func(it *factory.Item) error {
+						it.Question, it.QKind = "", ""
+						it.State = factory.StateRunning
+						return nil
+					})
+				},
+			}
+			h := serve.New(seam, cfg)
+			body := `{"yes":true,"words":"Keep the flag."}`
+			if verb == "approve" {
+				body = ""
+			}
+			w := verbRequest(h, "POST", fmt.Sprintf("/v1/jobs/%d/%s", job.ID, verb), body)
+			checkJSON(t, w, 200)
+			w = verbRequest(h, "GET", fmt.Sprintf("/v1/jobs/%d", job.ID), "")
+			var got api.Job
+			if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+			if len(got.Questions) != 1 || got.Questions[0].State != "answered" {
+				t.Fatalf("question disappeared: %+v", got.Questions)
+			}
+			a := got.Questions[0].Answer
+			words := "Keep the flag."
+			if verb == "approve" {
+				words = "yes"
+			}
+			if a == nil || a.By != "sam" || a.Text != words || !a.At.Equal(now) || a.Event == "" {
+				t.Fatalf("answer receipt lost: %+v", a)
+			}
+			events, err := cfg.Record.Since(context.Background(), time.Time{})
+			if err != nil || len(events) != 1 || events[0].ID != a.Event {
+				t.Fatalf("answer event: %+v %v", events, err)
+			}
+		})
+	}
+}
 
 func recordConfig(t *testing.T) serve.Config {
 	t.Helper()

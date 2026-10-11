@@ -1920,17 +1920,42 @@ Read `GET /v1/jobs/{id}` or `GET /v1/queue` again for the current factory. A
 factory with no root to watch keeps the stream open and sends nothing. A
 client that connects late is not sent earlier ticks.
 
-`GET /v1/jobs/{id}/thread` reads the job's manager transcript and returns
-JSON `messages`, a list of `{at, from, text}`. `from` is `manager` for the
-manager's lines and `user` for the person's. Tool rows are left out. `at`
-is when that line was written. A job with no transcript yet, a missing
-file, or no spoken lines returns `messages: []`. Opening the thread does
-not create the transcript and does not append to it. An unknown
-job answers `job not found`. A job id that is not a positive integer is
-refused with `job id must be a positive integer`.
+## factory manager thread on another machine, pending replies and delivered messages
 
-Both follow the same access rule as the other reads. The thread's JSON
-body carries `factory: {address, version}`.
+`GET /v1/jobs/{id}/thread` returns `{factory, messages}` from the job's stored
+thread, including jobs running on another person's machine. Workers report
+spoken manager lines from their own journal; the factory never opens that
+machine's transcript. Tool rows are left out. A job with no reported lines or
+replies returns `messages: []`; reading creates no conversation.
+
+Messages keep `{at, from, text}` and may add `id` and `state`. `from` is `manager`
+for the manager and the connected GitHub handle (or `user` when absent) for a
+reply. `POST /v1/jobs/{id}/reply {"words":"your words"}` adds the reply immediately
+with `state: pending`. The holding machine collects it on its next heartbeat,
+or an eligible machine pulls the idle manager. The worker reports the reply's
+ID after delivery; its state becomes `delivered`. An idle reply runs no job
+steps and leaves the job's state alone. Pending replies survive lease expiry
+and a service restart. An offline machine leaves the reply pending.
+
+A thread keeps at most 200 messages, each at most 16 KiB. Pending replies do not
+scroll away. Reply refuses over 16 KiB with `reply exceeds 16384 bytes`, or 200
+pending replies with `job has too many pending replies`. A job without a manager
+that is neither queued nor running says `the job has no manager conversation`.
+Queued and running jobs can receive a reply while their worker makes the manager.
+
+An unknown job answers `job not found`; an invalid id says
+`job id must be a positive integer`. The reads follow the usual factory access
+rule and return `factory: {address, version}`. Contract stays 1.
+
+## factory answered question history — who answered, words, time and event
+
+`POST /v1/jobs/{id}/answer` closes the open question and keeps it in the job's
+`questions` with `state: answered` and `answer: {by, text, at, event}`. `by` is
+the connected GitHub handle; a bare yes or no is kept as `yes` or `no`.
+`event` links to the factory's answer or approval receipt when a record exists.
+The latest 100 answered questions survive worker reports, pauses and restarts.
+An answered question no longer holds the run or becomes its open question when
+a client reads the job back. New asks still appear with `state: open`.
 
 ## factory HTTP workers — attach, pull a job and heartbeat
 

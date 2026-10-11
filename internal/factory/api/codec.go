@@ -111,7 +111,7 @@ func ToItem(j Job) factory.Item {
 		Proof: mapList(j.Claims, toClaim), Policy: mapList(d.Policy, toClaim),
 		PlannedFiles: append([]string(nil), j.PlannedFiles...),
 		Marked:       d.Marked, Labels: d.Labels, Checks: d.Checks, Diff: d.Diff,
-		Adapted: d.Adapted, Notes: d.Notes, Talk: d.Talk, Heard: d.Heard,
+		Adapted: d.Adapted, Notes: d.Notes, Talk: d.Talk, Heard: d.Heard, Thread: d.Thread,
 		Comments: mapList(d.Comments, toComment), Files: mapList(d.Files, toFile),
 		CheckRuns: mapList(d.CheckRuns, toCheckRun), Base: d.Base, Head: d.Head, HeadSHA: d.HeadSHA,
 		Activity: mapList(d.Activity, toActivity),
@@ -316,7 +316,7 @@ func fromDesk(it factory.Item) *JobDesk {
 		Tier: string(it.Tier), Origin: string(it.Origin), Synced: it.Synced, ChangedAt: it.Changed,
 		Triage: fromTriage(it.Triage), Cap: it.Cap, Policy: mapList(it.Policy, fromClaim),
 		Marked: it.Marked, Labels: it.Labels, Checks: it.Checks, Diff: it.Diff,
-		Adapted: it.Adapted, Notes: it.Notes, Talk: it.Talk, Heard: it.Heard,
+		Adapted: it.Adapted, Notes: it.Notes, Talk: it.Talk, Thread: it.Thread, Heard: it.Heard,
 		Comments: mapList(it.Comments, fromComment), Files: mapList(it.Files, fromFile),
 		CheckRuns: mapList(it.CheckRuns, fromCheckRun), Base: it.Base, Head: it.Head, HeadSHA: it.HeadSHA,
 		Activity: mapList(it.Activity, fromActivity),
@@ -393,11 +393,15 @@ func questions(it factory.Item) []Question {
 			out = append(out, q)
 		}
 	}
-	return out
+	return append(out, it.AnsweredQuestions...)
 }
 
 func unquestions(it *factory.Item, qs []Question) {
 	for _, q := range qs {
+		if q.Answer != nil {
+			it.AnsweredQuestions = append(it.AnsweredQuestions, q)
+			continue
+		}
 		if q.Kind != QuestionAsked {
 			it.Question, it.QKind = q.Text, q.Kind
 			if q.With != factory.AskedYou {

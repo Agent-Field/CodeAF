@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"reflect"
 	"sync"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	factorythread "github.com/Agent-Field/codeaf/internal/factory/thread"
 )
 
 // Options is one machine's worker against one factory.
@@ -40,8 +42,10 @@ type Options struct {
 	// LocalLease keeps this machine's receipt of a pulled or renewed lease.
 	// An empty lease removes the receipt before the mirror is put away.
 	LocalLease func(base string, lease api.WorkerLease)
-	// Slots is how many jobs run at once; each slot is its own worker on the
-	// factory, because a lease is one job for one worker.
+	// Reply submits words to the manager on this machine. A failed delivery
+	// stays pending; the next heartbeat offers it again.
+	Reply func(context.Context, factory.Item, string) error
+	// Slots is how many jobs run at once; each slot is its own worker.
 	Slots int
 	// ReportEvery and BeatEvery pace the reports and the heartbeats (the
 	// heartbeat is also how a person's verbs arrive); zero is 500ms and 2s.
@@ -140,14 +144,20 @@ type job struct {
 	id    int
 	sent  factory.Item // the mirror as last reported
 
-	mu      sync.Mutex
-	shaping bool
+	mu           sync.Mutex
+	shaping      bool
+	replying     bool
+	accepted     map[string]bool
+	acknowledged map[string]bool
+	thread       []factory.Message
 }
 
 // work runs one pulled job to its end, or until the lease is gone.
 func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.WorkerPull) {
 	it := api.ToItem(pulled.Job)
-	j := &job{o: o, w: w, lease: pulled.Lease.ID, id: it.ID}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	j := &job{o: o, w: w, lease: pulled.Lease.ID, id: it.ID, accepted: map[string]bool{}, acknowledged: map[string]bool{}}
 	defer os.Remove(o.Mirror.ItemPath(it.ID))
 	defer j.keepLocal(api.WorkerLease{Job: it.ID})
 	pulledTalk, pulledNotes := it.Talk, it.Notes
@@ -157,6 +167,12 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 		return
 	}
 	j.keepLocal(pulled.Lease)
+	if pulled.Lease.ThreadOnly {
+		j.sent = it
+		j.signals(ctx, pulled.Signals)
+		j.converse(ctx)
+		return
+	}
 	if err := start(o.Runner, it.ID); err != nil {
 		j.refuse(ctx, err)
 		return
@@ -166,11 +182,12 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 	// and go in the first report.
 	j.sent, _ = o.Mirror.Get(it.ID)
 	j.sent.Talk, j.sent.Notes = pulledTalk, pulledNotes
+	j.signals(ctx, pulled.Signals)
 	report := time.NewTicker(o.ReportEvery)
 	defer report.Stop()
 	beat := time.NewTicker(o.BeatEvery)
 	defer beat.Stop()
-	for o.Runner.Running(it.ID) {
+	for o.Runner.Running(it.ID) || j.replyingNow() {
 		select {
 		case <-ctx.Done():
 			j.drop()
@@ -187,7 +204,7 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 			}
 		}
 	}
-	if j.flush(ctx) {
+	if j.flushFinal(ctx) {
 		cur, err := o.Mirror.Get(it.ID)
 		if err == nil {
 			_ = w.Done(ctx, j.lease, final(cur))
@@ -244,6 +261,37 @@ func (j *job) flush(ctx context.Context) bool {
 		return true
 	}
 	report, ok := run.Diff(j.sent, cur)
+	var messages []factory.Message
+	for _, m := range factorythread.Read(cur.Talk) {
+		if m.From == "manager" {
+			messages = append(messages, m)
+		}
+	}
+	if !reflect.DeepEqual(messages, j.thread) {
+		known := map[string]bool{}
+		for _, m := range j.thread {
+			known[m.ID] = true
+		}
+		for _, m := range messages {
+			if !known[m.ID] {
+				report.Thread = append(report.Thread, m)
+				if len(report.Thread) == 32 {
+					break
+				}
+			}
+		}
+		ok = ok || len(report.Thread) > 0
+	}
+	j.mu.Lock()
+	for id := range j.accepted {
+		if !j.acknowledged[id] {
+			report.Delivered = append(report.Delivered, id)
+		}
+	}
+	j.mu.Unlock()
+	if len(report.Delivered) > 0 {
+		ok = true
+	}
 	if !ok {
 		return true
 	}
@@ -251,8 +299,30 @@ func (j *job) flush(ctx context.Context) bool {
 	if gone(err) {
 		return false
 	}
+	if err == nil {
+		j.mu.Lock()
+		for _, id := range report.Delivered {
+			j.acknowledged[id] = true
+		}
+		j.mu.Unlock()
+	}
 	if err == nil || !transient(err) {
 		j.sent = cur
+		j.thread = append(j.thread, report.Thread...)
+		if len(j.thread) > factory.ThreadMost {
+			j.thread = j.thread[len(j.thread)-factory.ThreadMost:]
+		}
+	}
+	return true
+}
+
+// flushFinal sends every bounded batch before giving the lease back, even
+// when the runner finished before the first periodic report.
+func (j *job) flushFinal(ctx context.Context) bool {
+	for range (factory.ThreadMost + 31) / 32 {
+		if !j.flush(ctx) {
+			return false
+		}
 	}
 	return true
 }
@@ -267,9 +337,17 @@ func (j *job) beat(ctx context.Context) bool {
 	if err == nil {
 		j.keepLocal(hb.Lease)
 	}
+	j.signals(ctx, hb.Signals)
+	return true
+}
+
+// signals uses the runner for step verbs and the manager for replies.
+func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) {
 	r := j.o.Runner
-	for _, s := range hb.Signals {
+	for _, s := range signals {
 		switch s.Verb {
+		case lease.SignalReply:
+			j.reply(ctx, s)
 		case lease.SignalHold:
 			_ = r.Hold(j.id, s.Yes)
 		case lease.SignalAnswer:
@@ -280,7 +358,58 @@ func (j *job) beat(ctx context.Context) bool {
 			j.shape(ctx)
 		}
 	}
-	return true
+}
+
+// reply serializes manager turns while reporting and renewing continue.
+func (j *job) reply(ctx context.Context, s api.WorkerSignal) {
+	j.mu.Lock()
+	if j.replying || j.accepted[s.ID] || j.o.Reply == nil {
+		j.mu.Unlock()
+		return
+	}
+	j.replying = true
+	j.mu.Unlock()
+	go func() {
+		it, err := j.o.Mirror.Get(j.id)
+		if err == nil {
+			err = j.o.Reply(ctx, it, s.Words)
+		}
+		j.mu.Lock()
+		if err == nil {
+			j.accepted[s.ID] = true
+		}
+		j.replying = false
+		j.mu.Unlock()
+	}()
+}
+
+func (j *job) replyingNow() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.replying
+}
+
+// converse holds only the manager; done leaves all job steps and state alone.
+func (j *job) converse(ctx context.Context) {
+	ticker := time.NewTicker(j.o.BeatEvery)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if !j.flush(ctx) || !j.beat(ctx) {
+				return
+			}
+			j.mu.Lock()
+			finished := !j.replying && len(j.accepted) > 0
+			j.mu.Unlock()
+			if finished && j.flushFinal(ctx) {
+				_ = j.w.Done(ctx, j.lease, api.WorkerDone{})
+				return
+			}
+		}
+	}
 }
 
 // shape gives the manager one shaping turn on this job. A turn already out

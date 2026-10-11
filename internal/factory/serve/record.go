@@ -115,12 +115,61 @@ func (h *Handler) recordedWords(door func(int, string) error, kind string) jobAc
 // A yes through Answer is still consent at an approve step. Both public doors
 // must leave the same durable receipt before waking the runner.
 func (h *Handler) recordAnswer(r *http.Request, it factory.Item, yes bool, words string) error {
-	door := func() error { return h.seam.Answer(it.ID, yes, words) }
+	handle, err := h.seam.PersonHandle(r.Context())
+	if err != nil {
+		return err
+	}
+	eventID := ""
 	if yes && it.QKind == factory.QKindApprove {
-		if _, err := h.recordApproval(r, it, false); err != nil {
+		eventID, err = h.recordApproval(r, it, false)
+		if err != nil {
 			return err
 		}
-		return door()
 	}
-	return h.recordAction(r, it, record.Answered, words, door)
+	if err := h.seam.Answer(it.ID, yes, words); err != nil {
+		return err
+	}
+	text := words
+	if text == "" {
+		if yes {
+			text = "yes"
+		} else {
+			text = "no"
+		}
+	}
+	at := time.Now()
+	if h.workers != nil {
+		at = h.workers.now()
+	}
+	if eventID == "" && h.config.Record != nil {
+		event, err := h.config.Record.Append(r.Context(), record.Event{Kind: record.Answered, Job: it.ID, Handle: handle, Cost: jobCost(it), Detail: words})
+		if err != nil {
+			return err
+		}
+		eventID, at = event.ID, event.At
+	}
+	return h.keepAnswered(it, factory.Answer{By: handle, Text: text, At: at, Event: eventID})
+}
+
+func (h *Handler) keepAnswered(it factory.Item, answer factory.Answer) error {
+	if h.config.Store == nil {
+		return nil
+	}
+	// Keep the ask as it stood before the answer cleared the open gate.
+	qs := api.FromItem(it).Questions
+	return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+		for _, q := range qs {
+			if q.Answer != nil || (q.With != "" && q.With != factory.AskedYou) {
+				continue
+			}
+			q.State = "answered"
+			kept := answer
+			q.Answer = &kept
+			cur.AnsweredQuestions = append(cur.AnsweredQuestions, q)
+		}
+		if len(cur.AnsweredQuestions) > factory.AnswersMost {
+			cur.AnsweredQuestions = cur.AnsweredQuestions[len(cur.AnsweredQuestions)-factory.AnswersMost:]
+		}
+		return nil
+	})
 }

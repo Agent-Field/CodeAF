@@ -18,6 +18,7 @@ package api
 import (
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 )
 
@@ -208,12 +209,13 @@ type Job struct {
 // draw (DESIGN-BRIEF §5: triage, tier, origin, labels, checks, comments,
 // files and activity are code-only on the dashboard).
 type JobDesk struct {
-	WorktreeMachine string   `json:"worktree_machine,omitempty"`
-	Publishing      bool     `json:"publishing,omitempty"`
-	Product         string   `json:"product,omitempty"`
-	Places          []string `json:"places,omitempty"`
-	Body            string   `json:"body,omitempty"`
-	Author          string   `json:"author,omitempty"`
+	Thread          []Message `json:"thread,omitempty"`
+	WorktreeMachine string    `json:"worktree_machine,omitempty"`
+	Publishing      bool      `json:"publishing,omitempty"`
+	Product         string    `json:"product,omitempty"`
+	Places          []string  `json:"places,omitempty"`
+	Body            string    `json:"body,omitempty"`
+	Author          string    `json:"author,omitempty"`
 	// The routing facts stay separate so a round trip cannot turn a local
 	// Take into a forge assignment or forget who started the work.
 	Assignee  string    `json:"assignee,omitempty"`
@@ -308,27 +310,10 @@ const (
 )
 
 // Question is a question a job waits on.
-type Question struct {
-	Text     string     `json:"text"`
-	About    string     `json:"about,omitempty"` // future: the path it is about
-	FromStep string     `json:"from_step,omitempty"`
-	RoutedTo string     `json:"routed_to,omitempty"` // future: CODEOWNERS routing
-	State    string     `json:"state"`
-	Answer   *Answer    `json:"answer,omitempty"` // future: the thread keeps answers today
-	Kind     string     `json:"kind,omitempty"`
-	With     string     `json:"with,omitempty"`
-	Options  []string   `json:"options,omitempty"`
-	Pick     string     `json:"pick,omitempty"`
-	Why      string     `json:"why,omitempty"`
-	At       *time.Time `json:"at,omitempty"`
-}
+type Question = factory.Question
 
-// Answer is who answered a question, with what, under which event.
-type Answer struct {
-	By    string `json:"by"`
-	Text  string `json:"text"`
-	Event string `json:"event,omitempty"`
-}
+// Answer preserves who answered, when, and the factory event.
+type Answer = factory.Answer
 
 // PR is the pull request a job opened.
 type PR struct {
@@ -395,11 +380,7 @@ type Activity struct {
 }
 
 // Message is one line of a job's manager thread.
-type Message struct {
-	At   time.Time `json:"at"`
-	From string    `json:"from"`
-	Text string    `json:"text"`
-}
+type Message = factory.Message
 
 // Event is one line of the record: who did what to which job, at what cost.
 type Event = record.Event

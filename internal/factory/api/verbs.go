@@ -45,7 +45,7 @@ var TUIOnly = map[string]string{
 	"ForJob": "selects the local doors for a job held by a worker on this machine",
 	// Doors that answer a chat session file: a session lives on the machine
 	// that made it, so its id means nothing to another machine. The thread
-	// read (`/v1/jobs/{id}/thread`) reads an existing transcript instead.
+	// read (`/v1/jobs/{id}/thread`) reads replicated messages instead.
 	"Talk":    "answers a local chat session file; the wire reads the thread instead",
 	"Foreman": "answers a local chat session file for the floor's own conversation",
 

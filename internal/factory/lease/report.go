@@ -35,7 +35,7 @@ func (d *Desk) Apply(id, worker string, complete bool, change func(*factory.Item
 			if err := change(it); err != nil {
 				return err
 			}
-			if complete {
+			if complete && !held.ThreadOnly {
 				it.Publishing = false
 			}
 			return nil
@@ -47,6 +47,21 @@ func (d *Desk) Apply(id, worker string, complete bool, change func(*factory.Item
 		}
 		return true, d.keepPublish(doc, held.Job)
 	})
+}
+
+// ThreadOnly checks the same lease identity as Apply before selecting the
+// conversation report path. A replaced or expired hold cannot pass Apply.
+func (d *Desk) ThreadOnly(id, worker string) (bool, error) {
+	var only bool
+	err := d.change(func(doc *document, _ time.Time) (bool, error) {
+		held, err := identified(doc, id, worker)
+		if err != nil {
+			return false, err
+		}
+		only = held.ThreadOnly
+		return false, nil
+	})
+	return only, err
 }
 
 func identified(doc *document, id, worker string) (*Lease, error) {

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -16,25 +15,16 @@ import (
 )
 
 func TestThreadReturnsMessages(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "transcript.jsonl")
-	const body = `{"type":"session","version":1,"id":"n","cwd":"/tmp","timestamp":"2026-10-11T12:00:00Z"}
-{"type":"message","role":"user","content":"ship the proof","timestamp":"2026-10-11T12:00:01.5Z"}
-{"type":"message","role":"assistant","content":"Proof is ready.","timestamp":"2026-10-11T12:01:00Z"}
-`
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	seam := factory.FixtureSeam(now)
 	seam.Load = func() (factory.Snapshot, error) {
 		s := factory.Fixture(now)
-		s.Items[0].Talk = path
+		s.Items[0].Talk = "/teammates-machine/transcript.jsonl"
+		s.Items[0].Thread = []factory.Message{{From: "user", Text: "ship the proof", At: time.Date(2026, 10, 11, 12, 0, 1, int(500*time.Millisecond), time.UTC)}, {From: "manager", Text: "Proof is ready.", At: time.Date(2026, 10, 11, 12, 1, 0, 0, time.UTC)}}
 		return s, nil
 	}
-	seam.Talk = func(_ context.Context, id int) (string, error) {
-		if id != 1 {
-			t.Fatalf("Talk id = %d", id)
-		}
-		return path, nil
+	seam.Talk = func(context.Context, int) (string, error) {
+		t.Fatal("thread read tried to open a local conversation")
+		return "", nil
 	}
 	s := httptest.NewServer(serve.New(seam, config))
 	defer s.Close()

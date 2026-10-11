@@ -133,6 +133,10 @@ func startFactoryWorker(st *store.Store, workspace, profileDir string, parent se
 			factoryworker.Run(ctx, factoryworker.Options{
 				Dial: dial.dial, Keep: dial.keep, Attach: attach, Runner: r, Mirror: mirror, Slots: factoryBenches(),
 				LocalLease: factoryLocalLease(mirror),
+				Reply: func(ctx context.Context, it factory.Item, words string) error {
+					_, err := turns.through(ctx, it, words, nil)
+					return err
+				},
 			})
 		})
 	})
