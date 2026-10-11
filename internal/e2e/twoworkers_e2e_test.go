@@ -64,6 +64,7 @@ func twowGet(t *testing.T, url string, out any) {
 type twowLease struct {
 	Job    int    `json:"job"`
 	Worker string `json:"worker"`
+	Handle string `json:"handle"`
 }
 
 // twowLeases is the server's leases.json; absent means nobody holds anything.
@@ -143,7 +144,7 @@ func TestTwoWorkersNeverRunOneJob(t *testing.T) {
 	}
 
 	// 2b. take names the person and the job then runs on a worker of that
-	// person: a lease must appear for it within two minutes.
+	// person: a lease for that handle must appear within two minutes.
 	if id := os.Getenv("CODEAF_TWOW_TAKE"); id != "" {
 		resp, err := http.Post(base+"/v1/jobs/"+id+"/take", "application/json", nil)
 		if err != nil || resp.StatusCode != 200 {
@@ -151,19 +152,25 @@ func TestTwoWorkersNeverRunOneJob(t *testing.T) {
 		}
 		resp.Body.Close()
 		n, _ := strconv.Atoi(id)
-		leased := false
-		for end := time.Now().Add(2 * time.Minute); time.Now().Before(end) && !leased; time.Sleep(5 * time.Second) {
+		var login struct {
+			Login string `json:"login"`
+		}
+		twowGet(t, base+"/v1/github", &login)
+		leasedBy := ""
+		for end := time.Now().Add(2 * time.Minute); time.Now().Before(end) && leasedBy == ""; time.Sleep(5 * time.Second) {
 			if r, err := http.Post(base+"/v1/jobs/"+id+"/run", "application/json", nil); err == nil {
 				r.Body.Close()
 			}
 			for _, l := range twowLeases(homeA) {
-				leased = leased || l.Job == n
+				if l.Job == n {
+					leasedBy = l.Handle
+				}
 			}
 		}
-		if !leased {
-			t.Errorf("job %d was taken and run but no worker leased it: the taker is the forge login, the workers' handle is the OS user", n)
-		} else if !twowMirrorJobs(homeB)[n] {
-			t.Errorf("job %d was leased but not by B's worker", n)
+		// Both homes may share one forge login on one machine, so the
+		// holder is checked by person, not by which window.
+		if !strings.EqualFold(leasedBy, login.Login) {
+			t.Errorf("job %d was taken as %q but leased to %q", n, login.Login, leasedBy)
 		}
 	}
 
