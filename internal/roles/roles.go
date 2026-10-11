@@ -286,6 +286,20 @@ const (
 	// yet", this one for parts whose failure is quiet wrongness. Registered from
 	// internal/session/task_divide.go, which owns the field that reaches it.
 	RoleCareful Role = "careful"
+	// RolePlaceName names one place from candidates and a few member titles.
+	RolePlaceName Role = "placename"
+	// RolePlaceCharter writes one line saying what a top-level place is
+	// about, which the name question then reads.
+	RolePlaceCharter Role = "placecharter"
+	// RolePlaceFacet answers whether a group is about one thing or one kind
+	// of activity, which decides whether it is a place or a lens.
+	RolePlaceFacet Role = "placefacet"
+	// RolePlaceReview reads the whole outline once and offers renames.
+	RolePlaceReview Role = "placereview"
+	// RolePlaceSteer turns a sentence into one steering action.
+	RolePlaceSteer Role = "placesteer"
+	// RolePlaceKind labels chats with a kind of work for a steer by kind.
+	RolePlaceKind Role = "placekind"
 	// RolePlaceFile picks which EXISTING place a chat belongs in, after its
 	// first reply, from a short list internal/placegraph has already chosen by
 	// rule. It answers one label out of that list or "none", so it is a
@@ -596,6 +610,7 @@ var vocabulary = []Role{
 	RoleDesigner, RoleDivision, RoleGuardian, RoleHandoff,
 	RoleImageGen, RoleIntake, RoleJobName, RoleMarkReader,
 	RolePlaceFile, RolePlaceSuggest, RoleCouncil, RoleDeciding,
+	RolePlaceName, RolePlaceCharter, RolePlaceFacet, RolePlaceReview, RolePlaceSteer, RolePlaceKind,
 	RolePlanner, RoleRecap, RoleReflex, RoleRepair, RoleRouter,
 	RoleRouterConfirm, RoleSentinel, RoleShaper, RoleSpeech,
 	RoleSpellOut, RoleTaskName, RoleTitle, RoleVideo,

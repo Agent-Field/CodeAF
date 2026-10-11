@@ -6,26 +6,27 @@ import (
 	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
-// The roles this package asks through the engine's role door. They are
+// These aliases preserve the stage API while the role words live in the canonical
+// vocabulary, where replay readers can discover them. The roles this package asks through the engine's role door. They are
 // registered by the engine (internal/session) at the low tier, the same way
 // RolePlaceFile and RolePlaceSuggest are, so the person's settings page shows
 // them and a per-role pin works. The desktop pins the low tier to the Flash
 // model named in desktop/docs/DESIGN-QUESTIONS.md D4.
 const (
 	// RolePlaceName names one place from candidates and a few member titles.
-	RolePlaceName roles.Role = "placename"
+	RolePlaceName = roles.RolePlaceName
 	// RolePlaceCharter writes one line saying what a top-level place is
 	// about, which the name question then reads.
-	RolePlaceCharter roles.Role = "placecharter"
+	RolePlaceCharter = roles.RolePlaceCharter
 	// RolePlaceFacet answers whether a group is about one thing or one kind
 	// of activity, which decides whether it is a place or a lens.
-	RolePlaceFacet roles.Role = "placefacet"
+	RolePlaceFacet = roles.RolePlaceFacet
 	// RolePlaceReview reads the whole outline once and offers renames.
-	RolePlaceReview roles.Role = "placereview"
+	RolePlaceReview = roles.RolePlaceReview
 	// RolePlaceSteer turns a sentence into one steering action.
-	RolePlaceSteer roles.Role = "placesteer"
+	RolePlaceSteer = roles.RolePlaceSteer
 	// RolePlaceKind labels chats with a kind of work for a steer by kind.
-	RolePlaceKind roles.Role = "placekind"
+	RolePlaceKind = roles.RolePlaceKind
 )
 
 // Option is one thing a model may point at. Key is the label it answers with

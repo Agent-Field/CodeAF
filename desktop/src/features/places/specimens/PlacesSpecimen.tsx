@@ -28,7 +28,7 @@ const chips: { label: string; props: Omit<UsingChipProps, 'open' | 'onToggle'> }
  * names and counts are fixtures, and the rail rows are inert so the page's tab order stays the page's own. */
 export function PlacesSpecimen() {
   const [open, setOpen] = useState(false);
-  return <Surface direction="column">
+  return <Surface direction="column" className="places-library-specimen">
     <SectionHeading>Places</SectionHeading>
     <Text>Specimen. Tints, tiles, rows and cards in every state; the fixtures are never a person's places.</Text>
     <PlacesComponentsSpecimen/>

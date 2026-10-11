@@ -1,12 +1,21 @@
 import { openAppearance, openPage } from './support/shell-navigation';
+import { installMockEngine } from './support/mock-engine';
+import { installMockPlaces } from './support/mock-places';
 import design from '../../src/design/tokens.json' with { type: 'json' };
 import { test, expect, type Page } from '@playwright/test';
 import { expectAccessible, expectNoUnstyledControls, expectThemedSurface } from './contracts';
 
+// Responsive proofs must not depend on whichever engine happens to be running on this laptop.
+test.beforeEach(async ({ page }) => {
+ await installMockEngine(page, { initial: { entries: [], title: '' }, turns: [] });
+ await installMockPlaces(page, { places: [], chats: [] });
+});
+
 async function expectNoHorizontalOverflow(page: Page) {
  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
  for (const container of await page.locator('.content-pane,.page-content,.sidebar-drawer[open]').all()) {
-  expect(await container.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  const measured = await container.evaluate(el => ({ className: el.className, width: el.clientWidth, scrollWidth: el.scrollWidth }));
+  expect(measured.scrollWidth, JSON.stringify(measured)).toBeLessThanOrEqual(measured.width);
  }
 }
 async function openNavigation(page: Page) {

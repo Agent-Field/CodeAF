@@ -8,3 +8,6 @@
 .rail-recent-head.button:focus-visible { outline: none; box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
 .rail-recent-head .app-icon { color: var(--ink-3); }
 .rail-recent-meta { display: inline-flex; align-items: center; gap: var(--space-compact); }
+
+/* A transient empty section needs a row-sized landing area for the first pin or the last unpin. */
+.rail-rows:empty { min-height: var(--rail-place-row-height); }

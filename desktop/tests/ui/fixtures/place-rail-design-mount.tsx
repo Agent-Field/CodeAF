@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ThemeProvider } from '../../../src/design/ThemeProvider';
+import { usePointerDrag } from '../../../src/components/ui/usePointerDrag';
 import { Button } from '../../../src/components/ui';
 import { Switcher } from '../../../src/features/places/rail/Switcher';
 import { PlaceRail, type PlaceRailProps } from '../../../src/features/shell/PlaceRail';
@@ -37,8 +38,10 @@ export function mountPlaceRail(theme: string, empty = false) {
       },
       slotShortcut: index => `⌃${index}`, closeShortcut: '⌘⇧W', newWindowShortcut: '⌘↵',
     };
+    const chatDrag = usePointerDrag({ payload: { kind: 'chat', id: 'chat1', ids: ['chat1'] } });
+    const invalidDrag = usePointerDrag({ payload: { kind: 'unsupported', id: 'invalid' } });
     const switcher = placeSwitcher({ place: current } as PlacesShell, props, switcherRowContents);
-    return <><div className="rail-row-fixture"><PlaceRail {...props}/></div><Switcher items={switcher.items}><Button>Switch place</Button></Switcher><output id="rail-calls">{calls.join('|')}</output></>;
+    return <><div className="rail-row-fixture"><PlaceRail {...props}/></div><Switcher items={switcher.items}><Button>Switch place</Button></Switcher><Button {...chatDrag}>Drag chat</Button><Button {...invalidDrag}>Drag unsupported item</Button><output id="rail-calls">{calls.join('|')}</output></>;
   }
   createRoot(host).render(<ThemeProvider><Specimen/></ThemeProvider>);
 }

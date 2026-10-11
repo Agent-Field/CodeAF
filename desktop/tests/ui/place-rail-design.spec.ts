@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 
 async function mount(page: Page, theme = 'light', empty = false) {
   await page.route('**/api/engine/**', route => route.abort());
@@ -10,15 +10,24 @@ async function mount(page: Page, theme = 'light', empty = false) {
   }, { theme, empty });
   await expect(page.getByRole('button', { name: 'Switch place' })).toBeVisible();
 }
-const row = (page: Page, name: string) => page.locator('.rail-row-main').filter({ has: page.locator('.rail-place-name', { hasText: new RegExp(`^${name}`) }) });
+const row = (page: Page, name: string) => page.locator('.rail .rail-row-main').filter({ has: page.locator('.rail-place-name', { hasText: new RegExp(`^${name}`) }) });
 const calls = (page: Page) => page.locator('#rail-calls');
-async function drop(page: Page, target: string, type: string, payload: string) {
-  await page.evaluate(({ target, type, payload }) => {
-    const transfer = new DataTransfer(); transfer.setData(type, payload);
-    const node = document.querySelector(target)!;
-    node.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: transfer }));
-    node.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
-  }, { target, type, payload });
+async function beginDrag(page: Page, source: Locator) {
+  const box = (await source.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 8, box.y + box.height / 2);
+  await expect(page.locator('.pointer-drag-ghost')).toBeVisible();
+}
+async function land(page: Page, target: string) {
+  const box = (await page.locator(`.rail ${target}`).first().boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await expect(page.locator('.pointer-drag-ghost')).toHaveCount(0);
+}
+async function drag(page: Page, source: Locator, target: string) {
+  await beginDrag(page, source);
+  await land(page, target);
 }
 
 for (const theme of ['light', 'dark']) {
@@ -75,12 +84,12 @@ for (const theme of ['light', 'dark']) {
 
   test(`rail drop inserts once, unpins once, and files once · ${theme}`, async ({ page }) => {
     await mount(page, theme);
-    await drop(page, '[aria-label="Pinned"] .rail-row', 'application/x-codeaf-place', '["config"]');
+    await drag(page, row(page, 'Config parser'), '[aria-label="Pinned"] .rail-row');
     await expect(calls(page)).toHaveText('pin:config:0');
     await expect(page.locator('[aria-label="Pinned"] .rail-place-name').first()).toHaveText('Config parser · codeaf');
-    await drop(page, '[aria-label="Open"] .rail-row', 'application/x-codeaf-place', '["config"]');
+    await drag(page, row(page, 'Config parser'), '[aria-label="Open"] .rail-row');
     await expect(calls(page)).toHaveText('pin:config:0|unpin:config');
-    await drop(page, '[aria-label="Open"] .rail-row', 'application/x-codeaf-chat', '["chat1"]');
+    await drag(page, page.getByRole('button', { name: 'Drag chat', exact: true }), '[aria-label="Open"] .rail-row');
     await expect(calls(page)).toHaveText('pin:config:0|unpin:config|file:chat1:config');
   });
 }
@@ -88,12 +97,15 @@ for (const theme of ['light', 'dark']) {
 test('a drag creates the first pin slot without a permanent empty heading', async ({ page }) => {
   await mount(page, 'light', true);
   await expect(page.getByText('Pinned', { exact: true })).toHaveCount(0);
-  await page.evaluate(() => {
-    const transfer = new DataTransfer();
-    document.querySelector('.rail-row[data-closable]')!.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: transfer }));
-  });
+  await beginDrag(page, row(page, 'Config parser'));
   await expect(page.getByText('Pinned', { exact: true })).toBeVisible();
-  await drop(page, '[aria-label="Pinned"] .rail-rows', 'application/x-codeaf-place', '["config"]');
+  await page.keyboard.press('Escape');
+  await page.mouse.up();
+  await expect(page.getByText('Pinned', { exact: true })).toHaveCount(0);
+  await expect(calls(page)).toBeEmpty();
+  await beginDrag(page, row(page, 'Config parser'));
+  await expect(page.getByText('Pinned', { exact: true })).toBeVisible();
+  await land(page, '[aria-label="Pinned"] .rail-rows');
   await expect(calls(page)).toHaveText('pin:config:0');
 });
 
@@ -113,17 +125,15 @@ test('a pinned-only rail exposes Open during drag so the last place can be unpin
   await mount(page);
   await page.getByRole('button', { name: 'Close all', exact: true }).click();
   await expect(page.getByText('Open', { exact: true })).toHaveCount(0);
-  await page.evaluate(() => {
-    document.querySelector('[aria-label="Pinned"] .rail-row')!.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: new DataTransfer() }));
-  });
+  await beginDrag(page, row(page, 'codeaf'));
   await expect(page.getByText('Open', { exact: true })).toBeVisible();
-  await drop(page, '[aria-label="Open"] .rail-rows', 'application/x-codeaf-place', '["codeaf"]');
+  await land(page, '[aria-label="Open"] .rail-rows');
   await expect(calls(page)).toHaveText('close:all|unpin:codeaf');
 });
 
-test('invalid internal drops are ignored instead of using a text fallback', async ({ page }) => {
+test('unsupported pointer payloads are ignored instead of filing or pinning', async ({ page }) => {
   await mount(page);
-  await drop(page, '[aria-label="Pinned"] .rail-row', 'application/x-codeaf-place', '[""]');
+  await drag(page, page.getByRole('button', { name: 'Drag unsupported item', exact: true }), '[aria-label="Pinned"] .rail-row');
   await expect(calls(page)).toBeEmpty();
 });
 

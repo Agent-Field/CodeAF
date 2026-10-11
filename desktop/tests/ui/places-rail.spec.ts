@@ -188,9 +188,9 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(page.locator('#visited')).toBeEmpty();
   });
 
-  test(`PL-052/058/060 · close, restore saved tabs, finish closed work · ${theme}`, async ({ page }) => {
+  test(`PL-052/058/060 · close libraries, keep tabs, finish closed work · ${theme}`, async ({ page }) => {
     const places = await boot(page, theme, {
-      places: [{ name: 'Quiet', lastOpenedAt: 'now' }, { name: 'Busy', lastOpenedAt: 'now' }, { name: 'Question', lastOpenedAt: 'now' }],
+      places: [{ name: 'Quiet', lastOpenedAt: 'now' }, { name: 'Busy', lastOpenedAt: 'now' }, { name: 'Question', lastOpenedAt: 'now' }, { name: 'Other', lastOpenedAt: 'now' }],
       chats: [{ id: 'busy', places: ['Busy'], live: true, tasks: { running: 1 } }, { id: 'question', places: ['Question'], needsYou: true }],
     });
     await main(page, 'Quiet').click();
@@ -231,6 +231,7 @@ for (const theme of ['light', 'dark'] as const) {
     await tabTo(page, closeAll);
     await page.keyboard.press('Enter');
     await expect(rail(page).getByRole('region', { name: 'Open', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'New tab', exact: true })).toBeVisible();
     await expect(rail(page).locator('.rail-hint')).toHaveText('Places you open show here. Pin the ones you live in.');
   });
 }

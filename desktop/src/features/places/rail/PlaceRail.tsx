@@ -119,7 +119,8 @@ function RailSectionRows({ section, index, actions, pinnedIds, setOver, children
 }
 
 /** One place row. The pointer starts on the row, so a press on its button still picks the place up. */
-function RailPlace({ place, section, index, actions, pinnedIds, over, setOver, menuItems, slot, slotShortcut, closeShortcut, current, focused, focus, onClick, onAuxClick, onKeyDown }: {
+function RailPlace({ place, section, index, actions, pinnedIds, over, setOver, menuItems, slot, slotShortcut, closeShortcut, current, focused, focus, onDragChange, onClick, onAuxClick, onKeyDown }: {
+  onDragChange: (dragging: boolean) => void;
   place: PlaceRowModel; section: 'pinned' | 'open'; index: number; actions: PlaceRailActions; pinnedIds: readonly string[];
   over?: string; setOver: (key: string | undefined) => void; menuItems: MenuEntry[]; slot?: number; slotShortcut: (index: number) => string;
   closeShortcut: string; current?: string; focused?: string;
@@ -129,7 +130,7 @@ function RailPlace({ place, section, index, actions, pinnedIds, over, setOver, m
   onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
 }) {
   const target: RailTarget = { section, index, placeId: place.id };
-  const pointer = usePointerDrag(actions.pin ? { payload: { kind: 'place', id: place.id, ids: [place.id] } } : null);
+  const pointer = usePointerDrag(actions.pin ? { payload: { kind: 'place', id: place.id, ids: [place.id] }, onStart: () => onDragChange(true), onEnd: () => onDragChange(false) } : null);
   const dropRef = useDropTarget({
     kind: 'rail-row',
     id: `${section}:${index}:${place.id}`,
@@ -163,6 +164,7 @@ function Section({ label, action, children }: { label: string; action?: ReactNod
  */
 export function PlaceRailSections(props: PlaceRailSectionsProps) {
   const { now, sections, current, focused, emptyHint, livePlaces, notice, allPlaces, actions, slotShortcut, closeShortcut, newWindowShortcut, foot } = props;
+  const [draggingPlace, setDraggingPlace] = useState(false);
   const [over, setOver] = useState<string>();
   const [cursor, setCursor] = useState<string>();
   const [announcement, setAnnouncement] = useState('');
@@ -192,7 +194,7 @@ export function PlaceRailSections(props: PlaceRailSectionsProps) {
   function row(place: PlaceRowModel, section: 'pinned' | 'open', index: number) {
     return <RailPlace key={place.id} place={place} section={section} index={index} actions={actions} pinnedIds={pinnedIds} over={over} setOver={setOver}
       menuItems={menu(place, section)} slot={slotOf(place.id)} slotShortcut={slotShortcut} closeShortcut={closeShortcut} current={current} focused={focused}
-      focus={focusProps(place.id)}
+      onDragChange={setDraggingPlace} focus={focusProps(place.id)}
       onClick={event => (primaryClick(event) && actions.focus ? actions.focus(place.id) : actions.go(place.id))}
       onAuxClick={event => { if (event.button === 1 && actions.newWindow) { event.preventDefault(); actions.newWindow(place.id); } }}
       onKeyDown={event => {
@@ -228,8 +230,8 @@ export function PlaceRailSections(props: PlaceRailSectionsProps) {
       <div className="rail-group">
         <NowRow now={now} primaryClick={primaryClick} {...focusProps(NOW)}/>
       </div>
-      {pinned.length > 0 && <Section label="Pinned"><RailSectionRows section="pinned" index={pinned.length} actions={actions} pinnedIds={pinnedIds} setOver={setOver}>{pinned.map((place, index) => row(place, 'pinned', index))}</RailSectionRows></Section>}
-      {open.length > 0 && <Section label="Open" action={<Button variant="ghost" className="rail-section-action" onClick={actions.closeAll}>Close all</Button>}>
+      {(pinned.length > 0 || draggingPlace && actions.pin) && <Section label="Pinned"><RailSectionRows section="pinned" index={pinned.length} actions={actions} pinnedIds={pinnedIds} setOver={setOver}>{pinned.map((place, index) => row(place, 'pinned', index))}</RailSectionRows></Section>}
+      {(open.length > 0 || draggingPlace && actions.unpin) && <Section label="Open" action={open.length > 0 && <Button variant="ghost" className="rail-section-action" onClick={actions.closeAll}>Close all</Button>}>
         <RailSectionRows section="open" index={open.length} actions={actions} pinnedIds={pinnedIds} setOver={setOver}>{open.map((place, index) => row(place, 'open', index))}</RailSectionRows>
       </Section>}
       <RailRecent focusProps={focusProps}/>

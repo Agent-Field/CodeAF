@@ -374,6 +374,13 @@ var callSiteRoles = map[string]lane.Role{
 	// internal/placegraph's two offers: errands nobody is waiting on.
 	"placefile":    lane.RoleAuxiliary,
 	"placesuggest": lane.RoleAuxiliary,
+	// The organizer's low-tier naming and classification calls are auxiliary errands too.
+	"placename":    lane.RoleAuxiliary,
+	"placecharter": lane.RoleAuxiliary,
+	"placefacet":   lane.RoleAuxiliary,
+	"placereview":  lane.RoleAuxiliary,
+	"placesteer":   lane.RoleAuxiliary,
+	"placekind":    lane.RoleAuxiliary,
 	"council":      lane.RoleAuxiliary,
 	"deciding":     lane.RoleAuxiliary,
 	"distill":      lane.RoleAuxiliary,

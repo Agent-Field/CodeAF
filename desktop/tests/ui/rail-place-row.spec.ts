@@ -47,12 +47,20 @@ for (const theme of ['light', 'dark']) {
     await expect(page.getByRole('tooltip')).toHaveText('2 need you in Marketing');
     await expect(close).toHaveCSS('opacity', '1');
     await close.hover();
-    await expect(page.getByRole('tooltip')).toHaveText('Close Marketing · 4 tabs⌘⇧W');
+    await expect(page.getByRole('tooltip')).toHaveText('Close Marketing⌘⇧W');
     await page.keyboard.press('Escape');
     await expect(page.getByRole('tooltip')).toHaveCount(0);
     await page.keyboard.press('Tab');
     await row.focus();
-    expect(await row.evaluate(el => getComputedStyle(el).boxShadow)).toMatch(/2px.*6px/);
+    const keyboardRing = await row.evaluate(el => {
+      const probe = document.createElement('span');
+      probe.style.boxShadow = '0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft)';
+      el.append(probe);
+      const shadow = getComputedStyle(probe).boxShadow;
+      probe.remove();
+      return shadow;
+    });
+    await expect(row).toHaveCSS('box-shadow', keyboardRing);
     await close.click();
     await expect(row).toHaveCount(0);
     await expect(page.locator('#visited')).toHaveText('');
