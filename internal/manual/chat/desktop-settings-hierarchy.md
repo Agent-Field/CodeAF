@@ -15,3 +15,9 @@ Yes. Fifty reports under one parent is an ordinary place a person makes, and Set
 ## What are the desktop settings categories
 
 The Models part of Settings is four sections, in this order: Conversation and tasks, Naming and summaries, Places organization, and Memory, routing and safety. Pinned models come first. Provider key, Appearance and Engine come after. There is no Permissions section on this page yet. The place limits above sit in Places organization, after the Chat filing and Place suggestions rows, as one list.
+
+## Where are Organize now, live guesses and organizing budgets
+
+In Settings, Places organization includes "Organize now" with "Add to what's there" and "Start fresh". Review the resulting plan before accepting changes to the arrangement. The control is absent if the engine does not provide organizing.
+
+"Guess a place while typing" is on by default and only suggests a destination for your draft. "Organizing calls per run" defaults to 150, and "Organizing cost per run" defaults to 5 US cents. These are separate from the daily filing and new-place call limits. Reaching a run budget stops further model questions; organizing can still finish with a provisional plan. Place creation limits do not cap how many existing homes a chat can earn.

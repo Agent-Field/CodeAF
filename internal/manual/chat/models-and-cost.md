@@ -953,6 +953,12 @@ role**, grouped under the row answering it, saying which model comes out:
 | `taskname` | small work | the two or three words a task is called |
 | `placefile` | small work | which of your places a conversation belongs in, offered after its first reply (desktop app) |
 | `placesuggest` | small work | the name and members of a new place offered for a group of conversations in no place (desktop app) |
+| `placename` | small work | chooses a short place name from the offered names |
+| `placecharter` | small work | writes a line about a top-level place to guide its name |
+| `placefacet` | small work | decides whether related chats need a destination or a view |
+| `placereview` | small work | reads the place outline and offers naming improvements |
+| `placesteer` | small work | interprets how you ask to arrange a place |
+| `placekind` | small work | labels the kind of work when you ask to arrange by kind |
 | `checker` | checker | whether finished-looking work is actually finished (older pins may keep their former spelling) |
 | `vision` | checker | reads images for a model that cannot see them |
 | `shaper` | checker | the brief a task you started yourself is given |
@@ -4252,3 +4258,11 @@ the earlier call and its result are carried as readable conversation text. The
 model can discuss that result, but it cannot make a new tool call itself.
 Switching back to a tool-capable model restores the original tool-call history
 on its request.
+
+## Which models organize desktop places and what is the separate placeembed cost
+
+The six organizing roles are `placename`, `placecharter`, `placefacet`, `placereview`, `placesteer` and `placekind`. They use small work, with a role's own model pin taking precedence over its tier and then the conversation's model. `placefile` resolves close filing choices; `placesuggest` is the separate new-place suggestion role. The desktop's low-tier default is `deepseek/deepseek-v4.1-flash`.
+
+There is also a separate text-comparison request to `openai/text-embedding-3-small`, using 256 numbers per text and billed as `placeembed` in background errands. It compares where a conversation started and, when available, where it ended. Unchanged text reuses the saved comparison rather than paying for the same request again. This request is separate from the six roles' naming and interpretation calls.
+
+A draft's live place guess runs locally and makes no paid model request. An organizing run defaults to 150 model questions and 5 US cents; reaching either budget stops further questions and can leave a provisional plan for review. Actual usage belongs to the background errand that made the call. Unknown prices are omitted, never shown as a guessed zero.
