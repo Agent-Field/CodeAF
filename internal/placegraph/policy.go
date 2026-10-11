@@ -57,6 +57,12 @@ type RecommendPolicy struct {
 	OrganizeEveryMinutes int `json:"organizeEveryMinutes"`
 	DeclineSnoozeDays    int `json:"declineSnoozeDays"`
 	MaxCandidates        int `json:"maxCandidates"`
+	// OrganizeMode is add-on unless the person explicitly chooses refresh.
+	OrganizeMode        string `json:"organizeMode"`
+	OrganizeCallsPerRun int    `json:"organizeCallsPerRun"`
+	// OrganizeUSDPerRun is whole US cents, so five means $0.05.
+	OrganizeUSDPerRun int  `json:"organizeUSDPerRun"`
+	LiveGuess         bool `json:"liveGuess"`
 }
 
 // RecommendPolicyField is one row of the settings page, and the single source of the
@@ -67,12 +73,13 @@ type RecommendPolicyField struct {
 	Group   string `json:"group"`
 	Name    string `json:"name"`
 	Explain string `json:"explain"`
-	// Kind is "switch" or "number".
-	Kind    string `json:"kind"`
-	Default any    `json:"default"`
-	Min     int    `json:"min,omitempty"`
-	Max     int    `json:"max,omitempty"`
-	Unit    string `json:"unit,omitempty"`
+	// Kind is "switch", "number" or "choice".
+	Kind    string   `json:"kind"`
+	Choices []string `json:"choices,omitempty"`
+	Default any      `json:"default"`
+	Min     int      `json:"min,omitempty"`
+	Max     int      `json:"max,omitempty"`
+	Unit    string   `json:"unit,omitempty"`
 	// Design says the default is the design's own figure; otherwise it is a
 	// provisional engineering choice waiting on the designer.
 	Design bool `json:"design"`
@@ -101,6 +108,11 @@ const (
 )
 
 var policyFields = []RecommendPolicyField{
+	{Key: "organizeMode", Group: PolicyGroupOffers, Name: "Organizing mode", Explain: "Add to what is there, or start fresh with a plan you approve.", Kind: "choice", Default: "add-on", Choices: []string{"add-on", "refresh"},
+		get: func(p *RecommendPolicy) any { return p.OrganizeMode }, set: func(p *RecommendPolicy, v any) { p.OrganizeMode = v.(string) }},
+	boolField("liveGuess", PolicyGroupOffers, "Guess a place while typing", "Suggest a place from your draft without calling a model or filing a chat.", true, false, func(p *RecommendPolicy) *bool { return &p.LiveGuess }),
+	intField("organizeCallsPerRun", PolicyGroupSpend, "Organizing calls per run", "Past this budget, organizing continues without more model calls.", "calls", 150, 0, 10000, false, func(p *RecommendPolicy) *int { return &p.OrganizeCallsPerRun }),
+	intField("organizeUSDPerRun", PolicyGroupSpend, "Organizing cost per run", "Whole US cents. Five cents is $0.05; past this budget, no more model calls are made.", "cents", 5, 0, 10000, false, func(p *RecommendPolicy) *int { return &p.OrganizeUSDPerRun }),
 	boolField("filingOffers", PolicyGroupOffers, "Offer a place for a chat",
 		"After a chat's first reply, offer one place you already have. Never creates a place.",
 		true, true, func(p *RecommendPolicy) *bool { return &p.FilingOffers }),
@@ -157,7 +169,11 @@ var policyFields = []RecommendPolicyField{
 // RecommendPolicyFields lists the settings rows in page order. The returned rows are
 // copies; their Default is the value DefaultRecommendPolicy holds.
 func RecommendPolicyFields() []RecommendPolicyField {
-	return append([]RecommendPolicyField(nil), policyFields...)
+	out := append([]RecommendPolicyField(nil), policyFields...)
+	for i := range out {
+		out[i].Choices = append([]string(nil), out[i].Choices...)
+	}
+	return out
 }
 
 func policyField(key string) (RecommendPolicyField, bool) {
@@ -184,6 +200,9 @@ func DefaultRecommendPolicy() RecommendPolicy {
 // default: zero is a real answer for the AI caps and the call budgets.
 func (p RecommendPolicy) Normalized() RecommendPolicy {
 	for _, f := range policyFields {
+		if f.Kind == "choice" && !containsString(f.Choices, f.get(&p).(string)) {
+			f.set(&p, f.Default)
+		}
 		if f.Kind != "number" {
 			continue
 		}
@@ -217,6 +236,12 @@ func (p *RecommendPolicy) Set(key string, raw json.RawMessage) error {
 		return fmt.Errorf("%w: no setting %q", ErrInvalid, key)
 	}
 	switch f.Kind {
+	case "choice":
+		var value string
+		if err := json.Unmarshal(raw, &value); err != nil || !containsString(f.Choices, value) {
+			return fmt.Errorf("%w: %s takes one of %v", ErrInvalid, key, f.Choices)
+		}
+		f.set(p, value)
 	case "switch":
 		var b bool
 		if err := json.Unmarshal(raw, &b); err != nil {
