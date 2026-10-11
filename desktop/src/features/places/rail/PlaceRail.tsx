@@ -15,6 +15,8 @@ import './rail-sections.css';
 /** What a rail row can ask for. Each is wired by the shell; one that is absent has no menu entry and no gesture. */
 export type PlaceRailActions = {
   go: (id: string) => void;
+  /** ⌥-click and ⌘/Ctrl-click: the place's Home as a tab in this window, without switching to the place. */
+  openTab?: (id: string) => void;
   newWindow?: (id: string) => void;
   quickLook?: (id: string) => void;
   pin?: (id: string, index?: number) => void;
@@ -183,7 +185,7 @@ export function PlaceRailSections(props: PlaceRailSectionsProps) {
     return <RailPlace key={place.id} place={place} section={section} index={index} actions={actions} pinnedIds={pinnedIds} over={over} setOver={setOver}
       menuItems={menu(place, section)} slot={slotOf(place.id)} slotShortcut={slotShortcut} closeShortcut={closeShortcut} current={current} tabCount={tabCount}
       focus={focusProps(place.id)}
-      onClick={event => (primaryClick(event) && actions.newWindow ? actions.newWindow(place.id) : actions.go(place.id))}
+      onClick={event => ((primaryClick(event) || event.altKey) && actions.openTab ? actions.openTab(place.id) : primaryClick(event) && actions.newWindow ? actions.newWindow(place.id) : actions.go(place.id))}
       onAuxClick={event => { if (event.button === 1 && actions.newWindow) { event.preventDefault(); actions.newWindow(place.id); } }}
       onKeyDown={event => {
         if (event.key === ' ' && !event.altKey && !event.metaKey && !event.ctrlKey && actions.quickLook) { event.preventDefault(); actions.quickLook(place.id); }

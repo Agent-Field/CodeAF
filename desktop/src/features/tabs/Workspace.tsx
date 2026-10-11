@@ -1,6 +1,6 @@
 // The workspace: owns the reducer state and composes the strip, the content card and the dialogs.
 // Everything with a lane of its own lives in a sibling file (see ARCHITECTURE.md).
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Button, Icon, Text, TextInput, type MenuEntry } from '../../components/ui';
 import { nativeControls } from '../../design/nativeControls';
 import design from '../../design/tokens.json';
@@ -33,6 +33,7 @@ import { placeTints, type TintName } from '../places/components/PlaceSwatch';
 import { onWorkspaceRequest } from '../places/shell/workspaceBus';
 import { useWorkspaceSync } from '../workspace-sync/useWorkspaceSync';
 import type { WorkspaceKey } from '../workspace-sync/client';
+import { safeLocal, savedPaneIds, windowWriter } from '../workspace-sync/windowStore';
 import { GroupOffer } from './GroupOffer';
 import { SuggestPill } from './SuggestPill';
 import { useUndoKeys } from './undo/useUndoKeys';
@@ -160,6 +161,8 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const windowQuery = new URLSearchParams(window.location.search);
   const sync = useWorkspaceSync({ key: place as WorkspaceKey, initial: () => initialFor(place, placeTitle ?? 'Home'), focus: windowQuery.get('tab') ?? windowQuery.get('focusTab') ?? undefined });
   const { state } = sync;
+  // Panes saved under the other places stay in scroll memory, so Now and a place restore their scroll as well as their tabs.
+  const otherPlacePanes = useMemo(() => savedPaneIds(safeLocal(), windowWriter(), place as WorkspaceKey), [place]);
   const { dispatch: rawDispatch, undo } = useStructuralUndo({ state, dispatch: sync.dispatch, enabled, keys: false });
   useUndoKeys({ undo }, enabled);
   const dispatch = useCallback((action: WorkspaceAction) => { if (action.type === 'open-inbox') { window.dispatchEvent(new Event('codeaf:next-up-start')); return; } rawDispatch(action); }, [rawDispatch]);
@@ -410,7 +413,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   });
   return <TabsApiContext.Provider value={api}><section ref={gestureRoot} className="tab-workspace" aria-label="Conversation workspace" data-nextup-walk={walk.phase !== 'idle' || undefined}>
     <TabStrip api={api} leading={leading} back={back} frame={frame} overviewTrigger={overviewTrigger} onOverview={openOverview}/>
-    <NewConversationPlaceContext.Provider value={place === 'now' || place === 'root' ? undefined : place}><FirstTurnContext.Provider value={firstTurn}><NewTabHostContext.Provider value={newTabHost}><HistoryHostContext.Provider value={historyHost}><PaneGrid overlay={!api.overlayOpen && <SuggestPill api={api}/>} tab={active} tabs={state.tabs} dispatch={dispatch} actionsFor={actionsFor} retainedPaneIds={state.closed.flatMap(tab => panesOf(tab).map(pane => pane.id))}/></HistoryHostContext.Provider></NewTabHostContext.Provider></FirstTurnContext.Provider></NewConversationPlaceContext.Provider>
+    <NewConversationPlaceContext.Provider value={place === 'now' || place === 'root' ? undefined : place}><FirstTurnContext.Provider value={firstTurn}><NewTabHostContext.Provider value={newTabHost}><HistoryHostContext.Provider value={historyHost}><PaneGrid overlay={!api.overlayOpen && <SuggestPill api={api}/>} tab={active} tabs={state.tabs} dispatch={dispatch} actionsFor={actionsFor} retainedPaneIds={[...state.closed.flatMap(tab => panesOf(tab).map(pane => pane.id)), ...otherPlacePanes]}/></HistoryHostContext.Provider></NewTabHostContext.Provider></FirstTurnContext.Provider></NewConversationPlaceContext.Provider>
     {/* The specimen is not the live strip. Open chats ask the engine which ones share a topic, and Group uses the reducer's own action. */}
     <GroupOffer api={api}/>
     {archived && <ArchiveToast count={archived.tabs.length} onDismiss={dismissArchived} onReview={() => { dispatch(openKindAction(state, 'history')); dismissArchived(); }} onRestore={() => { restoreArchived(archived, dispatch); dismissArchived(); }}/>}

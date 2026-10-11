@@ -136,7 +136,7 @@ function FilingTile({ place, actions, readOnly, drag, selected, dropOn, hovered,
   });
   return <PlaceTile ref={dropRef} {...pointer} id={place.id} name={place.name} tint={place.tint} tintSource={place.tintSource} meta={childMeta(place)} status={place.status}
     selected={selected} dragging={drag.payload?.kind === 'place' && drag.payload.ids.includes(place.id)} dropTarget={dropOn} dropLabel={tileDropLabel} disabled={!actions.goTo}
-    onGoTo={() => void runner.run(() => actions.goTo?.(place.id))} onOpenInNewWindow={actions.goToInNewWindow && (() => void runner.run(() => actions.goToInNewWindow?.(place.id)))}
+    onGoTo={() => void runner.run(() => actions.goTo?.(place.id))} onOpenInBackground={actions.goToInBackground && (() => void runner.run(() => actions.goToInBackground?.(place.id)))} onOpenInNewWindow={actions.goToInNewWindow && (() => void runner.run(() => actions.goToInNewWindow?.(place.id)))}
     onQuickLook={actions.quickLook && (() => { setSelected(place.id); actions.quickLook?.(place.id); })}
     menu={menu}/>;
 }

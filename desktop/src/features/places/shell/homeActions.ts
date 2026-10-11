@@ -71,12 +71,29 @@ export function buildHomeActions({ shell, homeId, digests, strip, quickLook, ret
     const tab: Tab = newTab({ kind: 'conversation', title: chatTitle(chatId), titleSource: 'engine', sessionFile });
     strip.dispatch({ type: 'open', tab, background });
   };
+  // The place's Home as a tab right after the active one, or the tab already showing it. Deleting, archiving and
+  // missing places are refused here with the same sentences the rail's Go to gives.
+  const openHere = async (id: string, background: boolean) => {
+    if (!strip || id === 'now') { await shell.goTo(id); return; }
+    if (id !== 'root') {
+      const target = shell.index?.byId.get(id);
+      if (!target) throw new Error('That place no longer exists.');
+      if (target.archived) throw new Error(`“${target.name}” is archived. Restore it from All places first.`);
+      strip.dispatch({ type: 'home-open', place: id, title: target.name, background });
+      // Going there is a touch, as in the rail: it stamps the date the untouched-place suggestion reads.
+      if (!background) void shell.client.visit(id).catch(shell.warn);
+      return;
+    }
+    strip.dispatch({ type: 'home-open', place: id, title: 'All places', background });
+  };
   const ready = shell.places.status === 'ready' || shell.places.status === 'offline';
   if (!ready && !shell.places.graph) return { retry };
   const { client, write } = shell;
 
   return {
-    goTo: id => shell.goTo(id),
+    // OWNER RULE (10 Oct): a click inside a page opens a tab in THIS window; only the rail and ⌘P switch the place.
+    goTo: id => openHere(id, false),
+    goToInBackground: id => openHere(id, true),
     goToInNewWindow: id => shell.goToInNewWindow(id),
     quickLook,
     openChat: id => openChat(id, false),

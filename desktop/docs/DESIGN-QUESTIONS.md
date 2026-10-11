@@ -18,6 +18,7 @@ Shell). On any conflict, the design files win over code and older docs.
 | D4 | Pinned models (⌘1–3) | GLM Flash `z-ai/glm-5.3-flash`, DS Flash `deepseek/deepseek-v4.1-flash`, GLM 5.3 `z-ai/glm-5.3`. Every role defaults to DS Flash. |
 | D5 | Settings page | Our own page in the design language for now: pinned models, then one row per model role. A full settings design comes later. |
 | D6 | Composer focus | No ring, border or fill change on mouse click or typing. A 2px accent ring with a 4px halo shows only on keyboard focus. (The Components "ready to send" specimen shows a halo; the owner's instruction wins.) |
+| D7 | A click on a place inside a page (an All places tile, a breadcrumb, a Quick Look, a search result): does it go to the place, replacing the window's tabs (Places 9e "Clicking a place anywhere goes to the place")? | **No (owner, 10 Oct).** Inside a page every click opens a new tab in this window, right after the active tab, and focuses it; ⌘/Ctrl-click or middle-click opens it behind. The place's Home that is already open is focused, not duplicated. Only the left rail (a place row, Now) and ⌘P/⌘⇧P + ↵ switch the window's place, and ⌥ or ⌘/Ctrl-click on a rail row opens its Home as a tab. Overrides 9e; see DECISIONS.md. |
 
 ## Decided by the designer (2026-10-09)
 
@@ -750,3 +751,8 @@ A stored open tab set remains open when its window closes; closing the actual ta
 | PO-BRIDGE-3 | POST /places/guess when guessing is off, or the draft and the folder are both empty. | The body is {}. A folder match is that place at confidence 100. The server does not drop a slow guess. |
 | PO-BRIDGE-4 | The organize, tree, guess, steer and lenses routes when no organiser is wired. | They answer 404, unknown engine action. |
 | PO-BRIDGE-5 | A removal, or a move into Now, does not name a destination place. Is that an example of where the chat belongs? | No. Only a move into a real place is remembered. The write still succeeds when remembering fails. |
+| PN-1 | A visited place's Home sits in another place's strip: which tint does the window wear while it is in front? | The window keeps its own place's tint (Now: graphite); the tab is an ordinary Home tab and draws the page, not a re-tint. Tint belongs to the window (9e), and only the rail changes the window. |
+| PN-2 | Does opening a place's Home as a tab count as visiting it (the untouched-place date and the rail's Open list)? | A foreground click stamps the place's last-opened date, so the untouched-place suggestion stops offering it. It does not add it to the rail's Open list: that list is the places the window has been switched to. A background open touches nothing. |
+| PN-3 | The folder chooser that makes a place from a repo, Next up and the Go to chooser end on `goTo`. Are they page clicks? | No. They are asked to take the person to the place, so they still switch the window. Only a click on a place inside a page opens a tab. |
+| PN-4 | A rail row's ⌘-click used to open a new window. | ⌥-click and ⌘/Ctrl-click now open the place's Home as a tab (the owner's rule). Open in new window stays in the row's menu and on middle-click. Now keeps its ⌘-click new window. |
+| PN-5 | The Home of a place deleted while it is open as a visited tab. | The tab stays and shows the read failure sentence; it is closed like any tab. Only the strip's own Home sends the window to Now. |

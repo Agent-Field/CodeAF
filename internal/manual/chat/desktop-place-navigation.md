@@ -2,7 +2,7 @@
 
 ## How do I go to a place and restore its tabs in the desktop app?
 
-Click a place in the rail or All places, or choose it in Go to. The window shows that place's tint and saved tabs, with Home focused. Going to the same place again focuses Home. Visiting puts the place in the rail's Open list, newest first. Now keeps its own tabs. All places opens as a Home tab in the current workspace; it does not replace the window's place.
+Click a place in the left rail, or choose it in Go to (Command+P) and press Enter. The window shows that place's tint and saved tabs, with Home focused. A click on a place inside a page (a tile on All places, a breadcrumb) does not switch the window; it opens a tab (see desktop-place-clicks). Going to the same place again focuses Home. Visiting puts the place in the rail's Open list, newest first. Now keeps its own tabs, and clicking Now in the rail brings back exactly the tabs, order, groups, splits and active tab you left there. All places opens as a Home tab in the current workspace; it does not replace the window's place.
 
 Switching places never stops running work. Each place keeps its saved tabs, groups and drafts. Unknown and archived destinations cannot be opened; restore an archived place from All places first.
 

@@ -68,7 +68,7 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
     </HomeFrame>;
   }
 
-  const crumb = (id: string, label: string): Crumb => ({ id, label, onGo: () => void runner.run(() => actions.goTo?.(id)), onGoInNewWindow: actions.goToInNewWindow && (() => void runner.run(() => actions.goToInNewWindow?.(id))) });
+  const crumb = (id: string, label: string): Crumb => ({ id, label, onGo: () => void runner.run(() => actions.goTo?.(id)), onGoInBackground: actions.goToInBackground && (() => void runner.run(() => actions.goToInBackground?.(id))), onGoInNewWindow: actions.goToInNewWindow && (() => void runner.run(() => actions.goToInNewWindow?.(id))) });
   // Without a way to go, a breadcrumb would be a row of dead buttons, so it is not drawn.
   const breadcrumb = view.kind === 'place' && actions.goTo ? [crumb('root', 'All places'), ...view.breadcrumb.map(item => crumb(item.id, item.name))] : [];
   const isPlace = view.kind === 'place';

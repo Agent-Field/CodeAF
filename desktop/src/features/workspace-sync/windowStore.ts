@@ -174,3 +174,24 @@ export async function holdCurrentWindow(writer: string, locks?: Locks): ReturnTy
   }, 0);
  } };
 }
+
+/**
+ * Every pane id this window has saved under ANOTHER place (tabs and the closed ring). The scroll memory keeps these
+ * panes' positions while their place is out of view: leaving a place saves its tab set, and coming back must find the
+ * same scroll too, so a place switch is not allowed to prune the panes the place left behind.
+ */
+export function savedPaneIds(storage: Storage | undefined, writer: string, except: WorkspaceKey): string[] {
+  const ids: string[] = [];
+  if (!storage) return ids;
+  const suffix = `:${writer}`;
+  const own = persistKey(except, writer);
+  try {
+    for (let i = 0; i < storage.length; i++) {
+      const name = storage.key(i);
+      if (!name?.startsWith(`${persistPrefix}:`) || !name.endsWith(suffix) || name === own) continue;
+      const base = parsePersisted(storage.getItem(name))?.base;
+      for (const tab of [...(base?.tabs ?? []), ...(base?.closed ?? [])]) ids.push(tab.id, ...(tab.split?.panes.map(pane => pane.id) ?? []));
+    }
+  } catch { /* An unreadable store keeps nothing extra; the memory then prunes as it always did. */ }
+  return ids;
+}

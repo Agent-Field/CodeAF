@@ -9,19 +9,22 @@ export type Crumb = {
   onGo: () => void;
   /** Command-click, Control-click, or middle-click: open that place in a new window. */
   onGoInNewWindow?: () => void;
+  /** Command-click, Control-click, or middle-click inside a page: a background tab. Preferred over a new window when present. */
+  onGoInBackground?: () => void;
 };
 
 function CrumbLink({ crumb, current }: { crumb: Crumb; current: boolean }) {
   // A modifier click opens a window only when that verb exists. Otherwise it is an ordinary Go to,
   // so a trail is never a row of buttons that swallow the click and do nothing.
   const go = (event: MouseEvent<HTMLButtonElement>) => {
-    if ((event.metaKey || event.ctrlKey) && crumb.onGoInNewWindow) {
+    const modified = crumb.onGoInBackground ?? crumb.onGoInNewWindow;
+    if ((event.metaKey || event.ctrlKey) && modified) {
       event.preventDefault();
-      crumb.onGoInNewWindow();
+      modified();
     } else crumb.onGo();
   };
   return <Button variant="ghost" className="places-crumb" aria-current={current ? 'page' : undefined} onClick={go}
-    onAuxClick={event => { if (event.button === 1 && crumb.onGoInNewWindow) { event.preventDefault(); crumb.onGoInNewWindow(); } }}>{crumb.label}</Button>;
+    onAuxClick={event => { const modified = crumb.onGoInBackground ?? crumb.onGoInNewWindow; if (event.button === 1 && modified) { event.preventDefault(); modified(); } }}>{crumb.label}</Button>;
 }
 
 /** Ancestors above a place title (Places 8b): "All places › codeaf › Marketing".

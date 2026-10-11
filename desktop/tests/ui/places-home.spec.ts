@@ -333,9 +333,8 @@ for (const theme of ['light', 'dark'] as const) {
     await expect(page.getByText('Created “Garden”')).toBeVisible();
     await placeTiles(page).filter({ hasText: 'Garden' }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Garden' })).toBeVisible();
-    await expect(page.locator('.workspace-tabstrip').getByRole('tab')).toHaveCount(1);
-    await expect(homeTab(page)).toContainText('Garden');
-    const open = rail(page).getByRole('region', { name: 'Open', exact: true }).locator('.rail-rows');
-    await expect(open.getByRole('button').first()).toHaveAccessibleName(/^Garden/);
+    // OWNER RULE (10 Oct): a tile inside a page opens a tab; the window stays where it was (tests/ui/place-navigation.spec.ts).
+    await expect(page.locator('.workspace-tabstrip').getByRole('tab', { name: 'Garden', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(rail(page).getByRole('button', { name: 'Now', exact: true })).toHaveAttribute('aria-current', 'page');
   });
 }

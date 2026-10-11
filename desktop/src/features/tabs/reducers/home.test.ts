@@ -92,3 +92,45 @@ test('the All places shortcut and background press open fresh closable root view
   assert.equal(closed.tabs.filter(tab => tab.place === 'root').length, 2);
   assert.ok(isPlaceHome(closed.tabs[0]));
 });
+
+const other = 'pl_00000000000000bb';
+
+test('home-open adds the place’s Home right after the active tab, focuses it, and leaves every other tab as it was', () => {
+  const state = workspaceReducer({ ...withHome(), activeId: 'a' }, { type: 'home-open', place: other, title: 'Writing' });
+  const opened = state.tabs.find(t => t.kind === 'home' && t.place === other)!;
+  assert.equal(opened.pinned, false);
+  assert.equal(state.activeId, opened.id);
+  assert.deepEqual(state.tabs.filter(t => t.id !== opened.id).map(t => t.title), ['Reading', 'a', 'b']);
+  assert.equal(state.tabs.indexOf(opened), state.tabs.findIndex(t => t.id === 'a') + 1);
+  // It is an ordinary tab: closable, and it is not the strip's own Home.
+  assert.equal(isPlaceHome(opened), false);
+  assert.equal(workspaceReducer(state, { type: 'close', id: opened.id }).tabs.some(t => t.id === opened.id), false);
+});
+
+test('home-open focuses a Home that is already open instead of duplicating it, and a background press never moves focus', () => {
+  const once = workspaceReducer(withHome(), { type: 'home-open', place: other, title: 'Writing', background: true });
+  assert.equal(once.activeId, 'b');
+  assert.equal(once.tabs.filter(t => t.place === other).length, 1);
+  const again = workspaceReducer(once, { type: 'home-open', place: other, title: 'Writing' });
+  assert.equal(again.tabs.length, once.tabs.length);
+  assert.equal(again.activeId, once.tabs.find(t => t.place === other)!.id);
+  assert.equal(workspaceReducer(again, { type: 'home-open', place: other, title: 'Writing', background: true }), again);
+  // The place the strip is in lands on its own pinned Home.
+  const own = workspaceReducer(again, { type: 'home-open', place, title: 'Reading' });
+  assert.equal(own.activeId, again.tabs[0].id);
+  assert.equal(own.tabs.length, again.tabs.length);
+});
+
+test('a visited Home survives home-ensure, which only replaces another place’s PINNED Home', () => {
+  const opened = workspaceReducer(withHome(), { type: 'home-open', place: other, title: 'Writing' });
+  const ensured = workspaceReducer(opened, { type: 'home-ensure', place, title: 'Reading' });
+  assert.ok(ensured.tabs.some(t => t.place === other));
+  assert.equal(ensured.tabs.length, opened.tabs.length);
+});
+
+test('home-open for All places is the existing root Home, and survives a save and a read', () => {
+  const state = workspaceReducer(withHome(), { type: 'home-open', place: 'root', title: 'All places' });
+  assert.equal(state.tabs.filter(t => t.place === 'root').length, 1);
+  const read = parseWorkspace(JSON.stringify(workspaceReducer(state, { type: 'home-open', place: other, title: 'Writing' })));
+  assert.ok(read && read.tabs.some(t => t.place === other && !t.pinned));
+});
