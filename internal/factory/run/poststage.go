@@ -13,7 +13,9 @@ import (
 
 // PostOptions builds a post executor.
 type PostOptions struct {
-	// Record binds publishing to consent held by the factory, never model text.
+	// Record binds publishing to consent held by the factory, never model
+	// text: with one, every verb needs the job's recorded approval, and a
+	// comment or a pull request ends with its `Factory-Approval:` trailer.
 	Record *record.Record
 	// Source answers the item's source, nil when none.
 	Source func(repo string) factory.Source
@@ -83,12 +85,17 @@ func NewPostExecutorWith(o PostOptions) Executor {
 				}, nil
 			}
 		}
-		if verb == "pr" && o.Record != nil {
+		// EVERY POST CITES ITS CONSENT. With a record, no verb is written
+		// without the job's recorded approval, and a comment or a pull
+		// request carries its trailer as the body's last line.
+		if o.Record != nil {
 			trailer, err := o.Record.Trailer(ctx, it.ID)
 			if err != nil {
 				return factory.StageResult{}, err
 			}
-			action.Body += "\n\n" + trailer
+			if verb == "pr" || verb == "comment" {
+				action.Body += "\n\n" + trailer
+			}
 		}
 		if verb == "pr" && o.Push != nil {
 			if err := push(o.Push, job.Dir, it, action.Branch); err != nil {

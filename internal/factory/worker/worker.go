@@ -192,14 +192,22 @@ func (o Options) work(ctx context.Context, w *client.WorkerClient, pulled api.Wo
 }
 
 // stand puts the pulled job where the runner's own doors pick it up, and
-// answers the door: a recheck re-runs a landed job's checks, a job whose run
+// answers the door: a publish carries a person's approval out, a recheck
+// re-runs a landed job's checks, a job whose run
 // has not begun is launched, and one that had (a pause, a request for
 // changes, a worker that went away) goes on at the step it stopped in.
 func stand(it *factory.Item, signals []api.WorkerSignal) func(*run.Runner, int) error {
 	for _, s := range signals {
-		if s.Verb == lease.SignalRecheck {
+		switch s.Verb {
+		case lease.SignalRecheck:
 			it.State = factory.StateLanded
 			return (*run.Runner).Reverify
+		case lease.SignalPublish:
+			// A PERSON APPROVED THE PROOF: this machine publishes it, citing
+			// the trailer the factory read from its record.
+			it.State = factory.StateLanded
+			trailer := s.Words
+			return func(r *run.Runner, id int) error { return r.Publish(id, trailer) }
 		}
 	}
 	if begun(it.Stream) {
@@ -294,10 +302,16 @@ func (j *job) refuse(ctx context.Context, why error) {
 }
 
 // final is the state the job ended in, as done says it. Landing is decided
-// again on the server from the proof it holds.
+// again on the server from the proof it holds; a job shipped with a pull
+// request says done, which the server takes only beside a recorded approval.
 func final(it factory.Item) api.WorkerDone {
 	switch it.State {
-	case factory.StateLanded, factory.StateShipped:
+	case factory.StateShipped:
+		if it.PullRequest != nil {
+			return api.WorkerDone{State: api.StateDone}
+		}
+		return api.WorkerDone{}
+	case factory.StateLanded:
 		return api.WorkerDone{}
 	case factory.StateDismissed:
 		return api.WorkerDone{State: api.StateDropped}

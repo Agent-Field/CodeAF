@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
@@ -244,7 +245,38 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusBadRequest, "unknown final job state")
 		return
 	}
-	h.applyWorker(w, r, true, func(it *factory.Item) error { return run.FinishReport(it, state, h.workers.now()) })
+	h.applyWorker(w, r, true, func(it *factory.Item) error {
+		now := h.workers.now()
+		if state != factory.StateShipped {
+			return run.FinishReport(it, state, now)
+		}
+		// A WORKER NEVER APPROVES: done as shipped is a publish only beside
+		// the job's recorded approval and a reported pull request; anything
+		// else is the proof gate's to decide, as it always has been.
+		trailer := h.approval(r.Context(), it.ID)
+		if trailer == "" || it.PullRequest == nil {
+			return run.FinishReport(it, state, now)
+		}
+		if err := run.ShipPublished(it, now); err != nil {
+			return err
+		}
+		// The pull request is already out, so a record that cannot take the
+		// line does not strand the job's lease.
+		_, _ = h.config.Record.Append(r.Context(), record.Event{Kind: record.Posted, Job: it.ID, Handle: run.TrailerHandle(trailer), Cost: jobCost(*it), Detail: "pr · " + it.PullRequest.URL})
+		return nil
+	})
+}
+
+// approval is the job's recorded approval as its trailer, "" for none.
+func (h *Handler) approval(ctx context.Context, id int) string {
+	if h.config.Record == nil {
+		return ""
+	}
+	trailer, err := h.config.Record.Trailer(ctx, id)
+	if err != nil || !run.ValidTrailer(trailer) {
+		return ""
+	}
+	return trailer
 }
 
 func (h *Handler) applyWorker(w http.ResponseWriter, r *http.Request, complete bool, apply func(*factory.Item) error) {

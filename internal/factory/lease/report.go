@@ -37,8 +37,7 @@ func (d *Desk) Apply(id, worker string, complete bool, change func(*factory.Item
 		if !complete {
 			return false, nil
 		}
-		release(doc, held.Job)
-		return true, nil
+		return true, d.keepPublish(doc, held.Job)
 	})
 }
 

@@ -25,6 +25,7 @@ import (
 	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 // loopLogMost is how many lines a stream keeps, the newest last: the same
@@ -1572,32 +1573,12 @@ func (r *Runner) SignOff(id int, edited bool) (bool, error) {
 	now := r.now()
 	var repo string
 	err := r.opts.Store.Update(id, func(it *factory.Item) error {
-		if it.State != factory.StateLanded {
-			return fmt.Errorf("%s has not landed", it.Ref())
-		}
-		if !edited {
-			bad := 0
-			for _, cl := range append(append([]factory.Claim(nil), it.Proof...), it.Policy...) {
-				if !cl.OK {
-					bad++
-				}
-			}
-			if bad == 1 {
-				return fmt.Errorf("%s has a claim not shown", it.Ref())
-			}
-			if bad > 1 {
-				return fmt.Errorf("%s has %d claims not shown", it.Ref(), bad)
-			}
+		if err := approveStored(it, edited, now); err != nil {
+			return err
 		}
 		repo = it.Repo
 		it.State = factory.StateShipped
-		it.Question, it.QKind = "", ""
 		loopSay(it, now, "ok", "shipped · your approval")
-		if edited {
-			it.Note(now, activitySignedEdit)
-		} else {
-			it.Note(now, activitySigned)
-		}
 		return nil
 	})
 	if err != nil {
@@ -1608,9 +1589,46 @@ func (r *Runner) SignOff(id int, edited bool) (bool, error) {
 	if edited {
 		return false, nil
 	}
-	items, err := r.opts.Store.List()
+	return HabitDue(r.opts.Store, repo), nil
+}
+
+// approveStored is the proof gate's own check and mark, on the stored item: a
+// landed item, every claim shown unless the person changed something first
+// (edited), its question down and the approval's activity word noted.
+func approveStored(it *factory.Item, edited bool, now time.Time) error {
+	if it.State != factory.StateLanded {
+		return fmt.Errorf("%s has not landed", it.Ref())
+	}
+	if !edited {
+		bad := 0
+		for _, cl := range append(append([]factory.Claim(nil), it.Proof...), it.Policy...) {
+			if !cl.OK {
+				bad++
+			}
+		}
+		if bad == 1 {
+			return fmt.Errorf("%s has a claim not shown", it.Ref())
+		}
+		if bad > 1 {
+			return fmt.Errorf("%s has %d claims not shown", it.Ref(), bad)
+		}
+	}
+	it.Question, it.QKind = "", ""
+	if edited {
+		it.Note(now, activitySignedEdit)
+	} else {
+		it.Note(now, activitySigned)
+	}
+	return nil
+}
+
+// HabitDue says a habit is offered: every third clean approval on the repo,
+// counted off the items' own activity, where a clean approval leaves the
+// stored word `signed off`.
+func HabitDue(st *store.Store, repo string) bool {
+	items, err := st.List()
 	if err != nil {
-		return false, nil
+		return false
 	}
 	n := 0
 	for _, it := range items {
@@ -1624,7 +1642,7 @@ func (r *Runner) SignOff(id int, edited bool) (bool, error) {
 			}
 		}
 	}
-	return n > 0 && n%habitEvery == 0, nil
+	return n > 0 && n%habitEvery == 0
 }
 
 // SendBack loops a landed item back onto a bench with one more phase, prove,

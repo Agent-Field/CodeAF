@@ -993,8 +993,9 @@ A landed item's page opens on its **proof** sheet: one row per claim and policy 
 a test row reads `0.3s` beside `test`, not `test · 0.3s`. The sheet's last line counts it and names its keys:
 `all 6 shown · s approve`, or `1 of 6 not shown · e approve with changes · B request changes`.
 
-- `s` **approves** it and ships it: `#12 shipped`. On a sheet with a row not shown the run
-  refuses, in its words: `#12 has a claim not shown`.
+- `s` **approves** it and publishes it: the floor says `#12 shipped`, and a worker opens the
+  pull request with your approval's trailer (see approving at the proof gate publishes). On a
+  sheet with a row not shown the run refuses, in its words: `#12 has a claim not shown`.
 - `e` approves saying you changed something first, the one that ships a sheet with a row not
   shown: `#12 shipped with changes`. It does not count toward a habit.
 - `B` **requests changes**: it opens `request changes ›` for what to prove
@@ -1753,20 +1754,46 @@ Actions accept the same bearer token or live session as reads off loopback.
 Bodies with fields must be one JSON object, at most 1 MiB; extra fields are refused, and a larger
 body answers HTTP 413 with `JSON body exceeds 1 MiB`.
 
+## approving at the proof gate publishes — the pull request, the commit and the trailer
+
+Approving a landed item (`s`, `e`, the web's approve, `POST /v1/jobs/{id}/approve`) is
+the one way its work leaves your machine, and it always waits for a person. The factory
+records your approval first (`evt_` and eight hex digits, under your GitHub handle), then
+queues the job again with a publish for a worker; its log says `approved · publishing`,
+then `publishing · Factory-Approval: evt_… @handle`.
+
+The worker that takes it commits everything left in the item's worktree as one commit —
+the item's title, a blank line, `Factory-Approval: evt_… @handle` — pushes the item's
+branch (`factory/<number>-<slug>`) to `origin` with your connected GitHub token, never
+with force, and opens the pull request into the default branch. The body is `Closes #12.`
+for an issue, `Proof · N of M claims shown`, one `✓`/`✕` line per claim, and the trailer
+as its last line. The item becomes shipped with its pull request (`pr` on the wire), and
+the record says `posted · pr · <url>`. A pull request already open from that branch is
+reused, not opened twice.
+
+**A pull request item** is not pushed to: approving it posts one comment on that pull
+request with the same body and trailer, and the item's `pr` is that pull request.
+
+**Never without consent.** An approve with no recorded approval publishes nothing and
+says `job requires a recorded approval before publishing`. A push or a write that fails
+lands the item again with `could not publish: …` on its log; approve again to retry. The
+work must be on the machine that publishes it: a worker on another machine has no
+worktree for it.
+
 ## factory HTTP approve — plan approval, proof approval and the event receipt
 
 `POST /v1/jobs/{id}/approve` takes `{"edited":true}` when you changed the result
 first, or `{}` or no body for ordinary approval. A job waiting at an approve
 step receives a yes answer. A ready proof goes through the factory's sign-off
-door, which still enforces the claims and policy gate. Any other job answers
+door, which still enforces the claims and policy gate and then publishes (see
+approving at the proof gate publishes). Any other job answers
 HTTP 409 with `job is not waiting for approval`.
 
 Success answers HTTP 200 with `{"factory":{"address":"…","version":"…"},
-"event":"evt_pending"}`. `evt_pending` is a placeholder, not a durable approval
-receipt. A host can supply the approval-record hook: it writes before the
-approval door runs, and its event id replaces the placeholder. If the hook
-fails, no approval happens. A failed approval returns an error without an event.
-The handler itself does not yet keep an append-only record or bind a PR trailer.
+"event":"evt_…"}`: the id of the approval the factory's record wrote before the
+approval door ran, which the pull request's trailer cites. A factory with no
+record refuses with `approval requires a factory record`; if the write fails, no
+approval happens. A failed approval returns an error without an event.
 
 ## factory HTTP add a job, watched repositories and connect GitHub
 
@@ -1992,8 +2019,10 @@ state. An empty body or `{}` uses the runner's landing behavior: proof waits for
 your approval, or a clean proof with no approve step finishes automatically.
 `{"state":"needs_you","ready":true}` also lands the proof. `{"state":"needs_you"}`
 requires a question already on the job. `backlog` and `dropped` report interrupted
-or dropped work. `{"state":"done"}` is accepted only for clean proof with no
-approve step; otherwise it answers HTTP 400 with `job requires proof approval`.
+or dropped work. `{"state":"done"}` is accepted for clean proof with no approve
+step, or for a published job: one with a recorded approval and a reported pull
+request, which ships and records `posted`. Otherwise it answers HTTP 400 with
+`job requires proof approval`.
 Success answers HTTP 200 with the factory identity. Completed holds reject later
 heartbeats and reports. Every `codeaf` speaks this protocol as its worker loop.
 
@@ -2038,8 +2067,10 @@ Be plain about this when asked:
   not changed.
 - **The day rail stops launches, not running items.** A job pulled past it goes back to
   backlog with the reason on its log; an item already running goes on.
-- **Only a post stage writes to GitHub** (a comment, labels, a close, a pull request), through
-  the connected GitHub account, and only what the recipe's policy allows.
+- **Only an approval or a post stage writes to GitHub.** Approving a landed item opens its
+  pull request (see approving at the proof gate publishes); a post stage writes a comment,
+  labels, a close or a pull request, only what the recipe's policy allows, and only after
+  the job's approval is recorded.
 - **The diff does not open yet.** `d` on a landed item says where it will be.
 - **Nothing launches from the chat.** `factory_add` only puts an item on the floor as `new`.
 - **The foreman only reads and selects.** `m` opens it (see the foreman); it cannot run,
@@ -2197,13 +2228,15 @@ not the caller's body. A missing identity, unavailable record or failed disk wri
 refuses approval. A runner refusal can leave the recorded approval attempt; it
 does not make the job done or bypass the proof gate.
 
-A post executor connected to that same record appends
-`Factory-Approval: evt_<8hex> @handle` to its pull request body. It refuses to push
-or open a PR without a recorded approval for that job. A new start, a drop or
+Approving at the proof gate publishes with that trailer (see approving at the proof
+gate publishes). A post stage reads the same record: it appends
+`Factory-Approval: evt_<8hex> @handle` to a pull request's or a comment's body, and
+refuses every verb (comment, label, close, pr) without a recorded approval for that job. A new start, a drop or
 requested changes withdraws earlier approval; the next post needs fresh consent.
 After a successful source write the executor records `posted`, including cost and
-the receipt URL. A failed post is never retried automatically. Existing local post
-executors acquire this binding when their host supplies the record connection.
+the receipt URL. A failed post is never retried automatically. The worker reads the
+record of its own machine's factory, so on a worker attached to a factory on another
+machine a post stage refuses for want of the approval there.
 
 
 ## automatic intake — start rules, auto start and asked first

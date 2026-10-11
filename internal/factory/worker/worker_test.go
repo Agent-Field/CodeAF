@@ -26,6 +26,8 @@ type rig struct {
 	floor factory.Seam // the floor as any window reaches it: over HTTP
 	doors factory.Seam // the server's own seam, past the record's approval binding
 	run   *run.Runner
+	// record is the factory's record, where the service writes approvals.
+	record *record.Record
 }
 
 func newRig(t *testing.T, localLease ...func(string, api.WorkerLease)) rig {
@@ -34,6 +36,12 @@ func newRig(t *testing.T, localLease ...func(string, api.WorkerLease)) rig {
 	if len(localLease) > 0 {
 		keepLocal = localLease[0]
 	}
+	return newRigWith(t, keepLocal, nil)
+}
+
+// newRigWith is newRig whose worker's runner options tune may change.
+func newRigWith(t *testing.T, keepLocal func(string, api.WorkerLease), tune func(*run.Options)) rig {
+	t.Helper()
 	st, err := store.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -56,11 +64,15 @@ func newRig(t *testing.T, localLease ...func(string, api.WorkerLease)) rig {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	r := run.New(run.Options{
+	opts := run.Options{
 		Store:   mirror,
 		Exec:    map[factory.StageKind]run.Executor{factory.StageCheck: run.NewCheckExecutor(run.CheckOptions{})},
 		RepoDir: func(string) string { return dir },
-	})
+	}
+	if tune != nil {
+		tune(&opts)
+	}
+	r := run.New(opts)
 	var mu sync.Mutex
 	creds := map[int]string{}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -88,7 +100,7 @@ func newRig(t *testing.T, localLease ...func(string, api.WorkerLease)) rig {
 		})
 	}()
 	t.Cleanup(func() { cancel(); <-done })
-	return rig{st: st, floor: client.Open(server.URL, "").Seam(), doors: seam, run: r}
+	return rig{st: st, floor: client.Open(server.URL, "").Seam(), doors: seam, run: r, record: history}
 }
 
 func TestWorkerLocalReceiptFollowsPullHeartbeatAndRelease(t *testing.T) {

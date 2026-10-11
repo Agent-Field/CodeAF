@@ -219,3 +219,31 @@ func TestPostStageWithoutRecordedApprovalRefusesBeforePush(t *testing.T) {
 		t.Fatalf("unapproved post: pushed=%t writes=%+v error=%v", pushed, src.got, err)
 	}
 }
+
+// TestEveryPostCitesTheApproval: with a record, a comment ends with the
+// trailer, and a label is refused until the job's approval is recorded.
+func TestEveryPostCitesTheApproval(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := record.Open(st, record.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := &fakeSource{}
+	ex := NewPostExecutorWith(PostOptions{Record: rec, Source: func(string) factory.Source { return src }})
+	if _, err := ex.Run(context.Background(), Job{Item: item(), Stage: factory.Stage{Ask: "label: ready"}}); err == nil || len(src.got) != 0 {
+		t.Fatalf("an unapproved label: writes=%+v error=%v", src.got, err)
+	}
+	event, err := rec.Append(context.Background(), record.Event{Kind: record.Approved, Job: item().ID, Handle: "octocat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ex.Run(context.Background(), Job{Item: item(), Stage: factory.Stage{Ask: "comment: looks right"}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(src.got) != 1 || src.got[0].Body != "looks right\n\nFactory-Approval: "+event.ID+" @octocat" {
+		t.Fatalf("comment = %+v", src.got)
+	}
+}

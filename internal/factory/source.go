@@ -51,6 +51,9 @@ type Receipt struct {
 	URL string
 	ID  string
 	At  time.Time
+	// Number is the opened thing's number on the source (a pull request's),
+	// 0 when it has none.
+	Number int
 }
 
 // ErrReadOnly is a source that only reads.

@@ -1,6 +1,10 @@
 package lease
 
-import "time"
+import (
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
+)
 
 // THE SIGNAL CHANNEL. A person's verb reaches the server, never the machine
 // running the job. The server changes the job's state itself and, while a
@@ -20,6 +24,10 @@ const (
 	// SignalRecheck asks the pulling worker to run the checks of a landed job
 	// again instead of running its steps.
 	SignalRecheck = "recheck"
+	// SignalPublish carries a person's approval at the proof gate: Words is
+	// the record's trailer (`Factory-Approval: evt_… @handle`), and the
+	// worker that takes the job commits, pushes and opens its pull request.
+	SignalPublish = "publish"
 )
 
 // Signal is one verb a person asked of a job, with the door's own arguments.
@@ -67,4 +75,28 @@ func release(doc *document, job int) {
 		}
 	}
 	delete(doc.Signals, job)
+}
+
+// keepPublish is release that leaves a publish waiting: the job goes back to
+// the queue with its publish signal, so the next pull carries the approval
+// out. An approval given while the job's worker was still finishing its run
+// is never dropped with that worker's lease. Callers hold the desk's lock.
+func (d *Desk) keepPublish(doc *document, job int) error {
+	var kept []Signal
+	for _, s := range doc.Signals[job] {
+		if s.Verb == SignalPublish {
+			kept = append(kept, s)
+		}
+	}
+	release(doc, job)
+	if len(kept) == 0 {
+		return nil
+	}
+	for _, s := range kept {
+		signal(doc, job, s)
+	}
+	return d.store.Update(job, func(it *factory.Item) error {
+		it.State = factory.StateQueued
+		return nil
+	})
 }

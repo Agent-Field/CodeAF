@@ -1,12 +1,15 @@
 package lease_test
 
 import (
+	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 )
 
 func (f *fixture) running(t *testing.T) (factory.Item, lease.Lease) {
@@ -87,5 +90,52 @@ func TestVerbsOnAJobNobodyHolds(t *testing.T) {
 	f.state(t, it.ID, factory.StateQueued)
 	if got, _ := f.store.Get(it.ID); got.Stream.Paused {
 		t.Fatal("the resumed job is still paused")
+	}
+}
+
+// APPROVING PUBLISHES THROUGH A WORKER, and only with the record's consent:
+// an approve with no recorded approval leaves the job landed and signals
+// nothing; with one, the trailer rides on a publish signal. An approval that
+// arrives while the job's worker is still finishing survives that worker's
+// done: the job is queued again and the next pull carries the publish.
+func TestApprovingQueuesAPublishWithTheTrailer(t *testing.T) {
+	f := setup(t)
+	it, held := f.running(t)
+	if err := f.store.Update(it.ID, func(x *factory.Item) error {
+		x.State = factory.StateLanded
+		x.Proof = []factory.Claim{{Text: "true passes", OK: true}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	doors := lease.NewDoors(f.desk)
+	if _, err := doors.SignOff(it.ID, false); err == nil || !strings.Contains(err.Error(), "requires a recorded approval") {
+		t.Fatalf("an unrecorded approve = %v", err)
+	}
+	f.state(t, it.ID, factory.StateLanded)
+	history, err := record.Open(f.store, record.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	event, err := history.Append(context.Background(), record.Event{Kind: record.Approved, Job: it.ID, Handle: "sam"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := doors.SignOff(it.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	f.state(t, it.ID, factory.StateLanded)
+	if err := f.desk.Apply(held.ID, "w1", true, func(x *factory.Item) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	f.state(t, it.ID, factory.StateQueued)
+	next, err := f.desk.Pull(lease.Worker{ID: "w2", Handle: "sam", TakesUnassigned: map[string]bool{lease.EveryRepo: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	signals, err := f.desk.Drain(next.ID, "w2")
+	want := []lease.Signal{{Verb: lease.SignalPublish, Words: "Factory-Approval: " + event.ID + " @sam"}}
+	if err != nil || !reflect.DeepEqual(signals, want) {
+		t.Fatalf("the pull carried %+v, %v", signals, err)
 	}
 }

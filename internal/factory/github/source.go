@@ -904,7 +904,7 @@ func (s *Source) Write(ctx context.Context, a factory.Action) (factory.Receipt, 
 	if err != nil {
 		return factory.Receipt{}, err
 	}
-	return factory.Receipt{URL: posted.URL, ID: posted.ID, At: s.now()}, nil
+	return factory.Receipt{URL: posted.URL, ID: posted.ID, At: s.now(), Number: posted.Number}, nil
 }
 
 // openPull opens a pull request from the action's branch into the

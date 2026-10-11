@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -43,12 +44,19 @@ type Git interface {
 // reaches git as itself, so a branch or a folder name can never be read as a
 // command. Git is told never to prompt, because nobody is at a keyboard to
 // answer a password question, and a prompt would hold the round forever.
-type ExecGit struct{}
+//
+// Token, when it answers one, is the person's GitHub token, handed to git as
+// an http header for github.com in the environment (never in the arguments,
+// which any process on the machine can read): a push then goes as that
+// person, whatever credential helper the machine has.
+type ExecGit struct {
+	Token func() string
+}
 
 // Run runs `git -C dir args...`. A failure's error is gits last line.
-func (ExecGit) Run(dir string, args ...string) (string, error) {
+func (g ExecGit) Run(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	cmd.Env = append(gitEnv(g.Token), "GIT_TERMINAL_PROMPT=0")
 	out, err := cmd.CombinedOutput()
 	text := strings.TrimSpace(string(out))
 	if err != nil {
@@ -58,6 +66,32 @@ func (ExecGit) Run(dir string, args ...string) (string, error) {
 		return text, err
 	}
 	return text, nil
+}
+
+// gitEnv is the process environment, with token's github.com header when
+// it answers one, in place of any GIT_CONFIG_COUNT/KEY_n/VALUE_n of its own,
+// which the header would otherwise be counted among.
+func gitEnv(token func() string) []string {
+	tok := ""
+	if token != nil {
+		tok = strings.TrimSpace(token())
+	}
+	if tok == "" {
+		return os.Environ()
+	}
+	var out []string
+	for _, kv := range os.Environ() {
+		name, _, _ := strings.Cut(kv, "=")
+		if name == "GIT_CONFIG_COUNT" || strings.HasPrefix(name, "GIT_CONFIG_KEY_") || strings.HasPrefix(name, "GIT_CONFIG_VALUE_") {
+			continue
+		}
+		out = append(out, kv)
+	}
+	basic := base64.StdEncoding.EncodeToString([]byte("x-access-token:" + tok))
+	return append(out,
+		"GIT_CONFIG_COUNT=1",
+		"GIT_CONFIG_KEY_0=http.https://github.com/.extraheader",
+		"GIT_CONFIG_VALUE_0=AUTHORIZATION: basic "+basic)
 }
 
 // lastLine is the last line of s that says something.

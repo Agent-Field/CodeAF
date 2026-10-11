@@ -146,6 +146,14 @@ type Options struct {
 	Recipe func(repo string) factory.Recipe
 	// Source answers the item's source for a post stage, nil when none.
 	Source func(repo string) factory.Source
+	// Push publishes an item's branch from its folder when a person's
+	// approval is carried out ([Runner.Publish]); the wire hands [GitPush]
+	// with the person's token. Nil publishes nothing: an approval then fails
+	// with the sentence that this machine cannot push.
+	Push func(dir, branch string) error
+	// Git commits an approved item's worktree ([Runner.Publish]); nil is
+	// [ExecGit].
+	Git Git
 	// Events receives every movement; nil drops them. Sends never block the
 	// loop: the runner drops an event the receiver is not ready for.
 	Events chan<- Event

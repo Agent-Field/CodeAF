@@ -1,10 +1,12 @@
 package lease
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 )
 
@@ -140,10 +142,53 @@ func (d *Doors) Steer(id int, words string) error {
 	})
 }
 
-// SignOff ships a landed job. Nothing runs, so it is the Runner's own door
-// over the store.
+// SignOff is the person's approval at the proof gate, and APPROVING
+// PUBLISHES. The approval must already be in the factory's record (the
+// service writes it before it opens this door); its trailer rides to the
+// worker as a publish signal: to the job's holder when a worker still holds
+// it, else on the job queued again for the next pull. That worker commits,
+// pushes and opens the pull request, and the job is done when it reports the
+// pr. A job with no recorded approval publishes nothing.
 func (d *Doors) SignOff(id int, edited bool) (bool, error) {
-	return run.New(run.Options{Store: d.desk.store}).SignOff(id, edited)
+	trailer, err := d.trailer(id)
+	if err != nil {
+		return false, err
+	}
+	var repo string
+	err = d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
+		if err := run.PublishItem(it, edited, now); err != nil {
+			return false, err
+		}
+		if held != nil {
+			// The holder is finishing its run; its done releases the lease
+			// and keeps this signal, which queues the job again.
+			it.State = factory.StateLanded
+		}
+		repo = it.Repo
+		signal(doc, id, Signal{Verb: SignalPublish, Words: trailer})
+		return true, nil
+	})
+	if err != nil || edited {
+		return false, err
+	}
+	return run.HabitDue(d.desk.store, repo), nil
+}
+
+// trailer is the job's recorded approval as its trailer line, read from the
+// record beside the desk's store: the one consent a publish may cite.
+func (d *Doors) trailer(id int) (string, error) {
+	history, err := record.Open(d.desk.store, record.Options{})
+	if err != nil {
+		return "", err
+	}
+	trailer, err := history.Trailer(context.Background(), id)
+	if err != nil {
+		return "", err
+	}
+	if !run.ValidTrailer(trailer) {
+		return "", run.ErrNoApproval
+	}
+	return trailer, nil
 }
 
 // SendBack queues a landed job again with one more step, prove.
