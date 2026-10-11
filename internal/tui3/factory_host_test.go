@@ -41,7 +41,7 @@ func TestFactoryBareFloorNamesWhatArrivesAndNStillWorks(t *testing.T) {
 
 	// A floor that has not been read yet draws no such line: it may be false.
 	b := placeApp(t)
-	b.factory = f.seam()
+	b.factory = factoryTestSeam(t, f.seam())
 	b.width, b.height = 150, 44
 	b.fp.loaded = false
 	if b.factoryBare() {

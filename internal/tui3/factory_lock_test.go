@@ -171,7 +171,7 @@ func (f *factoryOfferFake) seam() factory.Seam {
 func factoryOfferLab(t *testing.T, f *factoryOfferFake) *app {
 	t.Helper()
 	a := placeApp(t)
-	a.factory = f.seam()
+	a.factory = factoryTestSeam(t, f.seam())
 	a.pal = newPalette(tokens.NoColor, false)
 	a.width, a.height = 200, 44
 	if cmd := a.showPage(pageFactory); cmd != nil {

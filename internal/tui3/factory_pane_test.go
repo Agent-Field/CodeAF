@@ -274,7 +274,7 @@ func TestFactoryPeekNeedsYouLadder(t *testing.T) {
 	if len(blocks[1]) != 1 {
 		t.Fatalf("a question with no answer door draws keys: %q", blocks[1])
 	}
-	a.factory = (&factoryFake{}).seam()
+	a.factory = factoryTestSeam(t, (&factoryFake{}).seam())
 	if keys := factoryPeekBlocks(t, factoryPaneOn(t, a, 1, factoryPaneW(150), 30))[1]; len(keys) != 2 || keys[1] != "[y] continue · [n] send back · [a] in words" {
 		t.Fatalf("the question's keys are %q", keys)
 	}
@@ -307,7 +307,7 @@ func TestFactoryPeekLandedLadder(t *testing.T) {
 	if last := strings.TrimSpace(rows[len(rows)-1]); last != "enter proof" {
 		t.Fatalf("the still fixture's landed keys are %q", last)
 	}
-	a.factory = (&factoryFake{}).seam()
+	a.factory = factoryTestSeam(t, (&factoryFake{}).seam())
 	rows = factoryPaneOn(t, a, 9, factoryPaneW(150), 30)
 	if last := strings.TrimSpace(rows[len(rows)-1]); !strings.HasPrefix(last, "enter proof · e approve with changes · B request changes") {
 		t.Fatalf("the action line is %q", last)
@@ -442,7 +442,7 @@ func TestFactoryPaneDrawsADismissedItemAsNew(t *testing.T) {
 	if got := a.factoryActionWords(it); got != "enter open" {
 		t.Fatalf("a dismissed item's keys are %q", got)
 	}
-	a.factory = (&factoryFake{}).seam()
+	a.factory = factoryTestSeam(t, (&factoryFake{}).seam())
 	if got := a.factoryActionWords(it); !strings.Contains(got, "r run") || strings.Contains(got, "space select") {
 		t.Fatalf("a dismissed item's keys over a launch are %q", got)
 	}

@@ -56,7 +56,7 @@ func TestFactoryForemanOpensTheChatAndEscReturns(t *testing.T) {
 	f := &factoryFake{}
 	a := factoryVerbLab(t, f)
 	seam, asked, chat := foremanSeam(t, f)
-	a.factory = seam
+	a.factory = factoryTestSeam(t, seam)
 	var opened string
 	a.open = func(where, file string) (Conversation, error) {
 		opened = file

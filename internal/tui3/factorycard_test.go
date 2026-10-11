@@ -217,10 +217,12 @@ func TestFactoryCardAddedReadsTheFloorOnce(t *testing.T) {
 	a := placeApp(t)
 	a.width = 160
 	loads := 0
-	a.factory = factory.Seam{Load: func() (factory.Snapshot, error) {
+	a.factory = factoryTestSeam(t, factory.FixtureSeam(factoryTestNow))
+	load := a.factory.Load
+	a.factory.Load = func() (factory.Snapshot, error) {
 		loads++
-		return factory.Fixture(factoryTestNow), nil
-	}}
+		return load()
+	}
 	added := factoryNotice()
 	added.Item = 12
 	drive(t, a, taskEventMsg{gen: a.taskGen, ev: session.Event{Kind: session.EventFactoryAdded, Text: "#12", Factory: &added}})
@@ -236,7 +238,7 @@ func TestFactoryCardAddedReadsTheFloorOnce(t *testing.T) {
 func TestFactoryCountOnTheBarFromTheLaunch(t *testing.T) {
 	a := placeApp(t)
 	a.width = 160
-	a.factory = factory.FixtureSeam(factoryTestNow)
+	a.factory = factoryTestSeam(t, factory.FixtureSeam(factoryTestNow))
 	if a.fp.loaded {
 		t.Fatal("the lab read the floor before the launch")
 	}
@@ -249,7 +251,7 @@ func TestFactoryCountOnTheBarFromTheLaunch(t *testing.T) {
 	}
 	// AND THE LAUNCH ASKS FOR IT: the read is one of the commands Init batches.
 	b := placeApp(t)
-	b.factory = factory.FixtureSeam(factoryTestNow)
+	b.factory = factoryTestSeam(t, factory.FixtureSeam(factoryTestNow))
 	drive(t, b, runCmd(b.Init())...)
 	if !b.fp.loaded {
 		t.Fatal("Init did not read the floor")
@@ -279,7 +281,7 @@ func TestFactoryCardChatItemRefIsTheStoreID(t *testing.T) {
 		State: factory.StateNeedsYou, Question: "go?",
 	})
 	a := placeApp(t)
-	a.factory = factory.Seam{Load: func() (factory.Snapshot, error) { return snap, nil }}
+	a.factory = factoryTestSeam(t, factory.Seam{Load: func() (factory.Snapshot, error) { return snap, nil }})
 	a.width, a.height = 120, 40
 	if cmd := a.showPage(pageFactory); cmd != nil {
 		drive(t, a, runCmd(cmd)...)
@@ -423,10 +425,12 @@ func TestFactoryRecipeBankedReadsTheFloor(t *testing.T) {
 	a := placeApp(t)
 	a.width = 160
 	loads := 0
-	a.factory = factory.Seam{Load: func() (factory.Snapshot, error) {
+	a.factory = factoryTestSeam(t, factory.FixtureSeam(factoryTestNow))
+	load := a.factory.Load
+	a.factory.Load = func() (factory.Snapshot, error) {
 		loads++
-		return factory.Fixture(factoryTestNow), nil
-	}}
+		return load()
+	}
 	n := recipeNotice()
 	drive(t, a, taskEventMsg{gen: a.taskGen, ev: session.Event{Kind: session.EventRecipeBanked, Recipe: &n}})
 	if loads != 1 {

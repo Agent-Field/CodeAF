@@ -65,7 +65,7 @@ func newFactoryPolishLab(t *testing.T) (*app, *factoryPolishLab) {
 		lab.real++
 		return 10, 0.004, lab.rec("RefreshAll")
 	}
-	a.factory = seam
+	a.factory = factoryTestSeam(t, seam)
 	was := processOpener
 	processOpener = func(target string) error { lab.opened = append(lab.opened, target); return nil }
 	t.Cleanup(func() { processOpener = was })

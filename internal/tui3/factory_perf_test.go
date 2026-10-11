@@ -82,7 +82,7 @@ func factoryPerfLab(tb testing.TB, width, height int) *app {
 	tb.Helper()
 	a := benchApp(0)
 	snap := factoryPerfSnapshot(factoryTestNow, 300, 24)
-	a.factory = factory.Seam{Load: func() (factory.Snapshot, error) { return snap, nil }}
+	a.factory = factoryTestSeam(tb, factory.Seam{Load: func() (factory.Snapshot, error) { return snap, nil }})
 	a.width, a.height = width, height
 	a.pal = newPalette(tokens.TrueColor, false)
 	factoryPerfSettle(a, a.showPage(pageFactory))

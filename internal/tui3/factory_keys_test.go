@@ -87,7 +87,7 @@ func (f *factoryFake) seam() factory.Seam {
 func factoryVerbLab(t *testing.T, f *factoryFake) *app {
 	t.Helper()
 	a := placeApp(t)
-	a.factory = f.seam()
+	a.factory = factoryTestSeam(t, f.seam())
 	a.width, a.height = 150, 44
 	if cmd := a.showPage(pageFactory); cmd != nil {
 		drive(t, a, runCmd(cmd)...)
@@ -381,6 +381,7 @@ func TestFactoryHabitOfferBanksOnY(t *testing.T) {
 	if got := strings.Join(f.said(), " "); got != "SignOff(9,false)" {
 		t.Fatalf("enter on a clean sheet asked %q", got)
 	}
+	factoryLocalHabitOffer(t, a)
 	text := factoryFrameText(a)
 	for _, want := range []string{"habit forming — 3 approvals without edits on codeaf", "factory PRs from your own issues self-ship when the proof is green? [y] bank it · [n] not yet"} {
 		if !strings.Contains(text, want) {
@@ -398,6 +399,7 @@ func TestFactoryHabitOfferBanksOnY(t *testing.T) {
 	// `n` puts the offer away and asks nothing.
 	drive(t, a, key("s"))
 	f.said()
+	factoryLocalHabitOffer(t, a)
 	if a.fp.act.habit == "" {
 		t.Fatal("the second sign-off drew no offer")
 	}
@@ -413,6 +415,20 @@ func TestFactoryHabitOfferBanksOnY(t *testing.T) {
 	if a.pageMsg != f.note {
 		t.Fatalf("the note line says %q, not the bank's note", a.pageMsg)
 	}
+}
+
+// The wire deliberately returns no habit-due signal. Assert that boundary,
+// then supply the local offer so its drawing and Bank doors remain covered
+// beside the HTTP sign-off; this is not a second sign-off through a local door.
+func factoryLocalHabitOffer(t *testing.T, a *app) {
+	t.Helper()
+	if !*factoryOverClient {
+		return
+	}
+	if a.fp.act.habit != "" {
+		t.Fatal("the client returned a habit signal its API does not carry")
+	}
+	a.fp.act.habit = "agentfield/codeaf"
 }
 
 // A DOOR THAT DOES NOT EXIST IS A KEY THAT DOES NOTHING AND IS NAMED NOWHERE.

@@ -30,7 +30,7 @@ func factoryVerbsLab(t *testing.T, f *factoryFake, width int) *app {
 	s.Talk = func(context.Context, int) (string, error) { return "", f.rec("Talk") }
 	s.Open = func(id int) (string, error) { return "", f.rec("Open", id) }
 	s.Refresh = func(_ context.Context, id int) error { return f.rec("Refresh", id) }
-	a.factory = s
+	a.factory = factoryTestSeam(t, s)
 	a.pal = newPalette(tokens.NoColor, false)
 	a.width = width
 	return a
@@ -540,7 +540,7 @@ func TestFactoryItemManagerBoxSendsThroughSay(t *testing.T) {
 		said = append(said, itoa(id)+":"+words)
 		return nil
 	}
-	a.factory = s
+	a.factory = factoryTestSeam(t, s)
 	factoryVerbsOpen(t, a, 8)
 	factoryRowNamed(t, a, wordFacetManager)
 	frame(a)

@@ -21,7 +21,7 @@ var factoryTestNow = time.Date(2026, time.October, 7, 12, 0, 0, 0, time.UTC)
 func factoryPlaceLab(t *testing.T) *app {
 	t.Helper()
 	a := placeApp(t)
-	a.factory = factory.FixtureSeam(factoryTestNow)
+	a.factory = factoryTestSeam(t, factory.FixtureSeam(factoryTestNow))
 	a.width, a.height = 120, 20
 	if cmd := a.showPage(pageFactory); cmd != nil {
 		drive(t, a, runCmd(cmd)...)
@@ -129,7 +129,9 @@ func TestFactoryBodyFillsTheRoomExactly(t *testing.T) {
 // A FAILED RE-READ KEEPS THE FLOOR IT HAD and says so on the note line.
 func TestFactoryKeepsTheLastFloorWhenAReadFails(t *testing.T) {
 	a := factoryPlaceLab(t)
-	a.factory.Load = func() (factory.Snapshot, error) { return factory.Snapshot{}, errors.New("disk gone") }
+	a.factory = factoryTestSeam(t, factory.Seam{Load: func() (factory.Snapshot, error) {
+		return factory.Snapshot{}, errors.New("disk gone")
+	}})
 	drive(t, a, runCmd(a.factoryRead())...)
 	if len(a.fp.snap.Items) == 0 {
 		t.Fatal("a failed read dropped the floor")

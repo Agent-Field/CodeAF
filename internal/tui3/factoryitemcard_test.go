@@ -25,14 +25,16 @@ func liveItem() factory.Item {
 }
 
 // liveFloor is a seam over one snapshot holding items, counting its loads.
-func liveFloor(a *app, items ...factory.Item) *int {
+func liveFloor(t testing.TB, a *app, items ...factory.Item) *int {
 	loads := 0
 	snap := factory.Snapshot{Now: factoryTestNow, Items: items,
 		Repos: []factory.Repo{{Name: "factory-demo", Recipe: factory.DefaultRecipe()}}}
-	a.factory = factory.Seam{Load: func() (factory.Snapshot, error) {
+	a.factory = factoryTestSeam(t, factory.Seam{Load: func() (factory.Snapshot, error) { return snap, nil }})
+	load := a.factory.Load
+	a.factory.Load = func() (factory.Snapshot, error) {
 		loads++
-		return snap, nil
-	}}
+		return load()
+	}
 	a.factoryFold(snap)
 	return &loads
 }
@@ -62,7 +64,7 @@ func TestFactoryItemCardRowsPerState(t *testing.T) {
 	shipped := liveItem()
 	shipped.ID, shipped.State = 5, factory.StateShipped
 	shipped.Stream = &factory.Stream{Spent: 1.9}
-	liveFloor(a, liveItem(), running, needs, landed, shipped)
+	liveFloor(t, a, liveItem(), running, needs, landed, shipped)
 
 	rows := liveCardRows(a, 1, 110)
 	if len(rows) != 3 {
@@ -124,7 +126,7 @@ func TestFactoryItemCardReplacesTheBriefsMarker(t *testing.T) {
 		t.Fatal("the brief the model reads was drawn")
 	}
 	// AND ONCE THE FLOOR IS READ IT IS THE FLOOR'S ROW.
-	liveFloor(a, liveItem())
+	liveFloor(t, a, liveItem())
 	rows = questionPlainRows(FactoryCardRows(a, blocks[0].fac, 110, false))
 	if !strings.Contains(strings.Join(rows, "\n"), "new · budget $5") {
 		t.Fatalf("the card does not follow the floor:\n%s", strings.Join(rows, "\n"))
@@ -143,7 +145,7 @@ func TestFactoryItemCardUnderAReplyOncePerTurn(t *testing.T) {
 	lab := newQuestionLab(t)
 	a := lab.a
 	a.workspace = "/work/factory-demo"
-	liveFloor(a, liveItem())
+	liveFloor(t, a, liveItem())
 	a.turn = 3
 	a.entries = append(a.entries, entry{kind: entryAssistant, turn: 3, settled: true,
 		text: "I looked at #1 and #1 again; #99 is not on the floor, and colour#1 is not a ref."})
@@ -178,7 +180,7 @@ func TestFactoryItemCardOpensTheItemPage(t *testing.T) {
 	lab := newQuestionLab(t)
 	a := lab.a
 	a.width, a.height = 120, 40
-	liveFloor(a, liveItem())
+	liveFloor(t, a, liveItem())
 	a.entries = append(a.entries, entry{kind: entryFactory, turn: a.turn,
 		fac: &factoryCard{live: &factoryItemLive{id: 1, ref: "#1"}, liveOnly: true}})
 	at := len(a.entries) - 1
@@ -215,7 +217,7 @@ func TestFactoryItemCardOpensTheItemPage(t *testing.T) {
 func TestFactoryItemCardStaysLive(t *testing.T) {
 	lab := newQuestionLab(t)
 	a := lab.a
-	loads := liveFloor(a, liveItem())
+	loads := liveFloor(t, a, liveItem())
 	if cmd := a.factoryCardPollArm(); cmd != nil {
 		t.Fatal("the clock started with no card on screen")
 	}
@@ -264,7 +266,7 @@ func TestFactoryItemCardStaysLive(t *testing.T) {
 func TestFactoryItemCardKeepsTheTaskMargin(t *testing.T) {
 	lab := newQuestionLab(t)
 	a := lab.a
-	liveFloor(a, liveItem())
+	liveFloor(t, a, liveItem())
 	for _, w := range []int{160, 100} {
 		for i, row := range liveCardRows(a, 1, w) {
 			if got := ansi.StringWidth(row); got > w-factoryCardMargin {

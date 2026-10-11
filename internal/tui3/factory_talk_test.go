@@ -68,7 +68,7 @@ func TestFactoryTalkOpensTheChatAndEscReturnsToTheSameRow(t *testing.T) {
 		f := &factoryFake{}
 		a := factoryVerbLab(t, f)
 		seam, made, chat := talkSeam(t, f)
-		a.factory = seam
+		a.factory = factoryTestSeam(t, seam)
 		var opened string
 		a.open = func(where, file string) (Conversation, error) {
 			opened = file
@@ -113,7 +113,7 @@ func TestFactoryTalkEscReturnsAfterTheModelHasAnswered(t *testing.T) {
 	f := &factoryFake{}
 	a := factoryVerbLab(t, f)
 	seam, _, chat := talkSeam(t, f)
-	a.factory = seam
+	a.factory = factoryTestSeam(t, seam)
 	a.open = func(where, file string) (Conversation, error) {
 		agent := &rewindFake{fakeAgent: &fakeAgent{model: "m", past: rewindPast()}}
 		return Conversation{Agent: agent, SessionFile: file, Workspace: where}, nil
@@ -247,7 +247,7 @@ func TestFactoryEnterOnTheIssueRowOpensTheItemsConversation(t *testing.T) {
 	f := &factoryFake{}
 	a := factoryVerbLab(t, f)
 	seam, made, chat := talkSeam(t, f)
-	a.factory = seam
+	a.factory = factoryTestSeam(t, seam)
 	var opened string
 	a.open = func(where, file string) (Conversation, error) {
 		opened = file
@@ -287,7 +287,7 @@ func TestFactoryEnterOnARoomStillOpensTheRoomWithATalkDoor(t *testing.T) {
 	factoryShapeItem(f, 2, func(it *factory.Item) { it.Stream.Phases[0].Chat = room })
 	a := factoryVerbLab(t, f)
 	seam, made, _ := talkSeam(t, f)
-	a.factory = seam
+	a.factory = factoryTestSeam(t, seam)
 	var opened string
 	a.open = func(where, file string) (Conversation, error) {
 		opened = file

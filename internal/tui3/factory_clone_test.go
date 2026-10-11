@@ -51,7 +51,7 @@ func (c *cloneFake) seam() factory.Seam {
 func cloneLab(t *testing.T, c *cloneFake) *app {
 	t.Helper()
 	a := placeApp(t)
-	a.factory = c.seam()
+	a.factory = factoryTestSeam(t, c.seam())
 	a.width, a.height = 150, 44
 	if cmd := a.showPage(pageFactory); cmd != nil {
 		drive(t, a, runCmd(cmd)...)
@@ -175,7 +175,7 @@ func TestFactoryPickerSaysCloneOnFirstRun(t *testing.T) {
 	a := factorySettingsLab(t, f, 150)
 	clone := a.factory
 	clone.Clone = func(ctx context.Context, repo string) (string, error) { return "", nil }
-	a.factory = clone
+	a.factory = factoryTestSeam(t, clone)
 	drive(t, a, key("R"))
 	body := strings.Join(factoryExactBody(t, a, 150, 30), "\n")
 	for _, want := range []string{"here", factoryPickCloneWords} {

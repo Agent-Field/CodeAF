@@ -106,7 +106,7 @@ func (f *factorySettingsFake) seam() factory.Seam {
 func factorySettingsLab(t *testing.T, f *factorySettingsFake, width int) *app {
 	t.Helper()
 	a := placeApp(t)
-	a.factory = f.seam()
+	a.factory = factoryTestSeam(t, f.seam())
 	a.width, a.height = width, 40
 	if cmd := a.showPage(pageFactory); cmd != nil {
 		drive(t, a, runCmd(cmd)...)
@@ -671,7 +671,7 @@ func TestSettingsGitHubRowReadsTheLinkAndConnects(t *testing.T) {
 	f := newSettingsFake()
 	f.ghLogin = "santoshkumarradha"
 	a := placeApp(t)
-	a.factory = f.seam()
+	a.factory = factoryTestSeam(t, f.seam())
 	a.width, a.height = 120, 40
 	if cmd := a.showPage(pageSettings); cmd != nil {
 		drive(t, a, runCmd(cmd)...)

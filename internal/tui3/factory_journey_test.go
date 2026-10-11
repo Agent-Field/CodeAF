@@ -136,7 +136,7 @@ func journeyHostLab(t *testing.T) (*app, *factoryFake, *fakeAgent, string) {
 	a.height = 60
 	seam := a.factory
 	seam.Talk = func(_ context.Context, id int) (string, error) { return chat, f.rec("Talk", id) }
-	a.factory = seam
+	a.factory = factoryTestSeam(t, seam)
 	agent := &fakeAgent{model: "deepseek/deepseek-v4-flash"}
 	a.open = func(where, file string) (Conversation, error) {
 		return Conversation{Agent: agent, SessionFile: file, Workspace: where}, nil
@@ -222,7 +222,7 @@ func TestFactoryTheControlSendsItsIntent(t *testing.T) {
 	a := factoryVerbsLab(t, f, 150)
 	seam := a.factory
 	seam.Hold = func(id int, on bool) error { return f.rec("Hold", id, on) }
-	a.factory = seam
+	a.factory = factoryTestSeam(t, seam)
 	factoryVerbsOpen(t, a, 2)
 	f.said()
 	drive(t, a, factoryKeyPress(keyControl), factoryKeyPress(keyControl))
@@ -244,7 +244,7 @@ func TestFactoryTheControlSendsItsIntent(t *testing.T) {
 	b := factoryVerbsLab(t, g, 150)
 	seam = b.factory
 	seam.Hold = func(id int, on bool) error { return g.rec("Hold", id, on) }
-	b.factory = seam
+	b.factory = factoryTestSeam(t, seam)
 	factoryVerbsOpen(t, b, 3)
 	g.said()
 	drive(t, b, factoryKeyPress(keyControl))
