@@ -116,7 +116,12 @@ func Fixture(now time.Time) Snapshot {
 	}
 	items[1].HeadCommit = "1111111111111111111111111111111111111111"
 	items[9].HeadCommit = "2222222222222222222222222222222222222222"
-	items[9].PullRequest = &PullRequest{Number: 1664, URL: "https://github.com/agentfield/codeaf/pull/1664"}
+	items[9].PullRequest = &PullRequest{
+		Number: 1664, URL: "https://github.com/agentfield/codeaf/pull/1664", State: PRMerged,
+		MergedBy: "mei", MergedAt: h(2), ReviewDecision: "approved", Required: 1, CI: "ci ✓",
+		Reviews: []PRReview{{By: "mei", State: "approved", At: h(3)}},
+		Checks:  PRChecks{Passed: 12},
+	}
 	items[9].PublishStatus = &Publishing{State: "opened", PR: &PublishedPR{Number: 1664, URL: items[9].PullRequest.URL}, Attempt: 1, At: h(6)}
 	items[1].Thread = []Message{{ID: "line_fixture", From: "manager", Text: "The filter ordering fix is in progress.", At: m(2)}}
 	items[1].AnsweredQuestions = []Question{{Text: "Keep the current filter?", Kind: "scope", State: "answered", Answer: &Answer{By: "santosh", Text: "yes", At: m(5), Event: "evt_fixture"}}}
@@ -131,7 +136,7 @@ func Fixture(now time.Time) Snapshot {
 		Benches: 6,
 		Daily:   11.31,
 		Rail:    60,
-		Shift:   Shift{Since: h(8), Shipped: 1, Arrived: 4, Asked: 1, Handled: 0, Spent: 8.44, SpentToday: 7.07, Hours: hours, Shipping: []string{"#1663"}},
+		Shift:   Shift{Since: h(8), Shipped: 1, Arrived: 4, Asked: 1, Handled: 0, Spent: 8.44, SpentToday: 7.07, MergedToday: 1, MergedWeek: 1, Hours: hours, Shipping: []string{"#1663"}},
 		Sources: []SourceInfo{{Name: "github", Writes: true, Polled: now.Add(-14 * time.Second)}, {Name: string(OriginChat)}},
 	}
 }

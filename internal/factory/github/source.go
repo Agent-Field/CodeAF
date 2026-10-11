@@ -1,7 +1,9 @@
 // Package github is the factory's GitHub source: the open issues and pull
 // requests of the repositories a person chose to watch, read as floor items,
-// and the four outward moves a post stage may one day make on them. It fills
-// [factory.Source] and nothing more; the floor never learns a vendor.
+// and the four outward moves a post stage may one day make on them. A pull
+// request this factory opened is read again on each poll, including once
+// GitHub has merged or closed it, because the open list no longer carries it.
+// It fills [factory.Source] and nothing more; the floor never learns a vendor.
 //
 // IT READS FOR NOTHING WHEN NOTHING CHANGED. Every list is asked with the ETag
 // its last answer carried, kept in memory per list, and GitHub answers an

@@ -63,7 +63,37 @@ func shiftSince(items []Item, started, now time.Time) Shift {
 			sh.Spent += it.Stream.Spent
 		}
 	}
+	sh.MergedToday, sh.MergedWeek = MergedCounts(items, now)
 	return sh
+}
+
+// MergedCounts is how many pull requests this factory opened that GitHub has
+// merged, by merged_at: today, and this calendar week starting Monday, both
+// in now's location. A merge with no time is not counted. A future time is
+// not counted.
+func MergedCounts(items []Item, now time.Time) (today, week int) {
+	if now.IsZero() {
+		return 0, 0
+	}
+	loc := now.Location()
+	y, m, d := now.In(loc).Date()
+	day := time.Date(y, m, d, 0, 0, 0, 0, loc)
+	weekStart := day.AddDate(0, 0, -((int(day.Weekday()) + 6) % 7))
+	for _, it := range items {
+		pr := it.PullRequest
+		if pr == nil || pr.State != PRMerged || pr.MergedAt.IsZero() {
+			continue
+		}
+		at := pr.MergedAt.In(loc)
+		if at.After(now) || at.Before(weekStart) {
+			continue
+		}
+		week++
+		if !at.Before(day) {
+			today++
+		}
+	}
+	return today, week
 }
 
 func (sh *Shift) noteHour(t, now time.Time) {

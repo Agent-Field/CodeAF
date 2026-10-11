@@ -1501,6 +1501,8 @@ The factory reads open issues and open pull requests from the GitHub repositorie
   `github · not reachable` (or `token refused`, `repository not found`).
 - **Nothing is ever written to GitHub by itself.** The poll only reads: no comment, label,
   close or pull request is made by it.
+- **Pull requests the factory opened are read again** on that same poll, including after
+  they merge or close. See following a pull request.
 
 ## after connecting github — I watched repos but the factory is empty, I selected repositories but see no issues and nothing loading
 
@@ -2107,7 +2109,8 @@ writes the receipt only after the answer door accepts. A refused door leaves no
 Jobs and queue rows carry optional `publishing` with `state` (`queued`, `pushing`,
 `opened`, `failed`), `code`, `detail`, `pr: {number,url}`, `attempt`, and `at`.
 An attempt starts at 1 and increases on retry. `opened` means the PR was opened
-or the proof comment was posted; it does not mean merged. The existing
+or the proof comment was posted. Whether that pull request is still open, merged
+or closed is `pr.state`, read on later polls (see following a pull request). The existing
 `desk.publishing` boolean remains available.
 
 A failed publish is in Needs you with `gate: "publish_failed"`; an app draws it
@@ -2120,6 +2123,32 @@ the previous publishing outcome and opens fresh proof. A failed publish can be
 run again when its failure code calls for rebuilding the work. When the holding machine
 is away, publishing stays `queued` with `code: "machine_offline"`; it waits for
 that machine to return, keeping the approval.
+
+## following a pull request — open, merged, closed, reviews and checks
+
+After the factory opens a pull request, or posts proof on one, every GitHub poll
+reads that pull request again. The open list drops it once it merges or closes,
+so this read is separate. A comment-only publish has `pr: null` and is not followed.
+
+The job stays `done`. That means the factory published. It is not a new job state.
+`pr.state` is where the pull request is, which is what the design calls PR open
+and Merged:
+
+- `open` — still open. The design calls this PR open.
+- `merged` — someone merged it. The design calls this Merged. `merged_by` is the
+  login and `merged_at` is when.
+- `closed` — closed without a merge.
+
+`pr` also carries `draft`, `review_decision` (`approved`, `changes_requested` or
+`review_required`), `reviews` (each `by`, `state`, `at`), `required_reviews` (how
+many approving reviews the base branch asks for; absent when it asks for none)
+and `checks` (`passed`, `failed`, `pending`). `pr.ci` stays the short line
+(`ci ✓`, `ci running`, `ci ✕`). A zero check count is left off.
+
+The first poll that sees `merged` or `closed` appends `pr_merged` or `pr_closed`
+to the record, with detail `pr · <url>`. A later poll that sees the same state
+does not write it again. The queue's `since.merged_today` and `since.merged_week`
+count merged pull requests, today and this week from Monday. Contract stays 1.
 
 ## factory publish failure codes and next steps
 

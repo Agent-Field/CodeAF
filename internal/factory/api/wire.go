@@ -71,15 +71,17 @@ type QueueDesk struct {
 // SpentToday is the runner's figure for the calendar day, which is not Spent:
 // Spent counts only what began during this shift.
 type Since struct {
-	At         time.Time `json:"at"`
-	Shipped    int       `json:"shipped"`
-	Arrived    int       `json:"arrived"`
-	Asked      int       `json:"asked"`
-	Handled    int       `json:"handled"`
-	Spent      float64   `json:"spent"`
-	SpentToday float64   `json:"spent_today"`
-	Hours      [24]int   `json:"hours"`
-	Shipping   []string  `json:"shipping,omitempty"`
+	At          time.Time `json:"at"`
+	Shipped     int       `json:"shipped"`
+	Arrived     int       `json:"arrived"`
+	Asked       int       `json:"asked"`
+	Handled     int       `json:"handled"`
+	Spent       float64   `json:"spent"`
+	SpentToday  float64   `json:"spent_today"`
+	MergedToday int       `json:"merged_today"`
+	MergedWeek  int       `json:"merged_week"`
+	Hours       [24]int   `json:"hours"`
+	Shipping    []string  `json:"shipping,omitempty"`
 }
 
 // Cell is one chip of the pipeline strip: a step with jobs in it, and whether
@@ -455,12 +457,36 @@ type Expect struct {
 // Answer preserves who answered, when, and the factory event.
 type Answer = factory.Answer
 
-// PR is the pull request a job opened.
+// PR is the pull request a job opened. State is open, merged or closed once
+// a poll has read it again. Empty state is a receipt from before that read.
+// The job's state stays done; this field is how a reader tells PR open from
+// Merged. Contract stays 1.
 type PR struct {
-	Draft  bool   `json:"draft"`
-	Number int    `json:"number"`
-	URL    string `json:"url"`
-	CI     string `json:"ci,omitempty"`
+	Draft           bool       `json:"draft"`
+	Number          int        `json:"number"`
+	URL             string     `json:"url"`
+	CI              string     `json:"ci,omitempty"`
+	State           string     `json:"state,omitempty"`
+	MergedBy        string     `json:"merged_by,omitempty"`
+	MergedAt        *time.Time `json:"merged_at,omitempty"`
+	ReviewDecision  string     `json:"review_decision,omitempty"`
+	Reviews         []PRReview `json:"reviews,omitempty"`
+	RequiredReviews int        `json:"required_reviews,omitempty"`
+	Checks          *PRChecks  `json:"checks,omitempty"`
+}
+
+// PRReview is one review on a pull request the factory opened.
+type PRReview struct {
+	By    string    `json:"by"`
+	State string    `json:"state"`
+	At    time.Time `json:"at"`
+}
+
+// PRChecks is the check-run summary. A zero count is omitted.
+type PRChecks struct {
+	Passed  int `json:"passed,omitempty"`
+	Failed  int `json:"failed,omitempty"`
+	Pending int `json:"pending,omitempty"`
 }
 
 // Triage is the cheap read made on arrival (desk; never shown as risk on the

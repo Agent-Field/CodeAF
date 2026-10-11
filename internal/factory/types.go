@@ -310,13 +310,46 @@ type Claim struct {
 	Medium   string // test · screenshot · transcript · benchmark · policy
 }
 
+// Pull-request states the factory records after it opens one. THE JOB'S OWN
+// STATE STAYS shipped, which the wire calls done. These words ride on the
+// pull request, so PR open and Merged need no new job state. Contract stays 1.
+const (
+	PROpen   = "open"
+	PRMerged = "merged"
+	PRClosed = "closed"
+)
+
+// PRReview is one review on a pull request the factory opened.
+type PRReview struct {
+	By    string
+	State string
+	At    time.Time
+}
+
+// PRChecks is how that pull request's check runs add up. A zero count is
+// left off the wire: it is not a claim that nothing passed.
+type PRChecks struct {
+	Passed  int
+	Failed  int
+	Pending int
+}
+
 // PullRequest keeps the published work separate from the source issue, so
 // reporting its receipt never changes the identity of the job being run.
+// State, the merge, the reviews and the check summary are filled when a
+// later poll reads the pull request again.
 type PullRequest struct {
-	Draft  bool
-	Number int
-	URL    string
-	CI     string
+	Draft          bool
+	Number         int
+	URL            string
+	CI             string
+	State          string
+	MergedBy       string
+	MergedAt       time.Time
+	ReviewDecision string
+	Reviews        []PRReview
+	Required       int
+	Checks         PRChecks
 }
 
 // Item is one row on the floor.
@@ -554,15 +587,17 @@ func itoa(n int) string {
 // Shift is the handover: what happened since the person last looked.
 // SpentToday is the runner's day figure ([DaySpend]), separate from Spent.
 type Shift struct {
-	Since      time.Time
-	Shipped    int
-	Arrived    int
-	Asked      int
-	Handled    int
-	Spent      float64
-	SpentToday float64
-	Hours      [24]int
-	Shipping   []string
+	Since       time.Time
+	Shipped     int
+	Arrived     int
+	Asked       int
+	Handled     int
+	Spent       float64
+	SpentToday  float64
+	MergedToday int
+	MergedWeek  int
+	Hours       [24]int
+	Shipping    []string
 }
 
 // Snapshot is everything a frame needs, copied off the loop. A frame reads

@@ -101,9 +101,7 @@ func FromItem(it factory.Item) Job {
 		draft := it.Draft
 		j.Draft = &draft
 	}
-	if pr := it.PullRequest; pr != nil {
-		j.PR = &PR{Number: pr.Number, URL: pr.URL, CI: pr.CI, Draft: pr.Draft}
-	}
+	j.PR = fromPR(it.PullRequest)
 	if j.State == "" {
 		j.State = string(it.State)
 	}
@@ -218,9 +216,7 @@ func ToItem(j Job) factory.Item {
 		CheckRuns: mapList(d.CheckRuns, toCheckRun), Base: d.Base, Head: d.Head, HeadSHA: d.HeadSHA,
 		Activity: mapList(d.Activity, toActivity),
 	}
-	if pr := j.PR; pr != nil {
-		it.PullRequest = &factory.PullRequest{Number: pr.Number, URL: pr.URL, CI: pr.CI, Draft: pr.Draft}
-	}
+	it.PullRequest = toPR(j.PR)
 	if j.Draft != nil {
 		it.Draft = *j.Draft
 	}
@@ -305,11 +301,55 @@ func mapList[A, B any](in []A, f func(A) B) []B {
 }
 
 func fromShift(s factory.Shift) Since {
-	return Since{At: s.Since, Shipped: s.Shipped, Arrived: s.Arrived, Asked: s.Asked, Handled: s.Handled, Spent: s.Spent, SpentToday: s.SpentToday, Hours: s.Hours, Shipping: s.Shipping}
+	return Since{At: s.Since, Shipped: s.Shipped, Arrived: s.Arrived, Asked: s.Asked, Handled: s.Handled, Spent: s.Spent, SpentToday: s.SpentToday, MergedToday: s.MergedToday, MergedWeek: s.MergedWeek, Hours: s.Hours, Shipping: s.Shipping}
 }
 
 func toShift(s Since) factory.Shift {
-	return factory.Shift{Since: s.At, Shipped: s.Shipped, Arrived: s.Arrived, Asked: s.Asked, Handled: s.Handled, Spent: s.Spent, SpentToday: s.SpentToday, Hours: s.Hours, Shipping: s.Shipping}
+	return factory.Shift{Since: s.At, Shipped: s.Shipped, Arrived: s.Arrived, Asked: s.Asked, Handled: s.Handled, Spent: s.Spent, SpentToday: s.SpentToday, MergedToday: s.MergedToday, MergedWeek: s.MergedWeek, Hours: s.Hours, Shipping: s.Shipping}
+}
+
+// fromPR is a published pull request on the wire. Nil stays nil so a comment
+// receipt is JSON null, which is the field a client already reads.
+func fromPR(pr *factory.PullRequest) *PR {
+	if pr == nil {
+		return nil
+	}
+	out := &PR{
+		Draft: pr.Draft, Number: pr.Number, URL: pr.URL, CI: pr.CI, State: pr.State,
+		MergedBy: pr.MergedBy, ReviewDecision: pr.ReviewDecision, RequiredReviews: pr.Required,
+		Reviews: mapList(pr.Reviews, func(r factory.PRReview) PRReview {
+			return PRReview{By: r.By, State: r.State, At: r.At}
+		}),
+	}
+	if !pr.MergedAt.IsZero() {
+		at := pr.MergedAt
+		out.MergedAt = &at
+	}
+	if pr.Checks != (factory.PRChecks{}) {
+		c := pr.Checks
+		out.Checks = &PRChecks{Passed: c.Passed, Failed: c.Failed, Pending: c.Pending}
+	}
+	return out
+}
+
+func toPR(pr *PR) *factory.PullRequest {
+	if pr == nil {
+		return nil
+	}
+	out := &factory.PullRequest{
+		Draft: pr.Draft, Number: pr.Number, URL: pr.URL, CI: pr.CI, State: pr.State,
+		MergedBy: pr.MergedBy, ReviewDecision: pr.ReviewDecision, Required: pr.RequiredReviews,
+		Reviews: mapList(pr.Reviews, func(r PRReview) factory.PRReview {
+			return factory.PRReview{By: r.By, State: r.State, At: r.At}
+		}),
+	}
+	if pr.MergedAt != nil {
+		out.MergedAt = *pr.MergedAt
+	}
+	if pr.Checks != nil {
+		out.Checks = factory.PRChecks{Passed: pr.Checks.Passed, Failed: pr.Checks.Failed, Pending: pr.Checks.Pending}
+	}
+	return out
 }
 
 func fromSource(s factory.SourceInfo) Source {

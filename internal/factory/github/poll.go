@@ -164,6 +164,12 @@ func PollOnce(ctx context.Context, src factory.Source, st *store.Store, cursor s
 		meta.Trouble = TroubleWords(readErr)
 	}
 	_ = st.SetSourceMeta(src.Name(), meta)
+	// FOLLOW-UP IS ITS OWN READ. A merged or closed pull request is gone from
+	// the open list, so the list's error does not skip it, and a miss here
+	// waits for the next tick instead of marking the whole poll failed.
+	if ctx.Err() == nil {
+		_ = followOpened(ctx, src, st)
+	}
 	if readErr != nil {
 		return next, readErr
 	}

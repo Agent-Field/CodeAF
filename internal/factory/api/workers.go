@@ -98,9 +98,7 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 		out.Question = &factory.Asked{Stage: q.FromStep, Question: q.Text, Options: q.Options, Pick: q.Pick, Why: q.Why}
 		out.QuestionKind = q.Kind
 	}
-	if pr := r.PR; pr != nil {
-		out.PR = &factory.PullRequest{Number: pr.Number, URL: pr.URL, CI: pr.CI, Draft: pr.Draft}
-	}
+	out.PR = toPR(r.PR)
 	return out
 }
 
@@ -123,9 +121,7 @@ func FromRunReport(r factory.RunReport) WorkerReport {
 	if q := r.Question; q != nil {
 		out.Question = &Question{FromStep: q.Stage, Text: q.Question, Options: q.Options, Pick: q.Pick, Why: q.Why, Kind: r.QuestionKind}
 	}
-	if pr := r.PR; pr != nil {
-		out.PR = &PR{Number: pr.Number, URL: pr.URL, CI: pr.CI, Draft: pr.Draft}
-	}
+	out.PR = fromPR(r.PR)
 	return out
 }
 

@@ -26,6 +26,13 @@ type memAPI struct {
 	down     map[string]bool
 	comments int
 	details  int
+	// followed is a pull request the factory opened, including one GitHub
+	// would leave off the open list. reviews, required and runs are what
+	// follow-up reads for it.
+	followed map[string]forge.Pull
+	reviews  map[string][]forge.Review
+	required map[string]int
+	runs     map[string][]forge.CheckRun
 	// listed, when set, is told each repository whose issues are asked for,
 	// before the answer.
 	listed func(full string)
@@ -81,6 +88,9 @@ func (m *memAPI) Pull(_ context.Context, owner, repo string, number int) (forge.
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.details++
+	if p, ok := m.followed[fmt.Sprintf("%s/%s#%d", owner, repo, number)]; ok {
+		return p, nil
+	}
 	for _, p := range m.pulls[owner+"/"+repo] {
 		if p.Number == number {
 			p.Additions, p.Deletions, p.Files, p.Comments = 10, 2, 1, 2
@@ -98,8 +108,41 @@ func (m *memAPI) Permission(context.Context, string, string, string) (string, er
 	return "read", nil
 }
 
-func (m *memAPI) CheckRuns(context.Context, string, string, string) (forge.CheckState, []forge.CheckRun, error) {
+func (m *memAPI) CheckRuns(_ context.Context, _, _, sha string) (forge.CheckState, []forge.CheckRun, error) {
+	if runs, ok := m.runs[sha]; ok {
+		failed, pending := false, false
+		for _, r := range runs {
+			if r.Status != "completed" {
+				pending = true
+				continue
+			}
+			switch r.Conclusion {
+			case "failure", "timed_out", "cancelled", "action_required", "startup_failure":
+				failed = true
+			}
+		}
+		switch {
+		case failed:
+			return forge.ChecksFailed, runs, nil
+		case pending:
+			return forge.ChecksRunning, runs, nil
+		default:
+			return forge.ChecksPassed, runs, nil
+		}
+	}
 	return forge.ChecksPassed, []forge.CheckRun{{Name: "build", Status: "completed", Conclusion: "success"}}, nil
+}
+
+func (m *memAPI) Reviews(_ context.Context, owner, repo string, number int) ([]forge.Review, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]forge.Review(nil), m.reviews[fmt.Sprintf("%s/%s#%d", owner, repo, number)]...), nil
+}
+
+func (m *memAPI) RequiredReviews(_ context.Context, owner, repo, branch string) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.required[owner+"/"+repo+"|"+branch], nil
 }
 
 func (m *memAPI) IssueComments(_ context.Context, _, _ string, number, count, most int) ([]forge.Comment, error) {

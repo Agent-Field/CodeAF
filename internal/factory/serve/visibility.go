@@ -326,6 +326,8 @@ func narrowView(s factory.Snapshot, allow map[string]bool) factory.Snapshot {
 	out.Repos = repos
 	out.Daily = daily
 	out.Shift = factory.Shift{Since: s.Shift.Since}
+	today, week := factory.MergedCounts(items, s.Now)
+	out.Shift.MergedToday, out.Shift.MergedWeek = today, week
 	out.BusyAll = ""
 	out.LastReadCost = 0
 	if s.Busy != nil {

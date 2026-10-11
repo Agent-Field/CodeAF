@@ -91,6 +91,20 @@ type Pull struct {
 	// Comments is how many issue comments the pull request has; like the line
 	// counts, only [client.Pull] fills it, because the list leaves it out.
 	Comments int
+	// State is GitHub's word, open or closed. Merged, MergedBy and MergedAt
+	// say a closed pull request was merged; the list of open pull requests
+	// leaves them unset.
+	State    string
+	Merged   bool
+	MergedBy string
+	MergedAt time.Time
+}
+
+// Review is one submitted review on a pull request.
+type Review struct {
+	User  string
+	State string
+	At    time.Time
 }
 
 // RepoInfo is one repository a token can see, for the picker.
@@ -161,10 +175,14 @@ type pullJSON struct {
 	Base struct {
 		Ref string `json:"ref"`
 	} `json:"base"`
-	Additions    int `json:"additions"`
-	Deletions    int `json:"deletions"`
-	ChangedFiles int `json:"changed_files"`
-	Comments     int `json:"comments"`
+	Additions    int        `json:"additions"`
+	Deletions    int        `json:"deletions"`
+	ChangedFiles int        `json:"changed_files"`
+	Comments     int        `json:"comments"`
+	State        string     `json:"state"`
+	Merged       bool       `json:"merged"`
+	MergedAt     *time.Time `json:"merged_at"`
+	MergedBy     *userJSON  `json:"merged_by"`
 }
 
 func labelNames(in []labelJSON) []string {
@@ -195,14 +213,21 @@ func (p pullJSON) pull() Pull {
 	if p.Head.Repo != nil {
 		headRepo = p.Head.Repo.FullName
 	}
-	return Pull{
+	out := Pull{
 		Base: p.Base.Ref, Head: p.Head.Ref, HeadRepo: headRepo,
 		Number: p.Number, Title: p.Title, Body: deref(p.Body), User: p.User.Login,
 		Labels: labelNames(p.Labels), Created: p.CreatedAt, Updated: p.UpdatedAt,
 		URL: p.HTMLURL, HeadSHA: p.Head.SHA, Draft: p.Draft,
 		Additions: p.Additions, Deletions: p.Deletions, Files: p.ChangedFiles,
-		Comments: p.Comments,
+		Comments: p.Comments, State: p.State, Merged: p.Merged,
 	}
+	if p.MergedBy != nil {
+		out.MergedBy = p.MergedBy.Login
+	}
+	if p.MergedAt != nil {
+		out.MergedAt = *p.MergedAt
+	}
+	return out
 }
 
 // retryAfter reads how long GitHub asked to be left alone: Retry-After in
@@ -396,6 +421,62 @@ func (c *client) Pull(ctx context.Context, owner, repo string, number int) (Pull
 		return Pull{}, err
 	}
 	return p.pull(), nil
+}
+
+// Reviews lists the submitted reviews on one pull request, oldest first, one
+// page. A pull request with more than a hundred reviews keeps the first
+// hundred GitHub returns.
+func (c *client) Reviews(ctx context.Context, owner, repo string, number int) ([]Review, error) {
+	body, _, err := c.read(ctx, c.repoURL(owner, repo, "/pulls/"+strconv.Itoa(number)+"/reviews?per_page=100"), "")
+	if err != nil {
+		return nil, err
+	}
+	var rows []struct {
+		User        userJSON  `json:"user"`
+		State       string    `json:"state"`
+		SubmittedAt time.Time `json:"submitted_at"`
+	}
+	if err := json.Unmarshal(body, &rows); err != nil {
+		return nil, err
+	}
+	out := make([]Review, 0, len(rows))
+	for _, r := range rows {
+		if r.User.Login == "" && r.State == "" {
+			continue
+		}
+		out = append(out, Review{User: r.User.Login, State: r.State, At: r.SubmittedAt})
+	}
+	return out, nil
+}
+
+// RequiredReviews is how many approving reviews the branch asks for. A branch
+// with no protection, or a token that may not read it, asks for none: that
+// is an answer, and follow-up still records a merge.
+func (c *client) RequiredReviews(ctx context.Context, owner, repo, branch string) (int, error) {
+	branch = strings.TrimSpace(branch)
+	if branch == "" {
+		return 0, nil
+	}
+	body, _, err := c.read(ctx, c.repoURL(owner, repo, "/branches/"+url.PathEscape(branch)+"/protection"), "")
+	if err != nil {
+		var apiErr *APIError
+		if errors.As(err, &apiErr) && (apiErr.StatusCode == http.StatusNotFound || apiErr.StatusCode == http.StatusForbidden) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	var prot struct {
+		RequiredPullRequestReviews *struct {
+			RequiredApprovingReviewCount int `json:"required_approving_review_count"`
+		} `json:"required_pull_request_reviews"`
+	}
+	if err := json.Unmarshal(body, &prot); err != nil {
+		return 0, err
+	}
+	if prot.RequiredPullRequestReviews == nil {
+		return 0, nil
+	}
+	return prot.RequiredPullRequestReviews.RequiredApprovingReviewCount, nil
 }
 
 // Permission is user's standing on owner/repo: admin, maintain, write,

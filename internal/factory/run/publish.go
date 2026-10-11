@@ -217,7 +217,7 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 		if url == "" {
 			url = rcpt.URL
 		}
-		return published{pr: &factory.PullRequest{Number: it.Num, URL: url, Draft: it.Draft}}, nil
+		return published{pr: &factory.PullRequest{Number: it.Num, URL: url, Draft: it.Draft, State: factory.PROpen}}, nil
 	}
 	if r.opts.Workdir == nil {
 		return published{}, publish.Wrap(fmt.Errorf("codeaf does not know where %s is checked out", it.Ref()), "worktree")
@@ -288,7 +288,7 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 	if n <= 0 || strings.TrimSpace(rcpt.URL) == "" {
 		return published{}, fmt.Errorf("the source opened no pull request it could name")
 	}
-	return published{pr: &factory.PullRequest{Number: n, URL: rcpt.URL}}, nil
+	return published{pr: &factory.PullRequest{Number: n, URL: rcpt.URL, State: factory.PROpen}}, nil
 }
 
 // commitApproved commits everything the job left in its worktree as one
