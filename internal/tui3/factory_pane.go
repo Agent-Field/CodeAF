@@ -601,6 +601,9 @@ func (a *app) factoryPeekState(it factory.Item, measure int) string {
 			return pal.muted(fit(line, measure))
 		}
 	case factory.StateQueued:
+		if word := it.WorkState(); word != "" {
+			return pal.dim(fit(word, measure))
+		}
 		return pal.dim(fit("queued · benches full · a bench frees it", measure))
 	case factory.StateShipped:
 		if line := factoryMergedLine(it); line != "" {

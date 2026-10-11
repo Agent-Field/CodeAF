@@ -2,6 +2,7 @@ package worker_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,8 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/client"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 )
@@ -96,6 +99,33 @@ func TestApprovingTheProofPublishesThePullRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	landed := g.waitFor(t, id, factory.StateLanded)
+	if landed.WorktreeMachine != "laptop" {
+		t.Fatalf("worktree machine was not reported to the floor: %q", landed.WorktreeMachine)
+	}
+	// A second online machine continuously pulls through approval. It has
+	// no worktree and must receive no execution, even between worker slots.
+	other := client.Open(g.base, "").Worker("")
+	if _, err := other.Attach(context.Background(), api.WorkerAttach{Machine: "desktop", Name: "desktop (pid 123)", Handle: "me", TakesUnassigned: map[string]bool{"*": true}}); err != nil {
+		t.Fatal(err)
+	}
+	pollCtx, stopPoll := context.WithCancel(context.Background())
+	pollDone := make(chan error, 1)
+	go func() {
+		for pollCtx.Err() == nil {
+			pulled, ok, err := other.Pull(pollCtx)
+			if ok || (err != nil && pollCtx.Err() == nil) {
+				pollDone <- fmt.Errorf("desktop pull = %+v, taken %v, error %v", pulled, ok, err)
+				return
+			}
+		}
+		pollDone <- nil
+	}()
+	t.Cleanup(func() {
+		stopPoll()
+		if err := <-pollDone; err != nil {
+			t.Error(err)
+		}
+	})
 	// The job's work, left in its worktree as a stage leaves it.
 	if err := os.WriteFile(filepath.Join(workdirs.Dir(landed), "ledger.go"), []byte("package ledger\n\nconst fixed = true\n"), 0o600); err != nil {
 		t.Fatal(err)

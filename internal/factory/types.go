@@ -335,9 +335,15 @@ type Item struct {
 	Created time.Time
 	Changed time.Time
 	State   State
-	Triage  Triage
-	Stages  []Stage // the item's copy of the recipe, toggled
-	Cap     float64
+	// WorktreeMachine keeps resumed runs and publishing beside the files the
+	// first worker made, even after its lease expires or the factory restarts.
+	WorktreeMachine string `json:",omitempty"`
+	// Publishing lasts from recorded approval until the publisher reports its
+	// outcome, so the surface cannot say shipped before the pull request exists.
+	Publishing bool `json:",omitempty"`
+	Triage     Triage
+	Stages     []Stage // the item's copy of the recipe, toggled
+	Cap        float64
 
 	// Assignee is the forge's person; Taker and Starter keep the person who
 	// took or started otherwise unassigned work. Author is never ownership:
@@ -607,3 +613,19 @@ const (
 	AskedManager = "manager"
 	AskedYou     = "you"
 )
+
+// WorkState names execution that is waiting for its files or carrying an
+// approval out. A queued job stays on its machine even while it is offline.
+func (it Item) WorkState() string {
+	if it.State == StateQueued && it.WorktreeMachine != "" {
+		word := "waiting for " + it.WorktreeMachine
+		if it.Publishing {
+			return "publishing · " + word
+		}
+		return word
+	}
+	if it.Publishing {
+		return "publishing"
+	}
+	return ""
+}

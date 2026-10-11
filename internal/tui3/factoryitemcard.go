@@ -251,6 +251,9 @@ func factoryItemFacts(it factory.Item) string {
 // factoryItemState is where the item stands, painted: the left of the second
 // row.
 func (a *app) factoryItemState(it factory.Item) string {
+	if word := it.WorkState(); word != "" {
+		return a.pal.muted(word)
+	}
 	pal := a.pal
 	switch it.State {
 	case factory.StateRunning:

@@ -696,11 +696,17 @@ func (a *app) factorySignOff(it factory.Item, edited bool) tea.Cmd {
 		if err != nil {
 			return
 		}
-		if edited {
-			a.factorySay(it.Ref() + " shipped with changes")
-		} else {
-			a.factorySay(it.Ref() + " shipped")
+		word := "publishing"
+		for _, current := range a.fp.snap.Items {
+			if current.ID == id && current.State == factory.StateShipped {
+				word = "shipped"
+				break
+			}
 		}
+		if edited {
+			word += " with changes"
+		}
+		a.factorySay(it.Ref() + " " + word)
 		if due && a.factory.Has("bank") {
 			a.fp.act.habit = repo
 		}

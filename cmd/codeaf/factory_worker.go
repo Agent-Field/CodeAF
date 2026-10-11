@@ -91,7 +91,8 @@ func readFactoryWorkerCreds() map[string][]string {
 // machine on a loopback factory takes every job; on a factory elsewhere it
 // takes unassigned work only for the repositories it has a checkout of.
 func (d *factoryWorkerDial) attach() api.WorkerAttach {
-	name, _ := os.Hostname()
+	machine, _ := os.Hostname()
+	name := machine
 	a, attached := readFactoryAttachment()
 	if attached && a.Name != "" {
 		name = a.Name
@@ -105,7 +106,7 @@ func (d *factoryWorkerDial) attach() api.WorkerAttach {
 			}
 		}
 	}
-	return api.WorkerAttach{Name: name + " (pid " + strconv.Itoa(os.Getpid()) + ")", Handle: factoryHandle(), TakesUnassigned: takes}
+	return api.WorkerAttach{Machine: machine, Name: name + " (pid " + strconv.Itoa(os.Getpid()) + ")", Handle: factoryHandle(), TakesUnassigned: takes}
 }
 
 // factoryHandle is the person this machine works for: the account it runs

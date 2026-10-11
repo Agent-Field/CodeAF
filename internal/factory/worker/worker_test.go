@@ -3,6 +3,8 @@ package worker_test
 import (
 	"context"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -22,6 +24,7 @@ import (
 // rig is a factory over loopback whose runner doors are the lease's, and one
 // worker with a real Runner whose only executor is the check: no model.
 type rig struct {
+	base  string
 	st    *store.Store
 	floor factory.Seam // the floor as any window reaches it: over HTTP
 	doors factory.Seam // the server's own seam, past the record's approval binding
@@ -90,7 +93,7 @@ func newRigWith(t *testing.T, keepLocal func(string, api.WorkerLease), tune func
 				defer mu.Unlock()
 				creds[slot] = w.Credential()
 			},
-			Attach:      api.WorkerAttach{Name: "laptop", Handle: "me", TakesUnassigned: map[string]bool{lease.EveryRepo: true}},
+			Attach:      api.WorkerAttach{Machine: "laptop", Name: "laptop (pid 123)", Handle: "me", TakesUnassigned: map[string]bool{lease.EveryRepo: true}},
 			Runner:      r,
 			Mirror:      mirror,
 			LocalLease:  keepLocal,
@@ -100,7 +103,7 @@ func newRigWith(t *testing.T, keepLocal func(string, api.WorkerLease), tune func
 		})
 	}()
 	t.Cleanup(func() { cancel(); <-done })
-	return rig{st: st, floor: client.Open(server.URL, "").Seam(), doors: seam, run: r, record: history}
+	return rig{base: server.URL, st: st, floor: client.Open(server.URL, "").Seam(), doors: seam, run: r, record: history}
 }
 
 func TestWorkerLocalReceiptFollowsPullHeartbeatAndRelease(t *testing.T) {
@@ -289,4 +292,44 @@ func TestAPauseAndResumeReachTheRunner(t *testing.T) {
 		t.Fatal(err)
 	}
 	g.waitFor(t, id, factory.StateShipped)
+}
+
+// A resumed job carries completed steps over HTTP and continues beside the
+// files they left, even when a new worker process takes the lease.
+func TestAResumedRunKeepsItsOriginalMachine(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "from-first-run"), []byte("kept"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	g := newRigWith(t, nil, func(o *run.Options) {
+		o.RepoDir = func(string) string { return dir }
+	})
+	first := check("false")
+	first.Name = "already-done"
+	second := check("test -f from-first-run")
+	it, err := g.st.Create(factory.Item{
+		Repo: "api", Title: "resume beside the files", State: factory.StateQueued,
+		WorktreeMachine: "laptop", Stages: []factory.Stage{first, second},
+		Stream: &factory.Stream{Cur: 1, Started: time.Now(), Phases: []factory.Phase{
+			{Name: first.Name, State: factory.PhaseDone, Result: &factory.StageResult{Done: true}},
+			{Name: second.Name, State: factory.PhasePending},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := client.Open(g.base, "").Worker("")
+	if _, err := other.Attach(context.Background(), api.WorkerAttach{Machine: "desktop", Name: "desktop", Handle: "me", TakesUnassigned: map[string]bool{"*": true}}); err != nil {
+		t.Fatal(err)
+	}
+	if pulled, ok, err := other.Pull(context.Background()); err != nil || ok {
+		t.Fatalf("another machine pulled the resumed job: %+v, %v, %v", pulled, ok, err)
+	}
+	shipped := g.waitFor(t, it.ID, factory.StateShipped)
+	if shipped.WorktreeMachine != "laptop" || shipped.Stream.Phases[0].Round != 0 {
+		t.Fatalf("resumed run restarted or moved: %+v", shipped)
+	}
+	if result := shipped.Stream.Phases[1].Result; result == nil || result.Exit != 0 {
+		t.Fatalf("the resumed worker could not read the first run's file: %+v", result)
+	}
 }

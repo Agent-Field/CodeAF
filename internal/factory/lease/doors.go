@@ -69,6 +69,7 @@ func (d *Doors) Stop(id int) error {
 		if err := run.StopItem(it, now); err != nil {
 			return false, err
 		}
+		it.Publishing = false
 		if held == nil {
 			return false, nil
 		}
@@ -164,6 +165,7 @@ func (d *Doors) SignOff(id int, edited bool) (bool, error) {
 			// and keeps this signal, which queues the job again.
 			it.State = factory.StateLanded
 		}
+		it.Publishing = true
 		repo = it.Repo
 		signal(doc, id, Signal{Verb: SignalPublish, Words: trailer})
 		return true, nil

@@ -127,8 +127,10 @@ address), pulls a job, and runs it with this machine's runner in this machine's 
 and the job's own worktree. Up to four jobs run at once (`CODEAF_FACTORY_BENCHES`). On a
 loopback factory the worker takes every unassigned job; on a factory elsewhere it takes
 unassigned jobs only for repositories this machine has a checkout of. A job whose worker
-went away goes back to the queue when its lease expires, and the next worker goes on at the
-step it stopped in.
+went away goes back to the queue when its lease expires. Only a worker on the machine
+holding its worktree may resume it or publish it; a new slot or process there goes on at
+the step it stopped in. While queued it says `waiting for <machine>`. If that machine
+is offline, it waits for that machine to return.
 
 **How your verbs reach the worker.** Run puts the job in the queue. Stop puts it back to
 backlog at once and takes its lease away; the worker stops its run when it next hears from
@@ -993,11 +995,11 @@ A landed item's page opens on its **proof** sheet: one row per claim and policy 
 a test row reads `0.3s` beside `test`, not `test · 0.3s`. The sheet's last line counts it and names its keys:
 `all 6 shown · s approve`, or `1 of 6 not shown · e approve with changes · B request changes`.
 
-- `s` **approves** it and publishes it: the floor says `#12 shipped`, and a worker opens the
+- `s` **approves** it and publishes it: the floor says `#12 publishing`, and a worker opens the
   pull request with your approval's trailer (see approving at the proof gate publishes). On a
   sheet with a row not shown the run refuses, in its words: `#12 has a claim not shown`.
 - `e` approves saying you changed something first, the one that ships a sheet with a row not
-  shown: `#12 shipped with changes`. It does not count toward a habit.
+  shown: `#12 publishing with changes`. It does not count toward a habit.
 - `B` **requests changes**: it opens `request changes ›` for what to prove
   (`prove restart survival`); the item goes back on a bench with one more stage, `prove`, and
   says `#12 changes requested · prove restart survival`.
@@ -1779,8 +1781,12 @@ request with the same body and trailer, and the item's `pr` is that pull request
 **Never without consent.** An approve with no recorded approval publishes nothing and
 says `job requires a recorded approval before publishing`. A push or a write that fails
 lands the item again with `could not publish: …` on its log; approve again to retry. The
-work must be on the machine that publishes it: a worker on another machine has no
-worktree for it.
+lease records the worker's stable machine id, and the job keeps that id after the lease
+ends. Publishing, re-running checks and resumed runs are offered only to workers on
+that machine, including a new process or another slot there. While queued it says
+`waiting for <machine>` (or `publishing · waiting for <machine>` after approval).
+If that machine is offline, the job waits for it; another machine never takes it.
+The TUI says `publishing` between approval and the pull request, then `shipped`.
 
 ## factory HTTP approve — plan approval, proof approval and the event receipt
 
@@ -1957,7 +1963,7 @@ body carries `factory: {address, version}`.
 
 ## factory HTTP workers — attach, pull a job and heartbeat
 
-`POST /v1/workers/attach` takes `{"name":"laptop","handle":"sam"}` and answers
+`POST /v1/workers/attach` takes `{"machine":"laptop","name":"laptop (pid 123)","handle":"sam"}` and answers
 HTTP 201 with `{factory, worker_id, credential}`. Loopback attach needs no access
 token; remote attach requires the factory access token. Each attach creates a
 fresh worker identity. Credentials last for this handler's lifetime; after a
@@ -1975,7 +1981,9 @@ worker's handle are offered. Attach can also take
 `"takes_unassigned":{"owner/repo":true}`: this opts into unassigned jobs in that
 repository, never jobs assigned to somebody else.
 
-The lease includes `id`, `job`, `worker`, `handle` and `expires_at`.
+The lease includes `id`, `job`, `worker`, `machine`, `handle` and `expires_at`.
+`machine` is stable across processes and slots; the built-in worker uses its hostname.
+An older attach without `machine` uses `name` as its machine id.
 `POST /v1/workers/leases/{id}/heartbeat` answers `{factory, lease, signals}` with a
 renewed expiry. `signals` are the verbs a person asked of the job since the last
 heartbeat, oldest first: `{"verb":"hold","yes":true}` (pause; false resumes),
@@ -2056,7 +2064,7 @@ Be plain about this when asked:
 - **Items arrive three ways:** from a chat with `factory_add` (after you answer its card), from
   `n` on the floor, and from the GitHub repositories you watch (see connecting github). They
   are kept on this machine and are still there next launch.
-- **Jobs run on whichever codeaf's worker pulls them** (see workers, taken jobs and lease
+- **New jobs run on whichever codeaf's worker pulls them; resumed work and publishing stay on the first worker's machine** (see workers, taken jobs and lease
   expiry). `r` and `L` queue items (see running an item), and stop, pause, answers, steering,
   approve, request changes and re-run checks work from any window on the factory.
 - **Opening an item page does not shape its steps in a window attached to a session host.**

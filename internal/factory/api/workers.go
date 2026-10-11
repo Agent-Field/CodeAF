@@ -9,6 +9,7 @@ import (
 // WorkerAttach names the machine and its person; consent to unassigned work
 // is explicit and applies only to each named repository.
 type WorkerAttach struct {
+	Machine         string          `json:"machine,omitempty"`
 	Name            string          `json:"name"`
 	Handle          string          `json:"handle"`
 	TakesUnassigned map[string]bool `json:"takes_unassigned,omitempty"`
@@ -165,6 +166,7 @@ type WorkerLease struct {
 	ID        string    `json:"id"`
 	Job       int       `json:"job"`
 	Worker    string    `json:"worker"`
+	Machine   string    `json:"machine,omitempty"`
 	Handle    string    `json:"handle"`
 	ExpiresAt time.Time `json:"expires_at"`
 }

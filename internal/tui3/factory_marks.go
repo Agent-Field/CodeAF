@@ -256,6 +256,9 @@ func (a *app) itemLeadMark(it factory.Item) string {
 // head: the state, or `paused` and `stopped` where the state word would say
 // running and new.
 func factoryStateWord(it factory.Item) string {
+	if word := it.WorkState(); word != "" {
+		return word
+	}
 	switch {
 	case factoryPaused(it):
 		return "paused"

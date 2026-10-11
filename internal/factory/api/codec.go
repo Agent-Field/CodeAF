@@ -100,6 +100,7 @@ func ToItem(j Job) factory.Item {
 	}
 	it := factory.Item{
 		ID: j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL,
+		WorktreeMachine: d.WorktreeMachine, Publishing: d.Publishing,
 		State: stateIn(j), Created: j.CreatedAt,
 		Product: d.Product, Places: d.Places, Body: d.Body, Author: d.Author,
 		Assignee: d.Assignee, Starter: d.Starter, Taker: d.Taker,
@@ -301,6 +302,7 @@ func toClaim(c Claim) factory.Claim {
 
 func fromDesk(it factory.Item) *JobDesk {
 	d := &JobDesk{
+		WorktreeMachine: it.WorktreeMachine, Publishing: it.Publishing,
 		Product: it.Product, Places: it.Places, Body: it.Body, Author: it.Author,
 		Assignee: it.Assignee, Starter: it.Starter, Taker: it.Taker,
 		Tier: string(it.Tier), Origin: string(it.Origin), Synced: it.Synced, ChangedAt: it.Changed,

@@ -921,6 +921,9 @@ func (a *app) factoryStateFact(it factory.Item) (factoryFactPart, bool) {
 		}
 		return factoryFactPart{plain: plain, painted: paint(plain)}, true
 	}
+	if word := it.WorkState(); word != "" {
+		return one(word, pal.muted)
+	}
 	now := a.fp.snap.Now
 	switch it.State {
 	case factory.StateNeedsYou:

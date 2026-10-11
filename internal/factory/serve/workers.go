@@ -133,7 +133,12 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	worker := lease.Worker{ID: "worker_" + id, Handle: body.Handle, TakesUnassigned: body.TakesUnassigned}
+	body.Machine = strings.TrimSpace(body.Machine)
+	if body.Machine == "" {
+		// Older workers introduced their machine by name before a separate id existed.
+		body.Machine = body.Name
+	}
+	worker := lease.Worker{Machine: body.Machine, ID: "worker_" + id, Handle: body.Handle, TakesUnassigned: body.TakesUnassigned}
 	h.workers.mu.Lock()
 	h.workers.credentials[sha256.Sum256([]byte(credential))] = registeredWorker{Name: body.Name, Worker: worker}
 	h.workers.mu.Unlock()
@@ -180,7 +185,7 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 }
 
 func workerLease(held lease.Lease) api.WorkerLease {
-	return api.WorkerLease{ID: held.ID, Job: held.Job, Worker: held.Worker, Handle: held.Handle, ExpiresAt: held.ExpiresAt}
+	return api.WorkerLease{ID: held.ID, Job: held.Job, Worker: held.Worker, Machine: held.Machine, Handle: held.Handle, ExpiresAt: held.ExpiresAt}
 }
 
 func (h *Handler) pulled(w http.ResponseWriter, held lease.Lease) {
@@ -213,7 +218,7 @@ func (h *Handler) heartbeatWorker(w http.ResponseWriter, r *http.Request) {
 	}
 	// THE HEARTBEAT IS THE SIGNAL CHANNEL: what a person asked of the job
 	// since the last beat rides back on the answer (lease/signals.go).
-	signals, err := h.workers.desk.Drain(held.ID, held.Worker)
+	signals, err := h.workers.desk.DrainLive(held.ID, held.Worker)
 	if h.workerError(w, err) {
 		return
 	}

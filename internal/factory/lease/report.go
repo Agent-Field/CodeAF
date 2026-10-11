@@ -31,7 +31,15 @@ func (d *Desk) Apply(id, worker string, complete bool, change func(*factory.Item
 		if err != nil {
 			return false, err
 		}
-		if err := d.store.Update(held.Job, change); err != nil {
+		if err := d.store.Update(held.Job, func(it *factory.Item) error {
+			if err := change(it); err != nil {
+				return err
+			}
+			if complete {
+				it.Publishing = false
+			}
+			return nil
+		}); err != nil {
 			return false, err
 		}
 		if !complete {

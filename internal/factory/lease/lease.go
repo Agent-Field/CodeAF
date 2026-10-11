@@ -31,9 +31,12 @@ var (
 // server restart without a second registry becoming the ownership authority.
 type Lease struct {
 	// ID distinguishes successive holds on the same job so delayed reports cannot write into a new run.
-	ID        string    `json:"id,omitempty"`
-	Job       int       `json:"job"`
-	Worker    string    `json:"worker"`
+	ID      string `json:"id,omitempty"`
+	Job     int    `json:"job"`
+	Worker  string `json:"worker"`
+	Machine string `json:"machine,omitempty"`
+	// Publish keeps a collected approval recoverable if the publisher vanishes.
+	Publish   string    `json:"publish,omitempty"`
 	Handle    string    `json:"handle"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
@@ -47,6 +50,7 @@ const EveryRepo = "*"
 // TakesUnassigned never grants access to a job that already has a person.
 type Worker struct {
 	ID              string
+	Machine         string
 	Handle          string
 	TakesUnassigned map[string]bool
 }
@@ -108,6 +112,7 @@ func (d *Desk) Assign(id int, handle string) error {
 // opt-in applies only to unassigned work in that exact repository.
 func (d *Desk) Pull(worker Worker) (Lease, error) {
 	worker.Handle = factory.NormalizeHandle(worker.Handle)
+	worker.Machine = strings.TrimSpace(worker.Machine)
 	if strings.TrimSpace(worker.ID) == "" || worker.Handle == "" {
 		return Lease{}, errors.New("factory lease: a worker needs an id and handle")
 	}
@@ -136,7 +141,7 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 			if _, err := rand.Read(token[:]); err != nil {
 				return false, err
 			}
-			taken = Lease{ID: "lease_" + hex.EncodeToString(token[:]), Job: it.ID, Worker: worker.ID, Handle: worker.Handle, ExpiresAt: now.Add(d.ttl)}
+			taken = Lease{ID: "lease_" + hex.EncodeToString(token[:]), Job: it.ID, Worker: worker.ID, Machine: worker.Machine, Handle: worker.Handle, ExpiresAt: now.Add(d.ttl)}
 			return false, d.reserve(doc, worker, taken)
 		}
 		return false, ErrNoJob
@@ -159,6 +164,9 @@ func (d *Desk) reserve(doc *document, worker Worker, taken Lease) error {
 		doc.Leases = append(doc.Leases, taken)
 		if err := d.write(*doc); err != nil {
 			return err
+		}
+		if it.WorktreeMachine == "" {
+			it.WorktreeMachine = taken.Machine
 		}
 		it.State = factory.StateRunning
 		return nil
@@ -212,13 +220,15 @@ func (d *Desk) Requeue(id int, worker string) error {
 		if err := d.queue(id); err != nil {
 			return false, err
 		}
-		release(doc, id)
-		return true, nil
+		if err := d.restorePublish(doc, id); err != nil {
+			return false, err
+		}
+		return true, d.keepPublish(doc, id)
 	})
 }
 
 func eligible(it factory.Item, worker Worker) bool {
-	if it.State != factory.StateQueued || paused(it) {
+	if it.State != factory.StateQueued || paused(it) || (it.WorktreeMachine != "" && it.WorktreeMachine != worker.Machine) {
 		return false
 	}
 	if owner := it.Person(); owner != "" {
@@ -267,7 +277,7 @@ func paused(it factory.Item) bool { return it.Stream != nil && it.Stream.Paused 
 
 func (d *Desk) expire(doc *document, now time.Time) ([]Lease, error) {
 	var expired, kept []Lease
-	for _, held := range doc.Leases {
+	for _, held := range append([]Lease(nil), doc.Leases...) {
 		if now.Before(held.ExpiresAt) {
 			kept = append(kept, held)
 			continue
@@ -276,7 +286,12 @@ func (d *Desk) expire(doc *document, now time.Time) ([]Lease, error) {
 			return nil, fmt.Errorf("factory lease: requeue job %d: %w", held.Job, err)
 		}
 		expired = append(expired, held)
-		delete(doc.Signals, held.Job)
+		if err := d.restorePublish(doc, held.Job); err != nil {
+			return nil, err
+		}
+		if err := d.keepPublish(doc, held.Job); err != nil {
+			return nil, err
+		}
 	}
 	doc.Leases = kept
 	return expired, nil
