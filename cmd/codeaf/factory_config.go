@@ -21,6 +21,16 @@ type factoryHostConfig struct {
 	Repos       []string `yaml:"repos"`
 }
 
+// MarshalYAML keeps omission distinct from an explicit empty repository list,
+// because only the latter is an instruction to clear the saved selection.
+func (cfg factoryHostConfig) MarshalYAML() (any, error) {
+	doc := map[string]any{"listen": cfg.Listen, "access_token": cfg.AccessToken}
+	if cfg.Repos != nil {
+		doc["repos"] = cfg.Repos
+	}
+	return doc, nil
+}
+
 func runFactoryToken(args []string) error {
 	flags := commandFlags("factory token")
 	rotate := flags.Bool("rotate", false, "replace the access token")

@@ -133,6 +133,22 @@ func TestFactoryHostConfigTokenPersistsAndRotates(t *testing.T) {
 	}
 }
 
+func TestFactoryHostConfigKeepsOmittedReposOmitted(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	first, err := factoryHostConfigAt(path, false)
+	if err != nil || first.Listen != factoryDefaultListen {
+		t.Fatalf("default configuration: %+v, %v", first, err)
+	}
+	second, err := factoryHostConfigAt(path, true)
+	if err != nil || second.Repos != nil {
+		t.Fatalf("rotation turned omitted repos into a clear instruction: %+v, %v", second, err)
+	}
+	reloaded, err := readFactoryHostConfig(path)
+	if err != nil || reloaded.Repos != nil {
+		t.Fatalf("saved configuration changed the repository selection: %+v, %v", reloaded, err)
+	}
+}
+
 func TestFactoryHostConfigRejectsInvalidYAML(t *testing.T) {
 	for _, body := range []string{"unknown: yes", "listen: [wrong]", "repos: [wrong]", "access_token: 'two words'", "listen: localhost:1\n---\nrepos: []"} {
 		t.Run(body, func(t *testing.T) {
