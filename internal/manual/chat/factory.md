@@ -135,7 +135,9 @@ is offline, it waits for that machine to return.
 **How your verbs reach the worker.** Run puts the job in the queue. Stop puts it back to
 backlog at once and takes its lease away; the worker stops its run when it next hears from
 the factory. Pause, resume, an answer and steering are left on the job's lease, and the
-worker carries them out within about two seconds. Approve and request changes act on a
+worker carries them out within about two seconds. `shape steps` on a job a worker holds is
+left on that lease too; a job nobody holds is shaped by the factory the window is attached
+to, which is where that job's worker lives. Approve and request changes act on a
 landed job; request changes and re-run checks queue it for a worker. There is no `run.lock`
 and no mailbox any more.
 
@@ -924,6 +926,11 @@ last call wins for each step: a step it skipped and then switched on again is on
 says only what changed. The manager's own verbs, `factory_run`, `factory_start` and
 `factory_answer`, never wait on an approval card: a shaping turn nobody is at the keyboard of
 could not answer one.
+
+A window attached to a session host asks with `POST /v1/jobs/{id}/shape`. Opening the page
+still runs nothing. The factory runs the turn where the job's worker lives, or, when a
+worker already holds the job, leaves `shape` on the lease for that worker (see factory HTTP
+job actions).
 
 ## start the run from the manager's chat — say start
 
@@ -1734,10 +1741,14 @@ door is absent answers HTTP 501 with `this factory does not provide that read`;
 an unknown job answers HTTP 404 with `job not found`. These read endpoints accept GET.
 Run this handler with `codeaf factory` or `codeaf factory serve`.
 
-## factory HTTP job actions — run, stop, pause, resume, drop, answer and reply
+## factory HTTP job actions — run, stop, pause, resume, drop, answer, reply and shape
 
-Send `POST /v1/jobs/{id}/run`, `/stop`, `/pause`, `/resume`, `/drop` or `/recheck`
-without a body to run, stop, hold, continue, drop or re-run a job's checks.
+Send `POST /v1/jobs/{id}/run`, `/stop`, `/pause`, `/resume`, `/drop`, `/recheck` or `/shape`
+without a body to run, stop, hold, continue, drop, re-run a job's checks, or give its
+manager one shaping turn. `/shape` runs nothing and launches nothing. When a worker holds
+the job the factory leaves `shape` on the lease and the response has no `line`; otherwise
+`line` is what that turn recorded. A factory with no shaping turn and no holder answers
+HTTP 501 with `this factory does not provide that action`.
 Pause and resume carry explicit intent; repeating pause never resumes the job.
 `/answer` takes `{"yes":true}`, `{"yes":false}` or `{"words":"your answer"}`;
 yes and words may be combined. `/steer`, `/request_changes` and `/reply` each take

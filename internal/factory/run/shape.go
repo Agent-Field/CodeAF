@@ -63,6 +63,17 @@ var (
 // says ([sayShapeStands], [shapeFailLine], [sayShapeRefused]).
 const SayShapeStands = sayShapeStands
 
+// SayShapedAlready is `shape steps` on an item the manager already shaped.
+const SayShapedAlready = "the manager already shaped the steps · say what to change in its chat"
+
+// KeptRecipe is the record an item keeps when the manager read it and kept
+// the recipe. It starts with the manager's name, which is how
+// [ShapedByManager] knows it.
+const KeptRecipe = factory.ByManager + " kept the recipe"
+
+// ErrNothingToShape is `shape steps` on an item whose run is over.
+var ErrNothingToShape = errors.New("its run is over · there are no steps still to come")
+
 // ShapeFailLine is [shapeFailLine] for the floor's Shape door.
 func ShapeFailLine(err error) string { return shapeFailLine(err) }
 
@@ -271,6 +282,152 @@ func shapedByManager(it factory.Item) bool {
 		}
 	}
 	return false
+}
+
+// ShapeAsked is one shaping turn for a job this runner holds, the floor's
+// `shape steps` carried across the lease. Nothing is launched. The line is
+// what the turn recorded. A second ask while one is out answers
+// [factory.ShapeAlready].
+func (r *Runner) ShapeAsked(ctx context.Context, id int) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if !r.beginShape(id) {
+		return factory.ShapeAlready, nil
+	}
+	defer r.endShape(id)
+	if r.opts.Store == nil {
+		return "", errors.New("factory run: no store")
+	}
+	it, err := r.opts.Store.Get(id)
+	if err != nil {
+		return "", err
+	}
+	switch it.State {
+	case factory.StateLanded, factory.StateShipped:
+		return "", fmt.Errorf("%s: %w", it.Ref(), ErrNothingToShape)
+	}
+	if shapedByManager(it) {
+		return SayShapedAlready, nil
+	}
+	if strings.TrimSpace(it.Talk) == "" && r.opts.Manager != nil {
+		made, err := r.opts.Manager(ctx, it)
+		if err != nil {
+			return "", err
+		}
+		if made = strings.TrimSpace(made); made == "" {
+			return "", errors.New("the item's conversation could not be made")
+		}
+		if err := r.opts.Store.Update(id, func(x *factory.Item) error {
+			if strings.TrimSpace(x.Talk) == "" {
+				x.Talk = made
+			}
+			return nil
+		}); err != nil {
+			return "", err
+		}
+		if it, err = r.opts.Store.Get(id); err != nil {
+			return "", err
+		}
+	}
+	inRun := streamBegun(it.Stream)
+	edit, turnErr := r.askShape(ctx, it, inRun)
+	if turnErr != nil {
+		line := ShapeFailLine(turnErr)
+		r.loop().tell(id, line)
+		return line, errors.New(line)
+	}
+	recipe := factory.DefaultRecipe()
+	if r.opts.Recipe != nil {
+		recipe = r.opts.Recipe(it.Repo)
+	}
+	now := r.now()
+	line := ""
+	var refused error
+	if err := r.opts.Store.Update(id, func(x *factory.Item) error {
+		running := streamBegun(x.Stream)
+		l, err := ApplyShape(x, edit, recipe, running, now)
+		if err != nil {
+			refused = err
+			return nil
+		}
+		if l == "" {
+			if !running && !shapedByManager(*x) {
+				x.Adapted = append(append([]string(nil), x.Adapted...), KeptRecipe)
+			}
+			l = SayShapeStands
+		}
+		line = l
+		return nil
+	}); err != nil {
+		return "", err
+	}
+	if refused != nil {
+		line = ShapeRefusedLine(refused)
+		r.loop().tell(id, line)
+		return line, errors.New(line)
+	}
+	r.loop().tell(id, line)
+	return line, nil
+}
+
+// askShape runs the shaping turn under the shaping wait. A turn that ignores
+// its context is let go when the wait ends.
+func (r *Runner) askShape(ctx context.Context, it factory.Item, inRun bool) (factory.RunEdit, error) {
+	shapeNow := r.opts.ShapeNow
+	shapeFn := r.opts.Shape
+	if shapeNow == nil && shapeFn == nil {
+		return factory.RunEdit{}, errors.New("this worker has no shaping turn")
+	}
+	wait := r.loop().shapeWait()
+	turnCtx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
+	type answer struct {
+		edit factory.RunEdit
+		err  error
+	}
+	got := make(chan answer, 1)
+	go func() {
+		var edit factory.RunEdit
+		var err error
+		if shapeNow != nil {
+			edit, _, err = shapeNow(turnCtx, it, inRun)
+		} else {
+			edit, _, err = shapeFn(turnCtx, it, nil)
+		}
+		got <- answer{edit, err}
+	}()
+	select {
+	case a := <-got:
+		return a.edit, a.err
+	case <-turnCtx.Done():
+		return factory.RunEdit{}, turnCtx.Err()
+	}
+}
+
+func (r *Runner) beginShape(id int) bool {
+	r.shapeMu.Lock()
+	defer r.shapeMu.Unlock()
+	if r.shaping == nil {
+		r.shaping = map[int]bool{}
+	}
+	if r.shaping[id] {
+		return false
+	}
+	r.shaping[id] = true
+	return true
+}
+
+func (r *Runner) endShape(id int) {
+	r.shapeMu.Lock()
+	defer r.shapeMu.Unlock()
+	delete(r.shaping, id)
+}
+
+// streamBegun says a run has started, so a shaping edit is bounded to the
+// steps not yet started.
+func streamBegun(s *factory.Stream) bool {
+	return s != nil && (!s.Started.IsZero() || len(s.Phases) > 0)
 }
 
 // tailPhases is the phases with every one not yet started compiled again from

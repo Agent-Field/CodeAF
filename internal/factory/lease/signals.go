@@ -30,6 +30,10 @@ const (
 	// the record's trailer (`Factory-Approval: evt_… @handle`), and the
 	// worker that takes the job commits, pushes and opens its pull request.
 	SignalPublish = "publish"
+	// SignalShape asks the holding worker to give the job's manager one
+	// shaping turn now. Nothing is launched. A job nobody holds is not
+	// signaled: the factory runs that turn itself, where the worker lives.
+	SignalShape = "shape"
 )
 
 // Signal is one verb a person asked of a job, with the door's own arguments.
@@ -83,6 +87,21 @@ func (d *Desk) drain(id, worker string, publishing bool) ([]Signal, error) {
 		return true, nil
 	})
 	return out, err
+}
+
+// SignalIfHeld leaves s for the worker holding job and answers whether one
+// does. A job nobody holds is unchanged: the caller runs the turn itself.
+func (d *Desk) SignalIfHeld(job int, s Signal) (bool, error) {
+	held := false
+	err := d.change(func(doc *document, _ time.Time) (bool, error) {
+		if find(doc, job) == nil {
+			return false, nil
+		}
+		signal(doc, job, s)
+		held = true
+		return true, nil
+	})
+	return held, err
 }
 
 // signal leaves s for job's worker. Callers hold the desk's lock.

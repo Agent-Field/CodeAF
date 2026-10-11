@@ -484,10 +484,9 @@ func sameFileKey(path string) string {
 // MANAGER ALREADY SHAPED IS ANSWERED WITHOUT A TURN ([sayShapedAlready]): from
 // then on its steps change where the person talks to the manager.
 
-// shapeKeptRecord is the line an item's record ([factory.Item.Adapted]) keeps
-// when the manager read it and kept the recipe. It starts with the manager's
-// name, which is how [factoryrun.ShapedByManager] knows it.
-const shapeKeptRecord = factory.ByManager + " kept the recipe"
+// shapeKeptRecord is [factoryrun.KeptRecipe], kept here so this file's
+// comments name the line the door writes.
+const shapeKeptRecord = factoryrun.KeptRecipe
 
 // shapeDoor is the floor's Shape door over one store.
 type shapeDoor struct {
@@ -537,11 +536,11 @@ func itemRan(it factory.Item) bool {
 	return s != nil && (!s.Started.IsZero() || len(s.Phases) > 0)
 }
 
-// sayShapedAlready is `shape steps` on an item the manager already shaped.
-const sayShapedAlready = "the manager already shaped the steps · say what to change in its chat"
+// sayShapedAlready is [factoryrun.SayShapedAlready].
+const sayShapedAlready = factoryrun.SayShapedAlready
 
-// errNothingToShape is `shape steps` on an item whose run is over.
-var errNothingToShape = errors.New("its run is over · there are no steps still to come")
+// errNothingToShape is [factoryrun.ErrNothingToShape].
+var errNothingToShape = factoryrun.ErrNothingToShape
 
 // Shape is the door: one turn for item id, or [factory.ShapeAlready] while a
 // turn for it is already out.

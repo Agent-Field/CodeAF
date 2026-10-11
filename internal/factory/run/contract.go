@@ -185,6 +185,11 @@ type Options struct {
 	// applies the edit itself, before the run, and says the line. Nil is a run
 	// of the recipe as it stands. The shape lane added it, additively.
 	Shape func(ctx context.Context, it factory.Item, said []string) (factory.RunEdit, string, error)
+	// ShapeNow is the floor's `shape steps` turn, asked while a worker holds
+	// the job: one turn now, with inRun bounding what the manager may change.
+	// Nil uses [Options.Shape] with no prior words, and the caller applies the
+	// in-run bound itself. The shape-door lane added it, additively.
+	ShapeNow func(ctx context.Context, it factory.Item, inRun bool) (factory.RunEdit, string, error)
 	// THERE IS NO TURN ON A STEER: words the person types into the manager's
 	// conversation during a run are already a turn of the manager there, and
 	// it reshapes the stages not yet started with its own `factory_run`.
@@ -233,6 +238,10 @@ type Runner struct {
 	// lanes were handed.
 	loopOnce sync.Once
 	floor    *floorLoop
+
+	// shaping is every item whose [Runner.ShapeAsked] turn is already out.
+	shapeMu sync.Mutex
+	shaping map[int]bool
 }
 
 // New makes a runner. It starts nothing until Launch.

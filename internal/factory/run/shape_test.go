@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 // ranRecorder is a chat executor that keeps each stage it ran with its ask.
@@ -339,4 +340,106 @@ func TestApplyShapeIsSharedWithTheLaunch(t *testing.T) {
 	if !found || len(running.Stream.Log) == 0 {
 		t.Fatalf("phases %+v, log %+v", running.Stream.Phases, running.Stream.Log)
 	}
+}
+
+// ShapeAsked is the turn a lease signal asks of the worker holding the job.
+func TestShapeAsked(t *testing.T) {
+	write := factory.Stage{Name: "write", Kind: factory.StageChat, Ask: "do write", On: true}
+	t.Run("applies the edit", func(t *testing.T) {
+		st, it := shapeItem(t, factory.Item{Title: "fix the ledger", State: factory.StateNew, Stages: []factory.Stage{write}})
+		called := 0
+		r := New(Options{Store: st, Shape: func(context.Context, factory.Item, []string) (factory.RunEdit, string, error) {
+			called++
+			return shapeEdit(), "", nil
+		}})
+		line, err := r.ShapeAsked(context.Background(), it.ID)
+		if err != nil || line != shapedLine || called != 1 {
+			t.Fatalf("line %q err %v calls %d", line, err, called)
+		}
+		got, err := st.Get(it.ID)
+		if err != nil || !shapedByManager(got) {
+			t.Fatalf("not shaped: %v %+v", err, got.Stages)
+		}
+	})
+	t.Run("keeps the recipe", func(t *testing.T) {
+		st, it := shapeItem(t, factory.Item{Title: "fix the ledger", State: factory.StateNew, Stages: []factory.Stage{write}})
+		r := New(Options{Store: st, Shape: func(context.Context, factory.Item, []string) (factory.RunEdit, string, error) {
+			return factory.RunEdit{}, "", nil
+		}})
+		line, err := r.ShapeAsked(context.Background(), it.ID)
+		got, _ := st.Get(it.ID)
+		if err != nil || line != SayShapeStands || len(got.Adapted) != 1 || got.Adapted[0] != KeptRecipe {
+			t.Fatalf("line %q err %v adapted %v", line, err, got.Adapted)
+		}
+	})
+	t.Run("already shaped", func(t *testing.T) {
+		st, it := shapeItem(t, factory.Item{Title: "fix the ledger", State: factory.StateNew, Stages: []factory.Stage{write}, Adapted: []string{KeptRecipe}})
+		r := New(Options{Store: st, Shape: func(context.Context, factory.Item, []string) (factory.RunEdit, string, error) {
+			t.Fatal("shaped again")
+			return factory.RunEdit{}, "", nil
+		}})
+		line, err := r.ShapeAsked(context.Background(), it.ID)
+		if err != nil || line != SayShapedAlready {
+			t.Fatalf("line %q err %v", line, err)
+		}
+	})
+	t.Run("run over", func(t *testing.T) {
+		st, it := shapeItem(t, factory.Item{Title: "fix the ledger", State: factory.StateLanded, Num: 12, Stages: []factory.Stage{write}})
+		r := New(Options{Store: st, Shape: func(context.Context, factory.Item, []string) (factory.RunEdit, string, error) {
+			t.Fatal("shaped a landed item")
+			return factory.RunEdit{}, "", nil
+		}})
+		_, err := r.ShapeAsked(context.Background(), it.ID)
+		if !errors.Is(err, ErrNothingToShape) {
+			t.Fatalf("err %v", err)
+		}
+	})
+	t.Run("no turn", func(t *testing.T) {
+		st, it := shapeItem(t, factory.Item{Title: "fix the ledger", State: factory.StateNew, Stages: []factory.Stage{write}})
+		line, err := New(Options{Store: st}).ShapeAsked(context.Background(), it.ID)
+		if err == nil || line != sayShapeNoReply {
+			t.Fatalf("line %q err %v", line, err)
+		}
+	})
+	t.Run("already out", func(t *testing.T) {
+		st, it := shapeItem(t, factory.Item{Title: "fix the ledger", State: factory.StateNew, Stages: []factory.Stage{write}})
+		started := make(chan struct{})
+		release := make(chan struct{})
+		r := New(Options{Store: st, Shape: func(context.Context, factory.Item, []string) (factory.RunEdit, string, error) {
+			close(started)
+			<-release
+			return shapeEdit(), "", nil
+		}})
+		var first string
+		var firstErr error
+		done := make(chan struct{})
+		go func() {
+			first, firstErr = r.ShapeAsked(context.Background(), it.ID)
+			close(done)
+		}()
+		select {
+		case <-started:
+		case <-time.After(5 * time.Second):
+			t.Fatal("the first turn never started")
+		}
+		line, err := r.ShapeAsked(context.Background(), it.ID)
+		close(release)
+		<-done
+		if err != nil || line != factory.ShapeAlready || firstErr != nil || first != shapedLine {
+			t.Fatalf("second %q %v; first %q %v", line, err, first, firstErr)
+		}
+	})
+}
+
+func shapeItem(t *testing.T, it factory.Item) (*store.Store, factory.Item) {
+	t.Helper()
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	made, err := st.Create(it)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return st, made
 }

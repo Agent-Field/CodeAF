@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -138,6 +139,9 @@ type job struct {
 	lease string
 	id    int
 	sent  factory.Item // the mirror as last reported
+
+	mu      sync.Mutex
+	shaping bool
 }
 
 // work runs one pulled job to its end, or until the lease is gone.
@@ -272,9 +276,32 @@ func (j *job) beat(ctx context.Context) bool {
 			_ = r.Answer(j.id, s.Yes, s.Words)
 		case lease.SignalSteer:
 			_ = r.Steer(j.id, s.Words)
+		case lease.SignalShape:
+			j.shape(ctx)
 		}
 	}
 	return true
+}
+
+// shape gives the manager one shaping turn on this job. A turn already out
+// is left to finish: the second signal asks nothing more. The turn can take
+// as long as a model call, so it does not hold the heartbeat.
+func (j *job) shape(ctx context.Context) {
+	j.mu.Lock()
+	if j.shaping {
+		j.mu.Unlock()
+		return
+	}
+	j.shaping = true
+	j.mu.Unlock()
+	go func() {
+		defer func() {
+			j.mu.Lock()
+			j.shaping = false
+			j.mu.Unlock()
+		}()
+		_, _ = j.o.Runner.ShapeAsked(ctx, j.id)
+	}()
 }
 
 // drop lets the job go here: the factory stopped it, or this process is

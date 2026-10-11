@@ -42,6 +42,7 @@ func contractVerbs() []contractVerb {
 		{"approve_plan", func(s factory.Seam) (any, error) { return nil, s.Answer(1, true, "") }},
 		{"request_changes", func(s factory.Seam) (any, error) { return nil, s.SendBack(9, "prove restart survival") }},
 		{"recheck", func(s factory.Seam) (any, error) { return id(s.Reverify, 9) }},
+		{"shape", func(s factory.Seam) (any, error) { return s.Shape(ctx, 8) }},
 		{"prioritize", func(s factory.Seam) (any, error) { return nil, s.Mark([]int{7, 8}, true) }},
 		{"reply", func(s factory.Seam) (any, error) { return nil, s.Say(ctx, 2, "keep the tests") }},
 		{"new_job", func(s factory.Seam) (any, error) { return s.New("owner/repo", "fix tests\n\nkeep the fixture") }},

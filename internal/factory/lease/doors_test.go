@@ -55,6 +55,30 @@ func TestDoorsSignalTheJobsHolder(t *testing.T) {
 	}
 }
 
+// SHAPE IS A SIGNAL AND NOTHING ELSE: a held job grows one shape signal, and a
+// job nobody holds is left for the factory to shape itself.
+func TestShapeSignalsOnlyAHeldJob(t *testing.T) {
+	f := setup(t)
+	it, held := f.running(t)
+	heldNow, err := f.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalShape})
+	if err != nil || !heldNow {
+		t.Fatalf("held job was not signaled: %v, %v", heldNow, err)
+	}
+	signals, err := f.desk.Drain(held.ID, "w1")
+	want := []lease.Signal{{Verb: lease.SignalShape}}
+	if err != nil || !reflect.DeepEqual(signals, want) {
+		t.Fatalf("drained %+v, %v", signals, err)
+	}
+	if again, _ := f.desk.Drain(held.ID, "w1"); len(again) != 0 {
+		t.Fatalf("a signal was handed twice: %+v", again)
+	}
+	free := f.add(t, factory.Item{State: factory.StateNew})
+	heldNow, err = f.desk.SignalIfHeld(free.ID, lease.Signal{Verb: lease.SignalShape})
+	if err != nil || heldNow {
+		t.Fatalf("a job nobody holds was signaled: %v, %v", heldNow, err)
+	}
+}
+
 // A STOP TAKES THE LEASE: the job is backlog at once, and the holder's next
 // call learns the lease is gone, which is how it stops.
 func TestAStopReleasesTheLease(t *testing.T) {

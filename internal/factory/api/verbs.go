@@ -27,6 +27,7 @@ var Verbs = []Verb{
 	{"approve", []string{"SignOff", "Answer"}},
 	{"request_changes", []string{"SendBack"}},
 	{"recheck", []string{"Reverify"}},
+	{"shape", []string{"Shape"}},
 	{"take", nil},
 	{"prioritize", []string{"Mark"}},
 	{"reply", []string{"Say"}},
@@ -47,7 +48,6 @@ var TUIOnly = map[string]string{
 	// read (`/v1/jobs/{id}/thread`) reads an existing transcript instead.
 	"Talk":    "answers a local chat session file; the wire reads the thread instead",
 	"Foreman": "answers a local chat session file for the floor's own conversation",
-	"Shape":   "gives the manager a turn inside the local chat session Talk made",
 
 	// Doors on this machine's disk.
 	"Clone":        "checks a repository out on this machine",

@@ -251,6 +251,11 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 	// person says during the run is the manager's own turn, never a second one.
 	if shape != nil {
 		opts.Shape = shape.Shape
+		// `shape steps` while this worker holds the job is the same turn the
+		// floor's Shape door runs, bounded to the steps not yet started.
+		opts.ShapeNow = func(ctx context.Context, it factory.Item, inRun bool) (factory.RunEdit, string, error) {
+			return shape.run(ctx, it, shapeAsk, inRun)
+		}
 		// AND THE MANAGER IS THE INBOX: every question a step asks is given to
 		// it first, one turn of its conversation (factory_inbox.go).
 		opts.Inbox = shape.Inbox

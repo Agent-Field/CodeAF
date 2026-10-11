@@ -169,6 +169,10 @@ func verbCases(seam factory.Seam) []verbCase {
 		{"request_changes", "POST", "/v1/jobs/9/request_changes", `{"words":"prove restart survival"}`, actionSentence,
 			func() error { return seam.SendBack(9, "prove restart survival") }},
 		{"recheck", "POST", "/v1/jobs/9/recheck", "", actionSentence, func() error { return seam.Reverify(9) }},
+		{"shape", "POST", "/v1/jobs/8/shape", "", actionSentence, func() error {
+			_, err := seam.Shape(ctx, 8)
+			return err
+		}},
 		{"prioritize", "POST", "/v1/jobs/7/prioritize", `{"to":"top"}`, actionSentence,
 			func() error { return seam.Mark([]int{7}, true) }},
 		{"reply", "POST", "/v1/jobs/2/reply", `{"words":"keep the tests"}`, actionSentence,
@@ -235,7 +239,7 @@ func TestClientLeavesTUIOnlyDoorsNil(t *testing.T) {
 			t.Errorf("%s is neither wired nor TUI-only", f.Name)
 		}
 	}
-	if seam.Has("pause") || seam.Has("clone") || !seam.Has("launch") || !seam.Has("hold") {
+	if seam.Has("pause") || seam.Has("clone") || !seam.Has("launch") || !seam.Has("hold") || !seam.Has("shape") {
 		t.Fatalf("Has: pause %v clone %v launch %v hold %v", seam.Has("pause"), seam.Has("clone"), seam.Has("launch"), seam.Has("hold"))
 	}
 }
