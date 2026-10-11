@@ -13,7 +13,7 @@
 
 .tray-header { display: flex; align-items: center; gap: var(--space-2); min-width: 0; padding: var(--space-3) var(--tray-pad-end) 0 var(--tray-pad-inline); color: var(--ink-3); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); }
 .tray-mark { flex: none; width: var(--mark-dot); height: var(--mark-dot); border-radius: var(--tray-mark-radius); background: var(--mark-waiting); }
-.tray-crumb { color: var(--ink-3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--type-caption-weight); }
+.tray-crumb { color: var(--ink-3); min-width: 0; overflow: hidden;  white-space: nowrap; mask-image: linear-gradient(to right, black calc(100% - var(--tray-fade)), transparent); font-weight: var(--type-caption-weight); }
 .tray-crumb-kind { flex: none; font-weight: var(--font-weight-regular); }
 .tray-pager { display: flex; align-items: center; gap: var(--space-half); margin-left: auto; flex: none; }
 .tray-count { padding-right: var(--space-1); font-variant-numeric: tabular-nums; }
@@ -38,9 +38,9 @@
 .tray-body[data-more] .tray-scroll { -webkit-mask-image: linear-gradient(to bottom, var(--canvas) calc(100% - var(--tray-fade)), transparent); mask-image: linear-gradient(to bottom, var(--canvas) calc(100% - var(--tray-fade)), transparent); }
 
 /* 1b: the compact bar stands in for the card while the reader is scrolled away. */
-.tray-compact { display: flex; align-items: center; gap: var(--space-compact); min-width: 0; height: var(--tray-compact-height); padding: 0 var(--tray-compact-pad-end) 0 var(--tray-compact-pad-inline); border-radius: var(--tray-compact-radius); background: var(--surface); box-shadow: var(--sh-2); color: var(--ink); font-size: var(--type-label-size); }
+.tray-compact { display: flex; align-items: center; gap: var(--space-compact); min-width: 0; height: var(--tray-compact-height); min-height: var(--tray-compact-height); flex: none; box-sizing: border-box; padding: 0 var(--tray-compact-pad-end) 0 var(--tray-compact-pad-inline); border-radius: var(--tray-compact-radius); background: var(--surface); box-shadow: var(--sh-2); color: var(--ink); font-size: var(--type-label-size); }
 .tray-compact-count { flex: none; font-weight: var(--type-label-strong); }
-.tray-compact-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+.tray-compact-summary { min-width: 0; overflow: hidden;  white-space: nowrap; color: var(--ink-2); }
 .button.tray-compact-review { flex: none; height: var(--control-height); min-height: var(--control-height); margin-left: auto; padding: 0 var(--control-pad); border: 0; border-radius: var(--radius-control); background: var(--field); color: var(--ink); font-size: var(--type-label-size); font-weight: var(--type-label-strong); }
 .button.tray-compact-review:hover:not(:disabled), .button.tray-compact-review:active:not(:disabled) { background: var(--field-2); color: var(--ink); }
 .button.tray-compact-review:active:not(:disabled) { filter: brightness(var(--brightness-press)); }

@@ -10,7 +10,8 @@ import { CompactComposer } from './composer/CompactComposer';
 import { EmptyStart } from './EmptyStart';
 import { deadlineAt } from './tray/clock';
 import { DecisionTray } from './tray/DecisionTray';
-import { blocksComposer } from './tray/layout';
+import type { ComposerTarget } from './tray/composerTarget';
+import { useComposerReply } from './tray/useComposerReply';
 import { PaneMiniTray } from './tray/PaneMiniTray';
 import { useNow } from './tasks/useNow';
 
@@ -29,15 +30,15 @@ type QueueProps = { items: QueuedItem[]; onRemove: (id: string) => void; onEdit:
 /** In an unfocused pane of a split the dock shows the 36px compact field (labelled with the conversation) in place of the tray and composer. */
 type Props = { tray: TrayProps; queue: QueueProps; composer: ComponentProps<typeof Composer>; compact?: { label: string } };
 
-const BLOCKED = 'The reply is waiting on your answer above';
-
 /** The tray's clock ticks once a second, and only while some question has a deadline. */
-function Tray({ tray }: { tray: TrayProps }) {
+function Tray({ tray, onFrontTarget, onCompose }: { tray: TrayProps; onFrontTarget: (target: ComposerTarget | null) => void; onCompose: (target: ComposerTarget) => void }) {
   const timed = tray.questions.some((question) => deadlineAt(question) !== null);
   const now = useNow(timed);
   return (
     <DecisionTray
       {...tray}
+      onFrontTarget={onFrontTarget}
+      onCompose={onCompose}
       now={now}
       renderImage={(block) => (block.path ? <ImageFigure path={block.path} caption="" meta="" /> : null)}
     />
@@ -73,7 +74,8 @@ function useExpandOnFocus(compact: boolean) {
 }
 
 export function ConversationDock({ tray, queue, composer, compact }: Props) {
-  const blocked = blocksComposer(tray.questions);
+  const [target, setTarget] = useState<ComposerTarget | null>(null);
+  const reply = useComposerReply(target, composer.draft);
   const expand = useExpandOnFocus(Boolean(compact));
   // Conversation 1b folds the queued rows into the toolbar chip once the reader
   // is more than a viewport from the end — the same distance the question tray
@@ -91,14 +93,17 @@ export function ConversationDock({ tray, queue, composer, compact }: Props) {
   };
   return (
     <>
-      {!compact && <Tray tray={tray} />}
+      {!compact && <Tray tray={tray} onFrontTarget={setTarget} onCompose={target => { setTarget(target); reply.bind(target.key); }} />}
       {!queueFolded && <Queue queue={queue} />}
       {!composer.docked && <EmptyStart />}
       {compact && <CompactComposer label={compact.label} draft={composer.draft} onDraft={composer.onDraft}><PaneMiniTray questions={tray.questions} onReview={tray.onReview} /></CompactComposer>}
       <div ref={expand.slot} className="composer-slot" data-compact={compact ? '' : undefined} data-expanding={expand.expanding ? '' : undefined} onAnimationEnd={expand.onEnd}>
         <Composer
           {...composer}
-          disabledReason={blocked ? BLOCKED : composer.disabledReason}
+          replyChip={reply.chip}
+          placeholder={reply.bound ? target?.placeholder : composer.placeholder}
+          running={reply.bound ? false : composer.running}
+          onSend={(text, mode, files) => reply.bound && target ? tray.onAnswer(target.answer(text)) : composer.onSend(text, mode, files)}
           queueChip={queueFolded && tray.onReview ? { count: queue.items.length, onOpen: openQueue } : undefined}
         />
       </div>

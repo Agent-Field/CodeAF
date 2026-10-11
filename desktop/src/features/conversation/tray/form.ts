@@ -33,7 +33,7 @@ export const isIrreversible = (question: Question) => question.stakes === 'irrev
 
 /** Options as drawn: a wider permission is never offered for something that cannot be undone. */
 export function visibleOptions(question: Question): Option[] {
-  const options = question.options ?? [];
+  const options = (question.options ?? []).filter(option => !/^tell it(?:…|\.\.\.)?$/i.test(option.label.trim()) && !(formOf(question) === 'landing' && option.key === 's'));
   return isIrreversible(question) ? options.filter((option) => !option.widening) : options;
 }
 

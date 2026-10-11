@@ -22,6 +22,7 @@ export type SendMode = 'submit' | 'steer' | 'queue';
 export type ComposerProps = {
   /** Places Home uses the same send, attachment and model controls in one inline row. */
   variant?: 'home';
+  replyChip?: { title: string; bound: boolean; bind: () => void; dismiss: () => void };
   draft: string;
   onDraft: (value: string) => void;
   /** `files` is passed only when something is attached; attachments clear only if this resolves true. */
@@ -112,6 +113,8 @@ export function Composer(props: ComposerProps) {
   const focus = useKeyboardFocus();
   const [pastes, setPastes] = useState<string[]>([]);
   const [pasteError, setPasteError] = useState('');
+  const [replyError, setReplyError] = useState('');
+  useEffect(() => setReplyError(''), [props.replyChip?.title, props.replyChip?.bound]);
   const selection = useRef({ start: 0, end: 0 });
   const [pasteCaret, setPasteCaret] = useState<number | null>(null);
   useLayoutEffect(() => {
@@ -120,6 +123,7 @@ export function Composer(props: ComposerProps) {
     field.current.setSelectionRange(pasteCaret, pasteCaret);
     setPasteCaret(null);
   }, [draft, pasteCaret]);
+  const sending = useRef(false);
   const latestDraft = useRef(draft);
   latestDraft.current = draft;
   const disabled = !!disabledReason;
@@ -148,23 +152,30 @@ export function Composer(props: ComposerProps) {
     props.onOfferedLink?.();
   }, [pageLink]);
   const dropState = props.dropState ?? (drop.over ? 'over' : drop.pageDrag ? 'page' : undefined);
-  const blank = draft.trim() === '' && attachments.items.length === 0 && pastes.length === 0;
+  const blank = draft.trim() === '' && (props.replyChip?.bound || attachments.items.length === 0) && pastes.length === 0;
   const atPicker = useAtPicker(field, props.sessionId, draft, onDraft, setPasteCaret);
 
   async function send(mode: SendMode) {
-    if (blank || disabled) return;
-    const { items } = attachments;
-    const sent = draft;
-    const text = encodePasted(pastes, draft.trim());
-    const accepted = items.length ? await onSend(text, mode, await toOutgoing(items)) : await onSend(text, mode);
-    if (!accepted) return;
-    // Typing while the send was in flight must survive: clear only the text that went out.
-    if (latestDraft.current === sent) {
-      onDraft('');
-      setPastes([]);
-      attachments.clear();
-      setPageLink(undefined);
-    }
+    if (blank || disabled || sending.current) return;
+    sending.current = true;
+    try {
+      const { items } = attachments;
+      const sent = draft;
+      const text = encodePasted(pastes, draft.trim());
+      const replying = props.replyChip?.bound;
+      const accepted = items.length && !replying ? await onSend(text, mode, await toOutgoing(items)) : await onSend(text, mode);
+      if (!accepted) {
+        if (replying) setReplyError('That did not go through. Try again.');
+        return;
+      }
+      setReplyError('');
+      // Typing while the send was in flight must survive: clear only the text that went out.
+      if (latestDraft.current === sent) {
+        onDraft('');
+        setPastes([]);
+        if (!replying) { attachments.clear(); setPageLink(undefined); }
+      }
+    } finally { sending.current = false; }
   }
 
   function onPaste(event: ClipboardEvent) {
@@ -218,6 +229,10 @@ export function Composer(props: ComposerProps) {
     if (isComposing(event)) return;
     // The file list owns these keys while it is up: arrows move, Enter and Tab insert, Esc closes.
     if (atPicker.onKeyDown(event)) return;
+    if (event.key === 'Escape' && draft === '' && props.replyChip?.bound) {
+      event.preventDefault();
+      return props.replyChip.dismiss();
+    }
     if (event.key === 'Escape') return event.currentTarget.blur();
     if (event.key === 'ArrowUp' && draft === '') return recall(event);
     if (event.key !== 'Enter' || event.shiftKey) return;
@@ -246,6 +261,13 @@ export function Composer(props: ComposerProps) {
         data-drop={dropState}
         {...drop.handlers}
       >
+        {props.replyChip && <div className="composer-reply-chip">
+          <Button className="composer-reply-label" onClick={() => { props.replyChip?.bind(); field.current?.focus(); }}>
+            <span>{props.replyChip.bound ? 'Replying to' : 'Reply to'}</span>
+            <span className="composer-reply-title">{props.replyChip.title}</span>
+          </Button>
+          <IconButton label="Dismiss reply" icon="close" iconSize="xs" onClick={props.replyChip.dismiss} />
+        </div>}
         {dropState && <Text className="composer-drop-hint">Drop to attach</Text>}
         {pageLink && (
           <ul className="attachment-tray" aria-label="Attached page">
@@ -273,7 +295,7 @@ export function Composer(props: ComposerProps) {
             data-faded={autosize.faded || undefined}
             data-keyboard={focus.keyboard || undefined}
             onScroll={autosize.onScroll}
-            aria-label="Message"
+            aria-label={props.replyChip?.bound ? `Reply to ${props.replyChip.title}` : 'Message'}
             aria-autocomplete={atPicker.open ? 'list' : undefined}
             aria-controls={atPicker.open ? atPicker.listId : undefined}
             aria-activedescendant={atPicker.open ? atPicker.activeId : undefined}
@@ -300,6 +322,7 @@ export function Composer(props: ComposerProps) {
           onPick={atPicker.pick}
           onClose={atPicker.close}
         />
+        {replyError && <Text className="composer-error" role="status">{replyError}</Text>}
         {pasteError && <Text className="composer-error" role="status">{pasteError}</Text>}
         {attachments.error && <Text className="composer-error" role="status">{attachments.error}</Text>}
         <div className="composer-row">

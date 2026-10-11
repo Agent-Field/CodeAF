@@ -293,3 +293,10 @@
 }
 .composer-dock:not([data-variant="home"]) .composer[data-attached] .composer-field { padding-left: var(--space-1); }
 .composer-dock:not([data-variant="home"]) .composer[data-attached] .composer-row { margin-left: calc(-1 * var(--space-1)); }
+
+/* The reply target stays quiet and readable; a long title fades without shortening its accessible name. */
+.composer-reply-chip { display: flex; align-items: center; gap: var(--composer-reply-gap); align-self: flex-start; max-width: 100%; min-width: 0; }
+.button.composer-reply-label { display: flex; align-items: center; gap: var(--composer-reply-gap); min-width: 0; min-height: var(--composer-reply-height); padding: 0 var(--space-1); color: var(--ink-3); font-size: var(--type-caption-size); }
+.composer-reply-label > span:first-child { flex: none; }
+.composer-reply-title { min-width: 0; white-space: nowrap; overflow: hidden; mask-image: linear-gradient(to right, black calc(100% - var(--composer-reply-fade)), transparent); }
+.composer-reply-chip > .icon-button { flex: none; width: var(--composer-reply-height); height: var(--composer-reply-height); color: var(--ink-3); }

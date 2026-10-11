@@ -89,7 +89,8 @@ test('the safe option is quiet even when it comes first', () => {
   assert.equal(optionVariant(q, q.options![1]), 'primary');
 });
 
-test('landing: tell it needs words and sends key s with the change', () => {
+test('landing: legacy answer encoding stays compatible while the Tell it button is absent', () => {
+  assert.equal(visibleOptions(landing).some(option => option.key === 's'), false);
   const tell = landing.options![2];
   const draft = initialDraft(landing);
   assert.equal(canPress(landing, draft, tell), false);

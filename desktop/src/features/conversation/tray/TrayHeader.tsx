@@ -8,9 +8,8 @@ export function crumbOf(question: Question | undefined): { title: string; kind: 
     const { place, agreed, of } = proposal;
     return { title: place ? `${place} is learning` : 'Learning', kind: of ? `· ${agreed} of ${of} agreed` : '' };
   }
-  if (question?.blocking?.turn) return { title: 'The reply is waiting on this', kind: '' };
   const task = question?.asker?.kind === 'task' ? question.asker.name : '';
-  return task ? { title: task, kind: '· task' } : { title: 'Waiting on you', kind: '' };
+  return task ? { title: task, kind: '· task' } : { title: question?.head || 'Waiting on you', kind: '' };
 }
 
 type HeaderProps = {

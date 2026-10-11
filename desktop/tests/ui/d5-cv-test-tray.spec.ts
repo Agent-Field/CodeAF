@@ -74,10 +74,13 @@ test('pager-keys: ArrowLeft and ArrowRight page while the tray is focused', asyn
 
   await page.keyboard.press('ArrowRight');
   await expect(count).toHaveAccessibleName('Question 2 of 3');
-  const answer = card.getByRole('textbox', { name: 'Your answer' });
-  await expect(answer).toBeFocused();
+  const answer = page.locator('.composer-field');
+  await expect(answer).toHaveAccessibleName('Reply to Name the cache');
 
-  // An empty field pages. At the last question the next arrow is disabled and a further press does nothing.
+  // The composer keeps its arrows; the tray pager moves to the last question.
+  await answer.press('ArrowRight');
+  await expect(count).toHaveAccessibleName('Question 2 of 3');
+  await next.focus();
   await page.keyboard.press('ArrowRight');
   await expect(count).toHaveAccessibleName('Question 3 of 3');
   await expect(card.getByRole('region', { name: 'Pick a region' })).toBeVisible();
@@ -89,7 +92,8 @@ test('pager-keys: ArrowLeft and ArrowRight page while the tray is focused', asyn
   await previous.focus();
   await page.keyboard.press('ArrowLeft');
   await expect(count).toHaveAccessibleName('Question 2 of 3');
-  await expect(answer).toBeFocused();
+  await expect(answer).toHaveAccessibleName('Reply to Name the cache');
+  await answer.focus();
 
   // Any character, including a space, keeps the arrows for the caret.
   await answer.fill(' ');
@@ -106,6 +110,9 @@ test('pager-keys: ArrowLeft and ArrowRight page while the tray is focused', asyn
 
   await answer.fill('');
   await answer.press('ArrowLeft');
+  await expect(count).toHaveAccessibleName('Question 2 of 3');
+  await previous.focus();
+  await page.keyboard.press('ArrowLeft');
   await expect(count).toHaveAccessibleName('Question 1 of 3');
   await expect(previous).toBeDisabled();
   await page.keyboard.press('ArrowLeft');

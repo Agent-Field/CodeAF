@@ -13,11 +13,14 @@ import { TrayHeader } from './TrayHeader';
 import { useMoreBelow } from './useBodyFade';
 import './tray.css';
 import { nextUpWalk, useNextUpWalkState } from '../../nextup/useNextUpWalk';
+import { composerTarget, type ComposerTarget } from './composerTarget';
 import { worldStore } from '../../chat/world-store';
 import './tray-shell.css';
 
 export type DecisionTrayProps = {
   questions: Question[];
+  onCompose?: (target: ComposerTarget) => void;
+  onFrontTarget?: (target: ComposerTarget | null) => void;
   /** questionKey() of the answer being sent right now, or null. */
   busyKey: string | null;
   /** Sends one answer; resolves true when the engine took it. */
@@ -63,7 +66,7 @@ function arrowsStayWithControl(target: EventTarget | null): boolean {
   return (field.textContent ?? '').length > 0;
 }
 
-export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, renderImage, focusKey, compact, onReview }: DecisionTrayProps) {
+export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, renderImage, focusKey, compact, onReview, onFrontTarget, onCompose }: DecisionTrayProps) {
   const walk = useNextUpWalkState();
   const [later, setLater] = useState<Set<string>>(new Set());
   const [expanded] = useState<Set<string>>(new Set());
@@ -84,6 +87,8 @@ export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, render
   }, [focusKey]);
 
   const active = tabs.find((tab) => tab.id === wanted) ?? tabs.find((tab) => tabHolds(tab, wanted)) ?? tabs[0];
+  const target = useMemo(() => composerTarget(active?.kind === 'question' ? active.question : undefined), [active]);
+  useEffect(() => { onFrontTarget?.(target); }, [target, onFrontTarget]);
   const moreBelow = useMoreBelow(bodyRef, active?.id ?? '');
   const index = tabs.findIndex((tab) => tab.id === active?.id);
 
@@ -169,6 +174,7 @@ export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, render
       <QuestionCardV2
         key={key}
         question={question}
+        onCompose={(option) => { const target = composerTarget(question, option); if (target) onCompose?.(target); }}
         busy={busy(key)}
         now={now}
         held={clockStopped.has(key)}
@@ -188,7 +194,7 @@ export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, render
   return (
     <>
       <TrayFold shown={Boolean(compact)}>
-        <TrayCompact count={standing} summary={(active?.label ?? '').replace(/`/g, '')} onReview={() => onReview?.()} />
+        <TrayCompact count={standing} laterCount={folded.length} summary={(active?.label ?? '').replace(/`/g, '')} onReview={() => onReview?.()} />
       </TrayFold>
       <TrayFold shown={!compact}>
       <section ref={trayRef} className="decision-tray" aria-label="Waiting on you" onKeyDown={onTrayKey}>

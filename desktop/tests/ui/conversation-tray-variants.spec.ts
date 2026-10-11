@@ -126,41 +126,38 @@ for (const scheme of ['light', 'dark'] as const) {
       await expect(clock).toHaveCSS('color', await tokenColor(page, 'ink-2'));
     });
 
-    test('CV-148: irreversible Keep it, Remove, Tell it… — no clock, no Always, no reason field', async ({ page }) => {
+    test('CV-148: irreversible Keep it, Remove, composer reply — no clock, no Always, no reason field', async ({ page }) => {
       await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
       const engine = await openWithQuestions(page, [irreversibleChoice()]);
       const card = tray(page).getByRole('region', { name: 'Remove the legacy YAML loader?' });
       const buttons = card.locator('.answer-row .answer');
-      await expect(buttons).toHaveText(['Keep it', 'Remove', 'Tell it…']);
+      await expect(buttons).toHaveText(['Keep it', 'Remove']);
       const keep = card.getByRole('button', { name: 'Keep it', exact: true });
       const remove = card.getByRole('button', { name: 'Remove', exact: true });
       const tell = card.getByRole('button', { name: 'Tell it…', exact: true });
       await expect(keep).toHaveClass(/button-quiet/);
       await expect(remove).toHaveClass(/button-danger/);
-      await expect(tell).toHaveClass(/button-ghost/);
+      await expect(tell).toHaveCount(0);
       await expect(keep).toHaveCSS('background-color', await paint(page, 'field', 'backgroundColor'));
       await expect(remove).toHaveCSS('background-color', await paint(page, 'danger-soft', 'backgroundColor'));
       await expect(remove).toHaveCSS('color', await paint(page, 'danger', 'color'));
-      await expect(tell).toHaveCSS('color', await tokenColor(page, 'ink-3'));
       await expect(card.getByRole('button', { name: /Always/ })).toHaveCount(0);
       await expect(card.getByRole('timer')).toHaveCount(0);
       await expect(card.getByRole('button', { name: 'Hold' })).toHaveCount(0);
       await expect(card.getByRole('textbox', { name: 'Say why (optional)' })).toHaveCount(0);
       await expect(card.getByRole('button', { name: 'and say why' })).toHaveCount(0);
       await expect(card.getByRole('button', { name: 'You decide' })).toHaveCount(0);
-      await tell.focus();
-      await page.keyboard.press('Enter');
       expect(posts(engine, '/answer')).toHaveLength(0);
-      await expect(card.getByRole('textbox', { name: 'What should it know?' })).toBeVisible();
+      await expect(page.locator('.composer-field')).toHaveAccessibleName('Reply to Audit config loaders');
       await expectAccessible(page);
     });
 
-    test('CV-149: clarification takes focus, ⌘↵ sends, Later folds into the count, You decide answers for the asker', async ({ page }) => {
+    test('CV-149: clarification binds the composer, ⌘↵ sends, Later folds into the count, You decide answers for the asker', async ({ page }) => {
       await page.emulateMedia({ colorScheme: scheme, reducedMotion: 'reduce' });
       const engine = await openWithQuestions(page, clarificationPair());
       const card = tray(page);
-      const field = card.getByRole('textbox', { name: 'Your answer' });
-      await expect(field).toBeFocused();
+      const field = page.locator('.composer-field');
+      await expect(field).toHaveAccessibleName('Reply to Which customers still run v1?');
       const later = card.getByRole('button', { name: 'Later', exact: true });
       const decide = card.getByRole('button', { name: 'You decide', exact: true });
       const ink = await tokenColor(page, 'ink-2');
@@ -176,15 +173,15 @@ for (const scheme of ['light', 'dark'] as const) {
       await page.keyboard.press('Enter');
       await card.getByRole('button', { name: 'Answer now' }).focus();
       await page.keyboard.press('Enter');
-      await expect(field).toBeFocused();
+      await expect(field).toHaveAccessibleName('Reply to Which customers still run v1?');
 
       await field.fill('Northwind and Acme');
       await field.press('Meta+Enter');
       await expect.poll(() => posts(engine, '/answer').length).toBe(1);
       expect(posts(engine, '/answer')[0].body).toMatchObject({ kind: 'ask', id: 8, change: 'Northwind and Acme' });
 
-      const second = card.getByRole('textbox', { name: 'Your answer' });
-      await expect(second).toBeFocused();
+      const second = page.locator('.composer-field');
+      await expect(second).toHaveAccessibleName('Reply to Which region should the cache use?');
       await card.getByRole('button', { name: 'You decide', exact: true }).focus();
       await page.keyboard.press('Enter');
       await expect.poll(() => posts(engine, '/answer').length).toBe(2);

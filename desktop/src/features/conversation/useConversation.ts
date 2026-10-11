@@ -34,7 +34,6 @@ import { appendPlaceChange, attachLivePlaceChanges, livePlaceChange, type LivePl
 import { beginPost, holdSend, restoreFront, type HeldSend } from './offline/outbox';
 import { questionKey } from './model/entry';
 import { toolReadOnce } from './toolReadOnce';
-import { blocksComposer } from './tray/layout';
 import type { ConversationModel } from './types';
 
 export type FailedSend = { text: string; mode: SendMode; message: string; files?: OutgoingFile[]; /** Set when this text was taken back out of the pane outbox. */ fromOutbox?: boolean };
@@ -311,7 +310,6 @@ export function useConversation({ sessionFile, onSessionFile, beforeFirstTurn, n
         if (onlineRef.current) void flushOutbox();
         return true;
       }
-      if (blocksComposer(target.questions ?? [])) throw new Error('Answer the question above first. Your message is kept.');
       if (firstTurn.current && !firstTurnDone.current && target.entries.length === 0) {
         await firstTurn.current(target.sessionFile);
         firstTurnDone.current = true;

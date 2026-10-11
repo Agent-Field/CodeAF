@@ -54,3 +54,8 @@
 .tray-specimen { display: flex; flex-direction: column; gap: var(--space-2); }
 
 .tray-heading-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+
+/* Answer controls and metadata remain one wrapping row instead of leaving an empty footer. */
+.tray-action-meta { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-left: auto; }
+.tray-action-meta .tray-note { padding-right: 0; }
+.tray-action-meta > .button, .tray-action-meta > .button:hover:not(:disabled), .tray-action-meta > .button:active:not(:disabled) { color: var(--ink-2); }

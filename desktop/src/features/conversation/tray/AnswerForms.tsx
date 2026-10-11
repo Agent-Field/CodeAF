@@ -32,8 +32,8 @@ function useEnterChooses(option: Option | undefined, enabled: boolean, onPress: 
   }, [enabled, option, onPress]);
 }
 
-/** The "and say why" hint after Deny (Components, Decision tray): it opens the optional reason field. */
-export type WhyToggle = { open: boolean; toggle: () => void };
+/** The "and say why" hint after Deny (Components, Decision tray): it binds the main composer to the optional reason. */
+export type WhyToggle = { toggle: () => void };
 
 type AnswerProps = { kind: 'primary' | 'field' | 'danger' | 'ghost'; locked: boolean; onClick: () => void; children: string };
 
@@ -63,7 +63,7 @@ export function PermissionAnswers({ question, locked, single, why, note, onPress
       {answer(allow, 'primary')}
       {answer(deny, 'field')}
       {answer(always, 'ghost', 'Always allow…')}
-      {deny && <Button variant="ghost" className="answer-why" aria-expanded={why.open} disabled={locked} onClick={why.toggle}>and say why</Button>}
+      {deny && <Button variant="ghost" className="answer-why" disabled={locked} onClick={why.toggle}>and say why</Button>}
       {note}
     </div>
   );

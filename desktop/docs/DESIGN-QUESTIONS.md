@@ -12,6 +12,7 @@ Shell). On any conflict, the design files win over code and older docs.
 
 | # | Question | Decision |
 |---|---|---|
+| TRAY-589 | Where does a desktop review / clarification accept words? | **Decided 2026-10-11:** the main composer answers the front card; no Tell it button or in-card text field. Existing drafts get an offer; x / empty Escape unbinds; paging follows the front card. |
 | D1 | Edit a sent message (the design shows a pencil beside Copy) | **No.** Copy only. The pencil is not drawn. |
 | D2 | Edit and reorder queued messages | **Yes.** The engine supports edit and reorder; the queue rows show edit, drag and remove. |
 | D3 | What a file/diff tab compares against | **Engineering choice:** the commit the conversation started on, so the diff shows what this conversation changed. Falls back to the latest commit when no start commit is recorded. |
@@ -63,6 +64,8 @@ Shell). On any conflict, the design files win over code and older docs.
 
 | # | Question | Assumption the app ships now |
 |---|---|---|
+| TRAY-589-CHIP | The owner specifies the reply chip but no geometry for it. | A quiet caption control uses a 24px hit height, 6px gap, and 16px title mask, with shared button focus and hover states. The full title remains in the accessible field name. |
+| TRAY-589-FILES | What happens to attached files when the composer sends a card answer? | Card answers send text only through the existing answer endpoint. File attachments stay in the composer for a later chat message. |
 | PERF-FILM-1 | Does a filmstrip need a second full workspace renderer, and how long do preview reads survive? | Render the latest known reply/question/command and the draft in the half-scale conversation column; other kinds use their compact cached content inside the same pane geometry. No second transcript, terminal or native webview mounts. Keep up to 256 resource/metadata entries in memory per window; a changed summary timestamp refreshes without blocking, workspace reads prime the cache, and offscreen content mounts only when visible. |
 | PERF-FILM-2 | Does the 100ms preview budget include entrance motion and animation-frame scheduling? | The performance spec measures the visible DOM commit with reduced motion, and records the subsequent frame delay separately. Normal-motion appearance and interaction checks run independently. The 1/12-tab cached-reply cases pass in this controlled mode. Normal-motion WebKit reached 100–102ms and the additional warmed-diff case exceeded 100ms even with reduced motion; a stable 100ms budget for every kind is not claimed. |
 | MAT-1 | How should unavailable Windows Mica be detected before drawing translucent chrome? | Request Mica through Tauri on Windows; macOS keeps Sidebar. Tauri ignores effects for other platforms. Windows builds before 22000 paint solid; the shell confirms support before the renderer exposes the native layer. |

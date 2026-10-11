@@ -685,3 +685,9 @@ Overrides Places 9e "switching places swaps tabs" and the part of t-fix-place-na
 - **The place of the window** (`shell.place`) now FOLLOWS the active tab (`shownPlace`), so the rail highlight, the native title and the menus need no second source of truth. Only `followTab` moves it.
 - **Chats opened from a place Home** open beside the current tab and keep that place. Next up and focus history no longer change places before acting: there is one strip.
 - Proof: `tests/ui/place-navigation.spec.ts` (behaviours 1 to 6, chromium and webkit), `src/features/places/librarySelection.test.ts` (no code path replaces the tab set on a place selection), reducer and navigation unit tests.
+
+## t-tray-composer-answer: the main composer answers the front card (owner decision, 11 Oct)
+
+Overrides Conversation “Tell it…” and “Clarification · needs words: the field takes focus, cmd-enter sends”. There is no separate Tell it button or in-card free-text field. The main composer binds to a front card that accepts words when its draft is empty; a prior draft gets a clickable Reply to offer. The bound chip says Replying to and its x dismisses the target. Enter and Command+Enter send through the engine answer endpoint, preserving rejected drafts. A review's words answer Not right; its empty Not right button remains one click. Escape in an empty bound composer dismisses the target. Paging follows the front card; Later on the last card unbinds. Buttons remain explicit answers. The field's accessible name includes Reply to and the complete title.
+
+The card has one source/title header, distinct body content, and one wrapping answer row with the quiet metadata and Later at the right. The compact bar keeps its 40px geometry and centres every label vertically.
