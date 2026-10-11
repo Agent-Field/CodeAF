@@ -53,10 +53,10 @@ func runFactoryToken(args []string) error {
 // service and asking for its token at the same time cannot choose two secrets.
 func factoryHostConfigAt(path string, rotate bool) (factoryHostConfig, error) {
 	release, err := factoryFileLock(path+".lock", false)
+	defer release()
 	if err != nil {
 		return factoryHostConfig{}, err
 	}
-	defer release()
 	cfg, err := readFactoryHostConfig(path)
 	if err != nil {
 		return cfg, err

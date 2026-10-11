@@ -18,6 +18,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
 
@@ -93,10 +94,10 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer)
 		return err
 	}
 	release, err := factoryFileLock(filepath.Join(st.Root(), "serve.lock"), true)
+	defer release()
 	if err != nil {
 		return err
 	}
-	defer release()
 	cfg, err := factoryHostConfigAt(configPath, false)
 	if err != nil {
 		return err
@@ -118,7 +119,7 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer)
 	seam := factory.LocalSeam(st, time.Now(), factory.WithRepoDirs(st.CheckoutDir))
 	server := &http.Server{Handler: serve.New(seam, serve.Config{Address: address, AccessToken: cfg.AccessToken}), ReadHeaderTimeout: 10 * time.Second}
 	done := make(chan error, 1)
-	go func() { done <- server.Serve(listener) }()
+	guard.Go("factory HTTP service", func() { done <- server.Serve(listener) })
 	defer server.Close()
 	discovery := filepath.Join(st.Root(), "serve.json")
 	body, err := json.Marshal(factoryDiscovery{URL: address, PID: os.Getpid(), Token: cfg.AccessToken})
@@ -153,18 +154,18 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer)
 // processes. A second service must not replace the first service's receipt.
 func factoryFileLock(path string, nonBlocking bool) (func(), error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return nil, err
+		return func() {}, err
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		return nil, err
+		return func() {}, err
 	}
 	if err := filelock.Lock(f, true, nonBlocking); err != nil {
 		f.Close()
 		if filelock.IsBusy(err) {
-			return nil, errors.New("a factory service is already running for this codeaf home")
+			return func() {}, errors.New("a factory service is already running for this codeaf home")
 		}
-		return nil, err
+		return func() {}, err
 	}
 	return func() { _ = filelock.Unlock(f); _ = f.Close() }, nil
 }
