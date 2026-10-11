@@ -2,9 +2,9 @@
 
 ## How do I find text in a desktop web page with Command F or Control F
 
-When native page search is available, Command F on macOS or Control F on Linux replaces the web tab’s address with Find in page. Type text to search. Enter selects the next match; Shift Enter selects the previous match. Escape closes the field and restores the address.
+Command F on macOS or Control F on Linux, while a web tab is focused, replaces the address with Find in page. Type text to search. Enter selects the next match; Shift Enter selects the previous match. Escape closes the field and restores the address.
 
-The native find command is a separate dependency. Until it is installed, the address stays visible and no find field appears. Browser development mode cannot search a native page.
+The desktop app searches the page itself. The page is not given a way to call back into the app. A browser window running this interface has no native page, so the address stays put there.
 
 ## Why does web page find show no count or no n of m
 

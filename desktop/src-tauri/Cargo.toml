@@ -61,7 +61,7 @@ version = "0.8"
 block2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSData", "NSDictionary", "NSError", "NSValue", "NSString", "NSObject", "NSThread"] }
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSResponder", "NSView"] }
-objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "objc2-app-kit", "block2", "WKWebView", "WKSnapshotConfiguration", "WKNavigation"] }
+objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "objc2-app-kit", "block2", "WKWebView", "WKSnapshotConfiguration", "WKNavigation", "WKFindConfiguration", "WKFindResult"] }
 
 # The mock runtime drives the native-controls and native-web commands through real IPC in tests.
 [dev-dependencies]

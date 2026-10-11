@@ -13,6 +13,43 @@ pub const SNAPSHOT_WIDTH: u32 = 640;
 /// A snapshot larger than this once encoded is dropped rather than shipped.
 pub const SNAPSHOT_BYTES: usize = 1_500_000;
 
+/// Linux stops counting here. WebKit answers `G_MAXUINT` above the cap, and that total is omitted.
+pub const FIND_MATCH_CAP: u32 = 1000;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FindHit {
+    pub found: bool,
+    /// A Linux total at or under [`FIND_MATCH_CAP`]. Absent on macOS, on a miss, on dismiss, and when WebKit reports the cap was exceeded.
+    pub matches: Option<u32>,
+}
+
+/// Whether this query continues the page's current search or starts another.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FindMove {
+    Dismiss,
+    Step,
+    Search,
+}
+
+pub fn find_move(previous: &str, query: &str) -> FindMove {
+    if query.is_empty() {
+        FindMove::Dismiss
+    } else if previous == query {
+        FindMove::Step
+    } else {
+        FindMove::Search
+    }
+}
+
+/// Zero and `G_MAXUINT` are not totals the field can show.
+pub fn reported_total(count: u32) -> Option<u32> {
+    if count == 0 || count == u32::MAX {
+        None
+    } else {
+        Some(count)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Probe {
     pub can_back: bool,
@@ -46,8 +83,9 @@ pub type Done<T> = Box<dyn FnOnce(T) + Send + 'static>;
 #[cfg(target_os = "linux")]
 mod imp {
     use super::*;
+    use gtk::glib::prelude::ObjectExt;
     use gtk::{cairo, gdk, gdk_pixbuf::InterpType};
-    use webkit2gtk::{SnapshotOptions, SnapshotRegion, WebViewExt};
+    use webkit2gtk::{FindControllerExt, SnapshotOptions, SnapshotRegion, WebViewExt};
 
     pub fn probe<R: Runtime>(view: &Webview<R>, done: Done<Probe>) {
         let _ = view.with_webview(move |platform| {
@@ -110,6 +148,152 @@ mod imp {
         scaled
             .save_to_bufferv("png", &[])
             .map_err(|_| "unavailable")
+    }
+
+    /// Remembers the in-flight search on the find controller so a newer query
+    /// can retire the previous callback. The controller dies with the page.
+    const FIND_KEY: &str = "codeaf-web-find";
+
+    struct FindWatch {
+        ticket: u64,
+        pending: Option<Done<Result<FindHit, &'static str>>>,
+        found: Option<gtk::glib::SignalHandlerId>,
+        failed: Option<gtk::glib::SignalHandlerId>,
+    }
+
+    impl Drop for FindWatch {
+        fn drop(&mut self) {
+            // A page that closes mid-search must not leave the command waiting.
+            if let Some(done) = self.pending.take() {
+                done(Err("The page could not be searched"));
+            }
+        }
+    }
+
+    fn take_watch(controller: &webkit2gtk::FindController) -> FindWatch {
+        unsafe { controller.steal_data(FIND_KEY) }.unwrap_or(FindWatch {
+            ticket: 0,
+            pending: None,
+            found: None,
+            failed: None,
+        })
+    }
+
+    fn store_watch(controller: &webkit2gtk::FindController, watch: FindWatch) {
+        unsafe { controller.set_data(FIND_KEY, watch) };
+    }
+
+    fn disarm(controller: &webkit2gtk::FindController, watch: &mut FindWatch) {
+        if let Some(id) = watch.found.take() {
+            controller.disconnect(id);
+        }
+        if let Some(id) = watch.failed.take() {
+            controller.disconnect(id);
+        }
+        // The newer query owns the answer. The one it replaced must still finish.
+        if let Some(done) = watch.pending.take() {
+            done(Err("The page could not be searched"));
+        }
+    }
+
+    fn finish(
+        controller: &webkit2gtk::FindController,
+        ticket: u64,
+        hit: Result<FindHit, &'static str>,
+    ) {
+        let mut watch = take_watch(controller);
+        let done = if watch.ticket == ticket {
+            watch.pending.take()
+        } else {
+            None
+        };
+        store_watch(controller, watch);
+        if let Some(done) = done {
+            done(hit);
+        }
+    }
+
+    pub fn find<R: Runtime>(
+        view: &Webview<R>,
+        query: &str,
+        forward: bool,
+        done: Done<Result<FindHit, &'static str>>,
+    ) {
+        let query = query.to_string();
+        let slot = std::sync::Arc::new(std::sync::Mutex::new(Some(done)));
+        let inner = std::sync::Arc::clone(&slot);
+        let started = view.with_webview(move |platform| {
+            let Some(done) = inner.lock().ok().and_then(|mut guard| guard.take()) else {
+                return;
+            };
+            let Some(controller) = platform.inner().find_controller() else {
+                done(Err("The page could not be searched"));
+                return;
+            };
+            let mut watch = take_watch(&controller);
+            disarm(&controller, &mut watch);
+            let previous = controller
+                .search_text()
+                .map(|text| text.to_string())
+                .unwrap_or_default();
+            match find_move(&previous, &query) {
+                FindMove::Dismiss => {
+                    controller.search_finish();
+                    store_watch(&controller, watch);
+                    done(Ok(FindHit {
+                        found: false,
+                        matches: None,
+                    }));
+                }
+                move_ => {
+                    let ticket = watch.ticket.wrapping_add(1);
+                    watch.ticket = ticket;
+                    watch.pending = Some(done);
+                    let found = controller.connect_found_text(move |controller, count| {
+                        finish(
+                            controller,
+                            ticket,
+                            Ok(FindHit {
+                                found: true,
+                                matches: reported_total(count),
+                            }),
+                        );
+                    });
+                    let failed = controller.connect_failed_to_find_text(move |controller| {
+                        finish(
+                            controller,
+                            ticket,
+                            Ok(FindHit {
+                                found: false,
+                                matches: None,
+                            }),
+                        );
+                    });
+                    watch.found = Some(found);
+                    watch.failed = Some(failed);
+                    store_watch(&controller, watch);
+                    if move_ == FindMove::Step {
+                        if forward {
+                            controller.search_next();
+                        } else {
+                            controller.search_previous();
+                        }
+                    } else {
+                        let mut options = webkit2gtk::FindOptions::CASE_INSENSITIVE
+                            | webkit2gtk::FindOptions::WRAP_AROUND;
+                        if !forward {
+                            options |= webkit2gtk::FindOptions::BACKWARDS;
+                        }
+                        controller.search(&query, options.bits(), FIND_MATCH_CAP);
+                    }
+                }
+            }
+        });
+        if started.is_err() {
+            if let Some(done) = slot.lock().ok().and_then(|mut guard| guard.take()) {
+                done(Err("The page could not be searched"));
+            }
+        }
     }
 }
 
@@ -186,6 +370,65 @@ mod imp {
         });
     }
 
+    pub fn find<R: Runtime>(
+        view: &Webview<R>,
+        query: &str,
+        forward: bool,
+        done: Done<Result<FindHit, &'static str>>,
+    ) {
+        use objc2_foundation::NSString;
+        use objc2_web_kit::{WKFindConfiguration, WKFindResult};
+        use std::ptr::NonNull;
+        let query = query.to_string();
+        let slot = std::sync::Arc::new(std::sync::Mutex::new(Some(done)));
+        let inner = std::sync::Arc::clone(&slot);
+        let started = view.with_webview(move |platform| {
+            let Some(done) = inner.lock().ok().and_then(|mut guard| guard.take()) else {
+                return;
+            };
+            let wv = web_view(&platform);
+            let Some(mtm) = MainThreadMarker::new() else {
+                done(Err("The page could not be searched"));
+                return;
+            };
+            let config = unsafe { WKFindConfiguration::new(mtm) };
+            unsafe {
+                config.setCaseSensitive(false);
+                config.setWraps(true);
+                config.setBackwards(!forward);
+            }
+            let text = NSString::from_str(&query);
+            let dismiss = query.is_empty();
+            let once = Mutex::new(Some(done));
+            let block = RcBlock::new(move |result: NonNull<WKFindResult>| {
+                let Some(done) = once.lock().ok().and_then(|mut slot| slot.take()) else {
+                    return;
+                };
+                // An empty string is the dismiss. The result's match flag is not a count.
+                if dismiss {
+                    done(Ok(FindHit {
+                        found: false,
+                        matches: None,
+                    }));
+                    return;
+                }
+                let found = unsafe { result.as_ref().matchFound() };
+                done(Ok(FindHit {
+                    found,
+                    matches: None,
+                }));
+            });
+            unsafe {
+                wv.findString_withConfiguration_completionHandler(&text, Some(&config), &block);
+            }
+        });
+        if started.is_err() {
+            if let Some(done) = slot.lock().ok().and_then(|mut guard| guard.take()) {
+                done(Err("The page could not be searched"));
+            }
+        }
+    }
+
     fn encode(image: &NSImage) -> Result<Vec<u8>, &'static str> {
         let tiff = image.TIFFRepresentation().ok_or("unavailable")?;
         let rep = NSBitmapImageRep::imageRepWithData(&tiff).ok_or("unavailable")?;
@@ -219,9 +462,19 @@ mod imp {
     pub fn snapshot<R: Runtime>(_view: &Webview<R>, done: Done<Result<Vec<u8>, &'static str>>) {
         done(Err("unavailable"));
     }
+
+    pub fn find<R: Runtime>(
+        _view: &Webview<R>,
+        _query: &str,
+        _forward: bool,
+        done: Done<Result<FindHit, &'static str>>,
+    ) {
+        // No public find handle on this platform, so the field stays absent.
+        done(Err("The page could not be searched"));
+    }
 }
 
-pub use imp::{probe, snapshot, step, watch_failures};
+pub use imp::{find, probe, snapshot, step, watch_failures};
 
 /// Where a child view sits. macOS and Windows place a child webview at its
 /// bounds themselves. Tauri 2.12 on Linux packs a child into the window's
@@ -365,9 +618,9 @@ pub use layer::{adopt, place};
 pub const POLLS_FOR_FAILURE: bool = cfg!(target_os = "macos");
 
 /// On Linux a key pressed in the page never reaches the app's document, and
-/// there is no menu bar to catch it. The three app chords are window
-/// accelerators; the page forwards them because WebKit would otherwise keep
-/// the key. macOS uses the menu, which already runs with the page focused.
+/// there is no menu bar to catch it. The app chords are window accelerators;
+/// the page forwards them because WebKit would otherwise keep the key. macOS
+/// uses the menu, which already runs with the page focused.
 #[cfg(target_os = "linux")]
 mod chords {
     use super::super::policy::{self, AppChord};
@@ -418,6 +671,8 @@ mod chords {
             Some('w')
         } else if key == *gdk::keys::constants::l || key == *gdk::keys::constants::L {
             Some('l')
+        } else if key == *gdk::keys::constants::f || key == *gdk::keys::constants::F {
+            Some('f')
         } else {
             None
         }
@@ -447,6 +702,7 @@ mod chords {
             (*gdk::keys::constants::t, AppChord::NewTab),
             (*gdk::keys::constants::w, AppChord::CloseTab),
             (*gdk::keys::constants::l, AppChord::Address),
+            (*gdk::keys::constants::f, AppChord::Find),
         ] {
             let app = app.clone();
             let owner = owner.clone();
@@ -528,6 +784,7 @@ mod chords {
                 let key = match letter {
                     't' => *gdk::keys::constants::t,
                     'w' => *gdk::keys::constants::w,
+                    'f' => *gdk::keys::constants::f,
                     _ => *gdk::keys::constants::l,
                 };
                 let _forward = Forwarding::begin(&pane);
@@ -560,5 +817,20 @@ mod tests {
         assert_eq!(snapshot_size(320, 900), (320, 900));
         assert_eq!(snapshot_size(4000, 1), (640, 1));
         assert_eq!(snapshot_size(0, 10), (0, 0));
+    }
+
+    #[test]
+    fn find_steps_only_the_same_query_and_drops_an_uncapped_total() {
+        assert_eq!(find_move("", ""), FindMove::Dismiss);
+        assert_eq!(find_move("cat", ""), FindMove::Dismiss);
+        assert_eq!(find_move("", "cat"), FindMove::Search);
+        assert_eq!(find_move("cat", "cat"), FindMove::Step);
+        assert_eq!(find_move("cat", "cats"), FindMove::Search);
+        assert_eq!(find_move("Cat", "cat"), FindMove::Search);
+        assert_eq!(reported_total(0), None);
+        assert_eq!(reported_total(1), Some(1));
+        assert_eq!(reported_total(FIND_MATCH_CAP), Some(FIND_MATCH_CAP));
+        assert_eq!(reported_total(u32::MAX), None);
+        assert_ne!(FIND_MATCH_CAP, u32::MAX);
     }
 }

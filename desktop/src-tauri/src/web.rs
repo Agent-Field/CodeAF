@@ -506,6 +506,8 @@ pub(super) fn deliver_chord<R: Runtime>(
         policy::AppChord::NewTab => ("desktop-tab-action", serde_json::json!("new")),
         policy::AppChord::CloseTab => ("desktop-tab-action", serde_json::json!("close")),
         policy::AppChord::Address => ("web://focus-address", serde_json::json!({ "pane": pane })),
+        // The same id the renderer's web-key handler already listens for.
+        policy::AppChord::Find => ("desktop-tab-action", serde_json::json!("web-find")),
     };
     let _ = app.emit_to(owner, event, payload);
 }
@@ -707,6 +709,45 @@ pub async fn web_snapshot<R: Runtime>(
     Ok(Snapshot {
         image: format!("data:image/png;base64,{}", policy::base64(&png)),
         url,
+    })
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FindResult {
+    pub found: bool,
+    /// Omitted when the platform has no total. The renderer draws nothing for an absent count.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub matches: Option<u32>,
+}
+
+/// Finds in the page the caller owns. An empty query clears the highlight and
+/// returns `{ found: false }`, which is also how the renderer learns the command exists.
+#[tauri::command]
+pub async fn web_find<R: Runtime>(
+    caller: Webview<R>,
+    pane: String,
+    query: String,
+    forward: bool,
+) -> Result<FindResult, String> {
+    let view = owned_view(&caller, &pane)?;
+    let (tx, mut rx) = tauri::async_runtime::channel(1);
+    platform::find(
+        &view,
+        &query,
+        forward,
+        Box::new(move |hit| {
+            let _ = tx.try_send(hit);
+        }),
+    );
+    let hit = rx
+        .recv()
+        .await
+        .ok_or("The page could not be searched")?
+        .map_err(|reason| reason.to_string())?;
+    Ok(FindResult {
+        found: hit.found,
+        matches: hit.matches,
     })
 }
 

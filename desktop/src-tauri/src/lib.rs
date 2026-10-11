@@ -271,6 +271,7 @@ pub fn run() {
             web::web_history,
             web::web_close,
             web::web_snapshot,
+            web::web_find,
             web::web_list,
             weboverlay::web_hide_all,
             weboverlay::web_show_all

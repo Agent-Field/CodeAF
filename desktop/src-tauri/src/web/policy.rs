@@ -173,6 +173,7 @@ pub enum AppChord {
     NewTab,
     CloseTab,
     Address,
+    Find,
 }
 
 pub fn app_chord(
@@ -195,6 +196,7 @@ pub fn app_chord(
         't' => Some(AppChord::NewTab),
         'w' => Some(AppChord::CloseTab),
         'l' => Some(AppChord::Address),
+        'f' => Some(AppChord::Find),
         _ => None,
     }
 }
@@ -424,6 +426,14 @@ mod tests {
             chord(false, 'L', false, true, false, false),
             Some(AppChord::Address)
         );
+        assert_eq!(
+            chord(true, 'f', true, false, false, false),
+            Some(AppChord::Find)
+        );
+        assert_eq!(
+            chord(false, 'F', false, true, false, false),
+            Some(AppChord::Find)
+        );
         // The other platform's primary, and anything with Shift or Alt, stays with the page.
         for (mac, key, command, control, shift, alt) in [
             (true, 't', false, true, false, false),
@@ -432,6 +442,8 @@ mod tests {
             (false, 'w', false, true, false, true),
             (true, 'l', true, true, false, false),
             (false, 'r', false, true, false, false),
+            (false, 'f', false, true, true, false),
+            (true, 'f', true, false, true, false),
             (false, 't', false, false, false, false),
         ] {
             assert_eq!(

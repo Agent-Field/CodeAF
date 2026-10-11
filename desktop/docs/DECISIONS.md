@@ -701,3 +701,9 @@ Overrides Places 9e "switching places swaps tabs" and the part of t-fix-place-na
 Overrides Conversation “Tell it…” and “Clarification · needs words: the field takes focus, cmd-enter sends”. There is no separate Tell it button or in-card free-text field. The main composer binds to a front card that accepts words when its draft is empty; a prior draft gets a clickable Reply to offer. The bound chip says Replying to and its x dismisses the target. Enter and Command+Enter send through the engine answer endpoint, preserving rejected drafts. A review's words answer Not right; its empty Not right button remains one click. Escape in an empty bound composer dismisses the target. Paging follows the front card; Later on the last card unbinds. Buttons remain explicit answers. The field's accessible name includes Reply to and the complete title.
 
 The card has one source/title header, distinct body content, and one wrapping answer row with the quiet metadata and Later at the right. The compact bar keeps its 40px geometry and centres every label vertically.
+
+## t-fix-design-reds: web_find is a registered command (2026-10-11)
+
+The renderer already called `web_find`, and BE-SEC-17 failed because nothing was registered. The research decision (`t-d5-tab-web-find-research`) stands: public find on macOS, `WebKitFindController` on Linux, `{ found, matches? }`, no current index, empty query dismisses. That command is now `web::web_find` on the app webview. `web-*` views stay out of the capability set.
+
+Linux counts at most `FIND_MATCH_CAP` (1000, Open row TW-FIND-CAP). A total of 0 or `G_MAXUINT` is omitted. macOS omits `matches`. The same query steps; a changed query starts again. Ctrl+F on Linux and the View menu item `web-find` (Cmd+F) on macOS deliver `web-find` while the page holds the keys. A platform without a find handle returns an error, so the field stays absent.
