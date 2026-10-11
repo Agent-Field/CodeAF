@@ -11,14 +11,14 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 )
 
-// The dashboard owns every path outside /v1, and /v1 keeps its JSON 404 so a
-// client typo is never answered with a web page.
-func TestDashboardAtRootAndAPIUnderV1(t *testing.T) {
+// The factory serves no page: / is one plain line pointing at the clients, so
+// is any other path outside /v1, and /v1 keeps its JSON 404.
+func TestRootIsOnePlainLineAndAPIUnderV1(t *testing.T) {
 	s := httptest.NewServer(serve.New(factory.FixtureSeam(now), config))
 	defer s.Close()
 	for path, want := range map[string]string{
-		"/":          "text/html",
-		"/jobs/12":   "text/html",
+		"/":          "text/plain",
+		"/jobs/12":   "text/plain",
 		"/v1/queue":  "application/json",
 		"/v1/nope":   "application/json",
 		"/v1/events": "text/event-stream",
@@ -40,23 +40,8 @@ func TestDashboardAtRootAndAPIUnderV1(t *testing.T) {
 		if got := res.Header.Get("Content-Type"); !strings.HasPrefix(got, want) {
 			t.Errorf("GET %s Content-Type = %q, want %s (%d %.80s)", path, got, want, res.StatusCode, body)
 		}
-		if want == "text/html" && (res.StatusCode != http.StatusOK || !strings.Contains(string(body), `id="root"`)) {
-			t.Errorf("GET %s = %d, want the dashboard page", path, res.StatusCode)
+		if want == "text/plain" && (res.StatusCode != http.StatusOK || !strings.Contains(string(body), "API at /v1")) {
+			t.Errorf("GET %s = %d %q, want the pointer line", path, res.StatusCode, body)
 		}
-	}
-}
-
-// The dashboard is read-only: a write to a page path is refused, never
-// answered with the app.
-func TestDashboardRefusesWrites(t *testing.T) {
-	s := httptest.NewServer(serve.New(factory.FixtureSeam(now), config))
-	defer s.Close()
-	res, err := http.Post(s.URL+"/jobs/12", "text/plain", strings.NewReader("x"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if res.StatusCode != http.StatusMethodNotAllowed {
-		t.Fatalf("POST /jobs/12 = %d, want 405", res.StatusCode)
 	}
 }

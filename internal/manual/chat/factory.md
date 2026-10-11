@@ -3,13 +3,14 @@
 ## codeaf factory serve — start the service, listen address and host config
 
 `codeaf factory` (also `codeaf factory serve`) runs the factory HTTP service alone,
-without opening the chat or running a job itself. It prints its bound HTTP address.
+without opening the chat or running a job itself. `GET /` answers one line: the
+factory has no web page; open it in codeaf (TUI) or the codeaf app, API at `/v1`. It prints its bound HTTP address.
 The default is `127.0.0.1:7420`. Use `--listen 127.0.0.1:0` for an available port,
 or `--listen 0.0.0.0:7420` to accept connections from other machines.
 `GET /v1/queue` reads the saved jobs over loopback without an access token.
 Starting this service does not start GitHub polling or a worker in this process.
 It does read who the token belongs to (`GH_TOKEN`, `GITHUB_TOKEN`, a saved token, or gh once allowed), so
-`GET /v1/github` names the login and an approval from the browser is recorded under that handle.
+`GET /v1/github` names the login and an approval from the app is recorded under that handle.
 Run queues a job; any codeaf attached to this factory (`codeaf attach <url>`, then
 `codeaf`) runs a worker that pulls it, runs it on its own machine and reports back
 (see workers, taken jobs and lease expiry). Stop, pause, answers and steering reach
@@ -80,12 +81,12 @@ callers do not need either.
 On another machine, open the factory service's `/access` page and enter the access
 token from `codeaf factory token`. The form submits by POST; alternatively visit
 `/access?token=<access token>` once. Success sets a random session cookie and
-redirects to `/`, removing the token from the dashboard URL. A bad token returns
+redirects to `/`, removing the token from the URL. A bad token returns
 HTTP 401 and creates no session. The token is never stored in the cookie.
 Malformed forms or submissions larger than 4096 bytes return HTTP 400 with
 `invalid access form`.
 
-The cookie is HttpOnly and SameSite=Strict, covers the dashboard and `/v1`, and
+The cookie is HttpOnly and SameSite=Strict, covers `/v1`, and
 expires after 30 days. It is Secure when the service receives HTTPS directly.
 Sessions live only in the running service; restarting signs every browser out.
 An expired, unknown or revoked cookie returns HTTP 401 off loopback.
@@ -94,7 +95,7 @@ An expired, unknown or revoked cookie returns HTTP 401 off loopback.
 for this codeaf home and prints `factory sessions revoked`. It accepts no arguments
 and uses the private discovery receipt to reach the local service. Without a
 running service it refuses. Bearer callers keep working; the token is not rotated.
-After revocation, enter the token at `/access` again to open the dashboard.
+After revocation, enter the token at `/access` again.
 
 ## codeaf factory steps — print built-in step prompts
 

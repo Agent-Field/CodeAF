@@ -41,8 +41,3 @@ internal/manual/pages.pack.gz
 .furrow/
 bench/idle-surface/runs/
 work/
-# The dashboard's npm install. Its dist/ beside it is committed on purpose
-# (`make web` rebuilds it) so the Go build and CI never need Node.
-internal/factory/serve/web/node_modules/
-internal/factory/serve/web/test-results/
-internal/factory/serve/web/playwright-report/

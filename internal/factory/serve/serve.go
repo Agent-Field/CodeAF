@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"path"
@@ -20,7 +21,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
-	"github.com/Agent-Field/codeaf/internal/factory/serve/web"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
@@ -84,12 +84,18 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.mux.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusNotFound, "factory endpoint not found")
 	})
-	// Everything outside /v1 is the dashboard, which routes in the browser.
-	h.read("/", web.Handler().ServeHTTP)
+	// The dashboard lives in the codeaf app; outside /v1 the factory only says so.
+	h.read("/", h.root)
 	if root := strings.TrimSpace(config.Root); root != "" {
 		h.watch = watchRoot(root)
 	}
 	return h
+}
+
+// root answers any path outside /v1 with one plain line, never a page.
+func (h *Handler) root(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	fmt.Fprintf(w, "codeaf factory %s \u2014 open it in codeaf (TUI) or the codeaf app; API at /v1\n", h.factory.Version)
 }
 
 // Close stops the filesystem watch. The HTTP server can still be running;
