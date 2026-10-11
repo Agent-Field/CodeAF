@@ -374,6 +374,10 @@ func senseKey(data []byte, parts ...string) string {
 // "watch", and the settings slots behind them are that lane's. These sentences
 // name the slot in the sheet's own vocabulary and follow whatever it lands on.
 func (a *Agent) senseModel(modality string) string {
+	// Reading a picture and view_image owe the same one-model promise.
+	if modality == roleSenseVision && a.config.OneModel {
+		return a.visionSeer()
+	}
 	if a.config.MediaModel == nil {
 		return ""
 	}

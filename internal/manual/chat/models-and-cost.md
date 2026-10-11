@@ -1356,9 +1356,8 @@ It is a posture for one run, not an edit.
 
 Two things it deliberately does not do:
 
-- **Drawing, seeing, speaking and filming are untouched.** Those roles need a model that can
-  do them — the model you are talking to may be text-only, and pointing `view_image` at it
-  would not make the run single-model, it would make it fail.
+- **Drawing, speaking and filming are untouched.** Those roles need a model that can
+  do them. Looking at images follows the pin, as the next section explains.
 - **It cannot travel over `--host`.** The session is built on the far machine and that
   machine's rows are the ones answering, so combining them is refused rather than quietly
   ignored: `--one-model settles this machine's model rows; over --host the far machine
@@ -1366,6 +1365,19 @@ Two things it deliberately does not do:
 
 Standing items never take this posture, whatever the session that set them up was started
 with. They fire on their own clock long after your run ended, and the crew answers for them.
+
+## One model and images — can view_image use a different vision model under --one-model?
+
+Under `--one-model`, `view_image` uses the conversation's pinned model when that
+model accepts images. The looking setting and any `vision` role pin cannot send
+the call to another model. `read` on an image and `read_document`'s image rung
+also stay on the pinned model.
+
+If the pinned model cannot take images, or its image support is unknown,
+`view_image` is absent from the tool belt. Attaching a picture cannot borrow
+another vision model either: it says `session: <model> cannot read images — switch
+to a model with vision, or describe what the picture shows`. Choose a model that
+accepts images to look at pictures while keeping the one-model posture.
 
 ## What the screen says under `--one-model` — why does the status line say one model, where did my crew word go, no crew line when a task starts
 

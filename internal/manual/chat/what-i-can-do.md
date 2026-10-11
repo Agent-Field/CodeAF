@@ -871,6 +871,9 @@ the single answer to "what can see here": the fallback above, `read_document`'s
 image rung, and the `view_image` tool below all use that one model. Change it
 once and all three change. Leave it alone and codeaf picks the best model that
 publishes vision, so looking works on a machine that has never opened settings.
+Under `--one-model`, looking uses the pinned conversation model instead. If it
+cannot accept images, or its image support is unknown, `view_image` is absent
+and looking cannot borrow another model.
 
 ## Can you join videos, cut a longer video together, or add music to a video?
 

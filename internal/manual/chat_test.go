@@ -1439,6 +1439,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// `--one-model` names the flag on the status line and is owed no crew
 		// receipt, because the flag is what seats every call (#444).
 		{"why does the status line say one model", "models-and-cost"},
+		{"can view_image use a different vision model under one model", "models-and-cost"},
+		{"one model cannot take images why is view_image missing", "models-and-cost"},
 		{"why is it slow over ssh", "running-on-another-machine"},
 		// A thought that has gone quiet, asked the way somebody asks it: the
 		// patience is measured against how the model usually thinks, so

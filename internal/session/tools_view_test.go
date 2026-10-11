@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/lane"
+	"github.com/Agent-Field/codeaf/internal/roles"
 )
 
 // viewTool is the tool as the belt would carry it, or a failure: these tests
@@ -134,6 +135,110 @@ func TestViewImageIsAbsentWhenNothingCanLook(t *testing.T) {
 				t.Fatalf("the belt grew %d looking tools with nothing behind them", len(tools))
 			}
 		})
+	}
+}
+
+func TestOneModelPinsViewImageRegardlessOfLookingConfiguration(t *testing.T) {
+	const pinned = "vendor/pinned-eyes"
+	for _, resolver := range []string{"slot", "role pin", "none"} {
+		t.Run(resolver, func(t *testing.T) {
+			completer := &scriptedCompleter{}
+			agent, workspace := newTestAgent(t, completer, func(config *Config) {
+				config.Model = pinned
+				config.OneModel = true
+				config.SupportsImages = func(model string) bool { return model == pinned }
+				switch resolver {
+				case "slot":
+					config.MediaModel = func(string) string {
+						t.Fatal("one-model looking consulted the media resolver")
+						return "vendor/other-eyes"
+					}
+				case "role pin":
+					config.RolesSource = func(key string) (string, bool) {
+						return "vendor/other-eyes", key == roles.PinKey(roles.RoleVision)
+					}
+				}
+			})
+			writeImage(t, workspace, "shot.png", "BYTES")
+			if result, failed := runViewImage(t, agent, map[string]any{"path": "shot.png"}); failed {
+				t.Fatalf("view_image failed: %s", result)
+			}
+			if completer.requests() != 1 || completer.model(0) != pinned {
+				t.Fatalf("view_image requests = %d, model = %q; want one on %q", completer.requests(), completer.model(0), pinned)
+			}
+			if got := agent.senseModel(roleSenseVision); got != pinned {
+				t.Fatalf("read image model = %q, want %q", got, pinned)
+			}
+			if got := agent.documentModel(documentImage); got != pinned {
+				t.Fatalf("read_document image model = %q, want %q", got, pinned)
+			}
+		})
+	}
+}
+
+func TestOneModelOmitsViewImageWhenThePinCannotSee(t *testing.T) {
+	for _, support := range []string{"text only", "unknown"} {
+		t.Run(support, func(t *testing.T) {
+			completer := &scriptedCompleter{}
+			agent, workspace := newTestAgent(t, completer, func(config *Config) {
+				config.OneModel = true
+				withSlot(map[string]string{"vision": "vendor/other-eyes"})(config)
+				config.RolesSource = func(key string) (string, bool) {
+					return "vendor/other-eyes", key == roles.PinKey(roles.RoleVision)
+				}
+				if support == "text only" {
+					config.SupportsImages = func(string) bool { return false }
+				}
+			})
+			for _, tool := range agent.belt() {
+				if tool.Name == "view_image" {
+					t.Fatal("view_image is on the belt without a capable pinned model")
+				}
+			}
+			if got := agent.senseModel(roleSenseVision); got != "" {
+				t.Fatalf("read image model = %q, want absence", got)
+			}
+			if got := agent.documentModel(documentImage); got != agent.Model() {
+				t.Fatalf("read_document escaped the pin onto %q", got)
+			}
+			image := writeImage(t, workspace, "shot.png", "BYTES")
+			if _, err := agent.SubmitImage(context.Background(), "look", []Image{{Path: image}}); err == nil {
+				t.Fatal("attaching an image borrowed another vision model")
+			}
+			if completer.requests() != 0 {
+				t.Fatalf("a blind pin made %d requests", completer.requests())
+			}
+		})
+	}
+}
+
+func TestOneModelViewImageCannotUseAStaleSeerAfterAModelChange(t *testing.T) {
+	completer := &scriptedCompleter{}
+	agent, workspace := newTestAgent(t, completer, func(config *Config) {
+		config.OneModel = true
+		config.SupportsImages = func(model string) bool { return model != "vendor/blind" }
+		withSlot(map[string]string{"vision": "vendor/other-eyes"})(config)
+	})
+	tool := viewTool(t, agent)
+	writeImage(t, workspace, "shot.png", "BYTES")
+	for _, model := range []string{"vendor/new-eyes", "vendor/blind"} {
+		agent.SetModel(model)
+		result, failed, err := tool.Execute(context.Background(), json.RawMessage(`{"path":"shot.png"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if model == "vendor/blind" {
+			if !failed || !strings.Contains(result, "vendor/blind cannot read images") {
+				t.Fatalf("stale tool result = %q, failed = %v", result, failed)
+			}
+			continue
+		}
+		if failed || completer.model(0) != model {
+			t.Fatalf("view_image result = %q, model = %q; want %q", result, completer.model(0), model)
+		}
+	}
+	if completer.requests() != 1 {
+		t.Fatalf("stale tool made %d requests; want only the sighted call", completer.requests())
 	}
 }
 

@@ -76,7 +76,8 @@ const viewImageSchemaJSON = `{"type":"object","properties":{"path":{"type":"stri
 // mid-conversation and the resolver is the truth at the moment of use. The
 // belt-time answer is what a call falls back to when the resolver has since gone
 // quiet: a tool the model has been promised should look with the model it was
-// promised rather than refuse.
+// promised rather than refuse. Under OneModel the current pin owns the look,
+// so an earlier seer cannot survive a switch to a model that cannot see.
 func (a *Agent) viewTools() []bare.Tool {
 	seer := a.visionSeer()
 	if seer == "" {
@@ -115,6 +116,11 @@ func (a *Agent) viewImageTool(known string) bare.Tool {
 func (a *Agent) viewImage(ctx context.Context, path, question, known string) (string, bool, error) {
 	seer := a.visionSeer()
 	if seer == "" {
+		// A tool bound before a model change must not revive an earlier seer
+		// when the current one-model pin cannot accept images.
+		if a.config.OneModel {
+			return toolReason(blindRefusal(a.Model())), true, nil
+		}
 		seer = known
 	}
 

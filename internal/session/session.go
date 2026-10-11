@@ -1660,9 +1660,10 @@ type Config struct {
 	RouteCrew func(config.CrewAsk) (crewroute.Decision, error)
 
 	// SupportsImages reports whether a model can read image content parts. It
-	// gates [Agent.SubmitImage] and NIL IS FALSE — the opposite of every other
-	// nil-is-permissive hook here, and deliberately so: a model that cannot see
-	// answers a message full of image parts with a 400 or, worse, with a
+	// gates [Agent.SubmitImage] and one-model looking, and NIL IS FALSE — the
+	// opposite of every other nil-is-permissive hook here, and deliberately so:
+	// a model that cannot see answers a message full of image parts with a 400
+	// or, worse, with a
 	// confident description of nothing. "I don't know whether this model has
 	// vision" and "this model has vision" must not be spelled the same way, so a
 	// caller that holds no catalog gets a refusal it can read instead of a turn
@@ -2384,9 +2385,9 @@ type Config struct {
 	// IS the crew, so the answer is given once at the seam and the next crew-only
 	// caller is right without knowing the flag exists (#443).
 	//
-	// The media slots are untouched by it, for the door's own reason: vision,
-	// image, speech and video are capability-qualified, and a text model settled
-	// on them would not be one model, it would be a broken one.
+	// Looking also rides this model when SupportsImages confirms it can see;
+	// otherwise view_image is absent and no other model looks on its behalf.
+	// Generation slots for images, speech and video remain capability-qualified.
 	OneModel bool
 
 	// Budget bounds automatic continuation in a fixed headless run. For an

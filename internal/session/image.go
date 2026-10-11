@@ -304,6 +304,16 @@ func byteLimit(bytes int) string { return fmt.Sprintf("%dMB", bytes>>20) }
 // talking to, and here that is often the model just established as blind, so
 // the ladder must be allowed to run out instead of returning it.
 func (a *Agent) visionSeer() string {
+	// ONE MODEL ALSO OWNS THE LOOK. A looking slot or role pin must never
+	// spend on another model under this posture. Unknown image support is
+	// absence, so a text-only pin leaves view_image off the belt entirely.
+	if a.config.OneModel {
+		model := a.Model()
+		if a.config.SupportsImages != nil && a.config.SupportsImages(model) {
+			return model
+		}
+		return ""
+	}
 	// The modality word is the one Config.MediaModel documents; it is spelled
 	// here rather than shared as a constant because the resolver's vocabulary is
 	// the surface's, and this package reads it rather than owning it.
