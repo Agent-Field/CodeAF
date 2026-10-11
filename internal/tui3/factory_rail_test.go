@@ -126,7 +126,7 @@ func TestFactoryRailFilterWordsNarrow(t *testing.T) {
 		{"mine bugs", "#1661,#1540"},
 		{"nothing-matches-this", ""},
 	} {
-		got := strings.Join(factoryWalkRefs(snap, factoryWalk(snap, factoryView{query: c.q, backlog: true})), ",")
+		got := strings.Join(factoryWalkRefs(snap, factoryWalk(snap, factoryView{query: c.q, viewer: "santosh", backlog: true})), ",")
 		if got != c.want {
 			t.Errorf("%q narrows to %q, want %q", c.q, got, c.want)
 		}

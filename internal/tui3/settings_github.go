@@ -45,10 +45,13 @@ type githubReading struct {
 }
 
 // readGitHubLink asks the seam who this machine reaches GitHub as, beside the
-// door line, and rebuilds the tab when it lands. It answers nil with no door.
+// door line, and rebuilds the tab when it lands. The factory also keeps this
+// login for mine, so opening either place refreshes the same identity without
+// asking GitHub on every floor tick. It answers nil with no door.
 func (a *app) readGitHubLink() tea.Cmd {
 	door := a.factory.GitHub
 	if door == nil {
+		a.fp.viewer = ""
 		return nil
 	}
 	return a.besideLine(func() func(bool) tea.Cmd {
@@ -57,6 +60,11 @@ func (a *app) readGitHubLink() tea.Cmd {
 		link, err := door(ctx)
 		return func(bool) tea.Cmd {
 			a.sheet.github = &githubReading{link: link, err: err}
+			viewer := ""
+			if err == nil {
+				viewer = factory.NormalizeHandle(link.Login)
+			}
+			a.factoryRefocus(func() { a.fp.viewer = viewer })
 			if a.at(pageSettings) && a.sheet.onConnections() && a.sheet.edit == nil && a.sheet.sel == nil && a.sheet.choice == nil {
 				a.sheet.build()
 			}

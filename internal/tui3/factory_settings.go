@@ -1071,9 +1071,9 @@ func (a *app) factoryConnect(token string) tea.Cmd {
 			}
 			a.factorySay("github connected")
 			if a.factory.Has("repos") && a.factory.Has("setrepos") {
-				return a.factoryOpenRepos()
+				return tea.Batch(a.factoryOpenRepos(), a.readGitHubLink())
 			}
-			return nil
+			return a.readGitHubLink()
 		}
 	})
 }

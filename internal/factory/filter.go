@@ -18,19 +18,24 @@ import "strings"
 //	prs        the item is a pull request
 //	bugs       the triage type is bug
 //	thin       the readiness is under 55
-//	mine       the author is santosh
+//	mine       the person or author is the viewer's GitHub handle
 //
 // THE MATCHER LIVES HERE, beside the vocabulary, because a filter is a fact
 // about the floor's vocabulary, not about one seam behind it. The empty query
-// matches everything.
-func Match(q string) func(Item) bool {
+// matches everything. The optional viewer is the linked GitHub handle; an
+// absent or unknown viewer matches no item under mine.
+func Match(q string, viewers ...string) func(Item) bool {
+	viewer := ""
+	if len(viewers) > 0 {
+		viewer = NormalizeHandle(viewers[0])
+	}
 	terms := strings.Fields(strings.ToLower(q))
 	if len(terms) == 0 {
 		return func(Item) bool { return true }
 	}
 	return func(it Item) bool {
 		for _, t := range terms {
-			if !matchTerm(it, t) {
+			if !matchTerm(it, t, viewer) {
 				return false
 			}
 		}
@@ -45,7 +50,7 @@ const ThinReadiness = 55
 // CheapEst is the largest estimate the word cheap still covers.
 const CheapEst = 2.5
 
-func matchTerm(it Item, t string) bool {
+func matchTerm(it Item, t, viewer string) bool {
 	area := strings.ToLower(it.Triage.Area)
 	title := strings.ToLower(it.Title)
 	switch t {
@@ -75,7 +80,7 @@ func matchTerm(it Item, t string) bool {
 	case "thin":
 		return it.Triage.Readiness < ThinReadiness
 	case "mine":
-		return it.Author == "santosh"
+		return viewer != "" && (it.Person() == viewer || NormalizeHandle(it.Author) == viewer)
 	}
 	hay := title + " " + strings.ToLower(it.Repo) + " " + area + " " +
 		strings.ToLower(it.Triage.Type) + " " + strings.ToLower(it.Author)

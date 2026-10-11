@@ -48,6 +48,7 @@ const factoryAnswerWord = "[y/n]"
 type factoryView struct {
 	repo    string
 	query   string
+	viewer  string
 	typing  bool
 	backlog bool
 	// comfy is `z`: each item row carries the factory's read under it, and
@@ -170,7 +171,7 @@ func factoryRailRows(snap factory.Snapshot, views ...factoryView) []factoryRailR
 	if v.typing || v.query != "" {
 		rows = append(rows, factoryRailRow{kind: factoryRowQuery, item: -1, walk: -1})
 	}
-	match := factory.Match(v.query)
+	match := factory.Match(v.query, v.viewer)
 	walk := 0
 	for _, g := range factoryGroups {
 		var in []int
@@ -246,7 +247,7 @@ func factoryWalk(snap factory.Snapshot, views ...factoryView) []int {
 // has reads as every repo, so a floor whose repos changed under the filter
 // shows everything rather than nothing.
 func (a *app) factoryViewNow() factoryView {
-	v := factoryView{query: a.fp.query, typing: a.fp.typing, backlog: a.fp.backlog, comfy: a.fp.comfy, order: a.fp.order, pos: a.fp.pos}
+	v := factoryView{query: a.fp.query, viewer: a.fp.viewer, typing: a.fp.typing, backlog: a.fp.backlog, comfy: a.fp.comfy, order: a.fp.order, pos: a.fp.pos}
 	if v.comfy {
 		v.titleW = a.fp.titleCols
 	}
@@ -295,7 +296,7 @@ type factoryRowsMemo struct {
 // factoryViewKey is a [factoryView] without its places, which are a map and
 // are compared by [factoryPage.posGen] instead.
 type factoryViewKey struct {
-	repo, query            string
+	repo, query, viewer    string
 	typing, backlog, comfy bool
 	order                  factoryOrder
 	titleW                 int
@@ -314,7 +315,7 @@ func (a *app) factoryRowsNow() *factoryRowsMemo {
 		first = &snap.Items[0]
 	}
 	m := &a.fp.rowsMemo
-	key := factoryViewKey{repo: v.repo, query: v.query, typing: v.typing, backlog: v.backlog, comfy: v.comfy, order: v.order, titleW: v.titleW}
+	key := factoryViewKey{repo: v.repo, query: v.query, viewer: v.viewer, typing: v.typing, backlog: v.backlog, comfy: v.comfy, order: v.order, titleW: v.titleW}
 	if m.ok && m.snapGen == a.fp.snapGen && m.posGen == a.fp.posGen && m.items == first && m.n == len(snap.Items) &&
 		m.now.Equal(snap.Now) && m.view == key {
 		return m
@@ -580,6 +581,13 @@ func (a *app) factoryRailLine(r factoryRailRow, width int) string {
 		lead := a.factoryTitleCol()
 		return factorySpaces(lead) + pal.dim(fit(word, max(width-lead, 0)))
 	case factoryRowNone:
+		if a.fp.viewer == "" {
+			for _, term := range strings.Fields(strings.ToLower(a.fp.query)) {
+				if term == "mine" {
+					return pal.dim(fit("mine needs your GitHub login", width))
+				}
+			}
+		}
 		return pal.dim(fit("no item in the factory matches", width))
 	case factoryRowRead:
 		lead := a.factoryTitleCol()

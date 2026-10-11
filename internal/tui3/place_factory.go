@@ -42,7 +42,7 @@ func (placeFactory) open(a *app) tea.Cmd {
 	// reason: they were about a moment that has passed, and the picker's
 	// ticks were never saved.
 	a.fp.pick, a.fp.recipe, a.fp.ghOffer, a.fp.keys = nil, nil, "", false
-	return tea.Batch(a.armPlaceClock(), a.factoryRead())
+	return tea.Batch(a.armPlaceClock(), a.factoryRead(), a.readGitHubLink())
 }
 
 // tick re-reads the floor on the three-second beat, off the loop, so a stream

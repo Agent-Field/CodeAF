@@ -139,6 +139,9 @@ type factoryPage struct {
 	typing  bool
 	backlog bool
 	marked  map[int]bool
+	// viewer is the linked GitHub login, read off the loop for mine; an
+	// unknown login never borrows the machine's account name.
+	viewer string
 	// order is `O`, how rows sit within each section (factory_order.go).
 	order factoryOrder
 

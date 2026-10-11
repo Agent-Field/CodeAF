@@ -398,7 +398,9 @@ as you type. Every word you type has to hold. A plain word matches anywhere in a
 repository, area, kind or author. These words mean something more:
 
 - `risky`: any risk the triage read named (`touches money`, `has ui`), or a large item. `cheap`: estimated at $2.50 or less.
-- `strangers`: written by someone outside the project. `mine`: written by you.
+- `strangers`: written by someone outside the project. `mine`: assigned to, taken by,
+  started by, or written by your linked GitHub handle. Assignment takes precedence over
+  taking, and taking over starting; the author also matches independently.
 - `spend`: about spend, billing, the ledger or caps. `ui`: in the tui, pages or render areas.
 - `prs`: pull requests. `bugs`: bugs. `thin`: too underspecified to run without questions.
 
@@ -406,6 +408,10 @@ repository, area, kind or author. These words mean something more:
 words away. With the box closed, the words stay under the repository line, and `esc` clears
 them before it leaves the page. When nothing matches, the list says
 `no item in the factory matches`.
+
+`mine` uses the factory's linked GitHub login, refreshed when you open the factory or
+connect GitHub. Handles match without regard to case or a leading `@`. With no known
+login, `mine` matches nothing and the filter hint says `mine needs your GitHub login`.
 
 ## repository identity and checkout keys
 
