@@ -125,6 +125,8 @@ func (t *Tree) apply(op Op) error {
 		return t.create(op.Place, op.Parent, op.Members)
 	case OpInterpose:
 		return t.interpose(op.Place, op.Parent, op.Children)
+	case OpLift:
+		return t.lift(op.Place, op.Children)
 	case OpLens:
 		return t.addLens(op)
 	case OpExemplar, OpConstraint, OpAxis:
@@ -315,6 +317,34 @@ func (t *Tree) create(id, parent string, members []string) error {
 	t.nodes[id] = &Node{ID: id, Parent: parent, Depth: depth}
 	for _, chat := range members {
 		t.homeAt(chat, id)
+	}
+	return nil
+}
+
+// lift makes each child a root. The parent keeps the chats filed on it.
+// Every child is checked first, so a refusal leaves the tree as it was.
+func (t *Tree) lift(parent string, children []string) error {
+	if _, err := t.node(parent); err != nil {
+		return err
+	}
+	if len(children) < 2 {
+		return fmt.Errorf("placeorg: a lift names fewer than two places")
+	}
+	for _, id := range children {
+		c, err := t.node(id)
+		if err != nil {
+			return err
+		}
+		if c.Parent != parent {
+			return fmt.Errorf("placeorg: %q is not inside %q", id, parent)
+		}
+	}
+	for _, id := range children {
+		c := t.nodes[id]
+		t.detach(c)
+		c.Parent = ""
+		t.roots = sortedUnion(t.roots, []string{id})
+		t.setDepth(id, 1)
 	}
 	return nil
 }

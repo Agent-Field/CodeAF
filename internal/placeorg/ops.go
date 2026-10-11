@@ -17,6 +17,10 @@ const (
 	// OpInterpose creates a parent over sibling places under fan-out
 	// pressure. It passed the mega-bucket and separability guards.
 	OpInterpose OpKind = "interpose"
+	// OpLift takes child places out of a root that is not their parent.
+	// They become roots. When the top level cannot hold them, the parent
+	// stays and the op is only a proposal.
+	OpLift OpKind = "lift"
 	// OpDemote turns a place that is a kind of activity rather than a thing
 	// into a lens on its parent. The chats park at the parent.
 	OpDemote OpKind = "demote"

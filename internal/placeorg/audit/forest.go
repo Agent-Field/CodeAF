@@ -130,6 +130,37 @@ func (f *forest) liveChats() []string {
 	return out
 }
 
+// promote makes each mid a root. The parent keeps its own chats and loses
+// those children. Depths under a promoted place move up with it, so a leaf
+// that was three deep is two deep once its parent stands on its own.
+func (f *forest) promote(rootID string, mids []string) {
+	root := f.places[rootID]
+	if root == nil || !root.live {
+		return
+	}
+	for _, id := range mids {
+		child := f.places[id]
+		if child == nil || !child.live {
+			continue
+		}
+		root.children = removeID(root.children, id)
+		child.parent = ""
+		f.roots = append(f.roots, id)
+		f.setDepth(id, 1)
+	}
+}
+
+func (f *forest) setDepth(id string, depth int) {
+	p := f.places[id]
+	if p == nil {
+		return
+	}
+	p.depth = depth
+	for _, c := range p.children {
+		f.setDepth(c, depth+1)
+	}
+}
+
 // absorb folds id into its parent. The chats move up and the subtree is
 // marked not live, so a later pass does not dissolve or demote it again.
 // The reference's second dissolve of an already-folded child is that later

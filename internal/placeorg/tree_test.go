@@ -103,6 +103,46 @@ func TestNamesLinksAndLensesAreRecordedOnceAndUnknownOpsAreRefused(t *testing.T)
 	}
 }
 
+func TestLiftMakesTheChildrenRootsAndRefusesAStranger(t *testing.T) {
+	tr := TreeFromNodes([]Node{
+		{ID: "uwm", Depth: 1, Children: []string{"spark", "field"}, Members: []string{"p0", "p1", "p2", "p3"}},
+		{ID: "spark", Parent: "uwm", Depth: 2, Children: []string{"leaf"}, Members: []string{"s0", "s1", "s2", "s3"}},
+		{ID: "field", Parent: "uwm", Depth: 2, Members: []string{"f0", "f1", "f2", "f3"}},
+		{ID: "leaf", Parent: "spark", Depth: 3, Members: []string{"l0", "l1", "l2", "l3"}},
+	})
+	if err := tr.apply(Op{Kind: OpLift, Place: "uwm", Children: []string{"spark"}}); err == nil {
+		t.Fatal("a lift of one place was applied")
+	}
+	if err := tr.apply(Op{Kind: OpLift, Place: "uwm", Children: []string{"nope", "spark"}}); err == nil {
+		t.Fatal("a stranger was lifted")
+	}
+	if n, _ := tr.Node("spark"); n.Parent != "uwm" {
+		t.Fatal("a refused lift moved spark")
+	}
+	if err := tr.apply(Op{Kind: OpLift, Place: "uwm", Children: []string{"spark", "field"}}); err != nil {
+		t.Fatal(err)
+	}
+	spark, _ := tr.Node("spark")
+	if spark.Parent != "" || spark.Depth != 1 {
+		t.Fatalf("spark %+v", spark)
+	}
+	leaf, _ := tr.Node("leaf")
+	if leaf.Parent != "spark" || leaf.Depth != 2 {
+		t.Fatalf("leaf %+v", leaf)
+	}
+	uwm, _ := tr.Node("uwm")
+	if len(uwm.Children) != 0 || !reflect.DeepEqual(uwm.Members, []string{"p0", "p1", "p2", "p3"}) {
+		t.Fatalf("uwm %+v", uwm)
+	}
+	roots := tr.Roots()
+	if !reflect.DeepEqual(roots, []string{"field", "spark", "uwm"}) {
+		t.Fatalf("roots %v", roots)
+	}
+	if h, _ := tr.Home("s0"); h != "spark" {
+		t.Fatalf("s0 is at %q", h)
+	}
+}
+
 func TestACloneSharesNothingWithItsOriginal(t *testing.T) {
 	a := treeOf()
 	b := a.clone(nil)
