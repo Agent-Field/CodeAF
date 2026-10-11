@@ -813,10 +813,10 @@ func wrapCodeLine(line string, width int) []string {
 //
 // CODE IS NOT PROSE AND GETS NO LINKS. Two guards cover the code that can name
 // a task: a fenced block carries [tokens.GlyphCodeGutter], while a non-path
-// inline span carries prose's raised plane. Path spans deliberately drop that
-// plane under ONE VISIBLE MARK PER TOKEN, but the linker's path grammar cannot
-// recognize their whitespace-bearing task reference anyway. At profiles with
-// no plane, prose restores backticks and [masked] reads those instead.
+// inline span carries prose's quieter inline-code ink. Path spans deliberately
+// render plain under ONE VISIBLE MARK PER TOKEN, but the linker's path grammar
+// cannot recognize their whitespace-bearing task reference anyway. At profiles
+// with no plane, prose restores backticks and [masked] reads those instead.
 
 // taskLink is one drawn reference: the columns it occupies on its row, and the
 // node behind them.
@@ -864,7 +864,7 @@ func linkifyTasks(text string, pal palette, look func(uint64) (string, bool), ho
 	if !hasTaskWord(text) {
 		return text, nil
 	}
-	flat, ground := flatten(text)
+	flat, mask := flatten(text)
 	if strings.Contains(flat, tokens.GlyphCodeGutter) {
 		// A fenced line. The whole row is source, and source that says "task 7"
 		// is saying it to a compiler.
@@ -873,7 +873,7 @@ func linkifyTasks(text string, pal palette, look func(uint64) (string, bool), ho
 	refs := taskRefs(flat)
 	kept := refs[:0]
 	for _, ref := range refs {
-		if grounded(ground, ref.from, ref.to) || masked(flat, ref.from) {
+		if grounded(mask, ref.from, ref.to) || masked(flat, ref.from) {
 			continue
 		}
 		title, ok := look(ref.id)
@@ -1068,29 +1068,29 @@ func indexFold(s, needle string, from int) int {
 // ── the painted row, taken apart and put back together ──────────────────────
 
 // flatten strips one painted row to its plain bytes and reports, byte for byte,
-// whether it was drawn on a background.
+// whether it belongs to a span task links must ignore.
 //
 // It does its own stripping rather than calling [ansi.Strip] for one reason: the
 // two answers have to be indexed the same way, and the only guarantee of that is
 // that one walk produced both.
 func flatten(text string) (string, []bool) {
 	var (
-		out    strings.Builder
-		ground []bool
-		on     bool
+		out  strings.Builder
+		mask []bool
+		on   bool
 	)
 	out.Grow(len(text))
 	for i := 0; i < len(text); {
 		if n := escLen(text, i); n > 0 {
-			on = sgrGround(text[i:i+n], on)
+			on = sgrTaskMask(text[i:i+n], on)
 			i += n
 			continue
 		}
 		out.WriteByte(text[i])
-		ground = append(ground, on)
+		mask = append(mask, on)
 		i++
 	}
-	return out.String(), ground
+	return out.String(), mask
 }
 
 // paintLinks writes the row back out with every reference inked, and returns the
@@ -1268,14 +1268,21 @@ func escLen(s string, i int) int {
 }
 
 // sgrGround folds one escape sequence into "is there a background under this".
-func sgrGround(seq string, on bool) bool {
+func sgrTaskMask(seq string, on bool) bool {
 	params, ok := sgrParams(seq)
 	if !ok {
 		return on
 	}
+	body := strings.TrimPrefix(seq, "\x1b[")
+	body = strings.TrimSuffix(body, "m")
+	inlineCode := strings.TrimPrefix(tokens.TextSecondary.Fg(tokens.TrueColor, tokens.FocusNormal), "\x1b[")
+	inlineCode = strings.TrimSuffix(inlineCode, "m")
+	if body == inlineCode {
+		on = true
+	}
 	for i := 0; i < len(params); i++ {
 		switch param := params[i]; {
-		case param == "", param == "0", param == "49":
+		case param == "", param == "0", param == "39", param == "49":
 			on = false
 		case param == "48":
 			on = true

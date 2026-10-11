@@ -119,8 +119,9 @@ func (r *renderer) codeSpan(n *ast.CodeSpan, w *wrapper, st style) {
 	next := st
 	next.tok = tokens.TextPrimary
 	// ONE VISIBLE MARK PER TOKEN. The callback carries semantic knowledge prose
-	// does not own; when it says another mark is coming, adding the plane here
-	// would turn one token into the loudest object in its sentence.
+	// does not own; when it says another mark is coming, prose still renders the
+	// text plainly and lets that later mark carry the affordance. Ordinary inline
+	// code is plain too: code fences and semantic highlights own the raised plane.
 	if r.opts.PlainCodeSpan != nil && r.opts.PlainCodeSpan(text) {
 		w.push(text, next)
 		return
@@ -130,7 +131,7 @@ func (r *renderer) codeSpan(n *ast.CodeSpan, w *wrapper, st style) {
 		w.push("`"+text+"`", next)
 		return
 	}
-	next.ground = true
+	next.tok = tokens.TextSecondary
 	w.push(text, next)
 }
 

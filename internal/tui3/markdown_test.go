@@ -237,10 +237,12 @@ func TestMarkdownEmphasisIsWeightNotPunctuation(t *testing.T) {
 	if !strings.Contains(row, "\x1b[3m") {
 		t.Fatalf("italic lost its slant: %q", row)
 	}
-	// An inline code span is set apart by its ground, not by its punctuation:
-	// the raised plane where the profile has one.
-	if sheet := tokens.Sheet.Bg(tokens.TrueColor, tokens.FocusNormal); !strings.Contains(row, sheet) {
-		t.Fatalf("the code span is not raised onto the sheet: %q", row)
+	// An inline code span is set apart without its punctuation or a raised plane.
+	if sheet := tokens.Sheet.Bg(tokens.TrueColor, tokens.FocusNormal); strings.Contains(row, sheet) {
+		t.Fatalf("the code span is raised onto the sheet: %q", row)
+	}
+	if code := tokens.TextSecondary.Fg(tokens.TrueColor, tokens.FocusNormal) + "code"; !strings.Contains(row, code) {
+		t.Fatalf("the code span is not distinguished as secondary text: %q", row)
 	}
 }
 
