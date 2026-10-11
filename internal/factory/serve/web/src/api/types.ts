@@ -135,6 +135,7 @@ export interface Job {
   gate: Gate
   waiting_since?: string
   asked_first_reason?: string
+  // Who holds the job: the person rule (assignee, then taker, then starter).
   assigned_to?: string
   step?: StepAt
   steps: Step[]
@@ -153,6 +154,7 @@ export interface JobDesk {
   author?: string
   assignee?: string
   starter?: string
+  // The person who took otherwise unassigned work. assigned_to is who holds it.
   taker?: string
   tier?: string
   origin?: string

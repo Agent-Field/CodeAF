@@ -8,17 +8,13 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { TableCell, TableRow } from "@/components/ui/table"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
 export interface RowActions {
   approve: (job: Job) => void
   answer: (job: Job) => void
+  take: (job: Job) => void
 }
-
-// The factory has no take endpoint yet; the button stays in place, disabled,
-// so the row shows where the verb will live.
-const canTake = false
 
 function finishedAt(job: Job): string {
   const at = new Date(job.desk?.changed_at ?? job.created_at)
@@ -57,21 +53,10 @@ function ActionButton({ job, act, actions }: { job: Job; act: Act; actions: RowA
         <MessageCircleQuestion /> <span className="hidden md:inline">Answer</span>
       </Button>
     )
-  const take = (
-    <Button size="sm" variant="outline" aria-label="Take" disabled={!canTake} data-testid={`take-${job.id}`}>
+  return (
+    <Button size="sm" variant="outline" aria-label="Take" data-testid={`take-${job.id}`} onClick={stop(() => actions.take(job))}>
       <HandHelping /> <span className="hidden md:inline">Take</span>
     </Button>
-  )
-  if (canTake) return take
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span tabIndex={0} onClick={(e) => e.stopPropagation()}>
-          {take}
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>not available yet</TooltipContent>
-    </Tooltip>
   )
 }
 

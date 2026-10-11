@@ -51,6 +51,7 @@ export function QueuePage({ view }: { view: View }) {
   const actions: RowActions = {
     approve: (job) => void attempt(api.approve(job.id)),
     answer: setAnswering,
+    take: (job) => void attempt(api.take(job.id)),
   }
   const toggle = (repo: string) =>
     setHidden((h) => {

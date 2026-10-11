@@ -52,6 +52,7 @@ export const api = {
   requestChanges: (id: number, words: string) => post(`/jobs/${id}/request_changes`, { words }),
   recheck: (id: number) => post(`/jobs/${id}/recheck`),
   drop: (id: number) => post(`/jobs/${id}/drop`),
+  take: (id: number) => post(`/jobs/${id}/take`),
   reply: (id: number, words: string) => post(`/jobs/${id}/reply`, { words }),
   answer: (id: number, answer: { yes: boolean } | { words: string }) => post(`/jobs/${id}/answer`, answer),
   // Settings. Connect sends token even when it is empty: an empty token is

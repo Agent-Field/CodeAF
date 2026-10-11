@@ -10,7 +10,9 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 func (h *Handler) verbs() {
@@ -25,6 +27,9 @@ func (h *Handler) verbs() {
 	h.postJob("approve", true, h.approve)
 	h.postJob("request_changes", s.SendBack != nil, h.recordedWords(s.SendBack, record.RequestChanges))
 	h.postJob("recheck", s.Reverify != nil, h.idVerb(s.Reverify))
+	// Take is the lease desk's own door, not a seam field. The desk exists
+	// only after the worker routes open it, so the handler checks then.
+	h.postJob("take", true, h.take)
 	h.postJob("prioritize", s.Mark != nil, h.prioritize)
 	h.postJob("reply", s.Say != nil, h.reply)
 	h.route("/v1/jobs", map[string]http.HandlerFunc{http.MethodPost: h.newJob})
@@ -44,6 +49,60 @@ func (h *Handler) postJob(verb string, exists bool, action jobAction) {
 			}
 		},
 	})
+}
+
+// take is POST /v1/jobs/{id}/take. It names the connected person on the job
+// and leaves the work queued. A job the person rule already gave to someone
+// else is refused in a sentence, and the refusal is not recorded.
+func (h *Handler) take(w http.ResponseWriter, r *http.Request, it factory.Item) {
+	if !h.workerReady(w) {
+		return
+	}
+	link, err := h.link(r)
+	if h.failed(w, err) {
+		return
+	}
+	me := factory.NormalizeHandle(link.Login)
+	if me == "" {
+		h.fail(w, http.StatusBadRequest, "take requires a GitHub login")
+		return
+	}
+	if err := h.workers.desk.Assign(it.ID, me); h.takeFailed(w, err) {
+		return
+	}
+	if h.config.Record != nil {
+		if _, err := h.config.Record.Append(r.Context(), record.Event{Kind: record.Took, Job: it.ID, Handle: me, Cost: jobCost(it)}); h.failed(w, err) {
+			return
+		}
+	}
+	updated, err := h.workers.st.Get(it.ID)
+	if h.failed(w, err) {
+		return
+	}
+	h.write(w, http.StatusOK, struct {
+		Factory api.Factory `json:"factory"`
+		api.Job
+	}{h.factory, api.FromItem(updated)})
+}
+
+// takeFailed maps the person rule and a live worker hold onto 409. The
+// sentence is what the dashboard shows; the lease package prefix stays off it.
+func (h *Handler) takeFailed(w http.ResponseWriter, err error) bool {
+	switch {
+	case err == nil:
+		return false
+	case errors.Is(err, lease.ErrPerson):
+		h.fail(w, http.StatusConflict, "job belongs to another person")
+		return true
+	case errors.Is(err, lease.ErrLeased):
+		h.fail(w, http.StatusConflict, "job is already taken")
+		return true
+	case errors.Is(err, store.ErrNotFound):
+		h.fail(w, http.StatusNotFound, "job not found")
+		return true
+	default:
+		return h.failed(w, err)
+	}
 }
 
 func (h *Handler) idVerb(door func(int) error) jobAction {
