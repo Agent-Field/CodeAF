@@ -135,6 +135,20 @@ All beside the store at `~/.codeaf/desktop/`:
 
 Vectors are never in `places.json`. The hashed space keeps no cache.
 
+The v2 input adds `Chat.EndText`, supplied by the caller from real history
+using `vectors.EndText(title, userMessages, lastAssistant)`. User messages
+are chronological and include the first message; a single-message chat has
+no END. The helper keeps the last two later user messages' final 400
+characters, appends the last reply's final 300, and keeps the final 600
+characters plus title, matching the v2 loader's character slicing.
+`Vectorizer` fills START and END in the same selected space, but returns only
+START vectors: kNN, Leiden and park therefore keep their original input.
+END records live separately under `end/places-vectors-<space>.bin`, keyed by
+chat ID and their own text hash. Consumers use `vectors.OpenEnd` and
+`HashText(chat.EndText)` to read them without another embedding call. An
+absent END is never replaced with START. A failure filling either anchor
+falls back for the whole run, so consumers never mix embedding spaces.
+
 **A vector is fetched once and never refetched.** The reference run showed
 the provider's embeddings differ slightly between fetches and that alone
 moves leaves (ARI 0.65 between two fetches of the same corpus). The cache is
