@@ -3,6 +3,7 @@ package desktopbridge
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/placeorg"
 )
@@ -44,10 +45,16 @@ func postSteer(p *Places, w http.ResponseWriter, r *http.Request, _ string) {
 		failPlaces(w, 404, "unknown_place", "That place isn't in the list.")
 		return
 	}
-	parsed, _, err := org.steer.Parse(r.Context(), tree, ask.Sentence, p.advice.judge())
+	parsed, pick, err := org.steer.Parse(r.Context(), tree, ask.Sentence, p.advice.judge())
 	if err != nil {
 		failPlaces(w, 500, "store", "That place could not be organized.")
 		return
+	}
+	// The steer is not part of an organising run, so the run's journal would
+	// otherwise never record which model read the sentence.
+	if org.Journal != nil {
+		noted := pick
+		_ = org.Journal.Write(placeorg.Entry{At: time.Now().UTC(), Kind: placeorg.EntrySteer, Pick: &noted, Note: ask.Sentence})
 	}
 	// The model cannot choose the place. Scope is the one the person is on.
 	parsed.Scope = ask.Scope

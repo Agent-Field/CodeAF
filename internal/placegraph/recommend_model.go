@@ -30,6 +30,9 @@ type ModelRequest struct {
 	Role   roles.Role
 	System string
 	User   string
+	// AnsweredBy, when non-nil, receives the model that produced the text.
+	// The organiser journals that name. A nil pointer is left alone.
+	AnsweredBy *string
 }
 
 // Asker asks the engine's role door one question and returns the raw answer.

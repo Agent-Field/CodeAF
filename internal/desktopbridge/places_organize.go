@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/placegraph"
 	"github.com/Agent-Field/codeaf/internal/placeorg"
 	"github.com/Agent-Field/codeaf/internal/placeorg/anchors"
@@ -227,6 +228,10 @@ func WireOrganizer(a *PlaceAdvice, dir string) error {
 	if err != nil {
 		return fmt.Errorf("places organize: %w", err)
 	}
+	// Every journal line names the low-tier model this bridge asks. A
+	// judgment's pick still records the model that actually answered, which
+	// the asker writes, so a pin and a different server cannot look the same.
+	stamped := modelJournal{inner: j, model: config.TierModelAt("", config.ModelTierLow)}
 	var local placeorg.Embedder = localembed.NewHashed()
 	if static, err := localembed.NewStatic(); err == nil {
 		local = static
@@ -247,7 +252,7 @@ func WireOrganizer(a *PlaceAdvice, dir string) error {
 			Name: &name.Stage{}, Review: &review.Stage{}, Link: link.New(state), Stream: st,
 			Steer: sr, Correct: cr,
 		},
-		State: state, Journal: j, Primary: a.organizerEmbed(), Local: local,
+		State: state, Journal: stamped, Primary: a.organizerEmbed(), Local: local,
 		dir: dir, statePath: filepath.Join(dir, "places-org.json"),
 		reviewPath: filepath.Join(dir, "places-review.json"),
 		stream:     st, steer: sr, correct: cr, mem: mem,
@@ -1048,26 +1053,87 @@ func randomHex(n int) string {
 	return hex.EncodeToString(b)
 }
 
+// modelJournal stamps the model this bridge asks onto every line that does
+// not already name one. It does not fill a pick: that field is the model
+// that answered, and a rules-only line has none.
+type modelJournal struct {
+	inner placeorg.Journal
+	model string
+}
+
+func (m modelJournal) Write(e placeorg.Entry) error {
+	if m.inner == nil {
+		return nil
+	}
+	if e.Model == "" {
+		e.Model = m.model
+	}
+	return m.inner.Write(e)
+}
+
 // doorJudge is the one-off Judge for a filing or a steer. It cannot fail:
 // no model, a transport error, or an answer that is not one of the options
-// is the fallback the stage already named.
+// is the fallback the stage already named. The options are in the question,
+// because a model that is not shown them cannot point at one.
 type doorJudge struct{ ask placegraph.Asker }
 
 func (j doorJudge) Choose(ctx context.Context, q placeorg.Question, fallback placeorg.Option) placeorg.Pick {
 	if j.ask == nil || ctx.Err() != nil {
 		return placeorg.Pick{Key: fallback.Key, FellBack: true, Why: "no model"}
 	}
-	raw, err := j.ask(ctx, placegraph.ModelRequest{Role: q.Role, System: q.Purpose, User: q.Context})
+	var model string
+	raw, err := j.ask(ctx, placegraph.ModelRequest{
+		Role: q.Role, System: q.Purpose, User: doorPrompt(q), AnsweredBy: &model,
+	})
 	if err != nil {
-		return placeorg.Pick{Key: fallback.Key, FellBack: true, Why: "no answer"}
+		return placeorg.Pick{Key: fallback.Key, FellBack: true, Why: "no answer", Model: model}
 	}
-	key := strings.Trim(strings.TrimSpace(raw), `"'`)
+	if key, ok := doorMatch(raw, q.Options); ok {
+		return placeorg.Pick{Key: key, Model: model}
+	}
+	return placeorg.Pick{Key: fallback.Key, FellBack: true, Why: "answer outside the contract", Model: model}
+}
+
+// doorPrompt shows the closed option list. A bare key and a JSON pick are
+// both accepted, because a model answers in either shape.
+func doorPrompt(q placeorg.Question) string {
+	var b strings.Builder
+	b.WriteString(q.Purpose)
+	if q.Context != "" {
+		b.WriteString("\n\n")
+		b.WriteString(q.Context)
+	}
+	if len(q.Options) == 0 {
+		return b.String()
+	}
+	b.WriteString("\nOptions:\n")
 	for _, o := range q.Options {
-		if strings.EqualFold(key, o.Key) {
-			return placeorg.Pick{Key: o.Key}
-		}
+		fmt.Fprintf(&b, "%s: %s\n", o.Key, o.Text)
 	}
-	return placeorg.Pick{Key: fallback.Key, FellBack: true, Why: "answer outside the contract"}
+	b.WriteString("\nAnswer with one JSON object, {\"pick\":\"<option key>\"}, and nothing else.")
+	return b.String()
+}
+
+func doorMatch(raw string, options []placeorg.Option) (string, bool) {
+	keys := make([]string, len(options))
+	texts := make([]string, len(options))
+	for i, o := range options {
+		keys[i], texts[i] = o.Key, o.Text
+	}
+	var obj struct {
+		Pick string `json:"pick"`
+	}
+	if placegraph.DecodeObject(raw, &obj) == nil && obj.Pick != "" {
+		raw = obj.Pick
+	}
+	raw = strings.Trim(strings.TrimSpace(raw), `"'`)
+	if i, ok := placegraph.PickIndex(raw, "", keys); ok {
+		return options[i].Key, true
+	}
+	if i, ok := placegraph.PickIndex(raw, "", texts); ok {
+		return options[i].Key, true
+	}
+	return "", false
 }
 
 func (j doorJudge) Write(ctx context.Context, q placeorg.Question, valid placeorg.Validator, fallback string) placeorg.Pick {
@@ -1082,11 +1148,16 @@ func (j doorJudge) Write(ctx context.Context, q placeorg.Question, valid placeor
 	if j.ask == nil || ctx.Err() != nil {
 		return accept(fallback, true, "no model")
 	}
-	raw, err := j.ask(ctx, placegraph.ModelRequest{Role: q.Role, System: q.Purpose, User: q.Context})
+	var model string
+	raw, err := j.ask(ctx, placegraph.ModelRequest{Role: q.Role, System: q.Purpose, User: q.Context, AnsweredBy: &model})
 	if err != nil {
-		return accept(fallback, true, "no answer")
+		pick := accept(fallback, true, "no answer")
+		pick.Model = model
+		return pick
 	}
-	return accept(raw, false, "")
+	pick := accept(raw, false, "")
+	pick.Model = model
+	return pick
 }
 
 func (a *PlaceAdvice) judge() placeorg.Judge {

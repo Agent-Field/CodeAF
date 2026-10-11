@@ -529,6 +529,12 @@ func (a *PlaceAdvice) askThrough(find askDoor, via string) placegraph.Asker {
 			var answer session.PlacesAnswer
 			answer, err = door.AskPlaces(ctx, req)
 			text, record.Model = answer.Text, answer.Model
+			// The organiser journals the model that answered, not the pin
+			// we hoped would answer. A nil pointer means this caller does
+			// not keep a journal line.
+			if req.AnsweredBy != nil && err == nil {
+				*req.AnsweredBy = answer.Model
+			}
 			// A background connection that failed an ask is not trusted with
 			// the next one; it is closed and the next job attaches afresh.
 			if err != nil && via == "saved" && ctx.Err() == nil {
