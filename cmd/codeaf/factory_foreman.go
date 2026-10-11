@@ -47,7 +47,7 @@ func floorDoor(st *store.Store, workspace string) session.FloorDoor {
 	if st == nil {
 		return nil
 	}
-	seam := factory.LocalSeam(st, time.Now(), factory.WithRepoDirs(factoryRepoDirs(st, workspace)))
+	seam := factory.LocalSeam(st, time.Now(), factoryPipelineOption(), factory.WithRepoDirs(factoryRepoDirs(st, workspace)))
 	if seam.Load == nil || seam.Mark == nil {
 		return nil
 	}

@@ -400,7 +400,7 @@ func runDoor(st *store.Store, workspace string) session.RunDoor {
 	if st == nil {
 		return nil
 	}
-	seam := factory.LocalSeam(st, time.Now(), factory.WithRepoDirs(factoryRepoDirs(st, workspace)))
+	seam := factory.LocalSeam(st, time.Now(), factoryPipelineOption(), factory.WithRepoDirs(factoryRepoDirs(st, workspace)))
 	if seam.Edit == nil {
 		return nil
 	}

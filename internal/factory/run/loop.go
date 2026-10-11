@@ -232,6 +232,9 @@ func (r *Runner) Launch(id int) error {
 // launchable says whether an item may be launched from where it stands: new,
 // dismissed, or never put anywhere yet.
 func launchable(it factory.Item) error {
+	if it.State == factory.StateNeedsYou && it.QKind == factory.QKindAskFirst {
+		return nil
+	}
 	switch it.State {
 	case factory.StateNew, factory.StateDismissed, "":
 		return nil
@@ -1476,6 +1479,26 @@ func (r *Runner) notRunning(id int) error {
 
 // Answer resolves the question the item waits on: yes, no, or words.
 func (r *Runner) Answer(id int, yes bool, words string) error {
+	it, err := r.opts.Store.Get(id)
+	if err != nil {
+		return err
+	}
+	if it.State == factory.StateNeedsYou && it.QKind == factory.QKindAskFirst {
+		if yes {
+			return r.Launch(id)
+		}
+		return r.opts.Store.Update(id, func(cur *factory.Item) error {
+			if cur.QKind != factory.QKindAskFirst {
+				return errors.New("job is no longer asking first")
+			}
+			cur.State = factory.StateNew
+			cur.Question, cur.QKind = "", ""
+			if words = strings.TrimSpace(words); words != "" {
+				cur.Notes = append(cur.Notes, words)
+			}
+			return nil
+		})
+	}
 	lp := r.loop()
 	lp.mu.Lock()
 	c := lp.ctls[id]

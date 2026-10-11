@@ -206,7 +206,7 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 		// other window the same eight are asks posted to that process's
 		// mailbox and answered within about a second.
 		factoryRunnerDoors(st),
-		factory.WithRepoDirs(dirs),
+		factoryPipelineOption(), factory.WithRepoDirs(dirs),
 		factory.WithRepoLister(factorygithub.Lister(profileDir)),
 		factory.WithTalk(talkMaker(st, workspace, profileDir)),
 		// THE MANAGER READS THE ISSUE WHEN ITS PAGE OPENS (factory_shape.go):
@@ -452,7 +452,7 @@ func startFactoryPoll(st *store.Store, profileDir string) {
 			// NOTHING IS LOGGED TO THE SCREEN: in the window the surface owns it,
 			// and in the engine stdout is the protocol. A failure is the facts
 			// line's `github · not reachable`, read off the store.
-			factorygithub.Poll(ctx, src, st, factoryPollEvery, nil)
+			factorygithub.Poll(ctx, src, st, factoryPollEvery, nil, factoryIntake(st).Once)
 		})
 	})
 }

@@ -59,7 +59,10 @@ func startFactoryTriage(st *store.Store) {
 			// NOTHING IS LOGGED TO THE SCREEN, for the poll's reason: the
 			// surface owns it in a window and stdout is the protocol in an
 			// engine. An item that could not be read simply has no read.
-			triage.Worker(ctx, st, call, factoryTriageEvery, nil)
+			intake := factoryIntake(st)
+			triage.Worker(ctx, st, call, factoryTriageEvery, nil, triage.Options{
+				AskFirst: intake.AskFirst, AfterTick: intake.Once,
+			})
 		})
 	})
 }

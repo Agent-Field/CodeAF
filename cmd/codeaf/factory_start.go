@@ -49,7 +49,7 @@ const (
 // startItem starts, resumes or continues the run of item it on st.
 func startItem(st *store.Store, workspace string, it factory.Item) (string, error) {
 	dirs := factoryRepoDirs(st, workspace)
-	seam := factoryNeedsCheckout(factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factory.WithRepoDirs(dirs)), st, dirs)
+	seam := factoryNeedsCheckout(factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(), factory.WithRepoDirs(dirs)), st, dirs)
 	ref := it.Ref()
 	switch it.State {
 	case factory.StateLanded:

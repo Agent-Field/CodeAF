@@ -320,8 +320,10 @@ changed.
 
 ## the recipe file — .codeaf/factory.md
 
-A repository's recipe lives in that repository, in `.codeaf/factory.md`. A person edits it by
-hand and the floor writes it back. A repository with no file runs codeaf's default recipe. The
+A repository's pipeline is read from `.codeaf/factory.yaml` first. When YAML is absent,
+`.codeaf/factory.md` is converted in memory. The existing banking and saving doors still write
+Markdown; YAML takes precedence over those writes. A repository with no file runs the
+default pipeline. The older Markdown shape is
 shape (indented here; in the file each line starts at the margin):
 
     # factory recipe · codeaf
@@ -453,7 +455,7 @@ skipped neaten · why: touches the call row`. A later change by someone else nam
 
 ## the recipe is read from the main branch — a pull request cannot change the law for its own review
 
-codeaf reads `.codeaf/factory.md` from the checkout's main branch, the copy git holds at
+codeaf reads `.codeaf/factory.yaml` first, then `.codeaf/factory.md`, from the checkout's main branch, the copy git holds at
 `origin/HEAD` (else `main`, else `master`), never from the branch you have checked out and never
 from a pull request's branch. An edit to the file counts once it is merged. Only when there is
 no git or no main branch to read is the working file read; a main branch without the file runs
@@ -839,7 +841,8 @@ is never changed.
 ## does opening an issue run anything — no; the manager sets the steps when you ask, shape steps, p
 
 Opening an item's page runs nothing and spends nothing. The steps on the left are the recipe's:
-the repository's `.codeaf/factory.md` as the main branch has it, else the built-in recipe
+the repository's `.codeaf/factory.yaml` as the main branch has it, else its Markdown
+pipeline converted in memory, else the built-in pipeline
 (plan, approve, write, test, review, security off, proof). The manager row opens at once as an
 idle chat with the issue in it; no model is asked anything until somebody types.
 
@@ -1626,8 +1629,9 @@ Reading does not change a row's age. An item whose title or text changes on GitH
 refresh with `u` or `U`, is read again; the row says `reading` while its call runs, and the floor
 quotes the last read's cost.
 
-What it never does: run, dismiss, label, comment, change where an item asks you, its budget or a stage, or ask you
-anything. It is facts drawn dim, never a decision. It runs only in the window that opened the
+The read itself never dismisses, labels or comments. After the read, intake evaluates the
+repository's explicit start rules and may run a job or ask first (see automatic intake).
+Without start rules it remains facts drawn dim. It runs only in the window that opened the
 floor, one window per machine, and only while a key resolves; with no key there is no reading
 at all. Each call is a row on the spend ledger named `factory triage`, on the low seat.
 
@@ -2088,7 +2092,7 @@ the bar.
 
 A factory service supplied with a record keeps append-only `events.jsonl` beside its
 saved jobs. Each event has `id`, `at`, `kind`, `job`, `handle`, `cost` and `detail`.
-The record accepts starts (`started`, `auto_started`), approvals (`approved`),
+The record accepts starts (`started`, `auto_started`), intake questions (`asked_first`), approvals (`approved`),
 answers (`answered`), posts (`posted`), takes (`took`), drops (`dropped`) and
 requests for changes (`request_changes`). Service run, answer, drop and request
 changes doors record successful actions; automatic starts through Add work record
@@ -2117,3 +2121,44 @@ requested changes withdraws earlier approval; the next post needs fresh consent.
 After a successful source write the executor records `posted`, including cost and
 the receipt URL. A failed post is never retried automatically. Existing local post
 executors acquire this binding when their host supplies the record connection.
+
+
+## automatic intake — start rules, auto start and asked first
+
+A repository opts into automatic intake in `.codeaf/factory.yaml`:
+
+```yaml
+start:
+  labels: [agent-ready]
+  max_size: M
+  max_cost: 2
+  never: [auth/**, migrations/**]
+  ask_first:
+    - anything that changes how secrets are read or stored
+```
+
+After polling and triage, a job with a named label starts through the ordinary Run door
+when its size and estimated cost fit. Defaults are M and $2. Its own cap also bounds
+estimated cost. A job without a matching label waits in backlog. With no `start:` block,
+or no labels in it, nothing starts automatically. `~/.codeaf/factory.yaml` can tighten
+repository rules; it cannot enable automatic work the repository did not allow.
+
+Outside those bounds, the job waits on a question of kind `ask_first`. The question says
+`asked first: …` with the matched rule, size or cost reason. Answer yes to run it, no to
+leave it in backlog. The reason remains visible in the browser after the answer. Intake
+records `auto_started` or `asked_first` and does not repeatedly ask about that job.
+
+`never` globs match paths in issue text, triage's inferred paths, the plan and PR files.
+Triage judges `ask_first` sentences in its existing cheap call; an omitted judgment asks
+first. PR size uses measured file changes; an unread or truncated file list asks first.
+An unreadable pipeline cannot start a job. Existing launch restrictions still apply,
+including the day rail and the restriction on writing work submitted by strangers.
+
+## codeaf factory convert — convert Markdown to YAML
+
+`codeaf factory convert [path]` reads a Markdown pipeline (default `.codeaf/factory.md`)
+and prints YAML to stdout. Conversion warnings go to stderr. It does not write a file.
+To save it, run `codeaf factory convert > .codeaf/factory.yaml` from the repository.
+Review the warnings before committing: old checks and posts become prompts, and some
+old step knobs cannot be represented. Conversion never adds start rules, so it cannot
+turn on automatic intake. YAML takes precedence once committed on the main branch.

@@ -37,7 +37,7 @@ func runFactory(args []string) error {
 	verb := "serve"
 	if len(args) > 0 {
 		switch args[0] {
-		case "serve", "steps", "token", "revoke-sessions":
+		case "serve", "steps", "convert", "token", "revoke-sessions":
 			verb, args = args[0], args[1:]
 		}
 	}
@@ -50,6 +50,9 @@ func runFactory(args []string) error {
 			return wrongCall("codeaf factory steps takes no arguments")
 		}
 		return printFactorySteps(os.Stdout)
+	}
+	if verb == "convert" {
+		return runFactoryConvert(args, os.Stdout, os.Stderr)
 	}
 	if verb == "token" {
 		return runFactoryToken(args)
@@ -71,7 +74,7 @@ func runFactory(args []string) error {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return wrongCall("use codeaf factory [serve], steps, token or revoke-sessions")
+		return wrongCall("use codeaf factory [serve], steps, convert, token or revoke-sessions")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -127,7 +130,7 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer)
 	}
 	defer listener.Close()
 	address := "http://" + listener.Addr().String()
-	seam := factory.LocalSeam(st, time.Now(), factory.WithRepoDirs(st.CheckoutDir))
+	seam := factory.LocalSeam(st, time.Now(), factoryPipelineOption(), factory.WithRepoDirs(st.CheckoutDir))
 	history, err := record.Open(st, record.Options{})
 	if err != nil {
 		return err

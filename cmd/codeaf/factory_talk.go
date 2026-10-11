@@ -274,11 +274,12 @@ func talkHandle(it factory.Item) string {
 // same reading the floor makes ([factory.LocalSeam]'s recipe).
 func factoryItemRecipe(dirs func(string) string, it factory.Item) factory.Recipe {
 	if dir := strings.TrimSpace(dirs(it.Repo)); dir != "" {
-		if r, _, err := factory.Load(dir); err == nil {
+		if r, _, err := factoryPipelineRecipe(dir); err == nil {
 			return r
 		}
 	}
-	return factory.DefaultRecipe()
+	r, _, _ := factoryPipelineRecipe("")
+	return r
 }
 
 // talkBrief is the opening note: the marker, the manager's five blocks
@@ -458,7 +459,7 @@ func (d fileRecipeDoor) Stages(_ context.Context, repo string, kind factory.Kind
 	if err != nil {
 		return nil, err
 	}
-	recipe, _, err := factory.Load(dir)
+	recipe, _, err := factoryPipelineRecipe(dir)
 	if err != nil {
 		return nil, err
 	}

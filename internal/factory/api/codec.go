@@ -63,12 +63,13 @@ func FromItem(it factory.Item) Job {
 	j := Job{
 		ID: it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
 		State: stateOut[it.State], Ready: it.State == factory.StateLanded, Gate: gate(it),
-		AssignedTo: it.Person(),
-		Steps:      steps(it),
-		Claims:     mapList(it.Proof, fromClaim),
-		Questions:  questions(it),
-		CreatedAt:  it.Created,
-		Desk:       fromDesk(it),
+		AssignedTo:       it.Person(),
+		AskedFirstReason: it.AskedFirstReason,
+		Steps:            steps(it),
+		Claims:           mapList(it.Proof, fromClaim),
+		Questions:        questions(it),
+		CreatedAt:        it.Created,
+		Desk:             fromDesk(it),
 	}
 	if pr := it.PullRequest; pr != nil {
 		j.PR = &PR{Number: pr.Number, URL: pr.URL, CI: pr.CI}
@@ -113,6 +114,7 @@ func ToItem(j Job) factory.Item {
 	if pr := j.PR; pr != nil {
 		it.PullRequest = &factory.PullRequest{Number: pr.Number, URL: pr.URL, CI: pr.CI}
 	}
+	it.AskedFirstReason = j.AskedFirstReason
 	it.Stages, it.Stream = unsteps(j)
 	unquestions(&it, j.Questions)
 	return it
@@ -316,12 +318,12 @@ func fromDesk(it factory.Item) *JobDesk {
 
 func fromTriage(t factory.Triage) Triage {
 	return Triage{Type: t.Type, Size: t.Size, Area: t.Area, Readiness: t.Readiness, Est: t.Est, DupOf: t.DupOf,
-		Risk: t.Risk, Read: t.Read, Questions: t.Questions, Dup: t.Dup, Priority: t.Priority, Reason: t.Reason, TriagedAt: t.TriagedAt}
+		Risk: t.Risk, Read: t.Read, Questions: t.Questions, Dup: t.Dup, Priority: t.Priority, Reason: t.Reason, TriagedAt: t.TriagedAt, StartJudged: t.StartJudged, StartMatched: t.StartMatched, StartPaths: t.StartPaths, StartRules: t.StartRules}
 }
 
 func toTriage(t Triage) factory.Triage {
 	return factory.Triage{Type: t.Type, Size: t.Size, Area: t.Area, Readiness: t.Readiness, Est: t.Est, DupOf: t.DupOf,
-		Risk: t.Risk, Read: t.Read, Questions: t.Questions, Dup: t.Dup, Priority: t.Priority, Reason: t.Reason, TriagedAt: t.TriagedAt}
+		Risk: t.Risk, Read: t.Read, Questions: t.Questions, Dup: t.Dup, Priority: t.Priority, Reason: t.Reason, TriagedAt: t.TriagedAt, StartJudged: t.StartJudged, StartMatched: t.StartMatched, StartPaths: t.StartPaths, StartRules: t.StartRules}
 }
 
 func fromLog(l factory.LogLine) LogLine {

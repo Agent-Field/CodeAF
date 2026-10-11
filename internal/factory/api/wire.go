@@ -181,7 +181,7 @@ type Job struct {
 	Ready            bool       `json:"ready,omitempty"`
 	Gate             string     `json:"gate"`
 	WaitingSince     *time.Time `json:"waiting_since,omitempty"`
-	AskedFirstReason string     `json:"asked_first_reason,omitempty"` // future: the pipeline's start rules
+	AskedFirstReason string     `json:"asked_first_reason,omitempty"`
 	AssignedTo       string     `json:"assigned_to,omitempty"`
 	Step             *StepAt    `json:"step,omitempty"`
 	Steps            []Step     `json:"steps"`
@@ -327,19 +327,23 @@ type PR struct {
 // Triage is the cheap read made on arrival (desk; never shown as risk on the
 // dashboard).
 type Triage struct {
-	Type      string    `json:"type,omitempty"`
-	Size      string    `json:"size,omitempty"`
-	Area      string    `json:"area,omitempty"`
-	Readiness int       `json:"readiness,omitempty"`
-	Est       float64   `json:"est,omitempty"`
-	DupOf     int       `json:"dup_of,omitempty"`
-	Risk      []string  `json:"risk,omitempty"`
-	Read      string    `json:"read,omitempty"`
-	Questions []string  `json:"questions,omitempty"`
-	Dup       string    `json:"dup,omitempty"`
-	Priority  int       `json:"priority,omitempty"`
-	Reason    string    `json:"reason,omitempty"`
-	TriagedAt time.Time `json:"triaged_at"`
+	Type         string    `json:"type,omitempty"`
+	Size         string    `json:"size,omitempty"`
+	Area         string    `json:"area,omitempty"`
+	Readiness    int       `json:"readiness,omitempty"`
+	Est          float64   `json:"est,omitempty"`
+	DupOf        int       `json:"dup_of,omitempty"`
+	Risk         []string  `json:"risk,omitempty"`
+	Read         string    `json:"read,omitempty"`
+	Questions    []string  `json:"questions,omitempty"`
+	Dup          string    `json:"dup,omitempty"`
+	Priority     int       `json:"priority,omitempty"`
+	Reason       string    `json:"reason,omitempty"`
+	TriagedAt    time.Time `json:"triaged_at"`
+	StartJudged  bool      `json:"start_judged,omitempty"`
+	StartMatched []string  `json:"start_matched,omitempty"`
+	StartPaths   []string  `json:"start_paths,omitempty"`
+	StartRules   []string  `json:"start_rules,omitempty"`
 }
 
 // LogLine is one line of a run's grain (desk).

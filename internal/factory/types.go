@@ -153,9 +153,8 @@ func (r Recipe) For(k Kind) []Stage {
 }
 
 // Triage is the cheap read made on arrival (internal/factory/triage): dim
-// facts a person reads, NEVER A DECISION. Nothing in the factory launches,
-// hides, gates or spends because of a triage field; the floor only draws them
-// and orders by them when a person asks it to.
+// facts a person reads. Intake uses size, cost and the explicitly judged
+// ask-first sentences only when the repository opts into automatic starts.
 type Triage struct {
 	Type      string // bug · feat · chore · question · review
 	Size      string // S · M · L
@@ -181,6 +180,11 @@ type Triage struct {
 	// TriagedAt is when the read was made, and stays set on a read that could
 	// not be understood, so ONE ITEM IS NEVER TRIAGED TWICE. Zero is never.
 	TriagedAt time.Time
+	// StartJudged distinguishes a complete policy read from an omitted answer.
+	StartJudged  bool     `json:",omitempty"`
+	StartMatched []string `json:",omitempty"`
+	StartPaths   []string `json:",omitempty"`
+	StartRules   []string `json:",omitempty"`
 }
 
 // UnmarshalJSON reads a triage document, including one written before Risk
@@ -308,6 +312,9 @@ type PullRequest struct {
 }
 
 // Item is one row on the floor.
+// QKindAskFirst is an intake question, before a run or any step exists.
+const QKindAskFirst = "ask_first"
+
 type Item struct {
 	ID      int
 	Repo    string   // the repo it arrived on
@@ -340,13 +347,15 @@ type Item struct {
 	OldGate  Gate `json:"Gate,omitempty"`
 	Stream   *Stream
 	Question string
-	QKind    string // plan · cap · scope · step
-	Proof    []Claim
-	Policy   []Claim
-	Marked   bool
-	Labels   []string
-	Checks   string
-	Diff     string
+	QKind    string // plan · cap · scope · step · ask_first
+	// AskedFirstReason keeps the matched rule visible after the question is answered.
+	AskedFirstReason string `json:",omitempty"`
+	Proof            []Claim
+	Policy           []Claim
+	Marked           bool
+	Labels           []string
+	Checks           string
+	Diff             string
 	// Asking is the question a step of the run put to the manager and that
 	// is not answered yet (the inbox, internal/factory/run's inbox.go): with
 	// the manager while it reads it, with the person once the manager sent it

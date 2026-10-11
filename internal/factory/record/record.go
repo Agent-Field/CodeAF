@@ -23,6 +23,7 @@ import (
 const (
 	Started        = "started"
 	AutoStarted    = "auto_started"
+	AskedFirst     = "asked_first"
 	Approved       = "approved"
 	Answered       = "answered"
 	Posted         = "posted"
@@ -103,7 +104,7 @@ func (r *Record) Append(ctx context.Context, event Event) (Event, error) {
 
 func validate(e Event) error {
 	switch e.Kind {
-	case Started, AutoStarted, Approved, Answered, Posted, Took, Dropped, RequestChanges:
+	case Started, AutoStarted, AskedFirst, Approved, Answered, Posted, Took, Dropped, RequestChanges:
 	default:
 		return fmt.Errorf("factory record: unknown event kind %q", e.Kind)
 	}

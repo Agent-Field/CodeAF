@@ -265,14 +265,36 @@ func WithTalk(maker func(ctx context.Context, it Item) (string, error)) LocalOpt
 	return func(o *localOptions) { o.talk = maker }
 }
 
+// WithRecipeLoader gives every recipe read the same interpreter as the runner.
+// It is injected because the pipeline package already depends on this vocabulary.
+func WithRecipeLoader(load func(string) (Recipe, []Problem, error)) LocalOption {
+	return func(o *localOptions) { o.loadRecipe = load }
+}
+
+func (o localOptions) defaultRecipe() Recipe {
+	if o.loadRecipe != nil {
+		r, _, _ := o.loadRecipe("")
+		return r
+	}
+	return DefaultRecipe()
+}
+
+func (o localOptions) load(dir string) (Recipe, []Problem, error) {
+	if o.loadRecipe != nil {
+		return o.loadRecipe(dir)
+	}
+	return Load(dir)
+}
+
 type localOptions struct {
-	runner  RunnerDoors
-	mailbox Mailbox
-	dirs    func(repo string) string
-	lister  RepoLister
-	talk    func(ctx context.Context, it Item) (string, error)
-	shape   func(ctx context.Context, id int) (string, error)
-	refetch func(ctx context.Context, it Item) error
+	loadRecipe func(string) (Recipe, []Problem, error)
+	runner     RunnerDoors
+	mailbox    Mailbox
+	dirs       func(repo string) string
+	lister     RepoLister
+	talk       func(ctx context.Context, it Item) (string, error)
+	shape      func(ctx context.Context, id int) (string, error)
+	refetch    func(ctx context.Context, it Item) error
 }
 
 // WithRefetch gives the local seam its three source doors, [Seam.Refresh],
@@ -455,13 +477,13 @@ func (o localOptions) dir(repo string) (string, error) {
 // takes the whole floor down with it.
 func (o localOptions) recipe(repo string) Recipe {
 	if o.dirs == nil || repo == "" {
-		return DefaultRecipe()
+		return o.defaultRecipe()
 	}
 	d := strings.TrimSpace(o.dirs(repo))
 	if d == "" {
-		return DefaultRecipe()
+		return o.defaultRecipe()
 	}
-	r, _, _ := Load(d)
+	r, _, _ := o.load(d)
 	return r
 }
 
@@ -644,9 +666,9 @@ func localSettings(seam *Seam, st ItemStore, o localOptions) {
 	seam.RecipeAt = func(repo string) (Recipe, []Problem, string, error) {
 		dir := strings.TrimSpace(o.dirs(repo))
 		if dir == "" {
-			return DefaultRecipe(), nil, "", nil
+			return o.defaultRecipe(), nil, "", nil
 		}
-		r, probs, err := Load(dir)
+		r, probs, err := o.load(dir)
 		return r, probs, dir, err
 	}
 	seam.SaveRecipe = func(repo string, r Recipe) error {

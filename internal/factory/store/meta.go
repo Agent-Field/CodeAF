@@ -313,3 +313,6 @@ func (st *Store) ReadCost() (last, avg float64, err error) {
 	}
 	return d.ReadCost, d.ReadSum / float64(d.Reads), nil
 }
+
+// TryIntake serializes policy decisions made by the poll and triage workers.
+func (st *Store) TryIntake() (release func(), ok bool) { return st.tryLock("intake.lock") }

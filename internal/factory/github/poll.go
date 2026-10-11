@@ -57,7 +57,7 @@ type Sinker interface {
 //
 // NOTHING IS POSTED BY THE POLL. It calls Read and never Write. log, when not
 // nil, is told about a failure in words with every secret taken out.
-func Poll(ctx context.Context, src factory.Source, st *store.Store, every time.Duration, log func(string)) {
+func Poll(ctx context.Context, src factory.Source, st *store.Store, every time.Duration, log func(string), after ...func(context.Context) error) {
 	if src == nil || st == nil || every <= 0 {
 		return
 	}
@@ -73,6 +73,9 @@ func Poll(ctx context.Context, src factory.Source, st *store.Store, every time.D
 			return
 		}
 		next, err := PollOnce(ctx, src, st, cursor, time.Now)
+		if len(after) > 0 && after[0] != nil {
+			err = errors.Join(err, after[0](ctx))
+		}
 		cursor = next
 		if err != nil {
 			failed++
