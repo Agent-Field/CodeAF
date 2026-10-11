@@ -15,7 +15,11 @@
 // `omitempty` and say so in one line.
 package api
 
-import "time"
+import (
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/factory/record"
+)
 
 // Factory names the server every response comes from.
 type Factory struct {
@@ -381,15 +385,7 @@ type Message struct {
 }
 
 // Event is one line of the record: who did what to which job, at what cost.
-type Event struct {
-	ID     string    `json:"id"`
-	At     time.Time `json:"at"`
-	Kind   string    `json:"kind"`
-	Job    int       `json:"job,omitempty"`
-	Handle string    `json:"handle"`
-	Cost   float64   `json:"cost,omitempty"`
-	Detail string    `json:"detail,omitempty"`
-}
+type Event = record.Event
 
 // Worker is a codeaf that pulls jobs from the factory.
 type Worker struct {

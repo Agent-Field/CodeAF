@@ -123,7 +123,9 @@ func TestVerbsCallSeamAndMapErrors(t *testing.T) {
 			} {
 				t.Run(failure.name, func(t *testing.T) {
 					s, calls := spyVerbs(t, failure.err)
-					w := verbRequest(serve.New(s, config), tc.method, tc.path, tc.body)
+					cfg := config
+					cfg.RecordApproval = func(context.Context, int, bool) (string, error) { return "evt_1234abcd", nil }
+					w := verbRequest(serve.New(s, cfg), tc.method, tc.path, tc.body)
 					checkJSON(t, w, failure.status)
 					want := tc.want
 					if failure.err != nil {
@@ -144,7 +146,7 @@ func TestVerbsCallSeamAndMapErrors(t *testing.T) {
 						if body.Error != failure.err.Error() || body.Event != "" {
 							t.Fatalf("error response = %+v", body)
 						}
-					} else if tc.event && body.Event != serve.PendingApproval {
+					} else if tc.event && body.Event != "evt_1234abcd" {
 						t.Fatalf("approval receipt = %+v", body)
 					} else if tc.status == 201 && body.ID != 42 {
 						t.Fatalf("new job = %+v", body)

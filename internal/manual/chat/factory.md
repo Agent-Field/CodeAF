@@ -1829,3 +1829,37 @@ the last time it was read, and the floor is read while the factory page is open,
 after you have opened `/factory` once. On a narrow bar the places after it fold into `More ▾`
 first; a `Factory` with a count stays on the bar. `alt+9` still opens it, whatever its place on
 the bar.
+
+## factory record, audit history and CSV export
+
+A factory service supplied with a record keeps append-only `events.jsonl` beside its
+saved jobs. Each event has `id`, `at`, `kind`, `job`, `handle`, `cost` and `detail`.
+The record accepts starts (`started`, `auto_started`), approvals (`approved`),
+answers (`answered`), posts (`posted`), takes (`took`), drops (`dropped`) and
+requests for changes (`request_changes`). Service run, answer, drop and request
+changes doors record successful actions; automatic starts through Add work record
+`auto_started`. The claims desk's Take wiring remains a separate service connection.
+
+`GET /v1/audit` returns `events` with the factory identity. Add `?since=<RFC3339 timestamp>`
+for events strictly after that instant. Add `?format=csv` (or combine it with `since`)
+to download `factory-record.csv`, with the same events in append order. Both reads
+use the service's normal access check. A service without a record cannot provide
+these reads. This change adds no record key to the terminal floor.
+
+## factory approval receipts and pull request trailers
+
+The service's Approve door writes an `approved` event with an `evt_` id followed by
+eight hexadecimal digits before asking the runner to approve the plan or proof.
+It returns that id as `event`. Answering yes at an approve step also records consent
+before the runner continues. The handle comes from the connected forge identity,
+not the caller's body. A missing identity, unavailable record or failed disk write
+refuses approval. A runner refusal can leave the recorded approval attempt; it
+does not make the job done or bypass the proof gate.
+
+A post executor connected to that same record appends
+`Factory-Approval: evt_<8hex> @handle` to its pull request body. It refuses to push
+or open a PR without a recorded approval for that job. A new start, a drop or
+requested changes withdraws earlier approval; the next post needs fresh consent.
+After a successful source write the executor records `posted`, including cost and
+the receipt URL. A failed post is never retried automatically. Existing local post
+executors acquire this binding when their host supplies the record connection.

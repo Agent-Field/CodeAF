@@ -17,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/serve/web"
 )
 
@@ -27,8 +28,9 @@ type Config struct {
 	Version      string
 	AccessToken  string
 	PollingEvery time.Duration
-	// RecordApproval writes before the approval door runs, so a future record
-	// can bind publishing to the event rather than reconstructing consent.
+	// Record is supplied by the host at the same root as the job store.
+	Record *record.Record
+	// RecordApproval supports hosts that bind recording through their own door.
 	RecordApproval func(ctx context.Context, id int, edited bool) (event string, err error)
 }
 
@@ -53,6 +55,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/repos/{owner}/{repo}/pipeline", h.pipeline)
 	h.read("/v1/github", h.github)
 	h.read("/v1/me", h.me)
+	h.read("/v1/audit", h.audit)
 	h.verbs()
 	h.mux.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusNotFound, "factory endpoint not found")

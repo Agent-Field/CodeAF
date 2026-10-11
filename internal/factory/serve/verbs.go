@@ -10,23 +10,20 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 )
-
-// PendingApproval is deliberately not a bound approval id. Until a record is
-// supplied, callers can distinguish this placeholder from a durable receipt.
-const PendingApproval = "evt_pending"
 
 func (h *Handler) verbs() {
 	s := h.seam
-	h.postJob("run", s.Launch != nil, h.idVerb(s.Launch))
+	h.postJob("run", s.Launch != nil, h.recordedID(s.Launch, record.Started))
 	h.postJob("stop", s.Stop != nil, h.idVerb(s.Stop))
 	h.postJob("pause", s.Hold != nil, h.holdVerb(true))
 	h.postJob("resume", s.Hold != nil, h.holdVerb(false))
-	h.postJob("drop", s.Dismiss != nil, h.idVerb(s.Dismiss))
+	h.postJob("drop", s.Dismiss != nil, h.recordedID(s.Dismiss, record.Dropped))
 	h.postJob("answer", s.Answer != nil, h.answer)
 	h.postJob("steer", s.Steer != nil, h.wordsVerb(s.Steer))
 	h.postJob("approve", true, h.approve)
-	h.postJob("request_changes", s.SendBack != nil, h.wordsVerb(s.SendBack))
+	h.postJob("request_changes", s.SendBack != nil, h.recordedWords(s.SendBack, record.RequestChanges))
 	h.postJob("recheck", s.Reverify != nil, h.idVerb(s.Reverify))
 	h.postJob("prioritize", s.Mark != nil, h.prioritize)
 	h.postJob("reply", s.Say != nil, h.reply)
@@ -82,7 +79,7 @@ func (h *Handler) answer(w http.ResponseWriter, r *http.Request, it factory.Item
 		return
 	}
 	yes := body.Yes != nil && *body.Yes
-	h.finish(w, h.seam.Answer(it.ID, yes, body.Words))
+	h.finish(w, h.recordAnswer(r, it, yes, body.Words))
 }
 
 func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Item) {
@@ -96,13 +93,9 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 	if door == nil {
 		return
 	}
-	event := PendingApproval
-	if h.config.RecordApproval != nil {
-		var err error
-		event, err = h.config.RecordApproval(r.Context(), it.ID, body.Edited)
-		if h.failed(w, err) {
-			return
-		}
+	event, err := h.recordApproval(r, it, body.Edited)
+	if h.failed(w, err) {
+		return
 	}
 	if h.failed(w, door()) {
 		return
@@ -185,7 +178,7 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	if body.Autostart && h.failed(w, h.seam.Launch(id)) {
+	if body.Autostart && h.failed(w, h.recordAction(r, factory.Item{ID: id}, record.AutoStarted, "", func() error { return h.seam.Launch(id) })) {
 		return
 	}
 	h.write(w, http.StatusCreated, struct {

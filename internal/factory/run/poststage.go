@@ -8,10 +8,13 @@ import (
 	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 )
 
 // PostOptions builds a post executor.
 type PostOptions struct {
+	// Record binds publishing to consent held by the factory, never model text.
+	Record *record.Record
 	// Source answers the item's source, nil when none.
 	Source func(repo string) factory.Source
 	// Policy answers the repo's recipe policy lines.
@@ -80,6 +83,13 @@ func NewPostExecutorWith(o PostOptions) Executor {
 				}, nil
 			}
 		}
+		if verb == "pr" && o.Record != nil {
+			trailer, err := o.Record.Trailer(ctx, it.ID)
+			if err != nil {
+				return factory.StageResult{}, err
+			}
+			action.Body += "\n\n" + trailer
+		}
 		if verb == "pr" && o.Push != nil {
 			if err := push(o.Push, job.Dir, it, action.Branch); err != nil {
 				return factory.StageResult{}, err
@@ -88,6 +98,15 @@ func NewPostExecutorWith(o PostOptions) Executor {
 		rcpt, err := src.Write(ctx, action)
 		if err != nil {
 			return factory.StageResult{}, err
+		}
+		if o.Record != nil {
+			cost := 0.0
+			if it.Stream != nil {
+				cost = it.Stream.Spent
+			}
+			if _, err := o.Record.Append(ctx, record.Event{Kind: record.Posted, Job: it.ID, Handle: it.Person(), Cost: cost, Detail: verb + " · " + rcpt.URL}); err != nil {
+				return factory.StageResult{}, fmt.Errorf("posted %s · %s; could not record post: %w", verb, rcpt.URL, err)
+			}
 		}
 		if job.Log != nil {
 			job.Log("posted " + verb + " · " + rcpt.URL)
