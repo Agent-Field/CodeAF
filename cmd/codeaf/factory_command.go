@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"io"
 	"net"
 	"net/http"
@@ -131,7 +132,10 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer)
 		return fmt.Errorf("factory cannot listen on %s: %w", listen, err)
 	}
 	defer listener.Close()
-	seam := factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(), factory.WithRepoDirs(st.CheckoutDir))
+	// The service records every approval under a forge handle, so it must know
+	// who the token belongs to: without the connection doors an approval from
+	// the browser is refused ("approval requires a forge handle").
+	seam := factorygithub.Connect(factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(), factory.WithRepoDirs(st.CheckoutDir)), factoryProfile(""))
 	service, err := startFactoryService(ctx, st, seam, listener, cfg.AccessToken)
 	if err != nil {
 		return err

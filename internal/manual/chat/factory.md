@@ -8,6 +8,8 @@ The default is `127.0.0.1:7420`. Use `--listen 127.0.0.1:0` for an available por
 or `--listen 0.0.0.0:7420` to accept connections from other machines.
 `GET /v1/queue` reads the saved jobs over loopback without an access token.
 Starting this service does not start GitHub polling or a worker in this process.
+It does read who the token belongs to (`GH_TOKEN`, `GITHUB_TOKEN`, a saved token, or gh once allowed), so
+`GET /v1/github` names the login and an approval from the browser is recorded under that handle.
 Run queues a job; any codeaf attached to this factory (`codeaf attach <url>`, then
 `codeaf`) runs a worker that pulls it, runs it on its own machine and reports back
 (see workers, taken jobs and lease expiry). Stop, pause, answers and steering reach
