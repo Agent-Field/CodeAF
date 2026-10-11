@@ -78,7 +78,7 @@ const (
 	// `#1 now: plan · approve · write · test · proof · budget $8`.
 	itemNowLead = " now: "
 	// itemDone is the line under the facts a yes returns.
-	itemDone = "The person said yes and the floor has the change; there is nothing left to answer."
+	itemDone = "The person said yes and the factory has the change; there is nothing left to answer."
 )
 
 // The card's two keys, the factory card's: `1` is the yes and `2` the answer
@@ -104,9 +104,9 @@ var itemEfforts = []string{"cheap", "strong", "default"}
 
 const factoryItemDescription = "Offer to change the ONE factory item this conversation is about, when the person settles on it: its stages (\"skip review on this one\", \"add a security pass\"; where the run holds for the person is an approve step: add \"after plan, approve\" or skip \"approve\", and an item with no approve step ships itself when its proof is green), its budget in dollars (the field is cap; the person calls it \"budget\"), how hard the stages think (the field is effort; the person calls it \"thinking\": cheap, strong, default), or a note the item's stages will read (\"the fixture in testdata is flaky\"). " +
 	"This conversation is the item's hub: change it with this tool, leave notes here, and once the item runs, its stages report into this conversation. " +
-	"Use it only for the item this conversation was opened for; never for another item. The floor id goes in the item field and nowhere else: in words, name the item by its ref (#12), never by its floor id. " +
+	"Use it only for the item this conversation was opened for; never for another item. The factory id goes in the item field and nowhere else: in words, name the item by its ref (#12), never by its factory id. " +
 	"add is new stage sentences, a place word first when it matters (\"after test, read it for auth holes\"); skip and on are stage names the item already has. Give only what changes. " +
-	"NOTHING CHANGES BY CALLING THIS: the person is shown a card with the item before and after, and only their `yes` changes anything. Nothing launches either; that is the person's, on the floor. " +
+	"NOTHING CHANGES BY CALLING THIS: the person is shown a card with the item before and after, and only their `yes` changes anything. Nothing launches either; that is the person's, in the factory. " +
 	"The recipe's bounds hold whatever is asked: proof and a stage the policy names are never skipped, a stage that already ran is never touched, and a `fixed` recipe refuses every stage change; a refusal comes back with its reason before any card. " +
 	"If they type a change instead, nothing changes and you are told their words: propose again with them."
 
@@ -119,7 +119,7 @@ func factoryItemSchemaJSON() string {
 		return strings.Join(out, ",")
 	}
 	return `{"type":"object","properties":{` +
-		`"item":{"type":"integer","description":"The floor id the conversation was told for this item (a store number, not the ref the person says)."},` +
+		`"item":{"type":"integer","description":"The factory id the conversation was told for this item (a store number, not the ref the person says)."},` +
 		`"add":{"type":"array","items":{"type":"string"},"description":"Stage sentences to add, e.g. \"after review, read it for auth holes\"."},` +
 		`"skip":{"type":"array","items":{"type":"string"},"description":"Stage names to switch off for this item."},` +
 		`"on":{"type":"array","items":{"type":"string"},"description":"Stage names to switch on for this item."},` +
@@ -518,7 +518,7 @@ func (a *Agent) factoryItemTool() bare.Tool {
 				Why:    strings.Join(strings.Fields(parsed.Why), " "),
 			}
 			if notice.Item <= 0 {
-				return "Invalid arguments: factory_item needs the floor id of the item this conversation is about.", true, nil
+				return "Invalid arguments: factory_item needs the factory id of the item this conversation is about.", true, nil
 			}
 			if notice.Effort != "" && !oneOf(notice.Effort, itemEfforts) {
 				return "Invalid arguments: effort is one of " + strings.Join(itemEfforts, ", ") + ", or left out.", true, nil

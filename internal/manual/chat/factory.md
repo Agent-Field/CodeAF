@@ -44,7 +44,7 @@ Run `codeaf attach <url> [--name name] [--token token]`, then open a new `codeaf
 window and `/factory`. The URL is the factory service's address, such as
 `http://team-host:7420`; HTTPS addresses work too. `--name` is how this machine is
 named there (default: its hostname). For a factory off loopback, ask its operator
-for the access token printed by `codeaf factory token` on the factory's machine
+for the access token printed by `codeaf factory token` in the factory's machine
 and supply it with `--token`. Remote calls without that token are refused.
 
 `codeaf attach` saves the address, name and token in the private
@@ -61,13 +61,13 @@ before its worker can start. With no worker available, a job stays `queued`.
 
 ## which factory a window talks to — service discovery and the factory address line
 
-The factory page reads its floor through HTTP. When an ordinary local `codeaf`
+The factory page reads its jobs through HTTP. When an ordinary local `codeaf`
 window starts, it selects the factory in this order:
 
 1. `~/.codeaf/v3/factory/attach.json`, written by `codeaf attach <url>`.
 2. A live `serve.json`: another codeaf on this machine already serves it, its process
    is alive and it answers `GET /v1/queue`.
-3. Otherwise the window serves this machine's floor itself on `127.0.0.1:0`, loopback
+3. Otherwise the window serves this machine's factory service on `127.0.0.1:0`, loopback
    only and without an access token, and writes `serve.json` for the next window.
 
 A second window on the same machine reads the first window's factory. If the serving
@@ -128,11 +128,13 @@ After revocation, enter the token at `/access` again.
 
 ## codeaf factory steps — print built-in step prompts
 
-`codeaf factory steps` prints the built-in step names and prompts grouped by issue,
-pull request and CI pipeline, including the security step that starts disabled.
-It reads the same defaults as a fresh pipeline, so names and prompts follow the
-installed build. `approve` names a person's approval rather than a model prompt.
-This command needs no model key, changes no jobs and accepts no arguments.
+`codeaf factory steps` prints the installed built-in step names and prompts grouped by
+issue, pull request and CI pipeline, including security, which starts disabled. The command
+currently prints the older Markdown defaults, including checks for PRs and bisect / fix for CI; its prompts can
+be copied into YAML, but its groups differ from the YAML defaults.
+`approve` is a person's approval rather than a model prompt. Copy a prompt under
+the same name in `.codeaf/factory.yaml` to override it; add a new name to `pipeline` to
+run a custom step. This command needs no model key, changes no jobs and accepts no arguments.
 
 ## workers, taken jobs and lease expiry
 
@@ -177,29 +179,29 @@ to, which is where that job's worker lives. Approve and request changes act on a
 landed job; request changes and re-run checks queue it for a worker. There is no `run.lock`
 and no mailbox any more.
 
-## /factory — the floor
+## /factory — the factory page
 
-The **factory** is a place, like home, activity and spend: the floor where work a chat splits
-off, or that a connected repository sends, stands in rows grouped by where each item is. Open
+The **factory page** is a place, like home, activity and spend. Work split off by chat or
+sent by a connected repository stands in rows grouped by the state of each job. Open
 it with `/factory`, `alt+9` (`opt+9` on a Mac), the map (`alt+.`), or the `Factory` button on the
 tab bar, third after `Home` and `Chats`. `esc` goes back to the conversation.
 
-The page reads the selected factory's floor through its HTTP service (see which factory a
+The page reads the selected factory's jobs through its HTTP service (see which factory a
 window talks to). Jobs you add with `n` or from a chat are kept by that factory. Until the
-first one arrives the floor draws one dim line under the handover,
+first one arrives the factory draws one dim line under the handover,
 `work arrives here from chat, from n, and from the repositories you connect` (or, with
 repositories watched, what their read is doing; see after connecting github), and `n new` still
 works. When no factory connection is available, the page draws
-`nothing connected yet · the factory floor arrives here when a chat splits work off or a repo is connected`.
+`nothing connected yet · the factory arrives here when a chat splits work off or a repo is connected`.
 The only key it offers then is `esc back`.
 
-The floor is one layout in three widths:
+The factory is one layout in three widths:
 
 - **120 columns and wider**: the handover runs across the whole width at the top (one line, or
   four rows after `h`; see the handover), then a blank row, then two columns: the rows on the left (58% of the width to start with, never under 70
   columns), a dim `│`, and the **peek** on the right (never under 40 columns), which shows the
   item under the cursor. The divider moves (see resize the split). With no item under the
-  cursor (an empty floor, or a filter that matches nothing) there is no peek and no `│`: the rows
+  cursor (an empty factory, or a filter that matches nothing) there is no peek and no `│`: the rows
   take the whole width.
 - **90 to 119 columns**: the handover on top, then the rows across the full width, with no peek.
   Press `enter` on a row to see the item whole.
@@ -213,14 +215,14 @@ the list is back at its top, its first group heading showing. A group heading mo
 first row: walking onto a group's first item shows its heading above it, and a heading is never
 left alone on the last row with its rows below the edge.
 
-## the keys on the factory floor
+## the keys on the factory page
 
-The floor names its keys in three places, each short:
+The factory names its keys in three places, each short:
 
 - **The bottom bar is the way around**, never the row's verbs:
   `n new · R repos · m foreman · / filter · tab next place · esc back · ? keys`. A clause whose
   door is not there is left out (`n new` too while the row under the cursor needs you, where `n`
-  answers no), and when the line is too long it drops clauses from the right of the floor's own,
+  answers no), and when the line is too long it drops clauses from the right of the factory's own,
   keeping `esc back` and `? keys`. `esc` says `esc clear` while a filter or a repository narrows
   the rows.
 - **The peek's last row names the row's verbs**, at most five (see the peek's verbs).
@@ -238,24 +240,24 @@ The keys themselves:
 - `h` switches the handover between one line (the default) and four rows; remembered.
 - `z` switches compact rows (one line each, the default) and comfortable rows (a long title on
   two lines, a dim line with the factory's read, a blank row between items). Not saved.
-- `O` re-sorts the rows inside each group (see order the floor); the `?` sheet says the order
+- `O` re-sorts the rows inside each group (see order the factory); the `?` sheet says the order
   in use, `O order · priority`.
 - `g` opens the item on github (see open the item on github).
-- `u` refreshes the item; `U` refreshes all, after asking (see when the floor is doing
+- `u` refreshes the item; `U` refreshes all, after asking (see when the factory is doing
   something).
 - `p` is `shape steps`: the item's manager sets its steps now and runs nothing (see does opening
   an issue run anything).
 - `space` selects or unselects a new item, and pauses or resumes a running one. `T` opens a chat
   about the item.
-- `m` opens the foreman, the floor's own conversation for what to take first (see the foreman).
+- `m` opens the foreman, the factory's own conversation for what to take first (see the foreman).
 - `/` filters, `[` and `]` show one repository at a time, `A` shows the whole backlog.
 - `esc` clears a filter or a repository first; pressed again, it goes back to the conversation.
-- `R` repos, `E` recipe and `$` rail open the floor's settings.
+- `R` repos, `E` recipe and `$` rail open the factory's settings.
 
 ## the peek's verbs — at most five, by the row's state
 
 The peek's last row names what you can do to the item under the cursor, **at most five**, in the
-order a person reaches for them, and only keys the floor can do:
+order a person reaches for them, and only keys the factory can do:
 
 - **New:** `enter open · r run · T chat · space select`. While a row is selected,
   `L run selected` takes the fifth place.
@@ -273,7 +275,7 @@ other key (the budget, the thinking, the stages, dismiss, refresh, open on githu
 
 ## what a row is
 
-A row on the factory floor is one **item**: an issue, a pull request, a red CI run, a chore,
+A row in the factory is one **item**: an issue, a pull request, a red CI run, a chore,
 or work a chat split off. Rows stand on one grid so they line up down the page: a state mark,
 the **priority** in one cell, the short name right-aligned so the numbers line up by digit
 (`#1538`, or `ci`), the title, the repository's short name, the facts, and at the far right how
@@ -283,7 +285,7 @@ short name and the title.
 The priority is the cheap read's guess at what to take first: `▇` first (in the accent), `▅`
 second, `▃` third, `▁` fourth, dim; nothing for an item nobody ranked. A patched font draws
 chevrons instead; a screen reader hears `!`, `:` and `.`. While the item is being read the cell
-is a spinner instead. During a whole-floor re-read (`U`) only the row being read right now spins;
+is a spinner instead. During a re-read of every job (`U`) only the row being read right now spins;
 a row still waiting its turn shows a still dim `·` in that cell and `waiting to read`.
 
 On a forge item the short name is a link to its page where the terminal takes links.
@@ -308,12 +310,12 @@ Chats list and the Teams page use.
 
 ## paused, stopped and skipped — what the marks mean
 
-Each mark on the floor means one thing, so a held, ended or skipped stage never looks like one
+Each mark in the factory means one thing, so a held, ended or skipped stage never looks like one
 that is running, failed or still to come:
 
 - **Paused** (`space` on a running item): the row's lead mark and the held stage are a pause
   mark (`=` on a plain font, a pause icon on a patched one), muted. The row says `paused 13m`,
-  counted from when the floor first saw it paused; the peek says `paused 13m · write ×3` and
+  counted from when the factory first saw it paused; the peek says `paused 13m · write ×3` and
   never `13m left` or what it was editing. The item page's head says `paused 13m`.
 - **Stopped** (`x`): the item is new again and its lead mark is a stop square (`■`, or a stop
   icon), muted. The row says `stopped · branch kept`, the stage it stopped on wears the square
@@ -326,9 +328,9 @@ that is running, failed or still to come:
 - **Waiting to read**: during `U`, a row the read has not reached yet shows a still dim `·` and
   `waiting to read`; only the row being read spins.
 
-## filter the factory floor, search for an item
+## filter the factory, search for an item
 
-`/` on the factory page opens a one-line filter box at the top of the list, and the list narrows
+`/` in the factory page opens a one-line filter box at the top of the list, and the list narrows
 as you type. Every word you type has to hold. A plain word matches anywhere in an item's title,
 repository, area, kind or author. These words mean something more:
 
@@ -340,9 +342,9 @@ repository, area, kind or author. These words mean something more:
 `enter` keeps the words and closes the box; `backspace` takes a letter back; `esc` throws the
 words away. With the box closed, the words stay under the repository line, and `esc` clears
 them before it leaves the page. When nothing matches, the list says
-`no item on the floor matches`.
+`no item in the factory matches`.
 
-## show one repository on the factory floor
+## show one repository in the factory
 
 The first line of the list says which repositories it shows: `all repos`, or one repository's
 trail, `Factory › codeaf · 7`: the repository's short name and how many items it has. `]` steps
@@ -350,9 +352,9 @@ to the next repository and `[` to the one before, and past the last one the list
 them again. An item shows under a repository it arrived on or touches. That line, and the
 filter's words under it, stay at the top while the rows scroll.
 
-## go back to all repositories — the factory floor shows only one repo
+## go back to all repositories — the factory shows only one repo
 
-Clicking the repository on an item page's trail, or `[` and `]`, leaves the floor showing one
+Clicking the repository on an item page's trail, or `[` and `]`, leaves the factory showing one
 repository. To see every repository again, press `esc` (the hint says `esc all repos`) or click
 `Factory` at the start of the first line, `Factory › codeaf · 7`; resting the pointer on it
 highlights it. The cursor stays on the item it was on. A second `esc` leaves the factory.
@@ -372,199 +374,142 @@ leave the page and come back, until codeaf exits. While anything is selected the
 offer `L run selected`, and `L` asks first, with the triage estimates summed:
 `run 3 selected · ~$7? [y] go · [n] not now`. `y` runs every selected item, clears the
 selection and says `launched 3`; `n` or `esc` keeps it. With nothing selected `L` runs the item
-under the cursor. What the foreman selects (`m`) is kept with the floor on this machine and is
+under the cursor. What the foreman selects (`m`) is kept with the factory on this machine and is
 still there after a restart.
 
-## stages, not a pipeline
+## pipeline and steps — a step is a prompt
 
-An item runs through **stages** in a fixed order that a repository or team writes once: for
-example plan, write, test, review, neaten, proof. Each stage is one sentence ("read it as a
-stranger would"), and it runs as an ordinary task with the ordinary crew picked for that kind of
-work. There is no graph to draw and no model to choose per stage; the one word a stage may carry
-is its thinking (`effort` in the recipe file), cheap or strong.
+A job runs a **pipeline**: its steps in order. Each step is a prompt run as an ordinary
+conversation in the job's worktree, with the job, repository rules and earlier results as
+context. Conditions belong in the prompt, such as "if this touches auth, review it for
+secret handling; otherwise stop". YAML has no step kinds, `when` or `fanout` knobs.
 
-A stage can repeat until a condition holds (until green, until clean, until proven) up to a
-number of rounds, and then it stops and asks you. A second round fixes what the first found, then
-checks again: its brief names what the last round found and says to fix it in the checkout, run
-the tests, and look again, so a review that found one thing does not just find it twice. Nothing inside a stage can add a stage, except plan, within the
-bounds its recipe word allows (see who may change an item's stages). A stage can also be an
-**approve** step, which is where the run holds for you: codeaf's default runs plan → approve →
-write, so you read the plan before any code (see approve steps).
+`approve` is the reserved exception: a person, with no model prompt. The default issue
+pipeline is plan → approve → write → test → review → proof. PRs use read → review → proof;
+red CI uses read → write → test → proof. Publishing still needs a person's approval.
+`codeaf factory steps` prints the installed built-in prompts to copy or override.
 
-The peek shows a new item's stages as one line of names and a running item's as a strip of
-marks; the item page lists them down its stage rail. A stage can carry a condition (`thin`,
-`large`, `touches auth`, `has ui`); on an item it does not fit, the stage is drawn dim with the
-skip stroke `–` and `· skipped` on the stage rail, and `skipped · not thin` (or the condition it
-missed) beside it. A stage switched off, or one the run went on past, is drawn the same way.
+The peek shows a waiting job's steps as names and a running job's progress as marks.
+The job page lists the steps. Steps skipped or switched off there are dim. On a waiting
+job, `1` to `9` switch steps, `s` adds one in words, and `b` banks them as the repository's
+older Markdown recipe. YAML takes precedence over that saved Markdown.
 
-A stage's name is one lowercase word of letters and digits, 2 to 12 long (`review`, `arch`,
-`e2e`), and an item has at most nine stages, so a digit reaches each one.
+The current runner holds nine steps per job. YAML names allow lowercase letters, digits
+and hyphens, 2 to 32 characters; the runner removes hyphens and accepts one word, 2 to 12
+letters or digits. A name it cannot run is reported as a pipeline problem. Keep names
+short and distinct after removing hyphens. Once running, a step already started is never
+changed; edits to later steps are read at their next round.
 
-On a new item, `1` to `9` switch the stage with that number on or off (`1-9 stages` on the `?`
-sheet), `s` adds a stage in
-words (`after review, arch: read it for the architecture` puts a stage named arch after review;
-with no `name:` the stage is named by its ask's first word, so `after review, make it neater`
-is `make`), and `b` banks the item's stages
-as its repository's recipe, into `.codeaf/factory.md` (see the recipe file). A new item starts
-from its repository's recipe file, or codeaf's default when there is none. Once a run starts,
-the stages it has not started yet are read again at each round, so a change the manager makes
-during the run (see the manager shapes the run) reaches them; a stage that started is never
-changed.
+## the pipeline file — .codeaf/factory.yaml, factory yaml and the specification
 
-## the recipe file — .codeaf/factory.md
+Commit `.codeaf/factory.yaml` on the repository's default branch. codeaf reads it through
+GitHub, so no local checkout is needed to read the rules. A PR cannot rewrite the rules
+for its own run. Every key is optional; no file means the built-in pipeline, with no
+automatic starts. The full file specification is `docs/design/factory/FACTORY-YAML.md`
+in the codeaf repository.
 
-A repository's pipeline is read from `.codeaf/factory.yaml` first. When YAML is absent,
-`.codeaf/factory.md` is converted in memory. The existing banking and saving doors still write
-Markdown; YAML takes precedence over those writes. A repository with no file runs the
-default pipeline. The older Markdown shape is
-shape (indented here; in the file each line starts at the margin):
+```yaml
+pipeline:
+  issue: [plan, approve, write, test, review, proof]
+  pr: [read, review, proof]
+  ci: [read, write, test, proof]
+steps:
+  test: run the test suite this repo uses; fix what fails
+  proof:
+    prompt: show each claim in its own medium
+    until: every claim has evidence
+    max: 3
+fixed: [approve, proof]
+rules:
+  - tests pass before anything posts
+```
 
-    # factory recipe · codeaf
+`start` controls automatic intake; `size` controls size measurement (see automatic intake
+and size rules). `pipeline` lists steps per kind; `steps` overrides a built-in by the same
+name or defines a new prompt. Merely defining a new step does not put it in a pipeline.
+`fixed` keeps named steps from being changed or skipped. `rules` are sentences every job
+obeys: recognised publishing rules are enforced by code; other sentences reach the model.
 
-    ## issue
-    1. plan · chat · read the issue and say how · gate plan when large
-    2. write · chat · fanout 3
-    3. test · check · go test ./... · until clean · max 2
-    4. review · chat · read it as a stranger would · until clean · max 2
-    5. security · chat · when touches auth
-    6. proof · chat · show each claim in its own medium
+When YAML is absent, `.codeaf/factory.md` is read and converted in memory. Existing `b`,
+`E` save, habit banking and `factory_recipe` still write Markdown, so those writes cannot
+override YAML. YAML takes precedence. Use `codeaf factory convert` to print a conversion
+and review its warnings.
+Unknown keys and invalid values are named as problems; the rest loads. Invalid YAML syntax
+stops automatic intake. A personal `~/.codeaf/factory.yaml` may only tighten repository rules.
 
-    ## pr
-    1. read · chat · what changed and why
-    2. checks · check · ci
-    3. review · chat · until clean · max 2 · fanout per finding
-    4. proof
+## step prompt, until and max — repeating a step, built-ins and approve
 
-    ## policy
-    - tests pass before anything posts
-    - a stranger's PR never runs write
+In `.codeaf/factory.yaml`, a step is a sentence or a map with only `prompt`, `until` and `max`:
 
-    ## habits
-    - factory PRs from your own issues self-ship when the proof is green
+```yaml
+steps:
+  security: if this touches auth, review for injection and secret handling; otherwise stop
+  review:
+    prompt: review the diff carefully; fix what you find
+    until: no findings
+    max: 2
+```
 
-A stage line is `N. name · kind · ask · knob · knob`, the name one word; a name of two words is
-named as a problem, `a stage is one word · "do through" is two`, and a tenth stage line as
-`the run has nine stages already`. The sections are `## issue`, `## pr`,
-`## ci` and `## chore`; a missing section runs the default for that kind. A kind's heading may
-end in one word, `## issue · adapt`, `## issue · ask` or `## issue · fixed`, saying how much plan
-may change its stages (see who may change an item's stages); no word is `adapt`. `## policy` and
-`## habits` are sentences kept word for word. A line codeaf cannot read is named with its line
-number and why, and the rest of the file still loads.
+`prompt` is the work. `until` is the stopping condition; omitted on a new step, it means
+the step reports done. An override keeps a built-in's omitted settings. `max` is the
+number of rounds before the job stops and asks you, at least 1; without a round cap the
+current runner allows one round. A second round gets the previous findings and must fix
+them before checking again.
 
-**The recipe is read from the repository's main branch, never from an item's branch** (see the
-recipe is read from the main branch), so a stranger's pull request cannot rewrite the policy it
-is held to. Policy and habit lines are
-applied by codeaf's own code; they are never handed to the model as instructions.
+The runner checks `done`, `clean` / `no findings`, `green`, and `proven` / `every claim has
+evidence` mechanically. Other `until` sentences become `Stop when: …` in the prompt;
+the model must report completion. A round that ends without `stage_result` does not pass.
+These are model conversations: "green" on a prompt step is its reported outcome, not
+a YAML command executor.
 
-`b` on a new item writes its stages into its kind's section of this file and leaves every other
-section as written; banking a habit adds a `- ` line under `## habits`. Both are offered only when
-codeaf knows where the repository is checked out; otherwise `b` is not on the bottom line.
+The built-ins are plan, approve, write, test, review, security, proof and read. Run
+`codeaf factory steps` for their exact prompts and pipeline groups. `approve` has no model prompt: it remains a
+person even if a prompt is supplied for that name. Conditions and parallel work belong
+in the prompt; the older `kind`, `when`, `fanout`, `gate`, `effort`, `proof` and `off`
+knobs are not YAML step keys. `fixed` is a top-level list of step names, defaulting to
+approve and proof, rather than a step knob.
 
-codeaf reads the file for the repository you opened it in, and for any watched GitHub
-repository whose checkout it has seen you open. Open codeaf inside a repository you watch once
-and its recipe is read from then on.
+## who may change a job's steps — the manager, plan, you and fixed steps
 
-## recipe file knobs — kind, when, until, max, fanout, gate, effort, proof, off, fixed
+The manager may shape steps before a run. Plan may propose changes during it, but never
+to steps already done or running, or before one. You may edit waiting steps from the
+job's settings or in words. Each change goes through the same bounds in code.
 
-In a `.codeaf/factory.md` stage line, after the name:
+In `.codeaf/factory.yaml`, `fixed: [approve, proof]` is the default. A fixed step's prompt,
+thinking and rounds cannot be changed, and it cannot be skipped or switched off by the
+manager, plan or you. Switching it on is allowed. Change the repository's pipeline file
+on its default branch to change that constraint. The current refusal still names the
+older file: `security is fixed by the recipe · change .codeaf/factory.md to change it`.
+If YAML exists, changing that Markdown file does not change the constraint.
 
-- **kind**: `chat`, `check`, `gate` or `post`; `chat` when absent. A line named `approve`
-  (`3. approve`) is a gate without saying so: the run holds there for you (see approve steps).
-  `## approve` on a line of its own inside a kind's section is the same step at that place.
-- **ask**: the first segment that is not a kind and not a knob. `check` runs it as a command.
-- `when always`, `when thin`, `when large`, `when touches auth`, `when has ui`: the stage is
-  skipped on an item the condition does not fit.
-- `until done`, `until clean`, `until proven`, `until green`, and no other word. done: the stage
-  reported done. clean: it reported zero findings. proven: every claim on the item has evidence.
-  green: the check's command exited 0.
-- `max N` (or `rounds N`): rounds before it stops and asks you.
-- `fanout 3`, `fanout one`, `fanout per finding`, `fanout per file`, `fanout per claim`.
-- `effort cheap` or `effort strong`.
-- An older file's `gate plan` / `gate ship` / `gate none` is read as an approve step and written
-  back as one: `gate plan` on plan is an approve after plan, `gate ship` an approve after its
-  stage, `gate none` nothing; `gate plan when large` is `approve · when large`.
+The runner also keeps names unique and limits a job to nine steps, limits a new ask to 240 cells,
+and refuses to skip proof, an approve step or a step named by a publishing rule. One
+refused part refuses the whole edit. Changes keep who changed them and why on the job.
 
-The file keeps these words; the screen says them its own way: `effort` is `thinking`, and an
-item's `cap` is its `budget`.
-- `proof a test, a screenshot`: what the stage must show, separated by commas.
-- `off`: the stage is written but does not run. Every other stage is on.
-- `fixed`: the team's law. Nobody may change the stage's ask, thinking or rounds, or switch it
-  off: not the manager, not plan, not you (see who may change an item's stages). It may be
-  switched on. `## issue · fixed` marks every stage of its section fixed as well. `fixed`
-  followed by more words, as in `fixed bugs get a test`, is an ask, not the knob.
+An older Markdown recipe can still restrict plan with a section's `adapt`, `ask` or
+`fixed` word. YAML has no section mode; its `fixed` list protects individual steps.
+Converting a section-wide restriction warns about that difference.
 
-A line with only a name, such as `4. proof`, is codeaf's default stage of that name for that
-kind; a name with knobs and no ask is that default with the knobs laid over it. A knob word
-with a word it does not know (`until clen`) is named as a problem, never read as the ask.
+## the pipeline is read from the default branch — a pull request cannot change its rules
 
-## who may change an item's stages — the manager before a run, plan during it, you always
+codeaf reads `.codeaf/factory.yaml` through GitHub from the repository's **default branch**,
+whatever it is named, then `.codeaf/factory.md` only when YAML is absent. No local checkout
+is needed to read start rules. A pull request cannot change the rules for its own run.
 
-A run is a short program of one-word stages. Three hands may change it, through one door with
-one set of bounds held by codeaf's own code, never asked of a model:
-
-- **the manager, before a run**: it may give any stage a new ask, change a stage's thinking
-  (cheap, strong, or nothing), add a conversation stage after any stage it names, switch a
-  stage on, and skip a stage. Nothing has run, so nothing is out of reach except what the
-  common bounds keep.
-- **plan, during a run**: the same, but never a stage that is done or running, and nothing is
-  added before one. The recipe gives each kind one word after its heading in
-  `.codeaf/factory.md` saying how much plan may do:
-  - `## issue · adapt`: within the bounds. The default when there is no word.
-  - `## issue · ask`: the same, and the item's gate becomes `plan`, so you ratify the change
-    before anything after plan runs.
-  - `## issue · fixed`: no change at all. It is refused with
-    `the recipe for issue is fixed; plan may not change the stages`.
-- **you, always**: from the item's settings, or in words. The adapt word holds plan, not you.
-
-**A stage marked `fixed` in `.codeaf/factory.md` binds all three hands, you too**, before a run
-and during it: its ask, its thinking and its rounds never change and it is never skipped or
-switched off, from the manager, from plan, from the item's settings or from a chip like
-`rounds 3` on `n`. Switching a fixed stage on is allowed. Every road refuses with one sentence:
-`security is fixed by the recipe · change .codeaf/factory.md to change it`. The law changes only
-by changing the file on the main branch.
-
-The common bounds, in every case:
-
-- a stage is one word (`a stage is one word · "do through" is two`); an item saved before this
-  bound is read with each name made one word, its first word that can be a name past a `do`
-  (`do through` is `through`, a requested-changes `prove 2` is `prove2`);
-- no two stages share a name, and an item has at most nine stages
-  (`the run has nine stages already`);
-- an added stage is a conversation with an ask, and an ask is at most 240 cells
-  (`an ask is at most 240 cells`);
-- thinking is cheap, strong, or nothing (`thinking is cheap, strong, or nothing`);
-- the stage named `proof`, a gate stage, and a stage a policy line names are never skipped
-  (`plan may not skip proof`; `tests pass before anything posts` names test);
-- nobody may change the budget, where the run asks you, or the rounds this way.
-
-One refused part refuses the whole change, and the refusal names the part. Every stage added or
-changed keeps who changed it and why.
-
-What changed is kept on the item and drawn as one dim line under the stages on the peek and in
-the item page's head, who first:
-`manager set review: thorough on security, code and architecture · added arch after review ·
-skipped neaten · why: touches the call row`. A later change by someone else names them
-(`· you switched on neaten`). An item nobody changed draws nothing there.
-
-## the recipe is read from the main branch — a pull request cannot change the law for its own review
-
-codeaf reads `.codeaf/factory.yaml` through GitHub from the repository's default branch,
-then `.codeaf/factory.md` when YAML is absent. No local checkout is needed to read
-start rules. A pull request cannot change the rules for its own run.
-
-Parsed files are cached by blob SHA and refreshed on each intake tick. If GitHub is
-not connected or the connection is offline, a known local checkout is the fallback:
-`origin/HEAD` (else `main`, else `master`), with the working file used only when no
-main branch can be read. An absent file on GitHub means defaults; it never selects
-a different local file. A file GitHub refuses to read or YAML that cannot be parsed
-keeps automatic intake stopped and shows its reason in the pipeline's `/v1` payload
-and on the factory recipe page (`E`). A failed read without an offline checkout also
-shows its reason. Personal `~/.codeaf/factory.yaml` limits still tighten the result.
+Parsed files are cached by blob SHA and refreshed on each intake tick. If GitHub is not
+connected or the connection is offline, a known local checkout is the fallback:
+`origin/HEAD` (else `main`, else `master`), with the working file used only when no default
+branch can be read. An absent file on GitHub means defaults; it never selects a different
+local file. An HTTP refusal or YAML syntax error stops automatic intake and shows its
+reason in the pipeline's `/v1` payload and the recipe page (`E`). A failed read without an
+offline checkout also shows its reason. Personal `~/.codeaf/factory.yaml` limits still
+tighten the result. Banking writes are not effective until the default branch contains
+them, and cannot override an existing YAML file.
 
 ## the handover
 
-The **handover** is what happened on the factory floor since you last looked. By default it is
-one line across the top of the floor, then a blank row:
+The **handover** is what happened in the factory since you last looked. By default it is
+one line across the top of the factory, then a blank row:
 
 `◆ 2 shipped · 3 arrived · ? 5 waiting · $8.44 / $60 · polled 14s ago`
 
@@ -576,7 +521,7 @@ count the same, and `nothing waits on you` means neither. A part whose count is 
 left off; a narrow window drops parts from the right. While a source is being read the last part
 says where the read is, `⠋ reading Agent-Field/CodeAF · 1 of 3`, or `github · ⠋ polling` when
 the source does not say; while every item is read again, `⠋ refreshing 8 items · 3 done`. A
-floor with nothing on it while a read is out shows that part alone, never `quiet`.
+factory with nothing on it while a read is out shows that part alone, never `quiet`.
 
 `h` switches to the four-row strip and back, and the choice is remembered in `factory.json` in
 the codeaf home, beside the split:
@@ -600,7 +545,7 @@ stays there while the rows scroll under the cursor, so the peek keeps its whole 
 1. The short name and title (the short name is a link to the item's page), then dim: repository,
    kind, size, author, age, and `github ↗` when the item has a page there.
 2. For an item that needs you, the question exactly as the run asked it (`?` in amber, the
-   words in ink) and, where the floor can answer, `[y] yes · [n] no · [a] in words`.
+   words in ink) and, where the factory can answer, `[y] yes · [n] no · [a] in words`.
 3. The factory's one-sentence read, or `⠋ reading…` while the first read is out.
 4. Facts, dim: `touches money`, `maybe a duplicate of #7`, `thin`, `stranger`.
 5. The budget and the thinking, `budget  $5   thinking  strong`, each only when the item has
@@ -624,13 +569,13 @@ stays there while the rows scroll under the cursor, so the peek keeps its whole 
     files`, then up to six paths), `activity` (the last five events). The item's page on GitHub is the `github ↗` link in the meta row.
 
 The bottom row names the row's verbs, at most five, starting with `enter open` (`enter proof`
-on a landed item), with one blank row above it, and only keys the floor can do: a still floor
+on a landed item), with one blank row above it, and only keys the factory can do: a still factory
 with no verbs says just `enter open`. It is cut from its end to the peek's width (see the peek's
 verbs).
 
 ## resize the split — { } |
 
-The divider between the floor's rows and the peek can be moved at 120 columns and wider. `{`
+The divider between the factory's rows and the peek can be moved at 120 columns and wider. `{`
 moves it 4 columns left (a wider peek), `}` 4 columns right (wider rows), and `|` puts it back at
 58% of the width. You can also drag the divider with the mouse: press on the `│`, move, let go.
 
@@ -650,7 +595,7 @@ in `…` with a dim `▾ more` at the right. To see the rest:
 - A click on `▾ more` scrolls it a page.
 - `enter` opens the item's page, where the whole description stands (below).
 
-The scroll stays where you left it while the floor reads itself again. Moving to another item
+The scroll stays where you left it while the factory reads itself again. Moving to another item
 starts that item at its top.
 
 To read everything, open the item (`enter`, or click its row twice). The item page's left column
@@ -675,9 +620,9 @@ knobs, a stage's note, the settings' keys and a long log line all wrap to the wi
 
 ## the item page — issue, manager, steps, settings
 
-`enter` on a row of the factory floor (or a second click on it) opens that item on its own page,
+`enter` on a row of the factory (or a second click on it) opens that item on its own page,
 across the full width; `esc` closes it and puts the cursor back on the same row. Nothing about
-the floor (filter, repository, selection) changes while it is open.
+the factory (filter, repository, selection) changes while it is open.
 
 The top row is the page's bar: the run control, then a trail of breadcrumbs,
 `Factory › codeaf › #1551 filters lost on compact`, and at the right the step the run is on, its
@@ -743,7 +688,7 @@ The bar's first cells are one button that does what the run needs next, by `spac
   question) with `space continue`, and `space` or a click lets the run go past it.
 
 A queued or landed item has no control. `?` names `space` by what it does now. On the item page
-`space` never selects: select is the floor's.
+`space` never selects: select is the factory's.
 
 The button sends what it shows, not a toggle: pressing `pause` twice (or a click and a key landing
 together) holds the run once and leaves it held, and `run` on a paused item goes on once. A
@@ -753,9 +698,9 @@ doubled press never undoes itself.
 
 `↑` and `↓` walk every row of the left column in order, the steps and the actions included,
 and the center follows the row. A step's chat the cursor only passed over is let go of when the
-cursor moves on or you go back to the floor, so walking the steps leaves no tabs; one you gave the
+cursor moves on or you go back to the factory, so walking the steps leaves no tabs; one you gave the
 keys to (`enter`, `→` or a click on its box) stays a tab. `→` or `tab` gives the keys to the center's chat box, `esc` or
-`tab` gives them back, and `esc` on the page goes back to the floor. `enter` acts on the row: the
+`tab` gives them back, and `esc` on the page goes back to the factory. `enter` acts on the row: the
 issue and the manager open the manager's chat, a step with a chat puts the keys in its box, an
 action does what it says.
 
@@ -799,11 +744,11 @@ with the stage's own name. The recipe page `E` refuses the same way: its number,
 `s` words that name it all say that sentence, and its pane shows the lock with the ask dim.
 Switching a fixed stage that is off on is never refused.
 
-## breadcrumbs on the item page — how to get back to the floor from an item
+## breadcrumbs on the item page — how to get back to the factory from an item
 
 The item page's top row, `Factory › codeaf › #1551`, is a row of buttons. Click `Factory` to go
-back to the floor, exactly as `esc` does. Click the repository, `codeaf`, to go back to the
-floor showing only that repository (as `[` and `]` choose one; `esc` there clears it). Click the
+back to the factory, exactly as `esc` does. Click the repository, `codeaf`, to go back to the
+factory showing only that repository (as `[` and `]` choose one; `esc` there clears it). Click the
 number, `#1551`, to open the item on github, as `g` does; on an item with no page on github the
 number is not a button. Resting the pointer on a crumb highlights it.
 
@@ -822,8 +767,8 @@ the chat): page letters such as `p` never fire while you type. If the chat is op
 you (a step's round ended), what you typed stays in the box and the keys you pressed meanwhile
 land in it, in order, when it is back.
 
-From the floor, `T` opens the item's conversation as a chat of its own instead, and the first
-`esc` on its empty box comes back to the floor (see chat about an item). So does `enter` on the
+From the factory, `T` opens the item's conversation as a chat of its own instead, and the first
+`esc` on its empty box comes back to the factory (see chat about an item). So does `enter` on the
 page when the window is under 72 columns, too narrow to keep the page beside the chat.
 
 Where this window cannot make the item's conversation, `enter` on the issue row opens the item
@@ -892,7 +837,7 @@ is `after 1 round`, one finding `1 finding`),
   brief (at an approve step: the run continues with them) and it says `answered #12 in words`.
 
 `[y] yes · [n] no · [a] in words` (`[y] continue · [n] send back · [a] in words` at an approve
-step) is drawn only where the floor can answer. `y`, or `a`, on an
+step) is drawn only where the factory can answer. `y`, or `a`, on an
 item that is not waiting says `#12 is not waiting on you` on the bottom line and changes nothing
 (`n` there is new work, and `a` on a thin new item asks its author).
 
@@ -940,9 +885,9 @@ is never changed.
 ## does opening an issue run anything — no; the manager sets the steps when you ask, shape steps, p
 
 Opening an item's page runs nothing and spends nothing. The steps on the left are the recipe's:
-the repository's `.codeaf/factory.yaml` as the main branch has it, else its Markdown
+the repository's `.codeaf/factory.yaml` as the default branch has it, else its Markdown
 pipeline converted in memory, else the built-in pipeline
-(plan, approve, write, test, review, security off, proof). The manager row opens at once as an
+(plan, approve, write, test, review, proof). The manager row opens at once as an
 idle chat with the issue in it; no model is asked anything until somebody types.
 
 The manager shapes the steps in exactly three ways:
@@ -1002,7 +947,7 @@ stays.
 Budget, thinking for every stage and notes for the stages still go through
 `factory_item`'s card (see changing an item from its conversation). `factory_run` is on the
 manager's belt only; a stage's own conversation does not have it, and a conversation that manages no
-item is told `this conversation is not the manager of any item on the floor`.
+item is told `this conversation is not the manager of any item in the factory`.
 
 ## approve steps — where the run holds for you, continue, send it back, plan approve write
 
@@ -1043,7 +988,7 @@ A landed item's page opens on its **proof** sheet: one row per claim and policy 
 a test row reads `0.3s` beside `test`, not `test · 0.3s`. The sheet's last line counts it and names its keys:
 `all 6 shown · s approve`, or `1 of 6 not shown · e approve with changes · B request changes`.
 
-- `s` **approves** it and publishes it: the floor says `#12 publishing`, and a worker opens the
+- `s` **approves** it and publishes it: the factory says `#12 publishing`, and a worker opens the
   pull request with your approval's trailer (see approving at the proof gate publishes). On a
   sheet with a row not shown the run refuses, in its words: `#12 has a claim not shown`.
 - `e` approves saying you changed something first, the one that ships a sheet with a row not
@@ -1057,7 +1002,7 @@ a test row reads `0.3s` beside `test`, not `test · 0.3s`. The sheet's last line
   request changes (`enter request changes`), with `prove` and that row's words already typed.
 
 `d` says `the diff is the appendix` and that it opens in your editor later. Each key is named only
-where the floor can do it.
+where the factory can do it.
 
 ## what goes on the proof sheet — claims, evidence, repeats
 
@@ -1108,7 +1053,7 @@ What the manager does:
   `factory_answer` or sends the question to you (see a stage asks a question).
 - **It shapes the run with `factory_run`** (see the manager shapes the run), with no card; the
   budget, thinking and notes go through `factory_item`, whose card still asks you
-  before anything lands. It cannot run, stop, approve or post: those stay your keys on the floor.
+  before anything lands. It cannot run, stop, approve or post: those stay your keys in the factory.
 
 An item whose chat cannot be made (no folder known for it) runs without a manager; its log says
 `the item's conversation could not be made: …`.
@@ -1131,7 +1076,7 @@ waits for the answer:
   longer than a minute, or calls neither also sends the question to you.
 
 Answer in the manager's chat at any time, in any words (`sqlite`, `use jsonl, it streams`), or
-with the floor's answer keys; the chat says `answered: …` and the stage goes on with your words.
+with the factory's answer keys; the chat says `answered: …` and the stage goes on with your words.
 The question and its answer go on the run's notes, so the stages after it read them too.
 
 A pause keeps the question on the item: answer it while paused and the answer is kept
@@ -1143,9 +1088,9 @@ this road. One question at a time: a second one waits for the first.
 
 ## the factory's verbs, keys that change an item
 
-On your own floor the keys that change an item's own settings always work (`n`, `c` budget, `e` thinking, `w`, the stages, `space`, `d`), and `r` and `L` run it (see running an
+On your own factory the keys that change an item's own settings always work (`n`, `c` budget, `e` thinking, `w`, the stages, `space`, `d`), and `r` and `L` run it (see running an
 item). Stop, pause, answers, steering, approve, request changes and re-run checks work in every
-window too, whichever process runs the floor's items. `enter` on a row never runs anything; it
+window too, whichever process runs the factory's items. `enter` on a row never runs anything; it
 opens the item page. The peek names at most five of these for the row's state (see the peek's
 verbs); `?` lists them all.
 
@@ -1156,16 +1101,16 @@ verbs); `?` lists them all.
   `s` adds a stage (named on the `?` sheet). `space` selects, `L` runs the selected (see select
   new items). On a terminal-made item `g` puts it on github too, or takes it off; on any other
   item with a page on github, `g` opens that page. `a` asks a thin item's author its questions.
-  `d` **dismisses** the item: it leaves the floor until it changes.
+  `d` **dismisses** the item: it leaves the factory until it changes.
 - **Running or queued:** `x stop · space pause · S steer` (see steer a running item); `e` steps
   the running stage's thinking.
 - **Needs you:** `y yes · n no · a in words`, and `S steer`, `x stop` (see answering a question).
 - **Landed:** `s approve` on a clean sheet, `e approve with changes` when a row was not shown,
   `B request changes`, `v re-run checks`, `d diff` (see approve, request changes, re-run checks).
-- **Any state:** `T chat` opens a chat about the item (see chat about an item), on the floor and
-  on the item page alike; it is named only where the floor can make one. `u` refreshes it.
+- **Any state:** `T chat` opens a chat about the item (see chat about an item), in the factory and
+  on the item page alike; it is named only where the factory can make one. `u` refreshes it.
 - **Anywhere:** `n new` opens `new work ›`, at the bottom of the rows column, on the repository the list shows (or the first one;
-  on a floor with no items yet, the name of the folder this window was opened in), and the new
+  on a factory with no items yet, the name of the folder this window was opened in), and the new
   item's card is under the cursor when it is made.
 
 A key that takes words opens a one-line box at the bottom of the right column, just above the
@@ -1173,7 +1118,7 @@ peek's verbs (which stay the column's last row, one blank row between them), exc
 which stands at the bottom of the rows (and every box stands under the rows when there is no
 peek): `enter` sends, `backspace` edits, `esc` cancels. After a key the bottom line says what
 became of the item (`#12 is running`, `#12 stopped · branch kept`); a refusal, such as
-`#1540 is on a bench; stop it first`, is said there in the floor's own words instead.
+`#1540 is on a bench; stop it first`, is said there in the factory's own words instead.
 
 ## what does ask me at mean, how do I make it stop after the plan
 
@@ -1185,9 +1130,9 @@ without stopping, switch its approve steps off on the settings row; with none, a
 ships by itself. An item or recipe that still says `ask me at` (or `gate plan`, `gate ship`,
 `gate none`) is read as approve steps.
 
-## what is chat on an item, what was talk on the factory floor, what is select, what is dismiss — the floor's words
+## what is chat on an item, what was talk in the factory, what is select, what is dismiss — the factory's words
 
-The floor names each key by what it does:
+The factory names each key by what it does:
 
 - `r` **run**: run every stage; it holds at each approve step.
 - `T` **chat**: a conversation about this item with the issue loaded (see chat about an item).
@@ -1196,7 +1141,7 @@ The floor names each key by what it does:
 - `c` **budget**: the most this item may spend.
 - `1`-`9` **stages**: turn a stage on or off.
 - `g` **open on github**, `u` **refresh** (read the issue again: size, cost, priority), `d`
-  **dismiss** (take the row off the floor; it is then `dismissed`).
+  **dismiss** (take the row from the factory; it is then `dismissed`).
 - On a landed item: `s` **approve**, `B` **request changes**, `v` **re-run checks**.
 - `m` **foreman**, `U` **refresh all**, `h` **handover**.
 
@@ -1205,38 +1150,38 @@ cap, `e` was effort, `u` was read again, `d` was hide, and the landed keys were 
 back and check again; `p` (plan first) is gone, because the approve step after plan and `r` do
 it. On 2026-10-09 `t` (ask me at) went too: an approve step is where the run holds.
 
-## the ? key sheet — what the question mark key shows, every key on the factory floor and the item page
+## the ? key sheet — what the question mark key shows, every key in the factory and the item page
 
-`?` on the floor or on the item page opens the key sheet over the page: every key that works
+`?` in the factory or on the item page opens the key sheet over the page: every key that works
 where you stand, beside its word, in four groups, `do` (the row's verbs), `set` (budget,
 thinking, stages, in words, and on the item page `↑↓ settings`, the row they stand on), `also` (open on github, refresh, dismiss, new, foreman,
 refresh all, handover, repos, recipe, rail, backlog, density, order, repo, the split, scroll)
-and `move` (walk, or `↑↓ rows` on the item page, open, filter, tab next place, esc back, ? keys). Only keys the floor can do are
+and `move` (walk, or `↑↓ rows` on the item page, open, filter, tab next place, esc back, ? keys). Only keys the factory can do are
 listed. The hint says `esc close`; `esc` or `?` puts it away and leaves you where you were. Other
 letters do nothing while it is up.
 
 ## open the item on github — g
 
-An item that came from GitHub has a page there, and the floor offers it three ways: its short
+An item that came from GitHub has a page there, and the factory offers it three ways: its short
 name on the row and on the peek is a link (where the terminal takes links, it opens on click,
 and takes no extra room), the peek's dim meta row ends `github ↗`, and `g` on the item opens the
 page in your browser. The `?` sheet names it `g open on github` where it works. After `g` the bottom line
 says `opened #1662 on github`; on a machine with no browser it says
 `could not open your browser` with the address to copy.
 
-`g` is offered only when the floor can name the page; with no such door there is no key. On an
+`g` is offered only when the factory can name the page; with no such door there is no key. On an
 item typed into the terminal with `n`, which has no page on GitHub, `g` keeps its other meaning:
 it puts the item on GitHub too, or takes it off.
 
-## when the floor is doing something — the spinner
+## when the factory is doing something — the spinner
 
-Everything the floor does in the background says it is happening, with the same braille spinner
+Everything the factory does in the background says it is happening, with the same braille spinner
 the transcript uses (`⠋`), and nothing is drawn when nothing is in flight. The spinner turns for
 as long as a read, a door or a poll is in flight, and never stands still while one is, so a
 spinner that moves is work still going:
 
 - **An item being read:** its priority cell spins and the fact after its state says `reading…`
-  or `refreshing…`. An item waiting its turn in a whole-floor re-read does not spin: it shows a
+  or `refreshing…`. An item waiting its turn in a re-read of every job does not spin: it shows a
   still dim `·` and `waiting to read`. The peek's read says `⠋ reading…` while the first read is out, and the item
   page's read line says `⠋ reading · 4s`.
 - **`u` refreshes the item under the cursor.** The line above the keys says `re-reading #6…`
@@ -1253,7 +1198,7 @@ spinner that moves is work still going:
   `⠋ banking…`, saving the repositories or the recipe says `⠋ saving…`, and `R` says
   `⠋ asking gh…`, each until the answer arrives.
 
-`u` and `U` are offered only where the floor can read items again.
+`u` and `U` are offered only where the factory can read items again.
 
 ## bank a habit after clean approvals
 
@@ -1275,42 +1220,42 @@ When an item of a repository lands and that repository's checkout has no `.codea
 the bottom of the right column offers, once, where the habit offer stands:
 `no recipe in codeaf yet` and
 `write the recipe into the repo so the team shares it? [y] write it · [n] not now`.
-`y` writes the recipe the floor runs for it today into the checkout's `.codeaf/factory.md`, and
+`y` writes the recipe the factory runs for it today into the checkout's `.codeaf/factory.md`, and
 the note line says `recipe written · .codeaf/factory.md on main` with the branch the checkout
 stands on. `n` puts the offer away for that repository for good: the factory's store keeps the
 no, so no window asks again. The offer comes only where the recipe can be written, a file that is
 there already is never written over, and a habit offer standing at the same time is answered first.
 
-## from chat to the factory floor — factory_add
+## from chat to the factory — factory_add, hand this to the factory
 
-A conversation can offer a piece of work to the factory floor with the `factory_add` tool. The
-chat calls it when you say something belongs on the factory floor, or when it judges a piece of
+A conversation can offer a piece of work to the factory with the `factory_add` tool. The
+chat calls it when you say something belongs in the factory, or when it judges a piece of
 work is self-contained enough to run on its own later. It is there only when this conversation
-has a factory floor behind it; without one the chat has no such tool and says it cannot. It is
+has a factory behind it; without one the chat has no such tool and says it cannot. It is
 there on every ordinary launch on this machine: plain `codeaf`, whose conversation runs in the
 session host, as well as first-run setup, `--no-host` and `--debug`. A window that comes back to
 a conversation while its card is still up is shown the card. It is absent over `--host` or `--at`
-to another machine (that machine's floor is not the one your page reads), from `--once`, and
-inside a task; add work there with `n` on your own floor.
+to another machine (that machine's factory is not the one your page reads), from `--once`, and
+inside a task; add work there with `n` in your own factory.
 
-Calling it adds nothing. A card asks you first, in one question: `put this on the factory floor?`.
-Under it is the item drawn the way the floor will show it (the title with `repo · kind · size`
+Calling it adds nothing. A card asks you first, in one question: `hand this to the factory?`.
+Under it is the item drawn the way the factory will show it (the title with `repo · kind · size`
 on the right, then `new` and the estimate with the stages it would run), then the chat's reason.
 It answers to `1 add it`, `2 not now`, or words typed into its box
 (`say what to change… (enter sends it)`).
 
-- **`add it`** writes one item to the floor as `new`, from chat, and the chat is told
-  `#<id> <title> is on the factory floor`. The card's foot says `added · #<id>` and its body
+- **`add it`** writes one item to the factory as `new`, from chat, and the chat is told
+  `#<id> <title> is in the factory`. The card's foot says `added · #<id>` and its body
   becomes the item's live card (see the item card in a conversation).
 - **`not now`** writes nothing: `nothing was added: the person said no.`
 - **Words** write nothing either. The chat is told `the person changed it: <your words>` and
-  `Nothing is on the floor yet. Propose it again with that`, and asks again with a new card.
+  `Nothing is in the factory yet. Propose it again with that`, and asks again with a new card.
 - **No answer** writes nothing. There is no clock that adds: after fifteen minutes the card
-  comes down with `nothing was added to the factory floor`, and the chat is told
+  comes down with `nothing was added to the factory`, and the chat is told
   `nothing was added: the card was never answered`.
 
-**Nothing launches from the chat.** An added item waits on the floor like any other `new` row
-until you launch it from the factory page.
+**The chat does not launch it.** An added job waits in backlog until you run it. Automatic
+intake can start eligible forge work separately (see why did this start by itself).
 
 ## teaching the recipe in conversation — factory_recipe, always run a security review in a repo
 
@@ -1318,7 +1263,9 @@ Say a rule out loud ("in my repo always run a security review when auth is touch
 "never post without green tests", "for PRs, two review rounds") and codeaf can offer it to
 the repository's recipe, `.codeaf/factory.md`, with the `factory_recipe` tool. It is there
 exactly where `factory_add` is, on the ordinary launch on your own machine, and absent over
-`--host`, `--at`, from `--once` and inside a task.
+`--host`, `--at`, from `--once` and inside a task. This door still writes the older Markdown
+file; when `.codeaf/factory.yaml` exists, edit that YAML on the default branch instead.
+Banking Markdown does not override YAML.
 
 It offers a single line: a stage for `issue`, `pr` or `ci` in the file's grammar
 (`security · read it for auth holes · when touches auth`), a policy sentence, or a habit.
@@ -1333,7 +1280,7 @@ the sentence; and `why:` with the reason when the chat gave one. It answers to
 `1 bank it`, `2 not now`, or words (`say what to change… (enter sends it)`).
 
 - **`bank it`** writes the line and, in a checkout that is a git repository, **opens a change for
-  the team** instead of writing silently, because `.codeaf/factory.md` is the team's law and a
+  the team** instead of writing silently, because the older Markdown recipe is shared and a
   teammate should review a taught line like code. The line is written on a branch
   `factory/recipe-<word>` (the first word of the line; a taken name gets `-2`, `-3`) cut from the
   default branch, committed as `recipe: <the sentence as typed>` with no trailers, pushed when a
@@ -1360,7 +1307,7 @@ It writes only where codeaf knows the checkout; otherwise the answer is
 
 ## chat about an item — T, the item's own conversation
 
-`T` (**chat**) on an item, on the floor or on its page, opens a conversation that belongs to
+`T` (**chat**) on an item, in the factory or on its page, opens a conversation that belongs to
 that item, so you can talk it over or plan it before you run it, or while it runs. **It is the
 item's manager** (see who is the manager of an issue). Nothing makes it before the first `T` or
 the item's first run; after that every `T` opens the same one, and the item keeps it.
@@ -1374,11 +1321,11 @@ The first press makes, on this machine and without asking any model:
   of it: the title, the repository, author and tier, where it asks you, its budget and labels,
   the body, its stages as numbered lines, the factory's read, the sentence that makes it the
   manager (`You are the manager of this item. …`), and
-  `This is the item's own conversation on the factory floor. Nothing here runs it; the person does that on the floor.`
+  `This is the item's own conversation in the factory. Nothing here runs it; the person does that in the factory.`
 
 You land in the conversation, as when you open one from its tab; the one you were in goes on
 running behind it. The first `esc` on its empty box, with nothing running, takes you back to the
-floor on the same row, however many turns the model has answered (and onto the item page if that is
+factory on the same row, however many turns the model has answered (and onto the item page if that is
 where you pressed `T`). That way back is taken once; reopened later from its tab it is an ordinary conversation, and there `esc` means
 what it always means, so a first `esc` arms the rewind (`esc again to rewind`).
 
@@ -1388,39 +1335,39 @@ items with a chat are one `factory` row until you stand in it. When the item is 
 `d`, its conversation is put away (home's archive line) and its team is closed.
 
 `T` is not named, and does nothing, over `--host` or `--at` to another machine, from `--once`,
-or on the still made-up floor: nothing there can make a conversation.
+or on the still made-up factory: nothing there can make a conversation.
 
-## the foreman — m, what should I take first, factory_floor, why can't my chat read the floor
+## the foreman — m, what should I take first, factory_floor, why can't my chat read the factory
 
-`m` on the factory floor opens the foreman: one conversation for the whole floor, for deciding
+`m` in the factory opens the foreman: one conversation for the whole factory, for deciding
 what to take first ("what should I take first this morning and why?", "select the three
 cheapest bugs"). **It is never made by default.** The first `m` makes it and every later `m` opens the
 same one. It is named `foreman`, sits in the one `factory` team beside the items' own teams, and
-opens with `You are the foreman of this factory floor.` and each repository's policy lines.
-You land in it as with `T`, and the first `esc` on its empty box goes back to the floor.
+opens with `You are the foreman of this factory.` and each repository's policy lines.
+You land in it as with `T`, and the first `esc` on its empty box goes back to the factory.
 
-It reads the floor with the `factory_floor` tool: `waiting` (items that need you), `risky`,
+It reads the factory with the `factory_floor` tool: `waiting` (items that need you), `risky`,
 `cheapest` (ten, by estimate), `oldest` (ten), `all` (up to fifty), or one `item` in full (its
 read, facts, stages, the question it waits on and the first 2000 characters of its body). A row
 is the ref, title, kind, repository, size, estimate, priority and its reason, state, age and
 risk; what is not known is left out.
 
 **It proposes by selecting.** It selects new items, and the tool tells it
-`selected #1 #4 #6 · press L on the floor to run them`. On the floor a row it selected wears the
+`selected #1 #4 #6 · press L in the factory to run them`. In the factory a row it selected wears the
 accent lead, as a `space` select does, and the peek offers `L run selected`. What it selects is
-kept with the floor on this machine, so it survives a restart, until you run or unselect it; a
+kept with the factory on this machine, so it survives a restart, until you run or unselect it; a
 selection on an item that is no longer new is dropped.
 
 **It never runs, ships or posts.** Only a new item can be selected (the tool says
-`#3 is running, and only a new item can be selected`), and `L` on the floor is the only way to run
+`#3 is running, and only a new item can be selected`), and `L` in the factory is the only way to run
 them (see what the factory does not do yet).
 
-**Only the foreman reads the floor.** `factory_floor` is on the foreman's belt and on no other
+**Only the foreman reads the factory.** `factory_floor` is on the foreman's belt and on no other
 conversation's: an ordinary chat, an item's own conversation (`T`) and a stage do not have it.
-A chat that wants something on the floor proposes a new item with `factory_add`, an item's own
-conversation changes its item with `factory_item`, and to ask about the whole floor you open the
+A chat that wants something in the factory proposes a new item with `factory_add`, an item's own
+conversation changes its item with `factory_item`, and to ask about the whole factory you open the
 foreman with `m`. `m` does nothing over `--host` or `--at`, from `--once`, or on the still made-up
-floor.
+factory.
 
 ## changing an item from its conversation — factory_item, skip a stage, add an approve step, raise the budget, leave a note
 
@@ -1428,7 +1375,7 @@ An item's own conversation (`T`) is the item's hub. In it codeaf can propose a c
 item with the `factory_item` tool: stages to add (`after review, read it for auth holes`, or
 `after test, approve` for an approve step where the run holds for you), skip or switch on; its
 budget in dollars (the tool's `cap`); its thinking (the tool's `effort`: `cheap`, `strong`,
-`default`); or a note its stages will read. The card speaks the floor's words: `budget` and
+`default`); or a note its stages will read. The card speaks the factory's words: `budget` and
 `thinking`; only the tool's own field names (`cap`, `effort`) are the engine's. It is for the item the conversation is
 about, and it is on the belt wherever `factory_add` is. (It replaced `factory_stages`, which
 could change only the stages.)
@@ -1456,7 +1403,7 @@ Nothing launches from it.
 
 ## the item card in a conversation — live item status, #12 in a reply
 
-Wherever a conversation is about an item on the floor, the item is drawn as one live card:
+Wherever a conversation is about an item in the factory, the item is drawn as one live card:
 `▤ #1 <title>` with `repo · kind · size` on the right, and under it where it stands —
 `new · budget $5`, `running 24m · $1.42 / $5`, `? plan is ready`, `landed · 3✓ 1✕`,
 `shipped · $1.90` — with its stages on the right (`○ plan  ○ approve  ○ write  ○ test  ○ proof`, the running
@@ -1464,33 +1411,33 @@ one lit).
 
 It appears in three places: after `factory_add` adds the item (as that card's body); at the top
 of an item's own conversation (`T`), in place of the opening note the model reads; and under a
-reply that names an item the floor knows, `#12` in the current repository, once per item per
+reply that names an item the factory knows, `#12` in the current repository, once per item per
 turn.
 
-It stays live: the floor is read again when a card settles and every three seconds while a
+It stays live: the factory is read again when a card settles and every three seconds while a
 conversation with a card is on screen. `enter` on the selected card, or a click on it, opens the
-item page, as `enter` on the floor does. Over `--host` it draws from the same news the engine
-sends, and opens nothing, because there is no floor page there.
+item page, as `enter` in the factory does. Over `--host` it draws from the same news the engine
+sends, and opens nothing, because there is no factory page there.
 
-## connecting github — watch a repository, issues and pull requests on the floor
+## connecting github — watch a repository, issues and pull requests in the factory
 
-The floor reads open issues and open pull requests from the GitHub repositories you watch.
+The factory reads open issues and open pull requests from the GitHub repositories you watch.
 
-- **Which repositories:** the ones you tick with `R` on the floor (see choose which
-  repositories the floor watches), kept in `repos.json` in the factory folder
+- **Which repositories:** the ones you tick with `R` in the factory (see choose which
+  repositories the factory watches), kept in `repos.json` in the factory folder
   (`~/.codeaf/v3/factory/repos.json`), each written `owner/name`, as
   `{"repos": ["acme/api"]}` or a plain `["acme/api"]`. The file can still be edited by hand. A
   running poll reads the list on every tick, and a window with no poll yet looks again every 30
-  seconds, so a change reaches the floor without a relaunch.
+  seconds, so a change reaches the factory without a relaunch.
 - **Why your issues are not showing up yet after you watched a repository:** the first read
   starts the moment you save the picker (`enter` on `R`), within about a second, wherever the
-  poll on this machine runs; while it reads, the floor says which repository it is on, how
+  poll on this machine runs; while it reads, the factory says which repository it is on, how
   many of how many are done and how many items it has listed so far. GitHub is polled every
   minute after that.
 - **Rows arrive repository by repository as the read goes.** A repository's issues stand on
-  the floor as soon as its list is in, before any comment is read, and its pull requests once
+  the factory as soon as its list is in, before any comment is read, and its pull requests once
   theirs are; you do not wait for every repository to finish. A repository that fails to read
-  keeps no one else's rows off the floor and is read again from where it was on the next tick.
+  keeps no one else's rows from the factory and is read again from where it was on the next tick.
 - **On a busy repository the comments fill in over the next minutes.** One read spends at most
   40 requests on comments and on pull requests' lines and files; past that, items arrive
   without them and the next reads, a minute apart, fetch the next ones until all are in. An
@@ -1498,12 +1445,12 @@ The floor reads open issues and open pull requests from the GitHub repositories 
   none says nothing.
 - **The token, in this order:** `GH_TOKEN`, then `GITHUB_TOKEN`, then a token kept in
   the profile, then what `gh auth token` answers, and `gh` is asked only after you have said yes
-  to it on the floor. The token is never shown or logged.
-- **No watched repository or no token: nothing is connected.** Nothing polls, and the floor's
+  to it in the factory. The token is never shown or logged.
+- **No watched repository or no token: nothing is connected.** Nothing polls, and the factory's
   facts line says only `terminal · chat`.
 - **Who polls:** the codeaf window you are sitting in, whether or not a background engine
-  holds your chats, and the engine too when it has the floor open. They take turns through the
-  floor's lock, so only one of them reads GitHub at a time, and only one of them reads new items
+  holds your chats, and the engine too when it has the factory open. They take turns through the
+  factory's lock, so only one of them reads GitHub at a time, and only one of them reads new items
   for triage, so a read is never paid for twice.
 - **How often:** every 60 seconds while a codeaf window is open on this machine; after a
   failure the wait doubles, up to 10 minutes. Only one window polls at a time. An unchanged
@@ -1523,20 +1470,20 @@ The floor reads open issues and open pull requests from the GitHub repositories 
 - **Nothing is ever written to GitHub by itself.** The poll only reads: no comment, label,
   close or pull request is made by it.
 
-## after connecting github — I selected repositories but see no issues and nothing loading, what do I do now
+## after connecting github — I watched repos but the factory is empty, I selected repositories but see no issues and nothing loading
 
-Nothing: an empty floor right after you watched repos is the read starting. Once you watch
-repositories the floor reads them for you, starting the moment you save
+Nothing: an empty factory right after you watched repos is the read starting. Once you watch
+repositories the factory reads them for you, starting the moment you save
 with `R`, and it says the read is loading while it runs. The bottom line says
 `watching 3 repositories · reading them now` for as long as the handover says it is reading,
-and from then until rows stand the floor says which of four things is true, one sentence each:
+and from then until rows stand the factory says which of four things is true, one sentence each:
 
 - **The first read is under way.** From the moment you save, before the read has said
-  anything, the handover's line is `⠋ reading the repositories you watch`, the floor reads
+  anything, the handover's line is `⠋ reading the repositories you watch`, the factory reads
   itself every second, and it keeps saying so until the read reports where it is or rows stand.
   Once the read reports, the handover's line says where it is,
   `⠋ reading Agent-Field/CodeAF · 1 of 3`, and counts the items listed so far once there are
-  some, `⠋ reading Agent-Field/CodeAF · 2 of 3 · 200 items so far`; under it the floor says
+  some, `⠋ reading Agent-Field/CodeAF · 2 of 3 · 200 items so far`; under it the factory says
   `reading the repositories you watch · rows stand here as issues and pull requests arrive`.
   It does not say `quiet` while a read is out: quiet means nothing is happening and nothing
   happened. Each open issue and pull request becomes a row as its repository is read, one
@@ -1546,25 +1493,25 @@ and from then until rows stand the floor says which of four things is true, one 
   it `the read was asked for and has not answered · R to check the repositories · if codeaf was just updated, restart it`.
   The bottom line keeps `watching 3 repositories` without `reading them now`. Never `quiet`:
   check the list with `R`, and restart codeaf if it was just updated.
-- **The read is done and nothing is open.** The floor says
+- **The read is done and nothing is open.** The factory says
   `nothing open in 3 repositories · github polls every minute · n adds work by hand`: the
   repositories you watch have no open issue or pull request. A new one arrives within a minute of
   being opened on GitHub, and `n` makes an item by hand meanwhile.
 - **Nothing is connected.** The page says
-  `nothing connected yet · the factory floor arrives here when a chat splits work off or a repo is connected`;
+  `nothing connected yet · the factory arrives here when a chat splits work off or a repo is connected`;
   see connecting github.
 
-A floor with a source but no watched repository says
+A factory with a source but no watched repository says
 `work arrives here from chat, from n, and from the repositories you connect`. With the four-row
 handover (`h`) the facts row carries the same progress in the source's own clause,
 `github · ⠋ reading Agent-Field/CodeAF · 1 of 3`, and the shift row says
 `nothing happened while you were away` without `quiet` while the read is out, unanswered or
 failing; a failing read's line says `github · not reachable`.
 
-## does the floor show only new issues or every open one
+## does the factory show only new issues or every open one
 
 Every open one. The first read takes every open issue and pull request of each repository you
-watch, however old, and later reads take what changed. `NEW` on the floor means codeaf has not
+watch, however old, and later reads take what changed. `NEW` in the factory means codeaf has not
 done anything with the item yet, not that it is new on GitHub.
 
 ## my chats run but the factory never fills — the engine is another build
@@ -1574,7 +1521,7 @@ install or build a new codeaf, the engine can still be an older build, without t
 tools or its manual page. Your window attaches only to an engine of its own build.
 Any other engine, including one built from a changed working tree, a `dev` build, or one that
 cannot say which build it is, does not get your conversations: the window opens them in itself,
-the way `codeaf chat --no-host` does, reads the floor itself, and says so once on the notice
+the way `codeaf chat --no-host` does, reads the factory itself, and says so once on the notice
 line, for example
 `this workspace's engine is another build (0ld0ld00 built 2026-10-06 09:00) · this window runs its own · the old engine keeps the chats it already has; stop it when they are done: codeaf engine --stop --workspace '/srv/app'`.
 The old engine keeps every chat it was already running, and nothing is stopped for you. When
@@ -1583,7 +1530,7 @@ build.
 
 ## what github gives an item — comments, changed files, check runs, its page
 
-Each GitHub item on the floor carries, beside its row's words:
+Each GitHub item in the factory carries, beside its row's words:
 
 - **Its page:** the issue's or pull request's address on GitHub, which opens it in your
   browser. An item typed in the terminal or split off a chat has none, and opening it says
@@ -1599,7 +1546,7 @@ Each GitHub item on the floor carries, beside its row's words:
 - **Its activity**, the last 20 things that happened to it: `arrived from github`,
   `changed on github` (its title, text or labels changed), `read` (triage read it), `talked` (its
   own conversation was made with `T`), and `stages changed by plan`.
-- **While github is being read** the floor says so; it is marked for the length of each read and
+- **While github is being read** the factory says so; it is marked for the length of each read and
   cleared when the read ends, or when codeaf next starts after a crash.
 
 ## refresh an item — u, refresh all — U
@@ -1610,19 +1557,19 @@ move), and a pull request's files and check runs. Then its read is cleared, so t
 again. A terminal item has nothing upstream; `u` only clears its
 read. While it runs the row says `refreshing`; while triage reads an item it says `reading`.
 
-`U` (**refresh all**) does the same for every item on the floor except the dismissed, in turn, and says
-`refreshing 8 items · 3 done` while it runs. **Before it starts, the floor shows what it would
+`U` (**refresh all**) does the same for every item in the factory except the dismissed, in turn, and says
+`refreshing 8 items · 3 done` while it runs. **Before it starts, the factory shows what it would
 cost:** the number of items times the average cost of a triage read here, or $0.0005
 an item when no read has been priced yet. Nothing is read or spent until you say yes. Each read it
 causes follows the factory's one-model pin when set, otherwise the cheapest seat, and writes
 a row on the spend ledger named `factory triage`.
 
 With no GitHub connected, `u` on a GitHub item says `github is not connected`. `u` and `U` are on
-your own floor only, never on the still fixture.
+your own factory only, never on the still fixture.
 
-## choose which repositories the floor watches — R, find a repo in the list, why a repo says here
+## choose which repositories the factory watches — R, find a repo in the list, why a repo says here
 
-`R` on the floor opens a list over the floor headed
+`R` in the factory opens a list over the factory headed
 `watch · repositories github sees as <login>`, with `3 watching · 143 listed` at the right. Under
 it is the filter line, `› type to filter`, and then the repositories in sections:
 
@@ -1642,7 +1589,7 @@ aside; `agent-field/` keeps only that owner's repositories, and `agent-field/api
 repositories with `api` in the name. Nothing is scored: the list keeps its sections and order.
 
 A repository says `here` when it is checked out on this machine and codeaf knows where, and
-`clone on first run` when it is not: the floor's stages run only in a checkout, so the first
+`clone on first run` when it is not: the factory's stages run only in a checkout, so the first
 `r` on one of its items asks to clone it into `~/.codeaf/v3/factory/repos` (see it says CodeAF
 is not checked out). The list's last line says so for the repository under the cursor:
 `not checked out here · it is cloned on the first run`, or `checked out at <folder>` for one
@@ -1658,21 +1605,21 @@ wait until it is cloned`.
   some repository has an open count.
 - Saving writes `repos.json`, starts the first read and says
   `watching 3 repositories · reading them now`
-  (or `watching no repositories · the floor keeps what chat and n bring`); see after connecting
-  github for what the floor says while the read runs.
+  (or `watching no repositories · the factory keeps what chat and n bring`); see after connecting
+  github for what the factory says while the read runs.
 - **With no GitHub token** `R` asks first. When `gh auth status` answers within 3 seconds it asks
   `connect github: gh is logged in as <login>, use it? [y]` (`y use gh · n a token instead ·
   esc not now`); otherwise it opens a row `github token ›` whose words are drawn as dots. A yes
   or a token GitHub accepts says `github connected` and opens the list. The token is kept in your
   profile beside the model key, never shown and never logged; `github did not take that token`
   and `gh answered no token · gh auth login, then try again` are the two refusals.
-- `R` is not offered on a floor whose store cannot keep repositories (over `--host`, or the still
-  made-up floor).
+- `R` is not offered on a factory whose store cannot keep repositories (over `--host`, or the still
+  made-up factory).
 
 ## the recipe page — E
 
-`E` on the floor opens the recipe page for the repository the floor's `[ ]` line shows (or the
-floor's only repository). With every repository showing it says
+`E` in the factory opens the recipe page for the repository the factory's `[ ]` line shows (or the
+factory's only repository). With every repository showing it says
 `pick a repository with [ ] first · a recipe is one repository's`.
 
 It is the item page with no item: the kinds `issue · pr · ci` across the top with the current one
@@ -1681,27 +1628,29 @@ the right (its knobs, its sentence, `runs first` or `runs after <stage>`, or
 `switched off in this recipe`). A line of `.codeaf/factory.md` that did not load is one dim line
 above the rail, `line 7: until is one of done, clean, green, proven`.
 
-- `[` `]` (or `h` `l`) switch the kind, `↑` `↓` walk the stages, `esc floor` goes back.
+- `[` `]` (or `h` `l`) switch the kind, `↑` `↓` walk the stages, `esc factory` goes back.
 - Where codeaf knows the checkout: `1-9 stages` switch a stage on or off, `s add a stage` adds
   one in words (`+ stage ›`), `e thinking` steps its thinking, `w` sets its knobs in the recipe
   file's own words
   (`until clean, max 3, effort strong`; a word it cannot read says why), and `b` saves the whole
   recipe, every kind, to `.codeaf/factory.md`:
-  `saved to .codeaf/factory.md · new work on codeaf runs it`.
+  `saved to .codeaf/factory.md · new work on codeaf runs it`. This save writes the older
+  Markdown file; YAML still takes precedence. Merge changes into the default branch
+  before new forge jobs read them.
 - Where it does not, the page is drawn but not changed, and the note line says
   `codeaf does not know where <owner/name> is checked out`.
 
 ## the day rail — $
 
-`$` on the floor opens the row `day rail ›` (with the rail already set in it, `$60`). Type a dollar
+`$` in the factory opens the row `day rail ›` (with the rail already set in it, `$60`). Type a dollar
 figure and `enter`: `the day rail is $60`. `0` or `off` takes it off: `the day rail is off`. A word
 that is not a figure says `a rail is a dollar figure, like $60`.
 
-The rail is kept with the floor's store (`sources.json` in the factory folder) and the
+The rail is kept with the factory's store (`sources.json` in the factory folder) and the
 handover's money reads it: `$11.31 / $60 today`, or `/ $60 today` before anything is spent. With
 no rail set there is no `/ $N` at all. Once today's spend has reached the rail, a launch is refused
 with `the day rail is $60 and today's spend has reached it`; an item already running is not
-stopped by it. `$` is not offered on a floor whose store cannot keep it.
+stopped by it. `$` is not offered on a factory whose store cannot keep it.
 
 ## connections on the settings page — github
 
@@ -1709,12 +1658,12 @@ The settings page's **Connections** tab has a `github` row when this window can 
 reaches GitHub: `github  santoshkumarradha · via gh` (gh's own login, after you said yes to it),
 `<login> · token` (a token kept in your profile), `<login> · from the environment` (`GH_TOKEN` or
 `GITHUB_TOKEN`), `not connected`, or `not reachable`. It is read once when the page opens.
-`enter` on it opens the floor with the same connect prompt `R` asks (`enter connects`), so a
+`enter` on it opens the factory with the same connect prompt `R` asks (`enter connects`), so a
 token can be changed there.
 
 ## triage on arrival — the read, size, estimate and risk, from one cheap call
 
-Every new item on the floor is read once, by one call on the cheapest seat (the `small work`
+Every new item in the factory is read once, by one call on the cheapest seat (the `small work`
 row in /settings; a row you cleared follows the conversation's model). With `--one-model`,
 the factory follows the launch's model pin, including triage, size and estimate; the `small work`
 row stands down. The call sees the item's
@@ -1734,23 +1683,23 @@ you set win over the model. One item is read every two seconds, newest first; wi
 looks again every thirty seconds. Each item is read ONCE: an answer that cannot be understood is
 not asked for again, and the item simply has no read. A call that fails is tried three times.
 Reading does not change a row's age. An item whose title or text changes on GitHub, or that you
-refresh with `u` or `U`, is read again; the row says `reading` while its call runs, and the floor
+refresh with `u` or `U`, is read again; the row says `reading` while its call runs, and the factory
 quotes the last read's cost.
 
 The read itself never dismisses, labels or comments. After the read, intake evaluates the
 repository's explicit start rules and may run a job or ask first (see automatic intake).
 Without start rules it remains facts drawn dim. It runs in the window that opened the
-floor or in `codeaf factory`, one process per machine, and only while a key resolves; with no key there is no reading
+factory or in `codeaf factory`, one process per machine, and only while a key resolves; with no key there is no reading
 at all. Each call is a row on the spend ledger named `factory triage`, on the low seat.
 
-## order the floor — O
+## order the factory — O
 
 The rows inside each group are ordered by `priority` by default: priority 1 first, unranked items
-last, then the newest issue number first (the floor's own number for chat and terminal items).
+last, then the newest issue number first (the factory's own number for chat and terminal items).
 `O` cycles `priority`, `first` (priority, then older first), `age` (oldest arrival first) and
 `cost` (cheapest first). The groups never move: `NEEDS YOU` stays on top in every order.
 
-**The rows do not move under you.** An order is applied when the floor is first read and when
+**The rows do not move under you.** An order is applied when the factory is first read and when
 `O` is pressed; after that a re-read never reorders the rows, even when it changes an item's
 priority. Two things move a row: a new arrival, which slides in at the top of its group, and a
 change of state, which moves the row to the top of its new group. Press `O` round to sort again.
@@ -1888,24 +1837,22 @@ connect GitHub; `{"token":""}` selects gh's existing login. Both answer HTTP 200
 with the factory identity. An omitted watched array or token answers HTTP 400.
 These routes use the same access check and error statuses as job actions.
 
-## factory dashboard address — team view in the codeaf app
+## where is the web ui — factory dashboard address and team view in the codeaf app
 
-The factory's HTTP address is a service address, not a browser dashboard.
-The team view lives in the codeaf app (`Agent-Field/codeaf-desk`); connect that
-app to the factory service. The terminal view opens with `/factory` in codeaf.
-The app's screens and browser behavior belong to that separate repository.
+The team view lives in the codeaf app (`Agent-Field/codeaf-desk`). Connect that app to
+the factory service's HTTP address. In the terminal, open `/factory` in codeaf.
+The app's views, browser approval and screen instructions belong to that repository.
+The factory binary serves no dashboard pages.
 
 `GET /` answers `text/plain` with one line:
 `codeaf factory <version> — open it in codeaf (TUI) or the codeaf app; API at /v1`.
-Other paths outside `/v1`, such as `/jobs/12`, `/settings`, `/new` and `/audit`,
-answer that same pointer, rather than job, settings or record pages.
-The public `/access` token form remains available. Outside loopback, the pointer
+Paths outside `/v1`, such as `/jobs/12`, `/settings`, `/new` and `/audit`, answer the same
+pointer. The public `/access` token form remains available. Outside loopback, the pointer
 and API need a bearer access token or a live session from `/access`.
-Unknown paths under `/v1` return the JSON error `factory endpoint not found`.
+Unknown `/v1` paths return the JSON error `factory endpoint not found`.
 
-The app reads the factory's `/v1` JSON API and `/v1/events` change stream.
-`codeaf attach` uses the same service address for new terminal windows;
-`serve.json` records the bound service address for discovery on its host.
+The app reads `/v1` JSON and the `/v1/events` change stream. `codeaf attach` uses the
+same address for new terminal windows; `serve.json` records the bound address on its host.
 
 ## factory HTTP record — audit events and CSV export
 
@@ -1926,7 +1873,7 @@ is not exactly one job file. A burst of writes is one tick, held 100ms, so
 a document's temporary file and its rename do not count as two changes. If
 the filesystem watch is silent, the root is re-read every 2 seconds and a
 tick is sent only when something changed. The tick carries no job body.
-Read `GET /v1/jobs/{id}` or `GET /v1/queue` again for the current floor. A
+Read `GET /v1/jobs/{id}` or `GET /v1/queue` again for the current factory. A
 factory with no root to watch keeps the stream open and sends nothing. A
 client that connects late is not sent earlier ticks.
 
@@ -1962,8 +1909,8 @@ to a remote factory without one, it refuses to start with
 `codeaf needs your GitHub login to work for this factory`.
 
 All other worker endpoints require `Authorization: Bearer <credential>`, even
-on loopback. The floor access token cannot replace a worker credential, and a
-worker credential cannot read the remote floor. Missing or wrong credentials
+on loopback. The factory access token cannot replace a worker credential, and a
+worker credential cannot read the remote factory. Missing or wrong credentials
 answer HTTP 401 with `a bearer worker credential is required`.
 
 `GET /v1/workers/pull` waits at most thirty seconds for a queued job and answers
@@ -2040,7 +1987,7 @@ edits and chat, shape steps, refresh, sync, ask the author, save stages as a
 recipe, and open on GitHub.
 
 For a held job, available local keys act on the worker's mirror of its run,
-never on this machine's own factory floor. A receipt identifies the factory,
+never on this machine's own factory. A receipt identifies the factory,
 job, worker and lease expiry; a completed, expired or dead worker removes those
 keys on the next read. Local calls check the receipt again before acting; a
 failed receipt check says `this job is no longer running on this machine`.
@@ -2056,11 +2003,11 @@ through its worker leases, including when the job runs on another machine.
 Be plain about this when asked:
 
 - **Items arrive three ways:** from a chat with `factory_add` (after you answer its card), from
-  `n` on the floor, and from the GitHub repositories you watch (see connecting github). They
+  `n` in the factory, and from the GitHub repositories you watch (see connecting github). They
   are kept on this machine and are still there next launch.
 - **New jobs run on whichever codeaf's worker pulls them; resumed work and publishing stay on the first worker's machine** (see workers, taken jobs and lease
   expiry). `r` and `L` queue items (see running an item), and stop, pause, answers, steering,
-  approve, request changes and re-run checks work from any window on the factory.
+  approve, request changes and re-run checks work from any window in the factory.
 - **Opening an item page does not shape its steps in a window attached to a session host.**
   The manager's reading on open runs only in a codeaf that runs its own conversations.
 - **Only GitHub is connected.** No GitLab or Linear.
@@ -2074,10 +2021,11 @@ Be plain about this when asked:
   labels, a close or a pull request, only what the recipe's policy allows, and only after
   the job's approval is recorded.
 - **The diff does not open yet.** `d` on a landed item says where it will be.
-- **Nothing launches from the chat.** `factory_add` only puts an item on the floor as `new`.
+- **The chat does not launch work.** `factory_add` adds a backlog job; eligible forge jobs
+  can start through automatic intake under repository rules.
 - **The foreman only reads and selects.** `m` opens it (see the foreman); it cannot run,
   ship, post or change an item, and the person's `L` is the only way to run its selection.
-- **`CODEAF_FACTORY_FIXTURE=1`** shows a still, made-up floor (three repositories, ten items)
+- **`CODEAF_FACTORY_FIXTURE=1`** shows a still, made-up factory (three repositories, ten items)
   in place of yours, with no verbs.
 - **Over `--host` or `--at`**, the factory page can read the service named by this machine's
   `codeaf attach` (see factory over --host or --at). The remote chat has no `factory_add`.
@@ -2087,7 +2035,7 @@ Be plain about this when asked:
 
 `r` runs the item under the cursor: every stage, holding at each approve step (see approve
 steps). `L` runs every selected item (or this one). There is no plan-first key: the default
-holds after the plan already. The bottom line says `#12 is running` once the floor's next read
+holds after the plan already. The bottom line says `#12 is running` once the factory's next read
 sees it start, and `#12 is queued · a bench frees it` only when that read still finds it queued
 behind full benches. A run item is `queued` until a worker pulls it, takes one of that
 machine's benches (four at once; `CODEAF_FACTORY_BENCHES` pins another number) and runs its
@@ -2126,7 +2074,7 @@ item's spend counts them against its budget and the day rail.
 
 A run never starts without a checkout. `r`, `L` and `L` on the foreman's selection first look
 for where the item's repository is checked out on this machine. When codeaf knows no folder for
-it, nothing starts and the question stands at the bottom of the floor, such as
+it, nothing starts and the question stands at the bottom of the factory, such as
 `CodeAF is not checked out on this machine · clone it into ~/.codeaf/v3/factory/repos? [y] clone · [n] not now`.
 
 - `y` clones it, saying `⠋ cloning Agent-Field/CodeAF…` while it runs (a large repository takes
@@ -2188,14 +2136,14 @@ holds `repos.json` (the GitHub repositories you watch), `repos/` (the repositori
 because this machine had no checkout of them), `sources.json` (when GitHub was last
 read, the day rail and what a triage read costs) and `busy.json` (what is being read right now). A chat's
 `factory_add` and the page's `n` write to the same folder, so an item added from a chat is a row
-on the floor straight away. Deleting the folder empties the floor.
+in the factory straight away. Deleting the folder empties the factory.
 
 ## the Factory button on the tab bar
 
 The tab bar at the top of every page shows `Factory` third, after `Home` and `Chats`. When items
-on the factory floor wait on your answer it carries their count in the question colour:
-`Factory ? 5`. With nothing waiting it carries no number at all. The count is what the floor said
-the last time it was read, and the floor is read while the factory page is open, so it appears
+in the factory wait on your answer it carries their count in the question colour:
+`Factory ? 5`. With nothing waiting it carries no number at all. The count is what the factory said
+the last time it was read, and the factory is read while the factory page is open, so it appears
 after you have opened `/factory` once. On a narrow bar the places after it fold into `More ▾`
 first; a `Factory` with a count stays on the bar. `alt+9` still opens it, whatever its place on
 the bar.
@@ -2215,7 +2163,7 @@ the job to backlog. Automatic starts through Add work record
 for events strictly after that instant. Add `?format=csv` (or combine it with `since`)
 to download `factory-record.csv`, with the same events in append order. Both reads
 use the service's normal access check. A service without a record cannot provide
-these reads. This change adds no record key to the terminal floor.
+these reads. This change adds no record key to the terminal factory.
 
 ## factory approval receipts and pull request trailers
 
@@ -2238,9 +2186,9 @@ record of its own machine's factory, so on a worker attached to a factory on ano
 machine a post stage refuses for want of the approval there.
 
 
-## automatic intake — start rules, auto start and asked first
+## why did this start by itself — automatic intake, start rules and auto start
 
-A repository opts into automatic intake in `.codeaf/factory.yaml`:
+A repository opts into automatic intake in `.codeaf/factory.yaml` on its default branch:
 
 ```yaml
 start:
@@ -2252,22 +2200,45 @@ start:
     - anything that changes how secrets are read or stored
 ```
 
-After polling and triage, a job with a named label starts through the ordinary Run door
-when its size and estimated cost fit. Defaults are M and $2. Its own cap also bounds
-estimated cost. A job without a matching label waits in backlog. With no `start:` block,
-or no labels in it, nothing starts automatically. `~/.codeaf/factory.yaml` can tighten
-repository rules; it cannot enable automatic work the repository did not allow.
+After polling and triage, a backlog job with any named label is queued through the ordinary
+Run door when size and estimated cost fit. A worker pulls it and runs the configured
+pipeline. Defaults are M and $2; the job's own cap also bounds the estimate. Labels match
+without regard to case. No matching label means it waits. No `start` or an empty `labels`
+list means nothing starts automatically.
 
-Outside those bounds, the job waits on a question of kind `ask_first`. The question says
-`asked first: …` with the matched rule, size or cost reason. Answer yes to run it, no to
-leave it in backlog. The reason remains visible in the browser after the answer. Intake
-records `auto_started` or `asked_first` and does not repeatedly ask about that job.
+Personal `~/.codeaf/factory.yaml` may remove allowed labels, lower size or cost, add `never`
+paths or `ask_first` sentences, and tighten other constraints. Looser personal values are
+ignored and shown as problems; they cannot enable work the repository did not allow.
 
-`never` globs match paths in issue text, triage's inferred paths, the plan and PR files.
-Triage judges `ask_first` sentences in its existing cheap call; an omitted judgment asks
-first. PR size uses measured file changes; an unread or truncated file list asks first.
-An unreadable pipeline cannot start a job. Existing launch restrictions still apply,
-including the day rail and the restriction on writing work submitted by strangers.
+The record stores `auto_started` with `inside start rules`. Check `GET /v1/audit` or the
+CSV record to see why it began. Intake does not repeatedly start the same job, and a
+stopped job stays stopped until you run it. A chat's `factory_add` card only adds work;
+a forge job with matching start labels can start later through intake. Publishing still
+requires a person. The day rail and restrictions on writing strangers' work still apply.
+
+## asked first — what does asked first mean, why didn't a labeled job start
+
+A candidate outside the start rules waits on a question of kind `ask_first`:
+`asked first: <reason>. Start this job?`. Reasons include size or estimated cost over the
+limit, cost over your cap, `never` paths, a matching `ask_first` sentence or a stranger's PR.
+Answer yes to queue it; no leaves it in backlog. `asked_first_reason` remains on the job
+after either answer, and the record keeps `asked_first`. Intake does not ask again.
+
+`never` globs match paths in issue text, triage's inferred paths, the plan and PR files;
+`*` covers one path segment and `**` any number. Triage judges `ask_first` sentences in
+its cheap call. An omitted judgment or a judgment for old sentences asks first.
+An unreadable pipeline cannot start a job.
+
+## size rules — measured PR lines, issue model or size labels
+
+`size.pr_lines: [50, 400]` means up to 50 changed lines is S, up to 400 is M, more is L.
+PRs use added plus removed lines from their files; an unread or truncated file list asks
+first rather than guessing. Issues default to `size.issue: model`, the triage size rubric;
+`size.issue: label` uses `size/S`, `size/M` or `size/L` instead. With several size labels,
+the largest wins. Missing size or a missing required size label asks first.
+
+An unknown cost estimate is not treated as over budget. Personal limits can lower the
+PR line thresholds, but cannot change the repository's issue size method.
 
 ## stopped job stays stopped — stop, run and go under automatic intake
 
@@ -2285,4 +2256,4 @@ Review the warnings before committing: old checks and posts become prompts, and 
 old step knobs cannot be represented. A section-wide Markdown `fixed` setting remains
 in force when Markdown is read; saved YAML uses individual fixed steps instead, and
 conversion warns about that difference. Conversion never adds start rules, so it cannot
-turn on automatic intake. YAML takes precedence once committed on the main branch.
+turn on automatic intake. YAML takes precedence once committed on the default branch.

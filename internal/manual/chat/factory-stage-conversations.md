@@ -2,7 +2,7 @@
 
 ## a stage is a conversation — stage_result and plan_edit, and a stage never posts to github
 
-On the factory floor, a stage like plan, write or review runs as one ordinary conversation,
+In the factory, a step like plan, write or review runs as one ordinary conversation,
 made in the item's own team, where it joins as the item and the stage: `#12 · review`, or
 `#12 · review 1/2` when the stage may run more than one round (like any conversation it then
 titles itself from its work, and that title is what its tab shows). It opens with a brief: the
@@ -59,7 +59,7 @@ menu. Nobody is at its keyboard: it runs unattended for at most two hours. It ha
 over when it has been idle, with no task it started still running.
 
 **While it runs you watch it in the item's log**, one line per step (`read ledger.go`,
-`bash go test ./...`, `stage_result …`); the process running the floor holds the conversation
+`bash go test ./...`, `stage_result …`); the process running the factory holds the conversation
 itself, so it cannot be opened yet, and `enter` on its stage row says
 `plan has no conversation yet · it opens when a round ends`. Once the round has ended, `enter`
 on the row, or the team menu, opens it like any other conversation.
@@ -73,7 +73,7 @@ tests, `git`) there without asking anyone. Your own approval settings
 (the tool approval mode, the tool rules, the command rules) do not narrow it: a rule that says
 "ask me" would only ever be refused there, because nobody is at its keyboard to answer.
 
-Two floors still hold under it, as they do under `--yolo`: a critical command such as `rm -rf /`,
+Two limits still apply, as they do under `--yolo`: a critical command such as `rm -rf /`,
 `mkfs` or `shutdown`, and a call that acts in your name such as `gmail_send`, would ask, and in a
 stage that ask is refused with `needs approval but no resolver is attached: <rule>`. Nothing in a
 stage ever waits on you.
@@ -140,7 +140,7 @@ What you type into the item's chat goes to the run; nothing else is needed.
   you press `r`, and every stage's brief opens with them (`keep the old API`).
 - **During a run**, what you type is the steer: at the next stage (or round) it is folded into
   that stage's brief, a round already running is handed it, the item's log says
-  `steer: <words>`, and the chat gets the same line. It is the same as `S` on the floor.
+  `steer: <words>`, and the chat gets the same line. It is the same as `S` in the factory.
 - **While the run waits on a question**, a line that starts with `yes` (`yes, go`) answers yes
   and a plain `no` answers no; for a plan, a gate or a stage that fell short, any other words
   (`no, use the other file`) answer it in words, as `a` does. The chat then says `answered: yes`. Words that do not answer a budget question are

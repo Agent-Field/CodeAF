@@ -79,7 +79,7 @@ func TestFactoryCardDrawsTheOffer(t *testing.T) {
 		t.Fatal("the offer drew no card in the transcript")
 	}
 	text := strings.Join(rows, "\n")
-	if !strings.Contains(rows[0], "put this on the factory floor?") || strings.Contains(rows[0], "paste drops") {
+	if !strings.Contains(rows[0], "hand this to the factory?") || strings.Contains(rows[0], "paste drops") {
 		t.Fatalf("the head is not the engine's one question: %q", rows[0])
 	}
 	if !strings.Contains(rows[1], a.icon(tokens.GFileDocument)+" paste drops the last line") || !strings.HasSuffix(strings.TrimRight(rows[1], " "), "codeaf · bug · M") {
@@ -164,7 +164,7 @@ func TestFactoryCardSettledWords(t *testing.T) {
 		}, "changed in words"},
 		{"expired", func(a *app, n session.FactoryNotice) {
 			gone := n
-			gone.Withdrawn = "nothing was added to the factory floor"
+			gone.Withdrawn = "nothing was added to the factory"
 			a.factoryProposal(factoryOffer(gone))
 		}, "expired · nothing added"},
 	} {

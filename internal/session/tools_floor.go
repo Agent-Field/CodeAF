@@ -87,20 +87,20 @@ const (
 const (
 	// FloorMarkedTail follows the refs a call selected: `selected #1 #4 #6 ·
 	// press L on the floor to run them`.
-	FloorMarkedTail = " · press L on the floor to run them"
-	floorNothing    = "the floor has no items yet"
-	floorNoneAsked  = "no items on the floor answer that ask"
+	FloorMarkedTail = " · press L in the factory to run them"
+	floorNothing    = "the factory has no items yet"
+	floorNoneAsked  = "no items in the factory answer that ask"
 )
 
-const factoryFloorDescription = "Read the factory floor and propose what to take on by selecting items. " +
-	"You are the floor's foreman: you read, rank and propose; the person runs what is selected with L on the floor; nothing you do here runs, ships or posts. " +
+const factoryFloorDescription = "Read the factory and propose what to take on by selecting items. " +
+	"You are the factory's foreman: you read, rank and propose; the person runs what is selected with L in the factory; nothing you do here runs, ships or posts. " +
 	"ask: waiting (items that need the person), risky, cheapest (ten, by estimate), oldest (ten), all, or item (one item in full: its read, facts, stages, question and body; set item). " +
 	"item, mark and unmark take items by the number in their ref (#4 is 4). Only a new item can be selected; selections stay until the person runs or unselects them. The fields are named mark and unmark; the person calls them select and unselect. " +
 	"Name items by their ref in everything you say."
 
 func factoryFloorSchemaJSON() string {
 	return `{"type":"object","properties":{` +
-		`"ask":{"type":"string","enum":["` + strings.Join([]string{floorAskWaiting, floorAskRisky, floorAskCheapest, floorAskOldest, floorAskAll, floorAskItem}, `","`) + `"],"description":"What to read off the floor."},` +
+		`"ask":{"type":"string","enum":["` + strings.Join([]string{floorAskWaiting, floorAskRisky, floorAskCheapest, floorAskOldest, floorAskAll, floorAskItem}, `","`) + `"],"description":"What to read from the factory."},` +
 		`"item":{"type":"integer","description":"With ask item: the number in the item's ref (#4 is 4)."},` +
 		`"mark":{"type":"array","items":{"type":"integer"},"description":"Refs' numbers of new items to select for the person's next run."},` +
 		`"unmark":{"type":"array","items":{"type":"integer"},"description":"Refs' numbers whose selection to take off."}` +
@@ -151,7 +151,7 @@ func (a *Agent) floorRun(ctx context.Context, ask string, item int, mark, unmark
 	door := a.config.Floor
 	snap, err := door.Snapshot(ctx)
 	if err != nil {
-		return "the floor could not be read: " + oneLine(err.Error()), true, nil
+		return "the factory could not be read: " + oneLine(err.Error()), true, nil
 	}
 	var out []string
 	if len(mark)+len(unmark) > 0 {
@@ -182,7 +182,7 @@ func floorMarks(ctx context.Context, door FloorDoor, snap factory.Snapshot, mark
 			found := floorFind(snap, n)
 			switch {
 			case len(found) == 0:
-				notes = append(notes, fmt.Sprintf("there is no #%d on the floor", n))
+				notes = append(notes, fmt.Sprintf("there is no #%d in the factory", n))
 			case len(found) > 1:
 				notes = append(notes, fmt.Sprintf("#%d is on %d repositories (%s); left alone", n, len(found), floorRepos(found)))
 			case needNew && found[0].State != factory.StateNew:
@@ -259,7 +259,7 @@ func FloorAnswer(snap factory.Snapshot, ask string, item int) string {
 		found := floorFind(snap, item)
 		switch len(found) {
 		case 0:
-			return fmt.Sprintf("there is no #%d on the floor", item)
+			return fmt.Sprintf("there is no #%d in the factory", item)
 		case 1:
 			return FloorItemText(snap, found[0], now)
 		}
@@ -319,7 +319,7 @@ func floorSummary(open []factory.Item, rows int, head string) string {
 		return len(floorKeep(open, keep))
 	}
 	if n := count(func(it factory.Item) bool { return it.State == factory.StateNew }); n > 0 {
-		parts = append(parts, strconv.Itoa(n)+" new on the floor")
+		parts = append(parts, strconv.Itoa(n)+" new in the factory")
 	}
 	if n := count(func(it factory.Item) bool { return it.State == factory.StateNeedsYou }); n > 0 {
 		parts = append(parts, strconv.Itoa(n)+" waiting on the person")

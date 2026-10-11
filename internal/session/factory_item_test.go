@@ -164,7 +164,7 @@ func TestFactoryItemRefusesBeforeAnyCard(t *testing.T) {
 	tool := agent.factoryItemTool()
 	for _, c := range []struct{ args, want string }{
 		{`{"item":1}`, "needs something to change"},
-		{`{"cap":8}`, "needs the floor id"},
+		{`{"cap":8}`, "needs the factory id"},
 		{`{"item":7,"skip":["review"]}`, "nothing changed: there is no item 7"},
 		{`{"item":1,"add":["after review"]}`, "needs to say what it does"},
 		{`{"item":1,"effort":"huge"}`, "effort is one of cheap, strong, default"},
@@ -353,7 +353,7 @@ func TestFactoryItemYesAppliesTheChangeOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := "#1 now: plan · approve · write · test · proof · budget $8\n" +
-		"The person said yes and the floor has the change; there is nothing left to answer. The note is kept on the item for its stages."
+		"The person said yes and the factory has the change; there is nothing left to answer. The note is kept on the item for its stages."
 	if out := awaitResult(t, results); out != want {
 		t.Errorf("result = %q, want %q", out, want)
 	}

@@ -39,6 +39,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I attach to a team factory", "factory"},
 		{"how do I detach from a team factory", "factory"},
 		{"where is the factory dashboard address", "factory"},
+		{"where is the web ui", "factory"},
+		{"why did this start by itself", "factory"},
 		{"what is factory serve.json", "factory"},
 		{"can I use the factory over --host or --at", "factory"},
 		{"how do I connect github to the factory floor", "factory"},
@@ -3981,7 +3983,7 @@ func TestTheFirstReadQuestionsReachTheFloorsThreeSentences(t *testing.T) {
 		"nothing open in 3 repositories · github polls every minute · n adds work by hand",
 		"no word from the read yet",
 		"the read was asked for and has not answered · R to check the repositories · if codeaf was just updated, restart it",
-		"nothing connected yet · the factory floor arrives here when a chat splits work off or a repo is connected",
+		"nothing connected yet · the factory arrives here when a chat splits work off or a repo is connected",
 	}
 	for _, asked := range []string{
 		"I watched repos but the floor is empty",
@@ -4052,8 +4054,13 @@ func TestTeamFactoryQuestionsReachTheServiceInstructions(t *testing.T) {
 		},
 		{
 			asked: "where is the factory dashboard address",
-			title: "factory dashboard address",
+			title: "where is the web ui",
 			says:  []string{"Agent-Field/codeaf-desk", "GET /", "text/plain", "API at /v1", "/access"},
+		},
+		{
+			asked: "where is the web ui",
+			title: "where is the web ui",
+			says:  []string{"Agent-Field/codeaf-desk", "GET /", "serves no dashboard pages"},
 		},
 		{
 			asked: "what is factory serve.json",
@@ -4064,6 +4071,59 @@ func TestTeamFactoryQuestionsReachTheServiceInstructions(t *testing.T) {
 			asked: "can I use the factory over --host or --at",
 			title: "factory over --host or --at",
 			says:  []string{"codeaf attach <url>", "attach.json", "this machine", "does not discover or forward"},
+		},
+	} {
+		reached := false
+		var where []string
+		for _, section := range Chat().Search(c.asked, DefaultResults) {
+			where = append(where, section.Page+" · "+section.Title)
+			if section.Page != "factory" || !strings.HasPrefix(section.Title, c.title) {
+				continue
+			}
+			reached = true
+			for _, needle := range c.says {
+				if !strings.Contains(section.Body, needle) {
+					t.Errorf("%q reached %q but its body omits %q", c.asked, section.Title, needle)
+				}
+			}
+		}
+		if !reached {
+			t.Errorf("%q does not reach factory · %s; it reached %v", c.asked, c.title, where)
+		}
+	}
+}
+
+// Start rules need to be reachable in the words a person uses after a job
+// begins without their Run action, including the reasons it asks instead.
+func TestFactoryPolicyQuestionsReachThePipelineInstructions(t *testing.T) {
+	for _, c := range []struct {
+		asked, title string
+		says         []string
+	}{
+		{
+			asked: "why did this start by itself",
+			title: "why did this start by itself",
+			says:  []string{".codeaf/factory.yaml", "labels: [agent-ready]", "auto_started", "Publishing still"},
+		},
+		{
+			asked: "what does asked first mean",
+			title: "asked first",
+			says:  []string{"Start this job?", "yes", "no", "asked_first_reason", "does not ask again"},
+		},
+		{
+			asked: "will a stopped job start again automatically",
+			title: "stopped job stays stopped",
+			says:  []string{"until you run it", "stopped", "server restarts"},
+		},
+		{
+			asked: "how do I configure factory yaml",
+			title: "the pipeline file",
+			says:  []string{".codeaf/factory.yaml", "default branch", "FACTORY-YAML.md", "YAML takes precedence"},
+		},
+		{
+			asked: "how does a step prompt until and max work",
+			title: "step prompt, until and max",
+			says:  []string{"prompt", "until", "max", "one round", "approve", "no model prompt"},
 		},
 	} {
 		reached := false

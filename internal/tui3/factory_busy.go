@@ -237,7 +237,7 @@ func (a *app) factoryRereadAll() tea.Cmd {
 		return nil
 	}
 	a.pageMsg = ""
-	a.fp.act.doing = "pricing a re-read of the floor…"
+	a.fp.act.doing = "pricing a re-read of the factory…"
 	return a.offLoop(func() func(bool) tea.Cmd {
 		ctx, cancel := context.WithTimeout(factory.DryRun(context.Background()), factoryRefreshWait)
 		defer cancel()
@@ -248,7 +248,7 @@ func (a *app) factoryRereadAll() tea.Cmd {
 			case err != nil:
 				a.pageMsg = strings.TrimSpace(err.Error())
 			case n <= 0:
-				a.pageMsg = "nothing on the floor to " + wordRefresh
+				a.pageMsg = "nothing in the factory to " + wordRefresh
 			default:
 				a.fp.act.refresh = &factoryRefreshAsk{items: n, usd: usd}
 			}

@@ -208,7 +208,7 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 			if err != nil {
 				return "", err
 			}
-			return BankRecipeChange(context.Background(), dir, sentence, "A habit the floor offered after clean sign-offs.", "- "+sentence,
+			return BankRecipeChange(context.Background(), dir, sentence, "A habit the factory offered after clean sign-offs.", "- "+sentence,
 				func(d string) error { return BankRecipeHabit(d, sentence) })
 		}
 		seam.Bank = func(repo, sentence string) error {

@@ -620,7 +620,7 @@ func TestFactoryFirstReadDoneSaysNothingOpen(t *testing.T) {
 
 // THE UNCONNECTED FLOOR IS UNCHANGED by the first read's sentences.
 func TestFactoryFirstReadLeavesTheUnconnectedFloor(t *testing.T) {
-	if factoryUnconnectedWords != "nothing connected yet · the factory floor arrives here when a chat splits work off or a repo is connected" {
+	if factoryUnconnectedWords != "nothing connected yet · the factory arrives here when a chat splits work off or a repo is connected" {
 		t.Fatalf("the unconnected sentence moved: %q", factoryUnconnectedWords)
 	}
 	a := placeApp(t)

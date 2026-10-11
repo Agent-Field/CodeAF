@@ -153,7 +153,7 @@ func TestFactoryCardAsksWithItsHeadAndTwoAnswers(t *testing.T) {
 	results := runFactoryAdd(t, agent, ctx)
 
 	q := awaitFactoryQuestion(t, questions)
-	if q.Head != "put this on the factory floor?" {
+	if q.Head != "hand this to the factory?" {
 		t.Errorf("head = %q", q.Head)
 	}
 	if q.Subject.Name != "web · bug · S" {
@@ -200,7 +200,7 @@ func TestFactoryApproveWritesExactlyOneItemAndTellsTheWatchers(t *testing.T) {
 	if err := agent.ResolveQuestion(Answer{Kind: QuestionFactory, Ref: q.Ref, Key: "1"}); err != nil {
 		t.Fatal(err)
 	}
-	if out := awaitResult(t, results); out != "#1207 retry the flaky upload test is on the factory floor" {
+	if out := awaitResult(t, results); out != "#1207 retry the flaky upload test is in the factory" {
 		t.Errorf("result = %q", out)
 	}
 	items := door.written()
@@ -267,7 +267,7 @@ func TestFactoryChangeWordsWriteNothingAndComeBack(t *testing.T) {
 	if err := agent.ResolveQuestion(Answer{Kind: QuestionFactory, Ref: q.Ref, Change: "it belongs on the api repo"}); err != nil {
 		t.Fatal(err)
 	}
-	want := "the person changed it: it belongs on the api repo\nNothing is on the floor yet. Propose it again with that"
+	want := "the person changed it: it belongs on the api repo\nNothing is in the factory yet. Propose it again with that"
 	if out := awaitResult(t, results); out != want {
 		t.Errorf("result = %q, want %q", out, want)
 	}
@@ -305,7 +305,7 @@ func TestFactoryAnswerFromKeyMapsBothKeys(t *testing.T) {
 	if _, ok := AnswerFromKey(QuestionFactory, "3"); ok {
 		t.Error("a key the card does not offer was taken")
 	}
-	if got := questionGoneReason(Question{Kind: QuestionFactory}); got != "nothing was added to the factory floor" {
+	if got := questionGoneReason(Question{Kind: QuestionFactory}); got != "nothing was added to the factory" {
 		t.Errorf("gone reason = %q", got)
 	}
 	key, ok := questionAsked(Event{Kind: EventFactoryProposal, Factory: &FactoryNotice{ID: "f1"}})
@@ -325,7 +325,7 @@ func TestFactoryRefusedByTheDoorSaysSo(t *testing.T) {
 	results := runFactoryAdd(t, agent, context.Background())
 	q := awaitFactoryQuestion(t, questions)
 	agent.ResolveFactory(q.Ref, FactoryAnswer{Approved: true})
-	if out := awaitResult(t, results); !strings.HasPrefix(out, "nothing was added: the factory floor would not take it") {
+	if out := awaitResult(t, results); !strings.HasPrefix(out, "nothing was added: the factory would not take it") {
 		t.Errorf("result = %q", out)
 	}
 }

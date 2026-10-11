@@ -251,7 +251,7 @@ func strangerWrites(it factory.Item) error {
 	}
 	for _, s := range it.Stages {
 		if s.On && s.Name == "write" && factory.Fits(s, it) {
-			return errors.New("a stranger's work does not run write on this floor")
+			return errors.New("a stranger's work does not run write in this factory")
 		}
 	}
 	return nil

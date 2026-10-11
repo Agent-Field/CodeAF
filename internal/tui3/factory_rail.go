@@ -580,7 +580,7 @@ func (a *app) factoryRailLine(r factoryRailRow, width int) string {
 		lead := a.factoryTitleCol()
 		return factorySpaces(lead) + pal.dim(fit(word, max(width-lead, 0)))
 	case factoryRowNone:
-		return pal.dim(fit("no item on the floor matches", width))
+		return pal.dim(fit("no item in the factory matches", width))
 	case factoryRowRead:
 		lead := a.factoryTitleCol()
 		read := strings.TrimSpace(a.fp.snap.Items[r.item].Triage.Read)

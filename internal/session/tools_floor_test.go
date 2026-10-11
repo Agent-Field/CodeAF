@@ -131,7 +131,7 @@ func TestFactoryFloorEachAskShapesItsTable(t *testing.T) {
 		{"risky", []string{"#1 ledger counts twice", "#7 new auth flow", "risk: touches money"}, []string{"#4 ", "#3 "}, []string{"#1 ", "#7 "}},
 		{"cheapest", []string{"cheapest first"}, []string{"#3 ", "#9 "}, []string{"#4 ", "#1 ", "#6 ", "#7 "}},
 		{"oldest", []string{"oldest first", "9d old"}, []string{"#2 "}, []string{"#1 ", "#6 ", "#4 ", "#7 ", "#3 ", "#9 "}},
-		{"all", []string{"every open item", "6 items", "4 new on the floor", "1 waiting on the person", "#9 cache warmup", "40m old"}, []string{"hidden thing", "$0.00", "est $0.0000"}, nil},
+		{"all", []string{"every open item", "6 items", "4 new in the factory", "1 waiting on the person", "#9 cache warmup", "40m old"}, []string{"hidden thing", "$0.00", "est $0.0000"}, nil},
 	} {
 		text, isErr := floorCall(t, floorLab(), `{"ask":"`+c.ask+`"}`)
 		if isErr {
@@ -177,7 +177,7 @@ func TestFactoryFloorItemAskIsTheItemInFull(t *testing.T) {
 	if !strings.Contains(text, "waiting on the person for: ship it with one red check?") {
 		t.Errorf("a waiting item does not say its question:\n%s", text)
 	}
-	if text, _ := floorCall(t, floorLab(), `{"ask":"item","item":42}`); text != "there is no #42 on the floor" {
+	if text, _ := floorCall(t, floorLab(), `{"ask":"item","item":42}`); text != "there is no #42 in the factory" {
 		t.Errorf("an unknown ref answered %q", text)
 	}
 	if _, isErr := floorCall(t, floorLab(), `{"ask":"item"}`); !isErr {
@@ -197,7 +197,7 @@ func TestFactoryFloorMarksThroughTheDoor(t *testing.T) {
 	if !strings.HasPrefix(text, "selected #1 #4 #6"+FloorMarkedTail) {
 		t.Errorf("the mark answered %q", text)
 	}
-	for _, want := range []string{"#9 is running, and only a new item can be selected", "there is no #42 on the floor"} {
+	for _, want := range []string{"#9 is running, and only a new item can be selected", "there is no #42 in the factory"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the mark does not say %q:\n%s", want, text)
 		}

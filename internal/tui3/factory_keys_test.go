@@ -331,11 +331,11 @@ func TestFactoryEnterOnAFailedClaimSendsBack(t *testing.T) {
 	if it, _ := a.factoryCursorItem(); a.factoryItemRows(it)[a.fp.stage].kind != factoryPageResult {
 		t.Fatalf("the landed page opened on row %d, not its result", a.fp.stage)
 	}
-	if hint := (placeFactory{}).hint(a); hint != "↑↓ rows · esc floor · ? keys" {
+	if hint := (placeFactory{}).hint(a); hint != "↑↓ rows · esc factory · ? keys" {
 		t.Fatalf("the result's hint names an enter: %q", hint)
 	}
 	factoryRowNamed(t, a, "proof")
-	if hint := (placeFactory{}).hint(a); hint != "↑↓ rows · enter request changes · esc floor · ? keys" {
+	if hint := (placeFactory{}).hint(a); hint != "↑↓ rows · enter request changes · esc factory · ? keys" {
 		t.Fatalf("the proof page's hint is %q", hint)
 	}
 	drive(t, a, key("enter"))
@@ -374,7 +374,7 @@ func TestFactoryHabitOfferBanksOnY(t *testing.T) {
 	}
 	drive(t, a, key("enter"))
 	factoryRowNamed(t, a, "proof")
-	if hint := (placeFactory{}).hint(a); hint != "↑↓ rows · enter approve · esc floor · ? keys" {
+	if hint := (placeFactory{}).hint(a); hint != "↑↓ rows · enter approve · esc factory · ? keys" {
 		t.Fatalf("the clean proof page's hint is %q", hint)
 	}
 	drive(t, a, key("enter"))
@@ -484,7 +484,7 @@ func TestFactoryHintByState(t *testing.T) {
 	a.width = 400
 	factoryOn(t, a, 2)
 	drive(t, a, key("enter"))
-	if got, want := (placeFactory{}).hint(a), "↑↓ rows · esc floor · ? keys"; got != want {
+	if got, want := (placeFactory{}).hint(a), "↑↓ rows · esc factory · ? keys"; got != want {
 		t.Fatalf("on the item page the hint is\n%q\nwant\n%q", got, want)
 	}
 }

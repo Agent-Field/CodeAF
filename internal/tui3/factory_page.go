@@ -50,7 +50,7 @@ const factoryHeadLeaves = 6
 
 // factoryUnconnectedWords is the page with no seam behind it. It names what
 // arrives here, never that the page is empty (the emptiness law's panel rule).
-const factoryUnconnectedWords = "nothing connected yet · the factory floor arrives here when a chat splits work off or a repo is connected"
+const factoryUnconnectedWords = "nothing connected yet · the factory arrives here when a chat splits work off or a repo is connected"
 
 // factoryBareWords is a floor that is connected, read and holds nothing yet:
 // one dim line under the handover naming what arrives there, never a sentence

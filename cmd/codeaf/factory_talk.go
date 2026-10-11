@@ -401,7 +401,7 @@ type storeItemDoor struct {
 func (d storeItemDoor) get(item int) (factory.Item, error) {
 	it, err := d.st.Get(item)
 	if errors.Is(err, store.ErrNotFound) {
-		return factory.Item{}, fmt.Errorf("there is no item %d on the factory floor", item)
+		return factory.Item{}, fmt.Errorf("there is no item %d on the factory", item)
 	}
 	return it, err
 }
@@ -437,7 +437,7 @@ func (d storeItemDoor) Apply(_ context.Context, item int, change session.ItemCha
 		return nil
 	})
 	if errors.Is(err, store.ErrNotFound) {
-		return factory.Item{}, fmt.Errorf("there is no item %d on the factory floor", item)
+		return factory.Item{}, fmt.Errorf("there is no item %d on the factory", item)
 	}
 	if err != nil {
 		return factory.Item{}, err

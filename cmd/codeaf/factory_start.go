@@ -60,7 +60,7 @@ func startItem(st *store.Store, workspace string, it factory.Item) (string, erro
 			return "", fmt.Errorf("%s waits on a question, not an approve step · answer it, or ask the person", ref)
 		}
 		if seam.Answer == nil {
-			return "", errors.New("this window cannot reach the floor's runner")
+			return "", errors.New("this window cannot reach the factory's runner")
 		}
 		if err := seam.Answer(it.ID, true, ""); err != nil {
 			return "", err
@@ -73,7 +73,7 @@ func startItem(st *store.Store, workspace string, it factory.Item) (string, erro
 				hold = func(id int, _ bool) error { return seam.Pause(id) }
 			}
 			if hold == nil {
-				return "", errors.New("this window cannot reach the floor's runner")
+				return "", errors.New("this window cannot reach the factory's runner")
 			}
 			if err := hold(it.ID, false); err != nil {
 				return "", err
@@ -86,7 +86,7 @@ func startItem(st *store.Store, workspace string, it factory.Item) (string, erro
 		return fmt.Sprintf(sayStartRunning, ref), nil
 	}
 	if seam.Launch == nil {
-		return "", errors.New("this window cannot reach the floor's runner")
+		return "", errors.New("this window cannot reach the factory's runner")
 	}
 	// THE MANAGER IS HERE, IN THE CHAT WHERE THE PERSON SAID START: the
 	// launch gives it no second turn to shape what it has just talked over.

@@ -52,7 +52,7 @@ func TestFactoryWithNoSeamSaysWhatArrivesHere(t *testing.T) {
 		t.Fatal("/factory's place did not open without a seam")
 	}
 	text := strings.Join(strings.Fields(factoryFrameText(a)), " ")
-	if !strings.Contains(text, "nothing connected yet · the factory floor arrives here") {
+	if !strings.Contains(text, "nothing connected yet · the factory arrives here") {
 		t.Fatalf("the unconnected page does not say what arrives here:\n%s", factoryFrameText(a))
 	}
 	if got := (placeFactory{}).hint(a); got != "esc back" {

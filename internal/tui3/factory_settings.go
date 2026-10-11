@@ -510,7 +510,7 @@ func (a *app) factorySaveRepos() tea.Cmd {
 // ([app.factoryHeadFresh]) and the bare floor's ([factoryBareReadingWords]).
 func factoryWatchingWords(n int) string {
 	if n == 0 {
-		return "watching no repositories · the floor keeps what chat and n bring"
+		return "watching no repositories · the factory keeps what chat and n bring"
 	}
 	return factoryWatchedWords(n) + rowSep + factoryReadingNowWords
 }
@@ -1491,7 +1491,7 @@ func (a *app) factoryRecipeHint() string {
 		parts = append(parts, factoryHintClause(keyStages, wordStages), factoryHintClause(keyAddStage, wordAddStage),
 			factoryHintClause(keyThinking, wordThinking), "w in words", "b save")
 	}
-	return strings.Join(append(parts, "esc floor"), " · ")
+	return strings.Join(append(parts, "esc factory"), " · ")
 }
 
 // ── $: the day rail ─────────────────────────────────────────────────────────

@@ -422,7 +422,7 @@ type seamRunDoor struct {
 }
 
 // errNotAManager is `factory_run` asked by a conversation that manages no item.
-var errNotAManager = errors.New("this conversation is not the manager of any item on the floor")
+var errNotAManager = errors.New("this conversation is not the manager of any item in the factory")
 
 // EditRun edits the item whose conversation is the asking one.
 func (d seamRunDoor) EditRun(ctx context.Context, conversation string, e factory.RunEdit) (factory.Item, []string, error) {

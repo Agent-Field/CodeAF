@@ -59,7 +59,7 @@ const (
 	// FactoryCardHead is the card's whole head: ONE QUESTION IN THE PERSON'S
 	// WORDS. The item it is about is drawn under it in the item card's shape,
 	// title first, so the head never has to carry the title too.
-	FactoryCardHead = "put this on the factory floor?"
+	FactoryCardHead = "hand this to the factory?"
 	// FactoryAddLabel and FactoryNotNowLabel are the card's two answers.
 	FactoryAddLabel    = "add it"
 	FactoryNotNowLabel = "not now"
@@ -67,10 +67,10 @@ const (
 	FactoryChangePrompt = "say what to change… (enter sends it)"
 
 	// factoryAddedTail ends the sentence a yes returns: `#<id> <title>` before it.
-	factoryAddedTail = " is on the factory floor"
+	factoryAddedTail = " is in the factory"
 	// factoryChangedLead and factoryChangedTail wrap the person's own words.
 	factoryChangedLead = "the person changed it: "
-	factoryChangedTail = "\nNothing is on the floor yet. Propose it again with that"
+	factoryChangedTail = "\nNothing is in the factory yet. Propose it again with that"
 	// factoryDeclined is what a `not now` returns.
 	factoryDeclined = "nothing was added: the person said no."
 	// factoryUnanswered is what the window ending, or the turn being
@@ -92,11 +92,11 @@ var (
 	factorySizes = []string{"S", "M", "L"}
 )
 
-const factoryAddDescription = "Offer one piece of work to the factory floor, where work waits in rows until a person runs it. " +
-	"WHEN THE PERSON NAMES THE FLOOR (\"factory\", \"factory floor\", \"put it on the floor\"), CALL IT AT ONCE with what you have: never ask which repository (use this workspace's name), never ask for more detail first; a short title and a one-line body are enough, because the person edits the card. " +
+const factoryAddDescription = "Offer one piece of work to the factory, where work waits in rows until a person runs it. " +
+	"WHEN THE PERSON NAMES THE FACTORY (\"factory\", \"hand this to the factory\"), CALL IT AT ONCE with what you have: never ask which repository (use this workspace's name), never ask for more detail first; a short title and a one-line body are enough, because the person edits the card. " +
 	"Also call it, unasked, when you judge a piece of work is self-contained enough to run on its own later — a bug with a clear repro, a chore with a clear end. " +
 	"NOTHING IS ADDED BY CALLING THIS: the person is shown a card with your title, repo, kind and reason, and only their `add it` writes the item. " +
-	"NOTHING STARTS FROM THE CHAT EITHER: a yes puts the item on the floor as new, and running it is the person's, on the factory page. " +
+	"NOTHING STARTS FROM THE CHAT EITHER: a yes puts the item in the factory as new, and running it is the person's, on the factory page. " +
 	"If they type a change instead, nothing is written and you are told their words: propose again with them. " +
 	"Do not use this for work you are about to do here, and do not offer the same work twice after a no."
 
@@ -109,7 +109,7 @@ func factoryAddSchemaJSON() string {
 		return strings.Join(out, ",")
 	}
 	return `{"type":"object","properties":{` +
-		`"title":{"type":"string","description":"One line naming the work, as it would read on the floor."},` +
+		`"title":{"type":"string","description":"One line naming the work, as it would read in the factory."},` +
 		`"body":{"type":"string","description":"What the work is and why, in a few sentences: what is wrong or wanted, and how somebody would know it is done. This is the reason the person reads on the card."},` +
 		`"repo":{"type":"string","description":"The repository's short name as the person says it, or this workspace's name when they do not name one."},` +
 		`"kind":{"type":"string","enum":[` + quoted(factoryKinds) + `],"description":"What sort of work it is."},` +
@@ -225,7 +225,7 @@ func (a *Agent) factoryAddTool() bare.Tool {
 			}
 			id, err := a.config.Factory.Add(ctx, factoryItem(notice, time.Now()))
 			if err != nil {
-				return "nothing was added: the factory floor would not take it (" + oneLine(err.Error()) + ")", true, nil
+				return "nothing was added: the factory would not take it (" + oneLine(err.Error()) + ")", true, nil
 			}
 			added := notice
 			added.Item = id
@@ -379,7 +379,7 @@ func (a *Agent) forgetFactory(card FactoryNotice) {
 
 // factoryGoneReason is the sentence a card that came down unanswered retires
 // with, on the card and on the question alike.
-const factoryGoneReason = "nothing was added to the factory floor"
+const factoryGoneReason = "nothing was added to the factory"
 
 // emitFactory sends one factory event to every standing task-lane watcher, as
 // [Agent.emitStandingNews] does: the card and the news both belong to a floor

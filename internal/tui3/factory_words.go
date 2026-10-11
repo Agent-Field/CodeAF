@@ -135,7 +135,7 @@ const (
 	wordScroll             = "scroll"
 	wordWalk               = "walk"
 	wordWalkStages         = "stages"
-	wordFloorName          = "floor"
+	wordFloorName          = "factory"
 	wordBack               = "back"
 	wordClear              = "clear"
 	wordClose              = "close"

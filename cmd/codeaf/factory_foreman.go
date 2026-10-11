@@ -34,7 +34,7 @@ const foremanName = "foreman"
 
 // foremanOpening is the brief's fixed part, said once so the brief, the test
 // and the manual quote the same words.
-const foremanOpening = "You are the foreman of this factory floor. The floor's items, their reads and stages come through factory_floor. Propose a morning batch by selecting items; the person runs them with L. Never launch, ship or post. Name items by their ref."
+const foremanOpening = "You are the foreman of this factory. The factory's items, their reads and stages come through factory_floor. Propose a morning batch by selecting items; the person runs them with L. Never launch, ship or post. Name items by their ref."
 
 // floorDoor is `factory_floor`'s door over the store, or nil.
 //

@@ -501,7 +501,7 @@ func TestFactoryRecipePageTabsProblemAndSave(t *testing.T) {
 			t.Fatalf("the recipe page is missing %q:\n%s", want, joined)
 		}
 	}
-	if hint := factoryHint(a); hint != "[ ] kind · ↑↓ stages · 1-9 stages · s add a stage · e thinking · w in words · b save · esc floor" {
+	if hint := factoryHint(a); hint != "[ ] kind · ↑↓ stages · 1-9 stages · s add a stage · e thinking · w in words · b save · esc factory" {
 		t.Fatalf("recipe hint = %q", hint)
 	}
 
@@ -557,7 +557,7 @@ func TestFactoryRecipePageWithNoDirSaysSo(t *testing.T) {
 	if !strings.Contains(ansi.Strip(note), "codeaf does not know where "+repo+" is checked out") {
 		t.Fatalf("note = %q", ansi.Strip(note))
 	}
-	if hint := factoryHint(a); hint != "[ ] kind · ↑↓ stages · esc floor" {
+	if hint := factoryHint(a); hint != "[ ] kind · ↑↓ stages · esc factory" {
 		t.Fatalf("hint = %q", hint)
 	}
 	drive(t, a, key("2"), key("b"))

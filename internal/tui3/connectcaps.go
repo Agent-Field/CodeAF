@@ -938,7 +938,7 @@ func (s *sheet) connFootNote() string {
 		return "the accounts codeaf may reach for you"
 	}
 	if item.conn.service == githubService {
-		return "how the factory floor reaches github · enter asks again"
+		return "how the factory reaches github · enter asks again"
 	}
 	switch item.conn.kind {
 	case connCapability:
