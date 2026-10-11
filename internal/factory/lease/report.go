@@ -37,12 +37,7 @@ func (d *Desk) Apply(id, worker string, complete bool, change func(*factory.Item
 		if !complete {
 			return false, nil
 		}
-		for i := range doc.Leases {
-			if doc.Leases[i].ID == id {
-				doc.Leases = append(doc.Leases[:i], doc.Leases[i+1:]...)
-				break
-			}
-		}
+		release(doc, held.Job)
 		return true, nil
 	})
 }

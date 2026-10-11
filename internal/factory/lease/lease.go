@@ -38,6 +38,11 @@ type Lease struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
+// EveryRepo in TakesUnassigned is consent to unassigned work in every
+// repository: a machine working its own loopback factory, where every job is
+// its person's.
+const EveryRepo = "*"
+
 // Worker carries authenticated identity and repository-specific consent.
 // TakesUnassigned never grants access to a job that already has a person.
 type Worker struct {
@@ -207,12 +212,7 @@ func (d *Desk) Requeue(id int, worker string) error {
 		if err := d.queue(id); err != nil {
 			return false, err
 		}
-		for i, held := range doc.Leases {
-			if held.Job == id {
-				doc.Leases = append(doc.Leases[:i], doc.Leases[i+1:]...)
-				break
-			}
-		}
+		release(doc, id)
 		return true, nil
 	})
 }
@@ -224,7 +224,7 @@ func eligible(it factory.Item, worker Worker) bool {
 	if owner := it.Person(); owner != "" {
 		return owner == worker.Handle
 	}
-	return worker.TakesUnassigned[it.Repo]
+	return worker.TakesUnassigned[it.Repo] || worker.TakesUnassigned[EveryRepo]
 }
 
 func find(doc *document, id int) *Lease {
@@ -276,6 +276,7 @@ func (d *Desk) expire(doc *document, now time.Time) ([]Lease, error) {
 			return nil, fmt.Errorf("factory lease: requeue job %d: %w", held.Job, err)
 		}
 		expired = append(expired, held)
+		delete(doc.Signals, held.Job)
 	}
 	doc.Leases = kept
 	return expired, nil

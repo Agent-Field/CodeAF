@@ -187,7 +187,19 @@ func (h *Handler) pulled(w http.ResponseWriter, held lease.Lease) {
 	if h.failed(w, err) {
 		return
 	}
-	h.write(w, http.StatusOK, api.WorkerPull{Factory: h.factory, Lease: workerLease(held), Job: api.FromItem(it)})
+	signals, err := h.workers.desk.Drain(held.ID, held.Worker)
+	if h.workerError(w, err) {
+		return
+	}
+	h.write(w, http.StatusOK, api.WorkerPull{Factory: h.factory, Lease: workerLease(held), Job: api.FromItem(it), Signals: wireSignals(signals)})
+}
+
+func wireSignals(in []lease.Signal) []api.WorkerSignal {
+	out := make([]api.WorkerSignal, len(in))
+	for i, s := range in {
+		out[i] = api.WorkerSignal{Verb: s.Verb, Yes: s.Yes, Words: s.Words}
+	}
+	return out
 }
 
 func (h *Handler) heartbeatWorker(w http.ResponseWriter, r *http.Request) {
@@ -198,10 +210,13 @@ func (h *Handler) heartbeatWorker(w http.ResponseWriter, r *http.Request) {
 	if h.workerError(w, err) {
 		return
 	}
-	h.write(w, http.StatusOK, struct {
-		Factory api.Factory     `json:"factory"`
-		Lease   api.WorkerLease `json:"lease"`
-	}{h.factory, workerLease(held)})
+	// THE HEARTBEAT IS THE SIGNAL CHANNEL: what a person asked of the job
+	// since the last beat rides back on the answer (lease/signals.go).
+	signals, err := h.workers.desk.Drain(held.ID, held.Worker)
+	if h.workerError(w, err) {
+		return
+	}
+	h.write(w, http.StatusOK, api.WorkerHeartbeat{Factory: h.factory, Lease: workerLease(held), Signals: wireSignals(signals)})
 }
 
 func (h *Handler) reportWorker(w http.ResponseWriter, r *http.Request) {

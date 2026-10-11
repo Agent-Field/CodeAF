@@ -234,10 +234,8 @@ func New(opts Options) *Runner { return &Runner{opts: opts} }
 func (r *Runner) Opts() Options { return r.opts }
 
 // Running says whether this runner holds the item: on a bench, in its queue,
-// or waiting on a person. The wiring lane added it, additively, so the process
-// that owns the floor can tell a `queued` mark another window wrote (which it
-// must pick up) from an item it already queued itself (which it must not
-// launch twice).
+// or waiting on a person. A worker reads it to know when the job it pulled
+// has ended (internal/factory/worker).
 func (r *Runner) Running(id int) bool {
 	return r.loop().ctl(id) != nil
 }

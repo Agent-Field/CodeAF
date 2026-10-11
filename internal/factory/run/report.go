@@ -19,6 +19,9 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 		return fmt.Errorf("job is no longer running")
 	}
 	ensureStream(it, now)
+	if err := applyPipeline(it, report.Pipeline); err != nil {
+		return err
+	}
 	for _, step := range report.Stages {
 		if err := reportStep(it, step, now); err != nil {
 			return err
@@ -32,7 +35,47 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 	if err := reportQuestion(it, report.Question, report.QuestionKind, now); err != nil {
 		return err
 	}
+	if talk := strings.TrimSpace(report.Talk); talk != "" && strings.TrimSpace(it.Talk) == "" {
+		it.Talk = talk
+	}
+	it.Notes = append(it.Notes, report.Notes...)
 	return reportPR(it, report.PR)
+}
+
+// applyPipeline takes the shape of the worker's reshaped steps. The recipe
+// bounded the reshaping on the worker; the one law kept here is the person's:
+// an approve step on the job stays on, so no worker can skip a person's gate.
+// A phase the job already has keeps the state the server holds for it.
+func applyPipeline(it *factory.Item, change *factory.PipelineChange) error {
+	if change == nil {
+		return nil
+	}
+	for _, st := range it.Stages {
+		if !st.On || !factory.IsApprove(st) {
+			continue
+		}
+		if i := factory.StageIndex(change.Stages, st.Name); i < 0 || !change.Stages[i].On {
+			return fmt.Errorf("a worker cannot take an approve step off the pipeline")
+		}
+	}
+	held := map[string]factory.Phase{}
+	for _, ph := range it.Stream.Phases {
+		held[ph.Name] = ph
+	}
+	phases := make([]factory.Phase, 0, len(change.Phases))
+	for _, ph := range change.Phases {
+		if kept, ok := held[ph.Name]; ok {
+			phases = append(phases, kept)
+			continue
+		}
+		phases = append(phases, factory.Phase{Name: ph.Name, Kind: ph.Kind, State: factory.PhasePending, Note: ph.Note})
+	}
+	it.Stages = append([]factory.Stage(nil), change.Stages...)
+	it.Stream.Phases = phases
+	if it.Stream.Cur >= len(phases) {
+		it.Stream.Cur = max(len(phases)-1, 0)
+	}
+	return nil
 }
 
 func mergeClaims(it *factory.Item, claims []factory.Claim) {
@@ -213,6 +256,9 @@ func FinishReport(it *factory.Item, state factory.State, now time.Time) error {
 	return nil
 }
 
+// logShippedHabit is the log's line for a job that shipped itself.
+const logShippedHabit = "shipped · habit · proof all green"
+
 func landItem(it *factory.Item, now time.Time) bool {
 	it.State = factory.StateLanded
 	it.Question, it.QKind = "", ""
@@ -224,9 +270,9 @@ func landItem(it *factory.Item, now time.Time) bool {
 	}
 	if !factory.HasApprove(*it) && len(it.Proof) > 0 && clean(*it) {
 		it.State = factory.StateShipped
-		loopSay(it, now, "ok", "shipped · habit · proof all green")
+		loopSay(it, now, "ok", logShippedHabit)
 		return true
 	}
-	loopSay(it, now, "said", "landed · proof sheet ready · your approval")
+	loopSay(it, now, "said", sayLanded)
 	return false
 }

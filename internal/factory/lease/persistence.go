@@ -16,6 +16,10 @@ const schema = 1
 type document struct {
 	Schema int     `json:"schema"`
 	Leases []Lease `json:"leases"`
+	// Signals are what people asked of a job that its worker has not yet
+	// collected, keyed by job id. They live beside the leases, under the same
+	// lock, so a verb and the hold it is meant for can never disagree.
+	Signals map[int][]Signal `json:"signals,omitempty"`
 }
 
 // Path names the shared document beside the factory's numbered job files.

@@ -32,6 +32,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -206,41 +207,47 @@ func (lp *floorLoop) keepAnswer(c *loopCtl, id int, a loopAnswer) error {
 	word := answeredWord(a)
 	now := lp.r.now()
 	err := lp.r.opts.Store.Update(id, func(it *factory.Item) error {
-		q := it.Asking
-		if q == nil {
-			return fmt.Errorf("%s is not waiting on you", it.Ref())
-		}
-		note := fmt.Sprintf(noteAnswered, q.Stage, q.Question, "the person", word)
-		it.Notes = append(it.Notes, note)
-		it.Asking = nil
-		if it.QKind == qkindStep {
-			// THE ITEM WAITS ON NOTHING NOW, with or without a run holding
-			// it (after a restart, none does): it is running again, paused
-			// where a pause cut it, never `needs you` with no question.
-			it.Question, it.QKind = "", ""
-			if it.State == factory.StateNeedsYou {
-				it.State = factory.StateRunning
-			}
-		}
-		// THE STEP'S OWN CHAT HEARS THE ANSWER when it carries on in the
-		// same conversation (a pause's resume reads no fresh brief): kept on
-		// the step, which waits no more.
-		if s := it.Stream; s != nil {
-			if i := askingPhase(s, q.Stage); i >= 0 {
-				ph := &s.Phases[i]
-				if ph.State == factory.PhaseWaiting {
-					ph.State = factory.PhaseRunning
-				}
-				ph.Carry = append(ph.Carry, note)
-			}
-		}
-		loopSay(it, now, "said", fmt.Sprintf(sayKept, q.Stage, word))
-		return nil
+		return keepStored(it, word, now)
 	})
 	if err != nil {
 		return err
 	}
 	lp.tell(id, fmt.Sprintf(sayAnswered, word))
+	return nil
+}
+
+// keepStored puts the person's answer, said as word, on the item for the
+// step's next round, and takes the question down.
+func keepStored(it *factory.Item, word string, now time.Time) error {
+	q := it.Asking
+	if q == nil {
+		return fmt.Errorf("%s is not waiting on you", it.Ref())
+	}
+	note := fmt.Sprintf(noteAnswered, q.Stage, q.Question, "the person", word)
+	it.Notes = append(it.Notes, note)
+	it.Asking = nil
+	if it.QKind == qkindStep {
+		// THE ITEM WAITS ON NOTHING NOW, with or without a run holding
+		// it (after a restart, none does): it is running again, paused
+		// where a pause cut it, never `needs you` with no question.
+		it.Question, it.QKind = "", ""
+		if it.State == factory.StateNeedsYou {
+			it.State = factory.StateRunning
+		}
+	}
+	// THE STEP'S OWN CHAT HEARS THE ANSWER when it carries on in the
+	// same conversation (a pause's resume reads no fresh brief): kept on
+	// the step, which waits no more.
+	if s := it.Stream; s != nil {
+		if i := askingPhase(s, q.Stage); i >= 0 {
+			ph := &s.Phases[i]
+			if ph.State == factory.PhaseWaiting {
+				ph.State = factory.PhaseRunning
+			}
+			ph.Carry = append(ph.Carry, note)
+		}
+	}
+	loopSay(it, now, "said", fmt.Sprintf(sayKept, q.Stage, word))
 	return nil
 }
 

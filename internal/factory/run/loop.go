@@ -165,14 +165,8 @@ func (r *Runner) Launch(id int) error {
 			return fmt.Errorf("the day rail is %s and today's spend has reached it", loopUSD(rail))
 		}
 	}
-	// A STRANGER'S WORDS ARE DRAFTED ON, NEVER WRITTEN FROM, without a person:
-	// the write stage is the one that changes the repository.
-	if it.Tier == factory.TierStranger {
-		for _, s := range it.Stages {
-			if s.On && s.Name == "write" && factory.Fits(s, it) {
-				return errors.New("a stranger's work does not run write on this floor")
-			}
-		}
+	if err := strangerWrites(it); err != nil {
+		return err
 	}
 	lp.mu.Lock()
 	if lp.ctls[id] != nil {
@@ -226,6 +220,21 @@ func (r *Runner) Launch(id int) error {
 	}
 	c.said = said
 	lp.enqueue(c)
+	return nil
+}
+
+// strangerWrites refuses a run that would write from a stranger's words.
+// A STRANGER'S WORDS ARE DRAFTED ON, NEVER WRITTEN FROM, without a person:
+// the write stage is the one that changes the repository.
+func strangerWrites(it factory.Item) error {
+	if it.Tier != factory.TierStranger {
+		return nil
+	}
+	for _, s := range it.Stages {
+		if s.On && s.Name == "write" && factory.Fits(s, it) {
+			return errors.New("a stranger's work does not run write on this floor")
+		}
+	}
 	return nil
 }
 
@@ -1265,13 +1274,7 @@ func (r *Runner) Stop(id int) error {
 		// back where a person can launch it again.
 		now := r.now()
 		if err := r.opts.Store.Update(id, func(it *factory.Item) error {
-			it.State = factory.StateNew
-			it.Question, it.QKind = "", ""
-			if it.Stream != nil {
-				it.Stream.Ended = now
-				it.Stream.Paused = false
-				loopSay(it, now, "fail", "stopped · branch kept")
-			}
+			stopStored(it, now)
 			return nil
 		}); err != nil {
 			return err
@@ -1281,6 +1284,18 @@ func (r *Runner) Stop(id int) error {
 		return nil
 	}
 	return fmt.Errorf("%s is not running", it.Ref())
+}
+
+// stopStored is a stop with no run to cancel: the item is new again and its
+// stream says so.
+func stopStored(it *factory.Item, now time.Time) {
+	it.State = factory.StateNew
+	it.Question, it.QKind = "", ""
+	if it.Stream != nil {
+		it.Stream.Ended = now
+		it.Stream.Paused = false
+		loopSay(it, now, "fail", "stopped · branch kept")
+	}
 }
 
 // Pause stops the item's step now, keeping its chat; calling it again (or
@@ -1488,15 +1503,7 @@ func (r *Runner) Answer(id int, yes bool, words string) error {
 			return r.Launch(id)
 		}
 		return r.opts.Store.Update(id, func(cur *factory.Item) error {
-			if cur.QKind != factory.QKindAskFirst {
-				return errors.New("job is no longer asking first")
-			}
-			cur.State = factory.StateNew
-			cur.Question, cur.QKind = "", ""
-			if words = strings.TrimSpace(words); words != "" {
-				cur.Notes = append(cur.Notes, words)
-			}
-			return nil
+			return declineAskFirst(cur, words)
 		})
 	}
 	lp := r.loop()
@@ -1519,6 +1526,20 @@ func (r *Runner) Answer(id int, yes bool, words string) error {
 	c.pending = ""
 	lp.mu.Unlock()
 	c.answers <- loopAnswer{yes: yes, words: strings.TrimSpace(words)}
+	return nil
+}
+
+// declineAskFirst is a no to a job that asked before it starts: it goes back
+// to new, with the person's words on its notes.
+func declineAskFirst(it *factory.Item, words string) error {
+	if it.QKind != factory.QKindAskFirst {
+		return errors.New("job is no longer asking first")
+	}
+	it.State = factory.StateNew
+	it.Question, it.QKind = "", ""
+	if words = strings.TrimSpace(words); words != "" {
+		it.Notes = append(it.Notes, words)
+	}
 	return nil
 }
 
@@ -1623,32 +1644,16 @@ func (r *Runner) SendBack(id int, words string) error {
 	lp.mu.Unlock()
 	now := r.now()
 	err := lp.move(c, "", EventQueued, "changes requested: "+words, func(it *factory.Item) error {
-		if it.State != factory.StateLanded || len(it.Stream.Phases) == 0 {
-			return fmt.Errorf("%s has not landed", it.Ref())
+		name, err := sendBackStored(it, words, now)
+		if err != nil {
+			return err
 		}
-		s := it.Stream
-		name := "prove"
-		for k := 2; phaseNamed(s.Phases, name) || factory.StageIndex(it.Stages, name) >= 0; k++ {
-			name = "prove" + strconv.Itoa(k) // one word, as every stage name is
-		}
-		at := 0
-		for k, p := range s.Phases {
-			if p.State == factory.PhaseDone {
-				at = k + 1
-			}
-		}
-		ph := factory.Phase{Name: name, Kind: factory.StageChat, State: factory.PhasePending, Note: words}
-		s.Phases = append(s.Phases[:at:at], append([]factory.Phase{ph}, s.Phases[at:]...)...)
-		s.Cur = at
-		s.Ended = time.Time{}
-		it.State = factory.StateQueued
 		lp.mu.Lock()
 		if lp.extra[id] == nil {
 			lp.extra[id] = map[string]factory.Stage{}
 		}
 		lp.extra[id][name] = factory.Stage{Name: name, Kind: factory.StageChat, Ask: words, Until: factory.UntilDone, On: true}
 		lp.mu.Unlock()
-		loopSay(it, now, "said", "changes requested: "+words)
 		return nil
 	})
 	if err != nil {
@@ -1658,6 +1663,33 @@ func (r *Runner) SendBack(id int, words string) error {
 	lp.tell(id, fmt.Sprintf(sayChanges, words))
 	lp.enqueue(c)
 	return nil
+}
+
+// sendBackStored puts one more phase, prove, after the last done one, whose
+// ask is the person's words, and queues the item again. It answers the
+// phase's name.
+func sendBackStored(it *factory.Item, words string, now time.Time) (string, error) {
+	if it.State != factory.StateLanded || it.Stream == nil || len(it.Stream.Phases) == 0 {
+		return "", fmt.Errorf("%s has not landed", it.Ref())
+	}
+	s := it.Stream
+	name := "prove"
+	for k := 2; phaseNamed(s.Phases, name) || factory.StageIndex(it.Stages, name) >= 0; k++ {
+		name = "prove" + strconv.Itoa(k) // one word, as every stage name is
+	}
+	at := 0
+	for k, p := range s.Phases {
+		if p.State == factory.PhaseDone {
+			at = k + 1
+		}
+	}
+	ph := factory.Phase{Name: name, Kind: factory.StageChat, State: factory.PhasePending, Note: words}
+	s.Phases = append(s.Phases[:at:at], append([]factory.Phase{ph}, s.Phases[at:]...)...)
+	s.Cur = at
+	s.Ended = time.Time{}
+	it.State = factory.StateQueued
+	loopSay(it, now, "said", "changes requested: "+words)
+	return name, nil
 }
 
 func phaseNamed(ph []factory.Phase, name string) bool {
