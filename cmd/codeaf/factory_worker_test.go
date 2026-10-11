@@ -67,7 +67,7 @@ func TestFactoryWorkerAttachRequiresOwnLoginOffLoopback(t *testing.T) {
 			}
 			wantTakes := map[string]bool{lease.EveryRepo: true}
 			if !factoryLoopback(tc.base) {
-				wantTakes = map[string]bool{"repo": true}
+				wantTakes = map[string]bool{"owner/repo": true}
 			}
 			if !reflect.DeepEqual(attach.TakesUnassigned, wantTakes) {
 				t.Fatalf("unassigned work: %v; want %v", attach.TakesUnassigned, wantTakes)

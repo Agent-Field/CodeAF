@@ -407,6 +407,16 @@ words away. With the box closed, the words stay under the repository line, and `
 them before it leaves the page. When nothing matches, the list says
 `no item in the factory matches`.
 
+## repository identity and checkout keys
+
+Factory jobs and repository keys on `/v1` use GitHub `owner/name`. A local
+checkout key such as `api` is resolved from the clone's `origin` remote or a
+matching watched `owner/api` entry. Existing jobs saved with that key migrate
+when loaded; their state and age stay the same. A full checkout key keeps its
+owner, so two owners' repositories with the same short name stay distinct.
+An ambiguous or unresolved checkout alias is not advertised as a repository.
+Viewer access and CODEOWNERS ownership use the resolved GitHub identity.
+
 ## show one repository in the factory
 
 The first line of the list says which repositories it shows: `all repos`, or one repository's

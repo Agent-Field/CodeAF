@@ -10,7 +10,7 @@ import (
 )
 
 // checkoutsDoc is <root>/checkouts.json: where this machine has each watched
-// repository checked out, keyed by the short name the floor shows.
+// repository checked out. Older files may use a local alias as the key.
 type checkoutsDoc struct {
 	Schema    int               `json:"schema"`
 	Checkouts map[string]string `json:"checkouts"`
@@ -19,9 +19,17 @@ type checkoutsDoc struct {
 // CheckoutsPath is <root>/checkouts.json.
 func (st *Store) CheckoutsPath() string { return filepath.Join(st.root, "checkouts.json") }
 
-// Checkouts answers repository short name to folder. NO FILE IS NO CHECKOUTS
-// and no error. A key given as `owner/name` is stored under its short name.
+// Checkouts answers GitHub owner/name to folder. Local aliases are resolved
+// from origin or the watched repositories; unresolved aliases stay off the wire.
 func (st *Store) Checkouts() (map[string]string, error) {
+	ids, err := st.repositoryIdentities()
+	if err != nil {
+		return nil, err
+	}
+	return ids.dirs, nil
+}
+
+func (st *Store) checkoutRecords() (map[string]string, error) {
 	out := map[string]string{}
 	if st == nil {
 		return out, nil
@@ -48,22 +56,14 @@ func (st *Store) Checkouts() (map[string]string, error) {
 	return out, nil
 }
 
-// CheckoutDir is the folder recorded for repo, which may be the short name or
-// `owner/name`: the full name is tried first, then the part after the slash.
-// "" is not known.
+// CheckoutDir answers the folder for owner/name or an unambiguous local alias.
+// A full name never falls back to another owner's checkout of the same name.
 func (st *Store) CheckoutDir(repo string) string {
-	m, err := st.Checkouts()
+	ids, err := st.repositoryIdentities()
 	if err != nil {
 		return ""
 	}
-	repo = strings.TrimSpace(repo)
-	if d := m[repo]; d != "" {
-		return d
-	}
-	if _, short, ok := strings.Cut(repo, "/"); ok {
-		return m[short]
-	}
-	return ""
+	return ids.dirs[ids.resolve(repo)]
 }
 
 // SetCheckout records dir as where repo is checked out, temp+rename under the
@@ -73,9 +73,6 @@ func (st *Store) SetCheckout(repo, dir string) error {
 		return errors.New("factory store: no store")
 	}
 	repo, dir = strings.TrimSpace(repo), strings.TrimSpace(dir)
-	if _, short, ok := strings.Cut(repo, "/"); ok {
-		repo = short
-	}
 	if repo == "" || dir == "" {
 		return errors.New("factory store: a checkout needs a repository and a folder")
 	}
@@ -83,7 +80,7 @@ func (st *Store) SetCheckout(repo, dir string) error {
 		return err
 	}
 	return st.underLock(filepath.Join(st.root, "checkouts.lock"), func() error {
-		m, err := st.Checkouts()
+		m, err := st.checkoutRecords()
 		if err != nil {
 			return err
 		}

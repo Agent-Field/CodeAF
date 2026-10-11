@@ -168,7 +168,7 @@ func TestFactoryLaunchNeedsACheckout(t *testing.T) {
 	if err := seam.Launch(it.ID); err == nil || err.Error() != "not run · codeaf does not know where api is checked out" || len(launched) != 0 {
 		t.Fatalf("a launch with no checkout = %v, launched %v", err, launched)
 	}
-	if err := st.SetCheckout("api", t.TempDir()); err != nil {
+	if err := st.SetCheckout("acme/api", t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
 	if err := seam.Launch(it.ID); err != nil || len(launched) != 1 {

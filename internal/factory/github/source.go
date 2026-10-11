@@ -727,7 +727,10 @@ func (s *Source) Refetch(ctx context.Context, it factory.Item) (factory.Item, er
 	if it.Origin != factory.OriginForge || it.Num <= 0 || it.Product == "" || it.Repo == "" {
 		return factory.Item{}, factory.ErrNotOnSource
 	}
-	owner, name := it.Product, it.Repo
+	owner, name, ok := pullRepo(it)
+	if !ok {
+		return factory.Item{}, factory.ErrNotOnSource
+	}
 	s.whoAmI(ctx)
 	if it.Kind != factory.KindPR {
 		is, err := s.api.Issue(ctx, owner, name, it.Num)
@@ -873,7 +876,7 @@ func clip(s string, n int) string {
 // `open-pr`) and `close`. Anything else is refused as this source not having
 // that verb, and so is an item on a repository nobody watches.
 func (s *Source) Write(ctx context.Context, a factory.Action) (factory.Receipt, error) {
-	owner, name := a.Item.Product, a.Item.Repo
+	owner, name, _ := pullRepo(a.Item)
 	full := owner + "/" + name
 	if !s.watching(full) {
 		return factory.Receipt{}, fmt.Errorf("github writes only to a watched repository, and %s is not one: %w", full, factory.ErrReadOnly)

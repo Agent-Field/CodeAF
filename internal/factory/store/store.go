@@ -96,6 +96,9 @@ func (st *Store) Create(it factory.Item) (factory.Item, error) {
 	if it.ID != 0 {
 		return factory.Item{}, fmt.Errorf("factory store: a new item already has id %d", it.ID)
 	}
+	if err := st.normalizeRepository(&it); err != nil {
+		return factory.Item{}, err
+	}
 	if err := os.MkdirAll(st.root, 0o700); err != nil {
 		return factory.Item{}, err
 	}
@@ -184,6 +187,14 @@ func (st *Store) Get(id int) (factory.Item, error) {
 	if err != nil {
 		return factory.Item{}, err
 	}
+	ids, err := st.itemIdentities(d.Item)
+	if err != nil {
+		return factory.Item{}, err
+	}
+	d, err = st.migrateRepository(d, ids)
+	if err != nil {
+		return factory.Item{}, err
+	}
 	return d.Item, nil
 }
 
@@ -199,6 +210,8 @@ func (st *Store) List() ([]factory.Item, error) {
 		return nil, err
 	}
 	items := make([]factory.Item, 0, len(entries))
+	var ids repositoryIDs
+	loadedIDs := false
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
@@ -213,6 +226,17 @@ func (st *Store) List() ([]factory.Item, error) {
 		d, err := st.read(filepath.Join(st.root, entry.Name()))
 		if err != nil {
 			continue
+		}
+		if !loadedIDs && needsRepositoryLookup(d.Item) {
+			ids, err = st.repositoryIdentities()
+			if err != nil {
+				return nil, err
+			}
+			loadedIDs = true
+		}
+		d, err = st.migrateRepository(d, ids)
+		if err != nil {
+			return nil, err
 		}
 		items = append(items, d.Item)
 	}
@@ -237,6 +261,9 @@ func (st *Store) List() ([]factory.Item, error) {
 // wrong revision.
 func (st *Store) Save(it factory.Item) error {
 	if err := checkID(it.ID); err != nil {
+		return err
+	}
+	if err := st.normalizeRepository(&it); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(st.root, 0o700); err != nil {
@@ -310,6 +337,9 @@ func (st *Store) update(id int, stamp bool, change func(*factory.Item) error) er
 			before.PublishStatus = &copy
 		}
 		if err := change(&it); err != nil {
+			return err
+		}
+		if err := st.normalizeRepository(&it); err != nil {
 			return err
 		}
 		it.ID = id

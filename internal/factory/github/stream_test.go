@@ -164,7 +164,8 @@ func floorByRepo(t *testing.T, st *store.Store) map[string]int {
 	}
 	out := map[string]int{}
 	for _, it := range items {
-		out[it.Product+"/"+it.Repo]++
+		owner, name, _ := pullRepo(it)
+		out[owner+"/"+name]++
 	}
 	return out
 }

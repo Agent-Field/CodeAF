@@ -305,7 +305,8 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 }
 
 func itemKey(it factory.Item) string {
-	return strings.ToLower(it.Product + "/" + it.Repo + "#" + string(it.Kind) + strconv.Itoa(it.Num))
+	owner, name, _ := pullRepo(it)
+	return strings.ToLower(owner + "/" + name + "#" + string(it.Kind) + strconv.Itoa(it.Num))
 }
 
 // forgeChanged says whether any word the forge owns differs.
