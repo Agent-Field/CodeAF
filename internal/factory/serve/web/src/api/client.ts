@@ -1,4 +1,4 @@
-import type { ApiError, Approved, Job, Queue, Thread } from "./types"
+import type { ApiError, Approved, DryRunRead, Envelope, GitHubLink, Job, Me, PipelineRead, Queue, RepoList, Thread } from "./types"
 
 // The API is same-origin at /v1 (ARCHITECTURE §7). Every failure, whether the
 // server's {error} or a network fault, reaches the page as one FactoryError
@@ -31,12 +31,16 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T
 }
 
-function post(path: string, body: unknown = {}) {
-  return request<unknown>(path, {
-    method: "POST",
+function send<T>(method: string, path: string, body: unknown): Promise<T> {
+  return request<T>(path, {
+    method,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   })
+}
+
+function post(path: string, body: unknown = {}) {
+  return send<unknown>("POST", path, body)
 }
 
 export const api = {
@@ -50,4 +54,15 @@ export const api = {
   drop: (id: number) => post(`/jobs/${id}/drop`),
   reply: (id: number, words: string) => post(`/jobs/${id}/reply`, { words }),
   answer: (id: number, answer: { yes: boolean } | { words: string }) => post(`/jobs/${id}/answer`, answer),
+  // Settings. Connect sends token even when it is empty: an empty token is
+  // how the factory is told to use gh's existing login.
+  github: () => request<GitHubLink>("/github"),
+  connectGitHub: (token: string) => send<Envelope>("POST", "/github/connect", { token }),
+  repos: () => request<RepoList>("/repos"),
+  setRepos: (watched: string[]) => send<Envelope>("PUT", "/repos", { watched }),
+  pipeline: (owner: string, repo: string) =>
+    request<PipelineRead>(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pipeline`),
+  dryRun: (owner: string, repo: string) =>
+    request<DryRunRead>(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/dryrun`),
+  me: () => request<Me>("/me"),
 }

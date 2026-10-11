@@ -1756,8 +1756,8 @@ job. Keys: `j` and `k` move the cursor, `enter` opens, `y` approves, `a`
 answers, `?` lists the keys. On a phone the sidebar opens from the menu button
 and rows keep job, title, state, cost and the button. The page reads the queue
 again when the factory sends a change; a factory without the change stream is
-read once per load. New job, Audit log and Settings say `Coming`: they are not
-built yet.
+read once per load. New job and Audit log say `Coming`: they are not built
+yet. Settings is its own page.
 
 The job page (`/jobs/<id>`) is the brief. The header shows badges for kind,
 state, step `k/n`, cost and age, then `waiting on you since <time>`, `asked
@@ -1775,6 +1775,36 @@ total. A bar at the bottom holds `Approve` (its words say what it does, such as
 unless an approve waits), `Request changes` (asks for words), `Re-run checks`
 and `Drop`, each confirmed in a box. A taken approve shows `Approved · recorded
 as evt_…`; a refused verb shows the factory's sentence.
+
+## factory web settings — this factory, repos and your machines
+
+Settings is the dashboard page at `/settings`, also opened by clicking the
+factory address. The line under the title is that address. Two sections.
+
+**This factory.** GitHub is `GET /v1/github`. Connected, it says `connected as
+@<login> via <gh, token or env> · polling every <n>s`. With no login it says
+`not connected`. Connect and Reconnect send `POST /v1/github/connect` with
+`{"token":"…"}`. An empty token selects gh's existing login. Access is
+read-only: on this laptop it says `localhost only` and `no sign-in on this
+laptop`; from any other address it says `access token`. Repos are `GET
+/v1/repos`. The Watch switch sends `PUT /v1/repos` with
+`{"watched":["owner/repo"]}`, replacing the whole watched list. Open a
+repository for its pipeline, `GET /v1/repos/<owner>/<repo>/pipeline`, which is
+read-only. The badge says `read-only · edit in the repo`, or `defaults` when
+there is no file. No file says `no file · using defaults`. Dry run asks `GET
+/v1/repos/<owner>/<repo>/dryrun`. Until that endpoint exists the page says
+`not available`. A dry run that answers names which jobs would auto-start and
+which would ask first, and says `Nothing starts from a dry run.`
+
+**You.** Your machines are `GET /v1/me`: name, status (`busy`, `idle` or
+`offline`), the current job, and `takes unassigned: owner/repo` when
+`takes_unassigned` names that repository. Attach shows `codeaf attach
+<address>` and Copy. Take unassigned jobs is a switch per repository showing
+that map. The factory has no write for it yet, so moving a switch says `not
+available`. Sign out says `Ends this session. Your GitHub credential is
+removed from the factory.` It is hidden on loopback, where the factory keeps
+no session. Off loopback the button is shown and says `not available` until a
+sign-out endpoint exists.
 
 ## factory event stream and a job's manager thread
 

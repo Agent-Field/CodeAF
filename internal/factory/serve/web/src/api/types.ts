@@ -339,3 +339,47 @@ export interface Ask {
   job: number
   reason: string
 }
+
+// The reads below are the settings page's. They mirror the handler structs
+// in internal/factory/serve (github, repos, me, pipeline), which are not
+// types in wire.go. Field names are the JSON names.
+
+/** `GET /v1/github`: how this factory reaches GitHub. */
+export interface GitHubLink extends Envelope {
+  login: string
+  via: string
+  polling_every?: string
+}
+
+/** One repository the connected account can see (`GET /v1/repos`). */
+export interface AvailableRepo {
+  full: string
+  name: string
+  owner: string
+  private: boolean
+  pushed: string
+  open: number
+  checkout?: string
+}
+
+/** `GET /v1/repos`: the watched names and every repository available to watch. */
+export interface RepoList extends Envelope {
+  watched: string[]
+  available: AvailableRepo[]
+}
+
+/** `GET /v1/repos/{owner}/{repo}/pipeline`: the parsed pipeline, read-only. */
+export interface PipelineRead extends Envelope, Pipeline {
+  problems?: string[]
+  checkout?: string
+}
+
+/** `GET /v1/repos/{owner}/{repo}/dryrun`. Absent until that endpoint exists. */
+export interface DryRunRead extends Envelope, DryRun {}
+
+/** `GET /v1/me`: the person looking, their machines, and unassigned-work choices. */
+export interface Me extends Envelope {
+  handle: string
+  machines: Worker[] | null
+  takes_unassigned: Record<string, boolean> | null
+}
