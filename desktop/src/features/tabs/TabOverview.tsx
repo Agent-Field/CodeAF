@@ -151,7 +151,7 @@ export function TabOverview({ summaries, now, open, tabs, groups, activeId, onCl
         {!ordered.length && <Text className="overview-no-results">No matching tabs</Text>}
       </div>
       : open && (ordered.length
-        ? <OverviewFilmstrip tabs={ordered} summaries={summaries} activeId={activeId} cursorId={cursorId} position={sectionPosition(sections, cursorId)} onCursor={id => move(id, false)} onOpen={openTab}/>
+        ? <OverviewFilmstrip tabs={ordered} summaries={summaries} now={now} activeId={activeId} cursorId={cursorId} position={sectionPosition(sections, cursorId)} onCursor={id => move(id, false)} onOpen={openTab}/>
         : <Text className="overview-no-results">No matching tabs</Text>)}
   </dialog>;
 }
