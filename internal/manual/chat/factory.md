@@ -46,9 +46,8 @@ Run `codeaf attach <url> [--name name] [--token token]`, then open a new `codeaf
 window and `/factory`. The URL is the factory service's address, such as
 `http://team-host:7420`; HTTPS addresses work too. `--name` is how this machine is
 named there (default: its hostname). For a factory off loopback, ask its operator
-for the access token printed by `codeaf factory token` in the factory's machine
-and supply it with `--token`. A join link from `codeaf factory invite` is accepted
-as the argument in place of the URL; its address and token are saved the same way.
+for the access token printed by `codeaf factory token` on the factory's machine,
+or one minted by `codeaf factory token add`, and supply it with `--token`.
 Remote calls without that token are refused.
 
 `codeaf attach` saves the address, name and token in the private
@@ -104,47 +103,37 @@ An already running factory has its own launch: restart it with the flags to pin 
 `codeaf factory token` prints the host config's access token, creating and saving
 one if it is missing. `codeaf factory token --rotate` replaces it with a fresh
 random token and prints that token. Both accept `--config path`.
-`codeaf factory token --list` lists invite access tokens by id, who invited, and
-expiry, without printing the secret. `codeaf factory revoke <id>` removes one.
+`codeaf factory token add` mints a separate access token with an expiry (see
+give someone access to this factory). `codeaf factory token list` lists those
+rows by id and expiry, without printing the secret. `codeaf factory revoke <id>`
+removes one.
 Restart a running factory after rotation: the running service and its discovery
-file keep the token loaded at startup until they exit. An invite row is read from
-disk on the next request, so it does not need that restart. Remote callers send
-`Authorization: Bearer <access token>` or use a live browser session; loopback
-callers do not need either.
+file keep the host token loaded at startup until they exit. A row from `token add`
+is read from disk on the next request, so it does not need that restart. Remote
+callers send `Authorization: Bearer <access token>` or use a live browser session;
+loopback callers do not need either.
 
-## invite someone to this factory — codeaf factory invite, join link
+## give someone access to this factory — codeaf factory token add, token list, revoke
 
-`codeaf factory invite [--handle @name] [--expires 7d]` prints two lines. The
-first is `codeaf://attach?url=<factory address>&token=<token>&by=<handle>`.
-The second is the same link as https, `https://attach?url=<factory address>&token=<token>&by=<handle>`,
-for copying. The codeaf app registers the `codeaf://` scheme.
-
-`--handle` is who invited them. `@Sam` is stored as `sam`. With no `--handle`,
-the factory's connected GitHub login is used. With no login it refuses:
-`codeaf factory invite needs --handle @name; this factory has no GitHub login`.
+`codeaf factory token add [--expires 7d]` prints one access token and nothing else.
 `--expires` defaults to `7d`. `24h` and other Go durations work. Zero or a
 negative duration is refused: `expiry must be a duration like 7d or 24h`.
+`--config` selects the same host file `codeaf factory` uses.
 
-The address is the running service when `serve.json` names one that answers,
-otherwise the host config's `listen` value (`http://127.0.0.1:7420` unless
-changed). `--config` selects the same host file `codeaf factory` uses.
-
-The token is an access token row in `tokens.json` beside `config.yaml`, with
-`invited_by` and `expires`. `codeaf factory token --list` prints each row as
-`id handle time` and does not print the secret. `codeaf factory token` still
-prints the host token. `codeaf factory revoke <id>`
+The token is a row in `tokens.json` beside `config.yaml`, with `expires`.
+`codeaf factory token list` prints each row as `id time` and does not print the
+secret. `codeaf factory token` still prints the host token. `codeaf factory revoke <id>`
 removes that row and prints `revoked <id>`. An unknown id is refused:
 `no access token <id>`. A running service reads the file on the next request,
 so a revoked or expired token stops working without a restart, including a
 browser session created from it. `codeaf factory revoke-sessions` signs every
-browser out and does not delete these rows. An invite token cannot revoke
+browser out and does not delete these rows. A row from `token add` cannot revoke
 sessions; that still takes the host config's access token.
 
-`codeaf attach` accepts either line as its argument and saves the address and
-token in `attach.json`. Off loopback, send `Authorization: Bearer <token>` or
-enter the token at `/access`. `GET /v1/me` then includes `invited_by`. The host
-config token leaves `invited_by` out. `CODEAF_HOME` moves `tokens.json` with
-the rest of the factory host config.
+Off loopback, send `Authorization: Bearer <token>` or enter the token at
+`/access`. `codeaf attach <url> --token <token>` saves the address and token in
+`attach.json`. `CODEAF_HOME` moves `tokens.json` with the rest of the factory
+host config.
 
 ## factory browser access — /access, session cookie and revoke-sessions
 
@@ -165,7 +154,7 @@ An expired, unknown or revoked cookie returns HTTP 401 off loopback.
 for this codeaf home and prints `factory sessions revoked`. It accepts no arguments
 and uses the private discovery receipt to reach the local service. Without a
 running service it refuses. Bearer callers keep working; the token is not rotated.
-Invite tokens are not deleted; revoke one with `codeaf factory revoke <id>`.
+Rows from `codeaf factory token add` are not deleted; revoke one with `codeaf factory revoke <id>`.
 After revocation, enter the token at `/access` again.
 
 ## codeaf factory steps — print built-in step prompts
@@ -1767,20 +1756,20 @@ that cannot be read or parsed includes the reason in `problems`.
 
 Loopback connections are open. Connections from any other address require
 `Authorization: Bearer <access token>` using the host configuration's access token
-or an unexpired invite token, or a live session cookie created by entering that
-token at `/access`. With no host token and no unexpired invite token, remote
+or an unexpired token from `tokens.json`, or a live session cookie created by entering that
+token at `/access`. With no host token and no unexpired access token, remote
 access is refused. Forwarded headers do not grant loopback access. Without either
 credential the service answers HTTP 401 with
 `a bearer access token or live session is required; open /access to enter the token`.
 
 `/v1/me` returns the caller's lowercase `handle`, GitHub `name`, `avatar_url`,
-`scopes` array, public `session_id`, and `invited_by` when an invite was used.
+`scopes` array and public `session_id`.
 `codeaf_version` identifies the build and `contract` remains 1. `machines` lists
 that handle's own machines. `takes_unassigned` is the map last saved for that
-handle, or `{}` when none has been saved. Before GitHub sign-in, an invite's
-handle is `invited:<by>`; after sign-in the same token returns that holder's
-GitHub profile, including after a factory restart. A host access token or a
-credential-free loopback request uses the factory owner's connected GitHub login
+handle, or `{}` when none has been saved. Before GitHub sign-in, an access token
+uses the factory owner's connected GitHub login. After sign-in the same token
+returns that holder's GitHub profile, including after a factory restart. A host
+access token or a credential-free loopback request uses that same owner login
 (blank without a connection), with blank profile fields and no session id.
 These reads do not create a viewer session. A read whose seam
 door is absent answers HTTP 501 with `this factory does not provide that read`;
@@ -1793,8 +1782,8 @@ Set `github_client_id` in the factory host config to your GitHub OAuth app's
 client id, enable device flow in that app, and restart `codeaf factory serve`.
 With no client id, start answers HTTP 501:
 `GitHub device sign-in needs github_client_id in the factory host config`.
-Both sign-in routes use the existing access gate: remote callers need an invite
-or host token, or the cookie from `/access`; loopback stays open.
+Both sign-in routes use the existing access gate: remote callers need a host
+token or an unexpired access token, or the cookie from `/access`; loopback stays open.
 
 `POST /v1/auth/device` (no body or `{}`) returns `{factory, device_code,
 user_code, verification_uri, interval, expires_in}`. Enter `user_code` at
@@ -1811,11 +1800,9 @@ Success checks GitHub's `/user`, sets an HttpOnly session cookie, and returns
 that factory token as a bearer. The factory requests `read:user` and `repo`;
 `me.scopes` reports the scopes GitHub granted. GitHub's token stays in memory
 for repository checks and is never returned or written to disk. Sessions
-last 30 days, until revoke-sessions, invite revocation/expiry or service restart.
-The public `session_id` is separate from the credential. An invite binds to its
-first GitHub handle; another handle cannot replace it. Unsigned invites can
-act under `invited:<by>`, but approval requires GitHub sign-in (HTTP 403
-`GitHub sign-in is required to approve`).
+last 30 days, until revoke-sessions, token revocation or expiry, or service restart.
+The public `session_id` is separate from the credential. An access token binds to its
+first GitHub handle; another handle cannot replace it.
 
 Optional `team` restricts signed-in handles. Someone outside it gets HTTP 403:
 `this GitHub handle is not on the factory team`. The host token and open loopback
@@ -1825,11 +1812,11 @@ posted event uses that worker's registered handle.
 ## factory members — who has joined
 
 `GET /v1/members` lists GitHub people who have signed in. Each member has
-`handle`, `name`, `avatar_url`, `joined_at`, `last_seen`, `sessions` (how many
-of their sign-ins are still live) and `invited_by` when an invite was used.
+`handle`, `name`, `avatar_url`, `joined_at`, `last_seen` and `sessions` (how many
+of their sign-ins are still live).
 The list is the same for every caller who can open the factory. A restart
-keeps someone who accepted an invite: the profile and `joined_at` are stored
-on that invite row. A loopback sign-in that did not use an invite is remembered
+keeps someone who signed in with an access token: the profile and `joined_at` are stored
+on that token row. A loopback sign-in that did not use a token row is remembered
 only until the service restarts. `sessions` is 0 when they have no live sign-in.
 Contract stays 1. This list does not sign anyone out.
 
@@ -1842,7 +1829,7 @@ this request. `DELETE /v1/me/sessions/{id}` signs out that one session when it
 is yours. Another person's id answers HTTP 404 `session not found`.
 `POST /v1/me/sessions/signout-others` signs out your other sessions, leaves the
 one you called it with, and returns `{factory, signed_out}`. Signing out does
-not revoke an invite token and does not stop a machine that attached with its
+not revoke an access token and does not stop a machine that attached with its
 own worker credential. `codeaf factory revoke-sessions` still signs every
 browser out and still requires the host access token. Sessions last 30 days
 and are dropped when the service restarts.
@@ -1863,7 +1850,7 @@ cannot read answers HTTP 404, `job not found` or `repository not found`. A
 viewer who can read none of the factory's repositories gets HTTP 200 with an
 empty queue and `reason` `no_visible_repos`. Loopback without a signed-in
 session, and the host access token, still see the whole floor. After a restart
-the GitHub token is gone, so a returning invite sees `no_visible_repos` until
+the GitHub token is gone, so a returning access token sees `no_visible_repos` until
 they sign in again. The token is never returned and never written to disk.
 
 ## Your machines — busy, idle, offline — and pick up unassigned

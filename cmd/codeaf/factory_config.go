@@ -41,21 +41,22 @@ func (cfg factoryHostConfig) MarshalYAML() (any, error) {
 }
 
 func runFactoryToken(args []string) error {
+	if len(args) > 0 {
+		switch args[0] {
+		case "add":
+			return runFactoryTokenAdd(args[1:])
+		case "list":
+			return runFactoryTokenList(args[1:])
+		}
+	}
 	flags := commandFlags("factory token")
 	rotate := flags.Bool("rotate", false, "replace the access token")
-	list := flags.Bool("list", false, "list invite access tokens by id, who invited, and expiry")
 	path := flags.String("config", home.Join("factory", "config.yaml"), "host configuration")
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return wrongCall("use codeaf factory token [--rotate] [--list] [--config path]")
-	}
-	if *list && *rotate {
-		return wrongCall("use codeaf factory token --rotate or --list, not both")
-	}
-	if *list {
-		return listFactoryTokens(os.Stdout, *path)
+		return wrongCall("use codeaf factory token [--rotate] [--config path], token add or token list")
 	}
 	cfg, err := factoryHostConfigAt(*path, *rotate)
 	if err != nil {
@@ -117,7 +118,7 @@ func readFactoryHostConfig(path string) (factoryHostConfig, error) {
 		return cfg, fmt.Errorf("factory config %s: access_token must contain no whitespace", path)
 	}
 	for _, member := range cfg.Team {
-		if !inviteHandleOK(factory.NormalizeHandle(member)) {
+		if !factoryHandleOK(factory.NormalizeHandle(member)) {
 			return cfg, fmt.Errorf("factory config %s: team must contain GitHub handles", path)
 		}
 	}
@@ -127,6 +128,20 @@ func readFactoryHostConfig(path string) (factoryHostConfig, error) {
 		}
 	}
 	return cfg, nil
+}
+
+// factoryHandleOK is a GitHub login after NormalizeHandle: letters, digits
+// and hyphens, at most 39 characters.
+func factoryHandleOK(handle string) bool {
+	if handle == "" || len(handle) > 39 {
+		return false
+	}
+	for _, r := range handle {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
+			return false
+		}
+	}
+	return true
 }
 
 // writeFactoryPrivate publishes a complete private file by rename so readers

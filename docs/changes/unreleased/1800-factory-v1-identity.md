@@ -5,7 +5,6 @@ pr: 1800
 surface: [chat, remote, docs]
 invalidates:
   - "Every remote caller previously inherited the factory owner's GitHub login. Device-flow sessions now carry the caller's GitHub profile, and /v1/me, queue.me and HTTP action audit handles resolve that caller."
-  - "Invite tokens previously named only their inviter. They now resolve to invited:<by> until sign-in, then retain their holder's GitHub profile across service restarts without changing the token's expiry or revocation."
   - "The host config previously had no GitHub sign-in settings. github_client_id enables device flow and optional team restricts signed-in GitHub handles; loopback remains open as the owner."
 ---
 

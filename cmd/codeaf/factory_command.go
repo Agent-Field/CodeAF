@@ -41,7 +41,7 @@ func runFactory(args []string) error {
 	verb := "serve"
 	if len(args) > 0 {
 		switch args[0] {
-		case "serve", "steps", "convert", "token", "invite", "revoke", "revoke-sessions":
+		case "serve", "steps", "convert", "token", "revoke", "revoke-sessions":
 			verb, args = args[0], args[1:]
 		}
 	}
@@ -60,9 +60,6 @@ func runFactory(args []string) error {
 	}
 	if verb == "token" {
 		return runFactoryToken(args)
-	}
-	if verb == "invite" {
-		return runFactoryInvite(args)
 	}
 	if verb == "revoke" {
 		return runFactoryRevoke(args)
@@ -86,7 +83,7 @@ func runFactory(args []string) error {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return wrongCall("use codeaf factory serve, steps, convert, token, invite, revoke or revoke-sessions")
+		return wrongCall("use codeaf factory serve, steps, convert, token, revoke or revoke-sessions")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

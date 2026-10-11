@@ -263,16 +263,10 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 	h.notWaiting(w, r, it)
 }
 
-// approvalIdentity refuses an unsigned invite before any receipt is written.
+// approvalIdentity resolves the caller before any receipt is written.
 func (h *Handler) approvalIdentity(r *http.Request) error {
-	handle, err := h.callerHandle(r)
-	if err != nil {
-		return err
-	}
-	if strings.HasPrefix(handle, "invited:") {
-		return errSignInApproval
-	}
-	return nil
+	_, err := h.callerHandle(r)
+	return err
 }
 
 func (h *Handler) wroteApproval(w http.ResponseWriter, r *http.Request, it factory.Item, event string) {

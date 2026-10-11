@@ -20,7 +20,6 @@ func TestAddRemoveRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	row.InvitedBy = "sam"
 	row.Created = time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
 	row.Expires = row.Created.Add(7 * 24 * time.Hour)
 	if err := Add(path, row); err != nil {
@@ -34,7 +33,7 @@ func TestAddRemoveRoundTrip(t *testing.T) {
 		t.Fatalf("token file mode = %v, %v", info, err)
 	}
 	got, err := Load(path)
-	if err != nil || len(got) != 1 || got[0].ID != row.ID || got[0].Token != row.Token || got[0].InvitedBy != "sam" || !got[0].Expires.Equal(row.Expires) {
+	if err != nil || len(got) != 1 || got[0].ID != row.ID || got[0].Token != row.Token || !got[0].Expires.Equal(row.Expires) {
 		t.Fatalf("loaded = %+v, %v", got, err)
 	}
 	if err := Remove(path, row.ID); err != nil {

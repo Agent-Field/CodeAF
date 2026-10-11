@@ -21,15 +21,14 @@ const accessCookieName = "codeaf_factory_session"
 const accessFormLimit = 4096
 
 // accessSession is one browser sign-in. tokenID is empty when the host
-// config token created it. An invite row's id is kept so the session dies
-// when that row is revoked or expires, even inside the cookie's 30 days.
+// config token created it. A row's id is kept so the session dies when that
+// row is revoked or expires, even inside the cookie's 30 days.
 // githubToken is the person's GitHub credential for repository checks. It
 // stays in this process and is never written to disk or returned on the wire.
 type accessSession struct {
 	expires     time.Time
 	created     time.Time
 	lastSeen    time.Time
-	invitedBy   string
 	tokenID     string
 	id          string
 	device      string
@@ -74,8 +73,8 @@ func (h *Handler) allowed(r *http.Request) bool {
 // credential gives explicit credentials precedence over an open loopback peer.
 func (h *Handler) credential(r *http.Request) (accessSession, bool) {
 	if token := bearer(r); token != "" {
-		if by, id, ok := h.identifyToken(token); ok {
-			session := accessSession{invitedBy: by, tokenID: id, id: id}
+		if id, ok := h.identifyToken(token); ok {
+			session := accessSession{tokenID: id, id: id}
 			for _, row := range h.tokenRows() {
 				if row.ID == id {
 					session.profile = row.Profile
@@ -83,7 +82,7 @@ func (h *Handler) credential(r *http.Request) (accessSession, bool) {
 				}
 			}
 			if session.profile != nil && h.viewer != nil {
-				h.viewer.see(*session.profile, session.invitedBy, time.Time{}, h.now(), "")
+				h.viewer.see(*session.profile, time.Time{}, h.now(), "")
 			}
 			return session, true
 		}
@@ -115,17 +114,17 @@ func (h *Handler) liveSession(key string) (accessSession, bool) {
 	session.lastSeen = h.now()
 	h.sessions.ids[key] = session
 	if session.profile != nil && h.viewer != nil {
-		h.viewer.see(*session.profile, session.invitedBy, session.created, session.lastSeen, session.githubToken)
+		h.viewer.see(*session.profile, session.created, session.lastSeen, session.githubToken)
 	}
 	return session, true
 }
 
 // identifyToken accepts the host config token or an unexpired row. The row's
-// invited_by and id come back so a session can remember them. The host token
-// matches with an empty id.
-func (h *Handler) identifyToken(token string) (invitedBy, id string, ok bool) {
+// id comes back so a session can remember it. The host token matches with an
+// empty id.
+func (h *Handler) identifyToken(token string) (id string, ok bool) {
 	if token == "" {
-		return "", "", false
+		return "", false
 	}
 	got := sha256.Sum256([]byte(token))
 	floor := h.sameSecret(h.config.AccessToken, got)
@@ -143,12 +142,12 @@ func (h *Handler) identifyToken(token string) (invitedBy, id string, ok bool) {
 		matched = true
 	}
 	if matched {
-		return match.InvitedBy, match.ID, true
+		return match.ID, true
 	}
 	if floor {
-		return "", "", true
+		return "", true
 	}
-	return "", "", false
+	return "", false
 }
 
 func (h *Handler) sameSecret(secret string, got [sha256.Size]byte) bool {
@@ -159,8 +158,8 @@ func (h *Handler) sameSecret(secret string, got [sha256.Size]byte) bool {
 	return subtle.ConstantTimeCompare(want[:], got[:]) == 1
 }
 
-// floorToken is the host config secret. Invite rows are access tokens too,
-// and they do not get this door: revoking every session stays with the host.
+// floorToken is the host config secret. Other access-token rows do not get
+// this door: revoking every session stays with the host.
 func (h *Handler) floorToken(token string) bool {
 	if token == "" {
 		return false
@@ -223,7 +222,7 @@ func (h *Handler) access(w http.ResponseWriter, r *http.Request) {
 		}
 		token = values.Get("token")
 	}
-	invitedBy, tokenID, ok := h.identifyToken(token)
+	tokenID, ok := h.identifyToken(token)
 	if !ok {
 		h.fail(w, http.StatusUnauthorized, "invalid access token")
 		return
@@ -249,7 +248,7 @@ func (h *Handler) access(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.sessions.ids[sessionID] = accessSession{expires: expires, created: now, lastSeen: now,
-		invitedBy: invitedBy, tokenID: tokenID, id: "session_" + publicID, device: deviceLabel(r)}
+		tokenID: tokenID, id: "session_" + publicID, device: deviceLabel(r)}
 	h.sessions.mu.Unlock()
 	h.setSessionCookie(w, r, sessionID, accessSession{expires: expires})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -258,7 +257,7 @@ func (h *Handler) access(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) revokeSessions(w http.ResponseWriter, r *http.Request) {
 	// A browser cookie grants dashboard access, not permission to sign out
 	// every browser. The local command sends the service's bearer token.
-	// An invite row is an access token and still cannot do this.
+	// A minted access-token row still cannot do this.
 	if !h.floorToken(bearer(r)) {
 		h.fail(w, http.StatusUnauthorized, "a bearer access token is required to revoke sessions")
 		return

@@ -122,13 +122,6 @@ func validate(e Event) error {
 	if e.Kind == Approved && handle == "" {
 		return errors.New("factory record: approval requires a forge handle")
 	}
-	// An unsigned invite is an audit identity, never a forge approval.
-	if e.Kind != Approved && strings.HasPrefix(handle, "invited:") {
-		handle = strings.TrimPrefix(handle, "invited:")
-		if handle == "" {
-			return errors.New("factory record: invalid invite handle")
-		}
-	}
 	for _, c := range handle {
 		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
 			return errors.New("factory record: invalid forge handle")

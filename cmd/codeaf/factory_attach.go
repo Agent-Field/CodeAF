@@ -65,20 +65,11 @@ func runAttach(args []string) error {
 	if flags.NArg() != 1 {
 		return wrongCall("use codeaf attach <url> [--name name] [--token token]")
 	}
-	base, tokenFromLink, linked, err := parseFactoryJoinLink(flags.Arg(0))
+	base, err := factoryURL(flags.Arg(0))
 	if err != nil {
 		return wrongCall(err.Error())
 	}
-	if !linked {
-		base, err = factoryURL(flags.Arg(0))
-		if err != nil {
-			return wrongCall(err.Error())
-		}
-	}
 	secret := strings.TrimSpace(*token)
-	if secret == "" {
-		secret = tokenFromLink
-	}
 	who := strings.TrimSpace(*name)
 	if who == "" {
 		who, _ = os.Hostname()

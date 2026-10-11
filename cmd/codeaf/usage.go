@@ -150,12 +150,14 @@ const undefinedFlagPrefix = "flag provided but not defined: "
 // better answer for, where the command's own usage under the refusal is the
 // answer.
 //
-// `--yolo` IS THE ONE ENTRY, and it earns a table rather than an `if` because
-// the vocabulary a person carries between the two surfaces is exactly what this
-// is for: the conversation has `--yolo`, `do` and `exec` and `run` do not, and
-// a word taught on one surface and refused on another with no explanation is
-// the surface teaching a wrong thing.
+// `--yolo` is the vocabulary a person carries from the conversation: `do`,
+// `exec` and `run` do not have it, and a word taught on one surface and refused
+// on another with no explanation is the surface teaching a wrong thing.
+// `factory token --list` is the same kind of miss: the listing is `token list`.
 func flagInstead(command, flag string) string {
+	if command == "factory token" && flag == "list" {
+		return "use codeaf factory token list"
+	}
 	if flag != "yolo" {
 		return ""
 	}

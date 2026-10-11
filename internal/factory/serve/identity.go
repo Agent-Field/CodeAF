@@ -12,7 +12,7 @@ import (
 )
 
 // callerHandle resolves credentials before consulting the host's GitHub login.
-// An unsigned invite names its inviter without pretending that person is here.
+// A token with no signed-in profile is the factory owner.
 func (h *Handler) callerHandle(r *http.Request) (string, error) {
 	if r.Context().Value(workerKey{}) != nil {
 		return requestWorker(r).Handle, nil
@@ -21,19 +21,16 @@ func (h *Handler) callerHandle(r *http.Request) (string, error) {
 		if session.profile != nil {
 			return session.profile.Handle, nil
 		}
-		if session.tokenID != "" && session.invitedBy != "" {
-			return "invited:" + session.invitedBy, nil
-		}
 	}
 	return h.seam.PersonHandle(r.Context())
 }
 
-func (h *Handler) meBody(profile api.Profile, id, by string) api.Me {
+func (h *Handler) meBody(profile api.Profile, id string) api.Me {
 	if profile.Scopes == nil {
 		profile.Scopes = []string{}
 	}
 	return api.Me{Factory: h.factory, CodeafVersion: h.factory.Version, Contract: api.Contract,
-		Profile: profile, SessionID: id, InvitedBy: by, Machines: []api.Machine{}, TakesUnassigned: map[string]bool{},
+		Profile: profile, SessionID: id, Machines: []api.Machine{}, TakesUnassigned: map[string]bool{},
 		Access: h.accessMode(), PollingEvery: h.pollingEvery(), ServedBy: h.servedBy()}
 }
 

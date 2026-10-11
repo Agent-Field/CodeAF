@@ -7,7 +7,6 @@
   "avatar_url": "https://avatars.githubusercontent.com/u/42",
   "scopes": ["read:user", "read:org"],
   "session_id": "session_fixture",
-  "invited_by": "sam",
   "machines": [],
   "takes_unassigned": {},
   "access": "token",

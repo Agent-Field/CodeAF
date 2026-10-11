@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -88,8 +87,6 @@ func (h *Handler) sendAuditCSV(w http.ResponseWriter, data []byte) {
 	_, _ = w.Write(data)
 }
 
-var errSignInApproval = errors.New("GitHub sign-in is required to approve")
-
 func (h *Handler) recordApproval(r *http.Request, it factory.Item, edited bool) (string, error) {
 	if h.config.Record == nil {
 		if h.config.RecordApproval != nil {
@@ -100,9 +97,6 @@ func (h *Handler) recordApproval(r *http.Request, it factory.Item, edited bool) 
 	handle, err := h.callerHandle(r)
 	if err != nil {
 		return "", err
-	}
-	if strings.HasPrefix(handle, "invited:") {
-		return "", errSignInApproval
 	}
 	detail := "proof"
 	if it.State != factory.StateLanded {

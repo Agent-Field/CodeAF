@@ -32,15 +32,14 @@ type deviceFlows struct {
 }
 
 type deviceFlow struct {
-	mu        sync.Mutex
-	code      string
-	caller    [32]byte
-	expires   time.Time
-	next      time.Time
-	interval  int
-	tokenID   string
-	invitedBy string
-	consumed  bool
+	mu       sync.Mutex
+	code     string
+	caller   [32]byte
+	expires  time.Time
+	next     time.Time
+	interval int
+	tokenID  string
+	consumed bool
 }
 
 func decodeGitHub(body io.Reader, out any) error {
@@ -97,7 +96,7 @@ func (h *Handler) startDevice(w http.ResponseWriter, r *http.Request) {
 	session, _ := h.credential(r)
 	h.auth.pending[key] = &deviceFlow{code: gh.DeviceCode, caller: flowCaller(r),
 		expires: now.Add(time.Duration(gh.ExpiresIn) * time.Second), next: now.Add(time.Duration(gh.Interval) * time.Second),
-		interval: gh.Interval, tokenID: session.tokenID, invitedBy: session.invitedBy}
+		interval: gh.Interval, tokenID: session.tokenID}
 	h.write(w, http.StatusOK, api.Device{Factory: h.factory, DeviceCode: key, UserCode: gh.UserCode,
 		VerificationURI: gh.VerificationURI, Interval: gh.Interval, ExpiresIn: gh.ExpiresIn})
 }
@@ -199,7 +198,7 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	now := h.now()
 	session := accessSession{id: "session_" + id, expires: now.Add(accessSessionTTL), created: now, lastSeen: now,
-		profile: &profile, tokenID: flow.tokenID, invitedBy: flow.invitedBy, device: deviceLabel(r),
+		profile: &profile, tokenID: flow.tokenID, device: deviceLabel(r),
 		githubToken: exchange.AccessToken}
 	if flow.tokenID != "" {
 		if err := tokens.Bind(h.config.TokensPath, flow.tokenID, profile, now); h.failed(w, err) {
@@ -214,10 +213,10 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	h.sessions.ids[credential] = session
 	h.sessions.mu.Unlock()
-	h.viewer.see(profile, flow.invitedBy, now, now, exchange.AccessToken)
+	h.viewer.see(profile, now, now, exchange.AccessToken)
 	h.setSessionCookie(w, r, credential, session)
 	h.write(w, http.StatusOK, api.SignedIn{Factory: h.factory, AccessToken: credential, TokenType: "bearer",
-		ExpiresIn: int(accessSessionTTL.Seconds()), Me: h.meBody(profile, session.id, session.invitedBy)})
+		ExpiresIn: int(accessSessionTTL.Seconds()), Me: h.meBody(profile, session.id)})
 }
 
 func (h *Handler) forgetDevice(key string, flow *deviceFlow) {

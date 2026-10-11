@@ -17,7 +17,6 @@ type Me struct {
 	Contract      int     `json:"contract"`
 	Profile
 	SessionID       string          `json:"session_id"`
-	InvitedBy       string          `json:"invited_by,omitempty"`
 	Machines        []Machine       `json:"machines"`
 	TakesUnassigned map[string]bool `json:"takes_unassigned"`
 	Access          string          `json:"access"`
@@ -57,7 +56,6 @@ type Member struct {
 	AvatarURL string    `json:"avatar_url"`
 	JoinedAt  time.Time `json:"joined_at"`
 	LastSeen  time.Time `json:"last_seen"`
-	InvitedBy string    `json:"invited_by,omitempty"`
 	Sessions  int       `json:"sessions"`
 }
 

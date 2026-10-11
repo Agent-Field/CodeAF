@@ -31,10 +31,9 @@ type viewerState struct {
 }
 
 type memberMemory struct {
-	profile   api.Profile
-	joined    time.Time
-	lastSeen  time.Time
-	invitedBy string
+	profile  api.Profile
+	joined   time.Time
+	lastSeen time.Time
 }
 
 type repoGrant struct {
@@ -52,7 +51,7 @@ func newViewerState() *viewerState {
 
 // see records a signed-in person. An empty token does not forget one already
 // held, and a later sign-in does not move joined earlier than the first.
-func (v *viewerState) see(profile api.Profile, invitedBy string, joined, seen time.Time, token string) {
+func (v *viewerState) see(profile api.Profile, joined, seen time.Time, token string) {
 	if v == nil || profile.Handle == "" {
 		return
 	}
@@ -62,7 +61,6 @@ func (v *viewerState) see(profile api.Profile, invitedBy string, joined, seen ti
 	if known.profile.Handle == "" {
 		known.profile = profile
 		known.joined = joined
-		known.invitedBy = invitedBy
 	} else {
 		if profile.Name != "" {
 			known.profile.Name = profile.Name
@@ -72,9 +70,6 @@ func (v *viewerState) see(profile api.Profile, invitedBy string, joined, seen ti
 		}
 		if len(profile.Scopes) > 0 {
 			known.profile.Scopes = profile.Scopes
-		}
-		if invitedBy != "" && known.invitedBy == "" {
-			known.invitedBy = invitedBy
 		}
 		if !joined.IsZero() && (known.joined.IsZero() || joined.Before(known.joined)) {
 			known.joined = joined

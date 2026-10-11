@@ -40,8 +40,8 @@ type Config struct {
 	// GitHubHTTPClient permits a fake transport while keeping production URLs fixed.
 	GitHubHTTPClient *http.Client
 	// TokensPath names access-token rows beside the host config. Empty means
-	// only AccessToken is accepted. It is read on each request so invite and
-	// revoke apply without restarting the service.
+	// only AccessToken is accepted. It is read on each request so a revoke
+	// applies without restarting the service.
 	TokensPath   string
 	PollingEvery time.Duration
 	// Store enables worker writes to the same documents the local runner uses.
@@ -417,7 +417,7 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	if h.failed(w, err) {
 		return
 	}
-	body := h.meBody(profile, session.id, session.invitedBy)
+	body := h.meBody(profile, session.id)
 	body.Machines = machines
 	body.TakesUnassigned = takes
 	h.write(w, http.StatusOK, body)

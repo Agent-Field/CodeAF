@@ -109,7 +109,7 @@ func identityHandler(t *testing.T, g *fakeGitHub) (*Handler, *time.Time, tokens.
 	if err != nil {
 		t.Fatal(err)
 	}
-	row.InvitedBy, row.Expires = "sam", now.Add(time.Hour)
+	row.Expires = now.Add(time.Hour)
 	if err := tokens.Save(path, []tokens.Token{row}); err != nil {
 		t.Fatal(err)
 	}
@@ -162,12 +162,12 @@ func readIdentity(t *testing.T, h *Handler, token string, cookie *http.Cookie) a
 	return me
 }
 
-func TestDeviceSignInBindsCallerCookieBearerInviteAndAudit(t *testing.T) {
+func TestDeviceSignInBindsCallerCookieBearerAndAudit(t *testing.T) {
 	g := &fakeGitHub{t: t, login: "Priya"}
 	h, now, row := identityHandler(t, g)
 	before := readIdentity(t, h, row.Token, nil)
-	if before.Handle != "invited:sam" || before.InvitedBy != "sam" {
-		t.Fatalf("unsigned invite = %+v", before)
+	if before.Handle != "factory-owner" {
+		t.Fatalf("unsigned token = %+v", before)
 	}
 	oldCookie := accessRequest(h, "POST", "/access", row.Token, nil, true).Result().Cookies()[0]
 	device := startIdentity(t, h, row.Token, nil)
@@ -183,7 +183,7 @@ func TestDeviceSignInBindsCallerCookieBearerInviteAndAudit(t *testing.T) {
 	}
 	want := api.Profile{Handle: "priya", Name: "Priya Nair", AvatarURL: "https://avatars.githubusercontent.com/u/42", Scopes: []string{"read:user", "read:org"}}
 	for _, me := range []api.Me{signed.Me, readIdentity(t, h, signed.AccessToken, nil), readIdentity(t, h, "", cookies[0]), readIdentity(t, h, row.Token, nil), readIdentity(t, h, "", oldCookie)} {
-		if !reflect.DeepEqual(me.Profile, want) || me.InvitedBy != "sam" || me.Contract != 1 || me.Machines == nil || me.TakesUnassigned == nil || me.SessionID == "" {
+		if !reflect.DeepEqual(me.Profile, want) || me.Contract != 1 || me.Machines == nil || me.TakesUnassigned == nil || me.SessionID == "" {
 			t.Fatalf("caller = %+v", me)
 		}
 	}
@@ -218,7 +218,7 @@ func TestDeviceSignInBindsCallerCookieBearerInviteAndAudit(t *testing.T) {
 	defer restarted.Close()
 	restarted.sessions.now = func() time.Time { return *now }
 	if me := readIdentity(t, restarted, row.Token, nil); me.Handle != "priya" {
-		t.Fatalf("invite lost identity on restart = %+v", me)
+		t.Fatalf("token lost identity on restart = %+v", me)
 	}
 	if w := identityRequest(restarted, "GET", "/v1/me", "", signed.AccessToken, nil); w.Code != 401 {
 		t.Fatalf("old session survived restart = %d", w.Code)
@@ -304,7 +304,7 @@ func TestDeviceCookieSignInOwnerLoopbackAndAllowlist(t *testing.T) {
 		t.Fatalf("cookie sign-in = %d %s", w.Code, w.Body)
 	}
 	cookie = w.Result().Cookies()[0]
-	if me := readIdentity(t, h, "", cookie); me.Handle != "priya" || me.InvitedBy != "" {
+	if me := readIdentity(t, h, "", cookie); me.Handle != "priya" {
 		t.Fatalf("cookie caller = %+v", me)
 	}
 	if me := readIdentity(t, h, "floor-secret", nil); me.Handle != "factory-owner" {
@@ -416,7 +416,7 @@ func TestSignedInCallerOwnsTakeAndStopReceipts(t *testing.T) {
 	}
 }
 
-func TestSignedInInviteCannotChangeHolderOrOutliveExpiry(t *testing.T) {
+func TestAccessTokenCannotChangeHolderOrOutliveExpiry(t *testing.T) {
 	g := &fakeGitHub{t: t, login: "priya"}
 	h, now, row := identityHandler(t, g)
 	device := startIdentity(t, h, row.Token, nil)
@@ -430,34 +430,14 @@ func TestSignedInInviteCannotChangeHolderOrOutliveExpiry(t *testing.T) {
 	device = startIdentity(t, h, row.Token, nil)
 	*now = now.Add(5 * time.Second)
 	if w := pollIdentity(h, device, row.Token, nil); w.Code != 403 {
-		t.Fatalf("invite switched holder = %d %s", w.Code, w.Body)
+		t.Fatalf("token switched holder = %d %s", w.Code, w.Body)
 	}
 	if me := readIdentity(t, h, row.Token, nil); me.Handle != "priya" {
 		t.Fatalf("holder changed = %+v", me)
 	}
 	*now = row.Expires
 	if w := identityRequest(h, "GET", "/v1/me", "", signed.AccessToken, nil); w.Code != 401 {
-		t.Fatalf("session outlived invite = %d", w.Code)
-	}
-}
-
-func TestUnsignedInviteAuditsItsIdentityAndRequiresSignInToApprove(t *testing.T) {
-	h, _, row := identityHandler(t, &fakeGitHub{t: t, login: "priya"})
-	w := identityRequest(h, "POST", "/v1/jobs/2/run", "", row.Token, nil)
-	if w.Code != 200 {
-		t.Fatalf("unsigned run = %d %s", w.Code, w.Body)
-	}
-	events, err := h.config.Record.Since(context.Background(), time.Time{})
-	if err != nil || len(events) != 1 || events[0].Handle != "invited:sam" {
-		t.Fatalf("unsigned audit = %+v %v", events, err)
-	}
-	w = identityRequest(h, "POST", "/v1/jobs/9/approve", "", row.Token, nil)
-	if w.Code != 403 || !strings.Contains(w.Body.String(), "GitHub sign-in is required to approve") {
-		t.Fatalf("unsigned approval = %d %s", w.Code, w.Body)
-	}
-	events, err = h.config.Record.Since(context.Background(), time.Time{})
-	if err != nil || len(events) != 1 {
-		t.Fatalf("refused approval was recorded: %+v %v", events, err)
+		t.Fatalf("session outlived token = %d", w.Code)
 	}
 }
 

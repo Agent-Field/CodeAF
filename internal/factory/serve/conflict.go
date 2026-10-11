@@ -160,7 +160,7 @@ func classify(err error) (int, string) {
 	switch {
 	case errors.Is(err, fs.ErrNotExist), errors.Is(err, store.ErrNotFound):
 		return http.StatusNotFound, "not_found"
-	case errors.Is(err, fs.ErrPermission), errors.Is(err, errSignInApproval):
+	case errors.Is(err, fs.ErrPermission):
 		return http.StatusForbidden, "not_allowed"
 	case errors.Is(err, context.DeadlineExceeded):
 		return http.StatusGatewayTimeout, ""

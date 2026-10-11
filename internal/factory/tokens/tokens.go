@@ -1,11 +1,10 @@
 // Package tokens keeps factory access-token rows on disk.
 //
 // The host config's own access token stays in config.yaml: rotating that
-// secret is a different door and must not drop invites. Every other access
-// token, including one minted by `codeaf factory invite`, is a row in
-// tokens.json beside that file. A row may name who invited and when it
-// expires. The service reads the file on each request, so revoke applies
-// without a restart.
+// secret is a different door and must not drop these rows. Every other access
+// token, including one minted by `codeaf factory token add`, is a row in
+// tokens.json beside that file. A row may name when it expires. The service
+// reads the file on each request, so revoke applies without a restart.
 package tokens
 
 import (
@@ -36,21 +35,20 @@ type Profile struct {
 	Scopes    []string `json:"scopes"`
 }
 
-// Token is one access token row. InvitedBy and Expires are set for an invite
-// and left empty for a row that does not expire and names nobody.
+// Token is one access token row. Expires is set when the row should stop
+// working, and left empty for a row that does not expire.
 type Token struct {
-	ID        string    `json:"id"`
-	Token     string    `json:"token"`
-	InvitedBy string    `json:"invited_by,omitempty"`
-	Expires   time.Time `json:"expires,omitempty"`
-	Created   time.Time `json:"created,omitempty"`
+	ID      string    `json:"id"`
+	Token   string    `json:"token"`
+	Expires time.Time `json:"expires,omitempty"`
+	Created time.Time `json:"created,omitempty"`
 	// Joined is when this row's holder first signed in with GitHub.
 	Joined  time.Time `json:"joined,omitempty"`
 	Profile *Profile  `json:"profile,omitempty"`
 }
 
-// Mint chooses a new id and secret. The caller sets InvitedBy, Expires and
-// Created before Add.
+// Mint chooses a new id and secret. The caller sets Expires and Created
+// before Add.
 func Mint() (Token, error) {
 	secret := make([]byte, 32)
 	if _, err := rand.Read(secret); err != nil {
@@ -170,8 +168,9 @@ func writePrivate(path string, body []byte) error {
 	return os.Rename(f.Name(), path)
 }
 
-// Bind remembers who accepted an invite under the same lock as invite and revoke.
-// A shared invite cannot silently switch from one GitHub person to another.
+// Bind remembers who signed in with this access token, under the same lock as
+// add and revoke. The first GitHub handle sticks; a later sign-in as someone
+// else is refused.
 func Bind(path, id string, profile Profile, now time.Time) error {
 	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {

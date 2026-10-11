@@ -16,12 +16,12 @@ func TestMembersSessionsAndVisibilityStayContractOne(t *testing.T) {
 	}
 	member, err := json.Marshal(Member{
 		Handle: "priya", Name: "Priya Nair", AvatarURL: "https://avatars.githubusercontent.com/u/42",
-		JoinedAt: at, LastSeen: at, InvitedBy: "sam", Sessions: 2,
+		JoinedAt: at, LastSeen: at, Sessions: 2,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertKeys(t, member, "handle", "name", "avatar_url", "joined_at", "last_seen", "invited_by", "sessions")
+	assertKeys(t, member, "handle", "name", "avatar_url", "joined_at", "last_seen", "sessions")
 
 	session, err := json.Marshal(Session{ID: "session_fixture", Device: "this device", Created: at, LastSeen: at, Current: false})
 	if err != nil {

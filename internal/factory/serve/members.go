@@ -8,15 +8,14 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 )
 
-// members is GET /v1/members. People come from live sign-ins and from invite
-// rows that have bound a GitHub profile, so a restart does not forget someone
-// who joined with an invite.
+// members is GET /v1/members. People come from live sign-ins and from
+// access-token rows that have bound a GitHub profile, so a restart does not
+// forget someone who signed in.
 func (h *Handler) members(w http.ResponseWriter, r *http.Request) {
 	type row struct {
 		profile  api.Profile
 		joined   time.Time
 		lastSeen time.Time
-		invited  string
 		sessions int
 	}
 	by := map[string]*row{}
@@ -32,9 +31,6 @@ func (h *Handler) members(w http.ResponseWriter, r *http.Request) {
 		}
 		m := take(tok.Profile.Handle)
 		m.profile = *tok.Profile
-		if m.invited == "" {
-			m.invited = tok.InvitedBy
-		}
 		if !tok.Joined.IsZero() && (m.joined.IsZero() || tok.Joined.Before(m.joined)) {
 			m.joined = tok.Joined
 		}
@@ -54,9 +50,6 @@ func (h *Handler) members(w http.ResponseWriter, r *http.Request) {
 				if person.profile.AvatarURL != "" {
 					m.profile.AvatarURL = person.profile.AvatarURL
 				}
-			}
-			if m.invited == "" {
-				m.invited = person.invitedBy
 			}
 			if !person.joined.IsZero() && (m.joined.IsZero() || person.joined.Before(m.joined)) {
 				m.joined = person.joined
@@ -80,9 +73,6 @@ func (h *Handler) members(w http.ResponseWriter, r *http.Request) {
 		if m.profile.Handle == "" {
 			m.profile = *session.profile
 		}
-		if m.invited == "" {
-			m.invited = session.invitedBy
-		}
 		if !session.created.IsZero() && (m.joined.IsZero() || session.created.Before(m.joined)) {
 			m.joined = session.created
 		}
@@ -102,7 +92,7 @@ func (h *Handler) members(w http.ResponseWriter, r *http.Request) {
 		m := by[handle]
 		out = append(out, api.Member{
 			Handle: m.profile.Handle, Name: m.profile.Name, AvatarURL: m.profile.AvatarURL,
-			JoinedAt: m.joined, LastSeen: m.lastSeen, InvitedBy: m.invited, Sessions: m.sessions,
+			JoinedAt: m.joined, LastSeen: m.lastSeen, Sessions: m.sessions,
 		})
 	}
 	h.write(w, http.StatusOK, api.Members{Factory: h.factory, Members: out})
@@ -164,7 +154,7 @@ func (h *Handler) deleteSession(w http.ResponseWriter, r *http.Request) {
 }
 
 // signOutOthers is POST /v1/me/sessions/signout-others. The session that
-// called it stays. An invite token is not a device session and is not revoked.
+// called it stays. An access-token row is not a device session and is not revoked.
 func (h *Handler) signOutOthers(w http.ResponseWriter, r *http.Request) {
 	caller, _ := h.credential(r)
 	if caller.profile == nil || caller.profile.Handle == "" {
