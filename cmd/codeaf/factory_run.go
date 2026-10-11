@@ -17,6 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	factoryworker "github.com/Agent-Field/codeaf/internal/factory/worker"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -98,6 +99,7 @@ func startFactoryWorker(st *store.Store, workspace, profileDir string, parent se
 		if strings.TrimSpace(env.Get(factoryNoWorkerEnv)) == "1" {
 			return
 		}
+		clearDeadFactoryMirrors(filepath.Join(st.Root(), "workers"))
 		mirror, err := store.Open(filepath.Join(st.Root(), "workers", strconv.Itoa(os.Getpid())))
 		if err != nil {
 			return
@@ -115,6 +117,18 @@ func startFactoryWorker(st *store.Store, workspace, profileDir string, parent se
 			})
 		})
 	})
+}
+
+// clearDeadFactoryMirrors removes the mirrors of worker processes that are
+// gone: a process killed mid-job never removed its own, and its jobs went
+// back to the queue when their leases expired.
+func clearDeadFactoryMirrors(dir string) {
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if pid, err := strconv.Atoi(e.Name()); err == nil && pid > 0 && !processgroup.ProcessAlive(pid) {
+			_ = os.RemoveAll(filepath.Join(dir, e.Name()))
+		}
+	}
 }
 
 // stopFactoryHere ends this process's worker loop and takes down the factory
