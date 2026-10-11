@@ -179,7 +179,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
     else if (summary.firstLine) dispatch({ type: 'title', id, title: summary.firstLine, source: 'message' });
   }
   function openTaskTab(source: Pane, taskId: string, title: string) {
-    // The new tab owns this route. The source pane is not updated: a chat and the task opened from it are two views, even though they share a session file.
+    // `from` is the whole decision. The reducer hands the drill over when this pane is already showing that task, and leaves the route when it is not.
     const tab: Tab = { id: crypto.randomUUID(), kind: 'task', title, titleSource: 'manual', pinned: false, draft: '', sessionFile: source.sessionFile, route: { taskId, back: [''], forward: [] } };
     dispatch({ type: 'open-task', tab, background: true, from: source.id });
   }
