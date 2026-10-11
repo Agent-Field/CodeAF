@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/publish"
 )
 
 // ApplyReport runs inside the store's existing Update path. The same fold,
@@ -29,6 +30,26 @@ func ApplyReport(it *factory.Item, report factory.RunReport, now time.Time) erro
 	}
 	if report.ChangeBase != "" {
 		it.ChangeBase = report.ChangeBase
+	}
+	if report.HeadCommit != "" {
+		if !publish.ValidCommit(report.HeadCommit) {
+			return fmt.Errorf("head_commit requires a full commit SHA")
+		}
+		it.HeadCommit = report.HeadCommit
+	}
+	if p := report.Publishing; p != nil {
+		switch p.State {
+		case "queued", "pushing", "opened", "failed":
+		default:
+			return fmt.Errorf("unknown publishing state")
+		}
+		if p.Attempt < 1 || (p.Code != "" && !publish.Known(p.Code)) {
+			return fmt.Errorf("invalid publishing attempt or code")
+		}
+		if p.State == "failed" && p.Code == "" {
+			return fmt.Errorf("failed publishing requires a code")
+		}
+		it.PublishStatus = p
 	}
 	ensureStream(it, now)
 	if report.Publish != "" {

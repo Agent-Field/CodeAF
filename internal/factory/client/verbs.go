@@ -39,7 +39,7 @@ func (c *Client) hold(id int, on bool) error {
 }
 
 func (c *Client) answer(id int, yes bool, words string) error {
-	return c.postID(id, "answer", answerBody{Yes: yes, Words: words})
+	return c.postID(id, "answer", answerBody{Yes: yes, Words: words, Commit: c.seenJob(id).HeadCommit})
 }
 
 func (c *Client) steer(id int, words string) error {
@@ -58,7 +58,11 @@ func (c *Client) say(ctx context.Context, id int, words string) error {
 // Whether a habit is due is this machine's recipe, and this door does not
 // carry it, so the bool stays false.
 func (c *Client) signOff(id int, edited bool) (bool, error) {
-	err := c.postID(id, "approve", editedBody{Edited: edited})
+	job := c.seenJob(id)
+	if job.Publishing != nil && job.Publishing.State == "failed" {
+		return false, c.postID(id, "retry_publish", nil)
+	}
+	err := c.postID(id, "approve", editedBody{Edited: edited, Commit: job.HeadCommit})
 	return false, err
 }
 
@@ -117,8 +121,9 @@ func jobPath(id int, name string) string {
 }
 
 type answerBody struct {
-	Yes   bool   `json:"yes"`
-	Words string `json:"words,omitempty"`
+	Commit string `json:"commit,omitempty"`
+	Yes    bool   `json:"yes"`
+	Words  string `json:"words,omitempty"`
 }
 
 type wordsBody struct {
@@ -126,7 +131,8 @@ type wordsBody struct {
 }
 
 type editedBody struct {
-	Edited bool `json:"edited"`
+	Commit string `json:"commit,omitempty"`
+	Edited bool   `json:"edited"`
 }
 
 type toBody struct {

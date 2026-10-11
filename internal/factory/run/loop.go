@@ -226,6 +226,7 @@ func (r *Runner) Launch(id int) error {
 			it.Heard = h.At
 		}
 		it.State = factory.StateQueued
+		it.PublishStatus, it.Publishing = nil, false
 		it.Question, it.QKind = "", ""
 		it.Proof, it.Policy = nil, nil
 		it.Stream = &factory.Stream{Started: now, Phases: loopPhases(*it)}
@@ -267,6 +268,9 @@ func launchable(it factory.Item) error {
 	case factory.StateNew, factory.StateDismissed, "":
 		return nil
 	case factory.StateLanded:
+		if it.PublishStatus != nil && it.PublishStatus.State == "failed" {
+			return nil
+		}
 		return fmt.Errorf("%s has landed · approve it, or request changes", it.Ref())
 	case factory.StateShipped:
 		return fmt.Errorf("%s has shipped", it.Ref())
@@ -1226,6 +1230,28 @@ func loopFirstLine(s string) string {
 func (lp *floorLoop) land(c *loopCtl) {
 	mode := ""
 	if it, err := lp.r.opts.Store.Get(c.id); err == nil {
+		// Commit before opening proof so approval names the work being shown.
+		if lp.r.opts.Workdir != nil {
+			if dir, err := lp.r.opts.Workdir(it); err == nil {
+				git := lp.r.opts.Git
+				if git == nil {
+					git = ExecGit{}
+				}
+				if _, err := git.Run(dir, "rev-parse", "HEAD"); err == nil {
+					if err := commitApproved(git, dir, it, ""); err != nil {
+						_ = lp.write(c, func(saved *factory.Item) error {
+							saved.State = factory.StateNeedsYou
+							saved.Question, saved.QKind = "Could not prepare the commit: "+err.Error(), "step"
+							return nil
+						})
+						return
+					}
+				}
+				if head, err := git.Run(dir, "rev-parse", "HEAD"); err == nil {
+					_ = lp.write(c, func(saved *factory.Item) error { saved.HeadCommit = strings.TrimSpace(head); return nil })
+				}
+			}
+		}
 		mode = lp.r.publishPreview(it)
 	}
 	now := lp.r.now()
@@ -1752,6 +1778,7 @@ func sendBackStored(it *factory.Item, words string, now time.Time) (string, erro
 	s.Cur = at
 	s.Ended = time.Time{}
 	it.State = factory.StateQueued
+	it.PublishStatus, it.Publishing = nil, false
 	loopSay(it, now, "said", "changes requested: "+words)
 	return name, nil
 }

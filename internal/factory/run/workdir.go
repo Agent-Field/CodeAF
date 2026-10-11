@@ -381,7 +381,12 @@ func GitPush(git Git) func(dir, branch string) error {
 		if _, err := git.Run(dir, "remote", "get-url", "origin"); err != nil {
 			return ErrNoRemote
 		}
-		_, err := git.Run(dir, "push", "-u", "origin", branch)
+		output, err := git.Run(dir, "push", "-u", "origin", branch)
+		if err != nil && strings.TrimSpace(output) != "" {
+			// Git's final hint can hide the rejection; keep the complete push
+			// response so publishing classifies the failure before displaying it.
+			return fmt.Errorf("%s: %w", strings.TrimSpace(output), err)
+		}
 		return err
 	}
 }

@@ -1987,10 +1987,11 @@ the one way its work leaves your machine, and it always waits for a person. The 
 records your approval (`evt_` and eight hex digits, under your GitHub handle) only
 after the claim check accepts, then
 queues the job again with a publish for a worker; its log says `approved · publishing`,
-then `publishing · Factory-Approval: evt_… @handle`.
+then `publishing · Factory-Approval: evt_… @handle <commit>`.
 
-The worker that takes it commits everything left in the item's worktree as one commit —
-the item's title, a blank line, `Factory-Approval: evt_… @handle` — pushes the item's
+Before opening the proof gate, the holding worker commits the worktree with the
+item's title and reports `head_commit`. Approval names that exact commit. The publishing
+worker refuses a moved head or uncommitted edits; it pushes the approved item's
 branch (`factory/<number>-<slug>`) to `origin` with your connected GitHub token, never
 with force, and opens the pull request into the default branch. The body is `Closes #12.`
 for an issue with new commits, `Proof · N of M claims shown`, one `✓`/`✕` line per claim, and the trailer
@@ -2005,7 +2006,9 @@ request with the same body and trailer, and the item's `pr` is that pull request
 
 **Never without consent.** An approve with no recorded approval publishes nothing and
 says `job requires a recorded approval before publishing`. A push or a write that fails
-lands the item again with `could not publish: …` on its log; approve again to retry. The
+lands the item again with `could not publish: …` on its log. The approval stays valid
+for the same commit: use **Retry publishing**, without another approval. A changed
+commit needs approval again. The
 lease records the worker's stable machine id, and the job keeps that id after the lease
 ends. Publishing, re-running checks and resumed runs are offered only to workers on
 that machine, including a new process or another slot there. While queued it says
@@ -2017,7 +2020,7 @@ The TUI says `publishing` between approval and the pull request, then `shipped`.
 
 If the worktree is clean and its branch has no commits beyond
 the default branch, approving posts the proof summary as a comment on the issue,
-with `Factory-Approval: evt_… @handle` as its last line. Nothing is pushed and no
+with `Factory-Approval: evt_… @handle <commit>` as its last line. Nothing is pushed and no
 pull request is opened. The proof gate says `Approve → comment on #N`; the wire
 says `publish: "comment"` instead of `publish: "pr"`. The job becomes done with
 `pr: null` and `comment: "<comment url>"`, and the record says `posted · comment · <url>`.
@@ -2025,8 +2028,12 @@ A clean worktree with commits of its own still publishes a pull request.
 
 ## factory HTTP approve — plan approval, proof approval and the event receipt
 
-`POST /v1/jobs/{id}/approve` takes `{"edited":true}` when you changed the result
-first, or `{}` or no body for ordinary approval. A job waiting at an approve
+`POST /v1/jobs/{id}/approve` takes `{"commit":"<head_commit>"}`; add
+`"edited":true` when approving a result with a claim not shown. Use the job's
+`head_commit` as it stood when you opened it. A moved head returns HTTP 409
+`{"reason":"changed_since_opened","head_commit":"<new head>"}` with
+`This job changed since you opened it`. A reported head without `commit` returns
+422. Only older jobs with no reported head retain `{}` or no-body approval. A job waiting at an approve
 step receives a yes answer. A ready proof goes through the factory's sign-off
 door, which still enforces the claims and policy gate and then publishes (see
 approving at the proof gate publishes). Any other job answers
@@ -2038,6 +2045,50 @@ with `#N has a claim not shown` and writes no event. When the check passes, the
 receipt is written and the publish door reads it as the trailer. A plan approval
 writes the receipt only after the answer door accepts. A refused door leaves no
 `approved` event. A factory with no record refuses with `approval requires a factory record`.
+
+## factory publishing states, publish failed and Retry publishing
+
+Jobs and queue rows carry optional `publishing` with `state` (`queued`, `pushing`,
+`opened`, `failed`), `code`, `detail`, `pr: {number,url}`, `attempt`, and `at`.
+An attempt starts at 1 and increases on retry. `opened` means the PR was opened
+or the proof comment was posted; it does not mean merged. The existing
+`desk.publishing` boolean remains available.
+
+A failed publish is in Needs you with `gate: "publish_failed"`; an app draws it
+in red and offers **Retry publishing**. `POST /v1/jobs/{id}/retry_publish` runs
+publishing again with the same recorded approval, without a new approval event.
+Only the job's person can retry (the approving person when the job has no owner).
+A changed commit returns 409 `changed_since_opened`: open the new version and
+approve again. A job that is not failed returns 409. Run again, request changes or recheck clears
+the previous publishing outcome and opens fresh proof. A failed publish can be
+run again when its failure code calls for rebuilding the work. When the holding machine
+is away, publishing stays `queued` with `code: "machine_offline"`; it waits for
+that machine to return, keeping the approval.
+
+## factory publish failure codes and next steps
+
+`GET /v1/publish/codes` returns `{factory, codes: [{code,next}]}`. The factory owns
+this table so an app can show the next action without guessing from GitHub's message.
+`publishing.code` names its row; `publishing.detail` preserves the failure message.
+
+Codes are `branch_protected`, `no_push_permission`, `push_rejected` (the remote
+branch moved), `pr_create_forbidden`, `repo_archived`, `github_unreachable`,
+`rate_limited`, `machine_offline`, `worktree_missing`, and `unknown`. Fix access
+or protection before retrying. A moved branch or missing worktree needs the job
+run again; an archived repo needs Cancel job. A connection or rate limit failure
+can be retried when GitHub is available. The machine-offline case waits on its own.
+
+## factory HTTP double click, repeat requests and Idempotency-Key
+
+Every POST accepts `Idempotency-Key`. Repeating a key on the same route with the
+same credential within 24 hours returns the first status, headers and body and
+does not run the action again, even if the repeated body differs. Choose a new
+key for a new action, including a later Retry publishing. A repeat may replay an
+error; fix it and send a new key. Store-backed factories retain responses across
+restarts. A handler without a store retains them only until that handler stops.
+Keys from different credentials or routes do not share responses. Concurrent
+double approval creates one approval receipt and one publish signal even without
+a key. An affirmative `answer` at a plan gate also takes the job's `commit`.
 
 ## factory HTTP add a job, watched repositories and connect GitHub
 
@@ -2444,7 +2495,8 @@ these reads. This change adds no record key to the terminal factory.
 
 The service's Approve door writes an `approved` event with an `evt_` id followed by
 eight hexadecimal digits before asking the runner to approve the plan or proof.
-It returns that id as `event`. Answering yes at an approve step also records consent
+It returns that id as `event`, and the record carries the approved `commit`.
+Answering yes at an approve step also records consent
 before the runner continues. The handle comes from the caller's signed-in GitHub profile, or the access
 credential's identity before sign-in; the caller's body cannot choose it. A missing identity, unavailable record or failed disk write
 refuses approval. A runner refusal can leave the recorded approval attempt; it
@@ -2452,7 +2504,7 @@ does not make the job done or bypass the proof gate.
 
 Approving at the proof gate publishes with that trailer (see approving at the proof
 gate publishes). A post stage reads the same record: it appends
-`Factory-Approval: evt_<8hex> @handle` to a pull request's or a comment's body, and
+`Factory-Approval: evt_<8hex> @handle <commit>` to a pull request's or a comment's body, and
 refuses every verb (comment, label, close, pr) without a recorded approval for that job. A new start, a drop or
 requested changes withdraws earlier approval; the next post needs fresh consent.
 After a successful source write the executor records `posted`, including cost and

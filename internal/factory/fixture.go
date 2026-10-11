@@ -112,6 +112,10 @@ func Fixture(now time.Time) Snapshot {
 			items[i].Comments = []Comment{}
 		}
 	}
+	items[1].HeadCommit = "1111111111111111111111111111111111111111"
+	items[9].HeadCommit = "2222222222222222222222222222222222222222"
+	items[9].PullRequest = &PullRequest{Number: 1664, URL: "https://github.com/agentfield/codeaf/pull/1664"}
+	items[9].PublishStatus = &Publishing{State: "opened", PR: &PublishedPR{Number: 1664, URL: items[9].PullRequest.URL}, Attempt: 1, At: h(6)}
 	items[1].Thread = []Message{{ID: "line_fixture", From: "manager", Text: "The filter ordering fix is in progress.", At: m(2)}}
 	items[1].AnsweredQuestions = []Question{{Text: "Keep the current filter?", Kind: "scope", State: "answered", Answer: &Answer{By: "santosh", Text: "yes", At: m(5), Event: "evt_fixture"}}}
 	var hours [24]int

@@ -8,6 +8,7 @@ import (
 	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/publish"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 )
 
@@ -195,7 +196,8 @@ func push(run func(dir, branch string) error, dir string, it factory.Item, branc
 	case errors.Is(err, ErrNoRemote):
 		return fmt.Errorf("%s has no remote to push to", it.Ref())
 	}
-	return fmt.Errorf("could not push %s: %s", branch, lastLine(err.Error()))
+	return &publish.Error{Code: publish.Failure(err, "push"), Detail: err.Error(),
+		Err: fmt.Errorf("could not push %s: %s", branch, lastLine(err.Error()))}
 }
 
 // branchFor is the branch the item's worktree was made on, as its stream log

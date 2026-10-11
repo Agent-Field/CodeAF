@@ -350,10 +350,12 @@ type Item struct {
 	WorktreeMachine string `json:",omitempty"`
 	// Publishing lasts from recorded approval until the publisher reports its
 	// outcome, so the surface cannot say shipped before the pull request exists.
-	Publishing bool `json:",omitempty"`
-	Triage     Triage
-	Stages     []Stage // the item's copy of the recipe, toggled
-	Cap        float64
+	Publishing    bool        `json:",omitempty"`
+	HeadCommit    string      `json:",omitempty"`
+	PublishStatus *Publishing `json:",omitempty"`
+	Triage        Triage
+	Stages        []Stage // the item's copy of the recipe, toggled
+	Cap           float64
 
 	// Assignee is the forge's person; Taker and Starter keep the person who
 	// took or started otherwise unassigned work. Author is never ownership:

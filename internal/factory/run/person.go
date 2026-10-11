@@ -27,6 +27,7 @@ func QueueItem(it *factory.Item, now time.Time) error {
 		return err
 	}
 	it.State = factory.StateQueued
+	it.PublishStatus, it.Publishing = nil, false
 	it.Question, it.QKind = "", ""
 	it.Proof, it.Policy = nil, nil
 	it.Stream = &factory.Stream{Started: now, Phases: loopPhases(*it)}
@@ -120,5 +121,6 @@ func RecheckItem(it *factory.Item) error {
 		return fmt.Errorf("%s has not landed", it.Ref())
 	}
 	it.State = factory.StateQueued
+	it.PublishStatus, it.Publishing = nil, false
 	return nil
 }

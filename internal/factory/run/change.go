@@ -119,11 +119,15 @@ func readChange(dir, base string) (*factory.Change, error) {
 // recordChange runs on the holding machine after every completed round,
 // including a failed check. A failed read retains the last readable snapshot.
 func (lp *floorLoop) recordChange(c *loopCtl, job Job, res factory.StageResult) {
+	head, headErr := (ExecGit{}).Run(job.Dir, "rev-parse", "HEAD")
 	change, err := readChange(job.Dir, job.Item.ChangeBase)
 	if err != nil {
 		change = nil
 	}
 	_ = lp.write(c, func(it *factory.Item) error {
+		if headErr == nil && head != "" {
+			it.HeadCommit = strings.TrimSpace(head)
+		}
 		var tests []factory.StepTests
 		if it.Change != nil {
 			copy := *it.Change

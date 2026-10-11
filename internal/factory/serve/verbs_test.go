@@ -207,7 +207,7 @@ func TestVerbInputRefusalsDoNotTouchSeam(t *testing.T) {
 		{"POST", "/v1/jobs/no/drop", "", 422},
 		{"POST", "/v1/jobs/999999999999999999999/run", "", 422},
 		{"POST", "/v1/jobs/999/run", "", 404},
-		{"POST", "/v1/jobs/2/approve", `{}`, 409},
+		{"POST", "/v1/jobs/2/approve", `{"commit":"1111111111111111111111111111111111111111"}`, 409},
 		{"POST", "/v1/jobs/1/answer", `{}`, 422},
 		{"POST", "/v1/jobs/1/answer", `{"yes":"yes"}`, 422},
 		{"POST", "/v1/jobs/2/steer", `{"words":" "}`, 422},

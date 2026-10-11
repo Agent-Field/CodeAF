@@ -31,6 +31,12 @@ func Diff(prev, cur factory.Item) (factory.RunReport, bool) {
 	if prev.ChangeBase != cur.ChangeBase {
 		r.ChangeBase = cur.ChangeBase
 	}
+	if prev.HeadCommit != cur.HeadCommit {
+		r.HeadCommit = cur.HeadCommit
+	}
+	if !reflect.DeepEqual(prev.PublishStatus, cur.PublishStatus) {
+		r.Publishing = cur.PublishStatus
+	}
 	r.Stages = stepsMoved(ps.Phases, cs.Phases)
 	r.Log = newLines(ps.Log, cs.Log)
 	if cur.State == factory.StateLanded || cur.State == factory.StateShipped {

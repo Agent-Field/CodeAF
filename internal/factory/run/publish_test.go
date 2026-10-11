@@ -10,10 +10,130 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/publish"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 const testTrailer = "Factory-Approval: evt_0123abcd @octocat"
+
+// Git's last hint is for the log; classification needs the rejection before
+// it, and a branch title containing worktree must not change the remedy.
+func TestPushKeepsTheFailureCodeAndDetailBehindItsSingleDisplayLine(t *testing.T) {
+	message := "remote: GH006: protected branch factory/12-worktree\nhint: see the documentation"
+	err := push(func(string, string) error { return errors.New(message) }, "/work", factory.Item{}, "factory/12-worktree")
+	if err == nil || strings.Contains(err.Error(), "\n") || publish.ErrorCode(publish.Wrap(err, "push")) != "branch_protected" || publish.ErrorDetail(err) != message {
+		t.Fatalf("push lost its display or code: %v", err)
+	}
+}
+
+// The push refspec names the approved object even when something else moves
+// the local branch between the cleanliness check and Git's push.
+func TestBoundPushNamesTheApprovedObjectWhenTheBranchMoves(t *testing.T) {
+	g := newPublishRig(t, factory.Item{Num: 12, Kind: factory.KindIssue, Repo: "acme/api", Title: "Fix it"})
+	mustGit(t, g.dir, "add", "ledger.go")
+	mustGit(t, g.dir, "commit", "-q", "-m", "approved work")
+	head := mustGit(t, g.dir, "rev-parse", "HEAD")
+	if err := g.st.Update(g.id, func(it *factory.Item) error { it.HeadCommit = head; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	branch := branchFor(g.item(t))
+	push := g.r.opts.Push
+	g.r.opts.Push = func(dir, ref string) error {
+		if ref != head+":refs/heads/"+branch {
+			t.Fatalf("push ref=%q", ref)
+		}
+		mustGit(t, dir, "commit", "--allow-empty", "-q", "-m", "unapproved work")
+		return push(dir, ref)
+	}
+	if err := g.r.Publish(g.id, testTrailer+" "+head); err != nil {
+		t.Fatal(err)
+	}
+	if opened := g.settle(t); opened.State != factory.StateShipped {
+		t.Fatalf("publish=%+v", opened.PublishStatus)
+	}
+	if pushed := mustGit(t, g.bare, "rev-parse", "refs/heads/"+branch); pushed != head {
+		t.Fatalf("pushed %s instead of approved %s", pushed, head)
+	}
+}
+
+// Doing more work withdraws the previous publish outcome, so the next proof
+// gate asks for approval instead of offering a retry of obsolete work.
+func TestNewWorkClearsThePreviousPublishFailure(t *testing.T) {
+	for _, verb := range []string{"run", "request_changes", "recheck"} {
+		t.Run(verb, func(t *testing.T) {
+			it := factory.Item{Repo: "api", State: factory.StateLanded, Publishing: true,
+				PublishStatus: &factory.Publishing{State: "failed", Code: "unknown", Attempt: 1},
+				Stream:        &factory.Stream{Phases: []factory.Phase{{Name: "test", State: factory.PhaseDone}}}}
+			var err error
+			switch verb {
+			case "run":
+				err = QueueItem(&it, time.Now())
+			case "request_changes":
+				err = SendBackItem(&it, "prove it", time.Now())
+			case "recheck":
+				err = RecheckItem(&it)
+			}
+			if err != nil || it.State != factory.StateQueued || it.PublishStatus != nil || it.Publishing {
+				t.Fatalf("new work retained publishing: %+v, %v", it, err)
+			}
+		})
+	}
+}
+
+// The real worktree must keep the approved object through failure and retry.
+// Publishing never commits an edit that arrived after the proof gate opened.
+func TestCommitBoundPublishFailureRetryAndUnseenWork(t *testing.T) {
+	for _, dirty := range []bool{false, true} {
+		t.Run(map[bool]string{false: "retry", true: "unseen edit"}[dirty], func(t *testing.T) {
+			g := newPublishRig(t, factory.Item{Num: 12, Kind: factory.KindIssue, Repo: "acme/api", Title: "Fix it"})
+			mustGit(t, g.dir, "add", "ledger.go")
+			mustGit(t, g.dir, "commit", "-q", "-m", "reviewed work")
+			head := mustGit(t, g.dir, "rev-parse", "HEAD")
+			if err := g.st.Update(g.id, func(it *factory.Item) error {
+				it.HeadCommit = head
+				it.MarkPublishing("queued", "", "", time.Now())
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			trailer := testTrailer + " " + head
+			push := g.r.opts.Push
+			g.r.opts.Push = func(string, string) error { return errors.New("permission denied") }
+			if dirty {
+				if err := os.WriteFile(filepath.Join(g.dir, "unseen.go"), []byte("package ledger\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := g.r.Publish(g.id, trailer); err != nil {
+				t.Fatal(err)
+			}
+			failed := g.settle(t)
+			if failed.State != factory.StateLanded || failed.PublishStatus.State != "failed" || len(g.src.got) != 0 || mustGit(t, g.dir, "rev-parse", "HEAD") != head {
+				t.Fatalf("failure=%+v, writes=%+v", failed.PublishStatus, g.src.got)
+			}
+			if dirty {
+				if !strings.Contains(failed.PublishStatus.Detail, "approve again") {
+					t.Fatalf("unseen edit=%+v", failed.PublishStatus)
+				}
+				return
+			}
+			if failed.PublishStatus.Code != "no_push_permission" {
+				t.Fatalf("code=%+v", failed.PublishStatus)
+			}
+			g.r.opts.Push = push
+			if err := g.st.Update(g.id, func(it *factory.Item) error { it.MarkPublishing("queued", "", "", time.Now()); return nil }); err != nil {
+				t.Fatal(err)
+			}
+			if err := g.r.Publish(g.id, trailer); err != nil {
+				t.Fatal(err)
+			}
+			opened := g.settle(t)
+			if opened.PublishStatus.State != "opened" || opened.PublishStatus.Attempt != 2 || opened.HeadCommit != head || len(g.src.got) != 1 || !strings.HasSuffix(g.src.got[0].Body, trailer) {
+				t.Fatalf("retry=%+v, writes=%+v", opened.PublishStatus, g.src.got)
+			}
+		})
+	}
+}
 
 // prSource answers a pull request receipt with its number.
 type prSource struct{ fakeSource }

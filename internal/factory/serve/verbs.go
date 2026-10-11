@@ -27,6 +27,7 @@ func (h *Handler) verbs() {
 	h.postJob("answer", s.Answer != nil, h.answer)
 	h.postJob("steer", s.Steer != nil, h.wordsVerb("steer", s.Steer))
 	h.postJob("approve", true, h.approve)
+	h.postJob("retry_publish", h.config.Store != nil && h.seam.SignOff != nil, h.guarded("retry_publish", h.retryPublish))
 	h.postJob("request_changes", s.SendBack != nil, h.recordedWords(s.SendBack, record.RequestChanges))
 	h.postJob("recheck", s.Reverify != nil, h.guarded("recheck", h.idVerb(s.Reverify)))
 	// Shape is present even when the seam has no Shape door: a worker holding
@@ -47,6 +48,13 @@ type jobAction func(http.ResponseWriter, *http.Request, factory.Item)
 func (h *Handler) postJob(verb string, exists bool, action jobAction) {
 	h.route("/v1/jobs/{id}/"+verb, map[string]http.HandlerFunc{
 		http.MethodPost: func(w http.ResponseWriter, r *http.Request) {
+			if verb == "approve" || verb == "retry_publish" || verb == "answer" {
+				unlock, err := h.lockConsent()
+				if h.failed(w, err) {
+					return
+				}
+				defer unlock()
+			}
 			if !h.requireVerb(w, exists) {
 				return
 			}
@@ -201,6 +209,7 @@ func (h *Handler) wordsVerb(verb string, door func(int, string) error) jobAction
 
 func (h *Handler) answer(w http.ResponseWriter, r *http.Request, it factory.Item) {
 	var body struct {
+		Commit string      `json:"commit"`
 		Yes    *bool       `json:"yes"`
 		Words  string      `json:"words"`
 		Expect *api.Expect `json:"expect,omitempty"`
@@ -213,15 +222,15 @@ func (h *Handler) answer(w http.ResponseWriter, r *http.Request, it factory.Item
 		return
 	}
 	yes := body.Yes != nil && *body.Yes
+	if yes && it.QKind == factory.QKindApprove && !h.commitFresh(w, it, body.Commit) {
+		return
+	}
 	h.finish(w, h.recordAnswer(r, it, yes, body.Words))
 }
 
 func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Item) {
-	var body struct {
-		Edited bool        `json:"edited"`
-		Expect *api.Expect `json:"expect,omitempty"`
-	}
-	if !h.decode(w, r, &body, true) || !h.fresh(w, r, it, "approve", body.Expect) || h.failed(w, h.approvalIdentity(r)) {
+	var body api.Approve
+	if !h.decode(w, r, &body, true) || !h.commitFresh(w, it, body.Commit) || !h.fresh(w, r, it, "approve", body.Expect) || h.failed(w, h.approvalIdentity(r)) {
 		return
 	}
 	// A CLAIM THE DOOR WOULD REFUSE NEVER BECOMES A RECEIPT. The check runs
@@ -240,7 +249,7 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 		if h.failed(w, err) {
 			return
 		}
-		if _, err = h.seam.SignOff(it.ID, body.Edited); h.failed(w, err) {
+		if _, err = h.seam.SignOff(it.ID, body.Edited); h.changedApproval(w, r, err) || h.failed(w, err) {
 			return
 		}
 		h.wroteApproval(w, r, it, event)

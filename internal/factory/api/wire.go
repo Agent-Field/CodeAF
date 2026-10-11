@@ -253,11 +253,13 @@ type Job struct {
 	// HeldBy is the machine working this job now. It is set from the live
 	// lease, including when that machine belongs to someone else: the roster
 	// on /v1/me does not list another person's machines.
-	HeldBy     *HeldBy  `json:"held_by,omitempty"`
-	PR         *PR      `json:"pr"` // Null when the worker published a comment.
-	Publish    string   `json:"publish,omitempty"`
-	CommentURL string   `json:"comment,omitempty"`
-	Desk       *JobDesk `json:"desk,omitempty"`
+	HeldBy     *HeldBy             `json:"held_by,omitempty"`
+	PR         *PR                 `json:"pr"` // Null when the worker published a comment.
+	Publish    string              `json:"publish,omitempty"`
+	CommentURL string              `json:"comment,omitempty"`
+	HeadCommit string              `json:"head_commit,omitempty"`
+	Publishing *factory.Publishing `json:"publishing,omitempty"`
+	Desk       *JobDesk            `json:"desk,omitempty"`
 }
 
 // JobDesk is what the TUI page reads off a job that the dashboard does not
@@ -504,4 +506,12 @@ type DryRun struct {
 type Ask struct {
 	Job    int    `json:"job"`
 	Reason string `json:"reason"`
+}
+
+// Approve names the exact head that the person saw. An empty commit is kept
+// only for jobs from older machines that have never reported their head.
+type Approve struct {
+	Commit string  `json:"commit"`
+	Edited bool    `json:"edited,omitempty"`
+	Expect *Expect `json:"expect,omitempty"`
 }

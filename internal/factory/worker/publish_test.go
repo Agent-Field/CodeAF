@@ -97,7 +97,7 @@ func TestApprovingTheProofPublishesThePullRequest(t *testing.T) {
 		o.Workdir = func(it factory.Item) (string, error) { return workdirs.For(it, checkout) }
 		o.Push = run.GitPush(run.ExecGit{})
 	})
-	id := g.add(t, factory.Stage{Name: factory.ApproveName, Kind: factory.StageGate, On: true}, check("true"))
+	id := g.add(t, factory.Stage{Name: factory.ApproveName, Kind: factory.StageGate, On: true}, check("printf 'package ledger\\n\\nconst fixed = true\\n' > ledger.go"))
 	if err := g.floor.Launch(id); err != nil {
 		t.Fatal(err)
 	}
@@ -133,10 +133,6 @@ func TestApprovingTheProofPublishesThePullRequest(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	// The job's work, left in its worktree as a stage leaves it.
-	if err := os.WriteFile(filepath.Join(workdirs.Dir(landed), "ledger.go"), []byte("package ledger\n\nconst fixed = true\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 
 	if _, err := g.doors.SignOff(id, false); err == nil || !strings.Contains(err.Error(), "requires a recorded approval") {
 		t.Fatalf("an approve with no recorded approval = %v", err)
@@ -145,11 +141,11 @@ func TestApprovingTheProofPublishesThePullRequest(t *testing.T) {
 		t.Fatalf("an unrecorded approve moved the job: %s %+v", it.State, src.writes())
 	}
 
-	event, err := g.record.Append(context.Background(), record.Event{Kind: record.Approved, Job: id, Handle: "octocat", Detail: "proof"})
+	event, err := g.record.Append(context.Background(), record.Event{Kind: record.Approved, Job: id, Handle: "octocat", Detail: "proof", Commit: landed.HeadCommit})
 	if err != nil {
 		t.Fatal(err)
 	}
-	trailer := "Factory-Approval: " + event.ID + " @octocat"
+	trailer := "Factory-Approval: " + event.ID + " @octocat " + landed.HeadCommit
 	if _, err := g.doors.SignOff(id, false); err != nil {
 		t.Fatal(err)
 	}
@@ -165,8 +161,8 @@ func TestApprovingTheProofPublishesThePullRequest(t *testing.T) {
 	if writes[0].Branch != branch {
 		t.Fatalf("the pr is from %q, not %q", writes[0].Branch, branch)
 	}
-	if msg := git(t, bare, "log", "-1", "--format=%B", branch); msg != "prove it builds\n\n"+trailer {
-		t.Fatalf("the pushed commit says %q", msg)
+	if head := git(t, bare, "rev-parse", branch); head != landed.HeadCommit {
+		t.Fatalf("pushed %q instead of the approved commit %q", head, landed.HeadCommit)
 	}
 
 	// The pr on the wire, as any window reads the job.
@@ -241,7 +237,7 @@ func TestNoDiffHTTPApprovalPublishesCommentAndFinishes(t *testing.T) {
 	seam.GitHub = func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: "octocat"}, nil }
 	handler := serve.New(seam, serve.Config{Store: g.st, Record: g.record})
 	defer handler.Close()
-	request := httptest.NewRequest("POST", "/v1/jobs/"+strconv.Itoa(id)+"/approve", nil)
+	request := httptest.NewRequest("POST", "/v1/jobs/"+strconv.Itoa(id)+"/approve", strings.NewReader(`{"commit":"`+landed.HeadCommit+`"}`))
 	request.RemoteAddr = "127.0.0.1:1234"
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
@@ -255,7 +251,7 @@ func TestNoDiffHTTPApprovalPublishesCommentAndFinishes(t *testing.T) {
 		t.Fatalf("done receipt = %+v", it)
 	}
 	writes := src.writes()
-	trailer := "Factory-Approval: " + receipt.Event + " @octocat"
+	trailer := "Factory-Approval: " + receipt.Event + " @octocat " + landed.HeadCommit
 	if len(writes) != 1 || writes[0].Verb != "comment" || !strings.HasSuffix(writes[0].Body, "\n"+trailer) || !strings.Contains(writes[0].Body, "Proof ·") {
 		t.Fatalf("writes = %+v", writes)
 	}

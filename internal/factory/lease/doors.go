@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/publish"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/run"
 )
@@ -172,7 +173,13 @@ func (d *Doors) SignOff(id int, edited bool) (bool, error) {
 	}
 	var repo string
 	err = d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
-		if err := run.PublishItem(it, edited, now); err != nil {
+		if run.TrailerCommit(trailer) != it.HeadCommit {
+			return false, publish.ErrCommitChanged
+		}
+		if it.PublishStatus != nil && it.PublishStatus.State == "failed" {
+			it.State = factory.StateQueued
+			it.MarkPublishing("queued", "", "", now)
+		} else if err := run.PublishItem(it, edited, now); err != nil {
 			return false, err
 		}
 		if held != nil {

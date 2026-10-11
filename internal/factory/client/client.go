@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -24,9 +25,11 @@ import (
 // Client talks to one factory. It keeps no copy of the floor: every read
 // is a request, and [Subscription] only says that a read is due.
 type Client struct {
-	base  string
-	token string
-	http  *http.Client
+	base   string
+	token  string
+	http   *http.Client
+	seenMu sync.Mutex
+	seen   map[int]api.Job
 }
 
 // Open returns a client for the factory at base. base is the origin, such
@@ -91,6 +94,12 @@ func (c *Client) load() (factory.Snapshot, error) {
 		}
 		jobs[i] = job
 	}
+	c.seenMu.Lock()
+	c.seen = make(map[int]api.Job, len(jobs))
+	for _, job := range jobs {
+		c.seen[job.ID] = job
+	}
+	c.seenMu.Unlock()
 	return api.ToSnapshot(q, jobs), nil
 }
 
@@ -193,4 +202,12 @@ func sentence(raw []byte) error {
 		return errors.New(body.Error)
 	}
 	return errors.New("the factory refused")
+}
+
+// seenJob is the version the desk last read, not a fresh head fetched while
+// approving. Re-reading here would silently approve work the person never saw.
+func (c *Client) seenJob(id int) api.Job {
+	c.seenMu.Lock()
+	defer c.seenMu.Unlock()
+	return c.seen[id]
 }

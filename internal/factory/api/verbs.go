@@ -25,6 +25,7 @@ var Verbs = []Verb{
 	{"answer", []string{"Answer"}},
 	{"steer", []string{"Steer"}},
 	{"approve", []string{"SignOff", "Answer"}},
+	{"retry_publish", nil},
 	{"request_changes", []string{"SendBack"}},
 	{"recheck", []string{"Reverify"}},
 	{"shape", []string{"Shape"}},

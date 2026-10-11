@@ -28,10 +28,12 @@ type WorkerAttached struct {
 // WorkerReport carries incremental results. Cost is newly incurred dollars,
 // so a result's own cost is descriptive and is not added a second time.
 type WorkerReport struct {
-	Change     *factory.Change `json:"change,omitempty"`
-	ChangeBase string          `json:"change_base,omitempty"`
-	Thread     []Message       `json:"thread,omitempty"`
-	Delivered  []string        `json:"delivered,omitempty"`
+	Change     *factory.Change     `json:"change,omitempty"`
+	ChangeBase string              `json:"change_base,omitempty"`
+	HeadCommit string              `json:"head_commit,omitempty"`
+	Publishing *factory.Publishing `json:"publishing,omitempty"`
+	Thread     []Message           `json:"thread,omitempty"`
+	Delivered  []string            `json:"delivered,omitempty"`
 	// Pipeline is the job's steps after the worker's runner reshaped them;
 	// absent is no change. Only an approve step's presence is checked.
 	Pipeline   []Step       `json:"pipeline,omitempty"`
@@ -77,7 +79,7 @@ type WorkerDone struct {
 
 // ToWorkerReport is the single vocabulary boundary for worker writes.
 func ToWorkerReport(r WorkerReport) factory.RunReport {
-	out := factory.RunReport{Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, toClaim), Talk: r.Talk, Notes: r.Notes, Publish: r.Publish, CommentURL: r.CommentURL}
+	out := factory.RunReport{HeadCommit: r.HeadCommit, Publishing: r.Publishing, Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, toClaim), Talk: r.Talk, Notes: r.Notes, Publish: r.Publish, CommentURL: r.CommentURL}
 	if r.Pipeline != nil {
 		stages, stream := unsteps(Job{Steps: r.Pipeline, Desk: &JobDesk{Run: &Run{}}})
 		out.Pipeline = &factory.PipelineChange{Stages: stages, Phases: stream.Phases}
@@ -105,7 +107,7 @@ func ToWorkerReport(r WorkerReport) factory.RunReport {
 // FromRunReport is the worker's half of the same boundary: what its runner
 // wrote, in the wire's words. [ToWorkerReport] reads it back.
 func FromRunReport(r factory.RunReport) WorkerReport {
-	out := WorkerReport{Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, fromClaim), Talk: r.Talk, Notes: r.Notes,
+	out := WorkerReport{HeadCommit: r.HeadCommit, Publishing: r.Publishing, Change: r.Change, ChangeBase: r.ChangeBase, Thread: r.Thread, Delivered: r.Delivered, Cost: r.Cost, Claims: mapList(r.Claims, fromClaim), Talk: r.Talk, Notes: r.Notes,
 		Log: mapList(r.Log, fromLog), Publish: r.Publish, CommentURL: r.CommentURL}
 	if p := r.Pipeline; p != nil {
 		out.Pipeline = steps(factory.Item{Stages: p.Stages, Stream: &factory.Stream{Phases: p.Phases}})

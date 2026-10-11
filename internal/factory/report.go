@@ -5,6 +5,8 @@ package factory
 type RunReport struct {
 	Change     *Change
 	ChangeBase string
+	HeadCommit string
+	Publishing *Publishing
 	// Pipeline is the job's steps after the worker's runner reshaped them (the
 	// manager's first turn, or a plan's edit, both bounded by the recipe). Nil
 	// is no change. It lands before Stages, which may name a new step.

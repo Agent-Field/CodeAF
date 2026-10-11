@@ -154,7 +154,8 @@ func (h *Handler) viewerMachines(handle string) ([]api.Machine, error) {
 	}
 	handle = factory.NormalizeHandle(handle)
 	out := []api.Machine{}
-	for _, row := range h.roster(h.clock(), leases) {
+	roster := h.roster(h.clock(), leases)
+	for _, row := range roster {
 		if row.Handle != handle {
 			continue
 		}
@@ -171,7 +172,8 @@ func (h *Handler) applyPresence(jobs []api.Job) (online, busy int, err error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	for _, row := range h.roster(h.clock(), leases) {
+	roster := h.roster(h.clock(), leases)
+	for _, row := range roster {
 		switch row.Status {
 		case api.MachineBusy:
 			busy++
@@ -197,6 +199,20 @@ func (h *Handler) applyPresence(jobs []api.Job) (online, busy int, err error) {
 		h.workers.mu.RUnlock()
 	}
 	for i := range jobs {
+		if p := jobs[i].Publishing; p != nil && p.State == "queued" && jobs[i].Desk != nil && jobs[i].Desk.WorktreeMachine != "" {
+			online := false
+			for _, row := range roster {
+				if row.Name == jobs[i].Desk.WorktreeMachine && row.Status != api.MachineOffline {
+					online = true
+				}
+			}
+			copy := *p
+			copy.Code, copy.Detail = "", ""
+			if !online {
+				copy.Code, copy.Detail = "machine_offline", "Publishing waits for "+jobs[i].Desk.WorktreeMachine
+			}
+			jobs[i].Publishing = &copy
+		}
 		held, ok := byJob[jobs[i].ID]
 		if !ok {
 			continue

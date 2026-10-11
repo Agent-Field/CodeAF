@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
@@ -82,10 +83,12 @@ type Handler struct {
 	mux     *http.ServeMux
 	watch   *rootWatch
 
-	workers  *workerService
-	sessions *accessSessions
-	auth     *deviceFlows
-	viewer   *viewerState
+	workers   *workerService
+	sessions  *accessSessions
+	auth      *deviceFlows
+	viewer    *viewerState
+	consentMu sync.Mutex
+	replays   replayCache
 }
 
 // New binds the seam's reads and verbs; absent doors refuse rather than panic.
@@ -118,6 +121,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.route("/v1/me/sessions/signout-others", map[string]http.HandlerFunc{http.MethodPost: h.signOutOthers})
 	h.route("/v1/me/sessions/{id}", map[string]http.HandlerFunc{http.MethodDelete: h.deleteSession})
 	h.read("/v1/audit", h.audit)
+	h.read("/v1/publish/codes", h.publishCodes)
 	h.verbs()
 	h.workerRoutes()
 	h.mux.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
@@ -170,7 +174,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusNotFound, "factory endpoint not found")
 		return
 	}
-	h.mux.ServeHTTP(w, r)
+	h.idempotent(w, r)
 }
 
 func (h *Handler) read(pattern string, handler http.HandlerFunc) {

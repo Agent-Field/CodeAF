@@ -63,7 +63,7 @@ var Lost = map[string]string{
 func FromItem(it factory.Item) Job {
 	j := Job{
 		ID: it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
-		Change: it.Change, Publish: it.Publish, CommentURL: it.CommentURL,
+		HeadCommit: it.HeadCommit, Publishing: it.PublishStatus, Change: it.Change, Publish: it.Publish, CommentURL: it.CommentURL,
 		State: stateOut[it.State], Ready: it.State == factory.StateLanded, Gate: gate(it),
 		AssignedTo:       it.Person(),
 		AskedFirstReason: it.AskedFirstReason,
@@ -108,7 +108,7 @@ func ToItem(j Job) factory.Item {
 	}
 	it := factory.Item{
 		ID: j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL,
-		Change: j.Change, ChangeBase: d.ChangeBase, Publish: j.Publish, CommentURL: j.CommentURL,
+		HeadCommit: j.HeadCommit, PublishStatus: j.Publishing, Change: j.Change, ChangeBase: d.ChangeBase, Publish: j.Publish, CommentURL: j.CommentURL,
 		WorktreeMachine: d.WorktreeMachine, Publishing: d.Publishing,
 		State: stateIn(j), Created: j.CreatedAt,
 		Product: d.Product, Places: d.Places, Body: d.Body, Author: d.Author,
@@ -170,6 +170,9 @@ func stateIn(j Job) factory.State {
 // gate is what Approve does on the item now: sign off a landed proof, say yes
 // at an approve step after the plan, raise a cap, or answer a question.
 func gate(it factory.Item) string {
+	if it.State == factory.StateLanded && it.PublishStatus != nil && it.PublishStatus.State == "failed" {
+		return "publish_failed"
+	}
 	switch {
 	case it.State == factory.StateLanded:
 		return GateProof

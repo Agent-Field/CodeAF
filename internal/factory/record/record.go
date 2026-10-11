@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/publish"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/filelock"
 )
@@ -45,6 +46,7 @@ type Event struct {
 	Handle string    `json:"handle"`
 	Cost   float64   `json:"cost"`
 	Detail string    `json:"detail"`
+	Commit string    `json:"commit,omitempty"`
 }
 
 // Options lets tests advance time without waiting on the wall clock.
@@ -112,6 +114,9 @@ func validate(e Event) error {
 	default:
 		return fmt.Errorf("factory record: unknown event kind %q", e.Kind)
 	}
+	if e.Commit != "" && !publish.ValidCommit(e.Commit) {
+		return errors.New("factory record: approval requires a full commit SHA")
+	}
 	if e.Job <= 0 {
 		return errors.New("factory record: job must be positive")
 	}
@@ -168,6 +173,20 @@ func (r *Record) Since(ctx context.Context, since time.Time) ([]Event, error) {
 // Trailer reads the most recent consent for this job. A fresh run, a drop or
 // requested changes withdraws it, so another job or an earlier run cannot attest.
 func (r *Record) Trailer(ctx context.Context, id int) (string, error) {
+	st, err := store.Open(r.root)
+	if err != nil {
+		return "", err
+	}
+	it, err := st.Get(id)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return "", err
+	}
+	return r.TrailerFor(ctx, id, it.HeadCommit)
+}
+
+// TrailerFor refuses consent for a different commit, including older unbound
+// receipts when the job now carries a head.
+func (r *Record) TrailerFor(ctx context.Context, id int, commit string) (string, error) {
 	events, err := r.Since(ctx, time.Time{})
 	if err != nil {
 		return "", err
@@ -188,7 +207,14 @@ func (r *Record) Trailer(ctx context.Context, id int) (string, error) {
 			if _, err := hex.DecodeString(e.ID[4:]); err != nil {
 				return "", err
 			}
-			return "Factory-Approval: " + e.ID + " @" + factory.NormalizeHandle(e.Handle), nil
+			if e.Commit != commit {
+				return "", publish.ErrCommitChanged
+			}
+			trailer := "Factory-Approval: " + e.ID + " @" + factory.NormalizeHandle(e.Handle)
+			if e.Commit != "" {
+				trailer += " " + e.Commit
+			}
+			return trailer, nil
 		case Started, AutoStarted, Dropped, RequestChanges:
 			return "", errors.New("job requires a recorded approval before publishing")
 		}

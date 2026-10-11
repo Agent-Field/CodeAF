@@ -352,12 +352,19 @@ func (h *Handler) doneWorker(w http.ResponseWriter, r *http.Request) {
 	h.applyWorker(w, r, true, func(it *factory.Item) error {
 		now := h.workers.now()
 		if state != factory.StateShipped {
+			if it.PublishStatus != nil && it.PublishStatus.State == "failed" {
+				it.State = factory.StateLanded
+				return nil
+			}
 			return run.FinishReport(it, state, now)
 		}
 		// A WORKER NEVER APPROVES: done as shipped is a publish only beside
 		// the job's recorded approval and a reported PR or comment; anything
 		// else is the proof gate's to decide, as it always has been.
-		trailer := h.approval(r.Context(), it.ID)
+		trailer := ""
+		if h.config.Record != nil {
+			trailer, _ = h.config.Record.TrailerFor(r.Context(), it.ID, it.HeadCommit)
+		}
 		if trailer == "" || (it.PullRequest == nil && it.CommentURL == "") {
 			return run.FinishReport(it, state, now)
 		}

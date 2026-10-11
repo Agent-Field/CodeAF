@@ -4,13 +4,13 @@ package run
 //
 // PUBLISH IS A PERSON. Approving at the proof gate is a server-side event in
 // the factory's record (`evt_…`, internal/factory/record); the factory turns
-// it into the trailer `Factory-Approval: evt_… @handle` and hands the trailer
+// it into the trailer `Factory-Approval: evt_… @handle <commit>` and hands the trailer
 // to the worker that publishes. AGENTS NEVER ATTEST: nothing here publishes
 // without a trailer in that exact shape, and the trailer never comes from a
 // model's words.
 //
 // For an issue (or any job that is not a pull request) the worker commits the
-// job's worktree once — the job's title, a blank line, the trailer — pushes
+// job's worktree before the proof gate opens, reports its head, then pushes
 // its branch with the person's token (never with force) and opens the pull
 // request through the job's source, its body the proof summary, the claims
 // and the trailer as its last line. When there are no commits beyond the default
@@ -30,11 +30,12 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/publish"
 )
 
-// trailerShape is the one trailer a publish accepts: the record's approval id
-// and the forge handle that gave it.
-var trailerShape = regexp.MustCompile(`^Factory-Approval: evt_[0-9a-f]{8} @[a-z0-9-]+$`)
+// trailerShape carries the record's approval id, its person and the exact
+// approved head. An older receipt remains valid only for an unreported head.
+var trailerShape = regexp.MustCompile(`^Factory-Approval: evt_[0-9a-f]{8} @[a-z0-9-]+(?: (?:[0-9a-f]{40}|[0-9a-f]{64}))?$`)
 
 // ErrNoApproval is a publish asked for without a recorded approval.
 var ErrNoApproval = errors.New("job requires a recorded approval before publishing")
@@ -48,7 +49,20 @@ func TrailerHandle(trailer string) string {
 		return ""
 	}
 	_, handle, _ := strings.Cut(trailer, " @")
+	handle, _, _ = strings.Cut(handle, " ")
 	return handle
+}
+
+// TrailerCommit is the exact approved head, absent on legacy receipts.
+func TrailerCommit(trailer string) string {
+	if !ValidTrailer(trailer) {
+		return ""
+	}
+	parts := strings.Fields(trailer)
+	if len(parts) == 4 {
+		return parts[3]
+	}
+	return ""
 }
 
 // PublishItem is the factory's half of approving a landed job: the proof
@@ -59,6 +73,7 @@ func PublishItem(it *factory.Item, edited bool, now time.Time) error {
 		return err
 	}
 	it.State = factory.StateQueued
+	it.MarkPublishing("queued", "", "", now)
 	loopSay(it, now, "said", "approved · publishing")
 	return nil
 }
@@ -79,6 +94,7 @@ func ShipPublished(it *factory.Item, now time.Time) error {
 	}
 	ensureStream(it, now)
 	it.State = factory.StateShipped
+	it.MarkPublishing("opened", "", "", now)
 	it.Question, it.QKind = "", ""
 	it.Asking = nil
 	it.Stream.Ended = now
@@ -92,7 +108,7 @@ func ShipPublished(it *factory.Item, now time.Time) error {
 // work and pull request jobs, then ship the job with its receipt. It runs on its own
 // goroutine, so [Runner.Running] holds while it works and the worker keeps
 // beating; a publish that fails lands the job again with the reason on its
-// log, for the person to approve again.
+// log, for the person to retry with the same approval.
 func (r *Runner) Publish(id int, trailer string) error {
 	trailer = strings.TrimSpace(trailer)
 	if !ValidTrailer(trailer) {
@@ -113,7 +129,11 @@ func (r *Runner) Publish(id int, trailer string) error {
 		if it.State != factory.StateLanded {
 			return fmt.Errorf("%s has not landed", it.Ref())
 		}
+		if TrailerCommit(trailer) != it.HeadCommit {
+			return publish.ErrCommitChanged
+		}
 		it.State = factory.StateRunning
+		it.MarkPublishing("pushing", "", "", now)
 		loopSay(it, now, "said", "publishing · "+trailer)
 		return nil
 	})
@@ -138,6 +158,7 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 	if err != nil {
 		_ = lp.write(c, func(it *factory.Item) error {
 			it.State = factory.StateLanded
+			it.MarkPublishing("failed", publish.ErrorCode(err), strings.TrimSpace(publish.ErrorDetail(err)), now)
 			loopSay(it, now, "fail", "could not publish: "+loopFirstLine(err.Error()))
 			return nil
 		})
@@ -151,6 +172,7 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 			it.Publish, url = "pr", receipt.pr.URL
 		}
 		it.State = factory.StateShipped
+		it.MarkPublishing("opened", "", "", now)
 		loopSay(it, now, "ok", "published · "+url)
 		return nil
 	}) == nil {
@@ -187,17 +209,36 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 		return published{pr: &factory.PullRequest{Number: it.Num, URL: url, Draft: it.Draft}}, nil
 	}
 	if r.opts.Workdir == nil {
-		return published{}, fmt.Errorf("codeaf does not know where %s is checked out", it.Ref())
+		return published{}, publish.Wrap(fmt.Errorf("codeaf does not know where %s is checked out", it.Ref()), "worktree")
 	}
 	dir, err := r.opts.Workdir(it)
 	if err != nil {
-		return published{}, err
+		return published{}, publish.Wrap(err, "worktree")
 	}
 	git := r.opts.Git
 	if git == nil {
 		git = ExecGit{}
 	}
-	if err := commitApproved(git, dir, it, trailer); err != nil {
+	// COMMIT-BOUND CONSENT NEVER COMMITS NEW WORK. The proof gate already
+	// committed the reviewed work; a dirty or moved worktree needs approval again.
+	if it.HeadCommit != "" {
+		head, err := git.Run(dir, "rev-parse", "HEAD")
+		if err != nil {
+			return published{}, publish.Wrap(err, "worktree")
+		}
+		status, err := git.Run(dir, "status", "--porcelain")
+		if err != nil {
+			return published{}, publish.Wrap(err, "worktree")
+		}
+		if strings.TrimSpace(head) != TrailerCommit(trailer) || strings.TrimSpace(status) != "" {
+			if strings.TrimSpace(head) != it.HeadCommit {
+				if err := r.opts.Store.Update(it.ID, func(saved *factory.Item) error { saved.HeadCommit = strings.TrimSpace(head); return nil }); err != nil {
+					return published{}, err
+				}
+			}
+			return published{}, publish.ErrCommitChanged
+		}
+	} else if err := commitApproved(git, dir, it, trailer); err != nil {
 		return published{}, err
 	}
 	mode, err := publishMode(git, dir)
@@ -215,15 +256,19 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 		return published{comment: rcpt.URL}, nil
 	}
 	if r.opts.Push == nil {
-		return published{}, errors.New("this machine cannot push")
+		return published{}, publish.Wrap(errors.New("this machine cannot push"), "push")
 	}
 	branch := branchFor(it)
-	if err := push(r.opts.Push, dir, it, branch); err != nil {
-		return published{}, err
+	ref := branch
+	if it.HeadCommit != "" {
+		ref = it.HeadCommit + ":refs/heads/" + branch
+	}
+	if err := push(r.opts.Push, dir, it, ref); err != nil {
+		return published{}, publish.Wrap(err, "push")
 	}
 	rcpt, err := src.Write(ctx, factory.Action{Verb: "pr", Item: it, Branch: branch, Body: body})
 	if err != nil {
-		return published{}, err
+		return published{}, publish.Wrap(err, "pr")
 	}
 	n := rcpt.Number
 	if n <= 0 {
@@ -258,6 +303,12 @@ func commitApproved(git Git, dir string, it factory.Item, trailer string) error 
 	var args []string
 	if email, err := git.Run(dir, "config", "user.email"); err != nil || strings.TrimSpace(email) == "" {
 		handle := TrailerHandle(trailer)
+		if handle == "" {
+			handle = factory.NormalizeHandle(it.Person())
+		}
+		if handle == "" {
+			handle = "codeaf"
+		}
 		args = append(args, "-c", "user.name="+handle, "-c", "user.email="+handle+"@users.noreply.github.com")
 	}
 	args = append(args, "commit", "-q", "-m", title+"\n\n"+trailer)

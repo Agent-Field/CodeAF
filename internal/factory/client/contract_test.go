@@ -232,7 +232,7 @@ func TestContractCoversEverySeamVerb(t *testing.T) {
 		if len(verb.Seam) == 0 {
 			// Take and release are owned by the lease desk and have no Seam
 			// equivalent; the serve tests cover them against the real store.
-			if verb.Name != "take" && verb.Name != "release" {
+			if verb.Name != "take" && verb.Name != "release" && verb.Name != "retry_publish" {
 				t.Errorf("new server-owned verb %q needs a contract", verb.Name)
 			}
 			continue

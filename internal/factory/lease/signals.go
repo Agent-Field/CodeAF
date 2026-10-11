@@ -160,6 +160,11 @@ func (d *Desk) keepPublish(doc *document, job int) error {
 	return d.store.Update(job, func(it *factory.Item) error {
 		it.State = factory.StateQueued
 		it.Publishing = true
+		if it.PublishStatus != nil {
+			copy := *it.PublishStatus
+			copy.State = "queued"
+			it.PublishStatus = &copy
+		}
 		return nil
 	})
 }
