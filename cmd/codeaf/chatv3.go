@@ -118,8 +118,14 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		"how many dollars an unattended --yolo session may carry its own work on (env CODEAF_MAX_COST)")
 	debug := flags.Bool("debug", false,
 		debugFlagHelp()+" · /debug turns it on mid-session")
+	noWorker := flags.Bool("no-worker", false, "run no factory job on this machine: the factory page still reads and steers the factory")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
+	}
+	// --NO-WORKER TRAVELS AS AN ENVIRONMENT PIN so the session host this
+	// window starts runs no worker either (factory_run.go).
+	if *noWorker {
+		_ = os.Setenv(factoryNoWorkerEnv, "1")
 	}
 	// THE RECORD'S SWITCH IS READ HERE AND THE RUN ID IS MINTED HERE, at the
 	// door, before anything can make a call — because a record written under a
@@ -516,11 +522,11 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// window is actually in.
 	settled := *launch
 	settled.Config, settled.Place = cfg, cfg.Place
-	// AND THE FLOOR'S RUNNER, from the conversation config now that it is
-	// settled: every stage conversation is opened from it. It runs here only
-	// when this process takes the floor's run lock (factory_run.go), and it
-	// must exist before the factory seam below is built, which binds its doors.
-	startFactoryRunner(floor, workspace, settings.ProfileDir, cfg)
+	// AND THE FLOOR'S WORKER LOOP, from the conversation config now that it is
+	// settled: every stage conversation is opened from it (factory_run.go).
+	// The manager's shaping door is built with it, before the factory seam
+	// below binds it.
+	startFactoryWorker(floor, workspace, settings.ProfileDir, cfg)
 	settled.SessionFile, settled.Resumed = transcript, resumed
 	seam := &v3Seam{proc: proc, boot: &settled, seed: seed, floor: floor, floorAt: workspace}
 	factoryPage, factoryAddress := factoryLaunchSeam(floor, workspace, settings.ProfileDir)

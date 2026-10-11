@@ -862,6 +862,8 @@ func runEngineHost(workspaceFlag, sessionFlag string) error {
 	// empty and this close is a no-op there. It is one owner door, not two.)
 	session.CloseUsage()
 	closeEngineProcess()
+	// AND THE FACTORY THIS HOST WORKED FOR AND SERVED (factory_run.go).
+	stopFactoryHere()
 	if errors.Is(err, enginehost.ErrHostRunning) {
 		// The slot is held by this build (or a newer one, or one that arrived
 		// in the instant since the question above): the machine is in the
@@ -998,11 +1000,11 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		// opens asks [foremanFloorDoor] by its own session file (below, once the
 		// hello has settled which file that is, and in Fresh and Open).
 		floorStore = engineFactory(proc.ProfileDir)
-		// AND THE FLOOR'S RUNNER, which on the ordinary launch is this
-		// process's: it outlives the window, so an item keeps running when the
+		// AND THE FLOOR'S WORKER LOOP, which on the ordinary launch is this
+		// process's: it outlives the window, so a job keeps running when the
 		// terminal closes (factory_run.go). Every stage conversation is opened
 		// from this hello's config.
-		startFactoryRunner(engineFactory(proc.ProfileDir), workspace, proc.ProfileDir, cfg)
+		startFactoryWorker(engineFactory(proc.ProfileDir), workspace, proc.ProfileDir, cfg)
 	}
 
 	// A HELLO THAT ASKED FOR A CONVERSATION OF ITS OWN GETS A SIBLING FOLDER,

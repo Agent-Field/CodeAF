@@ -44,6 +44,10 @@ var (
 // it would lack is everything below, which is why [TestOnlyTheSurfaceHelperRunsTheV3Surface]
 // reads this package's sources rather than trusting the next door to remember.
 func runSurface(ctx context.Context, options tui3.Options) error {
+	// THE WINDOW'S FACTORY ENDS WITH IT: its worker loop stops (a job it held
+	// goes back to the queue when its lease expires) and the factory it served
+	// takes serve.json down, so the next window does not dial a dead address.
+	defer stopFactoryHere()
 	// THE FACTORY PAGE'S BOX SENDS IN PLACE on every door that can open a
 	// conversation, and `T` then attaches to what it opened (factory_say.go).
 	factoryWireSay(&options)

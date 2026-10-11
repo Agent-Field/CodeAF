@@ -21,9 +21,7 @@ func (h holdDoors) Hold(_ int, on bool) error {
 }
 
 // THE HOLD DOOR CARRIES ITS INTENT: a runner that has it hangs it on the seam
-// directly, the mailbox carries `hold` with the intent as Yes, and a runner
-// without it leaves the door absent on the seam and refuses the verb in
-// words rather than toggling.
+// directly, and a runner without it leaves the door absent on the seam.
 func TestTheHoldDoorCarriesItsIntent(t *testing.T) {
 	_, st := openLocal(t)
 	var asked []bool
@@ -34,20 +32,14 @@ func TestTheHoldDoorCarriesItsIntent(t *testing.T) {
 	if err := seam.Hold(1, true); err != nil {
 		t.Fatal(err)
 	}
-	if reply := factory.Carry(holdDoors{asked: &asked}, factory.Ask{ID: 1, Verb: factory.VerbHold, Yes: false, Seq: 3}); reply.Err != "" {
-		t.Fatalf("carried hold = %+v", reply)
+	if err := seam.Hold(1, false); err != nil {
+		t.Fatal(err)
 	}
 	if len(asked) != 2 || !asked[0] || asked[1] {
 		t.Fatalf("the runner was asked %v, want [true false]", asked)
 	}
 	if plain := factory.LocalSeam(st, time.Now(), factory.WithRunner(directDoors{})); plain.Has("hold") {
 		t.Fatal("a runner with no Hold drew a hold door")
-	}
-	if reply := factory.Carry(directDoors{}, factory.Ask{Verb: factory.VerbHold, Seq: 4}); reply.Err != `the floor's runner does not know "hold"` {
-		t.Fatalf("an older runner's hold = %+v", reply)
-	}
-	if mailed := factory.LocalSeam(st, time.Now(), factory.WithMailbox(st.Mailbox())); !mailed.Has("hold") {
-		t.Fatal("a window over the mailbox drew no hold door")
 	}
 }
 

@@ -32,11 +32,9 @@ func TestFactorySeamWithNoStoreIsTheZeroSeam(t *testing.T) {
 	}
 }
 
-// The person's own floor has the doors the local seam can keep. In a process
-// that does not run the floor (no runner here), the eight runner doors are
-// asks to the process that does (factory_run.go's mailbox), and the doors
-// nothing on this machine can keep are absent, so the page offers nothing it
-// cannot do.
+// The person's own floor has the doors the local seam can keep. The eight
+// runner doors are the lease's (factory_run.go), and the doors nothing on
+// this machine can keep are absent, so the page offers nothing it cannot do.
 func TestFactorySeamOverAStoreIsTheLocalFloor(t *testing.T) {
 	t.Setenv(factoryFixtureEnv, "")
 	st, err := store.Open(t.TempDir())

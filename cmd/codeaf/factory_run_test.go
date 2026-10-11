@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,8 +14,13 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/client"
+	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
+	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	factoryworker "github.com/Agent-Field/codeaf/internal/factory/worker"
 )
 
 // runRig is a store, a git checkout named `api` used as the workspace, and an
@@ -103,7 +109,7 @@ func stopAll(t *testing.T, st *store.Store, r *factoryrun.Runner) {
 func TestFactoryRunnerCarriesEveryExecutorThisProcessHas(t *testing.T) {
 	t.Setenv(factoryBenchesEnv, "")
 	g := newRunRig(t)
-	r := buildFactoryRunner(g.st, g.workspace, t.TempDir(), nil, nil)
+	r := buildFactoryRunner(g.st, g.st, g.workspace, t.TempDir(), nil, nil)
 	opts := r.Opts()
 	for _, kind := range []factory.StageKind{factory.StageChat, factory.StageCheck, factory.StagePost} {
 		if opts.Exec[kind] == nil {
@@ -156,7 +162,7 @@ func TestFactoryRunnerCarriesEveryExecutorThisProcessHas(t *testing.T) {
 // lands with its claim shown.
 func TestAnOwnerLaunchRunsACheckItemToLanded(t *testing.T) {
 	g := newRunRig(t)
-	r := buildFactoryRunner(g.st, g.workspace, t.TempDir(), nil, nil)
+	r := buildFactoryRunner(g.st, g.st, g.workspace, t.TempDir(), nil, nil)
 	stopAll(t, g.st, r)
 	seam := factory.LocalSeam(g.st, time.Now(), factory.WithRunner(r))
 	for _, door := range []string{"launch", "stop", "pause", "answer", "steer", "signoff", "sendback", "reverify"} {
@@ -177,70 +183,79 @@ func TestAnOwnerLaunchRunsACheckItemToLanded(t *testing.T) {
 	}
 }
 
-// TestANonOwnerLaunchReachesTheOwnerAndLands: a window that does not run the
-// floor launches through the mailbox, the owner's drain carries it through
-// the real runner, and the item lands. A second launch of the same item hears
-// the runner's own refusal back.
-func TestANonOwnerLaunchReachesTheOwnerAndLands(t *testing.T) {
-	g := newRunRig(t)
-	window := factory.LocalSeam(g.st, time.Now(), factory.WithMailbox(g.st.Mailbox()))
-	owner := buildFactoryRunner(g.st, g.workspace, t.TempDir(), nil, nil)
-	stopAll(t, g.st, owner)
+// workOn serves g's floor on loopback with the lease's doors, and runs a
+// worker loop against it whose runner is this process's own (no model: the
+// rig's items are checks). It answers the floor as a window reaches it.
+func (g runRig) workOn(t *testing.T, r func(mirror *store.Store) *factoryrun.Runner) (factory.Seam, *factoryrun.Runner) {
+	t.Helper()
+	seam := factory.LocalSeam(g.st, time.Now(), factoryRunnerDoors(g.st))
+	handler := serve.New(seam, serve.Config{Address: "http://test", Store: g.st, PullWait: 50 * time.Millisecond})
+	server := httptest.NewServer(handler)
+	mirror, err := store.Open(filepath.Join(t.TempDir(), "mirror"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := r(mirror)
+	var credential string
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go drainFactoryMailbox(ctx, g.st.Mailbox(), owner, nil, 5*time.Millisecond)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		factoryworker.Run(ctx, factoryworker.Options{
+			Dial:   func(int) *client.WorkerClient { return client.Open(server.URL, "").Worker(credential) },
+			Keep:   func(_ int, w *client.WorkerClient) { credential = w.Credential() },
+			Attach: api.WorkerAttach{Name: "test", Handle: "me", TakesUnassigned: map[string]bool{lease.EveryRepo: true}},
+			Runner: runner, Mirror: mirror, Slots: 1, ReportEvery: 10 * time.Millisecond, BeatEvery: 10 * time.Millisecond,
+		})
+	}()
+	t.Cleanup(func() { cancel(); <-done; server.Close(); handler.Close() })
+	return client.Open(server.URL, "").Seam(), runner
+}
 
+// TestAWindowsLaunchRunsOnTheWorkerAndLands: a window's launch reaches the
+// factory, which queues the job; the worker pulls it, its runner runs the
+// check in this machine's checkout, the reports land on the floor, and the
+// job waits at its approve step. A second launch hears the refusal back.
+func TestAWindowsLaunchRunsOnTheWorkerAndLands(t *testing.T) {
+	g := newRunRig(t)
+	window, _ := g.workOn(t, func(mirror *store.Store) *factoryrun.Runner {
+		return buildFactoryRunner(mirror, g.st, g.workspace, t.TempDir(), nil, nil)
+	})
 	id := g.checkItem(t)
 	if err := window.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	g.waitFor(t, id, factory.StateLanded)
+	it := g.waitFor(t, id, factory.StateLanded)
+	if len(it.Proof) != 1 || !it.Proof[0].OK || it.Proof[0].Text != "true passes" {
+		t.Fatalf("proof = %+v", it.Proof)
+	}
 	if err := window.Launch(id); err == nil || !strings.Contains(err.Error(), "has landed · approve it, or request changes") {
 		t.Fatalf("a second launch from the window = %v, not the runner's own sentence", err)
 	}
 }
 
-// TestARefusedLaunchFromAWindowSaysTheRunnersReason: the day rail's refusal
-// comes back to the window that asked, word for word.
-func TestARefusedLaunchFromAWindowSaysTheRunnersReason(t *testing.T) {
+// TestARunTheWorkerRefusesGoesBackWithItsReason: the day rail is the
+// worker's; a job it cannot start goes back to backlog with the reason on its
+// log, where the window that pressed run reads it.
+func TestARunTheWorkerRefusesGoesBackWithItsReason(t *testing.T) {
 	g := newRunRig(t)
-	r := factoryrun.New(factoryrun.Options{Store: g.st, Rail: func() float64 { return 1 }, SpentToday: func() float64 { return 2 }})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go drainFactoryMailbox(ctx, g.st.Mailbox(), r, nil, 5*time.Millisecond)
-	window := factory.LocalSeam(g.st, time.Now(), factory.WithMailbox(g.st.Mailbox()))
+	window, _ := g.workOn(t, func(mirror *store.Store) *factoryrun.Runner {
+		return factoryrun.New(factoryrun.Options{Store: mirror, Rail: func() float64 { return 1 }, SpentToday: func() float64 { return 2 }})
+	})
 	id := g.checkItem(t)
-	err := window.Launch(id)
-	if err == nil || err.Error() != "the day rail is $1 and today's spend has reached it" {
-		t.Fatalf("the window heard %v", err)
-	}
-	if it, _ := g.st.Get(id); it.State != factory.StateNew {
-		t.Fatalf("a refused launch left the item %s", it.State)
-	}
-}
-
-// TestTheFloorHasOneRunner: the run lock is held by one process at a time.
-func TestTheFloorHasOneRunner(t *testing.T) {
-	g := newRunRig(t)
-	first, ok := tryFactoryRunLock(g.st)
-	if !ok {
-		t.Fatal("nobody holds the floor, and the lock was refused")
-	}
-	other, err := store.Open(g.st.Root())
-	if err != nil {
+	if err := window.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	if second, ok := tryFactoryRunLock(other); ok {
-		second.Close()
-		first.Close()
-		t.Skip("this platform's lock does not exclude within one process")
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+		it, _ := g.st.Get(id)
+		if it.State == factory.StateNew && it.Stream != nil && len(it.Stream.Log) > 0 &&
+			strings.Contains(it.Stream.Log[len(it.Stream.Log)-1].Text, "the day rail is $1 and today's spend has reached it") {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the refused job is %s with log %+v", it.State, it.Stream)
+		}
 	}
-	first.Close()
-	again, ok := tryFactoryRunLock(other)
-	if !ok {
-		t.Fatal("the lock was not given back when its holder let go")
-	}
-	again.Close()
 }
 
 // TestTheBenchesPinIsRegisteredAndRead: the pin is on the plumbing list, a
@@ -257,37 +272,18 @@ func TestTheBenchesPinIsRegisteredAndRead(t *testing.T) {
 	}
 }
 
-// TestTheSeamOptionFollowsWhoRunsTheFloor: with no runner in this process the
-// seam option is the mailbox, which still draws all eight runner doors; with
-// one, it is the runner's own doors.
-func TestTheSeamOptionFollowsWhoRunsTheFloor(t *testing.T) {
+// TestEveryWindowHangsTheLeaseDoors: no process owns the floor, so every
+// window's seam has all eight runner doors over its store, and no store binds
+// none.
+func TestEveryWindowHangsTheLeaseDoors(t *testing.T) {
 	g := newRunRig(t)
-	factoryRunner.mu.Lock()
-	held := factoryRunner.r
-	factoryRunner.r = nil
-	factoryRunner.mu.Unlock()
-	t.Cleanup(func() {
-		factoryRunner.mu.Lock()
-		factoryRunner.r = held
-		factoryRunner.mu.Unlock()
-	})
-	doors := []string{"launch", "stop", "pause", "answer", "steer", "signoff", "sendback", "reverify"}
 	window := factory.LocalSeam(g.st, time.Now(), factoryRunnerDoors(g.st))
-	for _, door := range doors {
+	for _, door := range []string{"launch", "stop", "pause", "hold", "answer", "steer", "signoff", "sendback", "reverify"} {
 		if !window.Has(door) {
-			t.Errorf("a window that does not run the floor has no %s", door)
+			t.Errorf("a window has no %s", door)
 		}
 	}
 	if factoryRunnerDoors(nil) != nil {
-		t.Error("no store still bound a mailbox")
-	}
-	factoryRunner.mu.Lock()
-	factoryRunner.r = buildFactoryRunner(g.st, g.workspace, t.TempDir(), nil, nil)
-	factoryRunner.mu.Unlock()
-	owner := factory.LocalSeam(g.st, time.Now(), factoryRunnerDoors(g.st))
-	for _, door := range doors {
-		if !owner.Has(door) {
-			t.Errorf("the window that runs the floor has no %s", door)
-		}
+		t.Error("no store still bound runner doors")
 	}
 }

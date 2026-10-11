@@ -201,17 +201,15 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 		return t
 	}
 	local := factory.LocalSeam(st, time.Now(),
-		// THE RUNNER'S DOORS ARE HUNG IN EVERY WINDOW (factory_run.go): in the
-		// process that runs the floor they are the runner's own, and in every
-		// other window the same eight are asks posted to that process's
-		// mailbox and answered within about a second.
+		// THE RUNNER'S DOORS ARE HUNG IN EVERY WINDOW (factory_run.go): they
+		// are the lease's, which queue a job for a worker and signal its
+		// lease; no window runs a job through them.
 		factoryRunnerDoors(st),
 		factoryPipelineOption(), factory.WithRepoDirs(dirs),
 		factory.WithRepoLister(factorygithub.Lister(profileDir)),
 		factory.WithTalk(talkMaker(st, workspace, profileDir)),
 		// THE MANAGER READS THE ISSUE WHEN ITS PAGE OPENS (factory_shape.go):
-		// the door is this process's when it runs the floor, and otherwise the
-		// same turn asked of the process that does, through the mailbox.
+		// the door is this process's, built with its worker loop.
 		factory.WithShape(factoryShapeHere()),
 		// THE REFRESH DOORS (`u`, `U`, `g`) read through a GitHub source built
 		// at the moment of asking over the profile's token and the watched

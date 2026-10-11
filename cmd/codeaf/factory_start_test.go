@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -21,11 +21,9 @@ import (
 // conversation starts nothing.
 func TestFactoryStartLaunchesContinuesAndSaysWhy(t *testing.T) {
 	g := newRunRig(t)
-	owner := buildFactoryRunner(g.st, g.workspace, t.TempDir(), nil, nil)
-	stopAll(t, g.st, owner)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go drainFactoryMailbox(ctx, g.st.Mailbox(), owner, nil, 5*time.Millisecond)
+	g.workOn(t, func(mirror *store.Store) *factoryrun.Runner {
+		return buildFactoryRunner(mirror, g.st, g.workspace, t.TempDir(), nil, nil)
+	})
 
 	talk := filepath.Join(t.TempDir(), "transcript.jsonl")
 	if err := os.WriteFile(talk, nil, 0o600); err != nil {

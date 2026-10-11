@@ -3,14 +3,15 @@
 ## codeaf factory serve — start the service, listen address and host config
 
 `codeaf factory` (also `codeaf factory serve`) runs the factory HTTP service alone,
-without opening the chat or starting a worker. It prints its bound HTTP address.
+without opening the chat or running a job itself. It prints its bound HTTP address.
 The default is `127.0.0.1:7420`. Use `--listen 127.0.0.1:0` for an available port,
 or `--listen 0.0.0.0:7420` to accept connections from other machines.
 `GET /v1/queue` reads the saved jobs over loopback without an access token.
-Starting this service does not start execution, GitHub polling or a worker.
-The HTTP service supplies its saved jobs to worker reports, its change stream and
-its record; it keeps no worker running in this process.
-Actions that need those absent doors refuse rather than starting work locally.
+Starting this service does not start GitHub polling or a worker in this process.
+Run queues a job; any codeaf attached to this factory (`codeaf attach <url>`, then
+`codeaf`) runs a worker that pulls it, runs it on its own machine and reports back
+(see workers, taken jobs and lease expiry). Stop, pause, answers and steering reach
+that worker through its lease.
 
 The host config is `~/.codeaf/factory/config.yaml`; `--config path` selects another.
 `--listen` overrides its `listen` value. Supported keys are `listen`, `access_token`
@@ -43,8 +44,10 @@ serves closes, the other windows take the serving over on their next read. The h
 ends with the address, for example `factory · 127.0.0.1:53121`; a narrow line drops it first.
 Run, stop, pause, answer and the other job verbs go to that factory. Talking to an item (`T`),
 the foreman (`m`), recipes, checkouts, stage edits, budget, thinking and refresh stay on this
-machine, because chats and checkouts live here. Runs are still carried out by the codeaf
-process that holds this machine's `run.lock`.
+machine, because chats and checkouts live here. Every codeaf also runs a worker against the
+same factory, unless started with `--no-worker`: it pulls queued jobs and runs them on this
+machine (see workers, taken jobs and lease expiry). A window that serves the factory takes
+`serve.json` down when it closes.
 
 `codeaf attach <url> [--name name] [--token token]` saves the factory at `url`
 (`http://host:port`) for new windows. `--name` is how this machine is named there (default:
@@ -57,8 +60,8 @@ Over `--host` or `--at`, the window draws the factory named in this machine's `a
 With nothing attached, it draws `nothing connected yet`: the far engine's floor listens on the
 far machine's loopback, which this window cannot reach.
 
-A window attached to `codeaf factory` running alone can read the floor, but run, stop and the
-other runner verbs refuse there, because that service starts no runner.
+A window attached to `codeaf factory` running alone runs that factory's jobs on its own
+machine: its worker pulls them. With no worker attached, a job you run stays `queued`.
 
 ## codeaf factory token — print or rotate the access token
 
@@ -112,9 +115,25 @@ Taking a job records its person without starting it. A worker's heartbeat renews
 live lease. When the lease expires, running work returns to the queue with its person
 kept; completed work and work waiting on a person keep their state. A late heartbeat
 cannot renew an expired lease. Releasing a lease early also returns running work to
-the queue. The claims desk is implemented for service integration; the existing
-floor's runner still uses its local ownership mechanism until the worker connection
-is wired. No new Take key or attach command is available from this change alone.
+the queue.
+
+**Where a job runs.** Every `codeaf` runs a worker loop against its factory (the one it
+serves, the one in `serve.json`, or the one in `attach.json`); `--no-worker` turns it off,
+and `CODEAF_FACTORY_NO_WORKER=1` does the same for a session host. The worker attaches once
+per slot (its credentials are kept in `~/.codeaf/v3/factory/worker.json`, per factory
+address), pulls a job, and runs it with this machine's runner in this machine's checkout
+and the job's own worktree. Up to four jobs run at once (`CODEAF_FACTORY_BENCHES`). On a
+loopback factory the worker takes every unassigned job; on a factory elsewhere it takes
+unassigned jobs only for repositories this machine has a checkout of. A job whose worker
+went away goes back to the queue when its lease expires, and the next worker goes on at the
+step it stopped in.
+
+**How your verbs reach the worker.** Run puts the job in the queue. Stop puts it back to
+backlog at once and takes its lease away; the worker stops its run when it next hears from
+the factory. Pause, resume, an answer and steering are left on the job's lease, and the
+worker carries them out within about two seconds. Approve and request changes act on a
+landed job; request changes and re-run checks queue it for a worker. There is no `run.lock`
+and no mailbox any more.
 
 ## /factory — the floor
 
@@ -1926,8 +1945,11 @@ worker's handle are offered. Attach can also take
 repository, never jobs assigned to somebody else.
 
 The lease includes `id`, `job`, `worker`, `handle` and `expires_at`.
-`POST /v1/workers/leases/{id}/heartbeat` answers `{factory, lease}` with a renewed
-expiry. The default hold lasts one minute. Expired running jobs return to the
+`POST /v1/workers/leases/{id}/heartbeat` answers `{factory, lease, signals}` with a
+renewed expiry. `signals` are the verbs a person asked of the job since the last
+heartbeat, oldest first: `{"verb":"hold","yes":true}` (pause; false resumes),
+`{"verb":"answer","yes":true,"words":"…"}` and `{"verb":"steer","words":"…"}`. A pull
+may carry `{"verb":"recheck"}`: run the job's checks again instead of its steps. The default hold lasts one minute. Expired running jobs return to the
 queue. A renewed hold keeps its id; a new hold gets a different id. Another
 worker's hold answers HTTP 403 with `lease belongs to another worker`; an expired
 or completed hold answers HTTP 409 with `lease is no longer live`.
@@ -1945,8 +1967,11 @@ a step result's cost is descriptive and is not added again. Send each increment
 once. Log lines are stamped by the factory and keep the runner's newest 400 lines.
 Step results keep its output limit of 16 KiB, notes, findings, exit status, claims
 and chat id. Claims from a proof step join the proof sheet; policy evidence joins
-the policy sheet. Top-level claims merge by their text. Reports name existing
-steps and cannot change the pipeline or answer an approve step.
+the policy sheet. Top-level claims merge by their text. Reports cannot answer an
+approve step. `pipeline` (the job's steps, as a job read lists them) reshapes the
+job when the worker's manager or plan changed its steps; it is refused if it takes
+an approve step away. `talk` names the job's manager conversation and `notes` adds
+sentences to the job's notes.
 
 A `question` takes `text`, optional `from_step`, `kind`, `options`, `pick` and
 `why`; it puts the job in `needs_you`. There is one open question per job.
@@ -1965,8 +1990,7 @@ requires a question already on the job. `backlog` and `dropped` report interrupt
 or dropped work. `{"state":"done"}` is accepted only for clean proof with no
 approve step; otherwise it answers HTTP 400 with `job requires proof approval`.
 Success answers HTTP 200 with the factory identity. Completed holds reject later
-heartbeats and reports. These endpoints provide the Go service protocol; this
-handler does not itself start a worker process or add a CLI join command.
+heartbeats and reports. Every `codeaf` speaks this protocol as its worker loop.
 
 ## what the factory does not do yet
 
@@ -1975,19 +1999,19 @@ Be plain about this when asked:
 - **Items arrive three ways:** from a chat with `factory_add` (after you answer its card), from
   `n` on the floor, and from the GitHub repositories you watch (see connecting github). They
   are kept on this machine and are still there next launch.
-- **The HTTP service accepts worker reports from other machines.** The existing floor runner
-  still runs locally; this handler does not start or join worker processes. `r` and `L` run
-  local items (see running an item), and stop,
-  pause, answers, steering, approve, request changes and re-run checks work from any window on
-  it.
+- **Jobs run on whichever codeaf's worker pulls them** (see workers, taken jobs and lease
+  expiry). `r` and `L` queue items (see running an item), and stop, pause, answers, steering,
+  approve, request changes and re-run checks work from any window on the factory.
+- **Opening an item page does not shape its steps in a window attached to a session host.**
+  The manager's reading on open runs only in a codeaf that runs its own conversations.
 - **Only GitHub is connected.** No GitLab or Linear.
 - **The recipe file is read only where codeaf knows the checkout.** It is read for the
   repository you opened codeaf in, and for any watched GitHub repository whose checkout codeaf
   has seen you open. Every other repository runs the default recipe until then, and for those
   `b` is not offered, no habit is offered for banking, and the recipe page (`E`) is drawn but
   not changed.
-- **The day rail stops launches, not running items.** A launch past it is refused; an item
-  already running goes on.
+- **The day rail stops launches, not running items.** A job pulled past it goes back to
+  backlog with the reason on its log; an item already running goes on.
 - **Only a post stage writes to GitHub** (a comment, labels, a close, a pull request), through
   the connected GitHub account, and only what the recipe's policy allows.
 - **The diff does not open yet.** `d` on a landed item says where it will be.
@@ -2006,9 +2030,9 @@ Be plain about this when asked:
 steps). `L` runs every selected item (or this one). There is no plan-first key: the default
 holds after the plan already. The bottom line says `#12 is running` once the floor's next read
 sees it start, and `#12 is queued · a bench frees it` only when that read still finds it queued
-behind full benches. A run item is `queued`, takes one of the floor's
-benches (four at once; `CODEAF_FACTORY_BENCHES` pins another number) and runs its stages in
-order. It lands with its proof sheet for you to approve, or, with no approve step among its
+behind full benches. A run item is `queued` until a worker pulls it, takes one of that
+machine's benches (four at once; `CODEAF_FACTORY_BENCHES` pins another number) and runs its
+stages in order. It lands with its proof sheet for you to approve, or, with no approve step among its
 stages, ships by itself when every claim was shown.
 
 **What runs today:**

@@ -199,7 +199,7 @@ func TestLoadFillsBenchesAndDaily(t *testing.T) {
 }
 
 // directDoors is a runner whose every door answers "direct", so a test can
-// tell the direct doors from the mailbox's.
+// tell its doors were the ones called.
 type directDoors struct{}
 
 func (directDoors) Launch(int) error                { return errDirect }
@@ -213,19 +213,16 @@ func (directDoors) Reverify(int) error              { return errDirect }
 
 var errDirect = errors.New("direct")
 
-// TestTheRunnerWinsOverTheMailbox: a seam handed both keeps the direct doors,
-// and a verb this build does not know is refused in words by Carry.
-func TestTheRunnerWinsOverTheMailbox(t *testing.T) {
+// TestTheRunnerHangsItsDoors: a seam handed a runner calls it, and one with
+// none draws no runner door.
+func TestTheRunnerHangsItsDoors(t *testing.T) {
 	_, st := openLocal(t)
-	seam := factory.LocalSeam(st, time.Now(), factory.WithMailbox(st.Mailbox()), factory.WithRunner(directDoors{}))
+	seam := factory.LocalSeam(st, time.Now(), factory.WithRunner(directDoors{}))
 	if err := seam.Stop(1); !errors.Is(err, errDirect) {
 		t.Fatalf("stop went %v, not through the runner", err)
 	}
-	if reply := factory.Carry(directDoors{}, factory.Ask{Verb: "dance", Seq: 9}); reply.Seq != 9 || reply.Err != `the floor's runner does not know "dance"` {
-		t.Fatalf("an unknown verb = %+v", reply)
-	}
 	if bare := factory.LocalSeam(st, time.Now()); bare.Has("launch") || bare.Has("stop") {
-		t.Fatal("a seam with no runner and no mailbox draws runner doors")
+		t.Fatal("a seam with no runner draws runner doors")
 	}
 }
 

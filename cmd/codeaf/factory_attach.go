@@ -32,9 +32,9 @@ import (
 //	serve.json    → the factory another codeaf on this machine already serves
 //	else          → serve one in this process on 127.0.0.1:0 and write serve.json
 //
-// The runner is not moved by this: whoever holds run.lock runs the floor, and
-// the in-process service's seam reaches it the way every window does
-// (factory_run.go), until leases replace run.lock.
+// Execution is not decided here: every codeaf runs a worker loop against the
+// factory this order answers (factory_run.go), and the factory's verbs reach
+// it through the lease.
 
 // factoryAttachment is attach.json: the factory this machine's windows talk to
 // instead of serving their own.
@@ -193,9 +193,9 @@ func factoryAnswers(t factoryTarget) bool {
 }
 
 // factoryServingHere is the one service this process runs for its windows,
-// and the serve.lock it holds while it does. Both are kept for the life of the
-// process: the service ends with it, and the next window finds serve.json's
-// process gone and serves its own.
+// and the serve.lock it holds while it does. Both are kept until the process
+// ends ([closeFactoryServingHere]), and the next window finds serve.json gone
+// and serves its own.
 var factoryServingHere struct {
 	mu      sync.Mutex
 	service *factoryService
@@ -236,6 +236,21 @@ func serveFactoryHere(st *store.Store, seam factory.Seam) (factoryTarget, error)
 	}
 	factoryServingHere.service, factoryServingHere.release = service, release
 	return factoryTarget{url: service.url}, nil
+}
+
+// closeFactoryServingHere stops the service this process runs for its windows
+// and gives back serve.lock, taking serve.json down first: a receipt that
+// outlives its service sends the next window to a dead address.
+func closeFactoryServingHere() {
+	factoryServingHere.mu.Lock()
+	defer factoryServingHere.mu.Unlock()
+	if s := factoryServingHere.service; s != nil {
+		s.close()
+	}
+	if release := factoryServingHere.release; release != nil {
+		release()
+	}
+	factoryServingHere.service, factoryServingHere.release = nil, nil
 }
 
 // waitForFactoryDiscovery is the factory another process is starting, once its

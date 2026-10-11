@@ -53,8 +53,8 @@ func runFactoryConvert(args []string, out, warnings io.Writer) error {
 	return err
 }
 
-// factoryIntake reuses the same runner door as a person's Run action, including
-// the mailbox when another process owns execution on this machine.
+// factoryIntake reuses the same runner door as a person's Run action: the
+// lease's, which queues the job for whichever worker pulls it.
 func factoryIntake(st *store.Store) *intake.Intake {
 	history, _ := record.Open(st, record.Options{})
 	return intake.New(st, intake.Options{

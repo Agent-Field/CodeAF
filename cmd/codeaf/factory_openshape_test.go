@@ -201,31 +201,6 @@ func TestOpenShapeDoorShapesARunningItemsTailAndRefusesALandedOne(t *testing.T) 
 	}
 }
 
-// THE MAILBOX CARRIES A SHAPING BESIDE THE DRAIN: a window that does not run
-// the floor asks the owner, whose door answers the line back.
-func TestOpenShapeThroughTheMailbox(t *testing.T) {
-	st, err := store.Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	seam := factory.LocalSeam(st, time.Now(), factory.WithMailbox(st.Mailbox()))
-	if !seam.Has("shape") {
-		t.Fatal("a window with a mailbox has no Shape door")
-	}
-	asked := make(chan int, 1)
-	shape := func(_ context.Context, id int) (string, error) {
-		asked <- id
-		return "manager set review: read it for security", nil
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go drainFactoryMailbox(ctx, st.Mailbox(), buildFactoryRunner(st, t.TempDir(), t.TempDir(), nil, nil), shape, 5*time.Millisecond)
-	line, err := seam.Shape(context.Background(), 4)
-	if err != nil || line != "manager set review: read it for security" || <-asked != 4 {
-		t.Fatalf("line %q, err %v", line, err)
-	}
-}
-
 // SKIP THEN SWITCH ON IN ONE TURN IS ON: the edit the turn collected, applied
 // to the item the turn started from, leaves every stage as the manager's last
 // call left it, and the line the item records says what was applied. (The

@@ -100,8 +100,10 @@ func printFactorySteps(out io.Writer) error {
 	return nil
 }
 
-// serveFactory owns only the HTTP service. Worker execution belongs to a
-// separate command, so this seam deliberately has no runner or mailbox.
+// serveFactory owns only the HTTP service: it runs no job. Its runner doors
+// are the lease's, so a run pressed anywhere queues the job for whichever
+// attached worker pulls it, and every other verb reaches that worker through
+// its lease (factory_run.go).
 func serveFactory(ctx context.Context, configPath, listen string, out io.Writer) error {
 	st, err := store.Open(v3FactoryRoot())
 	if err != nil {
@@ -129,7 +131,7 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer)
 		return fmt.Errorf("factory cannot listen on %s: %w", listen, err)
 	}
 	defer listener.Close()
-	seam := factory.LocalSeam(st, time.Now(), factoryPipelineOption(), factory.WithRepoDirs(st.CheckoutDir))
+	seam := factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(), factory.WithRepoDirs(st.CheckoutDir))
 	service, err := startFactoryService(ctx, st, seam, listener, cfg.AccessToken)
 	if err != nil {
 		return err

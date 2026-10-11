@@ -31,10 +31,9 @@ import (
 //   - anything else (a running item, a queued one, a question that is not an
 //     approve step, a run that is over) changes nothing and says why.
 //
-// THE RUNNER'S DOORS ARE READ AT THE MOMENT OF ASKING ([factoryRunnerDoors]),
-// because the conversation's config is built before this process takes the
-// floor's run lock, and a window that does not hold it asks the process that
-// does through the mailbox.
+// THE RUNNER'S DOORS ARE THE LEASE'S ([factoryRunnerDoors]): a start queues
+// the job for the worker that pulls it, and the rest reach that worker
+// through its lease.
 
 // The lines `factory_start` answers, said once so the manual and the tests
 // quote the same words.

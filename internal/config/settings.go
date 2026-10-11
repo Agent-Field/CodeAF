@@ -1124,6 +1124,10 @@ var OperatorEnvPins = []string{
 	// that runs the floor, and the floor has no settings row for it yet, so it
 	// is plumbing rather than a row that would promise a dial.
 	"CODEAF_FACTORY_BENCHES",
+	// CODEAF_FACTORY_NO_WORKER=1 is `--no-worker` carried to the session host
+	// a window starts: this machine reads and steers its factory but runs no
+	// job (cmd/codeaf's factory_run.go). Launch plumbing, like the flag.
+	"CODEAF_FACTORY_NO_WORKER",
 	// The posture a factory stage conversation runs at (cmd/codeaf's
 	// factory_stage.go; the manual quotes the default, allow). Plumbing for the
 	// benches pin's reason: it tunes the process that runs the floor, and no

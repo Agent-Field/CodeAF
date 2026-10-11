@@ -490,7 +490,7 @@ Talk to it — a surface you sit in front of
       open the conversation this directory was last having
   codeaf chat [--model slug] [--reasoning level] [--session path] [--yolo]
               [--host host[:path]] [--at name[:path]] [--once "text"]
-              [--no-compact] [--one-model] [--no-host] [--debug]
+              [--no-compact] [--one-model] [--no-host] [--no-worker] [--debug]
               [--max-cost dollars] [--max-hours hours]
       --no-host stays in this process; --debug keeps the full run record
       --max-cost and --max-hours bound unattended work and require --yolo
