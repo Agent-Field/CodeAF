@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/client"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 )
 
@@ -64,15 +65,25 @@ func runAttach(args []string) error {
 	if flags.NArg() != 1 {
 		return wrongCall("use codeaf attach <url> [--name name] [--token token]")
 	}
-	base, err := factoryURL(flags.Arg(0))
+	base, tokenFromLink, linked, err := parseFactoryJoinLink(flags.Arg(0))
 	if err != nil {
 		return wrongCall(err.Error())
+	}
+	if !linked {
+		base, err = factoryURL(flags.Arg(0))
+		if err != nil {
+			return wrongCall(err.Error())
+		}
+	}
+	secret := strings.TrimSpace(*token)
+	if secret == "" {
+		secret = tokenFromLink
 	}
 	who := strings.TrimSpace(*name)
 	if who == "" {
 		who, _ = os.Hostname()
 	}
-	body, err := json.Marshal(factoryAttachment{URL: base, Name: who, Token: strings.TrimSpace(*token)})
+	body, err := json.Marshal(factoryAttachment{URL: base, Name: who, Token: secret})
 	if err != nil {
 		return err
 	}
@@ -228,7 +239,7 @@ func serveFactoryHere(st *store.Store, seam factory.Seam) (factoryTarget, error)
 		release()
 		return factoryTarget{}, err
 	}
-	service, err := startFactoryService(context.Background(), st, seam, listener, "")
+	service, err := startFactoryService(context.Background(), st, seam, listener, "", factoryTokensPath(home.Join("factory", "config.yaml")))
 	if err != nil {
 		listener.Close()
 		release()

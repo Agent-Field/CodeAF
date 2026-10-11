@@ -1,0 +1,158 @@
+// Package tokens keeps factory access-token rows on disk.
+//
+// The host config's own access token stays in config.yaml: rotating that
+// secret is a different door and must not drop invites. Every other access
+// token, including one minted by `codeaf factory invite`, is a row in
+// tokens.json beside that file. A row may name who invited and when it
+// expires. The service reads the file on each request, so revoke applies
+// without a restart.
+package tokens
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+// ErrExists is an id collision. The caller mints another id.
+var ErrExists = errors.New("access token id already exists")
+
+// ErrNotFound is an id that is not in the file.
+var ErrNotFound = errors.New("no access token")
+
+// Token is one access token row. InvitedBy and Expires are set for an invite
+// and left empty for a row that does not expire and names nobody.
+type Token struct {
+	ID        string    `json:"id"`
+	Token     string    `json:"token"`
+	InvitedBy string    `json:"invited_by,omitempty"`
+	Expires   time.Time `json:"expires,omitempty"`
+	Created   time.Time `json:"created,omitempty"`
+}
+
+// Mint chooses a new id and secret. The caller sets InvitedBy, Expires and
+// Created before Add.
+func Mint() (Token, error) {
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		return Token{}, err
+	}
+	id := make([]byte, 4)
+	if _, err := rand.Read(id); err != nil {
+		return Token{}, err
+	}
+	return Token{ID: "tok_" + hex.EncodeToString(id), Token: hex.EncodeToString(secret)}, nil
+}
+
+// Load reads the rows. A missing file is no rows, not an error.
+func Load(path string) ([]Token, error) {
+	body, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var doc struct {
+		Tokens []Token `json:"tokens"`
+	}
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return nil, fmt.Errorf("access tokens %s: %w", path, err)
+	}
+	for _, row := range doc.Tokens {
+		if err := row.valid(); err != nil {
+			return nil, fmt.Errorf("access tokens %s: %w", path, err)
+		}
+	}
+	return doc.Tokens, nil
+}
+
+// Save replaces the file by rename so a reader never sees half a row.
+func Save(path string, rows []Token) error {
+	if rows == nil {
+		rows = []Token{}
+	}
+	body, err := json.MarshalIndent(struct {
+		Tokens []Token `json:"tokens"`
+	}{rows}, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writePrivate(path, append(body, '\n'))
+}
+
+// Add appends one row. The id must be new.
+func Add(path string, row Token) error {
+	if err := row.valid(); err != nil {
+		return err
+	}
+	rows, err := Load(path)
+	if err != nil {
+		return err
+	}
+	for _, old := range rows {
+		if old.ID == row.ID {
+			return ErrExists
+		}
+	}
+	return Save(path, append(rows, row))
+}
+
+// Remove deletes the row with id.
+func Remove(path, id string) error {
+	rows, err := Load(path)
+	if err != nil {
+		return err
+	}
+	next := make([]Token, 0, len(rows))
+	found := false
+	for _, row := range rows {
+		if row.ID == id {
+			found = true
+			continue
+		}
+		next = append(next, row)
+	}
+	if !found {
+		return ErrNotFound
+	}
+	return Save(path, next)
+}
+
+func (t Token) valid() error {
+	if t.ID == "" || strings.TrimSpace(t.ID) != t.ID {
+		return errors.New("access token id is empty")
+	}
+	if t.Token == "" || strings.TrimSpace(t.Token) != t.Token || strings.ContainsAny(t.Token, " \t\r\n") {
+		return errors.New("access token must contain no whitespace")
+	}
+	return nil
+}
+
+// writePrivate publishes a complete private file by rename, the same way the
+// host config is written, so this package can be imported by both the command
+// and the service.
+func writePrivate(path string, body []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Dir(path), ".tokens-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	defer f.Close()
+	if _, err := f.Write(body); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), path)
+}

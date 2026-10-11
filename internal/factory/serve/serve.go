@@ -29,10 +29,14 @@ import (
 // or guesses the published address from a client-controlled Host header.
 type Config struct {
 	// Pipeline reads the same repository rules as intake, including personal limits.
-	Pipeline     func(context.Context, string, string) (pipeline.File, error)
-	Address      string
-	Version      string
-	AccessToken  string
+	Pipeline    func(context.Context, string, string) (pipeline.File, error)
+	Address     string
+	Version     string
+	AccessToken string
+	// TokensPath names access-token rows beside the host config. Empty means
+	// only AccessToken is accepted. It is read on each request so invite and
+	// revoke apply without restarting the service.
+	TokensPath   string
 	PollingEvery time.Duration
 	// Store enables worker writes to the same documents the local runner uses.
 	Store *store.Store
@@ -69,7 +73,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	}
 	h := &Handler{seam: seam, config: config,
 		factory: api.Factory{Address: config.Address, Version: config.Version}, mux: http.NewServeMux()}
-	h.sessions = &accessSessions{ids: make(map[string]time.Time), now: time.Now}
+	h.sessions = &accessSessions{ids: make(map[string]accessSession), now: time.Now}
 	h.route("/access", map[string]http.HandlerFunc{http.MethodGet: h.access, http.MethodPost: h.access})
 	h.route("/v1/access/revoke-sessions", map[string]http.HandlerFunc{http.MethodPost: h.revokeSessions})
 	h.read("/v1/queue", h.queue)
@@ -313,14 +317,17 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	}
 	// Identity is the connected GitHub login until viewer sessions and worker
 	// registration can supply the person's own machines and preferences.
+	// invited_by is set only when this caller holds an invite token. The host
+	// token, and a loopback call with no token, leave it out.
 	h.write(w, http.StatusOK, struct {
 		Factory         api.Factory     `json:"factory"`
 		CodeafVersion   string          `json:"codeaf_version"`
 		Contract        int             `json:"contract"`
 		Handle          string          `json:"handle"`
+		InvitedBy       string          `json:"invited_by,omitempty"`
 		Machines        []api.Worker    `json:"machines"`
 		TakesUnassigned map[string]bool `json:"takes_unassigned"`
-	}{h.factory, h.factory.Version, api.Contract, handle, []api.Worker{}, map[string]bool{}})
+	}{h.factory, h.factory.Version, api.Contract, handle, h.invitedBy(r), []api.Worker{}, map[string]bool{}})
 }
 
 func (h *Handler) require(w http.ResponseWriter, exists bool) bool {

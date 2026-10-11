@@ -45,7 +45,9 @@ window and `/factory`. The URL is the factory service's address, such as
 `http://team-host:7420`; HTTPS addresses work too. `--name` is how this machine is
 named there (default: its hostname). For a factory off loopback, ask its operator
 for the access token printed by `codeaf factory token` in the factory's machine
-and supply it with `--token`. Remote calls without that token are refused.
+and supply it with `--token`. A join link from `codeaf factory invite` is accepted
+as the argument in place of the URL; its address and token are saved the same way.
+Remote calls without that token are refused.
 
 `codeaf attach` saves the address, name and token in the private
 `~/.codeaf/v3/factory/attach.json`; it does not dial the factory or prove it is reachable.
@@ -100,10 +102,47 @@ An already running factory has its own launch: restart it with the flags to pin 
 `codeaf factory token` prints the host config's access token, creating and saving
 one if it is missing. `codeaf factory token --rotate` replaces it with a fresh
 random token and prints that token. Both accept `--config path`.
+`codeaf factory token --list` lists invite access tokens by id, who invited, and
+expiry, without printing the secret. `codeaf factory revoke <id>` removes one.
 Restart a running factory after rotation: the running service and its discovery
-file keep the token loaded at startup until they exit. Remote callers send
+file keep the token loaded at startup until they exit. An invite row is read from
+disk on the next request, so it does not need that restart. Remote callers send
 `Authorization: Bearer <access token>` or use a live browser session; loopback
 callers do not need either.
+
+## invite someone to this factory — codeaf factory invite, join link
+
+`codeaf factory invite [--handle @name] [--expires 7d]` prints two lines. The
+first is `codeaf://attach?url=<factory address>&token=<token>&by=<handle>`.
+The second is the same link as https, `https://attach?url=<factory address>&token=<token>&by=<handle>`,
+for copying. The codeaf app registers the `codeaf://` scheme.
+
+`--handle` is who invited them. `@Sam` is stored as `sam`. With no `--handle`,
+the factory's connected GitHub login is used. With no login it refuses:
+`codeaf factory invite needs --handle @name; this factory has no GitHub login`.
+`--expires` defaults to `7d`. `24h` and other Go durations work. Zero or a
+negative duration is refused: `expiry must be a duration like 7d or 24h`.
+
+The address is the running service when `serve.json` names one that answers,
+otherwise the host config's `listen` value (`http://127.0.0.1:7420` unless
+changed). `--config` selects the same host file `codeaf factory` uses.
+
+The token is an access token row in `tokens.json` beside `config.yaml`, with
+`invited_by` and `expires`. `codeaf factory token --list` prints each row as
+`id handle time` and does not print the secret. `codeaf factory token` still
+prints the host token. `codeaf factory revoke <id>`
+removes that row and prints `revoked <id>`. An unknown id is refused:
+`no access token <id>`. A running service reads the file on the next request,
+so a revoked or expired token stops working without a restart, including a
+browser session created from it. `codeaf factory revoke-sessions` signs every
+browser out and does not delete these rows. An invite token cannot revoke
+sessions; that still takes the host config's access token.
+
+`codeaf attach` accepts either line as its argument and saves the address and
+token in `attach.json`. Off loopback, send `Authorization: Bearer <token>` or
+enter the token at `/access`. `GET /v1/me` then includes `invited_by`. The host
+config token leaves `invited_by` out. `CODEAF_HOME` moves `tokens.json` with
+the rest of the factory host config.
 
 ## factory browser access — /access, session cookie and revoke-sessions
 
@@ -124,6 +163,7 @@ An expired, unknown or revoked cookie returns HTTP 401 off loopback.
 for this codeaf home and prints `factory sessions revoked`. It accepts no arguments
 and uses the private discovery receipt to reach the local service. Without a
 running service it refuses. Bearer callers keep working; the token is not rotated.
+Invite tokens are not deleted; revoke one with `codeaf factory revoke <id>`.
 After revocation, enter the token at `/access` again.
 
 ## codeaf factory steps — print built-in step prompts
@@ -1723,16 +1763,18 @@ branch even without a checkout; an absent file returns `source: "defaults"`. A f
 that cannot be read or parsed includes the reason in `problems`.
 
 Loopback connections are open. Connections from any other address require
-`Authorization: Bearer <access token>` using the host configuration's access token,
-or a live session cookie created by entering that token at `/access`.
-With no token configured, remote access is refused. Forwarded headers do not grant
-loopback access. Without either credential the service answers HTTP 401 with
+`Authorization: Bearer <access token>` using the host configuration's access token
+or an unexpired invite token, or a live session cookie created by entering that
+token at `/access`. With no host token and no unexpired invite token, remote
+access is refused. Forwarded headers do not grant loopback access. Without either
+credential the service answers HTTP 401 with
 `a bearer access token or live session is required; open /access to enter the token`.
 
 `/v1/me` currently uses the factory's connected GitHub login, normalized to lowercase
 without a leading `@`, as its handle, with an
 empty machines list and no unassigned-work preferences. With no GitHub connection,
-the handle is blank. These reads do not create a viewer session. A read whose seam
+the handle is blank. When the caller used an invite token, `invited_by` names who
+invited them; otherwise that field is absent. These reads do not create a viewer session. A read whose seam
 door is absent answers HTTP 501 with `this factory does not provide that read`;
 an unknown job answers HTTP 404 with `job not found`. These read endpoints accept GET.
 Run this handler with `codeaf factory` or `codeaf factory serve`.

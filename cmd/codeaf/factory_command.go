@@ -41,7 +41,7 @@ func runFactory(args []string) error {
 	verb := "serve"
 	if len(args) > 0 {
 		switch args[0] {
-		case "serve", "steps", "convert", "token", "revoke-sessions":
+		case "serve", "steps", "convert", "token", "invite", "revoke", "revoke-sessions":
 			verb, args = args[0], args[1:]
 		}
 	}
@@ -60,6 +60,12 @@ func runFactory(args []string) error {
 	}
 	if verb == "token" {
 		return runFactoryToken(args)
+	}
+	if verb == "invite" {
+		return runFactoryInvite(args)
+	}
+	if verb == "revoke" {
+		return runFactoryRevoke(args)
 	}
 	if verb == "revoke-sessions" {
 		flags := commandFlags("factory revoke-sessions")
@@ -80,7 +86,7 @@ func runFactory(args []string) error {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return wrongCall("use codeaf factory [serve], steps, convert, token or revoke-sessions")
+		return wrongCall("use codeaf factory serve, steps, convert, token, invite, revoke or revoke-sessions")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -135,7 +141,7 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer,
 	// who the token belongs to: without the connection doors an approval from
 	// the browser is refused ("approval requires a forge handle").
 	seam := factorygithub.Connect(factory.LocalSeam(st, time.Now(), factoryRunnerDoors(st), factoryPipelineOption(), factory.WithRepoDirs(st.CheckoutDir)), factoryProfile(""))
-	service, err := startFactoryService(ctx, st, seam, listener, cfg.AccessToken)
+	service, err := startFactoryService(ctx, st, seam, listener, cfg.AccessToken, factoryTokensPath(configPath))
 	if err != nil {
 		return err
 	}
@@ -179,7 +185,7 @@ type factoryService struct {
 // receipt other codeaf processes on this machine discover it by. It is the one
 // start both `codeaf factory` and a window serving in-process make, so the two
 // can never answer differently. ctx bounds the long polls and change streams.
-func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam, listener net.Listener, token string) (*factoryService, error) {
+func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam, listener net.Listener, token, tokensPath string) (*factoryService, error) {
 	address := "http://" + listener.Addr().String()
 	history, err := record.Open(st, record.Options{})
 	if err != nil {
@@ -187,7 +193,7 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 	}
 	// The service's watch, worker reports and record share the jobs' root, so
 	// clients observe the same files the runner writes.
-	handler := serve.New(seam, serve.Config{Address: address, AccessToken: token, Store: st, Root: st.Root(), Record: history,
+	handler := serve.New(seam, serve.Config{Address: address, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
 			return factoryRules().Load(ctx, repo, dir, home.Join("factory.yaml"))
 		},

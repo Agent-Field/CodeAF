@@ -37,6 +37,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 
 		{"what can you do", "what-i-can-do"},
 		{"how do I attach to a team factory", "factory"},
+		{"how do I invite someone to my factory", "factory"},
 		{"how do I detach from a team factory", "factory"},
 		{"where is the factory dashboard address", "factory"},
 		{"where is the web ui", "factory"},
@@ -4051,6 +4052,11 @@ func TestTeamFactoryQuestionsReachTheServiceInstructions(t *testing.T) {
 			asked: "how do I attach to a team factory",
 			title: "how do I attach to a team factory",
 			says:  []string{"codeaf attach <url>", "--token", "codeaf factory token", "attach.json", "does not dial", "codeaf detach"},
+		},
+		{
+			asked: "how do I invite someone to my factory",
+			title: "invite someone to this factory",
+			says:  []string{"codeaf factory invite", "--handle", "--expires", "7d", "codeaf://attach?url=", "https://attach?url=", "invited_by", "codeaf factory token --list", "codeaf factory revoke", "codeaf attach", "GET /v1/me"},
 		},
 		{
 			asked: "where is the factory dashboard address",

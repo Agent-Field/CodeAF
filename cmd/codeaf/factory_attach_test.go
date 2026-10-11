@@ -41,7 +41,7 @@ func serveElsewhere(t *testing.T, st *store.Store, pid int) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := startFactoryService(context.Background(), st, factory.LocalSeam(st, time.Now()), l, "")
+	s, err := startFactoryService(context.Background(), st, factory.LocalSeam(st, time.Now()), l, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestFactoryConnectionTakesOverWhenTheServerGoes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gone, err := startFactoryService(context.Background(), st, factory.LocalSeam(st, time.Now()), l, "")
+	gone, err := startFactoryService(context.Background(), st, factory.LocalSeam(st, time.Now()), l, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

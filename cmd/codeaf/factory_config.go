@@ -34,12 +34,19 @@ func (cfg factoryHostConfig) MarshalYAML() (any, error) {
 func runFactoryToken(args []string) error {
 	flags := commandFlags("factory token")
 	rotate := flags.Bool("rotate", false, "replace the access token")
+	list := flags.Bool("list", false, "list invite access tokens by id, who invited, and expiry")
 	path := flags.String("config", home.Join("factory", "config.yaml"), "host configuration")
 	if err := parseCommandFlags(flags, args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return wrongCall("use codeaf factory token [--rotate] [--config path]")
+		return wrongCall("use codeaf factory token [--rotate] [--list] [--config path]")
+	}
+	if *list && *rotate {
+		return wrongCall("use codeaf factory token --rotate or --list, not both")
+	}
+	if *list {
+		return listFactoryTokens(os.Stdout, *path)
 	}
 	cfg, err := factoryHostConfigAt(*path, *rotate)
 	if err != nil {

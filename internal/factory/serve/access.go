@@ -12,17 +12,27 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 )
 
 const accessSessionTTL = 30 * 24 * time.Hour
 const accessCookieName = "codeaf_factory_session"
 const accessFormLimit = 4096
 
+// accessSession is one browser sign-in. tokenID is empty when the host
+// config token created it. An invite row's id is kept so the session dies
+// when that row is revoked or expires, even inside the cookie's 30 days.
+type accessSession struct {
+	expires   time.Time
+	invitedBy string
+	tokenID   string
+}
+
 // accessSessions keeps opaque browser credentials only in the running service.
 // Restarting the service or revoking sessions makes every old cookie unusable.
 type accessSessions struct {
 	mu  sync.Mutex
-	ids map[string]time.Time
+	ids map[string]accessSession
 	now func() time.Time
 }
 
@@ -38,11 +48,18 @@ func loopbackRequest(r *http.Request) bool {
 	return false
 }
 
+func (h *Handler) now() time.Time {
+	if h != nil && h.sessions != nil && h.sessions.now != nil {
+		return h.sessions.now()
+	}
+	return time.Now()
+}
+
 func (h *Handler) allowed(r *http.Request) bool {
 	if loopbackRequest(r) {
 		return true
 	}
-	if h.validAccessToken(bearer(r)) {
+	if _, _, ok := h.identifyToken(bearer(r)); ok {
 		return true
 	}
 	cookie, err := r.Cookie(accessCookieName)
@@ -51,21 +68,117 @@ func (h *Handler) allowed(r *http.Request) bool {
 	}
 	h.sessions.mu.Lock()
 	defer h.sessions.mu.Unlock()
-	expires, ok := h.sessions.ids[cookie.Value]
-	if !ok || !h.sessions.now().Before(expires) {
+	session, ok := h.sessions.ids[cookie.Value]
+	if !ok || !h.sessionUsable(session) {
 		delete(h.sessions.ids, cookie.Value)
 		return false
 	}
 	return true
 }
 
-func (h *Handler) validAccessToken(token string) bool {
-	if token == "" || h.config.AccessToken == "" {
+// identifyToken accepts the host config token or an unexpired row. The row's
+// invited_by and id come back so a session can remember them. The host token
+// matches with an empty id.
+func (h *Handler) identifyToken(token string) (invitedBy, id string, ok bool) {
+	if token == "" {
+		return "", "", false
+	}
+	got := sha256.Sum256([]byte(token))
+	floor := h.sameSecret(h.config.AccessToken, got)
+	now := h.now()
+	var match tokens.Token
+	matched := false
+	for _, row := range h.tokenRows() {
+		if !h.sameSecret(row.Token, got) {
+			continue
+		}
+		if !row.Expires.IsZero() && !now.Before(row.Expires) {
+			continue
+		}
+		match = row
+		matched = true
+	}
+	if matched {
+		return match.InvitedBy, match.ID, true
+	}
+	if floor {
+		return "", "", true
+	}
+	return "", "", false
+}
+
+func (h *Handler) sameSecret(secret string, got [sha256.Size]byte) bool {
+	if secret == "" {
 		return false
 	}
-	// Fixed-size hashes keep token length out of the comparison's timing.
-	want, got := sha256.Sum256([]byte(h.config.AccessToken)), sha256.Sum256([]byte(token))
+	want := sha256.Sum256([]byte(secret))
 	return subtle.ConstantTimeCompare(want[:], got[:]) == 1
+}
+
+// floorToken is the host config secret. Invite rows are access tokens too,
+// and they do not get this door: revoking every session stays with the host.
+func (h *Handler) floorToken(token string) bool {
+	if token == "" {
+		return false
+	}
+	got := sha256.Sum256([]byte(token))
+	return h.sameSecret(h.config.AccessToken, got)
+}
+
+// tokenRows is the file named by TokensPath. A missing file is no rows. A
+// read or parse failure fails closed for those rows; the host token still
+// works. The file is small and read every time so two writes in one second
+// cannot hide a revoke behind a stale mtime.
+func (h *Handler) tokenRows() []tokens.Token {
+	if h.config.TokensPath == "" {
+		return nil
+	}
+	rows, err := tokens.Load(h.config.TokensPath)
+	if err != nil {
+		return nil
+	}
+	return rows
+}
+
+// sessionUsable is a cookie that has not reached its own expiry and, when it
+// was minted from a row, that row is still present and unexpired.
+func (h *Handler) sessionUsable(session accessSession) bool {
+	if !h.now().Before(session.expires) {
+		return false
+	}
+	if session.tokenID == "" {
+		return true
+	}
+	now := h.now()
+	for _, row := range h.tokenRows() {
+		if row.ID == session.tokenID && (row.Expires.IsZero() || now.Before(row.Expires)) {
+			return true
+		}
+	}
+	return false
+}
+
+// invitedBy is who invited the caller, when the bearer or the live session
+// came from an invite row. Anyone else gets "".
+func (h *Handler) invitedBy(r *http.Request) string {
+	if token := bearer(r); token != "" {
+		by, _, ok := h.identifyToken(token)
+		if !ok {
+			return ""
+		}
+		return by
+	}
+	cookie, err := r.Cookie(accessCookieName)
+	if err != nil {
+		return ""
+	}
+	h.sessions.mu.Lock()
+	session, ok := h.sessions.ids[cookie.Value]
+	h.sessions.mu.Unlock()
+	if !ok || !h.sessionUsable(session) {
+		return ""
+	}
+	return session.invitedBy
 }
 
 func (h *Handler) access(w http.ResponseWriter, r *http.Request) {
@@ -89,7 +202,8 @@ func (h *Handler) access(w http.ResponseWriter, r *http.Request) {
 		}
 		token = values.Get("token")
 	}
-	if !h.validAccessToken(token) {
+	invitedBy, tokenID, ok := h.identifyToken(token)
+	if !ok {
 		h.fail(w, http.StatusUnauthorized, "invalid access token")
 		return
 	}
@@ -98,20 +212,20 @@ func (h *Handler) access(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusInternalServerError, "could not create an access session")
 		return
 	}
-	id := hex.EncodeToString(secret)
+	sessionID := hex.EncodeToString(secret)
 	h.sessions.mu.Lock()
-	now := h.sessions.now()
+	now := h.now()
 	expires := now.Add(accessSessionTTL)
 	// Expired sessions are discarded on issuance so unused cookies do not
 	// retain entries forever when people return to enter their token again.
-	for old, until := range h.sessions.ids {
-		if !now.Before(until) {
+	for old, session := range h.sessions.ids {
+		if !now.Before(session.expires) {
 			delete(h.sessions.ids, old)
 		}
 	}
-	h.sessions.ids[id] = expires
+	h.sessions.ids[sessionID] = accessSession{expires: expires, invitedBy: invitedBy, tokenID: tokenID}
 	h.sessions.mu.Unlock()
-	http.SetCookie(w, &http.Cookie{Name: accessCookieName, Value: id, Path: "/",
+	http.SetCookie(w, &http.Cookie{Name: accessCookieName, Value: sessionID, Path: "/",
 		HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil,
 		MaxAge: int(accessSessionTTL.Seconds()), Expires: expires})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -120,7 +234,8 @@ func (h *Handler) access(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) revokeSessions(w http.ResponseWriter, r *http.Request) {
 	// A browser cookie grants dashboard access, not permission to sign out
 	// every browser. The local command sends the service's bearer token.
-	if !h.validAccessToken(bearer(r)) {
+	// An invite row is an access token and still cannot do this.
+	if !h.floorToken(bearer(r)) {
 		h.fail(w, http.StatusUnauthorized, "a bearer access token is required to revoke sessions")
 		return
 	}
