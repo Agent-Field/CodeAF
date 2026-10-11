@@ -86,7 +86,7 @@ check. Progress is published after each stage and inside the long ones
 | --- | --- | --- |
 | place | `placegraph.Place` | one parent (`Parents[0]`); the graph allows a DAG, the organiser only ever makes a forest |
 | home | `placegraph.Membership` with `Link == false` | one per chat, `AddedBy: ai` |
-| shortcut (≤2) | `placegraph.Membership` with **new** `Link bool \`json:"link,omitempty"\`` | ADDED to placegraph: the one schema change. `ChatsIn` keeps listing links; the Home view marks them "also in". Omitted when false so an old file reads unchanged. |
+| shortcut (earned, uncapped, one per branch) | `placegraph.Membership` with **new** `Link bool \`json:"link,omitempty"\`` | ADDED to placegraph: the one schema change. `ChatsIn` keeps listing links; the Home view marks them "also in". Omitted when false so an old file reads unchanged. |
 | inbox | `placegraph.NowID` (unplaced) | no rows; a chat in Now is a chat with no membership |
 | probe, duplicate | `placeorg.State.Kinds`, `.Representative` | the store never learns a kind; a duplicate gets the same membership rows as its representative |
 | lens | `placeorg.State.Lenses[placeID]` | a view, never a Place; served by `GET /places/{id}/lenses`; journaled as nothing in the store |

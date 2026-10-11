@@ -64,9 +64,6 @@ func TestShortcutHistogramAndByMonthMatchTheReference(t *testing.T) {
 		}
 		if op.Kind == placeorg.OpLink {
 			per[op.Chat]++
-			if per[op.Chat] > placeorg.MaxLinks {
-				t.Fatalf("chat %s has more than %d shortcuts", op.Chat, placeorg.MaxLinks)
-			}
 		}
 	}
 	for _, id := range ids {

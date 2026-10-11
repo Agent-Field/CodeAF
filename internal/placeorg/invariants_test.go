@@ -36,7 +36,7 @@ func TestCheckFailsEachBrokenLaw(t *testing.T) {
 		{"fan-out within 9", brokenFanout},
 		{"every place has at least 4 chats", brokenQuorum},
 		{"names unique tree-wide, one or two words", brokenName},
-		{"at most 2 shortcuts per chat", brokenLinks},
+		{"every extra home is earned, and in a branch of its own", brokenLinks},
 		{"forest: one parent per place", brokenForest},
 		{"every op in the plan is in the journal and replays to this tree", brokenJournal},
 		{"a home for every chat, duplicates beside their representative", brokenHome},
@@ -185,9 +185,10 @@ func brokenName() (*Tree, *Plan, *Corpus) {
 	return onePlace("One Two Three", []string{"a", "b", "c", "d"})
 }
 
+// brokenLinks lists a chat in its own home, which no score can earn.
 func brokenLinks() (*Tree, *Plan, *Corpus) {
 	tree, plan, corpus := onePlace("Only", []string{"a", "b", "c", "d"})
-	tree.links["a"] = []string{"x", "y", "z"}
+	tree.links["a"] = []string{tree.home["a"]}
 	return tree, plan, corpus
 }
 
@@ -356,9 +357,6 @@ func referenceTree(t *testing.T, dir string) (*Tree, *Plan, *Corpus) {
 			continue
 		}
 		n := row.Shortcuts
-		if n > MaxLinks {
-			n = MaxLinks
-		}
 		var links []string
 		for _, pid := range placeIDs {
 			if pid == tree.home[id] {
@@ -405,4 +403,56 @@ func containsStr(ids []string, id string) bool {
 		}
 	}
 	return false
+}
+
+// TestHomesInvariantFailsOnWhatAnEarnedHomeCannotBe pins the three ways the
+// law can fail, and that many earned homes in distinct branches pass: there
+// is no cap to trip.
+func TestHomesInvariantFailsOnWhatAnEarnedHomeCannotBe(t *testing.T) {
+	forest := func() (*Tree, *Plan, *Corpus) {
+		tree := NewTree()
+		tree.nodes["p"] = &Node{ID: "p", Name: "Parent", Depth: 1, Children: []string{"l1", "l2"}}
+		tree.nodes["l1"] = &Node{ID: "l1", Name: "Leafone", Parent: "p", Depth: 2, Members: []string{"c"}}
+		tree.nodes["l2"] = &Node{ID: "l2", Name: "Leaftwo", Parent: "p", Depth: 2}
+		for _, id := range []string{"x", "y", "z", "w"} {
+			tree.nodes[id] = &Node{ID: id, Name: "Top" + id, Depth: 1}
+			tree.roots = append(tree.roots, id)
+		}
+		tree.roots = append(tree.roots, "p")
+		tree.home["c"] = "l1"
+		return tree, &Plan{}, &Corpus{}
+	}
+	earned := Op{Kind: OpLink, Chat: "c", Scores: []float32{0.6, 0.5}}
+	cases := map[string]func(*Tree, *Plan){
+		"four homes in distinct branches": func(tr *Tree, p *Plan) {
+			tr.links["c"] = []string{"x", "y", "z", "w"}
+		},
+		"sibling of home is the same branch": func(tr *Tree, p *Plan) { tr.links["c"] = []string{"l2"} },
+		"ancestor of home":                   func(tr *Tree, p *Plan) { tr.links["c"] = []string{"p"} },
+		"score under its bar": func(tr *Tree, p *Plan) {
+			p.Ops = []Op{{Kind: OpLink, Chat: "c", Place: "x", Scores: []float32{0.4, 0.5}}}
+		},
+		"no score at all": func(tr *Tree, p *Plan) { p.Ops = []Op{{Kind: OpLink, Chat: "c", Place: "x"}} },
+	}
+	for name, mutate := range cases {
+		tree, plan, corpus := forest()
+		mutate(tree, plan)
+		err := checkLinks(tree, plan, corpus)
+		if name == "four homes in distinct branches" {
+			if err != nil {
+				t.Errorf("%s: %v", name, err)
+			}
+			continue
+		}
+		if err == nil {
+			t.Errorf("%s passed", name)
+		}
+	}
+	tree, plan, corpus := forest()
+	tree.links["c"] = []string{"x"}
+	earned.Place = "x"
+	plan.Ops = []Op{earned}
+	if err := checkLinks(tree, plan, corpus); err != nil {
+		t.Errorf("an earned home failed: %v", err)
+	}
 }
