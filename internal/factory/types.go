@@ -318,6 +318,13 @@ type Item struct {
 	Triage  Triage
 	Stages  []Stage // the item's copy of the recipe, toggled
 	Cap     float64
+
+	// Assignee is the forge's person; Taker and Starter keep the person who
+	// took or started otherwise unassigned work. Author is never ownership:
+	// opening an issue must not volunteer the reporter's machines or money.
+	Assignee string `json:",omitempty"`
+	Starter  string `json:",omitempty"`
+	Taker    string `json:",omitempty"`
 	// OldGate is the item's `ask me at` from before approve steps, read
 	// into its stages when the item is ([Item.UnmarshalJSON]) and never
 	// written: "" on every item in memory.

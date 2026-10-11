@@ -1,5 +1,22 @@
 # The factory
 
+## workers, taken jobs and lease expiry
+
+The factory service's claims desk keeps one lease per job and one job per worker in
+`leases.json` beside the saved jobs. A worker pulls queued work; it does not receive
+backlog jobs. A job belongs to its forge assignee, otherwise its taker, otherwise the
+person who started it. The issue's author is not its person. Only that person's workers
+may pull it. Unassigned work requires the worker's explicit opt-in for that repository;
+that opt-in never permits taking someone else's assigned job.
+
+Taking a job records its person without starting it. A worker's heartbeat renews its
+live lease. When the lease expires, running work returns to the queue with its person
+kept; completed work and work waiting on a person keep their state. A late heartbeat
+cannot renew an expired lease. Releasing a lease early also returns running work to
+the queue. The claims desk is implemented for service integration; the existing
+floor's runner still uses its local ownership mechanism until the worker connection
+is wired. No new Take key or attach command is available from this change alone.
+
 ## /factory — the floor
 
 The **factory** is a place, like home, activity and spend: the floor where work a chat splits
