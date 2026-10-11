@@ -3,9 +3,13 @@
 package serve
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"net/http"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +26,9 @@ type Config struct {
 	Version      string
 	AccessToken  string
 	PollingEvery time.Duration
+	// RecordApproval writes before the approval door runs, so a future record
+	// can bind publishing to the event rather than reconstructing consent.
+	RecordApproval func(ctx context.Context, id int, edited bool) (event string, err error)
 }
 
 // Handler keeps the seam and host identity together for every response.
@@ -32,19 +39,20 @@ type Handler struct {
 	mux     *http.ServeMux
 }
 
-// New binds only reads; nil seam doors answer a refusal rather than panic.
+// New binds the seam's reads and verbs; absent doors refuse rather than panic.
 func New(seam factory.Seam, config Config) *Handler {
 	if config.Version == "" {
 		config.Version = buildinfo.String()
 	}
 	h := &Handler{seam: seam, config: config,
 		factory: api.Factory{Address: config.Address, Version: config.Version}, mux: http.NewServeMux()}
-	h.mux.HandleFunc("/v1/queue", h.queue)
-	h.mux.HandleFunc("/v1/jobs/{id}", h.job)
-	h.mux.HandleFunc("/v1/repos", h.repos)
-	h.mux.HandleFunc("/v1/repos/{owner}/{repo}/pipeline", h.pipeline)
-	h.mux.HandleFunc("/v1/github", h.github)
-	h.mux.HandleFunc("/v1/me", h.me)
+	h.read("/v1/queue", h.queue)
+	h.read("/v1/jobs/{id}", h.job)
+	h.route("/v1/repos", map[string]http.HandlerFunc{http.MethodGet: h.repos, http.MethodPut: h.setRepos})
+	h.read("/v1/repos/{owner}/{repo}/pipeline", h.pipeline)
+	h.read("/v1/github", h.github)
+	h.read("/v1/me", h.me)
+	h.verbs()
 	h.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusNotFound, "factory endpoint not found")
 	})
@@ -66,12 +74,29 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusNotFound, "factory endpoint not found")
 		return
 	}
-	if r.Method != http.MethodGet {
-		w.Header().Set("Allow", http.MethodGet)
-		h.fail(w, http.StatusMethodNotAllowed, "this endpoint accepts GET")
-		return
-	}
 	h.mux.ServeHTTP(w, r)
+}
+
+func (h *Handler) read(pattern string, handler http.HandlerFunc) {
+	h.route(pattern, map[string]http.HandlerFunc{http.MethodGet: handler})
+}
+
+// route checks methods inside the mux so its automatic HTML errors never
+// replace the JSON response or omit the factory's identity.
+func (h *Handler) route(pattern string, methods map[string]http.HandlerFunc) {
+	allowed := make([]string, 0, len(methods))
+	for method := range methods {
+		allowed = append(allowed, method)
+	}
+	sort.Strings(allowed)
+	h.mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		if handler := methods[r.Method]; handler != nil {
+			handler(w, r)
+			return
+		}
+		w.Header().Set("Allow", strings.Join(allowed, ", "))
+		h.fail(w, http.StatusMethodNotAllowed, "this endpoint accepts "+strings.Join(allowed, ", "))
+	})
 }
 
 func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
@@ -92,28 +117,37 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
+	it, ok := h.findJob(w, r)
+	if ok {
+		h.write(w, http.StatusOK, struct {
+			Factory api.Factory `json:"factory"`
+			api.Job
+		}{h.factory, api.FromItem(it)})
+	}
+}
+
+// findJob gives every job door the same id and existence checks, without
+// guessing whether an untyped runner error meant a missing job.
+func (h *Handler) findJob(w http.ResponseWriter, r *http.Request) (factory.Item, bool) {
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil || id <= 0 {
 		h.fail(w, http.StatusBadRequest, "job id must be a positive integer")
-		return
+		return factory.Item{}, false
 	}
 	if !h.require(w, h.seam.Load != nil) {
-		return
+		return factory.Item{}, false
 	}
 	s, err := h.seam.Load()
 	if h.failed(w, err) {
-		return
+		return factory.Item{}, false
 	}
 	for _, it := range s.Items {
 		if it.ID == id {
-			h.write(w, http.StatusOK, struct {
-				Factory api.Factory `json:"factory"`
-				api.Job
-			}{h.factory, api.FromItem(it)})
-			return
+			return it, true
 		}
 	}
 	h.fail(w, http.StatusNotFound, "job not found")
+	return factory.Item{}, false
 }
 
 // Repository preserves the picker's facts with product names and JSON keys,
@@ -229,7 +263,18 @@ func (h *Handler) require(w http.ResponseWriter, exists bool) bool {
 
 func (h *Handler) failed(w http.ResponseWriter, err error) bool {
 	if err != nil {
-		h.fail(w, http.StatusInternalServerError, err.Error())
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			status = http.StatusNotFound
+		case errors.Is(err, fs.ErrPermission):
+			status = http.StatusForbidden
+		case errors.Is(err, context.DeadlineExceeded):
+			status = http.StatusGatewayTimeout
+		case errors.Is(err, context.Canceled):
+			status = http.StatusRequestTimeout
+		}
+		h.fail(w, status, err.Error())
 	}
 	return err != nil
 }

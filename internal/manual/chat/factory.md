@@ -1602,8 +1602,61 @@ loopback access. A missing or wrong token answers HTTP 401 with
 empty machines list and no unassigned-work preferences. With no GitHub connection,
 the handle is blank. These reads do not create a viewer session. A read whose seam
 door is absent answers HTTP 501 with `this factory does not provide that read`;
-an unknown job answers HTTP 404 with `job not found`. The handler accepts GET only.
+an unknown job answers HTTP 404 with `job not found`. These read endpoints accept GET.
 This handler is a Go component; it does not itself add a CLI server command.
+
+## factory HTTP job actions — run, stop, pause, resume, drop, answer and reply
+
+Send `POST /v1/jobs/{id}/run`, `/stop`, `/pause`, `/resume`, `/drop` or `/recheck`
+without a body to run, stop, hold, continue, drop or re-run a job's checks.
+Pause and resume carry explicit intent; repeating pause never resumes the job.
+`/answer` takes `{"yes":true}`, `{"yes":false}` or `{"words":"your answer"}`;
+yes and words may be combined. `/steer`, `/request_changes` and `/reply` each take
+`{"words":"your words"}`. Words must contain text. Steering goes to the run,
+request changes goes back through the proof gate, and reply goes to the manager
+thread. `/prioritize` takes `{"to":"top"}` and selects the job through the
+factory's existing selection door; no other priority destination is supported.
+
+Every response includes `factory: {address, version}`. Successful actions answer
+HTTP 200. An absent action answers HTTP 501 with
+`this factory does not provide that action`. Invalid input answers HTTP 400;
+an unknown job answers HTTP 404 with `job not found`. Wrong methods answer
+HTTP 405 with an Allow header. A seam error answers HTTP 500, except missing
+data (404), permission denied (403), a deadline (504) or cancellation (408).
+Actions require the same bearer token as reads off loopback. Bodies with fields
+must be one JSON object, at most 1 MiB; extra fields are refused, and a larger
+body answers HTTP 413 with `JSON body exceeds 1 MiB`.
+
+## factory HTTP approve — plan approval, proof approval and the event receipt
+
+`POST /v1/jobs/{id}/approve` takes `{"edited":true}` when you changed the result
+first, or `{}` or no body for ordinary approval. A job waiting at an approve
+step receives a yes answer. A ready proof goes through the factory's sign-off
+door, which still enforces the claims and policy gate. Any other job answers
+HTTP 409 with `job is not waiting for approval`.
+
+Success answers HTTP 200 with `{"factory":{"address":"…","version":"…"},
+"event":"evt_pending"}`. `evt_pending` is a placeholder, not a durable approval
+receipt. A host can supply the approval-record hook: it writes before the
+approval door runs, and its event id replaces the placeholder. If the hook
+fails, no approval happens. A failed approval returns an error without an event.
+The handler itself does not yet keep an append-only record or bind a PR trailer.
+
+## factory HTTP add a job, watched repositories and connect GitHub
+
+`POST /v1/jobs` takes `{"repo":"owner/repo","title":"work","text":"brief",
+"autostart":false}`. Repo and title are required. Text and autostart are optional.
+The handler passes the title and text, separated by a blank line, to the
+factory's new-job door. Success answers HTTP 201 with `{id, factory}`.
+Autostart also calls the run door with the new id; without that door it refuses
+before creating the job. If starting fails after creation, the job stays created
+and the request returns the start error.
+
+`PUT /v1/repos` takes `{"watched":["owner/repo"]}` to replace the watched list;
+an empty array clears it. `POST /v1/github/connect` takes `{"token":"…"}` to
+connect GitHub; `{"token":""}` selects gh's existing login. Both answer HTTP 200
+with the factory identity. An omitted watched array or token answers HTTP 400.
+These routes use the same access check and error statuses as job actions.
 
 ## what the factory does not do yet
 
