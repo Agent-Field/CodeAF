@@ -28,9 +28,9 @@ func (Auditor) Fallbacks() []placeorg.Fallback {
 	}}
 }
 
-// Audit proposes collapse, dissolve, interpose, demote and split, in that
-// order. Later ops see the shadow left by earlier ones. Nothing here writes
-// the Tree.
+// Audit proposes collapse, dissolve, interpose, lift, demote and split, in
+// that order. Later ops see the shadow left by earlier ones. Nothing here
+// writes the Tree.
 func (a Auditor) Audit(ctx context.Context, t *placeorg.Tree, corpus *placeorg.Corpus, vectors [][]float32, judge placeorg.Judge) ([]placeorg.Op, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -47,6 +47,7 @@ func (a Auditor) Audit(ctx context.Context, t *placeorg.Tree, corpus *placeorg.C
 	ops = append(ops, a.collapse(f)...)
 	ops = append(ops, a.dissolve(f)...)
 	ops = append(ops, a.interpose(f, ix)...)
+	ops = append(ops, a.lift(f, ix)...)
 	demoted, err := a.demote(ctx, f, ix, judge)
 	if err != nil {
 		return nil, err

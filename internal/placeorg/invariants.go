@@ -3,6 +3,7 @@ package placeorg
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -285,6 +286,8 @@ func replayOne(t *Tree, op Op) error {
 		// A proposed birth, split or interpose has not created its place yet.
 		// An applied one has.
 		return expectPresent(t, op, !op.Proposed)
+	case OpLift:
+		return expectLifted(t, op)
 	case OpMerge:
 		if op.Proposed {
 			if _, ok := t.nodes[op.Place]; !ok {
@@ -333,6 +336,31 @@ func expectGone(t *Tree, op Op) error {
 	return nil
 }
 
+// expectLifted: a proposed lift has not moved the children yet. An applied
+// one has made each child a root, and the parent no longer lists them.
+func expectLifted(t *Tree, op Op) error {
+	parent, ok := t.nodes[op.Place]
+	if !ok {
+		return fmt.Errorf("%s is already gone", op.Place)
+	}
+	for _, id := range op.Children {
+		n, childOK := t.nodes[id]
+		if !childOK {
+			return fmt.Errorf("%s is missing", id)
+		}
+		if op.Proposed {
+			if n.Parent != op.Place {
+				return fmt.Errorf("%s is not inside %s", id, op.Place)
+			}
+			continue
+		}
+		if n.Parent != "" || slices.Contains(parent.Children, id) {
+			return fmt.Errorf("%s is still inside %s", id, op.Place)
+		}
+	}
+	return nil
+}
+
 // expectPresent: want says the place should exist.
 func expectPresent(t *Tree, op Op, want bool) error {
 	_, ok := t.nodes[op.Place]
@@ -347,7 +375,7 @@ func expectPresent(t *Tree, op Op, want bool) error {
 
 func knownKind(k OpKind) bool {
 	switch k {
-	case OpBirth, OpCollapse, OpDissolve, OpInterpose, OpDemote, OpSplit,
+	case OpBirth, OpCollapse, OpDissolve, OpInterpose, OpLift, OpDemote, OpSplit,
 		OpFile, OpPark, OpInbox, OpLink, OpName, OpRename, OpMerge, OpLens,
 		OpExemplar, OpConstraint, OpAxis:
 		return true
@@ -440,7 +468,7 @@ func checkAddOn(_ *Tree, p *Plan, _ *Corpus) error {
 
 func structural(k OpKind) bool {
 	switch k {
-	case OpCollapse, OpDissolve, OpDemote, OpRename, OpMerge, OpSplit, OpInterpose, OpBirth:
+	case OpCollapse, OpDissolve, OpDemote, OpRename, OpMerge, OpSplit, OpInterpose, OpLift, OpBirth:
 		return true
 	default:
 		return false
