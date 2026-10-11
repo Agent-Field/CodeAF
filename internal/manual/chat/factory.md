@@ -2160,5 +2160,7 @@ including the day rail and the restriction on writing work submitted by stranger
 and prints YAML to stdout. Conversion warnings go to stderr. It does not write a file.
 To save it, run `codeaf factory convert > .codeaf/factory.yaml` from the repository.
 Review the warnings before committing: old checks and posts become prompts, and some
-old step knobs cannot be represented. Conversion never adds start rules, so it cannot
+old step knobs cannot be represented. A section-wide Markdown `fixed` setting remains
+in force when Markdown is read; saved YAML uses individual fixed steps instead, and
+conversion warns about that difference. Conversion never adds start rules, so it cannot
 turn on automatic intake. YAML takes precedence once committed on the main branch.

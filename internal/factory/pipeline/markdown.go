@@ -19,6 +19,7 @@ func FromMarkdown(text string) File {
 	recipe, parsed := factory.Parse(text)
 	f := Defaults()
 	f.Source = SourceMarkdown
+	f.markdownAdapt = copyAdapt(recipe.Adapt)
 	f.Pipeline = map[factory.Kind][]string{}
 	f.Fixed = []string{}
 	f.set.fixed = true
@@ -64,6 +65,9 @@ func FromMarkdown(text string) File {
 		f.Problems = append(f.Problems, Problem{Line: problem.Line, Where: factory.RecipeFile, Why: why})
 	}
 	for kind, mode := range recipe.Adapt {
+		if mode == factory.AdaptFixed {
+			f.Problems = append(f.Problems, Problem{Where: string(kind), Why: "a fixed markdown section stays fixed while read; YAML fixes individual steps instead"})
+		}
 		if mode == factory.AdaptAsk {
 			f.Problems = append(f.Problems, Problem{
 				Where: string(kind),

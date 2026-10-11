@@ -514,6 +514,7 @@ func hasFold(list []string, want string) bool {
 
 func cloneFile(f File) File {
 	out := f
+	out.markdownAdapt = copyAdapt(f.markdownAdapt)
 	out.Start.Labels = append([]string(nil), f.Start.Labels...)
 	out.Start.Never = append([]string(nil), f.Start.Never...)
 	out.Start.AskFirst = append([]string(nil), f.Start.AskFirst...)

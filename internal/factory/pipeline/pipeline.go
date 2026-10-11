@@ -62,6 +62,9 @@ type File struct {
 
 	// set records which keys a personal file wrote. A repo file leaves it unused.
 	set presence
+	// markdownAdapt preserves the older section-wide constraint until conversion
+	// is explicitly saved; YAML represents fixed steps rather than section modes.
+	markdownAdapt map[factory.Kind]factory.AdaptMode
 }
 
 // Start is what may begin without a person. An empty Labels means nothing
@@ -213,6 +216,7 @@ func FormatSteps() string {
 // the issue steps. The empty list stays on [File.Pipeline], which is the file.
 func (f File) Recipe() factory.Recipe {
 	r := factory.Recipe{
+		Adapt:  copyAdapt(f.markdownAdapt),
 		Policy: append([]string(nil), f.Rules...),
 		ByKind: map[factory.Kind][]factory.Stage{},
 	}
@@ -305,4 +309,15 @@ func listed(names []string, name string) bool {
 		}
 	}
 	return false
+}
+
+func copyAdapt(modes map[factory.Kind]factory.AdaptMode) map[factory.Kind]factory.AdaptMode {
+	if modes == nil {
+		return nil
+	}
+	out := make(map[factory.Kind]factory.AdaptMode, len(modes))
+	for kind, mode := range modes {
+		out[kind] = mode
+	}
+	return out
 }

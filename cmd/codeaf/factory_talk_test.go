@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
@@ -168,7 +169,7 @@ func TestFactoryItemDoorAppliesEachFieldAndRefusesUnderFixed(t *testing.T) {
 	if now.Cap != it.Cap {
 		t.Fatalf("Apply answered %+v, the store holds %+v", now, it)
 	}
-	if _, err := door.Apply(ctx, id, session.ItemChange{Edit: factory.PlanEdit{Skip: []string{"proof"}}}); err == nil || !strings.Contains(err.Error(), "may not skip proof") {
+	if _, err := door.Apply(ctx, id, session.ItemChange{Edit: factory.PlanEdit{Skip: []string{"proof"}}}); err == nil || err.Error() != factory.FixedRefusal("proof").Error() {
 		t.Fatalf("skipping proof = %v, want Adapt's refusal", err)
 	}
 
@@ -205,7 +206,7 @@ func TestFactoryRecipeDoorSaysTheStagesAKindRuns(t *testing.T) {
 	st, web, _ := talkLab(t)
 	door := recipeDoor(st, web).(fileRecipeDoor)
 	names, err := door.Stages(context.Background(), "web", factory.KindIssue)
-	if err != nil || strings.Join(names, " ") != "plan approve write test review security proof" {
+	if err != nil || strings.Join(names, " ") != strings.Join(pipeline.Defaults().Pipeline[factory.KindIssue], " ") {
 		t.Fatalf("stages = %v, %v", names, err)
 	}
 	if _, err := door.Stages(context.Background(), "nowhere", factory.KindIssue); err == nil || !strings.Contains(err.Error(), "does not know where nowhere is checked out") {

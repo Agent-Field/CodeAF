@@ -118,3 +118,17 @@ func git(t *testing.T, dir string, args ...string) {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
 }
+
+func TestConvertedMarkdownKeepsItsSectionConstraint(t *testing.T) {
+	f := pipeline.FromMarkdown("## issue · fixed\n1. plan · chat · read the files\n")
+	if mode := f.Recipe().Adapt[factory.KindIssue]; mode != factory.AdaptFixed {
+		t.Fatalf("section mode: %q", mode)
+	}
+	data, warnings, err := pipeline.Convert("## issue · fixed\n1. plan · chat · read the files\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) == 0 || !strings.Contains(joinProblems(warnings), "YAML fixes individual steps") {
+		t.Fatalf("conversion warning: %+v", warnings)
+	}
+}
