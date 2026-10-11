@@ -39,6 +39,8 @@ type PlaceProps = CommonProps & {
   onGoTo: () => void;
   /** Command or Control click, Command or Control Enter, or middle click. */
   onOpenInNewWindow?: () => void;
+  /** ⌘/Ctrl-click and middle-click: a background tab. Without it those presses open a new window, as before. */
+  onOpenInBackground?: () => void;
   /** Space. Only when given; otherwise Space is an ordinary press. */
   onQuickLook?: () => void;
   menu?: readonly MenuEntry[];
@@ -81,18 +83,19 @@ function tileKeys(props: PlaceProps) {
 }
 
 function PlaceTileBody(props: PlaceProps) {
-  const { id, name, tint, tintSource, meta, status, statusLabel, selected, dropTarget, dropLabel = 'Add here', dragging, disabled, appearance, onGoTo, onOpenInNewWindow,
+  const { id, name, tint, tintSource, meta, status, statusLabel, selected, dropTarget, dropLabel = 'Add here', dragging, disabled, appearance, onGoTo, onOpenInNewWindow, onOpenInBackground,
     menu, menuLabel, className = '', ref, ...rest } = props;
   // Keys, Quick Look and the mode are handled by tileKeys and the dispatcher, not by the frame.
   const { onKeyDown: _keys, onQuickLook: _look, mode: _mode, ...frame } = rest;
   const open = (event: MouseEvent<HTMLButtonElement>) => {
-    if ((event.metaKey || event.ctrlKey) && onOpenInNewWindow) onOpenInNewWindow(); else onGoTo();
+    const modified = onOpenInBackground ?? onOpenInNewWindow;
+    if ((event.metaKey || event.ctrlKey) && modified) modified(); else onGoTo();
   };
   const tile = <li {...frame} ref={ref} className={`places-tile ${className}`} data-mode="place" data-place-id={id} data-tint-name={tint} data-tint-source={tintSource}
     data-selected={selected || undefined} data-drop={dropTarget || undefined} data-dragging={dragging || undefined} data-disabled={disabled || undefined} data-force={appearance}>
     {/* The person grabs this button, which fills the tile. The pointer listener sits on the tile, so the press still starts a drag. */}
     <Button variant="ghost" className="places-tile-main" data-places-tile-focusable disabled={disabled} aria-current={selected ? 'true' : undefined} data-force={appearance}
-      onClick={open} onKeyDown={tileKeys(props)} onAuxClick={event => { if (event.button === 1 && onOpenInNewWindow) { event.preventDefault(); onOpenInNewWindow(); } }}>
+      onClick={open} onKeyDown={tileKeys(props)} onAuxClick={event => { const modified = onOpenInBackground ?? onOpenInNewWindow; if (event.button === 1 && modified) { event.preventDefault(); modified(); } }}>
       <span className="places-tile-head">
         <PlaceSwatch tint={tint} role="tile"/>
         {status && <span className="places-tile-status"><StatusMark status={status} label={statusLabel ?? statusWords[status]} dense/></span>}

@@ -10,18 +10,31 @@ export type HomeAction =
   | { type: 'home-ensure'; place: string; title: string; focus?: boolean }
   /** Focuses All places, or opens a fresh view when the shortcut or a background press asks for one. */
   | { type: 'home-root'; background?: boolean; fresh?: boolean }
+  /** A click on a place inside a page: its Home as an ordinary tab right after the active one, or the tab already showing it. */
+  | { type: 'home-open'; place: string; title: string; background?: boolean }
   /** Another window saved this place's tabs: take them, keeping this window's own focus when that tab still exists. */
   | { type: 'adopt'; state: WorkspaceState };
 
 export const ALL_PLACES_TITLE = 'All places';
 
-/** True for a tab that is this strip's place Home (not All places, which is an ordinary tab). */
-export const isPlaceHome = (tab: Pick<Tab, 'kind' | 'place'>) => tab.kind === 'home' && !!tab.place && tab.place !== 'root';
+/**
+ * True for a tab that is this strip's OWN place Home: the pinned one. A Home opened from a click inside a page
+ * (`home-open`) is an ordinary, closable tab like All places, so only the pinned one is the strip's anchor.
+ */
+export const isPlaceHome = (tab: Pick<Tab, 'kind' | 'place' | 'pinned'>) => tab.kind === 'home' && !!tab.place && tab.place !== 'root' && tab.pinned;
 const isRootHome = (tab: Tab) => !tab.split && tab.kind === 'home' && tab.place === 'root';
-const holdsPlaceHome = (state: WorkspaceState, id: string | undefined) => !!id && state.tabs.some(tab => (tab.id === id || panesOf(tab).some(pane => pane.id === id)) && panesOf(tab).some(isPlaceHome));
+const holdsPlaceHome = (state: WorkspaceState, id: string | undefined) => !!id && state.tabs.some(tab => (tab.id === id || panesOf(tab).some(pane => pane.id === id)) && isPlaceHome(tab));
 
 /** The tab set a strip shares with other windows: everything but this window's own focus and recency. */
 export const sharedShape = (state: WorkspaceState) => JSON.stringify([state.tabs, state.groups, state.closed]);
+
+/** Inserts a tab right after the active one; a background open leaves focus where it was. Nothing already open is replaced. */
+function openAfterActive(state: WorkspaceState, tab: Tab, background: boolean): WorkspaceState {
+  const at = state.tabs.findIndex(t => t.id === state.activeId);
+  const tabs = [...state.tabs];
+  tabs.splice(at < 0 ? tabs.length : at + 1, 0, tab);
+  return normalize({ ...state, tabs, activeId: background ? state.activeId : tab.id, recentIds: background ? [...state.recentIds, tab.id] : [tab.id, ...state.recentIds] });
+}
 
 export function reduceHome(state: WorkspaceState, action: { type: string }): WorkspaceState | undefined {
   const a = action as HomeAction | { type: string; id?: string; withId?: string; targetId?: string };
@@ -44,11 +57,15 @@ export function reduceHome(state: WorkspaceState, action: { type: string }): Wor
       const { background, fresh } = a as Extract<HomeAction, { type: 'home-root' }>;
       const root = !fresh && !background ? state.tabs.find(isRootHome) : undefined;
       if (root) return background ? state : normalize({ ...state, activeId: root.id, recentIds: [root.id, ...state.recentIds] });
-      const tab = newTab({ kind: 'home', place: 'root', title: ALL_PLACES_TITLE, titleSource: 'manual' });
-      const at = state.tabs.findIndex(t => t.id === state.activeId);
-      const tabs = [...state.tabs];
-      tabs.splice(at < 0 ? tabs.length : at + 1, 0, tab);
-      return normalize({ ...state, tabs, activeId: background ? state.activeId : tab.id, recentIds: background ? [...state.recentIds, tab.id] : [tab.id, ...state.recentIds] });
+      return openAfterActive(state, newTab({ kind: 'home', place: 'root', title: ALL_PLACES_TITLE, titleSource: 'manual' }), !!background);
+    }
+    case 'home-open': {
+      const { place, title, background } = a as Extract<HomeAction, { type: 'home-open' }>;
+      if (place === 'root') return reduceHome(state, { type: 'home-root', background } as HomeAction);
+      // The strip's own pinned Home wins over a stray unpinned twin, so a click on the place you are in lands on its anchor.
+      const shown = state.tabs.find(tab => isPlaceHome(tab) && tab.place === place) ?? state.tabs.find(tab => !tab.split && tab.kind === 'home' && tab.place === place);
+      if (shown) return background ? state : normalize({ ...state, activeId: shown.id, recentIds: [shown.id, ...state.recentIds] });
+      return openAfterActive(state, newTab({ kind: 'home', place, title, titleSource: 'manual' }), !!background);
     }
     case 'adopt': {
       const incoming = (a as Extract<HomeAction, { type: 'adopt' }>).state;

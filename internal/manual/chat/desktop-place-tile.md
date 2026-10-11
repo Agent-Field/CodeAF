@@ -2,7 +2,7 @@
 
 ## What does a place tile show on the desktop home
 
-A place on the desktop home is an 84px tile. It shows that place's colour square, its name, and a count when there is one: "28 chats", "6 chats · also in Software", or "47 places · 212 chats". A count of zero is left off. Hover fills the tile. A click opens the place.
+A place on the desktop home is an 84px tile. It shows that place's colour square, its name, and a count when there is one: "28 chats", "6 chats · also in Software", or "47 places · 212 chats". A count of zero is left off. Hover fills the tile. A click opens the place's Home as a new tab in this window (see desktop-place-clicks); only the left rail switches the window to a place.
 
 ## Why is there an amber or red dot on a place tile
 

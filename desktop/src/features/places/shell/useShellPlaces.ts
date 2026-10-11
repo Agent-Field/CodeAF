@@ -6,6 +6,7 @@ import { placeShortcuts } from '../../../design/keyboard';
 import { parseWorkspace, workspaceKey } from '../../tabs/model';
 import type { PlaceRailActions, PlaceRailProps } from '../../shell/PlaceRail';
 import type { PlacesShell } from './PlacesShell';
+import { requestWorkspace } from './workspaceBus';
 import { railSections, rollupStatus } from './selectors';
 
 /** How many tabs a place has open, from its saved tab set (the rail's close hint). */
@@ -21,6 +22,8 @@ export function railActions(shell: PlacesShell): PlaceRailActions {
   const writable = shell.places.status === 'ready';
   return {
     go: id => failure(shell, () => shell.goTo(id))(),
+    // Owner rule (10 Oct): the rail switches the window's place; a modified click opens the place's Home as a tab instead.
+    openTab: id => { requestWorkspace({ type: 'home-open', place: id, title: name(id) ?? 'Home' }); },
     newWindow: id => failure(shell, () => shell.goToInNewWindow(id))(),
     quickLook: id => shell.quickLook(id),
     pin: writable ? (id, index) => failure(shell, () => shell.write(index === undefined ? `Pinned “${name(id)}” to the rail` : `Moved “${name(id)}” in Pinned`, () => shell.client.pinPlace(id, index), { subject: name(id) }))() : undefined,
@@ -68,7 +71,7 @@ export function usePlaceRail(shell: PlacesShell, inputs: RailInputs): PlaceRailP
     notice,
     // All places exists wherever the engine has a Places door; a bridge without one draws no row rather than a dead one.
     allPlaces: status === 'unavailable' ? undefined : { active: allPlacesActive, shortcut: placeShortcuts.allPlaces, onOpen: enter(() => shell.openAllPlaces()), onOpenInNewTab: enter(() => shell.openAllPlaces(true)) },
-    actions: { ...actions, go: enter(actions.go) },
+    actions: { ...actions, go: enter(actions.go), openTab: enter(actions.openTab!) },
     tabCount, slotShortcut: placeShortcuts.slot, closeShortcut: placeShortcuts.close, newWindowShortcut: placeShortcuts.openInNewWindow,
   };
 }

@@ -5,7 +5,7 @@
 All places opens the root Home in a tab. The window uses graphite. The title is
 “All places”; below it, the count names the top-level places and every active
 place, for example “5 at the top level · 58 in all”. Unknown counts draw nothing.
-Top-level places appear as tiles. Open a tile to go to that place.
+Top-level places appear as tiles. Click a tile to open that place's Home as a new tab; your current tabs stay as they are.
 
 ## How do I search places by name or ancestor path?
 

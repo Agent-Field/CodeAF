@@ -6,7 +6,7 @@ On a desktop place home the line above the title is the breadcrumb. It names All
 
 ## How do I open a parent from the breadcrumb trail
 
-Click a name in the breadcrumb. The window goes to that place. The first name, All places, goes to All places. Command-click on a Mac, Control-click on anything else, or a middle-click opens that place in a new window and leaves this window where it is. The last name is the parent you are inside. A screen reader marks that last name as the current page in the trail, and it is still a link, so the same click and Command-click work on it. Tabbing to a name draws the accent focus ring. A click with the pointer does not. There is no menu on the breadcrumb.
+Click a name in the breadcrumb. That place's Home opens as a new tab next to the one you are in, and your other tabs stay as they are; a tab that already shows it is focused instead. The first name, All places, opens All places the same way. Command-click on a Mac, Control-click on anything else, or a middle-click opens it as a tab behind this one without moving you. The last name is the parent you are inside. A screen reader marks that last name as the current page in the trail, and it is still a link, so the same click and Command-click work on it. Tabbing to a name draws the accent focus ring. A click with the pointer does not. There is no menu on the breadcrumb.
 
 ## Why does the breadcrumb follow only one parent
 

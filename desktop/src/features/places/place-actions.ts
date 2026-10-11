@@ -10,6 +10,8 @@ export { homeMenu, placeMenu, type MenuContext, type MenuPlace } from './menus/p
 export type PlaceActions = {
   /** Navigation. */
   goTo?: (placeId: string) => void | Promise<void>;
+  /** ⌘/Ctrl-click and middle-click inside a page: the place's Home as a tab behind the current one, focus unmoved. */
+  goToInBackground?: (placeId: string) => void | Promise<void>;
   goToInNewWindow?: (placeId: string) => void | Promise<void>;
   /** Space on a tile: the owner draws a read-only Home sheet (HomeQuickLook) for this id. */
   quickLook?: (placeId: string) => void;

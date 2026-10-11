@@ -665,3 +665,13 @@ The page holds keystrokes. Today ⌘L / Ctrl+L reaches the app (macOS menu item 
 ### Verification
 
 Evidence is the public headers, the GIR, the crates already in this tree (`objc2-web-kit` 0.3.2, `webkit2gtk` 2.0.2, Tauri 2.12.1), and the existing `with_webview` call sites. No Mac was available in this lane, so `findString` was not executed. No product, token, engine, or manual file changed. `desktop/src/features/web/find-decision.test.ts` locks this section and Open row TW-14.
+
+## t-fix-place-nav: place clicks open tabs; only the rail switches places (owner decision, 10 Oct)
+
+The owner lost a hand-built tab setup by clicking a place tile on All places, which swapped the whole strip for that place's, and found no way back. Their rule: "We always need to open things in a new tab, not a fully replaced screen, unless I click on a place in the left nav bar." This overrides Places 9e's "Clicking a place anywhere (rail, ⌘P, a tile, a breadcrumb) goes to the place" for clicks inside pages. The rest of 9e stands: each place has a tint, a pinned Home and its own tab set.
+
+- **Inside a page** (tiles, breadcrumbs, Quick Look, search results, Home sections) a click dispatches `home-open`: the place's Home becomes an ordinary, unpinned, closable tab right after the active one and takes focus; ⌘/Ctrl-click and middle-click open it behind. A Home already open here is focused instead. `isPlaceHome` now means the strip's OWN, pinned Home, so a visited Home never anchors the strip, and `home-ensure` leaves it alone.
+- **Switching** is the rail (a place row, Now) and ⌘P/⌘⇧P with ↵. ⌥-click or ⌘/Ctrl-click on a rail row opens that Home as a tab.
+- **Save and restore.** Leaving a place already persisted its tab set per window and place (workspace-sync `windowStore`), and returning restored it. The part that did not survive was scroll: the scroll memory pruned every pane outside the strip on show, so a place switch dropped the left place's positions. `savedPaneIds` now keeps the panes this window saved under other places.
+- **Back/forward** already records a place switch in the focus history; `tests/ui/place-navigation.spec.ts` pins that ⌘[ returns across one.
+
