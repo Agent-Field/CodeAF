@@ -152,7 +152,11 @@ func (h *Handler) deleteSession(w http.ResponseWriter, r *http.Request) {
 	}
 	delete(h.sessions.ids, key)
 	h.releaseToken(handle)
+	err := h.saveSessions()
 	h.sessions.mu.Unlock()
+	if h.failed(w, err) {
+		return
+	}
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
 	}{h.factory})
@@ -176,7 +180,11 @@ func (h *Handler) signOutOthers(w http.ResponseWriter, r *http.Request) {
 		n++
 	}
 	h.releaseToken(caller.profile.Handle)
+	err := h.saveSessions()
 	h.sessions.mu.Unlock()
+	if h.failed(w, err) {
+		return
+	}
 	h.write(w, http.StatusOK, api.SignedOut{Factory: h.factory, SignedOut: n})
 }
 

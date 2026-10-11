@@ -136,6 +136,9 @@ func (h *Handler) person(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s, rules := h.withPeople(r, s)
+	if h.authFailed(w, r) {
+		return
+	}
 	p := api.Person{Factory: h.factory, Handle: handle, Role: "outside", Owns: []api.Ownership{}, Machines: []api.Machine{}}
 	summary, known := s.People[handle]
 	p.PersonSummary = summary

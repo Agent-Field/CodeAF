@@ -44,6 +44,8 @@ type Config struct {
 	Team           []string
 	// GitHubHTTPClient permits a fake transport while keeping production URLs fixed.
 	GitHubHTTPClient *http.Client
+	// Now supplies the session clock, including pruning at startup.
+	Now func() time.Time
 	// TokensPath names access-token rows beside the host config. Empty means
 	// only AccessToken is accepted. It is read on each request so a revoke
 	// applies without restarting the service.
@@ -108,8 +110,12 @@ func New(seam factory.Seam, config Config) *Handler {
 		factory: api.Factory{Address: config.Address, Version: config.Version}, mux: http.NewServeMux()}
 	h.factory.Name = factory.DisplayName(config.Name, h.nameRepos())
 	h.sessions = &accessSessions{ids: make(map[string]accessSession), now: time.Now}
+	if config.Now != nil {
+		h.sessions.now = config.Now
+	}
 	h.auth = &deviceFlows{pending: make(map[string]*deviceFlow)}
 	h.viewer = newViewerState()
+	h.sessions.err = h.loadSessions()
 	h.route("/v1/auth/device", map[string]http.HandlerFunc{http.MethodPost: h.startDevice})
 	h.route("/v1/auth/device/poll", map[string]http.HandlerFunc{http.MethodPost: h.pollDevice})
 	h.route("/access", map[string]http.HandlerFunc{http.MethodGet: h.access, http.MethodPost: h.access})
@@ -170,6 +176,7 @@ func (h *Handler) Close() {
 // ServeHTTP checks the peer before routing, so even errors cannot reveal the
 // floor to a remote caller without the host's access token or a live session.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	r = authRequest(r)
 	w.Header().Set("Cache-Control", "no-store")
 	if workerPath(r.URL.Path) {
 		var ok bool
@@ -178,6 +185,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else if r.URL.Path != "/access" && r.URL.Path != "/v1/about" && !h.allowed(r) {
+		if h.authFailed(w, r) {
+			return
+		}
 		w.Header().Set("WWW-Authenticate", `Bearer realm="factory"`)
 		// A secret that was sent and refused names why. A request with no
 		// secret keeps the sentence that says how to sign in.
@@ -186,6 +196,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.fail(w, http.StatusUnauthorized, "a bearer access token or live session is required; open /access to enter the token")
+		return
+	}
+	if h.authFailed(w, r) {
 		return
 	}
 	if session, ok := h.credential(r); ok && session.profile != nil && !h.teamAllows(session.profile.Handle) {
@@ -240,6 +253,9 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	}
 	s, reason, whole := h.forViewer(r, s)
 	s, _ = h.withPeople(r, s)
+	if h.authFailed(w, r) {
+		return
+	}
 	q := api.FromSnapshot(s, handle)
 	for i := range q.Jobs {
 		q.Jobs[i] = h.withVersion(q.Jobs[i])
@@ -323,7 +339,11 @@ func (h *Handler) findJob(w http.ResponseWriter, r *http.Request) (factory.Item,
 		if it.ID == id {
 			// A hidden job is the same answer as a missing one, so the
 			// caller cannot tell which repositories exist.
-			if !h.repoVisible(r, itemRepo(it)) {
+			visible := h.repoVisible(r, itemRepo(it))
+			if h.authFailed(w, r) {
+				return factory.Item{}, false
+			}
+			if !visible {
 				break
 			}
 			return it, true
@@ -370,6 +390,9 @@ func (h *Handler) repos(w http.ResponseWriter, r *http.Request) {
 		}
 		available = next
 	}
+	if h.authFailed(w, r) {
+		return
+	}
 	repos := make([]Repository, len(available))
 	for i, repo := range available {
 		repos[i] = Repository{repo.Full, repo.Name, repo.Owner, repo.Private, repo.Pushed, repo.Open, repo.Dir}
@@ -389,7 +412,11 @@ func (h *Handler) splitRepo(w http.ResponseWriter, r *http.Request) (owner, repo
 		h.fail(w, http.StatusUnprocessableEntity, "repository must be owner/name")
 		return "", "", false
 	}
-	if !h.repoVisible(r, owner+"/"+repo) {
+	visible := h.repoVisible(r, owner+"/"+repo)
+	if h.authFailed(w, r) {
+		return "", "", false
+	}
+	if !visible {
 		h.fail(w, http.StatusNotFound, "repository not found")
 		return "", "", false
 	}

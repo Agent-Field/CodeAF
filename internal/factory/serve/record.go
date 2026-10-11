@@ -49,6 +49,9 @@ func (h *Handler) audit(w http.ResponseWriter, r *http.Request) {
 	if viewer {
 		events = h.filterAudit(r, events)
 	}
+	if h.authFailed(w, r) {
+		return
+	}
 	if format == "csv" {
 		var data bytes.Buffer
 		if h.failed(w, writeAuditCSV(&data, events)) {

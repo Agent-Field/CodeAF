@@ -20,8 +20,7 @@ const deviceFlowLimit = 256
 
 // githubSignInScope asks for the profile and for private repositories.
 // Classic device flow has no read-only private-repository scope, and GitHub
-// answers 404 for a private repository the token cannot see. The token is
-// kept only in memory so that check can run.
+// answers 404 for a private repository the token cannot see.
 const githubSignInScope = "read:user repo"
 
 // deviceFlows retains GitHub's secret until exchange or expiry. Only the
@@ -129,11 +128,7 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	flow.next = h.now().Add(time.Duration(flow.interval) * time.Second)
-	var exchange struct {
-		AccessToken string `json:"access_token"`
-		Scope       string `json:"scope"`
-		Error       string `json:"error"`
-	}
+	var exchange githubExchange
 	err := h.githubJSON(r, http.MethodPost, "https://github.com/login/oauth/access_token",
 		url.Values{"client_id": {h.config.GitHubClientID}, "device_code": {flow.code},
 			"grant_type": {"urn:ietf:params:oauth:grant-type:device_code"}}.Encode(), "", &exchange)
@@ -198,8 +193,8 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	now := h.now()
 	session := accessSession{id: "session_" + id, expires: now.Add(accessSessionTTL), created: now, lastSeen: now,
-		profile: &profile, tokenID: flow.tokenID, device: deviceLabel(r),
-		githubToken: exchange.AccessToken}
+		profile: &profile, tokenID: flow.tokenID, device: deviceLabel(r)}
+	session.setGitHub(exchange, now)
 	if flow.tokenID != "" {
 		if err := tokens.Bind(h.config.TokensPath, flow.tokenID, profile, now); h.failed(w, err) {
 			return
@@ -211,8 +206,15 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 			delete(h.sessions.ids, key)
 		}
 	}
-	h.sessions.ids[credential] = session
+	h.sessions.ids[sessionHash(credential)] = session
+	err = h.saveSessions()
+	if err != nil {
+		delete(h.sessions.ids, sessionHash(credential))
+	}
 	h.sessions.mu.Unlock()
+	if h.failed(w, err) {
+		return
+	}
 	h.viewer.see(profile, now, now, exchange.AccessToken)
 	h.setSessionCookie(w, r, credential, session)
 	h.write(w, http.StatusOK, api.SignedIn{Factory: h.factory, AccessToken: credential, TokenType: "bearer",

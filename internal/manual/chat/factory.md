@@ -177,8 +177,11 @@ Malformed forms or submissions larger than 4096 bytes return HTTP 400 with
 
 The cookie is HttpOnly and SameSite=Strict, covers `/v1`, and
 expires after 30 days. It is Secure when the service receives HTTPS directly.
-Sessions live only in the running service; restarting signs every browser out.
+Sessions are saved under the factory home and survive restarting the service.
+Only a hash of the cookie credential is saved; the cookie itself stays on the device.
 An expired, unknown or revoked cookie returns HTTP 401 off loopback.
+A session that reaches its own expiry returns `reason` `expired` and
+`error` `factory session has ended; sign in again`.
 
 `codeaf factory revoke-sessions` signs every browser out of the running service
 for this codeaf home and prints `factory sessions revoked`. It accepts no arguments
@@ -1831,9 +1834,11 @@ answer HTTP 502 and require starting a new flow.
 Success checks GitHub's `/user`, sets an HttpOnly session cookie, and returns
 `{factory, access_token, token_type:"bearer", expires_in, me}`. The app sends
 that factory token as a bearer. The factory requests `read:user` and `repo`;
-`me.scopes` reports the scopes GitHub granted. GitHub's token stays in memory
-for repository checks and is never returned or written to disk. Sessions
-last 30 days, until revoke-sessions, token revocation or expiry, or service restart.
+`me.scopes` reports the scopes GitHub granted. GitHub credentials are encrypted
+in `sessions.json` beside `tokens.json`, with a private `sessions.key`; both files
+are mode 0600, like the host config. No GitHub token is returned to the app.
+Sessions last 30 days and survive restart, until sign-out, revoke-sessions,
+or the originating access token's revocation or expiry.
 The public `session_id` is separate from the credential. An access token binds to its
 first GitHub handle; another handle cannot replace it.
 
@@ -1841,6 +1846,45 @@ Optional `team` restricts signed-in handles. Someone outside it gets HTTP 403:
 `this GitHub handle is not on the factory team`. The host token and open loopback
 retain owner access. HTTP job-action audit handles use the caller; a worker's
 posted event uses that worker's registered handle.
+
+## Enable GitHub sign-in — create an OAuth App with Device Flow
+
+In GitHub Settings → Developer settings → OAuth Apps, select **New OAuth App**.
+Name it for your factory and set Homepage URL to your factory address. GitHub
+requires an Authorization callback URL; use your factory address there too
+(the factory uses Device Flow, so no callback endpoint is needed). Register the
+app, open its settings, and enable **Enable Device Flow**. Copy the **Client ID**,
+not a client secret. A client secret is not needed for device sign-in or refresh.
+
+Set the id in `~/.codeaf/factory/config.yaml` (or the file passed with `--config`):
+
+```yaml
+github_client_id: "your OAuth App Client ID"
+```
+
+Restart `codeaf factory` to read the config. Existing factory sessions survive.
+People off loopback still need a factory access token before linking GitHub.
+The factory asks for `read:user repo`; classic OAuth's `repo` scope also grants
+write access on private repositories because GitHub has no read-only equivalent.
+See [GitHub's device flow documentation](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow).
+
+## GitHub token refresh and expired sign-in — github_expired
+
+An expiring GitHub token includes `expires_in` and `refresh_token`. On the first
+request within five minutes of expiry, the factory refreshes it using the OAuth
+App's client id, saves the replacement access and refresh tokens encrypted, and
+continues the existing factory session. Refresh still works after restart.
+Tokens without an expiry need no refresh.
+
+If GitHub returns HTTP 401 or `bad_refresh_token`, or the refresh token has
+expired, the factory ends that sign-in and returns HTTP 401 with
+`reason` `github_expired` and `error` `GitHub sign-in has expired; sign in again`.
+The app must ask for GitHub sign-in again. The factory keeps only the credential
+hash and public facts for the ended sign-in until its 30-day expiry so the same
+reason survives restart. A GitHub outage returns HTTP 502 and retains the session
+for retry. A repository's HTTP 403 or 404 still means it is not visible, and does
+not end the session. Deleting a sign-in or revoking all sessions removes its
+saved GitHub credentials.
 
 ## factory members — who has joined
 
@@ -1850,7 +1894,7 @@ of their sign-ins are still live).
 The list is the same for every caller who can open the factory. A restart
 keeps someone who signed in with an access token: the profile and `joined_at` are stored
 on that token row. A loopback sign-in that did not use a token row is remembered
-only until the service restarts. `sessions` is 0 when they have no live sign-in.
+across restarts while its saved session is live. `sessions` is 0 when they have no live sign-in.
 Contract stays 1. This list does not sign anyone out.
 
 ## sign out a factory session
@@ -1865,7 +1909,7 @@ one you called it with, and returns `{factory, signed_out}`. Signing out does
 not revoke an access token and does not stop a machine that attached with its
 own worker credential. `codeaf factory revoke-sessions` still signs every
 browser out and still requires the host access token. Sessions last 30 days
-and are dropped when the service restarts.
+and survive service restarts. Sign-out and revoke-sessions are saved immediately.
 
 ## repos you can see — no_visible_repos
 
@@ -1882,9 +1926,10 @@ every repository still sees the factory-wide totals. A job or repository they
 cannot read answers HTTP 404, `job not found` or `repository not found`. A
 viewer who can read none of the factory's repositories gets HTTP 200 with an
 empty queue and `reason` `no_visible_repos`. Loopback without a signed-in
-session, and the host access token, still see the whole floor. After a restart
-the GitHub token is gone, so a returning access token sees `no_visible_repos` until
-they sign in again. The token is never returned and never written to disk.
+session, and the host access token, still see the whole floor. Watched repositories
+appear in the queue even before they have jobs, when the caller can read them.
+Saved sign-ins restore repository access after restart. A GitHub 401 ends that
+sign-in with HTTP 401 and `reason` `github_expired`, rather than an empty queue.
 
 ## Your machines — busy, idle, offline — and pick up unassigned
 

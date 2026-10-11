@@ -78,6 +78,9 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
+			if state, ok := r.Context().Value(authErrorKey{}).(*authErrorState); ok && state.err != nil {
+				return
+			}
 			flusher.Flush()
 		}
 	}
@@ -104,7 +107,11 @@ func (h *Handler) sendLive(w http.ResponseWriter, r *http.Request, events []live
 		}
 	}
 	for _, e := range events[start:] {
-		if !h.viewerWantsLive(r, e) {
+		visible := h.viewerWantsLive(r, e)
+		if state, ok := r.Context().Value(authErrorKey{}).(*authErrorState); ok && state.err != nil {
+			return false
+		}
+		if !visible {
 			continue
 		}
 		if _, err := fmt.Fprintf(w, "id: %s\nevent: %s\ndata: %s\n\n", e.ID, e.Kind, e.Data); err != nil {

@@ -86,9 +86,19 @@ func (h *Handler) githubJSON(r *http.Request, method, endpoint, body, token stri
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("GitHub sign-in returned HTTP %d", response.StatusCode)
+		// OAuth failures may carry a stable error code even with HTTP 400.
+		// Keep that code for refresh while the status still rejects the call.
+		_ = decodeGitHub(response.Body, out)
+		return githubStatusError(response.StatusCode)
 	}
 	return decodeGitHub(response.Body, out)
+}
+
+// githubStatusError retains the status without retaining response secrets.
+type githubStatusError int
+
+func (s githubStatusError) Error() string {
+	return fmt.Sprintf("GitHub sign-in returned HTTP %d", s)
 }
 
 // githubClient is the one HTTP client every GitHub call uses. Tests replace

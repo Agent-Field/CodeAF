@@ -29,12 +29,17 @@ func (f githubTransport) RoundTrip(r *http.Request) (*http.Response, error) { re
 // fakeGitHub checks the real request shape at fixed GitHub URLs. A still clock
 // lets tests exercise polling rules and expiry without waiting on the laptop.
 type fakeGitHub struct {
-	t          *testing.T
-	login      string
-	exchange   string
-	userStatus int
-	polls      int
-	users      int
+	t              *testing.T
+	login          string
+	exchange       string
+	userStatus     int
+	polls          int
+	users          int
+	refresh        string
+	refreshStatus  int
+	refreshes      int
+	refreshedToken string
+	repoStatus     int
 }
 
 func (g *fakeGitHub) client() *http.Client {
@@ -54,10 +59,21 @@ func (g *fakeGitHub) client() *http.Client {
 			}
 			body = `{"device_code":"github-secret","user_code":"ABCD-EFGH","verification_uri":"https://github.com/login/device","interval":5,"expires_in":900}`
 		case "https://github.com/login/oauth/access_token":
-			g.polls++
 			if err := r.ParseForm(); err != nil {
 				g.t.Fatal(err)
 			}
+			if r.Form.Get("grant_type") == "refresh_token" {
+				if r.Method != "POST" || r.Form.Get("client_id") != "client" || r.Form.Get("refresh_token") != "github-refresh-secret" || len(r.Form) != 3 {
+					g.t.Fatalf("refresh = %+v", r.Form)
+				}
+				g.refreshes++
+				body = g.refresh
+				if g.refreshStatus != 0 {
+					status = g.refreshStatus
+				}
+				break
+			}
+			g.polls++
 			if r.Method != "POST" || r.Form.Get("client_id") != "client" || r.Form.Get("device_code") != "github-secret" || r.Form.Get("grant_type") != "urn:ietf:params:oauth:grant-type:device_code" {
 				g.t.Fatalf("poll = %+v", r.Form)
 			}
@@ -77,8 +93,11 @@ func (g *fakeGitHub) client() *http.Client {
 		default:
 			// Repository visibility checks use the exchanged token. Existing
 			// sign-in tests treat every repository as readable.
-			if r.Method == http.MethodGet && strings.HasPrefix(r.URL.String(), "https://api.github.com/repos/") && r.Header.Get("Authorization") == "Bearer github-access-secret" {
+			if r.Method == http.MethodGet && strings.HasPrefix(r.URL.String(), "https://api.github.com/repos/") && (r.Header.Get("Authorization") == "Bearer github-access-secret" || (g.refreshedToken != "" && r.Header.Get("Authorization") == "Bearer "+g.refreshedToken)) {
 				body = `{}`
+				if g.repoStatus != 0 {
+					status = g.repoStatus
+				}
 				break
 			}
 			g.t.Fatalf("unexpected GitHub URL %s", r.URL)
@@ -131,7 +150,7 @@ func identityHandler(t *testing.T, g *fakeGitHub) (*Handler, *time.Time, tokens.
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := New(seam, Config{Address: "http://factory", Version: "test", AccessToken: "floor-secret", TokensPath: path, GitHubClientID: "client", GitHubHTTPClient: g.client(), Record: rec})
+	h := New(seam, Config{Address: "http://factory", Version: "test", AccessToken: "floor-secret", TokensPath: path, GitHubClientID: "client", GitHubHTTPClient: g.client(), Record: rec, Now: func() time.Time { return now }})
 	h.sessions.now = func() time.Time { return now }
 	t.Cleanup(h.Close)
 	return h, &now, row
@@ -220,8 +239,8 @@ func TestDeviceSignInBindsCallerCookieBearerAndAudit(t *testing.T) {
 	if me := readIdentity(t, restarted, row.Token, nil); me.Handle != "priya" {
 		t.Fatalf("token lost identity on restart = %+v", me)
 	}
-	if w := identityRequest(restarted, "GET", "/v1/me", "", signed.AccessToken, nil); w.Code != 401 {
-		t.Fatalf("old session survived restart = %d", w.Code)
+	if me := readIdentity(t, restarted, signed.AccessToken, nil); me.Handle != "priya" {
+		t.Fatalf("session lost identity on restart = %+v", me)
 	}
 	if err := tokens.Remove(h.config.TokensPath, row.ID); err != nil {
 		t.Fatal(err)

@@ -24,25 +24,30 @@ const accessFormLimit = 4096
 // accessSession is one browser sign-in. tokenID is empty when the host
 // config token created it. A row's id is kept so the session dies when that
 // row is revoked or expires, even inside the cookie's 30 days.
-// githubToken is the person's GitHub credential for repository checks. It
-// stays in this process and is never written to disk or returned on the wire.
+// GitHub credentials are encrypted in the session file and never returned.
 type accessSession struct {
-	expires     time.Time
-	created     time.Time
-	lastSeen    time.Time
-	tokenID     string
-	id          string
-	device      string
-	githubToken string
-	profile     *api.Profile
+	expires        time.Time
+	created        time.Time
+	lastSeen       time.Time
+	tokenID        string
+	id             string
+	device         string
+	githubToken    string
+	githubRefresh  string
+	githubExpires  time.Time
+	refreshExpires time.Time
+	githubExpired  bool
+	profile        *api.Profile
 }
 
-// accessSessions keeps opaque browser credentials only in the running service.
-// Restarting the service or revoking sessions makes every old cookie unusable.
+// accessSessions indexes sign-ins by credential hash, never the credential.
 type accessSessions struct {
-	mu  sync.Mutex
-	ids map[string]accessSession
-	now func() time.Time
+	mu   sync.Mutex
+	ids  map[string]accessSession
+	now  func() time.Time
+	path string
+	key  []byte
+	err  error
 }
 
 func loopbackRequest(r *http.Request) bool {
@@ -82,25 +87,52 @@ func (h *Handler) credential(r *http.Request) (accessSession, bool) {
 					break
 				}
 			}
-			if session.profile != nil && h.viewer != nil {
+			if session.profile != nil && h.viewer != nil && r.URL.Path != "/v1/auth/device" && r.URL.Path != "/v1/auth/device/poll" {
+				linked, found := h.linkedGitHubSession(r, session.profile.Handle)
+				if found {
+					session.githubToken = linked.githubToken
+				}
 				h.viewer.see(*session.profile, time.Time{}, h.now(), "")
 			}
 			return session, true
 		}
-		return h.liveSession(token)
+		return h.liveSession(r, token)
 	}
 	if cookie, err := r.Cookie(accessCookieName); err == nil {
-		return h.liveSession(cookie.Value)
+		return h.liveSession(r, cookie.Value)
 	}
 	return accessSession{}, false
 }
 
-func (h *Handler) liveSession(key string) (accessSession, bool) {
+func (h *Handler) liveSession(r *http.Request, credential string) (accessSession, bool) {
+	return h.liveSessionHash(r, sessionHash(credential))
+}
+
+func (h *Handler) liveSessionHash(r *http.Request, key string) (accessSession, bool) {
 	h.sessions.mu.Lock()
 	defer h.sessions.mu.Unlock()
+	if h.sessions.err != nil {
+		h.setAuthError(r, h.sessions.err)
+		return accessSession{}, false
+	}
 	session, ok := h.sessions.ids[key]
+	if ok && session.githubExpired && h.now().Before(session.expires) {
+		h.setAuthError(r, errGitHubExpired)
+		return accessSession{}, false
+	}
 	if !ok || !h.sessionUsable(session) {
-		delete(h.sessions.ids, key)
+		if ok {
+			delete(h.sessions.ids, key)
+			h.releaseToken(profileHandle(session))
+			h.setAuthError(r, h.saveSessions())
+		}
+		if state, hasState := r.Context().Value(authErrorKey{}).(*authErrorState); hasState && (ok || state.hadSession) && state.err == nil {
+			state.err = errSessionEnded
+		}
+		return accessSession{}, false
+	}
+	if err := h.refreshSession(r, key, &session); err != nil {
+		h.setAuthError(r, err)
 		return accessSession{}, false
 	}
 	if session.profile == nil && session.tokenID != "" {
@@ -112,10 +144,22 @@ func (h *Handler) liveSession(key string) (accessSession, bool) {
 		}
 	}
 	// Every use of the session is the person being here.
+	previousSeen := session.lastSeen
 	session.lastSeen = h.now()
 	h.sessions.ids[key] = session
+	// Persist activity at most once a minute; refreshing and revoking always
+	// save immediately, so painting a queue does not rewrite the file repeatedly.
+	if session.lastSeen.Sub(previousSeen) >= time.Minute {
+		if err := h.saveSessions(); err != nil {
+			h.setAuthError(r, err)
+			return accessSession{}, false
+		}
+	}
 	if session.profile != nil && h.viewer != nil {
 		h.viewer.see(*session.profile, session.created, session.lastSeen, session.githubToken)
+	}
+	if state, ok := r.Context().Value(authErrorKey{}).(*authErrorState); ok {
+		state.hadSession = true
 	}
 	return session, true
 }
@@ -206,7 +250,7 @@ func (h *Handler) tokenRows() []tokens.Token {
 // sessionUsable is a cookie that has not reached its own expiry and, when it
 // was minted from a row, that row is still present and unexpired.
 func (h *Handler) sessionUsable(session accessSession) bool {
-	if !h.now().Before(session.expires) {
+	if session.githubExpired || !h.now().Before(session.expires) {
 		return false
 	}
 	if session.tokenID == "" {
@@ -307,9 +351,16 @@ func (h *Handler) access(w http.ResponseWriter, r *http.Request) {
 			delete(h.sessions.ids, old)
 		}
 	}
-	h.sessions.ids[sessionID] = accessSession{expires: expires, created: now, lastSeen: now,
+	h.sessions.ids[sessionHash(sessionID)] = accessSession{expires: expires, created: now, lastSeen: now,
 		tokenID: tokenID, id: "session_" + publicID, device: deviceLabel(r)}
+	err = h.saveSessions()
+	if err != nil {
+		delete(h.sessions.ids, sessionHash(sessionID))
+	}
 	h.sessions.mu.Unlock()
+	if h.failed(w, err) {
+		return
+	}
 	h.setSessionCookie(w, r, sessionID, accessSession{expires: expires})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
@@ -324,7 +375,11 @@ func (h *Handler) revokeSessions(w http.ResponseWriter, r *http.Request) {
 	}
 	h.sessions.mu.Lock()
 	clear(h.sessions.ids)
+	err := h.saveSessions()
 	h.sessions.mu.Unlock()
+	if h.failed(w, err) {
+		return
+	}
 	if h.viewer != nil {
 		h.viewer.mu.Lock()
 		clear(h.viewer.github)
@@ -356,5 +411,5 @@ const accessForm = `<!doctype html>
 <form method="post" action="/access"><label for="token">Access token</label>
 <input id="token" name="token" type="password" autocomplete="off" required autofocus>
 <button type="submit">Open dashboard</button></form>
-<p>This browser stays signed in for %d days, until sessions are revoked or the service restarts.</p>
+<p>This browser stays signed in for %d days, until sessions are revoked or expire.</p>
 </main></body></html>`

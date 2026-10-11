@@ -67,3 +67,21 @@ func assertKeys(t *testing.T, raw []byte, keys ...string) {
 		}
 	}
 }
+
+// Expired GitHub sign-ins add a reason without changing contract 1 or exposing
+// a GitHub credential in the refusal consumed by the app.
+func TestGitHubExpiryStaysContractOne(t *testing.T) {
+	if Contract != 1 {
+		t.Fatalf("contract = %d", Contract)
+	}
+	body, err := json.Marshal(AuthFailure{Factory: Factory{Address: "http://factory", Version: "test"},
+		Error: "GitHub sign-in has expired; sign in again", Reason: ReasonGitHubExpired, RequestID: "request_fixture"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertKeys(t, body, "factory", "error", "reason", "request_id")
+	var decoded AuthFailure
+	if err := json.Unmarshal(body, &decoded); err != nil || decoded.Reason != "github_expired" {
+		t.Fatalf("refusal = %s, %v", body, err)
+	}
+}

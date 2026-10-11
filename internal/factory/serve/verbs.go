@@ -558,7 +558,11 @@ func (h *Handler) newJob(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, "new job requires repo and title")
 		return
 	}
-	if !h.repoVisible(r, body.Repo) {
+	visible := h.repoVisible(r, body.Repo)
+	if h.authFailed(w, r) {
+		return
+	}
+	if !visible {
 		h.fail(w, http.StatusNotFound, "repository not found")
 		return
 	}

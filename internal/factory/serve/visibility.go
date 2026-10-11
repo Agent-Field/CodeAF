@@ -21,7 +21,7 @@ import (
 const repoVisibilityTTL = 10 * time.Minute
 
 // viewerState remembers who has signed in and which repositories their
-// GitHub token can read. The token itself is process memory only.
+// GitHub token can read. Durable sessions restore this cache at startup.
 // LOCK ORDER: accessSessions.mu before viewerState.mu, never the reverse.
 type viewerState struct {
 	mu     sync.Mutex
@@ -100,7 +100,8 @@ func (h *Handler) releaseToken(handle string) {
 		return
 	}
 	for _, session := range h.sessions.ids {
-		if session.profile != nil && session.profile.Handle == handle && h.sessionUsable(session) {
+		if session.profile != nil && session.profile.Handle == handle && session.githubToken != "" && h.sessionUsable(session) {
+			h.viewer.see(*session.profile, session.created, session.lastSeen, session.githubToken)
 			return
 		}
 	}
@@ -151,7 +152,15 @@ func repoKeys(s factory.Snapshot) []string {
 // A signed-in profile with no token still filters, and sees nothing.
 func (h *Handler) repoAccess(r *http.Request, keys []string) (map[string]bool, bool) {
 	session, ok := h.credential(r)
-	if !ok || session.profile == nil || session.profile.Handle == "" {
+	if !ok {
+		// An ended sign-in never falls back to the owner's unfiltered view,
+		// including when a long-lived event stream outlasts its credential.
+		if state, ok := r.Context().Value(authErrorKey{}).(*authErrorState); ok && state.err != nil {
+			return map[string]bool{}, true
+		}
+		return nil, false
+	}
+	if session.profile == nil || session.profile.Handle == "" {
 		return nil, false
 	}
 	token := session.githubToken
@@ -170,6 +179,9 @@ func (h *Handler) repoAccess(r *http.Request, keys []string) (map[string]bool, b
 		}
 		seen[key] = true
 		allow[key] = h.repoAllowed(r, token, key)
+		if state, ok := r.Context().Value(authErrorKey{}).(*authErrorState); ok && state.err != nil {
+			break
+		}
 	}
 	return allow, true
 }
@@ -214,6 +226,10 @@ func (h *Handler) askRepo(r *http.Request, token, key string) (allow, cache bool
 	}
 	endpoint := "https://api.github.com/repos/" + url.PathEscape(owner) + "/" + url.PathEscape(name)
 	status, err := h.githubStatus(r, http.MethodGet, endpoint, token)
+	if status == http.StatusUnauthorized {
+		h.endGitHub(r, token)
+		return false, false
+	}
 	if err != nil || status >= 500 {
 		return false, false
 	}
@@ -227,6 +243,13 @@ func (h *Handler) askRepo(r *http.Request, token, key string) (allow, cache bool
 // those counters are not stored per repository. The bool is true when
 // the returned snapshot is still the whole floor.
 func (h *Handler) forViewer(r *http.Request, s factory.Snapshot) (factory.Snapshot, string, bool) {
+	// Watched repositories belong in the picker before their first job exists.
+	// Preserve existing recipe facts and add only missing watched names.
+	if h.config.Store != nil {
+		if watched, err := h.config.Store.Repos(); err == nil {
+			s = withWatchedRepos(s, watched)
+		}
+	}
 	allow, filter := h.repoAccess(r, repoKeys(s))
 	if !filter {
 		return s, "", true
@@ -238,6 +261,22 @@ func (h *Handler) forViewer(r *http.Request, s factory.Snapshot) (factory.Snapsh
 		return s, "", true
 	}
 	return narrowView(s, allow), "", false
+}
+
+func withWatchedRepos(s factory.Snapshot, watched []string) factory.Snapshot {
+	seen := map[string]bool{}
+	for _, repo := range s.Repos {
+		seen[strings.ToLower(repo.Name)] = true
+	}
+	s.Repos = append([]factory.Repo(nil), s.Repos...)
+	for _, name := range watched {
+		name = strings.ToLower(strings.TrimSpace(name))
+		if name != "" && !seen[name] {
+			s.Repos = append(s.Repos, factory.Repo{Name: name})
+			seen[name] = true
+		}
+	}
+	return s
 }
 
 func anyAllowed(allow map[string]bool) bool {

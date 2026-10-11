@@ -6,6 +6,17 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 )
 
+// ReasonGitHubExpired tells the app to start GitHub sign-in again.
+const ReasonGitHubExpired = "github_expired"
+
+// AuthFailure is a refused sign-in; the reason is independent of its wording.
+type AuthFailure struct {
+	Factory   Factory `json:"factory"`
+	Error     string  `json:"error"`
+	Reason    string  `json:"reason"`
+	RequestID string  `json:"request_id"`
+}
+
 // Profile is the GitHub identity checked at sign-in, never a client claim.
 type Profile = tokens.Profile
 
