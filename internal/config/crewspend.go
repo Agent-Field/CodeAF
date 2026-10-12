@@ -61,7 +61,7 @@ func CrewCallPriceAt(profileDir string) func(model string) (prompt, completion, 
 func CrewSpendCap(profileDir string, withDaily bool) (float64, string) {
 	capUSD, action := CrewCapAt(profileDir), ""
 	if capUSD > 0 {
-		action = "today's crew spend has reached the daily cap of " + crewroute.Money(capUSD) + " · raise it with /crew cap"
+		action = "today's crew spend has reached the daily cap of " + crewroute.Money(capUSD) + " · raise it with /seats cap"
 	}
 	if withDaily {
 		if daily, err := DailyBudgetUSDAt(profileDir); err == nil && daily > 0 && (capUSD <= 0 || daily < capUSD) {
@@ -82,7 +82,7 @@ func CrewTaskSpendCap(profileDir string) (float64, string) {
 
 // CrewTaskCapAction is the sentence a call the per-task limit stops ends on.
 func CrewTaskCapAction(capUSD float64) string {
-	return "this task reached its " + CrewTaskMoney(capUSD) + " limit · raise it in /crew"
+	return "this task reached its " + CrewTaskMoney(capUSD) + " limit · raise it in /seats"
 }
 
 // CrewTaskMoney is a per-task limit in words: whole dollars without cents

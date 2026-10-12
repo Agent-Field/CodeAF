@@ -2158,7 +2158,7 @@ func (a *app) showPage(id page) (cmd tea.Cmd) {
 // each of these opened from home was invisible AND unreachable — and then
 // [app.closeHome] handed the frame back to the conversation underneath and the
 // picker appeared over THAT. Ten commands did it: /model, /resume, /folder,
-// /attach, /files, /crew, /permissions, /connect, /harness and /subharness.
+// /attach, /files, /seats, /permissions, /connect, /harness and /subharness.
 //
 // IT IS NOT [app.standDownRest], which is the two FULLSCREEN pages that are not
 // places, and it is not [app.closeForSwitch], which is about a conversation

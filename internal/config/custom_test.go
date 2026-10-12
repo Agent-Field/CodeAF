@@ -142,7 +142,7 @@ func TestPrepareCustomSourceMintsAFreeIdForEveryAdd(t *testing.T) {
 func TestRenameConnectionMovesEveryStoredModelIdIncludingTheTierRows(t *testing.T) {
 	dir := t.TempDir()
 	// The tier rows are written through the crew's own writer, so what a
-	// rename reads back is exactly what a person's /crew write produced.
+	// rename reads back is exactly what a person's /seats write produced.
 	for _, row := range []struct{ tier, value string }{
 		{ModelTierHigh, "homelab/a"},
 		{ModelTierWorker, "homelab/b:low"},

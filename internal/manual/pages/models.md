@@ -84,10 +84,10 @@ than inventing a description.
 
 1. `--model` / `--plan-model` / `--check-model` on the command line — a pin for this run only
 2. `CODEAF_MODEL` / `CODEAF_PLAN_MODEL` / `CODEAF_CHECK_MODEL` in the environment — the same
-3. a seat pinned in this profile with `/crew pin`
+3. a seat pinned in this profile with `/seats pin`
 4. the crew picked for this task, from what kind of work it is and the models you allow
 
-The checker never inherits the planner. The profile is the same one `/crew` sets in the
+The checker never inherits the planner. The profile is the same one `/seats` sets in the
 chat, so a checker pinned there is the checker here; `CODEAF_HOME` and `CODEAF_PROFILE_DIR`
 decide which profile is asked. `codeaf do` also takes `--best`, `--cheap` and
 `--pin seat=model[@provider]` for one task.

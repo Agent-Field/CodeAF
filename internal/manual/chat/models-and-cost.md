@@ -533,7 +533,7 @@ worker comes from an explicit choice, then the task model setting, then the
 crew's **worker** seat — a pin, or the model the crew picked for that task —
 and only when nothing answers, the conversation model.
 
-## The crew — which models a task runs on, and /crew
+## The crew — which models a task runs on, and /seats
 
 The crew is three seats: the **worker** that does the work, the **planner** that
 structures it, and the **checker** that reads the result. **By default all three are auto.**
@@ -579,20 +579,20 @@ codeaf also makes smaller calls on your behalf — naming a session, the safety 
 **`/model` is untouched.** It is the model you talk to, and nothing about the crew moves
 it.
 
-### The /crew panel
+### The /seats panel
 
-Bare `/crew` opens the crew panel: a framed panel over the conversation, with six rows you
+Bare `/seats` opens the crew panel: a framed panel over the conversation, with six rows you
 can change and one line about the day.
 
 ```
-╭─ crew ──────────────────────────────────────────────────────── esc ─╮
+╭─ seats ──────────────────────────────────────────────────────── esc ─╮
 │› worker    auto · usually glm-5.3-flash                             │
 │  planner   auto · usually glm-5.3-flash                             │
 │  checker   ⌖ kimi-k3                                                │
 │                                                                     │
 │  models    ‹ all › (96)                                             │
 │  providers ✓ openrouter  ✓ z-ai sub  ✓ ollama local  ○ my-vllm  +   │
-│  cap       per task $5 · crew daily cap none                        │
+│  cap       per task $2 · crew daily cap none                        │
 │            the daily limit, $500, still covers everything codeaf    │
 │            spends · /budget                                         │
 │                                                                     │
@@ -612,7 +612,7 @@ can change and one line about the day.
   its plain name, a subscription says `sub`, a model on this machine says `local` when there
   is room, and a custom endpoint is the name you gave it. The `+` at the end opens
   `/connect`. On a narrow window the chips fold to `3 of 4 on`.
-- **cap** — `per task $5 · crew daily cap none`: the most one task may spend, and the most
+- **cap** — `per task $2 · crew daily cap none`: the most one task may spend, and the most
   crews may spend in a day, `none` for no crew daily cap. Under it, the daily limit on
   everything codeaf spends (the first-run screen's **Daily limit**, `/budget`) is named with
   its figure — `the daily limit, $500, still covers everything codeaf spends · /budget` —
@@ -646,7 +646,7 @@ Every change is saved the moment you make it, and the next task uses it with no 
 The changed row wears a tick `✓`, and for five seconds the bottom edge offers `z undo`,
 which puts things back exactly as they were.
 
-## Crew panel keys — how to pin, unpin, set the cap or the allowed models on /crew
+## Crew panel keys — how to pin, unpin, set the cap or the allowed models on /seats
 
 `enter` is the one verb:
 
@@ -691,23 +691,23 @@ which puts things back exactly as they were.
   it. A row whose letters only match scattered — `kim` in `grok-imagine` — is shown only
   when nothing matched better.
 
-Typical keystrokes: pin the checker is `/crew ↓ ↓ enter kim enter`; allow open-weight
-models only is `/crew ↓ ↓ ↓ →`; a $5 cap is `/crew`, down to `cap`, `5`, `enter`.
+Typical keystrokes: pin the checker is `/seats ↓ ↓ enter kim enter`; allow open-weight
+models only is `/seats ↓ ↓ ↓ →`; a $5 cap is `/seats`, down to `cap`, `5`, `enter`.
 
 The shortcuts do the same writes from the box and then open the panel with the tick on the
 row they changed:
 
 ```
-/crew · /crew pin <worker|planner|checker> <model[@provider]> · /crew unpin <seat|all> · /crew models <all|open|≤in/out|ids…|+id|-id> · /crew cap <dollars|off> · /crew cap task <dollars>
+/seats · /seats pin <worker|planner|checker> <model[@provider]> · /seats unpin <seat|all> · /seats models <all|open|≤in/out|ids…|+id|-id> · /seats cap <dollars|off> · /seats cap task <dollars>
 ```
 
 ### Pinning a seat
 
-`/crew pin checker moonshotai/kimi-k3` pins the checker, and every task from then on runs
-its checker on that model until `/crew unpin checker` puts the seat back on auto.
-`/crew unpin all` puts all three back.
+`/seats pin checker moonshotai/kimi-k3` pins the checker, and every task from then on runs
+its checker on that model until `/seats unpin checker` puts the seat back on auto.
+`/seats unpin all` puts all three back.
 
-**A pin may name the provider too**: `/crew pin worker z-ai/glm-5.3-flash@openrouter` sends
+**A pin may name the provider too**: `/seats pin worker z-ai/glm-5.3-flash@openrouter` sends
 that seat through OpenRouter even when a direct connection also serves the model. Without
 `@provider` the crew picks the cheapest route that reaches the pinned model.
 
@@ -721,7 +721,7 @@ brings you back to the row.
 
 ### Which models are allowed
 
-`/crew models` says which models a seat nobody pinned may be picked from. An unwritten rule is `all`.
+`/seats models` says which models a seat nobody pinned may be picked from. An unwritten rule is `all`.
 
 - **`all`** — every model a connected provider can reach.
 - **`open`** — open-weight models only, so no seat is a bet on one vendor's pricing.
@@ -731,7 +731,7 @@ brings you back to the row.
 
 Any rule can be followed by `+x` and `-x`, read left to right: `open -deepseek` is every
 open model but DeepSeek's, and `≤1/5 +moonshotai/kimi-k3` is the price rule with one
-exception let in. `/crew models +kimi-k3` or `/crew models -deepseek` changes the rule in
+exception let in. `/seats models +kimi-k3` or `/seats models -deepseek` changes the rule in
 force by one word. A `-x` naming a **provider** — `-openrouter` — takes that provider's
 routes away rather than any model; to switch a provider off for the crew, use the panel's
 **providers** row, which keeps the choice when the rule changes.
@@ -743,13 +743,13 @@ leave a kind of work without a strong enough checker, the panel says so on a `ga
 
 ### The daily cap
 
-`/crew cap 5` caps what crews may spend in a day at $5; `/crew cap off` takes the cap
+`/seats cap 5` caps what crews may spend in a day at $5; `/seats cap off` takes the cap
 away. The crew **paces toward it**: once half the day's cap is spent, a dearer crew costs
 more of the day's quality to justify, so the picks lean cheaper as the cap gets close.
 
 **At the cap a task does not start**, whatever it asks for — `--cheap` and `--best` are
 refused the same, because a dollar cap is a cap. In a conversation the task is refused with
-the cap, what was spent, and the ways on: raise it or turn it off with `/crew cap`, or wait
+the cap, what was spent, and the ways on: raise it or turn it off with `/seats cap`, or wait
 until midnight on this machine's clock, when the day's spend starts again from nothing.
 `codeaf do` refuses the same way unless you pass `-yes-spend`; `codeaf exec`, `codeaf run`
 and `codeaf plan` say one line about it and go ahead.
@@ -759,7 +759,7 @@ helpers around them, such as the run's closing summary — is priced before it i
 what the day has spent, plus every call still on its way, plus what this call is expected
 to cost, which is never less than what the same model charged for its last call today.
 A call that would pass the cap is not made: the task stops on `today's crew spend has reached the daily cap
-of $5.00 · raise it with /crew cap`, with what it had done so far. A checker cut off this
+of $5.00 · raise it with /seats cap`, with what it had done so far. A checker cut off this
 way ends on the same sentence.
 At the cap, a call whose price codeaf does not know — a model the catalog lists with no
 price — is not sent either, and ends on the same sentence. A call that costs nothing — a
@@ -779,15 +779,15 @@ codeaf spends, and still applies.
 
 ### The per-task limit
 
-No ordinary task may cost more than its limit: **$5** unless you set another. `/crew cap task 10`
+No ordinary task may cost more than its limit: **$2** unless you set another. `/seats cap task 10`
 sets it to $10; on the panel it is the first figure on the **cap** row
-(`per task $5 · crew daily cap none`) — `enter` on the row, `tab` to the per-task box, type, `enter`.
-A task always has a limit: `none` and `0` are refused, and an emptied box is $5 again.
+(`per task $2 · crew daily cap none`) — `enter` on the row, `tab` to the per-task box, type, `enter`.
+A task always has a limit: `none` and `0` are refused, and an emptied box is $2 again.
 
 Every priced call of one task — each seat's, on every model, and the helpers made for it —
 counts against one figure: what the task has spent, plus every call of it still on its
 way, plus what this call is expected to cost. A call that would pass the limit is not made,
-and the task stops on `this task reached its $5 limit · raise it in /crew`, with what it had
+and the task stops on `this task reached its $2 limit · raise it in /seats`, with what it had
 done so far. The checker's own ceiling still applies inside it.
 
 `-yes-spend` does not lift it. `codeaf do` holds every run to the same limit, with or
@@ -828,7 +828,7 @@ The estimate is what crews like this one cost: each seat's token profile for tha
 work at the model's catalog prices, then moved by what this install's own paid tasks of the
 kind cost against their estimates. A seat on a plan, a local model or a free pool adds
 nothing to it. No crew estimated over the per-task limit is picked, `--best` included: the
-pick is the best crew under it, and the line says `held under the $5.00 task limit` when that
+pick is the best crew under it, and the line says `held under the $2.00 task limit` when that
 changed it.
 
 A pin sends exactly the id you wrote when the catalog lists it. An id the catalog lists
@@ -873,7 +873,7 @@ its first cause — `worker glm-5.3-flash → gemma-4-31b-it (credit unavailable
 openrouter; +3 tried)` — and the router's log keeps every rung. A seat that cannot start moves to a model at a similar cost before a
 dearer one. A task that ran on an account out of credit and failed ends on the credit action,
 not on `/redo stronger`. A free pool can be pinned by name —
-`/crew pin worker vendor/model:free` — and picking a model's `free` route in a seat's
+`/seats pin worker vendor/model:free` — and picking a model's `free` route in a seat's
 list pins that pool, not the paid route beside it.
 
 ### Route health
@@ -927,7 +927,7 @@ that still carries them is migrated once, on the first launch of this build, and
 one line:
 
 ```
-your crew is auto now · codeaf picks the worker, planner and checker for each task · /crew to see it
+your crew is auto now · codeaf picks the worker, planner and checker for each task · /seats to see it
 ```
 
 The preset and pick words, and a seat row that said `auto`, become auto. A seat holding
@@ -998,9 +998,9 @@ the worker graded that part careful (*Tasks*). It sits on the checker beside the
 the same reason: the failure it guards against is work that looks finished and is quietly
 wrong.
 
-## I changed the crew but the model at the bottom did not change — does /crew change my chat model
+## I changed the crew but the model at the bottom did not change — does /seats change my chat model
 
-No, and nothing is broken. **`/crew` does not change the model you are talking to**, and
+No, and nothing is broken. **`/seats` does not change the model you are talking to**, and
 the readout at the bottom of the frame is that model — the conversation's. The only things
 that move it are `/model`, the model row in `/settings`, or naming one with
 `/model <name>`. A pin confirms by naming the model you are still on:
@@ -1023,14 +1023,14 @@ the model you talk to, and nothing about a task.
 
 To choose the worker yourself:
 
-- **`/crew pin worker <model>`** — every task from now on, until `/crew unpin worker`.
-  `/crew pin worker <model>@<provider>` pins the route too. `/crew` shows the seat.
+- **`/seats pin worker <model>`** — every task from now on, until `/seats unpin worker`.
+  `/seats pin worker <model>@<provider>` pins the route too. `/seats` shows the seat.
 - **the `task model` row** under `/settings` → Tasks — the worker for every task that
   names no other model; blank, it reads `the crew's worker`.
 - **for one task** — name the model in the ask ("do this on deepseek"), or from a terminal
   `codeaf do --pin worker=<model>` or `--model <model>`.
 
-A model named in the ask wins over the `task model` row, and the row wins over a `/crew`
+A model named in the ask wins over the `task model` row, and the row wins over a `/seats`
 pin. The task's crew line says which worker it got.
 
 ## Is my code sent anywhere that logs it — where my prompts and code go, free routes
@@ -1043,12 +1043,12 @@ content (`docs/TELEMETRY.md` in the repository lists every field they carry).
 
 **Free routes may log prompts.** A provider's free pool of a model (an OpenRouter `…:free`
 id) may log or train on what it is sent. The crew uses free routes only when you turn
-them on — the `free routes` switch at the end of `/crew`'s providers list — with one
+them on — the `free routes` switch at the end of `/seats`'s providers list — with one
 exception: when every paid route a seat could use is out of reach, a seat moves onto a
 free pool rather than leave the task unable to run. "Out of reach" is one of: your
 OpenRouter balance is known to be low, a paid call on that provider was refused for
 payment, or the provider reports its credit at zero. A seat tries at most three free pools
-in one task; your allowed models (`/crew models`) still limit which ones; and the task's
+in one task; your allowed models (`/seats models`) still limit which ones; and the task's
 crew line then says `free routes in use (may log prompts)`. A paid call answering again
 puts the next task back on paid routes.
 
@@ -1078,14 +1078,14 @@ The model you are talking to is on the status line at the bottom, and `/model` c
 It answers you and runs this conversation's own tool calls.
 
 A task you hand off does not run on it. Each task gets a **crew** — a worker, a planner and
-a checker — picked for each task from what kind of work it is; `/crew` shows the seats and
-`/crew pin` fixes one.
+a checker — picked for each task from what kind of work it is; `/seats` shows the seats and
+`/seats pin` fixes one.
 
 What a task costs is on its crew line. When it starts, the line gives the estimate —
 `task 2 crew · bugfix · worker glm-5.3-flash (openrouter) · checker glm-5.3-flash · est $0.013`
 — and when it lands the line moves to the end of the conversation with what it actually
 cost beside the estimate. Every task is held to the per-task limit, and all crews together
-to the crew daily cap when one is set (both on `/crew`'s cap row). `/cost` says what this
+to the crew daily cap when one is set (both on `/seats`'s cap row). `/cost` says what this
 conversation has spent, and `/spend` the whole machine.
 
 ## Which model does a task run on — why did my task run on glm-5.3-flash and not my chat model
@@ -1123,7 +1123,7 @@ the picker's **ctrl+t** effort does, so the example sends model `moonshotai/kimi
 asks for high thinking separately.
 
 - **Any pin and any model row takes one**, though the planner is the seat it is for:
-  `/crew pin planner moonshotai/kimi-k3:high`. On the worker in a conversation it reaches
+  `/seats pin planner moonshotai/kimi-k3:high`. On the worker in a conversation it reaches
   the one-shot role calls only, never the work inside a task. At a headless door —
   `codeaf do`, `exec`, `plan` or `run` — the pin fills a seat instead, and every request
   the seat sends carries its level.
@@ -1231,7 +1231,7 @@ harnesses" is a sentence codeaf acts on — it looks the row up with `settings` 
 with `change_setting`, into the same `models.roles` row, after asking you. The reflex and
 small work rows of the Models category, and the crew's worker, checker and planner pins behind
 its one **seats** row, are writable that way too — a pin outside your allowed models is
-refused there as it is on `/crew`; only the role **slots** further down the Models category are not,
+refused there as it is on `/seats`; only the role **slots** further down the Models category are not,
 because those are bindings the running session holds rather than values in your profile.
 
 So the ladder for any role, most specific first: **its pin**, then **its row's model**,
@@ -1240,7 +1240,7 @@ then **the model you are talking to**.
 Two things worth knowing:
 
 - **A change is live.** The next call codeaf makes on its own uses it — whether you changed
-  it in the panel, with `/crew`, or by asking. It used to land on the next session, and it no
+  it in the panel, with `/seats`, or by asking. It used to land on the next session, and it no
   longer does. A turn already in flight finishes on what it started with: nothing you change
   lands in the middle of one. The one thing that *can* move a turn mid-flight is codeaf
   rescuing it from a model that has stopped answering — see *The model went quiet*.
@@ -1350,7 +1350,7 @@ without a planner to seat, a move that needs them says `no second model is set`.
 of the crew, so `--one-model` runs neither the task-landing judge nor the startup sweep
 of pending judgments. It does not substitute your worker as its own independent judge.
 
-**It changes no setting and writes nothing.** Your pins and rows are untouched, `/crew`
+**It changes no setting and writes nothing.** Your pins and rows are untouched, `/seats`
 still says what it said, and the next session without the flag reads them exactly as before.
 It is a posture for one run, not an edit.
 
@@ -3027,8 +3027,8 @@ They live on **one tab**: `/settings` → **Spending**, which `/budget` opens di
 | **per day** | `$500` | new work waits for midnight or for you to raise it here |
 | **per conversation** | `no limit` | this conversation stops starting new turns; the turn in flight always finishes |
 | **per plan** | `asks first above $100` | a planned job estimated above it quotes its step count and its price and waits for your go-ahead — it asks, it does not stop |
-| **per task** | `$5 a task` | an ordinary task's next priced call is not made; set in `/crew`. senior-dev has its own run ceiling |
-| **per standing run** | `$5 a firing` | that one firing stops there; each order may name its own |
+| **per task** | `$2 a task` | an ordinary task's next priced call is not made; set in `/seats`. senior-dev has its own run ceiling |
+| **per standing run** | `$0.40 a firing` | that one firing stops there; each order may name its own |
 
 Above those limits the category leads with **`today`**, which is a reading and not a setting:
 `$3.42 of $500 · resets at midnight`, or `$3.42 · no limit` on a machine with no daily
@@ -3164,12 +3164,12 @@ The row was called `ask before spending` when it lived on the Workspace tab, and
 setting key behind it is still `plan_consent_usd` — the panel's search matches the key as
 well as the label, so typing either finds it.
 
-## What may a task spend — $5 a task unless you set another
+## What may a task spend — $2 a task unless you set another
 
-**An ordinary `/task` carries a dollar limit of its own: $5 unless you set another.** The Spending tab
-shows it on the `per task` row — `$5 a task`, with the dim receipt `set in /crew · it also
-spends against the day and this conversation`. It is set on the `/crew` panel's **cap** row
-or with `/crew cap task 10`; see [The per-task limit](#the-per-task-limit).
+**An ordinary `/task` carries a dollar limit of its own: $2 unless you set another.** The Spending tab
+shows it on the `per task` row — `$2 a task`, with the dim receipt `set in /seats · it also
+spends against the day and this conversation`. It is set on the `/seats` panel's **cap** row
+or with `/seats cap task 10`; see [The per-task limit](#the-per-task-limit).
 
 Every priced call of an ordinary task counts against it, and a call that would pass it is not
 made. A task's other bounds are **steps and time**: a deadline it may renew, a step count,
@@ -3184,11 +3184,11 @@ senior-dev's, sec's and review's run ceilings are separate from this per-task fi
 Each program's own page names the defaults and flags; its run still spends against the
 conversation and day.
 
-`/budget task 20` is not a shape this command takes; the per-task figure lives in `/crew`.
+`/budget task 20` is not a shape this command takes; the per-task figure lives in `/seats`.
 The **composer layer** can put a further figure on one errand; see the tasks page.
 
 `per standing run` beside it is the same kind of reading for a different reason: it reads
-`$5 a firing · each order may name its own`, because that rail is written **per standing
+`$0.40 a firing · each order may name its own`, because that rail is written **per standing
 order** where the order is made, not in one settings row.
 
 ## This conversation stopped starting turns — conversation limit reached

@@ -1171,7 +1171,7 @@ func TestSpendRailsShipLargeEnoughNotToHinder(t *testing.T) {
 		{"the plan consent gate", DefaultPlanConsentUSD, 100},
 		{"the practice carve-out", DefaultPracticeBudgetUSD, 50},
 		{"the lifted-tier cap", taxonomy.DefaultTierCapUSD, 25},
-		{"a standing order's per-firing rail", standing.DefaultPerRunUSD, 5},
+		{"a standing order's per-firing rail", standing.DefaultPerRunUSD, 0.40},
 	}
 	for _, floor := range floors {
 		if floor.value < floor.floor {
@@ -1401,12 +1401,12 @@ func TestZeroMeansNoLimitEverywhereARailIsEnforced(t *testing.T) {
 	}
 }
 
-// V1: A fresh profile gets the fifteen-second proposal window, while explicit
+// V1: A fresh profile gets the twelve-second proposal window, while explicit
 // five-second and no-clock values survive persistence unchanged.
 func TestTaskCountdownDefaultAndPersistedValues(t *testing.T) {
 	dir := t.TempDir()
-	if got := TaskAutoApproveAt(dir); got != 15 {
-		t.Fatalf("fresh task countdown = %d, want 15", got)
+	if got := TaskAutoApproveAt(dir); got != 12 {
+		t.Fatalf("fresh task countdown = %d, want 12", got)
 	}
 	if err := writeProfileValue(dir, KeyTaskAutoApprove, 5); err != nil {
 		t.Fatalf("persist 5: %v", err)
@@ -1600,7 +1600,7 @@ func TestTheTaskModelRowSaysTheCrewPicksWhenBlank(t *testing.T) {
 	if got := row.Value(); got != "the crew's worker" {
 		t.Fatalf("a blank task model row reads %q", got)
 	}
-	if !strings.Contains(row.Hint, "/crew") || strings.Contains(row.Hint, "the model you are talking to when") {
+	if !strings.Contains(row.Hint, "/seats") || strings.Contains(row.Hint, "the model you are talking to when") {
 		t.Fatalf("the task model row's hint: %q", row.Hint)
 	}
 }

@@ -1922,7 +1922,7 @@ type app struct {
 	// it, because that path runs entirely on session events (harness.go).
 	harn      *subharness.Store
 	harnPanel harnessPanel
-	// crewUI is /crew: the five rows a person changes about the crew, edited
+	// crewUI is /seats: the five rows a person changes about the crew, edited
 	// where they stand, over the conversation (crewpanel.go).
 	crewUI crewPanel
 	// harnPick is the filtering list "/harness " opens over that same registry,
@@ -7020,7 +7020,7 @@ func (a *app) note(text string) { a.noteWritten(text, false, nil) }
 // whole, so a note written into the conversation behind it is written where
 // nobody can read it — and the answers that landed there were the ones a person
 // most needed: `there is no command called /x · / lists them`, /help's key
-// sheet, /status, /cost, the /crew panel, a budget that was set. Home has had a
+// sheet, /status, /cost, the /seats panel, a budget that was set. Home has had a
 // line for exactly this since it was built (pages.go's [app.placeMsgLine]) and
 // the dispatcher never reached it.
 //
@@ -8215,7 +8215,7 @@ func (a *app) slash(line string) tea.Cmd {
 	case "forget":
 		return a.runForget(rest)
 
-	case "crew":
+	case "seats":
 		// The crew panel and its four shortcuts (crew.go, crewpanel.go): what is
 		// allowed and what is pinned, which persists; nothing else about a crew
 		// sticks.

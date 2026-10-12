@@ -34,7 +34,7 @@ func noteRows(a *app, text string, facts ...string) []string {
 	return a.renderEntry(0, &e, a.width)
 }
 
-// THE LINE THE WHOLE RULE WAS WRITTEN FOR. `/crew` answers with the four models
+// THE LINE THE WHOLE RULE WAS WRITTEN FOR. `/seats` answers with the four models
 // it just set, and until this wave the ids and the words around them were one
 // flat dim sentence — so the person who typed the command to find out WHICH
 // MODELS read a line where the answer had exactly the weight of the question.
@@ -165,7 +165,7 @@ func TestColumnFactsReadEitherHalfOfATwoColumnNote(t *testing.T) {
 	if got := columnFacts(text, false); len(got) != 2 || got[0] != "what you can type" {
 		t.Fatalf("the trailing column is not the two sentences: %q", got)
 	}
-	// AN INDENT IS NOT A GUTTER: /crew's listing sets its class rows four spaces
+	// AN INDENT IS NOT A GUTTER: /seats's listing sets its class rows four spaces
 	// in, and a rule that cut at the first run of spaces would call the whole row
 	// the second column.
 	indented := "  balanced — a line\n    mastermind    kimi-k3:low"

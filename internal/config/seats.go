@@ -20,7 +20,7 @@ import (
 //
 //  1. the flag, which is what this invocation said — a ONE-TASK PIN;
 //  2. the environment, which is what this campaign said — a pin too;
-//  3. a one-task `--pin`, then the profile's pin (/crew pin);
+//  3. a one-task `--pin`, then the profile's pin (/seats pin);
 //  4. THE ROUTER, for every seat nothing above named: the task is classified
 //     and the seat picked for it (internal/crewroute, [RouteCrew]).
 //
@@ -68,7 +68,7 @@ const (
 	// SeatEnv is the environment: automation's override, set once for a
 	// campaign instead of threaded onto every invocation.
 	SeatEnv SeatSource = "env"
-	// SeatPinned is a pin: the profile's own (/crew pin) or a one-task `--pin`.
+	// SeatPinned is a pin: the profile's own (/seats pin) or a one-task `--pin`.
 	SeatPinned SeatSource = "pinned"
 	// SeatRouted is the router's pick for this task.
 	SeatRouted SeatSource = "routed"

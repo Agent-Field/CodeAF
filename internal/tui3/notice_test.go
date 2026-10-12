@@ -732,7 +732,7 @@ func TestEveryRetireEventIsProvedByItsGesture(t *testing.T) {
 			runCmd(a.homeSlash("/project " + t.TempDir()))
 		},
 		eventModelListOpened:         func(t *testing.T, a *app) { a.slash("/model") },
-		eventCrewShown:               func(t *testing.T, a *app) { a.slash("/crew") },
+		eventCrewShown:               func(t *testing.T, a *app) { a.slash("/seats") },
 		eventBudgetShown:             func(t *testing.T, a *app) { a.slash("/budget") },
 		eventConversationBudgetShown: func(t *testing.T, a *app) { a.slash("/budget conversation") },
 		eventSpendOpened:             func(t *testing.T, a *app) { a.slash("/spend") },

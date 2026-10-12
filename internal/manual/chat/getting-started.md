@@ -55,7 +55,7 @@ screen. Its heading is `Basic settings`, one line, with the keys line directly u
 again. `esc` on the controls screen goes **back** to the connection when there is one
 behind it, and skips when the controls are the whole of the setup. A skip leaves one dim
 line naming the doors onto what it walked past: `still yours to set · /budget sets what
-codeaf may spend · /model and /crew pick the models`. If the default OpenRouter provider is
+codeaf may spend · /model and /seats pick the models`. If the default OpenRouter provider is
 still not connected and the conversation is using one of its models, its one-step screen
 returns on the next local interactive launch because that model cannot work without it. A
 conversation on a connected direct provider's model does not owe OpenRouter a key, so that
@@ -185,7 +185,7 @@ whole, and each `/budget` in it is painted as a command chip. The day's limit ho
 everything until midnight or you raise it; a conversation's holds just that conversation;
 the turn already running always finishes (*Models and cost* has the rest). (Until 2026-10-01 the detail said only that the figure counts
 recorded spending, that running calls can carry it a little past, and that task crews have
-a cap of their own in `/crew`.)
+a cap of their own in `/seats`.)
 
 ## Where the daily limit is saved and why setup does not ask about every spending limit
 
@@ -261,7 +261,7 @@ screen was asked, `esc` skips the setup instead — the keys line says so — an
 
 **There is no crew question**, because the crew is three seats — the worker, the planner and the
 checker — and codeaf picks all three for each task from what kind of work it is, so there
-is nothing to choose before the first task. `/crew` shows the crew, and pins a seat when
+is nothing to choose before the first task. `/seats` shows the crew, and pins a seat when
 you want one model there every time. **Chat model** chooses the model that answers
 you; changing it does not change the task crew.
 
@@ -361,7 +361,7 @@ Every answer went through a settings row, so every answer has a door:
 | What you answered | Where to change it later |
 | --- | --- |
 | the default provider's openrouter key | clear or remove it and the next local interactive launch offers the provider chooser again; `/settings`, Connections category, the **openrouter key** row still accepts a pasted replacement |
-| the crew | nothing was asked — it is auto. `/crew` shows it, and `/crew pin <seat> <model>` pins a seat |
+| the crew | nothing was asked — it is auto. `/seats` shows it, and `/seats pin <seat> <model>` pins a seat |
 | the daily limit | `/budget` (also `/limits`), or `/settings` → **Spending**. `CODEAF_DAILY_BUDGET` in your shell outranks the row |
 | the model you talk to | `/model`, or the **Chat model** row on the setup screen — the same settings row either way |
 | memory, permissions, the task countdown | `/settings` — the setup screen does not show them; the note under **Start a conversation** points there |
@@ -373,7 +373,7 @@ starts on the new pin, and the rail is checked against the new ceiling.
 ## Which settings the setup does not ask about
 
 **The setup asks about two things and no more.** Memory stays on, tool approvals keep
-prompting, and a proposed task keeps its 15-second countdown — none of them becomes a
+prompting, and a proposed task keeps its 12-second countdown — none of them becomes a
 question there, because none can be answered usefully before you have seen codeaf do
 anything. They are taught where they happen: the countdown is on the task card, and the
 first permission question explains the actual tool that asked for something.
@@ -387,7 +387,7 @@ them was removed.)
 
 Per-plan approval, the per-conversation ceiling, individual crew seats, reasoning,
 routing, extra provider keys, concurrency and appearance are all deliberately absent from
-the setup. They have doors — `/budget`, `/settings`, `/crew`, `/model` — and they are
+the setup. They have doors — `/budget`, `/settings`, `/seats`, `/model` — and they are
 asked about at the moment they matter rather than before you have started.
 
 ## The first prompt hung — still waiting, /model switches

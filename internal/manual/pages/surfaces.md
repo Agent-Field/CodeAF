@@ -162,11 +162,11 @@ locally.
   stop with Ctrl+C: the last line on the error stream is `record kept at
   <path>`, and that directory holds the whole record as `graph.db`. `--keep`
   keeps it whatever happened, and so does `CODEAF_DEBUG` set to anything but
-  `0`, `false` or `off`. It runs on a crew picked for the run — with any `/crew pin` this profile holds —
+  `0`, `false` or `off`. It runs on a crew picked for the run — with any `/seats pin` this profile holds —
   unless `--model`, `--plan-model`, `--check-model`, `--pin seat=model[@provider]` or the
   matching variables pin a seat for it, and it opens by saying which of those chose its
   models. `--best` and `--cheap` move that one run's crew. It is held to the per-task
-  limit set in `/crew` ($5 unless set), which `-yes-spend` does not lift; `-yes-spend`
+  limit set in `/seats` ($5 unless set), which `-yes-spend` does not lift; `-yes-spend`
   answers the daily cap and the plan-price question.
 - `codeaf wake` — run one bounded pass and exit. This is what the standing watch
   timer runs; you can run it by hand too.

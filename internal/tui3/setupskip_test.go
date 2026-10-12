@@ -67,13 +67,13 @@ func TestSkippingSetupNamesTheQuestionsItRetired(t *testing.T) {
 		want  []string
 		unfit []string
 	}{
-		{"esc on the very first step", 0, []string{"/crew", "/budget", "/model"}, nil},
+		{"esc on the very first step", 0, []string{"/seats", "/budget", "/model"}, nil},
 		// The controls screen is ON SCREEN and unanswered, so its doors are
 		// named: esc walked past the step it was standing on.
-		{"esc on the controls screen itself", 1, []string{"/crew", "/budget", "/model"}, nil},
+		{"esc on the controls screen itself", 1, []string{"/seats", "/budget", "/model"}, nil},
 		// And here every step has been answered, so naming a door back would be
 		// the screen offering somebody a question they just closed.
-		{"esc past the last step", 2, nil, []string{"/budget", "/crew"}},
+		{"esc past the last step", 2, nil, []string{"/budget", "/seats"}},
 	} {
 		a := newTestApp(&fakeAgent{model: "m"})
 		a.setup.open = true
@@ -109,7 +109,7 @@ func TestFinishingSetupLeavesNoLineAboutQuestionsItAsked(t *testing.T) {
 	before := len(a.entries)
 	a.endSetup(false)
 	note := strings.Join(setupNotesAfter(a, before), "\n")
-	if strings.Contains(note, setupLaterWord) || strings.Contains(note, "/crew") {
+	if strings.Contains(note, setupLaterWord) || strings.Contains(note, "/seats") {
 		t.Fatalf("a finished setup left %q, want nothing about questions it asked", note)
 	}
 }

@@ -92,7 +92,7 @@ There is no fixed per-job dollar cap — a job's budget is written into its brie
 grounded in what similar work has actually cost.
 
 Charters are capped explicitly: each one carries a per-firing budget (default
-**$5.00**) and a max-per-day (default **10**). A firing that would cross the
+**$0.40**) and a max-per-day (default **10**). A firing that would cross the
 daily rail is deferred and you are asked first. A per-firing budget of **0** is
 no per-firing limit — such a charter is bounded by the daily rail and its
 max-per-day alone.

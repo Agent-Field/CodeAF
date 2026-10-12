@@ -940,7 +940,7 @@ func TestTheTierRowsAndTheVisionRowAreAnsweredByThePicker(t *testing.T) {
 	// The classes sit on the Providers tab, with the model they answer under
 	// (settings.go's [modelsSection]).
 	toProviders(t, a)
-	// The seats — worker, planner, checker — are one row that opens /crew
+	// The seats — worker, planner, checker — are one row that opens /seats
 	// (settings.go's [sheet.crewDoorItem]); the small-work row is the class row left.
 	for _, row := range []string{config.KeyTierLowModel} {
 		cursorTo(t, a, row)
@@ -2884,14 +2884,14 @@ func TestATaskProposalRendersTheDecisionAndHidesTheBrief(t *testing.T) {
 	}
 }
 
-// V1: A proposal using the fresh-profile countdown announces the full fifteen
+// V1: A proposal using the fresh-profile countdown announces the full twelve
 // seconds, in the words of the answer that is about to be taken.
-func TestTheDefaultTaskCountdownRendersFifteenSeconds(t *testing.T) {
+func TestTheDefaultTaskCountdownRendersTwelveSeconds(t *testing.T) {
 	a, _, _ := taskApp(t)
 	window := time.Duration(config.DefaultTaskAutoApprove) * time.Second
 	askTask(t, a, 7, window)
-	if !strings.Contains(taskAsk(a), "start it in 15s") {
-		t.Fatalf("default proposal does not announce 15s:\n%s", taskAsk(a))
+	if !strings.Contains(taskAsk(a), "start it in 12s") {
+		t.Fatalf("default proposal does not announce 12s:\n%s", taskAsk(a))
 	}
 }
 

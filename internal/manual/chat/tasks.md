@@ -580,7 +580,7 @@ block in the conversation shows:
 no other decision on this screen is drawn. The question is above the box:
 
 ```
-? wants to start a task: Fix the nil-map crash     codeaf asks · start it in 15s
+? wants to start a task: Fix the nil-map crash     codeaf asks · start it in 12s
   The parser drops a key on an empty map. · codeaf
   ▸ 1  start it                                ◆ recommended
        it starts on its own unless you say otherwise · fairly sure
@@ -589,7 +589,7 @@ no other decision on this screen is drawn. The question is above the box:
   esc later · o other · ? clarify
 ```
 
-`▸` marks the answer the clock is about to take. The default clock is 15 seconds
+`▸` marks the answer the clock is about to take. The default clock is 12 seconds
 (`task.autoapprove_seconds` changes it). `◆ recommended` marks the asker's pick;
 the reason and confidence appear below it when supplied. The clock sits at the top
 right, and the keys sit at the bottom edge. The question is **not modal**: the message
@@ -1049,7 +1049,7 @@ thinking tier, and both are deliberately crew-only — with no crew they are ski
 handed to the model that has just written the answer and would be editing itself. So if nothing
 is set for them, they have no model at all, and this is the sentence that says so.
 
-**What to do about it.** Pin a planner with `/crew pin planner <model>`, or pin the two roles on the
+**What to do about it.** Pin a planner with `/seats pin planner <model>`, or pin the two roles on the
 **pinned roles** row in `/settings` → Models — they are called `markreader` and `handoff`,
 so the row reads `markreader:openai/gpt-5, handoff:openai/gpt-5`. Or run with `--one-model`,
 which settles them on the model you are talking to along with everything else. Either way the
@@ -1450,10 +1450,10 @@ Expanding the brief: `ctrl+e` with an empty box, or `ctrl+o` on a block you sele
 on its own labelled line. Clicking the block's body does not open the brief — it opens the
 task's room.
 
-## The countdown on a task proposal — start it in 15s by default
+## The countdown on a task proposal — start it in 12s by default
 
 The clock sits at the top right of the card, beside `codeaf asks`, and says which answer is
-about to be taken and when: `start it in 15s` at the default setting. It is rounded up, so the last second you have
+about to be taken and when: `start it in 12s` at the default setting. It is rounded up, so the last second you have
 is drawn as a second; above a minute it reads `2m 13s`.
 
 While it runs, the card says `any key stops the clock · you can still change the answer afterwards`.
@@ -1478,7 +1478,7 @@ after it declines; it never starts the task. After that, `1` starts and `2` decl
 
 ## Changing the task proposal countdown
 
-The default window is 15 seconds. **Where is the setting for how long a proposal waits?** It
+The default window is 12 seconds. **Where is the setting for how long a proposal waits?** It
 is `task.autoapprove_seconds`, and it lives on the **`Safety`** tab of the settings panel —
 open that with `ctrl+,` or `/settings` — where it is the row labelled `task countdown`. It
 is not on the `Spending` tab; it sits with the consent rows because it answers their
@@ -1539,7 +1539,7 @@ into `decisions.jsonl` with:
 ## The task started before I could say no
 
 A proposal starts on silence only while its countdown is still moving. The default window
-is 15 seconds. Pressing any key the question reads stops that clock immediately, and
+is 12 seconds. Pressing any key the question reads stops that clock immediately, and
 deleting what you typed does not restart it. Press `2` to decline.
 
 If nothing was pressed before the clock reached zero, the work was already admitted and a
@@ -2346,8 +2346,8 @@ proposal card and the model's own proposals run under the conversation's own lim
 you set it — and under the day's limit above it. An adaptive run they start opens on the
 $100.00 default.
 
-**An ordinary `/task`, or any task codeaf's own worker does, also has a money limit of its own: $5 unless you set another**, shown on the
-Spending tab's `per task` row and set with `/crew cap task <$>`. A call that would spend
+**An ordinary `/task`, or any task codeaf's own worker does, also has a money limit of its own: $2 unless you set another**, shown on the
+Spending tab's `per task` row and set with `/seats cap task <$>`. A call that would spend
 past it is not made, whichever way the ordinary task was started, and the task stops there.
 **senior-dev, sec and review have their own dollar and time ceilings for each run**,
 separate from that `per task` row; see each program's page for its defaults and how to
@@ -4207,7 +4207,7 @@ piece of debugging, a judgement about somebody else's code, where the work can l
 and be quietly wrong. Those run on the task's **checker** instead — the same seat the
 check at the end of a task uses. The planner that reads the plan can promote a part to
 careful too. Where the checker is the same model as the worker, every part runs where its
-task runs and the grade costs you nothing; *Models and cost* has the crew and `/crew`.
+task runs and the grade costs you nothing; *Models and cost* has the crew and `/seats`.
 
 **And the grade is not the last word — what has actually happened here is.** Every task
 that settles writes down what the check said about it, against the model it ran on and
@@ -4363,7 +4363,7 @@ nobody had measured: idle on a sixteen-core box, one too many on a laptop alread
 Every task runs on a **crew** of three seats — the worker, the planner and the checker —
 and unless you pinned a seat, codeaf picks each one for that task from what kind of work
 it is: a bug fix, a complex fix, open-ended work, or something else. On open-ended work the
-extra money goes to the checker first. The panel is `/crew`; the whole story
+extra money goes to the checker first. The panel is `/seats`; the whole story
 is on the models page. What you say about **one** task is two words:
 
 - **`/task --best <brief>`** — the strongest crew the allowed models make, for this task.
@@ -4401,15 +4401,15 @@ the rung. A task that never started is asked again on the next-best models inste
 teaches the crew: the next task of the same kind in this repository starts a rung higher,
 until an accepted task brings it back. A crew
 that is already the strongest allowed says so and starts nothing —
-`this crew is already the strongest allowed · pin a stronger model with /crew pin, or widen /crew models`.
+`this crew is already the strongest allowed · pin a stronger model with /seats pin, or widen /seats models`.
 A task still running is not redone; stop it first.
 
-**At the crew's daily cap an ordinary task does not start.** `/crew cap` sets what crews may spend in a day;
+**At the crew's daily cap an ordinary task does not start.** `/seats cap` sets what crews may spend in a day;
 a task asked for once today's spend has reached it is refused with the cap, the spend and
 the ways on — `--cheap` and `--best` are refused the same, because a dollar cap is a cap:
 
 ```
-today's crew spend ($5.01) has reached the daily cap of $5.00 · raise it or turn it off with /crew cap, or wait until midnight
+today's crew spend ($5.01) has reached the daily cap of $5.00 · raise it or turn it off with /seats cap, or wait until midnight
 ```
 
 The day turns over at midnight on this machine's clock, and the spend starts again from nothing.
@@ -4444,7 +4444,7 @@ The digits are the question's answers and never the models — `1` is `start it`
 moved off the digits and onto the arrows.
 
 Name nothing and the task runs on `task.model` if you have set it, otherwise on its crew's
-**worker** — pinned with `/crew pin worker`, or picked for this task from what kind of work
+**worker** — pinned with `/seats pin worker`, or picked for this task from what kind of work
 it is — and only when neither answers on the model the conversation was on. It is settled
 **when the task is admitted**. The id is settled at that
 moment and remembered for the task's whole life — it survives a restart, and switching the

@@ -188,7 +188,7 @@ var commands = []command{
 	// table is a claim about frequency, and a page a person opens when something
 	// has surprised them may not push /compact into a scroll.
 	//
-	// TWO ROWS FOR ONE COMMAND, the way /export and /crew have two, and for that
+	// TWO ROWS FOR ONE COMMAND, the way /export and /seats have two, and for that
 	// reason: a single row carrying <words> would make the bare form — the page
 	// — unreachable from this list, because [app.runMenu] puts a row that TAKES
 	// something into the draft instead of running it.
@@ -277,17 +277,17 @@ var commands = []command{
 	//
 	// It sits here, under the memory rows, because those three are "what does it
 	// know" and this is "what does it think WITH".
-	{name: "crew", desc: "the crew tasks run on · picked per task, with your pins, allowed models and daily cap"},
-	{name: "crew", args: "pin <seat> <model[@provider]>", desc: "…pin the worker, planner or checker · /model stays"},
-	{name: "crew", args: "unpin <seat|all>", desc: "…put a seat back on auto"},
-	{name: "crew", args: "models <rule>", desc: "…which models a seat may be picked from · all, open, ≤in/out, ids"},
-	{name: "crew", args: "cap <dollars|off>", desc: "…the most tasks' crews may spend in a day"},
-	{name: "crew", args: "cap task <dollars>", desc: "…the most one task may spend"},
+	{name: "seats", alias: []string{"crew"}, desc: "the model seats tasks run on · picked per task, with your pins, allowed models and daily cap"},
+	{name: "seats", args: "pin <seat> <model[@provider]>", desc: "…pin the worker, planner or checker · /model stays"},
+	{name: "seats", args: "unpin <seat|all>", desc: "…put a seat back on auto"},
+	{name: "seats", args: "models <rule>", desc: "…which models a seat may be picked from · all, open, ≤in/out, ids"},
+	{name: "seats", args: "cap <dollars|off>", desc: "…the most tasks may spend in a day"},
+	{name: "seats", args: "cap task <dollars>", desc: "…the most one task may spend"},
 	// AND HOW HARD THE ONE YOU TALK TO THINKS, under the two rows about WHICH
 	// models it thinks with, because that is the order the two questions arrive
 	// in: a person picks the model and then decides how much of it to spend.
 	//
-	// TWO ROWS FOR ONE COMMAND, the way /crew and /model have two: the bare form
+	// TWO ROWS FOR ONE COMMAND, the way /seats and /model have two: the bare form
 	// is the five rungs with what each one buys, which is how somebody chooses
 	// between words that all mean "harder"; a single row carrying <rung> would
 	// make that list unreachable, since [app.runMenu] puts a row that TAKES

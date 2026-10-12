@@ -138,7 +138,7 @@ const (
 //	opens a conversation here first      it opens one AT THE TARGET (homedraft.go)
 //	                                     and runs there, the door `enter` uses
 //	answers here                         a note, echoed onto home's own line
-//	opens the crew panel                 /crew, bare or a shortcut — home steps
+//	opens the crew panel                 /seats, bare or a shortcut — home steps
 //	                                     aside for it and esc comes back
 //	runs on the conversation behind home  /land /workspace — and they say so
 //	a fresh conversation behind home     /new
@@ -235,7 +235,7 @@ func homeFate(word, rest string) string {
 			return fatePlace
 		}
 		return fateNeedsChat
-	case "crew":
+	case "seats":
 		// THE PANEL AND ITS FOUR SHORTCUTS ALL OPEN THE PANEL — the bare form to
 		// change something, a shortcut to show what it changed — and a place
 		// cannot draw an overlay, so every form steps off home onto the
@@ -247,7 +247,7 @@ func homeFate(word, rest string) string {
 		return fateNeedsChat
 	case "effort":
 		// BOTH FORMS NEED A CONVERSATION, and that is what tells this apart from
-		// /crew and /model. The crew is the machine's, the model has a target
+		// /seats and /model. The crew is the machine's, the model has a target
 		// rule home can pin — and a thinking rung is the CONVERSATION's own scope
 		// (effortchip.go), so there is nothing here for it to be set on. Home's
 		// own rung is not this one either: `alt+e` on a standing item's card
@@ -352,7 +352,7 @@ func (a *app) homeSlash(line string) tea.Cmd {
 		return tea.Batch(started, a.slash(line))
 	}
 	// AND THE ANSWER OF EVERYTHING ELSE IS ECHOED WHERE IT WAS TYPED. /help,
-	// /status, /cost, /crew, /budget 20 and `there is no command called
+	// /status, /cost, /seats, /budget 20 and `there is no command called
 	// /x · / lists them` all answer with a note, which lands in the conversation
 	// behind this screen — true, kept, and unreadable until you leave. The flag
 	// puts the first line of it on home's own message line as well

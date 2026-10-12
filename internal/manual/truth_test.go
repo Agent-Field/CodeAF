@@ -201,7 +201,7 @@ func quotedFacts(t *testing.T) []quotedFact {
 			{"models-and-cost", "No ordinary task may cost more than its limit: **%s** unless you set another"},
 			{"models-and-cost", "(`per task %s · crew daily cap none`)"},
 			{"models-and-cost", "an emptied box is %s again"},
-			{"models-and-cost", "this task reached its %s limit · raise it in /crew"},
+			{"models-and-cost", "this task reached its %s limit · raise it in /seats"},
 			{"models-and-cost", "held under the %s.00 task limit"},
 			{"models-and-cost", "| **per task** | `%s a task`"},
 			{"models-and-cost", "## What may a task spend — %s a task unless you set another"},
@@ -211,7 +211,7 @@ func quotedFacts(t *testing.T) []quotedFact {
 			{"commands", "the most one task may spend — %s unless set."},
 			{"commands", "per task %s · crew daily cap $5.00"},
 			{"running-from-the-terminal", "**Every run is held to the per-task limit**, %s unless"},
-			{"running-from-the-terminal", "this task reached its %s limit · raise it in /crew"},
+			{"running-from-the-terminal", "this task reached its %s limit · raise it in /seats"},
 			{"tasks", "**An ordinary `/task`, or any task codeaf's own worker does, also has a money limit of its own: %s unless you set another**"},
 		},
 	}, {
@@ -344,7 +344,7 @@ func quotedFacts(t *testing.T) []quotedFact {
 		},
 	}, {
 		fact: "what one firing may spend", owner: "standing.DefaultPerRunUSD",
-		value:  dollarsOwed(standing.DefaultPerRunUSD),
+		value:  strconv.FormatFloat(standing.DefaultPerRunUSD, 'f', 2, 64),
 		quotes: []quotedIn{{"models-and-cost", "| **per standing run** | `$%s a firing` |"}},
 	}, {
 		fact: "what practice may take of the day", owner: "config.DefaultPracticeBudgetUSD",
@@ -454,11 +454,11 @@ func TestEveryPageQuotingAShippedSentenceQuotesItWhole(t *testing.T) {
 func TestTheCrewCommandRowsNameTheSeatsTheRouterOwns(t *testing.T) {
 	rows := strings.Join(crewCommandRows(t), "\n")
 	if rows == "" {
-		t.Fatal("internal/tui3/commands.go offers no /crew row")
+		t.Fatal("internal/tui3/commands.go offers no /seats row")
 	}
 	for _, seat := range crewroute.Seats {
 		if !strings.Contains(rows, string(seat)) {
-			t.Errorf("no /crew row names the %s — crewroute.Seats has it:\n%s", seat, rows)
+			t.Errorf("no /seats row names the %s — crewroute.Seats has it:\n%s", seat, rows)
 		}
 	}
 	pages := flatChatPages(t)
@@ -469,8 +469,8 @@ func TestTheCrewCommandRowsNameTheSeatsTheRouterOwns(t *testing.T) {
 	}
 }
 
-// crewCommandRows is every /crew row in the command list, read as text.
-var crewRowLine = regexp.MustCompile(`(?m)^.*\{name: "crew".*$`)
+// crewCommandRows is every /seats row in the command list, read as text.
+var crewRowLine = regexp.MustCompile(`(?m)^.*\{name: "seats".*$`)
 
 func crewCommandRows(t *testing.T) []string {
 	t.Helper()

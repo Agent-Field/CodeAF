@@ -1972,7 +1972,7 @@ move · `enter` activate. Its foot reads `esc close · ↑↓ move`.
 `end`/`G` bottom · `ctrl+o` lifts the line cap. Its foot reads exactly
 `esc close · ↑↓ scroll`, or `esc close · ↑↓ scroll · tap … for the rest`.
 
-**Crew panel** (`/crew`): `up`/`k`/`ctrl+p`, `down`/`j`/`ctrl+n`, `home`, `end` walk the six
+**Crew panel** (`/seats`): `up`/`k`/`ctrl+p`, `down`/`j`/`ctrl+n`, `home`, `end` walk the six
 rows · `enter` changes the row · `esc` goes back one level and closes · `?` lists every key ·
 `z` undoes the last change while the bottom edge offers `z undo`. On the **models** row
 `←`/`→` step `all`, `open`, `price`, `custom`, and `enter` steps forward like `→` until

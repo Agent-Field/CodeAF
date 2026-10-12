@@ -1446,15 +1446,10 @@ const (
 	// and a default would box in every sitting at a number nobody chose.
 	DefaultSpendRailUSD = 0.0
 
-	// DefaultTaskAutoApprove is fifteen seconds, and the direction it is wrong in
-	// is the whole choice. A task proposal is not a permission question — the
-	// model has already groomed the work and the brief, and the countdown is the
-	// person's window to REDIRECT it or wave it off. Five seconds once looked
-	// long enough to read a title and summary and reach for a key; a real card,
-	// with its where line and three answers, was gone before the person's no.
-	// Fifteen keeps silence as approval without making every task a keystroke the
-	// person owes, and gives the actual card enough time to read.
-	DefaultTaskAutoApprove = 15
+	// DefaultTaskAutoApprove gives a proposed task twelve seconds for the
+	// person to redirect it or hold it. An explicit zero still means that the
+	// proposal waits for an answer instead of starting itself.
+	DefaultTaskAutoApprove = 12
 
 	// DefaultTaskRepairRounds is ONE, and one is the whole argument. The failure
 	// this exists for is a piece of work that came back nearly right — a report
@@ -2414,7 +2409,7 @@ func (s *Settings) build() []Setting {
 			Label: "task model", EmptyLabel: "the crew's worker",
 			Hint: "the model a task's worker runs on when you have not asked for another one — " +
 				"`anthropic/claude-opus-5`. Leave it blank and the worker is the crew's: " +
-				"your /crew pin, or the model the crew picks for that task. You can still " +
+				"your /seats pin, or the model the crew picks for that task. You can still " +
 				"say which model a particular piece of work should go to, and the proposal " +
 				"names the one it will start on.",
 			read:  func() string { return TaskModelAt(dir) },
@@ -2451,7 +2446,7 @@ func (s *Settings) build() []Setting {
 		// its own — the name it gives a session, the check on work a task says is
 		// finished, the plan an adaptive run steers by (internal/roles). The
 		// crew's three rows are PINS: blank is `auto`, the router picking that
-		// seat for each task, and /crew is where they are read and set with the
+		// seat for each task, and /seats is where they are read and set with the
 		// allowed models and the cap beside them (crew.go).
 		Setting{
 			Key: KeyTierReflexModel, Category: CategoryModels, Kind: SettingText,
@@ -2476,7 +2471,7 @@ func (s *Settings) build() []Setting {
 			Label: "worker", EmptyLabel: CrewAuto,
 			Hint: "the model that does the work of every task — blank is auto: codeaf picks it " +
 				"for each task from the kind of work it is. Pin one with a model id, or " +
-				"`model@provider` to pin the route too. /crew shows all three seats.",
+				"`model@provider` to pin the route too. /seats shows all three seats.",
 			read:  func() string { return crewSeatRow(dir, crewroute.Worker) },
 			write: func(raw string) error { return SetCrewPin(dir, crewroute.Worker, raw) },
 		},
@@ -4374,7 +4369,7 @@ func ResponseLiftCapAt(profileDir string) float64 {
 //
 // A persisted 0 is a VALUE and not an absence, which is why the reader tests
 // ok before it tests the number: a person who turned the clock off must not
-// find it back at fifteen the next morning.
+// find it back at twelve the next morning.
 func TaskAutoApproveAt(profileDir string) int {
 	if value, ok := persistedInt(profileDir, KeyTaskAutoApprove); ok && value >= 0 {
 		return value

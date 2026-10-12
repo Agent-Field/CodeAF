@@ -22,7 +22,7 @@ import (
 // (cmd/codeaf's chatv3.go) and this screen asks for what a first day needs, in
 // A provider choice precedes TWO steps: its connection, and one screen of controls —
 // the day's spending limit and the model you talk to. The crew is not asked:
-// a task's crew is picked per task, and /crew is where it is seen. Under a
+// a task's crew is picked per task, and /seats is where it is seen. Under a
 // minute; every control opens on the value already in force; the way out is
 // `Start a conversation`.
 //
@@ -357,12 +357,12 @@ const setupLaterWord = "still yours to set"
 // connected service owes no line about OpenRouter at all.
 //
 // THE CONTROLS SCREEN NAMES ITS THREE DOORS AND NOT ITS OWN NAME. "the controls
-// screen" is a thing a person cannot go back to; /budget, /model and /crew are
+// screen" is a thing a person cannot go back to; /budget, /model and /seats are
 // three things they can type, and between them they are every choice that screen
 // was going to offer.
 func setupStepLater(step setupStep) string {
 	if step == setupControls {
-		return "/budget sets what " + product + " may spend · /model and /crew pick the models"
+		return "/budget sets what " + product + " may spend · /model and /seats pick the models"
 	}
 	return ""
 }

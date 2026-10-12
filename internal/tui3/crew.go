@@ -12,7 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// /crew — WHAT IS ALLOWED, AND WHAT IS PINNED. NOTHING ELSE STICKS.
+// /seats — WHAT IS ALLOWED, AND WHAT IS PINNED. NOTHING ELSE STICKS.
 //
 // A task's crew is three seats — the WORKER that does the work, the PLANNER
 // that structures it, the CHECKER that reads the result — and by default all
@@ -33,15 +33,15 @@ import (
 // open the panel with the tick on the row they changed, so a command and the
 // panel cannot disagree about which crew is on:
 //
-//	/crew pin <seat> <model[@provider]>   /crew unpin <seat|all>
-//	/crew models <all|open|≤in/out|list|+model|-model>
-//	/crew cap <dollars|off>   /crew cap task <dollars>
+//	/seats pin <seat> <model[@provider]>   /seats unpin <seat|all>
+//	/seats models <all|open|≤in/out|list|+model|-model>
+//	/seats cap <dollars|off>   /seats cap task <dollars>
 
-// crewUsage is the one line every refused /crew form answers with.
-const crewUsage = "/crew · /crew pin <worker|planner|checker> <model[@provider]> · /crew unpin <seat|all> · " +
-	"/crew models <all|open|≤in/out|ids…|+id|-id> · /crew cap <dollars|off> · /crew cap task <dollars>"
+// crewUsage is the one line every refused /seats form answers with.
+const crewUsage = "/seats · /seats pin <worker|planner|checker> <model[@provider]> · /seats unpin <seat|all> · " +
+	"/seats models <all|open|≤in/out|ids…|+id|-id> · /seats cap <dollars|off> · /seats cap task <dollars>"
 
-// runCrew is /crew: the panel, or one of its four shortcuts. It answers the
+// runCrew is /seats: the panel, or one of its four shortcuts. It answers the
 // tick that takes the panel's undo offer down after a shortcut opened it.
 func (a *app) runCrew(arg string) tea.Cmd {
 	a.noticeEvent(eventCrewShown)
@@ -71,7 +71,7 @@ func (a *app) runCrew(arg string) tea.Cmd {
 	case "cap":
 		stop = a.crewCap(rest)
 	default:
-		a.note("/crew " + arg + " · not a crew form · " + crewUsage)
+		a.note("/seats " + arg + " · not a crew form · " + crewUsage)
 	}
 	if stop < 0 {
 		return nil
@@ -79,7 +79,7 @@ func (a *app) runCrew(arg string) tea.Cmd {
 	return a.crewNow(stop, before)
 }
 
-// crewPin is `/crew pin <seat> <model[@provider]>`. A pin outside the allowed
+// crewPin is `/seats pin <seat> <model[@provider]>`. A pin outside the allowed
 // models is REFUSED rather than written, because a pin the router would have
 // to break is not a pin ([config.SetCrewPin] says the rule once).
 //
@@ -90,7 +90,7 @@ func (a *app) crewPin(rest string) int {
 	seat, ok := config.ParseCrewSeat(seatWord)
 	model = strings.TrimSpace(model)
 	if !ok || model == "" {
-		a.note("usage: /crew pin <worker|planner|checker> <model[@provider]>")
+		a.note("usage: /seats pin <worker|planner|checker> <model[@provider]>")
 		return -1
 	}
 	if err := config.SetCrewPin(a.profileDir, seat, model); err != nil {
@@ -104,7 +104,7 @@ func (a *app) crewPin(rest string) int {
 	return crewSeatStop(seat)
 }
 
-// crewUnpin is `/crew unpin <seat|all>`: the seat goes back to auto.
+// crewUnpin is `/seats unpin <seat|all>`: the seat goes back to auto.
 func (a *app) crewUnpin(rest string) int {
 	rest = strings.ToLower(strings.TrimSpace(rest))
 	if rest == "all" {
@@ -118,7 +118,7 @@ func (a *app) crewUnpin(rest string) int {
 	}
 	seat, ok := config.ParseCrewSeat(rest)
 	if !ok {
-		a.note("usage: /crew unpin <worker|planner|checker|all>")
+		a.note("usage: /seats unpin <worker|planner|checker|all>")
 		return -1
 	}
 	if err := config.ClearCrewPin(a.profileDir, seat); err != nil {
@@ -130,8 +130,8 @@ func (a *app) crewUnpin(rest string) int {
 	return crewSeatStop(seat)
 }
 
-// crewAllowedModels is `/crew models <rule>`: the whole rule, or a `+id`/`-id`
-// changing the rule in force. A bare `/crew models` says the rule.
+// crewAllowedModels is `/seats models <rule>`: the whole rule, or a `+id`/`-id`
+// changing the rule in force. A bare `/seats models` says the rule.
 func (a *app) crewAllowedModels(rest string) int {
 	if rest == "" {
 		a.noteFacts("allowed models · "+config.CrewAllowedAt(a.profileDir).String(), config.CrewAllowedAt(a.profileDir).String())
@@ -156,7 +156,7 @@ func (a *app) crewAllowedModels(rest string) int {
 	return crewModels
 }
 
-// crewCap is `/crew cap <dollars|off>`. The router paces toward it — dearer
+// crewCap is `/seats cap <dollars|off>`. The router paces toward it — dearer
 // crews cost more of the day's quality as the day's spend climbs — and at it a
 // task does not start until the person raises it or asks for `--cheap`.
 func (a *app) crewCap(rest string) int {
@@ -176,7 +176,7 @@ func (a *app) crewCap(rest string) int {
 	return crewCap
 }
 
-// crewTaskCap is `/crew cap task <dollars>`: the most one task may spend.
+// crewTaskCap is `/seats cap task <dollars>`: the most one task may spend.
 // A call that would take a task past it is not made.
 func (a *app) crewTaskCap(rest string) int {
 	if rest == "" {
@@ -248,7 +248,7 @@ func (a *app) crewLine(d *crewroute.Decision, actual float64) string {
 	return d.Line(crewPinMark(a.linear), actual)
 }
 
-// crewMark is a mark on the crew's own surfaces — the /crew panel, its
+// crewMark is a mark on the crew's own surfaces — the /seats panel, its
 // notes, the crew line — in the PLAIN tier whatever the icon setting says: a
 // pin, a tick, a ring, a cross, a diamond that every terminal draws. The rich
 // tier's private-use codepoints are a blank cell on a terminal without the

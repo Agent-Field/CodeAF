@@ -103,7 +103,7 @@ const connectFilterHint = "filter · ↑↓ · enter connect · esc close"
 type connectPanel struct {
 	open bool
 
-	// crew is where /crew's providers row was when its `+` opened this panel,
+	// crew is where /seats's providers row was when its `+` opened this panel,
 	// nil otherwise: backing out of the panel — esc, or a press outside it —
 	// stands the crew panel back up there ([app.dismissConnect]).
 	crew *crewReturn

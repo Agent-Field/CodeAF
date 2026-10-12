@@ -290,7 +290,7 @@ func TestTheWiderTiersAreByteIdenticalToTheOneLineLaw(t *testing.T) {
 func TestThePhoneCommandListWrapsItsDescription(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "openai/gpt-4.1-mini"})
 	a.width, a.height = phoneWidth, 30
-	drive(t, a, key("/"), key("s"), key("e"))
+	drive(t, a, key("/"), key("s"), key("e"), key("t"))
 	if !a.menu.open {
 		t.Fatal("a typed / has to open the command list")
 	}

@@ -826,3 +826,22 @@ credential pipe, released when this launch ends. `LaunchShape.DeterministicNames
 `Rename` journals explicit names through the session owner. Registry writes
 publish small `agent.created`/`agent.changed` facts on the shared app event hub
 only after saving. Model work continues to belong to `internal/session`.
+
+## v2 app engine rules
+
+The local app API's shared policy is `internal/appapi/rules.go` (API.md §5).
+It reuses the engine's 12-second task proposal default, $2 per-task cap and
+$0.40 standing-run default, rather than keeping separate app copies. Existing
+profile values and standing-order rails are preserved. The app's first-run day
+cap is $20; the TUI's built-in day cap remains $500. The setup lane persists the
+app value in the shared engine home; a saved day cap applies to both surfaces.
+
+The package also owns the 15-minute question clock, seven-day/10 MiB process
+output policy, 30-file quick-task threshold and standing-scope spellings. The
+resource lanes own enforcement and persistence; these policy declarations are
+not routes. `AgentIsIdle` uses the last message time and all running work; it
+only derives a selection flag and never closes anything.
+
+The TUI calls a task's worker/planner/checker models `/seats`. `/crew` is an
+alias for one release, in both home and conversation dispatch. Go internals
+retain their existing crew names; the app's crews mean groups of agents.

@@ -23,7 +23,7 @@ import (
 //	 per day           $500
 //	 per conversation  no limit                          this one $0.41
 //	 per plan          asks first above $100
-//	 per task          $5 a task                         set in /crew
+//	 per task          $5 a task                         set in /seats
 //	 per standing run  $5 a firing                       each order may name its own
 //	 practice          $50 of the day
 //
@@ -35,7 +35,7 @@ import (
 //     before the first call of the day it is not there at all (the emptiness
 //     law — a `$0.00 of $500` on a fresh morning is a claim nobody made).
 //   - `per task` and `per standing run` are rails this build HAS and does not
-//     keep a settings row for. A task's limit is set in /crew, and a standing
+//     keep a settings row for. A task's limit is set in /seats, and a standing
 //     order's per-firing rail is written per item on the `stand` tool. The
 //     design asked for seven rows and the honest way to have seven is to SAY what those two rails are,
 //     not to grow two knobs that write nowhere. A row that pretended to edit a
@@ -213,13 +213,13 @@ func railFigure(usd float64) string {
 func subCent(usd float64) string { return config.SubCent(usd) }
 
 // taskReading is the per-task limit a crew task runs under: the figure set in
-// /crew, which stops the task's next call once the task has spent it. The task
+// /seats, which stops the task's next call once the task has spent it. The task
 // also spends against the day and the conversation that started it.
 func taskReading(profileDir string) *railReading {
 	figure := config.CrewTaskMoney(config.CrewTaskCapAt(profileDir))
 	return &railReading{name: "per task",
 		value:   rowSay(figure+" a task", figure),
-		receipt: rowSay("set in /crew · it also spends against the day and this conversation", "set in /crew")}
+		receipt: rowSay("set in /seats · it also spends against the day and this conversation", "set in /seats")}
 }
 
 // standingReading is what one firing of a standing order may spend when the

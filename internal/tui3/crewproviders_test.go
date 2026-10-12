@@ -39,7 +39,7 @@ func crewProvidersLab(t *testing.T) (*app, string) {
 func crewToProviders(t *testing.T, a *app) {
 	t.Helper()
 	if !a.crewUI.open {
-		typeLine(t, a, "/crew")
+		typeLine(t, a, "/seats")
 	}
 	for i := 0; a.crewUI.cursor != crewProviders; i++ {
 		if !a.crewUI.open || a.crewUI.view != crewMain || i > crewStops {
@@ -87,7 +87,7 @@ func TestCrewProvidersToggleAndUndo(t *testing.T) {
 	}
 	// PERSISTED: a panel opened afresh reads it off the profile.
 	drive(t, a, key("esc"))
-	typeLine(t, a, "/crew")
+	typeLine(t, a, "/seats")
 	if row := crewLineWith(t, crewScreen(a), "providers"); !strings.Contains(row, a.icon(tokens.GQueued)+" z-ai") {
 		t.Fatalf("a reopened panel reads %q", row)
 	}
@@ -220,7 +220,7 @@ func TestCrewWarningsAndTheDay(t *testing.T) {
 	record := router.CrewRecord{TaskClass: "bugfix", Seats: map[string]string{"worker": "z-ai/glm-5.3-flash"}}
 	router.LogCrewDecision(config.ProfilePath(dir, ""), "crew:one", record, nil)
 	router.LogCrewOutcome(config.ProfilePath(dir, ""), "crew:one", record, router.CrewAccepted, 0.01)
-	typeLine(t, a, "/crew")
+	typeLine(t, a, "/seats")
 	screen := crewScreen(a)
 	if !strings.Contains(screen, "nothing allowed can sit this seat") {
 		t.Fatalf("the empty rule is not said on a seat:\n%s", screen)
@@ -237,7 +237,7 @@ func TestCrewWarningsAndTheDay(t *testing.T) {
 // it opens what that answer holds.
 func TestCrewEnterStepsTheModelsRow(t *testing.T) {
 	a, dir := crewLab(t)
-	typeLine(t, a, "/crew")
+	typeLine(t, a, "/seats")
 	drive(t, a, key("down"), key("down"), key("down"), key("enter"))
 	if got := config.CrewAllowedAt(dir).String(); got != "open" {
 		t.Fatalf("enter on all stepped to %q", got)
@@ -255,7 +255,7 @@ func TestCrewEnterStepsTheModelsRow(t *testing.T) {
 // A PRESS ON A CHIP TOGGLES IT; a press on the row's name opens the list.
 func TestCrewProvidersTakeThePointer(t *testing.T) {
 	a, dir := crewProvidersLab(t)
-	typeLine(t, a, "/crew")
+	typeLine(t, a, "/seats")
 	crewClick(t, a, "providers", "ollama")
 	if off := config.CrewProvidersOffAt(dir); !off["ollama"] {
 		t.Fatalf("a press on the ollama chip wrote %v", off)
@@ -375,7 +375,7 @@ func TestCrewSeatFilterRanksByTier(t *testing.T) {
 		{"deep", []string{"deepseek/deepseek-v4-flash", "mistral/deepnote-0"}, nil},
 	}
 	for _, tc := range cases {
-		typeLine(t, a, "/crew")
+		typeLine(t, a, "/seats")
 		drive(t, a, key("enter"))
 		typeText(t, a, tc.typed)
 		k := a.crewUI.pick

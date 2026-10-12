@@ -123,7 +123,7 @@ var tuiWords = map[string]tuiWord{
 	},
 	"crewMainKeys": {
 		screen: "enter change · esc close · ? keys",
-		why:    "/crew opened its panel, framed, with its keys in the bottom edge",
+		why:    "/seats opened its panel, framed, with its keys in the bottom edge",
 	},
 	"crewAutoWord": {
 		screen: "auto — codeaf picks per task",

@@ -597,7 +597,7 @@ estimate: `crew: bugfix · worker glm-5.3-flash (openrouter) · checker kimi-k3 
 **Every model flag is a one-task pin.** `--model`, `--plan-model` and `--check-model` pin the
 worker, planner and checker for this run and no other, and `CODEAF_MODEL`,
 `CODEAF_PLAN_MODEL` and `CODEAF_CHECK_MODEL` do the same from the environment. Each seat
-climbs its own ladder — the flag, then its variable, then a `/crew pin` in the profile,
+climbs its own ladder — the flag, then its variable, then a `/seats pin` in the profile,
 then the crew picked for this task — and the rung that answered is named beside the seat
 (`--model`, `CODEAF_MODEL`, `pinned`, `routed`). **The checker never inherits the planner:**
 a `--plan-model` says who plans and nothing about who checks.
@@ -611,21 +611,21 @@ a `--plan-model` says who plans and nothing about who checks.
   that connection. A seat that is not one of the three, or a pin with no model, is refused.
 
 Nothing a headless run is told is written to the profile: the pins and the allowed models
-stay what `/crew` last set.
+stay what `/seats` last set.
 
 **At the daily cap, `codeaf do` refuses.** When today's crew spend has reached the cap
-`/crew cap` set, it starts nothing and says so:
+`/seats cap` set, it starts nothing and says so:
 
 ```
-today's crew spend has reached the daily cap of $5.00 · raise it or turn it off with `/crew cap`, pass -yes-spend, or wait until midnight
+today's crew spend has reached the daily cap of $5.00 · raise it or turn it off with `/seats cap`, pass -yes-spend, or wait until midnight
 ```
 
 `-yes-spend` is the one way past it for this run — past the daily cap, never past the
 per-task limit. `--cheap` is refused at the cap like any other run. The day turns over at
 midnight on this machine's clock.
-**Every run is held to the per-task limit**, $5 unless `/crew cap task` set another: a call
+**Every run is held to the per-task limit**, $2 unless `/seats cap task` set another: a call
 that would take the run past it is not made, and the run stops on
-`this task reached its $5 limit · raise it in /crew`. The other headless doors — `exec`, `run`, `plan run` —
+`this task reached its $2 limit · raise it in /seats`. The other headless doors — `exec`, `run`, `plan run` —
 are a person at a terminal running one thing, so they **warn and go on**:
 `note: today's crew spend has reached the daily cap · this run goes ahead; `codeaf do` would have stopped`.
 

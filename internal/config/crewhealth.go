@@ -372,7 +372,7 @@ func (h crewHealth) crewAction() string {
 	if !latest.IsZero() && latest.After(h.now) {
 		return "the limit resets at " + latest.Local().Format("15:04") + " — try again then"
 	}
-	return "no allowed model on a connected provider can start · widen /crew models or pin one with /crew"
+	return "no allowed model on a connected provider can start · widen /seats models or pin one with /seats"
 }
 
 // pinnedBefore is whether a seat was the person's pin rather than a rescue.

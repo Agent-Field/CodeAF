@@ -3685,12 +3685,12 @@ func TestNoChatPageSaysAPlaceCanRefuseToOpen(t *testing.T) {
 }
 
 // THE FRESH-INSTALL QUESTIONS REACH THE SECTION THAT ANSWERS THEM, not only
-// the right page: the worker question has to meet `/crew pin worker`, the
+// the right page: the worker question has to meet `/seats pin worker`, the
 // privacy question the crew's fall onto free routes that may log prompts, and
 // the model-and-cost question the crew picked per task and its estimate.
 func TestTheFreshInstallQuestionsReachTheirAnswers(t *testing.T) {
 	for _, probe := range []struct{ asked, says string }{
-		{"how do I change the model the task worker uses?", "/crew pin worker"},
+		{"how do I change the model the task worker uses?", "/seats pin worker"},
 		{"is my code sent anywhere that logs it?", "free routes in use (may log prompts)"},
 		{"which model are you using and what does a task cost?", "picked for each task"},
 	} {

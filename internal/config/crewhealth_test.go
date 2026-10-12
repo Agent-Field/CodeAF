@@ -531,7 +531,7 @@ func TestTheSpendLinesASeatCallIsHeldTo(t *testing.T) {
 	if capUSD, action := CrewSpendCap(dir, true); capUSD != 0.25 || !strings.Contains(action, "/budget") {
 		t.Errorf("with the daily limit: %v %q", capUSD, action)
 	}
-	if capUSD, action := CrewSpendCap(dir, false); capUSD != 1.0 || !strings.Contains(action, "/crew cap") {
+	if capUSD, action := CrewSpendCap(dir, false); capUSD != 1.0 || !strings.Contains(action, "/seats cap") {
 		t.Errorf("without it: %v %q", capUSD, action)
 	}
 	var history []router.CrewRouteOutcome

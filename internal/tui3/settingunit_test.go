@@ -59,7 +59,7 @@ func TestEverySettingRowDrawsWhatItsNumberMeans(t *testing.T) {
 		"SSH keepalive interval", "3s",
 		"pause approval timer after", "10s",
 		"background shell commands after", "30s",
-		"start proposed tasks after", "15s",
+		"start proposed tasks after", "12s",
 		"compact context at", "60%",
 		"tokens reserved for replies", "65536 tok",
 		"working context limit", "160000 tok",

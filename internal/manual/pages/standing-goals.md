@@ -54,7 +54,7 @@ schedule.
 
 Every charter carries three limits, stated on that card before you agree:
 
-- **per-firing budget** — what one firing may spend. Default **$5.00**, or the
+- **per-firing budget** — what one firing may spend. Default **$0.40**, or the
   measured cost of similar work when codeaf has actually measured it. **`0` is
   no per-firing limit**: the charter is then bounded by the daily rail and its
   max-per-day alone.

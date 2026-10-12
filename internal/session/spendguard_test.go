@@ -87,7 +87,7 @@ func TestATaskStopsAtItsLimitAcrossEveryModel(t *testing.T) {
 		}
 		made++
 	}
-	if stopped.Action != "this task reached its $5 limit · raise it in /crew" {
+	if stopped.Action != "this task reached its $5 limit · raise it in /seats" {
 		t.Fatalf("the task ended on %q", stopped.Action)
 	}
 	if made != 3 || worker.calls+checker.calls != 3 {
@@ -125,14 +125,14 @@ func TestTheTaskLimitIsOnEveryGuard(t *testing.T) {
 	dir := t.TempDir()
 	for _, withDaily := range []bool{true, false} {
 		guard := CrewSpendGuard(dir, crewroute.Decision{}, withDaily)
-		if guard.TaskCap != 5 || guard.TaskAction != "this task reached its $5 limit · raise it in /crew" {
+		if guard.TaskCap != 2 || guard.TaskAction != "this task reached its $2 limit · raise it in /seats" {
 			t.Fatalf("withDaily=%v: task cap %v, %q", withDaily, guard.TaskCap, guard.TaskAction)
 		}
 	}
 	if err := config.SetCrewTaskCap(dir, "2.5"); err != nil {
 		t.Fatal(err)
 	}
-	if guard := TaskSpendGuard(dir); guard.TaskCap != 2.5 || guard.TaskAction != "this task reached its $2.50 limit · raise it in /crew" {
+	if guard := TaskSpendGuard(dir); guard.TaskCap != 2.5 || guard.TaskAction != "this task reached its $2.50 limit · raise it in /seats" {
 		t.Fatalf("a set limit reads %v, %q", guard.TaskCap, guard.TaskAction)
 	}
 	crew := &taskCrew{guard: crewSpendGuard(dir, crewroute.Decision{}, false)}

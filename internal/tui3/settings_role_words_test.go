@@ -8,7 +8,7 @@ import (
 )
 
 // A person's search and the picker it opens must use the same seat word as
-// /crew, while the role stored in the profile keeps its original identifier.
+// /seats, while the role stored in the profile keeps its original identifier.
 func TestSettingsCallsTheCheckingRoleChecker(t *testing.T) {
 	a := tieredSheet(t)
 	cursorToRole(t, a, roles.RoleAuditor)

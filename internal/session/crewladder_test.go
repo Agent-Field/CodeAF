@@ -374,7 +374,12 @@ func TestNoRoadReachesARouteThatRefusedThisTask(t *testing.T) {
 // rung above the one-line fix's.
 func TestAChatTaskWithReachGetsTheStrongerWorker(t *testing.T) {
 	stub := newCrewStub(t, http.StatusOK, map[string]int{})
-	agent, _ := crewStubAgent(t, stub)
+	agent, dir := crewStubAgent(t, stub)
+	// This compares quality routing at the same chosen budget. The shipped
+	// $2 cap may seat the cheaper worker for both kinds of work.
+	if err := config.SetCrewTaskCap(dir, "5"); err != nil {
+		t.Fatal(err)
+	}
 	previous := config.CrewCatalog
 	rows := append(previous(), catalog.Model{ID: "moonshotai/kimi-k3", OpenWeights: true, PromptPrice: 3e-6, CompletionPrice: 1.5e-5,
 		IntelligenceIndex: 43.6, CodingIndex: 76.2, AgenticIndex: 50, ContextLength: 1048576, Parameters: []string{"tools"}})
@@ -547,7 +552,7 @@ func TestACrewStopEndsTheTurnWithoutABackoff(t *testing.T) {
 
 // AT THE DAILY CAP A TASK DOES NOT START, WHATEVER WORD IT CARRIES — a dollar
 // cap is a cap — and the refusal names only the ways on that work: raising or
-// turning off /crew cap, or the day turning over at midnight. It never offers
+// turning off /seats cap, or the day turning over at midnight. It never offers
 // --cheap, which the cap refuses just the same.
 func TestTheCapRefusalOffersOnlyTheWaysOnThatWork(t *testing.T) {
 	stub := newCrewStub(t, http.StatusOK, map[string]int{})
@@ -568,7 +573,7 @@ func TestTheCapRefusalOffersOnlyTheWaysOnThatWork(t *testing.T) {
 		if strings.Contains(words, "--cheap") {
 			t.Errorf("the refusal offers --cheap, which the cap refuses too: %q", words)
 		}
-		for _, way := range []string{"/crew cap", "midnight"} {
+		for _, way := range []string{"/seats cap", "midnight"} {
 			if !strings.Contains(words, way) {
 				t.Errorf("the refusal does not name %q: %q", way, words)
 			}

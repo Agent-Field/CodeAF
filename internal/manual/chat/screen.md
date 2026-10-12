@@ -917,7 +917,7 @@ What steps up, in the lines you will see it in:
 
 | Line | What is drawn brighter |
 | --- | --- |
-| the `/crew` panel and its confirmations | the model ids, the allowed rule and the model you are still talking to — `worker`, `auto · now`, `every task until you unpin it` and `you are still talking to` stay grey |
+| the `/seats` panel and its confirmations | the model ids, the allowed rule and the model you are still talking to — `worker`, `auto · now`, `every task until you unpin it` and `you are still talking to` stay grey |
 | `model · <id>` after `/model` | the model id |
 | `harness · <name>` | the harness's name |
 | `<mode> task <id> started · <title>` | the id and the title |
@@ -1486,9 +1486,9 @@ Beyond the four tiers, these are the exact points where parts of the screen give
 | landed task card | nothing below width 8 |
 | turn receipt | none below width 8 |
 
-## The crew panel on screen — the /crew frame, its providers row, and what gives way when narrow
+## The crew panel on screen — the /seats frame, its providers row, and what gives way when narrow
 
-`/crew` hangs one frame over the conversation, in the place every overlay takes, with the
+`/seats` hangs one frame over the conversation, in the place every overlay takes, with the
 input line under it. Its rows, top to bottom: the three seats, a blank line, **models**,
 **providers**, **cap**, then the dim `today` line and any warning.
 

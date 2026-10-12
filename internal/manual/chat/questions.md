@@ -80,7 +80,7 @@ stay up until somebody answers them.
 
 **A task proposal and a reversible recommendation may carry a clock.** The card's
 top edge, beside who is asking, says which answer is about to be taken and when —
-`start it in 15s` at the task proposal's default — and when
+`start it in 12s` at the task proposal's default — and when
 the time runs out the work STARTS. It is your chance to correct it, not a gate the
 work waits on. Any key you press stops that clock, and a proposal you hold loses
 its deadline and then waits like everything else, showing `waiting` instead of a countdown.
@@ -746,7 +746,7 @@ Almost nothing does. A wait that ended is not a no, and nothing on the block
 answers in your place if you say nothing.
 
 There is exactly one thing that decides by itself: **a task proposal**, whose
-card says which answer it is going to take and when — `start it in 15s` at the default. That
+card says which answer it is going to take and when — `start it in 12s` at the default. That
 card is your chance to redirect the work, not a gate the work waits on, and it
 starts on its own if nobody says otherwise. Nothing else on this surface acts
 without you, and nothing that cannot be taken back ever will.

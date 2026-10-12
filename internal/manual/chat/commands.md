@@ -295,12 +295,12 @@ Canonical word, the other words it answers to, its argument form, and what it do
 
 | Command | Aliases | Argument | Effect |
 |---|---|---|---|
-| `/crew` | — | — | opens the crew panel: the three seats, the allowed models, the providers, the per-task limit and the daily cap, changed in place |
-| `/crew` | — | `pin <seat> <model[@provider]>` | pins the worker, planner or checker to a model; `/model` stays |
-| `/crew` | — | `unpin <seat\|all>` | puts a seat back on auto |
-| `/crew` | — | `models <rule>` | which models a seat may be picked from — `all`, `open`, `≤in/out`, ids |
-| `/crew` | — | `cap <dollars\|off>` | the most tasks' crews may spend in a day |
-| `/crew` | — | `cap task <dollars>` | the most one task may spend — $5 unless set; `-yes-spend` does not lift it |
+| `/seats` | `/crew` | — | opens the crew panel: the three seats, the allowed models, the providers, the per-task limit and the daily cap, changed in place |
+| `/seats` | — | `pin <seat> <model[@provider]>` | pins the worker, planner or checker to a model; `/model` stays |
+| `/seats` | — | `unpin <seat\|all>` | puts a seat back on auto |
+| `/seats` | — | `models <rule>` | which models a seat may be picked from — `all`, `open`, `≤in/out`, ids |
+| `/seats` | — | `cap <dollars\|off>` | the most tasks' crews may spend in a day |
+| `/seats` | — | `cap task <dollars>` | the most one task may spend — $2 unless set; `-yes-spend` does not lift it |
 | `/task` | — | — | opens the full-screen activity page — the same place as `/history` and ctrl+. |
 | `/task` | — | `<brief>` | starts one worker at once; its brief is written and its width read beside it, and wide work splits |
 | `/task` | — | `solo <brief>` | starts one worker at once, with no reading of its width |
@@ -979,8 +979,8 @@ live update says `saved for the next conversation · this one still has its prev
 
 The row names it takes are **`day`** (`daily`, `today`), **`conversation`** (`chat`,
 `session`), **`plan`** (`plans`, `ask`) and **`practice`** — the four rows that can be
-edited. There is **no `/budget task`**: the per-task limit for an ordinary `/task` is set in `/crew`, with
-`/crew cap task <$>`. senior-dev has a separate ceiling for each run; see its page
+edited. There is **no `/budget task`**: the per-task limit for an ordinary `/task` is set in `/seats`, with
+`/seats cap task <$>`. senior-dev has a separate ceiling for each run; see its page
 for the shell flags and conversation limits that can lower it.
 
 A write says back what it landed, in the tab's own words for that row — `per day · $50`,
@@ -1666,15 +1666,19 @@ offers that action.
 On a machine with no task record, the place still opens under `activity` with
 `work you send off with /task lands here, and its record stays`.
 
-## /crew — the crew panel, and the three seats a task runs on
+## /seats and /crew — the model seats a task runs on
+
+`/seats` is the command for a task's worker, planner and checker models.
+`/crew` remains an alias for one release; every form accepts either spelling.
+A crew means agents working together, rather than these model seats.
 
 The crew is the three seats a task runs on: the **worker** that does the work, the
 **planner** that structures it, and the **checker** that reads the result. By default all
 three are auto — codeaf picks each one for each task, from what kind of work the task is.
-**`/crew` never moves the model you talk to**; only `/model` does.
+**`/seats` never moves the model you talk to**; only `/model` does.
 
 ```
-/crew
+/seats
 ```
 
 opens the crew panel over the conversation — six rows you change in place (the worker,
@@ -1683,32 +1687,32 @@ and a dim `today` line. `enter` changes the row under the cursor, `esc` closes, 
 every key. On the **providers** row `←`/`→` walk one chip per connected provider and `space`
 turns the one under the cursor off or on; the `+` at its end opens `/connect`. The
 models page has the panel drawn out and every key (*Crew panel keys*). A seat on auto says
-the model it usually runs; a pinned seat wears the pin mark `⌖`. Typed on home, `/crew`
+the model it usually runs; a pinned seat wears the pin mark `⌖`. Typed on home, `/seats`
 steps off home and `esc` brings you back.
 
 The shortcuts write the same rows and then open the panel with a tick on the row they
 changed:
 
 ```
-/crew · /crew pin <worker|planner|checker> <model[@provider]> · /crew unpin <seat|all> · /crew models <all|open|≤in/out|ids…|+id|-id> · /crew cap <dollars|off> · /crew cap task <dollars>
+/seats · /seats pin <worker|planner|checker> <model[@provider]> · /seats unpin <seat|all> · /seats models <all|open|≤in/out|ids…|+id|-id> · /seats cap <dollars|off> · /seats cap task <dollars>
 ```
 
-- **`/crew pin <seat> <model[@provider]>`** pins one seat, for every task until you unpin
+- **`/seats pin <seat> <model[@provider]>`** pins one seat, for every task until you unpin
   it. `@provider` sends it through that connection. A pin outside the allowed models is
   refused. The confirmation names the model you are still talking to:
   `checker ⌖ moonshotai/kimi-k3 · every task until you unpin it · you are still talking to
   deepseek-v4-flash — /model changes that`.
-- **`/crew unpin <seat>`** puts the seat back on auto; `/crew unpin all` puts all three back.
-- **`/crew models <rule>`** sets which models a seat nobody pinned may be picked from —
+- **`/seats unpin <seat>`** puts the seat back on auto; `/seats unpin all` puts all three back.
+- **`/seats models <rule>`** sets which models a seat nobody pinned may be picked from —
   `all`, `open`, `≤1/5` for a price ceiling per million tokens in and out, or a list of ids —
-  and `+id` or `-id` changes the rule in force by one word. Bare `/crew models` says the rule.
-- **`/crew cap <dollars|off>`** caps what crews may spend in a day. Bare `/crew cap` says the
+  and `+id` or `-id` changes the rule in force by one word. Bare `/seats models` says the rule.
+- **`/seats cap <dollars|off>`** caps what crews may spend in a day. Bare `/seats cap` says the
   cap and today's spend.
-- **`/crew cap task <dollars>`** sets the most one task may spend — $5 unless set. A call
+- **`/seats cap task <dollars>`** sets the most one task may spend — $2 unless set. A call
   that would take a task past it is not made, and `-yes-spend` does not lift it.
 
 A form that is none of these changes nothing and prints the line of shortcuts:
-`/crew cheap · not a crew form · …`. How hard to try **one** task is not a panel setting at
+`/seats cheap · not a crew form · …`. How hard to try **one** task is not a panel setting at
 all — it is said with `/task --best` or `/task --cheap`, and `/redo stronger` asks again
 after the fact (see *Tasks*).
 
@@ -1716,7 +1720,7 @@ after the fact (see *Tasks*).
 seat is picked to how a profile from an earlier build is migrated, is on the models page.
 
 **That promise is local-session only.** Over `--host` the session resolves its crew from
-the other machine, and there is no crew write across the connection — so `/crew` refuses
+the other machine, and there is no crew write across the connection — so `/seats` refuses
 rather than writing this laptop's profile behind your back:
 
 ```
@@ -1972,9 +1976,9 @@ Connections tab — the foot drops `tab next place`, because the layer has taken
 
 ## Task model seats and their limits in Settings
 
-Models → Advanced includes the seats door to `/crew`. Its default summary is
-`per task $5 · crew daily cap $5.00`; actual saved limits appear when configured.
-Change those limits in `/crew`, which owns them, rather than a duplicate setting.
+Models → Advanced includes the seats door to `/seats`. Its default summary is
+`per task $2 · crew daily cap $5.00`; actual saved limits appear when configured.
+Change those limits in `/seats`, which owns them, rather than a duplicate setting.
 
 ## The roles rows in settings — pinning a role, and del to unpin
 
@@ -1991,7 +1995,7 @@ its one **seats** row. The group is the heading, so it is not repeated on every 
 leaves the widest part of the row for the model id it is there to show.
 
 Stop on a row and the line under the list says **what that role is** and where its answer
-came from: `the plan that steers an adaptive run · follows the planner seat (/crew). enter
+came from: `the plan that steers an adaptive run · follows the planner seat (/seats). enter
 pins it to a model of its own.` A role under reflex or small work says `follows reflex
 above` or `follows small work above` instead.
 

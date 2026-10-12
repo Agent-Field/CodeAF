@@ -396,14 +396,10 @@ type Action struct {
 // fact is the drift this codebase has a law against. Every reader resolves it
 // from this constant.
 //
-// Fifteen cents was the old figure and it was a rail rather than a backstop: a
-// cheap look plus a small model's answer and nothing else, so the first
-// standing order anybody wrote that did real work stopped halfway through its
-// first firing. Five dollars is a whole piece of work on a good model, which is
-// what a person who says "keep an eye on this" is actually asking for. The
-// protection that matters is still the machine-wide daily rail plus the
-// max-per-day count, not this.
-const DefaultPerRunUSD = 5.0
+// Forty cents is the default from the app's standing-order rule. An order
+// that needs more carries the person's chosen per-run amount instead; changing
+// this fallback must never overwrite the rails of an existing order.
+const DefaultPerRunUSD = 0.40
 
 // Rails bound an item. MaxPerDay is mandatory by construction: [Store.Create]
 // refuses an item that may fire zero times a day, which is an item that would

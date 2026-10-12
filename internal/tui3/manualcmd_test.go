@@ -101,24 +101,24 @@ func TestManualOnHomeOpensAConversationAndAsksThere(t *testing.T) {
 	}
 }
 
-// THE /crew ROWS NAME THE THREE SEATS A PERSON CAN PIN, by the words the
+// THE /seats ROWS NAME THE THREE SEATS A PERSON CAN PIN, by the words the
 // router uses for them, and every shortcut the command takes has a row.
 func TestTheCrewRowsNameTheSeatsAndTheShortcuts(t *testing.T) {
 	var said []string
 	for _, row := range commands {
-		if row.name == "crew" {
+		if row.name == "seats" {
 			said = append(said, row.args+" "+row.desc)
 		}
 	}
 	text := strings.Join(said, "\n")
 	for _, want := range []string{"pin", "unpin", "models", "cap", "worker", "planner", "checker"} {
 		if !strings.Contains(text, want) {
-			t.Errorf("the /crew rows never say %q:\n%s", want, text)
+			t.Errorf("the /seats rows never say %q:\n%s", want, text)
 		}
 	}
 	for _, retired := range []string{"frugal", "balanced", "preset", "mastermind"} {
 		if strings.Contains(text, retired) {
-			t.Errorf("the /crew rows still say the retired %q:\n%s", retired, text)
+			t.Errorf("the /seats rows still say the retired %q:\n%s", retired, text)
 		}
 	}
 }

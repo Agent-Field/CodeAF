@@ -12,7 +12,7 @@ import (
 // A FRESH PROFILE STARTS ON AUTO. With HOME and CODEAF_HOME both empty
 // directories and no profile override, every crew seat is routed — worker,
 // planner and checker — nothing is pinned, the allowed rule is `all`, a task
-// is held to $5, and there is no daily crew cap until one is set. Reading all
+// is held to $2, and there is no daily crew cap until one is set. Reading all
 // of it writes nothing.
 func TestAFreshProfileStartsOnAutoWithTheDefaultLimits(t *testing.T) {
 	crewProfile(t) // clears the seat and key variables, installs a catalog
@@ -29,8 +29,8 @@ func TestAFreshProfileStartsOnAutoWithTheDefaultLimits(t *testing.T) {
 	if rule := CrewAllowedAt(dir).String(); rule != "all" {
 		t.Fatalf("a fresh profile allows %q, want all", rule)
 	}
-	if limit := CrewTaskCapAt(dir); limit != 5 {
-		t.Fatalf("a fresh profile's per-task limit is $%.2f, want $5", limit)
+	if limit := CrewTaskCapAt(dir); limit != 2 {
+		t.Fatalf("a fresh profile's per-task limit is $%.2f, want $2", limit)
 	}
 	if daily := CrewCapAt(dir); daily != 0 {
 		t.Fatalf("a fresh profile has a daily crew cap of $%.2f, want none", daily)

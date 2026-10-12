@@ -78,20 +78,20 @@ func (j *crewJourney) typed(text string) {
 	}
 }
 
-// open is `/crew` and enter, which is one step of a journey however many
+// open is `/seats` and enter, which is one step of a journey however many
 // letters it takes to type.
 func (j *crewJourney) open() {
 	j.t.Helper()
-	typeLine(j.t, j.a, "/crew")
+	typeLine(j.t, j.a, "/seats")
 	j.count++
 	if !j.a.crewUI.open {
-		j.t.Fatalf("/crew opened nothing:\n%s", plain(mustFrame(j.a)))
+		j.t.Fatalf("/seats opened nothing:\n%s", plain(mustFrame(j.a)))
 	}
 }
 
 // ── the five journeys ───────────────────────────────────────────────────────
 
-// CHECK: /crew, esc. The panel says the three seats, the models, the
+// CHECK: /seats, esc. The panel says the three seats, the models, the
 // providers and the cap, and esc takes it down.
 func TestCrewJourneyCheck(t *testing.T) {
 	a, _ := crewLab(t)
@@ -118,7 +118,7 @@ func TestCrewJourneyCheck(t *testing.T) {
 	t.Logf("check: %d steps", j.count)
 }
 
-// PIN THE CHECKER: /crew ↓↓ enter "kim" enter — and the panel comes back with
+// PIN THE CHECKER: /seats ↓↓ enter "kim" enter — and the panel comes back with
 // the pin on the row and a tick beside it.
 func TestCrewJourneyPinAndUnpin(t *testing.T) {
 	a, dir := crewLab(t)
@@ -135,7 +135,7 @@ func TestCrewJourneyPinAndUnpin(t *testing.T) {
 		t.Fatalf("the checker reads %+v (%v)", pin, ok)
 	}
 	if j.count != 8 {
-		t.Fatalf("pinning the checker took %d steps, want 8 (/crew ↓ ↓ enter k i m enter)", j.count)
+		t.Fatalf("pinning the checker took %d steps, want 8 (/seats ↓ ↓ enter k i m enter)", j.count)
 	}
 	t.Logf("pin checker: %d steps", j.count)
 	screen := crewScreen(a)
@@ -207,7 +207,7 @@ func TestCrewJourneyCap(t *testing.T) {
 		t.Fatalf("setting the cap took %d steps", j.count)
 	}
 	t.Logf("set cap: %d steps", j.count)
-	if row := crewLineWith(t, crewScreen(a), "cap"); !strings.Contains(row, "per task $5 · crew daily cap $5.00") {
+	if row := crewLineWith(t, crewScreen(a), "cap"); !strings.Contains(row, "per task $2 · crew daily cap $5.00") {
 		t.Fatalf("the cap row reads %q", row)
 	}
 
@@ -237,11 +237,11 @@ func TestCrewJourneyTaskCap(t *testing.T) {
 	j := &crewJourney{t: t, a: a}
 	j.open()
 	j.keys("down", "down", "down", "down", "down")
-	if row := crewLineWith(t, crewScreen(a), "cap"); !strings.Contains(row, "per task $5 · crew daily cap none") {
+	if row := crewLineWith(t, crewScreen(a), "cap"); !strings.Contains(row, "per task $2 · crew daily cap none") {
 		t.Fatalf("the cap row reads %q", row)
 	}
 	j.keys("enter", "tab")
-	if row := crewLineWith(t, crewScreen(a), "cap"); !strings.Contains(row, "per task $[ 5 ]") {
+	if row := crewLineWith(t, crewScreen(a), "cap"); !strings.Contains(row, "per task $[ 2 ]") {
 		t.Fatalf("tab did not open the per-task hole: %q", row)
 	}
 	j.keys("backspace")
@@ -257,7 +257,7 @@ func TestCrewJourneyTaskCap(t *testing.T) {
 		t.Fatalf("the cap row reads %q", row)
 	}
 	j.keys("enter", "tab", "backspace", "backspace", "enter")
-	if got := config.CrewTaskCapAt(dir); got != 5 {
+	if got := config.CrewTaskCapAt(dir); got != 2 {
 		t.Fatalf("an emptied per-task hole left the limit at %v", got)
 	}
 }
@@ -436,7 +436,7 @@ func TestCrewChecklist(t *testing.T) {
 func TestCrewWithNoProviderSaysSo(t *testing.T) {
 	a, _ := crewLab(t)
 	t.Setenv(config.APIKeyEnv, "")
-	typeLine(t, a, "/crew")
+	typeLine(t, a, "/seats")
 	if screen := crewScreen(a); !strings.Contains(screen, crewNoProviderWord) {
 		t.Fatalf("no provider was not said:\n%s", screen)
 	}
@@ -449,7 +449,7 @@ func TestCrewMarksAnUnavailablePin(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv(config.APIKeyEnv, "")
-	typeLine(t, a, "/crew")
+	typeLine(t, a, "/seats")
 	if row := crewLineWith(t, crewScreen(a), "checker"); !strings.Contains(row, "unavailable · openrouter is not connected") {
 		t.Fatalf("an unreachable pin is not marked: %q", row)
 	}
@@ -459,7 +459,7 @@ func TestCrewMarksAnUnavailablePin(t *testing.T) {
 func TestCrewAtANarrowWidth(t *testing.T) {
 	a, _ := crewLab(t)
 	a.width = 56
-	typeLine(t, a, "/crew")
+	typeLine(t, a, "/seats")
 	for _, line := range plainOverlay(a) {
 		if w := ansi.StringWidth(line); w > a.width {
 			t.Fatalf("a line runs to %d cells on a %d-cell frame: %q", w, a.width, line)
@@ -502,7 +502,7 @@ func TestCrewUndoIsAWindow(t *testing.T) {
 // A PRESS ON A ROW IS ENTER ON IT, and a press on an arrow walks the row.
 func TestCrewTakesThePointer(t *testing.T) {
 	a, dir := crewLab(t)
-	typeLine(t, a, "/crew")
+	typeLine(t, a, "/seats")
 	crewClick(t, a, "checker", "checker")
 	if a.crewUI.view != crewPicking || a.crewUI.pick.seat != crewroute.Checker {
 		t.Fatal("a press on the checker did not open its list")
@@ -542,7 +542,7 @@ func crewClick(t *testing.T, a *app, line, at string) {
 // ? IS THE KEY LIST, the pointer's gestures included.
 func TestCrewKeysView(t *testing.T) {
 	a, _ := crewLab(t)
-	typeLine(t, a, "/crew")
+	typeLine(t, a, "/seats")
 	drive(t, a, key("?"))
 	screen := crewScreen(a)
 	for _, want := range []string{"enter", "esc", "click", "wheel", "undo"} {
@@ -559,7 +559,7 @@ func TestCrewKeysView(t *testing.T) {
 // A SHORTCUT WRITES THE SAME ROW AND OPENS THE PANEL WITH THE TICK ON IT.
 func TestCrewShortcutOpensThePanelOnItsRow(t *testing.T) {
 	a, _ := crewLab(t)
-	typeLine(t, a, "/crew pin checker moonshotai/kimi-k3")
+	typeLine(t, a, "/seats pin checker moonshotai/kimi-k3")
 	if !a.crewUI.open || a.crewUI.cursor != 2 {
 		t.Fatalf("the shortcut did not open the panel on the checker (open %v, cursor %d)", a.crewUI.open, a.crewUI.cursor)
 	}

@@ -30,7 +30,7 @@ import (
 // engine) and the chat model — and everything else is a setting or a thing to
 // be taught at the moment it happens. THE CREW USED TO BE THE THIRD, as a
 // choice between three preset words; since 2026-09-24 a task's crew is picked
-// per task and asks nothing up front, so it left this screen (/crew is where
+// per task and asks nothing up front, so it left this screen (/seats is where
 // its pins, allowed models and cap live).
 //
 // SIX LAWS HOLD THIS SCREEN TOGETHER.
@@ -131,7 +131,7 @@ const (
 		"at once, and whichever is reached first stops the work."
 	controlModelDetail = "It also handles this conversation's tool use. Changing it here is " +
 		"the same choice /model makes, and it is kept for the next launch." +
-		" Tasks get their own crew, picked per task · /crew shows it."
+		" Tasks get their own crew, picked per task · /seats shows it."
 )
 
 // controlStartWord is the way out, and it is named for what happens next rather

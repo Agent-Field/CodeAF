@@ -173,7 +173,7 @@ build if the two disagree), so a tip you saw is on it word for word.
 
 - `/model lets you see and choose models and providers` — retired when the model list
   opens, over a conversation or over home's draft.
-- `/crew sets the models codeaf uses on its own behalf` — retired when `/crew` answers,
+- `/seats sets the models codeaf uses on its own behalf` — retired when `/seats` answers,
   bare or with a preset.
 - `/budget sets the daily spending limit across all conversations` — retired when
   `/budget` opens or edits the daily setting, bare, with an amount, or with `day`, `daily` or `today`.

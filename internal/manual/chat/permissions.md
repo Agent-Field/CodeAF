@@ -926,7 +926,7 @@ role slots — `model.plan`, `model.work`, `model.verify`, `model.scribe` — ar
 bindings the running session holds rather than values in your profile, so
 neither `change_setting` nor the panel can write them. To send codeaf's own
 auxiliary calls somewhere, set the reflex or small work row on the Models category, pin a
-crew seat — worker, checker or planner — with `/crew pin` or on the `/crew` panel that the
+crew seat — worker, checker or planner — with `/seats pin` or on the `/seats` panel that the
 tab's one **seats** row opens, or pin one role in `models.roles`.
 
 A row your environment has pinned refuses like it does everywhere else:

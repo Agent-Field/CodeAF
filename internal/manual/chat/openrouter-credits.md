@@ -20,7 +20,7 @@ the last row of the screen — so a person who has never run codeaf is not hande
 pick the wrong one from. The model already in use stays on that list.
 
 Free ids are defaults only. A model you chose with `/model` or the setup screen,
-`--model`, `CODEAF_MODEL`, a seat you pinned with `/crew pin` or a helper row you set stays
+`--model`, `CODEAF_MODEL`, a seat you pinned with `/seats pin` or a helper row you set stays
 chosen, and the free defaults are never written into your settings. Nothing is spent
 reading the balance: it is two account lookups and no model call.
 

@@ -3,6 +3,7 @@ package tui3
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -213,8 +214,14 @@ func TestNoLimitIsAWordAndZeroIsNeverDrawn(t *testing.T) {
 	}
 	a.sheet.build()
 	frame := strings.Join(sheetLabels(a), "\n")
-	if strings.Contains(frame, "$0") {
-		t.Fatalf("a bare zero reached the Spending tab:\n%s", frame)
+	for _, word := range strings.Fields(frame) {
+		if !strings.HasPrefix(word, "$") {
+			continue
+		}
+		// Sub-dollar limits such as $0.40 are amounts, not empty spend.
+		if amount, err := strconv.ParseFloat(strings.TrimPrefix(word, "$"), 64); err == nil && amount == 0 {
+			t.Fatalf("a bare zero reached the Spending tab:\n%s", frame)
+		}
 	}
 	// AND NEITHER DOES A SUB-CENT LIMIT ROUND ITSELF INTO ONE. A tenth of a cent
 	// written as `$0.00` is the figure a person typed rendered as its opposite.
@@ -268,10 +275,10 @@ func TestARowsReceiptIsThereWhenItIsKnownAndAbsentWhenItIsNot(t *testing.T) {
 		t.Fatalf("a conversation that spent nothing invented %q", got)
 	}
 	// And the two readings carry theirs.
-	if got := taskReading(t.TempDir()).receipt.full; !strings.Contains(got, "set in /crew") {
+	if got := taskReading(t.TempDir()).receipt.full; !strings.Contains(got, "set in /seats") {
 		t.Fatalf("per task's receipt = %q", got)
 	}
-	if got := standingReading().value.full; got != "$5 a firing" {
+	if got := standingReading().value.full; got != "$0.40 a firing" {
 		t.Fatalf("per standing run reads %q", got)
 	}
 }
@@ -442,7 +449,7 @@ func TestAtSixtyColumnsEveryLabelSurvivesAndTheReceiptGoesFirst(t *testing.T) {
 	}
 	// AND EVERY VALUE IS STILL READABLE AT SIXTY.
 	frame := strings.Join(sheetLabels(a), "\n")
-	for _, want := range []string{config.NoLimitWord, "$500", "$5 a task"} {
+	for _, want := range []string{config.NoLimitWord, "$500", "$2 a task"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("%q did not survive sixty columns:\n%s", want, frame)
 		}

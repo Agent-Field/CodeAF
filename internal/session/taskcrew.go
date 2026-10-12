@@ -20,7 +20,7 @@ import (
 
 // A TASK'S CREW IS PICKED FOR THAT TASK, AT THE MOMENT IT STARTS.
 //
-// The /crew panel says what is allowed and what is pinned, and that persists;
+// The /seats panel says what is allowed and what is pinned, and that persists;
 // the words in the ask say how hard to try THIS task, and nothing else sticks.
 // So every run this conversation starts asks the router (internal/crewroute,
 // through [Config.RouteCrew]) for its worker, planner and checker, with the
@@ -172,7 +172,7 @@ func (b *crewBook) latest() (uint64, *taskCrew) {
 //
 // AT THE DAILY CAP THE TASK DOES NOT START, whatever word it carries — `--cheap`
 // included, because a dollar cap is a cap — and the refusal says the cap, what
-// was spent and the ways on that work: raise or turn off /crew cap, or wait for
+// was spent and the ways on that work: raise or turn off /seats cap, or wait for
 // the day to turn over at midnight. A conversation has nobody to answer a
 // yes/no at the moment a hand-off is committed, and a cap that spends anyway is
 // not a cap.
@@ -199,7 +199,7 @@ func (a *Agent) routeTaskCrew(ctx context.Context, row uint64, title, brief stri
 	decision, err := route(ask)
 	if errors.Is(err, config.ErrCrewAtCap) {
 		spent, capUSD := config.CrewHistory(a.config.ProfileDir).SpentUSD, config.CrewCapAt(a.config.ProfileDir)
-		return nil, fmt.Errorf("today's crew spend (%s) has reached the daily cap of %s · raise it or turn it off with /crew cap, or wait until midnight",
+		return nil, fmt.Errorf("today's crew spend (%s) has reached the daily cap of %s · raise it or turn it off with /seats cap, or wait until midnight",
 			crewroute.Money(spent), crewroute.Money(capUSD))
 	}
 	if err != nil {
@@ -306,7 +306,7 @@ func (a *Agent) RedoStronger(ctx context.Context, row uint64) (uint64, string, e
 	id, title, _, err := a.startTaskRun(withCrewWish(ctx, wish), crew.brief, true, "")
 	if err != nil {
 		if strings.Contains(err.Error(), crewroute.ErrStrongest.Error()) {
-			return 0, "", errors.New("this crew is already the strongest allowed · pin a stronger model with /crew pin, or widen /crew models")
+			return 0, "", errors.New("this crew is already the strongest allowed · pin a stronger model with /seats pin, or widen /seats models")
 		}
 		return 0, "", err
 	}
@@ -1048,5 +1048,5 @@ func crewActionFor(kind provider.RouteFailure, on string, until time.Time) strin
 		}
 		return "the limit on " + on + " is reached — try again later"
 	}
-	return "no model could start this seat · widen /crew models or pin one with /crew"
+	return "no model could start this seat · widen /seats models or pin one with /seats"
 }

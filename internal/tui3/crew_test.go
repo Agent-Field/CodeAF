@@ -12,7 +12,51 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// /crew, FROM THE SIDES A PERSON MEETS IT: the panel, the four shortcuts, a
+// The retired command remains accepted for one release, including its
+// shortcuts, while every receipt teaches the canonical spelling.
+func TestSeatsAndCrewAliasReachTheSamePanelAndShortcuts(t *testing.T) {
+	for _, word := range []string{"seats", "crew"} {
+		t.Run(word, func(t *testing.T) {
+			a, dir := crewLab(t)
+			if got := canonicalCommand(word); got != "seats" {
+				t.Fatalf("%s resolves to %s", word, got)
+			}
+			if got := homeFate(word, ""); got != fateCrew {
+				t.Fatalf("%s on home has fate %s", word, got)
+			}
+			a.slash("/" + word)
+			if !a.crewUI.open {
+				t.Fatal("the model-seat panel did not open")
+			}
+			a.slash("/" + word + " pin checker moonshotai/kimi-k3@openrouter")
+			if _, ok := config.CrewPinAt(dir, crewroute.Checker); !ok {
+				t.Fatal("pin was not saved")
+			}
+			a.slash("/" + word + " unpin all")
+			if _, ok := config.CrewPinAt(dir, crewroute.Checker); ok {
+				t.Fatal("unpin left the pin saved")
+			}
+			a.slash("/" + word + " models open")
+			if got := config.CrewAllowedAt(dir).String(); got != "open" {
+				t.Fatalf("models saved %q", got)
+			}
+			a.slash("/" + word + " cap 5")
+			if got := config.CrewCapAt(dir); got != 5 {
+				t.Fatalf("daily cap = %v", got)
+			}
+			a.slash("/" + word + " cap task 3")
+			if got := config.CrewTaskCapAt(dir); got != 3 {
+				t.Fatalf("task cap = %v", got)
+			}
+			a.slash("/" + word + " pin unknown vendor/model")
+			if note := lastNote(t, a); !strings.Contains(note, "usage: /seats pin") {
+				t.Fatalf("refusal did not name /seats: %q", note)
+			}
+		})
+	}
+}
+
+// /seats, FROM THE SIDES A PERSON MEETS IT: the panel, the four shortcuts, a
 // form that is none of them, and the crew line a routed task says.
 
 // The bare form is the panel: the three seats (all auto on a profile nobody
@@ -20,9 +64,9 @@ import (
 // than written into it (crewpanel_test.go drives it).
 func TestCrewIsThePanel(t *testing.T) {
 	a, _ := sheetApp(t)
-	a.slash("/crew")
+	a.slash("/seats")
 	if !a.crewUI.open {
-		t.Fatal("/crew opened no panel")
+		t.Fatal("/seats opened no panel")
 	}
 	text := strings.Join(plainOverlay(a), "\n")
 	for _, want := range []string{"worker", "planner", "checker", "auto", "models", "‹ all ›", "cap", "none"} {
@@ -42,7 +86,7 @@ func TestCrewPinAndUnpin(t *testing.T) {
 	// A pin that names a provider needs that provider connected and a catalog
 	// that lists the model.
 	a, dir := crewLab(t)
-	a.slash("/crew pin checker moonshotai/kimi-k3@openrouter")
+	a.slash("/seats pin checker moonshotai/kimi-k3@openrouter")
 	pin, ok := config.CrewPinAt(dir, crewroute.Checker)
 	if !ok || pin.Model != "moonshotai/kimi-k3" || pin.Provider != "openrouter" {
 		t.Fatalf("the checker pin reads %+v (%v)", pin, ok)
@@ -56,13 +100,13 @@ func TestCrewPinAndUnpin(t *testing.T) {
 	if panel := strings.Join(plainOverlay(a), "\n"); !strings.Contains(panel, a.icon(tokens.GPinned)+" kimi-k3 @openrouter") {
 		t.Fatalf("the panel does not mark the pinned seat:\n%s", panel)
 	}
-	a.slash("/crew unpin checker")
+	a.slash("/seats unpin checker")
 	if _, ok := config.CrewPinAt(dir, crewroute.Checker); ok {
 		t.Fatal("unpin left the checker pinned")
 	}
 	// A seat that is not one of the three is refused with the form.
-	a.slash("/crew pin judge vendor/x")
-	if note := lastNote(t, a); !strings.Contains(note, "usage: /crew pin") {
+	a.slash("/seats pin judge vendor/x")
+	if note := lastNote(t, a); !strings.Contains(note, "usage: /seats pin") {
 		t.Fatalf("a pin on an unknown seat said %q", note)
 	}
 }
@@ -70,11 +114,11 @@ func TestCrewPinAndUnpin(t *testing.T) {
 // A PIN OUTSIDE THE ALLOWED MODELS IS REFUSED, not written.
 func TestCrewRefusesAPinOutsideTheAllowedModels(t *testing.T) {
 	a, dir := sheetApp(t)
-	a.slash("/crew models z-ai/glm-5.3-flash")
+	a.slash("/seats models z-ai/glm-5.3-flash")
 	if got := config.CrewAllowedAt(dir).String(); !strings.Contains(got, "glm-5.3-flash") {
 		t.Fatalf("the allowed rule reads %q", got)
 	}
-	a.slash("/crew pin worker vendor/elsewhere")
+	a.slash("/seats pin worker vendor/elsewhere")
 	if _, ok := config.CrewPinAt(dir, crewroute.Worker); ok {
 		t.Fatal("a pin outside the allowed models was written")
 	}
@@ -89,7 +133,7 @@ func TestCrewRefusesAPinOutsideTheAllowedModels(t *testing.T) {
 func TestCrewCap(t *testing.T) {
 	a, dir := sheetApp(t)
 	config.LogCrewOutcome(dir, "crew-cap-test", crewroute.Decision{Class: crewroute.Bugfix}, "", "a task", router.CrewAccepted, 0.02)
-	a.slash("/crew cap 5")
+	a.slash("/seats cap 5")
 	if got := config.CrewCapAt(dir); got != 5 {
 		t.Fatalf("the cap reads %v", got)
 	}
@@ -98,11 +142,11 @@ func TestCrewCap(t *testing.T) {
 	}
 }
 
-// THE PER-TASK LIMIT IS `/crew cap task <$>`, said back in whole dollars, and
+// THE PER-TASK LIMIT IS `/seats cap task <$>`, said back in whole dollars, and
 // `none` is refused: a task always has a limit.
 func TestCrewCapTask(t *testing.T) {
 	a, dir := sheetApp(t)
-	a.slash("/crew cap task 3")
+	a.slash("/seats cap task 3")
 	if got := config.CrewTaskCapAt(dir); got != 3 {
 		t.Fatalf("the per-task limit reads %v", got)
 	}
@@ -110,9 +154,9 @@ func TestCrewCapTask(t *testing.T) {
 		t.Fatalf("the confirmation said %q", note)
 	}
 	if got := config.CrewCapAt(dir); got != 0 {
-		t.Fatalf("/crew cap task moved the daily cap to %v", got)
+		t.Fatalf("/seats cap task moved the daily cap to %v", got)
 	}
-	a.slash("/crew cap task none")
+	a.slash("/seats cap task none")
 	if got := config.CrewTaskCapAt(dir); got != 3 {
 		t.Fatalf("none moved the per-task limit to %v", got)
 	}
@@ -125,8 +169,8 @@ func TestCrewCapTask(t *testing.T) {
 // retired preset words are exactly such forms now.
 func TestCrewRefusesARetiredPresetWord(t *testing.T) {
 	a, dir := sheetApp(t)
-	a.slash("/crew frugal")
-	if note := lastNote(t, a); !strings.Contains(note, "not a crew form") || !strings.Contains(note, "/crew pin") {
+	a.slash("/seats frugal")
+	if note := lastNote(t, a); !strings.Contains(note, "not a crew form") || !strings.Contains(note, "/seats pin") {
 		t.Fatalf("a retired preset word said %q", note)
 	}
 	if pins := config.CrewPinsAt(dir); len(pins) != 0 {
@@ -298,7 +342,7 @@ func TestANewConversationsTaskSaysItsCrew(t *testing.T) {
 }
 
 // THE CREW'S MONEY OBEYS THE EMPTINESS LAW: a day with nothing spent draws no
-// `$0.000` — not on the /crew cap note, not on the panel's today line — and
+// `$0.000` — not on the /seats cap note, not on the panel's today line — and
 // the sentence stays whole without it. Money that was spent is still said.
 func TestCrewMoneyDrawsNoZero(t *testing.T) {
 	a, dir := sheetApp(t)

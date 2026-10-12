@@ -180,7 +180,7 @@ func TestTheRolesSectionSaysWhatAnswersEachRole(t *testing.T) {
 	}
 	// THE PLANNER IS A CREW SEAT, and a crew seat is set on the crew panel
 	// rather than on a row above this one (settings.go's [sheet.roleAbout]).
-	if !strings.Contains(selected.meta.about, "follows the planner seat (/crew)") {
+	if !strings.Contains(selected.meta.about, "follows the planner seat (/seats)") {
 		t.Fatalf("the selected role's line reads %q", selected.meta.about)
 	}
 }

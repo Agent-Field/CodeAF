@@ -306,11 +306,11 @@ var settingUI = map[string]settingMeta{
 	config.KeyTaskModel: {
 		tab: tabTasks, label: "task model", widget: widgetSelect,
 		about: "the model a task's worker runs on when you have not asked for another. " +
-			"Blank leaves it to the crew: your /crew pin, or the model picked for each task.",
+			"Blank leaves it to the crew: your /seats pin, or the model picked for each task.",
 	},
 	// THE CREW'S THREE SEATS ARE REGISTRY ROWS AND ARE NOT DRAWN AS THREE ROWS.
 	// Each is empty for AUTO — codeaf routes that seat per task — and a model id
-	// written there is a PIN, the same pin `/crew pin` writes (internal/config's
+	// written there is a PIN, the same pin `/seats pin` writes (internal/config's
 	// crew.go). They are kept on this map because the map is total over the
 	// registry, and the Providers tab draws them as ONE row, `seats`, whose
 	// enter opens the crew panel ([sheet.crewDoorItem], crewpanel.go): one
@@ -2077,7 +2077,7 @@ func (s *sheet) roleAbout(row *roleRow) string {
 	// set on rather than pointing up at a row that is not there.
 	class := row.tierLabel + " above"
 	if crewSeatKey(tierSettingKey(row.tier)) {
-		class = "the " + row.tierLabel + " seat (/crew)"
+		class = "the " + row.tierLabel + " seat (/seats)"
 	}
 	if row.pin != "" {
 		return said + "pinned, so it ignores " + class + ". del clears the pin."
@@ -2135,7 +2135,7 @@ func (s *sheet) crewDoorItem(terms []fuzzy.Term) sheetItem {
 	return sheetItem{
 		crewDoor: true, crewValue: value, hitAt: hitAt, hitLen: hitLen,
 		meta: settingMeta{tab: tabProviders, label: "seats",
-			about: "the worker, planner and checker, the models they may be picked from, the providers they may route through, and the per-task and daily caps · enter opens /crew"},
+			about: "the worker, planner and checker, the models they may be picked from, the providers they may route through, and the per-task and daily caps · enter opens /seats"},
 	}
 }
 
@@ -2154,7 +2154,7 @@ func roleFilter(role roles.Role) modelFilter {
 	return chatModel
 }
 
-// roleDisplayWord keeps the checking seat in /crew's words on the row, in
+// roleDisplayWord keeps the checking seat in /seats's words on the row, in
 // search and in the picker. Its stored role identifier must keep its bytes.
 func roleDisplayWord(role roles.Role) string {
 	if role == roles.RoleAuditor {

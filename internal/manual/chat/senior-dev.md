@@ -982,7 +982,7 @@ at the start of the run, independent of this task's brief — and "do this one p
 "do it cheaply" said in words, which the chat's hand-off carries, moves that
 recommendation the way it moves codeaf's own worker. `/task --best` and `--cheap` start
 codeaf's own worker, never senior-dev. The per-task worker,
-planner and checker routing and `/crew`'s per-task limit apply to codeaf's own
+planner and checker routing and `/seats`'s per-task limit apply to codeaf's own
 tasks, not senior-dev's run. Change the crew and the next run follows. The
 mastermind (brain) model is not used: every call senior-dev makes is either its
 work or a history summary.
@@ -1042,7 +1042,7 @@ A shell run keeps the same two facts, `models` and `effort`, in
 **The same as the chat's.** A shell run without `--high` works on your profile's worker
 seat, handed over the way a conversation hands its crew (`--crew --high <seat>`, and the
 seat's own rung as `--variant` when it names one); if no connected model can fill that seat,
-it says to widen or pin `/crew` models. Until 2026-09-28 a shell run routed on senior-dev's
+it says to widen or pin `/seats` models. Until 2026-09-28 a shell run routed on senior-dev's
 own list instead, with the seat only as a fallback.
 
 **Its own list** is six open models it routes among call by call, avoiding one for a
@@ -1052,10 +1052,10 @@ glm-5.1 and minimax-m2.7. A run whose crew models its catalog cannot size uses i
 An explicit `--high <model>` runs on a fresh profile with a provider key and no crew rows;
 that model is used without resolving a profile seat. It accepts a bare OpenRouter id
 (`z-ai/glm-5.3-flash`), a service-prefixed id (`openrouter/z-ai/glm-5.3-flash`), or
-a short model word from the same list `/crew` uses (`glm-5.3-flash`). Each word is
+a short model word from the same list `/seats` uses (`glm-5.3-flash`). Each word is
 resolved before senior-dev starts. A word that is ambiguous, unknown, or cannot be
 served by a connected service is refused with `cannot use model "<model>" here;
-choose one this service serves with /crew or add its service with codeaf connect`.
+choose one this service serves with /seats or add its service with codeaf connect`.
 
 **At a shell you choose**: `--high` replaces the seat, `--low` sets the summaries' models,
 and `--variant` sets how hard the coder thinks (see how hard senior-dev thinks).
@@ -1134,7 +1134,7 @@ senior-dev's own flags on `run`:
   without it; codeaf passes it itself under a repository at your home folder;
 - `--high`, `--low` — comma-separated models it routes among; `--low` (its history
   summaries) falls back to `--high`. On a shell run, each `--high` entry accepts a
-  bare OpenRouter id, service-prefixed id, or short `/crew` model word;
+  bare OpenRouter id, service-prefixed id, or short `/seats` model word;
 - `--asked` — the `--high` models were chosen by name, so one senior-dev cannot
   size ends the run before its first call rather than being skipped;
 - `--verify-build CMD`, `--verify-test CMD` — the project's own build or test command,

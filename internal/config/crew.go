@@ -35,7 +35,7 @@ import (
 // the profile the way every call reads them; what persists is only which of
 // them the crew leaves alone, so a connection made tomorrow is on the day it
 // is made. That is the one-sentence model the whole feature is built on — the
-// /crew panel says what is allowed and it persists; the words in an ask say
+// /seats panel says what is allowed and it persists; the words in an ask say
 // how hard to try that one task; nothing else sticks.
 //
 // THE PINNED MODELS LIVE IN THE TIER ROWS THE CREW HAS ALWAYS LIVED IN. The worker
@@ -100,7 +100,7 @@ const CrewAuto = "auto"
 
 // CrewCommand is the one door a person reaches the crew through, spelled once
 // so a sentence naming it cannot drift from the command that answers.
-const CrewCommand = "/crew"
+const CrewCommand = "/seats"
 
 // CrewSeatTier is the tier row a seat's pin is written in.
 func CrewSeatTier(seat crewroute.Seat) string {
@@ -291,10 +291,10 @@ func CrewPinAllowed(profileDir string, pin CrewPin) error {
 	model, known := crewCatalogModel(pin.Model)
 	switch {
 	case known && !rule.AdmitsModel(model):
-		return fmt.Errorf("%s is outside the models you allow (%s) · widen them with /crew models +%s",
+		return fmt.Errorf("%s is outside the models you allow (%s) · widen them with /seats models +%s",
 			pin.Model, rule.String(), crewroute.ShortModel(pin.Model))
 	case !known && rule.Base != crewroute.BaseAll && !rule.NamesModel(pin.Model):
-		return fmt.Errorf("%s is not in the catalog, so the rule %s cannot admit it by price or licence · name it with /crew models +%s",
+		return fmt.Errorf("%s is not in the catalog, so the rule %s cannot admit it by price or licence · name it with /seats models +%s",
 			pin.Model, rule.String(), pin.Model)
 	case !known && rule.Base == crewroute.BaseAll && !rule.AdmitsModel(crewroute.Model{ID: pin.Model}):
 		return fmt.Errorf("%s is outside the models you allow (%s)", pin.Model, rule.String())
@@ -308,7 +308,7 @@ func CrewPinAllowed(profileDir string, pin CrewPin) error {
 			return fmt.Errorf("%s is a provider your allowed models exclude (%s)", provider.ID, rule.String())
 		}
 		if !provider.On {
-			return fmt.Errorf("%s is turned off for the crew · turn it on in /crew's providers row", provider.ID)
+			return fmt.Errorf("%s is turned off for the crew · turn it on in /seats's providers row", provider.ID)
 		}
 		if _, ok := provider.route(pin.Model, model, known); !ok {
 			return fmt.Errorf("%s does not serve %s", provider.Name, pin.Model)
@@ -341,7 +341,7 @@ func SetCrewAllowed(profileDir, raw string) error {
 	return writeCrewAllowed(profileDir, rule)
 }
 
-// ModifyCrewAllowed is `/crew models +x` and `-x`: the rule with one word
+// ModifyCrewAllowed is `/seats models +x` and `-x`: the rule with one word
 // added or taken away.
 func ModifyCrewAllowed(profileDir string, add bool, word string) error {
 	word = strings.TrimSpace(word)
@@ -359,7 +359,7 @@ func writeCrewAllowed(profileDir string, rule crewroute.Allowed) error {
 			continue
 		}
 		if model, known := crewCatalogModel(pin.Model); (known && !rule.AdmitsModel(model)) || (!known && rule.Base != crewroute.BaseAll && !rule.NamesModel(pin.Model)) {
-			return fmt.Errorf("your %s is pinned to %s, which that rule leaves out · /crew unpin %s first, or add +%s",
+			return fmt.Errorf("your %s is pinned to %s, which that rule leaves out · /seats unpin %s first, or add +%s",
 				seat, pin.Model, seat, crewroute.ShortModel(pin.Model))
 		}
 	}
@@ -381,7 +381,7 @@ func SetCrewCap(profileDir, raw string) error {
 }
 
 // CrewTaskCapDefault is the per-task limit when none is set.
-const CrewTaskCapDefault = 5.0
+const CrewTaskCapDefault = 2.0
 
 // CrewTaskCapAt is the most one task may spend, in dollars: the stored figure
 // when it is above zero, [CrewTaskCapDefault] otherwise. There is always one.

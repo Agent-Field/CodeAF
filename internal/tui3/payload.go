@@ -434,7 +434,7 @@ func columnFacts(text string, lead bool) []string {
 // because every writer here pads to a column with at least two, and a single
 // space is what separates the words INSIDE either half.
 //
-// AN INDENT IS NOT A GUTTER. /crew's listing sets its four class rows four
+// AN INDENT IS NOT A GUTTER. /seats's listing sets its four class rows four
 // spaces in, and a rule that read the first run of spaces wherever it fell would
 // call the indent the gutter and the whole row the second column. So the indent
 // is stepped over before the cut, which is also what makes the two halves come

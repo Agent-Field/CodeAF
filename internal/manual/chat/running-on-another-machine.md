@@ -473,11 +473,11 @@ exact sentence each one says.
 
 The second half of the list, with the exact sentence each one says.
 
-`/cache`, `/permissions`, `/crew`, `/subharness` and `/harness` describe stores or settings
+`/cache`, `/permissions`, `/seats`, `/subharness` and `/harness` describe stores or settings
 belonging to the machine that runs the session, but this build has no wire door for them.
 They do not read or change this machine's copy. The cache, permissions, crew and harness
 commands name the connected machine and say `change it on that machine`; in particular,
-`/cache clean now` deletes nothing here, `/crew pin` writes nothing here, and `/subharness`
+`/cache clean now` deletes nothing here, `/seats pin` writes nothing here, and `/subharness`
 does not claim the far registry is empty.
 
 The memory commands are different: this build carries the connected engine's memory state
@@ -491,9 +491,9 @@ Neither. Over `--host`, `/cache`, `/cache clean`, and `/cache clean now` cannot 
 connected machine's build cache and refuse before touching this machine's cache. The
 answer names the connected machine and says to change it there.
 
-## Why didn't /crew pin change the crew on the remote machine?
+## Why didn't /seats pin change the crew on the remote machine?
 
-`/crew` has no far-profile door yet. Over `--host`, the panel and every shortcut —
+`/seats` has no far-profile door yet. Over `--host`, the panel and every shortcut —
 `pin`, `unpin`, `models`, `cap` — refuse before reading or writing this machine's profile,
 name the connected machine, and say to change the crew there:
 `devbox owns the crew · change it on that machine`.

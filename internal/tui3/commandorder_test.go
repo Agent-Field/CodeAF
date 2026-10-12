@@ -6,7 +6,7 @@ import (
 )
 
 func TestCommandCatalogueIncludesTheCompleteArgumentForms(t *testing.T) {
-	wants := []string{"/crew cap task <dollars>", "/land now", "/cache clean now"}
+	wants := []string{"/seats cap task <dollars>", "/land now", "/cache clean now"}
 	for _, want := range wants {
 		found := false
 		for _, command := range commands {

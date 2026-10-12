@@ -17,7 +17,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// THE CREW PANEL: /crew with nothing after it.
+// THE CREW PANEL: /seats with nothing after it.
 //
 //	╭─ crew ─────────────────────────────────────── esc ─╮
 //	│   worker    auto · usually glm-5.3-flash           │
@@ -58,7 +58,7 @@ import (
 //     keeps it, an emptied hole is no cap. There is no dialog to open first.
 //
 // EVERY CHANGE IS WRITTEN THE MOMENT IT IS MADE, through the same writers the
-// `/crew` shortcuts use (internal/config's SetCrewPin, SetCrewAllowedRule,
+// `/seats` shortcuts use (internal/config's SetCrewPin, SetCrewAllowedRule,
 // SetCrewProviderOn, SetCrewCap), so a refusal is the same refusal whichever door asked. What
 // makes that safe is the undo beside it: the row that changed wears a tick,
 // and for a few seconds the bottom edge offers `z undo`, which puts the rows
@@ -87,8 +87,8 @@ import (
 //
 // ── ONE PANEL, EVERY DOOR ──
 //
-// /crew opens it over the conversation. A place cannot draw an overlay
-// (pages.go's [app.closeModals]), so /crew typed on home, and the settings
+// /seats opens it over the conversation. A place cannot draw an overlay
+// (pages.go's [app.closeModals]), so /seats typed on home, and the settings
 // sheet's `seats` row, step off the place, open this, and esc steps back onto
 // the place they came from — one panel, never an embedded copy that could say
 // something different.
@@ -144,7 +144,7 @@ const (
 // The words the panel says. Each is quoted in the manual as it is spelled
 // here, and the e2e suite waits for the title.
 const (
-	crewTitleWord      = "crew"
+	crewTitleWord      = "seats"
 	crewMainKeys       = "enter change · esc close · ? keys"
 	crewChipKeys       = "enter change · space toggle · esc close · ? keys"
 	crewProvKeys       = "space or enter toggle · esc back"
@@ -167,11 +167,11 @@ const (
 // crewModelBases are the four answers the models row walks, in order.
 var crewModelBases = []string{"all", "open", "price", "custom"}
 
-// crewPanel is the whole of /crew. The zero value is closed.
+// crewPanel is the whole of /seats. The zero value is closed.
 type crewPanel struct {
 	open bool
 
-	// back is the place /crew was asked for on, which esc stands back up; and
+	// back is the place /seats was asked for on, which esc stands back up; and
 	// backTab/backCursor are where the settings sheet was when its `seats` row
 	// opened this, so esc lands on that row rather than on the sheet's first tab.
 	back       page

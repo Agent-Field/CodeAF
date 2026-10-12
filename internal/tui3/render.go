@@ -3998,7 +3998,7 @@ func (a *app) hintWord() string {
 		// AND THE CREW IS NAMED BESIDE THE KEYS, because this list is where a
 		// person lands when a crew change did not change anything they can see.
 		// The status line's model readout is the conversation's model, which
-		// /crew never touches by design — so somebody who pinned a seat opens
+		// /seats never touches by design — so somebody who pinned a seat opens
 		// /model hunting for the change, and the one word this slot can afford
 		// tells them the crew is a separate thing.
 		// The picker's rows are the list itself and are reused whole inside the

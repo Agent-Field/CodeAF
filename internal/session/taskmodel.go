@@ -484,7 +484,7 @@ func ResolveProgramShellModels(words string, available []string, sources modelso
 		}
 	}
 	if len(resolved) == 0 {
-		return "", fmt.Errorf("--high names no model; choose one with /crew or add its service with codeaf connect")
+		return "", fmt.Errorf("--high names no model; choose one with /seats or add its service with codeaf connect")
 	}
 	return strings.Join(resolved, ","), nil
 }
@@ -492,7 +492,7 @@ func ResolveProgramShellModels(words string, available []string, sources modelso
 // ProgramShellModelRefusal is the shell's one sentence for a model it cannot
 // hand to a child, including a model named before any service key is present.
 func ProgramShellModelRefusal(word string) error {
-	return fmt.Errorf("cannot use model %q here; choose one this service serves with /crew or add its service with codeaf connect", word)
+	return fmt.Errorf("cannot use model %q here; choose one this service serves with /seats or add its service with codeaf connect", word)
 }
 
 // resolveProgramWordWithSources is the common decision for a chat proposal
