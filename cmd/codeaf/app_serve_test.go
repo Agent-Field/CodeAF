@@ -12,13 +12,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/appapi"
+	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/home"
 )
 
 // The child takes the real command dispatcher without building another
@@ -26,6 +27,10 @@ import (
 func TestAppServeHelper(t *testing.T) {
 	if os.Getenv("CODEAF_APP_SERVE_TEST_HELPER") != "1" {
 		return
+	}
+	// Choose the fixture after package init so the test home guard allows it.
+	if chosen := os.Getenv("CODEAF_APP_TEST_HOME"); chosen != "" {
+		t.Setenv(home.EnvVar, chosen)
 	}
 	for index, argument := range os.Args {
 		if argument == "--" {
@@ -55,14 +60,28 @@ type appTestLaunch struct {
 
 func launchAppForTest(t *testing.T, args ...string) *appTestLaunch {
 	t.Helper()
-	root := t.TempDir()
+	return launchAppAtHomeForTest(t, t.TempDir(), false, args...)
+}
+
+func launchAppAtHomeForTest(t *testing.T, root string, shared bool, args ...string) *appTestLaunch {
+	t.Helper()
 	launch := &appTestLaunch{root: filepath.Join(root, "engine"), tuiRoot: filepath.Join(root, "tui"), done: make(chan error, 1)}
-	words := append([]string{"-test.run=^TestAppServeHelper$", "--", "--home", launch.root}, args...)
+	words := []string{"-test.run=^TestAppServeHelper$", "--"}
+	if shared {
+		launch.root = launch.tuiRoot
+	} else {
+		words = append(words, "--home", launch.root)
+	}
+	words = append(words, args...)
 	launch.command = exec.Command(os.Args[0], words...)
 	launch.command.Env = []string{
 		"CODEAF_APP_SERVE_TEST_HELPER=1", "CODEAF_HOME=" + launch.tuiRoot,
 		"HOME=" + root, "PATH=" + os.Getenv("PATH"), "CODEAF_TELEMETRY=off",
 		"GOMAXPROCS=2",
+	}
+	if shared {
+		launch.command.Env = append(launch.command.Env, "CODEAF_APP_TEST_HOME="+launch.root)
+		launch.command.Env[1] = "CODEAF_HOME=" + filepath.Join(root, "inherited")
 	}
 	launch.command.Stderr = &launch.errors
 	var err error
@@ -122,7 +141,7 @@ func (launch *appTestLaunch) wait(t *testing.T) {
 			t.Fatal("bearer token was copied to a log")
 		}
 		files, err := os.ReadDir(launch.tuiRoot)
-		if err == nil && len(files) != 0 {
+		if launch.root != launch.tuiRoot && err == nil && len(files) != 0 {
 			t.Fatalf("app startup wrote into the TUI root: %v", files)
 		}
 	case <-time.After(10 * time.Second):
@@ -283,23 +302,84 @@ func TestAppServeInterruptEndsLaunch(t *testing.T) {
 	launch.wait(t)
 }
 
-func TestAppEngineHomeIsSeparateAndExplicitHomeWins(t *testing.T) {
-	login, data := t.TempDir(), t.TempDir()
+func TestAppEngineHomeIsSharedAndExplicitHomeWins(t *testing.T) {
+	login := t.TempDir()
 	t.Setenv("HOME", login)
-	t.Setenv("CODEAF_HOME", filepath.Join(login, "tui"))
-	t.Setenv("XDG_DATA_HOME", data)
-	want := filepath.Join(data, "codeaf", "engine")
-	if runtime.GOOS == "darwin" {
-		want = filepath.Join(login, "Library", "Application Support", "codeaf", "engine")
-	}
+	t.Setenv(home.EnvVar, filepath.Join(login, "tui"))
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	want := home.Dir()
 	root, err := appEngineHome("")
 	if err != nil || root != want {
-		t.Fatalf("default app home: %q %v, want %q", root, err, want)
+		t.Fatalf("shared app home: %q %v, want %q", root, err, want)
+	}
+	t.Setenv(home.EnvVar, "")
+	root, err = appEngineHome("")
+	if err != nil || root != home.DefaultUnder(login) {
+		t.Fatalf("default home: %q %v", root, err)
 	}
 	root, err = appEngineHome("relative-engine")
 	want, _ = filepath.Abs("relative-engine")
 	if err != nil || root != want {
 		t.Fatalf("explicit home: %q %v, want %q", root, err, want)
+	}
+}
+
+// The app must use the terminal's live home without replacing its runner
+// lock, settings or history, and stdin key material must never reach disk.
+func TestAppServeSharesTheTerminalHomeWithoutPersistingKeys(t *testing.T) {
+	root := t.TempDir()
+	shared := filepath.Join(root, "tui")
+	st, err := store.Open(filepath.Join(shared, "v3", "factory"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	release, ok := st.TryWorker()
+	if !ok {
+		t.Fatal("terminal could not hold runner lock")
+	}
+	defer release()
+	for _, name := range []string{"config.json", "history.json"} {
+		if err := os.WriteFile(filepath.Join(shared, name), []byte("terminal state"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	launch := launchAppAtHomeForTest(t, root, true)
+	if launch.hello.Home != shared {
+		t.Fatalf("hello home = %q, want %q", launch.hello.Home, shared)
+	}
+	const secret = "keychain-secret-never-on-disk"
+	if _, err := io.WriteString(launch.input, `{"keys":{"openrouter":"`+secret+`"}}`+"\n"); err != nil {
+		t.Fatal(err)
+	}
+	launch.input.Close()
+	launch.wait(t)
+	if otherRelease, ok := st.TryWorker(); ok {
+		otherRelease()
+		t.Fatal("app startup or exit released the terminal's runner lock")
+	}
+	for _, name := range []string{"config.json", "history.json"} {
+		body, err := os.ReadFile(filepath.Join(shared, name))
+		if err != nil || string(body) != "terminal state" {
+			t.Fatalf("terminal state changed: %s %q %v", name, body, err)
+		}
+	}
+	if err := filepath.WalkDir(shared, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if bytes.Contains(body, []byte(secret)) {
+			t.Errorf("stdin key persisted in %s", path)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 

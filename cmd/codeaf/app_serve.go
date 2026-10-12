@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -40,7 +39,7 @@ func runApp(args []string) error {
 	}
 	flags := commandFlags("app serve")
 	options := appServeOptions{}
-	flags.StringVar(&options.home, "home", "", "app engine data directory (default: the app data folder's engine directory)")
+	flags.StringVar(&options.home, "home", "", "shared codeaf home (default: CODEAF_HOME or ~/.codeaf)")
 	flags.StringVar(&options.listen, "listen", "127.0.0.1:0", "numeric loopback address; port 0 chooses a free port")
 	flags.IntVar(&options.parentPID, "parent-pid", 0, "stop when this parent process exits (0 disables the check)")
 	if err := parseCommandFlags(flags, args[1:]); err != nil {
@@ -62,29 +61,13 @@ func runApp(args []string) error {
 	return serveApp(ctx, options, os.Stdin, os.Stdout, os.Stderr)
 }
 
-// appEngineHome deliberately ignores the TUI's CODEAF_HOME default. The app
-// and terminal must not become two writers of the same profile by accident.
+// The app and terminal resolve the same state root so agents, history and
+// settings remain visible through either door. An explicit home still wins.
 func appEngineHome(explicit string) (string, error) {
 	if strings.TrimSpace(explicit) != "" {
 		return filepath.Abs(explicit)
 	}
-	login, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	var base string
-	switch runtime.GOOS {
-	case "darwin":
-		base = filepath.Join(login, "Library", "Application Support")
-	case "linux":
-		base = os.Getenv("XDG_DATA_HOME")
-		if !filepath.IsAbs(base) {
-			base = filepath.Join(login, ".local", "share")
-		}
-	default:
-		return "", errors.New("the codeaf app supports macOS and Linux")
-	}
-	return filepath.Join(base, "codeaf", "engine"), nil
+	return filepath.Abs(home.Dir())
 }
 
 func serveApp(parent context.Context, options appServeOptions, input io.ReadCloser, output, errorsOut io.Writer) error {

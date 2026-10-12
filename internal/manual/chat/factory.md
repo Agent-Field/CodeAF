@@ -220,8 +220,12 @@ the worker uses the factory's connected login. The operating system's username
 is never a forge handle. Without either login, attach is refused rather than
 registering a different person from the one who takes the job.
 
-**Where a job runs.** Every `codeaf` runs a worker loop against its factory (the one it
-serves, the one in `serve.json`, or the one in `attach.json`); `--no-worker` turns it off,
+**Where a job runs.** One codeaf process per home runs the worker loop against its
+factory (the one it serves, the one in `serve.json`, or the one in `attach.json`).
+Other terminal or app windows share that runner; they do not register more slots.
+The runner holds `worker.lock` until its slots stop. A waiting process takes over
+within one second after it exits and reuses its saved registration credentials.
+`--no-worker` turns off participation for that process,
 and `CODEAF_FACTORY_NO_WORKER=1` does the same for a session host. The worker attaches once
 per slot (its credentials are kept in `~/.codeaf/v3/factory/worker.json`, per factory
 address), pulls a job, and runs it with this machine's runner in this machine's checkout

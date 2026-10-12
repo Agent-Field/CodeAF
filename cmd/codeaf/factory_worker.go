@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -28,8 +29,6 @@ import (
 // Its credentials are cached in worker.json, one per slot per factory url: a
 // factory that forgot them (it restarted) answers 401 and the slot attaches
 // again.
-
-func factoryWorkerPath() string { return filepath.Join(v3FactoryRoot(), "worker.json") }
 
 // factoryWorkerDial is one process's worker door: where the factory is now,
 // and the credentials this machine holds there.
@@ -62,14 +61,20 @@ func (d *factoryWorkerDial) dial(slot int) *client.WorkerClient {
 func (d *factoryWorkerDial) creds(base string) []string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return readFactoryWorkerCreds()[base]
+	return d.readCreds()[base]
 }
 
 // keep caches slot's credential for w's factory; "" forgets it.
 func (d *factoryWorkerDial) keep(slot int, w *client.WorkerClient) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	all := readFactoryWorkerCreds()
+	path := filepath.Join(d.floor.Root(), "worker.json")
+	release, err := factoryFileLock(path+".lock", false)
+	defer release()
+	if err != nil {
+		return
+	}
+	all := d.readCreds()
 	creds := all[w.Base()]
 	for len(creds) <= slot {
 		creds = append(creds, "")
@@ -77,16 +82,38 @@ func (d *factoryWorkerDial) keep(slot int, w *client.WorkerClient) {
 	creds[slot] = w.Credential()
 	all[w.Base()] = creds
 	if body, err := json.Marshal(all); err == nil {
-		_ = writeFactoryPrivate(factoryWorkerPath(), append(body, '\n'))
+		_ = writeFactoryPrivate(path, append(body, '\n'))
 	}
 }
 
-func readFactoryWorkerCreds() map[string][]string {
+// readCreds follows the floor rather than a mutable process environment.
+// Atomic replacement keeps readers from observing a partial credential file.
+func (d *factoryWorkerDial) readCreds() map[string][]string {
 	all := map[string][]string{}
-	if body, err := os.ReadFile(factoryWorkerPath()); err == nil {
+	if body, err := os.ReadFile(filepath.Join(d.floor.Root(), "worker.json")); err == nil {
 		_ = json.Unmarshal(body, &all)
 	}
 	return all
+}
+
+// waitFactoryWorker leaves other windows on the current runner until it exits.
+// The injected ticks make cancellation and takeover testable without sleeps.
+func waitFactoryWorker(ctx context.Context, floor *store.Store, ticks <-chan time.Time) (func(), bool) {
+	for ctx.Err() == nil {
+		if release, ok := floor.TryWorker(); ok {
+			if ctx.Err() != nil {
+				release()
+				return nil, false
+			}
+			return release, true
+		}
+		select {
+		case <-ctx.Done():
+			return nil, false
+		case <-ticks:
+		}
+	}
+	return nil, false
 }
 
 // attach is how this machine introduces itself: its name, its person, and the

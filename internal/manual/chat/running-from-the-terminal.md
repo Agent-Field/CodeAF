@@ -21,11 +21,11 @@ loopback gets 421. An allowed app preflight only describes the transport.
 
 The launch also stops when stdin closes, its named parent dies, or it receives
 SIGINT or SIGTERM. `--parent-pid 0` disables only the parent check; stdin must
-still remain open. Without `--home`, macOS uses
-`~/Library/Application Support/codeaf/engine`; Linux uses
-`$XDG_DATA_HOME/codeaf/engine`, falling back to
-`~/.local/share/codeaf/engine`. An inherited `CODEAF_HOME` does not choose this
-default. The app home is separate from the terminal's `~/.codeaf`.
+still remain open. Without `--home`, the app uses the same `~/.codeaf` home
+as the terminal, respecting `CODEAF_HOME`. An explicit `--home` wins and its
+absolute path is reported in the hello. The app and terminal share saved
+agents, history and non-secret settings. Keychain or Secret Service secrets
+sent on stdin are never saved to that home.
 
 This transport currently serves health and shutdown. Agent, key, event-stream
 and factory routes are not available through it yet.

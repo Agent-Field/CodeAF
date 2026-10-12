@@ -30,6 +30,8 @@ import (
 // factory (the one it serves itself, the one another codeaf on this machine
 // serves, or the one attach.json names) runs a worker loop against that
 // factory ([startFactoryWorker], internal/factory/worker), unless --no-worker.
+// One process holds worker.lock for this home; the others share its registration
+// and wait to take over with its saved credentials when that process stops.
 // The loop attaches once, long-polls for a job, runs it with this machine's
 // Runner over a mirror of the job, reports what the runner wrote, heartbeats,
 // and says done.
@@ -38,7 +40,7 @@ import (
 // runner doors are the lease's ([factoryRunnerDoors], internal/factory/lease's
 // Doors), which change the job's state and leave a signal on its lease for
 // the worker that holds it. They only write the store and leases.json, so
-// every process on this machine can hang them; there is no run lock and no
+// every process on this machine can hang them; there is no per-job run lock or
 // mailbox.
 
 // factoryBenchesEnv pins how many items run at once on this machine's floor.
@@ -90,8 +92,8 @@ func factoryRunnerDoors(st *store.Store) factory.LocalOption {
 }
 
 // startFactoryWorker builds this process's shaping door and, unless
-// --no-worker, starts its worker loop against this machine's factory. ONCE PER
-// PROCESS, STOPPED WITH THE PROCESS ([stopFactoryHere]). parent is the
+// --no-worker, waits for the home's runner lock before starting worker slots.
+// ONE RUNNER PER HOME, STOPPED WITH THE PROCESS ([stopFactoryHere]). parent is the
 // conversation config the launch built, which every stage conversation is
 // opened from.
 func startFactoryWorker(st *store.Store, workspace, profileDir string, parent session.Config) {
@@ -107,23 +109,30 @@ func startFactoryWorker(st *store.Store, workspace, profileDir string, parent se
 		if strings.TrimSpace(env.Get(factoryNoWorkerEnv)) == "1" {
 			return
 		}
-		clearDeadFactoryMirrors(filepath.Join(st.Root(), "workers"))
-		mirror, err := store.Open(filepath.Join(st.Root(), "workers", strconv.Itoa(os.Getpid())))
-		if err != nil {
-			return
-		}
-		setFactoryProcess(func() {
-			factoryProcess.mirror = mirror.Root()
-			factoryProcess.workerShape = factoryShapeDoor(mirror, workspace, profileDir, turns)
-		})
 		ctx, cancel := context.WithCancel(context.Background())
 		setFactoryProcess(func() { factoryProcess.stop = cancel })
-		maker := factoryStageMakerFrom(st, workspace, profileDir, factoryWorkerParent)
-		r := buildFactoryRunner(mirror, st, workspace, profileDir, maker, turns)
-		dial := newFactoryWorkerDial(st, func() (factoryTarget, error) {
-			return resolveFactory(st, factorySeam(st, workspace, profileDir))
-		})
 		guard.Go("factory/worker", func() {
+			ticker := time.NewTicker(time.Second)
+			defer ticker.Stop()
+			release, ok := waitFactoryWorker(ctx, st, ticker.C)
+			if !ok {
+				return
+			}
+			defer release()
+			clearDeadFactoryMirrors(filepath.Join(st.Root(), "workers"))
+			mirror, err := store.Open(filepath.Join(st.Root(), "workers", strconv.Itoa(os.Getpid())))
+			if err != nil {
+				return
+			}
+			setFactoryProcess(func() {
+				factoryProcess.mirror = mirror.Root()
+				factoryProcess.workerShape = factoryShapeDoor(mirror, workspace, profileDir, turns)
+			})
+			maker := factoryStageMakerFrom(st, workspace, profileDir, factoryWorkerParent)
+			r := buildFactoryRunner(mirror, st, workspace, profileDir, maker, turns)
+			dial := newFactoryWorkerDial(st, func() (factoryTarget, error) {
+				return resolveFactory(st, factorySeam(st, workspace, profileDir))
+			})
 			defer os.RemoveAll(mirror.Root())
 			attach, err := dial.attach(ctx, factorygithub.Connect(factory.Seam{}, factoryProfile(profileDir)))
 			if err != nil {

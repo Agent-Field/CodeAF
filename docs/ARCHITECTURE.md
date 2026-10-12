@@ -763,9 +763,18 @@ independently shippable, and the one-shot CLI works unchanged at every point.
 ## The app's local transport
 
 `codeaf app serve` is the v2 app's separate launch door, implemented in
-`cmd/codeaf/app_serve.go` and `internal/appapi`. Its data root is the app data
-folder's `codeaf/engine` directory, or an explicit `--home`, resolved before
-opening any writer. It does not join the resident's database by default.
+`cmd/codeaf/app_serve.go` and `internal/appapi`. Its data root is the same
+`~/.codeaf` home as the TUI, respecting `CODEAF_HOME` or an explicit `--home`,
+resolved before opening any writer. Agents, history and non-secret settings
+are shared; UI-only app state stays in the app data folder. Existing document
+flocks, conversation locks and presence coordinate concurrent access.
+
+The factory runner holds `<home>/v3/factory/worker.lock` for the entire life
+of its worker slots. Other processes use the shared factory without starting
+more slots, and take over on their next one-second tick after the owner exits.
+They reuse the private `worker.json` registration credentials; writes take a
+shared file lock and replace the complete file atomically. Keychain and Secret
+Service keys handed to the app engine are never saved to this shared home.
 
 One numeric loopback listener serves every mounted handler through one
 origin/host and constant-time bearer guard. A fresh in-memory 32-byte token

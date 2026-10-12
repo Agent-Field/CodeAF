@@ -171,6 +171,11 @@ func (st *Store) TryPoller() (release func(), ok bool) { return st.tryLock("poll
 // a different one from the process that polls.
 func (st *Store) TryTriager() (release func(), ok bool) { return st.tryLock("triage.lock") }
 
+// TryWorker elects one runner for this home across the app and terminal.
+// The owner holds the lock until all worker slots stop; another process may
+// then reuse the saved credentials without creating another registration.
+func (st *Store) TryWorker() (release func(), ok bool) { return st.tryLock("worker.lock") }
+
 func (st *Store) tryLock(name string) (release func(), ok bool) {
 	if st == nil {
 		return func() {}, false
