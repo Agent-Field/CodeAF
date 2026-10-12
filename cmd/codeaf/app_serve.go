@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/appapi"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
@@ -56,6 +58,9 @@ func runApp(args []string) error {
 	if err := os.Setenv(home.EnvVar, root); err != nil {
 		return err
 	}
+	if err := os.Setenv(config.AppModeEnv, "1"); err != nil {
+		return err
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return serveApp(ctx, options, os.Stdin, os.Stdout, os.Stderr)
@@ -71,6 +76,9 @@ func appEngineHome(explicit string) (string, error) {
 }
 
 func serveApp(parent context.Context, options appServeOptions, input io.ReadCloser, output, errorsOut io.Writer) error {
+	credentials := config.NewAppCredentials()
+	restoreCredentials := config.UseAppCredentials(credentials)
+	defer restoreCredentials()
 	parentAlive := appParentCheck(options.parentPID, os.Getppid, processgroup.ProcessAlive)
 	if options.parentPID != 0 && !parentAlive(options.parentPID) {
 		return errors.New("app parent process is no longer running")
@@ -108,7 +116,7 @@ func serveApp(parent context.Context, options appServeOptions, input io.ReadClos
 	// stdin belongs to this launch. Closing it on every exit releases the
 	// reader even when HTTP shutdown or parent death ended the launch first.
 	defer input.Close()
-	api := appapi.New(token, appapi.Options{Version: buildinfo.String(), Epoch: epoch, Shutdown: cancel})
+	api := appapi.New(token, appapi.Options{Version: buildinfo.String(), Epoch: epoch, Shutdown: cancel, Credentials: credentials, ProfileDir: config.ProfileDir()})
 	server := &http.Server{
 		Handler: api.Handler(), ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout: 60 * time.Second, ErrorLog: logger,
@@ -125,9 +133,17 @@ func serveApp(parent context.Context, options appServeOptions, input io.ReadClos
 		}
 	})
 	guard.Go("app/stdin", func() {
-		// A2 will consume the key handoff before draining this life line.
-		// Nothing read from stdin is ever copied into a log or the hello.
-		_, _ = io.Copy(io.Discard, input)
+		// Parse only the first line. Buffered bytes after it still belong to
+		// the lifetime pipe; no handoff bytes reach logs or the hello.
+		reader := bufio.NewReader(input)
+		if err := config.ReadAppHandoff(reader, credentials); err != nil {
+			if ctx.Err() == nil {
+				logger.Print("key handoff ended or was invalid")
+			}
+			cancel()
+			return
+		}
+		_, _ = io.Copy(io.Discard, reader)
 		cancel()
 	})
 	if options.parentPID != 0 {

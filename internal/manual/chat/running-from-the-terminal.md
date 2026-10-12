@@ -27,8 +27,8 @@ absolute path is reported in the hello. The app and terminal share saved
 agents, history and non-secret settings. Keychain or Secret Service secrets
 sent on stdin are never saved to that home.
 
-This transport currently serves health, shutdown and the event stream. Agent,
-key and factory routes are not available through it yet.
+This transport currently serves health, shutdown, keys and the event stream.
+Agent and factory routes are not available through it yet.
 
 ## App events — SSE — Last-Event-ID — replay after reconnect — reset after restart
 
@@ -53,6 +53,35 @@ events without an agent remain included. An empty agent id is refused with
 and `task.changed`; clients re-read full objects. Process output belongs to
 its own follow stream. Resource routes and their event producers are later
 lanes; this stream alone starts no agents.
+
+## App keys — Keychain, Secret Service, key handoff and keys are kept by the app
+
+The app keeps its keys in Keychain on macOS or Secret Service on Linux. At
+launch it sends one JSON stdin line with `keys` (provider names to keys) and
+`factory_sessions` (factory URLs to tokens), then keeps stdin open. The binary
+holds these in memory; it never writes them through the app path. The handoff
+limit is 1 MiB. Invalid input stops the launch without logging its contents.
+
+`GET /app/v1/keys` returns only provider, presence, last four characters and
+models from successful checks. Keys of four characters or fewer have no tail.
+`PUT /app/v1/keys/{provider}` takes `{"key":"…"}` and makes one provider
+check, at most 10 seconds. Success returns `{"ok":true,"models":[…]}`;
+failure returns HTTP 422 with the provider's words and status, with secrets
+removed, and keeps the old key. OpenRouter checks the authenticated model list;
+GitHub checks the account and returns no models. A timeout says
+`No answer · couldn't reach the provider in 10s · Try again`. Browser sign-in
+is not available through this API yet. All key routes require the launch token.
+
+`DELETE /app/v1/keys/{provider}` removes the memory key and prevents falling
+back to a shell or profile key. The app updates Keychain / Secret Service
+before making PUT or DELETE. Memory keys outrank shell and profile keys.
+App engine children receive keys through an inherited pipe, not command
+arguments or key environment variables.
+
+In app mode, `codeaf connect`, `codeaf disconnect`, key settings and automatic
+key persistence refuse with `keys are kept by the app`. Change keys through
+the app. Other settings still save in the shared home; existing terminal keys
+remain there for terminal use.
 
 ## Is there a newer version — update a dev build — keep a dev build up to date — latest dev — /update — why does it say this every time I start
 

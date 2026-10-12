@@ -47,6 +47,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/remote"
 )
@@ -453,9 +454,15 @@ func Spawn(workspace, name string, args ...string) error {
 		}
 	}
 	command := exec.Command(name, args...)
+	closeKeys, err := config.PrepareAppCredentialPipe(command)
+	if err != nil {
+		return fmt.Errorf("engine host: %w", err)
+	}
 	command.Stdin, command.Stdout, command.Stderr = null, null, stderr
 	detach(command)
-	if err := command.Start(); err != nil {
+	err = command.Start()
+	closeKeys()
+	if err != nil {
 		return fmt.Errorf("engine host: %w", err)
 	}
 	// The child is nobody's to wait for. Releasing it here is what keeps this

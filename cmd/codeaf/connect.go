@@ -45,6 +45,9 @@ var (
 )
 
 func runConnect(args []string) error {
+	if config.AppMode() {
+		return config.ErrAppKeys
+	}
 	flags := commandFlags("connect")
 	noBrowser := flags.Bool("no-browser", false, "print the browser address without opening it")
 	region := flags.String("region", "", "provider region: intl or cn")
@@ -265,6 +268,9 @@ func connectionOutcome(service string, outcome modelsource.Outcome) string {
 }
 
 func runDisconnect(args []string) error {
+	if config.AppMode() {
+		return config.ErrAppKeys
+	}
 	flags := commandFlags("disconnect")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err

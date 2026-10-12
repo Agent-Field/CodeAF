@@ -1143,6 +1143,9 @@ var OperatorEnvPins = []string{
 	// line. Plumbing rather than a row for the plainest reason there is: a row
 	// would persist a preference this binary cannot act on.
 	"CODEAF_INSTALL_NAME",
+	// App children inherit only this policy marker; their credentials use
+	// --keys-fd and may never be persisted by a settings or connect command.
+	AppModeEnv,
 	// The two pins on the model-call log (internal/calllog). CODEAF_CALL_LOG
 	// switches it off or moves the file; CODEAF_CALL_LOG_BODIES adds the whole
 	// request and response to every line. Plumbing rather than settings rows,

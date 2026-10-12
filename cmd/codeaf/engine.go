@@ -42,6 +42,7 @@ package main
 // cannot work must still take a remote session.
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -72,6 +73,8 @@ var _ remote.WrappedAgent = (*session.Agent)(nil)
 // other end of the wire — the host this surface talks to — and a plain
 // runEngine would read as the thing that runs work in this process.
 func runRemoteEngine(args []string) error {
+	// The fd is a local app child door, independent of the protocol on stdin.
+	// It must be consumed before booting any session or resolving its keys.
 	flags := commandFlags("engine")
 	workspace := flags.String("workspace", "", "directory to work in; relative paths are relative to the home directory, empty is the home directory")
 	file := flags.String("session", "", "session transcript to open; empty opens this workspace's most recent")
@@ -82,6 +85,7 @@ func runRemoteEngine(args []string) error {
 	// ask for is a fallback nobody can use when the host is the thing that is
 	// wrong. It serves the conversation on this pipe and never dials a socket.
 	alone := flags.Bool("no-host", false, "serve this conversation on the pipe instead of attaching to a session host")
+	keysFD := flags.Int("keys-fd", -1, "read app credentials from an inherited pipe")
 	// --stop is the one flag here a PERSON types, and it exists because the
 	// refusal below sends them to it: something older is holding this
 	// workspace and has to be let go of before a current build can hold it.
@@ -108,6 +112,25 @@ func runRemoteEngine(args []string) error {
 		// offers the flags somebody might mean and stays quiet about the one
 		// they would only ever mean by accident.
 		return fmt.Errorf("usage: codeaf engine [--workspace path] [--session path] [--no-host] [--status] [--status-all] [--stop] [--stop-all]")
+	}
+	if *keysFD != -1 {
+		if *keysFD < 3 {
+			return errors.New("app keys need an inherited pipe fd")
+		}
+		input := os.NewFile(uintptr(*keysFD), "app-keys")
+		source := config.NewAppCredentials()
+		err := config.ReadAppHandoff(bufio.NewReader(input), source)
+		_ = input.Close()
+		if err != nil {
+			return err
+		}
+		restore := config.UseAppCredentials(source)
+		defer restore()
+		// An existing terminal host has its own credential lifetime. App
+		// children serve their own pipe rather than lending keys to that host.
+		*alone = true
+	} else if config.AppMode() {
+		return errors.New("app engine needs --keys-fd")
 	}
 
 	// AN ENGINE CAN OPEN A TEAM CONVERSATION NOBODY HOLDS, so team traffic can

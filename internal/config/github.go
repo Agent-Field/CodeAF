@@ -17,6 +17,9 @@ const (
 
 // GitHubTokenAt is the token kept in the profile, or "".
 func GitHubTokenAt(profileDir string) string {
+	if key, ok := appKey("github"); ok {
+		return key
+	}
 	value, _ := persistedString(profileDir, KeyGitHubToken)
 	return strings.TrimSpace(value)
 }

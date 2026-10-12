@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"sync"
 	"sync/atomic"
+
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // Contract changes only when the app wire makes a breaking change.
@@ -29,20 +31,24 @@ type Hello struct {
 }
 
 type Options struct {
-	Version  string
-	Epoch    string
-	Shutdown func()
+	Version       string
+	Epoch         string
+	Shutdown      func()
+	Credentials   *config.AppCredentials
+	ProfileDir    string
+	KeyHTTPClient *http.Client
 }
 
 // Server keeps every registered handler behind the same transport guard.
 // Later lanes mount their resource handlers through Handle, never on a second
 // listener with a different authentication policy.
 type Server struct {
-	options Options
-	mux     *http.ServeMux
-	guarded http.Handler
-	once    sync.Once
-	events  *EventHub
+	options  Options
+	mux      *http.ServeMux
+	guarded  http.Handler
+	once     sync.Once
+	events   *EventHub
+	keyState keyState
 }
 
 type route struct {
@@ -72,6 +78,7 @@ func New(token string, options Options) *Server {
 			route.serve(s, w, r)
 		})
 	}
+	s.registerKeys()
 	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, "not_found", "no such app route")
 	})

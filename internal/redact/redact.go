@@ -37,8 +37,32 @@ package redact
 
 import (
 	"regexp"
+	"sort"
 	"strings"
+	"sync"
 )
+
+var registered struct {
+	sync.RWMutex
+	values []string
+}
+
+// Register covers opaque app credentials whose shape cannot identify them.
+// Removed keys remain protected because older logs can still mention them.
+func Register(value string) {
+	if value == "" {
+		return
+	}
+	registered.Lock()
+	defer registered.Unlock()
+	for _, known := range registered.values {
+		if known == value {
+			return
+		}
+	}
+	registered.values = append(registered.values, value)
+	sort.SliceStable(registered.values, func(i, j int) bool { return len(registered.values[i]) > len(registered.values[j]) })
+}
 
 // shape is one recognisable form of a secret.
 type shape struct {
@@ -172,6 +196,11 @@ func Secrets(text string) string {
 	if text == "" {
 		return text
 	}
+	registered.RLock()
+	for _, secret := range registered.values {
+		text = strings.ReplaceAll(text, secret, "[redacted]")
+	}
+	registered.RUnlock()
 	for _, s := range shapes {
 		text = s.apply(text)
 	}

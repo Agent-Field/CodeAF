@@ -783,7 +783,8 @@ URL, pid, build version, contract and absolute home. Logs go to stderr and
 `<home>/logs/app-serve.log`; stdout carries no further output.
 
 The transport serves authenticated `GET /app/v1/health`, `GET /app/v1/events`
-and `POST /app/v1/shutdown`. The A3 stream uses one 4096-record circular ring
+and `POST /app/v1/shutdown`; A2 adds `GET /app/v1/keys` and
+`PUT/DELETE /app/v1/keys/{provider}`. The A3 stream uses one 4096-record circular ring
 and a shared wake-up channel, ported from the desktop bridge's pull-based feed.
 Publishers use `Server.Events().Publish`; the hub freezes small typed JSON facts
 and never waits for readers. Epoch-qualified `e_<epoch>_<n>` cursors prevent
@@ -793,6 +794,15 @@ at the current head. The first frame is hello, keepalive comments run every
 20 seconds, and repeated `agent` filters restrict agent events while global
 events remain visible. Text deltas require an explicit agent filter. Resource
 lanes own the producers and their payloads; A3 starts no agents or pollers.
+
+The first stdin line supplies provider
+keys and factory sessions to `config.AppCredentials`, a synchronized memory
+source above shell/profile keys. PUT checks once before replacing a key;
+DELETE suppresses fallback. Keys are registered with exact-value redaction
+and never written by app-mode profile writers (`keys are kept by the app`).
+Local engine children receive a snapshot on `--keys-fd`, with key environment
+variables removed; they read it before session boot. The app mode marker
+carries only the write policy to descendant commands.
 
 Stdin EOF, parent-pid death, SIGINT, SIGTERM and HTTP
 shutdown share one cancellation path and a bounded HTTP drain. Resource
