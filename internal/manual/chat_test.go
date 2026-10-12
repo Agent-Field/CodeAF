@@ -4069,6 +4069,16 @@ func TestTeamFactoryQuestionsReachTheServiceInstructions(t *testing.T) {
 			says:  []string{"Agent-Field/codeaf-desk", "GET /", "serves no dashboard pages"},
 		},
 		{
+			asked: "how do I serve my team factory over https with a certificate",
+			title: "host a team factory over HTTPS",
+			says:  []string{"tls: auto", "domain", "Let's Encrypt", "cert_file", "auto needs domain"},
+		},
+		{
+			asked: "can I put the factory behind nginx or caddy as a reverse proxy",
+			title: "a team factory behind a reverse proxy",
+			says:  []string{"tls: off", "trusted_proxies", "X-Forwarded-Proto", "proxy_buffering off", "warning: serving plain HTTP"},
+		},
+		{
 			asked: "what is factory serve.json",
 			title: "factory discovery",
 			says:  []string{"serve.json", "{url, pid, token}", "process is alive", "GET /v1/queue", "SIGTERM"},

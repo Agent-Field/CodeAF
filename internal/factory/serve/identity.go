@@ -60,7 +60,7 @@ func flowCaller(r *http.Request) [32]byte {
 
 func (h *Handler) setSessionCookie(w http.ResponseWriter, r *http.Request, credential string, session accessSession) {
 	http.SetCookie(w, &http.Cookie{Name: accessCookieName, Value: credential, Path: "/",
-		HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil,
+		HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: secureRequest(r),
 		MaxAge: int(accessSessionTTL.Seconds()), Expires: session.expires})
 }
 

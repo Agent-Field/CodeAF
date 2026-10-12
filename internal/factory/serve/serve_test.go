@@ -169,8 +169,13 @@ func TestAccessUsesSocketPeer(t *testing.T) {
 			r := httptest.NewRequest(http.MethodGet, "/v1/queue", nil)
 			r.RemoteAddr = tc.peer
 			r.Host = "localhost"
-			r.Header.Set("X-Forwarded-For", "127.0.0.1")
-			r.Header.Set("Forwarded", "for=127.0.0.1")
+			// Forged forwarding headers must never grant a remote peer access.
+			// On a loopback peer they mark a proxy, which takes the open grant
+			// away (TestAnUnlistedLocalProxyDoesNotOpenTheLoopbackFloor).
+			if tc.auth != "" || tc.status != 200 {
+				r.Header.Set("X-Forwarded-For", "127.0.0.1")
+				r.Header.Set("Forwarded", "for=127.0.0.1")
+			}
 			if tc.auth != "" {
 				r.Header.Set("Authorization", tc.auth)
 			}

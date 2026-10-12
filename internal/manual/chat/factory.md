@@ -3,9 +3,11 @@
 ## codeaf factory serve — HTTP service, listen address and worker execution
 
 `codeaf factory` (also `codeaf factory serve`) runs the factory HTTP service alone,
-without opening chat or running a job itself. It prints its bound HTTP address.
+without opening chat or running a job itself. It prints the address to give people:
+`https://` and the domain when it serves HTTPS, otherwise its bound `http://` address.
 The default is `127.0.0.1:7420`. Use `--listen 127.0.0.1:0` for an available port,
-or `--listen 0.0.0.0:7420` to accept connections from other machines.
+or `--listen 0.0.0.0:443` with `domain` set to accept connections from other machines
+over HTTPS (see hosting a team factory over HTTPS).
 `GET /v1/queue` reads the saved jobs over loopback without an access token.
 `GET /` is a one-line pointer to codeaf (TUI), the codeaf app and `/v1`, not a dashboard.
 The team view lives in the codeaf app (`Agent-Field/codeaf-desk`).
@@ -22,13 +24,64 @@ reach that worker through its lease. With no worker attached, a job stays `queue
 The factory host config is `~/.codeaf/factory/config.yaml`; `codeaf factory --config path`
 selects another. `--listen` overrides its `listen` value. Supported keys are optional `name`, `listen`,
 `access_token`, `repos` (an array of `owner/name` strings), `github_client_id`
-(the OAuth app client id with device flow enabled) and optional `team` (GitHub
-handles, such as `team: [priya, "@sam"]`). A missing token is generated
+(the OAuth app client id with device flow enabled), optional `team` (GitHub
+handles, such as `team: [priya, "@sam"]`), and the HTTPS keys `tls`, `domain`,
+`cert_file`, `key_file`, `cache_dir` and `trusted_proxies`. A missing token is generated
 and saved in a private file. Unknown keys, invalid repository names and multiple YAML
 documents are refused. A supplied `repos` list replaces the watched repositories;
 an omitted list keeps the saved selection, and `repos: []` clears it.
 This host config is separate from a repository's pipeline file.
 `CODEAF_HOME` moves the default config and factory discovery paths.
+
+## host a team factory over HTTPS — tls auto, a certificate, domain and port 443
+
+Off this machine `codeaf factory serve` serves HTTPS. The host config key `tls`
+picks how: `auto`, `files` or `off`. Unset, it is `off` when `listen` is a loopback
+address, `files` when `cert_file` is set, and `auto` everywhere else.
+
+`tls: auto` gets a free certificate from Let's Encrypt for `domain`, the public
+name (for example `domain: factory.example.com`; no `https://`, no port). DNS for
+the name must point at the machine. Use `listen: 0.0.0.0:443`; port 80 on the same
+interface, when it can be opened, proves the name and redirects plain HTTP to
+HTTPS. The certificate is requested on the first HTTPS connection, renewed on its
+own, and kept in `cache_dir` (default: a `tls` folder beside the config file).
+Ports below 1024 need root or `cap_net_bind_service` on the binary.
+
+`tls: files` serves your own PEM pair from `cert_file` and `key_file`, and reads
+them again when either file changes, so a renewal needs no restart. A pair that
+cannot be loaded refuses to start.
+
+It refuses to start, in plain words, when `tls` is auto (or unset off loopback)
+and `domain` is missing: `auto needs domain, the public name its certificate is
+for`, followed by the three fixes. Other refusals: `tls must be auto, files or
+off`, `cert_file and key_file go together`, and `tls: auto cannot work on` a
+loopback address.
+
+Over HTTPS every response carries Strict-Transport-Security, the session cookie
+is Secure, and `GET /v1/about` reports `scheme` `https`. GitHub device sign-in and
+access links work unchanged. On this machine, windows and `revoke-sessions` keep
+using plain HTTP on a loopback port that `serve.json` names.
+
+## a team factory behind a reverse proxy — tls off, trusted_proxies, Caddy and nginx
+
+When Caddy, nginx or a load balancer already serves HTTPS, set `tls: off`, keep
+`listen` on loopback (for example `127.0.0.1:7420`), point the proxy at it, and
+list the proxy's address in `trusted_proxies` (addresses or ranges such as
+`10.0.0.0/8`). Set `domain` to the proxy's public name and codeaf prints
+`https://` and that name.
+
+Only a peer in `trusted_proxies` is believed about `X-Forwarded-For` and
+`X-Forwarded-Proto`; that decides the Secure cookie, Strict-Transport-Security and
+the `scheme` in `/v1/about`. A request with forwarding headers from any other peer
+is never treated as this machine, so an unlisted proxy cannot open the loopback
+floor; callers through it need a token or a sign-in.
+
+The event stream `/v1/events` must not be buffered: Caddy needs `flush_interval -1`,
+nginx `proxy_buffering off` (codeaf also sends `X-Accel-Buffering: no`).
+
+With `tls: off` and a `listen` address that is not loopback, `codeaf factory serve`
+prints a `warning: serving plain HTTP` line naming these options: tokens and
+sign-in sessions would cross the network unencrypted.
 
 ## codeaf factory name — show or change the factory display name
 
@@ -60,7 +113,7 @@ A window serving its factory in-process removes `serve.json` when it closes.
 
 Run `codeaf attach <url> [--name name] [--token token]`, then open a new `codeaf`
 window and `/factory`. The URL is the factory service's address, such as
-`http://team-host:7420`; HTTPS addresses work too. `--name` is how this machine is
+`https://factory.example.com` or `http://team-host:7420`. `--name` is how this machine is
 named there (default: its hostname). For a factory off loopback, ask its operator
 for the access token printed by `codeaf factory token` on the factory's machine,
 or one minted by `codeaf factory token add`, and supply it with `--token`.
@@ -176,7 +229,8 @@ Malformed forms or submissions larger than 4096 bytes return HTTP 400 with
 `invalid access form`.
 
 The cookie is HttpOnly and SameSite=Strict, covers `/v1`, and
-expires after 30 days. It is Secure when the service receives HTTPS directly.
+expires after 30 days. It is Secure when the caller's connection was HTTPS,
+received directly or through a proxy listed in `trusted_proxies`.
 Sessions are saved under the factory home and survive restarting the service.
 Only a hash of the cookie credential is saved; the cookie itself stays on the device.
 An expired, unknown or revoked cookie returns HTTP 401 off loopback.
@@ -1974,8 +2028,9 @@ unassigned team job to run. Runner facts and credential hashes survive restart.
 
 ## factory about, pipeline file, dry run and spent today
 
-`GET /v1/about` answers before any token. The body is `factory`, `name`, `codeaf_version`,
-`contract`, `needs`, `access`, `polling_every` and `served_by`. `needs` is `token`,
+`GET /v1/about` answers before any token. The body is `factory`, `scheme`, `name`, `codeaf_version`,
+`contract`, `needs`, `access`, `polling_every` and `served_by`. `scheme` is `https` or
+`http`: how this caller reached the factory. `needs` is `token`,
 `device` or `none`. `access` is `loopback`, `token` or `tailnet`. `served_by` is
 `tui` when a window is serving and `factory` when `codeaf factory` is. `polling_every`
 is present when this host polls GitHub, and absent when it does not. `name` and

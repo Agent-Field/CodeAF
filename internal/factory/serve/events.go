@@ -35,6 +35,9 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request) {
 	}
 	last := r.Header.Get("Last-Event-ID")
 	w.Header().Set("Content-Type", "text/event-stream")
+	// A reverse proxy that buffers responses would hold every event until the
+	// stream ends; nginx reads this header and passes each one straight on.
+	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 	if last != "" {

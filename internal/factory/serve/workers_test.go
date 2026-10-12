@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/http/httptrace"
+	"net/netip"
 	"reflect"
 	"strings"
 	"sync/atomic"
@@ -191,8 +192,12 @@ func TestWorkerAttachOwnerFallbackOnlyOnLoopback(t *testing.T) {
 				r.Header.Del("Authorization")
 				r.AddCookie(cookie.Result().Cookies()[0])
 			}
-			r.Header.Set("X-Forwarded-For", "127.0.0.1")
-			r.Header.Set("Forwarded", "for=127.0.0.1;host=localhost")
+			// Forged forwarding headers must never make a remote peer local.
+			// On a loopback peer they mark a proxy and take the fallback away.
+			if peer, err := netip.ParseAddrPort(tc.peer); err != nil || !peer.Addr().Unmap().IsLoopback() {
+				r.Header.Set("X-Forwarded-For", "127.0.0.1")
+				r.Header.Set("Forwarded", "for=127.0.0.1;host=localhost")
+			}
 			w := httptest.NewRecorder()
 			h.ServeHTTP(w, r)
 			if w.Code != tc.status || personCalls != tc.wantPersonCalls {

@@ -25,6 +25,20 @@ type factoryHostConfig struct {
 	Repos          []string `yaml:"repos"`
 	GitHubClientID string   `yaml:"github_client_id,omitempty"`
 	Team           []string `yaml:"team,omitempty"`
+	// TLS is auto, files or off; empty is auto off loopback and off on it
+	// ([resolveFactoryTLS] decides once the listen address is final).
+	TLS      string `yaml:"tls,omitempty"`
+	Domain   string `yaml:"domain,omitempty"`
+	CertFile string `yaml:"cert_file,omitempty"`
+	KeyFile  string `yaml:"key_file,omitempty"`
+	CacheDir string `yaml:"cache_dir,omitempty"`
+	// TrustedProxies are addresses or CIDR ranges whose forwarding headers
+	// the service believes.
+	TrustedProxies []string `yaml:"trusted_proxies,omitempty"`
+
+	// secure is the HTTPS keys resolved against the final listen address by
+	// `factory serve`; nil serves plain HTTP the way a window does.
+	secure *factoryTLS
 }
 
 // MarshalYAML keeps omission distinct from an explicit empty repository list,
@@ -48,6 +62,16 @@ func (cfg factoryHostConfig) MarshalYAML() (any, error) {
 	}
 	if cfg.Repos != nil {
 		doc["repos"] = cfg.Repos
+	}
+	// Every HTTPS key survives a token rotation, which rewrites this file.
+	for key, value := range map[string]string{"tls": cfg.TLS, "domain": cfg.Domain,
+		"cert_file": cfg.CertFile, "key_file": cfg.KeyFile, "cache_dir": cfg.CacheDir} {
+		if value != "" {
+			doc[key] = value
+		}
+	}
+	if len(cfg.TrustedProxies) > 0 {
+		doc["trusted_proxies"] = cfg.TrustedProxies
 	}
 	return doc, nil
 }
@@ -148,6 +172,9 @@ func readFactoryHostConfig(path string) (factoryHostConfig, error) {
 		if !store.RepoName(repo) {
 			return cfg, fmt.Errorf("factory config %s: %q is not owner/name", path, repo)
 		}
+	}
+	if err := checkFactoryTLSConfig(cfg); err != nil {
+		return cfg, fmt.Errorf("factory config %s: %w", path, err)
 	}
 	return cfg, nil
 }

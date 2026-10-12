@@ -6,7 +6,6 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
-	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -52,15 +51,11 @@ type accessSessions struct {
 }
 
 func loopbackRequest(r *http.Request) bool {
-	// Only the socket peer can grant loopback access. Forwarded headers and
-	// hostnames come from callers and must never open the floor.
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err == nil {
-		if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
-			return true
-		}
-	}
-	return false
+	// Only the socket peer can grant loopback access, and only when nobody
+	// forwarded the request: a proxy on this machine is a loopback peer for
+	// every caller on the internet. Forwarded headers from a trusted proxy may
+	// name a loopback caller; from anyone else they only take access away.
+	return clientOf(r).onThisMachine()
 }
 
 func (h *Handler) now() time.Time {

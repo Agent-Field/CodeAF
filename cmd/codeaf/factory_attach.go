@@ -111,7 +111,7 @@ func runDetach(args []string) error {
 func factoryURL(raw string) (string, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
-		return "", fmt.Errorf("%q is not a factory address; use http://host:port", raw)
+		return "", fmt.Errorf("%q is not a factory address; use https://host or http://host:port", raw)
 	}
 	return u.Scheme + "://" + u.Host, nil
 }

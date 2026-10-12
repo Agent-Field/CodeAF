@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"path"
 	"sort"
@@ -80,6 +81,10 @@ type Config struct {
 	// Needs is what a joiner must present: none, token or device.
 	// Empty is derived from Access. device is only what the host sets.
 	Needs string
+	// TrustedProxies are the addresses whose X-Forwarded-For and
+	// X-Forwarded-Proto are believed. Empty believes nobody's, and a request
+	// that carries them anyway is never treated as a caller on this machine.
+	TrustedProxies []netip.Prefix
 	// SpentToday is the runner's day figure when this process holds the
 	// ledger. Nil uses the floor's own reading of the same rule.
 	SpentToday func() float64
@@ -182,8 +187,13 @@ func (h *Handler) Close() {
 // ServeHTTP checks the peer before routing, so even errors cannot reveal the
 // floor to a remote caller without the host's access token or a live session.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	r = authRequest(r)
+	r = authRequest(h.withClient(r))
 	w.Header().Set("Cache-Control", "no-store")
+	// A caller who reached the factory over HTTPS is told to keep doing so.
+	// Over plain HTTP the header means nothing and is not sent.
+	if secureRequest(r) {
+		w.Header().Set("Strict-Transport-Security", hstsValue)
+	}
 	if workerPath(r.URL.Path) {
 		var ok bool
 		r, ok = h.authorizeWorker(w, r)
@@ -541,6 +551,7 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) about(w http.ResponseWriter, r *http.Request) {
 	h.write(w, http.StatusOK, struct {
 		Factory       api.Factory `json:"factory"`
+		Scheme        string      `json:"scheme"`
 		Name          string      `json:"name"`
 		CodeafVersion string      `json:"codeaf_version"`
 		Contract      int         `json:"contract"`
@@ -548,7 +559,7 @@ func (h *Handler) about(w http.ResponseWriter, r *http.Request) {
 		Access        string      `json:"access"`
 		PollingEvery  string      `json:"polling_every,omitempty"`
 		ServedBy      string      `json:"served_by"`
-	}{h.factory, h.aboutName(), h.factory.Version, api.Contract, h.needsWord(),
+	}{h.factory, scheme(r), h.aboutName(), h.factory.Version, api.Contract, h.needsWord(),
 		h.accessMode(), h.pollingEvery(), h.servedBy()})
 }
 

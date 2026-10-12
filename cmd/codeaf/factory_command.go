@@ -133,6 +133,11 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer,
 	if listen == "" {
 		listen = cfg.Listen
 	}
+	secure, err := resolveFactoryTLS(cfg, listen, filepath.Dir(configPath))
+	if err != nil {
+		return fmt.Errorf("factory config %s: %w", configPath, err)
+	}
+	cfg.secure = &secure
 	listener, err := net.Listen("tcp", listen)
 	if err != nil {
 		return fmt.Errorf("factory cannot listen on %s: %w", listen, err)
@@ -151,9 +156,14 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer,
 	// on the same parent the desk's worker uses. Triage reads it for every request.
 	setFactoryModelPin(model, oneModel)
 	startFactoryTriage(ctx, st)
-	address, server, done := service.url, service.server, service.done
-	if _, err := fmt.Fprintln(out, address); err != nil {
+	server, done := service.server, service.done
+	if _, err := fmt.Fprintln(out, service.public); err != nil {
 		return err
+	}
+	for _, line := range service.notes {
+		if _, err := fmt.Fprintln(out, line); err != nil {
+			return err
+		}
 	}
 	select {
 	case err := <-done:
@@ -175,8 +185,13 @@ func serveFactory(ctx context.Context, configPath, listen string, out io.Writer,
 // factoryService is one running factory HTTP service: the handler over a
 // seam, its server on a listener, and the serve.json receipt naming it.
 type factoryService struct {
+	// url is the address this machine's own clients dial, which serve.json
+	// names; public is the one a person is given. They differ when TLS is on.
 	url       string
+	public    string
+	notes     []string
 	server    *http.Server
+	door      *http.Server
 	handler   *serve.Handler
 	done      chan error
 	discovery string
@@ -213,7 +228,12 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 			mode = api.FactorySolo
 		}
 	}
-	handler := serve.New(seam, serve.Config{Mode: mode, OperatorLogin: host.OperatorLogin, Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: address, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
+	secure := factoryTLS{mode: factoryTLSOff}
+	if host.secure != nil {
+		secure = *host.secure
+	}
+	public := secure.publicURL(listener.Addr().String())
+	handler := serve.New(seam, serve.Config{Mode: mode, OperatorLogin: host.OperatorLogin, Name: host.Name, TrustedProxies: secure.proxies, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: public, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
 		ServedBy: servedBy, PollingEvery: poll,
 		PersonProfile: factoryPeople().Profile, CodeOwners: factoryPeople().Owners,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {
@@ -226,10 +246,24 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		// graceful shutdown waits on clients that are waiting on this process.
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
-	s := &factoryService{url: address, server: server, handler: handler, done: make(chan error, 1),
+	// Every listener reports its end here; only the first is read, so the
+	// channel holds one per listener and none of them blocks on the send.
+	s := &factoryService{url: address, public: public, server: server, handler: handler, done: make(chan error, 2),
 		discovery: filepath.Join(st.Root(), "serve.json")}
-	guard.Go("factory HTTP service", func() { s.done <- server.Serve(listener) })
-	body, err := json.Marshal(factoryDiscovery{URL: address, PID: os.Getpid(), Token: token})
+	served := listener
+	if secure.on() {
+		local, notes, err := s.serveTLS(ctx, secure, listener)
+		if err != nil {
+			return nil, err
+		}
+		served, s.notes = local, notes
+	} else if !factoryLoopbackListen(listener.Addr().String()) && host.secure != nil {
+		s.notes = append(s.notes, "warning: serving plain HTTP on "+listener.Addr().String()+
+			"; access tokens and sign-in sessions cross the network unencrypted. Serve HTTPS with tls: auto and a domain, "+
+			"or put a reverse proxy that serves HTTPS in front and list it in trusted_proxies (the manual: hosting a team factory over HTTPS)")
+	}
+	guard.Go("factory HTTP service", func() { s.done <- server.Serve(served) })
+	body, err := json.Marshal(factoryDiscovery{URL: s.url, PID: os.Getpid(), Token: token})
 	if err == nil {
 		err = writeFactoryPrivate(s.discovery, append(body, '\n'))
 	}
@@ -240,11 +274,55 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 	return s, nil
 }
 
+// serveTLS serves HTTPS on the public listener, and answers the plain-HTTP
+// local listener it opens in its place for serve.json.
+//
+// THIS MACHINE'S OWN CLIENTS KEEP PLAIN HTTP ON LOOPBACK. The certificate names
+// the domain, never 127.0.0.1, so a window or `revoke-sessions` dialling the
+// loopback address over HTTPS would be refused; a loopback socket never
+// crosses a network, so it has nothing for TLS to protect.
+func (s *factoryService) serveTLS(ctx context.Context, secure factoryTLS, listener net.Listener) (net.Listener, []string, error) {
+	_, port, _ := net.SplitHostPort(listener.Addr().String())
+	config, door, err := secure.serverTLS(port)
+	if err != nil {
+		return nil, nil, err
+	}
+	local, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, nil, err
+	}
+	s.url = "http://" + local.Addr().String()
+	s.server.TLSConfig = config
+	guard.Go("factory HTTPS service", func() { s.done <- s.server.ServeTLS(listener, "", "") })
+	var notes []string
+	if secure.mode == factoryTLSAuto {
+		notes = append(notes, "the certificate for "+secure.domain+" is requested on the first HTTPS connection, renewed on its own, and kept in "+secure.cacheDir)
+	}
+	if secure.redirect != "" {
+		plain, err := net.Listen("tcp", secure.redirect)
+		switch {
+		case err == nil:
+			s.door = &http.Server{Handler: door, ReadHeaderTimeout: 10 * time.Second,
+				BaseContext: func(net.Listener) context.Context { return ctx }}
+			guard.Go("factory HTTP redirect", func() { _ = s.door.Serve(plain) })
+		case secure.mode == factoryTLSAuto && port != "443":
+			notes = append(notes, "warning: cannot listen on "+secure.redirect+" ("+err.Error()+
+				"), and certificates need port 80 or HTTPS on port 443; no certificate can be issued until one of them is reachable")
+		case secure.mode == factoryTLSAuto:
+			notes = append(notes, "port 80 is not available, so certificates are proven on port 443 alone and plain HTTP is not redirected")
+		}
+	}
+	return local, notes, nil
+}
+
 // close stops serving and takes the receipt down, so nobody discovers a
 // service that is gone.
 func (s *factoryService) close() {
 	_ = os.Remove(s.discovery)
 	_ = s.server.Close()
+	if s.door != nil {
+		_ = s.door.Close()
+	}
 	s.handler.Close()
 }
 
