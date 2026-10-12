@@ -217,8 +217,9 @@ func (h *Handler) revokePerson(r *http.Request, handle string) error {
 func (h *Handler) soloJob(job *api.Job) {
 	it := api.ToItem(*job)
 	it.Assignee, it.Taker, it.Starter = "", "", ""
-	job.Can = api.CanFor(it, "")
+	job.Can = api.CanFor(it, "", h.clock())
 	job.AssignedTo = ""
+	job.Assignee, job.WaitingFor = "", ""
 	job.Can.AssignToMe = false
 	if job.Desk != nil {
 		job.Desk.Assignee, job.Desk.Starter, job.Desk.Taker = "", "", ""

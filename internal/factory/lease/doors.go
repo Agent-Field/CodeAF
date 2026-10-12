@@ -65,13 +65,16 @@ func (d *Doors) Launch(id int) error {
 // Stop puts the job back to new and takes its lease away: the worker learns
 // it on its next heartbeat or report, which the server no longer accepts, and
 // stops its runner. A dead worker needs to learn nothing.
-func (d *Doors) Stop(id int) error { return d.stop(id, nil) }
+func (d *Doors) Stop(id int) error { return d.stop(id, nil, true) }
 
 // StopAs records the caller when the HTTP door has authenticated one.
 // An unknown caller stays blank; only the local Stop door uses the job's person.
-func (d *Doors) StopAs(id int, handle string) error { return d.stop(id, &handle) }
+func (d *Doors) StopAs(id int, handle string) error { return d.stop(id, &handle, true) }
 
-func (d *Doors) stop(id int, caller *string) error {
+// Reset stops before reassignment or Drop without recording a second human action.
+func (d *Doors) Reset(id int) error { return d.stop(id, nil, false) }
+
+func (d *Doors) stop(id int, caller *string, receipt bool) error {
 	history, err := record.Open(d.desk.store, record.Options{Now: d.desk.now})
 	if err != nil {
 		return err
@@ -82,8 +85,10 @@ func (d *Doors) stop(id int, caller *string) error {
 		}
 		// THE PERSON'S STOP WINS: keep it durable while the job is locked,
 		// before intake can see the job back in the backlog.
-		if _, err := history.Append(context.Background(), record.Event{Kind: record.Stopped, Job: id, Handle: stopHandle(caller, it.Person())}); err != nil {
-			return false, err
+		if receipt {
+			if _, err := history.Append(context.Background(), record.Event{Kind: record.Stopped, Job: id, Handle: stopHandle(caller, it.Person())}); err != nil {
+				return false, err
+			}
 		}
 		it.Publishing = false
 		if held == nil {
@@ -138,6 +143,13 @@ func (d *Doors) Answer(id int, yes bool, words string) error {
 	}
 	return d.update(id, func(doc *document, held *Lease, it *factory.Item, now time.Time) (bool, error) {
 		if held == nil {
+			if it.QKind == factory.QKindApprove {
+				if err := run.AnswerHeld(it, yes, now); err != nil {
+					return false, err
+				}
+				it.State = factory.StateQueued
+				return false, nil
+			}
 			return false, run.KeepAnswer(it, yes, words, now)
 		}
 		if err := run.AnswerHeld(it, yes, now); err != nil {

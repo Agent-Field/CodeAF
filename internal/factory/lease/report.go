@@ -38,6 +38,10 @@ func (d *Desk) Apply(id, worker string, complete bool, change func(*factory.Item
 			}
 			if complete && !held.ThreadOnly {
 				it.Publishing = false
+				if it.State == factory.StateShipped && it.PullRequest == nil && it.CommentURL != "" {
+					it.DoneHow = "answered"
+					it.DoneAt = now
+				}
 			}
 			return nil
 		}); err != nil {

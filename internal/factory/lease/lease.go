@@ -205,6 +205,12 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 			return false, err
 		}
 		sort.Slice(items, func(i, j int) bool {
+			if items[i].Marked != items[j].Marked {
+				return items[i].Marked
+			}
+			if a, b := factory.PriorityRank(items[i]), factory.PriorityRank(items[j]); a != b {
+				return a < b
+			}
 			if items[i].Created.Equal(items[j].Created) {
 				return items[i].ID < items[j].ID
 			}

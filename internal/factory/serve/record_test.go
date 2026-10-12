@@ -28,8 +28,9 @@ func TestAnsweredQuestionKeepsItsPersonWordsClockAndEvent(t *testing.T) {
 				t.Fatal(err)
 			}
 			cfg.Store = st
-			cfg.LeaseOptions = lease.Options{Now: func() time.Time { return now }}
-			job, err := st.Create(factory.Item{State: factory.StateNeedsYou, Question: "continue?", QKind: factory.QKindApprove})
+			clock := now
+			cfg.LeaseOptions = lease.Options{Now: func() time.Time { return clock }}
+			job, err := st.Create(factory.Item{State: factory.StateNeedsYou, Question: "continue?", Assignee: "sam", QKind: factory.QKindApprove})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -51,6 +52,7 @@ func TestAnsweredQuestionKeepsItsPersonWordsClockAndEvent(t *testing.T) {
 			}
 			w := verbRequest(h, "POST", fmt.Sprintf("/v1/jobs/%d/%s", job.ID, verb), body)
 			checkJSON(t, w, 200)
+			clock = clock.Add(factory.ApprovalUndo)
 			w = verbRequest(h, "GET", fmt.Sprintf("/v1/jobs/%d", job.ID), "")
 			var got api.Job
 			if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
@@ -64,7 +66,7 @@ func TestAnsweredQuestionKeepsItsPersonWordsClockAndEvent(t *testing.T) {
 			if verb == "approve" {
 				words = "yes"
 			}
-			if a == nil || a.By != "sam" || a.Text != words || !a.At.Equal(now) || a.Event == "" {
+			if a == nil || a.By != "sam" || a.Text != words || !a.At.Equal(clock) || a.Event == "" {
 				t.Fatalf("answer receipt lost: %+v", a)
 			}
 			events, err := cfg.Record.Since(context.Background(), time.Time{})

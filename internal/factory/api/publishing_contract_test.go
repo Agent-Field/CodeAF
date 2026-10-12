@@ -35,7 +35,7 @@ func TestPublishingIsAdditiveContractOneAndRoundTrips(t *testing.T) {
 			t.Fatalf("lost publishing: %+v", back)
 		}
 		var old struct {
-			ID   int
+			ID   int `json:"document_id"`
 			Desk struct{ Publishing bool }
 		}
 		if err := json.Unmarshal(raw, &old); err != nil || old.ID != 7 || !old.Desk.Publishing {

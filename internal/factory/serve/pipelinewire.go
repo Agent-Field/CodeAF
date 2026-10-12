@@ -57,6 +57,7 @@ func problemNotes(problems []factory.Problem) []string {
 // runner's word. UntilSentence is the file's own until line.
 func wirePipeline(f pipeline.File) api.Pipeline {
 	p := api.FromRecipe(f.Recipe())
+	p.DefaultBudget = f.DefaultBudget
 	p.Text = f.Text
 	p.PersonalText = f.PersonalText
 	p.Personal = f.Personal

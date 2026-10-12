@@ -54,6 +54,8 @@ func matchTerm(it Item, t, viewer string) bool {
 	area := strings.ToLower(it.Triage.Area)
 	title := strings.ToLower(it.Title)
 	switch t {
+	case "is:dismissed":
+		return IsDismissed(it, viewer)
 	case "risky":
 		return len(it.Triage.Risk) > 0 || it.Triage.Size == "L"
 	case "cheap":
@@ -82,7 +84,7 @@ func matchTerm(it Item, t, viewer string) bool {
 	case "mine":
 		return viewer != "" && (it.Person() == viewer || NormalizeHandle(it.Author) == viewer)
 	}
-	hay := title + " " + strings.ToLower(it.Repo) + " " + area + " " +
+	hay := title + " " + strings.ToLower(JobRef(it)) + " " + strings.ToLower(it.Repo) + " " + area + " " +
 		strings.ToLower(it.Triage.Type) + " " + strings.ToLower(it.Author)
 	return strings.Contains(hay, t)
 }

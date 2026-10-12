@@ -19,6 +19,8 @@ import (
 const (
 	// SignalHold carries Seam.Hold: Yes is on (pause), false goes on.
 	SignalHold = "hold"
+	// SignalBudget carries the exact raised limit to the assignee's runner.
+	SignalBudget = "budget"
 	// SignalAnswer carries the person's answer to the question the run waits on.
 	SignalAnswer = "answer"
 	// SignalSteer carries words for the round running now.
@@ -43,10 +45,11 @@ const (
 
 // Signal is one verb a person asked of a job, with the door's own arguments.
 type Signal struct {
-	ID    string `json:"id,omitempty"`
-	Verb  string `json:"verb"`
-	Yes   bool   `json:"yes,omitempty"`
-	Words string `json:"words,omitempty"`
+	Budget float64 `json:"budget,omitempty"`
+	ID     string  `json:"id,omitempty"`
+	Verb   string  `json:"verb"`
+	Yes    bool    `json:"yes,omitempty"`
+	Words  string  `json:"words,omitempty"`
 }
 
 // Drain hands the holder of lease id every signal waiting for its job, oldest

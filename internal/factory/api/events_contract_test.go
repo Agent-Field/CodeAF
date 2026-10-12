@@ -37,6 +37,8 @@ func TestLiveEventsKeepContractOneAndSmallPayloads(t *testing.T) {
 		switch kind {
 		case factory.NeedsApprovePlan:
 			it.QKind = factory.QKindApprove
+		case factory.NeedsApproveStart:
+			it.QKind = factory.QKindAskFirst
 		case factory.NeedsSpendingLimit:
 			it.QKind = "cap"
 		case factory.NeedsOutOfAttempts:

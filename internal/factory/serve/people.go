@@ -26,10 +26,18 @@ func itemFiles(it factory.Item) []string {
 }
 
 // withPeople enriches only the already-filtered snapshot, never the source copy.
-func (h *Handler) withPeople(r *http.Request, s factory.Snapshot) (factory.Snapshot, map[string][]factory.CodeOwner) {
+func (h *Handler) withPeople(r *http.Request, s factory.Snapshot, allOwners ...bool) (factory.Snapshot, map[string][]factory.CodeOwner) {
 	s.Items = append([]factory.Item(nil), s.Items...)
 	people := map[string]factory.PersonSummary{}
 	rules := map[string][]factory.CodeOwner{}
+	// A job with no paths has no matching owners; fetching a file cannot
+	// change that answer and would hold an otherwise empty queue on GitHub.
+	needsOwners := map[string]bool{}
+	for _, it := range s.Items {
+		if len(itemFiles(it)) > 0 {
+			needsOwners[itemRepo(it)] = true
+		}
+	}
 	keys := map[string]bool{}
 	if h.config.Store != nil {
 		if watched, err := h.config.Store.Repos(); err == nil {
@@ -55,6 +63,9 @@ func (h *Handler) withPeople(r *http.Request, s factory.Snapshot) (factory.Snaps
 	}
 	if h.config.CodeOwners != nil {
 		for repo := range keys {
+			if !needsOwners[repo] && len(allOwners) == 0 {
+				continue
+			}
 			if !h.repoVisible(r, repo) {
 				continue
 			}
@@ -135,7 +146,7 @@ func (h *Handler) person(w http.ResponseWriter, r *http.Request) {
 			whole = false
 		}
 	}
-	s, rules := h.withPeople(r, s)
+	s, rules := h.withPeople(r, s, true)
 	if h.authFailed(w, r) {
 		return
 	}

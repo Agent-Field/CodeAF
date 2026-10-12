@@ -1,5 +1,104 @@
 # The factory
 
+
+## factory v2 jobs — states, reason, done and job id
+
+The factory API reports contract 2. A job has exactly one state: `needs_you`,
+`running`, `queued`, `backlog` or `done`. Its human `id` is the short repository
+and issue number, for example `api#1498`; `document_id` preserves the binary's
+numeric document identity. `/v1/jobs/{id}` accepts either identity (encode `#`
+as `%23` in a URL). Existing runner routes keep numeric lease and job fields.
+
+A published PR stays Running while CI or reviews run (`reason: github`). Changes
+requested or a merge conflict → Needs you. Merged → Done with `done_how: merged`; closed without a
+merge → Done with `done_how: closed`. A published no-diff answer is
+`done_how: answered`. Drop is `done_how: dropped`. The app can keep Done jobs in
+its Running view for one day using `done_at`; the binary keeps their history.
+
+`reason` explains Needs you or Running: `approval_plan`, `approval_proof`,
+`approval_start`, `question`, `budget`, `out_of_rounds`, `failed`,
+`runner_offline`, `changes_requested`, `conflict`, `publish_failed`, `step`, `publishing`
+or `github`. Other states omit it. Someone other than the assignee sees
+`waiting_for: @login`. `overlap` names two Running jobs in the same repository
+whose actual branch changes include the same file; planned paths alone do not
+make an overlap.
+
+## factory v2 priority, size labels and a job's own budget
+
+Priority is Urgent, High, Medium or Low. It is a person's choice, not an AI
+ranking. `POST /v1/jobs/{id}/priority` takes `{"priority":"high"}` and records
+`set_by`. Without a choice, labels supply defaults: `priority:urgent` or `P0`,
+`priority:high` or `P1`, `priority:medium` or `P2`, `priority:low` or `P3`.
+`bug` gives Medium only when there is no explicit priority label; no label
+leaves priority unset and sorts last. Runners take higher priority first, then
+older jobs. Start now moves a job ahead of the ordinary queue.
+
+Size comes from `size:XS`, `size:S`, `size:M`, `size:L` or `size:XL`. No size
+label leaves it unset; the app shows “—”. The API never uses the AI read's
+size or priority for these fields.
+
+A job's `budget` starts at the repository pipeline's `default_budget` (default
+$3), separate from an agent task cap. `POST /v1/jobs/{id}/raise_budget` takes
+`{"budget":10}`. Only the assignee may raise it, to a higher $5, $10, $20 or $30
+limit. Reaching the budget asks the assignee; raising a reached limit resumes
+the job. A personal pipeline may tighten the default, never widen it.
+
+## factory v2 approvals — plan, proof, start, Approving and Undo
+
+`approval.kind` is `plan`, `proof` or `start`. Start means a rule asked first;
+`matched` keeps the rule and the fact that matched (path, size or budget).
+Only the assignee approves. An unassigned job must be assigned first.
+
+`POST /v1/jobs/{id}/approve` takes the job's `head_commit` as `commit` for proof,
+plus `edited: true` when consenting to an unproven claim. It first checks stale
+reads and proof. Success records an `approving` decision with `decided_by`,
+`at` and `undo_until`, and returns the approval plus `undo_until`. For five
+seconds no answer or publish door opens. The app says “Approving… Undo”.
+`POST /v1/jobs/{id}/undo` withdraws that caller's decision before the deadline.
+After five seconds the server writes the approval receipt and resumes or
+publishes. The decision survives server restart. A changed head or refused
+door leaves the approval waiting with an error; it is not published.
+
+A plain question may be answered by anyone who can see the repository. The
+first accepted answer wins. A second writer receives HTTP 409 and the exact
+copy “@jm answered this 10s ago. Your answer wasn't sent.”, with the actual
+person and elapsed seconds. Approval and budget asks are assignee-only.
+
+## factory v2 Run, Start now, Stop, Dismiss, Drop and Unassign
+
+`run` queues Backlog work; `start_now` puts it first in the queue. A rule that
+asked first needs start approval before either verb can run it.
+`stop` ends Running, Queued or Needs you work and returns it to Backlog. Its
+branch stays; `undo` within five seconds restores the saved run (Running
+returns through Queued for a fresh runner lease).
+
+`dismiss` sets a per-person flag without changing state or stopping work.
+GitHub activity clears it. The default queue hides that person's dismissed
+jobs; `GET /v1/queue?q=is:dismissed` retrieves them.
+
+`drop` is final: Done, `done_how: dropped`. It stops the runner, leaves the
+GitHub issue open, and keeps the branch seven days. The service then deletes
+the factory branch and records `branch_deleted` in Activity. If deletion fails
+it retries; it never claims the branch was deleted before success. Run and
+Run again cannot revive Drop.
+
+`assign_to_me`, `change_assignee` (`{"assignee":"mei"}`), and `unassign` change
+ownership. Changing Running work stops it first; Unassign leaves Backlog with
+no assignee. Assignment is mirrored to GitHub. `nudge` sends a person-facing
+Activity event to the assignee, never a steer to their AI. `run_again` retries failed work or queues
+a PR closed without merge; it refuses merged or dropped work.
+
+## factory v2 Activity and compatible runner fields
+
+`GET /v1/activity` is the append-only Activity record. `?format=csv` exports
+it, and `?since=<RFC3339 timestamp>` limits it to later events. Events cannot
+be edited or deleted. Activity says assigned and unassigned where older
+records said took or released. `GET /v1/activity` remains a compatibility alias.
+Failure fields expose `rounds` and `runner`; older `attempts` and `machine`
+fields remain for existing clients. The older `gate` field remains alongside
+`approval`; new clients use approval. Contract 2 is required because the job
+id is now text, Drop is Done, and an open published PR is Running.
+
 ## codeaf factory serve — HTTP service, listen address and worker execution
 
 `codeaf factory` (also `codeaf factory serve`) runs the factory HTTP service alone,
@@ -1828,8 +1927,9 @@ Reading does not change a row's age. An item whose title or text changes on GitH
 refresh with `u` or `U`, is read again; the row says `reading` while its call runs, and the factory
 quotes the last read's cost.
 
-The read itself never dismisses, labels or comments. After the read, intake evaluates the
-repository's explicit start rules and may run a job or ask first (see automatic intake).
+The read itself never dismisses, labels or comments. The v2 intake decision uses
+explicit labels, budget and paths independently of this older terminal read;
+its AI estimates and rule judgments cannot grant permission to start.
 Without start rules it remains facts drawn dim. It runs in the window that opened the
 factory or in `codeaf factory`, one process per machine, and only while a key resolves; with no key there is no reading
 at all. Each call is a row on the spend ledger named `factory triage`, on the low seat.
@@ -1874,7 +1974,7 @@ credential the service answers HTTP 401 with
 
 `/v1/me` returns the caller's lowercase `handle`, GitHub `name`, `avatar_url`,
 `scopes` array and public `session_id`.
-`codeaf_version` identifies the build and `contract` remains 1. `machines` lists
+`codeaf_version` identifies the build and `contract` is 2. `machines` lists
 that handle's own machines. `takes_unassigned` is the map last saved for that
 handle, or `{}` when none has been saved. Before GitHub sign-in, an access token
 uses the factory owner's connected GitHub login. After sign-in the same token
@@ -2111,8 +2211,9 @@ moved since the page opened is `changed_since_opened`, with `by`, `at`,
 `commit`, `current_commit` and `head_commit`.
 
 `POST /v1/jobs/{id}/drop` takes `{"words":"why"}` or no body. The words are the
-detail on the `dropped` audit event. A worker holding the job is told to stop.
-Stop keeps the branch, and drop does not delete it. The job becomes `dropped`.
+detail on the `dropped` Activity event. A runner holding the job stops.
+The job becomes Done with `done_how: dropped`. Its issue stays open; its branch
+is kept seven days, then deleted with a `branch_deleted` Activity event.
 
 `POST /v1/jobs/{id}/release` is un-take. The person who took the job clears that
 take and the record says `released`. The branch is kept. A job nobody took
@@ -2268,12 +2369,12 @@ door, which still enforces the claims and policy gate and then publishes (see
 approving at the proof gate publishes). Any other job answers
 HTTP 409 with `job is not waiting for approval`.
 
-Success answers HTTP 200 with `{"factory":{"name":"…","address":"…","version":"…"},
-"event":"evt_…"}`. A claim that is not shown, and no `edited`, answers HTTP 409
-with `#N has a claim not shown` and writes no event. When the check passes, the
-receipt is written and the publish door reads it as the trailer. A plan approval
-writes the receipt only after the answer door accepts. A refused door leaves no
-`approved` event. A factory with no record refuses with `approval requires a factory record`.
+Success answers HTTP 200 with `approval` and `undo_until`. The server waits
+five seconds before the answer or publishing door opens; `undo` cancels the
+pending decision. After the deadline, the accepted decision writes its
+`approved` event. A moved head or refused door stays waiting with an error.
+A claim not shown without `edited` answers HTTP 409 and writes no approval.
+A factory with no record refuses with `approval requires a factory record`.
 
 ## factory publishing states, publish failed and Retry publishing
 
@@ -2301,9 +2402,9 @@ After the factory opens a pull request, or posts proof on one, every GitHub poll
 reads that pull request again. The open list drops it once it merges or closes,
 so this read is separate. A comment-only publish has `pr: null` and is not followed.
 
-The job stays `done`. That means the factory published. It is not a new job state.
-`pr.state` is where the pull request is, which is what the design calls PR open
-and Merged:
+The job stays `running` while the published PR is open, with `reason: github`.
+Changes requested make it `needs_you`; merging or closing makes it `done`.
+`pr.state` carries the GitHub facts:
 
 - `open` — still open. The design calls this PR open.
 - `merged` — someone merged it. The design calls this Merged. `merged_by` is the
@@ -2379,11 +2480,11 @@ Unknown `/v1` paths return the JSON error `factory endpoint not found`.
 The app reads `/v1` JSON and the `/v1/events` change stream. `codeaf attach` uses the
 same address for new terminal windows; `serve.json` records the bound address on its host.
 
-## factory HTTP record — audit events and CSV export
+## factory HTTP Activity — events and CSV export
 
-`GET /v1/audit` reads the factory's record as JSON `{factory, events}`.
+`GET /v1/activity` reads the factory's record as JSON `{factory, events}`.
 `since=<RFC3339 timestamp>` limits the read to later events.
-`GET /v1/audit?format=csv` downloads `factory-record.csv`, with columns
+`GET /v1/activity?format=csv` downloads `factory-record.csv`, with columns
 `id`, `at`, `kind`, `job`, `handle`, `cost`, `detail`.
 A factory with no record says `this factory does not provide that read`.
 These reads require the same access as the other factory API calls.
@@ -2743,7 +2844,7 @@ after you have opened `/factory` once. On a narrow bar the places after it fold 
 first; a `Factory` with a count stays on the bar. `alt+9` still opens it, whatever its place on
 the bar.
 
-## factory record, audit history and CSV export
+## factory Activity history and CSV export
 
 A factory service supplied with a record keeps append-only `events.jsonl` beside its
 saved jobs. Each event has `id`, `at`, `kind`, `job`, `handle`, `cost` and `detail`.
@@ -2754,7 +2855,7 @@ changes doors record successful actions; the stop door records the stop before r
 the job to backlog. Automatic starts through Add work record
 `auto_started`. The claims desk's Take wiring remains a separate service connection.
 
-`GET /v1/audit` returns `events` with the factory identity. Add `?since=<RFC3339 timestamp>`
+`GET /v1/activity` returns `events` with the factory identity. Add `?since=<RFC3339 timestamp>`
 for events strictly after that instant. Add `?format=csv` (or combine it with `since`)
 to download `factory-record.csv`, with the same events in append order. Both reads
 use the service's normal access check. A service without a record cannot provide
@@ -2806,7 +2907,7 @@ Personal `~/.codeaf/factory.yaml` may remove allowed labels, lower size or cost,
 paths or `ask_first` sentences, and tighten other constraints. Looser personal values are
 ignored and shown as problems; they cannot enable work the repository did not allow.
 
-The record stores `auto_started` with `inside start rules`. Check `GET /v1/audit` or the
+The record stores `auto_started` with `inside start rules`. Check `GET /v1/activity` or the
 CSV record to see why it began. Intake does not repeatedly start the same job, and a
 stopped job stays stopped until you run it. A chat's `factory_add` card only adds work;
 a forge job with matching start labels can start later through intake. Publishing still
@@ -2814,27 +2915,30 @@ requires a person. The day rail and restrictions on writing strangers' work stil
 
 ## asked first — what does asked first mean, why didn't a labeled job start
 
-A candidate outside the start rules waits on a question of kind `ask_first`:
-`asked first: <reason>. Start this job?`. Reasons include size or estimated cost over the
-limit, cost over your cap, `never` paths, a matching `ask_first` sentence or a stranger's PR.
-Answer yes to queue it; no leaves it in backlog. `asked_first_reason` remains on the job
-after either answer, and the record keeps `asked_first`. Intake does not ask again.
+A candidate outside the start rules needs `approval.kind: start`, with
+“Approval needed: start · <reason>”. Reasons use label size, job budget and
+explicit paths. `approval.matched` keeps the rule and fact. Approve waits five
+seconds for Undo; only the assignee may approve. The matched reason remains
+on the job as `asked_first_reason`, and Activity keeps `asked_first`.
+Intake does not ask again. The question this approval answers is “Start this job?”.
+Sending `yes` through the older answer door uses the same five-second delay.
 
-`never` globs match paths in issue text, triage's inferred paths, the plan and PR files;
-`*` covers one path segment and `**` any number. Triage judges `ask_first` sentences in
-its cheap call. An omitted judgment or a judgment for old sentences asks first.
-An unreadable pipeline cannot start a job.
+Intake applies rules in code without an AI read. `never` globs match paths in
+the issue, plan or changed files. `*` covers one segment and `**` any number.
+`ask_first` path rules use `touches <glob>`, `touch <glob>` or `path:<glob>`.
+An unrecognised sentence asks first; a model cannot clear it. Without a start
+label nothing starts. An unreadable pipeline cannot start a job.
 
 ## size rules — measured PR lines, issue model or size labels
 
-`size.pr_lines: [50, 400]` means up to 50 changed lines is S, up to 400 is M, more is L.
-PRs use added plus removed lines from their files; an unread or truncated file list asks
-first rather than guessing. Issues default to `size.issue: model`, the triage size rubric;
-`size.issue: label` uses `size/S`, `size/M` or `size/L` instead. With several size labels,
-the largest wins. Missing size or a missing required size label asks first.
+The v2 job field and automatic intake use `size:XS`, `size:S`, `size:M`,
+`size:L` or `size:XL`. No label leaves size unset and a start candidate asks
+first. Job budget is the actual pipeline default or the person's raised
+limit; an AI estimate is never permission to start.
 
-An unknown cost estimate is not treated as over budget. Personal limits can lower the
-PR line thresholds, but cannot change the repository's issue size method.
+The older `size.pr_lines` and `size.issue` keys remain readable for the
+terminal's legacy read and compatibility dry-run clients. They do not set
+the v2 job's size or automatic intake decision.
 
 ## stopped job stays stopped — stop, run and go under automatic intake
 

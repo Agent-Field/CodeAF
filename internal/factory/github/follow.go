@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
@@ -28,7 +29,8 @@ func (s *Source) FollowPR(ctx context.Context, owner, repo string, number int) (
 	}
 	out := factory.PullRequest{
 		Number: p.Number, URL: p.URL, Draft: p.Draft,
-		State: pullFollowState(p), MergedBy: p.MergedBy, MergedAt: p.MergedAt,
+		Conflict: p.Mergeable != nil && !*p.Mergeable,
+		State:    pullFollowState(p), MergedBy: p.MergedBy, MergedAt: p.MergedAt,
 	}
 	if p.HeadSHA != "" {
 		state, runs, err := s.api.CheckRuns(ctx, owner, repo, p.HeadSHA)
@@ -181,6 +183,10 @@ func followOpened(ctx context.Context, src factory.Source, st *store.Store) erro
 			}
 			cp := next
 			item.PullRequest = &cp
+			item.DismissedBy = nil
+			if (cp.State == factory.PRMerged || cp.State == factory.PRClosed) && item.DoneAt.IsZero() {
+				item.DoneAt = time.Now().UTC()
+			}
 			applied = true
 			return nil
 		}); err != nil || !applied || rec == nil {

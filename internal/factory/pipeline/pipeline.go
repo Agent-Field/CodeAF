@@ -47,12 +47,13 @@ const (
 // Personal files are the exception: an omitted key there means no opinion,
 // and [Merge] is what applies one.
 type File struct {
-	Start    Start
-	Size     Size
-	Pipeline map[factory.Kind][]string
-	Steps    map[string]Step
-	Fixed    []string
-	Rules    []string
+	DefaultBudget float64
+	Start         Start
+	Size          Size
+	Pipeline      map[factory.Kind][]string
+	Steps         map[string]Step
+	Fixed         []string
+	Rules         []string
 	// Source is defaults, file or markdown. From is where it was read
 	// (factory.FromMainBranch and its siblings), empty until [Load].
 	Source string
@@ -123,21 +124,23 @@ func (p Problem) Error() string {
 
 // presence is which keys were in the file, so a personal file can omit one.
 type presence struct {
-	labels   bool
-	maxSize  bool
-	maxCost  bool
-	never    bool
-	askFirst bool
-	prLines  bool
-	issue    bool
-	pipeline map[factory.Kind]bool
-	fixed    bool
-	rules    bool
+	defaultBudget bool
+	labels        bool
+	maxSize       bool
+	maxCost       bool
+	never         bool
+	askFirst      bool
+	prLines       bool
+	issue         bool
+	pipeline      map[factory.Kind]bool
+	fixed         bool
+	rules         bool
 }
 
 // Defaults is the file a repository with nothing of its own runs.
 func Defaults() File {
 	return File{
+		DefaultBudget: factory.DefaultJobBudget,
 		Start: Start{
 			Labels:   []string{},
 			MaxSize:  DefaultMaxSize,
@@ -222,7 +225,8 @@ func FormatSteps() string {
 // the issue steps. The empty list stays on [File.Pipeline], which is the file.
 func (f File) Recipe() factory.Recipe {
 	r := factory.Recipe{
-		Source: f.Source,
+		Source:        f.Source,
+		DefaultBudget: f.DefaultBudget,
 
 		Adapt:  copyAdapt(f.markdownAdapt),
 		Policy: append([]string(nil), f.Rules...),

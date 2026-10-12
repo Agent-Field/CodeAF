@@ -135,6 +135,7 @@ type Stage struct {
 // the recipe file keeps under `## habits` (recipefile.go), which a [Repo]
 // carries as its own Habits once loaded.
 type Recipe struct {
+	DefaultBudget float64
 	// Source and Problems keep the pipeline read visible on every surface.
 	Source   string
 	Problems []string
@@ -346,6 +347,7 @@ type PRChecks struct {
 // State, the merge, the reviews and the check summary are filled when a
 // later poll reads the pull request again.
 type PullRequest struct {
+	Conflict       bool
 	Draft          bool
 	Number         int
 	URL            string
@@ -364,6 +366,16 @@ type PullRequest struct {
 const QKindAskFirst = "ask_first"
 
 type Item struct {
+	// Job decisions belong to the binary; presentation derives from these facts.
+	Priority        *JobPriority `json:",omitempty"`
+	DismissedBy     []string     `json:",omitempty"`
+	DoneHow         string       `json:",omitempty"`
+	DoneAt          time.Time    `json:",omitempty"`
+	BranchDeleteAt  time.Time    `json:",omitempty"`
+	BranchDeletedAt time.Time    `json:",omitempty"`
+	Approval        *Approval    `json:",omitempty"`
+	StopUndo        *StopUndo    `json:",omitempty"`
+
 	// Owners is derived from default-branch CODEOWNERS for the wire and fixture.
 	Owners  []string `json:",omitempty"`
 	ID      int

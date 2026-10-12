@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +18,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
-	"github.com/Agent-Field/codeaf/internal/factory/triage"
 )
 
 type source struct{ items []factory.Item }
@@ -33,20 +30,21 @@ func (s source) Write(context.Context, factory.Action) (factory.Receipt, error) 
 	panic("intake must not post")
 }
 
-func TestPollThenTriageStartsOrAsksFirst(t *testing.T) {
+func TestPollUsesLabelSizeAndBudgetWithoutAnAIRead(t *testing.T) {
 	cases := []struct {
-		name, policy, body, reply, reason string
-		start                             bool
+		name, policy, body, size, reason string
+		start                            bool
 	}{
-		{"small labeled issue", "start:\n  labels: [agent-ready]\n", "fix docs/readme.md", `{"read":"Fix docs", "size":"S", "est_usd":1}`, "", true},
-		{"auth path", "start:\n  labels: [agent-ready]\n  never: [auth/**]\n", "fix auth/keys.go", `{"read":"Fix auth", "size":"S", "est_usd":1}`, "auth/**", false},
-		{"auth directory", "start:\n  labels: [agent-ready]\n  never: [auth/**]\n", "update auth/", `{"read":"Fix auth", "size":"S"}`, "auth/**", false},
-		{"cost", "start:\n  labels: [agent-ready]\n  max_cost: 2\n", "fix docs", `{"read":"Fix docs", "size":"S", "est_usd":3}`, "over $2", false},
-		{"large", "start:\n  labels: [agent-ready]\n  max_size: M\n", "fix docs", `{"read":"Fix docs", "size":"L"}`, "this one is L", false},
-		{"matched sentence", "start:\n  labels: [agent-ready]\n  ask_first: [changes secrets]\n", "change stored secrets", `{"read":"Fix secrets", "size":"S", "ask_first_matched":["changes secrets"]}`, "changes secrets", false},
-		{"omitted judgment", "start:\n  labels: [agent-ready]\n  ask_first: [changes secrets]\n", "fix docs", `{"read":"Fix docs", "size":"S"}`, "not judged yet", false},
-		{"cleared sentences", "start:\n  labels: [agent-ready]\n  ask_first: [changes secrets]\n", "fix docs", `{"read":"Fix docs", "size":"S", "ask_first_matched":[]}`, "", true},
-		{"no start block", "rules: [keep changes small]\n", "fix docs", `{"read":"Fix docs", "size":"S"}`, "", false},
+		{"small labeled issue", "start:\n  labels: [agent-ready]\n", "fix docs/readme.md", "S", "", true},
+		{"auth path", "start:\n  labels: [agent-ready]\n  never: [auth/**]\n", "fix auth/keys.go", "S", "auth/**", false},
+		{"auth directory", "start:\n  labels: [agent-ready]\n  never: [auth/**]\n", "update auth/", "S", "auth/**", false},
+		{"budget", "default_budget: 3\nstart:\n  labels: [agent-ready]\n  max_cost: 2\n", "fix docs", "S", "job budget $3 is over $2", false},
+		{"large", "start:\n  labels: [agent-ready]\n  max_size: M\n", "fix docs", "L", "this one is L", false},
+		{"path rule", "start:\n  labels: [agent-ready]\n  ask_first: [touches auth/**]\n", "fix auth/keys.go", "S", "touches auth/**", false},
+		{"unknown rule asks", "start:\n  labels: [agent-ready]\n  ask_first: [changes secrets]\n", "fix docs", "S", "changes secrets", false},
+		{"unmatched path", "start:\n  labels: [agent-ready]\n  ask_first: [touches auth/**]\n", "fix docs/readme.md", "S", "", true},
+		{"missing size", "start:\n  labels: [agent-ready]\n", "fix docs", "", "no size label", false},
+		{"no start block", "rules: [keep changes small]\n", "fix docs", "S", "", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -58,14 +56,18 @@ func TestPollThenTriageStartsOrAsksFirst(t *testing.T) {
 			if err := st.SetRepos([]string{"owner/repo"}); err != nil {
 				t.Fatal(err)
 			}
-			dir := t.TempDir()
-			if err := os.MkdirAll(filepath.Join(dir, ".codeaf"), 0700); err != nil {
+			f, err := pipeline.Parse(tc.policy)
+			if err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(dir, pipeline.RepoFile), []byte(tc.policy), 0600); err != nil {
-				t.Fatal(err)
+			if tc.name != "budget" {
+				f.DefaultBudget = 1
 			}
-			src := source{[]factory.Item{{Repo: "owner/repo", Num: 1, Kind: factory.KindIssue, Tier: factory.TierOwner, Title: "Incoming job", Body: tc.body, Labels: []string{"agent-ready"}}}}
+			labels := []string{"agent-ready"}
+			if tc.size != "" {
+				labels = append(labels, "size:"+tc.size)
+			}
+			src := source{[]factory.Item{{Repo: "owner/repo", Num: 1, Kind: factory.KindIssue, Tier: factory.TierOwner, Title: "Incoming job", Body: tc.body, Labels: labels, Triage: factory.Triage{Size: "XL", Est: 999, Priority: 1, StartJudged: true, StartMatched: []string{}}}}}
 			if _, err := github.PollOnce(ctx, src, st, "", func() time.Time { return time.Unix(100, 0) }); err != nil {
 				t.Fatal(err)
 			}
@@ -74,30 +76,18 @@ func TestPollThenTriageStartsOrAsksFirst(t *testing.T) {
 				t.Fatal(err)
 			}
 			started := 0
-			in := intake.New(st, intake.Options{Record: history, Load: func(string) (pipeline.File, error) { return pipeline.Load(dir) }, Launch: func(id int) error {
+			in := intake.New(st, intake.Options{Record: history, Load: func(string) (pipeline.File, error) { return f, nil }, Launch: func(id int) error {
 				started++
 				return st.Update(id, func(it *factory.Item) error { it.State = factory.StateQueued; return nil })
 			}})
-			if err := in.Once(ctx); err != nil {
-				t.Fatal(err)
-			}
-			if started != 0 {
-				t.Fatal("started before triage")
-			}
-			triage.ReadOne(ctx, st, func(_ context.Context, prompt string) (string, error) {
-				if strings.Contains(tc.policy, "ask_first:") && !strings.Contains(prompt, "changes secrets") {
-					t.Fatal("triage did not receive the rule")
-				}
-				return tc.reply, nil
-			}, triage.Options{AskFirst: in.AskFirst})
 			for range 2 {
 				if err := in.Once(ctx); err != nil {
 					t.Fatal(err)
 				}
 			}
 			items, err := st.List()
-			if err != nil {
-				t.Fatal(err)
+			if err != nil || len(items) != 1 {
+				t.Fatalf("items %+v %v", items, err)
 			}
 			it := items[0]
 			events, err := history.Since(ctx, time.Time{})
@@ -107,18 +97,18 @@ func TestPollThenTriageStartsOrAsksFirst(t *testing.T) {
 			switch {
 			case tc.start:
 				if started != 1 || it.State != factory.StateQueued || len(events) != 1 || events[0].Kind != record.AutoStarted {
-					t.Fatalf("started %d, item %+v, events %+v", started, it, events)
+					t.Fatalf("started %d item %+v events %+v", started, it, events)
 				}
 			case tc.reason != "":
-				if started != 0 || it.State != factory.StateNeedsYou || it.QKind != factory.QKindAskFirst || !strings.Contains(it.Question, "asked first: ") || !strings.Contains(it.Question, tc.reason) || len(events) != 1 || events[0].Kind != record.AskedFirst {
-					t.Fatalf("item %+v, events %+v", it, events)
+				if started != 0 || it.State != factory.StateNeedsYou || it.QKind != factory.QKindAskFirst || !strings.Contains(it.Question, "Approval needed: start") || !strings.Contains(it.Question, tc.reason) || len(events) != 1 || events[0].Kind != record.AskedFirst {
+					t.Fatalf("item %+v events %+v", it, events)
 				}
-				if api.FromItem(it).AskedFirstReason != it.AskedFirstReason {
-					t.Fatal("browser loses the matched rule")
+				if api.FromItem(it).Approval.Matched != it.AskedFirstReason {
+					t.Fatal("matched rule lost")
 				}
 			default:
 				if started != 0 || it.State != factory.StateNew || len(events) != 0 {
-					t.Fatalf("no start block: %+v, %+v", it, events)
+					t.Fatalf("no automatic start %+v %+v", it, events)
 				}
 			}
 		})
@@ -145,12 +135,12 @@ func TestStoppedJobStaysStoppedUntilPersonRunsIt(t *testing.T) {
 	}
 	now := time.Unix(100, 0)
 	it, err := st.Create(factory.Item{Repo: "owner/repo", Num: 1, Kind: factory.KindIssue,
-		State: factory.StateNew, Labels: []string{"agent-ready"},
+		State: factory.StateNew, Labels: []string{"agent-ready", "size:S"},
 		Triage: factory.Triage{TriagedAt: now, Size: "S", Est: 1}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, err := pipeline.Parse("start:\n  labels: [agent-ready]\n")
+	f, err := pipeline.Parse("default_budget: 1\nstart:\n  labels: [agent-ready]\n")
 	if err != nil {
 		t.Fatal(err)
 	}

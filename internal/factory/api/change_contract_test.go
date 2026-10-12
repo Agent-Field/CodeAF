@@ -40,7 +40,7 @@ func TestChangeFactsAreAdditiveContractOne(t *testing.T) {
 		}
 	}
 	var oldClient struct {
-		ID    int    `json:"id"`
+		ID    int    `json:"document_id"`
 		State string `json:"state"`
 	}
 	if err := json.Unmarshal(raw, &oldClient); err != nil || oldClient.ID != it.ID || oldClient.State != StateRunning {

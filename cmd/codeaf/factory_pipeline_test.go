@@ -78,7 +78,7 @@ func TestFactoryRulesFromForgeReachIntakeAndPipeline(t *testing.T) {
 	// The intake's refresh also reads CODEOWNERS; sealed, it never reaches api.github.com
 	// (whose retry backoff held this test for minutes).
 	sealFactoryPeople(t)
-	text := "start:\n  labels: [agent-ready]\n"
+	text := "default_budget: 1\nstart:\n  labels: [agent-ready]\n"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/repos/owner/repo/contents/"+pipeline.RepoFile {
 			http.NotFound(w, r)
@@ -102,7 +102,7 @@ func TestFactoryRulesFromForgeReachIntakeAndPipeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	it, err := st.Create(factory.Item{Repo: "owner/repo", Kind: factory.KindIssue, Tier: factory.TierOwner,
-		Title: "Fix documentation", State: factory.StateNew, Labels: []string{"agent-ready"},
+		Title: "Fix documentation", State: factory.StateNew, Labels: []string{"agent-ready", "size:S"},
 		Triage: factory.Triage{Size: "S", Est: 1, TriagedAt: time.Unix(100, 0)}})
 	if err != nil {
 		t.Fatal(err)

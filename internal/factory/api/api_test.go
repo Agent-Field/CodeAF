@@ -251,8 +251,8 @@ func TestStatesAndGates(t *testing.T) {
 		{factory.StateNeedsYou, "which file?", "scope", StateNeedsYou, GateQuestion, false},
 		{factory.StateLanded, "", "", StateNeedsYou, GateProof, true},
 		{factory.StateShipped, "", "", StateDone, "", false},
-		{factory.StateDismissed, "", "", StateDropped, "", false},
-		{"someday", "", "", "someday", "", false},
+		{factory.StateDismissed, "", "", StateDone, "", false},
+		{"someday", "", "", StateBacklog, "", false},
 	}
 	for _, c := range cases {
 		it := factory.Item{State: c.state, Question: c.q, QKind: c.qkind}

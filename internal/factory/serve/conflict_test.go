@@ -12,7 +12,6 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
-	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -242,12 +241,9 @@ func TestDropRecordsWordsAndStopsTheHolder(t *testing.T) {
 		t.Fatalf("audit: %+v %v", events, err)
 	}
 	beat := authed(h, "POST", "/v1/workers/leases/"+held.Lease.ID+"/heartbeat", worker.Credential, "")
-	checkJSON(t, beat, 200)
-	var hb struct {
-		Signals []api.WorkerSignal `json:"signals"`
-	}
-	if err := json.Unmarshal(beat.Body.Bytes(), &hb); err != nil || len(hb.Signals) != 1 || hb.Signals[0].Verb != lease.SignalStop {
-		t.Fatalf("stop signal: %s %v", beat.Body, err)
+	checkJSON(t, beat, 409)
+	if !strings.Contains(beat.Body.String(), "lease is no longer live") {
+		t.Fatalf("dropped runner remained live: %s", beat.Body)
 	}
 }
 

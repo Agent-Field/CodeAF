@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
@@ -268,5 +269,39 @@ func TestAPrWithNoRemoteSaysSoAndPostsNothing(t *testing.T) {
 	}
 	if len(f.got) != 0 {
 		t.Errorf("a pr was opened after the push failed: %+v", f.got)
+	}
+}
+
+func TestDroppedBranchKeepsSevenDaysAndDeletionLeavesTheCheckout(t *testing.T) {
+	checkout := gitRig(t)
+	w := NewWorkdirs(filepath.Join(t.TempDir(), "work"), ExecGit{})
+	it := wdItem()
+	dir, err := w.For(it, checkout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC)
+	it.DoneHow = "dropped"
+	it.BranchDeleteAt = at.Add(factory.DroppedBranchRetention)
+	if err := w.DeleteDropped(it, checkout, it.BranchDeleteAt.Add(-time.Nanosecond)); err == nil {
+		t.Fatal("early delete")
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatal("worktree disappeared early")
+	}
+	if err := w.DeleteDropped(it, checkout, it.BranchDeleteAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatal("dropped worktree remains")
+	}
+	if branches := mustGit(t, checkout, "branch", "--list", w.Branch(it)); branches != "" {
+		t.Fatal(branches)
+	}
+	if _, err := os.Stat(filepath.Join(checkout, "ledger.go")); err != nil {
+		t.Fatal("checkout changed")
+	}
+	if err := w.DeleteDropped(it, checkout, it.BranchDeleteAt); err != nil {
+		t.Fatal("retry is not idempotent", err)
 	}
 }

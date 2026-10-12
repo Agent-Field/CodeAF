@@ -23,15 +23,23 @@ import (
 )
 
 const (
-	Started     = "started"
-	Stopped     = "stopped"
-	AutoStarted = "auto_started"
-	AskedFirst  = "asked_first"
-	Approved    = "approved"
-	Answered    = "answered"
-	Posted      = "posted"
-	Took        = "took"
-	Dropped     = "dropped"
+	Dismissed       = "dismissed"
+	Assigned        = "assigned"
+	Unassigned      = "unassigned"
+	Nudged          = "nudged"
+	PriorityChanged = "priority_changed"
+	BudgetRaised    = "budget_raised"
+	BranchDeleted   = "branch_deleted"
+	Undone          = "undone"
+	Started         = "started"
+	Stopped         = "stopped"
+	AutoStarted     = "auto_started"
+	AskedFirst      = "asked_first"
+	Approved        = "approved"
+	Answered        = "answered"
+	Posted          = "posted"
+	Took            = "took"
+	Dropped         = "dropped"
 	// Released is un-take: the person who took the job let it go. It does not
 	// withdraw an approval the way a drop does.
 	Released       = "released"
@@ -145,6 +153,8 @@ func (r *Record) Append(ctx context.Context, event Event) (Event, error) {
 			kind = "approved"
 		case Took:
 			kind = "taken"
+		case Nudged:
+			kind = "nudged"
 		}
 		notifications := []live.Event{live.New("activity", event.Job, event)}
 		if kind != "" {
@@ -160,7 +170,7 @@ func (r *Record) Append(ctx context.Context, event Event) (Event, error) {
 
 func validate(e Event) error {
 	switch e.Kind {
-	case Started, Stopped, AutoStarted, AskedFirst, Approved, Answered, Posted, Took, Dropped, Released, RequestChanges, PRMerged, PRClosed, StepFailed, RunnerAdded, RunnerChanged, ReposChanged, LinkCreated, LinkRevoked, SessionsRevoked:
+	case Dismissed, Assigned, Unassigned, Nudged, PriorityChanged, BudgetRaised, BranchDeleted, Undone, Started, Stopped, AutoStarted, AskedFirst, Approved, Answered, Posted, Took, Dropped, Released, RequestChanges, PRMerged, PRClosed, StepFailed, RunnerAdded, RunnerChanged, ReposChanged, LinkCreated, LinkRevoked, SessionsRevoked:
 	default:
 		return fmt.Errorf("factory record: unknown event kind %q", e.Kind)
 	}

@@ -182,6 +182,10 @@ func (lp *floorLoop) publishRun(c *loopCtl, trailer string) {
 			it.Publish, url = "pr", receipt.pr.URL
 		}
 		it.State = factory.StateShipped
+		if receipt.pr == nil {
+			it.DoneHow = "answered"
+			it.DoneAt = now
+		}
 		it.PublishError = ""
 		it.MarkPublishing("opened", "", "", now)
 		loopSay(it, now, "ok", "published · "+url)

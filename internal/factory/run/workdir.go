@@ -446,3 +446,40 @@ func itemBranch(it factory.Item) string {
 	}
 	return "factory/" + itemDigits(it) + "-" + s
 }
+
+// DeleteDropped removes this job's local worktree and branch only after the
+// retention deadline. The checkout itself is never removed or reset.
+func (w *Workdirs) DeleteDropped(it factory.Item, checkout string, now time.Time) error {
+	if it.DoneHow != "dropped" || it.BranchDeleteAt.IsZero() || now.Before(it.BranchDeleteAt) {
+		return errors.New("dropped branch retention has not ended")
+	}
+	checkout = strings.TrimSpace(checkout)
+	if checkout == "" {
+		return nil
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.listed(checkout, w.Dir(it)) {
+		if _, err := w.git.Run(checkout, "worktree", "remove", "--force", w.Dir(it)); err != nil {
+			return err
+		}
+	}
+	branch := w.DroppedBranch(it)
+	listed, err := w.git.Run(checkout, "branch", "--list", branch)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(listed) == "" {
+		return nil
+	}
+	_, err = w.git.Run(checkout, "branch", "-D", branch)
+	return err
+}
+
+// DroppedBranch uses the runner's actual branch rather than a renamed issue title.
+func (w *Workdirs) DroppedBranch(it factory.Item) string {
+	if it.Change != nil && strings.HasPrefix(it.Change.Branch, "factory/"+itemDigits(it)+"-") {
+		return it.Change.Branch
+	}
+	return w.Branch(it)
+}

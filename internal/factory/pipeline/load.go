@@ -243,6 +243,9 @@ func gitOut(dir string, args ...string) (string, error) {
 // start, or more of a step run, is ignored and named in the problems. The
 // repo file is not changed.
 func Merge(repo, personal File) (File, []Problem) {
+	if personal.set.defaultBudget && personal.DefaultBudget < repo.DefaultBudget {
+		repo.DefaultBudget = personal.DefaultBudget
+	}
 	out := cloneFile(repo)
 	var probs []Problem
 	if personal.set.labels {

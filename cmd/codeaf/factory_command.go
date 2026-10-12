@@ -233,7 +233,16 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		secure = *host.secure
 	}
 	public := secure.publicURL(listener.Addr().String())
-	handler := serve.New(seam, serve.Config{Mode: mode, OperatorLogin: host.OperatorLogin, Name: host.Name, TrustedProxies: secure.proxies, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: public, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
+	jobWrites := factorygithub.JobWrites{Token: func(ctx context.Context) string { t, _ := factorygithub.TokenAt(ctx, home.Dir()); return t }}
+	workdirs := factoryWorkdirs(st, st)
+	handler := serve.New(seam, serve.Config{
+		ChangeAssignee: jobWrites.Assign,
+		DeleteBranch: func(ctx context.Context, it factory.Item) error {
+			if err := jobWrites.DeleteDroppedBranch(ctx, it, workdirs.DroppedBranch(it), time.Now()); err != nil {
+				return err
+			}
+			return workdirs.DeleteDropped(it, st.CheckoutDir(it.Repo), time.Now())
+		}, Mode: mode, OperatorLogin: host.OperatorLogin, TrustedProxies: secure.proxies, Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: public, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
 		ServedBy: servedBy, PollingEvery: poll,
 		PersonProfile: factoryPeople().Profile, CodeOwners: factoryPeople().Owners,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {

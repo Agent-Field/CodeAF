@@ -43,6 +43,16 @@ func (h *Handler) audit(w http.ResponseWriter, r *http.Request) {
 	if h.authFailed(w, r) {
 		return
 	}
+	if r.URL.Path == "/v1/activity" {
+		for i := range events {
+			switch events[i].Kind {
+			case record.Took:
+				events[i].Kind = record.Assigned
+			case record.Released:
+				events[i].Kind = record.Unassigned
+			}
+		}
+	}
 	if format == "csv" {
 		var data bytes.Buffer
 		if h.failed(w, writeAuditCSV(&data, events)) {
@@ -85,6 +95,9 @@ func (h *Handler) recordApproval(r *http.Request, it factory.Item, edited bool) 
 	detail := "proof"
 	if it.State != factory.StateLanded {
 		detail = "plan"
+		if it.QKind == factory.QKindAskFirst {
+			detail = "start · " + it.AskedFirstReason
+		}
 	}
 	if edited {
 		detail += " · edited"

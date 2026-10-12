@@ -145,13 +145,14 @@ type Repo struct {
 // and Personal are the file the pipeline route read; a queue repository's
 // pipeline leaves them empty because the floor's recipe does not carry them.
 type Pipeline struct {
-	Problems []string             `json:"problems,omitempty"`
-	Source   string               `json:"source,omitempty"` // file, markdown or defaults, from internal/factory/pipeline
-	Steps    []StepDef            `json:"steps"`
-	ByKind   map[string][]StepDef `json:"by_kind,omitempty"`
-	Policy   []string             `json:"policy,omitempty"`
-	Habits   []string             `json:"habits,omitempty"`
-	Adapt    map[string]string    `json:"adapt,omitempty"`
+	DefaultBudget float64              `json:"default_budget"`
+	Problems      []string             `json:"problems,omitempty"`
+	Source        string               `json:"source,omitempty"` // file, markdown or defaults, from internal/factory/pipeline
+	Steps         []StepDef            `json:"steps"`
+	ByKind        map[string][]StepDef `json:"by_kind,omitempty"`
+	Policy        []string             `json:"policy,omitempty"`
+	Habits        []string             `json:"habits,omitempty"`
+	Adapt         map[string]string    `json:"adapt,omitempty"`
 	// Text is the repository file as it was read. PersonalText is
 	// ~/.codeaf/factory.yaml when that file tightened the read.
 	Text         string      `json:"text,omitempty"`
@@ -228,11 +229,29 @@ const (
 
 // Job is one unit of work on the floor (code: [factory.Item]).
 type Job struct {
+	Assignee        string               `json:"assignee,omitempty"`
+	Runner          string               `json:"runner,omitempty"`
+	JobID           string               `json:"id"`
+	Ref             string               `json:"ref"`
+	Priority        *factory.JobPriority `json:"priority,omitempty"`
+	Size            string               `json:"size,omitempty"`
+	Budget          float64              `json:"budget,omitempty"`
+	Reason          string               `json:"reason,omitempty"`
+	DoneHow         string               `json:"done_how,omitempty"`
+	DoneAt          time.Time            `json:"done_at"`
+	Dismissed       bool                 `json:"dismissed"`
+	DismissedBy     []string             `json:"dismissed_by,omitempty"`
+	WaitingFor      string               `json:"waiting_for,omitempty"`
+	Overlap         []string             `json:"overlap,omitempty"`
+	Approval        *factory.Approval    `json:"approval,omitempty"`
+	BranchDeleteAt  time.Time            `json:"branch_delete_at"`
+	BranchDeletedAt time.Time            `json:"branch_deleted_at"`
+
 	Owners []string        `json:"owners,omitempty"`
 	Change *factory.Change `json:"change,omitempty"`
 	// Draft is known only for source PR jobs; published PRs carry pr.draft.
 	Draft *bool  `json:"draft,omitempty"`
-	ID    int    `json:"id"`
+	ID    int    `json:"document_id"`
 	Repo  string `json:"repo"`
 	Num   int    `json:"number"`
 	Kind  string `json:"kind"`
@@ -314,6 +333,8 @@ type SpendingLimit struct {
 // question, and the app shows it as a failure. attempts is how many tries
 // the step had made. machine is the one that was holding the work.
 type Failure struct {
+	Rounds   int       `json:"rounds,omitempty"`
+	Runner   string    `json:"runner,omitempty"`
 	Step     string    `json:"step,omitempty"`
 	Code     string    `json:"code"`
 	Detail   string    `json:"detail,omitempty"`
@@ -335,6 +356,17 @@ type RoundLine struct {
 // and retry publishing; anyone who can see the repo for a plain question
 // and for reply. false is the app hiding the button.
 type Can struct {
+	Run            bool `json:"run"`
+	StartNow       bool `json:"start_now"`
+	Stop           bool `json:"stop"`
+	Dismiss        bool `json:"dismiss"`
+	Drop           bool `json:"drop"`
+	ChangeAssignee bool `json:"change_assignee"`
+	Unassign       bool `json:"unassign"`
+	Nudge          bool `json:"nudge"`
+	RaiseBudget    bool `json:"raise_budget"`
+	Undo           bool `json:"undo"`
+
 	Approve      bool `json:"approve"`
 	RunAgain     bool `json:"run_again"`
 	CancelJob    bool `json:"cancel_job"`
@@ -372,6 +404,13 @@ type NeedsYouGroup struct {
 // draw (DESIGN-BRIEF §5: triage, tier, origin, labels, checks, comments,
 // files and activity are code-only on the dashboard).
 type JobDesk struct {
+	// EngineState preserves old documents without adding a sixth public state.
+	EngineState string               `json:"engine_state,omitempty"`
+	Priority    *factory.JobPriority `json:"priority,omitempty"`
+	DoneHow     string               `json:"done_how,omitempty"`
+	Approval    *factory.Approval    `json:"approval,omitempty"`
+	StopUndo    *factory.StopUndo    `json:"stop_undo,omitempty"`
+
 	ChangeBase      string    `json:"change_base,omitempty"`
 	Thread          []Message `json:"thread,omitempty"`
 	WorktreeMachine string    `json:"worktree_machine,omitempty"`
@@ -496,6 +535,7 @@ type Answer = factory.Answer
 // The job's state stays done; this field is how a reader tells PR open from
 // Merged. Contract stays 2.
 type PR struct {
+	Conflict        bool       `json:"conflict,omitempty"`
 	Draft           bool       `json:"draft"`
 	Number          int        `json:"number"`
 	URL             string     `json:"url"`
@@ -643,6 +683,7 @@ type Ask struct {
 // Approve names the exact head that the person saw. An empty commit is kept
 // only for jobs from older machines that have never reported their head.
 type Approve struct {
+	Words  string  `json:"words,omitempty"`
 	Commit string  `json:"commit"`
 	Edited bool    `json:"edited,omitempty"`
 	Expect *Expect `json:"expect,omitempty"`

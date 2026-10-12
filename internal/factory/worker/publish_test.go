@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -235,15 +236,34 @@ func TestNoDiffHTTPApprovalPublishesCommentAndFinishes(t *testing.T) {
 	}
 	seam := g.doors
 	seam.GitHub = func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: "octocat"}, nil }
-	handler := serve.New(seam, serve.Config{Store: g.st, Record: g.record})
+	if err := g.st.Update(id, func(it *factory.Item) error { it.Assignee = "me"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	seam.GitHub = func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: "me"}, nil }
+	var clock atomic.Int64
+	clock.Store(time.Now().UnixNano())
+	handler := serve.New(seam, serve.Config{Store: g.st, Record: g.record, Now: func() time.Time { return time.Unix(0, clock.Load()) }})
 	defer handler.Close()
 	request := httptest.NewRequest("POST", "/v1/jobs/"+strconv.Itoa(id)+"/approve", strings.NewReader(`{"commit":"`+landed.HeadCommit+`"}`))
 	request.RemoteAddr = "127.0.0.1:1234"
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	var receipt struct{ Event string }
-	if err := json.Unmarshal(response.Body.Bytes(), &receipt); err != nil || response.Code != 200 || receipt.Event == "" {
+	if err := json.Unmarshal(response.Body.Bytes(), &receipt); err != nil || response.Code != 200 {
 		t.Fatalf("approve = %d %s, error %v", response.Code, response.Body, err)
+	}
+	clock.Add(int64(factory.ApprovalUndo))
+	settle := httptest.NewRequest("GET", "/v1/queue", nil)
+	settle.RemoteAddr = "127.0.0.1:1234"
+	handler.ServeHTTP(httptest.NewRecorder(), settle)
+	approvals, _ := g.record.Since(context.Background(), time.Time{})
+	for _, event := range approvals {
+		if event.Kind == record.Approved {
+			receipt.Event = event.ID
+		}
+	}
+	if receipt.Event == "" {
+		t.Fatal("no approval after Undo window")
 	}
 	it := g.waitFor(t, id, factory.StateShipped)
 	url := "https://github.com/acme/api/issues/12#issuecomment-7"
@@ -251,7 +271,7 @@ func TestNoDiffHTTPApprovalPublishesCommentAndFinishes(t *testing.T) {
 		t.Fatalf("done receipt = %+v", it)
 	}
 	writes := src.writes()
-	trailer := "Factory-Approval: " + receipt.Event + " @octocat " + landed.HeadCommit
+	trailer := "Factory-Approval: " + receipt.Event + " @me " + landed.HeadCommit
 	if len(writes) != 1 || writes[0].Verb != "comment" || !strings.HasSuffix(writes[0].Body, "\n"+trailer) || !strings.Contains(writes[0].Body, "Proof ·") {
 		t.Fatalf("writes = %+v", writes)
 	}
@@ -277,4 +297,40 @@ func TestNoDiffHTTPApprovalPublishesCommentAndFinishes(t *testing.T) {
 		}
 	}
 	t.Fatalf("no comment in the record: %+v", events)
+}
+
+// A raised limit must reach the running mirror, not merely the service's row.
+func TestRaisedJobBudgetReachesTheAssigneesRunner(t *testing.T) {
+	g := newRigWith(t, nil, func(o *run.Options) {
+		o.Exec = map[factory.StageKind]run.Executor{factory.StageCheck: run.ExecutorFunc(func(_ context.Context, j run.Job) (factory.StageResult, error) {
+			cost := 2.0
+			if j.Stage.Name == "after" {
+				cost = 5
+			}
+			return factory.StageResult{Done: true, Spent: cost}, nil
+		})}
+	})
+	id := g.add(t, factory.Stage{Name: "charge", Kind: factory.StageCheck, On: true}, factory.Stage{Name: "after", Kind: factory.StageCheck, On: true})
+	if err := g.st.Update(id, func(it *factory.Item) error { it.Cap = 2; it.Assignee = "me"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.doors.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	g.waitFor(t, id, factory.StateNeedsYou)
+	seam := g.doors
+	seam.GitHub = func(context.Context) (factory.GitHubLink, error) { return factory.GitHubLink{Login: "me"}, nil }
+	h := serve.New(seam, serve.Config{Store: g.st, Record: g.record})
+	defer h.Close()
+	r := httptest.NewRequest("POST", fmt.Sprintf("/v1/jobs/%d/raise_budget", id), strings.NewReader(`{"budget":10}`))
+	r.RemoteAddr = "127.0.0.1:1234"
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("raise %d %s", w.Code, w.Body)
+	}
+	it := g.waitFor(t, id, factory.StateLanded)
+	if it.Cap != 10 || (it.Stream.Spent < 7 || it.Stream.Spent > 10) || it.Question != "" {
+		t.Fatalf("runner budget=%v spent=%v question=%q phases=%+v", it.Cap, it.Stream.Spent, it.Question, it.Stream.Phases)
+	}
 }

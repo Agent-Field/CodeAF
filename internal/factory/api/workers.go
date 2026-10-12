@@ -185,10 +185,11 @@ type WorkerHeartbeat struct {
 // WorkerSignal is one verb for the worker's runner: hold (yes is on), answer
 // (yes, words), steer (words), recheck, or shape.
 type WorkerSignal struct {
-	ID    string `json:"id,omitempty"`
-	Verb  string `json:"verb"`
-	Yes   bool   `json:"yes,omitempty"`
-	Words string `json:"words,omitempty"`
+	Budget float64 `json:"budget,omitempty"`
+	ID     string  `json:"id,omitempty"`
+	Verb   string  `json:"verb"`
+	Yes    bool    `json:"yes,omitempty"`
+	Words  string  `json:"words,omitempty"`
 }
 
 type WorkerLease struct {

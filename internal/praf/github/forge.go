@@ -69,15 +69,17 @@ type Issue struct {
 // Pull is one open pull request. Additions, Deletions and Files are filled by
 // [client.Pull] only: GitHub's list leaves them out.
 type Pull struct {
-	Number  int
-	Title   string
-	Body    string
-	User    string
-	Labels  []string
-	Created time.Time
-	Updated time.Time
-	URL     string
-	HeadSHA string
+	// Mergeable is unknown until GitHub computes the merge; false means a conflict.
+	Mergeable *bool
+	Number    int
+	Title     string
+	Body      string
+	User      string
+	Labels    []string
+	Created   time.Time
+	Updated   time.Time
+	URL       string
+	HeadSHA   string
 	// Base is the branch the pull request asks to merge into, Head the
 	// branch it comes from, and HeadRepo the repository Head lives in
 	// (`owner/name`), which differs from the base repository for a fork.
@@ -180,6 +182,7 @@ type pullJSON struct {
 	ChangedFiles int        `json:"changed_files"`
 	Comments     int        `json:"comments"`
 	State        string     `json:"state"`
+	Mergeable    *bool      `json:"mergeable"`
 	Merged       bool       `json:"merged"`
 	MergedAt     *time.Time `json:"merged_at"`
 	MergedBy     *userJSON  `json:"merged_by"`
@@ -219,7 +222,7 @@ func (p pullJSON) pull() Pull {
 		Labels: labelNames(p.Labels), Created: p.CreatedAt, Updated: p.UpdatedAt,
 		URL: p.HTMLURL, HeadSHA: p.Head.SHA, Draft: p.Draft,
 		Additions: p.Additions, Deletions: p.Deletions, Files: p.ChangedFiles,
-		Comments: p.Comments, State: p.State, Merged: p.Merged,
+		Comments: p.Comments, State: p.State, Merged: p.Merged, Mergeable: p.Mergeable,
 	}
 	if p.MergedBy != nil {
 		out.MergedBy = p.MergedBy.Login

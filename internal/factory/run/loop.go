@@ -229,6 +229,13 @@ func (r *Runner) Launch(id int) error {
 			it.Heard = h.At
 		}
 		it.State = factory.StateQueued
+		it.Failure = nil
+		it.DoneHow = ""
+		it.DoneAt = time.Time{}
+		if it.Approval == nil || it.Approval.State != "approving" {
+			it.Approval = nil
+		}
+		it.StopUndo = nil
 		it.PublishStatus, it.Publishing = nil, false
 		it.PublishError = ""
 		it.Question, it.QKind = "", ""
@@ -265,6 +272,9 @@ func strangerWrites(it factory.Item) error {
 // launchable says whether an item may be launched from where it stands: new,
 // dismissed, or never put anywhere yet.
 func launchable(it factory.Item) error {
+	if it.DoneHow == "dropped" {
+		return fmt.Errorf("%s was dropped for good", it.Ref())
+	}
 	if it.State == factory.StateNeedsYou && it.QKind == factory.QKindAskFirst {
 		return nil
 	}
@@ -1412,6 +1422,10 @@ func (r *Runner) Stop(id int) error {
 // stopStored is a stop with no run to cancel: the item is new again and its
 // stream says so.
 func stopStored(it *factory.Item, now time.Time) {
+	it.Failure = nil
+	it.Approval = nil
+	it.PublishError = ""
+	it.Publishing = false
 	it.State = factory.StateNew
 	it.Question, it.QKind = "", ""
 	if it.Stream != nil {

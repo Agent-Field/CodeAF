@@ -35,6 +35,11 @@ type Config struct {
 	Mode string
 	// OperatorLogin identifies the person running serve, never a client claim.
 	OperatorLogin string
+	// ChangeAssignee mirrors a person's decision to GitHub before storing it.
+	ChangeAssignee func(context.Context, factory.Item, string) error
+	// DeleteBranch removes only a dropped job's branch after retention expires.
+	DeleteBranch func(context.Context, factory.Item) error
+
 	// PersonProfile reads cached public GitHub identity, including outside authors.
 	PersonProfile func(context.Context, string) (factory.GitHubPerson, error)
 	// CodeOwners reads a watched repository's cached default-branch ownership.
@@ -92,6 +97,10 @@ type Config struct {
 
 // Handler keeps the seam and host identity together for every response.
 type Handler struct {
+	jobsMu     sync.Mutex
+	jobsTimer  *time.Timer
+	jobsClosed bool
+
 	seam    factory.Seam
 	config  Config
 	factory api.Factory
@@ -150,6 +159,8 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.verbs()
 	h.workerRoutes()
 	h.v2Routes()
+	h.jobVerbs()
+	h.scheduleJobTimer()
 	h.mux.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusNotFound, "factory endpoint not found")
 	})
@@ -171,6 +182,15 @@ func (h *Handler) root(w http.ResponseWriter, r *http.Request) {
 // Close stops the filesystem watch. The HTTP server can still be running;
 // a change after Close is not delivered.
 func (h *Handler) Close() {
+	if h != nil {
+		h.jobsMu.Lock()
+		h.jobsClosed = true
+		if h.jobsTimer != nil {
+			h.jobsTimer.Stop()
+		}
+		h.jobsMu.Unlock()
+	}
+
 	if h != nil {
 		h.machinesMu.Lock()
 		h.machinesClosed = true
@@ -248,6 +268,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	h.settleJobs(r.Method == http.MethodPost)
 	h.idempotent(w, r)
 }
 
@@ -290,7 +311,20 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 	if h.authFailed(w, r) {
 		return
 	}
-	q := api.FromSnapshot(s, handle)
+	query := r.URL.Query().Get("q")
+	match := factory.Match(query, handle)
+	items := make([]factory.Item, 0, len(s.Items))
+	for _, it := range s.Items {
+		if !match(it) {
+			continue
+		}
+		if !strings.Contains(query, "is:dismissed") && factory.IsDismissed(it, handle) {
+			continue
+		}
+		items = append(items, it)
+	}
+	s.Items = items
+	q := api.FromSnapshot(s, handle, h.clock())
 	for i := range q.Jobs {
 		q.Jobs[i] = h.withVersion(q.Jobs[i])
 	}
@@ -344,13 +378,14 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jobs := []api.Job{h.withVersion(api.FromItem(it))}
-	if h.config.CodeOwners != nil {
+	if h.config.CodeOwners != nil && len(itemFiles(it)) > 0 {
 		rules, err := h.config.CodeOwners(r.Context(), itemRepo(it))
 		if err == nil {
 			jobs[0].Owners = factory.OwnersFor(rules, itemFiles(it))
 		}
 	}
-	jobs[0].Can = api.CanFor(it, handle)
+	jobs[0].Can = api.CanFor(it, handle, h.clock())
+	api.ForViewer(&jobs[0], it, handle)
 	if h.mode() == api.FactorySolo {
 		h.soloJob(&jobs[0])
 	}
@@ -367,7 +402,7 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 // guessing whether an untyped runner error meant a missing job.
 func (h *Handler) findJob(w http.ResponseWriter, r *http.Request) (factory.Item, bool) {
 	id, err := strconv.Atoi(r.PathValue("id"))
-	if err != nil || id <= 0 {
+	if (err != nil || id <= 0) && !strings.Contains(r.PathValue("id"), "#") {
 		h.fail(w, http.StatusUnprocessableEntity, "job id must be a positive integer")
 		return factory.Item{}, false
 	}
@@ -379,7 +414,7 @@ func (h *Handler) findJob(w http.ResponseWriter, r *http.Request) (factory.Item,
 		return factory.Item{}, false
 	}
 	for _, it := range s.Items {
-		if it.ID == id {
+		if it.ID == id || factory.JobRef(it) == r.PathValue("id") {
 			// A hidden job is the same answer as a missing one, so the
 			// caller cannot tell which repositories exist.
 			visible := h.repoVisible(r, itemRepo(it))

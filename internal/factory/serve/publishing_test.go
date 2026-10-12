@@ -49,6 +49,7 @@ func publishingSetup(t *testing.T) (*workerFixture, *record.Record, factory.Item
 	f.handler = serve.New(s, cfg)
 	f.server = httptest.NewServer(f.handler)
 	t.Cleanup(f.server.Close)
+	t.Cleanup(f.handler.Close)
 	it, err := st.Create(factory.Item{Repo: "owner/repo", Title: "fix", State: factory.StateLanded, Assignee: "sam", WorktreeMachine: "laptop", HeadCommit: approvedHead, Proof: []factory.Claim{{Text: "works", OK: true}}})
 	if err != nil {
 		t.Fatal(err)
@@ -83,6 +84,7 @@ func TestApprovalRejectsChangedHeadAndRecordsExactCommit(t *testing.T) {
 	if r.Code != 200 {
 		t.Fatalf("approve=%d %s", r.Code, r.Body)
 	}
+	settleApproval(t, f)
 	events, _ = rec.Since(context.Background(), time.Time{})
 	if len(events) != 1 || events[0].Commit != approvedHead {
 		t.Fatalf("approval=%+v", events)
@@ -109,6 +111,7 @@ func TestFailedPublishRetriesSameApprovalAndOpensOnlyOnce(t *testing.T) {
 	if again := keyedRequest(f.handler, path+"/approve", `{}`, "approval"); again.Body.String() != approved.Body.String() {
 		t.Fatal("double approval did not replay")
 	}
+	settleApproval(t, f)
 	pulled := f.pull(t, worker)
 	if len(pulled.Signals) != 1 || pulled.Signals[0].Verb != lease.SignalPublish {
 		t.Fatalf("signals=%+v", pulled.Signals)
@@ -144,7 +147,7 @@ func TestFailedPublishRetriesSameApprovalAndOpensOnlyOnce(t *testing.T) {
 	f.request(t, "POST", reportPath+"/done", worker.Credential, api.WorkerDone{State: api.StateDone}, 200, nil)
 	var opened api.Job
 	f.request(t, "GET", path, "", nil, 200, &opened)
-	if opened.State != api.StateDone || opened.Publishing.State != "opened" || opened.Publishing.PR.Number != 8 || opened.Publishing.Attempt != 2 {
+	if opened.State != api.StateRunning || opened.Publishing.State != "opened" || opened.Publishing.PR.Number != 8 || opened.Publishing.Attempt != 2 {
 		t.Fatalf("opened=%+v", opened)
 	}
 	events, _ := rec.Since(context.Background(), time.Time{})
@@ -210,8 +213,15 @@ func TestConcurrentDoubleApprovalAcrossServersCreatesOneReceipt(t *testing.T) {
 			t.Fatalf("approve=%d %s", r.Code, r.Body)
 		}
 	}
+	settleApproval(t, f)
 	events, _ := rec.Since(context.Background(), time.Time{})
 	if ok != 1 || conflicts != 1 || len(events) != 1 {
 		t.Fatalf("ok=%d conflicts=%d events=%+v", ok, conflicts, events)
 	}
+}
+
+func settleApproval(t *testing.T, f *workerFixture) {
+	t.Helper()
+	f.clock.Add(int64(factory.ApprovalUndo))
+	f.request(t, "GET", "/v1/queue", "", nil, 200, nil)
 }

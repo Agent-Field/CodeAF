@@ -278,7 +278,8 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 				if in.Tier != "" {
 					it.Tier = in.Tier
 				}
-				if it.State == factory.StateDismissed {
+				it.DismissedBy = nil
+				if it.State == factory.StateDismissed && it.DoneHow != "dropped" {
 					it.State = factory.StateNew
 				}
 				return nil

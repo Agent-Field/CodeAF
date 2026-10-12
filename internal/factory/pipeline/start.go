@@ -207,7 +207,10 @@ func labelSize(labels []string) (string, bool) {
 	best := 0
 	got := ""
 	for _, label := range labels {
-		rest, ok := strings.CutPrefix(strings.ToLower(strings.TrimSpace(label)), "size/")
+		rest, ok := strings.CutPrefix(strings.ToLower(strings.TrimSpace(label)), "size:")
+		if !ok {
+			rest, ok = strings.CutPrefix(strings.ToLower(strings.TrimSpace(label)), "size/")
+		}
 		if !ok {
 			continue
 		}
@@ -226,12 +229,16 @@ func labelSize(labels []string) (string, bool) {
 
 func sizeRank(s string) int {
 	switch strings.ToUpper(strings.TrimSpace(s)) {
-	case "S":
+	case "XS":
 		return 1
-	case "M":
+	case "S":
 		return 2
-	case "L":
+	case "M":
 		return 3
+	case "L":
+		return 4
+	case "XL":
+		return 5
 	default:
 		return 0
 	}

@@ -27,6 +27,13 @@ func QueueItem(it *factory.Item, now time.Time) error {
 		return err
 	}
 	it.State = factory.StateQueued
+	it.Failure = nil
+	it.DoneHow = ""
+	it.DoneAt = time.Time{}
+	if it.Approval == nil || it.Approval.State != "approving" {
+		it.Approval = nil
+	}
+	it.StopUndo = nil
 	it.PublishStatus, it.Publishing = nil, false
 	it.PublishError = ""
 	it.Question, it.QKind = "", ""
@@ -39,8 +46,12 @@ func QueueItem(it *factory.Item, now time.Time) error {
 // StopItem is a stop with no run to cancel here: the job is new again. A job
 // that is not under way refuses, in the Runner's words.
 func StopItem(it *factory.Item, now time.Time) error {
+	if (it.State == factory.StateShipped && factory.JobState(*it) == "running") || (it.State == factory.StateNew && it.Failure != nil) {
+		stopStored(it, now)
+		return nil
+	}
 	switch it.State {
-	case factory.StateQueued, factory.StateRunning, factory.StateNeedsYou:
+	case factory.StateQueued, factory.StateRunning, factory.StateNeedsYou, factory.StateLanded:
 		stopStored(it, now)
 		return nil
 	}

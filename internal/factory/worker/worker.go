@@ -353,6 +353,16 @@ func (j *job) signals(ctx context.Context, signals []api.WorkerSignal) bool {
 		switch s.Verb {
 		case lease.SignalReply:
 			j.reply(ctx, s)
+		case lease.SignalBudget:
+			if s.Budget <= 0 {
+				continue
+			}
+			if err := j.o.Mirror.Update(j.id, func(it *factory.Item) error { it.Cap = s.Budget; return nil }); err != nil {
+				return false
+			}
+			if s.Yes {
+				_ = r.Answer(j.id, true, factory.ChoiceContinue)
+			}
 		case lease.SignalHold:
 			_ = r.Hold(j.id, s.Yes)
 		case lease.SignalAnswer:

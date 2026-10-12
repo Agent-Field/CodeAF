@@ -238,7 +238,8 @@ func TestV2SoloHasNoPeopleOrAssigneeAndRunsItsJobs(t *testing.T) {
 	}
 	var q api.Queue
 	f.request(t, "GET", "/v1/queue", "operator-secret", nil, 200, &q)
-	if q.Jobs[0].AssignedTo != "" || q.Jobs[0].Can.AssignToMe || !q.Jobs[0].Can.Approve {
+	// A queued job has no approval to offer, even on a solo factory.
+	if q.Jobs[0].AssignedTo != "" || q.Jobs[0].Assignee != "" || q.Jobs[0].Can.AssignToMe || q.Jobs[0].Can.Approve {
 		t.Fatalf("solo assignee: %+v", q.Jobs[0])
 	}
 	var runner api.RunnerAttached

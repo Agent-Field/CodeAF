@@ -10,7 +10,7 @@ import (
 
 func TestNeedsYouKindsAreTheSix(t *testing.T) {
 	want := []string{
-		"approve_plan", "approve_proof", "question", "spending_limit", "out_of_attempts", "publish_failed", "runner_offline",
+		"approval_start", "approve_plan", "approve_proof", "question", "spending_limit", "out_of_attempts", "publish_failed", "runner_offline",
 	}
 	if !reflect.DeepEqual(factory.NeedsYouKinds, want) {
 		t.Fatalf("kinds = %v", factory.NeedsYouKinds)

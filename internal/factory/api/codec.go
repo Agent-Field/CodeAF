@@ -9,7 +9,11 @@ import (
 )
 
 // FromSnapshot is the floor as `GET /v1/queue` says it to me.
-func FromSnapshot(s factory.Snapshot, me string) Queue {
+func FromSnapshot(s factory.Snapshot, me string, clocks ...time.Time) Queue {
+	now := s.Now
+	if len(clocks) > 0 {
+		now = clocks[0]
+	}
 	people := map[string]factory.PersonSummary{}
 	jobs := make([]Job, len(s.Items))
 	for i, it := range s.Items {
@@ -19,7 +23,13 @@ func FromSnapshot(s factory.Snapshot, me string) Queue {
 			}
 		}
 		jobs[i] = FromItem(it)
-		jobs[i].Can = CanFor(it, me)
+		jobs[i].Can = CanFor(it, me, now)
+		ForViewer(&jobs[i], it, me)
+		for _, other := range s.Items {
+			if factory.Overlaps(it, other) {
+				jobs[i].Overlap = append(jobs[i].Overlap, factory.JobRef(other))
+			}
+		}
 	}
 	return Queue{
 		People:   people,
@@ -96,8 +106,12 @@ func FromItem(it factory.Item) Job {
 		Owners: append([]string(nil), it.Owners...),
 		ID:     it.ID, Repo: it.Repo, Num: it.Num, Kind: string(it.Kind), Title: it.Title, URL: it.URL,
 		HeadCommit: it.HeadCommit, Publishing: it.PublishStatus, Change: it.Change, Publish: it.Publish, CommentURL: it.CommentURL,
-		State: stateOut[it.State], Ready: it.State == factory.StateLanded, Gate: gate(it),
-		AssignedTo:       it.Person(),
+		Runner: it.WorktreeMachine, JobID: factory.JobRef(it), Ref: factory.JobRef(it), Priority: factory.PriorityFor(it), Size: factory.JobSize(it), Budget: it.Cap,
+		Reason: factory.JobReason(it), DoneHow: factory.JobDoneHow(it), DoneAt: it.DoneAt,
+		DismissedBy: append([]string(nil), it.DismissedBy...), Approval: factory.JobApproval(it),
+		BranchDeleteAt: it.BranchDeleteAt, BranchDeletedAt: it.BranchDeletedAt,
+		State: factory.JobState(it), Ready: it.State == factory.StateLanded, Gate: gate(it),
+		AssignedTo: it.Person(), Assignee: it.Person(),
 		AskedFirstReason: it.AskedFirstReason,
 		Steps:            steps(it),
 		Claims:           mapList(it.Proof, fromClaim),
@@ -187,7 +201,7 @@ func failureOf(it factory.Item) *Failure {
 }
 
 func failureWire(f factory.Failure) *Failure {
-	return &Failure{Step: f.Step, Code: f.Code, Detail: f.Detail, Attempts: f.Attempts, Machine: f.Machine, Next: f.Next, At: f.At}
+	return &Failure{Rounds: f.Attempts, Runner: f.Machine, Step: f.Step, Code: f.Code, Detail: f.Detail, Attempts: f.Attempts, Machine: f.Machine, Next: f.Next, At: f.At}
 }
 
 func failureItem(f *Failure) *factory.Failure {
@@ -198,10 +212,24 @@ func failureItem(f *Failure) *factory.Failure {
 }
 
 // CanFor is MayAct in the wire's field names.
-func CanFor(it factory.Item, caller string) Can {
+func CanFor(it factory.Item, caller string, clocks ...time.Time) Can {
+	now := time.Now()
+	if len(clocks) > 0 && !clocks[0].IsZero() {
+		now = clocks[0]
+	}
 	a := factory.MayAct(it, caller)
+	person := it.Person()
+	owner := person == "" || person == factory.NormalizeHandle(caller)
+	approval := factory.JobApproval(it)
+	approve := approval != nil && approval.State == "waiting" && person != "" && person == factory.NormalizeHandle(caller)
+	state := factory.JobState(it)
+	active := state == StateRunning || state == StateQueued || state == StateNeedsYou
 	return Can{
-		Approve: a.Approve, RunAgain: a.RunAgain, CancelJob: a.CancelJob,
+		Run: owner && state == StateBacklog, StartNow: owner && state == StateBacklog,
+		Stop: owner && active, Dismiss: factory.NormalizeHandle(caller) != "", Drop: owner && state != StateDone,
+		ChangeAssignee: owner, Unassign: owner && person != "", Nudge: person != "", RaiseBudget: owner,
+		Undo:    (it.Approval != nil && it.Approval.State == "approving" && now.Before(it.Approval.UndoUntil) && it.Approval.DecidedBy == factory.NormalizeHandle(caller)) || (it.StopUndo != nil && now.Before(it.StopUndo.Until) && it.StopUndo.By == factory.NormalizeHandle(caller)),
+		Approve: approve, RunAgain: a.RunAgain, CancelJob: a.CancelJob,
 		RetryPublish: a.RetryPublish, Answer: a.Answer, AssignToMe: a.AssignToMe, Reply: a.Reply,
 	}
 }
@@ -234,6 +262,8 @@ func ToItem(j Job) factory.Item {
 		ID:     j.ID, Repo: j.Repo, Num: j.Num, Kind: factory.Kind(j.Kind), Title: j.Title, URL: j.URL,
 		HeadCommit: j.HeadCommit, PublishStatus: j.Publishing, Change: j.Change, ChangeBase: d.ChangeBase, Publish: j.Publish, CommentURL: j.CommentURL,
 		WorktreeMachine: d.WorktreeMachine, Publishing: d.Publishing,
+		Priority: d.Priority, DoneHow: d.DoneHow, Approval: d.Approval, StopUndo: d.StopUndo,
+		DismissedBy: j.DismissedBy, DoneAt: j.DoneAt, BranchDeleteAt: j.BranchDeleteAt, BranchDeletedAt: j.BranchDeletedAt,
 		State: stateIn(j), Created: j.CreatedAt,
 		Product: d.Product, Places: d.Places, Body: d.Body, Author: d.Author,
 		Assignee: d.Assignee, Starter: d.Starter, Taker: d.Taker,
@@ -290,6 +320,9 @@ var stateBack = map[string]factory.State{
 // through as it came, so a state the floor grows later is not lost on the
 // wire before the codec learns its name.
 func stateIn(j Job) factory.State {
+	if j.Desk != nil && j.Desk.EngineState != "" {
+		return factory.State(j.Desk.EngineState)
+	}
 	if j.Ready {
 		return factory.StateLanded
 	}
@@ -346,7 +379,7 @@ func fromPR(pr *factory.PullRequest) *PR {
 		return nil
 	}
 	out := &PR{
-		Draft: pr.Draft, Number: pr.Number, URL: pr.URL, CI: pr.CI, State: pr.State,
+		Conflict: pr.Conflict, Draft: pr.Draft, Number: pr.Number, URL: pr.URL, CI: pr.CI, State: pr.State,
 		MergedBy: pr.MergedBy, ReviewDecision: pr.ReviewDecision, RequiredReviews: pr.Required,
 		Reviews: mapList(pr.Reviews, func(r factory.PRReview) PRReview {
 			return PRReview{By: r.By, State: r.State, At: r.At}
@@ -368,7 +401,7 @@ func toPR(pr *PR) *factory.PullRequest {
 		return nil
 	}
 	out := &factory.PullRequest{
-		Draft: pr.Draft, Number: pr.Number, URL: pr.URL, CI: pr.CI, State: pr.State,
+		Conflict: pr.Conflict, Draft: pr.Draft, Number: pr.Number, URL: pr.URL, CI: pr.CI, State: pr.State,
 		MergedBy: pr.MergedBy, ReviewDecision: pr.ReviewDecision, Required: pr.RequiredReviews,
 		Reviews: mapList(pr.Reviews, func(r PRReview) factory.PRReview {
 			return factory.PRReview{By: r.By, State: r.State, At: r.At}
@@ -414,7 +447,7 @@ func toRepos(rs []Repo) []factory.Repo {
 // FromRecipe is a recipe as a pipeline, for `GET .../pipeline` as much as for
 // the repositories on the queue.
 func FromRecipe(r factory.Recipe) Pipeline {
-	p := Pipeline{Source: r.Source, Steps: mapList(r.Stages, fromStage), Policy: r.Policy, Habits: r.Habits}
+	p := Pipeline{DefaultBudget: r.DefaultBudget, Source: r.Source, Steps: mapList(r.Stages, fromStage), Policy: r.Policy, Habits: r.Habits}
 	for _, problem := range r.Problems {
 		p.Problems = append(p.Problems, problem)
 	}
@@ -434,7 +467,7 @@ func FromRecipe(r factory.Recipe) Pipeline {
 }
 
 func toRecipe(p Pipeline) factory.Recipe {
-	r := factory.Recipe{Source: p.Source, Stages: mapList(p.Steps, toStage), Policy: p.Policy, Habits: p.Habits}
+	r := factory.Recipe{DefaultBudget: p.DefaultBudget, Source: p.Source, Stages: mapList(p.Steps, toStage), Policy: p.Policy, Habits: p.Habits}
 	for _, problem := range p.Problems {
 		r.Problems = append(r.Problems, problem)
 	}
@@ -499,6 +532,7 @@ func toClaim(c Claim) factory.Claim {
 
 func fromDesk(it factory.Item) *JobDesk {
 	d := &JobDesk{
+		EngineState: string(it.State), Priority: it.Priority, DoneHow: it.DoneHow, Approval: it.Approval, StopUndo: it.StopUndo,
 		ChangeBase: it.ChangeBase, WorktreeMachine: it.WorktreeMachine, Publishing: it.Publishing,
 		Product: it.Product, Places: it.Places, Body: it.Body, Author: it.Author,
 		Assignee: it.Assignee, Starter: it.Starter, Taker: it.Taker,

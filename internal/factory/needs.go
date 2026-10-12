@@ -10,6 +10,7 @@ import (
 // here and to TestNeedsYouKindsAreTheSix in the same commit. The queue groups
 // jobs by this list, in this order.
 const (
+	NeedsApproveStart  = "approval_start"
 	NeedsApprovePlan   = "approve_plan"
 	NeedsApproveProof  = "approve_proof"
 	NeedsQuestion      = "question"
@@ -48,6 +49,7 @@ const (
 
 // NeedsYouKinds is the whole enum, in the order the queue groups by.
 var NeedsYouKinds = []string{
+	NeedsApproveStart,
 	NeedsApprovePlan,
 	NeedsApproveProof,
 	NeedsQuestion,
@@ -185,6 +187,8 @@ func NeedsKind(it Item) string {
 		return NeedsPublishFailed
 	}
 	switch {
+	case it.QKind == QKindAskFirst:
+		return NeedsApproveStart
 	case it.State == StateLanded:
 		return NeedsApproveProof
 	case it.QKind == NeedsRunnerOffline:
@@ -218,7 +222,7 @@ func publishFailed(it Item) bool {
 // A free question is anyone who can see the repository.
 func JobPersonOnly(kind string) bool {
 	switch kind {
-	case NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsPublishFailed, NeedsRunnerOffline:
+	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsPublishFailed, NeedsRunnerOffline:
 		return true
 	default:
 		return false
@@ -437,7 +441,7 @@ func MayAct(it Item, caller string) Acts {
 	switch NeedsKind(it) {
 	case NeedsQuestion:
 		answer = true
-	case NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsRunnerOffline:
+	case NeedsApproveStart, NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsRunnerOffline:
 		answer = owner
 	}
 	assign := person == ""

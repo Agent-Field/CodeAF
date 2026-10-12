@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"regexp"
-	"slices"
 	"strings"
 	"time"
 
@@ -69,7 +68,7 @@ func (in *Intake) Once(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if it.State != factory.StateNew || it.Triage.TriagedAt.IsZero() || it.AskedFirstReason != "" {
+		if it.State != factory.StateNew || len(it.Labels) == 0 || it.AskedFirstReason != "" {
 			continue
 		}
 		if err := in.decide(ctx, it); err != nil {
@@ -85,8 +84,7 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 		return err
 	}
 	job := Job(it)
-	job.Judged = job.Judged && slices.Equal(it.Triage.StartRules, f.Start.AskFirst)
-	decision := f.Decide(job)
+	decision := f.DecideJob(it, job.Paths)
 	if !decision.Start && !decision.Ask {
 		return nil
 	}
@@ -98,9 +96,12 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 				return err
 			}
 			cur.Stages = factory.CopyStages(f.Recipe().For(cur.Kind))
+			if cur.Cap <= 0 {
+				cur.Cap = f.DefaultBudget
+			}
 			cur.State, cur.QKind = factory.StateNeedsYou, factory.QKindAskFirst
 			cur.AskedFirstReason = reason
-			cur.Question = "asked first: " + reason + ". Start this job?"
+			cur.Question = "Approval needed: start · " + reason
 			return nil
 		})
 	} else {
@@ -111,6 +112,9 @@ func (in *Intake) decide(ctx context.Context, it factory.Item) error {
 				return err
 			}
 			cur.Stages = factory.CopyStages(f.Recipe().For(cur.Kind))
+			if cur.Cap <= 0 {
+				cur.Cap = f.DefaultBudget
+			}
 			return nil
 		})
 		if err == nil {

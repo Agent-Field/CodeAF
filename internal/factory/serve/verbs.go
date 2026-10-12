@@ -19,11 +19,11 @@ import (
 
 func (h *Handler) verbs() {
 	s := h.seam
-	h.postJob("run", s.Launch != nil, h.guarded("run", h.onlyOwner(h.recordedID(s.Launch, record.Started))))
+	h.postJob("run", s.Launch != nil, h.guarded("run", h.onlyOwner(h.startJob)))
 	h.postJob("stop", s.Stop != nil, h.guarded("stop", h.stop))
 	h.postJob("pause", s.Hold != nil, h.guarded("pause", h.holdVerb(true)))
 	h.postJob("resume", s.Hold != nil, h.guarded("resume", h.holdVerb(false)))
-	h.postJob("drop", s.Dismiss != nil, h.onlyOwner(h.drop))
+	h.postJob("drop", h.config.Store != nil || s.Dismiss != nil, h.onlyOwner(h.drop))
 	h.postJob("answer", s.Answer != nil, h.answer)
 	h.postJob("steer", s.Steer != nil, h.wordsVerb("steer", s.Steer))
 	h.postJob("approve", true, h.approve)
@@ -48,7 +48,7 @@ type jobAction func(http.ResponseWriter, *http.Request, factory.Item)
 func (h *Handler) postJob(verb string, exists bool, action jobAction) {
 	h.route("/v1/jobs/{id}/"+verb, map[string]http.HandlerFunc{
 		http.MethodPost: func(w http.ResponseWriter, r *http.Request) {
-			if verb == "approve" || verb == "retry_publish" || verb == "answer" {
+			if verb == "approve" || verb == "retry_publish" || verb == "answer" || verb == "undo" {
 				unlock, err := h.lockConsent()
 				if h.failed(w, err) {
 					return
@@ -96,7 +96,7 @@ func (h *Handler) take(w http.ResponseWriter, r *http.Request, it factory.Item) 
 		return
 	}
 	job := h.withVersion(api.FromItem(updated))
-	job.Can = api.CanFor(updated, me)
+	job.Can = api.CanFor(updated, me, h.clock())
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
 		api.Job
@@ -133,7 +133,7 @@ func (h *Handler) release(w http.ResponseWriter, r *http.Request, it factory.Ite
 		return
 	}
 	job := h.withVersion(api.FromItem(updated))
-	job.Can = api.CanFor(updated, me)
+	job.Can = api.CanFor(updated, me, h.clock())
 	h.write(w, http.StatusOK, struct {
 		Factory api.Factory `json:"factory"`
 		api.Job
@@ -213,18 +213,25 @@ func (h *Handler) wordsVerb(verb string, door func(int, string) error) jobAction
 
 func (h *Handler) answer(w http.ResponseWriter, r *http.Request, it factory.Item) {
 	var body struct {
-		Commit string      `json:"commit"`
-		Yes    *bool       `json:"yes"`
-		Words  string      `json:"words"`
-		Choice string      `json:"choice"`
-		Reason string      `json:"reason"`
-		Expect *api.Expect `json:"expect,omitempty"`
+		QuestionID string      `json:"question_id,omitempty"`
+		Commit     string      `json:"commit"`
+		Yes        *bool       `json:"yes"`
+		Words      string      `json:"words"`
+		Choice     string      `json:"choice"`
+		Reason     string      `json:"reason"`
+		Expect     *api.Expect `json:"expect,omitempty"`
 	}
-	if !h.decode(w, r, &body, false) || !h.fresh(w, r, it, "answer", body.Expect) {
+	if !h.decode(w, r, &body, false) || h.questionCollision(w, r, it, body.QuestionID, body.Expect) || !h.fresh(w, r, it, "answer", body.Expect) {
 		return
 	}
 	yes, words, ok := h.applyChoice(w, body.Yes, body.Words, body.Choice, body.Reason)
 	if !ok {
+		return
+	}
+	if yes && h.config.Store != nil && (it.QKind == factory.QKindApprove || it.QKind == factory.QKindAskFirst) {
+		data, _ := json.Marshal(api.Approve{Commit: body.Commit, Words: body.Words, Expect: body.Expect})
+		r.Body = io.NopCloser(bytes.NewReader(data))
+		h.approve(w, r, it)
 		return
 	}
 	if yes && it.QKind == factory.QKindApprove && !h.commitFresh(w, it, body.Commit) {
@@ -358,7 +365,7 @@ func (h *Handler) recordContinued(r *http.Request, it factory.Item, words string
 	return err
 }
 
-func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Item) {
+func (h *Handler) commitApproval(w http.ResponseWriter, r *http.Request, it factory.Item) {
 	var body api.Approve
 	if !h.decode(w, r, &body, true) || !h.commitFresh(w, it, body.Commit) || !h.fresh(w, r, it, "approve", body.Expect) || h.failed(w, h.approvalIdentity(r)) {
 		return
@@ -403,11 +410,11 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, it factory.Ite
 		h.wroteApproval(w, r, it, event)
 		return
 	}
-	if it.State == factory.StateNeedsYou && it.QKind == factory.QKindApprove {
+	if it.State == factory.StateNeedsYou && (it.QKind == factory.QKindApprove || it.QKind == factory.QKindAskFirst) {
 		if !h.requireVerb(w, h.seam.Answer != nil) {
 			return
 		}
-		if h.failed(w, h.seam.Answer(it.ID, true, "")) {
+		if h.failed(w, h.seam.Answer(it.ID, true, body.Words)) {
 			return
 		}
 		event, err := h.recordApproval(r, it, body.Edited)
@@ -436,7 +443,7 @@ func (h *Handler) wroteApproval(w http.ResponseWriter, r *http.Request, it facto
 		if h.workers != nil {
 			at = h.workers.now()
 		}
-		if h.failed(w, h.keepAnswered(it, factory.Answer{By: handle, Text: "yes", At: at, Event: event})) {
+		if h.failed(w, h.keepAnswered(it, factory.Answer{By: handle, Text: approvalWords(it), At: at, Event: event})) {
 			return
 		}
 	}
@@ -474,6 +481,36 @@ func (h *Handler) drop(w http.ResponseWriter, r *http.Request, it factory.Item) 
 		return
 	}
 	words := strings.TrimSpace(body.Words)
+	if h.config.Store != nil {
+		if factory.JobState(it) == "done" {
+			h.refuse(w, 409, "job is already Done", "conflict", "", nil, "done")
+			return
+		}
+		now := h.clock().UTC()
+		if factory.JobState(it) == "running" || factory.JobState(it) == "queued" || factory.JobState(it) == "needs_you" {
+			if h.failed(w, h.stopForChange(it.ID)) {
+				return
+			}
+		}
+		h.finish(w, h.recordAction(r, it, record.Dropped, words, func() error {
+			return h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+				cur.State = factory.StateDismissed
+				cur.DoneHow = "dropped"
+				cur.DoneAt = now
+				cur.BranchDeleteAt = now.Add(factory.DroppedBranchRetention)
+				cur.Approval = nil
+				cur.StopUndo = nil
+				cur.Question = ""
+				cur.QKind = ""
+				cur.Failure = nil
+				cur.PublishError = ""
+				cur.Publishing = false
+				return nil
+			})
+		}))
+		h.scheduleJobTimer()
+		return
+	}
 	if h.workers != nil && h.workers.desk != nil {
 		if _, err := h.workers.desk.SignalIfHeld(it.ID, lease.Signal{Verb: lease.SignalStop, Words: words}); h.failed(w, err) {
 			return
@@ -746,7 +783,30 @@ func (h *Handler) stop(w http.ResponseWriter, r *http.Request, it factory.Item) 
 	if h.failed(w, err) {
 		return
 	}
-	if h.workers.desk != nil {
+	if h.config.Store != nil {
+		raw, _ := json.Marshal(it.Stream)
+		var prior *factory.Stream
+		_ = json.Unmarshal(raw, &prior)
+		var err error
+		if h.workers != nil && h.workers.desk != nil {
+			err = lease.NewDoors(h.workers.desk).StopAs(it.ID, handle)
+		} else {
+			err = h.stopForChange(it.ID)
+		}
+		if h.failed(w, err) {
+			return
+		}
+		err = h.config.Store.Update(it.ID, func(cur *factory.Item) error {
+			cur.StopUndo = &factory.StopUndo{By: handle, Until: h.clock().Add(factory.ApprovalUndo), Failure: it.Failure, State: it.State, Question: it.Question, QKind: it.QKind, Stream: prior}
+			cur.Approval = nil
+			cur.Failure = nil
+			cur.PublishError = ""
+			return nil
+		})
+		h.finish(w, err)
+		return
+	}
+	if h.workers != nil && h.workers.desk != nil {
 		h.finish(w, lease.NewDoors(h.workers.desk).StopAs(it.ID, handle))
 		return
 	}

@@ -32,6 +32,7 @@ import (
 // floor can disagree with another about what a fresh repo runs.
 func DefaultRecipe() Recipe {
 	return Recipe{
+		DefaultBudget: DefaultJobBudget,
 		Stages: []Stage{
 			{Name: "plan", Ask: "read the issue and say how", Until: "done", On: true},
 			{Name: ApproveName, Kind: StageGate, On: true},

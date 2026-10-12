@@ -35,13 +35,14 @@ func Encode(f File) ([]byte, error) {
 		}{f.Size.PRLines, f.Size.Issue}
 	}
 	return yaml.Marshal(struct {
-		Start    any      `yaml:"start,omitempty"`
-		Size     any      `yaml:"size,omitempty"`
-		Pipeline any      `yaml:"pipeline"`
-		Steps    any      `yaml:"steps"`
-		Fixed    []string `yaml:"fixed"`
-		Rules    []string `yaml:"rules"`
-	}{start, size, f.Pipeline, steps, f.Fixed, f.Rules})
+		DefaultBudget float64  `yaml:"default_budget,omitempty"`
+		Start         any      `yaml:"start,omitempty"`
+		Size          any      `yaml:"size,omitempty"`
+		Pipeline      any      `yaml:"pipeline"`
+		Steps         any      `yaml:"steps"`
+		Fixed         []string `yaml:"fixed"`
+		Rules         []string `yaml:"rules"`
+	}{f.DefaultBudget, start, size, f.Pipeline, steps, f.Fixed, f.Rules})
 }
 
 // Convert renders a Markdown recipe as YAML without writing either file.

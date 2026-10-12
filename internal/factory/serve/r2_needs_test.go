@@ -74,13 +74,13 @@ func TestCanAndNotJobPerson(t *testing.T) {
 		t.Fatalf("answer = %d %s", w.Code, w.Body)
 	}
 	w = verbRequest(h, "GET", fmt.Sprintf("/v1/jobs/%d", open.ID), "")
-	if err := json.Unmarshal(w.Body.Bytes(), &job); err != nil || !job.Can.Answer || !job.Can.AssignToMe || !job.Can.Reply || !job.Can.Approve {
+	if err := json.Unmarshal(w.Body.Bytes(), &job); err != nil || !job.Can.Answer || !job.Can.AssignToMe || !job.Can.Reply || job.Can.Approve {
 		t.Fatalf("open can = %+v %v", job.Can, err)
 	}
 
 	login = "sam"
 	w = verbRequest(h, "GET", fmt.Sprintf("/v1/jobs/%d", owned.ID), "")
-	if err := json.Unmarshal(w.Body.Bytes(), &job); err != nil || !job.Can.Approve || !job.Can.RunAgain || !job.Can.CancelJob || !job.Can.Answer || job.Can.AssignToMe {
+	if err := json.Unmarshal(w.Body.Bytes(), &job); err != nil || job.Can.Approve || !job.Can.RunAgain || !job.Can.CancelJob || !job.Can.Answer || job.Can.AssignToMe {
 		t.Fatalf("sam can = %+v %v", job.Can, err)
 	}
 }

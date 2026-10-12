@@ -29,6 +29,9 @@ func (h *Handler) leases() ([]lease.Lease, error) {
 }
 
 func (h *Handler) clock() time.Time {
+	if h.config.Now != nil {
+		return h.config.Now()
+	}
 	if h.workers != nil && h.workers.now != nil {
 		return h.workers.now()
 	}
@@ -226,6 +229,7 @@ func (h *Handler) applyPresence(jobs []api.Job) (online, busy int, err error) {
 		if machine == "" {
 			machine = names[held.Worker]
 		}
+		jobs[i].Runner = machine
 		jobs[i].HeldBy = &api.HeldBy{Machine: machine, Handle: held.Handle, HeartbeatAt: at, Since: since}
 	}
 	return online, busy, nil

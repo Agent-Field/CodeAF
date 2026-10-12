@@ -81,8 +81,9 @@ func decodeRoot(text string) (*yaml.Node, error) {
 }
 
 type draft struct {
-	problems []Problem
-	set      presence
+	defaultBudget float64
+	problems      []Problem
+	set           presence
 
 	labels   []string
 	maxSize  string
@@ -109,6 +110,14 @@ func readDoc(root *yaml.Node) draft {
 	d.problems = append(d.problems, probs...)
 	for _, p := range pairs {
 		switch p.name {
+		case "default_budget":
+			v, err := floatOf(p.val)
+			if err != nil || math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 {
+				d.problems = append(d.problems, Problem{Line: p.line, Where: p.name, Why: "budget must be a positive number of dollars"})
+			} else {
+				d.defaultBudget = v
+				d.set.defaultBudget = true
+			}
 		case "start":
 			d.readStart(p.val)
 		case "size":
@@ -333,6 +342,9 @@ func (d draft) file(defaults bool) File {
 	}
 	f.Problems = append([]Problem{}, d.problems...)
 	f.set = d.set
+	if d.set.defaultBudget {
+		f.DefaultBudget = d.defaultBudget
+	}
 	if d.set.labels {
 		f.Start.Labels = d.labels
 	}
@@ -623,7 +635,7 @@ func tag(where string, ps []Problem) []Problem {
 
 func normSize(s string) (string, bool) {
 	switch strings.ToUpper(strings.TrimSpace(s)) {
-	case "S", "M", "L":
+	case "XS", "S", "M", "L", "XL":
 		return strings.ToUpper(strings.TrimSpace(s)), true
 	default:
 		return "", false
