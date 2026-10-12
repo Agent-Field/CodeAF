@@ -217,7 +217,7 @@ func TestAReportedStepFailureIsARecord(t *testing.T) {
 		t.Fatalf("step = %+v", ph)
 	}
 	events, err := rec.Since(context.Background(), time.Time{})
-	if err != nil || len(events) != 1 || events[0].Kind != record.StepFailed || events[0].Job != job.ID {
+	if err != nil || len(events) != 2 || events[1].Kind != record.StepFailed || events[1].Job != job.ID || events[0].Kind != record.RunnerAdded {
 		t.Fatalf("record = %+v %v", events, err)
 	}
 }

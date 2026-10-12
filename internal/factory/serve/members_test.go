@@ -38,7 +38,7 @@ func TestMemberAndSessionFixturesMatchSignIn(t *testing.T) {
 	*now = now.Add(5 * time.Second)
 	w := pollIdentity(h, device, row.Token, nil)
 	var signed api.SignedIn
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &signed) != nil || api.Contract != 1 {
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &signed) != nil || api.Contract != 2 {
 		t.Fatalf("sign-in = %d %s", w.Code, w.Body)
 	}
 	members := identityRequest(h, "GET", "/v1/members", "", signed.AccessToken, nil)

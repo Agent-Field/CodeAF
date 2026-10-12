@@ -117,12 +117,12 @@ func TestMachineSilencePushesOfflineAtDeadline(t *testing.T) {
 		time.Sleep(time.Duration(lease.OfflineMisses) * lease.HeartbeatEvery)
 		synctest.Wait()
 		events, _, err := live.Read(root)
-		if err != nil || len(events) != 2 {
+		if err != nil || len(events) != 4 {
 			t.Fatalf("machine transitions: %+v %v", events, err)
 		}
 		var p api.LiveEvent
-		if err := json.Unmarshal(events[1].Data, &p); err != nil || p.Name != "laptop" || p.Status != api.MachineOffline || events[1].Handle != "priya" {
-			t.Fatalf("offline: %s %v", events[1].Data, err)
+		if err := json.Unmarshal(events[2].Data, &p); err != nil || p.Name != "laptop" || p.Status != api.MachineOffline || events[2].Handle != "priya" {
+			t.Fatalf("offline: %s %v", events[2].Data, err)
 		}
 	})
 }

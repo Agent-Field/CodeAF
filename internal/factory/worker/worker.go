@@ -49,7 +49,7 @@ type Options struct {
 	Slots int
 	// ReportEvery and BeatEvery pace the reports and the heartbeats (the
 	// heartbeat is also how a person's verbs arrive); zero is 500ms and
-	// [lease.HeartbeatEvery]. Three missed beats is offline.
+	// [lease.HeartbeatEvery]. Sixty seconds of silence is offline.
 	ReportEvery, BeatEvery time.Duration
 }
 
@@ -61,7 +61,11 @@ func Run(ctx context.Context, opts Options) {
 	if opts.BeatEvery <= 0 {
 		opts.BeatEvery = lease.HeartbeatEvery
 	}
-	slots := max(opts.Slots, 1)
+	if opts.Slots <= 0 {
+		opts.Slots = api.DefaultRunnerSlots
+	}
+	slots := opts.Slots
+	opts.Attach.Slots = slots
 	done := make(chan struct{}, slots)
 	for i := 0; i < slots; i++ {
 		go func(slot int) {

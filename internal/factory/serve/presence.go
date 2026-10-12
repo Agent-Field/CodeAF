@@ -55,7 +55,7 @@ func (h *Handler) beat(held lease.Lease) (at, since time.Time) {
 }
 
 // roster folds attached slots into one row per handle and machine. Status
-// is offline when the last heartbeat is three intervals old or older; a
+// is offline when the last heartbeat is sixty seconds old or older; a
 // live lease does not keep a quiet machine busy.
 func (h *Handler) roster(now time.Time, leases []lease.Lease) []machineRow {
 	if h.workers == nil {
@@ -73,6 +73,7 @@ func (h *Handler) roster(now time.Time, leases []lease.Lease) []machineRow {
 		last                      time.Time
 		job                       int
 		jobAt                     time.Time
+		asleep                    bool
 	}
 	by := map[string]*acc{}
 	var keys []string
@@ -88,12 +89,13 @@ func (h *Handler) roster(now time.Time, leases []lease.Lease) []machineRow {
 		key := row.Worker.Handle + "\x00" + name
 		got := by[key]
 		if got == nil {
-			got = &acc{handle: row.Worker.Handle, name: name, os: row.OS, version: row.Version, last: row.Last}
+			got = &acc{handle: row.Worker.Handle, name: name, os: row.OS, version: row.Version, last: row.Last, asleep: row.Asleep}
 			by[key] = got
 			keys = append(keys, key)
 		}
 		if row.Last.After(got.last) {
 			got.last = row.Last
+			got.asleep = row.Asleep
 			if row.OS != "" {
 				got.os = row.OS
 			}
@@ -118,12 +120,14 @@ func (h *Handler) roster(now time.Time, leases []lease.Lease) []machineRow {
 			got.jobAt = at
 		}
 	}
-	limit := time.Duration(lease.OfflineMisses) * lease.HeartbeatEvery
+	limit := lease.OfflineAfter
 	out := make([]machineRow, 0, len(keys))
 	for _, key := range keys {
 		got := by[key]
 		status := api.MachineIdle
-		if got.last.IsZero() || !now.Before(got.last.Add(limit)) {
+		if got.asleep {
+			status = api.RunnerAsleep
+		} else if got.last.IsZero() || !now.Before(got.last.Add(limit)) {
 			status = api.MachineOffline
 		} else if got.job != 0 {
 			status = api.MachineBusy
@@ -247,6 +251,12 @@ func (h *Handler) savedTakes(handle string) (map[string]bool, error) {
 // Until this handle has been saved, the attach map stands, so a loopback
 // worker still takes every unassigned job.
 func (h *Handler) consent(worker lease.Worker) (lease.Worker, error) {
+	worker.Team = h.mode() == api.FactoryTeam
+	worker.Solo = h.mode() == api.FactorySolo
+	if worker.Team {
+		worker.TakesUnassigned = nil
+		return worker, nil
+	}
 	if h.config.Store == nil {
 		return worker, nil
 	}

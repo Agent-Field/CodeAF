@@ -72,7 +72,7 @@ func (h *Handler) retryPublish(w http.ResponseWriter, r *http.Request, it factor
 		h.fail(w, http.StatusForbidden, "only the job's person can Retry publishing")
 		return
 	}
-	if factory.NormalizeHandle(handle) != person {
+	if h.mode() != api.FactorySolo && factory.NormalizeHandle(handle) != person {
 		h.notJobPerson(w, it, person)
 		return
 	}

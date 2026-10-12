@@ -9,7 +9,7 @@ import (
 )
 
 func TestChangeFactsAreAdditiveContractOne(t *testing.T) {
-	if Contract != 1 {
+	if Contract != 2 {
 		t.Fatalf("contract = %d", Contract)
 	}
 	change := &factory.Change{Branch: "factory/issue-7", Files: []factory.ChangedFile{{Path: "fix.go", Added: 2, Removed: 1, Status: "modified"}}, Stat: &factory.ChangeStat{Files: 1, Added: 2, Removed: 1}, Tests: []factory.StepTests{{Step: "test", TestCounts: factory.TestCounts{Passed: 4, Failed: 1, Skipped: 2}}}}

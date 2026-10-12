@@ -1,7 +1,9 @@
 package serve
 
 import (
+	"encoding/json"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"net/http"
 	"strconv"
 	"time"
@@ -122,7 +124,17 @@ func (h *Handler) sendLive(w http.ResponseWriter, r *http.Request, events []live
 }
 
 func (h *Handler) viewerWantsLive(r *http.Request, e live.Event) bool {
-	if e.Kind == "machine" && e.Job == 0 {
+	if e.Kind == "activity" {
+		if _, filter := h.repoAccess(r, nil); !filter {
+			return true
+		}
+		var event record.Event
+		if json.Unmarshal(e.Data, &event) != nil {
+			return false
+		}
+		return len(h.filterAudit(r, []record.Event{event})) == 1
+	}
+	if (e.Kind == "machine" || e.Kind == "runner") && e.Job == 0 {
 		handle, err := h.callerHandle(r)
 		return err == nil && handle == e.Handle
 	}

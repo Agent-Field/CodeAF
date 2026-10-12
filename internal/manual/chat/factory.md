@@ -229,10 +229,10 @@ within one second after it exits and reuses its saved registration credentials.
 and `CODEAF_FACTORY_NO_WORKER=1` does the same for a session host. The worker attaches once
 per slot (its credentials are kept in `~/.codeaf/v3/factory/worker.json`, per factory
 address), pulls a job, and runs it with this machine's runner in this machine's checkout
-and the job's own worktree. Up to four jobs run at once (`CODEAF_FACTORY_BENCHES`). On a
-loopback factory the worker takes every unassigned job; on a factory elsewhere it takes
-unassigned jobs only for repositories this machine has a checkout of. A job whose worker
-went away goes back to the queue when its lease expires. Only a worker on the machine
+and the job's own worktree. Two jobs run at once by default (`CODEAF_FACTORY_BENCHES`). In a solo
+factory every job is yours. In a team a runner takes only its owner's assigned jobs;
+unassigned jobs do not run. At the 60-second heartbeat deadline, a running job
+becomes Needs you: `Runner went offline mid-step`. Only a worker on the machine
 holding its worktree may resume it or publish it; a new slot or process there goes on at
 the step it stopped in. While queued it says `waiting for <machine>`. If that machine
 is offline, it waits for that machine to return.
@@ -1915,7 +1915,7 @@ The list is the same for every caller who can open the factory. A restart
 keeps someone who signed in with an access token: the profile and `joined_at` are stored
 on that token row. A loopback sign-in that did not use a token row is remembered
 across restarts while its saved session is live. `sessions` is 0 when they have no live sign-in.
-Contract stays 1. This list does not sign anyone out.
+Contract is 2. This list does not sign anyone out.
 
 ## sign out a factory session
 
@@ -1927,8 +1927,9 @@ is yours. Another person's id answers HTTP 404 `session not found`.
 `POST /v1/me/sessions/signout-others` signs out your other sessions, leaves the
 one you called it with, and returns `{factory, signed_out}`. Signing out does
 not revoke an access token and does not stop a machine that attached with its
-own worker credential. `codeaf factory revoke-sessions` still signs every
-browser out and still requires the host access token. Sessions last 30 days
+own worker credential. `codeaf factory revoke-sessions` ends all sessions and unassigns their
+unfinished jobs. The operator can also revoke a person with
+`DELETE /v1/people/{login}/sessions`; their runner credentials stop working. Sessions last 30 days
 and survive service restarts. Sign-out and revoke-sessions are saved immediately.
 
 ## repos you can see — no_visible_repos
@@ -1951,37 +1952,25 @@ appear in the queue even before they have jobs, when the caller can read them.
 Saved sign-ins restore repository access after restart. A GitHub 401 ends that
 sign-in with HTTP 401 and `reason` `github_expired`, rather than an empty queue.
 
-## Your machines — busy, idle, offline — and pick up unassigned
+## Your runners — idle, busy, offline, asleep and slots
 
-`GET /v1/me` `machines` lists only the caller's own machines. Each has `name`,
-`os`, `codeaf_version`, `status` (`busy`, `idle` or `offline`), `job` when a
-job is held, and `last_heartbeat`. Slots on one machine are one row. `offline`
-means nothing has been heard for three heartbeat intervals: the worker beats
-every 2 seconds, and three missed beats is offline. That is not the one-minute
-lease. `busy` is a recent heartbeat and a live hold. `idle` is a recent
-heartbeat and no hold. A quiet machine can still be named on its job until
-the lease expires.
+`GET /v1/runners` lists computers with `id`, `name`, `owner`, `kind`
+(`this_mac`, `mac`, `ci`), `slots` (default 2), `state`, `checkouts`, `jobs`
+and `last_seen`. Your runners run only your jobs in a team. Unassigned team
+jobs do not run. In solo mode every job is yours and there is no assignee.
+`GET /v1/me` includes your `runners`, `mode` and `operator` flag.
 
-Another person's machine is not in this list. On a job the caller can already
-see, that machine appears only as `held_by`: `machine`, `handle`,
-`heartbeat_at` (the last renewal) and `since` (when the hold began).
+`offline` means no heartbeat for 60 seconds. A step that was running makes the
+job Needs you with `runner_offline` and `Runner went offline mid-step`.
+`POST /v1/runners/presence` with a runner credential and `{asleep:true}` reports
+macOS sleep: jobs wait and leases stay. `{asleep:false}` reports wake and starts
+a fresh deadline. The app supplies these native notifications.
+`PUT /v1/runners/{id}` changes your positive slot limit and checkouts. The local
+execution count is `CODEAF_FACTORY_BENCHES`, default 2.
 
-`GET /v1/queue` `capacity` adds `machines_online` and `busy`. Online is every
-handle's machines that are busy or idle. Busy is those holding a job. Offline
-machines count in neither. Zero is sent, so an older factory is the one that
-omits the fields.
-
-`PUT /v1/me/takes_unassigned` with `{"owner/repo":true}` saves, for this
-handle, which repositories these machines may pull when a job has no person.
-`false` or a repo left out means they do not. `{"*":true}` is every repository.
-The body replaces the previous map; `{}` clears it. It is kept in the factory
-store and is still there after a restart. Until a map has been saved, each
-worker keeps the consent it sent at attach: on loopback, every repository;
-elsewhere, repositories this machine has a checkout of. After a map is saved,
-every later pull by that handle uses the saved map, including a worker that
-attached willing to take everything. The toggle never lets a machine pull a
-job that already belongs to someone else. A factory with no store answers
-HTTP 501 with `this factory does not provide that action`.
+The older `machines` and `held_by` fields stay for earlier clients. The saved
+`PUT /v1/me/takes_unassigned` map remains readable, but never permits an
+unassigned team job to run. Runner facts and credential hashes survive restart.
 
 ## factory about, pipeline file, dry run and spent today
 
@@ -2275,7 +2264,7 @@ and `checks` (`passed`, `failed`, `pending`). `pr.ci` stays the short line
 The first poll that sees `merged` or `closed` appends `pr_merged` or `pr_closed`
 to the record, with detail `pr · <url>`. A later poll that sees the same state
 does not write it again. The queue's `since.merged_today` and `since.merged_week`
-count merged pull requests, today and this week from Monday. Contract stays 1.
+count merged pull requests, today and this week from Monday. Contract is 2.
 
 ## factory publish failure codes and next steps
 
@@ -2373,7 +2362,7 @@ Only visible jobs reach the viewer, including replay. Machine events name your
 own idle machines or machines tied to visible jobs. Slow clients catch up within the
 saved window. Every 20 seconds `: keepalive` keeps an idle stream alive without
 changing its event id or requesting a read. A factory without a store sends
-keepalives only. `/v1` Contract stays 1.
+keepalives only. `/v1` Contract is 2.
 
 ## factory manager thread on another machine, pending replies and delivered messages
 
@@ -2400,7 +2389,7 @@ Queued and running jobs can receive a reply while their worker makes the manager
 
 An unknown job answers `job not found`; an invalid id says
 `job id must be a positive integer`. The reads follow the usual factory access
-rule and return `factory: {address, version}`. Contract stays 1.
+rule and return `factory: {address, version}`. Contract is 2.
 
 ## factory answered question history — who answered, words, time and event
 
@@ -2419,8 +2408,7 @@ HTTP 201 with `{factory, worker_id, credential}`. Loopback attach needs no acces
 token; remote attach requires the factory access token. Each attach creates a
 fresh worker identity. A signed-in caller can attach only under their own
 handle (omitting it fills that handle); a different supplied handle answers
-HTTP 403 `worker handle must match the signed-in caller`. Credentials last for this handler's lifetime; after a
-server restart attach again and let the former hold expire.
+HTTP 403 `worker handle must match the signed-in caller`. Runner credentials are stored as hashes and survive a server restart.
 
 On loopback, an empty or omitted `handle` uses the factory's connected GitHub
 login, the same identity as Take, Approve and `/v1/me`. Without that login it
@@ -2440,11 +2428,9 @@ answer HTTP 401 with `a bearer worker credential is required`.
 
 `GET /v1/workers/pull` waits at most thirty seconds for a queued job and answers
 HTTP 200 with `{factory, lease, job}`, or HTTP 204 without a body. One worker holds
-one job, and two workers cannot pull the same job. Only jobs belonging to the
-worker's handle are offered. Attach can also take
-`"takes_unassigned":{"owner/repo":true}`: this opts into unassigned jobs in that
-repository, never jobs assigned to somebody else. A map saved with
-`PUT /v1/me/takes_unassigned` replaces that consent on later pulls. `os` and
+one job, and two workers cannot pull the same job. In a team, only jobs belonging to the runner's owner are offered.
+`takes_unassigned` and its saved map cannot permit unassigned team jobs to run.
+In a solo factory every job is yours. `os` and
 `codeaf_version` name the machine for `GET /v1/me`.
 
 The lease includes `id`, `job`, `worker`, `machine`, `handle` and `expires_at`.
@@ -2454,8 +2440,7 @@ An older attach without `machine` uses `name` as its machine id.
 renewed expiry. `signals` are the verbs a person asked of the job since the last
 heartbeat, oldest first: `{"verb":"hold","yes":true}` (pause; false resumes),
 `{"verb":"answer","yes":true,"words":"…"}` and `{"verb":"steer","words":"…"}`. A pull
-may carry `{"verb":"recheck"}`: run the job's checks again instead of its steps. The default hold lasts one minute. Expired running jobs return to the
-queue. A renewed hold keeps its id; a new hold gets a different id. Another
+may carry `{"verb":"recheck"}`: run the job's checks again instead of its steps. The default hold lasts one minute. Expired running jobs become Needs you with `Runner went offline mid-step`. A renewed hold keeps its id; a new hold gets a different id. Another
 worker's hold answers HTTP 403 with `lease belongs to another worker`; an expired
 or completed hold answers HTTP 409 with `lease is no longer live`.
 
@@ -2484,7 +2469,7 @@ machine reports, `change` is absent. If a later file read fails, the last
 readable snapshot stays. A source PR job carries `draft: true` or `false`;
 a published PR receipt carries `pr.draft`.
 
-These fields are additive in Contract 1. The holding machine reports them
+These fields are additive in Contract 2. The holding machine reports them
 through `POST /v1/workers/leases/{id}/report`; they survive pauses and restarts.
 
 ## factory HTTP worker reports — step results, logs, cost, claims, questions and published receipts
@@ -2593,7 +2578,7 @@ steps). `L` runs every selected item (or this one). There is no plan-first key: 
 holds after the plan already. The bottom line says `#12 is running` once the factory's next read
 sees it start, and `#12 is queued · a bench frees it` only when that read still finds it queued
 behind full benches. A run item is `queued` until a worker pulls it, takes one of that
-machine's benches (four at once; `CODEAF_FACTORY_BENCHES` pins another number) and runs its
+runner's slots (two at once; `CODEAF_FACTORY_BENCHES` pins another number) and runs its
 stages in order. It lands with its proof sheet for you to approve, or, with no approve step among its
 stages, ships by itself when every claim was shown.
 
@@ -2657,7 +2642,7 @@ An item never works in your checkout. The first round that needs a folder makes 
 own git worktree, `~/.codeaf/v3/factory/work/<repo>-<number>` (such as `work/api-12`), on its
 own branch, `factory/<number>-<slug>`, the slug from the title, at most forty characters (such
 as `factory/12-total-double-counts`). Every later round, and every stage, works in that same
-folder, so four items running at once never write over each other. The item's log says
+folder, so two items running at once never write over each other. The item's log says
 `branch: factory/12-total-double-counts` once, when the worktree is made.
 
 The branch starts from your remote's default branch (`origin/HEAD`) when git knows it, else
@@ -2819,7 +2804,7 @@ turn on automatic intake. YAML takes precedence once committed on the default br
 `GET /v1/people/{handle}` returns a person card: `handle`, GitHub `name`,
 `avatar_url`, `html_url`, `role` (`member` or `outside`), optional `last_seen`,
 `owns`, optional `assigned_now`, `waiting_on`, `questions`, and `machines`.
-Contract stays 1. Handles are lowercase; a leading `@` is accepted.
+Contract is 2. Handles are lowercase; a leading `@` is accepted.
 
 GitHub's public users API supplies profiles, including issue authors who never
 signed in. Successful reads are cached for 24 hours, then checked with ETag.
@@ -2860,3 +2845,55 @@ job; hidden holds and idle machines are omitted. A viewer with no visible
 repositories gets no ownership, counts or machines. A whole-floor viewer gets
 that person's full roster with `busy`, `idle` or `offline`, using the same
 heartbeat rule as `/v1/me`.
+
+## Factory People — invited, active, away and operator
+
+`GET /v1/people` is a team directory with `login`, `name`, `avatar_url`,
+`you`, `operator`, `status`, `runners` and visible job counts. It returns no
+People entries in solo mode. Status is `invited` before first sign-in,
+`active` after sign-in and `away` after 15 minutes idle. Sessions are shown to
+that person and the operator only. Nobody gains another person's runner or
+approval authority by becoming operator.
+
+`DELETE /v1/people/{login}/sessions` lets the operator end that person's
+sign-ins and runner credentials. Their unfinished jobs stop and go to
+Unassigned in Backlog. Their branches and Activity stay. Operator identity
+comes from the host's GitHub login, not a claim sent by a client.
+
+## Access links — Sign in with GitHub through an access link
+
+The binary owns access links. The operator creates one with
+`POST /v1/access/links`, optionally naming `login`, `name` and `expires_at`.
+The response is `{factory,link}` with a `codeaf://factory/join` URL. Its
+secret is in the fragment and returned only at creation. `GET /v1/access/links`
+lists metadata without reusable secrets. A named link binds that GitHub login.
+
+Use the link token at `/v1/auth/device` and `/v1/auth/device/poll`, then use the
+returned factory session. A link without live GitHub sign-in cannot read jobs:
+`Sign in with GitHub through an access link`.
+`DELETE /v1/access/links/{id}` revokes the link and its person's execution.
+`POST /v1/access/revoke-sessions` ends all sessions and unassigns their work.
+The app confirms Revoke all sessions before calling the door.
+
+## Factory Activity — actor, verb, object and CSV export
+
+`GET /v1/activity` reads append-only events with `actor` (person, agent or
+factory), `verb`, `object`, `detail`, optional `rule` and `cost`. Events cannot
+be edited or deleted. Operator actions carry `actor.operator:true` and
+`as operator` in their detail. Connecting repos, adding runners and making or
+revoking links join the durable job decisions in this record.
+
+Filter with `kind`, `person`, `on`, `when` (UTC date), or `since` (RFC3339).
+`format=csv` exports exactly the selected events the caller can see. CSV keeps
+the receipt columns and adds actor, verb, object, rule and as_operator.
+Only the operator can change connected repositories with `PUT /v1/repos`.
+An ordinary signed-in caller gets `only the operator can do this`.
+
+## Add a runner — codeaf runner join
+
+Run `codeaf runner join <url> [--name name] [--token session]` on another
+computer. This saves the factory connection through the same door as
+`codeaf attach`; new codeaf windows run that computer's worker loop. It does
+not leave a daemon running after the command exits. Use the factory session
+returned by GitHub sign-in. `CODEAF_FACTORY_BENCHES` sets the number of
+execution slots, default 2. A team runner runs only its owner's assigned jobs.

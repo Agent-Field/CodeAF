@@ -11,7 +11,7 @@ import (
 )
 
 func TestLiveEventsKeepContractOneAndSmallPayloads(t *testing.T) {
-	if Contract != 1 {
+	if Contract != 2 {
 		t.Fatal("live events changed the contract")
 	}
 	now := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
@@ -43,6 +43,8 @@ func TestLiveEventsKeepContractOneAndSmallPayloads(t *testing.T) {
 			it.QKind = factory.QKindOutOfAttempts
 		case factory.NeedsApproveProof:
 			it.State, it.Question = factory.StateLanded, ""
+		case factory.NeedsRunnerOffline:
+			it.QKind = factory.NeedsRunnerOffline
 		case factory.NeedsPublishFailed:
 			it.State, it.PublishStatus = factory.StateLanded, &factory.Publishing{State: "failed", Code: "no_push_permission"}
 		}

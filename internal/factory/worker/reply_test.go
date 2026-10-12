@@ -26,7 +26,7 @@ func TestTwoWorkersDeliverRepliesAndReportTheirManagerLines(t *testing.T) {
 		t.Fatal(err)
 	}
 	seam := factory.LocalSeam(st, time.Now())
-	h := serve.New(seam, serve.Config{Store: st, PullWait: time.Millisecond})
+	h := serve.New(seam, serve.Config{Mode: api.FactoryTeam, Store: st, PullWait: time.Millisecond})
 	s := httptest.NewServer(h)
 	t.Cleanup(func() { s.Close(); h.Close() })
 	ctx, cancel := context.WithCancel(context.Background())
@@ -51,7 +51,7 @@ func TestTwoWorkersDeliverRepliesAndReportTheirManagerLines(t *testing.T) {
 			t.Fatal(err)
 		}
 		w := client.Open(s.URL, "").Worker("")
-		opts := worker.Options{
+		opts := worker.Options{Slots: 1,
 			Dial:   func(int) *client.WorkerClient { return w },
 			Attach: api.WorkerAttach{Name: person, Machine: person + "-machine", Handle: person},
 			Mirror: mirror, Runner: run.New(run.Options{Store: mirror}),

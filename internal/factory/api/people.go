@@ -10,6 +10,12 @@ type Person struct {
 	Factory Factory `json:"factory"`
 	Handle  string  `json:"handle"`
 	factory.GitHubPerson
+	Login       string      `json:"login"`
+	You         bool        `json:"you"`
+	Operator    bool        `json:"operator"`
+	Status      string      `json:"status"`
+	Runners     []Runner    `json:"runners"`
+	Sessions    []Session   `json:"sessions,omitempty"`
 	Role        string      `json:"role"`
 	LastSeen    *time.Time  `json:"last_seen,omitempty"`
 	Owns        []Ownership `json:"owns"`

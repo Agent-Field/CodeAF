@@ -37,7 +37,7 @@ func TestFactoryNameIsAdditiveContractOneOnEveryResponse(t *testing.T) {
 			if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 				t.Fatal(err)
 			}
-			if body.Factory.Name != want || body.Factory.Address != cfg.Address || body.Factory.Version != cfg.Version || api.Contract != 1 {
+			if body.Factory.Name != want || body.Factory.Address != cfg.Address || body.Factory.Version != cfg.Version || api.Contract != 2 {
 				t.Fatalf("%s: %s", path, w.Body)
 			}
 			if path == "/v1/about" && body.Name != want {

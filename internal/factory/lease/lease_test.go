@@ -260,7 +260,7 @@ func TestHeartbeatRenewsOnlyTheHolder(t *testing.T) {
 	if _, err := f.desk.Heartbeat(it.ID, "laptop"); !errors.Is(err, lease.ErrNoLease) {
 		t.Fatalf("late heartbeat: %v", err)
 	}
-	f.state(t, it.ID, factory.StateQueued)
+	f.state(t, it.ID, factory.StateNeedsYou)
 }
 
 func TestExpiryRequeuesAtTheDeadlineAndCanBePulledAgain(t *testing.T) {
@@ -279,13 +279,19 @@ func TestExpiryRequeuesAtTheDeadlineAndCanBePulledAgain(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(expired, []lease.Lease{held}) {
 		t.Fatalf("at deadline: %+v, %v", expired, err)
 	}
-	f.state(t, it.ID, factory.StateQueued)
+	f.state(t, it.ID, factory.StateNeedsYou)
 	lost, err := f.store.Get(it.ID)
-	if err != nil || lost.Failure == nil || lost.Failure.Code != factory.CodeMachineLost || lost.Failure.Next != factory.FailureRequeued || lost.Failure.Detail != "the machine holding the work was lost" {
+	if err != nil || lost.Failure == nil || lost.Failure.Code != factory.CodeMachineLost || lost.Failure.Next != factory.FailureStopped || lost.Failure.Detail != "Runner went offline mid-step" {
 		t.Fatalf("expiry failure: %+v %v", lost.Failure, err)
 	}
 	if got, err := f.desk.Expire(); err != nil || len(got) != 0 {
 		t.Fatalf("second expiry: %+v, %v", got, err)
+	}
+	if _, err := f.desk.Pull(worker("desktop", "sam")); !errors.Is(err, lease.ErrNoJob) {
+		t.Fatalf("offline work restarted: %v", err)
+	}
+	if err := f.store.Update(it.ID, func(it *factory.Item) error { it.State = factory.StateQueued; it.Question = ""; return nil }); err != nil {
+		t.Fatal(err)
 	}
 	next, err := f.desk.Pull(worker("desktop", "sam"))
 	if err != nil || next.Job != it.ID || !next.ExpiresAt.After(held.ExpiresAt) {
@@ -316,18 +322,18 @@ func TestExpiryKeepsTheStepAndRecordsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	lost, err := f.store.Get(it.ID)
-	if err != nil || lost.State != factory.StateQueued || lost.Failure == nil {
+	if err != nil || lost.State != factory.StateNeedsYou || lost.Failure == nil {
 		t.Fatalf("requeued = %+v %v", lost, err)
 	}
-	if lost.Failure.Attempts != 2 || lost.Failure.Machine != "ci-box" || lost.Failure.Next != factory.FailureRequeued || lost.Failure.Code != factory.CodeMachineLost {
+	if lost.Failure.Attempts != 2 || lost.Failure.Machine != "ci-box" || lost.Failure.Next != factory.FailureStopped || lost.Failure.Code != factory.CodeMachineLost {
 		t.Fatalf("failure = %+v", lost.Failure)
 	}
 	ph := lost.Stream.Phases[0]
-	if ph.State == factory.PhaseFailed || ph.Failure == nil || ph.Failure.Next != factory.FailureRequeued {
+	if ph.State == factory.PhaseFailed || ph.Failure == nil || ph.Failure.Next != factory.FailureStopped {
 		t.Fatalf("step was finished by the expiry: %+v", ph)
 	}
 	events, err := rec.Since(context.Background(), time.Time{})
-	if err != nil || len(events) != 1 || events[0].Kind != record.StepFailed || events[0].Job != it.ID || events[0].Detail != factory.CodeMachineLost+" · write · "+factory.FailureRequeued {
+	if err != nil || len(events) != 1 || events[0].Kind != record.StepFailed || events[0].Job != it.ID || events[0].Detail != factory.CodeMachineLost+" · write · "+factory.FailureStopped {
 		t.Fatalf("record = %+v %v", events, err)
 	}
 }
@@ -341,9 +347,10 @@ func TestPullExpiresWithoutATimer(t *testing.T) {
 	}
 	f.now = held.ExpiresAt
 	next, err := f.open(t).Pull(worker("desktop", "sam"))
-	if err != nil || next.Job != it.ID {
-		t.Fatalf("pull recovers expiry: %+v, %v", next, err)
+	if !errors.Is(err, lease.ErrNoJob) || next.Job != 0 {
+		t.Fatalf("pull restarted offline work: %+v, %v", next, err)
 	}
+	f.state(t, it.ID, factory.StateNeedsYou)
 }
 
 func TestRequeueRequiresTheHolderAndKeepsThePerson(t *testing.T) {

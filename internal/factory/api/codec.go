@@ -141,7 +141,7 @@ func needsYou(it factory.Item) *NeedsYou {
 		return nil
 	}
 	ny := &NeedsYou{Kind: kind, Since: factory.NeedsSince(it), WhoCanAnswer: factory.WhoCanAnswer(kind)}
-	if kind == factory.NeedsQuestion || kind == factory.NeedsOutOfAttempts {
+	if kind == factory.NeedsQuestion || kind == factory.NeedsOutOfAttempts || kind == factory.NeedsRunnerOffline {
 		ny.Question = needsQuestion(it)
 	}
 	return ny
@@ -394,7 +394,7 @@ func toSource(s Source) factory.SourceInfo {
 func fromRepos(rs []factory.Repo, checkouts map[string]string) []Repo {
 	return mapList(rs, func(r factory.Repo) Repo {
 		p := FromRecipe(r.Recipe)
-		return Repo{Name: r.Name, Watched: true, Checkout: checkouts[r.Name], Pipeline: &p,
+		return Repo{Name: r.Name, Watched: true, On: true, Checkout: checkouts[r.Name], Pipeline: &p,
 			Team: r.Team, Areas: r.Areas, Habits: r.Habits, Hue: r.Hue, CIRed: r.CIRed}
 	})
 }

@@ -322,6 +322,8 @@ func run() error {
 		return runDevices(os.Args[2:])
 	case "factory":
 		return runFactory(os.Args[2:])
+	case "runner":
+		return runRunner(os.Args[2:])
 	case "attach":
 		// Which factory this machine's windows talk to (factory_attach.go).
 		return runAttach(os.Args[2:])
@@ -550,7 +552,7 @@ Look at what happened — read-only, no key, nothing spent
       print the build this binary was cut from (--version and -v say the same)
 Housekeeping — changes state on disk or on the network
   codeaf factory [serve|name|steps|convert|token|revoke] | codeaf attach <url>
-      serve on ` + factoryDefaultListen + `; token add|list|revoke; codeaf detach undoes it
+  codeaf runner join <url> | codeaf detach; serve on ` + factoryDefaultListen + `
   codeaf connect
       list the providers this profile knows and which are connected
   codeaf connect <provider> [--no-browser] [--region intl|cn]

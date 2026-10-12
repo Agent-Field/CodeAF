@@ -9,6 +9,11 @@ import (
 // WorkerAttach names the machine and its person; consent to unassigned work
 // is explicit and applies only to each named repository.
 type WorkerAttach struct {
+	Runner          string          `json:"runner,omitempty"`
+	Owner           string          `json:"owner,omitempty"`
+	Kind            string          `json:"kind,omitempty"`
+	Slots           int             `json:"slots,omitempty"`
+	Checkouts       []Checkout      `json:"checkouts,omitempty"`
 	Machine         string          `json:"machine,omitempty"`
 	Name            string          `json:"name"`
 	Handle          string          `json:"handle"`
@@ -22,6 +27,7 @@ type WorkerAttach struct {
 type WorkerAttached struct {
 	Factory    Factory `json:"factory"`
 	WorkerID   string  `json:"worker_id"`
+	RunnerID   string  `json:"runner_id"`
 	Credential string  `json:"credential"`
 }
 
@@ -186,6 +192,8 @@ type WorkerSignal struct {
 }
 
 type WorkerLease struct {
+	Runner     string    `json:"runner,omitempty"`
+	Owner      string    `json:"owner,omitempty"`
 	ThreadOnly bool      `json:"thread_only,omitempty"`
 	ID         string    `json:"id"`
 	Job        int       `json:"job"`

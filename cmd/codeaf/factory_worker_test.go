@@ -295,7 +295,7 @@ func TestFactoryWorkerLeasesTheJobItsForgePersonTook(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			h := serve.New(person, serve.Config{Store: st, Record: rec, PullWait: time.Millisecond})
+			h := serve.New(person, serve.Config{Mode: api.FactoryTeam, Store: st, Record: rec, PullWait: time.Millisecond})
 			t.Cleanup(h.Close)
 			server := httptest.NewServer(h)
 			defer server.Close()
@@ -345,7 +345,7 @@ func TestFactoryWorkerLeasesTheJobItsForgePersonTook(t *testing.T) {
 				t.Fatalf("viewer and worker disagree: %+v, %v", me, err)
 			}
 			events, err := rec.Since(ctx, time.Time{})
-			if err != nil || len(events) != 1 || events[0].Handle != me.Handle || events[0].Kind != record.Took {
+			if err != nil || len(events) != 3 || events[0].Handle != me.Handle || events[0].Kind != record.Took {
 				t.Fatalf("take receipt and worker disagree: %+v, %v", events, err)
 			}
 			approval, err := st.Create(factory.Item{Repo: "owner/repo", Title: "approve work", State: factory.StateNeedsYou, QKind: factory.QKindApprove})
@@ -361,7 +361,7 @@ func TestFactoryWorkerLeasesTheJobItsForgePersonTook(t *testing.T) {
 				t.Fatalf("approve: HTTP %d", response.StatusCode)
 			}
 			events, err = rec.Since(ctx, time.Time{})
-			if err != nil || len(events) != 2 || events[1].Handle != me.Handle || events[1].Kind != record.Approved {
+			if err != nil || len(events) != 4 || events[3].Handle != me.Handle || events[3].Kind != record.Approved {
 				t.Fatalf("approval receipt and worker disagree: %+v, %v", events, err)
 			}
 		})

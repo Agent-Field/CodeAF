@@ -7,7 +7,7 @@ import (
 )
 
 func TestPeopleAndOwnersStayContractOne(t *testing.T) {
-	if Contract != 1 {
+	if Contract != 2 {
 		t.Fatalf("contract = %d", Contract)
 	}
 	q := FromSnapshot(factory.Fixture(at), "santosh")
@@ -23,7 +23,7 @@ func TestPeopleAndOwnersStayContractOne(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertKeys(t, raw, "factory", "handle", "name", "avatar_url", "html_url", "role", "last_seen", "owns", "assigned_now", "waiting_on", "questions", "machines")
+	assertKeys(t, raw, "factory", "handle", "name", "avatar_url", "html_url", "role", "last_seen", "owns", "assigned_now", "waiting_on", "questions", "machines", "login", "you", "operator", "status", "runners")
 	var decoded Person
 	if err := json.Unmarshal(raw, &decoded); err != nil || decoded.AssignedNow != 3 || decoded.WaitingOn != 2 || decoded.Role != "member" {
 		t.Fatalf("card = %+v %v", decoded, err)

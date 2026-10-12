@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
@@ -21,6 +22,7 @@ func attachLab(t *testing.T) *store.Store {
 	t.Helper()
 	t.Setenv(home.EnvVar, t.TempDir())
 	t.Setenv(factoryFixtureEnv, "")
+	sealFactoryPeople(t)
 	st, err := store.Open(v3FactoryRoot())
 	if err != nil {
 		t.Fatal(err)
@@ -220,4 +222,24 @@ func httpFactory(t *testing.T, h http.Handler) string {
 	go func() { _ = srv.Serve(l) }()
 	t.Cleanup(func() { _ = srv.Close() })
 	return "http://" + l.Addr().String()
+}
+
+// sealFactoryPeople keeps local service fixtures independent of GitHub availability.
+func sealFactoryPeople(t *testing.T) {
+	t.Helper()
+	// Discovery measures a local server, so GitHub ownership reads must not consume its one-second deadline.
+	profile := factoryProfile("")
+	factoryPeopleCaches.Lock()
+	previous, present := factoryPeopleCaches.profiles[profile]
+	factoryPeopleCaches.profiles[profile] = factorygithub.NewPeopleLoader(nil, nil)
+	factoryPeopleCaches.Unlock()
+	t.Cleanup(func() {
+		factoryPeopleCaches.Lock()
+		defer factoryPeopleCaches.Unlock()
+		if present {
+			factoryPeopleCaches.profiles[profile] = previous
+		} else {
+			delete(factoryPeopleCaches.profiles, profile)
+		}
+	})
 }

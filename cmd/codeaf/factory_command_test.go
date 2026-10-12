@@ -29,6 +29,7 @@ func TestFactoryCommandServesQueueAndOwnsDiscovery(t *testing.T) {
 	previous := factoryWorkerParent()
 	t.Cleanup(func() { setFactoryProcess(func() { factoryProcess.parent = previous }) })
 	t.Setenv(home.EnvVar, t.TempDir())
+	sealFactoryPeople(t)
 	configPath := home.Join("factory", "config.yaml")
 	if err := writeFactoryPrivate(configPath, []byte("listen: 127.0.0.1:0\naccess_token: test-secret\nrepos: [owner/repo]\n")); err != nil {
 		t.Fatal(err)

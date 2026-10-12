@@ -55,7 +55,7 @@ func TestRepositoryIdentityContractAndViewerFiltering(t *testing.T) {
 			}
 			viewer := signViewer(t, h, g, clock, "priya")
 			q := queueAs(t, h, viewer, false)
-			if api.Contract != 1 || len(q.Repos) != 1 || q.Repos[0].Name != "acme/api" || len(q.Jobs) != 1 || q.Jobs[0].ID != job.ID || q.Jobs[0].Repo != "acme/api" || !reflect.DeepEqual(q.Jobs[0].Owners, []string{"priya"}) || q.Capacity.Queued != 1 {
+			if api.Contract != 2 || len(q.Repos) != 1 || q.Repos[0].Name != "acme/api" || len(q.Jobs) != 1 || q.Jobs[0].ID != job.ID || q.Jobs[0].Repo != "acme/api" || !reflect.DeepEqual(q.Jobs[0].Owners, []string{"priya"}) || q.Capacity.Queued != 1 {
 				t.Fatalf("contract or visible identity = %+v", q)
 			}
 			if q.Desk == nil || !reflect.DeepEqual(q.Desk.Checkouts, map[string]string{"acme/api": dir}) || q.Repos[0].Checkout != dir {

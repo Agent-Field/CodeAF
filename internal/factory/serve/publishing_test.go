@@ -148,7 +148,7 @@ func TestFailedPublishRetriesSameApprovalAndOpensOnlyOnce(t *testing.T) {
 		t.Fatalf("opened=%+v", opened)
 	}
 	events, _ := rec.Since(context.Background(), time.Time{})
-	if len(events) != 2 || events[0].Kind != record.Approved || events[1].Kind != record.Posted {
+	if len(events) != 3 || events[1].Kind != record.Approved || events[2].Kind != record.Posted || events[0].Kind != record.RunnerAdded {
 		t.Fatalf("events=%+v", events)
 	}
 	var table struct{ Codes []publish.Code }

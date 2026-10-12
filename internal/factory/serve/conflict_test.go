@@ -238,7 +238,7 @@ func TestDropRecordsWordsAndStopsTheHolder(t *testing.T) {
 		t.Fatalf("after drop: %+v %v", read, err)
 	}
 	events, err := rec.Since(context.Background(), time.Time{})
-	if err != nil || len(events) != 1 || events[0].Kind != record.Dropped || events[0].Detail != "not this one" {
+	if err != nil || len(events) != 2 || events[1].Kind != record.Dropped || events[1].Detail != "not this one" || events[0].Kind != record.RunnerAdded {
 		t.Fatalf("audit: %+v %v", events, err)
 	}
 	beat := authed(h, "POST", "/v1/workers/leases/"+held.Lease.ID+"/heartbeat", worker.Credential, "")

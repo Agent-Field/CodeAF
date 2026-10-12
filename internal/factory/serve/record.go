@@ -2,11 +2,10 @@ package serve
 
 import (
 	"bytes"
-	"encoding/csv"
+	"context"
 	"errors"
 	"io"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -33,15 +32,6 @@ func (h *Handler) audit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, viewer := h.repoAccess(r, nil)
-	if format == "csv" && !viewer {
-		// Finish reading before sending headers so disk failures retain JSON errors.
-		var data bytes.Buffer
-		if h.failed(w, h.config.Record.CSV(r.Context(), &data, since)) {
-			return
-		}
-		h.sendAuditCSV(w, data.Bytes())
-		return
-	}
 	events, err := h.config.Record.Since(r.Context(), since)
 	if h.failed(w, err) {
 		return
@@ -49,6 +39,7 @@ func (h *Handler) audit(w http.ResponseWriter, r *http.Request) {
 	if viewer {
 		events = h.filterAudit(r, events)
 	}
+	events = filterActivity(r, events)
 	if h.authFailed(w, r) {
 		return
 	}
@@ -69,17 +60,7 @@ func (h *Handler) audit(w http.ResponseWriter, r *http.Request) {
 // writeAuditCSV matches record.CSV's columns so a filtered export is the
 // same file with rows removed, not a second dialect.
 func writeAuditCSV(out io.Writer, events []record.Event) error {
-	w := csv.NewWriter(out)
-	if err := w.Write([]string{"id", "at", "kind", "job", "handle", "cost", "detail", "commit"}); err != nil {
-		return err
-	}
-	for _, e := range events {
-		if err := w.Write([]string{e.ID, e.At.Format(time.RFC3339Nano), e.Kind, strconv.Itoa(e.Job), e.Handle, strconv.FormatFloat(e.Cost, 'f', -1, 64), e.Detail, e.Commit}); err != nil {
-			return err
-		}
-	}
-	w.Flush()
-	return w.Error()
+	return record.WriteCSV(context.Background(), out, events)
 }
 
 func (h *Handler) sendAuditCSV(w http.ResponseWriter, data []byte) {
@@ -210,4 +191,26 @@ func (h *Handler) keepAnswered(it factory.Item, answer factory.Answer) error {
 		}
 		return nil
 	})
+}
+
+// filterActivity drives both the Activity list and its CSV export.
+func filterActivity(r *http.Request, events []record.Event) []record.Event {
+	out := make([]record.Event, 0, len(events))
+	query := r.URL.Query()
+	for _, event := range events {
+		if kind := query.Get("kind"); kind != "" && event.Kind != kind && event.Verb != kind {
+			continue
+		}
+		if person := query.Get("person"); person != "" && factory.NormalizeHandle(person) != factory.NormalizeHandle(event.Handle) {
+			continue
+		}
+		if object := query.Get("on"); object != "" && event.Object != object {
+			continue
+		}
+		if day := query.Get("when"); day != "" && event.At.UTC().Format("2006-01-02") != day {
+			continue
+		}
+		out = append(out, event)
+	}
+	return out
 }

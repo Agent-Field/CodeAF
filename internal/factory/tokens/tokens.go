@@ -43,13 +43,16 @@ type Profile struct {
 // empty. Revoked keeps the row as a tombstone so a later presentation can
 // say the link was revoked. The secret is cleared; TokenHash is what matches.
 type Token struct {
-	ID        string    `json:"id"`
-	Token     string    `json:"token,omitempty"`
-	TokenHash string    `json:"token_hash,omitempty"`
-	InvitedBy string    `json:"invited_by,omitempty"`
-	Expires   time.Time `json:"expires,omitempty"`
-	Created   time.Time `json:"created,omitempty"`
-	Revoked   bool      `json:"revoked,omitempty"`
+	AccessLink   bool      `json:"access_link,omitempty"`
+	ID           string    `json:"id"`
+	Token        string    `json:"token,omitempty"`
+	TokenHash    string    `json:"token_hash,omitempty"`
+	InvitedBy    string    `json:"invited_by,omitempty"`
+	InvitedLogin string    `json:"invited_login,omitempty"`
+	InvitedName  string    `json:"invited_name,omitempty"`
+	Expires      time.Time `json:"expires,omitempty"`
+	Created      time.Time `json:"created,omitempty"`
+	Revoked      bool      `json:"revoked,omitempty"`
 	// Joined is when this row's holder first signed in with GitHub.
 	Joined  time.Time `json:"joined,omitempty"`
 	Profile *Profile  `json:"profile,omitempty"`
@@ -241,6 +244,9 @@ func Bind(path, id string, profile Profile, now time.Time) error {
 			continue
 		}
 		if row.Revoked || (!row.Expires.IsZero() && !now.Before(row.Expires)) {
+			return os.ErrPermission
+		}
+		if row.InvitedLogin != "" && row.InvitedLogin != profile.Handle {
 			return os.ErrPermission
 		}
 		if row.Profile != nil && row.Profile.Handle != profile.Handle {

@@ -188,10 +188,10 @@ func errorWords(err error) string {
 	return err.Error()
 }
 
-// Presence is additive: contract stays 1, and the fields already on
+// Presence is additive: contract is 2, and the fields already on
 // capacity are still there beside the new counts.
 func TestPresenceContractStaysAdditive(t *testing.T) {
-	if api.Contract != 1 {
+	if api.Contract != 2 {
 		t.Fatalf("contract bumped to %d; machine presence is additive", api.Contract)
 	}
 	tags := func(v any) map[string]bool {

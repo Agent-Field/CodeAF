@@ -29,7 +29,7 @@ func TestAResumedJobWaitsForItsWorktreesMachine(t *testing.T) {
 		t.Fatalf("the other machine took resumed work: %v", err)
 	}
 	waiting, _ := f.store.Get(it.ID)
-	if waiting.State != factory.StateQueued || waiting.WorkState() != "waiting for laptop" {
+	if waiting.State != factory.StateNeedsYou || waiting.Question != "Runner went offline mid-step" {
 		t.Fatalf("offline work = %+v, phrase %q", waiting, waiting.WorkState())
 	}
 	// Even much later, offline affinity never turns into permission to
@@ -38,6 +38,9 @@ func TestAResumedJobWaitsForItsWorktreesMachine(t *testing.T) {
 	other := f.add(t, factory.Item{Assignee: "sam"})
 	if got, err := desk.Pull(machineWorker("desktop-slot", "desktop")); err != nil || got.Job != other.ID {
 		t.Fatalf("unrelated job = %+v, %v", got, err)
+	}
+	if err := f.store.Update(it.ID, func(it *factory.Item) error { it.State = factory.StateQueued; it.Question = ""; return nil }); err != nil {
+		t.Fatal(err)
 	}
 	resumed, err := desk.Pull(machineWorker("new-slot", "laptop"))
 	if err != nil || resumed.Job != it.ID || resumed.Machine != held.Machine {

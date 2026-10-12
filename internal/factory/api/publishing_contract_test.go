@@ -10,7 +10,7 @@ import (
 )
 
 func TestPublishingIsAdditiveContractOneAndRoundTrips(t *testing.T) {
-	if Contract != 1 {
+	if Contract != 2 {
 		t.Fatal("publishing changed the contract")
 	}
 	for _, state := range []string{"queued", "pushing", "opened", "failed"} {

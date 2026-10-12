@@ -38,11 +38,15 @@ type workerService struct {
 // that proved this process is still there: an attach, a pull in progress,
 // or a lease heartbeat.
 type registeredWorker struct {
-	Name    string
-	OS      string
-	Version string
-	Last    time.Time
-	Worker  lease.Worker
+	Kind      string
+	Slots     int
+	Checkouts []api.Checkout
+	Asleep    bool
+	Name      string
+	OS        string
+	Version   string
+	Last      time.Time
+	Worker    lease.Worker
 }
 
 type workerKey struct{}
@@ -64,6 +68,9 @@ func (h *Handler) workerRoutes() {
 		}
 		svc.desk, svc.err = lease.Open(svc.st, opts)
 	}
+	if svc.err == nil {
+		svc.err = svc.loadRegistry()
+	}
 	h.workers = svc
 	h.route("/v1/workers/attach", map[string]http.HandlerFunc{http.MethodPost: h.attachWorker})
 	h.read("/v1/workers/pull", h.pullWorker)
@@ -73,7 +80,8 @@ func (h *Handler) workerRoutes() {
 }
 
 func workerPath(path string) bool {
-	return strings.HasPrefix(path, "/v1/workers/") && path != "/v1/workers/attach"
+	return (strings.HasPrefix(path, "/v1/workers/") && path != "/v1/workers/attach") ||
+		(strings.HasPrefix(path, "/v1/runners/leases/")) || path == "/v1/runners/pull" || path == "/v1/runners/presence"
 }
 
 func bearer(r *http.Request) string {
@@ -119,6 +127,9 @@ func (s *workerService) heard(id string, at time.Time) {
 		}
 		row.Last = at
 		s.credentials[key] = row
+		if err := s.saveRegistry(); err != nil {
+			s.err = err
+		}
 		return
 	}
 }
@@ -128,8 +139,11 @@ func requestWorker(r *http.Request) lease.Worker {
 }
 
 func (h *Handler) workerReady(w http.ResponseWriter) bool {
-	if h.workers.err != nil {
-		h.failed(w, h.workers.err)
+	h.workers.mu.RLock()
+	err := h.workers.err
+	h.workers.mu.RUnlock()
+	if err != nil {
+		h.failed(w, err)
 		return false
 	}
 	return h.requireVerb(w, h.workers.desk != nil)
@@ -151,7 +165,33 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 	if !h.decode(w, r, &body, false) {
 		return
 	}
+	if body.Runner != "" {
+		body.Machine = body.Runner
+	}
+	if body.Owner != "" {
+		body.Handle = body.Owner
+	}
+	if body.Kind == "" {
+		body.Kind = api.RunnerCI
+		if body.OS == "darwin" {
+			body.Kind = api.RunnerMac
+		}
+	}
+	if body.Slots == 0 {
+		body.Slots = api.DefaultRunnerSlots
+	}
+	if body.Slots < 1 || (body.Kind != api.RunnerCI && body.Kind != api.RunnerMac && body.Kind != api.RunnerThisMac) {
+		h.fail(w, http.StatusUnprocessableEntity, "runner requires kind this_mac, mac or ci and positive slots")
+		return
+	}
 	body.Name, body.Handle = strings.TrimSpace(body.Name), factory.NormalizeHandle(body.Handle)
+	if h.mode() == api.FactoryTeam && !loopbackRequest(r) && !h.floorToken(bearer(r)) {
+		session, ok := h.credential(r)
+		if !ok || session.profile == nil {
+			h.fail(w, http.StatusForbidden, "Sign in with GitHub through an access link")
+			return
+		}
+	}
 	if session, ok := h.credential(r); ok && session.profile != nil {
 		if body.Handle != "" && body.Handle != session.profile.Handle {
 			h.fail(w, http.StatusForbidden, "worker handle must match the signed-in caller")
@@ -189,14 +229,38 @@ func (h *Handler) attachWorker(w http.ResponseWriter, r *http.Request) {
 		// Older workers introduced their machine by name before a separate id existed.
 		body.Machine = body.Name
 	}
-	worker := lease.Worker{Machine: body.Machine, ID: "worker_" + id, Handle: body.Handle, TakesUnassigned: body.TakesUnassigned}
+	worker := lease.Worker{Machine: body.Machine, ID: "worker_" + id, Handle: body.Handle, TakesUnassigned: body.TakesUnassigned, Slots: body.Slots}
 	h.workers.mu.Lock()
+	asleep := false
+	newRunner := true
+	for _, row := range h.workers.credentials {
+		if row.Worker.Handle == worker.Handle && row.Worker.Machine == worker.Machine {
+			newRunner = false
+			asleep = row.Asleep
+			body.Slots = row.Slots
+			worker.Slots = row.Slots
+			if body.Checkouts == nil {
+				body.Checkouts = row.Checkouts
+			}
+			break
+		}
+	}
 	h.workers.credentials[sha256.Sum256([]byte(credential))] = registeredWorker{
 		Name: body.Name, OS: strings.TrimSpace(body.OS), Version: strings.TrimSpace(body.CodeafVersion),
-		Last: h.workers.now(), Worker: worker,
+		Last: h.workers.now(), Worker: worker, Kind: body.Kind, Slots: body.Slots, Checkouts: body.Checkouts, Asleep: asleep,
 	}
+	err = h.workers.saveRegistry()
 	h.workers.mu.Unlock()
-	h.write(w, http.StatusCreated, api.WorkerAttached{Factory: h.factory, WorkerID: worker.ID, Credential: credential})
+	if h.failed(w, err) {
+		return
+	}
+	if newRunner && h.config.Record != nil {
+		_, err = h.config.Record.Append(r.Context(), record.Event{Kind: record.RunnerAdded, Handle: body.Handle, Object: "runner:" + body.Machine, Detail: body.Name})
+		if h.failed(w, err) {
+			return
+		}
+	}
+	h.write(w, http.StatusCreated, api.WorkerAttached{Factory: h.factory, WorkerID: worker.ID, RunnerID: body.Machine, Credential: credential})
 }
 
 // machineFor is the attached worker's machine for this handle, or "" when
@@ -239,9 +303,21 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// A pull sits open for up to thirty seconds. That wait is the idle
-		// machine's heartbeat: three missed intervals, not the lease TTL.
+		// machine's heartbeat: the same sixty-second deadline as a busy runner.
 		h.workers.heard(worker.ID, h.workers.now())
 		h.machineEvents()
+		h.workers.mu.RLock()
+		asleep := false
+		for _, row := range h.workers.credentials {
+			if row.Worker.Machine == worker.Machine && row.Worker.Handle == worker.Handle && row.Asleep {
+				asleep = true
+			}
+		}
+		h.workers.mu.RUnlock()
+		if asleep {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		held, err := h.workers.desk.Pull(worker)
 		if err == nil {
 			h.pulled(w, r, held)
@@ -267,7 +343,7 @@ func (h *Handler) pullWorker(w http.ResponseWriter, r *http.Request) {
 }
 
 func workerLease(held lease.Lease) api.WorkerLease {
-	return api.WorkerLease{ThreadOnly: held.ThreadOnly, ID: held.ID, Job: held.Job, Worker: held.Worker, Machine: held.Machine, Handle: held.Handle, ExpiresAt: held.ExpiresAt}
+	return api.WorkerLease{Runner: held.Machine, Owner: held.Handle, ThreadOnly: held.ThreadOnly, ID: held.ID, Job: held.Job, Worker: held.Worker, Machine: held.Machine, Handle: held.Handle, ExpiresAt: held.ExpiresAt}
 }
 
 func (h *Handler) pulled(w http.ResponseWriter, r *http.Request, held lease.Lease) {

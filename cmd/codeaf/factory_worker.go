@@ -143,9 +143,23 @@ func (d *factoryWorkerDial) attach(ctx context.Context, person factory.Seam) (ap
 			}
 		}
 	}
+	kind := api.RunnerCI
+	if runtime.GOOS == "darwin" {
+		kind = api.RunnerThisMac
+		if attached {
+			kind = api.RunnerMac
+		}
+	}
+	checkouts := []api.Checkout{}
+	if dirs, err := d.floor.Checkouts(); err == nil {
+		for repo, path := range dirs {
+			checkouts = append(checkouts, api.Checkout{Repo: repo, Path: path})
+		}
+	}
+
 	return api.WorkerAttach{
 		Machine: machine, Name: name + " (pid " + strconv.Itoa(os.Getpid()) + ")", Handle: handle,
-		OS: runtime.GOOS, CodeafVersion: buildinfo.String(), TakesUnassigned: takes,
+		OS: runtime.GOOS, CodeafVersion: buildinfo.String(), TakesUnassigned: takes, Kind: kind, Slots: factoryBenches(), Checkouts: checkouts,
 	}, nil
 }
 

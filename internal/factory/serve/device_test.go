@@ -202,7 +202,7 @@ func TestDeviceSignInBindsCallerCookieBearerAndAudit(t *testing.T) {
 	}
 	want := api.Profile{Handle: "priya", Name: "Priya Nair", AvatarURL: "https://avatars.githubusercontent.com/u/42", Scopes: []string{"read:user", "read:org"}}
 	for _, me := range []api.Me{signed.Me, readIdentity(t, h, signed.AccessToken, nil), readIdentity(t, h, "", cookies[0]), readIdentity(t, h, row.Token, nil), readIdentity(t, h, "", oldCookie)} {
-		if !reflect.DeepEqual(me.Profile, want) || me.Contract != 1 || me.Machines == nil || me.TakesUnassigned == nil || me.SessionID == "" {
+		if !reflect.DeepEqual(me.Profile, want) || me.Contract != 2 || me.Machines == nil || me.TakesUnassigned == nil || me.SessionID == "" {
 			t.Fatalf("caller = %+v", me)
 		}
 	}
@@ -384,7 +384,7 @@ func TestDeviceIdentityContractMatchesFixture(t *testing.T) {
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(want, got) || api.Contract != 1 {
+	if !reflect.DeepEqual(want, got) || api.Contract != 2 {
 		t.Fatalf("identity contract changed: got %+v want %+v", got, want)
 	}
 }

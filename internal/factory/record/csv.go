@@ -14,15 +14,20 @@ func (r *Record) CSV(ctx context.Context, out io.Writer, since time.Time) error 
 	if err != nil {
 		return err
 	}
+	return WriteCSV(ctx, out, events)
+}
+
+// WriteCSV exports exactly the selected Activity rows with the stable receipt columns first.
+func WriteCSV(ctx context.Context, out io.Writer, events []Event) error {
 	w := csv.NewWriter(out)
-	if err := w.Write([]string{"id", "at", "kind", "job", "handle", "cost", "detail", "commit"}); err != nil {
+	if err := w.Write([]string{"id", "at", "kind", "job", "handle", "cost", "detail", "commit", "actor", "verb", "object", "rule", "as_operator"}); err != nil {
 		return err
 	}
 	for _, e := range events {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := w.Write([]string{e.ID, e.At.Format(time.RFC3339Nano), e.Kind, strconv.Itoa(e.Job), e.Handle, strconv.FormatFloat(e.Cost, 'f', -1, 64), e.Detail, e.Commit}); err != nil {
+		if err := w.Write([]string{e.ID, e.At.Format(time.RFC3339Nano), e.Kind, strconv.Itoa(e.Job), e.Handle, strconv.FormatFloat(e.Cost, 'f', -1, 64), e.Detail, e.Commit, e.Actor.Kind + ":" + e.Actor.Name, e.Verb, e.Object, e.Rule, strconv.FormatBool(e.Actor.Operator)}); err != nil {
 			return err
 		}
 	}

@@ -42,11 +42,29 @@ const (
 	PRClosed = "pr_closed"
 	// StepFailed is a step that errored. It is not a person's decision. The
 	// detail is code, step and next, so the audit can show what happened.
-	StepFailed = "step_failed"
+	StepFailed      = "step_failed"
+	RunnerAdded     = "runner_added"
+	RunnerChanged   = "runner_changed"
+	ReposChanged    = "repos_changed"
+	LinkCreated     = "link_created"
+	LinkRevoked     = "link_revoked"
+	SessionsRevoked = "sessions_revoked"
 )
 
 // Event is the persisted and wire shape; approval receipts use these exact ids.
+// Actor identifies the source of an event independently of its display name.
+type Actor struct {
+	Kind     string `json:"kind"`
+	Name     string `json:"name,omitempty"`
+	Operator bool   `json:"operator,omitempty"`
+}
+
+// Event keeps both the stable receipt fields and S2 Activity fields.
 type Event struct {
+	Actor  Actor     `json:"actor"`
+	Verb   string    `json:"verb"`
+	Object string    `json:"object"`
+	Rule   string    `json:"rule,omitempty"`
 	ID     string    `json:"id"`
 	At     time.Time `json:"at"`
 	Kind   string    `json:"kind"`
@@ -87,6 +105,7 @@ func (r *Record) Root() string {
 // Append mints identity and time here, never from an agent's reported fields.
 // SYNC BEFORE CONSENT: a returned receipt must already be on disk.
 func (r *Record) Append(ctx context.Context, event Event) (Event, error) {
+	enrich(&event)
 	if err := validate(event); err != nil {
 		return Event{}, err
 	}
@@ -127,10 +146,11 @@ func (r *Record) Append(ctx context.Context, event Event) (Event, error) {
 		case Took:
 			kind = "taken"
 		}
+		notifications := []live.Event{live.New("activity", event.Job, event)}
 		if kind != "" {
-			return live.Append(r.root, live.New(kind, event.Job, live.Payload{Job: event.Job, By: event.Handle}))
+			notifications = append(notifications, live.New(kind, event.Job, live.Payload{Job: event.Job, By: event.Handle}))
 		}
-		return nil
+		return live.Append(r.root, notifications...)
 	})
 	if err != nil {
 		return Event{}, err
@@ -140,14 +160,24 @@ func (r *Record) Append(ctx context.Context, event Event) (Event, error) {
 
 func validate(e Event) error {
 	switch e.Kind {
-	case Started, Stopped, AutoStarted, AskedFirst, Approved, Answered, Posted, Took, Dropped, Released, RequestChanges, PRMerged, PRClosed, StepFailed:
+	case Started, Stopped, AutoStarted, AskedFirst, Approved, Answered, Posted, Took, Dropped, Released, RequestChanges, PRMerged, PRClosed, StepFailed, RunnerAdded, RunnerChanged, ReposChanged, LinkCreated, LinkRevoked, SessionsRevoked:
 	default:
 		return fmt.Errorf("factory record: unknown event kind %q", e.Kind)
+	}
+	switch e.Actor.Kind {
+	case "person", "agent", "factory":
+	default:
+		return errors.New("factory record: actor must be person, agent or factory")
+	}
+	switch e.Verb {
+	case "started", "stopped", "asked", "approved", "answered", "published", "assigned", "dropped", "unassigned", "requested changes", "merged", "closed", "failed", "added runner", "changed runner", "connected repo", "disconnected repo", "created access link", "revoked access link", "revoked sessions", "dismissed", "nudged", "changed priority", "raised budget", "deleted branch", "undone":
+	default:
+		return errors.New("factory record: unknown Activity verb")
 	}
 	if e.Commit != "" && !publish.ValidCommit(e.Commit) {
 		return errors.New("factory record: approval requires a full commit SHA")
 	}
-	if e.Job <= 0 {
+	if e.Job <= 0 && e.Kind != RunnerAdded && e.Kind != RunnerChanged && e.Kind != ReposChanged && e.Kind != LinkCreated && e.Kind != LinkRevoked && e.Kind != SessionsRevoked {
 		return errors.New("factory record: job must be positive")
 	}
 	if e.Cost < 0 {
@@ -245,7 +275,7 @@ func (r *Record) TrailerFor(ctx context.Context, id int, commit string) (string,
 				trailer += " " + e.Commit
 			}
 			return trailer, nil
-		case Started, AutoStarted, Dropped, RequestChanges:
+		case Started, AutoStarted, Dropped, RequestChanges, Released:
 			return "", errors.New("job requires a recorded approval before publishing")
 		}
 	}
@@ -300,6 +330,7 @@ func (r *Record) read(ctx context.Context) ([]Event, error) {
 		if err != nil {
 			return nil, fmt.Errorf("factory record: events.jsonl: %w", err)
 		}
+		enrich(&event)
 		events = append(events, event)
 	}
 }

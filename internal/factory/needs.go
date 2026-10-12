@@ -13,6 +13,7 @@ const (
 	NeedsApprovePlan   = "approve_plan"
 	NeedsApproveProof  = "approve_proof"
 	NeedsQuestion      = "question"
+	NeedsRunnerOffline = "runner_offline"
 	NeedsSpendingLimit = "spending_limit"
 	NeedsOutOfAttempts = "out_of_attempts"
 	NeedsPublishFailed = "publish_failed"
@@ -53,6 +54,7 @@ var NeedsYouKinds = []string{
 	NeedsSpendingLimit,
 	NeedsOutOfAttempts,
 	NeedsPublishFailed,
+	NeedsRunnerOffline,
 }
 
 // OutOfAttemptOptions are the only answers when a step used its rounds
@@ -185,6 +187,8 @@ func NeedsKind(it Item) string {
 	switch {
 	case it.State == StateLanded:
 		return NeedsApproveProof
+	case it.QKind == NeedsRunnerOffline:
+		return NeedsRunnerOffline
 	case it.QKind == QKindApprove:
 		return NeedsApprovePlan
 	case it.QKind == "cap":
@@ -214,7 +218,7 @@ func publishFailed(it Item) bool {
 // A free question is anyone who can see the repository.
 func JobPersonOnly(kind string) bool {
 	switch kind {
-	case NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsPublishFailed:
+	case NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsPublishFailed, NeedsRunnerOffline:
 		return true
 	default:
 		return false
@@ -236,6 +240,8 @@ func WhoCanAnswer(kind string) string {
 // out-of-attempts ask. Other needs-you kinds have no question object.
 func QuestionForm(it Item) (kind string, options []string, who string) {
 	switch NeedsKind(it) {
+	case NeedsRunnerOffline:
+		return AskOptions, []string{ChoiceTryOnceMore, ChoiceCancel}, WhoJobPerson
 	case NeedsOutOfAttempts:
 		return AskOptions, append([]string(nil), OutOfAttemptOptions...), WhoJobPerson
 	case NeedsQuestion:
@@ -431,7 +437,7 @@ func MayAct(it Item, caller string) Acts {
 	switch NeedsKind(it) {
 	case NeedsQuestion:
 		answer = true
-	case NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts:
+	case NeedsApprovePlan, NeedsApproveProof, NeedsSpendingLimit, NeedsOutOfAttempts, NeedsRunnerOffline:
 		answer = owner
 	}
 	assign := person == ""

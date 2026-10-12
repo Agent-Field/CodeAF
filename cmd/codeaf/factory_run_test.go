@@ -119,8 +119,8 @@ func TestFactoryRunnerCarriesEveryExecutorThisProcessHas(t *testing.T) {
 	if _, ok := opts.Exec[factory.StageGate]; ok {
 		t.Error("a gate was given an executor; the loop answers a gate itself")
 	}
-	if opts.Benches != factoryBenchesDefault || factoryBenchesDefault != 4 {
-		t.Errorf("benches = %d, want the default 4", opts.Benches)
+	if opts.Benches != factoryBenchesDefault || factoryBenchesDefault != 2 {
+		t.Errorf("benches = %d, want the default 2", opts.Benches)
 	}
 	if _, ok := opts.Pool.(*factoryrun.Money); !ok {
 		t.Errorf("the pool is %T, not the money", opts.Pool)
@@ -264,7 +264,7 @@ func TestTheBenchesPinIsRegisteredAndRead(t *testing.T) {
 	if !slices.Contains(config.OperatorEnvPins, factoryBenchesEnv) {
 		t.Fatalf("%s is not registered in internal/config's settings.go", factoryBenchesEnv)
 	}
-	for value, want := range map[string]int{"": 4, "2": 2, "0": 4, "-3": 4, "many": 4, " 7 ": 7} {
+	for value, want := range map[string]int{"": factoryBenchesDefault, "2": 2, "0": factoryBenchesDefault, "-3": factoryBenchesDefault, "many": factoryBenchesDefault, " 7 ": 7} {
 		t.Setenv(factoryBenchesEnv, value)
 		if got := factoryBenches(); got != want {
 			t.Errorf("%s=%q gives %d benches, want %d", factoryBenchesEnv, value, got, want)

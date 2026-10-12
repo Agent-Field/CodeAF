@@ -111,7 +111,7 @@ func TestAboutIsTheJoinPreview(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &about); err != nil {
 		t.Fatal(err)
 	}
-	if about.Name != "agentfield" || about.CodeafVersion != "test" || about.Contract != 1 || about.Needs != "token" || about.Access != "token" || about.PollingEvery != "1m0s" || about.ServedBy != "factory" {
+	if about.Name != "agentfield" || about.CodeafVersion != "test" || about.Contract != 2 || about.Needs != "token" || about.Access != "token" || about.PollingEvery != "1m0s" || about.ServedBy != "factory" {
 		t.Fatalf("about = %+v", about)
 	}
 	if strings.Contains(w.Body.String(), "jobs") || strings.Contains(w.Body.String(), "acme") {

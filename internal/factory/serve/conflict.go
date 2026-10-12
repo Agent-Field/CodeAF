@@ -231,6 +231,9 @@ func (h *Handler) onlyOwner(action jobAction) jobAction {
 
 // owns is true when the job has no person yet, or the caller is that person.
 func (h *Handler) owns(w http.ResponseWriter, r *http.Request, it factory.Item) bool {
+	if h.mode() == api.FactorySolo {
+		return true
+	}
 	who := it.Person()
 	if who == "" {
 		return true

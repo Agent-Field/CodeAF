@@ -6,7 +6,7 @@ import (
 )
 
 func TestFactoryNameKeepsContractOneAndLegacyIdentity(t *testing.T) {
-	if Contract != 1 {
+	if Contract != 2 {
 		t.Fatalf("contract = %d", Contract)
 	}
 	want := Factory{Name: "Our team", Address: "http://factory", Version: "test"}

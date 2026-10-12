@@ -9,9 +9,9 @@ import (
 )
 
 // Members, sessions and the empty-queue reason are additive. The fixture
-// floor still encodes with no reason field, and Contract stays 1.
+// floor still encodes with no reason field, and Contract stays 2.
 func TestMembersSessionsAndVisibilityStayContractOne(t *testing.T) {
-	if Contract != 1 {
+	if Contract != 2 {
 		t.Fatalf("contract = %d", Contract)
 	}
 	member, err := json.Marshal(Member{
@@ -71,7 +71,7 @@ func assertKeys(t *testing.T, raw []byte, keys ...string) {
 // Expired GitHub sign-ins add a reason without changing contract 1 or exposing
 // a GitHub credential in the refusal consumed by the app.
 func TestGitHubExpiryStaysContractOne(t *testing.T) {
-	if Contract != 1 {
+	if Contract != 2 {
 		t.Fatalf("contract = %d", Contract)
 	}
 	body, err := json.Marshal(AuthFailure{Factory: Factory{Address: "http://factory", Version: "test"},

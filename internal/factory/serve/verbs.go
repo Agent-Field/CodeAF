@@ -309,6 +309,9 @@ func (h *Handler) applyChoice(w http.ResponseWriter, yes *bool, words, choice, r
 // mayAnswer refuses a job-person kind when the caller is not that person.
 // A job with no person yet, and a free question, are not this check.
 func (h *Handler) mayAnswer(w http.ResponseWriter, r *http.Request, it factory.Item) bool {
+	if h.mode() == api.FactorySolo {
+		return true
+	}
 	if !factory.JobPersonOnly(factory.NeedsKind(it)) {
 		return true
 	}
@@ -634,6 +637,9 @@ func (h *Handler) setRepos(w http.ResponseWriter, r *http.Request) {
 	if !h.requireVerb(w, h.seam.SetRepos != nil) {
 		return
 	}
+	if !h.requireOperator(w, r) {
+		return
+	}
 	var body struct {
 		Watched *[]string `json:"watched"`
 	}
@@ -644,11 +650,17 @@ func (h *Handler) setRepos(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusUnprocessableEntity, "watched must be an array of repository names")
 		return
 	}
-	h.finish(w, h.seam.SetRepos(*body.Watched))
+	if err := h.seam.SetRepos(*body.Watched); h.failed(w, err) {
+		return
+	}
+	h.finish(w, h.operatorEvent(r, record.ReposChanged, "factory", strings.Join(*body.Watched, ", ")))
 }
 
 func (h *Handler) connectGitHub(w http.ResponseWriter, r *http.Request) {
 	if !h.requireVerb(w, h.seam.ConnectGitHub != nil) {
+		return
+	}
+	if !h.requireOperator(w, r) {
 		return
 	}
 	var body struct {

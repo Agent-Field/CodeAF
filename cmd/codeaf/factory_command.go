@@ -18,6 +18,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/pipeline"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
@@ -205,7 +206,14 @@ func startFactoryService(ctx context.Context, st *store.Store, seam factory.Seam
 		servedBy = "tui"
 		poll = factoryPollEvery
 	}
-	handler := serve.New(seam, serve.Config{Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: address, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
+	mode := host.Mode
+	if mode == "" {
+		mode = api.FactoryTeam
+		if servedBy == "tui" {
+			mode = api.FactorySolo
+		}
+	}
+	handler := serve.New(seam, serve.Config{Mode: mode, OperatorLogin: host.OperatorLogin, Name: host.Name, GitHubClientID: host.GitHubClientID, Team: host.Team, Address: address, AccessToken: token, TokensPath: tokensPath, Store: st, Root: st.Root(), Record: history,
 		ServedBy: servedBy, PollingEvery: poll,
 		PersonProfile: factoryPeople().Profile, CodeOwners: factoryPeople().Owners,
 		Pipeline: func(ctx context.Context, repo, dir string) (pipeline.File, error) {

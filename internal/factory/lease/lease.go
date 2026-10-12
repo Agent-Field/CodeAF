@@ -27,9 +27,11 @@ const DefaultTTL = time.Minute
 const HeartbeatEvery = 2 * time.Second
 
 // OfflineMisses is how many heartbeat intervals may pass with nothing heard
-// before a machine is offline. THREE MISSED BEATS, NOT THE LEASE TTL: the
-// hold can still be live after the machine has gone quiet.
-const OfflineMisses = 3
+// before a machine is offline. S2 SETS SIXTY SECONDS: presence and the default lease share this deadline.
+const OfflineMisses = int(OfflineAfter / HeartbeatEvery)
+
+// OfflineAfter is the S2 runner silence deadline, shared by every presence read.
+const OfflineAfter = time.Minute
 
 var (
 	ErrNoJob      = errors.New("factory lease: no queued job for this worker")
@@ -53,6 +55,7 @@ type Lease struct {
 	Machine string `json:"machine,omitempty"`
 	// ThreadOnly lends the manager to a reply without restarting job steps.
 	ThreadOnly bool `json:"thread_only,omitempty"`
+	Asleep     bool `json:"asleep,omitempty"`
 	// Publish keeps a collected approval recoverable if the publisher vanishes.
 	Publish string `json:"publish,omitempty"`
 	Handle  string `json:"handle"`
@@ -76,6 +79,10 @@ type Worker struct {
 	Machine         string
 	Handle          string
 	TakesUnassigned map[string]bool
+	// Team refuses unassigned work even when an older client offers consent.
+	Team  bool
+	Solo  bool
+	Slots int
 }
 
 // Options makes time deterministic in tests; a zero TTL uses DefaultTTL.
@@ -181,10 +188,17 @@ func (d *Desk) Pull(worker Worker) (Lease, error) {
 	}
 	var taken Lease
 	err := d.change(func(doc *document, now time.Time) (bool, error) {
+		occupied := 0
 		for _, held := range doc.Leases {
+			if worker.Machine != "" && held.Machine == worker.Machine && held.Handle == worker.Handle {
+				occupied++
+			}
 			if held.Worker == worker.ID {
 				return false, ErrWorkerBusy
 			}
+		}
+		if worker.Slots > 0 && occupied >= worker.Slots {
+			return false, ErrWorkerBusy
 		}
 		items, err := d.store.List()
 		if err != nil {
@@ -297,10 +311,13 @@ func eligible(it factory.Item, worker Worker) bool {
 	if (it.State != factory.StateQueued || paused(it)) && !pendingReply(it) || (it.WorktreeMachine != "" && it.WorktreeMachine != worker.Machine) {
 		return false
 	}
+	if worker.Solo {
+		return true
+	}
 	if owner := it.Person(); owner != "" {
 		return owner == worker.Handle
 	}
-	return worker.TakesUnassigned[it.Repo] || worker.TakesUnassigned[EveryRepo]
+	return !worker.Team && (worker.TakesUnassigned[it.Repo] || worker.TakesUnassigned[EveryRepo])
 }
 
 func pendingReply(it factory.Item) bool {
@@ -367,7 +384,10 @@ func (d *Desk) queueJob(id int, lost time.Time, machine string) error {
 		if machine == "" {
 			machine = it.WorktreeMachine
 		}
-		failed = factory.NewFailure(step, factory.CodeMachineLost, "the machine holding the work was lost", machine, factory.FailureRequeued, attempts, lost)
+		it.State = factory.StateNeedsYou
+		it.QKind = factory.NeedsRunnerOffline
+		it.Question = "Runner went offline mid-step"
+		failed = factory.NewFailure(step, factory.CodeMachineLost, "Runner went offline mid-step", machine, factory.FailureStopped, attempts, lost)
 		factory.StampFailure(it, failed)
 		return nil
 	})
@@ -390,7 +410,7 @@ func paused(it factory.Item) bool { return it.Stream != nil && it.Stream.Paused 
 func (d *Desk) expire(doc *document, now time.Time) ([]Lease, error) {
 	var expired, kept []Lease
 	for _, held := range append([]Lease(nil), doc.Leases...) {
-		if now.Before(held.ExpiresAt) {
+		if held.Asleep || now.Before(held.ExpiresAt) {
 			kept = append(kept, held)
 			continue
 		}

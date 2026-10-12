@@ -17,6 +17,8 @@ import (
 )
 
 type factoryHostConfig struct {
+	Mode           string   `yaml:"mode,omitempty"`
+	OperatorLogin  string   `yaml:"operator_login,omitempty"`
 	Name           string   `yaml:"name,omitempty"`
 	Listen         string   `yaml:"listen"`
 	AccessToken    string   `yaml:"access_token"`
@@ -29,6 +31,12 @@ type factoryHostConfig struct {
 // because only the latter is an instruction to clear the saved selection.
 func (cfg factoryHostConfig) MarshalYAML() (any, error) {
 	doc := map[string]any{"listen": cfg.Listen, "access_token": cfg.AccessToken}
+	if cfg.Mode != "" {
+		doc["mode"] = cfg.Mode
+	}
+	if cfg.OperatorLogin != "" {
+		doc["operator_login"] = cfg.OperatorLogin
+	}
 	if cfg.Name != "" {
 		doc["name"] = cfg.Name
 	}
@@ -117,6 +125,12 @@ func readFactoryHostConfig(path string) (factoryHostConfig, error) {
 	}
 	if strings.TrimSpace(cfg.Listen) == "" {
 		cfg.Listen = factoryDefaultListen
+	}
+	if cfg.Mode != "" && cfg.Mode != "solo" && cfg.Mode != "team" {
+		return cfg, fmt.Errorf("factory config %s: mode must be solo or team", path)
+	}
+	if cfg.OperatorLogin != "" && !factoryHandleOK(factory.NormalizeHandle(cfg.OperatorLogin)) {
+		return cfg, fmt.Errorf("factory config %s: operator_login must be a GitHub handle", path)
 	}
 	cfg.Name, err = factory.NormalizeName(cfg.Name)
 	if err != nil {

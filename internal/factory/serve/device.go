@@ -196,6 +196,12 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 		profile: &profile, tokenID: flow.tokenID, device: deviceLabel(r)}
 	session.setGitHub(exchange, now)
 	if flow.tokenID != "" {
+		for _, row := range h.tokenRows() {
+			if row.ID == flow.tokenID && row.InvitedLogin != "" && row.InvitedLogin != profile.Handle {
+				h.fail(w, http.StatusForbidden, "this access link is for @"+row.InvitedLogin)
+				return
+			}
+		}
 		if err := tokens.Bind(h.config.TokensPath, flow.tokenID, profile, now); h.failed(w, err) {
 			return
 		}
@@ -217,8 +223,10 @@ func (h *Handler) pollDevice(w http.ResponseWriter, r *http.Request) {
 	}
 	h.viewer.see(profile, now, now, exchange.AccessToken)
 	h.setSessionCookie(w, r, credential, session)
+	me := h.meBody(profile, session.id)
+	me.Operator = profile.Handle == h.operatorLogin(r)
 	h.write(w, http.StatusOK, api.SignedIn{Factory: h.factory, AccessToken: credential, TokenType: "bearer",
-		ExpiresIn: int(accessSessionTTL.Seconds()), Me: h.meBody(profile, session.id)})
+		ExpiresIn: int(accessSessionTTL.Seconds()), Me: me})
 }
 
 func (h *Handler) forgetDevice(key string, flow *deviceFlow) {

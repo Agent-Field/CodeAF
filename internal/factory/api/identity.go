@@ -27,6 +27,9 @@ type Me struct {
 	CodeafVersion string  `json:"codeaf_version"`
 	Contract      int     `json:"contract"`
 	Profile
+	Mode            string          `json:"mode"`
+	Operator        bool            `json:"operator"`
+	Runners         []Runner        `json:"runners"`
 	SessionID       string          `json:"session_id"`
 	Machines        []Machine       `json:"machines"`
 	TakesUnassigned map[string]bool `json:"takes_unassigned"`

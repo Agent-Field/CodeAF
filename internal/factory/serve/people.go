@@ -220,5 +220,22 @@ func (h *Handler) person(w http.ResponseWriter, r *http.Request) {
 		}
 		return p.Owns[i].Repo < p.Owns[j].Repo
 	})
+	p.Login = handle
+	p.You = false
+	if caller, err := h.callerHandle(r); err == nil {
+		p.You = caller == handle
+	}
+	p.Operator = handle == h.operatorLogin(r)
+	p.Status = api.PersonInvited
+	if p.LastSeen != nil {
+		p.Status = personStatus(*p.LastSeen, h.now())
+	}
+	p.Runners, err = h.runnerList(r, handle)
+	if h.failed(w, err) {
+		return
+	}
+	if h.isOperator(r) || p.You {
+		p.Sessions = h.sessionsFor(handle)
+	}
 	h.write(w, http.StatusOK, p)
 }

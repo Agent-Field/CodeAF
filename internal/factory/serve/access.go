@@ -14,6 +14,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/record"
 	"github.com/Agent-Field/codeaf/internal/factory/tokens"
 )
 
@@ -369,15 +370,29 @@ func (h *Handler) revokeSessions(w http.ResponseWriter, r *http.Request) {
 	// A browser cookie grants dashboard access, not permission to sign out
 	// every browser. The local command sends the service's bearer token.
 	// A minted access-token row still cannot do this.
-	if !h.floorToken(bearer(r)) {
+	if !h.isOperator(r) {
 		h.fail(w, http.StatusUnauthorized, "a bearer access token is required to revoke sessions")
 		return
 	}
+	handles := map[string]bool{}
 	h.sessions.mu.Lock()
+	for _, session := range h.sessions.ids {
+		if handle := profileHandle(session); handle != "" {
+			handles[handle] = true
+		}
+	}
 	clear(h.sessions.ids)
 	err := h.saveSessions()
 	h.sessions.mu.Unlock()
 	if h.failed(w, err) {
+		return
+	}
+	for handle := range handles {
+		if h.failed(w, h.revokePerson(r, handle)) {
+			return
+		}
+	}
+	if h.failed(w, h.operatorEvent(r, record.SessionsRevoked, "factory", "Revoke all sessions")) {
 		return
 	}
 	if h.viewer != nil {

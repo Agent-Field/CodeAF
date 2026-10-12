@@ -41,10 +41,13 @@ func (h *Handler) machineEvents() {
 				e.Job = old.Job
 			}
 			events = append(events, e)
+			runner := live.New("runner", e.Job, api.RunnerEvent{Runner: row.Name, Owner: row.Handle, State: row.Status, LastSeen: row.LastHeartbeat})
+			runner.Handle = row.Handle
+			events = append(events, runner)
 		}
 		h.machines[key] = row
-		if row.Status != api.MachineOffline {
-			due := row.LastHeartbeat.Add(time.Duration(lease.OfflineMisses) * lease.HeartbeatEvery)
+		if row.Status != api.MachineOffline && row.Status != api.RunnerAsleep {
+			due := row.LastHeartbeat.Add(lease.OfflineAfter)
 			if deadline.IsZero() || due.Before(deadline) {
 				deadline = due
 			}

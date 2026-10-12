@@ -465,6 +465,12 @@ func (h *Handler) filterAudit(r *http.Request, events []record.Event) []record.E
 	allow, _ := h.repoAccess(r, keys)
 	out := make([]record.Event, 0, len(events))
 	for _, event := range events {
+		if event.Job == 0 && strings.HasPrefix(event.Object, "repo:") && !h.repoVisible(r, strings.TrimPrefix(event.Object, "repo:")) {
+			continue
+		}
+		if event.Job == 0 && event.Kind == record.ReposChanged && event.Object == "factory" {
+			continue
+		}
 		if event.Job == 0 || allow[byID[event.Job]] {
 			out = append(out, event)
 		}

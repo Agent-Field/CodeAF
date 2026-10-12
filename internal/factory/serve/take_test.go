@@ -117,7 +117,7 @@ func TestTakeRecordsTheMachine(t *testing.T) {
 	w = verbRequest(h, "POST", fmt.Sprintf("/v1/jobs/%d/take", job.ID), "")
 	checkJSON(t, w, 200)
 	events, err := rec.Since(context.Background(), time.Time{})
-	if err != nil || len(events) != 1 || events[0].Kind != record.Took || events[0].Detail != "priya-mbp" {
+	if err != nil || len(events) != 2 || events[1].Kind != record.Took || events[1].Detail != "priya-mbp" || events[0].Kind != record.RunnerAdded {
 		t.Fatalf("record = %+v, %v", events, err)
 	}
 }

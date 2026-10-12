@@ -30,7 +30,7 @@ func (h *Handler) meBody(profile api.Profile, id string) api.Me {
 		profile.Scopes = []string{}
 	}
 	return api.Me{Factory: h.factory, CodeafVersion: h.factory.Version, Contract: api.Contract,
-		Profile: profile, SessionID: id, Machines: []api.Machine{}, TakesUnassigned: map[string]bool{},
+		Profile: profile, SessionID: id, Mode: h.mode(), Runners: []api.Runner{}, Machines: []api.Machine{}, TakesUnassigned: map[string]bool{},
 		Access: h.accessMode(), PollingEvery: h.pollingEvery(), ServedBy: h.servedBy()}
 }
 

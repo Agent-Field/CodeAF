@@ -9,7 +9,7 @@ import (
 )
 
 func TestThreadAndAnsweredQuestionsAreAdditiveContractOne(t *testing.T) {
-	if Contract != 1 {
+	if Contract != 2 {
 		t.Fatalf("contract = %d", Contract)
 	}
 	it := factory.Item{ID: 3, State: factory.StateRunning,

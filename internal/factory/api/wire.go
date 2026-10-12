@@ -26,7 +26,7 @@ import (
 // Contract is the wire contract version `GET /v1/me` and `GET /v1/about` report. Bump it only for
 // a breaking wire change (a field removed, renamed or re-typed, a verb's
 // meaning changed); additive fields never bump it.
-const Contract = 1
+const Contract = 2
 
 // Factory names the server every response comes from.
 type Factory struct {
@@ -41,6 +41,7 @@ const ReasonNoVisibleRepos = "no_visible_repos"
 
 // Queue is `GET /v1/queue`: the whole floor as one person sees it.
 type Queue struct {
+	Mode     string                           `json:"mode,omitempty"`
 	People   map[string]factory.PersonSummary `json:"people"`
 	Factory  Factory                          `json:"factory"`
 	Since    Since                            `json:"since"`
@@ -127,6 +128,7 @@ type Source struct {
 
 // Repo is a watched repository and the pipeline it runs.
 type Repo struct {
+	On       bool      `json:"on"`
 	Name     string    `json:"name"`
 	Watched  bool      `json:"watched"`
 	Checkout string    `json:"checkout,omitempty"`
@@ -492,7 +494,7 @@ type Answer = factory.Answer
 // PR is the pull request a job opened. State is open, merged or closed once
 // a poll has read it again. Empty state is a receipt from before that read.
 // The job's state stays done; this field is how a reader tells PR open from
-// Merged. Contract stays 1.
+// Merged. Contract stays 2.
 type PR struct {
 	Draft           bool       `json:"draft"`
 	Number          int        `json:"number"`

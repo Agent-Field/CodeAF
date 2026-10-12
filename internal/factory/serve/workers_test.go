@@ -152,7 +152,7 @@ func TestWorkerAttachOwnerFallbackOnlyOnLoopback(t *testing.T) {
 		{"mapped fallback", "[::ffff:127.0.0.1]:1234", "", "owner", "owner", 201, 1},
 		{"local no owner", "127.0.0.1:1234", "", "", "", 422, 1},
 		{"remote empty", "192.0.2.1:1234", "", "owner", "", 422, 0},
-		{"remote cookie", "192.0.2.1:1234", "", "owner", "", 422, 0},
+		{"remote cookie", "192.0.2.1:1234", "", "owner", "", 403, 0},
 		{"remote blank", "192.0.2.1:1234", " @ ", "owner", "", 422, 0},
 		{"remote own handle", "192.0.2.1:1234", " @WORKER-PERSON ", "owner", "worker-person", 201, 0},
 		{"hostname peer", "localhost:1234", "", "owner", "", 422, 0},
@@ -209,6 +209,9 @@ func TestWorkerAttachOwnerFallbackOnlyOnLoopback(t *testing.T) {
 				if err := json.Unmarshal(w.Body.Bytes(), &refused); err != nil || refused.Error != want {
 					t.Fatalf("refusal: %s, %v; want %q", w.Body.String(), err, want)
 				}
+				return
+			}
+			if tc.status != 201 {
 				return
 			}
 			var attached api.WorkerAttached
@@ -434,6 +437,13 @@ func TestWorkerExpiredReportsCannotWriteToReassignedJob(t *testing.T) {
 	worker := f.attach(t, "sam")
 	old := f.pull(t, worker)
 	f.clock.Add(int64(lease.DefaultTTL))
+	f.request(t, "GET", "/v1/workers/pull", worker.Credential, nil, 204, nil)
+	if it, err := f.st.Get(job.ID); err != nil || it.State != factory.StateNeedsYou || it.Question != "Runner went offline mid-step" {
+		t.Fatalf("offline: %+v %v", it, err)
+	}
+	if err := f.st.Update(job.ID, func(it *factory.Item) error { it.State = factory.StateQueued; it.Question = ""; return nil }); err != nil {
+		t.Fatal(err)
+	}
 	newer := f.pull(t, worker)
 	if newer.Lease.ID == old.Lease.ID || newer.Job.ID != job.ID {
 		t.Fatal("re-pull did not mint a new hold")
@@ -482,8 +492,10 @@ func TestWorkerRoutingOptInAndCancellation(t *testing.T) {
 	f.request(t, "GET", "/v1/workers/pull", worker.Credential, nil, 204, nil)
 	var opt api.WorkerAttached
 	f.request(t, "POST", "/v1/workers/attach", "", api.WorkerAttach{Name: "desktop", Handle: "sam", TakesUnassigned: map[string]bool{"owner/repo": true}}, 201, &opt)
+	f.request(t, "GET", "/v1/workers/pull", opt.Credential, nil, 204, nil)
+	owned := f.add(t, "sam")
 	pulled := f.pull(t, opt)
-	if pulled.Job.ID == job.ID {
+	if pulled.Job.ID != owned.ID || pulled.Job.ID == job.ID {
 		t.Fatal("opt-in took another person's job")
 	}
 	ctx, cancel := context.WithCancel(context.Background())

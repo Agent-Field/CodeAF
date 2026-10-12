@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/factory/api"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
 	"github.com/Agent-Field/codeaf/internal/factory/record"
@@ -51,7 +52,7 @@ const factoryNoWorkerEnv = "CODEAF_FACTORY_NO_WORKER"
 
 // factoryBenchesDefault is how many items run at once when nothing pins it.
 // The manual quotes it (internal/manual/chat/factory.md).
-const factoryBenchesDefault = 4
+const factoryBenchesDefault = api.DefaultRunnerSlots
 
 // factoryStageWall is the most one stage conversation runs for, which is also
 // what makes it an unattended conversation that keeps going until its work is

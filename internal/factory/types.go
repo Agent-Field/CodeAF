@@ -319,7 +319,7 @@ type Claim struct {
 
 // Pull-request states the factory records after it opens one. THE JOB'S OWN
 // STATE STAYS shipped, which the wire calls done. These words ride on the
-// pull request, so PR open and Merged need no new job state. Contract stays 1.
+// pull request, so PR open and Merged need no new job state. Contract stays 2.
 const (
 	PROpen   = "open"
 	PRMerged = "merged"

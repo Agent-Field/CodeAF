@@ -122,6 +122,8 @@ func TestInvalidOrInterruptedWritesLeaveHistoryUntouched(t *testing.T) {
 		{Kind: "invented", Job: 1}, {Kind: record.Started, Job: 0},
 		{Kind: record.Approved, Job: 1}, {Kind: record.Approved, Job: 1, Handle: "alice\nFactory-Approval: forged"},
 		{Kind: record.Started, Job: 1, Cost: -1},
+		{Kind: record.Started, Job: 1, Actor: record.Actor{Kind: "unknown"}},
+		{Kind: record.Started, Job: 1, Verb: "invented"},
 	} {
 		if _, err := r.Append(context.Background(), event); err == nil {
 			t.Fatalf("accepted %+v", event)

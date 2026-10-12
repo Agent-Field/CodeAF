@@ -30,6 +30,10 @@ import (
 // Config is supplied by the host so the handler never reads a person's home
 // or guesses the published address from a client-controlled Host header.
 type Config struct {
+	// Mode is solo or team; an unset mode follows the host access configuration.
+	Mode string
+	// OperatorLogin identifies the person running serve, never a client claim.
+	OperatorLogin string
 	// PersonProfile reads cached public GitHub identity, including outside authors.
 	PersonProfile func(context.Context, string) (factory.GitHubPerson, error)
 	// CodeOwners reads a watched repository's cached default-branch ownership.
@@ -140,6 +144,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	h.read("/v1/publish/codes", h.publishCodes)
 	h.verbs()
 	h.workerRoutes()
+	h.v2Routes()
 	h.mux.HandleFunc("/v1/", func(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusNotFound, "factory endpoint not found")
 	})
@@ -148,6 +153,7 @@ func New(seam factory.Seam, config Config) *Handler {
 	if root := strings.TrimSpace(h.eventRoot()); root != "" {
 		h.watch = watchRoot(root)
 	}
+	h.machineEvents()
 	return h
 }
 
@@ -201,6 +207,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.authFailed(w, r) {
 		return
 	}
+	if !workerPath(r.URL.Path) && r.URL.Path != "/v1/about" && r.URL.Path != "/access" && r.URL.Path != "/v1/auth/device" && r.URL.Path != "/v1/auth/device/poll" {
+		if session, ok := h.credential(r); ok && session.tokenID != "" {
+			for _, tok := range h.tokenRows() {
+				if tok.ID == session.tokenID && (tok.AccessLink || tok.InvitedBy != "") {
+					if session.profile == nil || session.githubToken == "" {
+						h.fail(w, http.StatusUnauthorized, "Sign in with GitHub through an access link")
+						return
+					}
+				}
+			}
+		}
+	}
 	if session, ok := h.credential(r); ok && session.profile != nil && !h.teamAllows(session.profile.Handle) {
 		h.fail(w, http.StatusForbidden, "this GitHub handle is not on the factory team")
 		return
@@ -211,8 +229,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, http.StatusNotFound, "factory endpoint not found")
 		return
 	}
-	if workerPath(r.URL.Path) || r.URL.Path == "/v1/workers/attach" {
+	if workerPath(r.URL.Path) || r.URL.Path == "/v1/workers/attach" || r.URL.Path == "/v1/runners/attach" {
 		defer h.machineEvents()
+	}
+	// Expiry precedes snapshot reads so the first response already shows Needs you.
+	if h.workers != nil && h.workers.desk != nil {
+		if _, err := h.leases(); h.failed(w, err) {
+			return
+		}
 	}
 	h.idempotent(w, r)
 }
@@ -261,6 +285,12 @@ func (h *Handler) queue(w http.ResponseWriter, r *http.Request) {
 		q.Jobs[i] = h.withVersion(q.Jobs[i])
 	}
 	q.Factory = h.factory
+	q.Mode = h.mode()
+	if q.Mode == api.FactorySolo {
+		for i := range q.Jobs {
+			h.soloJob(&q.Jobs[i])
+		}
+	}
 	q.Reason = reason
 	if reason != "" {
 		if q.Jobs == nil {
@@ -311,6 +341,9 @@ func (h *Handler) job(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	jobs[0].Can = api.CanFor(it, handle)
+	if h.mode() == api.FactorySolo {
+		h.soloJob(&jobs[0])
+	}
 	if _, _, err := h.applyPresence(jobs); h.failed(w, err) {
 		return
 	}
@@ -494,6 +527,11 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	}
 	body := h.meBody(profile, session.id)
 	body.Machines = machines
+	body.Mode, body.Operator = h.mode(), h.isOperator(r)
+	body.Runners, err = h.runnerList(r, handle)
+	if h.failed(w, err) {
+		return
+	}
 	body.TakesUnassigned = takes
 	h.write(w, http.StatusOK, body)
 }

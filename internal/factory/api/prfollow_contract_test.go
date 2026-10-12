@@ -12,7 +12,7 @@ import (
 // job. pr.state carries open, merged and closed, which is what the design
 // calls PR open and Merged.
 func TestFollowedPullRequestStaysContract1(t *testing.T) {
-	if Contract != 1 {
+	if Contract != 2 {
 		t.Fatalf("contract %d", Contract)
 	}
 	now := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
