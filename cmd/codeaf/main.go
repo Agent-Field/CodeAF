@@ -43,7 +43,6 @@ import (
 )
 
 func main() {
-	home.Adopt(log.Printf)
 	registerRunningCLI()
 	os.Exit(execute())
 }
@@ -189,6 +188,15 @@ func execute() (code int) {
 			code = reportFault(os.Stderr, fmt.Sprint(recovered), debug.Stack())
 		}
 	}()
+	// APP HOME MUST PRECEDE GLOBAL WRITERS. This door resolves its separate
+	// data root before opening anything, rather than starting the terminal's
+	// telemetry and lane writers in ~/.codeaf before --home can take effect.
+	// Like engine, this app-spawned door has its own --help and stays off the
+	// terminal's front page.
+	if len(os.Args) > 1 && os.Args[1] == "app" {
+		return commandExit(runApp(os.Args[2:]))
+	}
+	home.Adopt(log.Printf)
 	// The anonymous usage counts get their one configured answer before any
 	// command is dispatched, and their one session event at the exit every
 	// command shares. Both are here, in execute, because nothing else in this
@@ -233,7 +241,10 @@ func execute() (code int) {
 	// at the same exit.
 	laneBeatCtx = beliefs
 	guard.Go("lanes/persist", func() { lanes.Persist(beliefs) })
-	err := run()
+	return commandExit(run())
+}
+
+func commandExit(err error) int {
 	var status exitStatus
 	switch {
 	case err == nil:
@@ -276,6 +287,8 @@ func run() error {
 		return runChatV3(nil)
 	}
 	switch os.Args[1] {
+	case "app":
+		return runApp(os.Args[2:])
 	case "chat":
 		tuneForTheSurface()
 		return runChatV3(os.Args[2:])

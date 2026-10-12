@@ -759,3 +759,22 @@ decides it: everything that makes text is `writing` and media is `drawing`.
 
 M1 is prerequisite to everything and valuable alone. Each later milestone is
 independently shippable, and the one-shot CLI works unchanged at every point.
+
+## The app's local transport
+
+`codeaf app serve` is the v2 app's separate launch door, implemented in
+`cmd/codeaf/app_serve.go` and `internal/appapi`. Its data root is the app data
+folder's `codeaf/engine` directory, or an explicit `--home`, resolved before
+opening any writer. It does not join the resident's database by default.
+
+One numeric loopback listener serves every mounted handler through one
+origin/host and constant-time bearer guard. A fresh in-memory 32-byte token
+and an independent epoch travel in a single stdout hello with the allocated
+URL, pid, build version, contract and absolute home. Logs go to stderr and
+`<home>/logs/app-serve.log`; stdout carries no further output.
+
+The A1 transport serves authenticated `GET /app/v1/health` and
+`POST /app/v1/shutdown`. Stdin EOF, parent-pid death, SIGINT, SIGTERM and HTTP
+shutdown share one cancellation path and a bounded HTTP drain. Resource
+handlers and the solo factory mount arrive in later lanes behind this same
+guard. [The app API](design/app-v2/API.md) records their status and ownership.

@@ -1,5 +1,35 @@
 # Commands you type in a terminal
 
+## codeaf app serve — the app's local engine — hello, health, shutdown and app logs
+
+The codeaf app starts its bundled binary with
+`codeaf app serve --home <dir> --listen 127.0.0.1:0 --parent-pid <pid>`.
+Port `0` asks the operating system for a free loopback port. Non-loopback
+addresses and DNS names are refused with
+`app transport must listen on a loopback address`.
+
+The binary prints one JSON line with `url`, `token`, `pid`, `codeaf_version`,
+`contract`, `home` and `epoch`. Stdout then stays silent. The token is fresh
+for every launch and is never saved. Logs go to stderr and
+`<home>/logs/app-serve.log`.
+
+`GET /app/v1/health` reports `status: "ready"`, the version, contract and
+epoch. `POST /app/v1/shutdown` takes a JSON object with an optional `reason`,
+acknowledges `{"ok":true}` and stops this launch. Both require
+`Authorization: Bearer <token>`. Foreign origins get 403; a Host outside
+loopback gets 421. An allowed app preflight only describes the transport.
+
+The launch also stops when stdin closes, its named parent dies, or it receives
+SIGINT or SIGTERM. `--parent-pid 0` disables only the parent check; stdin must
+still remain open. Without `--home`, macOS uses
+`~/Library/Application Support/codeaf/engine`; Linux uses
+`$XDG_DATA_HOME/codeaf/engine`, falling back to
+`~/.local/share/codeaf/engine`. An inherited `CODEAF_HOME` does not choose this
+default. The app home is separate from the terminal's `~/.codeaf`.
+
+This transport currently serves health and shutdown. Agent, key, event-stream
+and factory routes are not available through it yet.
+
 ## Is there a newer version — update a dev build — keep a dev build up to date — latest dev — /update — why does it say this every time I start
 
 At launch, a stable, dev or staging build behind the newest release of its own
