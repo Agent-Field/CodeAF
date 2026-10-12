@@ -782,8 +782,19 @@ and an independent epoch travel in a single stdout hello with the allocated
 URL, pid, build version, contract and absolute home. Logs go to stderr and
 `<home>/logs/app-serve.log`; stdout carries no further output.
 
-The A1 transport serves authenticated `GET /app/v1/health` and
-`POST /app/v1/shutdown`. Stdin EOF, parent-pid death, SIGINT, SIGTERM and HTTP
+The transport serves authenticated `GET /app/v1/health`, `GET /app/v1/events`
+and `POST /app/v1/shutdown`. The A3 stream uses one 4096-record circular ring
+and a shared wake-up channel, ported from the desktop bridge's pull-based feed.
+Publishers use `Server.Events().Publish`; the hub freezes small typed JSON facts
+and never waits for readers. Epoch-qualified `e_<epoch>_<n>` cursors prevent
+restart collisions. `Last-Event-ID` replays strictly later retained records;
+unknown, evicted or prior-epoch cursors and readers that fall behind get a reset
+at the current head. The first frame is hello, keepalive comments run every
+20 seconds, and repeated `agent` filters restrict agent events while global
+events remain visible. Text deltas require an explicit agent filter. Resource
+lanes own the producers and their payloads; A3 starts no agents or pollers.
+
+Stdin EOF, parent-pid death, SIGINT, SIGTERM and HTTP
 shutdown share one cancellation path and a bounded HTTP drain. Resource
 handlers and the solo factory mount arrive in later lanes behind this same
 guard. [The app API](design/app-v2/API.md) records their status and ownership.

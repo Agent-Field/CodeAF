@@ -42,6 +42,7 @@ type Server struct {
 	mux     *http.ServeMux
 	guarded http.Handler
 	once    sync.Once
+	events  *EventHub
 }
 
 type route struct {
@@ -53,10 +54,14 @@ type route struct {
 var routes = []route{
 	{http.MethodGet, "/app/v1/health", (*Server).health},
 	{http.MethodPost, "/app/v1/shutdown", (*Server).shutdown},
+	{http.MethodGet, "/app/v1/events", (*Server).stream},
 }
 
 func New(token string, options Options) *Server {
-	s := &Server{options: options, mux: http.NewServeMux()}
+	if options.Epoch == "" {
+		options.Epoch, _ = Token()
+	}
+	s := &Server{options: options, mux: http.NewServeMux(), events: newEventHub(options.Epoch)}
 	for _, route := range routes {
 		s.mux.HandleFunc(route.path, func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != route.method {
@@ -77,6 +82,9 @@ func New(token string, options Options) *Server {
 func (s *Server) Handle(pattern string, handler http.Handler) { s.mux.Handle(pattern, handler) }
 
 func (s *Server) Handler() http.Handler { return s }
+
+// Events is the one publication door for all app resource handlers.
+func (s *Server) Events() *EventHub { return s.events }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.guarded.ServeHTTP(w, r) }
 
@@ -114,6 +122,7 @@ func (s *Server) shutdown(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 	s.once.Do(func() {
+		s.events.Close()
 		if s.options.Shutdown != nil {
 			s.options.Shutdown()
 		}

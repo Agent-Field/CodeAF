@@ -1,6 +1,7 @@
 package appapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,7 +10,7 @@ import (
 )
 
 func TestTransportRouteTable(t *testing.T) {
-	want := map[string]string{"/app/v1/health": "GET", "/app/v1/shutdown": "POST"}
+	want := map[string]string{"/app/v1/health": "GET", "/app/v1/shutdown": "POST", "/app/v1/events": "GET"}
 	if len(routes) != len(want) {
 		t.Fatalf("route table changed: %v", routes)
 	}
@@ -18,7 +19,14 @@ func TestTransportRouteTable(t *testing.T) {
 			t.Fatalf("unrecognised route: %s %s", route.method, route.path)
 		}
 		for _, method := range []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"} {
-			w := request(t, New(testToken, Options{}), method, route.path, `{}`, bearer(), "127.0.0.1:4000")
+			r := httptest.NewRequest(method, route.path, strings.NewReader(`{}`))
+			r.Host, r.Header = "127.0.0.1:4000", bearer()
+			// The route table checks the opening response; stream tests exercise
+			// continued delivery. Cancellation bounds this otherwise live GET.
+			ctx, cancel := context.WithCancel(r.Context())
+			cancel()
+			w := httptest.NewRecorder()
+			New(testToken, Options{}).ServeHTTP(w, r.WithContext(ctx))
 			if method == route.method {
 				if w.Code != 200 {
 					t.Fatalf("%s %s: %d %s", method, route.path, w.Code, w.Body)

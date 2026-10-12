@@ -27,8 +27,32 @@ absolute path is reported in the hello. The app and terminal share saved
 agents, history and non-secret settings. Keychain or Secret Service secrets
 sent on stdin are never saved to that home.
 
-This transport currently serves health and shutdown. Agent, key, event-stream
-and factory routes are not available through it yet.
+This transport currently serves health, shutdown and the event stream. Agent,
+key and factory routes are not available through it yet.
+
+## App events — SSE — Last-Event-ID — replay after reconnect — reset after restart
+
+`GET /app/v1/events` opens the app's event stream with
+`Authorization: Bearer <token>`. Query credentials are refused. The Rust core
+opens it with the header and forwards events to the app window.
+
+The first frame is `hello`, carrying `epoch`, `codeaf_version` and `contract`.
+Event ids are opaque `e_<epoch>_<n>` cursors. Without `Last-Event-ID` the stream
+starts live. Sending that header replays strictly later events from the last
+4096 records. An unknown cursor, one no longer retained, or a different launch
+gets one `reset` with `epoch` and `reason` (`unknown`, `expired` or
+`epoch_changed`); the app re-reads its objects and delivery continues live.
+A reader that falls behind also gets a reset. A reconnect's hello does not
+replace the saved cursor before replay. Idle streams send `: keepalive` every
+20 seconds and end when the request is canceled or the engine stops.
+
+With no filter, all events except `turn.delta` are included. Repeat
+`?agent=<id>&agent=<id>` to receive those agents' events and text deltas;
+events without an agent remain included. An empty agent id is refused with
+`agent filter needs an agent id`. Events name changes such as `agent.changed`
+and `task.changed`; clients re-read full objects. Process output belongs to
+its own follow stream. Resource routes and their event producers are later
+lanes; this stream alone starts no agents.
 
 ## Is there a newer version — update a dev build — keep a dev build up to date — latest dev — /update — why does it say this every time I start
 
