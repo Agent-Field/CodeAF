@@ -1064,3 +1064,26 @@ Before file 31, shell execution (tests included), or media creation, the engine
 opens a no-clock promotion proposal. Approval starts an ordinary task after
 the quick worker leaves, in the same folder with its existing edits. The
 standing task subscription feeds HTTP events after the originating turn ends.
+
+
+## App spending and memory resource seams
+
+The app spending handler reads the canonical `v3/usage.jsonl`, sums measured
+sub-cent costs before formatting money and attributes child task calls to their
+root agent. Permanent day and agent raises reach the native profile and session
+protocol. `SpendingBackend` and `WithSpendingBackend` allow execution owners to
+supply task/member/crew limits and temporary raises without editing their files
+from a second resource. `CheckSpending` is an admission hook, and
+`PublishSpending` is a throttled completion hook; native turn producers do not
+yet call them. The native engine still lacks daily-agent admission and temporary
+cap expiry, so the HTTP adapter refuses unsupported raises rather than silently
+changing a permanent cap.
+
+The memory handler edits the existing `graph.db`. `MemoryBackend` and
+`WithMemoryBackend` are the owner-aware crew shelf boundary; the native adapter
+preserves user/machine/project owners and refuses shelf moves. Forget immediately
+journals a native tombstone, with its five-second undo deadline persisted under
+`v3/app/memory-undo.json`. A resource flock coordinates app launches; private
+atomic replacement preserves undo receipts. The resource lock does not cover
+terminal store writes, so cross-surface conditional edits still need a store
+transaction seam. Model memory-add enforcement remains with the execution owner.

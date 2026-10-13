@@ -1589,3 +1589,23 @@ runner merely to report power. Linux sends the same events from logind.
 An unreachable attached factory returns an error; retry the power event
 when the connection returns. Standing-order missed-trigger accounting belongs
 to its own resource.
+## App spending ledger, cap raises and memory undo
+
+The app engine exposes `GET /app/v1/spending` and `/app/v1/spending/today`.
+The ledger accepts `when=today|week|all` and `by=agent|crew|job|model`; today and
+agent totals retain measured sub-cent costs until the final money formatting.
+A fresh app day cap reads $20.00, agent budget $5.00 and task cap $2.00.
+`POST /app/v1/caps/raise` supports permanent day and agent raises. Native
+`for:today` raises and task/member/crew raises answer 409 `not_allowed` until
+an execution owner supplies them. The daily-agent cap hook is not yet wired
+into native turns; existing session budget behavior still applies.
+
+`GET /app/v1/memory` searches active memories with `q` and selects an owner
+shelf with `shelf`. Native shelves are Yours, This machine and project owners;
+crew shelves and moving a memory need a crew-owned backend and currently refuse.
+`PATCH /app/v1/memory/{id}` edits the wording. `POST` to its `/forget` removes
+it from retrieval immediately; `/restore` undoes that strictly within five
+seconds, including from another app window or engine launch sharing the home.
+After five seconds it says "the five-second memory undo window has ended".
+The saved "Agents may add to shelves" setting has no native model-write
+integration yet.
