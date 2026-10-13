@@ -18,6 +18,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/apps/records"
 	"github.com/Agent-Field/codeaf/internal/apps/runs"
 	"github.com/Agent-Field/codeaf/internal/apps/sample"
+	"github.com/Agent-Field/codeaf/internal/apps/shape"
 	"github.com/Agent-Field/codeaf/internal/apps/store"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
@@ -44,6 +45,8 @@ func Wire(ctx context.Context, home string) *svc.Services {
 	all.Check = check.New(cfg, all)
 	all.Builder = builder.New(cfg, all)
 	all.Agent = agent.New(cfg, all)
+	all.Shape = shape.New(cfg, all)
+	all.Shaper = builder.NewShaper(cfg, all)
 	return all
 }
 

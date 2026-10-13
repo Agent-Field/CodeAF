@@ -61,13 +61,9 @@ func (s *Service) open(ctx context.Context, scope svc.Scope, writing, seeding bo
 	if !query.ValidName(scope.App) {
 		return nil, invalid("invalid app id")
 	}
-	filename := "records.db"
-	switch scope.Data {
-	case svc.DataReal:
-	case svc.DataSample:
-		filename = "sample.db"
-	default:
-		return nil, invalid("invalid data mode")
+	filename, err := s.shapeDatabaseFilename(scope)
+	if err != nil {
+		return nil, err
 	}
 	if s.cfg.Root == "" {
 		return nil, invalid("records root is required")

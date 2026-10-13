@@ -132,17 +132,7 @@ func (s *session) route(in bridge.Envelope) {
 }
 
 func (s *session) call(in bridge.Envelope) {
-	scope := ownerScope(in.App)
-	err := s.all.Caps.Allow(s.ctx, scope, in.Method, in.Params)
-	entry, ok := methods[in.Method]
-	// Unknown wire methods remain invalid even when internal tool capabilities
-	// recognise the same verb for runs or the app agent.
-	if !ok {
-		err = bridge.Errorf(bridge.CodeInvalid, "unknown method "+in.Method)
-	}
-	if err == nil {
-		scope, err = s.resolveScope(scope, entry.global)
-	}
+	entry, scope, err := s.shapeCall(in)
 	var result any
 	if err == nil {
 		result, err = entry.run(s.ctx, s.all, scope, in.Params)
