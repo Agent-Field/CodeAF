@@ -125,12 +125,24 @@ func Dir(workspace string) (string, error) {
 // that a question was asked. The doors that are about to WRITE something — the
 // host's own listener, the spawn lock, the wait for a host to go — call [Dir]
 // and make it themselves.
+//
+// A HOST DIRECTORY IS NAMED BY THE FOLDER, NOT A SPELLING OF IT. Every identity
+// question in this package — host lookup, dial, spawn, lock, status, stop —
+// funnels through here, so this is the one place a symlinked spelling must be
+// resolved: a surface that reached the folder through a link and a daemon that
+// was handed the resolved path would otherwise hash to two host directories and
+// spend the launch failing to meet (#1761). A path that does not resolve — a
+// workspace not on disk yet, a test's imagined directory — keeps its spelling.
 func where(workspace string) (string, error) {
 	workspace = strings.TrimSpace(workspace)
 	if workspace == "" {
 		return "", errors.New("engine host: no workspace to hold")
 	}
-	sum := sha256.Sum256([]byte(filepath.Clean(workspace)))
+	workspace = filepath.Clean(workspace)
+	if resolved, err := filepath.EvalSymlinks(workspace); err == nil {
+		workspace = resolved
+	}
+	sum := sha256.Sum256([]byte(workspace))
 	return home.Join("v3", "hosts", hex.EncodeToString(sum[:8])), nil
 }
 
