@@ -155,6 +155,7 @@ interface SurfaceProps {
   part: Part;                 // current version
   mode: "view" | "nudge" | "comment" | "present" | "thumb"; // comment: a click calls onAnchor, nothing edits
   theme?: unknown;            // canvas theme.json etc.
+  props?: Record<string, unknown>; // the screen node's kit props: frame (Canvas), view (Timeline, Graph), tiles (Map, workspace URL)
   comments: Comment[];        // pins to draw at anchors
   onNudge(text: string, label: string, extra?: Part["extra"]): void;  // frame writes parts.write (extra: grid formulas)
   doc?: { parts: PartSummary[] };              // the other parts of the document (Grid match mode, Pages)
