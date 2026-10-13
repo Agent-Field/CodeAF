@@ -101,14 +101,14 @@ func windowCheck(args cliArgs, models seniorDevModels) (refusal string, guessed 
 				continue
 			}
 			seen[name] = true
-		window, source, err := models.windowOf(ref)
-		if err != nil || (source != sizedByGuess && window <= 0) {
+			window, source, err := models.windowOf(ref)
+			if err != nil || (source != sizedByGuess && window <= 0) {
 				unknown = append(unknown, name)
 				continue
 			}
 			if source == sizedByGuess {
 				guessed = append(guessed, name)
-		} else if window > 0 && window <= tinyWindowTokens {
+			} else if window > 0 && window <= tinyWindowTokens {
 				tiny = append(tiny, fmt.Sprintf("%s (%s tokens)", name, groupedTokens(window)))
 			}
 		}
