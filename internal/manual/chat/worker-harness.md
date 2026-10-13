@@ -937,6 +937,15 @@ that proves it>'` to `plandb add`, and repeat `--check` when the task has more t
 one command to run. The check runs every command exactly as declared before it
 probes any acceptance sentence those commands do not cover.
 
+Each declaration is **one rerunnable command the read-only check can run**.
+`plandb add` and `plandb task set-checks` refuse joins, pipes, redirections,
+substitutions and commands the check is not allowed to run before anything is
+added or changed. Repeat `--check` for separate commands. Checks run from the
+root of the task's own copy: omit `cd` and name files relative to that root.
+The command is not split or rewritten for you; repair the declaration and try
+the add or set-checks again. Quoted shell characters that are only text remain
+allowed, such as `grep 'alpha && beta' README.md`.
+
 A task with **no declared check** is checked by reading its result and by the
 acceptance alone. Commands mentioned only in the task's prose are not declarations,
 so put every command the check must run on the task with `--check`.

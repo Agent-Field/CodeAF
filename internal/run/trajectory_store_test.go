@@ -109,7 +109,14 @@ func TestHoldsRequiresEveryDeclaredRunWithZeroExitAndAuditApproval(t *testing.T)
 				checks = []string{"*"}
 			}
 			store := runOpenStore(t)
-			if _, err := store.AddMany([]plandb.TaskSpec{{ID: "review", Title: "check: leaf", Role: plandb.RoleCheck, Checks: checks}}); err != nil {
+			_, err := store.AddMany([]plandb.TaskSpec{{ID: "review", Title: "check: leaf", Role: plandb.RoleCheck, Checks: checks}})
+			if tc.name == "declaration is not auditable" {
+				if err == nil {
+					t.Fatal("unauditable declaration admitted before completion")
+				}
+				return
+			}
+			if err != nil {
 				t.Fatal(err)
 			}
 			if _, err := store.Claim("review", "review"); err != nil {
