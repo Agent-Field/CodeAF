@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/parts"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
@@ -213,18 +214,18 @@ func TestInvalidSurfaceSamples(t *testing.T) {
 	}{
 		{bridge.SurfaceCanvas, `{}`},
 		{bridge.SurfaceCanvas, `{"title":"Slide","status":"Draft","frame":"16:9","notes":"","boxes":[{"id":"title","type":"text","text":"Title","x":0,"y":0,"w":-1,"h":1}]}`},
-		{bridge.SurfaceCanvas, `{"title":"Slide","status":"Draft","frame":"16:9","notes":"","boxes":[{"id":"title","type":"text","text":"Title","x":1,"y":0,"w":1,"h":1}]}`},
-		{bridge.SurfaceText, " \n"},
-		{bridge.SurfaceGrid, "header\n"},
+		{bridge.SurfaceCanvas, `{"title":"Slide","status":"Draft","frame":"16:9","notes":"","boxes":[{"id":"title","type":"text","text":"Title","x":1280,"y":0,"w":1,"h":1}]}`},
+		{bridge.SurfaceText, string([]byte{0xff})},
+		{bridge.SurfaceGrid, `header,"unterminated`},
 		{bridge.SurfaceGrid, "A,B\n1\n"},
-		{bridge.SurfaceTimeline, `{"items":[],"view":"gantt"}`},
+		{bridge.SurfaceTimeline, `{"items":[],"view":"wrong"}`},
 		{bridge.SurfaceGraph, `{"nodes":[{"id":"x","label":"X"}],"layout":"free"}`},
 		{bridge.SurfaceMap, `{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":["bad",0]},"properties":{"label":"Place","kind":"place"}}]}`},
 		{bridge.SurfaceMap, `{} {}`},
 		{bridge.Surface("unknown"), `{}`},
 	} {
 		t.Run(string(tc.kind), func(t *testing.T) {
-			if err := validateSurfaceSample(tc.kind, tc.text); err == nil {
+			if err := parts.Validate(tc.kind, tc.text, nil); err == nil {
 				t.Fatalf("accepted invalid sample: %s", tc.text)
 			}
 		})
@@ -273,6 +274,43 @@ func TestSurfaceRenderBindings(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestSurfaceRenderRejectsInvalidPartsSample(t *testing.T) {
+	kit := testKit(t)
+	for _, tc := range []struct{ name, prop string }{
+		{"Canvas", "frame"},
+		{"Timeline", "view"},
+		{"Graph", "view"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			files, sample := fixture(t)
+			bundle, err := spec.Decode(files)
+			if err != nil {
+				t.Fatal(err)
+			}
+			node := surfaceNode(tc.name)
+			node.Props = map[string]any{tc.prop: "unsupported"}
+			kind := bridge.Surface(strings.ToLower(tc.name))
+			_, text, err := sampleSurfacePart(kind, node.Props)
+			if err != nil {
+				t.Fatal(err)
+			}
+			formatErr := parts.Validate(kind, text, nil)
+			if formatErr == nil {
+				t.Fatal("parts accepted the invalid generated sample")
+			}
+			screen := &spec.Screen{Screen: "deck", Body: node}
+			issues := render(context.Background(), bundle, kit, screen, sample.rows)
+			want := string(kind) + " sample: " + formatErr.Error()
+			for _, issue := range issues {
+				if issue.Rule == "render/surface" && issue.File == "screens/deck.json" && issue.Path == "/body" && issue.Message == want {
+					return
+				}
+			}
+			t.Fatalf("want surface render failure %q; got %+v", want, issues)
+		})
 	}
 }
 

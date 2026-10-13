@@ -1,13 +1,12 @@
 package check
 
 import (
-	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/parts"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 )
 
@@ -150,9 +149,6 @@ func sampleSurfaceDoc(doc string, kind bridge.Surface, props map[string]any) (su
 	if err != nil {
 		return surfaceSample{}, err
 	}
-	if err := validateSurfaceSample(kind, text); err != nil {
-		return surfaceSample{}, fmt.Errorf("%s sample: %w", kind, err)
-	}
 	sample := surfaceSample{
 		Doc:   bridge.DocInfo{Doc: doc, Surface: kind, Title: "Sample document", Parts: []bridge.PartSummary{{Part: part, Version: 1, Title: "Sample part"}}},
 		Part:  bridge.Part{Doc: doc, Part: part, Surface: kind, Version: 1, Text: text},
@@ -171,6 +167,9 @@ func sampleSurfaceDoc(doc string, kind bridge.Surface, props map[string]any) (su
 	case bridge.SurfaceGrid:
 		sample.Part.Extra = &bridge.PartExtra{Formulas: map[string]string{}}
 		sample.Files["sheets/sample.formulas.json"] = []byte(`{}`)
+	}
+	if err := parts.Validate(kind, text, sample.Part.Extra); err != nil {
+		return surfaceSample{}, fmt.Errorf("%s sample: %w", kind, err)
 	}
 	return sample, nil
 }
@@ -204,133 +203,4 @@ func sampleProp(props map[string]any, key, fallback string) string {
 		return fmt.Sprint(value)
 	}
 	return fallback
-}
-
-// The parts package is a stub on this branch and exports no format validator.
-// These checks validate only generated sample shapes from contract surfaces §2;
-// they do not replace server-side validation of content writes.
-func validateSurfaceSample(kind bridge.Surface, text string) error {
-	if kind == bridge.SurfaceText {
-		if strings.TrimSpace(text) == "" {
-			return fmt.Errorf("sample Markdown is empty")
-		}
-		return nil
-	}
-	if kind == bridge.SurfaceGrid {
-		rows, err := csv.NewReader(strings.NewReader(text)).ReadAll()
-		if err != nil {
-			return err
-		}
-		if len(rows) < 2 {
-			return fmt.Errorf("sample CSV needs a header and a row")
-		}
-		return nil
-	}
-	var object map[string]any
-	decoder := json.NewDecoder(strings.NewReader(text))
-	if err := decoder.Decode(&object); err != nil {
-		return err
-	}
-	if err := decoder.Decode(new(any)); err != io.EOF {
-		return fmt.Errorf("sample must be one JSON object")
-	}
-	switch kind {
-	case bridge.SurfaceCanvas:
-		return validateCanvasSample(object)
-	case bridge.SurfaceTimeline:
-		return validateTimelineSample(object)
-	case bridge.SurfaceGraph:
-		return validateGraphSample(object)
-	case bridge.SurfaceMap:
-		return validateMapSample(object)
-	default:
-		return fmt.Errorf("unknown surface %q", kind)
-	}
-}
-
-func validateCanvasSample(object map[string]any) error {
-	if !sampleStrings(object, "title", "status", "frame", "notes") || !contains([]string{"Draft", "In review", "Final"}, fmt.Sprint(object["status"])) || !contains([]string{"16:9", "board"}, fmt.Sprint(object["frame"])) {
-		return fmt.Errorf("sample Canvas needs title, status, frame and notes")
-	}
-	box, err := sampleItem(object, "boxes")
-	if err != nil {
-		return err
-	}
-	if !sampleStrings(box, "id", "type", "text") || box["type"] != "text" {
-		return fmt.Errorf("sample Canvas needs a text box")
-	}
-	for _, key := range []string{"x", "y", "w", "h"} {
-		value, ok := box[key].(float64)
-		if !ok || value < 0 || ((key == "w" || key == "h") && value == 0) {
-			return fmt.Errorf("sample box has invalid %s", key)
-		}
-	}
-	// Generated boxes fit in a unit square at the origin, safely inside the
-	// slide frame as well as the unbounded board, without defining editor units.
-	if box["x"].(float64)+box["w"].(float64) > 1 || box["y"].(float64)+box["h"].(float64) > 1 {
-		return fmt.Errorf("sample box extends outside its frame area")
-	}
-	return nil
-}
-
-func validateTimelineSample(object map[string]any) error {
-	item, err := sampleItem(object, "items")
-	if err != nil {
-		return err
-	}
-	if !sampleStrings(item, "id", "title", "start", "end") || !contains([]string{"gantt", "calendar", "shifts"}, fmt.Sprint(object["view"])) {
-		return fmt.Errorf("sample Timeline needs dated items and a view")
-	}
-	return nil
-}
-
-func validateGraphSample(object map[string]any) error {
-	node, err := sampleItem(object, "nodes")
-	if err != nil {
-		return err
-	}
-	if _, ok := object["links"].([]any); !ok || !sampleStrings(node, "id", "label") || !contains([]string{"tree", "flow", "free"}, fmt.Sprint(object["layout"])) {
-		return fmt.Errorf("sample Graph needs nodes, links and a layout")
-	}
-	return nil
-}
-
-func sampleStrings(object map[string]any, fields ...string) bool {
-	for _, field := range fields {
-		if _, ok := object[field].(string); !ok {
-			return false
-		}
-	}
-	return true
-}
-
-func sampleItem(object map[string]any, field string) (map[string]any, error) {
-	items, ok := object[field].([]any)
-	if !ok || len(items) != 1 {
-		return nil, fmt.Errorf("sample %s needs one item", field)
-	}
-	item, ok := items[0].(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("sample %s item must be an object", field)
-	}
-	return item, nil
-}
-
-func validateMapSample(object map[string]any) error {
-	feature, err := sampleItem(object, "features")
-	if err != nil {
-		return err
-	}
-	geometry, _ := feature["geometry"].(map[string]any)
-	properties, _ := feature["properties"].(map[string]any)
-	coordinates, _ := geometry["coordinates"].([]any)
-	if object["type"] != "FeatureCollection" || feature["type"] != "Feature" || geometry["type"] != "Point" || !sampleStrings(properties, "label") || properties["kind"] != "place" || len(coordinates) != 2 {
-		return fmt.Errorf("sample Map needs a labelled GeoJSON place")
-	}
-	for _, coordinate := range coordinates {
-		if _, ok := coordinate.(float64); !ok {
-			return fmt.Errorf("sample Map coordinates must be numbers")
-		}
-	}
-	return nil
 }

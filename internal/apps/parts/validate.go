@@ -16,6 +16,11 @@ var validators = map[bridge.Surface]validator{
 	bridge.SurfaceGraph: validateGraph, bridge.SurfaceMap: validateMap,
 }
 
+// Validate checks a part's surface format without reading or writing content.
+func Validate(surface bridge.Surface, text string, extra *bridge.PartExtra) error {
+	return validate(surface, text, extra)
+}
+
 func knownSurface(surface bridge.Surface) bool { _, ok := validators[surface]; return ok }
 func validate(surface bridge.Surface, text string, extra *bridge.PartExtra) error {
 	f, ok := validators[surface]
