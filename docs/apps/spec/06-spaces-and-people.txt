@@ -1,205 +1,212 @@
 
-L3 · The test: a user builds their own factory
-L3 · The test: a user builds their own factory prompt → plan → files → checks → preview → job page · built from the same kit as CodeAF’s prebuilt Factory
-1
-1 · Prompt
-@santosh clicks New app… in the rail and describes the factory in his own words.
-New app ⌘K · New app…
-Say what it is for and who uses it. The Builder writes the app from this; the app gets its own agent for the content.
-A factory that turns GitHub issues labelled agent into PRs. I approve the plan; it codes and tests until green, at most 3 rounds; I review the proof before the PR opens.
-Records, screens, what the agent does, what needs your approval ⇧↵ new line
-Home Personal acme workspace you are its Editor · other members of acme get User
-Budget up to $20 a month the app's agent spends from this
-Connectors GitHub Add from Settings → Accounts
-App agent model GLM 5.3
-The Builder writes the app. You'll see it running before you keep it. Cancel Create app ↵
-2
-2 · Plan
-The Builder (CodeAF's own agent) writes plan.json; CodeAF draws this card from it. Nothing else is written until Write it.
-acme
-Bugfix factory · building
-Inbox
-Bugfix factory Workspace app · planning · only you see it Shape Agent App
-Builder · plan · nothing written yet Plan Write Check Preview
-Data records job issue · repo · state · assignee · priority documents none in this app reads GitHub issues
-Automation trigger issue labelled agent → new job in Backlog run fix one run per job · budget $3 a run plan approval: plan until green · max 3 code ↔ test proof approval: proof open PR via GitHub
-code and test get workspace: repo : a checkout, a branch and a shell on your runner
-Screens Jobs list Job page
-Agent Bugfix factory agent · GLM 5.3 · answers questions about jobs, drafts plans
-Needs Records Runs · repo workspace Approvals GitHub Inbox worked out by CodeAF from the sections above, not written by the Builder · acme · up to $20 a month
-Write it Just build it Change plan Change plan opens the Builder pane with this plan quoted
-3
-3 · Files written
-After Write it, the Builder writes five files. The runs file is the pipeline; each screen is declarative JSON: a tree of kit parts with bindings.
-Plan Write Check Preview
-highlighted: the approval gates, the repo workspace, the one data binding
-FileTree · bugfix-factory/ 5 files
-app.json
-38 lines
-runs/
-fix.yaml
-15 lines
-screens/
-jobs.json
-14 lines
-job.json
-38 lines
-agent.md
-22 lines
-Stored on acme’s codeaf server. app.json holds the job schema, capabilities, the GitHub trigger (issue labelled agent) and the budget; agent.md is the app's agent. No custom code: custom/*.tsx is the labelled escape hatch.
-runs/fix.yaml runs engine · 2 gates
-1 name : fix
-2 for : job # one run per job record
-3 budget : $3
-4 steps :
-5 - plan : { workspace: repo }
-6 - approval : plan
-7 - loop :
-8 until : tests are green
-9 max : 3
-10 steps :
-11 - code : { workspace: repo }
-12 - test : { workspace: repo }
-13 - proof : { claims: with evidence }
-14 - approval : proof
-15 - pr : { tool: github.open_pr }
-screens/jobs.json kit parts + bindings · no code
-1 {
-2 "screen" : "Jobs" ,
-3 "state" : { "query" : "assignee:me" , "picked" : [] },
-4 "parts" : [
-5 { "part" : "QueryField" , "bind" : "query" , "sort" : "priority" },
-6 { "part" : "StateMeter" , "records" : "job?query" , "field" : "state" },
-7 { "part" : "RecordList" , "records" : "job?query" ,
-8 "columns" : [ "priority" , "state" , "issue" , "run" , "assignee" ],
-9 "onOpen" : "open" , "select" : "picked" },
-10 { "part" : "Panel" , "record" : "picked.0" },
-11 { "part" : "BulkBar" , "selected" : "picked" ,
-12 "actions" : [ "Assign to me" , "Run" ] }
-13 ]
-14 }
-4
-4 · Checks
-Before anyone sees it, the checker runs four checks. A failure goes back to the Builder, up to 3 rounds; earlier rounds stay folded.
-Plan approved by @santosh 0:38
-Write 5 files 1:52
-Check passed on round 2 of 3 0:47
-Preview opens in this tab on sample data
-Spent $1.84 of $20
-Schema check app.json · runs/fix.yaml · screens/*.json · 0 errors round 2
-Kit law only kit parts · tokens only, no raw colours, sizes or fonts · every binding resolves · one navigation row · every control labelled round 2
-Render with sample data 2 screens rendered and looked at: Jobs list (24 sample jobs) · Job page (api#1498) round 2
-Behaviour check runs/fix.yaml executed on 24 sample jobs against the GitHub fake · 0 real calls · both gates reached round 2
-round 1 · kit law: unknown part 'Datagrid' in screens/job.json:14 → replaced with Table the Builder swapped in the kit's Table and ran every check again collapsed
-5 · Preview Checks passed. The app runs in its tab on sample data; it is the same Jobs screen as acme because it is built from the same kit.
-acme
+Spaces and people
+L9 · Spaces and people Personal and workspaces in one switcher · workspace roles Owner · Admin · Member · app roles Editor · User · Viewer · sign-off roles
+a acme Workspace
 Inbox
 Crews
 Release
 Pricing page
-jev prototype
 Agents
 api-docs
-Triage flaky tests
-Why is CI slow?
+CRM agent
 Apps
 acme
-Bugfix factory preview
 CRM
+Slides
 Support
-Hiring
 New app…
-Archived 2
 All crews and agents ⌘⇧P
 Release
 acme
-Bugfix factory · preview
+CRM
 Inbox
-Preview · Bugfix factory · sample data · only you see it until you keep it Keep Shape more Discard
-Bugfix factory Workspace app · preview · v1 Shape Agent App
-Jobs GitHub issues labelled agent · acme/api, acme/web, acme/infra Sync GitHub
-assignee: me Search or filter · state: repo: priority: Priority Views
-Needs you 2 Running 12 Queued 4 Backlog 182 Done 9 this week
-13 assigned to you · sample data · priority ↓ j / k · x select · ↵ open
-api#1498 Retry webhook deliveries with backoff Approval needed: proof M S 58m
-web#2111 Checkout button stays disabled after error Approval needed: plan S S 6m
-api#1530 Webhook signatures fail for payloads over 1 MB code ↔ test · round 2 of 3 S S 12m
-web#2104 Orders table jumps when filters change plan XS S 40m
-api#1527 Add idempotency keys to POST /invoices queued · runner santosh-mbp M S 1h
-infra#318 Alert when the job queue is older than 1h queued S S 5h
-web#2099 Dark mode for invoices PDF preview backlog M S 1d
-api#1519 Remove the v1 invoices endpoint backlog L S 2d
-web#2087 Empty state for the refunds table backlog XS S 3d
-infra#301 Rotate the staging database password monthly backlog S S 4d
-api#1488 Paginate GET /customers past 10k rows done · PR #1490 merged M S 1d
-web#2079 Fix focus ring on the date picker done · PR #2081 merged XS S 2d
-api#1471 Log the delivery id on every webhook retry done · PR #1475 merged S S 3d
-Selected api#1498 Open ↵
-Retry webhook deliveries with backoff
-Deliveries that fail are dropped. Retry them with exponential backoff (cap 30s, 5 attempts) and record each attempt.
-State Approval needed: proof Priority High · from label p1 Assignee you Repo acme/api Run fix · green on round 2 of 3 Budget $3 a run
-Review proof Open ↵
-Panel, from the kit. Open (↵) shows the Job page in this tab.
+CRM Workspace app · acme · v12 · shaped by @mona · you: Editor Use Shape Agent App
+stage: open owner: team Search deals · company: value: touched: Likely to close AI Views
+Lead 14 Talking 9 Proposal 5 Won 23 Lost 11
+28 open deals · likely to close ↓ j / k · ↵ open
+Company Deal Stage Next step Value Touch
+Globex Annual renewal · 120 seats Proposal S Send revised quote $48,000 1d
+Northwind Team plan · 40 seats Talking C Follow-up drafted · waiting on you $14,400 2h
+Initech Pilot for the ops team Proposal M Security review call Thu $9,000 3h
+Hooli Expansion · EU region Talking J Book a demo with their CTO $22,500 1d
+Umbrella Starter plan Lead C Follow-up drafted · quiet 7d $3,600 7d
+Vandelay Import tooling seats Talking R Send case study $6,800 2d
+Acme Retail Store managers rollout Lead C Follow-up drafted · quiet 8d $12,000 8d
+Stark Labs Research team · 15 seats Lead M Intro call Mon $5,400 4d
+Pied Piper Annual · 25 seats Proposal S Waiting on legal $10,500 5d
+Spaces
+S Personal only you · on this Mac 1 app ⌃⌘1
+a acme acme.codeaf.dev · Owner 4 apps ⌃⌘2
+g globex globex.codeaf.dev · Member 2 apps ⌃⌘3
+Join a workspace…
+New workspace…
+Workspace settings… acme
+1
+2
+3
+4
 5
 6
-6 · Job page
-Open (↵) on a row. screens/job.json is five kit data blocks, bound to the job and its run through the bridge.
-acme
-Bugfix factory · preview
-Inbox
-Bugfix factory Workspace app · preview · v1 Shape Agent App
-Jobs / api#1498 Retry webhook deliveries with backoff Approval needed: proof Stop Actions
-RunTimeline run fix · budget $3
-plan 4 files · workspace: repo
-4m
-approval: plan approved by you
-code ↔ test until tests are green · round 2 of 3
-21m
-code +212 −38 in 6 files
-12m
-test green on round 2
-9m
-round 1 2 failing · retry jitter
-4m
-round 2 214 passed
-5m
-proof 3 of 3 claims proven
-6m
-approval: proof waiting on you
-open PR via GitHub, as you
-LogStream test · round 2 santosh-mbp
-10:14:02 $ go test ./...
-10:14:31 ok internal/retry 1.82s
-10:14:38 ok api/webhooks 4.10s
-10:14:39 PASS · 214 tests
-ApprovalCard
-Approval needed: proof 3 of 3 claims proven · tests green on round 2 of 3
-Approve → open PR as you Request changes… Drop
-ProofList claims with evidence
-Failed deliveries retry up to 5 times test · TestRetry_MaxAttempts proven
-Delay never exceeds 30s test · TestRetry_Jitter, 1,000 samples proven
-Each attempt is recorded test · TestDelivery_RecordsAttempt proven
-DiffViewer internal/retry/backoff.go +48 −6 · 1 of 6 files
-@@ func next(attempt int) time.Duration @@
-return time.Second
-d := base << attempt
-if d > maxDelay { d = maxDelay }
-return d/2 + jitter(d/2)
 7
-7 · Ours vs generated
-acme ships with CodeAF. The generated factory has only what was asked for.
-CodeAF’s prebuilt Factory · acme Generated · Bugfix factory Jobs Jobs list Jobs list · same kit blocks Job Job page · Run · Review · Timeline Job page · one view Repos Repos page — not generated Pipelines Pipelines page runs/fix.yaml · App ⌄ → Open files Runners Runners page from CodeAF: Settings → Factory
-Shape · Builder · shaping the app
-Ask to add a Repos page: each repo with its open agent issues and last PR
-Shape runs as a draft only you see · Apply writes v2
-Runners are not the app's to build: a run with workspace: repo uses the runners CodeAF already knows, from Settings → Factory.
-1 Prompt. New app… (rail or ⌘K) opens the same sheet as every app (L1). Home acme: members of the acme workspace see it after the first Apply. Connectors list only accounts in Settings → Accounts; here GitHub. Create app ↵ opens the tab "Bugfix factory · building".
-2 Plan first. The Builder (CodeAF's own agent, the same for every app) answers with plan.json; CodeAF draws this card from it, always the same: Data (records, documents, reads), Automation (triggers, runs), Screens, Agent. Needs is computed by CodeAF from those sections, so the Builder cannot understate what the app will use. Write it (↵) starts writing. Change plan docks the Builder pane with the plan quoted; the Builder answers with a new plan card. The Agent line describes the app's own agent, which later works on jobs only. Gates read exactly as they will run: approval: plan, approval: proof.
-3 Files. app.json, runs/fix.yaml, screens/jobs.json, screens/job.json, agent.md. Only runs touch shells: code and test declare workspace: repo , so they get a checkout, a branch and a shell on the assignee's runner. Screens are declarative JSON: a tree of kit parts with bindings to records and runs; no imports, no code. custom/*.tsx (sandboxed, labelled custom) is the escape hatch only. App ⌄ → Open files shows them.
-4 Checks. Schema check, Kit law, Render with sample data, Behaviour check (runs on sample data against connector fakes), in that order. A failing check goes back to the Builder with file and line (max 3 rounds); after round 3 it shows you the error with Fix it · Cancel. Passed rounds fold to one line; click to unfold.
-5 Preview. The new rail row "Bugfix factory" sits with the workspace apps and reads preview. QueryField, StateMeter (Needs you · Running · Queued · Backlog · Done), RecordList rows and the right Panel are the kit's, so the screen matches acme's Jobs. Keep writes v1, private to you until the first Apply; Shape more opens the Builder pane; Discard removes the app and its row.
-6 Job page. RunTimeline shows the loop as a parent row with rounds under its steps; LogStream follows the step you select; ProofList and DiffViewer feed the ApprovalCard. Approve sends the run on to open PR via GitHub, as you, with a 5-second Undo. The approval also waits in Inbox.
-7 Ours vs generated. The generated factory has Jobs and Job only. It has no Repos or Runners pages: runners come from CodeAF (Settings → Factory). A Repos page is one Shape away; it runs as a draft only you see until Apply.
+8 Personal rail and acme rail
+The same rail, two spaces. The switcher is the only thing on top that changes.
+Personal
+S Personal only you
+Inbox
+Crews
+jev prototype
+Agents
+Why is CI slow?
+Triage flaky tests
+Apps
+Dashboards
+New app…
+All crews and agents ⌘⇧P
+acme
+a acme Workspace
+Inbox
+Crews
+Release
+Pricing page
+Agents
+api-docs
+CRM agent
+Apps
+acme
+CRM
+Slides
+Support
+New app…
+All crews and agents ⌘⇧P
+Personal acme
+Runs on the codeaf server inside your app, on this Mac the acme server (acme.codeaf.dev), run by the team
+Who only you; you are every role members invited by an Owner or Admin
+Apps Personal apps (Dashboards) Workspace apps (acme Factory, CRM, Slides, Support)
+Crews, agents yours, only here yours, only here; members see crews you share
+Connections your own accounts your own accounts (each app asks once) and the workspace's
+Inbox what needs you here what needs you here
+Spending your caps (Settings → Spending) workspace budgets set by Admins, plus your caps
+9 Joining a workspace
+Invite link → sign in → your role.
+1 Invite link opens CodeAF
+a Join acme
+Invited by M @mona · Admin Server acme.codeaf.dev As Member
+Continue Not now link works once · 7 days
+2 Sign in to acme
+acme signs people in with Google. Use the address the invite was sent to.
+Continue with Google santosh@acme.com
+3 You're in
+Welcome to acme
+Your role Member · use and make apps
+Apps CRM · User · Slides · User
+Support · User · acme Factory · User
+Open acme adds acme to the switcher
+10 Workspace settings → Members
+Opened from the switcher: Workspace settings…. Here @santosh is the Owner.
+acme · Members
+General Members Connections Spending Apps
+Invite Owner and Admins
+dana@acme.com Member Send invite Copy link
+Members · 4 1 invited
+S @santosh you santosh@acme.com · active now
+Owner
+M @mona mona@acme.com · active now
+Admin
+R @raj raj@acme.com · 2h ago
+Member
+Owner pays for and can delete acme
+Admin invites, connections, budgets
+Member uses and makes apps
+Remove from acme…
+J @jm jm@acme.com · yesterday
+Member
+D dana@acme.com invited by @santosh · 2 days ago
+Resend Cancel Member
+11 Leave
+Leave acme
+You're the last Owner. Make someone else Owner first, or delete acme in General.
+Leave acme…
+12 An app's Members sheet
+CRM, opened from App ⌄ → Members by an Editor.
+CRM
+Inbox
+CRM Workspace app · v12 Use Shape Agent App
+Globex Annual renewal · 120 seats $48,000
+Northwind Team plan · 40 seats $14,400
+Initech Pilot for the ops team $9,000
+Hooli Expansion · EU region $22,500
+Umbrella Starter plan $3,600
+Vandelay Import tooling seats $6,800
+CRM · Members App ⌄ → Members
+People Sign-off roles
+a Everyone in acme the default for anyone without their own row · 4 people
+User
+M @mona made CRM
+Editor
+S @santosh you
+Editor
+R @raj from Everyone in acme
+User
+J @jm set by @mona · 3 Oct
+Viewer
+Add a person… User
+Editor Shape and Apply, Members, Needs, Budget User works with records and content; asks the CRM agent Viewer reads; asks the CRM agent questions
+Only Editors change this Done
+13 A User tries Shape
+@raj is a User of CRM.
+CRM
+Inbox
+CRM Workspace app · v12 · you: User Use Shape Agent App
+Globex Annual renewal · 120 seats $48,000
+Northwind Team plan · 40 seats $14,400
+Initech Pilot for the ops team $9,000
+Hooli Expansion · EU region $22,500
+Umbrella Starter plan $3,600
+Only editors can shape CRM
+You're a User of CRM. Ask an Editor to make the change; your words go with it.
+add a column for last reply
+Ask @mona Cancel
+@raj asks to shape CRM "add a column for last reply"
+Shape this Not now
+@mona's Inbox. Shape this opens Shape with Raj's words pre-filled for the Builder.
+14 A Viewer's read-only app
+@jm is a Viewer of CRM.
+CRM
+Inbox
+CRM Workspace app · v12 Viewer · read only Agent App
+You can read CRM. Ask an Editor to make you a User. Ask @mona
+Pipeline Companies Contacts New deal
+Globex Annual renewal · 120 seats $48,000
+Northwind Team plan · 40 seats $14,400
+Initech Pilot for the ops team $9,000
+Hooli Expansion · EU region $22,500
+Umbrella Starter plan $3,600
+The same app, the same records. Only what you can do changes.
+15 Sign-off roles
+Support → App ⌄ → Members → Sign-off roles. Editors only.
+Support · Members People Sign-off roles
+Used by the SignOff chain Refund over $500 screens/refund.json . Signed in this order.
+1 Maker R @raj J @jm M @mona
+2 Checker M @mona S @santosh
+3 Quality lead M @mona
+Add role
+Maker can never check own work. Whoever made a refund can't sign it at a later step, even if they hold that role. Always on.
+If @mona makes a refund, Checker goes to @santosh and Quality lead has nobody left . Add a second Quality lead.
+1 The space switcher is the first row of the rail, above Inbox. It shows the current space: its square, its name and "Workspace" (or "only you" for Personal). Click it or press ⌃⌘0 to open this menu; ⌃⌘1–⌃⌘9 jump straight to a space in menu order. The amber dot means another space has something waiting for you.
+2 Personal is always first and always there. It is the codeaf server inside your own app on this Mac: only you, your own accounts, your Personal apps. It cannot be left or deleted.
+3 Workspaces follow in the order you joined them. Each row: square, name, server address, your workspace role, and how many apps you can open there. The current one has a check. Picking one swaps the whole rail and the tab strip to that space; the tabs of the space you left are kept and come back when you return.
+4 A space that needs you shows an amber dot after its name. Inbox always shows the current space only; the dot on the switcher is how you learn about the others.
+5 Join a workspace… opens a field for an invite link or a server address (see 9). New workspace… asks for a name and the address of a codeaf server your team runs ( codeaf serve , the same binary); you become its Owner.
+6 Workspace settings… opens the settings window of the current workspace: General · Members · Connections · Spending · Apps. Members see it read only; Owner and Admins change it. In Personal this row reads Settings… and opens the app's own Settings (⌘,).
+7 The header says where an app lives : "Workspace app · acme", the version, who shaped it last and your app role (Editor · User · Viewer). Runs of a workspace app run on the acme server, never on this Mac.
+8 One rail per space. Switching space swaps every section (Crews, Agents, Apps) and the Inbox. Nothing from one space shows in another: a Personal app never appears in a workspace rail and a workspace app never appears in Personal. To move an app use App ⌄ → Move to workspace… (records move with it).
+9 Joining a workspace. The link ( codeaf://join/acme.codeaf.dev/… ) opens CodeAF at step 1; pasting it into Join a workspace… does the same. Step 2 uses whatever sign-in the workspace server is set to (Google, GitHub or email code). Step 3 states the role the inviter chose and the app role each app gives "Everyone in acme". Open acme switches to it. A used or expired link shows "This invite has expired · Ask @mona for a new one".
+10 Workspace roles. Owner pays for and can delete the workspace; Admin invites, removes Members, adds workspace connections and sets budgets; Member uses and makes apps. Everyone sees this list; only Owner and Admins see the controls. Only an Owner can make or unmake an Owner. The role chip opens the menu shown on @raj.
+11 Remove from acme… asks first ("@raj loses access to acme now. Apps he made stay; records he made stay; his personal connections stop working in acme apps."). Invites expire after 7 days. The last Owner can't leave : Leave is disabled with the reason underneath, and the last Owner can't be made Admin or Member.
+12 App roles are per app: Editor · User · Viewer. "Everyone in acme" is the first row and sets the default (User when an app is first Applied). A person row overrides it; a grey role means it comes from Everyone. The maker of an app is its first Editor. An app always keeps at least one Editor; Owners and Admins can open Members on any app to fix that.
+13 A User clicks Shape (or the CRM agent's Shape this button): Shape stays dimmed and this popover opens. It names the Editor who shaped the app last (@mona). Ask @mona puts a line in her Inbox with the request; Raj gets "Mona shaped CRM · v13" in Activity when it lands, or "Mona said not now".
+14 A Viewer (@jm on CRM) sees every screen with no Use · Shape switch, a "Viewer · read only" tag, create buttons disabled, fields as plain text and no drag. The CRM agent answers a Viewer's questions and never changes records for them. Viewers can't comment or approve.
+15 Sign-off roles. The Builder names the roles from the plan (here Maker · Checker · Quality lead for a SignOff chain); Editors rename them, change the order and assign people (only people with app role User or Editor). The rule "maker can never check own work" is fixed. When a step would have nobody eligible, the sheet warns now, and a stuck record goes to the Editors' Inbox as "Refund #2041 has no Quality lead who didn't make it".
 class Component extends DCLogic {
 renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
 }

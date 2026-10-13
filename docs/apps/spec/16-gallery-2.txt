@@ -1,41 +1,247 @@
 
-A9 · Apps · scope and backlog
-A9 · Apps · scope and backlog
-What the Apps feature ships in v1, what waits for later and why, and what Apps will never do. Nothing in the backlog or non-goals is built in v1.
-Ships in v1 16 items
-Spaces. Personal (your own codeaf server, only you) and Workspace (a codeaf server a team runs). Switcher at the top of the rail: Personal · acme · globex.
-Roles. Workspace Owner · Admin · Member. Per app Editor · User · Viewer. Named signatories for SignOff chains.
-Connectors, two levels. Personal connections act as you only after "Allow" once per app; workspace connections are added by Admins. Every connector has a fake for Preview, Shape drafts and checks.
-Two agents per app. The Builder (CodeAF's, writes the app files) and the app's agent (content only, from agent.md; "That changes the app · Shape this").
-Create. New app sheet → plan card → Building (Plan · Write · Check · Preview) → Preview on sample data → Keep (v1).
-Check. Schema check, kit law, every screen rendered with sample data, runs executed against connector fakes. Max 3 Builder rounds, then Fix it · Cancel.
-Shape. Editors only. Plan menu · running draft (reads real data, saves to a scratch copy) · Builder · draft bar. Migration preview, replay on a newer version, "This change broke CRM · Fix it · Revert".
-Use. The app's screens with the docked app agent. AI always labelled, pins win. Anything leaving the workspace waits for "Approval needed: …".
-Surfaces. Text · Canvas · Grid · Timeline · Graph · Map, each with Ask · Nudge · Comment, one writer per part, presence, versions per part, Present · Share link · Export PDF/PPTX/CSV.
-Kit. 59 parts: 28 primitives, 13 patterns, 6 surfaces, 12 data blocks. Screens are declarative screens/*.json ; custom/*.tsx only as a labelled escape hatch.
-Crews and apps. "Discuss in a crew" on any record (a link, never a copy); an app's agent as a crew member; records changed through the app's agent with normal approvals; "Discussed in" on the record (L13).
-App settings. App ⌄: Versions… · Open files · Make my copy · Needs · Triggers · Budget · Members · Move to workspace… · Archive app… · Delete app…
-Imports. Import from CSV / Airtable / HubSpot: map fields to records with a preview; runs once.
-Factory. Ships as CodeAF's prebuilt app, in the Apps section like any other app.
-Audit log. Append-only Activity and audit log for every app change, record change and approval.
-Platforms. The desktop app on Mac and Linux. Runs always run on a codeaf server, yours or the workspace's.
-Not in v1 each with why it waits and what exists instead
-Item Why it waits What exists instead
-Phone & browser surface v1 is the desktop app. A second client needs its own sign-in, layout and offline story. Approvals in Inbox on the desktop app; Share link lets workspace members read a document.
-Camera scan Needs the phone surface. FileDrop takes photos and files; Checklist accepts photo or file evidence.
-Label printing Needs the phone surface and printer handling per site. Export PDF from a record or screen and print it from the Mac.
-Guest access for outsiders Apps live within the workspace only; outsiders need their own identity and permission model. Anything leaving the workspace goes through "Approval needed: send email"; Export PDF/PPTX/CSV.
-App marketplace Apps written by someone else need review, trust and a way to pay. Make my copy; Move to workspace…; the app files (app.json, screens/*.json) stay in your workspace.
-Live co-typing One writer per part keeps people and the agent from overwriting each other. Light lock ("Mona is editing"), presence, Ask · Nudge · Comment, versions per part.
-Audit pack export UI Packaging evidence for auditors is its own product. The audit log exists and is append-only; Activity and Export CSV.
-Word round-trip beyond import/export Track changes and styles both ways cannot be kept faithful yet. Text imports .docx and exports .docx and PDF.
-Apps talking to apps beyond links One app's agent acting in another app needs cross-app capabilities and approvals. Links between records; a crew with several apps' agents as members, each limited to its own app.
-App templates gallery Every app in v1 starts from a description, so the plan fits the team. New app sheet → plan card; Make my copy of an existing app; Factory as the prebuilt app.
-Non-goals never, not later
-No app-specific blocks No Slides block, Docs block or CRM block. We build six surfaces once and the Builder composes every app from the 59 parts. Instead: surfaces + data blocks
-No drag-and-drop UI builder Screens are declarative files the Builder writes. You change an app by saying what you want in Shape. Instead: Shape with the Builder, Show diff, Apply
-No external analytics ingestion Charts read the app's own records and runs. Outside data comes in as records through connectors, runs or a one-time import. Instead: Chart over records; Import from CSV / Airtable / HubSpot
-No AI deciding in Factory AI never starts, approves, assigns or ranks jobs. The only AI in an app's lists is a sort labelled AI, and pins win. Instead: manual Priority, rules in factory.yaml, labelled AI sorts
+L8 · App gallery 2/2 · 14 apps built from kit v2
+L8 · App gallery 2/2 · 14 apps built from kit v2
+Seven apps from seven kinds of team, each drawn as the app's main screen in CodeAF (window, tab and header line are the shell's; everything under the header is kit). Under each: every kit part it uses, then each further need and the kit v2 part, feature or rule that covers it, or Backlog. A green dashed outline marks a kit v2 part on the screen; grey marks a backlog item.
+Seven apps one card each · window crop · built from · kit v2 and backlog kit v2 · 59 parts · shell-owned shown outlined
+1 Marketing agency · Ad campaign studio creatives on a canvas, variants, spend approvals, performance hard part · Canvas
+Ad studio Inbox Ad studio agent
+Ad studio Workspace app · v8 · shaped by @mona Use Shape Agent App
+SectionTabs Creatives Campaigns Spend Performance
+Spring launch · Northwind Deploy · 4 variants
+Pages A · Feed
+B · Feed you
+C · Story M
+kit v2 · Media D · Reel 15s
+Canvas kit v2 · Compare Nudge Text Image Shape
+S Variant B · 1080 × 1080 · v3
+Ship releases 2× faster
+Northwind Deploy · free for 14 days
+Start free
+NORTHWIND
+Chart CTR by variant 7 days
+B 2.4% A 1.6% C 1.3%
+ApprovalCard Approval needed: spend
+$4,800 · Meta · 14 days Spring launch · variants A–C · cap $350 / day Approve Edit @mona asked
+Built from 34 of 59 kit parts · 5 shell
+Surfaces 1/6 Canvas
+Patterns 7/13 QueryField StateMeter Table Panel SectionTabs Pages States
+Data blocks 6/12 RecordList RecordPage Form Chart ApprovalCard FileViewer
+Primitives 20/28 Button IconButton Chip Token Field Select Segmented Menu Dialog Tooltip Toast Avatar StateGlyph Icon Text Stack Row Divider DatePicker FileDrop
+Shell 5 AgentPane Inbox Activity Versions Share sheet
+Kit v2 and backlog 2 · green on screen = part added in kit v2 · grey = backlog
+Covered in kit v2 by Media (data block) Video. Player with chapters and captions; also a Canvas box type.
+Covered in kit v2 by Compare (pattern) Two-up compare. Two parts or files side by side.
+2 Startup · Investor update + metrics monthly letter, KPI charts, send after approval hard part · Text
+Investor updates Inbox Investor updates agent
+Investor updates Workspace app · v5 · shaped by you Use Shape Agent App
+SectionTabs Letter Metrics Investors Sent
+Sep · waiting for approval
+Text surface kit v2 · Text · merge fields § Highlights · agent is editing S U
+Acme · September update
+Hi {first_name} ,
+⋮⋮ MRR grew 9% to $182k. We signed Globex (120 seats) and cut burn for the third month running.
+Hiring: two backend engineers start in October
+Ask: intros to platform teams at fintechs
+kit v2 · Freeze embed · Chart(mrr) · live Apr May Jun Jul Aug Sep
+Chart · metric MRR $182k +9.0% MoM
+Net burn $96k −6% MoM
+Runway 21 mo at Sep burn
+Chart · line MRR · 12 months $k
+ApprovalCard Approval needed: send email
+To 23 investors · “Acme · September update” From you · Gmail · 2 hidden from list (opted out) Approve Edit Skip you
+Built from 29 of 59 kit parts · 4 shell
+Surfaces 1/6 Text
+Patterns 4/13 List Table SectionTabs States
+Data blocks 5/12 RecordList RecordPage Form Chart ApprovalCard
+Primitives 19/28 Button Chip Token Field Select Segmented Toggle Menu Dialog Tooltip Toast Avatar StateGlyph Icon Text Stack Row Divider DatePicker
+Shell 4 AgentPane Inbox Activity Versions
+Kit v2 and backlog 2 · green on screen = part added in kit v2 · grey = backlog
+Covered in kit v2 by Freeze (record rule) Freeze. Lock a period or a record; unfreezing is logged.
+Covered in kit v2 by Text · merge fields Merge fields. Record fields fill the text when it is sent.
+3 Recruiting · Hiring pipeline candidates by stage, interviews, scorecards, offer approval hard part · Timeline + Text
+Hiring Inbox Hiring agent
+Hiring Workspace app · v14 · shaped by @raj Use Shape Agent App
+SectionTabs Pipeline Interviews Offers
+Candidate
+QueryField · StateMeter role: backend Search candidates
+Applied 12 Screen 5 Onsite 3 Offer 1
+Board Screen 5
+Priya Raman R Onsite Thu 2 yes
+Omar Haddad R call Wed 11:00
+Onsite 3
+Lena Novak M 3 of 4 scorecards yours due
+Sam Park M Fri 10:00
+Offer 1
+Kofi Mensah S Approval 1 of 2 $162k · ●●●
+Panel Priya Raman
+Backend engineer · Screen · via @jm
+Email p•••••@gmail.com Reveal Expects ●●●●● Reveal
+FileViewer Priya Raman · CV.pdf
+Scorecards · 2 of 3
+J @jm Strong yes
+R @raj Yes
+kit v2 · Blind fields M @mona hidden until you submit
+Next
+kit v2 · Timeline · free/busy Onsite · Thu 14:00–16:00
+@mona, @raj, @jm free · Find a time
+Built from 38 of 59 kit parts · 4 shell
+Surfaces 2/6 Text Timeline
+Patterns 8/13 QueryField StateMeter List Board Panel BulkBar SectionTabs States
+Data blocks 6/12 RecordList RecordPage Form ApprovalCard SignOff FileViewer
+Primitives 22/28 Button IconButton Chip Token Field Select Segmented Menu Dialog Tooltip Toast Avatar StateGlyph Icon Text Stack Row Divider DatePicker PeoplePicker FileDrop Masked
+Shell 4 AgentPane Inbox Activity Versions
+Kit v2 and backlog 4 · green on screen = part added in kit v2 · grey = backlog
+Covered in kit v2 by Timeline · free/busy Availability finder. Free and busy time from the calendar connector.
+Covered in kit v2 by Blind fields (record rule) Blind fields. Hidden until you submit your own.
+Backlog · guest access Outside-person access. Apps stay within the workspace in v1.
+Covered in kit v2 by Text · merge fields Merge fields. Record fields fill the text when it is sent.
+4 Support · Shared support inbox customer threads, SLA timers, macros, hand bugs to Factory hard part · Text
+Support Inbox Support agent
+Support Workspace app · v21 · shaped by @jm Use Shape Agent App
+SectionTabs Inbox Macros Reports
+S assigned to you · 4
+QueryField · StateMeter status: open Search
+Open 18 Pending 7 Solved 41
+RecordList Priya · Northwind 12m Webhooks retried 40 times
+Dan · Globex 38m SSO login loops on Safari
+Kim · Initech 2h Invoice shows wrong seats
+Ola · Hooli 3h Export CSV is empty
+Bo · Umbrella 1d How do I reset 2FA?
+Webhooks retried 40 times Send to Factory
+kit v2 · Timer First reply due in 12:40
+Thread P Priya Shah Northwind · 09:41 Our webhook endpoint got the same event 40 times overnight. Is something broken on your side?
+R @raj internal note · 09:52 Same as api#1498, retries ignore the 2xx. Handing to Factory.
+S Support agent linked · 09:53 api#1512 · Queued created in acme from this thread
+Text surface kit v2 · Text · merge fields Hi {customer.first_name} , thanks for the detail. This is a known bug in retries; a fix is queued and we will write when it ships.
+Reply Note Macros Send for approval
+Macros Known bug · webhook retries /bug
+Refund policy /ref
+Reset 2FA /2fa
+Built from 33 of 59 kit parts · 4 shell
+Surfaces 1/6 Text
+Patterns 7/13 QueryField StateMeter Panel BulkBar SectionTabs Thread States
+Data blocks 5/12 RecordList RecordPage Form Chart ApprovalCard
+Primitives 20/28 Button IconButton Chip Token Field Select Menu Dialog Tooltip Toast Avatar StateGlyph Icon Text Kbd Stack Row Divider PeoplePicker Masked
+Shell 4 AgentPane Inbox Activity Versions
+Kit v2 and backlog 2 · green on screen = part added in kit v2 · grey = backlog
+Covered in kit v2 by Timer (primitive) Live timer. Counts up or down, amber and red at thresholds.
+Covered in kit v2 by Text · merge fields Merge fields. Record fields fill the text when it is sent.
+5 Training · Course builder lessons, a video lesson, a scored quiz, learner progress hard part · Text
+Courses Inbox Courses agent
+Courses Workspace app · v3 · shaped by @mona Use Shape Agent App
+SectionTabs Lessons Quiz Learners
+Acme CLI basics · 4 lessons · published
+Pages 1 · Welcome
+2 · Setup agent
+3 · First deploy M
+4 · Quiz 5 q
+Text surface Lesson 2 · agent is editing S
+2 · Setting up your machine
+kit v2 · Media Install the CLI · 6:12 2:21 6:12 · CC
+Chapters: Install · Log in · Link a repo
+kit v2 · Form · answer key + scoring 3 / 5 · Which command links a repo? acme init
+acme link correct
+acme repo add
+Pass at 80% · 2 tries
+Backlog · guest access Table · StateMeter Learners 38 · 61% done
+Ana · Globex 5/5
+Tom · Initech —
+Kim · Hooli —
+Built from 33 of 59 kit parts · 4 shell
+Surfaces 1/6 Text
+Patterns 6/13 StateMeter List Table SectionTabs Pages States
+Data blocks 5/12 RecordList RecordPage Form Chart FileViewer
+Primitives 21/28 Button IconButton Chip Field Select Segmented Toggle Menu Dialog Tooltip Toast Avatar StateGlyph Icon Text Kbd Code Stack Row Divider FileDrop
+Shell 4 AgentPane Activity Versions Share sheet
+Kit v2 and backlog 3 · green on screen = part added in kit v2 · grey = backlog
+Covered in kit v2 by Media (data block) Video. Player with chapters and captions; also a Canvas box type.
+Covered in kit v2 by Form · answer key + scoring Graded quiz. Scores a submission against the answer key.
+Backlog · guest access Outside-person access. Apps stay within the workspace in v1.
+6 Engineering · Incident room timeline, live logs and metrics, dependency map, status updates hard part · Graph
+Incidents Inbox Incidents agent
+Incidents Workspace app · v9 · shaped by @raj Use Shape Agent App
+SEV2 INC-207 · Webhooks failing kit v2 · Timer 38:12 open Status · Identified R Lead · @raj
+SectionTabs Room Logs Map Runbook Updates
+Roll back
+Thread alert 09:02 webhooks 5xx rate above 5% for 5 min
+R @raj incident lead · 09:06 Started at the 08:55 deploy of webhooks v2.31.
+I Incident agent 09:09 Queue depth 48k and rising. Rollback run ready.
+M @mona 09:14 Rolling back now.
+Chart · live 5xx · webhooks live
+LogStream 09:14:02 ERR webhooks deliver id=ev_88a1 retry=12 status=200 ignored
+09:14:02 ERR webhooks deliver id=ev_88a2 retry=12 status=200 ignored
+09:14:03 warn queue depth=48,211
+09:14:04 info rollback run #311 step 2/4 drain
+Graph surface kit v2 · Graph · live nodes api-gw
+webhooks
+billing
+queue
+postgres
+ApprovalCard Approval needed: post status update
+“We identified a faulty deploy causing repeated webhook deliveries and are rolling it back.” · status.acme.com Approve Edit
+Built from 34 of 59 kit parts · 4 shell
+Surfaces 1/6 Graph
+Patterns 6/13 List Panel SectionTabs Checklist Thread States
+Data blocks 7/12 RecordList RecordPage Form Chart RunTimeline LogStream ApprovalCard
+Primitives 20/28 Button IconButton Chip Field Select Segmented Menu Dialog Tooltip Toast Avatar StateGlyph Icon Text Kbd Code Stack Row Divider PeoplePicker
+Shell 4 AgentPane Inbox Activity Versions
+Kit v2 and backlog 2 · green on screen = part added in kit v2 · grey = backlog
+Covered in kit v2 by Timer (primitive) Live timer. Counts up or down, amber and red at thresholds.
+Covered in kit v2 by Graph · live nodes Live graph state. Nodes bound to live records show their state.
+7 Finance · Month-end close close checklist, reconciliation grid, sign-offs, variance charts hard part · Grid
+Close Inbox Close agent
+Close Workspace app · v17 · shaped by @raj Use Shape Agent App
+SectionTabs Checklist Reconciliations Variance Sign-off
+Period · Oct 2026
+October 2026 close day 3 of 5
+StateMeter
+Done 18 Open 6
+Checklist Bank reconciliations 3 files R
+Accruals booked 1 file M
+Payroll journal R
+Revenue cut-off needs evidence M
+Intercompany eliminations R
+Fixed asset roll-forward J
+Controller review after all S
+Grid surface fx F4 =D4 − E4
+A B C D 1 Account Ledger Bank Diff 2 Main ••4821 1,204,300 1,204,300 0 3 Payroll ••7710 212,880 212,880 0 4 EUR ••0932 88,140 88,410 −270 5 Card clearing 14,120 13,850 270 6 Total 1,519,440 1,519,440 0
+Bank rec AR aging Prepaids
+kit v2 · Grid · match mode Unmatched · EUR ••0932 2 bank · 1 ledger
+Bank · Oct 30 · SEPA fee −270.00
+Ledger · JE-4471 · bank charges 0.00
+Chart · bar Variance vs budget · Oct $k
+Payroll Cloud Travel Rent Tools budget actual over 8%
+SignOff Sign-off · October maker ≠ checker
+R @raj preparer Oct 31
+M @mona reviewer Nov 2
+S you controller Santosh
+Sign kit v2 · Freeze Lock October
+kit v2 · Audit log Open audit log
+Built from 37 of 59 kit parts · 4 shell
+Surfaces 1/6 Grid
+Patterns 8/13 QueryField StateMeter List Table Panel SectionTabs Checklist States
+Data blocks 5/12 RecordList RecordPage Chart SignOff FileViewer
+Primitives 23/28 Button IconButton Chip Token Field Select Segmented Menu Dialog Tooltip Toast Avatar StateGlyph Icon Text Stack Row Divider DatePicker PeoplePicker FileDrop Signature Masked
+Shell 4 AgentPane Inbox Activity Versions
+Kit v2 and backlog 3 · green on screen = part added in kit v2 · grey = backlog
+Covered in kit v2 by Freeze (record rule) Freeze. Lock a period or a record; unfreezing is logged.
+Covered in kit v2 by Grid · match mode Match view. Pairs rows from two sources; unmatched rows stand out.
+Covered in kit v2 by Audit log (shell) Backlog · audit pack export Audit pack. Every freeze, match and sign-off is in the audit log.
+Summary 12 distinct needs across seven apps app → parts used → covered in kit v2 · backlog
+App Parts used Covered in kit v2 · Backlog 1 · Ad campaign studio Marketing agency 34 of 59 · +5 shell Covered in kit v2 by Media (data block) Covered in kit v2 by Compare (pattern) 2 · Investor update + metrics Startup 29 of 59 · +4 shell Covered in kit v2 by Freeze (record rule) Covered in kit v2 by Text · merge fields 3 · Hiring pipeline Recruiting 38 of 59 · +4 shell Covered in kit v2 by Timeline · free/busy Covered in kit v2 by Blind fields (record rule) Backlog · guest access Covered in kit v2 by Text · merge fields 4 · Shared support inbox Support 33 of 59 · +4 shell Covered in kit v2 by Timer (primitive) Covered in kit v2 by Text · merge fields 5 · Course builder Training 33 of 59 · +4 shell Covered in kit v2 by Media (data block) Covered in kit v2 by Form · answer key + scoring Backlog · guest access 6 · Incident room Engineering 34 of 59 · +4 shell Covered in kit v2 by Timer (primitive) Covered in kit v2 by Graph · live nodes 7 · Month-end close Finance 37 of 59 · +4 shell Covered in kit v2 by Freeze (record rule) Covered in kit v2 by Grid · match mode Covered in kit v2 by Audit log (shell) Backlog · audit pack export All seven 52 of 59 used at least once 12 distinct needs · 11 covered in kit v2 · unused here: Sheet, DiffViewer, ProofList, Map
+Needs that recur ranked by how many apps need them how kit v2 covers them
+Merge fields apps 2, 3, 4 Covered in kit v2 by Text · merge fields Variables in the Text surface, filled per recipient or per record at send.
+Video apps 1, 5 Covered in kit v2 by Media (data block) Canvas box type + player: playback, chapters, captions, 9:16 cut, watch progress.
+Freeze apps 2, 7 Covered in kit v2 by Freeze (record rule) Make a part or a whole period read-only for everyone and pin live embeds to a moment.
+Outside-person access apps 3, 5 Backlog · guest access Candidates and learners outside acme. Apps stay within the workspace in v1.
+Live timer apps 4, 6 Covered in kit v2 by Timer (primitive) A ticking count-up / count-down primitive with thresholds (amber, red).
+Two-up compare app 1 Covered in kit v2 by Compare (pattern) Two parts side by side with their numbers.
+Availability finder app 3 Covered in kit v2 by Timeline · free/busy Free/busy across people on the Timeline surface and proposed slots.
+Blind fields app 3 Covered in kit v2 by Blind fields (record rule) A field hidden from each viewer until they submit their own.
+Graded quiz app 5 Covered in kit v2 by Form · answer key + scoring Form with an answer key, scoring, pass mark and attempts.
+Live graph state app 6 Covered in kit v2 by Graph · live nodes Graph nodes bound to live records or signals.
+Match view app 7 Covered in kit v2 by Grid · match mode Pair rows of two lists, one-to-many, with exceptions left over.
+Audit pack app 7 Covered in kit v2 by Audit log (shell) Backlog · audit pack export The audit log keeps sign-offs, evidence and changes; the one-click pack export is backlog.
 class Component extends DCLogic {
 renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
 }

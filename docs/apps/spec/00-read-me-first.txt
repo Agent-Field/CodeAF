@@ -1,152 +1,47 @@
 
-S-A1 · Apps · the model
-Apps · the model
-Spaces, the parts of an app, its two agents, roles and lifecycles, drawn. Words follow the S-A0 glossary.
-1 · Spaces Personal · Workspace · one person in several
-A space is one codeaf server and everything on it. Personal is the server inside your own desktop app. A workspace is the same codeaf binary, run by a company. You can belong to several; the switcher at the top of the rail picks one.
-Your Mac · CodeAF desktop app
-Personal a codeaf server inside the app
-only you · your own accounts
-apps Dashboards · connections your Gmail, Calendar
-signed in as @santosh
-acme · company codeaf server · self-hosted
-Workspace acme same codeaf binary · members invited by an Admin
-members @santosh · @mona Admin · @raj · @jm
-apps CRM · Slides · Support · Factory “acme”
-connections support@ · Stripe · GitHub org
-globex · another company's server
-Workspace globex you are a Member here too
-acme ⌄
-Personal
-acme
-globex
-Apps · acme
-CRM
-Slides
-Support
-Factory “acme”
-+ New app…
-Like GitHub. Personal is your account; each workspace is an org you were invited to.
-The switcher sits at the top of the rail and picks the space the Apps section shows.
-Runs always run on the space's codeaf server: yours for Personal, the workspace's for acme.
-Within the workspace only. No outside guests in v1.
-Move to workspace… moves a personal app (files and records) into a workspace you belong to.
-2 · Anatomy of an app files → kit + bridge → shell → server → runners and connectors
-An app is files. CodeAF renders the screens from them with kit parts; every action goes through the bridge to the space's server, which checks it against app.json and the caller's role before it touches records, runs or connectors.
-1 · Files Builder writes
-app.json schema · record rules · capabilities · triggers · commands · budget
-plan.json what the plan card shows
-screens/*.json tree of kit parts + bindings
-runs/*.yaml steps · loops · gates
-agent.md the app agent
-content files slides/3.json · docs/*.md · sheets/*.csv · plan/ · graph/ · places/
-custom/*.tsx escape hatch · sandboxed · labelled
-rendered
-2 · Kit + bridge
-@codeaf/kit 59 parts · tokens only
-@codeaf/bridge hooks useRecords · useRun · usePeople actions records.update · runs.start · approve · tools.call
-Screens are data, not code: the shell renders the tree with kit parts and wires the bindings to the bridge.
-inside
-3 · Shell CodeAF
-CodeAF window rail · tab · header line
-Use · Shape switch in the header · App ⌄
-AgentPane app agent in Use · Builder in Shape
-Plan card · draft bar Versions · Activity · Inbox
-bridge calls
-4 · codeaf server of the space Personal or workspace
-Gate every bridge call checked against app.json + the caller's role
-Records store record rules: Freeze · Blind · Computed
-Runs engine triggers · budgets · gates
-Versions · Activity · audit log
-runs
-5 · Runners · connectors
-Runners shells and checkouts · only runs reach them
-Connectors internal/connect Gmail · Calendar · Slack · MCP
-Fakes a dry-run double per connector · Preview, drafts, checks
-Approval needed before anything leaves the workspace
-3 · Two agents per app who may read and write what
-Use always talks to the app's agent; Shape always talks to the Builder. Content can carry prompt injection, so the agent that reads content can never change the app, and the agent that changes the app never reads content.
-The app's agent “CRM agent” · defined by agent.md
-Works on content. Docked in Use; can join a crew as a member.
-Reads records and content the person talking to it may see · comments · the screen in view
-Writes records through the bridge · parts (Ask, under the part lock) · drafts of emails and posts, which wait for approval
-Never app.json · screens/ · runs/ · agent.md · anything outside the app's Needs
-Runs as the person talking to it, with their app role; limited to the app's capabilities
-“Add a field for renewal date” asked in Use
-CRM agent replies
-“That changes the app”
-Shape this
-opens Shape request pre-filled
-Builder takes the request
-in your draft
-Builder CodeAF's agent · the same for every app
-Changes the app. Appears in the plan card, Building and Shape (pane “Builder · shaping the app”).
-Reads the app's files · the kit · sample records · check results · your request
-Writes plan.json app.json screens/*.json runs/*.yaml agent.md ( custom/*.tsx ), into a draft or a new app only
-Never records · content files · comments · run history · real connectors · Apply (people apply)
-Runs as CodeAF, on the space's server, inside the app's budget
-4 · Roles workspace roles × actions · app roles × actions · signatories
-Two independent levels. A workspace role says what you may do in the space; an app role says what you may do in one app. Dot = allowed, dash = not allowed.
-Workspace action Owner Admin Member Pay, change plan, delete the workspace — — Invite and remove members — Change a member's workspace role except Owner — Add or remove a workspace connection — Set budgets (workspace, per app) — New app… Delete app… (records kept 30 days) — Archive or restore any app app Editors only Allow a personal connection for an app own own own See the audit log —
-App action Editor User Viewer Open the app, read records and content Use: create and edit records — Ask · Nudge · Comment on parts — Export PDF / PPTX / CSV · Present Share link (workspace members) — Approve “Approval needed” on own actions — Shape (draft) — — Apply · Undo · restore a version — — Add a connector to the app (Needs) in Shape — — Triggers in Shape — — Members (app roles, signatories) — — Archive app… · restore — — Move to workspace… (personal app) — — Make my copy — Change the app's budget Admin Admin Admin
-Signatories
-Named roles an app declares in app.json for SignOff chains.
-Examples: “Quality lead” , “Second checker” . An Editor assigns people in App ⌄ → Members.
-A chain asks each signatory in order; each sees it in the Inbox as “Approval needed: sign-off” .
-The person who made a record can never sign it.
-A signatory needs at least User on the app. Being one grants nothing else.
-Defaults
-Whoever makes an app is its Editor . A new workspace app gives every other member User ; Editors change it in Members.
-Owner and Admin are not Editors by role: to Shape they need Editor like anyone.
-A workspace has exactly one Owner; the Owner can hand it to an Admin.
-In Personal you are Owner and Editor of everything; no roles are shown.
-5 · Lifecycle of an app
-Planning plan card
-edit any line
-Write it
-Building Plan · Write
-Check · Preview
-passes
-Preview sample data · fakes
-Keep · Discard
-Keep
-v1 · private only its maker
-real records
-first Apply
-v2 · v3 … everyone
-each Apply +1
-Archive…
-Archived records kept
-Restore any time
-Delete…
-Deleted records kept
-30 days
-Check fails 3 rounds. Building stops and shows the error: Fix it (one more round with your words) · Cancel (back to Planning).
-Discard in Preview. Nothing is kept: no app, no records. The tab closes.
-A change breaks the app. The card keeps the last working version, dimmed: “This change broke CRM · Fix it · Revert” .
-Delete from any state after v1. Owner or Admin only, through a Dialog. Records stay 30 days, then are removed.
-Archived apps leave the rail and are listed under Archived at the bottom of the Apps section; Restore from there.
-In Personal Apply makes the next version for you alone. Move to workspace… brings files and records into a workspace as that app's next version.
-6 · Lifecycle of a draft Shape · Editors only
-One draft per person per app. A draft is stored as requests + diff , so it can be replayed. It survives quitting the app and stays until Applied or Discarded. A replay that cannot be applied stays Open and names the request that failed.
-Open you ask the Builder
-“Draft · 2 changes”
-each change
-Checking schema · kit law · render
-runs on fakes · Apply off
-pass
-Ready Show diff · Apply
-migration preview if fields
-Apply
-Applied new version for everyone
-Activity · View · Undo
-from Open, Checking or Ready
-Discarded Discard on the draft bar · scratch copy deleted · nothing else changes
-from Open or Ready
-Replayed someone applied first · your requests run again on the new version → Checking
-“Your request was replayed on v13”
-from Checking · check fails
-Back to Open Builder retries up to 3 rounds, then shows the error with Fix it · Discard. Apply stays off.
+S-A0 · Apps · read me first
+Apps · read me first
+The build spec for Apps in CodeAF. Self-contained: if you never saw the design conversations, start here, then the model (S-A1), then the band you are building.
+An app is a small piece of software that lives inside CodeAF: records , screens , runs and its own agent , all written as plain files. You say what you need in plain words; Builder , CodeAF's own agent, shows a plan, writes the files, checks them and shows the app running on sample data. You keep it and work in it in a tab ( Use ). Editors change it later in Shape : a private draft of the running app that becomes the next version for everyone on Apply . Every app runs on a codeaf server, either your own ( Personal ) or your company's ( Workspace ), and is built from the same 59-part kit, so every app looks and behaves like CodeAF. The running example on this page is the CRM in the acme workspace.
+What ships v1 and the backlog
+Ships in v1 build all of this
+Area What ships Where The desktop app on Mac and Linux. Apps open in tabs like everything else. Spaces Personal (a codeaf server inside your own app) and workspaces (a codeaf server a company runs). Switcher at the top of the rail: Personal · acme · globex. Roles Workspace Owner · Admin · Member . Per app Editor · User · Viewer . Named signatories for sign-off chains. Create New app sheet → plan card → Building (Plan · Write · Check · Preview) → Preview on sample data → Keep = v1, private until the first Apply. Use The app's screens with its agent docked. AI output always labelled; pins win. Anything leaving the workspace waits for “Approval needed: …” . Shape Editors change the app in a private draft: plan menu · running draft · Builder · draft bar. Apply makes a new version for everyone. Migration preview, replay, Undo. Documents Six surfaces (Text · Canvas · Grid · Timeline · Graph · Map) with parts, Ask · Nudge · Comment, one writer per part, presence, versions per part, Present · Share link · Export PDF / PPTX / CSV. Connectors Personal and workspace connections on codeaf's internal/connect (Gmail, Calendar, Slack, MCP). Every connector has a fake. Crews and apps Discuss in a crew on any record · an app's agent can join a crew · crews change records through the app's agent. Settings App ⌄: Versions · Open files · Make my copy · Needs · Triggers · Budget · Members · Move to workspace · Archive · Delete. Import from CSV / Airtable / HubSpot (runs once). Factory Ships as CodeAF's prebuilt app in the Apps section, an app like any other.
+Backlog · not in v1 don't build
+Item In v1 instead Phone and browser No surface for people away from the desktop app. Guests No access for people outside the workspace (candidates, customers, learners). Marketplace No public gallery of apps to install. Make my copy works inside your spaces. Live co-typing One writer per part. No two cursors in one part. Audit pack export UI The audit log exists and is kept; the export screen is not built. Word round-trip Import and export only. No tracked-changes sync with Word. The page does not depend on Factory. It appears only as an example of an app.
+How to read page 11 six bands, top to bottom · read S-A0 and S-A1 first
+Page 11 builds on page 10 (the core app: rail, tabs, Inbox, agents, crews, factory). Where a word on page 09 or 10 differs (layer, Edit layer, Apply to team), page 11 wins : app, Shape, Apply.
+Read me & model S-A0 · S-A1 This board and the model: what an app is, the words, who owns what, the ten rules, spaces, anatomy, agents, roles, lifecycles.
+Files, data & architecture The app's files ( app.json , plan.json , screens/*.json , runs/*.yaml , agent.md , content files), records and record rules, the bridge, the server, runners, connectors and fakes, the checks.
+Kit 59 parts What screens are built from: 28 primitives, 13 patterns, 6 surfaces, 12 data blocks. Kit law the checker enforces.
+Screens rows in this order Each row reads left to right, one board per step. Screens use the L-board look: real HTML, numbered notes under each screen. Spaces & sidebar · switcher, Apps section, row states
+Create · New app sheet, plan card, Building, Preview, Keep
+Use · screens, docked app agent, approvals
+Shape · plan menu, draft, Builder, draft bar, Apply, replay
+Documents · surfaces, parts, Ask · Nudge · Comment
+Connectors · personal, workspace, Allow, fakes
+People & roles · workspace members, app Members, signatories
+App settings & lifecycle · App ⌄, versions, archive, delete, import
+Crews & apps · Discuss in a crew, agent as member
+Journeys · end to end, click by click
+Validation gallery Apps from many industries built from the kit alone, to prove it covers them. Examples only, not features to build.
+Backlog What is not in v1. Don't build it.
+Glossary one meaning per word · use exactly these words in UI, code and docs
+Word Means Spaces and people App Records, screens, runs and an agent, described in plain files and run by a codeaf server. A row in the rail's Apps section. Personal app or Workspace app , by its space. Space One codeaf server and everything on it: apps, records, runs, connections. Personal or a workspace. Personal Your own space: a codeaf server inside your desktop app. Only you, your own accounts. You hold every role. Workspace A space a company or team runs on its own codeaf server (the same binary, self-hosted). Members are invited by an Admin. One person can be in several: Personal · acme · globex. Roles Workspace: Owner · Admin · Member . App: Editor · User · Viewer . Signatories (e.g. “Quality lead” ) sign SignOff chains; they grant nothing else. Making and changing Builder CodeAF's own agent, the same for every app. Writes the app's files. Appears in the plan card, Building and Shape. Never reads content. Plan card CodeAF UI drawn from plan.json : Data · Automation · Screens · Agent · Needs. Every line editable in place. Write it · Just build it · Change plan. Check Schema check · kit law · every screen rendered with sample data · runs executed on sample data against fakes. Fail → back to the Builder, max 3 rounds, then Fix it · Cancel.
+Word Means Making and changing Shape The header mode for changing the app, Editors only. Left plan menu · centre your draft · right Builder · top draft bar. Draft Your private copy of the running app in Shape. Reads real records, writes to a scratch copy ( “reads real data · saves to a scratch copy” ). Stored as your requests + the diff. Apply Turns your draft into the next version for everyone ( “everyone in acme gets v2” ). One Activity line: “Mona shaped CRM · v12 · View · Undo” . Version A numbered state of the app's files: v1, v2… v1 is private to its maker until the first Apply. Any version can be restored from Versions… Replay Someone applied first: the Builder runs your stored requests again on the new version. “Your request was replayed on v13” . Migration preview Shown before Apply when a field is changed, renamed or removed: “38 deals affected · nothing deleted” . Using Use The header mode for working: the app's screens with the app's agent docked. App agent The app's own agent ( “CRM agent” ), defined by agent.md . Content only. Asked to change the app it answers “That changes the app” + Shape this . Ask · Nudge · Comment Three ways to change a part: Ask the app agent · Nudge a small edit by hand (words, drag a box) · Comment pinned to an element, for the agent or a person.
+Word Means Data and running Records The app's data, typed by the schema in app.json , stored on the space's server. Record rules Freeze (lock a period or a record) · Blind fields (hidden until you submit) · Computed fields (from time or other fields). Enforced by the server. Runs Automation from runs/*.yaml on the runs engine: steps, loops, gates, waits, retries, a budget per run. Only runs touch shells. Surfaces The one hard editing part of an app: Text · Canvas · Grid · Timeline · Graph · Map. Content is plain files. Parts The units of a surface: a slide, a section, an artboard, a sheet. One writer at a time, presence, versions per part. Needs What an app is allowed to do (record types, connectors, approvals, AI, budget), computed by CodeAF from the files. Shown in the plan card and App ⌄ → Needs. Connectors Connectors Personal : yours (your Gmail, Calendar…), travel with you; a workspace app acts as you only after you Allow it, once per app. Workspace : belong to the workspace (support@, Stripe, GitHub org); only Admins add or remove them. Fake connector The dry-run double every connector has. Used in Preview, Shape drafts and checks. Nothing real is sent before Apply.
+Who owns what who makes each layer and who may change it
+Layer Made by What it is Who can change it CodeAF shell CodeAF (us), in the app binary Window, rail, space switcher, Apps section, tabs, header line, Use · Shape switch, App ⌄, plan card, Building, draft bar, migration preview, Versions, AgentPane, Inbox, Activity, approvals, Share sheet, Allow prompts. Nobody per app. The same in every app; an app can only open these. Platform CodeAF (us), in the codeaf server Kit (59 parts), @codeaf/bridge , records store and record rules, server-side checks, runs engine, runners, connectors and their fakes, the checker. Nobody per app. Builder-generated The Builder plan.json · app.json · screens/*.json · runs/*.yaml · agent.md · custom/*.tsx (sandboxed, labelled “custom” ). Only the Builder, in Shape; an Editor applies it. Content People and the app agent, in Use Records · slides/3.json · docs/*.md · sheets/*.csv · plan/*.json · graph/*.json · places/*.json · comments · run history. Editor and User ; Viewer reads. Never the Builder. Space settings The workspace Members and their roles, workspace connections, budgets. Owner and Admin . In Personal: you. Personal connections The person Your accounts and the per-app Allow you gave. Only you. Travel with you between spaces.
+Ten rules you never break each is enforced in code, not by the UI alone
+01 The Builder never reads content. It sees the app's files, the kit, sample data and check results. Never records, content files, comments or real connector data.
+02 The app's agent never changes the app. No writes to app.json , screens/ , runs/ , agent.md . Asked to, it answers “That changes the app” with the Shape this button, which opens Shape with the request pre-filled for the Builder.
+03 Nothing leaves the workspace without approval. Every send, post, payment or external write waits on “Approval needed: …” (gate send ). No setting turns this off.
+04 Drafts never write real records. A draft reads real records and writes only to its scratch copy. Its connectors are fakes. Real writes start after Apply.
+05 Every bridge call is checked on the server against app.json. Record type, capability, connector and the caller's role, on every call. The client is never trusted, including the kit.
+06 Screens use the kit and tokens only. screens/*.json names kit parts and bindings. No raw colours, sizes, fonts, fetch or network. custom/*.tsx runs sandboxed and is labelled “custom” .
+07 Apply never loses data. A changed, renamed or removed field shows the migration preview first; nothing is deleted. Undo returns to the previous version.
+08 An app acts as a person only with that person's Allow. Once per app, per person: “CRM may send email as Mona · Allow · Not now” . Workspace connections are added only by Admins.
+09 AI is always labelled, and people win. Any AI-set value shows “· AI” ( “Likely to close · AI” ). A pin or a person's edit always overrides it.
+10 Runs run on a codeaf server, inside a budget. Yours or the workspace's, never in the UI. A run that would pass its budget stops and asks. Only runs touch shells.
 class Component extends DCLogic {
 renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
 }

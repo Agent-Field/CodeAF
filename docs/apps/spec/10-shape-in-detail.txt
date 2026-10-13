@@ -1,150 +1,191 @@
 
-Connectors
-L10 · Connectors personal connections travel with you · workspace connections belong to acme · an app acts as you only after you allow it · fakes until Apply
-a acme Workspace
+L12 · Shape in detail
+L12 · Shape in detail CRM · Editors shape a draft with the Builder · migration · replay · failed checks · custom code · personal apps · Users · handover
+acme
 Inbox
 Crews
 Release
 Pricing page
+jev prototype
 Agents
 api-docs
 CRM agent
+Why is CI slow?
 Apps
 acme
 CRM
-Slides
 Support
+Hiring
 New app…
+Archived 2
 All crews and agents ⌘⇧P
+Release
+acme
 CRM
-Support
 Inbox
-CRM Workspace app · acme · v12 · you: Editor Use Shape Agent App
-stage: open owner: team Search deals · company: value: touched: Likely to close AI Views
-Lead 14 Talking 9 Proposal 5 Won 23 Lost 11
-28 open deals · likely to close ↓ j / k · ↵ open
-Company Deal Stage Next step Value Touch
-Globex Annual renewal · 120 seats Proposal S Send revised quote $48,000 1d
-Northwind Team plan · 40 seats Talking C Follow-up drafted · waiting on you $14,400 2h
-Initech Pilot for the ops team Proposal M Security review call Thu $9,000 3h
-Hooli Expansion · EU region Talking J Book a demo with their CTO $22,500 1d
-Umbrella Starter plan Lead C Follow-up drafted · quiet 7d $3,600 7d
-Vandelay Import tooling seats Talking R Send case study $6,800 2d
-Acme Retail Store managers rollout Lead C Follow-up drafted · quiet 8d $12,000 8d
-Stark Labs Research team · 15 seats Lead M Intro call Mon $5,400 4d
-Pied Piper Annual · 25 seats Proposal S Waiting on legal $10,500 5d
-CRM may send email as Mona Gmail · first time
-from mona@acme.com . You approved the follow-up to Priya Shah (Northwind). To send it, CRM needs your Gmail. You allow this once for CRM; other apps ask on their own.
-CRM can
-Send email from mona@acme.com each email still waits for your approval first
-Read replies in threads CRM started and email from addresses in CRM's contacts
-Add the label "CRM" to those threads
-CRM can't
-Read your other email, delete email or change Gmail settings
-Show your inbox to anyone in acme only what CRM saves to a deal is shared
-Revoke anytime in Settings → Accounts. Not now Allow
+CRM Workspace app · v12 · your draft Use Shape Agent App
+Draft · 2 changes · “rename Value to Amount” · “add a last reply column to the pipeline” Show diff Apply Discard Versions
+Data
+deal record · 9 fields · 312
+company record · 6 fields · 86
+contact record · 7 fields · 540
+Automation
+log email new email from a contact
+stale digest every Monday 09:00
+follow-up deal quiet 7 days · paused
+Screens 4
+Pipeline RecordList · lens · AI sort
+Deal RecordPage · Thread
+Companies RecordList
+Contacts RecordList
+Agent
+CRM agent DS Flash · up to $20 a month
+Needs
+7 capabilities records · Gmail as you · AI
+v12 · applied by @mona · 10:40
+Screens Pipeline · running as your draft reads real data · saves to a scratch copy Open files
+Pipeline Companies Contacts Likely to close AI New deal
+28 open deals · likely to close ↓ change 1 · Amount · change 2 · Last reply
+Company Deal Stage Last reply Amount
+Globex Annual renewal · 120 seats Proposal S Yesterday $48,000
+Northwind Team plan · 40 seats Talking C Today 09:12 $14,400
+Initech Pilot for the ops team Proposal M Tue $9,000
+Hooli Expansion · EU region Talking J Mon $22,500
+Umbrella Starter plan Lead C none in 8d $3,600
+Vandelay Import tooling seats Talking R Fri $6,800
+Acme Retail Store managers rollout Lead C none in 8d $12,000
+Stark Labs Research team · 15 seats Lead M Thu $5,400
+Pied Piper Annual · 25 seats Proposal S Wed $10,500
+Initech Support add-on Talking R Tue $2,400
+Builder · shaping the app
+The Builder, CodeAF’s own agent, changes the app as a draft only you see. Turn Shape off to talk to the CRM agent about deals.
+rename Value to Amount
+Builder · 11:01
+Plan · Data › deal · rename a field
+Wrote app.json · alias value → amount
+Check passed · change 1 · Show diff 11:02
+Amount replaces Value on every screen. 312 deals keep their numbers; the old name stays as an alias, so filters and runs that say value: still work.
+add a last reply column to the pipeline
+Builder · 11:05
+Wrote screens/pipeline.json
+Rendered 4 screens on sample data
+Behaviour check · 3 runs on connector fakes
+Check passed · change 2 · Show diff 11:06
+Last reply shows the newest email from the deal’s contacts, from Gmail threads CRM already reads. No new Needs.
+Ask Builder to shape the app
+Shape · Pipeline GLM 5.3
 1
 2
 3
 4
 5
-6 Settings → Accounts
-Mona's personal connections and the apps she allowed.
-Accounts
-General Models Spending Memory Permissions Accounts Factory Advanced
-Your connections yours, in every space
-Gmail mona@acme.com · since 2 Sep
-Connected Disconnect
-Calendar mona@acme.com · since 2 Sep
-Connected Disconnect
-Slack acme.slack.com · expired yesterday
-Expired Reconnect
-GitHub mona-k · read and push in 6 repos
-Connected Disconnect
-Connect an account
-Apps that act as you you allowed each one
-CRM · acme
-Gmail: send email, read replies · allowed today
-Revoke
-Support · acme
-Gmail: read support threads · Slack: post · allowed 12 Sep
-Revoke
-Slides · acme
-Calendar: read free/busy · allowed 20 Sep
-Revoke
-Advanced MCP servers · what agents may use
-7 Workspace settings → Connections
-acme · Admin view (@mona).
-acme · Connections
-General Members Connections Spending Apps
-Workspace connections belong to acme · Admins only
-support@acme.com · Gmail added by @mona · used by Support
-Chosen apps · 1
-Stripe acme live account · used by Support, CRM
-Chosen apps · 2
-GitHub · acme org acme/api, acme/web, acme/infra · used by acme Factory
-All apps
-Add connection… Gmail, Calendar, Slack, GitHub, Stripe, any MCP server
-Who can use Stripe
-All apps Chosen apps
-Support CRM Add app
-An app not on the list can't use Stripe; its Needs shows "Stripe · ask an Admin".
-8 The app's Needs
-Which connections CRM uses, and as whom.
-CRM · Needs App ⌄ → Needs
-Connections
-Gmail as each person send follow-ups · read replies
-you · 3 of 4 allowed
-Calendar as each person book calls on deals
-you: not yet Allow
-Stripe acme workspace read invoices for won deals
-set by Admin
-Also
-Records deals, companies, contacts Trigger new email · Gmail Budget up to $20 a month · $6.40 spent
-9 Shape and Preview use fakes
-Mona shapes CRM; the draft runs the follow-up rule.
-CRM · Shape
-Inbox
-CRM Workspace app · draft on v12 Use Shape Agent App
-Draft · 2 changes · "follow up after 5 quiet days" Show diff Apply Discard Versions
-Gmail is a fake in this draft · nothing is sent Stripe · Calendar fakes too
-Would send · Re: Team plan for 40 seats to Priya Shah · from mona@acme.com · run on the draft, 10:42
-fake
-Would read · 2 replies sample replies made by the fake
-fake
-Would charge · nothing Stripe fake · read only in this app
-fake
-10 Admin removes a connection
-Workspace settings → Connections → Stripe ⋯ → Remove….
-Remove Stripe from acme?
-2 apps use it. Their steps that use Stripe will wait and ask an Admin for a connection. Records already saved stay.
-Support refunds · 3 runs this week
-CRM reads invoices for won deals
-Cancel Remove Stripe
-11 An expired connection breaks a run
-Mona's Gmail token expired between approval and send.
-The run · CRM → Runs
-Deal quiet 7 days · Northwind 10:00
-Draft follow-up · CRM agent 10:01
-Approval needed: send email · @mona approved 10:20
-Send · waiting for Mona's Gmail expired
-Mona's Inbox
-CRM can't send: Mona's Gmail expired Re: Team plan for 40 seats → Priya Shah · approved 10:20
-Reconnect
-Support can't post: Mona's Slack expired 1 message waiting
-Reconnect
-Reconnect opens Google sign-in for mona@acme.com; when it returns, the step runs at once and the Inbox line moves to Done today. The rail row of CRM shows the amber dot meanwhile.
-1 The consent sheet opens the first time a workspace app acts as you through one of your personal connections: here @mona approved an email and CRM needs her Gmail. It is asked once per person, per app, per connection. The title always names the app, the action and the person: "CRM may send email as Mona".
-2 CRM can / can't is written from the app's Needs (app.json capabilities), never by the app's agent. Sending still goes through "Approval needed: send email" every time; Allow only lets CRM use the account.
-3 Allow saves the permission for Mona + CRM + Gmail and the approved email sends at once (5-second Undo). Not now keeps the email waiting; Mona's Inbox gets "CRM wants to send email as you · Allow". Other people's use of CRM is not affected.
-4 Revoke anytime in Settings → Accounts → Apps that act as you (see 6). After a revoke the sheet shows again the next time CRM needs it.
-5 Same sheet for every personal connection (Calendar, Slack, GitHub). In Personal there is no sheet: Personal apps use your accounts directly, because only you are there.
-6 Settings → Accounts (the app's own Settings, ⌘,) lists your personal connections, the same in every space: status Connected or Expired · Reconnect (red glyph, Reconnect is the primary button). Disconnect asks first and lists the apps that will stop acting as you. Apps that act as you lists every Allow, with its space; Revoke takes effect at once and the app asks again next time.
-7 Workspace settings → Connections holds the accounts that belong to acme (support@, Stripe, the GitHub org). Members see the list; only Admins and Owners add, change or remove. Add connection… signs in to the service as the workspace and asks who can use it: All apps or Chosen apps . Apps use a workspace connection with no per-person sheet; sending still needs approval.
-8 Needs shows every connection the app uses and as whom : "as each person" (a personal connection, each person allows once) or "acme workspace" (a workspace connection). Your own status sits on the right with an Allow button; Editors also see "3 of 4 allowed". A run that needs a person who hasn't allowed waits in that person's Inbox.
-9 Fakes. Every connector has a fake. Preview (when making an app), Shape drafts and Check always run against fakes: the bar says "Gmail is a fake in this draft · nothing is sent", and what would have happened is listed with a striped fake tag. Real connections are used only after Apply, by the applied version.
-10 Removing a workspace connection (Admin, ⋯ → Remove…) always shows this dialog listing every app that uses it, with what for. Remove signs CodeAF out of the service, writes one Activity line "Mona removed Stripe · used by 2 apps", and those apps' Needs show "Stripe · ask an Admin". With no apps using it, the dialog is a plain confirm.
-11 An expired connection never fails a run silently. The step that needs it waits (amber) and the connection's owner gets one Inbox line: "CRM can't send: Mona's Gmail expired · Reconnect". A personal connection → that person; a workspace connection → every Admin. After 7 days of waiting the run stops and moves to Done with "stopped · Gmail expired". Other people's runs keep going.
+6
+1 Use · Shape. Shape is enabled for Editors only. Switching on keeps your place: the screen you were on opens in the centre, the pane becomes the Builder · shaping the app , and the draft bar appears. Switching back to Use keeps the draft for later (it survives restarts).
+2 Draft bar : Draft · 2 changes · the quoted requests · Show diff · Apply · Discard · Versions. Apply opens the Apply sheet (migration preview when a field changes; card below); its sub-line says “everyone in acme gets v13”. Discard drops every change after one confirm.
+3 The plan as a menu : Data · Automation · Screens · Agent · Needs. Click a screen to run it in the centre; click a record type or run to see it in plain words and edit a line in place (that edit becomes a change in the draft). A line the draft changes shows new .
+4 Your draft, running. The centre is the real Pipeline with the draft applied, on real records. reads real data · saves to a scratch copy : moving a deal here writes to a scratch overlay only you see; connectors run as fakes, so nothing is sent.
+5 Each request is one change , stored as the request text plus its diff. Every change runs Check (schema · kit law · render every screen · behaviour on connector fakes) before it joins the draft. A failing check goes back to the Builder, max 3 rounds, then shows to you.
+6 Teammates keep using v12 while your draft is open. Several people may have drafts at once; whoever applies first wins and the others get their requests replayed (cards below).
+Apply and drafts migration preview · two drafts at once · replay · conflict
+Migration preview before Apply
+Apply sheet when a field is renamed or removed.
+Apply CRM · v12 → v13
+Changes 2 · “rename Value to Amount” · “remove the Source field”
+Who gets it everyone in acme gets v13
+Needs no change
+Migration checked on all 312 deals
+Rename “Value” to “Amount” · 312 deals nothing deleted · old name kept as alias · value: filters and runs keep working
+Remove field “Source” · 204 deals have a value hidden, restorable · values stay stored · Restore v12 brings it back
+No data is removed Cancel Apply
+S Santosh shaped CRM · v13 “rename Value to Amount” · 11:12
+View Undo
+The migration section appears only when a field is added, renamed or removed. Counts are real (all records, not the sample). CodeAF never deletes a stored value on Apply; Undo writes v14 with the old shape.
+Two drafts · replayed
+@raj applied first. Your requests are replayed on his version.
+CRM Workspace app · v13 · your draft
+@raj applied v13 while you shaped Your 2 requests were replayed on v13 Show diff
+Draft · 2 changes · “rename Value to Amount” · “add a last reply column” Show diff Apply Discard Versions
+Company Stage Last reply Amount
+Globex Proposal S Yesterday $48,000
+Northwind Talking C Today 09:12 $14,400
+Initech Proposal M Tue $9,000
+CodeAF sees v13 land, rebuilds your draft on it by sending each stored request to the Builder again, in order, and checks each one. If all pass the bar turns green-tinted for one look; Show diff shows what changed compared to your draft before. Dismiss the line with ×; Apply now produces v14.
+Two drafts · conflict
+A request that no longer fits. The Builder asks one question.
+1 request could not be replayed · Builder needs you Answer
+Builder · shaping the app replay on v13
+“rename Value to Amount” · replayed
+“group the pipeline by source” · could not be replayed
+@raj removed the Source field in v13, so I can’t group by it. How should the pipeline be grouped?
+By owner one group per person
+By stage Lead · Talking · Proposal · Won · Lost
+Drop this request keep the other change
+The draft bar turns amber and Apply is disabled until you answer. The question also lands in Inbox (“CRM · Builder needs you”). Your answer replaces the request text, so the stored change stays replayable.
+When something fails a behaviour check fails in the draft · a change breaks the app after Apply
+Behaviour check failed
+In the Builder pane, after 3 rounds.
+Builder · shaping the app change 3
+when a deal is Won create an invoice
+Builder · 3 rounds · 11:20
+Schema · app.json valid
+Kit law · tokens only, one navigation row
+Rendered 5 screens on sample data
+Check failed : moving a deal to Won should create an invoice record — no run handles it round 3 of 3
+I added the invoice record but no run fires on Won. I tried 3 times.
+Fix it Cancel this change
+The behaviour check runs every run on sample records against connector fakes and compares with what the request promised. Fix it puts “Fix: …” in the composer so you can add a hint; the Builder gets 3 more rounds. Cancel this change removes only change 3; changes 1 and 2 stay in the draft. A failed change never reaches Apply.
+This change broke CRM
+After Apply, on real records.
+CRM Workspace app · v13
+This change broke CRM · v13 · “add a last reply column” Fix it Revert
+Last reply: thread has no date · 3 real deals · screens/pipeline.json:42
+Company Deal Stage Value
+Globex Annual renewal · 120 seats Proposal S $48,000
+Northwind Team plan · 40 seats Talking C $14,400
+Initech Pilot for the ops team Proposal M $9,000
+Showing v12, the last working version · read-only until fixed or reverted
+A change can pass Check on sample data and still fail on real records. Then the card shows the last working version dimmed and read-only for everyone. Editors see Fix it (opens Shape with the error handed to the Builder) and Revert (writes v14 equal to v12 at once). Users and Viewers see the bar without buttons; every Editor gets one Inbox line.
+Other ways in custom code · personal apps · Users · the app agent hands over
+Custom code
+The labelled escape hatch: custom/pricing-calc.tsx.
+Screens · 5
+Pipeline RecordList · lens · AI sort
+Deal RecordPage · Thread
+Price calculator custom custom/pricing-calc.tsx · custom · sandboxed
+custom
+Seats 40
+Plan Team
+Annual discount 15%
+Quote $14,400
+No kit part does tiered seat pricing. I can write it as custom code: sandboxed, no network, reads deals through the bridge only.
+Write custom code Not now
+Custom code is the escape hatch, never the default. The Builder asks before writing a custom/*.tsx file. The file shows with an amber custom chip in the plan menu, in Open files, and at the corner of the part in Use, so everyone can see which part is not kit. It runs in its own sandbox: kit and bridge only, no network.
+Shape a personal app
+Dashboards: changes apply at once, with Undo.
+Dashboards Personal app · v8 · only you Use Shape
+add a weekly signups chart
+Check passed · applied as v9 11:31
+Dashboards is now v9 Undo
+In a personal app you are the only user, so there is no draft bar: each change applies as soon as its Check passes, as a new version. Undo on the toast (or in Versions) goes back one version. Migration still asks first when a field is renamed or removed.
+A User tries Shape
+@raj is a User of CRM.
+CRM Workspace app · v12 Use Shape Agent App
+Only editors can shape CRM
+You are a User. Editors: @mona, @santosh. M Ask @mona
+R @raj asks for a change to CRM “add a column for the renewal date” · in Mona’s Inbox
+Shape this Decline
+For Users and Viewers the Shape segment is dimmed with a lock. Click shows the tip; Ask @mona (the Editor who shaped it last) opens a one-line field for the request and sends it to her Inbox. Shape this opens Shape with Raj’s words pre-filled.
+The app agent hands over
+That changes the app · Shape this.
+C CRM agent Use
+also add a column for last reply
+That changes the app, not the deals. The Builder does that in Shape.
+Shape this your words go with it
+Builder · shaping the app Shape · Pipeline
+Shape opened from the CRM agent. Press ↵ to send.
+add a column for last reply
+from CRM agent chat GLM 5.3
+The app’s agent works on content only. Asked to change the app, it answers “That changes the app” with Shape this . For an Editor the click switches the header to Shape and puts the words in the Builder’s composer, not sent. For a User the button reads Ask @mona and sends the words to her Inbox.
 class Component extends DCLogic {
 renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
 }

@@ -1,131 +1,406 @@
 
-L1 · The rail with apps
-L1 · The rail with apps Apps is a rail section · a space switcher on top · Factory is CodeAF’s prebuilt app · New app… describes one, the Builder builds it
-acme
-Inbox
-Crews
-Release
-Pricing page
-jev prototype
-Agents
-api-docs
-Triage flaky tests
-Why is CI slow?
-Apps
-acme
-CRM
-Support
-Hiring
-New app…
-Archived 2
-All crews and agents ⌘⇧P
-Release
-acme
-CRM
-Inbox
-acme CodeAF’s prebuilt app · acme · v3 · shaped by @santosh Shape Agent App
-Jobs Repos Pipelines Runners People Activity New job
-assignee: me Search or filter · state: repo: label: priority: Priority Views
-Needs you 2 Running 12 Queued 4 Backlog 182 Done 9 this week
-7 assigned to you · priority ↓ j / k · ↵ open
-api#1498 Retry webhook deliveries with backoff Approval needed: proof M S 58m
-api#1530 Webhook signatures fail for payloads over 1 MB code ↔ test · round 1 of 3 S S 12m
-web#2104 Orders table jumps when filters change test XS S 40m
-api#1527 Add idempotency keys to POST /invoices queued · runner santosh-mbp M S 1h
-infra#318 Alert when the job queue is older than 1h queued S S 5h
-web#2099 Dark mode for invoices PDF preview backlog M S 1d
-New app ⌘K · New app…
-Say what it is for and who uses it. The Builder writes the app from this; the app gets its own agent for the content.
-A CRM for our sales pipeline: companies, deals and contacts. The agent drafts follow-ups when a deal goes quiet for a week; I approve every email before it sends.
-Records, screens, what the agent does, what needs your approval ⇧↵ new line
-Home Personal acme workspace you are its Editor · other members of acme get User
-Budget up to $20 a month the app's agent spends from this; at the cap it pauses and asks
-Connectors Gmail Calendar Add from Settings → Accounts
-App agent model GLM 5.3
-The Builder writes the app. You'll see it running before you keep it. Cancel Create app ↵
-1
-2
-3
-4
-5
-6
-1 · Building
-After Create app: a new tab; the Builder works through five steps.
-acme
-CRM · building
-Inbox
-CRM Workspace app · building · only you see it Shape Agent App
-Brief 3 record types · 1 agent rule · 1 approval 0:12
-Records deals, companies, contacts · 14 fields 0:41
-Screens screens/*.json · pipeline board · deal page · contacts list running
-App agent agent.md · drafts a follow-up after 7 quiet days
-Checks opens every screen with sample data
-Spent $1.12 of $20 Watch the Builder Cancel
-The tab and the rail row show a spinner until Checks pass. Watch the Builder docks the Builder pane (CodeAF's own agent, "Builder · shaping the app") on the right. The app's agent only starts once the app is kept. You can switch tabs; when it is ready, Inbox gets one line "CRM is ready to preview". A failed step shows Fix it · Cancel .
-2 · Preview, then keep
-When Checks pass, the app runs in its tab as a preview with sample records.
-acme
-CRM · preview
-Inbox
-Preview · CRM · only you see it until you keep it Keep Shape more Discard
-CRM Workspace app · preview · v1 Shape Agent App
-Pipeline Companies Contacts Likely to close AI New deal
-Lead 4
-Hooli · 40 seats @mona · 2d
-Umbrella · pilot @raj · 5d
-Qualified 3
-Globex · renewal @jm · today
-Initech · 12 seats @santosh · 9d quiet
-Proposal 2
-Northwind · annual @mona · follow-up drafted
-Won 1
-Globex · pilot @jm · 1 Oct
-Uses Records · deals, companies, contacts Agents Inbox Approvals Gmail Calendar AI sort AI
-Trigger new email · Gmail matches the sender to a contact, moves the deal's last-reply date
-The preview runs on sample records; nothing is sent. Keep writes v1, lists these needs in App ⌄ → Needs; the app stays private to you until your first Apply. Shape more keeps the preview and opens the Builder pane. Discard removes the app and its rail row.
-3 · App menu
-App ⌄ in the header line, here on CRM.
-CRM Workspace app · v12 · shaped by @mona Shape Agent App
-Versions… v12
-Open files ⌥⌘U
-Make my copy
-Needs 8
-Triggers 1 on
-Budget $6.20 of $20
-Members 4
-Move to workspace…
-Archive app…
-Delete app…
-Same menu in the menu bar (App) and on right-click of the rail row. Versions… lists every applied change with who made it and one-click Restore. Members sets app roles (Editor · User · Viewer); the maker is Editor, other members of acme get User. Archive app… moves the row into the collapsed Archived group at the bottom of Apps and keeps its records; restore any time. Delete app… (Owner or Admin) asks first; records are kept for 30 days.
-4 · Rail row states
-An app row shows at most one thing at its right edge.
-CRM
-Idle. Nothing running, nothing waiting.
-Support
-Running. Its agent or a trigger is working.
-CRM
-Needs you. An approval waits, e.g. Approval needed: send email. Also in Inbox.
-Support paused · budget
-Paused. The month's budget is reached; triggers wait. Raise it in App ⌄ → Budget.
-Archived 2
-Archived. A collapsed group at the bottom of Apps. Personal apps live in your Personal space — switch with the space switcher at the top of the rail.
-acme
-Factory running. The icon animates while jobs run.
-5 · ⌘K
-Typing new l.
-new l ⌘K
-Commands
-New app… ↵
-CRM: New deal CRM app
-Apps
-CRM workspace app
-"New app…" opens the New app sheet. Each app adds its own commands as App: Command ; they show in ⌘K for everyone who sees the app.
-1 Apps is the fourth rail section, after Crews and Agents. The rail shows the space picked in the switcher at the top (acme ⌄; Personal · acme · globex). Inside acme every row is a workspace app: acme (the factory) first, then the others (CRM, Support, Hiring) by name; drag to reorder. Inbox shows the current space only; an amber dot on the switcher means another space needs you. Archived apps sit in a collapsed Archived group at the bottom of the section. Each row is a 16px glyph with no tint square (squares mean crews). The right edge shows one state glyph: amber needs you, accent running, nothing when idle. Click opens the app in a tab, or brings its tab forward.
-2 No personal rows in acme. Personal apps live in your Personal space — switch with the space switcher at the top of the rail. Workspace apps carry no glyph; the right edge shows only the state glyph.
-3 New app… is always the last app row, above the collapsed Archived group, quiet (--ink-3, plus icon), no state glyph. Click, or ⌘K → "New app…" , opens this sheet over the current card. The sheet hangs from the top of the card, 600px wide; Esc or Cancel closes it and nothing is created.
-4 Factory is CodeAF’s prebuilt app. acme opens like every app: CodeAF's header line (glyph, name, "CodeAF’s prebuilt app · v3 · shaped by @santosh", Shape · Agent · App ⌄), then the app's own content. Its icon is live (animated) while jobs run.
-5 Only the card content is generated. Everything below the header line (here Jobs · Repos · …, the query field, the job list) is the app's code, built from the CodeAF kit and tokens. Window, rail, tab strip, header line, Inbox, ⌘K, menus and shortcuts are CodeAF's and look the same in every app.
-6 Create app ↵ (⌘↵ from the field) is enabled once the description has 12 or more words. It opens a new tab "CRM · building", adds the row to the rail and starts the Builder. Home defaults to the space open in the switcher (here acme); in the Personal space it is Personal. Budget defaults to "up to $20 a month"; connectors list only accounts already connected in Settings → Accounts.
+L4 · The kit
+L4 · The kit v2 · 59 parts
+We build six surfaces once. Every app is easy parts (lists, forms, approvals) plus one surface, the hard editing part; there are no app-specific blocks. The Builder (CodeAF's agent) writes declarative screens, screens/*.json , that name only kit parts and bind them through the bridge; custom/*.tsx is a sandboxed escape hatch. The app's agent works on content only. v2 closes the gaps found by the 14-app gallery (L7, L8). Everything here is live HTML on CodeAF tokens.
+How the pieces stack files → kit and bridge → shell → runners app.json · runs/*.yaml · screens/*.json · agent.md
+App files what the Builder writes · one folder, every change a version
+screens/*.json The screens, declarative: a tree of kit parts with bindings, easy parts plus one surface. Renders inside the card; the window around it is CodeAF's. Escape hatch: custom/*.tsx , sandboxed, labelled “custom”, imports only kit, bridge, react. screens/deals.json · deal.json · reports.json
+app.json Records schema, capabilities, triggers, ⌘K commands, monthly budget.
+runs/*.yaml Pipelines for the runs engine: steps, loops, gates, waits, retries.
+agent.md Defines the app's agent: content only, in Use mode. The Builder writes the rest.
+names parts
+binds
+declares
+hands runs to
+defines
+@codeaf/kit + @codeaf/bridge the only parts and data a screen can name
+@codeaf/kit Components on CodeAF tokens. Generated screens look native. Primitives Button · Timer 28
+Patterns Pages · Compare 13
+Surfaces Text · Canvas · Map 6
+Data blocks RecordList · Media 12
+@codeaf/bridge The one door to data. Hooks read; actions ask the shell to act. Hooks useRecords · useRun 6
+Actions approve · tools.call 10
+renders in the card
+reads · asks
+Shell CodeAF's own, identical in every app · checks capabilities on every call
+card · shell-owned parts Window, rail, tab strip, app header, ⌘K, menus, shortcuts. Draws the kit. These parts are the shell's; an app can only open them: AgentPane Inbox Activity Versions Share Shape mode plan card draft bar
+records · Inbox · connectors Typed records with history and links. Questions and approvals land in Inbox. Gmail, GitHub, MCP as declared; triggers.
+runs engine Runs runs/*.yaml : steps, loops, gates, budget per run.
+agents Builder (CodeAF's) changes the app in Shape. App agent changes content in Use; asks in Inbox, spends the app's budget.
+no shell · no fetch
+workspace: repo
+Runners where runs touch code
+runner A step with workspace: repo gets a checkout, a branch and a shell on a runner (Personal: this Mac). Factory's code / test steps run here.
+Screens never touch a shell; only runs do. A screen that needs work done starts a run ( runs.start ) and shows it with RunTimeline .
+Surfaces 6 · the hard part of an app · plain files the app agent writes and people nudge · + = new in v2 @codeaf/kit · surfaces
+Canvas surface stores slides/*.json typed boxes per part
+Place, move and edit typed boxes (text, image, shape, chart, record, media) on a frame or an infinite board; rendered to HTML, exported mechanically.
+themes · fonts, colours, masters Media box type
+1 · Title
+2 · Q3 agent
+3 · Pipeline M
+4 · Asks 2
+Slide 2 · agent is editing frame 16:9 artboards board
+M J S
+Q3 won $86k, up 31% Nudge · edit words · drag · resize
+Globex renewal closed at $48k Hooli expands to EU in Q4 Two deals slipped to Nov
+2 / 4
+1 @mona Use the Q3 number from Reports. Send to agent Leave
+Ask: shorter, keep the chart… Nudge Comment v4 · diff · Restore
+Apps it makes Slides Design Whiteboard Dashboard layout
+Text surface stores docs/*.md Markdown, one section per part
+Blocks: headings, lists, tables and embeds of live records. One section is one part with its own lock and versions.
+merge fields track changes clause numbering Word round-trip (.docx)
+§ Findings · Mona is editing M S
+NCR-031 · Bracket hole out of tolerance
+⋮⋮ Three brackets in lot 2291 show the hole at Ø 12.4, over the 12.2 limit. The drawing was right; the jig was worn.
+Quarantine lot 2291 until re-measured
+Replace jig J-14, then first-article check
+embed · RecordList(ncr) · stage:open NCR-031 bracket hole @raj · 2h
+NCR-029 burr on rib RS-120 @mona · 1d
+2 / insert block Heading #
+List -
+Embed record /e
+Table /t
+Ask: tighten Findings to two lines… Nudge Comment §2 · v7 · diff · Restore
+Apps it makes Docs Notes Wiki Email bodies Contracts
+Grid surface stores sheets/*.csv + formulas.json
+Cells and formulas. Each sheet is a part.
+match mode · pair rows across sheets
+fx C5 =SUM(C2:C4) − B5
+A B C D 1 Account Ledger Bank Diff 2 Nostro USD 412,900 412,900 0 3 Nostro EUR 88,140 88,410 270 4 Suspense 2,300 2,030 −270 5 Total 503,340 503,340 0 6 Checked by @raj
+Oct ledger Sep Notes R on Oct · CSV + formulas
+Apps Budgets Reconciliations Trackers
+Timeline surface stores plan/*.json start · end · dependsOn
+Items on a time axis; dragging writes the dates. Dashed line is today.
+free/busy from calendar
+Gantt Calendar Shifts views of one file
+Roadmap · Q4 Oct 6 13 20 27 Nov 3
+Impact review
+Drawing rev C
+Stress analysis
+Board approval
+Release to shop
+EU launch
+Apps Gantt Calendar Shifts Roadmap
+Graph surface stores graph/*.json nodes + links
+Nodes and links; click a node to open its record.
+live nodes · bound to records
+links tree flow
+NCR-031 bracket hole
+B-114 rev C drawing
+Lot 2291 supplier
+ECR-212 in review · live
+WI-88 work instr.
+Apps Org charts Traceability Flows Parts trees
+Map surface new stores places/*.json places · routes
+Places, a route and live positions on streets; click a pin to open its record.
+Depot
+Initech
+Hooli · 14:40
+V3 +3 min
+V7 late 12m
+Apps Dispatch Field service Site inspections Store network
+Every surface gets built once, for all six Ask The agent edits the part you are on.
+Nudge Edit words, drag a box: a small labelled edit to the file.
+Comment Pin on an element; send to the agent or leave for a person.
+One writer per part Light lock: “agent is editing” · “Mona is editing”. No co-typing.
+Presence Who is on which part, as avatars on the part.
+Versions per part Visual diff and Restore for each part.
+Present · Share · Export Full screen, a link for workspace members, PDF / PPTX / CSV.
+Apps are compositions easy parts + usually one surface · no app-specific blocks 10 apps · 0 new parts
+App = parts · dark = surface · outlined = shell Hard part App = parts · dark = surface · outlined = shell Hard part Slides RecordList (decks) + Pages + Canvas (16:9) + Present Canvas Design Pages + Canvas (artboards) Canvas CRM QueryField + RecordList + Panel + Thread + ApprovalCard none Factory RecordList + RunTimeline + LogStream + DiffViewer + ProofList + ApprovalCard none Budget Grid + Chart Grid Roadmap Timeline + RecordPage Timeline Incident room Thread + Timeline + LogStream Timeline Quality inspection Checklist + FileViewer + SignOff none Dispatch RecordList + Map + Timeline + ApprovalCard Map Support inbox RecordList + Thread + Timer + ApprovalCard none
+Patterns 13 · compositions with no data of their own · Tree → List nested rows @codeaf/kit
+QueryField
+The lens: tokens, words, sort chip and Views in one line.
+<QueryField type="deal" value={q} sort views />
+stage: open owner: team Search Likely to close AI
+tokens are plain text ( stage:open owner:team ), so a view is a saved string. An AI sort is always labelled.
+StateMeter
+Counts per state.
+<StateMeter states value />
+Lead 14
+Talking 9
+Won 23
+A segment click adds stage:talking .
+SectionTabs
+Switches the app's screens.
+<SectionTabs items value />
+Deals Contacts Reports The one navigation row.
+List
+Rows ≥32px, soft-fill selection; nested rows replace Tree.
+<List rows nested />
+Wing assembly WA-100 rev D
+Spar FS-110 ×2
+Bracket B-114 NCR
+Rib set RS-120 ×12
+Fuselage FU-200 rev B
+Panel
+Right panel for the selected item.
+<Panel title onClose />
+Northwind
+Team plan · 40 seats
+Stage Talking Value $14,400
+Table
+Numbers in columns; header sorts.
+<Table columns rows sort />
+Company Value ↓ Age Globex $48,000 1d Hooli $22,500 1d Northwind $14,400 2h
+Board
+Columns by a field; a drag writes it through records.update .
+<Board columns items groupBy="stage" onMove />
+Lead 14 Umbrella $3,600
+Stark Labs $5,400
+Talking 9 Northwind $14,400 C
+Hooli $22,500 J
+Proposal 5 Globex $48,000 S
+Won 23 Vandelay $6,800
+BulkBar
+Verbs for checked rows. Never bulk approve.
+<BulkBar count actions onClear />
+3 selected Move…
+Pages
+Strip of parts: status, presence, lock.
+<Pages parts value onPick />
+1 · Title done
+2 · Q3 agent
+3 · Pipeline M Mona
+Compare new
+Two parts or files side by side; changes marked.
+<Compare a b mode />
+B-114 rev B
+rev C
+Side by side Overlay hole +8 mm
+Checklist
+Each step signed, with evidence.
+<Checklist steps signOff evidence />
+Torque check, 12 bolts R @raj · 06:12
+Second check · not @raj photo required Sign
+Release line 2 after second check
+Thread
+Messages, newest last: email, chat, comments.
+<Thread messages onReply />
+3 earlier messages
+P Priya Shah Tue 10:12
+Can you hold the 40-seat price?
+S You 11:40
+Yes, held until Fri 17 Oct.
+States
+Every screen has all three.
+<Empty /> <Error /> <Loading />
+Empty No deals yet · New deal
+Loading · after 150ms
+Error · keeps old rows Can't reach Gmail · Retry
+Data blocks 12 · bound to data through the bridge @codeaf/kit ← @codeaf/bridge
+RecordList ← useRecords("deal", query)
+Virtualised list with QueryField, StateMeter, selection and keys wired. Any record type.
+stage: open Search deals · company: value: Likely to close AI
+Lead 14 Talking 9 Proposal 5 Won 23 Lost 11
+28 open deals · likely to close ↓ · your pin first j / k · ↵ open
+Globex Annual renewal · 120 seats Proposal S Send revised quote $48,000 1d
+Northwind Team plan · 40 seats Talking C Follow-up drafted $14,400 2h
+Initech Pilot for the ops team Proposal M Security review call Thu $9,000 3h
+RecordPage ← useRecord(id)
+One record: fields, links, history.
+deal · Northwind
+Team plan · 40 seats
+Talking $14,400
+Contact Priya Shah Next Follow-up drafted Linked Support · 2
+Form ← records.update
+Create or edit from the schema; validates, then writes.
+answer key + scoring
+Line Line 2 Downtime (min) -5 Must be 0 or more Cancel Save
+RunTimeline ← useRun(id)
+Steps, loops as parent rows, gates.
+draft wrote 3 emails 40s
+check tone max 3
+round 1 too pushy 12s
+round 2 ok 10s
+approval: send
+LogStream ← useRun(id).log
+Live output of a run; follows the tail.
+09:58:02 draft · read 7 threads
+09:58:31 draft · wrote 3 emails
+09:58:40 tone · round 1 · pushy
+09:58:52 tone · round 2 · ok
+09:58:53 waiting · approval
+DiffViewer ← useRun(id).diff
+A run's file changes.
+retry.ts +18 −4
+41 for (let n = 0; n < max; n++) {
+42 - await sleep(1000)
+42 + await sleep(backoff(n))
+43 + if (n === max-1) giveUp(id)
+ProofList ← useRun(id).proof
+Claims with evidence.
+Retries back off 1s, 2s, 4s retry.spec › backoff
+No duplicate deliveries no evidence · your call
+ApprovalCard ← approve(…)
+A gate, also in Inbox. 5s Undo.
+Approval needed: send email
+To Priya Shah, Northwind
+Approve Edit Skip
+SignOff ← approve('sign')
+Named signers in order; maker never checks own work.
+R Maker · @raj signed 06:22
+Checker · you anyone but @raj Sign
+Quality lead after check
+Chart ← useRecords(type, q)
+Five kinds from one query: bar, line, area, metric, live.
+Bar Line Area Metric Live Won value by month · $k Oct · $23k
+FileViewer ← useRecord(id).file
+PDF, image, drawing with pinned notes.
+region masking revision compare
+B-114 rev C.pdf 2 / 6
+1 2
+Media new ← useRecord(id).file
+Video or audio with chapters and captions. Also a Canvas box type.
+Hold the price until Friday. 04:12
+11:05 CC
+00:00 Intro
+02:30 Pricing objection
+07:50 Next steps
+10:20 Wrap-up
+Primitives 28 · the controls of C1 and C3, exported · an app passes props, it cannot restyle them @codeaf/kit
+Approve Edit
+Button kind · size
+IconButton icon · label (required)
+$48,000 Team
+Chip value · onPick · selected
+stage: open
+Token field · value · onRemove
+Northwind
+Field label · value · error
+Proposal
+Select options · value
+Week Month
+Segmented items · value (a setting)
+Toggle on · onChange · label
+Open deal ↵
+Assign…
+Remove…
+Menu items · destructive last
+New deal
+Sheet title · onClose · primary
+Remove Globex? Nothing is deleted. Cancel Remove
+Dialog title · confirm · tone
+Edit deal E
+Tooltip text · shortcut
+Moved Undo
+Toast text · action · 5s
+S M J C
+Avatar person | agent · size
+StateGlyph needs · running · queued · idle · done · failed
+Icon name (CodeAF set)
+Title Secondary
+Text size · tone
+⌘ K ↵
+Kbd keys
+acme/api
+Code children (mono)
+Stack gap="1…6" · align
+Row gap · align · wrap
+Talking · 9 Proposal · 5
+Divider inset · vertical
+M T W T F S S 6 7 8 9 10 11 12 13 14 15 16 17 18 19
+DatePicker value · range · min · max
+M @mona J @jm
+PeoplePicker value[] · multiple · role
+Drop or browse
+FileDrop accept · max · onFiles
+@mona · 14:02
+Signature role · onSign · signedBy
+SLA 1h 12m left −0:04 over
+Timer new up | down · amber · red
+PAN ABCDE••••F
+reveal is logged
+Masked value · reason · logged
+Record rules 3 · rules on records, kept by the records store · not kit parts app.json · records
+Record rules set in app.json · enforced by the records store, not kit parts
+Freeze Lock a period or a record; edits after need an unfreeze, which is logged. freeze: { period: "2026-09" }
+Blind fields Hidden from you until you submit your own; then revealed. score: { blind: "until-submit" }
+Computed fields Worked out from time or other fields; never typed. age = now − opened_at
+Shell-owned not in the kit · an app can only open them CodeAF shell
+AgentPane Docked chat. Use: the app's agent changes content. Shape: the Builder changes the app.
+Inbox Questions and approvals from every app, answered inline.
+Activity The append-only log: “Mona shaped CRM · View · Undo”.
+Versions Every applied change; one-click Restore.
+Share sheet Share link for workspace members, served by the workspace’s codeaf server.
+Shape mode Plan menu · draft app · agent pane · draft bar.
+plan card plan.json drawn with a sketch per screen; every line editable.
+draft bar Draft · 3 changes · Show diff · Apply · Discard.
+Also the shell's (v2): sign-off roles (“Quality lead”, “Second checker”; only for SignOff and Checklist) · audit log (every reveal, sign and change; retention rules, legal hold).
+Within the workspace only. Backlog: guest access for outsiders, phone & browser surface (camera scan, label printing), audit pack export.
+Folded away the old list → the 59 · was 66 parts plus app-specific blocks old → new
+Document · ArtboardCanvas → Canvas + Pages
+MarkdownDoc · EmailComposer → Text
+Grid (pattern) → Grid
+Gantt · Calendar → Timeline
+TraceGraph → Graph
+MetricTile · TimeSeries → Chart metric · live kinds
+EmailThread → Thread
+Timeline (events) → Activity shell
+FileTree · Tree → List nested rows
+RecordForm · Form → Form
+Empty · ErrorState · Loading → States
+Live blocks (21) → Data blocks 12 + 6 surfaces
+Gallery test · 14 apps (L7, L8) kit parts used per app · every gap and the v2 part, feature, rule or shell item that closes it spec/l7_usage.json · l8_usage.json
+App · L7, L8 parts gap → covered in kit v2 by · or Backlog
+App · L7, L8 parts gap → covered in kit v2 by · or Backlog
+Bank · KYC review 23 Region masking in files → FileViewer · region masking Sign-off roles → Sign-off roles Audit export → Audit log Backlog · audit pack export
+Aerospace · NCR 20 File compare → FileViewer · revision compare Sign-off roles → Sign-off roles
+Manufacturing · Line + handover 17 Phone and browser surface → Backlog · phone & browser surface
+Logistics · Dispatch 12 Map → Map Phone and browser surface → Backlog · phone & browser surface
+Law firm · Contract review 16 Track changes → Text · track changes Word round-trip → Text · .docx import / export Backlog · Word round-trip beyond import / export Clause numbering → Text · clause numbering
+Retail · Inventory + POs 20 Camera barcode scan → Backlog · camera scan Label printing → Backlog · label printing Phone and browser surface → Backlog · phone & browser surface
+Slides 18 Deck themes → Canvas · themes
+Ad campaign studio 39 Video → Media Two-up compare → Compare
+Investor update + metrics 33 Freeze → Freeze Merge fields → Text · merge fields
+Hiring pipeline 42 Availability finder → Timeline · free/busy Blind fields → Blind fields Outside-person access → Backlog · guest access Merge fields → Text · merge fields
+Shared support inbox 37 Live timer → Timer Merge fields → Text · merge fields
+Course builder 37 Video → Media Graded quiz → Form · answer key + scoring Outside-person access → Backlog · guest access
+Incident room 38 Live timer → Timer Live graph state → Graph · live nodes
+Month-end close 41 Freeze → Freeze Match view → Grid · match mode Audit pack → Audit log Backlog · audit pack export
+24 distinct gaps → 20 covered in kit v2 · Backlog: Word round-trip beyond import / export · audit pack export · camera scan · guest access · label printing · phone & browser surface. · dark = surface · amber = record rule · outlined = shell
+Bridge the one door between screens and the shell @codeaf/bridge
+Hooks read · live · bound in screens/*.json useRecords(type, query) Live list of this app's records; counts per state come from the shell. useRecord(id) One record with fields, links, history. Another app's record is read-only , via a link. useParts(file) A surface file split into parts, with lock, presence and versions per part. useRuns(query) · useRun(id) Runs, live: steps, rounds, gates, .log , .diff , .proof , .files . useAgent(name) The app's agent: state, spend vs budget. To talk to it, open() the pane. usePeople() Workspace members: handles, avatars, who is around, app roles (Editor · User · Viewer).
+Actions ask the shell to act records.update(id, fields) Writes this app's records; every write has Undo. A removed field is hidden, never deleted. runs.start(name, input) · runs.stop(id) Starts a pipeline after the cost check (“up to $2”). Stop keeps its work. approve(kind, payload) Anything that leaves the workspace : “Approval needed: send email”. inbox.ask(question) A plain question in Inbox; the answer comes back to the caller. tools.call(server, tool, args) A connector declared in app.json . The only way out; no fetch . ai.sort · ai.summarise AI inside an app, always labelled “· AI”; a hand pin or drag wins. link(a, b) · open(record | agent) Links records across apps (other side read-only); opens a record or the agent pane.
+Your records An app reads and writes its own records freely, with history and Undo.
+Other apps Read-only through links. CRM shows a deal's Support tickets; it cannot edit them.
+Leaving the workspace Goes through approve ; a direct tools.call('gmail','send') is refused.
+Capabilities Each hook and action needs one in app.json ; adding one is a change you approve.
+Kit law enforced by the checker before preview · a failure goes back to the Builder kit lint
+Rule Checker rule Bad → good Screens name only kit parts screens/*.json is checked against the kit schema; custom/*.tsx imports only kit, bridge, react. kit/parts { "part": "DataGrid" } → { "part": "Table" } Hard editing uses a surface No hand-rolled editors; an app is easy parts plus one surface. kit/surface { "part": "custom/SlideEditor" } → { "part": "Canvas", "frame": "16:9" } No raw colours, sizes or fonts Tone, state and tokens; the theme does the rest. kit/no-raw-style "style": { "color": "#e5484d" } → "tone": "critical" No fetch, no network Connectors are declared and called through the bridge. kit/no-network fetch('https://api.hubspot.com/deals') → tools.call('hubspot', 'deals.list', q) One navigation row One SectionTabs per app, under the CodeAF header. kit/one-nav two SectionTabs in one screen → { "part": "SectionTabs" } once Lists that can grow use RecordList With QueryField, so search works the same everywhere. kit/record-list { "part": "List", "rows": "$deals" } → { "part": "RecordList", "type": "deal" } Destructive actions go through Dialog The label ends in “…”; the dialog names what ends and what stays. kit/confirm { "part": "Button", "do": "remove" } → { "do": "remove", "confirm": "Remove Globex?" } Anything leaving the workspace goes through approve Email, posts, replies to customers. kit/approve tools.call('gmail', 'send', mail) → approve('send email', mail) Every interactive element has a label Screen readers, tooltips and ⌘K use it. kit/label { "part": "IconButton", "icon": "more" } → + "label": "Deal actions"
+How generation works describe an app → the Builder plans and writes → a tab you can keep → Shape Plan → Write → Check → Preview
+1 Plan plan.json → plan card
+Plan The Builder writes plan.json; CodeAF draws the plan card with a kit-rendered sketch per screen. Every line is editable in place. “Just build it” skips it.
+CRM · plan click any line to change it
+Data deal · contact · reads Gmail
+Automation new email → follow-up draft → approval: send
+Screens Deals
+Deal
+Reports
+Needs Gmail · AI sort · up to $20 a month · worked out by CodeAF
+Write it Just build it Change plan
+2 Write files only
+Write The Builder writes the app's files: declarative screens from easy parts plus one surface. Nothing runs yet.
+app.json +64
+runs/follow-up.yaml +31
+screens/deals.json +88
+screens/deal.json +52
+agent.md +22
+3 Check max 3 rounds
+Check Schema check, kit lint, render every screen with sample records, behaviour check (runs on sample data against connector fakes). A failure goes back to the Builder; after round 3 you see Fix it · Cancel.
+● round 1 · kit/no-raw-style deals.json:42
+✓ round 2 · schema
+✓ round 2 · kit lint · 0
+✓ round 2 · rendered 3 screens
+4 Preview → Shape
+Preview The app runs in a tab on sample data. Keep makes version 1; later changes happen in Shape.
+Keep Shape more Discard Use Shape
+Data Automation Screens Agent Needs
+Draft · 2 changes · Show diff · Apply
+Builder
+Shape: plan as a menu · the running app as a draft only you see · the Builder changes the app · draft bar on top. In Use, the CRM agent changes content only.
 class Component extends DCLogic {
 renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
 }

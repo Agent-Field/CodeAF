@@ -1,93 +1,112 @@
 
-A3 · Apps · architecture
-A3 · Apps · architecture
-How Apps are built: the desktop app, the codeaf server (the same binary for personal and workspace spaces) and runners; the three main flows step by step; the library per surface; security, the Builder quality loop and performance.
-System three parts · the server is the codeaf binary
-Desktop app Mac, Linux · one per person · talks to each space's server Tauri 2 shell Native window, menus, Keychain, deep links codeaf:// , auto-update. Starts the personal codeaf server as a sidecar. Rust · tauri 2
-React shell Rail, tabs, Apps section, plan card, Building, Shape (draft bar), Versions, Inbox, AgentPane. React 18 · TypeScript
-Kit v2 · 59 parts Primitives, patterns, 6 surfaces, data blocks. Tokens only. @codeaf/kit
-Screen runtime Reads screens/*.json, resolves bindings, runs CEL when , renders kit parts, sends actions through the bridge. @codeaf/runtime
-Bridge client Typed calls + subscriptions over one WebSocket per space. Local cache of the last pages for offline reading. @codeaf/bridge
-Sandbox iframe Only for custom/*.tsx : sandbox="allow-scripts" , CSP default-src 'none' , bridge by postMessage. labelled “custom”
-bridge calls · subscriptions HTTPS + WSS
-codeaf server the same codeaf binary · personal: sidecar on 127.0.0.1 · workspace: codeaf serve on a team box · Go, Apache 2.0 API gateway HTTPS + WebSocket. Session tokens per member; every call carries space, app, member. net/http · coder/websocket
-Capability checker Runs on every bridge call before anything else: app capabilities × app role × record rules. Deny = typed error, logged. internal/apps/caps
-Records One SQLite file per app; JSON columns with generated, indexed columns for index: true fields. History rows per change. modernc.org/sqlite
-Query compiler QueryField tokens → AST → parameterised SQL. Injects permission filters, blind and masked rules. Keyset pagination. internal/apps/query
-Runs engine Executes runs/*.yaml as steps on the durable journal ; gates, waits and retries are journal entries; durable timers for waits and cron. internal/journal · standing orders cron
-Realtime Pub/sub by topic ( app/crm/deal/* , run/… , lock/part/… ). Locks, presence, live query updates (row diffs), version pushes. in-process hub
-Connectors Gmail, Calendar, Slack, MCP from internal/connect ; each has a fake used in Preview, drafts and Check. Approval policy on outbound. internal/connect · fakes
-Builder service CodeAF's agent. Writes the definition only; no record or content read API exists for it. internal/apps/builder
-Check pipeline Schema → kit law → render every screen headless → behaviour on fakes. Max 3 rounds back to the Builder. internal/apps/check
-Versions · git definition/ and content/ repos per app; migrations; drafts as worktrees + overlay.db. go-git
-Audit log Append-only: every call that writes, reveals, sends, approves or denies. journal store
-step leases · logs HTTPS long-poll
-Runners for workspace: repo steps only Runner Leases steps over HTTPS long-poll; fresh checkout, branch, shell; streams logs back. codeaf runner
-Personal Your Mac is your runner.
-Workspace Admin registers runners; members' keys and caps apply per run.
-One desktop app connects to several servers at once (Personal · acme · globex), one WebSocket each. Screens and custom code never reach a server except through the bridge; the bridge never reaches the network except its own space's server. External services are reached only by the server's connectors.
-Built on the codeaf repo Go · Apache 2.0
-codeaf already has Apps use it as internal/connect · Gmail, Calendar, Slack, MCP Connectors. Each gets a fake with the same interface (records calls, returns canned replies) for Preview, drafts and Check. Approval policy Outbound gates and capability denials; the same Inbox items. Durable journal store Runs engine state, gates, waits, durable timers, audit log. Recorded task runs Behaviour checks replay recorded connector exchanges; failed runs keep their record for the Builder's fix round. Standing orders with cron Schedule triggers in app.json use the same cron scheduler. modernc pure-Go SQLite records.db, overlay.db, and the server's own tables. No cgo; one static binary for Mac and Linux.
-Flows numbered steps · amber = a person acts
-(a) New app → preview plan · write · check · preview
-Schema JSON Schema 2020-12
-Kit law parts, tokens, labels, one nav
-Render every screen, sample data
-Behaviour runs on fakes
-1 You New app… sheet: one paragraph ( “A CRM for acme…” ) · space · Make plan .
-2 Builder Writes plan.json on a draft branch. Server computes Needs from it.
-3 Desktop Plan card draws plan.json; screen sketches render with the kit on sample data. You edit lines → requests → step 2 again. Write it .
-4 Builder Write : app.json, screens/*.json, runs/*.yaml, agent.md. Building shows Plan · Write · Check · Preview.
-5 Check Schema (JSON Schema) → kit law → render every screen headless with generated sample records → behaviour : each run on sample data against connector fakes.
-6 Builder On failure, gets the check report and fixes. Max 3 rounds; then “Check failed · Fix it · Cancel” to you.
-7 Desktop Preview in a tab on sample data, fakes only. Keep → v1, private to you until the first Apply.
-(b) Shape draft → Apply migration · version · realtime
-1 Editor Header switch Use · Shape → server creates the draft (worktree + overlay.db) on vN.
-2 Builder Each request → diff on the draft branch → Check (same 4 checks). Centre shows the draft; it reads real records, writes to the overlay.
-3 Server On Apply : schema diff → generated migration → dry run on a copy → sheet “38 deals affected · nothing deleted” .
-4 Editor Confirms Apply ( “everyone in acme gets v12” ).
-5 Server One transaction: merge draft → tag v12, run migration on records.db, write the version (request + diff + who) and the audit line.
-6 Realtime Publishes app/crm/version = 12 to all members. Each desktop fetches the changed screens, swaps them in place, keeps selection and scroll.
-7 Members Activity: “Mona shaped CRM · v12 · View · Undo” . Open drafts by others get replayed on v12.
-(c) A bridge call from a screen capability · SQL / connector · approval
-1 Screen Click Draft follow-ups → action runs.start with params → bridge call over WSS.
-2 Server Capability check : app may start follow-up ? member's app role ≥ User? deals readable? Deny → typed error → Toast “CRM can't do that · Needs” .
-3 Server Cost check from the budget → desktop shows “Run · up to $0.50 · Start” .
-4 Runs Steps on the journal. gmail.search → capability check again → connector as the owner (per-app allow on file, else “CRM may read email as Mona · Allow · Not now” ).
-5 Records records.update → query compiler → SQL with permission filters → history row → realtime row diff to subscribers.
-6 Approval gmail.send is outbound → gate “Approval needed: send” in the owner's Inbox. Nothing leaves the workspace until Approve .
-7 Audit Every call above appends one audit line (call, app, member, decision).
-Libraries one per surface · final
-Surface or part Library Use Text ProseMirror via Tiptap Markdown in/out with part markers; merge fields; track changes; .docx import/export. Grid IronCalc Formula engine (Excel syntax) compiled to WASM in the desktop, native Rust on export; deal.field ranges resolved through the bridge. Graph React Flow + elkjs Nodes and links from graph/*.json; elk layered layout; nodes may bind live records. Map MapLibre GL places/*.json (GeoJSON); vector tiles from the workspace's configured tile URL. Charts Vega-Lite Chart part and Canvas chart boxes; specs stored as files; data from bindings. Media hls.js + WebVTT Media part and Canvas media boxes; chapters and captions as .vtt. Files PDF.js · pdfium (server) Viewing and pinned markup in the desktop; region masking/redaction burned in on the server with pdfium before a file is shared or exported. Canvas own box model + react-moveable + pptxgenjs Boxes from slides/*.json rendered as HTML; drag/resize/snap with react-moveable; PPTX export with pptxgenjs, PDF from the same HTML. Timeline own renderer on the kit plan/*.json items on a time axis; free/busy from the Calendar connector. Lists TanStack Virtual RecordList, Table, Board columns.
-Security
-Sandbox
-custom/*.tsx runs in an iframe with sandbox="allow-scripts" (no same-origin), CSP default-src 'none'; script-src 'self' ; no network, no storage, no top navigation. It talks only through the postMessage bridge, which forwards typed calls to the server.
-Server-side capabilities
-The desktop never decides. Every bridge call (screens, custom code, runs, the app's agent) is checked on the server against app.json capabilities, the member's app role and record rules. A capability not in app.json does not exist for that app.
-Builder never reads content
-The Builder service has no API for records or content files. It sees app files, the plan, check reports and generated sample records only.
-Outbound approvals
-Send, post, pay and any tool marked outbound create an approval; nothing leaves the workspace before a named person approves. Connector fakes are used in Preview, drafts and Check.
-Prompt-injection containment
-Content (emails, records, docs) reaches only the app's agent, whose tools are the app's capabilities and nothing else. It cannot change the app ( “That changes the app · Shape this” ), cannot reveal masked or blind values, and its outbound actions hit approvals.
-Personal connectors
-A workspace app acts as you only after you allow it once for that app; revoke in Settings → Accounts or App ⌄ → Needs. Workspace connections: Admins only.
-Audit log
-Append-only, on the journal store: writes, reveals, sends, approvals, denials, Apply, migration, role changes. Kept forever; export UI is backlog, the log exists in v1.
-Secrets
-Connector tokens live in the server's keystore (workspace) or the macOS Keychain / Secret Service (personal). Never in app files, never sent to the desktop.
-Builder quality loop an eval suite, not opinions
-Suite
-120 app descriptions: the 14-app gallery, the industry set (startup, tech team, bank, aerospace, manufacturing) and every description that failed in the field (anonymised, descriptions only).
-Run
-Each goes New app → plan → write → check → preview on fakes, headless. Every kit change and every model change runs the full suite; nightly runs it on the current release.
-Scores
-check passes within 3 rounds · kit law clean · behaviour tests pass · screen renders compared with the last accepted snapshot · Builder cost and rounds.
-Gate
-A kit or model change ships only if pass rate does not drop and no description that passed before now fails. Results are a board in the CodeAF repo's CI.
-Performance how it is built
-Lists Virtualised (TanStack Virtual); only visible rows are in the DOM. Queries Run on the server, never filtered in the client. Paginated 100 rows, keyset on the sort key. StateMeter counts are a separate COUNT … GROUP BY. Indexes index: true fields, refs and enums get a generated column and an index at migration time. Live updates Realtime sends row diffs for subscribed queries, not whole pages. Presence and locks are in memory only.
-Screens screens/*.json are cached per version in the desktop; a new version fetches only changed files. Writes SQLite in WAL mode, one writer goroutine per app database, readers in parallel. Runs Steps are journal entries; a server restart resumes every run at its last completed step. Timers fire from the journal, not from memory. Custom code One iframe per custom part, created when it scrolls into view and destroyed when it leaves.
+A2 · Apps · files and data
+A2 · Apps · files and data
+Every file an app is made of, with complete examples from the CRM: the app definition, the plan, the screen language, runs, content files per surface, and how versions, drafts, migrations, replay and validation work.
+The app folder one per app on the codeaf server · $CODEAF_DATA/apps/<id>/
+apps/crm/ one folder per app on the codeaf server
+├─ definition/ git · one commit per Apply · tags v1 … v12
+│ ├─ app.json records, rules, capabilities, triggers, commands, budget
+│ ├─ plan.json what the plan card draws
+│ ├─ agent.md the CRM agent's instructions
+│ ├─ screens/
+│ │ ├─ deals.json deal.json companies.json contacts.json
+│ ├─ runs/
+│ │ ├─ follow-up.yaml won-handoff.yaml log-email.yaml
+│ ├─ custom/ empty in CRM · sandboxed .tsx, labelled "custom"
+│ └─ migrations/
+│ └─ 0012-deal-negotiation.json
+├─ content/ git · one commit per part save
+│ ├─ docs/northwind-account.md
+│ └─ sheets/forecast-q4.csv
+├─ records.db SQLite · records, record history, links, locks
+└─ drafts/
+└─ mona-7f3a/ one overlay per open Shape draft
+├─ definition/ git worktree on the draft branch
+└─ overlay.db record writes made while trying the draft File Written by Format · schema Notes app.json Builder JSON · app/1.json Shape → Apply. Never by the app's agent. plan.json Builder JSON · plan/1.json New app and Shape; the plan card edits it in place (each edit is a request to the Builder). screens/*.json Builder JSON · screen/1.json Declarative tree of kit parts. One file per screen; file name = screen id. runs/*.yaml Builder YAML · run/1.json Runs engine pipelines. File name = run id. agent.md Builder Markdown Front matter: model, tools; body: the app agent's instructions. Read by the app agent only. custom/*.tsx Builder TSX · kit law Escape hatch. Rendered in a sandboxed iframe, labelled “custom” in Shape and the plan card. migrations/*.json CodeAF JSON · migration/1.json Generated from the app.json diff at Apply time; never written by hand or by AI. content files app agent · people per surface (below) Ask · Nudge · Comment. One writer per part (light lock). Each save = one commit. records.db codeaf server SQLite (modernc) Records, record history (every change: who, when, before, after), links, locks. The app's agent writes content files and records only . The Builder writes the definition only and never reads content or records. Personal apps live on your personal server; workspace apps on the workspace server; Move to workspace… copies the folder and records, then archives the old one.
+app.json the CRM, complete · comments are explanations, not part of the file
+definition/app.json v12
+{ "$schema" : "https://codeaf.dev/schema/app/1.json" , "id" : "crm" , "name" : "CRM" , "space" : "acme" , "version" : 12, "kit" : 2, // kit v2 · 59 parts "agent" : { "name" : "CRM agent" , "file" : "agent.md" , "model" : "DS Flash" }, "records" : { "company" : { "title" : "name" , "fields" : { "name" : { "type" : "text" , "required" : true, "unique" : true }, "domain" : { "type" : "url" , "index" : true }, "size" : { "type" : "enum" , "values" : [ "1-10" , "11-50" , "51-200" , "201+" ] }, "owner" : { "type" : "person" } } }, "contact" : { "title" : "name" , "fields" : { "name" : { "type" : "text" , "required" : true }, "email" : { "type" : "email" , "index" : true }, "phone" : { "type" : "phone" , "masked" : true }, // Masked · every reveal logged "company" : { "type" : "ref" , "to" : "company" } } }, "deal" : { "title" : "name" , "fields" : { "name" : { "type" : "text" , "required" : true }, "company" : { "type" : "ref" , "to" : "company" , "required" : true }, "contacts" : { "type" : "refs" , "to" : "contact" }, "stage" : { "type" : "enum" , "default" : "Lead" , "values" : [ "Lead" , "Qualified" , "Proposal" , "Negotiation" , "Won" , "Lost" ] }, "amount" : { "type" : "money" , "currency" : "USD" }, "close_on" : { "type" : "date" }, "owner" : { "type" : "person" , "default" : "$me" }, "last_touch" : { "type" : "datetime" }, "commit" : { "type" : "money" , "blind" : { "until" : "submitted" , "per" : "owner" } }, "age_days" : { "type" : "number" , "computed" : "days_since(created_at)" }, "weighted" : { "type" : "money" , "computed" : "amount * stage_weight[stage]" }, "likely" : { "type" : "enum" , "values" : [ "Likely" , "Maybe" , "Unlikely" ], "ai" : "likely to close this month" } // labelled AI · pins win }, "constants" : { "stage_weight" : { "Lead" : 0.1, "Qualified" : 0.25, "Proposal" : 0.5, "Negotiation" : 0.7, "Won" : 1, "Lost" : 0 } }, "freeze" : [ { "when" : "stage in ['Won', 'Lost']" , "except" : [ "last_touch" ], "unfreeze" : "Editor" }, { "period" : "quarter" , "field" : "close_on" , "after" : "5d" } // locks 5 days after ] } }, "capabilities" : { "records" : { "deal" : "rw" , "company" : "rw" , "contact" : "rw" }, "connectors" : { "gmail" : { "as" : "member" , "can" : [ "read" , "draft" , "send" ], "approve" : [ "send" ] }, "calendar" : { "as" : "member" , "can" : [ "read" ] }, "slack" : { "as" : "workspace" , "account" : "acme" , "can" : [ "post" ], "channels" : [ "#sales" ], "approve" : [ "post" ] } }, "ai" : [ "sort" , "summarise" ], "tools" : [] // MCP servers: none }, "triggers" : [ { "id" : "stale" , "on" : "schedule" , "cron" : "0 9 * * 1-5" , "run" : "follow-up" }, { "id" : "won" , "on" : "record.changed" , "type" : "deal" , "when" : "changed('stage') && stage == 'Won'" , "run" : "won-handoff" }, { "id" : "inbound" , "on" : "connector" , "connector" : "gmail" , "event" : "message.received" , "when" : "from_domain in records('company').domain" , "run" : "log-email" } ], "commands" : [ { "id" : "follow-up" , "label" : "Draft follow-up" , "for" : "deal" , "key" : "⌘⇧F" , "run" : "follow-up" , "params" : { "deals" : "$selection.ids" } }, { "id" : "mark-won" , "label" : "Mark won…" , "for" : "deal" , "confirm" : "Mark { { count} } deals won?" , "do" : [{ "records.update" : { "ids" : "$selection.ids" , "set" : { "stage" : "Won" } } }] } ], "budget" : { "month" : 20, "currency" : "USD" , "per_run" : 0.50, "at_cap" : "ask" , "models" : [ "DS Flash" , "GLM 5.3" ] } }
+Field types
+Type Stored as Query token text · longtext string; longtext opens the Text surface inline name:north* number · money float64 · int64 minor units + currency amount>10000 date · datetime · duration ISO 8601, stored UTC, shown local close_on<2026-12-31 enum · enums one / many of values ; order = meter order stage:Proposal,Won bool true · false is:archived person · people workspace member id; $me default owner:me ref · refs record id(s) of to type; shown as hover-card links company:Northwind email · phone · url validated string; masked: true hides until revealed email:*@globex.com file · files content-addressed blob in content/files/ has:file place lat, lng, label (Map surface) near:Pune,20km
+Record rules
+Rule In app.json Behaviour Freeze freeze: [{when}] or {period, field, after} Matching records become read-only for everyone, runs and agents included. Editors see Unfreeze… (Dialog, reason required, logged). except lists fields that stay writable. Blind blind: {until: "submitted", per} Each person sees only their own value until they press Submit ; after everyone in per scope submits (or an Editor closes the round), all values show. Agents never read blind values before that. Computed computed: "<expr>" Server-evaluated on write and on a 1-minute tick for time functions. Read-only, indexable, sortable. Shown with a small “computed” hint in RecordPage. Lookup tables go in the type's constants . AI field ai: "<question>" Filled by ai.sort on demand, never on write. Always labelled “AI” ( “Likely to close · AI” ). A person's value pins it: AI never overwrites a pinned value. Masked masked: true Value hidden as •••• until Reveal ; each reveal writes an audit line (who, record, field, when). Agents get the masked form.
+Expressions · used in app.json, screens and runs
+Queries QueryField tokens, the same text people type: stage:Proposal,Negotiation owner:me amount>10000 sort:-amount . - excludes, , = or, is: / has: flags, sort: and group: last. Compiled to SQL on the server [S-A3]. Conditions when and if use CEL (the subset: literals, fields, $ references, == != < <= > >= in && || ! , ?: , and the functions now() days_since() changed() count() records() me() ). Server: cel-go. Screen runtime: the same programs, compiled by the server and shipped with the screen; both run one shared test-vector file. Templates { { deal.name} } in strings (labels, prompts, confirm text). No logic inside braces. References $me · $space · $params.x · $record · $row · $selection.<listId> ( .ids , .id , .count ) · $input.x (values a Sheet asked for) · $steps.<id>.output (runs only) · $now .
+plan.json the plan card's source
+definition/plan.json
+{ "$schema" : "https://codeaf.dev/schema/plan/1.json" , "ask" : "A CRM for acme: deals, companies, contacts. Remind owners about stale deals and draft follow-ups from Gmail.", "data" : [ { "id" : "deal" , "line" : "Deal · name, company, stage (Lead → Won/Lost), amount, close, owner" }, { "id" : "company" , "line" : "Company · name, domain, size, owner" }, { "id" : "contact" , "line" : "Contact · name, email, phone (hidden until revealed), company" } ], "automation" : [ { "id" : "follow-up" , "line" : "Weekdays 9:00 · deals untouched 14 days → draft a follow-up" }, { "id" : "won-handoff" , "line" : "Deal won → post to #sales and create the onboarding checklist" } ], "screens" : [ { "id" : "deals" , "line" : "Deals · list and board by stage, deal in the panel" }, { "id" : "companies" , "line" : "Companies · list with open deals and contacts" } ], "agent" : { "line" : "CRM agent · drafts emails, updates deals, answers pipeline questions" }, "needs" : "computed" // CodeAF fills this from app.json, never the Builder }
+Needs computed by CodeAF, shown last on the plan card
+Gmail as you · read, draft, send (send needs approval) Calendar as you · read Slack acme · post to #sales (needs approval) Records · deal, company, contact AI · sort, summarise · DS Flash Budget · up to $20 a month
+Recomputed from app.json on every Write and every Shape change. A new line in Needs on Apply asks each affected member again (e.g. “CRM may send email as Mona · Allow · Not now”).
+Each plan line is editable in place on the plan card. An edit is sent to the Builder as a request ( “stage should also have Negotiation” ); the Builder rewrites the line and, after Write it , the files. Just build it skips review and goes straight to Building.
+Screen language screens/*.json · interpreted by the screen runtime, no code generated
+A screen is a tree of nodes. Each node is one kit part. The runtime walks the tree, resolves bindings through the bridge, evaluates when , and renders kit components. The Builder writes the tree; nothing is compiled.
+Node shape · {part, props, bind, on, when, children}
+Key When Meaning part required A kit v2 part name ( RecordList , Button , Panel , Text …). Unknown name = schema error. Custom + src: "custom/x.tsx" loads the sandbox. id lists, forms Unique in the screen. Needed for $selection.<id> and for focus links ( open with focus ). props optional Static props from the part's prop schema (kit ships one JSON Schema per part). Strings may hold { { templates} } . No raw colours, sizes or fonts: token names only. bind optional Where the part's data comes from (table below). One binding per node; children inherit $row / $record . on optional Event → list of actions, run in order; the first failure stops the list and shows a Toast with the error. when optional CEL condition; false = node not rendered (not hidden: no DOM, no data fetch). children optional Ordered child nodes. Layout parts ( Stack , Row , Panel , Sheet ) take children; data parts take row / empty slots instead. label interactive Required on every interactive node (kit law); used for a11y and menus.
+Bindings
+Binding Shape Gives records {"records":"deal","query":"stage:-Lost"} Live list, paginated 100, server-sorted. QueryField and StateMeter in RecordList wire to it; people's query edits replace query for that view only. record id {"record":"$params.id"} One record, live. Missing → the part's Empty state “This deal was deleted · Undo” (for 30 s) or “Not found” . run {"run":"follow-up","for":"$record.id"} · {"runs":"follow-up"} A run's live state (RunTimeline, ApprovalCard) or the list of runs of that id. selection {"selection":"deals"} The current selection of list deals : rows, ids, count. Changes as people click. params {"params":["id","view"]} Values passed by open or the URL codeaf://acme/crm/deal?id=… . Declared on the screen root; undeclared params are dropped.
+Actions · used in on lists, commands and BulkBars. Every action is checked against the app's capabilities on the server, not in the screen.
+Action Shape Does Needs open {"open":"deal","id":"$row.id"} Opens a screen (in the card) or a record (in the panel). beside: true opens in a new tab. — records.update {"records.update":{"ids":…,"set":{…} } } Writes fields; one history entry per record; one Undo toast for the batch. records: rw runs.start {"runs.start":"follow-up","params":{…} } Shows the cost check first when the run has a budget ( “Run · up to $0.50” ). runs listed in app.json approve {"approve":"$run.gate","answer":"yes"} Answers a gate. Only the named approver; 5-second “Approving… Undo” . gate's who inbox.ask {"inbox.ask":{"to":"$record.owner","q":"…"} } Puts a question in a member's Inbox, linked to the record. — tools.call {"tools.call":["gmail","draft",{…}]} Connector or MCP tool. Outbound kinds (send, post, pay) become an approval instead of acting. connectors / tools ai.sort {"ai.sort":"deals","field":"likely"} Fills an ai field for the visible rows, labelled “AI” , pins kept. Costs from the app budget. ai: sort
+definition/screens/deals.json numbers match the render
+{ "$schema" : "https://codeaf.dev/schema/screen/1.json" , "screen" : "deals" , "title" : "Deals" , "params" : [ "view" ], "nav" : { "part" : "SectionTabs" , 1 "props" : { "items" : [ "Deals" , "Companies" , "Contacts" ] } }, "body" : { "part" : "Row" , "children" : [ { "part" : "RecordList" , "id" : "deals" , 2 "bind" : { "records" : "deal" , "query" : "stage:-Lost sort:-amount" }, "props" : { "views" : [ "List" , "Board by stage" ], "meter" : "stage" , 3 "columns" : [ "name" , "stage" , "amount" , "likely" ] }, "on" : { "open" : [{ "open" : "deal" , "id" : "$row.id" }] } }, { "part" : "BulkBar" , "when" : "$selection.deals.count > 0" , "children" : [ 4 { "part" : "Button" , "label" : "Move to…" , "on" : { "click" : [ { "records.update" : { "ids" : "$selection.deals.ids" , "set" : { "stage" : "$input.stage" } }, "ask" : { "stage" : "enum" } } ] } }, { "part" : "Button" , "label" : "Draft follow-ups" , "on" : { "click" : [ { "runs.start" : "follow-up" , "params" : { "deals" : "$selection.deals.ids" } } ] } }, { "part" : "Button" , "label" : "Likely to close · AI" , "on" : { "click" : [ { "ai.sort" : "deals" , "field" : "likely" } ] } } ] }, { "part" : "Panel" , "when" : "$selection.deals.count == 1" , "children" : [ 5 { "part" : "RecordPage" , "bind" : { "record" : "$selection.deals.id" }, "props" : { "fields" : [ "stage" , "amount" , "close_on" , "owner" , "weighted" ], "actions" : [ "follow-up" , "mark-won" ] } } ] } ] } }
+How it renders · light, sample data
+1 Deals Companies Contacts 3 List Board by stage
+2 stage: not Lost Search deals sort: amount ↓
+Lead 6 Qualified 9 Proposal 7 Negotiation 4 Won 12
+Name Stage Amount Likely
+Northwind · renewal Proposal $48,000 Likely · AI
+Globex · platform Negotiation $36,500 Maybe · AI
+Initech · pilot Qualified $12,000 Likely · AI
+Umbrella · expansion Proposal $9,800 Unlikely · AI
+Hooli · first order Lead $4,200 Maybe · AI
+4 2 selected Move to… Draft follow-ups Likely to close · AI
+5 2 selected · the Panel shows when exactly one is selected. With one row:
+Northwind · renewal
+Stage Proposal
+Amount $48,000
+Close Nov 28
+Owner @mona
+Weighted $24,000 · computed
+Draft follow-up Mark won…
+1 nav → the one navigation row (SectionTabs). Each item opens screens/<item>.json ; ⌃1–⌃3 jump.
+2 RecordList + QueryField. The binding's query shows as tokens; people edit them freely, the file keeps the default.
+3 views → Segmented on the right of the nav row; meter → StateMeter counts per stage (server count, not the page).
+4 BulkBar exists only while when is true. Move to… asks for $input.stage in a small Sheet before writing.
+5 Panel bound to the single selection. actions lists command ids from app.json, rendered as Buttons.
+· Rows virtualised; 100 per page; the list subscribes to live changes of the query [S-A3].
+runs/*.yaml the runs engine · journal-backed, durable
+definition/runs/follow-up.yaml CRM
+run : follow-up title : Follow up on stale deals budget : { per_run: 0.50 } # at the cap the run pauses as Needs you params : deals : { type: refs, to: deal, default : "stage:Qualified,Proposal,Negotiation last_touch<-14d" } steps : - id : each loop : { over: $params.deals, as: deal, max: 25 } steps : - id : thread tool : gmail.search # as the deal owner (allowed once per app) as : $deal.owner args : { q: "to:{ { deal.contacts.email} } newer_than:30d" } - id : draft agent : CRM agent prompt : Draft a short, plain follow-up for { { deal.name} } from the thread. retry : { max: 2, backoff: 30s } - id : send gate : { approval: send, who: $deal.owner } # Approval needed: send tool : gmail.send as : $deal.owner args : { draft: $steps.draft.output } - id : reply wait : { for: gmail.reply, thread: $steps.send.thread, timeout: 5d } on_timeout : continue - id : touch records.update : { id: $deal.id, set: { last_touch: $now } }
+definition/runs/repro.yaml Support app · workspace: repo
+run : repro budget : { per_run: 3.00 } steps : - id : plan agent : Support agent gate : { approval: plan, who: $ticket.owner } - id : fix workspace : repo # checkout, branch, shell on a runner repo : acme/api branch : support/{ { ticket.number} } loop : { until: "$steps.test.exit == 0", max: 3 } steps : - id : change agent : Support agent - id : test shell : go test ./... - id : pr gate : { approval: proof, who: $ticket.owner } tool : github.pr.create
+Key Rule steps Ordered list; each step has a unique id and exactly one of agent · tool · shell · records.* · wait · nested steps . loop over: <list>, as, max (for each) or until: <CEL>, max (repeat). Shown as a parent row with rounds in RunTimeline. max required; hitting it → Needs you “out of rounds” . gate approval: plan | proof | start | send , who (person or role). The run waits in the journal; the approver gets “Approval needed: send” in the Inbox. Outbound tools always get a send gate even when the YAML omits it. wait for: <connector event> with a match, until: <time> , or for: 2h . Durable timer in the journal: survives server restarts. timeout + on_timeout: fail | continue . retry max (≤ 5), backoff (doubles each try, cap 10m). Retries only on step errors, never on a gate “No” . budget per_run in USD, counted from model and paid tool spend. Must fit the app's monthly budget; at the cap the run pauses as Needs you with Raise budget · Stop. workspace: repo The step (and its children) runs on a runner: fresh checkout of repo , branch , a shell. Only workspace: repo steps may use shell . Screens never touch shells. as $person acts with that member's personal connector (needs their per-app allow) · omitted = the workspace connection named in app.json. if · on_error if: <CEL> skips the step when false. on_error: stop | continue | goto <id> ; default stop.
+Content files per surface plain files people nudge and agents write
+slides/3.json Canvas · box model
+{ "frame" : "16:9" , "theme" : "acme" , "size" : [1920, 1080], "boxes" : [ { "id" : "t1" , "type" : "text" , "style" : "title" , "x" : 120, "y" : 96, "w" : 1200, "h" : 140, "text" : "Q4 pipeline" }, { "id" : "c1" , "type" : "chart" , "x" : 120, "y" : 300, "w" : 1040, "h" : 620, "spec" : "charts/weighted-by-stage.vl.json" , "bind" : { "records" : "deal" , "query" : "stage:-Lost group:stage" } }, { "id" : "n1" , "type" : "record" , "record" : "deal/8f2c" , "x" : 1240, "y" : 300, "w" : 560, "h" : 200, "fields" : [ "name" , "amount" , "stage" ] }, { "id" : "i1" , "type" : "image" , "fit" : "cover" , "x" : 1240, "y" : 560, "w" : 560, "h" : 360, "src" : "files/sha256-9b1e….png" } ] }
+docs/northwind-account.md Text · Markdown + part markers
+--- part-ids: [p-intro, p-risks] links: [company/northwind] --- <!-- part:p-intro --> # Northwind · account notes Renewal due **Nov 28**. Champion: Ana Ruiz. <!-- part:p-risks --> ## Risks - Budget freeze until Q1 ({ { deal:8f2c.stage} } )
+sheets/forecast-q4.csv Grid · cells hold what was typed
+Owner,Commit,Best case,Weighted @mona,48000,60000,"=SUMIF(deal.owner,A2,deal.weighted)" @raj,21000,36500,"=SUMIF(deal.owner,A3,deal.weighted)" Total,=SUM(B2:B3),=SUM(C2:C3),=SUM(D2:D3)
+plan/q4-onboarding.json Timeline
+{ "scale" : "week" , "items" : [ { "id" : "k1" , "label" : "Northwind kickoff" , "start" : "2026-12-01" , "end" : "2026-12-05" , "lane" : "@mona" , "record" : "deal/8f2c" }, { "id" : "k2" , "label" : "Globex security review" , "start" : "2026-12-08" , "end" : "2026-12-19" , "after" : [ "k1" ] } ] }
+graph/accounts.json Graph
+{ "layout" : "elk.layered" , "nodes" : [ { "id" : "n1" , "label" : "Globex" , "record" : "company/41a0" }, { "id" : "n2" , "label" : "Platform deal" , "record" : "deal/77d1" } ], "links" : [ { "from" : "n1" , "to" : "n2" , "label" : "buys" } ] }
+places/offices.json Map · GeoJSON
+{ "type" : "FeatureCollection" , "features" : [ { "type" : "Feature" , "id" : "pl1" , "geometry" : { "type" : "Point" , "coordinates" : [73.8567, 18.5204] }, "properties" : { "label" : "Hooli · Pune office" , "record" : "company/90bc" } } ] }
+Rules for all content files. One file per part (a slide, a doc section file, a sheet tab). Records are referenced by type/id , never copied. Images and media go to content/files/ named by sha256. Grid formulas: Excel syntax (IronCalc) plus deal.field ranges that read records live. Box types: text · image · shape · chart (Vega-Lite spec) · record · media · table. Export PDF/PPTX/CSV is generated from these files only.
+Versions git under the hood · a version = request + diff + who
+What a version is One Apply = one commit on definition/ tagged vN . It carries the request (the words people gave the Builder), the diff (file changes), who (the Editor who applied) and the migration id when there is one. Commit message Shape: <first request line> then trailers Request: (one per request, in order) · By: @mona · Version: 12 · Migration: 0012-deal-negotiation · Check: pass (2 rounds) . Versions… App ⌄ → Versions… lists vN · who · when · requests; each opens Show diff (screens rendered side by side with Compare, files as text). Revert to vN creates a new version whose diff undoes the later ones; history is never rewritten. Content versions Each part save is a commit on content/ with trailers Part: · By: (person or “CRM agent” ) · Via: Ask | Nudge | Comment . Versions per part read this log; Restore = a new commit. Records Not in git. records.db keeps record history rows (record, field, before, after, who, when, version). Undo uses them. Git engine go-git (pure Go) inside the codeaf binary. Repos never leave the server; members never clone them. Open files (App ⌄) shows them read-only.
+Drafts a scratch overlay over real data
+Start Shape creates drafts/<who>-<id>/ : a git worktree of definition/ on branch draft/<who>-<id> and an empty overlay.db . Base version recorded (v12). Reads Every query in the draft reads records.db with overlay.db laid on top (overlay rows win; overlay tombstones hide). Label in the card: “reads real data · saves to a scratch copy” . Writes All record writes go to overlay.db . Runs started in the draft use connector fakes; nothing is sent, no budget is spent except Builder and model tokens. Discard Deletes the draft folder. Nothing else changes. Apply Check passes → migration dry-run shown → Apply: the draft branch merges into definition/ as vN+1, the migration runs on records.db in one transaction, realtime pushes vN+1 to every member [S-A3]. overlay.db is thrown away: writes made while trying the draft were tests on a copy. Lifetime A draft lives until Apply or Discard. Drafts untouched for 30 days show “Old draft · Discard” in Versions…; never removed silently.
+Replay two drafts at once
+1 Mona's draft is based on v12 . It stores each request with its diff: R1 “add a Negotiation stage” , R2 “show weighted on the panel” . 2 Raj applies his draft first → v13 . Realtime tells Mona's draft “CRM is now v13” . 3 CodeAF makes a new draft branch from v13 and hands the Builder R1, then R2, with v13's files. The Builder re-plans each one (it does not patch the old diff). 4 Check runs on the replayed draft. Pass → banner “Your request was replayed on v13 · Show diff” . Overlay rows are kept. 5 Fail after 3 rounds → “R2 could not be replayed on v13 · Fix it · Drop R2” . R1 stays applied in the draft.
+Migrations generated · dry-run · never delete
+definition/migrations/0012-deal-negotiation.json
+{ "$schema" : "https://codeaf.dev/schema/migration/1.json" , "id" : "0012-deal-negotiation" , "from" : 11, "to" : 12, "ops" : [ { "op" : "enum.add" , "record" : "deal" , "field" : "stage" , "value" : "Negotiation" , "after" : "Proposal" }, { "op" : "field.rename" , "record" : "deal" , "from" : "touched" , "to" : "last_touch" }, { "op" : "field.hide" , "record" : "deal" , "field" : "region" }, // removed → hidden { "op" : "field.type" , "record" : "deal" , "field" : "amount" , "from" : "number" , "to" : "money" , "convert" : "round(x * 100)" , "on_fail" : "keep_previous" } ], "dry_run" : { "deal" : { "affected" : 38, "failed" : 0, "hidden_values" : 21 }, "deleted" : 0 } }
+Generated CodeAF diffs app.json vN → draft and writes the ops. The Builder cannot write migrations; people cannot edit them. Dry run Runs every op on a copy of records.db at Apply time. The sheet shows per type: “38 deals affected · nothing deleted” , plus hidden fields and failed conversions. Never deletes Removing a field = field.hide : the column stays, values stay, the field leaves screens and agents. App ⌄ → Needs → Hidden fields lists them with Restore . Removing a record type hides the type the same way. Failed conversions A value that does not convert stays in the record's previous-value slot and is listed: “3 values kept as text · Review” . Apply is still allowed. One transaction All ops + the version bump commit together. Failure rolls back; the card shows “This change broke CRM · Fix it · Revert” with the last working version dimmed.
+Validation JSON Schema first, then semantic checks · both run in Check and on every save
+File JSON Schema (draft 2020-12) Checks beyond the schema app.json app/1.json refs point at existing types; computed and CEL compile; every run id exists; as: member only for personal connectors; budget ≤ workspace cap plan.json plan/1.json ids match app.json, screens and runs after Write screens/*.json screen/1.json + one schema per kit part kit law: parts exist, tokens only, one nav , every interactive node has a label , growing lists use RecordList; every action covered by a capability; $selection ids exist runs/*.yaml run/1.json (YAML parsed to JSON first) max on every loop; outbound tools have a send gate (inserted if missing); shell only under workspace: repo ; per_run ≤ budget content files slides/1.json · timeline/1.json · graph/1.json · GeoJSON (RFC 7946) box ids unique; boxes inside the frame; bound records exist; Markdown part markers match front matter custom/*.tsx kit law lint + typecheck imports only @codeaf/kit , @codeaf/bridge , react ; no fetch , window.open , eval
+Schemas live in the codeaf repo at schema/*.json , are served at https://codeaf.dev/schema/… and are embedded in the binary (offline). Validator: santhosh-tekuri/jsonschema (Go). A file that fails validation is never loaded: the app keeps running on the last valid version, and the card shows “This change broke CRM · Fix it · Revert” .
 class Component extends DCLogic {
 renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
 }

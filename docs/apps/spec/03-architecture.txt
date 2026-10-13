@@ -1,406 +1,93 @@
 
-L4 · The kit
-L4 · The kit v2 · 59 parts
-We build six surfaces once. Every app is easy parts (lists, forms, approvals) plus one surface, the hard editing part; there are no app-specific blocks. The Builder (CodeAF's agent) writes declarative screens, screens/*.json , that name only kit parts and bind them through the bridge; custom/*.tsx is a sandboxed escape hatch. The app's agent works on content only. v2 closes the gaps found by the 14-app gallery (L7, L8). Everything here is live HTML on CodeAF tokens.
-How the pieces stack files → kit and bridge → shell → runners app.json · runs/*.yaml · screens/*.json · agent.md
-App files what the Builder writes · one folder, every change a version
-screens/*.json The screens, declarative: a tree of kit parts with bindings, easy parts plus one surface. Renders inside the card; the window around it is CodeAF's. Escape hatch: custom/*.tsx , sandboxed, labelled “custom”, imports only kit, bridge, react. screens/deals.json · deal.json · reports.json
-app.json Records schema, capabilities, triggers, ⌘K commands, monthly budget.
-runs/*.yaml Pipelines for the runs engine: steps, loops, gates, waits, retries.
-agent.md Defines the app's agent: content only, in Use mode. The Builder writes the rest.
-names parts
-binds
-declares
-hands runs to
-defines
-@codeaf/kit + @codeaf/bridge the only parts and data a screen can name
-@codeaf/kit Components on CodeAF tokens. Generated screens look native. Primitives Button · Timer 28
-Patterns Pages · Compare 13
-Surfaces Text · Canvas · Map 6
-Data blocks RecordList · Media 12
-@codeaf/bridge The one door to data. Hooks read; actions ask the shell to act. Hooks useRecords · useRun 6
-Actions approve · tools.call 10
-renders in the card
-reads · asks
-Shell CodeAF's own, identical in every app · checks capabilities on every call
-card · shell-owned parts Window, rail, tab strip, app header, ⌘K, menus, shortcuts. Draws the kit. These parts are the shell's; an app can only open them: AgentPane Inbox Activity Versions Share Shape mode plan card draft bar
-records · Inbox · connectors Typed records with history and links. Questions and approvals land in Inbox. Gmail, GitHub, MCP as declared; triggers.
-runs engine Runs runs/*.yaml : steps, loops, gates, budget per run.
-agents Builder (CodeAF's) changes the app in Shape. App agent changes content in Use; asks in Inbox, spends the app's budget.
-no shell · no fetch
-workspace: repo
-Runners where runs touch code
-runner A step with workspace: repo gets a checkout, a branch and a shell on a runner (Personal: this Mac). Factory's code / test steps run here.
-Screens never touch a shell; only runs do. A screen that needs work done starts a run ( runs.start ) and shows it with RunTimeline .
-Surfaces 6 · the hard part of an app · plain files the app agent writes and people nudge · + = new in v2 @codeaf/kit · surfaces
-Canvas surface stores slides/*.json typed boxes per part
-Place, move and edit typed boxes (text, image, shape, chart, record, media) on a frame or an infinite board; rendered to HTML, exported mechanically.
-themes · fonts, colours, masters Media box type
-1 · Title
-2 · Q3 agent
-3 · Pipeline M
-4 · Asks 2
-Slide 2 · agent is editing frame 16:9 artboards board
-M J S
-Q3 won $86k, up 31% Nudge · edit words · drag · resize
-Globex renewal closed at $48k Hooli expands to EU in Q4 Two deals slipped to Nov
-2 / 4
-1 @mona Use the Q3 number from Reports. Send to agent Leave
-Ask: shorter, keep the chart… Nudge Comment v4 · diff · Restore
-Apps it makes Slides Design Whiteboard Dashboard layout
-Text surface stores docs/*.md Markdown, one section per part
-Blocks: headings, lists, tables and embeds of live records. One section is one part with its own lock and versions.
-merge fields track changes clause numbering Word round-trip (.docx)
-§ Findings · Mona is editing M S
-NCR-031 · Bracket hole out of tolerance
-⋮⋮ Three brackets in lot 2291 show the hole at Ø 12.4, over the 12.2 limit. The drawing was right; the jig was worn.
-Quarantine lot 2291 until re-measured
-Replace jig J-14, then first-article check
-embed · RecordList(ncr) · stage:open NCR-031 bracket hole @raj · 2h
-NCR-029 burr on rib RS-120 @mona · 1d
-2 / insert block Heading #
-List -
-Embed record /e
-Table /t
-Ask: tighten Findings to two lines… Nudge Comment §2 · v7 · diff · Restore
-Apps it makes Docs Notes Wiki Email bodies Contracts
-Grid surface stores sheets/*.csv + formulas.json
-Cells and formulas. Each sheet is a part.
-match mode · pair rows across sheets
-fx C5 =SUM(C2:C4) − B5
-A B C D 1 Account Ledger Bank Diff 2 Nostro USD 412,900 412,900 0 3 Nostro EUR 88,140 88,410 270 4 Suspense 2,300 2,030 −270 5 Total 503,340 503,340 0 6 Checked by @raj
-Oct ledger Sep Notes R on Oct · CSV + formulas
-Apps Budgets Reconciliations Trackers
-Timeline surface stores plan/*.json start · end · dependsOn
-Items on a time axis; dragging writes the dates. Dashed line is today.
-free/busy from calendar
-Gantt Calendar Shifts views of one file
-Roadmap · Q4 Oct 6 13 20 27 Nov 3
-Impact review
-Drawing rev C
-Stress analysis
-Board approval
-Release to shop
-EU launch
-Apps Gantt Calendar Shifts Roadmap
-Graph surface stores graph/*.json nodes + links
-Nodes and links; click a node to open its record.
-live nodes · bound to records
-links tree flow
-NCR-031 bracket hole
-B-114 rev C drawing
-Lot 2291 supplier
-ECR-212 in review · live
-WI-88 work instr.
-Apps Org charts Traceability Flows Parts trees
-Map surface new stores places/*.json places · routes
-Places, a route and live positions on streets; click a pin to open its record.
-Depot
-Initech
-Hooli · 14:40
-V3 +3 min
-V7 late 12m
-Apps Dispatch Field service Site inspections Store network
-Every surface gets built once, for all six Ask The agent edits the part you are on.
-Nudge Edit words, drag a box: a small labelled edit to the file.
-Comment Pin on an element; send to the agent or leave for a person.
-One writer per part Light lock: “agent is editing” · “Mona is editing”. No co-typing.
-Presence Who is on which part, as avatars on the part.
-Versions per part Visual diff and Restore for each part.
-Present · Share · Export Full screen, a link for workspace members, PDF / PPTX / CSV.
-Apps are compositions easy parts + usually one surface · no app-specific blocks 10 apps · 0 new parts
-App = parts · dark = surface · outlined = shell Hard part App = parts · dark = surface · outlined = shell Hard part Slides RecordList (decks) + Pages + Canvas (16:9) + Present Canvas Design Pages + Canvas (artboards) Canvas CRM QueryField + RecordList + Panel + Thread + ApprovalCard none Factory RecordList + RunTimeline + LogStream + DiffViewer + ProofList + ApprovalCard none Budget Grid + Chart Grid Roadmap Timeline + RecordPage Timeline Incident room Thread + Timeline + LogStream Timeline Quality inspection Checklist + FileViewer + SignOff none Dispatch RecordList + Map + Timeline + ApprovalCard Map Support inbox RecordList + Thread + Timer + ApprovalCard none
-Patterns 13 · compositions with no data of their own · Tree → List nested rows @codeaf/kit
-QueryField
-The lens: tokens, words, sort chip and Views in one line.
-<QueryField type="deal" value={q} sort views />
-stage: open owner: team Search Likely to close AI
-tokens are plain text ( stage:open owner:team ), so a view is a saved string. An AI sort is always labelled.
-StateMeter
-Counts per state.
-<StateMeter states value />
-Lead 14
-Talking 9
-Won 23
-A segment click adds stage:talking .
-SectionTabs
-Switches the app's screens.
-<SectionTabs items value />
-Deals Contacts Reports The one navigation row.
-List
-Rows ≥32px, soft-fill selection; nested rows replace Tree.
-<List rows nested />
-Wing assembly WA-100 rev D
-Spar FS-110 ×2
-Bracket B-114 NCR
-Rib set RS-120 ×12
-Fuselage FU-200 rev B
-Panel
-Right panel for the selected item.
-<Panel title onClose />
-Northwind
-Team plan · 40 seats
-Stage Talking Value $14,400
-Table
-Numbers in columns; header sorts.
-<Table columns rows sort />
-Company Value ↓ Age Globex $48,000 1d Hooli $22,500 1d Northwind $14,400 2h
-Board
-Columns by a field; a drag writes it through records.update .
-<Board columns items groupBy="stage" onMove />
-Lead 14 Umbrella $3,600
-Stark Labs $5,400
-Talking 9 Northwind $14,400 C
-Hooli $22,500 J
-Proposal 5 Globex $48,000 S
-Won 23 Vandelay $6,800
-BulkBar
-Verbs for checked rows. Never bulk approve.
-<BulkBar count actions onClear />
-3 selected Move…
-Pages
-Strip of parts: status, presence, lock.
-<Pages parts value onPick />
-1 · Title done
-2 · Q3 agent
-3 · Pipeline M Mona
-Compare new
-Two parts or files side by side; changes marked.
-<Compare a b mode />
-B-114 rev B
-rev C
-Side by side Overlay hole +8 mm
-Checklist
-Each step signed, with evidence.
-<Checklist steps signOff evidence />
-Torque check, 12 bolts R @raj · 06:12
-Second check · not @raj photo required Sign
-Release line 2 after second check
-Thread
-Messages, newest last: email, chat, comments.
-<Thread messages onReply />
-3 earlier messages
-P Priya Shah Tue 10:12
-Can you hold the 40-seat price?
-S You 11:40
-Yes, held until Fri 17 Oct.
-States
-Every screen has all three.
-<Empty /> <Error /> <Loading />
-Empty No deals yet · New deal
-Loading · after 150ms
-Error · keeps old rows Can't reach Gmail · Retry
-Data blocks 12 · bound to data through the bridge @codeaf/kit ← @codeaf/bridge
-RecordList ← useRecords("deal", query)
-Virtualised list with QueryField, StateMeter, selection and keys wired. Any record type.
-stage: open Search deals · company: value: Likely to close AI
-Lead 14 Talking 9 Proposal 5 Won 23 Lost 11
-28 open deals · likely to close ↓ · your pin first j / k · ↵ open
-Globex Annual renewal · 120 seats Proposal S Send revised quote $48,000 1d
-Northwind Team plan · 40 seats Talking C Follow-up drafted $14,400 2h
-Initech Pilot for the ops team Proposal M Security review call Thu $9,000 3h
-RecordPage ← useRecord(id)
-One record: fields, links, history.
-deal · Northwind
-Team plan · 40 seats
-Talking $14,400
-Contact Priya Shah Next Follow-up drafted Linked Support · 2
-Form ← records.update
-Create or edit from the schema; validates, then writes.
-answer key + scoring
-Line Line 2 Downtime (min) -5 Must be 0 or more Cancel Save
-RunTimeline ← useRun(id)
-Steps, loops as parent rows, gates.
-draft wrote 3 emails 40s
-check tone max 3
-round 1 too pushy 12s
-round 2 ok 10s
-approval: send
-LogStream ← useRun(id).log
-Live output of a run; follows the tail.
-09:58:02 draft · read 7 threads
-09:58:31 draft · wrote 3 emails
-09:58:40 tone · round 1 · pushy
-09:58:52 tone · round 2 · ok
-09:58:53 waiting · approval
-DiffViewer ← useRun(id).diff
-A run's file changes.
-retry.ts +18 −4
-41 for (let n = 0; n < max; n++) {
-42 - await sleep(1000)
-42 + await sleep(backoff(n))
-43 + if (n === max-1) giveUp(id)
-ProofList ← useRun(id).proof
-Claims with evidence.
-Retries back off 1s, 2s, 4s retry.spec › backoff
-No duplicate deliveries no evidence · your call
-ApprovalCard ← approve(…)
-A gate, also in Inbox. 5s Undo.
-Approval needed: send email
-To Priya Shah, Northwind
-Approve Edit Skip
-SignOff ← approve('sign')
-Named signers in order; maker never checks own work.
-R Maker · @raj signed 06:22
-Checker · you anyone but @raj Sign
-Quality lead after check
-Chart ← useRecords(type, q)
-Five kinds from one query: bar, line, area, metric, live.
-Bar Line Area Metric Live Won value by month · $k Oct · $23k
-FileViewer ← useRecord(id).file
-PDF, image, drawing with pinned notes.
-region masking revision compare
-B-114 rev C.pdf 2 / 6
-1 2
-Media new ← useRecord(id).file
-Video or audio with chapters and captions. Also a Canvas box type.
-Hold the price until Friday. 04:12
-11:05 CC
-00:00 Intro
-02:30 Pricing objection
-07:50 Next steps
-10:20 Wrap-up
-Primitives 28 · the controls of C1 and C3, exported · an app passes props, it cannot restyle them @codeaf/kit
-Approve Edit
-Button kind · size
-IconButton icon · label (required)
-$48,000 Team
-Chip value · onPick · selected
-stage: open
-Token field · value · onRemove
-Northwind
-Field label · value · error
-Proposal
-Select options · value
-Week Month
-Segmented items · value (a setting)
-Toggle on · onChange · label
-Open deal ↵
-Assign…
-Remove…
-Menu items · destructive last
-New deal
-Sheet title · onClose · primary
-Remove Globex? Nothing is deleted. Cancel Remove
-Dialog title · confirm · tone
-Edit deal E
-Tooltip text · shortcut
-Moved Undo
-Toast text · action · 5s
-S M J C
-Avatar person | agent · size
-StateGlyph needs · running · queued · idle · done · failed
-Icon name (CodeAF set)
-Title Secondary
-Text size · tone
-⌘ K ↵
-Kbd keys
-acme/api
-Code children (mono)
-Stack gap="1…6" · align
-Row gap · align · wrap
-Talking · 9 Proposal · 5
-Divider inset · vertical
-M T W T F S S 6 7 8 9 10 11 12 13 14 15 16 17 18 19
-DatePicker value · range · min · max
-M @mona J @jm
-PeoplePicker value[] · multiple · role
-Drop or browse
-FileDrop accept · max · onFiles
-@mona · 14:02
-Signature role · onSign · signedBy
-SLA 1h 12m left −0:04 over
-Timer new up | down · amber · red
-PAN ABCDE••••F
-reveal is logged
-Masked value · reason · logged
-Record rules 3 · rules on records, kept by the records store · not kit parts app.json · records
-Record rules set in app.json · enforced by the records store, not kit parts
-Freeze Lock a period or a record; edits after need an unfreeze, which is logged. freeze: { period: "2026-09" }
-Blind fields Hidden from you until you submit your own; then revealed. score: { blind: "until-submit" }
-Computed fields Worked out from time or other fields; never typed. age = now − opened_at
-Shell-owned not in the kit · an app can only open them CodeAF shell
-AgentPane Docked chat. Use: the app's agent changes content. Shape: the Builder changes the app.
-Inbox Questions and approvals from every app, answered inline.
-Activity The append-only log: “Mona shaped CRM · View · Undo”.
-Versions Every applied change; one-click Restore.
-Share sheet Share link for workspace members, served by the workspace’s codeaf server.
-Shape mode Plan menu · draft app · agent pane · draft bar.
-plan card plan.json drawn with a sketch per screen; every line editable.
-draft bar Draft · 3 changes · Show diff · Apply · Discard.
-Also the shell's (v2): sign-off roles (“Quality lead”, “Second checker”; only for SignOff and Checklist) · audit log (every reveal, sign and change; retention rules, legal hold).
-Within the workspace only. Backlog: guest access for outsiders, phone & browser surface (camera scan, label printing), audit pack export.
-Folded away the old list → the 59 · was 66 parts plus app-specific blocks old → new
-Document · ArtboardCanvas → Canvas + Pages
-MarkdownDoc · EmailComposer → Text
-Grid (pattern) → Grid
-Gantt · Calendar → Timeline
-TraceGraph → Graph
-MetricTile · TimeSeries → Chart metric · live kinds
-EmailThread → Thread
-Timeline (events) → Activity shell
-FileTree · Tree → List nested rows
-RecordForm · Form → Form
-Empty · ErrorState · Loading → States
-Live blocks (21) → Data blocks 12 + 6 surfaces
-Gallery test · 14 apps (L7, L8) kit parts used per app · every gap and the v2 part, feature, rule or shell item that closes it spec/l7_usage.json · l8_usage.json
-App · L7, L8 parts gap → covered in kit v2 by · or Backlog
-App · L7, L8 parts gap → covered in kit v2 by · or Backlog
-Bank · KYC review 23 Region masking in files → FileViewer · region masking Sign-off roles → Sign-off roles Audit export → Audit log Backlog · audit pack export
-Aerospace · NCR 20 File compare → FileViewer · revision compare Sign-off roles → Sign-off roles
-Manufacturing · Line + handover 17 Phone and browser surface → Backlog · phone & browser surface
-Logistics · Dispatch 12 Map → Map Phone and browser surface → Backlog · phone & browser surface
-Law firm · Contract review 16 Track changes → Text · track changes Word round-trip → Text · .docx import / export Backlog · Word round-trip beyond import / export Clause numbering → Text · clause numbering
-Retail · Inventory + POs 20 Camera barcode scan → Backlog · camera scan Label printing → Backlog · label printing Phone and browser surface → Backlog · phone & browser surface
-Slides 18 Deck themes → Canvas · themes
-Ad campaign studio 39 Video → Media Two-up compare → Compare
-Investor update + metrics 33 Freeze → Freeze Merge fields → Text · merge fields
-Hiring pipeline 42 Availability finder → Timeline · free/busy Blind fields → Blind fields Outside-person access → Backlog · guest access Merge fields → Text · merge fields
-Shared support inbox 37 Live timer → Timer Merge fields → Text · merge fields
-Course builder 37 Video → Media Graded quiz → Form · answer key + scoring Outside-person access → Backlog · guest access
-Incident room 38 Live timer → Timer Live graph state → Graph · live nodes
-Month-end close 41 Freeze → Freeze Match view → Grid · match mode Audit pack → Audit log Backlog · audit pack export
-24 distinct gaps → 20 covered in kit v2 · Backlog: Word round-trip beyond import / export · audit pack export · camera scan · guest access · label printing · phone & browser surface. · dark = surface · amber = record rule · outlined = shell
-Bridge the one door between screens and the shell @codeaf/bridge
-Hooks read · live · bound in screens/*.json useRecords(type, query) Live list of this app's records; counts per state come from the shell. useRecord(id) One record with fields, links, history. Another app's record is read-only , via a link. useParts(file) A surface file split into parts, with lock, presence and versions per part. useRuns(query) · useRun(id) Runs, live: steps, rounds, gates, .log , .diff , .proof , .files . useAgent(name) The app's agent: state, spend vs budget. To talk to it, open() the pane. usePeople() Workspace members: handles, avatars, who is around, app roles (Editor · User · Viewer).
-Actions ask the shell to act records.update(id, fields) Writes this app's records; every write has Undo. A removed field is hidden, never deleted. runs.start(name, input) · runs.stop(id) Starts a pipeline after the cost check (“up to $2”). Stop keeps its work. approve(kind, payload) Anything that leaves the workspace : “Approval needed: send email”. inbox.ask(question) A plain question in Inbox; the answer comes back to the caller. tools.call(server, tool, args) A connector declared in app.json . The only way out; no fetch . ai.sort · ai.summarise AI inside an app, always labelled “· AI”; a hand pin or drag wins. link(a, b) · open(record | agent) Links records across apps (other side read-only); opens a record or the agent pane.
-Your records An app reads and writes its own records freely, with history and Undo.
-Other apps Read-only through links. CRM shows a deal's Support tickets; it cannot edit them.
-Leaving the workspace Goes through approve ; a direct tools.call('gmail','send') is refused.
-Capabilities Each hook and action needs one in app.json ; adding one is a change you approve.
-Kit law enforced by the checker before preview · a failure goes back to the Builder kit lint
-Rule Checker rule Bad → good Screens name only kit parts screens/*.json is checked against the kit schema; custom/*.tsx imports only kit, bridge, react. kit/parts { "part": "DataGrid" } → { "part": "Table" } Hard editing uses a surface No hand-rolled editors; an app is easy parts plus one surface. kit/surface { "part": "custom/SlideEditor" } → { "part": "Canvas", "frame": "16:9" } No raw colours, sizes or fonts Tone, state and tokens; the theme does the rest. kit/no-raw-style "style": { "color": "#e5484d" } → "tone": "critical" No fetch, no network Connectors are declared and called through the bridge. kit/no-network fetch('https://api.hubspot.com/deals') → tools.call('hubspot', 'deals.list', q) One navigation row One SectionTabs per app, under the CodeAF header. kit/one-nav two SectionTabs in one screen → { "part": "SectionTabs" } once Lists that can grow use RecordList With QueryField, so search works the same everywhere. kit/record-list { "part": "List", "rows": "$deals" } → { "part": "RecordList", "type": "deal" } Destructive actions go through Dialog The label ends in “…”; the dialog names what ends and what stays. kit/confirm { "part": "Button", "do": "remove" } → { "do": "remove", "confirm": "Remove Globex?" } Anything leaving the workspace goes through approve Email, posts, replies to customers. kit/approve tools.call('gmail', 'send', mail) → approve('send email', mail) Every interactive element has a label Screen readers, tooltips and ⌘K use it. kit/label { "part": "IconButton", "icon": "more" } → + "label": "Deal actions"
-How generation works describe an app → the Builder plans and writes → a tab you can keep → Shape Plan → Write → Check → Preview
-1 Plan plan.json → plan card
-Plan The Builder writes plan.json; CodeAF draws the plan card with a kit-rendered sketch per screen. Every line is editable in place. “Just build it” skips it.
-CRM · plan click any line to change it
-Data deal · contact · reads Gmail
-Automation new email → follow-up draft → approval: send
-Screens Deals
-Deal
-Reports
-Needs Gmail · AI sort · up to $20 a month · worked out by CodeAF
-Write it Just build it Change plan
-2 Write files only
-Write The Builder writes the app's files: declarative screens from easy parts plus one surface. Nothing runs yet.
-app.json +64
-runs/follow-up.yaml +31
-screens/deals.json +88
-screens/deal.json +52
-agent.md +22
-3 Check max 3 rounds
-Check Schema check, kit lint, render every screen with sample records, behaviour check (runs on sample data against connector fakes). A failure goes back to the Builder; after round 3 you see Fix it · Cancel.
-● round 1 · kit/no-raw-style deals.json:42
-✓ round 2 · schema
-✓ round 2 · kit lint · 0
-✓ round 2 · rendered 3 screens
-4 Preview → Shape
-Preview The app runs in a tab on sample data. Keep makes version 1; later changes happen in Shape.
-Keep Shape more Discard Use Shape
-Data Automation Screens Agent Needs
-Draft · 2 changes · Show diff · Apply
-Builder
-Shape: plan as a menu · the running app as a draft only you see · the Builder changes the app · draft bar on top. In Use, the CRM agent changes content only.
+A3 · Apps · architecture
+A3 · Apps · architecture
+How Apps are built: the desktop app, the codeaf server (the same binary for personal and workspace spaces) and runners; the three main flows step by step; the library per surface; security, the Builder quality loop and performance.
+System three parts · the server is the codeaf binary
+Desktop app Mac, Linux · one per person · talks to each space's server Tauri 2 shell Native window, menus, Keychain, deep links codeaf:// , auto-update. Starts the personal codeaf server as a sidecar. Rust · tauri 2
+React shell Rail, tabs, Apps section, plan card, Building, Shape (draft bar), Versions, Inbox, AgentPane. React 18 · TypeScript
+Kit v2 · 59 parts Primitives, patterns, 6 surfaces, data blocks. Tokens only. @codeaf/kit
+Screen runtime Reads screens/*.json, resolves bindings, runs CEL when , renders kit parts, sends actions through the bridge. @codeaf/runtime
+Bridge client Typed calls + subscriptions over one WebSocket per space. Local cache of the last pages for offline reading. @codeaf/bridge
+Sandbox iframe Only for custom/*.tsx : sandbox="allow-scripts" , CSP default-src 'none' , bridge by postMessage. labelled “custom”
+bridge calls · subscriptions HTTPS + WSS
+codeaf server the same codeaf binary · personal: sidecar on 127.0.0.1 · workspace: codeaf serve on a team box · Go, Apache 2.0 API gateway HTTPS + WebSocket. Session tokens per member; every call carries space, app, member. net/http · coder/websocket
+Capability checker Runs on every bridge call before anything else: app capabilities × app role × record rules. Deny = typed error, logged. internal/apps/caps
+Records One SQLite file per app; JSON columns with generated, indexed columns for index: true fields. History rows per change. modernc.org/sqlite
+Query compiler QueryField tokens → AST → parameterised SQL. Injects permission filters, blind and masked rules. Keyset pagination. internal/apps/query
+Runs engine Executes runs/*.yaml as steps on the durable journal ; gates, waits and retries are journal entries; durable timers for waits and cron. internal/journal · standing orders cron
+Realtime Pub/sub by topic ( app/crm/deal/* , run/… , lock/part/… ). Locks, presence, live query updates (row diffs), version pushes. in-process hub
+Connectors Gmail, Calendar, Slack, MCP from internal/connect ; each has a fake used in Preview, drafts and Check. Approval policy on outbound. internal/connect · fakes
+Builder service CodeAF's agent. Writes the definition only; no record or content read API exists for it. internal/apps/builder
+Check pipeline Schema → kit law → render every screen headless → behaviour on fakes. Max 3 rounds back to the Builder. internal/apps/check
+Versions · git definition/ and content/ repos per app; migrations; drafts as worktrees + overlay.db. go-git
+Audit log Append-only: every call that writes, reveals, sends, approves or denies. journal store
+step leases · logs HTTPS long-poll
+Runners for workspace: repo steps only Runner Leases steps over HTTPS long-poll; fresh checkout, branch, shell; streams logs back. codeaf runner
+Personal Your Mac is your runner.
+Workspace Admin registers runners; members' keys and caps apply per run.
+One desktop app connects to several servers at once (Personal · acme · globex), one WebSocket each. Screens and custom code never reach a server except through the bridge; the bridge never reaches the network except its own space's server. External services are reached only by the server's connectors.
+Built on the codeaf repo Go · Apache 2.0
+codeaf already has Apps use it as internal/connect · Gmail, Calendar, Slack, MCP Connectors. Each gets a fake with the same interface (records calls, returns canned replies) for Preview, drafts and Check. Approval policy Outbound gates and capability denials; the same Inbox items. Durable journal store Runs engine state, gates, waits, durable timers, audit log. Recorded task runs Behaviour checks replay recorded connector exchanges; failed runs keep their record for the Builder's fix round. Standing orders with cron Schedule triggers in app.json use the same cron scheduler. modernc pure-Go SQLite records.db, overlay.db, and the server's own tables. No cgo; one static binary for Mac and Linux.
+Flows numbered steps · amber = a person acts
+(a) New app → preview plan · write · check · preview
+Schema JSON Schema 2020-12
+Kit law parts, tokens, labels, one nav
+Render every screen, sample data
+Behaviour runs on fakes
+1 You New app… sheet: one paragraph ( “A CRM for acme…” ) · space · Make plan .
+2 Builder Writes plan.json on a draft branch. Server computes Needs from it.
+3 Desktop Plan card draws plan.json; screen sketches render with the kit on sample data. You edit lines → requests → step 2 again. Write it .
+4 Builder Write : app.json, screens/*.json, runs/*.yaml, agent.md. Building shows Plan · Write · Check · Preview.
+5 Check Schema (JSON Schema) → kit law → render every screen headless with generated sample records → behaviour : each run on sample data against connector fakes.
+6 Builder On failure, gets the check report and fixes. Max 3 rounds; then “Check failed · Fix it · Cancel” to you.
+7 Desktop Preview in a tab on sample data, fakes only. Keep → v1, private to you until the first Apply.
+(b) Shape draft → Apply migration · version · realtime
+1 Editor Header switch Use · Shape → server creates the draft (worktree + overlay.db) on vN.
+2 Builder Each request → diff on the draft branch → Check (same 4 checks). Centre shows the draft; it reads real records, writes to the overlay.
+3 Server On Apply : schema diff → generated migration → dry run on a copy → sheet “38 deals affected · nothing deleted” .
+4 Editor Confirms Apply ( “everyone in acme gets v12” ).
+5 Server One transaction: merge draft → tag v12, run migration on records.db, write the version (request + diff + who) and the audit line.
+6 Realtime Publishes app/crm/version = 12 to all members. Each desktop fetches the changed screens, swaps them in place, keeps selection and scroll.
+7 Members Activity: “Mona shaped CRM · v12 · View · Undo” . Open drafts by others get replayed on v12.
+(c) A bridge call from a screen capability · SQL / connector · approval
+1 Screen Click Draft follow-ups → action runs.start with params → bridge call over WSS.
+2 Server Capability check : app may start follow-up ? member's app role ≥ User? deals readable? Deny → typed error → Toast “CRM can't do that · Needs” .
+3 Server Cost check from the budget → desktop shows “Run · up to $0.50 · Start” .
+4 Runs Steps on the journal. gmail.search → capability check again → connector as the owner (per-app allow on file, else “CRM may read email as Mona · Allow · Not now” ).
+5 Records records.update → query compiler → SQL with permission filters → history row → realtime row diff to subscribers.
+6 Approval gmail.send is outbound → gate “Approval needed: send” in the owner's Inbox. Nothing leaves the workspace until Approve .
+7 Audit Every call above appends one audit line (call, app, member, decision).
+Libraries one per surface · final
+Surface or part Library Use Text ProseMirror via Tiptap Markdown in/out with part markers; merge fields; track changes; .docx import/export. Grid IronCalc Formula engine (Excel syntax) compiled to WASM in the desktop, native Rust on export; deal.field ranges resolved through the bridge. Graph React Flow + elkjs Nodes and links from graph/*.json; elk layered layout; nodes may bind live records. Map MapLibre GL places/*.json (GeoJSON); vector tiles from the workspace's configured tile URL. Charts Vega-Lite Chart part and Canvas chart boxes; specs stored as files; data from bindings. Media hls.js + WebVTT Media part and Canvas media boxes; chapters and captions as .vtt. Files PDF.js · pdfium (server) Viewing and pinned markup in the desktop; region masking/redaction burned in on the server with pdfium before a file is shared or exported. Canvas own box model + react-moveable + pptxgenjs Boxes from slides/*.json rendered as HTML; drag/resize/snap with react-moveable; PPTX export with pptxgenjs, PDF from the same HTML. Timeline own renderer on the kit plan/*.json items on a time axis; free/busy from the Calendar connector. Lists TanStack Virtual RecordList, Table, Board columns.
+Security
+Sandbox
+custom/*.tsx runs in an iframe with sandbox="allow-scripts" (no same-origin), CSP default-src 'none'; script-src 'self' ; no network, no storage, no top navigation. It talks only through the postMessage bridge, which forwards typed calls to the server.
+Server-side capabilities
+The desktop never decides. Every bridge call (screens, custom code, runs, the app's agent) is checked on the server against app.json capabilities, the member's app role and record rules. A capability not in app.json does not exist for that app.
+Builder never reads content
+The Builder service has no API for records or content files. It sees app files, the plan, check reports and generated sample records only.
+Outbound approvals
+Send, post, pay and any tool marked outbound create an approval; nothing leaves the workspace before a named person approves. Connector fakes are used in Preview, drafts and Check.
+Prompt-injection containment
+Content (emails, records, docs) reaches only the app's agent, whose tools are the app's capabilities and nothing else. It cannot change the app ( “That changes the app · Shape this” ), cannot reveal masked or blind values, and its outbound actions hit approvals.
+Personal connectors
+A workspace app acts as you only after you allow it once for that app; revoke in Settings → Accounts or App ⌄ → Needs. Workspace connections: Admins only.
+Audit log
+Append-only, on the journal store: writes, reveals, sends, approvals, denials, Apply, migration, role changes. Kept forever; export UI is backlog, the log exists in v1.
+Secrets
+Connector tokens live in the server's keystore (workspace) or the macOS Keychain / Secret Service (personal). Never in app files, never sent to the desktop.
+Builder quality loop an eval suite, not opinions
+Suite
+120 app descriptions: the 14-app gallery, the industry set (startup, tech team, bank, aerospace, manufacturing) and every description that failed in the field (anonymised, descriptions only).
+Run
+Each goes New app → plan → write → check → preview on fakes, headless. Every kit change and every model change runs the full suite; nightly runs it on the current release.
+Scores
+check passes within 3 rounds · kit law clean · behaviour tests pass · screen renders compared with the last accepted snapshot · Builder cost and rounds.
+Gate
+A kit or model change ships only if pass rate does not drop and no description that passed before now fails. Results are a board in the CodeAF repo's CI.
+Performance how it is built
+Lists Virtualised (TanStack Virtual); only visible rows are in the DOM. Queries Run on the server, never filtered in the client. Paginated 100 rows, keyset on the sort key. StateMeter counts are a separate COUNT … GROUP BY. Indexes index: true fields, refs and enums get a generated column and an index at migration time. Live updates Realtime sends row diffs for subscribed queries, not whole pages. Presence and locks are in memory only.
+Screens screens/*.json are cached per version in the desktop; a new version fetches only changed files. Writes SQLite in WAL mode, one writer goroutine per app database, readers in parallel. Runs Steps are journal entries; a server restart resumes every run at its last completed step. Timers fire from the journal, not from memory. Custom code One iframe per custom part, created when it scrolls into view and destroyed when it leaves.
 class Component extends DCLogic {
 renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
 }

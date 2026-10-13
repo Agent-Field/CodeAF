@@ -1,212 +1,131 @@
 
-Spaces and people
-L9 · Spaces and people Personal and workspaces in one switcher · workspace roles Owner · Admin · Member · app roles Editor · User · Viewer · sign-off roles
-a acme Workspace
+L1 · The rail with apps
+L1 · The rail with apps Apps is a rail section · a space switcher on top · Factory is CodeAF’s prebuilt app · New app… describes one, the Builder builds it
+acme
 Inbox
 Crews
 Release
 Pricing page
+jev prototype
 Agents
 api-docs
-CRM agent
+Triage flaky tests
+Why is CI slow?
 Apps
 acme
 CRM
-Slides
 Support
+Hiring
 New app…
+Archived 2
 All crews and agents ⌘⇧P
 Release
 acme
 CRM
 Inbox
-CRM Workspace app · acme · v12 · shaped by @mona · you: Editor Use Shape Agent App
-stage: open owner: team Search deals · company: value: touched: Likely to close AI Views
-Lead 14 Talking 9 Proposal 5 Won 23 Lost 11
-28 open deals · likely to close ↓ j / k · ↵ open
-Company Deal Stage Next step Value Touch
-Globex Annual renewal · 120 seats Proposal S Send revised quote $48,000 1d
-Northwind Team plan · 40 seats Talking C Follow-up drafted · waiting on you $14,400 2h
-Initech Pilot for the ops team Proposal M Security review call Thu $9,000 3h
-Hooli Expansion · EU region Talking J Book a demo with their CTO $22,500 1d
-Umbrella Starter plan Lead C Follow-up drafted · quiet 7d $3,600 7d
-Vandelay Import tooling seats Talking R Send case study $6,800 2d
-Acme Retail Store managers rollout Lead C Follow-up drafted · quiet 8d $12,000 8d
-Stark Labs Research team · 15 seats Lead M Intro call Mon $5,400 4d
-Pied Piper Annual · 25 seats Proposal S Waiting on legal $10,500 5d
-Spaces
-S Personal only you · on this Mac 1 app ⌃⌘1
-a acme acme.codeaf.dev · Owner 4 apps ⌃⌘2
-g globex globex.codeaf.dev · Member 2 apps ⌃⌘3
-Join a workspace…
-New workspace…
-Workspace settings… acme
+acme CodeAF’s prebuilt app · acme · v3 · shaped by @santosh Shape Agent App
+Jobs Repos Pipelines Runners People Activity New job
+assignee: me Search or filter · state: repo: label: priority: Priority Views
+Needs you 2 Running 12 Queued 4 Backlog 182 Done 9 this week
+7 assigned to you · priority ↓ j / k · ↵ open
+api#1498 Retry webhook deliveries with backoff Approval needed: proof M S 58m
+api#1530 Webhook signatures fail for payloads over 1 MB code ↔ test · round 1 of 3 S S 12m
+web#2104 Orders table jumps when filters change test XS S 40m
+api#1527 Add idempotency keys to POST /invoices queued · runner santosh-mbp M S 1h
+infra#318 Alert when the job queue is older than 1h queued S S 5h
+web#2099 Dark mode for invoices PDF preview backlog M S 1d
+New app ⌘K · New app…
+Say what it is for and who uses it. The Builder writes the app from this; the app gets its own agent for the content.
+A CRM for our sales pipeline: companies, deals and contacts. The agent drafts follow-ups when a deal goes quiet for a week; I approve every email before it sends.
+Records, screens, what the agent does, what needs your approval ⇧↵ new line
+Home Personal acme workspace you are its Editor · other members of acme get User
+Budget up to $20 a month the app's agent spends from this; at the cap it pauses and asks
+Connectors Gmail Calendar Add from Settings → Accounts
+App agent model GLM 5.3
+The Builder writes the app. You'll see it running before you keep it. Cancel Create app ↵
 1
 2
 3
 4
 5
 6
-7
-8 Personal rail and acme rail
-The same rail, two spaces. The switcher is the only thing on top that changes.
-Personal
-S Personal only you
-Inbox
-Crews
-jev prototype
-Agents
-Why is CI slow?
-Triage flaky tests
-Apps
-Dashboards
-New app…
-All crews and agents ⌘⇧P
+1 · Building
+After Create app: a new tab; the Builder works through five steps.
 acme
-a acme Workspace
+CRM · building
 Inbox
-Crews
-Release
-Pricing page
-Agents
-api-docs
-CRM agent
-Apps
+CRM Workspace app · building · only you see it Shape Agent App
+Brief 3 record types · 1 agent rule · 1 approval 0:12
+Records deals, companies, contacts · 14 fields 0:41
+Screens screens/*.json · pipeline board · deal page · contacts list running
+App agent agent.md · drafts a follow-up after 7 quiet days
+Checks opens every screen with sample data
+Spent $1.12 of $20 Watch the Builder Cancel
+The tab and the rail row show a spinner until Checks pass. Watch the Builder docks the Builder pane (CodeAF's own agent, "Builder · shaping the app") on the right. The app's agent only starts once the app is kept. You can switch tabs; when it is ready, Inbox gets one line "CRM is ready to preview". A failed step shows Fix it · Cancel .
+2 · Preview, then keep
+When Checks pass, the app runs in its tab as a preview with sample records.
 acme
+CRM · preview
+Inbox
+Preview · CRM · only you see it until you keep it Keep Shape more Discard
+CRM Workspace app · preview · v1 Shape Agent App
+Pipeline Companies Contacts Likely to close AI New deal
+Lead 4
+Hooli · 40 seats @mona · 2d
+Umbrella · pilot @raj · 5d
+Qualified 3
+Globex · renewal @jm · today
+Initech · 12 seats @santosh · 9d quiet
+Proposal 2
+Northwind · annual @mona · follow-up drafted
+Won 1
+Globex · pilot @jm · 1 Oct
+Uses Records · deals, companies, contacts Agents Inbox Approvals Gmail Calendar AI sort AI
+Trigger new email · Gmail matches the sender to a contact, moves the deal's last-reply date
+The preview runs on sample records; nothing is sent. Keep writes v1, lists these needs in App ⌄ → Needs; the app stays private to you until your first Apply. Shape more keeps the preview and opens the Builder pane. Discard removes the app and its rail row.
+3 · App menu
+App ⌄ in the header line, here on CRM.
+CRM Workspace app · v12 · shaped by @mona Shape Agent App
+Versions… v12
+Open files ⌥⌘U
+Make my copy
+Needs 8
+Triggers 1 on
+Budget $6.20 of $20
+Members 4
+Move to workspace…
+Archive app…
+Delete app…
+Same menu in the menu bar (App) and on right-click of the rail row. Versions… lists every applied change with who made it and one-click Restore. Members sets app roles (Editor · User · Viewer); the maker is Editor, other members of acme get User. Archive app… moves the row into the collapsed Archived group at the bottom of Apps and keeps its records; restore any time. Delete app… (Owner or Admin) asks first; records are kept for 30 days.
+4 · Rail row states
+An app row shows at most one thing at its right edge.
 CRM
-Slides
+Idle. Nothing running, nothing waiting.
 Support
-New app…
-All crews and agents ⌘⇧P
-Personal acme
-Runs on the codeaf server inside your app, on this Mac the acme server (acme.codeaf.dev), run by the team
-Who only you; you are every role members invited by an Owner or Admin
-Apps Personal apps (Dashboards) Workspace apps (acme Factory, CRM, Slides, Support)
-Crews, agents yours, only here yours, only here; members see crews you share
-Connections your own accounts your own accounts (each app asks once) and the workspace's
-Inbox what needs you here what needs you here
-Spending your caps (Settings → Spending) workspace budgets set by Admins, plus your caps
-9 Joining a workspace
-Invite link → sign in → your role.
-1 Invite link opens CodeAF
-a Join acme
-Invited by M @mona · Admin Server acme.codeaf.dev As Member
-Continue Not now link works once · 7 days
-2 Sign in to acme
-acme signs people in with Google. Use the address the invite was sent to.
-Continue with Google santosh@acme.com
-3 You're in
-Welcome to acme
-Your role Member · use and make apps
-Apps CRM · User · Slides · User
-Support · User · acme Factory · User
-Open acme adds acme to the switcher
-10 Workspace settings → Members
-Opened from the switcher: Workspace settings…. Here @santosh is the Owner.
-acme · Members
-General Members Connections Spending Apps
-Invite Owner and Admins
-dana@acme.com Member Send invite Copy link
-Members · 4 1 invited
-S @santosh you santosh@acme.com · active now
-Owner
-M @mona mona@acme.com · active now
-Admin
-R @raj raj@acme.com · 2h ago
-Member
-Owner pays for and can delete acme
-Admin invites, connections, budgets
-Member uses and makes apps
-Remove from acme…
-J @jm jm@acme.com · yesterday
-Member
-D dana@acme.com invited by @santosh · 2 days ago
-Resend Cancel Member
-11 Leave
-Leave acme
-You're the last Owner. Make someone else Owner first, or delete acme in General.
-Leave acme…
-12 An app's Members sheet
-CRM, opened from App ⌄ → Members by an Editor.
+Running. Its agent or a trigger is working.
 CRM
-Inbox
-CRM Workspace app · v12 Use Shape Agent App
-Globex Annual renewal · 120 seats $48,000
-Northwind Team plan · 40 seats $14,400
-Initech Pilot for the ops team $9,000
-Hooli Expansion · EU region $22,500
-Umbrella Starter plan $3,600
-Vandelay Import tooling seats $6,800
-CRM · Members App ⌄ → Members
-People Sign-off roles
-a Everyone in acme the default for anyone without their own row · 4 people
-User
-M @mona made CRM
-Editor
-S @santosh you
-Editor
-R @raj from Everyone in acme
-User
-J @jm set by @mona · 3 Oct
-Viewer
-Add a person… User
-Editor Shape and Apply, Members, Needs, Budget User works with records and content; asks the CRM agent Viewer reads; asks the CRM agent questions
-Only Editors change this Done
-13 A User tries Shape
-@raj is a User of CRM.
-CRM
-Inbox
-CRM Workspace app · v12 · you: User Use Shape Agent App
-Globex Annual renewal · 120 seats $48,000
-Northwind Team plan · 40 seats $14,400
-Initech Pilot for the ops team $9,000
-Hooli Expansion · EU region $22,500
-Umbrella Starter plan $3,600
-Only editors can shape CRM
-You're a User of CRM. Ask an Editor to make the change; your words go with it.
-add a column for last reply
-Ask @mona Cancel
-@raj asks to shape CRM "add a column for last reply"
-Shape this Not now
-@mona's Inbox. Shape this opens Shape with Raj's words pre-filled for the Builder.
-14 A Viewer's read-only app
-@jm is a Viewer of CRM.
-CRM
-Inbox
-CRM Workspace app · v12 Viewer · read only Agent App
-You can read CRM. Ask an Editor to make you a User. Ask @mona
-Pipeline Companies Contacts New deal
-Globex Annual renewal · 120 seats $48,000
-Northwind Team plan · 40 seats $14,400
-Initech Pilot for the ops team $9,000
-Hooli Expansion · EU region $22,500
-Umbrella Starter plan $3,600
-The same app, the same records. Only what you can do changes.
-15 Sign-off roles
-Support → App ⌄ → Members → Sign-off roles. Editors only.
-Support · Members People Sign-off roles
-Used by the SignOff chain Refund over $500 screens/refund.json . Signed in this order.
-1 Maker R @raj J @jm M @mona
-2 Checker M @mona S @santosh
-3 Quality lead M @mona
-Add role
-Maker can never check own work. Whoever made a refund can't sign it at a later step, even if they hold that role. Always on.
-If @mona makes a refund, Checker goes to @santosh and Quality lead has nobody left . Add a second Quality lead.
-1 The space switcher is the first row of the rail, above Inbox. It shows the current space: its square, its name and "Workspace" (or "only you" for Personal). Click it or press ⌃⌘0 to open this menu; ⌃⌘1–⌃⌘9 jump straight to a space in menu order. The amber dot means another space has something waiting for you.
-2 Personal is always first and always there. It is the codeaf server inside your own app on this Mac: only you, your own accounts, your Personal apps. It cannot be left or deleted.
-3 Workspaces follow in the order you joined them. Each row: square, name, server address, your workspace role, and how many apps you can open there. The current one has a check. Picking one swaps the whole rail and the tab strip to that space; the tabs of the space you left are kept and come back when you return.
-4 A space that needs you shows an amber dot after its name. Inbox always shows the current space only; the dot on the switcher is how you learn about the others.
-5 Join a workspace… opens a field for an invite link or a server address (see 9). New workspace… asks for a name and the address of a codeaf server your team runs ( codeaf serve , the same binary); you become its Owner.
-6 Workspace settings… opens the settings window of the current workspace: General · Members · Connections · Spending · Apps. Members see it read only; Owner and Admins change it. In Personal this row reads Settings… and opens the app's own Settings (⌘,).
-7 The header says where an app lives : "Workspace app · acme", the version, who shaped it last and your app role (Editor · User · Viewer). Runs of a workspace app run on the acme server, never on this Mac.
-8 One rail per space. Switching space swaps every section (Crews, Agents, Apps) and the Inbox. Nothing from one space shows in another: a Personal app never appears in a workspace rail and a workspace app never appears in Personal. To move an app use App ⌄ → Move to workspace… (records move with it).
-9 Joining a workspace. The link ( codeaf://join/acme.codeaf.dev/… ) opens CodeAF at step 1; pasting it into Join a workspace… does the same. Step 2 uses whatever sign-in the workspace server is set to (Google, GitHub or email code). Step 3 states the role the inviter chose and the app role each app gives "Everyone in acme". Open acme switches to it. A used or expired link shows "This invite has expired · Ask @mona for a new one".
-10 Workspace roles. Owner pays for and can delete the workspace; Admin invites, removes Members, adds workspace connections and sets budgets; Member uses and makes apps. Everyone sees this list; only Owner and Admins see the controls. Only an Owner can make or unmake an Owner. The role chip opens the menu shown on @raj.
-11 Remove from acme… asks first ("@raj loses access to acme now. Apps he made stay; records he made stay; his personal connections stop working in acme apps."). Invites expire after 7 days. The last Owner can't leave : Leave is disabled with the reason underneath, and the last Owner can't be made Admin or Member.
-12 App roles are per app: Editor · User · Viewer. "Everyone in acme" is the first row and sets the default (User when an app is first Applied). A person row overrides it; a grey role means it comes from Everyone. The maker of an app is its first Editor. An app always keeps at least one Editor; Owners and Admins can open Members on any app to fix that.
-13 A User clicks Shape (or the CRM agent's Shape this button): Shape stays dimmed and this popover opens. It names the Editor who shaped the app last (@mona). Ask @mona puts a line in her Inbox with the request; Raj gets "Mona shaped CRM · v13" in Activity when it lands, or "Mona said not now".
-14 A Viewer (@jm on CRM) sees every screen with no Use · Shape switch, a "Viewer · read only" tag, create buttons disabled, fields as plain text and no drag. The CRM agent answers a Viewer's questions and never changes records for them. Viewers can't comment or approve.
-15 Sign-off roles. The Builder names the roles from the plan (here Maker · Checker · Quality lead for a SignOff chain); Editors rename them, change the order and assign people (only people with app role User or Editor). The rule "maker can never check own work" is fixed. When a step would have nobody eligible, the sheet warns now, and a stuck record goes to the Editors' Inbox as "Refund #2041 has no Quality lead who didn't make it".
+Needs you. An approval waits, e.g. Approval needed: send email. Also in Inbox.
+Support paused · budget
+Paused. The month's budget is reached; triggers wait. Raise it in App ⌄ → Budget.
+Archived 2
+Archived. A collapsed group at the bottom of Apps. Personal apps live in your Personal space — switch with the space switcher at the top of the rail.
+acme
+Factory running. The icon animates while jobs run.
+5 · ⌘K
+Typing new l.
+new l ⌘K
+Commands
+New app… ↵
+CRM: New deal CRM app
+Apps
+CRM workspace app
+"New app…" opens the New app sheet. Each app adds its own commands as App: Command ; they show in ⌘K for everyone who sees the app.
+1 Apps is the fourth rail section, after Crews and Agents. The rail shows the space picked in the switcher at the top (acme ⌄; Personal · acme · globex). Inside acme every row is a workspace app: acme (the factory) first, then the others (CRM, Support, Hiring) by name; drag to reorder. Inbox shows the current space only; an amber dot on the switcher means another space needs you. Archived apps sit in a collapsed Archived group at the bottom of the section. Each row is a 16px glyph with no tint square (squares mean crews). The right edge shows one state glyph: amber needs you, accent running, nothing when idle. Click opens the app in a tab, or brings its tab forward.
+2 No personal rows in acme. Personal apps live in your Personal space — switch with the space switcher at the top of the rail. Workspace apps carry no glyph; the right edge shows only the state glyph.
+3 New app… is always the last app row, above the collapsed Archived group, quiet (--ink-3, plus icon), no state glyph. Click, or ⌘K → "New app…" , opens this sheet over the current card. The sheet hangs from the top of the card, 600px wide; Esc or Cancel closes it and nothing is created.
+4 Factory is CodeAF’s prebuilt app. acme opens like every app: CodeAF's header line (glyph, name, "CodeAF’s prebuilt app · v3 · shaped by @santosh", Shape · Agent · App ⌄), then the app's own content. Its icon is live (animated) while jobs run.
+5 Only the card content is generated. Everything below the header line (here Jobs · Repos · …, the query field, the job list) is the app's code, built from the CodeAF kit and tokens. Window, rail, tab strip, header line, Inbox, ⌘K, menus and shortcuts are CodeAF's and look the same in every app.
+6 Create app ↵ (⌘↵ from the field) is enabled once the description has 12 or more words. It opens a new tab "CRM · building", adds the row to the rail and starts the Builder. Home defaults to the space open in the switcher (here acme); in the Personal space it is Personal. Budget defaults to "up to $20 a month"; connectors list only accounts already connected in Settings → Accounts.
 class Component extends DCLogic {
 renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
 }

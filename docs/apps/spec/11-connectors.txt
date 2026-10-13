@@ -1,34 +1,30 @@
 
-L11 · App settings and lifecycle
-L11 · App settings and lifecycle CRM in acme · the App ⌄ menu · Needs · Triggers · Budget · Versions · Members · copy · move · archive · delete · import
-acme
+Connectors
+L10 · Connectors personal connections travel with you · workspace connections belong to acme · an app acts as you only after you allow it · fakes until Apply
+a acme Workspace
 Inbox
 Crews
 Release
 Pricing page
-jev prototype
 Agents
 api-docs
 CRM agent
-Why is CI slow?
 Apps
 acme
 CRM
+Slides
 Support
-Hiring
 New app…
-Archived 2
 All crews and agents ⌘⇧P
-Release
-acme
 CRM
+Support
 Inbox
-CRM Workspace app · v12 · shaped by @mona Use Shape Agent App
+CRM Workspace app · acme · v12 · you: Editor Use Shape Agent App
 stage: open owner: team Search deals · company: value: touched: Likely to close AI Views
 Lead 14 Talking 9 Proposal 5 Won 23 Lost 11
-28 open deals · likely to close ↓ · your pin first j / k · ↵ open · P pin
+28 open deals · likely to close ↓ j / k · ↵ open
 Company Deal Stage Next step Value Touch
-Globex Annual renewal · 120 seats pinned by you Proposal S Send revised quote $48,000 1d
+Globex Annual renewal · 120 seats Proposal S Send revised quote $48,000 1d
 Northwind Team plan · 40 seats Talking C Follow-up drafted · waiting on you $14,400 2h
 Initech Pilot for the ops team Proposal M Security review call Thu $9,000 3h
 Hooli Expansion · EU region Talking J Book a demo with their CTO $22,500 1d
@@ -37,167 +33,118 @@ Vandelay Import tooling seats Talking R Send case study $6,800 2d
 Acme Retail Store managers rollout Lead C Follow-up drafted · quiet 8d $12,000 8d
 Stark Labs Research team · 15 seats Lead M Intro call Mon $5,400 4d
 Pied Piper Annual · 25 seats Proposal S Waiting on legal $10,500 5d
-Initech Support add-on Talking R Send pricing sheet $2,400 3d
-Umbrella Second region Lead J Find the budget owner $8,000 6d
-Versions… v12
-Open files
-Make my copy
-Needs 7
-Triggers 2 on · 1 paused
-Budget $6.40 of $20
-Members 4
-Move to workspace… personal apps
-Archive app…
-Delete app… Owner · Admin
+CRM may send email as Mona Gmail · first time
+from mona@acme.com . You approved the follow-up to Priya Shah (Northwind). To send it, CRM needs your Gmail. You allow this once for CRM; other apps ask on their own.
+CRM can
+Send email from mona@acme.com each email still waits for your approval first
+Read replies in threads CRM started and email from addresses in CRM's contacts
+Add the label "CRM" to those threads
+CRM can't
+Read your other email, delete email or change Gmail settings
+Show your inbox to anyone in acme only what CRM saves to a deal is shared
+Revoke anytime in Settings → Accounts. Not now Allow
 1
 2
 3
 4
 5
-1 App ⌄ sits at the right end of every app’s header line (CodeAF-owned, same in every app). Click, or right-click the app’s rail row, or the menu bar App menu. Esc closes. The same items show for every role; an item you may not use is dimmed with the reason on its right.
-2 Versions… · Open files · Make my copy. Versions lists every applied change with the request text, who and Restore (card Versions). Open files opens the app’s files in a new tab, read-only: app.json , plan.json , screens/ , runs/ , agent.md ; changes go through Shape so they get Check and a version.
-3 Needs · Triggers · Budget · Members each open a sheet that hangs from the top of the card (cards below). The number on the right is live: capabilities, triggers on and paused, spent this month, people with a role.
-4 Lifecycle. Move to workspace… only on a personal app (here dimmed: CRM already lives in acme). Archive app… hides the app and keeps every record. Delete app… only for the workspace Owner and Admins; it asks for the app’s name and keeps records 30 days.
-5 Everyone in acme sees the same CRM. Header meta reads home · version · who shaped it last. App ⌄ items that change the app for everyone (Restore, triggers, members, archive) write one Activity line each, with Undo where it can be undone.
-App settings App ⌄ → Needs · Triggers · Budget · Members · Versions… · each opens a sheet over the card
-Needs
-App ⌄ → Needs. What the app may do, computed by CodeAF; nobody types it.
-Needs CRM · v12
-Computed by CodeAF from app.json and runs/*.yaml
-Records deals, companies, contacts · read and write · Editors and Users write, Viewers read · the CRM agent never deletes
-Gmail as each member read threads with known contacts · send email after Approval needed: send email S M R 3 of 4 allowed
-Calendar as each member read free/busy to suggest meeting times S M 2 of 4
-sales@acme.com workspace read only · added by @mona (Admin)
-AI AI Likely to close sort · CRM agent drafts follow-ups · DS Flash · from the budget, up to $20 a month
-Leaves the workspace email to contacts · always waits for approval
-Records · invoices new · needs Apply write · from your draft “create an invoice when a deal is Won”
-Needs is read-only. It changes only when a Shape draft is applied. Done
-CRM may send email as Raj asked once per app · shown to @raj
-Allow Not now
-A personal connection (Gmail, Calendar) works as you only after you allow it once for this app; until then the app does without it for you (no email drafted as you). A line marked new · needs Apply comes from an open draft and becomes real only on Apply.
-Triggers
-App ⌄ → Triggers. What starts runs without anyone clicking.
-Triggers 3 · 2 on
-New email from a contact → log on deal Gmail · as each member · run log-email · no AI
-last fired today 09:58 · next on the next email
-Every Monday 09:00 → stale deals digest schedule · run stale-digest · to Inbox · AI
-last fired Mon 12 Oct 09:00 · next Mon 19 Oct 09:00
-Deal quiet 7 days → draft a follow-up record rule · run follow-up · AI
-paused by @mona today 08:15 · no next fire while paused
-To add or change a trigger, Shape the app. Shape Done
-Each row: what starts it → what runs, its source, last fired and next fire. The toggle pauses one trigger; only Editors flip it (Users and Viewers see it read-only). Events while paused are skipped, not queued. Every flip writes an Activity line “@mona paused Deal quiet 7 days · Undo”.
-Members
-App ⌄ → Members: the three app roles.
-Members CRM · app roles
-M @mona Admin of acme · shaped v12 Editor
-S @santosh (you) made CRM Editor
-R @raj User
-J @jm Viewer
-New members of acme get User
-Editor shapes and applies · User works with records · Viewer reads. Done
-Editors and workspace Admins change roles; there is always at least one Editor. A role change takes effect at once and writes an Activity line.
-Budget
-App ⌄ → Budget, seen by @santosh (Member). Admins edit.
-Budget CRM
-$6.40 spent of up to $20 this month · resets 1 Nov
-Budget up to $20 a month only Admins change it
-At the cap
-CRM agent stops; drafts wait
-AI sort keeps its last order
-triggers that use AI pause
-records, screens, filters, triggers without AI keep working
-You are a Member. M Ask @mona Done
-An Admin sees the field editable (preset steps $5 · $10 · $20 · $50 · custom). At the cap the app’s Inbox line reads “CRM agent paused · reached up to $20 this month · Raise budget · Leave paused”; Raise budget shows only to Admins.
-Versions
-App ⌄ → Versions…: every applied change with its request text.
-Versions CRM · 12
-v12 M “add a last reply column” @mona · today 10:40 · 1 change current
-v11 S “group the pipeline by owner” you · Fri 9 Oct · 1 change Restore
-v10 J “log emails from contacts on the deal” @jm · 2 Oct · 2 changes · added a trigger Restore
-v9 R “restore of v7” @raj · 28 Sep Restore
-v1 S “A CRM for our sales pipeline…” you · kept 14 Sep · first version Restore
-Show diff on hover · Restore for Editors Done
-Each row quotes the request the Builder got. Restore writes a new version (v13) equal to the old one; nothing is deleted. If the old version lacks a field that now has values, Restore shows the migration preview first (hidden, restorable).
-Lifecycle make my copy · move a personal app into a workspace · archive · delete
-Make my copy
-A personal fork of the app, never its records.
-Make my copy from CRM v12
-Name CRM (my copy)
-Goes to Personal · only you
-Copies app files at v12 · screens, runs, agent
-Not copied records · they belong to acme
-Connectors your own · Gmail, Calendar
-Starts on sample records Cancel Make copy
-Anyone who can open CRM may copy it. The copy is a separate personal app with its own versions and budget; changes never flow back. It appears under Apps with the person glyph.
-Move to workspace
-On a personal app (here Dashboards).
-Move to workspace Dashboards → acme
-From Personal · Dashboards
-To acme workspaces you are in
-Records 48 move with it · none stay behind
-Your Gmail stays yours · acts as you only after you allow it
-Who gets Editor · everyone else in acme gets User
-S @santosh (you) Editor
-M @mona Editor
-R @raj User
-J @jm User
-One way: a workspace app never moves back Cancel Move to acme
-The rail row moves from personal (glyph) to acme’s apps for everyone. Budget becomes acme’s “up to $20 a month”, set by Admins. To take an acme app home, use Make my copy.
-Archive
-App ⌄ → Archive app… Hidden, nothing lost.
-Archive app CRM
-Archive CRM?
-All 312 deals, 86 companies and 540 contacts are kept
-Restore any time; everything comes back as it was
-Hidden from everyone’s rail and ⌘K; triggers stop; runs in flight finish
-Cancel Archive
-Apps
-acme
-CRM archived
-Support
-Editors and Admins archive. Archived apps are listed in All crews and agents with state:archived ; open one and press Restore . Activity: “@mona archived CRM · Restore”.
-Delete
-App ⌄ → Delete app… Owner and Admin only.
-Delete app Owner · Admin
-Delete CRM for everyone in acme?
-The app, its versions and triggers are removed for everyone
-Records are kept 30 days, then deleted for good
-Within 30 days an Owner or Admin can restore it
-Type CRM to confirm
-CRM
-Cancel Delete CRM
-Delete stays disabled until the typed name matches exactly. Members see the menu item dimmed with “Owner · Admin”. Deleted apps show for 30 days in All crews and agents with state:deleted (Owner and Admin only).
-Import records Import from CSV / Airtable / HubSpot · map fields with a preview · runs once
-Import into CRM
-Here: HubSpot deals into CRM’s deals.
-1 · Choose a source
-CSV file drop a .csv or choose…
-A Airtable a base and table · your Airtable connection
-H HubSpot deals · your HubSpot connection
-Import into deals · runs once, no sync · Editors and Users
-Start from ⌘K “CRM: Import records…”, the menu bar File → Import into CRM…, or an empty record list. Import is a sheet over the app; it writes real records directly (no draft).
-Import is enabled once every amber row has a choice. Rows with a stage or owner you chose to skip still import, with the field empty. Undo removes the imported records; any you changed since are kept and listed. An import never changes the app: a column with no field is kept as a note or skipped; to add a field, Shape the app first.
-2 · Map fields each HubSpot column → a CRM field · amber rows need a choice
-HubSpot column first value CRM field
-Deal Name Annual renewal → deal · name matched by name
-Company Globex → deal · company matched to 86 companies · 9 new
-Amount 48000 → deal · value matched by name
-Deal Stage appointmentscheduled → choose stages… 7 HubSpot stages → Lead · Talking · Proposal · Won · Lost
-Deal Owner mona@acme.com → choose people… 3 owners match acme members · 1 does not
-Close Date 2026-11-30 → choose a field… no date field on deal · keep as note or skip
-Probability 0.6 → choose a field… no matching field · keep as note or skip
-Create Date 2026-03-02 → deal · created matched by name
-Preview first 5 of 312 · updates as you choose
-Company Deal Stage Owner Value Note
-Globex Annual renewal · 120 seats choose… @mona $48,000 —
-Northwind Team plan · 40 seats choose… @raj $14,400 —
-Wayne Ent. Security add-on choose… choose… $7,200 —
-Hooli Expansion · EU region choose… @jm $22,500 —
-Soylent Starter plan choose… @mona $3,600 —
-312 deals · 4 fields need a choice · 12 match existing deals and are skipped Cancel Import 300 deals
-3 · After Import one Activity line
-S @santosh imported 300 deals into CRM from HubSpot 12 skipped as duplicates · 9 new companies · 14:20
-View Undo
+6 Settings → Accounts
+Mona's personal connections and the apps she allowed.
+Accounts
+General Models Spending Memory Permissions Accounts Factory Advanced
+Your connections yours, in every space
+Gmail mona@acme.com · since 2 Sep
+Connected Disconnect
+Calendar mona@acme.com · since 2 Sep
+Connected Disconnect
+Slack acme.slack.com · expired yesterday
+Expired Reconnect
+GitHub mona-k · read and push in 6 repos
+Connected Disconnect
+Connect an account
+Apps that act as you you allowed each one
+CRM · acme
+Gmail: send email, read replies · allowed today
+Revoke
+Support · acme
+Gmail: read support threads · Slack: post · allowed 12 Sep
+Revoke
+Slides · acme
+Calendar: read free/busy · allowed 20 Sep
+Revoke
+Advanced MCP servers · what agents may use
+7 Workspace settings → Connections
+acme · Admin view (@mona).
+acme · Connections
+General Members Connections Spending Apps
+Workspace connections belong to acme · Admins only
+support@acme.com · Gmail added by @mona · used by Support
+Chosen apps · 1
+Stripe acme live account · used by Support, CRM
+Chosen apps · 2
+GitHub · acme org acme/api, acme/web, acme/infra · used by acme Factory
+All apps
+Add connection… Gmail, Calendar, Slack, GitHub, Stripe, any MCP server
+Who can use Stripe
+All apps Chosen apps
+Support CRM Add app
+An app not on the list can't use Stripe; its Needs shows "Stripe · ask an Admin".
+8 The app's Needs
+Which connections CRM uses, and as whom.
+CRM · Needs App ⌄ → Needs
+Connections
+Gmail as each person send follow-ups · read replies
+you · 3 of 4 allowed
+Calendar as each person book calls on deals
+you: not yet Allow
+Stripe acme workspace read invoices for won deals
+set by Admin
+Also
+Records deals, companies, contacts Trigger new email · Gmail Budget up to $20 a month · $6.40 spent
+9 Shape and Preview use fakes
+Mona shapes CRM; the draft runs the follow-up rule.
+CRM · Shape
+Inbox
+CRM Workspace app · draft on v12 Use Shape Agent App
+Draft · 2 changes · "follow up after 5 quiet days" Show diff Apply Discard Versions
+Gmail is a fake in this draft · nothing is sent Stripe · Calendar fakes too
+Would send · Re: Team plan for 40 seats to Priya Shah · from mona@acme.com · run on the draft, 10:42
+fake
+Would read · 2 replies sample replies made by the fake
+fake
+Would charge · nothing Stripe fake · read only in this app
+fake
+10 Admin removes a connection
+Workspace settings → Connections → Stripe ⋯ → Remove….
+Remove Stripe from acme?
+2 apps use it. Their steps that use Stripe will wait and ask an Admin for a connection. Records already saved stay.
+Support refunds · 3 runs this week
+CRM reads invoices for won deals
+Cancel Remove Stripe
+11 An expired connection breaks a run
+Mona's Gmail token expired between approval and send.
+The run · CRM → Runs
+Deal quiet 7 days · Northwind 10:00
+Draft follow-up · CRM agent 10:01
+Approval needed: send email · @mona approved 10:20
+Send · waiting for Mona's Gmail expired
+Mona's Inbox
+CRM can't send: Mona's Gmail expired Re: Team plan for 40 seats → Priya Shah · approved 10:20
+Reconnect
+Support can't post: Mona's Slack expired 1 message waiting
+Reconnect
+Reconnect opens Google sign-in for mona@acme.com; when it returns, the step runs at once and the Inbox line moves to Done today. The rail row of CRM shows the amber dot meanwhile.
+1 The consent sheet opens the first time a workspace app acts as you through one of your personal connections: here @mona approved an email and CRM needs her Gmail. It is asked once per person, per app, per connection. The title always names the app, the action and the person: "CRM may send email as Mona".
+2 CRM can / can't is written from the app's Needs (app.json capabilities), never by the app's agent. Sending still goes through "Approval needed: send email" every time; Allow only lets CRM use the account.
+3 Allow saves the permission for Mona + CRM + Gmail and the approved email sends at once (5-second Undo). Not now keeps the email waiting; Mona's Inbox gets "CRM wants to send email as you · Allow". Other people's use of CRM is not affected.
+4 Revoke anytime in Settings → Accounts → Apps that act as you (see 6). After a revoke the sheet shows again the next time CRM needs it.
+5 Same sheet for every personal connection (Calendar, Slack, GitHub). In Personal there is no sheet: Personal apps use your accounts directly, because only you are there.
+6 Settings → Accounts (the app's own Settings, ⌘,) lists your personal connections, the same in every space: status Connected or Expired · Reconnect (red glyph, Reconnect is the primary button). Disconnect asks first and lists the apps that will stop acting as you. Apps that act as you lists every Allow, with its space; Revoke takes effect at once and the app asks again next time.
+7 Workspace settings → Connections holds the accounts that belong to acme (support@, Stripe, the GitHub org). Members see the list; only Admins and Owners add, change or remove. Add connection… signs in to the service as the workspace and asks who can use it: All apps or Chosen apps . Apps use a workspace connection with no per-person sheet; sending still needs approval.
+8 Needs shows every connection the app uses and as whom : "as each person" (a personal connection, each person allows once) or "acme workspace" (a workspace connection). Your own status sits on the right with an Allow button; Editors also see "3 of 4 allowed". A run that needs a person who hasn't allowed waits in that person's Inbox.
+9 Fakes. Every connector has a fake. Preview (when making an app), Shape drafts and Check always run against fakes: the bar says "Gmail is a fake in this draft · nothing is sent", and what would have happened is listed with a striped fake tag. Real connections are used only after Apply, by the applied version.
+10 Removing a workspace connection (Admin, ⋯ → Remove…) always shows this dialog listing every app that uses it, with what for. Remove signs CodeAF out of the service, writes one Activity line "Mona removed Stripe · used by 2 apps", and those apps' Needs show "Stripe · ask an Admin". With no apps using it, the dialog is a plain confirm.
+11 An expired connection never fails a run silently. The step that needs it waits (amber) and the connection's owner gets one Inbox line: "CRM can't send: Mona's Gmail expired · Reconnect". A personal connection → that person; a workspace connection → every Admin. After 7 days of waiting the run stops and moves to Done with "stopped · Gmail expired". Other people's runs keep going.
 class Component extends DCLogic {
 renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
 }

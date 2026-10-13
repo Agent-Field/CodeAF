@@ -1,6 +1,97 @@
 
-L2 · Inside an app · CRM
-L2 · Inside an app · CRM CodeAF header + generated content · labelled AI sort · docked agent with a budget · Shape makes drafts
+L3 · The test: a user builds their own factory
+L3 · The test: a user builds their own factory prompt → plan → files → checks → preview → job page · built from the same kit as CodeAF’s prebuilt Factory
+1
+1 · Prompt
+@santosh clicks New app… in the rail and describes the factory in his own words.
+New app ⌘K · New app…
+Say what it is for and who uses it. The Builder writes the app from this; the app gets its own agent for the content.
+A factory that turns GitHub issues labelled agent into PRs. I approve the plan; it codes and tests until green, at most 3 rounds; I review the proof before the PR opens.
+Records, screens, what the agent does, what needs your approval ⇧↵ new line
+Home Personal acme workspace you are its Editor · other members of acme get User
+Budget up to $20 a month the app's agent spends from this
+Connectors GitHub Add from Settings → Accounts
+App agent model GLM 5.3
+The Builder writes the app. You'll see it running before you keep it. Cancel Create app ↵
+2
+2 · Plan
+The Builder (CodeAF's own agent) writes plan.json; CodeAF draws this card from it. Nothing else is written until Write it.
+acme
+Bugfix factory · building
+Inbox
+Bugfix factory Workspace app · planning · only you see it Shape Agent App
+Builder · plan · nothing written yet Plan Write Check Preview
+Data records job issue · repo · state · assignee · priority documents none in this app reads GitHub issues
+Automation trigger issue labelled agent → new job in Backlog run fix one run per job · budget $3 a run plan approval: plan until green · max 3 code ↔ test proof approval: proof open PR via GitHub
+code and test get workspace: repo : a checkout, a branch and a shell on your runner
+Screens Jobs list Job page
+Agent Bugfix factory agent · GLM 5.3 · answers questions about jobs, drafts plans
+Needs Records Runs · repo workspace Approvals GitHub Inbox worked out by CodeAF from the sections above, not written by the Builder · acme · up to $20 a month
+Write it Just build it Change plan Change plan opens the Builder pane with this plan quoted
+3
+3 · Files written
+After Write it, the Builder writes five files. The runs file is the pipeline; each screen is declarative JSON: a tree of kit parts with bindings.
+Plan Write Check Preview
+highlighted: the approval gates, the repo workspace, the one data binding
+FileTree · bugfix-factory/ 5 files
+app.json
+38 lines
+runs/
+fix.yaml
+15 lines
+screens/
+jobs.json
+14 lines
+job.json
+38 lines
+agent.md
+22 lines
+Stored on acme’s codeaf server. app.json holds the job schema, capabilities, the GitHub trigger (issue labelled agent) and the budget; agent.md is the app's agent. No custom code: custom/*.tsx is the labelled escape hatch.
+runs/fix.yaml runs engine · 2 gates
+1 name : fix
+2 for : job # one run per job record
+3 budget : $3
+4 steps :
+5 - plan : { workspace: repo }
+6 - approval : plan
+7 - loop :
+8 until : tests are green
+9 max : 3
+10 steps :
+11 - code : { workspace: repo }
+12 - test : { workspace: repo }
+13 - proof : { claims: with evidence }
+14 - approval : proof
+15 - pr : { tool: github.open_pr }
+screens/jobs.json kit parts + bindings · no code
+1 {
+2 "screen" : "Jobs" ,
+3 "state" : { "query" : "assignee:me" , "picked" : [] },
+4 "parts" : [
+5 { "part" : "QueryField" , "bind" : "query" , "sort" : "priority" },
+6 { "part" : "StateMeter" , "records" : "job?query" , "field" : "state" },
+7 { "part" : "RecordList" , "records" : "job?query" ,
+8 "columns" : [ "priority" , "state" , "issue" , "run" , "assignee" ],
+9 "onOpen" : "open" , "select" : "picked" },
+10 { "part" : "Panel" , "record" : "picked.0" },
+11 { "part" : "BulkBar" , "selected" : "picked" ,
+12 "actions" : [ "Assign to me" , "Run" ] }
+13 ]
+14 }
+4
+4 · Checks
+Before anyone sees it, the checker runs four checks. A failure goes back to the Builder, up to 3 rounds; earlier rounds stay folded.
+Plan approved by @santosh 0:38
+Write 5 files 1:52
+Check passed on round 2 of 3 0:47
+Preview opens in this tab on sample data
+Spent $1.84 of $20
+Schema check app.json · runs/fix.yaml · screens/*.json · 0 errors round 2
+Kit law only kit parts · tokens only, no raw colours, sizes or fonts · every binding resolves · one navigation row · every control labelled round 2
+Render with sample data 2 screens rendered and looked at: Jobs list (24 sample jobs) · Job page (api#1498) round 2
+Behaviour check runs/fix.yaml executed on 24 sample jobs against the GitHub fake · 0 real calls · both gates reached round 2
+round 1 · kit law: unknown part 'Datagrid' in screens/job.json:14 → replaced with Table the Builder swapped in the kit's Table and ran every check again collapsed
+5 · Preview Checks passed. The app runs in its tab on sample data; it is the same Jobs screen as acme because it is built from the same kit.
 acme
 Inbox
 Crews
@@ -9,10 +100,11 @@ Pricing page
 jev prototype
 Agents
 api-docs
-CRM agent
+Triage flaky tests
 Why is CI slow?
 Apps
 acme
+Bugfix factory preview
 CRM
 Support
 Hiring
@@ -21,117 +113,93 @@ Archived 2
 All crews and agents ⌘⇧P
 Release
 acme
-CRM
+Bugfix factory · preview
 Inbox
-CRM Workspace app · v12 · shaped by @mona
-Shape Agent App
-stage: open owner: team Search deals · company: value: touched: Likely to close AI Views
-Lead 14 Talking 9 Proposal 5 Won 23 Lost 11
-28 open deals · likely to close ↓ · your pin first j / k · ↵ open · P pin
-Company Deal Stage Next step Value Touch
-Globex Annual renewal · 120 seats pinned by you Proposal S Send revised quote $48,000 1d
-Northwind Team plan · 40 seats Talking C Follow-up drafted · waiting on you $14,400 2h Why it ranks here · AI Replied twice this week; asked for pricing
-Initech Pilot for the ops team Proposal M Security review call Thu $9,000 3h
-Hooli Expansion · EU region Talking J Book a demo with their CTO $22,500 1d
-Umbrella Starter plan Lead C Follow-up drafted · quiet 7d $3,600 7d
-Vandelay Import tooling seats Talking R Send case study $6,800 2d
-Acme Retail Store managers rollout Lead C Follow-up drafted · quiet 8d $12,000 8d
-Stark Labs Research team · 15 seats Lead M Intro call Mon $5,400 4d
-Pied Piper Annual · 25 seats Proposal S Waiting on legal $10,500 5d
-C CRM agent DS Flash · $6.40 of $20
-which deals went quiet this week?
-C worked 40s · this morning
-I drafted follow-ups for 3 deals that have been quiet for 7 days: Northwind, Umbrella and Acme Retail. Each one waits for your approval.
-Approval needed: send email leaves the workspace
-To Priya Shah, Northwind
-Re: Team plan for 40 seats Hi Priya, following up on pricing for the team plan. I've attached the 40-seat quote we discussed and can walk your team through it this week…
-Approve Edit Skip 1 of 3
-also add a column for last reply
-C worked 3s
-That changes the app, not the deals. The Builder does that in Shape.
-Shape this your words go with it
-Ask CRM agent
-DS Flash
-1
-2
-3
-4
+Preview · Bugfix factory · sample data · only you see it until you keep it Keep Shape more Discard
+Bugfix factory Workspace app · preview · v1 Shape Agent App
+Jobs GitHub issues labelled agent · acme/api, acme/web, acme/infra Sync GitHub
+assignee: me Search or filter · state: repo: priority: Priority Views
+Needs you 2 Running 12 Queued 4 Backlog 182 Done 9 this week
+13 assigned to you · sample data · priority ↓ j / k · x select · ↵ open
+api#1498 Retry webhook deliveries with backoff Approval needed: proof M S 58m
+web#2111 Checkout button stays disabled after error Approval needed: plan S S 6m
+api#1530 Webhook signatures fail for payloads over 1 MB code ↔ test · round 2 of 3 S S 12m
+web#2104 Orders table jumps when filters change plan XS S 40m
+api#1527 Add idempotency keys to POST /invoices queued · runner santosh-mbp M S 1h
+infra#318 Alert when the job queue is older than 1h queued S S 5h
+web#2099 Dark mode for invoices PDF preview backlog M S 1d
+api#1519 Remove the v1 invoices endpoint backlog L S 2d
+web#2087 Empty state for the refunds table backlog XS S 3d
+infra#301 Rotate the staging database password monthly backlog S S 4d
+api#1488 Paginate GET /customers past 10k rows done · PR #1490 merged M S 1d
+web#2079 Fix focus ring on the date picker done · PR #2081 merged XS S 2d
+api#1471 Log the delivery id on every webhook retry done · PR #1475 merged S S 3d
+Selected api#1498 Open ↵
+Retry webhook deliveries with backoff
+Deliveries that fail are dropped. Retry them with exponential backoff (cap 30s, 5 attempts) and record each attempt.
+State Approval needed: proof Priority High · from label p1 Assignee you Repo acme/api Run fix · green on round 2 of 3 Budget $3 a run
+Review proof Open ↵
+Panel, from the kit. Open (↵) shows the Job page in this tab.
 5
-Shape draft
-The Builder made it in Shape. Each person has one draft per app; only you see yours. The bar stays across the card until you Apply or Discard. The draft reads real data and saves to a scratch copy.
-CRM Workspace app · v12 draft · only you
-Draft · 3 changes · “add a last-reply column” Show diff Apply Discard
-Builder · made this draft · Shape
-Company Stage Last reply · new Value
-Globex Proposal S Yesterday $48,000
-Northwind Talking C Today 09:12 $14,400
-Initech Proposal M Tue $9,000
-Umbrella Lead C none in 8d $3,600
-Show diff
-A sheet over the card: the change by file, the needs change and a migration preview for changed fields. Apply: everyone in acme gets v13.
-Draft changes · CRM 3 changes · v12 → draft
-Builder · wrote these changes
-screens/deals.json +4 −0
-RecordList · columns
-{ "field": "stage", "label": "Stage" },
-{ "field": "owner", "as": "Avatar" },
-{ "field": "lastReply.at", "label": "Last reply",
-"as": "Text", "format": "when" },
-{ "field": "next", "label": "Next step" },
-app.json +3 −0 · deal.lastReply
-Needs · nothing new · reads Gmail threads it already has
-38 deals affected · nothing deleted · everyone in acme gets v13 Discard Apply
-A change broke the app
-If the draft throws, the card keeps the last working version, dimmed, with the error line. Fix it hands the error to the Builder.
-CRM Workspace app · v12
-This change broke CRM Fix it Revert
-Unknown field “lastReply” on record deal
-screens/deals.json:42 · column Last reply
-Globex Proposal S $48,000
-Northwind Talking C $14,400
-Initech Proposal M $9,000
-Showing v12, the last working version · read-only until fixed or reverted
-Versions
-App ⌄ → Versions…: every applied change, who made it and its words. One-click Restore.
-Versions…
-Open files
-Make my copy
-Needs
-Triggers
-Budget
-Members
-Move to workspace…
-Archive app…
-Delete app…
-Versions CRM
-v12 M “add last reply column” @mona · today 10:40
-current
-v11 S “group by owner” you · Fri
-Restore
-v10 J “Gmail trigger” @jm · 2 Oct
-Restore
-Restore writes a new version (v13). Data is never lost.
-Activity line
-Members of acme see one line per applied change, with View and Undo. Editors of the app may undo.
-M Mona shaped CRM v12 · “add last reply column” · 10:40
-View Undo
-C CRM agent sent an email to Priya Shah, Northwind · approved by you · 09:58
-View
-J @jm moved Hooli to Talking record change · 09:20
-View
-Activity is append-only. Undo on an app change writes a new version that puts the old screens back; it never deletes records.
-Budget reached
-At the monthly budget the agent pauses and asks in Inbox. The app stays usable.
-CRM agent paused reached up to $20 this month · CRM app
-now
-Raise budget Leave paused
-Likely to close AI · last order frozen at the last AI order
-While paused, AI sort keeps its last order and new deals land at the bottom; pins still win. Drafted emails wait. Records, filters and the rest of the app keep working.
-1 CodeAF owns the header line : app icon, name, home and version, who shaped it last, then Shape, Agent and App ⌄. Everything under the hairline is the app's generated content, built from the CodeAF kit (lens, rows, chips).
-2 AI sort is labelled on its chip: Likely to close · AI. Hover a row for the one-line reason. A row you pin (P) or drag stays where you put it; the AI order fills in around it.
-3 The docked agent is a normal CodeAF agent : listed under Agents, asks in Inbox, spends from the app's monthly budget ($6.40 of up to $20). Agent toggles the pane; ⌥⌘A from the keyboard.
-4 Anything that leaves the workspace waits for approval : Approval needed: send email. Approve sends it as you with a 5-second Undo; Edit opens the draft; Skip drops it.
-5 The CRM agent works on content only (deals, contacts, emails). Asked for a new column it answers "That changes the app" with Shape this , which opens Shape with the request pre-filled for the Builder , CodeAF's own agent. Shape in the header does the same. The change is a draft only you see; teammates keep using v12 until you Apply.
+6
+6 · Job page
+Open (↵) on a row. screens/job.json is five kit data blocks, bound to the job and its run through the bridge.
+acme
+Bugfix factory · preview
+Inbox
+Bugfix factory Workspace app · preview · v1 Shape Agent App
+Jobs / api#1498 Retry webhook deliveries with backoff Approval needed: proof Stop Actions
+RunTimeline run fix · budget $3
+plan 4 files · workspace: repo
+4m
+approval: plan approved by you
+code ↔ test until tests are green · round 2 of 3
+21m
+code +212 −38 in 6 files
+12m
+test green on round 2
+9m
+round 1 2 failing · retry jitter
+4m
+round 2 214 passed
+5m
+proof 3 of 3 claims proven
+6m
+approval: proof waiting on you
+open PR via GitHub, as you
+LogStream test · round 2 santosh-mbp
+10:14:02 $ go test ./...
+10:14:31 ok internal/retry 1.82s
+10:14:38 ok api/webhooks 4.10s
+10:14:39 PASS · 214 tests
+ApprovalCard
+Approval needed: proof 3 of 3 claims proven · tests green on round 2 of 3
+Approve → open PR as you Request changes… Drop
+ProofList claims with evidence
+Failed deliveries retry up to 5 times test · TestRetry_MaxAttempts proven
+Delay never exceeds 30s test · TestRetry_Jitter, 1,000 samples proven
+Each attempt is recorded test · TestDelivery_RecordsAttempt proven
+DiffViewer internal/retry/backoff.go +48 −6 · 1 of 6 files
+@@ func next(attempt int) time.Duration @@
+return time.Second
+d := base << attempt
+if d > maxDelay { d = maxDelay }
+return d/2 + jitter(d/2)
+7
+7 · Ours vs generated
+acme ships with CodeAF. The generated factory has only what was asked for.
+CodeAF’s prebuilt Factory · acme Generated · Bugfix factory Jobs Jobs list Jobs list · same kit blocks Job Job page · Run · Review · Timeline Job page · one view Repos Repos page — not generated Pipelines Pipelines page runs/fix.yaml · App ⌄ → Open files Runners Runners page from CodeAF: Settings → Factory
+Shape · Builder · shaping the app
+Ask to add a Repos page: each repo with its open agent issues and last PR
+Shape runs as a draft only you see · Apply writes v2
+Runners are not the app's to build: a run with workspace: repo uses the runners CodeAF already knows, from Settings → Factory.
+1 Prompt. New app… (rail or ⌘K) opens the same sheet as every app (L1). Home acme: members of the acme workspace see it after the first Apply. Connectors list only accounts in Settings → Accounts; here GitHub. Create app ↵ opens the tab "Bugfix factory · building".
+2 Plan first. The Builder (CodeAF's own agent, the same for every app) answers with plan.json; CodeAF draws this card from it, always the same: Data (records, documents, reads), Automation (triggers, runs), Screens, Agent. Needs is computed by CodeAF from those sections, so the Builder cannot understate what the app will use. Write it (↵) starts writing. Change plan docks the Builder pane with the plan quoted; the Builder answers with a new plan card. The Agent line describes the app's own agent, which later works on jobs only. Gates read exactly as they will run: approval: plan, approval: proof.
+3 Files. app.json, runs/fix.yaml, screens/jobs.json, screens/job.json, agent.md. Only runs touch shells: code and test declare workspace: repo , so they get a checkout, a branch and a shell on the assignee's runner. Screens are declarative JSON: a tree of kit parts with bindings to records and runs; no imports, no code. custom/*.tsx (sandboxed, labelled custom) is the escape hatch only. App ⌄ → Open files shows them.
+4 Checks. Schema check, Kit law, Render with sample data, Behaviour check (runs on sample data against connector fakes), in that order. A failing check goes back to the Builder with file and line (max 3 rounds); after round 3 it shows you the error with Fix it · Cancel. Passed rounds fold to one line; click to unfold.
+5 Preview. The new rail row "Bugfix factory" sits with the workspace apps and reads preview. QueryField, StateMeter (Needs you · Running · Queued · Backlog · Done), RecordList rows and the right Panel are the kit's, so the screen matches acme's Jobs. Keep writes v1, private to you until the first Apply; Shape more opens the Builder pane; Discard removes the app and its row.
+6 Job page. RunTimeline shows the loop as a parent row with rounds under its steps; LogStream follows the step you select; ProofList and DiffViewer feed the ApprovalCard. Approve sends the run on to open PR via GitHub, as you, with a 5-second Undo. The approval also waits in Inbox.
+7 Ours vs generated. The generated factory has Jobs and Job only. It has no Repos or Runners pages: runners come from CodeAF (Settings → Factory). A Repos page is one Shape away; it runs as a draft only you see until Apply.
 class Component extends DCLogic {
 renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
 }

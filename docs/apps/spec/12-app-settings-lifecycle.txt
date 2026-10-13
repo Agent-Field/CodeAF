@@ -1,159 +1,203 @@
 
-Crews and apps
-L13 · Crews and apps a crew discusses, the app holds the records · the CRM agent as a member · link, never copy · report links every record
+L11 · App settings and lifecycle
+L11 · App settings and lifecycle CRM in acme · the App ⌄ menu · Needs · Triggers · Budget · Versions · Members · copy · move · archive · delete · import
+acme
 Inbox
 Crews
 Release
-Pricing push
-Q4 review
+Pricing page
+jev prototype
 Agents
 api-docs
+CRM agent
 Why is CI slow?
 Apps
 acme
 CRM
-Slides
 Support
 Hiring
 New app…
+Archived 2
 All crews and agents ⌘⇧P
 Release
-Pricing push
+acme
 CRM
-Slides
 Inbox
-Pricing push New prices for the Q4 renewals
-1 needs you Crew ⌄
-Globex, Northwind and Initech are waiting on Q4 quotes. Agree the new tiers, put them in the deck, and get follow-ups out to all three.
-P @pricing · worked 46s
-analyst is checking the tiers against last quarter's wins, copywriter owns slide 4 of the deck, and I've added the CRM agent so it can read the three deals and draft the emails.
-C CRM agent from CRM · can read deals, draft emails · worked 4s
-Read 3 linked deals: Globex · renewal $48,000 Northwind · team plan $14,400 Initech · pilot $9,000 . Northwind last replied 9 days ago; the other two asked for pricing this week.
-P @pricing → CRM agent · 10:12
-Tiers are agreed (slide 4). Draft follow-ups for these 3 deals with the new price, and set each next step.
-C CRM agent → @pricing · worked 22s
-Changed in CRM through the CRM agent 3 records · 3 drafts
-Globex · renewal next step Send revised quote → Follow-up drafted CRM v12
-Northwind · team plan next step Chase pricing → Follow-up drafted CRM v12
-Initech · pilot new email draft · Re: Pilot pricing for Q4 CRM v12
-Waiting on you: Approval needed: send email · 3 · also in Inbox
-Approval needed: send email · CRM agent · leaves the workspace 1 of 3
-To Priya Shah, Northwind · Re: Team plan for 40 seats
-Approve Edit Skip sends as you · Gmail
-Message @pricing , the manager
-Manager · GLM 5.3
-Team Items Log 6 linked
-Records · CRM linked, not copied
-Globex · renewal Proposal · $48,000 · changed here
-10:13
-Northwind · team plan Talking · $14,400 · email waits on you
-10:13
-Initech · pilot Proposal · $9,000 · email waits on you
-10:13
-Documents · Slides
-Q4 pricing deck 12 slides · copywriter is editing slide 4
-Files
-tiers.md analyst · 3 tiers · 09:58
-Factory work
-web#2110 · New pricing page copy job · queued · linked by @pricing
-Link a record, document or job 6
+CRM Workspace app · v12 · shaped by @mona Use Shape Agent App
+stage: open owner: team Search deals · company: value: touched: Likely to close AI Views
+Lead 14 Talking 9 Proposal 5 Won 23 Lost 11
+28 open deals · likely to close ↓ · your pin first j / k · ↵ open · P pin
+Company Deal Stage Next step Value Touch
+Globex Annual renewal · 120 seats pinned by you Proposal S Send revised quote $48,000 1d
+Northwind Team plan · 40 seats Talking C Follow-up drafted · waiting on you $14,400 2h
+Initech Pilot for the ops team Proposal M Security review call Thu $9,000 3h
+Hooli Expansion · EU region Talking J Book a demo with their CTO $22,500 1d
+Umbrella Starter plan Lead C Follow-up drafted · quiet 7d $3,600 7d
+Vandelay Import tooling seats Talking R Send case study $6,800 2d
+Acme Retail Store managers rollout Lead C Follow-up drafted · quiet 8d $12,000 8d
+Stark Labs Research team · 15 seats Lead M Intro call Mon $5,400 4d
+Pied Piper Annual · 25 seats Proposal S Waiting on legal $10,500 5d
+Initech Support add-on Talking R Send pricing sheet $2,400 3d
+Umbrella Second region Lead J Find the budget owner $8,000 6d
+Versions… v12
+Open files
+Make my copy
+Needs 7
+Triggers 2 on · 1 paused
+Budget $6.40 of $20
+Members 4
+Move to workspace… personal apps
+Archive app…
+Delete app… Owner · Admin
 1
 2
 3
 4
 5
-6
-7
-1 · Discuss in a crew
-On any record: Actions ⌄ → Discuss in a crew… (⇧⌘D). Choose an existing crew or start one.
-CRM / Deals / Northwind · team plan Actions
-Stage Talking Value $14,400
-Edit fields E
-Draft an email
-Discuss in a crew… ⇧⌘D
-Copy link
-Discuss Northwind · team plan CRM deal
-The crew gets a link to this deal, never a copy. Changes still happen in CRM.
-Pricing push @pricing · 3 records linked
-Q4 review @review · 8 records linked
-Start a new crew manager + CRM agent
-Crews you are in · newest first Cancel Link to crew
-2 · The manager asks, CRM changes, Inbox asks you
-Records are created and changed through the CRM agent; sending waits for you.
-Log Pricing push
-P @pricing → CRM agent Draft follow-ups for these 3 deals with the new price, and set each next step.
-10:12
-C CRM agent → @pricing 3 drafts written in CRM. Sending waits on @santosh.
-10:13
-Inbox · Waiting 3 new
-Approval needed: send email · Northwind Pricing push · CRM
-Approval needed: send email · Initech Pricing push · CRM
-Approval needed: send email · Globex Pricing push · CRM
-Each row names the crew that asked and the app that holds the record. Approving here, in the crew or in CRM is the same answer. Skip leaves the draft on the deal; nothing is sent.
-3 · A deal shows its crews
-The record page lists every crew that discussed it.
-CRM / Deals / Northwind · team plan CRM v12
-Stage Talking
-Owner M @mona
-Value $14,400
-Next step Follow-up drafted · waiting on you
-Discussed in Pricing push now Q4 review Tue
-C CRM agent drafted a follow-up · for Pricing push 10:13
-M @mona moved to Talking Mon
-Discussed in is a CodeAF field on every record page; the app does not build it. A chip opens the crew. A finished crew keeps its chip with "finished" and opens its report.
-4 · What the app's agent cannot do in a crew
-It is limited to CRM's capabilities and content only.
-@CRM agent add a "pricing tier" field to deals
-C CRM agent from CRM · can read deals, draft emails
-That changes the app, not the deals. The Builder does that in Shape.
-Shape this opens CRM in Shape · your words go with it
-In a crew it can
-read deals, companies, contacts
-draft emails
-create and change records, with CRM's approvals
-It cannot
-change the app (fields, screens, runs)
-send anything without approval
-use another app's records or connectors
-manage the crew
-5 · Team · an app's agent as a member
-Same Team view as any crew; the badge names the app and what it may do.
-Team Items Log 4 members
-P @pricing Manager · keeps the plan, talks to you
-a analyst tiers.md · done
-w copywriter Q4 pricing deck · slide 4
-C CRM agent from CRM · can read deals, draft emails
-Add a member
-Add a member lists agents, roles and apps' agents (CRM agent · Slides agent · Support agent) for apps you can use. An app's agent joins with that app's capabilities and your app role: a Viewer of CRM adds a CRM agent that only reads.
-6 · Rules
-Final behaviour for links between crews and apps.
-Link, never copy Items hold links to records, documents and jobs. Nothing is duplicated into the crew; edits always go to the app.
-Who can see A linked item shows to crew viewers only if they can open it in its app; otherwise the row reads "CRM record · no access".
-Record deleted The row stays, dimmed: "Deleted in CRM". Archived app: "CRM is archived · Restore" (Owner/Admin).
-Unlink Right-click a row → Unlink. The record and its "Discussed in" history stay.
-Finish crew Stops members, the app's agent leaves the crew, links stay on the records as "Discussed in: Pricing push · finished".
-Approvals Approvals raised by an app's agent go to the person who asked the crew for the work (here you), never to the manager.
-7 · Finish crew
-The manager's report links every record, document, file and job the crew touched. Finish crew then closes the crew.
-P Report · Pricing push Mon 12 → Wed 14 Oct · finished by you
-Q4 tiers agreed; Globex and Northwind have the new quote
-Three tiers from tiers.md, slide 4 of the Q4 pricing deck rewritten, two follow-ups sent. Initech's email was skipped and stays as a draft on the deal.
-Everything it touched 6 · each opens in its app
-Globex · renewal next step changed · email sent, approved by you CRM · View Northwind · team plan next step changed · email sent, approved by you CRM · View Initech · pilot email draft created · skipped by you, still a draft CRM · View Q4 pricing deck slide 4 rewritten · v8 Slides · View tiers.md new file · analyst Open web#2110 linked job · still queued, stays in the factory acme · View
-Decisions you made Three tiers · skip Initech for now Cost $4.10 crew · $0.62 CRM agent (CRM budget)
-Finish crew Keep going Copy as Markdown Crew ⌄ → Finish crew…
-8 · After Finish crew
-What changes in the apps.
-CRM / Deals / Northwind · team plan
-Discussed in Pricing push finished · report Q4 review Tue
-The CRM agent's copy in the crew stops; CRM's own agent keeps working in CRM. Records keep every change the crew made. The crew moves to ⌘⇧P · Closed; its Items list stays readable there. Reopening a finished crew relinks nothing new: the same links come back.
-1 A crew is a crew. Pricing push (sage) is an ordinary crew: a manager (@pricing), members, the window frame tinted sage. Its job here is unstructured work: talking through prices, deciding, writing. Apps hold the structured records; the crew links them.
-2 An app's agent can be a crew member. The CRM agent shows its badge on every turn: from CRM · can read deals, draft emails . The badge lists the CRM app's capabilities that it has; nothing else. One live copy per crew, like any member; it spends from CRM's budget, not the crew's.
-3 The manager asks, the app's agent does. @pricing → CRM agent is a normal member-to-member message (also in Log). The CRM agent creates and changes records through CRM , under CRM's rules and record history; each change is listed with the app version it ran on.
-4 Normal approvals. Sending email leaves the workspace, so each draft waits: Approval needed: send email , here, in Inbox and on the CRM rail row. The same approval card everywhere; answer it once. Approve sends as you with a 5-second Undo.
-5 Items shows what the crew links: CRM records (deal rows), a Slides deck, files the crew made and factory jobs. A click opens the record or deck in its own app tab (CRM, Slides), never inside the crew. Records show their current state, read live from the app.
-6 Link a record, document or job opens ⌘K filtered to apps' records and documents plus factory jobs. Linking never copies: remove the link and the record is untouched.
-7 Crew ⌄ : Rename… · Change tint · Add a member… (agents and apps' agents) · Replace manager… · Finish crew… . Finish crew is enabled once nothing waits on you.
+1 App ⌄ sits at the right end of every app’s header line (CodeAF-owned, same in every app). Click, or right-click the app’s rail row, or the menu bar App menu. Esc closes. The same items show for every role; an item you may not use is dimmed with the reason on its right.
+2 Versions… · Open files · Make my copy. Versions lists every applied change with the request text, who and Restore (card Versions). Open files opens the app’s files in a new tab, read-only: app.json , plan.json , screens/ , runs/ , agent.md ; changes go through Shape so they get Check and a version.
+3 Needs · Triggers · Budget · Members each open a sheet that hangs from the top of the card (cards below). The number on the right is live: capabilities, triggers on and paused, spent this month, people with a role.
+4 Lifecycle. Move to workspace… only on a personal app (here dimmed: CRM already lives in acme). Archive app… hides the app and keeps every record. Delete app… only for the workspace Owner and Admins; it asks for the app’s name and keeps records 30 days.
+5 Everyone in acme sees the same CRM. Header meta reads home · version · who shaped it last. App ⌄ items that change the app for everyone (Restore, triggers, members, archive) write one Activity line each, with Undo where it can be undone.
+App settings App ⌄ → Needs · Triggers · Budget · Members · Versions… · each opens a sheet over the card
+Needs
+App ⌄ → Needs. What the app may do, computed by CodeAF; nobody types it.
+Needs CRM · v12
+Computed by CodeAF from app.json and runs/*.yaml
+Records deals, companies, contacts · read and write · Editors and Users write, Viewers read · the CRM agent never deletes
+Gmail as each member read threads with known contacts · send email after Approval needed: send email S M R 3 of 4 allowed
+Calendar as each member read free/busy to suggest meeting times S M 2 of 4
+sales@acme.com workspace read only · added by @mona (Admin)
+AI AI Likely to close sort · CRM agent drafts follow-ups · DS Flash · from the budget, up to $20 a month
+Leaves the workspace email to contacts · always waits for approval
+Records · invoices new · needs Apply write · from your draft “create an invoice when a deal is Won”
+Needs is read-only. It changes only when a Shape draft is applied. Done
+CRM may send email as Raj asked once per app · shown to @raj
+Allow Not now
+A personal connection (Gmail, Calendar) works as you only after you allow it once for this app; until then the app does without it for you (no email drafted as you). A line marked new · needs Apply comes from an open draft and becomes real only on Apply.
+Triggers
+App ⌄ → Triggers. What starts runs without anyone clicking.
+Triggers 3 · 2 on
+New email from a contact → log on deal Gmail · as each member · run log-email · no AI
+last fired today 09:58 · next on the next email
+Every Monday 09:00 → stale deals digest schedule · run stale-digest · to Inbox · AI
+last fired Mon 12 Oct 09:00 · next Mon 19 Oct 09:00
+Deal quiet 7 days → draft a follow-up record rule · run follow-up · AI
+paused by @mona today 08:15 · no next fire while paused
+To add or change a trigger, Shape the app. Shape Done
+Each row: what starts it → what runs, its source, last fired and next fire. The toggle pauses one trigger; only Editors flip it (Users and Viewers see it read-only). Events while paused are skipped, not queued. Every flip writes an Activity line “@mona paused Deal quiet 7 days · Undo”.
+Members
+App ⌄ → Members: the three app roles.
+Members CRM · app roles
+M @mona Admin of acme · shaped v12 Editor
+S @santosh (you) made CRM Editor
+R @raj User
+J @jm Viewer
+New members of acme get User
+Editor shapes and applies · User works with records · Viewer reads. Done
+Editors and workspace Admins change roles; there is always at least one Editor. A role change takes effect at once and writes an Activity line.
+Budget
+App ⌄ → Budget, seen by @santosh (Member). Admins edit.
+Budget CRM
+$6.40 spent of up to $20 this month · resets 1 Nov
+Budget up to $20 a month only Admins change it
+At the cap
+CRM agent stops; drafts wait
+AI sort keeps its last order
+triggers that use AI pause
+records, screens, filters, triggers without AI keep working
+You are a Member. M Ask @mona Done
+An Admin sees the field editable (preset steps $5 · $10 · $20 · $50 · custom). At the cap the app’s Inbox line reads “CRM agent paused · reached up to $20 this month · Raise budget · Leave paused”; Raise budget shows only to Admins.
+Versions
+App ⌄ → Versions…: every applied change with its request text.
+Versions CRM · 12
+v12 M “add a last reply column” @mona · today 10:40 · 1 change current
+v11 S “group the pipeline by owner” you · Fri 9 Oct · 1 change Restore
+v10 J “log emails from contacts on the deal” @jm · 2 Oct · 2 changes · added a trigger Restore
+v9 R “restore of v7” @raj · 28 Sep Restore
+v1 S “A CRM for our sales pipeline…” you · kept 14 Sep · first version Restore
+Show diff on hover · Restore for Editors Done
+Each row quotes the request the Builder got. Restore writes a new version (v13) equal to the old one; nothing is deleted. If the old version lacks a field that now has values, Restore shows the migration preview first (hidden, restorable).
+Lifecycle make my copy · move a personal app into a workspace · archive · delete
+Make my copy
+A personal fork of the app, never its records.
+Make my copy from CRM v12
+Name CRM (my copy)
+Goes to Personal · only you
+Copies app files at v12 · screens, runs, agent
+Not copied records · they belong to acme
+Connectors your own · Gmail, Calendar
+Starts on sample records Cancel Make copy
+Anyone who can open CRM may copy it. The copy is a separate personal app with its own versions and budget; changes never flow back. It appears under Apps with the person glyph.
+Move to workspace
+On a personal app (here Dashboards).
+Move to workspace Dashboards → acme
+From Personal · Dashboards
+To acme workspaces you are in
+Records 48 move with it · none stay behind
+Your Gmail stays yours · acts as you only after you allow it
+Who gets Editor · everyone else in acme gets User
+S @santosh (you) Editor
+M @mona Editor
+R @raj User
+J @jm User
+One way: a workspace app never moves back Cancel Move to acme
+The rail row moves from personal (glyph) to acme’s apps for everyone. Budget becomes acme’s “up to $20 a month”, set by Admins. To take an acme app home, use Make my copy.
+Archive
+App ⌄ → Archive app… Hidden, nothing lost.
+Archive app CRM
+Archive CRM?
+All 312 deals, 86 companies and 540 contacts are kept
+Restore any time; everything comes back as it was
+Hidden from everyone’s rail and ⌘K; triggers stop; runs in flight finish
+Cancel Archive
+Apps
+acme
+CRM archived
+Support
+Editors and Admins archive. Archived apps are listed in All crews and agents with state:archived ; open one and press Restore . Activity: “@mona archived CRM · Restore”.
+Delete
+App ⌄ → Delete app… Owner and Admin only.
+Delete app Owner · Admin
+Delete CRM for everyone in acme?
+The app, its versions and triggers are removed for everyone
+Records are kept 30 days, then deleted for good
+Within 30 days an Owner or Admin can restore it
+Type CRM to confirm
+CRM
+Cancel Delete CRM
+Delete stays disabled until the typed name matches exactly. Members see the menu item dimmed with “Owner · Admin”. Deleted apps show for 30 days in All crews and agents with state:deleted (Owner and Admin only).
+Import records Import from CSV / Airtable / HubSpot · map fields with a preview · runs once
+Import into CRM
+Here: HubSpot deals into CRM’s deals.
+1 · Choose a source
+CSV file drop a .csv or choose…
+A Airtable a base and table · your Airtable connection
+H HubSpot deals · your HubSpot connection
+Import into deals · runs once, no sync · Editors and Users
+Start from ⌘K “CRM: Import records…”, the menu bar File → Import into CRM…, or an empty record list. Import is a sheet over the app; it writes real records directly (no draft).
+Import is enabled once every amber row has a choice. Rows with a stage or owner you chose to skip still import, with the field empty. Undo removes the imported records; any you changed since are kept and listed. An import never changes the app: a column with no field is kept as a note or skipped; to add a field, Shape the app first.
+2 · Map fields each HubSpot column → a CRM field · amber rows need a choice
+HubSpot column first value CRM field
+Deal Name Annual renewal → deal · name matched by name
+Company Globex → deal · company matched to 86 companies · 9 new
+Amount 48000 → deal · value matched by name
+Deal Stage appointmentscheduled → choose stages… 7 HubSpot stages → Lead · Talking · Proposal · Won · Lost
+Deal Owner mona@acme.com → choose people… 3 owners match acme members · 1 does not
+Close Date 2026-11-30 → choose a field… no date field on deal · keep as note or skip
+Probability 0.6 → choose a field… no matching field · keep as note or skip
+Create Date 2026-03-02 → deal · created matched by name
+Preview first 5 of 312 · updates as you choose
+Company Deal Stage Owner Value Note
+Globex Annual renewal · 120 seats choose… @mona $48,000 —
+Northwind Team plan · 40 seats choose… @raj $14,400 —
+Wayne Ent. Security add-on choose… choose… $7,200 —
+Hooli Expansion · EU region choose… @jm $22,500 —
+Soylent Starter plan choose… @mona $3,600 —
+312 deals · 4 fields need a choice · 12 match existing deals and are skipped Cancel Import 300 deals
+3 · After Import one Activity line
+S @santosh imported 300 deals into CRM from HubSpot 12 skipped as duplicates · 9 new companies · 14:20
+View Undo
 class Component extends DCLogic {
 renderVals() { const dark = this.props.dark ?? false; return { rootClass: dark ? 'dark' : '' }; }
 }
