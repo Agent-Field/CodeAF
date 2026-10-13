@@ -103,7 +103,7 @@ func Peek(path string) (Summary, bool) {
 			// is a name that was changed — and a name that is the namer's own
 			// instruction is read as no name at all ([healedTitle], title.go),
 			// so the row falls back to Opening like any unnamed session's.
-			if named := healedTitle(entry.Title); named != "" {
+			if named := entry.savedTitle(); named != "" {
 				summary.Title = named
 			}
 		case "message":

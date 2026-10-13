@@ -266,8 +266,10 @@ type sessionEntry struct {
 	// created, and the name is not known until the first turn has been
 	// answered. A line is also how a name can be rewritten later without any
 	// reader having to rewrite the file: the replay takes the LAST title line.
-	Title      string `json:"title,omitempty"`
-	ShortTitle string `json:"shortTitle,omitempty"` // Deprecated: accepted for old records; never used as a name.
+	Title string `json:"title,omitempty"`
+	// LiteralName preserves names supplied by people instead of healing AI labels.
+	LiteralName bool   `json:"literalName,omitempty"`
+	ShortTitle  string `json:"shortTitle,omitempty"` // Deprecated: accepted for old records; never used as a name.
 
 	// Usage is what one COMPLETED turn — or one auxiliary call beside it — cost,
 	// and it is on its own line rather than on the assistant message that ended
@@ -2193,7 +2195,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 			// is the namer's own instruction is read as NO name ([healedTitle],
 			// title.go), which is what heals the sessions that were already
 			// written down under one.
-			if named := healedTitle(entry.Title); named != "" {
+			if named := entry.savedTitle(); named != "" {
 				title = named
 				shortTitle = ""
 			}
@@ -2903,6 +2905,10 @@ func (s *sessionFile) appendRewind(dropped int) {
 // other: a later name simply lands after this one, and the replay takes the
 // last. Nothing rewrites the file.
 func (s *sessionFile) appendTitle(title, _ string) {
+	s.appendNamedTitle(title, false)
+}
+
+func (s *sessionFile) appendNamedTitle(title string, literal bool) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return
@@ -2910,7 +2916,7 @@ func (s *sessionFile) appendTitle(title, _ string) {
 	s.mu.Lock()
 	s.title, s.shortTitle = title, ""
 	s.mu.Unlock()
-	s.writeLine(sessionEntry{Type: "title", Title: title, Timestamp: stamp()})
+	s.writeLine(sessionEntry{Type: "title", Title: title, LiteralName: literal, Timestamp: stamp()})
 }
 
 // appendUsage journals what one seal cost: the turn's own figures, or one

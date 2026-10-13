@@ -550,6 +550,7 @@ const (
 	MethodConnect       = "ResolveConnect"    // ConnectArgs → nothing
 	MethodConnectKey    = "ResolveConnectKey" // ConnectArgs → nothing
 	MethodNoteConnected = "NoteConnected"     // ConnectedArgs → nothing
+	MethodRename        = "Rename"            // name → nothing
 	MethodTitle         = "Title"             // nothing → string
 	MethodUsage         = "Usage"             // nothing → session.Usage
 	MethodContextTokens = "ContextTokens"     // nothing → int
@@ -791,6 +792,9 @@ const (
 // how a surface tells "the engine built what I asked for" from "I joined
 // somebody else's conversation".
 type LaunchShape struct {
+	// DeterministicNames selects the app's naming rule for this conversation.
+	DeterministicNames bool `json:"deterministicNames,omitempty"`
+
 	Yolo      bool    `json:"yolo,omitempty"`
 	NoCompact bool    `json:"noCompact,omitempty"`
 	OneModel  bool    `json:"oneModel,omitempty"`

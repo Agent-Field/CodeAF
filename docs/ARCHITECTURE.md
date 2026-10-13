@@ -808,3 +808,21 @@ Stdin EOF, parent-pid death, SIGINT, SIGTERM and HTTP
 shutdown share one cancellation path and a bounded HTTP drain. Resource
 handlers and the solo factory mount arrive in later lanes behind this same
 guard. [The app API](design/app-v2/API.md) records their status and ownership.
+
+
+## The v2 app agent registry
+
+`internal/appapi` serves the local `/app/v1` API behind its launch's bearer and
+origin/host guard. The A4a registry keeps lifecycle, pin, context and version data
+in `<home>/v3/app/agents.json`, using `agents.lock` and private atomic replacement
+for concurrent launches. Transcript ids remain the agent ids; the canonical
+session home walk includes conversations created through the TUI. Closed and
+archived agents retain their transcript and settings forever.
+
+`cmd/codeaf/app_agents.go` reaches the same `internal/remote` session protocol
+used by other surfaces. It joins an existing TUI owner when available; otherwise
+it opens an app-owned `codeaf engine --no-host` child with the inherited app
+credential pipe, released when this launch ends. `LaunchShape.DeterministicNames` chooses the first-message naming rule;
+`Rename` journals explicit names through the session owner. Registry writes
+publish small `agent.created`/`agent.changed` facts on the shared app event hub
+only after saving. Model work continues to belong to `internal/session`.

@@ -116,7 +116,13 @@ func serveApp(parent context.Context, options appServeOptions, input io.ReadClos
 	// stdin belongs to this launch. Closing it on every exit releases the
 	// reader even when HTTP shutdown or parent death ended the launch first.
 	defer input.Close()
-	api := appapi.New(token, appapi.Options{Version: buildinfo.String(), Epoch: epoch, Shutdown: cancel, Credentials: credentials, ProfileDir: config.ProfileDir()})
+	binary, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	agents := appapi.NewAgentRegistry(options.home, appAgentOpener(binary, logOutput))
+	defer agents.Close()
+	api := appapi.New(token, appapi.Options{Version: buildinfo.String(), Epoch: epoch, Shutdown: cancel, Credentials: credentials, ProfileDir: config.ProfileDir(), Agents: agents})
 	server := &http.Server{
 		Handler: api.Handler(), ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout: 60 * time.Second, ErrorLog: logger,

@@ -2877,6 +2877,21 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		agent.NoteConnected(args.Service, args.Account)
 		return nil, nil
 
+	case MethodRename:
+		name, err := arg[string](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface{ Rename(string) error })
+		if !ok {
+			return nil, errors.New("this engine cannot rename conversations")
+		}
+		if err := door.Rename(name); err != nil {
+			return nil, err
+		}
+		s.session.announce()
+		return nil, nil
+
 	case MethodTitle:
 		return json.Marshal(agent.Title())
 

@@ -27,8 +27,41 @@ absolute path is reported in the hello. The app and terminal share saved
 agents, history and non-secret settings. Keychain or Secret Service secrets
 sent on stdin are never saved to that home.
 
-This transport currently serves health, shutdown, keys and the event stream.
-Agent and factory routes are not available through it yet.
+This transport serves health, shutdown, keys, the event stream and agent
+lifecycle routes. Factory routes arrive with their own app API lane.
+
+## App agents — list, create, rename, close, archive and reopen
+
+The authenticated local app API lists saved agents with `GET /app/v1/agents`
+and reads one with `GET /app/v1/agents/{id}`. Agent ids are transcript ids and
+survive relaunch. The app and terminal share saved conversations in the engine
+home. Lists include Closed and Archived; `?state=open` selects open agents.
+Plain name words and `state:`, `model:`, `kind:agent`, `crew:`, `pinned:` and
+`since:YYYY-MM-DD` filter without AI. Other search tokens are refused for now.
+
+`POST /app/v1/agents` requires `start:"send"` with a first `text`, or
+`start:"empty"` without text. Omitted effort is `medium`; budget is
+`{usd:"5.00"}`; the engine resolves an omitted model. Optional approvals are
+`risky`, `everything` or `none`. Context chips reference absolute paths, with
+kind `file`, `folder` or `repo`. App names come from the first message's words,
+folding whitespace and keeping at most 40 characters, with no AI title call.
+An empty agent stays unnamed until a first message or rename.
+
+## App agent states — rename, close, archive, reopen and stale changes
+
+`PATCH /app/v1/agents/{id}` changes `name`, `model`, `effort`, `budget` or
+`pinned`. Names must be one line of 1 to 40 characters. `expect:{state,version}`
+protects a mutation from stale reads; a mismatch says
+`the agent changed; read it again before acting`.
+
+States are `idle`, `running`, `needs_you`, `failed`, `closed` and `archived`.
+Needs you takes precedence over running. A lost running engine reads idle with
+`Stopped · codeaf restarted`. Close, Archive and Reopen are POST actions at
+`/app/v1/agents/{id}/close`, `/archive` and `/reopen`. Close refuses running
+work unless `stop_running:true`: `closing this agent stops its running work`.
+Archive requires Closed; reopen keeps the whole transcript, name and settings.
+Nothing closes automatically or is deleted. Full turn/queue/file routes and
+provider retry actions are not yet exposed by this lifecycle lane.
 
 ## App events — SSE — Last-Event-ID — replay after reconnect — reset after restart
 
@@ -51,8 +84,8 @@ With no filter, all events except `turn.delta` are included. Repeat
 events without an agent remain included. An empty agent id is refused with
 `agent filter needs an agent id`. Events name changes such as `agent.changed`
 and `task.changed`; clients re-read full objects. Process output belongs to
-its own follow stream. Resource routes and their event producers are later
-lanes; this stream alone starts no agents.
+its own follow stream. Agent lifecycle routes publish their creation and changes on this stream; other
+resource producers arrive with their own lanes.
 
 ## App keys — Keychain, Secret Service, key handoff and keys are kept by the app
 

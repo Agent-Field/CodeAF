@@ -1253,6 +1253,9 @@ type TaskLanding struct {
 }
 
 type Config struct {
+	// DeterministicNames keeps app naming on the first message, without an AI errand.
+	DeterministicNames bool
+
 	// WaitForBeltSteps is for the run worker that enforces its limits and
 	// delivers notes from tool-end events. Its sole event reader must close
 	// Event.BeltStepHandled after processing each such event. Other agents
@@ -3694,8 +3697,10 @@ type Agent struct {
 	treesOnce  sync.Once
 	treesWrite *offpath.Write
 
-	title      string
-	titleTried bool
+	// titleWriteMu orders journal and metadata writes from naming and renaming.
+	titleWriteMu sync.Mutex
+	title        string
+	titleTried   bool
 
 	// titleCtx is the lifetime of the naming errand and titleJobs counts the one
 	// that may be running. They are memoryCtx's bargain above, for the same

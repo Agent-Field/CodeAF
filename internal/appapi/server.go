@@ -37,6 +37,7 @@ type Options struct {
 	Credentials   *config.AppCredentials
 	ProfileDir    string
 	KeyHTTPClient *http.Client
+	Agents        *AgentRegistry
 }
 
 // Server keeps every registered handler behind the same transport guard.
@@ -79,6 +80,8 @@ func New(token string, options Options) *Server {
 		})
 	}
 	s.registerKeys()
+	s.mux.HandleFunc("/app/v1/agents", s.agentsRoute)
+	s.mux.HandleFunc("/app/v1/agents/", s.agentsRoute)
 	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, "not_found", "no such app route")
 	})

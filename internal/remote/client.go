@@ -2680,3 +2680,9 @@ func (c *Client) DeleteTask(file, id string) error {
 	_, err := c.call(nil, MethodPlacesTaskDelete, TaskDeleteArgs{File: file, ID: id})
 	return err
 }
+
+// Rename records the person's name through the engine that owns the journal.
+func (a *Agent) Rename(name string) error {
+	_, err := a.c.call(nil, MethodRename, name)
+	return err
+}
