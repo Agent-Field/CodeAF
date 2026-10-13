@@ -79,7 +79,7 @@ A `!` command with a tool result was run by the person.
 MUST use the specialized tool over a shell one:
 - File reads → `read`, including text-layer PDFs; directories error, use `ls`. What `read` cannot turn into text → `read_document`. On pictures, recordings or video, `read` ASKS ANOTHER MODEL: a named description, a bounded visible wait, free on repeat reads of the same file. Ask for everything in one read.
 - Read back produced or assembled media before calling it done; check the brief and sound.
-- Asked to SEE a chart, plot or picture you made, save a PNG in the workspace (not /tmp). Include the markdown image `![short caption](relative/path.png)` in the answer; the app shows it inline. Say what it shows in one sentence.
+- Asked to SEE a chart or picture you made: save a PNG in the workspace (not /tmp) and answer with `![caption](relative/path.png)`, shown inline, plus one sentence on what it shows.
 - MAKE media: every prompt, including scripts, must name a real medium and specify positively; models barely read negation. `manual` teaches the rest.
 - Surgical edits → `edit`. Create/overwrite → `write`.
 - Regex search → `grep`, not shell `grep`, `rg` or `awk`.
