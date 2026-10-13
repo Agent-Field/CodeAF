@@ -159,9 +159,17 @@ func (a *Agent) PlanResume(id string) error {
 // because no worker may end the run it is part of; a person may, and the stop
 // they are owed is the run's (stoprun.go), never the store's sentence about who
 // owns what.
-func (a *Agent) PlanCancel(id string) error {
+func (a *Agent) PlanCancel(id string) error { return a.PlanCancelWithReason(id, "") }
+
+// PlanCancelWithReason records a factory hand-off on the task that stopped,
+// using the same cancellation and cascade as a person's ordinary stop.
+func (a *Agent) PlanCancelWithReason(id, reason string) error {
+	word := taskStoppedWord
+	if strings.TrimSpace(reason) != "" {
+		word += ": " + strings.TrimSpace(reason)
+	}
 	if row, ok := a.beltRunRootRow(id); ok {
-		_, err := a.cancelTask(row, "")
+		_, err := a.cancelTask(row, reason)
 		return err
 	}
 	return a.planSteer(id, func(store *plandb.Store, task *plandb.Task) error {
@@ -170,9 +178,9 @@ func (a *Agent) PlanCancel(id string) error {
 			// conversation has none going (the program ended under it), so there is
 			// no context to cut and the whole stop is the store's: the run and what
 			// is open under it end, and the next hand-off starts fresh.
-			return store.StopRoot(taskStoppedWord)
+			return store.StopRoot(word)
 		}
-		_, err := store.Cancel(task.ID, taskStoppedWord)
+		_, err := store.Cancel(task.ID, word)
 		return err
 	})
 }

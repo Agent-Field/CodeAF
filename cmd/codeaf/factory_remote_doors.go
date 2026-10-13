@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -103,7 +105,13 @@ func factoryLocalJobs(floor *store.Store, base, workspace, profileDir string, sn
 		if err != nil || pid <= 0 || !entry.IsDir() || !processgroup.ProcessAlive(pid) {
 			continue
 		}
-		mirror, err := store.Open(filepath.Join(root, entry.Name()))
+		mirrorPath := filepath.Join(root, entry.Name())
+		sum := sha256.Sum256([]byte(base))
+		nested := filepath.Join(mirrorPath, hex.EncodeToString(sum[:8]))
+		if info, err := os.Stat(nested); err == nil && info.IsDir() {
+			mirrorPath = nested
+		}
+		mirror, err := store.Open(mirrorPath)
 		if err != nil {
 			continue
 		}
@@ -126,7 +134,9 @@ func factoryLocalJobs(floor *store.Store, base, workspace, profileDir string, sn
 					})
 				})))
 			setFactoryProcess(func() {
-				if factoryProcess.mirror == mirror.Root() {
+				if shape := factoryProcess.workerShapes[mirror.Root()]; shape != nil {
+					seam.Shape = shape
+				} else if factoryProcess.mirror == mirror.Root() {
 					seam.Shape = factoryProcess.workerShape
 				}
 			})

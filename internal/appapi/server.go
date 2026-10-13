@@ -47,6 +47,7 @@ type Options struct {
 	CrewRoles      CrewRoleSource
 	CrewItems      CrewItemSource
 	StandingTick   func(context.Context, *standing.Store) error
+	Factories      *FactoryRegistry
 }
 
 // Server keeps every registered handler behind the same transport guard.

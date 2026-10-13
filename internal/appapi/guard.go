@@ -86,6 +86,12 @@ func Guard(token string, next http.Handler) http.Handler {
 				return
 			}
 		}
+		// Worker credentials are checked by the mounted factory, after this
+		// same origin and host boundary. They never authenticate app routes.
+		if factoryWorkerPath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		authorization := r.Header.Values("Authorization")
 		if token == "" || len(authorization) != 1 || !strings.HasPrefix(authorization[0], "Bearer ") ||
 			subtle.ConstantTimeCompare([]byte(strings.TrimPrefix(authorization[0], "Bearer ")), []byte(token)) != 1 {
@@ -95,4 +101,8 @@ func Guard(token string, next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func factoryWorkerPath(path string) bool {
+	return path == "/v1/workers/pull" || strings.HasPrefix(path, "/v1/workers/leases/") || path == "/v1/runners/pull" || path == "/v1/runners/presence" || strings.HasPrefix(path, "/v1/runners/leases/")
 }

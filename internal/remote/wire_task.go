@@ -151,7 +151,8 @@ type TaskSteered struct {
 
 // TaskStopArgs uses the session's already-prefixed work id unchanged.
 type TaskStopArgs struct {
-	ID string `json:"id"`
+	Reason string `json:"reason,omitempty"`
+	ID     string `json:"id"`
 }
 
 // TaskStopped carries the engine's person-facing sentence without rewriting it.

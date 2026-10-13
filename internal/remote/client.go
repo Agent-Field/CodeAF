@@ -1622,7 +1622,12 @@ const steerUncertainWord = "the engine could not say whether that correction was
 
 // Cancel asks the engine to stop the prefixed work id and keeps its sentence.
 func (a *Agent) Cancel(id string) (string, error) {
-	payload, err := a.c.call(nil, MethodTaskStop, TaskStopArgs{ID: id})
+	return a.CancelWithReason(id, "")
+}
+
+// CancelWithReason keeps the factory hand-off receipt on the task itself.
+func (a *Agent) CancelWithReason(id, reason string) (string, error) {
+	payload, err := a.c.call(nil, MethodTaskStop, TaskStopArgs{ID: id, Reason: reason})
 	if err != nil {
 		return "", err
 	}
@@ -2318,7 +2323,12 @@ func (a *Agent) PlanResume(id string) error {
 }
 
 func (a *Agent) PlanCancel(id string) error {
-	_, err := a.c.call(nil, MethodPlanCancel, PlanTaskArgs{ID: id})
+	return a.PlanCancelWithReason(id, "")
+}
+
+// PlanCancelWithReason carries the origin task's factory hand-off receipt.
+func (a *Agent) PlanCancelWithReason(id, reason string) error {
+	_, err := a.c.call(nil, MethodPlanCancel, PlanTaskArgs{ID: id, Reason: reason})
 	return err
 }
 

@@ -1913,7 +1913,8 @@ func (w EventWire) Unwire() session.Event {
 
 // PlanTaskArgs names one task for a steering verb.
 type PlanTaskArgs struct {
-	ID string `json:"id"`
+	Reason string `json:"reason,omitempty"`
+	ID     string `json:"id"`
 }
 
 // PlanTextArgs carries the task and prose for note and amend.

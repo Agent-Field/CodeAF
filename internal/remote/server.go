@@ -2238,7 +2238,18 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if !ok {
 			return nil, errors.New("engine: this session has no door onto stopping work")
 		}
-		line, err := door.Cancel(args.ID)
+		var line string
+		if args.Reason != "" {
+			withReason, ok := agent.(interface {
+				CancelWithReason(string, string) (string, error)
+			})
+			if !ok {
+				return nil, errors.New("engine: this session cannot record a stop reason")
+			}
+			line, err = withReason.CancelWithReason(args.ID, args.Reason)
+		} else {
+			line, err = door.Cancel(args.ID)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -3011,6 +3022,13 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		door, ok := agent.(interface{ PlanCancel(string) error })
 		if !ok {
 			return nil, errors.New("engine: this engine cannot cancel its plan")
+		}
+		if args.Reason != "" {
+			withReason, ok := agent.(interface{ PlanCancelWithReason(string, string) error })
+			if !ok {
+				return nil, errors.New("engine: this session cannot record a plan stop reason")
+			}
+			return nil, withReason.PlanCancelWithReason(args.ID, args.Reason)
 		}
 		return nil, door.PlanCancel(args.ID)
 

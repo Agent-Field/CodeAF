@@ -124,6 +124,14 @@ func serveApp(parent context.Context, options appServeOptions, input io.ReadClos
 	defer agents.Close()
 	api := appapi.New(token, appapi.Options{Version: buildinfo.String(), Epoch: epoch, Shutdown: cancel, Credentials: credentials, ProfileDir: config.ProfilePath(config.ProfileDir(), ""), Context: ctx, Agents: agents, StandingTick: appStandingTick})
 	defer api.Close()
+	factories, err := newAppFactoryHost(ctx, options.home, "http://"+listener.Addr().String(), token, credentials)
+	if err != nil {
+		return err
+	}
+	defer factories.close()
+	if err := api.BindFactories(&appapi.FactoryRegistry{Home: options.home, URL: factories.address, Token: token, Credentials: credentials, Solo: factories.solo, Power: factories.power}); err != nil {
+		return err
+	}
 	server := &http.Server{
 		Handler: api.Handler(), ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout: 60 * time.Second, ErrorLog: logger,

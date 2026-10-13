@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -10,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
@@ -18,7 +18,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/record"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
-	factoryworker "github.com/Agent-Field/codeaf/internal/factory/worker"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -62,13 +61,14 @@ const factoryStageWall = 2 * time.Hour
 // factoryProcess is what this process built for the floor once: the manager's
 // shaping door every window's page uses, and the worker loop's stop.
 var factoryProcess struct {
-	once        sync.Once
-	mu          sync.Mutex
-	shape       func(ctx context.Context, id int) (string, error)
-	mirror      string
-	workerShape func(ctx context.Context, id int) (string, error)
-	stop        context.CancelFunc
-	parent      session.Config
+	once         sync.Once
+	mu           sync.Mutex
+	shape        func(ctx context.Context, id int) (string, error)
+	mirror       string
+	workerShape  func(ctx context.Context, id int) (string, error)
+	workerShapes map[string]func(context.Context, int) (string, error)
+	stop         context.CancelFunc
+	parent       session.Config
 }
 
 // factoryShapeHere is this process's Shape door, nil before
@@ -113,41 +113,12 @@ func startFactoryWorker(st *store.Store, workspace, profileDir string, parent se
 		ctx, cancel := context.WithCancel(context.Background())
 		setFactoryProcess(func() { factoryProcess.stop = cancel })
 		guard.Go("factory/worker", func() {
-			ticker := time.NewTicker(time.Second)
-			defer ticker.Stop()
-			release, ok := waitFactoryWorker(ctx, st, ticker.C)
-			if !ok {
-				return
+			credentials := config.NewAppCredentials()
+			if source := config.AppCredentialSource(); source != nil {
+				credentials = source
 			}
-			defer release()
-			clearDeadFactoryMirrors(filepath.Join(st.Root(), "workers"))
-			mirror, err := store.Open(filepath.Join(st.Root(), "workers", strconv.Itoa(os.Getpid())))
-			if err != nil {
-				return
-			}
-			setFactoryProcess(func() {
-				factoryProcess.mirror = mirror.Root()
-				factoryProcess.workerShape = factoryShapeDoor(mirror, workspace, profileDir, turns)
-			})
-			maker := factoryStageMakerFrom(st, workspace, profileDir, factoryWorkerParent)
-			r := buildFactoryRunner(mirror, st, workspace, profileDir, maker, turns)
-			dial := newFactoryWorkerDial(st, func() (factoryTarget, error) {
-				return resolveFactory(st, factorySeam(st, workspace, profileDir))
-			})
-			defer os.RemoveAll(mirror.Root())
-			attach, err := dial.attach(ctx, factorygithub.Connect(factory.Seam{}, factoryProfile(profileDir)))
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				return
-			}
-			factoryworker.Run(ctx, factoryworker.Options{
-				Dial: dial.dial, Keep: dial.keep, Attach: attach, Runner: r, Mirror: mirror, Slots: factoryBenches(),
-				LocalLease: factoryLocalLease(mirror),
-				Reply: func(ctx context.Context, it factory.Item, words string) error {
-					_, err := turns.through(ctx, it, words, nil)
-					return err
-				},
-			})
+			host := &appFactoryHost{ctx: ctx, floor: st, workspace: workspace, profile: profileDir, credentials: credentials, parent: factoryWorkerParent, defaultTarget: func() (factoryTarget, error) { return resolveFactory(st, factorySeam(st, workspace, profileDir)) }}
+			host.workers()
 		})
 	})
 }

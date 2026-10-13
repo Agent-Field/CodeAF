@@ -73,11 +73,12 @@ reserved with HTTP 501 `not built yet`.
 The local app API has reserved routes for files, tasks, quick tasks, processes,
 standing orders, reminders, permissions, asks, rules,
 crews, members, roles, reports, models, settings, setup, memory, spending, caps,
-search, history, Activity, factory connections, power and the AI door.
+search, history, Activity and the AI door.
 A reserved route returns HTTP 501 with `error: "not built yet"` and `route`
 naming the method and path template. It performs no action. Authentication,
 Origin and Host checks still run first; a wrong method returns 405 with `Allow`.
-Health, shutdown, keys, events, agent lifecycle, turn and Inbox routes work.
+Health, shutdown, keys, events, agent lifecycle, turn, Inbox, factory connections
+and power routes work.
 The agent snapshot includes the last 100 app entries, pending queue, live open
 asks, task summaries and usage. Earlier entries use the `/entries` route.
 
@@ -1533,8 +1534,56 @@ A repeated `Idempotency-Key` replays its original response.
 
 Factory producers use the person's session and source permissions, including
 assignee-only approval. Factory approvals use the factory's own five-second
-hold and Undo. Solo and attached factory sources can be merged once attached;
-this lane does not implement factory attachment. Answers given in the terminal
+hold and Undo. Solo and attached factory sources merge after factory creation or attachment. Answers given in the terminal
 resolve their canonical question in the app too. A source that cannot be reached
 keeps its last known items. Closing the engine cancels unsent engine answers;
 restarting does not send them. These app routes add no new chat tools.
+
+## App solo factory — start a factory on this machine — attach and leave a team
+
+`POST /app/v1/factories/solo {}` starts a solo factory on the app's existing
+loopback listener. `/v1` uses the same launch bearer; before setup it answers
+404 `no_factory`. A solo factory is for one person and is never shared.
+If the TUI already serves this home's solo factory, the app reuses it.
+
+`POST /app/v1/factories {"url":"https://host"}` attaches a team server.
+Team sign-in happens through its access link in the app. The app hands the
+session over in `factory_sessions`; it is never saved by this route.
+Several team factories may be attached. `GET /app/v1/factories` reports their
+stable ids, names, solo/team modes, operator permission, state and Last seen.
+The states are `ok`, `unreachable` and `signed_out`.
+`DELETE /app/v1/factories/{id} {}` leaves a team and withdraws its Inbox items.
+Leaving a solo factory returns 409 `not_allowed`.
+
+The app and TUI share one home and one elected worker process. An app passes
+new team sessions to that worker through a private local socket. Moving a
+repository to a team means turning it off in solo and on in team; no jobs migrate.
+
+## App Hand to factory — hand-off card, factory picker and originating task
+
+`POST /app/v1/agents/{id}/hand-off {}` prepares a card with the title, brief,
+repository, repository pipeline, assignee, Now/Backlog choice and factory picker.
+`POST /app/v1/tasks/{tid}/hand-off {}` uses that task's resource snapshot.
+The default factory is the one watching the repository.
+`POST /app/v1/agents/{id}/hand-off/{card}/send {}` sends it; editable fields
+include `factory`, `title`, `brief`, `repo`, `start` and `assignee`.
+
+A successful creation stops the origin and writes "Handed to the factory" with
+a link to the job. A failed creation leaves the origin running. Repeating a
+successful card returns the same job. A changed agent answers 409 `stale`.
+Cards expire after one hour; at most 256 cards remain in one launch.
+Task hand-off requires the task resource and a task stop door and keeps
+unrelated replies running. `issue:true` and a custom pipeline answer 422
+`not_allowed`: this job door uses the repository pipeline and cannot create
+an additional GitHub issue.
+
+## App Mac asleep — Linux sleep — power events and stopped processes
+
+`POST /app/v1/power {"state":"sleeping"}` stops this app's connected processes
+and records "stopped while this Mac slept · Rerun" beside them. It marks the
+elected runner asleep using its existing registration, including when the TUI
+owns that worker. `{"state":"awake"}` clears asleep. It never starts another
+runner merely to report power. Linux sends the same events from logind.
+An unreachable registered factory returns an error; retry the power event
+when the connection returns. Standing-order missed-trigger accounting belongs
+to its own resource.

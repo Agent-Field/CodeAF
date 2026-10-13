@@ -21,16 +21,19 @@ type AttachFactoryRequest struct {
 	Expect *AgentExpect `json:"expect,omitempty"`
 }
 type HandOffCard struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Brief    string `json:"brief"`
-	Repo     string `json:"repo"`
-	Pipeline string `json:"pipeline"`
-	Issue    bool   `json:"issue"`
-	Start    string `json:"start" jsonschema:"enum=now,enum=backlog"`
-	Assignee string `json:"assignee"`
+	Factory   string    `json:"factory"`
+	Factories []Factory `json:"factories"`
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	Brief     string    `json:"brief"`
+	Repo      string    `json:"repo"`
+	Pipeline  string    `json:"pipeline"`
+	Issue     bool      `json:"issue"`
+	Start     string    `json:"start" jsonschema:"enum=now,enum=backlog"`
+	Assignee  string    `json:"assignee"`
 }
 type SendHandOffRequest struct {
+	Factory  *string      `json:"factory,omitempty"`
 	Title    *string      `json:"title,omitempty"`
 	Brief    *string      `json:"brief,omitempty"`
 	Repo     *string      `json:"repo,omitempty"`
