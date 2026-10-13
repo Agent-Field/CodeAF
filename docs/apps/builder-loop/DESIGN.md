@@ -48,7 +48,7 @@ apps.create ─► Builder (loop road)
            codeaf app <verb>  (same binary, via the codeaf shim)
                  │ flock · fold · validate piece · append line · print "ok …" or the exact error
                  ▼
-           draft.jsonl ──tail (100 ms)──► Builder: fold → Render → Store.WriteFiles → Hub app/<id>/draft + app/<id>/build
+           draft.jsonl ──tail (fsnotify)──► Builder: fold → Render → Store.WriteFiles → Hub app/<id>/draft + app/<id>/build
                                                      ▲
            owner plan-card edit ──► draft.Append(author=owner) + plandb note to the live task
 ```
@@ -70,7 +70,7 @@ codeaf owns, and codeaf reads that store**.
 - **Fold.** `Fold([]Entry) State` gives `State{Name, About, Plan{Data, Runs,
   Screens, Agent}, Records map[id]*spec.RecordType (ordered), Screens
   map[id]json.RawMessage, Runs map[id][]byte, Agent []byte, Connectors,
-  Triggers, Commands, Budget, Phase: planning|planned|building|done, Asks}`.
+  Triggers, Commands, Budget, Phase: planning|planned|building|done}`.
 - **Render.** `Render(State, Defaults) spec.Files` is one pure function, so a
   test can compare its output with golden files. Some parts are derived rather
   than typed: `capabilities.records` (rw for each record), `capabilities.ai`
@@ -83,6 +83,57 @@ codeaf owns, and codeaf reads that store**.
 - **Registry.** Verbs are registered as `map[string]Verb{Usage, Parse(args,
   stdin) (Entry, error), Check(State, Entry) error}`. There is no switch. Each
   verb is one small file with its own table test.
+
+### 4.1 Package API (the L1 ↔ L2 contract)
+
+```go
+package draft // internal/apps/draft — imports spec only, never svc/store/records
+
+const (
+    JournalFile = "draft.jsonl"
+    LockFile    = "draft.lock"
+    SocketFile  = "builder.sock"
+    DirEnv      = "CODEAF_APP_DRAFT" // optional override; else dir($PLANDB_DB); else walk up from cwd
+)
+
+type Author string // "builder" | "owner" | "codeaf"
+type Piece struct{ Kind, ID string } // Kind: name|plan.data|plan.run|plan.screen|plan.agent|record|field|screen|run|agent|connect|trigger|command|drop|phase
+
+type Entry struct {
+    Seq    int      `json:"seq"`
+    At     string   `json:"at"`
+    Author Author   `json:"author"`
+    Verb   string   `json:"verb"`
+    Args   []string `json:"args,omitempty"`
+    Body   string   `json:"body,omitempty"`
+    Piece  Piece    `json:"piece"`
+    Line   string   `json:"line"` // owner-readable sentence for the card/log; never a verb or an error
+}
+
+type Store struct{ /* dir */ }
+func Open(dir string) (*Store, error)                       // creates the journal if absent
+func (s *Store) Dir() string
+func (s *Store) Append(a Author, verb string, args []string, body string) (Entry, error) // lock → fold → registry Parse+Check → append; error text is the CLI's exact line
+func (s *Store) Entries(since int) ([]Entry, error)          // seq > since
+func (s *Store) State() (State, error)
+
+type State struct { /* Name, About, Plan spec.Plan, ordered records/screens/runs, Agent, Connectors, Triggers, Commands, Phase */ }
+func Fold([]Entry) State
+type Defaults struct{ Space, AgentModel string; BudgetMonth float64; Kit int; AppID string }
+func Render(State, Defaults) spec.Files                     // pure; omits parts not made yet; plan.json always
+
+// Server verbs: the CLI dials SocketFile; the Builder serves it.
+type Request struct{ Verb string `json:"verb"`; Args []string `json:"args"` }
+type Reply   struct{ OK bool `json:"ok"`; Text string `json:"text"` }
+type Handler func(context.Context, Request) Reply
+func Serve(ctx context.Context, dir string, h Handler) (stop func(), err error) // listens on dir/SocketFile, 0600
+
+func Main(args []string, stdin io.Reader, stdout, stderr io.Writer) int // `codeaf app <verb>`; exit 0 ok, 1 refused, 2 usage, 3 Builder not running
+```
+
+`done` on the CLI is a server verb. The Builder runs Check, and on pass it
+appends `Append("codeaf", "phase", ["done"], "")` and replies ok. The CLI never
+writes the done phase itself.
 
 ## 5. Verbs — `codeaf app <verb>`
 
@@ -110,14 +161,34 @@ so the worker sends it with a heredoc. One piece per call.
 | server | `try <run-id>` | dry run of one run on sample data |
 | server | `done "<one line>"` | full Check. Refuses while it fails and prints the report, then Phase=done |
 
-**Server verbs** need services the CLI process does not have (records, sample
-seed, runtime). They go through the same journal: the CLI appends an `ask`
-entry with a nonce. The Builder, which is tailing the journal, runs the check
-and appends an `answer` entry. The CLI waits up to 180 s for the matching
-answer and prints it. If no Builder answers, the CLI prints `error: the Builder
-is not listening` and exits 3, without hanging. This keeps one transport and no
-ports, and it survives a server restart, because the request stays in the
-journal and the new server answers it.
+**Server verbs** (`check`, `try`, `done`) need services the CLI process does
+not have (records, sample seed, runtime). They are synchronous calls to the
+running Builder over a **per-build unix socket** `<build>/builder.sock`
+(mode 0600, served by the Builder while the build is live). The request is
+`{verb, args}` and the reply is `{ok, text}`. The handlers call the same
+`Service` code that the gateway methods call. If no server is listening, the
+CLI fails at once (`error: the Builder is not running`, exit 3). There is no
+wait loop.
+
+*Why not the apps gateway (manager's note 1):* the gateway is reachable from
+a worker shell (loopback, `bridge.Path`). But it sits behind the appapi guard,
+which accepts only the launch token, and that token opens every app and appapi
+route (keys, factories, shutdown). Exporting it into a shell that runs model
+text gives the model all of that. A scoped token would need a second token
+kind in `internal/appapi/guard.go` and a per-connection method allowlist in
+the gateway, because method `Allow`s do not all refuse agent callers. The
+per-build socket gives the same synchronous answer with no secret in the
+shell and no change to the guard or the gateway. The scope is the file
+itself: one socket per build, and it is gone when the build ends.
+
+**Exact paths in errors (manager's note 2).** `screen`, `run` and `agent`
+take one whole document per call. Each document is checked alone against its
+schema and against the draft's records and fields. Each error names the file
+and the JSON pointer, for example
+`error: screens/pipeline.json: /columns/2/field "stge" is not a field of deal (fields: name, company, stage, …)`.
+Another piece that is broken never blocks or fails this one, because a piece
+is checked against the State, never against the full render. Cross-piece
+problems that only the full render shows wait for `check` and `done`.
 
 ## 6. Exposure — copied from plandb
 
@@ -155,11 +226,12 @@ journal and the new server answers it.
   `clientConfig(model)` that `Model.Complete` uses: same provider stack, key
   ladder and billing receipts. The model is `deepseek/deepseek-v4.1-flash`
   (`DefaultModel`).
-- **Tail.** A goroutine per live build reads new journal lines every 100 ms (a
-  stat on the size, so it is cheap) and on worker exit. For each committed
+- **Tail.** A goroutine per live build watches the journal with fsnotify
+  (already in go.mod). It falls back to a 250 ms size stat when the watch
+  cannot be set, and always does one final read on worker exit. For each committed
   entry it folds, renders, runs `Store.WriteFiles` (coalesced to one write per
   tick), publishes a `DraftEvent` and a `BuildEvent` step line ("Data · Deal
-  added"), and answers any `ask`.
+  added"). It also serves `builder.sock` for the server verbs.
 - **Restart.** `buildFor` rebuilds from the journal fold when one exists.
   Write after a restart starts the same task again. `BashWorker` already opens
   with the resume clause from the trajectory, and the draft is already there.
@@ -246,8 +318,8 @@ The output is a CSV plus `bench/appbuilder/REPORT.md`. The default flips to
 ## 12. Tests
 
 - `draft`: table tests per verb (accept, each refusal text), fold, lock under
-  two concurrent writers, render vs golden, CRM script round trip, ask/answer
-  timeout.
+  two concurrent writers, render vs golden, CRM script round trip, socket
+  absent → exit 3.
 - `builder`: loop road with a scripted completer. The worker types the CRM
   script → Preview. The worker stops halfway → rung 2. An empty draft → rung 3.
   Owner edit mid-build → note delivered. Restart → resume.
@@ -280,7 +352,7 @@ cursor. Lines are keyed by id, and the edit field holds its own value.
 | Lane | Scope | Depends on |
 |---|---|---|
 | L1 draft | `internal/apps/draft` + `cmd/codeaf` dispatch + CRM script test | design |
-| L2 loop road | `builder/loop*.go`, road registry, seat, tail, ask/answer, rescue ladder, events, steering | the L1 API in §4 (codes against it in parallel) |
+| L2 loop road | `builder/loop*.go`, road registry, seat, tail, builder.sock, rescue ladder, events, steering | the L1 API in §4 (codes against it in parallel) |
 | L3 page | `appbuilder.md` + CRM verb script (handed to L1's test) | the §5 verb syntax |
 | L4 desk | §13 + vitest + Playwright | the §8 event shape |
 | L5 bench | `bench/appbuilder` driver, both roads, report | L1+L2 merged on the branch |
