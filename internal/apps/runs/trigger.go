@@ -28,7 +28,7 @@ func (e *engine) listen() {
 			}
 			// Drive can publish more record diffs. Reading stays on this
 			// goroutine's caller so a full hub buffer cannot deadlock it.
-			go e.onEvent(e.ctx, ev)
+			e.launch(func() { e.onEvent(e.ctx, ev) })
 		}
 	}
 }
@@ -238,7 +238,7 @@ func (e *engine) resumeRunning() {
 		}
 		for _, job := range jobs {
 			if job.State.Status == bridge.RunRunning {
-				go e.drive(e.ctx, app, job.State.ID)
+				e.launch(func() { e.drive(e.ctx, app, job.State.ID) })
 			}
 		}
 	}
@@ -258,7 +258,7 @@ func (e *engine) resumeDue(ctx context.Context) {
 			if now.Before(job.WaitUntil) {
 				continue
 			}
-			go e.drive(ctx, app, job.State.ID)
+			e.launch(func() { e.drive(ctx, app, job.State.ID) })
 		}
 	}
 }

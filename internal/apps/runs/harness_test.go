@@ -80,12 +80,8 @@ func newHarness(t *testing.T) *harness {
 	h.inbox = &Approvals{eng: h.eng}
 	h.tools = &Connectors{eng: h.eng}
 	t.Cleanup(func() {
+		h.runs.Close()
 		h.cancel()
-		h.eng.wg.Wait()
-		h.eng.closeDBs()
-		enginesMu.Lock()
-		delete(engines, root)
-		enginesMu.Unlock()
 	})
 	return h
 }
@@ -96,12 +92,8 @@ func (h *harness) scope() svc.Scope {
 
 func (h *harness) reopen(t *testing.T) {
 	t.Helper()
+	h.runs.Close()
 	h.cancel()
-	h.eng.wg.Wait()
-	h.eng.closeDBs()
-	enginesMu.Lock()
-	delete(engines, h.root)
-	enginesMu.Unlock()
 	ctx, cancel := context.WithCancel(context.Background())
 	h.ctx, h.cancel = ctx, cancel
 	h.eng = newEngine(svc.Config{Root: h.root, Ctx: ctx}, h.all)

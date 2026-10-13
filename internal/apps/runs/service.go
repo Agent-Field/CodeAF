@@ -19,6 +19,12 @@ func New(cfg svc.Config, all *svc.Services) *Service {
 	return &Service{eng: shared(cfg, all)}
 }
 
+// Close stops triggers and in-flight runs before closing their shared journal.
+// Owners must call it before removing the apps root, including on server shutdown.
+func (s *Service) Close() {
+	s.eng.close()
+}
+
 // Start checks the per-run budget, then executes until the run finishes or waits.
 func (s *Service) Start(ctx context.Context, scope svc.Scope, p bridge.StartRunParams) (bridge.RunState, error) {
 	return s.eng.start(ctx, scope, p, "manual")
