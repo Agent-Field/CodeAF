@@ -205,7 +205,14 @@ type published struct {
 // publish writes the approved job to its source and answers its receipt.
 func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (published, error) {
 	var src factory.Source
-	if r.opts.Source != nil {
+	pushBranch := r.opts.Push
+	if r.opts.Publisher != nil {
+		target, err := r.opts.Publisher(ctx, it)
+		if err != nil {
+			return published{}, publish.Wrap(err, "push")
+		}
+		src, pushBranch = target.Source, target.Push
+	} else if r.opts.Source != nil {
 		src = r.opts.Source(it.Repo)
 	}
 	if src == nil {
@@ -270,7 +277,7 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 		}
 		return published{comment: rcpt.URL}, nil
 	}
-	if r.opts.Push == nil {
+	if pushBranch == nil {
 		return published{}, publish.Wrap(errors.New("this machine cannot push"), "push")
 	}
 	branch := branchFor(it)
@@ -278,7 +285,7 @@ func (r *Runner) publish(ctx context.Context, it factory.Item, trailer string) (
 	if it.HeadCommit != "" {
 		ref = it.HeadCommit + ":refs/heads/" + branch
 	}
-	if err := push(r.opts.Push, dir, it, ref); err != nil {
+	if err := push(pushBranch, dir, it, ref); err != nil {
 		return published{}, publish.Wrap(err, "push")
 	}
 	rcpt, err := src.Write(ctx, factory.Action{Verb: "pr", Item: it, Branch: branch, Body: body})

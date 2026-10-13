@@ -53,6 +53,14 @@ func (d *Doors) Launch(id int) error {
 		if held != nil {
 			return false, run.AlreadyRunning(it.Ref())
 		}
+		if it.Publishing && it.State == factory.StateNeedsYou && it.QKind == factory.NeedsRunnerOffline {
+			// Resume the approved publish without resetting its proof or
+			// replacing the trailer recovered from the expired lease.
+			it.State = factory.StateQueued
+			it.Question, it.QKind, it.Failure = "", "", nil
+			it.MarkPublishing("queued", "", "", now)
+			return true, nil
+		}
 		if err := run.QueueItem(it, now); err != nil {
 			return false, err
 		}
@@ -134,6 +142,12 @@ func (d *Doors) Answer(id int, yes bool, words string) error {
 	it, err := d.desk.store.Get(id)
 	if err != nil {
 		return err
+	}
+	if it.Publishing && it.State == factory.StateNeedsYou && it.QKind == factory.NeedsRunnerOffline {
+		if factory.OutOfAttemptsChoice(yes, words) == factory.ChoiceTryOnceMore {
+			return d.Launch(id)
+		}
+		return d.Stop(id)
 	}
 	if it.State == factory.StateNeedsYou && it.QKind == factory.QKindAskFirst {
 		if yes {

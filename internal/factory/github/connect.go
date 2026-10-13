@@ -30,6 +30,16 @@ const ghTimeout = 3 * time.Second
 // TokenAt is the token the factory reads GitHub with on this profile and the
 // way it was found, or "" and "" for none.
 func TokenAt(ctx context.Context, profileDir string) (token, via string) {
+	// An app handoff owns this connection, including a deliberate removal.
+	// A shell token or gh login must not replace the assignee's app account.
+	if source := config.AppCredentialSource(); source != nil {
+		if t, ok := source.Key("github"); ok {
+			if t == "" {
+				return "", ""
+			}
+			return t, factory.ViaToken
+		}
+	}
 	for _, name := range []string{"GH_TOKEN", "GITHUB_TOKEN"} {
 		if t := strings.TrimSpace(env.Value(name)); t != "" {
 			return t, factory.ViaEnv

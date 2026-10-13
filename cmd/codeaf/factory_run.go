@@ -256,8 +256,9 @@ func buildFactoryRunner(items, floor *store.Store, workspace, profileDir string,
 		Workdir: func(it factory.Item) (string, error) {
 			return workdirs.For(it, dirs(it.Repo))
 		},
-		Recipe: recipe,
-		Source: source,
+		Recipe:    recipe,
+		Source:    source,
+		Publisher: factoryPublisher(profileDir),
 		// APPROVING PUBLISHES (internal/factory/run's publish.go): the job's
 		// worktree is committed with git, its branch pushed as the person,
 		// and the pull request opened through source.

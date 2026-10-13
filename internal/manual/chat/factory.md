@@ -2351,10 +2351,30 @@ ask when the job has one, then `Closes #12.`
 for an issue with new commits, `Proof · N of M claims shown`, one `✓`/`✕` line per claim, and the trailer
 as its last line. The item becomes shipped with its pull request (`pr` on the wire), and
 the record says `posted · pr · <url>`. A pull request already open from that branch is
-reused, not opened twice.
+updated with this approved proof and trailer, without opening another PR.
 
 **A pull request item** is not pushed to: approving it posts one comment on that pull
 request with the same body and trailer, and the item's `pr` is that pull request.
+
+## the assignee's runner opens the pull request — team and solo GitHub publishing
+
+The PR is opened as the job's assignee. The runner holding the job's lease on the
+assignee's machine pushes the approved commit and opens or updates the PR, or posts
+the proof comment. It uses that machine's connected GitHub account: a token handed
+over by the app, a terminal token, or `gh` after you have agreed to use its login.
+One publish attempt uses the same token for the push and the PR or comment.
+An app's GitHub handoff takes precedence over `GH_TOKEN`, `GITHUB_TOKEN` and the
+profile; removing the app's key does not reconnect a different account.
+
+The runner checks that its connected GitHub login matches the assignee before it
+pushes or writes. A different account fails publishing with `no_push_permission`;
+connect the assignee's account on that runner before retrying. The job's repository
+comes from the lease; the runner need not watch it locally. The factory server
+reads GitHub for checks, reviews and merge or close state and records the runner's
+publish receipt. It never opens the job's PR or posts its proof comment with the
+server's own GitHub connection. A solo factory follows this same lease and runner
+path on your machine. The approval trailer still names the approved commit, and
+repeating an HTTP action with the same `Idempotency-Key` replays its first response.
 
 ## publishing failures, approval consent and the worker machine
 
@@ -2366,7 +2386,11 @@ approval. A changed commit needs approval again. The lease records the worker's 
 machine id, and the job keeps that id after the lease ends. Publishing, re-running checks and resumed runs are offered only to workers on
 that machine, including a new process or another slot there. While queued it says
 `waiting for <machine>` (or `publishing · waiting for <machine>` after approval).
-If that machine is offline, the job waits for it; another machine never takes it.
+If that machine is offline before publishing starts, the job waits for it; another
+machine never takes it. If its lease expires during publishing, the job becomes
+Needs you with `runner_offline` and `Runner went offline mid-step`. Choose
+`try_once_more` to resume publishing on that machine with the same approval, or
+`cancel_job` to stop. Returning online alone does not retry an interrupted write.
 The TUI says `publishing` between approval and the pull request, then `shipped`.
 
 ## no diff at the proof gate — approve with an issue comment

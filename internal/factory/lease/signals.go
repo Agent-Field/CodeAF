@@ -161,6 +161,11 @@ func (d *Desk) keepPublish(doc *document, job int) error {
 		signal(doc, job, s)
 	}
 	return d.store.Update(job, func(it *factory.Item) error {
+		// An interrupted publish stays visible until its person chooses to
+		// resume; retaining consent is not permission to retry a lost write.
+		if it.State == factory.StateNeedsYou && it.QKind == factory.NeedsRunnerOffline {
+			return nil
+		}
 		it.State = factory.StateQueued
 		it.Publishing = true
 		if it.PublishStatus != nil {

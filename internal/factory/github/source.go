@@ -75,6 +75,7 @@ type API interface {
 	OpenPullRequest(ctx context.Context, owner, repo, head string) (int, error)
 	DefaultBranch(ctx context.Context, owner, repo string) (string, error)
 	CreatePullRequest(ctx context.Context, owner, repo, head, base, title, body string, draft bool) (forge.Posted, error)
+	UpdatePullRequest(ctx context.Context, owner, repo string, number int, title, body string) (forge.Posted, error)
 }
 
 // RepoInfo is one repository the token can see, for the picker.
@@ -924,18 +925,20 @@ func (s *Source) openPull(ctx context.Context, owner, name string, a factory.Act
 	if !strings.Contains(head, ":") {
 		head = owner + ":" + branch
 	}
+	title := strings.TrimSpace(a.Item.Title)
+	if title == "" {
+		title = branch
+	}
 	if n, err := s.api.OpenPullRequest(ctx, owner, name, head); err != nil {
 		return forge.Posted{}, err
 	} else if n > 0 {
-		return forge.Posted{URL: fmt.Sprintf("https://github.com/%s/%s/pull/%d", owner, name, n), ID: fmt.Sprint(n), Number: n}, nil
+		// A retry carries the approved proof again, including its trailer;
+		// merely returning the old URL could leave a different commit's body.
+		return s.api.UpdatePullRequest(ctx, owner, name, n, title, a.Body)
 	}
 	base, err := s.api.DefaultBranch(ctx, owner, name)
 	if err != nil {
 		return forge.Posted{}, err
-	}
-	title := strings.TrimSpace(a.Item.Title)
-	if title == "" {
-		title = branch
 	}
 	return s.api.CreatePullRequest(ctx, owner, name, branch, base, title, a.Body, a.Draft)
 }

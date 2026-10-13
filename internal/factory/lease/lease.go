@@ -390,6 +390,9 @@ func (d *Desk) queueJob(id int, lost time.Time, machine string) error {
 		if machine == "" {
 			machine = it.WorktreeMachine
 		}
+		if it.Publishing {
+			step = "publishing"
+		}
 		it.State = factory.StateNeedsYou
 		it.QKind = factory.NeedsRunnerOffline
 		it.Question = "Runner went offline mid-step"

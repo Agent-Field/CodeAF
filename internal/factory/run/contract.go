@@ -147,6 +147,10 @@ type Options struct {
 	Recipe func(repo string) factory.Recipe
 	// Source answers the item's source for a post stage, nil when none.
 	Source func(repo string) factory.Source
+	// Publisher resolves the assignee's account and one credential for both
+	// the push and forge write. The server never supplies a publishing token.
+	// Nil retains Source and Push for embedded runners.
+	Publisher func(context.Context, factory.Item) (PublishTarget, error)
 	// Push publishes an item's branch from its folder when a person's
 	// approval is carried out ([Runner.Publish]); the wire hands [GitPush]
 	// with the person's token. Nil publishes nothing: an approval then fails
@@ -207,6 +211,12 @@ type Options struct {
 	// failure on the job and writes no audit line. The worker's mirror
 	// leaves this nil; the factory that accepts the report writes the event.
 	Record *record.Record
+}
+
+// PublishTarget keeps one attempt's GitHub writes on the same person's account.
+type PublishTarget struct {
+	Source factory.Source
+	Push   func(dir, branch string) error
 }
 
 // InboxReply is the manager's answer to a step's question: Answer is its

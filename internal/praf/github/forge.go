@@ -645,6 +645,24 @@ func (c *client) CreatePullRequest(ctx context.Context, owner, repo, head, base,
 	return Posted{URL: r.HTMLURL, ID: strconv.Itoa(r.Number), Number: r.Number}, nil
 }
 
+// UpdatePullRequest replaces the title and approved proof on an existing PR.
+func (c *client) UpdatePullRequest(ctx context.Context, owner, repo string, number int, title, body string) (Posted, error) {
+	data, err := c.write(ctx, http.MethodPatch, c.repoURL(owner, repo, fmt.Sprintf("/pulls/%d", number)), map[string]any{
+		"title": title, "body": body,
+	})
+	if err != nil {
+		return Posted{}, err
+	}
+	var r struct {
+		Number  int    `json:"number"`
+		HTMLURL string `json:"html_url"`
+	}
+	if err := json.Unmarshal(data, &r); err != nil {
+		return Posted{}, err
+	}
+	return Posted{URL: r.HTMLURL, ID: strconv.Itoa(r.Number), Number: r.Number}, nil
+}
+
 // WithBaseURL points the client at another API root, which is how a test
 // serves it from an httptest.Server; never the network.
 func (c *client) WithBaseURL(base string) *client {

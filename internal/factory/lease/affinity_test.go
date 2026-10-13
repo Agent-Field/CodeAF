@@ -109,6 +109,19 @@ func TestPublishingKeepsAffinityAndApprovalAcrossDisconnection(t *testing.T) {
 					if _, err := f.desk.Expire(); err != nil {
 						t.Fatal(err)
 					}
+					lost, _ := f.store.Get(it.ID)
+					if lost.State != factory.StateNeedsYou || factory.NeedsKind(lost) != factory.NeedsRunnerOffline || lost.Question != "Runner went offline mid-step" || lost.Failure == nil || lost.Failure.Step != "publishing" {
+						t.Fatalf("lost publisher = %+v", lost)
+					}
+					if _, err := f.open(t).Pull(machineWorker("back-online", "laptop")); !errors.Is(err, lease.ErrNoJob) {
+						t.Fatalf("offline publish retried without its person: %v", err)
+					}
+					if err := f.desk.Apply(publisher.ID, publisher.Worker, true, func(*factory.Item) error { t.Error("expired publisher wrote a receipt"); return nil }); !errors.Is(err, lease.ErrNoLease) {
+						t.Fatalf("expired report = %v", err)
+					}
+					if err := lease.NewDoors(f.open(t)).Answer(it.ID, true, factory.ChoiceTryOnceMore); err != nil {
+						t.Fatal(err)
+					}
 				} else if err := f.desk.Requeue(it.ID, publisher.Worker); err != nil {
 					t.Fatal(err)
 				}
