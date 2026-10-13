@@ -57,18 +57,22 @@ func writeCheckRuns(t *testing.T, store *plandb.Store, id string, runs map[strin
 // trees, so this proof cannot depend on recognizing a particular runner word.
 func TestReviewContractComesOnlyFromTheWorkersDeclarationAcrossFixtures(t *testing.T) {
 	fixtures := []struct {
-		name string
-		root string
-		task string
+		name     string
+		root     string
+		task     string
+		declared []string
 	}{
-		{name: "long recorded work", root: "testdata/c249", task: "jcrhzh"},
-		{name: "alternate recorded work", root: "testdata/declared", task: "alternate"},
+		{name: "long recorded work", root: "testdata/c249", task: "jcrhzh", declared: []string{"go test ./...", "go vet ./..."}},
+		{name: "alternate recorded work", root: "testdata/declared", task: "alternate", declared: []string{"python -m unittest discover", "python -m compileall -q src"}},
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture.name, func(t *testing.T) {
 			recorded := fixtureCommands(t, fixture.root, fixture.task)
-			declared := []string{recorded[len(recorded)-1], recorded[0]}
+			declared := fixture.declared
 			store := runOpenStore(t)
+			// The work record may contain directory wrappers and compositions.
+			// It is evidence about the work, never a source of declarations.
+			writeCheckRuns(t, store, "leaf", map[string]int{recorded[0]: 0, recorded[len(recorded)-1]: 0})
 			seat := newFakeSeat()
 			seat.actions["root"] = splitRoot(t, store, plandb.TaskSpec{
 				ID: "leaf", Title: "the leaf", Checks: declared,
@@ -109,7 +113,14 @@ func TestHoldsRequiresEveryDeclaredRunWithZeroExitAndAuditApproval(t *testing.T)
 				checks = []string{"*"}
 			}
 			store := runOpenStore(t)
-			if _, err := store.AddMany([]plandb.TaskSpec{{ID: "review", Title: "check: leaf", Role: plandb.RoleCheck, Checks: checks}}); err != nil {
+			_, err := store.AddMany([]plandb.TaskSpec{{ID: "review", Title: "check: leaf", Role: plandb.RoleCheck, Checks: checks}})
+			if tc.name == "declaration is not auditable" {
+				if err == nil {
+					t.Fatal("unauditable declaration admitted before completion")
+				}
+				return
+			}
+			if err != nil {
 				t.Fatal(err)
 			}
 			if _, err := store.Claim("review", "review"); err != nil {

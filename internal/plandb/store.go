@@ -229,6 +229,9 @@ func (s *Store) AddMany(specs []TaskSpec) ([]*Task, error) {
 			if err := validateSpec(specs[i]); err != nil {
 				return fmt.Errorf("task %d: %w", i, err)
 			}
+			if err := validateCheckDeclarations(specs[i].Checks); err != nil {
+				return fmt.Errorf("task %d: %w", i, err)
+			}
 			if next.Tasks[specs[i].ID] != nil || next.Deleted[specs[i].ID] || batch[specs[i].ID] {
 				return fmt.Errorf("duplicate task id %q", specs[i].ID)
 			}
@@ -513,6 +516,9 @@ func (s *Store) AddReviewCheck(spec TaskSpec) (*Task, error) {
 		spec = normalizeSpec(spec, next.RootID)
 		id = spec.ID
 		if err := validateSpec(spec); err != nil {
+			return err
+		}
+		if err := validateCheckDeclarations(spec.Checks); err != nil {
 			return err
 		}
 		if spec.Role != RoleCheck {
@@ -803,6 +809,26 @@ func auditableDeclaredCheck(command string) bool {
 // internal/session), restated here because the store and the door must agree
 // about what a critical command is or the gate and the door drift apart.
 var auditAllowAll = approval.Policy{Default: approval.ActionAllow}
+
+// validateCheckDeclarations asks the completion gate's own question before a
+// declaration is written. A command that gate can never approve must not buy a
+// worker and a check that spend their turns trying to earn an impossible holds.
+// THE COMMAND IS REFUSED, NEVER REWRITTEN: removing a directory change or
+// splitting a composition could check different files or drop a required step.
+func validateCheckDeclarations(checks []string) error {
+	for _, raw := range checks {
+		command := strings.TrimSpace(raw)
+		if command == "" || auditableDeclaredCheck(command) {
+			continue
+		}
+		reason := "is not one command the read-only checker may run"
+		if offending, composed := approval.FirstCompositionOutsideQuotes(command); composed {
+			reason = fmt.Sprintf("joins, redirects or expands commands with %q outside single quotes", string(offending))
+		}
+		return fmt.Errorf("check %q %s. Declare one rerunnable command per --check; checks run from the root of the task's own copy, so omit cd and use paths relative to that root", command, reason)
+	}
+	return nil
+}
 
 // SetVerdictBasis records HOW a task's verdict was earned on the task itself.
 // Done writes it by the same gate that judged the verdict; this store method
@@ -1126,6 +1152,14 @@ func (s *Store) Revise(id string, patch TaskPatch) (*Task, error) {
 	return s.changeTask(id, func(next *state, task *Task, now time.Time) error {
 		if task.Status != StatusPending && task.Status != StatusReady && !questionOnlyPatch(patch) {
 			return fmt.Errorf("task %q can only be revised before execution", id)
+		}
+		// Only a new declaration is admitted here. An older stored declaration
+		// may be unusable, but that must not prevent unrelated question edits;
+		// its completion still has to pass the unchanged audit gate.
+		if patch.Checks != nil {
+			if err := validateCheckDeclarations(*patch.Checks); err != nil {
+				return err
+			}
 		}
 		applyPatch(&task.TaskSpec, patch)
 		task.TaskSpec = normalizeSpec(task.TaskSpec, next.RootID)
