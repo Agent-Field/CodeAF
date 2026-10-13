@@ -584,8 +584,8 @@ func doErrand(request doRequest) error {
 	if errors.Is(err, config.ErrCrewAtCap) && !request.yesSpend {
 		// AT THE DAILY CAP A HEADLESS RUN REFUSES: nobody is there to ask, and a
 		// cap that spends anyway is not a cap. -yes-spend is the one way past.
-		capErr := fmt.Errorf("today's crew spend has reached the daily cap of %s · raise it or turn it off with `/crew cap`, pass -yes-spend, or wait until midnight",
-			crewroute.Money(config.CrewCapAt(profileDir)))
+		capErr := fmt.Errorf("today's crew spend has reached the daily cap of %s · raise it or turn it off with `%s cap`, pass -yes-spend, or wait until midnight",
+			crewroute.Money(config.CrewCapAt(profileDir)), config.CrewCommand)
 		if !request.asJSON {
 			return capErr
 		}

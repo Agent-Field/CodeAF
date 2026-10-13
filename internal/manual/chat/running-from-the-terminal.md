@@ -625,6 +625,9 @@ stay what `/seats` last set.
 today's crew spend has reached the daily cap of $5.00 · raise it or turn it off with `/seats cap`, pass -yes-spend, or wait until midnight
 ```
 
+The older `/crew cap` spelling remains an alias for one release; refusals name
+`/seats cap`.
+
 `-yes-spend` is the one way past it for this run — past the daily cap, never past the
 per-task limit. `--cheap` is refused at the cap like any other run. The day turns over at
 midnight on this machine's clock.

@@ -36,7 +36,7 @@ func TestYesSpendKeepsThePerTaskLimit(t *testing.T) {
 		preauthorized bool
 	}{{crew, true}, {crew, false}, {nil, true}, {nil, false}} {
 		guard := doSpendGuard(dir, c.crew, c.preauthorized)
-		if guard.TaskCap != 5 || guard.TaskAction != config.CrewTaskCapAction(5) {
+		if guard.TaskCap != config.CrewTaskCapDefault || guard.TaskAction != config.CrewTaskCapAction(config.CrewTaskCapDefault) {
 			t.Fatalf("crew=%v yes-spend=%v: per-task limit %v, %q", c.crew != nil, c.preauthorized, guard.TaskCap, guard.TaskAction)
 		}
 	}
@@ -51,11 +51,11 @@ func TestYesSpendKeepsThePerTaskLimit(t *testing.T) {
 	for i := 0; i < 10 && err == nil; i++ {
 		_, err = wrapped.CompleteWithMessages(t.Context(), []ai.Message{{Role: "user"}})
 	}
-	if !errors.As(err, &stopped) || stopped.Action != "this task reached its $5 limit · raise it in /crew" {
+	if !errors.As(err, &stopped) || stopped.Action != "this task reached its $2 limit · raise it in /seats" {
 		t.Fatalf("a run under -yes-spend ended on %v", err)
 	}
-	if seat.calls != 2 {
-		t.Fatalf("%d calls were made under a $5 limit at $2 a call, want 2", seat.calls)
+	if seat.calls != 1 {
+		t.Fatalf("%d calls were made under a $2 limit at $2 a call, want 1", seat.calls)
 	}
 }
 

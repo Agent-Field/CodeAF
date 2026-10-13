@@ -134,7 +134,7 @@ func testSeniorDevExplicitShellModel(t *testing.T, tc shellModelCase) {
 	err := runCarried(program, line)
 	if tc.refused {
 		if err == nil || calls.Load() != 0 || !strings.Contains(err.Error(), tc.word) ||
-			!strings.Contains(err.Error(), "/crew") || !strings.Contains(err.Error(), "codeaf connect") || output.String() != "" {
+			!strings.Contains(err.Error(), "/seats") || !strings.Contains(err.Error(), "codeaf connect") || output.String() != "" {
 			t.Fatalf("unserved model error = %v after %d calls, want model and doors before child", err, calls.Load())
 		}
 		if records, _ := filepath.Glob(filepath.Join(carriedRecordRoot("senior-dev"), "*")); len(records) != 0 {
@@ -185,7 +185,7 @@ func TestSeniorDevShellDefaultNamesCrewDoorWhenNoModelCanStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = road.defaultSeat()
-	if err == nil || !strings.Contains(err.Error(), "/crew") {
-		t.Fatalf("empty profile default error = %v, want the crew door", err)
+	if err == nil || !strings.Contains(err.Error(), "/seats") {
+		t.Fatalf("empty profile default error = %v, want the /seats door", err)
 	}
 }

@@ -244,9 +244,9 @@ func TestAnErrandAtTheDailyCapRefusesUnlessToldToSpend(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "daily cap") {
 		t.Fatalf("an errand at the cap was not refused: %v", err)
 	}
-	// THE REFUSAL NAMES ONLY THE WAYS ON THAT WORK: /crew cap, -yes-spend and
+	// THE REFUSAL NAMES ONLY THE WAYS ON THAT WORK: /seats cap, -yes-spend and
 	// the day turning over. --cheap is refused at the cap too, so it is not one.
-	for _, way := range []string{"/crew cap", "-yes-spend", "midnight"} {
+	for _, way := range []string{"/seats cap", "-yes-spend", "midnight"} {
 		if !strings.Contains(err.Error(), way) {
 			t.Errorf("the refusal does not name %q: %q", way, err)
 		}
