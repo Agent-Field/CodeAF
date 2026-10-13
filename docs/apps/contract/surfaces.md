@@ -156,7 +156,9 @@ interface SurfaceProps {
   mode: "view" | "nudge" | "comment" | "present" | "thumb"; // comment: a click calls onAnchor, nothing edits
   theme?: unknown;            // canvas theme.json etc.
   comments: Comment[];        // pins to draw at anchors
-  onNudge(text: string, label: string): void;  // frame writes parts.write
+  onNudge(text: string, label: string, extra?: Part["extra"]): void;  // frame writes parts.write (extra: grid formulas)
+  doc?: { parts: PartSummary[] };              // the other parts of the document (Grid match mode, Pages)
+  loadPart?(part: string): Promise<Part>;       // fetch another part on demand; never preloaded
   onAnchor(anchor: Comment["anchor"]): void;   // Comment mode click
   onOpenRecord?(record: string): void;          // click on a node/pin/item/box bound to a record
   busy?: { start: string; end: string }[];      // Timeline free/busy from the calendar connector, when present
