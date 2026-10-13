@@ -170,10 +170,25 @@ func TestBridgePersonalSpaces(t *testing.T) {
 	if len(audit.Entries) != 1 || audit.Entries[0].Seq != entry.Seq || !audit.Entries[0].At.Equal(entry.At) || audit.Entries[0].Action != entry.Action || audit.Next != 0 {
 		t.Fatalf("audit.list = %+v", audit)
 	}
-	for _, topic := range []string{bridge.TopicSpaceMembers, bridge.TopicSpaceActivity, bridge.TopicSpaceWaiting, bridge.TopicRoles("crm"), bridge.TopicSignoff("crm")} {
+	for _, topic := range []string{bridge.TopicRoles("crm"), bridge.TopicSignoff("crm")} {
 		id := c.send(bridge.Envelope{Type: bridge.TypeSub, Topic: topic})
 		if reply := c.read(); reply.ID != id || reply.Type != bridge.TypeResult {
 			t.Fatalf("subscribe %s = %+v", topic, reply)
+		}
+	}
+}
+
+func TestBridgeSpaceTopicsNeedGatewayHook(t *testing.T) {
+	c, _ := dialPersonalSpaces(t)
+	for _, kind := range []bridge.MessageType{bridge.TypeSub, bridge.TypeUnsub} {
+		for _, topic := range []string{bridge.TopicSpaceMembers, bridge.TopicSpaceActivity, bridge.TopicSpaceWaiting} {
+			t.Run(string(kind)+"/"+topic, func(t *testing.T) {
+				id := c.send(bridge.Envelope{Type: kind, Topic: topic})
+				reply := c.read()
+				if reply.ID != id || reply.Type != bridge.TypeError || reply.Error == nil || reply.Error.Code != bridge.CodeInvalid || reply.Error.Message != "topics look like app/<id>/..." {
+					t.Fatalf("space topic reply = %+v", reply)
+				}
+			})
 		}
 	}
 }
