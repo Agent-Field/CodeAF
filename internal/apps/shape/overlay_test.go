@@ -129,7 +129,7 @@ func TestRule04GatewayDraftCRUDAndDiscard(t *testing.T) {
 	s, cfg, all, scope := setupDraft(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	server := httptest.NewServer(gateway.Handler(ctx, all))
+	server := httptest.NewServer(gateway.NewHandler(ctx, all))
 	defer server.Close()
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http"), &websocket.DialOptions{Subprotocols: []string{bridge.Subprotocol}})
 	if err != nil {
