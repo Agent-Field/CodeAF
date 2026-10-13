@@ -52,5 +52,5 @@ func Wire(ctx context.Context, home string) *svc.Services {
 
 // Mount serves the bridge at bridge.Path on mux.
 func Mount(ctx context.Context, mux Mux, all *svc.Services) {
-	mux.Handle(bridge.Path, gateway.Handler(ctx, all))
+	mux.Handle(bridge.Path, gateway.NewHandler(ctx, all))
 }
