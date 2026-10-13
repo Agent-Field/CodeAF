@@ -307,6 +307,9 @@ func (n nativeSpending) SpendingCap(ctx context.Context, scope, id string) (Mone
 // A task number is local to its agent. The composite id also works before a
 // provider receipt exists; a bare number is accepted only when unambiguous.
 func (n nativeSpending) taskCapID(id string) (string, error) {
+	if agent, local, err := taskResourceParts(id); err == nil {
+		id = config.AppTaskCapID(agent, local)
+	}
 	a := n.s.options.Agents
 	if a == nil {
 		return "", agentError(404, "not_found", "no such task")
@@ -321,6 +324,15 @@ func (n nativeSpending) taskCapID(id string) (string, error) {
 				ids[row.ID] = true
 			}
 			if live := a.live[agent]; live != nil {
+				if engine, ok := live.conn.Engine.(TaskEngine); ok {
+					rows, err := engine.AppTasks()
+					if err != nil {
+						return err
+					}
+					for _, row := range rows {
+						ids[row.ID] = true
+					}
+				}
 				for _, row := range live.conn.Engine.PlanTasks() {
 					ids[row.ID] = true
 				}
@@ -427,6 +439,12 @@ func (n nativeSpending) RaiseCap(ctx context.Context, body RaiseCapRequest, now 
 // the task's whole history. Callers must also reserve in-flight provider costs
 // in their existing SpendGuard; this reading does not allocate a second ledger.
 func (s *Server) CheckSpending(ctx context.Context, agent, task string) error {
+	if owner, local, err := taskResourceParts(task); err == nil {
+		if owner != agent {
+			return agentError(422, "bad_input", "the task belongs to another agent")
+		}
+		task = local
+	}
 	task = strings.TrimPrefix(task, agent+":")
 	backend := s.spendingBackend()
 	rows, err := backend.SpendingRows(ctx)

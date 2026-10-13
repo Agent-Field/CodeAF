@@ -151,3 +151,14 @@ func (a *Agent) bindAppGuard(guard *SpendGuard, task string) {
 		return day, cap, err
 	}
 }
+
+// Task reads and worker boundaries resolve the same raised allowance.
+func (a *Agent) appTaskAllowance(local string, base float64) (float64, error) {
+	if !a.appCapsEnabled() {
+		return base, nil
+	}
+	a.mu.Lock()
+	owner := a.appAgentIDLocked()
+	a.mu.Unlock()
+	return config.AppCapAt(a.config.ProfileDir, "task", config.AppTaskCapID(owner, local), base, time.Now())
+}

@@ -1612,7 +1612,8 @@ or stop. Already admitted calls finish. A refused message is yours to send again
 amount with two decimals, and `for:today` or `for:for_good`. Today expires at
 local midnight, even after a restart or a daylight-saving change; it keeps the
 permanent limit intact. Agent ids are stable; task cap ids use
-`<agent-id>:<task-number>` because different agents may have task 1.
+the opaque task id from its task page because different agents may have task 1.
+The cap adapter also accepts `<agent-id>:<task-number>` for compatibility.
 A bare task number works only when it is unambiguous. A disabled cap or an
 amount no higher than the current cap is refused. Member and crew cap changes
 need their resource's execution backend; they are never silently rewritten as

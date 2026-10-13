@@ -1840,8 +1840,12 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		if err := node.appBoundary(ctx); err != nil {
 			return nil, model, err
 		}
-		if a.config.taskCapUSD > 0 && node.spend() >= a.config.taskCapUSD {
-			return nil, model, ErrSpendStopped{Action: config.CrewTaskCapAction(a.config.taskCapUSD)}
+		cap, err := a.appTaskAllowance(usageTaskID(node.id), a.config.taskCapUSD)
+		if err != nil {
+			return nil, model, err
+		}
+		if cap > 0 && node.spend() >= cap {
+			return nil, model, ErrSpendStopped{Action: config.CrewTaskCapAction(cap)}
 		}
 	}
 	// THIS CALL'S WORDS ARE A REPLY SOMEBODY READS, and it is the one place in

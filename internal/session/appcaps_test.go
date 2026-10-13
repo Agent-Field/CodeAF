@@ -207,3 +207,34 @@ func TestAppBindingRefreshesTaskGuardsRestoredBeforeAttachment(t *testing.T) {
 		t.Fatal("attachment reset task spending")
 	}
 }
+
+func TestAppSavedTaskBoundaryAndSnapshotReadTheRaisedLimit(t *testing.T) {
+	a, node, _ := appNodeFixture(t, false)
+	profile := t.TempDir()
+	a.config.ProfileDir = profile
+	a.config.taskCapUSD = 2
+	a.config.usageLedger = filepath.Join(profile, "v3", UsageLedgerName)
+	if err := a.SetAppBudget(5); err != nil {
+		t.Fatal(err)
+	}
+	node.graph.mu.Lock()
+	node.cost = 2
+	node.graph.mu.Unlock()
+	a.mu.Lock()
+	owner := a.appAgentIDLocked()
+	a.mu.Unlock()
+	if err := config.RaiseAppCap(profile, "task", config.AppTaskCapID(owner, "1"), 2, 3, true, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := a.AppTasks()
+	if err != nil || len(rows) != 1 || rows[0].Cap != 3 {
+		t.Fatalf("task snapshot %v %v", rows, err)
+	}
+	node.graph.mu.Lock()
+	node.cost = 3
+	node.graph.mu.Unlock()
+	_, _, err = a.completeWithRetry(context.Background(), nil, a.Model(), "", nil, nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "$3 limit") {
+		t.Fatalf("raised task boundary: %v", err)
+	}
+}

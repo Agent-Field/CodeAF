@@ -471,3 +471,33 @@ func TestSpendingQuestionsReachInboxAndItsUndoPrecedesTheRaise(t *testing.T) {
 		t.Fatalf("resolved Inbox %v %v", rows, err)
 	}
 }
+
+func TestSpendingRaiseAcceptsTheTasksResourcesOpaqueID(t *testing.T) {
+	home, now := t.TempDir(), time.Now()
+	registry := NewAgentRegistry(home, nil)
+	registry.now = func() time.Time { return now }
+	engine := &fakeTaskEngine{fakeAgentEngine: &fakeAgentEngine{}, rows: []session.AppTaskView{{ID: "1", State: "running", Cap: 2}}}
+	registry.live["a"] = &agentLive{conn: AgentConnection{Engine: engine}}
+	registry.mu.Lock()
+	err := registry.disk(func(d *agentDisk) error {
+		d.Records["a"] = agentRecord{Agent: Agent{ID: "a", Budget: usdMoney(5), State: "idle", Version: 1}}
+		return nil
+	}, true)
+	registry.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New("test-resource-token", Options{ProfileDir: home, Agents: registry})
+	t.Cleanup(s.Close)
+	id := taskResourceID("a", "1")
+	body, _ := json.Marshal(RaiseCapRequest{Scope: "task", ID: id, To: usdMoney(3), For: "today"})
+	if w := resourceRequest(s, "POST", "/app/v1/caps/raise", string(body), ""); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	if cap, err := config.AppCapAt(home, "task", config.AppTaskCapID("a", "1"), 2, now); err != nil || cap != 3 {
+		t.Fatalf("native task cap %v %v", cap, err)
+	}
+	if err := s.CheckSpending(context.Background(), "a", id); err != nil {
+		t.Fatal(err)
+	}
+}

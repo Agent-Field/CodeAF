@@ -130,7 +130,7 @@ func (s *Server) RefreshSpending(ctx context.Context) error {
 			id := config.AppTaskCapID(row.Who.ID, strings.TrimPrefix(row.What, "task:"))
 			key := "task:" + id
 			totals[key] += cost
-			owners[key] = spendingAsk{Scope: "task", Owner: id, Ask: Ask{Source: SourceRef{Kind: "task", ID: id}}}
+			owners[key] = spendingAsk{Scope: "task", Owner: id, Ask: Ask{Source: SourceRef{Kind: "task", ID: taskResourceID(row.Who.ID, strings.TrimPrefix(row.What, "task:"))}}}
 		}
 	}
 	active := map[string]spendingAsk{}
@@ -201,4 +201,4 @@ func (s *Server) RefreshSpending(ctx context.Context) error {
 }
 
 // TaskCapID is shared with task resources because native task numbers are local.
-func TaskCapID(agent, task string) string { return config.AppTaskCapID(agent, task) }
+func TaskCapID(agent, task string) string { return taskResourceID(agent, task) }

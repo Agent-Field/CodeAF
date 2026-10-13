@@ -193,6 +193,13 @@ func (a *Agent) AppTasks() ([]AppTaskView, error) {
 		out = append(out, AppTaskView{ID: row.ID, Parent: row.Parent, Title: row.Title, State: state, Model: row.Model, Cap: cap, Spent: row.USD, Step: row.Steps, Waits: append([]string{}, row.Waits...), Origin: "asked"})
 	}
 	out = append(out, a.appProposalViews(cap)...)
+	for i := range out {
+		current, err := a.appTaskAllowance(out[i].ID, out[i].Cap)
+		if err != nil {
+			return nil, err
+		}
+		out[i].Cap = current
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil
 }
