@@ -1,0 +1,9 @@
+{
+  "$schema": "https://codeaf.dev/schema/screen/1.json",
+  "screen": "companies", "title": "Companies",
+  "nav": { "part": "SectionTabs", "props": { "items": ["Deals", "Companies"] } },
+  "body": { "part": "RecordList", "id": "companies",
+    "bind": { "records": "company", "query": "sort:name" },
+    "props": { "columns": ["name", "domain", "owner"] },
+    "on": { "open": [{ "open": "company", "id": "$row.id" }] } }
+}

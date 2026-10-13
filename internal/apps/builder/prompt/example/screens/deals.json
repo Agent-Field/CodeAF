@@ -1,0 +1,19 @@
+{
+  "$schema": "https://codeaf.dev/schema/screen/1.json",
+  "screen": "deals", "title": "Deals",
+  "nav": { "part": "SectionTabs", "props": { "items": ["Deals", "Companies"] } },
+  "body": { "part": "Row", "children": [
+    { "part": "RecordList", "id": "deals",
+      "bind": { "records": "deal", "query": "stage:-Lost sort:-amount" },
+      "props": { "views": ["List", "Board by stage"], "meter": "stage", "columns": ["name", "stage", "amount", "likely"] },
+      "on": { "open": [{ "open": "deal", "id": "$row.id" }] } },
+    { "part": "BulkBar", "when": "$selection.deals.count > 0", "children": [
+      { "part": "Button", "label": "Draft follow-ups",
+        "on": { "click": [{ "runs.start": "follow-up", "params": { "deals": "$selection.deals.ids" } }] } },
+      { "part": "Button", "label": "Likely to close · AI",
+        "on": { "click": [{ "ai.sort": "deals", "field": "likely" }] } } ] },
+    { "part": "Panel", "when": "$selection.deals.count == 1", "children": [
+      { "part": "RecordPage", "bind": { "record": "$selection.deals.id" },
+        "props": { "fields": ["stage", "amount", "close_on", "owner"], "actions": ["follow-up"] } } ] }
+  ] }
+}

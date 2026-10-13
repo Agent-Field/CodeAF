@@ -1,0 +1,20 @@
+run: follow-up
+title: Follow up on quiet deals
+budget: { per_run: 0.50 }
+params:
+  deals: { type: refs, to: deal, default: "stage:Qualified,Proposal,Negotiation last_touch<-7d" }
+steps:
+  - id: each
+    loop: { over: $params.deals, as: deal, max: 25 }
+    steps:
+      - id: draft
+        agent: CRM agent
+        prompt: Draft a short, plain follow-up for {{deal.name}}.
+        retry: { max: 2, backoff: 30s }
+      - id: send
+        gate: { approval: send, who: $deal.owner }
+        tool: gmail.send
+        as: $deal.owner
+        args: { draft: $steps.draft.output }
+      - id: touch
+        records.update: { id: $deal.id, set: { last_touch: $now } }

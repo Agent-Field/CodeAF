@@ -1,0 +1,1 @@
+A CRM for our sales pipeline: companies, deals and contacts. The agent drafts follow-ups when a deal goes quiet for a week; I approve every email before it sends.

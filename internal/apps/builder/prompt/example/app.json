@@ -1,0 +1,33 @@
+{
+  "$schema": "https://codeaf.dev/schema/app/1.json",
+  "id": "crm", "name": "CRM", "space": "acme", "version": 1, "kit": 2,
+  "agent": { "name": "CRM agent", "file": "agent.md", "model": "DS Flash" },
+  "records": {
+    "company": { "title": "name", "fields": {
+      "name": { "type": "text", "required": true, "unique": true },
+      "domain": { "type": "url", "index": true },
+      "owner": { "type": "person", "default": "$me" } } },
+    "contact": { "title": "name", "fields": {
+      "name": { "type": "text", "required": true },
+      "email": { "type": "email", "index": true },
+      "company": { "type": "ref", "to": "company" } } },
+    "deal": { "title": "name", "fields": {
+      "name": { "type": "text", "required": true },
+      "company": { "type": "ref", "to": "company", "required": true },
+      "contacts": { "type": "refs", "to": "contact" },
+      "stage": { "type": "enum", "default": "Lead", "values": ["Lead", "Qualified", "Proposal", "Negotiation", "Won", "Lost"] },
+      "amount": { "type": "money", "currency": "USD" },
+      "close_on": { "type": "date" },
+      "owner": { "type": "person", "default": "$me" },
+      "last_touch": { "type": "datetime" },
+      "likely": { "type": "enum", "values": ["Likely", "Maybe", "Unlikely"], "ai": "likely to close this month" } } }
+  },
+  "capabilities": {
+    "records": { "company": "rw", "contact": "rw", "deal": "rw" },
+    "connectors": { "gmail": { "as": "member", "can": ["read", "draft", "send"], "approve": ["send"] } },
+    "ai": ["sort"], "tools": []
+  },
+  "triggers": [{ "id": "quiet", "on": "schedule", "cron": "0 9 * * 1-5", "run": "follow-up" }],
+  "commands": [{ "id": "follow-up", "label": "Draft follow-up", "for": "deal", "run": "follow-up", "params": { "deals": "$selection.ids" } }],
+  "budget": { "month": 20, "currency": "USD", "per_run": 0.5, "at_cap": "ask", "models": ["DS Flash"] }
+}
