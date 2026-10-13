@@ -162,3 +162,15 @@ func (a *Agent) appTaskAllowance(local string, base float64) (float64, error) {
 	a.mu.Unlock()
 	return config.AppCapAt(a.config.ProfileDir, "task", config.AppTaskCapID(owner, local), base, time.Now())
 }
+
+// The cap projection follows task collection and never changes task state.
+func (a *Agent) appTaskAllowances(rows []AppTaskView) ([]AppTaskView, error) {
+	for i := range rows {
+		cap, err := a.appTaskAllowance(rows[i].ID, rows[i].Cap)
+		if err != nil {
+			return nil, err
+		}
+		rows[i].Cap = cap
+	}
+	return rows, nil
+}
