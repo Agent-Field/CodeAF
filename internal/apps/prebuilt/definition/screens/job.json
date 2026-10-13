@@ -1,0 +1,49 @@
+{
+  "$schema": "https://codeaf.dev/schema/screen/1.json",
+  "screen": "job",
+  "title": "Job",
+  "params": ["id"],
+  "nav": {
+    "part": "SectionTabs",
+    "label": "Factory sections",
+    "props": {
+      "items": ["Jobs", "Repos", "Pipelines", "Runners", "People", "Activity"]
+    }
+  },
+  "body": {
+    "part": "Stack",
+    "children": [
+      {
+        "part": "RecordPage",
+        "label": "Job",
+        "bind": { "record": "$params.id", "type": "job" },
+        "props": {
+          "fields": ["title", "state", "priority", "repo", "assignee", "issue"]
+        }
+      },
+      {
+        "part": "Text",
+        "props": {
+          "text": "Run, review and timeline are codeaf's. This page does not start, approve, assign or rank the job.",
+          "size": "small",
+          "tone": "neutral"
+        }
+      },
+      {
+        "part": "Button",
+        "label": "Set priority",
+        "on": {
+          "click": [
+            {
+              "records.update": {
+                "id": "$params.id",
+                "set": { "priority": "$input.priority" }
+              },
+              "ask": { "priority": "text" }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

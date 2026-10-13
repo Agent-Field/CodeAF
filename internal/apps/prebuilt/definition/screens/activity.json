@@ -1,0 +1,28 @@
+{
+  "$schema": "https://codeaf.dev/schema/screen/1.json",
+  "screen": "activity",
+  "title": "Activity",
+  "nav": {
+    "part": "SectionTabs",
+    "label": "Factory sections",
+    "props": {
+      "items": ["Jobs", "Repos", "Pipelines", "Runners", "People", "Activity"]
+    }
+  },
+  "body": {
+    "part": "Stack",
+    "children": [
+      { "part": "Text", "props": { "text": "Activity", "size": "title" } },
+      {
+        "part": "RecordList",
+        "id": "activity",
+        "label": "Activity",
+        "bind": { "records": "activity", "query": "sort:-at" },
+        "props": { "columns": ["title", "at", "actor"] },
+        "slots": {
+          "empty": { "part": "Empty", "props": { "text": "No activity yet" } }
+        }
+      }
+    ]
+  }
+}

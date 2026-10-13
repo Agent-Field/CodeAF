@@ -1,0 +1,49 @@
+{
+  "$schema": "https://codeaf.dev/schema/plan/1.json",
+  "ask": "codeaf's prebuilt Factory: a jobs list, a job page, repos, pipelines, and runners from codeaf. AI never starts, approves, assigns or ranks a job.",
+  "name": "Factory",
+  "data": [
+    {
+      "id": "job",
+      "line": "Job · title, state, manual priority, repo, assignee, issue"
+    },
+    { "id": "repo", "line": "Repo · name, open issues, last PR" },
+    { "id": "pipeline", "line": "Pipeline · name and status, from codeaf" },
+    {
+      "id": "runner",
+      "line": "Runner · name and host, from codeaf Settings → Factory"
+    },
+    { "id": "person", "line": "Person · who works on jobs" },
+    { "id": "activity", "line": "Activity · what happened, and when" }
+  ],
+  "automation": [],
+  "screens": [
+    {
+      "id": "jobs",
+      "line": "Jobs list · state and manual priority. A person opens or starts a job."
+    },
+    {
+      "id": "job",
+      "line": "Job page · the job, its run, review and timeline. codeaf shows them."
+    },
+    {
+      "id": "repos",
+      "line": "Repos · each repo, its open issues and last PR"
+    },
+    {
+      "id": "pipelines",
+      "line": "Pipelines · codeaf pipelines. No agent run starts a job."
+    },
+    {
+      "id": "runners",
+      "line": "Runners · from codeaf, Settings → Factory. This app does not build them."
+    },
+    { "id": "people", "line": "People · who works in Factory" },
+    { "id": "activity", "line": "Activity · what happened. No AI writes it." }
+  ],
+  "agent": {
+    "id": "agent",
+    "line": "Factory agent · answers questions. AI never starts, approves, assigns or ranks a job."
+  },
+  "needs": "computed"
+}

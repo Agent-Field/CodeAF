@@ -1,0 +1,39 @@
+{
+  "$schema": "https://codeaf.dev/schema/screen/1.json",
+  "screen": "runners",
+  "title": "Runners",
+  "nav": {
+    "part": "SectionTabs",
+    "label": "Factory sections",
+    "props": {
+      "items": ["Jobs", "Repos", "Pipelines", "Runners", "People", "Activity"]
+    }
+  },
+  "body": {
+    "part": "Stack",
+    "children": [
+      { "part": "Text", "props": { "text": "Runners", "size": "title" } },
+      {
+        "part": "Text",
+        "props": {
+          "text": "Runners come from codeaf, Settings → Factory. This app does not build them.",
+          "size": "small",
+          "tone": "neutral"
+        }
+      },
+      {
+        "part": "RecordList",
+        "id": "runners",
+        "label": "Runners",
+        "bind": { "records": "runner", "query": "sort:name" },
+        "props": { "columns": ["name", "host"] },
+        "slots": {
+          "empty": {
+            "part": "Empty",
+            "props": { "text": "No runners yet" }
+          }
+        }
+      }
+    ]
+  }
+}

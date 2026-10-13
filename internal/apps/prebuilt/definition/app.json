@@ -1,0 +1,100 @@
+{
+  "$schema": "https://codeaf.dev/schema/app/1.json",
+  "id": "factory",
+  "name": "Factory",
+  "description": "codeaf's prebuilt Factory: a jobs list, a job page, repos, pipelines, and runners from codeaf (Settings → Factory). AI never starts, approves, assigns or ranks a job.",
+  "space": "acme",
+  "version": 3,
+  "kit": 2,
+  "agent": {
+    "name": "Factory agent",
+    "file": "agent.md",
+    "model": "deepseek/deepseek-v4.1-flash"
+  },
+  "records": {
+    "job": {
+      "label": "Job",
+      "plural": "Jobs",
+      "title": "title",
+      "fields": {
+        "title": { "type": "text", "required": true },
+        "state": {
+          "type": "enum",
+          "index": true,
+          "default": "Backlog",
+          "values": ["Needs you", "Running", "Queued", "Backlog", "Done"]
+        },
+        "priority": {
+          "type": "enum",
+          "default": "Medium",
+          "values": ["Low", "Medium", "High"]
+        },
+        "repo": { "type": "ref", "to": "repo" },
+        "assignee": { "type": "person", "default": "$me" },
+        "issue": { "type": "text" }
+      }
+    },
+    "repo": {
+      "label": "Repo",
+      "plural": "Repos",
+      "title": "name",
+      "fields": {
+        "name": { "type": "text", "required": true },
+        "open_issues": { "type": "number" },
+        "last_pr": { "type": "text" }
+      }
+    },
+    "pipeline": {
+      "label": "Pipeline",
+      "plural": "Pipelines",
+      "title": "name",
+      "fields": {
+        "name": { "type": "text", "required": true },
+        "status": {
+          "type": "enum",
+          "values": ["idle", "running", "done"]
+        }
+      }
+    },
+    "runner": {
+      "label": "Runner",
+      "plural": "Runners",
+      "title": "name",
+      "fields": {
+        "name": { "type": "text", "required": true },
+        "host": { "type": "text" }
+      }
+    },
+    "person": {
+      "label": "Person",
+      "plural": "People",
+      "title": "name",
+      "fields": {
+        "name": { "type": "text", "required": true }
+      }
+    },
+    "activity": {
+      "label": "Activity",
+      "plural": "Activity",
+      "title": "title",
+      "fields": {
+        "title": { "type": "text", "required": true },
+        "at": { "type": "datetime" },
+        "actor": { "type": "person" }
+      }
+    }
+  },
+  "capabilities": {
+    "records": {
+      "job": "rw",
+      "repo": "r",
+      "pipeline": "r",
+      "runner": "r",
+      "person": "r",
+      "activity": "r"
+    },
+    "ai": [],
+    "tools": []
+  },
+  "budget": { "month": 20, "currency": "USD", "at_cap": "stop" }
+}

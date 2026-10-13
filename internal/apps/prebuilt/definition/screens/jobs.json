@@ -1,0 +1,78 @@
+{
+  "$schema": "https://codeaf.dev/schema/screen/1.json",
+  "screen": "jobs",
+  "title": "Jobs",
+  "nav": {
+    "part": "SectionTabs",
+    "label": "Factory sections",
+    "props": {
+      "items": ["Jobs", "Repos", "Pipelines", "Runners", "People", "Activity"]
+    }
+  },
+  "body": {
+    "part": "Row",
+    "children": [
+      {
+        "part": "Stack",
+        "children": [
+          {
+            "part": "Row",
+            "children": [
+              { "part": "Text", "props": { "text": "Jobs", "size": "title" } },
+              {
+                "part": "Button",
+                "label": "New job",
+                "props": { "kind": "primary" },
+                "on": {
+                  "click": [
+                    {
+                      "records.create": {
+                        "type": "job",
+                        "set": {
+                          "title": "$input.title",
+                          "state": "Backlog",
+                          "priority": "Medium"
+                        }
+                      },
+                      "ask": { "title": "text" }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "part": "RecordList",
+            "id": "jobs",
+            "label": "Jobs",
+            "bind": { "records": "job", "query": "assignee:me sort:priority" },
+            "props": {
+              "columns": ["title", "state", "priority", "assignee"],
+              "meter": "state",
+              "query": true
+            },
+            "on": { "open": [{ "open": "job", "id": "$row.id" }] },
+            "slots": {
+              "empty": { "part": "Empty", "props": { "text": "No jobs yet" } }
+            }
+          }
+        ]
+      },
+      {
+        "part": "Panel",
+        "label": "Selected job",
+        "when": "$selection.jobs.count == 1",
+        "children": [
+          {
+            "part": "RecordPage",
+            "label": "Job",
+            "bind": { "record": "$selection.jobs.id", "type": "job" },
+            "props": {
+              "fields": ["title", "state", "priority", "repo", "assignee", "issue"]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

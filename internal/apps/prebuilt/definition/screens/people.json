@@ -1,0 +1,28 @@
+{
+  "$schema": "https://codeaf.dev/schema/screen/1.json",
+  "screen": "people",
+  "title": "People",
+  "nav": {
+    "part": "SectionTabs",
+    "label": "Factory sections",
+    "props": {
+      "items": ["Jobs", "Repos", "Pipelines", "Runners", "People", "Activity"]
+    }
+  },
+  "body": {
+    "part": "Stack",
+    "children": [
+      { "part": "Text", "props": { "text": "People", "size": "title" } },
+      {
+        "part": "RecordList",
+        "id": "people",
+        "label": "People",
+        "bind": { "records": "person", "query": "sort:name" },
+        "props": { "columns": ["name"] },
+        "slots": {
+          "empty": { "part": "Empty", "props": { "text": "No people yet" } }
+        }
+      }
+    ]
+  }
+}

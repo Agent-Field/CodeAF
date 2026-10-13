@@ -1,0 +1,39 @@
+{
+  "$schema": "https://codeaf.dev/schema/screen/1.json",
+  "screen": "pipelines",
+  "title": "Pipelines",
+  "nav": {
+    "part": "SectionTabs",
+    "label": "Factory sections",
+    "props": {
+      "items": ["Jobs", "Repos", "Pipelines", "Runners", "People", "Activity"]
+    }
+  },
+  "body": {
+    "part": "Stack",
+    "children": [
+      {
+        "part": "Text",
+        "props": { "text": "Pipelines", "size": "title" }
+      },
+      {
+        "part": "Text",
+        "props": {
+          "text": "Pipelines are codeaf's. No agent run starts a job.",
+          "size": "small",
+          "tone": "neutral"
+        }
+      },
+      {
+        "part": "RecordList",
+        "id": "pipelines",
+        "label": "Pipelines",
+        "bind": { "records": "pipeline", "query": "sort:name" },
+        "props": { "columns": ["name", "status"] },
+        "slots": {
+          "empty": { "part": "Empty", "props": { "text": "No pipelines yet" } }
+        }
+      }
+    ]
+  }
+}

@@ -71,12 +71,18 @@ func TestCrewsMethodsDispatchThroughWebSocket(t *testing.T) {
 			}
 			id := socket.send(bridge.TypeCall, app, tt.name, "", tt.params)
 			reply := socket.read()
-			code := bridge.CodeNotBuilt
-			if tt.name == bridge.MethodCustomBundle {
-				code = bridge.CodeNotFound
-			}
-			if reply.ID != id || reply.Type != bridge.TypeError || reply.Error == nil || reply.Error.Code != code {
-				t.Fatalf("reply=%+v", reply)
+			if tt.name == bridge.MethodAppsPrebuilt {
+				if !factoryResult(t, id, reply) {
+					t.Fatalf("reply=%+v", reply)
+				}
+			} else {
+				code := bridge.CodeNotBuilt
+				if tt.name == bridge.MethodCustomBundle {
+					code = bridge.CodeNotFound
+				}
+				if reply.ID != id || reply.Type != bridge.TypeError || reply.Error == nil || reply.Error.Code != code {
+					t.Fatalf("reply=%+v", reply)
+				}
 			}
 			id = socket.send(bridge.TypeCall, app, tt.name, "", []string{"invalid"})
 			reply = socket.read()
@@ -91,6 +97,19 @@ func TestCrewsMethodsDispatchThroughWebSocket(t *testing.T) {
 			}
 		})
 	}
+}
+
+func factoryResult(t *testing.T, id string, reply bridge.Envelope) bool {
+	t.Helper()
+	var got bridge.PrebuiltResult
+	if reply.ID != id || reply.Type != bridge.TypeResult || reply.Error != nil {
+		return false
+	}
+	if err := json.Unmarshal(reply.Result, &got); err != nil || len(got.Apps) != 1 {
+		return false
+	}
+	want := bridge.PrebuiltApp{ID: "factory", Name: "Factory", Kind: "factory", Version: 3, Space: "acme"}
+	return got.Apps[0] == want
 }
 
 func TestCrewsCapabilityChecks(t *testing.T) {

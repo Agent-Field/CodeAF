@@ -1,0 +1,28 @@
+{
+  "$schema": "https://codeaf.dev/schema/screen/1.json",
+  "screen": "repos",
+  "title": "Repos",
+  "nav": {
+    "part": "SectionTabs",
+    "label": "Factory sections",
+    "props": {
+      "items": ["Jobs", "Repos", "Pipelines", "Runners", "People", "Activity"]
+    }
+  },
+  "body": {
+    "part": "Stack",
+    "children": [
+      { "part": "Text", "props": { "text": "Repos", "size": "title" } },
+      {
+        "part": "RecordList",
+        "id": "repos",
+        "label": "Repos",
+        "bind": { "records": "repo", "query": "sort:name" },
+        "props": { "columns": ["name", "open_issues", "last_pr"] },
+        "slots": {
+          "empty": { "part": "Empty", "props": { "text": "No repos yet" } }
+        }
+      }
+    ]
+  }
+}
