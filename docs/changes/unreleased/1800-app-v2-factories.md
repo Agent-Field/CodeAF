@@ -12,3 +12,7 @@ The app and TUI keep one shared home, solo host election and worker process.
 Team session tokens stay in memory; attach.json stores only connection addresses
 and modes. Origin work stops only after job creation, with its factory receipt.
 Cards include a factory picker and use the factory's own idempotency door.
+The solo mount preserves runner credentials through its proxy and takes over
+when the previous solo host closes. Task hand-off decodes the task resource's
+opaque id before graph or plan cancellation and refuses a changed source task
+before creating a job.

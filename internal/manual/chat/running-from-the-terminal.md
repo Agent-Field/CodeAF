@@ -1544,7 +1544,8 @@ restarting does not send them. These app routes add no new chat tools.
 `POST /app/v1/factories/solo {}` starts a solo factory on the app's existing
 loopback listener. `/v1` uses the same launch bearer; before setup it answers
 404 `no_factory`. A solo factory is for one person and is never shared.
-If the TUI already serves this home's solo factory, the app reuses it.
+If the TUI already serves this home's solo factory, the app reuses it. When that
+hosting window closes, a surviving app takes over the same solo factory.
 
 `POST /app/v1/factories {"url":"https://host"}` attaches a team server.
 Team sign-in happens through its access link in the app. The app hands the
@@ -1570,7 +1571,8 @@ include `factory`, `title`, `brief`, `repo`, `start` and `assignee`.
 
 A successful creation stops the origin and writes "Handed to the factory" with
 a link to the job. A failed creation leaves the origin running. Repeating a
-successful card returns the same job. A changed agent answers 409 `stale`.
+successful card returns the same job. A changed agent or originating task answers
+409 `stale` before creation.
 Cards expire after one hour; at most 256 cards remain in one launch.
 Task hand-off requires the task resource and a task stop door and keeps
 unrelated replies running. `issue:true` and a custom pipeline answer 422

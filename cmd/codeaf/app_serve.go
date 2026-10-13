@@ -129,7 +129,7 @@ func serveApp(parent context.Context, options appServeOptions, input io.ReadClos
 		return err
 	}
 	defer factories.close()
-	if err := api.BindFactories(&appapi.FactoryRegistry{Home: options.home, URL: factories.address, Token: token, Credentials: credentials, Solo: factories.solo, Power: factories.power}); err != nil {
+	if err := api.BindFactories(&appapi.FactoryRegistry{Home: options.home, URL: factories.address, Token: token, Credentials: credentials, Solo: factories.mountSolo, Power: factories.power}); err != nil {
 		return err
 	}
 	server := &http.Server{

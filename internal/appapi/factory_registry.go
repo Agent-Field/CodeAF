@@ -60,11 +60,12 @@ type FactoryTaskSource interface {
 type factoryCard struct {
 	Complete bool
 	HandOffCard
-	Agent   string
-	Task    string
-	Version uint64
-	Result  *HandOffResponse
-	Expires time.Time
+	Agent       string
+	Task        string
+	Version     uint64
+	TaskVersion uint64
+	Result      *HandOffResponse
+	Expires     time.Time
 }
 
 func factoryID(address string) string {

@@ -88,7 +88,7 @@ func Guard(token string, next http.Handler) http.Handler {
 		}
 		// Worker credentials are checked by the mounted factory, after this
 		// same origin and host boundary. They never authenticate app routes.
-		if factoryWorkerPath(r.URL.Path) {
+		if FactoryWorkerPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -103,6 +103,8 @@ func Guard(token string, next http.Handler) http.Handler {
 	})
 }
 
-func factoryWorkerPath(path string) bool {
+// FactoryWorkerPath names routes that authenticate with a runner credential.
+// A proxy must preserve that credential rather than substitute a host token.
+func FactoryWorkerPath(path string) bool {
 	return path == "/v1/workers/pull" || strings.HasPrefix(path, "/v1/workers/leases/") || path == "/v1/runners/pull" || path == "/v1/runners/presence" || strings.HasPrefix(path, "/v1/runners/leases/")
 }

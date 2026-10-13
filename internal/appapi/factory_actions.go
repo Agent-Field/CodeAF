@@ -7,11 +7,13 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	corefactory "github.com/Agent-Field/codeaf/internal/factory"
 	factoryapi "github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 func decodeFactory(w http.ResponseWriter, r *http.Request, out any) bool {
@@ -205,6 +207,7 @@ func (s *Server) serveFactory(w http.ResponseWriter, r *http.Request) {
 
 func (f *FactoryRegistry) card(ctx context.Context, id, task string, expect *AgentExpect) (HandOffCard, error) {
 	var title, brief, repo string
+	var taskVersion uint64
 	if task != "" {
 		var snapshot TaskResponse
 		var err error
@@ -219,6 +222,10 @@ func (f *FactoryRegistry) card(ctx context.Context, id, task string, expect *Age
 		id = snapshot.AgentID
 		title = snapshot.Title
 		brief = snapshot.Brief
+		taskVersion = snapshot.Version
+		if snapshot.State == "done" || snapshot.State == "stopped" || snapshot.State == "declined" || snapshot.State == "handed_off" {
+			return HandOffCard{}, agentError(409, "conflict", "that task has finished")
+		}
 	}
 	a := f.server.options.Agents
 	if a == nil {
@@ -299,7 +306,7 @@ func (f *FactoryRegistry) card(ctx context.Context, id, task string, expect *Age
 	if len(f.cards) >= 256 {
 		return HandOffCard{}, agentError(409, "at_cap", "send or reopen a hand-off card")
 	}
-	f.cards[token] = &factoryCard{HandOffCard: card, Agent: id, Task: task, Version: version, Expires: time.Now().Add(time.Hour)}
+	f.cards[token] = &factoryCard{HandOffCard: card, Agent: id, Task: task, Version: version, TaskVersion: taskVersion, Expires: time.Now().Add(time.Hour)}
 	return card, nil
 }
 func (f *FactoryRegistry) readResource(ctx context.Context, path string, out any) error {
@@ -403,13 +410,33 @@ func (f *FactoryRegistry) send(ctx context.Context, id, key string, body SendHan
 		}
 		var cancelTask func() error
 		if card.Task != "" && f.Tasks == nil {
-			if door, ok := live.conn.Engine.(interface{ PlanCancelWithReason(string, string) error }); ok {
-				cancelTask = func() error { return door.PlanCancelWithReason(card.Task, "Handed to the factory") }
-			} else if door, ok := live.conn.Engine.(interface {
-				CancelWithReason(string, string) (string, error)
-			}); ok {
-				cancelTask = func() error { _, err := door.CancelWithReason(card.Task, "Handed to the factory"); return err }
-			} else {
+			owner, local, err := taskResourceParts(card.Task)
+			if err != nil || owner != id {
+				return agentError(404, "not_found", "originating task not found")
+			}
+			engine, ok := live.conn.Engine.(TaskEngine)
+			if !ok {
+				return agentError(409, "not_allowed", "this engine cannot read the originating task")
+			}
+			current, found, err := engine.AppTask(local)
+			if err != nil {
+				return err
+			}
+			if !found || current.Version != card.TaskVersion {
+				return agentError(409, "stale", "that task changed; reopen the hand-off card")
+			}
+			if current.State == "proposed" || current.State == "held" {
+				cancelTask = func() error { return engine.AppTaskAction(session.AppTaskIntent{ID: local, Action: "decline"}) }
+			} else if _, err := strconv.ParseUint(local, 10, 64); err == nil {
+				if door, ok := live.conn.Engine.(interface {
+					CancelWithReason(string, string) (string, error)
+				}); ok {
+					cancelTask = func() error { _, err := door.CancelWithReason("task:"+local, "Handed to the factory"); return err }
+				}
+			} else if door, ok := live.conn.Engine.(interface{ PlanCancelWithReason(string, string) error }); ok {
+				cancelTask = func() error { return door.PlanCancelWithReason(local, "Handed to the factory") }
+			}
+			if cancelTask == nil {
 				return agentError(409, "not_allowed", "this engine cannot hand off a task")
 			}
 		}

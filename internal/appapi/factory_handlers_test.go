@@ -17,6 +17,7 @@ import (
 	factoryapi "github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 func bindTestFactory(t *testing.T, s *Server, home string) (*FactoryRegistry, *httptest.Server) {
@@ -324,6 +325,81 @@ func TestFactorySleepStopsProcessesOnceAndKeepsRerunReceipt(t *testing.T) {
 	}
 	w := fixture.request(t, "GET", "/app/v1/agents/"+agent.ID+"/entries", "")
 	if strings.Count(w.Body.String(), "stopped while this Mac slept · Rerun") != 1 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
+type factoryCancelTaskEngine struct {
+	*fakeTaskEngine
+	stopped, reason string
+}
+
+func (e *factoryCancelTaskEngine) CancelWithReason(id, reason string) (string, error) {
+	e.stopped, e.reason = id, reason
+	return reason, nil
+}
+func (e *factoryCancelTaskEngine) PlanCancelWithReason(id, reason string) error {
+	e.stopped, e.reason = id, reason
+	return nil
+}
+
+func TestFactoryTaskHandOffDecodesTheTaskResourcesEngineID(t *testing.T) {
+	for _, local := range []string{"1", "t-work"} {
+		t.Run(local, func(t *testing.T) {
+			fixture, agent, taskEngine := taskHTTPFixture(t)
+			taskEngine.rows = []session.AppTaskView{{ID: local, Title: "Task work", Brief: "Finish this task", State: "running", Version: 1}}
+			engine := &factoryCancelTaskEngine{fakeTaskEngine: taskEngine}
+			fixture.registry.live[agent.ID].conn.Engine = engine
+			bindTestFactory(t, fixture.server, fixture.home)
+			if w := fixture.request(t, "POST", "/app/v1/factories/solo", "{}"); w.Code != 201 {
+				t.Fatal(w.Code, w.Body.String())
+			}
+			w := fixture.request(t, "POST", "/app/v1/tasks/"+taskResourceID(agent.ID, local)+"/hand-off", "{}")
+			if w.Code != 201 {
+				t.Fatal(w.Code, w.Body.String())
+			}
+			var card HandOffCard
+			if err := json.Unmarshal(w.Body.Bytes(), &card); err != nil {
+				t.Fatal(err)
+			}
+			w = fixture.request(t, "POST", "/app/v1/agents/"+agent.ID+"/hand-off/"+card.ID+"/send", "{}")
+			if w.Code != 200 {
+				t.Fatal(w.Code, w.Body.String())
+			}
+			want := local
+			if local == "1" {
+				want = "task:1"
+			}
+			if engine.stopped != want || engine.reason != "Handed to the factory" || engine.stop != 0 {
+				t.Fatal(engine.stopped, engine.reason, engine.stop)
+			}
+		})
+	}
+}
+
+func TestFactoryTaskHandOffRejectsAChangedTaskBeforeCreatingAJob(t *testing.T) {
+	fixture, agent, taskEngine := taskHTTPFixture(t)
+	engine := &factoryCancelTaskEngine{fakeTaskEngine: taskEngine}
+	fixture.registry.live[agent.ID].conn.Engine = engine
+	bindTestFactory(t, fixture.server, fixture.home)
+	if w := fixture.request(t, "POST", "/app/v1/factories/solo", "{}"); w.Code != 201 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	w := fixture.request(t, "POST", "/app/v1/tasks/"+taskResourceID(agent.ID, "1")+"/hand-off", "{}")
+	if w.Code != 201 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var card HandOffCard
+	_ = json.Unmarshal(w.Body.Bytes(), &card)
+	engine.rows[0].Version++
+	w = fixture.request(t, "POST", "/app/v1/agents/"+agent.ID+"/hand-off/"+card.ID+"/send", "{}")
+	if w.Code != 409 || !strings.Contains(w.Body.String(), "stale") || engine.stopped != "" {
+		t.Fatal(w.Code, w.Body.String(), engine.stopped)
+	}
+	w = fixture.request(t, "GET", "/v1/queue", "")
+	var queue factoryapi.Queue
+	_ = json.Unmarshal(w.Body.Bytes(), &queue)
+	if w.Code != 200 || len(queue.Jobs) != 0 {
 		t.Fatal(w.Code, w.Body.String())
 	}
 }

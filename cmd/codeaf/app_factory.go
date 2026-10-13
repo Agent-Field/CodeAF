@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/appapi"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -125,6 +126,24 @@ func (h *appFactoryHost) solo(_ context.Context) (http.Handler, error) {
 	})
 	return handler, nil
 }
+
+// mountSolo follows the elected service when its hosting window closes.
+// A surviving app can serve the same floor without requiring a restart.
+func (h *appFactoryHost) mountSolo(ctx context.Context) (http.Handler, error) {
+	if _, err := h.solo(ctx); err != nil {
+		return nil, err
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler, err := h.solo(r.Context())
+		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"reason":"no_factory","error":"the solo factory is unavailable"}`))
+			return
+		}
+		handler.ServeHTTP(w, r)
+	}), nil
+}
 func appFactoryProxy(target factoryTarget) http.Handler {
 	address, _ := url.Parse(target.url)
 	proxy := httputil.NewSingleHostReverseProxy(address)
@@ -132,7 +151,9 @@ func appFactoryProxy(target factoryTarget) http.Handler {
 	proxy.Director = func(r *http.Request) {
 		director(r)
 		r.Host = address.Host
-		r.Header.Set("Authorization", "Bearer "+target.token)
+		if !appapi.FactoryWorkerPath(r.URL.Path) {
+			r.Header.Set("Authorization", "Bearer "+target.token)
+		}
 	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		w.Header().Set("Content-Type", "application/json")

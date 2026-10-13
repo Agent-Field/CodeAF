@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/appapi"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
+	"github.com/Agent-Field/codeaf/internal/factory/client"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/home"
 )
@@ -34,7 +35,7 @@ func TestAppFactorySoloSharesListenerAndTerminalDiscovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer host.close()
-	if err := transport.BindFactories(&appapi.FactoryRegistry{Home: root, URL: server.URL, Token: "launch-token", Credentials: credentials, Solo: host.solo, Power: host.power}); err != nil {
+	if err := transport.BindFactories(&appapi.FactoryRegistry{Home: root, URL: server.URL, Token: "launch-token", Credentials: credentials, Solo: host.mountSolo, Power: host.power}); err != nil {
 		t.Fatal(err)
 	}
 	request, _ := http.NewRequest("POST", server.URL+"/app/v1/factories/solo", strings.NewReader("{}"))
@@ -63,6 +64,99 @@ func TestAppFactorySoloSharesListenerAndTerminalDiscovery(t *testing.T) {
 	response.Body.Close()
 	if response.StatusCode != 401 {
 		t.Fatal(response.StatusCode)
+	}
+}
+
+func TestAppFactoryProxyKeepsIssuedRunnerCredentials(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(home.EnvVar, root)
+	floor, err := store.Open(filepath.Join(root, "v3", "factory"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	host := &appFactoryHost{ctx: ctx, floor: floor, token: "owner-token"}
+	handler, err := host.solo(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer host.closeSoloForTest()
+	owner := httptest.NewServer(handler)
+	defer owner.Close()
+	proxy := httptest.NewServer(appapi.Guard("app-token", appFactoryProxy(factoryTarget{owner.URL, "owner-token"})))
+	defer proxy.Close()
+	worker := client.Open(proxy.URL, "app-token").Worker("")
+	if _, err := worker.Attach(context.Background(), api.WorkerAttach{Machine: "this-machine", Name: "This machine", Handle: "person", Slots: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if worker.Credential() == "" {
+		t.Fatal("runner was not registered")
+	}
+	if err := appFactoryRequest(context.Background(), factoryTarget{proxy.URL, worker.Credential()}, "POST", "/v1/runners/presence", api.RunnerPresence{Asleep: true}, nil); err != nil {
+		t.Fatal("proxy replaced the runner credential:", err)
+	}
+	var runners api.Runners
+	if err := appFactoryRequest(context.Background(), factoryTarget{proxy.URL, "app-token"}, "GET", "/v1/runners", nil, &runners); err != nil {
+		t.Fatal(err)
+	}
+	if len(runners.Runners) != 1 || runners.Runners[0].State != api.RunnerAsleep {
+		t.Fatal(runners)
+	}
+}
+
+// This fixture starts only the service, leaving election and model work absent.
+func (h *appFactoryHost) closeSoloForTest() {
+	if h.handler != nil {
+		h.handler.Close()
+		h.handler = nil
+	}
+	if h.release != nil {
+		h.release()
+		h.release = nil
+	}
+}
+
+func TestAppFactoryMountTakesOverWhenTheSoloHostCloses(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(home.EnvVar, root)
+	floor, err := store.Open(filepath.Join(root, "v3", "factory"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	owner := &appFactoryHost{ctx: ctx, floor: floor, token: "first-token"}
+	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { owner.handler.ServeHTTP(w, r) }))
+	defer first.Close()
+	owner.address = first.URL
+	if _, err := owner.solo(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer owner.closeSoloForTest()
+	next := &appFactoryHost{ctx: ctx, floor: floor, token: "second-token"}
+	mount, err := next.mountSolo(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer next.closeSoloForTest()
+	second := httptest.NewServer(appapi.Guard(next.token, mount))
+	defer second.Close()
+	next.address = second.URL
+	for i := 0; i < 2; i++ {
+		var me api.Me
+		if err := appFactoryRequest(context.Background(), factoryTarget{second.URL, next.token}, "GET", "/v1/me", nil, &me); err != nil {
+			t.Fatal(err)
+		}
+		if i == 0 {
+			if next.handler != nil {
+				t.Fatal("second app started another solo service")
+			}
+			first.Close()
+			owner.closeSoloForTest()
+		} else if target, ok := liveFactoryDiscovery(); !ok || target.url != second.URL || target.token != next.token {
+			t.Fatal("surviving app did not take over", target, ok)
+		}
 	}
 }
 func TestAppSharesSessionsWithElectedTerminalRunnerWithoutDiskSecrets(t *testing.T) {
