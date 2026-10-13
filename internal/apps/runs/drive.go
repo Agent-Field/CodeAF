@@ -16,6 +16,11 @@ import (
 )
 
 func (e *engine) start(ctx context.Context, scope svc.Scope, p bridge.StartRunParams, trigger string) (bridge.RunState, error) {
+	ctx, done, err := e.work(ctx)
+	if err != nil {
+		return bridge.RunState{}, err
+	}
+	defer done()
 	if strings.TrimSpace(p.Run) == "" {
 		return bridge.RunState{}, bridge.Errorf(bridge.CodeInvalid, "run is required")
 	}
@@ -107,6 +112,11 @@ func (e *engine) bundle(ctx context.Context, app string) (*spec.Bundle, error) {
 }
 
 func (e *engine) drive(ctx context.Context, app, id string) {
+	ctx, done, err := e.work(ctx)
+	if err != nil {
+		return
+	}
+	defer done()
 	if !e.begin(id) {
 		return
 	}
