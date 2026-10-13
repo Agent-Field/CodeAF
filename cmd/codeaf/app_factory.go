@@ -353,8 +353,34 @@ func (h *appFactoryHost) runWorker(ctx context.Context, target factoryTarget) {
 func (h *appFactoryHost) power(ctx context.Context, asleep bool) error {
 	dial := newFactoryWorkerDial(h.floor, nil)
 	all := dial.readCreds()
+	data, err := os.ReadFile(filepath.Join(h.floor.Root(), "attach.json"))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	var attached struct {
+		URL       string                       `json:"url"`
+		Factories []struct{ URL, Mode string } `json:"factories"`
+	}
+	if len(data) != 0 && json.Unmarshal(data, &attached) != nil {
+		return errors.New("invalid factory connections")
+	}
+	active := map[string]bool{}
+	if attached.URL != "" {
+		active[attached.URL] = true
+	}
+	for _, row := range attached.Factories {
+		if row.Mode == "team" {
+			active[row.URL] = true
+		}
+	}
+	if target, ok := liveFactoryDiscovery(); ok {
+		active[target.url] = true
+	}
 	var failures []error
 	for address, credentials := range all {
+		if !active[address] {
+			continue
+		}
 		for _, credential := range credentials {
 			if credential == "" {
 				continue

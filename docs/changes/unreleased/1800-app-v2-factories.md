@@ -18,3 +18,5 @@ opaque id before graph or plan cancellation and refuses a changed source task
 before creating a job.
 App solo discovery shares its launch bearer through a private runtime socket;
 serve.json contains only the address, process id and app marker.
+Power reports target current attachments and the live solo service, leaving
+cached credentials for factories already left available only for later reuse.

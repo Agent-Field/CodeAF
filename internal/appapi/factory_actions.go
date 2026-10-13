@@ -208,6 +208,7 @@ func (s *Server) serveFactory(w http.ResponseWriter, r *http.Request) {
 func (f *FactoryRegistry) card(ctx context.Context, id, task string, expect *AgentExpect) (HandOffCard, error) {
 	var title, brief, repo string
 	var taskVersion uint64
+	var taskState string
 	if task != "" {
 		var snapshot TaskResponse
 		var err error
@@ -223,6 +224,7 @@ func (f *FactoryRegistry) card(ctx context.Context, id, task string, expect *Age
 		title = snapshot.Title
 		brief = snapshot.Brief
 		taskVersion = snapshot.Version
+		taskState = snapshot.State
 		if snapshot.State == "done" || snapshot.State == "stopped" || snapshot.State == "declined" || snapshot.State == "handed_off" {
 			return HandOffCard{}, agentError(409, "conflict", "that task has finished")
 		}
@@ -306,7 +308,7 @@ func (f *FactoryRegistry) card(ctx context.Context, id, task string, expect *Age
 	if len(f.cards) >= 256 {
 		return HandOffCard{}, agentError(409, "at_cap", "send or reopen a hand-off card")
 	}
-	f.cards[token] = &factoryCard{HandOffCard: card, Agent: id, Task: task, Version: version, TaskVersion: taskVersion, Expires: time.Now().Add(time.Hour)}
+	f.cards[token] = &factoryCard{HandOffCard: card, Agent: id, Task: task, Version: version, TaskVersion: taskVersion, TaskState: taskState, Expires: time.Now().Add(time.Hour)}
 	return card, nil
 }
 func (f *FactoryRegistry) readResource(ctx context.Context, path string, out any) error {
@@ -422,7 +424,7 @@ func (f *FactoryRegistry) send(ctx context.Context, id, key string, body SendHan
 			if err != nil {
 				return err
 			}
-			if !found || current.Version != card.TaskVersion {
+			if !found || (card.Result == nil && (current.Version != card.TaskVersion || current.State != card.TaskState)) {
 				return agentError(409, "stale", "that task changed; reopen the hand-off card")
 			}
 			if current.State == "proposed" || current.State == "held" {

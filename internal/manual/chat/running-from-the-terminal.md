@@ -1586,6 +1586,6 @@ and records "stopped while this Mac slept · Rerun" beside them. It marks the
 elected runner asleep using its existing registration, including when the TUI
 owns that worker. `{"state":"awake"}` clears asleep. It never starts another
 runner merely to report power. Linux sends the same events from logind.
-An unreachable registered factory returns an error; retry the power event
+An unreachable attached factory returns an error; retry the power event
 when the connection returns. Standing-order missed-trigger accounting belongs
 to its own resource.

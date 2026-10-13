@@ -64,6 +64,7 @@ type factoryCard struct {
 	Task        string
 	Version     uint64
 	TaskVersion uint64
+	TaskState   string
 	Result      *HandOffResponse
 	Expires     time.Time
 }

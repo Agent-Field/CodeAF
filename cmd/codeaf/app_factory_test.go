@@ -203,7 +203,9 @@ func TestAppSharesSessionsWithElectedTerminalRunnerWithoutDiskSecrets(t *testing
 	}
 }
 func TestAppPowerUsesExistingRunnerCredential(t *testing.T) {
-	floor, err := store.Open(filepath.Join(t.TempDir(), "factory"))
+	root := t.TempDir()
+	t.Setenv(home.EnvVar, root)
+	floor, err := store.Open(filepath.Join(root, "v3", "factory"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,8 +222,12 @@ func TestAppPowerUsesExistingRunnerCredential(t *testing.T) {
 		w.WriteHeader(200)
 	}))
 	defer factory.Close()
-	data, _ := json.Marshal(map[string][]string{factory.URL: {"elected-credential"}})
+	data, _ := json.Marshal(map[string][]string{factory.URL: {"elected-credential"}, "http://127.0.0.1:1": {"detached-credential"}})
 	if err := writeFactoryPrivate(filepath.Join(floor.Root(), "worker.json"), data); err != nil {
+		t.Fatal(err)
+	}
+	attachment, _ := json.Marshal(map[string]string{"url": factory.URL})
+	if err := writeFactoryPrivate(filepath.Join(floor.Root(), "attach.json"), attachment); err != nil {
 		t.Fatal(err)
 	}
 	host := &appFactoryHost{floor: floor}
