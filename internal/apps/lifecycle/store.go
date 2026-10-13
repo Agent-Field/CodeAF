@@ -73,10 +73,7 @@ func (w *decoratedStore) Definition(ctx context.Context, app string) (*spec.Bund
 	}
 	if state == nil {
 		detail, err := w.Store.Get(ctx, app)
-		if err != nil {
-			return nil, err
-		}
-		if detail.State == bridge.StateDeleted {
+		if err == nil && detail.State == bridge.StateDeleted {
 			return nil, notFound(app)
 		}
 	}

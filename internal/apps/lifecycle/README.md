@@ -8,8 +8,11 @@ synchronous maintenance door and returns cleanup errors for retry.
 `lifecycle.json` is an atomic tombstone beside the definition and records. Archive
 and delete leave the underlying Store intact so Restore can recover the same
 files, versions, and records. Deleted definitions are inaccessible through the
-wrapped Store. Archived Get and Definition calls pass through unchanged; the
-lifecycle listing and action results carry their archived state. At 30 days Restore refuses, the lifecycle listing drops the entry,
+wrapped Store. Archived Get and Definition calls pass through unchanged. The
+Definition result and error are preserved even when the Store's detail lookup
+fails. A successful detail lookup reporting deleted still hides the definition.
+The lifecycle listing and action results carry their archived state. At 30 days
+Restore refuses, the lifecycle listing drops the entry,
 and the next purge calls the underlying `Store.Discard` and removes the app folder.
 A failed discard retains the tombstone for the next purge.
 
