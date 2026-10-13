@@ -93,7 +93,7 @@ func leaveOutTinyCrewSeats(args cliArgs, keepHigh bool, models seniorDevModels, 
 // compacts every few steps says why at its start.
 func windowCheck(args cliArgs, models seniorDevModels) (refusal string, guessed []string) {
 	seen := map[string]bool{}
-	var tiny []string
+	var tiny, unknown []string
 	for _, pool := range []string{args.High, args.Low, args.Frontier} {
 		for _, ref := range splitPool(pool) {
 			name := strings.TrimPrefix(ref, orclient.Service+"/")
@@ -101,16 +101,20 @@ func windowCheck(args cliArgs, models seniorDevModels) (refusal string, guessed 
 				continue
 			}
 			seen[name] = true
-			_, source, err := models.windowOf(ref)
-			if err != nil {
+		window, source, err := models.windowOf(ref)
+		if err != nil || (source != sizedByGuess && window <= 0) {
+				unknown = append(unknown, name)
 				continue
 			}
 			if source == sizedByGuess {
 				guessed = append(guessed, name)
-			} else if window, small := models.tinyWindow(ref); small {
+		} else if window > 0 && window <= tinyWindowTokens {
 				tiny = append(tiny, fmt.Sprintf("%s (%s tokens)", name, groupedTokens(window)))
 			}
 		}
+	}
+	if len(unknown) > 0 {
+		return capacityRefusal(unknown), nil
 	}
 	if len(tiny) > 0 {
 		refusal = "senior-dev cannot work with " + strings.Join(tiny, ", ") +
