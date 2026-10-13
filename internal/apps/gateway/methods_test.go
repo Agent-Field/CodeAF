@@ -155,7 +155,7 @@ func TestDispatchUsesContractServiceMethods(t *testing.T) {
 		{bridge.MethodApprovalsDecide, bridge.DecideApprovalParams{ApprovalID: "approval-1", Answer: "yes"}},
 		{bridge.MethodAgentSend, bridge.AgentSendParams{Thread: "thread-1", Text: "draft a follow-up", Record: "row", Screen: "deal"}},
 	}
-	if len(tests) != len(methods) {
+	if len(tests)+len(crewsMethods) != len(methods) {
 		t.Fatalf("dispatch coverage=%d methods=%d", len(tests), len(methods))
 	}
 	for _, tt := range tests {

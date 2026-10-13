@@ -100,7 +100,7 @@ func (e *engine) handleRecord(ctx context.Context, app string, diff bridge.Recor
 		if trigger.When != "" && !e.when(trigger.When, diff.Record, changed) {
 			continue
 		}
-		e.fire(ctx, app, trigger, diff)
+		e.crewsFire(ctx, app, trigger, diff)
 	}
 }
 

@@ -434,6 +434,18 @@
         "agg": { "type": "enum", "values": ["count", "sum", "avg"] },
         "title": { "type": "template" }
       }
+    },
+    {
+      "name": "Custom",
+      "kind": "pattern",
+      "interactive": false,
+      "events": [],
+      "children": "none",
+      "bind": ["records", "record", "run", "runs", "selection"],
+      "props": {
+        "file": {"type": "string", "required": true},
+        "title": {"type": "string"}
+      }
     }
   ]
 }

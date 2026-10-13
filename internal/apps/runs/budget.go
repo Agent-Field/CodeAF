@@ -9,6 +9,7 @@ import (
 )
 
 func (e *engine) precheck(appID string, app *spec.App, def *spec.Run) (float64, error) {
+	e.crewsBudget(appID, app)
 	capUSD := 0.0
 	if app != nil {
 		capUSD = app.Budget.PerRun

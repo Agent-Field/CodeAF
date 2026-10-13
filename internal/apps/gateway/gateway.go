@@ -141,7 +141,7 @@ func (s *session) call(in bridge.Envelope) {
 		err = bridge.Errorf(bridge.CodeInvalid, "unknown method "+in.Method)
 	}
 	if err == nil {
-		scope, err = s.resolveScope(scope, entry.global)
+		scope, err = s.resolveCrewsScope(scope, in.Method, entry.global)
 	}
 	var result any
 	if err == nil {

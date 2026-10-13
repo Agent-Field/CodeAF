@@ -174,6 +174,7 @@ type Caps interface {
 
 // Services is everything the gateway dispatches to.
 type Services struct {
+	Crews      CrewsServices
 	Store      Store
 	Records    Records
 	Sample     Sample

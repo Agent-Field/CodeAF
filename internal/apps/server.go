@@ -35,6 +35,7 @@ func Wire(ctx context.Context, home string) *svc.Services {
 	all.Hub = realtime.New(cfg, all)
 	all.Caps = caps.New(cfg, all)
 	all.Store = store.New(cfg, all)
+	wireCrews(cfg, all)
 	all.Records = records.New(cfg, all)
 	all.Sample = sample.New(cfg, all)
 	all.Approvals = runs.NewApprovals(cfg, all)
