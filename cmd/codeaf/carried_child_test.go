@@ -141,6 +141,10 @@ func runAsCarriedChild() (int, bool) {
 		restore := builtin.Override([]delegate.Delegate{fakeFolderProgram()})
 		defer restore()
 		return execute(), true
+	case "model-flags":
+		restore := builtin.Override([]delegate.Delegate{fakeModelFlagsProgram()})
+		defer restore()
+		return execute(), true
 	case "real":
 		return execute(), true
 	}
