@@ -29,7 +29,7 @@ import (
 // composed at render time, each from THE PREDICATE THAT PUTS ITS TOOL ON THE
 // BELT. Where a tool is absent the fragment says what to do instead rather than
 // saying nothing, in the voice the page's own `remember` and `stand` sentences
-// already use ("Without `remember`, say plainly that memory is off"): a worker
+// already use ("Without `remember`, do not claim you can add durable memories"): a worker
 // told the truth spends its turn on the work, and a worker told nothing spends
 // it guessing.
 //
@@ -66,8 +66,8 @@ const (
 // model calls on every turn on top of the one the person is waiting for, which
 // on a small open-weight seat is the most expensive thing in the turn that
 // nobody asked for — so the brain is not built (agent.go's newAgent), `remember`
-// is not on the belt, and the page's own "Without `remember`, say plainly that
-// memory is off" clause becomes the truth rather than a fallback.
+// is not on the belt. The page distinguishes absent additions from existing
+// supplied memory and read-only lookups, which may still be available.
 //
 // THE STORE ITSELF IS UNTOUCHED, and that distinction is the whole of this line.
 // Config.Memory is also the conversation's own RECORD — the chat log every
@@ -846,8 +846,8 @@ func promptWithBeltFacts(config Config) string {
 // honest:
 //
 //   - WRITTEN FOR BOTH CASES ALREADY. The page names the tool and, in the same
-//     breath, says what to do without it — "Without `remember`, say plainly that
-//     memory is off", "Without `stand` this build cannot watch anything once the
+//     breath, says what to do without it — without `remember`, do not claim
+//     durable additions; "Without `stand` this build cannot watch anything once the
 //     window closes". prompt_belt_test.go holds these to that: where the belt
 //     lacks the tool, the sentence stating the absence must be in the rendered
 //     prompt.
@@ -859,7 +859,7 @@ func promptWithBeltFacts(config Config) string {
 //
 // The value is the marker the test looks for in the absent case.
 var promptNamesBeyondTheBelt = map[string]string{
-	"remember": "Without `remember`, say plainly that memory is off",
+	"remember": "Without `remember`, do not claim you can add durable memories",
 	// A hand inherits the caller's page but intentionally carries a smaller,
 	// closed belt; its appended tail is the truthful capability account.
 	"ask": "Use `ask` only as the last rung",
