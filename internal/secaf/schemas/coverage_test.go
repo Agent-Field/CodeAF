@@ -33,3 +33,19 @@ func TestUnreadableHuntCoverageCannotLookComplete(t *testing.T) {
 		t.Fatal("a complete legacy report became incomplete")
 	}
 }
+
+func TestUnknownAccountingMarkerSurvivesValidLookingCounts(t *testing.T) {
+	result := NewSecurityAuditResult()
+	result.Metadata["hunt_coverage"] = HuntCoverage{Attempted: 1, Failures: []HuntFailure{}, Unknown: true}
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back SecurityAuditResult
+	if err := json.Unmarshal(data, &back); err != nil {
+		t.Fatal(err)
+	}
+	if got := Coverage(back.Metadata); !got.Unknown || !got.Incomplete() || got.Attempted != 0 {
+		t.Fatalf("unknown marker became measured counts: %+v", got)
+	}
+}

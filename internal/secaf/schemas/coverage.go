@@ -42,9 +42,13 @@ func Coverage(metadata map[string]any) HuntCoverage {
 	var fields struct {
 		Attempted *int           `json:"attempted"`
 		Failures  *[]HuntFailure `json:"failures"`
+		Unknown   bool           `json:"unknown"`
 	}
 	if err == nil {
 		err = json.Unmarshal(data, &fields)
+	}
+	if err == nil && fields.Unknown {
+		return HuntCoverage{Unknown: true}
 	}
 	if err != nil || fields.Attempted == nil || fields.Failures == nil || *fields.Attempted < 1 || len(*fields.Failures) > *fields.Attempted {
 		return HuntCoverage{Unknown: true}
