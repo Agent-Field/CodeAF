@@ -162,6 +162,36 @@ screen() { printf 'final screen\\n'; }
         self.assertNotIn("unexpected credential copy", result.stderr)
         self.assertFalse((self.home / "config.json").exists())
 
+    def test_launch_pins_call_metadata_to_owned_home_without_bodies(self):
+        work = self.root / "work"
+        work.mkdir()
+        fake = self.root / "fixture-cli"
+        fake.write_text('''#!/usr/bin/env python3
+import json, os
+from pathlib import Path
+path = Path(os.environ["CODEAF_CALL_LOG"])
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(json.dumps({"model":"fixture-model", "status":400, "error":"actual endpoint refusal", "bodies":os.environ["CODEAF_CALL_LOG_BODIES"]})+"\\n")
+''')
+        fake.chmod(0o700)
+        launch = re.search(r'^t new-session.*?^\s*".*?sleep 3600"$', DRIVE.read_text(), re.M | re.S)[0]
+        # Execute the production environment binding with a deterministic
+        # process fixture, without tmux or the drive's post-exit pane delay.
+        shell = '''t() {
+  for command in "$@"; do :; done
+  command=${command%; sleep 3600}
+  bash -c "$command"
+}
+''' + launch
+        env = dict(os.environ, HOME_DIR=str(self.home), WORK=str(work), BIN=str(fake), CODEAF_PROFILE_DIR=str(self.root / "external"))
+        result = subprocess.run(["bash", "-c", shell], env=env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = self.root / "kept"
+        evidence.snapshot(self.home, output, set())
+        shutil.rmtree(self.home)
+        record = json.loads((output / "records/logs/calls.jsonl").read_text())
+        self.assertEqual((record["status"], record["error"], record["bodies"]), (400, "actual endpoint refusal", "off"))
+
     def test_original_guards_and_all_fourteen_assertions_still_exist(self):
         source = DRIVE.read_text()
         self.assertIn("wait_for 60 5 first_run_home", source)

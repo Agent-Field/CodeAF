@@ -285,8 +285,11 @@ fi
 	echo 'mine, unsaved' >notes.txt
 )
 say "home $HOME_DIR   folder $WORK"
+# The application normally logs beside its profile. Pin this drive's metadata
+# to its own home so bound-profile calls survive in the same evidence walk;
+# request and response bodies are deliberately left off.
 t new-session -d -s x -x 170 -y 50 \
-	"cd '$WORK' && CODEAF_HOME='$HOME_DIR' CODEAF_TASK_BELT=bash CODEAF_TELEMETRY=off '$BIN' chat; sleep 3600"
+	"cd '$WORK' && CODEAF_HOME='$HOME_DIR' CODEAF_CALL_LOG='$HOME_DIR/logs/calls.jsonl' CODEAF_CALL_LOG_BODIES=off CODEAF_TASK_BELT=bash CODEAF_TELEMETRY=off '$BIN' chat; sleep 3600"
 sleep 8
 # A home with no profile opens first-run setup; esc leaves it for the conversation.
 screen | grep -q 'Daily limit' && {
