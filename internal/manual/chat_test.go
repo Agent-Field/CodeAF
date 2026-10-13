@@ -3214,6 +3214,30 @@ func TestGeneralTaskCostPagesNameSeniorDevCeiling(t *testing.T) {
 	}
 }
 
+// A senior-dev run in a folder with nothing to check ends saying so, where it
+// once said the project's build and tests passed. Whoever reads that ending, or
+// doubts an older one, asks in these words and must reach the section that says
+// what was checked.
+func TestSeniorDevNothingToRunQuestionsReachItsSection(t *testing.T) {
+	for _, asked := range []string{
+		"senior-dev says the project has no build or tests it could find to run",
+		"senior-dev found no build or tests to run",
+		"my folder only has a README, did senior-dev check its change",
+		"senior-dev said the build and tests passed but my folder has no tests",
+	} {
+		found := false
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page == "senior-dev" && strings.Contains(section.Title, "found no build or tests to run") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach the section on a folder with nothing to run", asked)
+		}
+	}
+}
+
 // TestC13UpdateQuestionsReachTheNewManualSection proves C13.
 func TestC13UpdateQuestionsReachTheNewManualSection(t *testing.T) {
 	for _, asked := range []string{
