@@ -148,11 +148,25 @@ func (s *Service) Cancel(ctx context.Context, scope svc.Scope) error {
 	if err != nil {
 		return err
 	}
-	b.stop()
-	return nil
+	if b.stop() {
+		return nil
+	}
+	return s.leaveFailed(ctx, b)
 }
 
-// Write starts the write · check · preview run for a planned (or failed) app.
+// leaveFailed is Cancel on a failed build: nothing is running, and the app goes
+// back to planning.
+func (s *Service) leaveFailed(ctx context.Context, b *build) error {
+	detail, err := s.all.Store.Get(ctx, b.app)
+	if err != nil || detail.State != bridge.StateFailed {
+		return err
+	}
+	return s.setState(ctx, b, bridge.StatePlanning)
+}
+
+// Write starts the write · check · preview run for a planned or failed app. An
+// app still building with no step running was cut off by a restart; it is
+// written again.
 func (s *Service) Write(ctx context.Context, scope svc.Scope) error {
 	b, err := s.buildFor(ctx, scope.App)
 	if err != nil {
@@ -162,7 +176,7 @@ func (s *Service) Write(ctx context.Context, scope svc.Scope) error {
 	if err != nil {
 		return err
 	}
-	if detail.State != bridge.StatePlanning && detail.State != bridge.StateFailed {
+	if !writable[detail.State] {
 		return bridge.Errorf(bridge.CodeConflict, "the app is "+string(detail.State)+", not planning")
 	}
 	if len(b.currentPlan().Screens) == 0 {
@@ -171,6 +185,10 @@ func (s *Service) Write(ctx context.Context, scope svc.Scope) error {
 	return s.start(b,
 		func() error { return s.setState(ctx, b, bridge.StateBuilding) },
 		func(ctx context.Context) error { return s.writeAndCheck(ctx, b) })
+}
+
+var writable = map[bridge.AppState]bool{
+	bridge.StatePlanning: true, bridge.StateFailed: true, bridge.StateBuilding: true,
 }
 
 // Seeder is the one piece of the records service the Builder may touch: it

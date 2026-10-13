@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
+	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/provider"
 )
@@ -21,20 +21,16 @@ const DefaultModel = "deepseek/deepseek-v4.1-flash"
 const maxReplyTokens = 16000
 
 // Model is the one model door for the Builder and the app agent. It rides the
-// same provider stack, key ladder and billing receipts as the chat.
-type Model struct {
-	mu       sync.Mutex
-	settings *config.Config
-	clients  map[string]*provider.Client
-}
+// same provider stack, key ladder and billing receipts as the chat, resolved
+// the way appapi's AI routing resolves them.
+type Model struct{}
 
 var _ svc.Model = (*Model)(nil)
 
-// NewModel returns the model door. Settings load on first use, so a server
-// without a key still starts and answers only the calls that need one.
-func NewModel(svc.Config, *svc.Services) *Model {
-	return &Model{clients: map[string]*provider.Client{}}
-}
+// NewModel returns the model door. Settings and the key are read on every call,
+// so a key the desk hands over after the server started is used at once and a
+// server without one still starts.
+func NewModel(svc.Config, *svc.Services) *Model { return &Model{} }
 
 // Complete sends one call and returns the text and what it cost in USD.
 func (m *Model) Complete(ctx context.Context, call svc.ModelCall) (svc.ModelReply, error) {
@@ -42,16 +38,17 @@ func (m *Model) Complete(ctx context.Context, call svc.ModelCall) (svc.ModelRepl
 	if model == "" {
 		model = DefaultModel
 	}
-	client, wire, err := m.client(model)
+	configured := clientConfig(model)
+	client, err := provider.NewClient(configured)
 	if err != nil {
-		return svc.ModelReply{}, err
+		return svc.ModelReply{}, fmt.Errorf("builder model %s: %w", model, err)
 	}
 	var billed float64
 	ctx = provider.WithBilling(ctx, func(b provider.Billed) { billed += b.Cost })
 	ctx = provider.WithoutStream(provider.WithReasoningEffort(ctx, provider.EffortOff))
 	ctx = provider.WithCallTag(ctx, "apps.builder")
 	response, err := client.CompleteWithMessages(ctx, messagesOf(call),
-		ai.WithModel(wire), ai.WithMaxTokens(maxReplyTokens))
+		ai.WithModel(configured.Model), ai.WithMaxTokens(maxReplyTokens))
 	if err != nil {
 		return svc.ModelReply{}, fmt.Errorf("builder model %s: %w", model, err)
 	}
@@ -61,26 +58,16 @@ func (m *Model) Complete(ctx context.Context, call svc.ModelCall) (svc.ModelRepl
 	return svc.ModelReply{Text: response.Text(), Cost: billed}, nil
 }
 
-func (m *Model) client(model string) (*provider.Client, string, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.settings == nil {
-		loaded, err := config.Load()
-		if err != nil {
-			return nil, "", fmt.Errorf("builder model settings: %w", err)
-		}
-		m.settings = &loaded
+// clientConfig is appapi's AI routing for one model: the app's profile, its
+// model sources and key ladder, and the cached model catalog.
+func clientConfig(model string) provider.Config {
+	dir := config.ProfilePath(config.ProfileDir(), "")
+	settings := config.Config{
+		ProfileDir: dir,
+		Sources:    config.ResolveSources(dir, config.APIKeyAt(dir), config.DefaultBaseURL),
+		Models:     catalog.Recall(catalog.Options{Dir: dir}),
 	}
-	configured := m.settings.ClientConfig(model)
-	if c, ok := m.clients[model]; ok {
-		return c, configured.Model, nil
-	}
-	c, err := provider.NewClient(configured)
-	if err != nil {
-		return nil, "", err
-	}
-	m.clients[model] = c
-	return c, configured.Model, nil
+	return settings.ClientConfig(model)
 }
 
 func messagesOf(call svc.ModelCall) []ai.Message {

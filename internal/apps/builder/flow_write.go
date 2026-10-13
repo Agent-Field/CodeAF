@@ -209,6 +209,8 @@ func (b *build) patch(files map[string][]byte) (map[string][]byte, error) {
 		return nil, fmt.Errorf("app.json: %w", err)
 	}
 	app["id"], app["space"] = b.app, personalSpace
+	setIn(app, "budget", "month", b.budget)
+	setIn(app, "agent", "model", b.agentModel)
 	if name := strings.TrimSpace(b.currentPlan().Name); name != "" {
 		app["name"] = name
 	}
@@ -218,6 +220,14 @@ func (b *build) patch(files map[string][]byte) (map[string][]byte, error) {
 	}
 	files[spec.AppFile] = append(patched, '\n')
 	return files, nil
+}
+
+// setIn sets key on the object at app[group], leaving it alone when the model
+// wrote no such object (Check names the missing part).
+func setIn(app map[string]any, group, key string, value any) {
+	if obj, ok := app[group].(map[string]any); ok {
+		obj[key] = value
+	}
 }
 
 // fix sends the check report and the current files, and merges the files the
@@ -294,6 +304,7 @@ func formatReport(r bridge.CheckReport) string {
 // preview seeds sample records and opens the preview. The Builder writes only
 // sample rows, never real ones, and never reads them back.
 func (s *Service) preview(ctx context.Context, b *build, files spec.Files) error {
+	s.step(b, bridge.StepPreview, bridge.BuildRunning, "Filling the app with sample data")
 	def, err := spec.Decode(files)
 	if err != nil {
 		return s.failWrite(ctx, b, err)

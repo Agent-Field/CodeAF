@@ -21,7 +21,7 @@ type memStore struct {
 }
 
 func (m *memStore) List(context.Context, svc.Caller) ([]bridge.AppSummary, error) { return nil, nil }
-func (m *memStore) Definition(context.Context, string) (*spec.Bundle, error)     { return nil, nil }
+func (m *memStore) Definition(context.Context, string) (*spec.Bundle, error)      { return nil, nil }
 func (m *memStore) Keep(context.Context, string) (bridge.AppSummary, error) {
 	return bridge.AppSummary{}, nil
 }

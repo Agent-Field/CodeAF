@@ -2,6 +2,7 @@ package builder
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -297,4 +298,62 @@ func TestBuilderNeverReadsRecords(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestAppJSONCarriesTheOwnersBudgetAndAgentModel(t *testing.T) {
+	r := newRig(t)
+	_, err := r.svc.Create(context.Background(), svc.Caller{Member: svc.Owner},
+		bridge.CreateAppParams{Paragraph: "A CRM for our sales pipeline", BudgetMonth: 7, Model: "acme/agent-1", JustBuild: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.waitState(t, bridge.StatePreview)
+	_, files := r.store.current()
+	var app struct {
+		Budget struct{ Month float64 }
+		Agent  struct{ Model string }
+	}
+	if err := json.Unmarshal(files[spec.AppFile], &app); err != nil {
+		t.Fatal(err)
+	}
+	if app.Budget.Month != 7 || app.Agent.Model != "acme/agent-1" {
+		t.Errorf("budget %v, agent model %q", app.Budget.Month, app.Agent.Model)
+	}
+}
+
+func TestPreviewIsAnnouncedBeforeItIsDone(t *testing.T) {
+	r := newRig(t)
+	r.create(t, true)
+	r.waitState(t, bridge.StatePreview)
+	if _, ok := r.hub.find(bridge.StepPreview, bridge.BuildRunning); !ok {
+		t.Error("no preview running event")
+	}
+}
+
+func TestCancelOnAFailedBuildReturnsToPlanning(t *testing.T) {
+	r := newRig(t)
+	r.model.cost = 0.6
+	_, err := r.svc.Create(context.Background(), svc.Caller{Member: svc.Owner},
+		bridge.CreateAppParams{Paragraph: "A CRM for our sales pipeline", BudgetMonth: 1, JustBuild: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.waitState(t, bridge.StateFailed)
+	b, _ := r.svc.buildFor(context.Background(), "crm")
+	waitFor(t, "the build to settle", func() bool { b.mu.Lock(); defer b.mu.Unlock(); return !b.working })
+	if err := r.svc.Cancel(context.Background(), r.scope()); err != nil {
+		t.Fatal(err)
+	}
+	r.waitState(t, bridge.StatePlanning)
+}
+
+func TestWriteResumesABuildCutOffByARestart(t *testing.T) {
+	r := newRig(t)
+	r.create(t, false)
+	waitFor(t, "plan card", func() bool { _, ok := r.hub.find(bridge.StepPlan, bridge.BuildDone); return ok })
+	_ = r.store.SetState(context.Background(), "crm", bridge.StateBuilding)
+	if err := r.svc.Write(context.Background(), r.scope()); err != nil {
+		t.Fatal(err)
+	}
+	r.waitState(t, bridge.StatePreview)
 }
