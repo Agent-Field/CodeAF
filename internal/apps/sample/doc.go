@@ -1,5 +1,6 @@
 // Package sample generates preview records from app.json without accessing
-// persisted content. Titles use type labels and enum vocabulary; human names
+// persisted content. Titles combine type labels, descriptive schema vocabulary
+// and short neutral phrases without classification codes or counters; human names
 // fill person-like text, while person/people fields keep member ids. Defaults
 // are respected except for relations, dates, unique fields and enum states.
 // The constructor generates twelve records per type. Dates stay near the
