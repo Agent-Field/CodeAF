@@ -79,6 +79,13 @@ type Options struct {
 	// have chosen; empty leaves that kind to discovery.
 	VerifyBuild string
 	VerifyTest  string
+	// StateDir is the directory `--state-dir` named: the run keeps its session
+	// store there — its database, its conversation and the lock that orders
+	// them. Empty reads SENIOR_DEV_STATE_DIR; with that empty too, the store
+	// goes in the run's record folder when codeaf named one, and in the
+	// folder's own .senior-dev only when it named none. The files the model
+	// works with stay in the folder's .senior-dev either way ([stateDirectory]).
+	StateDir string
 	// Crew says the pools came from the crew of the conversation that started
 	// the run (`--crew`), not from a person typing them: a model the catalog
 	// cannot size is dropped with a note, and a --high left empty routes on
@@ -158,6 +165,18 @@ func runWith(ctx context.Context, host delegate.Host, options Options, notes io.
 		args.MaxHours = &ceilings.Hours
 	}
 	workspace := host.Workspace()
+	records := ""
+	if recorder, ok := host.(delegate.Recorder); ok {
+		records = recorder.Records()
+	}
+	stateDir, refusal := stateDirectory(options.StateDir, workspace)
+	if refusal != "" {
+		return refused(refusal)
+	}
+	args.StateDir = stateDir
+	if stateDir == "" {
+		args.RecordStore = recordStoreBase(records, workspace)
+	}
 	loadedConfig, err := loadSeniorDevConfig(workspace)
 	if err != nil {
 		return refused("load config: " + err.Error())
