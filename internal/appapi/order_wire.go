@@ -6,19 +6,30 @@ import (
 
 // These wire types reserve the app vocabulary before this resource has behaviour.
 type StandingOrder struct {
-	ID           string       `json:"id"`
-	AgentID      string       `json:"agent_id"`
-	Title        string       `json:"title"`
-	Trigger      OrderTrigger `json:"trigger"`
-	Does         string       `json:"does"`
-	Wont         string       `json:"wont"`
-	Scope        string       `json:"scope" jsonschema:"enum=this_chat,enum=this_crew,enum=everywhere,enum=not_here"`
-	Trust        string       `json:"trust" jsonschema:"enum=asks_first,enum=earning,enum=trusted"`
-	ApprovedRuns int          `json:"approved_runs"`
-	BudgetPerRun Money        `json:"budget_per_run"`
-	State        string       `json:"state" jsonschema:"enum=proposed,enum=active,enum=paused,enum=stopped,enum=declined,enum=fired"`
-	LastRunAt    *time.Time   `json:"last_run_at,omitempty"`
-	Skipped      int          `json:"skipped"`
+	Version      uint64        `json:"version"`
+	Runs         []StandingRun `json:"runs"`
+	ID           string        `json:"id"`
+	AgentID      string        `json:"agent_id"`
+	Title        string        `json:"title"`
+	Trigger      OrderTrigger  `json:"trigger"`
+	Does         string        `json:"does"`
+	Wont         string        `json:"wont"`
+	Scope        string        `json:"scope" jsonschema:"enum=this_chat,enum=this_crew,enum=everywhere,enum=not_here"`
+	Trust        string        `json:"trust" jsonschema:"enum=asks_first,enum=earning,enum=trusted"`
+	ApprovedRuns int           `json:"approved_runs"`
+	BudgetPerRun Money         `json:"budget_per_run"`
+	State        string        `json:"state" jsonschema:"enum=proposed,enum=active,enum=paused,enum=stopped,enum=declined,enum=fired"`
+	LastRunAt    *time.Time    `json:"last_run_at,omitempty"`
+	Skipped      int           `json:"skipped"`
+}
+
+// StandingRun exposes decision ids and skipped lines without retaining probe
+// evidence in the app. The engine alone executes the evidence it persisted.
+type StandingRun struct {
+	ID    string    `json:"id"`
+	At    time.Time `json:"at"`
+	State string    `json:"state"`
+	Line  string    `json:"line"`
 }
 type OrderTrigger struct {
 	Kind   string `json:"kind" jsonschema:"enum=event,enum=schedule,enum=once"`
@@ -62,5 +73,5 @@ type OrderFiredEvent struct {
 }
 
 func orderContract() resourceContract {
-	return resourceContract{Name: "order", Types: []any{StandingOrder{}, OrderTrigger{}, OrdersResponse{}, ChangeOrderRequest{}, OrderRunRequest{}, ReminderChangeRequest{}, OrderChangedEvent{}, OrderFiredEvent{}}, Routes: orderContractRoutes, Events: []eventContract{{"order.changed", OrderChangedEvent{}}, {"order.fired", OrderFiredEvent{}}}}
+	return resourceContract{Name: "order", Types: []any{StandingOrder{}, StandingRun{}, OrderTrigger{}, OrdersResponse{}, ChangeOrderRequest{}, OrderRunRequest{}, ReminderChangeRequest{}, OrderChangedEvent{}, OrderFiredEvent{}}, Routes: orderContractRoutes, Events: []eventContract{{"order.changed", OrderChangedEvent{}}, {"order.fired", OrderFiredEvent{}}}}
 }

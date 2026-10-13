@@ -56,8 +56,8 @@ func TestAnUnchangedPositiveProbeIsReportedOnce(t *testing.T) {
 	if fired.Positive == "" {
 		t.Fatalf("the affirmative reading left no identity: %+v", fired)
 	}
-	if fired.Schema != Schema {
-		t.Fatalf("the item carrying a positive identity is schema %d, wanted %d", fired.Schema, Schema)
+	if fired.Schema != schemaRecurrence {
+		t.Fatalf("the item carrying a positive identity is schema %d, wanted %d", fired.Schema, schemaRecurrence)
 	}
 
 	// AT LEAST TWO LATER ELIGIBLE CHECKS: both are due, both observe the same
@@ -372,11 +372,11 @@ func TestAPositiveIdentityIsFencedFromBaselineReaders(t *testing.T) {
 	if got := SchemaOf(Item{}); got != 1 {
 		t.Fatalf("an ordinary item is schema %d, wanted 1", got)
 	}
-	if got := SchemaOf(Item{Positive: "abc"}); got != Schema {
-		t.Fatalf("an item carrying a positive identity is schema %d, wanted %d", got, Schema)
+	if got := SchemaOf(Item{Positive: "abc"}); got != schemaRecurrence {
+		t.Fatalf("an item carrying a positive identity is schema %d, wanted %d", got, schemaRecurrence)
 	}
-	if Schema <= schemaDeferred {
-		t.Fatalf("the positive fence is %d, not newer than the schema-%d reader it must stop", Schema, schemaDeferred)
+	if schemaRecurrence <= schemaDeferred {
+		t.Fatalf("the positive fence is %d, not newer than the schema-%d reader it must stop", schemaRecurrence, schemaDeferred)
 	}
 }
 
@@ -389,14 +389,14 @@ func TestAOneShotOrPositiveDocumentIsBeyondTheSchemaThreeReader(t *testing.T) {
 	if schemaDeferred != 3 {
 		t.Fatalf("the deferred barrier is %d, wanted the 3 the predecessor reads", schemaDeferred)
 	}
-	if Schema != 4 {
-		t.Fatalf("the newest schema is %d, wanted the 4 that fences the probe semantics", Schema)
+	if schemaRecurrence != 4 {
+		t.Fatalf("the recurrence schema is %d, wanted the 4 that fences the probe semantics", schemaRecurrence)
 	}
-	if got := SchemaOf(Item{When: When{Kind: WhenProbe, OneShot: true}}); got != Schema {
-		t.Fatalf("a one-shot condition is schema %d, wanted %d", got, Schema)
+	if got := SchemaOf(Item{When: When{Kind: WhenProbe, OneShot: true}}); got != schemaRecurrence {
+		t.Fatalf("a one-shot condition is schema %d, wanted %d", got, schemaRecurrence)
 	}
-	if got := SchemaOf(Item{Positive: "abc"}); got != Schema {
-		t.Fatalf("a positive identity is schema %d, wanted %d", got, Schema)
+	if got := SchemaOf(Item{Positive: "abc"}); got != schemaRecurrence {
+		t.Fatalf("a positive identity is schema %d, wanted %d", got, schemaRecurrence)
 	}
 	// Native shapes an older build already reads stay where they were.
 	if got := SchemaOf(Item{When: When{Kind: WhenAt}}); got != 1 {
@@ -515,8 +515,8 @@ func TestAOneShotConditionDeliversOnceAndRetires(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if made.Schema != Schema || !made.When.OneShot {
-		t.Fatalf("the one-shot item is schema %d once=%v, wanted %d and true", made.Schema, made.When.OneShot, Schema)
+	if made.Schema != schemaRecurrence || !made.When.OneShot {
+		t.Fatalf("the one-shot item is schema %d once=%v, wanted %d and true", made.Schema, made.When.OneShot, schemaRecurrence)
 	}
 	yes, _ := countingSentinel(VerdictYes)
 	no, _ := countingSentinel(VerdictNo)

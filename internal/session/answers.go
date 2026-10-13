@@ -441,6 +441,9 @@ const StandingNoKey = "0"
 // doing it now says the thing at the wrong time. A rule never runs, so "once"
 // has nothing to do.
 func StandingOnceIsAnAnswer(item standing.Item) bool {
+	if item.App != nil {
+		return false
+	}
 	// Ordinary turns cannot provide the scheduled executor's retained worktree.
 	if item.Does.Isolate {
 		return false
@@ -538,6 +541,9 @@ func StandingPlainLabel(label string) string {
 // The no is last and marked safe, so a row that has to drop an answer drops
 // one in front of it.
 func StandingOptions(item standing.Item) []AnswerOption {
+	if item.App != nil {
+		return []AnswerOption{{Key: "1", Label: "Ratify", Consequence: "Sets up this standing order; runs still follow its trust and budget."}, {Key: StandingNoKey, Label: "Not now", Consequence: "Nothing is set up or run.", Safe: true}}
+	}
 	options := standingOptions(item)
 	if !StandingOnceIsAnAnswer(item) {
 		for i, option := range options {

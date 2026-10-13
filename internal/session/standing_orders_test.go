@@ -375,8 +375,8 @@ func TestTheCompiledOneShotConditionRidesTheCardAndTheDocument(t *testing.T) {
 		t.Fatalf("the one-shot watch card does not say it tells once: %+v", StandingOptions(item))
 	}
 	// The schema fence keeps an older reader from silently re-arming it.
-	if item.Schema != standing.Schema {
-		t.Fatalf("a one-shot condition is schema %d, wanted %d", item.Schema, standing.Schema)
+	if item.Schema != 4 {
+		t.Fatalf("a one-shot condition is schema %d, wanted %d", item.Schema, 4)
 	}
 	// THE FIELD IS ON THE SCHEMA the model writes to, and the description says
 	// what it is for. Without it the model has no way to compile the intent.

@@ -576,6 +576,9 @@ func (r *standingRunner) deliver(item standing.Item, kind, text, run, id string)
 		Run:    run,
 		ID:     strings.TrimSpace(id),
 	}
+	if item.App != nil {
+		return r.deliverApp(item, note)
+	}
 	// ── THE NOTE IS MADE DURABLE FIRST ──────────────────────────────────────
 	//
 	// AN EXCHANGE'S FOLDER IS A DEAD LETTER OFFICE. Home lists what is under
@@ -776,6 +779,9 @@ func standingRunPrepare(r *standingRunner, item standing.Item, runDir string) (C
 	if err != nil {
 		return Config{}, nil, taskTree{}, err
 	}
+	if item.App != nil {
+		cfg.DeterministicNames = true
+	}
 	cfg, closeMemory, err := r.withBindingMemory(cfg, item)
 	if err != nil {
 		return Config{}, nil, taskTree{}, err
@@ -811,6 +817,9 @@ func standingRunPrepare(r *standingRunner, item standing.Item, runDir string) (C
 // one.
 func standingRunBrief(item standing.Item, evidence string) string {
 	brief := standingEvidence(item.Does.Brief, evidence)
+	if item.App != nil && strings.TrimSpace(item.App.Wont) != "" {
+		brief += "\nIt won’t: " + item.App.Wont
+	}
 	if acceptance := strings.TrimSpace(item.Does.Acceptance); acceptance != "" {
 		brief += "\n\nDONE WHEN: " + acceptance
 	}
@@ -881,6 +890,7 @@ func (w *standingRunWatch) drain(events <-chan Event, agent *Agent, item standin
 		w.observe(event, agent, item, &said)
 	}
 	w.remember(said.String())
+	w.appBudget(agent, item)
 }
 
 // observe folds one event into the watch. A call that saved something is the
@@ -908,6 +918,7 @@ func (w *standingRunWatch) observe(event Event, agent *Agent, item standing.Item
 // does not get is another call.
 func (w *standingRunWatch) finished(agent *Agent, item standing.Item) {
 	w.steps++
+	w.appBudget(agent, item)
 	if w.steps >= w.limit || (item.Rails.PerRunUSD > 0 && agent.Usage().CostUSD >= item.Rails.PerRunUSD) {
 		w.capped = true
 		agent.InterruptFor(StopByWorkStopped)
@@ -2081,4 +2092,14 @@ func standingAwayNote(notes []standing.Note) string {
 		out.WriteString("\n" + strings.Join(parts, " · "))
 	}
 	return out.String()
+}
+
+// A word-only reply can consume the run budget too. Check at both tool and
+// reply boundaries before a divided firing is allowed to buy another turn.
+func (w *standingRunWatch) appBudget(agent *Agent, item standing.Item) {
+	if item.App != nil && item.Rails.PerRunUSD > 0 && agent.Usage().CostUSD >= item.Rails.PerRunUSD {
+		w.needs = fmt.Sprintf("Budget per run reached · $%.2f · raise the budget before running again", item.Rails.PerRunUSD)
+		w.capped = true
+		agent.InterruptFor(StopByWorkStopped)
+	}
 }

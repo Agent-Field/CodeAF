@@ -79,6 +79,7 @@ func (t *Ticker) Tick(ctx context.Context) (Pass, error) {
 			break
 		}
 		if item.Status != StatusActive {
+			t.observeAppPaused(ctx, &pass, item)
 			continue
 		}
 		if resolved[item.ID] {
@@ -192,6 +193,10 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item *Item) error {
 	if item.When.Kind == WhenHold {
 		return nil
 	}
+	if appNeedsPerson(item) {
+		pass.NeedsYou++
+		return nil
+	}
 	if held, err := t.railsHold(ctx, item, now, pass); held || err != nil {
 		return err
 	}
@@ -212,6 +217,12 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item *Item) error {
 
 	if blocked, err := t.attemptBlocked(item, pass); blocked || err != nil {
 		return err
+	}
+	if run := item.AppWaitingRun(); run != nil {
+		if run.State == "waiting" {
+			return t.deliverAppAsk(ctx, item)
+		}
+		return t.act(ctx, pass, item, now, sighting{state: stateReady, line: run.Line, evidence: run.Evidence, positive: run.Positive})
 	}
 
 	found, err := t.look(ctx, item, now, pass.At)
@@ -320,6 +331,12 @@ func (t *Ticker) act(ctx context.Context, pass *Pass, item *Item, now time.Time,
 		return t.quiet(*item, now, found.line)
 	}
 	pass.Checked++
+	if held, err := t.appGate(ctx, item, now, found); held || err != nil {
+		if held && item.NeedsPerson != "" {
+			pass.NeedsYou++
+		}
+		return err
+	}
 	return t.fire(ctx, pass, item, now, found)
 }
 
@@ -411,6 +428,9 @@ func (t *Ticker) lookScheduled(item *Item, now time.Time) (sighting, error) {
 
 // lookAt is a moment watch: due exactly when its moment has come.
 func (t *Ticker) lookAt(item *Item, now time.Time) (sighting, error) {
+	if item.App != nil && item.Status == StatusPaused && !item.LastChecked.Before(item.When.At) {
+		return sighting{state: stateAsleep}, nil
+	}
 	if now.Before(item.When.At) {
 		return sighting{state: stateAsleep}, nil
 	}
@@ -939,6 +959,9 @@ func (t *Ticker) closeFiring(pass *Pass, item *Item, now time.Time, found sighti
 // hand back a question on an outcome of any kind and the field is where that
 // question actually lands.
 func recordOutcome(item *Item, outcome Outcome) {
+	if run := item.AppWaitingRun(); run != nil && run.State == "authorized" {
+		run.State, run.Evidence, run.Report = "done", "", outcome.Text
+	}
 	item.NeedsPerson = outcome.NeedsPerson
 	if outcome.Kind == OutcomeNeedsYou && item.NeedsPerson == "" {
 		item.NeedsPerson = oneLine(outcome.Text)

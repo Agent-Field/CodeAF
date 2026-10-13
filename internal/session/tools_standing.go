@@ -274,7 +274,8 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"guessed":{"type":"boolean","description":"True when YOU invented the cadence because they gave none. The card then asks rather than states."},` +
 	`"altitude":{"type":"string","enum":["conversation","project","machine"],"description":"How far it reaches; the card always names it. conversation: this chat alone, dying with it. project: every conversation and task here. machine: everything they do on this computer. Their own scope words choose it: \"just this chat\" is conversation, \"everywhere\" and \"all my projects\" are machine. Omit it when they said nothing about scope: widening on your own judgment decides for them."},` +
 	`"title":{"type":"string","description":"Three or four words for a row too narrow for their sentence — \"weekly update\". Their sentence still leads every screen."},` +
-	`"grant":{"type":"string","description":"One sentence, in their words, for what acting on this may do without asking — \"open a pull request but never merge it\". Send it only when they said something like it; with none, it may only tell them things."},` +
+	`"wont":{"type":"string","description":"Limits for app runs."},` +
+	`"grant":{"type":"string","description":"Their exact grant of actions allowed without asking; absent means tell only."},` +
 	`"id":{"type":"string","description":"Which item pause, resume and stop are about. Their own words work too."}` +
 	`},"required":["op"],"additionalProperties":false}`
 
@@ -289,6 +290,7 @@ type standArguments struct {
 	Altitude  string `json:"altitude"`
 	Title     string `json:"title"`
 	Grant     string `json:"grant"`
+	Wont      string `json:"wont"`
 	When      struct {
 		Kind    string `json:"kind"`
 		At      string `json:"at"`
@@ -476,6 +478,34 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	if err := item.Validate(); err != nil {
 		return "Invalid arguments: " + err.Error(), true, nil
 	}
+	if item.App != nil {
+		proposer, ok := store.(interface {
+			Propose(standing.Item) (standing.Item, error)
+		})
+		if !ok {
+			return "this engine cannot save an app standing proposal", true, nil
+		}
+		var err error
+		item, err = proposer.Propose(item)
+		if err != nil {
+			return "nothing was proposed: " + err.Error(), true, nil
+		}
+	}
+
+	if item.App != nil && item.When.Kind == standing.WhenAt && item.Does.Kind == standing.ActionSay {
+		ratifier, ok := store.(interface {
+			RatifyApp(string) (standing.Item, error)
+		})
+		if !ok {
+			return "this engine cannot save a reminder", true, nil
+		}
+		created, err := ratifier.RatifyApp(item.ID)
+		if err != nil {
+			return "nothing was set up: " + err.Error(), true, nil
+		}
+		a.emitStandingUpdate("stood", created, "Reminder · "+created.Title())
+		return "Reminder set · " + created.Title(), false, nil
+	}
 
 	notice := StandingNotice{
 		Item: item,
@@ -512,6 +542,16 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 		}
 		return standingOnceHandoff(item), false, nil
 	case !answer.Approved:
+		if item.App != nil {
+			if real, ok := store.(*standing.Store); ok {
+				_, _ = real.ChangeApp(item.ID, func(current *standing.Item) error {
+					if current.Status == standing.StatusProposed {
+						current.Status = standing.StatusDeclined
+					}
+					return nil
+				})
+			}
+		}
 		if correction := strings.TrimSpace(answer.Change); correction != "" {
 			// AND THE CORRECTION MAY BE ABOUT ANY OF IT. The card's one change
 			// door covers when it wakes and how far it reaches alike (tui3's
@@ -523,7 +563,24 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 		return "nothing was set up: the person said no.", false, nil
 	}
 
-	created, err := store.Create(item)
+	var created standing.Item
+	if item.App != nil {
+		created, err = store.Get(item.ID)
+		if err == nil && created.Status == standing.StatusProposed {
+			if ratifier, ok := store.(interface {
+				RatifyApp(string) (standing.Item, error)
+			}); ok {
+				created, err = ratifier.RatifyApp(item.ID)
+			} else {
+				err = errors.New("this engine cannot ratify an app standing proposal")
+			}
+		}
+		if err == nil && created.Status != standing.StatusActive {
+			err = standing.ErrAppConflict
+		}
+	} else {
+		created, err = store.Create(item)
+	}
 	if err != nil {
 		// SAID PLAINLY AND NOT SWALLOWED. The person answered yes to a card, so
 		// the one thing that must never happen is the conversation carrying on
@@ -531,7 +588,10 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 		return "nothing was set up: " + err.Error(), true, nil
 	}
 	created, fileNote := a.standingFileTheExchange(store, created)
-	created, armNote := a.standingArmBaseline(store, created)
+	armNote := ""
+	if created.App == nil || created.Fingerprint == "" {
+		created, armNote = a.standingArmBaseline(store, created)
+	}
 	a.emitStandingUpdate("stood", created, "")
 	// Implicit setup reports to the surface once. The tool result also carries
 	// current availability: saving an item is not a promise that this home
@@ -721,6 +781,10 @@ func (a *Agent) standingItem(parsed standArguments, now time.Time) (standing.Ite
 		Grant: strings.TrimSpace(parsed.Grant),
 	}
 	item.Schema = standing.SchemaOf(item)
+	if config.AppMode() {
+		item.App = &standing.AppOrder{Scope: "this_chat", Wont: strings.TrimSpace(parsed.Wont)}
+		item.Schema = standing.SchemaOf(item)
+	}
 	return item, ""
 }
 
@@ -1753,7 +1817,7 @@ func (a *Agent) standingAsk(id uint64, notice StandingNotice) Question {
 		Asker:   Asker{Kind: AskerModel},
 		Head:    StandingHead(notice.Item),
 		Reason:  StandingAskReason,
-		Subject: SubjectRef{Kind: SubjectOrder, ID: id, Name: strings.TrimSpace(notice.Item.Words)},
+		Subject: SubjectRef{Kind: SubjectOrder, ID: id, Ref: notice.Item.ID, Name: strings.TrimSpace(notice.Item.Words)},
 		Options: StandingOptions(notice.Item),
 		Stakes:  StakesReversible,
 		// AND THE TURN IS STOPPED ON IT, which this question did not say for a

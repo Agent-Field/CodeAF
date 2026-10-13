@@ -110,7 +110,10 @@ import (
 // re-reported an unchanged positive — SKIPS it rather than misreading it. The
 // fence is on the new fields themselves: version 3 cannot guard a field a
 // schema-3 reader already claims to understand.
-const Schema = 4
+const Schema = 5
+
+// schemaRecurrence keeps the earlier one-shot fence stable for ordinary items.
+const schemaRecurrence = 4
 
 // schemaDeferred is version 3, the deferred-delivery barrier. It stays its own
 // number because the fields it guards predate this build, and a reader that
@@ -151,8 +154,11 @@ const schemaDeferred = 3
 // carries the baseline [Item.Fingerprint] it would silently drop, so both are
 // fenced at 3 rather than left at 1 for a reader that would lie about them.
 func SchemaOf(it Item) int {
-	if it.Positive != "" || it.When.OneShot {
+	if it.App != nil {
 		return Schema
+	}
+	if it.Positive != "" || it.When.OneShot {
+		return schemaRecurrence
 	}
 	if len(it.Pending) > 0 || it.TaskInflight != nil || it.Fingerprint != "" || it.Revision > 1 || it.Origin.OneModel {
 		return schemaDeferred
@@ -506,8 +512,11 @@ type Exception struct {
 // never changes without another card; the bottom half is the item's own
 // present, rewritten on every check.
 type Item struct {
-	Schema int    `json:"schema"`
-	ID     string `json:"id"`
+	// App carries explicit run approval and delivery scope. Older tickers must
+	// skip these items rather than silently running past their approval gate.
+	App    *AppOrder `json:"app,omitempty"`
+	Schema int       `json:"schema"`
+	ID     string    `json:"id"`
 	// Words are the person's verbatim sentence. Permanent anchor; every
 	// surface leads with it.
 	Words string `json:"words"`
@@ -640,6 +649,11 @@ type Item struct {
 // admission law in one place: words, a workspace, a kind with its fields, an
 // action with its text, and rails that are not zero.
 func (it Item) Validate() error {
+	if it.App != nil {
+		if err := it.App.validate(); err != nil {
+			return err
+		}
+	}
 	if it.Does.Isolate && (it.Does.Kind != ActionTask || it.When.Kind == WhenHold) {
 		return errors.New("only a waking task can use a separate Git worktree")
 	}

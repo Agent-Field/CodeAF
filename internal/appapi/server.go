@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/openrouterauth"
+	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
 // Contract changes only when the app wire makes a breaking change.
@@ -45,6 +46,7 @@ type Options struct {
 	Agents         *AgentRegistry
 	CrewRoles      CrewRoleSource
 	CrewItems      CrewItemSource
+	StandingTick   func(context.Context, *standing.Store) error
 }
 
 // Server keeps every registered handler behind the same transport guard.
@@ -62,6 +64,7 @@ type Server struct {
 	mutations     mutationState
 	crewLogs      crewLogState
 	inbox         *inboxState
+	orders        orderRuntime
 }
 
 type route struct {
@@ -102,6 +105,7 @@ func New(token string, options Options) *Server {
 	s.guarded = Guard(token, s.searchActivityMiddleware(s.inboxSourceGuard(s.crewTurnGuard(s.mux))))
 	s.startCrewBudgetWatch()
 	s.startInbox()
+	s.startOrderWatch()
 	return s
 }
 

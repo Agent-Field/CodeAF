@@ -1016,3 +1016,27 @@ retries are omitted. The journal survives restart; tab tidy records and undo
 stacks belong to the app. This is an observation journal, not a transaction with
 all resource stores: a crash after a mutation and before the append can omit its
 receipt, and a failed append reports that the mutation completed.
+## v2 app standing orders and reminders
+
+A7 implements the order and reminder resource in `internal/appapi/order_*`.
+The binary saves dormant app proposals in `internal/standing` before a model
+waits for ratification. HTTP mutations use the same per-item flock and revision
+fence as the ticker; engine receipts remain in the owning agent's registry.
+App metadata carries delivery scope, five explicit approvals, durable run ids,
+exact trigger evidence, reports and skipped lines under schema 5. Ordinary
+recurrence documents remain at schema 4 and terminal trust retains its clean
+run streak. App trust is a count of approvals, with explicit Not right reset.
+
+`cmd/codeaf/app_standing.go` reuses `v3StandingTicker` with memory-only app
+credentials, routing and ledger rails. The app owns this ticker even when all
+chats are closed. Native tick locking coordinates it with other windows and OS
+passes. `PublishOrders` observes native writes and publishes order/Inbox events;
+`OrderAsks` is the typed waiting-set door for the Inbox lane. Run evidence never
+crosses the app wire. Scope is a delivery rule: the runner retains an Inbox copy
+and delivers to this chat, current members of the saved crew, all non-archived
+app chats or no chat. Saved notifications do not wake recipient models.
+
+Reminders register without a trust or ratification card and retire after one
+firing. Pause observes and records missed triggers without executing an action;
+Stop preserves history and removes the live row. A per-run budget stop holds
+later triggers until the budget is raised through the order change door.
