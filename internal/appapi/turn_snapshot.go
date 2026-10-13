@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -117,10 +116,15 @@ func (a *AgentRegistry) turnSnapshot(record agentRecord) AgentSnapshot {
 		}
 		if door, ok := live.conn.Engine.(interface{ OpenQuestions() []session.Question }); ok {
 			for _, q := range door.OpenQuestions() {
-				ask := turnAsk(record.Agent.ID, q)
-				count := len(snapshot.Entries)
-				if count >= 2 {
-					ask.Before = append([]DisplayEntry{}, snapshot.Entries[count-2:]...)
+				ask := a.questionAsk(record.Agent.ID, q, snapshot.Entries).Ask
+				_ = a.asks(false, func(d *askDisk) error {
+					if saved, ok := d.Asks[ask.ID]; ok {
+						ask = saved.Ask
+					}
+					return nil
+				})
+				if ask.State != "waiting" {
+					continue
 				}
 				snapshot.OpenAsks = append(snapshot.OpenAsks, ask)
 			}
@@ -165,20 +169,26 @@ func turnTaskState(row session.PlanTaskRow) string {
 	}
 }
 func turnAsk(agent string, q session.Question) Ask {
-	token := q.Ref
-	if token == "" {
-		token = strconv.FormatUint(q.ID, 10)
-	}
 	kind := "question"
+	switch q.Kind {
+	case session.QuestionTask:
+		kind = "proposal"
+	case session.QuestionLanding, session.QuestionConflict:
+		kind = "your_call"
+	case session.QuestionFuel:
+		kind = "budget"
+	case session.QuestionStanding:
+		kind = "order_ask"
+	}
 	switch q.Ask {
-	case session.AskPermission:
+	case session.AskPermission, session.AskConfirmation:
 		kind = "permission"
 	case session.AskClarification:
 		kind = "clarification"
-	case session.AskJudgement:
+	case session.AskJudgement, session.AskLanding:
 		kind = "your_call"
 	}
-	ask := Ask{ID: string(q.Kind) + ":" + token, Kind: kind, Source: SourceRef{Kind: "agent", ID: agent}, Path: []SourceRef{{Kind: "agent", ID: agent}}, Title: q.Head, Options: []AskOption{}, Before: []DisplayEntry{}, State: "waiting", Irreversible: q.Stakes == session.StakesIrreversible}
+	ask := Ask{ID: askID(agent, q), Kind: kind, Source: SourceRef{Kind: "agent", ID: agent}, Path: []SourceRef{{Kind: "agent", ID: agent}}, Title: q.Head, Options: []AskOption{}, Before: []DisplayEntry{}, State: "waiting", Irreversible: q.Stakes == session.StakesIrreversible}
 	for _, option := range q.Options {
 		ask.Options = append(ask.Options, AskOption{ID: option.Key, Label: option.Label, Detail: option.Body})
 	}

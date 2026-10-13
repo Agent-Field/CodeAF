@@ -928,3 +928,12 @@ opener are on that server. The original-file action explains how to use the loca
 not launch a viewer on a machine you are not sitting at. The optional cell preview
 still scrolls as ordinary terminal text; it cannot display screenshot text at full
 resolution. This distinction applies inside tmux too.
+
+## Why won't permissions show the rules on the machine I used with host?
+
+Over `--host`, permission rules belong to the machine running the session.
+This terminal build has no wire door to list or save those rules through
+`/permissions`. It names the connected machine and says `change it on that
+machine`; it never reads or changes this laptop's copy. Open `/permissions`
+on the far machine to make a rule stick there. The remote consent card's
+Always answer lasts for that session and writes no saved rule.

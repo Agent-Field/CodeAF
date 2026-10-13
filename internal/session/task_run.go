@@ -7761,10 +7761,14 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 		// ALLOW EVERYTHING EXCEPT THE FLOOR. approval's critical table still
 		// turns an allow into a "prompt" for the handful of shapes that destroy
 		// a disk or drop the machine, and a prompt in a node is a refusal it can
-		// read (consent.go, InTask) — never a question and never a hang.
-		ApprovalPolicy: &approval.Policy{Default: approval.ActionAllow},
-		AskConsent:     false,
-		InTask:         true,
+		// read (consent.go, InTask). An app worker instead asks through its owner,
+		// so the task can wait without holding the conversation.
+		ApprovalPolicy:     &approval.Policy{Default: approval.ActionAllow},
+		DeterministicNames: parent.DeterministicNames,
+		appApprovalOwner:   a.appPermissionOwner(),
+		appApprovalTask:    appTaskPermissionName(node),
+		AskConsent:         false,
+		InTask:             true,
 		// InTask is also what makes this agent's calls PATIENT with a provider
 		// that is pacing them (agent.go's sessionCompleter), and this is how the
 		// node hears about it while it happens: a card that would otherwise show

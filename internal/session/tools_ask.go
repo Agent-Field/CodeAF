@@ -189,7 +189,8 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 	// its own is waiting and this engine cannot derive that from anything.
 	q.Blocking = Blocking{Turn: waits, Tasks: in.Blocking.Tasks}
 	q.Policy = a.autonomyFor(q.Ask)
-	if q.Stakes == StakesIrreversible {
+	if q.Stakes == StakesIrreversible || a.appPermissionMode() {
+		// App silence pauses the work; it never selects a model recommendation.
 		q.Policy = Policy{Kind: PolicyAsk}
 	}
 	if q.Policy.Kind == PolicyRecommendThenAuto {
@@ -214,7 +215,7 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 	if said, up := a.askUp(q); up {
 		return said, false, nil
 	}
-	if !a.config.Interactive && q.Policy.Kind == PolicyAsk {
+	if !a.appPermissionMode() && !a.config.Interactive && q.Policy.Kind == PolicyAsk {
 		if q.Pick == nil {
 			return "your call: " + strings.TrimSpace(q.Head) + " (nobody to ask)", false, nil
 		}
@@ -232,7 +233,7 @@ func (a *Agent) executeAsk(ctx context.Context, raw json.RawMessage) (string, bo
 	// exactly as it did before. An assumption card is not this road either — its
 	// default is its options standing and it already carries the away-policy
 	// clock, so it never reaches here as [PolicyAsk].
-	if a.config.Unattended && q.Policy.Kind == PolicyAsk && q.Pick != nil {
+	if !a.appPermissionMode() && a.config.Unattended && q.Policy.Kind == PolicyAsk && q.Pick != nil {
 		q.Policy = Policy{Kind: PolicyDecide}
 	}
 	if q.Policy.Kind == PolicyDecide {

@@ -108,6 +108,7 @@ func (s *Server) agentsRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.events = s.events
+	a.askProfile = s.permissionProfile()
 	if r.Method == http.MethodGet {
 		s.readAgents(w, r, a, id)
 		return
@@ -401,6 +402,7 @@ func (a *AgentRegistry) create(ctx context.Context, d *agentDisk, body agentMuta
 		agent.LastMessageAt, agent.State, agent.Glyph = &now, "running", "running"
 	}
 	a.watchProcesses(agent.ID, &conn)
+	a.watchAsks(agent.ID, &conn)
 	a.live[agent.ID] = &agentLive{conn: conn, running: events != nil, generation: 1}
 	record := agentRecord{Agent: agent, SessionFile: conn.SessionFile, Workspace: conn.Workspace, Approvals: body.Approvals}
 	if events != nil {
@@ -430,6 +432,7 @@ func (a *AgentRegistry) connect(ctx context.Context, record agentRecord) (*agent
 		return nil, errors.New("agent engine opened a different transcript")
 	}
 	a.watchProcesses(record.Agent.ID, &conn)
+	a.watchAsks(record.Agent.ID, &conn)
 	live := &agentLive{conn: conn}
 	a.live[record.Agent.ID] = live
 	return live, nil

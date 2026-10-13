@@ -2296,6 +2296,19 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			return nil, errors.New("engine: this session cannot answer questions from here")
 		}
 		return nil, door.ResolveQuestion(args.Answer)
+	case MethodAppReplyRunning:
+		door, ok := agent.(interface{ ReplyRunning() bool })
+		if !ok {
+			return nil, errors.New("this engine cannot report its reply")
+		}
+		return json.Marshal(door.ReplyRunning())
+	case MethodAppPermissions:
+		door, ok := agent.(interface{ EnableAppPermissions() })
+		if !ok {
+			return nil, errors.New("this engine cannot apply app permissions")
+		}
+		door.EnableAppPermissions()
+		return nil, nil
 	case MethodQuestionHold:
 		args, err := arg[QuestionHoldArgs](call)
 		if err != nil {

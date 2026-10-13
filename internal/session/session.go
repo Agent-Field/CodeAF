@@ -1253,6 +1253,10 @@ type TaskLanding struct {
 }
 
 type Config struct {
+	// App task permissions are resolved by the owning conversation, never by a headless worker.
+	appApprovalOwner *Agent
+	appApprovalTask  string
+
 	// DeterministicNames keeps app naming on the first message, without an AI errand.
 	DeterministicNames bool
 
@@ -2441,6 +2445,9 @@ type Config struct {
 // events — every Submit streams, whether it started the turn or steered it.
 // The methods live in agent.go; the loop they drive lives in loop.go.
 type Agent struct {
+	// A joined app connection enables permission rules without changing terminal naming.
+	appPermissions atomic.Bool
+
 	// crewDayHeld is the day's spend crews and their helpers are held to
 	// ([Agent.crewDay]), read once.
 	crewDayOnce sync.Once

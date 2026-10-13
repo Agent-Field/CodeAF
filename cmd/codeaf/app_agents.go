@@ -110,6 +110,10 @@ func appAgentConnection(ctx context.Context, client *remote.Client, ask appapi.A
 		return appapi.AgentConnection{}, ctx.Err()
 	}
 	agent := client.Agent()
+	if err := agent.EnableAppPermissions(); err != nil {
+		client.Close()
+		return appapi.AgentConnection{}, err
+	}
 	usd, err := strconv.ParseFloat(ask.Budget.USD, 64)
 	if err != nil {
 		client.Close()

@@ -163,24 +163,7 @@ func (e *engineInboxSource) ValidateInbox(ctx context.Context, item InboxItem, a
 	if !strings.HasPrefix(item.ID, "ask:") || strings.Count(item.ID, ":") < 3 {
 		return nil
 	}
-	e.a.mu.Lock()
-	defer e.a.mu.Unlock()
-	_, q, _, err := e.find(item, answer)
-	if err != nil {
-		return err
-	}
-	if answer.Rule != nil || len(answer.Items) > 0 {
-		return nil
-	}
-	key := inboxEngineKey(q, answer)
-	if key != "" {
-		if _, ok := q.Option(key); !ok {
-			return agentError(422, "bad_input", "choose an answer offered by this question")
-		}
-	} else if strings.TrimSpace(answer.Words) == "" {
-		return agentError(422, "bad_input", "choose an answer or send words")
-	}
-	return nil
+	return e.validateAskInbox(ctx, item, answer)
 }
 func inboxEngineKey(q session.Question, answer InboxAnswerRequest) string {
 	if answer.Choice != "" {
@@ -221,22 +204,33 @@ func (e *engineInboxSource) AnswerInbox(ctx context.Context, item InboxItem, ans
 	}
 	a := e.a
 	a.mu.Lock()
-	record, q, door, err := e.find(item, answer)
+	record, q, _, err := e.find(item, InboxAnswerRequest{})
 	if err != nil {
 		a.mu.Unlock()
 		return InboxAnswerResponse{}, err
 	}
-	if answer.Rule != nil || len(answer.Items) > 0 {
-		a.mu.Unlock()
-		return e.s.forwardInbox(ctx, "/app/v1/permissions/"+url.PathEscape(turnAsk(record.Agent.ID, q).ID), PermissionRequest{Verb: answer.Verb, Rule: answer.Rule, Items: answer.Items, Expect: answer.Expect})
-	}
-	given := session.Answer{Kind: q.Kind, ID: q.ID, Ref: q.Ref, Ask: q.Ask, Key: inboxEngineKey(q, answer), Change: answer.Words, From: "inbox", At: a.now().UTC()}
-	err = door.ResolveQuestion(given)
 	a.mu.Unlock()
-	if err != nil {
-		return InboxAnswerResponse{}, agentError(409, "conflict", err.Error())
+	if q.Kind == session.QuestionConsent {
+		verb := answer.Verb
+		if verb == "" {
+			switch answer.Choice {
+			case "1":
+				verb = "allow_once"
+			case "2":
+				verb = "always"
+			case "3":
+				verb = "deny"
+			}
+		}
+		return e.s.forwardInbox(ctx, "/app/v1/permissions/"+url.PathEscape(turnAsk(record.Agent.ID, q).ID), PermissionRequest{Verb: verb, Rule: answer.Rule, Items: answer.Items, Expect: answer.Expect})
 	}
-	return InboxAnswerResponse{OK: true}, nil
+	key := inboxEngineKey(q, answer)
+	verb := ""
+	if answer.Verb == "later" || answer.Verb == "you_decide" {
+		verb = answer.Verb
+		key = ""
+	}
+	return e.s.forwardInbox(ctx, "/app/v1/asks/"+url.PathEscape(turnAsk(record.Agent.ID, q).ID)+"/answer", AnswerAskRequest{Choice: key, Words: answer.Words, Verb: verb, Expect: answer.Expect})
 }
 
 // Question subscriptions outlive turns, so answers from the terminal and
@@ -246,6 +240,11 @@ func (e *engineInboxSource) watch(id string, engine AgentEngine) {
 		e.watched = map[string]AgentEngine{}
 	}
 	if e.watched[id] == engine {
+		return
+	}
+	if live := e.a.live[id]; live != nil && live.conn.asks != nil {
+		e.watched[id] = engine
+		e.s.observeInboxAsks(id, live.conn.asks)
 		return
 	}
 	door, ok := engine.(interface {

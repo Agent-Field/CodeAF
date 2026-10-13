@@ -79,6 +79,7 @@ type AgentOpenRequest struct {
 }
 
 type AgentConnection struct {
+	asks        *askObserver
 	processes   *processObserver
 	Engine      AgentEngine
 	SessionFile string
@@ -121,15 +122,16 @@ type agentLive struct {
 // two app launches sharing a home cannot overwrite each other's lifecycle state.
 // Closed and archived records remain beside their transcripts indefinitely.
 type AgentRegistry struct {
-	mu      sync.Mutex
-	home    string
-	open    OpenAgent
-	now     func() time.Time
-	live    map[string]*agentLive
-	events  *EventHub
-	stopped bool
-	after   func(time.Duration, func()) *time.Timer
-	done    chan struct{}
+	mu         sync.Mutex
+	home       string
+	askProfile string
+	open       OpenAgent
+	now        func() time.Time
+	live       map[string]*agentLive
+	events     *EventHub
+	stopped    bool
+	after      func(time.Duration, func()) *time.Timer
+	done       chan struct{}
 }
 
 func NewAgentRegistry(home string, open OpenAgent) *AgentRegistry {

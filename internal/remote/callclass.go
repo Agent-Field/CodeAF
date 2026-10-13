@@ -150,7 +150,7 @@ func classify(method string) callClass {
 		MethodModel, MethodTitle, MethodUsage, MethodContextTokens,
 		MethodTranscript, MethodEarlier, MethodRewindPoints, MethodPlanSpend,
 		MethodPlanTasks, MethodPlanTaskPage, MethodPlanTaskWork, MethodPlanRunSummary, MethodRefreshRunSummary,
-		MethodReasoningFor, MethodEffort, MethodResolvedEffort, MethodResolvedApproval,
+		MethodAppReplyRunning, MethodReasoningFor, MethodEffort, MethodResolvedEffort, MethodResolvedApproval,
 		MethodAttachedSkills, MethodSkillShelf,
 		MethodSessionsRecent, MethodHeldQuestions,
 		MethodStandingItems, MethodStandingWatch,
@@ -163,7 +163,7 @@ func classify(method string) callClass {
 		// wait out the wall's patience and answer nobody.
 		MethodTeamsName, MethodTeamsPropose:
 		return classGetter
-	case MethodAppTaskAction, MethodAppQuickTaskAction, MethodQuestionResolve, MethodQuestionHold,
+	case MethodAppTaskAction, MethodAppQuickTaskAction, MethodAppPermissions, MethodQuestionResolve, MethodQuestionHold,
 		MethodConsent, MethodConsentRemember,
 		MethodStandingResolve, MethodHarness, MethodConnect, MethodConnectKey,
 		MethodNoteConnected,

@@ -29,7 +29,7 @@ type PermissionRuleChoice struct {
 	Who   string `json:"who" jsonschema:"enum=agent,enum=all_agents"`
 }
 type PermissionRequest struct {
-	Verb   string                `json:"verb" jsonschema:"enum=allow_once,enum=deny,enum=always"`
+	Verb   string                `json:"verb,omitempty" jsonschema:"enum=allow_once,enum=deny,enum=always"`
 	Rule   *PermissionRuleChoice `json:"rule,omitempty"`
 	Items  []PermissionDecision  `json:"items,omitempty"`
 	Expect *AgentExpect          `json:"expect,omitempty"`

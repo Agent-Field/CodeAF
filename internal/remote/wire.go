@@ -494,6 +494,8 @@ const (
 	MethodSetContext      = "SetContextWindow"       // legacy version-5 hint; current remote surfaces do not send it
 	MethodReasoningFor    = "ReasoningFor"           // string → string
 	MethodSetReasoningFor = "SetReasoningFor"        // ReasoningArgs → nothing
+	MethodAppReplyRunning = "App.ReplyRunning"       // nothing → bool; the inline reply only
+	MethodAppPermissions  = "App.Permissions"        // nothing → nothing; enables the app permission gate on a joined engine
 	MethodConsent         = "ResolveConsent"         // ConsentArgs → nothing
 	MethodConsentRemember = "ResolveConsentRemember" // ConsentArgs → nothing
 	MethodStandingResolve = "ResolveStanding"        // StandingArgs → nothing

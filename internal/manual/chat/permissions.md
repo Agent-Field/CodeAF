@@ -1088,8 +1088,10 @@ does not produce either of those.
 needs approval but no resolver is attached: <rule>
 ```
 
-Inside a task node the refusal reads
-`refused in a task: <rule> — nobody to ask`. A wait that ends without an answer
+Inside an unattended terminal task node the refusal reads
+`refused in a task: <rule> — nobody to ask`. App tasks instead ask through their
+owning agent, which keeps their permissions separate from the conversation's
+reply; see the app questions page. A wait that ends without an answer
 is never worded as a person's no. A timed-out question refuses with
 `not approved: the question timed out`. A turn (or the agent) that ends first
 refuses with `not approved: ended before an answer`.
@@ -1109,7 +1111,9 @@ hang, and never the end of the turn. The exact sentences:
 
 ## Questions are never written to the session file
 
-Consent requests and answers are events only; they never enter the session file.
+In the terminal, consent requests and answers are events only; they never enter
+the session file. The app keeps its question records and decision receipts in
+the binary's home and includes receipts in its conversation view.
 A denied call never ran, so the record afterwards shows only the tool result or
 the refusal handed to the model. A resumed conversation never replays a
 question.

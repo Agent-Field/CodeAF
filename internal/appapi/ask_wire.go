@@ -6,6 +6,7 @@ import (
 
 // These wire types reserve the app vocabulary before this resource has behaviour.
 type Ask struct {
+	Permission   *Permission    `json:"permission,omitempty"`
 	ID           string         `json:"id"`
 	Kind         string         `json:"kind" jsonschema:"enum=question,enum=clarification,enum=permission,enum=your_call,enum=proposal,enum=budget,enum=order_ask,enum=reminder"`
 	Source       SourceRef      `json:"source"`

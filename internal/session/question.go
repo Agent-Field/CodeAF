@@ -711,6 +711,9 @@ const (
 // forms are internal/tui3's, and two of them drawing the same value differently
 // is a surface question rather than a contract one.
 type Question struct {
+	// PermissionCommand carries the app task command without copying arbitrary tool arguments into presence.
+	PermissionCommand string `json:"permission_command,omitempty"`
+
 	// ClarificationDepth orders prerequisites ahead of the question they explain.
 	ClarificationDepth int `json:"clarificationDepth,omitempty"`
 
@@ -1956,6 +1959,8 @@ var (
 // on a question no surface in this program could draw, let alone answer. They
 // are on this door now, so a surface has one thing to call.
 func (a *Agent) ResolveQuestion(answer Answer) error {
+	// App and Inbox callers need a losing race reported before they bank a receipt.
+	mustBeOpen := answer.From == "app" || answer.From == "inbox"
 	if child, original, ok := a.discussionAnswer(answer); ok {
 		return child.ResolveQuestion(original)
 	}
@@ -2015,8 +2020,14 @@ func (a *Agent) ResolveQuestion(answer Answer) error {
 	if landingSaid {
 		q = a.questionForLandingAnswer(answer)
 	}
+	if mustBeOpen && !said {
+		return errAnswerGone
+	}
 	if err := a.applyToLane(answer); err != nil {
 		if errors.Is(err, errAnswerSettled) {
+			if mustBeOpen {
+				return err
+			}
 			// THE LOSER OF A RACE RECORDS NOTHING AND SAYS NOTHING. Somebody
 			// else's answer to this question got there first — the clock and a
 			// person can both reach this door in the same instant — and it has

@@ -111,7 +111,7 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request) {
 		if agent.State == "closed" || agent.State == "archived" {
 			return agentError(409, "conflict", "reopen this agent before sending work")
 		}
-		if existing := a.live[id]; (existing == nil || !existing.running) && (agent.State == "running" || agent.State == "needs_you") {
+		if existing := a.live[id]; (existing == nil || !existing.running) && (agent.State == "running" || agent.State == "needs_you") && !taskPermissionsLeaveReplyFree(existing) {
 			return agentError(409, "conflict", "this reply is running in another surface")
 		}
 		live, e := a.connect(r.Context(), record)
@@ -121,7 +121,7 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case action == "turn":
 			ask := request.TurnRequest
-			if ask.Mode == "send" && agent.State == "running" || ask.Mode == "send" && agent.State == "needs_you" {
+			if ask.Mode == "send" && (agent.State == "running" || agent.State == "needs_you") && !taskPermissionsLeaveReplyFree(live) {
 				return agentError(409, "conflict", "work is running; steer or queue explicitly")
 			}
 			if ask.Mode == "steer" {

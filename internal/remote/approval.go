@@ -102,3 +102,24 @@ func (a *Agent) farResolvedApproval() string {
 	_ = json.Unmarshal(payload, &posture)
 	return posture
 }
+
+// EnableAppPermissions makes a joined terminal engine consume scoped app rules
+// and keep mandatory app questions even under its existing approval posture.
+func (a *Agent) EnableAppPermissions() error {
+	_, err := a.c.call(nil, MethodAppPermissions, nil)
+	return err
+}
+
+// ReplyRunning asks about the inline reply, rather than tasks or processes.
+// An unavailable reading remains busy so an app cannot send over unknown work.
+func (a *Agent) ReplyRunning() bool {
+	raw, err := a.c.call(nil, MethodAppReplyRunning, nil)
+	if err != nil {
+		return true
+	}
+	var running bool
+	if json.Unmarshal(raw, &running) != nil {
+		return true
+	}
+	return running
+}

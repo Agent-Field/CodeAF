@@ -42,6 +42,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
 )
 
@@ -224,6 +225,7 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 		return refusal(off), false
 	}
 	decision, governed := a.decide(call)
+	decision, governed = a.appPermissionDecision(call, decision, governed)
 	if !governed || decision.Action == approval.ActionAllow {
 		return toolResult{}, true
 	}
@@ -244,7 +246,7 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	//     ran silently for the rest of the session. The memo is somebody saying
 	//     they are done being asked about ordinary work. It is not somebody
 	//     saying they have read a message that has not been written yet.
-	if !approval.AlwaysAsks(call.Function.Name, json.RawMessage(call.Function.Arguments)) {
+	if !a.appPermissionMode() && !approval.AlwaysAsks(call.Function.Name, json.RawMessage(call.Function.Arguments)) {
 		if remembered, known := a.rememberedConsent(call.Function.Name); known {
 			if remembered {
 				return toolResult{}, true
@@ -263,7 +265,7 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	// refusal, which is the whole point of having said so in advance; with it off
 	// — the default — this line does nothing and a headless run refuses exactly as
 	// it always did.
-	if a.guardianAllows(ctx, hub, call, decision) {
+	if !a.appPermissionMode() && a.guardianAllows(ctx, hub, call, decision) {
 		return toolResult{}, true
 	}
 
@@ -273,6 +275,9 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	// that destroy a disk or drop the machine — and the honest thing to tell a
 	// worker with no colleague in the room is that this one needed a person and
 	// there is not one.
+	if a.config.InTask && a.appPermissionMode() && a.config.appApprovalOwner != nil {
+		return a.appTaskPermission(ctx, hub, call, decision)
+	}
 	if a.config.InTask {
 		return refusal("refused in a task: " + decision.Rule + " — nobody to ask"), false
 	}
@@ -335,6 +340,11 @@ func (a *Agent) ask(ctx context.Context, hub *eventHub, call ai.ToolCall, decisi
 // AFTER the id is minted, because the id is what an answer from somewhere else
 // names.
 func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, decision approval.Decision) (consentAnswer, error) {
+	return a.askAnswerFor(ctx, hub, call, decision, "")
+}
+
+// A task carries its own source while the parent owns the answer channel.
+func (a *Agent) askAnswerFor(ctx context.Context, hub *eventHub, call ai.ToolCall, decision approval.Decision, task string) (consentAnswer, error) {
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
@@ -387,7 +397,23 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 	// three away the moment the event went out — so home, a second window and
 	// the phone had the sentence and nothing under it. The short form goes up
 	// beside it unchanged, for the builds that only ever read that.
-	defer a.presenceAskingWhole(a.consentAsk(id, call, decision), announce)()
+	q := a.consentAsk(id, call, decision)
+	if a.appPermissionMode() {
+		floor, _ := config.AppPermissionAlwaysAsk(a.config.ProfileDir, call.Function.Name, json.RawMessage(call.Function.Arguments), task != "")
+		if floor {
+			q.Options = withoutWidening(q.Options)
+			q.Scope = []AnswerScope{ScopeOnce}
+		}
+	}
+	if a.appPermissionMode() && call.Function.Name == approval.ToolBash {
+		q.PermissionCommand = config.AppPermissionCommand(call.Function.Name, json.RawMessage(call.Function.Arguments))
+	}
+	if task != "" {
+		q.Asker = Asker{Kind: AskerTask, Name: task}
+		q.Blocking = Blocking{Tasks: []string{task}}
+		q.Batch = "task/" + task
+	}
+	defer a.presenceAskingWhole(q, announce)()
 
 	select {
 	case answer := <-answers:

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/Agent-Field/codeaf/internal/session"
 	"io"
 	"net/http"
 	"net/url"
@@ -41,6 +42,11 @@ func (s *Server) inboxSourceGuard(next http.Handler) http.Handler {
 				kind, _ := url.QueryUnescape(bits[1])
 				ref, _ := url.QueryUnescape(bits[2])
 				token = kind + ":" + ref
+				agent, _ := url.QueryUnescape(bits[0])
+				canonical := askID(agent, session.Question{Kind: session.QuestionKind(kind), Ref: ref, Asked: item.CreatedAt})
+				if canonical == parts[1] {
+					token = canonical
+				}
 			}
 			if token == parts[1] {
 				id = item.ID

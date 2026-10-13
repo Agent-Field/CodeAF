@@ -1111,3 +1111,37 @@ extraction; existing retrieval and explicit person saves remain available.
 Pending extraction and settlement recheck that switch before saving. The billed
 memory completer checks app caps before calling its provider, so lookup and
 extraction cannot spend beyond the same admission boundary as turn calls.
+## The v2 app asks and permission rules
+
+`internal/appapi/asks.go` subscribes to the engine's independent question lane.
+Opaque ask ids contain the owning agent, kind, native token and question creation time. The private
+`<home>/v3/app/asks.json` document uses its own flock and atomic replacement;
+it freezes context at creation and retains answers, withdrawals and receipts.
+Answers use `ResolveQuestion`, including a durable claim against concurrent
+app windows. Source cards and Inbox share A9's five-second Undo coordinator.
+The connection keeps one native question subscription, which records Asks
+and fans resolution events to the Inbox without replacing the remote lane. The agent transcript retains the resulting receipt at its observed
+entry position. The same subscription receives decisions given elsewhere and
+automatic permission-rule decisions.
+
+`internal/config/apppermissions.go` keeps scoped exact/class rules beside the
+profile in `app-permissions.json`, with a separate flock and private atomic
+replacement. Removal retains identity for Undo. Exact matching never interprets
+shell wildcards; classes reuse the approval package's whole-command matcher.
+The app enables the same gate on a joined TUI owner through the optional
+`App.Permissions` wire method, without changing its naming mode. The app session
+gate checks mandatory and extra always-ask rows ahead of a saved
+allow and ahead of account permissions, guardian answers or session memos.
+Task workers inherit their owning conversation's policy and ask through its
+consent channels; the question carries a task source and a command, without
+copying arbitrary tool arguments into presence.
+
+A per-connection question observer arms the binary's configurable 15-minute
+pause clock. Closing the connection stops its timers. Expiry stops work without
+resolving the question, and cancellation takes the ordinary withdrawal path.
+Later holds the timer. App model questions never auto-select autonomy defaults.
+
+App turn admission reads the native inline reply through `App.ReplyRunning`
+when only task permissions are open. Such asks keep their attention state
+without blocking a new chat message; a reply running in either the app or the
+joined TUI still refuses a second Send.
