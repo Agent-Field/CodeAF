@@ -19,11 +19,14 @@ import (
 )
 
 type Service struct {
-	mu      sync.Mutex
-	cfg     svc.Config
-	all     *svc.Services
-	drafts  map[string]*draft
-	loadErr error
+	mu         sync.Mutex
+	applyMu    sync.Mutex
+	replayHook func(app string, newVersion int)
+	now        func() time.Time
+	cfg        svc.Config
+	all        *svc.Services
+	drafts     map[string]*draft
+	loadErr    error
 }
 
 // draft keeps replay data off the wire. The saved base makes cancellation
@@ -37,7 +40,7 @@ type draft struct {
 }
 
 func New(cfg svc.Config, all *svc.Services) *Service {
-	s := &Service{cfg: cfg, all: all, drafts: make(map[string]*draft)}
+	s := &Service{cfg: cfg, all: all, drafts: make(map[string]*draft), now: time.Now}
 	s.loadErr = s.reload()
 	return s
 }

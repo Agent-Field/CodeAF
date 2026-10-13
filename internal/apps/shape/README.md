@@ -3,7 +3,7 @@
 `New(cfg, all)` reloads every committed `<app>/drafts/<member>/draft.json`
 under `cfg.Root`. Corrupt metadata remains an error; it is never treated as a
 missing draft. With no configured root the skeleton doors still return
-`not_built`. Pipeline, Apply and version doors remain stubbed for their lanes.
+`not_built`. Pipeline doors remain stubbed for their lane.
 
 `shape.open` snapshots `Store.Definition` into `files/` and real records into
 `overlay.db`. A second open preserves the request journal and refreshes the
@@ -51,3 +51,41 @@ commit point: restart rebuilds `files/` from the saved base and passed diffs.
 Records and Shape share `records.DraftOverlayLock` while refreshing/removing
 or using an overlay. Draft reads retain that lock until closing SQLite;
 `mode=rw` prevents a racing discard from recreating a phantom scratch database.
+
+# Shape Apply and version handoff
+
+Apply reads the caller's committed draft journal and rebuilds its checked
+files under the service lock. Only a ready draft
+whose remaining changes passed Check can apply. The supplied base and stored
+draft base must both match the current version.
+
+The version store is the existing definition repository and its tags. The
+small extension in `store/versions_shape.go` exports `CommitShape` and
+`VersionRequests`; request boundaries live in commit metadata, including
+multiline requests. There is no second versions registry.
+
+The records hook in `records/migrate_shape.go` counts real SQLite values,
+tests migration on a WAL-aware copy and holds the real writer lock through the
+version commit and migration. Its connection views expose current fields and
+aliases; their write triggers retain hidden values in backing tables.
+
+The pipeline lane fills `Service.replayHook func(app string, newVersion int)`.
+Apply calls it with the journal lock released after removing the applying
+member's draft from disk and memory. Restore calls it
+after publishing the new version. The hook is responsible for replaying other
+members' requests.
+
+Field renames use `alias` on the destination field, or explicit Builder
+summaries such as `alias value → amount`. Until the shared spec schema exposes
+that annotation, the pipeline must pass `store.ShapeValidationFiles(files)`
+to Check, while persisting the original annotated files. This temporary
+validation copy also declares old names for references in filters and runs.
+
+Health uses Check with a real-record snapshot substituted for its sample
+provider. The isolated checker has no Records, Runs or Hub, so it cannot
+reseed content or start behaviour runs. Health is stored atomically in
+`health.json` and published on the health topic. Records remain available;
+the desk owns displaying the last good version read-only.
+
+Persistent operations require a configured apps root. An unwired constructor
+with an empty root retains the skeleton's unavailable response.

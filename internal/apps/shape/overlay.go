@@ -139,7 +139,7 @@ func installScratchFlag(ctx context.Context, name string) error {
 	if _, err := tx.ExecContext(ctx, "CREATE TABLE _shape_scratch (id INTEGER PRIMARY KEY CHECK(id=1), dirty INTEGER NOT NULL); INSERT INTO _shape_scratch VALUES (1,0)"); err != nil {
 		return err
 	}
-	rows, err := tx.QueryContext(ctx, "SELECT name FROM sqlite_master WHERE type='table' AND name GLOB 'records_*'")
+	rows, err := tx.QueryContext(ctx, "SELECT name FROM sqlite_master WHERE type='table' AND (name GLOB 'records_*' OR name GLOB 'shape_records_*')")
 	if err != nil {
 		return err
 	}

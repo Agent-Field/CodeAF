@@ -99,7 +99,7 @@ func (s *Service) open(ctx context.Context, scope svc.Scope, writing, seeding bo
 	c.db.SetMaxOpenConns(1)
 	if _, err = c.db.ExecContext(ctx, "PRAGMA journal_mode=WAL"); err == nil {
 		if !seeding {
-			err = ensureSchema(ctx, c.db, def, scope, dir)
+			err = ensureShapeSchema(ctx, c, scope, dir)
 		}
 	}
 	if err != nil {
