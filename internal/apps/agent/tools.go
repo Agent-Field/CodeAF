@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/query"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
@@ -27,12 +29,7 @@ type toolbox struct {
 type outcome struct {
 	result   any
 	approval *bridge.Approval
-}
-
-// agentTools are the tools agent.md may list besides connector verbs.
-var agentTools = []string{
-	bridge.MethodRecordsQuery, bridge.MethodRecordsGet,
-	bridge.MethodRecordsCreate, bridge.MethodRecordsUpdate, bridge.MethodRunsStart,
+	note     string
 }
 
 func newToolbox(all *svc.Services, scope svc.Scope, b *spec.Bundle) *toolbox {
@@ -40,16 +37,38 @@ func newToolbox(all *svc.Services, scope svc.Scope, b *spec.Bundle) *toolbox {
 	return &toolbox{all: all, scope: scope, bundle: b, allowed: usableTools(b)}
 }
 
-// usableTools is agent.md's list without definition-writing methods: the
-// agent never gets those, whatever the file says.
+// usableTools derives authority from app.json. agent.md supplies instructions,
+// never grants or removes a capability, and definition tools stay absent.
 func usableTools(b *spec.Bundle) []string {
 	var out []string
-	for _, t := range b.Agent.Tools {
-		if isConnectorVerb(t) || slices.Contains(agentTools, t) {
-			out = append(out, t)
+	for recordType, access := range b.App.Capabilities.Records {
+		if b.App.Records[recordType] == nil {
+			continue
+		}
+		if access == spec.AccessRead || access == spec.AccessReadWrite {
+			out = append(out, bridge.MethodRecordsQuery, bridge.MethodRecordsGet)
+		}
+		if access == spec.AccessReadWrite {
+			out = append(out, bridge.MethodRecordsCreate, bridge.MethodRecordsUpdate, bridge.MethodRecordsDelete)
 		}
 	}
-	return out
+	if len(b.Runs) > 0 {
+		out = append(out, bridge.MethodRunsStart)
+	}
+	for name, connector := range b.App.Capabilities.Connectors {
+		for _, verb := range connector.Can {
+			if tool := name + "." + verb; isConnectorVerb(tool) {
+				out = append(out, tool)
+			}
+		}
+	}
+	for _, tool := range b.App.Capabilities.Tools {
+		if isConnectorVerb(tool) {
+			out = append(out, tool)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 
 func isConnectorVerb(tool string) bool {
@@ -78,6 +97,8 @@ func (tb *toolbox) call(ctx context.Context, name string, args map[string]any) (
 		return decode(raw, tb.create, ctx)
 	case bridge.MethodRecordsUpdate:
 		return decode(raw, tb.update, ctx)
+	case bridge.MethodRecordsDelete:
+		return decode(raw, tb.deleteRecords, ctx)
 	case bridge.MethodRunsStart:
 		return decode(raw, tb.startRun, ctx)
 	}
@@ -94,8 +115,42 @@ func decode[P any](raw json.RawMessage, fn func(context.Context, P) (outcome, er
 
 func (tb *toolbox) query(ctx context.Context, p bridge.QueryParams) (outcome, error) {
 	res, err := tb.all.Records.Query(ctx, tb.scope, p)
+	if err == nil && len(res.Rows) == 0 {
+		if broader := tb.broaderNameQuery(p); broader != "" {
+			p.Query, p.After = broader, ""
+			raw, _ := json.Marshal(p)
+			if err := tb.all.Caps.Allow(ctx, tb.scope, bridge.MethodRecordsQuery, raw); err != nil {
+				return outcome{}, err
+			}
+			res, err = tb.all.Records.Query(ctx, tb.scope, p)
+			res.Rows = tb.withTitles(ctx, tb.hideMasked(res.Rows))
+			return outcome{result: res, note: "The exact-name lookup was empty; retried with the broader, case-insensitive query " + broader + ". Use these matches; if ambiguous ask which name, and if still empty try a shorter name before asking for an id."}, err
+		}
+	}
 	res.Rows = tb.withTitles(ctx, tb.hideMasked(res.Rows))
 	return outcome{result: res}, err
+}
+
+// broaderNameQuery removes unrelated filters and changes an exact title to
+// contains. It only retries once: contains queries cannot enter this branch.
+func (tb *toolbox) broaderNameQuery(p bridge.QueryParams) string {
+	rt := tb.bundle.App.Records[p.Type]
+	if rt == nil || p.After != "" {
+		return ""
+	}
+	ast, err := query.Parse(rt, p.Query, tb.scope.Caller.Member)
+	if err != nil {
+		return ""
+	}
+	for _, filter := range ast.Filters {
+		if filter.Field != rt.Title || filter.Op != query.Eq || filter.Not || len(filter.Values) != 1 {
+			continue
+		}
+		if name, ok := filter.Values[0].(string); ok && strings.TrimSpace(name) != "" {
+			return rt.Title + "~" + strconv.Quote(name)
+		}
+	}
+	return ""
 }
 
 func (tb *toolbox) get(ctx context.Context, p bridge.GetRecordParams) (outcome, error) {
@@ -114,18 +169,19 @@ func (tb *toolbox) update(ctx context.Context, p bridge.UpdateRecordParams) (out
 	return outcome{result: res}, err
 }
 
+func (tb *toolbox) deleteRecords(ctx context.Context, p bridge.DeleteRecordParams) (outcome, error) {
+	res, err := tb.all.Records.Delete(ctx, tb.scope, p)
+	return outcome{result: res}, err
+}
+
 func (tb *toolbox) startRun(ctx context.Context, p bridge.StartRunParams) (outcome, error) {
 	state, err := tb.all.Runs.Start(ctx, tb.scope, p)
 	return outcome{result: state}, err
 }
 
-// connector sends outbound verbs to an approval and never to the connector
-// (rule 03). Verbs that only read or draft run straight away.
+// connector always opens an approval. The app agent has no direct connector
+// execution path, even when a persona asks it to bypass a gate.
 func (tb *toolbox) connector(ctx context.Context, tool string, args map[string]any) (outcome, error) {
-	if !tb.all.Connectors.Outbound(tool) {
-		res, err := tb.all.Connectors.Call(ctx, tb.scope, tool, args)
-		return outcome{result: res}, err
-	}
 	opened, err := tb.all.Approvals.Open(ctx, tb.scope, bridge.Approval{
 		App:     tb.scope.App,
 		Kind:    "send",

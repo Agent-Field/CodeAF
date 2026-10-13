@@ -8,11 +8,14 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
 	"github.com/Agent-Field/codeaf/internal/apps/builder"
+	"github.com/Agent-Field/codeaf/internal/apps/records"
 	"github.com/Agent-Field/codeaf/internal/apps/spec"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
+	"github.com/Agent-Field/codeaf/internal/config"
 )
 
 // sampleRecords serves the golden CRM's sample rows, deals largest first.
@@ -67,7 +70,7 @@ func TestLiveCRMQuestion(t *testing.T) {
 	r.svc.all.Store = fakeStore{bundle: bundle}
 	r.svc.all.Model = builder.NewModel(svc.Config{}, r.svc.all)
 
-	events := r.ask(t, "Which open deals are worth the most, and which company is each with?")
+	events := r.askWithin(t, "Which open deals are worth the most, and which company is each with?", 2*time.Minute)
 	var answer strings.Builder
 	for _, e := range events {
 		t.Logf("%s tool=%q summary=%q", e.Kind, e.Tool, e.Summary)
@@ -84,5 +87,46 @@ func TestLiveCRMQuestion(t *testing.T) {
 	}
 	if !strings.Contains(answer.String(), "Northwind") {
 		t.Error("answer does not name the companies")
+	}
+}
+
+// TestLiveCRMContactChanges uses the real model and record store to prove that
+// an old persona tool list cannot prevent content creation or deletion.
+func TestLiveCRMContactChanges(t *testing.T) {
+	if config.APIKeyAt(config.ProfilePath(config.ProfileDir(), "")) == "" {
+		t.Skip("no configured provider key")
+	}
+	r := newRig(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
+	r.svc.ctx = ctx
+	r.svc.all.Store.(fakeStore).bundle.Agent.Tools = []string{"records.query", "records.update"}
+	r.svc.all.Records = records.New(svc.Config{Root: r.root}, r.svc.all)
+	r.svc.all.Model = builder.NewModel(svc.Config{}, r.svc.all)
+	if err := r.svc.all.Records.Seed(ctx, "crm", map[string][]bridge.Record{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, task := range []struct {
+		name, ask, tool string
+		wantRows        int
+	}{
+		{"add-contact", "Add a contact named Morgan Vale with email morgan.vale@example.com.", "records.create", 1},
+		{"delete-contact", "Delete the contact named Morgan Vale.", "records.delete", 0},
+	} {
+		t.Run(task.name, func(t *testing.T) {
+			events := r.askWithin(t, task.ask, 2*time.Minute)
+			used := false
+			for _, e := range events {
+				t.Logf("%s tool=%q summary=%q", e.Kind, e.Tool, e.Summary)
+				if e.Kind == bridge.AgentError || strings.ContainsAny(e.Text+e.Summary, "{}") {
+					t.Fatalf("bad stream event: %+v", e)
+				}
+				used = used || e.Tool == task.tool
+			}
+			rows, err := r.svc.all.Records.Query(ctx, scope, bridge.QueryParams{Type: "contact", Query: `name:"Morgan Vale"`})
+			if err != nil || !used || len(rows.Rows) != task.wantRows {
+				t.Fatalf("used %s = %v, rows = %+v, error = %v", task.tool, used, rows, err)
+			}
+		})
 	}
 }

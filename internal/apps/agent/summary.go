@@ -23,6 +23,8 @@ func summarize(b *spec.Bundle, tool string, args map[string]any, out outcome, er
 		return verbFor(tool) + " " + titleOf(b, res)
 	case bridge.UpdateRecordResult:
 		return "Updated " + count(b, typeName, len(res.Rows))
+	case bridge.DeleteRecordResult:
+		return "Deleted " + count(b, typeName, len(res.IDs))
 	case bridge.RunState:
 		return "Started the " + res.Run + " run"
 	}

@@ -29,16 +29,38 @@ type fakeRecords struct {
 	svc.Records
 	mu      sync.Mutex
 	rows    []bridge.Record
+	queries []bridge.QueryParams
+	queryFn func(bridge.QueryParams) (bridge.QueryResult, error)
+	creates []bridge.CreateRecordParams
+	deletes []bridge.DeleteRecordParams
 	updates []bridge.UpdateRecordParams
 	scopes  []svc.Scope
 }
 
-func (f *fakeRecords) Query(context.Context, svc.Scope, bridge.QueryParams) (bridge.QueryResult, error) {
+func (f *fakeRecords) Query(_ context.Context, _ svc.Scope, p bridge.QueryParams) (bridge.QueryResult, error) {
+	f.queries = append(f.queries, p)
+	if f.queryFn != nil {
+		return f.queryFn(p)
+	}
 	rows := f.rows
 	if rows == nil {
 		rows = []bridge.Record{{ID: "ct_1", Type: "contact", Fields: map[string]any{"name": "Ada", "phone": "+1 555 0100"}}}
 	}
 	return bridge.QueryResult{Rows: rows, Total: len(rows)}, nil
+}
+
+func (f *fakeRecords) Create(_ context.Context, scope svc.Scope, p bridge.CreateRecordParams) (bridge.Record, error) {
+	f.creates, f.scopes = append(f.creates, p), append(f.scopes, scope)
+	return bridge.Record{ID: "ct_new", Type: p.Type, Fields: p.Set}, nil
+}
+
+func (f *fakeRecords) Delete(_ context.Context, scope svc.Scope, p bridge.DeleteRecordParams) (bridge.DeleteRecordResult, error) {
+	f.deletes, f.scopes = append(f.deletes, p), append(f.scopes, scope)
+	ids := p.IDs
+	if p.ID != "" {
+		ids = []string{p.ID}
+	}
+	return bridge.DeleteRecordResult{IDs: ids}, nil
 }
 
 func (f *fakeRecords) Get(_ context.Context, _ svc.Scope, p bridge.GetRecordParams) (bridge.Record, error) {
@@ -117,6 +139,11 @@ var scope = svc.Scope{App: "crm", Caller: svc.Caller{Member: svc.Owner, Role: sv
 // ask sends one message and collects the turn's events up to done or error.
 func (r *rig) ask(t *testing.T, text string) []bridge.AgentEvent {
 	t.Helper()
+	return r.askWithin(t, text, 5*time.Second)
+}
+
+func (r *rig) askWithin(t *testing.T, text string, ceiling time.Duration) []bridge.AgentEvent {
+	t.Helper()
 	hub := r.svc.all.Hub
 	events, cancel := hub.Subscribe("app/crm/agent/*")
 	defer cancel()
@@ -125,7 +152,7 @@ func (r *rig) ask(t *testing.T, text string) []bridge.AgentEvent {
 		t.Fatal(err)
 	}
 	var got []bridge.AgentEvent
-	timeout := time.After(5 * time.Second)
+	timeout := time.After(ceiling)
 	for {
 		select {
 		case ev := <-events:
@@ -175,7 +202,7 @@ func TestToolsPassTheCheckerAndMaskedValuesStayHidden(t *testing.T) {
 	tests := []struct {
 		name, tool, wantInFeedback string
 	}{
-		{"unlisted tool", `{"tool":"records.delete","args":{"type":"deal","id":"d_1"}}`, "no tool records.delete"},
+		{"unlisted tool", `{"tool":"shell","args":{}}`, "no tool shell"},
 		{"definition write", `{"tool":"apps.keep","args":{}}`, "no tool apps.keep"},
 		{"unknown record type", `{"tool":"records.query","args":{"type":"ghost"}}`, "cannot read records of type ghost"},
 		{"masked field", `{"tool":"records.query","args":{"type":"contact"}}`, `"name":"Ada"`},
@@ -216,17 +243,17 @@ func TestOutboundActionWaitsForApproval(t *testing.T) {
 		`{"tool":"gmail.send","args":{"to":"ada@example.com","body":"Hi"}}`,
 		`{"say":"The email waits for your approval."}`)
 	events := r.ask(t, "email Ada")
-	if got := strings.Join(toStrings(kinds(events)), ","); got != "tool,tool,approval,delta,done" {
+	if got := strings.Join(toStrings(kinds(events)), ","); got != "tool,approval,tool,approval,delta,done" {
 		t.Fatalf("events = %s", got)
 	}
-	if strings.Join(r.conns.called, ",") != "gmail.draft" {
-		t.Fatalf("connector calls = %v: an outbound verb must never reach the connector", r.conns.called)
+	if len(r.conns.called) != 0 {
+		t.Fatalf("connector calls = %v: connector actions must wait for approval", r.conns.called)
 	}
-	if len(r.approvals.opened) != 1 || r.approvals.opened[0].Kind != "send" || r.approvals.opened[0].Tool != "gmail.send" {
+	if len(r.approvals.opened) != 2 || r.approvals.opened[1].Kind != "send" || r.approvals.opened[1].Tool != "gmail.send" {
 		t.Fatalf("approvals = %+v", r.approvals.opened)
 	}
-	if events[2].Approval == nil || events[2].Approval.ID != "ap_1" {
-		t.Fatalf("approval event = %+v", events[2])
+	if events[3].Approval == nil || events[3].Approval.ID != "ap_1" {
+		t.Fatalf("approval event = %+v", events[3])
 	}
 }
 

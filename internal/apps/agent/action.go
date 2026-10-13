@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 )
 
@@ -14,6 +15,7 @@ type action struct {
 	Tool      string         `json:"tool,omitempty"`
 	Args      map[string]any `json:"args,omitempty"`
 	ShapeThis bool           `json:"shape_this,omitempty"`
+	dropped   int
 }
 
 // actionSchema is sent with every call; providers without schema support
@@ -28,16 +30,118 @@ var actionSchema = json.RawMessage(`{
   }
 }`)
 
-// parseAction reads a model reply. A reply that is not JSON is plain speech,
-// so a model that ignores the format still answers.
+// parseAction accepts prose around the protocol, but only one action can run
+// before the model sees its result. Protocol fragments never become speech.
 func parseAction(text string) action {
-	body := strings.TrimSpace(text)
-	body = strings.TrimSuffix(strings.TrimPrefix(body, "```json"), "```")
-	body = strings.TrimSpace(strings.TrimPrefix(body, "```"))
-	var a action
-	// Only the first object counts: some models put several in one reply.
-	if err := json.NewDecoder(strings.NewReader(body)).Decode(&a); err != nil {
-		return action{Say: strings.TrimSpace(text)}
+	var first action
+	found := false
+	for i := 0; i < len(text); i++ {
+		if text[i] != '{' {
+			continue
+		}
+		end, complete := objectEnd(text, i)
+		if !complete {
+			continue
+		}
+		a, valid := decodeAction(text[i:end])
+		if !valid {
+			continue
+		}
+		i = end - 1
+		if found {
+			first.dropped++
+			continue
+		}
+		first, found = a, true
 	}
-	return a
+	if !found {
+		return action{Say: safeText(text)}
+	}
+	first.Say = safeText(first.Say)
+	return first
+}
+
+func decodeAction(body string) (action, bool) {
+	var a action
+	if json.Unmarshal([]byte(body), &a) != nil {
+		return action{}, false
+	}
+	var fields map[string]json.RawMessage
+	_ = json.Unmarshal([]byte(body), &fields)
+	_, says := fields["say"]
+	return a, a.Tool != "" || a.ShapeThis || (says && string(fields["say"]) != "null")
+}
+
+// objectEnd balances braces outside strings, including escaped quotes and
+// backslashes, so a record's text cannot end an action early.
+func objectEnd(text string, start int) (int, bool) {
+	depth, quoted, escaped := 0, false, false
+	for i := start; i < len(text); i++ {
+		c := text[i]
+		if quoted {
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\':
+				escaped = true
+			case c == '"':
+				quoted = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			quoted = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i + 1, true
+			}
+		}
+	}
+	return len(text), false
+}
+
+var actionKey = regexp.MustCompile(`(?i)(?:"(?:tool|args|say|shape_this)"?\s*(?::|$)|\b(?:tool|args|say|shape_this)\s*:)`)
+
+// safeText also handles malformed actions: executing one requires valid JSON,
+// while hiding one only requires a protocol-looking key. This is used at the
+// stream boundary as well as on the parser's plain-answer fallback.
+func safeText(text string) string {
+	var out strings.Builder
+	removed := false
+	for i := 0; i < len(text); {
+		if text[i] != '{' {
+			out.WriteByte(text[i])
+			i++
+			continue
+		}
+		end, complete := objectEnd(text, i)
+		fragment := text[i:end]
+		_, valid := decodeAction(fragment)
+		if valid || actionKey.MatchString(fragment) {
+			removed = true
+			i = end
+			continue
+		}
+		if complete {
+			out.WriteString(fragment)
+			i = end
+			continue
+		}
+		out.WriteByte(text[i])
+		i++
+	}
+	if !removed {
+		return strings.TrimSpace(out.String())
+	}
+	var lines []string
+	for _, line := range strings.Split(out.String(), "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "```") {
+			lines = append(lines, line)
+		}
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
 }

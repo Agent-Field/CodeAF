@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
@@ -75,6 +76,8 @@ type turn struct {
 }
 
 func (t *turn) emit(e bridge.AgentEvent) {
+	e.Text = safeText(e.Text)
+	e.Summary = safeText(e.Summary)
 	e.Turn = t.id
 	t.svc.all.Hub.Publish(bridge.TopicAgent(t.scope.App, t.thread), e)
 }
@@ -152,8 +155,13 @@ func (t *turn) loop(th *thread) error {
 			return err
 		}
 		th.Spent += reply.Cost
-		th.Messages = append(th.Messages, svc.ModelMessage{Role: "assistant", Text: reply.Text})
-		done, err := t.step(tb, th, parseAction(reply.Text))
+		a := parseAction(reply.Text)
+		accepted, _ := json.Marshal(a)
+		th.Messages = append(th.Messages, svc.ModelMessage{Role: "assistant", Text: string(accepted)})
+		done, err := t.step(tb, th, a)
+		if a.dropped > 0 {
+			th.Messages = append(th.Messages, svc.ModelMessage{Role: "user", Text: fmt.Sprintf("Ignored %d additional actions in your reply. Only the first action was accepted. Reply with exactly one action and wait for its result before choosing the next.", a.dropped)})
+		}
 		if done || err != nil {
 			return err
 		}
@@ -202,5 +210,9 @@ func (t *turn) useTool(tb *toolbox, a action) (string, error) {
 		t.emit(bridge.AgentEvent{Kind: bridge.AgentApproval, Approval: out.approval})
 	}
 	raw, err := json.Marshal(out.result)
-	return string(raw), err
+	feedback := string(raw)
+	if out.note != "" {
+		feedback += "\n" + out.note
+	}
+	return feedback, err
 }
