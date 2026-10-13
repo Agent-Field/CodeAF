@@ -939,7 +939,7 @@ probes any acceptance sentence those commands do not cover.
 
 Each declaration is **one rerunnable command the read-only check can run**.
 `plandb add` and `plandb task set-checks` refuse joins, pipes, redirections,
-substitutions and commands the check is not allowed to run before anything is
+shell expansions and commands the check is not allowed to run before anything is
 added or changed. Repeat `--check` for separate commands. Checks run from the
 root of the task's own copy: omit `cd` and name files relative to that root.
 The command is not split or rewritten for you; repair the declaration and try

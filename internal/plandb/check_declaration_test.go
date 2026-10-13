@@ -19,6 +19,7 @@ func TestCliUnusableCheckDeclarationsChangeNothing(t *testing.T) {
 		"go test ./... | tee result.txt",
 		"go test ./... > result.txt",
 		`grep "$(pwd)" README.md`,
+		`test -f "$FILE"`,
 		"go test ./...\ngo vet ./...",
 		"sudo reboot",
 		"*",

@@ -54,7 +54,7 @@ plandb task cancel t-<id>            # plandb what-if cancel t-<id> previews the
 ALWAYS use `--description`. It is the work order: the worker that gets the
 task reads it instead of your whole brief. Repeat `--check` for every command
 that proves the task. Each check is one rerunnable command, run from the root
-of the task's own copy: omit `cd`, joins, pipes, redirections and substitutions,
+of the task's own copy: omit `cd`, joins, pipes, redirections and shell expansions,
 and name files relative to that root. An unusable check is refused before the
 plan changes; repair the declaration and run the add or set-checks again.
 Every delegated task has at least one `--check`. `split --into` takes a JSON array
