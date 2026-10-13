@@ -68,6 +68,8 @@ func (h *hub) Publish(topic string, value any) {
 func fixture(t testing.TB) (spec.Files, *samples) {
 	t.Helper()
 	files, data := spec.GoldenCRM()
+	// The contract lane's older fixture predates full writable-record coverage.
+	files[spec.AgentFile] = []byte(strings.Replace(string(files[spec.AgentFile]), "records.update, gmail", "records.update, records.delete, gmail", 1))
 	s := &samples{}
 	if err := json.Unmarshal(data, &s.rows); err != nil {
 		t.Fatal(err)

@@ -6,38 +6,45 @@
   "required": ["run", "steps"],
   "additionalProperties": false,
   "properties": {
-    "run": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$", "description": "Equals the file name without .yaml." },
-    "title": { "type": "string" },
-    "budget": {
-      "type": "object", "additionalProperties": false,
-      "properties": { "per_run": { "type": "number", "minimum": 0 } }
-    },
+    "run": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$", "description": "Equals the file name without .yaml."},
+    "title": {"type": "string"},
+    "budget": {"type": "object", "additionalProperties": false, "properties": {"per_run": {"type": "number", "minimum": 0}}},
     "params": {
       "type": "object",
       "additionalProperties": {
-        "type": "object", "required": ["type"], "additionalProperties": false,
+        "type": "object",
+        "required": ["type"],
+        "additionalProperties": false,
         "properties": {
-          "type": { "enum": ["text", "number", "bool", "date", "ref", "refs", "person", "enum"] },
-          "to": { "type": "string" },
-          "values": { "type": "array", "items": { "type": "string" } },
+          "type": {"enum": ["text", "number", "bool", "date", "ref", "refs", "person", "enum"]},
+          "to": {"type": "string"},
+          "values": {"type": "array", "items": {"type": "string"}},
           "default": {}
-        }
+        },
+        "allOf": [
+          {"if": {"properties": {"type": {"enum": ["ref", "refs"]}}}, "then": {"required": ["to"]}},
+          {
+            "if": {"properties": {"type": {"const": "enum"}}},
+            "then": {"required": ["values"], "properties": {"values": {"minItems": 1}}}
+          }
+        ]
       }
     },
-    "steps": { "$ref": "#/$defs/steps" }
+    "steps": {"$ref": "#/$defs/steps"}
   },
   "$defs": {
-    "steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/step" } },
-    "duration": { "type": "string", "pattern": "^[0-9]+(s|m|h|d)$" },
+    "steps": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/step"}},
+    "duration": {"type": "string", "pattern": "^[0-9]+(s|m|h|d)$"},
     "records": {
-      "type": "object", "additionalProperties": false,
+      "type": "object",
+      "additionalProperties": false,
       "properties": {
-        "type": { "type": "string" },
-        "query": { "type": "string" },
-        "id": { "type": "string" },
-        "ids": {},
-        "set": { "type": "object" },
-        "limit": { "type": "integer", "minimum": 1, "maximum": 500 }
+        "type": {"type": "string"},
+        "query": {"$ref": "#/$defs/referenceText"},
+        "id": {"$ref": "#/$defs/referenceText"},
+        "ids": {"$ref": "#/$defs/value"},
+        "set": {"type": "object", "additionalProperties": {"$ref": "#/$defs/value"}},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 500}
       }
     },
     "step": {
@@ -45,61 +52,92 @@
       "required": ["id"],
       "additionalProperties": false,
       "properties": {
-        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$" },
-        "title": { "type": "string" },
-        "if": { "type": "string" },
-        "on_error": { "type": "string", "pattern": "^(stop|continue|goto [a-z][a-z0-9_-]*)$" },
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,47}$"},
+        "title": {"type": "string"},
+        "if": {"type": "string"},
+        "on_error": {"type": "string", "pattern": "^(stop|continue|goto [a-z][a-z0-9_-]*)$"},
         "retry": {
-          "type": "object", "required": ["max"], "additionalProperties": false,
-          "properties": { "max": { "type": "integer", "minimum": 1, "maximum": 5 }, "backoff": { "$ref": "#/$defs/duration" } }
+          "type": "object",
+          "required": ["max"],
+          "additionalProperties": false,
+          "properties": {"max": {"type": "integer", "minimum": 1, "maximum": 5}, "backoff": {"$ref": "#/$defs/duration"}}
         },
-        "agent": { "type": "string", "description": "AI step: the app agent's name. Output is labelled AI." },
-        "prompt": { "type": "string" },
-        "output": { "type": "object", "description": "JSON Schema the AI output must match." },
-        "tool": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*\\.[a-z][a-z0-9_.]*$", "description": "connector.verb, e.g. gmail.send" },
-        "as": { "type": "string" },
-        "args": { "type": "object" },
+        "agent": {"type": "string", "description": "AI step: the app agent's name. Output is labelled AI."},
+        "prompt": {"$ref": "#/$defs/referenceText"},
+        "output": {"type": "object", "description": "JSON Schema the AI output must match."},
+        "tool": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*\\.[a-z][a-z0-9_.]*$", "description": "connector.verb, e.g. gmail.send"},
+        "as": {"$ref": "#/$defs/referenceText"},
+        "args": {"type": "object", "additionalProperties": {"$ref": "#/$defs/value"}},
         "gate": {
-          "type": "object", "required": ["approval"], "additionalProperties": false,
-          "properties": {
-            "approval": { "enum": ["plan", "proof", "start", "send"] },
-            "who": { "type": "string" },
-            "title": { "type": "string" }
-          }
+          "type": "object",
+          "required": ["approval"],
+          "additionalProperties": false,
+          "properties": {"approval": {"enum": ["plan", "proof", "start", "send"]}, "who": {"type": "string"}, "title": {"type": "string"}}
         },
-        "records.query": { "$ref": "#/$defs/records" },
-        "records.create": { "$ref": "#/$defs/records" },
-        "records.update": { "$ref": "#/$defs/records" },
-        "records.delete": { "$ref": "#/$defs/records" },
+        "records.query": {"$ref": "#/$defs/records"},
+        "records.create": {"$ref": "#/$defs/records"},
+        "records.update": {"$ref": "#/$defs/records"},
+        "records.delete": {"$ref": "#/$defs/records"},
         "wait": {
-          "type": "object", "additionalProperties": false,
+          "type": "object",
+          "additionalProperties": false,
           "properties": {
-            "for": { "type": "string" },
-            "until": { "type": "string" },
-            "thread": { "type": "string" },
-            "timeout": { "$ref": "#/$defs/duration" }
+            "for": {"type": "string"},
+            "until": {"type": "string"},
+            "thread": {"type": "string"},
+            "timeout": {"$ref": "#/$defs/duration"}
           }
         },
-        "on_timeout": { "enum": ["fail", "continue"] },
+        "on_timeout": {"enum": ["fail", "continue"]},
         "loop": {
-          "type": "object", "required": ["max"], "additionalProperties": false,
+          "type": "object",
+          "required": ["max"],
+          "additionalProperties": false,
           "properties": {
-            "over": { "type": "string" }, "as": { "type": "string" },
-            "until": { "type": "string" }, "max": { "type": "integer", "minimum": 1, "maximum": 1000 }
+            "over": {"$ref": "#/$defs/referenceText"},
+            "as": {"type": "string"},
+            "until": {"type": "string"},
+            "max": {"type": "integer", "minimum": 1, "maximum": 1000}
           }
         },
-        "steps": { "$ref": "#/$defs/steps" },
-        "workspace": { "const": "repo" },
-        "repo": { "type": "string" },
-        "branch": { "type": "string" },
-        "shell": { "type": "string" }
+        "steps": {"$ref": "#/$defs/steps"},
+        "workspace": {"const": "repo"},
+        "repo": {"type": "string"},
+        "branch": {"type": "string"},
+        "shell": {"type": "string"}
       },
-      "dependentRequired": { "prompt": ["agent"], "output": ["agent"], "args": ["tool"], "as": ["tool"], "on_timeout": ["wait"], "shell": ["workspace"] },
-      "anyOf": [
-        { "required": ["agent"] }, { "required": ["tool"] }, { "required": ["gate"] },
-        { "required": ["records.query"] }, { "required": ["records.create"] },
-        { "required": ["records.update"] }, { "required": ["records.delete"] },
-        { "required": ["wait"] }, { "required": ["steps"] }, { "required": ["shell"] }
+      "dependentRequired": {
+        "prompt": ["agent"],
+        "output": ["agent"],
+        "args": ["tool"],
+        "as": ["tool"],
+        "on_timeout": ["wait"],
+        "shell": ["workspace"]
+      },
+      "oneOf": [
+        {"required": ["agent"]},
+        {"required": ["tool"]},
+        {"required": ["records.query"]},
+        {"required": ["records.create"]},
+        {"required": ["records.update"]},
+        {"required": ["records.delete"]},
+        {"required": ["wait"]},
+        {"required": ["steps"]},
+        {"required": ["shell"]}
+      ],
+      "description": "Exactly one action besides an optional gate. Put gate and its approved action in the SAME step; never a standalone gate step."
+    },
+    "referenceText": {
+      "type": "string",
+      "pattern": "^(?:[^{]|\\{[^{]|\\{\\{[a-z_][a-z0-9_-]*(?:\\.[a-z_][a-z0-9_-]*)*\\}\\})*\\{?$",
+      "description": "Typed values use $params.bug, $steps.triage.output.severity, $me, $now or a declared loop variable $bug. Within text use {{params.bug}}, {{steps.triage.output.severity}} or {{bug}} for a declared loop variable. Never {{bug}} for a param: it must be {{params.bug}}."
+    },
+    "value": {
+      "oneOf": [
+        {"$ref": "#/$defs/referenceText"},
+        {"type": ["number", "boolean", "null"]},
+        {"type": "array", "items": {"$ref": "#/$defs/value"}},
+        {"type": "object", "additionalProperties": {"$ref": "#/$defs/value"}}
       ]
     }
   }

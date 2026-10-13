@@ -145,8 +145,44 @@ query?, id?, ids?, set?, limit?}`) · `wait {for | until | timeout}` · nested
 `on_error stop|continue|goto <id>`, `retry {max ≤ 5, backoff}`, `on_timeout`.
 `gate {approval: plan|proof|start|send, who, title}` waits for a person. **An
 outbound tool always runs behind a `send` gate, inserted if the YAML omits
-it.** The schema enforces "at least one action"; Check (B6) enforces "exactly
-one besides gate".
+it.** The schema enforces **exactly one action besides gate**. Put the gate and
+the action it protects in the same step; a standalone gate step is invalid.
+Approval resumes that action, then the following step.
+
+Run references use one convention: `$params.bug` preserves a typed value;
+`{{params.bug}}` interpolates the same value into text, including queries.
+Params always live under `params`; `$bug` / `{{bug}}` only mean a variable
+introduced by a containing `loop.as: bug`. Results use
+`$steps.triage.output.severity` / `{{steps.triage.output.severity}}`;
+`records.query` returns fields directly in output. The other roots are
+`$me`, `$space`, `$now`. Schema validation rejects malformed templates,
+undeclared params and unknown namespaces, including the bare-param spelling.
+Record ids are declared as `ref` with `to`; lists as `refs` with `to`.
+Record triggers explicitly bind run params in app.json, e.g.
+`params: {bug: "$record.id"}`. Runs then read `$params.bug`.
+
+Queries are `field:value` tokens, not CEL or SQL. Quote spaces, apostrophes
+and literal commas **inside** the query: `status:"in progress"`,
+`status:"won't fix"`, `title:"{{params.title}}"`. YAML string quotes alone
+do not quote the embedded query value; use a block scalar when convenient.
+
+```yaml
+run: wont-fix
+params:
+  bug: {type: ref, to: bug}
+steps:
+  - id: approve-change
+    gate: {approval: start, who: $me, title: "Approval needed: won't fix"}
+    records.update: {type: bug, id: $params.bug, set: {status: "won't fix"}}
+  - id: load
+    records.query: {type: bug, query: 'id:{{params.bug}}', limit: 1}
+```
+
+Check supplies a typed fake value for every declared param, sample record ids
+for refs, and the triggering sample record when resolving record.* bindings.
+Its reports retain the failing query and repair hints in issue messages.
+WRITE and FIX share the reference, query and gate rules; FIX includes every
+current definition file in full, including each failing file.
 
 ### agent.md
 
@@ -154,13 +190,19 @@ one besides gate".
 ---
 name: CRM agent
 model: deepseek/deepseek-v4.1-flash
-tools: [records.query, records.update, gmail.draft, gmail.send]
+tools: [records.query, records.get, records.create, records.update, records.delete, gmail.draft, gmail.send]
 ---
 Instructions (Markdown body).
 ```
 
 `name` is required. `tools` must be a subset of what `app.json` capabilities
-allow; the agent never gets definition-writing tools.
+allow; the agent never gets definition-writing tools. Derive this list from
+the app, not the few-shot example: every r/rw type requires records.query
+and records.get; every rw type also requires records.create, records.update
+and records.delete. These global tools cover each permitted type; capability
+checks still apply to the type on every call. Include runs.start for runs
+the plan needs the agent to start and only granted connector verbs. Check
+enforces the subset and record coverage rules.
 
 ### Records (wire)
 

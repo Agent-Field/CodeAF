@@ -113,6 +113,29 @@ func TestFixListsFilesInPathOrder(t *testing.T) {
 	}
 }
 
+func TestWriteAndFixExplainRunRulesAndAgentTools(t *testing.T) {
+	for _, kind := range []Kind{KindWrite, KindFix} {
+		t.Run(string(kind), func(t *testing.T) {
+			in := fullInputs()
+			content := "run: triage\nparams:\n  bug: {type: ref, to: bug}\nsteps:\n  - id: load\n    records.query: {type: bug, query: 'id:{{bug}}'}\n"
+			in.Files["runs/triage.yaml"] = content
+			in.Report = "runs/triage.yaml/steps/0 schema/run-reference; fix: use {{params.bug}}"
+			text, err := Render(kind, in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range []string{"{{params.bug}}", "id: $params.bug", "No gate-only steps", "records.create", "delete", "capabilities"} {
+				if !strings.Contains(text, want) {
+					t.Errorf("%s lacks %s", kind, want)
+				}
+			}
+			if kind == KindFix && (!strings.Contains(text, content) || !strings.Contains(text, in.Report)) {
+				t.Fatal("FIX must show the full failing file and its report")
+			}
+		})
+	}
+}
+
 // The catalog and schemas are inputs, so what must stay small is the fixed
 // text: ~4k tokens leaves most of the 12k WRITE budget for them.
 func TestWriteStaticTextFitsTheBudget(t *testing.T) {

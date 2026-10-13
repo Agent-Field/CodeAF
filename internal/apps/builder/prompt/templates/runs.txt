@@ -1,0 +1,15 @@
+## Run reference, query and gate rules
+Typed references: `$params.bug`; in text: `{{params.bug}}`. Params ALWAYS use params, never `$bug` / `{{bug}}`. Only loop `as: bug` creates `$bug` / `{{bug}}`. Results: `$steps.triage.output.severity` / `{{steps.triage.output.severity}}`; query output has fields directly, not output.fields. Other roots: $me $space $now. Record id params: {type:ref,to:bug}; lists: refs. Record triggers bind app.json params explicitly: {bug:"$record.id"}; runs read $params.bug.
+Queries use field:value, not CEL/SQL. Quote spaces, apostrophes and literal commas INSIDE the query: YAML `query: 'status:"in progress"'`. For apostrophes use a YAML block scalar `query: >-` followed by indented `status:"won't fix"`. Dynamic text: `query: 'title:"{{params.title}}"'`. Every token needs a declared field and nonempty value.
+Gate and approved action belong in the SAME step. No gate-only steps. Exactly one action besides gate; approval resumes that action, then the following step. Example:
+```yaml
+run: wont-fix
+params:
+  bug: {type: ref, to: bug}
+steps:
+  - id: approve-change
+    gate: {approval: start, who: $me, title: "Approval needed: won't fix"}
+    records.update: {type: bug, id: $params.bug, set: {status: "won't fix"}}
+  - id: load
+    records.query: {type: bug, query: 'id:{{params.bug}}', limit: 1}
+```

@@ -174,27 +174,35 @@ func (s *Service) behaviour(ctx context.Context, app string, b *spec.Bundle, row
 		return "skipped", nil
 	}
 	scope := svc.Scope{App: app, Caller: svc.Caller{Member: svc.Owner, Role: svc.RoleEditor}, Data: svc.DataSample}
-	if err := s.all.Records.Seed(ctx, app, rows); err != nil {
-		return "failed", err
-	}
+	pending := false
 	for _, id := range b.RunIDs() {
-		state, err := s.all.Runs.Start(ctx, scope, bridge.StartRunParams{Run: id, Params: runParams(b.Runs[id], rows)})
+		if err := s.all.Records.Seed(ctx, app, rows); err != nil {
+			return "failed", err
+		}
+		params, paramErr := behaviourParams(b, id, rows)
+		if paramErr != nil {
+			r.Issues = append(r.Issues, finding(spec.AppFile, "/triggers", "behaviour/params", paramErr.Error(), "bind declared run params from $record.id or $record.<field> in the triggering record"))
+			continue
+		}
+		state, err := s.all.Runs.Start(ctx, scope, bridge.StartRunParams{Run: id, Params: params})
 		var serviceErr *bridge.Error
 		if errors.As(err, &serviceErr) && serviceErr.Code == bridge.CodeNotBuilt {
-			return "skipped", nil
+			pending = true
+			continue
 		}
 		if err != nil {
-			r.Issues = append(r.Issues, finding("runs/"+id+".yaml", "", "behaviour/run", err.Error(), "make the run execute against sample data and connector fakes"))
+			r.Issues = append(r.Issues, finding("runs/"+id+".yaml", "", "behaviour/run", err.Error(), spec.RunReferenceRule+"; "+spec.RunQueryRule))
 			continue
 		}
 		if state.Status == bridge.RunFailed || state.Status == bridge.RunStopped {
-			r.Issues = append(r.Issues, finding("runs/"+id+".yaml", "", "behaviour/run", "run "+string(state.Status)+": "+state.Error, "fix the failing run step"))
+			r.Issues = append(r.Issues, finding("runs/"+id+".yaml", "", "behaviour/run", "run "+string(state.Status)+": "+state.Error, spec.RunReferenceRule+"; "+spec.RunQueryRule))
 			continue
 		}
 		if state.Status != bridge.RunDone {
 			// Start is asynchronous and the seam offers no bounded dry-run or
 			// cancellation. Starting is not evidence that behaviour passed.
-			return "skipped", nil
+			pending = true
+			continue
 		}
 		if !state.Fake {
 			r.Issues = append(r.Issues, finding("runs/"+id+".yaml", "", "behaviour/fakes", "run did not use connector fakes", "use sample mode and fake connectors"))
@@ -205,26 +213,10 @@ func (s *Service) behaviour(ctx context.Context, app string, b *spec.Bundle, row
 	if len(r.Issues) > 0 {
 		return "failed", nil
 	}
-	return "done", nil
-}
-
-func runParams(run *spec.Run, rows map[string][]bridge.Record) map[string]any {
-	params := map[string]any{}
-	for name, param := range run.Params {
-		params[name] = param.Default
-		if (param.Type == "refs" || param.Type == "ref") && len(rows[param.To]) > 0 {
-			ids := []string{}
-			for _, row := range rows[param.To] {
-				ids = append(ids, row.ID)
-			}
-			if param.Type == "ref" {
-				params[name] = ids[0]
-			} else {
-				params[name] = ids
-			}
-		}
+	if pending {
+		return "skipped", nil
 	}
-	return params
+	return "done", nil
 }
 
 func finding(file, path, rule, message, hint string) Issue {

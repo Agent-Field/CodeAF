@@ -11,7 +11,14 @@ import (
 func validateFiles(files spec.Files) []Issue {
 	issues := []Issue{}
 	for _, issue := range spec.Validate(files) {
-		issues = append(issues, Issue{Issue: issue, FixHint: "match the file schema in internal/apps/spec/schema"})
+		hint := "match the file schema in internal/apps/spec/schema"
+		if strings.HasPrefix(issue.File, "runs/") {
+			hint += "; " + spec.RunReferenceRule + "; put gate and exactly one approved action in the same step; never a gate-only step"
+			if strings.Contains(issue.Message, "valid against schemas at indexes") {
+				issue.Rule = "schema/run-action"
+			}
+		}
+		issues = append(issues, Issue{Issue: issue, FixHint: hint})
 	}
 	for _, name := range files.Paths() {
 		if definitionPath(name) {
@@ -28,8 +35,10 @@ func validateFiles(files spec.Files) []Issue {
 	}
 	issues = append(issues, planTargets(b)...)
 	issues = append(issues, recordTargets(b)...)
+	issues = append(issues, agentCapabilities(b)...)
 	for _, id := range b.RunIDs() {
 		issues = append(issues, runActions("runs/"+id+".yaml", "/steps", b.Runs[id].Steps)...)
+		issues = append(issues, runQueries("runs/"+id+".yaml", "/steps", b.Runs[id].Steps, b.App)...)
 	}
 	return issues
 }
