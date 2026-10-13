@@ -1086,7 +1086,9 @@ in flight retain the existing SpendGuard limitation.
 The app home observer samples native receipts once per second through
 `RefreshSpending`. `PublishSpending` throttles measured stream changes;
 `SpendingBudgetAsks` supplies one saved question for each reached scope to asks
-and Inbox consumers. Raises/reset resolve actual saved questions. The server
+and Inbox consumers through `InboxSource`. Inbox answer-once holds a raise for
+five seconds; its source adapter then grants today's allowance. Permanent raises
+use the caps route. Raises/reset resolve actual saved questions. The server
 joins its spending and crew watchers before Close returns, so shutdown cannot
 leave a writer racing a removed or replaced home.
 

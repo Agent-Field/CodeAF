@@ -14,7 +14,11 @@ import (
 // The ledger includes child engine processes, so its producer is observed at
 // the home boundary. The synchronous method below is also the test clock door.
 func (s *Server) startSpendingWatch() {
-	if s.options.Agents == nil || s.options.Agents.open == nil {
+	if s.options.Agents == nil {
+		return
+	}
+	s.SetInboxSource("spending", spendingInboxSource{s: s})
+	if s.options.Agents.open == nil {
 		return
 	}
 	s.watchers.Add(1)
@@ -40,11 +44,12 @@ func (s *Server) startSpendingWatch() {
 }
 
 type spendingAsk struct {
-	Ask   Ask    `json:"ask"`
-	Scope string `json:"scope"`
-	Day   string `json:"day"`
-	Cap   Money  `json:"cap"`
-	Owner string `json:"owner"`
+	At    time.Time `json:"at"`
+	Ask   Ask       `json:"ask"`
+	Scope string    `json:"scope"`
+	Day   string    `json:"day"`
+	Cap   Money     `json:"cap"`
+	Owner string    `json:"owner"`
 }
 
 type spendingAskState struct {
@@ -70,18 +75,26 @@ func readSpendingAskState(raw []byte) (spendingAskState, error) {
 // SpendingBudgetAsks is the typed resource boundary for asks and Inbox. The
 // waiting set is restart-safe; consumers never need this resource's disk layout.
 func (s *Server) SpendingBudgetAsks() ([]Ask, error) {
+	rows, err := s.spendingAskRows()
 	result := []Ask{}
+	for _, row := range rows {
+		result = append(result, row.Ask)
+	}
+	return result, err
+}
+func (s *Server) spendingAskRows() ([]spendingAsk, error) {
+	result := []spendingAsk{}
 	err := resourceDisk(s.resourceHome(), "spending-asks", map[string]spendingAsk{}, func(raw []byte) (any, error) {
 		held, err := readSpendingAskState(raw)
 		if err != nil {
 			return nil, err
 		}
 		for _, row := range held.Items {
-			result = append(result, row.Ask)
+			result = append(result, row)
 		}
 		return held, nil
 	})
-	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
+	sort.Slice(result, func(i, j int) bool { return result[i].Ask.ID < result[j].Ask.ID })
 	return result, err
 }
 
@@ -153,16 +166,19 @@ func (s *Server) RefreshSpending(ctx context.Context) error {
 		old := state.Items
 		for key, row := range active {
 			if prev, ok := old[key]; ok && prev.Day == row.Day && prev.Cap == row.Cap {
-				row.Ask.ID = prev.Ask.ID
+				row.Ask.ID, row.At = prev.Ask.ID, prev.At
 			} else {
 				state.Next++
+				row.At = now
 				row.Ask.ID = fmt.Sprintf("budget:%d:%s", state.Next, key)
 			}
 			active[key] = row
 		}
 		for key, row := range old {
 			if next, ok := active[key]; !ok || next.Ask.ID != row.Ask.ID {
-				_, _ = s.events.Publish(EventInboxResolved, InboxResolvedEvent{Item: row.Ask.ID, How: "in_place", By: "you", At: now})
+				if s.inbox == nil {
+					_, _ = s.events.Publish(EventInboxResolved, InboxResolvedEvent{Item: row.Ask.ID, How: "in_place", By: "you", At: now})
+				}
 				_, _ = s.events.Publish(EventAskResolved, AskEvent{Ask: row.Ask.ID, Kind: "budget", How: "raised_or_reset"})
 			}
 		}
@@ -171,7 +187,9 @@ func (s *Server) RefreshSpending(ctx context.Context) error {
 				continue
 			}
 			_, _ = s.events.Publish(EventAskCreated, AskEvent{Ask: row.Ask.ID, Kind: "budget", Agent: row.Owner})
-			_, _ = s.events.Publish(EventInboxAdded, InboxAddedEvent{Item: row.Ask.ID, Kind: "budget"})
+			if s.inbox == nil {
+				_, _ = s.events.Publish(EventInboxAdded, InboxAddedEvent{Item: row.Ask.ID, Kind: "budget"})
+			}
 		}
 		state.Items = active
 		return state, nil

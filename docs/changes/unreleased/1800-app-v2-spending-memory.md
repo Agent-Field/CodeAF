@@ -16,3 +16,7 @@ permanent defaults are preserved. An intervening terminal restore/forget
 invalidates an old memory Undo. Explicit person memory saves remain available
 with automatic additions off. Member and crew cap writes retain their owning
 resource backend; the spending resource does not rewrite their native documents.
+
+Budget questions register through the Inbox source interface. The Inbox owns
+answer-once and its five-second Undo; the spending source applies a temporary
+raise only after that hold. Direct permanent/today cap requests remain available.

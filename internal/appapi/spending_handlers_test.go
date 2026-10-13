@@ -343,6 +343,9 @@ func TestSpendingBudgetQuestionsResolveOnlyActualWaitingItems(t *testing.T) {
 	if err != nil || len(asks) != 1 || asks[0].Kind != "budget" {
 		t.Fatalf("asks %v %v", asks, err)
 	}
+	if _, err := s.RefreshInbox(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	seq := s.events.seq
 	if err := s.RefreshSpending(context.Background()); err != nil || s.events.seq != seq {
 		t.Fatalf("duplicate question: %d %v", s.events.seq, err)
@@ -357,7 +360,7 @@ func TestSpendingBudgetQuestionsResolveOnlyActualWaitingItems(t *testing.T) {
 	}
 	found := false
 	for i := uint64(0); i < s.events.seq; i++ {
-		if row := s.events.ring[i]; row.kind == EventInboxResolved && strings.Contains(string(row.data), `"item":"budget:`) {
+		if row := s.events.ring[i]; row.kind == EventInboxResolved && strings.Contains(string(row.data), `"item":"ask:budget:`) {
 			found = true
 		}
 	}
@@ -421,5 +424,50 @@ func TestSpendingAdmissionUsesTheAgentWhenTaskNumbersRepeat(t *testing.T) {
 	w := resourceRequest(s, "POST", "/app/v1/caps/raise", `{"scope":"task","id":"1","to":{"usd":"3.00"},"for":"for_good"}`, "")
 	if w.Code != 409 || !strings.Contains(w.Body.String(), "needs its agent id") {
 		t.Fatal(w.Body.String())
+	}
+}
+
+func TestSpendingQuestionsReachInboxAndItsUndoPrecedesTheRaise(t *testing.T) {
+	home, now := t.TempDir(), time.Now()
+	backend := &fakeResourceSpending{cap: usdMoney(20), rows: []MeasuredSpendingRow{{SpendingRow: SpendingRow{At: now, Who: SpendingWho{Kind: "system"}}, USD: 20}}}
+	s := resourceServer(t, home, &now, WithSpendingBackend(context.Background(), backend))
+	s.inbox.now = func() time.Time { return now }
+	callbacks := []func(){}
+	s.inbox.after = func(_ time.Duration, fn func()) *time.Timer { callbacks = append(callbacks, fn); return nil }
+	if err := s.RefreshSpending(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	w := resourceRequest(s, "GET", "/app/v1/inbox", "", "")
+	var view InboxResponse
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &view) != nil || len(view.Items) != 1 || view.Items[0].Kind != "budget" || view.Items[0].CreatedAt.IsZero() {
+		t.Fatal(w.Body.String())
+	}
+	id := view.Items[0].ID
+	path := "/app/v1/inbox/" + id
+	body := `{"choice":"raise","words":"30.00"}`
+	if w := resourceRequest(s, "POST", path+"/answer", body, ""); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	if backend.cap.USD != "20.00" {
+		t.Fatal("raise escaped the Undo hold")
+	}
+	if w := resourceRequest(s, "POST", path+"/undo", `{}`, ""); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	now = now.Add(5 * time.Second)
+	callbacks[0]()
+	if backend.cap.USD != "20.00" {
+		t.Fatal("undone answer changed the cap")
+	}
+	if w := resourceRequest(s, "POST", path+"/answer", body, ""); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	now = now.Add(5 * time.Second)
+	callbacks[1]()
+	if backend.cap.USD != "30.00" || backend.raised.For != "today" {
+		t.Fatal("held raise never reached its owner")
+	}
+	if rows, err := s.RefreshInbox(context.Background()); err != nil || len(rows) != 0 {
+		t.Fatalf("resolved Inbox %v %v", rows, err)
 	}
 }

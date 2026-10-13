@@ -1617,6 +1617,9 @@ A bare task number works only when it is unambiguous. A disabled cap or an
 amount no higher than the current cap is refused. Member and crew cap changes
 need their resource's execution backend; they are never silently rewritten as
 an agent cap. Raising resolves an actual waiting budget question, when one exists.
+Budget questions appear in the Inbox. Its Raise takes `choice:"raise"` and a
+two-decimal USD amount in `words`; after the Inbox's five-second Undo window it
+raises today's cap. Use the caps route for a permanent raise.
 
 ## App memory shelves, edit, Forget and five-second Undo
 

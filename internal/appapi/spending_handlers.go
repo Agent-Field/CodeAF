@@ -108,6 +108,9 @@ func (s *Server) spendingAction(w http.ResponseWriter, r *http.Request) {
 		// A cap change alone does not resolve a waiting ask. Its owner does that
 		// when it accepts the raised limit, so the stream never invents an Inbox id.
 		_ = s.RefreshSpending(r.Context())
+		if s.inbox != nil {
+			_, _ = s.RefreshInbox(r.Context())
+		}
 		write(w, 200, ActionResponse{OK: true})
 		return
 	}
