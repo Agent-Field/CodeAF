@@ -836,6 +836,26 @@ handlers and the solo factory mount arrive in later lanes behind this same
 guard. [The app API](design/app-v2/API.md) records their status and ownership.
 
 
+## The v2 app contract publication
+
+The binary owns `/app/v1`'s JSON vocabulary in `internal/appapi`'s registered
+Go wire types. `go generate ./internal/appapi` publishes both the per-resource
+JSON Schemas and `docs/design/app-v2/wire.ts`. The app pins that file from a
+binary commit; it maintains no second wire model or engine state codec.
+The generated route map pairs every canonical method/path with its request
+and success response. The event map includes main-stream and separate follow
+payloads, with a discriminated event union for the app's dispatcher.
+
+The generator preserves money strings, opaque ids, timestamp strings,
+flattened embedded fields, enum tags, omitted updates and nullable required
+collections. A structural law checks the one generation directive and both
+published artifacts for drift in the light gate. Existing laws compare API.md
+with registered routes and validate populated Go round-trips against schemas.
+An optional app TypeScript compiler checks positive and rejected client
+fixtures without adding Node to binary builds. Contract 1 describes the app
+wire; the factory's `/v1` Contract 2 remains separate. Reserved types publish
+before their handlers are built and still answer guarded 501 responses.
+
 ## The v2 app agent registry
 
 `internal/appapi` serves the local `/app/v1` API behind its launch's bearer and

@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-//go:generate go run ./schema -out ../../docs/design/app-v2/schema
+//go:generate go run ./schema -out ../../docs/design/app-v2/schema -typescript ../../docs/design/app-v2/wire.ts
 
 // RouteContract is the method, path and named JSON shape reserved for a resource.
 // Empty Request means there is no request body; follow responses are documented separately.

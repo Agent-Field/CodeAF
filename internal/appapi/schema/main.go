@@ -16,8 +16,14 @@ import (
 
 func main() {
 	out := flag.String("out", "docs/design/app-v2/schema", "schema output directory")
+	typescript := flag.String("typescript", "docs/design/app-v2/wire.ts", "published TypeScript wire types")
 	flag.Parse()
 	documents, err := schemaDocuments()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	wire, err := typescriptDocument()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -36,6 +42,14 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+	}
+	if err := os.MkdirAll(filepath.Dir(*typescript), 0755); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if err := os.WriteFile(*typescript, wire, 0644); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
 

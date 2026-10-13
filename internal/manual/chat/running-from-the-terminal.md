@@ -84,6 +84,11 @@ asks, task summaries and usage. Earlier entries use the `/entries` route.
 Go wire types are in `internal/appapi/*_wire.go`. Generated JSON Schemas in
 `docs/design/app-v2/schema/` reserve request, response and event shapes. They
 are contracts for resource work, not evidence that a resource works yet.
+`go generate ./internal/appapi` also publishes `docs/design/app-v2/wire.ts`
+for the app: Go wire types, typed method/path request and response pairs, and
+typed event payloads. Optional updates keep their absent-field meaning;
+money uses strings and required Go lists may be JSON `null`. The app pins its
+copy to a binary commit. The light build gate rejects stale schemas or types.
 `docs/design/app-v2/API.md` lists the registered routes. These HTTP doors do
 not add tools to the chat's belt or enable any app AI role.
 
