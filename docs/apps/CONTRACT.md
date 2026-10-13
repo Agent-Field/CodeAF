@@ -308,6 +308,24 @@ step boundary and returns to `planning`.
 
 ### The seam
 
+Tracks add bridge methods with `gateway.Register(name, Method{Handle: handler, Allow: allow})`
+from an `init()` in their own file; the method's own Allow decides it.
+Cross-cutting limits use `caps.AddDenyRule`, which can only deny. Never wrap
+`gateway.call` or `caps.Allow`. Duplicate method names panic at startup. Only
+the spaces track sets the caller resolver (`gateway.SetCallerResolver`, from
+its `init()`); the default is the Personal owner; a second Set panics.
+`gateway.OnDisconnect(func(svc.Caller))` hooks run in registration order when
+a socket closes, with recovery and logging per hook.
+
+The permission registry lives in caps: `gateway.Register` forwards each
+method's Allow to `caps.RegisterAllow` (including nil for wave-1 methods), so
+caps never imports gateway. Generic context, member and object checks run
+first, then every deny rule in registration order, then the method's own
+Allow or the wave-1 role and capability checks. Audit appends once per call.
+Topic owners register their prefix with `caps.RegisterTopic(prefix, Allow)`;
+`app/*/shape/` matches any app id, and unregistered topics retain wave-1 checks.
+Duplicate or overlapping topic prefixes are refused.
+
 Every lane package exports `func New(cfg svc.Config, all *svc.Services) *T`
 (runs also `NewApprovals`, `NewConnectors`; builder also `NewModel`).
 `internal/apps/server.go` calls them once and fills `all` before any call, so
@@ -353,3 +371,4 @@ Only B1 decides more.
   bridge serving `fixtures/apps/crm/`.
 
 - Wave 2 · spaces: [contract/spaces.md](contract/spaces.md)
+- Wave 2 · shape track: [contract/shape.md](contract/shape.md)

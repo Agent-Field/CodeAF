@@ -77,7 +77,7 @@ func testServer(t *testing.T, all *svc.Services) (context.Context, string) {
 	t.Cleanup(cancel)
 	api := appapi.New(token, appapi.Options{Context: ctx})
 	t.Cleanup(api.Close)
-	api.Handle(bridge.Path, Handler(ctx, all))
+	api.Handle(bridge.Path, NewHandler(ctx, all))
 	server := httptest.NewServer(api.Handler())
 	t.Cleanup(server.Close)
 	return ctx, "ws" + strings.TrimPrefix(server.URL, "http") + bridge.Path
@@ -291,7 +291,7 @@ func TestBackpressureDisconnectsWithTypedError(t *testing.T) {
 func TestOutputQueueNeverBlocksPublisher(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	s := newSession(ctx, nil, nil)
+	s := newSession(ctx, nil, nil, nil)
 	defer s.cancel()
 	for range outputBuffer + 1 {
 		s.send(bridge.Envelope{Type: bridge.TypeEvent})
@@ -330,7 +330,7 @@ func TestCapabilityCheckPrecedesEveryDispatch(t *testing.T) {
 	for _, method := range []string{bridge.MethodAppsList, bridge.MethodAppsCreate, bridge.MethodRecordsQuery, "unknown.method"} {
 		t.Run(method, func(t *testing.T) {
 			checker := &rejectingCaps{}
-			s := newSession(context.Background(), nil, &svc.Services{Caps: checker})
+			s := newSession(context.Background(), nil, &svc.Services{Caps: checker}, nil)
 			defer s.cancel()
 			// No store or other service is present: reaching one would panic.
 			s.call(bridge.Envelope{ID: "request", Type: bridge.TypeCall, App: "crm", Method: method})
@@ -343,7 +343,7 @@ func TestCapabilityCheckPrecedesEveryDispatch(t *testing.T) {
 	for _, kind := range []bridge.MessageType{bridge.TypeSub, bridge.TypeUnsub} {
 		t.Run(string(kind), func(t *testing.T) {
 			checker := &rejectingCaps{}
-			s := newSession(context.Background(), nil, &svc.Services{Caps: checker})
+			s := newSession(context.Background(), nil, &svc.Services{Caps: checker}, nil)
 			defer s.cancel()
 			s.route(bridge.Envelope{ID: "request", Type: kind, Topic: "app/crm/state"})
 			reply := <-s.out
