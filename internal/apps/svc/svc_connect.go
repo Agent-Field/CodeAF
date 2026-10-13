@@ -14,6 +14,7 @@ type ConnectServices struct {
 
 // Grants owns Allow and workspace connections.
 type Grants interface {
+	ForgetMember(ctx context.Context, member string) error
 	Accounts(ctx context.Context, caller Caller) (bridge.AccountsResult, error)
 	Allow(ctx context.Context, scope Scope, p bridge.AllowParams) (bridge.Grant, error)
 	Revoke(ctx context.Context, caller Caller, p bridge.RevokeParams) error
@@ -30,12 +31,19 @@ type Grants interface {
 
 // Credential is what the door hands an adapter. Tokens never leave the server.
 type Credential struct {
-	ID      string
-	Service string
-	Account string
-	Level   string
-	Member  string
+	// The adapter receives the secret in process; ordinary wire results omit it.
+	Token     string `json:"-"`
+	Kind      string `json:"-"`
+	ExpiresAt string `json:"-"`
+	ID        string
+	Service   string
+	Account   string
+	Level     string
+	Member    string
 }
+
+func (Credential) String() string   { return "[credential]" }
+func (Credential) GoString() string { return "[credential]" }
 
 // Imports owns one-time imports.
 type Imports interface {

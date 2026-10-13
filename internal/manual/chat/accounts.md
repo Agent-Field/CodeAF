@@ -578,3 +578,25 @@ affordance that answers as a failure.
 
 And accounts already connected on the far machine keep working: their tools are on the
 belt as usual.
+
+## Apps that act as you: Allow and Revoke
+
+Personal apps use your connected accounts directly. A workspace app needs your
+Allow once per app and service: for example, **"CRM may send email as Mona"**.
+The sheet's can and can't lines come from the app's declared capabilities.
+Allow does not remove the approval required before sending or posting.
+
+Allow has no sign-in step when you already have the account. Your desktop
+transfers the credential from Personal to that app's workspace grant. If the
+account is absent, the sheet offers **"Connect Gmail"** first. Revoke deletes
+that grant's stored credential; the next use asks again. Leaving a workspace
+also deletes your grant credentials there. Refresh replaces an existing grant
+after reconnecting your personal account.
+
+The Apps bridge provides `connect.accounts`, `connect.allow.sheet`,
+`connect.allow`, `connect.revoke` and `connect.needs`. Its
+`connect.credential.export` method belongs only to your desktop session in
+Personal: app scopes and agents are denied, and workspace servers cannot
+export your account. Workspace role and desktop integration are still pending
+on the connect branch; these bridge methods do not add chat tools or slash
+commands.

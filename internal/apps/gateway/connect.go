@@ -12,6 +12,16 @@ import (
 func init() { registerConnect(methods) }
 
 func registerConnect(table map[string]method) {
+	table[bridge.MethodConnectCredentialExport] = method{global: true, run: with(func(all *svc.Services) func(context.Context, svc.Scope, bridge.CredentialExportParams) (bridge.CredentialExportResult, error) {
+		return func(ctx context.Context, scope svc.Scope, p bridge.CredentialExportParams) (bridge.CredentialExportResult, error) {
+			if exporter, ok := all.Connect.Grants.(interface {
+				ExportCredential(context.Context, svc.Scope, bridge.CredentialExportParams) (bridge.CredentialExportResult, error)
+			}); ok {
+				return exporter.ExportCredential(ctx, scope, p)
+			}
+			return bridge.CredentialExportResult{}, bridge.Errorf(bridge.CodeDenied, "credential export is unavailable")
+		}
+	})}
 	table[bridge.MethodConnectAccounts] = method{global: true, run: withConnectCaller(func(all *svc.Services) func(context.Context, svc.Caller, bridge.Empty) (bridge.AccountsResult, error) {
 		return func(ctx context.Context, caller svc.Caller, _ bridge.Empty) (bridge.AccountsResult, error) {
 			return all.Connect.Grants.Accounts(ctx, caller)

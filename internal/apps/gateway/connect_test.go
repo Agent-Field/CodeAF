@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
@@ -19,6 +20,7 @@ var connectMethodCases = []struct {
 	global bool
 	params string
 }{
+	{bridge.MethodConnectCredentialExport, true, `{"service":"gmail","space":"acme","app":"crm"}`},
 	{bridge.MethodConnectAccounts, true, `{}`},
 	{bridge.MethodConnectAllow, false, `{"service":"gmail","answer":"allow"}`},
 	{bridge.MethodConnectAllowSheet, false, `{"service":"gmail"}`},
@@ -44,7 +46,7 @@ func stubConnectServices() svc.ConnectServices {
 	}
 }
 
-func TestConnectMethodsRouteToNotBuilt(t *testing.T) {
+func TestConnectMethodsRouteToServices(t *testing.T) {
 	all := &svc.Services{Connect: stubConnectServices()}
 	for _, tt := range connectMethodCases {
 		t.Run(tt.name, func(t *testing.T) {
@@ -52,10 +54,10 @@ func TestConnectMethodsRouteToNotBuilt(t *testing.T) {
 			if !ok || entry.global != tt.global {
 				t.Fatalf("registered=%v global=%v, want global=%v", ok, entry.global, tt.global)
 			}
-			_, err := entry.run(context.Background(), all, ownerScope("crm"), json.RawMessage(tt.params))
+			_, err := entry.run(context.Background(), all, ownerScope(connectTestApp(tt.global)), json.RawMessage(tt.params))
 			var typed *bridge.Error
-			if !errors.As(err, &typed) || typed.Code != bridge.CodeNotBuilt || typed.Message != tt.name+" is not built yet" {
-				t.Fatalf("%s returned %v, want its not_built stub", tt.name, err)
+			if !errors.As(err, &typed) || typed.Code != connectTestCode(tt.name) {
+				t.Fatalf("%s returned %v, want its service error", tt.name, err)
 			}
 		})
 	}
@@ -116,7 +118,7 @@ func TestConnectCallsUseGatewayDispatch(t *testing.T) {
 			defer s.cancel()
 			s.call(bridge.Envelope{ID: "connect-test", Type: bridge.TypeCall, Method: tt.name, App: app, Params: json.RawMessage(tt.params)})
 			reply := <-s.out
-			if reply.ID != "connect-test" || reply.Type != bridge.TypeError || reply.Error == nil || reply.Error.Code != bridge.CodeNotBuilt {
+			if reply.ID != "connect-test" || reply.Type != bridge.TypeError || reply.Error == nil || reply.Error.Code != connectTestCode(tt.name) {
 				t.Fatalf("reply=%+v", reply)
 			}
 			if checker.seenMethod != tt.name || checker.seenScope.App != app || string(checker.seenParams) != tt.params {
@@ -276,5 +278,31 @@ func TestConnectDispatchPreservesScopeAndParams(t *testing.T) {
 				t.Fatalf("dispatch=%+v want scope=%+v params=%+v", probe, scope, tt.params)
 			}
 		})
+	}
+}
+
+// An unconfigured real grants service refuses a missing home; other lanes still
+// expose their explicit pending queries. Dispatch must retain those errors.
+func connectTestCode(method string) bridge.ErrorCode {
+	if method == bridge.MethodConnectWaits || method == bridge.MethodConnectFakes || strings.HasPrefix(method, "imports.") {
+		return bridge.CodeNotBuilt
+	}
+	return bridge.CodeInvalid
+}
+func connectTestApp(global bool) string {
+	if global {
+		return ""
+	}
+	return "crm"
+}
+
+func TestCredentialExportRejectsAppThroughGateway(t *testing.T) {
+	all := &svc.Services{Connect: stubConnectServices(), Caps: &connectCheck{}}
+	session := newSession(context.Background(), nil, all)
+	defer session.cancel()
+	session.call(bridge.Envelope{ID: "export", Type: bridge.TypeCall, Method: bridge.MethodConnectCredentialExport, App: "crm", Params: json.RawMessage(`{"service":"gmail","space":"acme","app":"crm"}`)})
+	reply := <-session.out
+	if reply.Error == nil || reply.Error.Code != bridge.CodeDenied {
+		t.Fatalf("app export reply=%v", reply)
 	}
 }

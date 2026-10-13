@@ -1,22 +1,23 @@
 package bridge
 
 const (
-	MethodConnectAccounts        = "connect.accounts"
-	MethodConnectAllow           = "connect.allow"
-	MethodConnectAllowSheet      = "connect.allow.sheet"
-	MethodConnectRevoke          = "connect.revoke"
-	MethodConnectWorkspaceList   = "connect.workspace.list"
-	MethodConnectWorkspaceAdd    = "connect.workspace.add"
-	MethodConnectWorkspaceWho    = "connect.workspace.who"
-	MethodConnectWorkspaceImpact = "connect.workspace.impact"
-	MethodConnectWorkspaceRemove = "connect.workspace.remove"
-	MethodConnectNeeds           = "connect.needs"
-	MethodConnectWaits           = "connect.waits"
-	MethodConnectFakes           = "connect.fakes"
-	MethodImportsSources         = "imports.sources"
-	MethodImportsPreview         = "imports.preview"
-	MethodImportsRun             = "imports.run"
-	MethodImportsUndo            = "imports.undo"
+	MethodConnectCredentialExport = "connect.credential.export"
+	MethodConnectAccounts         = "connect.accounts"
+	MethodConnectAllow            = "connect.allow"
+	MethodConnectAllowSheet       = "connect.allow.sheet"
+	MethodConnectRevoke           = "connect.revoke"
+	MethodConnectWorkspaceList    = "connect.workspace.list"
+	MethodConnectWorkspaceAdd     = "connect.workspace.add"
+	MethodConnectWorkspaceWho     = "connect.workspace.who"
+	MethodConnectWorkspaceImpact  = "connect.workspace.impact"
+	MethodConnectWorkspaceRemove  = "connect.workspace.remove"
+	MethodConnectNeeds            = "connect.needs"
+	MethodConnectWaits            = "connect.waits"
+	MethodConnectFakes            = "connect.fakes"
+	MethodImportsSources          = "imports.sources"
+	MethodImportsPreview          = "imports.preview"
+	MethodImportsRun              = "imports.run"
+	MethodImportsUndo             = "imports.undo"
 )
 
 func TopicConnectAllow(member string) string { return "connect/" + member + "/allow" }
@@ -59,15 +60,40 @@ type AccountsResult struct {
 }
 
 type AllowParams struct {
+	Service    string           `json:"service"`
+	Answer     string           `json:"answer"`
+	Credential *GrantCredential `json:"credential,omitempty"`
+}
+
+// GrantCredential crosses only the authenticated desktop-to-server grant door.
+type GrantCredential struct {
+	Kind      string `json:"kind"`
+	Token     string `json:"token"`
+	ExpiresAt string `json:"expires_at,omitempty"`
+}
+
+func (GrantCredential) String() string   { return "[credential]" }
+func (GrantCredential) GoString() string { return "[credential]" }
+
+type CredentialExportParams struct {
 	Service string `json:"service"`
-	Answer  string `json:"answer"`
+	Space   string `json:"space"`
+	App     string `json:"app"`
+}
+
+type CredentialExportResult struct {
+	Credential GrantCredential `json:"credential"`
 }
 
 type AllowSheetParams struct {
 	Service string `json:"service"`
+	// Only display metadata crosses from the desktop; it grants no access.
+	Connected *bool  `json:"connected,omitempty"`
+	Account   string `json:"account,omitempty"`
 }
 
 type AllowSheet struct {
+	Missing    bool     `json:"missing"`
 	App        string   `json:"app"`
 	AppName    string   `json:"app_name"`
 	Member     string   `json:"member"`
@@ -92,6 +118,7 @@ type WorkspaceConnectionUse struct {
 }
 
 type WorkspaceConnection struct {
+	AuthURL string                   `json:"auth_url,omitempty"`
 	ID      string                   `json:"id"`
 	Service string                   `json:"service"`
 	Account string                   `json:"account"`
