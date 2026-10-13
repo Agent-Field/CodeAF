@@ -137,8 +137,8 @@ func TestBrowserSignInCancelAndEngineCloseReleaseTheCallback(t *testing.T) {
 			}
 			waitBrowser(t, done)
 			key, _ := s.options.Credentials.Key("openrouter")
-			if key != "memory-only-test-key" {
-				t.Fatal("cancellation changed previous credential")
+			if how == "cancel" && key != "" || how != "cancel" && key != "memory-only-test-key" {
+				t.Fatal("disconnect did not clear the credential, or engine exit changed it")
 			}
 			client := http.Client{}
 			if response, err := client.Get(callback + "?code=late"); err == nil {

@@ -306,7 +306,14 @@ func (s *Server) readAgents(w http.ResponseWriter, r *http.Request, a *AgentRegi
 				return errAgentMissing
 			}
 			agent := a.view(record)
-			write(w, 200, AgentResponse{Agent: agent, Snapshot: a.turnSnapshot(record)})
+			snapshot := a.turnSnapshot(record)
+			snapshot.Asleep = s.asleep.Load()
+			reached, err := s.dayCapReached(r.Context())
+			if err != nil {
+				return err
+			}
+			snapshot.DayCapReached = reached
+			write(w, 200, AgentResponse{Agent: agent, Snapshot: snapshot})
 			return nil
 		}
 		state, q := r.URL.Query().Get("state"), r.URL.Query().Get("q")

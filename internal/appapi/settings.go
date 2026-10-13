@@ -86,6 +86,22 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 	if !decodeObject(w, r, &patch) {
 		return
 	}
+	// The canonical changes envelope coexists with the original flat patch.
+	if raw, exists := patch["changes"]; exists {
+		if len(patch) > 2 || len(patch) == 2 && patch["expect"] == nil {
+			fail(w, 422, "bad_input", "changes cannot be mixed with flat settings")
+			return
+		}
+		var changes map[string]json.RawMessage
+		if json.Unmarshal(raw, &changes) != nil || changes == nil || changes["expect"] != nil || changes["changes"] != nil {
+			fail(w, 422, "bad_input", "changes needs a settings object")
+			return
+		}
+		if expect, exists := patch["expect"]; exists {
+			changes["expect"] = expect
+		}
+		patch = changes
+	}
 	expect, ok := takeExpect(w, patch)
 	if !ok {
 		return

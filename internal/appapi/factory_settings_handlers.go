@@ -15,15 +15,21 @@ import (
 )
 
 var factorySettingsContractRoutes = []contractRoute{
+	{RouteContract: RouteContract{Method: "GET", Path: "/app/v1/factories/{id}/settings", Response: "FactorySettingsDetails"}, handle: (*Server).factorySettingsHandler},
+	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/factories/{id}/repos/{repo_id}", Request: "FactoryRepoRequest", Response: "ActionResponse"}, handle: (*Server).canonicalSettingsHandler},
+	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/factories/{id}/links/{link_id}", Request: "EmptyRequest", Response: "ActionResponse"}, handle: (*Server).canonicalSettingsHandler},
+	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/factories/{id}/revoke-sessions", Request: "EmptyRequest", Response: "ActionResponse"}, handle: (*Server).factorySettingsHandler},
+	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/factories/{id}/advanced", Request: "FactoryAdvancedRequest", Response: "ActionResponse"}, handle: (*Server).canonicalSettingsHandler},
+	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/factories/{id}/runner", Request: "FactoryRunnerRequest", Response: "ActionResponse"}, handle: (*Server).canonicalSettingsHandler},
 	{RouteContract: RouteContract{Method: "GET", Path: "/app/v1/factories/solo", Response: "FactorySettingsDetails"}, handle: (*Server).factorySettingsHandler},
 	{RouteContract: RouteContract{Method: "PATCH", Path: "/app/v1/factories/solo", Request: "PatchFactorySettingsRequest", Response: "FactorySettingsDetails"}, handle: (*Server).factorySettingsHandler},
 	{RouteContract: RouteContract{Method: "GET", Path: "/app/v1/factories/{id}", Response: "FactorySettingsDetails"}, handle: (*Server).factorySettingsHandler},
 	{RouteContract: RouteContract{Method: "PATCH", Path: "/app/v1/factories/{id}", Request: "PatchFactorySettingsRequest", Response: "FactorySettingsDetails"}, handle: (*Server).factorySettingsHandler},
 	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/factories/{id}/sign-out", Request: "EmptyRequest", Response: "ActionResponse"}, handle: (*Server).factorySettingsHandler},
-	{RouteContract: RouteContract{Method: "PATCH", Path: "/app/v1/factories/{id}/repos/{rid}", Request: "FactoryRepoRequest", Response: "ActionResponse"}, handle: (*Server).factorySettingsHandler},
+	{RouteContract: RouteContract{Method: "PATCH", Path: "/app/v1/factories/{id}/repos/{repo_id}", Request: "FactoryRepoRequest", Response: "ActionResponse"}, handle: (*Server).factorySettingsHandler},
 	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/factories/{id}/links", Request: "FactoryLinkRequest", Response: "FactoryLinkResponse"}, handle: (*Server).factorySettingsHandler},
 	{RouteContract: RouteContract{Method: "DELETE", Path: "/app/v1/factories/{id}/links", Request: "DeleteFactoryLinkRequest", Response: "ActionResponse"}, handle: (*Server).factorySettingsHandler},
-	{RouteContract: RouteContract{Method: "DELETE", Path: "/app/v1/factories/{id}/links/{link}", Response: "ActionResponse"}, handle: (*Server).factorySettingsHandler},
+	{RouteContract: RouteContract{Method: "DELETE", Path: "/app/v1/factories/{id}/links/{link_id}", Response: "ActionResponse"}, handle: (*Server).factorySettingsHandler},
 }
 
 func (s *Server) factorySettingsHandler(w http.ResponseWriter, r *http.Request) {
@@ -88,12 +94,18 @@ func (s *Server) serveFactorySettings(w http.ResponseWriter, r *http.Request) {
 			s.SetInboxSource(row.ID, nil)
 			delete(f.sourceTokens, row.ID)
 		}
-	case r.PathValue("rid") != "":
+	case strings.HasSuffix(r.URL.Path, "/revoke-sessions"):
+		var body EmptyRequest
+		if !decodeFactory(w, r, &body) {
+			return
+		}
+		err = source.request(r.Context(), "POST", "/v1/access/revoke-sessions", EmptyRequest{}, nil)
+	case r.PathValue("repo_id") != "":
 		var body FactoryRepoRequest
 		if !decodeFactory(w, r, &body) {
 			return
 		}
-		repo := r.PathValue("rid")
+		repo := r.PathValue("repo_id")
 		if body.Enabled == nil || !store.RepoName(repo) {
 			fail(w, 422, "bad_input", "needs a repository owner/name and enabled true or false")
 			return
@@ -110,11 +122,22 @@ func (s *Server) serveFactorySettings(w http.ResponseWriter, r *http.Request) {
 		}
 		err = source.request(r.Context(), "POST", "/v1/access/links", factoryapi.CreateAccessLink{Login: body.Login, Name: body.Name, ExpiresAt: body.ExpiresAt}, &created)
 		if err == nil {
-			reply = FactoryLinkResponse{created.Link.ID, created.Link.URL}
+			name := created.Link.Name
+			if name == "" {
+				name = "Team link"
+			}
+			detail := ""
+			if !created.Link.CreatedAt.IsZero() {
+				detail = "made " + created.Link.CreatedAt.Format("2 Jan")
+			}
+			if !created.Link.ExpiresAt.IsZero() {
+				detail += " · expires " + created.Link.ExpiresAt.Format("2 Jan")
+			}
+			reply = FactoryLinkResponse{ID: created.Link.ID, URL: created.Link.URL, Name: name, Detail: detail}
 			status = 201
 		}
 	case r.Method == "DELETE":
-		link := r.PathValue("link")
+		link := r.PathValue("link_id")
 		if link == "" {
 			var body DeleteFactoryLinkRequest
 			if !decodeFactory(w, r, &body) {
@@ -230,7 +253,10 @@ func (f *FactoryRegistry) settingsView(ctx context.Context, row factoryConnectio
 			if link.Revoked {
 				continue
 			}
-			detail := "made " + link.CreatedAt.Format("2 Jan")
+			detail := ""
+			if !link.CreatedAt.IsZero() {
+				detail = "made " + link.CreatedAt.Format("2 Jan")
+			}
 			if !link.ExpiresAt.IsZero() {
 				detail += " · expires " + link.ExpiresAt.Format("2 Jan")
 			}

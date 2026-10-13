@@ -26,11 +26,13 @@ type AgentResponse struct {
 	Snapshot AgentSnapshot `json:"snapshot"`
 }
 type AgentSnapshot struct {
-	Entries  []DisplayEntry `json:"entries"`
-	Queue    []QueueItem    `json:"queue"`
-	OpenAsks []Ask          `json:"open_asks"`
-	Tasks    TasksResponse  `json:"tasks"`
-	Usage    Usage          `json:"usage"`
+	Asleep        bool           `json:"asleep"`
+	DayCapReached bool           `json:"day_cap_reached"`
+	Entries       []DisplayEntry `json:"entries"`
+	Queue         []QueueItem    `json:"queue"`
+	OpenAsks      []Ask          `json:"open_asks"`
+	Tasks         TasksResponse  `json:"tasks"`
+	Usage         Usage          `json:"usage"`
 }
 type Usage struct {
 	In    int    `json:"in"`

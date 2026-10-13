@@ -63,7 +63,7 @@ func (s *Server) keys(w http.ResponseWriter, r *http.Request) {
 	s.keyState.Lock()
 	defer s.keyState.Unlock()
 	keys, _ := s.options.Credentials.Snapshot()
-	ids := map[string]bool{modelsource.DefaultID: true, "github": true, "anthropic": true}
+	ids := map[string]bool{modelsource.DefaultID: true, "chatgpt": true, "github": true, "anthropic": true}
 	for _, source := range modelsource.Vendored() {
 		if source.ID != "codex" && !modelsource.IsCustomID(source.ID) {
 			ids[source.ID] = true
@@ -81,7 +81,7 @@ func (s *Server) keys(w http.ResponseWriter, r *http.Request) {
 	for _, id := range sorted {
 		key := keys[id]
 		last := ""
-		if len([]rune(key)) > 4 {
+		if id != "chatgpt" && len([]rune(key)) > 4 {
 			last = string([]rune(key)[len([]rune(key))-4:])
 		}
 		rows = append(rows, KeyStatus{id, key != "", last, append([]string{}, s.keyState.models[id]...)})

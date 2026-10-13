@@ -360,20 +360,27 @@ func (t *transport) fresh(ctx context.Context, force bool, rejected string) (Tok
 		return Tokens{}, err
 	}
 	defer mutex.Unlock()
-	lock, err := lockTokenFile(lockCtx, t.profileDir)
-	if err != nil {
-		return Tokens{}, err
+	holder := memoryTokens.Load()
+	if holder == nil {
+		lock, err := lockTokenFile(lockCtx, t.profileDir)
+		if err != nil {
+			return Tokens{}, err
+		}
+		defer func() { _ = filelock.Unlock(lock); _ = lock.Close() }()
 	}
-	defer func() {
-		_ = filelock.Unlock(lock)
-		_ = lock.Close()
-	}()
 	tokens, err := Load(t.profileDir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return Tokens{}, ErrSignInExpired
 		}
 		return Tokens{}, err
+	}
+	previous := tokens
+	persist := func(next Tokens) error {
+		if holder != nil {
+			return holder.store.CompareAndSwapTokens(previous, next)
+		}
+		return Save(t.profileDir, next)
 	}
 	if strings.TrimSpace(tokens.AccessToken) == "" {
 		return Tokens{}, ErrSignInExpired
@@ -411,7 +418,7 @@ func (t *transport) fresh(ctx context.Context, force bool, rejected string) (Tok
 		if response.StatusCode == http.StatusBadRequest || response.StatusCode == http.StatusUnauthorized {
 			tokens.AccessToken = ""
 			tokens.ExpiresAt = time.Time{}
-			if err := Save(t.profileDir, tokens); err != nil {
+			if err := persist(tokens); err != nil {
 				return Tokens{}, err
 			}
 			return Tokens{}, ErrSignInExpired
@@ -442,7 +449,7 @@ func (t *transport) fresh(ctx context.Context, force bool, rejected string) (Tok
 		tokens.ExpiresAt = time.Unix(claims.Exp, 0)
 	}
 	tokens.LastRefresh = now.UTC()
-	if err := Save(t.profileDir, tokens); err != nil {
+	if err := persist(tokens); err != nil {
 		return Tokens{}, err
 	}
 	return Load(t.profileDir)

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -82,9 +83,30 @@ func profilePath(profileDir, name string) string {
 	return home.Join(name)
 }
 
+// TokenStore lets the app retain rotating browser credentials in memory.
+// CompareAndSwapTokens refuses a refresh that raced a disconnect or replacement.
+type TokenStore interface {
+	LoadTokens() (Tokens, error)
+	CompareAndSwapTokens(Tokens, Tokens) error
+}
+type tokenStoreHolder struct{ store TokenStore }
+
+var memoryTokens atomic.Pointer[tokenStoreHolder]
+
+// UseTokenStore binds one app launch without falling back to terminal files.
+func UseTokenStore(store TokenStore) func() {
+	previous := memoryTokens.Swap(&tokenStoreHolder{store})
+	return func() { memoryTokens.Store(previous) }
+}
+
 // Load reads the current token set and immediately registers every credential
 // with the record scrubber.
 func Load(profileDir string) (Tokens, error) {
+	if holder := memoryTokens.Load(); holder != nil {
+		tokens, err := holder.store.LoadTokens()
+		register(tokens)
+		return tokens, err
+	}
 	var tokens Tokens
 	raw, err := os.ReadFile(Path(profileDir))
 	if err != nil {

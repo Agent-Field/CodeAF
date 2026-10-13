@@ -48,9 +48,18 @@ type FactoryLinkRequest struct {
 	Name      string    `json:"name,omitempty"`
 	ExpiresAt time.Time `json:"expires_at,omitempty"`
 }
+type FactoryAdvancedRequest struct {
+	RunnerTimeoutSeconds int `json:"runner_timeout_s"`
+}
+type FactoryRunnerRequest struct {
+	KeepOutputDays *int `json:"keep_output_days,omitempty"`
+	KeepOutputMB   *int `json:"keep_output_mb,omitempty"`
+}
 type FactoryLinkResponse struct {
-	ID  string `json:"id"`
-	URL string `json:"url"`
+	Name   string `json:"name"`
+	Detail string `json:"detail"`
+	ID     string `json:"id"`
+	URL    string `json:"url"`
 }
 type DeleteFactoryLinkRequest struct {
 	ID string `json:"id"`

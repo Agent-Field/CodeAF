@@ -22,6 +22,7 @@ const (
 	AppDefaultTaskCap              = CrewTaskCapDefault
 	AppDefaultQuestionClockMinutes = 15
 	AppDefaultIdleDays             = 7
+	AppDefaultFactoryDoneDays      = 1
 	KeyAppSetupStep                = "app.setup.step"
 )
 
@@ -68,6 +69,7 @@ var appSettings = map[string]appSetting{
 	"factory.runner_timeout_s":          {"app.factory.runner_timeout_s", factory.DefaultRunnerTimeoutSeconds},
 	"factory.keep_output_days":          {"app.factory.keep_output_days", factory.DefaultKeepOutputDays},
 	"factory.keep_output_mb":            {"app.factory.keep_output_mb", factory.DefaultKeepOutputMB},
+	"factory.done_days":                 {"app.factory.done_days", AppDefaultFactoryDoneDays},
 	"factory.polling_s":                 {"app.factory.polling_s", 60},
 	"advanced.context_tokens":           {"app.advanced.context_tokens", 160000},
 	"advanced.work_folder":              {"app.advanced.work_folder", "~/codeaf/work"},
@@ -324,7 +326,7 @@ func validateAppSetting(key string, raw json.RawMessage) (any, error) {
 		}
 		return nil, errors.New("account must be yes, ask_first or off")
 	}
-	bands := map[string][2]int{"permissions.question_clock_min": {1, 1440}, "factory.polling_s": {1, 86400}, "factory.runner_timeout_s": {factory.MinRunnerTimeoutSeconds, factory.MaxRunnerTimeoutSeconds}, "factory.keep_output_days": {factory.MinKeepOutputDays, factory.MaxKeepOutputDays}, "factory.keep_output_mb": {factory.MinKeepOutputMB, factory.MaxKeepOutputMB}, "advanced.context_tokens": {1, 2000000}, "advanced.proposal_s": {0, 60}, "advanced.idle_days": {1, 3650}, "crews.depth": {teamsDepthMin, teamsDepthMax}, "crews.share_pct": {teamsShareMin, teamsShareMax}}
+	bands := map[string][2]int{"permissions.question_clock_min": {1, 1440}, "factory.done_days": {0, 3650}, "factory.polling_s": {1, 86400}, "factory.runner_timeout_s": {factory.MinRunnerTimeoutSeconds, factory.MaxRunnerTimeoutSeconds}, "factory.keep_output_days": {factory.MinKeepOutputDays, factory.MaxKeepOutputDays}, "factory.keep_output_mb": {factory.MinKeepOutputMB, factory.MaxKeepOutputMB}, "advanced.context_tokens": {1, 2000000}, "advanced.proposal_s": {0, 60}, "advanced.idle_days": {1, 3650}, "crews.depth": {teamsDepthMin, teamsDepthMax}, "crews.share_pct": {teamsShareMin, teamsShareMax}}
 	band, known := bands[key]
 	n, ok := value.(float64)
 	if !known || !ok || n != math.Trunc(n) || n < float64(band[0]) || n > float64(band[1]) {
@@ -456,4 +458,12 @@ func AppEffortWord(word string) string {
 	default:
 		return AppDefaultEffort
 	}
+}
+
+// AppFactoryDoneDaysAt shares the Settings retention choice with served job projections.
+func AppFactoryDoneDaysAt(profileDir string) int {
+	if n, ok := persistedInt(profileDir, "app.factory.done_days"); ok && n >= 0 && n <= 3650 {
+		return n
+	}
+	return AppDefaultFactoryDoneDays
 }

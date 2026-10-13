@@ -76,27 +76,50 @@ func AppMCPServersAt(profile string) ([]AppMCPServer, error) {
 
 // AddAppMCPServer shares the profile lock, so independent app launches cannot lose a server.
 func AddAppMCPServer(profile, address string) (AppMCPServer, error) {
+	return AddAppMCPServerWithAccess(profile, address, "", "")
+}
+
+// AddAppMCPServerWithAccess validates every field before saving the server and policy together.
+func AddAppMCPServerWithAccess(profile, address, name, access string) (AppMCPServer, error) {
+	if strings.TrimSpace(name) != name || len(name) > 160 || strings.ContainsAny(name, "\r\n\x00") {
+		return AppMCPServer{}, errors.New("invalid server name")
+	}
+	if access != "" && access != "yes" && access != "ask_first" && access != "off" {
+		return AppMCPServer{}, errors.New("access must be yes, ask_first or off")
+	}
 	address, err := AppMCPAddress(address)
 	if err != nil {
 		return AppMCPServer{}, err
 	}
 	u, _ := url.Parse(address)
 	row := AppMCPServer{ID: appMCPID(address), Name: u.Hostname(), Address: address}
+	if name != "" {
+		row.Name = name
+	}
 	err = transformProfileValues(profile, func(held map[string]json.RawMessage) (map[string]any, error) {
 		rows, err := appMCPRows(held)
 		if err != nil {
 			return nil, err
 		}
-		for _, old := range rows {
+		updates := map[string]any{}
+		if access != "" {
+			updates["app.accounts.mcp:"+row.ID] = access
+		}
+		for i, old := range rows {
 			if old.ID == row.ID {
-				row = old
-				return nil, nil
+				if name == "" {
+					row.Name = old.Name
+				}
+				rows[i] = row
+				updates[keyAppMCPServers] = rows
+				return updates, nil
 			}
 		}
 		if len(rows) >= 64 {
 			return nil, errors.New("at most 64 servers may be saved")
 		}
-		return map[string]any{keyAppMCPServers: append(rows, row)}, nil
+		updates[keyAppMCPServers] = append(rows, row)
+		return updates, nil
 	})
 	return row, err
 }

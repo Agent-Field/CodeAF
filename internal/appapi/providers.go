@@ -2,6 +2,8 @@ package appapi
 
 import (
 	"context"
+	"encoding/json"
+	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"net/http"
 	"sync"
 
@@ -14,18 +16,20 @@ import (
 
 type browserSignIn struct {
 	sync.Mutex
-	flow     *openrouterauth.Flow
-	uri      string
-	state    string
-	key      string
-	error    string
-	revision uint64
-	done     chan struct{}
+	flow                 interface{ Cancel() }
+	uri                  string
+	state                string
+	key                  string
+	error                string
+	revision             uint64
+	credentialRevision   uint64
+	credentialGeneration uint64
+	done                 chan struct{}
 }
 
 func (s *Server) registerSignIn() {
 	s.mux.HandleFunc("/app/v1/providers/{provider}/sign-in", s.profileHandler(s.idempotent(s.providerSignIn)))
-	s.mux.HandleFunc("/app/v1/providers/{provider}/sign-in/claim", s.profileHandler(s.idempotent(s.claimSignIn)))
+	s.mux.HandleFunc("/app/v1/providers/{provider}/sign-in/claim", s.profileHandler(s.claimSignIn))
 }
 
 func (s *Server) providerSignIn(w http.ResponseWriter, r *http.Request) {
@@ -36,7 +40,8 @@ func (s *Server) providerSignIn(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "not_found", "this engine has no app credentials")
 		return
 	}
-	if r.PathValue("provider") != modelsource.DefaultID {
+	provider := r.PathValue("provider")
+	if provider != modelsource.DefaultID && provider != "chatgpt" {
 		fail(w, 422, "bad_input", "this provider has no app browser sign-in")
 		return
 	}
@@ -46,25 +51,39 @@ func (s *Server) providerSignIn(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	s.signIn.Lock()
-	defer s.signIn.Unlock()
+	state := s.browserState(provider)
+	state.Lock()
+	defer state.Unlock()
 	switch r.Method {
 	case "GET":
-		write(w, 200, map[string]any{"state": s.signIn.state, "error": s.signIn.error})
+		if state.state == "" {
+			state.state = "canceled"
+			if key, _ := s.options.Credentials.Key(provider); key != "" {
+				state.state = "signed_in"
+			}
+		}
+		write(w, 200, map[string]any{"state": state.state, "error": state.error})
 		return
 	case "DELETE":
-		if s.signIn.flow != nil {
-			s.signIn.flow.Cancel()
-			s.signIn.flow = nil
+		if state.flow != nil {
+			state.flow.Cancel()
+			state.flow = nil
 		}
-		s.signIn.revision++
-		s.signIn.key = ""
-		s.signIn.state = "canceled"
-		s.signIn.error = ""
+		state.revision++
+		state.key = ""
+		state.state = "canceled"
+		state.error = ""
+		s.keyState.Lock()
+		s.options.Credentials.Set(provider, "")
+		s.keyState.revisions[provider]++
+		delete(s.keyState.models, provider)
+		delete(s.keyState.listedAt, provider)
+		s.keyState.Unlock()
+		_, _ = s.events.Publish(EventKeysChanged, KeysChangedEvent{Keys: []string{provider}})
 		write(w, 200, map[string]bool{"ok": true})
 		return
 	}
-	if s.signIn.flow != nil {
+	if state.flow != nil {
 		fail(w, 409, "conflict", "browser sign-in is already waiting")
 		return
 	}
@@ -72,51 +91,55 @@ func (s *Server) providerSignIn(w http.ResponseWriter, r *http.Request) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	flow, err := openrouterauth.Begin(ctx, s.options.OpenRouterAuth)
+	flow, wait, err := s.beginBrowser(ctx, provider)
 	if err != nil {
 		fail(w, 422, "bad_input", "could not start browser sign-in")
 		return
 	}
 	s.keyState.Lock()
-	revision := s.keyState.revisions[modelsource.DefaultID]
+	revision := s.keyState.revisions[provider]
+	generation := s.options.Credentials.KeyRevision(provider)
 	s.keyState.Unlock()
-	s.signIn.revision++
-	attempt := s.signIn.revision
-	s.signIn.flow = flow
-	s.signIn.uri = flow.URL()
-	s.signIn.state = "waiting"
-	s.signIn.error = ""
-	s.signIn.key = ""
+	state.revision++
+	attempt := state.revision
+	state.flow = flow
+	state.uri = flow.URL()
+	state.state = "waiting"
+	state.error = ""
+	state.key = ""
 	done := make(chan struct{})
-	s.signIn.done = done
+	state.done = done
 	guard.Go("app/provider-sign-in", func() {
 		defer close(done)
-		key, err := flow.Wait(ctx)
-		s.signIn.Lock()
-		defer s.signIn.Unlock()
-		if attempt != s.signIn.revision {
+		key, err := wait(ctx)
+		flow.Cancel()
+		state.Lock()
+		defer state.Unlock()
+		if attempt != state.revision {
 			return
 		}
-		s.signIn.flow = nil
+		state.flow = nil
 		if err != nil {
-			s.signIn.state = "failed"
-			s.signIn.error = redact.Secrets(string(trace.Scrub([]byte(err.Error()))))
+			state.state = "failed"
+			state.error = redact.Secrets(string(trace.Scrub([]byte(err.Error()))))
 			return
 		}
 		s.keyState.Lock()
 		defer s.keyState.Unlock()
-		if revision != s.keyState.revisions[modelsource.DefaultID] {
-			s.signIn.state = "canceled"
+		if revision != s.keyState.revisions[provider] || generation != s.options.Credentials.KeyRevision(provider) {
+			state.state = "canceled"
 			return
 		}
-		s.options.Credentials.Set(modelsource.DefaultID, key)
-		s.keyState.revisions[modelsource.DefaultID]++
-		delete(s.keyState.models, modelsource.DefaultID)
-		delete(s.keyState.listedAt, modelsource.DefaultID)
-		s.keyState.lastProvider = modelsource.DefaultID
-		s.signIn.key = key
-		s.signIn.state = "signed_in"
-		_, _ = s.events.Publish(EventKeysChanged, map[string]any{"keys": []string{modelsource.DefaultID}})
+		s.options.Credentials.Set(provider, key)
+		s.keyState.revisions[provider]++
+		delete(s.keyState.models, provider)
+		delete(s.keyState.listedAt, provider)
+		s.keyState.lastProvider = provider
+		state.key = key
+		state.state = "signed_in"
+		state.credentialRevision = s.keyState.revisions[provider]
+		state.credentialGeneration = s.options.Credentials.KeyRevision(provider)
+		_, _ = s.events.Publish(EventKeysChanged, map[string]any{"keys": []string{provider}})
 	})
 	write(w, 200, map[string]string{"verification_uri": flow.URL()})
 }
@@ -131,7 +154,8 @@ func (s *Server) claimSignIn(w http.ResponseWriter, r *http.Request) {
 		fail(w, 404, "not_found", "this engine has no app credentials")
 		return
 	}
-	if r.PathValue("provider") != modelsource.DefaultID {
+	provider := r.PathValue("provider")
+	if provider != modelsource.DefaultID && provider != "chatgpt" {
 		fail(w, 422, "bad_input", "this provider has no app browser sign-in")
 		return
 	}
@@ -139,23 +163,24 @@ func (s *Server) claimSignIn(w http.ResponseWriter, r *http.Request) {
 	if !decodeObject(w, r, &body) {
 		return
 	}
-	s.signIn.Lock()
-	defer s.signIn.Unlock()
-	if s.signIn.state != "signed_in" || s.signIn.key == "" {
+	state := s.browserState(provider)
+	state.Lock()
+	defer state.Unlock()
+	if state.state != "signed_in" || state.key == "" {
 		fail(w, 409, "conflict", "there is no browser credential to save")
 		return
 	}
 	s.keyState.Lock()
 	defer s.keyState.Unlock()
-	key, _ := s.options.Credentials.Key(modelsource.DefaultID)
-	if key != s.signIn.key {
-		s.signIn.key = ""
+	key, _ := s.options.Credentials.Key(provider)
+	if key == "" || state.credentialRevision != s.keyState.revisions[provider] || state.credentialGeneration != s.options.Credentials.KeyRevision(provider) {
+		state.key = ""
 		fail(w, 409, "stale", "the provider connection changed")
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	write(w, 200, map[string]string{"provider": modelsource.DefaultID, "key": s.signIn.key})
-	s.signIn.key = ""
+	write(w, 200, map[string]string{"provider": provider, "key": key})
+	state.key = ""
 }
 
 // Close releases browser callbacks on stdin EOF, parent death and shutdown.
@@ -171,9 +196,50 @@ func (s *Server) Close() {
 		s.signIn.flow = nil
 	}
 	s.signIn.key = ""
+	s.chatGPT.Lock()
+	s.chatGPT.revision++
+	if s.chatGPT.flow != nil {
+		s.chatGPT.flow.Cancel()
+		s.chatGPT.flow = nil
+	}
+	s.chatGPT.key = ""
+	s.chatGPT.Unlock()
 	if s.options.Agents != nil {
 		s.options.Agents.Close()
 	}
 	s.events.Close()
 	s.watchers.Wait()
+}
+
+func (s *Server) browserState(provider string) *browserSignIn {
+	if provider == "chatgpt" {
+		return &s.chatGPT
+	}
+	return &s.signIn
+}
+
+// The app reuses the engine's PKCE flow and transfers the complete refreshable bundle.
+func (s *Server) beginBrowser(ctx context.Context, provider string) (interface {
+	Cancel()
+	URL() string
+}, func(context.Context) (string, error), error) {
+	if provider == "chatgpt" {
+		flow, err := codexauth.Begin(ctx, s.options.ChatGPTAuth)
+		if err != nil {
+			return nil, nil, err
+		}
+		return flow, func(ctx context.Context) (string, error) {
+			tokens, err := flow.Wait(ctx)
+			if err != nil {
+				return "", err
+			}
+			raw, err := json.Marshal(tokens)
+			return string(raw), err
+		}, nil
+	}
+	flow, err := openrouterauth.Begin(ctx, s.options.OpenRouterAuth)
+	if err != nil {
+		return nil, nil, err
+	}
+	return flow, flow.Wait, nil
 }

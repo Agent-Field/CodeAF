@@ -3,7 +3,8 @@
 ## App model choices — default model, pinned models and effort
 
 The app reads `GET /app/v1/models`: available models, the saved default and
-three pinned slots. `PUT /app/v1/models/default` takes `{model, effort?}`;
+three pinned slots. ChatGPT browser sign-in connects the native `codex/`
+models; its refreshable credentials stay in app memory. `PUT /app/v1/models/default` takes `{model, effort?}`;
 `PUT /app/v1/models/pinned` takes `{models:[id,id,id]}`. An empty string is
 an unused pinned slot. Nonempty slots must be distinct available models.
 The default is for new agents; changing it does not move existing agents.
@@ -28,8 +29,8 @@ an unavailable model is refused with
 ## App binary settings — saved values and stale changes
 
 `GET /app/v1/settings` returns only binary-owned, non-secret settings.
-`PATCH /app/v1/settings` takes flat dotted keys and validates the entire
-patch before saving. Money is `{usd:"20.00"}`, with two decimal places.
+`PATCH /app/v1/settings` takes `{changes:{"factory.done_days":7}, expect?:{version}}`
+or the original flat dotted keys, and validates the entire patch before saving. Money is `{usd:"20.00"}`, with two decimal places.
 An unknown key, a credential key or an app theme setting is refused.
 A mandatory always-ask action cannot be removed: acting in your name,
 deleting outside a task, and payments.
@@ -83,17 +84,20 @@ are refused. Completed setup cannot be restarted through this route.
 `verification_uri`. Open it in the browser. The binary waits without a
 browser deadline, exchanges the return code using PKCE, connects its
 memory key and publishes `keys.changed`. GET on the same path reports
-`waiting`, `signed_in`, `failed` or `canceled`; DELETE cancels the wait.
+`waiting`, `signed_in`, `failed` or `canceled`; before an attempt it reports
+`signed_in` for a handed-over credential or `canceled` otherwise. DELETE
+cancels the wait and clears the provider credential.
 Engine exit also closes the callback listener.
 
 The native app claims the credential once with
 `POST /app/v1/providers/openrouter/sign-in/claim {}`, then saves it in
 Keychain or Secret Service and hands it back on the next launch.
 The authenticated claim response is not cached by HTTP. Ordinary GETs
-never return a key. A concurrent sign-in returns 409; other providers
+never return a key. A concurrent sign-in for the same provider returns 409; providers other than
+OpenRouter and ChatGPT
 return `this provider has no app browser sign-in`. Paste a key where that
-provider's key route is supported. Codex browser credentials are not accepted
-by the app key API.
+provider's key route is supported. ChatGPT browser credentials are not accepted
+by the app key API; use `/app/v1/providers/chatgpt/sign-in` instead.
 A key replacement or removal while the browser waits wins over its later
 completion. No browser credential is saved to the binary's home.
 
@@ -158,3 +162,72 @@ saved byte window; completed-log sweeps use the saved age. Factory log reads
 and writes trim oldest lines while leaving proof and execution results intact.
 Existing running processes keep the window they started with. Output reads
 remain bounded to 10 MiB per reply.
+
+
+## App ChatGPT browser sign-in — claim and disconnect
+
+`POST /app/v1/providers/chatgpt/sign-in {}` returns `verification_uri` for
+ChatGPT's existing PKCE browser flow. GET on the same path reports
+`waiting`, `signed_in`, `failed` or `canceled`, plus a scrubbed `error`.
+The callback checks state before exchanging the code. DELETE cancels the
+flow and clears the ChatGPT credential, including a completed connection;
+engine exit closes the callback without disconnecting the native store.
+
+`POST /app/v1/providers/chatgpt/sign-in/claim {}` returns
+`{provider:"chatgpt",key}` once. The key is an opaque JSON string containing
+the complete access, refresh and identity token bundle and account identity.
+The native app saves that string in Keychain or Secret Service and sends it
+back under `keys.chatgpt` at launch. The binary never writes these tokens to
+its profile, including during refresh, and never reads terminal token files
+as a fallback. Claims cannot be replayed, even with an `Idempotency-Key`.
+OpenRouter claims have the same one-time rule.
+
+## App tidying — how many days finished jobs remain in Running
+
+`GET /app/v1/settings` includes numeric `factory.done_days`, default 1.
+`PATCH /app/v1/settings {changes:{"factory.done_days":7}}` saves it.
+Whole days from 0 through 3650 are accepted; 0 hides merged jobs immediately.
+The app-hosted factory applies this interval from each pull request's
+`merged_at` to both queue and individual-job `display.running_visible`.
+The upper boundary is exclusive. Tidying changes visibility and keeps job
+history; a standalone factory keeps its existing 24-hour interval.
+
+Agent detail reads include `snapshot.asleep` from successful app power events
+and `snapshot.day_cap_reached` from the binary's effective cap and measured
+calendar-day ledger. Raising a cap or crossing midnight updates the next read.
+
+
+## App canonical Settings actions — account access, polling and MCP names
+
+`POST /app/v1/accounts/{id}/access {access}` and
+`POST /app/v1/accounts/{id}/access/{action_id} {access}` return `{ok:true}`.
+Access is `yes`, `ask_first` or `off`; acting in your name still always asks.
+`POST /app/v1/accounts/{id}/connect {}` returns `connect_url`.
+`POST /app/v1/accounts/{id}/poll {}` reports `connected`, `waiting` or `revoked`.
+Polling does not consume the native store's one-time credential; the native
+core claims that through GET on the account's existing connect route.
+`POST /app/v1/accounts/{id}/disconnect {}` cancels the flow and forgets its grant.
+
+`POST /app/v1/mcp {name?,address,access?}` returns McpServer. Name defaults to
+the address host; access defaults to the stored choice or `ask_first`.
+All fields are validated before the server and access choice are saved together.
+`POST /app/v1/mcp/{id}/access {access}` returns `{ok:true}` and uses the same
+native capability policy as the existing PATCH route. Original adapters remain.
+
+## App factory Settings actions — details, repositories, links and runner
+
+`GET /app/v1/factories/{id}/settings` returns identity, sign-in and operator
+facts, repositories, links, people, runner timeout and this machine's output
+retention. `POST /app/v1/factories/{id}/repos/{repo_id} {enabled}` returns
+`{ok:true}`; encode owner/name as one path segment.
+`POST /app/v1/factories/{id}/links {}` returns `{id,name,detail,url}` once;
+`POST /app/v1/factories/{id}/links/{link_id} {}` revokes that link.
+`POST /app/v1/factories/{id}/revoke-sessions {}` revokes factory sessions.
+The native factory enforces operator permission for these outward changes.
+
+`POST /app/v1/factories/{id}/advanced {runner_timeout_s}` sets the native
+runner silence timeout. `POST /app/v1/factories/{id}/runner` takes
+`keep_output_days` and/or `keep_output_mb` for this machine's output retention.
+Both return `{ok:true}` and keep the existing range checks. Sign-out uses
+`POST /app/v1/factories/{id}/sign-out {}`. A solo factory refuses sign-out
+because it belongs to this machine. DELETE on the factory id still leaves it.

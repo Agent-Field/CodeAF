@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
+	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -62,23 +63,42 @@ func (s *Server) modelList(ctx context.Context) []CatalogModel {
 		// read, and a successful key check's listing is reused without a second call.
 		models, known := s.keyState.models[id]
 		if !known || time.Since(s.keyState.listedAt[id]) >= 15*time.Minute {
-			endpoint, ok := s.keyEndpoint(id)
-			if !ok {
-				continue
-			}
-			probe, cancel := context.WithTimeout(ctx, modelsource.ProbeTimeout)
-			listed, err := checkKey(probe, s.options.KeyHTTPClient, endpoint, id, keys[id])
-			cancel()
-			if err == nil {
-				models = listed
-				s.keyState.models[id] = models
-				s.keyState.listedAt[id] = time.Now()
-			} else if !known {
-				continue
+			if id == "chatgpt" {
+				listed, err := codexauth.List(ctx, s.options.ProfileDir, s.options.ChatGPTAuth)
+				if err != nil && !known {
+					continue
+				}
+				if err == nil {
+					models = []string{}
+					for _, model := range listed {
+						models = append(models, model.ID)
+					}
+					s.keyState.models[id] = models
+					s.keyState.listedAt[id] = time.Now()
+				}
+			} else {
+				endpoint, ok := s.keyEndpoint(id)
+				if !ok {
+					continue
+				}
+				probe, cancel := context.WithTimeout(ctx, modelsource.ProbeTimeout)
+				listed, err := checkKey(probe, s.options.KeyHTTPClient, endpoint, id, keys[id])
+				cancel()
+				if err == nil {
+					models = listed
+					s.keyState.models[id] = models
+					s.keyState.listedAt[id] = time.Now()
+				} else if !known {
+					continue
+				}
 			}
 		}
-		connected, knownService := services.ByID(id)
-		written := id
+		serviceID := id
+		if id == "chatgpt" {
+			serviceID = "codex"
+		}
+		connected, knownService := services.ByID(serviceID)
+		written := serviceID
 		names := map[string]string{}
 		if knownService {
 			if connected.Source.Written != "" {

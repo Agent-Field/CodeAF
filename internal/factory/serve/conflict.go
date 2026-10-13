@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/api"
 	"github.com/Agent-Field/codeaf/internal/factory/lease"
@@ -34,7 +35,11 @@ func (h *Handler) guarded(verb string, action jobAction) jobAction {
 // withVersion stamps the store's document revision onto the job the page
 // reads. A handler with no store leaves it zero, and the field stays off the wire.
 func (h *Handler) withVersion(job api.Job) api.Job {
-	job.Display = api.DisplayFor(job, h.clock())
+	retention := api.RunningRetention
+	if h.config.ServedBy == "app" {
+		retention = time.Duration(config.AppFactoryDoneDaysAt(h.config.ProfileDir)) * 24 * time.Hour
+	}
+	job.Display = api.DisplayForRetention(job, h.clock(), retention)
 	if h.config.Store == nil || job.ID == 0 {
 		return job
 	}

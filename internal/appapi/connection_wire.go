@@ -44,8 +44,13 @@ type McpServer struct {
 	Access  serviceAccessValue `json:"access" jsonschema:"enum=yes,enum=ask_first,enum=off"`
 }
 type McpServersResponse []McpServer
+type ServicePollResponse struct {
+	State string `json:"state" jsonschema:"enum=connected,enum=waiting,enum=revoked"`
+}
 type AddMcpServerRequest struct {
-	Address string `json:"address"`
+	Name    string             `json:"name,omitempty"`
+	Access  serviceAccessValue `json:"access,omitempty" jsonschema:"enum=yes,enum=ask_first,enum=off"`
+	Address string             `json:"address"`
 }
 
 // Credential is the opaque launch-key payload, returned once after browser completion for the app's Keychain writer.

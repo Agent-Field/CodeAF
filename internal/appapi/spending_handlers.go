@@ -516,3 +516,36 @@ func bindAppAgentBudget(engine AgentEngine, usd float64) error {
 	}
 	return engine.SetSpendRail(usd)
 }
+
+// Snapshot flags use the same measured calendar-day ledger and effective cap as spending.
+func (s *Server) dayCapReached(ctx context.Context) (bool, error) {
+	if s.options.ProfileDir == "" {
+		return false, nil
+	}
+	backend := s.spendingBackend()
+	cap, err := backend.SpendingCap(ctx, "day", "")
+	if err != nil {
+		return false, err
+	}
+	limit, err := moneyValue(cap)
+	if err != nil || limit <= 0 {
+		return false, err
+	}
+	rows, err := backend.SpendingRows(ctx)
+	if err != nil {
+		return false, err
+	}
+	now := s.resourceNow()
+	var spent float64
+	for _, row := range rows {
+		if row.At.After(now) || row.At.In(now.Location()).Format("2006-01-02") != now.Format("2006-01-02") {
+			continue
+		}
+		cost, err := measuredCost(row)
+		if err != nil {
+			return false, err
+		}
+		spent += cost
+	}
+	return spent >= limit, nil
+}

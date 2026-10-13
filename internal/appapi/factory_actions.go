@@ -109,6 +109,9 @@ func (s *Server) serveFactory(w http.ResponseWriter, r *http.Request) {
 				err = agentError(503, "not_allowed", "factory runner is unavailable; retry this power event")
 			}
 		}
+		if err == nil {
+			s.asleep.Store(body.State == "sleeping")
+		}
 	case r.URL.Path == "/app/v1/factories/solo":
 		var body ExpectRequest
 		if !decodeFactory(w, r, &body) {

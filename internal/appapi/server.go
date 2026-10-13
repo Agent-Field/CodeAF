@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/openrouterauth"
 	"github.com/Agent-Field/codeaf/internal/standing"
@@ -43,6 +44,7 @@ type Options struct {
 	ModelCatalog   func(context.Context) ([]CatalogModel, error)
 	Context        context.Context
 	OpenRouterAuth openrouterauth.Options
+	ChatGPTAuth    codexauth.Options
 	Agents         *AgentRegistry
 	CrewRoles      CrewRoleSource
 	CrewItems      CrewItemSource
@@ -58,12 +60,14 @@ type Server struct {
 	mux           *http.ServeMux
 	guarded       http.Handler
 	watchers      sync.WaitGroup
+	asleep        atomic.Bool
 	once          sync.Once
 	events        *EventHub
 	keyState      keyState
 	settingsState settingsState
 	accounts      accountState
 	signIn        browserSignIn
+	chatGPT       browserSignIn
 	mutations     mutationState
 	crewLogs      crewLogState
 	inbox         *inboxState

@@ -12,6 +12,11 @@ import (
 )
 
 var connectionContractRoutes = []contractRoute{
+	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/accounts/{id}/access", Request: "ServiceAccessRequest", Response: "ActionResponse"}, handle: (*Server).canonicalSettingsHandler},
+	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/accounts/{id}/access/{action_id}", Request: "ServiceAccessRequest", Response: "ActionResponse"}, handle: (*Server).canonicalSettingsHandler},
+	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/accounts/{id}/poll", Request: "EmptyRequest", Response: "ServicePollResponse"}, handle: (*Server).canonicalSettingsHandler},
+	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/accounts/{id}/disconnect", Request: "EmptyRequest", Response: "ActionResponse"}, handle: (*Server).canonicalSettingsHandler},
+	{RouteContract: RouteContract{Method: "POST", Path: "/app/v1/mcp/{id}/access", Request: "ServiceAccessRequest", Response: "ActionResponse"}, handle: (*Server).canonicalSettingsHandler},
 	{RouteContract: RouteContract{Method: "GET", Path: "/app/v1/accounts", Response: "AccountsResponse"}, handle: (*Server).accountHandler},
 	{RouteContract: RouteContract{Method: "PATCH", Path: "/app/v1/accounts/{id}", Request: "ServiceAccessRequest", Response: "ConnectedService"}, handle: (*Server).accountHandler},
 	{RouteContract: RouteContract{Method: "PATCH", Path: "/app/v1/accounts/{id}/actions/{aid}", Request: "ServiceAccessRequest", Response: "ConnectedService"}, handle: (*Server).accountHandler},
@@ -216,7 +221,7 @@ func (s *Server) serveMcp(w http.ResponseWriter, r *http.Request) {
 			s.settingsState.Unlock()
 			return
 		}
-		row, err = config.AddAppMCPServer(s.options.ProfileDir, body.Address)
+		row, err = config.AddAppMCPServerWithAccess(s.options.ProfileDir, body.Address, body.Name, string(body.Access))
 	} else if r.Method == "PATCH" {
 		var body ServiceAccessRequest
 		if !decodeFactory(w, r, &body) {

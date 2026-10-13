@@ -129,6 +129,7 @@ app.accounts.slack
 app.advanced.context_tokens
 app.advanced.idle_days
 app.advanced.work_folder
+app.factory.done_days
 app.factory.keep_output_days
 app.factory.keep_output_mb
 app.factory.polling_s

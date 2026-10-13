@@ -3,11 +3,13 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"os"
 	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 
+	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/redact"
@@ -26,21 +28,22 @@ var ErrAppKeys = errors.New("keys are kept by the app")
 type AppCredentials struct {
 	mu        sync.RWMutex
 	keys      map[string]string
-	sessions  map[string]string
 	revisions map[string]uint64
+	sessions  map[string]string
 }
 
 var appCredentials atomic.Pointer[AppCredentials]
 
 func NewAppCredentials() *AppCredentials {
-	return &AppCredentials{keys: make(map[string]string), sessions: make(map[string]string), revisions: make(map[string]uint64)}
+	return &AppCredentials{keys: make(map[string]string), revisions: make(map[string]uint64), sessions: make(map[string]string)}
 }
 
 // UseAppCredentials installs one launch's source before any engine starts.
 // The restore function also lets an embedded launch relinquish its policy.
 func UseAppCredentials(source *AppCredentials) func() {
 	previous := appCredentials.Swap(source)
-	return func() { appCredentials.Store(previous) }
+	restoreTokens := codexauth.UseTokenStore(source)
+	return func() { restoreTokens(); appCredentials.Store(previous) }
 }
 
 func AppMode() bool { return appCredentials.Load() != nil || env.Get(AppModeEnv) == "1" }
@@ -49,6 +52,21 @@ func AppCredentialSource() *AppCredentials { return appCredentials.Load() }
 
 func (c *AppCredentials) Set(provider, key string) {
 	provider, key = strings.ToLower(strings.TrimSpace(provider)), strings.TrimSpace(key)
+	if provider == "codex" {
+		provider = "chatgpt"
+	}
+	if provider == "chatgpt" && key != "" {
+		var tokens codexauth.Tokens
+		if json.Unmarshal([]byte(key), &tokens) != nil || tokens.AccessToken == "" || tokens.RefreshToken == "" {
+			return
+		}
+		trace.Secret(tokens.AccessToken)
+		trace.Secret(tokens.RefreshToken)
+		trace.Secret(tokens.IDToken)
+		redact.Register(tokens.AccessToken)
+		redact.Register(tokens.RefreshToken)
+		redact.Register(tokens.IDToken)
+	}
 	registerAppSecret(key)
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -59,7 +77,15 @@ func (c *AppCredentials) Set(provider, key string) {
 func (c *AppCredentials) Key(provider string) (string, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	key, ok := c.keys[strings.ToLower(strings.TrimSpace(provider))]
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if provider == "codex" {
+		key, ok := c.keys["chatgpt"]
+		if key != "" {
+			return codexauth.Sentinel, true
+		}
+		return "", ok
+	}
+	key, ok := c.keys[provider]
 	return key, ok
 }
 
@@ -112,6 +138,9 @@ func appSourceRows(rows []PersistedSource) []PersistedSource {
 	}
 	var ids []string
 	for id, key := range keys {
+		if id == "chatgpt" {
+			id = "codex"
+		}
 		if key != "" && !known[id] && id != modelsource.DefaultID {
 			ids = append(ids, id)
 		}
@@ -159,11 +188,50 @@ func refuseAppCredentialUpdates(updates map[string]any) error {
 	return nil
 }
 
+// LoadTokens supplies the ChatGPT token bundle handed over by the native store.
+func (c *AppCredentials) LoadTokens() (codexauth.Tokens, error) {
+	key, _ := c.Key("chatgpt")
+	if key == "" {
+		return codexauth.Tokens{}, os.ErrNotExist
+	}
+	var tokens codexauth.Tokens
+	if err := json.Unmarshal([]byte(key), &tokens); err != nil {
+		return tokens, errors.New("invalid ChatGPT credential")
+	}
+	return tokens, nil
+}
+
+// CompareAndSwapTokens keeps a late refresh from undoing a newer connection choice.
+func (c *AppCredentials) CompareAndSwapTokens(previous, next codexauth.Tokens) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var current codexauth.Tokens
+	if json.Unmarshal([]byte(c.keys["chatgpt"]), &current) != nil || current != previous {
+		return codexauth.ErrSignInExpired
+	}
+	raw, err := json.Marshal(next)
+	if err != nil {
+		return err
+	}
+	trace.Secret(next.AccessToken)
+	trace.Secret(next.RefreshToken)
+	trace.Secret(next.IDToken)
+	redact.Register(next.AccessToken)
+	redact.Register(next.RefreshToken)
+	redact.Register(next.IDToken)
+	c.keys["chatgpt"] = string(raw)
+	return nil
+}
+
 // KeyRevision prevents a completed browser callback from undoing a later disconnect.
 func (c *AppCredentials) KeyRevision(provider string) uint64 {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.revisions[strings.ToLower(strings.TrimSpace(provider))]
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if provider == "codex" {
+		provider = "chatgpt"
+	}
+	return c.revisions[provider]
 }
 func (c *AppCredentials) SetAtRevision(provider, key string, version uint64) bool {
 	provider, key = strings.ToLower(strings.TrimSpace(provider)), strings.TrimSpace(key)

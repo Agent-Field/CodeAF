@@ -47,7 +47,7 @@ type ProviderSignInResponse struct {
 	VerificationURI string `json:"verification_uri"`
 }
 type ProviderSignInStatusResponse struct {
-	State string `json:"state"`
+	State string `json:"state" jsonschema:"enum=waiting,enum=signed_in,enum=failed,enum=canceled"`
 	Error string `json:"error"`
 }
 type ProviderSignInClaimResponse struct {
