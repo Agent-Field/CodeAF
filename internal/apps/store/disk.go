@@ -124,7 +124,7 @@ func allowedPath(name string) bool {
 	dir, file := path.Split(name)
 	ext := path.Ext(file)
 	id := strings.TrimSuffix(file, ext)
-	return validID(id) && ((dir == "screens/" && ext == ".json") || (dir == "runs/" && ext == ".yaml"))
+	return customDefinitionPath(name) || validID(id) && ((dir == "screens/" && ext == ".json") || (dir == "runs/" && ext == ".yaml"))
 }
 
 func validatePaths(files spec.Files) error {

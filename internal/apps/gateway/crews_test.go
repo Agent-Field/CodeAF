@@ -30,7 +30,7 @@ func crewsTestServices(t *testing.T) *svc.Services {
 	return all
 }
 
-func TestCrewsMethodsReturnNotBuiltThroughWebSocket(t *testing.T) {
+func TestCrewsMethodsDispatchThroughWebSocket(t *testing.T) {
 	tests := []struct {
 		name   string
 		global bool
@@ -71,7 +71,11 @@ func TestCrewsMethodsReturnNotBuiltThroughWebSocket(t *testing.T) {
 			}
 			id := socket.send(bridge.TypeCall, app, tt.name, "", tt.params)
 			reply := socket.read()
-			if reply.ID != id || reply.Type != bridge.TypeError || reply.Error == nil || reply.Error.Code != bridge.CodeNotBuilt {
+			code := bridge.CodeNotBuilt
+			if tt.name == bridge.MethodCustomBundle {
+				code = bridge.CodeNotFound
+			}
+			if reply.ID != id || reply.Type != bridge.TypeError || reply.Error == nil || reply.Error.Code != code {
 				t.Fatalf("reply=%+v", reply)
 			}
 			id = socket.send(bridge.TypeCall, app, tt.name, "", []string{"invalid"})

@@ -318,7 +318,7 @@ func TestSemanticSchema(t *testing.T) {
 		file, path, rule string
 	}{
 		{"missing planned screen", func(_ *testing.T, f spec.Files) { delete(f, "screens/contacts.json") }, "plan.json", "/screens/2/id", "schema/plan"},
-		{"unsupported file", func(_ *testing.T, f spec.Files) { f["custom/editor.tsx"] = []byte("anything") }, "custom/editor.tsx", "", "schema/file"},
+		{"unsupported file", func(_ *testing.T, f spec.Files) { f["custom/editor.jsx"] = []byte("anything") }, "custom/editor.jsx", "", "schema/file"},
 		{"multiple run actions", func(t *testing.T, f spec.Files) {
 			change(t, f, "runs/follow-up.yaml", "records.query: { type: deal", "wait: { timeout: 1s }\n        records.query: { type: deal")
 		}, "runs/follow-up.yaml", "/steps/0/steps/0", "schema/run-action"},

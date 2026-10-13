@@ -205,7 +205,7 @@ func TestWriteDraftReplacement(t *testing.T) {
 }
 
 func TestUnsafePathsLeaveDraftIntact(t *testing.T) {
-	for _, name := range []string{"../outside", "/absolute", "screens/../../outside.json", ".git/config", "records.db", "sample.json", "custom/foo.tsx", "screens/foo/bar.json", "screens/.json", "screens/hello\\there.json", "runs/name.yml"} {
+	for _, name := range []string{"../outside", "/absolute", "screens/../../outside.json", ".git/config", "records.db", "sample.json", "custom/foo.jsx", "screens/foo/bar.json", "screens/.json", "screens/hello\\there.json", "runs/name.yml"} {
 		t.Run(name, func(t *testing.T) {
 			s, hub := newStore(t)
 			m := create(t, s)

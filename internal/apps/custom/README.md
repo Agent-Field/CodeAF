@@ -31,7 +31,8 @@ or malformed source returns `check_failed` with `details.issues`. The usual
 gateway capability check still precedes the service. The desktop's iframe
 sandbox remains responsible for isolating the running module.
 
-On this track's base, `internal/apps/store/stub.go` still implements
-`Store.WriteFiles` as `not_built` for every path. It has no path whitelist to
-extend. The store lane must implement Builder persistence and retain custom
-files in `Store.Get`; this package does not write definition files itself.
+`Store.WriteFiles` accepts these canonical custom paths alongside the existing
+definition formats. The same allowance preserves their source in draft reads
+and kept versions, so `Store.Get` supplies the source to the bundler. Check
+owns source validation; the store can save unfinished Builder files for a fix
+round.
