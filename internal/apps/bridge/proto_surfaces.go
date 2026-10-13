@@ -161,6 +161,7 @@ type CommentAnchor struct {
 	Cell    string          `json:"cell,omitempty"`
 	Node    string          `json:"node,omitempty"`
 	Feature string          `json:"feature,omitempty"`
+	Item    string          `json:"item,omitempty"`
 }
 
 type PartVersion struct {

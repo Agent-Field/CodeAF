@@ -60,7 +60,7 @@ DocInfo   {doc, surface, title, parts: [PartSummary], share? Share}
 PartSummary {part, version, status?, title?, lock? Lock, comments_open int}
 Lock      {doc, part, holder (member or "agent"), agent bool, since, idle_until, takeover? {by, until}}
 Presence  {doc, member, part?, at}
-Comment   {id, doc, part, anchor {box? | range? | cell? | node? | feature?}, text, by, for: "agent"|"person", state: open|resolved|sent, at, resolved_by?}
+Comment   {id, doc, part, anchor {box? | range? {from, to} | cell? | node? | feature? | item?}, text, by, for: "agent"|"person", state: open|resolved|sent, at, resolved_by?}
 PartVersion {doc, part, version, kind: create|ask|nudge|restore|reorder, label (ask text or nudge summary), by, by_agent, at}
 Share     {doc, slug, url, on bool, by, at}
 ```
@@ -153,11 +153,13 @@ Every surface implements one interface; the frame owns everything else:
 ```ts
 interface SurfaceProps {
   part: Part;                 // current version
-  mode: "view" | "nudge" | "present" | "thumb";
+  mode: "view" | "nudge" | "comment" | "present" | "thumb"; // comment: a click calls onAnchor, nothing edits
   theme?: unknown;            // canvas theme.json etc.
   comments: Comment[];        // pins to draw at anchors
   onNudge(text: string, label: string): void;  // frame writes parts.write
   onAnchor(anchor: Comment["anchor"]): void;   // Comment mode click
+  onOpenRecord?(record: string): void;          // click on a node/pin/item/box bound to a record
+  busy?: { start: string; end: string }[];      // Timeline free/busy from the calendar connector, when present
 }
 type Surface = { kind: SurfaceKind; Part: React.FC<SurfaceProps>; newPart(): string; exportAs: ("pdf"|"pptx"|"csv"|"docx")[] };
 ```
