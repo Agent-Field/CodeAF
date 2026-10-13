@@ -188,6 +188,9 @@ jobs:
           go test ./internal/manual/
           go test -run 'Manual' ./internal/tui3/ ./internal/session/
 
+      - name: Carried program help fits eighty columns
+        run: make test-carried-help
+
       # THE LAWS HOLD. Every test that reads the tree itself — the endings
       # ratchet, the guard, the taxonomy, the words the e2e suite waits for —
       # found by what it does (scripts/laws.sh) and run as one target, about
