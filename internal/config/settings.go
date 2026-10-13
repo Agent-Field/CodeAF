@@ -1238,6 +1238,11 @@ var OperatorEnvPins = []string{
 	// row offering to persist it would be offering to point a person's box at
 	// somebody else's lock.
 	"CODEAF_SUITE_DIRLOCK_PATH",
+	// CODEAF_NO_LOGIN_ENV stops `codeaf app serve` on macOS from reading the
+	// login shell's PATH (internal/loginenv). It is an escape hatch for a launch
+	// environment that already carries the right PATH, set where the app is
+	// launched, never a preference a person keeps in settings.
+	"CODEAF_NO_LOGIN_ENV",
 	// CODEAF_PROMPT_PROFILE used to sit here, on the reasoning that the profile
 	// is derived and the pin belongs to a bench measuring one arm against the
 	// other. It is a settings row's pin now ([KeyPromptProfile]), because the
