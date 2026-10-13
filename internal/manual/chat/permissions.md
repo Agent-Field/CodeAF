@@ -816,6 +816,12 @@ already turned it into a prompt of its own.
 
 ## Who can see or view my files — privacy, file access and workspace visibility, what codeaf can read without asking, does git status need approval
 
+The agent is instructed to stay inside its workspace. Before reads, finds or
+searches outside it, it must use `ask`; it must never search the whole disk or
+other people's folders. If a file you name is missing here, it asks where it is
+and offers to create it here. This is an agent instruction; the read-only tool
+policy below does not enforce a filesystem boundary.
+
 **Privacy: who can see my files.** Even in `prompt` mode, a look is not
 a question. codeaf can read and open these files without asking — the policy
 itself allows these without a card, even before the seeded row below is applied:
@@ -833,6 +839,21 @@ itself allows these without a card, even before the seeded row below is applied:
 A written `read:prompt`, `services:prompt` or `use_service:prompt` still asks
 about that tool. A deny-everything blanket still denies. A Policy with nothing
 configured still asks — "no settings" is not the shipped default.
+
+## Missing programs and libraries — installing packages, pip, npm, brew and virtual environments
+
+The agent first tries an installed tool, the standard library or a web API
+through `fetch`: GitHub REST when `gh` is missing, or a PNG produced without
+matplotlib. Before installing anything, it uses `ask` to name what and where.
+It must never install silently.
+
+The bash permission gate also always asks for `pip install`, `pip3 install`,
+`python -m pip install`, `uv pip install`, `uv add`, global `npm install` or
+`npm i` (`-g` or `--global`), `brew install`, `gem install`, `cargo install`,
+`go install`, `python -m venv`, `virtualenv`, and `curl … | sh` or `curl … | bash`.
+The Python module forms also cover `python3`. A saved allow cannot lift this
+floor. `pip list`, `pip show` and local `npm install` keep their existing policy;
+the agent's instruction to ask before installing anything still applies.
 
 ## Other tools that run without an approval question by default
 
