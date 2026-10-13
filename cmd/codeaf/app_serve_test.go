@@ -28,6 +28,11 @@ func TestAppServeHelper(t *testing.T) {
 	if os.Getenv("CODEAF_APP_SERVE_TEST_HELPER") != "1" {
 		return
 	}
+	if os.Getenv("CODEAF_APP_TEST_LOGIN_ENV") == "1" {
+		if err := os.Unsetenv("CODEAF_NO_LOGIN_ENV"); err != nil {
+			os.Exit(2)
+		}
+	}
 	// Choose the fixture after package init so the test home guard allows it.
 	if chosen := os.Getenv("CODEAF_APP_TEST_HOME"); chosen != "" {
 		t.Setenv(home.EnvVar, chosen)
@@ -35,7 +40,13 @@ func TestAppServeHelper(t *testing.T) {
 	for index, argument := range os.Args {
 		if argument == "--" {
 			os.Args = append([]string{"codeaf", "app", "serve"}, os.Args[index+1:]...)
-			os.Exit(execute())
+			result := execute()
+			if receipt := os.Getenv("CODEAF_LOGIN_TEST_RECEIPT"); receipt != "" {
+				if err := os.WriteFile(receipt+".applied", []byte(os.Getenv("PATH")), 0600); err != nil {
+					os.Exit(2)
+				}
+			}
+			os.Exit(result)
 		}
 	}
 	os.Exit(2)
@@ -65,6 +76,11 @@ func launchAppForTest(t *testing.T, args ...string) *appTestLaunch {
 
 func launchAppAtHomeForTest(t *testing.T, root string, shared bool, args ...string) *appTestLaunch {
 	t.Helper()
+	return launchAppAtHomeWithEnvForTest(t, root, shared, nil, args...)
+}
+
+func launchAppAtHomeWithEnvForTest(t *testing.T, root string, shared bool, environment []string, args ...string) *appTestLaunch {
+	t.Helper()
 	launch := &appTestLaunch{root: filepath.Join(root, "engine"), tuiRoot: filepath.Join(root, "tui"), done: make(chan error, 1)}
 	words := []string{"-test.run=^TestAppServeHelper$", "--"}
 	if shared {
@@ -78,7 +94,9 @@ func launchAppAtHomeForTest(t *testing.T, root string, shared bool, args ...stri
 		"CODEAF_APP_SERVE_TEST_HELPER=1", "CODEAF_HOME=" + launch.tuiRoot,
 		"HOME=" + root, "PATH=" + os.Getenv("PATH"), "CODEAF_TELEMETRY=off",
 		"GOMAXPROCS=2",
+		"CODEAF_NO_LOGIN_ENV=1",
 	}
+	launch.command.Env = append(launch.command.Env, environment...)
 	if shared {
 		launch.command.Env = append(launch.command.Env, "CODEAF_APP_TEST_HOME="+launch.root)
 		launch.command.Env[1] = "CODEAF_HOME=" + filepath.Join(root, "inherited")

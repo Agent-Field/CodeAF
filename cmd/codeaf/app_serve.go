@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/serve"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/loginenv"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 )
 
@@ -65,6 +66,9 @@ func runApp(args []string) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if err := os.Setenv("PATH", loginenv.Resolve(ctx)); err != nil {
+		return fmt.Errorf("set app executable search path: %w", err)
+	}
 	return serveApp(ctx, options, os.Stdin, os.Stdout, os.Stderr)
 }
 
