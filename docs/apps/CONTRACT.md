@@ -351,3 +351,5 @@ Only B1 decides more.
 - Desk: `pnpm typecheck`, `pnpm test`; the sidecar is started by `src-tauri`
   from the pinned binary in `codeaf-sidecar.json`. Browser dev uses D3's mock
   bridge serving `fixtures/apps/crm/`.
+
+- Wave 2 · spaces: [contract/spaces.md](contract/spaces.md)
