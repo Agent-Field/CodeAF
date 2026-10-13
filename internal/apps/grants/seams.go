@@ -55,14 +55,17 @@ func (s *Service) admin(c svc.Caller) error {
 func (s *Service) space() string   { return s.serverSpace }
 func ownDesktop(c svc.Caller) bool { return c.Member == svc.Owner && !c.Agent }
 
-// ExportRule is registered by the composition lane with Caps.AddRule.
-// The handler also enforces it, so no app or agent can obtain a secret before wiring lands.
-func ExportRule(scope svc.Scope, method string, _ json.RawMessage) (bool, error) {
+// ExportRule is shared by the caps deny rule and the handler so both enforce the same boundary.
+// Server space comes from grants, never from the client-supplied export destination.
+func ExportRule(scope svc.Scope, method string, _ json.RawMessage, serverSpace ...string) (bool, error) {
 	if method != bridge.MethodConnectCredentialExport {
 		return false, nil
 	}
 	if scope.App != "" || !ownDesktop(scope.Caller) {
 		return true, bridge.Errorf(bridge.CodeDenied, "Only your desktop session can export a connection")
+	}
+	if len(serverSpace) != 0 && serverSpace[0] != "personal" {
+		return true, bridge.Errorf(bridge.CodeDenied, "Connections can only be exported from Personal")
 	}
 	return true, nil
 }

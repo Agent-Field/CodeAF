@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
@@ -305,6 +306,43 @@ func connectTestApp(global bool) string {
 	return "crm"
 }
 
+type connectExportProbe struct {
+	*grants.Service
+	calls atomic.Int32
+}
+
+type connectPersonalCredential struct {
+	grants.Connections
+	credential bridge.GrantCredential
+}
+
+func (c connectPersonalCredential) PersonalCredential(context.Context, string, string) (bridge.GrantCredential, error) {
+	return c.credential, nil
+}
+
+func TestCredentialExportPersonalDesktopThroughGateway(t *testing.T) {
+	all := testServices(t)
+	credential := bridge.GrantCredential{Kind: "refresh", Token: "fixture-refresh-token"}
+	service := grants.NewWithOptions(svc.Config{Root: filepath.Join(t.TempDir(), "apps")}, all, grants.Options{
+		Space: "personal", Connections: connectPersonalCredential{credential: credential},
+	})
+	t.Cleanup(func() { _ = service.Close() })
+	all.Connect.Grants = service
+	ctx, url := testServer(t, all)
+	client := dialSocket(t, ctx, url)
+	id := client.send(bridge.TypeCall, "", bridge.MethodConnectCredentialExport, "", bridge.CredentialExportParams{Service: "gmail", Space: "acme", App: "crm"})
+	reply := client.read()
+	var result bridge.CredentialExportResult
+	if reply.ID != id || reply.Type != bridge.TypeResult || json.Unmarshal(reply.Result, &result) != nil || result.Credential != credential {
+		t.Fatalf("personal export reply=%+v", reply)
+	}
+}
+
+func (p *connectExportProbe) ExportCredential(context.Context, svc.Scope, bridge.CredentialExportParams) (bridge.CredentialExportResult, error) {
+	p.calls.Add(1)
+	return bridge.CredentialExportResult{}, bridge.Errorf(bridge.CodeInternal, "export handler should not run")
+}
+
 func TestCredentialExportDeniedThroughGateway(t *testing.T) {
 	for _, tt := range []struct {
 		name, app, space string
@@ -321,11 +359,13 @@ func TestCredentialExportDeniedThroughGateway(t *testing.T) {
 			resetCallerResolver(t)
 			SetCallerResolver(func(context.Context, *http.Request, string) svc.Caller { return tt.caller })
 			all := testServices(t)
+			var probe *connectExportProbe
 			// App and agent cases have no exporter, so only the caps rule can refuse them.
 			if tt.space != "personal" {
 				service := grants.NewWithOptions(svc.Config{Root: filepath.Join(t.TempDir(), "apps")}, all, grants.Options{Space: tt.space})
 				t.Cleanup(func() { _ = service.Close() })
-				all.Connect.Grants = service
+				probe = &connectExportProbe{Service: service}
+				all.Connect.Grants = probe
 			}
 			ctx, url := testServer(t, all)
 			client := dialSocket(t, ctx, url)
@@ -336,6 +376,9 @@ func TestCredentialExportDeniedThroughGateway(t *testing.T) {
 			}
 			if tt.space == "personal" && reply.Error.Message != "Only your desktop session can export a connection" {
 				t.Fatalf("export did not reach the caps rule: %+v", reply)
+			}
+			if probe != nil && probe.calls.Load() != 0 {
+				t.Fatal("workspace export reached the handler")
 			}
 		})
 	}

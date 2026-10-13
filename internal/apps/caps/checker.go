@@ -41,6 +41,7 @@ func (s *Service) allowRegistered(ctx context.Context, scope svc.Scope, method s
 	if len(params) != 0 && string(params) != "null" && (!json.Valid(params) || !strings.HasPrefix(strings.TrimSpace(string(params)), "{")) {
 		return bridge.Errorf(bridge.CodeInvalid, "params must be an object")
 	}
+	ctx = withConnectExportPolicy(ctx, s.all)
 	allow, denies := registeredPermission(method, params)
 	for _, rule := range denies {
 		if err := rule(ctx, scope.Caller, scope, method, params); err != nil {

@@ -166,11 +166,8 @@ func validCredential(c *bridge.GrantCredential) bool {
 
 func (s *Service) ExportCredential(ctx context.Context, scope svc.Scope, p bridge.CredentialExportParams) (bridge.CredentialExportResult, error) {
 	out := bridge.CredentialExportResult{}
-	if _, err := ExportRule(scope, bridge.MethodConnectCredentialExport, nil); err != nil {
+	if _, err := s.CredentialExportRule(scope, bridge.MethodConnectCredentialExport, nil); err != nil {
 		return out, err
-	}
-	if s.space() != "personal" {
-		return out, bridge.Errorf(bridge.CodeDenied, "Connections can only be exported from Personal")
 	}
 	if err := s.ready(); err != nil {
 		return out, err

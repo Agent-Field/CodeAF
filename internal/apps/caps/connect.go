@@ -11,7 +11,11 @@ import (
 )
 
 func init() {
-	AddDenyRule(func(_ context.Context, _ svc.Caller, scope svc.Scope, method string, params json.RawMessage) error {
+	AddDenyRule(func(ctx context.Context, _ svc.Caller, scope svc.Scope, method string, params json.RawMessage) error {
+		if policy, ok := ctx.Value(connectExportPolicyKey{}).(connectExportPolicy); ok {
+			_, err := policy.CredentialExportRule(scope, method, params)
+			return err
+		}
 		_, err := grants.ExportRule(scope, method, params)
 		return err
 	})
@@ -19,6 +23,22 @@ func init() {
 	RegisterTopic("connect/*/waits", allowConnectTopic)
 	RegisterTopic("connect/workspace", allowConnectTopic)
 	RegisterTopic("app/*/fakes", allowConnectTopic)
+}
+
+type connectExportPolicyKey struct{}
+
+type connectExportPolicy interface {
+	CredentialExportRule(svc.Scope, string, json.RawMessage) (bool, error)
+}
+
+// The server's grants service owns space identity; client export params name the destination.
+func withConnectExportPolicy(ctx context.Context, all *svc.Services) context.Context {
+	if all != nil {
+		if policy, ok := all.Connect.Grants.(connectExportPolicy); ok {
+			return context.WithValue(ctx, connectExportPolicyKey{}, policy)
+		}
+	}
+	return ctx
 }
 
 // ConnectAllow keeps shell queries independent of app capabilities, while imports

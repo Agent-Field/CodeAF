@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
+	"github.com/Agent-Field/codeaf/internal/apps/grants"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
 
@@ -59,6 +60,26 @@ func TestConnectExportDenyRule(t *testing.T) {
 			err := checker.Allow(context.Background(), svc.Scope{App: tt.app, Caller: tt.caller}, bridge.MethodConnectCredentialExport, nil)
 			if errorCode(err) != bridge.CodeDenied {
 				t.Fatalf("export permission=%v", err)
+			}
+		})
+	}
+}
+
+func TestConnectExportDenyRuleUsesServerSpace(t *testing.T) {
+	for _, destination := range []string{"personal", "acme", ""} {
+		t.Run(destination, func(t *testing.T) {
+			all := &svc.Services{}
+			// No home is needed: permission must refuse before the service accesses credentials.
+			all.Connect.Grants = grants.NewWithOptions(svc.Config{}, all, grants.Options{Space: "acme"})
+			checker := New(svc.Config{Root: t.TempDir()}, all)
+			scope := svc.Scope{Caller: svc.Caller{Member: svc.Owner, Role: svc.RoleEditor}}
+			raw, _ := json.Marshal(bridge.CredentialExportParams{Service: "gmail", Space: destination, App: "crm"})
+			err := checker.Allow(context.Background(), scope, bridge.MethodConnectCredentialExport, raw)
+			if errorCode(err) != bridge.CodeDenied || err.Error() != "denied: Connections can only be exported from Personal" {
+				t.Fatalf("workspace export permission=%v", err)
+			}
+			if err := checker.Allow(context.Background(), scope, bridge.MethodAppsList, nil); err != nil {
+				t.Fatalf("export rule denied an unrelated method: %v", err)
 			}
 		})
 	}

@@ -21,8 +21,10 @@ reads `internal/connect`'s existing credential file. Unknown connection start
 dates remain blank. Workspace Resolve and Accounts never read that personal
 store: only an encrypted grant credential, delivered by the desktop, can act
 as a member. Export is global, Personal-only, and limited to the desktop's own
-caller; app and agent scopes are denied in the handler as well as `ExportRule`.
-The composition lane must register that rule with Caps.AddRule (R10).
+caller. `caps/connect.go` registers the deny rule with `caps.AddDenyRule`.
+Caps consults `CredentialExportRule` on the grants service, which supplies the
+trusted server space to `ExportRule`; the export handler calls the same rule.
+App, agent and workspace-server calls are denied before credential access.
 
 Workspace sign-in uses a separate `internal/connect` store for each generated
 connection id, so adding or removing a workspace account never touches a
