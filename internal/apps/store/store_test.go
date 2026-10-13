@@ -34,7 +34,7 @@ func (h *eventLog) Subscribe(string) (<-chan svc.Event, func()) { return nil, fu
 func newStore(t *testing.T) (*Service, *eventLog) {
 	t.Helper()
 	hub := &eventLog{}
-	s := New(svc.Config{Root: filepath.Join(t.TempDir(), "apps")}, &svc.Services{Hub: hub})
+	s := NewWithOptions(svc.Config{Root: filepath.Join(t.TempDir(), "apps")}, &svc.Services{Hub: hub}, Options{WithoutDemo: true})
 	s.now = func() time.Time { return testTime }
 	return s, hub
 }

@@ -34,6 +34,9 @@ type Version struct {
 }
 
 func (s *Service) Keep(ctx context.Context, app string) (bridge.AppSummary, error) {
+	if err := s.start(ctx); err != nil {
+		return bridge.AppSummary{}, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	m, err := s.lookup(ctx, app)
@@ -63,6 +66,9 @@ func (s *Service) Keep(ctx context.Context, app string) (bridge.AppSummary, erro
 
 // GetVersion reads a tag, even if the current working tree was later changed.
 func (s *Service) GetVersion(ctx context.Context, app string, version int) (bridge.AppDetail, error) {
+	if err := s.start(ctx); err != nil {
+		return bridge.AppDetail{}, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	m, err := s.lookup(ctx, app)
@@ -82,6 +88,9 @@ func (s *Service) GetVersion(ctx context.Context, app string, version int) (brid
 
 // Versions lists numbered tags newest first; the draft branch is never a version.
 func (s *Service) Versions(ctx context.Context, app string) ([]Version, error) {
+	if err := s.start(ctx); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, err := s.lookup(ctx, app); err != nil {
@@ -115,6 +124,9 @@ func (s *Service) Versions(ctx context.Context, app string) ([]Version, error) {
 // Restore appends a version; it never moves or deletes an existing tag.
 // Definition restores do not read, migrate or replace records.
 func (s *Service) Restore(ctx context.Context, app string, version int) (bridge.AppSummary, error) {
+	if err := s.start(ctx); err != nil {
+		return bridge.AppSummary{}, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	m, err := s.lookup(ctx, app)

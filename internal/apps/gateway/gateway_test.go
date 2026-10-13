@@ -102,6 +102,9 @@ func testServices(t *testing.T) *svc.Services {
 	all.Hub = realtime.New(cfg, all)
 	all.Caps = caps.New(cfg, all)
 	all.Records = records.New(cfg, all)
+	if err := all.Store.(*store.Service).SeedGoldenCRM(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	return all
 }
 

@@ -1,8 +1,14 @@
 # Personal app store
 
 `New(svc.Config, *svc.Services)` implements `svc.Store`. `Config.Root` is the
-space's **apps directory**, not its home directory. An empty registry contains
-no fixture apps. Constructors do no I/O and peers are read at call time.
+space's **apps directory**, not its home directory. On its first call, an empty
+registry installs the golden CRM as kept v1 so the owner can open a demo.
+Constructors do no I/O and peers are read at call time. `NewWithOptions` with
+`Options{WithoutDemo: true}` leaves a new registry empty. `SeedGoldenCRM(ctx)`
+explicitly installs the same demo in an empty registry, including its sample
+records through `Services.Records.Seed`. Existing apps and modified records
+are never replaced by repeated seeding. Ordinary Keep still leaves real records
+empty; the demo's sample seed does not change that rule.
 
 Each allocated slug is both the app id and its folder name. Duplicate names
 receive numeric suffixes. The folder contains `state.json` (summary, maker and
@@ -51,7 +57,8 @@ rolls the directory replacement back. Operations serialize within the sidecar's
 single store instance. This is not a multi-process registry or a cross-filesystem
 transaction. No git executable, network remote or cgo is used.
 
-The walking-skeleton bridge tests in `internal/apps/server_test.go` must provision
-their CRM fixture explicitly through the store before listing or calling it.
-Automatically installing that fixture into every new personal space would hide
-the behavior this service is intended to provide.
+Bridge and gateway tests provision their CRM explicitly with `SeedGoldenCRM`.
+The current records skeleton also loads the golden rows into its real mode;
+`svc.Records.Seed` only writes sample mode. A durable records implementation
+must preserve the demo's real-mode fixture loading if kept demos should retain
+those exact record ids; the store never writes a records database itself.

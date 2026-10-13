@@ -30,10 +30,13 @@ const metadataFile = "state.json"
 
 // Service owns the definition repository and registry metadata, never records.
 type Service struct {
-	mu   sync.Mutex
-	root string
-	all  *svc.Services
-	now  func() time.Time
+	mu      sync.Mutex
+	startMu sync.Mutex
+	started bool
+	demo    bool
+	root    string
+	all     *svc.Services
+	now     func() time.Time
 }
 
 type metadata struct {
@@ -46,10 +49,13 @@ type metadata struct {
 var _ svc.Store = (*Service)(nil)
 
 func New(cfg svc.Config, all *svc.Services) *Service {
-	return &Service{root: cfg.Root, all: all, now: time.Now}
+	return NewWithOptions(cfg, all, Options{})
 }
 
 func (s *Service) List(ctx context.Context, caller svc.Caller) ([]bridge.AppSummary, error) {
+	if err := s.start(ctx); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.ready(ctx); err != nil {
@@ -83,6 +89,9 @@ func (s *Service) List(ctx context.Context, caller svc.Caller) ([]bridge.AppSumm
 }
 
 func (s *Service) Get(ctx context.Context, app string) (bridge.AppDetail, error) {
+	if err := s.start(ctx); err != nil {
+		return bridge.AppDetail{}, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	m, err := s.lookup(ctx, app)
@@ -97,6 +106,9 @@ func (s *Service) Get(ctx context.Context, app string) (bridge.AppDetail, error)
 }
 
 func (s *Service) Definition(ctx context.Context, app string) (*spec.Bundle, error) {
+	if err := s.start(ctx); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	m, err := s.lookup(ctx, app)
@@ -112,6 +124,9 @@ func (s *Service) Definition(ctx context.Context, app string) (*spec.Bundle, err
 
 // Create reserves a slug-shaped id; a collision gets a numeric suffix.
 func (s *Service) Create(ctx context.Context, caller svc.Caller, name, description string) (bridge.AppSummary, error) {
+	if err := s.start(ctx); err != nil {
+		return bridge.AppSummary{}, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.ready(ctx); err != nil {
@@ -155,6 +170,9 @@ func (s *Service) initialize(dir string, m *metadata) error {
 // WriteFiles replaces the complete draft definition, including removed files.
 // Check owns validation so an unfinished plan and a failing build can be saved.
 func (s *Service) WriteFiles(ctx context.Context, app string, files spec.Files) error {
+	if err := s.start(ctx); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	m, err := s.lookup(ctx, app)
@@ -188,6 +206,9 @@ func (s *Service) WriteFiles(ctx context.Context, app string, files spec.Files) 
 }
 
 func (s *Service) SetState(ctx context.Context, app string, state bridge.AppState) error {
+	if err := s.start(ctx); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	m, err := s.lookup(ctx, app)
@@ -226,6 +247,9 @@ func draftState(state bridge.AppState) bool {
 }
 
 func (s *Service) Discard(ctx context.Context, app string) error {
+	if err := s.start(ctx); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	m, err := s.lookup(ctx, app)

@@ -15,6 +15,9 @@ const deletedRetention = 30 * 24 * time.Hour
 // Delete hides a kept app immediately and retains its folder for recovery.
 // The personal owner is the only caller; workspace roles belong to wave 2.
 func (s *Service) Delete(ctx context.Context, caller svc.Caller, app, confirmation string) error {
+	if err := s.start(ctx); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if caller.Member != svc.Owner || caller.Agent {
@@ -39,6 +42,9 @@ func (s *Service) Delete(ctx context.Context, caller svc.Caller, app, confirmati
 }
 
 func (s *Service) RestoreDeleted(ctx context.Context, caller svc.Caller, app string) (bridge.AppSummary, error) {
+	if err := s.start(ctx); err != nil {
+		return bridge.AppSummary{}, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if caller.Member != svc.Owner || caller.Agent {
@@ -71,6 +77,9 @@ func (s *Service) RestoreDeleted(ctx context.Context, caller svc.Caller, app str
 // PurgeDeleted removes expired tombstones when the owner invokes maintenance.
 // There is no background timer in the store; the sidecar owns scheduling.
 func (s *Service) PurgeDeleted(ctx context.Context) error {
+	if err := s.start(ctx); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.ready(ctx); err != nil {
