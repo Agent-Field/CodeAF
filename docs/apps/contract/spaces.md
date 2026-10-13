@@ -47,6 +47,11 @@ The **gateway fills Caller once per call**: member, space and WS from the
 WebSocket session (section 3); Role from `AppRoles.Role` for `Scope.App`.
 Services never compute roles themselves; they read `scope.Caller`.
 In Personal: `{Member: "me", Space: "personal", WS: owner, Role: editor}`.
+`server_spaces.go` registers `gateway.SetCallerResolver` once from `init()`;
+repeated `Wire` calls only publish the services through an atomic pointer.
+Role lookups receive the bare app id, including calls addressed to `@draft`.
+A lookup error leaves a workspace caller's Role unset; Personal falls back
+to Editor. The gateway currently carries no Services in the resolver context.
 
 ### Services (svc.go: one embedded line; server.go: one call line)
 
@@ -164,8 +169,9 @@ entries with `Activity != nil` that the caller's app role may see.
 
 ## 2 · Wire methods (bridge/proto_spaces.go, gateway/spaces.go)
 
-Registered by **one line** in `gateway`'s method table init:
-`registerSpaces(methods)`. `app` ✓ = app-scoped.
+Registered from `gateway/spaces.go`'s `init()` through
+`gateway.Register(name, gateway.Method{Global, Handle, Allow})`. Each method
+owns its permission check; duplicate registrations panic. `app` ✓ = app-scoped.
 
 | Method | app | Who | params → result |
 | --- | --- | --- | --- |
@@ -195,12 +201,20 @@ Registered by **one line** in `gateway`'s method table init:
 | `apps.move` | ✓ | personal | `{to: space, editors: [member]}` → `AppSummary` (in the workspace) |
 
 Roles: a method listed for owner/admin returns `denied` for members; the role
-check lives in `caps/spaces.go` (R4 hook, one call line in `caps/checker.go`).
+check registers from `caps/spaces.go`'s `init()` through `caps.AddDenyRule`.
+Deny rules run before per-method permissions and cannot grant access.
 App-role checks for existing methods stay in caps: Viewer reads only, User
 works with records, Editor shapes. Workspace Admin/Owner may call
 `approles.*` on any app (fix "no Editor left").
 
-### Topics (gateway/spaces.go registers the `space/` prefix)
+### Topics (gateway/spaces.go registers permissions with caps.RegisterTopic)
+
+The registry accepts permission prefixes for `space/`, `app/*/roles` and
+`app/*/signoff`. At registry revision `078fa8b6a`, the gateway still accepts
+only `app/<id>/...` topics: `space/` subscriptions return `invalid` with
+`"topics look like app/<id>/..."`. A generic gateway topic hook is still needed
+to carry the space topics below; registering caps permissions alone cannot
+make them reachable.
 
 | Topic | Event |
 | --- | --- |

@@ -2,74 +2,57 @@ package gateway
 
 import (
 	"context"
-	"errors"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/apps/bridge"
 	"github.com/Agent-Field/codeaf/internal/apps/svc"
 )
 
-type sessionRoles struct {
-	svc.AppRoles
-	role   svc.Role
-	err    error
-	app    string
-	member string
-	calls  int
-}
-
-func (r *sessionRoles) Role(_ context.Context, app, member string) (svc.Role, error) {
-	r.app, r.member = app, member
-	r.calls++
-	return r.role, r.err
-}
-
 func TestSessionCallerAndRoles(t *testing.T) {
-	caller := svc.Caller{Member: "raj", Space: "acme", WS: svc.WorkspaceMember, Role: svc.RoleUser}
+	resetCallerResolver(t)
+	caller := svc.Caller{Member: "raj", Space: "acme", WS: svc.WorkspaceMember}
+	role := svc.RoleViewer
+	var apps []string
+	request := httptest.NewRequest(http.MethodGet, bridge.Path, nil)
+	request = request.WithContext(svc.WithCaller(request.Context(), caller))
+	SetCallerResolver(func(_ context.Context, r *http.Request, app string) svc.Caller {
+		if r != request {
+			t.Fatal("resolver lost the upgrade request")
+		}
+		resolved, _ := svc.CallerFrom(r.Context())
+		apps = append(apps, app)
+		if app != "" {
+			resolved.Role = role
+		}
+		return resolved
+	})
+	s := newSession(context.Background(), nil, &svc.Services{}, request)
+	defer s.cancel()
+	if s.caller != caller {
+		t.Fatalf("socket caller = %+v", s.caller)
+	}
 	for _, tt := range []struct {
-		name   string
-		caller *svc.Caller
-		app    string
-		role   svc.Role
-		err    error
+		app  string
+		role svc.Role
+		data svc.DataMode
 	}{
-		{"personal default", nil, "", "", nil},
-		{"workspace session", &caller, "", "", nil},
-		{"app viewer", &caller, "crm", svc.RoleViewer, nil},
-		{"app editor", &caller, "crm", svc.RoleEditor, nil},
-		{"role failure", &caller, "crm", "", bridge.NotBuilt("roles")},
+		{"crm", svc.RoleViewer, svc.DataSample},
+		{"crm@draft", svc.RoleUser, svc.DataDraft},
+		{"support", svc.RoleEditor, svc.DataSample},
 	} {
-		t.Run(tt.name, func(t *testing.T) {
-			request := context.Background()
-			want := svc.PersonalCaller()
-			if tt.caller != nil {
-				request = svc.WithCaller(request, *tt.caller)
-				want = *tt.caller
-			}
-			roles := &sessionRoles{role: tt.role, err: tt.err}
-			s := newSession(sessionContext(context.Background(), request), nil, &svc.Services{SpacesServices: svc.SpacesServices{AppRoles: roles}})
-			defer s.cancel()
-			scope, err := s.scope(tt.app)
-			if !errors.Is(err, tt.err) {
-				t.Fatalf("scope error = %v, want %v", err, tt.err)
-			}
-			if tt.app != "" {
-				want.Role = tt.role
-				if roles.app != tt.app || roles.member != want.Member || roles.calls != 1 {
-					t.Fatalf("Role lookup = %+v", roles)
-				}
-				roles.role = svc.RoleUser
-				next, _ := s.scope(tt.app)
-				if next.Caller.Role != svc.RoleUser || roles.calls != 2 {
-					t.Fatal("app role was cached between calls")
-				}
-			} else if roles.calls != 0 {
-				t.Fatal("global call looked up an app role")
-			}
-			if scope.Caller != want || scope.App != tt.app || scope.Data != svc.DataSample {
-				t.Fatalf("scope = %+v, want caller %+v", scope, want)
-			}
-		})
+		role = tt.role
+		scope := s.appScope(tt.app)
+		want := caller
+		want.Role = role
+		if scope.Caller != want || scope.Data != tt.data {
+			t.Fatalf("scope = %+v, want caller %+v and data %s", scope, want, tt.data)
+		}
+	}
+	if !reflect.DeepEqual(apps, []string{"", "crm", "crm", "support"}) {
+		t.Fatalf("resolver apps = %v", apps)
 	}
 }
 
@@ -87,8 +70,8 @@ func TestSpacesMethodsRegistered(t *testing.T) {
 		{bridge.MethodAuditList, true}, {bridge.MethodActivityList, true}, {bridge.MethodAppsMove, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			entry, ok := sessionMethods[tt.name]
-			if !ok || entry.run == nil || entry.global != tt.global {
+			entry, ok := lookupMethod(tt.name)
+			if !ok || entry.Handle == nil || entry.Global != tt.global {
 				t.Fatalf("registered = %v, entry = %+v", ok, entry)
 			}
 		})
