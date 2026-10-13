@@ -75,6 +75,9 @@ func TestFactoryConvertPrintsYAMLAndWarnsAboutLostKnobs(t *testing.T) {
 // This drives the host's intake and HTTP doors with no checkout or model.
 func TestFactoryRulesFromForgeReachIntakeAndPipeline(t *testing.T) {
 	t.Setenv(home.EnvVar, t.TempDir())
+	// The intake's refresh also reads CODEOWNERS; sealed, it never reaches api.github.com
+	// (whose retry backoff held this test for minutes).
+	sealFactoryPeople(t)
 	text := "start:\n  labels: [agent-ready]\n"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/repos/owner/repo/contents/"+pipeline.RepoFile {
