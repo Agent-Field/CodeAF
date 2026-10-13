@@ -304,6 +304,34 @@ func TestTurnSnapshotCodecEntriesPaginationAndToolBoundary(t *testing.T) {
 	turnStatus(t, f.action(t, "GET", "/tools/call1", ""), 409)
 }
 
+func TestTurnSnapshotShowsComposedRepliesNotRawToolResults(t *testing.T) {
+	f := newTurnFixture(t)
+	f.engine.entries = []session.DisplayEntry{
+		{Role: "user", Text: "plot the stars"},
+		{Role: "assistant", Text: ""},
+		{Role: "tool", Tool: "bash", CallID: "call1", Output: "/bin/bash: gh: command not found", Answered: true},
+		{Role: "tool", Text: "/bin/bash: gh: command not found\n\nCommand exited with code 1"},
+		{Role: "assistant", Text: "  \n"},
+		{Role: "aside", Text: "taking stock"},
+		{Role: "assistant", Text: "Here is the chart."},
+	}
+	got := f.snapshot(t).Snapshot.Entries
+	want := []struct{ kind, role, text string }{
+		{"message", "user", "plot the stars"},
+		{"tool", "tool", ""},
+		{"notice", "aside", "taking stock"},
+		{"message", "assistant", "Here is the chart."},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("entries: %+v", got)
+	}
+	for i, w := range want {
+		if got[i].Kind != w.kind || got[i].Role != w.role || got[i].Text != w.text || got[i].ID != fmt.Sprintf("entry_%d", i) {
+			t.Fatalf("entry %d = %+v, want %+v", i, got[i], w)
+		}
+	}
+}
+
 func TestTurnValidationExpectationsAndEveryRouteGuard(t *testing.T) {
 	f := newTurnFixture(t)
 	for _, body := range []string{`{}`, `null`, `[]`, `{} {}`, `{"mode":"unknown","text":"x"}`, `{"mode":"send","text":null}`, `{"mode":"send","text":""}`, `{"mode":"send","text":"x","unexpected":1}`, `{"mode":"send","text":"x","expect":{"unknown":1}}`, `{"mode":"send","text":"x","context":[{"path":"relative","kind":"repo"}]}`, `{"mode":"send","text":"x","files":[{"path":"relative"}]}`} {

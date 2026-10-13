@@ -56,6 +56,23 @@ func turnEntry(entry session.DisplayEntry, index int) DisplayEntry {
 	}
 	return DisplayEntry{ID: fmt.Sprintf("entry_%d", index), Kind: kind, Role: entry.Role, Text: entry.Text, Tool: entry.Tool, CallID: entry.CallID, Args: entry.Args, Output: entry.Output, Answered: entry.Answered}
 }
+
+// shownEntry keeps the rows a person reads. A tool row with no name is the
+// wire's RESULT message: its call row already carries the output, and shown
+// as a message it reads as the agent dumping raw tool output. An assistant row
+// with no text is the shell of a message that only called tools.
+func shownEntry(entry session.DisplayEntry) bool {
+	if entry.Tool != "" {
+		return true
+	}
+	switch entry.Role {
+	case "tool":
+		return false
+	case "assistant":
+		return strings.TrimSpace(entry.Text) != ""
+	}
+	return true
+}
 func (a *AgentRegistry) turnEntries(record agentRecord) []DisplayEntry {
 	return mergeProcessEndEntries(a.turnBaseEntries(record), a.endedProcessEntries(record.Agent.ID, record.SessionFile))
 }
@@ -79,7 +96,7 @@ func (a *AgentRegistry) turnBaseEntries(record agentRecord) []DisplayEntry {
 				out = append(out, receipt.Entry)
 			}
 		}
-		if i < len(entries) {
+		if i < len(entries) && shownEntry(entries[i]) {
 			out = append(out, turnEntry(entries[i], len(out)))
 		}
 	}
